@@ -32,11 +32,9 @@ export const useSearchFilterChipReadModel = (
   const cacheRef = React.useRef<{ key: string; value: SearchFilterChipReadModel } | null>(null);
   const projectionKey = `${args.requestVersionKey}::${args.activeTab}::${args.rankButtonLabel}::${
     args.rankButtonActive ? 1 : 0
-  }::${args.priceButtonLabel}::${args.priceButtonActive ? 1 : 0}::${
-    args.openNow ? 1 : 0
-  }::${args.votesFilterActive ? 1 : 0}::${args.isRankSelectorVisible ? 1 : 0}::${
-    args.isPriceSelectorVisible ? 1 : 0
-  }`;
+  }::${args.priceButtonLabel}::${args.priceButtonActive ? 1 : 0}::${args.openNow ? 1 : 0}::${
+    args.votesFilterActive ? 1 : 0
+  }::${args.isRankSelectorVisible ? 1 : 0}::${args.isPriceSelectorVisible ? 1 : 0}`;
 
   React.useEffect(() => {
     cacheRef.current = null;
@@ -64,4 +62,3 @@ export const useSearchFilterChipReadModel = (
   };
   return nextValue;
 };
-

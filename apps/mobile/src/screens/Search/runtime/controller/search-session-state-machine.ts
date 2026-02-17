@@ -15,7 +15,10 @@ export const SEARCH_SESSION_STATES = [
 
 export type SearchSessionState = (typeof SEARCH_SESSION_STATES)[number];
 
-const SEARCH_SESSION_ALLOWED_TRANSITIONS: Record<SearchSessionState, readonly SearchSessionState[]> = {
+const SEARCH_SESSION_ALLOWED_TRANSITIONS: Record<
+  SearchSessionState,
+  readonly SearchSessionState[]
+> = {
   idle: ['submitting'],
   submitting: ['receiving', 'cancelled', 'error'],
   receiving: ['phase_a_ready', 'cancelled', 'error'],

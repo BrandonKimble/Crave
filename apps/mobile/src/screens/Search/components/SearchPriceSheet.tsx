@@ -81,7 +81,10 @@ const SearchPriceSheet = ({
         </View>
         <View style={styles.priceSheetHeaderContentRow} pointerEvents="none">
           <Reanimated.View
-            style={[styles.priceSheetSummaryPill, summaryPillWidth ? { width: summaryPillWidth } : null]}
+            style={[
+              styles.priceSheetSummaryPill,
+              summaryPillWidth ? { width: summaryPillWidth } : null,
+            ]}
             layout={LinearTransition.duration(180)}
             pointerEvents="none"
           >
@@ -125,7 +128,11 @@ const SearchPriceSheet = ({
           accessibilityLabel="Cancel price changes"
           style={styles.sheetCancelButton}
         >
-          <Text variant="caption" weight="semibold" style={[styles.sheetCancelText, { color: ACTIVE_TAB_COLOR_DARK }]}>
+          <Text
+            variant="caption"
+            weight="semibold"
+            style={[styles.sheetCancelText, { color: ACTIVE_TAB_COLOR_DARK }]}
+          >
             Cancel
           </Text>
         </Pressable>

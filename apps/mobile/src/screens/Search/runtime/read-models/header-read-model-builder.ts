@@ -47,7 +47,10 @@ export const buildResultsSurfaceVisibility = ({
   shouldShowResultsSurface: boolean;
 } => {
   const shouldShowResultsLoadingState =
-    (isSearchLoading || hasSystemStatusBanner || shouldRetrySearchOnReconnect || isFilterTogglePending) &&
+    (isSearchLoading ||
+      hasSystemStatusBanner ||
+      shouldRetrySearchOnReconnect ||
+      isFilterTogglePending) &&
     !hasResults;
   return {
     shouldShowResultsLoadingState,

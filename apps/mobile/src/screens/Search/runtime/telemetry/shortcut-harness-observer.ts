@@ -184,7 +184,13 @@ export const useShortcutHarnessObserver = (
         ...payload,
       });
     },
-    [emitSearchPerfEvent, getPerfNow, isShortcutPerfHarnessScenario, roundPerfValue, shortcutHarnessRunId]
+    [
+      emitSearchPerfEvent,
+      getPerfNow,
+      isShortcutPerfHarnessScenario,
+      roundPerfValue,
+      shortcutHarnessRunId,
+    ]
   );
 
   const emitHarnessMechanismEvent = React.useCallback(
@@ -200,7 +206,13 @@ export const useShortcutHarnessObserver = (
         ...payload,
       });
     },
-    [emitSearchPerfEvent, getPerfNow, isShortcutPerfHarnessScenario, roundPerfValue, shortcutHarnessRunId]
+    [
+      emitSearchPerfEvent,
+      getPerfNow,
+      isShortcutPerfHarnessScenario,
+      roundPerfValue,
+      shortcutHarnessRunId,
+    ]
   );
   const shortcutPerfTraceRef = React.useRef<{
     sessionId: number | null;
@@ -260,9 +272,9 @@ export const useShortcutHarnessObserver = (
     }
     return lifecycle.runNumber;
   }, []);
-  const schedulerPressureBaselineRef = React.useRef<
-    ReturnType<RuntimeWorkScheduler['snapshotPressure']> | null
-  >(null);
+  const schedulerPressureBaselineRef = React.useRef<ReturnType<
+    RuntimeWorkScheduler['snapshotPressure']
+  > | null>(null);
   const shortcutProfilerSpanBufferRef = React.useRef<ShortcutProfilerSpanRecord[]>([]);
 
   const shortcutHarnessSnapshotRef = React.useRef<{
@@ -417,7 +429,9 @@ export const useShortcutHarnessObserver = (
     visibleSortedRestaurantMarkersCount,
   ]);
 
-  const completeShortcutHarnessRunRef = React.useRef<(settleStatus: string) => void>(() => undefined);
+  const completeShortcutHarnessRunRef = React.useRef<(settleStatus: string) => void>(
+    () => undefined
+  );
   const evaluateShortcutHarnessSettleBoundaryRef = React.useRef<
     (source: 'shadow_subscription' | 'settle_retry_timeout') => void
   >(() => undefined);
@@ -512,7 +526,9 @@ export const useShortcutHarnessObserver = (
       ) {
         return;
       }
-      const commitEndMs = Number.isFinite(payload.commitTimeMs) ? payload.commitTimeMs : payload.nowMs;
+      const commitEndMs = Number.isFinite(payload.commitTimeMs)
+        ? payload.commitTimeMs
+        : payload.nowMs;
       const commitStartMs = Number.isFinite(payload.startTimeMs)
         ? payload.startTimeMs
         : Math.max(0, commitEndMs - payload.commitSpanMs);
@@ -540,7 +556,11 @@ export const useShortcutHarnessObserver = (
   );
 
   const resolveWindowProfilerOwners = React.useCallback(
-    (runNumber: number, windowStartMs: number, windowEndMs: number): ShortcutProfilerWindowOwner[] => {
+    (
+      runNumber: number,
+      windowStartMs: number,
+      windowEndMs: number
+    ): ShortcutProfilerWindowOwner[] => {
       if (
         !Number.isFinite(windowStartMs) ||
         !Number.isFinite(windowEndMs) ||
@@ -623,7 +643,8 @@ export const useShortcutHarnessObserver = (
       mapQueryBudget.resetRun();
       searchSessionController.reset();
       runtimeWorkSchedulerRef?.current.resetPressureWindow();
-      schedulerPressureBaselineRef.current = runtimeWorkSchedulerRef?.current.snapshotPressure() ?? null;
+      schedulerPressureBaselineRef.current =
+        runtimeWorkSchedulerRef?.current.snapshotPressure() ?? null;
       const shadowStartState = searchSessionController.getState();
       const trace = shortcutPerfTraceRef.current;
       trace.sessionId = runNumber;
@@ -1093,7 +1114,7 @@ export const useShortcutHarnessObserver = (
           return;
         }
         const traceNowMs = getPerfNow();
-      emitSearchPerfEvent('JsFrameSampler', {
+        emitSearchPerfEvent('JsFrameSampler', {
           ...summary,
           harnessRunId: shortcutHarnessRunId,
           shortcutSessionId: trace.sessionId,
@@ -1189,7 +1210,13 @@ export const useShortcutHarnessObserver = (
       onStall: () => undefined,
     });
     return stop;
-  }, [emitSearchPerfEvent, getPerfNow, isShortcutPerfHarnessScenario, roundPerfValue, shortcutHarnessRunId]);
+  }, [
+    emitSearchPerfEvent,
+    getPerfNow,
+    isShortcutPerfHarnessScenario,
+    roundPerfValue,
+    shortcutHarnessRunId,
+  ]);
 
   return {
     isShortcutPerfHarnessScenario,

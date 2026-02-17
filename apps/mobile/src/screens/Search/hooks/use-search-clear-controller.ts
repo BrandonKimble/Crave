@@ -17,12 +17,7 @@ type RestaurantFocusSessionRefState = {
   hasAppliedInitialMultiLocationZoomOut: boolean;
 };
 
-type UseSearchClearControllerArgs<
-  TResult,
-  TSearchMode,
-  TError,
-  TSuggestion,
-> = {
+type UseSearchClearControllerArgs<TResult, TSearchMode, TError, TSuggestion> = {
   isRestaurantOverlayVisible: boolean;
   isSearchSessionActive: boolean;
   results: TResult | null;
@@ -88,12 +83,7 @@ type UseSearchClearControllerResult = {
   handleCloseResults: () => void;
 };
 
-export const useSearchClearController = <
-  TResults,
-  TSearchMode,
-  TError,
-  TSuggestion,
->({
+export const useSearchClearController = <TResults, TSearchMode, TError, TSuggestion>({
   isRestaurantOverlayVisible,
   isSearchSessionActive,
   results,
@@ -305,7 +295,13 @@ export const useSearchClearController = <
     setQuery('');
     setSuggestions([]);
     setShowSuggestions(false);
-  }, [cancelAutocomplete, setIsAutocompleteSuppressed, setQuery, setShowSuggestions, setSuggestions]);
+  }, [
+    cancelAutocomplete,
+    setIsAutocompleteSuppressed,
+    setQuery,
+    setShowSuggestions,
+    setSuggestions,
+  ]);
 
   const handleClear = React.useCallback(() => {
     const shouldCloseSuggestions = isSuggestionPanelActive || isSuggestionPanelVisible;

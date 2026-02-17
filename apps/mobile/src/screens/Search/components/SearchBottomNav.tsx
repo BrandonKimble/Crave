@@ -1,5 +1,11 @@
 import React from 'react';
-import { TouchableOpacity, View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  TouchableOpacity,
+  View,
+  type LayoutChangeEvent,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import Reanimated from 'react-native-reanimated';
 
 import { Text } from '../../../components';
@@ -59,7 +65,8 @@ const SearchBottomNavComponent = ({
           if (typeof renderIcon !== 'function') {
             return null;
           }
-          const onPress = item.key === 'profile' ? handleProfilePress : () => handleOverlaySelect(item.key);
+          const onPress =
+            item.key === 'profile' ? handleProfilePress : () => handleOverlaySelect(item.key);
           return (
             <TouchableOpacity key={item.key} style={styles.navButton} onPress={onPress}>
               <Reanimated.View

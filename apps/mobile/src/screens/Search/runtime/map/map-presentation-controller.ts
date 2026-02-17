@@ -92,9 +92,9 @@ export const useMapPresentationController = (
   const mapQueryBudget = mapQueryBudgetRef.current;
 
   const markerCandidatesRef = React.useRef<Array<Feature<Point, RestaurantFeatureProperties>>>([]);
-  const [visibleMarkerCandidates, setVisibleMarkerCandidates] = React.useState<MarkerCatalogEntry[]>(
-    []
-  );
+  const [visibleMarkerCandidates, setVisibleMarkerCandidates] = React.useState<
+    MarkerCatalogEntry[]
+  >([]);
   const visibleMarkerCandidateKeyRef = React.useRef('');
   const shouldTrackViewportCandidates = searchMode !== 'shortcut' || selectedRestaurantId !== null;
   const shouldPublishVisibleCandidates = shouldTrackViewportCandidates;
@@ -150,7 +150,12 @@ export const useMapPresentationController = (
   React.useEffect(() => {
     mapViewportQueryService.setCatalogEntries(markerCatalogEntries);
     recomputeVisibleCandidates(viewportBoundsService.getBounds());
-  }, [mapViewportQueryService, markerCatalogEntries, recomputeVisibleCandidates, viewportBoundsService]);
+  }, [
+    mapViewportQueryService,
+    markerCatalogEntries,
+    recomputeVisibleCandidates,
+    viewportBoundsService,
+  ]);
 
   React.useEffect(() => {
     if (!shouldTrackViewportCandidates) {

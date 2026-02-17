@@ -1062,8 +1062,9 @@ export class SearchService {
           .filter(
             (
               location,
-            ): location is NonNullable<RestaurantResultDto['displayLocation']> =>
-              location != null,
+            ): location is NonNullable<
+              RestaurantResultDto['displayLocation']
+            > => location != null,
           )
       : [];
     const locations =

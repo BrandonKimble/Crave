@@ -16,7 +16,10 @@ const SearchStatusBarFade = ({ statusBarFadeHeight }: SearchStatusBarFadeProps) 
   return (
     <View
       pointerEvents="none"
-      style={[styles.statusBarFade, { top: -STATUS_BAR_FADE_RAISE_PX, height: statusBarFadeHeight }]}
+      style={[
+        styles.statusBarFade,
+        { top: -STATUS_BAR_FADE_RAISE_PX, height: statusBarFadeHeight },
+      ]}
     >
       <MaskedView
         style={styles.statusBarFadeLayer}

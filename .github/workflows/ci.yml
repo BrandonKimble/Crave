@@ -83,38 +83,38 @@ jobs:
         with:
           node-version: '22'
 
-      - name: "Contract-check: parse fixture report + validate required fields"
+      - name: 'Contract-check: parse fixture report + validate required fields'
         env:
           PERF_BASELINE_LOG: scripts/fixtures/perf-shortcut-loop-report.v1.log
         run: |
           scripts/perf-shortcut-loop-report.sh "$PERF_BASELINE_LOG" /tmp/perf-runtime-contract-report.json > /tmp/perf-runtime-contract-report.pretty.json
           node -e "const fs=require('fs'); const r=JSON.parse(fs.readFileSync('/tmp/perf-runtime-contract-report.json','utf8')); if(r.schemaVersion!=='perf-shortcut-report.v1'){ throw new Error('unexpected schemaVersion: '+String(r.schemaVersion)); } if(!r.markerIntegrity?.complete){ throw new Error('markerIntegrity.complete must be true'); } if(typeof r.runCountCompleted!=='number'||r.runCountCompleted<3){ throw new Error('runCountCompleted must be >= 3'); } if(typeof r.runCountExpected!=='number'||r.runCountExpected<3){ throw new Error('runCountExpected must be >= 3'); } if(typeof r.harnessSignatureStable!=='string'||!r.harnessSignatureStable){ throw new Error('harnessSignatureStable is required'); } if(typeof r.environment?.platform!=='string'||!r.environment.platform){ throw new Error('environment.platform is required'); } if(typeof r.environment?.launchTargetMode!=='string'||!r.environment.launchTargetMode){ throw new Error('environment.launchTargetMode is required'); } if(typeof r.environment?.runtimeTarget!=='string'||!r.environment.runtimeTarget){ throw new Error('environment.runtimeTarget is required'); } if(typeof r.environment?.launchPreferDevice!=='number'||!Number.isFinite(r.environment.launchPreferDevice)){ throw new Error('environment.launchPreferDevice is required'); } for (const key of ['floorMean','stallP95','stallMaxMean','uiFloorMean','uiStallP95','uiStallMaxMean']) { if (typeof r[key] !== 'number' || !Number.isFinite(r[key])) { throw new Error('missing numeric field: ' + key); } }"
 
-      - name: "Contract-check: natural cutover runtime guard"
+      - name: 'Contract-check: natural cutover runtime guard'
         run: |
           scripts/search-runtime-natural-cutover-contract.sh
 
-      - name: "Contract-check: mode cutover runtime guard"
+      - name: 'Contract-check: mode cutover runtime guard'
         run: |
           scripts/search-runtime-s4-mode-cutover-contract.sh
 
-      - name: "Contract-check: hydration cutover runtime guard"
+      - name: 'Contract-check: hydration cutover runtime guard'
         run: |
           scripts/search-runtime-s5-hydration-cutover-contract.sh
 
-      - name: "Contract-check: map cutover runtime guard"
+      - name: 'Contract-check: map cutover runtime guard'
         run: |
           scripts/search-runtime-s6-map-cutover-contract.sh
 
-      - name: "Contract-check: root ownership gate config loads"
+      - name: 'Contract-check: root ownership gate config loads'
         run: |
           bash scripts/search-runtime-root-ownership-gate.sh S6
 
-      - name: "Contract-check: comparator fixture self-compare passes"
+      - name: 'Contract-check: comparator fixture self-compare passes'
         run: |
           scripts/ci-compare-perf-reports.sh /tmp/perf-runtime-contract-report.json /tmp/perf-runtime-contract-report.json > /tmp/perf-runtime-compare-pass.json
 
-      - name: "Contract-check: overlap + commit-span gates pass on synthetic logs"
+      - name: 'Contract-check: overlap + commit-span gates pass on synthetic logs'
         env:
           PERF_HEAVY_COMPONENTS: SearchScreen,SearchMapTree,SearchResultsSheetTree,SearchOverlayChrome,BottomNav
         run: |
@@ -228,7 +228,7 @@ jobs:
             --components "$PERF_HEAVY_COMPONENTS" \
             --summary /tmp/perf-runtime-commit-span-pass.json
 
-      - name: "Contract-check: overlap + commit-span gates fail on synthetic regressions"
+      - name: 'Contract-check: overlap + commit-span gates fail on synthetic regressions'
         env:
           PERF_HEAVY_COMPONENTS: SearchScreen,SearchMapTree,SearchResultsSheetTree,SearchOverlayChrome,BottomNav
         run: |
@@ -250,13 +250,13 @@ jobs:
             exit 1
           fi
 
-      - name: "Contract-check: parser ignores stale-session windows outside run bounds"
+      - name: 'Contract-check: parser ignores stale-session windows outside run bounds'
         run: |
           node -e "const fs=require('fs'); const report=JSON.parse(fs.readFileSync('/tmp/perf-runtime-contract-report.json','utf8')); const lines=fs.readFileSync('scripts/fixtures/perf-shortcut-loop-report.v1.log','utf8').trimEnd().split(/\r?\n/); const run1=report.runMetrics.find((entry)=>entry.runNumber===1); const run2=report.runMetrics.find((entry)=>entry.runNumber===2); if(!run1||typeof run1.endMs!=='number'){ throw new Error('run1 endMs missing in fixture report'); } const nextStart=run2&&typeof run2.startMs==='number'?run2.startMs:run1.endMs+1000; const staleNow=Math.min(run1.endMs+50, nextStart-1); const staleWindow={event:'window',nowMs:staleNow,windowMs:133.3,frameCount:1,avgFrameMs:9999,avgFps:0.1,floorFps:0.1,p95FrameMs:9999,p95Fps:0.1,maxFrameMs:9999,stallCount:1,stallLongestMs:9999,droppedFrameEstimate:999,droppedFrameRatio:1,harnessRunId:report.harnessRunId,shortcutSessionId:1,shortcutStage:'results_list_ramp'}; lines.push(' LOG  [SearchPerf][JsFrameSampler] '+JSON.stringify(staleWindow)); fs.writeFileSync('/tmp/perf-runtime-contract-report.stale.log', lines.join('\n')+'\n');"
           scripts/perf-shortcut-loop-report.sh /tmp/perf-runtime-contract-report.stale.log /tmp/perf-runtime-contract-report.stale.json > /tmp/perf-runtime-contract-report.stale.pretty.json
           node -e "const fs=require('fs'); const base=JSON.parse(fs.readFileSync('/tmp/perf-runtime-contract-report.json','utf8')); const stale=JSON.parse(fs.readFileSync('/tmp/perf-runtime-contract-report.stale.json','utf8')); const fields=['floorMean','stallP95','stallMaxMean','uiFloorMean','uiStallP95','uiStallMaxMean']; for (const field of fields) { if (base[field] !== stale[field]) { throw new Error('stale-session window changed metric '+field+' base='+String(base[field])+' stale='+String(stale[field])); } } const baseRun1=base.runMetrics.find((entry)=>entry.runNumber===1); const staleRun1=stale.runMetrics.find((entry)=>entry.runNumber===1); if(!baseRun1||!staleRun1){ throw new Error('run1 metrics missing'); } if(baseRun1.stallLongestMax!==staleRun1.stallLongestMax){ throw new Error('stale-session window changed run1 stallLongestMax'); }"
 
-      - name: "Contract-check: comparator enforces catastrophic absolute gate"
+      - name: 'Contract-check: comparator enforces catastrophic absolute gate'
         run: |
           node -e "const fs=require('fs'); const baseline=JSON.parse(fs.readFileSync('/tmp/perf-runtime-contract-report.json','utf8')); const candidate=JSON.parse(JSON.stringify(baseline)); candidate.catastrophic={...(candidate.catastrophic||{}),runNumbers:[1,2],runCount:2}; fs.writeFileSync('/tmp/perf-runtime-contract-report.fail-cat.json', JSON.stringify(candidate,null,2));"
           if scripts/ci-compare-perf-reports.sh /tmp/perf-runtime-contract-report.json /tmp/perf-runtime-contract-report.fail-cat.json > /tmp/perf-runtime-compare-fail.json; then
@@ -270,5 +270,5 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: "Static guard: enforce no-bypass-search-runtime"
+      - name: 'Static guard: enforce no-bypass-search-runtime'
         run: scripts/no-bypass-search-runtime.sh

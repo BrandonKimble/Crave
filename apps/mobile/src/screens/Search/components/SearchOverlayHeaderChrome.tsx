@@ -1,5 +1,11 @@
 import React from 'react';
-import { Pressable, View, type LayoutChangeEvent, type LayoutRectangle, type TextInput } from 'react-native';
+import {
+  Pressable,
+  View,
+  type LayoutChangeEvent,
+  type LayoutRectangle,
+  type TextInput,
+} from 'react-native';
 import Reanimated, { type SharedValue } from 'react-native-reanimated';
 
 import { Text } from '../../../components';
@@ -24,15 +30,23 @@ type SearchOverlayHeaderChromeProps = {
   handleSearchHeaderLayout: (event: LayoutChangeEvent) => void;
   inputRef: React.RefObject<TextInput>;
   searchBarInputAnimatedStyle: React.ComponentProps<typeof SearchHeader>['inputAnimatedStyle'];
-  searchBarContainerAnimatedStyle: React.ComponentProps<typeof SearchHeader>['containerAnimatedStyle'];
+  searchBarContainerAnimatedStyle: React.ComponentProps<
+    typeof SearchHeader
+  >['containerAnimatedStyle'];
   isSuggestionScrollDismissing: boolean;
   isSearchSessionActive: boolean;
   searchHeaderFocusProgress: SharedValue<number>;
   shouldMountSearchShortcuts: boolean;
   shouldRenderSearchShortcuts: boolean;
-  searchShortcutsAnimatedStyle: React.ComponentProps<typeof SearchShortcutsRow>['containerAnimatedStyle'];
-  searchShortcutChipAnimatedStyle: React.ComponentProps<typeof SearchShortcutsRow>['chipAnimatedStyle'];
-  searchShortcutContentAnimatedStyle: React.ComponentProps<typeof SearchShortcutsRow>['contentAnimatedStyle'];
+  searchShortcutsAnimatedStyle: React.ComponentProps<
+    typeof SearchShortcutsRow
+  >['containerAnimatedStyle'];
+  searchShortcutChipAnimatedStyle: React.ComponentProps<
+    typeof SearchShortcutsRow
+  >['chipAnimatedStyle'];
+  searchShortcutContentAnimatedStyle: React.ComponentProps<
+    typeof SearchShortcutsRow
+  >['contentAnimatedStyle'];
   handleBestRestaurantsHere: () => void;
   handleBestDishesHere: () => void;
   handleSearchShortcutsRowLayout: (layout: LayoutRectangle) => void;
@@ -125,7 +139,11 @@ const SearchOverlayHeaderChrome = ({
       />
       <Reanimated.View
         pointerEvents={shouldShowSearchThisArea ? 'box-none' : 'none'}
-        style={[styles.searchThisAreaContainer, { top: searchThisAreaTop }, searchThisAreaAnimatedStyle]}
+        style={[
+          styles.searchThisAreaContainer,
+          { top: searchThisAreaTop },
+          searchThisAreaAnimatedStyle,
+        ]}
       >
         <Pressable
           onPress={handleSearchThisArea}

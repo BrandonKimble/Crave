@@ -69,7 +69,7 @@ export class MapViewportQueryService {
   ): MarkerCatalogEntry[] {
     const queryStartMs = getNowMs();
     const selectedEntries = query.selectedRestaurantId
-      ? (this.entriesByRestaurantId.get(query.selectedRestaurantId) ?? [])
+      ? this.entriesByRestaurantId.get(query.selectedRestaurantId) ?? []
       : [];
     const indexedEntries = query.bounds ? this.spatialIndex.query(query.bounds) : [];
 
@@ -84,7 +84,8 @@ export class MapViewportQueryService {
     const mergedEntries = Array.from(mergedByKey.values());
     mergedEntries.sort((left, right) => {
       const leftOrder = this.orderByEntryKey.get(resolveEntryKey(left)) ?? Number.MAX_SAFE_INTEGER;
-      const rightOrder = this.orderByEntryKey.get(resolveEntryKey(right)) ?? Number.MAX_SAFE_INTEGER;
+      const rightOrder =
+        this.orderByEntryKey.get(resolveEntryKey(right)) ?? Number.MAX_SAFE_INTEGER;
       return leftOrder - rightOrder;
     });
 

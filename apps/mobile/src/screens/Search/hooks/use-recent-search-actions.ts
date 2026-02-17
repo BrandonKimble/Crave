@@ -1,6 +1,10 @@
 import React from 'react';
 
-import type { RecentSearch, RecentlyViewedFood, RecentlyViewedRestaurant } from '../../../services/search';
+import type {
+  RecentSearch,
+  RecentlyViewedFood,
+  RecentlyViewedRestaurant,
+} from '../../../services/search';
 
 type RecentSearchUpsertPayload = {
   queryText: string;
@@ -23,8 +27,7 @@ type UseRecentSearchActionsArgs<TSuggestion> = {
   ignoreNextSearchBlurRef: React.MutableRefObject<boolean>;
   pendingRestaurantSelectionRef: React.MutableRefObject<{ restaurantId: string } | null>;
   openRestaurantProfilePreviewRef: React.MutableRefObject<
-    | ((restaurantId: string, restaurantName: string) => void)
-    | null
+    ((restaurantId: string, restaurantName: string) => void) | null
   >;
   beginSubmitTransition: () => boolean;
   captureSearchSessionOrigin: () => void;

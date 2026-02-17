@@ -31,15 +31,18 @@ Ship the frontend runtime refactor slice-by-slice while preserving current UX be
 ## Validation (Contextual, Not Blanket)
 
 Always run:
+
 - relevant lint/tests for touched files
 - `bash /Users/brandonkimble/crave-search/scripts/no-bypass-search-runtime.sh`
 
 Run when relevant:
+
 - `bash /Users/brandonkimble/crave-search/scripts/search-runtime-natural-cutover-contract.sh`
 - `bash /Users/brandonkimble/crave-search/scripts/search-runtime-s4-mode-cutover-contract.sh`
 - `bash /Users/brandonkimble/crave-search/scripts/perf-shortcut-local-ci.sh promote-slice <SLICE_ID>`
 
 Refresh baseline only if harness signature / settle-boundary policy changed:
+
 - `bash /Users/brandonkimble/crave-search/scripts/perf-shortcut-local-ci.sh record-baseline`
 
 ## Repo Quick Guide
@@ -50,6 +53,7 @@ Refresh baseline only if harness signature / settle-boundary policy changed:
 - Monorepo: Yarn workspaces + Turbo
 
 Common commands:
+
 - `yarn install`
 - `yarn dev`
 - `yarn workspace @crave-search/mobile dev`

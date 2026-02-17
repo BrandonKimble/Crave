@@ -98,9 +98,7 @@ export class RuntimeWorkScheduler {
     });
   }
 
-  public schedule(
-    task: Omit<RuntimeWorkTask, 'createdAtMs' | 'deferredFrameCount'>
-  ): string {
+  public schedule(task: Omit<RuntimeWorkTask, 'createdAtMs' | 'deferredFrameCount'>): string {
     const queuedTask: RuntimeWorkTask = {
       ...task,
       estimatedCostMs: sanitizeCostMs(task.estimatedCostMs),

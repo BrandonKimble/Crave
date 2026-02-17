@@ -13,7 +13,11 @@ export type ResultsShowMoreRow = {
   hiddenCount: number;
 };
 
-export type ResultsListItem = FoodResult | RestaurantResult | ResultsSectionRow | ResultsShowMoreRow;
+export type ResultsListItem =
+  | FoodResult
+  | RestaurantResult
+  | ResultsSectionRow
+  | ResultsShowMoreRow;
 
 const EMPTY_DISHES: FoodResult[] = [];
 const EMPTY_RESTAURANTS: RestaurantResult[] = [];

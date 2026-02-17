@@ -99,14 +99,13 @@ export const useShortcutCoverageOwner = ({
   >(new Map());
   const shortcutCoverageFetchSeqRef = React.useRef(0);
   const deferredCoverageRequestIdRef = React.useRef<string | null>(null);
-  const shortcutCoverageRankedRef = React.useRef<Array<Feature<Point, RestaurantFeatureProperties>>>(
-    []
-  );
+  const shortcutCoverageRankedRef = React.useRef<
+    Array<Feature<Point, RestaurantFeatureProperties>>
+  >([]);
   const [coverageBoundsRevision, setCoverageBoundsRevision] = React.useState(0);
   const [isShortcutCoverageLoading, setIsShortcutCoverageLoading] = React.useState(false);
-  const [shortcutCoverageDotFeatures, setShortcutCoverageDotFeatures] = React.useState<
-    FeatureCollection<Point, RestaurantFeatureProperties> | null
-  >(null);
+  const [shortcutCoverageDotFeatures, setShortcutCoverageDotFeatures] =
+    React.useState<FeatureCollection<Point, RestaurantFeatureProperties> | null>(null);
 
   const resetShortcutCoverageState = React.useCallback(() => {
     shortcutCoverageFetchKeyRef.current = null;
@@ -130,29 +129,32 @@ export const useShortcutCoverageOwner = ({
     [viewportBoundsService]
   );
 
-  const handleShortcutSearchCoverageSnapshot = React.useCallback((snapshot: ShortcutCoverageSnapshot) => {
-    shortcutCoverageEntitiesFingerprintByRequestIdRef.current.set(
-      snapshot.searchRequestId,
-      buildCoverageEntitiesFingerprint(snapshot.entities)
-    );
-    if (!snapshot.bounds) {
-      logger.info('Shortcut coverage snapshot pending (missing bounds)', {
+  const handleShortcutSearchCoverageSnapshot = React.useCallback(
+    (snapshot: ShortcutCoverageSnapshot) => {
+      shortcutCoverageEntitiesFingerprintByRequestIdRef.current.set(
+        snapshot.searchRequestId,
+        buildCoverageEntitiesFingerprint(snapshot.entities)
+      );
+      if (!snapshot.bounds) {
+        logger.info('Shortcut coverage snapshot pending (missing bounds)', {
+          searchRequestId: snapshot.searchRequestId,
+        });
+        shortcutCoveragePendingSnapshotByRequestIdRef.current.set(snapshot.searchRequestId, {
+          entities: snapshot.entities,
+        });
+        return;
+      }
+      logger.info('Shortcut coverage snapshot stored', {
         searchRequestId: snapshot.searchRequestId,
       });
-      shortcutCoveragePendingSnapshotByRequestIdRef.current.set(snapshot.searchRequestId, {
+      shortcutCoveragePendingSnapshotByRequestIdRef.current.delete(snapshot.searchRequestId);
+      shortcutCoverageSnapshotByRequestIdRef.current.set(snapshot.searchRequestId, {
+        bounds: snapshot.bounds,
         entities: snapshot.entities,
       });
-      return;
-    }
-    logger.info('Shortcut coverage snapshot stored', {
-      searchRequestId: snapshot.searchRequestId,
-    });
-    shortcutCoveragePendingSnapshotByRequestIdRef.current.delete(snapshot.searchRequestId);
-    shortcutCoverageSnapshotByRequestIdRef.current.set(snapshot.searchRequestId, {
-      bounds: snapshot.bounds,
-      entities: snapshot.entities,
-    });
-  }, []);
+    },
+    []
+  );
 
   React.useEffect(() => {
     if (searchMode !== 'shortcut') {
@@ -219,9 +221,11 @@ export const useShortcutCoverageOwner = ({
       return;
     }
     const includeTopDish = activeTab === 'dishes';
-    const boundsKey = `${boundsSnapshot.northEast.lat.toFixed(4)},${boundsSnapshot.northEast.lng.toFixed(
+    const boundsKey = `${boundsSnapshot.northEast.lat.toFixed(
       4
-    )},${boundsSnapshot.southWest.lat.toFixed(4)},${boundsSnapshot.southWest.lng.toFixed(4)}`;
+    )},${boundsSnapshot.northEast.lng.toFixed(4)},${boundsSnapshot.southWest.lat.toFixed(
+      4
+    )},${boundsSnapshot.southWest.lng.toFixed(4)}`;
     const entitiesKey =
       shortcutCoverageEntitiesFingerprintByRequestIdRef.current.get(searchRequestId) ??
       buildCoverageEntitiesFingerprint(entitiesSnapshot);
@@ -277,13 +281,17 @@ export const useShortcutCoverageOwner = ({
               return null;
             }
             const contextualScore =
-              typeof properties.contextualScore === 'number' ? (properties.contextualScore as number) : 0;
+              typeof properties.contextualScore === 'number'
+                ? (properties.contextualScore as number)
+                : 0;
             const restaurantQualityScore =
               typeof properties.restaurantQualityScore === 'number'
                 ? (properties.restaurantQualityScore as number)
                 : null;
             const displayScore =
-              typeof properties.displayScore === 'number' ? (properties.displayScore as number) : null;
+              typeof properties.displayScore === 'number'
+                ? (properties.displayScore as number)
+                : null;
             const displayPercentile =
               typeof properties.displayPercentile === 'number'
                 ? (properties.displayPercentile as number)

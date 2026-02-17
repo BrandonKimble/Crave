@@ -107,7 +107,10 @@ const PriceSummaryReelItem: React.FC<PriceSummaryReelItemProps> = React.memo(
     });
 
     return (
-      <Reanimated.View pointerEvents="none" style={[styles.priceSheetSummaryReelItem, animatedStyle]}>
+      <Reanimated.View
+        pointerEvents="none"
+        style={[styles.priceSheetSummaryReelItem, animatedStyle]}
+      >
         <Text
           numberOfLines={1}
           ellipsizeMode="tail"

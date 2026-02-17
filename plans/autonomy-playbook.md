@@ -24,20 +24,24 @@ Deliver each refactor slice to promotion quality with minimal process overhead.
 ## Validation Matrix
 
 Always:
+
 - relevant lint/tests for touched files
 - `bash /Users/brandonkimble/crave-search/scripts/no-bypass-search-runtime.sh`
 
 Conditional:
+
 - `bash /Users/brandonkimble/crave-search/scripts/search-runtime-natural-cutover-contract.sh` when natural cutover paths/contracts are touched
 - `bash /Users/brandonkimble/crave-search/scripts/search-runtime-s4-mode-cutover-contract.sh` when mode-cutover paths/contracts are touched
 - `bash /Users/brandonkimble/crave-search/scripts/perf-shortcut-local-ci.sh promote-slice <SLICE_ID>` for perf-bearing runtime ownership slices
 
 Baseline refresh only when settle policy or harness signature changes:
+
 - `bash /Users/brandonkimble/crave-search/scripts/perf-shortcut-local-ci.sh record-baseline`
 
 ## Promotion Criteria
 
 A slice is promotion-ready only when:
+
 - plan exit gate is satisfied,
 - delete gate is satisfied,
 - required contextual checks pass,

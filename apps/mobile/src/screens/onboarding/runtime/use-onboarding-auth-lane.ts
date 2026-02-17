@@ -27,7 +27,9 @@ type UseOnboardingAuthLaneArgs = {
   navigation: StackNavigationProp<RootStackParamList, 'Onboarding'>;
 };
 
-export const useOnboardingAuthLane = ({ navigation }: UseOnboardingAuthLaneArgs): OnboardingAuthLaneState => {
+export const useOnboardingAuthLane = ({
+  navigation,
+}: UseOnboardingAuthLaneArgs): OnboardingAuthLaneState => {
   const auth = useAuth();
   const { isSignedIn } = auth;
   const setActiveSession =
@@ -112,7 +114,9 @@ export const useOnboardingAuthLane = ({ navigation }: UseOnboardingAuthLaneArgs)
           const resolvedSessionId = createdSessionId ?? sessionId;
           if (!resolvedSessionId) {
             const resultType =
-              authSessionResult && typeof authSessionResult === 'object' && 'type' in authSessionResult
+              authSessionResult &&
+              typeof authSessionResult === 'object' &&
+              'type' in authSessionResult
                 ? String((authSessionResult as { type?: unknown }).type)
                 : '';
             if (resultType !== 'cancel' && resultType !== 'dismiss') {

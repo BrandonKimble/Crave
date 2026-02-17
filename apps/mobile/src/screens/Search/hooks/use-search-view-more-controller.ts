@@ -2,7 +2,11 @@ import React from 'react';
 import { Keyboard } from 'react-native';
 import type { TextInput } from 'react-native';
 
-import type { RecentSearch, RecentlyViewedFood, RecentlyViewedRestaurant } from '../../../services/search';
+import type {
+  RecentSearch,
+  RecentlyViewedFood,
+  RecentlyViewedRestaurant,
+} from '../../../services/search';
 import type { MainSearchIntent } from '../../../types/navigation';
 
 type UseSearchViewMoreControllerArgs<TSuggestion> = {

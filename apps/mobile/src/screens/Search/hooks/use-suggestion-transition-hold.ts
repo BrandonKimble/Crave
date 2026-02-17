@@ -108,19 +108,16 @@ export const useSuggestionTransitionHold = ({
     submitTransitionHoldRef.current = createEmptySuggestionTransitionHold();
   }, []);
 
-  const resetSubmitTransitionHoldIfQueryChanged = React.useCallback(
-    (nextQuery: string) => {
-      if (!submitTransitionHoldRef.current.active) {
-        return false;
-      }
-      if (submitTransitionHoldRef.current.query === nextQuery) {
-        return false;
-      }
-      submitTransitionHoldRef.current = createEmptySuggestionTransitionHold();
-      return true;
-    },
-    []
-  );
+  const resetSubmitTransitionHoldIfQueryChanged = React.useCallback((nextQuery: string) => {
+    if (!submitTransitionHoldRef.current.active) {
+      return false;
+    }
+    if (submitTransitionHoldRef.current.query === nextQuery) {
+      return false;
+    }
+    submitTransitionHoldRef.current = createEmptySuggestionTransitionHold();
+    return true;
+  }, []);
 
   const captureSuggestionTransitionHold = React.useCallback(
     ({ enabled, flags }: TransitionHoldCaptureOptions) => {

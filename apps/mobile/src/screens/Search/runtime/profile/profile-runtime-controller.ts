@@ -7,7 +7,12 @@ import type { RestaurantOverlayData } from '../../../../overlays/panels/Restaura
 import type { AutocompleteMatch } from '../../../../services/autocomplete';
 import type { FavoriteListType } from '../../../../services/favorite-lists';
 import { searchService } from '../../../../services/search';
-import type { Coordinate, FoodResult, RestaurantProfile, RestaurantResult } from '../../../../types';
+import type {
+  Coordinate,
+  FoodResult,
+  RestaurantProfile,
+  RestaurantResult,
+} from '../../../../types';
 import { logger } from '../../../../utils';
 import type { createPhaseBMaterializer } from '../scheduler/phase-b-materializer';
 
@@ -50,11 +55,7 @@ type ActiveHydrationIntent = {
   restaurantId: string;
 };
 
-type ProfileSource =
-  | 'results_sheet'
-  | 'auto_open_single_candidate'
-  | 'autocomplete'
-  | 'dish_card';
+type ProfileSource = 'results_sheet' | 'auto_open_single_candidate' | 'autocomplete' | 'dish_card';
 
 type SaveSheetTarget = { restaurantId?: string; connectionId?: string } | null;
 
@@ -336,44 +337,47 @@ export const useProfileRuntimeController = (
     [emitRuntimeMechanismEvent, restaurantProfileRequestSeqRef]
   );
 
-  const loadRestaurantProfileData = React.useCallback((restaurantId: string) => {
-    const cached = restaurantProfileCacheRef.current.get(restaurantId);
-    if (cached) {
-      return Promise.resolve(cached);
-    }
-    const inFlight = restaurantProfileRequestByIdRef.current.get(restaurantId);
-    if (inFlight) {
-      return inFlight;
-    }
-    const request = searchService
-      .restaurantProfile(restaurantId)
-      .then((profile) => {
-        const payload = profile as RestaurantProfile | null;
-        const restaurant = payload?.restaurant;
-        if (!restaurant || restaurant.restaurantId !== restaurantId) {
-          throw new Error('restaurant profile payload mismatch');
-        }
-        const dishes = Array.isArray(payload?.dishes) ? payload.dishes : [];
-        const normalized: HydratedRestaurantProfile = {
-          restaurant,
-          dishes,
-        };
-        restaurantProfileCacheRef.current.set(restaurantId, normalized);
-        return normalized;
-      })
-      .catch((err) => {
-        logger.warn('Restaurant profile fetch failed', {
-          message: err instanceof Error ? err.message : 'unknown error',
-          restaurantId,
+  const loadRestaurantProfileData = React.useCallback(
+    (restaurantId: string) => {
+      const cached = restaurantProfileCacheRef.current.get(restaurantId);
+      if (cached) {
+        return Promise.resolve(cached);
+      }
+      const inFlight = restaurantProfileRequestByIdRef.current.get(restaurantId);
+      if (inFlight) {
+        return inFlight;
+      }
+      const request = searchService
+        .restaurantProfile(restaurantId)
+        .then((profile) => {
+          const payload = profile as RestaurantProfile | null;
+          const restaurant = payload?.restaurant;
+          if (!restaurant || restaurant.restaurantId !== restaurantId) {
+            throw new Error('restaurant profile payload mismatch');
+          }
+          const dishes = Array.isArray(payload?.dishes) ? payload.dishes : [];
+          const normalized: HydratedRestaurantProfile = {
+            restaurant,
+            dishes,
+          };
+          restaurantProfileCacheRef.current.set(restaurantId, normalized);
+          return normalized;
+        })
+        .catch((err) => {
+          logger.warn('Restaurant profile fetch failed', {
+            message: err instanceof Error ? err.message : 'unknown error',
+            restaurantId,
+          });
+          throw err;
+        })
+        .finally(() => {
+          restaurantProfileRequestByIdRef.current.delete(restaurantId);
         });
-        throw err;
-      })
-      .finally(() => {
-        restaurantProfileRequestByIdRef.current.delete(restaurantId);
-      });
-    restaurantProfileRequestByIdRef.current.set(restaurantId, request);
-    return request;
-  }, [restaurantProfileCacheRef, restaurantProfileRequestByIdRef]);
+      restaurantProfileRequestByIdRef.current.set(restaurantId, request);
+      return request;
+    },
+    [restaurantProfileCacheRef, restaurantProfileRequestByIdRef]
+  );
 
   const seedRestaurantProfile = React.useCallback(
     (restaurant: RestaurantResult, queryLabel: string) => {
@@ -401,7 +405,12 @@ export const useProfileRuntimeController = (
       restaurantOverlayDismissHandledRef.current = false;
       setRestaurantOverlayVisible(true);
     },
-    [restaurantProfileCacheRef, restaurantOverlayDismissHandledRef, setRestaurantOverlayVisible, setRestaurantProfile]
+    [
+      restaurantProfileCacheRef,
+      restaurantOverlayDismissHandledRef,
+      setRestaurantOverlayVisible,
+      setRestaurantProfile,
+    ]
   );
 
   const hydrateRestaurantProfileById = React.useCallback(
@@ -550,7 +559,9 @@ export const useProfileRuntimeController = (
       const focusLocationKey = focusLocation
         ? `${restaurant.restaurantId}:${focusLocation.locationId}`
         : pressedCoordinate
-        ? `${restaurant.restaurantId}:${pressedCoordinate.lng.toFixed(5)}:${pressedCoordinate.lat.toFixed(5)}`
+        ? `${restaurant.restaurantId}:${pressedCoordinate.lng.toFixed(
+            5
+          )}:${pressedCoordinate.lat.toFixed(5)}`
         : `${restaurant.restaurantId}:anchor`;
       const previousFocusSession = restaurantFocusSessionRef.current;
       const isSameRestaurantFocusSession =
@@ -571,10 +582,7 @@ export const useProfileRuntimeController = (
         lastCameraStateRef.current?.zoom ?? (typeof mapZoom === 'number' ? mapZoom : null);
       if (typeof currentZoom === 'number' && Number.isFinite(currentZoom)) {
         const nextZoom = shouldApplyInitialMultiLocationZoomOut
-          ? Math.max(
-              currentZoom - profileMultiLocationZoomOutDelta,
-              profileMultiLocationMinZoom
-            )
+          ? Math.max(currentZoom - profileMultiLocationZoomOutDelta, profileMultiLocationMinZoom)
           : currentZoom;
         const isSameFocusedLocation =
           isSameRestaurantFocusSession && previousFocusSession.locationKey === focusLocationKey;

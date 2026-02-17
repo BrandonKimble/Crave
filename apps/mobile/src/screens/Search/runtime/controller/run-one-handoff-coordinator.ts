@@ -1,7 +1,4 @@
-import {
-  RUN_ONE_HANDOFF_PHASE_ORDER,
-  type RunOneHandoffPhase,
-} from './run-one-handoff-phase';
+import { RUN_ONE_HANDOFF_PHASE_ORDER, type RunOneHandoffPhase } from './run-one-handoff-phase';
 
 type RunOneHandoffCoordinatorListener = (snapshot: RunOneHandoffSnapshot) => void;
 

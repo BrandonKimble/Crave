@@ -70,7 +70,8 @@ export class PhaseBMaterializer {
   private hydrationAnimationFrame: number | null = null;
   private hydrationFinalizeRowsReleaseAnimationFrame: number | null = null;
   private hydrationFinalizeRowsReleaseTimeout: ReturnType<typeof setTimeout> | null = null;
-  private hydrationRampTask: ReturnType<typeof InteractionManager.runAfterInteractions> | null = null;
+  private hydrationRampTask: ReturnType<typeof InteractionManager.runAfterInteractions> | null =
+    null;
   private hydrationRampAnimationFrame: number | null = null;
   private hydrationRampTimeout: ReturnType<typeof setTimeout> | null = null;
   private hydrationRampToken: string | null = null;
@@ -198,9 +199,7 @@ export class PhaseBMaterializer {
     this.cancelHydrationFinalizeRowsRelease();
   }
 
-  private scheduleHydrationFinalizeKeyCommit(
-    input: PhaseBHydrationFinalizeKeyCommitInput
-  ): string {
+  private scheduleHydrationFinalizeKeyCommit(input: PhaseBHydrationFinalizeKeyCommitInput): string {
     return this.scheduleHydrationCommit(input);
   }
 

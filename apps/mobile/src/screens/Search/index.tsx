@@ -31,15 +31,11 @@ import type { RouteProp } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { Feature, FeatureCollection, Point } from 'geojson';
 import { Text } from '../../components';
-import {
-  OVERLAY_TAB_HEADER_HEIGHT,
-} from '../../overlays/overlaySheetStyles';
+import { OVERLAY_TAB_HEADER_HEIGHT } from '../../overlays/overlaySheetStyles';
 import { type OverlayModalSheetHandle } from '../../overlays/OverlayModalSheet';
 import { resolveExpandedTop } from '../../overlays/sheetUtils';
 import { logger } from '../../utils';
-import {
-  searchService,
-} from '../../services/search';
+import { searchService } from '../../services/search';
 import type { FavoriteListType } from '../../services/favorite-lists';
 import type { AutocompleteMatch } from '../../services/autocomplete';
 import { useSearchStore } from '../../store/searchStore';
@@ -52,9 +48,7 @@ import type {
   Coordinate,
 } from '../../types';
 import type { RootStackParamList } from '../../types/navigation';
-import {
-  type RestaurantOverlayData,
-} from '../../overlays/panels/RestaurantPanel';
+import { type RestaurantOverlayData } from '../../overlays/panels/RestaurantPanel';
 import { buildMapStyleURL } from '../../constants/map';
 import { useOverlayStore, type OverlayKey } from '../../store/overlayStore';
 import { useOverlaySheetPositionStore } from '../../overlays/useOverlaySheetPositionStore';
@@ -90,9 +84,7 @@ import { useAutocompleteController } from './hooks/use-autocomplete-controller';
 import { useOverlaySnapOrchestration } from './hooks/use-overlay-snap-orchestration';
 import { useSearchPriceSheetController } from './hooks/use-search-price-sheet-controller';
 import { useSearchResultsReadModel } from './hooks/use-search-results-read-model';
-import {
-  useRestaurantLocationSelection,
-} from './hooks/use-restaurant-location-selection';
+import { useRestaurantLocationSelection } from './hooks/use-restaurant-location-selection';
 import { useSaveSheetState } from './hooks/use-save-sheet-state';
 import { useSearchLayoutController } from './hooks/use-search-layout-controller';
 import { useSearchClearController } from './hooks/use-search-clear-controller';
@@ -114,9 +106,7 @@ import { useMapInteractionController } from './runtime/map/map-interaction-contr
 import { useMarkerInteractionController } from './runtime/map/marker-interaction-controller';
 import { useShortcutCoverageOwner } from './runtime/map/use-shortcut-coverage-owner';
 import { useStableMapHandlers } from './runtime/map/use-stable-map-handlers';
-import {
-  buildMarkerCatalogReadModel,
-} from './runtime/map/map-read-model-builder';
+import { buildMarkerCatalogReadModel } from './runtime/map/map-read-model-builder';
 import { type ResultsListItem } from './runtime/read-models/read-model-selectors';
 import { useQueryMutationOrchestrator } from './runtime/mutations/query-mutation-orchestrator';
 import { useProfileRuntimeController } from './runtime/profile/profile-runtime-controller';
@@ -177,18 +167,11 @@ const SEARCH_BOTTOM_NAV_ITEMS: ReadonlyArray<{ key: SearchBottomNavItemKey; labe
   { key: 'profile', label: 'Profile' },
 ];
 
-import {
-  getRangeFromLevels,
-  type PriceRangeTuple,
-} from './utils/price';
+import { getRangeFromLevels, type PriceRangeTuple } from './utils/price';
 import { getMarkerColorForDish, getMarkerColorForRestaurant } from './utils/marker-lod';
 import { getQualityColorFromScore } from './utils/quality';
 import { formatCompactCount } from './utils/format';
-import {
-  boundsFromPairs,
-  hasBoundsMovedSignificantly,
-  isLngLatTuple,
-} from './utils/geo';
+import { boundsFromPairs, hasBoundsMovedSignificantly, isLngLatTuple } from './utils/geo';
 
 MapboxGL.setTelemetryEnabled(false);
 
@@ -935,8 +918,7 @@ const SearchScreen: React.FC = () => {
       }
 
       if (frameDeltaMs >= RUN_ONE_STALL_PRESSURE_THRESHOLD_MS) {
-        const previousMaxStallMs =
-          runOneStallPressureByOperationRef.current.get(operationId) ?? 0;
+        const previousMaxStallMs = runOneStallPressureByOperationRef.current.get(operationId) ?? 0;
         const nextMaxStallMs = Math.max(previousMaxStallMs, frameDeltaMs);
         if (nextMaxStallMs > previousMaxStallMs) {
           runOneStallPressureByOperationRef.current.set(operationId, nextMaxStallMs);
@@ -1389,20 +1371,23 @@ const SearchScreen: React.FC = () => {
     mapMovedSinceSearchRef.current = false;
     setMapMovedSinceSearch(false);
   }, [viewportBoundsService]);
-  const markMapMovedIfNeeded = React.useCallback((bounds: MapBounds) => {
-    if (mapMovedSinceSearchRef.current) {
+  const markMapMovedIfNeeded = React.useCallback(
+    (bounds: MapBounds) => {
+      if (mapMovedSinceSearchRef.current) {
+        return true;
+      }
+      const baseline = viewportBoundsService.getSearchBaselineBounds();
+      if (!baseline) {
+        return false;
+      }
+      if (!hasBoundsMovedSignificantly(baseline, bounds)) {
+        return false;
+      }
+      mapMovedSinceSearchRef.current = true;
       return true;
-    }
-    const baseline = viewportBoundsService.getSearchBaselineBounds();
-    if (!baseline) {
-      return false;
-    }
-    if (!hasBoundsMovedSignificantly(baseline, bounds)) {
-      return false;
-    }
-    mapMovedSinceSearchRef.current = true;
-    return true;
-  }, [viewportBoundsService]);
+    },
+    [viewportBoundsService]
+  );
   const scheduleMapIdleReveal = React.useCallback(() => {
     if (mapIdleTimeoutRef.current) {
       clearTimeout(mapIdleTimeoutRef.current);
@@ -1993,13 +1978,10 @@ const SearchScreen: React.FC = () => {
   }, [filtersHeaderLayout]);
   const filtersHeaderHeightRef = React.useRef(filtersHeaderHeight);
   filtersHeaderHeightRef.current = filtersHeaderHeight;
-  const openScoreInfo = React.useCallback(
-    (payload: ScoreInfoPayload) => {
-      setScoreInfo(payload);
-      setScoreInfoVisible(true);
-    },
-    []
-  );
+  const openScoreInfo = React.useCallback((payload: ScoreInfoPayload) => {
+    setScoreInfo(payload);
+    setScoreInfoVisible(true);
+  }, []);
   const closeScoreInfo = React.useCallback(() => {
     setScoreInfoVisible(false);
   }, []);
@@ -2504,11 +2486,7 @@ const SearchScreen: React.FC = () => {
     return beginSubmitTransitionHold(
       buildSuggestionTransitionHoldCapture(shouldShowSearchShortcuts)
     );
-  }, [
-    beginSubmitTransitionHold,
-    buildSuggestionTransitionHoldCapture,
-    shouldShowSearchShortcuts,
-  ]);
+  }, [beginSubmitTransitionHold, buildSuggestionTransitionHoldCapture, shouldShowSearchShortcuts]);
   const beginSuggestionCloseHold = React.useCallback(
     (variant: 'default' | 'submitting' = 'default') => {
       return beginSuggestionCloseTransitionHold({
@@ -2616,7 +2594,13 @@ const SearchScreen: React.FC = () => {
         ? suggestionHeaderHeightTarget - overlap + SEARCH_SUGGESTION_HEADER_PANEL_GAP
         : fallback;
     return Math.max(0, headerBottom);
-  }, [headerPaddingOverlap, searchLayout.height, searchLayout.top, shouldDriveSuggestionLayout, suggestionHeaderHeightTarget]);
+  }, [
+    headerPaddingOverlap,
+    searchLayout.height,
+    searchLayout.top,
+    shouldDriveSuggestionLayout,
+    suggestionHeaderHeightTarget,
+  ]);
   const suggestionScrollMaxHeightTarget = useMemo(() => {
     if (!shouldDriveSuggestionLayout) {
       return undefined;
@@ -3783,8 +3767,7 @@ const SearchScreen: React.FC = () => {
     logger.debug('[SearchOverlayDebug]', suggestionOverlayDebugSnapshot);
   }, [shouldLogSuggestionOverlayState, suggestionOverlayDebugSnapshot]);
   React.useEffect(() => {
-    const shouldRunJsStallTicker =
-      shouldLogJsStalls || JS_FLOOR_PROBE_STALL_CONSOLE_LOG_MODE;
+    const shouldRunJsStallTicker = shouldLogJsStalls || JS_FLOOR_PROBE_STALL_CONSOLE_LOG_MODE;
     if (!shouldRunJsStallTicker) {
       return;
     }
@@ -3884,7 +3867,13 @@ const SearchScreen: React.FC = () => {
     const prefix = term ? `We're expanding results for ${term}.` : `We're expanding results.`;
     const suffix = etaText ? ` Check back in ${etaText}.` : ' Check back soon.';
     return `${prefix}${suffix}`;
-  }, [formatOnDemandEta, results?.metadata?.onDemandEtaMs, results?.metadata?.onDemandQueued, results?.metadata?.sourceQuery, submittedQuery]);
+  }, [
+    formatOnDemandEta,
+    results?.metadata?.onDemandEtaMs,
+    results?.metadata?.onDemandQueued,
+    results?.metadata?.sourceQuery,
+    submittedQuery,
+  ]);
   const onDemandNotice = useMemo(() => {
     if (!onDemandMessage) {
       return null;
@@ -4023,25 +4012,27 @@ const SearchScreen: React.FC = () => {
     pickPreferredRestaurantMapLocation,
     getQualityColorFromScore,
   });
-  const { lodPinnedMarkerMeta, lodPinnedMarkersRef, recomputeLodPinnedMarkers } = useMapDiffApplier({
-    searchMode,
-    activeTab,
-    selectedRestaurantId,
-    scoreMode,
-    markerCandidatesRef,
-    shortcutCoverageRankedRef,
-    mapGestureActiveRef,
-    buildMarkerKey,
-    mapQueryBudget,
-    shouldLogSearchComputes,
-    getPerfNow,
-    logSearchCompute,
-    maxPins: MAX_FULL_PINS,
-    visibleCandidateBuffer: LOD_VISIBLE_CANDIDATE_BUFFER,
-    stableMsMoving: LOD_PIN_TOGGLE_STABLE_MS_MOVING,
-    stableMsIdle: LOD_PIN_TOGGLE_STABLE_MS_IDLE,
-    offscreenStableMsMoving: LOD_PIN_OFFSCREEN_TOGGLE_STABLE_MS_MOVING,
-  });
+  const { lodPinnedMarkerMeta, lodPinnedMarkersRef, recomputeLodPinnedMarkers } = useMapDiffApplier(
+    {
+      searchMode,
+      activeTab,
+      selectedRestaurantId,
+      scoreMode,
+      markerCandidatesRef,
+      shortcutCoverageRankedRef,
+      mapGestureActiveRef,
+      buildMarkerKey,
+      mapQueryBudget,
+      shouldLogSearchComputes,
+      getPerfNow,
+      logSearchCompute,
+      maxPins: MAX_FULL_PINS,
+      visibleCandidateBuffer: LOD_VISIBLE_CANDIDATE_BUFFER,
+      stableMsMoving: LOD_PIN_TOGGLE_STABLE_MS_MOVING,
+      stableMsIdle: LOD_PIN_TOGGLE_STABLE_MS_IDLE,
+      offscreenStableMsMoving: LOD_PIN_OFFSCREEN_TOGGLE_STABLE_MS_MOVING,
+    }
+  );
 
   React.useEffect(() => {
     recomputeLodPinnedMarkers(viewportBoundsService.getBounds());
@@ -4164,9 +4155,10 @@ const SearchScreen: React.FC = () => {
   const heldSortedRestaurantMarkersRef = React.useRef<
     Array<Feature<Point, RestaurantFeatureProperties>>
   >(EMPTY_SORTED_RESTAURANT_MARKERS);
-  const heldDotRestaurantFeaturesRef = React.useRef<
-    FeatureCollection<Point, RestaurantFeatureProperties> | null
-  >(null);
+  const heldDotRestaurantFeaturesRef = React.useRef<FeatureCollection<
+    Point,
+    RestaurantFeatureProperties
+  > | null>(null);
   const heldPinsRenderKeyRef = React.useRef('0:empty:empty:0');
   React.useEffect(() => {
     if (shouldHoldMapMarkerReveal) {
@@ -4207,7 +4199,9 @@ const SearchScreen: React.FC = () => {
   }, [buildMarkerKey, visibleDotRestaurantFeatures?.features]);
   const markersRenderKey = React.useMemo(
     () =>
-      `${searchMode ?? 'none'}::${activeTab}::${scoreMode}::pins:${visiblePinsRenderKey}::dots:${visibleDotRenderKey}`,
+      `${
+        searchMode ?? 'none'
+      }::${activeTab}::${scoreMode}::pins:${visiblePinsRenderKey}::dots:${visibleDotRenderKey}`,
     [activeTab, scoreMode, searchMode, visibleDotRenderKey, visiblePinsRenderKey]
   );
   // No sticky anchors; keep labels relative to pin geometry only.
@@ -4303,35 +4297,34 @@ const SearchScreen: React.FC = () => {
     shortcutHarnessRunId,
     getActiveShortcutRunNumber,
     recordProfilerSpan,
-  } =
-    useShortcutHarnessObserver({
-      getPerfNow,
-      roundPerfValue,
-      searchSessionController,
-      submitSearchRef,
-      scoreMode,
-      setPreferredScoreMode,
-      mapQueryBudget,
-      searchMode,
-      isSearchLoading,
-      isLoadingMore,
-      isVisualSyncPending,
-      isShortcutCoverageLoading,
-      shouldHoldMapMarkerReveal,
-      shouldHydrateResultsForRender,
-      isRunOneHandoffActive: isRun1HandoffActive,
-      results,
-      resultsRequestKey,
-      visibleSortedRestaurantMarkersCount: visibleSortedRestaurantMarkers.length,
-      visibleDotRestaurantFeaturesCount: visibleDotRestaurantFeatures?.features?.length ?? 0,
-      searchInteractionRef,
-      isSearchOverlay,
-      isInitialCameraReady,
-      runTimeoutMs: SHORTCUT_HARNESS_RUN_TIMEOUT_MS,
-      settleQuietPeriodMs: SHORTCUT_HARNESS_SETTLE_QUIET_PERIOD_MS,
-      profileHydrateRestaurantByIdRef,
-      runtimeWorkSchedulerRef,
-    });
+  } = useShortcutHarnessObserver({
+    getPerfNow,
+    roundPerfValue,
+    searchSessionController,
+    submitSearchRef,
+    scoreMode,
+    setPreferredScoreMode,
+    mapQueryBudget,
+    searchMode,
+    isSearchLoading,
+    isLoadingMore,
+    isVisualSyncPending,
+    isShortcutCoverageLoading,
+    shouldHoldMapMarkerReveal,
+    shouldHydrateResultsForRender,
+    isRunOneHandoffActive: isRun1HandoffActive,
+    results,
+    resultsRequestKey,
+    visibleSortedRestaurantMarkersCount: visibleSortedRestaurantMarkers.length,
+    visibleDotRestaurantFeaturesCount: visibleDotRestaurantFeatures?.features?.length ?? 0,
+    searchInteractionRef,
+    isSearchOverlay,
+    isInitialCameraReady,
+    runTimeoutMs: SHORTCUT_HARNESS_RUN_TIMEOUT_MS,
+    settleQuietPeriodMs: SHORTCUT_HARNESS_SETTLE_QUIET_PERIOD_MS,
+    profileHydrateRestaurantByIdRef,
+    runtimeWorkSchedulerRef,
+  });
 
   React.useEffect(() => {
     const activeRunNumber = getActiveShortcutRunNumber();
@@ -4589,38 +4582,38 @@ const SearchScreen: React.FC = () => {
 
   const handleResultsEndReached = React.useCallback(
     (info?: { distanceFromEnd: number }) => {
-    if (!hasUserScrolledResultsRef.current) {
-      return;
-    }
-    if (
-      info &&
-      typeof info.distanceFromEnd === 'number' &&
-      Number.isFinite(info.distanceFromEnd) &&
-      info.distanceFromEnd > 0
-    ) {
-      return;
-    }
-    if (!allowLoadMoreForCurrentScrollRef.current) {
-      return;
-    }
-    if (!canLoadMoreRef.current || isLoadingRef.current || isLoadingMoreRef.current) {
-      return;
-    }
-    const nextPage = currentPageRef.current + 1;
-    if (lastLoadMorePageRef.current === nextPage) {
-      return;
-    }
-    allowLoadMoreForCurrentScrollRef.current = false;
-    lastLoadMorePageRef.current = nextPage;
-    if (shouldLogSearchStateChanges) {
-      // eslint-disable-next-line no-console
-      logger.debug(
-        `[SearchPerf] endReached page=${currentPageRef.current} next=${nextPage} mode=${
-          searchModeRef.current ?? 'none'
-        }`
-      );
-    }
-    loadMoreResultsRef.current(searchModeRef.current);
+      if (!hasUserScrolledResultsRef.current) {
+        return;
+      }
+      if (
+        info &&
+        typeof info.distanceFromEnd === 'number' &&
+        Number.isFinite(info.distanceFromEnd) &&
+        info.distanceFromEnd > 0
+      ) {
+        return;
+      }
+      if (!allowLoadMoreForCurrentScrollRef.current) {
+        return;
+      }
+      if (!canLoadMoreRef.current || isLoadingRef.current || isLoadingMoreRef.current) {
+        return;
+      }
+      const nextPage = currentPageRef.current + 1;
+      if (lastLoadMorePageRef.current === nextPage) {
+        return;
+      }
+      allowLoadMoreForCurrentScrollRef.current = false;
+      lastLoadMorePageRef.current = nextPage;
+      if (shouldLogSearchStateChanges) {
+        // eslint-disable-next-line no-console
+        logger.debug(
+          `[SearchPerf] endReached page=${currentPageRef.current} next=${nextPage} mode=${
+            searchModeRef.current ?? 'none'
+          }`
+        );
+      }
+      loadMoreResultsRef.current(searchModeRef.current);
     },
     [shouldLogSearchStateChanges]
   );
@@ -5049,35 +5042,34 @@ const SearchScreen: React.FC = () => {
     })();
   }, [searchHeaderFocusProgress]);
 
-  const { handleRecentViewMorePress, handleRecentlyViewedMorePress } =
-    useSearchViewMoreController({
-      inputRef,
-      ignoreNextSearchBlurRef,
-      allowSearchBlurExitRef,
-      cancelAutocomplete,
-      resetSubmitTransitionHold,
-      resetSearchHeaderFocusProgress,
-      searchIntentFromParams: route.params?.searchIntent ?? null,
-      clearSearchIntentParam: () => {
-        navigation.setParams({ searchIntent: undefined });
-      },
-      openRecentSearches: () => {
-        navigation.push('RecentSearches', { userLocation });
-      },
-      openRecentlyViewed: () => {
-        navigation.push('RecentlyViewed', { userLocation });
-      },
-      onRecentSearchPress: handleRecentSearchPress,
-      onRecentlyViewedRestaurantPress: handleRecentlyViewedRestaurantPress,
-      onRecentlyViewedFoodPress: handleRecentlyViewedFoodPress,
-      setSearchTransitionVariant,
-      setIsAutocompleteSuppressed,
-      setIsSearchFocused,
-      setIsSuggestionPanelActive,
-      setIsSuggestionLayoutWarm,
-      setShowSuggestions,
-      setSuggestions,
-    });
+  const { handleRecentViewMorePress, handleRecentlyViewedMorePress } = useSearchViewMoreController({
+    inputRef,
+    ignoreNextSearchBlurRef,
+    allowSearchBlurExitRef,
+    cancelAutocomplete,
+    resetSubmitTransitionHold,
+    resetSearchHeaderFocusProgress,
+    searchIntentFromParams: route.params?.searchIntent ?? null,
+    clearSearchIntentParam: () => {
+      navigation.setParams({ searchIntent: undefined });
+    },
+    openRecentSearches: () => {
+      navigation.push('RecentSearches', { userLocation });
+    },
+    openRecentlyViewed: () => {
+      navigation.push('RecentlyViewed', { userLocation });
+    },
+    onRecentSearchPress: handleRecentSearchPress,
+    onRecentlyViewedRestaurantPress: handleRecentlyViewedRestaurantPress,
+    onRecentlyViewedFoodPress: handleRecentlyViewedFoodPress,
+    setSearchTransitionVariant,
+    setIsAutocompleteSuppressed,
+    setIsSearchFocused,
+    setIsSuggestionPanelActive,
+    setIsSuggestionLayoutWarm,
+    setShowSuggestions,
+    setSuggestions,
+  });
 
   const {
     handleMapPress,
@@ -5829,8 +5821,7 @@ const SearchScreen: React.FC = () => {
       onSnapChange: setSaveSheetSnap,
     },
   };
-  const shouldFreezeRunOneChromeProps =
-    isRunOneChromeFreezeActive || isRunOnePreflightFreezeActive;
+  const shouldFreezeRunOneChromeProps = isRunOneChromeFreezeActive || isRunOnePreflightFreezeActive;
   const shouldFreezeDeferredChromeProps = shouldFreezeRunOneChromeProps;
   const markerRevealCommitIdForRender =
     resultsVisualSyncCandidate != null ? markerRevealCommitId : null;

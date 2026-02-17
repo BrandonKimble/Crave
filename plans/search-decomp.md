@@ -19,27 +19,33 @@ Dozens of timing/scheduling experiments over many sessions have failed to get th
 ### Changes
 
 **`apps/mobile/src/screens/Search/components/SearchBottomNav.tsx`**
+
 - Line 49: Extract `{ paddingBottom: bottomInset + NAV_BOTTOM_PADDING }` to `useMemo`
 - Line 62: Replace inline `() => handleOverlaySelect(item.key)` with a stable pre-built callback map (object keyed by `item.key`, created via `useMemo`)
 - Lines 66-69: Extract `{ alignItems: 'center', justifyContent: 'center' }` to a module-level constant
 
 **`apps/mobile/src/screens/Search/components/SearchSuggestionSurface.tsx`**
+
 - Line 113: Extract `{ top: 0 }` to module-level constant
 - Lines 143-154: Extract dynamic `contentContainerStyle` inline object to `useMemo` keyed on changing values
 - Lines 172-179: Extract `{ left: -X, right: -X }` and `{ top: -Y }` to module-level constants
 
 **`apps/mobile/src/screens/Search/components/SearchStatusBarFade.tsx`**
+
 - Line 19: Extract inline `{ top: ..., height: ... }` to `useMemo`
 - Lines 38-39: Extract `start={{ x: 0.5, y: 0 }}` and `end={{ x: 0.5, y: 1 }}` to module-level constants
 
 **`apps/mobile/src/screens/Search/components/SearchOverlayHeaderChrome.tsx`**
+
 - Line 128: Extract `{ top: searchThisAreaTop }` to `useMemo`
 
 **`apps/mobile/src/screens/Search/index.tsx`**
+
 - Line 5999: Extract `edges={['top', 'left', 'right']}` to module-level constant
 - Line 5996: Extract conditional `{ zIndex: 200 }` / `{ zIndex: 110 }` to module-level constants, select via ternary on primitive
 
 ### Verification
+
 - Run perf harness (`EXPO_PUBLIC_PERF_HARNESS_RUNS=3 bash scripts/perf-shortcut-loop.sh`). Verify no regression.
 - Visual QA: pins=30, dots=80, list=40, sectioned=40 unchanged.
 
@@ -62,56 +68,67 @@ import { useOverlayStore } from '../../../store/overlayStore';
 import { useOverlaySheetPositionStore } from '../../../store/overlaySheetPositionStore';
 import { useSystemStatusStore } from '../../../store/systemStatusStore';
 
-export const useSearchTabSlice = () => useSearchStore(
-  useShallow((s) => ({
-    activeTab: s.activeTab,
-    preferredActiveTab: s.preferredActiveTab,
-    setActiveTab: s.setActiveTab,
-    hasActiveTabPreference: s.hasActiveTabPreference,
-    setPreferredActiveTab: s.setPreferredActiveTab,
-  }))
-);
+export const useSearchTabSlice = () =>
+  useSearchStore(
+    useShallow((s) => ({
+      activeTab: s.activeTab,
+      preferredActiveTab: s.preferredActiveTab,
+      setActiveTab: s.setActiveTab,
+      hasActiveTabPreference: s.hasActiveTabPreference,
+      setPreferredActiveTab: s.setPreferredActiveTab,
+    }))
+  );
 
-export const useSearchFiltersSlice = () => useSearchStore(
-  useShallow((s) => ({
-    openNow: s.openNow, setOpenNow: s.setOpenNow,
-    priceLevels: s.priceLevels, setPriceLevels: s.setPriceLevels,
-    votes100Plus: s.votes100Plus, setVotes100Plus: s.setVotes100Plus,
-    resetFilters: s.resetFilters,
-    scoreMode: s.scoreMode, setPreferredScoreMode: s.setPreferredScoreMode,
-  }))
-);
+export const useSearchFiltersSlice = () =>
+  useSearchStore(
+    useShallow((s) => ({
+      openNow: s.openNow,
+      setOpenNow: s.setOpenNow,
+      priceLevels: s.priceLevels,
+      setPriceLevels: s.setPriceLevels,
+      votes100Plus: s.votes100Plus,
+      setVotes100Plus: s.setVotes100Plus,
+      resetFilters: s.resetFilters,
+      scoreMode: s.scoreMode,
+      setPreferredScoreMode: s.setPreferredScoreMode,
+    }))
+  );
 
-export const useOverlaySlice = () => useOverlayStore(
-  useShallow((s) => ({
-    activeOverlay: s.activeOverlay,
-    overlayStack: s.overlayStack,
-    overlayParams: s.overlayParams,
-    registerTransientDismissor: s.registerTransientDismissor,
-    dismissTransientOverlays: s.dismissTransientOverlays,
-  }))
-);
+export const useOverlaySlice = () =>
+  useOverlayStore(
+    useShallow((s) => ({
+      activeOverlay: s.activeOverlay,
+      overlayStack: s.overlayStack,
+      overlayParams: s.overlayParams,
+      registerTransientDismissor: s.registerTransientDismissor,
+      dismissTransientOverlays: s.dismissTransientOverlays,
+    }))
+  );
 
-export const useSheetPositionSlice = () => useOverlaySheetPositionStore(
-  useShallow((s) => ({
-    hasUserSharedSnap: s.hasUserSharedSnap,
-    sharedSnap: s.sharedSnap,
-  }))
-);
+export const useSheetPositionSlice = () =>
+  useOverlaySheetPositionStore(
+    useShallow((s) => ({
+      hasUserSharedSnap: s.hasUserSharedSnap,
+      sharedSnap: s.sharedSnap,
+    }))
+  );
 
-export const useSystemStatusSlice = () => useSystemStatusStore(
-  useShallow((s) => ({
-    isOffline: s.isOffline,
-    serviceIssue: s.serviceIssue,
-  }))
-);
+export const useSystemStatusSlice = () =>
+  useSystemStatusStore(
+    useShallow((s) => ({
+      isOffline: s.isOffline,
+      serviceIssue: s.serviceIssue,
+    }))
+  );
 ```
 
 **Modify `apps/mobile/src/screens/Search/index.tsx`**
+
 - Replace all 29 individual `useSearchStore(s => s.X)` calls with the 5 combined selectors
 - Destructure at call site: `const { activeTab, setActiveTab, ... } = useSearchTabSlice();`
 
 ### Verification
+
 - Run perf harness. Verify no regression.
 - Verify store subscriptions fire correctly — change a filter, confirm UI updates.
 
@@ -132,6 +149,7 @@ The bus is NOT a React Context (which would re-render all consumers). It's a pla
 **Create `apps/mobile/src/screens/Search/session/search-session-bus.ts`**
 
 Core API:
+
 ```typescript
 class SearchSessionBus {
   // State fields (cross-cutting, read by 3+ subtrees)
@@ -156,22 +174,47 @@ class SearchSessionBus {
   private _listeners = new Set<() => void>();
   private _batchDepth = 0;
 
-  batch(fn: () => void): void { this._batchDepth++; fn(); this._batchDepth--; if (this._batchDepth === 0) this._notify(); }
-  subscribe(listener: () => void): () => void { this._listeners.add(listener); return () => this._listeners.delete(listener); }
-  getSnapshot(): number { return this._version; }
+  batch(fn: () => void): void {
+    this._batchDepth++;
+    fn();
+    this._batchDepth--;
+    if (this._batchDepth === 0) this._notify();
+  }
+  subscribe(listener: () => void): () => void {
+    this._listeners.add(listener);
+    return () => this._listeners.delete(listener);
+  }
+  getSnapshot(): number {
+    return this._version;
+  }
 
   // Typed getters (for selectors)
-  get results() { return this._results; }
-  get isLoading() { return this._isLoading; }
+  get results() {
+    return this._results;
+  }
+  get isLoading() {
+    return this._isLoading;
+  }
   // ... etc
 
   // Typed setters (increment version + notify)
-  setResults(v: SearchResponse | null) { this._results = v; this._bump(); }
-  setIsLoading(v: boolean) { this._isLoading = v; this._bump(); }
+  setResults(v: SearchResponse | null) {
+    this._results = v;
+    this._bump();
+  }
+  setIsLoading(v: boolean) {
+    this._isLoading = v;
+    this._bump();
+  }
   // ... etc
 
-  private _bump() { this._version++; if (this._batchDepth === 0) this._notify(); }
-  private _notify() { this._listeners.forEach(l => l()); }
+  private _bump() {
+    this._version++;
+    if (this._batchDepth === 0) this._notify();
+  }
+  private _notify() {
+    this._listeners.forEach((l) => l());
+  }
 }
 ```
 
@@ -183,25 +226,22 @@ import { useSyncExternalStore } from 'react';
 export function useSessionBus<T>(
   bus: SearchSessionBus,
   selector: (bus: SearchSessionBus) => T,
-  isEqual: (a: T, b: T) => boolean = Object.is,
+  isEqual: (a: T, b: T) => boolean = Object.is
 ): T {
   const cachedRef = useRef<{ value: T; version: number }>({ value: selector(bus), version: -1 });
 
-  return useSyncExternalStore(
-    bus.subscribe.bind(bus),
-    () => {
-      const version = bus.getSnapshot();
-      if (version !== cachedRef.current.version) {
-        const next = selector(bus);
-        if (!isEqual(cachedRef.current.value, next)) {
-          cachedRef.current = { value: next, version };
-        } else {
-          cachedRef.current.version = version;
-        }
+  return useSyncExternalStore(bus.subscribe.bind(bus), () => {
+    const version = bus.getSnapshot();
+    if (version !== cachedRef.current.version) {
+      const next = selector(bus);
+      if (!isEqual(cachedRef.current.value, next)) {
+        cachedRef.current = { value: next, version };
+      } else {
+        cachedRef.current.version = version;
       }
-      return cachedRef.current.value;
-    },
-  );
+    }
+    return cachedRef.current.value;
+  });
 }
 ```
 
@@ -213,9 +253,10 @@ export const SearchSessionBusContext = createContext<SearchSessionBus>(null!);
 export const useSearchSessionBus = () => useContext(SearchSessionBusContext);
 ```
 
-The Context here holds the bus *instance* (stable ref, never changes) — not the bus *state*. This Context never triggers re-renders because its value never changes after mount.
+The Context here holds the bus _instance_ (stable ref, never changes) — not the bus _state_. This Context never triggers re-renders because its value never changes after mount.
 
 ### Verification
+
 - Unit test the bus: batch, subscribe, selector equality skipping.
 - No integration yet — existing code unchanged.
 
@@ -228,6 +269,7 @@ The Context here holds the bus *instance* (stable ref, never changes) — not th
 **Risk**: High. Most complex extraction due to map interactions with profile, submit bounds, and marker reveal.
 
 ### State Moving to MapSubtree
+
 - `mapCenter`, `mapZoom`, `mapCameraPadding`
 - `isInitialCameraHydrated`, `isInitialCameraReady`, `isMapStyleReady`
 - `isFollowingUser`
@@ -241,6 +283,7 @@ The Context here holds the bus *instance* (stable ref, never changes) — not th
 - Marker derivation logic (sortedRestaurantMarkers, dotRestaurantFeatures, etc.)
 
 ### Hooks Moving to MapSubtree
+
 - Camera hydration effects (lines 544-714)
 - Marker generation logic (lines 3125-3200)
 - Map idle / camera changed handlers
@@ -248,17 +291,20 @@ The Context here holds the bus *instance* (stable ref, never changes) — not th
 - Marker reveal logic and visual-ready signaling
 
 ### Cross-Cutting Reads (from bus)
+
 - `results` — to derive markers
 - `isSearchSessionActive`, `searchMode` — to gate marker visibility
 - `activeTab` — part of `markersRenderKey` (from Zustand, direct subscription)
 
 ### Cross-Cutting Writes (to bus)
+
 - `latestBoundsRef` — updated on camera change, read by submit flow for bounds
 - `mapRef` — read by submit flow and profile camera orchestration
 
 ### Changes
 
 **Create `apps/mobile/src/screens/Search/subtrees/SearchMapSubtree.tsx`**
+
 - Accept `bus: SearchSessionBus` as only prop (plus forwarded imperative ref)
 - Use `useSessionBus(bus, b => b.results)` for results subscription
 - Own all map useState/useRef/useEffect
@@ -266,20 +312,24 @@ The Context here holds the bus *instance* (stable ref, never changes) — not th
 - Expose imperative methods via `useImperativeHandle`: `fitBounds()`, `setCamera()`, `getVisibleBounds()`
 
 **Modify `apps/mobile/src/screens/Search/index.tsx`**
+
 - Remove ~800 lines of map state/hooks/effects/JSX
 - Replace with `<SearchMapSubtree bus={bus} ref={mapSubtreeRef} />`
 - Wire `mapRef` and `latestBoundsRef` from bus into `useSearchSubmit`
 
 **Modify `apps/mobile/src/screens/Search/hooks/use-search-submit.ts`**
+
 - Read `mapRef` and `latestBoundsRef` from bus refs instead of parent-passed refs
 
 ### Migration Strategy
+
 1. Add feature flag: `const USE_MAP_SUBTREE = true;`
 2. Create subtree component with all moved state
 3. Conditionally render old path vs new path
 4. Validate with harness, then remove old path
 
 ### Verification
+
 - Perf harness: pins=30, dots=80 unchanged
 - Camera hydration from AsyncStorage still works
 - Marker reveal timing identical (`marker_reveal_settled` timestamps)
@@ -295,6 +345,7 @@ The Context here holds the bus *instance* (stable ref, never changes) — not th
 **Risk**: Medium. Input + autocomplete + shortcuts are tightly coupled but isolated from other domains.
 
 ### State Moving to SuggestionsSubtree
+
 - `suggestions`, `setSuggestions`
 - `suggestionContentHeight`, `setSuggestionContentHeight`
 - `isSearchFocused`, `setIsSearchFocused`
@@ -305,6 +356,7 @@ The Context here holds the bus *instance* (stable ref, never changes) — not th
 - All suggestion-related refs (~15 useRef calls)
 
 ### Hooks Moving to SuggestionsSubtree
+
 - `useAutocompleteController`
 - `useSuggestionDisplayModel`, `useSuggestionLayoutWarmth`, `useSuggestionTransitionHold`
 - `useSuggestionHistoryBuffer`, `useSuggestionInteractionController`
@@ -313,25 +365,30 @@ The Context here holds the bus *instance* (stable ref, never changes) — not th
 - Search chrome transition logic
 
 ### Cross-Cutting Reads (from bus)
+
 - `isSearchSessionActive`, `submittedQuery` — for display state
 - `isLoading` — for spinner in search bar
 
 ### Cross-Cutting Writes (to bus)
+
 - `query` — published on every keystroke (other subtrees read from bus)
 - `isSuggestionPanelActive` — read by BottomNav to hide
 
 ### Changes
 
 **Create `apps/mobile/src/screens/Search/subtrees/SearchSuggestionsSubtree.tsx`**
+
 - Accept `bus: SearchSessionBus` as prop
 - Render `<SearchSuggestionSurface>` and `<SearchOverlayHeaderChrome>`
 - Own all suggestion/input state and hooks
 
 **Modify `apps/mobile/src/screens/Search/index.tsx`**
+
 - Remove ~600 lines of suggestion state/hooks/effects/JSX
 - Replace with `<SearchSuggestionsSubtree bus={bus} />`
 
 ### Verification
+
 - Autocomplete suggestions appear when typing
 - Recent searches and recently viewed display correctly
 - Suggestion panel animation timing identical
@@ -347,6 +404,7 @@ The Context here holds the bus *instance* (stable ref, never changes) — not th
 **Risk**: Medium. Profile camera orchestration bridges overlay and map.
 
 ### State Moving to OverlaySubtree
+
 - All overlay sheet snap states (~15 useState): `pollsSheetSnap`, `bookmarksSheetSnap`, `profileSheetSnap`, `tabOverlaySnapRequest`, `restaurantSnapRequest`, `profileTransitionStatus`, etc.
 - `isPriceSelectorVisible`, `isRankSelectorVisible`, `isPriceSheetContentReady`
 - `restaurantProfile`, `setRestaurantProfile`
@@ -356,6 +414,7 @@ The Context here holds the bus *instance* (stable ref, never changes) — not th
 - All overlay-related refs (~30 useRef calls)
 
 ### Hooks Moving to OverlaySubtree
+
 - `useSearchOverlayPanels`, `usePollCreationPanelController`
 - `useOverlaySnapOrchestration`, `useSearchOverlaySheetResolution`
 - `useProfileRuntimeController`, `useProfileCameraOrchestration`, `useProfileAutoOpenController`
@@ -364,27 +423,32 @@ The Context here holds the bus *instance* (stable ref, never changes) — not th
 - `useSaveSheetState`, `useResultsSheetInteraction`
 
 ### Cross-Cutting Reads (from bus)
+
 - `results`, `isLoading` — for sheet spec and list rendering
 - `searchMode`, `submittedQuery`, `activeTab` — for header/filters
 - `mapRef` — for profile camera orchestration (read via bus ref)
 
 ### Cross-Cutting Writes (to bus)
+
 - `isRestaurantOverlayVisible` — read by map for highlight behavior
 - `selectedRestaurantId` — read by map for pin selection
 
 ### Changes
 
 **Create `apps/mobile/src/screens/Search/subtrees/SearchOverlaySubtree.tsx`**
+
 - Accept `bus: SearchSessionBus` as prop
 - Render `<OverlaySheetShell>`, `<SearchRankAndScoreSheets>`, `<SearchPriceSheet>`
 - Wrap results content with `<SearchInteractionProvider>`
 - Own all overlay/sheet/profile/pagination state and hooks
 
 **Modify `apps/mobile/src/screens/Search/index.tsx`**
+
 - Remove ~1200 lines of overlay state/hooks/effects/JSX
 - Replace with `<SearchOverlaySubtree bus={bus} />`
 
 ### Verification
+
 - Sheet snap animations work correctly
 - Profile open/close with camera navigation works
 - Polls/bookmarks panels function
@@ -399,6 +463,7 @@ The Context here holds the bus *instance* (stable ref, never changes) — not th
 **Goal**: After all extractions, `index.tsx` becomes a thin coordinator (~300-500 lines).
 
 ### What Remains in Coordinator
+
 - Instantiate `SearchSessionBus`
 - Provide bus via `SearchSessionBusContext.Provider`
 - Own `useSearchSubmit` (writes `results`, `isLoading`, `submittedQuery` to bus)
@@ -407,10 +472,12 @@ The Context here holds the bus *instance* (stable ref, never changes) — not th
 - Reanimated shared values that span subtrees (`sheetTranslateY`)
 
 ### Coordinator State (~8 useState, ~5 useRef)
+
 - Results state (writes to bus): `results`, `isLoading`, `submittedQuery`, `isSearchSessionActive`, `searchMode`
 - The bus is the single source of truth — coordinator setState calls also publish to bus
 
 ### Submit Flow in New Architecture
+
 1. User taps submit in SuggestionsSubtree → calls `bus.submitSearch(query, options)` (imperative method set by coordinator)
 2. Coordinator's `useSearchSubmit` fires API call
 3. On response: `bus.batch(() => { bus.setResults(response); bus.setIsLoading(false); ... })`
@@ -423,10 +490,12 @@ The Context here holds the bus *instance* (stable ref, never changes) — not th
 ### Changes
 
 **Modify `apps/mobile/src/screens/Search/index.tsx`**
+
 - Final cleanup: remove any remaining dead state/refs/effects
 - Target: ~300-500 lines total
 
 ### Verification
+
 - Full visual QA pass
 - Perf harness: 3-run with matched settings
 - React Profiler: verify each subtree renders independently
@@ -440,6 +509,7 @@ The Context here holds the bus *instance* (stable ref, never changes) — not th
 **Risk**: Medium. Subtle — animations that read state need to switch to shared values.
 
 ### Candidates (all now inside MapSubtree after Phase 3)
+
 - `mapCenter`, `mapZoom` — set on every camera change event. Convert from `useState` to `useRef`. The camera intent arbiter already writes imperatively — just stop triggering React renders.
 - `markerRevealCommitId` — changes during marker animation. Convert to ref, signal via bus event.
 - `suggestionContentHeight` (in SuggestionsSubtree) — changes during scroll. Convert to ref + Reanimated shared value.
@@ -447,14 +517,17 @@ The Context here holds the bus *instance* (stable ref, never changes) — not th
 ### Changes
 
 **Modify `apps/mobile/src/screens/Search/subtrees/SearchMapSubtree.tsx`**
+
 - `mapCenter`: `useState` → `useRef` (consumers read `mapCenterRef.current`)
 - `mapZoom`: `useState` → `useRef`
 - `markerRevealCommitId`: `useState` → `useRef` + bus event notification
 
 **Modify `apps/mobile/src/screens/Search/subtrees/SearchSuggestionsSubtree.tsx`**
+
 - `suggestionContentHeight`: `useState` → `useRef` where only layout-driven
 
 ### Verification
+
 - Map panning is smooth (no jank from removed renders)
 - Marker reveal animation still triggers visual-ready
 - Suggestion panel sizing still correct
@@ -468,6 +541,7 @@ The Context here holds the bus *instance* (stable ref, never changes) — not th
 **Risk**: High. Native module compatibility.
 
 ### Compatibility Check Required
+
 - `@rnmapbox/maps@10.2.9` — verify Fabric support (has Fabric adapter since v10)
 - `react-native-reanimated` — Fabric-compatible on 3.x
 - `@clerk/clerk-expo` — check release notes for new arch support
@@ -476,17 +550,20 @@ The Context here holds the bus *instance* (stable ref, never changes) — not th
 ### Changes
 
 **Modify `apps/mobile/android/gradle.properties`**
+
 ```
 newArchEnabled=true
 ```
 
 ### Migration Strategy
+
 - Do this on a **separate branch**
 - Test every screen, not just Search
 - Run full test suite
 - If any native module breaks, identify the compatible version or defer
 
 ### Verification
+
 - Full app QA on Android
 - Perf harness: verify `startTransition` in submit flow actually yields (stall should be lower than iOS-parity baseline)
 - All existing functionality works
@@ -515,13 +592,13 @@ Phases 0, 1, 2 have no dependencies and can proceed in parallel. Phase 3 is the 
 
 After all phases, the hook distribution per subtree:
 
-| Subtree | useState | useRef | useMemo | useCallback | useEffect | Custom | Total |
-|---------|----------|--------|---------|-------------|-----------|--------|-------|
-| Coordinator | ~8 | ~5 | ~3 | ~5 | ~3 | ~5 | ~29 |
-| MapSubtree | ~10 | ~30 | ~8 | ~15 | ~12 | ~15 | ~90 |
-| SuggestionsSubtree | ~8 | ~15 | ~5 | ~12 | ~8 | ~10 | ~58 |
-| OverlaySubtree | ~20 | ~30 | ~10 | ~20 | ~15 | ~20 | ~115 |
-| **Old monolith** | **63** | **121** | **43** | **78** | **68** | **79** | **452** |
+| Subtree            | useState | useRef  | useMemo | useCallback | useEffect | Custom | Total   |
+| ------------------ | -------- | ------- | ------- | ----------- | --------- | ------ | ------- |
+| Coordinator        | ~8       | ~5      | ~3      | ~5          | ~3        | ~5     | ~29     |
+| MapSubtree         | ~10      | ~30     | ~8      | ~15         | ~12       | ~15    | ~90     |
+| SuggestionsSubtree | ~8       | ~15     | ~5      | ~12         | ~8        | ~10    | ~58     |
+| OverlaySubtree     | ~20      | ~30     | ~10     | ~20         | ~15       | ~20    | ~115    |
+| **Old monolith**   | **63**   | **121** | **43**  | **78**      | **68**    | **79** | **452** |
 
 Each subtree is 3-5x cheaper to render than the monolith. A state change in one subtree does not re-render siblings. With ~90 hooks max per subtree (and many of those being stable useRef/useCallback), individual render times should be well under 50ms.
 
@@ -547,29 +624,29 @@ Each subtree is 3-5x cheaper to render than the monolith. A state change in one 
 
 ## Critical Files
 
-| File | Role | Phases |
-|------|------|--------|
-| `apps/mobile/src/screens/Search/index.tsx` | Monolith being decomposed | 0-7 |
-| `apps/mobile/src/screens/Search/hooks/use-search-submit.ts` | Submit orchestrator (stays in coordinator) | 3, 6 |
-| `apps/mobile/src/screens/Search/hooks/use-search-runtime-composition.ts` | Runtime service instantiation | 2, 3 |
-| `apps/mobile/src/screens/Search/components/search-map.tsx` | Map component (40+ props define boundary) | 3 |
-| `apps/mobile/src/screens/Search/components/SearchBottomNav.tsx` | Memo-breaking fixes | 0 |
-| `apps/mobile/src/screens/Search/components/SearchSuggestionSurface.tsx` | Memo-breaking fixes | 0 |
-| `apps/mobile/src/screens/Search/components/SearchOverlayHeaderChrome.tsx` | Memo-breaking fixes | 0 |
-| `apps/mobile/src/screens/Search/components/SearchStatusBarFade.tsx` | Memo-breaking fixes | 0 |
-| `apps/mobile/src/screens/Search/context/SearchInteractionContext.tsx` | Existing context pattern to follow | 2 |
-| `apps/mobile/src/store/searchStore.ts` | Zustand store for selector consolidation | 1 |
-| `apps/mobile/src/store/overlayStore.ts` | Zustand store for selector consolidation | 1 |
-| `apps/mobile/android/gradle.properties` | New architecture flag | 8 |
+| File                                                                      | Role                                       | Phases |
+| ------------------------------------------------------------------------- | ------------------------------------------ | ------ |
+| `apps/mobile/src/screens/Search/index.tsx`                                | Monolith being decomposed                  | 0-7    |
+| `apps/mobile/src/screens/Search/hooks/use-search-submit.ts`               | Submit orchestrator (stays in coordinator) | 3, 6   |
+| `apps/mobile/src/screens/Search/hooks/use-search-runtime-composition.ts`  | Runtime service instantiation              | 2, 3   |
+| `apps/mobile/src/screens/Search/components/search-map.tsx`                | Map component (40+ props define boundary)  | 3      |
+| `apps/mobile/src/screens/Search/components/SearchBottomNav.tsx`           | Memo-breaking fixes                        | 0      |
+| `apps/mobile/src/screens/Search/components/SearchSuggestionSurface.tsx`   | Memo-breaking fixes                        | 0      |
+| `apps/mobile/src/screens/Search/components/SearchOverlayHeaderChrome.tsx` | Memo-breaking fixes                        | 0      |
+| `apps/mobile/src/screens/Search/components/SearchStatusBarFade.tsx`       | Memo-breaking fixes                        | 0      |
+| `apps/mobile/src/screens/Search/context/SearchInteractionContext.tsx`     | Existing context pattern to follow         | 2      |
+| `apps/mobile/src/store/searchStore.ts`                                    | Zustand store for selector consolidation   | 1      |
+| `apps/mobile/src/store/overlayStore.ts`                                   | Zustand store for selector consolidation   | 1      |
+| `apps/mobile/android/gradle.properties`                                   | New architecture flag                      | 8      |
 
 ### New Files to Create
 
-| File | Phase |
-|------|-------|
-| `apps/mobile/src/screens/Search/hooks/use-search-store-selectors.ts` | 1 |
-| `apps/mobile/src/screens/Search/session/search-session-bus.ts` | 2 |
-| `apps/mobile/src/screens/Search/session/use-session-bus-selector.ts` | 2 |
-| `apps/mobile/src/screens/Search/session/SearchSessionBusContext.ts` | 2 |
-| `apps/mobile/src/screens/Search/subtrees/SearchMapSubtree.tsx` | 3 |
-| `apps/mobile/src/screens/Search/subtrees/SearchSuggestionsSubtree.tsx` | 4 |
-| `apps/mobile/src/screens/Search/subtrees/SearchOverlaySubtree.tsx` | 5 |
+| File                                                                   | Phase |
+| ---------------------------------------------------------------------- | ----- |
+| `apps/mobile/src/screens/Search/hooks/use-search-store-selectors.ts`   | 1     |
+| `apps/mobile/src/screens/Search/session/search-session-bus.ts`         | 2     |
+| `apps/mobile/src/screens/Search/session/use-session-bus-selector.ts`   | 2     |
+| `apps/mobile/src/screens/Search/session/SearchSessionBusContext.ts`    | 2     |
+| `apps/mobile/src/screens/Search/subtrees/SearchMapSubtree.tsx`         | 3     |
+| `apps/mobile/src/screens/Search/subtrees/SearchSuggestionsSubtree.tsx` | 4     |
+| `apps/mobile/src/screens/Search/subtrees/SearchOverlaySubtree.tsx`     | 5     |

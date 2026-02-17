@@ -272,6 +272,7 @@ Primary owner of response fanout (`handleSearchResponse`).
 Changes:
 
 1. Introduce explicit handoff phase emissions for run-1 page-1 path:
+
    - `handoff_phase: h1_phase_a_committed`
    - `handoff_phase: h2_marker_reveal`
    - `handoff_phase: h3_hydration_ramp`
@@ -279,6 +280,7 @@ Changes:
    - emissions must target runtime handoff coordinator owner (not root setter callback).
 
 2. Keep phase-A minimal:
+
    - `setResults` + visible-tab correctness only.
 
 3. Move non-critical root writes (`setSubmittedQuery`, pagination meta) behind H4 gate.
@@ -308,6 +310,7 @@ This is where heavy trees currently co-commit.
 Changes:
 
 1. Add handoff-phase state read and derived freeze flags:
+
    - `isRun1HandoffActive`
    - `isChromeDeferred` (true in H2/H3)
    - derive from runtime coordinator snapshot/selector, not root-local source-of-truth state.
@@ -318,16 +321,17 @@ Changes:
    - `BottomNav`: keep animation/transform active, defer non-essential content recompute.
 
 2a. Freeze boundaries by subtree (exact scope):
-   - `SearchOverlayChrome` (`/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/index.tsx:5325`):
-     - freeze suggestion/result metadata props and optional panel richness in `H2/H3`,
-     - do not freeze overlay visibility or gesture/interaction handlers.
-     - do not fully freeze suggestion surface interaction.
-   - `SearchResultsSheetTree` (`/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/index.tsx:5417`):
-     - freeze header/chrome recomposition and non-essential footer richness in `H2/H3`,
-     - keep shell mount, drag/snap wiring, and core row rendering live.
-   - `BottomNav` (`/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/index.tsx:5439`):
-     - keep `bottomNavHideProgress` animation live,
-     - freeze non-critical content/label/icon recompute in `H2/H3`.
+
+- `SearchOverlayChrome` (`/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/index.tsx:5325`):
+  - freeze suggestion/result metadata props and optional panel richness in `H2/H3`,
+  - do not freeze overlay visibility or gesture/interaction handlers.
+  - do not fully freeze suggestion surface interaction.
+- `SearchResultsSheetTree` (`/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/index.tsx:5417`):
+  - freeze header/chrome recomposition and non-essential footer richness in `H2/H3`,
+  - keep shell mount, drag/snap wiring, and core row rendering live.
+- `BottomNav` (`/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/index.tsx:5439`):
+  - keep `bottomNavHideProgress` animation live,
+  - freeze non-critical content/label/icon recompute in `H2/H3`.
 
 Locked freeze implementation style:
 
@@ -335,16 +339,19 @@ Locked freeze implementation style:
 - do not use broad conditional JSX branching as primary freeze mechanism.
 
 3. Keep map visual-ready contract intact (`resultsVisualSyncCandidate`, `markVisualRequestReady`).
+
    - `index.tsx` must consume (not derive) phase transitions from coordinator.
    - `shouldHoldMapMarkerReveal` and timeout paths cannot directly advance to `H4`.
 
 4. Keep run-scoped profiler and stall correlation hooks only:
+
    - profiler attribution,
    - profiler span logs,
    - stall probe,
    - all run-scoped via `runNumber` + `harnessRunId`.
 
 5. Wire scheduler/governor from runtime composition into search submit + panel spec:
+
    - add `runtimeWorkSchedulerRef` to composition destructure (around current composition call near `:350-357`),
    - pass scheduler ref into `useSearchSubmit(...)`,
    - pass handoff phase and freeze flags into `useSearchResultsPanelSpec(...)`.
@@ -385,6 +392,7 @@ Changes:
 Changes:
 
 1. Introduce handoff-aware lightweight mode for H2/H3:
+
    - keep core rows rendering,
    - defer non-critical header/chrome recomputation and low-priority adornments,
    - avoid unnecessary list header churn until H4.
@@ -401,6 +409,7 @@ Changes:
 Changes:
 
 1. Keep run-scoped correlation support stable:
+
    - `getActiveShortcutRunNumber`,
    - harness run id propagation,
    - no pre-run event pollution.
@@ -420,6 +429,7 @@ Changes:
 Changes:
 
 1. Add `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/scheduler/frame-budget-governor.ts`.
+
    - implement `FrameBudgetGovernor` with:
      - `beginFrame(frameStartMs: number): void`
      - `canRun(lane: RuntimeWorkLane, estimatedCostMs: number): boolean`
@@ -432,6 +442,7 @@ Changes:
      - scheduler work budget: soft `<=8ms`, hard `<=12ms`.
 
 2. Upgrade `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/scheduler/runtime-work-scheduler.ts`.
+
    - extend task model:
      - `estimatedCostMs?: number`
      - `phase?: 'h1' | 'h2' | 'h3' | 'h4'`
@@ -444,6 +455,7 @@ Changes:
    - use governor before each task dispatch; defer when budget exhausted.
 
 3. Update `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/scheduler/phase-b-materializer.ts`.
+
    - constructor accepts shared scheduler instance (already accepts scheduler; keep shared singleton from composition),
    - hydration ramp uses scheduler-governed stepping instead of standalone timing loop as control source,
    - keep cancellation semantics via `operationId`.
@@ -478,7 +490,7 @@ Changes:
 5. Instrument commit-span contributor labels for this path:
    - `hydration_finalize_key_commit`
    - `hydration_finalize_rows_release`
-   so B2.5 can prove commit-size reduction and not only overlap redistribution.
+     so B2.5 can prove commit-size reduction and not only overlap redistribution.
 
 ## 7) Implementation Slices
 
@@ -806,9 +818,10 @@ Goal: introduce explicit handoff phase signaling without changing visible behavi
    - Do not gate behavior in this slice.
    - Remove any timeout-based direct `h4` advancement from submit/root logic.
 10. Validate:
-   - `yarn eslint <touched files>`
-   - `bash /Users/brandonkimble/crave-search/scripts/no-bypass-search-runtime.sh`
-   - two matched gates with profiler flags; verify phase signal and scheduler snapshot fields appear in logs.
+
+- `yarn eslint <touched files>`
+- `bash /Users/brandonkimble/crave-search/scripts/no-bypass-search-runtime.sh`
+- two matched gates with profiler flags; verify phase signal and scheduler snapshot fields appear in logs.
 
 ### 12.3 Slice B2 Script: Commit-Burst Breaker (Core)
 
@@ -822,7 +835,7 @@ Goal: enforce frame-separated commit domains during run-1 handoff.
    - Replace:
      - `runDeferredTupleMutation(...)`
      - `scheduleAfterFrames(...)`
-     with scheduler tasks carrying lane + `operationId`.
+       with scheduler tasks carrying lane + `operationId`.
 2. Edit `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/index.tsx` map reveal gating block (anchor near `:3900-3958`).
    - Keep marker visual-ready logic intact.
    - Ensure H2 reveals markers first; do not couple with deferred chrome/meta updates.
@@ -969,8 +982,8 @@ Phase rollout:
    - strict run-1 + strict run-2/run-3 non-regression for shortcut mode.
 4. Post-B5:
    - apply scheduler contract in this order:
-     1) natural submit path
-     2) entity submit path
+     1. natural submit path
+     2. entity submit path
    - require no-regression gates for non-shortcut paths before program completion.
 
 Locked adoption mode:

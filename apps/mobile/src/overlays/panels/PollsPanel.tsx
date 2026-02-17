@@ -299,17 +299,23 @@ export const usePollsPanelSpec = ({
     submitPollOption,
   ]);
 
-  const onRestaurantSuggestionPick = useCallback((match: AutocompleteMatch) => {
-    setRestaurantQuery(match.name);
-    setRestaurantSelection(match);
-    hideRestaurantSuggestions();
-  }, [hideRestaurantSuggestions]);
+  const onRestaurantSuggestionPick = useCallback(
+    (match: AutocompleteMatch) => {
+      setRestaurantQuery(match.name);
+      setRestaurantSelection(match);
+      hideRestaurantSuggestions();
+    },
+    [hideRestaurantSuggestions]
+  );
 
-  const onDishSuggestionPick = useCallback((match: AutocompleteMatch) => {
-    setDishQuery(match.name);
-    setDishSelection(match);
-    hideDishSuggestions();
-  }, [hideDishSuggestions]);
+  const onDishSuggestionPick = useCallback(
+    (match: AutocompleteMatch) => {
+      setDishQuery(match.name);
+      setDishSelection(match);
+      hideDishSuggestions();
+    },
+    [hideDishSuggestions]
+  );
 
   const renderSuggestionList = (
     loading: boolean,

@@ -92,7 +92,8 @@ const SearchResultsSheetTree = ({
   return (
     <SearchInteractionProvider value={searchInteractionContextValue}>
       <React.Profiler id="SearchResultsSheetTree" onRender={onProfilerRender}>
-        {overlaySheetPropsForRender.overlaySheetSpec && overlaySheetPropsForRender.overlaySheetKey ? (
+        {overlaySheetPropsForRender.overlaySheetSpec &&
+        overlaySheetPropsForRender.overlaySheetKey ? (
           <OverlaySheetShell
             visible={overlaySheetPropsForRender.overlaySheetVisible}
             activeOverlayKey={overlaySheetPropsForRender.overlaySheetKey}

@@ -110,7 +110,11 @@ const SearchRankAndScoreSheets = ({
                   {selected ? (
                     <LinearGradient
                       pointerEvents="none"
-                      colors={[`${themeColors.primary}1f`, `${themeColors.primary}0a`, 'transparent']}
+                      colors={[
+                        `${themeColors.primary}1f`,
+                        `${themeColors.primary}0a`,
+                        'transparent',
+                      ]}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 1 }}
                       style={{
@@ -139,7 +143,10 @@ const SearchRankAndScoreSheets = ({
                   <Text
                     variant="body"
                     weight="semibold"
-                    style={[styles.rankSheetOptionText, selected && styles.rankSheetOptionTextSelected]}
+                    style={[
+                      styles.rankSheetOptionText,
+                      selected && styles.rankSheetOptionTextSelected,
+                    ]}
                   >
                     {option.label}
                   </Text>
@@ -154,7 +161,11 @@ const SearchRankAndScoreSheets = ({
               accessibilityLabel="Cancel rank mode changes"
               style={styles.sheetCancelButton}
             >
-              <Text variant="caption" weight="semibold" style={[styles.sheetCancelText, { color: activeTabColorDark }]}>
+              <Text
+                variant="caption"
+                weight="semibold"
+                style={[styles.sheetCancelText, { color: activeTabColorDark }]}
+              >
                 Cancel
               </Text>
             </Pressable>

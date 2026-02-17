@@ -1766,7 +1766,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
   );
   const markerTopologyKey = markersTopologyRenderKey;
   const pinnedRestaurantIds = React.useMemo(() => {
-    return new Set(transitionSortedRestaurantMarkers.map((feature) => feature.properties.restaurantId));
+    return new Set(
+      transitionSortedRestaurantMarkers.map((feature) => feature.properties.restaurantId)
+    );
   }, [transitionSortedRestaurantMarkers]);
   const pinnedRestaurantIdList = React.useMemo(
     () => Array.from(pinnedRestaurantIds),
@@ -3118,13 +3120,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         .setFeatureState(key, { isPinned: true }, DOT_SOURCE_ID)
         .catch(() => undefined);
     });
-  }, [
-    dotRestaurantFeatures,
-    markerTopologyKey,
-    pinnedDotKeys,
-    shouldRenderDots,
-    styleURL,
-  ]);
+  }, [dotRestaurantFeatures, markerTopologyKey, pinnedDotKeys, shouldRenderDots, styleURL]);
   const profilerCallback =
     onProfilerRender ??
     ((() => {

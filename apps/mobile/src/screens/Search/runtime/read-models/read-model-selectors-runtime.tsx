@@ -245,49 +245,48 @@ export const useSearchResultsReadModelSelectors = (
   const responsePage = results?.metadata?.page ?? 1;
   const requestVersionKey = `${searchRequestId ?? 'no-request'}::${
     resultsHydrationKey ?? 'no-hydration'
-  }::page:${responsePage}::dishes:${dishes.length}::restaurants:${restaurants.length}::${activeTab}`;
-  const listProjection = React.useMemo(
-    () => {
-      const buildStartedAtMs = getNowMs();
-      const safeResultsData = buildSafeResultsData({
-        activeTab,
-        dishes,
-        restaurants,
-      });
-      const sectionedResultsData = buildSectionedResultsData({
-        activeTab,
-        safeResultsData,
-        exactDishesOnPage,
-        exactRestaurantsOnPage,
-        showAllExactDishes,
-        showAllExactRestaurants,
-        exactVisibleLimit: EXACT_VISIBLE_LIMIT,
-      });
-      const projection: ListProjection = {
-        safeResultsData,
-        sectionedRows: sectionedResultsData,
-      };
-      const durationMs = getNowMs() - buildStartedAtMs;
-      listReadModelBuildDurationMsRef.current = durationMs;
-      listProjectionBuildStatsRef.current = {
-        requestVersionKey,
-        sectionedRowCount: projection.sectionedRows.length,
-        safeResultsCount: projection.safeResultsData.length,
-      };
-      return projection;
-    },
-    [
+  }::page:${responsePage}::dishes:${dishes.length}::restaurants:${
+    restaurants.length
+  }::${activeTab}`;
+  const listProjection = React.useMemo(() => {
+    const buildStartedAtMs = getNowMs();
+    const safeResultsData = buildSafeResultsData({
       activeTab,
       dishes,
+      restaurants,
+    });
+    const sectionedResultsData = buildSectionedResultsData({
+      activeTab,
+      safeResultsData,
       exactDishesOnPage,
       exactRestaurantsOnPage,
-      requestVersionKey,
-      responsePage,
-      restaurants,
       showAllExactDishes,
       showAllExactRestaurants,
-    ]
-  );
+      exactVisibleLimit: EXACT_VISIBLE_LIMIT,
+    });
+    const projection: ListProjection = {
+      safeResultsData,
+      sectionedRows: sectionedResultsData,
+    };
+    const durationMs = getNowMs() - buildStartedAtMs;
+    listReadModelBuildDurationMsRef.current = durationMs;
+    listProjectionBuildStatsRef.current = {
+      requestVersionKey,
+      sectionedRowCount: projection.sectionedRows.length,
+      safeResultsCount: projection.safeResultsData.length,
+    };
+    return projection;
+  }, [
+    activeTab,
+    dishes,
+    exactDishesOnPage,
+    exactRestaurantsOnPage,
+    requestVersionKey,
+    responsePage,
+    restaurants,
+    showAllExactDishes,
+    showAllExactRestaurants,
+  ]);
   React.useEffect(() => {
     const durationMs = listReadModelBuildDurationMsRef.current;
     const stats = listProjectionBuildStatsRef.current;
@@ -450,10 +449,7 @@ export const useSearchResultsReadModelSelectors = (
       Math.max(0, pendingHydrationRowsLimit ?? HYDRATION_PENDING_INITIAL_ROWS)
     );
     const previousRowsLimit = Math.max(0, hydrationRowsLimitRef.current ?? 0);
-    const startRows = Math.min(
-      sectionedRowCount,
-      Math.max(previousRowsLimit, minimumStartRows)
-    );
+    const startRows = Math.min(sectionedRowCount, Math.max(previousRowsLimit, minimumStartRows));
     const rampInitialRows =
       startRows > 0 ? startRows : Math.min(sectionedRowCount, HYDRATION_PENDING_INITIAL_ROWS);
     if (rampInitialRows >= sectionedRowCount) {
@@ -535,11 +531,7 @@ export const useSearchResultsReadModelSelectors = (
       isFilterTogglePending: false,
     };
     return hydratedRows;
-  }, [
-    effectiveHydrationRowsLimit,
-    isFilterTogglePending,
-    listProjection.sectionedRows,
-  ]);
+  }, [effectiveHydrationRowsLimit, isFilterTogglePending, listProjection.sectionedRows]);
   React.useEffect(() => {
     const durationMs = listRenderKeyFlipDurationMsRef.current;
     const stats = rowsForRenderBuildStatsRef.current;
@@ -573,7 +565,9 @@ export const useSearchResultsReadModelSelectors = (
     shouldHydrateResultsForRender,
   ]);
 
-  const renderListItem = React.useCallback<NonNullable<FlashListProps<ResultsListItem>['renderItem']>>(
+  const renderListItem = React.useCallback<
+    NonNullable<FlashListProps<ResultsListItem>['renderItem']>
+  >(
     ({ item, index }) => {
       if (item === undefined || item === null) {
         logger.error('FlashList renderItem received nullish item', { index });
@@ -790,10 +784,7 @@ export const useSearchResultsReadModelSelectors = (
         const commitStartedAtMs = getNowMs();
         setHydratedResultsKeySync(nextHydrationKey);
         const durationMs = getNowMs() - commitStartedAtMs;
-        mapQueryBudget.recordRuntimeAttributionDurationMs(
-          'hydration_commit_apply',
-          durationMs
-        );
+        mapQueryBudget.recordRuntimeAttributionDurationMs('hydration_commit_apply', durationMs);
         mapQueryBudget.recordRuntimeAttributionDurationMs(
           'hydration_finalize_key_commit',
           durationMs

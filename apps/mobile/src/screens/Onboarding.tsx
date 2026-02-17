@@ -32,7 +32,10 @@ import { useOnboardingStore } from '../store/onboardingStore';
 import type { RootStackParamList } from '../types/navigation';
 import { logger } from '../utils';
 import { usersService, type UsernameAvailability } from '../services/users';
-import { findAdjacentVisibleStepIndex, getVisibleStepPosition } from './onboarding/runtime/onboarding-step-machine';
+import {
+  findAdjacentVisibleStepIndex,
+  getVisibleStepPosition,
+} from './onboarding/runtime/onboarding-step-machine';
 import { useOnboardingAnimationLane } from './onboarding/runtime/use-onboarding-animation-lane';
 import { useOnboardingAuthLane } from './onboarding/runtime/use-onboarding-auth-lane';
 

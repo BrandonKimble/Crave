@@ -439,7 +439,8 @@ export const useSearchResultsPanelSpec = ({
     : listHeader;
   const submittedQueryForReadModel = submittedQuery;
   const shouldShowResultsLoadingStateForReadModel = shouldFreezeResultsChrome
-    ? frozenResultsChromeSnapshot?.shouldShowResultsLoadingState ?? shouldShowResultsLoadingStateBase
+    ? frozenResultsChromeSnapshot?.shouldShowResultsLoadingState ??
+      shouldShowResultsLoadingStateBase
     : shouldShowResultsLoadingStateBase;
   const effectiveFiltersHeaderHeightForRender = shouldFreezeResultsChrome
     ? frozenResultsChromeSnapshot?.effectiveFiltersHeaderHeight ?? effectiveFiltersHeaderHeight
@@ -515,7 +516,9 @@ export const useSearchResultsPanelSpec = ({
   );
   const initialResultsLoadingFillTopOffset = Math.max(
     resultsWashTopOffset,
-    shouldDisableResultsHeader ? 0 : OVERLAY_TAB_HEADER_HEIGHT + effectiveFiltersHeaderHeightForRender
+    shouldDisableResultsHeader
+      ? 0
+      : OVERLAY_TAB_HEADER_HEIGHT + effectiveFiltersHeaderHeightForRender
   );
   const shouldRenderInitialResultsLoadingFill =
     shouldShowInitialResultsLoadingPhase && shouldShowResultsLoadingState;
@@ -564,7 +567,8 @@ export const useSearchResultsPanelSpec = ({
   );
   const resultsContentContainerStyle = React.useMemo(
     () => ({
-      paddingBottom: resultsReadModelSelectors.rowsForRender.length > 0 ? RESULTS_BOTTOM_PADDING : 0,
+      paddingBottom:
+        resultsReadModelSelectors.rowsForRender.length > 0 ? RESULTS_BOTTOM_PADDING : 0,
     }),
     [resultsReadModelSelectors.rowsForRender.length]
   );

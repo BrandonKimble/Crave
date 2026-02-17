@@ -5,9 +5,11 @@ Owner: Codex
 Scope: `apps/mobile/src/screens/Search/**`
 
 ## Goal
+
 Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` without UX regression.
 
 ## Baseline Context (from latest user-provided control)
+
 - Control log: `/tmp/perf-shortcut-candidate-20260215T200936Z.log`
 - Worst max frame: `340.3ms`
 - `>80ms` windows: `4`
@@ -16,12 +18,14 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
 - Dominant worst stage: `visual_sync_state`
 
 ## Already Tried (before this pass)
+
 1. Added submit attribution around early submit/materialization writes in `use-search-submit.ts`.
 2. Changed `isAutocompleteSuppressed` timing (reverted due regression).
 3. Added one-frame runtime-launch yield (`shortcut_runtime_launch_frame_yield`) before structured runtime start.
 4. Yield run results were mixed/high variance (not a reliable fix).
 
 ## 2026-02-16 First-Stall Lift to ~160ms (kept stack)
+
 - Objective:
   - Reduce the first JS `>50ms` stall in shortcut run-1 without changing visible behavior.
 - Kept code changes that produced the lift:
@@ -53,6 +57,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
     - Program still blocked by later catastrophic windows (`marker_reveal_state` / `results_hydration_commit`).
 
 ## 2026-02-16 Follow-up candidate (reverted)
+
 - Candidate:
   - Freeze map tree props through run-one `idle/h1/h2` (release at `h3`).
   - File: `apps/mobile/src/screens/Search/index.tsx`
@@ -64,6 +69,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
     - `/tmp/perf-shortcut-loop-shortcut-loop-20260216T183807Z-41da.log` (first `>50ms` `164.4ms`, but worst `468.2ms`)
 
 ## 2026-02-16 Pagination Regression Fix
+
 - Symptom:
   - Pagination appeared broken (next-page cards not showing even when append path was active).
   - In some sessions the list looked stuck/sparse after first response window.
@@ -81,6 +87,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Harness settle summary: `finalVisibleCount=40`, `finalSectionedCount=40`, `finalVisiblePinCount=30`, `finalVisibleDotCount=80`
 
 ## 2026-02-16 Pagination Gesture Gate (shortcut list)
+
 - Symptom:
   - After first pagination, list could appear to jump/load too much at once.
   - Pagination could chain while still at end-of-list, instead of one request per explicit user scroll.
@@ -97,6 +104,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - `bash /Users/brandonkimble/crave-search/scripts/no-bypass-search-runtime.sh`: `PASS`
 
 ## 2026-02-16 Pagination Bottom-Reach Gate
+
 - Symptom:
   - Pagination could trigger before the list visually reached the true bottom spacer region.
 - Root cause:
@@ -112,38 +120,47 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - `bash /Users/brandonkimble/crave-search/scripts/no-bypass-search-runtime.sh`: `PASS`
 
 ## New Micro-Cluster (this pass)
+
 1. **Phase-A commit shrink** in `use-search-submit.ts`
+
 - Keep phase-A write focused on results identity commit.
 - Avoid non-append `mergeSearchResponses` in phase-A; commit phase-A preview payload directly.
 - Move active-tab state mutation out of phase-A into scheduled `selection_feedback` lane.
 
 2. **Hydration pressure lock** in `read-model-selectors-runtime.tsx`
+
 - Enforce `stepRows=1` for full run-one commit-span pressure window.
 - Remove temporary pressure frame budget countdown behavior.
 
 3. **Hard scheduler admission** in scheduler/governor
+
 - One heavy lane per frame (`selection_feedback`, `phase_b_materialization`, `overlay_shell_transition`).
 - Disable starvation override during critical pressure frames.
 
 4. **Stage isolation extension** in `Search/index.tsx`
+
 - Extend run-one chrome/map defer behavior while commit-span pressure is active.
 - Keep map/chrome finalize deferred longer in critical overlap windows.
 
 ## Validation Status
+
 - Targeted ESLint on touched files: `PASS`
 - `bash /Users/brandonkimble/crave-search/scripts/no-bypass-search-runtime.sh`: `PASS`
 - `bash /Users/brandonkimble/crave-search/scripts/search-runtime-natural-cutover-contract.sh`: `PASS`
 - `npx tsc -p apps/mobile/tsconfig.json --noEmit`: `FAIL` (pre-existing workspace-wide type errors outside this micro-cluster)
 
 ## Validation Pending
+
 - Matched perf gate runs (next step after code validation).
 
 ## Next Measurements to Capture
+
 1. First `>50ms` window (`stage`, `durationMs`).
 2. `visual_sync_state` worst frame and count of `>80ms`/`>50ms` windows.
 3. Whether `results_hydration_commit` and `visual_sync_state` stop co-locating in the same frame windows.
 
 ## Latest Verification Run
+
 - Run date: 2026-02-15
 - Log: `/tmp/perf-shortcut-candidate-20260215T204809Z.log`
 - Harness mode: single run (`EXPO_PUBLIC_PERF_HARNESS_RUNS=1`)
@@ -153,7 +170,9 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
 - Threshold check (`<350ms`): `PASS`
 
 ## Follow-up Attempts and Results
+
 ### Attempt: map hold + staged publish refinement
+
 - Log: `/tmp/perf-shortcut-candidate-20260215T205738Z.log`
 - Run 1 first `>50ms` JS stall: `319.2ms` at `stage=marker_reveal_state` (`shortcutElapsedMs=458`)
 - Run 1 worst JS stall window: `319.2ms`
@@ -161,6 +180,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
 - Run 1 `>80ms` windows: `3`
 
 ### Attempt: shortcut runtime identity pre-prime (this pass)
+
 - Code: `apps/mobile/src/screens/Search/hooks/use-search-submit.ts`
 - Change summary:
   - Added `shortcut_runtime_identity_bundle` preflight write.
@@ -179,6 +199,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
 - First-stall delta vs prior run (`/tmp/perf-shortcut-candidate-20260215T205738Z.log`): `-40.7ms`
 
 ### Experiment: allow pins immediately (disable map marker hold gate)
+
 - Code: `apps/mobile/src/screens/Search/index.tsx`
 - Change summary:
   - Set `shouldHoldMapMarkerReveal = false` (temporary experiment) so pins are not held behind visual-sync.
@@ -193,6 +214,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
 - Pin visibility confirmation (harness settle payload): `finalVisiblePinCount=12`, `finalVisibleDotCount=80`
 
 ### Attempt: defer structured loading clear to run-one `h4`
+
 - Code: `apps/mobile/src/screens/Search/hooks/use-search-submit.ts`
 - Change summary:
   - Moved run-one shortcut `setIsLoading(false)` out of immediate structured-operation finalize.
@@ -212,7 +234,9 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
 - Pin visibility confirmation: `finalVisiblePinCount=12`, `finalVisibleDotCount=80`
 
 ## 2026-02-16 Follow-up Runs (stability check)
+
 ### Reference run before latest experiments
+
 - Log: `/tmp/perf-shortcut-candidate-20260215T220312Z.log`
 - Run 1 first `>50ms` JS stall: `256.7ms` at `stage=results_list_materialization` (`shortcutElapsedMs=378.3`)
 - Run 1 worst JS stall window: `256.7ms`
@@ -221,6 +245,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
 - Outcome: this is the best recent stable reference in the current branch state.
 
 ### Experiment: long delay + forced panel fallback path (reverted)
+
 - Log: `/tmp/perf-shortcut-candidate-20260216T010303Z.log`
 - Run 1 first `>50ms` JS stall: `322.3ms` (`shortcutStage=null`)
 - Run 1 worst JS stall window: `322.3ms`
@@ -229,6 +254,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
 - Outcome: regression; reverted.
 
 ### Experiment: identity preflight transition path (reverted)
+
 - Log: `/tmp/perf-shortcut-candidate-20260216T010407Z.log`
 - Run 1 first `>50ms` JS stall: `287.6ms` (`shortcutStage=null`)
 - Run 1 worst JS stall window: `308.0ms`
@@ -237,6 +263,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
 - Outcome: regression/noise increase; reverted.
 
 ### Experiment: scheduler-admitted shortcut loading-state bundle (current check)
+
 - Log: `/tmp/perf-shortcut-candidate-20260216T010555Z.log`
 - Run 1 first `>50ms` JS stall: `266.8ms` (`shortcutStage=null`, `shortcutElapsedMs=387.3`)
 - Run 1 worst JS stall window: `266.8ms`
@@ -246,12 +273,15 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
 - Outcome: not a winning change; candidate for revert.
 
 ## Current Facts (2026-02-16)
+
 1. The dominant hotspot remains the run-one overlap window where root/sheet/map/chrome work co-locates.
 2. Timing shifts without overlap removal have produced mixed or negative results.
 3. A reliable path to `<50ms` requires reducing same-frame commit mass, not just delaying writes.
 
 ## 2026-02-16 Deep-Dive Addendum
+
 ### Timestamp correlation pass (first `>50ms` window)
+
 - Method: correlate first JS sampler window to in-window runtime events across:
   - `/tmp/perf-shortcut-candidate-20260215T220312Z.log`
   - `/tmp/perf-shortcut-candidate-20260216T010555Z.log`
@@ -262,6 +292,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
     - `submit_preflight:shortcut_ui_prep`
 
 ## 2026-02-16 List Hydration UX Correction (remove one-card-first lock)
+
 - Symptom:
   - Results list visually loaded one card first, then ramped the rest.
 - Root cause:
@@ -283,6 +314,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Run 1 `>80ms` windows: `3`
 
 ## 2026-02-16 Shortcut Immediate UX + Full List Commit
+
 - Requested UX fixes:
   - Remove first-card-first behavior.
   - Make shortcut fill search text/header immediately.
@@ -302,7 +334,9 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
     - Shortcut query sync now applies `setQuery(nextQuery)` immediately (removed run-after-interactions deferral path).
 
 ## 2026-02-16 Map-stage churn suppression (current loop)
+
 ### Variant A: shortcut fallback removal + hold during visual-sync/loading (kept)
+
 - Code:
   - `apps/mobile/src/screens/Search/runtime/map/map-diff-applier.ts`
     - In shortcut mode, stop falling back to `markerCandidatesRef` for ranked pin source; use coverage-ranked source only.
@@ -325,6 +359,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Still far from target (`<50ms`), but this is the best of the three compared variants in this loop.
 
 ### Variant B: hold-latch until coverage present + disable staged publish while hold (reverted)
+
 - Code (experimental, reverted):
   - `apps/mobile/src/screens/Search/index.tsx`
     - Held map reveal until coverage features existed (`!hasShortcutCoverageFeatures` latch).
@@ -346,7 +381,9 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Reverted this variant and retained Variant A behavior.
 
 ## 2026-02-16 Profiler Probe + Preflight Identity Trim Experiment
+
 ### Profiler probe run (span log mode)
+
 - Harness:
   - `EXPO_PUBLIC_PERF_HARNESS_RUNS=1 EXPO_PUBLIC_PERF_SHORTCUT_PROBE_PROFILER_SPAN_LOG=1 bash scripts/perf-shortcut-loop.sh`
   - Log: `/tmp/perf-shortcut-loop-shortcut-loop-20260216T062552Z-42d1.log`
@@ -359,6 +396,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - This indicates the first hot window still includes heavy root/sheet work before response hydration.
 
 ### Experiment: trim `shortcut_runtime_identity_bundle` to UX-only fields (reverted)
+
 - Code (experimental):
   - `apps/mobile/src/screens/Search/hooks/use-search-submit.ts`
   - Removed preflight writes for `searchMode`, `isSearchSessionActive`, and pagination flags from `shortcut_runtime_identity_bundle`, leaving only immediate UX identity fields.
@@ -394,6 +432,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - This indicates the earliest stall is primarily tied to root state activation churn, not list/map hydration itself.
 
 ### Profiler-span confirmation run
+
 - Log: `/tmp/perf-shortcut-candidate-prof-20260216T011235Z.log`
 - Note: profiler span logging inflates runtime cost; use for attribution only, not perf baseline.
 - First `>50ms` window in this run: `457.4ms` (`stage=null`)
@@ -405,6 +444,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
 - Conclusion: dominant subtree is confirmed; first window is rooted in early root-activation commit overlap.
 
 ### Attempt: defer shortcut session activation from preflight to response-accepted
+
 - Code: `apps/mobile/src/screens/Search/hooks/use-search-submit.ts`
 - Change:
   - Removed `setSearchMode('shortcut')` + `setIsSearchSessionActive(true)` from preflight identity bundle.
@@ -420,6 +460,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Directional first-stall improvement exists in multiple runs, but variance remains high and still far above target.
 
 ### Failed variant: strict handoff-phase gating for session activation (reverted)
+
 - Log: `/tmp/perf-shortcut-candidate-20260216T011913Z.log`
 - Outcome:
   - Session activation failed to apply during run (`searchMode` remained `null`), visual path degraded.
@@ -428,6 +469,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Reverted strict gating logic in same pass; restored prior non-broken variant.
 
 ### Follow-up variant: RAF phase-poller for session activation (iteration)
+
 - Code: `apps/mobile/src/screens/Search/hooks/use-search-submit.ts`
 - Intent:
   - Make session activation deterministic (wait past `h1/h2`) without relying on scheduler phase metadata.
@@ -445,6 +487,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Stall remains far above target and still requires larger subtree isolation in `Search/index.tsx`.
 
 ### Attempt: transition-priority session activation (submit hook)
+
 - Code: `apps/mobile/src/screens/Search/hooks/use-search-submit.ts`
 - Change:
   - Wrapped deferred `setSearchMode('shortcut')` + `setIsSearchSessionActive(true)` in `React.startTransition` (fallback: `unstable_batchedUpdates`).
@@ -460,6 +503,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - First-stall directionally improved in runs 2/3 but variance remained high and run-1 reliability looked weak.
 
 ### Attempt: stabilize Search results panel spec identity
+
 - Code: `apps/mobile/src/overlays/panels/SearchPanel.tsx`
 - Change:
   - Memoized the returned `OverlayContentSpec` object and derived style/background/underlay fragments so `SearchPanel` spec reference does not churn on unrelated parent renders.
@@ -477,6 +521,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Better aggregate worst-window profile than the prior matched candidate (`stallP95 233.99 -> 201.76`), but still far from `<50ms` and still variant noise.
 
 ### Failed attempt (reverted): transition-split autocomplete suppression in preflight
+
 - Code (reverted): `apps/mobile/src/screens/Search/hooks/use-search-submit.ts`
 - Change tested:
   - Kept `setShowSuggestions(false)` in urgent batch, moved `setIsAutocompleteSuppressed(true)` into `React.startTransition`.
@@ -491,7 +536,9 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Reverted this suppression-split variant immediately.
 
 ## 2026-02-16 Marker Visibility / Dot+Pin Sync Pass
+
 ### Fix: runBestHere preflight skip guard runtime error
+
 - Code: `apps/mobile/src/screens/Search/hooks/use-search-submit.ts`
 - Change:
   - Fixed invalid `targetPage` reference in runBestHere preflight skip branch.
@@ -505,6 +552,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Marker integrity: run1 sparse (`pins=0`, `dots=1`), runs2/3 healthy (`12/80`).
 
 ### Attempt: parent-level shortcut pin fallback (reverted)
+
 - Code (reverted): `apps/mobile/src/screens/Search/index.tsx`
 - Change tested:
   - Added fallback LOD pin set from shortcut coverage/catalog when `lodPinnedMarkerMeta` empty.
@@ -517,6 +565,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Reverted parent-level pin fallback.
 
 ### Attempt: bounds-retry shortcut coverage fetch (reverted)
+
 - Code (reverted): `apps/mobile/src/screens/Search/runtime/map/use-shortcut-coverage-owner.ts`, `apps/mobile/src/screens/Search/index.tsx`
 - Change tested:
   - Stored pending coverage snapshots and retried coverage fetch with resolved viewport bounds when initial bounds were missing.
@@ -529,6 +578,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Reverted bounds-retry variant.
 
 ### Current variant: map-local pin fallback from dots
+
 - Code: `apps/mobile/src/screens/Search/components/search-map.tsx`
 - Change:
   - Added local fallback pin set from top dot features (`12`, deterministic `lodZ`) only when `sortedRestaurantMarkers` is empty.
@@ -549,6 +599,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Remaining blocker for run1 marker integrity is unchanged: coverage fetch skip on missing bounds in first run.
 
 ### Follow-up: immediate initial bounds priming on map load
+
 - Code: `apps/mobile/src/screens/Search/index.tsx`
 - Change:
   - Removed `InteractionManager.runAfterInteractions` delay around initial `getVisibleBounds` priming; capture now starts immediately in `handleMapLoaded`.
@@ -564,7 +615,9 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Early map-load priming alone does not eliminate first-run missing-bounds race in this harness path.
 
 ## 2026-02-16 Regression Repair Pass (list + pin cap + fallback removal)
+
 ### Fix: restore pin cap, remove map fallback synthesis, unblock hydration finalize in h2
+
 - Code:
   - `apps/mobile/src/screens/Search/index.tsx`
   - `apps/mobile/src/screens/Search/components/search-map.tsx`
@@ -582,6 +635,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Pending single-run harness capture to confirm marker settle counts and first-stall window after regression repair.
 
 ### Follow-up fix: scheduler soft-budget admission no longer blocks first heavy task
+
 - Code: `apps/mobile/src/screens/Search/runtime/scheduler/frame-budget-governor.ts`
 - Root cause:
   - `phase_b_materialization` post-h4 task was estimated at `10ms`, but governor denied any task above `SOFT_BUDGET_MS=8` even as the first task in a frame.
@@ -604,6 +658,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Stall remains far above target and still requires root visual-sync overlap reduction.
 
 ### Fix: preserve shortcut coverage snapshot through `searchMode=null` handoff + late-bounds recovery path
+
 - Code:
   - `apps/mobile/src/screens/Search/runtime/map/use-shortcut-coverage-owner.ts`
   - `apps/mobile/src/screens/Search/index.tsx`
@@ -625,7 +680,9 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - First `>50ms` JS stall: `331.9ms` (still far above target).
 
 ## 2026-02-16 Stall-Cut Loop (Phase-A Identity Split + Attribution)
+
 ### Kept: phase-A identity split with immediate query/tab commit
+
 - Code:
   - `apps/mobile/src/screens/Search/hooks/use-search-submit.ts`
   - `apps/mobile/src/screens/Search/index.tsx`
@@ -652,6 +709,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Early run-1 burst improved materially, but high variance persists and stage `none` still dominates.
 
 ### Attribution: profiler span run on kept variant
+
 - Run:
   - `/tmp/perf-shortcut-loop-shortcut-loop-20260216T063831Z-248c.log`
 - Key finding (run-1 worst JS window):
@@ -665,6 +723,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Dominant overlap remains `SearchScreen` + `SearchResultsSheetTree` during visual-sync/hydration commits.
 
 ### Reverted: hold hydration rows at 0 through visual-sync
+
 - Code (reverted): `apps/mobile/src/screens/Search/runtime/read-models/read-model-selectors-runtime.tsx`
 - Change tested:
   - Forced pending hydration rows to stay at `0` for all visual-sync-pending states and blocked finalize release during hold.
@@ -675,6 +734,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Reverted.
 
 ### Reverted: delay session activation until h4/idle
+
 - Code (reverted): `apps/mobile/src/screens/Search/hooks/use-search-submit.ts`
 - Change tested:
   - Session activation wait condition expanded to hold through `h3_hydration_ramp`.
@@ -685,6 +745,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Reverted; restored activation timing to post-h2 (existing h3-ready behavior).
 
 ### Reverted: pre-h3 marker-hold alignment during null-mode handoff
+
 - Code (reverted): `apps/mobile/src/screens/Search/index.tsx`
 - Change tested:
   - Enabled `shouldHoldMapMarkerReveal` during `searchMode=null` when run-one operation was in flight.
@@ -699,6 +760,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
 ## 2026-02-16 Focused JS-Stall Loop (latest)
 
 ### Candidate A: hydration release commit shrink (no `0 -> full` jump)
+
 - Code:
   - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/read-models/read-model-selectors-runtime.tsx`
 - Change summary:
@@ -718,6 +780,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
     - run-3 `271.2ms`
 
 ### Candidate B: true phase-A split for all shortcut page-1 responses
+
 - Code:
   - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/hooks/use-search-submit.ts`
 - Change summary:
@@ -738,6 +801,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
     - run-3 `101.3ms`
 
 ### Candidate C: move shortcut session activation earlier into preflight (kept)
+
 - Code:
   - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/hooks/use-search-submit.ts`
 - Change summary:
@@ -756,6 +820,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
     - run-3 `98.6ms`
 
 ### Candidate D: split `isSearchSessionActive` into transition (reverted)
+
 - Code:
   - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/hooks/use-search-submit.ts`
 - Change summary:
@@ -769,6 +834,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Catastrophic windows (`>300ms`): `2`
 
 ## Current Best Known State (this loop)
+
 - Best retained metrics log:
   - `/tmp/perf-shortcut-loop-shortcut-loop-20260216T065604Z-3c45.log`
 - Best retained code shape combines:
@@ -779,6 +845,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
 ## 2026-02-16 Follow-up Loop (post 07:00Z)
 
 ### Candidate E: defer preflight `isSearchSessionActive` (reverted)
+
 - Code:
   - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/hooks/use-search-submit.ts`
 - Change summary:
@@ -795,6 +862,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Reverted due settle/output regression and no first-stall win.
 
 ### Candidate F: hydration ramp `stepRows=1` pressure lock (reverted)
+
 - Code:
   - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/read-models/read-model-selectors-runtime.tsx`
 - Change summary:
@@ -811,6 +879,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Reverted.
 
 ### Candidate G: pre-h1 freeze window (kept)
+
 - Code:
   - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/index.tsx`
 - Change summary:
@@ -834,6 +903,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - Settle snapshots: all runs `finalVisiblePinCount=30`, `finalVisibleDotCount=80`, `finalVisibleCount=40`
 
 ## Current Best Known State (updated)
+
 - Best retained metrics log:
   - `/tmp/perf-shortcut-loop-shortcut-loop-20260216T071439Z-12bf.log`
 - Best retained aggregate metrics:
@@ -844,6 +914,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
 ## 2026-02-16 V3 E1/E2 Structural Prep (current pass)
 
 ### E1: commit attribution upgrade (kept)
+
 - Candidate tag:
   - `e1-commit-attribution-window-owner-pass1`
 - Harness signature:
@@ -869,6 +940,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - `KEEP` (neutral on metrics, required attribution unlock for E3/E4 hotspot ownership).
 
 ### E2: shared-state foundation minimal subset (kept)
+
 - Candidate tag:
   - `e2-search-runtime-bus-minimal-foundation-pass1`
 - Harness signature:
@@ -896,6 +968,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
 ## 2026-02-16 E3 Evaluation Loop (post plan update: 3.5/3.6/4.2/4.3)
 
 ### Reverted-state control (for current branch after E3 revert)
+
 - Candidate tag:
   - `e3-control-after-revert-20260216T200622Z`
 - Harness signature:
@@ -918,6 +991,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - run-3: `pins=30 dots=80 visible=12 sectioned=12` (pagination/list parity fail)
 
 ### E3 candidate A: memoized results sheet subtree boundary (reverted)
+
 - Candidate tag:
   - `e3-results-sheet-memo-boundary-pass1`
 - Harness signature:
@@ -942,6 +1016,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - `REVERT` (catastrophic regression and parity break).
 
 ### E3 candidate B: hold map reveal until hydration pressure clears (reverted)
+
 - Candidate tag:
   - `e3-map-hold-until-hydration-pass1`
 - Harness signature:
@@ -966,11 +1041,13 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - `REVERT` (directional stall improvement but parity failure; blocked by visual/parity contract).
 
 ### Trigger status (new policy)
+
 - Sections `3.5/3.6/4.2/4.3` adopted.
 - Auto-escalation triggers are defined for post-E4 / post-Track gates; E4 not complete yet, so no mandatory Track A/B/C entry triggered in this pass.
 - Anti-drift check: two earlier flat kept slices (`E1`, `E2`) followed by reverted E3 attempts; no third flat keep was taken.
 
 ### Reverted-state control refresh (post candidate rollback)
+
 - Candidate tag:
   - `e3-control-postrevert-pass2-20260216T203049Z`
 - Harness signature:
@@ -993,6 +1070,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - run-3: `pins=30 dots=80 visible=12 sectioned=12`
 
 ### E3 candidate C: overlay/results ownership-domain extraction (reverted)
+
 - Candidate tag:
   - `e3-overlay-domain-ownership-pass1`
 - Harness signature:
@@ -1017,6 +1095,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - `REVERT` (catastrophic regression vs control on worst-stall/catastrophic gates despite parity pass).
 
 ### E3 candidate D: hold marker reveal through hydration pressure (re-eval, reverted)
+
 - Candidate tag:
   - `e3-map-hold-hydration-pass2`
 - Harness signature:
@@ -1041,6 +1120,7 @@ Reduce the first JS stall over `50ms` and lower overlap in `visual_sync_state` w
   - `REVERT` (worst-stall improved, but first-stall regressed severely and parity worsened vs refreshed control).
 
 ### E3 candidate E: hold marker reveal only under run-one pressure (reverted)
+
 - Candidate tag:
   - `e3-map-hold-pressure-only-pass1`
 - Harness signature:
@@ -1070,6 +1150,7 @@ Harness signature (all sets):
 `enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:500|stall:50|fps:58|uiSampler:1|uiWindow:500|uiStall:50|uiFps:58`
 
 ### e1-attribution-control-pass1
+
 - Log/report: `/tmp/perf-shortcut-loop-shortcut-loop-20260216T210821Z-4526.log`, `/tmp/perf-shortcut-loop-shortcut-loop-20260216T210821Z-4526.report.json`
 - First >50ms stalls:
   - run1 `{duration: 180, stage: pre_response_activation, elapsedMs: 180}`
@@ -1087,6 +1168,7 @@ Harness signature (all sets):
 - Decision: `REVERT` strict settle gating behavior (timeouts + parity collapse); `KEEP` attribution wiring itself (ownership populated).
 
 ### e1-attribution-control-pass2
+
 - Log/report: `/tmp/perf-shortcut-loop-shortcut-loop-20260216T211238Z-02e3.log`, `/tmp/perf-shortcut-loop-shortcut-loop-20260216T211238Z-02e3.report.json`
 - First >50ms stalls:
   - run1 `{duration: 145.3, stage: pre_response_activation, elapsedMs: 369.2}`
@@ -1102,6 +1184,7 @@ Harness signature (all sets):
 - Decision: `KEEP (measurement only)` as baseline evidence; no code promotion decision from this run alone.
 
 ### e1-attribution-control-pass3
+
 - Log/report: `/tmp/perf-shortcut-loop-shortcut-loop-20260216T211512Z-5164.log`, `/tmp/perf-shortcut-loop-shortcut-loop-20260216T211512Z-5164.report.json`
 - First >50ms stalls:
   - run1 `{duration: 162.5, stage: pre_response_activation, elapsedMs: 362.1}`
@@ -1117,6 +1200,7 @@ Harness signature (all sets):
 - Decision: `KEEP (measurement only)`; confirms persistent run3 parity instability.
 
 ### e1-attribution-control-pass4
+
 - Log/report: `/tmp/perf-shortcut-loop-shortcut-loop-20260216T211731Z-3923.log`, `/tmp/perf-shortcut-loop-shortcut-loop-20260216T211731Z-3923.report.json`
 - Candidate: parity-floor settle experiment in harness observer.
 - First >50ms stalls:
@@ -1133,6 +1217,7 @@ Harness signature (all sets):
 - Decision: `REVERT` parity-floor settle experiment (regression + timeout).
 
 ### e1-attribution-control-pass5
+
 - Log/report: `/tmp/perf-shortcut-loop-shortcut-loop-20260216T211948Z-0b43.log`, `/tmp/perf-shortcut-loop-shortcut-loop-20260216T211948Z-0b43.report.json`
 - First >50ms stalls:
   - run1 `{duration: 166, stage: pre_response_activation, elapsedMs: 383.3}`
@@ -1148,6 +1233,7 @@ Harness signature (all sets):
 - Decision: `KEEP (measurement only)`; single-set parity looked good but stalls remained catastrophic.
 
 ### e1-attribution-control-pass6
+
 - Log/report: `/tmp/perf-shortcut-loop-shortcut-loop-20260216T212112Z-509e.log`, `/tmp/perf-shortcut-loop-shortcut-loop-20260216T212112Z-509e.report.json`
 - First >50ms stalls:
   - run1 `{duration: 439.2, stage: marker_reveal_state, elapsedMs: 814.2}`
@@ -1163,6 +1249,7 @@ Harness signature (all sets):
 - Decision: `KEEP (measurement only)`; confirms baseline instability not resolved.
 
 ### e1-phaseb-reset-race-pass1
+
 - Log/report: `/tmp/perf-shortcut-loop-shortcut-loop-20260216T212456Z-0788.log`, `/tmp/perf-shortcut-loop-shortcut-loop-20260216T212456Z-0788.report.json`
 - Candidate: defer run-one handoff reset until deferred phase-B full apply.
 - First >50ms stalls:
@@ -1179,6 +1266,7 @@ Harness signature (all sets):
 - Decision: `PROVISIONAL KEEP` pending repeatability (promising but phase-order warning observed in log).
 
 ### e1-phaseb-reset-race-pass2
+
 - Log/report: `/tmp/perf-shortcut-loop-shortcut-loop-20260216T212819Z-6cf2.log`, `/tmp/perf-shortcut-loop-shortcut-loop-20260216T212819Z-6cf2.report.json`
 - First >50ms stalls:
   - run1 `{duration: 2581, stage: pre_response_activation, elapsedMs: 2580.8}`
@@ -1194,6 +1282,7 @@ Harness signature (all sets):
 - Decision: `REJECT PENDING FIX` due extreme instability/catastrophic regression despite parity hold.
 
 ### e1-phaseb-reset-race-pass3
+
 - Log/report: `/tmp/perf-shortcut-loop-shortcut-loop-20260216T213115Z-6dca.log`, `/tmp/perf-shortcut-loop-shortcut-loop-20260216T213115Z-6dca.report.json`
 - Candidate variant: added phase-B/pagination dependency gate before reset scheduling.
 - First >50ms stalls:
@@ -1210,11 +1299,13 @@ Harness signature (all sets):
 - Decision: `REVERT` candidate completely (fails stall gate + parity gate).
 
 ### E1 Gate Outcome
+
 - `KEEP`: attribution capture plumbing in `Search/index.tsx` and observer settle guard update in `shortcut-harness-observer.ts` (ownership attribution populated; no `owner:null` in dominant first/worst windows).
 - `REVERT`: all `phaseb-reset-race` changes in `use-search-submit.ts`.
 - Status: control remains non-deterministic (`run3 12/12` recurs), so E1 is attribution-complete but determinism still blocked.
 
 ### e1-phaseb-settle-after-apply-pass1
+
 - Log/report: `/tmp/perf-shortcut-loop-shortcut-loop-20260216T213802Z-36c0.log`, `/tmp/perf-shortcut-loop-shortcut-loop-20260216T213802Z-36c0.report.json`
 - Candidate: settle deferred runtime shadow only after `phase_b_full_apply` executes.
 - First >50ms stalls:
@@ -1234,6 +1325,7 @@ Harness signature (all sets):
 - Decision: `REVERT` candidate (determinism regression + timeout).
 
 ### E2 Minimal Subset Note (no harness run)
+
 - Slice: strengthen shared runtime bus foundation before E3 isolation.
 - Code changes:
   - `apps/mobile/src/screens/Search/runtime/shared/search-runtime-bus.ts`
@@ -1250,6 +1342,7 @@ Harness signature (all sets):
 - Harness policy: skipped (mechanical/foundation change, no direct stall metric expectation).
 
 ### e3-results-sheet-tree-ownership-pass1
+
 - Log/report: `/tmp/perf-shortcut-loop-shortcut-loop-20260216T225708Z-2dc2.log`, `/tmp/perf-shortcut-loop-shortcut-loop-20260216T225708Z-2dc2.report.json`
 - Candidate: extract results sheet ownership (`useSearchResultsPanelSpec` + overlay sheet resolution/render) out of `Search/index.tsx` into dedicated subtree component.
 - Harness signature:
@@ -1276,6 +1369,7 @@ Harness signature (all sets):
   - Restored `Search/index.tsx`; deleted temporary `SearchResultsSheetTree.tsx`.
 
 ### e3-control-post-revert-pass1
+
 - Log/report: `/tmp/perf-shortcut-loop-shortcut-loop-20260216T225947Z-7762.log`, `/tmp/perf-shortcut-loop-shortcut-loop-20260216T225947Z-7762.report.json`
 - Purpose: control validation after reverting `e3-results-sheet-tree-ownership-pass1`.
 - Harness signature:
@@ -1300,6 +1394,7 @@ Harness signature (all sets):
   - `INVALID` (run-set not admissible for gating due `TypeError: runBestHereRef.current is not a function` and all runs timing out).
 
 ### e3-control-post-runbesthere-fix-pass1
+
 - Log/report: `/tmp/perf-shortcut-loop-shortcut-loop-20260216T230505Z-19f7.log`, `/tmp/perf-shortcut-loop-shortcut-loop-20260216T230505Z-19f7.report.json`
 - Purpose: validate `runBestHere` return-contract fix.
 - First `>50ms` stall `{duration, stage, elapsedMs}`:
@@ -1322,6 +1417,7 @@ Harness signature (all sets):
   - `INVALID` (new run errors: `Cannot read property 'dispatch' of undefined` / `Cannot read property 'current' of undefined`; all runs timed out, no parity signal).
 
 ### e3-control-post-runtimedeps-fix-pass1
+
 - Log/report: `/tmp/perf-shortcut-loop-shortcut-loop-20260216T230928Z-79d8.log`, `/tmp/perf-shortcut-loop-shortcut-loop-20260216T230928Z-79d8.report.json`
 - Purpose: control after wiring runtime dependencies into submit call.
 - First `>50ms` stall `{duration, stage, elapsedMs}`:

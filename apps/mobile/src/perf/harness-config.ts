@@ -99,9 +99,7 @@ const parseShortcutScoreMode = (value: string | undefined): PerfShortcutScoreMod
   return value === 'global_quality' ? 'global_quality' : 'coverage_display';
 };
 
-const parseSettleBoundaryPolicy = (
-  value: string | undefined
-): PerfShortcutSettleBoundaryPolicy => {
+const parseSettleBoundaryPolicy = (value: string | undefined): PerfShortcutSettleBoundaryPolicy => {
   if (!value) {
     return 'shadow_converged_or_quiet_snapshot';
   }
