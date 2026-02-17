@@ -170,11 +170,7 @@ export const useAutocompleteController = ({
     if (!shouldRun) {
       requestSequenceRef.current += 1;
       cancelAutocomplete();
-      if (
-        !isSuggestionScreenActive &&
-        !isSuggestionScreenVisible &&
-        !trimmed.length
-      ) {
+      if (!isSuggestionScreenActive && !isSuggestionScreenVisible && !trimmed.length) {
         clearSuggestions();
       }
       return;
@@ -202,7 +198,9 @@ export const useAutocompleteController = ({
           return;
         }
         const latestTrimmedQuery = latestQueryRef.current.trim();
-        if (normalizeAutocompleteQuery(latestTrimmedQuery) !== normalizeAutocompleteQuery(trimmed)) {
+        if (
+          normalizeAutocompleteQuery(latestTrimmedQuery) !== normalizeAutocompleteQuery(trimmed)
+        ) {
           return;
         }
         const isLatestSuppressed =

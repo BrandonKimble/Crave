@@ -1,11 +1,5 @@
 import React from 'react';
-import {
-  type LayoutChangeEvent,
-  Pressable,
-  Share,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { type LayoutChangeEvent, Pressable, Share, TouchableOpacity, View } from 'react-native';
 
 import { Share as LucideShare, Heart as LucideHeart } from 'lucide-react-native';
 import { Store } from 'lucide-react-native';
@@ -234,54 +228,57 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     [hasMeasured, hiddenTopFoodCount, totalDishCount, visibleTopFoodsForRender.length]
   );
 
-  const renderTopFoodInlineChildren = React.useCallback(
-    (): React.ReactNode => {
-      if (visibleTopFoodsForRender.length === 0) {
-        return dishCountLabel;
+  const renderTopFoodInlineChildren = React.useCallback((): React.ReactNode => {
+    if (visibleTopFoodsForRender.length === 0) {
+      return dishCountLabel;
+    }
+    const moreLabel = resolveMoreLabel(hiddenTopFoodCountForRender);
+    const shouldIncludeMore = Boolean(moreLabel);
+
+    const parts: React.ReactNode[] = [];
+    visibleTopFoodsForRender.forEach((food, idx) => {
+      parts.push(
+        <Text
+          key={`rank-${food.connectionId}`}
+          variant="body"
+          weight="semibold"
+          style={styles.topFoodRankInline}
+        >
+          {idx + 1}.
+        </Text>
+      );
+      parts.push(
+        <Text
+          key={`name-${food.connectionId}`}
+          variant="body"
+          weight="regular"
+          style={styles.topFoodNameInline}
+        >
+          {' '}
+          {renderHighlightedFoodName(food.foodName)}
+        </Text>
+      );
+      if (idx < visibleTopFoodsForRender.length - 1 || shouldIncludeMore) {
+        parts.push(TOP_FOOD_INLINE_GAP);
       }
-      const moreLabel = resolveMoreLabel(hiddenTopFoodCountForRender);
-      const shouldIncludeMore = Boolean(moreLabel);
+    });
 
-      const parts: React.ReactNode[] = [];
-      visibleTopFoodsForRender.forEach((food, idx) => {
-        parts.push(
-          <Text
-            key={`rank-${food.connectionId}`}
-            variant="body"
-            weight="semibold"
-            style={styles.topFoodRankInline}
-          >
-            {idx + 1}.
-          </Text>
-        );
-        parts.push(
-          <Text
-            key={`name-${food.connectionId}`}
-            variant="body"
-            weight="regular"
-            style={styles.topFoodNameInline}
-          >
-            {' '}
-            {renderHighlightedFoodName(food.foodName)}
-          </Text>
-        );
-        if (idx < visibleTopFoodsForRender.length - 1 || shouldIncludeMore) {
-          parts.push(TOP_FOOD_INLINE_GAP);
-        }
-      });
+    if (shouldIncludeMore) {
+      parts.push(
+        <Text key="more" variant="body" weight="semibold" style={styles.topFoodMore}>
+          {moreLabel}
+        </Text>
+      );
+    }
 
-      if (shouldIncludeMore) {
-        parts.push(
-          <Text key="more" variant="body" weight="semibold" style={styles.topFoodMore}>
-            {moreLabel}
-          </Text>
-        );
-      }
-
-      return parts;
-    },
-    [dishCountLabel, hiddenTopFoodCountForRender, renderHighlightedFoodName, resolveMoreLabel, visibleTopFoodsForRender]
-  );
+    return parts;
+  }, [
+    dishCountLabel,
+    hiddenTopFoodCountForRender,
+    renderHighlightedFoodName,
+    resolveMoreLabel,
+    visibleTopFoodsForRender,
+  ]);
   const shouldRenderTopFoodMeasurementNodes = measuredCandidateTopFoods.length > 0;
 
   const restaurantStatusLine = renderMetaDetailLine(
@@ -457,10 +454,18 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                               style={styles.topFoodMeasureText}
                               onLayout={onItemLayout(food.connectionId)}
                             >
-                              <Text variant="body" weight="semibold" style={styles.topFoodRankInline}>
+                              <Text
+                                variant="body"
+                                weight="semibold"
+                                style={styles.topFoodRankInline}
+                              >
                                 {index + 1}.
                               </Text>
-                              <Text variant="body" weight="regular" style={styles.topFoodNameInline}>
+                              <Text
+                                variant="body"
+                                weight="regular"
+                                style={styles.topFoodNameInline}
+                              >
                                 {' '}
                                 {renderHighlightedFoodName(food.foodName)}
                               </Text>
