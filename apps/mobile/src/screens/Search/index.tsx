@@ -2372,9 +2372,11 @@ const SearchScreen: React.FC = () => {
         return;
       }
       logger.debug(
-        `[SearchSuggestionTrace] source=${source} active=${isSuggestionPanelActive ? 1 : 0} visible=${
-          isSuggestionPanelVisible ? 1 : 0
-        } drive=${shouldDriveSuggestionLayout ? 1 : 0} surface=${
+        `[SearchSuggestionTrace] source=${source} active=${
+          isSuggestionPanelActive ? 1 : 0
+        } visible=${isSuggestionPanelVisible ? 1 : 0} drive=${
+          shouldDriveSuggestionLayout ? 1 : 0
+        } surface=${
           shouldShowSuggestionSurface ? 1 : 0
         } progress=${suggestionProgress.value.toFixed(3)}`
       );
@@ -3170,11 +3172,14 @@ const SearchScreen: React.FC = () => {
     setIsSearchFocused,
     setIsSuggestionPanelActive,
   ]);
-  const handleQueryChange = React.useCallback((value: string) => {
-    setIsAutocompleteSuppressed(false);
-    setQuery(value);
-    emitSuggestionTransitionTrace('query_change');
-  }, [emitSuggestionTransitionTrace]);
+  const handleQueryChange = React.useCallback(
+    (value: string) => {
+      setIsAutocompleteSuppressed(false);
+      setQuery(value);
+      emitSuggestionTransitionTrace('query_change');
+    },
+    [emitSuggestionTransitionTrace]
+  );
   const restaurants = results?.restaurants ?? EMPTY_RESTAURANTS;
   const dishes = results?.dishes ?? EMPTY_DISHES;
   const { canonicalRestaurantRankById, restaurantsById } = useSearchResultsReadModel({
@@ -4170,8 +4175,7 @@ const SearchScreen: React.FC = () => {
   const shouldHoldMapMarkerReveal =
     isSearchLoading ||
     (searchMode === 'shortcut' && (isVisualSyncPending || isShortcutCoverageLoading));
-  const areSearchVisualsSettled =
-    !isSearchRequestLoadingRef.current && !isShortcutCoverageLoading;
+  const areSearchVisualsSettled = !isSearchRequestLoadingRef.current && !isShortcutCoverageLoading;
   const shouldSignalMapVisualReady =
     isVisualSyncPending &&
     resultsVisualSyncCandidate != null &&

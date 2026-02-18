@@ -740,24 +740,24 @@ const useSearchSubmit = ({
             return nextBounds;
           }
         } catch (boundsError) {
-          logger.warn(`Unable to determine map bounds before submitting ${options.logLabel} search`, {
-            message: boundsError instanceof Error ? boundsError.message : 'unknown error',
-          });
+          logger.warn(
+            `Unable to determine map bounds before submitting ${options.logLabel} search`,
+            {
+              message: boundsError instanceof Error ? boundsError.message : 'unknown error',
+            }
+          );
         } finally {
           if (shouldLogSearchResponseTimings && boundsStart > 0) {
-            logSearchResponseTiming(`getVisibleBounds:${options.logLabel}`, getPerfNow() - boundsStart);
+            logSearchResponseTiming(
+              `getVisibleBounds:${options.logLabel}`,
+              getPerfNow() - boundsStart
+            );
           }
         }
       }
       return latestBoundsRef.current;
     },
-    [
-      getPerfNow,
-      latestBoundsRef,
-      logSearchResponseTiming,
-      mapRef,
-      shouldLogSearchResponseTimings,
-    ]
+    [getPerfNow, latestBoundsRef, logSearchResponseTiming, mapRef, shouldLogSearchResponseTimings]
   );
 
   const handleSearchResponse = React.useCallback(
@@ -823,11 +823,13 @@ const useSearchSubmit = ({
         });
       });
       logSearchPhase('handleSearchResponse:results-committed');
-      if (!emitShadowTransition('phase_a_committed', {
-        append,
-        targetPage,
-        requestId: normalizedResponse.metadata.searchRequestId ?? null,
-      })) {
+      if (
+        !emitShadowTransition('phase_a_committed', {
+          append,
+          targetPage,
+          requestId: normalizedResponse.metadata.searchRequestId ?? null,
+        })
+      ) {
         clearActiveOperationTuple(runtimeTuple);
         return;
       }
@@ -925,7 +927,8 @@ const useSearchSubmit = ({
             }
             runNonCriticalStateUpdate(() => {
               unstable_batchedUpdates(() => {
-                lastSearchRequestIdRef.current = normalizedResponse.metadata.searchRequestId ?? null;
+                lastSearchRequestIdRef.current =
+                  normalizedResponse.metadata.searchRequestId ?? null;
                 if (submittedLabel) {
                   setSubmittedQuery(submittedLabel);
                 } else {
@@ -1446,7 +1449,9 @@ const useSearchSubmit = ({
         }
         setSearchRequestInFlight(true);
         logSearchPhase('runRestaurantEntitySearch:loading-state');
-        const payload = await buildStructuredSearchPayload(1, {
+        const payload = await buildStructuredSearchPayload(
+          1,
+          {
             openNow: false,
             priceLevels: [],
             minimumVotes: 0,
@@ -1621,9 +1626,14 @@ const useSearchSubmit = ({
           logSearchPhase('runBestHere:loading-more');
         }
         logSearchPhase('runBestHere:loading-state');
-        const payload = await buildStructuredSearchPayload(1, options?.filters, options?.scoreMode, {
-          forceFreshBounds: shouldForceFreshBounds,
-        });
+        const payload = await buildStructuredSearchPayload(
+          1,
+          options?.filters,
+          options?.scoreMode,
+          {
+            forceFreshBounds: shouldForceFreshBounds,
+          }
+        );
         shortcutBoundsSnapshotRef.current = payload.bounds ?? null;
         const shortcutCoverageSnapshot = {
           bounds: payload.bounds ?? null,

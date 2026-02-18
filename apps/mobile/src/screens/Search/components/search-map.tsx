@@ -1437,22 +1437,19 @@ const SearchMap: React.FC<SearchMapProps> = ({
   isRunOneHandoffActiveRef.current = isRunOneHandoffActive;
   const isRunOneChromeDeferredRef = React.useRef(isRunOneChromeDeferred);
   isRunOneChromeDeferredRef.current = isRunOneChromeDeferred;
-  const {
-    isVisualSyncPending,
-    runOneCommitSpanPressureActive,
-    isResultsFinalizeLaneActive,
-  } = useSearchRuntimeBusSelector(
-    searchRuntimeBus,
-    (state) => ({
-      isVisualSyncPending: state.isVisualSyncPending,
-      runOneCommitSpanPressureActive: state.runOneCommitSpanPressureActive,
-      isResultsFinalizeLaneActive: state.isResultsFinalizeLaneActive,
-    }),
-    (left, right) =>
-      left.isVisualSyncPending === right.isVisualSyncPending &&
-      left.runOneCommitSpanPressureActive === right.runOneCommitSpanPressureActive &&
-      left.isResultsFinalizeLaneActive === right.isResultsFinalizeLaneActive
-  );
+  const { isVisualSyncPending, runOneCommitSpanPressureActive, isResultsFinalizeLaneActive } =
+    useSearchRuntimeBusSelector(
+      searchRuntimeBus,
+      (state) => ({
+        isVisualSyncPending: state.isVisualSyncPending,
+        runOneCommitSpanPressureActive: state.runOneCommitSpanPressureActive,
+        isResultsFinalizeLaneActive: state.isResultsFinalizeLaneActive,
+      }),
+      (left, right) =>
+        left.isVisualSyncPending === right.isVisualSyncPending &&
+        left.runOneCommitSpanPressureActive === right.runOneCommitSpanPressureActive &&
+        left.isResultsFinalizeLaneActive === right.isResultsFinalizeLaneActive
+    );
   const shouldDeferMapFromPressure = isVisualSyncPending || runOneCommitSpanPressureActive;
   const isMapPinsDeferred = React.useCallback(
     () => shouldDeferMapFromPressure || isResultsFinalizeLaneActive,

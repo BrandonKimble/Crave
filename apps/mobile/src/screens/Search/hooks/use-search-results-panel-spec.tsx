@@ -559,14 +559,12 @@ export const useSearchResultsPanelSpec = ({
     ) {
       return;
     }
-    lastResultsFinalizeLaneActiveRef.current = resultsReadModelSelectors.isResultsFinalizeLaneActive;
+    lastResultsFinalizeLaneActiveRef.current =
+      resultsReadModelSelectors.isResultsFinalizeLaneActive;
     searchRuntimeBus.publish({
       isResultsFinalizeLaneActive: resultsReadModelSelectors.isResultsFinalizeLaneActive,
     });
-  }, [
-    resultsReadModelSelectors.isResultsFinalizeLaneActive,
-    searchRuntimeBus,
-  ]);
+  }, [resultsReadModelSelectors.isResultsFinalizeLaneActive, searchRuntimeBus]);
   React.useEffect(
     () => () => {
       searchRuntimeBus.publish({ isResultsFinalizeLaneActive: false });

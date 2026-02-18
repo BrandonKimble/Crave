@@ -1041,8 +1041,8 @@ export class UnifiedProcessingService implements OnModuleInit {
       typeof value === 'string'
         ? value
         : typeof value === 'number' || typeof value === 'boolean'
-        ? String(value)
-        : '';
+          ? String(value)
+          : '';
 
     if (!stringValue) {
       return '';
@@ -1358,7 +1358,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             resolution.normalizedName = canonicalName;
             const entityLocationKey =
               entityType === 'restaurant'
-                ? resolvedLocationKey ?? 'global'
+                ? (resolvedLocationKey ?? 'global')
                 : 'global';
 
             const existing = await tx.entity.findUnique({
@@ -3161,7 +3161,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       const subredditValue =
         mentionSubreddit.length > 0
           ? mentionSubreddit
-          : defaultSubreddit ?? null;
+          : (defaultSubreddit ?? null);
 
       newRecordsBySourceId.set(rawSourceId, {
         pipeline: normalizedPipeline,
@@ -3300,8 +3300,8 @@ export class UnifiedProcessingService implements OnModuleInit {
       typeof record?.coverageKey === 'string' && record.coverageKey.trim()
         ? record.coverageKey.trim().toLowerCase()
         : record?.name
-        ? record.name.trim().toLowerCase()
-        : cacheKey;
+          ? record.name.trim().toLowerCase()
+          : cacheKey;
 
     this.setCachedValue(this.subredditCoverageCache, cacheKey, resolved);
     return resolved;
