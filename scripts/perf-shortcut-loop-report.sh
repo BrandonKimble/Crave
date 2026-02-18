@@ -386,6 +386,8 @@ const collectRunWindowMetrics = ({
   let runFloorMin = null;
   let runStallMax = null;
   let runCatastrophicWindowCount = 0;
+  let runStallOver50WindowCount = 0;
+  let runStallOver80WindowCount = 0;
   let firstStallOver50 = null;
   let worstWindow = null;
 
@@ -426,6 +428,12 @@ const collectRunWindowMetrics = ({
         (stageHistogram.byStageCatastrophicWindowCount[stage] || 0) + 1;
       catastrophicRuns.add(runNumber);
     }
+    if (stallLongestMs > 50) {
+      runStallOver50WindowCount += 1;
+    }
+    if (stallLongestMs > 80) {
+      runStallOver80WindowCount += 1;
+    }
 
     if (floorFps != null && (runFloorMin == null || floorFps < runFloorMin)) {
       runFloorMin = floorFps;
@@ -460,6 +468,8 @@ const collectRunWindowMetrics = ({
     floorMin: runFloorMin,
     stallLongestMax: runStallMax,
     catastrophicWindowCount: runCatastrophicWindowCount,
+    stallOver50WindowCount: runStallOver50WindowCount,
+    stallOver80WindowCount: runStallOver80WindowCount,
     firstStallOver50,
     worstWindow,
   };
@@ -668,10 +678,12 @@ for (const runNumber of runNumbers) {
         startMs: startMs ?? null,
         endMs: endMs ?? null,
         floorMin: null,
-      stallLongestMax: null,
-      catastrophicWindowCount: 0,
-      uiFloorMin: null,
-      uiStallLongestMax: null,
+        stallLongestMax: null,
+        catastrophicWindowCount: 0,
+        stallOver50WindowCount: null,
+        stallOver80WindowCount: null,
+        uiFloorMin: null,
+        uiStallLongestMax: null,
         uiCatastrophicWindowCount: 0,
         firstOver50: null,
         worstWindow: null,
@@ -723,11 +735,13 @@ for (const runNumber of runNumbers) {
       runNumber,
       startMs,
       endMs,
-    floorMin: jsRunMetrics.floorMin,
-    stallLongestMax: jsRunMetrics.stallLongestMax,
-    catastrophicWindowCount: jsRunMetrics.catastrophicWindowCount,
-    uiFloorMin: uiRunMetrics.floorMin,
-    uiStallLongestMax: uiRunMetrics.stallLongestMax,
+      floorMin: jsRunMetrics.floorMin,
+      stallLongestMax: jsRunMetrics.stallLongestMax,
+      catastrophicWindowCount: jsRunMetrics.catastrophicWindowCount,
+      stallOver50WindowCount: jsRunMetrics.stallOver50WindowCount,
+      stallOver80WindowCount: jsRunMetrics.stallOver80WindowCount,
+      uiFloorMin: uiRunMetrics.floorMin,
+      uiStallLongestMax: uiRunMetrics.stallLongestMax,
       uiCatastrophicWindowCount: uiRunMetrics.catastrophicWindowCount,
       firstOver50: jsRunMetrics.firstStallOver50,
       worstWindow: jsRunMetrics.worstWindow,

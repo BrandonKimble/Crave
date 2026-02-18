@@ -26,6 +26,8 @@ import { haversineDistanceMiles, isLngLatTuple } from '../utils/geo';
 import { MARKER_VIEW_OVERSCAN_STYLE } from './marker-visibility';
 import type { MapQueryBudget } from '../runtime/map/map-query-budget';
 import type { RuntimeWorkScheduler } from '../runtime/scheduler/runtime-work-scheduler';
+import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
+import { useSearchRuntimeBusSelector } from '../runtime/shared/use-search-runtime-bus-selector';
 
 const SEARCH_MAP_STAGED_PUBLISH_MODE = true;
 const MAP_PAN_DECELERATION_FACTOR = 0.995;
@@ -1352,6 +1354,7 @@ type SearchMapProps = {
   selectionFeedbackOperationId?: string | null;
   isRunOneHandoffActive?: boolean;
   isRunOneChromeDeferred?: boolean;
+  searchRuntimeBus: SearchRuntimeBus;
   onRuntimeMechanismEvent?: (
     event: 'runtime_write_span',
     payload?: Record<string, unknown>
@@ -1401,6 +1404,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   selectionFeedbackOperationId = null,
   isRunOneHandoffActive = false,
   isRunOneChromeDeferred = false,
+  searchRuntimeBus,
   onRuntimeMechanismEvent,
 }) => {
   const shouldDisableMarkers = disableMarkers === true;
@@ -1433,6 +1437,31 @@ const SearchMap: React.FC<SearchMapProps> = ({
   isRunOneHandoffActiveRef.current = isRunOneHandoffActive;
   const isRunOneChromeDeferredRef = React.useRef(isRunOneChromeDeferred);
   isRunOneChromeDeferredRef.current = isRunOneChromeDeferred;
+  const {
+    isVisualSyncPending,
+    runOneCommitSpanPressureActive,
+    isResultsFinalizeLaneActive,
+  } = useSearchRuntimeBusSelector(
+    searchRuntimeBus,
+    (state) => ({
+      isVisualSyncPending: state.isVisualSyncPending,
+      runOneCommitSpanPressureActive: state.runOneCommitSpanPressureActive,
+      isResultsFinalizeLaneActive: state.isResultsFinalizeLaneActive,
+    }),
+    (left, right) =>
+      left.isVisualSyncPending === right.isVisualSyncPending &&
+      left.runOneCommitSpanPressureActive === right.runOneCommitSpanPressureActive &&
+      left.isResultsFinalizeLaneActive === right.isResultsFinalizeLaneActive
+  );
+  const shouldDeferMapFromPressure = isVisualSyncPending || runOneCommitSpanPressureActive;
+  const isMapPinsDeferred = React.useCallback(
+    () => shouldDeferMapFromPressure || isResultsFinalizeLaneActive,
+    [isResultsFinalizeLaneActive, shouldDeferMapFromPressure]
+  );
+  const isMapFinalizeDeferred = React.useCallback(
+    () => shouldDeferMapFromPressure || isResultsFinalizeLaneActive,
+    [isResultsFinalizeLaneActive, shouldDeferMapFromPressure]
+  );
   const emitMapRuntimeWriteSpan = React.useCallback(
     (payload: Record<string, unknown>) => {
       onRuntimeMechanismEvent?.('runtime_write_span', {
@@ -1579,6 +1608,36 @@ const SearchMap: React.FC<SearchMapProps> = ({
             scheduleOnNextFrame(scheduleLabelsStageAttempt);
             return;
           }
+          if (isMapFinalizeDeferred()) {
+            stagedPublishHealthyLabelFrameCountRef.current = 0;
+            if (lastLabelsGateReason !== 'defer_map_finalize_signal') {
+              emitMapRuntimeWriteSpan({
+                label: 'map_stage_gate',
+                gate: 'labels',
+                reason: 'defer_map_finalize_signal',
+                operationId,
+                nowMs: Number(getNowMs().toFixed(1)),
+              });
+              lastLabelsGateReason = 'defer_map_finalize_signal';
+            }
+            scheduleOnNextFrame(scheduleLabelsStageAttempt);
+            return;
+          }
+          if (isMapPinsDeferred()) {
+            stagedPublishHealthyLabelFrameCountRef.current = 0;
+            if (lastLabelsGateReason !== 'defer_map_pins_signal') {
+              emitMapRuntimeWriteSpan({
+                label: 'map_stage_gate',
+                gate: 'labels',
+                reason: 'defer_map_pins_signal',
+                operationId,
+                nowMs: Number(getNowMs().toFixed(1)),
+              });
+              lastLabelsGateReason = 'defer_map_pins_signal';
+            }
+            scheduleOnNextFrame(scheduleLabelsStageAttempt);
+            return;
+          }
           const pressure = resolveMapStagePressure();
           if (pressure !== 'healthy') {
             stagedPublishHealthyLabelFrameCountRef.current = 0;
@@ -1655,6 +1714,20 @@ const SearchMap: React.FC<SearchMapProps> = ({
                 nowMs: Number(getNowMs().toFixed(1)),
               });
               lastPinsGateReason = 'handoff_deferred';
+            }
+            scheduleOnNextFrame(schedulePinsStageAttempt);
+            return;
+          }
+          if (isMapPinsDeferred()) {
+            if (lastPinsGateReason !== 'defer_map_pins_signal') {
+              emitMapRuntimeWriteSpan({
+                label: 'map_stage_gate',
+                gate: 'pins',
+                reason: 'defer_map_pins_signal',
+                operationId,
+                nowMs: Number(getNowMs().toFixed(1)),
+              });
+              lastPinsGateReason = 'defer_map_pins_signal';
             }
             scheduleOnNextFrame(schedulePinsStageAttempt);
             return;
@@ -4084,6 +4157,9 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
     return false;
   }
   if (prev.requireMarkerVisualsForVisualReady !== next.requireMarkerVisualsForVisualReady) {
+    return false;
+  }
+  if (prev.searchRuntimeBus !== next.searchRuntimeBus) {
     return false;
   }
   return true;

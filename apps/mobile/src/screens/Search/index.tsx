@@ -30,7 +30,6 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { Feature, FeatureCollection, Point } from 'geojson';
-import { Text } from '../../components';
 import { OVERLAY_TAB_HEADER_HEIGHT } from '../../overlays/overlaySheetStyles';
 import { type OverlayModalSheetHandle } from '../../overlays/OverlayModalSheet';
 import { resolveExpandedTop } from '../../overlays/sheetUtils';
@@ -38,8 +37,6 @@ import { logger } from '../../utils';
 import { searchService } from '../../services/search';
 import type { FavoriteListType } from '../../services/favorite-lists';
 import type { AutocompleteMatch } from '../../services/autocomplete';
-import { useSearchStore } from '../../store/searchStore';
-import { useSystemStatusStore } from '../../store/systemStatusStore';
 import type {
   SearchResponse,
   FoodResult,
@@ -97,6 +94,8 @@ import { useSuggestionLayoutWarmth } from './hooks/use-suggestion-layout-warmth'
 import { useSuggestionHistoryBuffer } from './hooks/use-suggestion-history-buffer';
 import { useSuggestionTransitionHold } from './hooks/use-suggestion-transition-hold';
 import { useUserLocationController } from './hooks/use-user-location-controller';
+import { useSearchSubmitChromePrime } from './hooks/use-search-submit-chrome-prime';
+import { useResponseFrameFreeze } from './hooks/use-response-frame-freeze';
 import useSearchSheet from './hooks/use-search-sheet';
 import useScrollDividerStyle from './hooks/use-scroll-divider-style';
 import useSearchSubmit from './hooks/use-search-submit';
@@ -115,9 +114,17 @@ import { useProfileAutoOpenController } from './runtime/profile/use-profile-auto
 import { useShortcutHarnessObserver } from './runtime/telemetry/shortcut-harness-observer';
 import { useSearchRuntimeComposition } from './hooks/use-search-runtime-composition';
 import {
+  useOverlaySlice,
+  useSearchFiltersSlice,
+  useSearchTabSlice,
+  useSheetPositionSlice,
+  useSystemStatusSlice,
+} from './hooks/use-search-store-selectors';
+import {
   isRunOneHandoffDeferredChromePhase,
   type RunOneHandoffPhase,
 } from './runtime/controller/run-one-handoff-phase';
+import type { RunOneHandoffSnapshot } from './runtime/controller/run-one-handoff-coordinator';
 import useSearchTransition from './hooks/use-search-transition';
 import { useSearchSessionCoordinator } from './session/use-search-session-coordinator';
 import styles from './styles';
@@ -187,6 +194,18 @@ type DockedPollsSnapRequest = {
   snap: OverlaySheetSnap;
   token: number;
 };
+type RunOneRenderSnapshot = {
+  operationId: string | null;
+  phase: RunOneHandoffPhase;
+  commitSpanPressure: boolean;
+  updatedAtMs: number;
+};
+const toRunOneRenderSnapshot = (snapshot: RunOneHandoffSnapshot): RunOneRenderSnapshot => ({
+  operationId: snapshot.operationId,
+  phase: snapshot.phase,
+  commitSpanPressure: snapshot.metadata.commitSpanPressure === true,
+  updatedAtMs: snapshot.updatedAtMs,
+});
 const resolveResultsPage = (response: SearchResponse | null): number | null => {
   if (!response) {
     return null;
@@ -779,7 +798,7 @@ const SearchScreen: React.FC = () => {
   const [isSearchSessionActive, setIsSearchSessionActive] = React.useState(false);
   const [restaurantOnlyId, setRestaurantOnlyId] = React.useState<string | null>(null);
   const [searchMode, setSearchMode] = React.useState<'natural' | 'shortcut' | null>(null);
-  const [isLoading, setIsLoading] = React.useState(false);
+  const isSearchRequestLoadingRef = React.useRef(false);
   const [visualReadyRequestKey, setVisualReadyRequestKey] = React.useState<string | null>(null);
   const visualReadyWriteSourceRef = React.useRef<
     'map_visual_ready' | 'fallback_timeout' | 'marker_reveal_settled_raf' | 'unknown'
@@ -790,8 +809,10 @@ const SearchScreen: React.FC = () => {
   const [suggestions, setSuggestions] = React.useState<AutocompleteMatch[]>([]);
   const [, setShowSuggestions] = React.useState(false);
   const [isAutocompleteSuppressed, setIsAutocompleteSuppressed] = React.useState(false);
+  const { isSubmitChromePriming, beginSubmitChromePriming } = useSearchSubmitChromePrime();
   const resultsRequestKey =
     results?.metadata?.searchRequestId ?? results?.metadata?.requestId ?? null;
+  const isResponseFrameFreezeActive = useResponseFrameFreeze(resultsRequestKey);
   const resultsPage = resolveResultsPage(results);
   const [resultsVisualSyncCandidate, setResultsVisualSyncCandidate] = React.useState<string | null>(
     null
@@ -801,30 +822,24 @@ const SearchScreen: React.FC = () => {
   );
   const [markerRevealCommitId, setMarkerRevealCommitId] = React.useState<number | null>(null);
   const markerRevealCommitSeqRef = React.useRef(0);
-  const [runOneHandoffSnapshot, setRunOneHandoffSnapshot] = React.useState(() =>
-    runOneHandoffCoordinatorRef.current.getSnapshot()
+  const [runOneHandoffSnapshot, setRunOneHandoffSnapshot] = React.useState<RunOneRenderSnapshot>(
+    () => toRunOneRenderSnapshot(runOneHandoffCoordinatorRef.current.getSnapshot())
   );
   const runOneCommitSpanPressureByOperationRef = React.useRef<Map<string, number>>(new Map());
   const runOneStallPressureByOperationRef = React.useRef<Map<string, number>>(new Map());
   React.useEffect(() => {
     return runOneHandoffCoordinatorRef.current.subscribe((snapshot) => {
+      const nextSnapshot = toRunOneRenderSnapshot(snapshot);
       const commitSnapshot = () => {
         setRunOneHandoffSnapshot((previous) => {
-          const previousMetadata = previous.metadata as Record<string, unknown>;
-          const nextMetadata = snapshot.metadata as Record<string, unknown>;
-          const previousCommitSpanPressure = previousMetadata?.commitSpanPressure === true;
-          const nextCommitSpanPressure = nextMetadata?.commitSpanPressure === true;
           if (
-            previous.operationId === snapshot.operationId &&
-            previous.phase === snapshot.phase &&
-            previous.seq === snapshot.seq &&
-            previous.page === snapshot.page &&
-            previous.markerRevealSettledAtMs === snapshot.markerRevealSettledAtMs &&
-            previousCommitSpanPressure === nextCommitSpanPressure
+            previous.operationId === nextSnapshot.operationId &&
+            previous.phase === nextSnapshot.phase &&
+            previous.commitSpanPressure === nextSnapshot.commitSpanPressure
           ) {
             return previous;
           }
-          return snapshot;
+          return nextSnapshot;
         });
       };
       if (typeof React.startTransition === 'function') {
@@ -859,7 +874,7 @@ const SearchScreen: React.FC = () => {
   const runOneHandoffLiveSnapshot = runOneHandoffCoordinatorRef.current.getSnapshot();
   const runOneHandoffSnapshotForRender =
     runOneHandoffLiveSnapshot.updatedAtMs > runOneHandoffSnapshot.updatedAtMs
-      ? runOneHandoffLiveSnapshot
+      ? toRunOneRenderSnapshot(runOneHandoffLiveSnapshot)
       : runOneHandoffSnapshot;
   React.useEffect(() => {
     if (searchMode !== 'shortcut') {
@@ -967,7 +982,24 @@ const SearchScreen: React.FC = () => {
   const hydrationOperationId = runOneHandoffSnapshotForRender.operationId ?? resultsRequestKey;
   const isVisualSyncPending =
     resultsVisualSyncCandidate != null && resultsVisualSyncCandidate !== visualReadyRequestKey;
-  const isSearchLoading = isLoading || isVisualSyncPending;
+  const setSearchRequestLoading = React.useCallback(
+    (isLoadingNext: boolean) => {
+      if (isSearchRequestLoadingRef.current === isLoadingNext) {
+        return;
+      }
+      isSearchRequestLoadingRef.current = isLoadingNext;
+      searchRuntimeBus.publish({
+        isSearchLoading: isLoadingNext,
+      });
+    },
+    [searchRuntimeBus]
+  );
+  React.useEffect(() => {
+    searchRuntimeBus.publish({
+      isSearchLoading: isSearchRequestLoadingRef.current,
+    });
+  }, [searchRuntimeBus]);
+  const isSearchLoading = isSearchRequestLoadingRef.current;
   const markVisualRequestReady = React.useCallback(
     (
       requestKey: string | null,
@@ -1007,11 +1039,13 @@ const SearchScreen: React.FC = () => {
     isResultsListScrolling: false,
     isResultsSheetSettling: false,
   });
-  const activeTab = useSearchStore((state) => state.activeTab);
-  const preferredActiveTab = useSearchStore((state) => state.preferredActiveTab);
-  const setActiveTab = useSearchStore((state) => state.setActiveTab);
-  const hasActiveTabPreference = useSearchStore((state) => state.hasActiveTabPreference);
-  const setPreferredActiveTab = useSearchStore((state) => state.setPreferredActiveTab);
+  const {
+    activeTab,
+    preferredActiveTab,
+    setActiveTab,
+    hasActiveTabPreference,
+    setPreferredActiveTab,
+  } = useSearchTabSlice();
   const {
     searchLayout,
     searchContainerFrame,
@@ -1160,32 +1194,6 @@ const SearchScreen: React.FC = () => {
   const [hasMoreRestaurants, setHasMoreRestaurants] = React.useState(false);
   const [isLoadingMore, setIsLoadingMore] = React.useState(false);
   const [isPaginationExhausted, setIsPaginationExhausted] = React.useState(false);
-  React.useEffect(() => {
-    searchRuntimeBus.publish({
-      results,
-      resultsRequestKey,
-      query,
-      submittedQuery,
-      activeTab,
-      searchMode,
-      isSearchLoading,
-      isLoadingMore,
-      isSearchSessionActive,
-      currentPage,
-    });
-  }, [
-    currentPage,
-    isLoadingMore,
-    isSearchLoading,
-    isSearchSessionActive,
-    query,
-    results,
-    resultsRequestKey,
-    activeTab,
-    searchMode,
-    searchRuntimeBus,
-    submittedQuery,
-  ]);
   const {
     userLocation,
     setUserLocation,
@@ -1489,13 +1497,14 @@ const SearchScreen: React.FC = () => {
     locationKey: null,
     hasAppliedInitialMultiLocationZoomOut: false,
   });
-  const activeOverlay = useOverlayStore((state) => state.activeOverlay);
-  const overlayStack = useOverlayStore((state) => state.overlayStack);
-  const overlayParams = useOverlayStore((state) => state.overlayParams);
-  const registerTransientDismissor = useOverlayStore((state) => state.registerTransientDismissor);
-  const dismissTransientOverlays = useOverlayStore((state) => state.dismissTransientOverlays);
-  const hasUserSharedSnap = useOverlaySheetPositionStore((state) => state.hasUserSharedSnap);
-  const sharedSnap = useOverlaySheetPositionStore((state) => state.sharedSnap);
+  const {
+    activeOverlay,
+    overlayStack,
+    overlayParams,
+    registerTransientDismissor,
+    dismissTransientOverlays,
+  } = useOverlaySlice();
+  const { hasUserSharedSnap, sharedSnap } = useSheetPositionSlice();
   const rootOverlay = overlayStack[0] ?? activeOverlay;
   const isSearchOverlay = rootOverlay === 'search';
   const showBookmarksOverlay = rootOverlay === 'bookmarks';
@@ -1577,10 +1586,12 @@ const SearchScreen: React.FC = () => {
   const shouldHideBottomNavForTabSuggestions = !isSearchOverlay && isSuggestionPanelActive;
   // Hide the bottom nav while search is active, and also while suggestion UI is presented
   // from non-search root tabs so tab chrome doesn't show through the suggestion surface.
+  const shouldHideBottomNavForSearchSession =
+    isSearchOverlay &&
+    (isSearchSessionActive || isSuggestionPanelActive || isSearchLoading || isNavRestorePending);
   const shouldHideBottomNav =
     shouldHideBottomNavForTabSuggestions ||
-    (isSearchOverlay &&
-      (isSearchSessionActive || isSuggestionPanelActive || isSearchLoading || isNavRestorePending));
+    (shouldHideBottomNavForSearchSession && !isSubmitChromePriming);
   const [bottomNavFrame, setBottomNavFrame] = React.useState<LayoutRectangle | null>(() => {
     const cached = getCachedBottomNavMetrics();
     if (!cached) {
@@ -1741,6 +1752,10 @@ const SearchScreen: React.FC = () => {
   const pendingResultsSheetRevealRef = React.useRef(false);
   const allowSearchBlurExitRef = React.useRef(false);
   const requestResultsSheetReveal = React.useCallback(() => {
+    if (isSubmitChromePriming) {
+      pendingResultsSheetRevealRef.current = true;
+      return;
+    }
     const isEditingNow =
       Boolean(inputRef.current?.isFocused?.()) || isSearchEditingRef.current || isSearchFocused;
     if (isEditingNow) {
@@ -1748,7 +1763,7 @@ const SearchScreen: React.FC = () => {
       return;
     }
     showPanel();
-  }, [isSearchFocused, showPanel]);
+  }, [isSearchFocused, isSubmitChromePriming, showPanel]);
   const flushPendingResultsSheetReveal = React.useCallback(() => {
     if (!pendingResultsSheetRevealRef.current) {
       return;
@@ -1762,6 +1777,9 @@ const SearchScreen: React.FC = () => {
     if (!pendingResultsSheetRevealRef.current) {
       return;
     }
+    if (isSubmitChromePriming) {
+      return;
+    }
     if (!isSearchSessionActive && !isSearchLoading) {
       return;
     }
@@ -1771,7 +1789,13 @@ const SearchScreen: React.FC = () => {
       return;
     }
     flushPendingResultsSheetReveal();
-  }, [flushPendingResultsSheetReveal, isSearchLoading, isSearchFocused, isSearchSessionActive]);
+  }, [
+    flushPendingResultsSheetReveal,
+    isSearchLoading,
+    isSearchFocused,
+    isSearchSessionActive,
+    isSubmitChromePriming,
+  ]);
   React.useEffect(() => {
     if (sheetState !== 'hidden') {
       lastVisibleSheetStateRef.current = sheetState;
@@ -2195,19 +2219,18 @@ const SearchScreen: React.FC = () => {
     handleOverlaySelect('profile');
   }, [handleOverlaySelect]);
   const navIconRenderers = SEARCH_BOTTOM_NAV_ICON_RENDERERS;
-  const openNow = useSearchStore((state) => state.openNow);
-  const setOpenNow = useSearchStore((state) => state.setOpenNow);
-  const priceLevels = useSearchStore((state) => state.priceLevels);
-  const setPriceLevels = useSearchStore((state) => state.setPriceLevels);
-  const votes100Plus = useSearchStore((state) => state.votes100Plus);
-  const setVotes100Plus = useSearchStore((state) => state.setVotes100Plus);
-  const resetFilters = useSearchStore((state) => state.resetFilters);
-  const scoreMode = useSearchStore((state) => state.scoreMode);
-  const setPreferredScoreMode = useSearchStore((state) => state.setPreferredScoreMode);
-  const isOffline = useSystemStatusStore((state) => state.isOffline);
-  const hasSystemStatusBanner = useSystemStatusStore(
-    (state) => state.isOffline || Boolean(state.serviceIssue)
-  );
+  const {
+    openNow,
+    setOpenNow,
+    priceLevels,
+    setPriceLevels,
+    votes100Plus,
+    setVotes100Plus,
+    resetFilters,
+    scoreMode,
+    setPreferredScoreMode,
+  } = useSearchFiltersSlice();
+  const { isOffline, hasSystemStatusBanner } = useSystemStatusSlice();
   const [pendingPriceRange, setPendingPriceRange] = React.useState<PriceRangeTuple>(() =>
     getRangeFromLevels(priceLevels)
   );
@@ -2342,6 +2365,40 @@ const SearchScreen: React.FC = () => {
     submitTransitionHold,
     autocompleteMinChars: AUTOCOMPLETE_MIN_CHARS,
   });
+  const shouldTraceSuggestionTransition = __DEV__;
+  const emitSuggestionTransitionTrace = React.useCallback(
+    (source: string) => {
+      if (!shouldTraceSuggestionTransition) {
+        return;
+      }
+      logger.debug(
+        `[SearchSuggestionTrace] source=${source} active=${isSuggestionPanelActive ? 1 : 0} visible=${
+          isSuggestionPanelVisible ? 1 : 0
+        } drive=${shouldDriveSuggestionLayout ? 1 : 0} surface=${
+          shouldShowSuggestionSurface ? 1 : 0
+        } progress=${suggestionProgress.value.toFixed(3)}`
+      );
+    },
+    [
+      isSuggestionPanelActive,
+      isSuggestionPanelVisible,
+      shouldDriveSuggestionLayout,
+      shouldShowSuggestionSurface,
+      shouldTraceSuggestionTransition,
+      suggestionProgress,
+    ]
+  );
+  React.useEffect(() => {
+    emitSuggestionTransitionTrace('state_change');
+  }, [
+    emitSuggestionTransitionTrace,
+    isSearchFocused,
+    isSuggestionPanelActive,
+    isSuggestionPanelVisible,
+    query,
+    shouldDriveSuggestionLayout,
+    shouldShowSuggestionSurface,
+  ]);
   // Restaurant profile sheet should remain draggable even while the suggestion panel is
   // animating out (isSuggestionPanelVisible). We only suppress interaction while suggestions are
   // actively open.
@@ -3060,6 +3117,7 @@ const SearchScreen: React.FC = () => {
     };
   }, [isSearchFocused, isSuggestionPanelActive, query, searchMode, setQuery, submittedQuery]);
   const focusSearchInput = React.useCallback(() => {
+    emitSuggestionTransitionTrace('focus_input_start');
     isSearchEditingRef.current = true;
     allowSearchBlurExitRef.current = false;
     captureSearchSessionQuery();
@@ -3068,6 +3126,7 @@ const SearchScreen: React.FC = () => {
     setIsAutocompleteSuppressed(false);
     setIsSearchFocused(true);
     setIsSuggestionPanelActive(true);
+    emitSuggestionTransitionTrace('focus_input_after_set');
     const trimmed = query.trim();
     if (trimmed.length >= AUTOCOMPLETE_MIN_CHARS) {
       const usedCache = showCachedSuggestionsIfFresh(trimmed);
@@ -3076,15 +3135,20 @@ const SearchScreen: React.FC = () => {
       }
     }
     inputRef.current?.focus();
+    requestAnimationFrame(() => {
+      emitSuggestionTransitionTrace('focus_input_raf');
+    });
   }, [
     allowAutocompleteResults,
     captureSearchSessionQuery,
     cancelAutocomplete,
     dismissTransientOverlays,
+    emitSuggestionTransitionTrace,
     query,
     showCachedSuggestionsIfFresh,
   ]);
   const handleSearchPressIn = React.useCallback(() => {
+    emitSuggestionTransitionTrace('press_in_start');
     isSearchEditingRef.current = true;
     allowSearchBlurExitRef.current = false;
     captureSearchSessionQuery();
@@ -3093,10 +3157,15 @@ const SearchScreen: React.FC = () => {
     setIsAutocompleteSuppressed(false);
     setIsSearchFocused(true);
     setIsSuggestionPanelActive(true);
+    emitSuggestionTransitionTrace('press_in_after_set');
+    requestAnimationFrame(() => {
+      emitSuggestionTransitionTrace('press_in_raf');
+    });
   }, [
     allowAutocompleteResults,
     captureSearchSessionQuery,
     dismissTransientOverlays,
+    emitSuggestionTransitionTrace,
     setIsAutocompleteSuppressed,
     setIsSearchFocused,
     setIsSuggestionPanelActive,
@@ -3104,7 +3173,8 @@ const SearchScreen: React.FC = () => {
   const handleQueryChange = React.useCallback((value: string) => {
     setIsAutocompleteSuppressed(false);
     setQuery(value);
-  }, []);
+    emitSuggestionTransitionTrace('query_change');
+  }, [emitSuggestionTransitionTrace]);
   const restaurants = results?.restaurants ?? EMPTY_RESTAURANTS;
   const dishes = results?.dishes ?? EMPTY_DISHES;
   const { canonicalRestaurantRankById, restaurantsById } = useSearchResultsReadModel({
@@ -3202,9 +3272,6 @@ const SearchScreen: React.FC = () => {
   const shouldDisableSearchBlur = false;
   const forceDisableMarkerViews = false;
   const shouldDisableMarkerViews = forceDisableMarkerViews;
-  const shouldUsePlaceholderRows = false;
-  const shouldDisableFiltersHeader = false;
-  const shouldDisableResultsHeader = false;
   const shouldDisableSearchShortcuts = false;
   const shouldLogJsStalls = false;
   const jsStallMinMs = Number.POSITIVE_INFINITY;
@@ -3287,6 +3354,12 @@ const SearchScreen: React.FC = () => {
 
     requestAnimationFrame(apply);
   }, [isVisualSyncPending, restaurants, shouldDisableMarkerViews, shouldHydrateResultsForRender]);
+  const profilerShouldHydrateResultsForRenderRef = React.useRef(shouldHydrateResultsForRender);
+  const profilerIsVisualSyncPendingRef = React.useRef(isVisualSyncPending);
+  React.useEffect(() => {
+    profilerShouldHydrateResultsForRenderRef.current = shouldHydrateResultsForRender;
+    profilerIsVisualSyncPendingRef.current = isVisualSyncPending;
+  }, [isVisualSyncPending, shouldHydrateResultsForRender]);
   const handleProfilerRender = React.useCallback<React.ProfilerOnRenderCallback>(
     (id, phase, actualDuration, baseDuration, startTime, commitTime) => {
       if (shouldLogProfiler && actualDuration >= profilerMinMs) {
@@ -3325,11 +3398,11 @@ const SearchScreen: React.FC = () => {
       }
       if (Number.isFinite(startTime) && Number.isFinite(commitTime)) {
         const commitSpanMs = Math.max(0, commitTime - startTime);
-        const stageHint = shouldHydrateResultsForRender
+        const stageHint = profilerShouldHydrateResultsForRenderRef.current
           ? 'results_hydration_commit'
-          : isVisualSyncPending
+          : profilerIsVisualSyncPendingRef.current
           ? 'visual_sync_state'
-          : isLoading
+          : isSearchRequestLoadingRef.current
           ? 'results_list_materialization'
           : 'post_visual';
         recordProfilerSpan({
@@ -3404,15 +3477,12 @@ const SearchScreen: React.FC = () => {
       getPerfNow,
       getActiveShortcutRunNumber,
       isShortcutPerfHarnessScenario,
-      isLoading,
-      isVisualSyncPending,
       mapQueryBudget,
       profilerMinMs,
       recordProfilerSpan,
       runOneHandoffCoordinatorRef,
       searchMode,
       shortcutHarnessRunId,
-      shouldHydrateResultsForRender,
       shouldLogProfiler,
     ]
   );
@@ -3447,7 +3517,7 @@ const SearchScreen: React.FC = () => {
       isSuggestionScreenActive,
       isSearchFocused,
       isSearchSessionActive,
-      isLoading,
+      isLoading: isSearchRequestLoadingRef.current,
       isLoadingMore,
       isPaginationExhausted,
       currentPage,
@@ -3521,7 +3591,6 @@ const SearchScreen: React.FC = () => {
     hasMoreRestaurants,
     hasUserSharedSnap,
     isFilterTogglePending,
-    isLoading,
     isLoadingMore,
     isPaginationExhausted,
     isSearchFocused,
@@ -3805,7 +3874,7 @@ const SearchScreen: React.FC = () => {
             ? 'results_hydration_commit'
             : isVisualSyncPending
             ? 'visual_sync_state'
-            : isLoading
+            : isSearchRequestLoadingRef.current
             ? 'results_list_materialization'
             : 'post_visual';
           if (activeRunNumber != null) {
@@ -3837,7 +3906,6 @@ const SearchScreen: React.FC = () => {
   }, [
     getPerfNow,
     getActiveShortcutRunNumber,
-    isLoading,
     isVisualSyncPending,
     jsStallMinMs,
     readRuntimeMemoryDiagnostics,
@@ -3845,46 +3913,6 @@ const SearchScreen: React.FC = () => {
     shouldHydrateResultsForRender,
     shouldLogJsStalls,
   ]);
-  const formatOnDemandEta = React.useCallback((etaMs?: number): string | null => {
-    if (!etaMs || !Number.isFinite(etaMs) || etaMs <= 0) {
-      return null;
-    }
-    const totalMinutes = Math.round(etaMs / 60000);
-    if (totalMinutes < 60) {
-      return `${totalMinutes} min`;
-    }
-    const hours = Math.ceil(totalMinutes / 60);
-    return hours === 1 ? 'about 1 hour' : `about ${hours} hours`;
-  }, []);
-  const onDemandMessage = useMemo(() => {
-    if (!results?.metadata?.onDemandQueued) {
-      return null;
-    }
-    const term = submittedQuery?.trim() || results?.metadata?.sourceQuery?.trim() || '';
-    const etaText = formatOnDemandEta(results?.metadata?.onDemandEtaMs);
-    const prefix = term ? `We're expanding results for ${term}.` : `We're expanding results.`;
-    const suffix = etaText ? ` Check back in ${etaText}.` : ' Check back soon.';
-    return `${prefix}${suffix}`;
-  }, [
-    formatOnDemandEta,
-    results?.metadata?.onDemandEtaMs,
-    results?.metadata?.onDemandQueued,
-    results?.metadata?.sourceQuery,
-    submittedQuery,
-  ]);
-  const onDemandNotice = useMemo(() => {
-    if (!onDemandMessage) {
-      return null;
-    }
-    return (
-      <View style={styles.onDemandNotice}>
-        <Text variant="body" style={styles.onDemandNoticeText}>
-          {onDemandMessage}
-        </Text>
-      </View>
-    );
-  }, [onDemandMessage]);
-
   const buildMarkerKey = React.useCallback(
     (feature: Feature<Point, RestaurantFeatureProperties>) =>
       feature.id?.toString() ?? `${feature.properties.restaurantId}-${feature.properties.rank}`,
@@ -4140,8 +4168,10 @@ const SearchScreen: React.FC = () => {
   const hasAnySearchResults =
     (results?.dishes?.length ?? 0) > 0 || (results?.restaurants?.length ?? 0) > 0;
   const shouldHoldMapMarkerReveal =
-    searchMode === 'shortcut' && (isVisualSyncPending || isShortcutCoverageLoading);
-  const areSearchVisualsSettled = !isLoading && !isShortcutCoverageLoading;
+    isSearchLoading ||
+    (searchMode === 'shortcut' && (isVisualSyncPending || isShortcutCoverageLoading));
+  const areSearchVisualsSettled =
+    !isSearchRequestLoadingRef.current && !isShortcutCoverageLoading;
   const shouldSignalMapVisualReady =
     isVisualSyncPending &&
     resultsVisualSyncCandidate != null &&
@@ -4210,9 +4240,20 @@ const SearchScreen: React.FC = () => {
     if (isSearchOverlay) {
       return;
     }
-    setIsSearchFocused(false);
-    setIsSuggestionPanelActive(false);
-  }, [isSearchOverlay]);
+    if (!isSuggestionPanelActive) {
+      setIsSearchFocused(false);
+    }
+  }, [isSearchOverlay, isSuggestionPanelActive]);
+
+  React.useEffect(() => {
+    if (!isSearchFocused) {
+      return;
+    }
+    if (isSuggestionPanelActive) {
+      return;
+    }
+    setIsSuggestionPanelActive(true);
+  }, [isSearchFocused, isSuggestionPanelActive]);
 
   React.useEffect(() => {
     if (isSuggestionScreenActive) {
@@ -4278,16 +4319,14 @@ const SearchScreen: React.FC = () => {
       listRef.scrollToOffset({ offset: 0, animated: false });
     });
   }, [resultsScrollOffset]);
-  const submitSearchRef = React.useRef<
-    (
-      options?: {
-        preserveSheetState?: boolean;
-        transitionFromDockedPolls?: boolean;
-        scoreMode?: NaturalSearchRequest['scoreMode'];
-        shortcutTargetTab?: 'dishes' | 'restaurants';
-      },
-      overrideQuery?: string
-    ) => Promise<void>
+  const submitShortcutSearchRef = React.useRef<
+    (input: {
+      targetTab: 'dishes' | 'restaurants';
+      label: string;
+      preserveSheetState: boolean;
+      transitionFromDockedPolls: boolean;
+      scoreMode: NaturalSearchRequest['scoreMode'];
+    }) => Promise<void>
   >(async () => undefined);
   const {
     isShortcutPerfHarnessScenario,
@@ -4299,7 +4338,7 @@ const SearchScreen: React.FC = () => {
     getPerfNow,
     roundPerfValue,
     searchSessionController,
-    submitSearchRef,
+    submitShortcutSearchRef,
     scoreMode,
     setPreferredScoreMode,
     mapQueryBudget,
@@ -4329,12 +4368,13 @@ const SearchScreen: React.FC = () => {
     if (activeRunNumber == null) {
       return;
     }
+    const coordinatorSnapshot = runOneHandoffCoordinatorRef.current.getSnapshot();
     emitRuntimeMechanismEvent('run_one_handoff_phase', {
       source: 'coordinator_snapshot',
       phase: runOneHandoffPhase,
       operationId: runOneHandoffSnapshotForRender.operationId,
-      seq: runOneHandoffSnapshotForRender.seq,
-      page: runOneHandoffSnapshotForRender.page,
+      seq: coordinatorSnapshot.seq,
+      page: coordinatorSnapshot.page,
       isRun1HandoffActive,
       isChromeDeferred,
       harnessRunId: shortcutHarnessRunId,
@@ -4345,15 +4385,14 @@ const SearchScreen: React.FC = () => {
     isChromeDeferred,
     isRun1HandoffActive,
     runOneHandoffPhase,
+    runOneHandoffCoordinatorRef,
     runOneHandoffSnapshotForRender.operationId,
-    runOneHandoffSnapshotForRender.page,
-    runOneHandoffSnapshotForRender.seq,
     shortcutHarnessRunId,
   ]);
   const rootStateCommitSnapshotRef = React.useRef<{
     searchMode: 'natural' | 'shortcut' | null;
     isSearchSessionActive: boolean;
-    isLoading: boolean;
+    isSearchLoading: boolean;
     isAutocompleteSuppressed: boolean;
     rootOverlay: OverlayKey;
     activeOverlay: OverlayKey;
@@ -4368,7 +4407,7 @@ const SearchScreen: React.FC = () => {
     const snapshot = {
       searchMode,
       isSearchSessionActive,
-      isLoading,
+      isSearchLoading,
       isAutocompleteSuppressed,
       rootOverlay,
       activeOverlay,
@@ -4409,7 +4448,7 @@ const SearchScreen: React.FC = () => {
     emitRuntimeMechanismEvent,
     getActiveShortcutRunNumber,
     isAutocompleteSuppressed,
-    isLoading,
+    isSearchLoading,
     isSearchOverlay,
     isSearchSessionActive,
     isVisualSyncPending,
@@ -4489,25 +4528,123 @@ const SearchScreen: React.FC = () => {
     runOneHandoffSnapshotForRender.phase,
     visualReadyRequestKey,
   ]);
+  const handleSearchSessionShadowTransition = React.useCallback(
+    (transition: {
+      mode: 'natural' | 'entity' | 'shortcut';
+      operationId: string;
+      seq: number;
+      eventType:
+        | 'submit_intent'
+        | 'submitting'
+        | 'response_received'
+        | 'phase_a_committed'
+        | 'visual_released'
+        | 'phase_b_materializing'
+        | 'settled'
+        | 'cancelled'
+        | 'error';
+      accepted: boolean;
+      payload: Record<string, unknown>;
+    }) => {
+      if (!transition.accepted || transition.mode !== 'shortcut') {
+        return;
+      }
+      const payload = transition.payload ?? null;
+      const targetPage = typeof payload?.targetPage === 'number' ? payload.targetPage : 1;
+      const isAppend = payload?.append === true;
+      if (transition.eventType === 'submit_intent') {
+        if (isAppend || targetPage > 1) {
+          runOneHandoffCoordinatorRef.current.reset(transition.operationId);
+          return;
+        }
+        runOneHandoffCoordinatorRef.current.beginOperation(
+          transition.operationId,
+          transition.seq,
+          targetPage
+        );
+        return;
+      }
+      const snapshot = runOneHandoffCoordinatorRef.current.getSnapshot();
+      if (snapshot.operationId !== transition.operationId) {
+        return;
+      }
+      if (transition.eventType === 'phase_a_committed') {
+        runOneHandoffCoordinatorRef.current.advancePhase('h1_phase_a_committed', {
+          operationId: transition.operationId,
+          targetPage,
+          append: isAppend,
+        });
+        return;
+      }
+      if (transition.eventType === 'visual_released') {
+        runOneHandoffCoordinatorRef.current.advancePhase('h2_marker_reveal', {
+          operationId: transition.operationId,
+          targetPage,
+          append: isAppend,
+        });
+        return;
+      }
+      if (transition.eventType === 'phase_b_materializing') {
+        runOneHandoffCoordinatorRef.current.advancePhase('h3_hydration_ramp', {
+          operationId: transition.operationId,
+          targetPage,
+          append: isAppend,
+        });
+        return;
+      }
+      if (transition.eventType === 'settled') {
+        const advanceToResumeAndReset = () => {
+          const activeSnapshot = runOneHandoffCoordinatorRef.current.getSnapshot();
+          if (activeSnapshot.operationId !== transition.operationId) {
+            return;
+          }
+          runOneHandoffCoordinatorRef.current.advancePhase('h4_chrome_resume', {
+            operationId: transition.operationId,
+          });
+          const finalizeReset = () => {
+            const latestSnapshot = runOneHandoffCoordinatorRef.current.getSnapshot();
+            if (
+              latestSnapshot.operationId === transition.operationId &&
+              latestSnapshot.phase === 'h4_chrome_resume'
+            ) {
+              runOneHandoffCoordinatorRef.current.reset(transition.operationId);
+            }
+          };
+          if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(finalizeReset);
+            return;
+          }
+          setTimeout(finalizeReset, 0);
+        };
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(advanceToResumeAndReset);
+          return;
+        }
+        setTimeout(advanceToResumeAndReset, 0);
+        return;
+      }
+      if (transition.eventType === 'error' || transition.eventType === 'cancelled') {
+        runOneHandoffCoordinatorRef.current.reset(transition.operationId);
+      }
+    },
+    [runOneHandoffCoordinatorRef]
+  );
 
   const {
     submitSearch,
     runRestaurantEntitySearch,
+    runBestHere,
     rerunActiveSearch,
     loadMoreResults,
     cancelActiveSearchRequest,
   } = useSearchSubmit({
     query,
-    setQuery,
-    isLoading,
-    setIsLoading,
     isLoadingMore,
     setIsLoadingMore,
     results,
     setResults,
     submittedQuery,
     setSubmittedQuery,
-    activeTab,
     preferredActiveTab,
     setActiveTab,
     hasActiveTabPreference,
@@ -4520,10 +4657,9 @@ const SearchScreen: React.FC = () => {
     setIsPaginationExhausted,
     canLoadMore,
     setError,
+    onSearchRequestLoadingChange: setSearchRequestLoading,
     setIsSearchSessionActive,
     setSearchMode,
-    setIsAutocompleteSuppressed,
-    setShowSuggestions,
     showPanel: requestResultsSheetReveal,
     resetSheetToHidden,
     scrollResultsToTop,
@@ -4546,26 +4682,37 @@ const SearchScreen: React.FC = () => {
     prepareShortcutSheetTransition,
     onPageOneResultsCommitted: handlePageOneResultsCommitted,
     onShortcutSearchCoverageSnapshot: handleShortcutSearchCoverageSnapshot,
-    mapQueryBudget,
     runtimeSessionController: searchSessionController,
-    runOneHandoffCoordinatorRef,
-    runtimeWorkSchedulerRef,
     onRuntimeMechanismEvent: emitRuntimeMechanismEvent,
+    onSearchSessionShadowTransition: handleSearchSessionShadowTransition,
   });
-  submitSearchRef.current = submitSearch;
+  submitShortcutSearchRef.current = async ({
+    targetTab,
+    label,
+    preserveSheetState,
+    transitionFromDockedPolls,
+    scoreMode: harnessScoreMode,
+  }) => {
+    setQuery(label);
+    await runBestHere(targetTab, label, {
+      preserveSheetState,
+      transitionFromDockedPolls,
+      scoreMode: harnessScoreMode,
+    });
+  };
 
   const loadMoreResultsRef = React.useRef(loadMoreResults);
   const canLoadMoreRef = React.useRef(canLoadMore);
   const searchModeRef = React.useRef(searchMode);
   const currentPageRef = React.useRef(currentPage);
-  const isLoadingRef = React.useRef(isLoading);
+  const isSearchLoadingRef = React.useRef(isSearchLoading);
   const isLoadingMoreRef = React.useRef(isLoadingMore);
   const lastLoadMorePageRef = React.useRef<number | null>(null);
   loadMoreResultsRef.current = loadMoreResults;
   canLoadMoreRef.current = canLoadMore;
   searchModeRef.current = searchMode;
   currentPageRef.current = currentPage;
-  isLoadingRef.current = isLoading;
+  isSearchLoadingRef.current = isSearchLoading;
   isLoadingMoreRef.current = isLoadingMore;
 
   React.useEffect(() => {
@@ -4594,7 +4741,7 @@ const SearchScreen: React.FC = () => {
       if (!allowLoadMoreForCurrentScrollRef.current) {
         return;
       }
-      if (!canLoadMoreRef.current || isLoadingRef.current || isLoadingMoreRef.current) {
+      if (!canLoadMoreRef.current || isSearchLoadingRef.current || isLoadingMoreRef.current) {
         return;
       }
       const nextPage = currentPageRef.current + 1;
@@ -4621,11 +4768,11 @@ const SearchScreen: React.FC = () => {
     if (!isOffline) {
       return;
     }
-    if (!isSearchSessionActive || results || isLoading || isLoadingMore) {
+    if (!isSearchSessionActive || results || isSearchLoading || isLoadingMore) {
       return;
     }
     shouldRetrySearchOnReconnectRef.current = true;
-  }, [isOffline, isLoading, isLoadingMore, isSearchSessionActive, results]);
+  }, [isOffline, isSearchLoading, isLoadingMore, isSearchSessionActive, results]);
 
   React.useEffect(() => {
     if (isOffline) {
@@ -4634,7 +4781,7 @@ const SearchScreen: React.FC = () => {
     if (!shouldRetrySearchOnReconnectRef.current) {
       return;
     }
-    if (!isSearchSessionActive || results || isLoading || isLoadingMore) {
+    if (!isSearchSessionActive || results || isSearchLoading || isLoadingMore) {
       return;
     }
 
@@ -4648,7 +4795,7 @@ const SearchScreen: React.FC = () => {
     void submitSearch({ preserveSheetState: true }, retryQuery);
   }, [
     isOffline,
-    isLoading,
+    isSearchLoading,
     isLoadingMore,
     isSearchSessionActive,
     query,
@@ -4707,25 +4854,31 @@ const SearchScreen: React.FC = () => {
     allowSearchBlurExitRef.current = true;
     ignoreNextSearchBlurRef.current = true;
     suppressAutocompleteResults();
+    beginSubmitChromePriming();
     if (isSuggestionPanelActive) {
       beginSubmitTransition();
+      if (typeof React.startTransition === 'function') {
+        React.startTransition(() => {
+          setIsSuggestionPanelActive(false);
+        });
+      } else {
+        setIsSuggestionPanelActive(false);
+      }
     }
     setIsSearchFocused(false);
-    setIsSuggestionPanelActive(false);
-    setIsAutocompleteSuppressed(true);
     dismissSearchKeyboard();
     resetFocusedMapState();
     setRestaurantOnlyIntent(null);
     void submitSearch({ transitionFromDockedPolls: shouldShowDockedPolls });
   }, [
     captureSearchSessionOrigin,
+    beginSubmitChromePriming,
     dismissSearchKeyboard,
     ensureSearchOverlay,
     isSuggestionPanelActive,
     query,
     resetFocusedMapState,
     setRestaurantOnlyIntent,
-    setIsAutocompleteSuppressed,
     setIsSearchFocused,
     setIsSuggestionPanelActive,
     shouldShowDockedPolls,
@@ -4740,30 +4893,40 @@ const SearchScreen: React.FC = () => {
     isSearchEditingRef.current = false;
     pendingResultsSheetRevealRef.current = false;
     allowSearchBlurExitRef.current = true;
+    ignoreNextSearchBlurRef.current = true;
+    suppressAutocompleteResults();
+    beginSubmitChromePriming();
     if (isSuggestionPanelActive) {
       beginSubmitTransition();
+      if (typeof React.startTransition === 'function') {
+        React.startTransition(() => {
+          setIsSuggestionPanelActive(false);
+        });
+      } else {
+        setIsSuggestionPanelActive(false);
+      }
     }
     setIsSearchFocused(false);
-    setIsSuggestionPanelActive(false);
     dismissSearchKeyboard();
     resetFocusedMapState();
     setRestaurantOnlyIntent(null);
-    void submitSearch(
-      {
-        transitionFromDockedPolls: shouldShowDockedPolls,
-      },
-      'Best dishes'
-    );
+    setQuery('Best dishes');
+    void runBestHere('dishes', 'Best dishes', {
+      transitionFromDockedPolls: shouldShowDockedPolls,
+    });
   }, [
     captureSearchSessionOrigin,
+    beginSubmitChromePriming,
     dismissSearchKeyboard,
     ensureSearchOverlay,
     isSuggestionPanelActive,
     resetFocusedMapState,
-    submitSearch,
+    runBestHere,
+    setQuery,
     setRestaurantOnlyIntent,
     setIsSuggestionPanelActive,
     setIsSearchFocused,
+    suppressAutocompleteResults,
     shouldShowDockedPolls,
     beginSubmitTransition,
   ]);
@@ -4774,30 +4937,40 @@ const SearchScreen: React.FC = () => {
     isSearchEditingRef.current = false;
     pendingResultsSheetRevealRef.current = false;
     allowSearchBlurExitRef.current = true;
+    ignoreNextSearchBlurRef.current = true;
+    suppressAutocompleteResults();
+    beginSubmitChromePriming();
     if (isSuggestionPanelActive) {
       beginSubmitTransition();
+      if (typeof React.startTransition === 'function') {
+        React.startTransition(() => {
+          setIsSuggestionPanelActive(false);
+        });
+      } else {
+        setIsSuggestionPanelActive(false);
+      }
     }
     setIsSearchFocused(false);
-    setIsSuggestionPanelActive(false);
     dismissSearchKeyboard();
     resetFocusedMapState();
     setRestaurantOnlyIntent(null);
-    void submitSearch(
-      {
-        transitionFromDockedPolls: shouldShowDockedPolls,
-      },
-      'Best restaurants'
-    );
+    setQuery('Best restaurants');
+    void runBestHere('restaurants', 'Best restaurants', {
+      transitionFromDockedPolls: shouldShowDockedPolls,
+    });
   }, [
     captureSearchSessionOrigin,
+    beginSubmitChromePriming,
     dismissSearchKeyboard,
     ensureSearchOverlay,
     isSuggestionPanelActive,
     resetFocusedMapState,
-    submitSearch,
+    runBestHere,
+    setQuery,
     setRestaurantOnlyIntent,
     setIsSuggestionPanelActive,
     setIsSearchFocused,
+    suppressAutocompleteResults,
     shouldShowDockedPolls,
     beginSubmitTransition,
   ]);
@@ -4845,7 +5018,6 @@ const SearchScreen: React.FC = () => {
       const nextQuery = match.name;
       const shouldDeferSuggestionClear = beginSubmitTransition();
       cancelAutocomplete();
-      setIsAutocompleteSuppressed(true);
       setIsSearchFocused(false);
       setIsSuggestionPanelActive(false);
       dismissSearchKeyboard();
@@ -4889,7 +5061,6 @@ const SearchScreen: React.FC = () => {
       submitSearch,
       beginSubmitTransition,
       setRestaurantOnlyIntent,
-      setIsAutocompleteSuppressed,
       setIsSearchFocused,
       setIsSuggestionPanelActive,
       suppressAutocompleteResults,
@@ -5002,6 +5173,20 @@ const SearchScreen: React.FC = () => {
     setSuggestions,
     setQuery,
   });
+  const handleSearchFocusWithTrace = React.useCallback(() => {
+    emitSuggestionTransitionTrace('focus_event_start');
+    handleSearchFocus();
+    requestAnimationFrame(() => {
+      emitSuggestionTransitionTrace('focus_event_raf');
+    });
+  }, [emitSuggestionTransitionTrace, handleSearchFocus]);
+  const handleSearchBlurWithTrace = React.useCallback(() => {
+    emitSuggestionTransitionTrace('blur_event_start');
+    handleSearchBlur();
+    requestAnimationFrame(() => {
+      emitSuggestionTransitionTrace('blur_event_raf');
+    });
+  }, [emitSuggestionTransitionTrace, handleSearchBlur]);
 
   const {
     handleRecentSearchPress,
@@ -5022,7 +5207,6 @@ const SearchScreen: React.FC = () => {
     dismissSearchKeyboard,
     resetFocusedMapState,
     setRestaurantOnlyIntent,
-    setIsAutocompleteSuppressed,
     setIsSearchFocused,
     setIsSuggestionPanelActive,
     setShowSuggestions,
@@ -5630,92 +5814,208 @@ const SearchScreen: React.FC = () => {
 
   const shouldRetrySearchOnReconnect = shouldRetrySearchOnReconnectRef.current;
   const runOneCommitSpanPressureActive =
-    isRun1HandoffActive && runOneHandoffSnapshotForRender.metadata.commitSpanPressure === true;
+    isRun1HandoffActive && runOneHandoffSnapshotForRender.commitSpanPressure;
   const isRunOneHeavyFinalizeDeferred =
     isRunOneChromeFreezeActive || (isRun1HandoffActive && runOneCommitSpanPressureActive);
-  const searchResultsPanelSpecArgs = {
-    results,
-    resultsHydrationKey,
-    hydratedResultsKey,
+  const runtimeDataLanePublishTokenRef = React.useRef(0);
+  React.useEffect(() => {
+    searchRuntimeBus.publish({
+      submittedQuery,
+      activeTab,
+      isSearchLoading,
+      isLoadingMore,
+      activeOverlay,
+      rankButtonLabelText,
+      rankButtonIsActive,
+      priceButtonLabelText,
+      priceButtonIsActive,
+      openNow,
+      votesFilterActive,
+      isRankSelectorVisible,
+      isPriceSelectorVisible,
+      didSearchSessionJustActivate,
+      isInitialResultsLoadPending,
+      isFilterTogglePending,
+      shouldRetrySearchOnReconnect,
+      hasSystemStatusBanner,
+    });
+  }, [
     activeTab,
-    rankButtonLabelText,
-    rankButtonIsActive,
-    priceButtonLabelText,
-    priceButtonIsActive,
-    openNow,
-    votesFilterActive,
-    isRankSelectorVisible,
-    isPriceSelectorVisible,
-    handleTabChange,
-    toggleRankSelector,
-    toggleOpenNow,
-    toggleVotesFilter,
-    togglePriceSelector,
-    shouldDisableSearchBlur,
-    searchFiltersLayoutCacheRef,
-    handleSearchFiltersLayoutCache,
+    activeOverlay,
     didSearchSessionJustActivate,
+    hasSystemStatusBanner,
+    isFilterTogglePending,
+    isLoadingMore,
+    isPriceSelectorVisible,
+    isRankSelectorVisible,
     isInitialResultsLoadPending,
     isSearchLoading,
-    isFilterTogglePending,
-    shouldDisableFiltersHeader,
-    shouldDisableResultsHeader,
-    resultsSheetHeaderHeight,
-    filtersHeaderHeight,
-    searchInteractionRef,
-    resultsSheetHeaderHeightRef,
-    filtersHeaderHeightRef,
-    measureResultsHeaderNow,
-    onResultsHeaderLayout,
-    measureFiltersHeaderNow,
-    onFiltersHeaderLayout,
+    openNow,
+    priceButtonIsActive,
+    priceButtonLabelText,
+    rankButtonIsActive,
+    rankButtonLabelText,
+    searchRuntimeBus,
     shouldRetrySearchOnReconnect,
-    hasSystemStatusBanner,
-    shouldUsePlaceholderRows,
-    dishes,
-    restaurants,
-    shouldHydrateResultsForRender,
-    isVisualSyncPending,
-    runOneCommitSpanPressureActive,
-    hydrationOperationId,
-    allowHydrationFinalizeCommit: allowRunOneHydrationFinalizeCommit,
-    isRunOneChromeDeferred: isRunOneHeavyFinalizeDeferred,
-    mapQueryBudget,
-    canLoadMore,
-    isLoadingMore,
-    onDemandNotice,
-    snapPointsMiddle: snapPoints.middle,
     submittedQuery,
-    handleCloseResults,
-    overlayHeaderActionProgress,
-    headerDividerAnimatedStyle,
-    shouldLogResultsViewability,
-    renderDishCard,
-    renderRestaurantCard,
-    activeOverlay,
-    onRuntimeMechanismEvent: emitRuntimeMechanismEvent,
-    setHydratedResultsKeySync,
-    phaseBMaterializerRef,
-    resultsWashAnimatedStyle,
-    resultsContainerAnimatedStyle,
-    resultsSheetVisibilityAnimatedStyle,
-    shouldRenderResultsSheet,
-    shouldDisableResultsSheetInteraction,
-    snapPoints,
-    sheetState,
-    resultsSheetSnapTo,
-    handleResultsSheetSnapStart,
-    handleResultsListScrollBegin,
-    handleResultsListScrollEnd,
-    handleResultsListMomentumBegin,
-    handleResultsListMomentumEnd,
-    handleResultsSheetDragStateChange,
-    handleResultsSheetSettlingChange,
-    handleResultsEndReached,
-    handleResultsSheetSnapChange,
-    resetSheetToHidden,
-    resultsScrollRef,
-  };
+    votesFilterActive,
+  ]);
+  React.useEffect(() => {
+    const publishToken = runtimeDataLanePublishTokenRef.current + 1;
+    runtimeDataLanePublishTokenRef.current = publishToken;
+    let rafHandle: number | null = null;
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    const publishDataLane = () => {
+      if (runtimeDataLanePublishTokenRef.current !== publishToken) {
+        return;
+      }
+      searchRuntimeBus.publish({
+        results,
+        canLoadMore,
+        shouldHydrateResultsForRender,
+        isVisualSyncPending,
+        runOneCommitSpanPressureActive,
+        hydrationOperationId,
+        allowHydrationFinalizeCommit: allowRunOneHydrationFinalizeCommit,
+      });
+    };
+    if (typeof requestAnimationFrame === 'function') {
+      rafHandle = requestAnimationFrame(() => {
+        rafHandle = null;
+        publishDataLane();
+      });
+    } else {
+      timeoutHandle = setTimeout(() => {
+        timeoutHandle = null;
+        publishDataLane();
+      }, 0);
+    }
+    return () => {
+      if (rafHandle != null && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(rafHandle);
+      }
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+    };
+  }, [
+    allowRunOneHydrationFinalizeCommit,
+    canLoadMore,
+    hydrationOperationId,
+    isVisualSyncPending,
+    results,
+    runOneCommitSpanPressureActive,
+    searchRuntimeBus,
+    shouldHydrateResultsForRender,
+  ]);
+  const searchResultsPanelSpecArgs = React.useMemo(
+    () => ({
+      searchRuntimeBus,
+      resultsHydrationKey,
+      hydratedResultsKey,
+      handleTabChange,
+      toggleRankSelector,
+      toggleOpenNow,
+      toggleVotesFilter,
+      togglePriceSelector,
+      shouldDisableSearchBlur,
+      searchFiltersLayoutCacheRef,
+      handleSearchFiltersLayoutCache,
+      resultsSheetHeaderHeight,
+      filtersHeaderHeight,
+      searchInteractionRef,
+      resultsSheetHeaderHeightRef,
+      filtersHeaderHeightRef,
+      measureResultsHeaderNow,
+      onResultsHeaderLayout,
+      measureFiltersHeaderNow,
+      onFiltersHeaderLayout,
+      isRunOneChromeDeferred: isRunOneHeavyFinalizeDeferred,
+      mapQueryBudget,
+      snapPointsMiddle: snapPoints.middle,
+      handleCloseResults,
+      overlayHeaderActionProgress,
+      headerDividerAnimatedStyle,
+      shouldLogResultsViewability,
+      renderDishCard,
+      renderRestaurantCard,
+      onRuntimeMechanismEvent: emitRuntimeMechanismEvent,
+      setHydratedResultsKeySync,
+      phaseBMaterializerRef,
+      resultsWashAnimatedStyle,
+      resultsContainerAnimatedStyle,
+      resultsSheetVisibilityAnimatedStyle,
+      shouldRenderResultsSheet,
+      shouldDisableResultsSheetInteraction,
+      snapPoints,
+      sheetState,
+      resultsSheetSnapTo,
+      handleResultsSheetSnapStart,
+      handleResultsListScrollBegin,
+      handleResultsListScrollEnd,
+      handleResultsListMomentumBegin,
+      handleResultsListMomentumEnd,
+      handleResultsSheetDragStateChange,
+      handleResultsSheetSettlingChange,
+      handleResultsEndReached,
+      handleResultsSheetSnapChange,
+      resetSheetToHidden,
+      resultsScrollRef,
+    }),
+    [
+      searchRuntimeBus,
+      resultsHydrationKey,
+      hydratedResultsKey,
+      handleTabChange,
+      toggleRankSelector,
+      toggleOpenNow,
+      toggleVotesFilter,
+      togglePriceSelector,
+      shouldDisableSearchBlur,
+      searchFiltersLayoutCacheRef,
+      handleSearchFiltersLayoutCache,
+      resultsSheetHeaderHeight,
+      filtersHeaderHeight,
+      searchInteractionRef,
+      resultsSheetHeaderHeightRef,
+      filtersHeaderHeightRef,
+      measureResultsHeaderNow,
+      onResultsHeaderLayout,
+      measureFiltersHeaderNow,
+      onFiltersHeaderLayout,
+      isRunOneHeavyFinalizeDeferred,
+      mapQueryBudget,
+      snapPoints.middle,
+      handleCloseResults,
+      overlayHeaderActionProgress,
+      headerDividerAnimatedStyle,
+      shouldLogResultsViewability,
+      renderDishCard,
+      renderRestaurantCard,
+      emitRuntimeMechanismEvent,
+      setHydratedResultsKeySync,
+      phaseBMaterializerRef,
+      resultsWashAnimatedStyle,
+      resultsContainerAnimatedStyle,
+      resultsSheetVisibilityAnimatedStyle,
+      shouldRenderResultsSheet,
+      shouldDisableResultsSheetInteraction,
+      snapPoints,
+      sheetState,
+      resultsSheetSnapTo,
+      handleResultsSheetSnapStart,
+      handleResultsListScrollBegin,
+      handleResultsListScrollEnd,
+      handleResultsListMomentumBegin,
+      handleResultsListMomentumEnd,
+      handleResultsSheetDragStateChange,
+      handleResultsSheetSettlingChange,
+      handleResultsEndReached,
+      handleResultsSheetSnapChange,
+      resetSheetToHidden,
+      resultsScrollRef,
+    ]
+  );
   const searchThisAreaTop = Math.max(searchLayout.top + searchLayout.height + 12, insets.top + 12);
   const statusBarFadeHeightFallback = Math.max(0, insets.top + 16);
   const statusBarFadeHeight = Math.max(
@@ -5735,22 +6035,8 @@ const SearchScreen: React.FC = () => {
     handlePollCreationSnapChange,
   });
 
-  const searchOverlayPanelsArgs = {
-    pollCreationPanelSpec,
-    shouldShowPollCreationPanel,
-    showSaveListOverlay,
-    shouldShowRestaurantOverlay,
-    showProfileOverlay,
-    showBookmarksOverlay,
-    shouldShowPollsSheet,
-    shouldRenderResultsSheet,
-    isSearchOverlay,
-    isSuggestionPanelActive,
-    searchHeaderActionModeOverride,
-    setSearchHeaderActionModeOverride,
-    handleResultsSheetDragStateChange,
-    handleResultsSheetSettlingChange,
-    pollsPanelOptions: {
+  const pollsPanelOptions = React.useMemo(
+    () => ({
       visible: shouldShowPollsSheet,
       bounds: pollBounds,
       params: pollOverlayParams,
@@ -5774,8 +6060,33 @@ const SearchScreen: React.FC = () => {
       headerActionAnimationToken: pollsHeaderActionAnimationToken,
       headerActionProgress: overlayHeaderActionProgress,
       interactionRef: searchInteractionRef,
-    },
-    bookmarksPanelOptions: {
+    }),
+    [
+      shouldShowPollsSheet,
+      pollBounds,
+      pollOverlayParams,
+      pollsOverlaySnapPoint,
+      pollsOverlayMode,
+      pollsSheetSnap,
+      navBarTopForSnaps,
+      navBarHeight,
+      searchBarTop,
+      snapPoints,
+      handlePollsSnapStart,
+      handlePollsSnapChange,
+      tabOverlaySnapRequest,
+      pollsDockedSnapRequest?.snap,
+      pollsDockedSnapRequest?.token,
+      requestReturnToSearchFromPolls,
+      requestPollCreationExpand,
+      sheetTranslateY,
+      pollsHeaderActionAnimationToken,
+      overlayHeaderActionProgress,
+      searchInteractionRef,
+    ]
+  );
+  const bookmarksPanelOptions = React.useMemo(
+    () => ({
       visible: showBookmarksOverlay,
       navBarTop: navBarTopForSnaps,
       searchBarTop,
@@ -5785,8 +6096,21 @@ const SearchScreen: React.FC = () => {
       onSnapStart: handleBookmarksSnapStart,
       onSnapChange: handleBookmarksSnapChange,
       snapTo: tabOverlaySnapRequest,
-    },
-    profilePanelOptions: {
+    }),
+    [
+      showBookmarksOverlay,
+      navBarTopForSnaps,
+      searchBarTop,
+      snapPoints,
+      sheetTranslateY,
+      overlayHeaderActionProgress,
+      handleBookmarksSnapStart,
+      handleBookmarksSnapChange,
+      tabOverlaySnapRequest,
+    ]
+  );
+  const profilePanelOptions = React.useMemo(
+    () => ({
       visible: showProfileOverlay,
       navBarTop: navBarTopForSnaps,
       searchBarTop,
@@ -5796,8 +6120,21 @@ const SearchScreen: React.FC = () => {
       onSnapStart: handleProfileSnapStart,
       onSnapChange: handleProfileSnapChange,
       snapTo: tabOverlaySnapRequest,
-    },
-    restaurantPanelBaseOptions: {
+    }),
+    [
+      showProfileOverlay,
+      navBarTopForSnaps,
+      searchBarTop,
+      snapPoints,
+      sheetTranslateY,
+      overlayHeaderActionProgress,
+      handleProfileSnapStart,
+      handleProfileSnapChange,
+      tabOverlaySnapRequest,
+    ]
+  );
+  const restaurantPanelBaseOptions = React.useMemo(
+    () => ({
       data: restaurantProfile,
       onDismiss: profileRuntimeController.handleRestaurantOverlayDismissed,
       onRequestClose: profileRuntimeController.handleRestaurantOverlayRequestClose,
@@ -5806,23 +6143,100 @@ const SearchScreen: React.FC = () => {
       searchBarTop,
       interactionEnabled: shouldEnableRestaurantOverlayInteraction,
       containerStyle: restaurantOverlayAnimatedStyle,
-    },
-    restaurantSnapRequest,
-    handleRestaurantOverlaySnapStart,
-    handleRestaurantOverlaySnapChange,
-    saveListPanelOptions: {
+    }),
+    [
+      restaurantProfile,
+      profileRuntimeController.handleRestaurantOverlayDismissed,
+      profileRuntimeController.handleRestaurantOverlayRequestClose,
+      handleRestaurantSavePress,
+      navBarTopForSnaps,
+      searchBarTop,
+      shouldEnableRestaurantOverlayInteraction,
+      restaurantOverlayAnimatedStyle,
+    ]
+  );
+  const saveListPanelOptions = React.useMemo(
+    () => ({
       visible: saveSheetState.visible,
       listType: saveSheetState.listType,
       target: saveSheetState.target,
       searchBarTop,
       onClose: handleCloseSaveSheet,
       onSnapChange: setSaveSheetSnap,
-    },
-  };
-  const shouldFreezeRunOneChromeProps = isRunOneChromeFreezeActive || isRunOnePreflightFreezeActive;
+    }),
+    [
+      saveSheetState.visible,
+      saveSheetState.listType,
+      saveSheetState.target,
+      searchBarTop,
+      handleCloseSaveSheet,
+      setSaveSheetSnap,
+    ]
+  );
+  const searchOverlayPanelsArgs = React.useMemo(
+    () => ({
+      pollCreationPanelSpec,
+      shouldShowPollCreationPanel,
+      showSaveListOverlay,
+      shouldShowRestaurantOverlay,
+      showProfileOverlay,
+      showBookmarksOverlay,
+      shouldShowPollsSheet,
+      shouldRenderResultsSheet,
+      isSearchOverlay,
+      isSuggestionPanelActive,
+      searchHeaderActionModeOverride,
+      setSearchHeaderActionModeOverride,
+      handleResultsSheetDragStateChange,
+      handleResultsSheetSettlingChange,
+      pollsPanelOptions,
+      bookmarksPanelOptions,
+      profilePanelOptions,
+      restaurantPanelBaseOptions,
+      restaurantSnapRequest,
+      handleRestaurantOverlaySnapStart,
+      handleRestaurantOverlaySnapChange,
+      saveListPanelOptions,
+    }),
+    [
+      pollCreationPanelSpec,
+      shouldShowPollCreationPanel,
+      showSaveListOverlay,
+      shouldShowRestaurantOverlay,
+      showProfileOverlay,
+      showBookmarksOverlay,
+      shouldShowPollsSheet,
+      shouldRenderResultsSheet,
+      isSearchOverlay,
+      isSuggestionPanelActive,
+      searchHeaderActionModeOverride,
+      setSearchHeaderActionModeOverride,
+      handleResultsSheetDragStateChange,
+      handleResultsSheetSettlingChange,
+      pollsPanelOptions,
+      bookmarksPanelOptions,
+      profilePanelOptions,
+      restaurantPanelBaseOptions,
+      restaurantSnapRequest,
+      handleRestaurantOverlaySnapStart,
+      handleRestaurantOverlaySnapChange,
+      saveListPanelOptions,
+    ]
+  );
+  const shouldFreezeRunOneChromeProps =
+    isRunOneChromeFreezeActive ||
+    isRunOnePreflightFreezeActive ||
+    isResponseFrameFreezeActive ||
+    isSubmitChromePriming ||
+    isVisualSyncPending;
   const shouldFreezeDeferredChromeProps = shouldFreezeRunOneChromeProps;
   const markerRevealCommitIdForRender =
     resultsVisualSyncCandidate != null ? markerRevealCommitId : null;
+  const shouldFreezeMapTreePropsBase =
+    isSearchLoading ||
+    isRunOnePreflightFreezeActive ||
+    isResponseFrameFreezeActive ||
+    isSubmitChromePriming;
   const frozenMapTreePropsRef = React.useRef<{
     selectedRestaurantId: string | null;
     sortedRestaurantMarkers: typeof visibleSortedRestaurantMarkers;
@@ -5847,11 +6261,15 @@ const SearchScreen: React.FC = () => {
     requireMarkerVisualsForVisualReady: !shouldHoldMapMarkerReveal,
     restaurantFeatures: visibleRestaurantFeatures,
   };
-  if (!isRunOnePreflightFreezeActive) {
+  const shouldFreezeMapTreeForVisualSync =
+    isVisualSyncPending &&
+    frozenMapTreePropsRef.current?.visualReadyRequestKey === resultsVisualSyncCandidate;
+  const shouldFreezeMapTreeProps = shouldFreezeMapTreePropsBase || shouldFreezeMapTreeForVisualSync;
+  if (!shouldFreezeMapTreeProps) {
     frozenMapTreePropsRef.current = nextMapTreeProps;
   }
   const mapTreePropsForRender =
-    isRunOnePreflightFreezeActive && frozenMapTreePropsRef.current
+    shouldFreezeMapTreeProps && frozenMapTreePropsRef.current
       ? frozenMapTreePropsRef.current
       : nextMapTreeProps;
   const frozenSuggestionSurfacePropsRef = React.useRef<{
@@ -5984,6 +6402,7 @@ const SearchScreen: React.FC = () => {
               selectionFeedbackOperationId={runOneSelectionFeedbackOperationId}
               isRunOneHandoffActive={isRun1HandoffActive}
               isRunOneChromeDeferred={isRunOneHeavyFinalizeDeferred || isChromeDeferred}
+              searchRuntimeBus={searchRuntimeBus}
               onRuntimeMechanismEvent={emitRuntimeMechanismEvent}
             />
           </React.Profiler>
@@ -6014,6 +6433,8 @@ const SearchScreen: React.FC = () => {
                     suggestionHeaderHeightAnimatedStyle={suggestionHeaderHeightAnimatedStyle}
                     suggestionPanelAnimatedStyle={suggestionPanelAnimatedStyle}
                     shouldDriveSuggestionLayout={shouldDriveSuggestionLayout}
+                    shouldShowSuggestionBackground={shouldShowSuggestionBackground}
+                    suggestionTopFillHeight={suggestionTopFillHeight}
                     suggestionScrollTopAnimatedStyle={suggestionScrollTopAnimatedStyle}
                     suggestionScrollMaxHeightTarget={suggestionScrollMaxHeightTarget}
                     suggestionScrollMaxHeightAnimatedStyle={suggestionScrollMaxHeightAnimatedStyle}
@@ -6072,8 +6493,8 @@ const SearchScreen: React.FC = () => {
                   shouldShowAutocompleteSpinnerInBar={shouldShowAutocompleteSpinnerInBar}
                   handleQueryChange={handleQueryChange}
                   handleSubmit={handleSubmit}
-                  handleSearchFocus={handleSearchFocus}
-                  handleSearchBlur={handleSearchBlur}
+                  handleSearchFocus={handleSearchFocusWithTrace}
+                  handleSearchBlur={handleSearchBlurWithTrace}
                   handleClear={handleClear}
                   focusSearchInput={focusSearchInput}
                   handleSearchPressIn={handleSearchPressIn}
@@ -6120,7 +6541,12 @@ const SearchScreen: React.FC = () => {
             <SearchResultsSheetTree
               searchPanelSpecArgs={searchResultsPanelSpecArgs}
               overlayPanelsArgs={searchOverlayPanelsArgs}
-              shouldFreezeOverlaySheetProps={isRunOnePreflightFreezeActive}
+              shouldFreezeOverlaySheetProps={
+                isRunOnePreflightFreezeActive ||
+                isResponseFrameFreezeActive ||
+                isSubmitChromePriming ||
+                isVisualSyncPending
+              }
               shouldFreezeOverlayHeaderActionMode={shouldFreezeDeferredChromeProps}
               searchInteractionContextValue={searchInteractionContextValue}
               sheetTranslateY={sheetTranslateY}

@@ -1,34 +1,65 @@
 import type { SearchResponse } from '../../../../types';
 
-export type SearchRuntimeMode = 'natural' | 'shortcut' | null;
 export type SearchRuntimeActiveTab = 'dishes' | 'restaurants';
 
 export type SearchRuntimeBusState = {
   results: SearchResponse | null;
-  resultsRequestKey: string | null;
-  query: string;
+  canLoadMore: boolean;
+  activeOverlay: string;
+  rankButtonLabelText: string;
+  rankButtonIsActive: boolean;
+  priceButtonLabelText: string;
+  priceButtonIsActive: boolean;
+  openNow: boolean;
+  votesFilterActive: boolean;
+  isRankSelectorVisible: boolean;
+  isPriceSelectorVisible: boolean;
+  didSearchSessionJustActivate: boolean;
+  isInitialResultsLoadPending: boolean;
+  isFilterTogglePending: boolean;
+  shouldRetrySearchOnReconnect: boolean;
+  hasSystemStatusBanner: boolean;
+  isResultsFinalizeLaneActive: boolean;
+  shouldHydrateResultsForRender: boolean;
+  isVisualSyncPending: boolean;
+  runOneCommitSpanPressureActive: boolean;
+  hydrationOperationId: string | null;
+  allowHydrationFinalizeCommit: boolean;
   submittedQuery: string;
   activeTab: SearchRuntimeActiveTab;
-  searchMode: SearchRuntimeMode;
   isSearchLoading: boolean;
   isLoadingMore: boolean;
-  isSearchSessionActive: boolean;
-  currentPage: number;
 };
 
 type SearchRuntimeBusListener = () => void;
 
 const INITIAL_STATE: SearchRuntimeBusState = {
   results: null,
-  resultsRequestKey: null,
-  query: '',
+  canLoadMore: false,
+  activeOverlay: 'search',
+  rankButtonLabelText: '',
+  rankButtonIsActive: false,
+  priceButtonLabelText: '',
+  priceButtonIsActive: false,
+  openNow: false,
+  votesFilterActive: false,
+  isRankSelectorVisible: false,
+  isPriceSelectorVisible: false,
+  didSearchSessionJustActivate: false,
+  isInitialResultsLoadPending: false,
+  isFilterTogglePending: false,
+  shouldRetrySearchOnReconnect: false,
+  hasSystemStatusBanner: false,
+  isResultsFinalizeLaneActive: false,
+  shouldHydrateResultsForRender: false,
+  isVisualSyncPending: false,
+  runOneCommitSpanPressureActive: false,
+  hydrationOperationId: null,
+  allowHydrationFinalizeCommit: true,
   submittedQuery: '',
   activeTab: 'dishes',
-  searchMode: null,
   isSearchLoading: false,
   isLoadingMore: false,
-  isSearchSessionActive: false,
-  currentPage: 1,
 };
 
 export class SearchRuntimeBus {
@@ -65,10 +96,11 @@ export class SearchRuntimeBus {
   public publish(patch: Partial<SearchRuntimeBusState>): void {
     let hasChange = false;
     const nextState: SearchRuntimeBusState = { ...this.state };
+    const nextStateMutable = nextState as SearchRuntimeBusState & Record<string, unknown>;
     (Object.keys(patch) as Array<keyof SearchRuntimeBusState>).forEach((key) => {
       const nextValue = patch[key];
       if (!Object.is(this.state[key], nextValue)) {
-        nextState[key] = nextValue as SearchRuntimeBusState[typeof key];
+        nextStateMutable[key] = nextValue as SearchRuntimeBusState[typeof key];
         hasChange = true;
       }
     });

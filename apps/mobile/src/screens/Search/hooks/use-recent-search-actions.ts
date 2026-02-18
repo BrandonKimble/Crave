@@ -37,7 +37,6 @@ type UseRecentSearchActionsArgs<TSuggestion> = {
   dismissSearchKeyboard: () => void;
   resetFocusedMapState: () => void;
   setRestaurantOnlyIntent: (restaurantId: string | null) => void;
-  setIsAutocompleteSuppressed: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSearchFocused: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSuggestionPanelActive: React.Dispatch<React.SetStateAction<boolean>>;
   setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
@@ -72,7 +71,6 @@ export const useRecentSearchActions = <TSuggestion>({
   dismissSearchKeyboard,
   resetFocusedMapState,
   setRestaurantOnlyIntent,
-  setIsAutocompleteSuppressed,
   setIsSearchFocused,
   setIsSuggestionPanelActive,
   setShowSuggestions,
@@ -93,7 +91,6 @@ export const useRecentSearchActions = <TSuggestion>({
       ignoreNextSearchBlurRef.current = true;
       suppressAutocompleteResults();
       cancelAutocomplete();
-      setIsAutocompleteSuppressed(true);
       setIsSearchFocused(false);
       setIsSuggestionPanelActive(false);
       dismissSearchKeyboard();
@@ -116,7 +113,6 @@ export const useRecentSearchActions = <TSuggestion>({
       isSearchEditingRef,
       pendingResultsSheetRevealRef,
       resetFocusedMapState,
-      setIsAutocompleteSuppressed,
       setIsSearchFocused,
       setIsSuggestionPanelActive,
       setQuery,

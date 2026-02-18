@@ -1466,3 +1466,662 @@ Harness signature (all sets):
 - Decision:
   - `KEEP (dependency unlock + ownership cleanup)`.
   - Rationale: no credible stall improvement signal from this slice alone, but it re-establishes required decomposition wiring and removes inline top-food measurement ownership drift; dominant stalls remain `SearchScreen` pre-response overlap and require next structural cuts.
+
+### e3-results-overlay-contract-memo-pass1
+
+- Invalid harness attempt note:
+  - Initial run `shortcut-loop-20260217T065212Z-6ba9` timed out before run markers (dev-client attach failure). Not used for gating.
+- Log/report:
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T071311Z-69c9.log`
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T071311Z-69c9.report.json`
+- Candidate:
+  - Memoize `searchResultsPanelSpecArgs` + `searchOverlayPanelsArgs` contracts in `Search/index.tsx`.
+  - Memoize nested overlay option payloads (`pollsPanelOptions`, `bookmarksPanelOptions`, `profilePanelOptions`, `restaurantPanelBaseOptions`, `saveListPanelOptions`) to prevent root/map-only re-renders from invalidating `SearchResultsSheetTree`.
+- Harness signature:
+  - `enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:500|stall:50|fps:58|uiSampler:1|uiWindow:500|uiStall:50|uiFps:58`
+- First `>50ms` stall `{duration, stage, elapsedMs}`:
+  - run1 `{231.5, pre_response_activation, 376}`
+  - run2 `{162.2, pre_response_activation, 538.7}`
+  - run3 `{162.4, pre_response_activation, 493.7}`
+- Worst stall `{duration, stage, elapsedMs}`:
+  - run1 `{336.0, pre_response_activation, 907.3}`
+  - run2 `{328.0, pre_response_activation, 1100}`
+  - run3 `{283.1, pre_response_activation, 1017.8}`
+- Aggregate:
+  - `stallP95=303.305`
+  - `stallMaxMean=315.7`
+  - catastrophic: `runCount=2`, `windowCount=2`
+- Parity:
+  - run1 `pins=20 dots=20 visible=40 sectioned=40`
+  - run2 `pins=20 dots=20 visible=40 sectioned=40`
+  - run3 `pins=20 dots=20 visible=40 sectioned=40`
+- Decision:
+  - `KEEP`.
+  - Reason: stall metrics improved materially vs prior kept E3 baseline (`stallP95 332.04 -> 303.305`, `stallMaxMean 497.67 -> 315.7`, catastrophic windows reduced) while preserving observed parity in this branch; this is a structural dependency cut for results/overlay ownership isolation.
+- Next trigger expectation:
+  - Continue E3 hard ownership cuts to reduce `pre_response_activation` overlap and remove timeout-shaped settle behavior before E4/Track-A trigger evaluation.
+
+### e3-profiler-callback-stable-pass1
+
+- Invalid harness attempt note:
+  - Initial run `shortcut-loop-20260217T071959Z-3ef6` invalid due compile error (`Identifier 'isLoadingRef' has already been declared`) from profiler ref naming collision. Fixed and reran.
+- Log/report:
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T072118Z-5cd2.log`
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T072118Z-5cd2.report.json`
+- Candidate:
+  - Stabilize `handleProfilerRender` callback identity by moving hot stage inputs (`isLoading`, `isVisualSyncPending`, `shouldHydrateResultsForRender`) to profiler-specific refs.
+  - Remove hot-state dependencies from profiler callback closure so memoized subtrees are not invalidated by instrumentation prop identity churn.
+- Harness signature:
+  - `enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:500|stall:50|fps:58|uiSampler:1|uiWindow:500|uiStall:50|uiFps:58`
+- First `>50ms` stall `{duration, stage, elapsedMs}`:
+  - run1 `{274.4, pre_response_activation, 640.9}`
+  - run2 `{313.8, pre_response_activation, 790.1}`
+  - run3 `{183.5, pre_response_activation, 305.7}`
+- Worst stall `{duration, stage, elapsedMs}`:
+  - run1 `{274.4, pre_response_activation, 640.9}`
+  - run2 `{313.8, pre_response_activation, 790.1}`
+  - run3 `{291.4, pre_response_activation, 874.7}`
+- Aggregate:
+  - `stallP95=228.95`
+  - `stallMaxMean=293.2`
+  - catastrophic: `runCount=1`, `windowCount=1`
+- Parity:
+  - run1 `pins=20 dots=20 visible=40 sectioned=40`
+  - run2 `pins=20 dots=20 visible=40 sectioned=40`
+  - run3 `pins=20 dots=20 visible=40 sectioned=40`
+- Decision:
+  - `KEEP`.
+  - Reason: meaningful improvement vs prior kept candidate (`stallP95 303.305 -> 228.95`, `stallMaxMean 315.7 -> 293.2`, catastrophic `2 -> 1`) with parity preserved; this is a direct ownership/isolation fix (instrumentation decoupling from render invalidation).
+- Next trigger expectation:
+  - Move into E4 map isolation; dominant first/worst windows still `pre_response_activation` with `SearchScreen` + map subtree overlap.
+
+### e4-map-marker-hold-visualsync-pass1-rerun
+
+- Log/report:
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T072839Z-694b.log`
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T072839Z-694b.report.json`
+- Candidate:
+  - Expanded `shouldHoldMapMarkerReveal` from shortcut-only to phase-wide (`isVisualSyncPending || isShortcutCoverageLoading`).
+- Harness signature:
+  - `enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:500|stall:50|fps:58|uiSampler:1|uiWindow:500|uiStall:50|uiFps:58`
+- First `>50ms` stall `{duration, stage, elapsedMs}`:
+  - run1 `{244.2, pre_response_activation, 399.5}`
+  - run2 `{184.9, pre_response_activation, 373.3}`
+  - run3 `{178.2, pre_response_activation, 400.6}`
+- Worst stall `{duration, stage, elapsedMs}`:
+  - run1 `{334.8, pre_response_activation, 920.7}`
+  - run2 `{299.3, pre_response_activation, 948.9}`
+  - run3 `{271.7, pre_response_activation, 992.0}`
+- Aggregate:
+  - `stallP95=161.16`
+  - `stallMaxMean=301.933`
+  - catastrophic: `runCount=1`, `windowCount=1`
+- Parity:
+  - run1 `pins=20 dots=20 visible=40 sectioned=40`
+  - run2 `pins=20 dots=20 visible=40 sectioned=40`
+  - run3 `pins=20 dots=20 visible=40 sectioned=40`
+- Decision:
+  - `REVERT`.
+  - Reason: mode-wide marker hold was a timing shift and regressed worst-stall mean vs prior kept baseline while preserving the same timeout-shaped overlap pattern; no structural dependency unlock justified keeping it.
+
+### e4-map-finalize-lane-defer-pass1
+
+- Log/report:
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T073623Z-485d.log`
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T073623Z-485d.report.json`
+- Candidate:
+  - Added explicit map finalize-lane contract (`deferMapFinalize`) in `SearchMap` and wired pressure signal from `Search/index.tsx` (`isVisualSyncPending || shouldHydrateResultsForRender || runOneCommitSpanPressureActive`).
+  - Reverted the prior mode-wide marker-hold broadening.
+- Harness signature:
+  - `enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:500|stall:50|fps:58|uiSampler:1|uiWindow:500|uiStall:50|uiFps:58`
+- First `>50ms` stall `{duration, stage, elapsedMs}`:
+  - run1 `{229.1, pre_response_activation, 363.1}`
+  - run2 `{181.5, pre_response_activation, 338.6}`
+  - run3 `{172.9, pre_response_activation, 420.6}`
+- Worst stall `{duration, stage, elapsedMs}`:
+  - run1 `{300.8, pre_response_activation, 874.8}`
+  - run2 `{250.1, pre_response_activation, 998.4}`
+  - run3 `{250.7, pre_response_activation, 987.6}`
+- Aggregate:
+  - `stallP95=198.16`
+  - `stallMaxMean=267.2`
+  - catastrophic: `runCount=1`, `windowCount=1`
+- Parity:
+  - run1 `pins=20 dots=20 visible=40 sectioned=40`
+  - run2 `pins=20 dots=20 visible=40 sectioned=40`
+  - run3 `pins=20 dots=20 visible=40 sectioned=40`
+- Decision:
+  - `KEEP`.
+  - Reason: improves both aggregate stall metrics vs the latest kept baseline (`stallP95 228.95 -> 198.16`, `stallMaxMean 293.2 -> 267.2`) with parity preserved, while introducing an explicit map/list finalize-lane contract needed for Track A/B enforcement.
+- Trigger evaluation:
+  - E4 completion criteria still trip escalation (`first-stall p95 ~=224.34ms > 120ms`, catastrophic overlap persists), so auto-advance to `Track A` is required by V3 policy.
+
+### tracka-hydration-small-steps-pass1
+
+- Log/report:
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T074151Z-3eb3.log`
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T074151Z-3eb3.report.json`
+- Candidate:
+  - Tighten Track A hydration increment size in read-model runtime (`initial rows 6->4`; pressure/visual-sync forces 1-row steps; hydrated step capped to 2 rows).
+- Harness signature:
+  - `enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:500|stall:50|fps:58|uiSampler:1|uiWindow:500|uiStall:50|uiFps:58`
+- First `>50ms` stall `{duration, stage, elapsedMs}`:
+  - run1 `{214.0, pre_response_activation, 383.1}`
+  - run2 `{185.0, pre_response_activation, 530.9}`
+  - run3 `{255.3, pre_response_activation, 426.8}`
+- Worst stall `{duration, stage, elapsedMs}`:
+  - run1 `{239.3, pre_response_activation, 934.7}`
+  - run2 `{185.0, pre_response_activation, 530.9}`
+  - run3 `{255.3, pre_response_activation, 426.8}`
+- Aggregate:
+  - `stallP95=185.545`
+  - `stallMaxMean=226.533`
+  - catastrophic: `runCount=0`, `windowCount=0`
+- Parity:
+  - run1 `pins=20 dots=20 visible=40 sectioned=40`
+  - run2 `pins=20 dots=20 visible=40 sectioned=40`
+  - run3 `pins=20 dots=20 visible=40 sectioned=40`
+- Decision:
+  - `KEEP`.
+  - Reason: structural hydration-step reduction improved aggregate stalls vs the current kept E4 baseline (`stallP95 198.16 -> 185.545`, `stallMaxMean 267.2 -> 226.533`) while preserving parity and removing catastrophic windows.
+- Track trigger evaluation:
+  - Track A exit thresholds still fail (`first-stall p95 ~=251.17ms > 90ms`, `worst-stall p95 ~=253.70ms > 120ms`), so auto-advance to `Track B` is mandatory per V3 `4.2`.
+
+### trackb-hard-phase-lanes-pass1
+
+- Log/report:
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T075123Z-1775.log`
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T075123Z-1775.report.json`
+- Candidate:
+  - Track B phase-lane enforcement pass:
+    - Added explicit `isResultsFinalizeLaneActive` signal in read-model runtime (`results_finalize_lane_state` spans).
+    - Wired results finalize-lane state to root map gating (`deferMapPins` + `deferMapFinalize`).
+    - Deferred map `pins` phase while list finalize lane is active; kept `full` labels finalize lane deferred until allowed.
+- Harness signature:
+  - `enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:500|stall:50|fps:58|uiSampler:1|uiWindow:500|uiStall:50|uiFps:58`
+- First `>50ms` stall `{duration, stage, elapsedMs}`:
+  - run1 `{215.7, pre_response_activation, 359.8}`
+  - run2 `{186.5, pre_response_activation, 344.6}`
+  - run3 `{173.7, pre_response_activation, 337.0}`
+- Worst stall `{duration, stage, elapsedMs}`:
+  - run1 `{215.7, pre_response_activation, 359.8}`
+  - run2 `{196.7, pre_response_activation, 857.5}`
+  - run3 `{224.8, pre_response_activation, 850.7}`
+- Aggregate:
+  - `stallP95=191.6`
+  - `stallMaxMean=212.4`
+  - catastrophic: `runCount=0`, `windowCount=0`
+- Parity:
+  - run1 `pins=20 dots=20 visible=40 sectioned=40`
+  - run2 `pins=20 dots=20 visible=40 sectioned=40`
+  - run3 `pins=20 dots=20 visible=40 sectioned=40`
+- Decision:
+  - `KEEP`.
+  - Reason: worst-stall distribution improved materially (`stallMaxMean 226.533 -> 212.4`) with catastrophic windows still zero and parity preserved; slight `stallP95` movement is within the noise band and outweighed by the structural lane-ownership unlock.
+- Track trigger evaluation:
+  - Track B exit threshold still fails (`first-stall p95 ~=212.78ms > 60ms`), so auto-advance to `Track C` is mandatory per V3 `4.2`.
+
+## 2026-02-17 Track C candidate evaluation (reverted)
+
+### trackc-runtime-bus-map-lane-pass1
+
+- Log/report:
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T075710Z-05a9.log`
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T075710Z-05a9.report.json`
+- Candidate:
+  - Track C bus-lane ownership experiment: moved results-finalize lane signal off root React state and published via runtime bus; map subscribed directly from bus lane state.
+- Harness signature:
+  - `enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:500|stall:50|fps:58|uiSampler:1|uiWindow:500|uiStall:50|uiFps:58`
+- First `>50ms` stall `{duration, stage, elapsedMs}`:
+  - run1 `{246.6, pre_response_activation, 408.4}`
+  - run2 `{160.6, pre_response_activation, 458.3}`
+  - run3 `{164.5, pre_response_activation, 471.1}`
+- Worst stall `{duration, stage, elapsedMs}`:
+  - run1 `{296.8, pre_response_activation, 936.6}`
+  - run2 `{236.2, pre_response_activation, 1102.6}`
+  - run3 `{228.7, pre_response_activation, 1027.3}`
+- Aggregate:
+  - `stallP95=235.075`
+  - `stallMaxMean=253.9`
+  - catastrophic: `runCount=0`, `windowCount=0`
+- Parity:
+  - run1 `pins=20 dots=20 visible=40 sectioned=40`
+  - run2 `pins=20 dots=20 visible=40 sectioned=40`
+  - run3 `pins=20 dots=20 visible=40 sectioned=40`
+- Decision:
+  - `REVERT`.
+  - Reason: large regression versus kept Track B baseline (`stallP95 191.6 -> 235.075`, `stallMaxMean 212.4 -> 253.9`) with no required dependency unlock.
+- Track status:
+  - Remain in Track C; continue with next hard architecture-cut slice targeting root-level commit ownership removal.
+
+### trackc-lane-signal-ref-pass2
+
+- Log/report:
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T080500Z-27a5.log`
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T080500Z-27a5.report.json`
+- Candidate:
+  - Track C hard ownership cut: removed root state ownership for results-finalize -> map lane admission.
+  - `Search/index.tsx` now writes finalize-lane signal to a ref (no root state commit), and `SearchMap` reads that signal directly inside stage scheduler gates.
+- Harness signature:
+  - `enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:500|stall:50|fps:58|uiSampler:1|uiWindow:500|uiStall:50|uiFps:58`
+- First `>50ms` stall `{duration, stage, elapsedMs}`:
+  - run1 `{178.6, pre_response_activation, 313.6}`
+  - run2 `{175.9, pre_response_activation, 273.3}`
+  - run3 `{227.1, pre_response_activation, 302.2}`
+- Worst stall `{duration, stage, elapsedMs}`:
+  - run1 `{231.1, pre_response_activation, 874.6}`
+  - run2 `{224.8, pre_response_activation, 800.8}`
+  - run3 `{227.1, pre_response_activation, 302.2}`
+- Aggregate:
+  - `stallP95=111.27`
+  - `stallMaxMean=227.667`
+  - catastrophic: `runCount=0`, `windowCount=0`
+- Parity:
+  - run1 `pins=20 dots=20 visible=40 sectioned=40`
+  - run2 `pins=20 dots=20 visible=40 sectioned=40`
+  - run3 `pins=20 dots=20 visible=40 sectioned=40`
+- Decision:
+  - `KEEP`.
+  - Reason: significant stall-distribution improvement (`stallP95 191.6 -> 111.27`) with parity intact, zero catastrophic windows, and direct Track C ownership unlock (lane updates no longer force root state commits).
+- Track status:
+  - Track C remains active; next slice targets further root commit ownership removal in results/sheet finalize path to reduce first/worst p95 windows.
+
+### trackc-map-signal-ref-only-pass3
+
+- Log/report:
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T081021Z-5ea8.log`
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T081021Z-5ea8.report.json`
+- Candidate:
+  - Track C follow-on: switched map defer lanes to signal refs only (removed defer booleans from props) so map lane admission consumed only ref updates.
+- Harness signature:
+  - `enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:500|stall:50|fps:58|uiSampler:1|uiWindow:500|uiStall:50|uiFps:58`
+- First `>50ms` stall `{duration, stage, elapsedMs}`:
+  - run1 `{233.9, pre_response_activation, 371.4}`
+  - run2 `{188.1, pre_response_activation, 402.4}`
+  - run3 `{196.8, pre_response_activation, 408.9}`
+- Worst stall `{duration, stage, elapsedMs}`:
+  - run1 `{233.9, pre_response_activation, 371.4}`
+  - run2 `{278.2, pre_response_activation, 939.7}`
+  - run3 `{196.8, pre_response_activation, 408.9}`
+- Aggregate:
+  - `stallP95=174.06`
+  - `stallMaxMean=236.3`
+  - catastrophic: `runCount=0`, `windowCount=0`
+- Parity:
+  - run1 `pins=20 dots=20 visible=40 sectioned=40`
+  - run2 `pins=20 dots=20 visible=40 sectioned=40`
+  - run3 `pins=20 dots=20 visible=40 sectioned=40`
+- Decision:
+  - `REVERT`.
+  - Reason: regression versus kept Track C baseline (`stallP95 111.27 -> 174.06`, `stallMaxMean 227.667 -> 236.3`) with no additional dependency unlock.
+- Track status:
+  - Continue Track C from the previous kept baseline (`trackc-lane-signal-ref-pass2`).
+
+### trackc-chrome-freeze-hydration-pass4
+
+- Log/report:
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T081650Z-39e7.log`
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T081650Z-39e7.report.json`
+- Candidate:
+  - Extended deferred chrome freeze gating to include active hydration/visual-sync pressure (`shouldHydrateResultsForRender || isVisualSyncPending`) and matched bottom-nav freeze window.
+- Harness signature:
+  - `enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:500|stall:50|fps:58|uiSampler:1|uiWindow:500|uiStall:50|uiFps:58`
+- First `>50ms` stall `{duration, stage, elapsedMs}`:
+  - run1 `{226.7, pre_response_activation, 363.9}`
+  - run2 `{170.4, pre_response_activation, 390.3}`
+  - run3 `{190.7, pre_response_activation, 190.6}`
+- Worst stall `{duration, stage, elapsedMs}`:
+  - run1 `{226.7, pre_response_activation, 363.9}`
+  - run2 `{222.5, pre_response_activation, 946.1}`
+  - run3 `{233.5, pre_response_activation, 833.1}`
+- Aggregate:
+  - `stallP95=200.05`
+  - `stallMaxMean=227.567`
+  - catastrophic: `runCount=0`, `windowCount=0`
+- Parity:
+  - run1 `pins=20 dots=20 visible=40 sectioned=40`
+  - run2 `pins=20 dots=20 visible=40 sectioned=40`
+  - run3 `pins=20 dots=20 visible=40 sectioned=40`
+- Decision:
+  - `REVERT`.
+  - Reason: strong regression versus kept Track C baseline (`stallP95 111.27 -> 200.05`) with no dependency unlock.
+- Track status:
+  - Continue Track C from `trackc-lane-signal-ref-pass2` baseline.
+
+### trackc-overlay-runtime-freeze-pass5
+
+- Log/report:
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T140738Z-316a.log`
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T140738Z-316a.report.json`
+  - rerun integrity check: `/tmp/perf-shortcut-loop-shortcut-loop-20260217T141136Z-25fd.log`
+  - rerun report: `/tmp/perf-shortcut-loop-shortcut-loop-20260217T141136Z-25fd.report.json`
+- Candidate:
+  - Attempted Track C chrome-runtime freeze by holding additional overlay runtime props under existing deferred chrome freeze window.
+- Harness signature:
+  - `enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:500|stall:50|fps:58|uiSampler:1|uiWindow:500|uiStall:50|uiFps:58`
+- First `>50ms` stall `{duration, stage, elapsedMs}`:
+  - run1 `{249.6, pre_response_activation, 422.8}`
+  - run2 `{264.0, pre_response_activation, 264.0}`
+  - run3 `{incomplete}`
+- Worst stall `{duration, stage, elapsedMs}`:
+  - run1 `{249.6, pre_response_activation, 422.8}`
+  - run2 `{473.7, pre_response_activation, 2240.2}`
+  - run3 `{incomplete}`
+- Aggregate:
+  - primary runset marker integrity incomplete (`completedRuns=2/3`, no loop-complete marker)
+  - partial aggregate from completed runs: `stallP95=219.75`, `stallMaxMean=361.65`
+  - catastrophic: `runCount=1`, `windowCount=1`
+  - rerun marker integrity also incomplete (`completedRuns=1/3`, loop stalled after run1)
+- Parity:
+  - run1 `pins=20 dots=20 visible=40 sectioned=40`
+  - run2 `pins=20 dots=20 visible=40 sectioned=40`
+  - run3 `{incomplete}`
+- Decision:
+  - `REVERT`.
+  - Reason: candidate regressed completed-run stall metrics and introduced harness instability (unable to produce a valid 3-run matched set), with no structural dependency unlock.
+- Track status:
+  - Continue Track C from `trackc-lane-signal-ref-pass2` baseline; avoid chrome-prop freeze variants (fake-split/timing-shift risk).
+
+### trackc-marker-domain-ref-pass6
+
+- Log/report:
+  - invalid attempt (no harness events): `/tmp/perf-shortcut-loop-shortcut-loop-20260217T142519Z-25ce.log`
+  - valid runset: `/tmp/perf-shortcut-loop-shortcut-loop-20260217T145001Z-1fff.log`
+  - valid report: `/tmp/perf-shortcut-loop-shortcut-loop-20260217T145001Z-1fff.report.json`
+- Candidate:
+  - Track C ownership cut attempt removing root `markerRestaurants` React state in favor of ref-owned marker contract.
+- Harness signature:
+  - `enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:500|stall:50|fps:58|uiSampler:1|uiWindow:500|uiStall:50|uiFps:58`
+- First `>50ms` stall `{duration, stage, elapsedMs}`:
+  - run1 `{313.0, pre_response_activation, 313.0}`
+  - run2 `{165.6, pre_response_activation, 516.5}`
+  - run3 `{190.0, pre_response_activation, 494.2}`
+- Worst stall `{duration, stage, elapsedMs}`:
+  - run1 `{362.8, pre_response_activation, 1430.0}`
+  - run2 `{269.6, pre_response_activation, 1032.4}`
+  - run3 `{357.3, pre_response_activation, 1223.8}`
+- Aggregate:
+  - `stallP95=270.72`
+  - `stallMaxMean=329.9`
+  - catastrophic: `runCount=2`, `windowCount=3`
+- Parity:
+  - run1 `pins=20 dots=20 visible=40 sectioned=40`
+  - run2 `pins=20 dots=20 visible=40 sectioned=40`
+  - run3 `pins=20 dots=20 visible=40 sectioned=40`
+- Decision:
+  - `REVERT`.
+  - Reason: major regression versus kept Track C baseline (`stallP95 111.27 -> 270.72`, catastrophic `0 -> 2`) despite parity holding; this cut increased same-window heavy overlap rather than reducing it.
+- Track status:
+  - Continue Track C from `trackc-lane-signal-ref-pass2` baseline; next slice must cut `SearchScreen` + `SearchResultsSheetTree` overlap without reintroducing map/list same-window heavy commits.
+
+### trackc-results-sheet-bus-domain-pass7
+
+- Log/report:
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T160055Z-588a.log`
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T160055Z-588a.report.json`
+- Candidate:
+  - Track C ownership cut attempt moving results/list payload ownership for `SearchResultsSheetTree` from root prop fanout to `searchRuntimeBus` selectors.
+- Harness signature:
+  - `enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:500|stall:50|fps:58|uiSampler:1|uiWindow:500|uiStall:50|uiFps:58`
+- First `>50ms` stall `{duration, stage, elapsedMs}`:
+  - run1 `{447.3, pre_response_activation, 447.1}`
+  - run2 `{208.8, pre_response_activation, 208.7}`
+  - run3 `{174.4, pre_response_activation, 228.8}`
+- Worst stall `{duration, stage, elapsedMs}`:
+  - run1 `{471.2, pre_response_activation, 949.7}`
+  - run2 `{238.9, pre_response_activation, 1218.5}`
+  - run3 `{279.3, pre_response_activation, 945.7}`
+- Aggregate:
+  - `stallP95=304.02`
+  - `stallMaxMean=329.8`
+  - catastrophic: `runCount=1`, `windowCount=3`
+- Parity:
+  - run1 `pins=20 dots=20 visible=40 sectioned=40`
+  - run2 `pins=20 dots=20 visible=40 sectioned=40`
+  - run3 `pins=20 dots=20 visible=40 sectioned=40`
+- Decision:
+  - `REVERT`.
+  - Reason: severe regression versus kept Track C baseline (`stallP95 111.27 -> 304.02`, `stallMaxMean 227.667 -> 329.8`, catastrophic `0 -> 1`) and all runs hit settle timeout (`durationMs ~= 45016ms`) with no dependency unlock that justifies keeping.
+- Track status:
+  - Continue Track C from `trackc-lane-signal-ref-pass2` baseline; prioritize a stricter `SearchResultsSheetTree` admission split that does not shift list ownership to delayed bus propagation.
+
+### trackc-hydration-admission-ref-pass8
+
+- Log/report:
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T161928Z-010c.log`
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T161928Z-010c.report.json`
+- Candidate:
+  - Track C ownership cut attempt moving hydration admission booleans (`shouldHydrateResultsForRender`, `isVisualSyncPending`, `runOneCommitSpanPressureActive`) off root prop ownership into a ref/snapshot contract consumed by results read-model runtime.
+- Harness signature:
+  - `enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:500|stall:50|fps:58|uiSampler:1|uiWindow:500|uiStall:50|uiFps:58`
+- First `>50ms` stall `{duration, stage, elapsedMs}`:
+  - run1 `{261.7, pre_response_activation, 400.0}`
+  - run2 `{187.9, pre_response_activation, 414.8}`
+  - run3 `{246.5, pre_response_activation, 246.5}`
+- Worst stall `{duration, stage, elapsedMs}`:
+  - run1 `{282.6, pre_response_activation, 941.4}`
+  - run2 `{224.2, pre_response_activation, 1476.4}`
+  - run3 `{246.5, pre_response_activation, 246.5}`
+- Aggregate:
+  - `stallP95=223.72`
+  - `stallMaxMean=251.1`
+  - catastrophic: `runCount=0`, `windowCount=0`
+- Parity:
+  - run1 `pins=20 dots=20 visible=40 sectioned=40`
+  - run2 `pins=20 dots=20 visible=40 sectioned=40`
+  - run3 `pins=20 dots=20 visible=40 sectioned=40`
+- Decision:
+  - `REVERT`.
+  - Reason: regression versus kept Track C baseline (`stallP95 111.27 -> 223.72`, `stallMaxMean 227.667 -> 251.1`) with no dependency unlock and continued run timeout behavior (`durationMs ~= 45017ms`).
+- Track status:
+  - Continue Track C from `trackc-lane-signal-ref-pass2` baseline; avoid hydration-admission ref snapshots that defer root churn without reducing dominant `SearchScreen` + `SearchResultsSheetTree` overlap.
+
+### trackc-control-post-pass8-revert
+
+- Log/report:
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T162659Z-528b.log`
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T162659Z-528b.report.json`
+- Candidate:
+  - Control verification run after reverting `trackc-hydration-admission-ref-pass8` to confirm baseline integrity before next structural slice.
+- Harness signature:
+  - `enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:500|stall:50|fps:58|uiSampler:1|uiWindow:500|uiStall:50|uiFps:58`
+- First `>50ms` stall `{duration, stage, elapsedMs}`:
+  - run1 `{214.5, pre_response_activation, 355.2}`
+  - run2 `{192.9, pre_response_activation, 337.1}`
+  - run3 `{187.8, pre_response_activation, 373.4}`
+- Worst stall `{duration, stage, elapsedMs}`:
+  - run1 `{214.5, pre_response_activation, 355.2}`
+  - run2 `{322.8, pre_response_activation, 1372.5}`
+  - run3 `{243.8, pre_response_activation, 905.0}`
+- Aggregate:
+  - `stallP95=105.69`
+  - `stallMaxMean=260.367`
+  - catastrophic: `runCount=1`, `windowCount=1`
+- Parity:
+  - run1 `pins=20 dots=20 visible=40 sectioned=40`
+  - run2 `pins=20 dots=20 visible=40 sectioned=40`
+  - run3 `pins=20 dots=20 visible=40 sectioned=40`
+- Decision:
+  - `BASELINE_LOCK`.
+  - Reason: matched runset complete with expected signature; use as immediate comparison baseline for next Track C slices.
+
+### trackc-hydration-step-policy-pass9
+
+- Log/report:
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T163056Z-0eb7.log`
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T163056Z-0eb7.report.json`
+- Candidate:
+  - Track C admission-policy cut: when `shouldHydrateResultsForRender` is false and commit-span pressure is not active, stop forcing `stepRows=1` (allow default step sizing) to reduce hydration ramp commit count.
+- Harness signature:
+  - `enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:500|stall:50|fps:58|uiSampler:1|uiWindow:500|uiStall:50|uiFps:58`
+- First `>50ms` stall `{duration, stage, elapsedMs}`:
+  - run1 `{234.9, pre_response_activation, 403.1}`
+  - run2 `{156.8, pre_response_activation, 386.6}`
+  - run3 `{155.7, pre_response_activation, 329.9}`
+- Worst stall `{duration, stage, elapsedMs}`:
+  - run1 `{234.9, pre_response_activation, 403.1}`
+  - run2 `{257.6, pre_response_activation, 1493.7}`
+  - run3 `{155.7, pre_response_activation, 329.9}`
+- Aggregate:
+  - `stallP95=152.215`
+  - `stallMaxMean=216.067`
+  - catastrophic: `runCount=0`, `windowCount=0`
+- Parity:
+  - run1 `pins=20 dots=20 visible=40 sectioned=40`
+  - run2 `pins=20 dots=20 visible=40 sectioned=40`
+  - run3 `pins=20 dots=20 visible=40 sectioned=40`
+- Decision:
+  - `REVERT`.
+  - Reason: reduced worst/catastrophic windows but regressed first-stall distribution materially versus the locked control baseline (`stallP95 105.69 -> 152.215`) with no required dependency unlock.
+- Track status:
+  - Continue Track C from `trackc-lane-signal-ref-pass2` baseline and prioritize cuts that reduce both first-stall and worst-stall simultaneously.
+
+### trackc-hydration-step-policy-pass10
+
+- Log/report:
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T163703Z-6bcb.log`
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T163703Z-6bcb.report.json`
+- Candidate:
+  - Track C admission-policy variant: when `shouldHydrateResultsForRender` is false and commit-span pressure is inactive, clamp to small steps (`<=2`) under visual-sync/pressure instead of forcing step `1`.
+- Harness signature:
+  - `enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:500|stall:50|fps:58|uiSampler:1|uiWindow:500|uiStall:50|uiFps:58`
+- First `>50ms` stall `{duration, stage, elapsedMs}`:
+  - run1 `{217.7, pre_response_activation, 388.3}`
+  - run2 `{218.3, pre_response_activation, 389.1}`
+  - run3 `{160.6, pre_response_activation, 351.3}`
+- Worst stall `{duration, stage, elapsedMs}`:
+  - run1 `{217.7, pre_response_activation, 388.3}`
+  - run2 `{279.7, pre_response_activation, 1436.5}`
+  - run3 `{198.7, pre_response_activation, 878.1}`
+- Aggregate:
+  - `stallP95=125.955`
+  - `stallMaxMean=232.033`
+  - catastrophic: `runCount=0`, `windowCount=0`
+- Parity:
+  - run1 `pins=20 dots=20 visible=40 sectioned=40`
+  - run2 `pins=20 dots=20 visible=40 sectioned=40`
+  - run3 `pins=20 dots=20 visible=40 sectioned=40`
+- Decision:
+  - `REVERT`.
+  - Reason: mixed outcome (worst/catastrophic improved, but first-stall distribution regressed versus locked control baseline) without dependency unlock.
+- Track status:
+  - Continue Track C from locked control baseline `trackc-control-post-pass8-revert` and avoid step-policy timing variants.
+
+### trackc-hydration-admission-bus-domain-pass11
+
+- Log/report:
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T170631Z-597e.log`
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T170631Z-597e.report.json`
+- Candidate:
+  - Track C ownership cut attempt moving hydration admission signals (`shouldHydrateResultsForRender`, `isVisualSyncPending`, `runOneCommitSpanPressureActive`, `hydrationOperationId`, `allowHydrationFinalizeCommit`) into `searchRuntimeBus` and consuming them inside `useSearchResultsPanelSpec`.
+- Harness signature:
+  - `enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:500|stall:50|fps:58|uiSampler:1|uiWindow:500|uiStall:50|uiFps:58`
+- First `>50ms` stall `{duration, stage, elapsedMs}`:
+  - run1 `{350.2, pre_response_activation, 649.5}`
+  - run2 `{157.5, pre_response_activation, 417.8}`
+  - run3 `{193.2, pre_response_activation, 193.1}`
+- Worst stall `{duration, stage, elapsedMs}`:
+  - run1 `{350.2, pre_response_activation, 649.5}`
+  - run2 `{308.6, pre_response_activation, 1158.4}`
+  - run3 `{217.3, pre_response_activation, 1234.6}`
+- Aggregate:
+  - `stallP95=164.535`
+  - `stallMaxMean=292.033`
+  - catastrophic: `runCount=2`, `windowCount=3`
+- Parity:
+  - run1 `pins=20 dots=20 visible=40 sectioned=40`
+  - run2 `pins=20 dots=20 visible=40 sectioned=40`
+  - run3 `pins=20 dots=20 visible=40 sectioned=40`
+- Decision:
+  - `REVERT`.
+  - Reason: severe regression versus locked control baseline (`stallP95 105.69 -> 164.535`, `stallMaxMean 260.367 -> 292.033`, catastrophic `1 -> 2`) with no indispensable dependency unlock.
+- Track status:
+  - Reverted to pre-pass11 state; continue Track C with stricter `SearchResultsSheetTree` ownership cuts that reduce first/worst stalls together and do not increase catastrophic overlap.
+
+### trackc-ownership-consolidation-batchA (in progress; no gates yet)
+
+- Status:
+  - Structural-only pass in progress (per user instruction: defer gates/harness until ownership layout is fully cut).
+- Ownership cuts applied in this batch:
+  - Removed root callback mediation for results finalize lane:
+    - `useSearchResultsPanelSpec` now writes finalize-lane state directly into a shared ref (`resultsFinalizeLaneSignalRef`) instead of callbacking through `SearchScreen`.
+  - Added unmount cleanup for finalize-lane signal:
+    - finalize-lane ref is reset on teardown to avoid stale deferred-map gating.
+  - Removed root boolean defer props from `SearchMap` staged-publish gating:
+    - replaced with signal refs (`deferMapPressureSignalRef`, `deferMapPinsSignalRef`, `deferMapFinalizeSignalRef`) to reduce root-prop ownership and keep lane gating local/read-only.
+  - Root now provides stable signal refs to map/results domains:
+    - `mapPressureLaneSignalRef` (visual-sync/commit-pressure)
+    - `resultsFinalizeLaneActiveRef` (results finalize lane)
+  - Moved hydration-admission contract off root panel-spec prop fanout:
+    - `SearchRuntimeBus` now carries `shouldHydrateResultsForRender`, `isVisualSyncPending`, `runOneCommitSpanPressureActive`, `hydrationOperationId`, and `allowHydrationFinalizeCommit`.
+    - Root publishes those via runtime bus update path.
+    - `useSearchResultsPanelSpec` consumes those via `useSearchRuntimeBusSelector`.
+    - Removed those volatile fields from `searchResultsPanelSpecArgs`.
+  - Expanded results-domain bus ownership:
+    - `useSearchResultsPanelSpec` now sources `results`, `activeTab`, `isSearchLoading`, `isLoadingMore`, and `submittedQuery` from runtime bus.
+    - Removed those fields from root `searchResultsPanelSpecArgs` (further root/results separation).
+  - Completed consolidated runtime-bus publish path in root:
+    - single `searchRuntimeBus.publish` effect now publishes both base runtime contract (`results`, `query`, tab/mode/loading/session/page) and hydration-admission contract in one place.
+  - Additional root/results fanout reduction:
+    - moved `canLoadMore` and `activeOverlay` into runtime bus ownership.
+    - `useSearchResultsPanelSpec` now reads them via bus selector.
+    - removed `canLoadMore`/`activeOverlay` from root `searchResultsPanelSpecArgs`.
+  - Moved on-demand notice derivation into results domain:
+    - removed root-level `formatOnDemandEta`/`onDemandMessage`/`onDemandNotice` computation from `SearchScreen`.
+    - `useSearchResultsPanelSpec` now derives on-demand notice UI directly from bus-owned `results` + `submittedQuery`.
+    - removed `onDemandNotice` prop from root `searchResultsPanelSpecArgs`.
+  - Expanded results filter/header state ownership to runtime bus:
+    - moved filter-chip and results-header control fields off root props (`rank/price labels+active`, `openNow`, `votesFilterActive`, selector visibility, session/filter pending booleans, header-disable booleans, reconnect/system banner/placeholder flags).
+    - root now publishes these through the consolidated runtime-bus effect.
+    - `useSearchResultsPanelSpec` now reads these fields via `useSearchRuntimeBusSelector`.
+    - removed those fields from root `searchResultsPanelSpecArgs` fanout and dependency list.
+  - Removed remaining root lane-signal mediation between results and map:
+    - removed root-owned lane refs (`resultsFinalizeLaneActiveRef`, `mapPressureLaneSignalRef`) and map defer signal props.
+    - `SearchMap` now consumes lane state directly from `searchRuntimeBus` (`isVisualSyncPending`, `runOneCommitSpanPressureActive`, `isResultsFinalizeLaneActive`) via selector.
+    - `useSearchResultsPanelSpec` now publishes `isResultsFinalizeLaneActive` to runtime bus instead of writing through root callbacks/refs.
+    - root now wires `searchRuntimeBus` directly to `SearchMap` for lane ownership without root bridge logic.
+- Files touched:
+  - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/hooks/use-search-results-panel-spec.tsx`
+  - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/components/search-map.tsx`
+  - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/index.tsx`
+  - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/shared/search-runtime-bus.ts`
+- Validation (no perf gates, per user instruction):
+  - `npx eslint apps/mobile/src/screens/Search/index.tsx apps/mobile/src/screens/Search/components/search-map.tsx apps/mobile/src/screens/Search/hooks/use-search-results-panel-spec.tsx apps/mobile/src/screens/Search/runtime/shared/search-runtime-bus.ts`
+    - pass with existing warning only: `index.tsx:4750 @typescript-eslint/no-unsafe-call`.
+  - `bash /Users/brandonkimble/crave-search/scripts/no-bypass-search-runtime.sh`
+    - pass (5/5 checks).
+  - `bash /Users/brandonkimble/crave-search/scripts/search-runtime-natural-cutover-contract.sh`
+    - fail (8/10 checks), unchanged known cutover-contract gap.
+  - `bash /Users/brandonkimble/crave-search/scripts/search-runtime-s4-mode-cutover-contract.sh`
+    - fail (16/20 checks), unchanged known cutover-contract gap.
+- Pending:
+  - Run lint/contracts/harness only after remaining ownership consolidation in this batch is complete.
+
+### trackc-ownership-consolidation-batchA-check1b
+
+- Log/report:
+  - `/tmp/perf-shortcut-loop-shortcut-loop-20260217T222538Z-7be4.log`
+  - generated via `bash /Users/brandonkimble/crave-search/scripts/perf-shortcut-loop-report.sh /tmp/perf-shortcut-loop-shortcut-loop-20260217T222538Z-7be4.log`
+- Candidate:
+  - Measurement check after ownership-consolidation batch (ungated structural pass).
+- Harness signature:
+  - `enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:500|stall:50|fps:58|uiSampler:1|uiWindow:500|uiStall:50|uiFps:58`
+- First `>50ms` stall `{duration, stage, elapsedMs}`:
+  - run1 `{308.8, pre_response_activation, 308.8}`
+  - run2 `{259.1, pre_response_activation, 421.1}`
+  - run3 `{190.1, pre_response_activation, 285.8}`
+- Worst stall `{duration, stage, elapsedMs}`:
+  - run1 `{308.8, pre_response_activation, 308.8}`
+  - run2 `{259.1, pre_response_activation, 421.1}`
+  - run3 `{290.9, pre_response_activation, 1465.1}`
+- Aggregate:
+  - `stallP95=290.9`
+  - `stallMaxMean=286.267`
+  - catastrophic: `runCount=1`, `windowCount=2`
+- Parity:
+  - run1 `pins=20 dots=20 visible=40 sectioned=40` (run complete `settleStatus=timeout`)
+  - run2 `pins=20 dots=20 visible=40 sectioned=40` (run complete `settleStatus=timeout`)
+  - run3 `pins=20 dots=20 visible=40 sectioned=40` (run complete `settleStatus=timeout`)
+- Decision:
+  - `NO PROMOTION / HOLD FOR FURTHER CUTS`.
+  - Reason: directional stall metrics are materially worse than the locked control baseline and all runs timed out at settle boundary, so current batch state is not promotable yet.

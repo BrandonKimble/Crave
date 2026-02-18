@@ -4,11 +4,12 @@ import type { FlashListProps, FlashListRef } from '@shopify/flash-list';
 import Reanimated, { type SharedValue } from 'react-native-reanimated';
 
 import { FrostedGlassBackground } from '../../../components/FrostedGlassBackground';
+import { Text } from '../../../components';
 import type { SnapPoints } from '../../../overlays/BottomSheetWithFlashList';
 import { OVERLAY_TAB_HEADER_HEIGHT } from '../../../overlays/overlaySheetStyles';
 import { useSearchPanelSpec } from '../../../overlays/panels/SearchPanel';
 import type { OverlaySheetSnap } from '../../../overlays/types';
-import type { FoodResult, RestaurantResult, SearchResponse } from '../../../types';
+import type { FoodResult, RestaurantResult } from '../../../types';
 import SearchFilters, { type SearchFiltersLayoutCache } from '../components/SearchFilters';
 import {
   ACTIVE_TAB_COLOR,
@@ -24,6 +25,8 @@ import { useSearchFilterChipReadModel } from '../runtime/read-models/chip-read-m
 import { buildResultsSurfaceVisibility } from '../runtime/read-models/header-read-model-builder';
 import type { MapQueryBudget } from '../runtime/map/map-query-budget';
 import type { PhaseBMaterializer } from '../runtime/scheduler/phase-b-materializer';
+import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
+import { useSearchRuntimeBusSelector } from '../runtime/shared/use-search-runtime-bus-selector';
 import styles from '../styles';
 
 type SearchInteractionState = {
@@ -37,20 +40,13 @@ type RuntimeMechanismEmitter = (
 ) => void;
 
 const RESULTS_LOADING_SPINNER_OFFSET = 96;
+const EMPTY_DISHES: FoodResult[] = [];
+const EMPTY_RESTAURANTS: RestaurantResult[] = [];
 
 type SearchResultsPanelSpecArgs = {
-  results: SearchResponse | null;
+  searchRuntimeBus: SearchRuntimeBus;
   resultsHydrationKey: string | null;
   hydratedResultsKey: string | null;
-  activeTab: 'dishes' | 'restaurants';
-  rankButtonLabelText: string;
-  rankButtonIsActive: boolean;
-  priceButtonLabelText: string;
-  priceButtonIsActive: boolean;
-  openNow: boolean;
-  votesFilterActive: boolean;
-  isRankSelectorVisible: boolean;
-  isPriceSelectorVisible: boolean;
   handleTabChange: (next: 'dishes' | 'restaurants') => void;
   toggleRankSelector: () => void;
   toggleOpenNow: () => void;
@@ -59,12 +55,6 @@ type SearchResultsPanelSpecArgs = {
   shouldDisableSearchBlur: boolean;
   searchFiltersLayoutCacheRef: React.MutableRefObject<SearchFiltersLayoutCache | null>;
   handleSearchFiltersLayoutCache: (next: SearchFiltersLayoutCache) => void;
-  didSearchSessionJustActivate: boolean;
-  isInitialResultsLoadPending: boolean;
-  isSearchLoading: boolean;
-  isFilterTogglePending: boolean;
-  shouldDisableFiltersHeader: boolean;
-  shouldDisableResultsHeader: boolean;
   resultsSheetHeaderHeight: number;
   filtersHeaderHeight: number;
   searchInteractionRef: React.MutableRefObject<SearchInteractionState>;
@@ -74,30 +64,15 @@ type SearchResultsPanelSpecArgs = {
   onResultsHeaderLayout: (event: LayoutChangeEvent) => void;
   measureFiltersHeaderNow: (event: LayoutChangeEvent) => void;
   onFiltersHeaderLayout: (event: LayoutChangeEvent) => void;
-  shouldRetrySearchOnReconnect: boolean;
-  hasSystemStatusBanner: boolean;
-  shouldUsePlaceholderRows: boolean;
-  dishes: FoodResult[];
-  restaurants: RestaurantResult[];
-  shouldHydrateResultsForRender: boolean;
-  isVisualSyncPending: boolean;
-  runOneCommitSpanPressureActive: boolean;
-  hydrationOperationId: string | null;
-  allowHydrationFinalizeCommit: boolean;
   isRunOneChromeDeferred: boolean;
   mapQueryBudget: MapQueryBudget;
-  canLoadMore: boolean;
-  isLoadingMore: boolean;
-  onDemandNotice: React.ReactNode;
   snapPointsMiddle: number;
-  submittedQuery: string;
   handleCloseResults: () => void;
   overlayHeaderActionProgress: SharedValue<number>;
   headerDividerAnimatedStyle: StyleProp<ViewStyle>;
   shouldLogResultsViewability: boolean;
   renderDishCard: (item: FoodResult, index: number) => React.ReactElement;
   renderRestaurantCard: (item: RestaurantResult, index: number) => React.ReactElement | null;
-  activeOverlay: string;
   onRuntimeMechanismEvent?: RuntimeMechanismEmitter;
   setHydratedResultsKeySync: (nextHydrationKey: string | null) => void;
   phaseBMaterializerRef: React.MutableRefObject<PhaseBMaterializer>;
@@ -126,18 +101,9 @@ type SearchResultsPanelSpecArgs = {
 };
 
 export const useSearchResultsPanelSpec = ({
-  results,
+  searchRuntimeBus,
   resultsHydrationKey,
   hydratedResultsKey,
-  activeTab,
-  rankButtonLabelText,
-  rankButtonIsActive,
-  priceButtonLabelText,
-  priceButtonIsActive,
-  openNow,
-  votesFilterActive,
-  isRankSelectorVisible,
-  isPriceSelectorVisible,
   handleTabChange,
   toggleRankSelector,
   toggleOpenNow,
@@ -146,12 +112,6 @@ export const useSearchResultsPanelSpec = ({
   shouldDisableSearchBlur,
   searchFiltersLayoutCacheRef,
   handleSearchFiltersLayoutCache,
-  didSearchSessionJustActivate,
-  isInitialResultsLoadPending,
-  isSearchLoading,
-  isFilterTogglePending,
-  shouldDisableFiltersHeader,
-  shouldDisableResultsHeader,
   resultsSheetHeaderHeight,
   filtersHeaderHeight,
   searchInteractionRef,
@@ -161,30 +121,15 @@ export const useSearchResultsPanelSpec = ({
   onResultsHeaderLayout,
   measureFiltersHeaderNow,
   onFiltersHeaderLayout,
-  shouldRetrySearchOnReconnect,
-  hasSystemStatusBanner,
-  shouldUsePlaceholderRows,
-  dishes,
-  restaurants,
-  shouldHydrateResultsForRender,
-  isVisualSyncPending,
-  runOneCommitSpanPressureActive,
-  hydrationOperationId,
-  allowHydrationFinalizeCommit,
   isRunOneChromeDeferred,
   mapQueryBudget,
-  canLoadMore,
-  isLoadingMore,
-  onDemandNotice,
   snapPointsMiddle,
-  submittedQuery,
   handleCloseResults,
   overlayHeaderActionProgress,
   headerDividerAnimatedStyle,
   shouldLogResultsViewability,
   renderDishCard,
   renderRestaurantCard,
-  activeOverlay,
   onRuntimeMechanismEvent,
   setHydratedResultsKeySync,
   phaseBMaterializerRef,
@@ -208,6 +153,119 @@ export const useSearchResultsPanelSpec = ({
   resetSheetToHidden,
   resultsScrollRef,
 }: SearchResultsPanelSpecArgs) => {
+  const {
+    results,
+    activeTab,
+    canLoadMore,
+    activeOverlay,
+    rankButtonLabelText,
+    rankButtonIsActive,
+    priceButtonLabelText,
+    priceButtonIsActive,
+    openNow,
+    votesFilterActive,
+    isRankSelectorVisible,
+    isPriceSelectorVisible,
+    didSearchSessionJustActivate,
+    isInitialResultsLoadPending,
+    isFilterTogglePending,
+    shouldRetrySearchOnReconnect,
+    hasSystemStatusBanner,
+    isSearchLoading,
+    isLoadingMore,
+    submittedQuery,
+    shouldHydrateResultsForRender,
+    isVisualSyncPending,
+    runOneCommitSpanPressureActive,
+    hydrationOperationId,
+    allowHydrationFinalizeCommit,
+  } = useSearchRuntimeBusSelector(
+    searchRuntimeBus,
+    (state) => ({
+      results: state.results,
+      activeTab: state.activeTab,
+      canLoadMore: state.canLoadMore,
+      activeOverlay: state.activeOverlay,
+      rankButtonLabelText: state.rankButtonLabelText,
+      rankButtonIsActive: state.rankButtonIsActive,
+      priceButtonLabelText: state.priceButtonLabelText,
+      priceButtonIsActive: state.priceButtonIsActive,
+      openNow: state.openNow,
+      votesFilterActive: state.votesFilterActive,
+      isRankSelectorVisible: state.isRankSelectorVisible,
+      isPriceSelectorVisible: state.isPriceSelectorVisible,
+      didSearchSessionJustActivate: state.didSearchSessionJustActivate,
+      isInitialResultsLoadPending: state.isInitialResultsLoadPending,
+      isFilterTogglePending: state.isFilterTogglePending,
+      shouldRetrySearchOnReconnect: state.shouldRetrySearchOnReconnect,
+      hasSystemStatusBanner: state.hasSystemStatusBanner,
+      isSearchLoading: state.isSearchLoading,
+      isLoadingMore: state.isLoadingMore,
+      submittedQuery: state.submittedQuery,
+      shouldHydrateResultsForRender: state.shouldHydrateResultsForRender,
+      isVisualSyncPending: state.isVisualSyncPending,
+      runOneCommitSpanPressureActive: state.runOneCommitSpanPressureActive,
+      hydrationOperationId: state.hydrationOperationId,
+      allowHydrationFinalizeCommit: state.allowHydrationFinalizeCommit,
+    }),
+    (left, right) =>
+      left.results === right.results &&
+      left.activeTab === right.activeTab &&
+      left.canLoadMore === right.canLoadMore &&
+      left.activeOverlay === right.activeOverlay &&
+      left.rankButtonLabelText === right.rankButtonLabelText &&
+      left.rankButtonIsActive === right.rankButtonIsActive &&
+      left.priceButtonLabelText === right.priceButtonLabelText &&
+      left.priceButtonIsActive === right.priceButtonIsActive &&
+      left.openNow === right.openNow &&
+      left.votesFilterActive === right.votesFilterActive &&
+      left.isRankSelectorVisible === right.isRankSelectorVisible &&
+      left.isPriceSelectorVisible === right.isPriceSelectorVisible &&
+      left.didSearchSessionJustActivate === right.didSearchSessionJustActivate &&
+      left.isInitialResultsLoadPending === right.isInitialResultsLoadPending &&
+      left.isFilterTogglePending === right.isFilterTogglePending &&
+      left.shouldRetrySearchOnReconnect === right.shouldRetrySearchOnReconnect &&
+      left.hasSystemStatusBanner === right.hasSystemStatusBanner &&
+      left.isSearchLoading === right.isSearchLoading &&
+      left.isLoadingMore === right.isLoadingMore &&
+      left.submittedQuery === right.submittedQuery &&
+      left.shouldHydrateResultsForRender === right.shouldHydrateResultsForRender &&
+      left.isVisualSyncPending === right.isVisualSyncPending &&
+      left.runOneCommitSpanPressureActive === right.runOneCommitSpanPressureActive &&
+      left.hydrationOperationId === right.hydrationOperationId &&
+      left.allowHydrationFinalizeCommit === right.allowHydrationFinalizeCommit
+  );
+  const shouldDisableFiltersHeader = false;
+  const shouldDisableResultsHeader = false;
+  const shouldUsePlaceholderRows = false;
+  const dishes = results?.dishes ?? EMPTY_DISHES;
+  const restaurants = results?.restaurants ?? EMPTY_RESTAURANTS;
+  const onDemandNotice = React.useMemo(() => {
+    if (!results?.metadata?.onDemandQueued) {
+      return null;
+    }
+    const term = submittedQuery.trim() || results?.metadata?.sourceQuery?.trim() || '';
+    const etaMs = results?.metadata?.onDemandEtaMs;
+    let etaText: string | null = null;
+    if (etaMs && Number.isFinite(etaMs) && etaMs > 0) {
+      const totalMinutes = Math.round(etaMs / 60000);
+      if (totalMinutes < 60) {
+        etaText = `${totalMinutes} min`;
+      } else {
+        const hours = Math.ceil(totalMinutes / 60);
+        etaText = hours === 1 ? 'about 1 hour' : `about ${hours} hours`;
+      }
+    }
+    const prefix = term ? `We're expanding results for ${term}.` : `We're expanding results.`;
+    const suffix = etaText ? ` Check back in ${etaText}.` : ' Check back soon.';
+    return (
+      <View style={styles.onDemandNotice}>
+        <Text variant="body" style={styles.onDemandNoticeText}>
+          {`${prefix}${suffix}`}
+        </Text>
+      </View>
+    );
+  }, [results, submittedQuery]);
   const searchResultsRequestVersionKey = `${results?.metadata?.searchRequestId ?? 'no-request'}::${
     resultsHydrationKey ?? 'no-hydration'
   }`;
@@ -493,6 +551,28 @@ export const useSearchResultsPanelSpec = ({
     resultsLoadingSpinnerOffset: RESULTS_LOADING_SPINNER_OFFSET,
     contentHorizontalPadding: CONTENT_HORIZONTAL_PADDING,
   });
+  const lastResultsFinalizeLaneActiveRef = React.useRef<boolean | null>(null);
+  React.useEffect(() => {
+    if (
+      lastResultsFinalizeLaneActiveRef.current ===
+      resultsReadModelSelectors.isResultsFinalizeLaneActive
+    ) {
+      return;
+    }
+    lastResultsFinalizeLaneActiveRef.current = resultsReadModelSelectors.isResultsFinalizeLaneActive;
+    searchRuntimeBus.publish({
+      isResultsFinalizeLaneActive: resultsReadModelSelectors.isResultsFinalizeLaneActive,
+    });
+  }, [
+    resultsReadModelSelectors.isResultsFinalizeLaneActive,
+    searchRuntimeBus,
+  ]);
+  React.useEffect(
+    () => () => {
+      searchRuntimeBus.publish({ isResultsFinalizeLaneActive: false });
+    },
+    [searchRuntimeBus]
+  );
 
   const resultsSurfaceVisibility = buildResultsSurfaceVisibility({
     isSearchLoading,

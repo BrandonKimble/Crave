@@ -707,10 +707,10 @@ Immediate sequence:
 
 Priority micro-cluster order:
 
-1. `SearchOverlayChrome` non-critical churn isolation during H2/H3,
-2. `SearchMapTree` non-critical update isolation during run-1 worst window,
-3. hydration finalize separation (no same-frame finalize + chrome/map heavy work),
-4. stage=`none` heavy-write deferral into governed phases.
+1. stage=`none` heavy-write deferral into governed phases,
+2. hydration finalize separation (no same-frame finalize + chrome/map heavy work),
+3. `SearchOverlayChrome` non-critical churn isolation during H2/H3,
+4. `SearchMapTree` non-critical update isolation during run-1 worst window.
 
 ## 12) Line-by-Line Execution Script (Authoritative)
 

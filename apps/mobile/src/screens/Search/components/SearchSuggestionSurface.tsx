@@ -28,6 +28,8 @@ type SearchSuggestionSurfaceProps = {
   suggestionHeaderHeightAnimatedStyle: StyleProp<ViewStyle>;
   suggestionPanelAnimatedStyle: StyleProp<ViewStyle>;
   shouldDriveSuggestionLayout: boolean;
+  shouldShowSuggestionBackground: boolean;
+  suggestionTopFillHeight: number;
   suggestionScrollTopAnimatedStyle: StyleProp<ViewStyle>;
   suggestionScrollMaxHeightTarget?: number;
   suggestionScrollMaxHeightAnimatedStyle: StyleProp<ViewStyle>;
@@ -72,6 +74,8 @@ const SearchSuggestionSurface = ({
   suggestionHeaderHeightAnimatedStyle,
   suggestionPanelAnimatedStyle,
   shouldDriveSuggestionLayout,
+  shouldShowSuggestionBackground,
+  suggestionTopFillHeight,
   suggestionScrollTopAnimatedStyle,
   suggestionScrollMaxHeightTarget,
   suggestionScrollMaxHeightAnimatedStyle,
@@ -165,40 +169,58 @@ const SearchSuggestionSurface = ({
         scrollEnabled={Boolean(isSuggestionScreenActive && shouldRenderSuggestionPanel)}
         showsVerticalScrollIndicator={false}
       >
-        {shouldRenderSuggestionPanel ? (
+        {shouldShowSuggestionBackground || shouldRenderSuggestionPanel ? (
           <View style={styles.searchSuggestionScrollContent}>
-            <View
-              pointerEvents="none"
-              style={[
-                styles.searchSuggestionScrollBackground,
-                {
-                  left: -CONTENT_HORIZONTAL_PADDING,
-                  right: -CONTENT_HORIZONTAL_PADDING,
-                },
-                { top: -SUGGESTION_SCROLL_WHITE_OVERSCROLL_BUFFER },
-              ]}
-            />
-            <SearchSuggestions
-              visible={shouldRenderSuggestionPanel}
-              showAutocomplete={shouldRenderAutocompleteSection}
-              showRecent={shouldRenderRecentSection}
-              suggestions={suggestionDisplaySuggestions}
-              recentSearches={recentSearchesDisplay}
-              recentlyViewedRestaurants={recentlyViewedRestaurantsDisplay}
-              recentlyViewedFoods={recentlyViewedFoodsDisplay}
-              hasRecentSearches={hasRecentSearchesDisplay}
-              hasRecentlyViewedRestaurants={hasRecentlyViewedRestaurantsDisplay}
-              hasRecentlyViewedFoods={hasRecentlyViewedFoodsDisplay}
-              isRecentLoading={isRecentLoadingDisplay}
-              isRecentlyViewedLoading={isRecentlyViewedLoadingDisplay}
-              isRecentlyViewedFoodsLoading={isRecentlyViewedFoodsLoadingDisplay}
-              onSelectSuggestion={onSuggestionPress}
-              onSelectRecent={onRecentSearchPress}
-              onSelectRecentlyViewed={onRecentlyViewedRestaurantPress}
-              onSelectRecentlyViewedFood={onRecentlyViewedFoodPress}
-              onPressRecentViewMore={onRecentViewMorePress}
-              onPressRecentlyViewedMore={onRecentlyViewedMorePress}
-            />
+            {shouldShowSuggestionBackground ? (
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.searchSuggestionScrollBackground,
+                  {
+                    left: -CONTENT_HORIZONTAL_PADDING,
+                    right: -CONTENT_HORIZONTAL_PADDING,
+                  },
+                  { top: -SUGGESTION_SCROLL_WHITE_OVERSCROLL_BUFFER },
+                ]}
+              />
+            ) : null}
+            {shouldShowSuggestionBackground && suggestionTopFillHeight > 0 ? (
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.searchSuggestionTopFill,
+                  {
+                    left: -CONTENT_HORIZONTAL_PADDING,
+                    right: -CONTENT_HORIZONTAL_PADDING,
+                    top: -SUGGESTION_SCROLL_WHITE_OVERSCROLL_BUFFER,
+                    height: SUGGESTION_SCROLL_WHITE_OVERSCROLL_BUFFER + suggestionTopFillHeight,
+                  },
+                ]}
+              />
+            ) : null}
+            {shouldRenderSuggestionPanel ? (
+              <SearchSuggestions
+                visible={shouldRenderSuggestionPanel}
+                showAutocomplete={shouldRenderAutocompleteSection}
+                showRecent={shouldRenderRecentSection}
+                suggestions={suggestionDisplaySuggestions}
+                recentSearches={recentSearchesDisplay}
+                recentlyViewedRestaurants={recentlyViewedRestaurantsDisplay}
+                recentlyViewedFoods={recentlyViewedFoodsDisplay}
+                hasRecentSearches={hasRecentSearchesDisplay}
+                hasRecentlyViewedRestaurants={hasRecentlyViewedRestaurantsDisplay}
+                hasRecentlyViewedFoods={hasRecentlyViewedFoodsDisplay}
+                isRecentLoading={isRecentLoadingDisplay}
+                isRecentlyViewedLoading={isRecentlyViewedLoadingDisplay}
+                isRecentlyViewedFoodsLoading={isRecentlyViewedFoodsLoadingDisplay}
+                onSelectSuggestion={onSuggestionPress}
+                onSelectRecent={onRecentSearchPress}
+                onSelectRecentlyViewed={onRecentlyViewedRestaurantPress}
+                onSelectRecentlyViewedFood={onRecentlyViewedFoodPress}
+                onPressRecentViewMore={onRecentViewMorePress}
+                onPressRecentlyViewedMore={onRecentlyViewedMorePress}
+              />
+            ) : null}
           </View>
         ) : null}
       </Reanimated.ScrollView>

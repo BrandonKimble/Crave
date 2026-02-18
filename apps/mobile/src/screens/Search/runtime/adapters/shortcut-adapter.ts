@@ -17,11 +17,15 @@ export const createShortcutSubmitIntentPayload = (input: {
   targetTab: SegmentValue;
   submittedLabel: string;
   preserveSheetState: boolean;
+  targetPage?: number;
+  append?: boolean;
 }): SearchSessionEventPayload => ({
   mode: 'shortcut',
   targetTab: input.targetTab,
   submittedLabel: input.submittedLabel,
   preserveSheetState: input.preserveSheetState,
+  targetPage: input.targetPage ?? 1,
+  append: input.append === true,
 });
 
 export const createShortcutResponseReceivedPayload = (

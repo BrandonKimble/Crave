@@ -20,16 +20,14 @@ type RuntimeMechanismEvent =
   | 'submit_write_bucket'
   | 'runtime_write_span';
 
-type SubmitSearchRef = React.MutableRefObject<
-  (
-    options?: {
-      preserveSheetState?: boolean;
-      transitionFromDockedPolls?: boolean;
-      scoreMode?: NaturalSearchRequest['scoreMode'];
-      shortcutTargetTab?: 'dishes' | 'restaurants';
-    },
-    overrideQuery?: string
-  ) => Promise<void>
+type SubmitShortcutSearchRef = React.MutableRefObject<
+  (input: {
+    targetTab: 'dishes' | 'restaurants';
+    label: string;
+    preserveSheetState: boolean;
+    transitionFromDockedPolls: boolean;
+    scoreMode: NaturalSearchRequest['scoreMode'];
+  }) => Promise<void>
 >;
 
 type SearchInteractionState = {
@@ -70,7 +68,7 @@ type UseShortcutHarnessObserverArgs = {
   getPerfNow: () => number;
   roundPerfValue: (value: number) => number;
   searchSessionController: SearchSessionController;
-  submitSearchRef: SubmitSearchRef;
+  submitShortcutSearchRef: SubmitShortcutSearchRef;
   scoreMode: NaturalSearchRequest['scoreMode'];
   setPreferredScoreMode: (scoreMode: NaturalSearchRequest['scoreMode']) => void;
   mapQueryBudget: MapQueryBudgetLike;
@@ -127,7 +125,7 @@ export const useShortcutHarnessObserver = (
     getPerfNow,
     roundPerfValue,
     searchSessionController,
-    submitSearchRef,
+    submitShortcutSearchRef,
     scoreMode,
     setPreferredScoreMode,
     mapQueryBudget,
@@ -463,15 +461,13 @@ export const useShortcutHarnessObserver = (
     }
     lifecycle.mutationCoalescingProbeIssued = true;
     const submitShortcutSearch = () =>
-      submitSearchRef.current(
-        {
-          preserveSheetState: perfHarnessConfig.shortcutLoop.preserveSheetState,
-          transitionFromDockedPolls: perfHarnessConfig.shortcutLoop.transitionFromDockedPolls,
-          scoreMode: perfHarnessConfig.shortcutLoop.scoreMode,
-          shortcutTargetTab: perfHarnessConfig.shortcutLoop.targetTab,
-        },
-        perfHarnessConfig.shortcutLoop.label
-      );
+      submitShortcutSearchRef.current({
+        targetTab: perfHarnessConfig.shortcutLoop.targetTab,
+        label: perfHarnessConfig.shortcutLoop.label,
+        preserveSheetState: perfHarnessConfig.shortcutLoop.preserveSheetState,
+        transitionFromDockedPolls: perfHarnessConfig.shortcutLoop.transitionFromDockedPolls,
+        scoreMode: perfHarnessConfig.shortcutLoop.scoreMode,
+      });
     void submitShortcutSearch().catch((error) => {
       emitSearchPerfEvent('Harness', {
         event: 'shortcut_loop_run_error',
@@ -496,7 +492,7 @@ export const useShortcutHarnessObserver = (
     isShortcutPerfHarnessScenario,
     roundPerfValue,
     shortcutHarnessRunId,
-    submitSearchRef,
+    submitShortcutSearchRef,
   ]);
 
   const recordProfilerSpan = React.useCallback(
@@ -669,15 +665,13 @@ export const useShortcutHarnessObserver = (
         setPreferredScoreMode(desiredScoreMode);
       }
       const submitShortcutSearch = () =>
-        submitSearchRef.current(
-          {
-            preserveSheetState: perfHarnessConfig.shortcutLoop.preserveSheetState,
-            transitionFromDockedPolls: perfHarnessConfig.shortcutLoop.transitionFromDockedPolls,
-            scoreMode: perfHarnessConfig.shortcutLoop.scoreMode,
-            shortcutTargetTab: perfHarnessConfig.shortcutLoop.targetTab,
-          },
-          perfHarnessConfig.shortcutLoop.label
-        );
+        submitShortcutSearchRef.current({
+          targetTab: perfHarnessConfig.shortcutLoop.targetTab,
+          label: perfHarnessConfig.shortcutLoop.label,
+          preserveSheetState: perfHarnessConfig.shortcutLoop.preserveSheetState,
+          transitionFromDockedPolls: perfHarnessConfig.shortcutLoop.transitionFromDockedPolls,
+          scoreMode: perfHarnessConfig.shortcutLoop.scoreMode,
+        });
       void submitShortcutSearch().catch((error) => {
         emitSearchPerfEvent('Harness', {
           event: 'shortcut_loop_run_error',
@@ -699,7 +693,7 @@ export const useShortcutHarnessObserver = (
       runtimeWorkSchedulerRef,
       setPreferredScoreMode,
       shortcutHarnessRunId,
-      submitSearchRef,
+      submitShortcutSearchRef,
       schedulerPressureBaselineRef,
       runTimeoutMs,
     ]
@@ -864,9 +858,8 @@ export const useShortcutHarnessObserver = (
           'shadow_converged_or_quiet_snapshot';
         return (
           usesShadowConvergenceBoundary &&
-          ((shadowState.phase === 'settled' && shadowState.lastEventType === 'settled') ||
-            shadowState.phase === 'cancelled' ||
-            shadowState.phase === 'error')
+          shadowState.phase === 'settled' &&
+          shadowState.lastEventType === 'settled'
         );
       };
       const settleBlocked = (shadowConverged: boolean): boolean => {

@@ -765,7 +765,9 @@ export class AutocompleteService {
   ): string {
     const scopeKey = entityTypes.slice().sort().join(',');
     const queryToken = encodeURIComponent(normalizedQuery);
-    return `${this.cacheRedisKeyPrefix}:${userId ?? 'anon'}:${scopeKey}:global:${queryToken}`;
+    return `${this.cacheRedisKeyPrefix}:${
+      userId ?? 'anon'
+    }:${scopeKey}:global:${queryToken}`;
   }
 
   private elapsedSeconds(start: bigint): number {

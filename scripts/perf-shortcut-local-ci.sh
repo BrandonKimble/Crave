@@ -108,6 +108,11 @@ Notes:
   - JS tranche thresholds (JS1-JS4):
       PERF_JS_TRANCHE_MIN_STALL_P95_IMPROVEMENT_PCT (default: 5)
       PERF_JS_TRANCHE_MAX_UI_STALL_P95_REGRESSION_PCT (default: 0)
+  - Run-1 primary stall thresholds (perf-bearing ownership + JS tranche slices):
+      PERF_PROMOTION_RUN1_WORST_MIN_IMPROVEMENT_MS (default: 1)
+      PERF_PROMOTION_RUN1_OVER50_MAX_DELTA (default: 0)
+      PERF_PROMOTION_RUN1_OVER80_MAX_DELTA (default: 0)
+      PERF_PROMOTION_RUN1_TARGET_WORST_MS (default: 50)
   - Legacy LOC deletion gate (deprecated, disabled by default):
       PERF_PROMOTION_LOC_BASELINE_PATH=plans/perf-baselines/runtime-owner-loc-baseline.json
       PERF_PROMOTION_LOC_ENFORCE_SLICES=
@@ -505,6 +510,42 @@ const readStageWindowCount = (report, stage, histogramKey = 'stageHistogram') =>
 const readStageCatWindowCount = (report, stage, histogramKey = 'stageHistogram') => {
   return safeNumber(report?.[histogramKey]?.byStageCatastrophicWindowCount?.[stage]) ?? 0;
 };
+const readRunMetric = (report, runNumber) => {
+  const runMetrics = Array.isArray(report?.runMetrics) ? report.runMetrics : [];
+  return (
+    runMetrics.find((entry) => safeInteger(entry?.runNumber) === runNumber) ??
+    null
+  );
+};
+const readStallWindowCount = ({ runMetric, field, fallbackThresholdMs }) => {
+  const direct = safeNumber(runMetric?.[field]);
+  if (direct != null) {
+    return direct;
+  }
+  const worstStall = safeNumber(runMetric?.stallLongestMax) ?? 0;
+  if (fallbackThresholdMs === 50) {
+    return runMetric?.firstOver50 != null ? 1 : 0;
+  }
+  return worstStall > fallbackThresholdMs ? 1 : 0;
+};
+const toRunOneSummary = (report) => {
+  const runOneMetric = readRunMetric(report, 1);
+  return {
+    worstStallMs: safeNumber(runOneMetric?.stallLongestMax),
+    over50WindowCount: readStallWindowCount({
+      runMetric: runOneMetric,
+      field: 'stallOver50WindowCount',
+      fallbackThresholdMs: 50,
+    }),
+    over80WindowCount: readStallWindowCount({
+      runMetric: runOneMetric,
+      field: 'stallOver80WindowCount',
+      fallbackThresholdMs: 80,
+    }),
+    worstStage: safeString(runOneMetric?.worstWindow?.stage),
+    firstOver50Stage: safeString(runOneMetric?.firstOver50?.stage),
+  };
+};
 const resolveRepoPath = (relativeOrAbsolutePath) => {
   if (!relativeOrAbsolutePath || typeof relativeOrAbsolutePath !== 'string') {
     return null;
@@ -574,6 +615,7 @@ const countTargetLoc = (target) => {
 };
 
 const baseline = readJson(baselinePath);
+const baselineRunOne = toRunOneSummary(baseline);
 const overlapGate = parseGateSummary(
   overlapGateSummaryPath,
   'perf-shortcut-overlap-gate.v1',
@@ -632,6 +674,7 @@ const runDetails = comparePaths.map((comparePath, index) => {
   const compare = readJson(comparePath);
   const candidateReportPath = candidateReportPaths[index];
   const candidateReport = readJson(candidateReportPath);
+  const candidateRunOne = toRunOneSummary(candidateReport);
   const failures = Array.isArray(compare?.failures) ? compare.failures : [];
   const hardFailures = failures.filter((failure) => {
     if (catastrophicFailurePattern.test(failure)) {
@@ -706,6 +749,7 @@ const runDetails = comparePaths.map((comparePath, index) => {
         candidateReport?.mechanismSignals?.observerRenderBumpCount
       ),
     },
+    runOne: candidateRunOne,
   };
 });
 
@@ -769,6 +813,113 @@ if (floorMedians.uiStallP95Pct == null) {
   nonCatFailures.push(
     `Median uiStallP95 regression ${floorMedians.uiStallP95Pct.toFixed(2)}% exceeds allowed ${uiStallThreshold.toFixed(2)}%.`
   );
+}
+const runOnePrimaryGateSlices = new Set([
+  'S5',
+  'S6',
+  'S7',
+  'S8',
+  'S9A',
+  'S9B',
+  'S9C',
+  'S9D',
+  'S9E',
+  'S10',
+  'S11',
+  'JS1',
+  'JS2',
+  'JS3',
+  'JS4',
+]);
+const runOneMedians = {
+  worstStallMs: median(runDetails.map((detail) => detail.runOne.worstStallMs)),
+  over50WindowCount: median(runDetails.map((detail) => detail.runOne.over50WindowCount)),
+  over80WindowCount: median(runDetails.map((detail) => detail.runOne.over80WindowCount)),
+};
+const runOneThresholds = {
+  worstMinImprovementMs: Number.parseFloat(
+    process.env.PERF_PROMOTION_RUN1_WORST_MIN_IMPROVEMENT_MS || '1'
+  ),
+  maxOver50Delta: Number.parseFloat(process.env.PERF_PROMOTION_RUN1_OVER50_MAX_DELTA || '0'),
+  maxOver80Delta: Number.parseFloat(process.env.PERF_PROMOTION_RUN1_OVER80_MAX_DELTA || '0'),
+  targetWorstMs: Number.parseFloat(process.env.PERF_PROMOTION_RUN1_TARGET_WORST_MS || '50'),
+};
+const runOnePrimaryGate = {
+  enabled: runOnePrimaryGateSlices.has(sliceId),
+  baseline: baselineRunOne,
+  medians: runOneMedians,
+  thresholds: runOneThresholds,
+  pass: true,
+};
+if (runOnePrimaryGate.enabled) {
+  if (
+    !Number.isFinite(runOneThresholds.worstMinImprovementMs) ||
+    runOneThresholds.worstMinImprovementMs < 0
+  ) {
+    nonCatFailures.push('Invalid PERF_PROMOTION_RUN1_WORST_MIN_IMPROVEMENT_MS threshold.');
+    runOnePrimaryGate.pass = false;
+  }
+  if (!Number.isFinite(runOneThresholds.maxOver50Delta) || runOneThresholds.maxOver50Delta < 0) {
+    nonCatFailures.push('Invalid PERF_PROMOTION_RUN1_OVER50_MAX_DELTA threshold.');
+    runOnePrimaryGate.pass = false;
+  }
+  if (!Number.isFinite(runOneThresholds.maxOver80Delta) || runOneThresholds.maxOver80Delta < 0) {
+    nonCatFailures.push('Invalid PERF_PROMOTION_RUN1_OVER80_MAX_DELTA threshold.');
+    runOnePrimaryGate.pass = false;
+  }
+  if (!Number.isFinite(runOneThresholds.targetWorstMs) || runOneThresholds.targetWorstMs <= 0) {
+    nonCatFailures.push('Invalid PERF_PROMOTION_RUN1_TARGET_WORST_MS threshold.');
+    runOnePrimaryGate.pass = false;
+  }
+  if (baselineRunOne.worstStallMs == null || runOneMedians.worstStallMs == null) {
+    nonCatFailures.push('Run-1 primary gate requires worst-stall evidence for baseline and candidate.');
+    runOnePrimaryGate.pass = false;
+  } else {
+    const requiredMaxWorst =
+      baselineRunOne.worstStallMs - runOneThresholds.worstMinImprovementMs;
+    if (runOneMedians.worstStallMs > requiredMaxWorst + comparisonEpsilon) {
+      nonCatFailures.push(
+        `Run-1 primary gate failed: worst-stall median ${runOneMedians.worstStallMs.toFixed(
+          2
+        )}ms must be <= ${requiredMaxWorst.toFixed(2)}ms (baseline ${baselineRunOne.worstStallMs.toFixed(
+          2
+        )}ms, target ${runOneThresholds.targetWorstMs.toFixed(2)}ms).`
+      );
+      runOnePrimaryGate.pass = false;
+    }
+  }
+  if (baselineRunOne.over50WindowCount == null || runOneMedians.over50WindowCount == null) {
+    nonCatFailures.push('Run-1 primary gate requires >50ms window-count evidence.');
+    runOnePrimaryGate.pass = false;
+  } else if (
+    runOneMedians.over50WindowCount >
+    baselineRunOne.over50WindowCount + runOneThresholds.maxOver50Delta + comparisonEpsilon
+  ) {
+    nonCatFailures.push(
+      `Run-1 primary gate failed: >50ms window median ${runOneMedians.over50WindowCount.toFixed(
+        2
+      )} regressed beyond allowed delta ${runOneThresholds.maxOver50Delta.toFixed(
+        2
+      )} (baseline ${baselineRunOne.over50WindowCount.toFixed(2)}).`
+    );
+    runOnePrimaryGate.pass = false;
+  }
+  if (baselineRunOne.over80WindowCount == null || runOneMedians.over80WindowCount == null) {
+    nonCatFailures.push('Run-1 primary gate requires >80ms window-count evidence.');
+    runOnePrimaryGate.pass = false;
+  } else if (
+    runOneMedians.over80WindowCount >
+    baselineRunOne.over80WindowCount + runOneThresholds.maxOver80Delta + comparisonEpsilon
+  ) {
+    nonCatFailures.push(
+      `Run-1 primary gate failed: >80ms window median ${runOneMedians.over80WindowCount.toFixed(
+        2
+      )} regressed beyond allowed delta ${runOneThresholds.maxOver80Delta.toFixed(
+        2
+      )} (baseline ${baselineRunOne.over80WindowCount.toFixed(2)}).`
+    );
+    runOnePrimaryGate.pass = false;
+  }
 }
 if (jsOptimizationSlices.has(sliceId)) {
   const minJsStallImprovementPct = Number.parseFloat(
@@ -1387,6 +1538,7 @@ const summary = {
     uiStallP95MaxRegressionPct: uiStallThreshold,
   },
   medians: floorMedians,
+  runOnePrimaryGate,
   mapRuntimeMedians,
   mapRuntimeThresholds,
   mechanismTelemetry,

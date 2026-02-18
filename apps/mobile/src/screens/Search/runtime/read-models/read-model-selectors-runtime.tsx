@@ -30,7 +30,7 @@ import type { MapQueryBudget } from '../map/map-query-budget';
 const EMPTY_RESULTS: ResultsListItem[] = [];
 const EXACT_VISIBLE_LIMIT = 5;
 const HYDRATION_RAMP_STEP_ROWS = 4;
-const HYDRATION_PENDING_INITIAL_ROWS = 6;
+const HYDRATION_PENDING_INITIAL_ROWS = 4;
 const HYDRATION_RAMP_FRAME_BUDGET_MS = 4;
 const VIEWABILITY_LOG_INTERVAL_MS = 250;
 const getNowMs = (): number =>
@@ -104,6 +104,7 @@ type ResultsFlashListRuntimeProps = {
 
 type SearchResultsReadModelSelectors = {
   safeResultsCount: number;
+  isResultsFinalizeLaneActive: boolean;
   rowsForRender: ResultsListItem[];
   renderListItem: NonNullable<FlashListProps<ResultsListItem>['renderItem']>;
   listFooterComponent: React.ReactNode;
@@ -364,6 +365,7 @@ export const useSearchResultsReadModelSelectors = (
     resultsHydrationKey != null &&
     (isHydrationPending ||
       hydrationFinalizeRowsReleaseCompletedToken !== hydrationRowsReleaseVersionToken);
+  const isResultsFinalizeLaneActive = activeOverlayKey === 'search' && shouldHoldHydrationRows;
   const pendingHydrationRowsLimit = React.useMemo(() => {
     if (!shouldHoldHydrationRows) {
       return null;
@@ -387,6 +389,37 @@ export const useSearchResultsReadModelSelectors = (
     shouldHoldHydrationRows,
   ]);
   const effectiveHydrationRowsLimit = hydrationRowsLimit ?? pendingHydrationRowsLimit;
+  const resultsFinalizeLaneStateRef = React.useRef<boolean | null>(null);
+  React.useEffect(() => {
+    if (resultsFinalizeLaneStateRef.current === isResultsFinalizeLaneActive) {
+      return;
+    }
+    resultsFinalizeLaneStateRef.current = isResultsFinalizeLaneActive;
+    emitRuntimeWriteSpan({
+      label: 'results_finalize_lane_state',
+      operationId: hydrationOperationId ?? searchRequestIdentity ?? 'hydration-sync-no-request',
+      activeOverlayKey,
+      searchRequestId,
+      resultsHydrationKey,
+      isResultsFinalizeLaneActive,
+      isHydrationPending,
+      hydrationRowsReleasePending:
+        hydrationFinalizeRowsReleaseCompletedToken !== hydrationRowsReleaseVersionToken,
+      shouldHydrateResultsForRender,
+    });
+  }, [
+    activeOverlayKey,
+    emitRuntimeWriteSpan,
+    hydrationFinalizeRowsReleaseCompletedToken,
+    hydrationOperationId,
+    hydrationRowsReleaseVersionToken,
+    isHydrationPending,
+    isResultsFinalizeLaneActive,
+    resultsHydrationKey,
+    searchRequestIdentity,
+    searchRequestId,
+    shouldHydrateResultsForRender,
+  ]);
 
   React.useEffect(() => {
     setHydrationRowsLimit(null);
@@ -465,6 +498,9 @@ export const useSearchResultsReadModelSelectors = (
       stepRows: HYDRATION_RAMP_STEP_ROWS,
       frameBudgetMs: HYDRATION_RAMP_FRAME_BUDGET_MS,
       resolveStepRows: ({ pressure, defaultStepRows }) => {
+        if (isVisualSyncPending || runOneCommitSpanPressureActive) {
+          return 1;
+        }
         if (!shouldHydrateResultsForRender) {
           return defaultStepRows;
         }
@@ -472,9 +508,9 @@ export const useSearchResultsReadModelSelectors = (
           return 1;
         }
         if (pressure === 'pressured') {
-          return 2;
+          return Math.min(2, defaultStepRows);
         }
-        return defaultStepRows;
+        return Math.min(2, defaultStepRows);
       },
       onStep: setHydrationRowsLimit,
       onComplete: () => {
@@ -495,6 +531,7 @@ export const useSearchResultsReadModelSelectors = (
     setHydrationRowsLimit,
     shouldHydrateResultsForRender,
     isVisualSyncPending,
+    runOneCommitSpanPressureActive,
     setHydrationFinalizeRowsReleaseCompletedToken,
   ]);
 
@@ -882,6 +919,7 @@ export const useSearchResultsReadModelSelectors = (
 
   return {
     safeResultsCount: listProjection.safeResultsData.length,
+    isResultsFinalizeLaneActive,
     rowsForRender,
     renderListItem,
     listFooterComponent,

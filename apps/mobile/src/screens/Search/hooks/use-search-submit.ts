@@ -11,12 +11,66 @@ import { useSystemStatusStore } from '../../../store/systemStatusStore';
 import type { SegmentValue } from '../constants/search';
 import { DEFAULT_PAGE_SIZE, DEFAULT_SEGMENT, MINIMUM_VOTES_FILTER } from '../constants/search';
 import type { MapboxMapRef } from '../components/search-map';
+import type { SearchSessionController } from '../runtime/controller/search-session-controller';
+import type {
+  SearchSessionEventPayload,
+  SearchSessionEventType,
+} from '../runtime/controller/search-session-events';
+import {
+  createEntityResponseReceivedPayload,
+  createEntityShadowEvent,
+  createEntitySubmitIntentPayload,
+  getEntityShadowOperationId,
+} from '../runtime/adapters/entity-adapter';
+import {
+  createNaturalResponseReceivedPayload,
+  createNaturalShadowEvent,
+  createNaturalSubmitIntentPayload,
+  getNaturalShadowOperationId,
+} from '../runtime/adapters/natural-adapter';
+import {
+  createShortcutResponseReceivedPayload,
+  createShortcutShadowEvent,
+  createShortcutSubmitIntentPayload,
+  getShortcutShadowOperationId,
+} from '../runtime/adapters/shortcut-adapter';
 import { boundsFromPairs, isLngLatTuple } from '../utils/geo';
 import { mergeSearchResponses } from '../utils/merge';
 import { normalizePriceFilter } from '../utils/price';
 import { resolveSingleRestaurantCandidate } from '../utils/response';
 
 type SearchMode = 'natural' | 'shortcut' | null;
+type ShadowMode = 'natural' | 'entity' | 'shortcut';
+type RuntimeMechanismEmitter = (
+  event: 'runtime_write_span',
+  payload?: Record<string, unknown>
+) => void;
+type SearchSessionShadowTransition = {
+  mode: ShadowMode;
+  operationId: string;
+  seq: number;
+  eventType: SearchSessionEventType;
+  accepted: boolean;
+  reason: string;
+  phase: string;
+  payload: SearchSessionEventPayload;
+};
+
+type ActiveOperationTuple = {
+  mode: ShadowMode;
+  sessionId: string;
+  operationId: string;
+  requestId: number;
+  seq: number;
+};
+
+type HandleSearchResponseRuntimeShadow = {
+  runtimeTuple: ActiveOperationTuple;
+  emitShadowTransition: (
+    eventType: SearchSessionEventType,
+    payload?: SearchSessionEventPayload
+  ) => boolean;
+};
 
 type SubmitSearchOptions = {
   openNow?: boolean;
@@ -25,6 +79,8 @@ type SubmitSearchOptions = {
   page?: number;
   append?: boolean;
   preserveSheetState?: boolean;
+  transitionFromDockedPolls?: boolean;
+  forceFreshBounds?: boolean;
   scoreMode?: NaturalSearchRequest['scoreMode'];
   submission?: {
     source: NaturalSearchRequest['submissionSource'];
@@ -39,15 +95,12 @@ type StructuredSearchFilters = Pick<
 
 type UseSearchSubmitOptions = {
   query: string;
-  isLoading: boolean;
-  setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
   isLoadingMore: boolean;
   setIsLoadingMore: React.Dispatch<React.SetStateAction<boolean>>;
   results: SearchResponse | null;
   setResults: React.Dispatch<React.SetStateAction<SearchResponse | null>>;
   submittedQuery: string;
   setSubmittedQuery: React.Dispatch<React.SetStateAction<string>>;
-  activeTab: SegmentValue;
   preferredActiveTab: SegmentValue;
   setActiveTab: React.Dispatch<React.SetStateAction<SegmentValue>>;
   hasActiveTabPreference: boolean;
@@ -60,10 +113,9 @@ type UseSearchSubmitOptions = {
   setIsPaginationExhausted: React.Dispatch<React.SetStateAction<boolean>>;
   canLoadMore: boolean;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
+  onSearchRequestLoadingChange?: (isLoading: boolean) => void;
   setIsSearchSessionActive: React.Dispatch<React.SetStateAction<boolean>>;
   setSearchMode: React.Dispatch<React.SetStateAction<SearchMode>>;
-  setIsAutocompleteSuppressed: React.Dispatch<React.SetStateAction<boolean>>;
-  setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
   showPanel: () => void;
   resetSheetToHidden: () => void;
   scrollResultsToTop: () => void;
@@ -90,6 +142,9 @@ type UseSearchSubmitOptions = {
     bounds: MapBounds | null;
     entities: StructuredSearchRequest['entities'];
   }) => void;
+  runtimeSessionController: SearchSessionController;
+  onRuntimeMechanismEvent?: RuntimeMechanismEmitter;
+  onSearchSessionShadowTransition?: (transition: SearchSessionShadowTransition) => void;
 };
 
 type RecentSearchInput = {
@@ -115,11 +170,31 @@ type UseSearchSubmitResult = {
       preserveSheetState?: boolean;
       transitionFromDockedPolls?: boolean;
       filters?: StructuredSearchFilters;
+      forceFreshBounds?: boolean;
       scoreMode?: NaturalSearchRequest['scoreMode'];
     }
   ) => Promise<void>;
+  rerunActiveSearch: (params: {
+    searchMode: SearchMode;
+    activeTab: SegmentValue;
+    submittedQuery: string;
+    query: string;
+    isSearchSessionActive: boolean;
+    preserveSheetState?: boolean;
+  }) => Promise<void>;
   loadMoreResults: (searchMode: SearchMode) => void;
   cancelActiveSearchRequest: () => void;
+};
+
+type SubmitUiLanesOptions = {
+  requestId: number;
+  mode: SearchMode;
+  targetTab: SegmentValue;
+  preserveSheetState: boolean;
+  transitionFromDockedPolls: boolean;
+  shouldHoldResultPanel: boolean;
+  shouldResetPagination: boolean;
+  submittedLabel?: string;
 };
 
 const resolveIntentDefaultTab = (response: SearchResponse): SegmentValue | null => {
@@ -235,10 +310,11 @@ const isRateLimitError = (error: unknown) => {
   return false;
 };
 
+const shouldPreclearNaturalResults = false;
+const shouldPrimeSubmittedQueryBeforeResponse = false;
+
 const useSearchSubmit = ({
   query,
-  isLoading,
-  setIsLoading,
   isLoadingMore,
   setIsLoadingMore,
   results,
@@ -257,10 +333,9 @@ const useSearchSubmit = ({
   setIsPaginationExhausted,
   canLoadMore,
   setError,
+  onSearchRequestLoadingChange,
   setIsSearchSessionActive,
   setSearchMode,
-  setIsAutocompleteSuppressed,
-  setShowSuggestions,
   showPanel,
   resetSheetToHidden,
   scrollResultsToTop,
@@ -283,6 +358,9 @@ const useSearchSubmit = ({
   prepareShortcutSheetTransition,
   onPageOneResultsCommitted,
   onShortcutSearchCoverageSnapshot,
+  runtimeSessionController,
+  onRuntimeMechanismEvent,
+  onSearchSessionShadowTransition,
 }: UseSearchSubmitOptions): UseSearchSubmitResult => {
   const searchRequestSeqRef = React.useRef(0);
   const activeSearchRequestRef = React.useRef(0);
@@ -290,12 +368,19 @@ const useSearchSubmit = ({
   const shortcutSearchRequestIdRef = React.useRef<string | null>(null);
   const loadingMoreTokenSeqRef = React.useRef(0);
   const activeLoadingMoreTokenRef = React.useRef<number | null>(null);
+  const isSearchRequestInFlightRef = React.useRef(false);
+  const responseApplyTokenRef = React.useRef(0);
+  const isMountedRef = React.useRef(true);
   const shouldLogSearchResponsePayload = searchPerfDebug.logSearchResponsePayload;
   const shouldLogSearchResponseTimings =
     searchPerfDebug.enabled && searchPerfDebug.logSearchResponseTimings;
   const searchResponseTimingMinMs = searchPerfDebug.logSearchResponseTimingMinMs;
-  const shouldDeferBestHereUi = searchPerfDebug.enabled && searchPerfDebug.deferBestHereUi;
   const phaseStartRef = React.useRef<number | null>(null);
+  const runtimeShadowSessionIdRef = React.useRef(
+    `search-session-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  );
+  const activeOperationTupleRef = React.useRef<ActiveOperationTuple | null>(null);
+  const hasReportedCutoverRef = React.useRef(false);
   const logSearchResponseTiming = React.useCallback(
     (label: string, durationMs: number) => {
       if (!shouldLogSearchResponseTimings || durationMs < searchResponseTimingMinMs) {
@@ -321,6 +406,229 @@ const useSearchSubmit = ({
     },
     [shouldLogSearchResponseTimings]
   );
+  const resolveShadowOperationId = React.useCallback(
+    (mode: ShadowMode, requestId: number): string => {
+      if (mode === 'natural') {
+        return getNaturalShadowOperationId(requestId);
+      }
+      if (mode === 'entity') {
+        return getEntityShadowOperationId(requestId);
+      }
+      return getShortcutShadowOperationId(requestId);
+    },
+    []
+  );
+  const createActiveOperationTuple = React.useCallback(
+    (mode: ShadowMode, requestId: number): ActiveOperationTuple => ({
+      mode,
+      sessionId: runtimeShadowSessionIdRef.current,
+      operationId: resolveShadowOperationId(mode, requestId),
+      requestId,
+      seq: 0,
+    }),
+    [resolveShadowOperationId]
+  );
+  const clearActiveOperationTuple = React.useCallback((tuple: ActiveOperationTuple) => {
+    const activeTuple = activeOperationTupleRef.current;
+    if (!activeTuple) {
+      return;
+    }
+    if (activeTuple.operationId !== tuple.operationId) {
+      return;
+    }
+    activeOperationTupleRef.current = null;
+  }, []);
+  const emitShadowTransitionForTuple = React.useCallback(
+    (
+      tuple: ActiveOperationTuple,
+      eventType: SearchSessionEventType,
+      payload: SearchSessionEventPayload = {}
+    ): boolean => {
+      const activeTuple = activeOperationTupleRef.current;
+      if (!activeTuple || activeTuple.operationId !== tuple.operationId) {
+        return false;
+      }
+      tuple.seq += 1;
+      const nextSeq = tuple.seq;
+      const atMs = getPerfNow();
+      const event =
+        tuple.mode === 'natural'
+          ? createNaturalShadowEvent({
+              sessionId: tuple.sessionId,
+              requestId: tuple.requestId,
+              seq: nextSeq,
+              atMs,
+              type: eventType,
+              payload,
+            })
+          : tuple.mode === 'entity'
+          ? createEntityShadowEvent({
+              sessionId: tuple.sessionId,
+              requestId: tuple.requestId,
+              seq: nextSeq,
+              atMs,
+              type: eventType,
+              payload,
+            })
+          : createShortcutShadowEvent({
+              sessionId: tuple.sessionId,
+              requestId: tuple.requestId,
+              seq: nextSeq,
+              atMs,
+              type: eventType,
+              payload,
+            });
+      const result = runtimeSessionController.dispatch(event);
+      onRuntimeMechanismEvent?.('runtime_write_span', {
+        domain: 'search_session_shadow',
+        label: 'shadow_transition',
+        mode: tuple.mode,
+        operationId: tuple.operationId,
+        eventType,
+        seq: nextSeq,
+        accepted: result.accepted,
+        reason: result.reason,
+        phase: result.state.phase,
+      });
+      onSearchSessionShadowTransition?.({
+        mode: tuple.mode,
+        operationId: tuple.operationId,
+        seq: nextSeq,
+        eventType,
+        accepted: result.accepted,
+        reason: result.reason,
+        phase: result.state.phase,
+        payload,
+      });
+      if (!result.accepted) {
+        return false;
+      }
+      return true;
+    },
+    [onRuntimeMechanismEvent, onSearchSessionShadowTransition, runtimeSessionController]
+  );
+  const activateRuntimeShadowOperation = React.useCallback(
+    (tuple: ActiveOperationTuple, submitPayload: SearchSessionEventPayload): boolean => {
+      activeOperationTupleRef.current = tuple;
+      if (!emitShadowTransitionForTuple(tuple, 'submit_intent', submitPayload)) {
+        return false;
+      }
+      return emitShadowTransitionForTuple(tuple, 'submitting', {
+        mode: tuple.mode,
+      });
+    },
+    [emitShadowTransitionForTuple]
+  );
+  const createHandleSearchResponseRuntimeShadow = React.useCallback(
+    (runtimeTuple: ActiveOperationTuple): HandleSearchResponseRuntimeShadow => ({
+      runtimeTuple,
+      emitShadowTransition: (eventType, payload) =>
+        emitShadowTransitionForTuple(runtimeTuple, eventType, payload ?? {}),
+    }),
+    [emitShadowTransitionForTuple]
+  );
+  const scheduleOnNextFrame = React.useCallback((run: () => void) => {
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => {
+        run();
+      });
+      return;
+    }
+    setTimeout(() => {
+      run();
+    }, 0);
+  }, []);
+  const scheduleAfterTwoFrames = React.useCallback(
+    (run: () => void) => {
+      scheduleOnNextFrame(() => {
+        scheduleOnNextFrame(run);
+      });
+    },
+    [scheduleOnNextFrame]
+  );
+  const runNonCriticalStateUpdate = React.useCallback((run: () => void) => {
+    if (typeof React.startTransition === 'function') {
+      React.startTransition(() => {
+        run();
+      });
+      return;
+    }
+    run();
+  }, []);
+  const isRequestStillActive = React.useCallback(
+    (requestId: number) => isMountedRef.current && activeSearchRequestRef.current === requestId,
+    []
+  );
+  const scheduleSubmitUiLanes = React.useCallback(
+    (options: SubmitUiLanesOptions) => {
+      const {
+        requestId,
+        mode,
+        targetTab,
+        preserveSheetState,
+        transitionFromDockedPolls,
+        shouldHoldResultPanel,
+        shouldResetPagination,
+        submittedLabel,
+      } = options;
+      const shouldRevealPanel = !preserveSheetState && !shouldHoldResultPanel;
+
+      scheduleOnNextFrame(() => {
+        if (!isRequestStillActive(requestId)) {
+          return;
+        }
+        if (transitionFromDockedPolls && !shouldHoldResultPanel) {
+          prepareShortcutSheetTransition?.();
+        }
+        if (submittedLabel && !preserveSheetState) {
+          setSubmittedQuery(submittedLabel);
+        }
+        if (shouldRevealPanel) {
+          showPanel();
+        }
+      });
+
+      scheduleAfterTwoFrames(() => {
+        if (!isRequestStillActive(requestId)) {
+          return;
+        }
+        unstable_batchedUpdates(() => {
+          setSearchMode(mode);
+          setIsSearchSessionActive(true);
+          setActiveTab(targetTab);
+          setIsLoadingMore(false);
+          lastAutoOpenKeyRef.current = null;
+          activeLoadingMoreTokenRef.current = null;
+        });
+        if (shouldResetPagination) {
+          runNonCriticalStateUpdate(() => {
+            setHasMoreFood(false);
+            setHasMoreRestaurants(false);
+            setIsPaginationExhausted(false);
+            setCurrentPage(1);
+          });
+        }
+      });
+    },
+    [
+      isRequestStillActive,
+      lastAutoOpenKeyRef,
+      prepareShortcutSheetTransition,
+      runNonCriticalStateUpdate,
+      scheduleAfterTwoFrames,
+      scheduleOnNextFrame,
+      setActiveTab,
+      setCurrentPage,
+      setHasMoreFood,
+      setHasMoreRestaurants,
+      setIsLoadingMore,
+      setIsPaginationExhausted,
+      setIsSearchSessionActive,
+      setSearchMode,
+      setSubmittedQuery,
+      showPanel,
+    ]
+  );
 
   React.useEffect(() => {
     if (!shouldLogSearchResponseTimings) {
@@ -329,6 +637,31 @@ const useSearchSubmit = ({
     // eslint-disable-next-line no-console
     console.log('[SearchPerf] response timing logs enabled');
   }, [shouldLogSearchResponseTimings]);
+  React.useEffect(
+    () => () => {
+      isMountedRef.current = false;
+      responseApplyTokenRef.current += 1;
+      const activeTuple = activeOperationTupleRef.current;
+      if (activeTuple) {
+        emitShadowTransitionForTuple(activeTuple, 'cancelled', {
+          reason: 'hook_unmount',
+        });
+        clearActiveOperationTuple(activeTuple);
+      }
+      isSearchRequestInFlightRef.current = false;
+      onSearchRequestLoadingChange?.(false);
+    },
+    [clearActiveOperationTuple, emitShadowTransitionForTuple, onSearchRequestLoadingChange]
+  );
+  React.useEffect(() => {
+    if (hasReportedCutoverRef.current) {
+      return;
+    }
+    hasReportedCutoverRef.current = true;
+    logger.debug('Search runtime submit controller cutover', {
+      naturalControllerCutover: true,
+    });
+  }, []);
 
   const beginLoadingMore = React.useCallback(() => {
     const token = ++loadingMoreTokenSeqRef.current;
@@ -350,13 +683,82 @@ const useSearchSubmit = ({
 
   const cancelActiveSearchRequest = React.useCallback(() => {
     cancelSearch();
+    const activeTuple = activeOperationTupleRef.current;
+    if (activeTuple) {
+      emitShadowTransitionForTuple(activeTuple, 'cancelled', {
+        reason: 'cancel_active_search_request',
+      });
+      clearActiveOperationTuple(activeTuple);
+    }
     activeSearchRequestRef.current = ++searchRequestSeqRef.current;
+    responseApplyTokenRef.current += 1;
+    isSearchRequestInFlightRef.current = false;
+    onSearchRequestLoadingChange?.(false);
     unstable_batchedUpdates(() => {
-      setIsLoading(false);
       setIsLoadingMore(false);
     });
     activeLoadingMoreTokenRef.current = null;
-  }, [cancelSearch, setIsLoading, setIsLoadingMore]);
+  }, [
+    cancelSearch,
+    clearActiveOperationTuple,
+    emitShadowTransitionForTuple,
+    onSearchRequestLoadingChange,
+    setIsLoadingMore,
+  ]);
+  const setSearchRequestInFlight = React.useCallback(
+    (isInFlight: boolean) => {
+      if (isSearchRequestInFlightRef.current === isInFlight) {
+        return;
+      }
+      isSearchRequestInFlightRef.current = isInFlight;
+      onSearchRequestLoadingChange?.(isInFlight);
+    },
+    [onSearchRequestLoadingChange]
+  );
+  const resolveRequestBounds = React.useCallback(
+    async (options: {
+      shouldCaptureBounds: boolean;
+      forceFreshBounds?: boolean;
+      logLabel: 'natural' | 'structured';
+    }): Promise<MapBounds | null> => {
+      const shouldCaptureFromMap =
+        options.shouldCaptureBounds &&
+        (options.forceFreshBounds || !latestBoundsRef.current) &&
+        mapRef.current?.getVisibleBounds;
+      if (shouldCaptureFromMap) {
+        const boundsStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
+        try {
+          const visibleBounds = await mapRef.current!.getVisibleBounds();
+          if (
+            Array.isArray(visibleBounds) &&
+            visibleBounds.length >= 2 &&
+            isLngLatTuple(visibleBounds[0]) &&
+            isLngLatTuple(visibleBounds[1])
+          ) {
+            const nextBounds = boundsFromPairs(visibleBounds[0], visibleBounds[1]);
+            latestBoundsRef.current = nextBounds;
+            return nextBounds;
+          }
+        } catch (boundsError) {
+          logger.warn(`Unable to determine map bounds before submitting ${options.logLabel} search`, {
+            message: boundsError instanceof Error ? boundsError.message : 'unknown error',
+          });
+        } finally {
+          if (shouldLogSearchResponseTimings && boundsStart > 0) {
+            logSearchResponseTiming(`getVisibleBounds:${options.logLabel}`, getPerfNow() - boundsStart);
+          }
+        }
+      }
+      return latestBoundsRef.current;
+    },
+    [
+      getPerfNow,
+      latestBoundsRef,
+      logSearchResponseTiming,
+      mapRef,
+      shouldLogSearchResponseTimings,
+    ]
+  );
 
   const handleSearchResponse = React.useCallback(
     (
@@ -369,16 +771,34 @@ const useSearchSubmit = ({
         pushToHistory?: boolean;
         submissionContext?: NaturalSearchRequest['submissionContext'];
         showPanelOnResponse?: boolean;
+        responseReceivedPayload: SearchSessionEventPayload;
+        runtimeShadow: HandleSearchResponseRuntimeShadow;
       }
     ) => {
       const handleStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
-      const { append, targetPage, submittedLabel, pushToHistory, fallbackSearchRequestId } =
-        options;
+      const {
+        append,
+        targetPage,
+        submittedLabel,
+        pushToHistory,
+        fallbackSearchRequestId,
+        runtimeShadow,
+      } = options;
+      const { runtimeTuple } = runtimeShadow;
+      const emitShadowTransition = runtimeShadow.emitShadowTransition;
       const normalizedResponse = normalizeSearchResponse(
         response,
         targetPage,
         fallbackSearchRequestId
       );
+      const responseApplyToken = responseApplyTokenRef.current + 1;
+      responseApplyTokenRef.current = responseApplyToken;
+      const isResponseApplyStale = () =>
+        !isMountedRef.current || responseApplyTokenRef.current !== responseApplyToken;
+      if (!emitShadowTransition('response_received', options.responseReceivedPayload)) {
+        clearActiveOperationTuple(runtimeTuple);
+        return;
+      }
 
       logSearchPhase('handleSearchResponse:start');
       let previousFoodCountSnapshot = 0;
@@ -401,87 +821,130 @@ const useSearchSubmit = ({
           mergedRestaurantCount = merged.restaurants?.length ?? 0;
           return merged;
         });
-        if (!append && normalizedResponse.metadata.page === 1) {
-          onPageOneResultsCommitted?.();
-        }
-
-        if (!append && singleRestaurantCandidate) {
-          setActiveTab('restaurants');
-        } else if (!append) {
-          const hasFoodResults = normalizedResponse?.dishes?.length > 0;
-          const hasRestaurantsResults = (normalizedResponse?.restaurants?.length ?? 0) > 0;
-          const intentDefaultTab = resolveIntentDefaultTab(normalizedResponse);
-
-          setActiveTab((prevTab) => {
-            if (!hasActiveTabPreference && intentDefaultTab) {
-              if (intentDefaultTab === 'dishes' && hasFoodResults) {
-                return 'dishes';
-              }
-              if (intentDefaultTab === 'restaurants' && hasRestaurantsResults) {
-                return 'restaurants';
-              }
-              return hasFoodResults ? 'dishes' : 'restaurants';
-            }
-            if (prevTab === 'dishes' && hasFoodResults) {
-              return 'dishes';
-            }
-            if (prevTab === 'restaurants' && hasRestaurantsResults) {
-              return 'restaurants';
-            }
-            return hasFoodResults ? 'dishes' : 'restaurants';
-          });
-        }
-
-        if (!singleRestaurantCandidate) {
-          const totalFoodAvailable =
-            normalizedResponse.metadata.totalFoodResults ?? mergedFoodCount;
-          const totalRestaurantAvailable =
-            normalizedResponse.metadata.totalRestaurantResults ?? mergedRestaurantCount;
-
-          const nextHasMoreFood = mergedFoodCount < totalFoodAvailable;
-          const nextHasMoreRestaurants =
-            normalizedResponse.format === 'dual_list'
-              ? mergedRestaurantCount < totalRestaurantAvailable
-              : false;
-
-          setHasMoreFood(nextHasMoreFood);
-          setHasMoreRestaurants(nextHasMoreRestaurants);
-          setCurrentPage(targetPage);
-
-          if (
-            append &&
-            (!(
-              mergedFoodCount > previousFoodCountSnapshot ||
-              mergedRestaurantCount > previousRestaurantCountSnapshot
-            ) ||
-              (!nextHasMoreFood && !nextHasMoreRestaurants))
-          ) {
-            setIsPaginationExhausted(true);
-          }
-        }
       });
-      logSearchPhase('handleSearchResponse:state-applied');
-      if (!append) {
-        requestAnimationFrame(() => {
+      logSearchPhase('handleSearchResponse:results-committed');
+      if (!emitShadowTransition('phase_a_committed', {
+        append,
+        targetPage,
+        requestId: normalizedResponse.metadata.searchRequestId ?? null,
+      })) {
+        clearActiveOperationTuple(runtimeTuple);
+        return;
+      }
+      if (!append && normalizedResponse.metadata.page === 1) {
+        scheduleOnNextFrame(() => {
+          if (isResponseApplyStale()) {
+            return;
+          }
+          onPageOneResultsCommitted?.();
+        });
+      }
+
+      const applyResponseMetaState = () => {
+        if (isResponseApplyStale()) {
+          return;
+        }
+        runNonCriticalStateUpdate(() => {
           unstable_batchedUpdates(() => {
-            lastSearchRequestIdRef.current = normalizedResponse.metadata.searchRequestId ?? null;
-            if (submittedLabel) {
-              setSubmittedQuery(submittedLabel);
-            } else {
-              setSubmittedQuery('');
+            if (!append && singleRestaurantCandidate) {
+              setActiveTab('restaurants');
+            } else if (!append) {
+              const hasFoodResults = normalizedResponse?.dishes?.length > 0;
+              const hasRestaurantsResults = (normalizedResponse?.restaurants?.length ?? 0) > 0;
+              const intentDefaultTab = resolveIntentDefaultTab(normalizedResponse);
+
+              setActiveTab((prevTab) => {
+                if (!hasActiveTabPreference && intentDefaultTab) {
+                  if (intentDefaultTab === 'dishes' && hasFoodResults) {
+                    return 'dishes';
+                  }
+                  if (intentDefaultTab === 'restaurants' && hasRestaurantsResults) {
+                    return 'restaurants';
+                  }
+                  return hasFoodResults ? 'dishes' : 'restaurants';
+                }
+                if (prevTab === 'dishes' && hasFoodResults) {
+                  return 'dishes';
+                }
+                if (prevTab === 'restaurants' && hasRestaurantsResults) {
+                  return 'restaurants';
+                }
+                return hasFoodResults ? 'dishes' : 'restaurants';
+              });
             }
 
-            setIsPaginationExhausted(false);
+            if (!singleRestaurantCandidate) {
+              const totalFoodAvailable =
+                normalizedResponse.metadata.totalFoodResults ?? mergedFoodCount;
+              const totalRestaurantAvailable =
+                normalizedResponse.metadata.totalRestaurantResults ?? mergedRestaurantCount;
 
-            if (singleRestaurantCandidate) {
-              if (!isRestaurantOverlayVisibleRef?.current) {
-                resetSheetToHidden();
+              const nextHasMoreFood = mergedFoodCount < totalFoodAvailable;
+              const nextHasMoreRestaurants =
+                normalizedResponse.format === 'dual_list'
+                  ? mergedRestaurantCount < totalRestaurantAvailable
+                  : false;
+
+              setHasMoreFood(nextHasMoreFood);
+              setHasMoreRestaurants(nextHasMoreRestaurants);
+              setCurrentPage(targetPage);
+
+              if (
+                append &&
+                (!(
+                  mergedFoodCount > previousFoodCountSnapshot ||
+                  mergedRestaurantCount > previousRestaurantCountSnapshot
+                ) ||
+                  (!nextHasMoreFood && !nextHasMoreRestaurants))
+              ) {
+                setIsPaginationExhausted(true);
               }
-            } else if (options.showPanelOnResponse) {
-              showPanel();
             }
           });
-          logSearchPhase('handleSearchResponse:ui-deferred');
+        });
+        logSearchPhase('handleSearchResponse:meta-applied');
+      };
+      if (append) {
+        applyResponseMetaState();
+      } else {
+        scheduleOnNextFrame(() => {
+          if (isResponseApplyStale()) {
+            return;
+          }
+          applyResponseMetaState();
+        });
+      }
+      if (!append) {
+        scheduleOnNextFrame(() => {
+          if (isResponseApplyStale()) {
+            return;
+          }
+          scheduleOnNextFrame(() => {
+            if (isResponseApplyStale()) {
+              return;
+            }
+            runNonCriticalStateUpdate(() => {
+              unstable_batchedUpdates(() => {
+                lastSearchRequestIdRef.current = normalizedResponse.metadata.searchRequestId ?? null;
+                if (submittedLabel) {
+                  setSubmittedQuery(submittedLabel);
+                } else {
+                  setSubmittedQuery('');
+                }
+
+                setIsPaginationExhausted(false);
+
+                if (singleRestaurantCandidate) {
+                  if (!isRestaurantOverlayVisibleRef?.current) {
+                    resetSheetToHidden();
+                  }
+                } else if (options.showPanelOnResponse) {
+                  showPanel();
+                }
+              });
+            });
+            logSearchPhase('handleSearchResponse:ui-deferred');
+          });
         });
       }
 
@@ -492,6 +955,9 @@ const useSearchSubmit = ({
         ].some((filter) => Array.isArray(filter.entityIds) && filter.entityIds.length > 0);
 
         const enqueueHistoryUpdate = () => {
+          if (isResponseApplyStale()) {
+            return;
+          }
           if (hasEntityTargets) {
             const contextRecord =
               options.submissionContext &&
@@ -519,14 +985,67 @@ const useSearchSubmit = ({
       }
 
       if (!append) {
+        if (isResponseApplyStale()) {
+          clearActiveOperationTuple(runtimeTuple);
+          return;
+        }
         if (!isSearchEditingRef?.current) {
           Keyboard.dismiss();
           scrollResultsToTop();
         }
       }
-      logSearchPhase('handleSearchResponse:done');
-      if (shouldLogSearchResponseTimings) {
-        logSearchResponseTiming('handleSearchResponse', getPerfNow() - handleStart);
+      const finalizeShadowTransitions = () => {
+        if (isResponseApplyStale()) {
+          clearActiveOperationTuple(runtimeTuple);
+          return;
+        }
+        if (
+          !emitShadowTransition('visual_released', {
+            append,
+            targetPage,
+            requestId: normalizedResponse.metadata.searchRequestId ?? null,
+          })
+        ) {
+          clearActiveOperationTuple(runtimeTuple);
+          return;
+        }
+        scheduleOnNextFrame(() => {
+          if (isResponseApplyStale()) {
+            clearActiveOperationTuple(runtimeTuple);
+            return;
+          }
+          if (
+            !emitShadowTransition('phase_b_materializing', {
+              append,
+              targetPage,
+              requestId: normalizedResponse.metadata.searchRequestId ?? null,
+            })
+          ) {
+            clearActiveOperationTuple(runtimeTuple);
+            return;
+          }
+          scheduleOnNextFrame(() => {
+            if (isResponseApplyStale()) {
+              clearActiveOperationTuple(runtimeTuple);
+              return;
+            }
+            emitShadowTransition('settled', {
+              append,
+              targetPage,
+              requestId: normalizedResponse.metadata.searchRequestId ?? null,
+            });
+            clearActiveOperationTuple(runtimeTuple);
+            logSearchPhase('handleSearchResponse:done');
+            if (shouldLogSearchResponseTimings) {
+              logSearchResponseTiming('handleSearchResponse', getPerfNow() - handleStart);
+            }
+          });
+        });
+      };
+      if (append) {
+        finalizeShadowTransitions();
+      } else {
+        scheduleOnNextFrame(finalizeShadowTransitions);
       }
     },
     [
@@ -535,6 +1054,7 @@ const useSearchSubmit = ({
       logSearchPhase,
       hasActiveTabPreference,
       isRestaurantOverlayVisibleRef,
+      clearActiveOperationTuple,
       resetSheetToHidden,
       scrollResultsToTop,
       setActiveTab,
@@ -545,6 +1065,8 @@ const useSearchSubmit = ({
       setResults,
       setSubmittedQuery,
       showPanel,
+      scheduleOnNextFrame,
+      runNonCriticalStateUpdate,
       updateLocalRecentSearches,
       isSearchEditingRef,
       onPageOneResultsCommitted,
@@ -555,7 +1077,10 @@ const useSearchSubmit = ({
     async (
       page: number,
       filters: StructuredSearchFilters = {},
-      scoreModeOverride?: NaturalSearchRequest['scoreMode']
+      scoreModeOverride?: NaturalSearchRequest['scoreMode'],
+      options?: {
+        forceFreshBounds?: boolean;
+      }
     ): Promise<StructuredSearchRequest> => {
       const buildStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
       const pagination = { page, pageSize: DEFAULT_PAGE_SIZE };
@@ -589,36 +1114,13 @@ const useSearchSubmit = ({
         payload.minimumVotes = effectiveMinimumVotes;
       }
 
-      // Only fetch bounds from the map instance if we don't already have recent bounds from map events.
-      const shouldCaptureBounds =
-        page === 1 && !latestBoundsRef.current && mapRef.current?.getVisibleBounds;
-      if (shouldCaptureBounds) {
-        const boundsStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
-        try {
-          const visibleBounds = await mapRef.current!.getVisibleBounds();
-          if (
-            Array.isArray(visibleBounds) &&
-            visibleBounds.length >= 2 &&
-            isLngLatTuple(visibleBounds[0]) &&
-            isLngLatTuple(visibleBounds[1])
-          ) {
-            payload.bounds = boundsFromPairs(visibleBounds[0], visibleBounds[1]);
-            latestBoundsRef.current = payload.bounds;
-          }
-        } catch (boundsError) {
-          logger.warn('Unable to determine map bounds before submitting structured search', {
-            message: boundsError instanceof Error ? boundsError.message : 'unknown error',
-          });
-        } finally {
-          if (shouldLogSearchResponseTimings && boundsStart > 0) {
-            logSearchResponseTiming('getVisibleBounds:structured', getPerfNow() - boundsStart);
-          }
-        }
-      }
-
-      // Fall back to cached bounds if fresh fetch failed or we're paginating
-      if (!payload.bounds && latestBoundsRef.current) {
-        payload.bounds = latestBoundsRef.current;
+      const bounds = await resolveRequestBounds({
+        shouldCaptureBounds: page === 1,
+        forceFreshBounds: options?.forceFreshBounds,
+        logLabel: 'structured',
+      });
+      if (bounds) {
+        payload.bounds = bounds;
       }
 
       const resolvedLocation = userLocationRef.current ?? (await ensureUserLocation());
@@ -633,11 +1135,10 @@ const useSearchSubmit = ({
     },
     [
       ensureUserLocation,
-      latestBoundsRef,
       logSearchResponseTiming,
-      mapRef,
       openNow,
       priceLevels,
+      resolveRequestBounds,
       scoreMode,
       shouldLogSearchResponseTimings,
       userLocationRef,
@@ -648,7 +1149,7 @@ const useSearchSubmit = ({
   const submitSearch = React.useCallback(
     async (options?: SubmitSearchOptions, overrideQuery?: string) => {
       const append = Boolean(options?.append);
-      if (append && (isLoading || isLoadingMore)) {
+      if (append && (isSearchRequestInFlightRef.current || isLoadingMore)) {
         return;
       }
       logSearchPhase('submitSearch:start', { reset: true });
@@ -672,30 +1173,41 @@ const useSearchSubmit = ({
       }
       const requestId = ++searchRequestSeqRef.current;
       activeSearchRequestRef.current = requestId;
+      const naturalTuple = createActiveOperationTuple('natural', requestId);
+      const naturalShadowActivated = activateRuntimeShadowOperation(
+        naturalTuple,
+        createNaturalSubmitIntentPayload({
+          query: trimmed,
+          targetPage,
+          append,
+          submissionSource: options?.submission?.source ?? 'manual',
+        })
+      );
+      if (!naturalShadowActivated) {
+        clearActiveOperationTuple(naturalTuple);
+        return;
+      }
 
+      let preserveSheetState = false;
       if (!append) {
-        const preserveSheetState = Boolean(options?.preserveSheetState);
+        preserveSheetState = Boolean(options?.preserveSheetState);
+        const transitionFromDockedPolls =
+          !preserveSheetState && Boolean(options?.transitionFromDockedPolls);
         const submissionContextTab = resolveSubmissionDefaultTab(options?.submission?.context);
         const preRequestTab =
           submissionContextTab ?? (hasActiveTabPreference ? preferredActiveTab : DEFAULT_SEGMENT);
         const shouldHoldRestaurantOverlaySheet = isRestaurantOverlayVisibleRef?.current === true;
-        if (!preserveSheetState && !shouldHoldRestaurantOverlaySheet) {
-          prepareShortcutSheetTransition?.();
-        }
-        unstable_batchedUpdates(() => {
-          setActiveTab(preRequestTab);
-          setSearchMode('natural');
-          setIsSearchSessionActive(true);
-          setIsAutocompleteSuppressed(true);
-          setShowSuggestions(false);
-          setHasMoreFood(false);
-          setHasMoreRestaurants(false);
-          setIsLoadingMore(false);
-          setCurrentPage(targetPage);
+        scheduleSubmitUiLanes({
+          requestId,
+          mode: 'natural',
+          targetTab: preRequestTab,
+          preserveSheetState,
+          transitionFromDockedPolls,
+          shouldHoldResultPanel: shouldHoldRestaurantOverlaySheet,
+          shouldResetPagination: false,
         });
         activeLoadingMoreTokenRef.current = null;
-        logSearchPhase('submitSearch:ui-prep');
-        lastAutoOpenKeyRef.current = null;
+        logSearchPhase('submitSearch:ui-lanes-scheduled');
       }
 
       const effectiveOpenNow = options?.openNow ?? openNow;
@@ -710,22 +1222,21 @@ const useSearchSubmit = ({
           : null;
 
       let loadingMoreToken: number | null = null;
+      let didStartResponseLifecycle = false;
+      const shouldForceFreshBounds = Boolean(options?.forceFreshBounds);
       try {
         if (append) {
           loadingMoreToken = beginLoadingMore();
           logSearchPhase('submitSearch:loading-more');
         } else {
-          unstable_batchedUpdates(() => {
-            setIsLoading(true);
-            setError(null);
-            if (!options?.preserveSheetState) {
-              setResults(null);
-              setSubmittedQuery(trimmed);
-              if (!isRestaurantOverlayVisibleRef?.current) {
-                showPanel();
-              }
-            }
-          });
+          setSearchRequestInFlight(true);
+          setError(null);
+          if (shouldPreclearNaturalResults) {
+            setResults(null);
+          }
+          if (shouldPrimeSubmittedQueryBeforeResponse && !preserveSheetState) {
+            setSubmittedQuery(trimmed);
+          }
           logSearchPhase('submitSearch:loading-state');
         }
 
@@ -759,36 +1270,13 @@ const useSearchSubmit = ({
         }
         logSearchPhase('submitSearch:payload-ready');
 
-        // Only fetch bounds from the map instance if we don't already have recent bounds from map events.
-        const shouldCaptureBounds =
-          !append && !latestBoundsRef.current && mapRef.current?.getVisibleBounds;
-        if (shouldCaptureBounds) {
-          const boundsStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
-          try {
-            const visibleBounds = await mapRef.current!.getVisibleBounds();
-            if (
-              Array.isArray(visibleBounds) &&
-              visibleBounds.length >= 2 &&
-              isLngLatTuple(visibleBounds[0]) &&
-              isLngLatTuple(visibleBounds[1])
-            ) {
-              payload.bounds = boundsFromPairs(visibleBounds[0], visibleBounds[1]);
-              latestBoundsRef.current = payload.bounds;
-            }
-          } catch (boundsError) {
-            logger.warn('Unable to determine map bounds before submitting search', {
-              message: boundsError instanceof Error ? boundsError.message : 'unknown error',
-            });
-          } finally {
-            if (shouldLogSearchResponseTimings && boundsStart > 0) {
-              logSearchResponseTiming('getVisibleBounds:natural', getPerfNow() - boundsStart);
-            }
-          }
-        }
-
-        // Fall back to cached bounds if fresh fetch failed or we're paginating
-        if (!payload.bounds && latestBoundsRef.current) {
-          payload.bounds = latestBoundsRef.current;
+        const bounds = await resolveRequestBounds({
+          shouldCaptureBounds: !append,
+          forceFreshBounds: shouldForceFreshBounds,
+          logLabel: 'natural',
+        });
+        if (bounds) {
+          payload.bounds = bounds;
         }
 
         const resolvedLocation = userLocationRef.current ?? (await ensureUserLocation());
@@ -810,6 +1298,7 @@ const useSearchSubmit = ({
         }
         logSearchPhase('submitSearch:response');
         if (response && requestId === activeSearchRequestRef.current) {
+          didStartResponseLifecycle = true;
           useSystemStatusStore.getState().clearServiceIssue('search');
           logSearchResponsePayload('Search response', response, shouldLogSearchResponsePayload);
           const submittedLabel = append ? undefined : trimmed;
@@ -821,11 +1310,20 @@ const useSearchSubmit = ({
             pushToHistory: !append,
             submissionContext: options?.submission?.context,
             showPanelOnResponse: false,
+            responseReceivedPayload: createNaturalResponseReceivedPayload(response, targetPage),
+            runtimeShadow: createHandleSearchResponseRuntimeShadow(naturalTuple),
           });
         }
       } catch (err) {
         logger.error('Search request failed', { message: (err as Error).message });
         if (requestId === activeSearchRequestRef.current) {
+          emitShadowTransitionForTuple(naturalTuple, 'error', {
+            mode: 'natural',
+            append,
+            targetPage,
+            message: err instanceof Error ? err.message : 'unknown error',
+          });
+          clearActiveOperationTuple(naturalTuple);
           if (!append) {
             setError(null);
           } else {
@@ -842,45 +1340,54 @@ const useSearchSubmit = ({
             endLoadingMore(loadingMoreToken);
           }
         } else if (requestId === activeSearchRequestRef.current) {
-          setIsLoading(false);
+          setSearchRequestInFlight(false);
+        }
+        if (requestId === activeSearchRequestRef.current) {
+          const activeTuple = activeOperationTupleRef.current;
+          if (
+            activeTuple &&
+            activeTuple.operationId === naturalTuple.operationId &&
+            !didStartResponseLifecycle
+          ) {
+            emitShadowTransitionForTuple(naturalTuple, 'cancelled', {
+              mode: 'natural',
+              append,
+              targetPage,
+              reason: 'natural_finalized_without_response_lifecycle',
+            });
+            clearActiveOperationTuple(naturalTuple);
+          }
         }
       }
     },
     [
       beginLoadingMore,
+      clearActiveOperationTuple,
+      createActiveOperationTuple,
+      createHandleSearchResponseRuntimeShadow,
       ensureUserLocation,
       endLoadingMore,
+      emitShadowTransitionForTuple,
       preferredActiveTab,
       handleSearchResponse,
-      isLoading,
       isLoadingMore,
       hasActiveTabPreference,
       isRestaurantOverlayVisibleRef,
-      lastAutoOpenKeyRef,
-      latestBoundsRef,
       logSearchPhase,
+      resolveRequestBounds,
       shouldLogSearchResponsePayload,
-      mapRef,
       openNow,
       priceLevels,
       scoreMode,
       query,
       resetMapMoveFlag,
-      prepareShortcutSheetTransition,
       runSearch,
-      setCurrentPage,
+      activateRuntimeShadowOperation,
+      scheduleSubmitUiLanes,
       setError,
-      setHasMoreFood,
-      setHasMoreRestaurants,
-      setIsAutocompleteSuppressed,
-      setIsLoading,
-      setIsLoadingMore,
-      setIsSearchSessionActive,
       setResults,
-      setSearchMode,
-      setShowSuggestions,
+      setSearchRequestInFlight,
       setSubmittedQuery,
-      showPanel,
       userLocationRef,
       votes100Plus,
     ]
@@ -901,44 +1408,54 @@ const useSearchSubmit = ({
       }
       const requestId = ++searchRequestSeqRef.current;
       activeSearchRequestRef.current = requestId;
+      const entityTuple = createActiveOperationTuple('entity', requestId);
+      const entityShadowActivated = activateRuntimeShadowOperation(
+        entityTuple,
+        createEntitySubmitIntentPayload({
+          restaurantId: params.restaurantId,
+          restaurantName: trimmedName,
+          preserveSheetState: Boolean(params.preserveSheetState),
+        })
+      );
+      if (!entityShadowActivated) {
+        clearActiveOperationTuple(entityTuple);
+        return;
+      }
 
       resetMapMoveFlag();
       const preserveSheetState = Boolean(params.preserveSheetState);
-      setSearchMode('natural');
-      setActiveTab('restaurants');
-      setIsSearchSessionActive(true);
+      const shouldHoldRestaurantOverlaySheet = isRestaurantOverlayVisibleRef?.current === true;
+      scheduleSubmitUiLanes({
+        requestId,
+        mode: 'natural',
+        targetTab: 'restaurants',
+        preserveSheetState,
+        transitionFromDockedPolls: false,
+        shouldHoldResultPanel: shouldHoldRestaurantOverlaySheet,
+        shouldResetPagination: true,
+        submittedLabel: trimmedName,
+      });
       setError(null);
-      if (!preserveSheetState) {
-        if (!isRestaurantOverlayVisibleRef?.current) {
-          resetSheetToHidden();
-        }
-        setResults(null);
-        setSubmittedQuery(trimmedName);
-        if (!isRestaurantOverlayVisibleRef?.current) {
-          showPanel();
-        }
-      }
-      setHasMoreFood(false);
-      setHasMoreRestaurants(false);
-      setIsPaginationExhausted(false);
-      setCurrentPage(1);
-      lastAutoOpenKeyRef.current = null;
-      setIsAutocompleteSuppressed(true);
-      setShowSuggestions(false);
       Keyboard.dismiss();
-      logSearchPhase('runRestaurantEntitySearch:ui-prep');
+      logSearchPhase('runRestaurantEntitySearch:ui-lanes-scheduled');
 
+      let didStartResponseLifecycle = false;
       try {
         if (isLoadingMore) {
           setIsLoadingMore(false);
         }
-        setIsLoading(true);
+        setSearchRequestInFlight(true);
         logSearchPhase('runRestaurantEntitySearch:loading-state');
         const payload = await buildStructuredSearchPayload(1, {
-          openNow: false,
-          priceLevels: [],
-          minimumVotes: 0,
-        });
+            openNow: false,
+            priceLevels: [],
+            minimumVotes: 0,
+          },
+          undefined,
+          {
+            forceFreshBounds: false,
+          }
+        );
         payload.entities = {
           restaurants: [
             {
@@ -972,6 +1489,7 @@ const useSearchSubmit = ({
         }
         logSearchPhase('runRestaurantEntitySearch:response');
         if (response && requestId === activeSearchRequestRef.current) {
+          didStartResponseLifecycle = true;
           logSearchResponsePayload(
             'Structured restaurant search response',
             response,
@@ -985,6 +1503,8 @@ const useSearchSubmit = ({
             pushToHistory: true,
             submissionContext,
             showPanelOnResponse: false,
+            responseReceivedPayload: createEntityResponseReceivedPayload(response),
+            runtimeShadow: createHandleSearchResponseRuntimeShadow(entityTuple),
           });
         }
       } catch (err) {
@@ -992,39 +1512,52 @@ const useSearchSubmit = ({
           message: err instanceof Error ? err.message : 'unknown error',
         });
         if (requestId === activeSearchRequestRef.current) {
+          emitShadowTransitionForTuple(entityTuple, 'error', {
+            mode: 'entity',
+            message: err instanceof Error ? err.message : 'unknown error',
+          });
+          clearActiveOperationTuple(entityTuple);
           setError(null);
         }
       } finally {
         if (requestId === activeSearchRequestRef.current) {
-          setIsLoading(false);
+          setSearchRequestInFlight(false);
+          const activeTuple = activeOperationTupleRef.current;
+          if (
+            activeTuple &&
+            activeTuple.operationId === entityTuple.operationId &&
+            !didStartResponseLifecycle
+          ) {
+            emitShadowTransitionForTuple(entityTuple, 'cancelled', {
+              mode: 'entity',
+              reason: 'entity_finalized_without_response_lifecycle',
+            });
+            clearActiveOperationTuple(entityTuple);
+          }
         }
       }
     },
     [
       buildStructuredSearchPayload,
+      clearActiveOperationTuple,
+      createActiveOperationTuple,
+      createHandleSearchResponseRuntimeShadow,
+      emitShadowTransitionForTuple,
       handleSearchResponse,
       isLoadingMore,
-      lastAutoOpenKeyRef,
       logSearchPhase,
-      shouldLogSearchResponsePayload,
-      resetMapMoveFlag,
-      resetSheetToHidden,
-      runSearch,
-      setCurrentPage,
-      setError,
-      setHasMoreFood,
-      setHasMoreRestaurants,
-      setIsAutocompleteSuppressed,
-      setIsLoading,
-      setIsLoadingMore,
-      setIsPaginationExhausted,
-      setIsSearchSessionActive,
-      setSearchMode,
-      setActiveTab,
-      setShowSuggestions,
-      showPanel,
       logSearchResponseTiming,
       shouldLogSearchResponseTimings,
+      getPerfNow,
+      searchResponseTimingMinMs,
+      scheduleSubmitUiLanes,
+      shouldLogSearchResponsePayload,
+      resetMapMoveFlag,
+      runSearch,
+      activateRuntimeShadowOperation,
+      setError,
+      setIsLoadingMore,
+      setSearchRequestInFlight,
       isRestaurantOverlayVisibleRef,
     ]
   );
@@ -1037,76 +1570,60 @@ const useSearchSubmit = ({
         preserveSheetState?: boolean;
         transitionFromDockedPolls?: boolean;
         filters?: StructuredSearchFilters;
+        forceFreshBounds?: boolean;
         scoreMode?: NaturalSearchRequest['scoreMode'];
       }
     ) => {
       logSearchPhase('runBestHere:start', { reset: true });
       const requestId = ++searchRequestSeqRef.current;
       activeSearchRequestRef.current = requestId;
+      const shortcutTuple = createActiveOperationTuple('shortcut', requestId);
+      const shortcutShadowActivated = activateRuntimeShadowOperation(
+        shortcutTuple,
+        createShortcutSubmitIntentPayload({
+          targetTab,
+          submittedLabel,
+          preserveSheetState: Boolean(options?.preserveSheetState),
+          targetPage: 1,
+          append: false,
+        })
+      );
+      if (!shortcutShadowActivated) {
+        clearActiveOperationTuple(shortcutTuple);
+        return;
+      }
+      const shouldForceFreshBounds = Boolean(options?.forceFreshBounds);
 
       resetMapMoveFlag();
       const preserveSheetState = Boolean(options?.preserveSheetState);
       const transitionFromDockedPolls =
         !preserveSheetState && Boolean(options?.transitionFromDockedPolls);
-      if (transitionFromDockedPolls) {
-        prepareShortcutSheetTransition?.();
-      }
-      const suppressSuggestionsNow = () => {
-        unstable_batchedUpdates(() => {
-          setIsAutocompleteSuppressed(true);
-          setShowSuggestions(false);
-        });
-        lastAutoOpenKeyRef.current = null;
-      };
-      const applyBestHereUiState = () => {
-        unstable_batchedUpdates(() => {
-          setSearchMode('shortcut');
-          setIsSearchSessionActive(true);
-          setActiveTab(targetTab);
-          setError(null);
-          if (!preserveSheetState) {
-            if (!transitionFromDockedPolls) {
-              resetSheetToHidden();
-            }
-            setResults(null);
-            setSubmittedQuery(submittedLabel);
-          }
-          setHasMoreFood(false);
-          setHasMoreRestaurants(false);
-          setIsPaginationExhausted(false);
-          setCurrentPage(1);
-          setIsAutocompleteSuppressed(true);
-          setShowSuggestions(false);
-        });
-        lastAutoOpenKeyRef.current = null;
-        Keyboard.dismiss();
-      };
-      if (shouldDeferBestHereUi) {
-        suppressSuggestionsNow();
-        logSearchPhase('runBestHere:suppress-suggestions');
-      } else {
-        applyBestHereUiState();
-        logSearchPhase('runBestHere:ui-prep');
-      }
+      scheduleSubmitUiLanes({
+        requestId,
+        mode: 'shortcut',
+        targetTab,
+        preserveSheetState,
+        transitionFromDockedPolls,
+        shouldHoldResultPanel: false,
+        shouldResetPagination: true,
+        submittedLabel,
+      });
+      setError(null);
+      Keyboard.dismiss();
+      logSearchPhase('runBestHere:ui-lanes-scheduled');
 
+      let didStartResponseLifecycle = false;
       try {
+        setSearchRequestInFlight(true);
         shortcutSearchRequestIdRef.current = null;
         if (isLoadingMore) {
-          unstable_batchedUpdates(() => {
-            setIsLoadingMore(false);
-          });
+          setIsLoadingMore(false);
           logSearchPhase('runBestHere:loading-more');
         }
-        if (!shouldDeferBestHereUi) {
-          unstable_batchedUpdates(() => {
-            setIsLoading(true);
-            if (!preserveSheetState) {
-              showPanel();
-            }
-          });
-          logSearchPhase('runBestHere:loading-state');
-        }
-        const payload = await buildStructuredSearchPayload(1, options?.filters, options?.scoreMode);
+        logSearchPhase('runBestHere:loading-state');
+        const payload = await buildStructuredSearchPayload(1, options?.filters, options?.scoreMode, {
+          forceFreshBounds: shouldForceFreshBounds,
+        });
         shortcutBoundsSnapshotRef.current = payload.bounds ?? null;
         const shortcutCoverageSnapshot = {
           bounds: payload.bounds ?? null,
@@ -1126,6 +1643,7 @@ const useSearchSubmit = ({
         }
         logSearchPhase('runBestHere:response');
         if (response && requestId === activeSearchRequestRef.current) {
+          didStartResponseLifecycle = true;
           const responseSearchRequestId = response?.metadata?.searchRequestId ?? null;
           if (responseSearchRequestId && onShortcutSearchCoverageSnapshot) {
             shortcutSearchRequestIdRef.current = responseSearchRequestId;
@@ -1133,10 +1651,6 @@ const useSearchSubmit = ({
               searchRequestId: responseSearchRequestId,
               ...shortcutCoverageSnapshot,
             });
-          }
-          if (shouldDeferBestHereUi) {
-            applyBestHereUiState();
-            logSearchPhase('runBestHere:ui-prep');
           }
           logSearchResponsePayload(
             'Structured search response',
@@ -1149,7 +1663,9 @@ const useSearchSubmit = ({
             fallbackSearchRequestId: `shortcut:${requestId}`,
             submittedLabel,
             pushToHistory: false,
-            showPanelOnResponse: shouldDeferBestHereUi && !preserveSheetState,
+            showPanelOnResponse: false,
+            responseReceivedPayload: createShortcutResponseReceivedPayload(response),
+            runtimeShadow: createHandleSearchResponseRuntimeShadow(shortcutTuple),
           });
         }
       } catch (err) {
@@ -1157,52 +1673,90 @@ const useSearchSubmit = ({
           message: err instanceof Error ? err.message : 'unknown error',
         });
         if (requestId === activeSearchRequestRef.current) {
+          emitShadowTransitionForTuple(shortcutTuple, 'error', {
+            mode: 'shortcut',
+            message: err instanceof Error ? err.message : 'unknown error',
+          });
+          clearActiveOperationTuple(shortcutTuple);
           setError(null);
         }
       } finally {
         if (requestId === activeSearchRequestRef.current) {
-          setIsLoading(false);
+          setSearchRequestInFlight(false);
+          const activeTuple = activeOperationTupleRef.current;
+          if (
+            activeTuple &&
+            activeTuple.operationId === shortcutTuple.operationId &&
+            !didStartResponseLifecycle
+          ) {
+            emitShadowTransitionForTuple(shortcutTuple, 'cancelled', {
+              mode: 'shortcut',
+              reason: 'shortcut_finalized_without_response_lifecycle',
+            });
+            clearActiveOperationTuple(shortcutTuple);
+          }
         }
       }
     },
     [
       buildStructuredSearchPayload,
+      clearActiveOperationTuple,
+      createActiveOperationTuple,
+      createHandleSearchResponseRuntimeShadow,
+      emitShadowTransitionForTuple,
       handleSearchResponse,
       isLoadingMore,
-      lastAutoOpenKeyRef,
       logSearchPhase,
+      logSearchResponseTiming,
       shouldLogSearchResponsePayload,
+      shouldLogSearchResponseTimings,
+      getPerfNow,
+      searchResponseTimingMinMs,
       resetMapMoveFlag,
-      resetSheetToHidden,
       runSearch,
-      setActiveTab,
-      setCurrentPage,
+      activateRuntimeShadowOperation,
+      scheduleSubmitUiLanes,
       setError,
-      setHasMoreFood,
-      setHasMoreRestaurants,
-      setIsAutocompleteSuppressed,
-      setIsLoading,
       setIsLoadingMore,
-      setIsPaginationExhausted,
-      setIsSearchSessionActive,
-      setSearchMode,
-      setShowSuggestions,
-      showPanel,
-      shouldDeferBestHereUi,
-      prepareShortcutSheetTransition,
+      setSearchRequestInFlight,
       onShortcutSearchCoverageSnapshot,
     ]
   );
 
   const loadMoreShortcutResults = React.useCallback(() => {
-    if (isLoading || isLoadingMore || !results || !canLoadMore || isPaginationExhausted) {
+    if (
+      isSearchRequestInFlightRef.current ||
+      isLoadingMore ||
+      !results ||
+      !canLoadMore ||
+      isPaginationExhausted
+    ) {
       return;
     }
 
     const nextPage = currentPage + 1;
     const loadingMoreToken = beginLoadingMore();
+    const requestId = ++searchRequestSeqRef.current;
+    activeSearchRequestRef.current = requestId;
+    const shortcutAppendTuple = createActiveOperationTuple('shortcut', requestId);
+    const shortcutAppendShadowActivated = activateRuntimeShadowOperation(
+      shortcutAppendTuple,
+      createShortcutSubmitIntentPayload({
+        targetTab: preferredActiveTab,
+        submittedLabel: submittedQuery || 'Best dishes here',
+        preserveSheetState: true,
+        targetPage: nextPage,
+        append: true,
+      })
+    );
+    if (!shortcutAppendShadowActivated) {
+      clearActiveOperationTuple(shortcutAppendTuple);
+      endLoadingMore(loadingMoreToken);
+      return;
+    }
 
     const run = async () => {
+      let didStartResponseLifecycle = false;
       try {
         const payload = await buildStructuredSearchPayload(nextPage);
         if (shortcutBoundsSnapshotRef.current) {
@@ -1222,7 +1776,8 @@ const useSearchSubmit = ({
         if (shouldLogSearchResponseTimings) {
           logSearchResponseTiming('runSearch:pagination', getPerfNow() - requestStart);
         }
-        if (response) {
+        if (response && requestId === activeSearchRequestRef.current) {
+          didStartResponseLifecycle = true;
           logSearchResponsePayload(
             'Structured search pagination',
             response,
@@ -1235,12 +1790,21 @@ const useSearchSubmit = ({
             submittedLabel: submittedQuery || 'Best dishes here',
             pushToHistory: false,
             showPanelOnResponse: false,
+            responseReceivedPayload: createShortcutResponseReceivedPayload(response),
+            runtimeShadow: createHandleSearchResponseRuntimeShadow(shortcutAppendTuple),
           });
         }
       } catch (err) {
         logger.error('Best dishes here pagination failed', {
           message: err instanceof Error ? err.message : 'unknown error',
         });
+        emitShadowTransitionForTuple(shortcutAppendTuple, 'error', {
+          mode: 'shortcut',
+          append: true,
+          targetPage: nextPage,
+          message: err instanceof Error ? err.message : 'unknown error',
+        });
+        clearActiveOperationTuple(shortcutAppendTuple);
         setError(
           isRateLimitError(err)
             ? 'Too many requests. Please wait a moment and try again.'
@@ -1248,6 +1812,22 @@ const useSearchSubmit = ({
         );
       } finally {
         endLoadingMore(loadingMoreToken);
+        if (requestId === activeSearchRequestRef.current) {
+          const activeTuple = activeOperationTupleRef.current;
+          if (
+            activeTuple &&
+            activeTuple.operationId === shortcutAppendTuple.operationId &&
+            !didStartResponseLifecycle
+          ) {
+            emitShadowTransitionForTuple(shortcutAppendTuple, 'cancelled', {
+              mode: 'shortcut',
+              append: true,
+              targetPage: nextPage,
+              reason: 'append_finalized_without_response_lifecycle',
+            });
+            clearActiveOperationTuple(shortcutAppendTuple);
+          }
+        }
       }
     };
 
@@ -1256,16 +1836,21 @@ const useSearchSubmit = ({
     beginLoadingMore,
     buildStructuredSearchPayload,
     canLoadMore,
+    clearActiveOperationTuple,
     currentPage,
+    createActiveOperationTuple,
+    createHandleSearchResponseRuntimeShadow,
     endLoadingMore,
+    emitShadowTransitionForTuple,
     getPerfNow,
     handleSearchResponse,
-    isLoading,
     isLoadingMore,
     isPaginationExhausted,
     logSearchResponseTiming,
+    preferredActiveTab,
     results,
     runSearch,
+    activateRuntimeShadowOperation,
     searchResponseTimingMinMs,
     setError,
     shouldLogSearchResponsePayload,
@@ -1275,7 +1860,13 @@ const useSearchSubmit = ({
 
   const loadMoreResults = React.useCallback(
     (searchMode: SearchMode) => {
-      if (isLoading || isLoadingMore || !results || !canLoadMore || isPaginationExhausted) {
+      if (
+        isSearchRequestInFlightRef.current ||
+        isLoadingMore ||
+        !results ||
+        !canLoadMore ||
+        isPaginationExhausted
+      ) {
         return;
       }
       if (searchMode === 'shortcut') {
@@ -1292,7 +1883,6 @@ const useSearchSubmit = ({
     [
       canLoadMore,
       currentPage,
-      isLoading,
       isLoadingMore,
       isPaginationExhausted,
       loadMoreShortcutResults,
@@ -1302,11 +1892,45 @@ const useSearchSubmit = ({
       submitSearch,
     ]
   );
+  const rerunActiveSearch = React.useCallback(
+    async (params: {
+      searchMode: SearchMode;
+      activeTab: SegmentValue;
+      submittedQuery: string;
+      query: string;
+      isSearchSessionActive: boolean;
+      preserveSheetState?: boolean;
+    }) => {
+      const rerunQuery = (params.submittedQuery || params.query).trim();
+      if (!rerunQuery) {
+        return;
+      }
+      if (params.searchMode === 'shortcut' && params.isSearchSessionActive) {
+        const fallbackShortcutLabel =
+          params.activeTab === 'restaurants' ? 'Best restaurants' : 'Best dishes';
+        const submittedLabel = params.submittedQuery.trim() || fallbackShortcutLabel;
+        await runBestHere(params.activeTab, submittedLabel, {
+          preserveSheetState: params.preserveSheetState,
+          forceFreshBounds: true,
+        });
+        return;
+      }
+      await submitSearch(
+        {
+          preserveSheetState: params.preserveSheetState,
+          forceFreshBounds: true,
+        },
+        rerunQuery
+      );
+    },
+    [runBestHere, submitSearch]
+  );
 
   return {
     submitSearch,
     runRestaurantEntitySearch,
     runBestHere,
+    rerunActiveSearch,
     loadMoreResults,
     cancelActiveSearchRequest,
   };
