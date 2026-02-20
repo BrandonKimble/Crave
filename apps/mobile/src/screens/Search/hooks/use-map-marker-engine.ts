@@ -5,10 +5,7 @@ import MapboxGL from '@rnmapbox/maps';
 import { logger } from '../../../utils';
 import type { Coordinate, FoodResult, MapBounds, RestaurantResult } from '../../../types';
 import type { RestaurantFeatureProperties } from '../components/search-map';
-import {
-  ACTIVE_TAB_COLOR_DARK,
-  LABEL_TEXT_SIZE,
-} from '../constants/search';
+import { ACTIVE_TAB_COLOR_DARK, LABEL_TEXT_SIZE } from '../constants/search';
 import { useMapPresentationController } from '../runtime/map/map-presentation-controller';
 import type { MapQueryBudget } from '../runtime/map/map-query-budget';
 import { buildMarkerCatalogReadModel } from '../runtime/map/map-read-model-builder';
@@ -141,19 +138,18 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
   // Bus selectors — results + presentation mode
   // -------------------------------------------------------------------------
 
-  const { mapMarkerRestaurants, mapMarkerDishes, mapSearchRequestId } =
-    useSearchRuntimeBusSelector(
-      searchRuntimeBus,
-      (state) => ({
-        mapMarkerRestaurants: state.results?.restaurants ?? EMPTY_RESTAURANTS,
-        mapMarkerDishes: state.results?.dishes ?? EMPTY_DISHES,
-        mapSearchRequestId: state.results?.metadata?.searchRequestId ?? null,
-      }),
-      (left, right) =>
-        left.mapMarkerRestaurants === right.mapMarkerRestaurants &&
-        left.mapMarkerDishes === right.mapMarkerDishes &&
-        left.mapSearchRequestId === right.mapSearchRequestId
-    );
+  const { mapMarkerRestaurants, mapMarkerDishes, mapSearchRequestId } = useSearchRuntimeBusSelector(
+    searchRuntimeBus,
+    (state) => ({
+      mapMarkerRestaurants: state.results?.restaurants ?? EMPTY_RESTAURANTS,
+      mapMarkerDishes: state.results?.dishes ?? EMPTY_DISHES,
+      mapSearchRequestId: state.results?.metadata?.searchRequestId ?? null,
+    }),
+    (left, right) =>
+      left.mapMarkerRestaurants === right.mapMarkerRestaurants &&
+      left.mapMarkerDishes === right.mapMarkerDishes &&
+      left.mapSearchRequestId === right.mapSearchRequestId
+  );
 
   const runtimeMapPresentationInput = useSearchRuntimeBusSelector(
     searchRuntimeBus,
@@ -273,7 +269,14 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
       logSearchCompute('restaurantsById', getPerfNow() - start);
     }
     return map;
-  }, [mapMarkerDishes, getPerfNow, logSearchCompute, mapMarkerRestaurants, precomputedMarkerData, shouldLogSearchComputes]);
+  }, [
+    mapMarkerDishes,
+    getPerfNow,
+    logSearchCompute,
+    mapMarkerRestaurants,
+    precomputedMarkerData,
+    shouldLogSearchComputes,
+  ]);
 
   // -------------------------------------------------------------------------
   // 1. buildMarkerKey

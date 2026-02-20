@@ -36,9 +36,7 @@ const isValidMapLocation = (
   return typeof location.googlePlaceId === 'string' && location.googlePlaceId.length > 0;
 };
 
-const resolveRestaurantMapLocations = (
-  restaurant: RestaurantResult
-): ResolvedMapLocation[] => {
+const resolveRestaurantMapLocations = (restaurant: RestaurantResult): ResolvedMapLocation[] => {
   const displayLocation = restaurant.displayLocation ?? null;
   const listLocations =
     Array.isArray(restaurant.locations) && restaurant.locations.length > 0

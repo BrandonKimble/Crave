@@ -320,7 +320,6 @@ const SearchScreen: React.FC = () => {
     setMapZoom,
   });
 
-
   const commitCameraViewport = React.useCallback(
     (
       payload: { center: [number, number]; zoom: number },
@@ -788,9 +787,11 @@ const SearchScreen: React.FC = () => {
       const previousValue = searchRuntimeBus.getState().searchMode;
       const resolvedValue =
         typeof nextValue === 'function'
-          ? (nextValue as (previous: 'natural' | 'shortcut' | null) => 'natural' | 'shortcut' | null)(
-              previousValue
-            )
+          ? (
+              nextValue as (
+                previous: 'natural' | 'shortcut' | null
+              ) => 'natural' | 'shortcut' | null
+            )(previousValue)
           : nextValue;
       if (resolvedValue === previousValue) {
         return;
@@ -1809,12 +1810,7 @@ const SearchScreen: React.FC = () => {
       return;
     }
     flushPendingResultsSheetReveal();
-  }, [
-    flushPendingResultsSheetReveal,
-    isSearchLoading,
-    isSearchFocused,
-    isSearchSessionActive,
-  ]);
+  }, [flushPendingResultsSheetReveal, isSearchLoading, isSearchFocused, isSearchSessionActive]);
   React.useEffect(() => {
     if (sheetState !== 'hidden') {
       lastVisibleSheetStateRef.current = sheetState;
@@ -2039,12 +2035,9 @@ const SearchScreen: React.FC = () => {
     },
     [applyResultsSheetSnapChange, setResultsSheetSettlingState]
   );
-  const handleSearchFiltersLayoutCache = React.useCallback(
-    (cache: SearchFiltersLayoutCache) => {
-      searchFiltersLayoutCacheRef.current = cache;
-    },
-    []
-  );
+  const handleSearchFiltersLayoutCache = React.useCallback((cache: SearchFiltersLayoutCache) => {
+    searchFiltersLayoutCacheRef.current = cache;
+  }, []);
   const handleResultsListScrollBegin = React.useCallback(() => {
     if (resultsScrollingTimeoutRef.current) {
       clearTimeout(resultsScrollingTimeoutRef.current);
@@ -3166,8 +3159,7 @@ const SearchScreen: React.FC = () => {
   );
   React.useEffect(() => {
     const sync = () => {
-      profilerIsVisualSyncPendingRef.current =
-        searchRuntimeBus.getState().isVisualSyncPending;
+      profilerIsVisualSyncPendingRef.current = searchRuntimeBus.getState().isVisualSyncPending;
     };
     sync();
     return searchRuntimeBus.subscribe(sync);
@@ -3387,7 +3379,11 @@ const SearchScreen: React.FC = () => {
   // Imperative access to marker engine outputs (for harness, coverage, LOD).
   // These are stable callbacks that delegate to the ref, safe to use as hook deps.
   const handleShortcutSearchCoverageSnapshot = React.useCallback(
-    (snapshot: { searchRequestId: string; bounds: MapBounds | null; entities: Record<string, unknown> }) => {
+    (snapshot: {
+      searchRequestId: string;
+      bounds: MapBounds | null;
+      entities: Record<string, unknown>;
+    }) => {
       markerEngineRef.current?.handleShortcutSearchCoverageSnapshot(snapshot);
     },
     []
@@ -3399,9 +3395,8 @@ const SearchScreen: React.FC = () => {
     markerEngineRef.current?.recomputeLodPinnedMarkers(bounds);
   }, []);
   const fallbackLodPinnedMarkersRef = React.useRef<Array<unknown>>([]);
-  const lodPinnedMarkersRef = markerEngineRef.current?.lodPinnedMarkersRef ?? fallbackLodPinnedMarkersRef;
-
-
+  const lodPinnedMarkersRef =
+    markerEngineRef.current?.lodPinnedMarkersRef ?? fallbackLodPinnedMarkersRef;
 
   // Intentionally avoid auto-fitting the map when results change; keep user camera position.
 
@@ -3446,7 +3441,9 @@ const SearchScreen: React.FC = () => {
       return;
     }
     const busResults = searchRuntimeBus.getState().results;
-    const hasMatch = busResults?.restaurants?.some((restaurant: { restaurantId: string }) => restaurant.restaurantId === intent);
+    const hasMatch = busResults?.restaurants?.some(
+      (restaurant: { restaurantId: string }) => restaurant.restaurantId === intent
+    );
     setRestaurantOnlyId(hasMatch ? intent : null);
   }, [hasResults, searchRuntimeBus]);
 
@@ -3920,7 +3917,12 @@ const SearchScreen: React.FC = () => {
     if (!isOffline) {
       return;
     }
-    if (!isSearchSessionActive || hasResults || isSearchLoading || searchRuntimeBus.getState().isLoadingMore) {
+    if (
+      !isSearchSessionActive ||
+      hasResults ||
+      isSearchLoading ||
+      searchRuntimeBus.getState().isLoadingMore
+    ) {
       return;
     }
     shouldRetrySearchOnReconnectRef.current = true;
@@ -3933,7 +3935,12 @@ const SearchScreen: React.FC = () => {
     if (!shouldRetrySearchOnReconnectRef.current) {
       return;
     }
-    if (!isSearchSessionActive || hasResults || isSearchLoading || searchRuntimeBus.getState().isLoadingMore) {
+    if (
+      !isSearchSessionActive ||
+      hasResults ||
+      isSearchLoading ||
+      searchRuntimeBus.getState().isLoadingMore
+    ) {
       return;
     }
 
@@ -4047,12 +4054,7 @@ const SearchScreen: React.FC = () => {
       prepareSubmitChrome();
     }
     void submitSearch({ transitionFromDockedPolls: shouldShowDockedPolls });
-  }, [
-    prepareSubmitChrome,
-    query,
-    shouldShowDockedPolls,
-    submitSearch,
-  ]);
+  }, [prepareSubmitChrome, query, shouldShowDockedPolls, submitSearch]);
 
   const handleBestDishesHere = React.useCallback(() => {
     prepareSubmitChrome({ captureOrigin: true });
@@ -4060,12 +4062,7 @@ const SearchScreen: React.FC = () => {
     void runBestHere('dishes', 'Best dishes', {
       transitionFromDockedPolls: shouldShowDockedPolls,
     });
-  }, [
-    prepareSubmitChrome,
-    runBestHere,
-    setQuery,
-    shouldShowDockedPolls,
-  ]);
+  }, [prepareSubmitChrome, runBestHere, setQuery, shouldShowDockedPolls]);
 
   const handleBestRestaurantsHere = React.useCallback(() => {
     prepareSubmitChrome({ captureOrigin: true });
@@ -4073,12 +4070,7 @@ const SearchScreen: React.FC = () => {
     void runBestHere('restaurants', 'Best restaurants', {
       transitionFromDockedPolls: shouldShowDockedPolls,
     });
-  }, [
-    prepareSubmitChrome,
-    runBestHere,
-    setQuery,
-    shouldShowDockedPolls,
-  ]);
+  }, [prepareSubmitChrome, runBestHere, setQuery, shouldShowDockedPolls]);
 
   const handleSearchThisArea = React.useCallback(() => {
     if (isSearchLoading || searchRuntimeBus.getState().isLoadingMore || !hasResults) {
@@ -4803,7 +4795,6 @@ const SearchScreen: React.FC = () => {
     }
   }, [handleCloseSaveSheet, isSearchOverlay, saveSheetState.visible]);
 
-
   const shouldRetrySearchOnReconnect = shouldRetrySearchOnReconnectRef.current;
   React.useEffect(() => {
     searchRuntimeBus.publish({
@@ -4837,10 +4828,7 @@ const SearchScreen: React.FC = () => {
     searchRuntimeBus.publish({
       hydrationOperationId,
     });
-  }, [
-    hydrationOperationId,
-    searchRuntimeBus,
-  ]);
+  }, [hydrationOperationId, searchRuntimeBus]);
   const searchResultsPanelSpecArgs = React.useMemo(
     () => ({
       searchRuntimeBus,
@@ -5141,9 +5129,7 @@ const SearchScreen: React.FC = () => {
     ]
   );
   const shouldFreezeRunOneChromeProps =
-    isRunOneChromeFreezeActive ||
-    isRunOnePreflightFreezeActive ||
-    isResponseFrameFreezeActive;
+    isRunOneChromeFreezeActive || isRunOnePreflightFreezeActive || isResponseFrameFreezeActive;
   const shouldFreezeDeferredChromeProps = shouldFreezeRunOneChromeProps;
   const frozenSuggestionSurfacePropsRef = React.useRef<{
     suggestionDisplaySuggestions: typeof suggestionDisplaySuggestions;
@@ -5227,260 +5213,266 @@ const SearchScreen: React.FC = () => {
     : nextOverlayHeaderChromeProps;
   return (
     <SearchRuntimeBusContext.Provider value={searchRuntimeBus}>
-    <React.Profiler id="SearchScreen" onRender={handleProfilerRender}>
-      <View style={styles.container}>
-        {isInitialCameraReady ? (
-          <React.Profiler id="SearchMapTree" onRender={handleProfilerRender}>
-            <SearchMapWithMarkerEngine
-              ref={markerEngineRef}
-              scoreMode={scoreMode}
-              restaurantOnlyId={restaurantOnlyId}
-              overlaySelectedRestaurantId={overlaySelectedRestaurantId}
-              viewportBoundsService={viewportBoundsService}
-              resolveRestaurantMapLocations={resolveRestaurantMapLocations}
-              resolveRestaurantLocationSelectionAnchor={resolveRestaurantLocationSelectionAnchor}
-              pickPreferredRestaurantMapLocation={pickPreferredRestaurantMapLocation}
-              getQualityColorFromScore={getQualityColorFromScore}
-              mapGestureActiveRef={mapGestureActiveRef}
-              shouldLogSearchComputes={shouldLogSearchComputes}
-              getPerfNow={getPerfNow}
-              logSearchCompute={logSearchCompute}
-              maxFullPins={MAX_FULL_PINS}
-              lodVisibleCandidateBuffer={LOD_VISIBLE_CANDIDATE_BUFFER}
-              lodPinToggleStableMsMoving={LOD_PIN_TOGGLE_STABLE_MS_MOVING}
-              lodPinToggleStableMsIdle={LOD_PIN_TOGGLE_STABLE_MS_IDLE}
-              lodPinOffscreenToggleStableMsMoving={LOD_PIN_OFFSCREEN_TOGGLE_STABLE_MS_MOVING}
-              mapQueryBudget={mapQueryBudget}
-              pendingMarkerOpenAnimationFrameRef={pendingMarkerOpenAnimationFrameRef}
-              forceRestaurantProfileMiddleSnapRef={forceRestaurantProfileMiddleSnapRef}
-              profileRuntimeController={profileRuntimeController}
-              mapRef={mapRef}
-              cameraRef={cameraRef}
-              styleURL={mapStyleURL}
-              mapCenter={mapCenter}
-              mapZoom={mapZoom ?? USA_FALLBACK_ZOOM}
-              cameraPadding={mapCameraPadding}
-              isFollowingUser={isFollowingUser}
-              onPress={stableHandleMapPress}
-              onTouchStart={handleMapTouchStart}
-              onTouchEnd={handleMapTouchEnd}
-              onCameraChanged={stableHandleCameraChanged}
-              onMapIdle={stableHandleMapIdle}
-              onMapLoaded={stableHandleMapLoaded}
-              onVisualReady={stableHandleMapVisualReady}
-              onMarkerRevealSettled={stableHandleMarkerRevealSettled}
-              isMapStyleReady={isMapStyleReady}
-              userLocation={userLocation}
-              locationPulse={locationPulse}
-              disableMarkers={shouldDisableMarkerViews}
-              disableBlur={shouldDisableSearchBlur}
-              onProfilerRender={handleProfilerRender}
-              runtimeWorkSchedulerRef={runtimeWorkSchedulerRef}
-              onRuntimeMechanismEvent={emitRuntimeMechanismEvent}
-            />
-          </React.Profiler>
-        ) : (
-          <React.Profiler id="SearchMapPlaceholder" onRender={handleProfilerRender}>
-            <View pointerEvents="none" style={styles.mapPlaceholder} />
-          </React.Profiler>
-        )}
-        <SearchMapLoadingGrid mapLoadingAnimatedStyle={mapLoadingAnimatedStyle} />
-        <SearchStatusBarFade statusBarFadeHeight={statusBarFadeHeight} />
-        {shouldRenderSearchOverlay && (
-          <>
-            <React.Profiler id="SearchOverlayChrome" onRender={handleProfilerRender}>
-              <SafeAreaView
-                style={[
-                  styles.overlay,
-                  isSuggestionOverlayVisible ? { zIndex: shouldHideBottomNav ? 200 : 110 } : null,
-                ]}
-                pointerEvents="box-none"
-                edges={['top', 'left', 'right']}
-              >
-                <SearchSuggestionSurface
-                  pointerEvents={isSuggestionOverlayVisible ? 'auto' : 'none'}
-                  searchSurfaceAnimatedStyle={searchSurfaceAnimatedStyle}
-                  shouldDisableSearchBlur={shouldDisableSearchBlur}
-                  shouldShowSuggestionSurface={shouldShowSuggestionSurface}
-                  resolvedSuggestionHeaderHoles={resolvedSuggestionHeaderHoles}
-                  suggestionHeaderHeightAnimatedStyle={suggestionHeaderHeightAnimatedStyle}
-                  suggestionPanelAnimatedStyle={suggestionPanelAnimatedStyle}
-                  shouldDriveSuggestionLayout={shouldDriveSuggestionLayout}
-                  shouldShowSuggestionBackground={shouldShowSuggestionBackground}
-                  suggestionTopFillHeight={suggestionTopFillHeight}
-                  suggestionScrollTopAnimatedStyle={suggestionScrollTopAnimatedStyle}
-                  suggestionScrollMaxHeightTarget={suggestionScrollMaxHeightTarget}
-                  suggestionScrollMaxHeightAnimatedStyle={suggestionScrollMaxHeightAnimatedStyle}
-                  searchLayoutTop={searchLayout.top}
-                  searchLayoutHeight={searchLayout.height}
-                  shouldHideBottomNav={shouldHideBottomNav}
-                  navBarHeight={navBarHeight}
-                  bottomInset={bottomInset}
-                  onSuggestionScroll={suggestionScrollHandler}
-                  onSuggestionTouchStart={handleSuggestionTouchStart}
-                  onSuggestionContentSizeChange={handleSuggestionContentSizeChange}
-                  onSuggestionInteractionStart={handleSuggestionInteractionStart}
-                  onSuggestionInteractionEnd={handleSuggestionInteractionEnd}
-                  isSuggestionScreenActive={isSuggestionScreenActive}
-                  shouldRenderSuggestionPanel={shouldRenderSuggestionPanel}
-                  shouldRenderAutocompleteSection={shouldRenderAutocompleteSection}
-                  shouldRenderRecentSection={shouldRenderRecentSection}
-                  suggestionDisplaySuggestions={suggestionSurfacePropsForRender.suggestionDisplaySuggestions}
-                  recentSearchesDisplay={suggestionSurfacePropsForRender.recentSearchesDisplay}
-                  recentlyViewedRestaurantsDisplay={
-                    suggestionSurfacePropsForRender.recentlyViewedRestaurantsDisplay
-                  }
-                  recentlyViewedFoodsDisplay={suggestionSurfacePropsForRender.recentlyViewedFoodsDisplay}
-                  hasRecentSearchesDisplay={suggestionSurfacePropsForRender.hasRecentSearchesDisplay}
-                  hasRecentlyViewedRestaurantsDisplay={
-                    suggestionSurfacePropsForRender.hasRecentlyViewedRestaurantsDisplay
-                  }
-                  hasRecentlyViewedFoodsDisplay={
-                    suggestionSurfacePropsForRender.hasRecentlyViewedFoodsDisplay
-                  }
-                  isRecentLoadingDisplay={suggestionSurfacePropsForRender.isRecentLoadingDisplay}
-                  isRecentlyViewedLoadingDisplay={
-                    suggestionSurfacePropsForRender.isRecentlyViewedLoadingDisplay
-                  }
-                  isRecentlyViewedFoodsLoadingDisplay={
-                    suggestionSurfacePropsForRender.isRecentlyViewedFoodsLoadingDisplay
-                  }
-                  onSuggestionPress={handleSuggestionPress}
-                  onRecentSearchPress={handleRecentSearchPress}
-                  onRecentlyViewedRestaurantPress={handleRecentlyViewedRestaurantPress}
-                  onRecentlyViewedFoodPress={handleRecentlyViewedFoodPress}
-                  onRecentViewMorePress={handleRecentViewMorePress}
-                  onRecentlyViewedMorePress={handleRecentlyViewedMorePress}
-                  suggestionHeaderDividerAnimatedStyle={suggestionHeaderDividerAnimatedStyle}
-                />
-                <SearchOverlayHeaderChrome
-                  handleSearchContainerLayout={handleSearchContainerLayout}
-                  query={query}
-                  shouldShowAutocompleteSpinnerInBar={shouldShowAutocompleteSpinnerInBar}
-                  handleQueryChange={handleQueryChange}
-                  handleSubmit={handleSubmit}
-                  handleSearchFocus={handleSearchFocus}
-                  handleSearchBlur={handleSearchBlur}
-                  handleClear={handleClear}
-                  focusSearchInput={focusSearchInput}
-                  handleSearchPressIn={handleSearchPressIn}
-                  isSuggestionPanelActive={isSuggestionPanelActive}
-                  handleSearchBack={handleSearchBack}
-                  handleSearchHeaderLayout={handleSearchHeaderLayout}
-                  inputRef={inputRef}
-                  searchBarInputAnimatedStyle={searchBarInputAnimatedStyle}
-                  searchBarContainerAnimatedStyle={searchBarContainerAnimatedStyle}
-                  isSuggestionScrollDismissing={isSuggestionScrollDismissing}
-                  isSearchSessionActive={isSearchSessionActive}
-                  searchHeaderFocusProgress={searchHeaderFocusProgress}
-                  shouldMountSearchShortcuts={
-                    overlayHeaderChromePropsForRender.shouldMountSearchShortcuts
-                  }
-                  shouldRenderSearchShortcuts={
-                    overlayHeaderChromePropsForRender.shouldRenderSearchShortcuts
-                  }
-                  searchShortcutsAnimatedStyle={
-                    overlayHeaderChromePropsForRender.searchShortcutsAnimatedStyle
-                  }
-                  searchShortcutChipAnimatedStyle={
-                    overlayHeaderChromePropsForRender.searchShortcutChipAnimatedStyle
-                  }
-                  searchShortcutContentAnimatedStyle={
-                    overlayHeaderChromePropsForRender.searchShortcutContentAnimatedStyle
-                  }
-                  handleBestRestaurantsHere={handleBestRestaurantsHere}
-                  handleBestDishesHere={handleBestDishesHere}
-                  handleSearchShortcutsRowLayout={handleSearchShortcutsRowLayout}
-                  handleRestaurantsShortcutLayout={handleRestaurantsShortcutLayout}
-                  handleDishesShortcutLayout={handleDishesShortcutLayout}
-                  shouldShowSearchThisArea={
-                    overlayHeaderChromePropsForRender.shouldShowSearchThisArea
-                  }
-                  searchThisAreaTop={overlayHeaderChromePropsForRender.searchThisAreaTop}
-                  searchThisAreaAnimatedStyle={
-                    overlayHeaderChromePropsForRender.searchThisAreaAnimatedStyle
-                  }
-                  handleSearchThisArea={handleSearchThisArea}
-                />
-              </SafeAreaView>
-            </React.Profiler>
-            <SearchResultsSheetTree
-              searchPanelSpecArgs={searchResultsPanelSpecArgs}
-              overlayPanelsArgs={searchOverlayPanelsArgs}
-              shouldFreezeOverlaySheetProps={false}
-              shouldFreezeOverlayHeaderActionMode={shouldFreezeDeferredChromeProps}
-              searchInteractionContextValue={searchInteractionContextValue}
-              sheetTranslateY={sheetTranslateY}
-              resultsScrollOffset={resultsScrollOffset}
-              resultsMomentum={resultsMomentum}
-              overlayHeaderActionProgress={overlayHeaderActionProgress}
-              navBarCutoutHeight={navBarCutoutHeight}
-              bottomNavHideProgress={bottomNavHideProgress}
-              bottomNavHiddenTranslateY={bottomNavHiddenTranslateY}
-              shouldHideBottomNav={shouldHideBottomNav}
-              onProfilerRender={handleProfilerRender}
-            />
-          </>
-        )}
-        <React.Profiler id="BottomNav" onRender={handleProfilerRender}>
-          <SearchBottomNav
-            bottomNavAnimatedStyle={bottomNavAnimatedStyle}
-            shouldHideBottomNav={bottomNavPropsForRender.shouldHideBottomNav}
-            bottomInset={bottomInset}
-            handleBottomNavLayout={handleBottomNavLayout}
-            shouldDisableSearchBlur={bottomNavPropsForRender.shouldDisableSearchBlur}
-            navItems={SEARCH_BOTTOM_NAV_ITEMS}
-            rootOverlay={bottomNavPropsForRender.rootOverlay}
-            navIconRenderers={navIconRenderers}
-            handleProfilePress={bottomNavPropsForRender.handleProfilePress}
-            handleOverlaySelect={bottomNavPropsForRender.handleOverlaySelect}
-            bottomNavItemVisibilityAnimatedStyle={bottomNavItemVisibilityAnimatedStyle}
-          />
-        </React.Profiler>
-        <React.Profiler id="Overlays" onRender={handleProfilerRender}>
-          <>
-            <SearchRankAndScoreSheets
-              rankSheetRef={rankSheetRef}
-              isRankSelectorVisible={isRankSelectorVisible}
-              closeRankSelector={closeRankSelector}
-              dismissRankSelector={dismissRankSelector}
-              pendingScoreMode={pendingScoreMode}
-              setPendingScoreMode={setPendingScoreMode}
-              handleRankDone={handleRankDone}
-              activeTabColor={ACTIVE_TAB_COLOR}
-              activeTabColorDark={ACTIVE_TAB_COLOR_DARK}
-              isScoreInfoVisible={isScoreInfoVisible}
-              scoreInfo={scoreInfo}
-              closeScoreInfo={closeScoreInfo}
-              setScoreInfo={setScoreInfo}
-              scoreInfoMaxHeight={SCORE_INFO_MAX_HEIGHT}
-              formatCompactCount={formatCompactCount}
-              onProfilerRender={handleProfilerRender}
-            />
-            <React.Profiler id="PriceSheet" onRender={handleProfilerRender}>
-              <SearchPriceSheet
-                priceSheetRef={priceSheetRef}
-                isPriceSelectorVisible={isPriceSelectorVisible}
-                closePriceSelector={closePriceSelector}
-                summaryCandidates={priceSummaryCandidates}
-                onMeasureSummaryCandidateWidth={measureSummaryCandidateWidth}
-                summaryPillPaddingX={priceSummaryPillPaddingX}
-                summaryPillWidth={priceSummaryPillWidth}
-                summaryLabel={priceSheetSummary}
-                summaryReelItems={summaryReelItems}
-                isPriceSheetContentReady={isPriceSheetContentReady}
-                priceSliderLowValue={priceSliderLowValue}
-                priceSliderHighValue={priceSliderHighValue}
-                handlePriceSliderCommit={handlePriceSliderCommit}
-                dismissPriceSelector={dismissPriceSelector}
-                handlePriceDone={handlePriceDone}
-                activeTabColor={ACTIVE_TAB_COLOR}
+      <React.Profiler id="SearchScreen" onRender={handleProfilerRender}>
+        <View style={styles.container}>
+          {isInitialCameraReady ? (
+            <React.Profiler id="SearchMapTree" onRender={handleProfilerRender}>
+              <SearchMapWithMarkerEngine
+                ref={markerEngineRef}
+                scoreMode={scoreMode}
+                restaurantOnlyId={restaurantOnlyId}
+                overlaySelectedRestaurantId={overlaySelectedRestaurantId}
+                viewportBoundsService={viewportBoundsService}
+                resolveRestaurantMapLocations={resolveRestaurantMapLocations}
+                resolveRestaurantLocationSelectionAnchor={resolveRestaurantLocationSelectionAnchor}
+                pickPreferredRestaurantMapLocation={pickPreferredRestaurantMapLocation}
+                getQualityColorFromScore={getQualityColorFromScore}
+                mapGestureActiveRef={mapGestureActiveRef}
+                shouldLogSearchComputes={shouldLogSearchComputes}
+                getPerfNow={getPerfNow}
+                logSearchCompute={logSearchCompute}
+                maxFullPins={MAX_FULL_PINS}
+                lodVisibleCandidateBuffer={LOD_VISIBLE_CANDIDATE_BUFFER}
+                lodPinToggleStableMsMoving={LOD_PIN_TOGGLE_STABLE_MS_MOVING}
+                lodPinToggleStableMsIdle={LOD_PIN_TOGGLE_STABLE_MS_IDLE}
+                lodPinOffscreenToggleStableMsMoving={LOD_PIN_OFFSCREEN_TOGGLE_STABLE_MS_MOVING}
+                mapQueryBudget={mapQueryBudget}
+                pendingMarkerOpenAnimationFrameRef={pendingMarkerOpenAnimationFrameRef}
+                forceRestaurantProfileMiddleSnapRef={forceRestaurantProfileMiddleSnapRef}
+                profileRuntimeController={profileRuntimeController}
+                mapRef={mapRef}
+                cameraRef={cameraRef}
+                styleURL={mapStyleURL}
+                mapCenter={mapCenter}
+                mapZoom={mapZoom ?? USA_FALLBACK_ZOOM}
+                cameraPadding={mapCameraPadding}
+                isFollowingUser={isFollowingUser}
+                onPress={stableHandleMapPress}
+                onTouchStart={handleMapTouchStart}
+                onTouchEnd={handleMapTouchEnd}
+                onCameraChanged={stableHandleCameraChanged}
+                onMapIdle={stableHandleMapIdle}
+                onMapLoaded={stableHandleMapLoaded}
+                onVisualReady={stableHandleMapVisualReady}
+                onMarkerRevealSettled={stableHandleMarkerRevealSettled}
+                isMapStyleReady={isMapStyleReady}
+                userLocation={userLocation}
+                locationPulse={locationPulse}
+                disableMarkers={shouldDisableMarkerViews}
+                disableBlur={shouldDisableSearchBlur}
+                onProfilerRender={handleProfilerRender}
+                runtimeWorkSchedulerRef={runtimeWorkSchedulerRef}
+                onRuntimeMechanismEvent={emitRuntimeMechanismEvent}
               />
             </React.Profiler>
-          </>
-        </React.Profiler>
-      </View>
-    </React.Profiler>
+          ) : (
+            <React.Profiler id="SearchMapPlaceholder" onRender={handleProfilerRender}>
+              <View pointerEvents="none" style={styles.mapPlaceholder} />
+            </React.Profiler>
+          )}
+          <SearchMapLoadingGrid mapLoadingAnimatedStyle={mapLoadingAnimatedStyle} />
+          <SearchStatusBarFade statusBarFadeHeight={statusBarFadeHeight} />
+          {shouldRenderSearchOverlay && (
+            <>
+              <React.Profiler id="SearchOverlayChrome" onRender={handleProfilerRender}>
+                <SafeAreaView
+                  style={[
+                    styles.overlay,
+                    isSuggestionOverlayVisible ? { zIndex: shouldHideBottomNav ? 200 : 110 } : null,
+                  ]}
+                  pointerEvents="box-none"
+                  edges={['top', 'left', 'right']}
+                >
+                  <SearchSuggestionSurface
+                    pointerEvents={isSuggestionOverlayVisible ? 'auto' : 'none'}
+                    searchSurfaceAnimatedStyle={searchSurfaceAnimatedStyle}
+                    shouldDisableSearchBlur={shouldDisableSearchBlur}
+                    shouldShowSuggestionSurface={shouldShowSuggestionSurface}
+                    resolvedSuggestionHeaderHoles={resolvedSuggestionHeaderHoles}
+                    suggestionHeaderHeightAnimatedStyle={suggestionHeaderHeightAnimatedStyle}
+                    suggestionPanelAnimatedStyle={suggestionPanelAnimatedStyle}
+                    shouldDriveSuggestionLayout={shouldDriveSuggestionLayout}
+                    shouldShowSuggestionBackground={shouldShowSuggestionBackground}
+                    suggestionTopFillHeight={suggestionTopFillHeight}
+                    suggestionScrollTopAnimatedStyle={suggestionScrollTopAnimatedStyle}
+                    suggestionScrollMaxHeightTarget={suggestionScrollMaxHeightTarget}
+                    suggestionScrollMaxHeightAnimatedStyle={suggestionScrollMaxHeightAnimatedStyle}
+                    searchLayoutTop={searchLayout.top}
+                    searchLayoutHeight={searchLayout.height}
+                    shouldHideBottomNav={shouldHideBottomNav}
+                    navBarHeight={navBarHeight}
+                    bottomInset={bottomInset}
+                    onSuggestionScroll={suggestionScrollHandler}
+                    onSuggestionTouchStart={handleSuggestionTouchStart}
+                    onSuggestionContentSizeChange={handleSuggestionContentSizeChange}
+                    onSuggestionInteractionStart={handleSuggestionInteractionStart}
+                    onSuggestionInteractionEnd={handleSuggestionInteractionEnd}
+                    isSuggestionScreenActive={isSuggestionScreenActive}
+                    shouldRenderSuggestionPanel={shouldRenderSuggestionPanel}
+                    shouldRenderAutocompleteSection={shouldRenderAutocompleteSection}
+                    shouldRenderRecentSection={shouldRenderRecentSection}
+                    suggestionDisplaySuggestions={
+                      suggestionSurfacePropsForRender.suggestionDisplaySuggestions
+                    }
+                    recentSearchesDisplay={suggestionSurfacePropsForRender.recentSearchesDisplay}
+                    recentlyViewedRestaurantsDisplay={
+                      suggestionSurfacePropsForRender.recentlyViewedRestaurantsDisplay
+                    }
+                    recentlyViewedFoodsDisplay={
+                      suggestionSurfacePropsForRender.recentlyViewedFoodsDisplay
+                    }
+                    hasRecentSearchesDisplay={
+                      suggestionSurfacePropsForRender.hasRecentSearchesDisplay
+                    }
+                    hasRecentlyViewedRestaurantsDisplay={
+                      suggestionSurfacePropsForRender.hasRecentlyViewedRestaurantsDisplay
+                    }
+                    hasRecentlyViewedFoodsDisplay={
+                      suggestionSurfacePropsForRender.hasRecentlyViewedFoodsDisplay
+                    }
+                    isRecentLoadingDisplay={suggestionSurfacePropsForRender.isRecentLoadingDisplay}
+                    isRecentlyViewedLoadingDisplay={
+                      suggestionSurfacePropsForRender.isRecentlyViewedLoadingDisplay
+                    }
+                    isRecentlyViewedFoodsLoadingDisplay={
+                      suggestionSurfacePropsForRender.isRecentlyViewedFoodsLoadingDisplay
+                    }
+                    onSuggestionPress={handleSuggestionPress}
+                    onRecentSearchPress={handleRecentSearchPress}
+                    onRecentlyViewedRestaurantPress={handleRecentlyViewedRestaurantPress}
+                    onRecentlyViewedFoodPress={handleRecentlyViewedFoodPress}
+                    onRecentViewMorePress={handleRecentViewMorePress}
+                    onRecentlyViewedMorePress={handleRecentlyViewedMorePress}
+                    suggestionHeaderDividerAnimatedStyle={suggestionHeaderDividerAnimatedStyle}
+                  />
+                  <SearchOverlayHeaderChrome
+                    handleSearchContainerLayout={handleSearchContainerLayout}
+                    query={query}
+                    shouldShowAutocompleteSpinnerInBar={shouldShowAutocompleteSpinnerInBar}
+                    handleQueryChange={handleQueryChange}
+                    handleSubmit={handleSubmit}
+                    handleSearchFocus={handleSearchFocus}
+                    handleSearchBlur={handleSearchBlur}
+                    handleClear={handleClear}
+                    focusSearchInput={focusSearchInput}
+                    handleSearchPressIn={handleSearchPressIn}
+                    isSuggestionPanelActive={isSuggestionPanelActive}
+                    handleSearchBack={handleSearchBack}
+                    handleSearchHeaderLayout={handleSearchHeaderLayout}
+                    inputRef={inputRef}
+                    searchBarInputAnimatedStyle={searchBarInputAnimatedStyle}
+                    searchBarContainerAnimatedStyle={searchBarContainerAnimatedStyle}
+                    isSuggestionScrollDismissing={isSuggestionScrollDismissing}
+                    isSearchSessionActive={isSearchSessionActive}
+                    searchHeaderFocusProgress={searchHeaderFocusProgress}
+                    shouldMountSearchShortcuts={
+                      overlayHeaderChromePropsForRender.shouldMountSearchShortcuts
+                    }
+                    shouldRenderSearchShortcuts={
+                      overlayHeaderChromePropsForRender.shouldRenderSearchShortcuts
+                    }
+                    searchShortcutsAnimatedStyle={
+                      overlayHeaderChromePropsForRender.searchShortcutsAnimatedStyle
+                    }
+                    searchShortcutChipAnimatedStyle={
+                      overlayHeaderChromePropsForRender.searchShortcutChipAnimatedStyle
+                    }
+                    searchShortcutContentAnimatedStyle={
+                      overlayHeaderChromePropsForRender.searchShortcutContentAnimatedStyle
+                    }
+                    handleBestRestaurantsHere={handleBestRestaurantsHere}
+                    handleBestDishesHere={handleBestDishesHere}
+                    handleSearchShortcutsRowLayout={handleSearchShortcutsRowLayout}
+                    handleRestaurantsShortcutLayout={handleRestaurantsShortcutLayout}
+                    handleDishesShortcutLayout={handleDishesShortcutLayout}
+                    shouldShowSearchThisArea={
+                      overlayHeaderChromePropsForRender.shouldShowSearchThisArea
+                    }
+                    searchThisAreaTop={overlayHeaderChromePropsForRender.searchThisAreaTop}
+                    searchThisAreaAnimatedStyle={
+                      overlayHeaderChromePropsForRender.searchThisAreaAnimatedStyle
+                    }
+                    handleSearchThisArea={handleSearchThisArea}
+                  />
+                </SafeAreaView>
+              </React.Profiler>
+              <SearchResultsSheetTree
+                searchPanelSpecArgs={searchResultsPanelSpecArgs}
+                overlayPanelsArgs={searchOverlayPanelsArgs}
+                shouldFreezeOverlaySheetProps={false}
+                shouldFreezeOverlayHeaderActionMode={shouldFreezeDeferredChromeProps}
+                searchInteractionContextValue={searchInteractionContextValue}
+                sheetTranslateY={sheetTranslateY}
+                resultsScrollOffset={resultsScrollOffset}
+                resultsMomentum={resultsMomentum}
+                overlayHeaderActionProgress={overlayHeaderActionProgress}
+                navBarCutoutHeight={navBarCutoutHeight}
+                bottomNavHideProgress={bottomNavHideProgress}
+                bottomNavHiddenTranslateY={bottomNavHiddenTranslateY}
+                shouldHideBottomNav={shouldHideBottomNav}
+                onProfilerRender={handleProfilerRender}
+              />
+            </>
+          )}
+          <React.Profiler id="BottomNav" onRender={handleProfilerRender}>
+            <SearchBottomNav
+              bottomNavAnimatedStyle={bottomNavAnimatedStyle}
+              shouldHideBottomNav={bottomNavPropsForRender.shouldHideBottomNav}
+              bottomInset={bottomInset}
+              handleBottomNavLayout={handleBottomNavLayout}
+              shouldDisableSearchBlur={bottomNavPropsForRender.shouldDisableSearchBlur}
+              navItems={SEARCH_BOTTOM_NAV_ITEMS}
+              rootOverlay={bottomNavPropsForRender.rootOverlay}
+              navIconRenderers={navIconRenderers}
+              handleProfilePress={bottomNavPropsForRender.handleProfilePress}
+              handleOverlaySelect={bottomNavPropsForRender.handleOverlaySelect}
+              bottomNavItemVisibilityAnimatedStyle={bottomNavItemVisibilityAnimatedStyle}
+            />
+          </React.Profiler>
+          <React.Profiler id="Overlays" onRender={handleProfilerRender}>
+            <>
+              <SearchRankAndScoreSheets
+                rankSheetRef={rankSheetRef}
+                isRankSelectorVisible={isRankSelectorVisible}
+                closeRankSelector={closeRankSelector}
+                dismissRankSelector={dismissRankSelector}
+                pendingScoreMode={pendingScoreMode}
+                setPendingScoreMode={setPendingScoreMode}
+                handleRankDone={handleRankDone}
+                activeTabColor={ACTIVE_TAB_COLOR}
+                activeTabColorDark={ACTIVE_TAB_COLOR_DARK}
+                isScoreInfoVisible={isScoreInfoVisible}
+                scoreInfo={scoreInfo}
+                closeScoreInfo={closeScoreInfo}
+                setScoreInfo={setScoreInfo}
+                scoreInfoMaxHeight={SCORE_INFO_MAX_HEIGHT}
+                formatCompactCount={formatCompactCount}
+                onProfilerRender={handleProfilerRender}
+              />
+              <React.Profiler id="PriceSheet" onRender={handleProfilerRender}>
+                <SearchPriceSheet
+                  priceSheetRef={priceSheetRef}
+                  isPriceSelectorVisible={isPriceSelectorVisible}
+                  closePriceSelector={closePriceSelector}
+                  summaryCandidates={priceSummaryCandidates}
+                  onMeasureSummaryCandidateWidth={measureSummaryCandidateWidth}
+                  summaryPillPaddingX={priceSummaryPillPaddingX}
+                  summaryPillWidth={priceSummaryPillWidth}
+                  summaryLabel={priceSheetSummary}
+                  summaryReelItems={summaryReelItems}
+                  isPriceSheetContentReady={isPriceSheetContentReady}
+                  priceSliderLowValue={priceSliderLowValue}
+                  priceSliderHighValue={priceSliderHighValue}
+                  handlePriceSliderCommit={handlePriceSliderCommit}
+                  dismissPriceSelector={dismissPriceSelector}
+                  handlePriceDone={handlePriceDone}
+                  activeTabColor={ACTIVE_TAB_COLOR}
+                />
+              </React.Profiler>
+            </>
+          </React.Profiler>
+        </View>
+      </React.Profiler>
     </SearchRuntimeBusContext.Provider>
   );
 };

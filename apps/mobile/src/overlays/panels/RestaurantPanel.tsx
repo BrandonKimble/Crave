@@ -8,7 +8,10 @@ import {
   View,
   type ViewStyle,
 } from 'react-native';
-import Reanimated, { useSharedValue, type AnimatedStyle as ReanimatedAnimatedStyle } from 'react-native-reanimated';
+import Reanimated, {
+  useSharedValue,
+  type AnimatedStyle as ReanimatedAnimatedStyle,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import type { OperatingStatus } from '@crave-search/shared';

@@ -615,7 +615,7 @@ const useSearchSubmit = ({
       let lastYieldCount = runtimeWorkSchedulerRef?.current?.snapshotPressure().yieldCount ?? 0;
       const startedAtMs = lastFrameAtMs;
 
-        const tick = () => {
+      const tick = () => {
         if (!isRequestStillActive(requestId)) {
           return;
         }
@@ -630,10 +630,7 @@ const useSearchSubmit = ({
         const queueDepth = pressure?.queueDepth ?? 0;
         const lastFrameSpentMs = pressure?.lastFrameSpentMs ?? 0;
         const isHealthyFrame =
-          frameDeltaMs <= 24 &&
-          lastFrameSpentMs <= 8 &&
-          queueDepth <= 1 &&
-          yieldDelta === 0;
+          frameDeltaMs <= 24 && lastFrameSpentMs <= 8 && queueDepth <= 1 && yieldDelta === 0;
 
         healthyFrameCount = isHealthyFrame ? healthyFrameCount + 1 : 0;
         if (healthyFrameCount >= minHealthyFrames || nowMs - startedAtMs >= waitCapMs) {
@@ -668,9 +665,7 @@ const useSearchSubmit = ({
           return;
         }
         const runtimeState = searchRuntimeBus?.getState();
-        const runtimeRequestKey =
-          runtimeState?.results?.metadata?.searchRequestId ??
-          null;
+        const runtimeRequestKey = runtimeState?.results?.metadata?.searchRequestId ?? null;
         const hasExpectedRequest =
           expectedRequestKey == null || runtimeRequestKey === expectedRequestKey;
         const isHydrationSettled =
@@ -721,7 +716,8 @@ const useSearchSubmit = ({
           (runtimeState?.isResultsHydrationSettled ?? true) &&
           !(runtimeState?.shouldHydrateResultsForRender ?? false);
         const visualSettled = !(runtimeState?.isVisualSyncPending ?? false);
-        const schedulerQueueDepth = runtimeWorkSchedulerRef?.current.snapshotPressure().queueDepth ?? 0;
+        const schedulerQueueDepth =
+          runtimeWorkSchedulerRef?.current.snapshotPressure().queueDepth ?? 0;
         const schedulerQuiet = schedulerQueueDepth <= 0;
         if (laneIdle && hydrationSettled && visualSettled && schedulerQuiet) {
           onReady();
@@ -1125,11 +1121,13 @@ const useSearchSubmit = ({
         });
       }
       logSearchPhase('handleSearchResponse:results-committed');
-      if (!emitShadowTransition('phase_a_committed', {
-        append,
-        targetPage,
-        requestId: normalizedResponse.metadata.searchRequestId ?? null,
-      })) {
+      if (
+        !emitShadowTransition('phase_a_committed', {
+          append,
+          targetPage,
+          requestId: normalizedResponse.metadata.searchRequestId ?? null,
+        })
+      ) {
         clearActiveOperationTuple(runtimeTuple);
         return;
       }
@@ -1215,7 +1213,9 @@ const useSearchSubmit = ({
                   ) ||
                     (!nextHasMoreFood && !nextHasMoreRestaurants));
 
-                const currentIsPaginationExhausted = nextIsPaginationExhausted || (!append ? false : searchRuntimeBus.getState().isPaginationExhausted);
+                const currentIsPaginationExhausted =
+                  nextIsPaginationExhausted ||
+                  (!append ? false : searchRuntimeBus.getState().isPaginationExhausted);
                 const nextCanLoadMore =
                   !currentIsPaginationExhausted && (nextHasMoreFood || nextHasMoreRestaurants);
                 searchRuntimeBus.publish({
@@ -1316,9 +1316,9 @@ const useSearchSubmit = ({
       }
       const finalizeShadowTransitions = () => {
         if (isResponseApplyStale()) {
-        clearActiveOperationTuple(runtimeTuple);
-        return;
-      }
+          clearActiveOperationTuple(runtimeTuple);
+          return;
+        }
         const responseRequestId = normalizedResponse.metadata.searchRequestId ?? null;
         const finishSettled = () => {
           if (isResponseApplyStale()) {
@@ -1517,7 +1517,10 @@ const useSearchSubmit = ({
   const submitSearch = React.useCallback(
     async (options?: SubmitSearchOptions, overrideQuery?: string) => {
       const append = Boolean(options?.append);
-      if (append && (isSearchRequestInFlightRef.current || searchRuntimeBus.getState().isLoadingMore)) {
+      if (
+        append &&
+        (isSearchRequestInFlightRef.current || searchRuntimeBus.getState().isLoadingMore)
+      ) {
         return;
       }
       logSearchPhase('submitSearch:start', { reset: true });
@@ -2317,12 +2320,7 @@ const useSearchSubmit = ({
       }
       void submitSearch({ page: nextPage, append: true }, activeQuery);
     },
-    [
-      loadMoreShortcutResults,
-      query,
-      searchRuntimeBus,
-      submitSearch,
-    ]
+    [loadMoreShortcutResults, query, searchRuntimeBus, submitSearch]
   );
   const rerunActiveSearch = React.useCallback(
     async (params: {

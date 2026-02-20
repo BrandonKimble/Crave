@@ -100,30 +100,30 @@ Note: If the API response arrives before the slide animations complete, dots/pin
 
 ### Measured Stalls (shortcut-loop harness, 3 runs)
 
-| Run | Settle | Duration | Worst Stall | Floor FPS | Scheduler Yields |
-|-----|--------|----------|-------------|-----------|-----------------|
-| 1   | settled | 6.0s    | **1,716ms** | **0.6**   | 12              |
-| 2   | settled | 6.0s    | **991ms**   | **1.0**   | 12              |
-| 3   | settled | 5.3s    | **936ms**   | **1.1**   | 18              |
+| Run | Settle  | Duration | Worst Stall | Floor FPS | Scheduler Yields |
+| --- | ------- | -------- | ----------- | --------- | ---------------- |
+| 1   | settled | 6.0s     | **1,716ms** | **0.6**   | 12               |
+| 2   | settled | 6.0s     | **991ms**   | **1.0**   | 12               |
+| 3   | settled | 5.3s     | **936ms**   | **1.1**   | 18               |
 
 ### Pre-Refactor Baseline (for comparison)
 
-| Run | Settle | Duration | Worst Stall | Floor FPS | Scheduler Yields |
-|-----|--------|----------|-------------|-----------|-----------------|
-| 1   | settled | 1.47s   | 407ms       | 2.5       | 0               |
-| 2   | settled | 0.87s   | 197ms       | 5.1       | 0               |
-| 3   | settled | 0.80s   | 129ms       | 7.8       | 0               |
+| Run | Settle  | Duration | Worst Stall | Floor FPS | Scheduler Yields |
+| --- | ------- | -------- | ----------- | --------- | ---------------- |
+| 1   | settled | 1.47s    | 407ms       | 2.5       | 0                |
+| 2   | settled | 0.87s    | 197ms       | 5.1       | 0                |
+| 3   | settled | 0.80s    | 129ms       | 7.8       | 0                |
 
 **Verdict:** Refactors made stalls **4x worse** (407ms → 1,716ms peak). The cooperative scheduler/governor framework is not effective because the expensive work happens inside React renders, not in scheduled tasks.
 
 ### Stall Breakdown by Stage
 
-| Stage | Worst Stall | Frequency | Primary Component |
-|-------|-------------|-----------|-------------------|
-| `marker_reveal_state` | **1,716ms** | Once per search (during reveal) | SearchMapTree, SearchMapDots |
-| `results_hydration_commit` | **936ms** | Multiple per search (100-400ms each) | SearchScreen, SearchMapTree |
-| `results_list_ramp` | **349ms** | 2-3 per search | SearchScreen, SearchResultsSheetTree |
-| `pre_response_activation` | **484ms** | Once per cold search | SearchScreen, SearchOverlayChrome |
+| Stage                      | Worst Stall | Frequency                            | Primary Component                    |
+| -------------------------- | ----------- | ------------------------------------ | ------------------------------------ |
+| `marker_reveal_state`      | **1,716ms** | Once per search (during reveal)      | SearchMapTree, SearchMapDots         |
+| `results_hydration_commit` | **936ms**   | Multiple per search (100-400ms each) | SearchScreen, SearchMapTree          |
+| `results_list_ramp`        | **349ms**   | 2-3 per search                       | SearchScreen, SearchResultsSheetTree |
+| `pre_response_activation`  | **484ms**   | Once per cold search                 | SearchScreen, SearchOverlayChrome    |
 
 ### Top Component Contributors (from profiler)
 
@@ -188,6 +188,7 @@ API response arrives (sync)
 3. **Remove unnecessary effect deps that were added during refactor.** The hydration commit effect had `hydrationOperationId` and `searchRequestIdentity` as deps (now fixed with refs), but audit all other effects for similar over-subscription.
 
 **Files:**
+
 - `apps/mobile/src/screens/Search/runtime/shared/search-runtime-bus.ts`
 - `apps/mobile/src/screens/Search/runtime/read-models/read-model-selectors-runtime.tsx`
 - `apps/mobile/src/screens/Search/hooks/use-search-submit.ts`
@@ -258,6 +259,7 @@ The map component then reads pre-computed GeoJSON directly from the bus — zero
 5. For viewport-driven LOD updates (user pans the map), the LOD recomputation still needs to run on the JS thread since it's triggered by camera changes, not API responses. Keep a lightweight version of `buildMarkerRenderModel` that only re-sorts the already-computed catalog by new viewport bounds. This is the cheap part (~1-2ms) — the expensive catalog build (5-8ms) only runs once per API response.
 
 **Files:**
+
 - `apps/mobile/src/screens/Search/runtime/map/map-read-model-builder.ts`
 - `apps/mobile/src/screens/Search/runtime/map/map-presentation-controller.ts`
 - `apps/mobile/src/screens/Search/runtime/map/map-diff-applier.ts`
@@ -294,7 +296,7 @@ const restaurantLabelFeaturesWithIds = React.useMemo(() => {
       },
     };
   });
-}, [pinTransitionClockMs, /* ... */]);  // ← Invalidated every frame!
+}, [pinTransitionClockMs /* ... */]); // ← Invalidated every frame!
 ```
 
 For 30 pins with 4 label candidates each = 120 features rebuilt 18 times = 2,160 object allocations per transition.
@@ -318,8 +320,8 @@ Set `iconOpacityTransition` and `textOpacityTransition` on the transition Symbol
 <MapboxGL.SymbolLayer
   id={`pin-transition-slot-${slotIndex}`}
   style={{
-    iconOpacity: ['get', 'pinTransitionOpacity'],  // Set to 1.0 once on promote
-    iconOpacityTransition: { duration: 300, delay: 0 },  // GL-thread animation
+    iconOpacity: ['get', 'pinTransitionOpacity'], // Set to 1.0 once on promote
+    iconOpacityTransition: { duration: 300, delay: 0 }, // GL-thread animation
     textOpacity: ['get', 'pinLabelOpacity'],
     textOpacityTransition: { duration: 300, delay: 0 },
     // ... other style props
@@ -366,6 +368,7 @@ The 10Hz interval only updates `pinTransitionScale` (and `pinRankOpacity` for ra
 6. The transition still lasts 300ms. The interval fires at t=0, t=100, t=200. A final cleanup fires at t=300 to set all features to steady state and stop the interval.
 
 **Files:**
+
 - `apps/mobile/src/screens/Search/components/search-map.tsx` (transition loop, feature builder)
 - `apps/mobile/src/screens/Search/components/SearchMapWithMarkerEngine.tsx`
 
@@ -410,27 +413,37 @@ After:
 **Implementation:**
 
 1. **SearchMap direct subscription:**
+
    ```typescript
    // SearchMap reads its own data from bus:
-   const { sortedMarkers, dotFeatures, markersRenderKey } =
-     useSearchRuntimeBusSelector(bus, (state) => ({
+   const { sortedMarkers, dotFeatures, markersRenderKey } = useSearchRuntimeBusSelector(
+     bus,
+     (state) => ({
        sortedMarkers: state.precomputedSortedMarkers,
        dotFeatures: state.precomputedDotFeatures,
        markersRenderKey: state.markersRenderKey,
-     }), shallowEqual);
+     }),
+     shallowEqual
+   );
    ```
+
    SearchScreen no longer passes marker data as props.
 
 2. **SearchResultsSheetTree direct subscription:**
+
    ```typescript
-   const { rowsForRender, isHydrationSettled } =
-     useSearchRuntimeBusSelector(bus, (state) => ({
+   const { rowsForRender, isHydrationSettled } = useSearchRuntimeBusSelector(
+     bus,
+     (state) => ({
        rowsForRender: state.rowsForRender,
        isHydrationSettled: state.isResultsHydrationSettled,
-     }), shallowEqual);
+     }),
+     shallowEqual
+   );
    ```
 
 3. **SearchScreen becomes a layout shell:**
+
    ```typescript
    // SearchScreen only manages:
    // - Overlay visibility (which sheet is open)
@@ -444,6 +457,7 @@ After:
 5. **Pass the bus instance via context, not props.** SearchMap and SearchResultsSheetTree access the bus from a `SearchRuntimeBusContext` provider placed at the SearchScreen level. This avoids threading the bus object through intermediate components.
 
 **Files:**
+
 - `apps/mobile/src/screens/Search/index.tsx` (remove data-flow props, add bus context provider)
 - `apps/mobile/src/screens/Search/components/search-map.tsx` (add direct bus subscription)
 - `apps/mobile/src/screens/Search/components/SearchMapWithMarkerEngine.tsx` (simplify props, consume bus from context)
@@ -459,7 +473,7 @@ After:
 
 **Goal:** Minimize JS-thread time spent building and updating feature data for the existing 180-layer pin stack, without changing the layer structure, z-ordering, positioning, or label placement.
 
-**UX Constraint:** The 30-slot × 6-layer pin stack is UX-critical for correct z-ordering and visual fidelity. The label sticky placement system is similarly off-limits. This phase focuses purely on reducing the JS work that *feeds* these layers — fewer feature rebuilds, cheaper GeoJSON construction, and smarter change detection so the native bridge only receives updates when features actually changed.
+**UX Constraint:** The 30-slot × 6-layer pin stack is UX-critical for correct z-ordering and visual fidelity. The label sticky placement system is similarly off-limits. This phase focuses purely on reducing the JS work that _feeds_ these layers — fewer feature rebuilds, cheaper GeoJSON construction, and smarter change detection so the native bridge only receives updates when features actually changed.
 
 **Problem in detail:**
 
@@ -510,7 +524,7 @@ const updatedFeatures = React.useMemo(() => {
   dirtyMarkerKeysRef.current = new Set(); // Reset for next frame
   previousFeaturesRef.current = next;
   return next;
-}, [transitionClockMs, /* only when dirty features exist */]);
+}, [transitionClockMs /* only when dirty features exist */]);
 ```
 
 This reduces object allocation from 30 features/frame to only the 1-3 features actively transitioning.
@@ -522,7 +536,7 @@ Split the pin feature collection into two stable partitions:
 ```typescript
 // Partition 1: Steady features (not transitioning) — rarely changes
 const steadyPinFeatures = React.useMemo(() => {
-  return allPinFeatures.filter(f => !activeTransitionKeys.has(buildMarkerKey(f)));
+  return allPinFeatures.filter((f) => !activeTransitionKeys.has(buildMarkerKey(f)));
 }, [allPinFeatures, activeTransitionKeySetIdentity]);
 
 // Partition 2: Transitioning features (1-3 pins) — changes every frame
@@ -531,7 +545,7 @@ const transitioningPinFeatures = React.useMemo(() => {
     ? EMPTY_FEATURE_COLLECTION
     : {
         type: 'FeatureCollection',
-        features: Array.from(activeTransitionKeys).map(key => {
+        features: Array.from(activeTransitionKeys).map((key) => {
           const base = featureByKeyRef.current.get(key);
           return {
             ...base,
@@ -547,7 +561,7 @@ const transitioningPinFeatures = React.useMemo(() => {
 
 The steady partition is a stable reference (same object across frames). Only the transitioning partition (1-3 features) rebuilds per frame. The native bridge serializes the small partition every frame, but the large partition only on data changes.
 
-Implementation detail: The existing layer filter expressions (`['==', ['get', 'lodZ'], slotIndex]`) work unchanged — features from both partitions flow through the same ShapeSource. The only change is *how* the JS side constructs the FeatureCollection.
+Implementation detail: The existing layer filter expressions (`['==', ['get', 'lodZ'], slotIndex]`) work unchanged — features from both partitions flow through the same ShapeSource. The only change is _how_ the JS side constructs the FeatureCollection.
 
 #### Part C: Coalesce transition updates with frame skipping
 
@@ -593,6 +607,7 @@ const labelCandidateVisuals = React.useMemo(() => {
 When no transitions are active (the common case after reveal settles), `labelCandidateVisuals` is the exact same object reference as `labelCandidateGeometry` — zero allocation, zero serialization delta.
 
 **Files:**
+
 - `apps/mobile/src/screens/Search/components/search-map.tsx` (feature construction, transition updates)
 - `apps/mobile/src/screens/Search/components/SearchMapWithMarkerEngine.tsx` (feature pass-through)
 - `apps/mobile/src/screens/Search/hooks/use-map-marker-engine.ts` (feature derivation)
@@ -623,10 +638,10 @@ const rowsForRender = sectionedResults; // All rows, always
 
 <FlashList
   data={rowsForRender}
-  estimatedItemSize={88}  // Good-enough estimate for row height
-  drawDistance={260}       // Only render items within 260px of viewport
+  estimatedItemSize={88} // Good-enough estimate for row height
+  drawDistance={260} // Only render items within 260px of viewport
   // FlashList handles virtualization natively
-/>
+/>;
 ```
 
 FlashList already only renders visible + buffer items. Giving it all 40 rows doesn't mean it renders all 40 — it measures and renders ~8-12 visible items, then lazily renders more as the user scrolls.
@@ -639,10 +654,14 @@ FlashList already only renders visible + buffer items. Giving it all 40 rows doe
   estimatedItemSize={88}
   overrideItemLayout={(layout, item) => {
     // Pre-compute exact height based on item type:
-    layout.size = item.type === 'section_header' ? 44
-      : item.type === 'restaurant_card' ? 96
-      : item.type === 'dish_card' ? 80
-      : 88; // fallback
+    layout.size =
+      item.type === 'section_header'
+        ? 44
+        : item.type === 'restaurant_card'
+        ? 96
+        : item.type === 'dish_card'
+        ? 80
+        : 88; // fallback
   }}
 />
 ```
@@ -650,6 +669,7 @@ FlashList already only renders visible + buffer items. Giving it all 40 rows doe
 This eliminates FlashList's synchronous measurement pass entirely. Items are positioned by pre-computed heights, and only rendered when scrolled into view. Combined with removing the ramp, FlashList renders exactly once per search with zero measurement stalls.
 
 **What to remove:**
+
 - `PhaseBMaterializer.scheduleHydrationRamp()` — no longer needed
 - `hydrationRowsLimit` state — no longer needed
 - `effectiveHydrationRowsLimit` computation — no longer needed
@@ -657,11 +677,13 @@ This eliminates FlashList's synchronous measurement pass entirely. Items are pos
 - `HydrationRampPressure` type and resolution logic — no longer needed
 
 **What to keep:**
+
 - `PhaseBMaterializer.syncHydrationCommit()` — still needed for the key commit handshake
 - `resultsHydrationKey` / `hydratedResultsKey` — still needed for staleness detection
 - `isResultsHydrationSettled` — still needed for settle detection
 
 **Files:**
+
 - `apps/mobile/src/screens/Search/runtime/scheduler/phase-b-materializer.ts`
 - `apps/mobile/src/screens/Search/runtime/read-models/read-model-selectors-runtime.tsx`
 - `apps/mobile/src/screens/Search/hooks/use-search-results-panel-spec.tsx`
@@ -688,7 +710,10 @@ const markersRenderKey = `${searchMode}::${tab}::${scoreMode}::pins:${pinCount}:
 
 // Proposed (changes only when marker SET changes):
 const markersRenderKey = React.useMemo(() => {
-  const pinIds = sortedMarkers.map(m => m.properties.id).sort().join(',');
+  const pinIds = sortedMarkers
+    .map((m) => m.properties.id)
+    .sort()
+    .join(',');
   return `pins:${fnv1a(pinIds)}`;
 }, [sortedMarkers]);
 ```
@@ -696,6 +721,7 @@ const markersRenderKey = React.useMemo(() => {
 If consecutive searches return the same restaurants (common for nearby searches), the render key stays stable and no remount occurs.
 
 **Files:**
+
 - `apps/mobile/src/screens/Search/hooks/use-map-marker-engine.ts` (render key generation)
 - `apps/mobile/src/screens/Search/components/search-map.tsx` (remount gate)
 
@@ -705,7 +731,7 @@ If consecutive searches return the same restaurants (common for nearby searches)
 
 ### Phase 7: Eliminate Pre-Response Activation Stall
 
-**Goal:** Reduce the 484ms stall that happens *before the API response arrives* when the user taps a shortcut.
+**Goal:** Reduce the 484ms stall that happens _before the API response arrives_ when the user taps a shortcut.
 
 **Problem in detail:**
 
@@ -778,6 +804,7 @@ requestAnimationFrame(() => {
 The essential publishes trigger only the overlay switch and search bar — the components the user sees immediately. The map and results trees don't re-render until the next frame, by which point the overlay switch is already painted.
 
 **Files:**
+
 - `apps/mobile/src/screens/Search/hooks/use-search-submit.ts` (submitUiLanes, runBestHere)
 - `apps/mobile/src/screens/Search/runtime/shared/search-runtime-bus.ts` (batch API)
 - `apps/mobile/src/screens/Search/index.tsx` (shortcut activation handler)
@@ -793,12 +820,14 @@ The essential publishes trigger only the overlay switch and search bar — the c
 **Problem in detail:**
 
 `@rnmapbox/maps` ShapeSource serialization path:
+
 1. JS: `JSON.stringify(featureCollection)` — O(n) where n = total properties across all features
 2. Bridge: send string to native
 3. Native (iOS): `try parse(shape)` — parse JSON back to objects
 4. Native: `style.updateGeoJSONSource(withId:, geoJSON:)` — replace entire source
 
 There are **9 ShapeSources** in SearchMap. Several receive duplicate data:
+
 - `DOT_SOURCE_ID` + `DOT_INTERACTION_SOURCE_ID` both receive `dotRestaurantFeatures` (~229 features)
 - `STYLE_PINS_SOURCE_ID` + `PIN_INTERACTION_SOURCE_ID` + `RESTAURANT_LABEL_COLLISION_SOURCE_ID` all receive `stylePinFeaturesWithTransitions` (~30 features)
 
@@ -817,15 +846,18 @@ Audit each ShapeSource's SymbolLayer/CircleLayer `style` expressions to determin
 // They don't need: pinTransitionScale, pinTransitionOpacity, lodZ, etc.
 const dotOnlyProperties = ['id', 'color', 'rank', 'restaurantId'];
 
-const lightDotFeatures = React.useMemo(() => ({
-  type: 'FeatureCollection',
-  features: fullFeatures.features.map(f => ({
-    type: 'Feature',
-    id: f.id,
-    geometry: f.geometry,
-    properties: pick(f.properties, dotOnlyProperties),
-  })),
-}), [fullFeatures]);
+const lightDotFeatures = React.useMemo(
+  () => ({
+    type: 'FeatureCollection',
+    features: fullFeatures.features.map((f) => ({
+      type: 'Feature',
+      id: f.id,
+      geometry: f.geometry,
+      properties: pick(f.properties, dotOnlyProperties),
+    })),
+  }),
+  [fullFeatures]
+);
 ```
 
 Fewer properties per feature = smaller JSON string = faster `JSON.stringify` + bridge transfer + native `JSON.parse`.
@@ -883,6 +915,7 @@ Each frame serializes 2-3 sources instead of 7. Per-frame bridge cost drops from
 This aligns with the canonical UX — dots and pins can appear on the same frame (frames 1-2), with labels following immediately (frame 3).
 
 **Files:**
+
 - `apps/mobile/src/screens/Search/components/search-map.tsx` (ShapeSource usage, feature construction)
 - `apps/mobile/src/screens/Search/hooks/use-map-marker-engine.ts` (feature property generation)
 
@@ -946,11 +979,11 @@ const onPinnedSetChanged = (nextPinnedFeatures: Map<string, Feature>) => {
     // MODE 1: INITIAL COMMIT — skip animation entirely
     // Set all pins directly to steady state
     for (const [key, feature] of nextPinnedFeatures) {
-      feature.properties.pinTransitionActive = 0;   // steady (not animating)
-      feature.properties.pinTransitionScale = 1;     // full size
-      feature.properties.pinTransitionOpacity = 1;   // fully opaque
-      feature.properties.pinRankOpacity = 1;         // rank number visible
-      feature.properties.pinLabelOpacity = 1;        // label visible
+      feature.properties.pinTransitionActive = 0; // steady (not animating)
+      feature.properties.pinTransitionScale = 1; // full size
+      feature.properties.pinTransitionOpacity = 1; // fully opaque
+      feature.properties.pinRankOpacity = 1; // rank number visible
+      feature.properties.pinLabelOpacity = 1; // label visible
     }
     isInitialCommitRef.current = false;
     // Do NOT add entries to promoteStartedAtByMarkerKey
@@ -985,6 +1018,7 @@ useEffect(() => {
 ```
 
 **What this preserves (LOD change mode):**
+
 - `promoteStartedAtByMarkerKey` / `demoteFeatureByMarkerKey` maps — unchanged
 - `getPinTransitionVisual()` function — unchanged (scale 0.48→1.0, opacity 0→1, easeOutQuart)
 - `pinTransitionClockMs` state + `requestAnimationFrame` loop — unchanged
@@ -995,12 +1029,14 @@ useEffect(() => {
 - Temporal hysteresis in `buildMarkerRenderModel` (`stableMsMoving`, `stableMsIdle`) — unchanged
 
 **What this removes (initial commit mode only):**
+
 - `pendingPromoteDelayByMarkerKey` stagger system for initial reveals (no staggered appearance)
 - `MARKER_REVEAL_CHUNK` / `MARKER_REVEAL_STAGGER_MS` constants
 - The staged publish mode (`SEARCH_MAP_STAGED_PUBLISH_MODE`) — dots and pins render together on initial commit
 - 18 rAF frames of feature rebuilds on initial search (the primary stall source)
 
 **What is NOT removed:**
+
 - The transition animation infrastructure stays fully intact for post-search LOD changes
 - `getPinTransitionVisual()`, the rAF loop, the promote/demote maps, the steady/transition layer filters — all preserved
 - The 180-layer pin stack, label sticky placement, z-ordering via `lodZ` — all preserved
@@ -1106,6 +1142,7 @@ requestAnimationFrame(() => {
 ```
 
 **Files:**
+
 - `apps/mobile/src/screens/Search/components/search-map.tsx` (dual-mode transition controller, remove stagger system, remove staged publish for initial commit)
 - `apps/mobile/src/screens/Search/runtime/map/use-shortcut-coverage-owner.ts` (handoff phases → canonical sequence)
 - `apps/mobile/src/screens/Search/hooks/use-search-submit.ts` (response buffering, slide gating)
@@ -1146,15 +1183,15 @@ API Response (async)
 
 **Per-search JS thread budget:**
 
-| Work Item | Current Cost | Target Cost |
-|-----------|-------------|-------------|
-| Bus publish + notify | 1-2ms | 1-2ms (unchanged) |
-| SearchMap render | 15-25ms | **<3ms** (no marker computation) |
-| Pin transition frames | 36-144ms total | **<10ms** (dirty tracking + 20Hz coalescing) |
-| SearchResultsList render | 30-80ms total | **<5ms** (single render, no ramp) |
-| SearchScreen render | 5-10ms | **<2ms** (no data flow) |
-| Mapbox layer updates | 1-3ms/frame | **<1ms** (same 180 layers, fewer feature rebuilds) |
-| **Total per search** | **~100-270ms** | **~15-25ms** |
+| Work Item                | Current Cost   | Target Cost                                        |
+| ------------------------ | -------------- | -------------------------------------------------- |
+| Bus publish + notify     | 1-2ms          | 1-2ms (unchanged)                                  |
+| SearchMap render         | 15-25ms        | **<3ms** (no marker computation)                   |
+| Pin transition frames    | 36-144ms total | **<10ms** (dirty tracking + 20Hz coalescing)       |
+| SearchResultsList render | 30-80ms total  | **<5ms** (single render, no ramp)                  |
+| SearchScreen render      | 5-10ms         | **<2ms** (no data flow)                            |
+| Mapbox layer updates     | 1-3ms/frame    | **<1ms** (same 180 layers, fewer feature rebuilds) |
+| **Total per search**     | **~100-270ms** | **~15-25ms**                                       |
 
 ---
 
@@ -1174,6 +1211,7 @@ For each phase, run the shortcut-loop harness (3 runs) and compare:
 ### Promotion Gates
 
 Each phase must demonstrate:
+
 - No regression in settle status (all runs must settle)
 - Directional improvement in worst stall
 - No new stall stages introduced
@@ -1182,6 +1220,7 @@ Each phase must demonstrate:
 ### Rollback Strategy
 
 Each phase is independently revertable:
+
 - Phase 0: Revert selector changes
 - Phase 1: Move marker computation back to inline useMemo chain
 - Phase 2: Revert to 60Hz rAF transition loop
@@ -1241,18 +1280,18 @@ Phase 7 (pre-response stall) is independent and yields immediate gains — do it
 
 ## Risk Assessment
 
-| Phase | Risk | Mitigation |
-|-------|------|------------|
-| 0 | Low | Only changes selector equality functions |
-| 1 | Low | Moving useMemo chain to response handler is a straightforward code move; no new dependencies |
-| 2 | Low | 10Hz interval is visually indistinguishable from 60Hz rAF for pin scale animations |
-| 3 | Medium — large refactor of data flow | Incremental: start with SearchMap direct subscription, then SearchResultsSheetTree, then reduce SearchScreen selectors. Validate each step with harness. |
-| 4 | Low | All four parts are additive changes to feature construction; layer stack, z-order, labels untouched |
-| 5 | Low | FlashList already virtualizes; ramp was duplicating built-in behavior |
-| 6 | Low | Only affects when remount occurs, not visual output |
-| 7 | Low | batch() already exists in bus API; RAF deferral is safe and additive |
-| 8 | Medium — stripping properties may break layer expressions | Audit each SymbolLayer's `style` prop to confirm which properties are consumed before stripping |
-| 9 | Medium — handoff coordinator rewrite | The dual-mode flag is additive (single boolean). Implement new coordinator behind a feature flag, keep old coordinator as fallback until harness confirms. |
+| Phase | Risk                                                      | Mitigation                                                                                                                                                 |
+| ----- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0     | Low                                                       | Only changes selector equality functions                                                                                                                   |
+| 1     | Low                                                       | Moving useMemo chain to response handler is a straightforward code move; no new dependencies                                                               |
+| 2     | Low                                                       | 10Hz interval is visually indistinguishable from 60Hz rAF for pin scale animations                                                                         |
+| 3     | Medium — large refactor of data flow                      | Incremental: start with SearchMap direct subscription, then SearchResultsSheetTree, then reduce SearchScreen selectors. Validate each step with harness.   |
+| 4     | Low                                                       | All four parts are additive changes to feature construction; layer stack, z-order, labels untouched                                                        |
+| 5     | Low                                                       | FlashList already virtualizes; ramp was duplicating built-in behavior                                                                                      |
+| 6     | Low                                                       | Only affects when remount occurs, not visual output                                                                                                        |
+| 7     | Low                                                       | batch() already exists in bus API; RAF deferral is safe and additive                                                                                       |
+| 8     | Medium — stripping properties may break layer expressions | Audit each SymbolLayer's `style` prop to confirm which properties are consumed before stripping                                                            |
+| 9     | Medium — handoff coordinator rewrite                      | The dual-mode flag is additive (single boolean). Implement new coordinator behind a feature flag, keep old coordinator as fallback until harness confirms. |
 
 ---
 
@@ -1274,16 +1313,16 @@ All questions resolved. No remaining blockers.
 
 Required feature properties per ShapeSource, based on audit of all SymbolLayer/CircleLayer style expressions in `search-map.tsx`:
 
-| ShapeSource | Source ID String | Feature Count | Required Properties | Strip Target |
-|---|---|---|---|---|
-| `DOT_SOURCE_ID` | `restaurant-dot-source` | ~229 | `restaurantId`, `pinColor`, `pinColorLocal`, `pinColorGlobal` | Strip all others |
-| `DOT_INTERACTION_SOURCE_ID` | `restaurant-dot-interaction-source` | ~229 | `restaurantId` | Strip all others (biggest win — 229 features × ~10 unused props) |
-| `STYLE_PINS_SOURCE_ID` | `restaurant-style-pins-source` | ~30 | `lodZ`, `pinTransitionActive`, `pinTransitionScale`, `pinTransitionOpacity`, `pinRankOpacity`, `pinLabelOpacity`, `rank` | Strip all others |
-| `PIN_INTERACTION_SOURCE_ID` | `restaurant-pin-interaction-source` | ~30 | `lodZ`, `pinTransitionActive` | Strip all others (5 unused transition props per feature) |
-| `RESTAURANT_LABEL_SOURCE_ID` | `restaurant-source` | ~120 | `labelCandidate`, `labelOrder`, `rank`, `markerKey` | Strip all others |
-| `LABEL_INTERACTION_SOURCE_ID` | `restaurant-label-interaction-source` | ~120 | `labelCandidate` | Strip all others |
-| `RESTAURANT_LABEL_COLLISION_SOURCE_ID` | `restaurant-label-collision-source` | ~30 | **NONE** (geometry only) | Strip ALL properties |
-| `OVERLAY_Z_ANCHOR_SOURCE_ID` | `search-overlay-z-anchor-source` | 0 | N/A (empty features) | N/A |
+| ShapeSource                            | Source ID String                      | Feature Count | Required Properties                                                                                                      | Strip Target                                                     |
+| -------------------------------------- | ------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| `DOT_SOURCE_ID`                        | `restaurant-dot-source`               | ~229          | `restaurantId`, `pinColor`, `pinColorLocal`, `pinColorGlobal`                                                            | Strip all others                                                 |
+| `DOT_INTERACTION_SOURCE_ID`            | `restaurant-dot-interaction-source`   | ~229          | `restaurantId`                                                                                                           | Strip all others (biggest win — 229 features × ~10 unused props) |
+| `STYLE_PINS_SOURCE_ID`                 | `restaurant-style-pins-source`        | ~30           | `lodZ`, `pinTransitionActive`, `pinTransitionScale`, `pinTransitionOpacity`, `pinRankOpacity`, `pinLabelOpacity`, `rank` | Strip all others                                                 |
+| `PIN_INTERACTION_SOURCE_ID`            | `restaurant-pin-interaction-source`   | ~30           | `lodZ`, `pinTransitionActive`                                                                                            | Strip all others (5 unused transition props per feature)         |
+| `RESTAURANT_LABEL_SOURCE_ID`           | `restaurant-source`                   | ~120          | `labelCandidate`, `labelOrder`, `rank`, `markerKey`                                                                      | Strip all others                                                 |
+| `LABEL_INTERACTION_SOURCE_ID`          | `restaurant-label-interaction-source` | ~120          | `labelCandidate`                                                                                                         | Strip all others                                                 |
+| `RESTAURANT_LABEL_COLLISION_SOURCE_ID` | `restaurant-label-collision-source`   | ~30           | **NONE** (geometry only)                                                                                                 | Strip ALL properties                                             |
+| `OVERLAY_Z_ANCHOR_SOURCE_ID`           | `search-overlay-z-anchor-source`      | 0             | N/A (empty features)                                                                                                     | N/A                                                              |
 
 ---
 

@@ -1,5 +1,11 @@
 import React from 'react';
-import { StyleSheet, type StyleProp, type View, type ViewProps, type ViewStyle } from 'react-native';
+import {
+  StyleSheet,
+  type StyleProp,
+  type View,
+  type ViewProps,
+  type ViewStyle,
+} from 'react-native';
 import Svg, { Defs, G, Mask, Rect } from 'react-native-svg';
 import Reanimated, { type AnimatedStyle } from 'react-native-reanimated';
 

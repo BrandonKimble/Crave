@@ -416,8 +416,7 @@ export const useSearchResultsPanelSpec = ({
     if (!results) {
       return null;
     }
-    const requestKey =
-      results?.metadata?.searchRequestId ?? 'no-request';
+    const requestKey = results?.metadata?.searchRequestId ?? 'no-request';
     const totalFoodResults =
       typeof results.metadata?.totalFoodResults === 'number'
         ? results.metadata.totalFoodResults
@@ -583,15 +582,12 @@ export const useSearchResultsPanelSpec = ({
     [placeholderItemStyle]
   );
 
-  const getResultItemType = React.useCallback(
-    (item: ResultsListItem) => {
-      if (item && typeof item === 'object' && 'kind' in item) {
-        return item.kind;
-      }
-      return 'foodId' in item ? 'dish' : 'restaurant';
-    },
-    []
-  );
+  const getResultItemType = React.useCallback((item: ResultsListItem) => {
+    if (item && typeof item === 'object' && 'kind' in item) {
+      return item.kind;
+    }
+    return 'foodId' in item ? 'dish' : 'restaurant';
+  }, []);
 
   const overrideItemLayout = React.useCallback(
     (layout: { size?: number; span?: number }, item: ResultsListItem) => {
@@ -678,8 +674,7 @@ export const useSearchResultsPanelSpec = ({
     (didSearchSessionJustActivate || isInitialResultsLoadPending) &&
     isSearchLoading &&
     !isFilterTogglePending;
-  const shouldShowInitialResultsLoadingPhase =
-    shouldForceInitialLoadingCover;
+  const shouldShowInitialResultsLoadingPhase = shouldForceInitialLoadingCover;
   const shouldHideFiltersHeaderDuringInitialLoad =
     !shouldDisableFiltersHeader && shouldShowInitialResultsLoadingPhase;
 

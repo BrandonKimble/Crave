@@ -125,7 +125,12 @@ const SearchResultsSheet = <T,>({
     onEndReached?: FlashListProps<T>['onEndReached'];
   } | null>(null);
   const handleProfilerRender = React.useCallback(
-    (id: string, phase: 'mount' | 'update' | 'nested-update', actualDuration: number, baseDuration: number) => {
+    (
+      id: string,
+      phase: 'mount' | 'update' | 'nested-update',
+      actualDuration: number,
+      baseDuration: number
+    ) => {
       if (!shouldLogProfiler || actualDuration < profilerMinMs) {
         return;
       }

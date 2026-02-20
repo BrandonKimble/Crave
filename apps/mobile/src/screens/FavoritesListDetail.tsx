@@ -256,11 +256,13 @@ const FavoritesListDetailScreen: React.FC<
       <View style={styles.listContainer}>
         <FlashList
           data={(isRestaurantList ? restaurants : dishes) as (RestaurantResult | FoodResult)[]}
-          renderItem={(isRestaurantList ? renderRestaurant : renderDish) as ListRenderItem<RestaurantResult | FoodResult>}
+          renderItem={
+            (isRestaurantList ? renderRestaurant : renderDish) as ListRenderItem<
+              RestaurantResult | FoodResult
+            >
+          }
           keyExtractor={(item: RestaurantResult | FoodResult) =>
-            'restaurantId' in item
-              ? item.restaurantId
-              : (item as FoodResult).connectionId
+            'restaurantId' in item ? item.restaurantId : (item as FoodResult).connectionId
           }
           ListEmptyComponent={
             <View style={styles.emptyState}>

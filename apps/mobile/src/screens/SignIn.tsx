@@ -19,7 +19,9 @@ const SignInScreen: React.FC = () => {
   const auth = useAuth();
   const setActiveSession =
     typeof (auth as Record<string, unknown>).setActive === 'function'
-      ? ((auth as Record<string, unknown>).setActive as (params: { session: string }) => Promise<void>)
+      ? ((auth as Record<string, unknown>).setActive as (params: {
+          session: string;
+        }) => Promise<void>)
       : null;
 
   React.useEffect(() => {

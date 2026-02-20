@@ -54,16 +54,8 @@
   "markerIntegrity": {
     "harnessRunId": "shortcut-loop-local-baseline-20260220T040256Z",
     "expectedRuns": 3,
-    "startedRuns": [
-      1,
-      2,
-      3
-    ],
-    "completedRuns": [
-      1,
-      2,
-      3
-    ],
+    "startedRuns": [1, 2, 3],
+    "completedRuns": [1, 2, 3],
     "hasLoopCompleteMarker": true,
     "complete": true
   },
@@ -690,18 +682,13 @@
   "uiStallMaxMean": 178.16666666666666,
   "catastrophic": {
     "thresholdMs": 300,
-    "runNumbers": [
-      1,
-      3
-    ],
+    "runNumbers": [1, 3],
     "runCount": 2,
     "windowCount": 6
   },
   "uiCatastrophic": {
     "thresholdMs": 300,
-    "runNumbers": [
-      1
-    ],
+    "runNumbers": [1],
     "runCount": 1,
     "windowCount": 1
   },

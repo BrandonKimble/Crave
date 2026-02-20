@@ -83,7 +83,10 @@ const STABILIZE_LABEL_ORDER = true;
 // - `outline`: uses the full pin sprite bounding box (conservative).
 // - `fill`: uses the fill sprite bounding box (tighter).
 // - `off`: disables pin collision obstacles entirely (labels may overlap pins).
-const PIN_COLLISION_OBSTACLE_GEOMETRY: 'outline' | 'fill' | 'off' = 'fill' as 'outline' | 'fill' | 'off';
+const PIN_COLLISION_OBSTACLE_GEOMETRY: 'outline' | 'fill' | 'off' = 'fill' as
+  | 'outline'
+  | 'fill'
+  | 'off';
 const PIN_COLLISION_OBSTACLE_SCALE = 0.6;
 // Move the shared per-restaurant collision point used to enforce "one candidate label" placement.
 // This avoids the mutex being blocked by another pin's collision obstacle when pins stack.
@@ -1088,7 +1091,10 @@ const usePinTransitionController = ({
       );
       return;
     }
-    pinTransitionFrameHandleRef.current = setTimeout(() => tick(getNowMs()), MIN_TRANSITION_TICK_MS);
+    pinTransitionFrameHandleRef.current = setTimeout(
+      () => tick(getNowMs()),
+      MIN_TRANSITION_TICK_MS
+    );
   }, []);
   const runPinTransitionFrameRef = React.useRef<() => void>(() => undefined);
   const runPinTransitionFrame = React.useCallback(() => {
@@ -1502,27 +1508,26 @@ const SearchMap: React.FC<SearchMapProps> = ({
     markerRevealCommitId,
     runOneCommitSpanPressureActive,
     activeOperationLane,
-  } =
-    useSearchRuntimeBusSelector(
-      searchRuntimeBus,
-      (state) => ({
-        isMapActivationDeferred: state.isMapActivationDeferred,
-        visualSyncCandidateRequestKey: state.visualSyncCandidateRequestKey,
-        markerRevealCommitId: state.markerRevealCommitId,
-        runOneCommitSpanPressureActive: state.runOneCommitSpanPressureActive,
-        activeOperationLane:
-          SEARCH_OPERATION_LANE_RANK[state.activeOperationLane] >=
-          SEARCH_OPERATION_LANE_RANK.lane_d_map_dots
-            ? state.activeOperationLane
-            : 'lane_c_list_first_paint',
-      }),
-      (left, right) =>
-        left.isMapActivationDeferred === right.isMapActivationDeferred &&
-        left.visualSyncCandidateRequestKey === right.visualSyncCandidateRequestKey &&
-        left.markerRevealCommitId === right.markerRevealCommitId &&
-        left.runOneCommitSpanPressureActive === right.runOneCommitSpanPressureActive &&
-        left.activeOperationLane === right.activeOperationLane
-    );
+  } = useSearchRuntimeBusSelector(
+    searchRuntimeBus,
+    (state) => ({
+      isMapActivationDeferred: state.isMapActivationDeferred,
+      visualSyncCandidateRequestKey: state.visualSyncCandidateRequestKey,
+      markerRevealCommitId: state.markerRevealCommitId,
+      runOneCommitSpanPressureActive: state.runOneCommitSpanPressureActive,
+      activeOperationLane:
+        SEARCH_OPERATION_LANE_RANK[state.activeOperationLane] >=
+        SEARCH_OPERATION_LANE_RANK.lane_d_map_dots
+          ? state.activeOperationLane
+          : 'lane_c_list_first_paint',
+    }),
+    (left, right) =>
+      left.isMapActivationDeferred === right.isMapActivationDeferred &&
+      left.visualSyncCandidateRequestKey === right.visualSyncCandidateRequestKey &&
+      left.markerRevealCommitId === right.markerRevealCommitId &&
+      left.runOneCommitSpanPressureActive === right.runOneCommitSpanPressureActive &&
+      left.activeOperationLane === right.activeOperationLane
+  );
   const visualReadyRequestKey = visualSyncCandidateRequestKey;
   const shouldDeferDotsForOperationLane = false;
   const shouldDeferPinsForOperationLane = false;
@@ -1530,13 +1535,14 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const sortedRestaurantMarkers = shouldDeferDotsForOperationLane
     ? EMPTY_SORTED_RESTAURANT_MARKERS
     : incomingSortedRestaurantMarkers;
-  const dotRestaurantFeatures = shouldDeferDotsForOperationLane ? null : incomingDotRestaurantFeatures;
+  const dotRestaurantFeatures = shouldDeferDotsForOperationLane
+    ? null
+    : incomingDotRestaurantFeatures;
   const markersRenderKey = incomingMarkersRenderKey;
   const pinsRenderKey = incomingPinsRenderKey;
   const hasStagedPublishPayload =
     sortedRestaurantMarkers.length > 0 || (dotRestaurantFeatures?.features?.length ?? 0) > 0;
-  const shouldUseStagedPublish =
-    false;
+  const shouldUseStagedPublish = false;
   const pinsTopologyKey = React.useMemo(
     () => normalizePinsRenderKeyForTopology(pinsRenderKey),
     [pinsRenderKey]
@@ -1571,7 +1577,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
       clearScheduledRelease();
       const releaseIdleIfReady = () => {
         const state = searchRuntimeBus.getState();
-        if (state.activeOperationId !== operationId || state.activeOperationLane !== 'lane_f_polish') {
+        if (
+          state.activeOperationId !== operationId ||
+          state.activeOperationLane !== 'lane_f_polish'
+        ) {
           return;
         }
         if (state.isVisualSyncPending || isMapFinalizeDeferred()) {
@@ -2113,12 +2122,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
               ],
               batchFadeProgress,
             ]
-          : [
-              'case',
-              ['in', ['get', 'restaurantId'], ['literal', hiddenDotRestaurantIdList]],
-              0,
-              1,
-            ],
+          : ['case', ['in', ['get', 'restaurantId'], ['literal', hiddenDotRestaurantIdList]], 0, 1],
       // Keep dots a constant screen size (like pins). The symbol can still cull/collide based on
       // Mapbox placement, but it won't scale with zoom.
       textSize: DOT_TEXT_SIZE,
@@ -2508,7 +2512,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
   // Collision source — geometry only, no transition-visual properties needed.
   // Use identity tracking to skip rebuilds when only transition visual props change.
   const prevCollisionIdentityRef = React.useRef<string>('');
-  const prevCollisionFeaturesRef = React.useRef<FeatureCollection<Point, RestaurantFeatureProperties> | null>(null);
+  const prevCollisionFeaturesRef = React.useRef<FeatureCollection<
+    Point,
+    RestaurantFeatureProperties
+  > | null>(null);
   const collisionSourceFeatures = React.useMemo<
     FeatureCollection<Point, RestaurantFeatureProperties>
   >(() => {
@@ -2534,7 +2541,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
         type: 'Feature' as const,
         id: feature.id,
         geometry: feature.geometry,
-        properties: { restaurantId: feature.properties.restaurantId } as RestaurantFeatureProperties,
+        properties: {
+          restaurantId: feature.properties.restaurantId,
+        } as RestaurantFeatureProperties,
       })),
     };
     prevCollisionFeaturesRef.current = built;
@@ -2544,7 +2553,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
   // Pin interaction source — minimal properties for press handling.
   // Only rebuild when feature set or pinTransitionActive values change.
   const prevInteractionIdentityRef = React.useRef<string>('');
-  const prevInteractionFeaturesRef = React.useRef<FeatureCollection<Point, RestaurantFeatureProperties> | null>(null);
+  const prevInteractionFeaturesRef = React.useRef<FeatureCollection<
+    Point,
+    RestaurantFeatureProperties
+  > | null>(null);
   const pinInteractionFeatures = React.useMemo<
     FeatureCollection<Point, RestaurantFeatureProperties>
   >(() => {
@@ -2761,9 +2773,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
         }
         // Check if transition properties actually changed
         if (
-          labelFeature.properties.pinTransitionActive === srcFeature.properties.pinTransitionActive &&
+          labelFeature.properties.pinTransitionActive ===
+            srcFeature.properties.pinTransitionActive &&
           labelFeature.properties.pinTransitionScale === srcFeature.properties.pinTransitionScale &&
-          labelFeature.properties.pinTransitionOpacity === srcFeature.properties.pinTransitionOpacity &&
+          labelFeature.properties.pinTransitionOpacity ===
+            srcFeature.properties.pinTransitionOpacity &&
           labelFeature.properties.pinRankOpacity === srcFeature.properties.pinRankOpacity &&
           labelFeature.properties.pinLabelOpacity === srcFeature.properties.pinLabelOpacity
         ) {
@@ -3494,7 +3508,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }, []);
 
   const runStickyLabelRefreshRef = React.useRef<() => void>(() => undefined);
-  const refreshStickyLabelCandidatesRef = React.useRef<() => Promise<void>>(() => Promise.resolve());
+  const refreshStickyLabelCandidatesRef = React.useRef<() => Promise<void>>(() =>
+    Promise.resolve()
+  );
   const runStickyLabelRefresh = React.useCallback(() => {
     if (labelStickyRefreshInFlightRef.current) {
       return;
@@ -3766,7 +3782,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
         }
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const filtered = await mapInstance.queryRenderedFeaturesInRect([], probeFilter as any, null);
+        const filtered = await mapInstance.queryRenderedFeaturesInRect(
+          [],
+          probeFilter as any,
+          null
+        );
         probeFilterRendered = filtered?.features?.length ?? 0;
 
         if (typeof mapInstance.querySourceFeatures === 'function') {
@@ -4262,7 +4282,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
         scaleBarEnabled={false}
         gestureSettings={{ panDecelerationFactor: MAP_PAN_DECELERATION_FACTOR }}
         onPress={handleMapViewPress}
-        {...({ onTouchStartCapture: handleTouchStart, onTouchEndCapture: handleTouchEnd, onTouchCancelCapture: handleTouchEnd } as Record<string, unknown>)}
+        {...({
+          onTouchStartCapture: handleTouchStart,
+          onTouchEndCapture: handleTouchEnd,
+          onTouchCancelCapture: handleTouchEnd,
+        } as Record<string, unknown>)}
         onCameraChanged={handleCameraChanged}
         onMapIdle={handleMapIdle}
         onDidFinishLoadingStyle={handleMapLoadedStyle}
@@ -4340,7 +4364,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
               id={DOT_INTERACTION_SOURCE_ID}
               shape={
                 shouldRenderDots && dotInteractionFeatures
-                  ? (dotInteractionFeatures as FeatureCollection<Point, RestaurantFeatureProperties>)
+                  ? (dotInteractionFeatures as FeatureCollection<
+                      Point,
+                      RestaurantFeatureProperties
+                    >)
                   : (EMPTY_POINT_FEATURES as FeatureCollection<Point, RestaurantFeatureProperties>)
               }
               onPress={handleDotPress}

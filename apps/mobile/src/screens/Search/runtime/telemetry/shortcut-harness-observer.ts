@@ -146,31 +146,33 @@ export const useShortcutHarnessObserver = (
     Object.is
   );
 
-  const { visibleSortedRestaurantMarkersCount, visibleDotRestaurantFeaturesCount, isShortcutCoverageLoading } =
-    useSearchRuntimeBusSelector(
-      searchRuntimeBus!,
-      (state) => ({
-        visibleSortedRestaurantMarkersCount: state.visibleSortedRestaurantMarkersCount,
-        visibleDotRestaurantFeaturesCount: state.visibleDotRestaurantFeaturesCount,
-        isShortcutCoverageLoading: state.isShortcutCoverageLoading,
-      }),
-      (left, right) =>
-        left.visibleSortedRestaurantMarkersCount === right.visibleSortedRestaurantMarkersCount &&
-        left.visibleDotRestaurantFeaturesCount === right.visibleDotRestaurantFeaturesCount &&
-        left.isShortcutCoverageLoading === right.isShortcutCoverageLoading
-    );
+  const {
+    visibleSortedRestaurantMarkersCount,
+    visibleDotRestaurantFeaturesCount,
+    isShortcutCoverageLoading,
+  } = useSearchRuntimeBusSelector(
+    searchRuntimeBus!,
+    (state) => ({
+      visibleSortedRestaurantMarkersCount: state.visibleSortedRestaurantMarkersCount,
+      visibleDotRestaurantFeaturesCount: state.visibleDotRestaurantFeaturesCount,
+      isShortcutCoverageLoading: state.isShortcutCoverageLoading,
+    }),
+    (left, right) =>
+      left.visibleSortedRestaurantMarkersCount === right.visibleSortedRestaurantMarkersCount &&
+      left.visibleDotRestaurantFeaturesCount === right.visibleDotRestaurantFeaturesCount &&
+      left.isShortcutCoverageLoading === right.isShortcutCoverageLoading
+  );
 
-  const { isVisualSyncPending, shouldHydrateResultsForRender } =
-    useSearchRuntimeBusSelector(
-      searchRuntimeBus!,
-      (state) => ({
-        isVisualSyncPending: state.isVisualSyncPending,
-        shouldHydrateResultsForRender: state.shouldHydrateResultsForRender,
-      }),
-      (left, right) =>
-        left.isVisualSyncPending === right.isVisualSyncPending &&
-        left.shouldHydrateResultsForRender === right.shouldHydrateResultsForRender
-    );
+  const { isVisualSyncPending, shouldHydrateResultsForRender } = useSearchRuntimeBusSelector(
+    searchRuntimeBus!,
+    (state) => ({
+      isVisualSyncPending: state.isVisualSyncPending,
+      shouldHydrateResultsForRender: state.shouldHydrateResultsForRender,
+    }),
+    (left, right) =>
+      left.isVisualSyncPending === right.isVisualSyncPending &&
+      left.shouldHydrateResultsForRender === right.shouldHydrateResultsForRender
+  );
 
   const isShortcutPerfHarnessScenario =
     perfHarnessConfig.enabled && perfHarnessConfig.scenario === 'search_shortcut_loop';
@@ -810,9 +812,7 @@ export const useShortcutHarnessObserver = (
           return false;
         }
         const shadowState = searchSessionController.getState();
-        return (
-          shadowState.phase === 'settled' && shadowState.lastEventType === 'settled'
-        );
+        return shadowState.phase === 'settled' && shadowState.lastEventType === 'settled';
       };
       const settleBlocked = (shadowConverged: boolean): boolean => {
         const settleBoundaryPolicy = perfHarnessConfig.shortcutLoop.settleBoundaryPolicy;
@@ -828,10 +828,7 @@ export const useShortcutHarnessObserver = (
           runtimeState?.shouldHydrateResultsForRender ?? inputs.shouldHydrateResultsForRender;
         const schedulerPressure = runtimeWorkSchedulerRef?.current.snapshotPressure() ?? null;
         const snapshot = shortcutHarnessSnapshotRef.current;
-        if (
-          snapshot.finalRequestKey &&
-          snapshot.finalRequestKey !== lifecycle.runStartRequestKey
-        ) {
+        if (snapshot.finalRequestKey && snapshot.finalRequestKey !== lifecycle.runStartRequestKey) {
           lifecycle.responseObserved = true;
         }
         if (inputs.isSearchLoading) {
@@ -1014,10 +1011,7 @@ export const useShortcutHarnessObserver = (
       syncShortcutTraceStage();
       // If the search session errored, complete the run immediately
       // instead of waiting for the full timeout.
-      if (
-        result.state.phase === 'error' &&
-        shortcutHarnessLifecycleRef.current.inProgress
-      ) {
+      if (result.state.phase === 'error' && shortcutHarnessLifecycleRef.current.inProgress) {
         completeShortcutHarnessRunRef.current('error');
         return;
       }

@@ -141,10 +141,15 @@ export const useSearchClearController = <TSearchMode, TError, TSuggestion>({
       }
       const busState = searchRuntimeBus.getState();
       const hasOriginRestorePending = beginSearchCloseRestore({
-        allowFallback: isSearchSessionActive || Boolean(busState.results) || busState.submittedQuery.length > 0,
+        allowFallback:
+          isSearchSessionActive || Boolean(busState.results) || busState.submittedQuery.length > 0,
       });
       isClearingSearchRef.current = true;
-      if (isSearchSessionActive || Boolean(busState.results) || busState.submittedQuery.length > 0) {
+      if (
+        isSearchSessionActive ||
+        Boolean(busState.results) ||
+        busState.submittedQuery.length > 0
+      ) {
         setSearchShortcutsFadeResetKey((current) => current + 1);
       }
       cancelActiveSearchRequest();
@@ -285,7 +290,8 @@ export const useSearchClearController = <TSearchMode, TError, TSuggestion>({
     }
     ignoreNextSearchBlurRef.current = true;
     clearSearchState({
-      shouldRefocusInput: !isSearchSessionActive && !isSearchLoading && !searchRuntimeBus.getState().isLoadingMore,
+      shouldRefocusInput:
+        !isSearchSessionActive && !isSearchLoading && !searchRuntimeBus.getState().isLoadingMore,
       skipProfileDismissWait: true,
     });
   }, [

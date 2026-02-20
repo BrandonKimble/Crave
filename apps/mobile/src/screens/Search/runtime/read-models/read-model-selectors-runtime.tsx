@@ -178,8 +178,7 @@ export const useSearchResultsReadModelSelectors = (
   );
 
   const searchRequestId = results?.metadata?.searchRequestId ?? null;
-  const searchRequestIdentity =
-    results?.metadata?.searchRequestId ?? null;
+  const searchRequestIdentity = results?.metadata?.searchRequestId ?? null;
   const [sectionedSearchRequestId, setSectionedSearchRequestId] = React.useState<string | null>(
     null
   );
@@ -346,12 +345,7 @@ export const useSearchResultsReadModelSelectors = (
     if (activeOverlayKey !== 'search') {
       setHydrationFinalizeRowsReleaseCompletedToken(hydrationRowsReleaseVersionToken);
     }
-  }, [
-    activeOverlayKey,
-    isHydrationPending,
-    resultsHydrationKey,
-    hydrationRowsReleaseVersionToken,
-  ]);
+  }, [activeOverlayKey, isHydrationPending, resultsHydrationKey, hydrationRowsReleaseVersionToken]);
 
   // When hydration completes (key committed), mark rows release as done immediately.
   React.useEffect(() => {
@@ -359,11 +353,7 @@ export const useSearchResultsReadModelSelectors = (
       return;
     }
     setHydrationFinalizeRowsReleaseCompletedToken(hydrationRowsReleaseVersionToken);
-  }, [
-    hydrationRowsReleaseVersionToken,
-    isHydrationPending,
-    resultsHydrationKey,
-  ]);
+  }, [hydrationRowsReleaseVersionToken, isHydrationPending, resultsHydrationKey]);
 
   const rowsForRender = React.useMemo(() => {
     if (isFilterTogglePending) {
@@ -585,7 +575,9 @@ export const useSearchResultsReadModelSelectors = (
   searchRequestIdentityRef.current = searchRequestIdentity;
   React.useEffect(() => {
     const resolveOpId = () =>
-      hydrationOperationIdRef.current ?? searchRequestIdentityRef.current ?? 'hydration-sync-no-request';
+      hydrationOperationIdRef.current ??
+      searchRequestIdentityRef.current ??
+      'hydration-sync-no-request';
     if (activeOverlayKey === 'search' && !allowHydrationFinalizeCommit) {
       // Do not finalize hydration while marker reveal lanes are active. This keeps
       // list hydration from co-committing with map reveal work in the same window.
@@ -684,11 +676,7 @@ export const useSearchResultsReadModelSelectors = (
           }
         : null),
     }),
-    [
-      handleResultsViewableItemsChanged,
-      resultsViewabilityConfig,
-      shouldLogResultsViewability,
-    ]
+    [handleResultsViewableItemsChanged, resultsViewabilityConfig, shouldLogResultsViewability]
   );
 
   return {

@@ -6,12 +6,12 @@ JS stalls of 130–410ms during search flows, with floor FPS dropping to 2–5. 
 
 ### Baseline Metrics (2026-02-19)
 
-| Metric | Current | Target |
-|--------|---------|--------|
-| stallP95 | 337ms | <80ms |
-| stallMaxMean | 244ms | <80ms |
-| floorMean | 5.1 fps | >25fps |
-| Run 1 worstStall | 407ms | <100ms |
+| Metric           | Current | Target |
+| ---------------- | ------- | ------ |
+| stallP95         | 337ms   | <80ms  |
+| stallMaxMean     | 244ms   | <80ms  |
+| floorMean        | 5.1 fps | >25fps |
+| Run 1 worstStall | 407ms   | <100ms |
 
 ### Root Cause Decomposition
 
@@ -25,6 +25,7 @@ Run 1 worst window (407ms stall, results_hydration_commit):
 ```
 
 **Why this happens:**
+
 1. `SearchScreen` (5,558 lines) is a monolithic orchestrator with ~20+ `useState` calls and ~15 `useSearchRuntimeBusSelector` subscriptions.
 2. When `SearchRuntimeBus.publish()` fires, all `useSyncExternalStore` subscribers re-evaluate synchronously.
 3. React batches the resulting state changes across all three trees into **one commit**.
@@ -33,13 +34,14 @@ Run 1 worst window (407ms stall, results_hydration_commit):
 
 ### Why Incremental Scheduling Can't Fix This
 
-The phase system (RunOneHandoffCoordinator, PhaseBMaterializer) correctly serializes *user-space work* — hydration ramp, marker reveal, chrome resume. But the stall isn't from user-space compute. It's from React reconciliation + commit of a 5,500-line component that re-renders on every bus change, dragging its children along even when those children are frozen.
+The phase system (RunOneHandoffCoordinator, PhaseBMaterializer) correctly serializes _user-space work_ — hydration ramp, marker reveal, chrome resume. But the stall isn't from user-space compute. It's from React reconciliation + commit of a 5,500-line component that re-renders on every bus change, dragging its children along even when those children are frozen.
 
 ---
 
 ## Architecture Target
 
 **Before (current):**
+
 ```
 SearchScreen (subscribes to everything, re-renders on every bus change)
   ├── SearchMapTree (frozen sometimes, but parent re-renders force reconciliation)
@@ -49,6 +51,7 @@ SearchScreen (subscribes to everything, re-renders on every bus change)
 ```
 
 **After (target):**
+
 ```
 SearchScreenShell (minimal: layout + camera hydration + route params only)
   ├── SearchMapDomain        (subscribes only to map-relevant bus slices)
@@ -76,6 +79,7 @@ The harness already tracks `firstOver50ByRun` and `worstWindowByRun` with per-co
 ### Slice 0B: Selector audit
 
 Audit every `useSearchRuntimeBusSelector` call in `index.tsx`. For each one, tag:
+
 - Which domain it belongs to (map / results / chrome / nav / suggestion / lifecycle)
 - Whether it causes a `setState` in SearchScreen
 - Whether it's passed as a prop to a child tree
@@ -93,6 +97,7 @@ SearchOverlayChrome currently appears with 171ms overlap in the worst window. It
 ### Slice 1A: Create SearchChromeDomain component
 
 Extract from SearchScreen:
+
 - `SearchOverlayHeaderChrome` render + all its props
 - `SearchSuggestionSurface` render + all its props
 - The frozen suggestion/chrome prop refs (`frozenSuggestionSurfacePropsRef`, `frozenOverlayHeaderChromePropsRef`)
@@ -100,6 +105,7 @@ Extract from SearchScreen:
 - Related hooks: `useAutocompleteController`, `useSuggestionDisplayModel`, `useSuggestionInteractionController`, `useSuggestionLayoutWarmth`, `useSuggestionHistoryBuffer`, `useSuggestionTransitionHold`, `useSearchFocusController`
 
 SearchChromeDomain reads directly from the bus for:
+
 - `isSearchSessionActive`, `searchMode`, `submittedQuery` (currently proxied through SearchScreen)
 - `isRunOnePreflightFreezeActive`, `isResponseFrameFreezeActive` (freeze gate inputs)
 
@@ -108,12 +114,14 @@ SearchChromeDomain reads directly from the bus for:
 Currently SearchScreen creates callbacks like `handleQueryChange`, `handleSubmit`, `handleClear` that close over SearchScreen state. These need to become ref-stable or move into SearchChromeDomain.
 
 For callbacks that need to trigger results (like `handleSubmit`), use the bus:
+
 - `handleSubmit` → publishes a submit intent to the bus → `useSearchSubmit` (which can live at shell level) picks it up
 - `handleClear` → publishes clear intent → `useSearchClearController` picks it up
 
 ### Slice 1C: Validate chrome isolation
 
 Run harness. Verify:
+
 - SearchOverlayChrome no longer appears in `worstWindowByRun` top components when the stall stage is `results_hydration_commit` or `results_list_ramp`
 - Chrome transitions (suggestion panel open/close, shortcut chip visibility) still work correctly
 - No UX regression on search bar focus, typing, submit, clear, back
@@ -131,16 +139,19 @@ SearchResultsSheetTree is already a separate component with freeze gates, but it
 ### Slice 2A: Move results read model to bus-direct
 
 Currently the data flow is:
+
 ```
 Bus → SearchScreen (reads results, hydrationKey, etc.) → passes to searchPanelSpecArgs → SearchResultsSheetTree → useSearchResultsPanelSpec → useSearchResultsReadModelSelectors
 ```
 
 Change to:
+
 ```
 Bus → SearchResultsDomain (reads results directly from bus) → useSearchResultsReadModelSelectors
 ```
 
 This means `useSearchResultsReadModelSelectors` subscribes to the bus directly for:
+
 - `results`, `resultsHydrationKey`, `hydratedResultsKey`, `shouldHydrateResultsForRender`
 - `runOneCommitSpanPressureActive`, `allowHydrationFinalizeCommit`
 - `activeTab`, `isLoadingMore`, `canLoadMore`
@@ -149,6 +160,7 @@ This means `useSearchResultsReadModelSelectors` subscribes to the bus directly f
 ### Slice 2B: Move overlay panel orchestration to bus-direct
 
 The `searchOverlayPanelsArgs` memo depends on overlay state that should be managed by the results domain directly:
+
 - Poll/bookmark/profile panel visibility and snap state
 - Restaurant overlay state
 - Save sheet state
@@ -158,6 +170,7 @@ Create `useSearchOverlayOrchestration` that reads overlay state from Zustand sto
 ### Slice 2C: Eliminate SearchScreen as results prop intermediary
 
 After 2A and 2B, SearchScreen should not need to pass any results-related props to SearchResultsSheetTree. The only remaining props should be:
+
 - `sheetTranslateY` (shared animation value — can be provided via context)
 - `resultsScrollOffset` / `resultsMomentum` (shared animation values)
 - `onProfilerRender` (static callback)
@@ -167,6 +180,7 @@ Move shared animation values to a `SearchAnimationContext` provided by the shell
 ### Slice 2D: Validate results isolation
 
 Run harness. Verify:
+
 - SearchScreen no longer appears in `worstWindowByRun` when the stall stage is `results_hydration_commit` or `results_list_ramp`
 - Results list rendering, hydration ramp, pagination, tab switching all work
 - Sheet snap transitions, drag, scroll all work
@@ -185,12 +199,14 @@ SearchMapWithMarkerEngine already reads from the bus directly for `mapHighlighte
 ### Slice 3A: Move map-lifecycle state out of SearchScreen
 
 Currently SearchScreen manages:
+
 - `mapCenter`, `mapZoom`, `mapCameraPadding`, `isInitialCameraReady`, `isInitialCameraHydrated`, `isMapStyleReady`, `isFollowingUser`
 - Camera persistence (AsyncStorage read/write)
 - `suppressMapMoved`, `mapMovedSinceSearch`
 - Map bounds tracking (`viewportBoundsService`, `latestBoundsRef`)
 
 Extract to `SearchMapDomain` which:
+
 - Owns camera hydration (currently lines 503–600)
 - Owns camera persistence
 - Owns map-moved detection
@@ -200,6 +216,7 @@ Extract to `SearchMapDomain` which:
 ### Slice 3B: Move map event handlers to map domain
 
 Move from SearchScreen to SearchMapDomain:
+
 - `handleMapPress`, `handleCameraChanged`, `handleMapIdle`, `handleMapLoaded`
 - `handleMapVisualReady`, `handleMarkerRevealSettled`
 - `handleMapTouchStart`, `handleMapTouchEnd`
@@ -210,6 +227,7 @@ These currently reference SearchScreen state (bounds, profile transition, result
 ### Slice 3C: Validate map isolation
 
 Run harness. Verify:
+
 - SearchMapTree no longer appears in `worstWindowByRun` when the stall stage is `results_hydration_commit` or `results_list_ramp`
 - Map camera, pins, dots, labels all render correctly
 - Pin tap → profile open works
@@ -227,6 +245,7 @@ After phases 1–3, SearchScreen should be dramatically smaller. This phase remo
 ### Slice 4A: Extract profile orchestration
 
 Move restaurant profile state and lifecycle to a dedicated `SearchProfileDomain`:
+
 - `restaurantProfile`, `isRestaurantOverlayVisible`, `profileTransitionStatus`
 - `useProfileRuntimeController`, `useProfileAutoOpenController`, `useProfileCameraOrchestration`
 - Profile transition state machine
@@ -234,6 +253,7 @@ Move restaurant profile state and lifecycle to a dedicated `SearchProfileDomain`
 ### Slice 4B: Extract nav domain
 
 Move bottom nav state to `SearchNavDomain`:
+
 - `activeTab` selector and handlers
 - Overlay switching (polls/bookmarks/profile tabs)
 - Bottom nav freeze props
@@ -241,6 +261,7 @@ Move bottom nav state to `SearchNavDomain`:
 ### Slice 4C: Audit remaining SearchScreen state
 
 After all extractions, SearchScreen should contain only:
+
 - Runtime composition initialization (`useSearchRuntimeComposition`)
 - Route params
 - Domain component rendering
@@ -251,6 +272,7 @@ Target: SearchScreen < 500 lines, 0 `useSearchRuntimeBusSelector` calls, 0 domai
 ### Slice 4D: Final validation
 
 Run harness. Verify:
+
 - SearchScreen no longer appears as primary component in ANY stall window
 - All existing UX flows work: search, clear, shortcuts, tab switch, profile, polls, bookmarks, price/rank filters, save, suggestions
 - stallP95 target <80ms
@@ -292,6 +314,7 @@ For the `results_hydration_commit` and `results_list_ramp` stages, defer non-res
 ### Slice 6A: Remove legacy freeze gates
 
 After domain isolation, the freeze gates in SearchMapWithMarkerEngine and SearchResultsSheetTree become unnecessary (they won't receive changing props during other domains' commits). Remove:
+
 - `shouldFreezeMapTreePropsBase` and frozen ref pattern in SearchMapWithMarkerEngine
 - `shouldFreezeOverlaySheetProps` and frozen ref pattern in SearchResultsSheetTree
 - `frozenSuggestionSurfacePropsRef`, `frozenBottomNavPropsRef`, `frozenOverlayHeaderChromePropsRef` in SearchScreen
@@ -319,25 +342,25 @@ Phases 1, 2, 3 can be done in any order but not in parallel (each changes Search
 
 ## Risk Assessment
 
-| Risk | Mitigation |
-|------|-----------|
-| Domain extraction breaks callback chains | Use bus publish/subscribe for cross-domain communication instead of callback props |
-| Shared animation values need a parent | Provide via React context from shell, not props |
-| Profile open from results card needs map camera | Profile domain reads map state from bus/ref, doesn't need SearchScreen |
-| Suggestion panel dismiss needs to trigger search focus | Chrome domain handles this internally |
-| Large PR size per phase | Each phase has 3–4 slices that can be individual PRs |
-| Regression in poll/bookmark/save overlays | These are lower-traffic paths; test manually each phase |
+| Risk                                                   | Mitigation                                                                         |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| Domain extraction breaks callback chains               | Use bus publish/subscribe for cross-domain communication instead of callback props |
+| Shared animation values need a parent                  | Provide via React context from shell, not props                                    |
+| Profile open from results card needs map camera        | Profile domain reads map state from bus/ref, doesn't need SearchScreen             |
+| Suggestion panel dismiss needs to trigger search focus | Chrome domain handles this internally                                              |
+| Large PR size per phase                                | Each phase has 3–4 slices that can be individual PRs                               |
+| Regression in poll/bookmark/save overlays              | These are lower-traffic paths; test manually each phase                            |
 
 ## Estimated Timeline
 
-| Phase | Duration | Cumulative |
-|-------|----------|-----------|
-| Phase 0: Measurement | 1 day | 1 day |
-| Phase 1: Chrome extraction | 2–3 days | 3–4 days |
-| Phase 2: Results extraction | 2–3 days | 5–7 days |
-| Phase 3: Map extraction | 1–2 days | 6–9 days |
-| Phase 4: Shell reduction | 1–2 days | 7–11 days |
-| Phase 5: Bus timing (if needed) | 1 day | 8–12 days |
-| Phase 6: Cleanup | 1 day | 9–13 days |
+| Phase                           | Duration | Cumulative |
+| ------------------------------- | -------- | ---------- |
+| Phase 0: Measurement            | 1 day    | 1 day      |
+| Phase 1: Chrome extraction      | 2–3 days | 3–4 days   |
+| Phase 2: Results extraction     | 2–3 days | 5–7 days   |
+| Phase 3: Map extraction         | 1–2 days | 6–9 days   |
+| Phase 4: Shell reduction        | 1–2 days | 7–11 days  |
+| Phase 5: Bus timing (if needed) | 1 day    | 8–12 days  |
+| Phase 6: Cleanup                | 1 day    | 9–13 days  |
 
 Total: **9–13 working days** for the full refactor.

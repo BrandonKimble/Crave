@@ -391,9 +391,7 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
       markersRenderKey={mapTreePropsForRender.markersRenderKey}
       pinsRenderKey={mapTreePropsForRender.pinsRenderKey}
       shouldSignalVisualReady={mapTreePropsForRender.shouldSignalVisualReady}
-      requireMarkerVisualsForVisualReady={
-        mapTreePropsForRender.requireMarkerVisualsForVisualReady
-      }
+      requireMarkerVisualsForVisualReady={mapTreePropsForRender.requireMarkerVisualsForVisualReady}
       buildMarkerKey={buildMarkerKey}
       restaurantFeatures={mapTreePropsForRender.restaurantFeatures}
       restaurantLabelStyle={restaurantLabelStyle}
