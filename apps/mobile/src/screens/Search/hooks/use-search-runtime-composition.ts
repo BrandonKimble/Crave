@@ -32,6 +32,7 @@ import {
   createSearchRuntimeBus,
   type SearchRuntimeBus,
 } from '../runtime/shared/search-runtime-bus';
+import { useHandoffBusBridge } from '../runtime/shared/use-handoff-bus-bridge';
 
 type UseSearchRuntimeCompositionArgs = {
   setMapCenter: React.Dispatch<React.SetStateAction<[number, number] | null>>;
@@ -109,6 +110,14 @@ export const useSearchRuntimeComposition = ({
   if (!phaseBMaterializerRef.current) {
     phaseBMaterializerRef.current = createPhaseBMaterializer(runtimeWorkSchedulerRef.current);
   }
+
+  // Bridge handoff coordinator phase transitions directly to the bus,
+  // so children can read handoff-derived state via bus selectors instead
+  // of receiving it through SearchScreen props (eliminates re-render cascade).
+  useHandoffBusBridge(
+    runOneHandoffCoordinatorRef as React.MutableRefObject<RunOneHandoffCoordinator>,
+    searchRuntimeBus
+  );
 
   React.useEffect(
     () => () => {

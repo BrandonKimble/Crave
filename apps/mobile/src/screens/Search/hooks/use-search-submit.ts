@@ -34,6 +34,13 @@ import {
   createShortcutSubmitIntentPayload,
   getShortcutShadowOperationId,
 } from '../runtime/adapters/shortcut-adapter';
+import type { RuntimeWorkScheduler } from '../runtime/scheduler/runtime-work-scheduler';
+import type {
+  SearchRuntimeBus,
+  SearchRuntimeBusState,
+  SearchRuntimeOperationLane,
+} from '../runtime/shared/search-runtime-bus';
+import { computeMarkerPipeline } from '../runtime/map/compute-marker-pipeline';
 import { boundsFromPairs, isLngLatTuple } from '../utils/geo';
 import { mergeSearchResponses } from '../utils/merge';
 import { normalizePriceFilter } from '../utils/price';
@@ -95,27 +102,14 @@ type StructuredSearchFilters = Pick<
 
 type UseSearchSubmitOptions = {
   query: string;
-  isLoadingMore: boolean;
-  setIsLoadingMore: React.Dispatch<React.SetStateAction<boolean>>;
-  results: SearchResponse | null;
-  setResults: React.Dispatch<React.SetStateAction<SearchResponse | null>>;
-  submittedQuery: string;
-  setSubmittedQuery: React.Dispatch<React.SetStateAction<string>>;
   preferredActiveTab: SegmentValue;
   setActiveTab: React.Dispatch<React.SetStateAction<SegmentValue>>;
   hasActiveTabPreference: boolean;
   scoreMode: NaturalSearchRequest['scoreMode'];
-  setHasMoreFood: React.Dispatch<React.SetStateAction<boolean>>;
-  setHasMoreRestaurants: React.Dispatch<React.SetStateAction<boolean>>;
-  currentPage: number;
-  setCurrentPage: React.Dispatch<React.SetStateAction<number>>;
-  isPaginationExhausted: boolean;
-  setIsPaginationExhausted: React.Dispatch<React.SetStateAction<boolean>>;
-  canLoadMore: boolean;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   onSearchRequestLoadingChange?: (isLoading: boolean) => void;
-  setIsSearchSessionActive: React.Dispatch<React.SetStateAction<boolean>>;
-  setSearchMode: React.Dispatch<React.SetStateAction<SearchMode>>;
+  runtimeWorkSchedulerRef?: React.MutableRefObject<RuntimeWorkScheduler> | null;
+  searchRuntimeBus: SearchRuntimeBus;
   showPanel: () => void;
   resetSheetToHidden: () => void;
   scrollResultsToTop: () => void;
@@ -154,6 +148,22 @@ type RecentSearchInput = {
   statusPreview?: RecentSearch['statusPreview'] | null;
 };
 
+type BufferedSearchResponse = {
+  response: SearchResponse;
+  options: {
+    append: boolean;
+    targetPage: number;
+    initialUiState: InitialResultUiState;
+    fallbackSearchRequestId?: string;
+    submittedLabel?: string;
+    pushToHistory?: boolean;
+    submissionContext?: NaturalSearchRequest['submissionContext'];
+    showPanelOnResponse?: boolean;
+    responseReceivedPayload: SearchSessionEventPayload;
+    runtimeShadow: HandleSearchResponseRuntimeShadow;
+  };
+};
+
 type UseSearchSubmitResult = {
   submitSearch: (options?: SubmitSearchOptions, overrideQuery?: string) => Promise<void>;
   runRestaurantEntitySearch: (params: {
@@ -184,6 +194,7 @@ type UseSearchSubmitResult = {
   }) => Promise<void>;
   loadMoreResults: (searchMode: SearchMode) => void;
   cancelActiveSearchRequest: () => void;
+  onSlideTransitionComplete: () => void;
 };
 
 type SubmitUiLanesOptions = {
@@ -195,6 +206,18 @@ type SubmitUiLanesOptions = {
   shouldHoldResultPanel: boolean;
   shouldResetPagination: boolean;
   submittedLabel?: string;
+};
+
+type InitialResultUiState = {
+  mode: SearchMode;
+  targetTab: SegmentValue;
+};
+
+type SearchOperationLaneSchedulingOptions = {
+  requestId: number;
+  requiredHealthyFrames: number;
+  maxWaitMs: number;
+  onReady: () => void;
 };
 
 const resolveIntentDefaultTab = (response: SearchResponse): SegmentValue | null => {
@@ -315,27 +338,14 @@ const shouldPrimeSubmittedQueryBeforeResponse = false;
 
 const useSearchSubmit = ({
   query,
-  isLoadingMore,
-  setIsLoadingMore,
-  results,
-  setResults,
-  submittedQuery,
-  setSubmittedQuery,
   preferredActiveTab,
   setActiveTab,
   hasActiveTabPreference,
   scoreMode,
-  setHasMoreFood,
-  setHasMoreRestaurants,
-  currentPage,
-  setCurrentPage,
-  isPaginationExhausted,
-  setIsPaginationExhausted,
-  canLoadMore,
   setError,
   onSearchRequestLoadingChange,
-  setIsSearchSessionActive,
-  setSearchMode,
+  runtimeWorkSchedulerRef,
+  searchRuntimeBus,
   showPanel,
   resetSheetToHidden,
   scrollResultsToTop,
@@ -371,6 +381,10 @@ const useSearchSubmit = ({
   const isSearchRequestInFlightRef = React.useRef(false);
   const responseApplyTokenRef = React.useRef(0);
   const isMountedRef = React.useRef(true);
+  // Response buffering: delays response processing until sheet slide completes
+  const slideTransitionPendingRef = React.useRef(false);
+  const slideTransitionMaxWaitRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bufferedResponseRef = React.useRef<BufferedSearchResponse | null>(null);
   const shouldLogSearchResponsePayload = searchPerfDebug.logSearchResponsePayload;
   const shouldLogSearchResponseTimings =
     searchPerfDebug.enabled && searchPerfDebug.logSearchResponseTimings;
@@ -507,26 +521,6 @@ const useSearchSubmit = ({
     },
     [onRuntimeMechanismEvent, onSearchSessionShadowTransition, runtimeSessionController]
   );
-  const activateRuntimeShadowOperation = React.useCallback(
-    (tuple: ActiveOperationTuple, submitPayload: SearchSessionEventPayload): boolean => {
-      activeOperationTupleRef.current = tuple;
-      if (!emitShadowTransitionForTuple(tuple, 'submit_intent', submitPayload)) {
-        return false;
-      }
-      return emitShadowTransitionForTuple(tuple, 'submitting', {
-        mode: tuple.mode,
-      });
-    },
-    [emitShadowTransitionForTuple]
-  );
-  const createHandleSearchResponseRuntimeShadow = React.useCallback(
-    (runtimeTuple: ActiveOperationTuple): HandleSearchResponseRuntimeShadow => ({
-      runtimeTuple,
-      emitShadowTransition: (eventType, payload) =>
-        emitShadowTransitionForTuple(runtimeTuple, eventType, payload ?? {}),
-    }),
-    [emitShadowTransitionForTuple]
-  );
   const scheduleOnNextFrame = React.useCallback((run: () => void) => {
     if (typeof requestAnimationFrame === 'function') {
       requestAnimationFrame(() => {
@@ -559,12 +553,204 @@ const useSearchSubmit = ({
     (requestId: number) => isMountedRef.current && activeSearchRequestRef.current === requestId,
     []
   );
+  const publishRuntimeLaneState = React.useCallback(
+    (
+      tuple: ActiveOperationTuple | null,
+      lane: SearchRuntimeOperationLane,
+      patch?: Partial<SearchRuntimeBusState>
+    ) => {
+      const laneResetPatch: Partial<SearchRuntimeBusState> =
+        lane === 'idle'
+          ? {
+              isVisualSyncPending: false,
+              visualSyncCandidateRequestKey: null,
+              visualReadyRequestKey: null,
+              markerRevealCommitId: null,
+            }
+          : {};
+      searchRuntimeBus.publish({
+        activeOperationId: tuple?.operationId ?? null,
+        activeOperationLane: lane,
+        ...laneResetPatch,
+        ...(patch ?? {}),
+      });
+    },
+    [searchRuntimeBus]
+  );
+  const activateRuntimeShadowOperation = React.useCallback(
+    (tuple: ActiveOperationTuple, submitPayload: SearchSessionEventPayload): boolean => {
+      activeOperationTupleRef.current = tuple;
+      if (!emitShadowTransitionForTuple(tuple, 'submit_intent', submitPayload)) {
+        return false;
+      }
+      const submittingAccepted = emitShadowTransitionForTuple(tuple, 'submitting', {
+        mode: tuple.mode,
+      });
+      if (submittingAccepted) {
+        publishRuntimeLaneState(tuple, 'lane_a_ack');
+      }
+      return submittingAccepted;
+    },
+    [emitShadowTransitionForTuple, publishRuntimeLaneState]
+  );
+  const createHandleSearchResponseRuntimeShadow = React.useCallback(
+    (runtimeTuple: ActiveOperationTuple): HandleSearchResponseRuntimeShadow => ({
+      runtimeTuple,
+      emitShadowTransition: (eventType, payload) =>
+        emitShadowTransitionForTuple(runtimeTuple, eventType, payload ?? {}),
+    }),
+    [emitShadowTransitionForTuple]
+  );
+  const scheduleAfterHealthyFrames = React.useCallback(
+    ({
+      requestId,
+      requiredHealthyFrames,
+      maxWaitMs,
+      onReady,
+    }: SearchOperationLaneSchedulingOptions) => {
+      const minHealthyFrames = Math.max(1, requiredHealthyFrames);
+      const waitCapMs = Math.max(16, maxWaitMs);
+      let healthyFrameCount = 0;
+      let lastFrameAtMs = getPerfNow();
+      let lastYieldCount = runtimeWorkSchedulerRef?.current?.snapshotPressure().yieldCount ?? 0;
+      const startedAtMs = lastFrameAtMs;
+
+        const tick = () => {
+        if (!isRequestStillActive(requestId)) {
+          return;
+        }
+        const nowMs = getPerfNow();
+        const frameDeltaMs = Math.max(0, nowMs - lastFrameAtMs);
+        lastFrameAtMs = nowMs;
+
+        const pressure = runtimeWorkSchedulerRef?.current?.snapshotPressure() ?? null;
+        const nextYieldCount = pressure?.yieldCount ?? lastYieldCount;
+        const yieldDelta = Math.max(0, nextYieldCount - lastYieldCount);
+        lastYieldCount = nextYieldCount;
+        const queueDepth = pressure?.queueDepth ?? 0;
+        const lastFrameSpentMs = pressure?.lastFrameSpentMs ?? 0;
+        const isHealthyFrame =
+          frameDeltaMs <= 24 &&
+          lastFrameSpentMs <= 8 &&
+          queueDepth <= 1 &&
+          yieldDelta === 0;
+
+        healthyFrameCount = isHealthyFrame ? healthyFrameCount + 1 : 0;
+        if (healthyFrameCount >= minHealthyFrames || nowMs - startedAtMs >= waitCapMs) {
+          onReady();
+          return;
+        }
+
+        scheduleOnNextFrame(tick);
+      };
+
+      scheduleOnNextFrame(tick);
+    },
+    [isRequestStillActive, runtimeWorkSchedulerRef, scheduleOnNextFrame]
+  );
+  const scheduleAfterResultsHydrationSettled = React.useCallback(
+    ({
+      requestId,
+      maxWaitMs,
+      expectedRequestKey,
+      onReady,
+    }: {
+      requestId: number;
+      maxWaitMs: number;
+      expectedRequestKey?: string | null;
+      onReady: () => void;
+    }) => {
+      const waitCapMs = Math.max(16, maxWaitMs);
+      const startedAtMs = getPerfNow();
+
+      const tick = () => {
+        if (!isRequestStillActive(requestId)) {
+          return;
+        }
+        const runtimeState = searchRuntimeBus?.getState();
+        const runtimeRequestKey =
+          runtimeState?.results?.metadata?.searchRequestId ??
+          null;
+        const hasExpectedRequest =
+          expectedRequestKey == null || runtimeRequestKey === expectedRequestKey;
+        const isHydrationSettled =
+          hasExpectedRequest && (runtimeState?.isResultsHydrationSettled ?? true);
+        const shouldHydrateResultsForRender = runtimeState?.shouldHydrateResultsForRender ?? false;
+        if (isHydrationSettled && !shouldHydrateResultsForRender) {
+          onReady();
+          return;
+        }
+        const nowMs = getPerfNow();
+        if (nowMs - startedAtMs >= waitCapMs) {
+          onReady();
+          return;
+        }
+        scheduleOnNextFrame(tick);
+      };
+
+      scheduleOnNextFrame(tick);
+    },
+    [getPerfNow, isRequestStillActive, scheduleOnNextFrame, searchRuntimeBus]
+  );
+  const scheduleAfterRuntimeSettleContract = React.useCallback(
+    ({
+      requestId,
+      expectedOperationId,
+      maxWaitMs,
+      onReady,
+    }: {
+      requestId: number;
+      expectedOperationId: string;
+      maxWaitMs: number;
+      onReady: () => void;
+    }) => {
+      const waitCapMs = Math.max(16, maxWaitMs);
+      const startedAtMs = getPerfNow();
+
+      const tick = () => {
+        if (!isRequestStillActive(requestId)) {
+          return;
+        }
+        const runtimeState = searchRuntimeBus?.getState();
+        const runtimeOperationId = runtimeState?.activeOperationId ?? null;
+        if (runtimeOperationId != null && runtimeOperationId !== expectedOperationId) {
+          return;
+        }
+        const laneIdle = (runtimeState?.activeOperationLane ?? 'idle') === 'idle';
+        const hydrationSettled =
+          (runtimeState?.isResultsHydrationSettled ?? true) &&
+          !(runtimeState?.shouldHydrateResultsForRender ?? false);
+        const visualSettled = !(runtimeState?.isVisualSyncPending ?? false);
+        const schedulerQueueDepth = runtimeWorkSchedulerRef?.current.snapshotPressure().queueDepth ?? 0;
+        const schedulerQuiet = schedulerQueueDepth <= 0;
+        if (laneIdle && hydrationSettled && visualSettled && schedulerQuiet) {
+          onReady();
+          return;
+        }
+        const nowMs = getPerfNow();
+        if (nowMs - startedAtMs >= waitCapMs) {
+          onReady();
+          return;
+        }
+        scheduleOnNextFrame(tick);
+      };
+
+      scheduleOnNextFrame(tick);
+    },
+    [
+      getPerfNow,
+      isRequestStillActive,
+      runtimeWorkSchedulerRef,
+      scheduleOnNextFrame,
+      searchRuntimeBus,
+    ]
+  );
+  const flushBufferedResponseRef = React.useRef<() => void>(() => undefined);
+  const clearSlideTransitionPendingRef = React.useRef<() => void>(() => undefined);
   const scheduleSubmitUiLanes = React.useCallback(
     (options: SubmitUiLanesOptions) => {
       const {
         requestId,
-        mode,
-        targetTab,
         preserveSheetState,
         transitionFromDockedPolls,
         shouldHoldResultPanel,
@@ -572,6 +758,18 @@ const useSearchSubmit = ({
         submittedLabel,
       } = options;
       const shouldRevealPanel = !preserveSheetState && !shouldHoldResultPanel;
+      // Keep submit UX immediate: do not buffer response application behind
+      // sheet transition completion.
+      if (shouldRevealPanel) {
+        bufferedResponseRef.current = null;
+        slideTransitionPendingRef.current = false;
+      }
+      const activeTuple = activeOperationTupleRef.current;
+      searchRuntimeBus.batch(() => {
+        publishRuntimeLaneState(activeTuple, 'lane_a_ack', {
+          isMapActivationDeferred: true,
+        });
+      });
 
       scheduleOnNextFrame(() => {
         if (!isRequestStillActive(requestId)) {
@@ -580,53 +778,49 @@ const useSearchSubmit = ({
         if (transitionFromDockedPolls && !shouldHoldResultPanel) {
           prepareShortcutSheetTransition?.();
         }
-        if (submittedLabel && !preserveSheetState) {
-          setSubmittedQuery(submittedLabel);
-        }
-        if (shouldRevealPanel) {
-          showPanel();
-        }
-      });
-
-      scheduleAfterTwoFrames(() => {
-        if (!isRequestStillActive(requestId)) {
-          return;
-        }
         unstable_batchedUpdates(() => {
-          setSearchMode(mode);
-          setIsSearchSessionActive(true);
-          setActiveTab(targetTab);
-          setIsLoadingMore(false);
+          if (shouldRevealPanel) {
+            showPanel();
+          }
           lastAutoOpenKeyRef.current = null;
           activeLoadingMoreTokenRef.current = null;
         });
-        if (shouldResetPagination) {
-          runNonCriticalStateUpdate(() => {
-            setHasMoreFood(false);
-            setHasMoreRestaurants(false);
-            setIsPaginationExhausted(false);
-            setCurrentPage(1);
-          });
-        }
+        searchRuntimeBus.batch(() => {
+          const laneAStatePatch: Partial<SearchRuntimeBusState> = {
+            isLoadingMore: false,
+            submittedQuery: submittedLabel ?? searchRuntimeBus.getState().submittedQuery ?? '',
+            isVisualSyncPending: false,
+            visualSyncCandidateRequestKey: null,
+            visualReadyRequestKey: null,
+            markerRevealCommitId: null,
+          };
+          publishRuntimeLaneState(activeOperationTupleRef.current, 'lane_a_ack', laneAStatePatch);
+        });
       });
+
+      if (shouldResetPagination) {
+        scheduleAfterTwoFrames(() => {
+          runNonCriticalStateUpdate(() => {
+            searchRuntimeBus.publish({
+              hasMoreFood: false,
+              hasMoreRestaurants: false,
+              isPaginationExhausted: false,
+              currentPage: 1,
+            });
+          });
+        });
+      }
     },
     [
       isRequestStillActive,
       lastAutoOpenKeyRef,
       prepareShortcutSheetTransition,
+      publishRuntimeLaneState,
       runNonCriticalStateUpdate,
       scheduleAfterTwoFrames,
       scheduleOnNextFrame,
-      setActiveTab,
-      setCurrentPage,
-      setHasMoreFood,
-      setHasMoreRestaurants,
-      setIsLoadingMore,
-      setIsPaginationExhausted,
-      setIsSearchSessionActive,
-      setSearchMode,
-      setSubmittedQuery,
       showPanel,
+      searchRuntimeBus,
     ]
   );
 
@@ -641,6 +835,8 @@ const useSearchSubmit = ({
     () => () => {
       isMountedRef.current = false;
       responseApplyTokenRef.current += 1;
+      clearSlideTransitionPendingRef.current();
+      bufferedResponseRef.current = null;
       const activeTuple = activeOperationTupleRef.current;
       if (activeTuple) {
         emitShadowTransitionForTuple(activeTuple, 'cancelled', {
@@ -650,8 +846,18 @@ const useSearchSubmit = ({
       }
       isSearchRequestInFlightRef.current = false;
       onSearchRequestLoadingChange?.(false);
+      publishRuntimeLaneState(null, 'idle', {
+        isSearchLoading: false,
+        isMapActivationDeferred: false,
+        activeOperationId: null,
+      });
     },
-    [clearActiveOperationTuple, emitShadowTransitionForTuple, onSearchRequestLoadingChange]
+    [
+      clearActiveOperationTuple,
+      emitShadowTransitionForTuple,
+      onSearchRequestLoadingChange,
+      publishRuntimeLaneState,
+    ]
   );
   React.useEffect(() => {
     if (hasReportedCutoverRef.current) {
@@ -663,12 +869,45 @@ const useSearchSubmit = ({
     });
   }, []);
 
+  // handleSearchResponse ref — allows flushBufferedResponse to call it
+  // without creating a circular dependency in useCallback deps
+  const handleSearchResponseRef = React.useRef<
+    ((response: SearchResponse, options: BufferedSearchResponse['options']) => void) | null
+  >(null);
+
+  const clearSlideTransitionPending = React.useCallback(() => {
+    slideTransitionPendingRef.current = false;
+    if (slideTransitionMaxWaitRef.current != null) {
+      clearTimeout(slideTransitionMaxWaitRef.current);
+      slideTransitionMaxWaitRef.current = null;
+    }
+  }, []);
+
+  const flushBufferedResponse = React.useCallback(() => {
+    clearSlideTransitionPending();
+    const buffered = bufferedResponseRef.current;
+    if (!buffered) {
+      return;
+    }
+    bufferedResponseRef.current = null;
+    handleSearchResponseRef.current?.(buffered.response, buffered.options);
+  }, [clearSlideTransitionPending]);
+  clearSlideTransitionPendingRef.current = clearSlideTransitionPending;
+  flushBufferedResponseRef.current = flushBufferedResponse;
+
+  const onSlideTransitionComplete = React.useCallback(() => {
+    if (!slideTransitionPendingRef.current) {
+      return;
+    }
+    flushBufferedResponse();
+  }, [flushBufferedResponse]);
+
   const beginLoadingMore = React.useCallback(() => {
     const token = ++loadingMoreTokenSeqRef.current;
     activeLoadingMoreTokenRef.current = token;
-    setIsLoadingMore(true);
+    searchRuntimeBus.publish({ isLoadingMore: true });
     return token;
-  }, [setIsLoadingMore]);
+  }, [searchRuntimeBus]);
 
   const endLoadingMore = React.useCallback(
     (token: number) => {
@@ -676,13 +915,16 @@ const useSearchSubmit = ({
         return;
       }
       activeLoadingMoreTokenRef.current = null;
-      setIsLoadingMore(false);
+      searchRuntimeBus.publish({ isLoadingMore: false });
     },
-    [setIsLoadingMore]
+    [searchRuntimeBus]
   );
 
   const cancelActiveSearchRequest = React.useCallback(() => {
     cancelSearch();
+    // Clear any buffered response on cancellation
+    clearSlideTransitionPending();
+    bufferedResponseRef.current = null;
     const activeTuple = activeOperationTupleRef.current;
     if (activeTuple) {
       emitShadowTransitionForTuple(activeTuple, 'cancelled', {
@@ -694,16 +936,23 @@ const useSearchSubmit = ({
     responseApplyTokenRef.current += 1;
     isSearchRequestInFlightRef.current = false;
     onSearchRequestLoadingChange?.(false);
-    unstable_batchedUpdates(() => {
-      setIsLoadingMore(false);
+    searchRuntimeBus.batch(() => {
+      publishRuntimeLaneState(activeTuple, 'idle', {
+        isSearchLoading: false,
+        isMapActivationDeferred: false,
+        activeOperationId: null,
+      });
+      searchRuntimeBus.publish({ isLoadingMore: false });
     });
     activeLoadingMoreTokenRef.current = null;
   }, [
     cancelSearch,
     clearActiveOperationTuple,
+    clearSlideTransitionPending,
     emitShadowTransitionForTuple,
     onSearchRequestLoadingChange,
-    setIsLoadingMore,
+    publishRuntimeLaneState,
+    searchRuntimeBus,
   ]);
   const setSearchRequestInFlight = React.useCallback(
     (isInFlight: boolean) => {
@@ -712,8 +961,11 @@ const useSearchSubmit = ({
       }
       isSearchRequestInFlightRef.current = isInFlight;
       onSearchRequestLoadingChange?.(isInFlight);
+      searchRuntimeBus.publish({
+        isSearchLoading: isInFlight,
+      });
     },
-    [onSearchRequestLoadingChange]
+    [onSearchRequestLoadingChange, searchRuntimeBus]
   );
   const resolveRequestBounds = React.useCallback(
     async (options: {
@@ -766,6 +1018,7 @@ const useSearchSubmit = ({
       options: {
         append: boolean;
         targetPage: number;
+        initialUiState: InitialResultUiState;
         fallbackSearchRequestId?: string;
         submittedLabel?: string;
         pushToHistory?: boolean;
@@ -779,6 +1032,7 @@ const useSearchSubmit = ({
       const {
         append,
         targetPage,
+        initialUiState,
         submittedLabel,
         pushToHistory,
         fallbackSearchRequestId,
@@ -786,10 +1040,13 @@ const useSearchSubmit = ({
       } = options;
       const { runtimeTuple } = runtimeShadow;
       const emitShadowTransition = runtimeShadow.emitShadowTransition;
+      const appendFallbackSearchRequestId = append
+        ? searchRuntimeBus.getState().results?.metadata?.searchRequestId ?? undefined
+        : undefined;
       const normalizedResponse = normalizeSearchResponse(
         response,
         targetPage,
-        fallbackSearchRequestId
+        fallbackSearchRequestId ?? appendFallbackSearchRequestId
       );
       const responseApplyToken = responseApplyTokenRef.current + 1;
       responseApplyTokenRef.current = responseApplyToken;
@@ -807,32 +1064,82 @@ const useSearchSubmit = ({
       let mergedRestaurantCount = normalizedResponse.restaurants?.length ?? 0;
 
       const singleRestaurantCandidate = resolveSingleRestaurantCandidate(normalizedResponse);
-      unstable_batchedUpdates(() => {
-        setResults((prev) => {
-          const base = append ? prev : null;
-          previousFoodCountSnapshot = base?.dishes?.length ?? 0;
-          previousRestaurantCountSnapshot = base?.restaurants?.length ?? 0;
-          const mergeStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
-          const merged = mergeSearchResponses(base, normalizedResponse, append);
-          if (shouldLogSearchResponseTimings) {
-            logSearchResponseTiming('mergeSearchResponses', getPerfNow() - mergeStart);
-          }
-          mergedFoodCount = merged.dishes?.length ?? 0;
-          mergedRestaurantCount = merged.restaurants?.length ?? 0;
-          return merged;
+      {
+        const base = append ? searchRuntimeBus.getState().results : null;
+        previousFoodCountSnapshot = base?.dishes?.length ?? 0;
+        previousRestaurantCountSnapshot = base?.restaurants?.length ?? 0;
+        const mergeStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
+        const merged = mergeSearchResponses(base, normalizedResponse, append);
+        if (shouldLogSearchResponseTimings) {
+          logSearchResponseTiming('mergeSearchResponses', getPerfNow() - mergeStart);
+        }
+        const mergedSearchRequestId =
+          merged.metadata?.searchRequestId ??
+          normalizedResponse.metadata.searchRequestId ??
+          normalizedResponse.metadata.requestId ??
+          `${runtimeTuple.mode}:${runtimeTuple.requestId}`;
+        const mergedForPublish =
+          typeof mergedSearchRequestId === 'string' &&
+          mergedSearchRequestId.length > 0 &&
+          merged.metadata?.searchRequestId !== mergedSearchRequestId
+            ? {
+                ...merged,
+                metadata: {
+                  ...merged.metadata,
+                  searchRequestId: mergedSearchRequestId,
+                },
+              }
+            : merged;
+        mergedFoodCount = merged.dishes?.length ?? 0;
+        mergedRestaurantCount = merged.restaurants?.length ?? 0;
+        // Pre-compute marker catalog off the render path.
+        // Keep it fresh for both first-page and append responses so map/list projections do not drift.
+        const searchRequestId =
+          mergedForPublish.metadata.searchRequestId ??
+          normalizedResponse.metadata.searchRequestId ??
+          normalizedResponse.metadata.requestId ??
+          `${runtimeTuple.mode}:${runtimeTuple.requestId}`;
+        const markerPipelineActiveTab =
+          (append ? searchRuntimeBus.getState().activeTab : initialUiState.targetTab) ?? 'dishes';
+        const pipelineResult = computeMarkerPipeline({
+          restaurants: mergedForPublish.restaurants ?? [],
+          dishes: mergedForPublish.dishes ?? [],
+          activeTab: markerPipelineActiveTab as 'dishes' | 'restaurants',
+          scoreMode: scoreMode ?? 'global_quality',
+          restaurantOnlyId: null,
+          selectedRestaurantId: null,
+          bounds: latestBoundsRef.current,
+          userLocation: userLocationRef.current,
+          searchRequestId,
         });
-      });
+        searchRuntimeBus.batch(() => {
+          searchRuntimeBus.publish({
+            results: mergedForPublish,
+            resultsRequestKey: searchRequestId || null,
+            precomputedMarkerCatalog: pipelineResult.catalog,
+            precomputedMarkerPrimaryCount: pipelineResult.primaryCount,
+            precomputedCanonicalRestaurantRankById: pipelineResult.canonicalRestaurantRankById,
+            precomputedRestaurantsById: pipelineResult.restaurantsById,
+            precomputedMarkerResultsKey: pipelineResult.resultsKey,
+          });
+        });
+      }
       logSearchPhase('handleSearchResponse:results-committed');
-      if (
-        !emitShadowTransition('phase_a_committed', {
-          append,
-          targetPage,
-          requestId: normalizedResponse.metadata.searchRequestId ?? null,
-        })
-      ) {
+      if (!emitShadowTransition('phase_a_committed', {
+        append,
+        targetPage,
+        requestId: normalizedResponse.metadata.searchRequestId ?? null,
+      })) {
         clearActiveOperationTuple(runtimeTuple);
         return;
       }
+      searchRuntimeBus.batch(() => {
+        publishRuntimeLaneState(runtimeTuple, 'lane_b_data_commit', {
+          searchMode: initialUiState.mode,
+          isSearchSessionActive: true,
+          activeTab: initialUiState.targetTab,
+        });
+      });
       if (!append && normalizedResponse.metadata.page === 1) {
         scheduleOnNextFrame(() => {
           if (isResponseApplyStale()) {
@@ -848,71 +1155,91 @@ const useSearchSubmit = ({
         }
         runNonCriticalStateUpdate(() => {
           unstable_batchedUpdates(() => {
-            if (!append && singleRestaurantCandidate) {
-              setActiveTab('restaurants');
-            } else if (!append) {
-              const hasFoodResults = normalizedResponse?.dishes?.length > 0;
-              const hasRestaurantsResults = (normalizedResponse?.restaurants?.length ?? 0) > 0;
-              const intentDefaultTab = resolveIntentDefaultTab(normalizedResponse);
-
-              setActiveTab((prevTab) => {
-                if (!hasActiveTabPreference && intentDefaultTab) {
-                  if (intentDefaultTab === 'dishes' && hasFoodResults) {
-                    return 'dishes';
-                  }
-                  if (intentDefaultTab === 'restaurants' && hasRestaurantsResults) {
-                    return 'restaurants';
-                  }
-                  return hasFoodResults ? 'dishes' : 'restaurants';
-                }
-                if (prevTab === 'dishes' && hasFoodResults) {
-                  return 'dishes';
-                }
-                if (prevTab === 'restaurants' && hasRestaurantsResults) {
-                  return 'restaurants';
-                }
-                return hasFoodResults ? 'dishes' : 'restaurants';
-              });
-            }
-
-            if (!singleRestaurantCandidate) {
-              const totalFoodAvailable =
-                normalizedResponse.metadata.totalFoodResults ?? mergedFoodCount;
-              const totalRestaurantAvailable =
-                normalizedResponse.metadata.totalRestaurantResults ?? mergedRestaurantCount;
-
-              const nextHasMoreFood = mergedFoodCount < totalFoodAvailable;
-              const nextHasMoreRestaurants =
-                normalizedResponse.format === 'dual_list'
-                  ? mergedRestaurantCount < totalRestaurantAvailable
-                  : false;
-
-              setHasMoreFood(nextHasMoreFood);
-              setHasMoreRestaurants(nextHasMoreRestaurants);
-              setCurrentPage(targetPage);
-
-              if (
-                append &&
-                (!(
-                  mergedFoodCount > previousFoodCountSnapshot ||
-                  mergedRestaurantCount > previousRestaurantCountSnapshot
-                ) ||
-                  (!nextHasMoreFood && !nextHasMoreRestaurants))
-              ) {
-                setIsPaginationExhausted(true);
+            searchRuntimeBus.batch(() => {
+              let resolvedActiveTab: 'dishes' | 'restaurants' | null = null;
+              if (!append && (runtimeTuple.mode === 'shortcut' || runtimeTuple.mode === 'entity')) {
+                setActiveTab(initialUiState.targetTab);
+                resolvedActiveTab = initialUiState.targetTab as 'dishes' | 'restaurants';
               }
-            }
+              if (!append && singleRestaurantCandidate) {
+                setActiveTab('restaurants');
+                resolvedActiveTab = 'restaurants';
+              } else if (!append) {
+                const hasFoodResults = normalizedResponse?.dishes?.length > 0;
+                const hasRestaurantsResults = (normalizedResponse?.restaurants?.length ?? 0) > 0;
+                const intentDefaultTab = resolveIntentDefaultTab(normalizedResponse);
+
+                const computeTab = (prevTab: 'dishes' | 'restaurants') => {
+                  if (!hasActiveTabPreference && intentDefaultTab) {
+                    if (intentDefaultTab === 'dishes' && hasFoodResults) {
+                      return 'dishes' as const;
+                    }
+                    if (intentDefaultTab === 'restaurants' && hasRestaurantsResults) {
+                      return 'restaurants' as const;
+                    }
+                    return (hasFoodResults ? 'dishes' : 'restaurants') as 'dishes' | 'restaurants';
+                  }
+                  if (prevTab === 'dishes' && hasFoodResults) {
+                    return 'dishes' as const;
+                  }
+                  if (prevTab === 'restaurants' && hasRestaurantsResults) {
+                    return 'restaurants' as const;
+                  }
+                  return (hasFoodResults ? 'dishes' : 'restaurants') as 'dishes' | 'restaurants';
+                };
+                setActiveTab(computeTab);
+                const busActiveTab = searchRuntimeBus?.getState().activeTab ?? 'dishes';
+                resolvedActiveTab = computeTab(busActiveTab);
+              }
+              if (resolvedActiveTab != null) {
+                searchRuntimeBus.publish({ activeTab: resolvedActiveTab });
+              }
+
+              if (!singleRestaurantCandidate) {
+                const totalFoodAvailable =
+                  normalizedResponse.metadata.totalFoodResults ?? mergedFoodCount;
+                const totalRestaurantAvailable =
+                  normalizedResponse.metadata.totalRestaurantResults ?? mergedRestaurantCount;
+
+                const nextHasMoreFood = mergedFoodCount < totalFoodAvailable;
+                const nextHasMoreRestaurants =
+                  normalizedResponse.format === 'dual_list'
+                    ? mergedRestaurantCount < totalRestaurantAvailable
+                    : false;
+
+                const nextIsPaginationExhausted =
+                  append &&
+                  (!(
+                    mergedFoodCount > previousFoodCountSnapshot ||
+                    mergedRestaurantCount > previousRestaurantCountSnapshot
+                  ) ||
+                    (!nextHasMoreFood && !nextHasMoreRestaurants));
+
+                const currentIsPaginationExhausted = nextIsPaginationExhausted || (!append ? false : searchRuntimeBus.getState().isPaginationExhausted);
+                const nextCanLoadMore =
+                  !currentIsPaginationExhausted && (nextHasMoreFood || nextHasMoreRestaurants);
+                searchRuntimeBus.publish({
+                  hasMoreFood: nextHasMoreFood,
+                  hasMoreRestaurants: nextHasMoreRestaurants,
+                  currentPage: targetPage,
+                  isPaginationExhausted: currentIsPaginationExhausted,
+                  canLoadMore: nextCanLoadMore,
+                });
+              }
+            });
           });
         });
         logSearchPhase('handleSearchResponse:meta-applied');
       };
       if (append) {
+        publishRuntimeLaneState(runtimeTuple, 'lane_c_list_first_paint');
         applyResponseMetaState();
       } else {
         scheduleOnNextFrame(() => {
           if (isResponseApplyStale()) {
             return;
           }
+          publishRuntimeLaneState(runtimeTuple, 'lane_c_list_first_paint');
           applyResponseMetaState();
         });
       }
@@ -921,21 +1248,17 @@ const useSearchSubmit = ({
           if (isResponseApplyStale()) {
             return;
           }
-          scheduleOnNextFrame(() => {
-            if (isResponseApplyStale()) {
-              return;
-            }
-            runNonCriticalStateUpdate(() => {
-              unstable_batchedUpdates(() => {
+          runNonCriticalStateUpdate(() => {
+            unstable_batchedUpdates(() => {
+              searchRuntimeBus.batch(() => {
                 lastSearchRequestIdRef.current =
                   normalizedResponse.metadata.searchRequestId ?? null;
-                if (submittedLabel) {
-                  setSubmittedQuery(submittedLabel);
-                } else {
-                  setSubmittedQuery('');
-                }
+                const nextSubmittedQuery = submittedLabel || '';
 
-                setIsPaginationExhausted(false);
+                searchRuntimeBus.publish({
+                  submittedQuery: nextSubmittedQuery,
+                  isPaginationExhausted: false,
+                });
 
                 if (singleRestaurantCandidate) {
                   if (!isRestaurantOverlayVisibleRef?.current) {
@@ -946,8 +1269,8 @@ const useSearchSubmit = ({
                 }
               });
             });
-            logSearchPhase('handleSearchResponse:ui-deferred');
           });
+          logSearchPhase('handleSearchResponse:ui-deferred');
         });
       }
 
@@ -987,32 +1310,34 @@ const useSearchSubmit = ({
         logSearchPhase('handleSearchResponse:history-deferred');
       }
 
-      if (!append) {
-        if (isResponseApplyStale()) {
-          clearActiveOperationTuple(runtimeTuple);
-          return;
-        }
-        if (!isSearchEditingRef?.current) {
-          Keyboard.dismiss();
-          scrollResultsToTop();
-        }
+      if (!append && !isSearchEditingRef?.current) {
+        Keyboard.dismiss();
+        scrollResultsToTop();
       }
       const finalizeShadowTransitions = () => {
         if (isResponseApplyStale()) {
-          clearActiveOperationTuple(runtimeTuple);
-          return;
-        }
-        if (
-          !emitShadowTransition('visual_released', {
+        clearActiveOperationTuple(runtimeTuple);
+        return;
+      }
+        const responseRequestId = normalizedResponse.metadata.searchRequestId ?? null;
+        const finishSettled = () => {
+          if (isResponseApplyStale()) {
+            clearActiveOperationTuple(runtimeTuple);
+            return;
+          }
+          emitShadowTransition('settled', {
             append,
             targetPage,
-            requestId: normalizedResponse.metadata.searchRequestId ?? null,
-          })
-        ) {
+            requestId: responseRequestId,
+          });
           clearActiveOperationTuple(runtimeTuple);
-          return;
-        }
-        scheduleOnNextFrame(() => {
+          logSearchPhase('handleSearchResponse:done');
+          if (shouldLogSearchResponseTimings) {
+            logSearchResponseTiming('handleSearchResponse', getPerfNow() - handleStart);
+          }
+        };
+
+        const emitPhaseBMaterializing = () => {
           if (isResponseApplyStale()) {
             clearActiveOperationTuple(runtimeTuple);
             return;
@@ -1021,34 +1346,74 @@ const useSearchSubmit = ({
             !emitShadowTransition('phase_b_materializing', {
               append,
               targetPage,
-              requestId: normalizedResponse.metadata.searchRequestId ?? null,
+              requestId: responseRequestId,
             })
           ) {
             clearActiveOperationTuple(runtimeTuple);
             return;
           }
-          scheduleOnNextFrame(() => {
-            if (isResponseApplyStale()) {
-              clearActiveOperationTuple(runtimeTuple);
-              return;
-            }
-            emitShadowTransition('settled', {
+          publishRuntimeLaneState(runtimeTuple, 'lane_e_map_pins');
+          scheduleAfterRuntimeSettleContract({
+            requestId: runtimeTuple.requestId,
+            expectedOperationId: runtimeTuple.operationId,
+            maxWaitMs: 1600,
+            onReady: finishSettled,
+          });
+        };
+        const beginMapLane = () => {
+          if (isResponseApplyStale()) {
+            clearActiveOperationTuple(runtimeTuple);
+            return;
+          }
+          searchRuntimeBus.batch(() => {
+            publishRuntimeLaneState(runtimeTuple, 'lane_d_map_dots', {
+              isMapActivationDeferred: false,
+            });
+          });
+          if (
+            !emitShadowTransition('visual_released', {
               append,
               targetPage,
-              requestId: normalizedResponse.metadata.searchRequestId ?? null,
-            });
+              requestId: responseRequestId,
+            })
+          ) {
             clearActiveOperationTuple(runtimeTuple);
-            logSearchPhase('handleSearchResponse:done');
-            if (shouldLogSearchResponseTimings) {
-              logSearchResponseTiming('handleSearchResponse', getPerfNow() - handleStart);
-            }
+            return;
+          }
+          scheduleAfterHealthyFrames({
+            requestId: runtimeTuple.requestId,
+            requiredHealthyFrames: 1,
+            maxWaitMs: 180,
+            onReady: emitPhaseBMaterializing,
           });
+        };
+        if (append) {
+          beginMapLane();
+          return;
+        }
+        scheduleAfterResultsHydrationSettled({
+          requestId: runtimeTuple.requestId,
+          maxWaitMs: 1400,
+          expectedRequestKey: responseRequestId,
+          onReady: () => {
+            scheduleAfterHealthyFrames({
+              requestId: runtimeTuple.requestId,
+              requiredHealthyFrames: 2,
+              maxWaitMs: 220,
+              onReady: beginMapLane,
+            });
+          },
         });
       };
       if (append) {
         finalizeShadowTransitions();
       } else {
-        scheduleOnNextFrame(finalizeShadowTransitions);
+        scheduleAfterHealthyFrames({
+          requestId: runtimeTuple.requestId,
+          requiredHealthyFrames: 1,
+          maxWaitMs: 140,
+          onReady: finalizeShadowTransitions,
+        });
       }
     },
     [
@@ -1061,20 +1426,20 @@ const useSearchSubmit = ({
       resetSheetToHidden,
       scrollResultsToTop,
       setActiveTab,
-      setCurrentPage,
-      setHasMoreFood,
-      setHasMoreRestaurants,
-      setIsPaginationExhausted,
-      setResults,
-      setSubmittedQuery,
+      searchRuntimeBus,
       showPanel,
       scheduleOnNextFrame,
       runNonCriticalStateUpdate,
+      scheduleAfterHealthyFrames,
+      scheduleAfterResultsHydrationSettled,
+      scheduleAfterRuntimeSettleContract,
       updateLocalRecentSearches,
       isSearchEditingRef,
       onPageOneResultsCommitted,
+      publishRuntimeLaneState,
     ]
   );
+  handleSearchResponseRef.current = handleSearchResponse;
 
   const buildStructuredSearchPayload = React.useCallback(
     async (
@@ -1152,7 +1517,7 @@ const useSearchSubmit = ({
   const submitSearch = React.useCallback(
     async (options?: SubmitSearchOptions, overrideQuery?: string) => {
       const append = Boolean(options?.append);
-      if (append && (isSearchRequestInFlightRef.current || isLoadingMore)) {
+      if (append && (isSearchRequestInFlightRef.current || searchRuntimeBus.getState().isLoadingMore)) {
         return;
       }
       logSearchPhase('submitSearch:start', { reset: true });
@@ -1165,12 +1530,15 @@ const useSearchSubmit = ({
       const trimmed = baseQuery.trim();
       if (!trimmed) {
         if (!append) {
-          setResults(null);
-          setSubmittedQuery('');
+          searchRuntimeBus.publish({
+            results: null,
+            resultsRequestKey: null,
+            submittedQuery: '',
+            hasMoreFood: false,
+            hasMoreRestaurants: false,
+            currentPage: 1,
+          });
           setError(null);
-          setHasMoreFood(false);
-          setHasMoreRestaurants(false);
-          setCurrentPage(1);
         }
         return;
       }
@@ -1190,15 +1558,15 @@ const useSearchSubmit = ({
         clearActiveOperationTuple(naturalTuple);
         return;
       }
+      const submissionContextTab = resolveSubmissionDefaultTab(options?.submission?.context);
+      const preRequestTab =
+        submissionContextTab ?? (hasActiveTabPreference ? preferredActiveTab : DEFAULT_SEGMENT);
 
       let preserveSheetState = false;
       if (!append) {
         preserveSheetState = Boolean(options?.preserveSheetState);
         const transitionFromDockedPolls =
           !preserveSheetState && Boolean(options?.transitionFromDockedPolls);
-        const submissionContextTab = resolveSubmissionDefaultTab(options?.submission?.context);
-        const preRequestTab =
-          submissionContextTab ?? (hasActiveTabPreference ? preferredActiveTab : DEFAULT_SEGMENT);
         const shouldHoldRestaurantOverlaySheet = isRestaurantOverlayVisibleRef?.current === true;
         scheduleSubmitUiLanes({
           requestId,
@@ -1235,10 +1603,10 @@ const useSearchSubmit = ({
           setSearchRequestInFlight(true);
           setError(null);
           if (shouldPreclearNaturalResults) {
-            setResults(null);
+            searchRuntimeBus.publish({ results: null, resultsRequestKey: null });
           }
           if (shouldPrimeSubmittedQueryBeforeResponse && !preserveSheetState) {
-            setSubmittedQuery(trimmed);
+            searchRuntimeBus.publish({ submittedQuery: trimmed });
           }
           logSearchPhase('submitSearch:loading-state');
         }
@@ -1308,6 +1676,10 @@ const useSearchSubmit = ({
           handleSearchResponse(response, {
             append,
             targetPage,
+            initialUiState: {
+              mode: 'natural',
+              targetTab: preRequestTab,
+            },
             fallbackSearchRequestId: append ? undefined : `natural:${requestId}`,
             submittedLabel,
             pushToHistory: !append,
@@ -1325,6 +1697,10 @@ const useSearchSubmit = ({
             append,
             targetPage,
             message: err instanceof Error ? err.message : 'unknown error',
+          });
+          publishRuntimeLaneState(naturalTuple, 'idle', {
+            activeOperationId: null,
+            isMapActivationDeferred: false,
           });
           clearActiveOperationTuple(naturalTuple);
           if (!append) {
@@ -1346,6 +1722,12 @@ const useSearchSubmit = ({
           setSearchRequestInFlight(false);
         }
         if (requestId === activeSearchRequestRef.current) {
+          if (!append && !didStartResponseLifecycle) {
+            publishRuntimeLaneState(naturalTuple, 'idle', {
+              isMapActivationDeferred: false,
+              activeOperationId: null,
+            });
+          }
           const activeTuple = activeOperationTupleRef.current;
           if (
             activeTuple &&
@@ -1357,6 +1739,9 @@ const useSearchSubmit = ({
               append,
               targetPage,
               reason: 'natural_finalized_without_response_lifecycle',
+            });
+            publishRuntimeLaneState(naturalTuple, 'idle', {
+              activeOperationId: null,
             });
             clearActiveOperationTuple(naturalTuple);
           }
@@ -1373,7 +1758,6 @@ const useSearchSubmit = ({
       emitShadowTransitionForTuple,
       preferredActiveTab,
       handleSearchResponse,
-      isLoadingMore,
       hasActiveTabPreference,
       isRestaurantOverlayVisibleRef,
       logSearchPhase,
@@ -1387,10 +1771,10 @@ const useSearchSubmit = ({
       runSearch,
       activateRuntimeShadowOperation,
       scheduleSubmitUiLanes,
+      searchRuntimeBus,
       setError,
-      setResults,
       setSearchRequestInFlight,
-      setSubmittedQuery,
+      publishRuntimeLaneState,
       userLocationRef,
       votes100Plus,
     ]
@@ -1444,8 +1828,8 @@ const useSearchSubmit = ({
 
       let didStartResponseLifecycle = false;
       try {
-        if (isLoadingMore) {
-          setIsLoadingMore(false);
+        if (searchRuntimeBus.getState().isLoadingMore) {
+          searchRuntimeBus.publish({ isLoadingMore: false });
         }
         setSearchRequestInFlight(true);
         logSearchPhase('runRestaurantEntitySearch:loading-state');
@@ -1503,6 +1887,10 @@ const useSearchSubmit = ({
           handleSearchResponse(response, {
             append: false,
             targetPage: 1,
+            initialUiState: {
+              mode: 'natural',
+              targetTab: 'restaurants',
+            },
             fallbackSearchRequestId: `restaurant-entity:${requestId}`,
             submittedLabel: trimmedName,
             pushToHistory: true,
@@ -1521,12 +1909,22 @@ const useSearchSubmit = ({
             mode: 'entity',
             message: err instanceof Error ? err.message : 'unknown error',
           });
+          publishRuntimeLaneState(entityTuple, 'idle', {
+            activeOperationId: null,
+            isMapActivationDeferred: false,
+          });
           clearActiveOperationTuple(entityTuple);
           setError(null);
         }
       } finally {
         if (requestId === activeSearchRequestRef.current) {
           setSearchRequestInFlight(false);
+          if (!didStartResponseLifecycle) {
+            publishRuntimeLaneState(entityTuple, 'idle', {
+              isMapActivationDeferred: false,
+              activeOperationId: null,
+            });
+          }
           const activeTuple = activeOperationTupleRef.current;
           if (
             activeTuple &&
@@ -1536,6 +1934,9 @@ const useSearchSubmit = ({
             emitShadowTransitionForTuple(entityTuple, 'cancelled', {
               mode: 'entity',
               reason: 'entity_finalized_without_response_lifecycle',
+            });
+            publishRuntimeLaneState(entityTuple, 'idle', {
+              activeOperationId: null,
             });
             clearActiveOperationTuple(entityTuple);
           }
@@ -1549,11 +1950,11 @@ const useSearchSubmit = ({
       createHandleSearchResponseRuntimeShadow,
       emitShadowTransitionForTuple,
       handleSearchResponse,
-      isLoadingMore,
       logSearchPhase,
       logSearchResponseTiming,
       shouldLogSearchResponseTimings,
       getPerfNow,
+      searchRuntimeBus,
       searchResponseTimingMinMs,
       scheduleSubmitUiLanes,
       shouldLogSearchResponsePayload,
@@ -1561,9 +1962,9 @@ const useSearchSubmit = ({
       runSearch,
       activateRuntimeShadowOperation,
       setError,
-      setIsLoadingMore,
       setSearchRequestInFlight,
       isRestaurantOverlayVisibleRef,
+      publishRuntimeLaneState,
     ]
   );
 
@@ -1621,8 +2022,8 @@ const useSearchSubmit = ({
       try {
         setSearchRequestInFlight(true);
         shortcutSearchRequestIdRef.current = null;
-        if (isLoadingMore) {
-          setIsLoadingMore(false);
+        if (searchRuntimeBus.getState().isLoadingMore) {
+          searchRuntimeBus.publish({ isLoadingMore: false });
           logSearchPhase('runBestHere:loading-more');
         }
         logSearchPhase('runBestHere:loading-state');
@@ -1670,6 +2071,10 @@ const useSearchSubmit = ({
           handleSearchResponse(response, {
             append: false,
             targetPage: 1,
+            initialUiState: {
+              mode: 'shortcut',
+              targetTab,
+            },
             fallbackSearchRequestId: `shortcut:${requestId}`,
             submittedLabel,
             pushToHistory: false,
@@ -1687,12 +2092,22 @@ const useSearchSubmit = ({
             mode: 'shortcut',
             message: err instanceof Error ? err.message : 'unknown error',
           });
+          publishRuntimeLaneState(shortcutTuple, 'idle', {
+            activeOperationId: null,
+            isMapActivationDeferred: false,
+          });
           clearActiveOperationTuple(shortcutTuple);
           setError(null);
         }
       } finally {
         if (requestId === activeSearchRequestRef.current) {
           setSearchRequestInFlight(false);
+          if (!didStartResponseLifecycle) {
+            publishRuntimeLaneState(shortcutTuple, 'idle', {
+              isMapActivationDeferred: false,
+              activeOperationId: null,
+            });
+          }
           const activeTuple = activeOperationTupleRef.current;
           if (
             activeTuple &&
@@ -1702,6 +2117,9 @@ const useSearchSubmit = ({
             emitShadowTransitionForTuple(shortcutTuple, 'cancelled', {
               mode: 'shortcut',
               reason: 'shortcut_finalized_without_response_lifecycle',
+            });
+            publishRuntimeLaneState(shortcutTuple, 'idle', {
+              activeOperationId: null,
             });
             clearActiveOperationTuple(shortcutTuple);
           }
@@ -1715,36 +2133,38 @@ const useSearchSubmit = ({
       createHandleSearchResponseRuntimeShadow,
       emitShadowTransitionForTuple,
       handleSearchResponse,
-      isLoadingMore,
       logSearchPhase,
       logSearchResponseTiming,
       shouldLogSearchResponsePayload,
       shouldLogSearchResponseTimings,
       getPerfNow,
+      searchRuntimeBus,
       searchResponseTimingMinMs,
       resetMapMoveFlag,
       runSearch,
       activateRuntimeShadowOperation,
       scheduleSubmitUiLanes,
       setError,
-      setIsLoadingMore,
       setSearchRequestInFlight,
       onShortcutSearchCoverageSnapshot,
+      publishRuntimeLaneState,
     ]
   );
 
   const loadMoreShortcutResults = React.useCallback(() => {
+    const busState = searchRuntimeBus.getState();
     if (
       isSearchRequestInFlightRef.current ||
-      isLoadingMore ||
-      !results ||
-      !canLoadMore ||
-      isPaginationExhausted
+      busState.isLoadingMore ||
+      !busState.results ||
+      !busState.canLoadMore ||
+      busState.isPaginationExhausted
     ) {
       return;
     }
 
-    const nextPage = currentPage + 1;
+    const nextPage = busState.currentPage + 1;
+    const busSubmittedQuery = busState.submittedQuery;
     const loadingMoreToken = beginLoadingMore();
     const requestId = ++searchRequestSeqRef.current;
     activeSearchRequestRef.current = requestId;
@@ -1753,7 +2173,7 @@ const useSearchSubmit = ({
       shortcutAppendTuple,
       createShortcutSubmitIntentPayload({
         targetTab: preferredActiveTab,
-        submittedLabel: submittedQuery || 'Best dishes here',
+        submittedLabel: busSubmittedQuery || 'Best dishes here',
         preserveSheetState: true,
         targetPage: nextPage,
         append: true,
@@ -1796,8 +2216,12 @@ const useSearchSubmit = ({
           handleSearchResponse(response, {
             append: true,
             targetPage: nextPage,
+            initialUiState: {
+              mode: 'shortcut',
+              targetTab: preferredActiveTab,
+            },
             fallbackSearchRequestId: undefined,
-            submittedLabel: submittedQuery || 'Best dishes here',
+            submittedLabel: busSubmittedQuery || 'Best dishes here',
             pushToHistory: false,
             showPanelOnResponse: false,
             responseReceivedPayload: createShortcutResponseReceivedPayload(response),
@@ -1813,6 +2237,9 @@ const useSearchSubmit = ({
           append: true,
           targetPage: nextPage,
           message: err instanceof Error ? err.message : 'unknown error',
+        });
+        publishRuntimeLaneState(shortcutAppendTuple, 'idle', {
+          activeOperationId: null,
         });
         clearActiveOperationTuple(shortcutAppendTuple);
         setError(
@@ -1835,6 +2262,9 @@ const useSearchSubmit = ({
               targetPage: nextPage,
               reason: 'append_finalized_without_response_lifecycle',
             });
+            publishRuntimeLaneState(shortcutAppendTuple, 'idle', {
+              activeOperationId: null,
+            });
             clearActiveOperationTuple(shortcutAppendTuple);
           }
         }
@@ -1845,37 +2275,34 @@ const useSearchSubmit = ({
   }, [
     beginLoadingMore,
     buildStructuredSearchPayload,
-    canLoadMore,
     clearActiveOperationTuple,
-    currentPage,
     createActiveOperationTuple,
     createHandleSearchResponseRuntimeShadow,
     endLoadingMore,
     emitShadowTransitionForTuple,
     getPerfNow,
     handleSearchResponse,
-    isLoadingMore,
-    isPaginationExhausted,
     logSearchResponseTiming,
     preferredActiveTab,
-    results,
     runSearch,
     activateRuntimeShadowOperation,
+    searchRuntimeBus,
     searchResponseTimingMinMs,
     setError,
+    publishRuntimeLaneState,
     shouldLogSearchResponsePayload,
     shouldLogSearchResponseTimings,
-    submittedQuery,
   ]);
 
   const loadMoreResults = React.useCallback(
     (searchMode: SearchMode) => {
+      const busState = searchRuntimeBus.getState();
       if (
         isSearchRequestInFlightRef.current ||
-        isLoadingMore ||
-        !results ||
-        !canLoadMore ||
-        isPaginationExhausted
+        busState.isLoadingMore ||
+        !busState.results ||
+        !busState.canLoadMore ||
+        busState.isPaginationExhausted
       ) {
         return;
       }
@@ -1883,22 +2310,17 @@ const useSearchSubmit = ({
         loadMoreShortcutResults();
         return;
       }
-      const nextPage = currentPage + 1;
-      const activeQuery = submittedQuery || query;
+      const nextPage = busState.currentPage + 1;
+      const activeQuery = busState.submittedQuery || query;
       if (!activeQuery.trim()) {
         return;
       }
       void submitSearch({ page: nextPage, append: true }, activeQuery);
     },
     [
-      canLoadMore,
-      currentPage,
-      isLoadingMore,
-      isPaginationExhausted,
       loadMoreShortcutResults,
       query,
-      results,
-      submittedQuery,
+      searchRuntimeBus,
       submitSearch,
     ]
   );
@@ -1943,6 +2365,7 @@ const useSearchSubmit = ({
     rerunActiveSearch,
     loadMoreResults,
     cancelActiveSearchRequest,
+    onSlideTransitionComplete,
   };
 };
 

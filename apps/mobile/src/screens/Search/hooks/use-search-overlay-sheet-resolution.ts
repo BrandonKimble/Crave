@@ -4,7 +4,8 @@ import { createOverlayRegistry } from '../../../overlays/OverlayRegistry';
 import type { OverlayContentSpec, OverlayKey } from '../../../overlays/types';
 import type { OverlayHeaderActionMode } from '../../../overlays/useOverlayHeaderActionController';
 
-type OverlaySpec = OverlayContentSpec<unknown> | null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic overlay specs use varying item types
+type OverlaySpec = OverlayContentSpec<any> | null;
 
 type UseSearchOverlaySheetResolutionArgs = {
   searchPanelSpec: OverlaySpec;

@@ -21,6 +21,7 @@ import SearchSuggestions from './SearchSuggestions';
 const SUGGESTION_SCROLL_WHITE_OVERSCROLL_BUFFER = SCREEN_HEIGHT;
 
 type SearchSuggestionSurfaceProps = {
+  pointerEvents?: React.ComponentProps<typeof Reanimated.View>['pointerEvents'];
   searchSurfaceAnimatedStyle: StyleProp<ViewStyle>;
   shouldDisableSearchBlur: boolean;
   shouldShowSuggestionSurface: boolean;
@@ -67,6 +68,7 @@ type SearchSuggestionSurfaceProps = {
 };
 
 const SearchSuggestionSurface = ({
+  pointerEvents = 'auto',
   searchSurfaceAnimatedStyle,
   shouldDisableSearchBlur,
   shouldShowSuggestionSurface,
@@ -113,7 +115,7 @@ const SearchSuggestionSurface = ({
 }: SearchSuggestionSurfaceProps) => {
   return (
     <Reanimated.View
-      pointerEvents="auto"
+      pointerEvents={pointerEvents}
       style={[
         styles.searchSurface,
         searchSurfaceAnimatedStyle,

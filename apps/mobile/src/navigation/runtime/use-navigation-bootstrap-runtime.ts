@@ -32,6 +32,6 @@ export const useNavigationBootstrapRuntime = (): NavigationBootstrapRuntime => {
   return {
     isReady: isHydrated && isLoaded,
     hasCompletedOnboarding,
-    isSignedIn,
+    isSignedIn: isSignedIn ?? false,
   };
 };

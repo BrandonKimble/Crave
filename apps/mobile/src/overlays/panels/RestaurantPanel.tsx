@@ -8,7 +8,7 @@ import {
   View,
   type ViewStyle,
 } from 'react-native';
-import Reanimated, { useSharedValue } from 'react-native-reanimated';
+import Reanimated, { useSharedValue, type AnimatedStyle as ReanimatedAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import type { OperatingStatus } from '@crave-search/shared';
@@ -33,7 +33,7 @@ export type RestaurantOverlayData = {
   isLoading?: boolean;
 };
 
-type AnimatedStyle = Reanimated.AnimatedStyleProp<ViewStyle>;
+type AnimatedStyle = ReanimatedAnimatedStyle<ViewStyle>;
 
 type UseRestaurantPanelSpecOptions = {
   data: RestaurantOverlayData | null;
@@ -561,7 +561,7 @@ export const useRestaurantPanelSpec = ({
     keyboardShouldPersistTaps: 'handled',
     backgroundComponent: backgroundComponent,
     headerComponent: headerComponent,
-    style: [overlaySheetStyles.container, containerStyle],
+    style: [overlaySheetStyles.container, containerStyle as ViewStyle],
     onHidden: onDismiss,
     dismissThreshold,
     preventSwipeDismiss: true,

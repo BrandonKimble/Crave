@@ -33,8 +33,8 @@ export const useOnboardingAuthLane = ({
   const auth = useAuth();
   const { isSignedIn } = auth;
   const setActiveSession =
-    typeof auth.setActive === 'function'
-      ? (auth.setActive as (params: { session: string }) => Promise<void>)
+    typeof (auth as Record<string, unknown>).setActive === 'function'
+      ? ((auth as Record<string, unknown>).setActive as (params: { session: string }) => Promise<void>)
       : undefined;
 
   const appleOAuth = useClerkOAuth('oauth_apple');
@@ -204,7 +204,7 @@ export const useOnboardingAuthLane = ({
   }, [continueWithOAuthProvider]);
 
   return {
-    isSignedIn,
+    isSignedIn: !!isSignedIn,
     oauthStatus,
     authError,
     setAuthError,

@@ -304,15 +304,21 @@ run_live_shortcut_loop() {
   # Lock sampler config so parser metrics are consistently present for gate comparisons.
   local harness_runs="${EXPO_PUBLIC_PERF_HARNESS_RUNS:-3}"
   local harness_start_delay_ms="${EXPO_PUBLIC_PERF_HARNESS_START_DELAY_MS:-3000}"
+  local harness_cooldown_ms="${EXPO_PUBLIC_PERF_HARNESS_COOLDOWN_MS:-1200}"
+  local settle_boundary_policy="${EXPO_PUBLIC_PERF_SHORTCUT_SETTLE_BOUNDARY_POLICY:-quiet_snapshot_only}"
   local js_window_ms="${EXPO_PUBLIC_PERF_JS_FRAME_WINDOW_MS:-120}"
   local ui_window_ms="${EXPO_PUBLIC_PERF_UI_FRAME_WINDOW_MS:-120}"
   local js_fps_threshold="${EXPO_PUBLIC_PERF_JS_FRAME_LOG_ONLY_BELOW_FPS:-240}"
   local ui_fps_threshold="${EXPO_PUBLIC_PERF_UI_FRAME_LOG_ONLY_BELOW_FPS:-240}"
-  local profiler_attribution_enabled="${EXPO_PUBLIC_PERF_SHORTCUT_PROBE_PROFILER_ATTRIBUTION:-1}"
-  local profiler_span_log_enabled="${EXPO_PUBLIC_PERF_SHORTCUT_PROBE_PROFILER_SPAN_LOG:-1}"
-  EXPO_PUBLIC_PERF_HARNESS_RUN_ID="$run_id" \
+  # Keep profiler probe diagnostics opt-in. Enabling them by default materially
+  # inflates JS stall measurements during harness runs.
+  local profiler_attribution_enabled="${EXPO_PUBLIC_PERF_SHORTCUT_PROBE_PROFILER_ATTRIBUTION:-0}"
+  local profiler_span_log_enabled="${EXPO_PUBLIC_PERF_SHORTCUT_PROBE_PROFILER_SPAN_LOG:-0}"
+    EXPO_PUBLIC_PERF_HARNESS_RUN_ID="$run_id" \
     EXPO_PUBLIC_PERF_HARNESS_RUNS="$harness_runs" \
     EXPO_PUBLIC_PERF_HARNESS_START_DELAY_MS="$harness_start_delay_ms" \
+    EXPO_PUBLIC_PERF_HARNESS_COOLDOWN_MS="$harness_cooldown_ms" \
+    EXPO_PUBLIC_PERF_SHORTCUT_SETTLE_BOUNDARY_POLICY="$settle_boundary_policy" \
     EXPO_PUBLIC_PERF_JS_FRAME_WINDOW_MS="$js_window_ms" \
     EXPO_PUBLIC_PERF_UI_FRAME_WINDOW_MS="$ui_window_ms" \
     EXPO_PUBLIC_PERF_JS_FRAME_LOG_ONLY_BELOW_FPS="$js_fps_threshold" \

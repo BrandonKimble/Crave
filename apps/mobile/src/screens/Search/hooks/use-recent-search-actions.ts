@@ -9,8 +9,8 @@ import type {
 type RecentSearchUpsertPayload = {
   queryText: string;
   selectedEntityId?: string | null;
-  selectedEntityType?: 'restaurant' | 'query' | null;
-  statusPreview?: unknown;
+  selectedEntityType?: RecentSearch['selectedEntityType'] | null;
+  statusPreview?: RecentSearch['statusPreview'] | null;
 };
 
 type RestaurantEntitySearchPayload = {

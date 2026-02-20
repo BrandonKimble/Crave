@@ -213,7 +213,7 @@ export class SearchService {
     const minimumVotes = this.normalizeMinimumVotes(request.minimumVotes);
 
     // Always use dual_list format - restaurants and dishes are independent lists
-    const format: QueryPlan['format'] = 'dual_list';
+    const format: SearchConstraints['format'] = 'dual_list';
     const constraints = this.buildSearchConstraints(request, 'strict', {
       format,
       priceLevels,
@@ -1568,7 +1568,7 @@ export class SearchService {
     request: SearchQueryRequestDto,
     stage: RelaxationStage,
     inputs: {
-      format: QueryPlan['format'];
+      format: SearchConstraints['format'];
       priceLevels: number[];
       minimumVotes: number | null;
     },

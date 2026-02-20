@@ -1,7 +1,7 @@
 import React from 'react';
-import { StyleSheet, type View, type ViewProps, type ViewStyle } from 'react-native';
+import { StyleSheet, type StyleProp, type View, type ViewProps, type ViewStyle } from 'react-native';
 import Svg, { Defs, G, Mask, Rect } from 'react-native-svg';
-import Reanimated from 'react-native-reanimated';
+import Reanimated, { type AnimatedStyle } from 'react-native-reanimated';
 
 type MaskedHole = {
   x: number;
@@ -16,7 +16,7 @@ type MaskedHoleOverlayProps = {
   backgroundColor?: string;
   opacity?: number;
   renderWhenEmpty?: boolean;
-  style?: Reanimated.AnimatedStyleProp<ViewStyle>;
+  style?: StyleProp<AnimatedStyle<ViewStyle>>;
 } & Pick<ViewProps, 'pointerEvents'>;
 
 const MaskedHoleOverlay = React.forwardRef<View, MaskedHoleOverlayProps>(

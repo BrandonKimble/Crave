@@ -20,7 +20,6 @@ import {
   buildResultsHeaderTitle,
 } from './header-read-model-builder';
 import {
-  buildHydratedResultsData,
   buildSafeResultsData,
   buildSectionedResultsData,
   type ResultsListItem,
@@ -29,9 +28,6 @@ import type { MapQueryBudget } from '../map/map-query-budget';
 
 const EMPTY_RESULTS: ResultsListItem[] = [];
 const EXACT_VISIBLE_LIMIT = 5;
-const HYDRATION_RAMP_STEP_ROWS = 4;
-const HYDRATION_PENDING_INITIAL_ROWS = 4;
-const HYDRATION_RAMP_FRAME_BUDGET_MS = 4;
 const VIEWABILITY_LOG_INTERVAL_MS = 250;
 const getNowMs = (): number =>
   typeof performance?.now === 'function' ? performance.now() : Date.now();
@@ -43,7 +39,6 @@ type UseSearchResultsReadModelSelectorsArgs = {
   results: SearchResponse | null;
   isFilterTogglePending: boolean;
   shouldHydrateResultsForRender: boolean;
-  isVisualSyncPending: boolean;
   runOneCommitSpanPressureActive: boolean;
   allowHydrationFinalizeCommit: boolean;
   mapQueryBudget: MapQueryBudget;
@@ -65,8 +60,8 @@ type UseSearchResultsReadModelSelectorsArgs = {
   headerDividerAnimatedStyle: StyleProp<ViewStyle>;
   shouldLogResultsViewability: boolean;
   searchInteractionRef: React.MutableRefObject<{ isResultsListScrolling: boolean }>;
-  renderDishCard: (item: FoodResult, index: number) => React.ReactElement;
-  renderRestaurantCard: (item: RestaurantResult, index: number) => React.ReactElement;
+  renderDishCard: (item: FoodResult, index: number) => React.ReactElement | null;
+  renderRestaurantCard: (item: RestaurantResult, index: number) => React.ReactElement | null;
   onRuntimeMechanismEvent?: (
     event: 'runtime_write_span',
     payload?: Record<string, unknown>
@@ -104,7 +99,7 @@ type ResultsFlashListRuntimeProps = {
 
 type SearchResultsReadModelSelectors = {
   safeResultsCount: number;
-  isResultsFinalizeLaneActive: boolean;
+  isResultsHydrationSettled: boolean;
   rowsForRender: ResultsListItem[];
   renderListItem: NonNullable<FlashListProps<ResultsListItem>['renderItem']>;
   listFooterComponent: React.ReactNode;
@@ -138,7 +133,6 @@ export const useSearchResultsReadModelSelectors = (
     results,
     isFilterTogglePending,
     shouldHydrateResultsForRender,
-    isVisualSyncPending,
     runOneCommitSpanPressureActive,
     allowHydrationFinalizeCommit,
     mapQueryBudget,
@@ -185,7 +179,7 @@ export const useSearchResultsReadModelSelectors = (
 
   const searchRequestId = results?.metadata?.searchRequestId ?? null;
   const searchRequestIdentity =
-    results?.metadata?.searchRequestId ?? results?.metadata?.requestId ?? null;
+    results?.metadata?.searchRequestId ?? null;
   const [sectionedSearchRequestId, setSectionedSearchRequestId] = React.useState<string | null>(
     null
   );
@@ -320,36 +314,6 @@ export const useSearchResultsReadModelSelectors = (
     shouldHydrateResultsForRender,
   ]);
 
-  const [hydrationRowsLimitState, setHydrationRowsLimitState] = React.useState<{
-    requestKey: string | null;
-    limit: number | null;
-  }>({
-    requestKey: null,
-    limit: null,
-  });
-  const hydrationRowsLimit =
-    hydrationRowsLimitState.requestKey === resultsHydrationKey
-      ? hydrationRowsLimitState.limit
-      : null;
-  const setHydrationRowsLimit = React.useCallback(
-    (nextLimit: number | null, requestKey: string | null = resultsHydrationKey) => {
-      setHydrationRowsLimitState((previous) => {
-        if (previous.requestKey === requestKey && previous.limit === nextLimit) {
-          return previous;
-        }
-        return {
-          requestKey,
-          limit: nextLimit,
-        };
-      });
-    },
-    [resultsHydrationKey]
-  );
-  const hydrationRowsLimitRef = React.useRef<number | null>(hydrationRowsLimit);
-  hydrationRowsLimitRef.current = hydrationRowsLimit;
-  const [hydrationFinalizeRowsReleaseKey, setHydrationFinalizeRowsReleaseKey] = React.useState<
-    string | null
-  >(null);
   const hydrationRowsReleaseVersionToken =
     resultsHydrationKey == null
       ? null
@@ -361,78 +325,17 @@ export const useSearchResultsReadModelSelectors = (
 
   const isHydrationPending =
     resultsHydrationKey != null && resultsHydrationKey !== hydratedResultsKey;
-  const shouldHoldHydrationRows =
-    resultsHydrationKey != null &&
-    (isHydrationPending ||
-      hydrationFinalizeRowsReleaseCompletedToken !== hydrationRowsReleaseVersionToken);
-  const isResultsFinalizeLaneActive = activeOverlayKey === 'search' && shouldHoldHydrationRows;
-  const pendingHydrationRowsLimit = React.useMemo(() => {
-    if (!shouldHoldHydrationRows) {
-      return null;
-    }
-    if (activeOverlayKey !== 'search') {
-      return null;
-    }
-    const sectionedRowCount = Math.max(0, listProjection.sectionedRows.length);
-    if (sectionedRowCount <= 0) {
-      return null;
-    }
-    if (shouldHydrateResultsForRender && isVisualSyncPending) {
-      return 0;
-    }
-    return Math.min(HYDRATION_PENDING_INITIAL_ROWS, sectionedRowCount);
-  }, [
-    activeOverlayKey,
-    isVisualSyncPending,
-    listProjection.sectionedRows.length,
-    shouldHydrateResultsForRender,
-    shouldHoldHydrationRows,
-  ]);
-  const effectiveHydrationRowsLimit = hydrationRowsLimit ?? pendingHydrationRowsLimit;
-  const resultsFinalizeLaneStateRef = React.useRef<boolean | null>(null);
-  React.useEffect(() => {
-    if (resultsFinalizeLaneStateRef.current === isResultsFinalizeLaneActive) {
-      return;
-    }
-    resultsFinalizeLaneStateRef.current = isResultsFinalizeLaneActive;
-    emitRuntimeWriteSpan({
-      label: 'results_finalize_lane_state',
-      operationId: hydrationOperationId ?? searchRequestIdentity ?? 'hydration-sync-no-request',
-      activeOverlayKey,
-      searchRequestId,
-      resultsHydrationKey,
-      isResultsFinalizeLaneActive,
-      isHydrationPending,
-      hydrationRowsReleasePending:
-        hydrationFinalizeRowsReleaseCompletedToken !== hydrationRowsReleaseVersionToken,
-      shouldHydrateResultsForRender,
-    });
-  }, [
-    activeOverlayKey,
-    emitRuntimeWriteSpan,
-    hydrationFinalizeRowsReleaseCompletedToken,
-    hydrationOperationId,
-    hydrationRowsReleaseVersionToken,
-    isHydrationPending,
-    isResultsFinalizeLaneActive,
-    resultsHydrationKey,
-    searchRequestIdentity,
-    searchRequestId,
-    shouldHydrateResultsForRender,
-  ]);
+  const isResultsHydrationSettled =
+    !isHydrationPending &&
+    hydrationFinalizeRowsReleaseCompletedToken === hydrationRowsReleaseVersionToken;
 
   React.useEffect(() => {
-    setHydrationRowsLimit(null);
-    setHydrationFinalizeRowsReleaseKey(null);
     setHydrationFinalizeRowsReleaseCompletedToken(null);
   }, [resultsHydrationKey]);
 
   React.useEffect(() => {
     if (!resultsHydrationKey) {
-      setHydrationRowsLimit(null);
-      setHydrationFinalizeRowsReleaseKey(null);
       setHydrationFinalizeRowsReleaseCompletedToken(null);
-      phaseBMaterializerRef.current.resetHydrationRamp();
       return;
     }
 
@@ -440,167 +343,34 @@ export const useSearchResultsReadModelSelectors = (
       return;
     }
 
-    phaseBMaterializerRef.current.resetHydrationRamp();
-
     if (activeOverlayKey !== 'search') {
-      setHydrationRowsLimit(null);
-      setHydrationFinalizeRowsReleaseKey(resultsHydrationKey);
       setHydrationFinalizeRowsReleaseCompletedToken(hydrationRowsReleaseVersionToken);
-      return;
     }
-    setHydrationRowsLimit(null);
   }, [
     activeOverlayKey,
     isHydrationPending,
-    phaseBMaterializerRef,
     resultsHydrationKey,
-    setHydrationRowsLimit,
     hydrationRowsReleaseVersionToken,
   ]);
 
+  // When hydration completes (key committed), mark rows release as done immediately.
   React.useEffect(() => {
     if (!resultsHydrationKey || isHydrationPending) {
       return;
     }
-    if (hydrationFinalizeRowsReleaseKey !== resultsHydrationKey) {
-      return;
-    }
-    if (activeOverlayKey !== 'search') {
-      setHydrationRowsLimit(null);
-      setHydrationFinalizeRowsReleaseCompletedToken(hydrationRowsReleaseVersionToken);
-      return;
-    }
-
-    const sectionedRowCount = listProjection.sectionedRows.length;
-    if (sectionedRowCount <= 0) {
-      setHydrationRowsLimit(null);
-      setHydrationFinalizeRowsReleaseCompletedToken(hydrationRowsReleaseVersionToken);
-      return;
-    }
-    const minimumStartRows = Math.min(
-      sectionedRowCount,
-      Math.max(0, pendingHydrationRowsLimit ?? HYDRATION_PENDING_INITIAL_ROWS)
-    );
-    const previousRowsLimit = Math.max(0, hydrationRowsLimitRef.current ?? 0);
-    const startRows = Math.min(sectionedRowCount, Math.max(previousRowsLimit, minimumStartRows));
-    const rampInitialRows =
-      startRows > 0 ? startRows : Math.min(sectionedRowCount, HYDRATION_PENDING_INITIAL_ROWS);
-    if (rampInitialRows >= sectionedRowCount) {
-      setHydrationRowsLimit(sectionedRowCount);
-      setHydrationFinalizeRowsReleaseCompletedToken(hydrationRowsReleaseVersionToken);
-      return;
-    }
-    setHydrationRowsLimit(rampInitialRows);
-    return phaseBMaterializerRef.current.scheduleHydrationRamp({
-      operationId: hydrationOperationId ?? resultsHydrationKey,
-      initialRows: rampInitialRows,
-      targetRows: sectionedRowCount,
-      stepRows: HYDRATION_RAMP_STEP_ROWS,
-      frameBudgetMs: HYDRATION_RAMP_FRAME_BUDGET_MS,
-      resolveStepRows: ({ pressure, defaultStepRows }) => {
-        if (isVisualSyncPending || runOneCommitSpanPressureActive) {
-          return 1;
-        }
-        if (!shouldHydrateResultsForRender) {
-          return defaultStepRows;
-        }
-        if (pressure === 'critical') {
-          return 1;
-        }
-        if (pressure === 'pressured') {
-          return Math.min(2, defaultStepRows);
-        }
-        return Math.min(2, defaultStepRows);
-      },
-      onStep: setHydrationRowsLimit,
-      onComplete: () => {
-        setHydrationRowsLimit(sectionedRowCount);
-        setHydrationFinalizeRowsReleaseCompletedToken(hydrationRowsReleaseVersionToken);
-      },
-    });
+    setHydrationFinalizeRowsReleaseCompletedToken(hydrationRowsReleaseVersionToken);
   }, [
-    activeOverlayKey,
-    hydrationFinalizeRowsReleaseKey,
-    hydrationOperationId,
     hydrationRowsReleaseVersionToken,
     isHydrationPending,
-    listProjection.sectionedRows.length,
-    pendingHydrationRowsLimit,
-    phaseBMaterializerRef,
     resultsHydrationKey,
-    setHydrationRowsLimit,
-    shouldHydrateResultsForRender,
-    isVisualSyncPending,
-    runOneCommitSpanPressureActive,
-    setHydrationFinalizeRowsReleaseCompletedToken,
   ]);
 
-  const listRenderKeyFlipDurationMsRef = React.useRef<number | null>(null);
-  const rowsForRenderBuildStatsRef = React.useRef<{
-    rowsForRenderCount: number;
-    effectiveHydrationRowsLimit: number | null;
-    sectionedRowCount: number;
-    isFilterTogglePending: boolean;
-  } | null>(null);
   const rowsForRender = React.useMemo(() => {
-    const buildStartedAtMs = getNowMs();
     if (isFilterTogglePending) {
-      const durationMs = getNowMs() - buildStartedAtMs;
-      listRenderKeyFlipDurationMsRef.current = durationMs;
-      rowsForRenderBuildStatsRef.current = {
-        rowsForRenderCount: 0,
-        effectiveHydrationRowsLimit,
-        sectionedRowCount: listProjection.sectionedRows.length,
-        isFilterTogglePending: true,
-      };
       return EMPTY_RESULTS;
     }
-    const hydratedRows = buildHydratedResultsData({
-      sectionedResultsData: listProjection.sectionedRows,
-      maxHydratedRows: effectiveHydrationRowsLimit,
-    });
-    const durationMs = getNowMs() - buildStartedAtMs;
-    listRenderKeyFlipDurationMsRef.current = durationMs;
-    rowsForRenderBuildStatsRef.current = {
-      rowsForRenderCount: hydratedRows.length,
-      effectiveHydrationRowsLimit,
-      sectionedRowCount: listProjection.sectionedRows.length,
-      isFilterTogglePending: false,
-    };
-    return hydratedRows;
-  }, [effectiveHydrationRowsLimit, isFilterTogglePending, listProjection.sectionedRows]);
-  React.useEffect(() => {
-    const durationMs = listRenderKeyFlipDurationMsRef.current;
-    const stats = rowsForRenderBuildStatsRef.current;
-    if (durationMs == null || stats == null) {
-      return;
-    }
-    mapQueryBudget.recordRuntimeAttributionDurationMs('list_render_key_flip', durationMs);
-    emitRuntimeWriteSpan({
-      label: 'rows_for_render_build',
-      searchRequestId,
-      resultsHydrationKey,
-      activeTab,
-      durationMs,
-      rowsForRenderCount: stats.rowsForRenderCount,
-      effectiveHydrationRowsLimit: stats.effectiveHydrationRowsLimit,
-      sectionedRowCount: stats.sectionedRowCount,
-      isFilterTogglePending: stats.isFilterTogglePending,
-      shouldHydrateResultsForRender,
-      runOneCommitSpanPressureActive,
-    });
-    listRenderKeyFlipDurationMsRef.current = null;
-    rowsForRenderBuildStatsRef.current = null;
-  }, [
-    activeTab,
-    emitRuntimeWriteSpan,
-    mapQueryBudget,
-    resultsHydrationKey,
-    rowsForRender,
-    runOneCommitSpanPressureActive,
-    searchRequestId,
-    shouldHydrateResultsForRender,
-  ]);
+    return listProjection.sectionedRows;
+  }, [isFilterTogglePending, listProjection.sectionedRows]);
 
   const renderListItem = React.useCallback<
     NonNullable<FlashListProps<ResultsListItem>['renderItem']>
@@ -805,15 +575,27 @@ export const useSearchResultsReadModelSelectors = (
     shouldUseResultsHeaderBlur,
   ]);
 
+  // Use a ref for hydrationOperationId to avoid cancelling in-flight hydration
+  // commits when the operationId transitions (e.g. shortcut:N → request UUID
+  // as the handoff coordinator settles). The operationId is a telemetry label,
+  // not a functional input to the commit decision.
+  const hydrationOperationIdRef = React.useRef(hydrationOperationId);
+  hydrationOperationIdRef.current = hydrationOperationId;
+  const searchRequestIdentityRef = React.useRef(searchRequestIdentity);
+  searchRequestIdentityRef.current = searchRequestIdentity;
   React.useEffect(() => {
+    const resolveOpId = () =>
+      hydrationOperationIdRef.current ?? searchRequestIdentityRef.current ?? 'hydration-sync-no-request';
     if (activeOverlayKey === 'search' && !allowHydrationFinalizeCommit) {
+      // Do not finalize hydration while marker reveal lanes are active. This keeps
+      // list hydration from co-committing with map reveal work in the same window.
       phaseBMaterializerRef.current.resetHydrationCommit();
       return () => {
         phaseBMaterializerRef.current.resetHydrationCommit();
       };
     }
     return phaseBMaterializerRef.current.syncHydrationCommit({
-      operationId: hydrationOperationId ?? searchRequestIdentity ?? 'hydration-sync-no-request',
+      operationId: resolveOpId(),
       pendingHydrationKey: resultsHydrationKey,
       hydratedHydrationKey: hydratedResultsKey,
       activeOverlayKey,
@@ -828,7 +610,7 @@ export const useSearchResultsReadModelSelectors = (
         );
         emitRuntimeWriteSpan({
           label: 'hydration_finalize_key_commit',
-          operationId: hydrationOperationId ?? searchRequestIdentity ?? 'hydration-sync-no-request',
+          operationId: resolveOpId(),
           activeOverlayKey,
           searchRequestId,
           resultsHydrationKey: nextHydrationKey,
@@ -837,9 +619,7 @@ export const useSearchResultsReadModelSelectors = (
       },
       onFinalizeRowsReleaseReady: (operationId) => {
         const releaseStartedAtMs = getNowMs();
-        setHydrationFinalizeRowsReleaseKey((previous) =>
-          previous === operationId ? previous : operationId
-        );
+        setHydrationFinalizeRowsReleaseCompletedToken(hydrationRowsReleaseVersionToken);
         const durationMs = getNowMs() - releaseStartedAtMs;
         mapQueryBudget.recordRuntimeAttributionDurationMs(
           'hydration_finalize_rows_release',
@@ -860,18 +640,13 @@ export const useSearchResultsReadModelSelectors = (
     allowHydrationFinalizeCommit,
     emitRuntimeWriteSpan,
     hydratedResultsKey,
-    hydrationOperationId,
     mapQueryBudget,
     phaseBMaterializerRef,
     resultsHydrationKey,
-    searchRequestIdentity,
     setHydratedResultsKeySync,
   ]);
 
   const lastResultsViewabilityLogRef = React.useRef(0);
-  const isHydrationRowsLimited =
-    effectiveHydrationRowsLimit != null &&
-    effectiveHydrationRowsLimit < listProjection.sectionedRows.length;
   const resultsViewabilityConfig = React.useMemo(
     () => ({ itemVisiblePercentThreshold: 1, minimumViewTime: 16 }),
     []
@@ -898,9 +673,9 @@ export const useSearchResultsReadModelSelectors = (
 
   const flashListRuntimeProps = React.useMemo(
     () => ({
-      drawDistance: isHydrationRowsLimited ? 220 : 420,
+      drawDistance: 260,
       overrideProps: {
-        initialDrawBatchSize: isHydrationRowsLimited ? 2 : 4,
+        initialDrawBatchSize: 2,
       },
       ...(shouldLogResultsViewability
         ? {
@@ -911,7 +686,6 @@ export const useSearchResultsReadModelSelectors = (
     }),
     [
       handleResultsViewableItemsChanged,
-      isHydrationRowsLimited,
       resultsViewabilityConfig,
       shouldLogResultsViewability,
     ]
@@ -919,7 +693,7 @@ export const useSearchResultsReadModelSelectors = (
 
   return {
     safeResultsCount: listProjection.safeResultsData.length,
-    isResultsFinalizeLaneActive,
+    isResultsHydrationSettled,
     rowsForRender,
     renderListItem,
     listFooterComponent,

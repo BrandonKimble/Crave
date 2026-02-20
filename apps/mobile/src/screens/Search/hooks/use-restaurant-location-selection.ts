@@ -84,7 +84,7 @@ export const useRestaurantLocationSelection = ({
         longitude?: number | null;
         googlePlaceId?: string | null;
       } | null
-    ) => {
+    ): boolean => {
       if (
         !location ||
         typeof location.latitude !== 'number' ||
@@ -113,12 +113,12 @@ export const useRestaurantLocationSelection = ({
       } | null,
       options: { isPrimary: boolean; locationIndex: number }
     ) => {
-      if (!isValidMapLocation(location)) {
+      if (!location || !isValidMapLocation(location)) {
         return;
       }
-      const dedupeKey = `${Math.round(location.latitude * 1e5)}:${Math.round(
-        location.longitude * 1e5
-      )}`;
+      const lat = location.latitude!;
+      const lng = location.longitude!;
+      const dedupeKey = `${Math.round(lat * 1e5)}:${Math.round(lng * 1e5)}`;
       if (seen.has(dedupeKey)) {
         return;
       }
@@ -127,8 +127,8 @@ export const useRestaurantLocationSelection = ({
         location.locationId ?? `${restaurant.restaurantId}-loc-${options.locationIndex}`;
       resolved.push({
         locationId,
-        latitude: location.latitude as number,
-        longitude: location.longitude as number,
+        latitude: lat,
+        longitude: lng,
         googlePlaceId: location.googlePlaceId as string,
         isPrimary: options.isPrimary,
         locationIndex: options.locationIndex,

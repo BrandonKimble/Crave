@@ -45,8 +45,6 @@ const SEGMENT_HIGHLIGHT_SPRING: WithSpringConfig = {
   stiffness: 220,
   mass: 1,
   overshootClamping: false,
-  restDisplacementThreshold: 0.2,
-  restSpeedThreshold: 0.2,
 };
 const SEGMENT_HIGHLIGHT_WIDTH_SPRING: WithSpringConfig = {
   ...SEGMENT_HIGHLIGHT_SPRING,
@@ -523,8 +521,8 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
 };
 
 const buildToggleBaseStyle = (height: number) => ({
-  flexDirection: 'row',
-  alignItems: 'center',
+  flexDirection: 'row' as const,
+  alignItems: 'center' as const,
   borderRadius: TOGGLE_BORDER_RADIUS,
   borderWidth: 0,
   borderColor: 'transparent',
@@ -681,5 +679,5 @@ const styles = StyleSheet.create({
   },
 });
 
-export type { SegmentValue, SearchFiltersLayoutCache };
+export type { SegmentValue };
 export default React.memo(SearchFilters);

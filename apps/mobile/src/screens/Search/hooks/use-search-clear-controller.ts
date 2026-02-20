@@ -1,8 +1,7 @@
 import React from 'react';
 import { Keyboard } from 'react-native';
 import type { TextInput } from 'react-native';
-
-import type { RestaurantResult } from '../../../types';
+import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 
 type ClearSearchStateOptions = {
   shouldRefocusInput?: boolean;
@@ -17,15 +16,13 @@ type RestaurantFocusSessionRefState = {
   hasAppliedInitialMultiLocationZoomOut: boolean;
 };
 
-type UseSearchClearControllerArgs<TResult, TSearchMode, TError, TSuggestion> = {
+type UseSearchClearControllerArgs<TSearchMode, TError, TSuggestion> = {
   isRestaurantOverlayVisible: boolean;
   isSearchSessionActive: boolean;
-  results: TResult | null;
-  submittedQuery: string;
   isSearchLoading: boolean;
-  isLoadingMore: boolean;
   isSuggestionPanelActive: boolean;
   isSuggestionPanelVisible: boolean;
+  searchRuntimeBus: SearchRuntimeBus;
   inputRef: React.RefObject<TextInput | null>;
   ignoreNextSearchBlurRef: React.MutableRefObject<boolean>;
   profileDismissBehaviorRef: React.MutableRefObject<'restore' | 'clear'>;
@@ -60,21 +57,12 @@ type UseSearchClearControllerArgs<TResult, TSearchMode, TError, TSuggestion> = {
   setIsAutocompleteSuppressed: React.Dispatch<React.SetStateAction<boolean>>;
   setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
   setQuery: React.Dispatch<React.SetStateAction<string>>;
-  setResults: React.Dispatch<React.SetStateAction<TResult | null>>;
-  setMarkerRestaurants: React.Dispatch<React.SetStateAction<RestaurantResult[]>>;
-  setSubmittedQuery: React.Dispatch<React.SetStateAction<string>>;
   setError: React.Dispatch<React.SetStateAction<TError | null>>;
   setSuggestions: React.Dispatch<React.SetStateAction<TSuggestion[]>>;
   setIsSearchSessionActive: React.Dispatch<React.SetStateAction<boolean>>;
   setSearchMode: React.Dispatch<React.SetStateAction<TSearchMode | null>>;
-  setHasMoreFood: React.Dispatch<React.SetStateAction<boolean>>;
-  setHasMoreRestaurants: React.Dispatch<React.SetStateAction<boolean>>;
-  setCurrentPage: React.Dispatch<React.SetStateAction<number>>;
-  setIsLoadingMore: React.Dispatch<React.SetStateAction<boolean>>;
-  setIsPaginationExhausted: React.Dispatch<React.SetStateAction<boolean>>;
   resetShortcutCoverageState: () => void;
   onCloseResultsUiReset: () => void;
-  emptyRestaurants: RestaurantResult[];
 };
 
 type UseSearchClearControllerResult = {
@@ -83,15 +71,13 @@ type UseSearchClearControllerResult = {
   handleCloseResults: () => void;
 };
 
-export const useSearchClearController = <TResults, TSearchMode, TError, TSuggestion>({
+export const useSearchClearController = <TSearchMode, TError, TSuggestion>({
   isRestaurantOverlayVisible,
   isSearchSessionActive,
-  results,
-  submittedQuery,
   isSearchLoading,
-  isLoadingMore,
   isSuggestionPanelActive,
   isSuggestionPanelVisible,
+  searchRuntimeBus,
   inputRef,
   ignoreNextSearchBlurRef,
   profileDismissBehaviorRef,
@@ -126,23 +112,13 @@ export const useSearchClearController = <TResults, TSearchMode, TError, TSuggest
   setIsAutocompleteSuppressed,
   setShowSuggestions,
   setQuery,
-  setResults,
-  setMarkerRestaurants,
-  setSubmittedQuery,
   setError,
   setSuggestions,
   setIsSearchSessionActive,
   setSearchMode,
-  setHasMoreFood,
-  setHasMoreRestaurants,
-  setCurrentPage,
-  setIsLoadingMore,
-  setIsPaginationExhausted,
   resetShortcutCoverageState,
   onCloseResultsUiReset,
-  emptyRestaurants,
 }: UseSearchClearControllerArgs<
-  TResults,
   TSearchMode,
   TError,
   TSuggestion
@@ -163,11 +139,12 @@ export const useSearchClearController = <TResults, TSearchMode, TError, TSuggest
           return;
         }
       }
+      const busState = searchRuntimeBus.getState();
       const hasOriginRestorePending = beginSearchCloseRestore({
-        allowFallback: isSearchSessionActive || Boolean(results) || submittedQuery.length > 0,
+        allowFallback: isSearchSessionActive || Boolean(busState.results) || busState.submittedQuery.length > 0,
       });
       isClearingSearchRef.current = true;
-      if (isSearchSessionActive || Boolean(results) || submittedQuery.length > 0) {
+      if (isSearchSessionActive || Boolean(busState.results) || busState.submittedQuery.length > 0) {
         setSearchShortcutsFadeResetKey((current) => current + 1);
       }
       cancelActiveSearchRequest();
@@ -185,13 +162,21 @@ export const useSearchClearController = <TResults, TSearchMode, TError, TSuggest
         setShowSuggestions(false);
       }
       setQuery('');
-      setResults(null);
-      setMarkerRestaurants(emptyRestaurants);
+      searchRuntimeBus.publish({
+        results: null,
+        resultsRequestKey: null,
+        submittedQuery: '',
+        currentPage: 1,
+        hasMoreFood: false,
+        hasMoreRestaurants: false,
+        isPaginationExhausted: false,
+        isLoadingMore: false,
+        canLoadMore: false,
+      });
       resetShortcutCoverageState();
       lodPinnedMarkersRef.current = [];
       recomputeLodPinnedMarkers(null);
       resetMapMoveFlag();
-      setSubmittedQuery('');
       setError(null);
       if (!deferSuggestionClear) {
         setSuggestions([]);
@@ -206,11 +191,6 @@ export const useSearchClearController = <TResults, TSearchMode, TError, TSuggest
       } else {
         requestDefaultPostSearchRestore();
       }
-      setHasMoreFood(false);
-      setHasMoreRestaurants(false);
-      setCurrentPage(1);
-      setIsLoadingMore(false);
-      setIsPaginationExhausted(false);
       lastAutoOpenKeyRef.current = null;
       restaurantFocusSessionRef.current = {
         restaurantId: null,
@@ -240,7 +220,6 @@ export const useSearchClearController = <TResults, TSearchMode, TError, TSuggest
       cancelAutocomplete,
       cancelPendingMutationWork,
       closeRestaurantProfileRef,
-      emptyRestaurants,
       flushPendingSearchOriginRestore,
       inputRef,
       isRestaurantOverlayVisible,
@@ -258,34 +237,25 @@ export const useSearchClearController = <TResults, TSearchMode, TError, TSuggest
       resetShortcutCoverageState,
       resetSubmitTransitionHold,
       restaurantFocusSessionRef,
-      results,
       scrollResultsToTop,
+      searchRuntimeBus,
       searchSessionQueryRef,
-      setCurrentPage,
       setError,
-      setHasMoreFood,
-      setHasMoreRestaurants,
       setIsAutocompleteSuppressed,
       setIsFilterTogglePending,
-      setIsLoadingMore,
-      setIsPaginationExhausted,
       setIsSearchFocused,
       setIsSearchSessionActive,
       setIsSuggestionPanelActive,
-      setMarkerRestaurants,
       setQuery,
       setRestaurantOnlyIntent,
-      setResults,
       setSearchMode,
       setSearchShortcutsFadeResetKey,
       setSearchTransitionVariant,
       setShowSuggestions,
-      setSubmittedQuery,
       setSuggestions,
       shortcutContentFadeMode,
       shortcutFadeDefault,
       shouldClearSearchOnProfileDismissRef,
-      submittedQuery,
     ]
   );
 
@@ -315,19 +285,19 @@ export const useSearchClearController = <TResults, TSearchMode, TError, TSuggest
     }
     ignoreNextSearchBlurRef.current = true;
     clearSearchState({
-      shouldRefocusInput: !isSearchSessionActive && !isSearchLoading && !isLoadingMore,
+      shouldRefocusInput: !isSearchSessionActive && !isSearchLoading && !searchRuntimeBus.getState().isLoadingMore,
       skipProfileDismissWait: true,
     });
   }, [
     clearSearchState,
     clearTypedQuery,
     ignoreNextSearchBlurRef,
-    isLoadingMore,
     isRestaurantOverlayVisible,
     isSearchLoading,
     isSearchSessionActive,
     isSuggestionPanelActive,
     isSuggestionPanelVisible,
+    searchRuntimeBus,
   ]);
 
   const handleCloseResults = React.useCallback(() => {

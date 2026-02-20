@@ -116,7 +116,6 @@ export const useUserLocationController = ({
 
       const position = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
-        maximumAge: 60_000,
       });
 
       const coords: Coordinate = {

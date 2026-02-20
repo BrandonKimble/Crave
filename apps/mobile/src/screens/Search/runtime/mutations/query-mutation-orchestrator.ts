@@ -57,7 +57,7 @@ type UseQueryMutationOrchestratorArgs = {
   setPriceLevels: (next: number[]) => void;
   setPreferredScoreMode: (next: ScoreMode) => void;
   setIsFilterTogglePending: (next: boolean) => void;
-  rerunActiveSearch: (options: RerunActiveSearchOptions) => Promise<boolean>;
+  rerunActiveSearch: (options: RerunActiveSearchOptions) => Promise<void>;
   priceSheetRef: React.MutableRefObject<{ requestClose: () => void } | null>;
   rankSheetRef: React.MutableRefObject<{ requestClose: () => void } | null>;
   minimumVotesFilter: number;

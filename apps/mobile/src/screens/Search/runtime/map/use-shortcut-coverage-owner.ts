@@ -9,19 +9,15 @@ import type { ViewportBoundsService } from '../viewport/viewport-bounds-service'
 import {
   buildAnchoredShortcutCoverage,
   buildRankedShortcutCoverageFeatures,
+  type ResolvedRestaurantMapLocation,
 } from './map-read-model-builder';
-
-type RestaurantLocationCandidate = {
-  locationId: string;
-  latitude: number;
-  longitude: number;
-};
+import { useSearchBus } from '../shared/search-runtime-bus';
+import { useSearchRuntimeBusSelector } from '../shared/use-search-runtime-bus-selector';
 
 type UseShortcutCoverageOwnerArgs = {
   searchMode: 'shortcut' | 'natural' | 'entity' | null;
   activeTab: 'dishes' | 'restaurants';
   scoreMode: 'coverage_display' | 'global_quality';
-  isVisualSyncPending: boolean;
   searchRequestId: string | null;
   viewportBoundsService: ViewportBoundsService;
   restaurantsById: Map<string, RestaurantResult>;
@@ -29,7 +25,7 @@ type UseShortcutCoverageOwnerArgs = {
   pickPreferredRestaurantMapLocation: (
     restaurant: RestaurantResult,
     anchor: Coordinate | null
-  ) => RestaurantLocationCandidate | null;
+  ) => ResolvedRestaurantMapLocation | null;
   getQualityColorFromScore: (score: number | null | undefined) => string;
 };
 
@@ -68,7 +64,6 @@ export const useShortcutCoverageOwner = ({
   searchMode,
   activeTab,
   scoreMode,
-  isVisualSyncPending,
   searchRequestId,
   viewportBoundsService,
   restaurantsById,
@@ -76,6 +71,14 @@ export const useShortcutCoverageOwner = ({
   pickPreferredRestaurantMapLocation,
   getQualityColorFromScore,
 }: UseShortcutCoverageOwnerArgs): UseShortcutCoverageOwnerResult => {
+  const searchRuntimeBus = useSearchBus();
+
+  const isVisualSyncPending = useSearchRuntimeBusSelector(
+    searchRuntimeBus,
+    (state) => state.isVisualSyncPending,
+    Object.is
+  );
+
   const shortcutCoverageSnapshotByRequestIdRef = React.useRef<
     Map<
       string,

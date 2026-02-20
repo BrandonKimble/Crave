@@ -28,7 +28,7 @@ type SearchOverlayHeaderChromeProps = {
   isSuggestionPanelActive: boolean;
   handleSearchBack: () => void;
   handleSearchHeaderLayout: (event: LayoutChangeEvent) => void;
-  inputRef: React.RefObject<TextInput>;
+  inputRef: React.RefObject<TextInput | null>;
   searchBarInputAnimatedStyle: React.ComponentProps<typeof SearchHeader>['inputAnimatedStyle'];
   searchBarContainerAnimatedStyle: React.ComponentProps<
     typeof SearchHeader

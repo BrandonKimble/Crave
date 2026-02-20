@@ -6,6 +6,8 @@ import { startUiFrameSampler } from '../../../../perf/ui-frame-sampler';
 import type { NaturalSearchRequest, SearchResponse } from '../../../../types';
 import type { SearchSessionController } from '../controller/search-session-controller';
 import type { RuntimeWorkScheduler } from '../scheduler/runtime-work-scheduler';
+import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
+import { useSearchRuntimeBusSelector } from '../shared/use-search-runtime-bus-selector';
 
 type HarnessMechanismEvent =
   | 'shortcut_harness_settle_eval'
@@ -70,26 +72,20 @@ type UseShortcutHarnessObserverArgs = {
   searchSessionController: SearchSessionController;
   submitShortcutSearchRef: SubmitShortcutSearchRef;
   scoreMode: NaturalSearchRequest['scoreMode'];
-  setPreferredScoreMode: (scoreMode: NaturalSearchRequest['scoreMode']) => void;
-  mapQueryBudget: MapQueryBudgetLike;
+  setPreferredScoreMode: (scoreMode: NonNullable<NaturalSearchRequest['scoreMode']>) => void;
+  mapQueryBudget: MapQueryBudgetLike | null;
   searchMode: 'natural' | 'shortcut' | null;
   isSearchLoading: boolean;
   isLoadingMore: boolean;
-  isVisualSyncPending: boolean;
-  isShortcutCoverageLoading: boolean;
   shouldHoldMapMarkerReveal: boolean;
-  shouldHydrateResultsForRender: boolean;
   isRunOneHandoffActive: boolean;
-  results: SearchResponse | null;
   resultsRequestKey: string | null;
-  visibleSortedRestaurantMarkersCount: number;
-  visibleDotRestaurantFeaturesCount: number;
   searchInteractionRef: React.MutableRefObject<SearchInteractionState>;
   isSearchOverlay: boolean;
   isInitialCameraReady: boolean;
   runTimeoutMs: number;
   settleQuietPeriodMs: number;
-  profileHydrateRestaurantByIdRef?: React.MutableRefObject<(restaurantId: string) => void>;
+  searchRuntimeBus?: SearchRuntimeBus;
   runtimeWorkSchedulerRef?: React.MutableRefObject<RuntimeWorkScheduler>;
 };
 
@@ -132,23 +128,49 @@ export const useShortcutHarnessObserver = (
     searchMode,
     isSearchLoading,
     isLoadingMore,
-    isVisualSyncPending,
-    isShortcutCoverageLoading,
     shouldHoldMapMarkerReveal,
-    shouldHydrateResultsForRender,
     isRunOneHandoffActive,
-    results,
     resultsRequestKey,
-    visibleSortedRestaurantMarkersCount,
-    visibleDotRestaurantFeaturesCount,
     searchInteractionRef,
     isSearchOverlay,
     isInitialCameraReady,
     runTimeoutMs,
     settleQuietPeriodMs,
-    profileHydrateRestaurantByIdRef,
+    searchRuntimeBus,
     runtimeWorkSchedulerRef,
   } = args;
+
+  const results = useSearchRuntimeBusSelector(
+    searchRuntimeBus!,
+    (state) => state.results,
+    Object.is
+  );
+
+  const { visibleSortedRestaurantMarkersCount, visibleDotRestaurantFeaturesCount, isShortcutCoverageLoading } =
+    useSearchRuntimeBusSelector(
+      searchRuntimeBus!,
+      (state) => ({
+        visibleSortedRestaurantMarkersCount: state.visibleSortedRestaurantMarkersCount,
+        visibleDotRestaurantFeaturesCount: state.visibleDotRestaurantFeaturesCount,
+        isShortcutCoverageLoading: state.isShortcutCoverageLoading,
+      }),
+      (left, right) =>
+        left.visibleSortedRestaurantMarkersCount === right.visibleSortedRestaurantMarkersCount &&
+        left.visibleDotRestaurantFeaturesCount === right.visibleDotRestaurantFeaturesCount &&
+        left.isShortcutCoverageLoading === right.isShortcutCoverageLoading
+    );
+
+  const { isVisualSyncPending, shouldHydrateResultsForRender } =
+    useSearchRuntimeBusSelector(
+      searchRuntimeBus!,
+      (state) => ({
+        isVisualSyncPending: state.isVisualSyncPending,
+        shouldHydrateResultsForRender: state.shouldHydrateResultsForRender,
+      }),
+      (left, right) =>
+        left.isVisualSyncPending === right.isVisualSyncPending &&
+        left.shouldHydrateResultsForRender === right.shouldHydrateResultsForRender
+    );
 
   const isShortcutPerfHarnessScenario =
     perfHarnessConfig.enabled && perfHarnessConfig.scenario === 'search_shortcut_loop';
@@ -236,8 +258,8 @@ export const useShortcutHarnessObserver = (
     settleCandidateVisiblePinCount: number;
     settleCandidateVisibleDotCount: number;
     observedLoading: boolean;
-    mutationCoalescingProbeIssued: boolean;
-    profileCancellationProbeIssued: boolean;
+    responseObserved: boolean;
+    runStartRequestKey: string | null;
     inProgress: boolean;
     launchHandle: ReturnType<typeof setTimeout> | null;
     cooldownHandle: ReturnType<typeof setTimeout> | null;
@@ -255,8 +277,8 @@ export const useShortcutHarnessObserver = (
     settleCandidateVisiblePinCount: 0,
     settleCandidateVisibleDotCount: 0,
     observedLoading: false,
-    mutationCoalescingProbeIssued: false,
-    profileCancellationProbeIssued: false,
+    responseObserved: false,
+    runStartRequestKey: null,
     inProgress: false,
     launchHandle: null,
     cooldownHandle: null,
@@ -295,7 +317,6 @@ export const useShortcutHarnessObserver = (
     finalRequestKey: resultsRequestKey,
   });
   const shortcutShadowStateForStageRef = React.useRef(searchSessionController.getState());
-  const visibleRestaurantIdsRef = React.useRef<string[]>([]);
   const harnessInputsRef = React.useRef({
     searchMode,
     isSearchLoading,
@@ -306,6 +327,9 @@ export const useShortcutHarnessObserver = (
     shouldHydrateResultsForRender,
     isRunOneHandoffActive,
     hasResults: Boolean(results),
+    activeOperationId: searchRuntimeBus?.getState().activeOperationId ?? null,
+    activeOperationLane: searchRuntimeBus?.getState().activeOperationLane ?? 'idle',
+    isResultsHydrationSettled: searchRuntimeBus?.getState().isResultsHydrationSettled ?? true,
   });
 
   const resolveShortcutDerivedStage = React.useCallback(() => {
@@ -362,24 +386,7 @@ export const useShortcutHarnessObserver = (
   }, [getPerfNow, resolveShortcutDerivedStage]);
 
   React.useEffect(() => {
-    const ids: string[] = [];
-    for (const restaurant of results?.restaurants ?? []) {
-      const restaurantId = restaurant?.restaurantId;
-      if (typeof restaurantId !== 'string' || restaurantId.length === 0) {
-        continue;
-      }
-      if (ids.includes(restaurantId)) {
-        continue;
-      }
-      ids.push(restaurantId);
-      if (ids.length >= 2) {
-        break;
-      }
-    }
-    visibleRestaurantIdsRef.current = ids;
-  }, [results?.restaurants]);
-
-  React.useEffect(() => {
+    const runtimeState = searchRuntimeBus?.getState();
     harnessInputsRef.current = {
       searchMode,
       isSearchLoading,
@@ -390,6 +397,9 @@ export const useShortcutHarnessObserver = (
       shouldHydrateResultsForRender,
       isRunOneHandoffActive,
       hasResults: Boolean(results),
+      activeOperationId: runtimeState?.activeOperationId ?? null,
+      activeOperationLane: runtimeState?.activeOperationLane ?? 'idle',
+      isResultsHydrationSettled: runtimeState?.isResultsHydrationSettled ?? true,
     };
     syncShortcutTraceStage();
   }, [
@@ -402,6 +412,7 @@ export const useShortcutHarnessObserver = (
     shouldHoldMapMarkerReveal,
     shouldHydrateResultsForRender,
     isRunOneHandoffActive,
+    searchRuntimeBus,
     syncShortcutTraceStage,
   ]);
 
@@ -433,67 +444,6 @@ export const useShortcutHarnessObserver = (
   const evaluateShortcutHarnessSettleBoundaryRef = React.useRef<
     (source: 'shadow_subscription' | 'settle_retry_timeout') => void
   >(() => undefined);
-
-  const maybeExerciseProfileIntentCancellation = React.useCallback(() => {
-    if (!isShortcutPerfHarnessScenario) {
-      return;
-    }
-    const lifecycle = shortcutHarnessLifecycleRef.current;
-    if (lifecycle.profileCancellationProbeIssued) {
-      return;
-    }
-    const ids = visibleRestaurantIdsRef.current;
-    if (ids.length < 2 || !profileHydrateRestaurantByIdRef) {
-      return;
-    }
-    lifecycle.profileCancellationProbeIssued = true;
-    profileHydrateRestaurantByIdRef.current(ids[0]);
-    profileHydrateRestaurantByIdRef.current(ids[1]);
-  }, [isShortcutPerfHarnessScenario, profileHydrateRestaurantByIdRef]);
-
-  const maybeExerciseMutationCoalescing = React.useCallback(() => {
-    if (!isShortcutPerfHarnessScenario) {
-      return;
-    }
-    const lifecycle = shortcutHarnessLifecycleRef.current;
-    if (lifecycle.mutationCoalescingProbeIssued) {
-      return;
-    }
-    lifecycle.mutationCoalescingProbeIssued = true;
-    const submitShortcutSearch = () =>
-      submitShortcutSearchRef.current({
-        targetTab: perfHarnessConfig.shortcutLoop.targetTab,
-        label: perfHarnessConfig.shortcutLoop.label,
-        preserveSheetState: perfHarnessConfig.shortcutLoop.preserveSheetState,
-        transitionFromDockedPolls: perfHarnessConfig.shortcutLoop.transitionFromDockedPolls,
-        scoreMode: perfHarnessConfig.shortcutLoop.scoreMode,
-      });
-    void submitShortcutSearch().catch((error) => {
-      emitSearchPerfEvent('Harness', {
-        event: 'shortcut_loop_run_error',
-        harnessRunId: shortcutHarnessRunId,
-        nowMs: roundPerfValue(getPerfNow()),
-        runNumber: lifecycle.runNumber,
-        message: error instanceof Error ? error.message : 'unknown error',
-      });
-    });
-    void submitShortcutSearch().catch((error) => {
-      emitSearchPerfEvent('Harness', {
-        event: 'shortcut_loop_run_error',
-        harnessRunId: shortcutHarnessRunId,
-        nowMs: roundPerfValue(getPerfNow()),
-        runNumber: lifecycle.runNumber,
-        message: error instanceof Error ? error.message : 'unknown error',
-      });
-    });
-  }, [
-    emitSearchPerfEvent,
-    getPerfNow,
-    isShortcutPerfHarnessScenario,
-    roundPerfValue,
-    shortcutHarnessRunId,
-    submitShortcutSearchRef,
-  ]);
 
   const recordProfilerSpan = React.useCallback(
     (payload: {
@@ -634,9 +584,11 @@ export const useShortcutHarnessObserver = (
       lifecycle.settleCandidateVisiblePinCount = 0;
       lifecycle.settleCandidateVisibleDotCount = 0;
       lifecycle.observedLoading = false;
+      lifecycle.responseObserved = false;
+      lifecycle.runStartRequestKey = shortcutHarnessSnapshotRef.current.finalRequestKey;
       lifecycle.inProgress = true;
       shortcutProfilerSpanBufferRef.current = [];
-      mapQueryBudget.resetRun();
+      mapQueryBudget?.resetRun();
       searchSessionController.reset();
       runtimeWorkSchedulerRef?.current.resetPressureWindow();
       schedulerPressureBaselineRef.current =
@@ -723,7 +675,7 @@ export const useShortcutHarnessObserver = (
       const now = getPerfNow();
       const snapshot = shortcutHarnessSnapshotRef.current;
       const shadowState = searchSessionController.getState();
-      const mapRuntimeSnapshot = mapQueryBudget.snapshot();
+      const mapRuntimeSnapshot = mapQueryBudget?.snapshot() ?? {};
       const schedulerPressureSnapshot = runtimeWorkSchedulerRef?.current.snapshotPressure() ?? null;
       const schedulerBaselineSnapshot = schedulerPressureBaselineRef.current;
       const schedulerYieldCount = Math.max(
@@ -752,6 +704,9 @@ export const useShortcutHarnessObserver = (
       lifecycle.settleCandidateVisibleCount = 0;
       lifecycle.settleCandidateVisiblePinCount = 0;
       lifecycle.settleCandidateVisibleDotCount = 0;
+      lifecycle.observedLoading = false;
+      lifecycle.responseObserved = false;
+      lifecycle.runStartRequestKey = null;
       schedulerPressureBaselineRef.current = null;
       emitSearchPerfEvent('Harness', {
         event: 'shortcut_loop_run_complete',
@@ -779,8 +734,6 @@ export const useShortcutHarnessObserver = (
       });
       if (lifecycle.completedRuns >= perfHarnessConfig.runs) {
         if (!lifecycle.loopCompleteEmitted) {
-          maybeExerciseProfileIntentCancellation();
-          maybeExerciseMutationCoalescing();
           lifecycle.loopCompleteEmitted = true;
           emitSearchPerfEvent('Harness', {
             event: 'shortcut_loop_complete',
@@ -802,8 +755,6 @@ export const useShortcutHarnessObserver = (
       emitSearchPerfEvent,
       getPerfNow,
       mapQueryBudget,
-      maybeExerciseMutationCoalescing,
-      maybeExerciseProfileIntentCancellation,
       roundPerfValue,
       searchSessionController,
       runtimeWorkSchedulerRef,
@@ -852,33 +803,87 @@ export const useShortcutHarnessObserver = (
         lifecycle.settleCandidateVisibleDotCount = 0;
       };
       const isShadowConverged = (): boolean => {
-        const shadowState = searchSessionController.getState();
         const usesShadowConvergenceBoundary =
           perfHarnessConfig.shortcutLoop.settleBoundaryPolicy ===
           'shadow_converged_or_quiet_snapshot';
+        if (!usesShadowConvergenceBoundary) {
+          return false;
+        }
+        const shadowState = searchSessionController.getState();
         return (
-          usesShadowConvergenceBoundary &&
-          shadowState.phase === 'settled' &&
-          shadowState.lastEventType === 'settled'
+          shadowState.phase === 'settled' && shadowState.lastEventType === 'settled'
         );
       };
       const settleBlocked = (shadowConverged: boolean): boolean => {
+        const settleBoundaryPolicy = perfHarnessConfig.shortcutLoop.settleBoundaryPolicy;
+        const usesShadowConvergenceBoundary =
+          settleBoundaryPolicy === 'shadow_converged_or_quiet_snapshot';
         const inputs = harnessInputsRef.current;
+        const runtimeState = searchRuntimeBus?.getState();
+        const activeOperationId = runtimeState?.activeOperationId ?? inputs.activeOperationId;
+        const activeOperationLane = runtimeState?.activeOperationLane ?? inputs.activeOperationLane;
+        const isResultsHydrationSettled =
+          runtimeState?.isResultsHydrationSettled ?? inputs.isResultsHydrationSettled;
+        const shouldHydrateResultsForRenderRuntime =
+          runtimeState?.shouldHydrateResultsForRender ?? inputs.shouldHydrateResultsForRender;
+        const schedulerPressure = runtimeWorkSchedulerRef?.current.snapshotPressure() ?? null;
+        const snapshot = shortcutHarnessSnapshotRef.current;
+        if (
+          snapshot.finalRequestKey &&
+          snapshot.finalRequestKey !== lifecycle.runStartRequestKey
+        ) {
+          lifecycle.responseObserved = true;
+        }
         if (inputs.isSearchLoading) {
           lifecycle.observedLoading = true;
+          return true;
+        }
+        if (
+          activeOperationId != null ||
+          activeOperationLane !== 'idle' ||
+          !isResultsHydrationSettled ||
+          shouldHydrateResultsForRenderRuntime
+        ) {
+          lifecycle.observedLoading = true;
+        }
+        if (!snapshot.finalRequestKey) {
+          return true;
+        }
+        if (!lifecycle.observedLoading && !lifecycle.responseObserved) {
+          return true;
+        }
+        if (inputs.isLoadingMore || inputs.isShortcutCoverageLoading) {
+          return true;
+        }
+        if (!usesShadowConvergenceBoundary) {
+          if (inputs.shouldHoldMapMarkerReveal || shouldHydrateResultsForRenderRuntime) {
+            return true;
+          }
+          if (
+            snapshot.finalVisibleCount > 0 &&
+            snapshot.finalVisiblePinCount <= 0 &&
+            snapshot.finalVisibleDotCount <= 0
+          ) {
+            return true;
+          }
+          return false;
+        }
+        if (activeOperationId != null || activeOperationLane !== 'idle') {
+          return true;
+        }
+        if (!isResultsHydrationSettled || shouldHydrateResultsForRenderRuntime) {
+          return true;
+        }
+        if ((schedulerPressure?.queueDepth ?? 0) > 0) {
           return true;
         }
         if (!shadowConverged && inputs.searchMode === 'shortcut' && inputs.isRunOneHandoffActive) {
           return true;
         }
-        if (!shadowConverged && (!lifecycle.observedLoading || inputs.searchMode !== 'shortcut')) {
-          return true;
-        }
         if (
-          !shadowConverged &&
-          (inputs.isVisualSyncPending ||
-            inputs.shouldHoldMapMarkerReveal ||
-            inputs.shouldHydrateResultsForRender)
+          inputs.isVisualSyncPending ||
+          inputs.shouldHoldMapMarkerReveal ||
+          shouldHydrateResultsForRenderRuntime
         ) {
           return true;
         }
@@ -886,7 +891,7 @@ export const useShortcutHarnessObserver = (
           return true;
         }
         const interactionState = searchInteractionRef.current;
-        if (inputs.isLoadingMore || (!shadowConverged && interactionState.isInteracting)) {
+        if (!shadowConverged && interactionState.isInteracting) {
           return true;
         }
         return false;
@@ -991,6 +996,8 @@ export const useShortcutHarnessObserver = (
       emitHarnessMechanismEvent,
       getPerfNow,
       isShortcutPerfHarnessScenario,
+      runtimeWorkSchedulerRef,
+      searchRuntimeBus,
       searchInteractionRef,
       searchSessionController,
       settleQuietPeriodMs,
@@ -1005,6 +1012,15 @@ export const useShortcutHarnessObserver = (
     return searchSessionController.subscribe((result) => {
       shortcutShadowStateForStageRef.current = result.state;
       syncShortcutTraceStage();
+      // If the search session errored, complete the run immediately
+      // instead of waiting for the full timeout.
+      if (
+        result.state.phase === 'error' &&
+        shortcutHarnessLifecycleRef.current.inProgress
+      ) {
+        completeShortcutHarnessRunRef.current('error');
+        return;
+      }
       evaluateShortcutHarnessSettleBoundary('shadow_subscription');
     });
   }, [
@@ -1031,8 +1047,8 @@ export const useShortcutHarnessObserver = (
     lifecycle.settleCandidateVisiblePinCount = 0;
     lifecycle.settleCandidateVisibleDotCount = 0;
     lifecycle.observedLoading = false;
-    lifecycle.mutationCoalescingProbeIssued = false;
-    lifecycle.profileCancellationProbeIssued = false;
+    lifecycle.responseObserved = false;
+    lifecycle.runStartRequestKey = null;
     lifecycle.inProgress = false;
     const now = getPerfNow();
     emitSearchPerfEvent('Harness', {
@@ -1074,8 +1090,8 @@ export const useShortcutHarnessObserver = (
         lifecycle.settleCandidateVisiblePinCount = 0;
         lifecycle.settleCandidateVisibleDotCount = 0;
         lifecycle.observedLoading = false;
-        lifecycle.mutationCoalescingProbeIssued = false;
-        lifecycle.profileCancellationProbeIssued = false;
+        lifecycle.responseObserved = false;
+        lifecycle.runStartRequestKey = null;
       }
     };
   }, [

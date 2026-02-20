@@ -74,7 +74,7 @@ const useSearchSheet = ({
       return;
     }
     if (!panelVisible) {
-      sheetTranslateY.value = snapPoints.hidden;
+      sheetTranslateY.value = snapPoints.hidden ?? SCREEN_HEIGHT;
     }
   }, [isSearchOverlay, panelVisible, sheetTranslateY, snapPoints.hidden, suspendHiddenSync]);
 
@@ -113,7 +113,7 @@ const useSearchSheet = ({
     setSnapTo(null);
     snapToRef.current = null;
     if (isSearchOverlay) {
-      sheetTranslateY.value = snapPoints.hidden;
+      sheetTranslateY.value = snapPoints.hidden ?? SCREEN_HEIGHT;
     }
   }, [isSearchOverlay, sheetTranslateY, snapPoints.hidden]);
 
@@ -139,7 +139,7 @@ const useSearchSheet = ({
       setSnapTo(null);
       snapToRef.current = null;
       if (isSearchOverlay) {
-        sheetTranslateY.value = snapPoints[position];
+        sheetTranslateY.value = snapPoints[position] ?? SCREEN_HEIGHT;
       }
     },
     [isSearchOverlay, setPanelVisible, setSheetState, setSnapTo, sheetTranslateY, snapPoints]

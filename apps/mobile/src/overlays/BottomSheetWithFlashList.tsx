@@ -234,7 +234,7 @@ type BottomSheetWithFlashListProps<T> = {
   renderItem: FlashListProps<T>['renderItem'];
   keyExtractor?: FlashListProps<T>['keyExtractor'];
   estimatedItemSize: number;
-  listRef?: React.RefObject<FlashListRef<T>>;
+  listRef?: React.RefObject<FlashListRef<T> | null>;
   headerComponent?: React.ReactNode;
   backgroundComponent?: React.ReactNode;
   overlayComponent?: React.ReactNode;
@@ -1330,7 +1330,7 @@ const BottomSheetWithFlashList = <T,>({
             <View style={[{ flex: 1 }, contentSurfaceStyle]}>
               <AnimatedFlashList
                 key={listKey}
-                ref={flashListRef as React.RefObject<FlashList<T>>}
+                ref={flashListRef as React.RefObject<FlashListRef<T>>}
                 {...resolvedFlashListProps}
                 data={data}
                 renderItem={renderItem}

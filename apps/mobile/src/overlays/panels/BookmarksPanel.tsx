@@ -474,7 +474,6 @@ export const useBookmarksPanelSpec = ({
     preventSwipeDismiss: true,
     flashListProps: {
       numColumns: 2,
-      columnWrapperStyle: styles.columnWrapper,
     },
   };
 };

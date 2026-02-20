@@ -18,8 +18,8 @@ const CTA_COLOR = themeColors.accentDark ?? '#7c3aed';
 const SignInScreen: React.FC = () => {
   const auth = useAuth();
   const setActiveSession =
-    typeof auth.setActive === 'function'
-      ? (auth.setActive as (params: { session: string }) => Promise<void>)
+    typeof (auth as Record<string, unknown>).setActive === 'function'
+      ? ((auth as Record<string, unknown>).setActive as (params: { session: string }) => Promise<void>)
       : null;
 
   React.useEffect(() => {

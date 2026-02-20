@@ -1,6 +1,6 @@
 import type { SearchResponse } from '../../../types';
 
-const mergeById = <T extends Record<string, unknown>>(
+const mergeById = <T extends object>(
   existing: T[],
   incoming: T[],
   getKey: (item: T) => string

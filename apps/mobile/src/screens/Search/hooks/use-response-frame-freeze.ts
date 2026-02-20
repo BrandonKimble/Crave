@@ -1,18 +1,21 @@
 import React from 'react';
 
-export const useResponseFrameFreeze = (resultsRequestKey: string | null): boolean => {
-  const [isResponseFrameFreezeActive, setIsResponseFrameFreezeActive] = React.useState(false);
+import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
+
+/**
+ * Publishes `isResponseFrameFreezeActive` to the bus instead of returning a
+ * boolean via useState. This eliminates 2 SearchScreen re-renders per results
+ * arrival (set true + set false).
+ */
+export const useResponseFrameFreeze = (
+  resultsRequestKey: string | null,
+  searchRuntimeBus: SearchRuntimeBus
+): void => {
   const previousResultsRequestKeyRef = React.useRef<string | null>(resultsRequestKey);
-  const pendingFreezeRequestKeyRef = React.useRef<string | null>(null);
   const isMountedRef = React.useRef(true);
   const responseFrameFreezeHandleRef = React.useRef<number | ReturnType<typeof setTimeout> | null>(
     null
   );
-  const shouldFreezeOnResponseCommitFrame =
-    resultsRequestKey != null && resultsRequestKey !== previousResultsRequestKeyRef.current;
-  if (shouldFreezeOnResponseCommitFrame) {
-    pendingFreezeRequestKeyRef.current = resultsRequestKey;
-  }
 
   const clearResponseFrameFreezeHandle = React.useCallback(() => {
     const handle = responseFrameFreezeHandleRef.current;
@@ -32,25 +35,22 @@ export const useResponseFrameFreeze = (resultsRequestKey: string | null): boolea
   React.useLayoutEffect(() => {
     if (!resultsRequestKey) {
       previousResultsRequestKeyRef.current = null;
-      pendingFreezeRequestKeyRef.current = null;
       return;
     }
-    if (pendingFreezeRequestKeyRef.current !== resultsRequestKey) {
-      return;
-    }
-    previousResultsRequestKeyRef.current = resultsRequestKey;
-    pendingFreezeRequestKeyRef.current = null;
+    const shouldFreezeOnResponseCommitFrame =
+      resultsRequestKey !== previousResultsRequestKeyRef.current;
     if (!shouldFreezeOnResponseCommitFrame) {
       return;
     }
+    previousResultsRequestKeyRef.current = resultsRequestKey;
     clearResponseFrameFreezeHandle();
-    setIsResponseFrameFreezeActive(true);
+    searchRuntimeBus.publish({ isResponseFrameFreezeActive: true });
     const releaseFreeze = () => {
       responseFrameFreezeHandleRef.current = null;
       if (!isMountedRef.current) {
         return;
       }
-      setIsResponseFrameFreezeActive(false);
+      searchRuntimeBus.publish({ isResponseFrameFreezeActive: false });
     };
     if (typeof requestAnimationFrame === 'function') {
       responseFrameFreezeHandleRef.current = requestAnimationFrame(() => {
@@ -61,7 +61,7 @@ export const useResponseFrameFreeze = (resultsRequestKey: string | null): boolea
     responseFrameFreezeHandleRef.current = setTimeout(() => {
       releaseFreeze();
     }, 0);
-  }, [clearResponseFrameFreezeHandle, shouldFreezeOnResponseCommitFrame]);
+  }, [clearResponseFrameFreezeHandle, resultsRequestKey, searchRuntimeBus]);
 
   React.useEffect(
     () => () => {
@@ -70,8 +70,6 @@ export const useResponseFrameFreeze = (resultsRequestKey: string | null): boolea
     },
     [clearResponseFrameFreezeHandle]
   );
-
-  return isResponseFrameFreezeActive || shouldFreezeOnResponseCommitFrame;
 };
 
 export default useResponseFrameFreeze;

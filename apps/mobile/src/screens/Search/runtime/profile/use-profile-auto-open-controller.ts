@@ -1,8 +1,10 @@
 import React from 'react';
 
 import type { RestaurantOverlayData } from '../../../../overlays/panels/RestaurantPanel';
-import type { FoodResult, RestaurantResult, SearchResponse } from '../../../../types';
+import type { FoodResult, RestaurantResult } from '../../../../types';
 import { resolveSingleRestaurantCandidate } from '../../utils/response';
+import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
+import { useSearchRuntimeBusSelector } from '../shared/use-search-runtime-bus-selector';
 import type { ProfileRuntimeController } from './profile-runtime-controller';
 
 type HydratedRestaurantProfile = {
@@ -11,7 +13,7 @@ type HydratedRestaurantProfile = {
 };
 
 type UseProfileAutoOpenControllerArgs = {
-  results: SearchResponse | null;
+  searchRuntimeBus: SearchRuntimeBus;
   isSuggestionPanelActive: boolean;
   isSearchFocused: boolean;
   pendingRestaurantSelectionRef: React.MutableRefObject<{ restaurantId: string } | null>;
@@ -28,7 +30,7 @@ type UseProfileAutoOpenControllerArgs = {
 };
 
 export const useProfileAutoOpenController = ({
-  results,
+  searchRuntimeBus,
   isSuggestionPanelActive,
   isSearchFocused,
   pendingRestaurantSelectionRef,
@@ -43,6 +45,11 @@ export const useProfileAutoOpenController = ({
   profileRuntimeController,
   lastAutoOpenKeyRef,
 }: UseProfileAutoOpenControllerArgs): void => {
+  const results = useSearchRuntimeBusSelector(
+    searchRuntimeBus,
+    (state) => state.results,
+    Object.is
+  );
   React.useEffect(() => {
     if (!results) {
       return;

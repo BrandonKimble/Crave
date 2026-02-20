@@ -680,6 +680,9 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(15, 23, 42, 0.2)',
   },
+  resultsSheetContainer: {
+    flex: 1,
+  },
   priceSheetContainer: {
     position: 'absolute',
     left: 0,
@@ -714,6 +717,11 @@ const styles = StyleSheet.create({
   priceSheetHeadlineSuffix: {
     color: '#0f172a',
     flexShrink: 1,
+  },
+  priceSheetSummaryReelItem: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   priceSheetSummaryText: {
     color: '#0f172a',

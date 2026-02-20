@@ -48,12 +48,7 @@ type SearchRankAndScoreSheetsProps = {
   setScoreInfo: React.Dispatch<React.SetStateAction<ScoreInfoPayload | null>>;
   scoreInfoMaxHeight: number;
   formatCompactCount: (value: number) => string;
-  onProfilerRender: (
-    id: string,
-    phase: 'mount' | 'update',
-    actualDuration: number,
-    baseDuration: number
-  ) => void;
+  onProfilerRender: React.ProfilerOnRenderCallback;
 };
 
 const SearchRankAndScoreSheets = ({

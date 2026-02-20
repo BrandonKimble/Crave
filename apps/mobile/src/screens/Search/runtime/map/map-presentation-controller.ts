@@ -63,6 +63,7 @@ type UseMapPresentationControllerArgs = {
   shouldLogSearchComputes: boolean;
   getPerfNow: () => number;
   logSearchCompute: (label: string, durationMs: number) => void;
+  externalMapQueryBudget?: MapQueryBudget;
 };
 
 export type MapPresentationController = {
@@ -87,9 +88,12 @@ export const useMapPresentationController = (
   } = args;
 
   const mapViewportQueryServiceRef = React.useRef(createMapViewportQueryService());
-  const mapQueryBudgetRef = React.useRef(createMapQueryBudget());
+  const internalMapQueryBudgetRef = React.useRef<MapQueryBudget | null>(null);
+  if (!args.externalMapQueryBudget && !internalMapQueryBudgetRef.current) {
+    internalMapQueryBudgetRef.current = createMapQueryBudget();
+  }
   const mapViewportQueryService = mapViewportQueryServiceRef.current;
-  const mapQueryBudget = mapQueryBudgetRef.current;
+  const mapQueryBudget = args.externalMapQueryBudget ?? internalMapQueryBudgetRef.current!;
 
   const markerCandidatesRef = React.useRef<Array<Feature<Point, RestaurantFeatureProperties>>>([]);
   const [visibleMarkerCandidates, setVisibleMarkerCandidates] = React.useState<

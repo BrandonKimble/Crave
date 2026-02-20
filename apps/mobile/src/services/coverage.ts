@@ -13,5 +13,5 @@ export const resolveCoverage = async (bounds: MapBounds): Promise<CoverageResolv
     const data = (payload as { data?: CoverageResolveResponse }).data;
     return data ?? { coverageKey: null, coverageName: null };
   }
-  return payload ?? { coverageKey: null, coverageName: null };
+  return (payload as CoverageResolveResponse) ?? { coverageKey: null, coverageName: null };
 };

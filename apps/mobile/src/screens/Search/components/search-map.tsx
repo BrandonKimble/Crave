@@ -1,7 +1,18 @@
 import React from 'react';
 import { Animated, type LayoutChangeEvent, View } from 'react-native';
 
-import MapboxGL, { type MapState as MapboxMapState, type OnPressEvent } from '@rnmapbox/maps';
+import MapboxGL, { type MapState as MapboxMapState } from '@rnmapbox/maps';
+
+type OnPressEvent = {
+  features: Array<GeoJSON.Feature>;
+  coordinates: { latitude: number; longitude: number };
+  point: { x: number; y: number };
+};
+
+// Mapbox expression type for filter/query props — uses `any` to match
+// the library's internal Expression type without importing private modules.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Expression = readonly [string, ...any[]];
 import type { Feature, FeatureCollection, Point } from 'geojson';
 
 import pinAsset from '../../../assets/pin.png';
@@ -26,7 +37,10 @@ import { haversineDistanceMiles, isLngLatTuple } from '../utils/geo';
 import { MARKER_VIEW_OVERSCAN_STYLE } from './marker-visibility';
 import type { MapQueryBudget } from '../runtime/map/map-query-budget';
 import type { RuntimeWorkScheduler } from '../runtime/scheduler/runtime-work-scheduler';
-import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
+import type {
+  SearchRuntimeBus,
+  SearchRuntimeOperationLane,
+} from '../runtime/shared/search-runtime-bus';
 import { useSearchRuntimeBusSelector } from '../runtime/shared/use-search-runtime-bus-selector';
 
 const SEARCH_MAP_STAGED_PUBLISH_MODE = true;
@@ -69,7 +83,7 @@ const STABILIZE_LABEL_ORDER = true;
 // - `outline`: uses the full pin sprite bounding box (conservative).
 // - `fill`: uses the fill sprite bounding box (tighter).
 // - `off`: disables pin collision obstacles entirely (labels may overlap pins).
-const PIN_COLLISION_OBSTACLE_GEOMETRY: 'outline' | 'fill' | 'off' = 'fill';
+const PIN_COLLISION_OBSTACLE_GEOMETRY: 'outline' | 'fill' | 'off' = 'fill' as 'outline' | 'fill' | 'off';
 const PIN_COLLISION_OBSTACLE_SCALE = 0.6;
 // Move the shared per-restaurant collision point used to enforce "one candidate label" placement.
 // This avoids the mutex being blocked by another pin's collision obstacle when pins stack.
@@ -128,8 +142,8 @@ const DOT_TO_PIN_TRANSITION_DURATION_MS = 300;
 const MAP_STAGE_PRESSURE_SOFT_BUDGET_MS = 8;
 const MAP_STAGE_PRESSURE_CRITICAL_BUDGET_MS = 12;
 const MAP_STAGE_PRESSURE_MAX_QUEUE_DEPTH = 2;
-const MAP_STAGE_LABELS_HEALTHY_FRAMES_REQUIRED = 2;
-const MAP_STAGE_LABELS_HEALTHY_FRAMES_REQUIRED_AFTER_HANDOFF = 4;
+const MAP_STAGE_LABELS_HEALTHY_FRAMES_REQUIRED = 1;
+const MAP_STAGE_LABELS_HEALTHY_FRAMES_REQUIRED_AFTER_HANDOFF = 2;
 const DOT_TO_PIN_TRANSITION_MIN_SCALE = 0.48;
 const DOT_TO_PIN_RANK_FADE_START = 0.5;
 
@@ -141,6 +155,42 @@ const PIN_LABEL_OPACITY_EXPRESSION = ['coalesce', ['get', 'pinLabelOpacity'], 1]
 const PIN_STEADY_OPACITY_EXPRESSION = ['-', 1, PIN_TRANSITION_ACTIVE_EXPRESSION] as const;
 const PINS_RENDER_KEY_HOLD_PREFIX = 'hold::';
 const PINS_RENDER_KEY_SHOW_PREFIX = 'show::';
+const SEARCH_OPERATION_LANE_RANK: Record<SearchRuntimeOperationLane, number> = {
+  idle: 0,
+  lane_a_ack: 1,
+  lane_b_data_commit: 2,
+  lane_c_list_first_paint: 3,
+  lane_d_map_dots: 4,
+  lane_e_map_pins: 5,
+  lane_f_polish: 6,
+};
+
+const FNV1A_OFFSET_BASIS = 0x811c9dc5;
+const FNV1A_PRIME = 0x01000193;
+
+const hashStringFNV1a = (value: string, seed: number = FNV1A_OFFSET_BASIS): number => {
+  let hash = seed >>> 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, FNV1A_PRIME) >>> 0;
+  }
+  return hash >>> 0;
+};
+
+const buildStableKeyFingerprint = (keys: readonly string[]): string => {
+  if (!keys.length) {
+    return '0:empty:empty:0';
+  }
+
+  let hash = FNV1A_OFFSET_BASIS;
+  for (const key of keys) {
+    hash = hashStringFNV1a(key, hash);
+  }
+
+  const firstKey = keys[0] ?? 'empty';
+  const lastKey = keys[keys.length - 1] ?? 'empty';
+  return `${keys.length}:${firstKey}:${lastKey}:${hash.toString(36)}`;
+};
 
 const withIconOpacity = (
   baseStyle: MapboxGL.SymbolLayerStyle,
@@ -989,8 +1039,6 @@ const usePinTransitionController = ({
   pinsRenderKey,
   markerRevealCommitId,
   buildMarkerKey,
-  markerRevealChunk,
-  markerRevealStaggerMs,
   pinnedDotKeys,
   suppressTransitions,
 }: {
@@ -998,34 +1046,66 @@ const usePinTransitionController = ({
   pinsRenderKey: string;
   markerRevealCommitId: number | null;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
-  markerRevealChunk: number;
-  markerRevealStaggerMs: number;
   pinnedDotKeys: Set<string>;
   suppressTransitions: boolean;
 }) => {
   const [transitionClockMs, setTransitionClockMs] = React.useState(0);
-  const pinTransitionFrameRequestRef = React.useRef<number | null>(null);
   const stateRef = React.useRef<PinTransitionState>(createPinTransitionState());
   const state = stateRef.current;
+  const MIN_TRANSITION_TICK_MS = 16;
   const isMarkerDataHeld = isPinsRenderKeyHeld(pinsRenderKey);
   const isInitialRevealCommitPending =
     markerRevealCommitId != null &&
     markerRevealCommitId !== state.appliedInitialRevealCommitId &&
     !isMarkerDataHeld;
 
+  // Keep per-marker transitions only; avoid global batch opacity fades which can
+  // cause flash/disappear artifacts when lane/phase transitions race.
+  const batchFadeProgress = 1;
+
+  const pinTransitionFrameHandleRef = React.useRef<number | ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const lastTickMsRef = React.useRef(0);
+  const clearPinTransitionFrameHandle = React.useCallback(() => {
+    const handle = pinTransitionFrameHandleRef.current;
+    if (handle == null) {
+      return;
+    }
+    if (typeof handle === 'number') {
+      if (typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(handle);
+      }
+    } else {
+      clearTimeout(handle);
+    }
+    pinTransitionFrameHandleRef.current = null;
+  }, []);
+  const schedulePinTransitionTick = React.useCallback((tick: (frameTimeMs: number) => void) => {
+    if (typeof requestAnimationFrame === 'function') {
+      pinTransitionFrameHandleRef.current = requestAnimationFrame((frameTimeMs) =>
+        tick(frameTimeMs)
+      );
+      return;
+    }
+    pinTransitionFrameHandleRef.current = setTimeout(() => tick(getNowMs()), MIN_TRANSITION_TICK_MS);
+  }, []);
   const runPinTransitionFrameRef = React.useRef<() => void>(() => undefined);
   const runPinTransitionFrame = React.useCallback(() => {
     if (suppressTransitions) {
       return;
     }
-    if (pinTransitionFrameRequestRef.current != null) {
+    // Already running on a frame loop.
+    if (pinTransitionFrameHandleRef.current != null) {
       return;
     }
 
-    pinTransitionFrameRequestRef.current = requestAnimationFrame(() => {
-      pinTransitionFrameRequestRef.current = null;
-
-      const nowMs = getNowMs();
+    const tick = (frameTimeMs: number) => {
+      const nowMs = Number.isFinite(frameTimeMs) ? frameTimeMs : getNowMs();
+      if (nowMs - lastTickMsRef.current < MIN_TRANSITION_TICK_MS) {
+        schedulePinTransitionTick(tick);
+        return;
+      }
       const promoteTransitions = state.promoteStartedAtByMarkerKey;
       const pendingPromoteDelays = state.pendingPromoteDelayByMarkerKey;
       const demoteTransitions = state.demoteFeatureByMarkerKey;
@@ -1055,14 +1135,26 @@ const usePinTransitionController = ({
         hasActiveTransitions = true;
       }
 
+      lastTickMsRef.current = nowMs;
       setTransitionClockMs(nowMs);
 
       if (hasActiveTransitions) {
-        runPinTransitionFrameRef.current();
+        schedulePinTransitionTick(tick);
+        return;
       }
-    });
-  }, [state, suppressTransitions]);
+      clearPinTransitionFrameHandle();
+    };
+
+    tick(getNowMs());
+  }, [clearPinTransitionFrameHandle, schedulePinTransitionTick, state, suppressTransitions]);
   runPinTransitionFrameRef.current = runPinTransitionFrame;
+
+  // Clean up frame loop on unmount
+  React.useEffect(() => {
+    return () => {
+      clearPinTransitionFrameHandle();
+    };
+  }, [clearPinTransitionFrameHandle]);
 
   React.useLayoutEffect(() => {
     if (markerRevealCommitId == null) {
@@ -1110,21 +1202,14 @@ const usePinTransitionController = ({
     let shouldStartAnimationLoop = false;
 
     if (shouldRunInitialReveal) {
-      const revealChunk = Math.max(1, markerRevealChunk);
-      const revealStaggerMs = Math.max(0, markerRevealStaggerMs);
+      // Initial reveal: pins appear at steady state (no global batch opacity fade).
       state.promoteStartedAtByMarkerKey.clear();
       state.pendingPromoteDelayByMarkerKey.clear();
       state.demoteFeatureByMarkerKey.clear();
-      sortedRestaurantMarkers.forEach((feature, index) => {
-        const markerKey = buildMarkerKey(feature);
-        const withinChunkIndex = revealChunk > 1 ? index % revealChunk : 0;
-        state.pendingPromoteDelayByMarkerKey.set(markerKey, withinChunkIndex * revealStaggerMs);
-      });
       state.appliedInitialRevealCommitId = state.pendingInitialRevealCommitId;
       state.pendingInitialRevealCommitId = null;
-      state.initialRevealQueued = true;
+      state.initialRevealQueued = false;
       didMutateTransitions = true;
-      shouldStartAnimationLoop = true;
     } else {
       if (
         state.pendingInitialRevealCommitId != null &&
@@ -1201,8 +1286,6 @@ const usePinTransitionController = ({
     buildMarkerKey,
     isMarkerDataHeld,
     markerRevealCommitId,
-    markerRevealChunk,
-    markerRevealStaggerMs,
     sortedRestaurantMarkers,
     suppressTransitions,
     state,
@@ -1211,10 +1294,7 @@ const usePinTransitionController = ({
 
   React.useEffect(() => {
     return () => {
-      if (pinTransitionFrameRequestRef.current != null) {
-        cancelAnimationFrame(pinTransitionFrameRequestRef.current);
-        pinTransitionFrameRequestRef.current = null;
-      }
+      clearPinTransitionFrameHandle();
       state.promoteStartedAtByMarkerKey.clear();
       state.pendingPromoteDelayByMarkerKey.clear();
       state.demoteFeatureByMarkerKey.clear();
@@ -1224,15 +1304,13 @@ const usePinTransitionController = ({
       state.appliedInitialRevealCommitId = null;
       state.observedInitialRevealCommitId = null;
     };
-  }, [state]);
+  }, [clearPinTransitionFrameHandle, state]);
 
   const immediatePromotionStartedAtByMarkerKey = React.useMemo(() => {
     const nowMs = transitionClockMs > 0 ? transitionClockMs : getNowMs();
-    const revealChunk = Math.max(1, markerRevealChunk);
-    const revealStaggerMs = Math.max(0, markerRevealStaggerMs);
     const next = new Map<string, number>();
 
-    sortedRestaurantMarkers.forEach((feature, index) => {
+    sortedRestaurantMarkers.forEach((feature) => {
       const markerKey = buildMarkerKey(feature);
       if (
         state.promoteStartedAtByMarkerKey.has(markerKey) ||
@@ -1240,9 +1318,9 @@ const usePinTransitionController = ({
       ) {
         return;
       }
+      // Phase 9: Initial reveal is instant — skip predictive transition entries.
+      // Pins will appear at steady state on the next render after layout effect applies the commit.
       if (isInitialRevealCommitPending) {
-        const withinChunkIndex = revealChunk > 1 ? index % revealChunk : 0;
-        next.set(markerKey, nowMs + withinChunkIndex * revealStaggerMs);
         return;
       }
       if (!state.previousPinnedFeatureByMarkerKey.has(markerKey)) {
@@ -1254,8 +1332,6 @@ const usePinTransitionController = ({
   }, [
     buildMarkerKey,
     isInitialRevealCommitPending,
-    markerRevealChunk,
-    markerRevealStaggerMs,
     sortedRestaurantMarkers,
     state,
     transitionClockMs,
@@ -1296,6 +1372,7 @@ const usePinTransitionController = ({
 
   return {
     transitionClockMs,
+    batchFadeProgress,
     promoteStartedAtByMarkerKey: state.promoteStartedAtByMarkerKey,
     pendingPromoteDelayByMarkerKey: state.pendingPromoteDelayByMarkerKey,
     immediatePromotionStartedAtByMarkerKey,
@@ -1334,13 +1411,9 @@ type SearchMapProps = {
   dotRestaurantFeatures?: FeatureCollection<Point, RestaurantFeatureProperties> | null;
   markersRenderKey: string;
   pinsRenderKey: string;
-  markerRevealCommitId?: number | null;
-  visualReadyRequestKey?: string | null;
   shouldSignalVisualReady?: boolean;
   requireMarkerVisualsForVisualReady?: boolean;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
-  markerRevealChunk?: number;
-  markerRevealStaggerMs?: number;
   restaurantFeatures: FeatureCollection<Point, RestaurantFeatureProperties>;
   restaurantLabelStyle: MapboxGL.SymbolLayerStyle;
   isMapStyleReady: boolean;
@@ -1380,17 +1453,13 @@ const SearchMap: React.FC<SearchMapProps> = ({
   onVisualReady,
   onMarkerRevealSettled,
   selectedRestaurantId,
-  sortedRestaurantMarkers,
-  dotRestaurantFeatures,
-  markersRenderKey,
-  pinsRenderKey,
-  markerRevealCommitId = null,
-  visualReadyRequestKey = null,
+  sortedRestaurantMarkers: incomingSortedRestaurantMarkers,
+  dotRestaurantFeatures: incomingDotRestaurantFeatures,
+  markersRenderKey: incomingMarkersRenderKey,
+  pinsRenderKey: incomingPinsRenderKey,
   shouldSignalVisualReady = false,
   requireMarkerVisualsForVisualReady = false,
   buildMarkerKey,
-  markerRevealChunk = 1,
-  markerRevealStaggerMs = 0,
   restaurantFeatures,
   restaurantLabelStyle,
   isMapStyleReady,
@@ -1410,25 +1479,15 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const shouldDisableMarkers = disableMarkers === true;
   const shouldDisableBlur = disableBlur === true;
   const runOneMapLoadSheddingActive = isRunOneHandoffActive || isRunOneChromeDeferred;
-  const hasStagedPublishPayload =
-    sortedRestaurantMarkers.length > 0 || (dotRestaurantFeatures?.features?.length ?? 0) > 0;
   const [stagedPublishPhase, setStagedPublishPhase] = React.useState<'dots' | 'pins' | 'full'>(
     'full'
   );
-  const shouldUseStagedPublish =
-    !shouldDisableMarkers &&
-    SEARCH_MAP_STAGED_PUBLISH_MODE &&
-    hasStagedPublishPayload &&
-    !runOneMapLoadSheddingActive;
-  const pinsTopologyKey = React.useMemo(
-    () => normalizePinsRenderKeyForTopology(pinsRenderKey),
-    [pinsRenderKey]
-  );
-  const markersTopologyRenderKey = React.useMemo(
-    () => markersRenderKey.replace(/::pins:(?:hold|show)::/, '::pins::'),
-    [markersRenderKey]
-  );
   const stagedPublishTokenRef = React.useRef<string | null>(null);
+  const stagedPublishOperationIdRef = React.useRef<string | null>(null);
+  const stagedPublishPhaseRef = React.useRef<'dots' | 'pins' | 'full'>('full');
+  React.useEffect(() => {
+    stagedPublishPhaseRef.current = stagedPublishPhase;
+  }, [stagedPublishPhase]);
   const stagedPublishHealthyLabelFrameCountRef = React.useRef(0);
   const stagedPublishAwaitingPostDeferredFrameRef = React.useRef(false);
   const stagedPublishConsecutiveYieldFramesRef = React.useRef(0);
@@ -1437,28 +1496,125 @@ const SearchMap: React.FC<SearchMapProps> = ({
   isRunOneHandoffActiveRef.current = isRunOneHandoffActive;
   const isRunOneChromeDeferredRef = React.useRef(isRunOneChromeDeferred);
   isRunOneChromeDeferredRef.current = isRunOneChromeDeferred;
-  const { isVisualSyncPending, runOneCommitSpanPressureActive, isResultsFinalizeLaneActive } =
+  const {
+    isMapActivationDeferred,
+    visualSyncCandidateRequestKey,
+    markerRevealCommitId,
+    runOneCommitSpanPressureActive,
+    activeOperationLane,
+  } =
     useSearchRuntimeBusSelector(
       searchRuntimeBus,
       (state) => ({
-        isVisualSyncPending: state.isVisualSyncPending,
+        isMapActivationDeferred: state.isMapActivationDeferred,
+        visualSyncCandidateRequestKey: state.visualSyncCandidateRequestKey,
+        markerRevealCommitId: state.markerRevealCommitId,
         runOneCommitSpanPressureActive: state.runOneCommitSpanPressureActive,
-        isResultsFinalizeLaneActive: state.isResultsFinalizeLaneActive,
+        activeOperationLane:
+          SEARCH_OPERATION_LANE_RANK[state.activeOperationLane] >=
+          SEARCH_OPERATION_LANE_RANK.lane_d_map_dots
+            ? state.activeOperationLane
+            : 'lane_c_list_first_paint',
       }),
       (left, right) =>
-        left.isVisualSyncPending === right.isVisualSyncPending &&
+        left.isMapActivationDeferred === right.isMapActivationDeferred &&
+        left.visualSyncCandidateRequestKey === right.visualSyncCandidateRequestKey &&
+        left.markerRevealCommitId === right.markerRevealCommitId &&
         left.runOneCommitSpanPressureActive === right.runOneCommitSpanPressureActive &&
-        left.isResultsFinalizeLaneActive === right.isResultsFinalizeLaneActive
+        left.activeOperationLane === right.activeOperationLane
     );
-  const shouldDeferMapFromPressure = isVisualSyncPending || runOneCommitSpanPressureActive;
+  const visualReadyRequestKey = visualSyncCandidateRequestKey;
+  const shouldDeferDotsForOperationLane = false;
+  const shouldDeferPinsForOperationLane = false;
+  const shouldDeferFinalizeForOperationLane = false;
+  const sortedRestaurantMarkers = shouldDeferDotsForOperationLane
+    ? EMPTY_SORTED_RESTAURANT_MARKERS
+    : incomingSortedRestaurantMarkers;
+  const dotRestaurantFeatures = shouldDeferDotsForOperationLane ? null : incomingDotRestaurantFeatures;
+  const markersRenderKey = incomingMarkersRenderKey;
+  const pinsRenderKey = incomingPinsRenderKey;
+  const hasStagedPublishPayload =
+    sortedRestaurantMarkers.length > 0 || (dotRestaurantFeatures?.features?.length ?? 0) > 0;
+  const shouldUseStagedPublish =
+    false;
+  const pinsTopologyKey = React.useMemo(
+    () => normalizePinsRenderKeyForTopology(pinsRenderKey),
+    [pinsRenderKey]
+  );
+  const markersTopologyRenderKey = React.useMemo(
+    () => markersRenderKey.replace(/^pins:(?:hold::|show::)/, 'pins:'),
+    [markersRenderKey]
+  );
+  const shouldDeferMapFromPressure = isMapActivationDeferred || runOneCommitSpanPressureActive;
   const isMapPinsDeferred = React.useCallback(
-    () => shouldDeferMapFromPressure || isResultsFinalizeLaneActive,
-    [isResultsFinalizeLaneActive, shouldDeferMapFromPressure]
+    () => shouldDeferPinsForOperationLane || shouldDeferMapFromPressure,
+    [shouldDeferMapFromPressure, shouldDeferPinsForOperationLane]
   );
   const isMapFinalizeDeferred = React.useCallback(
-    () => shouldDeferMapFromPressure || isResultsFinalizeLaneActive,
-    [isResultsFinalizeLaneActive, shouldDeferMapFromPressure]
+    () => shouldDeferFinalizeForOperationLane || shouldDeferMapFromPressure,
+    [shouldDeferFinalizeForOperationLane, shouldDeferMapFromPressure]
   );
+  React.useEffect(() => {
+    let animationFrameHandle: number | null = null;
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    const clearScheduledRelease = () => {
+      if (animationFrameHandle != null && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(animationFrameHandle);
+        animationFrameHandle = null;
+      }
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+        timeoutHandle = null;
+      }
+    };
+    const scheduleRelease = (operationId: string) => {
+      clearScheduledRelease();
+      const releaseIdleIfReady = () => {
+        const state = searchRuntimeBus.getState();
+        if (state.activeOperationId !== operationId || state.activeOperationLane !== 'lane_f_polish') {
+          return;
+        }
+        if (state.isVisualSyncPending || isMapFinalizeDeferred()) {
+          return;
+        }
+        searchRuntimeBus.publish({
+          activeOperationLane: 'idle',
+          activeOperationId: null,
+        });
+      };
+      if (typeof requestAnimationFrame === 'function') {
+        animationFrameHandle = requestAnimationFrame(() => {
+          animationFrameHandle = null;
+          releaseIdleIfReady();
+        });
+        return;
+      }
+      timeoutHandle = setTimeout(() => {
+        timeoutHandle = null;
+        releaseIdleIfReady();
+      }, 0);
+    };
+    const maybeAdvancePolishLane = () => {
+      const state = searchRuntimeBus.getState();
+      const operationId = state.activeOperationId;
+      if (!operationId || state.activeOperationLane !== 'lane_e_map_pins') {
+        return;
+      }
+      if (state.isVisualSyncPending || isMapPinsDeferred()) {
+        return;
+      }
+      searchRuntimeBus.publish({
+        activeOperationLane: 'lane_f_polish',
+      });
+      scheduleRelease(operationId);
+    };
+    maybeAdvancePolishLane();
+    const unsubscribe = searchRuntimeBus.subscribe(maybeAdvancePolishLane);
+    return () => {
+      unsubscribe();
+      clearScheduledRelease();
+    };
+  }, [isMapFinalizeDeferred, isMapPinsDeferred, searchRuntimeBus]);
   const emitMapRuntimeWriteSpan = React.useCallback(
     (payload: Record<string, unknown>) => {
       onRuntimeMechanismEvent?.('runtime_write_span', {
@@ -1472,6 +1628,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   React.useEffect(() => {
     if (!shouldUseStagedPublish) {
       setStagedPublishPhase('full');
+      stagedPublishOperationIdRef.current = null;
       return;
     }
     const scheduler = runtimeWorkSchedulerRef?.current ?? null;
@@ -1479,6 +1636,30 @@ const SearchMap: React.FC<SearchMapProps> = ({
       markerRevealCommitId ?? 'none'
     }`;
     const operationId = selectionFeedbackOperationId ?? fallbackOperationId;
+    const previousOperationId = stagedPublishOperationIdRef.current;
+    const shouldReuseExistingOperation = previousOperationId === operationId;
+    let currentStagePhase: 'dots' | 'pins' | 'full' = stagedPublishPhaseRef.current;
+    const commitStagedPhase = (
+      phase: 'dots' | 'pins' | 'full',
+      payload?: Record<string, unknown>
+    ) => {
+      if (currentStagePhase === phase) {
+        return;
+      }
+      currentStagePhase = phase;
+      setStagedPublishPhase(phase);
+      emitMapRuntimeWriteSpan({
+        label: 'map_stage_phase_commit',
+        phase,
+        operationId,
+        ...(payload ?? {}),
+        nowMs: Number(getNowMs().toFixed(1)),
+      });
+    };
+    const startingPhase: 'dots' | 'pins' | 'full' = shouldReuseExistingOperation
+      ? currentStagePhase
+      : 'dots';
+    stagedPublishOperationIdRef.current = operationId;
     const shouldCancelOwnedOperation = selectionFeedbackOperationId == null;
     let animationFrameHandle: number | null = null;
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
@@ -1557,6 +1738,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
       return 'healthy';
     };
 
+    const labelsStageStartMs = getNowMs();
+    const LABELS_STAGE_DEADLINE_MS = 2000;
+
     const scheduleLabelsStageAttempt = () => {
       if (!scheduler || !isStageStillActive()) {
         return;
@@ -1570,6 +1754,12 @@ const SearchMap: React.FC<SearchMapProps> = ({
         estimatedCostMs: 1,
         run: () => {
           if (!isStageStillActive()) {
+            return;
+          }
+          // Deadline fallback: force labels to render if pressure never settles
+          if (getNowMs() - labelsStageStartMs > LABELS_STAGE_DEADLINE_MS) {
+            commitStagedPhase('full', { reason: 'deadline_fallback' });
+            lastLabelsGateReason = null;
             return;
           }
           if (isRunOneChromeDeferredRef.current || isRunOneHandoffActiveRef.current) {
@@ -1607,30 +1797,36 @@ const SearchMap: React.FC<SearchMapProps> = ({
           }
           if (isMapFinalizeDeferred()) {
             stagedPublishHealthyLabelFrameCountRef.current = 0;
-            if (lastLabelsGateReason !== 'defer_map_finalize_signal') {
+            const finalizeGateReason = shouldDeferFinalizeForOperationLane
+              ? 'operation_lane_wait_finalize'
+              : 'defer_map_finalize_signal';
+            if (lastLabelsGateReason !== finalizeGateReason) {
               emitMapRuntimeWriteSpan({
                 label: 'map_stage_gate',
                 gate: 'labels',
-                reason: 'defer_map_finalize_signal',
+                reason: finalizeGateReason,
                 operationId,
                 nowMs: Number(getNowMs().toFixed(1)),
               });
-              lastLabelsGateReason = 'defer_map_finalize_signal';
+              lastLabelsGateReason = finalizeGateReason;
             }
             scheduleOnNextFrame(scheduleLabelsStageAttempt);
             return;
           }
           if (isMapPinsDeferred()) {
             stagedPublishHealthyLabelFrameCountRef.current = 0;
-            if (lastLabelsGateReason !== 'defer_map_pins_signal') {
+            const pinsGateReason = shouldDeferPinsForOperationLane
+              ? 'operation_lane_wait_pins'
+              : 'defer_map_pins_signal';
+            if (lastLabelsGateReason !== pinsGateReason) {
               emitMapRuntimeWriteSpan({
                 label: 'map_stage_gate',
                 gate: 'labels',
-                reason: 'defer_map_pins_signal',
+                reason: pinsGateReason,
                 operationId,
                 nowMs: Number(getNowMs().toFixed(1)),
               });
-              lastLabelsGateReason = 'defer_map_pins_signal';
+              lastLabelsGateReason = pinsGateReason;
             }
             scheduleOnNextFrame(scheduleLabelsStageAttempt);
             return;
@@ -1672,13 +1868,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
             scheduleOnNextFrame(scheduleLabelsStageAttempt);
             return;
           }
-          setStagedPublishPhase('full');
-          emitMapRuntimeWriteSpan({
-            label: 'map_stage_phase_commit',
-            phase: 'full',
-            operationId,
-            nowMs: Number(getNowMs().toFixed(1)),
-          });
+          commitStagedPhase('full');
           lastLabelsGateReason = null;
         },
       });
@@ -1716,15 +1906,18 @@ const SearchMap: React.FC<SearchMapProps> = ({
             return;
           }
           if (isMapPinsDeferred()) {
-            if (lastPinsGateReason !== 'defer_map_pins_signal') {
+            const pinsGateReason = shouldDeferPinsForOperationLane
+              ? 'operation_lane_wait_pins'
+              : 'defer_map_pins_signal';
+            if (lastPinsGateReason !== pinsGateReason) {
               emitMapRuntimeWriteSpan({
                 label: 'map_stage_gate',
                 gate: 'pins',
-                reason: 'defer_map_pins_signal',
+                reason: pinsGateReason,
                 operationId,
                 nowMs: Number(getNowMs().toFixed(1)),
               });
-              lastPinsGateReason = 'defer_map_pins_signal';
+              lastPinsGateReason = pinsGateReason;
             }
             scheduleOnNextFrame(schedulePinsStageAttempt);
             return;
@@ -1744,14 +1937,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
             scheduleOnNextFrame(schedulePinsStageAttempt);
             return;
           }
-          setStagedPublishPhase('pins');
-          emitMapRuntimeWriteSpan({
-            label: 'map_stage_phase_commit',
-            phase: 'pins',
-            operationId,
-            pressure,
-            nowMs: Number(getNowMs().toFixed(1)),
-          });
+          commitStagedPhase('pins', { pressure });
           lastPinsGateReason = null;
           scheduleOnNextFrame(scheduleLabelsStageAttempt);
         },
@@ -1759,45 +1945,39 @@ const SearchMap: React.FC<SearchMapProps> = ({
       scheduler.startFrameLoop();
     };
 
-    setStagedPublishPhase('dots');
-    emitMapRuntimeWriteSpan({
-      label: 'map_stage_phase_commit',
-      phase: 'dots',
-      operationId,
-      nowMs: Number(getNowMs().toFixed(1)),
-    });
+    commitStagedPhase(startingPhase);
     if (!scheduler) {
-      scheduleOnNextFrame(() => {
-        if (!isStageStillActive()) {
-          return;
-        }
-        setStagedPublishPhase('pins');
-        emitMapRuntimeWriteSpan({
-          label: 'map_stage_phase_commit',
-          phase: 'pins',
-          operationId,
-          pressure: 'none',
-          nowMs: Number(getNowMs().toFixed(1)),
-        });
+      if (startingPhase === 'dots') {
         scheduleOnNextFrame(() => {
           if (!isStageStillActive()) {
             return;
           }
-          setStagedPublishPhase('full');
-          emitMapRuntimeWriteSpan({
-            label: 'map_stage_phase_commit',
-            phase: 'full',
-            operationId,
-            nowMs: Number(getNowMs().toFixed(1)),
+          commitStagedPhase('pins', { pressure: 'none' });
+          scheduleOnNextFrame(() => {
+            if (!isStageStillActive()) {
+              return;
+            }
+            commitStagedPhase('full');
           });
         });
-      });
+      } else if (startingPhase === 'pins') {
+        scheduleOnNextFrame(() => {
+          if (!isStageStillActive()) {
+            return;
+          }
+          commitStagedPhase('full');
+        });
+      }
       return () => {
         clearNextFrameHandle();
       };
     }
 
-    scheduleOnNextFrame(schedulePinsStageAttempt);
+    if (startingPhase === 'dots') {
+      scheduleOnNextFrame(schedulePinsStageAttempt);
+    } else if (startingPhase === 'pins') {
+      scheduleOnNextFrame(scheduleLabelsStageAttempt);
+    }
     return () => {
       clearNextFrameHandle();
       if (shouldCancelOwnedOperation) {
@@ -1815,6 +1995,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
     runtimeWorkSchedulerRef,
     selectionFeedbackOperationId,
     shouldUseStagedPublish,
+    isMapPinsDeferred,
+    isMapFinalizeDeferred,
+    shouldDeferPinsForOperationLane,
+    shouldDeferFinalizeForOperationLane,
     emitMapRuntimeWriteSpan,
   ]);
   const shouldRenderStagedPins = !shouldDisableMarkers;
@@ -1826,8 +2010,13 @@ const SearchMap: React.FC<SearchMapProps> = ({
     isMapStyleReady &&
     shouldRenderStagedPins &&
     !isRunOneHandoffActive &&
-    (!shouldUseStagedPublish || stagedPublishPhase === 'full');
-  const shouldRenderDots = !shouldDisableMarkers && isMapStyleReady;
+    (!shouldUseStagedPublish || stagedPublishPhase !== 'dots');
+  const shouldRenderDots =
+    !shouldDisableMarkers &&
+    isMapStyleReady &&
+    dotRestaurantFeatures != null &&
+    dotRestaurantFeatures.features.length > 0;
+  const shouldMountDotLayers = !shouldDisableMarkers && isMapStyleReady;
   const recordRuntimeAttribution = React.useCallback(
     (durationMs: number) => {
       mapQueryBudget?.recordRuntimeAttributionDurationMs('map_label_bootstrap', durationMs);
@@ -1835,6 +2024,15 @@ const SearchMap: React.FC<SearchMapProps> = ({
     [mapQueryBudget]
   );
   const markerTopologyKey = markersTopologyRenderKey;
+  const dotTopologyKey = React.useMemo(() => {
+    if (!dotRestaurantFeatures?.features?.length) {
+      return '0:empty:empty:0';
+    }
+    const dotKeys = dotRestaurantFeatures.features.map((feature) =>
+      buildMarkerKey(feature as Feature<Point, RestaurantFeatureProperties>)
+    );
+    return buildStableKeyFingerprint(dotKeys);
+  }, [buildMarkerKey, dotRestaurantFeatures]);
   const pinnedRestaurantIds = React.useMemo(() => {
     return new Set(
       transitionSortedRestaurantMarkers.map((feature) => feature.properties.restaurantId)
@@ -1853,6 +2051,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const visualReadyAwaitingPinTransitionStartRef = React.useRef(false);
   const {
     transitionClockMs: pinTransitionClockMs,
+    batchFadeProgress,
     promoteStartedAtByMarkerKey,
     pendingPromoteDelayByMarkerKey,
     immediatePromotionStartedAtByMarkerKey,
@@ -1866,16 +2065,18 @@ const SearchMap: React.FC<SearchMapProps> = ({
     pinsRenderKey,
     markerRevealCommitId,
     buildMarkerKey,
-    markerRevealChunk,
-    markerRevealStaggerMs,
     pinnedDotKeys,
     suppressTransitions: runOneMapLoadSheddingActive,
   });
+  const shouldHidePinnedDots = false;
   const hiddenDotRestaurantIdList = React.useMemo(() => {
-    const next = new Set<string>(pinnedRestaurantIdList);
+    const next = new Set<string>();
+    if (shouldHidePinnedDots) {
+      pinnedRestaurantIdList.forEach((restaurantId) => next.add(restaurantId));
+    }
     demotingRestaurantIdList.forEach((restaurantId) => next.add(restaurantId));
     return Array.from(next);
-  }, [demotingRestaurantIdList, pinnedRestaurantIdList]);
+  }, [demotingRestaurantIdList, pinnedRestaurantIdList, shouldHidePinnedDots]);
   const [optimisticSelectedRestaurantId, setOptimisticSelectedRestaurantId] = React.useState<
     string | null
   >(null);
@@ -1900,12 +2101,24 @@ const SearchMap: React.FC<SearchMapProps> = ({
       // Hide dots that correspond to currently-pinned restaurants. Using feature-state is
       // unreliable because Mapbox can drop source feature-state when ShapeSource data updates.
       // A property-based expression keeps dots/pins mutually exclusive deterministically.
-      textOpacity: [
-        'case',
-        ['in', ['get', 'restaurantId'], ['literal', hiddenDotRestaurantIdList]],
-        0,
-        1,
-      ],
+      textOpacity:
+        batchFadeProgress < 1
+          ? [
+              '*',
+              [
+                'case',
+                ['in', ['get', 'restaurantId'], ['literal', hiddenDotRestaurantIdList]],
+                0,
+                1,
+              ],
+              batchFadeProgress,
+            ]
+          : [
+              'case',
+              ['in', ['get', 'restaurantId'], ['literal', hiddenDotRestaurantIdList]],
+              0,
+              1,
+            ],
       // Keep dots a constant screen size (like pins). The symbol can still cull/collide based on
       // Mapbox placement, but it won't scale with zoom.
       textSize: DOT_TEXT_SIZE,
@@ -1921,7 +2134,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         ],
       ],
     } as MapboxGL.SymbolLayerStyle;
-  }, [effectiveSelectedRestaurantId, hiddenDotRestaurantIdList, scoreMode]);
+  }, [batchFadeProgress, effectiveSelectedRestaurantId, hiddenDotRestaurantIdList, scoreMode]);
   const [mapViewportSize, setMapViewportSize] = React.useState<{ width: number; height: number }>({
     width: 0,
     height: 0,
@@ -2067,18 +2280,99 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }, [markerTopologyKey, shouldRenderLabels, styleURL]);
 
   const labelFeatureBuildDurationMsRef = React.useRef<number | null>(null);
+  const previousLabelFeatureByKeyRef = React.useRef(
+    new Map<string, Feature<Point, RestaurantFeatureProperties>>()
+  );
   const restaurantLabelFeaturesWithIds = React.useMemo(() => {
     const buildStartedAtMs = getNowMs();
     if (!restaurantFeatures.features.length) {
+      previousLabelFeatureByKeyRef.current.clear();
       labelFeatureBuildDurationMsRef.current = getNowMs() - buildStartedAtMs;
       return restaurantFeatures;
     }
 
+    const hasActiveTransitions =
+      promoteStartedAtByMarkerKey.size > 0 ||
+      pendingPromoteDelayByMarkerKey.size > 0 ||
+      immediatePromotionStartedAtByMarkerKey.size > 0;
     const transitionNowMs = pinTransitionClockMs > 0 ? pinTransitionClockMs : getNowMs();
     let didChange = false;
+    const prevCache = previousLabelFeatureByKeyRef.current;
+    const nextCache = new Map<string, Feature<Point, RestaurantFeatureProperties>>();
+
     const nextFeatures = restaurantFeatures.features.map((feature, index) => {
       const markerKey = buildMarkerKey(feature);
       const labelOrder = index + 1;
+
+      // Fast path: no active transitions — only stamp identity
+      if (!hasActiveTransitions) {
+        const cached = prevCache.get(markerKey);
+        if (
+          cached &&
+          cached.id === markerKey &&
+          cached.properties.labelOrder === labelOrder &&
+          cached.properties.pinTransitionActive == null &&
+          cached.properties.restaurantId === feature.properties.restaurantId &&
+          cached.properties.rank === feature.properties.rank
+        ) {
+          nextCache.set(markerKey, cached);
+          return cached;
+        }
+        if (
+          feature.id === markerKey &&
+          feature.properties.labelOrder === labelOrder &&
+          feature.properties.pinTransitionActive == null
+        ) {
+          nextCache.set(markerKey, feature);
+          return feature;
+        }
+        didChange = true;
+        const stamped = {
+          ...feature,
+          id: markerKey,
+          properties: { ...feature.properties, labelOrder },
+        };
+        nextCache.set(markerKey, stamped);
+        return stamped;
+      }
+
+      // Slow path: check transition state for this feature
+      const isFeatureTransitioning =
+        pendingPromoteDelayByMarkerKey.has(markerKey) ||
+        immediatePromotionStartedAtByMarkerKey.has(markerKey) ||
+        promoteStartedAtByMarkerKey.has(markerKey);
+
+      if (!isFeatureTransitioning) {
+        // Steady feature — reuse cached if identity matches
+        const cached = prevCache.get(markerKey);
+        if (
+          cached &&
+          cached.id === markerKey &&
+          cached.properties.labelOrder === labelOrder &&
+          cached.properties.pinTransitionActive == null &&
+          cached.properties.restaurantId === feature.properties.restaurantId &&
+          cached.properties.rank === feature.properties.rank
+        ) {
+          nextCache.set(markerKey, cached);
+          return cached;
+        }
+        const matchesIdentity =
+          feature.id === markerKey && feature.properties.labelOrder === labelOrder;
+        if (matchesIdentity && feature.properties.pinTransitionActive == null) {
+          nextCache.set(markerKey, feature);
+          return feature;
+        }
+        didChange = true;
+        const stamped = {
+          ...feature,
+          id: markerKey,
+          properties: { ...feature.properties, labelOrder },
+        };
+        nextCache.set(markerKey, stamped);
+        return stamped;
+      }
+
+      // Transitioning feature — full computation
       const pendingPromoteDelayMs = pendingPromoteDelayByMarkerKey.get(markerKey);
       const immediatePromoteStartedAtMs = immediatePromotionStartedAtByMarkerKey.get(markerKey);
       const transitionVisual =
@@ -2111,10 +2405,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
         matchesIdentity &&
         ((transitionVisual.active === 0 && !hasTransitionProps) || matchesTransition)
       ) {
+        nextCache.set(markerKey, feature);
         return feature;
       }
       didChange = true;
-      return {
+      const built = {
         ...feature,
         id: markerKey,
         properties: {
@@ -2129,7 +2424,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
             transitionVisual.active === 0 ? undefined : transitionVisual.labelOpacity,
         },
       };
+      nextCache.set(markerKey, built);
+      return built;
     });
+
+    previousLabelFeatureByKeyRef.current = nextCache;
 
     if (!didChange) {
       labelFeatureBuildDurationMsRef.current = getNowMs() - buildStartedAtMs;
@@ -2181,7 +2480,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     });
 
     const nextFeatures = {
-      type: 'FeatureCollection',
+      type: 'FeatureCollection' as const,
       features,
     };
     return nextFeatures;
@@ -2200,6 +2499,108 @@ const SearchMap: React.FC<SearchMapProps> = ({
       ],
     };
   }, [demotionTransitionFeatures, restaurantLabelFeaturesWithIds]);
+
+  // ---------------------------------------------------------------------------
+  // Bridge-serialization-optimized sources (Phase 8)
+  // Strip unnecessary properties to reduce native bridge payload.
+  // ---------------------------------------------------------------------------
+
+  // Collision source — geometry only, no transition-visual properties needed.
+  // Use identity tracking to skip rebuilds when only transition visual props change.
+  const prevCollisionIdentityRef = React.useRef<string>('');
+  const prevCollisionFeaturesRef = React.useRef<FeatureCollection<Point, RestaurantFeatureProperties> | null>(null);
+  const collisionSourceFeatures = React.useMemo<
+    FeatureCollection<Point, RestaurantFeatureProperties>
+  >(() => {
+    const features = stylePinFeaturesWithTransitions.features;
+    if (!features.length) {
+      prevCollisionIdentityRef.current = '';
+      prevCollisionFeaturesRef.current = stylePinFeaturesWithTransitions;
+      return stylePinFeaturesWithTransitions;
+    }
+    // Identity = feature IDs. Only rebuild when the set of features changes,
+    // not when transition visual properties (scale, opacity) change mid-tick.
+    let identity = '';
+    for (let i = 0; i < features.length; i++) {
+      identity += (i > 0 ? ',' : '') + (features[i].id ?? '');
+    }
+    if (identity === prevCollisionIdentityRef.current && prevCollisionFeaturesRef.current) {
+      return prevCollisionFeaturesRef.current;
+    }
+    prevCollisionIdentityRef.current = identity;
+    const built = {
+      type: 'FeatureCollection' as const,
+      features: features.map((feature) => ({
+        type: 'Feature' as const,
+        id: feature.id,
+        geometry: feature.geometry,
+        properties: { restaurantId: feature.properties.restaurantId } as RestaurantFeatureProperties,
+      })),
+    };
+    prevCollisionFeaturesRef.current = built;
+    return built;
+  }, [stylePinFeaturesWithTransitions]);
+
+  // Pin interaction source — minimal properties for press handling.
+  // Only rebuild when feature set or pinTransitionActive values change.
+  const prevInteractionIdentityRef = React.useRef<string>('');
+  const prevInteractionFeaturesRef = React.useRef<FeatureCollection<Point, RestaurantFeatureProperties> | null>(null);
+  const pinInteractionFeatures = React.useMemo<
+    FeatureCollection<Point, RestaurantFeatureProperties>
+  >(() => {
+    const features = stylePinFeaturesWithTransitions.features;
+    if (!features.length) {
+      prevInteractionIdentityRef.current = '';
+      prevInteractionFeaturesRef.current = stylePinFeaturesWithTransitions;
+      return stylePinFeaturesWithTransitions;
+    }
+    // Identity includes pinTransitionActive since interaction layers filter on it.
+    let identity = '';
+    for (let i = 0; i < features.length; i++) {
+      const f = features[i];
+      identity += (i > 0 ? ',' : '') + (f.id ?? '') + ':' + (f.properties.pinTransitionActive ?? 0);
+    }
+    if (identity === prevInteractionIdentityRef.current && prevInteractionFeaturesRef.current) {
+      return prevInteractionFeaturesRef.current;
+    }
+    prevInteractionIdentityRef.current = identity;
+    const built = {
+      type: 'FeatureCollection' as const,
+      features: features.map((feature) => ({
+        type: 'Feature' as const,
+        id: feature.id,
+        geometry: feature.geometry,
+        properties: {
+          restaurantId: feature.properties.restaurantId,
+          lodZ: feature.properties.lodZ,
+          pinTransitionActive: feature.properties.pinTransitionActive,
+        } as RestaurantFeatureProperties,
+      })),
+    };
+    prevInteractionFeaturesRef.current = built;
+    return built;
+  }, [stylePinFeaturesWithTransitions]);
+
+  // Dot interaction source — minimal properties for press handling
+  const dotInteractionFeatures = React.useMemo<FeatureCollection<
+    Point,
+    RestaurantFeatureProperties
+  > | null>(() => {
+    if (!dotRestaurantFeatures || !dotRestaurantFeatures.features.length) {
+      return dotRestaurantFeatures ?? null;
+    }
+    return {
+      type: 'FeatureCollection',
+      features: dotRestaurantFeatures.features.map((feature) => ({
+        type: 'Feature' as const,
+        id: feature.id,
+        geometry: feature.geometry,
+        properties: {
+          restaurantId: feature.properties.restaurantId,
+        } as RestaurantFeatureProperties,
+      })),
+    };
+  }, [dotRestaurantFeatures]);
 
   // Keep a single authoritative snapshot for async/timer callbacks.
   // This prevents stale-closure behavior where schedule logs show new props but refresh runs with old ones.
@@ -2304,14 +2705,94 @@ const SearchMap: React.FC<SearchMapProps> = ({
     };
   }, [labelStickyMarkersReadyAt, shouldRenderLabels, styleURL]);
 
+  // Marker identity fingerprint — only changes when the set of marker keys changes,
+  // not when transition properties change. Used to gate label candidate rebuilds.
+  const labelMarkerIdentityKeyRef = React.useRef('');
+  const previousLabelCandidateCollectionRef = React.useRef<FeatureCollection<
+    Point,
+    RestaurantFeatureProperties
+  > | null>(null);
+
   const restaurantLabelCandidateFeaturesWithIds = React.useMemo(() => {
     if (!stylePinFeaturesWithTransitions.features.length) {
+      labelMarkerIdentityKeyRef.current = '';
+      previousLabelCandidateCollectionRef.current = null;
       return stylePinFeaturesWithTransitions as FeatureCollection<
         Point,
         RestaurantFeatureProperties
       >;
     }
 
+    // Compute marker identity fingerprint (keys + order only)
+    let identityKey = '';
+    for (const feature of stylePinFeaturesWithTransitions.features) {
+      const markerKey = feature.id;
+      if (typeof markerKey === 'string' && markerKey.length > 0) {
+        identityKey += markerKey + ',';
+      }
+    }
+
+    // If marker identity hasn't changed and we have a cached result,
+    // only rebuild if sticky epoch changed (label position lock changed)
+    if (
+      identityKey === labelMarkerIdentityKeyRef.current &&
+      previousLabelCandidateCollectionRef.current != null
+    ) {
+      // Same markers, same sticky epoch — reuse cached label candidates
+      // but update transition properties on the source features
+      const prevFeatures = previousLabelCandidateCollectionRef.current.features;
+      const srcByKey = new Map<string, Feature<Point, RestaurantFeatureProperties>>();
+      for (const feature of stylePinFeaturesWithTransitions.features) {
+        const markerKey = feature.id;
+        if (typeof markerKey === 'string') {
+          srcByKey.set(markerKey, feature);
+        }
+      }
+
+      let hasTransitionChange = false;
+      const updatedFeatures = prevFeatures.map((labelFeature) => {
+        const srcMarkerKey = labelFeature.properties.markerKey;
+        if (!srcMarkerKey) {
+          return labelFeature;
+        }
+        const srcFeature = srcByKey.get(srcMarkerKey);
+        if (!srcFeature) {
+          return labelFeature;
+        }
+        // Check if transition properties actually changed
+        if (
+          labelFeature.properties.pinTransitionActive === srcFeature.properties.pinTransitionActive &&
+          labelFeature.properties.pinTransitionScale === srcFeature.properties.pinTransitionScale &&
+          labelFeature.properties.pinTransitionOpacity === srcFeature.properties.pinTransitionOpacity &&
+          labelFeature.properties.pinRankOpacity === srcFeature.properties.pinRankOpacity &&
+          labelFeature.properties.pinLabelOpacity === srcFeature.properties.pinLabelOpacity
+        ) {
+          return labelFeature;
+        }
+        hasTransitionChange = true;
+        return {
+          ...labelFeature,
+          properties: {
+            ...labelFeature.properties,
+            pinTransitionActive: srcFeature.properties.pinTransitionActive,
+            pinTransitionScale: srcFeature.properties.pinTransitionScale,
+            pinTransitionOpacity: srcFeature.properties.pinTransitionOpacity,
+            pinRankOpacity: srcFeature.properties.pinRankOpacity,
+            pinLabelOpacity: srcFeature.properties.pinLabelOpacity,
+          },
+        };
+      });
+
+      if (!hasTransitionChange) {
+        return previousLabelCandidateCollectionRef.current;
+      }
+      const updated = { ...stylePinFeaturesWithTransitions, features: updatedFeatures };
+      previousLabelCandidateCollectionRef.current = updated;
+      return updated;
+    }
+
+    // Full rebuild — marker set changed or first run
+    labelMarkerIdentityKeyRef.current = identityKey;
     const nextFeatures: Array<Feature<Point, RestaurantFeatureProperties>> = [];
     for (const feature of stylePinFeaturesWithTransitions.features) {
       const markerKey = feature.id;
@@ -2331,7 +2812,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
       }
     }
 
-    return { ...stylePinFeaturesWithTransitions, features: nextFeatures };
+    const collection = { ...stylePinFeaturesWithTransitions, features: nextFeatures };
+    previousLabelCandidateCollectionRef.current = collection;
+    return collection;
   }, [labelStickyEpoch, stylePinFeaturesWithTransitions]);
 
   const restaurantLabelStyleWithStableOrder = React.useMemo(() => {
@@ -2404,7 +2887,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
     const baseTextOpacity = restaurantLabelStyleWithStableOrder.textOpacity ?? 1;
     const base: MapboxGL.SymbolLayerStyle = {
       ...restaurantLabelStyleWithStableOrder,
-      textOpacity: ['*', baseTextOpacity, PIN_LABEL_OPACITY_EXPRESSION],
+      textOpacity:
+        batchFadeProgress < 1
+          ? ['*', baseTextOpacity, PIN_LABEL_OPACITY_EXPRESSION, batchFadeProgress]
+          : ['*', baseTextOpacity, PIN_LABEL_OPACITY_EXPRESSION],
       // Tiny "mutex" icon at the feature point: prevents multiple candidate labels for the same
       // restaurant from being placed simultaneously, without materially affecting other symbols.
       iconImage: STYLE_PIN_OUTLINE_IMAGE_ID,
@@ -2448,6 +2934,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       },
     } satisfies Record<LabelCandidate, MapboxGL.SymbolLayerStyle>;
   }, [
+    batchFadeProgress,
     labelRadialTopEm,
     labelRadialXEm,
     labelRadialYEm,
@@ -2493,12 +2980,13 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
   const stylePinsShadowSteadyStyle = React.useMemo(
     () =>
-      withIconOpacity(STYLE_PINS_SHADOW_STYLE, [
-        '*',
-        STYLE_PINS_SHADOW_OPACITY,
-        PIN_STEADY_OPACITY_EXPRESSION,
-      ]),
-    []
+      withIconOpacity(
+        STYLE_PINS_SHADOW_STYLE,
+        batchFadeProgress < 1
+          ? ['*', STYLE_PINS_SHADOW_OPACITY, PIN_STEADY_OPACITY_EXPRESSION, batchFadeProgress]
+          : ['*', STYLE_PINS_SHADOW_OPACITY, PIN_STEADY_OPACITY_EXPRESSION]
+      ),
+    [batchFadeProgress]
   );
 
   const stylePinsShadowTransitionStyle = React.useMemo(
@@ -2506,18 +2994,24 @@ const SearchMap: React.FC<SearchMapProps> = ({
       withScaledIconTransition({
         baseStyle: STYLE_PINS_SHADOW_STYLE,
         baseIconSize: STYLE_PINS_SHADOW_ICON_SIZE,
-        iconOpacity: ['*', STYLE_PINS_SHADOW_OPACITY, PIN_TRANSITION_OPACITY_EXPRESSION],
+        iconOpacity:
+          batchFadeProgress < 1
+            ? ['*', STYLE_PINS_SHADOW_OPACITY, PIN_TRANSITION_OPACITY_EXPRESSION, batchFadeProgress]
+            : ['*', STYLE_PINS_SHADOW_OPACITY, PIN_TRANSITION_OPACITY_EXPRESSION],
       }),
-    []
+    [batchFadeProgress]
   );
 
   const stylePinsOutlineSteadyStyle = React.useMemo(
     () =>
       withTextOpacity({
         baseStyle: STYLE_PINS_OUTLINE_GLYPH_STYLE,
-        textOpacity: PIN_STEADY_OPACITY_EXPRESSION,
+        textOpacity:
+          batchFadeProgress < 1
+            ? ['*', PIN_STEADY_OPACITY_EXPRESSION, batchFadeProgress]
+            : PIN_STEADY_OPACITY_EXPRESSION,
       }),
-    []
+    [batchFadeProgress]
   );
 
   const stylePinsFillSteadyStyle = React.useMemo(
@@ -2525,9 +3019,12 @@ const SearchMap: React.FC<SearchMapProps> = ({
       withTextOpacity({
         baseStyle: STYLE_PINS_FILL_GLYPH_STYLE,
         textColor: pinFillColorExpression,
-        textOpacity: PIN_STEADY_OPACITY_EXPRESSION,
+        textOpacity:
+          batchFadeProgress < 1
+            ? ['*', PIN_STEADY_OPACITY_EXPRESSION, batchFadeProgress]
+            : PIN_STEADY_OPACITY_EXPRESSION,
       }),
-    [pinFillColorExpression]
+    [batchFadeProgress, pinFillColorExpression]
   );
 
   const stylePinsTransitionBaseStyle = React.useMemo(
@@ -2535,9 +3032,12 @@ const SearchMap: React.FC<SearchMapProps> = ({
       withScaledIconTransition({
         baseStyle: STYLE_PINS_OUTLINE_STYLE,
         baseIconSize: STYLE_PINS_OUTLINE_ICON_SIZE,
-        iconOpacity: PIN_TRANSITION_OPACITY_EXPRESSION,
+        iconOpacity:
+          batchFadeProgress < 1
+            ? ['*', PIN_TRANSITION_OPACITY_EXPRESSION, batchFadeProgress]
+            : PIN_TRANSITION_OPACITY_EXPRESSION,
       }),
-    []
+    [batchFadeProgress]
   );
 
   const stylePinsTransitionFillStyle = React.useMemo(
@@ -2546,18 +3046,24 @@ const SearchMap: React.FC<SearchMapProps> = ({
         baseStyle: STYLE_PINS_FILL_STYLE,
         baseIconSize: STYLE_PINS_FILL_ICON_SIZE,
         iconColor: pinFillColorExpression,
-        iconOpacity: PIN_TRANSITION_OPACITY_EXPRESSION,
+        iconOpacity:
+          batchFadeProgress < 1
+            ? ['*', PIN_TRANSITION_OPACITY_EXPRESSION, batchFadeProgress]
+            : PIN_TRANSITION_OPACITY_EXPRESSION,
       }),
-    [pinFillColorExpression]
+    [batchFadeProgress, pinFillColorExpression]
   );
 
   const stylePinsRankStyle = React.useMemo(
     () =>
       withTextOpacity({
         baseStyle: STYLE_PINS_RANK_STYLE,
-        textOpacity: PIN_RANK_OPACITY_EXPRESSION,
+        textOpacity:
+          batchFadeProgress < 1
+            ? ['*', PIN_RANK_OPACITY_EXPRESSION, batchFadeProgress]
+            : PIN_RANK_OPACITY_EXPRESSION,
       }),
-    []
+    [batchFadeProgress]
   );
 
   const stylePinLayerStack = React.useMemo(() => {
@@ -2698,11 +3204,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const labelInteractionFilters = React.useMemo(
     () =>
       ({
-        bottom: ['==', ['get', 'labelCandidate'], 'bottom'] as unknown[],
-        right: ['==', ['get', 'labelCandidate'], 'right'] as unknown[],
-        top: ['==', ['get', 'labelCandidate'], 'top'] as unknown[],
-        left: ['==', ['get', 'labelCandidate'], 'left'] as unknown[],
-      } satisfies Record<LabelCandidate, unknown[]>),
+        bottom: ['==', ['get', 'labelCandidate'], 'bottom'] as Expression,
+        right: ['==', ['get', 'labelCandidate'], 'right'] as Expression,
+        top: ['==', ['get', 'labelCandidate'], 'top'] as Expression,
+        left: ['==', ['get', 'labelCandidate'], 'left'] as Expression,
+      } satisfies Record<LabelCandidate, Expression>),
     []
   );
 
@@ -2711,7 +3217,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       [
         'all',
         ['!', ['in', ['get', 'restaurantId'], ['literal', hiddenDotRestaurantIdList]]],
-      ] as unknown[],
+      ] as Expression,
     [hiddenDotRestaurantIdList]
   );
 
@@ -2988,6 +3494,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }, []);
 
   const runStickyLabelRefreshRef = React.useRef<() => void>(() => undefined);
+  const refreshStickyLabelCandidatesRef = React.useRef<() => Promise<void>>(() => Promise.resolve());
   const runStickyLabelRefresh = React.useCallback(() => {
     if (labelStickyRefreshInFlightRef.current) {
       return;
@@ -3000,7 +3507,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     labelStickyRefreshInFlightRef.current = true;
     const refreshSeq = ++labelStickyRefreshSeqRef.current;
 
-    void refreshStickyLabelCandidates().finally(() => {
+    void refreshStickyLabelCandidatesRef.current().finally(() => {
       if (refreshSeq !== labelStickyRefreshSeqRef.current) {
         return;
       }
@@ -3015,7 +3522,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         );
       }
     });
-  }, [refreshStickyLabelCandidates]);
+  }, []);
   runStickyLabelRefreshRef.current = runStickyLabelRefresh;
 
   const scheduleStickyLabelRefresh = React.useCallback((_reason: string) => {
@@ -3165,7 +3672,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       return;
     }
 
-    const resetKey = `${styleURL}::${markerTopologyKey}::${
+    const resetKey = `${styleURL}::${dotTopologyKey}::${
       dotRestaurantFeatures?.features.length ?? 0
     }`;
     let previous = dotPinnedKeysRef.current;
@@ -3190,7 +3697,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         .setFeatureState(key, { isPinned: true }, DOT_SOURCE_ID)
         .catch(() => undefined);
     });
-  }, [dotRestaurantFeatures, markerTopologyKey, pinnedDotKeys, shouldRenderDots, styleURL]);
+  }, [dotRestaurantFeatures, dotTopologyKey, pinnedDotKeys, shouldRenderDots, styleURL]);
   const profilerCallback =
     onProfilerRender ??
     ((() => {
@@ -3235,7 +3742,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
       labelStickyLastProbeAtRef.current = now;
 
-      const probeFilter: unknown[] = ['all', ['has', 'markerKey'], ['has', 'labelCandidate']];
+      const probeFilter: Expression = ['all', ['has', 'markerKey'], ['has', 'labelCandidate']];
       const controlLayerIDs =
         USE_STYLE_LAYER_PINS &&
         !runtime.shouldDisableMarkers &&
@@ -3258,13 +3765,15 @@ const SearchMap: React.FC<SearchMapProps> = ({
           probeControlRendered = control?.features?.length ?? 0;
         }
 
-        const filtered = await mapInstance.queryRenderedFeaturesInRect([], probeFilter, null);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const filtered = await mapInstance.queryRenderedFeaturesInRect([], probeFilter as any, null);
         probeFilterRendered = filtered?.features?.length ?? 0;
 
         if (typeof mapInstance.querySourceFeatures === 'function') {
           const source = await mapInstance.querySourceFeatures(
             RESTAURANT_LABEL_SOURCE_ID,
-            ['has', 'markerKey'] as unknown[],
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ['has', 'markerKey'] as any,
             []
           );
           probeSourceFeatures = source?.features?.length ?? 0;
@@ -3319,8 +3828,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
       // Diagnostic fallback: on iOS cold start, layerID-restricted queries can return empty even
       // when the same features are queryable via property filters (or are visibly rendered).
       try {
-        const filter: unknown[] = ['all', ['has', 'markerKey'], ['has', 'labelCandidate']];
-        const filtered = await mapInstance.queryRenderedFeaturesInRect([], filter, null);
+        const filter: Expression = ['all', ['has', 'markerKey'], ['has', 'labelCandidate']];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const filtered = await mapInstance.queryRenderedFeaturesInRect([], filter as any, null);
         const filteredCount = filtered?.features?.length ?? 0;
         if (filteredCount > 0) {
           renderedForParsing = filtered;
@@ -3425,6 +3935,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     restaurantLabelPinCollisionLayerIdSideLeft,
     restaurantLabelPinCollisionLayerIdSideRight,
   ]);
+  refreshStickyLabelCandidatesRef.current = refreshStickyLabelCandidates;
 
   const handleMapIdle = React.useCallback(
     (state: MapboxMapState) => {
@@ -3592,8 +4103,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
         return;
       }
       if (!hasStartedPromotions) {
-        emitVisualReadyGateReason('awaiting_pin_transition_not_started');
-        return;
+        // Phase 9: If no promotions pending and none started, the initial reveal was instant.
+        // Clear the gate and fall through to signal visual ready.
+        visualReadyAwaitingPinTransitionStartRef.current = false;
       }
       visualReadyAwaitingPinTransitionStartRef.current = false;
       // Leave one more frame so the newly-armed transition properties are guaranteed painted.
@@ -3630,7 +4142,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         requestKey: visualReadyRequestKey,
         markerRevealCommitId,
       });
-      onVisualReady(visualReadyRequestKey);
+      onVisualReady?.(visualReadyRequestKey);
     }
   }, [
     emitMapRuntimeWriteSpan,
@@ -3679,7 +4191,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }, [handleMapLoaded]);
 
   const handleMapLoadError = React.useCallback(
-    (event: unknown) => {
+    (event?: unknown) => {
       const eventRecord =
         event && typeof event === 'object' && !Array.isArray(event)
           ? (event as Record<string, unknown>)
@@ -3721,8 +4233,14 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }, [onTouchEnd]);
 
   const handleMapViewPress = React.useCallback(
-    (event: OnPressEvent) => {
-      if (pressEventTargetsMarkerFeature(event)) {
+    (feature: GeoJSON.Feature) => {
+      // Wrap single feature into the legacy OnPressEvent shape for downstream guards.
+      const syntheticEvent: OnPressEvent = {
+        features: [feature],
+        coordinates: { latitude: 0, longitude: 0 },
+        point: { x: 0, y: 0 },
+      };
+      if (pressEventTargetsMarkerFeature(syntheticEvent)) {
         return;
       }
       setOptimisticSelectedRestaurantId(null);
@@ -3744,9 +4262,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         scaleBarEnabled={false}
         gestureSettings={{ panDecelerationFactor: MAP_PAN_DECELERATION_FACTOR }}
         onPress={handleMapViewPress}
-        onTouchStartCapture={handleTouchStart}
-        onTouchEndCapture={handleTouchEnd}
-        onTouchCancelCapture={handleTouchEnd}
+        {...({ onTouchStartCapture: handleTouchStart, onTouchEndCapture: handleTouchEnd, onTouchCancelCapture: handleTouchEnd } as Record<string, unknown>)}
         onCameraChanged={handleCameraChanged}
         onMapIdle={handleMapIdle}
         onDidFinishLoadingStyle={handleMapLoadedStyle}
@@ -3802,12 +4318,12 @@ const SearchMap: React.FC<SearchMapProps> = ({
             belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
           />
         </MapboxGL.ShapeSource>
-        {shouldRenderDots ? (
+        {shouldMountDotLayers ? (
           <React.Profiler id="SearchMapDots" onRender={profilerCallback}>
             <MapboxGL.ShapeSource
               id={DOT_SOURCE_ID}
               shape={
-                dotRestaurantFeatures
+                shouldRenderDots && dotRestaurantFeatures
                   ? (dotRestaurantFeatures as FeatureCollection<Point, RestaurantFeatureProperties>)
                   : (EMPTY_POINT_FEATURES as FeatureCollection<Point, RestaurantFeatureProperties>)
               }
@@ -3823,8 +4339,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
             <MapboxGL.ShapeSource
               id={DOT_INTERACTION_SOURCE_ID}
               shape={
-                dotRestaurantFeatures
-                  ? (dotRestaurantFeatures as FeatureCollection<Point, RestaurantFeatureProperties>)
+                shouldRenderDots && dotInteractionFeatures
+                  ? (dotInteractionFeatures as FeatureCollection<Point, RestaurantFeatureProperties>)
                   : (EMPTY_POINT_FEATURES as FeatureCollection<Point, RestaurantFeatureProperties>)
               }
               onPress={handleDotPress}
@@ -3835,7 +4351,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
                 belowLayerID={SEARCH_PINS_Z_ANCHOR_LAYER_ID}
                 sourceID={DOT_INTERACTION_SOURCE_ID}
                 style={DOT_INTERACTION_LAYER_STYLE}
-                filter={dotInteractionFilter}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                filter={dotInteractionFilter as any}
               />
             </MapboxGL.ShapeSource>
           </React.Profiler>
@@ -3858,8 +4375,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
             key={`pin-interaction-source-${pinLayerTreeEpoch}`}
             id={PIN_INTERACTION_SOURCE_ID}
             shape={
-              shouldRenderStagedPins && stylePinFeaturesWithTransitions.features.length > 0
-                ? stylePinFeaturesWithTransitions
+              shouldRenderStagedPins && pinInteractionFeatures.features.length > 0
+                ? pinInteractionFeatures
                 : EMPTY_POINT_FEATURES
             }
             onPress={handleStylePinPress}
@@ -3899,7 +4416,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
                     sourceID={LABEL_INTERACTION_SOURCE_ID}
                     belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
                     style={labelInteractionStyles[candidate]}
-                    filter={labelInteractionFilters[candidate]}
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    filter={labelInteractionFilters[candidate] as any}
                   />
                 ))}
               </MapboxGL.ShapeSource>
@@ -3909,7 +4427,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
               PIN_COLLISION_OBSTACLE_GEOMETRY !== 'off' ? (
                 <MapboxGL.ShapeSource
                   id={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
-                  shape={stylePinFeaturesWithTransitions}
+                  shape={collisionSourceFeatures}
                 >
                   <MapboxGL.SymbolLayer
                     key={restaurantLabelPinCollisionLayerKey}
@@ -4066,15 +4584,6 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
   if (prev.pinsRenderKey !== next.pinsRenderKey) {
     return false;
   }
-  if (prev.markerRevealCommitId !== next.markerRevealCommitId) {
-    return false;
-  }
-  if (prev.markerRevealChunk !== next.markerRevealChunk) {
-    return false;
-  }
-  if (prev.markerRevealStaggerMs !== next.markerRevealStaggerMs) {
-    return false;
-  }
   if (prev.disableMarkers !== next.disableMarkers) {
     return false;
   }
@@ -4101,12 +4610,12 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
     if (prev.selectionFeedbackOperationId !== next.selectionFeedbackOperationId) {
       return false;
     }
-  }
-  if (prev.onRuntimeMechanismEvent !== next.onRuntimeMechanismEvent) {
-    return false;
-  }
-  if (prev.onProfilerRender !== next.onProfilerRender) {
-    return false;
+    if (prev.onRuntimeMechanismEvent !== next.onRuntimeMechanismEvent) {
+      return false;
+    }
+    if (prev.onProfilerRender !== next.onProfilerRender) {
+      return false;
+    }
   }
   if (!areUserLocationsEqual(prev.userLocation, next.userLocation)) {
     return false;
@@ -4145,9 +4654,6 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
     return false;
   }
   if (prev.onMarkerRevealSettled !== next.onMarkerRevealSettled) {
-    return false;
-  }
-  if (prev.visualReadyRequestKey !== next.visualReadyRequestKey) {
     return false;
   }
   if (prev.shouldSignalVisualReady !== next.shouldSignalVisualReady) {

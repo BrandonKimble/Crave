@@ -146,7 +146,6 @@ export const useSearchFocusController = <TSuggestion>({
     if (shouldRestoreHome && !isSearchSessionActive) {
       cancelAutocomplete();
       setIsAutocompleteSuppressed(false);
-      setQuery('');
       if (!showPollsOverlay && !isSearchLoading) {
         restoreDockedPolls();
       }

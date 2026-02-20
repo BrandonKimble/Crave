@@ -22,8 +22,6 @@ export const SHEET_SPRING_CONFIG: WithSpringConfig = {
   stiffness: 320,
   mass: 1,
   overshootClamping: false,
-  restDisplacementThreshold: 0.35,
-  restSpeedThreshold: 0.35,
 };
 export const OVERLAY_TIMING_CONFIG = {
   enterDurationMs: 260,

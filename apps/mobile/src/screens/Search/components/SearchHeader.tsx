@@ -13,6 +13,7 @@ import Reanimated, {
   useAnimatedStyle,
   useSharedValue,
   type SharedValue,
+  type AnimatedStyle as ReanimatedAnimatedStyle,
 } from 'react-native-reanimated';
 import { Search, ChevronLeft, X as LucideX } from 'lucide-react-native';
 import { SEARCH_BAR_SHADOW } from '../shadows';
@@ -21,7 +22,7 @@ import SquircleSpinner from '../../../components/SquircleSpinner';
 import { XCircleIcon } from '../../../components/icons/HeroIcons';
 import { FONT_SIZES } from '../../../constants/typography';
 
-type AnimatedStyle = Reanimated.AnimatedStyleProp<ViewStyle>;
+type AnimatedStyle = ReanimatedAnimatedStyle<ViewStyle>;
 
 const EDGE_INSET = 12;
 const SEARCH_ICON_EDGE_INSET = EDGE_INSET + 1;
@@ -64,7 +65,7 @@ type SearchHeaderProps = {
   showBack?: boolean;
   onBackPress?: () => void;
   onLayout?: (event: LayoutChangeEvent) => void;
-  inputRef?: React.RefObject<TextInput>;
+  inputRef?: React.RefObject<TextInput | null>;
   inputAnimatedStyle?: AnimatedStyle;
   containerAnimatedStyle?: AnimatedStyle;
   editable?: boolean;

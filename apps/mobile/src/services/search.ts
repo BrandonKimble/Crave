@@ -181,4 +181,4 @@ export const searchService = {
   },
 };
 
-export type { NaturalSearchRequest, SearchResponse, StructuredSearchRequest };
+export type { NaturalSearchRequest, SearchResponse };

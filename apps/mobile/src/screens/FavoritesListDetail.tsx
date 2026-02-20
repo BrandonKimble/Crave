@@ -2,7 +2,7 @@ import React from 'react';
 import { Alert, Dimensions, Pressable, Share, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { FlashList } from '@shopify/flash-list';
+import { FlashList, type ListRenderItem } from '@shopify/flash-list';
 import type { StackScreenProps } from '@react-navigation/stack';
 import { useQueryClient } from '@tanstack/react-query';
 import { X as LucideX } from 'lucide-react-native';
@@ -128,7 +128,8 @@ const FavoritesListDetailScreen: React.FC<
       <RestaurantResultCard
         restaurant={item}
         index={index}
-        restaurantsCount={restaurants.length}
+        rank={index + 1}
+        qualityColor="#6B7280"
         isLiked={false}
         primaryCoverageKey={null}
         showCoverageLabel={false}
@@ -138,7 +139,7 @@ const FavoritesListDetailScreen: React.FC<
         primaryFoodTerm={null}
       />
     ),
-    [restaurants.length]
+    []
   );
 
   const renderDish = React.useCallback(
@@ -146,7 +147,7 @@ const FavoritesListDetailScreen: React.FC<
       <DishResultCard
         item={item}
         index={index}
-        dishesCount={dishes.length}
+        qualityColor="#6B7280"
         isLiked={false}
         primaryCoverageKey={null}
         showCoverageLabel={false}
@@ -156,7 +157,7 @@ const FavoritesListDetailScreen: React.FC<
         openScoreInfo={() => undefined}
       />
     ),
-    [dishes.length]
+    []
   );
 
   return (
@@ -254,14 +255,13 @@ const FavoritesListDetailScreen: React.FC<
 
       <View style={styles.listContainer}>
         <FlashList
-          data={isRestaurantList ? restaurants : dishes}
-          renderItem={isRestaurantList ? renderRestaurant : renderDish}
-          keyExtractor={(item) =>
-            isRestaurantList
-              ? (item as RestaurantResult).restaurantId
+          data={(isRestaurantList ? restaurants : dishes) as (RestaurantResult | FoodResult)[]}
+          renderItem={(isRestaurantList ? renderRestaurant : renderDish) as ListRenderItem<RestaurantResult | FoodResult>}
+          keyExtractor={(item: RestaurantResult | FoodResult) =>
+            'restaurantId' in item
+              ? item.restaurantId
               : (item as FoodResult).connectionId
           }
-          estimatedItemSize={160}
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Text variant="body" style={styles.emptyText}>

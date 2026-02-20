@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { useKeyedCallback } from '../../../hooks/useCallbackFactory';
-import type { FavoriteListType } from '../../../types';
+import type { FavoriteListType } from '../../../services/favorite-lists';
 
 /**
  * State shape for the save sheet overlay

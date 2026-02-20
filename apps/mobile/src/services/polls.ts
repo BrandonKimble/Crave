@@ -58,7 +58,7 @@ export type PollQueryPayload = {
 
 export type CreatePollPayload = {
   topicType: PollTopicType;
-  description: string;
+  description?: string;
   coverageKey?: string;
   bounds?: MapBounds | null;
   targetDishId?: string;
@@ -69,6 +69,9 @@ export type CreatePollPayload = {
   targetRestaurantName?: string;
   targetFoodAttributeName?: string;
   targetRestaurantAttributeName?: string;
+  topicEntityId?: string;
+  topicEntityName?: string;
+  topicEntityType?: string;
   sessionToken?: string;
 };
 

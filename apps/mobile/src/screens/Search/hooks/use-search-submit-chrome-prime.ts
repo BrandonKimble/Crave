@@ -1,12 +1,19 @@
 import React from 'react';
 
+import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
+
 type UseSearchSubmitChromePrimeResult = {
-  isSubmitChromePriming: boolean;
   beginSubmitChromePriming: () => void;
 };
 
-export const useSearchSubmitChromePrime = (): UseSearchSubmitChromePrimeResult => {
-  const [isSubmitChromePriming, setIsSubmitChromePriming] = React.useState(false);
+/**
+ * Publishes `isSubmitChromePriming` to the bus instead of returning it via
+ * useState. This eliminates 2 SearchScreen re-renders per search submit
+ * (set true + set false).
+ */
+export const useSearchSubmitChromePrime = (
+  searchRuntimeBus: SearchRuntimeBus
+): UseSearchSubmitChromePrimeResult => {
   const submitChromePrimeTokenRef = React.useRef(0);
   const submitChromePrimeReleaseHandleRef = React.useRef<
     number | ReturnType<typeof setTimeout> | null
@@ -30,13 +37,13 @@ export const useSearchSubmitChromePrime = (): UseSearchSubmitChromePrimeResult =
   const beginSubmitChromePriming = React.useCallback(() => {
     const token = submitChromePrimeTokenRef.current + 1;
     submitChromePrimeTokenRef.current = token;
-    setIsSubmitChromePriming(true);
+    searchRuntimeBus.publish({ isSubmitChromePriming: true });
     clearSubmitChromePrimeReleaseHandle();
     const release = () => {
       if (submitChromePrimeTokenRef.current !== token) {
         return;
       }
-      setIsSubmitChromePriming(false);
+      searchRuntimeBus.publish({ isSubmitChromePriming: false });
     };
     if (typeof requestAnimationFrame === 'function') {
       submitChromePrimeReleaseHandleRef.current = requestAnimationFrame(() => {
@@ -49,7 +56,7 @@ export const useSearchSubmitChromePrime = (): UseSearchSubmitChromePrimeResult =
       submitChromePrimeReleaseHandleRef.current = null;
       release();
     }, 0);
-  }, [clearSubmitChromePrimeReleaseHandle]);
+  }, [clearSubmitChromePrimeReleaseHandle, searchRuntimeBus]);
 
   React.useEffect(
     () => () => {
@@ -59,7 +66,6 @@ export const useSearchSubmitChromePrime = (): UseSearchSubmitChromePrimeResult =
   );
 
   return {
-    isSubmitChromePriming,
     beginSubmitChromePriming,
   };
 };

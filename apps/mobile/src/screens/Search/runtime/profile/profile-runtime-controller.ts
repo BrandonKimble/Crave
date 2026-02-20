@@ -15,6 +15,8 @@ import type {
 } from '../../../../types';
 import { logger } from '../../../../utils';
 import type { createPhaseBMaterializer } from '../scheduler/phase-b-materializer';
+import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
+import type { ResolvedRestaurantMapLocation } from '../../hooks/use-restaurant-location-selection';
 
 type OverlaySheetSnap = 'expanded' | 'middle' | 'collapsed' | 'hidden';
 type ProfileTransitionStatus = 'idle' | 'opening' | 'open' | 'closing';
@@ -65,12 +67,6 @@ type SaveSheetState = {
   target: SaveSheetTarget;
 };
 
-type RestaurantLocationCandidate = {
-  locationId: string;
-  latitude: number;
-  longitude: number;
-};
-
 type RestaurantSnapRequest = {
   snap: Exclude<OverlaySheetSnap, 'hidden'>;
   token: number;
@@ -98,9 +94,8 @@ type UseProfileRuntimeControllerArgs = {
   mapZoom: number | null;
   saveSheetState: SaveSheetState;
   isSearchOverlay: boolean;
-  hydratedResultsKey: string | null;
-  resultsHydrationKey: string | null;
   hydrationOperationId: string | null;
+  searchRuntimeBus: SearchRuntimeBus;
   cameraRef: CameraRef;
   inputRef: React.MutableRefObject<TextInput | null>;
   phaseBMaterializerRef: PhaseBMaterializerRef;
@@ -142,7 +137,6 @@ type UseProfileRuntimeControllerArgs = {
     settleTo?: ProfileTransitionStatus
   ) => void;
   setIsFollowingUser: React.Dispatch<React.SetStateAction<boolean>>;
-  setHydratedResultsKeySync: (next: string | null) => void;
   setMapCameraPadding: React.Dispatch<React.SetStateAction<MapCameraPadding | null>>;
   setSaveSheetState: React.Dispatch<React.SetStateAction<SaveSheetState>>;
   setProfileTransitionStatusState: React.Dispatch<React.SetStateAction<ProfileTransitionStatus>>;
@@ -154,16 +148,16 @@ type UseProfileRuntimeControllerArgs = {
   clearCameraPersistTimeout: () => void;
   clearCameraStateSync: () => void;
   resolveProfileCameraPadding: () => MapCameraPadding;
-  resolveRestaurantMapLocations: (restaurant: RestaurantResult) => RestaurantLocationCandidate[];
+  resolveRestaurantMapLocations: (restaurant: RestaurantResult) => ResolvedRestaurantMapLocation[];
   resolveRestaurantLocationSelectionAnchor: () => Coordinate | null;
   pickClosestLocationToCenter: (
-    locations: RestaurantLocationCandidate[],
-    center: Coordinate
-  ) => RestaurantLocationCandidate | null;
+    locations: ResolvedRestaurantMapLocation[],
+    center: Coordinate | null
+  ) => ResolvedRestaurantMapLocation | null;
   pickPreferredRestaurantMapLocation: (
     restaurant: RestaurantResult,
     anchor: Coordinate | null
-  ) => RestaurantLocationCandidate | null;
+  ) => ResolvedRestaurantMapLocation | null;
   scheduleCameraCommand: (command: () => void) => void;
   commitCameraState: (payload: {
     center: [number, number];
@@ -237,9 +231,8 @@ export const useProfileRuntimeController = (
     mapZoom,
     saveSheetState,
     isSearchOverlay,
-    hydratedResultsKey,
-    resultsHydrationKey,
     hydrationOperationId,
+    searchRuntimeBus,
     cameraRef,
     inputRef,
     phaseBMaterializerRef,
@@ -274,7 +267,6 @@ export const useProfileRuntimeController = (
     setRestaurantSnapRequest,
     setProfileTransitionStatus,
     setIsFollowingUser,
-    setHydratedResultsKeySync,
     setMapCameraPadding,
     setSaveSheetState,
     setProfileTransitionStatusState,
@@ -743,7 +735,7 @@ export const useProfileRuntimeController = (
         const overlaySnapStore = useOverlaySheetPositionStore.getState();
         overlaySnapStore.setSharedSnap('middle');
       } else {
-        transition.savedSheetSnap = 'hidden';
+        transition.savedSheetSnap = null;
       }
       setRestaurantSnapRequest({
         snap: 'middle',
@@ -756,6 +748,7 @@ export const useProfileRuntimeController = (
           restaurantName: trimmedName,
           restaurantAliases: [],
           contextualScore: 0,
+          totalDishCount: 0,
           topFood: [],
         },
         trimmedName
@@ -1016,7 +1009,7 @@ export const useProfileRuntimeController = (
     const transition = profileTransitionRef.current;
     const fallbackState = lastVisibleSheetStateRef.current;
     const targetState = transition.savedSheetSnap ?? fallbackState;
-    if (targetState && targetState !== 'hidden') {
+    if (targetState) {
       animateSheetTo(targetState);
     }
     transition.savedSheetSnap = null;
@@ -1115,12 +1108,17 @@ export const useProfileRuntimeController = (
     if (transition.status !== 'closing') {
       setProfileTransitionStatus('closing');
     }
+    const runtimeState = searchRuntimeBus.getState();
+    const resultsHydrationKey = runtimeState.resultsHydrationKey;
+    const hydratedResultsKey = runtimeState.hydratedResultsKey;
     if (resultsHydrationKey && resultsHydrationKey !== hydratedResultsKey) {
       phaseBMaterializerRef.current.commitHydrationImmediately({
         operationId: hydrationOperationId ?? 'profile-close-hydration',
         nextHydrationKey: resultsHydrationKey,
         commitHydrationKey: (nextHydrationKey) => {
-          setHydratedResultsKeySync(nextHydrationKey);
+          searchRuntimeBus.publish({
+            hydratedResultsKey: nextHydrationKey,
+          });
         },
       });
     }
@@ -1131,16 +1129,14 @@ export const useProfileRuntimeController = (
   }, [
     handleRestaurantOverlayDismissed,
     hydrationOperationId,
-    hydratedResultsKey,
     isRestaurantOverlayVisible,
     pendingMarkerOpenAnimationFrameRef,
     phaseBMaterializerRef,
     profileDismissBehaviorRef,
     profileTransitionRef,
     resetSheetToHidden,
-    resultsHydrationKey,
     restaurantProfile,
-    setHydratedResultsKeySync,
+    searchRuntimeBus,
     setMapHighlightedRestaurantId,
     setProfileTransitionStatus,
   ]);

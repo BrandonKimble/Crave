@@ -75,7 +75,7 @@ export const buildSectionedResultsData = ({
       : 0;
 
   if (exactCount <= 0 || safeResultsData.length <= exactCount) {
-    return safeResultsData;
+    return safeResultsData.slice();
   }
 
   const exactAll = safeResultsData.slice(0, exactCount);
