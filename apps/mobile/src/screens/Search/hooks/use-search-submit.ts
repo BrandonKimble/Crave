@@ -333,8 +333,8 @@ const isRateLimitError = (error: unknown) => {
   return false;
 };
 
-const shouldPreclearNaturalResults = false;
-const shouldPrimeSubmittedQueryBeforeResponse = false;
+const shouldPreclearNaturalResults = true;
+const shouldPrimeSubmittedQueryBeforeResponse = true;
 
 const useSearchSubmit = ({
   query,
@@ -712,14 +712,16 @@ const useSearchSubmit = ({
           return;
         }
         const laneIdle = (runtimeState?.activeOperationLane ?? 'idle') === 'idle';
-        const hydrationSettled =
-          (runtimeState?.isResultsHydrationSettled ?? true) &&
-          !(runtimeState?.shouldHydrateResultsForRender ?? false);
+        // Note: hydration settlement is NOT checked here because
+        // scheduleAfterResultsHydrationSettled already gates the chain entry, and
+        // the handoff phase (h3_hydration_ramp) intentionally blocks further
+        // hydration commits via allowHydrationFinalizeCommit — creating a circular
+        // dependency if we waited for hydration here.
         const visualSettled = !(runtimeState?.isVisualSyncPending ?? false);
         const schedulerQueueDepth =
           runtimeWorkSchedulerRef?.current.snapshotPressure().queueDepth ?? 0;
         const schedulerQuiet = schedulerQueueDepth <= 0;
-        if (laneIdle && hydrationSettled && visualSettled && schedulerQuiet) {
+        if (laneIdle && visualSettled && schedulerQuiet) {
           onReady();
           return;
         }
@@ -746,7 +748,6 @@ const useSearchSubmit = ({
   const scheduleSubmitUiLanes = React.useCallback(
     (options: SubmitUiLanesOptions) => {
       const {
-        requestId,
         preserveSheetState,
         transitionFromDockedPolls,
         shouldHoldResultPanel,
@@ -767,31 +768,28 @@ const useSearchSubmit = ({
         });
       });
 
-      scheduleOnNextFrame(() => {
-        if (!isRequestStillActive(requestId)) {
-          return;
+      // Execute submit UI lanes synchronously (no frame deferral) so sheet
+      // slides up and loading cover shows on the same frame as submit.
+      if (transitionFromDockedPolls && !shouldHoldResultPanel) {
+        prepareShortcutSheetTransition?.();
+      }
+      unstable_batchedUpdates(() => {
+        if (shouldRevealPanel) {
+          showPanel();
         }
-        if (transitionFromDockedPolls && !shouldHoldResultPanel) {
-          prepareShortcutSheetTransition?.();
-        }
-        unstable_batchedUpdates(() => {
-          if (shouldRevealPanel) {
-            showPanel();
-          }
-          lastAutoOpenKeyRef.current = null;
-          activeLoadingMoreTokenRef.current = null;
-        });
-        searchRuntimeBus.batch(() => {
-          const laneAStatePatch: Partial<SearchRuntimeBusState> = {
-            isLoadingMore: false,
-            submittedQuery: submittedLabel ?? searchRuntimeBus.getState().submittedQuery ?? '',
-            isVisualSyncPending: false,
-            visualSyncCandidateRequestKey: null,
-            visualReadyRequestKey: null,
-            markerRevealCommitId: null,
-          };
-          publishRuntimeLaneState(activeOperationTupleRef.current, 'lane_a_ack', laneAStatePatch);
-        });
+        lastAutoOpenKeyRef.current = null;
+        activeLoadingMoreTokenRef.current = null;
+      });
+      searchRuntimeBus.batch(() => {
+        const laneAStatePatch: Partial<SearchRuntimeBusState> = {
+          isLoadingMore: false,
+          submittedQuery: submittedLabel ?? searchRuntimeBus.getState().submittedQuery ?? '',
+          isVisualSyncPending: false,
+          visualSyncCandidateRequestKey: null,
+          visualReadyRequestKey: null,
+          markerRevealCommitId: null,
+        };
+        publishRuntimeLaneState(activeOperationTupleRef.current, 'lane_a_ack', laneAStatePatch);
       });
 
       if (shouldResetPagination) {
@@ -808,13 +806,11 @@ const useSearchSubmit = ({
       }
     },
     [
-      isRequestStillActive,
       lastAutoOpenKeyRef,
       prepareShortcutSheetTransition,
       publishRuntimeLaneState,
       runNonCriticalStateUpdate,
       scheduleAfterTwoFrames,
-      scheduleOnNextFrame,
       showPanel,
       searchRuntimeBus,
     ]

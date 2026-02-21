@@ -302,6 +302,7 @@ export const useProfileRuntimeController = (
   } = args;
 
   const activeHydrationIntentRef = React.useRef<ActiveHydrationIntent | null>(null);
+  const multiLocationZoomBaselineRef = React.useRef<number | null>(null);
 
   const cancelActiveHydrationIntent = React.useCallback(
     (
@@ -558,24 +559,38 @@ export const useProfileRuntimeController = (
       const previousFocusSession = restaurantFocusSessionRef.current;
       const isSameRestaurantFocusSession =
         previousFocusSession.restaurantId === restaurant.restaurantId;
-      const shouldApplyInitialMultiLocationZoomOut =
-        restaurantLocations.length > 1 &&
-        (source === 'results_sheet' ||
-          source === 'auto_open_single_candidate' ||
-          source === 'autocomplete') &&
-        (!isSameRestaurantFocusSession ||
-          !previousFocusSession.hasAppliedInitialMultiLocationZoomOut);
-      const hasAppliedMultiLocationZoomOut =
-        (isSameRestaurantFocusSession &&
-          previousFocusSession.hasAppliedInitialMultiLocationZoomOut) ||
-        shouldApplyInitialMultiLocationZoomOut;
+      const isMultiLocationZoomSource =
+        source === 'results_sheet' ||
+        source === 'auto_open_single_candidate' ||
+        source === 'autocomplete';
+      const isMultiLocationTarget = isMultiLocationZoomSource && restaurantLocations.length > 1;
       const nextCenter: [number, number] = [focusCoordinate.lng, focusCoordinate.lat];
       const currentZoom =
         lastCameraStateRef.current?.zoom ?? (typeof mapZoom === 'number' ? mapZoom : null);
       if (typeof currentZoom === 'number' && Number.isFinite(currentZoom)) {
-        const nextZoom = shouldApplyInitialMultiLocationZoomOut
-          ? Math.max(currentZoom - profileMultiLocationZoomOutDelta, profileMultiLocationMinZoom)
-          : currentZoom;
+        const baselineZoom = multiLocationZoomBaselineRef.current;
+        const hasMultiLocationBaseline =
+          typeof baselineZoom === 'number' && Number.isFinite(baselineZoom);
+        let nextZoom = currentZoom;
+        let hasAppliedMultiLocationZoomOut = previousFocusSession.hasAppliedInitialMultiLocationZoomOut;
+
+        if (isMultiLocationTarget) {
+          if (!hasMultiLocationBaseline) {
+            multiLocationZoomBaselineRef.current = currentZoom;
+            nextZoom = Math.max(
+              currentZoom - profileMultiLocationZoomOutDelta,
+              profileMultiLocationMinZoom
+            );
+          }
+          hasAppliedMultiLocationZoomOut = true;
+        } else if (hasMultiLocationBaseline) {
+          nextZoom = baselineZoom as number;
+          multiLocationZoomBaselineRef.current = null;
+          hasAppliedMultiLocationZoomOut = false;
+        } else {
+          hasAppliedMultiLocationZoomOut = false;
+        }
+
         const isSameFocusedLocation =
           isSameRestaurantFocusSession && previousFocusSession.locationKey === focusLocationKey;
         const currentCenter = lastCameraStateRef.current?.center ?? null;
@@ -669,7 +684,7 @@ export const useProfileRuntimeController = (
       const forceMiddleSnap = forceRestaurantProfileMiddleSnapRef.current;
       forceRestaurantProfileMiddleSnapRef.current = false;
       const transition = profileTransitionRef.current;
-      if (transition.status === 'opening' || transition.status === 'closing') {
+      if (transition.status === 'closing') {
         return;
       }
       setMapHighlightedRestaurantId((prev) => (prev === restaurantId ? prev : restaurantId));
@@ -802,7 +817,7 @@ export const useProfileRuntimeController = (
       const forceMiddleSnap = forceRestaurantProfileMiddleSnapRef.current;
       forceRestaurantProfileMiddleSnapRef.current = false;
       const transition = profileTransitionRef.current;
-      if (transition.status === 'opening' || transition.status === 'closing') {
+      if (transition.status === 'closing') {
         return;
       }
       setMapHighlightedRestaurantId((prev) =>
@@ -1040,6 +1055,7 @@ export const useProfileRuntimeController = (
       locationKey: null,
       hasAppliedInitialMultiLocationZoomOut: false,
     };
+    multiLocationZoomBaselineRef.current = null;
     restoreRestaurantProfileMap();
     if (isSearchOverlay && shouldRestoreSearchSheet) {
       restoreSearchSheetState();
@@ -1078,6 +1094,7 @@ export const useProfileRuntimeController = (
     profileDismissBehaviorRef,
     profileTransitionRef,
     cancelActiveHydrationIntent,
+    multiLocationZoomBaselineRef,
     restaurantFocusSessionRef,
     restaurantOverlayDismissHandledRef,
     restaurantProfile,

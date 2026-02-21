@@ -73,7 +73,12 @@ export const useShortcutCoverageOwner = ({
 }: UseShortcutCoverageOwnerArgs): UseShortcutCoverageOwnerResult => {
   const searchRuntimeBus = useSearchBus();
 
-  const isVisualSyncPending = useSearchRuntimeBusSelector(
+  // Read isVisualSyncPending imperatively to avoid making the coverage fetch
+  // effect depend on visual-sync state. When the effect depended on it
+  // reactively, every visual-sync toggle caused effect cleanup → cancelled
+  // in-flight fetches or unnecessary re-fetch cycles.
+  const isVisualSyncPendingRef = React.useRef(false);
+  isVisualSyncPendingRef.current = useSearchRuntimeBusSelector(
     searchRuntimeBus,
     (state) => state.isVisualSyncPending,
     Object.is
@@ -173,13 +178,17 @@ export const useShortcutCoverageOwner = ({
     }
     if (!searchRequestId) {
       deferredCoverageRequestIdRef.current = null;
+      shortcutCoverageFetchKeyRef.current = null;
       shortcutCoverageRankedRef.current = [];
       setShortcutCoverageDotFeatures(null);
       setIsShortcutCoverageLoading(false);
       return;
     }
-    if (isVisualSyncPending) {
-      shortcutCoverageFetchKeyRef.current = null;
+    if (isVisualSyncPendingRef.current) {
+      const hasResolvedCoverage = shortcutCoverageFetchKeyRef.current != null;
+      if (hasResolvedCoverage) {
+        return;
+      }
       shortcutCoverageRankedRef.current = [];
       setShortcutCoverageDotFeatures(null);
       setIsShortcutCoverageLoading(false);
@@ -215,9 +224,6 @@ export const useShortcutCoverageOwner = ({
     }
 
     if (!boundsSnapshot) {
-      logger.info('Shortcut coverage fetch skipped (no bounds snapshot)', {
-        searchRequestId,
-      });
       shortcutCoverageRankedRef.current = [];
       setShortcutCoverageDotFeatures(null);
       setIsShortcutCoverageLoading(false);
@@ -242,7 +248,6 @@ export const useShortcutCoverageOwner = ({
 
     const fetchSeq = ++shortcutCoverageFetchSeqRef.current;
     setIsShortcutCoverageLoading(true);
-    let cancelled = false;
     logger.info('Shortcut coverage fetch start', {
       searchRequestId,
       fetchSeq,
@@ -258,7 +263,7 @@ export const useShortcutCoverageOwner = ({
         scoreMode,
       })
       .then((collection) => {
-        if (cancelled || fetchSeq !== shortcutCoverageFetchSeqRef.current) {
+        if (fetchSeq !== shortcutCoverageFetchSeqRef.current) {
           return;
         }
         setIsShortcutCoverageLoading(false);
@@ -376,7 +381,7 @@ export const useShortcutCoverageOwner = ({
         });
       })
       .catch((err) => {
-        if (cancelled || fetchSeq !== shortcutCoverageFetchSeqRef.current) {
+        if (fetchSeq !== shortcutCoverageFetchSeqRef.current) {
           return;
         }
         setIsShortcutCoverageLoading(false);
@@ -389,7 +394,6 @@ export const useShortcutCoverageOwner = ({
       });
 
     return () => {
-      cancelled = true;
       if (fetchSeq === shortcutCoverageFetchSeqRef.current) {
         setIsShortcutCoverageLoading(false);
       }
@@ -402,9 +406,23 @@ export const useShortcutCoverageOwner = ({
     scoreMode,
     searchMode,
     searchRequestId,
-    isVisualSyncPending,
     viewportBoundsService,
   ]);
+
+  // When a coverage fetch was deferred because isVisualSyncPending was true,
+  // bump coverageBoundsRevision to re-trigger the effect once visual sync clears.
+  React.useEffect(() => {
+    if (searchMode !== 'shortcut' || !searchRequestId) {
+      return;
+    }
+    return searchRuntimeBus.subscribe(() => {
+      const pending = searchRuntimeBus.getState().isVisualSyncPending;
+      if (!pending && deferredCoverageRequestIdRef.current != null) {
+        deferredCoverageRequestIdRef.current = null;
+        setCoverageBoundsRevision((prev) => prev + 1);
+      }
+    });
+  }, [searchMode, searchRequestId, searchRuntimeBus]);
 
   const anchoredShortcutCoverageFeatures = React.useMemo(
     () =>

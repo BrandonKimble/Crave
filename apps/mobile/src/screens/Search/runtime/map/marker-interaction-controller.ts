@@ -75,13 +75,6 @@ export const useMarkerInteractionController = ({
           'results_sheet'
         );
       };
-      if (typeof requestAnimationFrame === 'function') {
-        pendingMarkerOpenAnimationFrameRef.current = requestAnimationFrame(() => {
-          pendingMarkerOpenAnimationFrameRef.current = null;
-          openProfile();
-        });
-        return;
-      }
       openProfile();
     },
     [
