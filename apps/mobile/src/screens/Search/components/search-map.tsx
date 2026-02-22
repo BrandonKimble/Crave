@@ -2412,10 +2412,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
       const effectiveLabelOpacity = shouldUseNativeLabelFadeForPromote
         ? undefined
         : transitionVisual.active === 0
-          ? batchFadeProgress < 1
-            ? batchFadeProgress
-            : undefined
-          : transitionVisual.labelOpacity * batchFadeProgress;
+        ? batchFadeProgress < 1
+          ? batchFadeProgress
+          : undefined
+        : transitionVisual.labelOpacity * batchFadeProgress;
       const matchesTransition =
         feature.properties.pinTransitionActive === transitionVisual.active &&
         feature.properties.pinTransitionScale === transitionVisual.scale &&
