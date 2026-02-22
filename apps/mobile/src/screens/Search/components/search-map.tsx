@@ -2879,6 +2879,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
       if (!didChange) {
         return previousLabelCandidateCollectionRef.current!;
       }
+      // Sort by labelOrder so source order encodes placement priority.
+      // This replaces symbolSortKey (which caused per-frame re-sort wobble).
+      updatedFeatures.sort(
+        (a, b) => (a.properties.labelOrder ?? 9999) - (b.properties.labelOrder ?? 9999)
+      );
       const updated = { ...stylePinFeaturesWithTransitions, features: updatedFeatures };
       previousLabelCandidateCollectionRef.current = updated;
       return updated;
@@ -2887,6 +2892,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     // Full rebuild — marker set changed (while map idle) or first run
     labelMarkerIdentityKeyRef.current = identityKey;
     const nextFeatures: Array<Feature<Point, RestaurantFeatureProperties>> = [];
+    // Iterate in source order (already sorted by rank/priority from upstream).
     for (const feature of stylePinFeaturesWithTransitions.features) {
       const markerKey = feature.id;
       if (typeof markerKey !== 'string' || markerKey.length === 0) {
@@ -2905,6 +2911,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
       }
     }
 
+    // Sort by labelOrder so source order encodes placement priority.
+    nextFeatures.sort(
+      (a, b) => (a.properties.labelOrder ?? 9999) - (b.properties.labelOrder ?? 9999)
+    );
     const collection = { ...stylePinFeaturesWithTransitions, features: nextFeatures };
     previousLabelCandidateCollectionRef.current = collection;
     return collection;
@@ -2918,14 +2928,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
     return {
       ...restaurantLabelStyle,
       symbolZOrder: 'source',
-      // Higher sort keys are drawn/placed on top (higher priority).
-      // Use a stable, explicit ordering key first so ties (e.g. same rank across multiple
-      // locations) don't bounce due to placement pass ordering differences.
-      symbolSortKey: [
-        '-',
-        100000,
-        ['coalesce', ['get', 'labelOrder'], ['coalesce', ['get', 'rank'], 9999]],
-      ],
+      // Placement priority is encoded in source data order (sorted by labelOrder
+      // in restaurantLabelCandidateFeaturesWithIds) instead of symbolSortKey.
+      // symbolSortKey caused per-frame re-sort during camera movement which,
+      // combined with the large collision obstacles (1.1x), produced sub-pixel
+      // placement wobble.
     } as MapboxGL.SymbolLayerStyle;
   }, [restaurantLabelStyle]);
 
