@@ -565,6 +565,8 @@ export const useProfileRuntimeController = (
         source === 'autocomplete';
       const isMultiLocationTarget = isMultiLocationZoomSource && restaurantLocations.length > 1;
       const nextCenter: [number, number] = [focusCoordinate.lng, focusCoordinate.lat];
+      let hasAppliedMultiLocationZoomOut =
+        previousFocusSession.hasAppliedInitialMultiLocationZoomOut;
       const currentZoom =
         lastCameraStateRef.current?.zoom ?? (typeof mapZoom === 'number' ? mapZoom : null);
       if (typeof currentZoom === 'number' && Number.isFinite(currentZoom)) {
@@ -572,7 +574,6 @@ export const useProfileRuntimeController = (
         const hasMultiLocationBaseline =
           typeof baselineZoom === 'number' && Number.isFinite(baselineZoom);
         let nextZoom = currentZoom;
-        let hasAppliedMultiLocationZoomOut = previousFocusSession.hasAppliedInitialMultiLocationZoomOut;
 
         if (isMultiLocationTarget) {
           if (!hasMultiLocationBaseline) {
