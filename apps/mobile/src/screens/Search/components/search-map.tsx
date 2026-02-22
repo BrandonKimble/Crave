@@ -136,12 +136,10 @@ const MAP_STAGE_PRESSURE_CRITICAL_BUDGET_MS = 12;
 const MAP_STAGE_PRESSURE_MAX_QUEUE_DEPTH = 2;
 const MAP_STAGE_LABELS_HEALTHY_FRAMES_REQUIRED = 1;
 const MAP_STAGE_LABELS_HEALTHY_FRAMES_REQUIRED_AFTER_HANDOFF = 2;
-const DOT_TO_PIN_TRANSITION_MIN_SCALE = 0.48;
 const DOT_TO_PIN_RANK_FADE_START = 0.5;
 const ENABLE_NATIVE_LABEL_FADE_FOR_MOVING_PROMOTES = false;
 
 const PIN_TRANSITION_ACTIVE_EXPRESSION = ['coalesce', ['get', 'pinTransitionActive'], 0] as const;
-const PIN_TRANSITION_SCALE_EXPRESSION = ['coalesce', ['get', 'pinTransitionScale'], 1] as const;
 const PIN_TRANSITION_OPACITY_EXPRESSION = ['coalesce', ['get', 'pinTransitionOpacity'], 1] as const;
 const PIN_RANK_OPACITY_EXPRESSION = ['coalesce', ['get', 'pinRankOpacity'], 1] as const;
 const PIN_LABEL_OPACITY_EXPRESSION = ['coalesce', ['get', 'pinLabelOpacity'], 1] as const;
@@ -184,20 +182,17 @@ const withIconOpacity = (
     iconOpacity,
   } as MapboxGL.SymbolLayerStyle);
 
-const withScaledIconTransition = ({
+const withIconTransition = ({
   baseStyle,
-  baseIconSize,
   iconOpacity,
   iconColor,
 }: {
   baseStyle: MapboxGL.SymbolLayerStyle;
-  baseIconSize: number;
   iconOpacity: unknown;
   iconColor?: unknown;
 }): MapboxGL.SymbolLayerStyle =>
   ({
     ...baseStyle,
-    iconSize: ['*', baseIconSize, PIN_TRANSITION_SCALE_EXPRESSION],
     ...(iconColor === undefined ? {} : { iconColor }),
     iconOpacity,
   } as MapboxGL.SymbolLayerStyle);
@@ -234,7 +229,6 @@ export type RestaurantFeatureProperties = {
   pinColorGlobal?: string;
   pinColorLocal?: string;
   pinTransitionActive?: number;
-  pinTransitionScale?: number;
   pinTransitionOpacity?: number;
   pinRankOpacity?: number;
   pinLabelOpacity?: number;
@@ -894,8 +888,6 @@ const LABEL_PIN_COLLISION_STYLE_FILL: MapboxGL.SymbolLayerStyle = {
   iconOpacity: 0.001,
 } as MapboxGL.SymbolLayerStyle;
 
-const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
-const easeOutQuart = (t: number) => 1 - Math.pow(1 - t, 4);
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const getNowMs = () =>
   typeof globalThis.performance?.now === 'function' ? globalThis.performance.now() : Date.now();
@@ -905,7 +897,6 @@ type PinTransitionDirection = 'promote' | 'demote';
 
 type PinTransitionVisual = {
   active: number;
-  scale: number;
   opacity: number;
   rankOpacity: number;
   labelOpacity: number;
@@ -913,25 +904,21 @@ type PinTransitionVisual = {
 
 const STEADY_PIN_TRANSITION_VISUAL: PinTransitionVisual = {
   active: 0,
-  scale: 1,
   opacity: 1,
   rankOpacity: 1,
   labelOpacity: 1,
 };
 
 const getPinTransitionProfile = (progress01: number): Omit<PinTransitionVisual, 'active'> => {
-  const clampedProgress = clamp01(progress01);
-  const easedProgress = easeOutQuart(clampedProgress);
+  const linearProgress = clamp01(progress01);
   const rankProgressLinear = clamp01(
-    (clampedProgress - DOT_TO_PIN_RANK_FADE_START) / (1 - DOT_TO_PIN_RANK_FADE_START)
+    (linearProgress - DOT_TO_PIN_RANK_FADE_START) / (1 - DOT_TO_PIN_RANK_FADE_START)
   );
-  const rankOpacity = easeOutCubic(rankProgressLinear);
 
   return {
-    scale: DOT_TO_PIN_TRANSITION_MIN_SCALE + (1 - DOT_TO_PIN_TRANSITION_MIN_SCALE) * easedProgress,
-    opacity: easedProgress,
-    rankOpacity,
-    labelOpacity: easedProgress,
+    opacity: linearProgress,
+    rankOpacity: rankProgressLinear,
+    labelOpacity: linearProgress,
   };
 };
 const START_PIN_TRANSITION_VISUAL: PinTransitionVisual = {
@@ -956,7 +943,9 @@ const getPinTransitionVisual = (
 
   return {
     active: 1,
-    ...profile,
+    opacity: profile.opacity,
+    rankOpacity: profile.rankOpacity,
+    labelOpacity: profile.labelOpacity,
   };
 };
 
@@ -1021,7 +1010,7 @@ const usePinTransitionController = ({
     0
   );
   const lastRenderTriggerMsRef = React.useRef(0);
-  const TRANSITION_RENDER_THROTTLE_MS = 50; // ~20fps for React commits
+  const TRANSITION_RENDER_THROTTLE_MS = 16; // ~60fps for smoother pin/label transitions
 
   const stateRef = React.useRef<PinTransitionState>(createPinTransitionState());
   const state = stateRef.current;
@@ -1040,9 +1029,7 @@ const usePinTransitionController = ({
   const batchFadeProgress =
     state.batchRevealStartMs != null && clockMs > 0
       ? clamp01(
-          easeOutQuart(
-            clamp01((clockMs - state.batchRevealStartMs) / DOT_TO_PIN_TRANSITION_DURATION_MS)
-          )
+          clamp01((clockMs - state.batchRevealStartMs) / DOT_TO_PIN_TRANSITION_DURATION_MS)
         )
       : 1;
 
@@ -1207,7 +1194,6 @@ const usePinTransitionController = ({
       nextPinnedFeatureByMarkerKey.size > 0;
     let didMutateTransitions = false;
     let shouldStartAnimationLoop = false;
-
     if (shouldRunInitialReveal) {
       // Consume the reveal commit.
       state.appliedInitialRevealCommitId = state.pendingInitialRevealCommitId;
@@ -2454,7 +2440,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
             );
       const hasTransitionProps =
         feature.properties.pinTransitionActive != null ||
-        feature.properties.pinTransitionScale != null ||
         feature.properties.pinTransitionOpacity != null ||
         feature.properties.pinRankOpacity != null ||
         feature.properties.pinLabelOpacity != null;
@@ -2474,7 +2459,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
         : transitionVisual.labelOpacity * batchFadeProgress;
       const matchesTransition =
         feature.properties.pinTransitionActive === transitionVisual.active &&
-        feature.properties.pinTransitionScale === transitionVisual.scale &&
         feature.properties.pinTransitionOpacity === transitionVisual.opacity &&
         feature.properties.pinRankOpacity === transitionVisual.rankOpacity &&
         feature.properties.pinLabelOpacity === effectiveLabelOpacity;
@@ -2495,7 +2479,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
           ...feature.properties,
           labelOrder,
           pinTransitionActive: transitionVisual.active === 0 ? undefined : transitionVisual.active,
-          pinTransitionScale: transitionVisual.active === 0 ? undefined : transitionVisual.scale,
           pinTransitionOpacity:
             transitionVisual.active === 0 ? undefined : transitionVisual.opacity,
           pinRankOpacity: transitionVisual.active === 0 ? undefined : transitionVisual.rankOpacity,
@@ -2551,7 +2534,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
         properties: {
           ...feature.properties,
           pinTransitionActive: transitionVisual.active,
-          pinTransitionScale: transitionVisual.scale,
           pinTransitionOpacity: transitionVisual.opacity,
           pinRankOpacity: transitionVisual.rankOpacity,
           pinLabelOpacity: transitionVisual.labelOpacity,
@@ -2602,7 +2584,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       return stylePinFeaturesWithTransitions;
     }
     // Identity = feature IDs. Only rebuild when the set of features changes,
-    // not when transition visual properties (scale, opacity) change mid-tick.
+    // not when transition visual properties (opacity) change mid-tick.
     let identity = '';
     for (let i = 0; i < features.length; i++) {
       identity += (i > 0 ? ',' : '') + (features[i].id ?? '');
@@ -2791,8 +2773,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     const identityChanged = identityKey !== labelMarkerIdentityKeyRef.current;
     const hasCachedResult = previousLabelCandidateCollectionRef.current != null;
     const shouldDeferRebuild = identityChanged && hasCachedResult && isMapMovingRef.current;
-    const stickyEpochChanged =
-      labelCandidateAppliedStickyEpochRef.current !== labelStickyEpoch;
+    const stickyEpochChanged = labelCandidateAppliedStickyEpochRef.current !== labelStickyEpoch;
 
     if (!stickyEpochChanged && ((!identityChanged && hasCachedResult) || shouldDeferRebuild)) {
       // Reuse cached label candidates — update transition properties only
@@ -2851,7 +2832,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
         if (
           labelFeature.properties.pinTransitionActive ===
             srcFeature.properties.pinTransitionActive &&
-          labelFeature.properties.pinTransitionScale === srcFeature.properties.pinTransitionScale &&
           labelFeature.properties.pinTransitionOpacity ===
             srcFeature.properties.pinTransitionOpacity &&
           labelFeature.properties.pinRankOpacity === srcFeature.properties.pinRankOpacity &&
@@ -2869,7 +2849,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
           properties: {
             ...labelFeature.properties,
             pinTransitionActive: srcFeature.properties.pinTransitionActive,
-            pinTransitionScale: srcFeature.properties.pinTransitionScale,
             pinTransitionOpacity: srcFeature.properties.pinTransitionOpacity,
             pinRankOpacity: srcFeature.properties.pinRankOpacity,
             pinLabelOpacity: srcFeature.properties.pinLabelOpacity,
@@ -3036,10 +3015,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     const base: MapboxGL.SymbolLayerStyle = {
       ...restaurantLabelStyleWithStableOrder,
       textOpacity: ['*', baseTextOpacity, PIN_LABEL_OPACITY_EXPRESSION],
-      textOpacityTransition: {
-        duration: DOT_TO_PIN_TRANSITION_DURATION_MS,
-        delay: 0,
-      },
       // Tiny "mutex" icon at the feature point: prevents multiple candidate labels for the same
       // restaurant from being placed simultaneously, without materially affecting other symbols.
       iconImage: STYLE_PIN_OUTLINE_IMAGE_ID,
@@ -3115,10 +3090,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
     ] as const;
   }, [effectiveSelectedRestaurantId, scoreMode]);
 
-  // Pin styles rely on per-pin transition properties (pinTransitionOpacity,
-  // pinTransitionScale) for their grow+fade animation. batchFadeProgress is
-  // intentionally NOT multiplied here to avoid double-fading — it only drives
-  // dots and labels.
+  // Pin styles rely on per-pin opacity transition properties only.
+  // batchFadeProgress is intentionally NOT multiplied here to avoid
+  // double-fading — it only drives dots and labels.
   const stylePinsShadowSteadyStyle = React.useMemo(
     () =>
       withIconOpacity(STYLE_PINS_SHADOW_STYLE, [
@@ -3131,9 +3105,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
   const stylePinsShadowTransitionStyle = React.useMemo(
     () =>
-      withScaledIconTransition({
+      withIconTransition({
         baseStyle: STYLE_PINS_SHADOW_STYLE,
-        baseIconSize: STYLE_PINS_SHADOW_ICON_SIZE,
         iconOpacity: ['*', STYLE_PINS_SHADOW_OPACITY, PIN_TRANSITION_OPACITY_EXPRESSION],
       }),
     []
@@ -3160,9 +3133,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
   const stylePinsTransitionBaseStyle = React.useMemo(
     () =>
-      withScaledIconTransition({
+      withIconTransition({
         baseStyle: STYLE_PINS_OUTLINE_STYLE,
-        baseIconSize: STYLE_PINS_OUTLINE_ICON_SIZE,
         iconOpacity: PIN_TRANSITION_OPACITY_EXPRESSION,
       }),
     []
@@ -3170,9 +3142,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
   const stylePinsTransitionFillStyle = React.useMemo(
     () =>
-      withScaledIconTransition({
+      withIconTransition({
         baseStyle: STYLE_PINS_FILL_STYLE,
-        baseIconSize: STYLE_PINS_FILL_ICON_SIZE,
         iconColor: pinFillColorExpression,
         iconOpacity: PIN_TRANSITION_OPACITY_EXPRESSION,
       }),
