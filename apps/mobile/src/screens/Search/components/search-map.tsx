@@ -391,6 +391,21 @@ const buildLabelCandidateFeatureId = (markerKey: string, candidate: LabelCandida
   `${markerKey}::label::${candidate}`;
 
 const LABEL_CANDIDATE_FEATURE_ID_DELIMITER = '::label::';
+const LABEL_STICKY_IDENTITY_RESTAURANT_PREFIX = 'restaurant:';
+const LABEL_STICKY_IDENTITY_MARKER_PREFIX = 'marker:';
+
+const buildLabelStickyIdentityKey = (
+  restaurantId: string | null,
+  markerKey: string | null
+): string | null => {
+  if (typeof restaurantId === 'string' && restaurantId.length > 0) {
+    return `${LABEL_STICKY_IDENTITY_RESTAURANT_PREFIX}${restaurantId}`;
+  }
+  if (typeof markerKey === 'string' && markerKey.length > 0) {
+    return `${LABEL_STICKY_IDENTITY_MARKER_PREFIX}${markerKey}`;
+  }
+  return null;
+};
 
 const parseLabelCandidateFeatureId = (
   value: unknown
@@ -445,6 +460,35 @@ const getLabelCandidateInfoFromRenderedFeature = (
   }
 
   return null;
+};
+
+const getLabelStickyIdentityKeyFromFeature = (
+  feature: Feature<Point, RestaurantFeatureProperties>
+): string | null => {
+  const markerKey = typeof feature.id === 'string' ? feature.id : null;
+  return buildLabelStickyIdentityKey(feature.properties.restaurantId ?? null, markerKey);
+};
+
+const getLabelStickyIdentityKeyFromRenderedFeature = (
+  feature: unknown,
+  fallbackMarkerKey: string | null
+): string | null => {
+  if (!feature || typeof feature !== 'object' || Array.isArray(feature)) {
+    return buildLabelStickyIdentityKey(null, fallbackMarkerKey);
+  }
+  const record = feature as Record<string, unknown>;
+  const props =
+    record.properties && typeof record.properties === 'object' && !Array.isArray(record.properties)
+      ? (record.properties as Record<string, unknown>)
+      : null;
+  const restaurantId = typeof props?.restaurantId === 'string' ? props.restaurantId : null;
+  const markerKey =
+    typeof props?.markerKey === 'string'
+      ? props.markerKey
+      : typeof record.id === 'string'
+      ? parseLabelCandidateFeatureId(record.id)?.markerKey ?? null
+      : fallbackMarkerKey;
+  return buildLabelStickyIdentityKey(restaurantId, markerKey);
 };
 
 const getRestaurantIdFromPressFeature = (feature: unknown): string | null => {
@@ -2205,6 +2249,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     null
   );
   const labelStickyMarkersReadyKeyRef = React.useRef<string | null>(null);
+  const labelStickyResetRequestKeyRef = React.useRef<string | null>(null);
   const [labelStickyEpoch, setLabelStickyEpoch] = React.useState(0);
 
   React.useEffect(() => {
@@ -2231,6 +2276,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       }
       setLabelStickyMarkersReadyAt(null);
       labelStickyMarkersReadyKeyRef.current = null;
+      labelStickyResetRequestKeyRef.current = null;
       return;
     }
 
@@ -2280,13 +2326,23 @@ const SearchMap: React.FC<SearchMapProps> = ({
     if (!ENABLE_STICKY_LABEL_CANDIDATES) {
       return;
     }
+    if (!shouldRenderLabels) {
+      return;
+    }
+    if (!visualReadyRequestKey) {
+      return;
+    }
+    if (labelStickyResetRequestKeyRef.current === visualReadyRequestKey) {
+      return;
+    }
+    labelStickyResetRequestKeyRef.current = visualReadyRequestKey;
     labelStickyCandidateByMarkerKeyRef.current.clear();
     labelStickyLastSeenAtByMarkerKeyRef.current.clear();
     labelStickyMissingStreakByMarkerKeyRef.current.clear();
     labelStickyProposedCandidateByMarkerKeyRef.current.clear();
     labelStickyProposedSinceAtByMarkerKeyRef.current.clear();
     setLabelStickyEpoch((value) => value + 1);
-  }, [markerTopologyKey, shouldRenderLabels, styleURL]);
+  }, [shouldRenderLabels, styleURL, visualReadyRequestKey]);
 
   const labelFeatureBuildDurationMsRef = React.useRef<number | null>(null);
   const previousLabelFeatureByKeyRef = React.useRef(
@@ -2682,6 +2738,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
       setLabelLayerTreeEpoch((value) => value + 1);
       labelStickyCandidateByMarkerKeyRef.current.clear();
       labelStickyLastSeenAtByMarkerKeyRef.current.clear();
+      labelStickyMissingStreakByMarkerKeyRef.current.clear();
+      labelStickyProposedCandidateByMarkerKeyRef.current.clear();
+      labelStickyProposedSinceAtByMarkerKeyRef.current.clear();
       setLabelStickyEpoch((value) => value + 1);
       setLabelPlacementEpoch((value) => value + 1);
     }, LABEL_STICKY_COLD_START_RECOVER_AFTER_MS);
@@ -2697,6 +2756,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   // Marker identity fingerprint — only changes when the set of marker keys changes,
   // not when transition properties change. Used to gate label candidate rebuilds.
   const labelMarkerIdentityKeyRef = React.useRef('');
+  const labelCandidateAppliedStickyEpochRef = React.useRef(-1);
   const previousLabelCandidateCollectionRef = React.useRef<FeatureCollection<
     Point,
     RestaurantFeatureProperties
@@ -2705,6 +2765,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const restaurantLabelCandidateFeaturesWithIds = React.useMemo(() => {
     if (!stylePinFeaturesWithTransitions.features.length) {
       labelMarkerIdentityKeyRef.current = '';
+      labelCandidateAppliedStickyEpochRef.current = labelStickyEpoch;
       previousLabelCandidateCollectionRef.current = null;
       return stylePinFeaturesWithTransitions as FeatureCollection<
         Point,
@@ -2730,8 +2791,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
     const identityChanged = identityKey !== labelMarkerIdentityKeyRef.current;
     const hasCachedResult = previousLabelCandidateCollectionRef.current != null;
     const shouldDeferRebuild = identityChanged && hasCachedResult && isMapMovingRef.current;
+    const stickyEpochChanged =
+      labelCandidateAppliedStickyEpochRef.current !== labelStickyEpoch;
 
-    if ((!identityChanged && hasCachedResult) || shouldDeferRebuild) {
+    if (!stickyEpochChanged && ((!identityChanged && hasCachedResult) || shouldDeferRebuild)) {
       // Reuse cached label candidates — update transition properties only
       const prevFeatures = previousLabelCandidateCollectionRef.current!.features;
       const srcByKey = new Map<string, Feature<Point, RestaurantFeatureProperties>>();
@@ -2750,26 +2813,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
       let didChange = false;
       const existingMarkerKeys = new Set<string>();
       const existingRestaurantIds = new Set<string>();
-      const existingCandidateByRestaurantId = new Map<string, LabelCandidate>();
       const updatedFeatures: Array<Feature<Point, RestaurantFeatureProperties>> = [];
-      let prunedStaleCount = 0;
-      let fallbackMatchedByRestaurantIdCount = 0;
-      let transitionPatchedCount = 0;
-      let appendedCandidateCount = 0;
       for (const labelFeature of prevFeatures) {
         const srcMarkerKey = labelFeature.properties.markerKey;
         const restaurantId = labelFeature.properties.restaurantId;
-        const candidate = labelFeature.properties.labelCandidate;
-        if (
-          typeof restaurantId === 'string' &&
-          restaurantId.length > 0 &&
-          (candidate === 'bottom' ||
-            candidate === 'right' ||
-            candidate === 'top' ||
-            candidate === 'left')
-        ) {
-          existingCandidateByRestaurantId.set(restaurantId, candidate);
-        }
         if (!srcMarkerKey) {
           updatedFeatures.push(labelFeature);
           if (typeof restaurantId === 'string' && restaurantId.length > 0) {
@@ -2789,7 +2836,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
           srcByRestaurantId.has(restaurantId)
         ) {
           srcFeature = srcByRestaurantId.get(restaurantId);
-          fallbackMatchedByRestaurantIdCount += 1;
           const nextMarkerKey = srcFeature?.id;
           if (typeof nextMarkerKey === 'string' && nextMarkerKey.length > 0) {
             existingMarkerKeys.add(nextMarkerKey);
@@ -2799,7 +2845,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
         // for markers that no longer exist must be pruned immediately.
         if (!srcFeature) {
           didChange = true;
-          prunedStaleCount += 1;
           continue;
         }
         // Check if transition properties actually changed
@@ -2819,7 +2864,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
           continue;
         }
         didChange = true;
-        transitionPatchedCount += 1;
         updatedFeatures.push({
           ...labelFeature,
           properties: {
@@ -2855,13 +2899,12 @@ const SearchMap: React.FC<SearchMapProps> = ({
           continue;
         }
         didChange = true;
+        const stickyIdentityKey = getLabelStickyIdentityKeyFromFeature(feature);
         const lockedCandidate = ENABLE_STICKY_LABEL_CANDIDATES
-          ? labelStickyCandidateByMarkerKeyRef.current.get(markerKey)
+          ? stickyIdentityKey
+            ? labelStickyCandidateByMarkerKeyRef.current.get(stickyIdentityKey)
+            : null
           : null;
-        const restaurantCandidate =
-          typeof restaurantId === 'string' && restaurantId.length > 0
-            ? existingCandidateByRestaurantId.get(restaurantId) ?? null
-            : null;
         const candidates = lockedCandidate ? [lockedCandidate] : LABEL_CANDIDATES;
         for (const candidate of candidates) {
           updatedFeatures.push({
@@ -2869,7 +2912,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
             id: buildLabelCandidateFeatureId(markerKey, candidate),
             properties: { ...feature.properties, labelCandidate: candidate, markerKey },
           });
-          appendedCandidateCount += 1;
         }
         if (typeof restaurantId === 'string' && restaurantId.length > 0) {
           existingRestaurantIds.add(restaurantId);
@@ -2877,6 +2919,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       }
 
       if (!didChange) {
+        labelCandidateAppliedStickyEpochRef.current = labelStickyEpoch;
         return previousLabelCandidateCollectionRef.current!;
       }
       // Sort by labelOrder so source order encodes placement priority.
@@ -2885,6 +2928,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         (a, b) => (a.properties.labelOrder ?? 9999) - (b.properties.labelOrder ?? 9999)
       );
       const updated = { ...stylePinFeaturesWithTransitions, features: updatedFeatures };
+      labelCandidateAppliedStickyEpochRef.current = labelStickyEpoch;
       previousLabelCandidateCollectionRef.current = updated;
       return updated;
     }
@@ -2898,8 +2942,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
       if (typeof markerKey !== 'string' || markerKey.length === 0) {
         continue;
       }
+      const stickyIdentityKey = getLabelStickyIdentityKeyFromFeature(feature);
       const lockedCandidate = ENABLE_STICKY_LABEL_CANDIDATES
-        ? labelStickyCandidateByMarkerKeyRef.current.get(markerKey)
+        ? stickyIdentityKey
+          ? labelStickyCandidateByMarkerKeyRef.current.get(stickyIdentityKey)
+          : null
         : null;
       const candidates = lockedCandidate ? [lockedCandidate] : LABEL_CANDIDATES;
       for (const candidate of candidates) {
@@ -2916,6 +2963,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       (a, b) => (a.properties.labelOrder ?? 9999) - (b.properties.labelOrder ?? 9999)
     );
     const collection = { ...stylePinFeaturesWithTransitions, features: nextFeatures };
+    labelCandidateAppliedStickyEpochRef.current = labelStickyEpoch;
     previousLabelCandidateCollectionRef.current = collection;
     return collection;
   }, [labelStickyEpoch, stylePinFeaturesWithTransitions]);
@@ -3932,7 +3980,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     const effectiveRenderedFeatures = renderedForParsing?.features?.length ?? 0;
 
     const visibleLabelFeatureIdSet = new Set<string>();
-    const renderedCandidateByMarkerKey = new Map<string, LabelCandidate>();
+    const renderedCandidateByStickyIdentityKey = new Map<string, LabelCandidate>();
     for (const feature of renderedForParsing?.features ?? []) {
       const parsed = getLabelCandidateInfoFromRenderedFeature(feature);
       if (!parsed) {
@@ -3941,8 +3989,15 @@ const SearchMap: React.FC<SearchMapProps> = ({
       visibleLabelFeatureIdSet.add(
         buildLabelCandidateFeatureId(parsed.markerKey, parsed.candidate)
       );
-      if (!renderedCandidateByMarkerKey.has(parsed.markerKey)) {
-        renderedCandidateByMarkerKey.set(parsed.markerKey, parsed.candidate);
+      const stickyIdentityKey = getLabelStickyIdentityKeyFromRenderedFeature(
+        feature,
+        parsed.markerKey
+      );
+      if (!stickyIdentityKey) {
+        continue;
+      }
+      if (!renderedCandidateByStickyIdentityKey.has(stickyIdentityKey)) {
+        renderedCandidateByStickyIdentityKey.set(stickyIdentityKey, parsed.candidate);
       }
     }
     const nextVisibleLabelFeatureIds = Array.from(visibleLabelFeatureIdSet).sort();
@@ -3953,12 +4008,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     );
 
     const isActivelyMoving = isMapMovingRef.current;
-    // Keep sticky-candidate ownership stable during live pan/zoom to avoid
-    // candidate churn (disappear/reappear flicker). We still refresh visible
-    // interaction IDs above so taps stay aligned with what is currently rendered.
-    if (isActivelyMoving) {
-      return;
-    }
 
     if (!ENABLE_STICKY_LABEL_CANDIDATES) {
       return;
@@ -3971,13 +4020,13 @@ const SearchMap: React.FC<SearchMapProps> = ({
     const proposedSinceAt = labelStickyProposedSinceAtByMarkerKeyRef.current;
     let didChange = false;
 
-    for (const [markerKey, candidate] of renderedCandidateByMarkerKey) {
-      lastSeenAt.set(markerKey, now);
-      missingStreak.set(markerKey, 0);
-      const locked = stickyMap.get(markerKey);
+    for (const [stickyIdentityKey, candidate] of renderedCandidateByStickyIdentityKey) {
+      lastSeenAt.set(stickyIdentityKey, now);
+      missingStreak.set(stickyIdentityKey, 0);
+      const locked = stickyMap.get(stickyIdentityKey);
       if (locked === candidate) {
-        proposedCandidate.delete(markerKey);
-        proposedSinceAt.delete(markerKey);
+        proposedCandidate.delete(stickyIdentityKey);
+        proposedSinceAt.delete(stickyIdentityKey);
         continue;
       }
 
@@ -3985,21 +4034,21 @@ const SearchMap: React.FC<SearchMapProps> = ({
         ? LABEL_STICKY_LOCK_STABLE_MS_MOVING
         : LABEL_STICKY_LOCK_STABLE_MS_IDLE;
 
-      const proposed = proposedCandidate.get(markerKey);
+      const proposed = proposedCandidate.get(stickyIdentityKey);
       if (proposed !== candidate) {
-        proposedCandidate.set(markerKey, candidate);
-        proposedSinceAt.set(markerKey, now);
+        proposedCandidate.set(stickyIdentityKey, candidate);
+        proposedSinceAt.set(stickyIdentityKey, now);
         continue;
       }
 
-      const sinceAt = proposedSinceAt.get(markerKey) ?? now;
+      const sinceAt = proposedSinceAt.get(stickyIdentityKey) ?? now;
       if (now - sinceAt < stableMs) {
         continue;
       }
 
-      stickyMap.set(markerKey, candidate);
-      proposedCandidate.delete(markerKey);
-      proposedSinceAt.delete(markerKey);
+      stickyMap.set(stickyIdentityKey, candidate);
+      proposedCandidate.delete(stickyIdentityKey);
+      proposedSinceAt.delete(stickyIdentityKey);
       didChange = true;
     }
 
@@ -4013,20 +4062,20 @@ const SearchMap: React.FC<SearchMapProps> = ({
         : LABEL_STICKY_UNLOCK_MISSING_MS_IDLE;
       const requiredStreak = isActivelyMoving ? LABEL_STICKY_UNLOCK_MISSING_STREAK_MOVING : 1;
 
-      for (const markerKey of stickyMap.keys()) {
-        if (renderedCandidateByMarkerKey.has(markerKey)) {
+      for (const stickyIdentityKey of stickyMap.keys()) {
+        if (renderedCandidateByStickyIdentityKey.has(stickyIdentityKey)) {
           continue;
         }
 
-        const nextStreak = (missingStreak.get(markerKey) ?? 0) + 1;
-        missingStreak.set(markerKey, nextStreak);
+        const nextStreak = (missingStreak.get(stickyIdentityKey) ?? 0) + 1;
+        missingStreak.set(stickyIdentityKey, nextStreak);
 
-        const seenAt = lastSeenAt.get(markerKey) ?? 0;
+        const seenAt = lastSeenAt.get(stickyIdentityKey) ?? 0;
         if (nextStreak >= requiredStreak && now - seenAt > unlockMs) {
-          stickyMap.delete(markerKey);
-          proposedCandidate.delete(markerKey);
-          proposedSinceAt.delete(markerKey);
-          missingStreak.delete(markerKey);
+          stickyMap.delete(stickyIdentityKey);
+          proposedCandidate.delete(stickyIdentityKey);
+          proposedSinceAt.delete(stickyIdentityKey);
+          missingStreak.delete(stickyIdentityKey);
           didChange = true;
         }
       }
