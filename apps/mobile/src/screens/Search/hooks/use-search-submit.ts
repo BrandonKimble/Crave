@@ -748,6 +748,7 @@ const useSearchSubmit = ({
   const scheduleSubmitUiLanes = React.useCallback(
     (options: SubmitUiLanesOptions) => {
       const {
+        targetTab,
         preserveSheetState,
         transitionFromDockedPolls,
         shouldHoldResultPanel,
@@ -782,6 +783,7 @@ const useSearchSubmit = ({
       });
       searchRuntimeBus.batch(() => {
         const laneAStatePatch: Partial<SearchRuntimeBusState> = {
+          activeTab: targetTab,
           isLoadingMore: false,
           submittedQuery: submittedLabel ?? searchRuntimeBus.getState().submittedQuery ?? '',
           isVisualSyncPending: false,
@@ -791,6 +793,7 @@ const useSearchSubmit = ({
         };
         publishRuntimeLaneState(activeOperationTupleRef.current, 'lane_a_ack', laneAStatePatch);
       });
+      setActiveTab(targetTab);
 
       if (shouldResetPagination) {
         scheduleAfterTwoFrames(() => {
@@ -811,6 +814,7 @@ const useSearchSubmit = ({
       publishRuntimeLaneState,
       runNonCriticalStateUpdate,
       scheduleAfterTwoFrames,
+      setActiveTab,
       showPanel,
       searchRuntimeBus,
     ]
@@ -1155,23 +1159,26 @@ const useSearchSubmit = ({
                 setActiveTab(initialUiState.targetTab);
                 resolvedActiveTab = initialUiState.targetTab as 'dishes' | 'restaurants';
               }
-              if (!append && singleRestaurantCandidate) {
+              if (!append && singleRestaurantCandidate && runtimeTuple.mode !== 'shortcut') {
                 setActiveTab('restaurants');
                 resolvedActiveTab = 'restaurants';
-              } else if (!append) {
+              } else if (!append && runtimeTuple.mode === 'natural') {
                 const hasFoodResults = normalizedResponse?.dishes?.length > 0;
                 const hasRestaurantsResults = (normalizedResponse?.restaurants?.length ?? 0) > 0;
-                const intentDefaultTab = resolveIntentDefaultTab(normalizedResponse);
+                const submissionDefaultTab = resolveSubmissionDefaultTab(options.submissionContext);
+                const intentDefaultTab = submissionDefaultTab ?? resolveIntentDefaultTab(normalizedResponse);
 
                 const computeTab = (prevTab: 'dishes' | 'restaurants') => {
-                  if (!hasActiveTabPreference && intentDefaultTab) {
+                  if (intentDefaultTab) {
                     if (intentDefaultTab === 'dishes' && hasFoodResults) {
                       return 'dishes' as const;
                     }
                     if (intentDefaultTab === 'restaurants' && hasRestaurantsResults) {
                       return 'restaurants' as const;
                     }
-                    return (hasFoodResults ? 'dishes' : 'restaurants') as 'dishes' | 'restaurants';
+                  }
+                  if (!hasFoodResults && !hasRestaurantsResults) {
+                    return prevTab;
                   }
                   if (prevTab === 'dishes' && hasFoodResults) {
                     return 'dishes' as const;

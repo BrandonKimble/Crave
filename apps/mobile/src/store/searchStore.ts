@@ -6,7 +6,7 @@ import type { MapBounds } from '../types';
 import { logger } from '../utils';
 
 const HISTORY_LIMIT = 8;
-const SEARCH_STORE_VERSION = 5;
+const SEARCH_STORE_VERSION = 6;
 
 export type SearchScoreMode = 'global_quality' | 'coverage_display';
 export type SearchActiveTab = 'restaurants' | 'dishes';
@@ -234,15 +234,12 @@ export const useSearchStore = create<SearchState>()(
         }
 
         const state = persistedState as Partial<SearchState>;
-        const normalizedPreferredActiveTab = normalizeActiveTab(
-          state.preferredActiveTab ?? state.activeTab
-        );
         const normalizedScoreMode = normalizeScoreMode(state.scoreMode);
         return {
           ...state,
-          activeTab: normalizedPreferredActiveTab,
-          preferredActiveTab: normalizedPreferredActiveTab,
-          hasActiveTabPreference: state.hasActiveTabPreference === true,
+          activeTab: defaultState.activeTab,
+          preferredActiveTab: defaultState.preferredActiveTab,
+          hasActiveTabPreference: false,
           priceLevels: normalizePriceLevels(state.priceLevels),
           scoreMode: normalizedScoreMode,
           hasScoreModePreference: state.hasScoreModePreference === true,
@@ -296,8 +293,6 @@ export const useSearchStore = create<SearchState>()(
       partialize: (state) => ({
         query: state.query,
         page: state.page,
-        preferredActiveTab: state.preferredActiveTab,
-        hasActiveTabPreference: state.hasActiveTabPreference,
         openNow: state.openNow,
         bounds: state.bounds,
         boundsLabel: state.boundsLabel,
