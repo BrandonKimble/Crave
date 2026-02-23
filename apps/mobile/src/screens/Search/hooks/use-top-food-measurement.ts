@@ -152,6 +152,12 @@ type TopFoodMeasurementResult = {
    * "+N more" counts to measure
    */
   topFoodMoreCounts: number[];
+
+  /**
+   * Whether all candidate widths are already in the module-level LRU cache,
+   * meaning hidden measurement nodes are unnecessary.
+   */
+  allCached: boolean;
 };
 
 /**
@@ -579,6 +585,18 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
     return hasItems && hasMoreTemplates;
   }, [availableWidth, candidateTopFoods, isEnabled, measurements, topFoodMoreCounts]);
 
+  // Check if all widths are already in the module-level LRU cache (no measurement nodes needed)
+  const allCached = React.useMemo(() => {
+    if (!isEnabled || candidateTopFoods.length === 0) return true;
+    const itemsCached = candidateTopFoods.every(
+      (food) => typeof topFoodItemWidthCache.get(food.connectionId) === 'number'
+    );
+    if (!itemsCached) return false;
+    return topFoodMoreCounts.every(
+      (count) => typeof topFoodMoreWidthCache.get(count) === 'number'
+    );
+  }, [candidateTopFoods, isEnabled, topFoodMoreCounts]);
+
   return {
     visibleTopFoods,
     hiddenTopFoodCount,
@@ -587,7 +605,50 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
     hasMeasured,
     candidateTopFoods,
     topFoodMoreCounts,
+    allCached,
   };
 }
 
-export { useTopFoodMeasurement, type TopFoodMeasurementOptions, type TopFoodMeasurementResult };
+/**
+ * Given a list of restaurant-like results, returns the set of connectionId+foodName pairs
+ * and moreCount values that are NOT yet in the module-level LRU cache and need measurement.
+ */
+function computeTopFoodPreMeasureKeys(
+  restaurants: readonly { topFood?: readonly TopFoodItem[]; totalDishCount?: number }[],
+  maxToRender: number
+): { items: { connectionId: string; foodName: string }[]; moreCounts: number[] } {
+  const items: { connectionId: string; foodName: string }[] = [];
+  const moreCountsSet = new Set<number>();
+  const seenConnectionIds = new Set<string>();
+
+  for (const r of restaurants) {
+    const foods = r.topFood?.slice(0, maxToRender) ?? [];
+    const totalCount = Math.max(r.totalDishCount ?? foods.length, foods.length);
+    for (const food of foods) {
+      if (
+        !seenConnectionIds.has(food.connectionId) &&
+        topFoodItemWidthCache.get(food.connectionId) === undefined
+      ) {
+        seenConnectionIds.add(food.connectionId);
+        items.push({ connectionId: food.connectionId, foodName: food.foodName });
+      }
+    }
+    for (let count = 0; count <= foods.length; count++) {
+      const hiddenCount = totalCount - count;
+      if (hiddenCount > 0 && topFoodMoreWidthCache.get(hiddenCount) === undefined) {
+        moreCountsSet.add(hiddenCount);
+      }
+    }
+  }
+  return { items, moreCounts: Array.from(moreCountsSet) };
+}
+
+export {
+  useTopFoodMeasurement,
+  computeTopFoodPreMeasureKeys,
+  topFoodItemWidthCache,
+  topFoodMoreWidthCache,
+  type TopFoodItem,
+  type TopFoodMeasurementOptions,
+  type TopFoodMeasurementResult,
+};

@@ -16,6 +16,27 @@ import { resolveCoverageDisplayLabel } from '../utils/format';
 import { searchService } from '../../../services/search';
 import { useSearchHistoryStore } from '../../../store/searchHistoryStore';
 
+const HAND_PLATTER_ICON = (
+  <HandPlatter
+    size={SECONDARY_METRIC_ICON_SIZE}
+    color={themeColors.primary}
+    strokeWidth={2}
+    style={styles.metricIcon}
+  />
+);
+
+const INFO_CIRCLE_ICON_DISH = (
+  <InfoCircleIcon
+    size={SECONDARY_METRIC_ICON_SIZE + 2}
+    color={themeColors.secondaryAccent}
+    strokeWidth={2}
+  />
+);
+
+const SHARE_ICON_DISH = (
+  <LucideShare size={20} color={themeColors.textBody} strokeWidth={2} />
+);
+
 type ScoreInfoPayload = {
   type: 'dish' | 'restaurant';
   title: string;
@@ -178,12 +199,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
             <View style={styles.cardBodyStack}>
               <View style={styles.metricBlock}>
                 <View style={styles.metricLine}>
-                  <HandPlatter
-                    size={SECONDARY_METRIC_ICON_SIZE}
-                    color={themeColors.primary}
-                    strokeWidth={2}
-                    style={styles.metricIcon}
-                  />
+                  {HAND_PLATTER_ICON}
                   <Text variant="body" weight="semibold" style={styles.metricValue}>
                     {displayScoreValue != null ? displayScoreValue.toFixed(1) : '—'}
                   </Text>
@@ -197,11 +213,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
                     accessibilityRole="button"
                     accessibilityLabel="How dish scores are calculated"
                   >
-                    <InfoCircleIcon
-                      size={SECONDARY_METRIC_ICON_SIZE + 2}
-                      color={themeColors.secondaryAccent}
-                      strokeWidth={2}
-                    />
+                    {INFO_CIRCLE_ICON_DISH}
                   </TouchableOpacity>
                 </View>
               </View>
@@ -244,7 +256,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
               style={styles.shareButton}
               hitSlop={8}
             >
-              <LucideShare size={20} color={themeColors.textBody} strokeWidth={2} />
+              {SHARE_ICON_DISH}
             </Pressable>
           </View>
         </View>

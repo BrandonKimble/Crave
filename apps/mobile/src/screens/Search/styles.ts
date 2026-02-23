@@ -554,15 +554,21 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: '#ffffff',
   },
-  resultsListBackgroundLoading: {
-    backgroundColor: '#ffffff',
-  },
   resultsWashOverlay: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
     backgroundColor: '#ffffff',
+  },
+  resultsSurface: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
   },
   resultsHeaderSurface: {
     position: 'relative',
@@ -613,20 +619,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     paddingVertical: 0,
   },
-  resultsListHeaderHidden: {
-    opacity: 0,
-  },
   resultsListHeaderBottomStrip: {
     height: 8,
     width: '100%',
     backgroundColor: '#ffffff',
-  },
-  resultsEmptyArea: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 0,
-    backgroundColor: 'transparent',
   },
   onDemandNotice: {
     alignSelf: 'stretch',

@@ -12,13 +12,12 @@ import OverlaySheetHeaderChrome from '../../../../overlays/OverlaySheetHeaderChr
 import { overlaySheetStyles } from '../../../../overlays/overlaySheetStyles';
 import type { FoodResult, RestaurantResult, SearchResponse } from '../../../../types';
 import { logger } from '../../../../utils';
-import EmptyState from '../../components/empty-state';
+import TopFoodPreMeasure from '../../components/TopFoodPreMeasure';
 import styles from '../../styles';
+import { TOP_FOOD_RENDER_LIMIT } from '../../constants/search';
+import { computeTopFoodPreMeasureKeys } from '../../hooks/use-top-food-measurement';
 import type { PhaseBMaterializer } from '../scheduler/phase-b-materializer';
-import {
-  buildResultsEmptyAreaReadModel,
-  buildResultsHeaderTitle,
-} from './header-read-model-builder';
+import { buildResultsHeaderTitle } from './header-read-model-builder';
 import {
   buildSafeResultsData,
   buildSectionedResultsData,
@@ -44,12 +43,7 @@ type UseSearchResultsReadModelSelectorsArgs = {
   mapQueryBudget: MapQueryBudget;
   canLoadMore: boolean;
   isLoadingMore: boolean;
-  shouldShowResultsLoadingState: boolean;
   onDemandNotice: React.ReactNode;
-  screenHeight: number;
-  middleSnapPoint: number;
-  effectiveResultsHeaderHeight: number;
-  effectiveFiltersHeaderHeight: number;
   activeTabColor: string;
   shouldDisableResultsHeader: boolean;
   shouldUseResultsHeaderBlur: boolean;
@@ -72,7 +66,6 @@ type UseSearchResultsReadModelSelectorsArgs = {
   activeOverlayKey: string;
   setHydratedResultsKeySync: (nextHydrationKey: string | null) => void;
   phaseBMaterializerRef: React.MutableRefObject<PhaseBMaterializer>;
-  resultsLoadingSpinnerOffset: number;
   contentHorizontalPadding: number;
 };
 
@@ -82,9 +75,6 @@ type ListProjection = {
 };
 
 type HeaderProjection = {
-  emptyAreaMinHeight: number;
-  emptyYOffset: number;
-  emptySubtitle: string;
   headerTitle: string;
 };
 
@@ -103,25 +93,11 @@ type SearchResultsReadModelSelectors = {
   rowsForRender: ResultsListItem[];
   renderListItem: NonNullable<FlashListProps<ResultsListItem>['renderItem']>;
   listFooterComponent: React.ReactNode;
-  listEmptyComponent: React.ReactNode;
   listHeaderComponent: React.ReactNode;
+  preMeasureOverlay: React.ReactNode;
   flashListRuntimeProps: ResultsFlashListRuntimeProps;
 };
 
-const resolveCachedProjection = <T,>(
-  cache: React.MutableRefObject<Map<string, T>>,
-  projectionKey: string,
-  buildProjection: () => T
-): T => {
-  const cached = cache.current.get(projectionKey);
-  if (cached) {
-    return cached;
-  }
-  const nextProjection = buildProjection();
-  cache.current.clear();
-  cache.current.set(projectionKey, nextProjection);
-  return nextProjection;
-};
 
 export const useSearchResultsReadModelSelectors = (
   args: UseSearchResultsReadModelSelectorsArgs
@@ -138,12 +114,7 @@ export const useSearchResultsReadModelSelectors = (
     mapQueryBudget,
     canLoadMore,
     isLoadingMore,
-    shouldShowResultsLoadingState,
     onDemandNotice,
-    screenHeight,
-    middleSnapPoint,
-    effectiveResultsHeaderHeight,
-    effectiveFiltersHeaderHeight,
     activeTabColor,
     shouldDisableResultsHeader,
     shouldUseResultsHeaderBlur,
@@ -163,7 +134,6 @@ export const useSearchResultsReadModelSelectors = (
     activeOverlayKey,
     setHydratedResultsKeySync,
     phaseBMaterializerRef,
-    resultsLoadingSpinnerOffset,
     contentHorizontalPadding,
   } = args;
 
@@ -355,6 +325,17 @@ export const useSearchResultsReadModelSelectors = (
     setHydrationFinalizeRowsReleaseCompletedToken(hydrationRowsReleaseVersionToken);
   }, [hydrationRowsReleaseVersionToken, isHydrationPending, resultsHydrationKey]);
 
+  const preMeasureKeys = React.useMemo(() => {
+    if (activeTab !== 'restaurants' || restaurants.length === 0) {
+      return null;
+    }
+    const keys = computeTopFoodPreMeasureKeys(restaurants, TOP_FOOD_RENDER_LIMIT);
+    if (keys.items.length === 0 && keys.moreCounts.length === 0) {
+      return null;
+    }
+    return keys;
+  }, [activeTab, restaurants]);
+
   const rowsForRender = React.useMemo(() => {
     if (isFilterTogglePending) {
       return EMPTY_RESULTS;
@@ -434,77 +415,12 @@ export const useSearchResultsReadModelSelectors = (
     onDemandNotice,
   ]);
 
-  const headerProjectionCacheRef = React.useRef<Map<string, HeaderProjection>>(new Map());
-  const headerProjectionKey = `${requestVersionKey}::${screenHeight}::${middleSnapPoint}::${effectiveResultsHeaderHeight}::${effectiveFiltersHeaderHeight}::${submittedQuery}`;
   const headerProjection = React.useMemo(
-    () =>
-      resolveCachedProjection(headerProjectionCacheRef, headerProjectionKey, () => {
-        const emptyArea = buildResultsEmptyAreaReadModel({
-          screenHeight,
-          middleSnapPoint,
-          effectiveResultsHeaderHeight,
-          effectiveFiltersHeaderHeight,
-        });
-        return {
-          ...emptyArea,
-          emptySubtitle:
-            results?.metadata?.emptyQueryMessage ?? 'Try moving the map or adjusting your search.',
-          headerTitle: buildResultsHeaderTitle(submittedQuery),
-        };
-      }),
-    [
-      effectiveFiltersHeaderHeight,
-      effectiveResultsHeaderHeight,
-      headerProjectionKey,
-      middleSnapPoint,
-      results?.metadata?.emptyQueryMessage,
-      screenHeight,
-      submittedQuery,
-    ]
+    (): HeaderProjection => ({
+      headerTitle: buildResultsHeaderTitle(submittedQuery),
+    }),
+    [submittedQuery]
   );
-
-  const listEmptyComponent = React.useMemo(() => {
-    const emptyAreaStyle = { minHeight: headerProjection.emptyAreaMinHeight };
-    const emptyContentOffsetStyle = {
-      transform: [{ translateY: headerProjection.emptyYOffset }],
-    };
-
-    if (shouldShowResultsLoadingState || isFilterTogglePending) {
-      return (
-        <View
-          style={[
-            styles.resultsEmptyArea,
-            emptyAreaStyle,
-            { justifyContent: 'flex-start', paddingTop: resultsLoadingSpinnerOffset },
-          ]}
-        >
-          <SquircleSpinner size={22} color={activeTabColor} />
-        </View>
-      );
-    }
-
-    return (
-      <View style={[styles.resultsEmptyArea, emptyAreaStyle]}>
-        <View style={emptyContentOffsetStyle}>
-          {onDemandNotice}
-          <EmptyState
-            title={activeTab === 'dishes' ? 'No dishes found.' : 'No restaurants found.'}
-            subtitle={headerProjection.emptySubtitle}
-          />
-        </View>
-      </View>
-    );
-  }, [
-    activeTab,
-    activeTabColor,
-    headerProjection.emptyAreaMinHeight,
-    headerProjection.emptySubtitle,
-    headerProjection.emptyYOffset,
-    isFilterTogglePending,
-    onDemandNotice,
-    resultsLoadingSpinnerOffset,
-    shouldShowResultsLoadingState,
-  ]);
 
   const listHeaderComponent = React.useMemo(() => {
     if (shouldDisableResultsHeader) {
@@ -667,7 +583,7 @@ export const useSearchResultsReadModelSelectors = (
     () => ({
       drawDistance: 260,
       overrideProps: {
-        initialDrawBatchSize: 2,
+        initialDrawBatchSize: 5,
       },
       ...(shouldLogResultsViewability
         ? {
@@ -679,14 +595,24 @@ export const useSearchResultsReadModelSelectors = (
     [handleResultsViewableItemsChanged, resultsViewabilityConfig, shouldLogResultsViewability]
   );
 
+  const preMeasureOverlay = React.useMemo(() => {
+    if (!preMeasureKeys) return null;
+    return (
+      <TopFoodPreMeasure
+        items={preMeasureKeys.items}
+        moreCounts={preMeasureKeys.moreCounts}
+      />
+    );
+  }, [preMeasureKeys]);
+
   return {
     safeResultsCount: listProjection.safeResultsData.length,
     isResultsHydrationSettled,
     rowsForRender,
     renderListItem,
     listFooterComponent,
-    listEmptyComponent,
     listHeaderComponent,
+    preMeasureOverlay,
     flashListRuntimeProps,
   };
 };

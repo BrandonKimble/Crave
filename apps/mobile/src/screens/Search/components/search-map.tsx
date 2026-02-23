@@ -1028,9 +1028,7 @@ const usePinTransitionController = ({
   void transitionRenderVersion; // ensure re-evaluation on render ticks
   const batchFadeProgress =
     state.batchRevealStartMs != null && clockMs > 0
-      ? clamp01(
-          clamp01((clockMs - state.batchRevealStartMs) / DOT_TO_PIN_TRANSITION_DURATION_MS)
-        )
+      ? clamp01(clamp01((clockMs - state.batchRevealStartMs) / DOT_TO_PIN_TRANSITION_DURATION_MS))
       : 1;
 
   const pinTransitionFrameHandleRef = React.useRef<number | ReturnType<typeof setTimeout> | null>(

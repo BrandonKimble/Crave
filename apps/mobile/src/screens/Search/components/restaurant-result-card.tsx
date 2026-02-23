@@ -19,6 +19,27 @@ import { renderMetaDetailLine } from './render-meta-detail-line';
 const TOP_FOOD_INLINE_GAP = '\u2006\u2006\u2006\u2006';
 const TOP_FOOD_MEASUREMENT_ITEM_GAP_PX = 0;
 
+const STORE_ICON = (
+  <Store
+    size={SECONDARY_METRIC_ICON_SIZE}
+    color={themeColors.primary}
+    strokeWidth={2}
+    style={[styles.metricIcon, styles.restaurantScoreIcon]}
+  />
+);
+
+const INFO_CIRCLE_ICON_RESTAURANT = (
+  <InfoCircleIcon
+    size={SECONDARY_METRIC_ICON_SIZE + 2}
+    color={themeColors.secondaryAccent}
+    strokeWidth={2}
+  />
+);
+
+const SHARE_ICON = (
+  <LucideShare size={20} color={themeColors.textBody} strokeWidth={2} />
+);
+
 type ScoreInfoPayload = {
   type: 'dish' | 'restaurant';
   title: string;
@@ -125,6 +146,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     hasMeasured,
     candidateTopFoods: measuredCandidateTopFoods,
     topFoodMoreCounts,
+    allCached,
   } = useTopFoodMeasurement({
     topFoodItems: candidateTopFoods,
     totalTopFoodCount: totalDishCount,
@@ -279,7 +301,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     resolveMoreLabel,
     visibleTopFoodsForRender,
   ]);
-  const shouldRenderTopFoodMeasurementNodes = measuredCandidateTopFoods.length > 0;
+  const shouldRenderTopFoodMeasurementNodes = measuredCandidateTopFoods.length > 0 && !allCached;
 
   const restaurantStatusLine = renderMetaDetailLine(
     hasStatus ? restaurant.operatingStatus : null,
@@ -352,12 +374,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                 <View style={styles.metricBlock}>
                   <View style={[styles.restaurantMetricRow, styles.metricSupportRow]}>
                     <View style={styles.restaurantMetricLeft}>
-                      <Store
-                        size={SECONDARY_METRIC_ICON_SIZE}
-                        color={themeColors.primary}
-                        strokeWidth={2}
-                        style={[styles.metricIcon, styles.restaurantScoreIcon]}
-                      />
+                      {STORE_ICON}
                       <Text variant="body" weight="semibold" style={styles.metricValue}>
                         {displayScoreValue != null ? displayScoreValue.toFixed(1) : '—'}
                       </Text>
@@ -376,11 +393,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                         accessibilityRole="button"
                         accessibilityLabel="How restaurant scores are calculated"
                       >
-                        <InfoCircleIcon
-                          size={SECONDARY_METRIC_ICON_SIZE + 2}
-                          color={themeColors.secondaryAccent}
-                          strokeWidth={2}
-                        />
+                        {INFO_CIRCLE_ICON_RESTAURANT}
                       </TouchableOpacity>
                     </View>
                     {priceRangeLabel || showDistanceInScore ? (
@@ -523,7 +536,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
               style={styles.shareButton}
               hitSlop={8}
             >
-              <LucideShare size={20} color={themeColors.textBody} strokeWidth={2} />
+              {SHARE_ICON}
             </Pressable>
           </View>
         </View>

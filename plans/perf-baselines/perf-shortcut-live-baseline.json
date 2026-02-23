@@ -14,17 +14,17 @@
     "mapRuntime": "Optional per-run map runtime budget snapshot emitted in shortcut_loop_run_complete events.",
     "mechanismSignals": "Optional harness instrumentation counters emitted via [SearchPerf][Harness] events for runtime mechanisms (coalescing/cancellation/observer behavior)."
   },
-  "harnessRunId": "shortcut-loop-local-baseline-20260220T040256Z",
+  "harnessRunId": "shortcut-loop-local-baseline-20260222T194958Z",
   "harnessScenario": "search_shortcut_loop",
-  "harnessSignatureRaw": "enabled:1|scenario:search_shortcut_loop|runId:shortcut-loop-local-baseline-20260220T040256Z|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:quiet_snapshot_only|sampler:1|window:120|stall:50|fps:240|uiSampler:1|uiWindow:120|uiStall:50|uiFps:240",
-  "harnessSignatureStable": "enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:quiet_snapshot_only|sampler:1|window:120|stall:50|fps:240|uiSampler:1|uiWindow:120|uiStall:50|uiFps:240",
+  "harnessSignatureRaw": "enabled:1|scenario:search_shortcut_loop|runId:shortcut-loop-local-baseline-20260222T194958Z|runs:3|start:3000|cooldown:1200|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:quiet_snapshot_only|sampler:1|window:120|stall:50|fps:240|uiSampler:1|uiWindow:120|uiStall:50|uiFps:240",
+  "harnessSignatureStable": "enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1200|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:quiet_snapshot_only|sampler:1|window:120|stall:50|fps:240|uiSampler:1|uiWindow:120|uiStall:50|uiFps:240",
   "harnessSignatureParts": {
     "enabled": "1",
     "scenario": "search_shortcut_loop",
-    "runId": "shortcut-loop-local-baseline-20260220T040256Z",
+    "runId": "shortcut-loop-local-baseline-20260222T194958Z",
     "runs": "3",
     "start": "3000",
-    "cooldown": "1800",
+    "cooldown": "1200",
     "label": "Best restaurants",
     "tab": "restaurants",
     "score": "coverage_display",
@@ -47,15 +47,23 @@
     "launchIosDeviceUdid": null,
     "launchIosDeviceName": null,
     "runtimeTarget": "simulator",
-    "runtimeDeviceDescriptor": "iPhone 16e (B1A80340-D8E2-4C31-8A0D-25D26E6B12FB) com.apple.CoreSimulator.SimRuntime.iOS-26-2"
+    "runtimeDeviceDescriptor": "iPhone 17 Pro Max (7A84CB81-F67D-4BC0-8C26-FAE009AC226B) com.apple.CoreSimulator.SimRuntime.iOS-26-2"
   },
-  "generatedAt": "2026-02-20T04:04:08.728Z",
-  "sourceLogPath": "/Users/brandonkimble/crave-search/plans/perf-logs/perf-shortcut-live-baseline-20260220T040256Z.log",
+  "generatedAt": "2026-02-22T19:51:42.887Z",
+  "sourceLogPath": "/Users/brandonkimble/crave-search/plans/perf-logs/perf-shortcut-live-baseline-20260222T194958Z.log",
   "markerIntegrity": {
-    "harnessRunId": "shortcut-loop-local-baseline-20260220T040256Z",
+    "harnessRunId": "shortcut-loop-local-baseline-20260222T194958Z",
     "expectedRuns": 3,
-    "startedRuns": [1, 2, 3],
-    "completedRuns": [1, 2, 3],
+    "startedRuns": [
+      1,
+      2,
+      3
+    ],
+    "completedRuns": [
+      1,
+      2,
+      3
+    ],
     "hasLoopCompleteMarker": true,
     "complete": true
   },
@@ -65,103 +73,103 @@
   "runMetrics": [
     {
       "runNumber": 1,
-      "startMs": 702371884.3,
-      "endMs": 702378153.9,
-      "floorMin": 0.5,
-      "stallLongestMax": 1854.8,
+      "startMs": 932021303.9,
+      "endMs": 932030754.3,
+      "floorMin": 0.3,
+      "stallLongestMax": 2999.2,
       "catastrophicWindowCount": 4,
-      "stallOver50WindowCount": 10,
-      "stallOver80WindowCount": 8,
-      "uiFloorMin": 3.1,
-      "uiStallLongestMax": 325.1,
-      "uiCatastrophicWindowCount": 1,
+      "stallOver50WindowCount": 11,
+      "stallOver80WindowCount": 11,
+      "uiFloorMin": 1.1,
+      "uiStallLongestMax": 907.8,
+      "uiCatastrophicWindowCount": 2,
       "firstOver50": {
-        "durationMs": 511.8,
+        "durationMs": 605.8,
         "stage": "pre_response_activation",
-        "elapsedMs": 511.7,
-        "nowMs": 702372396,
-        "windowMs": 511.8,
+        "elapsedMs": 605.7,
+        "nowMs": 932021909.6,
+        "windowMs": 639.1,
         "owner": {
           "primaryComponentId": "SearchScreen",
-          "primaryOverlapMs": 334.6,
-          "primaryMaxCommitSpanMs": 101.6,
-          "primarySpanCount": 7,
+          "primaryOverlapMs": 431.5,
+          "primaryMaxCommitSpanMs": 213.9,
+          "primarySpanCount": 6,
           "topComponents": [
             {
               "componentId": "SearchScreen",
-              "overlapMs": 334.6,
-              "maxCommitSpanMs": 101.6,
-              "spanCount": 7
+              "overlapMs": 431.5,
+              "maxCommitSpanMs": 213.9,
+              "spanCount": 6
             },
             {
               "componentId": "SearchMapTree",
-              "overlapMs": 297.3,
-              "maxCommitSpanMs": 101.4,
-              "spanCount": 5
+              "overlapMs": 362.6,
+              "maxCommitSpanMs": 213.8,
+              "spanCount": 3
             },
             {
               "componentId": "SearchOverlayChrome",
-              "overlapMs": 243,
-              "maxCommitSpanMs": 85.4,
-              "spanCount": 4
+              "overlapMs": 352.4,
+              "maxCommitSpanMs": 206.2,
+              "spanCount": 3
             }
           ]
         }
       },
       "worstWindow": {
-        "durationMs": 1854.8,
-        "stage": "marker_reveal_state",
-        "elapsedMs": 2966.3,
-        "nowMs": 702374850.6,
-        "windowMs": 1854.8,
+        "durationMs": 2999.2,
+        "stage": "results_hydration_commit",
+        "elapsedMs": 4899.2,
+        "nowMs": 932026203,
+        "windowMs": 3115.8,
         "owner": {
           "primaryComponentId": "SearchScreen",
-          "primaryOverlapMs": 1524.9,
-          "primaryMaxCommitSpanMs": 280.5,
-          "primarySpanCount": 19,
+          "primaryOverlapMs": 2490.8,
+          "primaryMaxCommitSpanMs": 414.6,
+          "primarySpanCount": 15,
           "topComponents": [
             {
               "componentId": "SearchScreen",
-              "overlapMs": 1524.9,
-              "maxCommitSpanMs": 280.5,
-              "spanCount": 19
+              "overlapMs": 2490.8,
+              "maxCommitSpanMs": 414.6,
+              "spanCount": 15
             },
             {
               "componentId": "SearchResultsSheetTree",
-              "overlapMs": 1407.2,
-              "maxCommitSpanMs": 269.7,
-              "spanCount": 19
+              "overlapMs": 2124.4,
+              "maxCommitSpanMs": 413.6,
+              "spanCount": 15
             },
             {
               "componentId": "SearchMapTree",
-              "overlapMs": 575.1,
-              "maxCommitSpanMs": 148.6,
-              "spanCount": 8
+              "overlapMs": 2038.1,
+              "maxCommitSpanMs": 414.5,
+              "spanCount": 9
             }
           ]
         }
       },
-      "durationMs": 6269.6,
+      "durationMs": 9450.4,
       "finalStage": "results_hydration_commit",
       "mapRuntime": {
         "fullCatalogScanCount": 0,
-        "indexQueryDurationP95": 0.3795836091041565,
-        "readModelBuildSliceP95": 0.8622687995433805,
-        "mapDiffApplySliceP95": 0.05416703224182129,
-        "indexQuerySampleCount": 3,
-        "readModelBuildSampleCount": 4,
+        "indexQueryDurationP95": 5.327687442302703,
+        "readModelBuildSliceP95": 1.3403085947036744,
+        "mapDiffApplySliceP95": 0.07083404064178467,
+        "indexQuerySampleCount": 2,
+        "readModelBuildSampleCount": 5,
         "mapDiffApplySampleCount": 1,
         "runtimeAttributionTotalsMs": {
-          "marker_feature_derivation": 2.1041661500930786,
-          "map_label_bootstrap": 1.5132919549942017,
-          "hydration_commit_apply": 0.5388749837875366,
-          "hydration_finalize_key_commit": 0.5388749837875366,
-          "list_read_model_build": 0.027500033378601074,
-          "hydration_finalize_rows_release": 0.01191699504852295
+          "marker_feature_derivation": 4.645415902137756,
+          "map_label_bootstrap": 2.1636658906936646,
+          "hydration_commit_apply": 1.5442910194396973,
+          "hydration_finalize_key_commit": 1.5442910194396973,
+          "list_read_model_build": 0.0246659517288208,
+          "hydration_finalize_rows_release": 0.02291691303253174
         },
         "runtimeAttributionSampleCountByContributor": {
-          "marker_feature_derivation": 4,
-          "map_label_bootstrap": 4,
+          "marker_feature_derivation": 5,
+          "map_label_bootstrap": 6,
           "hydration_commit_apply": 1,
           "hydration_finalize_key_commit": 1,
           "list_read_model_build": 1,
@@ -170,283 +178,309 @@
         "runtimeAttributionTopContributors": [
           {
             "contributor": "marker_feature_derivation",
-            "totalMs": 2.1041661500930786,
-            "sampleCount": 4,
-            "meanMs": 0.5260415375232697
+            "totalMs": 4.645415902137756,
+            "sampleCount": 5,
+            "meanMs": 0.9290831804275512
           },
           {
             "contributor": "map_label_bootstrap",
-            "totalMs": 1.5132919549942017,
-            "sampleCount": 4,
-            "meanMs": 0.3783229887485504
+            "totalMs": 2.1636658906936646,
+            "sampleCount": 6,
+            "meanMs": 0.3606109817822774
           },
           {
             "contributor": "hydration_commit_apply",
-            "totalMs": 0.5388749837875366,
+            "totalMs": 1.5442910194396973,
             "sampleCount": 1,
-            "meanMs": 0.5388749837875366
+            "meanMs": 1.5442910194396973
           },
           {
             "contributor": "hydration_finalize_key_commit",
-            "totalMs": 0.5388749837875366,
+            "totalMs": 1.5442910194396973,
             "sampleCount": 1,
-            "meanMs": 0.5388749837875366
+            "meanMs": 1.5442910194396973
           },
           {
             "contributor": "list_read_model_build",
-            "totalMs": 0.027500033378601074,
+            "totalMs": 0.0246659517288208,
             "sampleCount": 1,
-            "meanMs": 0.027500033378601074
+            "meanMs": 0.0246659517288208
           }
         ]
       }
     },
     {
       "runNumber": 2,
-      "startMs": 702379970.6,
-      "endMs": 702380398.1,
-      "floorMin": 4.7,
-      "stallLongestMax": 214.3,
-      "catastrophicWindowCount": 0,
-      "stallOver50WindowCount": 2,
-      "stallOver80WindowCount": 2,
-      "uiFloorMin": 16.8,
-      "uiStallLongestMax": 59.4,
+      "startMs": 932031970.6,
+      "endMs": 932037938.2,
+      "floorMin": 1.5,
+      "stallLongestMax": 672.9,
+      "catastrophicWindowCount": 4,
+      "stallOver50WindowCount": 12,
+      "stallOver80WindowCount": 12,
+      "uiFloorMin": 6,
+      "uiStallLongestMax": 166.7,
       "uiCatastrophicWindowCount": 0,
       "firstOver50": {
-        "durationMs": 214.3,
+        "durationMs": 331.7,
         "stage": "results_list_ramp",
-        "elapsedMs": 214.1,
-        "nowMs": 702380184.6,
-        "windowMs": 214.3,
+        "elapsedMs": 331.7,
+        "nowMs": 932032302.2,
+        "windowMs": 414.9,
         "owner": {
           "primaryComponentId": "SearchScreen",
-          "primaryOverlapMs": 173.8,
-          "primaryMaxCommitSpanMs": 87.9,
+          "primaryOverlapMs": 253.5,
+          "primaryMaxCommitSpanMs": 88,
           "primarySpanCount": 5,
           "topComponents": [
             {
               "componentId": "SearchScreen",
-              "overlapMs": 173.8,
-              "maxCommitSpanMs": 87.9,
+              "overlapMs": 253.5,
+              "maxCommitSpanMs": 88,
               "spanCount": 5
             },
             {
               "componentId": "SearchMapTree",
-              "overlapMs": 150.8,
+              "overlapMs": 186,
               "maxCommitSpanMs": 87.8,
               "spanCount": 3
             },
             {
-              "componentId": "SearchMapDots",
-              "overlapMs": 123.5,
-              "maxCommitSpanMs": 84.5,
-              "spanCount": 2
+              "componentId": "SearchResultsSheetTree",
+              "overlapMs": 183.2,
+              "maxCommitSpanMs": 40.1,
+              "spanCount": 5
             }
           ]
         }
       },
       "worstWindow": {
-        "durationMs": 214.3,
-        "stage": "results_list_ramp",
-        "elapsedMs": 214.1,
-        "nowMs": 702380184.6,
-        "windowMs": 214.3,
+        "durationMs": 672.9,
+        "stage": "results_hydration_commit",
+        "elapsedMs": 1406.2,
+        "nowMs": 932033376.8,
+        "windowMs": 672.9,
         "owner": {
           "primaryComponentId": "SearchScreen",
-          "primaryOverlapMs": 173.8,
-          "primaryMaxCommitSpanMs": 87.9,
-          "primarySpanCount": 5,
+          "primaryOverlapMs": 545.8,
+          "primaryMaxCommitSpanMs": 456.9,
+          "primarySpanCount": 3,
           "topComponents": [
             {
               "componentId": "SearchScreen",
-              "overlapMs": 173.8,
-              "maxCommitSpanMs": 87.9,
-              "spanCount": 5
-            },
-            {
-              "componentId": "SearchMapTree",
-              "overlapMs": 150.8,
-              "maxCommitSpanMs": 87.8,
+              "overlapMs": 545.8,
+              "maxCommitSpanMs": 456.9,
               "spanCount": 3
             },
             {
-              "componentId": "SearchMapDots",
-              "overlapMs": 123.5,
-              "maxCommitSpanMs": 84.5,
+              "componentId": "SearchMapTree",
+              "overlapMs": 513.1,
+              "maxCommitSpanMs": 456.8,
+              "spanCount": 2
+            },
+            {
+              "componentId": "SearchOverlayChrome",
+              "overlapMs": 461.8,
+              "maxCommitSpanMs": 406.3,
               "spanCount": 2
             }
           ]
         }
       },
-      "durationMs": 427.5,
-      "finalStage": "results_list_ramp",
+      "durationMs": 5967.5,
+      "finalStage": "results_hydration_commit",
       "mapRuntime": {
         "fullCatalogScanCount": 0,
-        "indexQueryDurationP95": 0,
-        "readModelBuildSliceP95": 0.3868750333786011,
+        "indexQueryDurationP95": 0.3028461515903473,
+        "readModelBuildSliceP95": 0.8128963589668273,
         "mapDiffApplySliceP95": 0,
-        "indexQuerySampleCount": 0,
-        "readModelBuildSampleCount": 1,
+        "indexQuerySampleCount": 2,
+        "readModelBuildSampleCount": 3,
         "mapDiffApplySampleCount": 0,
         "runtimeAttributionTotalsMs": {
-          "marker_feature_derivation": 0.3868750333786011,
-          "map_label_bootstrap": 0.05512499809265137
+          "map_label_bootstrap": 3.361375093460083,
+          "marker_feature_derivation": 2.275041937828064,
+          "hydration_commit_apply": 0.1841670274734497,
+          "hydration_finalize_key_commit": 0.1841670274734497,
+          "hydration_finalize_rows_release": 0.08091700077056885,
+          "list_read_model_build": 0.03216695785522461
         },
         "runtimeAttributionSampleCountByContributor": {
-          "marker_feature_derivation": 1,
-          "map_label_bootstrap": 1
+          "map_label_bootstrap": 4,
+          "marker_feature_derivation": 3,
+          "hydration_commit_apply": 1,
+          "hydration_finalize_key_commit": 1,
+          "hydration_finalize_rows_release": 1,
+          "list_read_model_build": 1
         },
         "runtimeAttributionTopContributors": [
           {
-            "contributor": "marker_feature_derivation",
-            "totalMs": 0.3868750333786011,
-            "sampleCount": 1,
-            "meanMs": 0.3868750333786011
+            "contributor": "map_label_bootstrap",
+            "totalMs": 3.361375093460083,
+            "sampleCount": 4,
+            "meanMs": 0.8403437733650208
           },
           {
-            "contributor": "map_label_bootstrap",
-            "totalMs": 0.05512499809265137,
+            "contributor": "marker_feature_derivation",
+            "totalMs": 2.275041937828064,
+            "sampleCount": 3,
+            "meanMs": 0.7583473126093546
+          },
+          {
+            "contributor": "hydration_commit_apply",
+            "totalMs": 0.1841670274734497,
             "sampleCount": 1,
-            "meanMs": 0.05512499809265137
+            "meanMs": 0.1841670274734497
+          },
+          {
+            "contributor": "hydration_finalize_key_commit",
+            "totalMs": 0.1841670274734497,
+            "sampleCount": 1,
+            "meanMs": 0.1841670274734497
+          },
+          {
+            "contributor": "hydration_finalize_rows_release",
+            "totalMs": 0.08091700077056885,
+            "sampleCount": 1,
+            "meanMs": 0.08091700077056885
           }
         ]
       }
     },
     {
       "runNumber": 3,
-      "startMs": 702382217.3,
-      "endMs": 702387456.1,
-      "floorMin": 1.6,
-      "stallLongestMax": 614.6,
-      "catastrophicWindowCount": 2,
-      "stallOver50WindowCount": 15,
-      "stallOver80WindowCount": 15,
-      "uiFloorMin": 6.7,
-      "uiStallLongestMax": 150,
+      "startMs": 932039154.1,
+      "endMs": 932045203.6,
+      "floorMin": 1.3,
+      "stallLongestMax": 758.3,
+      "catastrophicWindowCount": 5,
+      "stallOver50WindowCount": 12,
+      "stallOver80WindowCount": 12,
+      "uiFloorMin": 5.3,
+      "uiStallLongestMax": 189.6,
       "uiCatastrophicWindowCount": 0,
       "firstOver50": {
-        "durationMs": 387.6,
-        "stage": "results_hydration_commit",
-        "elapsedMs": 387.5,
-        "nowMs": 702382604.8,
-        "windowMs": 500.7,
+        "durationMs": 423.4,
+        "stage": "results_list_ramp",
+        "elapsedMs": 423.4,
+        "nowMs": 932039577.4,
+        "windowMs": 540.1,
         "owner": {
           "primaryComponentId": "SearchScreen",
-          "primaryOverlapMs": 324.1,
-          "primaryMaxCommitSpanMs": 179.3,
+          "primaryOverlapMs": 313.5,
+          "primaryMaxCommitSpanMs": 95.8,
           "primarySpanCount": 5,
           "topComponents": [
             {
               "componentId": "SearchScreen",
-              "overlapMs": 324.1,
-              "maxCommitSpanMs": 179.3,
+              "overlapMs": 313.5,
+              "maxCommitSpanMs": 95.8,
+              "spanCount": 5
+            },
+            {
+              "componentId": "SearchResultsSheetTree",
+              "overlapMs": 241.7,
+              "maxCommitSpanMs": 63.2,
               "spanCount": 5
             },
             {
               "componentId": "SearchMapTree",
-              "overlapMs": 265.1,
-              "maxCommitSpanMs": 179.2,
+              "overlapMs": 225,
+              "maxCommitSpanMs": 95.6,
               "spanCount": 3
-            },
-            {
-              "componentId": "SearchMapDots",
-              "overlapMs": 220,
-              "maxCommitSpanMs": 175.1,
-              "spanCount": 2
             }
           ]
         }
       },
       "worstWindow": {
-        "durationMs": 614.6,
-        "stage": "marker_reveal_state",
-        "elapsedMs": 1491.3,
-        "nowMs": 702383708.5,
-        "windowMs": 614.6,
+        "durationMs": 758.3,
+        "stage": "results_hydration_commit",
+        "elapsedMs": 1408.4,
+        "nowMs": 932040562.4,
+        "windowMs": 858.3,
         "owner": {
           "primaryComponentId": "SearchScreen",
-          "primaryOverlapMs": 484,
-          "primaryMaxCommitSpanMs": 163.6,
-          "primarySpanCount": 11,
+          "primaryOverlapMs": 634.2,
+          "primaryMaxCommitSpanMs": 488.8,
+          "primarySpanCount": 3,
           "topComponents": [
             {
               "componentId": "SearchScreen",
-              "overlapMs": 484,
-              "maxCommitSpanMs": 163.6,
-              "spanCount": 11
+              "overlapMs": 634.2,
+              "maxCommitSpanMs": 488.8,
+              "spanCount": 3
             },
             {
               "componentId": "SearchMapTree",
-              "overlapMs": 420.4,
-              "maxCommitSpanMs": 163.5,
-              "spanCount": 8
+              "overlapMs": 602.1,
+              "maxCommitSpanMs": 488.6,
+              "spanCount": 2
             },
             {
-              "componentId": "SearchResultsSheetTree",
-              "overlapMs": 404.3,
-              "maxCommitSpanMs": 137.8,
-              "spanCount": 11
+              "componentId": "SearchOverlayChrome",
+              "overlapMs": 542.7,
+              "maxCommitSpanMs": 430,
+              "spanCount": 2
             }
           ]
         }
       },
-      "durationMs": 5238.8,
+      "durationMs": 6049.5,
       "finalStage": "results_hydration_commit",
       "mapRuntime": {
         "fullCatalogScanCount": 0,
-        "indexQueryDurationP95": 0.3751895308494568,
-        "readModelBuildSliceP95": 0.8882938325405121,
-        "mapDiffApplySliceP95": 0.07716596126556396,
+        "indexQueryDurationP95": 2.246866637468338,
+        "readModelBuildSliceP95": 1.4220201969146729,
+        "mapDiffApplySliceP95": 0,
         "indexQuerySampleCount": 2,
-        "readModelBuildSampleCount": 8,
-        "mapDiffApplySampleCount": 1,
+        "readModelBuildSampleCount": 6,
+        "mapDiffApplySampleCount": 0,
         "runtimeAttributionTotalsMs": {
-          "marker_feature_derivation": 5.56441593170166,
-          "map_label_bootstrap": 0.824874997138977,
-          "hydration_commit_apply": 0.12604200839996338,
-          "hydration_finalize_key_commit": 0.12604200839996338,
-          "list_read_model_build": 0.024124979972839355,
-          "hydration_finalize_rows_release": 0.013583064079284668
+          "marker_feature_derivation": 5.79328989982605,
+          "map_label_bootstrap": 1.3138749599456787,
+          "hydration_commit_apply": 0.2492079734802246,
+          "hydration_finalize_key_commit": 0.2492079734802246,
+          "hydration_finalize_rows_release": 0.022874951362609863,
+          "list_read_model_build": 0.016916990280151367
         },
         "runtimeAttributionSampleCountByContributor": {
-          "marker_feature_derivation": 8,
-          "map_label_bootstrap": 5,
+          "marker_feature_derivation": 6,
+          "map_label_bootstrap": 3,
           "hydration_commit_apply": 1,
           "hydration_finalize_key_commit": 1,
-          "list_read_model_build": 1,
-          "hydration_finalize_rows_release": 1
+          "hydration_finalize_rows_release": 1,
+          "list_read_model_build": 1
         },
         "runtimeAttributionTopContributors": [
           {
             "contributor": "marker_feature_derivation",
-            "totalMs": 5.56441593170166,
-            "sampleCount": 8,
-            "meanMs": 0.6955519914627075
+            "totalMs": 5.79328989982605,
+            "sampleCount": 6,
+            "meanMs": 0.9655483166376749
           },
           {
             "contributor": "map_label_bootstrap",
-            "totalMs": 0.824874997138977,
-            "sampleCount": 5,
-            "meanMs": 0.16497499942779542
+            "totalMs": 1.3138749599456787,
+            "sampleCount": 3,
+            "meanMs": 0.4379583199818929
           },
           {
             "contributor": "hydration_commit_apply",
-            "totalMs": 0.12604200839996338,
+            "totalMs": 0.2492079734802246,
             "sampleCount": 1,
-            "meanMs": 0.12604200839996338
+            "meanMs": 0.2492079734802246
           },
           {
             "contributor": "hydration_finalize_key_commit",
-            "totalMs": 0.12604200839996338,
+            "totalMs": 0.2492079734802246,
             "sampleCount": 1,
-            "meanMs": 0.12604200839996338
+            "meanMs": 0.2492079734802246
           },
           {
-            "contributor": "list_read_model_build",
-            "totalMs": 0.024124979972839355,
+            "contributor": "hydration_finalize_rows_release",
+            "totalMs": 0.022874951362609863,
             "sampleCount": 1,
-            "meanMs": 0.024124979972839355
+            "meanMs": 0.022874951362609863
           }
         ]
       }
@@ -456,34 +490,34 @@
     {
       "runNumber": 1,
       "firstOver50": {
-        "durationMs": 511.8,
+        "durationMs": 605.8,
         "stage": "pre_response_activation",
-        "elapsedMs": 511.7,
-        "nowMs": 702372396,
-        "windowMs": 511.8,
+        "elapsedMs": 605.7,
+        "nowMs": 932021909.6,
+        "windowMs": 639.1,
         "owner": {
           "primaryComponentId": "SearchScreen",
-          "primaryOverlapMs": 334.6,
-          "primaryMaxCommitSpanMs": 101.6,
-          "primarySpanCount": 7,
+          "primaryOverlapMs": 431.5,
+          "primaryMaxCommitSpanMs": 213.9,
+          "primarySpanCount": 6,
           "topComponents": [
             {
               "componentId": "SearchScreen",
-              "overlapMs": 334.6,
-              "maxCommitSpanMs": 101.6,
-              "spanCount": 7
+              "overlapMs": 431.5,
+              "maxCommitSpanMs": 213.9,
+              "spanCount": 6
             },
             {
               "componentId": "SearchMapTree",
-              "overlapMs": 297.3,
-              "maxCommitSpanMs": 101.4,
-              "spanCount": 5
+              "overlapMs": 362.6,
+              "maxCommitSpanMs": 213.8,
+              "spanCount": 3
             },
             {
               "componentId": "SearchOverlayChrome",
-              "overlapMs": 243,
-              "maxCommitSpanMs": 85.4,
-              "spanCount": 4
+              "overlapMs": 352.4,
+              "maxCommitSpanMs": 206.2,
+              "spanCount": 3
             }
           ]
         }
@@ -492,34 +526,34 @@
     {
       "runNumber": 2,
       "firstOver50": {
-        "durationMs": 214.3,
+        "durationMs": 331.7,
         "stage": "results_list_ramp",
-        "elapsedMs": 214.1,
-        "nowMs": 702380184.6,
-        "windowMs": 214.3,
+        "elapsedMs": 331.7,
+        "nowMs": 932032302.2,
+        "windowMs": 414.9,
         "owner": {
           "primaryComponentId": "SearchScreen",
-          "primaryOverlapMs": 173.8,
-          "primaryMaxCommitSpanMs": 87.9,
+          "primaryOverlapMs": 253.5,
+          "primaryMaxCommitSpanMs": 88,
           "primarySpanCount": 5,
           "topComponents": [
             {
               "componentId": "SearchScreen",
-              "overlapMs": 173.8,
-              "maxCommitSpanMs": 87.9,
+              "overlapMs": 253.5,
+              "maxCommitSpanMs": 88,
               "spanCount": 5
             },
             {
               "componentId": "SearchMapTree",
-              "overlapMs": 150.8,
+              "overlapMs": 186,
               "maxCommitSpanMs": 87.8,
               "spanCount": 3
             },
             {
-              "componentId": "SearchMapDots",
-              "overlapMs": 123.5,
-              "maxCommitSpanMs": 84.5,
-              "spanCount": 2
+              "componentId": "SearchResultsSheetTree",
+              "overlapMs": 183.2,
+              "maxCommitSpanMs": 40.1,
+              "spanCount": 5
             }
           ]
         }
@@ -528,34 +562,34 @@
     {
       "runNumber": 3,
       "firstOver50": {
-        "durationMs": 387.6,
-        "stage": "results_hydration_commit",
-        "elapsedMs": 387.5,
-        "nowMs": 702382604.8,
-        "windowMs": 500.7,
+        "durationMs": 423.4,
+        "stage": "results_list_ramp",
+        "elapsedMs": 423.4,
+        "nowMs": 932039577.4,
+        "windowMs": 540.1,
         "owner": {
           "primaryComponentId": "SearchScreen",
-          "primaryOverlapMs": 324.1,
-          "primaryMaxCommitSpanMs": 179.3,
+          "primaryOverlapMs": 313.5,
+          "primaryMaxCommitSpanMs": 95.8,
           "primarySpanCount": 5,
           "topComponents": [
             {
               "componentId": "SearchScreen",
-              "overlapMs": 324.1,
-              "maxCommitSpanMs": 179.3,
+              "overlapMs": 313.5,
+              "maxCommitSpanMs": 95.8,
+              "spanCount": 5
+            },
+            {
+              "componentId": "SearchResultsSheetTree",
+              "overlapMs": 241.7,
+              "maxCommitSpanMs": 63.2,
               "spanCount": 5
             },
             {
               "componentId": "SearchMapTree",
-              "overlapMs": 265.1,
-              "maxCommitSpanMs": 179.2,
+              "overlapMs": 225,
+              "maxCommitSpanMs": 95.6,
               "spanCount": 3
-            },
-            {
-              "componentId": "SearchMapDots",
-              "overlapMs": 220,
-              "maxCommitSpanMs": 175.1,
-              "spanCount": 2
             }
           ]
         }
@@ -566,34 +600,34 @@
     {
       "runNumber": 1,
       "worstWindow": {
-        "durationMs": 1854.8,
-        "stage": "marker_reveal_state",
-        "elapsedMs": 2966.3,
-        "nowMs": 702374850.6,
-        "windowMs": 1854.8,
+        "durationMs": 2999.2,
+        "stage": "results_hydration_commit",
+        "elapsedMs": 4899.2,
+        "nowMs": 932026203,
+        "windowMs": 3115.8,
         "owner": {
           "primaryComponentId": "SearchScreen",
-          "primaryOverlapMs": 1524.9,
-          "primaryMaxCommitSpanMs": 280.5,
-          "primarySpanCount": 19,
+          "primaryOverlapMs": 2490.8,
+          "primaryMaxCommitSpanMs": 414.6,
+          "primarySpanCount": 15,
           "topComponents": [
             {
               "componentId": "SearchScreen",
-              "overlapMs": 1524.9,
-              "maxCommitSpanMs": 280.5,
-              "spanCount": 19
+              "overlapMs": 2490.8,
+              "maxCommitSpanMs": 414.6,
+              "spanCount": 15
             },
             {
               "componentId": "SearchResultsSheetTree",
-              "overlapMs": 1407.2,
-              "maxCommitSpanMs": 269.7,
-              "spanCount": 19
+              "overlapMs": 2124.4,
+              "maxCommitSpanMs": 413.6,
+              "spanCount": 15
             },
             {
               "componentId": "SearchMapTree",
-              "overlapMs": 575.1,
-              "maxCommitSpanMs": 148.6,
-              "spanCount": 8
+              "overlapMs": 2038.1,
+              "maxCommitSpanMs": 414.5,
+              "spanCount": 9
             }
           ]
         }
@@ -602,33 +636,33 @@
     {
       "runNumber": 2,
       "worstWindow": {
-        "durationMs": 214.3,
-        "stage": "results_list_ramp",
-        "elapsedMs": 214.1,
-        "nowMs": 702380184.6,
-        "windowMs": 214.3,
+        "durationMs": 672.9,
+        "stage": "results_hydration_commit",
+        "elapsedMs": 1406.2,
+        "nowMs": 932033376.8,
+        "windowMs": 672.9,
         "owner": {
           "primaryComponentId": "SearchScreen",
-          "primaryOverlapMs": 173.8,
-          "primaryMaxCommitSpanMs": 87.9,
-          "primarySpanCount": 5,
+          "primaryOverlapMs": 545.8,
+          "primaryMaxCommitSpanMs": 456.9,
+          "primarySpanCount": 3,
           "topComponents": [
             {
               "componentId": "SearchScreen",
-              "overlapMs": 173.8,
-              "maxCommitSpanMs": 87.9,
-              "spanCount": 5
-            },
-            {
-              "componentId": "SearchMapTree",
-              "overlapMs": 150.8,
-              "maxCommitSpanMs": 87.8,
+              "overlapMs": 545.8,
+              "maxCommitSpanMs": 456.9,
               "spanCount": 3
             },
             {
-              "componentId": "SearchMapDots",
-              "overlapMs": 123.5,
-              "maxCommitSpanMs": 84.5,
+              "componentId": "SearchMapTree",
+              "overlapMs": 513.1,
+              "maxCommitSpanMs": 456.8,
+              "spanCount": 2
+            },
+            {
+              "componentId": "SearchOverlayChrome",
+              "overlapMs": 461.8,
+              "maxCommitSpanMs": 406.3,
               "spanCount": 2
             }
           ]
@@ -638,251 +672,258 @@
     {
       "runNumber": 3,
       "worstWindow": {
-        "durationMs": 614.6,
-        "stage": "marker_reveal_state",
-        "elapsedMs": 1491.3,
-        "nowMs": 702383708.5,
-        "windowMs": 614.6,
+        "durationMs": 758.3,
+        "stage": "results_hydration_commit",
+        "elapsedMs": 1408.4,
+        "nowMs": 932040562.4,
+        "windowMs": 858.3,
         "owner": {
           "primaryComponentId": "SearchScreen",
-          "primaryOverlapMs": 484,
-          "primaryMaxCommitSpanMs": 163.6,
-          "primarySpanCount": 11,
+          "primaryOverlapMs": 634.2,
+          "primaryMaxCommitSpanMs": 488.8,
+          "primarySpanCount": 3,
           "topComponents": [
             {
               "componentId": "SearchScreen",
-              "overlapMs": 484,
-              "maxCommitSpanMs": 163.6,
-              "spanCount": 11
+              "overlapMs": 634.2,
+              "maxCommitSpanMs": 488.8,
+              "spanCount": 3
             },
             {
               "componentId": "SearchMapTree",
-              "overlapMs": 420.4,
-              "maxCommitSpanMs": 163.5,
-              "spanCount": 8
+              "overlapMs": 602.1,
+              "maxCommitSpanMs": 488.6,
+              "spanCount": 2
             },
             {
-              "componentId": "SearchResultsSheetTree",
-              "overlapMs": 404.3,
-              "maxCommitSpanMs": 137.8,
-              "spanCount": 11
+              "componentId": "SearchOverlayChrome",
+              "overlapMs": 542.7,
+              "maxCommitSpanMs": 430,
+              "spanCount": 2
             }
           ]
         }
       }
     }
   ],
-  "floorMean": 2.266666666666667,
-  "floorMin": 0.5,
-  "stallP95": 608.64,
-  "stallMaxMean": 894.5666666666666,
-  "uiFloorMean": 8.866666666666667,
-  "uiFloorMin": 3.1,
-  "uiStallP95": 131.765,
-  "uiStallMaxMean": 178.16666666666666,
+  "floorMean": 1.0333333333333334,
+  "floorMin": 0.3,
+  "stallP95": 661.8000000000001,
+  "stallMaxMean": 1476.8,
+  "uiFloorMean": 4.133333333333333,
+  "uiFloorMin": 1.1,
+  "uiStallP95": 166.7,
+  "uiStallMaxMean": 421.3666666666666,
   "catastrophic": {
     "thresholdMs": 300,
-    "runNumbers": [1, 3],
-    "runCount": 2,
-    "windowCount": 6
+    "runNumbers": [
+      1,
+      2,
+      3
+    ],
+    "runCount": 3,
+    "windowCount": 13
   },
   "uiCatastrophic": {
     "thresholdMs": 300,
-    "runNumbers": [1],
+    "runNumbers": [
+      1
+    ],
     "runCount": 1,
-    "windowCount": 1
+    "windowCount": 2
   },
   "stageHistogram": {
     "byStageWindowCount": {
-      "pre_response_activation": 1,
-      "results_hydration_commit": 34,
-      "marker_reveal_state": 6,
-      "results_list_ramp": 8
+      "pre_response_activation": 5,
+      "results_hydration_commit": 63,
+      "results_list_ramp": 15,
+      "marker_reveal_state": 4
     },
     "byStageCatastrophicWindowCount": {
-      "pre_response_activation": 1,
-      "results_hydration_commit": 3,
+      "pre_response_activation": 2,
+      "results_hydration_commit": 5,
+      "results_list_ramp": 4,
       "marker_reveal_state": 2
     },
     "byStageStallLongestTotalMs": {
-      "pre_response_activation": 511.8,
-      "results_hydration_commit": 3892.0999999999995,
-      "marker_reveal_state": 2682.0000000000005,
-      "results_list_ramp": 842.1
+      "pre_response_activation": 1522.9,
+      "results_hydration_commit": 8823.9,
+      "results_list_ramp": 1658.6,
+      "marker_reveal_state": 1192.5
     },
     "byStageMaxFrameTotalMs": {
-      "pre_response_activation": 511.8,
-      "results_hydration_commit": 4240.799999999999,
-      "marker_reveal_state": 2720.2000000000007,
-      "results_list_ramp": 889.9999999999999
+      "pre_response_activation": 1569.3,
+      "results_hydration_commit": 9583.899999999998,
+      "results_list_ramp": 1862.6000000000001,
+      "marker_reveal_state": 1192.5
     }
   },
   "uiStageHistogram": {
     "byStageWindowCount": {
-      "pre_response_activation": 2,
-      "results_hydration_commit": 49,
-      "marker_reveal_state": 22,
-      "results_list_ramp": 11
+      "pre_response_activation": 6,
+      "results_hydration_commit": 104,
+      "results_list_ramp": 23,
+      "marker_reveal_state": 9
     },
     "byStageCatastrophicWindowCount": {
-      "pre_response_activation": 1
+      "pre_response_activation": 2
     },
     "byStageStallLongestTotalMs": {
-      "pre_response_activation": 383.70000000000005,
-      "results_hydration_commit": 1117.5,
-      "marker_reveal_state": 412.1,
-      "results_list_ramp": 192.8
+      "pre_response_activation": 1479.6999999999998,
+      "results_hydration_commit": 3687.4999999999995,
+      "results_list_ramp": 0,
+      "marker_reveal_state": 707.8000000000001
     },
     "byStageMaxFrameTotalMs": {
-      "pre_response_activation": 383.70000000000005,
-      "results_hydration_commit": 1948.0999999999997,
-      "marker_reveal_state": 777.9,
-      "results_list_ramp": 393
+      "pre_response_activation": 1553.1,
+      "results_hydration_commit": 5297.099999999996,
+      "results_list_ramp": 460.5,
+      "marker_reveal_state": 790
     }
   },
   "stageAttribution": {
     "jsTopByStallMs": [
       {
         "stage": "results_hydration_commit",
-        "stallLongestTotalMs": 3892.0999999999995,
-        "maxFrameTotalMs": 4240.799999999999,
-        "windowCount": 34,
-        "catastrophicWindowCount": 3
-      },
-      {
-        "stage": "marker_reveal_state",
-        "stallLongestTotalMs": 2682.0000000000005,
-        "maxFrameTotalMs": 2720.2000000000007,
-        "windowCount": 6,
-        "catastrophicWindowCount": 2
+        "stallLongestTotalMs": 8823.9,
+        "maxFrameTotalMs": 9583.899999999998,
+        "windowCount": 63,
+        "catastrophicWindowCount": 5
       },
       {
         "stage": "results_list_ramp",
-        "stallLongestTotalMs": 842.1,
-        "maxFrameTotalMs": 889.9999999999999,
-        "windowCount": 8,
-        "catastrophicWindowCount": 0
+        "stallLongestTotalMs": 1658.6,
+        "maxFrameTotalMs": 1862.6000000000001,
+        "windowCount": 15,
+        "catastrophicWindowCount": 4
+      },
+      {
+        "stage": "pre_response_activation",
+        "stallLongestTotalMs": 1522.9,
+        "maxFrameTotalMs": 1569.3,
+        "windowCount": 5,
+        "catastrophicWindowCount": 2
       }
     ],
     "uiTopByStallMs": [
       {
         "stage": "results_hydration_commit",
-        "stallLongestTotalMs": 1117.5,
-        "maxFrameTotalMs": 1948.0999999999997,
-        "windowCount": 49,
-        "catastrophicWindowCount": 0
-      },
-      {
-        "stage": "marker_reveal_state",
-        "stallLongestTotalMs": 412.1,
-        "maxFrameTotalMs": 777.9,
-        "windowCount": 22,
+        "stallLongestTotalMs": 3687.4999999999995,
+        "maxFrameTotalMs": 5297.099999999996,
+        "windowCount": 104,
         "catastrophicWindowCount": 0
       },
       {
         "stage": "pre_response_activation",
-        "stallLongestTotalMs": 383.70000000000005,
-        "maxFrameTotalMs": 383.70000000000005,
-        "windowCount": 2,
-        "catastrophicWindowCount": 1
+        "stallLongestTotalMs": 1479.6999999999998,
+        "maxFrameTotalMs": 1553.1,
+        "windowCount": 6,
+        "catastrophicWindowCount": 2
+      },
+      {
+        "stage": "marker_reveal_state",
+        "stallLongestTotalMs": 707.8000000000001,
+        "maxFrameTotalMs": 790,
+        "windowCount": 9,
+        "catastrophicWindowCount": 0
       }
     ],
     "runtimeTopByTotalMs": [
       {
         "contributor": "marker_feature_derivation",
-        "totalMs": 8.05545711517334,
-        "sampleCount": 13,
-        "meanMs": 0.6196505473210261
+        "totalMs": 12.71374773979187,
+        "sampleCount": 14,
+        "meanMs": 0.9081248385565621
       },
       {
         "contributor": "map_label_bootstrap",
-        "totalMs": 2.39329195022583,
-        "sampleCount": 10,
-        "meanMs": 0.239329195022583
+        "totalMs": 6.838915944099426,
+        "sampleCount": 13,
+        "meanMs": 0.5260704572384174
       },
       {
         "contributor": "hydration_commit_apply",
-        "totalMs": 0.6649169921875,
-        "sampleCount": 2,
-        "meanMs": 0.33245849609375
+        "totalMs": 1.9776660203933716,
+        "sampleCount": 3,
+        "meanMs": 0.6592220067977905
       },
       {
         "contributor": "hydration_finalize_key_commit",
-        "totalMs": 0.6649169921875,
-        "sampleCount": 2,
-        "meanMs": 0.33245849609375
+        "totalMs": 1.9776660203933716,
+        "sampleCount": 3,
+        "meanMs": 0.6592220067977905
       },
       {
-        "contributor": "list_read_model_build",
-        "totalMs": 0.05162501335144043,
-        "sampleCount": 2,
-        "meanMs": 0.025812506675720215
+        "contributor": "hydration_finalize_rows_release",
+        "totalMs": 0.12670886516571045,
+        "sampleCount": 3,
+        "meanMs": 0.04223628838857015
       }
     ]
   },
-  "dominantFloorStage": "marker_reveal_state",
+  "dominantFloorStage": "results_hydration_commit",
   "dominantUiFloorStage": "pre_response_activation",
   "mapRuntime": {
     "fullCatalogScanCount": 0,
-    "indexQueryDurationP95": 0.37914420127868653,
-    "readModelBuildSliceP95": 0.8856913292407989,
-    "mapDiffApplySliceP95": 0.07486606836318971,
-    "indexQuerySampleCount": 5,
-    "readModelBuildSampleCount": 13,
-    "mapDiffApplySampleCount": 2,
+    "indexQueryDurationP95": 5.0196053618192655,
+    "readModelBuildSliceP95": 1.413849036693573,
+    "mapDiffApplySliceP95": 0.0637506365776062,
+    "indexQuerySampleCount": 6,
+    "readModelBuildSampleCount": 14,
+    "mapDiffApplySampleCount": 1,
     "runtimeAttributionTotalsMs": {
-      "marker_feature_derivation": 8.05545711517334,
-      "map_label_bootstrap": 2.39329195022583,
-      "hydration_commit_apply": 0.6649169921875,
-      "hydration_finalize_key_commit": 0.6649169921875,
-      "list_read_model_build": 0.05162501335144043,
-      "hydration_finalize_rows_release": 0.025500059127807617
+      "marker_feature_derivation": 12.71374773979187,
+      "map_label_bootstrap": 6.838915944099426,
+      "hydration_commit_apply": 1.9776660203933716,
+      "hydration_finalize_key_commit": 1.9776660203933716,
+      "list_read_model_build": 0.07374989986419678,
+      "hydration_finalize_rows_release": 0.12670886516571045
     },
     "runtimeAttributionSampleCountByContributor": {
-      "marker_feature_derivation": 13,
-      "map_label_bootstrap": 10,
-      "hydration_commit_apply": 2,
-      "hydration_finalize_key_commit": 2,
-      "list_read_model_build": 2,
-      "hydration_finalize_rows_release": 2
+      "marker_feature_derivation": 14,
+      "map_label_bootstrap": 13,
+      "hydration_commit_apply": 3,
+      "hydration_finalize_key_commit": 3,
+      "list_read_model_build": 3,
+      "hydration_finalize_rows_release": 3
     },
     "runtimeTopContributorsByTotalMs": [
       {
         "contributor": "marker_feature_derivation",
-        "totalMs": 8.05545711517334,
-        "sampleCount": 13,
-        "meanMs": 0.6196505473210261
+        "totalMs": 12.71374773979187,
+        "sampleCount": 14,
+        "meanMs": 0.9081248385565621
       },
       {
         "contributor": "map_label_bootstrap",
-        "totalMs": 2.39329195022583,
-        "sampleCount": 10,
-        "meanMs": 0.239329195022583
+        "totalMs": 6.838915944099426,
+        "sampleCount": 13,
+        "meanMs": 0.5260704572384174
       },
       {
         "contributor": "hydration_commit_apply",
-        "totalMs": 0.6649169921875,
-        "sampleCount": 2,
-        "meanMs": 0.33245849609375
+        "totalMs": 1.9776660203933716,
+        "sampleCount": 3,
+        "meanMs": 0.6592220067977905
       },
       {
         "contributor": "hydration_finalize_key_commit",
-        "totalMs": 0.6649169921875,
-        "sampleCount": 2,
-        "meanMs": 0.33245849609375
+        "totalMs": 1.9776660203933716,
+        "sampleCount": 3,
+        "meanMs": 0.6592220067977905
       },
       {
-        "contributor": "list_read_model_build",
-        "totalMs": 0.05162501335144043,
-        "sampleCount": 2,
-        "meanMs": 0.025812506675720215
+        "contributor": "hydration_finalize_rows_release",
+        "totalMs": 0.12670886516571045,
+        "sampleCount": 3,
+        "meanMs": 0.04223628838857015
       }
     ]
   },
   "mechanismSignals": {
     "queryMutationCoalescedCount": 0,
     "profileIntentCancelledCount": 0,
-    "harnessSettleEvalCount": 34,
+    "harnessSettleEvalCount": 57,
     "observerRenderBumpCount": 0
   }
 }

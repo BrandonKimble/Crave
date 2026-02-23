@@ -4,7 +4,9 @@ import type { FlashListProps, FlashListRef } from '@shopify/flash-list';
 import Reanimated, { type SharedValue } from 'react-native-reanimated';
 
 import { FrostedGlassBackground } from '../../../components/FrostedGlassBackground';
+import SquircleSpinner from '../../../components/SquircleSpinner';
 import { Text } from '../../../components';
+import EmptyState from '../components/empty-state';
 import type { SnapPoints } from '../../../overlays/BottomSheetWithFlashList';
 import { OVERLAY_TAB_HEADER_HEIGHT } from '../../../overlays/overlaySheetStyles';
 import { useSearchPanelSpec } from '../../../overlays/panels/SearchPanel';
@@ -20,7 +22,6 @@ import {
   ACTIVE_TAB_COLOR,
   CONTENT_HORIZONTAL_PADDING,
   RESULTS_BOTTOM_PADDING,
-  SCREEN_HEIGHT,
 } from '../constants/search';
 import {
   useSearchResultsReadModelSelectors,
@@ -62,7 +63,6 @@ type SearchResultsPanelSpecArgs = {
   handleSearchFiltersLayoutCache: (next: SearchFiltersLayoutCache) => void;
   searchInteractionRef: React.MutableRefObject<SearchInteractionState>;
   mapQueryBudget: MapQueryBudget;
-  snapPointsMiddle: number;
   handleCloseResults: () => void;
   overlayHeaderActionProgress: SharedValue<number>;
   headerDividerAnimatedStyle: StyleProp<ViewStyle>;
@@ -121,7 +121,6 @@ export const useSearchResultsPanelSpec = ({
   handleSearchFiltersLayoutCache,
   searchInteractionRef,
   mapQueryBudget,
-  snapPointsMiddle,
   handleCloseResults,
   overlayHeaderActionProgress,
   headerDividerAnimatedStyle,
@@ -224,6 +223,10 @@ export const useSearchResultsPanelSpec = ({
       left.runtimeHydratedResultsKey === right.runtimeHydratedResultsKey &&
       left.isRunOneChromeFreezeActive === right.isRunOneChromeFreezeActive &&
       left.isChromeDeferred === right.isChromeDeferred
+  );
+  const isVisualSyncPending = useSearchRuntimeBusSelector(
+    searchRuntimeBus,
+    (state) => state.isVisualSyncPending,
   );
   const {
     results,
@@ -674,14 +677,8 @@ export const useSearchResultsPanelSpec = ({
     (didSearchSessionJustActivate || isInitialResultsLoadPending) &&
     isSearchLoading &&
     !isFilterTogglePending;
-  const shouldShowInitialResultsLoadingPhase = shouldForceInitialLoadingCover;
-  const shouldHideFiltersHeaderDuringInitialLoad =
-    !shouldDisableFiltersHeader && shouldShowInitialResultsLoadingPhase;
 
-  const effectiveFiltersHeaderHeight =
-    shouldDisableFiltersHeader || shouldHideFiltersHeaderDuringInitialLoad
-      ? 0
-      : filtersHeaderHeight;
+  const effectiveFiltersHeaderHeight = shouldDisableFiltersHeader ? 0 : filtersHeaderHeight;
   const effectiveResultsHeaderHeight = shouldDisableResultsHeader ? 0 : resultsSheetHeaderHeight;
 
   const handleResultsHeaderLayout = React.useCallback(
@@ -736,10 +733,7 @@ export const useSearchResultsPanelSpec = ({
     }
     return (
       <View
-        style={[
-          styles.resultsListHeader,
-          shouldHideFiltersHeaderDuringInitialLoad ? styles.resultsListHeaderHidden : null,
-        ]}
+        style={styles.resultsListHeader}
         onLayout={handleFiltersHeaderLayout}
       >
         {filtersHeader}
@@ -750,7 +744,6 @@ export const useSearchResultsPanelSpec = ({
     filtersHeader,
     handleFiltersHeaderLayout,
     shouldDisableFiltersHeader,
-    shouldHideFiltersHeaderDuringInitialLoad,
   ]);
 
   const shouldShowResultsLoadingStateBase =
@@ -781,15 +774,12 @@ export const useSearchResultsPanelSpec = ({
   }
 
   const frozenResultsChromeSnapshot = frozenResultsChromeSnapshotRef.current;
-  const listHeaderForRender = shouldFreezeResultsChrome
-    ? frozenResultsChromeSnapshot?.listHeader ?? listHeader
-    : listHeader;
   const submittedQueryForReadModel = submittedQuery;
   const shouldShowResultsLoadingStateForReadModel = shouldFreezeResultsChrome
     ? frozenResultsChromeSnapshot?.shouldShowResultsLoadingState ??
       shouldShowResultsLoadingStateBase
     : shouldShowResultsLoadingStateBase;
-  const effectiveFiltersHeaderHeightForRender = shouldFreezeResultsChrome
+  const effectiveFiltersHeaderHeightBase = shouldFreezeResultsChrome
     ? frozenResultsChromeSnapshot?.effectiveFiltersHeaderHeight ?? effectiveFiltersHeaderHeight
     : effectiveFiltersHeaderHeight;
   const effectiveResultsHeaderHeightForRender = shouldFreezeResultsChrome
@@ -812,12 +802,7 @@ export const useSearchResultsPanelSpec = ({
     mapQueryBudget,
     canLoadMore,
     isLoadingMore,
-    shouldShowResultsLoadingState: shouldShowResultsLoadingStateForReadModel,
     onDemandNotice,
-    screenHeight: SCREEN_HEIGHT,
-    middleSnapPoint: snapPointsMiddle,
-    effectiveResultsHeaderHeight: effectiveResultsHeaderHeightForRender,
-    effectiveFiltersHeaderHeight: effectiveFiltersHeaderHeightForRender,
     activeTabColor: ACTIVE_TAB_COLOR,
     shouldDisableResultsHeader,
     shouldUseResultsHeaderBlur: shouldUseResultsHeaderBlurForRender,
@@ -836,7 +821,6 @@ export const useSearchResultsPanelSpec = ({
     onRuntimeMechanismEvent,
     setHydratedResultsKeySync,
     phaseBMaterializerRef,
-    resultsLoadingSpinnerOffset: RESULTS_LOADING_SPINNER_OFFSET,
     contentHorizontalPadding: CONTENT_HORIZONTAL_PADDING,
   });
   React.useEffect(() => {
@@ -854,17 +838,97 @@ export const useSearchResultsPanelSpec = ({
     shouldHydrateResultsForRender,
   ]);
 
-  const resultsSurfaceVisibility = buildResultsSurfaceVisibility({
-    isSearchLoading,
-    hasSystemStatusBanner,
-    shouldRetrySearchOnReconnect,
-    isFilterTogglePending,
-    hasResults: hasResolvedResults,
-    safeResultsCount: resultsReadModelSelectors.safeResultsCount,
-  });
-  const shouldShowResultsLoadingState = resultsSurfaceVisibility.shouldShowResultsLoadingState;
   const shouldShowResultsSurface =
-    resultsSurfaceVisibility.shouldShowResultsSurface || shouldUsePlaceholderRows;
+    buildResultsSurfaceVisibility({
+      isSearchLoading,
+      hasSystemStatusBanner,
+      shouldRetrySearchOnReconnect,
+      isFilterTogglePending,
+      hasResults: hasResolvedResults,
+      safeResultsCount: resultsReadModelSelectors.safeResultsCount,
+    }) || shouldUsePlaceholderRows;
+
+  // --- Toggle strip gating: only render when cards are present ---
+  const hasRenderableRows = resultsReadModelSelectors.rowsForRender.length > 0;
+
+  const listHeaderForRender = hasRenderableRows
+    ? (shouldFreezeResultsChrome
+        ? frozenResultsChromeSnapshot?.listHeader ?? listHeader
+        : listHeader)
+    : null;
+
+  const effectiveFiltersHeaderHeightForRender = hasRenderableRows
+    ? effectiveFiltersHeaderHeightBase
+    : 0;
+
+  // --- White results surface lifecycle ---
+  const [surfaceActive, setSurfaceActive] = React.useState(true);
+  const visualSyncStartedRef = React.useRef(false);
+
+  // Activate surface when loading starts
+  React.useEffect(() => {
+    if (shouldShowResultsLoadingStateBase) {
+      setSurfaceActive(true);
+      visualSyncStartedRef.current = false;
+    }
+  }, [shouldShowResultsLoadingStateBase]);
+
+  // Track visual sync lifecycle — drop surface when map is ready
+  React.useEffect(() => {
+    if (isVisualSyncPending) {
+      visualSyncStartedRef.current = true;
+    }
+    if (!isVisualSyncPending && visualSyncStartedRef.current && surfaceActive) {
+      setSurfaceActive(false);
+      visualSyncStartedRef.current = false;
+    }
+  }, [isVisualSyncPending, surfaceActive]);
+
+  // Safety valve: drop surface after 500ms max
+  React.useEffect(() => {
+    if (!surfaceActive) return;
+    const timeout = setTimeout(() => {
+      setSurfaceActive(false);
+      visualSyncStartedRef.current = false;
+    }, 500);
+    return () => clearTimeout(timeout);
+  }, [surfaceActive]);
+
+  // --- Surface content: spinner, empty state, or blank ---
+  const isSurfaceShowingEmptyState =
+    !shouldShowResultsLoadingStateForReadModel &&
+    !hasRenderableRows &&
+    hasResolvedResults &&
+    !isSearchLoading;
+
+  const surfaceContent = React.useMemo(() => {
+    if (!surfaceActive) return null;
+
+    if (isSurfaceShowingEmptyState) {
+      const emptyTitle = activeTab === 'dishes' ? 'No dishes found.' : 'No restaurants found.';
+      const emptySubtitle = results?.metadata?.emptyQueryMessage
+        ?? 'Try moving the map or adjusting your search.';
+      return (
+        <View style={styles.emptyState}>
+          {onDemandNotice}
+          <EmptyState title={emptyTitle} subtitle={emptySubtitle} />
+        </View>
+      );
+    }
+
+    // Show spinner for the entire surface lifetime (loading + visual sync window)
+    return (
+      <View style={{ paddingTop: RESULTS_LOADING_SPINNER_OFFSET }}>
+        <SquircleSpinner size={22} color={ACTIVE_TAB_COLOR} />
+      </View>
+    );
+  }, [
+    surfaceActive,
+    isSurfaceShowingEmptyState,
+    activeTab,
+    results?.metadata?.emptyQueryMessage,
+    onDemandNotice,
+  ]);
 
   const resultsRenderItem = shouldUsePlaceholderRows
     ? renderPlaceholderFlashListItem
@@ -874,51 +938,45 @@ export const useSearchResultsPanelSpec = ({
     0,
     effectiveResultsHeaderHeightForRender + effectiveFiltersHeaderHeightForRender
   );
-  const initialResultsLoadingFillTopOffset = Math.max(
-    resultsWashTopOffset,
-    shouldDisableResultsHeader
-      ? 0
-      : OVERLAY_TAB_HEADER_HEIGHT + effectiveFiltersHeaderHeightForRender
-  );
-  const shouldRenderInitialResultsLoadingFill =
-    shouldShowInitialResultsLoadingPhase && shouldShowResultsLoadingState;
 
+  const preMeasureOverlay = resultsReadModelSelectors.preMeasureOverlay;
   const resultsListBackground = React.useMemo(() => {
     if (!shouldShowResultsSurface) {
-      return null;
+      return preMeasureOverlay;
     }
     if (shouldDisableSearchBlur) {
-      return <View style={[styles.resultsListBackground, { top: 0 }]} />;
+      return (
+        <>
+          <View style={[styles.resultsListBackground, { top: 0 }]} />
+          {preMeasureOverlay}
+        </>
+      );
     }
     return (
       <>
         <FrostedGlassBackground />
-        {shouldRenderInitialResultsLoadingFill ? (
-          <View
-            style={[
-              styles.resultsListBackground,
-              styles.resultsListBackgroundLoading,
-              { top: initialResultsLoadingFillTopOffset },
-            ]}
-          />
-        ) : null}
+        {preMeasureOverlay}
       </>
     );
-  }, [
-    initialResultsLoadingFillTopOffset,
-    shouldDisableSearchBlur,
-    shouldRenderInitialResultsLoadingFill,
-    shouldShowResultsSurface,
-  ]);
+  }, [preMeasureOverlay, shouldDisableSearchBlur, shouldShowResultsSurface]);
+
+  const surfaceTopOffset = effectiveResultsHeaderHeightForRender || OVERLAY_TAB_HEADER_HEIGHT;
 
   const resultsOverlayComponent = React.useMemo(
     () => (
-      <Reanimated.View
-        pointerEvents="none"
-        style={[styles.resultsWashOverlay, { top: resultsWashTopOffset }, resultsWashAnimatedStyle]}
-      />
+      <>
+        <Reanimated.View
+          pointerEvents="none"
+          style={[styles.resultsWashOverlay, { top: resultsWashTopOffset }, resultsWashAnimatedStyle]}
+        />
+        {surfaceActive ? (
+          <View style={[styles.resultsSurface, { top: surfaceTopOffset }]}>
+            {surfaceContent}
+          </View>
+        ) : null}
+      </>
     ),
-    [resultsWashAnimatedStyle, resultsWashTopOffset]
+    [surfaceActive, surfaceContent, surfaceTopOffset, resultsWashAnimatedStyle, resultsWashTopOffset]
   );
 
   const ResultItemSeparator = React.useCallback(
@@ -970,7 +1028,7 @@ export const useSearchResultsPanelSpec = ({
     contentContainerStyle: resultsContentContainerStyle,
     ListHeaderComponent: listHeaderForRender as React.ReactElement | null,
     ListFooterComponent: resultsReadModelSelectors.listFooterComponent as React.ReactElement | null,
-    ListEmptyComponent: resultsReadModelSelectors.listEmptyComponent as React.ReactElement | null,
+    ListEmptyComponent: null,
     ItemSeparatorComponent: ResultItemSeparator,
     headerComponent: resultsReadModelSelectors.listHeaderComponent,
     backgroundComponent: resultsListBackground,

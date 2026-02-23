@@ -55,7 +55,6 @@ type UseSuggestionTransitionHoldArgs = {
   setSearchTransitionVariant: React.Dispatch<React.SetStateAction<SearchTransitionVariant>>;
   shortcutContentFadeMode: { value: number };
   shortcutFadeDefault: number;
-  shortcutFadeOut: number;
 };
 
 type UseSuggestionTransitionHoldResult = {
@@ -95,7 +94,6 @@ export const useSuggestionTransitionHold = ({
   setSearchTransitionVariant,
   shortcutContentFadeMode,
   shortcutFadeDefault,
-  shortcutFadeOut,
 }: UseSuggestionTransitionHoldArgs): UseSuggestionTransitionHoldResult => {
   const submitTransitionHoldRef = React.useRef<SuggestionTransitionHold>(
     createEmptySuggestionTransitionHold()
@@ -157,13 +155,9 @@ export const useSuggestionTransitionHold = ({
   const beginSubmitTransition = React.useCallback(
     (options: TransitionHoldCaptureOptions) => {
       const didHold = captureSuggestionTransitionHold(options);
+      shortcutContentFadeMode.value = shortcutFadeDefault;
       if (didHold) {
-        shortcutContentFadeMode.value = options.flags.holdShortcuts
-          ? shortcutFadeOut
-          : shortcutFadeDefault;
         setSearchTransitionVariant('submitting');
-      } else {
-        shortcutContentFadeMode.value = shortcutFadeDefault;
       }
       return didHold;
     },
@@ -172,7 +166,6 @@ export const useSuggestionTransitionHold = ({
       setSearchTransitionVariant,
       shortcutContentFadeMode,
       shortcutFadeDefault,
-      shortcutFadeOut,
     ]
   );
 

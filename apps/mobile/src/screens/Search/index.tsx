@@ -16,6 +16,7 @@ import {
   Extrapolation,
   interpolate,
   runOnUI,
+  useAnimatedReaction,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useDerivedValue,
@@ -235,7 +236,6 @@ const LOD_VISIBLE_CANDIDATE_BUFFER = 16;
 const PROFILE_PIN_TARGET_CENTER_RATIO = 0.25;
 const PROFILE_PIN_MIN_VISIBLE_HEIGHT = 160;
 const SHORTCUT_CONTENT_FADE_DEFAULT = 0;
-const SHORTCUT_CONTENT_FADE_OUT = 1;
 const SHORTCUT_CONTENT_FADE_HOLD = 2;
 const PROFILE_CAMERA_ANIMATION_MS = 800;
 const PROFILE_RESTORE_ANIMATION_MS = 650;
@@ -1496,6 +1496,7 @@ const SearchScreen: React.FC = () => {
   const suggestionScrollTopValue = useSharedValue(0);
   const suggestionScrollMaxHeightValue = useSharedValue(0);
   const shortcutContentFadeMode = useSharedValue(SHORTCUT_CONTENT_FADE_DEFAULT);
+  const shortcutSubmitFade = useSharedValue(1);
   const overlayHeaderActionProgress = useSharedValue(0);
   const [searchHeaderActionModeOverride, setSearchHeaderActionModeOverride] =
     React.useState<OverlayHeaderActionMode | null>(null);
@@ -2245,7 +2246,6 @@ const SearchScreen: React.FC = () => {
     setSearchTransitionVariant,
     shortcutContentFadeMode,
     shortcutFadeDefault: SHORTCUT_CONTENT_FADE_DEFAULT,
-    shortcutFadeOut: SHORTCUT_CONTENT_FADE_OUT,
   });
   React.useEffect(() => {
     if (!isSuggestionPanelActive) {
@@ -2380,6 +2380,14 @@ const SearchScreen: React.FC = () => {
       getEasing: () => Easing.linear,
       resetOnShowKey: searchShortcutsFadeResetKey,
     });
+  useAnimatedReaction(
+    () => searchShortcutsFadeProgress.value,
+    (current) => {
+      if (current === 0 && shortcutSubmitFade.value < 1) {
+        shortcutSubmitFade.value = 1;
+      }
+    }
+  );
   const shouldMountSearchShortcuts =
     !shouldForceHideShortcuts && (shouldRenderSearchShortcuts || shouldRenderSearchShortcutsRow);
   const shouldUseSearchShortcutFrames =
@@ -2428,14 +2436,14 @@ const SearchScreen: React.FC = () => {
     return null;
   }, [cachedSearchContainerFrame, searchContainerFrame]);
   const buildSuggestionTransitionHoldCapture = React.useCallback(
-    (holdShortcuts: boolean) => ({
+    () => ({
       enabled: shouldDriveSuggestionLayout,
       flags: {
         holdAutocomplete: shouldRenderAutocompleteSection,
         holdRecent: shouldRenderRecentSection,
         holdSuggestionPanel: shouldRenderSuggestionPanel,
         holdSuggestionBackground: shouldShowSuggestionBackground,
-        holdShortcuts,
+        holdShortcuts: false,
       },
     }),
     [
@@ -2448,13 +2456,13 @@ const SearchScreen: React.FC = () => {
   );
   const beginSubmitTransition = React.useCallback(() => {
     return beginSubmitTransitionHold(
-      buildSuggestionTransitionHoldCapture(shouldShowSearchShortcuts)
+      buildSuggestionTransitionHoldCapture()
     );
-  }, [beginSubmitTransitionHold, buildSuggestionTransitionHoldCapture, shouldShowSearchShortcuts]);
+  }, [beginSubmitTransitionHold, buildSuggestionTransitionHoldCapture]);
   const beginSuggestionCloseHold = React.useCallback(
     (variant: 'default' | 'submitting' = 'default') => {
       return beginSuggestionCloseTransitionHold({
-        ...buildSuggestionTransitionHoldCapture(false),
+        ...buildSuggestionTransitionHoldCapture(),
         variant,
       });
     },
@@ -2856,16 +2864,12 @@ const SearchScreen: React.FC = () => {
     };
   }, [searchTransitionVariant]);
   const searchShortcutContentAnimatedStyle = useAnimatedStyle(() => {
-    const progress = suggestionProgress.value;
     if (isSuggestionClosing) {
-      if (shortcutContentFadeMode.value === SHORTCUT_CONTENT_FADE_OUT) {
-        return { opacity: progress };
-      }
       if (shortcutContentFadeMode.value === SHORTCUT_CONTENT_FADE_HOLD) {
         return { opacity: 1 };
       }
       return {
-        opacity: 1 - progress,
+        opacity: 1 - suggestionProgress.value,
       };
     }
     return { opacity: 1 };
@@ -2882,12 +2886,11 @@ const SearchScreen: React.FC = () => {
         ? 1
         : 0;
     const visibility = Math.min(searchShortcutsFadeProgress.value, uncoverProgress);
-    const submitOpacity = searchTransitionVariant === 'submitting' ? suggestionProgress.value : 1;
     const progress = suggestionProgress.value;
     const backgroundAlpha = 1 - progress;
     const revealOpacity =
       searchTransitionVariant === 'submitting' || isSuggestionPanelVisible ? 1 : backgroundAlpha;
-    const opacity = searchChromeOpacity.value * visibility * submitOpacity * revealOpacity;
+    const opacity = searchChromeOpacity.value * visibility * revealOpacity * shortcutSubmitFade.value;
     const chromeScale = shouldLockSearchChromeTransform ? 1 : searchChromeScale.value;
     return {
       opacity,
@@ -4016,6 +4019,7 @@ const SearchScreen: React.FC = () => {
       ignoreNextSearchBlurRef.current = true;
       suppressAutocompleteResults();
       beginSubmitChromePriming();
+      shortcutSubmitFade.value = withTiming(0, { duration: SEARCH_SHORTCUTS_FADE_MS });
       if (isSuggestionPanelActive) {
         beginSubmitTransition();
         if (typeof React.startTransition === 'function') {
@@ -4042,6 +4046,7 @@ const SearchScreen: React.FC = () => {
       setRestaurantOnlyIntent,
       setIsSuggestionPanelActive,
       setIsSearchFocused,
+      shortcutSubmitFade,
       suppressAutocompleteResults,
     ]
   );
@@ -4843,7 +4848,6 @@ const SearchScreen: React.FC = () => {
       handleSearchFiltersLayoutCache,
       searchInteractionRef,
       mapQueryBudget,
-      snapPointsMiddle: snapPoints.middle,
       handleCloseResults,
       overlayHeaderActionProgress,
       headerDividerAnimatedStyle,
