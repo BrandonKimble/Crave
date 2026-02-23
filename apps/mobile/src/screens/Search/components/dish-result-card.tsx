@@ -33,9 +33,7 @@ const INFO_CIRCLE_ICON_DISH = (
   />
 );
 
-const SHARE_ICON_DISH = (
-  <LucideShare size={20} color={themeColors.textBody} strokeWidth={2} />
-);
+const SHARE_ICON_DISH = <LucideShare size={20} color={themeColors.textBody} strokeWidth={2} />;
 
 type ScoreInfoPayload = {
   type: 'dish' | 'restaurant';

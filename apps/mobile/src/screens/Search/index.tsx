@@ -2455,9 +2455,7 @@ const SearchScreen: React.FC = () => {
     ]
   );
   const beginSubmitTransition = React.useCallback(() => {
-    return beginSubmitTransitionHold(
-      buildSuggestionTransitionHoldCapture()
-    );
+    return beginSubmitTransitionHold(buildSuggestionTransitionHoldCapture());
   }, [beginSubmitTransitionHold, buildSuggestionTransitionHoldCapture]);
   const beginSuggestionCloseHold = React.useCallback(
     (variant: 'default' | 'submitting' = 'default') => {
@@ -2890,7 +2888,8 @@ const SearchScreen: React.FC = () => {
     const backgroundAlpha = 1 - progress;
     const revealOpacity =
       searchTransitionVariant === 'submitting' || isSuggestionPanelVisible ? 1 : backgroundAlpha;
-    const opacity = searchChromeOpacity.value * visibility * revealOpacity * shortcutSubmitFade.value;
+    const opacity =
+      searchChromeOpacity.value * visibility * revealOpacity * shortcutSubmitFade.value;
     const chromeScale = shouldLockSearchChromeTransform ? 1 : searchChromeScale.value;
     return {
       opacity,

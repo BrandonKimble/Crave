@@ -2,10 +2,7 @@ import React from 'react';
 import { type LayoutChangeEvent, View } from 'react-native';
 
 import { Text } from '../../../components';
-import {
-  topFoodItemWidthCache,
-  topFoodMoreWidthCache,
-} from '../hooks/use-top-food-measurement';
+import { topFoodItemWidthCache, topFoodMoreWidthCache } from '../hooks/use-top-food-measurement';
 import styles from '../styles';
 
 type PreMeasureItem = {
@@ -51,12 +48,8 @@ const TopFoodPreMeasure: React.FC<TopFoodPreMeasureProps> = ({ items, moreCounts
   }, [items.length, moreCounts.length, onComplete]);
 
   // Stable callback maps so we don't recreate per render
-  const itemCallbacksRef = React.useRef(
-    new Map<string, (event: LayoutChangeEvent) => void>()
-  );
-  const moreCallbacksRef = React.useRef(
-    new Map<number, (event: LayoutChangeEvent) => void>()
-  );
+  const itemCallbacksRef = React.useRef(new Map<string, (event: LayoutChangeEvent) => void>());
+  const moreCallbacksRef = React.useRef(new Map<number, (event: LayoutChangeEvent) => void>());
 
   const getItemCallback = React.useCallback(
     (connectionId: string) => {
@@ -120,8 +113,7 @@ const TopFoodPreMeasure: React.FC<TopFoodPreMeasureProps> = ({ items, moreCounts
           style={styles.topFoodMore}
           onLayout={getMoreCallback(count)}
         >
-          {TOP_FOOD_INLINE_GAP}
-          +{count} more
+          {TOP_FOOD_INLINE_GAP}+{count} more
         </Text>
       ))}
     </View>

@@ -226,7 +226,7 @@ export const useSearchResultsPanelSpec = ({
   );
   const isVisualSyncPending = useSearchRuntimeBusSelector(
     searchRuntimeBus,
-    (state) => state.isVisualSyncPending,
+    (state) => state.isVisualSyncPending
   );
   const {
     results,
@@ -732,19 +732,12 @@ export const useSearchResultsPanelSpec = ({
       return null;
     }
     return (
-      <View
-        style={styles.resultsListHeader}
-        onLayout={handleFiltersHeaderLayout}
-      >
+      <View style={styles.resultsListHeader} onLayout={handleFiltersHeaderLayout}>
         {filtersHeader}
         <View style={styles.resultsListHeaderBottomStrip} />
       </View>
     );
-  }, [
-    filtersHeader,
-    handleFiltersHeaderLayout,
-    shouldDisableFiltersHeader,
-  ]);
+  }, [filtersHeader, handleFiltersHeaderLayout, shouldDisableFiltersHeader]);
 
   const shouldShowResultsLoadingStateBase =
     (isSearchLoading ||
@@ -852,9 +845,9 @@ export const useSearchResultsPanelSpec = ({
   const hasRenderableRows = resultsReadModelSelectors.rowsForRender.length > 0;
 
   const listHeaderForRender = hasRenderableRows
-    ? (shouldFreezeResultsChrome
-        ? frozenResultsChromeSnapshot?.listHeader ?? listHeader
-        : listHeader)
+    ? shouldFreezeResultsChrome
+      ? frozenResultsChromeSnapshot?.listHeader ?? listHeader
+      : listHeader
     : null;
 
   const effectiveFiltersHeaderHeightForRender = hasRenderableRows
@@ -906,8 +899,8 @@ export const useSearchResultsPanelSpec = ({
 
     if (isSurfaceShowingEmptyState) {
       const emptyTitle = activeTab === 'dishes' ? 'No dishes found.' : 'No restaurants found.';
-      const emptySubtitle = results?.metadata?.emptyQueryMessage
-        ?? 'Try moving the map or adjusting your search.';
+      const emptySubtitle =
+        results?.metadata?.emptyQueryMessage ?? 'Try moving the map or adjusting your search.';
       return (
         <View style={styles.emptyState}>
           {onDemandNotice}
@@ -967,16 +960,24 @@ export const useSearchResultsPanelSpec = ({
       <>
         <Reanimated.View
           pointerEvents="none"
-          style={[styles.resultsWashOverlay, { top: resultsWashTopOffset }, resultsWashAnimatedStyle]}
+          style={[
+            styles.resultsWashOverlay,
+            { top: resultsWashTopOffset },
+            resultsWashAnimatedStyle,
+          ]}
         />
         {surfaceActive ? (
-          <View style={[styles.resultsSurface, { top: surfaceTopOffset }]}>
-            {surfaceContent}
-          </View>
+          <View style={[styles.resultsSurface, { top: surfaceTopOffset }]}>{surfaceContent}</View>
         ) : null}
       </>
     ),
-    [surfaceActive, surfaceContent, surfaceTopOffset, resultsWashAnimatedStyle, resultsWashTopOffset]
+    [
+      surfaceActive,
+      surfaceContent,
+      surfaceTopOffset,
+      resultsWashAnimatedStyle,
+      resultsWashTopOffset,
+    ]
   );
 
   const ResultItemSeparator = React.useCallback(

@@ -592,9 +592,7 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
       (food) => typeof topFoodItemWidthCache.get(food.connectionId) === 'number'
     );
     if (!itemsCached) return false;
-    return topFoodMoreCounts.every(
-      (count) => typeof topFoodMoreWidthCache.get(count) === 'number'
-    );
+    return topFoodMoreCounts.every((count) => typeof topFoodMoreWidthCache.get(count) === 'number');
   }, [candidateTopFoods, isEnabled, topFoodMoreCounts]);
 
   return {

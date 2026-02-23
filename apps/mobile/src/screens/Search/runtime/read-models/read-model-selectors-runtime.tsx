@@ -98,7 +98,6 @@ type SearchResultsReadModelSelectors = {
   flashListRuntimeProps: ResultsFlashListRuntimeProps;
 };
 
-
 export const useSearchResultsReadModelSelectors = (
   args: UseSearchResultsReadModelSelectorsArgs
 ): SearchResultsReadModelSelectors => {
@@ -598,10 +597,7 @@ export const useSearchResultsReadModelSelectors = (
   const preMeasureOverlay = React.useMemo(() => {
     if (!preMeasureKeys) return null;
     return (
-      <TopFoodPreMeasure
-        items={preMeasureKeys.items}
-        moreCounts={preMeasureKeys.moreCounts}
-      />
+      <TopFoodPreMeasure items={preMeasureKeys.items} moreCounts={preMeasureKeys.moreCounts} />
     );
   }, [preMeasureKeys]);
 
