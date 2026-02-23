@@ -81,7 +81,8 @@ export const useShortcutCoverageOwner = ({
   isVisualSyncPendingRef.current = useSearchRuntimeBusSelector(
     searchRuntimeBus,
     (state) => state.isVisualSyncPending,
-    Object.is
+    Object.is,
+    ['isVisualSyncPending'] as const
   );
 
   const shortcutCoverageSnapshotByRequestIdRef = React.useRef<
@@ -421,7 +422,7 @@ export const useShortcutCoverageOwner = ({
         deferredCoverageRequestIdRef.current = null;
         setCoverageBoundsRevision((prev) => prev + 1);
       }
-    });
+    }, ['isVisualSyncPending']);
   }, [searchMode, searchRequestId, searchRuntimeBus]);
 
   const anchoredShortcutCoverageFeatures = React.useMemo(

@@ -13,11 +13,8 @@ import Reanimated, {
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
-  withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import type { WithSpringConfig } from 'react-native-reanimated';
 import {
   CONTROL_HEIGHT,
   CONTROL_HORIZONTAL_PADDING,
@@ -40,19 +37,14 @@ const PRICE_TOGGLE_RIGHT_PADDING = Math.max(0, TOGGLE_HORIZONTAL_PADDING - 3);
 const STRIP_BACKGROUND_HEIGHT = 14;
 const DEFAULT_VIEWPORT_WIDTH = Dimensions.get('window').width;
 
-const SEGMENT_HIGHLIGHT_SPRING: WithSpringConfig = {
-  damping: 28,
-  stiffness: 220,
-  mass: 1,
-  overshootClamping: false,
-};
-const SEGMENT_HIGHLIGHT_WIDTH_SPRING: WithSpringConfig = {
-  ...SEGMENT_HIGHLIGHT_SPRING,
-  overshootClamping: true,
-};
-const SEGMENT_HIGHLIGHT_STRETCH_MS = 95;
-const SEGMENT_HIGHLIGHT_STRETCH_EASING = Easing.out(Easing.cubic);
-const SEGMENT_HIGHLIGHT_STRETCH_OVERSHOOT_PX = 6;
+const SEGMENT_TRANSITION_MS = 170;
+const SEGMENT_TRANSITION_EASING = Easing.out(Easing.cubic);
+const SEGMENT_TRANSITION_CONFIG = {
+  duration: SEGMENT_TRANSITION_MS,
+  easing: SEGMENT_TRANSITION_EASING,
+} as const;
+const getNextSegmentValue = (value: SegmentValue): SegmentValue =>
+  value === 'restaurants' ? 'dishes' : 'restaurants';
 
 const HOLE_RADIUS_BOOST = 1;
 
@@ -147,6 +139,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   const segmentLayoutsRef = React.useRef<Partial<Record<SegmentValue, LayoutRectangle>>>(
     initialLayoutCache?.segmentLayouts ? { ...initialLayoutCache.segmentLayouts } : {}
   );
+  const interactionTabRef = React.useRef<SegmentValue>(activeTab);
   const [segmentLayoutsVersion, setSegmentLayoutsVersion] = React.useState(0);
   const initialActiveLayout = segmentLayoutsRef.current[activeTab];
   const highlightReadyRef = React.useRef(
@@ -157,6 +150,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   const scrollX = useSharedValue(0);
   const highlightTranslateX = useSharedValue(initialActiveLayout?.x ?? 0);
   const highlightWidth = useSharedValue(initialActiveLayout?.width ?? 0);
+  const segmentSelectionProgress = useSharedValue(activeTab === 'restaurants' ? 0 : 1);
 
   const onScroll = useAnimatedScrollHandler((event) => {
     scrollX.value = event.contentOffset.x;
@@ -169,37 +163,8 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
         return false;
       }
       if (animated) {
-        const currentX = highlightTranslateX.value;
-        const currentWidth = highlightWidth.value;
-
-        if (currentWidth <= 0 || Math.abs(currentX - layout.x) < 0.5) {
-          highlightTranslateX.value = withSpring(layout.x, SEGMENT_HIGHLIGHT_SPRING);
-          highlightWidth.value = withSpring(layout.width, SEGMENT_HIGHLIGHT_WIDTH_SPRING);
-          return true;
-        }
-
-        const currentRight = currentX + currentWidth;
-        const targetRight = layout.x + layout.width;
-        const movingRight = layout.x > currentX;
-        const stretchX = movingRight ? currentX : layout.x;
-        const stretchWidth = movingRight
-          ? targetRight - currentX + SEGMENT_HIGHLIGHT_STRETCH_OVERSHOOT_PX
-          : currentRight - layout.x + SEGMENT_HIGHLIGHT_STRETCH_OVERSHOOT_PX;
-
-        highlightTranslateX.value = withSequence(
-          withTiming(stretchX, {
-            duration: SEGMENT_HIGHLIGHT_STRETCH_MS,
-            easing: SEGMENT_HIGHLIGHT_STRETCH_EASING,
-          }),
-          withSpring(layout.x, SEGMENT_HIGHLIGHT_SPRING)
-        );
-        highlightWidth.value = withSequence(
-          withTiming(Math.max(layout.width, stretchWidth), {
-            duration: SEGMENT_HIGHLIGHT_STRETCH_MS,
-            easing: SEGMENT_HIGHLIGHT_STRETCH_EASING,
-          }),
-          withSpring(layout.width, SEGMENT_HIGHLIGHT_WIDTH_SPRING)
-        );
+        highlightTranslateX.value = withTiming(layout.x, SEGMENT_TRANSITION_CONFIG);
+        highlightWidth.value = withTiming(layout.width, SEGMENT_TRANSITION_CONFIG);
         return true;
       }
       highlightTranslateX.value = layout.x;
@@ -207,6 +172,22 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
       return true;
     },
     [highlightTranslateX, highlightWidth]
+  );
+  const animateSegmentSelection = React.useCallback(
+    (value: SegmentValue, animated: boolean) => {
+      const didUpdate = updateSegmentHighlight(value, animated);
+      const targetProgress = value === 'restaurants' ? 0 : 1;
+      if (animated) {
+        segmentSelectionProgress.value = withTiming(targetProgress, SEGMENT_TRANSITION_CONFIG);
+      } else {
+        segmentSelectionProgress.value = targetProgress;
+      }
+      if (didUpdate && !highlightReadyRef.current) {
+        highlightReadyRef.current = true;
+      }
+      return didUpdate;
+    },
+    [segmentSelectionProgress, updateSegmentHighlight]
   );
 
   const registerSegmentLayout = React.useCallback(
@@ -219,13 +200,10 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
       segmentLayoutsRef.current[value] = layout;
       setSegmentLayoutsVersion((prevVersion) => prevVersion + 1);
       if (value === activeTab) {
-        const didUpdate = updateSegmentHighlight(value, highlightReadyRef.current);
-        if (didUpdate && !highlightReadyRef.current) {
-          highlightReadyRef.current = true;
-        }
+        animateSegmentSelection(value, highlightReadyRef.current);
       }
     },
-    [activeTab, updateSegmentHighlight]
+    [activeTab, animateSegmentSelection]
   );
 
   const registerHole = React.useCallback(
@@ -281,13 +259,29 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     transform: [{ translateX: highlightTranslateX.value }],
     width: highlightWidth.value,
   }));
+  const restaurantsLabelLightStyle = useAnimatedStyle(() => ({
+    opacity: 1 - segmentSelectionProgress.value,
+  }));
+  const restaurantsLabelDarkStyle = useAnimatedStyle(() => ({
+    opacity: segmentSelectionProgress.value,
+  }));
+  const dishesLabelLightStyle = useAnimatedStyle(() => ({
+    opacity: segmentSelectionProgress.value,
+  }));
+  const dishesLabelDarkStyle = useAnimatedStyle(() => ({
+    opacity: 1 - segmentSelectionProgress.value,
+  }));
 
   React.useEffect(() => {
-    const didUpdate = updateSegmentHighlight(activeTab, highlightReadyRef.current);
-    if (didUpdate && !highlightReadyRef.current) {
-      highlightReadyRef.current = true;
-    }
-  }, [activeTab, updateSegmentHighlight]);
+    interactionTabRef.current = activeTab;
+    animateSegmentSelection(activeTab, highlightReadyRef.current);
+  }, [activeTab, animateSegmentSelection]);
+  const handleSegmentTogglePress = React.useCallback(() => {
+    const next = getNextSegmentValue(interactionTabRef.current);
+    interactionTabRef.current = next;
+    animateSegmentSelection(next, true);
+    onTabChange(next);
+  }, [animateSegmentSelection, onTabChange]);
 
   React.useEffect(() => {
     if (!onLayoutCacheChange) {
@@ -373,9 +367,13 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                     />
                   )}
                 </Pressable>
-                <View
+                <Pressable
                   style={styles.segmentedControl}
                   onLayout={registerHole('segment-group', TOGGLE_BORDER_RADIUS)}
+                  onPress={handleSegmentTogglePress}
+                  accessibilityRole="button"
+                  accessibilityLabel="Toggle results between restaurants and dishes"
+                  accessibilityHint="Double tap to switch result type"
                 >
                   <Reanimated.View
                     pointerEvents="none"
@@ -386,29 +384,50 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                     ]}
                   />
                   {SEGMENT_OPTIONS.map((option) => {
-                    const selected = activeTab === option.value;
+                    const lightLabelStyle =
+                      option.value === 'restaurants' ? restaurantsLabelLightStyle : dishesLabelLightStyle;
+                    const darkLabelStyle =
+                      option.value === 'restaurants' ? restaurantsLabelDarkStyle : dishesLabelDarkStyle;
                     return (
-                      <Pressable
+                      <View
                         key={option.value}
                         onLayout={registerSegmentLayout(option.value)}
                         style={styles.segmentedOption}
-                        onPress={() => onTabChange(option.value)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`View ${option.label.toLowerCase()}`}
-                        accessibilityState={{ selected }}
                       >
-                        <Text
-                          numberOfLines={1}
-                          variant="caption"
-                          weight="semibold"
-                          style={[styles.segmentedLabel, selected && styles.segmentedLabelActive]}
-                        >
-                          {option.label}
-                        </Text>
-                      </Pressable>
+                        <View style={styles.segmentedLabelStack}>
+                          <Text
+                            numberOfLines={1}
+                            variant="caption"
+                            weight="semibold"
+                            style={[styles.segmentedLabel, styles.segmentedLabelMeasure]}
+                          >
+                            {option.label}
+                          </Text>
+                          <Reanimated.View pointerEvents="none" style={[styles.segmentedLabelLayer, darkLabelStyle]}>
+                            <Text
+                              numberOfLines={1}
+                              variant="caption"
+                              weight="semibold"
+                              style={styles.segmentedLabel}
+                            >
+                              {option.label}
+                            </Text>
+                          </Reanimated.View>
+                          <Reanimated.View pointerEvents="none" style={[styles.segmentedLabelLayer, lightLabelStyle]}>
+                            <Text
+                              numberOfLines={1}
+                              variant="caption"
+                              weight="semibold"
+                              style={[styles.segmentedLabel, styles.segmentedLabelActive]}
+                            >
+                              {option.label}
+                            </Text>
+                          </Reanimated.View>
+                        </View>
+                      </View>
                     );
                   })}
-                </View>
+                </Pressable>
                 <Pressable
                   onLayout={registerHole('toggle-open-now')}
                   onPress={onToggleOpenNow}
@@ -626,6 +645,19 @@ const styles = StyleSheet.create({
   },
   segmentedLabelActive: {
     color: '#ffffff',
+  },
+  segmentedLabelStack: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentedLabelLayer: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentedLabelMeasure: {
+    opacity: 0,
   },
   openNowButton: {
     ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),

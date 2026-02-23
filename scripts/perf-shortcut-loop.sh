@@ -33,10 +33,13 @@ export EXPO_PUBLIC_PERF_UI_FRAME_STALL_FRAME_MS="${EXPO_PUBLIC_PERF_UI_FRAME_STA
 export EXPO_PUBLIC_PERF_UI_FRAME_LOG_ONLY_BELOW_FPS="${EXPO_PUBLIC_PERF_UI_FRAME_LOG_ONLY_BELOW_FPS:-58}"
 
 export PERF_SHORTCUT_USE_SIMULATOR="${PERF_SHORTCUT_USE_SIMULATOR:-1}"
+# Use port 8082 for harness Metro so it doesn't collide with device Metro on 8081
+export EXPO_METRO_PORT="${EXPO_METRO_PORT:-8082}"
 if [[ "$PERF_SHORTCUT_USE_SIMULATOR" == "1" ]]; then
   export IOS_PREFER_DEVICE=0
   export IOS_DEVICE_UDID=""
   export IOS_DEVICE_NAME=""
+  export EXPO_PACKAGER_HOSTNAME="${EXPO_PACKAGER_HOSTNAME:-localhost}"
   target_mode="simulator(default)"
 else
   export IOS_PREFER_DEVICE="${IOS_PREFER_DEVICE:-1}"
@@ -98,9 +101,17 @@ if ! [[ "$PERF_SHORTCUT_LOOP_TIMEOUT_SECS" =~ ^[0-9]+$ ]] || [[ "$PERF_SHORTCUT_
 fi
 
 tail_pid=""
+harness_port="${EXPO_METRO_PORT}"
 cleanup() {
   if [[ -n "$tail_pid" ]]; then
     kill "$tail_pid" >/dev/null 2>&1 || true
+  fi
+  # Kill the Metro process we started so it doesn't linger
+  local metro_pid
+  metro_pid="$(lsof -iTCP:"$harness_port" -sTCP:LISTEN -t 2>/dev/null || true)"
+  if [[ -n "$metro_pid" ]]; then
+    echo "[perf-shortcut-loop] Killing Metro (PID ${metro_pid}) on port ${harness_port}." | tee -a "${PERF_SHORTCUT_LOOP_LOG_FILE:-/dev/null}"
+    kill "$metro_pid" 2>/dev/null || true
   fi
 }
 trap cleanup EXIT INT TERM

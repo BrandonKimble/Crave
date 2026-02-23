@@ -148,7 +148,8 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
     (left, right) =>
       left.mapMarkerRestaurants === right.mapMarkerRestaurants &&
       left.mapMarkerDishes === right.mapMarkerDishes &&
-      left.mapSearchRequestId === right.mapSearchRequestId
+      left.mapSearchRequestId === right.mapSearchRequestId,
+    ['results'] as const
   );
 
   const runtimeMapPresentationInput = useSearchRuntimeBusSelector(
@@ -157,7 +158,8 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
       mode: state.searchMode,
       activeTab: state.activeTab,
     }),
-    (left, right) => left.mode === right.mode && left.activeTab === right.activeTab
+    (left, right) => left.mode === right.mode && left.activeTab === right.activeTab,
+    ['searchMode', 'activeTab'] as const
   );
   const mapPresentationMode = runtimeMapPresentationInput.mode;
   const mapPresentationActiveTab = runtimeMapPresentationInput.activeTab;
@@ -165,7 +167,8 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
   const isVisualSyncPending = useSearchRuntimeBusSelector(
     searchRuntimeBus,
     (state) => state.isVisualSyncPending,
-    Object.is
+    Object.is,
+    ['isVisualSyncPending'] as const
   );
 
   // Pre-computed marker pipeline (populated by response handler)
@@ -182,7 +185,14 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
       left.catalog === right.catalog &&
       left.canonicalRankById === right.canonicalRankById &&
       left.restaurantsById === right.restaurantsById &&
-      left.resultsKey === right.resultsKey
+      left.resultsKey === right.resultsKey,
+    [
+      'precomputedMarkerCatalog',
+      'precomputedMarkerPrimaryCount',
+      'precomputedCanonicalRestaurantRankById',
+      'precomputedRestaurantsById',
+      'precomputedMarkerResultsKey',
+    ] as const
   );
 
   // -------------------------------------------------------------------------

@@ -170,7 +170,16 @@ export const useSearchResultsPanelSpec = ({
       left.isSearchSessionActive === right.isSearchSessionActive &&
       left.isSearchLoading === right.isSearchLoading &&
       left.isLoadingMore === right.isLoadingMore &&
-      left.submittedQuery === right.submittedQuery
+      left.submittedQuery === right.submittedQuery,
+    [
+      'results',
+      'activeTab',
+      'canLoadMore',
+      'isSearchSessionActive',
+      'isSearchLoading',
+      'isLoadingMore',
+      'submittedQuery',
+    ] as const
   );
   const filterRuntimeState = useSearchRuntimeBusSelector(
     searchRuntimeBus,
@@ -194,7 +203,18 @@ export const useSearchResultsPanelSpec = ({
       left.votesFilterActive === right.votesFilterActive &&
       left.isRankSelectorVisible === right.isRankSelectorVisible &&
       left.isPriceSelectorVisible === right.isPriceSelectorVisible &&
-      left.isFilterTogglePending === right.isFilterTogglePending
+      left.isFilterTogglePending === right.isFilterTogglePending,
+    [
+      'rankButtonLabelText',
+      'rankButtonIsActive',
+      'priceButtonLabelText',
+      'priceButtonIsActive',
+      'openNow',
+      'votesFilterActive',
+      'isRankSelectorVisible',
+      'isPriceSelectorVisible',
+      'isFilterTogglePending',
+    ] as const
   );
   const bannerRuntimeState = useSearchRuntimeBusSelector(
     searchRuntimeBus,
@@ -204,7 +224,8 @@ export const useSearchResultsPanelSpec = ({
     }),
     (left, right) =>
       left.shouldRetrySearchOnReconnect === right.shouldRetrySearchOnReconnect &&
-      left.hasSystemStatusBanner === right.hasSystemStatusBanner
+      left.hasSystemStatusBanner === right.hasSystemStatusBanner,
+    ['shouldRetrySearchOnReconnect', 'hasSystemStatusBanner'] as const
   );
   const hydrationRuntimeState = useSearchRuntimeBusSelector(
     searchRuntimeBus,
@@ -222,11 +243,21 @@ export const useSearchResultsPanelSpec = ({
       left.allowHydrationFinalizeCommit === right.allowHydrationFinalizeCommit &&
       left.runtimeHydratedResultsKey === right.runtimeHydratedResultsKey &&
       left.isRunOneChromeFreezeActive === right.isRunOneChromeFreezeActive &&
-      left.isChromeDeferred === right.isChromeDeferred
+      left.isChromeDeferred === right.isChromeDeferred,
+    [
+      'runOneCommitSpanPressureActive',
+      'hydrationOperationId',
+      'allowHydrationFinalizeCommit',
+      'hydratedResultsKey',
+      'isRunOneChromeFreezeActive',
+      'isChromeDeferred',
+    ] as const
   );
   const isVisualSyncPending = useSearchRuntimeBusSelector(
     searchRuntimeBus,
-    (state) => state.isVisualSyncPending
+    (state) => state.isVisualSyncPending,
+    Object.is,
+    ['isVisualSyncPending'] as const
   );
   const {
     results,

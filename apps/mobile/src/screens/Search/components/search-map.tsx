@@ -967,7 +967,11 @@ type PinTransitionState = {
   appliedInitialRevealCommitId: number | null;
   observedInitialRevealCommitId: number | null;
   initialRevealQueued: boolean;
-  batchRevealStartMs: number | null;
+  batchTransition: {
+    startMs: number;
+    direction: 'reveal' | 'dismiss';
+    pinFeatures: Array<Feature<Point, RestaurantFeatureProperties>>;
+  } | null;
 };
 
 const createPinTransitionState = (): PinTransitionState => ({
@@ -979,7 +983,7 @@ const createPinTransitionState = (): PinTransitionState => ({
   appliedInitialRevealCommitId: null,
   observedInitialRevealCommitId: null,
   initialRevealQueued: false,
-  batchRevealStartMs: null,
+  batchTransition: null,
 });
 
 const usePinTransitionController = ({
@@ -1026,10 +1030,16 @@ const usePinTransitionController = ({
   // Read from ref; re-evaluated when transitionRenderVersion changes.
   const clockMs = transitionClockMsRef.current;
   void transitionRenderVersion; // ensure re-evaluation on render ticks
-  const batchFadeProgress =
-    state.batchRevealStartMs != null && clockMs > 0
-      ? clamp01(clamp01((clockMs - state.batchRevealStartMs) / DOT_TO_PIN_TRANSITION_DURATION_MS))
-      : 1;
+  const batch = state.batchTransition;
+  const batchProgress =
+    batch != null && clockMs > 0
+      ? clamp01((clockMs - batch.startMs) / DOT_TO_PIN_TRANSITION_DURATION_MS)
+      : batch?.direction === 'reveal' ? 1 : 0;
+  const batchDismissActive = batch?.direction === 'dismiss';
+  // Reveal: 0→1, dismiss: 1→0, steady (no batch): 1
+  const batchOpacity = batch == null ? 1
+    : batch.direction === 'reveal' ? batchProgress
+    : 1 - batchProgress;
 
   const pinTransitionFrameHandleRef = React.useRef<number | ReturnType<typeof setTimeout> | null>(
     null
@@ -1106,10 +1116,10 @@ const usePinTransitionController = ({
         hasActiveTransitions = true;
       }
 
-      // Keep running while batch reveal is active (batchFadeProgress < 1).
-      if (state.batchRevealStartMs != null) {
-        if (nowMs - state.batchRevealStartMs >= DOT_TO_PIN_TRANSITION_DURATION_MS) {
-          state.batchRevealStartMs = null;
+      // Keep running while batch transition is active.
+      if (state.batchTransition != null) {
+        if (nowMs - state.batchTransition.startMs >= DOT_TO_PIN_TRANSITION_DURATION_MS) {
+          state.batchTransition = null;
         } else {
           hasActiveTransitions = true;
         }
@@ -1172,7 +1182,7 @@ const usePinTransitionController = ({
       state.demoteFeatureByMarkerKey.clear();
       state.pendingInitialRevealCommitId = null;
       state.initialRevealQueued = false;
-      state.batchRevealStartMs = null;
+      state.batchTransition = null;
       if (markerRevealCommitId != null) {
         state.appliedInitialRevealCommitId = markerRevealCommitId;
       }
@@ -1203,15 +1213,15 @@ const usePinTransitionController = ({
       // Only set up transitions if not already animating — a late reveal
       // commit arriving after normal promotes started should not restart.
       if (state.promoteStartedAtByMarkerKey.size === 0) {
-        state.batchRevealStartMs = now;
+        state.batchTransition = { startMs: now, direction: 'reveal', pinFeatures: [] };
         for (const markerKey of nextPinnedFeatureByMarkerKey.keys()) {
           state.promoteStartedAtByMarkerKey.set(markerKey, now);
         }
         shouldStartAnimationLoop = true;
       }
-      // Start batch fade for dots/labels if not already running.
-      if (state.batchRevealStartMs == null && state.promoteStartedAtByMarkerKey.size > 0) {
-        state.batchRevealStartMs = now;
+      // Start batch reveal for dots/labels if not already running.
+      if (state.batchTransition == null && state.promoteStartedAtByMarkerKey.size > 0) {
+        state.batchTransition = { startMs: now, direction: 'reveal', pinFeatures: [] };
         shouldStartAnimationLoop = true;
       }
       didMutateTransitions = true;
@@ -1239,11 +1249,11 @@ const usePinTransitionController = ({
         shouldStartAnimationLoop = true;
         newPromoteCount++;
       }
-      // Start batch fade for dots/labels when first pins arrive from a new search.
+      // Start batch reveal for dots/labels when first pins arrive from a new search.
       // Skip during active camera movement (zoom/pan) to avoid LOD pin churn
       // retriggering the batch fade and causing dot/label flicker.
-      if (newPromoteCount > 0 && state.batchRevealStartMs == null && !isMapMovingRef.current) {
-        state.batchRevealStartMs = now;
+      if (newPromoteCount > 0 && state.batchTransition == null && !isMapMovingRef.current) {
+        state.batchTransition = { startMs: now, direction: 'reveal', pinFeatures: [] };
       }
       for (const [markerKey, feature] of state.previousPinnedFeatureByMarkerKey) {
         if (nextPinnedFeatureByMarkerKey.has(markerKey)) {
@@ -1254,6 +1264,20 @@ const usePinTransitionController = ({
         state.pendingPromoteDelayByMarkerKey.delete(markerKey);
         didMutateTransitions = true;
         shouldStartAnimationLoop = true;
+      }
+      // Full dismissal: all pins removed → coordinated batch fade-out
+      if (
+        nextPinnedFeatureByMarkerKey.size === 0 &&
+        state.demoteFeatureByMarkerKey.size > 0 &&
+        state.batchTransition?.direction !== 'dismiss'
+      ) {
+        state.batchTransition = {
+          startMs: now,
+          direction: 'dismiss',
+          pinFeatures: Array.from(state.demoteFeatureByMarkerKey.values())
+            .map((entry) => entry.feature),
+        };
+        state.demoteFeatureByMarkerKey.clear();
       }
     }
 
@@ -1287,7 +1311,7 @@ const usePinTransitionController = ({
     }
     if (
       !shouldStartAnimationLoop &&
-      state.batchRevealStartMs == null &&
+      state.batchTransition == null &&
       state.promoteStartedAtByMarkerKey.size === 0 &&
       state.pendingPromoteDelayByMarkerKey.size === 0 &&
       state.demoteFeatureByMarkerKey.size === 0
@@ -1317,7 +1341,7 @@ const usePinTransitionController = ({
       state.pendingInitialRevealCommitId = null;
       state.appliedInitialRevealCommitId = null;
       state.observedInitialRevealCommitId = null;
-      state.batchRevealStartMs = null;
+      state.batchTransition = null;
     };
   }, [clearPinTransitionFrameHandle, state]);
 
@@ -1389,7 +1413,9 @@ const usePinTransitionController = ({
   return {
     transitionClockMsRef,
     transitionRenderVersion,
-    batchFadeProgress,
+    batchOpacity,
+    batchDismissActive,
+    batchDismissPinFeatures: batch?.direction === 'dismiss' ? batch.pinFeatures : [],
     promoteStartedAtByMarkerKey: state.promoteStartedAtByMarkerKey,
     pendingPromoteDelayByMarkerKey: state.pendingPromoteDelayByMarkerKey,
     immediatePromotionStartedAtByMarkerKey,
@@ -1530,7 +1556,13 @@ const SearchMap: React.FC<SearchMapProps> = ({
       left.isMapActivationDeferred === right.isMapActivationDeferred &&
       left.visualSyncCandidateRequestKey === right.visualSyncCandidateRequestKey &&
       left.markerRevealCommitId === right.markerRevealCommitId &&
-      left.runOneCommitSpanPressureActive === right.runOneCommitSpanPressureActive
+      left.runOneCommitSpanPressureActive === right.runOneCommitSpanPressureActive,
+    [
+      'isMapActivationDeferred',
+      'visualSyncCandidateRequestKey',
+      'markerRevealCommitId',
+      'runOneCommitSpanPressureActive',
+    ] as const
   );
   const visualReadyRequestKey = visualSyncCandidateRequestKey;
   const shouldDeferDotsForOperationLane = false;
@@ -1620,7 +1652,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
       scheduleRelease(operationId);
     };
     maybeAdvancePolishLane();
-    const unsubscribe = searchRuntimeBus.subscribe(maybeAdvancePolishLane);
+    const unsubscribe = searchRuntimeBus.subscribe(maybeAdvancePolishLane, [
+      'activeOperationId',
+      'activeOperationLane',
+      'isVisualSyncPending',
+    ]);
     return () => {
       unsubscribe();
       clearScheduledRelease();
@@ -2064,7 +2100,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const {
     transitionClockMsRef: pinTransitionClockMsRef,
     transitionRenderVersion,
-    batchFadeProgress,
+    batchOpacity,
+    batchDismissActive,
+    batchDismissPinFeatures,
     promoteStartedAtByMarkerKey,
     pendingPromoteDelayByMarkerKey,
     immediatePromotionStartedAtByMarkerKey,
@@ -2082,8 +2120,26 @@ const SearchMap: React.FC<SearchMapProps> = ({
     suppressTransitions: false,
     isMapMovingRef,
   });
+  // Hold dot features so they can fade out during batch dismiss.
+  // We can't gate on batchDismissActive alone because the layout effect that
+  // sets it runs AFTER this render — the ShapeSource would already get empty data.
+  // Instead, always hold the last non-empty snapshot and release when settled.
+  const lastDotFeaturesRef = React.useRef(dotRestaurantFeatures);
+  if (dotRestaurantFeatures && dotRestaurantFeatures.features.length > 0) {
+    lastDotFeaturesRef.current = dotRestaurantFeatures;
+  } else if (batchOpacity >= 1 && !batchDismissActive) {
+    lastDotFeaturesRef.current = null;
+  }
+  const dotsAreEmpty = !dotRestaurantFeatures || dotRestaurantFeatures.features.length === 0;
+  const effectiveDotFeatures = dotsAreEmpty && lastDotFeaturesRef.current
+    ? lastDotFeaturesRef.current
+    : dotRestaurantFeatures;
+  const shouldRenderDotsOrDismiss = shouldRenderDots ||
+    (dotsAreEmpty && lastDotFeaturesRef.current != null);
   const shouldHidePinnedDots = true;
   const hiddenDotRestaurantIdList = React.useMemo(() => {
+    // During batch dismiss, dots fade out via batchOpacity — don't hide them
+    if (batchDismissActive) return EMPTY_DEMOTION_LIST;
     const next = new Set<string>();
     if (shouldHidePinnedDots) {
       pinnedRestaurantIdList.forEach((restaurantId) => next.add(restaurantId));
@@ -2091,7 +2147,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     demotingRestaurantIdList.forEach((restaurantId) => next.add(restaurantId));
     if (next.size === 0) return EMPTY_DEMOTION_LIST;
     return Array.from(next);
-  }, [demotingRestaurantIdList, pinnedRestaurantIdList, shouldHidePinnedDots]);
+  }, [batchDismissActive, demotingRestaurantIdList, pinnedRestaurantIdList, shouldHidePinnedDots]);
   // Stabilize the hidden list reference so dotLayerStyle only recreates when
   // the actual set of hidden IDs changes, not on every transition clock tick.
   const hiddenDotListPrevRef = React.useRef(hiddenDotRestaurantIdList);
@@ -2133,7 +2189,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       // unreliable because Mapbox can drop source feature-state when ShapeSource data updates.
       // A property-based expression keeps dots/pins mutually exclusive deterministically.
       textOpacity:
-        batchFadeProgress < 1
+        batchOpacity < 1
           ? [
               '*',
               [
@@ -2142,7 +2198,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
                 0,
                 1,
               ],
-              batchFadeProgress,
+              batchOpacity,
             ]
           : [
               'case',
@@ -2166,7 +2222,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       ],
     } as MapboxGL.SymbolLayerStyle;
   }, [
-    batchFadeProgress,
+    batchOpacity,
     effectiveSelectedRestaurantId,
     stableHiddenDotRestaurantIdList,
     scoreMode,
@@ -2450,20 +2506,23 @@ const SearchMap: React.FC<SearchMapProps> = ({
         promoteStartedAtByMarkerKey.has(markerKey);
       const effectiveLabelOpacity = shouldUseNativeLabelFadeForPromote
         ? undefined
+        : batchOpacity < 1
+        ? batchOpacity
         : transitionVisual.active === 0
-        ? batchFadeProgress < 1
-          ? batchFadeProgress
-          : undefined
-        : transitionVisual.labelOpacity * batchFadeProgress;
+        ? undefined
+        : transitionVisual.labelOpacity;
+      const effectiveActive = batchDismissActive ? 1 : transitionVisual.active;
+      const effectiveOpacity = batchDismissActive ? batchOpacity : transitionVisual.opacity;
+      const effectiveRankOpacity = batchDismissActive ? batchOpacity : transitionVisual.rankOpacity;
       const matchesTransition =
-        feature.properties.pinTransitionActive === transitionVisual.active &&
-        feature.properties.pinTransitionOpacity === transitionVisual.opacity &&
-        feature.properties.pinRankOpacity === transitionVisual.rankOpacity &&
+        feature.properties.pinTransitionActive === effectiveActive &&
+        feature.properties.pinTransitionOpacity === effectiveOpacity &&
+        feature.properties.pinRankOpacity === effectiveRankOpacity &&
         feature.properties.pinLabelOpacity === effectiveLabelOpacity;
 
       if (
         matchesIdentity &&
-        ((transitionVisual.active === 0 && !hasTransitionProps && batchFadeProgress >= 1) ||
+        ((effectiveActive === 0 && !hasTransitionProps && batchOpacity >= 1) ||
           matchesTransition)
       ) {
         nextCache.set(markerKey, feature);
@@ -2476,10 +2535,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
         properties: {
           ...feature.properties,
           labelOrder,
-          pinTransitionActive: transitionVisual.active === 0 ? undefined : transitionVisual.active,
-          pinTransitionOpacity:
-            transitionVisual.active === 0 ? undefined : transitionVisual.opacity,
-          pinRankOpacity: transitionVisual.active === 0 ? undefined : transitionVisual.rankOpacity,
+          pinTransitionActive: effectiveActive === 0 ? undefined : effectiveActive,
+          pinTransitionOpacity: effectiveActive === 0 ? undefined : effectiveOpacity,
+          pinRankOpacity: effectiveActive === 0 ? undefined : effectiveRankOpacity,
           pinLabelOpacity: effectiveLabelOpacity,
         },
       };
@@ -2498,7 +2556,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
     labelFeatureBuildDurationMsRef.current = getNowMs() - buildStartedAtMs;
     return nextCollection;
   }, [
-    batchFadeProgress,
+    batchOpacity,
+    batchDismissActive,
     buildMarkerKey,
     immediatePromotionStartedAtByMarkerKey,
     pendingPromoteDelayByMarkerKey,
@@ -2545,10 +2604,29 @@ const SearchMap: React.FC<SearchMapProps> = ({
     };
     return nextFeatures;
   }, [demotionTransitions]);
+  // Build batch dismiss pin features with fading opacity
+  const batchDismissFeaturesWithOpacity = React.useMemo<
+    Array<Feature<Point, RestaurantFeatureProperties>>
+  >(() => {
+    if (!batchDismissActive || batchDismissPinFeatures.length === 0) return [];
+    return batchDismissPinFeatures.map((feature) => ({
+      ...feature,
+      properties: {
+        ...feature.properties,
+        pinTransitionActive: 1,
+        pinTransitionOpacity: batchOpacity,
+        pinRankOpacity: batchOpacity,
+        pinLabelOpacity: batchOpacity,
+      },
+    }));
+  }, [batchDismissActive, batchDismissPinFeatures, batchOpacity]);
+
   const stylePinFeaturesWithTransitions = React.useMemo<
     FeatureCollection<Point, RestaurantFeatureProperties>
   >(() => {
-    if (!demotionTransitionFeatures.features.length) {
+    const hasDemotions = demotionTransitionFeatures.features.length > 0;
+    const hasBatchDismiss = batchDismissFeaturesWithOpacity.length > 0;
+    if (!hasDemotions && !hasBatchDismiss) {
       return restaurantLabelFeaturesWithIds;
     }
     return {
@@ -2556,9 +2634,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
       features: [
         ...restaurantLabelFeaturesWithIds.features,
         ...demotionTransitionFeatures.features,
+        ...batchDismissFeaturesWithOpacity,
       ],
     };
-  }, [demotionTransitionFeatures, restaurantLabelFeaturesWithIds]);
+  }, [batchDismissFeaturesWithOpacity, demotionTransitionFeatures, restaurantLabelFeaturesWithIds]);
 
   // ---------------------------------------------------------------------------
   // Bridge-serialization-optimized sources (Phase 8)
@@ -3089,7 +3168,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }, [effectiveSelectedRestaurantId, scoreMode]);
 
   // Pin styles rely on per-pin opacity transition properties only.
-  // batchFadeProgress is intentionally NOT multiplied here to avoid
+  // batchOpacity is intentionally NOT multiplied here to avoid
   // double-fading — it only drives dots and labels.
   const stylePinsShadowSteadyStyle = React.useMemo(
     () =>
@@ -4438,8 +4517,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
             <MapboxGL.ShapeSource
               id={DOT_SOURCE_ID}
               shape={
-                shouldRenderDots && dotRestaurantFeatures
-                  ? (dotRestaurantFeatures as FeatureCollection<Point, RestaurantFeatureProperties>)
+                shouldRenderDotsOrDismiss && effectiveDotFeatures
+                  ? (effectiveDotFeatures as FeatureCollection<Point, RestaurantFeatureProperties>)
                   : (EMPTY_POINT_FEATURES as FeatureCollection<Point, RestaurantFeatureProperties>)
               }
             >

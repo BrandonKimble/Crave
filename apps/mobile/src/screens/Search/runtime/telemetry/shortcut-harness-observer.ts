@@ -143,7 +143,8 @@ export const useShortcutHarnessObserver = (
   const results = useSearchRuntimeBusSelector(
     searchRuntimeBus!,
     (state) => state.results,
-    Object.is
+    Object.is,
+    ['results'] as const
   );
 
   const {
@@ -160,7 +161,12 @@ export const useShortcutHarnessObserver = (
     (left, right) =>
       left.visibleSortedRestaurantMarkersCount === right.visibleSortedRestaurantMarkersCount &&
       left.visibleDotRestaurantFeaturesCount === right.visibleDotRestaurantFeaturesCount &&
-      left.isShortcutCoverageLoading === right.isShortcutCoverageLoading
+      left.isShortcutCoverageLoading === right.isShortcutCoverageLoading,
+    [
+      'visibleSortedRestaurantMarkersCount',
+      'visibleDotRestaurantFeaturesCount',
+      'isShortcutCoverageLoading',
+    ] as const
   );
 
   const { isVisualSyncPending, shouldHydrateResultsForRender } = useSearchRuntimeBusSelector(
@@ -171,7 +177,8 @@ export const useShortcutHarnessObserver = (
     }),
     (left, right) =>
       left.isVisualSyncPending === right.isVisualSyncPending &&
-      left.shouldHydrateResultsForRender === right.shouldHydrateResultsForRender
+      left.shouldHydrateResultsForRender === right.shouldHydrateResultsForRender,
+    ['isVisualSyncPending', 'shouldHydrateResultsForRender'] as const
   );
 
   const isShortcutPerfHarnessScenario =

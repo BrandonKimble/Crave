@@ -175,7 +175,8 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
   const highlightedRestaurantId = useSearchRuntimeBusSelector(
     searchRuntimeBus,
     (state) => state.mapHighlightedRestaurantId,
-    Object.is
+    Object.is,
+    ['mapHighlightedRestaurantId'] as const
   );
 
   // -------------------------------------------------------------------------
@@ -185,19 +186,22 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
   const isSearchLoading = useSearchRuntimeBusSelector(
     searchRuntimeBus,
     (state) => state.isSearchLoading,
-    Object.is
+    Object.is,
+    ['isSearchLoading'] as const
   );
 
   const selectionFeedbackOperationId = useSearchRuntimeBusSelector(
     searchRuntimeBus,
     (state) => state.runOneSelectionFeedbackOperationId,
-    Object.is
+    Object.is,
+    ['runOneSelectionFeedbackOperationId'] as const
   );
 
   const isRunOneHandoffActive = useSearchRuntimeBusSelector(
     searchRuntimeBus,
     (state) => state.isRun1HandoffActive,
-    Object.is
+    Object.is,
+    ['isRun1HandoffActive'] as const
   );
 
   const isRunOneChromeDeferred = useSearchRuntimeBusSelector(
@@ -206,7 +210,8 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
       state.isRunOneChromeFreezeActive ||
       state.runOneCommitSpanPressureActive ||
       state.isChromeDeferred,
-    Object.is
+    Object.is,
+    ['isRunOneChromeFreezeActive', 'runOneCommitSpanPressureActive', 'isChromeDeferred'] as const
   );
 
   // -------------------------------------------------------------------------
@@ -315,7 +320,8 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
   const resultsVisualSyncCandidate = useSearchRuntimeBusSelector(
     searchRuntimeBus,
     (state) => state.visualSyncCandidateRequestKey,
-    Object.is
+    Object.is,
+    ['visualSyncCandidateRequestKey'] as const
   );
 
   const hasAnySearchResults = restaurants.length > 0;

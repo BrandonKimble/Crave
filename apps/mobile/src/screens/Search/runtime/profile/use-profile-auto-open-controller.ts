@@ -48,7 +48,8 @@ export const useProfileAutoOpenController = ({
   const results = useSearchRuntimeBusSelector(
     searchRuntimeBus,
     (state) => state.results,
-    Object.is
+    Object.is,
+    ['results'] as const
   );
   React.useEffect(() => {
     if (!results) {

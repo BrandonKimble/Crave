@@ -114,6 +114,7 @@ detect_lan_ip() {
       return 0
     fi
   done
+  # Last resort: accept CGNAT IPs (some Wi-Fi networks use 100.64.0.0/10)
   for candidate in "${candidates[@]}"; do
     if ! is_unusable_host_ip "$candidate"; then
       echo "$candidate"
@@ -220,9 +221,9 @@ if is_cgnat_ip "$PACKAGER_HOSTNAME"; then
   if [[ "$IOS_USE_TAILSCALE" == "1" ]]; then
     echo "Using Tailscale host ${PACKAGER_HOSTNAME}. Ensure Tailscale is connected on both Mac and iPhone."
   else
-    echo "Warning: EXPO_PACKAGER_HOSTNAME is ${PACKAGER_HOSTNAME} (CGNAT/Tailscale range 100.64.0.0/10)."
-    echo "If your iPhone is not on the same tailnet, it will not be able to reach Metro."
-    echo "Prefer a Wi‑Fi/Ethernet LAN IP (usually 192.168.x.x / 10.x.x.x / 172.16-31.x.x)."
+    echo "Note: Using ${PACKAGER_HOSTNAME} (CGNAT range 100.64.0.0/10)."
+    echo "If your iPhone is on the same network this should work."
+    echo "If not, set EXPO_PACKAGER_HOSTNAME to a reachable IP."
   fi
 fi
 
@@ -662,6 +663,10 @@ if [[ -t 1 && "$FOLLOW_METRO_LOGS" != "0" ]]; then
   if [[ "$METRO_ALREADY_RUNNING" == "1" && "$EXPO_FORCE_START" != "1" ]]; then
     wait_for_metro || true
     run_ios
+    if [[ -f "$METRO_LOG" ]]; then
+      echo "Tailing Metro logs from ${METRO_LOG} (Ctrl+C to stop)."
+      tail -n 200 -f "$METRO_LOG"
+    fi
     exit 0
   fi
   (

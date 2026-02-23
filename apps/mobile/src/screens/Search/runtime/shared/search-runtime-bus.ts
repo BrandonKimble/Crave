@@ -77,6 +77,8 @@ export type SearchRuntimeBusState = {
   isSubmitChromePriming: boolean;
 };
 
+export type SearchRuntimeBusKey = keyof SearchRuntimeBusState;
+
 type SearchRuntimeBusListener = () => void;
 
 const INITIAL_STATE: SearchRuntimeBusState = {
@@ -143,11 +145,13 @@ export class SearchRuntimeBus {
 
   private version = 0;
 
-  private readonly listeners = new Set<SearchRuntimeBusListener>();
+  private readonly listeners = new Map<SearchRuntimeBusListener, ReadonlySet<SearchRuntimeBusKey> | null>();
 
   private batchDepth = 0;
 
   private hasPendingNotify = false;
+
+  private pendingChangedKeys: Set<SearchRuntimeBusKey> | null = null;
 
   public getState(): SearchRuntimeBusState {
     return this.state;
@@ -157,8 +161,13 @@ export class SearchRuntimeBus {
     return this.version;
   }
 
-  public subscribe(listener: SearchRuntimeBusListener): () => void {
-    this.listeners.add(listener);
+  public subscribe(
+    listener: SearchRuntimeBusListener,
+    observedKeys?: readonly SearchRuntimeBusKey[]
+  ): () => void {
+    const scopedKeys =
+      observedKeys != null && observedKeys.length > 0 ? new Set(observedKeys) : null;
+    this.listeners.set(listener, scopedKeys);
     return () => {
       this.listeners.delete(listener);
     };
@@ -166,11 +175,12 @@ export class SearchRuntimeBus {
 
   public reset(): void {
     this.state = INITIAL_STATE;
-    this.bump();
+    this.bump(new Set(Object.keys(INITIAL_STATE) as SearchRuntimeBusKey[]));
   }
 
   public publish(patch: Partial<SearchRuntimeBusState>): void {
     let hasChange = false;
+    const changedKeys = new Set<SearchRuntimeBusKey>();
     const nextState: SearchRuntimeBusState = { ...this.state };
     const nextStateMutable = nextState as Record<string, unknown>;
     const currentStateLookup = this.state as Record<string, unknown>;
@@ -178,6 +188,7 @@ export class SearchRuntimeBus {
       const nextValue = patch[key];
       if (!Object.is(currentStateLookup[key], nextValue)) {
         nextStateMutable[key] = nextValue;
+        changedKeys.add(key);
         hasChange = true;
       }
     });
@@ -185,7 +196,7 @@ export class SearchRuntimeBus {
       return;
     }
     this.state = nextState;
-    this.bump();
+    this.bump(changedKeys);
   }
 
   public batch(run: () => void): void {
@@ -196,22 +207,39 @@ export class SearchRuntimeBus {
       this.batchDepth = Math.max(0, this.batchDepth - 1);
       if (this.batchDepth === 0 && this.hasPendingNotify) {
         this.hasPendingNotify = false;
-        this.notify();
+        this.notify(this.pendingChangedKeys);
+        this.pendingChangedKeys = null;
       }
     }
   }
 
-  private bump(): void {
+  private bump(changedKeys: ReadonlySet<SearchRuntimeBusKey>): void {
     this.version += 1;
     if (this.batchDepth > 0) {
       this.hasPendingNotify = true;
+      if (this.pendingChangedKeys == null) {
+        this.pendingChangedKeys = new Set(changedKeys);
+      } else {
+        changedKeys.forEach((key) => this.pendingChangedKeys?.add(key));
+      }
       return;
     }
-    this.notify();
+    this.notify(changedKeys);
   }
 
-  private notify(): void {
-    this.listeners.forEach((listener) => listener());
+  private notify(changedKeys: ReadonlySet<SearchRuntimeBusKey> | null): void {
+    this.listeners.forEach((observedKeys, listener) => {
+      if (observedKeys == null || changedKeys == null) {
+        listener();
+        return;
+      }
+      for (const key of observedKeys) {
+        if (changedKeys.has(key)) {
+          listener();
+          return;
+        }
+      }
+    });
   }
 }
 

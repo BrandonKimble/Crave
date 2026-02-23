@@ -767,7 +767,8 @@ const SearchScreen: React.FC = () => {
       a.hasResults === b.hasResults &&
       a.resultsRequestKey === b.resultsRequestKey &&
       a.submittedQuery === b.submittedQuery &&
-      a.resultsPage === b.resultsPage
+      a.resultsPage === b.resultsPage,
+    ['results', 'resultsRequestKey', 'submittedQuery'] as const
   );
   const { hasResults, resultsRequestKey, submittedQuery, resultsPage } = resultsArrivalState;
   const { searchMode, isSearchSessionActive } = useSearchRuntimeBusSelector(
@@ -778,7 +779,8 @@ const SearchScreen: React.FC = () => {
     }),
     (left, right) =>
       left.searchMode === right.searchMode &&
-      left.isSearchSessionActive === right.isSearchSessionActive
+      left.isSearchSessionActive === right.isSearchSessionActive,
+    ['searchMode', 'isSearchSessionActive'] as const
   );
   const setSearchMode = React.useCallback<
     React.Dispatch<React.SetStateAction<'natural' | 'shortcut' | null>>
@@ -855,7 +857,13 @@ const SearchScreen: React.FC = () => {
       a.isRunOneChromeFreezeActive === b.isRunOneChromeFreezeActive &&
       a.isRunOnePreflightFreezeActive === b.isRunOnePreflightFreezeActive &&
       a.isRun1HandoffActive === b.isRun1HandoffActive &&
-      a.isResponseFrameFreezeActive === b.isResponseFrameFreezeActive
+      a.isResponseFrameFreezeActive === b.isResponseFrameFreezeActive,
+    [
+      'isRunOneChromeFreezeActive',
+      'isRunOnePreflightFreezeActive',
+      'isRun1HandoffActive',
+      'isResponseFrameFreezeActive',
+    ] as const
   );
   const {
     isRunOneChromeFreezeActive,
@@ -888,7 +896,7 @@ const SearchScreen: React.FC = () => {
       for (const key of maxStallFrameByOperation.keys()) {
         if (key !== opId) maxStallFrameByOperation.delete(key);
       }
-    });
+    }, ['runOneHandoffOperationId']);
     return unsub;
   }, [searchRuntimeBus]);
   // Imperative bus subscription: manages RAF stall-pressure tick loop based on
@@ -981,7 +989,10 @@ const SearchScreen: React.FC = () => {
     };
 
     startOrStop();
-    const unsub = searchRuntimeBus.subscribe(startOrStop);
+    const unsub = searchRuntimeBus.subscribe(startOrStop, [
+      'runOneHandoffOperationId',
+      'runOneHandoffPhase',
+    ]);
     return () => {
       unsub();
       cancelScheduledTick();
@@ -3164,7 +3175,7 @@ const SearchScreen: React.FC = () => {
       profilerIsVisualSyncPendingRef.current = searchRuntimeBus.getState().isVisualSyncPending;
     };
     sync();
-    return searchRuntimeBus.subscribe(sync);
+    return searchRuntimeBus.subscribe(sync, ['isVisualSyncPending']);
   }, [searchRuntimeBus]);
   React.useEffect(() => {
     const syncHydrationSignal = () => {
@@ -3172,7 +3183,7 @@ const SearchScreen: React.FC = () => {
         searchRuntimeBus.getState().shouldHydrateResultsForRender;
     };
     syncHydrationSignal();
-    return searchRuntimeBus.subscribe(syncHydrationSignal);
+    return searchRuntimeBus.subscribe(syncHydrationSignal, ['shouldHydrateResultsForRender']);
   }, [searchRuntimeBus]);
   const handleProfilerRender = React.useCallback<React.ProfilerOnRenderCallback>(
     (id, phase, actualDuration, baseDuration, startTime, commitTime) => {
@@ -3548,7 +3559,7 @@ const SearchScreen: React.FC = () => {
         isChromeDeferred: busState.isChromeDeferred,
         harnessRunId: shortcutHarnessRunId,
       });
-    });
+    }, ['runOneHandoffPhase', 'runOneHandoffOperationId', 'isRun1HandoffActive', 'isChromeDeferred']);
     return unsub;
   }, [
     emitRuntimeMechanismEvent,
@@ -3695,7 +3706,14 @@ const SearchScreen: React.FC = () => {
         });
       }
       previous = snapshot;
-    });
+    }, [
+      'visualSyncCandidateRequestKey',
+      'visualReadyRequestKey',
+      'markerRevealCommitId',
+      'isVisualSyncPending',
+      'runOneHandoffOperationId',
+      'runOneHandoffPhase',
+    ]);
     return unsub;
   }, [searchRuntimeBus, emitRuntimeMechanismEvent, getActiveShortcutRunNumber]);
   const handleSearchSessionShadowTransition = React.useCallback(
@@ -4745,7 +4763,11 @@ const SearchScreen: React.FC = () => {
       prevCandidate = null; // Force initial setup
       syncTimeout();
     }
-    const unsub = searchRuntimeBus.subscribe(syncTimeout);
+    const unsub = searchRuntimeBus.subscribe(syncTimeout, [
+      'visualSyncCandidateRequestKey',
+      'isVisualSyncPending',
+      'markerRevealCommitId',
+    ]);
     return () => {
       unsub();
       if (visualReadyFallbackTimeoutRef.current) {
