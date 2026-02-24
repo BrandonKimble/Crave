@@ -47,6 +47,7 @@ type RuntimeMechanismEmitter = (
 ) => void;
 
 const RESULTS_LOADING_SPINNER_OFFSET = 96;
+const RESULTS_TAB_SWITCH_SETTLE_MS = 260;
 const EMPTY_DISHES: FoodResult[] = [];
 const EMPTY_RESTAURANTS: RestaurantResult[] = [];
 
@@ -290,6 +291,45 @@ export const useSearchResultsPanelSpec = ({
   } = hydrationRuntimeState;
   const isRunOneChromeDeferred =
     isRunOneChromeFreezeActive || runOneCommitSpanPressureActive || isChromeDeferred;
+  const [resultsPresentationActiveTab, setResultsPresentationActiveTab] = React.useState(activeTab);
+  const resultsTabSwitchSeqRef = React.useRef(0);
+  const resultsTabSwitchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(
+    () => () => {
+      if (resultsTabSwitchTimerRef.current) {
+        clearTimeout(resultsTabSwitchTimerRef.current);
+        resultsTabSwitchTimerRef.current = null;
+      }
+    },
+    []
+  );
+
+  React.useEffect(() => {
+    if (!isSearchSessionActive) {
+      if (resultsTabSwitchTimerRef.current) {
+        clearTimeout(resultsTabSwitchTimerRef.current);
+        resultsTabSwitchTimerRef.current = null;
+      }
+      setResultsPresentationActiveTab(activeTab);
+      return;
+    }
+
+    const nextSeq = resultsTabSwitchSeqRef.current + 1;
+    resultsTabSwitchSeqRef.current = nextSeq;
+    if (resultsTabSwitchTimerRef.current) {
+      clearTimeout(resultsTabSwitchTimerRef.current);
+      resultsTabSwitchTimerRef.current = null;
+    }
+    resultsTabSwitchTimerRef.current = setTimeout(() => {
+      if (resultsTabSwitchSeqRef.current !== nextSeq) {
+        return;
+      }
+      setResultsPresentationActiveTab(activeTab);
+      resultsTabSwitchTimerRef.current = null;
+    }, RESULTS_TAB_SWITCH_SETTLE_MS);
+  }, [activeTab, isSearchSessionActive]);
+
   const shouldDisableFiltersHeader = false;
   const shouldDisableResultsHeader = false;
   const shouldUsePlaceholderRows = false;
@@ -597,7 +637,7 @@ export const useSearchResultsPanelSpec = ({
     return `result-${index}`;
   }, []);
 
-  const isDishesTab = activeTab === 'dishes';
+  const isDishesTab = resultsPresentationActiveTab === 'dishes';
   const estimatedDishItemSize = 240;
   const estimatedRestaurantItemSize = 270;
   const estimatedItemSize = isDishesTab ? estimatedDishItemSize : estimatedRestaurantItemSize;
@@ -814,7 +854,7 @@ export const useSearchResultsPanelSpec = ({
     : shouldUseResultsHeaderBlur;
 
   const resultsReadModelSelectors = useSearchResultsReadModelSelectors({
-    activeTab,
+    activeTab: resultsPresentationActiveTab,
     dishes,
     restaurants,
     results,
@@ -885,39 +925,6 @@ export const useSearchResultsPanelSpec = ({
     ? effectiveFiltersHeaderHeightBase
     : 0;
 
-  // --- White results surface lifecycle ---
-  const [surfaceActive, setSurfaceActive] = React.useState(true);
-  const visualSyncStartedRef = React.useRef(false);
-
-  // Activate surface when loading starts
-  React.useEffect(() => {
-    if (shouldShowResultsLoadingStateBase) {
-      setSurfaceActive(true);
-      visualSyncStartedRef.current = false;
-    }
-  }, [shouldShowResultsLoadingStateBase]);
-
-  // Track visual sync lifecycle — drop surface when map is ready
-  React.useEffect(() => {
-    if (isVisualSyncPending) {
-      visualSyncStartedRef.current = true;
-    }
-    if (!isVisualSyncPending && visualSyncStartedRef.current && surfaceActive) {
-      setSurfaceActive(false);
-      visualSyncStartedRef.current = false;
-    }
-  }, [isVisualSyncPending, surfaceActive]);
-
-  // Safety valve: drop surface after 500ms max
-  React.useEffect(() => {
-    if (!surfaceActive) return;
-    const timeout = setTimeout(() => {
-      setSurfaceActive(false);
-      visualSyncStartedRef.current = false;
-    }, 500);
-    return () => clearTimeout(timeout);
-  }, [surfaceActive]);
-
   // --- Surface content: spinner, empty state, or blank ---
   const isSurfaceShowingEmptyState =
     !shouldShowResultsLoadingStateForReadModel &&
@@ -925,11 +932,36 @@ export const useSearchResultsPanelSpec = ({
     hasResolvedResults &&
     !isSearchLoading;
 
+  // Bridge the 1-frame gap between loading completion and visual-sync activation.
+  // Results are committed to the bus synchronously, but handlePageOneResultsCommitted
+  // (which sets isVisualSyncPending=true) is deferred via scheduleOnNextFrame.
+  // Without this bridge, surfaceActive goes false for one frame then back to true.
+  const visualSyncBridgeRef = React.useRef(false);
+  if (shouldShowResultsLoadingStateBase) {
+    visualSyncBridgeRef.current = true;
+  } else if (isVisualSyncPending || !hasResolvedResults) {
+    visualSyncBridgeRef.current = false;
+  }
+
+  // Surface visibility derived from coordinated state — no independent timeout.
+  // Stays up until loading is done, map has signaled visual-ready, and cards are
+  // rendered (or empty state applies). The 1200ms fallback in index.tsx handles
+  // the case where the map never signals.
+  const surfaceActive =
+    shouldShowResultsLoadingStateBase ||
+    isSurfaceShowingEmptyState ||
+    isVisualSyncPending ||
+    (hasResolvedResults && !hasRenderableRows) ||
+    visualSyncBridgeRef.current;
+
   const surfaceContent = React.useMemo(() => {
     if (!surfaceActive) return null;
 
     if (isSurfaceShowingEmptyState) {
-      const emptyTitle = activeTab === 'dishes' ? 'No dishes found.' : 'No restaurants found.';
+      const emptyTitle =
+        resultsPresentationActiveTab === 'dishes'
+          ? 'No dishes found.'
+          : 'No restaurants found.';
       const emptySubtitle =
         results?.metadata?.emptyQueryMessage ?? 'Try moving the map or adjusting your search.';
       return (
@@ -949,7 +981,7 @@ export const useSearchResultsPanelSpec = ({
   }, [
     surfaceActive,
     isSurfaceShowingEmptyState,
-    activeTab,
+    resultsPresentationActiveTab,
     results?.metadata?.emptyQueryMessage,
     onDemandNotice,
   ]);

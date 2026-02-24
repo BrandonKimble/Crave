@@ -12,6 +12,7 @@ export const useSearchTabSlice = () =>
       preferredActiveTab: state.preferredActiveTab,
       setActiveTab: state.setActiveTab,
       hasActiveTabPreference: state.hasActiveTabPreference,
+      setActiveTabPreference: state.setActiveTabPreference,
       setPreferredActiveTab: state.setPreferredActiveTab,
     }))
   );

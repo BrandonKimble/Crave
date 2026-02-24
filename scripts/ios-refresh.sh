@@ -6,9 +6,12 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_DIR="$REPO_ROOT/apps/mobile"
 
 PORT="${EXPO_METRO_PORT:-${EXPO_DEV_SERVER_PORT:-${RCT_METRO_PORT:-8081}}}"
-IOS_DEVICE_UDID="${IOS_DEVICE_UDID:-${IOS_SIMULATOR_UDID:-}}"
-IOS_DEVICE_NAME="${IOS_DEVICE_NAME:-${IOS_SIMULATOR_NAME:-}}"
+IOS_DEVICE_UDID="${IOS_DEVICE_UDID:-}"
+IOS_DEVICE_NAME="${IOS_DEVICE_NAME:-}"
+IOS_SIMULATOR_UDID="${IOS_SIMULATOR_UDID:-}"
+IOS_SIMULATOR_NAME="${IOS_SIMULATOR_NAME:-}"
 IOS_PREFER_DEVICE="${IOS_PREFER_DEVICE:-0}"
+IOS_REQUIRE_DEVICE="${IOS_REQUIRE_DEVICE:-0}"
 IOS_RUN="${IOS_RUN:-1}"
 FOLLOW_METRO_LOGS="${FOLLOW_METRO_LOGS:-1}"
 METRO_LOG="${EXPO_METRO_LOG_PATH:-/tmp/expo-metro.log}"
@@ -559,6 +562,13 @@ if [[ -n "$IOS_DEVICE_UDID" ]]; then
 fi
 
 if [[ -z "$IOS_DEVICE_UDID" && -z "$IOS_DEVICE_NAME" ]]; then
+  if [[ -n "$IOS_SIMULATOR_UDID" || -n "$IOS_SIMULATOR_NAME" ]]; then
+    IOS_DEVICE_UDID="$IOS_SIMULATOR_UDID"
+    IOS_DEVICE_NAME="$IOS_SIMULATOR_NAME"
+  fi
+fi
+
+if [[ -z "$IOS_DEVICE_UDID" && -z "$IOS_DEVICE_NAME" ]]; then
   if [[ "$IOS_PREFER_DEVICE" == "1" ]]; then
     device_line="$(detect_physical_ios_device || true)"
     if [[ -n "$device_line" ]]; then
@@ -566,6 +576,18 @@ if [[ -z "$IOS_DEVICE_UDID" && -z "$IOS_DEVICE_NAME" ]]; then
       IOS_DEVICE_NAME="$(echo "$device_line" | sed -E 's/ \\([0-9.]+\\) \\([0-9A-Fa-f-]+\\)\\s*$//')"
       echo "Using iOS device: ${IOS_DEVICE_NAME} (${IOS_DEVICE_UDID})"
     fi
+  fi
+fi
+
+if [[ "$IOS_REQUIRE_DEVICE" == "1" ]]; then
+  if [[ -z "$IOS_DEVICE_UDID" && -z "$IOS_DEVICE_NAME" ]]; then
+    echo "No physical iOS device selected or detected (IOS_REQUIRE_DEVICE=1)." >&2
+    echo "Connect/unlock your iPhone and verify it appears in: xcrun xctrace list devices" >&2
+    exit 1
+  fi
+  if [[ -n "$IOS_DEVICE_UDID" ]] && is_simulator_udid "$IOS_DEVICE_UDID"; then
+    echo "Selected target is a simulator (${IOS_DEVICE_UDID}); refusing because IOS_REQUIRE_DEVICE=1." >&2
+    exit 1
   fi
 fi
 

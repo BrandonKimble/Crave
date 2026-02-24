@@ -108,6 +108,7 @@ export const useShortcutCoverageOwner = ({
   >(new Map());
   const shortcutCoverageFetchSeqRef = React.useRef(0);
   const deferredCoverageRequestIdRef = React.useRef<string | null>(null);
+  const shortcutCoverageResolvedTabRef = React.useRef<'dishes' | 'restaurants' | null>(null);
   const shortcutCoverageRankedRef = React.useRef<
     Array<Feature<Point, RestaurantFeatureProperties>>
   >([]);
@@ -121,6 +122,7 @@ export const useShortcutCoverageOwner = ({
     shortcutCoverageSnapshotByRequestIdRef.current.clear();
     shortcutCoveragePendingSnapshotByRequestIdRef.current.clear();
     shortcutCoverageEntitiesFingerprintByRequestIdRef.current.clear();
+    shortcutCoverageResolvedTabRef.current = null;
     shortcutCoverageRankedRef.current = [];
     shortcutCoverageFetchSeqRef.current += 1;
     setShortcutCoverageDotFeatures(null);
@@ -145,17 +147,11 @@ export const useShortcutCoverageOwner = ({
         buildCoverageEntitiesFingerprint(snapshot.entities)
       );
       if (!snapshot.bounds) {
-        logger.info('Shortcut coverage snapshot pending (missing bounds)', {
-          searchRequestId: snapshot.searchRequestId,
-        });
         shortcutCoveragePendingSnapshotByRequestIdRef.current.set(snapshot.searchRequestId, {
           entities: snapshot.entities,
         });
         return;
       }
-      logger.info('Shortcut coverage snapshot stored', {
-        searchRequestId: snapshot.searchRequestId,
-      });
       shortcutCoveragePendingSnapshotByRequestIdRef.current.delete(snapshot.searchRequestId);
       shortcutCoverageSnapshotByRequestIdRef.current.set(snapshot.searchRequestId, {
         bounds: snapshot.bounds,
@@ -180,6 +176,7 @@ export const useShortcutCoverageOwner = ({
     if (!searchRequestId) {
       deferredCoverageRequestIdRef.current = null;
       shortcutCoverageFetchKeyRef.current = null;
+      shortcutCoverageResolvedTabRef.current = null;
       shortcutCoverageRankedRef.current = [];
       setShortcutCoverageDotFeatures(null);
       setIsShortcutCoverageLoading(false);
@@ -187,21 +184,28 @@ export const useShortcutCoverageOwner = ({
     }
     if (isVisualSyncPendingRef.current) {
       const hasResolvedCoverage = shortcutCoverageFetchKeyRef.current != null;
-      if (hasResolvedCoverage) {
+      const hasCoverageForActiveTab =
+        hasResolvedCoverage && shortcutCoverageResolvedTabRef.current === activeTab;
+      if (hasCoverageForActiveTab) {
         return;
       }
-      shortcutCoverageRankedRef.current = [];
-      setShortcutCoverageDotFeatures(null);
-      setIsShortcutCoverageLoading(false);
-      if (deferredCoverageRequestIdRef.current !== searchRequestId) {
-        deferredCoverageRequestIdRef.current = searchRequestId;
-        logger.info('Shortcut coverage fetch deferred (visual sync pending)', {
-          searchRequestId,
-        });
+      // Keep initial-search behavior (defer while pending) when no coverage has resolved yet.
+      // But if coverage exists for the other tab, continue below and fetch this tab now so
+      // map visuals can switch with the toggle.
+      if (hasResolvedCoverage) {
+        deferredCoverageRequestIdRef.current = null;
+      } else {
+        shortcutCoverageRankedRef.current = [];
+        setShortcutCoverageDotFeatures(null);
+        setIsShortcutCoverageLoading(false);
+        if (deferredCoverageRequestIdRef.current !== searchRequestId) {
+          deferredCoverageRequestIdRef.current = searchRequestId;
+        }
+        return;
       }
-      return;
+    } else {
+      deferredCoverageRequestIdRef.current = null;
     }
-    deferredCoverageRequestIdRef.current = null;
     const snapshot = shortcutCoverageSnapshotByRequestIdRef.current.get(searchRequestId) ?? null;
     const pendingSnapshot =
       shortcutCoveragePendingSnapshotByRequestIdRef.current.get(searchRequestId) ?? null;
@@ -218,9 +222,6 @@ export const useShortcutCoverageOwner = ({
           entities: pendingSnapshot.entities,
         });
         shortcutCoveragePendingSnapshotByRequestIdRef.current.delete(searchRequestId);
-        logger.info('Shortcut coverage snapshot recovered from late bounds', {
-          searchRequestId,
-        });
       }
     }
 
@@ -249,12 +250,6 @@ export const useShortcutCoverageOwner = ({
 
     const fetchSeq = ++shortcutCoverageFetchSeqRef.current;
     setIsShortcutCoverageLoading(true);
-    logger.info('Shortcut coverage fetch start', {
-      searchRequestId,
-      fetchSeq,
-      includeTopDish,
-      scoreMode,
-    });
 
     void searchService
       .shortcutCoverage({
@@ -268,7 +263,7 @@ export const useShortcutCoverageOwner = ({
           return;
         }
         setIsShortcutCoverageLoading(false);
-        const sourceFeatureCount = collection?.features?.length ?? 0;
+        shortcutCoverageResolvedTabRef.current = activeTab;
         const features = (collection?.features ?? [])
           .map((feature) => {
             const properties =
@@ -369,12 +364,6 @@ export const useShortcutCoverageOwner = ({
             } as Feature<Point, RestaurantFeatureProperties>;
           })
           .filter(Boolean) as Array<Feature<Point, RestaurantFeatureProperties>>;
-        logger.info('Shortcut coverage fetch resolved', {
-          searchRequestId,
-          fetchSeq,
-          sourceFeatureCount,
-          usableFeatureCount: features.length,
-        });
 
         setShortcutCoverageDotFeatures({
           type: 'FeatureCollection',

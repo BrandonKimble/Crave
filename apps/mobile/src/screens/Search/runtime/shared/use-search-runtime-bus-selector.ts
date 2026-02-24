@@ -1,7 +1,11 @@
 import React from 'react';
 import { useSyncExternalStore } from 'react';
 
-import type { SearchRuntimeBus, SearchRuntimeBusKey, SearchRuntimeBusState } from './search-runtime-bus';
+import type {
+  SearchRuntimeBus,
+  SearchRuntimeBusKey,
+  SearchRuntimeBusState,
+} from './search-runtime-bus';
 
 type EqualityFn<T> = (left: T, right: T) => boolean;
 
@@ -13,10 +17,7 @@ export const useSearchRuntimeBusSelector = <T>(
 ): T => {
   const observedKeysSignature =
     observedKeys != null && observedKeys.length > 0 ? observedKeys.join('|') : '';
-  const scopedObservedKeys = React.useMemo(
-    () => observedKeys,
-    [observedKeysSignature]
-  );
+  const scopedObservedKeys = React.useMemo(() => observedKeys, [observedKeysSignature]);
   const cacheRef = React.useRef<{ version: number; selected: T }>({
     version: -1,
     selected: selector(bus.getState()),

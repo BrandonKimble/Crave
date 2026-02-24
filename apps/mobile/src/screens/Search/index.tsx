@@ -247,6 +247,7 @@ const PROFILE_TRANSITION_LOCK_MS = 750;
 const FIT_BOUNDS_SYNC_BUFFER_MS = 160;
 const RESULTS_WASH_FADE_MS = 220;
 const RESULTS_VISUAL_READY_FALLBACK_MS = 1200;
+const MAP_TAB_SWITCH_COMMIT_SETTLE_MS = 260;
 const normalizeProfilerContributorId = (id: string): string => {
   const normalized = id
     .trim()
@@ -1103,7 +1104,7 @@ const SearchScreen: React.FC = () => {
     preferredActiveTab,
     setActiveTab,
     hasActiveTabPreference,
-    setPreferredActiveTab,
+    setActiveTabPreference,
   } = useSearchTabSlice();
   const {
     searchLayout,
@@ -1520,6 +1521,9 @@ const SearchScreen: React.FC = () => {
   const hasUserScrolledResultsRef = React.useRef(false);
   const allowLoadMoreForCurrentScrollRef = React.useRef(true);
   const searchFiltersLayoutCacheRef = React.useRef<SearchFiltersLayoutCache | null>(null);
+  const mapTabSwitchCommitTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mapTabSwitchSeqRef = React.useRef(0);
+  const mapCommittedTabRef = React.useRef<'restaurants' | 'dishes'>(searchRuntimeBus.getState().activeTab);
   const cameraPersistTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCameraStateRef = React.useRef<{ center: [number, number]; zoom: number } | null>(null);
   const lastPersistedCameraRef = React.useRef<string | null>(null);
@@ -3559,7 +3563,12 @@ const SearchScreen: React.FC = () => {
         isChromeDeferred: busState.isChromeDeferred,
         harnessRunId: shortcutHarnessRunId,
       });
-    }, ['runOneHandoffPhase', 'runOneHandoffOperationId', 'isRun1HandoffActive', 'isChromeDeferred']);
+    }, [
+      'runOneHandoffPhase',
+      'runOneHandoffOperationId',
+      'isRun1HandoffActive',
+      'isChromeDeferred',
+    ]);
     return unsub;
   }, [
     emitRuntimeMechanismEvent,
@@ -3823,7 +3832,6 @@ const SearchScreen: React.FC = () => {
     },
     [searchRuntimeBus]
   );
-
   const {
     submitSearch,
     runRestaurantEntitySearch,
@@ -3983,14 +3991,69 @@ const SearchScreen: React.FC = () => {
     submittedQuery,
   ]);
 
+  React.useEffect(
+    () => () => {
+      if (mapTabSwitchCommitTimeoutRef.current) {
+        clearTimeout(mapTabSwitchCommitTimeoutRef.current);
+        mapTabSwitchCommitTimeoutRef.current = null;
+      }
+    },
+    []
+  );
+
+  React.useEffect(() => {
+    const syncCommittedMapTab = () => {
+      const runtimeState = searchRuntimeBus.getState();
+      if (runtimeState.pendingTabSwitchTab == null) {
+        mapCommittedTabRef.current = runtimeState.activeTab;
+      }
+    };
+    syncCommittedMapTab();
+    return searchRuntimeBus.subscribe(syncCommittedMapTab, ['activeTab', 'pendingTabSwitchTab']);
+  }, [searchRuntimeBus]);
+
   const handleTabChange = React.useCallback(
     (value: 'restaurants' | 'dishes') => {
-      setPreferredActiveTab(value);
-      publishRuntimeBusPatch({
-        activeTab: value,
+      const nextSeq = mapTabSwitchSeqRef.current + 1;
+      mapTabSwitchSeqRef.current = nextSeq;
+      const committedMapTab = mapCommittedTabRef.current;
+      const shouldHoldMap = committedMapTab !== value;
+      const pendingRequestKey = shouldHoldMap ? `tab-switch:${nextSeq}:${value}` : null;
+      if (mapTabSwitchCommitTimeoutRef.current) {
+        clearTimeout(mapTabSwitchCommitTimeoutRef.current);
+        mapTabSwitchCommitTimeoutRef.current = null;
+      }
+      unstable_batchedUpdates(() => {
+        setActiveTab(value);
+        publishRuntimeBusPatch({
+          activeTab: value,
+          pendingTabSwitchTab: shouldHoldMap ? committedMapTab : null,
+          pendingTabSwitchRequestKey: pendingRequestKey,
+        });
       });
+      if (!shouldHoldMap || pendingRequestKey == null) {
+        mapCommittedTabRef.current = value;
+        setActiveTabPreference(value);
+        return;
+      }
+      mapTabSwitchCommitTimeoutRef.current = setTimeout(() => {
+        const runtimeState = searchRuntimeBus.getState();
+        if (runtimeState.pendingTabSwitchRequestKey !== pendingRequestKey) {
+          return;
+        }
+        const finalTab = runtimeState.activeTab;
+        mapCommittedTabRef.current = finalTab;
+        unstable_batchedUpdates(() => {
+          setActiveTabPreference(finalTab);
+          publishRuntimeBusPatch({
+            pendingTabSwitchTab: null,
+            pendingTabSwitchRequestKey: null,
+          });
+        });
+        mapTabSwitchCommitTimeoutRef.current = null;
+      }, MAP_TAB_SWITCH_COMMIT_SETTLE_MS);
     },
-    [publishRuntimeBusPatch, setPreferredActiveTab]
+    [publishRuntimeBusPatch, searchRuntimeBus, setActiveTab, setActiveTabPreference]
   );
 
   const dismissSearchKeyboard = React.useCallback(() => {

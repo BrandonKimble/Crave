@@ -156,13 +156,15 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
     searchRuntimeBus,
     (state) => ({
       mode: state.searchMode,
-      activeTab: state.activeTab,
+      mapPresentationActiveTab: state.pendingTabSwitchTab ?? state.activeTab,
     }),
-    (left, right) => left.mode === right.mode && left.activeTab === right.activeTab,
-    ['searchMode', 'activeTab'] as const
+    (left, right) =>
+      left.mode === right.mode &&
+      left.mapPresentationActiveTab === right.mapPresentationActiveTab,
+    ['searchMode', 'activeTab', 'pendingTabSwitchTab'] as const
   );
   const mapPresentationMode = runtimeMapPresentationInput.mode;
-  const mapPresentationActiveTab = runtimeMapPresentationInput.activeTab;
+  const mapPresentationActiveTab = runtimeMapPresentationInput.mapPresentationActiveTab;
 
   const isVisualSyncPending = useSearchRuntimeBusSelector(
     searchRuntimeBus,
@@ -180,18 +182,21 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
       canonicalRankById: state.precomputedCanonicalRestaurantRankById,
       restaurantsById: state.precomputedRestaurantsById,
       resultsKey: state.precomputedMarkerResultsKey,
+      activeTab: state.precomputedMarkerActiveTab,
     }),
     (left, right) =>
       left.catalog === right.catalog &&
       left.canonicalRankById === right.canonicalRankById &&
       left.restaurantsById === right.restaurantsById &&
-      left.resultsKey === right.resultsKey,
+      left.resultsKey === right.resultsKey &&
+      left.activeTab === right.activeTab,
     [
       'precomputedMarkerCatalog',
       'precomputedMarkerPrimaryCount',
       'precomputedCanonicalRestaurantRankById',
       'precomputedRestaurantsById',
       'precomputedMarkerResultsKey',
+      'precomputedMarkerActiveTab',
     ] as const
   );
 
@@ -303,10 +308,11 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
   // -------------------------------------------------------------------------
 
   const markerCatalogReadModel = React.useMemo(() => {
-    // Use pre-computed catalog when it matches current results AND no entity/selection filters
+    // Reuse pre-computed catalog only when request + tab match, otherwise rebuild for current tab.
     if (
       precomputedMarkerData.catalog &&
       precomputedMarkerData.resultsKey === mapSearchRequestId &&
+      precomputedMarkerData.activeTab === mapPresentationActiveTab &&
       restaurantOnlyId === null &&
       overlaySelectedRestaurantId === null
     ) {

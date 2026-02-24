@@ -68,6 +68,7 @@ interface SearchState extends SearchFilters {
   setScoreMode: (mode: SearchScoreMode) => void;
   setPreferredScoreMode: (mode: SearchScoreMode) => void;
   setActiveTab: (tab: SetStateAction<SearchActiveTab>) => void;
+  setActiveTabPreference: (tab: SearchActiveTab) => void;
   setPreferredActiveTab: (tab: SearchActiveTab) => void;
 }
 
@@ -182,6 +183,14 @@ export const useSearchStore = create<SearchState>()(
               : tab;
           return {
             activeTab: normalizeActiveTab(resolved),
+          };
+        }),
+      setActiveTabPreference: (tab) =>
+        set(() => {
+          const normalized = normalizeActiveTab(tab);
+          return {
+            preferredActiveTab: normalized,
+            hasActiveTabPreference: true,
           };
         }),
       setPreferredActiveTab: (tab) =>

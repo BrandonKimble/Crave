@@ -42,6 +42,8 @@ export type SearchRuntimeBusState = {
   allowHydrationFinalizeCommit: boolean;
   submittedQuery: string;
   activeTab: SearchRuntimeActiveTab;
+  pendingTabSwitchTab: SearchRuntimeActiveTab | null;
+  pendingTabSwitchRequestKey: string | null;
   searchMode: SearchRuntimeSearchMode;
   isSearchSessionActive: boolean;
   isSearchLoading: boolean;
@@ -64,6 +66,7 @@ export type SearchRuntimeBusState = {
   precomputedCanonicalRestaurantRankById: Map<string, number> | null;
   precomputedRestaurantsById: Map<string, RestaurantResult> | null;
   precomputedMarkerResultsKey: string | null;
+  precomputedMarkerActiveTab: SearchRuntimeActiveTab | null;
   // Handoff-derived fields (bridged from RunOneHandoffCoordinator)
   runOneHandoffPhase: RunOneHandoffPhase;
   runOneHandoffOperationId: string | null;
@@ -108,6 +111,8 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   allowHydrationFinalizeCommit: true,
   submittedQuery: '',
   activeTab: 'dishes',
+  pendingTabSwitchTab: null,
+  pendingTabSwitchRequestKey: null,
   searchMode: null,
   isSearchSessionActive: false,
   isSearchLoading: false,
@@ -129,6 +134,7 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   precomputedCanonicalRestaurantRankById: null,
   precomputedRestaurantsById: null,
   precomputedMarkerResultsKey: null,
+  precomputedMarkerActiveTab: null,
   runOneHandoffPhase: 'idle',
   runOneHandoffOperationId: null,
   isRun1HandoffActive: false,
@@ -145,7 +151,10 @@ export class SearchRuntimeBus {
 
   private version = 0;
 
-  private readonly listeners = new Map<SearchRuntimeBusListener, ReadonlySet<SearchRuntimeBusKey> | null>();
+  private readonly listeners = new Map<
+    SearchRuntimeBusListener,
+    ReadonlySet<SearchRuntimeBusKey> | null
+  >();
 
   private batchDepth = 0;
 

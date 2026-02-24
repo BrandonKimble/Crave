@@ -988,20 +988,26 @@ const createPinTransitionState = (): PinTransitionState => ({
 
 const usePinTransitionController = ({
   sortedRestaurantMarkers,
+  dotRestaurantFeatures,
+  restaurantFeatures,
   pinsRenderKey,
   markerRevealCommitId,
   buildMarkerKey,
   pinnedDotKeys,
   suppressTransitions,
   isMapMovingRef,
+  mapQueryBudget,
 }: {
   sortedRestaurantMarkers: Array<Feature<Point, RestaurantFeatureProperties>>;
+  dotRestaurantFeatures: FeatureCollection<Point, RestaurantFeatureProperties> | null | undefined;
+  restaurantFeatures: FeatureCollection<Point, RestaurantFeatureProperties>;
   pinsRenderKey: string;
   markerRevealCommitId: number | null;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
   pinnedDotKeys: Set<string>;
   suppressTransitions: boolean;
   isMapMovingRef: React.MutableRefObject<boolean>;
+  mapQueryBudget: MapQueryBudget | null;
 }) => {
   // ---------------------------------------------------------------------------
   // Transition clock: ref-based to avoid per-frame React commits.
@@ -1025,21 +1031,175 @@ const usePinTransitionController = ({
     markerRevealCommitId !== state.appliedInitialRevealCommitId &&
     !isMarkerDataHeld;
 
-  // Unified batch reveal: when an initial reveal fires, all dots/pins/labels
-  // fade in together from 0→1 over the same duration as per-pin transitions.
-  // Read from ref; re-evaluated when transitionRenderVersion changes.
-  const clockMs = transitionClockMsRef.current;
+  // ---------------------------------------------------------------------------
+  // Synchronous marker diff: runs during render so that batchOpacity and
+  // batchDismissActive are up-to-date in the SAME render that features change.
+  // This eliminates the timing gap where dots would go empty one render before
+  // the dismiss was detected.
+  //
+  // Only the animation loop kickoff (a side effect) is deferred to a layout
+  // effect — all state mutations happen here, synchronously, on the ref.
+  // ---------------------------------------------------------------------------
   void transitionRenderVersion; // ensure re-evaluation on render ticks
+  const shouldStartAnimationLoopRef = React.useRef(false);
+  {
+    const nextPinnedFeatureByMarkerKey = new Map<
+      string,
+      Feature<Point, RestaurantFeatureProperties>
+    >();
+    sortedRestaurantMarkers.forEach((feature) => {
+      nextPinnedFeatureByMarkerKey.set(buildMarkerKey(feature), feature);
+    });
+
+    if (suppressTransitions) {
+      state.promoteStartedAtByMarkerKey.clear();
+      state.pendingPromoteDelayByMarkerKey.clear();
+      state.demoteFeatureByMarkerKey.clear();
+      state.pendingInitialRevealCommitId = null;
+      state.initialRevealQueued = false;
+      state.batchTransition = null;
+      if (markerRevealCommitId != null) {
+        state.appliedInitialRevealCommitId = markerRevealCommitId;
+      }
+      state.previousPinnedFeatureByMarkerKey = nextPinnedFeatureByMarkerKey;
+      if (transitionClockMsRef.current !== 0) {
+        transitionClockMsRef.current = 0;
+      }
+    } else {
+      const now = getNowMs();
+      const shouldRunInitialReveal =
+        state.pendingInitialRevealCommitId != null &&
+        state.pendingInitialRevealCommitId !== state.appliedInitialRevealCommitId &&
+        !isMarkerDataHeld &&
+        nextPinnedFeatureByMarkerKey.size > 0;
+      let didMutateTransitions = false;
+      let shouldStartAnimationLoop = false;
+      if (shouldRunInitialReveal) {
+        state.appliedInitialRevealCommitId = state.pendingInitialRevealCommitId;
+        state.pendingInitialRevealCommitId = null;
+        state.initialRevealQueued = false;
+        state.pendingPromoteDelayByMarkerKey.clear();
+        state.demoteFeatureByMarkerKey.clear();
+
+        if (state.promoteStartedAtByMarkerKey.size === 0) {
+          state.batchTransition = { startMs: now, direction: 'reveal', pinFeatures: [] };
+          for (const markerKey of nextPinnedFeatureByMarkerKey.keys()) {
+            state.promoteStartedAtByMarkerKey.set(markerKey, now);
+          }
+          shouldStartAnimationLoop = true;
+        }
+        if (state.batchTransition == null && state.promoteStartedAtByMarkerKey.size > 0) {
+          state.batchTransition = { startMs: now, direction: 'reveal', pinFeatures: [] };
+          shouldStartAnimationLoop = true;
+        }
+        didMutateTransitions = true;
+      } else {
+        if (
+          state.pendingInitialRevealCommitId != null &&
+          state.pendingInitialRevealCommitId !== state.appliedInitialRevealCommitId &&
+          !isMarkerDataHeld &&
+          nextPinnedFeatureByMarkerKey.size === 0
+        ) {
+          state.appliedInitialRevealCommitId = state.pendingInitialRevealCommitId;
+          state.pendingInitialRevealCommitId = null;
+          state.initialRevealQueued = false;
+        }
+
+        let newPromoteCount = 0;
+        for (const markerKey of nextPinnedFeatureByMarkerKey.keys()) {
+          if (state.previousPinnedFeatureByMarkerKey.has(markerKey)) {
+            continue;
+          }
+          state.promoteStartedAtByMarkerKey.set(markerKey, now);
+          state.pendingPromoteDelayByMarkerKey.delete(markerKey);
+          state.demoteFeatureByMarkerKey.delete(markerKey);
+          didMutateTransitions = true;
+          shouldStartAnimationLoop = true;
+          newPromoteCount++;
+        }
+        if (newPromoteCount > 0 && state.batchTransition == null && !isMapMovingRef.current) {
+          state.batchTransition = { startMs: now, direction: 'reveal', pinFeatures: [] };
+        }
+        for (const [markerKey, feature] of state.previousPinnedFeatureByMarkerKey) {
+          if (nextPinnedFeatureByMarkerKey.has(markerKey)) {
+            continue;
+          }
+          state.demoteFeatureByMarkerKey.set(markerKey, { startedAtMs: now, feature });
+          state.promoteStartedAtByMarkerKey.delete(markerKey);
+          state.pendingPromoteDelayByMarkerKey.delete(markerKey);
+          didMutateTransitions = true;
+          shouldStartAnimationLoop = true;
+        }
+        // Full dismissal: all pins removed → coordinated batch fade-out
+        if (
+          nextPinnedFeatureByMarkerKey.size === 0 &&
+          state.demoteFeatureByMarkerKey.size > 0 &&
+          state.batchTransition?.direction !== 'dismiss'
+        ) {
+          state.batchTransition = {
+            startMs: now,
+            direction: 'dismiss',
+            pinFeatures: Array.from(state.demoteFeatureByMarkerKey.values()).map(
+              (entry) => entry.feature
+            ),
+          };
+          state.demoteFeatureByMarkerKey.clear();
+        }
+      }
+
+      for (const markerKey of Array.from(state.promoteStartedAtByMarkerKey.keys())) {
+        if (nextPinnedFeatureByMarkerKey.has(markerKey)) {
+          continue;
+        }
+        state.promoteStartedAtByMarkerKey.delete(markerKey);
+        didMutateTransitions = true;
+      }
+      for (const markerKey of Array.from(state.pendingPromoteDelayByMarkerKey.keys())) {
+        if (nextPinnedFeatureByMarkerKey.has(markerKey)) {
+          continue;
+        }
+        state.pendingPromoteDelayByMarkerKey.delete(markerKey);
+        didMutateTransitions = true;
+      }
+      for (const markerKey of Array.from(state.demoteFeatureByMarkerKey.keys())) {
+        if (!nextPinnedFeatureByMarkerKey.has(markerKey)) {
+          continue;
+        }
+        state.demoteFeatureByMarkerKey.delete(markerKey);
+        didMutateTransitions = true;
+      }
+
+      state.previousPinnedFeatureByMarkerKey = nextPinnedFeatureByMarkerKey;
+
+      if (didMutateTransitions) {
+        transitionClockMsRef.current = now;
+      }
+      if (
+        !shouldStartAnimationLoop &&
+        state.batchTransition == null &&
+        state.promoteStartedAtByMarkerKey.size === 0 &&
+        state.pendingPromoteDelayByMarkerKey.size === 0 &&
+        state.demoteFeatureByMarkerKey.size === 0
+      ) {
+        transitionClockMsRef.current = 0;
+      }
+      shouldStartAnimationLoopRef.current = shouldStartAnimationLoop;
+    }
+  }
+
+  // Now compute batch values — state.batchTransition is already up-to-date.
+  const clockMs = transitionClockMsRef.current;
   const batch = state.batchTransition;
   const batchProgress =
     batch != null && clockMs > 0
       ? clamp01((clockMs - batch.startMs) / DOT_TO_PIN_TRANSITION_DURATION_MS)
-      : batch?.direction === 'reveal' ? 1 : 0;
+      : batch?.direction === 'reveal'
+      ? 1
+      : 0;
   const batchDismissActive = batch?.direction === 'dismiss';
   // Reveal: 0→1, dismiss: 1→0, steady (no batch): 1
-  const batchOpacity = batch == null ? 1
-    : batch.direction === 'reveal' ? batchProgress
-    : 1 - batchProgress;
+  const batchOpacity =
+    batch == null ? 1 : batch.direction === 'reveal' ? batchProgress : 1 - batchProgress;
 
   const pinTransitionFrameHandleRef = React.useRef<number | ReturnType<typeof setTimeout> | null>(
     null
@@ -1167,168 +1327,14 @@ const usePinTransitionController = ({
     state.pendingInitialRevealCommitId = markerRevealCommitId;
   }, [markerRevealCommitId, state]);
 
+  // Side-effect only: kick off the animation loop when the synchronous diff
+  // (above) flagged that new transitions were created.
   React.useLayoutEffect(() => {
-    const nextPinnedFeatureByMarkerKey = new Map<
-      string,
-      Feature<Point, RestaurantFeatureProperties>
-    >();
-    sortedRestaurantMarkers.forEach((feature) => {
-      nextPinnedFeatureByMarkerKey.set(buildMarkerKey(feature), feature);
-    });
-
-    if (suppressTransitions) {
-      state.promoteStartedAtByMarkerKey.clear();
-      state.pendingPromoteDelayByMarkerKey.clear();
-      state.demoteFeatureByMarkerKey.clear();
-      state.pendingInitialRevealCommitId = null;
-      state.initialRevealQueued = false;
-      state.batchTransition = null;
-      if (markerRevealCommitId != null) {
-        state.appliedInitialRevealCommitId = markerRevealCommitId;
-      }
-      state.previousPinnedFeatureByMarkerKey = nextPinnedFeatureByMarkerKey;
-      if (transitionClockMsRef.current !== 0) {
-        transitionClockMsRef.current = 0;
-        forceTransitionRender();
-      }
-      return;
-    }
-
-    const now = getNowMs();
-    const shouldRunInitialReveal =
-      state.pendingInitialRevealCommitId != null &&
-      state.pendingInitialRevealCommitId !== state.appliedInitialRevealCommitId &&
-      !isMarkerDataHeld &&
-      nextPinnedFeatureByMarkerKey.size > 0;
-    let didMutateTransitions = false;
-    let shouldStartAnimationLoop = false;
-    if (shouldRunInitialReveal) {
-      // Consume the reveal commit.
-      state.appliedInitialRevealCommitId = state.pendingInitialRevealCommitId;
-      state.pendingInitialRevealCommitId = null;
-      state.initialRevealQueued = false;
-      state.pendingPromoteDelayByMarkerKey.clear();
-      state.demoteFeatureByMarkerKey.clear();
-
-      // Only set up transitions if not already animating — a late reveal
-      // commit arriving after normal promotes started should not restart.
-      if (state.promoteStartedAtByMarkerKey.size === 0) {
-        state.batchTransition = { startMs: now, direction: 'reveal', pinFeatures: [] };
-        for (const markerKey of nextPinnedFeatureByMarkerKey.keys()) {
-          state.promoteStartedAtByMarkerKey.set(markerKey, now);
-        }
-        shouldStartAnimationLoop = true;
-      }
-      // Start batch reveal for dots/labels if not already running.
-      if (state.batchTransition == null && state.promoteStartedAtByMarkerKey.size > 0) {
-        state.batchTransition = { startMs: now, direction: 'reveal', pinFeatures: [] };
-        shouldStartAnimationLoop = true;
-      }
-      didMutateTransitions = true;
-    } else {
-      if (
-        state.pendingInitialRevealCommitId != null &&
-        state.pendingInitialRevealCommitId !== state.appliedInitialRevealCommitId &&
-        !isMarkerDataHeld &&
-        nextPinnedFeatureByMarkerKey.size === 0
-      ) {
-        state.appliedInitialRevealCommitId = state.pendingInitialRevealCommitId;
-        state.pendingInitialRevealCommitId = null;
-        state.initialRevealQueued = false;
-      }
-
-      let newPromoteCount = 0;
-      for (const markerKey of nextPinnedFeatureByMarkerKey.keys()) {
-        if (state.previousPinnedFeatureByMarkerKey.has(markerKey)) {
-          continue;
-        }
-        state.promoteStartedAtByMarkerKey.set(markerKey, now);
-        state.pendingPromoteDelayByMarkerKey.delete(markerKey);
-        state.demoteFeatureByMarkerKey.delete(markerKey);
-        didMutateTransitions = true;
-        shouldStartAnimationLoop = true;
-        newPromoteCount++;
-      }
-      // Start batch reveal for dots/labels when first pins arrive from a new search.
-      // Skip during active camera movement (zoom/pan) to avoid LOD pin churn
-      // retriggering the batch fade and causing dot/label flicker.
-      if (newPromoteCount > 0 && state.batchTransition == null && !isMapMovingRef.current) {
-        state.batchTransition = { startMs: now, direction: 'reveal', pinFeatures: [] };
-      }
-      for (const [markerKey, feature] of state.previousPinnedFeatureByMarkerKey) {
-        if (nextPinnedFeatureByMarkerKey.has(markerKey)) {
-          continue;
-        }
-        state.demoteFeatureByMarkerKey.set(markerKey, { startedAtMs: now, feature });
-        state.promoteStartedAtByMarkerKey.delete(markerKey);
-        state.pendingPromoteDelayByMarkerKey.delete(markerKey);
-        didMutateTransitions = true;
-        shouldStartAnimationLoop = true;
-      }
-      // Full dismissal: all pins removed → coordinated batch fade-out
-      if (
-        nextPinnedFeatureByMarkerKey.size === 0 &&
-        state.demoteFeatureByMarkerKey.size > 0 &&
-        state.batchTransition?.direction !== 'dismiss'
-      ) {
-        state.batchTransition = {
-          startMs: now,
-          direction: 'dismiss',
-          pinFeatures: Array.from(state.demoteFeatureByMarkerKey.values())
-            .map((entry) => entry.feature),
-        };
-        state.demoteFeatureByMarkerKey.clear();
-      }
-    }
-
-    for (const markerKey of Array.from(state.promoteStartedAtByMarkerKey.keys())) {
-      if (nextPinnedFeatureByMarkerKey.has(markerKey)) {
-        continue;
-      }
-      state.promoteStartedAtByMarkerKey.delete(markerKey);
-      didMutateTransitions = true;
-    }
-    for (const markerKey of Array.from(state.pendingPromoteDelayByMarkerKey.keys())) {
-      if (nextPinnedFeatureByMarkerKey.has(markerKey)) {
-        continue;
-      }
-      state.pendingPromoteDelayByMarkerKey.delete(markerKey);
-      didMutateTransitions = true;
-    }
-    for (const markerKey of Array.from(state.demoteFeatureByMarkerKey.keys())) {
-      if (!nextPinnedFeatureByMarkerKey.has(markerKey)) {
-        continue;
-      }
-      state.demoteFeatureByMarkerKey.delete(markerKey);
-      didMutateTransitions = true;
-    }
-
-    state.previousPinnedFeatureByMarkerKey = nextPinnedFeatureByMarkerKey;
-
-    if (didMutateTransitions) {
-      transitionClockMsRef.current = now;
-      forceTransitionRender();
-    }
-    if (
-      !shouldStartAnimationLoop &&
-      state.batchTransition == null &&
-      state.promoteStartedAtByMarkerKey.size === 0 &&
-      state.pendingPromoteDelayByMarkerKey.size === 0 &&
-      state.demoteFeatureByMarkerKey.size === 0
-    ) {
-      transitionClockMsRef.current = 0;
-    }
-    if (shouldStartAnimationLoop) {
+    if (shouldStartAnimationLoopRef.current) {
+      shouldStartAnimationLoopRef.current = false;
       runPinTransitionFrameRef.current();
     }
-  }, [
-    buildMarkerKey,
-    isMarkerDataHeld,
-    markerRevealCommitId,
-    sortedRestaurantMarkers,
-    suppressTransitions,
-    state,
-  ]);
+  });
 
   React.useEffect(() => {
     return () => {
@@ -1410,16 +1416,297 @@ const usePinTransitionController = ({
     (state.initialRevealQueued || isInitialRevealCommitPending) &&
     sortedRestaurantMarkers.length > 0;
 
-  return {
-    transitionClockMsRef,
-    transitionRenderVersion,
+  // ---------------------------------------------------------------------------
+  // Controller-owned dot feature lifecycle.
+  // The hook holds the last non-empty dot snapshot so that during dismiss the
+  // ShapeSource keeps rendering dots while batchOpacity fades them out.
+  // Without this, dots vanish instantly because the parent clears the feature
+  // prop in the same render that triggers the dismiss layout effect.
+  // ---------------------------------------------------------------------------
+  const heldDotFeaturesRef = React.useRef(dotRestaurantFeatures);
+  const dotsHaveFeatures =
+    dotRestaurantFeatures != null && dotRestaurantFeatures.features.length > 0;
+  if (dotsHaveFeatures) {
+    heldDotFeaturesRef.current = dotRestaurantFeatures;
+  } else if (batchOpacity >= 1 && !batchDismissActive) {
+    heldDotFeaturesRef.current = null;
+  }
+  const dotsAreHeld = !dotsHaveFeatures && heldDotFeaturesRef.current != null;
+  const effectiveDotFeatures = dotsAreHeld
+    ? heldDotFeaturesRef.current!
+    : dotRestaurantFeatures;
+
+  // ---------------------------------------------------------------------------
+  // Controller-owned dismiss pin features with opacity pre-applied.
+  // During batch dismiss the hook snapshot has the pin features; apply
+  // batchOpacity so the caller doesn't need a separate memo.
+  // ---------------------------------------------------------------------------
+  const styledDismissPinFeatures = React.useMemo<
+    Array<Feature<Point, RestaurantFeatureProperties>>
+  >(() => {
+    if (!batchDismissActive || batch?.pinFeatures == null || batch.pinFeatures.length === 0) {
+      return [];
+    }
+    return batch.pinFeatures.map((feature) => ({
+      ...feature,
+      properties: {
+        ...feature.properties,
+        pinTransitionActive: 1,
+        pinTransitionOpacity: batchOpacity,
+        pinRankOpacity: batchOpacity,
+        pinLabelOpacity: batchOpacity,
+      },
+    }));
+  }, [batch?.pinFeatures, batchDismissActive, batchOpacity]);
+
+  // ---------------------------------------------------------------------------
+  // Controller-owned pin feature styling pipeline.
+  // Stamps transition properties (opacity, rank, label) on each feature,
+  // merges promoted/steady, demotion, and batch dismiss features.
+  // ---------------------------------------------------------------------------
+  const labelFeatureBuildDurationMsRef = React.useRef<number | null>(null);
+  const previousLabelFeatureByKeyRef = React.useRef(
+    new Map<string, Feature<Point, RestaurantFeatureProperties>>()
+  );
+
+  const restaurantLabelFeaturesWithIds = React.useMemo(() => {
+    const buildStartedAtMs = getNowMs();
+    if (!restaurantFeatures.features.length) {
+      previousLabelFeatureByKeyRef.current.clear();
+      labelFeatureBuildDurationMsRef.current = getNowMs() - buildStartedAtMs;
+      return restaurantFeatures;
+    }
+
+    const hasActiveTransitions =
+      state.promoteStartedAtByMarkerKey.size > 0 ||
+      state.pendingPromoteDelayByMarkerKey.size > 0 ||
+      immediatePromotionStartedAtByMarkerKey.size > 0;
+    const transitionNowMs =
+      transitionClockMsRef.current > 0 ? transitionClockMsRef.current : getNowMs();
+    let didChange = false;
+    const prevCache = previousLabelFeatureByKeyRef.current;
+    const nextCache = new Map<string, Feature<Point, RestaurantFeatureProperties>>();
+
+    const nextFeatures = restaurantFeatures.features.map((feature, index) => {
+      const markerKey = buildMarkerKey(feature);
+      const labelOrder = index + 1;
+
+      // Fast path: no active transitions — only stamp identity
+      if (!hasActiveTransitions) {
+        const cached = prevCache.get(markerKey);
+        if (
+          cached &&
+          cached.id === markerKey &&
+          cached.properties.labelOrder === labelOrder &&
+          cached.properties.pinTransitionActive == null &&
+          cached.properties.restaurantId === feature.properties.restaurantId &&
+          cached.properties.rank === feature.properties.rank
+        ) {
+          nextCache.set(markerKey, cached);
+          return cached;
+        }
+        if (
+          feature.id === markerKey &&
+          feature.properties.labelOrder === labelOrder &&
+          feature.properties.pinTransitionActive == null
+        ) {
+          nextCache.set(markerKey, feature);
+          return feature;
+        }
+        didChange = true;
+        const stamped = {
+          ...feature,
+          id: markerKey,
+          properties: { ...feature.properties, labelOrder },
+        };
+        nextCache.set(markerKey, stamped);
+        return stamped;
+      }
+
+      // Slow path: check transition state for this feature
+      const isFeatureTransitioning =
+        state.pendingPromoteDelayByMarkerKey.has(markerKey) ||
+        immediatePromotionStartedAtByMarkerKey.has(markerKey) ||
+        state.promoteStartedAtByMarkerKey.has(markerKey);
+
+      if (!isFeatureTransitioning) {
+        const cached = prevCache.get(markerKey);
+        if (
+          cached &&
+          cached.id === markerKey &&
+          cached.properties.labelOrder === labelOrder &&
+          cached.properties.pinTransitionActive == null &&
+          cached.properties.restaurantId === feature.properties.restaurantId &&
+          cached.properties.rank === feature.properties.rank
+        ) {
+          nextCache.set(markerKey, cached);
+          return cached;
+        }
+        const matchesIdentity =
+          feature.id === markerKey && feature.properties.labelOrder === labelOrder;
+        if (matchesIdentity && feature.properties.pinTransitionActive == null) {
+          nextCache.set(markerKey, feature);
+          return feature;
+        }
+        didChange = true;
+        const stamped = {
+          ...feature,
+          id: markerKey,
+          properties: { ...feature.properties, labelOrder },
+        };
+        nextCache.set(markerKey, stamped);
+        return stamped;
+      }
+
+      // Transitioning feature — full computation
+      const pendingPromoteDelayMs = state.pendingPromoteDelayByMarkerKey.get(markerKey);
+      const immediatePromoteStartedAtMs = immediatePromotionStartedAtByMarkerKey.get(markerKey);
+      const transitionVisual =
+        typeof pendingPromoteDelayMs === 'number'
+          ? START_PIN_TRANSITION_VISUAL
+          : typeof immediatePromoteStartedAtMs === 'number'
+          ? getPinTransitionVisual(immediatePromoteStartedAtMs, transitionNowMs, 'promote')
+          : getPinTransitionVisual(
+              state.promoteStartedAtByMarkerKey.get(markerKey),
+              transitionNowMs,
+              'promote'
+            );
+      const hasTransitionProps =
+        feature.properties.pinTransitionActive != null ||
+        feature.properties.pinTransitionOpacity != null ||
+        feature.properties.pinRankOpacity != null ||
+        feature.properties.pinLabelOpacity != null;
+
+      const matchesIdentity =
+        feature.id === markerKey && feature.properties.labelOrder === labelOrder;
+      const shouldUseNativeLabelFadeForPromote =
+        ENABLE_NATIVE_LABEL_FADE_FOR_MOVING_PROMOTES &&
+        isMapMovingRef.current &&
+        state.promoteStartedAtByMarkerKey.has(markerKey);
+      const effectiveLabelOpacity = shouldUseNativeLabelFadeForPromote
+        ? undefined
+        : batchOpacity < 1
+        ? batchOpacity
+        : transitionVisual.active === 0
+        ? undefined
+        : transitionVisual.labelOpacity;
+      const effectiveActive = batchDismissActive ? 1 : transitionVisual.active;
+      const effectiveOpacity = batchDismissActive ? batchOpacity : transitionVisual.opacity;
+      const effectiveRankOpacity = batchDismissActive ? batchOpacity : transitionVisual.rankOpacity;
+      const matchesTransition =
+        feature.properties.pinTransitionActive === effectiveActive &&
+        feature.properties.pinTransitionOpacity === effectiveOpacity &&
+        feature.properties.pinRankOpacity === effectiveRankOpacity &&
+        feature.properties.pinLabelOpacity === effectiveLabelOpacity;
+
+      if (
+        matchesIdentity &&
+        ((effectiveActive === 0 && !hasTransitionProps && batchOpacity >= 1) || matchesTransition)
+      ) {
+        nextCache.set(markerKey, feature);
+        return feature;
+      }
+      didChange = true;
+      const built = {
+        ...feature,
+        id: markerKey,
+        properties: {
+          ...feature.properties,
+          labelOrder,
+          pinTransitionActive: effectiveActive === 0 ? undefined : effectiveActive,
+          pinTransitionOpacity: effectiveActive === 0 ? undefined : effectiveOpacity,
+          pinRankOpacity: effectiveActive === 0 ? undefined : effectiveRankOpacity,
+          pinLabelOpacity: effectiveLabelOpacity,
+        },
+      };
+      nextCache.set(markerKey, built);
+      return built;
+    });
+
+    previousLabelFeatureByKeyRef.current = nextCache;
+
+    if (!didChange) {
+      labelFeatureBuildDurationMsRef.current = getNowMs() - buildStartedAtMs;
+      return restaurantFeatures;
+    }
+
+    const nextCollection = { ...restaurantFeatures, features: nextFeatures };
+    labelFeatureBuildDurationMsRef.current = getNowMs() - buildStartedAtMs;
+    return nextCollection;
+  }, [
     batchOpacity,
     batchDismissActive,
-    batchDismissPinFeatures: batch?.direction === 'dismiss' ? batch.pinFeatures : [],
-    promoteStartedAtByMarkerKey: state.promoteStartedAtByMarkerKey,
-    pendingPromoteDelayByMarkerKey: state.pendingPromoteDelayByMarkerKey,
+    buildMarkerKey,
     immediatePromotionStartedAtByMarkerKey,
-    demotionTransitions,
+    restaurantFeatures,
+    state,
+    transitionRenderVersion,
+  ]);
+
+  // Perf attribution for pin feature build.
+  React.useEffect(() => {
+    const durationMs = labelFeatureBuildDurationMsRef.current;
+    if (durationMs == null) {
+      return;
+    }
+    mapQueryBudget?.recordRuntimeAttributionDurationMs('map_label_bootstrap', durationMs);
+    labelFeatureBuildDurationMsRef.current = null;
+  }, [mapQueryBudget, restaurantLabelFeaturesWithIds]);
+
+  const demotionTransitionFeatures = React.useMemo<
+    FeatureCollection<Point, RestaurantFeatureProperties>
+  >(() => {
+    const transitionNowMs =
+      transitionClockMsRef.current > 0 ? transitionClockMsRef.current : getNowMs();
+    const features: Array<Feature<Point, RestaurantFeatureProperties>> = [];
+
+    demotionTransitions.forEach(({ markerKey, startedAtMs, feature }) => {
+      const transitionVisual = getPinTransitionVisual(startedAtMs, transitionNowMs, 'demote');
+      if (transitionVisual.active === 0) {
+        return;
+      }
+      features.push({
+        ...feature,
+        id: markerKey,
+        properties: {
+          ...feature.properties,
+          pinTransitionActive: transitionVisual.active,
+          pinTransitionOpacity: transitionVisual.opacity,
+          pinRankOpacity: transitionVisual.rankOpacity,
+          pinLabelOpacity: transitionVisual.labelOpacity,
+        },
+      });
+    });
+
+    return { type: 'FeatureCollection' as const, features };
+  }, [demotionTransitions]);
+
+  // Merge promoted/steady + demotion + batch dismiss into one FeatureCollection.
+  const effectivePinFeatures = React.useMemo<
+    FeatureCollection<Point, RestaurantFeatureProperties>
+  >(() => {
+    const hasDemotions = demotionTransitionFeatures.features.length > 0;
+    const hasBatchDismiss = styledDismissPinFeatures.length > 0;
+    if (!hasDemotions && !hasBatchDismiss) {
+      return restaurantLabelFeaturesWithIds;
+    }
+    return {
+      ...restaurantLabelFeaturesWithIds,
+      features: [
+        ...restaurantLabelFeaturesWithIds.features,
+        ...demotionTransitionFeatures.features,
+        ...styledDismissPinFeatures,
+      ],
+    };
+  }, [styledDismissPinFeatures, demotionTransitionFeatures, restaurantLabelFeaturesWithIds]);
+
+  return {
+    batchOpacity,
+    batchDismissActive,
+    // Controller-owned features: the hook decides what to render and when.
+    effectiveDotFeatures,
+    dotsAreHeld,
+    effectivePinFeatures,
     demotingRestaurantIdList,
     hasPendingPromotions,
     hasStartedPromotions,
@@ -2098,44 +2385,31 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const visualReadyAwaitingPinTransitionStartRef = React.useRef(false);
   const isMapMovingRef = React.useRef(false);
   const {
-    transitionClockMsRef: pinTransitionClockMsRef,
-    transitionRenderVersion,
     batchOpacity,
     batchDismissActive,
-    batchDismissPinFeatures,
-    promoteStartedAtByMarkerKey,
-    pendingPromoteDelayByMarkerKey,
-    immediatePromotionStartedAtByMarkerKey,
-    demotionTransitions,
+    effectiveDotFeatures,
+    dotsAreHeld,
+    effectivePinFeatures,
     demotingRestaurantIdList,
     hasPendingPromotions,
     hasStartedPromotions,
     isAwaitingInitialRevealStart,
   } = usePinTransitionController({
     sortedRestaurantMarkers: transitionSortedRestaurantMarkers,
+    dotRestaurantFeatures,
+    restaurantFeatures,
     pinsRenderKey,
     markerRevealCommitId,
     buildMarkerKey,
     pinnedDotKeys,
     suppressTransitions: false,
     isMapMovingRef,
+    mapQueryBudget,
   });
-  // Hold dot features so they can fade out during batch dismiss.
-  // We can't gate on batchDismissActive alone because the layout effect that
-  // sets it runs AFTER this render — the ShapeSource would already get empty data.
-  // Instead, always hold the last non-empty snapshot and release when settled.
-  const lastDotFeaturesRef = React.useRef(dotRestaurantFeatures);
-  if (dotRestaurantFeatures && dotRestaurantFeatures.features.length > 0) {
-    lastDotFeaturesRef.current = dotRestaurantFeatures;
-  } else if (batchOpacity >= 1 && !batchDismissActive) {
-    lastDotFeaturesRef.current = null;
-  }
-  const dotsAreEmpty = !dotRestaurantFeatures || dotRestaurantFeatures.features.length === 0;
-  const effectiveDotFeatures = dotsAreEmpty && lastDotFeaturesRef.current
-    ? lastDotFeaturesRef.current
-    : dotRestaurantFeatures;
-  const shouldRenderDotsOrDismiss = shouldRenderDots ||
-    (dotsAreEmpty && lastDotFeaturesRef.current != null);
+  // The hook owns the dot feature lifecycle: it holds the last non-empty
+  // snapshot during dismiss so dots fade out with batchOpacity instead of
+  // vanishing. shouldRenderDotsOrDismiss extends rendering while held.
+  const shouldRenderDotsOrDismiss = shouldRenderDots || dotsAreHeld;
   const shouldHidePinnedDots = true;
   const hiddenDotRestaurantIdList = React.useMemo(() => {
     // During batch dismiss, dots fade out via batchOpacity — don't hide them
@@ -2221,12 +2495,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         ],
       ],
     } as MapboxGL.SymbolLayerStyle;
-  }, [
-    batchOpacity,
-    effectiveSelectedRestaurantId,
-    stableHiddenDotRestaurantIdList,
-    scoreMode,
-  ]);
+  }, [batchOpacity, effectiveSelectedRestaurantId, stableHiddenDotRestaurantIdList, scoreMode]);
   const [mapViewportSize, setMapViewportSize] = React.useState<{ width: number; height: number }>({
     width: 0,
     height: 0,
@@ -2384,261 +2653,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     setLabelStickyEpoch((value) => value + 1);
   }, [shouldRenderLabels, styleURL, visualReadyRequestKey]);
 
-  const labelFeatureBuildDurationMsRef = React.useRef<number | null>(null);
-  const previousLabelFeatureByKeyRef = React.useRef(
-    new Map<string, Feature<Point, RestaurantFeatureProperties>>()
-  );
-  const restaurantLabelFeaturesWithIds = React.useMemo(() => {
-    const buildStartedAtMs = getNowMs();
-    if (!restaurantFeatures.features.length) {
-      previousLabelFeatureByKeyRef.current.clear();
-      labelFeatureBuildDurationMsRef.current = getNowMs() - buildStartedAtMs;
-      return restaurantFeatures;
-    }
-
-    const hasActiveTransitions =
-      promoteStartedAtByMarkerKey.size > 0 ||
-      pendingPromoteDelayByMarkerKey.size > 0 ||
-      immediatePromotionStartedAtByMarkerKey.size > 0;
-    const transitionNowMs =
-      pinTransitionClockMsRef.current > 0 ? pinTransitionClockMsRef.current : getNowMs();
-    // Log removed — use layout effect logs to trace transition lifecycle.
-    let didChange = false;
-    const prevCache = previousLabelFeatureByKeyRef.current;
-    const nextCache = new Map<string, Feature<Point, RestaurantFeatureProperties>>();
-
-    const nextFeatures = restaurantFeatures.features.map((feature, index) => {
-      const markerKey = buildMarkerKey(feature);
-      const labelOrder = index + 1;
-
-      // Fast path: no active transitions — only stamp identity
-      if (!hasActiveTransitions) {
-        const cached = prevCache.get(markerKey);
-        if (
-          cached &&
-          cached.id === markerKey &&
-          cached.properties.labelOrder === labelOrder &&
-          cached.properties.pinTransitionActive == null &&
-          cached.properties.restaurantId === feature.properties.restaurantId &&
-          cached.properties.rank === feature.properties.rank
-        ) {
-          nextCache.set(markerKey, cached);
-          return cached;
-        }
-        if (
-          feature.id === markerKey &&
-          feature.properties.labelOrder === labelOrder &&
-          feature.properties.pinTransitionActive == null
-        ) {
-          nextCache.set(markerKey, feature);
-          return feature;
-        }
-        didChange = true;
-        const stamped = {
-          ...feature,
-          id: markerKey,
-          properties: { ...feature.properties, labelOrder },
-        };
-        nextCache.set(markerKey, stamped);
-        return stamped;
-      }
-
-      // Slow path: check transition state for this feature
-      const isFeatureTransitioning =
-        pendingPromoteDelayByMarkerKey.has(markerKey) ||
-        immediatePromotionStartedAtByMarkerKey.has(markerKey) ||
-        promoteStartedAtByMarkerKey.has(markerKey);
-
-      if (!isFeatureTransitioning) {
-        // Steady feature — reuse cached if identity matches
-        const cached = prevCache.get(markerKey);
-        if (
-          cached &&
-          cached.id === markerKey &&
-          cached.properties.labelOrder === labelOrder &&
-          cached.properties.pinTransitionActive == null &&
-          cached.properties.restaurantId === feature.properties.restaurantId &&
-          cached.properties.rank === feature.properties.rank
-        ) {
-          nextCache.set(markerKey, cached);
-          return cached;
-        }
-        const matchesIdentity =
-          feature.id === markerKey && feature.properties.labelOrder === labelOrder;
-        if (matchesIdentity && feature.properties.pinTransitionActive == null) {
-          nextCache.set(markerKey, feature);
-          return feature;
-        }
-        didChange = true;
-        const stamped = {
-          ...feature,
-          id: markerKey,
-          properties: { ...feature.properties, labelOrder },
-        };
-        nextCache.set(markerKey, stamped);
-        return stamped;
-      }
-
-      // Transitioning feature — full computation
-      const pendingPromoteDelayMs = pendingPromoteDelayByMarkerKey.get(markerKey);
-      const immediatePromoteStartedAtMs = immediatePromotionStartedAtByMarkerKey.get(markerKey);
-      const transitionVisual =
-        typeof pendingPromoteDelayMs === 'number'
-          ? START_PIN_TRANSITION_VISUAL
-          : typeof immediatePromoteStartedAtMs === 'number'
-          ? getPinTransitionVisual(immediatePromoteStartedAtMs, transitionNowMs, 'promote')
-          : getPinTransitionVisual(
-              promoteStartedAtByMarkerKey.get(markerKey),
-              transitionNowMs,
-              'promote'
-            );
-      const hasTransitionProps =
-        feature.properties.pinTransitionActive != null ||
-        feature.properties.pinTransitionOpacity != null ||
-        feature.properties.pinRankOpacity != null ||
-        feature.properties.pinLabelOpacity != null;
-
-      const matchesIdentity =
-        feature.id === markerKey && feature.properties.labelOrder === labelOrder;
-      const shouldUseNativeLabelFadeForPromote =
-        ENABLE_NATIVE_LABEL_FADE_FOR_MOVING_PROMOTES &&
-        isMapMovingRef.current &&
-        promoteStartedAtByMarkerKey.has(markerKey);
-      const effectiveLabelOpacity = shouldUseNativeLabelFadeForPromote
-        ? undefined
-        : batchOpacity < 1
-        ? batchOpacity
-        : transitionVisual.active === 0
-        ? undefined
-        : transitionVisual.labelOpacity;
-      const effectiveActive = batchDismissActive ? 1 : transitionVisual.active;
-      const effectiveOpacity = batchDismissActive ? batchOpacity : transitionVisual.opacity;
-      const effectiveRankOpacity = batchDismissActive ? batchOpacity : transitionVisual.rankOpacity;
-      const matchesTransition =
-        feature.properties.pinTransitionActive === effectiveActive &&
-        feature.properties.pinTransitionOpacity === effectiveOpacity &&
-        feature.properties.pinRankOpacity === effectiveRankOpacity &&
-        feature.properties.pinLabelOpacity === effectiveLabelOpacity;
-
-      if (
-        matchesIdentity &&
-        ((effectiveActive === 0 && !hasTransitionProps && batchOpacity >= 1) ||
-          matchesTransition)
-      ) {
-        nextCache.set(markerKey, feature);
-        return feature;
-      }
-      didChange = true;
-      const built = {
-        ...feature,
-        id: markerKey,
-        properties: {
-          ...feature.properties,
-          labelOrder,
-          pinTransitionActive: effectiveActive === 0 ? undefined : effectiveActive,
-          pinTransitionOpacity: effectiveActive === 0 ? undefined : effectiveOpacity,
-          pinRankOpacity: effectiveActive === 0 ? undefined : effectiveRankOpacity,
-          pinLabelOpacity: effectiveLabelOpacity,
-        },
-      };
-      nextCache.set(markerKey, built);
-      return built;
-    });
-
-    previousLabelFeatureByKeyRef.current = nextCache;
-
-    if (!didChange) {
-      labelFeatureBuildDurationMsRef.current = getNowMs() - buildStartedAtMs;
-      return restaurantFeatures;
-    }
-
-    const nextCollection = { ...restaurantFeatures, features: nextFeatures };
-    labelFeatureBuildDurationMsRef.current = getNowMs() - buildStartedAtMs;
-    return nextCollection;
-  }, [
-    batchOpacity,
-    batchDismissActive,
-    buildMarkerKey,
-    immediatePromotionStartedAtByMarkerKey,
-    pendingPromoteDelayByMarkerKey,
-    promoteStartedAtByMarkerKey,
-    restaurantFeatures,
-    transitionRenderVersion,
-  ]);
-  React.useEffect(() => {
-    const durationMs = labelFeatureBuildDurationMsRef.current;
-    if (durationMs == null) {
-      return;
-    }
-    recordRuntimeAttribution(durationMs);
-    labelFeatureBuildDurationMsRef.current = null;
-  }, [recordRuntimeAttribution, restaurantLabelFeaturesWithIds]);
-  const demotionTransitionFeatures = React.useMemo<
-    FeatureCollection<Point, RestaurantFeatureProperties>
-  >(() => {
-    const transitionNowMs =
-      pinTransitionClockMsRef.current > 0 ? pinTransitionClockMsRef.current : getNowMs();
-    const features: Array<Feature<Point, RestaurantFeatureProperties>> = [];
-
-    demotionTransitions.forEach(({ markerKey, startedAtMs, feature }) => {
-      const transitionVisual = getPinTransitionVisual(startedAtMs, transitionNowMs, 'demote');
-      if (transitionVisual.active === 0) {
-        return;
-      }
-      features.push({
-        ...feature,
-        id: markerKey,
-        properties: {
-          ...feature.properties,
-          pinTransitionActive: transitionVisual.active,
-          pinTransitionOpacity: transitionVisual.opacity,
-          pinRankOpacity: transitionVisual.rankOpacity,
-          pinLabelOpacity: transitionVisual.labelOpacity,
-        },
-      });
-    });
-
-    const nextFeatures = {
-      type: 'FeatureCollection' as const,
-      features,
-    };
-    return nextFeatures;
-  }, [demotionTransitions]);
-  // Build batch dismiss pin features with fading opacity
-  const batchDismissFeaturesWithOpacity = React.useMemo<
-    Array<Feature<Point, RestaurantFeatureProperties>>
-  >(() => {
-    if (!batchDismissActive || batchDismissPinFeatures.length === 0) return [];
-    return batchDismissPinFeatures.map((feature) => ({
-      ...feature,
-      properties: {
-        ...feature.properties,
-        pinTransitionActive: 1,
-        pinTransitionOpacity: batchOpacity,
-        pinRankOpacity: batchOpacity,
-        pinLabelOpacity: batchOpacity,
-      },
-    }));
-  }, [batchDismissActive, batchDismissPinFeatures, batchOpacity]);
-
-  const stylePinFeaturesWithTransitions = React.useMemo<
-    FeatureCollection<Point, RestaurantFeatureProperties>
-  >(() => {
-    const hasDemotions = demotionTransitionFeatures.features.length > 0;
-    const hasBatchDismiss = batchDismissFeaturesWithOpacity.length > 0;
-    if (!hasDemotions && !hasBatchDismiss) {
-      return restaurantLabelFeaturesWithIds;
-    }
-    return {
-      ...restaurantLabelFeaturesWithIds,
-      features: [
-        ...restaurantLabelFeaturesWithIds.features,
-        ...demotionTransitionFeatures.features,
-        ...batchDismissFeaturesWithOpacity,
-      ],
-    };
-  }, [batchDismissFeaturesWithOpacity, demotionTransitionFeatures, restaurantLabelFeaturesWithIds]);
-
   // ---------------------------------------------------------------------------
   // Bridge-serialization-optimized sources (Phase 8)
   // Strip unnecessary properties to reduce native bridge payload.
@@ -2654,11 +2668,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const collisionSourceFeatures = React.useMemo<
     FeatureCollection<Point, RestaurantFeatureProperties>
   >(() => {
-    const features = stylePinFeaturesWithTransitions.features;
+    const features = effectivePinFeatures.features;
     if (!features.length) {
       prevCollisionIdentityRef.current = '';
-      prevCollisionFeaturesRef.current = stylePinFeaturesWithTransitions;
-      return stylePinFeaturesWithTransitions;
+      prevCollisionFeaturesRef.current = effectivePinFeatures;
+      return effectivePinFeatures;
     }
     // Identity = feature IDs. Only rebuild when the set of features changes,
     // not when transition visual properties (opacity) change mid-tick.
@@ -2683,7 +2697,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     };
     prevCollisionFeaturesRef.current = built;
     return built;
-  }, [stylePinFeaturesWithTransitions]);
+  }, [effectivePinFeatures]);
 
   // Dot interaction source — minimal properties for press handling
   const dotInteractionFeatures = React.useMemo<FeatureCollection<
@@ -2715,7 +2729,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     shouldDisableMarkers,
     shouldRenderLabels,
     viewport: { width: mapViewportSize.width, height: mapViewportSize.height },
-    markerCount: stylePinFeaturesWithTransitions.features.length,
+    markerCount: effectivePinFeatures.features.length,
   };
 
   React.useEffect(() => {
@@ -2739,14 +2753,14 @@ const SearchMap: React.FC<SearchMapProps> = ({
     if (mapViewportSize.width <= 0 || mapViewportSize.height <= 0) {
       return;
     }
-    if (stylePinFeaturesWithTransitions.features.length > 0) {
+    if (effectivePinFeatures.features.length > 0) {
       setLabelStickyMarkersReadyAt(Date.now());
     }
   }, [
     labelStickyMarkersReadyAt,
     mapViewportSize.height,
     mapViewportSize.width,
-    stylePinFeaturesWithTransitions.features.length,
+    effectivePinFeatures.features.length,
     shouldRenderLabels,
     styleURL,
   ]);
@@ -2822,11 +2836,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
   > | null>(null);
 
   const restaurantLabelCandidateFeaturesWithIds = React.useMemo(() => {
-    if (!stylePinFeaturesWithTransitions.features.length) {
+    if (!effectivePinFeatures.features.length) {
       labelMarkerIdentityKeyRef.current = '';
       labelCandidateAppliedStickyEpochRef.current = labelStickyEpoch;
       previousLabelCandidateCollectionRef.current = null;
-      return stylePinFeaturesWithTransitions as FeatureCollection<
+      return effectivePinFeatures as FeatureCollection<
         Point,
         RestaurantFeatureProperties
       >;
@@ -2834,7 +2848,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
     // Compute marker identity fingerprint (keys + order only)
     let identityKey = '';
-    for (const feature of stylePinFeaturesWithTransitions.features) {
+    for (const feature of effectivePinFeatures.features) {
       const markerKey = feature.id;
       if (typeof markerKey === 'string' && markerKey.length > 0) {
         identityKey += markerKey + ',';
@@ -2857,7 +2871,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       const prevFeatures = previousLabelCandidateCollectionRef.current!.features;
       const srcByKey = new Map<string, Feature<Point, RestaurantFeatureProperties>>();
       const srcByRestaurantId = new Map<string, Feature<Point, RestaurantFeatureProperties>>();
-      for (const feature of stylePinFeaturesWithTransitions.features) {
+      for (const feature of effectivePinFeatures.features) {
         const markerKey = feature.id;
         if (typeof markerKey === 'string') {
           srcByKey.set(markerKey, feature);
@@ -2938,7 +2952,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
       // While panning/zooming, newly promoted pins should still get immediate
       // label candidates without forcing a full global rebuild.
-      for (const feature of stylePinFeaturesWithTransitions.features) {
+      for (const feature of effectivePinFeatures.features) {
         const markerKey = feature.id;
         if (typeof markerKey !== 'string' || markerKey.length === 0) {
           continue;
@@ -2983,7 +2997,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       updatedFeatures.sort(
         (a, b) => (a.properties.labelOrder ?? 9999) - (b.properties.labelOrder ?? 9999)
       );
-      const updated = { ...stylePinFeaturesWithTransitions, features: updatedFeatures };
+      const updated = { ...effectivePinFeatures, features: updatedFeatures };
       labelCandidateAppliedStickyEpochRef.current = labelStickyEpoch;
       previousLabelCandidateCollectionRef.current = updated;
       return updated;
@@ -2993,7 +3007,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     labelMarkerIdentityKeyRef.current = identityKey;
     const nextFeatures: Array<Feature<Point, RestaurantFeatureProperties>> = [];
     // Iterate in source order (already sorted by rank/priority from upstream).
-    for (const feature of stylePinFeaturesWithTransitions.features) {
+    for (const feature of effectivePinFeatures.features) {
       const markerKey = feature.id;
       if (typeof markerKey !== 'string' || markerKey.length === 0) {
         continue;
@@ -3018,11 +3032,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
     nextFeatures.sort(
       (a, b) => (a.properties.labelOrder ?? 9999) - (b.properties.labelOrder ?? 9999)
     );
-    const collection = { ...stylePinFeaturesWithTransitions, features: nextFeatures };
+    const collection = { ...effectivePinFeatures, features: nextFeatures };
     labelCandidateAppliedStickyEpochRef.current = labelStickyEpoch;
     previousLabelCandidateCollectionRef.current = collection;
     return collection;
-  }, [labelStickyEpoch, stylePinFeaturesWithTransitions]);
+  }, [labelStickyEpoch, effectivePinFeatures]);
 
   const restaurantLabelStyleWithStableOrder = React.useMemo(() => {
     if (!STABILIZE_LABEL_ORDER) {
@@ -4559,8 +4573,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
             key={`style-pins-source-${pinLayerTreeEpoch}`}
             id={STYLE_PINS_SOURCE_ID}
             shape={
-              shouldRenderStagedPins && stylePinFeaturesWithTransitions.features.length > 0
-                ? stylePinFeaturesWithTransitions
+              shouldRenderStagedPins && effectivePinFeatures.features.length > 0
+                ? effectivePinFeatures
                 : EMPTY_POINT_FEATURES
             }
           >
@@ -4572,8 +4586,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
             key={`pin-interaction-source-${pinLayerTreeEpoch}`}
             id={PIN_INTERACTION_SOURCE_ID}
             shape={
-              shouldRenderStagedPins && stylePinFeaturesWithTransitions.features.length > 0
-                ? stylePinFeaturesWithTransitions
+              shouldRenderStagedPins && effectivePinFeatures.features.length > 0
+                ? effectivePinFeatures
                 : EMPTY_POINT_FEATURES
             }
             onPress={handleStylePinPress}

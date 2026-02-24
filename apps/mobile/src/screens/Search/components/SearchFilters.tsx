@@ -1,15 +1,17 @@
 import React from 'react';
 import {
   Dimensions,
-  Pressable,
   StyleSheet,
   View,
   type LayoutChangeEvent,
   type LayoutRectangle,
 } from 'react-native';
 import { ChevronDown, ChevronUp } from 'lucide-react-native';
+import { Gesture, GestureDetector, Pressable } from 'react-native-gesture-handler';
 import Reanimated, {
   Easing,
+  interpolate,
+  runOnJS,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
@@ -37,12 +39,16 @@ const PRICE_TOGGLE_RIGHT_PADDING = Math.max(0, TOGGLE_HORIZONTAL_PADDING - 3);
 const STRIP_BACKGROUND_HEIGHT = 14;
 const DEFAULT_VIEWPORT_WIDTH = Dimensions.get('window').width;
 
-const SEGMENT_TRANSITION_MS = 170;
-const SEGMENT_TRANSITION_EASING = Easing.out(Easing.cubic);
-const SEGMENT_TRANSITION_CONFIG = {
-  duration: SEGMENT_TRANSITION_MS,
-  easing: SEGMENT_TRANSITION_EASING,
-} as const;
+const SEGMENT_TRAVEL_MIN_MS = 70;
+const SEGMENT_TRAVEL_FULL_MS = 210;
+const SEGMENT_TRAVEL_EASING = Easing.linear;
+const SEGMENT_COMMIT_SETTLE_MS = 120;
+
+const resolveSegmentTravelDurationMs = (from: number, to: number): number => {
+  'worklet';
+  const distance = Math.abs(to - from);
+  return Math.max(SEGMENT_TRAVEL_MIN_MS, Math.round(distance * SEGMENT_TRAVEL_FULL_MS));
+};
 const getNextSegmentValue = (value: SegmentValue): SegmentValue =>
   value === 'restaurants' ? 'dishes' : 'restaurants';
 
@@ -140,54 +146,50 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     initialLayoutCache?.segmentLayouts ? { ...initialLayoutCache.segmentLayouts } : {}
   );
   const interactionTabRef = React.useRef<SegmentValue>(activeTab);
+  const commitSeqRef = React.useRef(0);
+  const commitTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingCommitTabRef = React.useRef<SegmentValue>(activeTab);
+  const hasSyncedFromExternalTabRef = React.useRef(false);
   const [segmentLayoutsVersion, setSegmentLayoutsVersion] = React.useState(0);
-  const initialActiveLayout = segmentLayoutsRef.current[activeTab];
-  const highlightReadyRef = React.useRef(
-    Boolean(initialActiveLayout && initialActiveLayout.width > 0)
+  const initialRestaurantLayout = segmentLayoutsRef.current.restaurants;
+  const initialDishesLayout = segmentLayoutsRef.current.dishes;
+  const initialSegmentLayoutReady = Boolean(
+    initialRestaurantLayout?.width &&
+      initialRestaurantLayout.width > 0 &&
+      initialDishesLayout?.width &&
+      initialDishesLayout.width > 0
   );
 
   const inset = contentHorizontalPadding;
   const scrollX = useSharedValue(0);
-  const highlightTranslateX = useSharedValue(initialActiveLayout?.x ?? 0);
-  const highlightWidth = useSharedValue(initialActiveLayout?.width ?? 0);
   const segmentSelectionProgress = useSharedValue(activeTab === 'restaurants' ? 0 : 1);
+  const segmentTargetProgress = useSharedValue(activeTab === 'restaurants' ? 0 : 1);
+  const restaurantSegmentX = useSharedValue(initialRestaurantLayout?.x ?? 0);
+  const restaurantSegmentWidth = useSharedValue(initialRestaurantLayout?.width ?? 0);
+  const dishesSegmentX = useSharedValue(initialDishesLayout?.x ?? 0);
+  const dishesSegmentWidth = useSharedValue(initialDishesLayout?.width ?? 0);
+  const segmentLayoutReady = useSharedValue(initialSegmentLayoutReady ? 1 : 0);
 
   const onScroll = useAnimatedScrollHandler((event) => {
     scrollX.value = event.contentOffset.x;
   });
 
-  const updateSegmentHighlight = React.useCallback(
-    (value: SegmentValue, animated: boolean): boolean => {
-      const layout = segmentLayoutsRef.current[value];
-      if (!layout) {
-        return false;
-      }
-      if (animated) {
-        highlightTranslateX.value = withTiming(layout.x, SEGMENT_TRANSITION_CONFIG);
-        highlightWidth.value = withTiming(layout.width, SEGMENT_TRANSITION_CONFIG);
-        return true;
-      }
-      highlightTranslateX.value = layout.x;
-      highlightWidth.value = layout.width;
-      return true;
-    },
-    [highlightTranslateX, highlightWidth]
-  );
   const animateSegmentSelection = React.useCallback(
     (value: SegmentValue, animated: boolean) => {
-      const didUpdate = updateSegmentHighlight(value, animated);
       const targetProgress = value === 'restaurants' ? 0 : 1;
+      const fromProgress = segmentSelectionProgress.value;
+      const durationMs = resolveSegmentTravelDurationMs(fromProgress, targetProgress);
+      segmentTargetProgress.value = targetProgress;
       if (animated) {
-        segmentSelectionProgress.value = withTiming(targetProgress, SEGMENT_TRANSITION_CONFIG);
+        segmentSelectionProgress.value = withTiming(targetProgress, {
+          duration: durationMs,
+          easing: SEGMENT_TRAVEL_EASING,
+        });
       } else {
         segmentSelectionProgress.value = targetProgress;
       }
-      if (didUpdate && !highlightReadyRef.current) {
-        highlightReadyRef.current = true;
-      }
-      return didUpdate;
     },
-    [segmentSelectionProgress, updateSegmentHighlight]
+    [segmentSelectionProgress, segmentTargetProgress]
   );
 
   const registerSegmentLayout = React.useCallback(
@@ -198,12 +200,32 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
         return;
       }
       segmentLayoutsRef.current[value] = layout;
-      setSegmentLayoutsVersion((prevVersion) => prevVersion + 1);
-      if (value === activeTab) {
-        animateSegmentSelection(value, highlightReadyRef.current);
+      if (value === 'restaurants') {
+        restaurantSegmentX.value = layout.x;
+        restaurantSegmentWidth.value = layout.width;
+      } else {
+        dishesSegmentX.value = layout.x;
+        dishesSegmentWidth.value = layout.width;
       }
+      const nextRestaurantLayout = segmentLayoutsRef.current.restaurants;
+      const nextDishesLayout = segmentLayoutsRef.current.dishes;
+      if (
+        nextRestaurantLayout?.width &&
+        nextRestaurantLayout.width > 0 &&
+        nextDishesLayout?.width &&
+        nextDishesLayout.width > 0
+      ) {
+        segmentLayoutReady.value = 1;
+      }
+      setSegmentLayoutsVersion((prevVersion) => prevVersion + 1);
     },
-    [activeTab, animateSegmentSelection]
+    [
+      dishesSegmentWidth,
+      dishesSegmentX,
+      restaurantSegmentWidth,
+      restaurantSegmentX,
+      segmentLayoutReady,
+    ]
   );
 
   const registerHole = React.useCallback(
@@ -255,9 +277,21 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     [holes, inset, overscrollMargin]
   );
   const highlightAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: highlightWidth.value > 0 ? 1 : 0,
-    transform: [{ translateX: highlightTranslateX.value }],
-    width: highlightWidth.value,
+    opacity: segmentLayoutReady.value,
+    transform: [
+      {
+        translateX: interpolate(
+          segmentSelectionProgress.value,
+          [0, 1],
+          [restaurantSegmentX.value, dishesSegmentX.value]
+        ),
+      },
+    ],
+    width: interpolate(
+      segmentSelectionProgress.value,
+      [0, 1],
+      [restaurantSegmentWidth.value, dishesSegmentWidth.value]
+    ),
   }));
   const restaurantsLabelLightStyle = useAnimatedStyle(() => ({
     opacity: 1 - segmentSelectionProgress.value,
@@ -273,15 +307,89 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   }));
 
   React.useEffect(() => {
+    if (!hasSyncedFromExternalTabRef.current) {
+      interactionTabRef.current = activeTab;
+      pendingCommitTabRef.current = activeTab;
+      animateSegmentSelection(activeTab, false);
+      hasSyncedFromExternalTabRef.current = true;
+      return;
+    }
+    if (activeTab === interactionTabRef.current) {
+      if (commitTimeoutRef.current) {
+        clearTimeout(commitTimeoutRef.current);
+        commitTimeoutRef.current = null;
+        commitSeqRef.current += 1;
+      }
+      pendingCommitTabRef.current = activeTab;
+      return;
+    }
+    if (commitTimeoutRef.current) {
+      clearTimeout(commitTimeoutRef.current);
+      commitTimeoutRef.current = null;
+    }
+    commitSeqRef.current += 1;
     interactionTabRef.current = activeTab;
-    animateSegmentSelection(activeTab, highlightReadyRef.current);
-  }, [activeTab, animateSegmentSelection]);
-  const handleSegmentTogglePress = React.useCallback(() => {
+    pendingCommitTabRef.current = activeTab;
+    animateSegmentSelection(activeTab, segmentLayoutReady.value > 0);
+  }, [activeTab, animateSegmentSelection, segmentLayoutReady]);
+  React.useEffect(
+    () => () => {
+      if (commitTimeoutRef.current) {
+        clearTimeout(commitTimeoutRef.current);
+        commitTimeoutRef.current = null;
+      }
+    },
+    []
+  );
+  const scheduleSegmentToggleCommit = React.useCallback(
+    (next: SegmentValue) => {
+      if (next === interactionTabRef.current) {
+        return;
+      }
+      interactionTabRef.current = next;
+      pendingCommitTabRef.current = next;
+      const nextSeq = commitSeqRef.current + 1;
+      commitSeqRef.current = nextSeq;
+      if (commitTimeoutRef.current) {
+        clearTimeout(commitTimeoutRef.current);
+        commitTimeoutRef.current = null;
+      }
+      commitTimeoutRef.current = setTimeout(() => {
+        if (commitSeqRef.current !== nextSeq) {
+          return;
+        }
+        onTabChange(pendingCommitTabRef.current);
+        commitTimeoutRef.current = null;
+      }, SEGMENT_COMMIT_SETTLE_MS);
+    },
+    [onTabChange]
+  );
+  const handleSegmentToggleAccessibility = React.useCallback(() => {
     const next = getNextSegmentValue(interactionTabRef.current);
-    interactionTabRef.current = next;
     animateSegmentSelection(next, true);
-    onTabChange(next);
-  }, [animateSegmentSelection, onTabChange]);
+    scheduleSegmentToggleCommit(next);
+  }, [animateSegmentSelection, scheduleSegmentToggleCommit]);
+  const segmentToggleTapGesture = React.useMemo(
+    () =>
+      Gesture.Tap()
+        .maxDuration(Number.MAX_SAFE_INTEGER)
+        .maxDistance(Number.MAX_SAFE_INTEGER)
+        .shouldCancelWhenOutside(false)
+        .onTouchesDown(() => {
+          const currentProgress = segmentSelectionProgress.value;
+          const nextTargetProgress = segmentTargetProgress.value === 0 ? 1 : 0;
+          const durationMs = resolveSegmentTravelDurationMs(currentProgress, nextTargetProgress);
+          segmentTargetProgress.value = nextTargetProgress;
+          segmentSelectionProgress.value = withTiming(nextTargetProgress, {
+            duration: durationMs,
+            easing: SEGMENT_TRAVEL_EASING,
+          });
+          runOnJS(scheduleSegmentToggleCommit)(
+            nextTargetProgress === 0 ? 'restaurants' : 'dishes'
+          );
+        }),
+    [scheduleSegmentToggleCommit, segmentSelectionProgress, segmentTargetProgress]
+  );
 
   React.useEffect(() => {
     if (!onLayoutCacheChange) {
@@ -367,67 +475,80 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                     />
                   )}
                 </Pressable>
-                <Pressable
-                  style={styles.segmentedControl}
-                  onLayout={registerHole('segment-group', TOGGLE_BORDER_RADIUS)}
-                  onPress={handleSegmentTogglePress}
-                  accessibilityRole="button"
-                  accessibilityLabel="Toggle results between restaurants and dishes"
-                  accessibilityHint="Double tap to switch result type"
-                >
-                  <Reanimated.View
-                    pointerEvents="none"
-                    style={[
-                      styles.segmentedHighlight,
-                      { backgroundColor: accentColor },
-                      highlightAnimatedStyle,
-                    ]}
-                  />
-                  {SEGMENT_OPTIONS.map((option) => {
-                    const lightLabelStyle =
-                      option.value === 'restaurants' ? restaurantsLabelLightStyle : dishesLabelLightStyle;
-                    const darkLabelStyle =
-                      option.value === 'restaurants' ? restaurantsLabelDarkStyle : dishesLabelDarkStyle;
-                    return (
-                      <View
-                        key={option.value}
-                        onLayout={registerSegmentLayout(option.value)}
-                        style={styles.segmentedOption}
-                      >
-                        <View style={styles.segmentedLabelStack}>
-                          <Text
-                            numberOfLines={1}
-                            variant="caption"
-                            weight="semibold"
-                            style={[styles.segmentedLabel, styles.segmentedLabelMeasure]}
-                          >
-                            {option.label}
-                          </Text>
-                          <Reanimated.View pointerEvents="none" style={[styles.segmentedLabelLayer, darkLabelStyle]}>
+                <GestureDetector gesture={segmentToggleTapGesture}>
+                  <View
+                    style={styles.segmentedControl}
+                    onLayout={registerHole('segment-group', TOGGLE_BORDER_RADIUS)}
+                    accessible
+                    accessibilityRole="button"
+                    accessibilityLabel="Toggle results between restaurants and dishes"
+                    accessibilityHint="Tap to switch result type"
+                    onAccessibilityTap={handleSegmentToggleAccessibility}
+                  >
+                    <Reanimated.View
+                      pointerEvents="none"
+                      style={[
+                        styles.segmentedHighlight,
+                        { backgroundColor: accentColor },
+                        highlightAnimatedStyle,
+                      ]}
+                    />
+                    {SEGMENT_OPTIONS.map((option) => {
+                      const lightLabelStyle =
+                        option.value === 'restaurants'
+                          ? restaurantsLabelLightStyle
+                          : dishesLabelLightStyle;
+                      const darkLabelStyle =
+                        option.value === 'restaurants'
+                          ? restaurantsLabelDarkStyle
+                          : dishesLabelDarkStyle;
+                      return (
+                        <View
+                          key={option.value}
+                          onLayout={registerSegmentLayout(option.value)}
+                          style={styles.segmentedOption}
+                        >
+                          <View style={styles.segmentedLabelStack}>
                             <Text
                               numberOfLines={1}
                               variant="caption"
                               weight="semibold"
-                              style={styles.segmentedLabel}
+                              style={[styles.segmentedLabel, styles.segmentedLabelMeasure]}
                             >
                               {option.label}
                             </Text>
-                          </Reanimated.View>
-                          <Reanimated.View pointerEvents="none" style={[styles.segmentedLabelLayer, lightLabelStyle]}>
-                            <Text
-                              numberOfLines={1}
-                              variant="caption"
-                              weight="semibold"
-                              style={[styles.segmentedLabel, styles.segmentedLabelActive]}
+                            <Reanimated.View
+                              pointerEvents="none"
+                              style={[styles.segmentedLabelLayer, darkLabelStyle]}
                             >
-                              {option.label}
-                            </Text>
-                          </Reanimated.View>
+                              <Text
+                                numberOfLines={1}
+                                variant="caption"
+                                weight="semibold"
+                                style={styles.segmentedLabel}
+                              >
+                                {option.label}
+                              </Text>
+                            </Reanimated.View>
+                            <Reanimated.View
+                              pointerEvents="none"
+                              style={[styles.segmentedLabelLayer, lightLabelStyle]}
+                            >
+                              <Text
+                                numberOfLines={1}
+                                variant="caption"
+                                weight="semibold"
+                                style={[styles.segmentedLabel, styles.segmentedLabelActive]}
+                              >
+                                {option.label}
+                              </Text>
+                            </Reanimated.View>
+                          </View>
                         </View>
-                      </View>
-                    );
-                  })}
-                </Pressable>
+                      );
+                    })}
+                  </View>
+                </GestureDetector>
                 <Pressable
                   onLayout={registerHole('toggle-open-now')}
                   onPress={onToggleOpenNow}

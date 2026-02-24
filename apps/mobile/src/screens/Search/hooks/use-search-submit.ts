@@ -566,6 +566,8 @@ const useSearchSubmit = ({
               visualSyncCandidateRequestKey: null,
               visualReadyRequestKey: null,
               markerRevealCommitId: null,
+              pendingTabSwitchTab: null,
+              pendingTabSwitchRequestKey: null,
             }
           : {};
       searchRuntimeBus.publish({
@@ -784,6 +786,8 @@ const useSearchSubmit = ({
       searchRuntimeBus.batch(() => {
         const laneAStatePatch: Partial<SearchRuntimeBusState> = {
           activeTab: targetTab,
+          pendingTabSwitchTab: null,
+          pendingTabSwitchRequestKey: null,
           isLoadingMore: false,
           submittedQuery: submittedLabel ?? searchRuntimeBus.getState().submittedQuery ?? '',
           isVisualSyncPending: false,
@@ -1095,8 +1099,11 @@ const useSearchSubmit = ({
           normalizedResponse.metadata.searchRequestId ??
           normalizedResponse.metadata.requestId ??
           `${runtimeTuple.mode}:${runtimeTuple.requestId}`;
+        const runtimeStateForPipeline = append ? searchRuntimeBus.getState() : null;
         const markerPipelineActiveTab =
-          (append ? searchRuntimeBus.getState().activeTab : initialUiState.targetTab) ?? 'dishes';
+          (append
+            ? runtimeStateForPipeline?.pendingTabSwitchTab ?? runtimeStateForPipeline?.activeTab
+            : initialUiState.targetTab) ?? 'dishes';
         const pipelineResult = computeMarkerPipeline({
           restaurants: mergedForPublish.restaurants ?? [],
           dishes: mergedForPublish.dishes ?? [],
@@ -1117,6 +1124,7 @@ const useSearchSubmit = ({
             precomputedCanonicalRestaurantRankById: pipelineResult.canonicalRestaurantRankById,
             precomputedRestaurantsById: pipelineResult.restaurantsById,
             precomputedMarkerResultsKey: pipelineResult.resultsKey,
+            precomputedMarkerActiveTab: markerPipelineActiveTab as 'dishes' | 'restaurants',
           });
         });
       }
@@ -1136,6 +1144,8 @@ const useSearchSubmit = ({
           searchMode: initialUiState.mode,
           isSearchSessionActive: true,
           activeTab: initialUiState.targetTab,
+          pendingTabSwitchTab: null,
+          pendingTabSwitchRequestKey: null,
         });
       });
       if (!append && normalizedResponse.metadata.page === 1) {
@@ -1193,7 +1203,11 @@ const useSearchSubmit = ({
                 resolvedActiveTab = computeTab(busActiveTab);
               }
               if (resolvedActiveTab != null) {
-                searchRuntimeBus.publish({ activeTab: resolvedActiveTab });
+                searchRuntimeBus.publish({
+                  activeTab: resolvedActiveTab,
+                  pendingTabSwitchTab: null,
+                  pendingTabSwitchRequestKey: null,
+                });
               }
 
               if (!singleRestaurantCandidate) {
