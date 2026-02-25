@@ -101,6 +101,7 @@ import { createMapQueryBudget } from './runtime/map/map-query-budget';
 import { useStableMapHandlers } from './runtime/map/use-stable-map-handlers';
 import { type ResultsListItem } from './runtime/read-models/read-model-selectors';
 import { useQueryMutationOrchestrator } from './runtime/mutations/query-mutation-orchestrator';
+import { useToggleInteractionCoordinator } from './runtime/mutations/use-toggle-interaction-coordinator';
 import { useProfileRuntimeController } from './runtime/profile/profile-runtime-controller';
 import { useProfileCameraOrchestration } from './runtime/profile/use-profile-camera-orchestration';
 import { useProfileAutoOpenController } from './runtime/profile/use-profile-auto-open-controller';
@@ -247,7 +248,6 @@ const PROFILE_TRANSITION_LOCK_MS = 750;
 const FIT_BOUNDS_SYNC_BUFFER_MS = 160;
 const RESULTS_WASH_FADE_MS = 220;
 const RESULTS_VISUAL_READY_FALLBACK_MS = 1200;
-const MAP_TAB_SWITCH_COMMIT_SETTLE_MS = 260;
 const normalizeProfilerContributorId = (id: string): string => {
   const normalized = id
     .trim()
@@ -827,18 +827,41 @@ const SearchScreen: React.FC = () => {
     'map_visual_ready' | 'fallback_timeout' | 'marker_reveal_settled_raf' | 'unknown'
   >('unknown');
   const visualReadyFallbackTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [isFilterTogglePending, setIsFilterTogglePending] = React.useState(false);
+  const setIsFilterTogglePending = React.useCallback<
+    React.Dispatch<React.SetStateAction<boolean>>
+  >(
+    (nextValue) => {
+      const previous = searchRuntimeBus.getState().isFilterTogglePending;
+      const nextResolved =
+        typeof nextValue === 'function'
+          ? (nextValue as (value: boolean) => boolean)(previous)
+          : nextValue;
+      searchRuntimeBus.publish({
+        isFilterTogglePending: nextResolved,
+      });
+    },
+    [searchRuntimeBus]
+  );
   const [, setError] = React.useState<string | null>(null);
   const [suggestions, setSuggestions] = React.useState<AutocompleteMatch[]>([]);
   const [, setShowSuggestions] = React.useState(false);
   const [isAutocompleteSuppressed, setIsAutocompleteSuppressed] = React.useState(false);
   const { beginSubmitChromePriming } = useSearchSubmitChromePrime(searchRuntimeBus);
   useResponseFrameFreeze(resultsRequestKey, searchRuntimeBus);
-  const visualSyncCandidateWriteSourceRef = React.useRef<'page_one_results_commit' | 'unknown'>(
-    'unknown'
-  );
+  const visualSyncCandidateWriteSourceRef = React.useRef<
+    'page_one_results_commit' | 'toggle_interaction_commit' | 'unknown'
+  >('unknown');
   const markerRevealCommitSeqRef = React.useRef(0);
   const visualSyncReleasedOperationIdRef = React.useRef<string | null>(null);
+  const {
+    scheduleToggleCommit,
+    registerVisualCandidate,
+    resolveVisualReady,
+    cancelToggleInteraction,
+  } = useToggleInteractionCoordinator({
+    searchRuntimeBus,
+    setIsFilterTogglePending,
+  });
   const runOneCommitSpanPressureByOperationRef = React.useRef<Map<string, number>>(new Map());
   const runOneStallPressureByOperationRef = React.useRef<Map<string, number>>(new Map());
   // Freeze gate composite selector — combines handoff freeze booleans + response
@@ -1019,6 +1042,23 @@ const SearchScreen: React.FC = () => {
     });
   }, [searchRuntimeBus]);
   const isSearchLoading = isSearchRequestLoadingRef.current;
+  const publishVisualSyncCandidate = React.useCallback(
+    (source: 'page_one_results_commit' | 'toggle_interaction_commit') => {
+      const runtimeState = searchRuntimeBus.getState();
+      markerRevealCommitSeqRef.current += 1;
+      const commitId = markerRevealCommitSeqRef.current;
+      const nextRequestKey = `visual-commit:${commitId}`;
+      visualSyncCandidateWriteSourceRef.current = source;
+      searchRuntimeBus.publish({
+        markerRevealCommitId: commitId,
+        visualSyncCandidateRequestKey: nextRequestKey,
+        isVisualSyncPending: runtimeState.visualReadyRequestKey !== nextRequestKey,
+      });
+      registerVisualCandidate(nextRequestKey);
+      return nextRequestKey;
+    },
+    [registerVisualCandidate, searchRuntimeBus]
+  );
   const markVisualRequestReady = React.useCallback(
     (
       requestKey: string | null,
@@ -1041,6 +1081,7 @@ const SearchScreen: React.FC = () => {
         runtimeState.visualReadyRequestKey === requestKey &&
         runtimeState.isVisualSyncPending === nextPending
       ) {
+        resolveVisualReady(requestKey);
         return;
       }
       searchRuntimeBus.publish({
@@ -1054,8 +1095,9 @@ const SearchScreen: React.FC = () => {
       ) {
         visualSyncReleasedOperationIdRef.current = activeOperationId;
       }
+      resolveVisualReady(requestKey);
     },
-    [searchRuntimeBus]
+    [resolveVisualReady, searchRuntimeBus]
   );
   const handlePageOneResultsCommitted = React.useCallback(() => {
     const runtimeState = searchRuntimeBus.getState();
@@ -1074,16 +1116,8 @@ const SearchScreen: React.FC = () => {
     ) {
       visualSyncReleasedOperationIdRef.current = null;
     }
-    markerRevealCommitSeqRef.current += 1;
-    const commitId = markerRevealCommitSeqRef.current;
-    const nextRequestKey = `visual-commit:${commitId}`;
-    visualSyncCandidateWriteSourceRef.current = 'page_one_results_commit';
-    searchRuntimeBus.publish({
-      markerRevealCommitId: commitId,
-      visualSyncCandidateRequestKey: nextRequestKey,
-      isVisualSyncPending: runtimeState.visualReadyRequestKey !== nextRequestKey,
-    });
-  }, [searchRuntimeBus]);
+    publishVisualSyncCandidate('page_one_results_commit');
+  }, [publishVisualSyncCandidate, searchRuntimeBus]);
   React.useEffect(
     () => () => {
       if (visualReadyFallbackTimeoutRef.current) {
@@ -1521,9 +1555,6 @@ const SearchScreen: React.FC = () => {
   const hasUserScrolledResultsRef = React.useRef(false);
   const allowLoadMoreForCurrentScrollRef = React.useRef(true);
   const searchFiltersLayoutCacheRef = React.useRef<SearchFiltersLayoutCache | null>(null);
-  const mapTabSwitchCommitTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const mapTabSwitchSeqRef = React.useRef(0);
-  const mapCommittedTabRef = React.useRef<'restaurants' | 'dishes'>(searchRuntimeBus.getState().activeTab);
   const cameraPersistTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCameraStateRef = React.useRef<{ center: [number, number]; zoom: number } | null>(null);
   const lastPersistedCameraRef = React.useRef<string | null>(null);
@@ -3991,69 +4022,64 @@ const SearchScreen: React.FC = () => {
     submittedQuery,
   ]);
 
-  React.useEffect(
-    () => () => {
-      if (mapTabSwitchCommitTimeoutRef.current) {
-        clearTimeout(mapTabSwitchCommitTimeoutRef.current);
-        mapTabSwitchCommitTimeoutRef.current = null;
-      }
-    },
-    []
-  );
-
-  React.useEffect(() => {
-    const syncCommittedMapTab = () => {
-      const runtimeState = searchRuntimeBus.getState();
-      if (runtimeState.pendingTabSwitchTab == null) {
-        mapCommittedTabRef.current = runtimeState.activeTab;
-      }
-    };
-    syncCommittedMapTab();
-    return searchRuntimeBus.subscribe(syncCommittedMapTab, ['activeTab', 'pendingTabSwitchTab']);
-  }, [searchRuntimeBus]);
-
   const handleTabChange = React.useCallback(
     (value: 'restaurants' | 'dishes') => {
-      const nextSeq = mapTabSwitchSeqRef.current + 1;
-      mapTabSwitchSeqRef.current = nextSeq;
-      const committedMapTab = mapCommittedTabRef.current;
-      const shouldHoldMap = committedMapTab !== value;
-      const pendingRequestKey = shouldHoldMap ? `tab-switch:${nextSeq}:${value}` : null;
-      if (mapTabSwitchCommitTimeoutRef.current) {
-        clearTimeout(mapTabSwitchCommitTimeoutRef.current);
-        mapTabSwitchCommitTimeoutRef.current = null;
+      if (searchRuntimeBus.getState().activeTab === value) {
+        return;
       }
       unstable_batchedUpdates(() => {
         setActiveTab(value);
         publishRuntimeBusPatch({
           activeTab: value,
-          pendingTabSwitchTab: shouldHoldMap ? committedMapTab : null,
-          pendingTabSwitchRequestKey: pendingRequestKey,
+          pendingTabSwitchTab: null,
+          pendingTabSwitchRequestKey: null,
         });
       });
-      if (!shouldHoldMap || pendingRequestKey == null) {
-        mapCommittedTabRef.current = value;
-        setActiveTabPreference(value);
-        return;
-      }
-      mapTabSwitchCommitTimeoutRef.current = setTimeout(() => {
+      setActiveTabPreference(value);
+    },
+    [publishRuntimeBusPatch, searchRuntimeBus, setActiveTab, setActiveTabPreference]
+  );
+  const pendingTabSwitchSeqRef = React.useRef(0);
+  const scheduleTabToggleCommit = React.useCallback(
+    (value: 'restaurants' | 'dishes') => {
+      pendingTabSwitchSeqRef.current += 1;
+      const pendingRequestKey = `tab-intent:${pendingTabSwitchSeqRef.current}:${value}`;
+      publishRuntimeBusPatch({
+        pendingTabSwitchTab: value,
+        pendingTabSwitchRequestKey: pendingRequestKey,
+      });
+      scheduleToggleCommit(() => {
         const runtimeState = searchRuntimeBus.getState();
-        if (runtimeState.pendingTabSwitchRequestKey !== pendingRequestKey) {
-          return;
-        }
-        const finalTab = runtimeState.activeTab;
-        mapCommittedTabRef.current = finalTab;
-        unstable_batchedUpdates(() => {
-          setActiveTabPreference(finalTab);
+        const shouldSwitchTab = runtimeState.activeTab !== value;
+        if (shouldSwitchTab) {
+          handleTabChange(value);
+        } else {
           publishRuntimeBusPatch({
             pendingTabSwitchTab: null,
             pendingTabSwitchRequestKey: null,
           });
-        });
-        mapTabSwitchCommitTimeoutRef.current = null;
-      }, MAP_TAB_SWITCH_COMMIT_SETTLE_MS);
+        }
+        const shouldAwaitVisualSync = shouldSwitchTab && runtimeState.isSearchSessionActive;
+        if (!shouldAwaitVisualSync) {
+          return {
+            awaitVisualSync: false,
+          };
+        }
+        const visualRequestKey = publishVisualSyncCandidate('toggle_interaction_commit');
+        return {
+          awaitVisualSync: true,
+          visualRequestKey,
+        };
+      });
     },
-    [publishRuntimeBusPatch, searchRuntimeBus, setActiveTab, setActiveTabPreference]
+    [
+      handleTabChange,
+      pendingTabSwitchSeqRef,
+      publishRuntimeBusPatch,
+      publishVisualSyncCandidate,
+      scheduleToggleCommit,
+      searchRuntimeBus,
+    ]
   );
 
   const dismissSearchKeyboard = React.useCallback(() => {
@@ -4471,6 +4497,7 @@ const SearchScreen: React.FC = () => {
     handlePriceDone,
     cancelPendingMutationWork,
   } = useQueryMutationOrchestrator({
+    searchRuntimeBus,
     searchMode,
     activeTab,
     submittedQuery,
@@ -4490,14 +4517,17 @@ const SearchScreen: React.FC = () => {
     setOpenNow,
     setPriceLevels,
     setPreferredScoreMode,
-    setIsFilterTogglePending,
+    scheduleToggleCommit,
     rerunActiveSearch,
     priceSheetRef,
     rankSheetRef,
     minimumVotesFilter: MINIMUM_VOTES_FILTER,
     onMechanismEvent: emitRuntimeMechanismEvent,
   });
-  cancelPendingMutationWorkRef.current = cancelPendingMutationWork;
+  cancelPendingMutationWorkRef.current = () => {
+    cancelPendingMutationWork();
+    cancelToggleInteraction();
+  };
 
   React.useEffect(() => {
     return registerTransientDismissor(() => {
@@ -4886,22 +4916,24 @@ const SearchScreen: React.FC = () => {
 
   const shouldRetrySearchOnReconnect = shouldRetrySearchOnReconnectRef.current;
   React.useEffect(() => {
+    const runtimeState = searchRuntimeBus.getState();
+    const shouldPreserveInteractionDraft = runtimeState.isFilterTogglePending;
     searchRuntimeBus.publish({
       rankButtonLabelText,
       rankButtonIsActive,
       priceButtonLabelText,
       priceButtonIsActive,
-      openNow,
-      votesFilterActive,
+      openNow: shouldPreserveInteractionDraft ? runtimeState.openNow : openNow,
+      votesFilterActive: shouldPreserveInteractionDraft
+        ? runtimeState.votesFilterActive
+        : votesFilterActive,
       isRankSelectorVisible,
       isPriceSelectorVisible,
-      isFilterTogglePending,
       shouldRetrySearchOnReconnect,
       hasSystemStatusBanner,
     });
   }, [
     hasSystemStatusBanner,
-    isFilterTogglePending,
     isPriceSelectorVisible,
     isRankSelectorVisible,
     openNow,
@@ -4922,7 +4954,7 @@ const SearchScreen: React.FC = () => {
     () => ({
       searchRuntimeBus,
       activeOverlayKey: activeOverlay,
-      handleTabChange,
+      scheduleTabToggleCommit,
       toggleRankSelector,
       toggleOpenNow,
       toggleVotesFilter,
@@ -4966,7 +4998,7 @@ const SearchScreen: React.FC = () => {
     [
       searchRuntimeBus,
       activeOverlay,
-      handleTabChange,
+      scheduleTabToggleCommit,
       toggleRankSelector,
       toggleOpenNow,
       toggleVotesFilter,

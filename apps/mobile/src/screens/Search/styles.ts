@@ -570,6 +570,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
   },
+  resultsSurfaceInteraction: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'transparent',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
   resultsHeaderSurface: {
     position: 'relative',
     overflow: 'hidden',

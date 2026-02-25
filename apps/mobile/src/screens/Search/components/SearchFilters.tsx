@@ -1,13 +1,14 @@
 import React from 'react';
 import {
   Dimensions,
+  Pressable,
   StyleSheet,
   View,
   type LayoutChangeEvent,
   type LayoutRectangle,
 } from 'react-native';
 import { ChevronDown, ChevronUp } from 'lucide-react-native';
-import { Gesture, GestureDetector, Pressable } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
   Easing,
   interpolate,
@@ -39,10 +40,9 @@ const PRICE_TOGGLE_RIGHT_PADDING = Math.max(0, TOGGLE_HORIZONTAL_PADDING - 3);
 const STRIP_BACKGROUND_HEIGHT = 14;
 const DEFAULT_VIEWPORT_WIDTH = Dimensions.get('window').width;
 
-const SEGMENT_TRAVEL_MIN_MS = 70;
-const SEGMENT_TRAVEL_FULL_MS = 210;
+const SEGMENT_TRAVEL_MIN_MS = 34;
+const SEGMENT_TRAVEL_FULL_MS = 150;
 const SEGMENT_TRAVEL_EASING = Easing.linear;
-const SEGMENT_COMMIT_SETTLE_MS = 120;
 
 const resolveSegmentTravelDurationMs = (from: number, to: number): number => {
   'worklet';
@@ -146,9 +146,6 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     initialLayoutCache?.segmentLayouts ? { ...initialLayoutCache.segmentLayouts } : {}
   );
   const interactionTabRef = React.useRef<SegmentValue>(activeTab);
-  const commitSeqRef = React.useRef(0);
-  const commitTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingCommitTabRef = React.useRef<SegmentValue>(activeTab);
   const hasSyncedFromExternalTabRef = React.useRef(false);
   const [segmentLayoutsVersion, setSegmentLayoutsVersion] = React.useState(0);
   const initialRestaurantLayout = segmentLayoutsRef.current.restaurants;
@@ -309,58 +306,24 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   React.useEffect(() => {
     if (!hasSyncedFromExternalTabRef.current) {
       interactionTabRef.current = activeTab;
-      pendingCommitTabRef.current = activeTab;
       animateSegmentSelection(activeTab, false);
       hasSyncedFromExternalTabRef.current = true;
       return;
     }
     if (activeTab === interactionTabRef.current) {
-      if (commitTimeoutRef.current) {
-        clearTimeout(commitTimeoutRef.current);
-        commitTimeoutRef.current = null;
-        commitSeqRef.current += 1;
-      }
-      pendingCommitTabRef.current = activeTab;
       return;
     }
-    if (commitTimeoutRef.current) {
-      clearTimeout(commitTimeoutRef.current);
-      commitTimeoutRef.current = null;
-    }
-    commitSeqRef.current += 1;
     interactionTabRef.current = activeTab;
-    pendingCommitTabRef.current = activeTab;
     animateSegmentSelection(activeTab, segmentLayoutReady.value > 0);
   }, [activeTab, animateSegmentSelection, segmentLayoutReady]);
-  React.useEffect(
-    () => () => {
-      if (commitTimeoutRef.current) {
-        clearTimeout(commitTimeoutRef.current);
-        commitTimeoutRef.current = null;
-      }
-    },
-    []
-  );
+
   const scheduleSegmentToggleCommit = React.useCallback(
     (next: SegmentValue) => {
       if (next === interactionTabRef.current) {
         return;
       }
       interactionTabRef.current = next;
-      pendingCommitTabRef.current = next;
-      const nextSeq = commitSeqRef.current + 1;
-      commitSeqRef.current = nextSeq;
-      if (commitTimeoutRef.current) {
-        clearTimeout(commitTimeoutRef.current);
-        commitTimeoutRef.current = null;
-      }
-      commitTimeoutRef.current = setTimeout(() => {
-        if (commitSeqRef.current !== nextSeq) {
-          return;
-        }
-        onTabChange(pendingCommitTabRef.current);
-        commitTimeoutRef.current = null;
-      }, SEGMENT_COMMIT_SETTLE_MS);
+      onTabChange(next);
     },
     [onTabChange]
   );
@@ -372,10 +335,11 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   const segmentToggleTapGesture = React.useMemo(
     () =>
       Gesture.Tap()
-        .maxDuration(Number.MAX_SAFE_INTEGER)
-        .maxDistance(Number.MAX_SAFE_INTEGER)
         .shouldCancelWhenOutside(false)
-        .onTouchesDown(() => {
+        .onEnd((_event, success) => {
+          if (!success) {
+            return;
+          }
           const currentProgress = segmentSelectionProgress.value;
           const nextTargetProgress = segmentTargetProgress.value === 0 ? 1 : 0;
           const durationMs = resolveSegmentTravelDurationMs(currentProgress, nextTargetProgress);
@@ -384,9 +348,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
             duration: durationMs,
             easing: SEGMENT_TRAVEL_EASING,
           });
-          runOnJS(scheduleSegmentToggleCommit)(
-            nextTargetProgress === 0 ? 'restaurants' : 'dishes'
-          );
+          runOnJS(scheduleSegmentToggleCommit)(nextTargetProgress === 0 ? 'restaurants' : 'dishes');
         }),
     [scheduleSegmentToggleCommit, segmentSelectionProgress, segmentTargetProgress]
   );

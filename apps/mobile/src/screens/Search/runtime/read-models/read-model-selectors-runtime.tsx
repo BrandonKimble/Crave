@@ -25,7 +25,6 @@ import {
 } from './list-read-model-builder';
 import type { MapQueryBudget } from '../map/map-query-budget';
 
-const EMPTY_RESULTS: ResultsListItem[] = [];
 const EXACT_VISIBLE_LIMIT = 5;
 const VIEWABILITY_LOG_INTERVAL_MS = 250;
 const getNowMs = (): number =>
@@ -70,8 +69,14 @@ type UseSearchResultsReadModelSelectorsArgs = {
 };
 
 type ListProjection = {
-  safeResultsData: Array<FoodResult | RestaurantResult>;
-  sectionedRows: ResultsListItem[];
+  safeResultsDataByTab: {
+    dishes: Array<FoodResult | RestaurantResult>;
+    restaurants: Array<FoodResult | RestaurantResult>;
+  };
+  sectionedRowsByTab: {
+    dishes: ResultsListItem[];
+    restaurants: ResultsListItem[];
+  };
 };
 
 type HeaderProjection = {
@@ -89,8 +94,16 @@ type ResultsFlashListRuntimeProps = {
 
 type SearchResultsReadModelSelectors = {
   safeResultsCount: number;
+  safeResultsCountByTab: {
+    dishes: number;
+    restaurants: number;
+  };
   isResultsHydrationSettled: boolean;
   rowsForRender: ResultsListItem[];
+  rowsByTab: {
+    dishes: ResultsListItem[];
+    restaurants: ResultsListItem[];
+  };
   renderListItem: NonNullable<FlashListProps<ResultsListItem>['renderItem']>;
   listFooterComponent: React.ReactNode;
   listHeaderComponent: React.ReactNode;
@@ -208,19 +221,31 @@ export const useSearchResultsReadModelSelectors = (
   const responsePage = results?.metadata?.page ?? 1;
   const requestVersionKey = `${searchRequestId ?? 'no-request'}::${
     resultsHydrationKey ?? 'no-hydration'
-  }::page:${responsePage}::dishes:${dishes.length}::restaurants:${
-    restaurants.length
-  }::${activeTab}`;
+  }::page:${responsePage}::dishes:${dishes.length}::restaurants:${restaurants.length}`;
   const listProjection = React.useMemo(() => {
     const buildStartedAtMs = getNowMs();
-    const safeResultsData = buildSafeResultsData({
-      activeTab,
+    const safeDishesData = buildSafeResultsData({
+      activeTab: 'dishes',
       dishes,
       restaurants,
     });
-    const sectionedResultsData = buildSectionedResultsData({
-      activeTab,
-      safeResultsData,
+    const safeRestaurantsData = buildSafeResultsData({
+      activeTab: 'restaurants',
+      dishes,
+      restaurants,
+    });
+    const sectionedDishesData = buildSectionedResultsData({
+      activeTab: 'dishes',
+      safeResultsData: safeDishesData,
+      exactDishesOnPage,
+      exactRestaurantsOnPage,
+      showAllExactDishes,
+      showAllExactRestaurants,
+      exactVisibleLimit: EXACT_VISIBLE_LIMIT,
+    });
+    const sectionedRestaurantsData = buildSectionedResultsData({
+      activeTab: 'restaurants',
+      safeResultsData: safeRestaurantsData,
       exactDishesOnPage,
       exactRestaurantsOnPage,
       showAllExactDishes,
@@ -228,19 +253,26 @@ export const useSearchResultsReadModelSelectors = (
       exactVisibleLimit: EXACT_VISIBLE_LIMIT,
     });
     const projection: ListProjection = {
-      safeResultsData,
-      sectionedRows: sectionedResultsData,
+      safeResultsDataByTab: {
+        dishes: safeDishesData,
+        restaurants: safeRestaurantsData,
+      },
+      sectionedRowsByTab: {
+        dishes: sectionedDishesData,
+        restaurants: sectionedRestaurantsData,
+      },
     };
     const durationMs = getNowMs() - buildStartedAtMs;
     listReadModelBuildDurationMsRef.current = durationMs;
+    const activeSafeResults = projection.safeResultsDataByTab[activeTab];
+    const activeSectionedRows = projection.sectionedRowsByTab[activeTab];
     listProjectionBuildStatsRef.current = {
       requestVersionKey,
-      sectionedRowCount: projection.sectionedRows.length,
-      safeResultsCount: projection.safeResultsData.length,
+      sectionedRowCount: activeSectionedRows.length,
+      safeResultsCount: activeSafeResults.length,
     };
     return projection;
   }, [
-    activeTab,
     dishes,
     exactDishesOnPage,
     exactRestaurantsOnPage,
@@ -285,7 +317,7 @@ export const useSearchResultsReadModelSelectors = (
   const hydrationRowsReleaseVersionToken =
     resultsHydrationKey == null
       ? null
-      : `${resultsHydrationKey}:${listProjection.safeResultsData.length}`;
+      : `${resultsHydrationKey}:d${listProjection.safeResultsDataByTab.dishes.length}:r${listProjection.safeResultsDataByTab.restaurants.length}`;
   const [
     hydrationFinalizeRowsReleaseCompletedToken,
     setHydrationFinalizeRowsReleaseCompletedToken,
@@ -325,7 +357,7 @@ export const useSearchResultsReadModelSelectors = (
   }, [hydrationRowsReleaseVersionToken, isHydrationPending, resultsHydrationKey]);
 
   const preMeasureKeys = React.useMemo(() => {
-    if (activeTab !== 'restaurants' || restaurants.length === 0) {
+    if (restaurants.length === 0) {
       return null;
     }
     const keys = computeTopFoodPreMeasureKeys(restaurants, TOP_FOOD_RENDER_LIMIT);
@@ -333,14 +365,19 @@ export const useSearchResultsReadModelSelectors = (
       return null;
     }
     return keys;
-  }, [activeTab, restaurants]);
+  }, [restaurants]);
 
-  const rowsForRender = React.useMemo(() => {
-    if (isFilterTogglePending) {
-      return EMPTY_RESULTS;
-    }
-    return listProjection.sectionedRows;
-  }, [isFilterTogglePending, listProjection.sectionedRows]);
+  const activeSafeResultsData = listProjection.safeResultsDataByTab[activeTab];
+  const activeSectionedRows = listProjection.sectionedRowsByTab[activeTab];
+
+  const rowsForRender = React.useMemo(() => activeSectionedRows, [activeSectionedRows]);
+
+  const handleShowMoreExactDishes = React.useCallback(() => {
+    setShowAllExactDishes(true);
+  }, []);
+  const handleShowMoreExactRestaurants = React.useCallback(() => {
+    setShowAllExactRestaurants(true);
+  }, []);
 
   const renderListItem = React.useCallback<
     NonNullable<FlashListProps<ResultsListItem>['renderItem']>
@@ -364,9 +401,7 @@ export const useSearchResultsReadModelSelectors = (
 
         if (item.kind === 'show_more_exact') {
           const onPress =
-            activeTab === 'dishes'
-              ? () => setShowAllExactDishes(true)
-              : () => setShowAllExactRestaurants(true);
+            item.tab === 'dishes' ? handleShowMoreExactDishes : handleShowMoreExactRestaurants;
           const label =
             item.hiddenCount === 1
               ? 'Show 1 more exact match'
@@ -388,12 +423,17 @@ export const useSearchResultsReadModelSelectors = (
         ? renderDishCard(item as FoodResult, index)
         : renderRestaurantCard(item as RestaurantResult, index);
     },
-    [activeTab, renderDishCard, renderRestaurantCard]
+    [
+      handleShowMoreExactDishes,
+      handleShowMoreExactRestaurants,
+      renderDishCard,
+      renderRestaurantCard,
+    ]
   );
 
   const listFooterComponent = React.useMemo(() => {
     const shouldShowNotice = Boolean(
-      onDemandNotice && listProjection.safeResultsData.length > 0 && !isFilterTogglePending
+      onDemandNotice && activeSafeResultsData.length > 0 && !isFilterTogglePending
     );
     return (
       <View style={styles.loadMoreSpacer}>
@@ -410,7 +450,7 @@ export const useSearchResultsReadModelSelectors = (
     canLoadMore,
     isFilterTogglePending,
     isLoadingMore,
-    listProjection.safeResultsData.length,
+    activeSafeResultsData.length,
     onDemandNotice,
   ]);
 
@@ -562,7 +602,7 @@ export const useSearchResultsReadModelSelectors = (
     NonNullable<FlashListProps<ResultsListItem>['onViewableItemsChanged']>
   >(
     (info) => {
-      if (!shouldLogResultsViewability || listProjection.safeResultsData.length === 0) {
+      if (!shouldLogResultsViewability || activeSafeResultsData.length === 0) {
         return;
       }
       const viewableCount = info.viewableItems.filter((token) => token.isViewable).length;
@@ -575,7 +615,7 @@ export const useSearchResultsReadModelSelectors = (
       }
       lastResultsViewabilityLogRef.current = now;
     },
-    [listProjection.safeResultsData.length, searchInteractionRef, shouldLogResultsViewability]
+    [activeSafeResultsData.length, searchInteractionRef, shouldLogResultsViewability]
   );
 
   const flashListRuntimeProps = React.useMemo(
@@ -602,9 +642,14 @@ export const useSearchResultsReadModelSelectors = (
   }, [preMeasureKeys]);
 
   return {
-    safeResultsCount: listProjection.safeResultsData.length,
+    safeResultsCount: activeSafeResultsData.length,
+    safeResultsCountByTab: {
+      dishes: listProjection.safeResultsDataByTab.dishes.length,
+      restaurants: listProjection.safeResultsDataByTab.restaurants.length,
+    },
     isResultsHydrationSettled,
     rowsForRender,
+    rowsByTab: listProjection.sectionedRowsByTab,
     renderListItem,
     listFooterComponent,
     listHeaderComponent,

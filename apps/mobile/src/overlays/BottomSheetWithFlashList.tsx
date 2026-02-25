@@ -60,6 +60,7 @@ type SnapPoints = Record<SheetSnapPoint, number> & {
 
 type SnapChangeSource = 'gesture' | 'programmatic';
 type SnapChangeMeta = { source: SnapChangeSource };
+type DualListSelection = 'primary' | 'secondary';
 
 const AnimatedFlashList = Animated.createAnimatedComponent(FlashList) as typeof FlashList;
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
@@ -224,6 +225,16 @@ const resolveSnapKeyFromValues = (
   return best;
 };
 
+type SecondaryListSpec<T> = {
+  data: ReadonlyArray<T>;
+  listKey?: string;
+  listRef?: React.RefObject<FlashListRef<T> | null>;
+  extraData?: FlashListProps<T>['extraData'];
+  onEndReached?: FlashListProps<T>['onEndReached'];
+  scrollIndicatorInsets?: FlashListProps<T>['scrollIndicatorInsets'];
+  testID?: string;
+};
+
 type BottomSheetWithFlashListProps<T> = {
   visible: boolean;
   listScrollEnabled?: boolean;
@@ -236,6 +247,7 @@ type BottomSheetWithFlashListProps<T> = {
   estimatedItemSize: number;
   listRef?: React.RefObject<FlashListRef<T> | null>;
   headerComponent?: React.ReactNode;
+  scrollHeaderComponent?: React.ReactNode;
   backgroundComponent?: React.ReactNode;
   overlayComponent?: React.ReactNode;
   ListHeaderComponent?: FlashListProps<T>['ListHeaderComponent'];
@@ -262,6 +274,9 @@ type BottomSheetWithFlashListProps<T> = {
   overScrollMode?: FlashListProps<T>['overScrollMode'];
   testID?: string;
   extraData?: FlashListProps<T>['extraData'];
+  secondaryList?: SecondaryListSpec<T>;
+  activeList?: DualListSelection;
+  presentationActiveList?: DualListSelection;
   onDragStateChange?: (isDragging: boolean) => void;
   onSettleStateChange?: (isSettling: boolean) => void;
   snapTo?: SheetSnapPoint | 'hidden' | null;
@@ -317,6 +332,7 @@ const BottomSheetWithFlashList = <T,>({
   listKey,
   estimatedItemSize,
   headerComponent,
+  scrollHeaderComponent,
   backgroundComponent,
   overlayComponent,
   ListHeaderComponent,
@@ -343,6 +359,9 @@ const BottomSheetWithFlashList = <T,>({
   overScrollMode,
   testID,
   extraData,
+  secondaryList,
+  activeList = 'primary',
+  presentationActiveList,
   onDragStateChange,
   onSettleStateChange,
   snapTo,
@@ -407,12 +426,24 @@ const BottomSheetWithFlashList = <T,>({
   const internalScrollOffset = useSharedValue(0);
   const scrollOffset = scrollOffsetValue ?? internalScrollOffset;
   const scrollTopOffset = useSharedValue(0);
+  const primaryScrollOffset = useSharedValue(0);
+  const secondaryScrollOffset = useSharedValue(0);
+  const primaryScrollTopOffset = useSharedValue(0);
+  const secondaryScrollTopOffset = useSharedValue(0);
+  const activePrimaryList = useSharedValue(true);
   const internalMomentum = useSharedValue(false);
   const isInMomentum = momentumFlag ?? internalMomentum;
   const wasVisible = React.useRef(visible);
   const hasNotifiedHidden = useSharedValue(false);
   const internalListRef = React.useRef<FlashListRef<T> | null>(null);
   const flashListRef = listRefProp ?? internalListRef;
+  const internalSecondaryListRef = React.useRef<FlashListRef<T> | null>(null);
+  const secondaryFlashListRef = secondaryList?.listRef ?? internalSecondaryListRef;
+  const shouldRenderDualLists = secondaryList != null;
+  const resolvedActiveList: DualListSelection = shouldRenderDualLists ? activeList : 'primary';
+  const resolvedPresentationList: DualListSelection = shouldRenderDualLists
+    ? presentationActiveList ?? activeList
+    : 'primary';
   const isDragging = useSharedValue(false);
   const isSettling = useSharedValue(false);
   const settlingToHidden = useSharedValue(false);
@@ -422,6 +453,7 @@ const BottomSheetWithFlashList = <T,>({
   const baseShowsVerticalScrollIndicatorSV = useSharedValue(Boolean(showsVerticalScrollIndicator));
   const springId = useSharedValue(0);
   const [touchBlockingEnabled, setTouchBlockingEnabled] = React.useState(false);
+  const [scrollHeaderHeight, setScrollHeaderHeight] = React.useState(0);
   const [effectiveShowsVerticalScrollIndicator, setEffectiveShowsVerticalScrollIndicator] =
     React.useState(Boolean(showsVerticalScrollIndicator));
   const setIndicatorVisible = React.useCallback((value: boolean) => {
@@ -435,6 +467,27 @@ const BottomSheetWithFlashList = <T,>({
       setIndicatorVisible(false);
     }
   }, [baseShowsVerticalScrollIndicatorSV, setIndicatorVisible, showsVerticalScrollIndicator]);
+
+  React.useEffect(() => {
+    const shouldUsePrimary = resolvedActiveList === 'primary';
+    runOnUI((usePrimary: boolean) => {
+      'worklet';
+      activePrimaryList.value = usePrimary;
+      scrollOffset.value = usePrimary ? primaryScrollOffset.value : secondaryScrollOffset.value;
+      scrollTopOffset.value = usePrimary
+        ? primaryScrollTopOffset.value
+        : secondaryScrollTopOffset.value;
+    })(shouldUsePrimary);
+  }, [
+    activePrimaryList,
+    primaryScrollOffset,
+    primaryScrollTopOffset,
+    resolvedActiveList,
+    scrollOffset,
+    scrollTopOffset,
+    secondaryScrollOffset,
+    secondaryScrollTopOffset,
+  ]);
 
   useAnimatedReaction(
     () => {
@@ -545,25 +598,40 @@ const BottomSheetWithFlashList = <T,>({
     [baseShowsVerticalScrollIndicatorSV, scrollOffset, scrollTopOffset, setIndicatorVisible]
   );
 
-  const animatedScrollHandler = useAnimatedScrollHandler(
+  const primaryAnimatedScrollHandler = useAnimatedScrollHandler(
     {
       onScroll: (event) => {
         const nextTopOffset = getScrollTopOffset(event.contentInset?.top);
-        if (Math.abs(nextTopOffset - scrollTopOffset.value) > 0.5) {
-          scrollTopOffset.value = nextTopOffset;
+        if (Math.abs(nextTopOffset - primaryScrollTopOffset.value) > 0.5) {
+          primaryScrollTopOffset.value = nextTopOffset;
         }
-        scrollOffset.value = event.contentOffset.y;
+        primaryScrollOffset.value = event.contentOffset.y;
+        if (activePrimaryList.value) {
+          if (Math.abs(nextTopOffset - scrollTopOffset.value) > 0.5) {
+            scrollTopOffset.value = nextTopOffset;
+          }
+          scrollOffset.value = event.contentOffset.y;
+        }
       },
       onBeginDrag: () => {
+        if (!activePrimaryList.value) {
+          return;
+        }
         isInMomentum.value = false;
       },
       onMomentumBegin: () => {
+        if (!activePrimaryList.value) {
+          return;
+        }
         isInMomentum.value = true;
         if (onMomentumBeginJS) {
           runOnJS(onMomentumBeginJS)();
         }
       },
       onMomentumEnd: () => {
+        if (!activePrimaryList.value) {
+          return;
+        }
         isInMomentum.value = false;
         if (onMomentumEndJS) {
           runOnJS(onMomentumEndJS)();
@@ -574,12 +642,71 @@ const BottomSheetWithFlashList = <T,>({
       },
     },
     [
+      activePrimaryList,
+      isInMomentum,
+      onMomentumBeginJS,
+      onMomentumEndJS,
+      onScrollOffsetChange,
+      primaryScrollOffset,
+      primaryScrollTopOffset,
+      scrollOffset,
+      scrollTopOffset,
+    ]
+  );
+
+  const secondaryAnimatedScrollHandler = useAnimatedScrollHandler(
+    {
+      onScroll: (event) => {
+        const nextTopOffset = getScrollTopOffset(event.contentInset?.top);
+        if (Math.abs(nextTopOffset - secondaryScrollTopOffset.value) > 0.5) {
+          secondaryScrollTopOffset.value = nextTopOffset;
+        }
+        secondaryScrollOffset.value = event.contentOffset.y;
+        if (!activePrimaryList.value) {
+          if (Math.abs(nextTopOffset - scrollTopOffset.value) > 0.5) {
+            scrollTopOffset.value = nextTopOffset;
+          }
+          scrollOffset.value = event.contentOffset.y;
+        }
+      },
+      onBeginDrag: () => {
+        if (activePrimaryList.value) {
+          return;
+        }
+        isInMomentum.value = false;
+      },
+      onMomentumBegin: () => {
+        if (activePrimaryList.value) {
+          return;
+        }
+        isInMomentum.value = true;
+        if (onMomentumBeginJS) {
+          runOnJS(onMomentumBeginJS)();
+        }
+      },
+      onMomentumEnd: () => {
+        if (activePrimaryList.value) {
+          return;
+        }
+        isInMomentum.value = false;
+        if (onMomentumEndJS) {
+          runOnJS(onMomentumEndJS)();
+        }
+        if (onScrollOffsetChange) {
+          runOnJS(onScrollOffsetChange)(scrollOffset.value);
+        }
+      },
+    },
+    [
+      activePrimaryList,
       isInMomentum,
       onMomentumBeginJS,
       onMomentumEndJS,
       onScrollOffsetChange,
       scrollOffset,
       scrollTopOffset,
+      secondaryScrollOffset,
+      secondaryScrollTopOffset,
     ]
   );
 
@@ -866,6 +993,18 @@ const BottomSheetWithFlashList = <T,>({
     },
     [headerHeight]
   );
+  const onScrollHeaderLayout = React.useCallback((event: LayoutChangeEvent) => {
+    const nextHeight = event.nativeEvent.layout.height;
+    setScrollHeaderHeight((previous) =>
+      Math.abs(previous - nextHeight) < 0.5 ? previous : nextHeight
+    );
+  }, []);
+
+  React.useEffect(() => {
+    if (scrollHeaderComponent == null && scrollHeaderHeight !== 0) {
+      setScrollHeaderHeight(0);
+    }
+  }, [scrollHeaderComponent, scrollHeaderHeight]);
 
   const gestures = React.useMemo(() => {
     const upperBound = preventSwipeDismiss ? collapsedSnap : hiddenSnap ?? collapsedSnap;
@@ -1232,12 +1371,20 @@ const BottomSheetWithFlashList = <T,>({
   const ScrollComponent = React.useMemo(() => {
     const Component = React.forwardRef<ScrollView, ScrollViewProps>((props, ref) => (
       <GestureDetector gesture={gestures.scroll}>
-        <AnimatedScrollView {...props} ref={ref} />
+        <AnimatedScrollView
+          {...props}
+          ref={ref}
+          style={[props.style, scrollHeaderComponent ? styles.transparentScrollView : null]}
+          contentContainerStyle={[
+            props.contentContainerStyle,
+            scrollHeaderComponent ? styles.transparentScrollContent : null,
+          ]}
+        />
       </GestureDetector>
     ));
     Component.displayName = 'OverlaySheetScrollView';
     return Component;
-  }, [gestures.scroll]);
+  }, [gestures.scroll, scrollHeaderComponent]);
 
   // Keep height fixed to avoid relayout of large lists during sheet drag.
   const sheetHeightStyle = React.useMemo(() => ({ height: screenHeight }), [screenHeight]);
@@ -1290,6 +1437,41 @@ const BottomSheetWithFlashList = <T,>({
     }
     return sanitized;
   }, [contentContainerStyle]);
+  const listContentContainerStyle = React.useMemo(() => {
+    const base = sanitizedContentContainerStyle ?? {};
+    const shouldForceTransparentBackground =
+      scrollHeaderComponent != null && base.backgroundColor === undefined;
+    if (scrollHeaderHeight <= 0) {
+      if (!shouldForceTransparentBackground) {
+        return sanitizedContentContainerStyle;
+      }
+      return {
+        ...base,
+        backgroundColor: 'transparent',
+      } as ViewStyle;
+    }
+    const existingPaddingTop =
+      typeof base.paddingTop === 'number'
+        ? base.paddingTop
+        : typeof base.paddingVertical === 'number'
+        ? base.paddingVertical
+        : typeof base.padding === 'number'
+        ? base.padding
+        : 0;
+    return {
+      ...base,
+      paddingTop: existingPaddingTop + scrollHeaderHeight,
+      ...(shouldForceTransparentBackground ? { backgroundColor: 'transparent' } : null),
+    } as ViewStyle;
+  }, [sanitizedContentContainerStyle, scrollHeaderComponent, scrollHeaderHeight]);
+
+  const flashListSurfaceStyle = React.useMemo(
+    () => [
+      flashListProps?.style,
+      scrollHeaderComponent ? styles.transparentFlashListSurface : null,
+    ],
+    [flashListProps?.style, scrollHeaderComponent]
+  );
 
   const resolvedFlashListProps = React.useMemo(() => {
     const overrideProps = {
@@ -1299,18 +1481,25 @@ const BottomSheetWithFlashList = <T,>({
     return {
       drawDistance: DEFAULT_DRAW_DISTANCE,
       removeClippedSubviews: false,
+      // FlashList v2 keeps accepting this runtime prop even though the published
+      // TS surface removed it; keep it for behavior parity with existing tuning.
+      estimatedItemSize,
       ...flashListProps,
       overrideProps,
     };
-  }, [flashListProps]);
-
+  }, [estimatedItemSize, flashListProps]);
   const resolvedSurfaceStyle = surfaceStyle ?? overlaySheetStyles.surface;
   const resolvedShadowStyle = shadowStyle ?? overlaySheetStyles.shadowShell;
   const shadowShellStyle = [
     resolvedShadowStyle,
     Platform.OS === 'android' ? overlaySheetStyles.shadowShellAndroid : null,
   ];
-
+  const scrollHeaderSyncStyle = useAnimatedStyle(() => {
+    const relativeScrollY = scrollOffset.value - scrollTopOffset.value;
+    return {
+      transform: [{ translateY: -relativeScrollY }],
+    };
+  }, [scrollOffset, scrollTopOffset]);
   return (
     <GestureDetector gesture={gestures.sheet}>
       <Animated.View
@@ -1326,48 +1515,153 @@ const BottomSheetWithFlashList = <T,>({
                 {backgroundComponent}
               </View>
             ) : null}
-            {headerComponent ? <View onLayout={onHeaderLayout}>{headerComponent}</View> : null}
-            <View style={[{ flex: 1 }, contentSurfaceStyle]}>
-              <AnimatedFlashList
-                key={listKey}
-                ref={flashListRef as React.RefObject<FlashListRef<T>>}
-                {...resolvedFlashListProps}
-                data={data}
-                renderItem={renderItem}
-                keyExtractor={keyExtractor}
-                estimatedItemSize={estimatedItemSize}
-                contentContainerStyle={sanitizedContentContainerStyle}
-                ListHeaderComponent={ListHeaderComponent}
-                ListFooterComponent={ListFooterComponent}
-                ListEmptyComponent={ListEmptyComponent}
-                ItemSeparatorComponent={ItemSeparatorComponent}
-                keyboardShouldPersistTaps={keyboardShouldPersistTaps}
-                scrollEnabled={shouldEnableScroll}
-                renderScrollComponent={ScrollComponent}
-                onScroll={animatedScrollHandler}
-                scrollEventThrottle={16}
-                onScrollBeginDrag={(event) => {
-                  onScrollBeginDrag?.();
-                  flashListProps?.onScrollBeginDrag?.(event);
-                }}
-                onScrollEndDrag={(event) => {
-                  onScrollEndDrag?.();
-                  if (onScrollOffsetChange) {
-                    onScrollOffsetChange(scrollOffset.value);
+            {headerComponent ? (
+              <View onLayout={onHeaderLayout} style={styles.fixedHeader}>
+                {headerComponent}
+              </View>
+            ) : null}
+            <View style={[styles.contentHost, contentSurfaceStyle]}>
+              {scrollHeaderComponent ? (
+                <Animated.View
+                  onLayout={onScrollHeaderLayout}
+                  style={[styles.scrollHeaderOverlay, scrollHeaderSyncStyle]}
+                >
+                  {scrollHeaderComponent}
+                </Animated.View>
+              ) : null}
+              <View
+                pointerEvents={
+                  !shouldRenderDualLists || resolvedPresentationList === 'primary' ? 'auto' : 'none'
+                }
+                style={[
+                  shouldRenderDualLists ? styles.dualListLayer : styles.singleListLayer,
+                  !shouldRenderDualLists || resolvedPresentationList === 'primary'
+                    ? styles.visibleLayer
+                    : styles.hiddenLayer,
+                ]}
+              >
+                <AnimatedFlashList
+                  key={listKey}
+                  ref={flashListRef as React.RefObject<FlashListRef<T>>}
+                  {...resolvedFlashListProps}
+                  style={flashListSurfaceStyle}
+                  data={data}
+                  renderItem={renderItem}
+                  keyExtractor={keyExtractor}
+                  contentContainerStyle={listContentContainerStyle}
+                  ListHeaderComponent={
+                    !shouldRenderDualLists || resolvedActiveList === 'primary'
+                      ? ListHeaderComponent
+                      : null
                   }
-                  flashListProps?.onScrollEndDrag?.(event);
-                }}
-                onEndReached={onEndReached}
-                onEndReachedThreshold={onEndReachedThreshold}
-                showsVerticalScrollIndicator={effectiveShowsVerticalScrollIndicator}
-                keyboardDismissMode={keyboardDismissMode}
-                bounces={bounces}
-                alwaysBounceVertical={alwaysBounceVertical}
-                overScrollMode={overScrollMode}
-                testID={testID}
-                extraData={extraData}
-                scrollIndicatorInsets={scrollIndicatorInsets}
-              />
+                  ListFooterComponent={
+                    !shouldRenderDualLists || resolvedActiveList === 'primary'
+                      ? ListFooterComponent
+                      : null
+                  }
+                  ListEmptyComponent={
+                    !shouldRenderDualLists || resolvedActiveList === 'primary'
+                      ? ListEmptyComponent
+                      : null
+                  }
+                  ItemSeparatorComponent={ItemSeparatorComponent}
+                  keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+                  scrollEnabled={shouldEnableScroll && (!shouldRenderDualLists || resolvedActiveList === 'primary')}
+                  renderScrollComponent={
+                    !shouldRenderDualLists || resolvedActiveList === 'primary'
+                      ? ScrollComponent
+                      : undefined
+                  }
+                  onScroll={primaryAnimatedScrollHandler}
+                  scrollEventThrottle={16}
+                  onScrollBeginDrag={(event) => {
+                    onScrollBeginDrag?.();
+                    flashListProps?.onScrollBeginDrag?.(event);
+                  }}
+                  onScrollEndDrag={(event) => {
+                    onScrollEndDrag?.();
+                    if (onScrollOffsetChange) {
+                      onScrollOffsetChange(scrollOffset.value);
+                    }
+                    flashListProps?.onScrollEndDrag?.(event);
+                  }}
+                  onEndReached={onEndReached}
+                  onEndReachedThreshold={onEndReachedThreshold}
+                  showsVerticalScrollIndicator={
+                    effectiveShowsVerticalScrollIndicator &&
+                    (!shouldRenderDualLists || resolvedActiveList === 'primary')
+                  }
+                  keyboardDismissMode={keyboardDismissMode}
+                  bounces={bounces}
+                  alwaysBounceVertical={alwaysBounceVertical}
+                  overScrollMode={overScrollMode}
+                  testID={testID}
+                  extraData={extraData}
+                  scrollIndicatorInsets={scrollIndicatorInsets}
+                />
+              </View>
+              {shouldRenderDualLists && secondaryList ? (
+                <View
+                  pointerEvents={resolvedPresentationList === 'secondary' ? 'auto' : 'none'}
+                  style={[
+                    styles.dualListLayer,
+                    resolvedPresentationList === 'secondary'
+                      ? styles.visibleLayer
+                      : styles.hiddenLayer,
+                  ]}
+                >
+                  <AnimatedFlashList
+                    key={secondaryList.listKey ?? 'secondary-list'}
+                    ref={secondaryFlashListRef as React.RefObject<FlashListRef<T>>}
+                    {...resolvedFlashListProps}
+                    style={flashListSurfaceStyle}
+                    data={secondaryList.data}
+                    renderItem={renderItem}
+                    keyExtractor={keyExtractor}
+                    contentContainerStyle={listContentContainerStyle}
+                    ListHeaderComponent={
+                      resolvedActiveList === 'secondary' ? ListHeaderComponent : null
+                    }
+                    ListFooterComponent={
+                      resolvedActiveList === 'secondary' ? ListFooterComponent : null
+                    }
+                    ListEmptyComponent={
+                      resolvedActiveList === 'secondary' ? ListEmptyComponent : null
+                    }
+                    ItemSeparatorComponent={ItemSeparatorComponent}
+                    keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+                    scrollEnabled={shouldEnableScroll && resolvedActiveList === 'secondary'}
+                    renderScrollComponent={
+                      resolvedActiveList === 'secondary' ? ScrollComponent : undefined
+                    }
+                    onScroll={secondaryAnimatedScrollHandler}
+                    scrollEventThrottle={16}
+                    onScrollBeginDrag={(event) => {
+                      onScrollBeginDrag?.();
+                      flashListProps?.onScrollBeginDrag?.(event);
+                    }}
+                    onScrollEndDrag={(event) => {
+                      onScrollEndDrag?.();
+                      if (onScrollOffsetChange) {
+                        onScrollOffsetChange(scrollOffset.value);
+                      }
+                      flashListProps?.onScrollEndDrag?.(event);
+                    }}
+                    onEndReached={secondaryList.onEndReached ?? onEndReached}
+                    onEndReachedThreshold={onEndReachedThreshold}
+                    showsVerticalScrollIndicator={
+                      effectiveShowsVerticalScrollIndicator && resolvedActiveList === 'secondary'
+                    }
+                    keyboardDismissMode={keyboardDismissMode}
+                    bounces={bounces}
+                    alwaysBounceVertical={alwaysBounceVertical}
+                    overScrollMode={overScrollMode}
+                    testID={secondaryList.testID ?? testID}
+                    extraData={secondaryList.extraData ?? extraData}
+                    scrollIndicatorInsets={secondaryList.scrollIndicatorInsets ?? scrollIndicatorInsets}
+                  />
+                </View>
+              ) : null}
             </View>
             {overlayComponent ? (
               <View pointerEvents="box-none" style={StyleSheet.absoluteFillObject}>
@@ -1380,6 +1674,44 @@ const BottomSheetWithFlashList = <T,>({
     </GestureDetector>
   );
 };
+
+const styles = StyleSheet.create({
+  contentHost: {
+    flex: 1,
+    position: 'relative',
+  },
+  fixedHeader: {
+    zIndex: 3,
+  },
+  scrollHeaderOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1,
+  },
+  singleListLayer: {
+    flex: 1,
+  },
+  dualListLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  visibleLayer: {
+    opacity: 1,
+  },
+  hiddenLayer: {
+    opacity: 0,
+  },
+  transparentFlashListSurface: {
+    backgroundColor: 'transparent',
+  },
+  transparentScrollView: {
+    backgroundColor: 'transparent',
+  },
+  transparentScrollContent: {
+    backgroundColor: 'transparent',
+  },
+});
 
 export type { BottomSheetWithFlashListProps, SnapChangeMeta, SnapChangeSource, SnapPoints };
 export default BottomSheetWithFlashList;

@@ -10,6 +10,7 @@ export type ResultsSectionRow = {
 export type ResultsShowMoreRow = {
   kind: 'show_more_exact';
   key: string;
+  tab: 'dishes' | 'restaurants';
   hiddenCount: number;
 };
 
@@ -93,6 +94,7 @@ export const buildSectionedResultsData = ({
     rows.push({
       kind: 'show_more_exact',
       key: `${activeTab}-show-more-exact`,
+      tab: activeTab,
       hiddenCount,
     });
   }

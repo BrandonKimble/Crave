@@ -156,12 +156,11 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
     searchRuntimeBus,
     (state) => ({
       mode: state.searchMode,
-      mapPresentationActiveTab: state.pendingTabSwitchTab ?? state.activeTab,
+      mapPresentationActiveTab: state.activeTab,
     }),
     (left, right) =>
-      left.mode === right.mode &&
-      left.mapPresentationActiveTab === right.mapPresentationActiveTab,
-    ['searchMode', 'activeTab', 'pendingTabSwitchTab'] as const
+      left.mode === right.mode && left.mapPresentationActiveTab === right.mapPresentationActiveTab,
+    ['searchMode', 'activeTab'] as const
   );
   const mapPresentationMode = runtimeMapPresentationInput.mode;
   const mapPresentationActiveTab = runtimeMapPresentationInput.mapPresentationActiveTab;
@@ -171,6 +170,12 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
     (state) => state.isVisualSyncPending,
     Object.is,
     ['isVisualSyncPending'] as const
+  );
+  const isFilterTogglePending = useSearchRuntimeBusSelector(
+    searchRuntimeBus,
+    (state) => state.isFilterTogglePending,
+    Object.is,
+    ['isFilterTogglePending'] as const
   );
 
   // Pre-computed marker pipeline (populated by response handler)
@@ -623,6 +628,7 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
   // -------------------------------------------------------------------------
 
   const shouldHoldMapMarkerReveal = false;
+  const shouldSuppressMarkersForToggleInteraction = isFilterTogglePending;
 
   const heldSortedRestaurantMarkersRef = React.useRef<
     Array<Feature<Point, RestaurantFeatureProperties>>
@@ -644,9 +650,13 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
 
   const visibleSortedRestaurantMarkers = shouldHoldMapMarkerReveal
     ? heldSortedRestaurantMarkersRef.current
+    : shouldSuppressMarkersForToggleInteraction
+    ? EMPTY_SORTED_RESTAURANT_MARKERS
     : lodSortedRestaurantMarkers;
   const visibleDotRestaurantFeatures = shouldHoldMapMarkerReveal
     ? heldDotRestaurantFeaturesRef.current
+    : shouldSuppressMarkersForToggleInteraction
+    ? null
     : dotRestaurantFeatures;
 
   const visibleRestaurantFeatures = React.useMemo<
@@ -661,6 +671,8 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
 
   const visiblePinsRenderKey = shouldHoldMapMarkerReveal
     ? `hold::${heldPinsRenderKeyRef.current}`
+    : shouldSuppressMarkersForToggleInteraction
+    ? '0:empty:empty:0'
     : pinsRenderKey;
 
   const visibleDotRenderKey = React.useMemo(() => {

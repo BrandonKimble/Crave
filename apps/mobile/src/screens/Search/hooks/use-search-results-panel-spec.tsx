@@ -47,14 +47,14 @@ type RuntimeMechanismEmitter = (
 ) => void;
 
 const RESULTS_LOADING_SPINNER_OFFSET = 96;
-const RESULTS_TAB_SWITCH_SETTLE_MS = 260;
 const EMPTY_DISHES: FoodResult[] = [];
 const EMPTY_RESTAURANTS: RestaurantResult[] = [];
+const HIDDEN_SCROLL_HEADER_STYLE: ViewStyle = { opacity: 0 };
 
 type SearchResultsPanelSpecArgs = {
   searchRuntimeBus: SearchRuntimeBus;
   activeOverlayKey: string;
-  handleTabChange: (next: 'dishes' | 'restaurants') => void;
+  scheduleTabToggleCommit: (next: 'dishes' | 'restaurants') => void;
   toggleRankSelector: () => void;
   toggleOpenNow: () => void;
   toggleVotesFilter: () => void;
@@ -112,7 +112,7 @@ type SearchResultsPanelSpecArgs = {
 export const useSearchResultsPanelSpec = ({
   searchRuntimeBus,
   activeOverlayKey,
-  handleTabChange,
+  scheduleTabToggleCommit,
   toggleRankSelector,
   toggleOpenNow,
   toggleVotesFilter,
@@ -158,6 +158,7 @@ export const useSearchResultsPanelSpec = ({
     (state) => ({
       results: state.results,
       activeTab: state.activeTab,
+      pendingTabSwitchTab: state.pendingTabSwitchTab,
       canLoadMore: state.canLoadMore,
       isSearchSessionActive: state.isSearchSessionActive,
       isSearchLoading: state.isSearchLoading,
@@ -167,6 +168,7 @@ export const useSearchResultsPanelSpec = ({
     (left, right) =>
       left.results === right.results &&
       left.activeTab === right.activeTab &&
+      left.pendingTabSwitchTab === right.pendingTabSwitchTab &&
       left.canLoadMore === right.canLoadMore &&
       left.isSearchSessionActive === right.isSearchSessionActive &&
       left.isSearchLoading === right.isSearchLoading &&
@@ -175,6 +177,7 @@ export const useSearchResultsPanelSpec = ({
     [
       'results',
       'activeTab',
+      'pendingTabSwitchTab',
       'canLoadMore',
       'isSearchSessionActive',
       'isSearchLoading',
@@ -263,6 +266,7 @@ export const useSearchResultsPanelSpec = ({
   const {
     results,
     activeTab,
+    pendingTabSwitchTab,
     canLoadMore,
     isSearchSessionActive,
     isSearchLoading,
@@ -291,51 +295,22 @@ export const useSearchResultsPanelSpec = ({
   } = hydrationRuntimeState;
   const isRunOneChromeDeferred =
     isRunOneChromeFreezeActive || runOneCommitSpanPressureActive || isChromeDeferred;
-  const [resultsPresentationActiveTab, setResultsPresentationActiveTab] = React.useState(activeTab);
-  const resultsTabSwitchSeqRef = React.useRef(0);
-  const resultsTabSwitchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  React.useEffect(
-    () => () => {
-      if (resultsTabSwitchTimerRef.current) {
-        clearTimeout(resultsTabSwitchTimerRef.current);
-        resultsTabSwitchTimerRef.current = null;
-      }
+  const handleInteractionTabChange = React.useCallback(
+    (next: 'dishes' | 'restaurants') => {
+      scheduleTabToggleCommit(next);
     },
-    []
+    [scheduleTabToggleCommit]
   );
-
-  React.useEffect(() => {
-    if (!isSearchSessionActive) {
-      if (resultsTabSwitchTimerRef.current) {
-        clearTimeout(resultsTabSwitchTimerRef.current);
-        resultsTabSwitchTimerRef.current = null;
-      }
-      setResultsPresentationActiveTab(activeTab);
-      return;
-    }
-
-    const nextSeq = resultsTabSwitchSeqRef.current + 1;
-    resultsTabSwitchSeqRef.current = nextSeq;
-    if (resultsTabSwitchTimerRef.current) {
-      clearTimeout(resultsTabSwitchTimerRef.current);
-      resultsTabSwitchTimerRef.current = null;
-    }
-    resultsTabSwitchTimerRef.current = setTimeout(() => {
-      if (resultsTabSwitchSeqRef.current !== nextSeq) {
-        return;
-      }
-      setResultsPresentationActiveTab(activeTab);
-      resultsTabSwitchTimerRef.current = null;
-    }, RESULTS_TAB_SWITCH_SETTLE_MS);
-  }, [activeTab, isSearchSessionActive]);
 
   const shouldDisableFiltersHeader = false;
   const shouldDisableResultsHeader = false;
   const shouldUsePlaceholderRows = false;
-  const dishes = results?.dishes ?? EMPTY_DISHES;
-  const restaurants = results?.restaurants ?? EMPTY_RESTAURANTS;
-  const searchRequestId = results?.metadata?.searchRequestId ?? null;
+  const cardsResults = isFilterTogglePending ? null : results;
+  const dishes = cardsResults?.dishes ?? EMPTY_DISHES;
+  const restaurants = cardsResults?.restaurants ?? EMPTY_RESTAURANTS;
+  const searchRequestId = cardsResults?.metadata?.searchRequestId ?? null;
+  const filtersActiveTab = pendingTabSwitchTab ?? activeTab;
 
   const noopLogCompute = React.useCallback((_label: string, _duration: number) => {}, []);
   const { canonicalRestaurantRankById, restaurantsById } = useSearchResultsReadModel({
@@ -576,8 +551,8 @@ export const useSearchResultsPanelSpec = ({
   const filtersHeader = React.useMemo(
     () => (
       <SearchFilters
-        activeTab={filterChipReadModel.activeTab}
-        onTabChange={handleTabChange}
+        activeTab={filtersActiveTab}
+        onTabChange={handleInteractionTabChange}
         rankButtonLabel={filterChipReadModel.rankButtonLabel}
         rankButtonActive={filterChipReadModel.rankButtonActive}
         onToggleRankSelector={toggleRankSelector}
@@ -598,7 +573,6 @@ export const useSearchResultsPanelSpec = ({
       />
     ),
     [
-      filterChipReadModel.activeTab,
       filterChipReadModel.isPriceSelectorVisible,
       filterChipReadModel.isRankSelectorVisible,
       filterChipReadModel.openNow,
@@ -607,8 +581,9 @@ export const useSearchResultsPanelSpec = ({
       filterChipReadModel.rankButtonActive,
       filterChipReadModel.rankButtonLabel,
       filterChipReadModel.votesFilterActive,
+      filtersActiveTab,
+      handleInteractionTabChange,
       handleSearchFiltersLayoutCache,
-      handleTabChange,
       searchFiltersLayoutCacheRef,
       shouldDisableSearchBlur,
       toggleOpenNow,
@@ -637,7 +612,7 @@ export const useSearchResultsPanelSpec = ({
     return `result-${index}`;
   }, []);
 
-  const isDishesTab = resultsPresentationActiveTab === 'dishes';
+  const isDishesTab = activeTab === 'dishes';
   const estimatedDishItemSize = 240;
   const estimatedRestaurantItemSize = 270;
   const estimatedItemSize = isDishesTab ? estimatedDishItemSize : estimatedRestaurantItemSize;
@@ -686,7 +661,7 @@ export const useSearchResultsPanelSpec = ({
   React.useLayoutEffect(() => {
     previousSearchSessionActiveRef.current = isSearchSessionActive;
   }, [isSearchSessionActive]);
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     if (didSearchSessionJustActivate) {
       setIsInitialResultsLoadPending(true);
       return;
@@ -695,14 +670,20 @@ export const useSearchResultsPanelSpec = ({
       setIsInitialResultsLoadPending(false);
       return;
     }
-    if (isInitialResultsLoadPending && !isSearchLoading) {
-      setIsInitialResultsLoadPending(false);
+    if (isInitialResultsLoadPending && !isSearchLoading && !isVisualSyncPending) {
+      const isFiltersLayoutReady = shouldDisableFiltersHeader || filtersHeaderHeight > 0;
+      if (isFiltersLayoutReady) {
+        setIsInitialResultsLoadPending(false);
+      }
     }
   }, [
     didSearchSessionJustActivate,
     isInitialResultsLoadPending,
     isSearchLoading,
+    isVisualSyncPending,
     isSearchSessionActive,
+    shouldDisableFiltersHeader,
+    filtersHeaderHeight,
   ]);
   const {
     layout: resultsHeaderLayout,
@@ -810,12 +791,21 @@ export const useSearchResultsPanelSpec = ({
     );
   }, [filtersHeader, handleFiltersHeaderLayout, shouldDisableFiltersHeader]);
 
+  const shouldShowInteractionLoadingState = isFilterTogglePending;
+  const shouldHoldInitialLoadingForVisualSync =
+    !isFilterTogglePending && isInitialResultsLoadPending && isVisualSyncPending;
+  const shouldHoldInitialLoadingForFiltersLayout =
+    !isFilterTogglePending &&
+    isInitialResultsLoadPending &&
+    !shouldDisableFiltersHeader &&
+    filtersHeaderHeight <= 0;
+  const shouldShowInitialLoadingState =
+    ((isSearchLoading || hasSystemStatusBanner || shouldRetrySearchOnReconnect) &&
+      (!hasResolvedResults || shouldForceInitialLoadingCover)) ||
+    shouldHoldInitialLoadingForVisualSync ||
+    shouldHoldInitialLoadingForFiltersLayout;
   const shouldShowResultsLoadingStateBase =
-    (isSearchLoading ||
-      hasSystemStatusBanner ||
-      shouldRetrySearchOnReconnect ||
-      isFilterTogglePending) &&
-    (!hasResolvedResults || shouldForceInitialLoadingCover);
+    shouldShowInteractionLoadingState || shouldShowInitialLoadingState;
   const shouldFreezeResultsChrome = isRunOneChromeDeferred && !hasResolvedResults;
   const frozenResultsChromeSnapshotRef = React.useRef<{
     listHeader: React.ReactNode;
@@ -854,10 +844,11 @@ export const useSearchResultsPanelSpec = ({
     : shouldUseResultsHeaderBlur;
 
   const resultsReadModelSelectors = useSearchResultsReadModelSelectors({
-    activeTab: resultsPresentationActiveTab,
+    // Keep selector internals on committed tab to avoid hot-path churn on rapid taps.
+    activeTab,
     dishes,
     restaurants,
-    results,
+    results: cardsResults,
     isFilterTogglePending,
     shouldHydrateResultsForRender,
     runOneCommitSpanPressureActive,
@@ -909,19 +900,21 @@ export const useSearchResultsPanelSpec = ({
       shouldRetrySearchOnReconnect,
       isFilterTogglePending,
       hasResults: hasResolvedResults,
-      safeResultsCount: resultsReadModelSelectors.safeResultsCount,
+      safeResultsCount: resultsReadModelSelectors.safeResultsCountByTab[activeTab],
     }) || shouldUsePlaceholderRows;
 
   // --- Toggle strip gating: only render when cards are present ---
-  const hasRenderableRows = resultsReadModelSelectors.rowsForRender.length > 0;
+  const hasRenderableRows = resultsReadModelSelectors.rowsByTab[activeTab].length > 0;
 
-  const listHeaderForRender = hasRenderableRows
+  const shouldForceListHeaderForInteraction =
+    isFilterTogglePending || shouldShowInitialLoadingState;
+  const listHeaderForRender = hasRenderableRows || shouldForceListHeaderForInteraction
     ? shouldFreezeResultsChrome
       ? frozenResultsChromeSnapshot?.listHeader ?? listHeader
       : listHeader
     : null;
 
-  const effectiveFiltersHeaderHeightForRender = hasRenderableRows
+  const effectiveFiltersHeaderHeightForRender = hasRenderableRows || shouldForceListHeaderForInteraction
     ? effectiveFiltersHeaderHeightBase
     : 0;
 
@@ -932,36 +925,38 @@ export const useSearchResultsPanelSpec = ({
     hasResolvedResults &&
     !isSearchLoading;
 
-  // Bridge the 1-frame gap between loading completion and visual-sync activation.
-  // Results are committed to the bus synchronously, but handlePageOneResultsCommitted
-  // (which sets isVisualSyncPending=true) is deferred via scheduleOnNextFrame.
-  // Without this bridge, surfaceActive goes false for one frame then back to true.
-  const visualSyncBridgeRef = React.useRef(false);
-  if (shouldShowResultsLoadingStateBase) {
-    visualSyncBridgeRef.current = true;
-  } else if (isVisualSyncPending || !hasResolvedResults) {
-    visualSyncBridgeRef.current = false;
-  }
-
-  // Surface visibility derived from coordinated state — no independent timeout.
-  // Stays up until loading is done, map has signaled visual-ready, and cards are
-  // rendered (or empty state applies). The 1200ms fallback in index.tsx handles
-  // the case where the map never signals.
-  const surfaceActive =
-    shouldShowResultsLoadingStateBase ||
-    isSurfaceShowingEmptyState ||
-    isVisualSyncPending ||
-    (hasResolvedResults && !hasRenderableRows) ||
-    visualSyncBridgeRef.current;
+  type ResultsSurfaceMode = 'none' | 'initial_loading' | 'interaction_loading' | 'empty';
+  const surfaceMode: ResultsSurfaceMode = shouldShowInitialLoadingState
+    ? 'initial_loading'
+    : shouldShowInteractionLoadingState
+    ? 'interaction_loading'
+    : isSurfaceShowingEmptyState
+    ? 'empty'
+    : 'none';
+  const surfaceActive = surfaceMode !== 'none';
+  const shouldUseInteractionSurface = surfaceMode === 'interaction_loading';
+  const shouldHideScrollHeaderForSurface = surfaceMode === 'initial_loading';
+  const scrollHeaderForRender = React.useMemo(() => {
+    if (!listHeaderForRender) {
+      return null;
+    }
+    if (!shouldHideScrollHeaderForSurface) {
+      return listHeaderForRender;
+    }
+    return (
+      <View pointerEvents="none" style={HIDDEN_SCROLL_HEADER_STYLE}>
+        {listHeaderForRender}
+      </View>
+    );
+  }, [listHeaderForRender, shouldHideScrollHeaderForSurface]);
 
   const surfaceContent = React.useMemo(() => {
-    if (!surfaceActive) return null;
-
-    if (isSurfaceShowingEmptyState) {
+    if (surfaceMode === 'none') {
+      return null;
+    }
+    if (surfaceMode === 'empty') {
       const emptyTitle =
-        resultsPresentationActiveTab === 'dishes'
-          ? 'No dishes found.'
-          : 'No restaurants found.';
+        activeTab === 'dishes' ? 'No dishes found.' : 'No restaurants found.';
       const emptySubtitle =
         results?.metadata?.emptyQueryMessage ?? 'Try moving the map or adjusting your search.';
       return (
@@ -972,16 +967,15 @@ export const useSearchResultsPanelSpec = ({
       );
     }
 
-    // Show spinner for the entire surface lifetime (loading + visual sync window)
+    // Show spinner for both initial and interaction loading lifetimes.
     return (
       <View style={{ paddingTop: RESULTS_LOADING_SPINNER_OFFSET }}>
         <SquircleSpinner size={22} color={ACTIVE_TAB_COLOR} />
       </View>
     );
   }, [
-    surfaceActive,
-    isSurfaceShowingEmptyState,
-    resultsPresentationActiveTab,
+    surfaceMode,
+    activeTab,
     results?.metadata?.emptyQueryMessage,
     onDemandNotice,
   ]);
@@ -989,7 +983,6 @@ export const useSearchResultsPanelSpec = ({
   const resultsRenderItem = shouldUsePlaceholderRows
     ? renderPlaceholderFlashListItem
     : resultsReadModelSelectors.renderListItem;
-  const resultsListKey = 'results';
   const resultsWashTopOffset = Math.max(
     0,
     effectiveResultsHeaderHeightForRender + effectiveFiltersHeaderHeightForRender
@@ -1019,22 +1012,36 @@ export const useSearchResultsPanelSpec = ({
   const surfaceTopOffset = effectiveResultsHeaderHeightForRender || OVERLAY_TAB_HEADER_HEIGHT;
 
   const resultsOverlayComponent = React.useMemo(
-    () => (
-      <>
-        <Reanimated.View
-          pointerEvents="none"
-          style={[
-            styles.resultsWashOverlay,
-            { top: resultsWashTopOffset },
-            resultsWashAnimatedStyle,
-          ]}
-        />
-        {surfaceActive ? (
-          <View style={[styles.resultsSurface, { top: surfaceTopOffset }]}>{surfaceContent}</View>
-        ) : null}
-      </>
-    ),
+    () => {
+      const shouldRenderWhiteWash =
+        surfaceMode === 'initial_loading' || surfaceMode === 'empty';
+      const overlayTopOffset = shouldUseInteractionSurface ? resultsWashTopOffset : surfaceTopOffset;
+      const surfaceStyle = shouldUseInteractionSurface
+        ? styles.resultsSurfaceInteraction
+        : styles.resultsSurface;
+      return (
+        <>
+          {shouldRenderWhiteWash ? (
+            <Reanimated.View
+              pointerEvents="none"
+              style={[
+                styles.resultsWashOverlay,
+                { top: resultsWashTopOffset },
+                resultsWashAnimatedStyle,
+              ]}
+            />
+          ) : null}
+          {surfaceActive ? (
+            <View style={[surfaceStyle, { top: overlayTopOffset }]}>
+              {surfaceContent}
+            </View>
+          ) : null}
+        </>
+      );
+    },
     [
+      surfaceMode,
+      shouldUseInteractionSurface,
       surfaceActive,
       surfaceContent,
       surfaceTopOffset,
@@ -1050,9 +1057,11 @@ export const useSearchResultsPanelSpec = ({
   const resultsContentContainerStyle = React.useMemo(
     () => ({
       paddingBottom:
-        resultsReadModelSelectors.rowsForRender.length > 0 ? RESULTS_BOTTOM_PADDING : 0,
+        resultsReadModelSelectors.rowsByTab[activeTab].length > 0
+          ? RESULTS_BOTTOM_PADDING
+          : 0,
     }),
-    [resultsReadModelSelectors.rowsForRender.length]
+    [activeTab, resultsReadModelSelectors.rowsByTab]
   );
   const resultsSheetContainerStyle = React.useMemo(
     () => [styles.resultsSheetContainer, resultsSheetVisibilityAnimatedStyle],
@@ -1063,6 +1072,10 @@ export const useSearchResultsPanelSpec = ({
     [resultsContainerAnimatedStyle, resultsSheetVisibilityAnimatedStyle]
   );
 
+  const primaryTab: 'restaurants' | 'dishes' = 'restaurants';
+  const secondaryTab: 'restaurants' | 'dishes' = 'dishes';
+  const activeList = activeTab === primaryTab ? 'primary' : 'secondary';
+  const presentationActiveList = activeTab === primaryTab ? 'primary' : 'secondary';
   return useSearchPanelSpec<ResultsListItem>({
     visible: shouldRenderResultsSheet,
     listScrollEnabled: !isFilterTogglePending && !shouldDisableResultsSheetInteraction,
@@ -1082,19 +1095,27 @@ export const useSearchResultsPanelSpec = ({
       top: effectiveResultsHeaderHeightForRender,
       bottom: RESULTS_BOTTOM_PADDING,
     },
-    data: resultsReadModelSelectors.rowsForRender,
+    data: resultsReadModelSelectors.rowsByTab[primaryTab],
+    secondaryList: {
+      data: resultsReadModelSelectors.rowsByTab[secondaryTab],
+      listKey: 'results-dishes',
+      testID: 'search-results-flatlist-secondary',
+    },
+    activeList,
+    presentationActiveList,
     renderItem: resultsRenderItem,
     keyExtractor: resultsKeyExtractor,
     estimatedItemSize,
     getItemType: getResultItemType,
     overrideItemLayout,
-    listKey: resultsListKey,
+    listKey: 'results-restaurants',
     contentContainerStyle: resultsContentContainerStyle,
-    ListHeaderComponent: listHeaderForRender as React.ReactElement | null,
+    ListHeaderComponent: null,
     ListFooterComponent: resultsReadModelSelectors.listFooterComponent as React.ReactElement | null,
     ListEmptyComponent: null,
     ItemSeparatorComponent: ResultItemSeparator,
     headerComponent: resultsReadModelSelectors.listHeaderComponent,
+    scrollHeaderComponent: scrollHeaderForRender as React.ReactElement | null,
     backgroundComponent: resultsListBackground,
     overlayComponent: resultsOverlayComponent,
     listRef: resultsScrollRef,

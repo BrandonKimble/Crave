@@ -1,7 +1,9 @@
 import React from 'react';
-import { InteractionManager } from 'react-native';
 
 import { useSearchStore } from '../../../../store/searchStore';
+import { logger } from '../../../../utils';
+import type { ToggleCommitOutcome } from './use-toggle-interaction-coordinator';
+import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
 import {
   buildLevelsFromRange,
   getRangeFromLevels,
@@ -37,6 +39,7 @@ type QueryMutationMechanismEmitter = (
 ) => void;
 
 type UseQueryMutationOrchestratorArgs = {
+  searchRuntimeBus: SearchRuntimeBus;
   searchMode: SearchMode;
   activeTab: SegmentValue;
   submittedQuery: string;
@@ -56,14 +59,12 @@ type UseQueryMutationOrchestratorArgs = {
   setOpenNow: (next: boolean) => void;
   setPriceLevels: (next: number[]) => void;
   setPreferredScoreMode: (next: ScoreMode) => void;
-  setIsFilterTogglePending: (next: boolean) => void;
+  scheduleToggleCommit: (runner: () => ToggleCommitOutcome | void) => void;
   rerunActiveSearch: (options: RerunActiveSearchOptions) => Promise<void>;
   priceSheetRef: React.MutableRefObject<{ requestClose: () => void } | null>;
   rankSheetRef: React.MutableRefObject<{ requestClose: () => void } | null>;
   minimumVotesFilter: number;
   onMechanismEvent?: QueryMutationMechanismEmitter;
-  filterToggleDebounceMs?: number;
-  priceSelectionDebounceMs?: number;
 };
 
 type QueryMutationOrchestrator = {
@@ -86,6 +87,7 @@ export const useQueryMutationOrchestrator = (
   args: UseQueryMutationOrchestratorArgs
 ): QueryMutationOrchestrator => {
   const {
+    searchRuntimeBus,
     searchMode,
     activeTab,
     submittedQuery,
@@ -105,21 +107,16 @@ export const useQueryMutationOrchestrator = (
     setOpenNow,
     setPriceLevels,
     setPreferredScoreMode,
-    setIsFilterTogglePending,
+    scheduleToggleCommit,
     rerunActiveSearch,
     priceSheetRef,
     rankSheetRef,
     minimumVotesFilter,
     onMechanismEvent,
-    filterToggleDebounceMs = 600,
-    priceSelectionDebounceMs = 150,
   } = args;
 
   const pendingPriceRangeRef = React.useRef<PriceRangeTuple>(pendingPriceRange);
   const pendingScoreModeRef = React.useRef<ScoreMode>(pendingScoreMode);
-  const filterDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const toggleFilterDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const filterToggleRequestRef = React.useRef(0);
 
   React.useEffect(() => {
     pendingPriceRangeRef.current = pendingPriceRange;
@@ -153,67 +150,48 @@ export const useQueryMutationOrchestrator = (
   );
 
   const cancelPendingMutationWork = React.useCallback(() => {
-    if (filterDebounceRef.current) {
-      clearTimeout(filterDebounceRef.current);
-      filterDebounceRef.current = null;
-    }
-    if (toggleFilterDebounceRef.current) {
-      clearTimeout(toggleFilterDebounceRef.current);
-      toggleFilterDebounceRef.current = null;
-    }
+    // No local debounce timers remain. Global settle ownership lives in
+    // useToggleInteractionCoordinator.
   }, []);
-
-  React.useEffect(() => () => cancelPendingMutationWork(), [cancelPendingMutationWork]);
 
   const canRerunForCurrentQuery = React.useCallback(() => {
     const hasCommittedQuery = Boolean((isSearchSessionActive ? submittedQuery : query).trim());
     return searchMode === 'shortcut' || hasCommittedQuery;
   }, [isSearchSessionActive, query, searchMode, submittedQuery]);
-
-  const scheduleFilterToggleSearch = React.useCallback(
-    (runSearch: () => Promise<void>, options?: { showOverlay?: boolean }) => {
-      const shouldShowOverlay = options?.showOverlay !== false;
-      if (shouldShowOverlay) {
-        setIsFilterTogglePending(true);
-      }
-      const previousRequestId = filterToggleRequestRef.current;
-      const requestId = (filterToggleRequestRef.current += 1);
-      if (toggleFilterDebounceRef.current) {
-        clearTimeout(toggleFilterDebounceRef.current);
-        emitMutationCoalesced({
-          reason: 'toggle_debounce_superseded',
-          previousRequestId,
-          requestId,
+  const clearPendingTabSwitchDraft = React.useCallback(() => {
+    searchRuntimeBus.publish({
+      pendingTabSwitchTab: null,
+      pendingTabSwitchRequestKey: null,
+    });
+  }, [searchRuntimeBus]);
+  const fireRerunActiveSearch = React.useCallback(
+    (options: RerunActiveSearchOptions) => {
+      void rerunActiveSearch(options).catch((error) => {
+        logger.warn('Toggle rerun failed', {
+          message: error instanceof Error ? error.message : 'unknown error',
         });
-      }
-      toggleFilterDebounceRef.current = setTimeout(() => {
-        toggleFilterDebounceRef.current = null;
-        const execute = async () => {
-          try {
-            await runSearch();
-          } finally {
-            if (shouldShowOverlay && filterToggleRequestRef.current === requestId) {
-              setIsFilterTogglePending(false);
-            }
-          }
-        };
-        void execute();
-      }, filterToggleDebounceMs);
+      });
     },
-    [emitMutationCoalesced, filterToggleDebounceMs, setIsFilterTogglePending]
+    [rerunActiveSearch]
   );
 
   const toggleVotesFilter = React.useCallback(() => {
     setIsPriceSelectorVisible(false);
     setIsRankSelectorVisible(false);
-    const nextValue = !useSearchStore.getState().votes100Plus;
-    setVotes100Plus(nextValue);
+    clearPendingTabSwitchDraft();
+    const runtimeVotesFilterActive = searchRuntimeBus.getState().votesFilterActive;
+    const nextValue = !runtimeVotesFilterActive;
+    searchRuntimeBus.publish({
+      votesFilterActive: nextValue,
+    });
     if (!canRerunForCurrentQuery()) {
+      setVotes100Plus(nextValue);
       return;
     }
     const minimumVotes = nextValue ? minimumVotesFilter : null;
-    scheduleFilterToggleSearch(async () => {
-      await rerunActiveSearch({
+    scheduleToggleCommit(() => {
+      setVotes100Plus(nextValue);
+      fireRerunActiveSearch({
         searchMode,
         activeTab,
         submittedQuery,
@@ -222,15 +200,20 @@ export const useQueryMutationOrchestrator = (
         preserveSheetState: true,
         filters: { minimumVotes },
       });
+      return {
+        awaitVisualSync: true,
+      };
     });
   }, [
     activeTab,
     canRerunForCurrentQuery,
+    clearPendingTabSwitchDraft,
+    fireRerunActiveSearch,
     isSearchSessionActive,
     minimumVotesFilter,
     query,
-    rerunActiveSearch,
-    scheduleFilterToggleSearch,
+    scheduleToggleCommit,
+    searchRuntimeBus,
     searchMode,
     setIsPriceSelectorVisible,
     setIsRankSelectorVisible,
@@ -247,33 +230,35 @@ export const useQueryMutationOrchestrator = (
         });
         return;
       }
+      clearPendingTabSwitchDraft();
       setPreferredScoreMode(nextMode);
       if (!canRerunForCurrentQuery()) {
         return;
       }
-      scheduleFilterToggleSearch(
-        async () => {
-          await rerunActiveSearch({
-            searchMode,
-            activeTab,
-            submittedQuery,
-            query,
-            isSearchSessionActive,
-            preserveSheetState: true,
-            scoreMode: nextMode,
-          });
-        },
-        { showOverlay: false }
-      );
+      scheduleToggleCommit(() => {
+        fireRerunActiveSearch({
+          searchMode,
+          activeTab,
+          submittedQuery,
+          query,
+          isSearchSessionActive,
+          preserveSheetState: true,
+          scoreMode: nextMode,
+        });
+        return {
+          awaitVisualSync: true,
+        };
+      });
     },
     [
       activeTab,
       canRerunForCurrentQuery,
+      clearPendingTabSwitchDraft,
       emitMutationCoalesced,
+      fireRerunActiveSearch,
       isSearchSessionActive,
       query,
-      rerunActiveSearch,
-      scheduleFilterToggleSearch,
+      scheduleToggleCommit,
       scoreMode,
       searchMode,
       setPreferredScoreMode,
@@ -284,13 +269,19 @@ export const useQueryMutationOrchestrator = (
   const toggleOpenNow = React.useCallback(() => {
     setIsPriceSelectorVisible(false);
     setIsRankSelectorVisible(false);
-    const nextValue = !useSearchStore.getState().openNow;
-    setOpenNow(nextValue);
+    clearPendingTabSwitchDraft();
+    const runtimeOpenNow = searchRuntimeBus.getState().openNow;
+    const nextValue = !runtimeOpenNow;
+    searchRuntimeBus.publish({
+      openNow: nextValue,
+    });
     if (!canRerunForCurrentQuery()) {
+      setOpenNow(nextValue);
       return;
     }
-    scheduleFilterToggleSearch(async () => {
-      await rerunActiveSearch({
+    scheduleToggleCommit(() => {
+      setOpenNow(nextValue);
+      fireRerunActiveSearch({
         searchMode,
         activeTab,
         submittedQuery,
@@ -299,14 +290,19 @@ export const useQueryMutationOrchestrator = (
         preserveSheetState: true,
         filters: { openNow: nextValue },
       });
+      return {
+        awaitVisualSync: true,
+      };
     });
   }, [
     activeTab,
     canRerunForCurrentQuery,
+    clearPendingTabSwitchDraft,
+    fireRerunActiveSearch,
     isSearchSessionActive,
     query,
-    rerunActiveSearch,
-    scheduleFilterToggleSearch,
+    scheduleToggleCommit,
+    searchRuntimeBus,
     searchMode,
     setIsPriceSelectorVisible,
     setIsRankSelectorVisible,
@@ -322,51 +318,49 @@ export const useQueryMutationOrchestrator = (
     } else {
       setIsPriceSelectorVisible(false);
     }
-    requestAnimationFrame(() => {
-      void InteractionManager.runAfterInteractions(() => {
-        const normalizedRange = normalizePriceRangeValues(snapshot);
-        const shouldClear = isFullPriceRange(normalizedRange);
-        const nextLevels = shouldClear ? [] : buildLevelsFromRange(normalizedRange);
-        const currentLevels = useSearchStore.getState().priceLevels;
-        const hasChanged =
-          nextLevels.length !== currentLevels.length ||
-          nextLevels.some((value, index) => value !== currentLevels[index]);
-        if (!hasChanged) {
-          return;
-        }
-        setPriceLevels(nextLevels);
-        if (!canRerunForCurrentQuery()) {
-          return;
-        }
-        if (filterDebounceRef.current) {
-          clearTimeout(filterDebounceRef.current);
-          emitMutationCoalesced({
-            reason: 'price_debounce_superseded',
-          });
-        }
-        filterDebounceRef.current = setTimeout(() => {
-          filterDebounceRef.current = null;
-          void rerunActiveSearch({
-            searchMode,
-            activeTab,
-            submittedQuery,
-            query,
-            isSearchSessionActive,
-            preserveSheetState: true,
-            filters: { priceLevels: nextLevels },
-          });
-        }, priceSelectionDebounceMs);
+
+    const normalizedRange = normalizePriceRangeValues(snapshot);
+    const shouldClear = isFullPriceRange(normalizedRange);
+    const nextLevels = shouldClear ? [] : buildLevelsFromRange(normalizedRange);
+    const currentLevels = useSearchStore.getState().priceLevels;
+    const hasChanged =
+      nextLevels.length !== currentLevels.length ||
+      nextLevels.some((value, index) => value !== currentLevels[index]);
+
+    if (!hasChanged) {
+      return;
+    }
+    clearPendingTabSwitchDraft();
+
+    setPriceLevels(nextLevels);
+
+    if (!canRerunForCurrentQuery()) {
+      return;
+    }
+
+    scheduleToggleCommit(() => {
+      fireRerunActiveSearch({
+        searchMode,
+        activeTab,
+        submittedQuery,
+        query,
+        isSearchSessionActive,
+        preserveSheetState: true,
+        filters: { priceLevels: nextLevels },
       });
+      return {
+        awaitVisualSync: true,
+      };
     });
   }, [
     activeTab,
     canRerunForCurrentQuery,
-    emitMutationCoalesced,
+    clearPendingTabSwitchDraft,
+    fireRerunActiveSearch,
     isSearchSessionActive,
-    priceSelectionDebounceMs,
     priceSheetRef,
     query,
-    rerunActiveSearch,
+    scheduleToggleCommit,
     searchMode,
     setIsPriceSelectorVisible,
     setPriceLevels,
@@ -394,11 +388,7 @@ export const useQueryMutationOrchestrator = (
     } else {
       setIsRankSelectorVisible(false);
     }
-    requestAnimationFrame(() => {
-      void InteractionManager.runAfterInteractions(() => {
-        handleScoreModeChange(snapshot);
-      });
-    });
+    handleScoreModeChange(snapshot);
   }, [handleScoreModeChange, rankSheetRef, setIsRankSelectorVisible]);
 
   const closeRankSelector = React.useCallback(() => {

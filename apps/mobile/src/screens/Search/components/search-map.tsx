@@ -1432,9 +1432,7 @@ const usePinTransitionController = ({
     heldDotFeaturesRef.current = null;
   }
   const dotsAreHeld = !dotsHaveFeatures && heldDotFeaturesRef.current != null;
-  const effectiveDotFeatures = dotsAreHeld
-    ? heldDotFeaturesRef.current!
-    : dotRestaurantFeatures;
+  const effectiveDotFeatures = dotsAreHeld ? heldDotFeaturesRef.current! : dotRestaurantFeatures;
 
   // ---------------------------------------------------------------------------
   // Controller-owned dismiss pin features with opacity pre-applied.
@@ -2840,10 +2838,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       labelMarkerIdentityKeyRef.current = '';
       labelCandidateAppliedStickyEpochRef.current = labelStickyEpoch;
       previousLabelCandidateCollectionRef.current = null;
-      return effectivePinFeatures as FeatureCollection<
-        Point,
-        RestaurantFeatureProperties
-      >;
+      return effectivePinFeatures as FeatureCollection<Point, RestaurantFeatureProperties>;
     }
 
     // Compute marker identity fingerprint (keys + order only)

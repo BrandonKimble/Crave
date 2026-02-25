@@ -1149,12 +1149,9 @@ const useSearchSubmit = ({
         });
       });
       if (!append && normalizedResponse.metadata.page === 1) {
-        scheduleOnNextFrame(() => {
-          if (isResponseApplyStale()) {
-            return;
-          }
+        if (!isResponseApplyStale()) {
           onPageOneResultsCommitted?.();
-        });
+        }
       }
 
       const applyResponseMetaState = () => {
@@ -1176,7 +1173,8 @@ const useSearchSubmit = ({
                 const hasFoodResults = normalizedResponse?.dishes?.length > 0;
                 const hasRestaurantsResults = (normalizedResponse?.restaurants?.length ?? 0) > 0;
                 const submissionDefaultTab = resolveSubmissionDefaultTab(options.submissionContext);
-                const intentDefaultTab = submissionDefaultTab ?? resolveIntentDefaultTab(normalizedResponse);
+                const intentDefaultTab =
+                  submissionDefaultTab ?? resolveIntentDefaultTab(normalizedResponse);
 
                 const computeTab = (prevTab: 'dishes' | 'restaurants') => {
                   if (intentDefaultTab) {
@@ -1622,7 +1620,7 @@ const useSearchSubmit = ({
         } else {
           setSearchRequestInFlight(true);
           setError(null);
-          if (shouldPreclearNaturalResults) {
+          if (shouldPreclearNaturalResults && !preserveSheetState) {
             searchRuntimeBus.publish({ results: null, resultsRequestKey: null });
           }
           if (shouldPrimeSubmittedQueryBeforeResponse && !preserveSheetState) {

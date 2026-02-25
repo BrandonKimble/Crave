@@ -27,6 +27,10 @@ type UseSearchPanelSpecOptions<T> = {
   onEndReached?: FlashListProps<T>['onEndReached'];
   scrollIndicatorInsets?: FlashListProps<T>['scrollIndicatorInsets'];
   extraData?: FlashListProps<T>['extraData'];
+  secondaryList?: BottomSheetWithFlashListProps<T>['secondaryList'];
+  activeList?: BottomSheetWithFlashListProps<T>['activeList'];
+  presentationActiveList?: BottomSheetWithFlashListProps<T>['presentationActiveList'];
+  scrollHeaderComponent?: BottomSheetWithFlashListProps<T>['scrollHeaderComponent'];
   interactionEnabled?: boolean;
   data: ReadonlyArray<T>;
   renderItem: FlashListProps<T>['renderItem'];
@@ -44,7 +48,7 @@ type UseSearchPanelSpecOptions<T> = {
   overlayComponent?: React.ReactNode;
   contentContainerStyle?: FlashListProps<T>['contentContainerStyle'];
   resultsContainerAnimatedStyle: StyleProp<ViewStyle>;
-  listRef?: React.RefObject<FlashListRef<T>>;
+  listRef?: React.RefObject<FlashListRef<T> | null>;
   onHidden: () => void;
   onSnapStart?: BottomSheetWithFlashListProps<T>['onSnapStart'];
   onSnapChange: (snap: OverlaySheetSnap) => void;
@@ -69,6 +73,10 @@ export const useSearchPanelSpec = <T,>({
   onEndReached,
   scrollIndicatorInsets,
   extraData,
+  secondaryList,
+  activeList,
+  presentationActiveList,
+  scrollHeaderComponent,
   interactionEnabled = true,
   data,
   renderItem,
@@ -153,6 +161,10 @@ export const useSearchPanelSpec = <T,>({
       overScrollMode: 'never',
       testID: 'search-results-flatlist',
       extraData,
+      secondaryList,
+      activeList,
+      presentationActiveList,
+      scrollHeaderComponent,
       data,
       renderItem,
       keyExtractor,
@@ -183,6 +195,10 @@ export const useSearchPanelSpec = <T,>({
       data,
       estimatedItemSize,
       extraData,
+      secondaryList,
+      activeList,
+      presentationActiveList,
+      scrollHeaderComponent,
       headerComponent,
       initialSnapPoint,
       interactionEnabled,
