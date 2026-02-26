@@ -827,9 +827,7 @@ const SearchScreen: React.FC = () => {
     'map_visual_ready' | 'fallback_timeout' | 'marker_reveal_settled_raf' | 'unknown'
   >('unknown');
   const visualReadyFallbackTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const setIsFilterTogglePending = React.useCallback<
-    React.Dispatch<React.SetStateAction<boolean>>
-  >(
+  const setIsFilterTogglePending = React.useCallback<React.Dispatch<React.SetStateAction<boolean>>>(
     (nextValue) => {
       const previous = searchRuntimeBus.getState().isFilterTogglePending;
       const nextResolved =
@@ -3560,8 +3558,6 @@ const SearchScreen: React.FC = () => {
     searchMode,
     isSearchLoading,
     isLoadingMore: searchRuntimeBus.getState().isLoadingMore,
-    shouldHoldMapMarkerReveal:
-      searchMode === 'shortcut' && searchRuntimeBus.getState().isVisualSyncPending,
     isRunOneHandoffActive: isRun1HandoffActive,
     resultsRequestKey,
     searchInteractionRef,
@@ -4032,21 +4028,16 @@ const SearchScreen: React.FC = () => {
         publishRuntimeBusPatch({
           activeTab: value,
           pendingTabSwitchTab: null,
-          pendingTabSwitchRequestKey: null,
         });
       });
       setActiveTabPreference(value);
     },
     [publishRuntimeBusPatch, searchRuntimeBus, setActiveTab, setActiveTabPreference]
   );
-  const pendingTabSwitchSeqRef = React.useRef(0);
   const scheduleTabToggleCommit = React.useCallback(
     (value: 'restaurants' | 'dishes') => {
-      pendingTabSwitchSeqRef.current += 1;
-      const pendingRequestKey = `tab-intent:${pendingTabSwitchSeqRef.current}:${value}`;
       publishRuntimeBusPatch({
         pendingTabSwitchTab: value,
-        pendingTabSwitchRequestKey: pendingRequestKey,
       });
       scheduleToggleCommit(() => {
         const runtimeState = searchRuntimeBus.getState();
@@ -4056,7 +4047,6 @@ const SearchScreen: React.FC = () => {
         } else {
           publishRuntimeBusPatch({
             pendingTabSwitchTab: null,
-            pendingTabSwitchRequestKey: null,
           });
         }
         const shouldAwaitVisualSync = shouldSwitchTab && runtimeState.isSearchSessionActive;
@@ -4074,7 +4064,6 @@ const SearchScreen: React.FC = () => {
     },
     [
       handleTabChange,
-      pendingTabSwitchSeqRef,
       publishRuntimeBusPatch,
       publishVisualSyncCandidate,
       scheduleToggleCommit,
@@ -4919,8 +4908,12 @@ const SearchScreen: React.FC = () => {
     const runtimeState = searchRuntimeBus.getState();
     const shouldPreserveInteractionDraft = runtimeState.isFilterTogglePending;
     searchRuntimeBus.publish({
-      rankButtonLabelText,
-      rankButtonIsActive,
+      rankButtonLabelText: shouldPreserveInteractionDraft
+        ? runtimeState.rankButtonLabelText
+        : rankButtonLabelText,
+      rankButtonIsActive: shouldPreserveInteractionDraft
+        ? runtimeState.rankButtonIsActive
+        : rankButtonIsActive,
       priceButtonLabelText,
       priceButtonIsActive,
       openNow: shouldPreserveInteractionDraft ? runtimeState.openNow : openNow,

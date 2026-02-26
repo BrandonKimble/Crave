@@ -103,7 +103,6 @@ type UseMapMarkerEngineResult = {
   canonicalRestaurantRankById: Map<string, number>;
   restaurantsById: Map<string, RestaurantResult>;
   restaurants: RestaurantResult[];
-  shouldHoldMapMarkerReveal: boolean;
   isVisualSyncPending: boolean;
 };
 
@@ -627,35 +626,12 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
   // Marker hold — freeze visible markers during loading / visual sync
   // -------------------------------------------------------------------------
 
-  const shouldHoldMapMarkerReveal = false;
   const shouldSuppressMarkersForToggleInteraction = isFilterTogglePending;
 
-  const heldSortedRestaurantMarkersRef = React.useRef<
-    Array<Feature<Point, RestaurantFeatureProperties>>
-  >(EMPTY_SORTED_RESTAURANT_MARKERS);
-  const heldDotRestaurantFeaturesRef = React.useRef<FeatureCollection<
-    Point,
-    RestaurantFeatureProperties
-  > | null>(null);
-  const heldPinsRenderKeyRef = React.useRef('0:empty:empty:0');
-
-  React.useEffect(() => {
-    if (shouldHoldMapMarkerReveal) {
-      return;
-    }
-    heldSortedRestaurantMarkersRef.current = lodSortedRestaurantMarkers;
-    heldDotRestaurantFeaturesRef.current = dotRestaurantFeatures;
-    heldPinsRenderKeyRef.current = pinsRenderKey;
-  }, [dotRestaurantFeatures, lodSortedRestaurantMarkers, pinsRenderKey, shouldHoldMapMarkerReveal]);
-
-  const visibleSortedRestaurantMarkers = shouldHoldMapMarkerReveal
-    ? heldSortedRestaurantMarkersRef.current
-    : shouldSuppressMarkersForToggleInteraction
+  const visibleSortedRestaurantMarkers = shouldSuppressMarkersForToggleInteraction
     ? EMPTY_SORTED_RESTAURANT_MARKERS
     : lodSortedRestaurantMarkers;
-  const visibleDotRestaurantFeatures = shouldHoldMapMarkerReveal
-    ? heldDotRestaurantFeaturesRef.current
-    : shouldSuppressMarkersForToggleInteraction
+  const visibleDotRestaurantFeatures = shouldSuppressMarkersForToggleInteraction
     ? null
     : dotRestaurantFeatures;
 
@@ -669,9 +645,7 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
     [visibleSortedRestaurantMarkers]
   );
 
-  const visiblePinsRenderKey = shouldHoldMapMarkerReveal
-    ? `hold::${heldPinsRenderKeyRef.current}`
-    : shouldSuppressMarkersForToggleInteraction
+  const visiblePinsRenderKey = shouldSuppressMarkersForToggleInteraction
     ? '0:empty:empty:0'
     : pinsRenderKey;
 
@@ -712,7 +686,6 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
     canonicalRestaurantRankById,
     restaurantsById,
     restaurants: mapMarkerRestaurants,
-    shouldHoldMapMarkerReveal,
     isVisualSyncPending,
   };
 };

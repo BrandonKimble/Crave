@@ -161,7 +161,6 @@ export const useQueryMutationOrchestrator = (
   const clearPendingTabSwitchDraft = React.useCallback(() => {
     searchRuntimeBus.publish({
       pendingTabSwitchTab: null,
-      pendingTabSwitchRequestKey: null,
     });
   }, [searchRuntimeBus]);
   const fireRerunActiveSearch = React.useCallback(
@@ -231,11 +230,18 @@ export const useQueryMutationOrchestrator = (
         return;
       }
       clearPendingTabSwitchDraft();
-      setPreferredScoreMode(nextMode);
+      const nextRankButtonIsActive = nextMode === 'global_quality';
+      const nextRankButtonLabelText = nextRankButtonIsActive ? 'Global' : 'Rank';
       if (!canRerunForCurrentQuery()) {
+        searchRuntimeBus.publish({
+          rankButtonLabelText: nextRankButtonLabelText,
+          rankButtonIsActive: nextRankButtonIsActive,
+        });
+        setPreferredScoreMode(nextMode);
         return;
       }
       scheduleToggleCommit(() => {
+        setPreferredScoreMode(nextMode);
         fireRerunActiveSearch({
           searchMode,
           activeTab,
@@ -249,6 +255,10 @@ export const useQueryMutationOrchestrator = (
           awaitVisualSync: true,
         };
       });
+      searchRuntimeBus.publish({
+        rankButtonLabelText: nextRankButtonLabelText,
+        rankButtonIsActive: nextRankButtonIsActive,
+      });
     },
     [
       activeTab,
@@ -260,6 +270,7 @@ export const useQueryMutationOrchestrator = (
       query,
       scheduleToggleCommit,
       scoreMode,
+      searchRuntimeBus,
       searchMode,
       setPreferredScoreMode,
       submittedQuery,
@@ -332,13 +343,13 @@ export const useQueryMutationOrchestrator = (
     }
     clearPendingTabSwitchDraft();
 
-    setPriceLevels(nextLevels);
-
     if (!canRerunForCurrentQuery()) {
+      setPriceLevels(nextLevels);
       return;
     }
 
     scheduleToggleCommit(() => {
+      setPriceLevels(nextLevels);
       fireRerunActiveSearch({
         searchMode,
         activeTab,

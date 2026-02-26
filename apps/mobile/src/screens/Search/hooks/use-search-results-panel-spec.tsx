@@ -567,7 +567,6 @@ export const useSearchResultsPanelSpec = ({
         isPriceSelectorVisible={filterChipReadModel.isPriceSelectorVisible}
         contentHorizontalPadding={CONTENT_HORIZONTAL_PADDING}
         accentColor={ACTIVE_TAB_COLOR}
-        disableBlur={shouldDisableSearchBlur}
         initialLayoutCache={searchFiltersLayoutCacheRef.current}
         onLayoutCacheChange={handleSearchFiltersLayoutCache}
       />
@@ -585,7 +584,6 @@ export const useSearchResultsPanelSpec = ({
       handleInteractionTabChange,
       handleSearchFiltersLayoutCache,
       searchFiltersLayoutCacheRef,
-      shouldDisableSearchBlur,
       toggleOpenNow,
       togglePriceSelector,
       toggleRankSelector,
@@ -908,15 +906,15 @@ export const useSearchResultsPanelSpec = ({
 
   const shouldForceListHeaderForInteraction =
     isFilterTogglePending || shouldShowInitialLoadingState;
-  const listHeaderForRender = hasRenderableRows || shouldForceListHeaderForInteraction
-    ? shouldFreezeResultsChrome
-      ? frozenResultsChromeSnapshot?.listHeader ?? listHeader
-      : listHeader
-    : null;
+  const listHeaderForRender =
+    hasRenderableRows || shouldForceListHeaderForInteraction
+      ? shouldFreezeResultsChrome
+        ? frozenResultsChromeSnapshot?.listHeader ?? listHeader
+        : listHeader
+      : null;
 
-  const effectiveFiltersHeaderHeightForRender = hasRenderableRows || shouldForceListHeaderForInteraction
-    ? effectiveFiltersHeaderHeightBase
-    : 0;
+  const effectiveFiltersHeaderHeightForRender =
+    hasRenderableRows || shouldForceListHeaderForInteraction ? effectiveFiltersHeaderHeightBase : 0;
 
   // --- Surface content: spinner, empty state, or blank ---
   const isSurfaceShowingEmptyState =
@@ -955,8 +953,7 @@ export const useSearchResultsPanelSpec = ({
       return null;
     }
     if (surfaceMode === 'empty') {
-      const emptyTitle =
-        activeTab === 'dishes' ? 'No dishes found.' : 'No restaurants found.';
+      const emptyTitle = activeTab === 'dishes' ? 'No dishes found.' : 'No restaurants found.';
       const emptySubtitle =
         results?.metadata?.emptyQueryMessage ?? 'Try moving the map or adjusting your search.';
       return (
@@ -973,12 +970,7 @@ export const useSearchResultsPanelSpec = ({
         <SquircleSpinner size={22} color={ACTIVE_TAB_COLOR} />
       </View>
     );
-  }, [
-    surfaceMode,
-    activeTab,
-    results?.metadata?.emptyQueryMessage,
-    onDemandNotice,
-  ]);
+  }, [surfaceMode, activeTab, results?.metadata?.emptyQueryMessage, onDemandNotice]);
 
   const resultsRenderItem = shouldUsePlaceholderRows
     ? renderPlaceholderFlashListItem
@@ -1011,44 +1003,38 @@ export const useSearchResultsPanelSpec = ({
 
   const surfaceTopOffset = effectiveResultsHeaderHeightForRender || OVERLAY_TAB_HEADER_HEIGHT;
 
-  const resultsOverlayComponent = React.useMemo(
-    () => {
-      const shouldRenderWhiteWash =
-        surfaceMode === 'initial_loading' || surfaceMode === 'empty';
-      const overlayTopOffset = shouldUseInteractionSurface ? resultsWashTopOffset : surfaceTopOffset;
-      const surfaceStyle = shouldUseInteractionSurface
-        ? styles.resultsSurfaceInteraction
-        : styles.resultsSurface;
-      return (
-        <>
-          {shouldRenderWhiteWash ? (
-            <Reanimated.View
-              pointerEvents="none"
-              style={[
-                styles.resultsWashOverlay,
-                { top: resultsWashTopOffset },
-                resultsWashAnimatedStyle,
-              ]}
-            />
-          ) : null}
-          {surfaceActive ? (
-            <View style={[surfaceStyle, { top: overlayTopOffset }]}>
-              {surfaceContent}
-            </View>
-          ) : null}
-        </>
-      );
-    },
-    [
-      surfaceMode,
-      shouldUseInteractionSurface,
-      surfaceActive,
-      surfaceContent,
-      surfaceTopOffset,
-      resultsWashAnimatedStyle,
-      resultsWashTopOffset,
-    ]
-  );
+  const resultsOverlayComponent = React.useMemo(() => {
+    const shouldRenderWhiteWash = surfaceMode === 'initial_loading' || surfaceMode === 'empty';
+    const overlayTopOffset = shouldUseInteractionSurface ? resultsWashTopOffset : surfaceTopOffset;
+    const surfaceStyle = shouldUseInteractionSurface
+      ? styles.resultsSurfaceInteraction
+      : styles.resultsSurface;
+    return (
+      <>
+        {shouldRenderWhiteWash ? (
+          <Reanimated.View
+            pointerEvents="none"
+            style={[
+              styles.resultsWashOverlay,
+              { top: resultsWashTopOffset },
+              resultsWashAnimatedStyle,
+            ]}
+          />
+        ) : null}
+        {surfaceActive ? (
+          <View style={[surfaceStyle, { top: overlayTopOffset }]}>{surfaceContent}</View>
+        ) : null}
+      </>
+    );
+  }, [
+    surfaceMode,
+    shouldUseInteractionSurface,
+    surfaceActive,
+    surfaceContent,
+    surfaceTopOffset,
+    resultsWashAnimatedStyle,
+    resultsWashTopOffset,
+  ]);
 
   const ResultItemSeparator = React.useCallback(
     () => <View style={styles.resultItemSeparator} />,
@@ -1057,9 +1043,7 @@ export const useSearchResultsPanelSpec = ({
   const resultsContentContainerStyle = React.useMemo(
     () => ({
       paddingBottom:
-        resultsReadModelSelectors.rowsByTab[activeTab].length > 0
-          ? RESULTS_BOTTOM_PADDING
-          : 0,
+        resultsReadModelSelectors.rowsByTab[activeTab].length > 0 ? RESULTS_BOTTOM_PADDING : 0,
     }),
     [activeTab, resultsReadModelSelectors.rowsByTab]
   );
@@ -1075,7 +1059,6 @@ export const useSearchResultsPanelSpec = ({
   const primaryTab: 'restaurants' | 'dishes' = 'restaurants';
   const secondaryTab: 'restaurants' | 'dishes' = 'dishes';
   const activeList = activeTab === primaryTab ? 'primary' : 'secondary';
-  const presentationActiveList = activeTab === primaryTab ? 'primary' : 'secondary';
   return useSearchPanelSpec<ResultsListItem>({
     visible: shouldRenderResultsSheet,
     listScrollEnabled: !isFilterTogglePending && !shouldDisableResultsSheetInteraction,
@@ -1102,7 +1085,6 @@ export const useSearchResultsPanelSpec = ({
       testID: 'search-results-flatlist-secondary',
     },
     activeList,
-    presentationActiveList,
     renderItem: resultsRenderItem,
     keyExtractor: resultsKeyExtractor,
     estimatedItemSize,

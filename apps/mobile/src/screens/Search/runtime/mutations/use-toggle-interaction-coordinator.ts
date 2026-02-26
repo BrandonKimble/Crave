@@ -24,7 +24,7 @@ type ToggleInteractionCoordinator = {
   cancelToggleInteraction: () => void;
 };
 
-const DEFAULT_TOGGLE_SETTLE_MS = 240;
+const DEFAULT_TOGGLE_SETTLE_MS = 300;
 const DEFAULT_VISUAL_FALLBACK_MS = 1600;
 
 export const useToggleInteractionCoordinator = ({
@@ -177,7 +177,10 @@ export const useToggleInteractionCoordinator = ({
         if (expectedVisualRequestKeyRef.current == null) {
           const nextRuntimeState = searchRuntimeBus.getState();
           const runtimeCandidate = nextRuntimeState.visualSyncCandidateRequestKey;
-          if (runtimeCandidate != null && runtimeCandidate !== baselineVisualRequestKeyRef.current) {
+          if (
+            runtimeCandidate != null &&
+            runtimeCandidate !== baselineVisualRequestKeyRef.current
+          ) {
             expectedVisualRequestKeyRef.current = runtimeCandidate;
           }
         }

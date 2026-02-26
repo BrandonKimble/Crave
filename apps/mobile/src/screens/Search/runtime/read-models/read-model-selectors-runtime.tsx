@@ -93,13 +93,11 @@ type ResultsFlashListRuntimeProps = {
 };
 
 type SearchResultsReadModelSelectors = {
-  safeResultsCount: number;
   safeResultsCountByTab: {
     dishes: number;
     restaurants: number;
   };
   isResultsHydrationSettled: boolean;
-  rowsForRender: ResultsListItem[];
   rowsByTab: {
     dishes: ResultsListItem[];
     restaurants: ResultsListItem[];
@@ -368,9 +366,6 @@ export const useSearchResultsReadModelSelectors = (
   }, [restaurants]);
 
   const activeSafeResultsData = listProjection.safeResultsDataByTab[activeTab];
-  const activeSectionedRows = listProjection.sectionedRowsByTab[activeTab];
-
-  const rowsForRender = React.useMemo(() => activeSectionedRows, [activeSectionedRows]);
 
   const handleShowMoreExactDishes = React.useCallback(() => {
     setShowAllExactDishes(true);
@@ -642,13 +637,11 @@ export const useSearchResultsReadModelSelectors = (
   }, [preMeasureKeys]);
 
   return {
-    safeResultsCount: activeSafeResultsData.length,
     safeResultsCountByTab: {
       dishes: listProjection.safeResultsDataByTab.dishes.length,
       restaurants: listProjection.safeResultsDataByTab.restaurants.length,
     },
     isResultsHydrationSettled,
-    rowsForRender,
     rowsByTab: listProjection.sectionedRowsByTab,
     renderListItem,
     listFooterComponent,

@@ -233,7 +233,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     lodPinnedMarkersRef,
     recomputeLodPinnedMarkers,
     restaurants,
-    shouldHoldMapMarkerReveal,
     isVisualSyncPending,
   } = useMapMarkerEngine({
     searchRuntimeBus,
@@ -343,7 +342,7 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     pinsRenderKey: visiblePinsRenderKey,
     visualSyncCandidateKey: resultsVisualSyncCandidate,
     shouldSignalVisualReady: shouldSignalMapVisualReady,
-    requireMarkerVisualsForVisualReady: !shouldHoldMapMarkerReveal,
+    requireMarkerVisualsForVisualReady: true,
     restaurantFeatures: visibleRestaurantFeatures,
   };
   const mapTreePropsForRender = nextMapTreeProps;

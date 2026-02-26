@@ -28,7 +28,6 @@ import { SEGMENT_OPTIONS } from '../constants/search';
 
 import { Text } from '../../../components';
 import MaskedHoleOverlay, { type MaskedHole } from '../../../components/MaskedHoleOverlay';
-import { FrostedGlassBackground } from '../../../components/FrostedGlassBackground';
 
 const TOGGLE_HEIGHT = CONTROL_HEIGHT;
 const TOGGLE_BORDER_RADIUS = CONTROL_RADIUS; // fixed radius as before
@@ -107,7 +106,6 @@ type SearchFiltersProps = {
   isPriceSelectorVisible: boolean;
   contentHorizontalPadding: number;
   accentColor: string;
-  disableBlur?: boolean;
   initialLayoutCache?: SearchFiltersLayoutCache | null;
   onLayoutCacheChange?: (cache: SearchFiltersLayoutCache) => void;
 };
@@ -129,7 +127,6 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   isPriceSelectorVisible,
   contentHorizontalPadding,
   accentColor,
-  disableBlur = false,
   initialLayoutCache,
   onLayoutCacheChange,
 }) => {
@@ -370,7 +367,6 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
 
   return (
     <View style={styles.resultFiltersWrapper}>
-      {!disableBlur && <FrostedGlassBackground />}
       <View style={styles.paddedWrapper}>
         <View
           style={styles.stripContainer}

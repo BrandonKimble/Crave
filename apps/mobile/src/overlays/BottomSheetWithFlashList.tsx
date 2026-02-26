@@ -276,7 +276,6 @@ type BottomSheetWithFlashListProps<T> = {
   extraData?: FlashListProps<T>['extraData'];
   secondaryList?: SecondaryListSpec<T>;
   activeList?: DualListSelection;
-  presentationActiveList?: DualListSelection;
   onDragStateChange?: (isDragging: boolean) => void;
   onSettleStateChange?: (isSettling: boolean) => void;
   snapTo?: SheetSnapPoint | 'hidden' | null;
@@ -361,7 +360,6 @@ const BottomSheetWithFlashList = <T,>({
   extraData,
   secondaryList,
   activeList = 'primary',
-  presentationActiveList,
   onDragStateChange,
   onSettleStateChange,
   snapTo,
@@ -441,9 +439,6 @@ const BottomSheetWithFlashList = <T,>({
   const secondaryFlashListRef = secondaryList?.listRef ?? internalSecondaryListRef;
   const shouldRenderDualLists = secondaryList != null;
   const resolvedActiveList: DualListSelection = shouldRenderDualLists ? activeList : 'primary';
-  const resolvedPresentationList: DualListSelection = shouldRenderDualLists
-    ? presentationActiveList ?? activeList
-    : 'primary';
   const isDragging = useSharedValue(false);
   const isSettling = useSharedValue(false);
   const settlingToHidden = useSharedValue(false);
@@ -1531,11 +1526,11 @@ const BottomSheetWithFlashList = <T,>({
               ) : null}
               <View
                 pointerEvents={
-                  !shouldRenderDualLists || resolvedPresentationList === 'primary' ? 'auto' : 'none'
+                  !shouldRenderDualLists || resolvedActiveList === 'primary' ? 'auto' : 'none'
                 }
                 style={[
                   shouldRenderDualLists ? styles.dualListLayer : styles.singleListLayer,
-                  !shouldRenderDualLists || resolvedPresentationList === 'primary'
+                  !shouldRenderDualLists || resolvedActiveList === 'primary'
                     ? styles.visibleLayer
                     : styles.hiddenLayer,
                 ]}
@@ -1566,7 +1561,10 @@ const BottomSheetWithFlashList = <T,>({
                   }
                   ItemSeparatorComponent={ItemSeparatorComponent}
                   keyboardShouldPersistTaps={keyboardShouldPersistTaps}
-                  scrollEnabled={shouldEnableScroll && (!shouldRenderDualLists || resolvedActiveList === 'primary')}
+                  scrollEnabled={
+                    shouldEnableScroll &&
+                    (!shouldRenderDualLists || resolvedActiveList === 'primary')
+                  }
                   renderScrollComponent={
                     !shouldRenderDualLists || resolvedActiveList === 'primary'
                       ? ScrollComponent
@@ -1602,10 +1600,10 @@ const BottomSheetWithFlashList = <T,>({
               </View>
               {shouldRenderDualLists && secondaryList ? (
                 <View
-                  pointerEvents={resolvedPresentationList === 'secondary' ? 'auto' : 'none'}
+                  pointerEvents={resolvedActiveList === 'secondary' ? 'auto' : 'none'}
                   style={[
                     styles.dualListLayer,
-                    resolvedPresentationList === 'secondary'
+                    resolvedActiveList === 'secondary'
                       ? styles.visibleLayer
                       : styles.hiddenLayer,
                   ]}
@@ -1658,7 +1656,9 @@ const BottomSheetWithFlashList = <T,>({
                     overScrollMode={overScrollMode}
                     testID={secondaryList.testID ?? testID}
                     extraData={secondaryList.extraData ?? extraData}
-                    scrollIndicatorInsets={secondaryList.scrollIndicatorInsets ?? scrollIndicatorInsets}
+                    scrollIndicatorInsets={
+                      secondaryList.scrollIndicatorInsets ?? scrollIndicatorInsets
+                    }
                   />
                 </View>
               ) : null}

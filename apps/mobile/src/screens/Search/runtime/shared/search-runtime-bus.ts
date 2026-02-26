@@ -43,7 +43,6 @@ export type SearchRuntimeBusState = {
   submittedQuery: string;
   activeTab: SearchRuntimeActiveTab;
   pendingTabSwitchTab: SearchRuntimeActiveTab | null;
-  pendingTabSwitchRequestKey: string | null;
   searchMode: SearchRuntimeSearchMode;
   isSearchSessionActive: boolean;
   isSearchLoading: boolean;
@@ -112,7 +111,6 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   submittedQuery: '',
   activeTab: 'dishes',
   pendingTabSwitchTab: null,
-  pendingTabSwitchRequestKey: null,
   searchMode: null,
   isSearchSessionActive: false,
   isSearchLoading: false,

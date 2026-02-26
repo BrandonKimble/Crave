@@ -3,7 +3,7 @@ import React from 'react';
 import perfHarnessConfig from '../../../../perf/harness-config';
 import { startJsFrameSampler } from '../../../../perf/js-frame-sampler';
 import { startUiFrameSampler } from '../../../../perf/ui-frame-sampler';
-import type { NaturalSearchRequest, SearchResponse } from '../../../../types';
+import type { NaturalSearchRequest } from '../../../../types';
 import type { SearchSessionController } from '../controller/search-session-controller';
 import type { RuntimeWorkScheduler } from '../scheduler/runtime-work-scheduler';
 import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
@@ -77,7 +77,6 @@ type UseShortcutHarnessObserverArgs = {
   searchMode: 'natural' | 'shortcut' | null;
   isSearchLoading: boolean;
   isLoadingMore: boolean;
-  shouldHoldMapMarkerReveal: boolean;
   isRunOneHandoffActive: boolean;
   resultsRequestKey: string | null;
   searchInteractionRef: React.MutableRefObject<SearchInteractionState>;
@@ -128,7 +127,6 @@ export const useShortcutHarnessObserver = (
     searchMode,
     isSearchLoading,
     isLoadingMore,
-    shouldHoldMapMarkerReveal,
     isRunOneHandoffActive,
     resultsRequestKey,
     searchInteractionRef,
@@ -332,7 +330,6 @@ export const useShortcutHarnessObserver = (
     isLoadingMore,
     isVisualSyncPending,
     isShortcutCoverageLoading,
-    shouldHoldMapMarkerReveal,
     shouldHydrateResultsForRender,
     isRunOneHandoffActive,
     hasResults: Boolean(results),
@@ -358,13 +355,9 @@ export const useShortcutHarnessObserver = (
       !inputs.isLoadingMore &&
       !inputs.isSearchLoading &&
       !inputs.isVisualSyncPending &&
-      !inputs.shouldHydrateResultsForRender &&
-      !inputs.shouldHoldMapMarkerReveal
+      !inputs.shouldHydrateResultsForRender
     ) {
       return 'results_list_ramp';
-    }
-    if (inputs.shouldHoldMapMarkerReveal) {
-      return 'marker_reveal_state';
     }
     if (inputs.isVisualSyncPending) {
       return 'visual_sync_state';
@@ -402,7 +395,6 @@ export const useShortcutHarnessObserver = (
       isLoadingMore,
       isVisualSyncPending,
       isShortcutCoverageLoading,
-      shouldHoldMapMarkerReveal,
       shouldHydrateResultsForRender,
       isRunOneHandoffActive,
       hasResults: Boolean(results),
@@ -418,7 +410,6 @@ export const useShortcutHarnessObserver = (
     isVisualSyncPending,
     results,
     searchMode,
-    shouldHoldMapMarkerReveal,
     shouldHydrateResultsForRender,
     isRunOneHandoffActive,
     searchRuntimeBus,
@@ -860,7 +851,7 @@ export const useShortcutHarnessObserver = (
           return true;
         }
         if (!usesShadowConvergenceBoundary) {
-          if (inputs.shouldHoldMapMarkerReveal || shouldHydrateResultsForRenderRuntime) {
+          if (shouldHydrateResultsForRenderRuntime) {
             return true;
           }
           if (
@@ -886,7 +877,6 @@ export const useShortcutHarnessObserver = (
         }
         if (
           inputs.isVisualSyncPending ||
-          inputs.shouldHoldMapMarkerReveal ||
           shouldHydrateResultsForRenderRuntime
         ) {
           return true;

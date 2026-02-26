@@ -567,7 +567,6 @@ const useSearchSubmit = ({
               visualReadyRequestKey: null,
               markerRevealCommitId: null,
               pendingTabSwitchTab: null,
-              pendingTabSwitchRequestKey: null,
             }
           : {};
       searchRuntimeBus.publish({
@@ -787,7 +786,6 @@ const useSearchSubmit = ({
         const laneAStatePatch: Partial<SearchRuntimeBusState> = {
           activeTab: targetTab,
           pendingTabSwitchTab: null,
-          pendingTabSwitchRequestKey: null,
           isLoadingMore: false,
           submittedQuery: submittedLabel ?? searchRuntimeBus.getState().submittedQuery ?? '',
           isVisualSyncPending: false,
@@ -1145,7 +1143,6 @@ const useSearchSubmit = ({
           isSearchSessionActive: true,
           activeTab: initialUiState.targetTab,
           pendingTabSwitchTab: null,
-          pendingTabSwitchRequestKey: null,
         });
       });
       if (!append && normalizedResponse.metadata.page === 1) {
@@ -1204,7 +1201,6 @@ const useSearchSubmit = ({
                 searchRuntimeBus.publish({
                   activeTab: resolvedActiveTab,
                   pendingTabSwitchTab: null,
-                  pendingTabSwitchRequestKey: null,
                 });
               }
 

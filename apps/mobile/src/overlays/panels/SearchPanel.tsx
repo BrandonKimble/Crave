@@ -29,7 +29,6 @@ type UseSearchPanelSpecOptions<T> = {
   extraData?: FlashListProps<T>['extraData'];
   secondaryList?: BottomSheetWithFlashListProps<T>['secondaryList'];
   activeList?: BottomSheetWithFlashListProps<T>['activeList'];
-  presentationActiveList?: BottomSheetWithFlashListProps<T>['presentationActiveList'];
   scrollHeaderComponent?: BottomSheetWithFlashListProps<T>['scrollHeaderComponent'];
   interactionEnabled?: boolean;
   data: ReadonlyArray<T>;
@@ -75,7 +74,6 @@ export const useSearchPanelSpec = <T,>({
   extraData,
   secondaryList,
   activeList,
-  presentationActiveList,
   scrollHeaderComponent,
   interactionEnabled = true,
   data,
@@ -163,7 +161,6 @@ export const useSearchPanelSpec = <T,>({
       extraData,
       secondaryList,
       activeList,
-      presentationActiveList,
       scrollHeaderComponent,
       data,
       renderItem,
@@ -197,7 +194,6 @@ export const useSearchPanelSpec = <T,>({
       extraData,
       secondaryList,
       activeList,
-      presentationActiveList,
       scrollHeaderComponent,
       headerComponent,
       initialSnapPoint,
