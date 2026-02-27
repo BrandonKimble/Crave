@@ -10,6 +10,11 @@ type UseStableMapHandlersArgs = {
   handleMapLoaded: () => void;
   handleMarkerPress: (restaurantId: string, pressedCoordinate?: Coordinate | null) => void;
   handleMapVisualReady: (requestKey: string) => void;
+  handleMarkerRevealStarted: (payload: {
+    requestKey: string;
+    markerRevealCommitId: number | null;
+    startedAtMs: number;
+  }) => void;
   handleMarkerRevealSettled: (payload: {
     requestKey: string;
     markerRevealCommitId: number | null;
@@ -24,6 +29,11 @@ type StableMapHandlers = {
   onMapLoaded: () => void;
   onMarkerPress: (restaurantId: string, pressedCoordinate?: Coordinate | null) => void;
   onMapVisualReady: (requestKey: string) => void;
+  onMarkerRevealStarted: (payload: {
+    requestKey: string;
+    markerRevealCommitId: number | null;
+    startedAtMs: number;
+  }) => void;
   onMarkerRevealSettled: (payload: {
     requestKey: string;
     markerRevealCommitId: number | null;
@@ -38,6 +48,7 @@ export const useStableMapHandlers = ({
   handleMapLoaded,
   handleMarkerPress,
   handleMapVisualReady,
+  handleMarkerRevealStarted,
   handleMarkerRevealSettled,
 }: UseStableMapHandlersArgs): StableMapHandlers => {
   const handleMapPressRef = React.useRef(handleMapPress);
@@ -46,6 +57,7 @@ export const useStableMapHandlers = ({
   const handleMapLoadedRef = React.useRef(handleMapLoaded);
   const handleMarkerPressRef = React.useRef(handleMarkerPress);
   const handleMapVisualReadyRef = React.useRef(handleMapVisualReady);
+  const handleMarkerRevealStartedRef = React.useRef(handleMarkerRevealStarted);
   const handleMarkerRevealSettledRef = React.useRef(handleMarkerRevealSettled);
 
   handleMapPressRef.current = handleMapPress;
@@ -54,6 +66,7 @@ export const useStableMapHandlers = ({
   handleMapLoadedRef.current = handleMapLoaded;
   handleMarkerPressRef.current = handleMarkerPress;
   handleMapVisualReadyRef.current = handleMapVisualReady;
+  handleMarkerRevealStartedRef.current = handleMarkerRevealStarted;
   handleMarkerRevealSettledRef.current = handleMarkerRevealSettled;
 
   const stableMapHandlersRef = React.useRef<StableMapHandlers | null>(null);
@@ -77,6 +90,9 @@ export const useStableMapHandlers = ({
       },
       onMapVisualReady: (requestKey: string) => {
         handleMapVisualReadyRef.current(requestKey);
+      },
+      onMarkerRevealStarted: (payload) => {
+        handleMarkerRevealStartedRef.current(payload);
       },
       onMarkerRevealSettled: (payload) => {
         handleMarkerRevealSettledRef.current(payload);

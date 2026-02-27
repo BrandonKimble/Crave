@@ -3,6 +3,10 @@ import React from 'react';
 import type { RestaurantResult, SearchResponse } from '../../../../types';
 import type { MarkerCatalogEntry } from '../map/map-viewport-query';
 import type { RunOneHandoffPhase } from '../controller/run-one-handoff-phase';
+import type {
+  PresentationLoadingMode,
+  PresentationMutationKind,
+} from '../controller/presentation-transition-controller';
 
 export type SearchRuntimeActiveTab = 'dishes' | 'restaurants';
 export type SearchRuntimeSearchMode = 'natural' | 'shortcut' | null;
@@ -29,6 +33,7 @@ export type SearchRuntimeBusState = {
   isRankSelectorVisible: boolean;
   isPriceSelectorVisible: boolean;
   isFilterTogglePending: boolean;
+  toggleInteractionKind: PresentationMutationKind | null;
   shouldRetrySearchOnReconnect: boolean;
   hasSystemStatusBanner: boolean;
   shouldHydrateResultsForRender: boolean;
@@ -77,6 +82,9 @@ export type SearchRuntimeBusState = {
   // Freeze gate fields (moved from useState hooks to bus for fewer re-renders)
   isResponseFrameFreezeActive: boolean;
   isSubmitChromePriming: boolean;
+  // Presentation transition mirror (Slice 1: telemetry/contract only).
+  presentationTransitionKind: PresentationMutationKind | null;
+  presentationTransitionLoadingMode: PresentationLoadingMode;
 };
 
 export type SearchRuntimeBusKey = keyof SearchRuntimeBusState;
@@ -97,6 +105,7 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   isRankSelectorVisible: false,
   isPriceSelectorVisible: false,
   isFilterTogglePending: false,
+  toggleInteractionKind: null,
   shouldRetrySearchOnReconnect: false,
   hasSystemStatusBanner: false,
   shouldHydrateResultsForRender: false,
@@ -142,6 +151,8 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   runOneSelectionFeedbackOperationId: null,
   isResponseFrameFreezeActive: false,
   isSubmitChromePriming: false,
+  presentationTransitionKind: null,
+  presentationTransitionLoadingMode: 'none',
 };
 
 export class SearchRuntimeBus {

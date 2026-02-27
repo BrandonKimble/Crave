@@ -35,7 +35,6 @@ import styles from '../styles';
 import { haversineDistanceMiles, isLngLatTuple } from '../utils/geo';
 import { MARKER_VIEW_OVERSCAN_STYLE } from './marker-visibility';
 import type { MapQueryBudget } from '../runtime/map/map-query-budget';
-import type { RuntimeWorkScheduler } from '../runtime/scheduler/runtime-work-scheduler';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import { useSearchRuntimeBusSelector } from '../runtime/shared/use-search-runtime-bus-selector';
 
@@ -131,11 +130,6 @@ const PIN_COLLISION_OUTLINE_OFFSET_IMAGE_PX =
 const PIN_COLLISION_FILL_OFFSET_IMAGE_PX =
   PIN_COLLISION_OFFSET_Y_PX / (STYLE_PINS_FILL_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE);
 const DOT_TO_PIN_TRANSITION_DURATION_MS = 300;
-const MAP_STAGE_PRESSURE_SOFT_BUDGET_MS = 8;
-const MAP_STAGE_PRESSURE_CRITICAL_BUDGET_MS = 12;
-const MAP_STAGE_PRESSURE_MAX_QUEUE_DEPTH = 2;
-const MAP_STAGE_LABELS_HEALTHY_FRAMES_REQUIRED = 1;
-const MAP_STAGE_LABELS_HEALTHY_FRAMES_REQUIRED_AFTER_HANDOFF = 2;
 const DOT_TO_PIN_RANK_FADE_START = 0.5;
 const ENABLE_NATIVE_LABEL_FADE_FOR_MOVING_PROMOTES = false;
 
@@ -145,7 +139,6 @@ const PIN_RANK_OPACITY_EXPRESSION = ['coalesce', ['get', 'pinRankOpacity'], 1] a
 const PIN_LABEL_OPACITY_EXPRESSION = ['coalesce', ['get', 'pinLabelOpacity'], 1] as const;
 const PIN_STEADY_OPACITY_EXPRESSION = ['-', 1, PIN_TRANSITION_ACTIVE_EXPRESSION] as const;
 const PINS_RENDER_KEY_HOLD_PREFIX = 'hold::';
-const PINS_RENDER_KEY_SHOW_PREFIX = 'show::';
 const FNV1A_OFFSET_BASIS = 0x811c9dc5;
 const FNV1A_PRIME = 0x01000193;
 
@@ -705,16 +698,6 @@ const clampNumber = (value: number, min: number, max: number) =>
 const areStringArraysEqual = (left: string[], right: string[]) =>
   left.length === right.length && left.every((value, index) => value === right[index]);
 
-const normalizePinsRenderKeyForTopology = (pinsRenderKey: string): string => {
-  if (pinsRenderKey.startsWith(PINS_RENDER_KEY_HOLD_PREFIX)) {
-    return pinsRenderKey.slice(PINS_RENDER_KEY_HOLD_PREFIX.length);
-  }
-  if (pinsRenderKey.startsWith(PINS_RENDER_KEY_SHOW_PREFIX)) {
-    return pinsRenderKey.slice(PINS_RENDER_KEY_SHOW_PREFIX.length);
-  }
-  return pinsRenderKey;
-};
-
 const isPinsRenderKeyHeld = (pinsRenderKey: string): boolean =>
   pinsRenderKey.startsWith(PINS_RENDER_KEY_HOLD_PREFIX);
 
@@ -891,8 +874,6 @@ const LABEL_PIN_COLLISION_STYLE_FILL: MapboxGL.SymbolLayerStyle = {
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const getNowMs = () =>
   typeof globalThis.performance?.now === 'function' ? globalThis.performance.now() : Date.now();
-type MapStagePressure = 'healthy' | 'pressured' | 'critical';
-
 type PinTransitionDirection = 'promote' | 'demote';
 
 type PinTransitionVisual = {
@@ -1197,6 +1178,7 @@ const usePinTransitionController = ({
       ? 1
       : 0;
   const batchDismissActive = batch?.direction === 'dismiss';
+  const batchRevealActive = batch?.direction === 'reveal';
   // Reveal: 0→1, dismiss: 1→0, steady (no batch): 1
   const batchOpacity =
     batch == null ? 1 : batch.direction === 'reveal' ? batchProgress : 1 - batchProgress;
@@ -1701,6 +1683,7 @@ const usePinTransitionController = ({
   return {
     batchOpacity,
     batchDismissActive,
+    batchRevealActive,
     // Controller-owned features: the hook decides what to render and when.
     effectiveDotFeatures,
     dotsAreHeld,
@@ -1729,6 +1712,11 @@ type SearchMapProps = {
   onMapLoaded: () => void;
   onMarkerPress?: (restaurantId: string, pressedCoordinate?: Coordinate | null) => void;
   onVisualReady?: (requestKey: string) => void;
+  onMarkerRevealStarted?: (payload: {
+    requestKey: string;
+    markerRevealCommitId: number | null;
+    startedAtMs: number;
+  }) => void;
   onMarkerRevealSettled?: (payload: {
     requestKey: string;
     markerRevealCommitId: number | null;
@@ -1751,10 +1739,6 @@ type SearchMapProps = {
   disableBlur?: boolean;
   onProfilerRender?: React.ProfilerOnRenderCallback;
   mapQueryBudget?: MapQueryBudget | null;
-  runtimeWorkSchedulerRef?: React.MutableRefObject<RuntimeWorkScheduler> | null;
-  selectionFeedbackOperationId?: string | null;
-  isRunOneHandoffActive?: boolean;
-  isRunOneChromeDeferred?: boolean;
   searchRuntimeBus: SearchRuntimeBus;
   onRuntimeMechanismEvent?: (
     event: 'runtime_write_span',
@@ -1779,6 +1763,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   onMapLoaded,
   onMarkerPress,
   onVisualReady,
+  onMarkerRevealStarted,
   onMarkerRevealSettled,
   selectedRestaurantId,
   sortedRestaurantMarkers: incomingSortedRestaurantMarkers,
@@ -1797,33 +1782,12 @@ const SearchMap: React.FC<SearchMapProps> = ({
   disableBlur = false,
   onProfilerRender,
   mapQueryBudget = null,
-  runtimeWorkSchedulerRef = null,
-  selectionFeedbackOperationId = null,
-  isRunOneHandoffActive = false,
-  isRunOneChromeDeferred = false,
   searchRuntimeBus,
   onRuntimeMechanismEvent,
 }) => {
   const shouldDisableMarkers = disableMarkers === true;
   const shouldDisableBlur = disableBlur === true;
 
-  const [stagedPublishPhase, setStagedPublishPhase] = React.useState<'dots' | 'pins' | 'full'>(
-    'full'
-  );
-  const stagedPublishTokenRef = React.useRef<string | null>(null);
-  const stagedPublishOperationIdRef = React.useRef<string | null>(null);
-  const stagedPublishPhaseRef = React.useRef<'dots' | 'pins' | 'full'>('full');
-  React.useEffect(() => {
-    stagedPublishPhaseRef.current = stagedPublishPhase;
-  }, [stagedPublishPhase]);
-  const stagedPublishHealthyLabelFrameCountRef = React.useRef(0);
-  const stagedPublishAwaitingPostDeferredFrameRef = React.useRef(false);
-  const stagedPublishConsecutiveYieldFramesRef = React.useRef(0);
-  const stagedPublishLastYieldCountRef = React.useRef(0);
-  const isRunOneHandoffActiveRef = React.useRef(isRunOneHandoffActive);
-  isRunOneHandoffActiveRef.current = isRunOneHandoffActive;
-  const isRunOneChromeDeferredRef = React.useRef(isRunOneChromeDeferred);
-  isRunOneChromeDeferredRef.current = isRunOneChromeDeferred;
   const {
     isMapActivationDeferred,
     visualSyncCandidateRequestKey,
@@ -1850,34 +1814,22 @@ const SearchMap: React.FC<SearchMapProps> = ({
     ] as const
   );
   const visualReadyRequestKey = visualSyncCandidateRequestKey;
-  const shouldDeferDotsForOperationLane = false;
-  const shouldDeferPinsForOperationLane = false;
-  const shouldDeferFinalizeForOperationLane = false;
-  const sortedRestaurantMarkers = shouldDeferDotsForOperationLane
-    ? EMPTY_SORTED_RESTAURANT_MARKERS
-    : incomingSortedRestaurantMarkers;
-  const dotRestaurantFeatures = shouldDeferDotsForOperationLane
-    ? null
-    : incomingDotRestaurantFeatures;
+  const sortedRestaurantMarkers = incomingSortedRestaurantMarkers;
+  const dotRestaurantFeatures = incomingDotRestaurantFeatures;
   const markersRenderKey = incomingMarkersRenderKey;
   const pinsRenderKey = incomingPinsRenderKey;
-  const shouldUseStagedPublish = false;
-  const pinsTopologyKey = React.useMemo(
-    () => normalizePinsRenderKeyForTopology(pinsRenderKey),
-    [pinsRenderKey]
-  );
   const markersTopologyRenderKey = React.useMemo(
     () => markersRenderKey.replace(/^pins:(?:hold::|show::)/, 'pins:'),
     [markersRenderKey]
   );
   const shouldDeferMapFromPressure = isMapActivationDeferred || runOneCommitSpanPressureActive;
   const isMapPinsDeferred = React.useCallback(
-    () => shouldDeferPinsForOperationLane || shouldDeferMapFromPressure,
-    [shouldDeferMapFromPressure, shouldDeferPinsForOperationLane]
+    () => shouldDeferMapFromPressure,
+    [shouldDeferMapFromPressure]
   );
   const isMapFinalizeDeferred = React.useCallback(
-    () => shouldDeferFinalizeForOperationLane || shouldDeferMapFromPressure,
-    [shouldDeferFinalizeForOperationLane, shouldDeferMapFromPressure]
+    () => shouldDeferMapFromPressure,
+    [shouldDeferMapFromPressure]
   );
   React.useEffect(() => {
     let animationFrameHandle: number | null = null;
@@ -1956,392 +1908,12 @@ const SearchMap: React.FC<SearchMapProps> = ({
     },
     [onRuntimeMechanismEvent]
   );
-
-  React.useEffect(() => {
-    if (!shouldUseStagedPublish) {
-      setStagedPublishPhase('full');
-      stagedPublishOperationIdRef.current = null;
-      return;
-    }
-    const scheduler = runtimeWorkSchedulerRef?.current ?? null;
-    const fallbackOperationId = `map-stage:${markersTopologyRenderKey}:${pinsTopologyKey}:${
-      markerRevealCommitId ?? 'none'
-    }`;
-    const operationId = selectionFeedbackOperationId ?? fallbackOperationId;
-    const previousOperationId = stagedPublishOperationIdRef.current;
-    const shouldReuseExistingOperation = previousOperationId === operationId;
-    let currentStagePhase: 'dots' | 'pins' | 'full' = stagedPublishPhaseRef.current;
-    const commitStagedPhase = (
-      phase: 'dots' | 'pins' | 'full',
-      payload?: Record<string, unknown>
-    ) => {
-      if (currentStagePhase === phase) {
-        return;
-      }
-      currentStagePhase = phase;
-      setStagedPublishPhase(phase);
-      emitMapRuntimeWriteSpan({
-        label: 'map_stage_phase_commit',
-        phase,
-        operationId,
-        ...(payload ?? {}),
-        nowMs: Number(getNowMs().toFixed(1)),
-      });
-    };
-    const startingPhase: 'dots' | 'pins' | 'full' = shouldReuseExistingOperation
-      ? currentStagePhase
-      : 'dots';
-    stagedPublishOperationIdRef.current = operationId;
-    const shouldCancelOwnedOperation = selectionFeedbackOperationId == null;
-    let animationFrameHandle: number | null = null;
-    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-    let labelAttemptOrdinal = 0;
-    let stageAttemptOrdinal = 0;
-    const stageToken = `${operationId}:${Date.now().toString(36)}-${Math.random()
-      .toString(36)
-      .slice(2, 8)}`;
-    stagedPublishTokenRef.current = stageToken;
-    stagedPublishHealthyLabelFrameCountRef.current = 0;
-    stagedPublishAwaitingPostDeferredFrameRef.current =
-      isRunOneChromeDeferredRef.current || isRunOneHandoffActiveRef.current;
-    let requireExtendedHealthyFrames = stagedPublishAwaitingPostDeferredFrameRef.current;
-    stagedPublishConsecutiveYieldFramesRef.current = 0;
-    stagedPublishLastYieldCountRef.current = scheduler?.snapshotPressure().yieldCount ?? 0;
-    let lastPinsGateReason: string | null = null;
-    let lastLabelsGateReason: string | null = null;
-
-    const clearNextFrameHandle = () => {
-      if (animationFrameHandle != null && typeof cancelAnimationFrame === 'function') {
-        cancelAnimationFrame(animationFrameHandle);
-        animationFrameHandle = null;
-      }
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-        timeoutHandle = null;
-      }
-    };
-
-    const isStageStillActive = () => stagedPublishTokenRef.current === stageToken;
-    const scheduleOnNextFrame = (run: () => void) => {
-      clearNextFrameHandle();
-      if (typeof requestAnimationFrame === 'function') {
-        animationFrameHandle = requestAnimationFrame(() => {
-          animationFrameHandle = null;
-          run();
-        });
-        return;
-      }
-      timeoutHandle = setTimeout(() => {
-        timeoutHandle = null;
-        run();
-      }, 0);
-    };
-    const resolveMapStagePressure = (): MapStagePressure => {
-      if (!scheduler) {
-        return 'healthy';
-      }
-      const pressureSnapshot = scheduler.snapshotPressure();
-      const yieldDelta = Math.max(
-        0,
-        pressureSnapshot.yieldCount - stagedPublishLastYieldCountRef.current
-      );
-      stagedPublishLastYieldCountRef.current = pressureSnapshot.yieldCount;
-      if (yieldDelta > 0) {
-        stagedPublishConsecutiveYieldFramesRef.current += 1;
-      } else {
-        stagedPublishConsecutiveYieldFramesRef.current = 0;
-      }
-
-      if (
-        pressureSnapshot.lastFrameSpentMs > MAP_STAGE_PRESSURE_CRITICAL_BUDGET_MS ||
-        stagedPublishConsecutiveYieldFramesRef.current >= 2
-      ) {
-        return 'critical';
-      }
-
-      if (
-        pressureSnapshot.lastFrameSpentMs > MAP_STAGE_PRESSURE_SOFT_BUDGET_MS ||
-        pressureSnapshot.queueDepth > MAP_STAGE_PRESSURE_MAX_QUEUE_DEPTH ||
-        yieldDelta > 0
-      ) {
-        return 'pressured';
-      }
-
-      return 'healthy';
-    };
-
-    const labelsStageStartMs = getNowMs();
-    const LABELS_STAGE_DEADLINE_MS = 2000;
-
-    const scheduleLabelsStageAttempt = () => {
-      if (!scheduler || !isStageStillActive()) {
-        return;
-      }
-      const taskId = `${operationId}:map-stage-labels:${stageToken}:${labelAttemptOrdinal}`;
-      labelAttemptOrdinal += 1;
-      scheduler.schedule({
-        id: taskId,
-        lane: 'selection_feedback',
-        operationId,
-        estimatedCostMs: 1,
-        run: () => {
-          if (!isStageStillActive()) {
-            return;
-          }
-          // Deadline fallback: force labels to render if pressure never settles
-          if (getNowMs() - labelsStageStartMs > LABELS_STAGE_DEADLINE_MS) {
-            commitStagedPhase('full', { reason: 'deadline_fallback' });
-            lastLabelsGateReason = null;
-            return;
-          }
-          if (isRunOneChromeDeferredRef.current || isRunOneHandoffActiveRef.current) {
-            requireExtendedHealthyFrames = true;
-            stagedPublishHealthyLabelFrameCountRef.current = 0;
-            stagedPublishAwaitingPostDeferredFrameRef.current = true;
-            if (lastLabelsGateReason !== 'handoff_deferred') {
-              emitMapRuntimeWriteSpan({
-                label: 'map_stage_gate',
-                gate: 'labels',
-                reason: 'handoff_deferred',
-                operationId,
-                nowMs: Number(getNowMs().toFixed(1)),
-              });
-              lastLabelsGateReason = 'handoff_deferred';
-            }
-            scheduleOnNextFrame(scheduleLabelsStageAttempt);
-            return;
-          }
-          if (stagedPublishAwaitingPostDeferredFrameRef.current) {
-            stagedPublishAwaitingPostDeferredFrameRef.current = false;
-            stagedPublishHealthyLabelFrameCountRef.current = 0;
-            if (lastLabelsGateReason !== 'post_deferred_cooldown') {
-              emitMapRuntimeWriteSpan({
-                label: 'map_stage_gate',
-                gate: 'labels',
-                reason: 'post_deferred_cooldown',
-                operationId,
-                nowMs: Number(getNowMs().toFixed(1)),
-              });
-              lastLabelsGateReason = 'post_deferred_cooldown';
-            }
-            scheduleOnNextFrame(scheduleLabelsStageAttempt);
-            return;
-          }
-          if (isMapFinalizeDeferred()) {
-            stagedPublishHealthyLabelFrameCountRef.current = 0;
-            const finalizeGateReason = shouldDeferFinalizeForOperationLane
-              ? 'operation_lane_wait_finalize'
-              : 'defer_map_finalize_signal';
-            if (lastLabelsGateReason !== finalizeGateReason) {
-              emitMapRuntimeWriteSpan({
-                label: 'map_stage_gate',
-                gate: 'labels',
-                reason: finalizeGateReason,
-                operationId,
-                nowMs: Number(getNowMs().toFixed(1)),
-              });
-              lastLabelsGateReason = finalizeGateReason;
-            }
-            scheduleOnNextFrame(scheduleLabelsStageAttempt);
-            return;
-          }
-          if (isMapPinsDeferred()) {
-            stagedPublishHealthyLabelFrameCountRef.current = 0;
-            const pinsGateReason = shouldDeferPinsForOperationLane
-              ? 'operation_lane_wait_pins'
-              : 'defer_map_pins_signal';
-            if (lastLabelsGateReason !== pinsGateReason) {
-              emitMapRuntimeWriteSpan({
-                label: 'map_stage_gate',
-                gate: 'labels',
-                reason: pinsGateReason,
-                operationId,
-                nowMs: Number(getNowMs().toFixed(1)),
-              });
-              lastLabelsGateReason = pinsGateReason;
-            }
-            scheduleOnNextFrame(scheduleLabelsStageAttempt);
-            return;
-          }
-          const pressure = resolveMapStagePressure();
-          if (pressure !== 'healthy') {
-            stagedPublishHealthyLabelFrameCountRef.current = 0;
-            const nextReason = `pressure_${pressure}`;
-            if (lastLabelsGateReason !== nextReason) {
-              emitMapRuntimeWriteSpan({
-                label: 'map_stage_gate',
-                gate: 'labels',
-                reason: nextReason,
-                operationId,
-                nowMs: Number(getNowMs().toFixed(1)),
-              });
-              lastLabelsGateReason = nextReason;
-            }
-            scheduleOnNextFrame(scheduleLabelsStageAttempt);
-            return;
-          }
-          const requiredHealthyFrames = requireExtendedHealthyFrames
-            ? MAP_STAGE_LABELS_HEALTHY_FRAMES_REQUIRED_AFTER_HANDOFF
-            : MAP_STAGE_LABELS_HEALTHY_FRAMES_REQUIRED;
-          stagedPublishHealthyLabelFrameCountRef.current += 1;
-          if (stagedPublishHealthyLabelFrameCountRef.current < requiredHealthyFrames) {
-            if (lastLabelsGateReason !== 'healthy_frames_pending') {
-              emitMapRuntimeWriteSpan({
-                label: 'map_stage_gate',
-                gate: 'labels',
-                reason: 'healthy_frames_pending',
-                operationId,
-                requiredHealthyFrames,
-                observedHealthyFrames: stagedPublishHealthyLabelFrameCountRef.current,
-                nowMs: Number(getNowMs().toFixed(1)),
-              });
-              lastLabelsGateReason = 'healthy_frames_pending';
-            }
-            scheduleOnNextFrame(scheduleLabelsStageAttempt);
-            return;
-          }
-          commitStagedPhase('full');
-          lastLabelsGateReason = null;
-        },
-      });
-      scheduler.startFrameLoop();
-    };
-
-    const schedulePinsStageAttempt = () => {
-      if (!scheduler || !isStageStillActive()) {
-        return;
-      }
-      const taskId = `${operationId}:map-stage-pins:${stageToken}:${stageAttemptOrdinal}`;
-      stageAttemptOrdinal += 1;
-      scheduler.schedule({
-        id: taskId,
-        lane: 'selection_feedback',
-        operationId,
-        estimatedCostMs: 1,
-        run: () => {
-          if (!isStageStillActive()) {
-            return;
-          }
-          if (isRunOneChromeDeferredRef.current || isRunOneHandoffActiveRef.current) {
-            requireExtendedHealthyFrames = true;
-            if (lastPinsGateReason !== 'handoff_deferred') {
-              emitMapRuntimeWriteSpan({
-                label: 'map_stage_gate',
-                gate: 'pins',
-                reason: 'handoff_deferred',
-                operationId,
-                nowMs: Number(getNowMs().toFixed(1)),
-              });
-              lastPinsGateReason = 'handoff_deferred';
-            }
-            scheduleOnNextFrame(schedulePinsStageAttempt);
-            return;
-          }
-          if (isMapPinsDeferred()) {
-            const pinsGateReason = shouldDeferPinsForOperationLane
-              ? 'operation_lane_wait_pins'
-              : 'defer_map_pins_signal';
-            if (lastPinsGateReason !== pinsGateReason) {
-              emitMapRuntimeWriteSpan({
-                label: 'map_stage_gate',
-                gate: 'pins',
-                reason: pinsGateReason,
-                operationId,
-                nowMs: Number(getNowMs().toFixed(1)),
-              });
-              lastPinsGateReason = pinsGateReason;
-            }
-            scheduleOnNextFrame(schedulePinsStageAttempt);
-            return;
-          }
-          const pressure = resolveMapStagePressure();
-          if (pressure === 'critical') {
-            if (lastPinsGateReason !== 'pressure_critical') {
-              emitMapRuntimeWriteSpan({
-                label: 'map_stage_gate',
-                gate: 'pins',
-                reason: 'pressure_critical',
-                operationId,
-                nowMs: Number(getNowMs().toFixed(1)),
-              });
-              lastPinsGateReason = 'pressure_critical';
-            }
-            scheduleOnNextFrame(schedulePinsStageAttempt);
-            return;
-          }
-          commitStagedPhase('pins', { pressure });
-          lastPinsGateReason = null;
-          scheduleOnNextFrame(scheduleLabelsStageAttempt);
-        },
-      });
-      scheduler.startFrameLoop();
-    };
-
-    commitStagedPhase(startingPhase);
-    if (!scheduler) {
-      if (startingPhase === 'dots') {
-        scheduleOnNextFrame(() => {
-          if (!isStageStillActive()) {
-            return;
-          }
-          commitStagedPhase('pins', { pressure: 'none' });
-          scheduleOnNextFrame(() => {
-            if (!isStageStillActive()) {
-              return;
-            }
-            commitStagedPhase('full');
-          });
-        });
-      } else if (startingPhase === 'pins') {
-        scheduleOnNextFrame(() => {
-          if (!isStageStillActive()) {
-            return;
-          }
-          commitStagedPhase('full');
-        });
-      }
-      return () => {
-        clearNextFrameHandle();
-      };
-    }
-
-    if (startingPhase === 'dots') {
-      scheduleOnNextFrame(schedulePinsStageAttempt);
-    } else if (startingPhase === 'pins') {
-      scheduleOnNextFrame(scheduleLabelsStageAttempt);
-    }
-    return () => {
-      clearNextFrameHandle();
-      if (shouldCancelOwnedOperation) {
-        scheduler.cancelLaneTasksByOperation(operationId, 'selection_feedback');
-      }
-      if (stagedPublishTokenRef.current === stageToken) {
-        stagedPublishTokenRef.current = null;
-      }
-      stagedPublishAwaitingPostDeferredFrameRef.current = false;
-    };
-  }, [
-    markerRevealCommitId,
-    markersTopologyRenderKey,
-    pinsTopologyKey,
-    runtimeWorkSchedulerRef,
-    selectionFeedbackOperationId,
-    shouldUseStagedPublish,
-    isMapPinsDeferred,
-    isMapFinalizeDeferred,
-    shouldDeferPinsForOperationLane,
-    shouldDeferFinalizeForOperationLane,
-    emitMapRuntimeWriteSpan,
-  ]);
-  const shouldRenderStagedPins = !shouldDisableMarkers;
-  const transitionSortedRestaurantMarkers = shouldRenderStagedPins
-    ? sortedRestaurantMarkers
-    : EMPTY_SORTED_RESTAURANT_MARKERS;
+  const transitionSortedRestaurantMarkers = shouldDisableMarkers
+    ? EMPTY_SORTED_RESTAURANT_MARKERS
+    : sortedRestaurantMarkers;
   const shouldRenderLabels =
     !shouldDisableMarkers &&
-    isMapStyleReady &&
-    shouldRenderStagedPins &&
-    (!shouldUseStagedPublish || stagedPublishPhase !== 'dots');
+    isMapStyleReady;
   const shouldRenderDots =
     !shouldDisableMarkers &&
     isMapStyleReady &&
@@ -2378,6 +1950,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     return new Set(transitionSortedRestaurantMarkers.map((feature) => buildMarkerKey(feature)));
   }, [buildMarkerKey, transitionSortedRestaurantMarkers]);
   const visualReadySignaledRequestKeyRef = React.useRef<string | null>(null);
+  const markerRevealStartedSignaledRequestKeyRef = React.useRef<string | null>(null);
   const markerRevealSettledSignaledRequestKeyRef = React.useRef<string | null>(null);
   const visualReadyPendingFramesRef = React.useRef(0);
   const visualReadyAwaitingPinTransitionStartRef = React.useRef(false);
@@ -2385,6 +1958,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const {
     batchOpacity,
     batchDismissActive,
+    batchRevealActive,
     effectiveDotFeatures,
     dotsAreHeld,
     effectivePinFeatures,
@@ -2409,6 +1983,24 @@ const SearchMap: React.FC<SearchMapProps> = ({
   // vanishing. shouldRenderDotsOrDismiss extends rendering while held.
   const shouldRenderDotsOrDismiss = shouldRenderDots || dotsAreHeld;
   const shouldHidePinnedDots = true;
+  const hasNonZeroPinOpacityForRevealStart = React.useMemo(() => {
+    if (effectivePinFeatures.features.length === 0) {
+      return false;
+    }
+    for (const feature of effectivePinFeatures.features) {
+      const active = feature.properties.pinTransitionActive ?? 0;
+      if (active === 1) {
+        const opacity = feature.properties.pinTransitionOpacity ?? 0;
+        if (opacity > 0) {
+          return true;
+        }
+        continue;
+      }
+      // Non-transition pin is fully visible.
+      return true;
+    }
+    return false;
+  }, [effectivePinFeatures.features]);
   const hiddenDotRestaurantIdList = React.useMemo(() => {
     // During batch dismiss, dots fade out via batchOpacity — don't hide them
     if (batchDismissActive) return EMPTY_DEMOTION_LIST;
@@ -4168,6 +3760,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   } | null>(null);
   React.useEffect(() => {
     visualReadySignaledRequestKeyRef.current = null;
+    markerRevealStartedSignaledRequestKeyRef.current = null;
     markerRevealSettledSignaledRequestKeyRef.current = null;
     visualReadyPendingFramesRef.current = 0;
     visualReadyAwaitingPinTransitionStartRef.current = false;
@@ -4267,15 +3860,19 @@ const SearchMap: React.FC<SearchMapProps> = ({
       return;
     }
     const shouldEmitVisualReady = Boolean(onVisualReady && shouldSignalVisualReady);
+    const shouldEmitMarkerRevealStarted = onMarkerRevealStarted != null;
     const shouldEmitMarkerRevealSettled = onMarkerRevealSettled != null;
-    if (!shouldEmitVisualReady && !shouldEmitMarkerRevealSettled) {
+    if (!shouldEmitVisualReady && !shouldEmitMarkerRevealStarted && !shouldEmitMarkerRevealSettled) {
       return;
     }
+    const markerRevealStartedAlreadySignaled =
+      markerRevealStartedSignaledRequestKeyRef.current === visualReadyRequestKey;
     const visualReadyAlreadySignaled =
       visualReadySignaledRequestKeyRef.current === visualReadyRequestKey;
     const markerRevealSettledAlreadySignaled =
       markerRevealSettledSignaledRequestKeyRef.current === visualReadyRequestKey;
     if (
+      (markerRevealStartedAlreadySignaled || !shouldEmitMarkerRevealStarted) &&
       (visualReadyAlreadySignaled || !shouldEmitVisualReady) &&
       (markerRevealSettledAlreadySignaled || !shouldEmitMarkerRevealSettled)
     ) {
@@ -4300,26 +3897,22 @@ const SearchMap: React.FC<SearchMapProps> = ({
         hasStartedPromotions,
       });
     };
+    if (isPinsRenderKeyHeld(pinsRenderKey)) {
+      emitVisualReadyGateReason('awaiting_pins_render_key_show');
+      return;
+    }
     if (visualReadyPendingFramesRef.current > 0) {
       emitVisualReadyGateReason('pending_frames');
       visualReadyPendingFramesRef.current -= 1;
       return;
     }
     if (visualReadyAwaitingPinTransitionStartRef.current) {
-      if (hasPendingPromotions) {
+      if (!hasStartedPromotions && hasPendingPromotions) {
         emitVisualReadyGateReason('awaiting_pin_transition_pending_promotions');
         return;
       }
-      if (!hasStartedPromotions) {
-        // Phase 9: If no promotions pending and none started, the initial reveal was instant.
-        // Clear the gate and fall through to signal visual ready.
-        visualReadyAwaitingPinTransitionStartRef.current = false;
-      }
       visualReadyAwaitingPinTransitionStartRef.current = false;
-      // Leave one more frame so the newly-armed transition properties are guaranteed painted.
-      visualReadyPendingFramesRef.current = Math.max(visualReadyPendingFramesRef.current, 1);
-      emitVisualReadyGateReason('pending_transition_paint_frame');
-      return;
+      emitVisualReadyGateReason('pin_transition_started');
     }
     if (requireMarkerVisualsForVisualReady) {
       const hasMarkerVisuals =
@@ -4329,8 +3922,37 @@ const SearchMap: React.FC<SearchMapProps> = ({
         return;
       }
     }
+    if (shouldEmitMarkerRevealStarted && !markerRevealStartedAlreadySignaled) {
+      const hasPinnedMarkerCandidates = sortedRestaurantMarkers.length > 0;
+      if (hasPinnedMarkerCandidates) {
+        const pinRevealStartReady =
+          shouldRenderLabels &&
+          !isPinsRenderKeyHeld(pinsRenderKey) &&
+          hasNonZeroPinOpacityForRevealStart &&
+          (!batchRevealActive || batchOpacity > 0) &&
+          (!isAwaitingInitialRevealStart || hasStartedPromotions || !hasPendingPromotions);
+        if (!pinRevealStartReady) {
+          emitVisualReadyGateReason('awaiting_pin_reveal_start');
+          return;
+        }
+      }
+      markerRevealStartedSignaledRequestKeyRef.current = visualReadyRequestKey;
+      emitMapRuntimeWriteSpan({
+        label: 'marker_reveal_started_signal',
+        requestKey: visualReadyRequestKey,
+        markerRevealCommitId,
+      });
+      onMarkerRevealStarted?.({
+        requestKey: visualReadyRequestKey,
+        markerRevealCommitId,
+        startedAtMs: getNowMs(),
+      });
+    }
     emitVisualReadyGateReason(null);
     if (shouldEmitMarkerRevealSettled && !markerRevealSettledAlreadySignaled) {
+      if (hasPendingPromotions) {
+        emitVisualReadyGateReason('awaiting_marker_reveal_settle');
+      } else {
       markerRevealSettledSignaledRequestKeyRef.current = visualReadyRequestKey;
       emitMapRuntimeWriteSpan({
         label: 'marker_reveal_settled_signal',
@@ -4342,6 +3964,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         markerRevealCommitId,
         settledAtMs: getNowMs(),
       });
+      }
     }
     if (shouldEmitVisualReady && !visualReadyAlreadySignaled) {
       visualReadySignaledRequestKeyRef.current = visualReadyRequestKey;
@@ -4355,11 +3978,18 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }, [
     emitMapRuntimeWriteSpan,
     dotRestaurantFeatures?.features?.length,
+    batchOpacity,
+    batchRevealActive,
     hasPendingPromotions,
     hasStartedPromotions,
+    hasNonZeroPinOpacityForRevealStart,
+    isAwaitingInitialRevealStart,
     markerRevealCommitId,
+    onMarkerRevealStarted,
     onVisualReady,
     onMarkerRevealSettled,
+    pinsRenderKey,
+    shouldRenderLabels,
     requireMarkerVisualsForVisualReady,
     shouldSignalVisualReady,
     sortedRestaurantMarkers.length,
@@ -4568,7 +4198,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
             key={`style-pins-source-${pinLayerTreeEpoch}`}
             id={STYLE_PINS_SOURCE_ID}
             shape={
-              shouldRenderStagedPins && effectivePinFeatures.features.length > 0
+              effectivePinFeatures.features.length > 0
                 ? effectivePinFeatures
                 : EMPTY_POINT_FEATURES
             }
@@ -4581,7 +4211,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
             key={`pin-interaction-source-${pinLayerTreeEpoch}`}
             id={PIN_INTERACTION_SOURCE_ID}
             shape={
-              shouldRenderStagedPins && effectivePinFeatures.features.length > 0
+              effectivePinFeatures.features.length > 0
                 ? effectivePinFeatures
                 : EMPTY_POINT_FEATURES
             }
@@ -4629,7 +4259,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
               </MapboxGL.ShapeSource>
               {USE_STYLE_LAYER_PINS &&
               !shouldDisableMarkers &&
-              shouldRenderStagedPins &&
               PIN_COLLISION_OBSTACLE_GEOMETRY !== 'off' ? (
                 <MapboxGL.ShapeSource
                   id={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
@@ -4783,29 +4412,6 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
   if (prev.disableBlur !== next.disableBlur) {
     return false;
   }
-  // isRunOneHandoffActive gates shouldRenderLabels — always re-render when
-  // it changes so labels appear promptly after the handoff completes.
-  if (prev.isRunOneHandoffActive !== next.isRunOneHandoffActive) {
-    return false;
-  }
-  const markersUnchanged =
-    prev.markersRenderKey === next.markersRenderKey &&
-    prev.sortedRestaurantMarkers === next.sortedRestaurantMarkers &&
-    prev.dotRestaurantFeatures === next.dotRestaurantFeatures;
-  if (!markersUnchanged) {
-    if (prev.isRunOneChromeDeferred !== next.isRunOneChromeDeferred) {
-      return false;
-    }
-    if (prev.selectionFeedbackOperationId !== next.selectionFeedbackOperationId) {
-      return false;
-    }
-    if (prev.onRuntimeMechanismEvent !== next.onRuntimeMechanismEvent) {
-      return false;
-    }
-    if (prev.onProfilerRender !== next.onProfilerRender) {
-      return false;
-    }
-  }
   if (!areUserLocationsEqual(prev.userLocation, next.userLocation)) {
     return false;
   }
@@ -4842,6 +4448,9 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
   if (prev.onVisualReady !== next.onVisualReady) {
     return false;
   }
+  if (prev.onMarkerRevealStarted !== next.onMarkerRevealStarted) {
+    return false;
+  }
   if (prev.onMarkerRevealSettled !== next.onMarkerRevealSettled) {
     return false;
   }
@@ -4852,6 +4461,12 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
     return false;
   }
   if (prev.searchRuntimeBus !== next.searchRuntimeBus) {
+    return false;
+  }
+  if (prev.onRuntimeMechanismEvent !== next.onRuntimeMechanismEvent) {
+    return false;
+  }
+  if (prev.onProfilerRender !== next.onProfilerRender) {
     return false;
   }
   return true;

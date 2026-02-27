@@ -2,7 +2,10 @@ import React from 'react';
 
 import { useSearchStore } from '../../../../store/searchStore';
 import { logger } from '../../../../utils';
-import type { ToggleCommitOutcome } from './use-toggle-interaction-coordinator';
+import type {
+  ToggleCommitOptions,
+  ToggleCommitOutcome,
+} from './use-toggle-interaction-coordinator';
 import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
 import {
   buildLevelsFromRange,
@@ -59,7 +62,10 @@ type UseQueryMutationOrchestratorArgs = {
   setOpenNow: (next: boolean) => void;
   setPriceLevels: (next: number[]) => void;
   setPreferredScoreMode: (next: ScoreMode) => void;
-  scheduleToggleCommit: (runner: () => ToggleCommitOutcome | void) => void;
+  scheduleToggleCommit: (
+    runner: () => ToggleCommitOutcome | void,
+    options?: ToggleCommitOptions
+  ) => void;
   rerunActiveSearch: (options: RerunActiveSearchOptions) => Promise<void>;
   priceSheetRef: React.MutableRefObject<{ requestClose: () => void } | null>;
   rankSheetRef: React.MutableRefObject<{ requestClose: () => void } | null>;
@@ -80,7 +86,6 @@ type QueryMutationOrchestrator = {
   toggleRankSelector: () => void;
   handlePriceDone: () => void;
   handleScoreModeChange: (nextMode: ScoreMode) => void;
-  cancelPendingMutationWork: () => void;
 };
 
 export const useQueryMutationOrchestrator = (
@@ -149,11 +154,6 @@ export const useQueryMutationOrchestrator = (
     [onMechanismEvent]
   );
 
-  const cancelPendingMutationWork = React.useCallback(() => {
-    // No local debounce timers remain. Global settle ownership lives in
-    // useToggleInteractionCoordinator.
-  }, []);
-
   const canRerunForCurrentQuery = React.useCallback(() => {
     const hasCommittedQuery = Boolean((isSearchSessionActive ? submittedQuery : query).trim());
     return searchMode === 'shortcut' || hasCommittedQuery;
@@ -202,7 +202,7 @@ export const useQueryMutationOrchestrator = (
       return {
         awaitVisualSync: true,
       };
-    });
+    }, { kind: 'filter_votes' });
   }, [
     activeTab,
     canRerunForCurrentQuery,
@@ -254,7 +254,7 @@ export const useQueryMutationOrchestrator = (
         return {
           awaitVisualSync: true,
         };
-      });
+      }, { kind: 'filter_rank' });
       searchRuntimeBus.publish({
         rankButtonLabelText: nextRankButtonLabelText,
         rankButtonIsActive: nextRankButtonIsActive,
@@ -304,7 +304,7 @@ export const useQueryMutationOrchestrator = (
       return {
         awaitVisualSync: true,
       };
-    });
+    }, { kind: 'filter_open_now' });
   }, [
     activeTab,
     canRerunForCurrentQuery,
@@ -362,7 +362,7 @@ export const useQueryMutationOrchestrator = (
       return {
         awaitVisualSync: true,
       };
-    });
+    }, { kind: 'filter_price' });
   }, [
     activeTab,
     canRerunForCurrentQuery,
@@ -465,6 +465,5 @@ export const useQueryMutationOrchestrator = (
     toggleRankSelector,
     handlePriceDone,
     handleScoreModeChange,
-    cancelPendingMutationWork,
   };
 };

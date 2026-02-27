@@ -139,6 +139,12 @@ type UseSearchSubmitOptions = {
   runtimeSessionController: SearchSessionController;
   onRuntimeMechanismEvent?: RuntimeMechanismEmitter;
   onSearchSessionShadowTransition?: (transition: SearchSessionShadowTransition) => void;
+  onPresentationIntentStart?: (params: {
+    kind: 'initial_search' | 'shortcut_rerun';
+    mode: SearchMode;
+    preserveSheetState: boolean;
+  }) => void;
+  onPresentationIntentAbort?: () => void;
 };
 
 type RecentSearchInput = {
@@ -371,6 +377,8 @@ const useSearchSubmit = ({
   runtimeSessionController,
   onRuntimeMechanismEvent,
   onSearchSessionShadowTransition,
+  onPresentationIntentStart,
+  onPresentationIntentAbort,
 }: UseSearchSubmitOptions): UseSearchSubmitResult => {
   const searchRequestSeqRef = React.useRef(0);
   const activeSearchRequestRef = React.useRef(0);
@@ -1578,7 +1586,13 @@ const useSearchSubmit = ({
 
       let preserveSheetState = false;
       if (!append) {
+        setSearchRequestInFlight(true);
         preserveSheetState = Boolean(options?.preserveSheetState);
+        onPresentationIntentStart?.({
+          kind: 'initial_search',
+          mode: 'natural',
+          preserveSheetState,
+        });
         const transitionFromDockedPolls =
           !preserveSheetState && Boolean(options?.transitionFromDockedPolls);
         const shouldHoldRestaurantOverlaySheet = isRestaurantOverlayVisibleRef?.current === true;
@@ -1614,7 +1628,6 @@ const useSearchSubmit = ({
           loadingMoreToken = beginLoadingMore();
           logSearchPhase('submitSearch:loading-more');
         } else {
-          setSearchRequestInFlight(true);
           setError(null);
           if (shouldPreclearNaturalResults && !preserveSheetState) {
             searchRuntimeBus.publish({ results: null, resultsRequestKey: null });
@@ -1737,6 +1750,7 @@ const useSearchSubmit = ({
         }
         if (requestId === activeSearchRequestRef.current) {
           if (!append && !didStartResponseLifecycle) {
+            onPresentationIntentAbort?.();
             publishRuntimeLaneState(naturalTuple, 'idle', {
               isMapActivationDeferred: false,
               activeOperationId: null,
@@ -1788,6 +1802,8 @@ const useSearchSubmit = ({
       searchRuntimeBus,
       setError,
       setSearchRequestInFlight,
+      onPresentationIntentStart,
+      onPresentationIntentAbort,
       publishRuntimeLaneState,
       userLocationRef,
       votes100Plus,
@@ -1824,7 +1840,13 @@ const useSearchSubmit = ({
       }
 
       resetMapMoveFlag();
+      setSearchRequestInFlight(true);
       const preserveSheetState = Boolean(params.preserveSheetState);
+      onPresentationIntentStart?.({
+        kind: 'initial_search',
+        mode: 'natural',
+        preserveSheetState,
+      });
       const shouldHoldRestaurantOverlaySheet = isRestaurantOverlayVisibleRef?.current === true;
       scheduleSubmitUiLanes({
         requestId,
@@ -1845,7 +1867,6 @@ const useSearchSubmit = ({
         if (searchRuntimeBus.getState().isLoadingMore) {
           searchRuntimeBus.publish({ isLoadingMore: false });
         }
-        setSearchRequestInFlight(true);
         logSearchPhase('runRestaurantEntitySearch:loading-state');
         const payload = await buildStructuredSearchPayload(
           1,
@@ -1934,6 +1955,7 @@ const useSearchSubmit = ({
         if (requestId === activeSearchRequestRef.current) {
           setSearchRequestInFlight(false);
           if (!didStartResponseLifecycle) {
+            onPresentationIntentAbort?.();
             publishRuntimeLaneState(entityTuple, 'idle', {
               isMapActivationDeferred: false,
               activeOperationId: null,
@@ -1977,6 +1999,8 @@ const useSearchSubmit = ({
       activateRuntimeShadowOperation,
       setError,
       setSearchRequestInFlight,
+      onPresentationIntentStart,
+      onPresentationIntentAbort,
       isRestaurantOverlayVisibleRef,
       publishRuntimeLaneState,
     ]
@@ -2015,7 +2039,13 @@ const useSearchSubmit = ({
       const shouldForceFreshBounds = Boolean(options?.forceFreshBounds);
 
       resetMapMoveFlag();
+      setSearchRequestInFlight(true);
       const preserveSheetState = Boolean(options?.preserveSheetState);
+      onPresentationIntentStart?.({
+        kind: 'shortcut_rerun',
+        mode: 'shortcut',
+        preserveSheetState,
+      });
       const transitionFromDockedPolls =
         !preserveSheetState && Boolean(options?.transitionFromDockedPolls);
       scheduleSubmitUiLanes({
@@ -2034,7 +2064,6 @@ const useSearchSubmit = ({
 
       let didStartResponseLifecycle = false;
       try {
-        setSearchRequestInFlight(true);
         shortcutSearchRequestIdRef.current = null;
         if (searchRuntimeBus.getState().isLoadingMore) {
           searchRuntimeBus.publish({ isLoadingMore: false });
@@ -2117,6 +2146,7 @@ const useSearchSubmit = ({
         if (requestId === activeSearchRequestRef.current) {
           setSearchRequestInFlight(false);
           if (!didStartResponseLifecycle) {
+            onPresentationIntentAbort?.();
             publishRuntimeLaneState(shortcutTuple, 'idle', {
               isMapActivationDeferred: false,
               activeOperationId: null,
@@ -2160,6 +2190,8 @@ const useSearchSubmit = ({
       scheduleSubmitUiLanes,
       setError,
       setSearchRequestInFlight,
+      onPresentationIntentStart,
+      onPresentationIntentAbort,
       onShortcutSearchCoverageSnapshot,
       publishRuntimeLaneState,
     ]

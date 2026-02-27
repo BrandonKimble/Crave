@@ -875,10 +875,7 @@ export const useShortcutHarnessObserver = (
         if (!shadowConverged && inputs.searchMode === 'shortcut' && inputs.isRunOneHandoffActive) {
           return true;
         }
-        if (
-          inputs.isVisualSyncPending ||
-          shouldHydrateResultsForRenderRuntime
-        ) {
+        if (inputs.isVisualSyncPending || shouldHydrateResultsForRenderRuntime) {
           return true;
         }
         if (!shadowConverged && shortcutPerfTraceRef.current.stage !== 'results_list_ramp') {

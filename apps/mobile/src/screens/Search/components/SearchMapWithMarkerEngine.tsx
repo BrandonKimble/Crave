@@ -8,7 +8,6 @@ import { useMapMarkerEngine } from '../hooks/use-map-marker-engine';
 import type { ResolvedRestaurantMapLocation } from '../hooks/use-restaurant-location-selection';
 import type { MapQueryBudget } from '../runtime/map/map-query-budget';
 import { useMarkerInteractionController } from '../runtime/map/marker-interaction-controller';
-import type { RuntimeWorkScheduler } from '../runtime/scheduler/runtime-work-scheduler';
 import { useSearchBus } from '../runtime/shared/search-runtime-bus';
 import { useSearchRuntimeBusSelector } from '../runtime/shared/use-search-runtime-bus-selector';
 import type { useShortcutCoverageOwner } from '../runtime/map/use-shortcut-coverage-owner';
@@ -83,6 +82,11 @@ type SearchMapWithMarkerEngineProps = {
   onMapIdle: (state: MapboxMapState) => void;
   onMapLoaded: () => void;
   onVisualReady?: (requestKey: string) => void;
+  onMarkerRevealStarted?: (payload: {
+    requestKey: string;
+    markerRevealCommitId: number | null;
+    startedAtMs: number;
+  }) => void;
   onMarkerRevealSettled?: (payload: {
     requestKey: string;
     markerRevealCommitId: number | null;
@@ -94,7 +98,6 @@ type SearchMapWithMarkerEngineProps = {
   disableMarkers?: boolean;
   disableBlur?: boolean;
   onProfilerRender?: React.ProfilerOnRenderCallback;
-  runtimeWorkSchedulerRef?: React.MutableRefObject<RuntimeWorkScheduler> | null;
   onRuntimeMechanismEvent?: (
     event: 'runtime_write_span',
     payload?: Record<string, unknown>
@@ -150,6 +153,7 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     onMapIdle,
     onMapLoaded,
     onVisualReady,
+    onMarkerRevealStarted,
     onMarkerRevealSettled,
     isMapStyleReady,
     userLocation,
@@ -157,7 +161,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     disableMarkers,
     disableBlur,
     onProfilerRender,
-    runtimeWorkSchedulerRef,
     onRuntimeMechanismEvent,
   },
   ref
@@ -182,37 +185,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
   // -------------------------------------------------------------------------
   // Handoff-derived state — read from bus (bridged via useHandoffBusBridge)
   // -------------------------------------------------------------------------
-
-  const isSearchLoading = useSearchRuntimeBusSelector(
-    searchRuntimeBus,
-    (state) => state.isSearchLoading,
-    Object.is,
-    ['isSearchLoading'] as const
-  );
-
-  const selectionFeedbackOperationId = useSearchRuntimeBusSelector(
-    searchRuntimeBus,
-    (state) => state.runOneSelectionFeedbackOperationId,
-    Object.is,
-    ['runOneSelectionFeedbackOperationId'] as const
-  );
-
-  const isRunOneHandoffActive = useSearchRuntimeBusSelector(
-    searchRuntimeBus,
-    (state) => state.isRun1HandoffActive,
-    Object.is,
-    ['isRun1HandoffActive'] as const
-  );
-
-  const isRunOneChromeDeferred = useSearchRuntimeBusSelector(
-    searchRuntimeBus,
-    (state) =>
-      state.isRunOneChromeFreezeActive ||
-      state.runOneCommitSpanPressureActive ||
-      state.isChromeDeferred,
-    Object.is,
-    ['isRunOneChromeFreezeActive', 'runOneCommitSpanPressureActive', 'isChromeDeferred'] as const
-  );
 
   // -------------------------------------------------------------------------
   // Marker engine
@@ -323,12 +295,14 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     ['visualSyncCandidateRequestKey'] as const
   );
 
-  const hasAnySearchResults = restaurants.length > 0;
-  const areSearchVisualsSettled = !isSearchLoading && !isShortcutCoverageLoading;
   const shouldSignalMapVisualReady =
     isVisualSyncPending &&
     resultsVisualSyncCandidate != null &&
-    (!hasAnySearchResults || areSearchVisualsSettled);
+    !isShortcutCoverageLoading;
+  const hasRenderableMarkerVisuals =
+    visibleSortedRestaurantMarkers.length > 0 ||
+    (visibleDotRestaurantFeatures?.features?.length ?? 0) > 0;
+  const shouldRequireMarkerVisualsForVisualReady = hasRenderableMarkerVisuals;
 
   // -------------------------------------------------------------------------
   // Map tree props
@@ -342,7 +316,7 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     pinsRenderKey: visiblePinsRenderKey,
     visualSyncCandidateKey: resultsVisualSyncCandidate,
     shouldSignalVisualReady: shouldSignalMapVisualReady,
-    requireMarkerVisualsForVisualReady: true,
+    requireMarkerVisualsForVisualReady: shouldRequireMarkerVisualsForVisualReady,
     restaurantFeatures: visibleRestaurantFeatures,
   };
   const mapTreePropsForRender = nextMapTreeProps;
@@ -389,6 +363,7 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
       onMapLoaded={onMapLoaded}
       onMarkerPress={stableHandleMarkerPress}
       onVisualReady={onVisualReady}
+      onMarkerRevealStarted={onMarkerRevealStarted}
       onMarkerRevealSettled={onMarkerRevealSettled}
       selectedRestaurantId={mapTreePropsForRender.selectedRestaurantId}
       sortedRestaurantMarkers={mapTreePropsForRender.sortedRestaurantMarkers}
@@ -407,10 +382,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
       disableBlur={disableBlur}
       onProfilerRender={onProfilerRender}
       mapQueryBudget={mapQueryBudget}
-      runtimeWorkSchedulerRef={runtimeWorkSchedulerRef}
-      selectionFeedbackOperationId={selectionFeedbackOperationId}
-      isRunOneHandoffActive={isRunOneHandoffActive}
-      isRunOneChromeDeferred={isRunOneChromeDeferred}
       searchRuntimeBus={searchRuntimeBus}
       onRuntimeMechanismEvent={onRuntimeMechanismEvent}
     />

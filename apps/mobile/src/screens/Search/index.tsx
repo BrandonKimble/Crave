@@ -101,7 +101,14 @@ import { createMapQueryBudget } from './runtime/map/map-query-budget';
 import { useStableMapHandlers } from './runtime/map/use-stable-map-handlers';
 import { type ResultsListItem } from './runtime/read-models/read-model-selectors';
 import { useQueryMutationOrchestrator } from './runtime/mutations/query-mutation-orchestrator';
-import { useToggleInteractionCoordinator } from './runtime/mutations/use-toggle-interaction-coordinator';
+import {
+  useToggleInteractionCoordinator,
+  type ToggleInteractionLifecycleEvent,
+} from './runtime/mutations/use-toggle-interaction-coordinator';
+import {
+  createPresentationTransitionController,
+  type PresentationMutationKind,
+} from './runtime/controller/presentation-transition-controller';
 import { useProfileRuntimeController } from './runtime/profile/profile-runtime-controller';
 import { useProfileCameraOrchestration } from './runtime/profile/use-profile-camera-orchestration';
 import { useProfileAutoOpenController } from './runtime/profile/use-profile-auto-open-controller';
@@ -824,18 +831,30 @@ const SearchScreen: React.FC = () => {
   const [restaurantOnlyId, setRestaurantOnlyId] = React.useState<string | null>(null);
   const isSearchRequestLoadingRef = React.useRef(false);
   const visualReadyWriteSourceRef = React.useRef<
-    'map_visual_ready' | 'fallback_timeout' | 'marker_reveal_settled_raf' | 'unknown'
+    | 'map_visual_ready'
+    | 'marker_reveal_started'
+    | 'fallback_timeout'
+    | 'marker_reveal_settled_raf'
+    | 'unknown'
   >('unknown');
   const visualReadyFallbackTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const setIsFilterTogglePending = React.useCallback<React.Dispatch<React.SetStateAction<boolean>>>(
     (nextValue) => {
-      const previous = searchRuntimeBus.getState().isFilterTogglePending;
+      const runtimeState = searchRuntimeBus.getState();
+      const previous = runtimeState.isFilterTogglePending;
       const nextResolved =
         typeof nextValue === 'function'
           ? (nextValue as (value: boolean) => boolean)(previous)
           : nextValue;
-      searchRuntimeBus.publish({
-        isFilterTogglePending: nextResolved,
+      searchRuntimeBus.batch(() => {
+        searchRuntimeBus.publish({
+          isFilterTogglePending: nextResolved,
+        });
+        if (!nextResolved && runtimeState.toggleInteractionKind != null) {
+          searchRuntimeBus.publish({
+            toggleInteractionKind: null,
+          });
+        }
       });
     },
     [searchRuntimeBus]
@@ -850,7 +869,53 @@ const SearchScreen: React.FC = () => {
     'page_one_results_commit' | 'toggle_interaction_commit' | 'unknown'
   >('unknown');
   const markerRevealCommitSeqRef = React.useRef(0);
-  const visualSyncReleasedOperationIdRef = React.useRef<string | null>(null);
+  const presentationTransitionControllerRef = React.useRef<ReturnType<
+    typeof createPresentationTransitionController
+  > | null>(null);
+  if (!presentationTransitionControllerRef.current) {
+    presentationTransitionControllerRef.current = createPresentationTransitionController({
+      publish: (patch) => {
+        searchRuntimeBus.publish(patch);
+      },
+    });
+  }
+  const resolveCoverageRequirement = React.useCallback(
+    (kind: PresentationMutationKind) => {
+      if (kind === 'shortcut_rerun') {
+        return true;
+      }
+      return searchRuntimeBus.getState().searchMode === 'shortcut';
+    },
+    [searchRuntimeBus]
+  );
+  const handleToggleInteractionLifecycle = React.useCallback(
+    (event: ToggleInteractionLifecycleEvent) => {
+      const transitionController = presentationTransitionControllerRef.current!;
+      if (event.type === 'started') {
+        transitionController.beginIntent({
+          intentId: event.intentId,
+          kind: event.kind,
+          loadingMode: 'interaction_frost',
+          phase: 'settling',
+          settleMs: Math.max(1, event.settleDeadlineMs - Date.now()),
+          requiresCoverage: resolveCoverageRequirement(event.kind),
+        });
+        return;
+      }
+      if (event.type === 'settled') {
+        transitionController.markSettlingComplete(event.intentId);
+        return;
+      }
+      if (event.type === 'cancelled') {
+        transitionController.cancelIntent(event.intentId);
+        return;
+      }
+      if (!event.awaitedVisualSync) {
+        transitionController.cancelIntent(event.intentId);
+      }
+    },
+    [resolveCoverageRequirement]
+  );
   const {
     scheduleToggleCommit,
     registerVisualCandidate,
@@ -859,6 +924,7 @@ const SearchScreen: React.FC = () => {
   } = useToggleInteractionCoordinator({
     searchRuntimeBus,
     setIsFilterTogglePending,
+    onLifecycleEvent: handleToggleInteractionLifecycle,
   });
   const runOneCommitSpanPressureByOperationRef = React.useRef<Map<string, number>>(new Map());
   const runOneStallPressureByOperationRef = React.useRef<Map<string, number>>(new Map());
@@ -1041,11 +1107,17 @@ const SearchScreen: React.FC = () => {
   }, [searchRuntimeBus]);
   const isSearchLoading = isSearchRequestLoadingRef.current;
   const publishVisualSyncCandidate = React.useCallback(
-    (source: 'page_one_results_commit' | 'toggle_interaction_commit') => {
+    (
+      source: 'page_one_results_commit' | 'toggle_interaction_commit',
+      requestKeyOverride?: string | null
+    ) => {
       const runtimeState = searchRuntimeBus.getState();
       markerRevealCommitSeqRef.current += 1;
       const commitId = markerRevealCommitSeqRef.current;
-      const nextRequestKey = `visual-commit:${commitId}`;
+      const nextRequestKey =
+        requestKeyOverride && requestKeyOverride.length > 0
+          ? requestKeyOverride
+          : `visual-commit:${commitId}`;
       visualSyncCandidateWriteSourceRef.current = source;
       searchRuntimeBus.publish({
         markerRevealCommitId: commitId,
@@ -1057,11 +1129,45 @@ const SearchScreen: React.FC = () => {
     },
     [registerVisualCandidate, searchRuntimeBus]
   );
+  const requestMapRevealForIntent = React.useCallback(
+    (
+      intentId: string,
+      source: 'page_one_results_commit' | 'toggle_interaction_commit' = 'page_one_results_commit'
+    ): string | null => {
+      const transitionController = presentationTransitionControllerRef.current!;
+      if (!transitionController.shouldRequestMapReveal(intentId)) {
+        return null;
+      }
+      const requestKey = publishVisualSyncCandidate(source, intentId);
+      transitionController.markMapRevealRequested(intentId, requestKey);
+      return requestKey;
+    },
+    [publishVisualSyncCandidate]
+  );
+  const syncTransitionReadiness = React.useCallback(
+    (source: 'page_one_results_commit' | 'toggle_interaction_commit' = 'page_one_results_commit') => {
+      const transitionController = presentationTransitionControllerRef.current!;
+      const intentId = transitionController.getActiveIntentId();
+      if (!intentId) {
+        return;
+      }
+      const runtimeState = searchRuntimeBus.getState();
+      const listReady =
+        runtimeState.isResultsHydrationSettled && !runtimeState.shouldHydrateResultsForRender;
+      transitionController.markListReady(intentId, listReady);
+      const coverageReady =
+        runtimeState.searchMode === 'shortcut' ? !runtimeState.isShortcutCoverageLoading : true;
+      transitionController.markCoverageReady(intentId, coverageReady);
+      requestMapRevealForIntent(intentId, source);
+    },
+    [requestMapRevealForIntent, searchRuntimeBus]
+  );
   const markVisualRequestReady = React.useCallback(
     (
       requestKey: string | null,
       source:
         | 'map_visual_ready'
+        | 'marker_reveal_started'
         | 'fallback_timeout'
         | 'marker_reveal_settled_raf'
         | 'unknown' = 'unknown'
@@ -1071,7 +1177,6 @@ const SearchScreen: React.FC = () => {
         return;
       }
       const runtimeState = searchRuntimeBus.getState();
-      const activeOperationId = runtimeState.activeOperationId;
       const nextPending =
         runtimeState.visualSyncCandidateRequestKey != null &&
         runtimeState.visualSyncCandidateRequestKey !== requestKey;
@@ -1086,36 +1191,30 @@ const SearchScreen: React.FC = () => {
         visualReadyRequestKey: requestKey,
         isVisualSyncPending: nextPending,
       });
-      if (
-        !nextPending &&
-        activeOperationId &&
-        runtimeState.visualSyncCandidateRequestKey === requestKey
-      ) {
-        visualSyncReleasedOperationIdRef.current = activeOperationId;
-      }
       resolveVisualReady(requestKey);
     },
     [resolveVisualReady, searchRuntimeBus]
   );
   const handlePageOneResultsCommitted = React.useCallback(() => {
-    const runtimeState = searchRuntimeBus.getState();
-    const activeOperationId = runtimeState.activeOperationId;
-    if (
-      activeOperationId &&
-      visualSyncReleasedOperationIdRef.current != null &&
-      visualSyncReleasedOperationIdRef.current === activeOperationId
-    ) {
+    const transitionController = presentationTransitionControllerRef.current!;
+    const intentId = transitionController.getActiveIntentId();
+    if (!intentId) {
       return;
     }
-    if (
-      activeOperationId &&
-      visualSyncReleasedOperationIdRef.current != null &&
-      visualSyncReleasedOperationIdRef.current !== activeOperationId
-    ) {
-      visualSyncReleasedOperationIdRef.current = null;
-    }
-    publishVisualSyncCandidate('page_one_results_commit');
-  }, [publishVisualSyncCandidate, searchRuntimeBus]);
+    transitionController.markDataReady(intentId);
+    syncTransitionReadiness('page_one_results_commit');
+  }, [syncTransitionReadiness]);
+  React.useEffect(() => {
+    syncTransitionReadiness('page_one_results_commit');
+    return searchRuntimeBus.subscribe(() => {
+      syncTransitionReadiness('page_one_results_commit');
+    }, [
+      'isResultsHydrationSettled',
+      'shouldHydrateResultsForRender',
+      'isShortcutCoverageLoading',
+      'searchMode',
+    ]);
+  }, [searchRuntimeBus, syncTransitionReadiness]);
   React.useEffect(
     () => () => {
       if (visualReadyFallbackTimeoutRef.current) {
@@ -3859,6 +3958,45 @@ const SearchScreen: React.FC = () => {
     },
     [searchRuntimeBus]
   );
+  const handlePresentationIntentStart = React.useCallback(
+    (params: {
+      kind: 'initial_search' | 'shortcut_rerun';
+      mode: 'natural' | 'shortcut' | null;
+      preserveSheetState: boolean;
+    }) => {
+      const transitionController = presentationTransitionControllerRef.current!;
+      const activeIntentId = transitionController.getActiveIntentId();
+      // Preserve active toggle-owned intents during mutation reruns
+      // (e.g. open-now/price/rank/votes). Those flows already started an
+      // interaction intent and submit should not replace it.
+      if (activeIntentId != null && params.preserveSheetState) {
+        syncTransitionReadiness('page_one_results_commit');
+        return;
+      }
+      if (activeIntentId != null) {
+        transitionController.cancelIntent(activeIntentId);
+      }
+      const runtimeState = searchRuntimeBus.getState();
+      const hasVisibleResults = runtimeState.results != null;
+      const shouldUseInitialCover = !hasVisibleResults && !params.preserveSheetState;
+      transitionController.beginIntent({
+        kind: params.kind,
+        loadingMode: shouldUseInitialCover ? 'initial_cover' : 'interaction_frost',
+        phase: 'executing',
+        requiresCoverage: params.mode === 'shortcut',
+      });
+      syncTransitionReadiness('page_one_results_commit');
+    },
+    [searchRuntimeBus, syncTransitionReadiness]
+  );
+  const handlePresentationIntentAbort = React.useCallback(() => {
+    const transitionController = presentationTransitionControllerRef.current!;
+    const intentId = transitionController.getActiveIntentId();
+    if (!intentId) {
+      return;
+    }
+    transitionController.cancelIntent(intentId);
+  }, []);
   const {
     submitSearch,
     runRestaurantEntitySearch,
@@ -3902,6 +4040,8 @@ const SearchScreen: React.FC = () => {
     runtimeSessionController: searchSessionController,
     onRuntimeMechanismEvent: emitRuntimeMechanismEvent,
     onSearchSessionShadowTransition: handleSearchSessionShadowTransition,
+    onPresentationIntentStart: handlePresentationIntentStart,
+    onPresentationIntentAbort: handlePresentationIntentAbort,
   });
   onSlideTransitionCompleteRef.current = onSlideTransitionComplete;
   submitShortcutSearchRef.current = async ({
@@ -4039,7 +4179,7 @@ const SearchScreen: React.FC = () => {
       publishRuntimeBusPatch({
         pendingTabSwitchTab: value,
       });
-      scheduleToggleCommit(() => {
+      scheduleToggleCommit(({ intentId }) => {
         const runtimeState = searchRuntimeBus.getState();
         const shouldSwitchTab = runtimeState.activeTab !== value;
         if (shouldSwitchTab) {
@@ -4055,19 +4195,22 @@ const SearchScreen: React.FC = () => {
             awaitVisualSync: false,
           };
         }
-        const visualRequestKey = publishVisualSyncCandidate('toggle_interaction_commit');
+        presentationTransitionControllerRef.current!.markDataReady(intentId);
+        syncTransitionReadiness('toggle_interaction_commit');
+        const visualRequestKey = requestMapRevealForIntent(intentId, 'toggle_interaction_commit');
         return {
           awaitVisualSync: true,
-          visualRequestKey,
+          visualRequestKey: visualRequestKey ?? undefined,
         };
-      });
+      }, { kind: 'tab_switch' });
     },
     [
       handleTabChange,
       publishRuntimeBusPatch,
-      publishVisualSyncCandidate,
+      requestMapRevealForIntent,
       scheduleToggleCommit,
       searchRuntimeBus,
+      syncTransitionReadiness,
     ]
   );
 
@@ -4484,7 +4627,6 @@ const SearchScreen: React.FC = () => {
     dismissRankSelector,
     toggleRankSelector,
     handlePriceDone,
-    cancelPendingMutationWork,
   } = useQueryMutationOrchestrator({
     searchRuntimeBus,
     searchMode,
@@ -4514,7 +4656,6 @@ const SearchScreen: React.FC = () => {
     onMechanismEvent: emitRuntimeMechanismEvent,
   });
   cancelPendingMutationWorkRef.current = () => {
-    cancelPendingMutationWork();
     cancelToggleInteraction();
   };
 
@@ -4701,7 +4842,22 @@ const SearchScreen: React.FC = () => {
   );
   const handleMapVisualReady = React.useCallback(
     (requestKey: string) => {
+      // Strict release authority: map_visual_ready no longer releases cards.
+      // Only marker_reveal_started (or fallback via marker_reveal_settled timeout path)
+      // can unlock presentation reveal for the active intent.
       markVisualRequestReady(requestKey, 'map_visual_ready');
+    },
+    [markVisualRequestReady]
+  );
+  type MarkerRevealStartedPayload = {
+    requestKey: string;
+    markerRevealCommitId: number | null;
+    startedAtMs: number;
+  };
+  const handleMarkerRevealStarted = React.useCallback(
+    (payload: MarkerRevealStartedPayload) => {
+      presentationTransitionControllerRef.current!.markMapRevealStarted(payload.requestKey);
+      markVisualRequestReady(payload.requestKey, 'marker_reveal_started');
     },
     [markVisualRequestReady]
   );
@@ -4765,6 +4921,7 @@ const SearchScreen: React.FC = () => {
   }, [flushPendingMarkerRevealSettled, runOneHandoffCoordinatorRef]);
   const handleMarkerRevealSettled = React.useCallback(
     (payload: MarkerRevealSettledPayload) => {
+      presentationTransitionControllerRef.current!.markMapRevealSettled(payload.requestKey);
       // Keep visual-sync from stalling behind map transition churn once reveal is settled.
       const busState = searchRuntimeBus.getState();
       const shouldAcknowledgeVisualReady =
@@ -4871,6 +5028,7 @@ const SearchScreen: React.FC = () => {
     handleMapLoaded,
     handleMarkerPress: noopMarkerPress,
     handleMapVisualReady,
+    handleMarkerRevealStarted,
     handleMarkerRevealSettled,
   });
   const stableHandleMapPress = stableMapHandlers.onMapPress;
@@ -4878,6 +5036,7 @@ const SearchScreen: React.FC = () => {
   const stableHandleMapIdle = stableMapHandlers.onMapIdle;
   const stableHandleMapLoaded = stableMapHandlers.onMapLoaded;
   const stableHandleMapVisualReady = stableMapHandlers.onMapVisualReady;
+  const stableHandleMarkerRevealStarted = stableMapHandlers.onMarkerRevealStarted;
   const stableHandleMarkerRevealSettled = stableMapHandlers.onMarkerRevealSettled;
 
   useProfileAutoOpenController({
@@ -5367,6 +5526,7 @@ const SearchScreen: React.FC = () => {
                 onMapIdle={stableHandleMapIdle}
                 onMapLoaded={stableHandleMapLoaded}
                 onVisualReady={stableHandleMapVisualReady}
+                onMarkerRevealStarted={stableHandleMarkerRevealStarted}
                 onMarkerRevealSettled={stableHandleMarkerRevealSettled}
                 isMapStyleReady={isMapStyleReady}
                 userLocation={userLocation}
@@ -5374,7 +5534,6 @@ const SearchScreen: React.FC = () => {
                 disableMarkers={shouldDisableMarkerViews}
                 disableBlur={shouldDisableSearchBlur}
                 onProfilerRender={handleProfilerRender}
-                runtimeWorkSchedulerRef={runtimeWorkSchedulerRef}
                 onRuntimeMechanismEvent={emitRuntimeMechanismEvent}
               />
             </React.Profiler>

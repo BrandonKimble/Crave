@@ -1603,9 +1603,7 @@ const BottomSheetWithFlashList = <T,>({
                   pointerEvents={resolvedActiveList === 'secondary' ? 'auto' : 'none'}
                   style={[
                     styles.dualListLayer,
-                    resolvedActiveList === 'secondary'
-                      ? styles.visibleLayer
-                      : styles.hiddenLayer,
+                    resolvedActiveList === 'secondary' ? styles.visibleLayer : styles.hiddenLayer,
                   ]}
                 >
                   <AnimatedFlashList
