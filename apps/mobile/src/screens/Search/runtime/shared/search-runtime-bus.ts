@@ -38,10 +38,6 @@ export type SearchRuntimeBusState = {
   hasSystemStatusBanner: boolean;
   shouldHydrateResultsForRender: boolean;
   isResultsHydrationSettled: boolean;
-  isVisualSyncPending: boolean;
-  visualSyncCandidateRequestKey: string | null;
-  visualReadyRequestKey: string | null;
-  markerRevealCommitId: number | null;
   runOneCommitSpanPressureActive: boolean;
   hydrationOperationId: string | null;
   allowHydrationFinalizeCommit: boolean;
@@ -85,6 +81,9 @@ export type SearchRuntimeBusState = {
   // Presentation transition mirror (Slice 1: telemetry/contract only).
   presentationTransitionKind: PresentationMutationKind | null;
   presentationTransitionLoadingMode: PresentationLoadingMode;
+  // Presentation controller-driven map coordination.
+  presentationMapRevealRequestKey: string | null;
+  presentationDismissEpoch: number;
 };
 
 export type SearchRuntimeBusKey = keyof SearchRuntimeBusState;
@@ -110,10 +109,6 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   hasSystemStatusBanner: false,
   shouldHydrateResultsForRender: false,
   isResultsHydrationSettled: true,
-  isVisualSyncPending: false,
-  visualSyncCandidateRequestKey: null,
-  visualReadyRequestKey: null,
-  markerRevealCommitId: null,
   runOneCommitSpanPressureActive: false,
   hydrationOperationId: null,
   allowHydrationFinalizeCommit: true,
@@ -153,6 +148,8 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   isSubmitChromePriming: false,
   presentationTransitionKind: null,
   presentationTransitionLoadingMode: 'none',
+  presentationMapRevealRequestKey: null,
+  presentationDismissEpoch: 0,
 };
 
 export class SearchRuntimeBus {

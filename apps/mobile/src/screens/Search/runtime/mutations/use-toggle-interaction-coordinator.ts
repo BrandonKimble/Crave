@@ -6,7 +6,6 @@ import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
 
 export type ToggleCommitOutcome = {
   awaitVisualSync?: boolean;
-  visualRequestKey?: string | null;
 };
 
 type ToggleCommitRunner = (context: { intentId: string }) => ToggleCommitOutcome | void;
@@ -30,7 +29,6 @@ export type ToggleInteractionLifecycleEvent =
       type: 'started';
       intentId: string;
       kind: ToggleInteractionKind;
-      settleDeadlineMs: number;
     }
   | {
       type: 'settled';
@@ -53,19 +51,16 @@ type UseToggleInteractionCoordinatorArgs = {
   searchRuntimeBus: SearchRuntimeBus;
   setIsFilterTogglePending: (next: boolean) => void;
   settleMs?: number;
-  visualFallbackMs?: number;
   onLifecycleEvent?: (event: ToggleInteractionLifecycleEvent) => void;
 };
 
 type ToggleInteractionCoordinator = {
   scheduleToggleCommit: (runner: ToggleCommitRunner, options?: ToggleCommitOptions) => void;
-  registerVisualCandidate: (requestKey: string | null) => void;
-  resolveVisualReady: (requestKey: string | null) => boolean;
+  notifyIntentComplete: (intentId: string) => void;
   cancelToggleInteraction: () => void;
 };
 
 const DEFAULT_TOGGLE_SETTLE_MS = 300;
-const DEFAULT_VISUAL_FALLBACK_MS = 1600;
 const DEFAULT_TOGGLE_KIND: ToggleInteractionKind = 'legacy_unspecified';
 const TOGGLE_INTENT_PREFIX = 'toggle-intent:';
 
@@ -73,18 +68,13 @@ export const useToggleInteractionCoordinator = ({
   searchRuntimeBus,
   setIsFilterTogglePending,
   settleMs = DEFAULT_TOGGLE_SETTLE_MS,
-  visualFallbackMs = DEFAULT_VISUAL_FALLBACK_MS,
   onLifecycleEvent,
 }: UseToggleInteractionCoordinatorArgs): ToggleInteractionCoordinator => {
   const settleTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const visualFallbackTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const interactionSeqRef = React.useRef(0);
-  const waitingForVisualReadyRef = React.useRef(false);
-  const waitingForVisualSeqRef = React.useRef<number | null>(null);
-  const expectedVisualRequestKeyRef = React.useRef<string | null>(null);
-  const baselineVisualRequestKeyRef = React.useRef<string | null>(null);
   const activeInteractionKindRef = React.useRef<ToggleInteractionKind | null>(null);
   const activeIntentIdRef = React.useRef<string | null>(null);
+  const awaitingVisualSyncRef = React.useRef(false);
 
   const clearSettleTimeout = React.useCallback(() => {
     if (!settleTimeoutRef.current) {
@@ -94,34 +84,18 @@ export const useToggleInteractionCoordinator = ({
     settleTimeoutRef.current = null;
   }, []);
 
-  const clearVisualFallbackTimeout = React.useCallback(() => {
-    if (!visualFallbackTimeoutRef.current) {
-      return;
-    }
-    clearTimeout(visualFallbackTimeoutRef.current);
-    visualFallbackTimeoutRef.current = null;
-  }, []);
-
-  const clearPendingState = React.useCallback(() => {
-    waitingForVisualReadyRef.current = false;
-    waitingForVisualSeqRef.current = null;
-    expectedVisualRequestKeyRef.current = null;
-    baselineVisualRequestKeyRef.current = null;
-  }, []);
-
   const finalizeInteraction = React.useCallback(
-    (seq: number) => {
+    (seq: number, awaitedVisualSync: boolean) => {
       if (interactionSeqRef.current !== seq) {
         return false;
       }
       const intentId = activeIntentIdRef.current;
       const kind = activeInteractionKindRef.current;
-      const awaitedVisualSync = waitingForVisualReadyRef.current;
+      logger.info('[TOGGLE] finalize', { intentId, kind, awaitedVisualSync });
       clearSettleTimeout();
-      clearVisualFallbackTimeout();
-      clearPendingState();
       activeInteractionKindRef.current = null;
       activeIntentIdRef.current = null;
+      awaitingVisualSyncRef.current = false;
       searchRuntimeBus.batch(() => {
         setIsFilterTogglePending(false);
         searchRuntimeBus.publish({
@@ -139,9 +113,7 @@ export const useToggleInteractionCoordinator = ({
       return true;
     },
     [
-      clearPendingState,
       clearSettleTimeout,
-      clearVisualFallbackTimeout,
       onLifecycleEvent,
       searchRuntimeBus,
       setIsFilterTogglePending,
@@ -153,10 +125,9 @@ export const useToggleInteractionCoordinator = ({
     const kind = activeInteractionKindRef.current;
     interactionSeqRef.current += 1;
     clearSettleTimeout();
-    clearVisualFallbackTimeout();
-    clearPendingState();
     activeInteractionKindRef.current = null;
     activeIntentIdRef.current = null;
+    awaitingVisualSyncRef.current = false;
     searchRuntimeBus.batch(() => {
       setIsFilterTogglePending(false);
       searchRuntimeBus.publish({
@@ -171,61 +142,18 @@ export const useToggleInteractionCoordinator = ({
       });
     }
   }, [
-    clearPendingState,
     clearSettleTimeout,
-    clearVisualFallbackTimeout,
     onLifecycleEvent,
     searchRuntimeBus,
     setIsFilterTogglePending,
   ]);
 
-  const armVisualFallback = React.useCallback(
-    (seq: number) => {
-      clearVisualFallbackTimeout();
-      visualFallbackTimeoutRef.current = setTimeout(() => {
-        finalizeInteraction(seq);
-      }, visualFallbackMs);
-    },
-    [clearVisualFallbackTimeout, finalizeInteraction, visualFallbackMs]
-  );
-
-  const registerVisualCandidate = React.useCallback(
-    (requestKey: string | null) => {
-      if (!waitingForVisualReadyRef.current || !requestKey) {
+  const notifyIntentComplete = React.useCallback(
+    (intentId: string) => {
+      if (activeIntentIdRef.current !== intentId) {
         return;
       }
-      const awaitingSeq = waitingForVisualSeqRef.current;
-      if (awaitingSeq == null) {
-        return;
-      }
-      if (expectedVisualRequestKeyRef.current != null) {
-        return;
-      }
-      expectedVisualRequestKeyRef.current = requestKey;
-      if (searchRuntimeBus.getState().visualReadyRequestKey === requestKey) {
-        finalizeInteraction(awaitingSeq);
-      }
-    },
-    [finalizeInteraction, searchRuntimeBus]
-  );
-
-  const resolveVisualReady = React.useCallback(
-    (requestKey: string | null): boolean => {
-      if (!waitingForVisualReadyRef.current || !requestKey) {
-        return false;
-      }
-      const expectedRequestKey = expectedVisualRequestKeyRef.current;
-      if (expectedRequestKey && expectedRequestKey !== requestKey) {
-        return false;
-      }
-      if (!expectedRequestKey && baselineVisualRequestKeyRef.current === requestKey) {
-        return false;
-      }
-      const awaitingSeq = waitingForVisualSeqRef.current;
-      if (awaitingSeq == null) {
-        return false;
-      }
-      return finalizeInteraction(awaitingSeq);
+      finalizeInteraction(interactionSeqRef.current, true);
     },
     [finalizeInteraction]
   );
@@ -236,20 +164,25 @@ export const useToggleInteractionCoordinator = ({
       interactionSeqRef.current = seq;
       const interactionKind = options?.kind ?? DEFAULT_TOGGLE_KIND;
       const intentId = `${TOGGLE_INTENT_PREFIX}${seq}`;
-      const settleDeadlineMs = Date.now() + settleMs;
       activeInteractionKindRef.current = interactionKind;
       activeIntentIdRef.current = intentId;
-      const runtimeState = searchRuntimeBus.getState();
-      baselineVisualRequestKeyRef.current = runtimeState.visualSyncCandidateRequestKey;
-      waitingForVisualReadyRef.current = false;
-      expectedVisualRequestKeyRef.current = null;
+      awaitingVisualSyncRef.current = false;
       clearSettleTimeout();
-      clearVisualFallbackTimeout();
+      const scheduleTs = Date.now();
+      logger.info('[TOGGLE-DIAG] schedule:entry', {
+        intentId,
+        kind: interactionKind,
+        settleMs,
+        ts: scheduleTs,
+      });
       onLifecycleEvent?.({
         type: 'started',
         intentId,
         kind: interactionKind,
-        settleDeadlineMs,
+      });
+      logger.info('[TOGGLE-DIAG] schedule:afterStartEvent', {
+        intentId,
+        elapsed: Date.now() - scheduleTs,
       });
       searchRuntimeBus.batch(() => {
         setIsFilterTogglePending(true);
@@ -257,62 +190,61 @@ export const useToggleInteractionCoordinator = ({
           toggleInteractionKind: interactionKind,
         });
       });
+      logger.info('[TOGGLE-DIAG] schedule:afterBusPublish', {
+        intentId,
+        elapsed: Date.now() - scheduleTs,
+      });
       settleTimeoutRef.current = setTimeout(() => {
         settleTimeoutRef.current = null;
+        const settleTs = Date.now();
+        logger.info('[TOGGLE-DIAG] settle:fired', {
+          intentId,
+          kind: interactionKind,
+          msSinceSchedule: settleTs - scheduleTs,
+          ts: settleTs,
+        });
         if (interactionSeqRef.current !== seq) {
+          logger.info('[TOGGLE] settle:superseded', { intentId, seq, currentSeq: interactionSeqRef.current });
           return;
         }
-        let outcome: ToggleCommitOutcome | void;
+        logger.info('[TOGGLE] settle:commit', { intentId, kind: interactionKind });
         onLifecycleEvent?.({
           type: 'settled',
           intentId,
           kind: interactionKind,
         });
+        let outcome: ToggleCommitOutcome | void;
+        const runnerStartTs = Date.now();
         try {
           outcome = runner({ intentId });
         } catch (error) {
           logger.warn('Toggle interaction commit failed', {
             message: error instanceof Error ? error.message : 'unknown error',
           });
-          finalizeInteraction(seq);
+          finalizeInteraction(seq, false);
           return;
         }
         if (interactionSeqRef.current !== seq) {
           return;
         }
         const awaitVisualSync = outcome?.awaitVisualSync === true;
+        logger.info('[TOGGLE-DIAG] commit:result', {
+          intentId,
+          awaitVisualSync,
+          runnerDurationMs: Date.now() - runnerStartTs,
+          totalMsSinceSchedule: Date.now() - scheduleTs,
+        });
         if (!awaitVisualSync) {
-          finalizeInteraction(seq);
+          finalizeInteraction(seq, false);
           return;
         }
-        waitingForVisualReadyRef.current = true;
-        waitingForVisualSeqRef.current = seq;
-        expectedVisualRequestKeyRef.current = outcome?.visualRequestKey ?? null;
-        if (expectedVisualRequestKeyRef.current == null) {
-          const nextRuntimeState = searchRuntimeBus.getState();
-          const runtimeCandidate = nextRuntimeState.visualSyncCandidateRequestKey;
-          if (
-            runtimeCandidate != null &&
-            runtimeCandidate !== baselineVisualRequestKeyRef.current
-          ) {
-            expectedVisualRequestKeyRef.current = runtimeCandidate;
-          }
-        }
-        const currentRuntimeState = searchRuntimeBus.getState();
-        if (
-          expectedVisualRequestKeyRef.current != null &&
-          currentRuntimeState.visualReadyRequestKey === expectedVisualRequestKeyRef.current
-        ) {
-          finalizeInteraction(seq);
-          return;
-        }
-        armVisualFallback(seq);
+        // Controller's onIntentComplete will call notifyIntentComplete
+        // when the reveal chain completes.
+        awaitingVisualSyncRef.current = true;
       }, settleMs);
     },
     [
-      armVisualFallback,
       clearSettleTimeout,
-      clearVisualFallbackTimeout,
       finalizeInteraction,
       onLifecycleEvent,
       searchRuntimeBus,
@@ -324,15 +256,13 @@ export const useToggleInteractionCoordinator = ({
   React.useEffect(
     () => () => {
       clearSettleTimeout();
-      clearVisualFallbackTimeout();
     },
-    [clearSettleTimeout, clearVisualFallbackTimeout]
+    [clearSettleTimeout]
   );
 
   return {
     scheduleToggleCommit,
-    registerVisualCandidate,
-    resolveVisualReady,
+    notifyIntentComplete,
     cancelToggleInteraction,
   };
 };

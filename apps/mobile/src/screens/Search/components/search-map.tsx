@@ -37,6 +37,7 @@ import { MARKER_VIEW_OVERSCAN_STYLE } from './marker-visibility';
 import type { MapQueryBudget } from '../runtime/map/map-query-budget';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import { useSearchRuntimeBusSelector } from '../runtime/shared/use-search-runtime-bus-selector';
+import { logger } from '../../../utils';
 
 const EMPTY_DEMOTION_LIST: string[] = [];
 const MAP_PAN_DECELERATION_FACTOR = 0.995;
@@ -61,6 +62,9 @@ const USER_LOCATION_ANCHOR = { x: 0.5, y: 0.5 } as const;
 // Experimental: render restaurant pins via Mapbox style layers (instead of MarkerView).
 // This avoids view-annotation gaps during fast pans and is the foundation for truly reversible fade.
 const USE_STYLE_LAYER_PINS = true;
+const ENABLE_LOD_DIAG = __DEV__;
+const ENABLE_REVEAL_DEADLOCK_DIAG = __DEV__;
+const LOD_DIAG_SAMPLE_LIMIT = 6;
 const STYLE_PIN_OUTLINE_IMAGE_ID = 'restaurant-pin-outline';
 const STYLE_PIN_SHADOW_IMAGE_ID = 'restaurant-pin-shadow';
 const STYLE_PIN_FILL_IMAGE_ID = 'restaurant-pin-fill';
@@ -129,15 +133,21 @@ const PIN_COLLISION_OUTLINE_OFFSET_IMAGE_PX =
   PIN_COLLISION_OFFSET_Y_PX / (STYLE_PINS_OUTLINE_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE);
 const PIN_COLLISION_FILL_OFFSET_IMAGE_PX =
   PIN_COLLISION_OFFSET_Y_PX / (STYLE_PINS_FILL_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE);
-const DOT_TO_PIN_TRANSITION_DURATION_MS = 300;
-const DOT_TO_PIN_RANK_FADE_START = 0.5;
-const ENABLE_NATIVE_LABEL_FADE_FOR_MOVING_PROMOTES = false;
+// Single source of truth for ALL pin fade animations (batch reveal/dismiss + LOD promote/demote).
+// Changing these values affects every pin fade globally.
+const PIN_FADE_CONFIG = {
+  durationMs: 300,
+  rankDelayFraction: 0.5,
+} as const;
 
-const PIN_TRANSITION_ACTIVE_EXPRESSION = ['coalesce', ['get', 'pinTransitionActive'], 0] as const;
-const PIN_TRANSITION_OPACITY_EXPRESSION = ['coalesce', ['get', 'pinTransitionOpacity'], 1] as const;
-const PIN_RANK_OPACITY_EXPRESSION = ['coalesce', ['get', 'pinRankOpacity'], 1] as const;
-const PIN_LABEL_OPACITY_EXPRESSION = ['coalesce', ['get', 'pinLabelOpacity'], 1] as const;
-const PIN_STEADY_OPACITY_EXPRESSION = ['-', 1, PIN_TRANSITION_ACTIVE_EXPRESSION] as const;
+// Native Mapbox transition configs for batch fade animations (60fps GPU-driven).
+// The JS thread only sets target values (0 or 1) — Mapbox handles all interpolation.
+const PIN_OPACITY_TRANSITION = { duration: PIN_FADE_CONFIG.durationMs, delay: 0 };
+const PIN_RANK_OPACITY_TRANSITION = {
+  duration: PIN_FADE_CONFIG.durationMs * (1 - PIN_FADE_CONFIG.rankDelayFraction),
+  delay: PIN_FADE_CONFIG.durationMs * PIN_FADE_CONFIG.rankDelayFraction,
+};
+
 const PINS_RENDER_KEY_HOLD_PREFIX = 'hold::';
 const FNV1A_OFFSET_BASIS = 0x811c9dc5;
 const FNV1A_PRIME = 0x01000193;
@@ -166,27 +176,40 @@ const buildStableKeyFingerprint = (keys: readonly string[]): string => {
   return `${keys.length}:${firstKey}:${lastKey}:${hash.toString(36)}`;
 };
 
+const sampleMarkerKeys = (
+  markerKeys: Iterable<string>,
+  limit: number = LOD_DIAG_SAMPLE_LIMIT
+): string[] => {
+  const sample: string[] = [];
+  for (const markerKey of markerKeys) {
+    sample.push(markerKey);
+    if (sample.length >= limit) {
+      break;
+    }
+  }
+  return sample;
+};
+
+const logLodDiag = (label: string, payload?: Record<string, unknown>) => {
+  if (!ENABLE_LOD_DIAG) {
+    return;
+  }
+  logger.info(`[LOD-DIAG] ${label}`, payload ?? {});
+};
+
+const logRevealDeadlockDiag = (label: string, payload?: Record<string, unknown>) => {
+  if (!ENABLE_REVEAL_DEADLOCK_DIAG) {
+    return;
+  }
+  logger.info(`[REVEAL-DEADLOCK] ${label}`, payload ?? {});
+};
+
 const withIconOpacity = (
   baseStyle: MapboxGL.SymbolLayerStyle,
   iconOpacity: unknown
 ): MapboxGL.SymbolLayerStyle =>
   ({
     ...baseStyle,
-    iconOpacity,
-  } as MapboxGL.SymbolLayerStyle);
-
-const withIconTransition = ({
-  baseStyle,
-  iconOpacity,
-  iconColor,
-}: {
-  baseStyle: MapboxGL.SymbolLayerStyle;
-  iconOpacity: unknown;
-  iconColor?: unknown;
-}): MapboxGL.SymbolLayerStyle =>
-  ({
-    ...baseStyle,
-    ...(iconColor === undefined ? {} : { iconColor }),
     iconOpacity,
   } as MapboxGL.SymbolLayerStyle);
 
@@ -221,10 +244,6 @@ export type RestaurantFeatureProperties = {
   pinColor: string;
   pinColorGlobal?: string;
   pinColorLocal?: string;
-  pinTransitionActive?: number;
-  pinTransitionOpacity?: number;
-  pinRankOpacity?: number;
-  pinLabelOpacity?: number;
   anchor?: 'top' | 'bottom' | 'left' | 'right';
   labelCandidate?: LabelCandidate;
   // Dish-specific fields (populated when rendering dish pins)
@@ -279,6 +298,14 @@ const PIN_INTERACTION_LAYER_IDS = Array.from(
   { length: STYLE_PIN_STACK_SLOTS },
   (_, slotIndex) => `restaurant-pin-interaction-slot-${slotIndex}`
 );
+// Require two fully-rendered map frames after preroll arms before flipping
+// batch opacity target 0->1. This guarantees at least one committed paint
+// where newly-mounted pins exist at opacity 0.
+const PREROLL_FULL_FRAME_ACKS_REQUIRED = 2;
+// Promote LOD lanes must also wait for fully-rendered frame acknowledgements
+// before flipping 0->1, otherwise Mapbox can observe mount+flip too close
+// together and the pin can flash.
+const LOD_PROMOTE_FULL_FRAME_ACKS_REQUIRED = 2;
 // Use stable "anchor" layers to guarantee pins/dots/labels remain ordered correctly even if React
 // remounts layers (e.g. live LOD changes, style reloads).
 const OVERLAY_Z_ANCHOR_SOURCE_ID = 'search-overlay-z-anchor-source';
@@ -725,16 +752,6 @@ const pickClosestRestaurantIdFromPressFeatures = (
   return best;
 };
 
-const STYLE_PINS_OUTLINE_STYLE: MapboxGL.SymbolLayerStyle = {
-  iconImage: STYLE_PIN_OUTLINE_IMAGE_ID,
-  iconSize: STYLE_PINS_OUTLINE_ICON_SIZE,
-  iconAnchor: 'bottom',
-  symbolZOrder: 'source',
-  iconAllowOverlap: true,
-  // Visual-only: label placement is handled by the label layer itself (see `restaurantLabelStyle`).
-  iconIgnorePlacement: true,
-} as MapboxGL.SymbolLayerStyle;
-
 // Pin glyph rendering (crisper than raster sprites at small sizes).
 // Requires style `glyphs` to point at the account that hosts `icomoon Regular`.
 const PIN_GLYPH_FONT_STACK = ['icomoon Regular'];
@@ -777,18 +794,6 @@ const STYLE_PINS_SHADOW_STYLE: MapboxGL.SymbolLayerStyle = {
   iconOpacity: STYLE_PINS_SHADOW_OPACITY,
   iconTranslate: STYLE_PINS_SHADOW_TRANSLATE,
   iconTranslateAnchor: 'viewport',
-} as MapboxGL.SymbolLayerStyle;
-
-const STYLE_PINS_FILL_STYLE: MapboxGL.SymbolLayerStyle = {
-  iconImage: STYLE_PIN_FILL_IMAGE_ID,
-  iconSize: STYLE_PINS_FILL_ICON_SIZE,
-  iconAnchor: 'bottom',
-  // Match `styles.pinFill` layout (positioned within the base image bounds).
-  iconOffset: [0, STYLE_PINS_FILL_OFFSET_IMAGE_PX],
-  symbolZOrder: 'source',
-  iconAllowOverlap: true,
-  // Fill should never affect placement/collision decisions for labels (only the base does).
-  iconIgnorePlacement: true,
 } as MapboxGL.SymbolLayerStyle;
 
 const STYLE_PINS_FILL_GLYPH_STYLE: MapboxGL.SymbolLayerStyle = {
@@ -871,827 +876,1560 @@ const LABEL_PIN_COLLISION_STYLE_FILL: MapboxGL.SymbolLayerStyle = {
   iconOpacity: 0.001,
 } as MapboxGL.SymbolLayerStyle;
 
-const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const getNowMs = () =>
   typeof globalThis.performance?.now === 'function' ? globalThis.performance.now() : Date.now();
-type PinTransitionDirection = 'promote' | 'demote';
+type PinTransitionKind = 'promote' | 'demote';
 
-type PinTransitionVisual = {
-  active: number;
-  opacity: number;
-  rankOpacity: number;
-  labelOpacity: number;
-};
+type BatchTransitionPhase = 'idle' | 'dismissing' | 'preroll_wait_frame' | 'revealing';
+type TransitionLaneState = 'staged' | 'flipped' | 'settling';
 
-const STEADY_PIN_TRANSITION_VISUAL: PinTransitionVisual = {
-  active: 0,
-  opacity: 1,
-  rankOpacity: 1,
-  labelOpacity: 1,
-};
-
-const getPinTransitionProfile = (progress01: number): Omit<PinTransitionVisual, 'active'> => {
-  const linearProgress = clamp01(progress01);
-  const rankProgressLinear = clamp01(
-    (linearProgress - DOT_TO_PIN_RANK_FADE_START) / (1 - DOT_TO_PIN_RANK_FADE_START)
-  );
-
-  return {
-    opacity: linearProgress,
-    rankOpacity: rankProgressLinear,
-    labelOpacity: linearProgress,
-  };
-};
-const START_PIN_TRANSITION_VISUAL: PinTransitionVisual = {
-  active: 1,
-  ...getPinTransitionProfile(0),
-};
-
-const getPinTransitionVisual = (
-  startedAtMs: number | undefined,
-  nowMs: number,
-  direction: PinTransitionDirection = 'promote'
-): PinTransitionVisual => {
-  if (typeof startedAtMs !== 'number') {
-    return STEADY_PIN_TRANSITION_VISUAL;
-  }
-  const elapsedProgress = clamp01((nowMs - startedAtMs) / DOT_TO_PIN_TRANSITION_DURATION_MS);
-  if (elapsedProgress >= 1) {
-    return STEADY_PIN_TRANSITION_VISUAL;
-  }
-  const profileProgress = direction === 'promote' ? elapsedProgress : 1 - elapsedProgress;
-  const profile = getPinTransitionProfile(profileProgress);
-
-  return {
-    active: 1,
-    opacity: profile.opacity,
-    rankOpacity: profile.rankOpacity,
-    labelOpacity: profile.labelOpacity,
-  };
-};
-
-type PinTransitionDemotionEntry = {
-  markerKey: string;
+type TransitionLane = {
+  laneId: string;
+  direction: PinTransitionKind;
   startedAtMs: number;
-  feature: Feature<Point, RestaurantFeatureProperties>;
+  expiresAtMs: number;
+  startOpacity: number;
+  targetOpacity: 0 | 1;
+  opacityTarget: number;
+  state: TransitionLaneState;
+  flipAcksRequired: number;
+  flipAcksRemaining: number;
+  flipAcksObserved: number;
+  markerKeys: Set<string>;
+  featuresByMarkerKey: Map<string, Feature<Point, RestaurantFeatureProperties>>;
+};
+
+type TransitionLaneRenderModel = {
+  laneId: string;
+  direction: PinTransitionKind;
+  opacityTarget: number;
+  state: TransitionLaneState;
+  pinFeatures: FeatureCollection<Point, RestaurantFeatureProperties>;
 };
 
 type PinTransitionState = {
-  promoteStartedAtByMarkerKey: Map<string, number>;
-  pendingPromoteDelayByMarkerKey: Map<string, number>;
-  demoteFeatureByMarkerKey: Map<
-    string,
-    { startedAtMs: number; feature: Feature<Point, RestaurantFeatureProperties> }
-  >;
-  previousPinnedFeatureByMarkerKey: Map<string, Feature<Point, RestaurantFeatureProperties>>;
-  pendingInitialRevealCommitId: number | null;
-  appliedInitialRevealCommitId: number | null;
-  observedInitialRevealCommitId: number | null;
-  initialRevealQueued: boolean;
-  batchTransition: {
-    startMs: number;
-    direction: 'reveal' | 'dismiss';
-    pinFeatures: Array<Feature<Point, RestaurantFeatureProperties>>;
-  } | null;
+  steadyPinnedFeatureByMarkerKey: Map<string, Feature<Point, RestaurantFeatureProperties>>;
+  latestDesiredPinnedFeatureByMarkerKey: Map<string, Feature<Point, RestaurantFeatureProperties>>;
+  latestVisiblePinnedFeatureByMarkerKey: Map<string, Feature<Point, RestaurantFeatureProperties>>;
+  transitionLaneById: Map<string, TransitionLane>;
+  markerToLaneId: Map<string, string>;
+  nextLaneOrdinal: number;
+  pendingInitialRevealKey: string | null;
+  appliedInitialRevealKey: string | null;
+  observedInitialRevealKey: string | null;
+  // Batch reveal key: set when batch reveal fires, cleared after
+  // PIN_FADE_CONFIG.durationMs. Drives hasStartedPromotions without
+  // creating per-feature LOD transitions.
+  batchRevealActiveKey: string | null;
+  batchRevealStartedAtMs: number | null;
 };
 
 const createPinTransitionState = (): PinTransitionState => ({
-  promoteStartedAtByMarkerKey: new Map(),
-  pendingPromoteDelayByMarkerKey: new Map(),
-  demoteFeatureByMarkerKey: new Map(),
-  previousPinnedFeatureByMarkerKey: new Map(),
-  pendingInitialRevealCommitId: null,
-  appliedInitialRevealCommitId: null,
-  observedInitialRevealCommitId: null,
-  initialRevealQueued: false,
-  batchTransition: null,
+  steadyPinnedFeatureByMarkerKey: new Map(),
+  latestDesiredPinnedFeatureByMarkerKey: new Map(),
+  latestVisiblePinnedFeatureByMarkerKey: new Map(),
+  transitionLaneById: new Map(),
+  markerToLaneId: new Map(),
+  nextLaneOrdinal: 0,
+  pendingInitialRevealKey: null,
+  appliedInitialRevealKey: null,
+  observedInitialRevealKey: null,
+  batchRevealActiveKey: null,
+  batchRevealStartedAtMs: null,
 });
 
+const clonePinnedFeatureForRender = (
+  markerKey: string,
+  feature: Feature<Point, RestaurantFeatureProperties>
+): Feature<Point, RestaurantFeatureProperties> => ({
+  ...feature,
+  id: markerKey,
+});
+
+const toFeatureCollectionFromMap = (
+  featureByMarkerKey: Map<string, Feature<Point, RestaurantFeatureProperties>>
+): FeatureCollection<Point, RestaurantFeatureProperties> => ({
+  type: 'FeatureCollection',
+  features: Array.from(featureByMarkerKey.entries()).map(([markerKey, feature]) =>
+    clonePinnedFeatureForRender(markerKey, feature)
+  ),
+});
+
+const resolveLaneOpacityAt = (lane: TransitionLane, nowMs: number): number => {
+  const elapsed = Math.max(0, nowMs - lane.startedAtMs);
+  const progress = clampNumber(elapsed / PIN_FADE_CONFIG.durationMs, 0, 1);
+  return lane.startOpacity + (lane.targetOpacity - lane.startOpacity) * progress;
+};
+
 const usePinTransitionController = ({
+  mapRef,
+  pinsSourceCommitEpoch,
   sortedRestaurantMarkers,
   dotRestaurantFeatures,
-  restaurantFeatures,
   pinsRenderKey,
-  markerRevealCommitId,
+  presentationMapRevealRequestKey,
+  presentationDismissEpoch,
+  presentationTransitionLoadingMode,
   buildMarkerKey,
-  pinnedDotKeys,
   suppressTransitions,
-  isMapMovingRef,
-  mapQueryBudget,
+  mapQueryBudget: _mapQueryBudget,
 }: {
+  mapRef: React.RefObject<MapboxMapRef | null>;
+  pinsSourceCommitEpoch: number;
   sortedRestaurantMarkers: Array<Feature<Point, RestaurantFeatureProperties>>;
   dotRestaurantFeatures: FeatureCollection<Point, RestaurantFeatureProperties> | null | undefined;
-  restaurantFeatures: FeatureCollection<Point, RestaurantFeatureProperties>;
   pinsRenderKey: string;
-  markerRevealCommitId: number | null;
+  presentationMapRevealRequestKey: string | null;
+  presentationDismissEpoch: number;
+  presentationTransitionLoadingMode: 'none' | 'initial_cover' | 'interaction_frost';
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
-  pinnedDotKeys: Set<string>;
   suppressTransitions: boolean;
-  isMapMovingRef: React.MutableRefObject<boolean>;
   mapQueryBudget: MapQueryBudget | null;
 }) => {
   // ---------------------------------------------------------------------------
-  // Transition clock: ref-based to avoid per-frame React commits.
-  // A throttled render-version counter triggers React re-renders at ~20fps
-  // instead of ~60fps, reducing commit overlap with other component trees.
+  // Batch opacity: pure native Mapbox-driven fades.
+  //
+  // JS sets batchOpacityTarget to 0 or 1 — only twice per batch.
+  // iconOpacityTransition / textOpacityTransition on every pin SymbolLayer
+  // tell Mapbox to interpolate between old and new evaluated opacity values
+  // over PIN_FADE_CONFIG.durationMs at 60fps on the GPU. Zero JS work
+  // during the animation.
+  //
+  // Reveal preroll: on initial reveal, features mount with target=0 in the
+  // FIRST commit. We then wait for two fully-rendered Mapbox frames before
+  // flipping target=1. This guarantees a committed 0-opacity preroll paint
+  // and prevents 0/1 coalescing snaps on initial mount.
   // ---------------------------------------------------------------------------
-  const transitionClockMsRef = React.useRef(0);
+  const [batchOpacityTarget, setBatchOpacityTarget] = React.useState<0 | 1>(
+    presentationTransitionLoadingMode !== 'none' ? 0 : 1
+  );
+  const batchOpacityTargetRef = React.useRef<0 | 1>(batchOpacityTarget);
+  const initialBatchPhase: BatchTransitionPhase =
+    presentationTransitionLoadingMode !== 'none' ? 'dismissing' : 'idle';
+  const batchPhaseRef = React.useRef<BatchTransitionPhase>(initialBatchPhase);
+  const [batchPhase, setBatchPhase] = React.useState<BatchTransitionPhase>(initialBatchPhase);
+  const pendingRevealFlipKeyRef = React.useRef<string | null>(null);
+
+  const commitBatchPhase = React.useCallback((nextPhase: BatchTransitionPhase) => {
+    const prevPhase = batchPhaseRef.current;
+    if (prevPhase === nextPhase) {
+      return;
+    }
+    logRevealDeadlockDiag('batchPhase:transition', {
+      from: prevPhase,
+      to: nextPhase,
+    });
+    batchPhaseRef.current = nextPhase;
+    setBatchPhase(nextPhase);
+  }, []);
+
+  // Dismiss snapshot: features captured when dismiss starts, kept in the source
+  // so Mapbox can fade them out via layer-level opacity. Cleared on reveal.
+  const dismissSnapshotFeaturesRef = React.useRef<
+    Array<Feature<Point, RestaurantFeatureProperties>>
+  >([]);
+
+  // Transition lifecycle is event/timer-driven (no per-frame JS animation loop).
   const [transitionRenderVersion, forceTransitionRender] = React.useReducer(
     (x: number) => x + 1,
     0
   );
-  const lastRenderTriggerMsRef = React.useRef(0);
-  const TRANSITION_RENDER_THROTTLE_MS = 16; // ~60fps for smoother pin/label transitions
+  const laneFlipHandleByLaneIdRef = React.useRef<
+    Map<string, { first: number | ReturnType<typeof setTimeout>; second?: number | ReturnType<typeof setTimeout> }>
+  >(new Map());
+  const laneSettleTimeoutByLaneIdRef = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map()
+  );
+  const batchRevealSettleTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const batchRevealSettleTokenRef = React.useRef<string | null>(null);
 
   const stateRef = React.useRef<PinTransitionState>(createPinTransitionState());
   const state = stateRef.current;
-  const MIN_TRANSITION_TICK_MS = 16;
   const isMarkerDataHeld = isPinsRenderKeyHeld(pinsRenderKey);
-  const isInitialRevealCommitPending =
-    markerRevealCommitId != null &&
-    markerRevealCommitId !== state.appliedInitialRevealCommitId &&
-    !isMarkerDataHeld;
-
-  // ---------------------------------------------------------------------------
-  // Synchronous marker diff: runs during render so that batchOpacity and
-  // batchDismissActive are up-to-date in the SAME render that features change.
-  // This eliminates the timing gap where dots would go empty one render before
-  // the dismiss was detected.
-  //
-  // Only the animation loop kickoff (a side effect) is deferred to a layout
-  // effect — all state mutations happen here, synchronously, on the ref.
-  // ---------------------------------------------------------------------------
-  void transitionRenderVersion; // ensure re-evaluation on render ticks
-  const shouldStartAnimationLoopRef = React.useRef(false);
-  {
-    const nextPinnedFeatureByMarkerKey = new Map<
-      string,
-      Feature<Point, RestaurantFeatureProperties>
-    >();
-    sortedRestaurantMarkers.forEach((feature) => {
-      nextPinnedFeatureByMarkerKey.set(buildMarkerKey(feature), feature);
-    });
-
-    if (suppressTransitions) {
-      state.promoteStartedAtByMarkerKey.clear();
-      state.pendingPromoteDelayByMarkerKey.clear();
-      state.demoteFeatureByMarkerKey.clear();
-      state.pendingInitialRevealCommitId = null;
-      state.initialRevealQueued = false;
-      state.batchTransition = null;
-      if (markerRevealCommitId != null) {
-        state.appliedInitialRevealCommitId = markerRevealCommitId;
-      }
-      state.previousPinnedFeatureByMarkerKey = nextPinnedFeatureByMarkerKey;
-      if (transitionClockMsRef.current !== 0) {
-        transitionClockMsRef.current = 0;
-      }
-    } else {
-      const now = getNowMs();
-      const shouldRunInitialReveal =
-        state.pendingInitialRevealCommitId != null &&
-        state.pendingInitialRevealCommitId !== state.appliedInitialRevealCommitId &&
-        !isMarkerDataHeld &&
-        nextPinnedFeatureByMarkerKey.size > 0;
-      let didMutateTransitions = false;
-      let shouldStartAnimationLoop = false;
-      if (shouldRunInitialReveal) {
-        state.appliedInitialRevealCommitId = state.pendingInitialRevealCommitId;
-        state.pendingInitialRevealCommitId = null;
-        state.initialRevealQueued = false;
-        state.pendingPromoteDelayByMarkerKey.clear();
-        state.demoteFeatureByMarkerKey.clear();
-
-        if (state.promoteStartedAtByMarkerKey.size === 0) {
-          state.batchTransition = { startMs: now, direction: 'reveal', pinFeatures: [] };
-          for (const markerKey of nextPinnedFeatureByMarkerKey.keys()) {
-            state.promoteStartedAtByMarkerKey.set(markerKey, now);
-          }
-          shouldStartAnimationLoop = true;
-        }
-        if (state.batchTransition == null && state.promoteStartedAtByMarkerKey.size > 0) {
-          state.batchTransition = { startMs: now, direction: 'reveal', pinFeatures: [] };
-          shouldStartAnimationLoop = true;
-        }
-        didMutateTransitions = true;
-      } else {
-        if (
-          state.pendingInitialRevealCommitId != null &&
-          state.pendingInitialRevealCommitId !== state.appliedInitialRevealCommitId &&
-          !isMarkerDataHeld &&
-          nextPinnedFeatureByMarkerKey.size === 0
-        ) {
-          state.appliedInitialRevealCommitId = state.pendingInitialRevealCommitId;
-          state.pendingInitialRevealCommitId = null;
-          state.initialRevealQueued = false;
-        }
-
-        let newPromoteCount = 0;
-        for (const markerKey of nextPinnedFeatureByMarkerKey.keys()) {
-          if (state.previousPinnedFeatureByMarkerKey.has(markerKey)) {
-            continue;
-          }
-          state.promoteStartedAtByMarkerKey.set(markerKey, now);
-          state.pendingPromoteDelayByMarkerKey.delete(markerKey);
-          state.demoteFeatureByMarkerKey.delete(markerKey);
-          didMutateTransitions = true;
-          shouldStartAnimationLoop = true;
-          newPromoteCount++;
-        }
-        if (newPromoteCount > 0 && state.batchTransition == null && !isMapMovingRef.current) {
-          state.batchTransition = { startMs: now, direction: 'reveal', pinFeatures: [] };
-        }
-        for (const [markerKey, feature] of state.previousPinnedFeatureByMarkerKey) {
-          if (nextPinnedFeatureByMarkerKey.has(markerKey)) {
-            continue;
-          }
-          state.demoteFeatureByMarkerKey.set(markerKey, { startedAtMs: now, feature });
-          state.promoteStartedAtByMarkerKey.delete(markerKey);
-          state.pendingPromoteDelayByMarkerKey.delete(markerKey);
-          didMutateTransitions = true;
-          shouldStartAnimationLoop = true;
-        }
-        // Full dismissal: all pins removed → coordinated batch fade-out
-        if (
-          nextPinnedFeatureByMarkerKey.size === 0 &&
-          state.demoteFeatureByMarkerKey.size > 0 &&
-          state.batchTransition?.direction !== 'dismiss'
-        ) {
-          state.batchTransition = {
-            startMs: now,
-            direction: 'dismiss',
-            pinFeatures: Array.from(state.demoteFeatureByMarkerKey.values()).map(
-              (entry) => entry.feature
-            ),
-          };
-          state.demoteFeatureByMarkerKey.clear();
-        }
-      }
-
-      for (const markerKey of Array.from(state.promoteStartedAtByMarkerKey.keys())) {
-        if (nextPinnedFeatureByMarkerKey.has(markerKey)) {
-          continue;
-        }
-        state.promoteStartedAtByMarkerKey.delete(markerKey);
-        didMutateTransitions = true;
-      }
-      for (const markerKey of Array.from(state.pendingPromoteDelayByMarkerKey.keys())) {
-        if (nextPinnedFeatureByMarkerKey.has(markerKey)) {
-          continue;
-        }
-        state.pendingPromoteDelayByMarkerKey.delete(markerKey);
-        didMutateTransitions = true;
-      }
-      for (const markerKey of Array.from(state.demoteFeatureByMarkerKey.keys())) {
-        if (!nextPinnedFeatureByMarkerKey.has(markerKey)) {
-          continue;
-        }
-        state.demoteFeatureByMarkerKey.delete(markerKey);
-        didMutateTransitions = true;
-      }
-
-      state.previousPinnedFeatureByMarkerKey = nextPinnedFeatureByMarkerKey;
-
-      if (didMutateTransitions) {
-        transitionClockMsRef.current = now;
-      }
-      if (
-        !shouldStartAnimationLoop &&
-        state.batchTransition == null &&
-        state.promoteStartedAtByMarkerKey.size === 0 &&
-        state.pendingPromoteDelayByMarkerKey.size === 0 &&
-        state.demoteFeatureByMarkerKey.size === 0
-      ) {
-        transitionClockMsRef.current = 0;
-      }
-      shouldStartAnimationLoopRef.current = shouldStartAnimationLoop;
-    }
-  }
-
-  // Now compute batch values — state.batchTransition is already up-to-date.
-  const clockMs = transitionClockMsRef.current;
-  const batch = state.batchTransition;
-  const batchProgress =
-    batch != null && clockMs > 0
-      ? clamp01((clockMs - batch.startMs) / DOT_TO_PIN_TRANSITION_DURATION_MS)
-      : batch?.direction === 'reveal'
-      ? 1
-      : 0;
-  const batchDismissActive = batch?.direction === 'dismiss';
-  const batchRevealActive = batch?.direction === 'reveal';
-  // Reveal: 0→1, dismiss: 1→0, steady (no batch): 1
-  const batchOpacity =
-    batch == null ? 1 : batch.direction === 'reveal' ? batchProgress : 1 - batchProgress;
-
-  const pinTransitionFrameHandleRef = React.useRef<number | ReturnType<typeof setTimeout> | null>(
+  const prerollFullFrameAcksRemainingRef = React.useRef(0);
+  const revealFrameSequenceRef = React.useRef(0);
+  const prerollArmedPinsSourceEpochRef = React.useRef(0);
+  const revealPrerollBlockDiagRef = React.useRef<{ signature: string | null; atMs: number }>({
+    signature: null,
+    atMs: 0,
+  });
+  const prerollProbeTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prerollProbeInFlightRef = React.useRef(false);
+  const prerollProbeLastLogRef = React.useRef<{ signature: string | null; atMs: number }>({
+    signature: null,
+    atMs: 0,
+  });
+  const revealFrameDiagRef = React.useRef({
+    activeRevealKey: null as string | null,
+    startedAtMs: 0,
+    rawFrameCount: 0,
+    fullyFrameCount: 0,
+    handleCalls: 0,
+    lastRawFrameAtMs: 0,
+    lastFullyFrameAtMs: 0,
+    lastHandleCallAtMs: 0,
+  });
+  const revealPrerollWatchdogIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(
     null
   );
-  const lastTickMsRef = React.useRef(0);
-  const clearPinTransitionFrameHandle = React.useCallback(() => {
-    const handle = pinTransitionFrameHandleRef.current;
-    if (handle == null) {
-      return;
-    }
-    if (typeof handle === 'number') {
-      if (typeof cancelAnimationFrame === 'function') {
-        cancelAnimationFrame(handle);
-      }
-    } else {
-      clearTimeout(handle);
-    }
-    pinTransitionFrameHandleRef.current = null;
-  }, []);
-  const schedulePinTransitionTick = React.useCallback((tick: (frameTimeMs: number) => void) => {
-    if (typeof requestAnimationFrame === 'function') {
-      pinTransitionFrameHandleRef.current = requestAnimationFrame((frameTimeMs) =>
-        tick(frameTimeMs)
-      );
-      return;
-    }
-    pinTransitionFrameHandleRef.current = setTimeout(
-      () => tick(getNowMs()),
-      MIN_TRANSITION_TICK_MS
-    );
-  }, []);
-  const runPinTransitionFrameRef = React.useRef<() => void>(() => undefined);
-  const runPinTransitionFrame = React.useCallback(() => {
-    if (suppressTransitions) {
-      return;
-    }
-    // Already running on a frame loop.
-    if (pinTransitionFrameHandleRef.current != null) {
-      return;
-    }
-
-    const tick = (frameTimeMs: number) => {
-      const nowMs = Number.isFinite(frameTimeMs) ? frameTimeMs : getNowMs();
-      if (nowMs - lastTickMsRef.current < MIN_TRANSITION_TICK_MS) {
-        schedulePinTransitionTick(tick);
-        return;
-      }
-      const promoteTransitions = state.promoteStartedAtByMarkerKey;
-      const pendingPromoteDelays = state.pendingPromoteDelayByMarkerKey;
-      const demoteTransitions = state.demoteFeatureByMarkerKey;
-      let hasActiveTransitions = false;
-
-      if (pendingPromoteDelays.size > 0) {
-        pendingPromoteDelays.forEach((delayMs, markerKey) => {
-          promoteTransitions.set(markerKey, nowMs + Math.max(0, delayMs));
-        });
-        pendingPromoteDelays.clear();
-        state.initialRevealQueued = false;
-        hasActiveTransitions = true;
-      }
-
-      for (const [markerKey, startedAtMs] of promoteTransitions) {
-        if (nowMs - startedAtMs >= DOT_TO_PIN_TRANSITION_DURATION_MS) {
-          promoteTransitions.delete(markerKey);
-          continue;
-        }
-        hasActiveTransitions = true;
-      }
-      for (const [markerKey, entry] of demoteTransitions) {
-        if (nowMs - entry.startedAtMs >= DOT_TO_PIN_TRANSITION_DURATION_MS) {
-          demoteTransitions.delete(markerKey);
-          continue;
-        }
-        hasActiveTransitions = true;
-      }
-
-      // Keep running while batch transition is active.
-      if (state.batchTransition != null) {
-        if (nowMs - state.batchTransition.startMs >= DOT_TO_PIN_TRANSITION_DURATION_MS) {
-          state.batchTransition = null;
-        } else {
-          hasActiveTransitions = true;
-        }
-      }
-
-      lastTickMsRef.current = nowMs;
-      transitionClockMsRef.current = nowMs;
-
-      // Throttle React re-renders to ~20fps. Always trigger on the final
-      // tick (no active transitions) so downstream memos see settled state.
-      if (
-        !hasActiveTransitions ||
-        nowMs - lastRenderTriggerMsRef.current >= TRANSITION_RENDER_THROTTLE_MS
-      ) {
-        lastRenderTriggerMsRef.current = nowMs;
-        forceTransitionRender();
-      }
-
-      if (hasActiveTransitions) {
-        schedulePinTransitionTick(tick);
-        return;
-      }
-      clearPinTransitionFrameHandle();
-    };
-
-    tick(getNowMs());
-  }, [clearPinTransitionFrameHandle, schedulePinTransitionTick, state, suppressTransitions]);
-  runPinTransitionFrameRef.current = runPinTransitionFrame;
-
-  // Clean up frame loop on unmount
-  React.useEffect(() => {
-    return () => {
-      clearPinTransitionFrameHandle();
-    };
-  }, [clearPinTransitionFrameHandle]);
-
-  React.useLayoutEffect(() => {
-    if (markerRevealCommitId == null) {
-      return;
-    }
-    if (state.observedInitialRevealCommitId === markerRevealCommitId) {
-      return;
-    }
-    state.observedInitialRevealCommitId = markerRevealCommitId;
-    state.pendingInitialRevealCommitId = markerRevealCommitId;
-  }, [markerRevealCommitId, state]);
-
-  // Side-effect only: kick off the animation loop when the synchronous diff
-  // (above) flagged that new transitions were created.
-  React.useLayoutEffect(() => {
-    if (shouldStartAnimationLoopRef.current) {
-      shouldStartAnimationLoopRef.current = false;
-      runPinTransitionFrameRef.current();
-    }
-  });
-
-  React.useEffect(() => {
-    return () => {
-      clearPinTransitionFrameHandle();
-      state.promoteStartedAtByMarkerKey.clear();
-      state.pendingPromoteDelayByMarkerKey.clear();
-      state.demoteFeatureByMarkerKey.clear();
-      state.previousPinnedFeatureByMarkerKey.clear();
-      state.initialRevealQueued = false;
-      state.pendingInitialRevealCommitId = null;
-      state.appliedInitialRevealCommitId = null;
-      state.observedInitialRevealCommitId = null;
-      state.batchTransition = null;
-    };
-  }, [clearPinTransitionFrameHandle, state]);
-
-  const immediatePromotionStartedAtByMarkerKey = React.useMemo(() => {
-    const nowMs = transitionClockMsRef.current > 0 ? transitionClockMsRef.current : getNowMs();
-    const next = new Map<string, number>();
-
-    sortedRestaurantMarkers.forEach((feature) => {
-      const markerKey = buildMarkerKey(feature);
-      if (
-        state.promoteStartedAtByMarkerKey.has(markerKey) ||
-        state.pendingPromoteDelayByMarkerKey.has(markerKey)
-      ) {
-        return;
-      }
-      // Phase 9: Initial reveal is instant — skip predictive transition entries.
-      // Pins will appear at steady state on the next render after layout effect applies the commit.
-      if (isInitialRevealCommitPending) {
-        return;
-      }
-      if (!state.previousPinnedFeatureByMarkerKey.has(markerKey)) {
-        next.set(markerKey, nowMs);
-      }
-    });
-
-    return next;
-  }, [
-    buildMarkerKey,
-    isInitialRevealCommitPending,
-    sortedRestaurantMarkers,
-    state,
-    transitionRenderVersion,
-  ]);
-
-  const demotionTransitions = React.useMemo<Array<PinTransitionDemotionEntry>>(() => {
-    const nowMs = transitionClockMsRef.current > 0 ? transitionClockMsRef.current : getNowMs();
-    const transitions: Array<PinTransitionDemotionEntry> = [];
-    state.demoteFeatureByMarkerKey.forEach(({ startedAtMs, feature }, markerKey) => {
-      if (nowMs - startedAtMs >= DOT_TO_PIN_TRANSITION_DURATION_MS) {
-        return;
-      }
-      transitions.push({ markerKey, startedAtMs, feature });
-    });
-    state.previousPinnedFeatureByMarkerKey.forEach((feature, markerKey) => {
-      if (pinnedDotKeys.has(markerKey) || state.demoteFeatureByMarkerKey.has(markerKey)) {
-        return;
-      }
-      transitions.push({ markerKey, startedAtMs: nowMs, feature });
-    });
-    return transitions;
-  }, [pinnedDotKeys, state, transitionRenderVersion]);
-
-  const demotingRestaurantIdList = React.useMemo(() => {
-    const restaurantIds = new Set<string>();
-    demotionTransitions.forEach(({ feature }) => {
-      restaurantIds.add(feature.properties.restaurantId);
-    });
-    if (restaurantIds.size === 0) return EMPTY_DEMOTION_LIST;
-    return Array.from(restaurantIds);
-  }, [demotionTransitions]);
-
-  const hasPendingPromotions = state.pendingPromoteDelayByMarkerKey.size > 0;
-  const hasStartedPromotions =
-    state.promoteStartedAtByMarkerKey.size > 0 || immediatePromotionStartedAtByMarkerKey.size > 0;
-  const isAwaitingInitialRevealStart =
-    (state.initialRevealQueued || isInitialRevealCommitPending) &&
-    sortedRestaurantMarkers.length > 0;
-
-  // ---------------------------------------------------------------------------
-  // Controller-owned dot feature lifecycle.
-  // The hook holds the last non-empty dot snapshot so that during dismiss the
-  // ShapeSource keeps rendering dots while batchOpacity fades them out.
-  // Without this, dots vanish instantly because the parent clears the feature
-  // prop in the same render that triggers the dismiss layout effect.
-  // ---------------------------------------------------------------------------
-  const heldDotFeaturesRef = React.useRef(dotRestaurantFeatures);
-  const dotsHaveFeatures =
-    dotRestaurantFeatures != null && dotRestaurantFeatures.features.length > 0;
-  if (dotsHaveFeatures) {
-    heldDotFeaturesRef.current = dotRestaurantFeatures;
-  } else if (batchOpacity >= 1 && !batchDismissActive) {
-    heldDotFeaturesRef.current = null;
-  }
-  const dotsAreHeld = !dotsHaveFeatures && heldDotFeaturesRef.current != null;
-  const effectiveDotFeatures = dotsAreHeld ? heldDotFeaturesRef.current! : dotRestaurantFeatures;
-
-  // ---------------------------------------------------------------------------
-  // Controller-owned dismiss pin features with opacity pre-applied.
-  // During batch dismiss the hook snapshot has the pin features; apply
-  // batchOpacity so the caller doesn't need a separate memo.
-  // ---------------------------------------------------------------------------
-  const styledDismissPinFeatures = React.useMemo<
-    Array<Feature<Point, RestaurantFeatureProperties>>
-  >(() => {
-    if (!batchDismissActive || batch?.pinFeatures == null || batch.pinFeatures.length === 0) {
-      return [];
-    }
-    return batch.pinFeatures.map((feature) => ({
-      ...feature,
-      properties: {
-        ...feature.properties,
-        pinTransitionActive: 1,
-        pinTransitionOpacity: batchOpacity,
-        pinRankOpacity: batchOpacity,
-        pinLabelOpacity: batchOpacity,
-      },
-    }));
-  }, [batch?.pinFeatures, batchDismissActive, batchOpacity]);
-
-  // ---------------------------------------------------------------------------
-  // Controller-owned pin feature styling pipeline.
-  // Stamps transition properties (opacity, rank, label) on each feature,
-  // merges promoted/steady, demotion, and batch dismiss features.
-  // ---------------------------------------------------------------------------
-  const labelFeatureBuildDurationMsRef = React.useRef<number | null>(null);
-  const previousLabelFeatureByKeyRef = React.useRef(
-    new Map<string, Feature<Point, RestaurantFeatureProperties>>()
-  );
-
-  const restaurantLabelFeaturesWithIds = React.useMemo(() => {
-    const buildStartedAtMs = getNowMs();
-    if (!restaurantFeatures.features.length) {
-      previousLabelFeatureByKeyRef.current.clear();
-      labelFeatureBuildDurationMsRef.current = getNowMs() - buildStartedAtMs;
-      return restaurantFeatures;
-    }
-
-    const hasActiveTransitions =
-      state.promoteStartedAtByMarkerKey.size > 0 ||
-      state.pendingPromoteDelayByMarkerKey.size > 0 ||
-      immediatePromotionStartedAtByMarkerKey.size > 0;
-    const transitionNowMs =
-      transitionClockMsRef.current > 0 ? transitionClockMsRef.current : getNowMs();
-    let didChange = false;
-    const prevCache = previousLabelFeatureByKeyRef.current;
-    const nextCache = new Map<string, Feature<Point, RestaurantFeatureProperties>>();
-
-    const nextFeatures = restaurantFeatures.features.map((feature, index) => {
+  const lodDiagLastPromoteMutationSignatureRef = React.useRef<string | null>(null);
+  const lodDiagLastPromoteCompositionSignatureRef = React.useRef<string | null>(null);
+  const nextPinnedFeatureByMarkerKey = React.useMemo(() => {
+    const next = new Map<string, Feature<Point, RestaurantFeatureProperties>>();
+    sortedRestaurantMarkers.forEach((feature, index) => {
       const markerKey = buildMarkerKey(feature);
       const labelOrder = index + 1;
-
-      // Fast path: no active transitions — only stamp identity
-      if (!hasActiveTransitions) {
-        const cached = prevCache.get(markerKey);
-        if (
-          cached &&
-          cached.id === markerKey &&
-          cached.properties.labelOrder === labelOrder &&
-          cached.properties.pinTransitionActive == null &&
-          cached.properties.restaurantId === feature.properties.restaurantId &&
-          cached.properties.rank === feature.properties.rank
-        ) {
-          nextCache.set(markerKey, cached);
-          return cached;
-        }
-        if (
-          feature.id === markerKey &&
-          feature.properties.labelOrder === labelOrder &&
-          feature.properties.pinTransitionActive == null
-        ) {
-          nextCache.set(markerKey, feature);
-          return feature;
-        }
-        didChange = true;
-        const stamped = {
-          ...feature,
-          id: markerKey,
-          properties: { ...feature.properties, labelOrder },
-        };
-        nextCache.set(markerKey, stamped);
-        return stamped;
-      }
-
-      // Slow path: check transition state for this feature
-      const isFeatureTransitioning =
-        state.pendingPromoteDelayByMarkerKey.has(markerKey) ||
-        immediatePromotionStartedAtByMarkerKey.has(markerKey) ||
-        state.promoteStartedAtByMarkerKey.has(markerKey);
-
-      if (!isFeatureTransitioning) {
-        const cached = prevCache.get(markerKey);
-        if (
-          cached &&
-          cached.id === markerKey &&
-          cached.properties.labelOrder === labelOrder &&
-          cached.properties.pinTransitionActive == null &&
-          cached.properties.restaurantId === feature.properties.restaurantId &&
-          cached.properties.rank === feature.properties.rank
-        ) {
-          nextCache.set(markerKey, cached);
-          return cached;
-        }
-        const matchesIdentity =
-          feature.id === markerKey && feature.properties.labelOrder === labelOrder;
-        if (matchesIdentity && feature.properties.pinTransitionActive == null) {
-          nextCache.set(markerKey, feature);
-          return feature;
-        }
-        didChange = true;
-        const stamped = {
-          ...feature,
-          id: markerKey,
-          properties: { ...feature.properties, labelOrder },
-        };
-        nextCache.set(markerKey, stamped);
-        return stamped;
-      }
-
-      // Transitioning feature — full computation
-      const pendingPromoteDelayMs = state.pendingPromoteDelayByMarkerKey.get(markerKey);
-      const immediatePromoteStartedAtMs = immediatePromotionStartedAtByMarkerKey.get(markerKey);
-      const transitionVisual =
-        typeof pendingPromoteDelayMs === 'number'
-          ? START_PIN_TRANSITION_VISUAL
-          : typeof immediatePromoteStartedAtMs === 'number'
-          ? getPinTransitionVisual(immediatePromoteStartedAtMs, transitionNowMs, 'promote')
-          : getPinTransitionVisual(
-              state.promoteStartedAtByMarkerKey.get(markerKey),
-              transitionNowMs,
-              'promote'
-            );
-      const hasTransitionProps =
-        feature.properties.pinTransitionActive != null ||
-        feature.properties.pinTransitionOpacity != null ||
-        feature.properties.pinRankOpacity != null ||
-        feature.properties.pinLabelOpacity != null;
-
-      const matchesIdentity =
-        feature.id === markerKey && feature.properties.labelOrder === labelOrder;
-      const shouldUseNativeLabelFadeForPromote =
-        ENABLE_NATIVE_LABEL_FADE_FOR_MOVING_PROMOTES &&
-        isMapMovingRef.current &&
-        state.promoteStartedAtByMarkerKey.has(markerKey);
-      const effectiveLabelOpacity = shouldUseNativeLabelFadeForPromote
-        ? undefined
-        : batchOpacity < 1
-        ? batchOpacity
-        : transitionVisual.active === 0
-        ? undefined
-        : transitionVisual.labelOpacity;
-      const effectiveActive = batchDismissActive ? 1 : transitionVisual.active;
-      const effectiveOpacity = batchDismissActive ? batchOpacity : transitionVisual.opacity;
-      const effectiveRankOpacity = batchDismissActive ? batchOpacity : transitionVisual.rankOpacity;
-      const matchesTransition =
-        feature.properties.pinTransitionActive === effectiveActive &&
-        feature.properties.pinTransitionOpacity === effectiveOpacity &&
-        feature.properties.pinRankOpacity === effectiveRankOpacity &&
-        feature.properties.pinLabelOpacity === effectiveLabelOpacity;
-
-      if (
-        matchesIdentity &&
-        ((effectiveActive === 0 && !hasTransitionProps && batchOpacity >= 1) || matchesTransition)
-      ) {
-        nextCache.set(markerKey, feature);
-        return feature;
-      }
-      didChange = true;
-      const built = {
+      next.set(markerKey, {
         ...feature,
         id: markerKey,
         properties: {
           ...feature.properties,
           labelOrder,
-          pinTransitionActive: effectiveActive === 0 ? undefined : effectiveActive,
-          pinTransitionOpacity: effectiveActive === 0 ? undefined : effectiveOpacity,
-          pinRankOpacity: effectiveActive === 0 ? undefined : effectiveRankOpacity,
-          pinLabelOpacity: effectiveLabelOpacity,
-        },
-      };
-      nextCache.set(markerKey, built);
-      return built;
-    });
-
-    previousLabelFeatureByKeyRef.current = nextCache;
-
-    if (!didChange) {
-      labelFeatureBuildDurationMsRef.current = getNowMs() - buildStartedAtMs;
-      return restaurantFeatures;
-    }
-
-    const nextCollection = { ...restaurantFeatures, features: nextFeatures };
-    labelFeatureBuildDurationMsRef.current = getNowMs() - buildStartedAtMs;
-    return nextCollection;
-  }, [
-    batchOpacity,
-    batchDismissActive,
-    buildMarkerKey,
-    immediatePromotionStartedAtByMarkerKey,
-    restaurantFeatures,
-    state,
-    transitionRenderVersion,
-  ]);
-
-  // Perf attribution for pin feature build.
-  React.useEffect(() => {
-    const durationMs = labelFeatureBuildDurationMsRef.current;
-    if (durationMs == null) {
-      return;
-    }
-    mapQueryBudget?.recordRuntimeAttributionDurationMs('map_label_bootstrap', durationMs);
-    labelFeatureBuildDurationMsRef.current = null;
-  }, [mapQueryBudget, restaurantLabelFeaturesWithIds]);
-
-  const demotionTransitionFeatures = React.useMemo<
-    FeatureCollection<Point, RestaurantFeatureProperties>
-  >(() => {
-    const transitionNowMs =
-      transitionClockMsRef.current > 0 ? transitionClockMsRef.current : getNowMs();
-    const features: Array<Feature<Point, RestaurantFeatureProperties>> = [];
-
-    demotionTransitions.forEach(({ markerKey, startedAtMs, feature }) => {
-      const transitionVisual = getPinTransitionVisual(startedAtMs, transitionNowMs, 'demote');
-      if (transitionVisual.active === 0) {
-        return;
-      }
-      features.push({
-        ...feature,
-        id: markerKey,
-        properties: {
-          ...feature.properties,
-          pinTransitionActive: transitionVisual.active,
-          pinTransitionOpacity: transitionVisual.opacity,
-          pinRankOpacity: transitionVisual.rankOpacity,
-          pinLabelOpacity: transitionVisual.labelOpacity,
         },
       });
     });
+    return next;
+  }, [buildMarkerKey, sortedRestaurantMarkers]);
 
-    return { type: 'FeatureCollection' as const, features };
-  }, [demotionTransitions]);
+  const rebuildVisiblePinnedFeatureMap = React.useCallback(() => {
+    const next = new Map(state.steadyPinnedFeatureByMarkerKey);
+    state.transitionLaneById.forEach((lane) => {
+      lane.featuresByMarkerKey.forEach((feature, markerKey) => {
+        next.set(markerKey, feature);
+      });
+    });
+    state.latestVisiblePinnedFeatureByMarkerKey = next;
+  }, [forceTransitionRender, state]);
 
-  // Merge promoted/steady + demotion + batch dismiss into one FeatureCollection.
+  const clearLaneFlipHandle = React.useCallback((laneId: string) => {
+    const handle = laneFlipHandleByLaneIdRef.current.get(laneId);
+    if (handle == null) {
+      return;
+    }
+    if (typeof handle.first === 'number' && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(handle.first);
+    } else {
+      clearTimeout(handle.first as ReturnType<typeof setTimeout>);
+    }
+    if (handle.second != null) {
+      if (typeof handle.second === 'number' && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(handle.second);
+      } else {
+        clearTimeout(handle.second as ReturnType<typeof setTimeout>);
+      }
+    }
+    laneFlipHandleByLaneIdRef.current.delete(laneId);
+  }, []);
+
+  const clearLaneSettleTimeout = React.useCallback((laneId: string) => {
+    const timeout = laneSettleTimeoutByLaneIdRef.current.get(laneId);
+    if (timeout == null) {
+      return;
+    }
+    clearTimeout(timeout);
+    laneSettleTimeoutByLaneIdRef.current.delete(laneId);
+  }, []);
+
+  const retireLane = React.useCallback(
+    (laneId: string) => {
+      const lane = state.transitionLaneById.get(laneId);
+      clearLaneFlipHandle(laneId);
+      clearLaneSettleTimeout(laneId);
+      if (lane != null) {
+        lane.markerKeys.forEach((markerKey) => {
+          if (state.markerToLaneId.get(markerKey) === laneId) {
+            state.markerToLaneId.delete(markerKey);
+          }
+        });
+      }
+      state.transitionLaneById.delete(laneId);
+    },
+    [clearLaneFlipHandle, clearLaneSettleTimeout, state]
+  );
+
+  const scheduleLaneFlip = React.useCallback(
+    (laneId: string) => {
+      clearLaneFlipHandle(laneId);
+      const runFlip = () => {
+        laneFlipHandleByLaneIdRef.current.delete(laneId);
+        const lane = state.transitionLaneById.get(laneId);
+        if (lane == null || lane.state !== 'staged') {
+          return;
+        }
+        if (lane.direction === 'promote') {
+          // Promote flips are gated by fully-rendered frame acknowledgements.
+          return;
+        }
+        lane.state = 'flipped';
+        lane.opacityTarget = lane.targetOpacity;
+        forceTransitionRender();
+      };
+
+      if (typeof requestAnimationFrame === 'function') {
+        const first = requestAnimationFrame(() => {
+          const second = requestAnimationFrame(() => {
+            runFlip();
+          });
+          laneFlipHandleByLaneIdRef.current.set(laneId, { first, second });
+        });
+        laneFlipHandleByLaneIdRef.current.set(laneId, { first });
+        return;
+      }
+
+      const timeout = setTimeout(runFlip, 16);
+      laneFlipHandleByLaneIdRef.current.set(laneId, { first: timeout });
+    },
+    [clearLaneFlipHandle, state]
+  );
+
+  const advancePromoteLaneFlipsOnFullFrame = React.useCallback(() => {
+    let didFlip = false;
+    const nowMs = getNowMs();
+
+    state.transitionLaneById.forEach((lane) => {
+      if (lane.direction !== 'promote' || lane.state !== 'staged') {
+        return;
+      }
+
+      const remainingBefore = lane.flipAcksRemaining;
+      if (remainingBefore > 0) {
+        lane.flipAcksRemaining = remainingBefore - 1;
+        lane.flipAcksObserved += 1;
+        logLodDiag('promote:ack', {
+          laneId: lane.laneId,
+          phase: batchPhaseRef.current,
+          markerCount: lane.markerKeys.size,
+          remainingBefore,
+          remainingAfter: lane.flipAcksRemaining,
+          observed: lane.flipAcksObserved,
+          required: lane.flipAcksRequired,
+          ageMs: Math.max(0, Math.round(nowMs - lane.startedAtMs)),
+          sampleMarkers: sampleMarkerKeys(lane.markerKeys),
+        });
+        if (lane.flipAcksRemaining > 0) {
+          return;
+        }
+      }
+
+      lane.state = 'flipped';
+      lane.opacityTarget = lane.targetOpacity;
+
+      let steadyOverlapCount = 0;
+      let desiredMissingCount = 0;
+      lane.markerKeys.forEach((markerKey) => {
+        if (state.steadyPinnedFeatureByMarkerKey.has(markerKey)) {
+          steadyOverlapCount += 1;
+        }
+        if (!state.latestDesiredPinnedFeatureByMarkerKey.has(markerKey)) {
+          desiredMissingCount += 1;
+        }
+      });
+      logLodDiag('promote:flip', {
+        laneId: lane.laneId,
+        markerCount: lane.markerKeys.size,
+        phase: batchPhaseRef.current,
+        ageMs: Math.max(0, Math.round(nowMs - lane.startedAtMs)),
+        startOpacity: lane.startOpacity,
+        targetOpacity: lane.targetOpacity,
+        opacityTarget: lane.opacityTarget,
+        steadyOverlapCount,
+        desiredMissingCount,
+        ackObserved: lane.flipAcksObserved,
+        ackRequired: lane.flipAcksRequired,
+        sampleMarkers: sampleMarkerKeys(lane.markerKeys),
+      });
+      didFlip = true;
+    });
+
+    if (didFlip) {
+      forceTransitionRender();
+    }
+  }, [state]);
+
+  const scheduleLaneSettle = React.useCallback(
+    (laneId: string) => {
+      clearLaneSettleTimeout(laneId);
+      const lane = state.transitionLaneById.get(laneId);
+      if (lane == null) {
+        return;
+      }
+      const delayMs = Math.max(0, lane.expiresAtMs - getNowMs());
+      const timeout = setTimeout(() => {
+        laneSettleTimeoutByLaneIdRef.current.delete(laneId);
+        const liveLane = state.transitionLaneById.get(laneId);
+        if (liveLane == null) {
+          return;
+        }
+        liveLane.state = 'settling';
+        let committedToSteadyCount = 0;
+        if (liveLane.direction === 'promote') {
+          liveLane.markerKeys.forEach((markerKey) => {
+            const desired = state.latestDesiredPinnedFeatureByMarkerKey.get(markerKey);
+            if (desired != null) {
+              state.steadyPinnedFeatureByMarkerKey.set(markerKey, desired);
+              committedToSteadyCount += 1;
+            }
+          });
+        } else {
+          liveLane.markerKeys.forEach((markerKey) => {
+            state.steadyPinnedFeatureByMarkerKey.delete(markerKey);
+          });
+        }
+        retireLane(laneId);
+        rebuildVisiblePinnedFeatureMap();
+        if (liveLane.direction === 'promote') {
+          logLodDiag('promote:settle', {
+            laneId,
+            markerCount: liveLane.markerKeys.size,
+            ageMs: Math.max(0, Math.round(getNowMs() - liveLane.startedAtMs)),
+            committedToSteadyCount,
+            droppedBeforeSettleCount: Math.max(0, liveLane.markerKeys.size - committedToSteadyCount),
+            steadyCountAfterSettle: state.steadyPinnedFeatureByMarkerKey.size,
+            sampleMarkers: sampleMarkerKeys(liveLane.markerKeys),
+          });
+        }
+        forceTransitionRender();
+      }, delayMs + 1);
+      laneSettleTimeoutByLaneIdRef.current.set(laneId, timeout);
+    },
+    [clearLaneSettleTimeout, rebuildVisiblePinnedFeatureMap, retireLane, state]
+  );
+
+  const createLane = React.useCallback(
+    ({
+      direction,
+      markerFeatures,
+      startOpacity,
+      nowMs,
+    }: {
+      direction: PinTransitionKind;
+      markerFeatures: Array<{ markerKey: string; feature: Feature<Point, RestaurantFeatureProperties> }>;
+      startOpacity: number;
+      nowMs: number;
+    }) => {
+      if (markerFeatures.length === 0) {
+        return;
+      }
+      const laneId = `lod-lane-${state.nextLaneOrdinal + 1}`;
+      state.nextLaneOrdinal += 1;
+      const featuresByMarkerKey = new Map<string, Feature<Point, RestaurantFeatureProperties>>();
+      const markerKeys = new Set<string>();
+      let existingLaneAssignmentCount = 0;
+      const existingLaneAssignmentIds = new Set<string>();
+      markerFeatures.forEach(({ markerKey, feature }) => {
+        const existingLaneId = state.markerToLaneId.get(markerKey);
+        if (existingLaneId != null) {
+          existingLaneAssignmentCount += 1;
+          existingLaneAssignmentIds.add(existingLaneId);
+        }
+        featuresByMarkerKey.set(markerKey, feature);
+        markerKeys.add(markerKey);
+        state.markerToLaneId.set(markerKey, laneId);
+      });
+      const lane: TransitionLane = {
+        laneId,
+        direction,
+        startedAtMs: nowMs,
+        expiresAtMs: nowMs + PIN_FADE_CONFIG.durationMs,
+        startOpacity,
+        targetOpacity: direction === 'promote' ? 1 : 0,
+        opacityTarget: startOpacity,
+        state: 'staged',
+        flipAcksRequired:
+          direction === 'promote' ? LOD_PROMOTE_FULL_FRAME_ACKS_REQUIRED : 0,
+        flipAcksRemaining:
+          direction === 'promote' ? LOD_PROMOTE_FULL_FRAME_ACKS_REQUIRED : 0,
+        flipAcksObserved: 0,
+        markerKeys,
+        featuresByMarkerKey,
+      };
+      state.transitionLaneById.set(laneId, lane);
+      if (direction === 'promote') {
+        let steadyOverlapCount = 0;
+        markerKeys.forEach((markerKey) => {
+          if (state.steadyPinnedFeatureByMarkerKey.has(markerKey)) {
+            steadyOverlapCount += 1;
+          }
+        });
+        logLodDiag('promote:create', {
+          laneId,
+          markerCount: markerFeatures.length,
+          startOpacity,
+          targetOpacity: lane.targetOpacity,
+          ackRequired: lane.flipAcksRequired,
+          steadyCountAtCreate: state.steadyPinnedFeatureByMarkerKey.size,
+          steadyOverlapCount,
+          existingLaneAssignmentCount,
+          existingLaneIds: sampleMarkerKeys(existingLaneAssignmentIds),
+          sampleMarkers: sampleMarkerKeys(markerKeys),
+        });
+      }
+      if (direction === 'demote') {
+        scheduleLaneFlip(laneId);
+      }
+      scheduleLaneSettle(laneId);
+      forceTransitionRender();
+    },
+    [scheduleLaneFlip, scheduleLaneSettle, state]
+  );
+  React.useLayoutEffect(() => {
+    if (
+      presentationMapRevealRequestKey != null &&
+      state.observedInitialRevealKey !== presentationMapRevealRequestKey
+    ) {
+      state.observedInitialRevealKey = presentationMapRevealRequestKey;
+      state.pendingInitialRevealKey = presentationMapRevealRequestKey;
+    }
+    if (presentationMapRevealRequestKey == null && state.observedInitialRevealKey != null) {
+      state.observedInitialRevealKey = null;
+      if (
+        state.pendingInitialRevealKey != null &&
+        state.pendingInitialRevealKey !== state.appliedInitialRevealKey
+      ) {
+        state.pendingInitialRevealKey = null;
+      }
+    }
+  }, [presentationMapRevealRequestKey, state]);
+
+  // Session mismatch handling for preroll ownership.
+  React.useLayoutEffect(() => {
+    if (
+      pendingRevealFlipKeyRef.current == null ||
+      presentationMapRevealRequestKey === pendingRevealFlipKeyRef.current
+    ) {
+      return;
+    }
+    pendingRevealFlipKeyRef.current = null;
+    prerollFullFrameAcksRemainingRef.current = 0;
+    state.batchRevealActiveKey = null;
+    state.batchRevealStartedAtMs = null;
+    dismissSnapshotFeaturesRef.current = [];
+    const nextPhase: BatchTransitionPhase =
+      presentationTransitionLoadingMode !== 'none' ? 'dismissing' : 'idle';
+    commitBatchPhase(nextPhase);
+    const nextTarget: 0 | 1 = presentationTransitionLoadingMode !== 'none' ? 0 : 1;
+    if (batchOpacityTargetRef.current !== nextTarget) {
+      batchOpacityTargetRef.current = nextTarget;
+      setBatchOpacityTarget(nextTarget);
+    }
+  }, [
+    commitBatchPhase,
+    presentationMapRevealRequestKey,
+    presentationTransitionLoadingMode,
+    state,
+  ]);
+
+  // Combined dismiss + loading-mode sync effect.
+  // Merges epoch-change snapshot capture and loading-mode enter/exit into one
+  // layout effect so that when both fields change atomically (e.g. initial cover
+  // via enterTransitionMode), SearchMap renders once instead of twice.
+  const prevDismissEpochRef = React.useRef(presentationDismissEpoch);
+  const prevLoadingModeRef = React.useRef(presentationTransitionLoadingMode);
+  React.useLayoutEffect(() => {
+    const epochChanged = presentationDismissEpoch !== prevDismissEpochRef.current;
+    const prevMode = prevLoadingModeRef.current;
+    const enteredLoading = prevMode === 'none' && presentationTransitionLoadingMode !== 'none';
+    const shouldDismissFromLoadingEnter =
+      enteredLoading && presentationTransitionLoadingMode !== 'interaction_frost';
+    const exitedLoading = prevMode !== 'none' && presentationTransitionLoadingMode === 'none';
+
+    prevDismissEpochRef.current = presentationDismissEpoch;
+    prevLoadingModeRef.current = presentationTransitionLoadingMode;
+
+    // Dismiss snapshot: capture BEFORE overwriting state.
+    if (epochChanged && state.latestVisiblePinnedFeatureByMarkerKey.size > 0) {
+      dismissSnapshotFeaturesRef.current = Array.from(
+        state.latestVisiblePinnedFeatureByMarkerKey.entries()
+      ).map(([markerKey, feature]) => ({
+        ...feature,
+        id: markerKey,
+      }));
+      pendingRevealFlipKeyRef.current = null;
+    }
+
+    // Clear pending reveal on loading mode enter (previously in separate effect).
+    if (enteredLoading) {
+      pendingRevealFlipKeyRef.current = null;
+    }
+
+    // For interaction_frost, dismiss starts from epoch (deferred tick) to keep
+    // feedback commit light. Non-toggle loading modes still dismiss on entry.
+    if ((epochChanged || shouldDismissFromLoadingEnter) && batchOpacityTargetRef.current !== 0) {
+      commitBatchPhase('dismissing');
+      batchOpacityTargetRef.current = 0;
+      setBatchOpacityTarget(0);
+    } else if (epochChanged || shouldDismissFromLoadingEnter) {
+      // Epoch or loading mode changed but target already 0 — still update phase.
+      commitBatchPhase('dismissing');
+    }
+
+    // Exit loading: transition to idle if no pending reveal.
+    if (
+      exitedLoading &&
+      batchPhaseRef.current === 'dismissing' &&
+      pendingRevealFlipKeyRef.current == null &&
+      state.batchRevealActiveKey == null
+    ) {
+      commitBatchPhase('idle');
+    }
+  }, [commitBatchPhase, presentationDismissEpoch, presentationTransitionLoadingMode, state]);
+
+  // Event-style LOD reconciliation effect (no render-time mutation).
+  React.useLayoutEffect(() => {
+    const now = getNowMs();
+    let didMutateTransitions = false;
+    let clearedAllForSuppress = false;
+    let clearedAllForInitialReveal = false;
+    let addedPromoteCount = 0;
+    let addedDemoteCount = 0;
+    let removedPromoteCount = 0;
+    let removedDemoteCount = 0;
+    let retargetedToPromoteCount = 0;
+    let retargetedToDemoteCount = 0;
+
+    state.latestDesiredPinnedFeatureByMarkerKey = nextPinnedFeatureByMarkerKey;
+
+    const clearAllLanes = () => {
+      const laneIds = Array.from(state.transitionLaneById.keys());
+      laneIds.forEach((laneId) => retireLane(laneId));
+    };
+
+    if (suppressTransitions) {
+      if (state.transitionLaneById.size > 0 || state.markerToLaneId.size > 0) {
+        clearAllLanes();
+        didMutateTransitions = true;
+      }
+      state.steadyPinnedFeatureByMarkerKey = new Map(nextPinnedFeatureByMarkerKey);
+      rebuildVisiblePinnedFeatureMap();
+      clearedAllForSuppress = true;
+      state.pendingInitialRevealKey = null;
+      state.batchRevealActiveKey = null;
+      state.batchRevealStartedAtMs = null;
+      pendingRevealFlipKeyRef.current = null;
+      const nextPhase: BatchTransitionPhase =
+        presentationTransitionLoadingMode !== 'none' ? 'dismissing' : 'idle';
+      commitBatchPhase(nextPhase);
+      const nextTarget: 0 | 1 = presentationTransitionLoadingMode !== 'none' ? 0 : 1;
+      if (batchOpacityTargetRef.current !== nextTarget) {
+        batchOpacityTargetRef.current = nextTarget;
+        setBatchOpacityTarget(nextTarget);
+      }
+      if (presentationMapRevealRequestKey != null) {
+        state.appliedInitialRevealKey = presentationMapRevealRequestKey;
+      }
+      state.latestDesiredPinnedFeatureByMarkerKey = nextPinnedFeatureByMarkerKey;
+    } else {
+      const shouldRunInitialReveal =
+        state.pendingInitialRevealKey != null &&
+        state.pendingInitialRevealKey !== state.appliedInitialRevealKey &&
+        !isMarkerDataHeld &&
+        nextPinnedFeatureByMarkerKey.size > 0;
+      if (shouldRunInitialReveal) {
+        state.appliedInitialRevealKey = state.pendingInitialRevealKey;
+        state.pendingInitialRevealKey = null;
+        if (state.transitionLaneById.size > 0 || state.markerToLaneId.size > 0) {
+          clearAllLanes();
+          didMutateTransitions = true;
+        }
+        state.steadyPinnedFeatureByMarkerKey = new Map(nextPinnedFeatureByMarkerKey);
+        rebuildVisiblePinnedFeatureMap();
+        clearedAllForInitialReveal = true;
+        state.batchRevealActiveKey = null;
+        state.batchRevealStartedAtMs = null;
+        pendingRevealFlipKeyRef.current = state.appliedInitialRevealKey;
+        prerollFullFrameAcksRemainingRef.current = PREROLL_FULL_FRAME_ACKS_REQUIRED;
+        revealFrameSequenceRef.current = 0;
+        revealFrameDiagRef.current = {
+          activeRevealKey: state.appliedInitialRevealKey,
+          startedAtMs: getNowMs(),
+          rawFrameCount: 0,
+          fullyFrameCount: 0,
+          handleCalls: 0,
+          lastRawFrameAtMs: 0,
+          lastFullyFrameAtMs: 0,
+          lastHandleCallAtMs: 0,
+        };
+        dismissSnapshotFeaturesRef.current = [];
+        logRevealDeadlockDiag('preroll:arm', {
+          revealKey: state.appliedInitialRevealKey,
+          markerCount: nextPinnedFeatureByMarkerKey.size,
+          loadingMode: presentationTransitionLoadingMode,
+          batchPhaseBefore: batchPhaseRef.current,
+          acksRequired: PREROLL_FULL_FRAME_ACKS_REQUIRED,
+          armedPinsSourceEpoch: pinsSourceCommitEpoch,
+        });
+        prerollArmedPinsSourceEpochRef.current = pinsSourceCommitEpoch;
+        commitBatchPhase('preroll_wait_frame');
+        if (batchOpacityTargetRef.current !== 0) {
+          batchOpacityTargetRef.current = 0;
+          setBatchOpacityTarget(0);
+        }
+      } else {
+        if (
+          presentationTransitionLoadingMode === 'none' &&
+          state.pendingInitialRevealKey != null &&
+          state.pendingInitialRevealKey !== state.appliedInitialRevealKey &&
+          !isMarkerDataHeld &&
+          nextPinnedFeatureByMarkerKey.size === 0
+        ) {
+          state.appliedInitialRevealKey = state.pendingInitialRevealKey;
+          state.pendingInitialRevealKey = null;
+        }
+
+        if (presentationTransitionLoadingMode === 'none') {
+          state.steadyPinnedFeatureByMarkerKey.forEach((_, markerKey) => {
+            const nextFeature = nextPinnedFeatureByMarkerKey.get(markerKey);
+            if (nextFeature) {
+              state.steadyPinnedFeatureByMarkerKey.set(markerKey, nextFeature);
+            }
+          });
+
+          const retargetPromoteEntries: Array<{
+            markerKey: string;
+            feature: Feature<Point, RestaurantFeatureProperties>;
+            startOpacity: number;
+          }> = [];
+          const retargetDemoteEntries: Array<{
+            markerKey: string;
+            feature: Feature<Point, RestaurantFeatureProperties>;
+            startOpacity: number;
+          }> = [];
+
+          Array.from(state.markerToLaneId.entries()).forEach(([markerKey, laneId]) => {
+            const lane = state.transitionLaneById.get(laneId);
+            if (lane == null) {
+              state.markerToLaneId.delete(markerKey);
+              return;
+            }
+            const nextFeature = nextPinnedFeatureByMarkerKey.get(markerKey);
+            if (lane.direction === 'promote') {
+              if (nextFeature) {
+                lane.featuresByMarkerKey.set(markerKey, nextFeature);
+                return;
+              }
+              const currentOpacity = resolveLaneOpacityAt(lane, now);
+              const feature = lane.featuresByMarkerKey.get(markerKey);
+              lane.markerKeys.delete(markerKey);
+              lane.featuresByMarkerKey.delete(markerKey);
+              state.markerToLaneId.delete(markerKey);
+              removedPromoteCount += 1;
+              if (lane.markerKeys.size === 0) {
+                retireLane(laneId);
+              }
+              if (feature) {
+                retargetDemoteEntries.push({
+                  markerKey,
+                  feature,
+                  startOpacity: currentOpacity,
+                });
+                retargetedToDemoteCount += 1;
+              }
+              didMutateTransitions = true;
+              return;
+            }
+
+            if (!nextFeature) {
+              return;
+            }
+            const currentOpacity = resolveLaneOpacityAt(lane, now);
+            lane.markerKeys.delete(markerKey);
+            lane.featuresByMarkerKey.delete(markerKey);
+            state.markerToLaneId.delete(markerKey);
+            removedDemoteCount += 1;
+            if (lane.markerKeys.size === 0) {
+              retireLane(laneId);
+            }
+            retargetPromoteEntries.push({
+              markerKey,
+              feature: nextFeature,
+              startOpacity: currentOpacity,
+            });
+            retargetedToPromoteCount += 1;
+            didMutateTransitions = true;
+          });
+
+          const promoteEntries: Array<{
+            markerKey: string;
+            feature: Feature<Point, RestaurantFeatureProperties>;
+          }> = [];
+          const demoteEntries: Array<{
+            markerKey: string;
+            feature: Feature<Point, RestaurantFeatureProperties>;
+          }> = [];
+
+          nextPinnedFeatureByMarkerKey.forEach((feature, markerKey) => {
+            if (
+              state.steadyPinnedFeatureByMarkerKey.has(markerKey) ||
+              state.markerToLaneId.has(markerKey)
+            ) {
+              return;
+            }
+            promoteEntries.push({ markerKey, feature });
+            addedPromoteCount += 1;
+          });
+
+          Array.from(state.steadyPinnedFeatureByMarkerKey.entries()).forEach(
+            ([markerKey, feature]) => {
+              if (
+                nextPinnedFeatureByMarkerKey.has(markerKey) ||
+                state.markerToLaneId.has(markerKey)
+              ) {
+                return;
+              }
+              state.steadyPinnedFeatureByMarkerKey.delete(markerKey);
+              demoteEntries.push({ markerKey, feature });
+              addedDemoteCount += 1;
+            }
+          );
+
+          if (promoteEntries.length > 0) {
+            createLane({
+              direction: 'promote',
+              markerFeatures: promoteEntries,
+              startOpacity: 0,
+              nowMs: now,
+            });
+            didMutateTransitions = true;
+          }
+          if (demoteEntries.length > 0) {
+            createLane({
+              direction: 'demote',
+              markerFeatures: demoteEntries,
+              startOpacity: 1,
+              nowMs: now,
+            });
+            didMutateTransitions = true;
+          }
+
+          retargetPromoteEntries.forEach((entry) => {
+            createLane({
+              direction: 'promote',
+              markerFeatures: [{ markerKey: entry.markerKey, feature: entry.feature }],
+              startOpacity: entry.startOpacity,
+              nowMs: now,
+            });
+          });
+          retargetDemoteEntries.forEach((entry) => {
+            createLane({
+              direction: 'demote',
+              markerFeatures: [{ markerKey: entry.markerKey, feature: entry.feature }],
+              startOpacity: entry.startOpacity,
+              nowMs: now,
+            });
+          });
+        } else {
+          if (state.transitionLaneById.size > 0 || state.markerToLaneId.size > 0) {
+            clearAllLanes();
+            didMutateTransitions = true;
+          }
+          state.steadyPinnedFeatureByMarkerKey = new Map(nextPinnedFeatureByMarkerKey);
+        }
+      }
+      rebuildVisiblePinnedFeatureMap();
+    }
+
+    if (didMutateTransitions && ENABLE_LOD_DIAG) {
+      const promoteLaneCount = Array.from(state.transitionLaneById.values()).reduce(
+        (count, lane) => count + (lane.direction === 'promote' ? 1 : 0),
+        0
+      );
+      const promoteMarkerCount = Array.from(state.transitionLaneById.values()).reduce(
+        (count, lane) => count + (lane.direction === 'promote' ? lane.markerKeys.size : 0),
+        0
+      );
+      const mutationSignature = [
+        `addedPromote:${addedPromoteCount}`,
+        `retargetPromote:${retargetedToPromoteCount}`,
+        `removedPromote:${removedPromoteCount}`,
+        `promoteLanes:${promoteLaneCount}`,
+        `promoteMarkers:${promoteMarkerCount}`,
+        `clearedInit:${clearedAllForInitialReveal ? 1 : 0}`,
+        `clearedSuppress:${clearedAllForSuppress ? 1 : 0}`,
+        `batch:${batchPhaseRef.current}`,
+      ].join('|');
+      if (lodDiagLastPromoteMutationSignatureRef.current !== mutationSignature) {
+        lodDiagLastPromoteMutationSignatureRef.current = mutationSignature;
+        logLodDiag('promote:diff', {
+          ts: now,
+          loadingMode: presentationTransitionLoadingMode,
+          batchPhase: batchPhaseRef.current,
+          markerCount: nextPinnedFeatureByMarkerKey.size,
+          promoteLaneCount,
+          promoteMarkerCount,
+          steadyCount: state.steadyPinnedFeatureByMarkerKey.size,
+          addedPromoteCount,
+          retargetedToPromoteCount,
+          removedPromoteCount,
+          removedDemoteCount,
+          retargetedToDemoteCount,
+          addedDemoteCount,
+          clearedAllForSuppress,
+          clearedAllForInitialReveal,
+          revealRequestKey: presentationMapRevealRequestKey,
+          pendingRevealFlipKey: pendingRevealFlipKeyRef.current,
+        });
+      }
+    }
+    if (didMutateTransitions) {
+      forceTransitionRender();
+    }
+  }, [
+    commitBatchPhase,
+    createLane,
+    isMarkerDataHeld,
+    nextPinnedFeatureByMarkerKey,
+    presentationMapRevealRequestKey,
+    presentationTransitionLoadingMode,
+    rebuildVisiblePinnedFeatureMap,
+    retireLane,
+    state,
+    suppressTransitions,
+  ]);
+
+  // Loading mode sync was merged into the combined dismiss + loading-mode
+  // effect above (prevLoadingModeRef is shared).
+
+  React.useLayoutEffect(() => {
+    const revealKey = state.batchRevealActiveKey;
+    const startedAtMs = state.batchRevealStartedAtMs;
+    if (revealKey == null || startedAtMs == null) {
+      if (batchRevealSettleTimeoutRef.current != null) {
+        clearTimeout(batchRevealSettleTimeoutRef.current);
+        batchRevealSettleTimeoutRef.current = null;
+      }
+      batchRevealSettleTokenRef.current = null;
+      return;
+    }
+
+    const settleToken = `${revealKey}:${startedAtMs}`;
+    if (batchRevealSettleTokenRef.current === settleToken) {
+      return;
+    }
+    if (batchRevealSettleTimeoutRef.current != null) {
+      clearTimeout(batchRevealSettleTimeoutRef.current);
+      batchRevealSettleTimeoutRef.current = null;
+    }
+    batchRevealSettleTokenRef.current = settleToken;
+
+    const delayMs = Math.max(0, startedAtMs + PIN_FADE_CONFIG.durationMs - getNowMs());
+    batchRevealSettleTimeoutRef.current = setTimeout(() => {
+      if (
+        state.batchRevealActiveKey !== revealKey ||
+        state.batchRevealStartedAtMs !== startedAtMs
+      ) {
+        return;
+      }
+      state.batchRevealActiveKey = null;
+      state.batchRevealStartedAtMs = null;
+      if (batchPhaseRef.current === 'revealing') {
+        commitBatchPhase('idle');
+      }
+      forceTransitionRender();
+    }, delayMs);
+  });
+
+  React.useEffect(() => {
+    return () => {
+      if (batchRevealSettleTimeoutRef.current != null) {
+        clearTimeout(batchRevealSettleTimeoutRef.current);
+        batchRevealSettleTimeoutRef.current = null;
+      }
+      batchRevealSettleTokenRef.current = null;
+      Array.from(state.transitionLaneById.keys()).forEach((laneId) => retireLane(laneId));
+      state.steadyPinnedFeatureByMarkerKey.clear();
+      state.latestDesiredPinnedFeatureByMarkerKey.clear();
+      state.latestVisiblePinnedFeatureByMarkerKey.clear();
+      state.markerToLaneId.clear();
+      state.pendingInitialRevealKey = null;
+      state.appliedInitialRevealKey = null;
+      state.observedInitialRevealKey = null;
+      state.batchRevealActiveKey = null;
+      state.batchRevealStartedAtMs = null;
+      pendingRevealFlipKeyRef.current = null;
+      prerollFullFrameAcksRemainingRef.current = 0;
+      batchPhaseRef.current = 'idle';
+    };
+  }, [retireLane, state]);
+
+  const transitionPinLanes = React.useMemo<TransitionLaneRenderModel[]>(() => {
+    return Array.from(state.transitionLaneById.values())
+      .sort((left, right) => left.startedAtMs - right.startedAtMs)
+      .map((lane) => ({
+        laneId: lane.laneId,
+        direction: lane.direction,
+        opacityTarget: lane.opacityTarget,
+        state: lane.state,
+        pinFeatures: toFeatureCollectionFromMap(lane.featuresByMarkerKey),
+      }));
+  }, [state, transitionRenderVersion]);
+
+  const steadyPinFeatures = React.useMemo<FeatureCollection<Point, RestaurantFeatureProperties>>(
+    () => toFeatureCollectionFromMap(state.steadyPinnedFeatureByMarkerKey),
+    [state, transitionRenderVersion]
+  );
+
+  const demotingRestaurantIdList = React.useMemo(() => {
+    const restaurantIds = new Set<string>();
+    transitionPinLanes.forEach((lane) => {
+      if (lane.direction !== 'demote') {
+        return;
+      }
+      lane.pinFeatures.features.forEach((feature) => {
+        restaurantIds.add(feature.properties.restaurantId);
+      });
+    });
+    if (restaurantIds.size === 0) return EMPTY_DEMOTION_LIST;
+    return Array.from(restaurantIds);
+  }, [transitionPinLanes]);
+
+  const hasPendingPromotions = false;
+  const hasStartedPromotions = React.useMemo(
+    () =>
+      state.batchRevealActiveKey != null ||
+      transitionPinLanes.some((lane) => lane.direction === 'promote'),
+    [state.batchRevealActiveKey, transitionPinLanes]
+  );
+
+  const dismissSnapshot = dismissSnapshotFeaturesRef.current;
   const effectivePinFeatures = React.useMemo<
     FeatureCollection<Point, RestaurantFeatureProperties>
   >(() => {
-    const hasDemotions = demotionTransitionFeatures.features.length > 0;
-    const hasBatchDismiss = styledDismissPinFeatures.length > 0;
-    if (!hasDemotions && !hasBatchDismiss) {
-      return restaurantLabelFeaturesWithIds;
-    }
+    const byMarkerKey = new Map<string, Feature<Point, RestaurantFeatureProperties>>();
+    steadyPinFeatures.features.forEach((feature) => {
+      const markerKey = typeof feature.id === 'string' ? feature.id : buildMarkerKey(feature);
+      byMarkerKey.set(markerKey, clonePinnedFeatureForRender(markerKey, feature));
+    });
+    transitionPinLanes.forEach((lane) => {
+      lane.pinFeatures.features.forEach((feature) => {
+        const markerKey = typeof feature.id === 'string' ? feature.id : buildMarkerKey(feature);
+        byMarkerKey.set(markerKey, clonePinnedFeatureForRender(markerKey, feature));
+      });
+    });
+    dismissSnapshot.forEach((feature) => {
+      const markerKey = typeof feature.id === 'string' ? feature.id : buildMarkerKey(feature);
+      if (!byMarkerKey.has(markerKey)) {
+        byMarkerKey.set(markerKey, clonePinnedFeatureForRender(markerKey, feature));
+      }
+    });
     return {
-      ...restaurantLabelFeaturesWithIds,
-      features: [
-        ...restaurantLabelFeaturesWithIds.features,
-        ...demotionTransitionFeatures.features,
-        ...styledDismissPinFeatures,
-      ],
+      type: 'FeatureCollection',
+      features: Array.from(byMarkerKey.values()),
     };
-  }, [styledDismissPinFeatures, demotionTransitionFeatures, restaurantLabelFeaturesWithIds]);
+  }, [buildMarkerKey, dismissSnapshot, steadyPinFeatures, transitionPinLanes]);
+
+  React.useEffect(() => {
+    if (!ENABLE_LOD_DIAG) {
+      return;
+    }
+    const steadyMarkerKeys = new Set<string>();
+    steadyPinFeatures.features.forEach((feature) => {
+      const markerKey = typeof feature.id === 'string' ? feature.id : buildMarkerKey(feature);
+      steadyMarkerKeys.add(markerKey);
+    });
+
+    const promoteMarkerKeys = new Set<string>();
+    const demoteMarkerKeys = new Set<string>();
+    const promoteLaneSummaries: string[] = [];
+    transitionPinLanes.forEach((lane) => {
+      if (lane.direction === 'promote') {
+        promoteLaneSummaries.push(
+          `${lane.laneId}:${lane.state}:${lane.opacityTarget}:${lane.pinFeatures.features.length}`
+        );
+      }
+      lane.pinFeatures.features.forEach((feature) => {
+        const markerKey = typeof feature.id === 'string' ? feature.id : buildMarkerKey(feature);
+        if (lane.direction === 'promote') {
+          promoteMarkerKeys.add(markerKey);
+        } else {
+          demoteMarkerKeys.add(markerKey);
+        }
+      });
+    });
+
+    let steadyPromoteOverlapCount = 0;
+    promoteMarkerKeys.forEach((markerKey) => {
+      if (steadyMarkerKeys.has(markerKey)) {
+        steadyPromoteOverlapCount += 1;
+      }
+    });
+    let promoteDemoteOverlapCount = 0;
+    promoteMarkerKeys.forEach((markerKey) => {
+      if (demoteMarkerKeys.has(markerKey)) {
+        promoteDemoteOverlapCount += 1;
+      }
+    });
+
+    const signature = [
+      `promoteMarkers:${promoteMarkerKeys.size}`,
+      `demoteMarkers:${demoteMarkerKeys.size}`,
+      `steady:${steadyMarkerKeys.size}`,
+      `steadyPromoteOverlap:${steadyPromoteOverlapCount}`,
+      `promoteDemoteOverlap:${promoteDemoteOverlapCount}`,
+      `lanes:${promoteLaneSummaries.join(',')}`,
+      `batch:${batchPhase}`,
+      `batchTarget:${batchOpacityTarget}`,
+      `reveal:${state.batchRevealActiveKey ?? 'none'}`,
+    ].join('|');
+    if (lodDiagLastPromoteCompositionSignatureRef.current === signature) {
+      return;
+    }
+    lodDiagLastPromoteCompositionSignatureRef.current = signature;
+    logLodDiag('promote:composition', {
+      promoteMarkerCount: promoteMarkerKeys.size,
+      demoteMarkerCount: demoteMarkerKeys.size,
+      steadyMarkerCount: steadyMarkerKeys.size,
+      steadyPromoteOverlapCount,
+      promoteDemoteOverlapCount,
+      promoteLaneCount: promoteLaneSummaries.length,
+      promoteLaneSummaries: promoteLaneSummaries.slice(0, LOD_DIAG_SAMPLE_LIMIT),
+      batchPhase,
+      batchOpacityTarget,
+      batchRevealActiveKey: state.batchRevealActiveKey,
+      pendingRevealFlipKey: pendingRevealFlipKeyRef.current,
+      pendingInitialRevealKey: state.pendingInitialRevealKey,
+      appliedInitialRevealKey: state.appliedInitialRevealKey,
+      samplePromoteMarkers: sampleMarkerKeys(promoteMarkerKeys),
+      sampleSteadyMarkers: sampleMarkerKeys(steadyMarkerKeys),
+    });
+  }, [
+    batchOpacityTarget,
+    batchPhase,
+    buildMarkerKey,
+    state,
+    steadyPinFeatures,
+    transitionPinLanes,
+  ]);
+
+  // ---------------------------------------------------------------------------
+  // Controller-owned dot feature lifecycle.
+  // The hook holds the last non-empty dot snapshot so that during dismiss the
+  // ShapeSource keeps rendering dots while layer-level opacity fades them out.
+  // Without this, dots vanish instantly because the parent clears the feature
+  // prop in the same render that triggers the dismiss layout effect.
+  // ---------------------------------------------------------------------------
+  const heldDotFeaturesRef = React.useRef(dotRestaurantFeatures);
+  const [heldDotRenderVersion, forceHeldDotRender] = React.useReducer((x: number) => x + 1, 0);
+  const dotsHaveFeatures =
+    dotRestaurantFeatures != null && dotRestaurantFeatures.features.length > 0;
+  React.useLayoutEffect(() => {
+    if (dotsHaveFeatures) {
+      if (heldDotFeaturesRef.current !== dotRestaurantFeatures) {
+        heldDotFeaturesRef.current = dotRestaurantFeatures;
+        forceHeldDotRender();
+      }
+      return;
+    }
+    if (batchOpacityTarget === 1 && heldDotFeaturesRef.current != null) {
+      heldDotFeaturesRef.current = null;
+      forceHeldDotRender();
+    }
+  }, [batchOpacityTarget, dotRestaurantFeatures, dotsHaveFeatures]);
+  void heldDotRenderVersion;
+  const dotsAreHeld = !dotsHaveFeatures && heldDotFeaturesRef.current != null;
+  const effectiveDotFeatures = dotsAreHeld ? heldDotFeaturesRef.current! : dotRestaurantFeatures;
+
+  const handleMapRenderFrame = React.useCallback(() => {
+    const frameNowMs = getNowMs();
+    const frameDiag = revealFrameDiagRef.current;
+    frameDiag.handleCalls += 1;
+    frameDiag.lastHandleCallAtMs = frameNowMs;
+    if (batchPhaseRef.current !== 'preroll_wait_frame') {
+      return;
+    }
+    revealFrameSequenceRef.current += 1;
+    const revealKey = pendingRevealFlipKeyRef.current;
+    if (revealKey == null) {
+      const signature = `block:missing_reveal_key:${batchPhaseRef.current}`;
+      const nowMs = frameNowMs;
+      if (
+        revealPrerollBlockDiagRef.current.signature !== signature ||
+        nowMs - revealPrerollBlockDiagRef.current.atMs > 250
+      ) {
+        revealPrerollBlockDiagRef.current = { signature, atMs: nowMs };
+        logRevealDeadlockDiag('preroll:block', {
+          reason: 'missing_reveal_key',
+          frameSeq: revealFrameSequenceRef.current,
+          phase: batchPhaseRef.current,
+          rawFrameCount: frameDiag.rawFrameCount,
+          fullyFrameCount: frameDiag.fullyFrameCount,
+          handleCalls: frameDiag.handleCalls,
+        });
+      }
+      return;
+    }
+    // Require at least one mounted pin in the source before flipping to reveal.
+    if (state.latestVisiblePinnedFeatureByMarkerKey.size === 0) {
+      const signature = `block:no_visible_pins:${revealKey}`;
+      const nowMs = frameNowMs;
+      if (
+        revealPrerollBlockDiagRef.current.signature !== signature ||
+        nowMs - revealPrerollBlockDiagRef.current.atMs > 250
+      ) {
+        revealPrerollBlockDiagRef.current = { signature, atMs: nowMs };
+        logRevealDeadlockDiag('preroll:block', {
+          reason: 'no_visible_pins',
+          revealKey,
+          frameSeq: revealFrameSequenceRef.current,
+          visiblePinCount: state.latestVisiblePinnedFeatureByMarkerKey.size,
+          rawFrameCount: frameDiag.rawFrameCount,
+          fullyFrameCount: frameDiag.fullyFrameCount,
+          handleCalls: frameDiag.handleCalls,
+        });
+      }
+      return;
+    }
+    // Session ownership: only the currently-requested reveal key can flip.
+    const activeRevealRequestKey = presentationMapRevealRequestKey;
+    if (activeRevealRequestKey !== revealKey) {
+      const signature = `block:key_mismatch:${revealKey}:${activeRevealRequestKey ?? 'null'}`;
+      const nowMs = frameNowMs;
+      if (
+        revealPrerollBlockDiagRef.current.signature !== signature ||
+        nowMs - revealPrerollBlockDiagRef.current.atMs > 250
+      ) {
+        revealPrerollBlockDiagRef.current = { signature, atMs: nowMs };
+        logRevealDeadlockDiag('preroll:block', {
+          reason: 'reveal_key_mismatch',
+          revealKey,
+          activeRequestKey: activeRevealRequestKey,
+          frameSeq: revealFrameSequenceRef.current,
+          rawFrameCount: frameDiag.rawFrameCount,
+          fullyFrameCount: frameDiag.fullyFrameCount,
+          handleCalls: frameDiag.handleCalls,
+        });
+      }
+      return;
+    }
+    const remainingAcks = prerollFullFrameAcksRemainingRef.current;
+    if (remainingAcks > 1) {
+      prerollFullFrameAcksRemainingRef.current = remainingAcks - 1;
+      logRevealDeadlockDiag('preroll:block', {
+        reason: 'awaiting_full_frames',
+        revealKey,
+        frameSeq: revealFrameSequenceRef.current,
+        remainingBefore: remainingAcks,
+        remainingAfter: prerollFullFrameAcksRemainingRef.current,
+        rawFrameCount: frameDiag.rawFrameCount,
+        fullyFrameCount: frameDiag.fullyFrameCount,
+        handleCalls: frameDiag.handleCalls,
+      });
+      return;
+    }
+    pendingRevealFlipKeyRef.current = null;
+    prerollFullFrameAcksRemainingRef.current = 0;
+    revealPrerollBlockDiagRef.current = { signature: null, atMs: 0 };
+    dismissSnapshotFeaturesRef.current = [];
+    state.batchRevealActiveKey = revealKey;
+    state.batchRevealStartedAtMs = getNowMs();
+    logRevealDeadlockDiag('preroll:flip', {
+      revealKey,
+      frameSeq: revealFrameSequenceRef.current,
+      visiblePinCount: state.latestVisiblePinnedFeatureByMarkerKey.size,
+      loadingMode: presentationTransitionLoadingMode,
+      rawFrameCount: frameDiag.rawFrameCount,
+      fullyFrameCount: frameDiag.fullyFrameCount,
+      handleCalls: frameDiag.handleCalls,
+    });
+    commitBatchPhase('revealing');
+    if (batchOpacityTargetRef.current !== 1) {
+      batchOpacityTargetRef.current = 1;
+      setBatchOpacityTarget(1);
+    }
+    forceTransitionRender();
+  }, [
+    commitBatchPhase,
+    forceTransitionRender,
+    getNowMs,
+    presentationMapRevealRequestKey,
+    presentationTransitionLoadingMode,
+    state,
+  ]);
+
+  const clearPrerollProbeLoop = React.useCallback(() => {
+    if (prerollProbeTimeoutRef.current != null) {
+      clearTimeout(prerollProbeTimeoutRef.current);
+      prerollProbeTimeoutRef.current = null;
+    }
+    prerollProbeInFlightRef.current = false;
+  }, []);
+
+  const schedulePrerollProbe = React.useCallback(
+    (delayMs: number) => {
+      if (prerollProbeTimeoutRef.current != null) {
+        clearTimeout(prerollProbeTimeoutRef.current);
+      }
+      prerollProbeTimeoutRef.current = setTimeout(() => {
+        prerollProbeTimeoutRef.current = null;
+        if (batchPhaseRef.current !== 'preroll_wait_frame') {
+          return;
+        }
+        const revealKey = pendingRevealFlipKeyRef.current;
+        if (revealKey == null) {
+          return;
+        }
+        const visiblePinCount = state.latestVisiblePinnedFeatureByMarkerKey.size;
+        if (visiblePinCount === 0) {
+          schedulePrerollProbe(34);
+          return;
+        }
+        const armedPinsSourceEpoch = prerollArmedPinsSourceEpochRef.current;
+        if (pinsSourceCommitEpoch <= armedPinsSourceEpoch) {
+          const signature = `probe:block:awaiting_source_commit:${revealKey}`;
+          const nowMs = getNowMs();
+          if (
+            prerollProbeLastLogRef.current.signature !== signature ||
+            nowMs - prerollProbeLastLogRef.current.atMs > 400
+          ) {
+            prerollProbeLastLogRef.current = { signature, atMs: nowMs };
+            logRevealDeadlockDiag('preroll:probe:block', {
+              reason: 'awaiting_source_commit',
+              revealKey,
+              visiblePinCount,
+              pinsSourceCommitEpoch,
+              armedPinsSourceEpoch,
+            });
+          }
+          schedulePrerollProbe(34);
+          return;
+        }
+        if (prerollProbeInFlightRef.current) {
+          schedulePrerollProbe(34);
+          return;
+        }
+        prerollProbeInFlightRef.current = true;
+        const mapInstance = mapRef.current;
+        const telemetryPromise =
+          mapInstance != null &&
+          typeof mapInstance.querySourceFeatures === 'function' &&
+          typeof mapInstance.queryRenderedFeaturesInRect === 'function'
+            ? Promise.allSettled([
+                mapInstance.querySourceFeatures(STYLE_PINS_SOURCE_ID),
+                mapInstance.querySourceFeatures(PIN_INTERACTION_SOURCE_ID),
+                mapInstance.queryRenderedFeaturesInRect([], [], PIN_INTERACTION_LAYER_IDS),
+              ])
+            : Promise.resolve([]);
+        void telemetryPromise
+          .then((probeResults) => {
+            if (
+              batchPhaseRef.current !== 'preroll_wait_frame' ||
+              pendingRevealFlipKeyRef.current !== revealKey
+            ) {
+              return;
+            }
+            const styleSourceCount =
+              probeResults[0]?.status === 'fulfilled'
+                ? (probeResults[0].value?.features?.length ?? 0)
+                : null;
+            const interactionSourceCount =
+              probeResults[1]?.status === 'fulfilled'
+                ? (probeResults[1].value?.features?.length ?? 0)
+                : null;
+            const renderedCount =
+              probeResults[2]?.status === 'fulfilled'
+                ? (probeResults[2].value?.features?.length ?? 0)
+                : null;
+            prerollProbeLastLogRef.current = { signature: null, atMs: 0 };
+            logRevealDeadlockDiag('preroll:probe:confirmed', {
+              revealKey,
+              visiblePinCount,
+              pinsSourceCommitEpoch,
+              armedPinsSourceEpoch,
+              styleSourceCount,
+              interactionSourceCount,
+              renderedCount,
+            });
+
+            // Ack 1 now, ack 2 on next frame tick to preserve preroll semantics.
+            handleMapRenderFrame();
+            if (typeof requestAnimationFrame === 'function') {
+              requestAnimationFrame(() => {
+                handleMapRenderFrame();
+              });
+            } else {
+              setTimeout(() => {
+                handleMapRenderFrame();
+              }, 16);
+            }
+          })
+          .finally(() => {
+            prerollProbeInFlightRef.current = false;
+            if (
+              batchPhaseRef.current === 'preroll_wait_frame' &&
+              pendingRevealFlipKeyRef.current === revealKey
+            ) {
+              schedulePrerollProbe(34);
+            }
+          });
+      }, delayMs);
+    },
+    [getNowMs, handleMapRenderFrame, mapRef, pinsSourceCommitEpoch, state]
+  );
+
+  React.useEffect(() => {
+    const clearWatchdog = () => {
+      if (revealPrerollWatchdogIntervalRef.current != null) {
+        clearInterval(revealPrerollWatchdogIntervalRef.current);
+        revealPrerollWatchdogIntervalRef.current = null;
+      }
+    };
+
+    if (batchPhase !== 'preroll_wait_frame') {
+      clearWatchdog();
+      const diag = revealFrameDiagRef.current;
+      if (diag.activeRevealKey != null) {
+        const nowMs = getNowMs();
+        logRevealDeadlockDiag('preroll:watch:end', {
+          revealKey: diag.activeRevealKey,
+          endPhase: batchPhase,
+          elapsedMs: Math.max(0, nowMs - diag.startedAtMs),
+          rawFrameCount: diag.rawFrameCount,
+          fullyFrameCount: diag.fullyFrameCount,
+          handleCalls: diag.handleCalls,
+          pendingRevealFlipKey: pendingRevealFlipKeyRef.current,
+          visiblePinCount: state.latestVisiblePinnedFeatureByMarkerKey.size,
+          acksRemaining: prerollFullFrameAcksRemainingRef.current,
+          msSinceLastRawFrame:
+            diag.lastRawFrameAtMs > 0 ? Math.max(0, nowMs - diag.lastRawFrameAtMs) : null,
+          msSinceLastFullyFrame:
+            diag.lastFullyFrameAtMs > 0 ? Math.max(0, nowMs - diag.lastFullyFrameAtMs) : null,
+          msSinceLastHandle:
+            diag.lastHandleCallAtMs > 0 ? Math.max(0, nowMs - diag.lastHandleCallAtMs) : null,
+        });
+        diag.activeRevealKey = null;
+      }
+      return;
+    }
+
+    const diag = revealFrameDiagRef.current;
+    if (diag.activeRevealKey == null) {
+      diag.activeRevealKey = pendingRevealFlipKeyRef.current;
+      diag.startedAtMs = getNowMs();
+    }
+    logRevealDeadlockDiag('preroll:watch:start', {
+      revealKey: diag.activeRevealKey,
+      acksRemaining: prerollFullFrameAcksRemainingRef.current,
+      visiblePinCount: state.latestVisiblePinnedFeatureByMarkerKey.size,
+    });
+
+    revealPrerollWatchdogIntervalRef.current = setInterval(() => {
+      if (batchPhaseRef.current !== 'preroll_wait_frame') {
+        return;
+      }
+      const nowMs = getNowMs();
+      const currentDiag = revealFrameDiagRef.current;
+      logRevealDeadlockDiag('preroll:watchdog', {
+        revealKey: currentDiag.activeRevealKey,
+        elapsedMs: Math.max(0, nowMs - currentDiag.startedAtMs),
+        rawFrameCount: currentDiag.rawFrameCount,
+        fullyFrameCount: currentDiag.fullyFrameCount,
+        handleCalls: currentDiag.handleCalls,
+        pendingRevealFlipKey: pendingRevealFlipKeyRef.current,
+        visiblePinCount: state.latestVisiblePinnedFeatureByMarkerKey.size,
+        acksRemaining: prerollFullFrameAcksRemainingRef.current,
+        msSinceLastRawFrame:
+          currentDiag.lastRawFrameAtMs > 0
+            ? Math.max(0, nowMs - currentDiag.lastRawFrameAtMs)
+            : null,
+        msSinceLastFullyFrame:
+          currentDiag.lastFullyFrameAtMs > 0
+            ? Math.max(0, nowMs - currentDiag.lastFullyFrameAtMs)
+            : null,
+        msSinceLastHandle:
+          currentDiag.lastHandleCallAtMs > 0
+            ? Math.max(0, nowMs - currentDiag.lastHandleCallAtMs)
+            : null,
+      });
+    }, 400);
+
+    return clearWatchdog;
+  }, [batchPhase, getNowMs, state]);
+
+  React.useEffect(() => {
+    if (batchPhase !== 'preroll_wait_frame') {
+      clearPrerollProbeLoop();
+      return;
+    }
+    logRevealDeadlockDiag('preroll:probe:start', {
+      revealKey: pendingRevealFlipKeyRef.current,
+      visiblePinCount: state.latestVisiblePinnedFeatureByMarkerKey.size,
+      acksRemaining: prerollFullFrameAcksRemainingRef.current,
+    });
+    schedulePrerollProbe(0);
+    return clearPrerollProbeLoop;
+  }, [batchPhase, clearPrerollProbeLoop, schedulePrerollProbe, state]);
+
+  const handleDidFinishRenderingFrame = React.useCallback(() => {
+    const nowMs = getNowMs();
+    const diag = revealFrameDiagRef.current;
+    diag.rawFrameCount += 1;
+    diag.lastRawFrameAtMs = nowMs;
+    if (
+      batchPhaseRef.current === 'preroll_wait_frame' &&
+      (diag.rawFrameCount <= 3 || diag.rawFrameCount % 10 === 0)
+    ) {
+      logRevealDeadlockDiag('frame:raw', {
+        revealKey: pendingRevealFlipKeyRef.current,
+        rawFrameCount: diag.rawFrameCount,
+        fullyFrameCount: diag.fullyFrameCount,
+        handleCalls: diag.handleCalls,
+        acksRemaining: prerollFullFrameAcksRemainingRef.current,
+      });
+    }
+  }, [getNowMs]);
+
+  const handleDidFinishRenderingFrameFully = React.useCallback(() => {
+    const nowMs = getNowMs();
+    const diag = revealFrameDiagRef.current;
+    diag.fullyFrameCount += 1;
+    diag.lastFullyFrameAtMs = nowMs;
+    advancePromoteLaneFlipsOnFullFrame();
+
+    if (
+      batchPhaseRef.current === 'preroll_wait_frame' &&
+      (diag.fullyFrameCount <= 3 || diag.fullyFrameCount % 10 === 0)
+    ) {
+      logRevealDeadlockDiag('frame:fully', {
+        revealKey: pendingRevealFlipKeyRef.current,
+        rawFrameCount: diag.rawFrameCount,
+        fullyFrameCount: diag.fullyFrameCount,
+        handleCalls: diag.handleCalls,
+        acksRemaining: prerollFullFrameAcksRemainingRef.current,
+      });
+    }
+
+    if (batchPhase !== 'preroll_wait_frame') {
+      if (batchPhaseRef.current === 'preroll_wait_frame') {
+        logRevealDeadlockDiag('frame:phase_mismatch', {
+          statePhase: batchPhase,
+          refPhase: batchPhaseRef.current,
+          revealKey: pendingRevealFlipKeyRef.current,
+          rawFrameCount: diag.rawFrameCount,
+          fullyFrameCount: diag.fullyFrameCount,
+          handleCalls: diag.handleCalls,
+        });
+      }
+      return;
+    }
+    handleMapRenderFrame();
+  }, [advancePromoteLaneFlipsOnFullFrame, batchPhase, getNowMs, handleMapRenderFrame]);
 
   return {
-    batchOpacity,
-    batchDismissActive,
-    batchRevealActive,
+    batchOpacityTarget,
+    batchPhase,
+    isBatchTransitionActive: batchPhase !== 'idle',
+    handleMapRenderFrame,
+    handleDidFinishRenderingFrame,
+    handleDidFinishRenderingFrameFully,
+    pendingRevealCommitKey: pendingRevealFlipKeyRef.current,
     // Controller-owned features: the hook decides what to render and when.
     effectiveDotFeatures,
     dotsAreHeld,
+    steadyPinFeatures,
+    transitionPinLanes,
     effectivePinFeatures,
     demotingRestaurantIdList,
     hasPendingPromotions,
     hasStartedPromotions,
-    isAwaitingInitialRevealStart,
   };
 };
 
@@ -1711,7 +2449,6 @@ type SearchMapProps = {
   onMapIdle: (state: MapboxMapState) => void;
   onMapLoaded: () => void;
   onMarkerPress?: (restaurantId: string, pressedCoordinate?: Coordinate | null) => void;
-  onVisualReady?: (requestKey: string) => void;
   onMarkerRevealStarted?: (payload: {
     requestKey: string;
     markerRevealCommitId: number | null;
@@ -1727,8 +2464,6 @@ type SearchMapProps = {
   dotRestaurantFeatures?: FeatureCollection<Point, RestaurantFeatureProperties> | null;
   markersRenderKey: string;
   pinsRenderKey: string;
-  shouldSignalVisualReady?: boolean;
-  requireMarkerVisualsForVisualReady?: boolean;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
   restaurantFeatures: FeatureCollection<Point, RestaurantFeatureProperties>;
   restaurantLabelStyle: MapboxGL.SymbolLayerStyle;
@@ -1762,7 +2497,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
   onMapIdle,
   onMapLoaded,
   onMarkerPress,
-  onVisualReady,
   onMarkerRevealStarted,
   onMarkerRevealSettled,
   selectedRestaurantId,
@@ -1770,10 +2504,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
   dotRestaurantFeatures: incomingDotRestaurantFeatures,
   markersRenderKey: incomingMarkersRenderKey,
   pinsRenderKey: incomingPinsRenderKey,
-  shouldSignalVisualReady = false,
-  requireMarkerVisualsForVisualReady = false,
   buildMarkerKey,
-  restaurantFeatures,
+  restaurantFeatures: _restaurantFeatures,
   restaurantLabelStyle,
   isMapStyleReady,
   userLocation,
@@ -1790,30 +2522,34 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
   const {
     isMapActivationDeferred,
-    visualSyncCandidateRequestKey,
-    markerRevealCommitId,
+    presentationMapRevealRequestKey,
+    presentationDismissEpoch,
+    presentationTransitionLoadingMode,
     runOneCommitSpanPressureActive,
   } = useSearchRuntimeBusSelector(
     searchRuntimeBus,
     (state) => ({
       isMapActivationDeferred: state.isMapActivationDeferred,
-      visualSyncCandidateRequestKey: state.visualSyncCandidateRequestKey,
-      markerRevealCommitId: state.markerRevealCommitId,
+      presentationMapRevealRequestKey: state.presentationMapRevealRequestKey,
+      presentationDismissEpoch: state.presentationDismissEpoch,
+      presentationTransitionLoadingMode: state.presentationTransitionLoadingMode,
       runOneCommitSpanPressureActive: state.runOneCommitSpanPressureActive,
     }),
     (left, right) =>
       left.isMapActivationDeferred === right.isMapActivationDeferred &&
-      left.visualSyncCandidateRequestKey === right.visualSyncCandidateRequestKey &&
-      left.markerRevealCommitId === right.markerRevealCommitId &&
+      left.presentationMapRevealRequestKey === right.presentationMapRevealRequestKey &&
+      left.presentationDismissEpoch === right.presentationDismissEpoch &&
+      left.presentationTransitionLoadingMode === right.presentationTransitionLoadingMode &&
       left.runOneCommitSpanPressureActive === right.runOneCommitSpanPressureActive,
     [
       'isMapActivationDeferred',
-      'visualSyncCandidateRequestKey',
-      'markerRevealCommitId',
+      'presentationMapRevealRequestKey',
+      'presentationDismissEpoch',
+      'presentationTransitionLoadingMode',
       'runOneCommitSpanPressureActive',
     ] as const
   );
-  const visualReadyRequestKey = visualSyncCandidateRequestKey;
+  const visualReadyRequestKey = presentationMapRevealRequestKey;
   const sortedRestaurantMarkers = incomingSortedRestaurantMarkers;
   const dotRestaurantFeatures = incomingDotRestaurantFeatures;
   const markersRenderKey = incomingMarkersRenderKey;
@@ -1854,7 +2590,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         ) {
           return;
         }
-        if (state.isVisualSyncPending || isMapFinalizeDeferred()) {
+        if (state.presentationMapRevealRequestKey != null || isMapFinalizeDeferred()) {
           return;
         }
         searchRuntimeBus.publish({
@@ -1880,7 +2616,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       if (!operationId || state.activeOperationLane !== 'lane_e_map_pins') {
         return;
       }
-      if (state.isVisualSyncPending || isMapPinsDeferred()) {
+      if (state.presentationMapRevealRequestKey != null || isMapPinsDeferred()) {
         return;
       }
       searchRuntimeBus.publish({
@@ -1892,7 +2628,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     const unsubscribe = searchRuntimeBus.subscribe(maybeAdvancePolishLane, [
       'activeOperationId',
       'activeOperationLane',
-      'isVisualSyncPending',
+      'presentationMapRevealRequestKey',
     ]);
     return () => {
       unsubscribe();
@@ -1949,61 +2685,102 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const pinnedDotKeys = React.useMemo(() => {
     return new Set(transitionSortedRestaurantMarkers.map((feature) => buildMarkerKey(feature)));
   }, [buildMarkerKey, transitionSortedRestaurantMarkers]);
-  const visualReadySignaledRequestKeyRef = React.useRef<string | null>(null);
+  const [pinsSourceCommitEpoch, setPinsSourceCommitEpoch] = React.useState(0);
+  const pinsSourceCommitSignaledRevealKeyRef = React.useRef<string | null>(null);
   const markerRevealStartedSignaledRequestKeyRef = React.useRef<string | null>(null);
   const markerRevealSettledSignaledRequestKeyRef = React.useRef<string | null>(null);
-  const visualReadyPendingFramesRef = React.useRef(0);
-  const visualReadyAwaitingPinTransitionStartRef = React.useRef(false);
   const isMapMovingRef = React.useRef(false);
   const {
-    batchOpacity,
-    batchDismissActive,
-    batchRevealActive,
+    batchOpacityTarget,
+    batchPhase,
+    isBatchTransitionActive,
+    handleDidFinishRenderingFrame,
+    handleDidFinishRenderingFrameFully,
+    pendingRevealCommitKey,
     effectiveDotFeatures,
     dotsAreHeld,
+    steadyPinFeatures,
+    transitionPinLanes,
     effectivePinFeatures,
     demotingRestaurantIdList,
     hasPendingPromotions,
     hasStartedPromotions,
-    isAwaitingInitialRevealStart,
   } = usePinTransitionController({
+    mapRef,
+    pinsSourceCommitEpoch,
     sortedRestaurantMarkers: transitionSortedRestaurantMarkers,
     dotRestaurantFeatures,
-    restaurantFeatures,
     pinsRenderKey,
-    markerRevealCommitId,
+    presentationMapRevealRequestKey,
+    presentationDismissEpoch,
+    presentationTransitionLoadingMode,
     buildMarkerKey,
-    pinnedDotKeys,
     suppressTransitions: false,
-    isMapMovingRef,
     mapQueryBudget,
   });
+  React.useLayoutEffect(() => {
+    if (!USE_STYLE_LAYER_PINS || shouldDisableMarkers) {
+      return;
+    }
+    if (pendingRevealCommitKey == null) {
+      return;
+    }
+    if (pinsSourceCommitSignaledRevealKeyRef.current === pendingRevealCommitKey) {
+      return;
+    }
+    pinsSourceCommitSignaledRevealKeyRef.current = pendingRevealCommitKey;
+    setPinsSourceCommitEpoch((prev) => prev + 1);
+    logRevealDeadlockDiag('preroll:source_commit_epoch', {
+      revealKey: pendingRevealCommitKey,
+      nextEpoch: pinsSourceCommitEpoch + 1,
+      batchPhase,
+    });
+  }, [batchPhase, pendingRevealCommitKey, pinsSourceCommitEpoch, shouldDisableMarkers]);
   // The hook owns the dot feature lifecycle: it holds the last non-empty
-  // snapshot during dismiss so dots fade out with batchOpacity instead of
-  // vanishing. shouldRenderDotsOrDismiss extends rendering while held.
+  // snapshot during dismiss so dots fade out with layer-level opacity
+  // instead of vanishing. shouldRenderDotsOrDismiss extends rendering while held.
   const shouldRenderDotsOrDismiss = shouldRenderDots || dotsAreHeld;
+  const lodDiagLastPromoteRenderSignatureRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!ENABLE_LOD_DIAG) {
+      return;
+    }
+    const promoteLanes = transitionPinLanes.filter((lane) => lane.direction === 'promote');
+    const signature = promoteLanes
+      .map((lane) => `${lane.laneId}:${lane.state}:${lane.opacityTarget}:${lane.pinFeatures.features.length}`)
+      .join('|');
+    if (lodDiagLastPromoteRenderSignatureRef.current === signature) {
+      return;
+    }
+    lodDiagLastPromoteRenderSignatureRef.current = signature;
+    if (promoteLanes.length === 0) {
+      return;
+    }
+    logLodDiag('promote:render_state', {
+      promoteLaneCount: promoteLanes.length,
+      promoteLaneSummaries: promoteLanes
+        .slice(0, LOD_DIAG_SAMPLE_LIMIT)
+        .map((lane) => `${lane.laneId}:${lane.state}:${lane.opacityTarget}:${lane.pinFeatures.features.length}`),
+      steadyPinsCount: steadyPinFeatures.features.length,
+      transitionPinsCount: transitionPinLanes.reduce(
+        (count, lane) => count + lane.pinFeatures.features.length,
+        0
+      ),
+      effectivePinsCount: effectivePinFeatures.features.length,
+      batchPhase,
+      batchOpacityTarget,
+    });
+  }, [
+    batchOpacityTarget,
+    batchPhase,
+    effectivePinFeatures.features.length,
+    steadyPinFeatures.features.length,
+    transitionPinLanes,
+  ]);
   const shouldHidePinnedDots = true;
-  const hasNonZeroPinOpacityForRevealStart = React.useMemo(() => {
-    if (effectivePinFeatures.features.length === 0) {
-      return false;
-    }
-    for (const feature of effectivePinFeatures.features) {
-      const active = feature.properties.pinTransitionActive ?? 0;
-      if (active === 1) {
-        const opacity = feature.properties.pinTransitionOpacity ?? 0;
-        if (opacity > 0) {
-          return true;
-        }
-        continue;
-      }
-      // Non-transition pin is fully visible.
-      return true;
-    }
-    return false;
-  }, [effectivePinFeatures.features]);
   const hiddenDotRestaurantIdList = React.useMemo(() => {
-    // During batch dismiss, dots fade out via batchOpacity — don't hide them
-    if (batchDismissActive) return EMPTY_DEMOTION_LIST;
+    // During batch dismiss, dots fade out via layer-level opacity — don't hide them
+    if (batchOpacityTarget === 0) return EMPTY_DEMOTION_LIST;
     const next = new Set<string>();
     if (shouldHidePinnedDots) {
       pinnedRestaurantIdList.forEach((restaurantId) => next.add(restaurantId));
@@ -2011,7 +2788,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     demotingRestaurantIdList.forEach((restaurantId) => next.add(restaurantId));
     if (next.size === 0) return EMPTY_DEMOTION_LIST;
     return Array.from(next);
-  }, [batchDismissActive, demotingRestaurantIdList, pinnedRestaurantIdList, shouldHidePinnedDots]);
+  }, [batchOpacityTarget, demotingRestaurantIdList, pinnedRestaurantIdList, shouldHidePinnedDots]);
   // Stabilize the hidden list reference so dotLayerStyle only recreates when
   // the actual set of hidden IDs changes, not on every transition clock tick.
   const hiddenDotListPrevRef = React.useRef(hiddenDotRestaurantIdList);
@@ -2052,24 +2829,17 @@ const SearchMap: React.FC<SearchMapProps> = ({
       // Hide dots that correspond to currently-pinned restaurants. Using feature-state is
       // unreliable because Mapbox can drop source feature-state when ShapeSource data updates.
       // A property-based expression keeps dots/pins mutually exclusive deterministically.
-      textOpacity:
-        batchOpacity < 1
-          ? [
-              '*',
-              [
-                'case',
-                ['in', ['get', 'restaurantId'], ['literal', stableHiddenDotRestaurantIdList]],
-                0,
-                1,
-              ],
-              batchOpacity,
-            ]
-          : [
-              'case',
-              ['in', ['get', 'restaurantId'], ['literal', stableHiddenDotRestaurantIdList]],
-              0,
-              1,
-            ],
+      textOpacity: [
+        '*',
+        batchOpacityTarget,
+        [
+          'case',
+          ['in', ['get', 'restaurantId'], ['literal', stableHiddenDotRestaurantIdList]],
+          0,
+          1,
+        ],
+      ],
+      textOpacityTransition: PIN_OPACITY_TRANSITION,
       // Keep dots a constant screen size (like pins). The symbol can still cull/collide based on
       // Mapbox placement, but it won't scale with zoom.
       textSize: DOT_TEXT_SIZE,
@@ -2085,7 +2855,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         ],
       ],
     } as MapboxGL.SymbolLayerStyle;
-  }, [batchOpacity, effectiveSelectedRestaurantId, stableHiddenDotRestaurantIdList, scoreMode]);
+  }, [batchOpacityTarget, effectiveSelectedRestaurantId, stableHiddenDotRestaurantIdList, scoreMode]);
   const [mapViewportSize, setMapViewportSize] = React.useState<{ width: number; height: number }>({
     width: 0,
     height: 0,
@@ -2144,6 +2914,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const [labelLayerTreeEpoch, setLabelLayerTreeEpoch] = React.useState(0);
   const [pinLayerTreeEpoch, setPinLayerTreeEpoch] = React.useState(0);
   const pinLayerRecoveryLastAttemptAtRef = React.useRef(0);
+  const pendingPinLayerRemountRef = React.useRef(false);
   const [labelStickyMarkersReadyAt, setLabelStickyMarkersReadyAt] = React.useState<number | null>(
     null
   );
@@ -2506,32 +3277,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
           didChange = true;
           continue;
         }
-        // Check if transition properties actually changed
-        if (
-          labelFeature.properties.pinTransitionActive ===
-            srcFeature.properties.pinTransitionActive &&
-          labelFeature.properties.pinTransitionOpacity ===
-            srcFeature.properties.pinTransitionOpacity &&
-          labelFeature.properties.pinRankOpacity === srcFeature.properties.pinRankOpacity &&
-          labelFeature.properties.pinLabelOpacity === srcFeature.properties.pinLabelOpacity
-        ) {
-          updatedFeatures.push(labelFeature);
-          if (typeof restaurantId === 'string' && restaurantId.length > 0) {
-            existingRestaurantIds.add(restaurantId);
-          }
-          continue;
-        }
-        didChange = true;
-        updatedFeatures.push({
-          ...labelFeature,
-          properties: {
-            ...labelFeature.properties,
-            pinTransitionActive: srcFeature.properties.pinTransitionActive,
-            pinTransitionOpacity: srcFeature.properties.pinTransitionOpacity,
-            pinRankOpacity: srcFeature.properties.pinRankOpacity,
-            pinLabelOpacity: srcFeature.properties.pinLabelOpacity,
-          },
-        });
+        updatedFeatures.push(labelFeature);
         if (typeof restaurantId === 'string' && restaurantId.length > 0) {
           existingRestaurantIds.add(restaurantId);
         }
@@ -2692,7 +3438,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
     const baseTextOpacity = restaurantLabelStyleWithStableOrder.textOpacity ?? 1;
     const base: MapboxGL.SymbolLayerStyle = {
       ...restaurantLabelStyleWithStableOrder,
-      textOpacity: ['*', baseTextOpacity, PIN_LABEL_OPACITY_EXPRESSION],
+      textOpacity: ['*', batchOpacityTarget, baseTextOpacity],
+      textOpacityTransition: PIN_OPACITY_TRANSITION,
       // Tiny "mutex" icon at the feature point: prevents multiple candidate labels for the same
       // restaurant from being placed simultaneously, without materially affecting other symbols.
       iconImage: STYLE_PIN_OUTLINE_IMAGE_ID,
@@ -2736,6 +3483,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       },
     } satisfies Record<LabelCandidate, MapboxGL.SymbolLayerStyle>;
   }, [
+    batchOpacityTarget,
     labelRadialTopEm,
     labelRadialXEm,
     labelRadialYEm,
@@ -2768,93 +3516,78 @@ const SearchMap: React.FC<SearchMapProps> = ({
     ] as const;
   }, [effectiveSelectedRestaurantId, scoreMode]);
 
-  // Pin styles rely on per-pin opacity transition properties only.
-  // batchOpacity is intentionally NOT multiplied here to avoid
-  // double-fading — it only drives dots and labels.
+  // --- Diagnostic: when does SearchMap render with the new batchOpacityTarget? ---
+  const prevDiagBatchTargetRef = React.useRef(batchOpacityTarget);
+  if (batchOpacityTarget !== prevDiagBatchTargetRef.current) {
+    logger.info('[TOGGLE-DIAG] searchMap:batchTargetRender', {
+      from: prevDiagBatchTargetRef.current,
+      to: batchOpacityTarget,
+      phase: batchPhase,
+      ts: Date.now(),
+    });
+    prevDiagBatchTargetRef.current = batchOpacityTarget;
+  }
+  React.useEffect(() => {
+    const commitTs = Date.now();
+    logger.info('[TOGGLE-DIAG] searchMap:batchTargetCommitted', {
+      target: batchOpacityTarget,
+      phase: batchPhase,
+      ts: commitTs,
+    });
+    const rafId = requestAnimationFrame(() => {
+      logger.info('[TOGGLE-DIAG] searchMap:firstRAFAfterCommit', {
+        target: batchOpacityTarget,
+        msSinceCommit: Date.now() - commitTs,
+        ts: Date.now(),
+      });
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [batchOpacityTarget, batchPhase]);
   const stylePinsShadowSteadyStyle = React.useMemo(
-    () =>
-      withIconOpacity(STYLE_PINS_SHADOW_STYLE, [
-        '*',
-        STYLE_PINS_SHADOW_OPACITY,
-        PIN_STEADY_OPACITY_EXPRESSION,
-      ]),
-    []
-  );
-
-  const stylePinsShadowTransitionStyle = React.useMemo(
-    () =>
-      withIconTransition({
-        baseStyle: STYLE_PINS_SHADOW_STYLE,
-        iconOpacity: ['*', STYLE_PINS_SHADOW_OPACITY, PIN_TRANSITION_OPACITY_EXPRESSION],
-      }),
-    []
+    () => ({
+      ...withIconOpacity(STYLE_PINS_SHADOW_STYLE, ['*', batchOpacityTarget, STYLE_PINS_SHADOW_OPACITY]),
+      iconOpacityTransition: PIN_OPACITY_TRANSITION,
+    } as MapboxGL.SymbolLayerStyle),
+    [batchOpacityTarget]
   );
 
   const stylePinsOutlineSteadyStyle = React.useMemo(
-    () =>
-      withTextOpacity({
+    () => ({
+      ...withTextOpacity({
         baseStyle: STYLE_PINS_OUTLINE_GLYPH_STYLE,
-        textOpacity: PIN_STEADY_OPACITY_EXPRESSION,
+        textOpacity: batchOpacityTarget,
       }),
-    []
+      textOpacityTransition: PIN_OPACITY_TRANSITION,
+    } as MapboxGL.SymbolLayerStyle),
+    [batchOpacityTarget]
   );
 
   const stylePinsFillSteadyStyle = React.useMemo(
-    () =>
-      withTextOpacity({
+    () => ({
+      ...withTextOpacity({
         baseStyle: STYLE_PINS_FILL_GLYPH_STYLE,
         textColor: pinFillColorExpression,
-        textOpacity: PIN_STEADY_OPACITY_EXPRESSION,
+        textOpacity: batchOpacityTarget,
       }),
-    [pinFillColorExpression]
-  );
-
-  const stylePinsTransitionBaseStyle = React.useMemo(
-    () =>
-      withIconTransition({
-        baseStyle: STYLE_PINS_OUTLINE_STYLE,
-        iconOpacity: PIN_TRANSITION_OPACITY_EXPRESSION,
-      }),
-    []
-  );
-
-  const stylePinsTransitionFillStyle = React.useMemo(
-    () =>
-      withIconTransition({
-        baseStyle: STYLE_PINS_FILL_STYLE,
-        iconColor: pinFillColorExpression,
-        iconOpacity: PIN_TRANSITION_OPACITY_EXPRESSION,
-      }),
-    [pinFillColorExpression]
+      textOpacityTransition: PIN_OPACITY_TRANSITION,
+    } as MapboxGL.SymbolLayerStyle),
+    [batchOpacityTarget, pinFillColorExpression]
   );
 
   const stylePinsRankStyle = React.useMemo(
-    () =>
-      withTextOpacity({
+    () => ({
+      ...withTextOpacity({
         baseStyle: STYLE_PINS_RANK_STYLE,
-        textOpacity: PIN_RANK_OPACITY_EXPRESSION,
+        textOpacity: batchOpacityTarget,
       }),
-    []
+      textOpacityTransition: PIN_RANK_OPACITY_TRANSITION,
+    } as MapboxGL.SymbolLayerStyle),
+    [batchOpacityTarget]
   );
 
   const stylePinLayerStack = React.useMemo(() => {
-    // Deterministic pin stacking while moving:
-    // - We keep a fixed number of "z slots" as separate layer stacks.
-    // - Each pinned feature is assigned a `lodZ` slot (0..39) at the call site.
-    // - Because layer IDs do not come/go as the pinned set changes, Mapbox can't "promote"
-    //   newly-added pins above older ones just because their layers were inserted later.
     return Array.from({ length: STYLE_PIN_STACK_SLOTS }, (_, slotIndex) => {
       const lodSlotFilter = ['==', ['coalesce', ['get', 'lodZ'], -1], slotIndex] as const;
-      const steadyFilter = [
-        'all',
-        lodSlotFilter,
-        ['==', PIN_TRANSITION_ACTIVE_EXPRESSION, 0],
-      ] as const;
-      const transitionFilter = [
-        'all',
-        lodSlotFilter,
-        ['==', PIN_TRANSITION_ACTIVE_EXPRESSION, 1],
-      ] as const;
       return [
         <MapboxGL.SymbolLayer
           key={`shadow-slot-${slotIndex}`}
@@ -2862,15 +3595,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
           slot="top"
           belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
           style={stylePinsShadowSteadyStyle}
-          filter={steadyFilter}
-        />,
-        <MapboxGL.SymbolLayer
-          key={`shadow-transition-slot-${slotIndex}`}
-          id={`restaurant-style-pins-shadow-transition-slot-${slotIndex}`}
-          slot="top"
-          belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
-          style={stylePinsShadowTransitionStyle}
-          filter={transitionFilter}
+          filter={lodSlotFilter}
         />,
         <MapboxGL.SymbolLayer
           key={`base-slot-${slotIndex}`}
@@ -2878,7 +3603,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
           slot="top"
           belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
           style={stylePinsOutlineSteadyStyle}
-          filter={steadyFilter}
+          filter={lodSlotFilter}
         />,
         <MapboxGL.SymbolLayer
           key={`fill-slot-${slotIndex}`}
@@ -2886,23 +3611,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
           slot="top"
           belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
           style={stylePinsFillSteadyStyle}
-          filter={steadyFilter}
-        />,
-        <MapboxGL.SymbolLayer
-          key={`base-transition-slot-${slotIndex}`}
-          id={`restaurant-style-pins-base-transition-slot-${slotIndex}`}
-          slot="top"
-          belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
-          style={stylePinsTransitionBaseStyle}
-          filter={transitionFilter}
-        />,
-        <MapboxGL.SymbolLayer
-          key={`fill-transition-slot-${slotIndex}`}
-          id={`restaurant-style-pins-fill-transition-slot-${slotIndex}`}
-          slot="top"
-          belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
-          style={stylePinsTransitionFillStyle}
-          filter={transitionFilter}
+          filter={lodSlotFilter}
         />,
         <MapboxGL.SymbolLayer
           key={`rank-slot-${slotIndex}`}
@@ -2919,9 +3628,104 @@ const SearchMap: React.FC<SearchMapProps> = ({
     stylePinsOutlineSteadyStyle,
     stylePinsRankStyle,
     stylePinsShadowSteadyStyle,
-    stylePinsShadowTransitionStyle,
-    stylePinsTransitionBaseStyle,
-    stylePinsTransitionFillStyle,
+  ]);
+
+  const transitionPinLayerTrees = React.useMemo(() => {
+    return transitionPinLanes.map((lane) => {
+      const laneOpacity = lane.opacityTarget;
+      const laneShadowStyle: MapboxGL.SymbolLayerStyle = {
+        ...withIconOpacity(STYLE_PINS_SHADOW_STYLE, [
+          '*',
+          batchOpacityTarget,
+          laneOpacity,
+          STYLE_PINS_SHADOW_OPACITY,
+        ]),
+        iconOpacityTransition: PIN_OPACITY_TRANSITION,
+      };
+      const laneOutlineStyle: MapboxGL.SymbolLayerStyle = {
+        ...withTextOpacity({
+          baseStyle: STYLE_PINS_OUTLINE_GLYPH_STYLE,
+          textOpacity: ['*', batchOpacityTarget, laneOpacity],
+        }),
+        textOpacityTransition: PIN_OPACITY_TRANSITION,
+      };
+      const laneFillStyle: MapboxGL.SymbolLayerStyle = {
+        ...withTextOpacity({
+          baseStyle: STYLE_PINS_FILL_GLYPH_STYLE,
+          textColor: pinFillColorExpression,
+          textOpacity: ['*', batchOpacityTarget, laneOpacity],
+        }),
+        textOpacityTransition: PIN_OPACITY_TRANSITION,
+      };
+      const laneRankStyle: MapboxGL.SymbolLayerStyle = {
+        ...withTextOpacity({
+          baseStyle: STYLE_PINS_RANK_STYLE,
+          textOpacity: ['*', batchOpacityTarget, laneOpacity],
+        }),
+        textOpacityTransition: PIN_RANK_OPACITY_TRANSITION,
+      };
+      const slotSet = new Set<number>();
+      lane.pinFeatures.features.forEach((feature) => {
+        const slot = feature.properties.lodZ;
+        if (typeof slot === 'number' && Number.isFinite(slot) && slot >= 0) {
+          slotSet.add(slot);
+        }
+      });
+      const slots = Array.from(slotSet).sort((left, right) => left - right);
+      return {
+        lane,
+        slots,
+        laneShadowStyle,
+        laneOutlineStyle,
+        laneFillStyle,
+        laneRankStyle,
+      };
+    });
+  }, [batchOpacityTarget, pinFillColorExpression, transitionPinLanes]);
+  const lodDiagLastPromoteLayerTreeSignatureRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!ENABLE_LOD_DIAG) {
+      return;
+    }
+    const promoteLaneTrees = transitionPinLayerTrees.filter(
+      (laneTree) => laneTree.lane.direction === 'promote'
+    );
+    const signature = promoteLaneTrees
+      .map(
+        (laneTree) =>
+          `${laneTree.lane.laneId}:${laneTree.lane.state}:${laneTree.lane.opacityTarget}:${laneTree.lane.pinFeatures.features.length}:${laneTree.slots.join('.')}`
+      )
+      .join('|');
+    if (lodDiagLastPromoteLayerTreeSignatureRef.current === signature) {
+      return;
+    }
+    lodDiagLastPromoteLayerTreeSignatureRef.current = signature;
+    if (promoteLaneTrees.length === 0) {
+      return;
+    }
+    logLodDiag('promote:layer_tree', {
+      promoteLaneCount: promoteLaneTrees.length,
+      lanes: promoteLaneTrees.slice(0, LOD_DIAG_SAMPLE_LIMIT).map((laneTree) => ({
+        laneId: laneTree.lane.laneId,
+        state: laneTree.lane.state,
+        opacityTarget: laneTree.lane.opacityTarget,
+        markerCount: laneTree.lane.pinFeatures.features.length,
+        slotCount: laneTree.slots.length,
+        sampleSlots: laneTree.slots.slice(0, LOD_DIAG_SAMPLE_LIMIT),
+        sampleMarkers: sampleMarkerKeys(
+          laneTree.lane.pinFeatures.features.map((feature) =>
+            typeof feature.id === 'string' ? feature.id : buildMarkerKey(feature)
+          )
+        ),
+      })),
+      batchPhase,
+      batchOpacityTarget,
+    });
+  }, [
+    batchOpacityTarget,
+    batchPhase,
+    buildMarkerKey,
+    transitionPinLayerTrees,
   ]);
 
   const pinInteractionLayerStack = React.useMemo(
@@ -3547,10 +4351,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
           probeControlRendered = control?.features?.length ?? 0;
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const filtered = await mapInstance.queryRenderedFeaturesInRect(
           [],
-          probeFilter as any,
+          probeFilter as unknown as [],
           null
         );
         probeFilterRendered = filtered?.features?.length ?? 0;
@@ -3558,8 +4361,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         if (typeof mapInstance.querySourceFeatures === 'function') {
           const source = await mapInstance.querySourceFeatures(
             RESTAURANT_LABEL_SOURCE_ID,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            ['has', 'markerKey'] as any,
+            ['has', 'markerKey'] as unknown as [],
             []
           );
           probeSourceFeatures = source?.features?.length ?? 0;
@@ -3615,8 +4417,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
       // when the same features are queryable via property filters (or are visibly rendered).
       try {
         const filter: Expression = ['all', ['has', 'markerKey'], ['has', 'labelCandidate']];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const filtered = await mapInstance.queryRenderedFeaturesInRect([], filter as any, null);
+        const filtered = await mapInstance.queryRenderedFeaturesInRect(
+          [],
+          filter as unknown as [],
+          null
+        );
         const filteredCount = filtered?.features?.length ?? 0;
         if (filteredCount > 0) {
           renderedForParsing = filtered;
@@ -3751,249 +4556,174 @@ const SearchMap: React.FC<SearchMapProps> = ({
     },
     [onMapIdle, refreshVisibleDotRestaurantIds]
   );
-  const visualReadyGateReasonRef = React.useRef<string | null>(null);
-  const visualReadyArmSnapshotRef = React.useRef<{
-    requestKey: string;
-    markersRenderKey: string;
-    pinsRenderKey: string;
-    shouldSignalVisualReady: boolean;
-  } | null>(null);
+  // ---------------------------------------------------------------------------
+  // Event-driven reveal signals: React effects that fire based on readiness
+  // state rather than Mapbox frame callbacks. This ensures the reveal chain
+  // completes regardless of Mapbox frame timing.
+  // ---------------------------------------------------------------------------
+
+  // Reset dedup refs when the request key changes.
+  const revealStartedBlockSigRef = React.useRef<string | null>(null);
+  const revealSettledBlockSigRef = React.useRef<string | null>(null);
   React.useEffect(() => {
-    visualReadySignaledRequestKeyRef.current = null;
     markerRevealStartedSignaledRequestKeyRef.current = null;
     markerRevealSettledSignaledRequestKeyRef.current = null;
-    visualReadyPendingFramesRef.current = 0;
-    visualReadyAwaitingPinTransitionStartRef.current = false;
-    visualReadyGateReasonRef.current = null;
+    revealStartedBlockSigRef.current = null;
+    revealSettledBlockSigRef.current = null;
   }, [visualReadyRequestKey]);
 
+  // Reveal started: for pinned markers, fires only after preroll was confirmed
+  // by a rendered frame and batch phase entered `revealing` (target flipped to 1).
+  // This keeps cover-drop synchronized with the actual visible start of fade-in.
   React.useEffect(() => {
     if (!visualReadyRequestKey) {
-      visualReadyPendingFramesRef.current = 0;
-      visualReadyAwaitingPinTransitionStartRef.current = false;
-      visualReadyArmSnapshotRef.current = null;
-      return;
-    }
-    const previousArmSnapshot = visualReadyArmSnapshotRef.current;
-    if (!shouldSignalVisualReady) {
-      // Keep pending progress sticky while signal eligibility is transiently suspended.
-      visualReadyArmSnapshotRef.current = {
-        requestKey: visualReadyRequestKey,
-        markersRenderKey,
-        pinsRenderKey,
-        shouldSignalVisualReady,
-      };
-      return;
-    }
-    const armCause = (() => {
-      if (!previousArmSnapshot) {
-        return 'initial';
-      }
-      if (previousArmSnapshot.requestKey !== visualReadyRequestKey) {
-        return 'request_key_change';
-      }
-      return null;
-    })();
-    if (armCause) {
-      // Arm once per request key to avoid repeated pending-frame resets under map topology churn.
-      visualReadyPendingFramesRef.current = 2;
-      visualReadyAwaitingPinTransitionStartRef.current = isAwaitingInitialRevealStart;
-      emitMapRuntimeWriteSpan({
-        label: 'visual_ready_arm',
-        requestKey: visualReadyRequestKey,
-        markerRevealCommitId,
-        armCause,
-        markersRenderKey,
-        pinsRenderKey,
-        sortedMarkerCount: sortedRestaurantMarkers.length,
-        dotFeatureCount: dotRestaurantFeatures?.features?.length ?? 0,
-        pendingFrames: visualReadyPendingFramesRef.current,
-        awaitingPinTransitionStart: visualReadyAwaitingPinTransitionStartRef.current,
-      });
-    } else {
-      if (isAwaitingInitialRevealStart) {
-        visualReadyAwaitingPinTransitionStartRef.current = true;
-      }
-      const rearmSuppressedCause =
-        previousArmSnapshot?.markersRenderKey !== markersRenderKey
-          ? 'markers_render_key_change'
-          : previousArmSnapshot?.pinsRenderKey !== pinsRenderKey
-          ? 'pins_render_key_change'
-          : previousArmSnapshot?.shouldSignalVisualReady !== shouldSignalVisualReady
-          ? 'signal_toggle'
-          : null;
-      if (rearmSuppressedCause) {
-        emitMapRuntimeWriteSpan({
-          label: 'visual_ready_arm_suppressed',
-          requestKey: visualReadyRequestKey,
-          markerRevealCommitId,
-          reason: rearmSuppressedCause,
-          markersRenderKey,
-          pinsRenderKey,
-          sortedMarkerCount: sortedRestaurantMarkers.length,
-          dotFeatureCount: dotRestaurantFeatures?.features?.length ?? 0,
-          pendingFrames: visualReadyPendingFramesRef.current,
-          awaitingPinTransitionStart: visualReadyAwaitingPinTransitionStartRef.current,
+      const signature = 'start:block:no_visual_ready_request_key';
+      if (revealStartedBlockSigRef.current !== signature) {
+        revealStartedBlockSigRef.current = signature;
+        logRevealDeadlockDiag('revealStarted:block', {
+          reason: 'no_visual_ready_request_key',
         });
       }
+      return;
     }
-    visualReadyArmSnapshotRef.current = {
+    if (markerRevealStartedSignaledRequestKeyRef.current === visualReadyRequestKey) {
+      return;
+    }
+    const hasPinnedMarkers = sortedRestaurantMarkers.length > 0;
+    if (hasPinnedMarkers) {
+      // Reveal-start is a pin-visibility contract, not a label-readiness contract.
+      // Gating this on labels can deadlock initial reveal when style/label layers lag.
+      if (batchPhase !== 'revealing') {
+        const signature = `start:block:phase_not_revealing:${visualReadyRequestKey}:${batchPhase}`;
+        if (revealStartedBlockSigRef.current !== signature) {
+          revealStartedBlockSigRef.current = signature;
+          logRevealDeadlockDiag('revealStarted:block', {
+            reason: 'phase_not_revealing',
+            visualReadyRequestKey,
+            batchPhase,
+            hasStartedPromotions,
+            sortedMarkerCount: sortedRestaurantMarkers.length,
+            revealRequestKey: presentationMapRevealRequestKey,
+          });
+        }
+        return;
+      }
+      if (!hasStartedPromotions) {
+        const signature = `start:block:no_started_promotions:${visualReadyRequestKey}`;
+        if (revealStartedBlockSigRef.current !== signature) {
+          revealStartedBlockSigRef.current = signature;
+          logRevealDeadlockDiag('revealStarted:block', {
+            reason: 'no_started_promotions',
+            visualReadyRequestKey,
+            batchPhase,
+            sortedMarkerCount: sortedRestaurantMarkers.length,
+          });
+        }
+        return;
+      }
+    } else {
+      // No pinned markers — check for dot markers.
+      const hasDots = (dotRestaurantFeatures?.features?.length ?? 0) > 0;
+      if (!hasDots) {
+        const signature = `start:block:no_pins_no_dots:${visualReadyRequestKey}`;
+        if (revealStartedBlockSigRef.current !== signature) {
+          revealStartedBlockSigRef.current = signature;
+          logRevealDeadlockDiag('revealStarted:block', {
+            reason: 'no_pins_no_dots',
+            visualReadyRequestKey,
+            batchPhase,
+            sortedMarkerCount: sortedRestaurantMarkers.length,
+            dotCount: dotRestaurantFeatures?.features?.length ?? 0,
+          });
+        }
+        return;
+      }
+    }
+    revealStartedBlockSigRef.current = null;
+    markerRevealStartedSignaledRequestKeyRef.current = visualReadyRequestKey;
+    logRevealDeadlockDiag('revealStarted:emit', {
+      visualReadyRequestKey,
+      batchPhase,
+      hasStartedPromotions,
+      sortedMarkerCount: sortedRestaurantMarkers.length,
+      dotCount: dotRestaurantFeatures?.features?.length ?? 0,
+    });
+    emitMapRuntimeWriteSpan({
+      label: 'marker_reveal_started_signal',
       requestKey: visualReadyRequestKey,
-      markersRenderKey,
-      pinsRenderKey,
-      shouldSignalVisualReady,
-    };
+      markerRevealCommitId: null,
+    });
+    onMarkerRevealStarted?.({
+      requestKey: visualReadyRequestKey,
+      markerRevealCommitId: null,
+      startedAtMs: getNowMs(),
+    });
   }, [
     emitMapRuntimeWriteSpan,
-    isAwaitingInitialRevealStart,
-    markerRevealCommitId,
-    markersRenderKey,
-    pinsRenderKey,
-    shouldSignalVisualReady,
+    batchPhase,
+    visualReadyRequestKey,
+    hasStartedPromotions,
     sortedRestaurantMarkers.length,
     dotRestaurantFeatures?.features?.length,
-    visualReadyRequestKey,
+    onMarkerRevealStarted,
+    getNowMs,
   ]);
 
-  const handleDidFinishRenderingFrame = React.useCallback(() => {
-    if (!visualReadyRequestKey) {
+  // Reveal settled: fires when all pin promotion animations have completed.
+  React.useEffect(() => {
+    const revealSignalKey = markerRevealStartedSignaledRequestKeyRef.current;
+    if (!revealSignalKey) {
+      const signature = 'settled:block:no_reveal_started_signal_key';
+      if (revealSettledBlockSigRef.current !== signature) {
+        revealSettledBlockSigRef.current = signature;
+        logRevealDeadlockDiag('revealSettled:block', {
+          reason: 'no_reveal_started_signal_key',
+        });
+      }
       return;
     }
-    const shouldEmitVisualReady = Boolean(onVisualReady && shouldSignalVisualReady);
-    const shouldEmitMarkerRevealStarted = onMarkerRevealStarted != null;
-    const shouldEmitMarkerRevealSettled = onMarkerRevealSettled != null;
-    if (!shouldEmitVisualReady && !shouldEmitMarkerRevealStarted && !shouldEmitMarkerRevealSettled) {
+    if (markerRevealSettledSignaledRequestKeyRef.current === revealSignalKey) {
       return;
     }
-    const markerRevealStartedAlreadySignaled =
-      markerRevealStartedSignaledRequestKeyRef.current === visualReadyRequestKey;
-    const visualReadyAlreadySignaled =
-      visualReadySignaledRequestKeyRef.current === visualReadyRequestKey;
-    const markerRevealSettledAlreadySignaled =
-      markerRevealSettledSignaledRequestKeyRef.current === visualReadyRequestKey;
-    if (
-      (markerRevealStartedAlreadySignaled || !shouldEmitMarkerRevealStarted) &&
-      (visualReadyAlreadySignaled || !shouldEmitVisualReady) &&
-      (markerRevealSettledAlreadySignaled || !shouldEmitMarkerRevealSettled)
-    ) {
+    // Wait for all promotions to finish.
+    if (hasPendingPromotions || hasStartedPromotions) {
+      const signature = `settled:block:awaiting_promotions:${revealSignalKey}:${hasPendingPromotions ? 1 : 0}:${hasStartedPromotions ? 1 : 0}`;
+      if (revealSettledBlockSigRef.current !== signature) {
+        revealSettledBlockSigRef.current = signature;
+        logRevealDeadlockDiag('revealSettled:block', {
+          reason: 'awaiting_promotions',
+          revealSignalKey,
+          hasPendingPromotions,
+          hasStartedPromotions,
+          batchPhase,
+        });
+      }
       return;
     }
-    const emitVisualReadyGateReason = (reason: string | null) => {
-      if (visualReadyGateReasonRef.current === reason) {
-        return;
-      }
-      visualReadyGateReasonRef.current = reason;
-      if (!reason) {
-        return;
-      }
-      emitMapRuntimeWriteSpan({
-        label: 'visual_ready_gate',
-        requestKey: visualReadyRequestKey,
-        markerRevealCommitId,
-        reason,
-        pendingFrames: visualReadyPendingFramesRef.current,
-        awaitingPinTransitionStart: visualReadyAwaitingPinTransitionStartRef.current,
-        hasPendingPromotions,
-        hasStartedPromotions,
-      });
-    };
-    if (isPinsRenderKeyHeld(pinsRenderKey)) {
-      emitVisualReadyGateReason('awaiting_pins_render_key_show');
-      return;
-    }
-    if (visualReadyPendingFramesRef.current > 0) {
-      emitVisualReadyGateReason('pending_frames');
-      visualReadyPendingFramesRef.current -= 1;
-      return;
-    }
-    if (visualReadyAwaitingPinTransitionStartRef.current) {
-      if (!hasStartedPromotions && hasPendingPromotions) {
-        emitVisualReadyGateReason('awaiting_pin_transition_pending_promotions');
-        return;
-      }
-      visualReadyAwaitingPinTransitionStartRef.current = false;
-      emitVisualReadyGateReason('pin_transition_started');
-    }
-    if (requireMarkerVisualsForVisualReady) {
-      const hasMarkerVisuals =
-        sortedRestaurantMarkers.length > 0 || (dotRestaurantFeatures?.features?.length ?? 0) > 0;
-      if (!hasMarkerVisuals) {
-        emitVisualReadyGateReason('awaiting_marker_visuals');
-        return;
-      }
-    }
-    if (shouldEmitMarkerRevealStarted && !markerRevealStartedAlreadySignaled) {
-      const hasPinnedMarkerCandidates = sortedRestaurantMarkers.length > 0;
-      if (hasPinnedMarkerCandidates) {
-        const pinRevealStartReady =
-          shouldRenderLabels &&
-          !isPinsRenderKeyHeld(pinsRenderKey) &&
-          hasNonZeroPinOpacityForRevealStart &&
-          (!batchRevealActive || batchOpacity > 0) &&
-          (!isAwaitingInitialRevealStart || hasStartedPromotions || !hasPendingPromotions);
-        if (!pinRevealStartReady) {
-          emitVisualReadyGateReason('awaiting_pin_reveal_start');
-          return;
-        }
-      }
-      markerRevealStartedSignaledRequestKeyRef.current = visualReadyRequestKey;
-      emitMapRuntimeWriteSpan({
-        label: 'marker_reveal_started_signal',
-        requestKey: visualReadyRequestKey,
-        markerRevealCommitId,
-      });
-      onMarkerRevealStarted?.({
-        requestKey: visualReadyRequestKey,
-        markerRevealCommitId,
-        startedAtMs: getNowMs(),
-      });
-    }
-    emitVisualReadyGateReason(null);
-    if (shouldEmitMarkerRevealSettled && !markerRevealSettledAlreadySignaled) {
-      if (hasPendingPromotions) {
-        emitVisualReadyGateReason('awaiting_marker_reveal_settle');
-      } else {
-      markerRevealSettledSignaledRequestKeyRef.current = visualReadyRequestKey;
-      emitMapRuntimeWriteSpan({
-        label: 'marker_reveal_settled_signal',
-        requestKey: visualReadyRequestKey,
-        markerRevealCommitId,
-      });
-      onMarkerRevealSettled?.({
-        requestKey: visualReadyRequestKey,
-        markerRevealCommitId,
-        settledAtMs: getNowMs(),
-      });
-      }
-    }
-    if (shouldEmitVisualReady && !visualReadyAlreadySignaled) {
-      visualReadySignaledRequestKeyRef.current = visualReadyRequestKey;
-      emitMapRuntimeWriteSpan({
-        label: 'visual_ready_signal',
-        requestKey: visualReadyRequestKey,
-        markerRevealCommitId,
-      });
-      onVisualReady?.(visualReadyRequestKey);
-    }
+    revealSettledBlockSigRef.current = null;
+    markerRevealSettledSignaledRequestKeyRef.current = revealSignalKey;
+    logRevealDeadlockDiag('revealSettled:emit', {
+      revealSignalKey,
+      batchPhase,
+      hasPendingPromotions,
+      hasStartedPromotions,
+    });
+    emitMapRuntimeWriteSpan({
+      label: 'marker_reveal_settled_signal',
+      requestKey: revealSignalKey,
+      markerRevealCommitId: null,
+    });
+    onMarkerRevealSettled?.({
+      requestKey: revealSignalKey,
+      markerRevealCommitId: null,
+      settledAtMs: getNowMs(),
+    });
   }, [
     emitMapRuntimeWriteSpan,
-    dotRestaurantFeatures?.features?.length,
-    batchOpacity,
-    batchRevealActive,
     hasPendingPromotions,
     hasStartedPromotions,
-    hasNonZeroPinOpacityForRevealStart,
-    isAwaitingInitialRevealStart,
-    markerRevealCommitId,
-    onMarkerRevealStarted,
-    onVisualReady,
     onMarkerRevealSettled,
-    pinsRenderKey,
-    shouldRenderLabels,
-    requireMarkerVisualsForVisualReady,
-    shouldSignalVisualReady,
-    sortedRestaurantMarkers.length,
-    visualReadyRequestKey,
+    getNowMs,
   ]);
 
   const handleMapLoaded = React.useCallback(() => {
@@ -4010,6 +4740,12 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }, [onMapLoaded]);
 
   const remountPinLayerTree = React.useCallback(() => {
+    if (isBatchTransitionActive) {
+      // Defer pin-tree remount while batch transition is active so we don't
+      // reset native transition state mid-fade (which can cause snapping).
+      pendingPinLayerRemountRef.current = true;
+      return;
+    }
     const nowMs = Date.now();
     if (nowMs - pinLayerRecoveryLastAttemptAtRef.current < 400) {
       return;
@@ -4018,7 +4754,20 @@ const SearchMap: React.FC<SearchMapProps> = ({
     const remountStartedAtMs = getNowMs();
     setPinLayerTreeEpoch((value) => value + 1);
     recordRuntimeAttribution(getNowMs() - remountStartedAtMs);
-  }, [recordRuntimeAttribution, styleURL]);
+  }, [
+    getNowMs,
+    isBatchTransitionActive,
+    recordRuntimeAttribution,
+    styleURL,
+  ]);
+
+  React.useEffect(() => {
+    if (isBatchTransitionActive || !pendingPinLayerRemountRef.current) {
+      return;
+    }
+    pendingPinLayerRemountRef.current = false;
+    remountPinLayerTree();
+  }, [isBatchTransitionActive, remountPinLayerTree]);
 
   const handleMapLoadedStyle = React.useCallback(() => {
     handleMapLoaded();
@@ -4101,6 +4850,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         onDidFinishLoadingStyle={handleMapLoadedStyle}
         onDidFinishLoadingMap={handleMapLoadedMap}
         onDidFinishRenderingFrame={handleDidFinishRenderingFrame}
+        onDidFinishRenderingFrameFully={handleDidFinishRenderingFrameFully}
         onMapLoadingError={handleMapLoadError}
       >
         <MapboxGL.Images
@@ -4198,14 +4948,69 @@ const SearchMap: React.FC<SearchMapProps> = ({
             key={`style-pins-source-${pinLayerTreeEpoch}`}
             id={STYLE_PINS_SOURCE_ID}
             shape={
-              effectivePinFeatures.features.length > 0
-                ? effectivePinFeatures
+              steadyPinFeatures.features.length > 0
+                ? steadyPinFeatures
                 : EMPTY_POINT_FEATURES
             }
           >
             {stylePinLayerStack}
           </MapboxGL.ShapeSource>
         ) : null}
+        {USE_STYLE_LAYER_PINS && !shouldDisableMarkers
+          ? transitionPinLayerTrees.map((laneTree) => (
+              <MapboxGL.ShapeSource
+                key={`style-pins-transition-source-${laneTree.lane.laneId}`}
+                id={`restaurant-style-pins-transition-source-${laneTree.lane.laneId}`}
+                shape={
+                  laneTree.lane.pinFeatures.features.length > 0
+                    ? laneTree.lane.pinFeatures
+                    : EMPTY_POINT_FEATURES
+                }
+              >
+                {laneTree.slots.flatMap((slotIndex) => {
+                  const lodSlotFilter = [
+                    '==',
+                    ['coalesce', ['get', 'lodZ'], -1],
+                    slotIndex,
+                  ] as const;
+                  return [
+                    <MapboxGL.SymbolLayer
+                      key={`transition-${laneTree.lane.laneId}-shadow-slot-${slotIndex}`}
+                      id={`restaurant-style-pins-transition-${laneTree.lane.laneId}-shadow-slot-${slotIndex}`}
+                      slot="top"
+                      belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
+                      style={laneTree.laneShadowStyle}
+                      filter={lodSlotFilter}
+                    />,
+                    <MapboxGL.SymbolLayer
+                      key={`transition-${laneTree.lane.laneId}-base-slot-${slotIndex}`}
+                      id={`restaurant-style-pins-transition-${laneTree.lane.laneId}-base-slot-${slotIndex}`}
+                      slot="top"
+                      belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
+                      style={laneTree.laneOutlineStyle}
+                      filter={lodSlotFilter}
+                    />,
+                    <MapboxGL.SymbolLayer
+                      key={`transition-${laneTree.lane.laneId}-fill-slot-${slotIndex}`}
+                      id={`restaurant-style-pins-transition-${laneTree.lane.laneId}-fill-slot-${slotIndex}`}
+                      slot="top"
+                      belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
+                      style={laneTree.laneFillStyle}
+                      filter={lodSlotFilter}
+                    />,
+                    <MapboxGL.SymbolLayer
+                      key={`transition-${laneTree.lane.laneId}-rank-slot-${slotIndex}`}
+                      id={`restaurant-style-pins-transition-${laneTree.lane.laneId}-rank-slot-${slotIndex}`}
+                      slot="top"
+                      belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
+                      style={laneTree.laneRankStyle}
+                      filter={lodSlotFilter}
+                    />,
+                  ];
+                })}
+              </MapboxGL.ShapeSource>
+            ))
+          : null}
         {USE_STYLE_LAYER_PINS && !shouldDisableMarkers ? (
           <MapboxGL.ShapeSource
             key={`pin-interaction-source-${pinLayerTreeEpoch}`}
@@ -4445,19 +5250,10 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
   if (prev.onMarkerPress !== next.onMarkerPress) {
     return false;
   }
-  if (prev.onVisualReady !== next.onVisualReady) {
-    return false;
-  }
   if (prev.onMarkerRevealStarted !== next.onMarkerRevealStarted) {
     return false;
   }
   if (prev.onMarkerRevealSettled !== next.onMarkerRevealSettled) {
-    return false;
-  }
-  if (prev.shouldSignalVisualReady !== next.shouldSignalVisualReady) {
-    return false;
-  }
-  if (prev.requireMarkerVisualsForVisualReady !== next.requireMarkerVisualsForVisualReady) {
     return false;
   }
   if (prev.searchRuntimeBus !== next.searchRuntimeBus) {

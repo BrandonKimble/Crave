@@ -278,6 +278,8 @@ export const useQueryMutationOrchestrator = (
   );
 
   const toggleOpenNow = React.useCallback(() => {
+    const t0 = Date.now();
+    logger.info('[TOGGLE-DIAG] openNow:pressed', { ts: t0 });
     setIsPriceSelectorVisible(false);
     setIsRankSelectorVisible(false);
     clearPendingTabSwitchDraft();
@@ -287,9 +289,11 @@ export const useQueryMutationOrchestrator = (
       openNow: nextValue,
     });
     if (!canRerunForCurrentQuery()) {
+      logger.info('[TOGGLE-DIAG] openNow:noRerun', { elapsed: Date.now() - t0 });
       setOpenNow(nextValue);
       return;
     }
+    logger.info('[TOGGLE-DIAG] openNow:scheduling', { elapsed: Date.now() - t0 });
     scheduleToggleCommit(() => {
       setOpenNow(nextValue);
       fireRerunActiveSearch({

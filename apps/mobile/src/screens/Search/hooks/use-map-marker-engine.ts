@@ -18,8 +18,6 @@ import type { ResolvedRestaurantMapLocation } from './use-restaurant-location-se
 
 const EMPTY_RESTAURANTS: RestaurantResult[] = [];
 const EMPTY_DISHES: FoodResult[] = [];
-const EMPTY_SORTED_RESTAURANT_MARKERS: Array<Feature<Point, RestaurantFeatureProperties>> = [];
-
 // ---------------------------------------------------------------------------
 // Stable-key fingerprinting (mirrored from index.tsx)
 // ---------------------------------------------------------------------------
@@ -103,7 +101,6 @@ type UseMapMarkerEngineResult = {
   canonicalRestaurantRankById: Map<string, number>;
   restaurantsById: Map<string, RestaurantResult>;
   restaurants: RestaurantResult[];
-  isVisualSyncPending: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -163,19 +160,6 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
   );
   const mapPresentationMode = runtimeMapPresentationInput.mode;
   const mapPresentationActiveTab = runtimeMapPresentationInput.mapPresentationActiveTab;
-
-  const isVisualSyncPending = useSearchRuntimeBusSelector(
-    searchRuntimeBus,
-    (state) => state.isVisualSyncPending,
-    Object.is,
-    ['isVisualSyncPending'] as const
-  );
-  const isFilterTogglePending = useSearchRuntimeBusSelector(
-    searchRuntimeBus,
-    (state) => state.isFilterTogglePending,
-    Object.is,
-    ['isFilterTogglePending'] as const
-  );
 
   // Pre-computed marker pipeline (populated by response handler)
   const precomputedMarkerData = useSearchRuntimeBusSelector(
@@ -623,17 +607,14 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
   }, [buildMarkerKey, lodSortedRestaurantMarkers]);
 
   // -------------------------------------------------------------------------
-  // Marker hold — freeze visible markers during loading / visual sync
+  // Visible markers — always computed from current data.
+  // The PTC's loadingMode (frost/cover) controls what the user sees;
+  // the marker engine always keeps markers up-to-date so the reveal
+  // chain can complete without gating on interaction state.
   // -------------------------------------------------------------------------
 
-  const shouldSuppressMarkersForToggleInteraction = isFilterTogglePending;
-
-  const visibleSortedRestaurantMarkers = shouldSuppressMarkersForToggleInteraction
-    ? EMPTY_SORTED_RESTAURANT_MARKERS
-    : lodSortedRestaurantMarkers;
-  const visibleDotRestaurantFeatures = shouldSuppressMarkersForToggleInteraction
-    ? null
-    : dotRestaurantFeatures;
+  const visibleSortedRestaurantMarkers = lodSortedRestaurantMarkers;
+  const visibleDotRestaurantFeatures = dotRestaurantFeatures;
 
   const visibleRestaurantFeatures = React.useMemo<
     FeatureCollection<Point, RestaurantFeatureProperties>
@@ -645,9 +626,7 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
     [visibleSortedRestaurantMarkers]
   );
 
-  const visiblePinsRenderKey = shouldSuppressMarkersForToggleInteraction
-    ? '0:empty:empty:0'
-    : pinsRenderKey;
+  const visiblePinsRenderKey = pinsRenderKey;
 
   const visibleDotRenderKey = React.useMemo(() => {
     const dotFeatures = visibleDotRestaurantFeatures?.features ?? [];
@@ -686,6 +665,5 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
     canonicalRestaurantRankById,
     restaurantsById,
     restaurants: mapMarkerRestaurants,
-    isVisualSyncPending,
   };
 };

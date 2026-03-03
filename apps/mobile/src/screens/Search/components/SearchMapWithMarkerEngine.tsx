@@ -81,7 +81,6 @@ type SearchMapWithMarkerEngineProps = {
   onCameraChanged: (state: MapboxMapState) => void;
   onMapIdle: (state: MapboxMapState) => void;
   onMapLoaded: () => void;
-  onVisualReady?: (requestKey: string) => void;
   onMarkerRevealStarted?: (payload: {
     requestKey: string;
     markerRevealCommitId: number | null;
@@ -152,7 +151,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     onCameraChanged,
     onMapIdle,
     onMapLoaded,
-    onVisualReady,
     onMarkerRevealStarted,
     onMarkerRevealSettled,
     isMapStyleReady,
@@ -205,7 +203,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     lodPinnedMarkersRef,
     recomputeLodPinnedMarkers,
     restaurants,
-    isVisualSyncPending,
   } = useMapMarkerEngine({
     searchRuntimeBus,
     scoreMode,
@@ -285,26 +282,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
   );
 
   // -------------------------------------------------------------------------
-  // Visual sync state — read from bus for freeze gate + signal props
-  // -------------------------------------------------------------------------
-
-  const resultsVisualSyncCandidate = useSearchRuntimeBusSelector(
-    searchRuntimeBus,
-    (state) => state.visualSyncCandidateRequestKey,
-    Object.is,
-    ['visualSyncCandidateRequestKey'] as const
-  );
-
-  const shouldSignalMapVisualReady =
-    isVisualSyncPending &&
-    resultsVisualSyncCandidate != null &&
-    !isShortcutCoverageLoading;
-  const hasRenderableMarkerVisuals =
-    visibleSortedRestaurantMarkers.length > 0 ||
-    (visibleDotRestaurantFeatures?.features?.length ?? 0) > 0;
-  const shouldRequireMarkerVisualsForVisualReady = hasRenderableMarkerVisuals;
-
-  // -------------------------------------------------------------------------
   // Map tree props
   // -------------------------------------------------------------------------
 
@@ -314,9 +291,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     dotRestaurantFeatures: visibleDotRestaurantFeatures,
     markersRenderKey,
     pinsRenderKey: visiblePinsRenderKey,
-    visualSyncCandidateKey: resultsVisualSyncCandidate,
-    shouldSignalVisualReady: shouldSignalMapVisualReady,
-    requireMarkerVisualsForVisualReady: shouldRequireMarkerVisualsForVisualReady,
     restaurantFeatures: visibleRestaurantFeatures,
   };
   const mapTreePropsForRender = nextMapTreeProps;
@@ -362,7 +336,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
       onMapIdle={onMapIdle}
       onMapLoaded={onMapLoaded}
       onMarkerPress={stableHandleMarkerPress}
-      onVisualReady={onVisualReady}
       onMarkerRevealStarted={onMarkerRevealStarted}
       onMarkerRevealSettled={onMarkerRevealSettled}
       selectedRestaurantId={mapTreePropsForRender.selectedRestaurantId}
@@ -370,8 +343,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
       dotRestaurantFeatures={mapTreePropsForRender.dotRestaurantFeatures}
       markersRenderKey={mapTreePropsForRender.markersRenderKey}
       pinsRenderKey={mapTreePropsForRender.pinsRenderKey}
-      shouldSignalVisualReady={mapTreePropsForRender.shouldSignalVisualReady}
-      requireMarkerVisualsForVisualReady={mapTreePropsForRender.requireMarkerVisualsForVisualReady}
       buildMarkerKey={buildMarkerKey}
       restaurantFeatures={mapTreePropsForRender.restaurantFeatures}
       restaurantLabelStyle={restaurantLabelStyle}

@@ -31,6 +31,7 @@ type SubmitShortcutSearchRef = React.MutableRefObject<
     scoreMode: NaturalSearchRequest['scoreMode'];
   }) => Promise<void>
 >;
+type ToggleOpenNowRef = React.MutableRefObject<() => void>;
 
 type SearchInteractionState = {
   isInteracting: boolean;
@@ -71,6 +72,7 @@ type UseShortcutHarnessObserverArgs = {
   roundPerfValue: (value: number) => number;
   searchSessionController: SearchSessionController;
   submitShortcutSearchRef: SubmitShortcutSearchRef;
+  toggleOpenNowRef: ToggleOpenNowRef;
   scoreMode: NaturalSearchRequest['scoreMode'];
   setPreferredScoreMode: (scoreMode: NonNullable<NaturalSearchRequest['scoreMode']>) => void;
   mapQueryBudget: MapQueryBudgetLike | null;
@@ -121,6 +123,7 @@ export const useShortcutHarnessObserver = (
     roundPerfValue,
     searchSessionController,
     submitShortcutSearchRef,
+    toggleOpenNowRef,
     scoreMode,
     setPreferredScoreMode,
     mapQueryBudget,
@@ -167,20 +170,25 @@ export const useShortcutHarnessObserver = (
     ] as const
   );
 
-  const { isVisualSyncPending, shouldHydrateResultsForRender } = useSearchRuntimeBusSelector(
+  const { isMapRevealPending, shouldHydrateResultsForRender } = useSearchRuntimeBusSelector(
     searchRuntimeBus!,
     (state) => ({
-      isVisualSyncPending: state.isVisualSyncPending,
+      isMapRevealPending: state.presentationMapRevealRequestKey != null,
       shouldHydrateResultsForRender: state.shouldHydrateResultsForRender,
     }),
     (left, right) =>
-      left.isVisualSyncPending === right.isVisualSyncPending &&
+      left.isMapRevealPending === right.isMapRevealPending &&
       left.shouldHydrateResultsForRender === right.shouldHydrateResultsForRender,
-    ['isVisualSyncPending', 'shouldHydrateResultsForRender'] as const
+    ['presentationMapRevealRequestKey', 'shouldHydrateResultsForRender'] as const
   );
 
-  const isShortcutPerfHarnessScenario =
+  const isShortcutLoopScenario =
     perfHarnessConfig.enabled && perfHarnessConfig.scenario === 'search_shortcut_loop';
+  const isShortcutOpenNowRoundtripScenario =
+    perfHarnessConfig.enabled &&
+    perfHarnessConfig.scenario === 'search_shortcut_loop_open_now_roundtrip';
+  const isShortcutPerfHarnessScenario =
+    isShortcutLoopScenario || isShortcutOpenNowRoundtripScenario;
   const shortcutHarnessRunId = perfHarnessConfig.runId ?? 'shortcut-loop-no-run-id';
 
   const emitSearchPerfEvent = React.useCallback(
@@ -267,6 +275,11 @@ export const useShortcutHarnessObserver = (
     observedLoading: boolean;
     responseObserved: boolean;
     runStartRequestKey: string | null;
+    openNowRoundtripPhase:
+      | 'idle'
+      | 'await_initial_settle'
+      | 'await_open_now_on_settle'
+      | 'await_open_now_off_settle';
     inProgress: boolean;
     launchHandle: ReturnType<typeof setTimeout> | null;
     cooldownHandle: ReturnType<typeof setTimeout> | null;
@@ -286,6 +299,7 @@ export const useShortcutHarnessObserver = (
     observedLoading: false,
     responseObserved: false,
     runStartRequestKey: null,
+    openNowRoundtripPhase: 'idle',
     inProgress: false,
     launchHandle: null,
     cooldownHandle: null,
@@ -306,7 +320,7 @@ export const useShortcutHarnessObserver = (
 
   const shortcutHarnessSnapshotRef = React.useRef<{
     isSearchLoading: boolean;
-    isVisualSyncPending: boolean;
+    isMapRevealPending: boolean;
     finalStage: string | null;
     finalVisibleCount: number;
     finalSectionedCount: number;
@@ -315,7 +329,7 @@ export const useShortcutHarnessObserver = (
     finalRequestKey: string | null;
   }>({
     isSearchLoading,
-    isVisualSyncPending,
+    isMapRevealPending,
     finalStage: null,
     finalVisibleCount: 0,
     finalSectionedCount: 0,
@@ -328,7 +342,7 @@ export const useShortcutHarnessObserver = (
     searchMode,
     isSearchLoading,
     isLoadingMore,
-    isVisualSyncPending,
+    isMapRevealPending,
     isShortcutCoverageLoading,
     shouldHydrateResultsForRender,
     isRunOneHandoffActive,
@@ -354,12 +368,12 @@ export const useShortcutHarnessObserver = (
       shortcutShadowSettledForStage &&
       !inputs.isLoadingMore &&
       !inputs.isSearchLoading &&
-      !inputs.isVisualSyncPending &&
+      !inputs.isMapRevealPending &&
       !inputs.shouldHydrateResultsForRender
     ) {
       return 'results_list_ramp';
     }
-    if (inputs.isVisualSyncPending) {
+    if (inputs.isMapRevealPending) {
       return 'visual_sync_state';
     }
     if (inputs.shouldHydrateResultsForRender) {
@@ -393,7 +407,7 @@ export const useShortcutHarnessObserver = (
       searchMode,
       isSearchLoading,
       isLoadingMore,
-      isVisualSyncPending,
+      isMapRevealPending,
       isShortcutCoverageLoading,
       shouldHydrateResultsForRender,
       isRunOneHandoffActive,
@@ -407,7 +421,7 @@ export const useShortcutHarnessObserver = (
     isLoadingMore,
     isSearchLoading,
     isShortcutCoverageLoading,
-    isVisualSyncPending,
+    isMapRevealPending,
     results,
     searchMode,
     shouldHydrateResultsForRender,
@@ -420,7 +434,7 @@ export const useShortcutHarnessObserver = (
     const finalVisibleCount = (results?.dishes?.length ?? 0) + (results?.restaurants?.length ?? 0);
     shortcutHarnessSnapshotRef.current = {
       isSearchLoading,
-      isVisualSyncPending,
+      isMapRevealPending,
       finalStage: shortcutPerfTraceRef.current.stage,
       finalVisibleCount,
       finalSectionedCount: finalVisibleCount,
@@ -430,7 +444,7 @@ export const useShortcutHarnessObserver = (
     };
   }, [
     isSearchLoading,
-    isVisualSyncPending,
+    isMapRevealPending,
     results?.dishes?.length,
     results?.restaurants?.length,
     resultsRequestKey,
@@ -586,6 +600,9 @@ export const useShortcutHarnessObserver = (
       lifecycle.observedLoading = false;
       lifecycle.responseObserved = false;
       lifecycle.runStartRequestKey = shortcutHarnessSnapshotRef.current.finalRequestKey;
+      lifecycle.openNowRoundtripPhase = isShortcutOpenNowRoundtripScenario
+        ? 'await_initial_settle'
+        : 'idle';
       lifecycle.inProgress = true;
       shortcutProfilerSpanBufferRef.current = [];
       mapQueryBudget?.resetRun();
@@ -707,6 +724,7 @@ export const useShortcutHarnessObserver = (
       lifecycle.observedLoading = false;
       lifecycle.responseObserved = false;
       lifecycle.runStartRequestKey = null;
+      lifecycle.openNowRoundtripPhase = 'idle';
       schedulerPressureBaselineRef.current = null;
       emitSearchPerfEvent('Harness', {
         event: 'shortcut_loop_run_complete',
@@ -717,7 +735,7 @@ export const useShortcutHarnessObserver = (
         settleStatus,
         settleWaitMs: roundPerfValue(durationMs),
         finalStage: snapshot.finalStage,
-        finalVisualSyncPending: snapshot.isVisualSyncPending,
+        finalVisualSyncPending: snapshot.isMapRevealPending,
         finalVisibleCount: snapshot.finalVisibleCount,
         finalSectionedCount: snapshot.finalSectionedCount,
         finalVisiblePinCount: snapshot.finalVisiblePinCount,
@@ -802,6 +820,44 @@ export const useShortcutHarnessObserver = (
         lifecycle.settleCandidateVisiblePinCount = 0;
         lifecycle.settleCandidateVisibleDotCount = 0;
       };
+      const advanceOpenNowRoundtripOrComplete = () => {
+        if (!isShortcutOpenNowRoundtripScenario) {
+          clearSettleCheckHandle();
+          completeShortcutHarnessRunRef.current('settled');
+          return;
+        }
+        if (lifecycle.openNowRoundtripPhase === 'await_initial_settle') {
+          lifecycle.openNowRoundtripPhase = 'await_open_now_on_settle';
+          emitSearchPerfEvent('Harness', {
+            event: 'shortcut_loop_open_now_toggle',
+            harnessRunId: shortcutHarnessRunId,
+            nowMs: roundPerfValue(getPerfNow()),
+            runNumber: lifecycle.runNumber,
+            nextOpenNowState: true,
+          });
+          toggleOpenNowRef.current();
+          resetSettleCandidate();
+          scheduleSettleRetry();
+          return;
+        }
+        if (lifecycle.openNowRoundtripPhase === 'await_open_now_on_settle') {
+          lifecycle.openNowRoundtripPhase = 'await_open_now_off_settle';
+          emitSearchPerfEvent('Harness', {
+            event: 'shortcut_loop_open_now_toggle',
+            harnessRunId: shortcutHarnessRunId,
+            nowMs: roundPerfValue(getPerfNow()),
+            runNumber: lifecycle.runNumber,
+            nextOpenNowState: false,
+          });
+          toggleOpenNowRef.current();
+          resetSettleCandidate();
+          scheduleSettleRetry();
+          return;
+        }
+        lifecycle.openNowRoundtripPhase = 'idle';
+        clearSettleCheckHandle();
+        completeShortcutHarnessRunRef.current('settled_open_now_roundtrip');
+      };
       const isShadowConverged = (): boolean => {
         const usesShadowConvergenceBoundary =
           perfHarnessConfig.shortcutLoop.settleBoundaryPolicy ===
@@ -875,7 +931,7 @@ export const useShortcutHarnessObserver = (
         if (!shadowConverged && inputs.searchMode === 'shortcut' && inputs.isRunOneHandoffActive) {
           return true;
         }
-        if (inputs.isVisualSyncPending || shouldHydrateResultsForRenderRuntime) {
+        if (inputs.isMapRevealPending || shouldHydrateResultsForRenderRuntime) {
           return true;
         }
         if (!shadowConverged && shortcutPerfTraceRef.current.stage !== 'results_list_ramp') {
@@ -933,7 +989,7 @@ export const useShortcutHarnessObserver = (
             scheduleSettleCheck();
             return;
           }
-          completeShortcutHarnessRunRef.current('settled');
+          advanceOpenNowRoundtripOrComplete();
         }, settleQuietPeriodMs);
       };
       const shadowConverged = isShadowConverged();
@@ -980,18 +1036,22 @@ export const useShortcutHarnessObserver = (
         scheduleSettleCheck();
         return;
       }
-      clearSettleCheckHandle();
-      completeShortcutHarnessRunRef.current('settled');
+      advanceOpenNowRoundtripOrComplete();
     },
     [
+      emitSearchPerfEvent,
       emitHarnessMechanismEvent,
       getPerfNow,
+      isShortcutOpenNowRoundtripScenario,
       isShortcutPerfHarnessScenario,
+      roundPerfValue,
       runtimeWorkSchedulerRef,
       searchRuntimeBus,
       searchInteractionRef,
       searchSessionController,
       settleQuietPeriodMs,
+      shortcutHarnessRunId,
+      toggleOpenNowRef,
     ]
   );
   evaluateShortcutHarnessSettleBoundaryRef.current = evaluateShortcutHarnessSettleBoundary;
@@ -1037,6 +1097,7 @@ export const useShortcutHarnessObserver = (
     lifecycle.observedLoading = false;
     lifecycle.responseObserved = false;
     lifecycle.runStartRequestKey = null;
+    lifecycle.openNowRoundtripPhase = 'idle';
     lifecycle.inProgress = false;
     const now = getPerfNow();
     emitSearchPerfEvent('Harness', {
@@ -1080,6 +1141,7 @@ export const useShortcutHarnessObserver = (
         lifecycle.observedLoading = false;
         lifecycle.responseObserved = false;
         lifecycle.runStartRequestKey = null;
+        lifecycle.openNowRoundtripPhase = 'idle';
       }
     };
   }, [

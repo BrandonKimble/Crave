@@ -254,7 +254,6 @@ const RESTAURANT_FOCUS_ZOOM_EPSILON = 0.01;
 const PROFILE_TRANSITION_LOCK_MS = 750;
 const FIT_BOUNDS_SYNC_BUFFER_MS = 160;
 const RESULTS_WASH_FADE_MS = 220;
-const RESULTS_VISUAL_READY_FALLBACK_MS = 1200;
 const normalizeProfilerContributorId = (id: string): string => {
   const normalized = id
     .trim()
@@ -830,14 +829,6 @@ const SearchScreen: React.FC = () => {
   );
   const [restaurantOnlyId, setRestaurantOnlyId] = React.useState<string | null>(null);
   const isSearchRequestLoadingRef = React.useRef(false);
-  const visualReadyWriteSourceRef = React.useRef<
-    | 'map_visual_ready'
-    | 'marker_reveal_started'
-    | 'fallback_timeout'
-    | 'marker_reveal_settled_raf'
-    | 'unknown'
-  >('unknown');
-  const visualReadyFallbackTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const setIsFilterTogglePending = React.useCallback<React.Dispatch<React.SetStateAction<boolean>>>(
     (nextValue) => {
       const runtimeState = searchRuntimeBus.getState();
@@ -865,17 +856,18 @@ const SearchScreen: React.FC = () => {
   const [isAutocompleteSuppressed, setIsAutocompleteSuppressed] = React.useState(false);
   const { beginSubmitChromePriming } = useSearchSubmitChromePrime(searchRuntimeBus);
   useResponseFrameFreeze(resultsRequestKey, searchRuntimeBus);
-  const visualSyncCandidateWriteSourceRef = React.useRef<
-    'page_one_results_commit' | 'toggle_interaction_commit' | 'unknown'
-  >('unknown');
-  const markerRevealCommitSeqRef = React.useRef(0);
   const presentationTransitionControllerRef = React.useRef<ReturnType<
     typeof createPresentationTransitionController
   > | null>(null);
+  const onIntentCompleteRef = React.useRef<((intentId: string) => void) | null>(null);
   if (!presentationTransitionControllerRef.current) {
     presentationTransitionControllerRef.current = createPresentationTransitionController({
       publish: (patch) => {
         searchRuntimeBus.publish(patch);
+      },
+      log: () => {},
+      onIntentComplete: (intentId) => {
+        onIntentCompleteRef.current?.(intentId);
       },
     });
   }
@@ -888,44 +880,100 @@ const SearchScreen: React.FC = () => {
     },
     [searchRuntimeBus]
   );
+  // Deferred dismiss handle for feedback-first fast path.
+  const pendingArmDismissTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearPendingDismiss = React.useCallback(
+    (intentId?: string, flushIfMatching?: boolean) => {
+      if (pendingArmDismissTimeoutRef.current != null) {
+        clearTimeout(pendingArmDismissTimeoutRef.current);
+        pendingArmDismissTimeoutRef.current = null;
+      }
+      const controller = presentationTransitionControllerRef.current;
+      if (!controller) {
+        return;
+      }
+      if (
+        flushIfMatching &&
+        intentId != null &&
+        controller.pendingFeedbackIntentId != null &&
+        controller.pendingFeedbackIntentId === intentId
+      ) {
+        controller.armDismiss(intentId);
+        return;
+      }
+      controller.clearPendingDismissIntent(intentId);
+    },
+    []
+  );
   const handleToggleInteractionLifecycle = React.useCallback(
     (event: ToggleInteractionLifecycleEvent) => {
       const transitionController = presentationTransitionControllerRef.current!;
+      logger.info('[TOGGLE-DIAG] lifecycle', {
+        type: event.type,
+        intentId: event.intentId,
+        kind: event.kind,
+        ts: Date.now(),
+      });
       if (event.type === 'started') {
+        clearPendingDismiss();
+        transitionController.startFeedback('interaction_frost');
+        transitionController.pendingFeedbackIntentId = event.intentId;
+        logger.info('[TOGGLE-DIAG] lifecycle:feedbackStarted', { ts: Date.now() });
+        const capturedIntentId = event.intentId;
+        pendingArmDismissTimeoutRef.current = setTimeout(() => {
+          pendingArmDismissTimeoutRef.current = null;
+          logger.info('[TOGGLE-DIAG] lifecycle:armDismissTick', {
+            intentId: capturedIntentId,
+            ts: Date.now(),
+          });
+          transitionController.armDismiss(capturedIntentId);
+        }, 0);
+        return;
+      }
+      if (event.type === 'settled') {
+        // Ensure deferred dismiss cannot remain pending beyond settle.
+        clearPendingDismiss(event.intentId, true);
+        // Now start the data pipeline — the runner has committed by the time
+        // readiness signals flow through React renders.
         transitionController.beginIntent({
           intentId: event.intentId,
           kind: event.kind,
           loadingMode: 'interaction_frost',
-          phase: 'settling',
-          settleMs: Math.max(1, event.settleDeadlineMs - Date.now()),
           requiresCoverage: resolveCoverageRequirement(event.kind),
         });
-        return;
-      }
-      if (event.type === 'settled') {
-        transitionController.markSettlingComplete(event.intentId);
+        logger.info('[TOGGLE-DIAG] lifecycle:intentBegan', { ts: Date.now() });
         return;
       }
       if (event.type === 'cancelled') {
-        transitionController.cancelIntent(event.intentId);
+        clearPendingDismiss(event.intentId);
+        // No intent exists yet — just exit frost.
+        transitionController.exitTransitionMode();
         return;
       }
+      // 'finalized'
+      clearPendingDismiss(event.intentId);
       if (!event.awaitedVisualSync) {
         transitionController.cancelIntent(event.intentId);
       }
     },
-    [resolveCoverageRequirement]
+    [clearPendingDismiss, resolveCoverageRequirement]
+  );
+  React.useEffect(
+    () => () => {
+      clearPendingDismiss();
+    },
+    [clearPendingDismiss]
   );
   const {
     scheduleToggleCommit,
-    registerVisualCandidate,
-    resolveVisualReady,
+    notifyIntentComplete,
     cancelToggleInteraction,
   } = useToggleInteractionCoordinator({
     searchRuntimeBus,
     setIsFilterTogglePending,
     onLifecycleEvent: handleToggleInteractionLifecycle,
   });
+  onIntentCompleteRef.current = notifyIntentComplete;
   const runOneCommitSpanPressureByOperationRef = React.useRef<Map<string, number>>(new Map());
   const runOneStallPressureByOperationRef = React.useRef<Map<string, number>>(new Map());
   // Freeze gate composite selector — combines handoff freeze booleans + response
@@ -1106,46 +1154,8 @@ const SearchScreen: React.FC = () => {
     });
   }, [searchRuntimeBus]);
   const isSearchLoading = isSearchRequestLoadingRef.current;
-  const publishVisualSyncCandidate = React.useCallback(
-    (
-      source: 'page_one_results_commit' | 'toggle_interaction_commit',
-      requestKeyOverride?: string | null
-    ) => {
-      const runtimeState = searchRuntimeBus.getState();
-      markerRevealCommitSeqRef.current += 1;
-      const commitId = markerRevealCommitSeqRef.current;
-      const nextRequestKey =
-        requestKeyOverride && requestKeyOverride.length > 0
-          ? requestKeyOverride
-          : `visual-commit:${commitId}`;
-      visualSyncCandidateWriteSourceRef.current = source;
-      searchRuntimeBus.publish({
-        markerRevealCommitId: commitId,
-        visualSyncCandidateRequestKey: nextRequestKey,
-        isVisualSyncPending: runtimeState.visualReadyRequestKey !== nextRequestKey,
-      });
-      registerVisualCandidate(nextRequestKey);
-      return nextRequestKey;
-    },
-    [registerVisualCandidate, searchRuntimeBus]
-  );
-  const requestMapRevealForIntent = React.useCallback(
-    (
-      intentId: string,
-      source: 'page_one_results_commit' | 'toggle_interaction_commit' = 'page_one_results_commit'
-    ): string | null => {
-      const transitionController = presentationTransitionControllerRef.current!;
-      if (!transitionController.shouldRequestMapReveal(intentId)) {
-        return null;
-      }
-      const requestKey = publishVisualSyncCandidate(source, intentId);
-      transitionController.markMapRevealRequested(intentId, requestKey);
-      return requestKey;
-    },
-    [publishVisualSyncCandidate]
-  );
-  const syncTransitionReadiness = React.useCallback(
-    (source: 'page_one_results_commit' | 'toggle_interaction_commit' = 'page_one_results_commit') => {
+  const pushBusReadinessSignals = React.useCallback(
+    () => {
       const transitionController = presentationTransitionControllerRef.current!;
       const intentId = transitionController.getActiveIntentId();
       if (!intentId) {
@@ -1158,42 +1168,8 @@ const SearchScreen: React.FC = () => {
       const coverageReady =
         runtimeState.searchMode === 'shortcut' ? !runtimeState.isShortcutCoverageLoading : true;
       transitionController.markCoverageReady(intentId, coverageReady);
-      requestMapRevealForIntent(intentId, source);
     },
-    [requestMapRevealForIntent, searchRuntimeBus]
-  );
-  const markVisualRequestReady = React.useCallback(
-    (
-      requestKey: string | null,
-      source:
-        | 'map_visual_ready'
-        | 'marker_reveal_started'
-        | 'fallback_timeout'
-        | 'marker_reveal_settled_raf'
-        | 'unknown' = 'unknown'
-    ) => {
-      visualReadyWriteSourceRef.current = source;
-      if (!requestKey) {
-        return;
-      }
-      const runtimeState = searchRuntimeBus.getState();
-      const nextPending =
-        runtimeState.visualSyncCandidateRequestKey != null &&
-        runtimeState.visualSyncCandidateRequestKey !== requestKey;
-      if (
-        runtimeState.visualReadyRequestKey === requestKey &&
-        runtimeState.isVisualSyncPending === nextPending
-      ) {
-        resolveVisualReady(requestKey);
-        return;
-      }
-      searchRuntimeBus.publish({
-        visualReadyRequestKey: requestKey,
-        isVisualSyncPending: nextPending,
-      });
-      resolveVisualReady(requestKey);
-    },
-    [resolveVisualReady, searchRuntimeBus]
+    [searchRuntimeBus]
   );
   const handlePageOneResultsCommitted = React.useCallback(() => {
     const transitionController = presentationTransitionControllerRef.current!;
@@ -1202,28 +1178,18 @@ const SearchScreen: React.FC = () => {
       return;
     }
     transitionController.markDataReady(intentId);
-    syncTransitionReadiness('page_one_results_commit');
-  }, [syncTransitionReadiness]);
+  }, []);
   React.useEffect(() => {
-    syncTransitionReadiness('page_one_results_commit');
+    pushBusReadinessSignals();
     return searchRuntimeBus.subscribe(() => {
-      syncTransitionReadiness('page_one_results_commit');
+      pushBusReadinessSignals();
     }, [
       'isResultsHydrationSettled',
       'shouldHydrateResultsForRender',
       'isShortcutCoverageLoading',
       'searchMode',
     ]);
-  }, [searchRuntimeBus, syncTransitionReadiness]);
-  React.useEffect(
-    () => () => {
-      if (visualReadyFallbackTimeoutRef.current) {
-        clearTimeout(visualReadyFallbackTimeoutRef.current);
-        visualReadyFallbackTimeoutRef.current = null;
-      }
-    },
-    []
-  );
+  }, [searchRuntimeBus, pushBusReadinessSignals]);
   const searchInteractionRef = React.useRef({
     isInteracting: false,
     isResultsSheetDragging: false,
@@ -3299,15 +3265,15 @@ const SearchScreen: React.FC = () => {
   const profilerShouldHydrateResultsForRenderRef = React.useRef(
     searchRuntimeBus.getState().shouldHydrateResultsForRender
   );
-  const profilerIsVisualSyncPendingRef = React.useRef(
-    searchRuntimeBus.getState().isVisualSyncPending
+  const profilerIsMapRevealPendingRef = React.useRef(
+    searchRuntimeBus.getState().presentationMapRevealRequestKey != null
   );
   React.useEffect(() => {
     const sync = () => {
-      profilerIsVisualSyncPendingRef.current = searchRuntimeBus.getState().isVisualSyncPending;
+      profilerIsMapRevealPendingRef.current = searchRuntimeBus.getState().presentationMapRevealRequestKey != null;
     };
     sync();
-    return searchRuntimeBus.subscribe(sync, ['isVisualSyncPending']);
+    return searchRuntimeBus.subscribe(sync, ['presentationMapRevealRequestKey']);
   }, [searchRuntimeBus]);
   React.useEffect(() => {
     const syncHydrationSignal = () => {
@@ -3357,7 +3323,7 @@ const SearchScreen: React.FC = () => {
         const commitSpanMs = Math.max(0, commitTime - startTime);
         const stageHint = profilerShouldHydrateResultsForRenderRef.current
           ? 'results_hydration_commit'
-          : profilerIsVisualSyncPendingRef.current
+          : profilerIsMapRevealPendingRef.current
           ? 'visual_sync_state'
           : isSearchRequestLoadingRef.current
           ? 'results_list_materialization'
@@ -3482,7 +3448,7 @@ const SearchScreen: React.FC = () => {
           const activeRunNumber = getActiveShortcutRunNumber();
           const stageHint = profilerShouldHydrateResultsForRenderRef.current
             ? 'results_hydration_commit'
-            : profilerIsVisualSyncPendingRef.current
+            : profilerIsMapRevealPendingRef.current
             ? 'visual_sync_state'
             : isSearchRequestLoadingRef.current
             ? 'results_list_materialization'
@@ -3640,6 +3606,7 @@ const SearchScreen: React.FC = () => {
       scoreMode: NaturalSearchRequest['scoreMode'];
     }) => Promise<void>
   >(async () => undefined);
+  const toggleOpenNowHarnessRef = React.useRef<() => void>(() => undefined);
   const {
     isShortcutPerfHarnessScenario,
     emitRuntimeMechanismEvent,
@@ -3651,6 +3618,7 @@ const SearchScreen: React.FC = () => {
     roundPerfValue,
     searchSessionController,
     submitShortcutSearchRef,
+    toggleOpenNowRef: toggleOpenNowHarnessRef,
     scoreMode,
     setPreferredScoreMode,
     mapQueryBudget,
@@ -3714,7 +3682,7 @@ const SearchScreen: React.FC = () => {
     resultsRequestKey: string | null;
     resultsPage: number | null;
     shouldHydrateResultsForRender: boolean;
-    isVisualSyncPending: boolean;
+    isMapRevealPending: boolean;
   } | null>(null);
   React.useEffect(() => {
     const activeRunNumber = getActiveShortcutRunNumber();
@@ -3733,7 +3701,7 @@ const SearchScreen: React.FC = () => {
       resultsRequestKey,
       resultsPage,
       shouldHydrateResultsForRender: searchRuntimeBus.getState().shouldHydrateResultsForRender,
-      isVisualSyncPending: searchRuntimeBus.getState().isVisualSyncPending,
+      isMapRevealPending: searchRuntimeBus.getState().presentationMapRevealRequestKey != null,
     };
     const previous = rootStateCommitSnapshotRef.current;
     rootStateCommitSnapshotRef.current = snapshot;
@@ -3773,79 +3741,48 @@ const SearchScreen: React.FC = () => {
     searchMode,
     searchRuntimeBus,
   ]);
-  // Imperative bus subscription: emit visual-sync telemetry without causing
-  // SearchScreen re-renders on every visual-sync field change.
+  // Imperative bus subscription: emit presentation-controller visual-sync telemetry
+  // without causing SearchScreen re-renders.
   React.useEffect(() => {
-    const initialBus = searchRuntimeBus.getState();
-    let previous = {
-      resultsVisualSyncCandidate: initialBus.visualSyncCandidateRequestKey,
-      visualReadyRequestKey: initialBus.visualReadyRequestKey,
-      markerRevealCommitId: initialBus.markerRevealCommitId,
-      isVisualSyncPending: initialBus.isVisualSyncPending,
-    };
+    let prevRevealKey = searchRuntimeBus.getState().presentationMapRevealRequestKey;
+    let prevDismissEpoch = searchRuntimeBus.getState().presentationDismissEpoch;
     const unsub = searchRuntimeBus.subscribe(() => {
       const activeRunNumber = getActiveShortcutRunNumber();
       if (activeRunNumber == null) {
         const bs = searchRuntimeBus.getState();
-        previous = {
-          resultsVisualSyncCandidate: bs.visualSyncCandidateRequestKey,
-          visualReadyRequestKey: bs.visualReadyRequestKey,
-          markerRevealCommitId: bs.markerRevealCommitId,
-          isVisualSyncPending: bs.isVisualSyncPending,
-        };
+        prevRevealKey = bs.presentationMapRevealRequestKey;
+        prevDismissEpoch = bs.presentationDismissEpoch;
         return;
       }
       const busState = searchRuntimeBus.getState();
-      const snapshot = {
-        resultsVisualSyncCandidate: busState.visualSyncCandidateRequestKey,
-        visualReadyRequestKey: busState.visualReadyRequestKey,
-        markerRevealCommitId: busState.markerRevealCommitId,
-        isVisualSyncPending: busState.isVisualSyncPending,
-      };
       const operationId = busState.runOneHandoffOperationId;
       const phase = busState.runOneHandoffPhase;
-      if (snapshot.resultsVisualSyncCandidate !== previous.resultsVisualSyncCandidate) {
+      const nextRevealKey = busState.presentationMapRevealRequestKey;
+      const nextDismissEpoch = busState.presentationDismissEpoch;
+      if (nextRevealKey !== prevRevealKey) {
         emitRuntimeMechanismEvent('runtime_write_span', {
           domain: 'visual_sync_state',
-          label: 'visual_sync_candidate_commit',
+          label: nextRevealKey != null ? 'map_reveal_armed' : 'map_reveal_cleared',
           operationId,
           phase,
-          source: visualSyncCandidateWriteSourceRef.current,
-          requestKey: snapshot.resultsVisualSyncCandidate,
-          previousRequestKey: previous.resultsVisualSyncCandidate,
-          markerRevealCommitId: snapshot.markerRevealCommitId,
+          requestKey: nextRevealKey,
+          previousRequestKey: prevRevealKey,
         });
-        visualSyncCandidateWriteSourceRef.current = 'unknown';
       }
-      if (snapshot.visualReadyRequestKey !== previous.visualReadyRequestKey) {
+      if (nextDismissEpoch !== prevDismissEpoch) {
         emitRuntimeMechanismEvent('runtime_write_span', {
           domain: 'visual_sync_state',
-          label: 'visual_ready_request_commit',
+          label: 'dismiss_epoch_incremented',
           operationId,
           phase,
-          source: visualReadyWriteSourceRef.current,
-          requestKey: snapshot.visualReadyRequestKey,
-          previousRequestKey: previous.visualReadyRequestKey,
-        });
-        visualReadyWriteSourceRef.current = 'unknown';
-      }
-      if (snapshot.isVisualSyncPending !== previous.isVisualSyncPending) {
-        emitRuntimeMechanismEvent('runtime_write_span', {
-          domain: 'visual_sync_state',
-          label: 'visual_sync_pending_flip',
-          operationId,
-          phase,
-          isVisualSyncPending: snapshot.isVisualSyncPending,
-          resultsVisualSyncCandidate: snapshot.resultsVisualSyncCandidate,
-          visualReadyRequestKey: snapshot.visualReadyRequestKey,
+          dismissEpoch: nextDismissEpoch,
         });
       }
-      previous = snapshot;
+      prevRevealKey = nextRevealKey;
+      prevDismissEpoch = nextDismissEpoch;
     }, [
-      'visualSyncCandidateRequestKey',
-      'visualReadyRequestKey',
-      'markerRevealCommitId',
-      'isVisualSyncPending',
+      'presentationMapRevealRequestKey',
+      'presentationDismissEpoch',
       'runOneHandoffOperationId',
       'runOneHandoffPhase',
     ]);
@@ -3970,7 +3907,6 @@ const SearchScreen: React.FC = () => {
       // (e.g. open-now/price/rank/votes). Those flows already started an
       // interaction intent and submit should not replace it.
       if (activeIntentId != null && params.preserveSheetState) {
-        syncTransitionReadiness('page_one_results_commit');
         return;
       }
       if (activeIntentId != null) {
@@ -3982,12 +3918,10 @@ const SearchScreen: React.FC = () => {
       transitionController.beginIntent({
         kind: params.kind,
         loadingMode: shouldUseInitialCover ? 'initial_cover' : 'interaction_frost',
-        phase: 'executing',
         requiresCoverage: params.mode === 'shortcut',
       });
-      syncTransitionReadiness('page_one_results_commit');
     },
-    [searchRuntimeBus, syncTransitionReadiness]
+    [searchRuntimeBus]
   );
   const handlePresentationIntentAbort = React.useCallback(() => {
     const transitionController = presentationTransitionControllerRef.current!;
@@ -4196,21 +4130,16 @@ const SearchScreen: React.FC = () => {
           };
         }
         presentationTransitionControllerRef.current!.markDataReady(intentId);
-        syncTransitionReadiness('toggle_interaction_commit');
-        const visualRequestKey = requestMapRevealForIntent(intentId, 'toggle_interaction_commit');
         return {
           awaitVisualSync: true,
-          visualRequestKey: visualRequestKey ?? undefined,
         };
       }, { kind: 'tab_switch' });
     },
     [
       handleTabChange,
       publishRuntimeBusPatch,
-      requestMapRevealForIntent,
       scheduleToggleCommit,
       searchRuntimeBus,
-      syncTransitionReadiness,
     ]
   );
 
@@ -4655,6 +4584,7 @@ const SearchScreen: React.FC = () => {
     minimumVotesFilter: MINIMUM_VOTES_FILTER,
     onMechanismEvent: emitRuntimeMechanismEvent,
   });
+  toggleOpenNowHarnessRef.current = toggleOpenNow;
   cancelPendingMutationWorkRef.current = () => {
     cancelToggleInteraction();
   };
@@ -4840,15 +4770,6 @@ const SearchScreen: React.FC = () => {
     },
     []
   );
-  const handleMapVisualReady = React.useCallback(
-    (requestKey: string) => {
-      // Strict release authority: map_visual_ready no longer releases cards.
-      // Only marker_reveal_started (or fallback via marker_reveal_settled timeout path)
-      // can unlock presentation reveal for the active intent.
-      markVisualRequestReady(requestKey, 'map_visual_ready');
-    },
-    [markVisualRequestReady]
-  );
   type MarkerRevealStartedPayload = {
     requestKey: string;
     markerRevealCommitId: number | null;
@@ -4856,10 +4777,10 @@ const SearchScreen: React.FC = () => {
   };
   const handleMarkerRevealStarted = React.useCallback(
     (payload: MarkerRevealStartedPayload) => {
+      // Controller drops frost/cover and fires onIntentComplete → toggle coordinator finalizes.
       presentationTransitionControllerRef.current!.markMapRevealStarted(payload.requestKey);
-      markVisualRequestReady(payload.requestKey, 'marker_reveal_started');
     },
-    [markVisualRequestReady]
+    []
   );
   type MarkerRevealSettledPayload = {
     requestKey: string;
@@ -4921,27 +4842,7 @@ const SearchScreen: React.FC = () => {
   }, [flushPendingMarkerRevealSettled, runOneHandoffCoordinatorRef]);
   const handleMarkerRevealSettled = React.useCallback(
     (payload: MarkerRevealSettledPayload) => {
-      presentationTransitionControllerRef.current!.markMapRevealSettled(payload.requestKey);
-      // Keep visual-sync from stalling behind map transition churn once reveal is settled.
-      const busState = searchRuntimeBus.getState();
-      const shouldAcknowledgeVisualReady =
-        payload.requestKey.length > 0 &&
-        busState.isVisualSyncPending &&
-        busState.visualSyncCandidateRequestKey === payload.requestKey;
-      if (shouldAcknowledgeVisualReady) {
-        const scheduleVisualReadyAck = () => {
-          markVisualRequestReady(payload.requestKey, 'marker_reveal_settled_raf');
-        };
-        if (typeof requestAnimationFrame === 'function') {
-          requestAnimationFrame(() => {
-            scheduleVisualReadyAck();
-          });
-        } else {
-          setTimeout(() => {
-            scheduleVisualReadyAck();
-          }, 0);
-        }
-      }
+      presentationTransitionControllerRef.current!.markMapRevealStarted(payload.requestKey);
       const coordinatorSnapshot = runOneHandoffCoordinatorRef.current.getSnapshot();
       const operationId = coordinatorSnapshot.operationId;
       if (!operationId || coordinatorSnapshot.phase === 'idle') {
@@ -4956,67 +4857,11 @@ const SearchScreen: React.FC = () => {
     },
     [
       flushPendingMarkerRevealSettled,
-      markVisualRequestReady,
       runOneHandoffCoordinatorRef,
-      searchRuntimeBus,
     ]
   );
-  // Imperative bus subscription: manage visual-ready fallback timeout without
-  // causing SearchScreen re-renders on visual-sync field changes.
-  React.useEffect(() => {
-    let prevCandidate = searchRuntimeBus.getState().visualSyncCandidateRequestKey;
-    let prevPending = searchRuntimeBus.getState().isVisualSyncPending;
 
-    const syncTimeout = () => {
-      const {
-        visualSyncCandidateRequestKey: candidate,
-        isVisualSyncPending: pending,
-        markerRevealCommitId: commitId,
-      } = searchRuntimeBus.getState();
-      // Skip if the fields that govern timeout setup haven't changed.
-      if (candidate === prevCandidate && pending === prevPending) return;
-      prevCandidate = candidate;
-      prevPending = pending;
-
-      if (visualReadyFallbackTimeoutRef.current) {
-        clearTimeout(visualReadyFallbackTimeoutRef.current);
-        visualReadyFallbackTimeoutRef.current = null;
-      }
-      if (!candidate || !pending) {
-        return;
-      }
-      visualReadyFallbackTimeoutRef.current = setTimeout(() => {
-        const latestState = searchRuntimeBus.getState();
-        handleMarkerRevealSettled({
-          requestKey: candidate,
-          markerRevealCommitId: latestState.markerRevealCommitId ?? commitId,
-          settledAtMs: getPerfNow(),
-        });
-        markVisualRequestReady(candidate, 'fallback_timeout');
-        visualReadyFallbackTimeoutRef.current = null;
-      }, RESULTS_VISUAL_READY_FALLBACK_MS);
-    };
-    // Run once to establish initial timeout if needed.
-    const initState = searchRuntimeBus.getState();
-    if (initState.visualSyncCandidateRequestKey && initState.isVisualSyncPending) {
-      prevCandidate = null; // Force initial setup
-      syncTimeout();
-    }
-    const unsub = searchRuntimeBus.subscribe(syncTimeout, [
-      'visualSyncCandidateRequestKey',
-      'isVisualSyncPending',
-      'markerRevealCommitId',
-    ]);
-    return () => {
-      unsub();
-      if (visualReadyFallbackTimeoutRef.current) {
-        clearTimeout(visualReadyFallbackTimeoutRef.current);
-        visualReadyFallbackTimeoutRef.current = null;
-      }
-    };
-  }, [searchRuntimeBus, handleMarkerRevealSettled, markVisualRequestReady, getPerfNow]);
-
-  // Marker press is now handled internally by SearchMapWithMarkerEngine
+  // Marker press and visual ready are now handled internally by SearchMapWithMarkerEngine.
   const noopMarkerPress = React.useCallback(
     (_restaurantId: string, _pressedCoordinate?: Coordinate | null) => {},
     []
@@ -5027,7 +4872,6 @@ const SearchScreen: React.FC = () => {
     handleMapIdle,
     handleMapLoaded,
     handleMarkerPress: noopMarkerPress,
-    handleMapVisualReady,
     handleMarkerRevealStarted,
     handleMarkerRevealSettled,
   });
@@ -5035,7 +4879,6 @@ const SearchScreen: React.FC = () => {
   const stableHandleCameraChanged = stableMapHandlers.onCameraChanged;
   const stableHandleMapIdle = stableMapHandlers.onMapIdle;
   const stableHandleMapLoaded = stableMapHandlers.onMapLoaded;
-  const stableHandleMapVisualReady = stableMapHandlers.onMapVisualReady;
   const stableHandleMarkerRevealStarted = stableMapHandlers.onMarkerRevealStarted;
   const stableHandleMarkerRevealSettled = stableMapHandlers.onMarkerRevealSettled;
 
@@ -5525,7 +5368,6 @@ const SearchScreen: React.FC = () => {
                 onCameraChanged={stableHandleCameraChanged}
                 onMapIdle={stableHandleMapIdle}
                 onMapLoaded={stableHandleMapLoaded}
-                onVisualReady={stableHandleMapVisualReady}
                 onMarkerRevealStarted={stableHandleMarkerRevealStarted}
                 onMarkerRevealSettled={stableHandleMarkerRevealSettled}
                 isMapStyleReady={isMapStyleReady}

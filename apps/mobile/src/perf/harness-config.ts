@@ -1,4 +1,7 @@
-type PerfHarnessScenario = 'none' | 'search_shortcut_loop';
+type PerfHarnessScenario =
+  | 'none'
+  | 'search_shortcut_loop'
+  | 'search_shortcut_loop_open_now_roundtrip';
 type PerfShortcutTab = 'dishes' | 'restaurants';
 type PerfShortcutScoreMode = 'global_quality' | 'coverage_display';
 type PerfShortcutSettleBoundaryPolicy =
@@ -82,7 +85,13 @@ const parseScenario = (value: string | undefined): PerfHarnessScenario => {
   if (!value) {
     return 'none';
   }
-  return value === 'search_shortcut_loop' ? 'search_shortcut_loop' : 'none';
+  if (value === 'search_shortcut_loop') {
+    return 'search_shortcut_loop';
+  }
+  if (value === 'search_shortcut_loop_open_now_roundtrip') {
+    return 'search_shortcut_loop_open_now_roundtrip';
+  }
+  return 'none';
 };
 
 const parseShortcutTab = (value: string | undefined): PerfShortcutTab => {
@@ -118,7 +127,8 @@ const scenario = isHarnessEnabled
   : 'none';
 const runIdRaw = readEnv('EXPO_PUBLIC_PERF_HARNESS_RUN_ID')?.trim() ?? '';
 const runId = runIdRaw.length > 0 ? runIdRaw : null;
-const runs = parseInteger(readEnv('EXPO_PUBLIC_PERF_HARNESS_RUNS'), 3, 1, 1000);
+const defaultRuns = scenario === 'search_shortcut_loop_open_now_roundtrip' ? 1 : 3;
+const runs = parseInteger(readEnv('EXPO_PUBLIC_PERF_HARNESS_RUNS'), defaultRuns, 1, 1000);
 const startDelayMs = parseInteger(
   readEnv('EXPO_PUBLIC_PERF_HARNESS_START_DELAY_MS'),
   3000,

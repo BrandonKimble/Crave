@@ -32,6 +32,7 @@ import type { MapQueryBudget } from '../runtime/map/map-query-budget';
 import type { PhaseBMaterializer } from '../runtime/scheduler/phase-b-materializer';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import { useSearchRuntimeBusSelector } from '../runtime/shared/use-search-runtime-bus-selector';
+import { logger } from '../../../utils';
 import { getMarkerColorForDish, getMarkerColorForRestaurant } from '../utils/marker-lod';
 import styles from '../styles';
 
@@ -285,6 +286,26 @@ export const useSearchResultsPanelSpec = ({
     presentationTransitionLoadingMode === 'interaction_frost';
   const shouldGateCardsForPresentationLoading = shouldShowInteractionLoadingState;
 
+  // --- Diagnostic: track when panel spec renders with toggled values ---
+  const prevDiagOpenNowRef = React.useRef(openNow);
+  const prevDiagFrostRef = React.useRef(shouldShowInteractionLoadingState);
+  if (openNow !== prevDiagOpenNowRef.current) {
+    logger.info('[TOGGLE-DIAG] panelSpec:openNowChanged', {
+      from: prevDiagOpenNowRef.current,
+      to: openNow,
+      ts: Date.now(),
+    });
+    prevDiagOpenNowRef.current = openNow;
+  }
+  if (shouldShowInteractionLoadingState !== prevDiagFrostRef.current) {
+    logger.info('[TOGGLE-DIAG] panelSpec:frostChanged', {
+      from: prevDiagFrostRef.current,
+      to: shouldShowInteractionLoadingState,
+      ts: Date.now(),
+    });
+    prevDiagFrostRef.current = shouldShowInteractionLoadingState;
+  }
+
   const handleInteractionTabChange = React.useCallback(
     (next: 'dishes' | 'restaurants') => {
       scheduleTabToggleCommit(next);
@@ -450,6 +471,12 @@ export const useSearchResultsPanelSpec = ({
     [searchRuntimeBus]
   );
   const resultsPage = results?.metadata?.page ?? 1;
+  // Hydration candidate uses ungated results data so the hydration key
+  // reflects the actual committed data, not the presentation-gated view.
+  // During frost, cardsResults is null but results still holds real data —
+  // readiness must track the real data to prevent stale listReady signals.
+  const ungatedDishesLength = results?.dishes?.length ?? 0;
+  const ungatedRestaurantsLength = results?.restaurants?.length ?? 0;
   const resultsHydrationCandidate = React.useMemo(() => {
     if (!results) {
       return null;
@@ -463,10 +490,10 @@ export const useSearchResultsPanelSpec = ({
       typeof results.metadata?.totalRestaurantResults === 'number'
         ? results.metadata.totalRestaurantResults
         : 'na';
-    return `${requestKey}:page:${resultsPage}:dishes:${dishes.length}:restaurants:${restaurants.length}:totalFood:${totalFoodResults}:totalRestaurants:${totalRestaurantResults}`;
+    return `${requestKey}:page:${resultsPage}:dishes:${ungatedDishesLength}:restaurants:${ungatedRestaurantsLength}:totalFood:${totalFoodResults}:totalRestaurants:${totalRestaurantResults}`;
   }, [
-    dishes.length,
-    restaurants.length,
+    ungatedDishesLength,
+    ungatedRestaurantsLength,
     results,
     results?.metadata?.searchRequestId,
     results?.metadata?.totalFoodResults,
@@ -866,6 +893,7 @@ export const useSearchResultsPanelSpec = ({
     : isSurfaceShowingEmptyState
     ? 'empty'
     : 'none';
+
   const shouldShowResultsSurface = surfaceMode !== 'none' || hasRenderableRows || shouldUsePlaceholderRows;
   const surfaceActive = surfaceMode !== 'none';
   const shouldUseInteractionSurface = surfaceMode === 'interaction_loading';
@@ -911,20 +939,28 @@ export const useSearchResultsPanelSpec = ({
   const resultsRenderItem = shouldUsePlaceholderRows
     ? renderPlaceholderFlashListItem
     : resultsReadModelSelectors.renderListItem;
-  const resultsWashTopOffset = Math.max(
-    0,
-    effectiveResultsHeaderHeightForRender + effectiveFiltersHeaderHeightForRender
-  );
+  const initialLoadingTopOffset =
+    effectiveResultsHeaderHeightForRender || OVERLAY_TAB_HEADER_HEIGHT;
+  const interactionLoadingTopOffset = initialLoadingTopOffset + effectiveFiltersHeaderHeightForRender;
 
   const preMeasureOverlay = resultsReadModelSelectors.preMeasureOverlay;
   const resultsListBackground = React.useMemo(() => {
     if (!shouldShowResultsSurface) {
       return preMeasureOverlay;
     }
-    if (surfaceMode === 'initial_loading' || shouldDisableSearchBlur) {
+    if (shouldDisableSearchBlur) {
       return (
         <>
-          <View style={[styles.resultsListBackground, { top: 0 }]} />
+          <View style={[styles.resultsListBackground, { top: initialLoadingTopOffset }]} />
+          {preMeasureOverlay}
+        </>
+      );
+    }
+    if (surfaceMode === 'initial_loading') {
+      return (
+        <>
+          <FrostedGlassBackground />
+          <View style={[styles.resultsListBackground, { top: initialLoadingTopOffset }]} />
           {preMeasureOverlay}
         </>
       );
@@ -937,11 +973,13 @@ export const useSearchResultsPanelSpec = ({
     );
   }, [preMeasureOverlay, shouldDisableSearchBlur, shouldShowResultsSurface, surfaceMode]);
 
-  const surfaceTopOffset = effectiveResultsHeaderHeightForRender || OVERLAY_TAB_HEADER_HEIGHT;
+  const surfaceTopOffset = initialLoadingTopOffset;
 
   const resultsOverlayComponent = React.useMemo(() => {
     const shouldRenderWhiteWash = surfaceMode === 'initial_loading';
-    const overlayTopOffset = shouldUseInteractionSurface ? resultsWashTopOffset : surfaceTopOffset;
+    const overlayTopOffset = shouldUseInteractionSurface
+      ? interactionLoadingTopOffset
+      : surfaceTopOffset;
     const surfaceStyle = shouldUseInteractionSurface
       ? styles.resultsSurfaceInteraction
       : styles.resultsSurface;
@@ -952,7 +990,7 @@ export const useSearchResultsPanelSpec = ({
             pointerEvents="none"
             style={[
               styles.resultsWashOverlay,
-              { top: resultsWashTopOffset },
+              { top: initialLoadingTopOffset },
               resultsWashAnimatedStyle,
             ]}
           />
@@ -963,13 +1001,14 @@ export const useSearchResultsPanelSpec = ({
       </>
     );
   }, [
+    initialLoadingTopOffset,
+    interactionLoadingTopOffset,
     surfaceMode,
     shouldUseInteractionSurface,
     surfaceActive,
     surfaceContent,
     surfaceTopOffset,
     resultsWashAnimatedStyle,
-    resultsWashTopOffset,
   ]);
 
   const ResultItemSeparator = React.useCallback(

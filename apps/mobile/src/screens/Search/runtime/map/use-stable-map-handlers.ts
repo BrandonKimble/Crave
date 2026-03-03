@@ -9,7 +9,6 @@ type UseStableMapHandlersArgs = {
   handleMapIdle: (state: MapboxMapState) => void;
   handleMapLoaded: () => void;
   handleMarkerPress: (restaurantId: string, pressedCoordinate?: Coordinate | null) => void;
-  handleMapVisualReady: (requestKey: string) => void;
   handleMarkerRevealStarted: (payload: {
     requestKey: string;
     markerRevealCommitId: number | null;
@@ -28,7 +27,6 @@ type StableMapHandlers = {
   onMapIdle: (state: MapboxMapState) => void;
   onMapLoaded: () => void;
   onMarkerPress: (restaurantId: string, pressedCoordinate?: Coordinate | null) => void;
-  onMapVisualReady: (requestKey: string) => void;
   onMarkerRevealStarted: (payload: {
     requestKey: string;
     markerRevealCommitId: number | null;
@@ -47,7 +45,6 @@ export const useStableMapHandlers = ({
   handleMapIdle,
   handleMapLoaded,
   handleMarkerPress,
-  handleMapVisualReady,
   handleMarkerRevealStarted,
   handleMarkerRevealSettled,
 }: UseStableMapHandlersArgs): StableMapHandlers => {
@@ -56,7 +53,6 @@ export const useStableMapHandlers = ({
   const handleMapIdleRef = React.useRef(handleMapIdle);
   const handleMapLoadedRef = React.useRef(handleMapLoaded);
   const handleMarkerPressRef = React.useRef(handleMarkerPress);
-  const handleMapVisualReadyRef = React.useRef(handleMapVisualReady);
   const handleMarkerRevealStartedRef = React.useRef(handleMarkerRevealStarted);
   const handleMarkerRevealSettledRef = React.useRef(handleMarkerRevealSettled);
 
@@ -65,7 +61,6 @@ export const useStableMapHandlers = ({
   handleMapIdleRef.current = handleMapIdle;
   handleMapLoadedRef.current = handleMapLoaded;
   handleMarkerPressRef.current = handleMarkerPress;
-  handleMapVisualReadyRef.current = handleMapVisualReady;
   handleMarkerRevealStartedRef.current = handleMarkerRevealStarted;
   handleMarkerRevealSettledRef.current = handleMarkerRevealSettled;
 
@@ -87,9 +82,6 @@ export const useStableMapHandlers = ({
       },
       onMarkerPress: (restaurantId: string, pressedCoordinate?: Coordinate | null) => {
         handleMarkerPressRef.current(restaurantId, pressedCoordinate);
-      },
-      onMapVisualReady: (requestKey: string) => {
-        handleMapVisualReadyRef.current(requestKey);
       },
       onMarkerRevealStarted: (payload) => {
         handleMarkerRevealStartedRef.current(payload);

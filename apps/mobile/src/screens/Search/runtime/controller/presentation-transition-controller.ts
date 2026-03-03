@@ -11,10 +11,8 @@ export type PresentationMutationKind =
 
 export type PresentationPhase =
   | 'idle'
-  | 'settling'
   | 'executing'
   | 'awaiting_readiness'
-  | 'revealing'
   | 'settled'
   | 'cancelled';
 
@@ -23,21 +21,24 @@ export type PresentationLoadingMode = 'none' | 'initial_cover' | 'interaction_fr
 type PresentationTransitionPublishPatch = {
   presentationTransitionKind: PresentationMutationKind | null;
   presentationTransitionLoadingMode: PresentationLoadingMode;
+  presentationMapRevealRequestKey: string | null;
+  presentationDismissEpoch: number;
 };
 
 export type BeginPresentationIntentOptions = {
   kind: PresentationMutationKind;
   loadingMode: Exclude<PresentationLoadingMode, 'none'>;
   intentId?: string;
-  settleMs?: number;
   requiresCoverage?: boolean;
-  phase?: Extract<PresentationPhase, 'settling' | 'executing'>;
 };
+
+type PresentationTransitionControllerLog = (label: string, data?: Record<string, unknown>) => void;
 
 type PresentationTransitionControllerOptions = {
   publish: (patch: PresentationTransitionPublishPatch) => void;
+  log?: PresentationTransitionControllerLog;
+  onIntentComplete?: (intentId: string) => void;
   now?: () => number;
-  defaultSettleMs?: number;
 };
 
 type InternalState = {
@@ -46,28 +47,33 @@ type InternalState = {
   kind: PresentationMutationKind | null;
   loadingMode: PresentationLoadingMode;
   startedAtMs: number | null;
-  settleDeadlineMs: number | null;
   dataReady: boolean;
   listReady: boolean;
   mapReady: boolean;
   coverageReady: boolean;
   revealEpoch: number;
+  dismissEpoch: number;
   mapRevealRequested: boolean;
   mapRevealRequestKey: string | null;
   requiresCoverage: boolean;
 };
 
-const DEFAULT_SETTLE_MS = 300;
 const INTENT_PREFIX = 'presentation-intent:';
+
+const NOOP_LOG: PresentationTransitionControllerLog = () => {};
 
 export class PresentationTransitionController {
   private readonly publish: PresentationTransitionControllerOptions['publish'];
 
+  private readonly log: PresentationTransitionControllerLog;
+
+  private readonly onIntentComplete: ((intentId: string) => void) | undefined;
+
   private readonly now: () => number;
 
-  private readonly defaultSettleMs: number;
-
   private intentSeq = 0;
+
+  private pendingFeedbackShouldBumpDismiss = false;
 
   private state: InternalState = {
     intentId: null,
@@ -75,12 +81,12 @@ export class PresentationTransitionController {
     kind: null,
     loadingMode: 'none',
     startedAtMs: null,
-    settleDeadlineMs: null,
     dataReady: false,
     listReady: false,
     mapReady: false,
     coverageReady: true,
     revealEpoch: 0,
+    dismissEpoch: 0,
     mapRevealRequested: false,
     mapRevealRequestKey: null,
     requiresCoverage: false,
@@ -88,8 +94,9 @@ export class PresentationTransitionController {
 
   public constructor(options: PresentationTransitionControllerOptions) {
     this.publish = options.publish;
+    this.log = options.log ?? NOOP_LOG;
+    this.onIntentComplete = options.onIntentComplete;
     this.now = options.now ?? Date.now;
-    this.defaultSettleMs = Math.max(1, options.defaultSettleMs ?? DEFAULT_SETTLE_MS);
     this.publishProjection();
   }
 
@@ -103,6 +110,8 @@ export class PresentationTransitionController {
       presentationTransitionKind:
         this.state.phase === 'idle' || this.state.phase === 'settled' ? null : this.state.kind,
       presentationTransitionLoadingMode: this.state.loadingMode,
+      presentationMapRevealRequestKey: this.state.mapRevealRequestKey,
+      presentationDismissEpoch: this.state.dismissEpoch,
     });
   }
 
@@ -124,24 +133,134 @@ export class PresentationTransitionController {
     return this.state.intentId;
   }
 
+  public enterTransitionMode(loadingMode: Exclude<PresentationLoadingMode, 'none'>): void {
+    this.pendingFeedbackIntentId = null;
+    this.pendingFeedbackShouldBumpDismiss = false;
+    const prevLoadingMode = this.state.loadingMode;
+    const hadActiveIntent = this.state.intentId != null;
+    this.log('enterTransitionMode', { loadingMode, prevLoadingMode, hadActiveIntent });
+    this.mutate((draft) => {
+      // If an intent is mid-flight (e.g. reveal already started), cancel it.
+      // The new toggle supersedes whatever was in progress — pins must stay
+      // dismissed until the new intent settles and completes its own reveal.
+      if (draft.intentId != null) {
+        draft.phase = 'cancelled';
+        draft.intentId = null;
+        draft.kind = null;
+        draft.startedAtMs = null;
+        draft.dataReady = false;
+        draft.listReady = false;
+        draft.mapReady = false;
+        draft.coverageReady = true;
+        draft.mapRevealRequested = false;
+        draft.mapRevealRequestKey = null;
+        draft.requiresCoverage = false;
+      }
+      draft.loadingMode = loadingMode;
+      // Increment dismiss epoch when entering frost from idle, OR when
+      // cancelling an active intent whose reveal may have already started.
+      // In both cases visible pins need a coordinated fade-out.  During
+      // rapid toggles where no intent completed (frost → frost, no intent),
+      // the existing dismiss continues uninterrupted.
+      if (loadingMode === 'interaction_frost' && (prevLoadingMode === 'none' || hadActiveIntent)) {
+        draft.dismissEpoch += 1;
+      }
+      return true;
+    });
+  }
+
+  /**
+   * Feedback-only lane: sets loading mode without bumping dismiss epoch.
+   * Used by toggles so chip/frost commit is not blocked by map dismiss reconciliation.
+   */
+  public startFeedback(loadingMode: Exclude<PresentationLoadingMode, 'none'>): void {
+    const prevLoadingMode = this.state.loadingMode;
+    const hadActiveIntent = this.state.intentId != null;
+    this.pendingFeedbackShouldBumpDismiss =
+      loadingMode === 'interaction_frost' && (prevLoadingMode === 'none' || hadActiveIntent);
+    this.log('startFeedback', { loadingMode, prevLoadingMode, hadActiveIntent });
+    this.mutate((draft) => {
+      if (draft.intentId != null) {
+        draft.phase = 'cancelled';
+        draft.intentId = null;
+        draft.kind = null;
+        draft.startedAtMs = null;
+        draft.dataReady = false;
+        draft.listReady = false;
+        draft.mapReady = false;
+        draft.coverageReady = true;
+        draft.mapRevealRequested = false;
+        draft.mapRevealRequestKey = null;
+        draft.requiresCoverage = false;
+      }
+      draft.loadingMode = loadingMode;
+      return true;
+    });
+  }
+
+  /**
+   * Dismiss lane: bump dismiss epoch only for the active pending feedback intent.
+   */
+  public armDismiss(intentId: string): boolean {
+    if (intentId !== this.pendingFeedbackIntentId) {
+      this.log('armDismiss:skip', { intentId, pendingFeedbackIntentId: this.pendingFeedbackIntentId });
+      return false;
+    }
+    this.pendingFeedbackIntentId = null;
+    const shouldBumpDismiss = this.pendingFeedbackShouldBumpDismiss;
+    this.pendingFeedbackShouldBumpDismiss = false;
+    if (!shouldBumpDismiss) {
+      this.log('armDismiss:skipNoBump', { intentId });
+      return true;
+    }
+    this.log('armDismiss', { intentId });
+    this.mutate((draft) => {
+      draft.dismissEpoch += 1;
+      return true;
+    });
+    return true;
+  }
+
+  public clearPendingDismissIntent(intentId?: string): void {
+    if (intentId != null && this.pendingFeedbackIntentId != null && this.pendingFeedbackIntentId !== intentId) {
+      return;
+    }
+    this.pendingFeedbackIntentId = null;
+    this.pendingFeedbackShouldBumpDismiss = false;
+  }
+
+  /**
+   * Pending dismiss token for fast-path feedback->dismiss sequencing.
+   */
+  public pendingFeedbackIntentId: string | null = null;
+
+  public exitTransitionMode(): void {
+    this.clearPendingDismissIntent();
+    if (this.state.loadingMode === 'none') {
+      return;
+    }
+    this.log('exitTransitionMode', { prevLoadingMode: this.state.loadingMode });
+    this.mutate((draft) => {
+      draft.loadingMode = 'none';
+      return true;
+    });
+  }
+
   public beginIntent(options: BeginPresentationIntentOptions): string {
     const {
       kind,
       loadingMode,
       intentId = this.nextIntentId(),
-      settleMs = this.defaultSettleMs,
       requiresCoverage = false,
-      phase = loadingMode === 'interaction_frost' ? 'settling' : 'executing',
     } = options;
     const nowMs = this.now();
-    const settleDeadlineMs = phase === 'settling' ? nowMs + Math.max(1, settleMs) : null;
+    this.log('beginIntent', { intentId, kind, loadingMode, requiresCoverage });
     this.mutate((draft) => {
       draft.intentId = intentId;
-      draft.phase = phase;
+      draft.phase = 'executing';
       draft.kind = kind;
       draft.loadingMode = loadingMode;
       draft.startedAtMs = nowMs;
-      draft.settleDeadlineMs = settleDeadlineMs;
       draft.dataReady = false;
       draft.listReady = false;
       draft.mapReady = false;
@@ -156,15 +275,17 @@ export class PresentationTransitionController {
 
   public cancelIntent(intentId: string): void {
     if (!this.isActiveIntent(intentId)) {
+      this.log('cancelIntent:skip', { intentId, activeIntentId: this.state.intentId });
       return;
     }
+    this.clearPendingDismissIntent();
+    this.log('cancelIntent', { intentId });
     this.mutate((draft) => {
       draft.phase = 'cancelled';
       draft.intentId = null;
       draft.kind = null;
       draft.loadingMode = 'none';
       draft.startedAtMs = null;
-      draft.settleDeadlineMs = null;
       draft.dataReady = false;
       draft.listReady = false;
       draft.mapReady = false;
@@ -176,32 +297,22 @@ export class PresentationTransitionController {
     });
   }
 
-  public markSettlingComplete(intentId: string): void {
-    if (!this.isActiveIntent(intentId)) {
-      return;
-    }
-    this.mutate((draft) => {
-      if (draft.phase !== 'settling') {
-        return false;
-      }
-      draft.phase = 'executing';
-      draft.settleDeadlineMs = null;
-      return true;
-    });
-  }
-
   public markDataReady(intentId: string): void {
     if (!this.isActiveIntent(intentId)) {
+      this.log('markDataReady:skip', { intentId, activeIntentId: this.state.intentId });
       return;
     }
+    this.log('markDataReady', { intentId, phase: this.state.phase });
     this.mutate((draft) => {
       if (draft.dataReady) {
         return false;
       }
       draft.dataReady = true;
+      draft.listReady = false; // invalidate stale list readiness
       if (draft.phase === 'executing') {
         draft.phase = 'awaiting_readiness';
       }
+      this.tryReveal(draft);
       return true;
     });
   }
@@ -210,6 +321,7 @@ export class PresentationTransitionController {
     if (!this.isActiveIntent(intentId)) {
       return;
     }
+    this.log('markListReady', { intentId, ready, phase: this.state.phase });
     this.mutate((draft) => {
       if (draft.listReady === ready) {
         return false;
@@ -218,6 +330,7 @@ export class PresentationTransitionController {
       if (ready && draft.phase === 'executing') {
         draft.phase = 'awaiting_readiness';
       }
+      this.tryReveal(draft);
       return true;
     });
   }
@@ -226,6 +339,7 @@ export class PresentationTransitionController {
     if (!this.isActiveIntent(intentId)) {
       return;
     }
+    this.log('markCoverageReady', { intentId, ready });
     this.mutate((draft) => {
       if (draft.coverageReady === ready) {
         return false;
@@ -234,43 +348,35 @@ export class PresentationTransitionController {
       if (ready && draft.phase === 'executing') {
         draft.phase = 'awaiting_readiness';
       }
+      this.tryReveal(draft);
       return true;
     });
   }
 
-  public shouldRequestMapReveal(intentId: string): boolean {
-    if (!this.isActiveIntent(intentId)) {
-      return false;
+  private tryReveal(draft: InternalState): void {
+    if (draft.mapRevealRequested) return;
+    if (!draft.intentId) return;
+    if (!draft.dataReady || !draft.listReady || !draft.coverageReady) return;
+    this.log('tryReveal', { intentId: draft.intentId });
+    draft.mapRevealRequested = true;
+    draft.mapRevealRequestKey = draft.intentId;
+    if (draft.phase === 'executing') {
+      draft.phase = 'awaiting_readiness';
     }
-    return (
-      this.state.dataReady &&
-      this.state.listReady &&
-      this.state.coverageReady &&
-      !this.state.mapRevealRequested
-    );
-  }
-
-  public markMapRevealRequested(intentId: string, requestKey: string): void {
-    if (!this.isActiveIntent(intentId) || !requestKey) {
-      return;
-    }
-    this.mutate((draft) => {
-      if (draft.mapRevealRequested && draft.mapRevealRequestKey === requestKey) {
-        return false;
-      }
-      draft.mapRevealRequested = true;
-      draft.mapRevealRequestKey = requestKey;
-      if (draft.phase === 'executing') {
-        draft.phase = 'awaiting_readiness';
-      }
-      return true;
-    });
   }
 
   public markMapRevealStarted(intentId: string): void {
     if (!this.isActiveIntent(intentId)) {
+      this.log('markMapRevealStarted:SKIP_NOT_ACTIVE', {
+        intentId,
+        activeIntentId: this.state.intentId,
+        phase: this.state.phase,
+        loadingMode: this.state.loadingMode,
+      });
       return;
     }
+    this.log('markMapRevealStarted', { intentId, phase: this.state.phase });
+    const completingIntentId = this.state.intentId;
     this.mutate((draft) => {
       if (draft.mapReady) {
         return false;
@@ -281,7 +387,6 @@ export class PresentationTransitionController {
       draft.intentId = null;
       draft.kind = null;
       draft.startedAtMs = null;
-      draft.settleDeadlineMs = null;
       draft.dataReady = false;
       draft.listReady = false;
       draft.coverageReady = true;
@@ -291,16 +396,11 @@ export class PresentationTransitionController {
       draft.revealEpoch += 1;
       return true;
     });
+    if (completingIntentId) {
+      this.onIntentComplete?.(completingIntentId);
+    }
   }
 
-  public markMapRevealSettled(intentId: string): void {
-    if (!intentId) {
-      return;
-    }
-    if (this.isActiveIntent(intentId)) {
-      this.markMapRevealStarted(intentId);
-    }
-  }
 }
 
 export const createPresentationTransitionController = (

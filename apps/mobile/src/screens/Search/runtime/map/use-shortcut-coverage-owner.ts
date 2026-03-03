@@ -73,16 +73,16 @@ export const useShortcutCoverageOwner = ({
 }: UseShortcutCoverageOwnerArgs): UseShortcutCoverageOwnerResult => {
   const searchRuntimeBus = useSearchBus();
 
-  // Read isVisualSyncPending imperatively to avoid making the coverage fetch
-  // effect depend on visual-sync state. When the effect depended on it
-  // reactively, every visual-sync toggle caused effect cleanup → cancelled
+  // Read presentationMapRevealRequestKey imperatively to avoid making the
+  // coverage fetch effect depend on visual-sync state. When the effect
+  // depended on it reactively, every toggle caused effect cleanup → cancelled
   // in-flight fetches or unnecessary re-fetch cycles.
-  const isVisualSyncPendingRef = React.useRef(false);
-  isVisualSyncPendingRef.current = useSearchRuntimeBusSelector(
+  const isMapRevealPendingRef = React.useRef(false);
+  isMapRevealPendingRef.current = useSearchRuntimeBusSelector(
     searchRuntimeBus,
-    (state) => state.isVisualSyncPending,
+    (state) => state.presentationMapRevealRequestKey != null,
     Object.is,
-    ['isVisualSyncPending'] as const
+    ['presentationMapRevealRequestKey'] as const
   );
 
   const shortcutCoverageSnapshotByRequestIdRef = React.useRef<
@@ -182,27 +182,19 @@ export const useShortcutCoverageOwner = ({
       setIsShortcutCoverageLoading(false);
       return;
     }
-    if (isVisualSyncPendingRef.current) {
+    if (isMapRevealPendingRef.current) {
       const hasResolvedCoverage = shortcutCoverageFetchKeyRef.current != null;
       const hasCoverageForActiveTab =
         hasResolvedCoverage && shortcutCoverageResolvedTabRef.current === activeTab;
       if (hasCoverageForActiveTab) {
         return;
       }
-      // Keep initial-search behavior (defer while pending) when no coverage has resolved yet.
-      // But if coverage exists for the other tab, continue below and fetch this tab now so
-      // map visuals can switch with the toggle.
-      if (hasResolvedCoverage) {
-        deferredCoverageRequestIdRef.current = null;
-      } else {
-        shortcutCoverageRankedRef.current = [];
-        setShortcutCoverageDotFeatures(null);
-        setIsShortcutCoverageLoading(false);
-        if (deferredCoverageRequestIdRef.current !== searchRequestId) {
-          deferredCoverageRequestIdRef.current = searchRequestId;
-        }
-        return;
-      }
+      // Always proceed with coverage fetch — even during initial reveal.
+      // Coverage is required to produce markers, which the reveal chain
+      // needs before it can complete.  Deferring here would deadlock:
+      // reveal waits for markers → markers wait for coverage → coverage
+      // waits for reveal to clear isMapRevealPending.
+      deferredCoverageRequestIdRef.current = null;
     } else {
       deferredCoverageRequestIdRef.current = null;
     }
@@ -399,19 +391,19 @@ export const useShortcutCoverageOwner = ({
     viewportBoundsService,
   ]);
 
-  // When a coverage fetch was deferred because isVisualSyncPending was true,
-  // bump coverageBoundsRevision to re-trigger the effect once visual sync clears.
+  // When a coverage fetch was deferred because a map reveal was pending,
+  // bump coverageBoundsRevision to re-trigger the effect once reveal clears.
   React.useEffect(() => {
     if (searchMode !== 'shortcut' || !searchRequestId) {
       return;
     }
     return searchRuntimeBus.subscribe(() => {
-      const pending = searchRuntimeBus.getState().isVisualSyncPending;
+      const pending = searchRuntimeBus.getState().presentationMapRevealRequestKey != null;
       if (!pending && deferredCoverageRequestIdRef.current != null) {
         deferredCoverageRequestIdRef.current = null;
         setCoverageBoundsRevision((prev) => prev + 1);
       }
-    }, ['isVisualSyncPending']);
+    }, ['presentationMapRevealRequestKey']);
   }, [searchMode, searchRequestId, searchRuntimeBus]);
 
   const anchoredShortcutCoverageFeatures = React.useMemo(

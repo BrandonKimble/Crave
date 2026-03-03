@@ -570,10 +570,6 @@ const useSearchSubmit = ({
       const laneResetPatch: Partial<SearchRuntimeBusState> =
         lane === 'idle'
           ? {
-              isVisualSyncPending: false,
-              visualSyncCandidateRequestKey: null,
-              visualReadyRequestKey: null,
-              markerRevealCommitId: null,
               pendingTabSwitchTab: null,
             }
           : {};
@@ -726,7 +722,7 @@ const useSearchSubmit = ({
         // the handoff phase (h3_hydration_ramp) intentionally blocks further
         // hydration commits via allowHydrationFinalizeCommit — creating a circular
         // dependency if we waited for hydration here.
-        const visualSettled = !(runtimeState?.isVisualSyncPending ?? false);
+        const visualSettled = runtimeState?.presentationMapRevealRequestKey == null;
         const schedulerQueueDepth =
           runtimeWorkSchedulerRef?.current.snapshotPressure().queueDepth ?? 0;
         const schedulerQuiet = schedulerQueueDepth <= 0;
@@ -796,10 +792,6 @@ const useSearchSubmit = ({
           pendingTabSwitchTab: null,
           isLoadingMore: false,
           submittedQuery: submittedLabel ?? searchRuntimeBus.getState().submittedQuery ?? '',
-          isVisualSyncPending: false,
-          visualSyncCandidateRequestKey: null,
-          visualReadyRequestKey: null,
-          markerRevealCommitId: null,
         };
         publishRuntimeLaneState(activeOperationTupleRef.current, 'lane_a_ack', laneAStatePatch);
       });

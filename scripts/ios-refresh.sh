@@ -21,6 +21,7 @@ EXPO_START_NO_DEV="${EXPO_START_NO_DEV:-0}"
 EXPO_START_MINIFY="${EXPO_START_MINIFY:-0}"
 EXPO_FORCE_START="${EXPO_FORCE_START:-0}"
 IOS_USE_TAILSCALE="${IOS_USE_TAILSCALE:-0}"
+IOS_REFRESH_WRITE_ENV_LOCAL="${IOS_REFRESH_WRITE_ENV_LOCAL:-1}"
 METRO_ALREADY_RUNNING=0
 
 is_ipv4() {
@@ -318,7 +319,7 @@ PY
 
 # Expo's dotenv loader is sometimes more reliable than shell env injection on device.
 # Keep this file gitignored via apps/mobile/.gitignore (.env*.local).
-if [[ -n "${EXPO_PUBLIC_API_URL:-}" ]]; then
+if [[ "$IOS_REFRESH_WRITE_ENV_LOCAL" == "1" ]] && [[ -n "${EXPO_PUBLIC_API_URL:-}" ]]; then
   upsert_env_line "$APP_DIR/.env.local" "EXPO_PUBLIC_API_URL" "$EXPO_PUBLIC_API_URL" || true
 fi
 

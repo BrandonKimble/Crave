@@ -7,6 +7,7 @@ import {
   type LayoutChangeEvent,
   type LayoutRectangle,
 } from 'react-native';
+import { logger } from '../../../utils';
 import { ChevronDown, ChevronUp } from 'lucide-react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
@@ -130,6 +131,16 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   initialLayoutCache,
   onLayoutCacheChange,
 }) => {
+  // --- Diagnostic: track when SearchFilters actually renders with new props ---
+  const prevDiagOpenNowRef = React.useRef(openNow);
+  if (openNow !== prevDiagOpenNowRef.current) {
+    logger.info('[TOGGLE-DIAG] SearchFilters:openNowRender', {
+      from: prevDiagOpenNowRef.current,
+      to: openNow,
+      ts: Date.now(),
+    });
+    prevDiagOpenNowRef.current = openNow;
+  }
   const [viewportWidth, setViewportWidth] = React.useState(
     initialLayoutCache?.viewportWidth ?? DEFAULT_VIEWPORT_WIDTH
   );
@@ -395,6 +406,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
               <View style={styles.toggleRow}>
                 <Pressable
                   onLayout={registerHole('toggle-rank')}
+                  onPressIn={() => logger.info('[TOGGLE-DIAG] rank:pressIn', { ts: Date.now() })}
                   onPress={onToggleRankSelector}
                   accessibilityRole="button"
                   accessibilityLabel="Select rank mode"
@@ -509,6 +521,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                 </GestureDetector>
                 <Pressable
                   onLayout={registerHole('toggle-open-now')}
+                  onPressIn={() => logger.info('[TOGGLE-DIAG] openNow:pressIn', { ts: Date.now() })}
                   onPress={onToggleOpenNow}
                   accessibilityRole="button"
                   accessibilityLabel="Toggle open now results"
@@ -528,6 +541,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                 </Pressable>
                 <Pressable
                   onLayout={registerHole('toggle-price')}
+                  onPressIn={() => logger.info('[TOGGLE-DIAG] price:pressIn', { ts: Date.now() })}
                   onPress={onTogglePriceSelector}
                   accessibilityRole="button"
                   accessibilityLabel="Select price filters"
@@ -571,6 +585,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                 </Pressable>
                 <Pressable
                   onLayout={registerHole('toggle-votes')}
+                  onPressIn={() => logger.info('[TOGGLE-DIAG] votes:pressIn', { ts: Date.now() })}
                   onPress={onToggleVotesFilter}
                   accessibilityRole="button"
                   accessibilityLabel="Toggle 100 plus votes filter"
