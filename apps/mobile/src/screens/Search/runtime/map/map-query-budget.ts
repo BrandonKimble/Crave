@@ -14,6 +14,7 @@ export type MapQueryBudgetSnapshot = {
     sampleCount: number;
     meanMs: number;
   }>;
+  runtimeCounters: Record<string, number>;
 };
 
 export type RuntimeAttributionContributor =
@@ -57,6 +58,7 @@ export class MapQueryBudget {
   private mapDiffApplySliceDurationsMs: number[] = [];
   private runtimeAttributionTotalsMs = new Map<string, number>();
   private runtimeAttributionSampleCountByContributor = new Map<string, number>();
+  private runtimeCounters = new Map<string, number>();
 
   public resetRun(): void {
     this.fullCatalogScanCount = 0;
@@ -65,6 +67,7 @@ export class MapQueryBudget {
     this.mapDiffApplySliceDurationsMs = [];
     this.runtimeAttributionTotalsMs.clear();
     this.runtimeAttributionSampleCountByContributor.clear();
+    this.runtimeCounters.clear();
   }
 
   public recordFullCatalogScan(): void {
@@ -117,6 +120,17 @@ export class MapQueryBudget {
     );
   }
 
+  public incrementRuntimeCounter(counter: string, delta: number = 1): void {
+    const normalizedCounter = counter.trim();
+    if (normalizedCounter.length === 0 || !Number.isFinite(delta) || delta === 0) {
+      return;
+    }
+    this.runtimeCounters.set(
+      normalizedCounter,
+      (this.runtimeCounters.get(normalizedCounter) ?? 0) + delta
+    );
+  }
+
   public snapshot(): MapQueryBudgetSnapshot {
     const runtimeAttributionTotalsMs = Object.fromEntries(
       Array.from(this.runtimeAttributionTotalsMs.entries())
@@ -145,6 +159,9 @@ export class MapQueryBudget {
       })
       .sort((left, right) => right.totalMs - left.totalMs)
       .slice(0, 5);
+    const runtimeCounters = Object.fromEntries(
+      Array.from(this.runtimeCounters.entries()).sort((left, right) => right[1] - left[1])
+    );
 
     return {
       fullCatalogScanCount: this.fullCatalogScanCount,
@@ -157,6 +174,7 @@ export class MapQueryBudget {
       runtimeAttributionTotalsMs,
       runtimeAttributionSampleCountByContributor,
       runtimeAttributionTopContributors,
+      runtimeCounters,
     };
   }
 }

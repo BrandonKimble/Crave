@@ -91,9 +91,9 @@ import { useSuggestionLayoutWarmth } from './hooks/use-suggestion-layout-warmth'
 import { useSuggestionHistoryBuffer } from './hooks/use-suggestion-history-buffer';
 import { useSuggestionTransitionHold } from './hooks/use-suggestion-transition-hold';
 import { useUserLocationController } from './hooks/use-user-location-controller';
-import { useSearchSubmitChromePrime } from './hooks/use-search-submit-chrome-prime';
 import { useResponseFrameFreeze } from './hooks/use-response-frame-freeze';
 import useSearchSheet from './hooks/use-search-sheet';
+import useSearchPresentationController from './hooks/use-search-presentation-controller';
 import useScrollDividerStyle from './hooks/use-scroll-divider-style';
 import useSearchSubmit from './hooks/use-search-submit';
 import { useMapInteractionController } from './runtime/map/map-interaction-controller';
@@ -121,7 +121,10 @@ import {
   useSheetPositionSlice,
   useSystemStatusSlice,
 } from './hooks/use-search-store-selectors';
-import { SearchRuntimeBusContext } from './runtime/shared/search-runtime-bus';
+import {
+  SearchRuntimeBusContext,
+  isSearchRuntimeMapPresentationPending,
+} from './runtime/shared/search-runtime-bus';
 import { useSearchRuntimeBusSelector } from './runtime/shared/use-search-runtime-bus-selector';
 import useSearchTransition from './hooks/use-search-transition';
 import { useSearchSessionCoordinator } from './session/use-search-session-coordinator';
@@ -243,8 +246,6 @@ const LOD_PIN_OFFSCREEN_TOGGLE_STABLE_MS_MOVING = 120;
 const LOD_VISIBLE_CANDIDATE_BUFFER = 16;
 const PROFILE_PIN_TARGET_CENTER_RATIO = 0.25;
 const PROFILE_PIN_MIN_VISIBLE_HEIGHT = 160;
-const SHORTCUT_CONTENT_FADE_DEFAULT = 0;
-const SHORTCUT_CONTENT_FADE_HOLD = 2;
 const PROFILE_CAMERA_ANIMATION_MS = 800;
 const PROFILE_RESTORE_ANIMATION_MS = 650;
 const PROFILE_MULTI_LOCATION_ZOOM_OUT_DELTA = 0.55;
@@ -854,7 +855,6 @@ const SearchScreen: React.FC = () => {
   const [suggestions, setSuggestions] = React.useState<AutocompleteMatch[]>([]);
   const [, setShowSuggestions] = React.useState(false);
   const [isAutocompleteSuppressed, setIsAutocompleteSuppressed] = React.useState(false);
-  const { beginSubmitChromePriming } = useSearchSubmitChromePrime(searchRuntimeBus);
   useResponseFrameFreeze(resultsRequestKey, searchRuntimeBus);
   const presentationTransitionControllerRef = React.useRef<ReturnType<
     typeof createPresentationTransitionController
@@ -865,7 +865,12 @@ const SearchScreen: React.FC = () => {
       publish: (patch) => {
         searchRuntimeBus.publish(patch);
       },
-      log: () => {},
+      log: (label, data) => {
+        logger.info('[PRESENTATION-DIAG] controller', {
+          label,
+          ...(data ?? {}),
+        });
+      },
       onIntentComplete: (intentId) => {
         onIntentCompleteRef.current?.(intentId);
       },
@@ -882,50 +887,36 @@ const SearchScreen: React.FC = () => {
   );
   // Deferred dismiss handle for feedback-first fast path.
   const pendingArmDismissTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clearPendingDismiss = React.useCallback(
-    (intentId?: string, flushIfMatching?: boolean) => {
-      if (pendingArmDismissTimeoutRef.current != null) {
-        clearTimeout(pendingArmDismissTimeoutRef.current);
-        pendingArmDismissTimeoutRef.current = null;
-      }
-      const controller = presentationTransitionControllerRef.current;
-      if (!controller) {
-        return;
-      }
-      if (
-        flushIfMatching &&
-        intentId != null &&
-        controller.pendingFeedbackIntentId != null &&
-        controller.pendingFeedbackIntentId === intentId
-      ) {
-        controller.armDismiss(intentId);
-        return;
-      }
-      controller.clearPendingDismissIntent(intentId);
-    },
-    []
-  );
+  const clearPendingDismiss = React.useCallback((intentId?: string, flushIfMatching?: boolean) => {
+    if (pendingArmDismissTimeoutRef.current != null) {
+      clearTimeout(pendingArmDismissTimeoutRef.current);
+      pendingArmDismissTimeoutRef.current = null;
+    }
+    const controller = presentationTransitionControllerRef.current;
+    if (!controller) {
+      return;
+    }
+    if (
+      flushIfMatching &&
+      intentId != null &&
+      controller.pendingFeedbackIntentId != null &&
+      controller.pendingFeedbackIntentId === intentId
+    ) {
+      controller.armDismiss(intentId);
+      return;
+    }
+    controller.clearPendingDismissIntent(intentId);
+  }, []);
   const handleToggleInteractionLifecycle = React.useCallback(
     (event: ToggleInteractionLifecycleEvent) => {
       const transitionController = presentationTransitionControllerRef.current!;
-      logger.info('[TOGGLE-DIAG] lifecycle', {
-        type: event.type,
-        intentId: event.intentId,
-        kind: event.kind,
-        ts: Date.now(),
-      });
       if (event.type === 'started') {
         clearPendingDismiss();
         transitionController.startFeedback('interaction_frost');
         transitionController.pendingFeedbackIntentId = event.intentId;
-        logger.info('[TOGGLE-DIAG] lifecycle:feedbackStarted', { ts: Date.now() });
         const capturedIntentId = event.intentId;
         pendingArmDismissTimeoutRef.current = setTimeout(() => {
           pendingArmDismissTimeoutRef.current = null;
-          logger.info('[TOGGLE-DIAG] lifecycle:armDismissTick', {
-            intentId: capturedIntentId,
-            ts: Date.now(),
-          });
           transitionController.armDismiss(capturedIntentId);
         }, 0);
         return;
@@ -941,7 +932,6 @@ const SearchScreen: React.FC = () => {
           loadingMode: 'interaction_frost',
           requiresCoverage: resolveCoverageRequirement(event.kind),
         });
-        logger.info('[TOGGLE-DIAG] lifecycle:intentBegan', { ts: Date.now() });
         return;
       }
       if (event.type === 'cancelled') {
@@ -964,15 +954,12 @@ const SearchScreen: React.FC = () => {
     },
     [clearPendingDismiss]
   );
-  const {
-    scheduleToggleCommit,
-    notifyIntentComplete,
-    cancelToggleInteraction,
-  } = useToggleInteractionCoordinator({
-    searchRuntimeBus,
-    setIsFilterTogglePending,
-    onLifecycleEvent: handleToggleInteractionLifecycle,
-  });
+  const { scheduleToggleCommit, notifyIntentComplete, cancelToggleInteraction } =
+    useToggleInteractionCoordinator({
+      searchRuntimeBus,
+      setIsFilterTogglePending,
+      onLifecycleEvent: handleToggleInteractionLifecycle,
+    });
   onIntentCompleteRef.current = notifyIntentComplete;
   const runOneCommitSpanPressureByOperationRef = React.useRef<Map<string, number>>(new Map());
   const runOneStallPressureByOperationRef = React.useRef<Map<string, number>>(new Map());
@@ -1007,6 +994,63 @@ const SearchScreen: React.FC = () => {
     isRun1HandoffActive,
     isResponseFrameFreezeActive,
   } = freezeGateState;
+  const freezeGateDiagRef = React.useRef<{
+    isRunOneChromeFreezeActive: boolean;
+    isRunOnePreflightFreezeActive: boolean;
+    isRun1HandoffActive: boolean;
+    isResponseFrameFreezeActive: boolean;
+    runOneHandoffPhase: ReturnType<typeof searchRuntimeBus.getState>['runOneHandoffPhase'];
+    mapPresentationPhase: ReturnType<typeof searchRuntimeBus.getState>['mapPresentationPhase'];
+    presentationTransitionLoadingMode: ReturnType<
+      typeof searchRuntimeBus.getState
+    >['presentationTransitionLoadingMode'];
+    presentationResultsCoverVisible: boolean;
+  } | null>(null);
+  React.useEffect(() => {
+    const runtimeState = searchRuntimeBus.getState();
+    const nextSnapshot = {
+      isRunOneChromeFreezeActive,
+      isRunOnePreflightFreezeActive,
+      isRun1HandoffActive,
+      isResponseFrameFreezeActive,
+      runOneHandoffPhase: runtimeState.runOneHandoffPhase,
+      mapPresentationPhase: runtimeState.mapPresentationPhase,
+      presentationTransitionLoadingMode: runtimeState.presentationTransitionLoadingMode,
+      presentationResultsCoverVisible: runtimeState.presentationResultsCoverVisible,
+    };
+    const previousSnapshot = freezeGateDiagRef.current;
+    if (
+      previousSnapshot &&
+      previousSnapshot.isRunOneChromeFreezeActive === nextSnapshot.isRunOneChromeFreezeActive &&
+      previousSnapshot.isRunOnePreflightFreezeActive ===
+        nextSnapshot.isRunOnePreflightFreezeActive &&
+      previousSnapshot.isRun1HandoffActive === nextSnapshot.isRun1HandoffActive &&
+      previousSnapshot.isResponseFrameFreezeActive === nextSnapshot.isResponseFrameFreezeActive &&
+      previousSnapshot.runOneHandoffPhase === nextSnapshot.runOneHandoffPhase &&
+      previousSnapshot.mapPresentationPhase === nextSnapshot.mapPresentationPhase &&
+      previousSnapshot.presentationTransitionLoadingMode ===
+        nextSnapshot.presentationTransitionLoadingMode &&
+      previousSnapshot.presentationResultsCoverVisible ===
+        nextSnapshot.presentationResultsCoverVisible
+    ) {
+      return;
+    }
+    logger.info('[SEARCH-FREEZE-DIAG] freezeGate', nextSnapshot);
+    freezeGateDiagRef.current = nextSnapshot;
+  }, [
+    isRun1HandoffActive,
+    isResponseFrameFreezeActive,
+    isRunOneChromeFreezeActive,
+    isRunOnePreflightFreezeActive,
+    searchRuntimeBus,
+  ]);
+  const getPerfNow = React.useCallback(() => {
+    if (typeof performance?.now === 'function') {
+      return performance.now();
+    }
+    return Date.now();
+  }, []);
+  const readRuntimeMemoryDiagnostics = React.useCallback(() => null, []);
   // Visual-sync state is now read imperatively from the bus inside callbacks,
   // effects, and bus subscriptions — no render-time selector needed. This
   // eliminates ~4 SearchScreen re-renders per search that were triggered by
@@ -1154,23 +1198,18 @@ const SearchScreen: React.FC = () => {
     });
   }, [searchRuntimeBus]);
   const isSearchLoading = isSearchRequestLoadingRef.current;
-  const pushBusReadinessSignals = React.useCallback(
-    () => {
-      const transitionController = presentationTransitionControllerRef.current!;
-      const intentId = transitionController.getActiveIntentId();
-      if (!intentId) {
-        return;
-      }
-      const runtimeState = searchRuntimeBus.getState();
-      const listReady =
-        runtimeState.isResultsHydrationSettled && !runtimeState.shouldHydrateResultsForRender;
-      transitionController.markListReady(intentId, listReady);
-      const coverageReady =
-        runtimeState.searchMode === 'shortcut' ? !runtimeState.isShortcutCoverageLoading : true;
-      transitionController.markCoverageReady(intentId, coverageReady);
-    },
-    [searchRuntimeBus]
-  );
+  const pushBusReadinessSignals = React.useCallback(() => {
+    const transitionController = presentationTransitionControllerRef.current!;
+    const intentId = transitionController.getActiveIntentId();
+    if (!intentId) {
+      return;
+    }
+    const runtimeState = searchRuntimeBus.getState();
+    transitionController.markListFirstPaintReady(intentId, runtimeState.listFirstPaintReady);
+    const coverageReady =
+      runtimeState.searchMode === 'shortcut' ? !runtimeState.isShortcutCoverageLoading : true;
+    transitionController.markCoverageReady(intentId, coverageReady);
+  }, [searchRuntimeBus]);
   const handlePageOneResultsCommitted = React.useCallback(() => {
     const transitionController = presentationTransitionControllerRef.current!;
     const intentId = transitionController.getActiveIntentId();
@@ -1178,17 +1217,13 @@ const SearchScreen: React.FC = () => {
       return;
     }
     transitionController.markDataReady(intentId);
-  }, []);
+    pushBusReadinessSignals();
+  }, [pushBusReadinessSignals]);
   React.useEffect(() => {
     pushBusReadinessSignals();
     return searchRuntimeBus.subscribe(() => {
       pushBusReadinessSignals();
-    }, [
-      'isResultsHydrationSettled',
-      'shouldHydrateResultsForRender',
-      'isShortcutCoverageLoading',
-      'searchMode',
-    ]);
+    }, ['listFirstPaintReady', 'isShortcutCoverageLoading', 'searchMode']);
   }, [searchRuntimeBus, pushBusReadinessSignals]);
   const searchInteractionRef = React.useRef({
     isInteracting: false,
@@ -1209,8 +1244,6 @@ const SearchScreen: React.FC = () => {
     searchBarFrame,
     searchShortcutsFrame,
     searchShortcutChipFrames,
-    searchShortcutsFadeResetKey,
-    setSearchShortcutsFadeResetKey,
     searchContainerLayoutCacheRef,
     searchShortcutsLayoutCacheRef,
     handleSearchHeaderLayout,
@@ -1353,6 +1386,7 @@ const SearchScreen: React.FC = () => {
   const resultsListScrollingRef = React.useRef(false);
   const resultsSheetSettlingRef = React.useRef(false);
   const pendingResultsSheetSnapRef = React.useRef<OverlaySheetSnap | null>(null);
+  const activeResultsSheetSnapRef = React.useRef<OverlaySheetSnap>('hidden');
   const lastAutoOpenKeyRef = React.useRef<string | null>(null);
   const mapMovedSinceSearchRef = React.useRef(false);
   const pendingMapMovedRevealRef = React.useRef(false);
@@ -1604,8 +1638,6 @@ const SearchScreen: React.FC = () => {
   const suggestionScrollOffset = useSharedValue(0);
   const suggestionScrollTopValue = useSharedValue(0);
   const suggestionScrollMaxHeightValue = useSharedValue(0);
-  const shortcutContentFadeMode = useSharedValue(SHORTCUT_CONTENT_FADE_DEFAULT);
-  const shortcutSubmitFade = useSharedValue(1);
   const overlayHeaderActionProgress = useSharedValue(0);
   const [searchHeaderActionModeOverride, setSearchHeaderActionModeOverride] =
     React.useState<OverlayHeaderActionMode | null>(null);
@@ -1701,7 +1733,9 @@ const SearchScreen: React.FC = () => {
   const {
     isSearchOriginRestorePending,
     captureSearchSessionOrigin,
-    beginSearchCloseRestore,
+    armSearchCloseRestore,
+    commitSearchCloseRestore,
+    cancelSearchCloseRestore,
     flushPendingSearchOriginRestore,
     requestDefaultPostSearchRestore,
   } = useSearchSessionCoordinator({
@@ -1778,12 +1812,6 @@ const SearchScreen: React.FC = () => {
       easing: Easing.inOut(Easing.cubic),
     });
   }, [bottomNavHideProgress, shouldHideBottomNav]);
-  const bottomNavAnimatedStyle = useAnimatedStyle(
-    () => ({
-      transform: [{ translateY: (1 - bottomNavHideProgress.value) * bottomNavHiddenTranslateY }],
-    }),
-    [bottomNavHiddenTranslateY]
-  );
   // Snap points should track the measured nav-bar top when available. This keeps collapsed
   // overlays flush to the nav edge even when root-level layout shifts (e.g. status banner push).
   const navBarTopForSnaps =
@@ -1807,7 +1835,7 @@ const SearchScreen: React.FC = () => {
     snapPoints,
     shouldRenderSheet,
     sheetTranslateY,
-    snapTo: resultsSheetSnapTo,
+    motionCommand: resultsSheetMotionCommand,
     resetSheetToHidden,
     animateSheetTo,
     showPanel,
@@ -1887,40 +1915,7 @@ const SearchScreen: React.FC = () => {
     });
   }, [animateSheetTo, navBarTopForSnaps, sheetState]);
   const isSearchEditingRef = React.useRef(false);
-  const pendingResultsSheetRevealRef = React.useRef(false);
   const allowSearchBlurExitRef = React.useRef(false);
-  const requestResultsSheetReveal = React.useCallback(() => {
-    const isEditingNow =
-      Boolean(inputRef.current?.isFocused?.()) || isSearchEditingRef.current || isSearchFocused;
-    if (isEditingNow) {
-      pendingResultsSheetRevealRef.current = true;
-      return;
-    }
-    showPanel();
-  }, [isSearchFocused, showPanel]);
-  const flushPendingResultsSheetReveal = React.useCallback(() => {
-    if (!pendingResultsSheetRevealRef.current) {
-      return;
-    }
-    pendingResultsSheetRevealRef.current = false;
-    requestAnimationFrame(() => {
-      requestResultsSheetReveal();
-    });
-  }, [requestResultsSheetReveal]);
-  React.useEffect(() => {
-    if (!pendingResultsSheetRevealRef.current) {
-      return;
-    }
-    if (!isSearchSessionActive && !isSearchLoading) {
-      return;
-    }
-    const isEditingNow =
-      Boolean(inputRef.current?.isFocused?.()) || isSearchEditingRef.current || isSearchFocused;
-    if (isEditingNow) {
-      return;
-    }
-    flushPendingResultsSheetReveal();
-  }, [flushPendingResultsSheetReveal, isSearchLoading, isSearchFocused, isSearchSessionActive]);
   React.useEffect(() => {
     if (sheetState !== 'hidden') {
       lastVisibleSheetStateRef.current = sheetState;
@@ -1930,10 +1925,13 @@ const SearchScreen: React.FC = () => {
     if (shouldRenderSheet) {
       return;
     }
+    activeResultsSheetSnapRef.current = 'hidden';
     pendingResultsSheetSnapRef.current = null;
     resetResultsSheetInteraction();
   }, [resetResultsSheetInteraction, shouldRenderSheet]);
   const shouldRenderResultsSheet = shouldRenderSheet;
+  const hasActiveSearchSheetContent =
+    isSearchSessionActive || isSearchLoading || hasResults || submittedQuery.length > 0;
   const shouldRenderResultsSheetRef = React.useRef(shouldRenderResultsSheet);
   shouldRenderResultsSheetRef.current = shouldRenderResultsSheet;
   const shouldRenderRestaurantOverlay = Boolean(restaurantProfile);
@@ -2082,12 +2080,10 @@ const SearchScreen: React.FC = () => {
   );
   const applyResultsSheetSnapChange = React.useCallback(
     (snap: OverlaySheetSnap) => {
+      activeResultsSheetSnapRef.current = snap;
       handleSheetSnapChange(snap);
-      if (snap === 'hidden') {
-        flushPendingSearchOriginRestore();
-      }
     },
-    [flushPendingSearchOriginRestore, handleSheetSnapChange]
+    [handleSheetSnapChange]
   );
   const handleResultsSheetSnapStart = React.useCallback(
     (snap: OverlaySheetSnap | 'hidden') => {
@@ -2106,8 +2102,11 @@ const SearchScreen: React.FC = () => {
         return;
       }
       applyResultsSheetSnapChange(snap);
+      if (snap === 'collapsed') {
+        markSearchSheetCloseSheetSettled(snap);
+      }
     },
-    [applyResultsSheetSnapChange]
+    [applyResultsSheetSnapChange, markSearchSheetCloseSheetSettled]
   );
   const handleRestaurantOverlaySnapStart = React.useCallback(
     (snap: OverlaySheetSnap | 'hidden') => {
@@ -2136,14 +2135,19 @@ const SearchScreen: React.FC = () => {
       if (!isSettling) {
         // Signal response buffering that the slide animation is complete
         onSlideTransitionCompleteRef.current?.();
+        let settledSnap = activeResultsSheetSnapRef.current;
         if (pendingResultsSheetSnapRef.current) {
           const pending = pendingResultsSheetSnapRef.current;
           pendingResultsSheetSnapRef.current = null;
           applyResultsSheetSnapChange(pending);
+          settledSnap = pending;
+        }
+        if (settledSnap === 'collapsed') {
+          markSearchSheetCloseSheetSettled(settledSnap);
         }
       }
     },
-    [applyResultsSheetSnapChange, setResultsSheetSettlingState]
+    [applyResultsSheetSnapChange, markSearchSheetCloseSheetSettled, setResultsSheetSettlingState]
   );
   const handleSearchFiltersLayoutCache = React.useCallback((cache: SearchFiltersLayoutCache) => {
     searchFiltersLayoutCacheRef.current = cache;
@@ -2353,8 +2357,6 @@ const SearchScreen: React.FC = () => {
     isRecentlyViewedLoading,
     isRecentlyViewedFoodsLoading,
     setSearchTransitionVariant,
-    shortcutContentFadeMode,
-    shortcutFadeDefault: SHORTCUT_CONTENT_FADE_DEFAULT,
   });
   React.useEffect(() => {
     if (!isSuggestionPanelActive) {
@@ -2388,8 +2390,6 @@ const SearchScreen: React.FC = () => {
     hasRecentSearchesDisplay,
     hasRecentlyViewedRestaurantsDisplay,
     hasRecentlyViewedFoodsDisplay,
-    shouldHoldShortcuts,
-    shouldForceHideShortcuts,
     shouldFreezeSuggestionHeader,
     shouldRenderRecentSection,
     shouldRenderAutocompleteSection,
@@ -2403,7 +2403,6 @@ const SearchScreen: React.FC = () => {
     isSuggestionPanelActive,
     isSuggestionPanelVisible,
     hasSearchChromeRawQuery,
-    isSearchSessionActive,
     isAutocompleteSuppressed,
     isAutocompleteLoading,
     query,
@@ -2424,10 +2423,9 @@ const SearchScreen: React.FC = () => {
   const shouldEnableRestaurantOverlayInteraction = !shouldSuppressRestaurantOverlay;
   React.useEffect(() => {
     if (!isSuggestionPanelVisible) {
-      shortcutContentFadeMode.value = SHORTCUT_CONTENT_FADE_DEFAULT;
       suggestionScrollOffset.value = 0;
     }
-  }, [isSuggestionPanelVisible, shortcutContentFadeMode, suggestionScrollOffset]);
+  }, [isSuggestionPanelVisible, suggestionScrollOffset]);
   React.useEffect(() => {
     if (shouldDriveSuggestionLayout) {
       return;
@@ -2475,30 +2473,93 @@ const SearchScreen: React.FC = () => {
     showBookmarksOverlay ||
     showProfileOverlay ||
     showSaveListOverlay;
+  const finalizeCloseSearchRef = React.useRef<(intentId: string) => void>(() => {});
+  const finalizeCloseSearchBridge = React.useCallback((intentId: string) => {
+    finalizeCloseSearchRef.current(intentId);
+  }, []);
+  const requestMapPresentationTarget = React.useCallback(
+    (options: {
+      target: 'default' | 'results';
+      kind?: 'initial_search' | 'shortcut_rerun' | 'close_search';
+      preserveSheetState?: boolean;
+      requiresCoverage?: boolean;
+    }) =>
+      presentationTransitionControllerRef.current!.requestMapPresentationTarget({
+        target: options.target,
+        kind: options.kind,
+        loadingMode:
+          options.target === 'results' && !hasResults && !options.preserveSheetState
+            ? 'initial_cover'
+            : 'interaction_frost',
+        requiresCoverage: options.requiresCoverage,
+      }),
+    [hasResults]
+  );
+  const {
+    backdropTarget,
+    inputMode,
+    backgroundProgress: searchBackdropProgress,
+    defaultChromeProgress: searchHeaderDefaultChromeProgress,
+    headerVisualModel,
+    searchSheetContentLane,
+    requestIntent: requestSearchPresentationIntent,
+    markMapTargetSettled: markSearchSheetCloseMapDismissSettled,
+    markSheetSettled: markSearchSheetCloseSheetSettled,
+    cancelActiveClose: cancelSearchSheetCloseTransition,
+  } = useSearchPresentationController({
+    query,
+    submittedQuery,
+    hasActiveSearchContent: hasActiveSearchSheetContent,
+    isSearchSessionActive,
+    isSearchLoading,
+    isSuggestionPanelActive,
+    shouldRenderSearchOverlay,
+    shouldEnableShortcutInteractions: !shouldDisableSearchShortcutsRef.current,
+    sheetY: sheetTranslateY,
+    resultsSnapY: snapPoints.middle,
+    collapsedY: snapPoints.collapsed,
+    animateSheetTo,
+    prepareShortcutSheetTransition,
+    requestMapPresentationTarget,
+    armSearchCloseRestore,
+    commitSearchCloseRestore,
+    cancelSearchCloseRestore,
+    flushPendingSearchOriginRestore,
+    requestDefaultPostSearchRestore,
+    finalizeCloseSearch: finalizeCloseSearchBridge,
+  });
+  const shouldDriveBottomNavFromDismissProgress =
+    isSearchOverlay && inputMode !== 'editing' && searchSheetContentLane.kind === 'results_closing';
+  const bottomNavVisualProgress = useDerivedValue(() => {
+    if (isSuggestionPanelActive || inputMode === 'editing') {
+      return bottomNavHideProgress.value;
+    }
+    if (shouldDriveBottomNavFromDismissProgress) {
+      return searchHeaderDefaultChromeProgress.value;
+    }
+    return bottomNavHideProgress.value;
+  });
+  const bottomNavAnimatedStyle = useAnimatedStyle(
+    () => ({
+      transform: [{ translateY: (1 - bottomNavVisualProgress.value) * bottomNavHiddenTranslateY }],
+    }),
+    [bottomNavHiddenTranslateY]
+  );
   const shouldShowSearchShortcuts =
     !shouldDisableSearchShortcutsRef.current &&
     shouldRenderSearchOverlay &&
-    (isSearchOverlay ? isSuggestionPanelActive || !isSearchSessionActive : true);
-  const shouldRenderSearchShortcuts =
-    (shouldShowSearchShortcuts || shouldHoldShortcuts) && !shouldForceHideShortcuts;
+    (isSearchOverlay ? isSuggestionPanelActive || headerVisualModel.shortcutsVisibleTarget : true);
+  const shouldRenderSearchShortcuts = shouldShowSearchShortcuts;
+  const shouldEnableSearchShortcutsInteraction =
+    shouldRenderSearchShortcuts && headerVisualModel.shortcutsInteractive;
   const { progress: searchShortcutsFadeProgress, isVisible: shouldRenderSearchShortcutsRow } =
     useTransitionDriver({
       enabled: true,
       target: shouldRenderSearchShortcuts ? 1 : 0,
       getDurationMs: () => SEARCH_SHORTCUTS_FADE_MS,
       getEasing: () => Easing.linear,
-      resetOnShowKey: searchShortcutsFadeResetKey,
     });
-  useAnimatedReaction(
-    () => searchShortcutsFadeProgress.value,
-    (current) => {
-      if (current === 0 && shortcutSubmitFade.value < 1) {
-        shortcutSubmitFade.value = 1;
-      }
-    }
-  );
-  const shouldMountSearchShortcuts =
-    !shouldForceHideShortcuts && (shouldRenderSearchShortcuts || shouldRenderSearchShortcutsRow);
+  const shouldMountSearchShortcuts = shouldRenderSearchShortcuts || shouldRenderSearchShortcutsRow;
   const shouldUseSearchShortcutFrames =
     shouldDriveSuggestionLayout ||
     shouldMountSearchShortcuts ||
@@ -2525,10 +2586,8 @@ const SearchScreen: React.FC = () => {
   const hasResolvedSearchShortcutsFrame = Boolean(resolvedSearchShortcutsFrame);
   const shouldIncludeShortcutCutout =
     shouldDriveSuggestionLayout &&
-    !shouldForceHideShortcuts &&
     (shouldRenderSearchShortcuts ||
       shouldRenderSearchShortcutsRow ||
-      shouldHoldShortcuts ||
       hasResolvedSearchShortcutsFrame);
   const shouldIncludeShortcutHoles = shouldIncludeShortcutCutout;
   const shouldIncludeShortcutLayout = shouldIncludeShortcutCutout;
@@ -2552,7 +2611,6 @@ const SearchScreen: React.FC = () => {
         holdRecent: shouldRenderRecentSection,
         holdSuggestionPanel: shouldRenderSuggestionPanel,
         holdSuggestionBackground: shouldShowSuggestionBackground,
-        holdShortcuts: false,
       },
     }),
     [
@@ -2960,7 +3018,7 @@ const SearchScreen: React.FC = () => {
   }, [shouldLockSearchChromeTransform]);
   const searchShortcutChipAnimatedStyle = useAnimatedStyle(() => {
     const progress = suggestionProgress.value;
-    const backgroundAlpha = searchTransitionVariant === 'submitting' ? 0 : 1 - progress;
+    const backgroundAlpha = 1 - progress;
     return {
       backgroundColor: `rgba(255, 255, 255, ${backgroundAlpha})`,
       ...shadowFadeStyle(
@@ -2969,18 +3027,16 @@ const SearchScreen: React.FC = () => {
         backgroundAlpha
       ),
     };
-  }, [searchTransitionVariant]);
-  const searchShortcutContentAnimatedStyle = useAnimatedStyle(() => {
-    if (isSuggestionClosing) {
-      if (shortcutContentFadeMode.value === SHORTCUT_CONTENT_FADE_HOLD) {
-        return { opacity: 1 };
-      }
-      return {
-        opacity: 1 - suggestionProgress.value,
-      };
+  });
+  const searchShortcutsChromeVisibilityProgress = useDerivedValue(() => {
+    if (isSuggestionPanelActive) {
+      return 1;
     }
-    return { opacity: 1 };
-  }, [isSuggestionClosing]);
+    if (inputMode === 'editing') {
+      return 0;
+    }
+    return headerVisualModel.shortcutsVisibleTarget ? 1 - searchBackdropProgress.value : 0;
+  });
   const searchShortcutsAnimatedStyle = useAnimatedStyle(() => {
     const sheetTop = sheetTranslateY.value;
     const expandedY = chromeTransitionConfig.expanded;
@@ -2992,13 +3048,16 @@ const SearchScreen: React.FC = () => {
         : middleY <= expandedY
         ? 1
         : 0;
-    const visibility = Math.min(searchShortcutsFadeProgress.value, uncoverProgress);
-    const progress = suggestionProgress.value;
-    const backgroundAlpha = 1 - progress;
-    const revealOpacity =
-      searchTransitionVariant === 'submitting' || isSuggestionPanelVisible ? 1 : backgroundAlpha;
-    const opacity =
-      searchChromeOpacity.value * visibility * revealOpacity * shortcutSubmitFade.value;
+    const chromeVisibility = Math.max(
+      0,
+      Math.min(1, searchShortcutsChromeVisibilityProgress.value)
+    );
+    const visibility = Math.min(
+      searchShortcutsFadeProgress.value,
+      uncoverProgress,
+      chromeVisibility
+    );
+    const opacity = searchChromeOpacity.value * visibility;
     const chromeScale = shouldLockSearchChromeTransform ? 1 : searchChromeScale.value;
     return {
       opacity,
@@ -3007,8 +3066,6 @@ const SearchScreen: React.FC = () => {
   }, [
     chromeTransitionConfig.expanded,
     chromeTransitionConfig.middle,
-    isSuggestionPanelVisible,
-    searchTransitionVariant,
     shouldLockSearchChromeTransform,
   ]);
   const suggestionPanelAnimatedStyle = useAnimatedStyle(() => ({
@@ -3027,6 +3084,7 @@ const SearchScreen: React.FC = () => {
   const shouldShowSearchThisArea =
     isSearchOverlay &&
     !isSuggestionPanelActive &&
+    backdropTarget === 'results' &&
     isSearchSessionActive &&
     mapMovedSinceSearch &&
     !isSearchLoading &&
@@ -3106,6 +3164,9 @@ const SearchScreen: React.FC = () => {
     if (searchMode !== 'shortcut') {
       return;
     }
+    if (backdropTarget === 'default') {
+      return;
+    }
     if (isSearchFocused || isSuggestionPanelActive) {
       return;
     }
@@ -3124,8 +3185,17 @@ const SearchScreen: React.FC = () => {
         shortcutQuerySyncTaskRef.current = null;
       }
     };
-  }, [isSearchFocused, isSuggestionPanelActive, query, searchMode, setQuery, submittedQuery]);
+  }, [
+    backdropTarget,
+    isSearchFocused,
+    isSuggestionPanelActive,
+    query,
+    searchMode,
+    setQuery,
+    submittedQuery,
+  ]);
   const focusSearchInput = React.useCallback(() => {
+    requestSearchPresentationIntent({ kind: 'focus_editing' });
     isSearchEditingRef.current = true;
     allowSearchBlurExitRef.current = false;
     captureSearchSessionQuery();
@@ -3135,10 +3205,16 @@ const SearchScreen: React.FC = () => {
     setIsSearchFocused(true);
     setIsSuggestionPanelActive(true);
     const submittedQueryTrimmed = submittedQuery.trim();
-    const nextQueryValue =
-      isSearchSessionActive && submittedQueryTrimmed.length > 0 && query.trim().length === 0
-        ? submittedQueryTrimmed
-        : query;
+    const shouldSeedEditingFromSubmittedQuery =
+      backdropTarget === 'results' &&
+      isSearchSessionActive &&
+      submittedQueryTrimmed.length > 0 &&
+      query.trim().length === 0;
+    const nextQueryValue = shouldSeedEditingFromSubmittedQuery
+      ? submittedQueryTrimmed
+      : backdropTarget === 'default'
+      ? ''
+      : query;
     if (nextQueryValue !== query) {
       setQuery(nextQueryValue);
     }
@@ -3155,13 +3231,16 @@ const SearchScreen: React.FC = () => {
     captureSearchSessionQuery,
     cancelAutocomplete,
     dismissTransientOverlays,
+    backdropTarget,
     isSearchSessionActive,
     query,
+    requestSearchPresentationIntent,
     setQuery,
     showCachedSuggestionsIfFresh,
     submittedQuery,
   ]);
   const handleSearchPressIn = React.useCallback(() => {
+    requestSearchPresentationIntent({ kind: 'focus_editing' });
     isSearchEditingRef.current = true;
     allowSearchBlurExitRef.current = false;
     captureSearchSessionQuery();
@@ -3170,13 +3249,20 @@ const SearchScreen: React.FC = () => {
     setIsAutocompleteSuppressed(false);
     setIsSearchFocused(true);
     setIsSuggestionPanelActive(true);
+    if (backdropTarget === 'default' && query.length > 0) {
+      setQuery('');
+    }
   }, [
     allowAutocompleteResults,
+    backdropTarget,
     captureSearchSessionQuery,
     dismissTransientOverlays,
+    query.length,
+    requestSearchPresentationIntent,
     setIsAutocompleteSuppressed,
     setIsSearchFocused,
     setIsSuggestionPanelActive,
+    setQuery,
   ]);
   const handleQueryChange = React.useCallback(
     (value: string) => {
@@ -3238,13 +3324,6 @@ const SearchScreen: React.FC = () => {
   const shouldLogResultsViewability = false;
   const shouldLogProfiler = false;
   const profilerMinMs = Number.POSITIVE_INFINITY;
-  const getPerfNow = React.useCallback(() => {
-    if (typeof performance?.now === 'function') {
-      return performance.now();
-    }
-    return Date.now();
-  }, []);
-  const readRuntimeMemoryDiagnostics = React.useCallback(() => null, []);
   const logSearchCompute = React.useCallback(
     (label: string, duration: number) => {
       if (!shouldLogSearchComputes || duration < searchComputeMinMs) {
@@ -3265,15 +3344,15 @@ const SearchScreen: React.FC = () => {
   const profilerShouldHydrateResultsForRenderRef = React.useRef(
     searchRuntimeBus.getState().shouldHydrateResultsForRender
   );
-  const profilerIsMapRevealPendingRef = React.useRef(
-    searchRuntimeBus.getState().presentationMapRevealRequestKey != null
+  const profilerMapPresentationPhaseRef = React.useRef(
+    searchRuntimeBus.getState().mapPresentationPhase
   );
   React.useEffect(() => {
     const sync = () => {
-      profilerIsMapRevealPendingRef.current = searchRuntimeBus.getState().presentationMapRevealRequestKey != null;
+      profilerMapPresentationPhaseRef.current = searchRuntimeBus.getState().mapPresentationPhase;
     };
     sync();
-    return searchRuntimeBus.subscribe(sync, ['presentationMapRevealRequestKey']);
+    return searchRuntimeBus.subscribe(sync, ['mapPresentationPhase']);
   }, [searchRuntimeBus]);
   React.useEffect(() => {
     const syncHydrationSignal = () => {
@@ -3283,6 +3362,44 @@ const SearchScreen: React.FC = () => {
     syncHydrationSignal();
     return searchRuntimeBus.subscribe(syncHydrationSignal, ['shouldHydrateResultsForRender']);
   }, [searchRuntimeBus]);
+  const submitShortcutSearchRef = React.useRef<
+    (input: {
+      targetTab: 'dishes' | 'restaurants';
+      label: string;
+      preserveSheetState: boolean;
+      transitionFromDockedPolls: boolean;
+      scoreMode: NaturalSearchRequest['scoreMode'];
+    }) => Promise<void>
+  >(async () => undefined);
+  const toggleOpenNowHarnessRef = React.useRef<() => void>(() => undefined);
+  const {
+    isShortcutPerfHarnessScenario,
+    emitRuntimeMechanismEvent,
+    shortcutHarnessRunId,
+    getActiveShortcutRunNumber,
+    recordProfilerSpan,
+  } = useShortcutHarnessObserver({
+    getPerfNow,
+    roundPerfValue,
+    searchSessionController,
+    submitShortcutSearchRef,
+    toggleOpenNowRef: toggleOpenNowHarnessRef,
+    scoreMode,
+    setPreferredScoreMode,
+    mapQueryBudget,
+    searchMode,
+    isSearchLoading,
+    isLoadingMore: searchRuntimeBus.getState().isLoadingMore,
+    isRunOneHandoffActive: isRun1HandoffActive,
+    resultsRequestKey,
+    searchInteractionRef,
+    isSearchOverlay,
+    isInitialCameraReady,
+    runTimeoutMs: SHORTCUT_HARNESS_RUN_TIMEOUT_MS,
+    settleQuietPeriodMs: SHORTCUT_HARNESS_SETTLE_QUIET_PERIOD_MS,
+    searchRuntimeBus,
+    runtimeWorkSchedulerRef,
+  });
   const handleProfilerRender = React.useCallback<React.ProfilerOnRenderCallback>(
     (id, phase, actualDuration, baseDuration, startTime, commitTime) => {
       if (shouldLogProfiler && actualDuration >= profilerMinMs) {
@@ -3323,7 +3440,7 @@ const SearchScreen: React.FC = () => {
         const commitSpanMs = Math.max(0, commitTime - startTime);
         const stageHint = profilerShouldHydrateResultsForRenderRef.current
           ? 'results_hydration_commit'
-          : profilerIsMapRevealPendingRef.current
+          : isSearchRuntimeMapPresentationPending(profilerMapPresentationPhaseRef.current)
           ? 'visual_sync_state'
           : isSearchRequestLoadingRef.current
           ? 'results_list_materialization'
@@ -3448,7 +3565,7 @@ const SearchScreen: React.FC = () => {
           const activeRunNumber = getActiveShortcutRunNumber();
           const stageHint = profilerShouldHydrateResultsForRenderRef.current
             ? 'results_hydration_commit'
-            : profilerIsMapRevealPendingRef.current
+            : isSearchRuntimeMapPresentationPending(profilerMapPresentationPhaseRef.current)
             ? 'visual_sync_state'
             : isSearchRequestLoadingRef.current
             ? 'results_list_materialization'
@@ -3502,12 +3619,6 @@ const SearchScreen: React.FC = () => {
   const resetShortcutCoverageState = React.useCallback(() => {
     markerEngineRef.current?.resetShortcutCoverageState();
   }, []);
-  const recomputeLodPinnedMarkers = React.useCallback((bounds: MapBounds | null) => {
-    markerEngineRef.current?.recomputeLodPinnedMarkers(bounds);
-  }, []);
-  const fallbackLodPinnedMarkersRef = React.useRef<Array<unknown>>([]);
-  const lodPinnedMarkersRef =
-    markerEngineRef.current?.lodPinnedMarkersRef ?? fallbackLodPinnedMarkersRef;
 
   // Intentionally avoid auto-fitting the map when results change; keep user camera position.
 
@@ -3597,44 +3708,6 @@ const SearchScreen: React.FC = () => {
       listRef.scrollToOffset({ offset: 0, animated: false });
     });
   }, [resultsScrollOffset]);
-  const submitShortcutSearchRef = React.useRef<
-    (input: {
-      targetTab: 'dishes' | 'restaurants';
-      label: string;
-      preserveSheetState: boolean;
-      transitionFromDockedPolls: boolean;
-      scoreMode: NaturalSearchRequest['scoreMode'];
-    }) => Promise<void>
-  >(async () => undefined);
-  const toggleOpenNowHarnessRef = React.useRef<() => void>(() => undefined);
-  const {
-    isShortcutPerfHarnessScenario,
-    emitRuntimeMechanismEvent,
-    shortcutHarnessRunId,
-    getActiveShortcutRunNumber,
-    recordProfilerSpan,
-  } = useShortcutHarnessObserver({
-    getPerfNow,
-    roundPerfValue,
-    searchSessionController,
-    submitShortcutSearchRef,
-    toggleOpenNowRef: toggleOpenNowHarnessRef,
-    scoreMode,
-    setPreferredScoreMode,
-    mapQueryBudget,
-    searchMode,
-    isSearchLoading,
-    isLoadingMore: searchRuntimeBus.getState().isLoadingMore,
-    isRunOneHandoffActive: isRun1HandoffActive,
-    resultsRequestKey,
-    searchInteractionRef,
-    isSearchOverlay,
-    isInitialCameraReady,
-    runTimeoutMs: SHORTCUT_HARNESS_RUN_TIMEOUT_MS,
-    settleQuietPeriodMs: SHORTCUT_HARNESS_SETTLE_QUIET_PERIOD_MS,
-    searchRuntimeBus,
-    runtimeWorkSchedulerRef,
-  });
 
   // Imperative bus subscription: emit handoff phase telemetry without causing
   // SearchScreen re-renders on every phase transition.
@@ -3682,6 +3755,7 @@ const SearchScreen: React.FC = () => {
     resultsRequestKey: string | null;
     resultsPage: number | null;
     shouldHydrateResultsForRender: boolean;
+    mapPresentationPhase: ReturnType<typeof searchRuntimeBus.getState>['mapPresentationPhase'];
     isMapRevealPending: boolean;
   } | null>(null);
   React.useEffect(() => {
@@ -3701,7 +3775,10 @@ const SearchScreen: React.FC = () => {
       resultsRequestKey,
       resultsPage,
       shouldHydrateResultsForRender: searchRuntimeBus.getState().shouldHydrateResultsForRender,
-      isMapRevealPending: searchRuntimeBus.getState().presentationMapRevealRequestKey != null,
+      mapPresentationPhase: searchRuntimeBus.getState().mapPresentationPhase,
+      isMapRevealPending: isSearchRuntimeMapPresentationPending(
+        searchRuntimeBus.getState().mapPresentationPhase
+      ),
     };
     const previous = rootStateCommitSnapshotRef.current;
     rootStateCommitSnapshotRef.current = snapshot;
@@ -3741,48 +3818,56 @@ const SearchScreen: React.FC = () => {
     searchMode,
     searchRuntimeBus,
   ]);
-  // Imperative bus subscription: emit presentation-controller visual-sync telemetry
+  // Imperative bus subscription: emit map visual-phase telemetry
   // without causing SearchScreen re-renders.
   React.useEffect(() => {
-    let prevRevealKey = searchRuntimeBus.getState().presentationMapRevealRequestKey;
-    let prevDismissEpoch = searchRuntimeBus.getState().presentationDismissEpoch;
+    let prevPhase = searchRuntimeBus.getState().mapPresentationPhase;
+    let prevLaneKind = searchRuntimeBus.getState().presentationLane?.kind ?? null;
+    let prevLaneRequestKey = searchRuntimeBus.getState().presentationLane?.requestKey ?? null;
     const unsub = searchRuntimeBus.subscribe(() => {
       const activeRunNumber = getActiveShortcutRunNumber();
       if (activeRunNumber == null) {
         const bs = searchRuntimeBus.getState();
-        prevRevealKey = bs.presentationMapRevealRequestKey;
-        prevDismissEpoch = bs.presentationDismissEpoch;
+        prevPhase = bs.mapPresentationPhase;
+        prevLaneKind = bs.presentationLane?.kind ?? null;
+        prevLaneRequestKey = bs.presentationLane?.requestKey ?? null;
         return;
       }
       const busState = searchRuntimeBus.getState();
       const operationId = busState.runOneHandoffOperationId;
       const phase = busState.runOneHandoffPhase;
-      const nextRevealKey = busState.presentationMapRevealRequestKey;
-      const nextDismissEpoch = busState.presentationDismissEpoch;
-      if (nextRevealKey !== prevRevealKey) {
+      const nextVisualPhase = busState.mapPresentationPhase;
+      const nextLaneKind = busState.presentationLane?.kind ?? null;
+      const nextLaneRequestKey = busState.presentationLane?.requestKey ?? null;
+      if (nextVisualPhase !== prevPhase) {
         emitRuntimeMechanismEvent('runtime_write_span', {
           domain: 'visual_sync_state',
-          label: nextRevealKey != null ? 'map_reveal_armed' : 'map_reveal_cleared',
+          label: `map_visual_phase_${nextVisualPhase}`,
           operationId,
           phase,
-          requestKey: nextRevealKey,
-          previousRequestKey: prevRevealKey,
+          mapPresentationPhase: nextVisualPhase,
+          previousMapPresentationPhase: prevPhase,
         });
       }
-      if (nextDismissEpoch !== prevDismissEpoch) {
+      if (nextLaneRequestKey !== prevLaneRequestKey || nextLaneKind !== prevLaneKind) {
         emitRuntimeMechanismEvent('runtime_write_span', {
           domain: 'visual_sync_state',
-          label: 'dismiss_epoch_incremented',
+          label:
+            nextLaneRequestKey != null ? 'presentation_lane_armed' : 'presentation_lane_cleared',
           operationId,
           phase,
-          dismissEpoch: nextDismissEpoch,
+          presentationLaneKind: nextLaneKind,
+          presentationLaneRequestKey: nextLaneRequestKey,
+          previousPresentationLaneKind: prevLaneKind,
+          previousPresentationLaneRequestKey: prevLaneRequestKey,
         });
       }
-      prevRevealKey = nextRevealKey;
-      prevDismissEpoch = nextDismissEpoch;
+      prevPhase = nextVisualPhase;
+      prevLaneKind = nextLaneKind;
+      prevLaneRequestKey = nextLaneRequestKey;
     }, [
-      'presentationMapRevealRequestKey',
-      'presentationDismissEpoch',
+      'mapPresentationPhase',
+      'presentationLane',
       'runOneHandoffOperationId',
       'runOneHandoffPhase',
     ]);
@@ -3900,28 +3985,21 @@ const SearchScreen: React.FC = () => {
       kind: 'initial_search' | 'shortcut_rerun';
       mode: 'natural' | 'shortcut' | null;
       preserveSheetState: boolean;
+      transitionFromDockedPolls: boolean;
+      targetTab: 'dishes' | 'restaurants';
+      submittedLabel?: string;
     }) => {
-      const transitionController = presentationTransitionControllerRef.current!;
-      const activeIntentId = transitionController.getActiveIntentId();
-      // Preserve active toggle-owned intents during mutation reruns
-      // (e.g. open-now/price/rank/votes). Those flows already started an
-      // interaction intent and submit should not replace it.
-      if (activeIntentId != null && params.preserveSheetState) {
-        return;
-      }
-      if (activeIntentId != null) {
-        transitionController.cancelIntent(activeIntentId);
-      }
-      const runtimeState = searchRuntimeBus.getState();
-      const hasVisibleResults = runtimeState.results != null;
-      const shouldUseInitialCover = !hasVisibleResults && !params.preserveSheetState;
-      transitionController.beginIntent({
-        kind: params.kind,
-        loadingMode: shouldUseInitialCover ? 'initial_cover' : 'interaction_frost',
-        requiresCoverage: params.mode === 'shortcut',
+      cancelCloseSearch();
+      requestSearchPresentationIntent({
+        kind: params.kind === 'shortcut_rerun' ? 'shortcut_submit' : 'manual_submit',
+        query:
+          params.submittedLabel ?? (params.mode === 'shortcut' ? submittedQuery : query.trim()),
+        targetTab: params.targetTab,
+        preserveSheetState: params.preserveSheetState,
+        transitionFromDockedPolls: params.transitionFromDockedPolls,
       });
     },
-    [searchRuntimeBus]
+    [cancelCloseSearch, query, requestSearchPresentationIntent, submittedQuery]
   );
   const handlePresentationIntentAbort = React.useCallback(() => {
     const transitionController = presentationTransitionControllerRef.current!;
@@ -3949,7 +4027,6 @@ const SearchScreen: React.FC = () => {
     onSearchRequestLoadingChange: setSearchRequestLoading,
     runtimeWorkSchedulerRef,
     searchRuntimeBus,
-    showPanel: requestResultsSheetReveal,
     resetSheetToHidden,
     scrollResultsToTop,
     isSearchEditingRef,
@@ -3968,7 +4045,6 @@ const SearchScreen: React.FC = () => {
     loadRecentHistory,
     updateLocalRecentSearches: deferRecentSearchUpsert,
     isRestaurantOverlayVisibleRef,
-    prepareShortcutSheetTransition,
     onPageOneResultsCommitted: handlePageOneResultsCommitted,
     onShortcutSearchCoverageSnapshot: handleShortcutSearchCoverageSnapshot,
     runtimeSessionController: searchSessionController,
@@ -4113,34 +4189,32 @@ const SearchScreen: React.FC = () => {
       publishRuntimeBusPatch({
         pendingTabSwitchTab: value,
       });
-      scheduleToggleCommit(({ intentId }) => {
-        const runtimeState = searchRuntimeBus.getState();
-        const shouldSwitchTab = runtimeState.activeTab !== value;
-        if (shouldSwitchTab) {
-          handleTabChange(value);
-        } else {
-          publishRuntimeBusPatch({
-            pendingTabSwitchTab: null,
-          });
-        }
-        const shouldAwaitVisualSync = shouldSwitchTab && runtimeState.isSearchSessionActive;
-        if (!shouldAwaitVisualSync) {
+      scheduleToggleCommit(
+        ({ intentId }) => {
+          const runtimeState = searchRuntimeBus.getState();
+          const shouldSwitchTab = runtimeState.activeTab !== value;
+          if (shouldSwitchTab) {
+            handleTabChange(value);
+          } else {
+            publishRuntimeBusPatch({
+              pendingTabSwitchTab: null,
+            });
+          }
+          const shouldAwaitVisualSync = shouldSwitchTab && runtimeState.isSearchSessionActive;
+          if (!shouldAwaitVisualSync) {
+            return {
+              awaitVisualSync: false,
+            };
+          }
+          presentationTransitionControllerRef.current!.markDataReady(intentId);
           return {
-            awaitVisualSync: false,
+            awaitVisualSync: true,
           };
-        }
-        presentationTransitionControllerRef.current!.markDataReady(intentId);
-        return {
-          awaitVisualSync: true,
-        };
-      }, { kind: 'tab_switch' });
+        },
+        { kind: 'tab_switch' }
+      );
     },
-    [
-      handleTabChange,
-      publishRuntimeBusPatch,
-      scheduleToggleCommit,
-      searchRuntimeBus,
-    ]
+    [handleTabChange, publishRuntimeBusPatch, scheduleToggleCommit, searchRuntimeBus]
   );
 
   const dismissSearchKeyboard = React.useCallback(() => {
@@ -4181,12 +4255,9 @@ const SearchScreen: React.FC = () => {
       }
       ensureSearchOverlay();
       isSearchEditingRef.current = false;
-      pendingResultsSheetRevealRef.current = false;
       allowSearchBlurExitRef.current = true;
       ignoreNextSearchBlurRef.current = true;
       suppressAutocompleteResults();
-      beginSubmitChromePriming();
-      shortcutSubmitFade.value = withTiming(0, { duration: SEARCH_SHORTCUTS_FADE_MS });
       if (isSuggestionPanelActive) {
         beginSubmitTransition();
         if (typeof React.startTransition === 'function') {
@@ -4203,7 +4274,6 @@ const SearchScreen: React.FC = () => {
       setRestaurantOnlyIntent(null);
     },
     [
-      beginSubmitChromePriming,
       beginSubmitTransition,
       captureSearchSessionOrigin,
       dismissSearchKeyboard,
@@ -4213,7 +4283,6 @@ const SearchScreen: React.FC = () => {
       setRestaurantOnlyIntent,
       setIsSuggestionPanelActive,
       setIsSearchFocused,
-      shortcutSubmitFade,
       suppressAutocompleteResults,
     ]
   );
@@ -4279,7 +4348,6 @@ const SearchScreen: React.FC = () => {
       captureSearchSessionOrigin();
       ensureSearchOverlay();
       isSearchEditingRef.current = false;
-      pendingResultsSheetRevealRef.current = false;
       allowSearchBlurExitRef.current = true;
       ignoreNextSearchBlurRef.current = true;
       suppressAutocompleteResults();
@@ -4347,12 +4415,19 @@ const SearchScreen: React.FC = () => {
     cancelPendingMutationWorkRef.current();
   }, []);
 
-  const { clearSearchState, handleClear, handleCloseResults } = useSearchClearController({
+  const {
+    clearSearchState,
+    cancelCloseSearch,
+    finalizeCloseSearch,
+    handleClear,
+    handleCloseResults,
+  } = useSearchClearController({
     isRestaurantOverlayVisible,
     isSearchSessionActive,
     isSearchLoading,
     isSuggestionPanelActive,
     isSuggestionPanelVisible,
+    shouldPreserveForegroundEditingOnClose: inputMode === 'editing',
     searchRuntimeBus,
     inputRef,
     ignoreNextSearchBlurRef,
@@ -4360,11 +4435,12 @@ const SearchScreen: React.FC = () => {
     shouldClearSearchOnProfileDismissRef,
     isClearingSearchRef,
     closeRestaurantProfileRef,
-    lodPinnedMarkersRef,
     lastAutoOpenKeyRef,
     restaurantFocusSessionRef,
     searchSessionQueryRef,
-    beginSearchCloseRestore,
+    armSearchCloseRestore,
+    commitSearchCloseRestore,
+    cancelSearchCloseRestore,
     flushPendingSearchOriginRestore,
     requestDefaultPostSearchRestore,
     cancelActiveSearchRequest,
@@ -4375,13 +4451,9 @@ const SearchScreen: React.FC = () => {
     resetFocusedMapState,
     resetMapMoveFlag,
     resetSheetToHidden,
-    recomputeLodPinnedMarkers,
     scrollResultsToTop,
     setRestaurantOnlyIntent,
     setSearchTransitionVariant,
-    shortcutContentFadeMode,
-    shortcutFadeDefault: SHORTCUT_CONTENT_FADE_DEFAULT,
-    setSearchShortcutsFadeResetKey,
     setIsFilterTogglePending,
     setIsSearchFocused,
     setIsSuggestionPanelActive,
@@ -4393,37 +4465,44 @@ const SearchScreen: React.FC = () => {
     setIsSearchSessionActive,
     setSearchMode,
     resetShortcutCoverageState,
+    startClosePresentation: () => requestSearchPresentationIntent({ kind: 'close' }) ?? '',
+    cancelClosePresentation: (intentId) => {
+      cancelSearchSheetCloseTransition(intentId);
+      presentationTransitionControllerRef.current!.cancelClosePresentation(intentId);
+    },
     onCloseResultsUiReset: handleCloseResultsUiReset,
   });
   clearSearchStateRef.current = clearSearchState;
+  finalizeCloseSearchRef.current = finalizeCloseSearch;
 
   const { handleSearchFocus, handleSearchBlur, handleSearchBack } = useSearchFocusController({
     inputRef,
     isSuggestionPanelActive,
+    searchBackdropTarget: backdropTarget,
     isSearchSessionActive,
     isRestaurantOverlayVisible,
     isSearchLoading,
     showPollsOverlay,
     query,
-    shouldShowSearchShortcuts,
     isSearchEditingRef,
     allowSearchBlurExitRef,
     ignoreNextSearchBlurRef,
     cancelSearchEditOnBackRef,
     restoreHomeOnSearchBackRef,
     searchSessionQueryRef,
-    pendingResultsSheetRevealRef,
-    shortcutContentFadeMode,
-    shortcutFadeDefault: SHORTCUT_CONTENT_FADE_DEFAULT,
-    shortcutFadeHold: SHORTCUT_CONTENT_FADE_HOLD,
     captureSearchSessionQuery,
     dismissTransientOverlays,
     allowAutocompleteResults,
     suppressAutocompleteResults,
     beginSuggestionCloseHold,
-    flushPendingResultsSheetReveal,
     cancelAutocomplete,
     restoreDockedPolls,
+    enterEditing: () => {
+      requestSearchPresentationIntent({ kind: 'focus_editing' });
+    },
+    exitEditing: () => {
+      requestSearchPresentationIntent({ kind: 'exit_editing' });
+    },
     setIsSearchFocused,
     setIsSuggestionPanelActive,
     setIsAutocompleteSuppressed,
@@ -4438,7 +4517,6 @@ const SearchScreen: React.FC = () => {
     handleRecentlyViewedFoodPress,
   } = useRecentSearchActions({
     isSearchEditingRef,
-    pendingResultsSheetRevealRef,
     allowSearchBlurExitRef,
     ignoreNextSearchBlurRef,
     pendingRestaurantSelectionRef,
@@ -4499,7 +4577,7 @@ const SearchScreen: React.FC = () => {
 
   const {
     handleMapPress,
-    handleCameraChanged,
+    handleNativeViewportChanged,
     handleMapIdle,
     handleMapTouchStart,
     handleMapTouchEnd,
@@ -4529,7 +4607,6 @@ const SearchScreen: React.FC = () => {
     cancelAutocomplete,
     cameraIntentArbiter,
     viewportBoundsService,
-    recomputeLodPinnedMarkers,
     cancelMapUpdateTimeouts,
     markMapMovedIfNeeded,
     scheduleMapIdleReveal,
@@ -4770,20 +4847,43 @@ const SearchScreen: React.FC = () => {
     },
     []
   );
-  type MarkerRevealStartedPayload = {
-    requestKey: string;
-    markerRevealCommitId: number | null;
-    startedAtMs: number;
-  };
-  const handleMarkerRevealStarted = React.useCallback(
-    (payload: MarkerRevealStartedPayload) => {
-      // Controller drops frost/cover and fires onIntentComplete → toggle coordinator finalizes.
-      presentationTransitionControllerRef.current!.markMapRevealStarted(payload.requestKey);
+  const handleRevealBatchMountedHidden = React.useCallback(
+    (payload: {
+      requestKey: string;
+      frameGenerationId: string | null;
+      revealBatchId: string | null;
+      readyAtMs: number;
+    }) => {
+      if (payload.revealBatchId == null || payload.frameGenerationId == null) {
+        return;
+      }
+      const runtimeState = searchRuntimeBus.getState();
+      const activeIntentId = presentationTransitionControllerRef.current!.getActiveIntentId();
+      const revealLane =
+        runtimeState.presentationLane?.kind === 'reveal' ? runtimeState.presentationLane : null;
+      if (
+        payload.requestKey !== activeIntentId ||
+        revealLane == null ||
+        revealLane.requestKey !== payload.requestKey ||
+        revealLane.status !== 'pending_mount'
+      ) {
+        return;
+      }
+      presentationTransitionControllerRef.current!.markRevealBatchMountedHidden(
+        payload.requestKey,
+        {
+          requestKey: payload.requestKey,
+          batchId: payload.revealBatchId,
+          generationId: payload.frameGenerationId,
+        }
+      );
     },
-    []
+    [searchRuntimeBus]
   );
   type MarkerRevealSettledPayload = {
     requestKey: string;
+    frameGenerationId: string | null;
+    revealBatchId: string | null;
     markerRevealCommitId: number | null;
     settledAtMs: number;
   };
@@ -4842,7 +4942,24 @@ const SearchScreen: React.FC = () => {
   }, [flushPendingMarkerRevealSettled, runOneHandoffCoordinatorRef]);
   const handleMarkerRevealSettled = React.useCallback(
     (payload: MarkerRevealSettledPayload) => {
-      presentationTransitionControllerRef.current!.markMapRevealStarted(payload.requestKey);
+      if (payload.revealBatchId == null || payload.frameGenerationId == null) {
+        return;
+      }
+      const runtimeState = searchRuntimeBus.getState();
+      const revealLane =
+        runtimeState.presentationLane?.kind === 'reveal' ? runtimeState.presentationLane : null;
+      if (
+        revealLane == null ||
+        revealLane.requestKey !== payload.requestKey ||
+        revealLane.status !== 'revealing'
+      ) {
+        return;
+      }
+      presentationTransitionControllerRef.current!.markRevealBatchSettled(payload.requestKey, {
+        requestKey: payload.requestKey,
+        batchId: payload.revealBatchId,
+        generationId: payload.frameGenerationId,
+      });
       const coordinatorSnapshot = runOneHandoffCoordinatorRef.current.getSnapshot();
       const operationId = coordinatorSnapshot.operationId;
       if (!operationId || coordinatorSnapshot.phase === 'idle') {
@@ -4855,10 +4972,34 @@ const SearchScreen: React.FC = () => {
       };
       flushPendingMarkerRevealSettled();
     },
-    [
-      flushPendingMarkerRevealSettled,
-      runOneHandoffCoordinatorRef,
-    ]
+    [flushPendingMarkerRevealSettled, runOneHandoffCoordinatorRef, searchRuntimeBus]
+  );
+  const handleMarkerDismissStarted = React.useCallback(
+    (payload: { requestKey: string; startedAtMs: number }) => {
+      const dismissLane =
+        searchRuntimeBus.getState().presentationLane?.kind === 'dismiss'
+          ? searchRuntimeBus.getState().presentationLane
+          : null;
+      if (dismissLane?.requestKey !== payload.requestKey) {
+        return;
+      }
+      presentationTransitionControllerRef.current!.markMapDismissStarted(payload);
+    },
+    [searchRuntimeBus]
+  );
+  const handleMarkerDismissSettled = React.useCallback(
+    (payload: { requestKey: string; settledAtMs: number }) => {
+      const dismissLane =
+        searchRuntimeBus.getState().presentationLane?.kind === 'dismiss'
+          ? searchRuntimeBus.getState().presentationLane
+          : null;
+      if (dismissLane?.requestKey !== payload.requestKey) {
+        return;
+      }
+      markSearchSheetCloseMapDismissSettled(payload.requestKey);
+      presentationTransitionControllerRef.current!.markMapDismissSettled(payload);
+    },
+    [markSearchSheetCloseMapDismissSettled, searchRuntimeBus]
   );
 
   // Marker press and visual ready are now handled internally by SearchMapWithMarkerEngine.
@@ -4868,19 +5009,23 @@ const SearchScreen: React.FC = () => {
   );
   const stableMapHandlers = useStableMapHandlers({
     handleMapPress,
-    handleCameraChanged,
+    handleNativeViewportChanged,
     handleMapIdle,
     handleMapLoaded,
     handleMarkerPress: noopMarkerPress,
-    handleMarkerRevealStarted,
+    handleRevealBatchMountedHidden,
     handleMarkerRevealSettled,
+    handleMarkerDismissStarted,
+    handleMarkerDismissSettled,
   });
   const stableHandleMapPress = stableMapHandlers.onMapPress;
-  const stableHandleCameraChanged = stableMapHandlers.onCameraChanged;
+  const stableHandleNativeViewportChanged = stableMapHandlers.onNativeViewportChanged;
   const stableHandleMapIdle = stableMapHandlers.onMapIdle;
   const stableHandleMapLoaded = stableMapHandlers.onMapLoaded;
-  const stableHandleMarkerRevealStarted = stableMapHandlers.onMarkerRevealStarted;
+  const stableHandleRevealBatchMountedHidden = stableMapHandlers.onRevealBatchMountedHidden;
   const stableHandleMarkerRevealSettled = stableMapHandlers.onMarkerRevealSettled;
+  const stableHandleMarkerDismissStarted = stableMapHandlers.onMarkerDismissStarted;
+  const stableHandleMarkerDismissSettled = stableMapHandlers.onMarkerDismissSettled;
 
   useProfileAutoOpenController({
     searchRuntimeBus,
@@ -4948,6 +5093,7 @@ const SearchScreen: React.FC = () => {
   const searchResultsPanelSpecArgs = React.useMemo(
     () => ({
       searchRuntimeBus,
+      searchSheetContentLane,
       activeOverlayKey: activeOverlay,
       scheduleTabToggleCommit,
       toggleRankSelector,
@@ -4977,7 +5123,7 @@ const SearchScreen: React.FC = () => {
       shouldDisableResultsSheetInteraction,
       snapPoints,
       sheetState,
-      resultsSheetSnapTo,
+      resultsSheetMotionCommand,
       handleResultsSheetSnapStart,
       handleResultsListScrollBegin,
       handleResultsListScrollEnd,
@@ -4992,6 +5138,7 @@ const SearchScreen: React.FC = () => {
     }),
     [
       searchRuntimeBus,
+      searchSheetContentLane,
       activeOverlay,
       scheduleTabToggleCommit,
       toggleRankSelector,
@@ -5022,7 +5169,7 @@ const SearchScreen: React.FC = () => {
       shouldDisableResultsSheetInteraction,
       snapPoints,
       sheetState,
-      resultsSheetSnapTo,
+      resultsSheetMotionCommand,
       handleResultsSheetSnapStart,
       handleResultsListScrollBegin,
       handleResultsListScrollEnd,
@@ -5057,12 +5204,17 @@ const SearchScreen: React.FC = () => {
 
   const pollsPanelOptions = React.useMemo(
     () => ({
-      visible: shouldShowPollsSheet,
+      visible:
+        shouldShowPollsSheet ||
+        (isSearchOverlay && searchSheetContentLane.kind === 'persistent_poll'),
       bounds: pollBounds,
       params: pollOverlayParams,
       initialSnapPoint: pollsOverlaySnapPoint,
       mode: pollsOverlayMode,
-      currentSnap: pollsSheetSnap,
+      currentSnap:
+        isSearchOverlay && searchSheetContentLane.kind === 'persistent_poll'
+          ? 'collapsed'
+          : pollsSheetSnap,
       navBarTop: navBarTopForSnaps,
       navBarHeight,
       searchBarTop,
@@ -5083,6 +5235,8 @@ const SearchScreen: React.FC = () => {
     }),
     [
       shouldShowPollsSheet,
+      isSearchOverlay,
+      searchSheetContentLane.kind,
       pollBounds,
       pollOverlayParams,
       pollsOverlaySnapPoint,
@@ -5204,7 +5358,9 @@ const SearchScreen: React.FC = () => {
       shouldShowPollsSheet,
       shouldRenderResultsSheet,
       isSearchOverlay,
+      searchSheetContentLane,
       isSuggestionPanelActive,
+      isForegroundEditing: inputMode === 'editing',
       searchHeaderActionModeOverride,
       setSearchHeaderActionModeOverride,
       handleResultsSheetDragStateChange,
@@ -5228,7 +5384,9 @@ const SearchScreen: React.FC = () => {
       shouldShowPollsSheet,
       shouldRenderResultsSheet,
       isSearchOverlay,
+      searchSheetContentLane,
       isSuggestionPanelActive,
+      inputMode,
       searchHeaderActionModeOverride,
       setSearchHeaderActionModeOverride,
       handleResultsSheetDragStateChange,
@@ -5246,6 +5404,55 @@ const SearchScreen: React.FC = () => {
   const shouldFreezeRunOneChromeProps =
     isRunOneChromeFreezeActive || isRunOnePreflightFreezeActive || isResponseFrameFreezeActive;
   const shouldFreezeDeferredChromeProps = shouldFreezeRunOneChromeProps;
+  const shouldFreezeBottomNavDuringShortcutLoad =
+    searchMode === 'shortcut' && (resultsPage == null || resultsPage === 1) && isSearchLoading;
+  const resultsSheetDiagRef = React.useRef<{
+    shouldRenderResultsSheet: boolean;
+    shouldFreezeDeferredChromeProps: boolean;
+    shouldFreezeBottomNavDuringShortcutLoad: boolean;
+    runOneHandoffPhase: ReturnType<typeof searchRuntimeBus.getState>['runOneHandoffPhase'];
+    mapPresentationPhase: ReturnType<typeof searchRuntimeBus.getState>['mapPresentationPhase'];
+    presentationTransitionLoadingMode: ReturnType<
+      typeof searchRuntimeBus.getState
+    >['presentationTransitionLoadingMode'];
+    presentationResultsCoverVisible: boolean;
+  } | null>(null);
+  React.useEffect(() => {
+    const runtimeState = searchRuntimeBus.getState();
+    const nextSnapshot = {
+      shouldRenderResultsSheet,
+      shouldFreezeDeferredChromeProps,
+      shouldFreezeBottomNavDuringShortcutLoad,
+      runOneHandoffPhase: runtimeState.runOneHandoffPhase,
+      mapPresentationPhase: runtimeState.mapPresentationPhase,
+      presentationTransitionLoadingMode: runtimeState.presentationTransitionLoadingMode,
+      presentationResultsCoverVisible: runtimeState.presentationResultsCoverVisible,
+    };
+    const previousSnapshot = resultsSheetDiagRef.current;
+    if (
+      previousSnapshot &&
+      previousSnapshot.shouldRenderResultsSheet === nextSnapshot.shouldRenderResultsSheet &&
+      previousSnapshot.shouldFreezeDeferredChromeProps ===
+        nextSnapshot.shouldFreezeDeferredChromeProps &&
+      previousSnapshot.shouldFreezeBottomNavDuringShortcutLoad ===
+        nextSnapshot.shouldFreezeBottomNavDuringShortcutLoad &&
+      previousSnapshot.runOneHandoffPhase === nextSnapshot.runOneHandoffPhase &&
+      previousSnapshot.mapPresentationPhase === nextSnapshot.mapPresentationPhase &&
+      previousSnapshot.presentationTransitionLoadingMode ===
+        nextSnapshot.presentationTransitionLoadingMode &&
+      previousSnapshot.presentationResultsCoverVisible ===
+        nextSnapshot.presentationResultsCoverVisible
+    ) {
+      return;
+    }
+    logger.info('[RESULTS-SHEET-DIAG] screenState', nextSnapshot);
+    resultsSheetDiagRef.current = nextSnapshot;
+  }, [
+    searchRuntimeBus,
+    shouldFreezeBottomNavDuringShortcutLoad,
+    shouldFreezeDeferredChromeProps,
+    shouldRenderResultsSheet,
+  ]);
   const frozenSuggestionSurfacePropsRef = React.useRef<{
     suggestionDisplaySuggestions: typeof suggestionDisplaySuggestions;
     recentSearchesDisplay: typeof recentSearchesDisplay;
@@ -5276,8 +5483,6 @@ const SearchScreen: React.FC = () => {
   const suggestionSurfacePropsForRender = shouldFreezeDeferredChromeProps
     ? frozenSuggestionSurfacePropsRef.current ?? nextSuggestionSurfaceProps
     : nextSuggestionSurfaceProps;
-  const shouldFreezeBottomNavDuringShortcutLoad =
-    searchMode === 'shortcut' && (resultsPage == null || resultsPage === 1) && isSearchLoading;
   const shouldFreezeDeferredBottomNavProps =
     isRun1HandoffActive || shouldFreezeBottomNavDuringShortcutLoad;
   const frozenBottomNavPropsRef = React.useRef<{
@@ -5287,8 +5492,10 @@ const SearchScreen: React.FC = () => {
     handleProfilePress: typeof handleProfilePress;
     handleOverlaySelect: typeof handleOverlaySelect;
   } | null>(null);
+  const shouldHideBottomNavForRender =
+    !isSearchOverlay || inputMode === 'editing' ? shouldHideBottomNav : false;
   const nextBottomNavProps = {
-    shouldHideBottomNav,
+    shouldHideBottomNav: shouldHideBottomNavForRender,
     shouldDisableSearchBlur,
     rootOverlay,
     handleProfilePress,
@@ -5302,20 +5509,18 @@ const SearchScreen: React.FC = () => {
     : nextBottomNavProps;
   const frozenOverlayHeaderChromePropsRef = React.useRef<{
     shouldMountSearchShortcuts: typeof shouldMountSearchShortcuts;
-    shouldRenderSearchShortcuts: typeof shouldRenderSearchShortcuts;
+    shouldEnableSearchShortcutsInteraction: typeof shouldEnableSearchShortcutsInteraction;
     searchShortcutsAnimatedStyle: typeof searchShortcutsAnimatedStyle;
     searchShortcutChipAnimatedStyle: typeof searchShortcutChipAnimatedStyle;
-    searchShortcutContentAnimatedStyle: typeof searchShortcutContentAnimatedStyle;
     shouldShowSearchThisArea: typeof shouldShowSearchThisArea;
     searchThisAreaTop: typeof searchThisAreaTop;
     searchThisAreaAnimatedStyle: typeof searchThisAreaAnimatedStyle;
   } | null>(null);
   const nextOverlayHeaderChromeProps = {
     shouldMountSearchShortcuts,
-    shouldRenderSearchShortcuts,
+    shouldEnableSearchShortcutsInteraction,
     searchShortcutsAnimatedStyle,
     searchShortcutChipAnimatedStyle,
-    searchShortcutContentAnimatedStyle,
     shouldShowSearchThisArea,
     searchThisAreaTop,
     searchThisAreaAnimatedStyle,
@@ -5365,11 +5570,13 @@ const SearchScreen: React.FC = () => {
                 onPress={stableHandleMapPress}
                 onTouchStart={handleMapTouchStart}
                 onTouchEnd={handleMapTouchEnd}
-                onCameraChanged={stableHandleCameraChanged}
+                onNativeViewportChanged={stableHandleNativeViewportChanged}
                 onMapIdle={stableHandleMapIdle}
                 onMapLoaded={stableHandleMapLoaded}
-                onMarkerRevealStarted={stableHandleMarkerRevealStarted}
+                onRevealBatchMountedHidden={stableHandleRevealBatchMountedHidden}
                 onMarkerRevealSettled={stableHandleMarkerRevealSettled}
+                onMarkerDismissStarted={stableHandleMarkerDismissStarted}
+                onMarkerDismissSettled={stableHandleMarkerDismissSettled}
                 isMapStyleReady={isMapStyleReady}
                 userLocation={userLocation}
                 locationPulse={locationPulse}
@@ -5392,7 +5599,9 @@ const SearchScreen: React.FC = () => {
                 <SafeAreaView
                   style={[
                     styles.overlay,
-                    isSuggestionOverlayVisible ? { zIndex: shouldHideBottomNav ? 200 : 110 } : null,
+                    isSuggestionOverlayVisible
+                      ? { zIndex: shouldHideBottomNavForRender ? 200 : 110 }
+                      : null,
                   ]}
                   pointerEvents="box-none"
                   edges={['top', 'left', 'right']}
@@ -5413,7 +5622,7 @@ const SearchScreen: React.FC = () => {
                     suggestionScrollMaxHeightAnimatedStyle={suggestionScrollMaxHeightAnimatedStyle}
                     searchLayoutTop={searchLayout.top}
                     searchLayoutHeight={searchLayout.height}
-                    shouldHideBottomNav={shouldHideBottomNav}
+                    shouldHideBottomNav={shouldHideBottomNavForRender}
                     navBarHeight={navBarHeight}
                     bottomInset={bottomInset}
                     onSuggestionScroll={suggestionScrollHandler}
@@ -5461,7 +5670,7 @@ const SearchScreen: React.FC = () => {
                   />
                   <SearchOverlayHeaderChrome
                     handleSearchContainerLayout={handleSearchContainerLayout}
-                    query={query}
+                    headerVisualModel={headerVisualModel}
                     shouldShowAutocompleteSpinnerInBar={shouldShowAutocompleteSpinnerInBar}
                     handleQueryChange={handleQueryChange}
                     handleSubmit={handleSubmit}
@@ -5470,29 +5679,24 @@ const SearchScreen: React.FC = () => {
                     handleClear={handleClear}
                     focusSearchInput={focusSearchInput}
                     handleSearchPressIn={handleSearchPressIn}
-                    isSuggestionPanelActive={isSuggestionPanelActive}
                     handleSearchBack={handleSearchBack}
                     handleSearchHeaderLayout={handleSearchHeaderLayout}
                     inputRef={inputRef}
                     searchBarInputAnimatedStyle={searchBarInputAnimatedStyle}
                     searchBarContainerAnimatedStyle={searchBarContainerAnimatedStyle}
                     isSuggestionScrollDismissing={isSuggestionScrollDismissing}
-                    isSearchSessionActive={isSearchSessionActive}
                     searchHeaderFocusProgress={searchHeaderFocusProgress}
                     shouldMountSearchShortcuts={
                       overlayHeaderChromePropsForRender.shouldMountSearchShortcuts
                     }
-                    shouldRenderSearchShortcuts={
-                      overlayHeaderChromePropsForRender.shouldRenderSearchShortcuts
+                    shouldEnableSearchShortcutsInteraction={
+                      overlayHeaderChromePropsForRender.shouldEnableSearchShortcutsInteraction
                     }
                     searchShortcutsAnimatedStyle={
                       overlayHeaderChromePropsForRender.searchShortcutsAnimatedStyle
                     }
                     searchShortcutChipAnimatedStyle={
                       overlayHeaderChromePropsForRender.searchShortcutChipAnimatedStyle
-                    }
-                    searchShortcutContentAnimatedStyle={
-                      overlayHeaderChromePropsForRender.searchShortcutContentAnimatedStyle
                     }
                     handleBestRestaurantsHere={handleBestRestaurantsHere}
                     handleBestDishesHere={handleBestDishesHere}
@@ -5521,9 +5725,9 @@ const SearchScreen: React.FC = () => {
                 resultsMomentum={resultsMomentum}
                 overlayHeaderActionProgress={overlayHeaderActionProgress}
                 navBarCutoutHeight={navBarCutoutHeight}
-                bottomNavHideProgress={bottomNavHideProgress}
+                bottomNavHideProgress={bottomNavVisualProgress}
                 bottomNavHiddenTranslateY={bottomNavHiddenTranslateY}
-                shouldHideBottomNav={shouldHideBottomNav}
+                shouldHideBottomNav={shouldHideBottomNavForRender}
                 onProfilerRender={handleProfilerRender}
               />
             </>

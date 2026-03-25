@@ -3,6 +3,7 @@ import React from 'react';
 import { createOverlayRegistry } from '../../../overlays/OverlayRegistry';
 import type { OverlayContentSpec, OverlayKey } from '../../../overlays/types';
 import type { OverlayHeaderActionMode } from '../../../overlays/useOverlayHeaderActionController';
+import type { SearchSheetContentLane } from './use-search-presentation-controller';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic overlay specs use varying item types
 type OverlaySpec = OverlayContentSpec<any> | null;
@@ -23,7 +24,9 @@ type UseSearchOverlaySheetResolutionArgs = {
   shouldShowPollsSheet: boolean;
   shouldRenderResultsSheet: boolean;
   isSearchOverlay: boolean;
+  searchSheetContentLane: SearchSheetContentLane;
   isSuggestionPanelActive: boolean;
+  isForegroundEditing: boolean;
   searchHeaderActionModeOverride: OverlayHeaderActionMode | null;
   setSearchHeaderActionModeOverride: React.Dispatch<
     React.SetStateAction<OverlayHeaderActionMode | null>
@@ -57,7 +60,9 @@ export const useSearchOverlaySheetResolution = ({
   shouldShowPollsSheet,
   shouldRenderResultsSheet,
   isSearchOverlay,
+  searchSheetContentLane,
   isSuggestionPanelActive,
+  isForegroundEditing,
   searchHeaderActionModeOverride,
   setSearchHeaderActionModeOverride,
   handleResultsSheetDragStateChange,
@@ -87,6 +92,16 @@ export const useSearchOverlaySheetResolution = ({
     ]
   );
 
+  const activeSearchSheetContentKey = React.useMemo<OverlayKey | null>(() => {
+    if (!isSearchOverlay) {
+      return shouldRenderResultsSheet ? 'search' : null;
+    }
+    if (searchSheetContentLane.kind === 'persistent_poll') {
+      return 'polls';
+    }
+    return shouldRenderResultsSheet ? 'search' : null;
+  }, [isSearchOverlay, searchSheetContentLane.kind, shouldRenderResultsSheet]);
+
   const activeOverlayKey = React.useMemo<OverlayKey | null>(() => {
     if (shouldShowPollCreationPanel) {
       return 'pollCreation';
@@ -103,16 +118,19 @@ export const useSearchOverlaySheetResolution = ({
     if (showBookmarksOverlay) {
       return 'bookmarks';
     }
+    if (activeSearchSheetContentKey === 'polls') {
+      return 'polls';
+    }
     if (shouldShowPollsSheet) {
       return 'polls';
     }
-    if (shouldRenderResultsSheet) {
+    if (activeSearchSheetContentKey === 'search') {
       return 'search';
     }
     return null;
   }, [
+    activeSearchSheetContentKey,
     restaurantPanelSpec,
-    shouldRenderResultsSheet,
     shouldShowPollCreationPanel,
     shouldShowPollsSheet,
     shouldShowRestaurantOverlay,
@@ -123,6 +141,12 @@ export const useSearchOverlaySheetResolution = ({
 
   const overlaySheetKey = activeOverlayKey;
   const overlaySheetSpecBase = overlaySheetKey ? overlayRegistry[overlaySheetKey] : null;
+  const shouldSuppressOverlaySheetForForegroundEditing =
+    isForegroundEditing &&
+    (overlaySheetKey === 'search' ||
+      overlaySheetKey === 'polls' ||
+      overlaySheetKey === 'bookmarks' ||
+      overlaySheetKey === 'profile');
   const shouldSuppressTabOverlaySheetForSuggestions =
     !isSearchOverlay &&
     isSuggestionPanelActive &&
@@ -132,6 +156,9 @@ export const useSearchOverlaySheetResolution = ({
 
   const overlaySheetSpec = React.useMemo(() => {
     if (!overlaySheetSpecBase || !overlaySheetKey) {
+      return null;
+    }
+    if (shouldSuppressOverlaySheetForForegroundEditing) {
       return null;
     }
     if (shouldSuppressTabOverlaySheetForSuggestions) {
@@ -148,8 +175,10 @@ export const useSearchOverlaySheetResolution = ({
   }, [
     handleResultsSheetDragStateChange,
     handleResultsSheetSettlingChange,
+    isForegroundEditing,
     overlaySheetKey,
     overlaySheetSpecBase,
+    shouldSuppressOverlaySheetForForegroundEditing,
     shouldSuppressTabOverlaySheetForSuggestions,
   ]);
 

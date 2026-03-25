@@ -23,6 +23,7 @@ import { XCircleIcon } from '../../../components/icons/HeroIcons';
 import { FONT_SIZES } from '../../../constants/typography';
 
 type AnimatedStyle = ReanimatedAnimatedStyle<ViewStyle>;
+type TrailingActionMode = 'hidden' | 'default_clear' | 'session_clear';
 
 const EDGE_INSET = 12;
 const SEARCH_ICON_EDGE_INSET = EDGE_INSET + 1;
@@ -51,6 +52,7 @@ const INLINE_LOADING_PADDING_RIGHT = INLINE_LOADING_SIZE + INLINE_LOADING_GAP;
 
 type SearchHeaderProps = {
   value: string;
+  displayValue?: string;
   placeholder?: string;
   loading?: boolean;
   onChangeText: (text: string) => void;
@@ -72,10 +74,12 @@ type SearchHeaderProps = {
   showInactiveSearchIcon?: boolean;
   isSearchSessionActive?: boolean;
   focusProgress?: SharedValue<number>;
+  trailingActionMode?: TrailingActionMode;
 };
 
 const SearchHeader: React.FC<SearchHeaderProps> = ({
   value,
+  displayValue,
   placeholder = 'Search',
   loading = false,
   onChangeText,
@@ -97,17 +101,26 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
   showInactiveSearchIcon = false,
   isSearchSessionActive = false,
   focusProgress: focusProgressProp,
+  trailingActionMode: trailingActionModeProp,
 }) => {
-  const hasLeadingIcon = showBack || showInactiveSearchIcon;
-  const shouldCollapseLeadingSlot = !hasLeadingIcon;
+  const resolvedValue = displayValue ?? value;
   const [inputWidth, setInputWidth] = React.useState(0);
   const [measuredTextWidth, setMeasuredTextWidth] = React.useState(0);
-  const shouldShowInlineLoading = Boolean(loading && value.length > 0);
-  const shouldReserveInlineSpinnerSpace = value.length > 0;
-  const textStartInset = shouldCollapseLeadingSlot ? SUBMITTED_TEXT_INSET : 0;
-  const hasValue = value.length > 0;
+  const shouldShowInlineLoading = Boolean(loading && resolvedValue.length > 0);
+  const shouldReserveInlineSpinnerSpace = resolvedValue.length > 0;
+  const shouldRenderLeadingSlot = showBack || showInactiveSearchIcon;
+  const textStartInset = shouldRenderLeadingSlot ? 0 : SUBMITTED_TEXT_INSET;
+  const hasValue = resolvedValue.length > 0;
   const focusProgressFallback = useSharedValue(0);
   const focusProgress = focusProgressProp ?? focusProgressFallback;
+  const trailingActionMode: TrailingActionMode =
+    trailingActionModeProp ??
+    (resolvedValue.length > 0
+      ? isSearchSessionActive
+        ? 'session_clear'
+        : 'default_clear'
+      : 'hidden');
+
   const handleSubmitEditing = React.useCallback(() => {
     runOnUI(() => {
       'worklet';
@@ -165,45 +178,44 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
           <Pressable style={styles.promptRow} onPress={onPress ?? onFocus} onPressIn={onPressIn}>
             <View style={styles.promptInner}>
               <Reanimated.View style={[styles.inputRow, inputAnimatedStyle]}>
-                <View
-                  style={[
-                    styles.leadingSlot,
-                    shouldCollapseLeadingSlot ? styles.leadingSlotCollapsed : null,
-                  ]}
-                >
-                  {showBack ? (
-                    <Pressable
-                      style={styles.leadingButton}
-                      onPress={(event) => {
-                        event.stopPropagation?.();
-                        if (onBackPress) {
-                          onBackPress();
-                          return;
-                        }
-                        (onPress ?? onFocus)?.();
-                      }}
-                      hitSlop={12}
-                      accessibilityRole="button"
-                      accessibilityLabel="Exit search"
-                    >
-                      <ChevronLeft
-                        size={CHEVRON_ICON_SIZE}
-                        color="#000000"
-                        strokeWidth={CHEVRON_STROKE_WIDTH}
-                        style={styles.chevronIcon}
-                      />
-                    </Pressable>
-                  ) : showInactiveSearchIcon ? (
-                    <View style={styles.leadingButton}>
-                      <Search
-                        size={SEARCH_ICON_SIZE}
-                        color="#000000"
-                        strokeWidth={2}
-                        style={styles.searchIcon}
-                      />
+                {shouldRenderLeadingSlot ? (
+                  <View style={styles.leadingSlotContainer}>
+                    <View style={styles.leadingSlot}>
+                      {showBack ? (
+                        <Pressable
+                          style={styles.leadingButton}
+                          onPress={(event) => {
+                            event.stopPropagation?.();
+                            if (onBackPress) {
+                              onBackPress();
+                              return;
+                            }
+                            (onPress ?? onFocus)?.();
+                          }}
+                          hitSlop={12}
+                          accessibilityRole="button"
+                          accessibilityLabel="Exit search"
+                        >
+                          <ChevronLeft
+                            size={CHEVRON_ICON_SIZE}
+                            color="#000000"
+                            strokeWidth={CHEVRON_STROKE_WIDTH}
+                            style={styles.chevronIcon}
+                          />
+                        </Pressable>
+                      ) : (
+                        <View style={styles.leadingButton}>
+                          <Search
+                            size={SEARCH_ICON_SIZE}
+                            color="#000000"
+                            strokeWidth={2}
+                            style={styles.searchIcon}
+                          />
+                        </View>
+                      )}
                     </View>
-                  ) : null}
-                </View>
+                  </View>
+                ) : null}
                 <View
                   style={styles.inputTextArea}
                   onLayout={(event) => {
@@ -214,7 +226,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                   <Reanimated.View style={[styles.textInputContainer, textInputOpacityStyle]}>
                     <TextInput
                       ref={inputRef}
-                      value={value}
+                      value={resolvedValue}
                       onChangeText={onChangeText}
                       placeholder={placeholder}
                       placeholderTextColor={themeColors.textBody}
@@ -267,7 +279,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                       ellipsizeMode="tail"
                       style={styles.blurredEllipsisText}
                     >
-                      {value}
+                      {resolvedValue}
                     </RNText>
                   </Reanimated.View>
                   {shouldShowInlineLoading ? (
@@ -289,13 +301,13 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                         );
                       }}
                     >
-                      {value}
+                      {resolvedValue}
                     </RNText>
                   </View>
                 </View>
               </Reanimated.View>
               <Reanimated.View style={trailingContainerStyle}>
-                {value.length > 0 ? (
+                {trailingActionMode !== 'hidden' ? (
                   <Pressable
                     onPress={(event) => {
                       event.stopPropagation?.();
@@ -306,7 +318,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                     style={styles.trailingButton}
                     hitSlop={10}
                   >
-                    {isSearchSessionActive ? (
+                    {trailingActionMode === 'session_clear' ? (
                       <LucideX size={CLEAR_ICON_SIZE} color={accentColor} strokeWidth={2} />
                     ) : (
                       <XCircleIcon size={CLEAR_ICON_SIZE} color={accentColor} />
@@ -370,9 +382,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  leadingSlotCollapsed: {
-    width: 0,
-    marginRight: 0,
+  leadingSlotContainer: {
+    height: 50,
+    justifyContent: 'center',
   },
   leadingButton: {
     width: LEADING_SLOT_WIDTH,

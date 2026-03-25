@@ -22,7 +22,6 @@ type RestaurantEntitySearchPayload = {
 
 type UseRecentSearchActionsArgs<TSuggestion> = {
   isSearchEditingRef: React.MutableRefObject<boolean>;
-  pendingResultsSheetRevealRef: React.MutableRefObject<boolean>;
   allowSearchBlurExitRef: React.MutableRefObject<boolean>;
   ignoreNextSearchBlurRef: React.MutableRefObject<boolean>;
   pendingRestaurantSelectionRef: React.MutableRefObject<{ restaurantId: string } | null>;
@@ -58,7 +57,6 @@ type UseRecentSearchActionsResult = {
 
 export const useRecentSearchActions = <TSuggestion>({
   isSearchEditingRef,
-  pendingResultsSheetRevealRef,
   allowSearchBlurExitRef,
   ignoreNextSearchBlurRef,
   pendingRestaurantSelectionRef,
@@ -85,7 +83,6 @@ export const useRecentSearchActions = <TSuggestion>({
       captureSearchSessionOrigin();
       ensureSearchOverlay();
       isSearchEditingRef.current = false;
-      pendingResultsSheetRevealRef.current = false;
       allowSearchBlurExitRef.current = true;
       const shouldDeferSuggestionClear = beginSubmitTransition();
       ignoreNextSearchBlurRef.current = true;
@@ -111,7 +108,6 @@ export const useRecentSearchActions = <TSuggestion>({
       ensureSearchOverlay,
       ignoreNextSearchBlurRef,
       isSearchEditingRef,
-      pendingResultsSheetRevealRef,
       resetFocusedMapState,
       setIsSearchFocused,
       setIsSuggestionPanelActive,

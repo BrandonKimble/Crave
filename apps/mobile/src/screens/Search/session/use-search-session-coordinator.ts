@@ -24,14 +24,17 @@ type UseSearchSessionCoordinatorOptions = {
   setOverlay: (overlay: OverlayKey) => void;
 };
 
-type BeginSearchCloseRestoreOptions = {
+type SearchCloseRestoreOptions = {
   allowFallback?: boolean;
+  searchRootRestoreSnap?: TabOverlaySnap;
 };
 
 type UseSearchSessionCoordinatorResult = {
   isSearchOriginRestorePending: boolean;
   captureSearchSessionOrigin: () => void;
-  beginSearchCloseRestore: (options?: BeginSearchCloseRestoreOptions) => boolean;
+  armSearchCloseRestore: (options?: SearchCloseRestoreOptions) => boolean;
+  commitSearchCloseRestore: () => boolean;
+  cancelSearchCloseRestore: () => void;
   flushPendingSearchOriginRestore: () => boolean;
   requestDefaultPostSearchRestore: () => void;
 };
@@ -123,19 +126,37 @@ export const useSearchSessionCoordinator = ({
     searchSessionOriginRef.current = createCurrentOriginContext();
   }, [createCurrentOriginContext]);
 
-  const beginSearchCloseRestore = React.useCallback(
-    ({ allowFallback = false }: BeginSearchCloseRestoreOptions = {}) => {
+  const armSearchCloseRestore = React.useCallback(
+    ({ allowFallback = false, searchRootRestoreSnap }: SearchCloseRestoreOptions = {}) => {
       const capturedOriginContext = searchSessionOriginRef.current;
       const resolvedOriginContext =
         capturedOriginContext ?? (allowFallback ? createCurrentOriginContext() : null);
-      const shouldRestoreOrigin = resolvedOriginContext != null;
-      pendingSearchOriginRestoreRef.current = resolvedOriginContext;
-      setIsSearchOriginRestorePending(shouldRestoreOrigin);
+      const nextOriginContext =
+        resolvedOriginContext?.rootOverlay === 'search' && searchRootRestoreSnap
+          ? {
+              ...resolvedOriginContext,
+              tabSnap: searchRootRestoreSnap,
+            }
+          : resolvedOriginContext;
+      const shouldRestoreOrigin = nextOriginContext != null;
+      pendingSearchOriginRestoreRef.current = nextOriginContext;
+      setIsSearchOriginRestorePending(false);
       searchSessionOriginRef.current = null;
       return shouldRestoreOrigin;
     },
     [createCurrentOriginContext]
   );
+
+  const commitSearchCloseRestore = React.useCallback(() => {
+    const hasPendingOrigin = pendingSearchOriginRestoreRef.current != null;
+    setIsSearchOriginRestorePending(hasPendingOrigin);
+    return hasPendingOrigin;
+  }, []);
+
+  const cancelSearchCloseRestore = React.useCallback(() => {
+    pendingSearchOriginRestoreRef.current = null;
+    setIsSearchOriginRestorePending(false);
+  }, []);
 
   const requestDefaultPostSearchRestore = React.useCallback(() => {
     setIsSearchOriginRestorePending(false);
@@ -148,7 +169,9 @@ export const useSearchSessionCoordinator = ({
   return {
     isSearchOriginRestorePending,
     captureSearchSessionOrigin,
-    beginSearchCloseRestore,
+    armSearchCloseRestore,
+    commitSearchCloseRestore,
+    cancelSearchCloseRestore,
     flushPendingSearchOriginRestore,
     requestDefaultPostSearchRestore,
   };

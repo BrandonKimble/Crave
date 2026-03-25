@@ -1,5 +1,6 @@
 export type PresentationMutationKind =
   | 'initial_search'
+  | 'close_search'
   | 'tab_switch'
   | 'filter_open_now'
   | 'filter_votes'
@@ -18,16 +19,62 @@ export type PresentationPhase =
 
 export type PresentationLoadingMode = 'none' | 'initial_cover' | 'interaction_frost';
 
+export type PresentationRevealBatchRef = {
+  requestKey: string;
+  batchId: string;
+  generationId: string;
+};
+
+export type PresentationRevealLaneState = {
+  kind: 'reveal';
+  requestKey: string;
+  batch: PresentationRevealBatchRef | null;
+  status: 'pending_mount' | 'mounted_hidden' | 'revealing' | 'live';
+  startToken: number | null;
+};
+
+export type PresentationDismissLaneState = {
+  kind: 'dismiss';
+  requestKey: string;
+  status: 'requested' | 'dismissing';
+  startToken: number | null;
+};
+
+export type PresentationLaneState =
+  | PresentationRevealLaneState
+  | PresentationDismissLaneState
+  | null;
+
+export type PresentationMapPhase =
+  | 'idle'
+  | 'covered'
+  | 'reveal_requested'
+  | 'revealing'
+  | 'live'
+  | 'dismiss_preroll'
+  | 'dismissing';
+
+export type PresentationTarget = 'default' | 'results';
+
 type PresentationTransitionPublishPatch = {
   presentationTransitionKind: PresentationMutationKind | null;
   presentationTransitionLoadingMode: PresentationLoadingMode;
-  presentationMapRevealRequestKey: string | null;
-  presentationDismissEpoch: number;
+  presentationResultsCoverVisible: boolean;
+  presentationLane: PresentationLaneState;
+  mapPresentationPhase: PresentationMapPhase;
 };
 
 export type BeginPresentationIntentOptions = {
   kind: PresentationMutationKind;
   loadingMode: Exclude<PresentationLoadingMode, 'none'>;
+  intentId?: string;
+  requiresCoverage?: boolean;
+};
+
+export type RequestPresentationTargetOptions = {
+  target: PresentationTarget;
+  kind?: PresentationMutationKind;
+  loadingMode?: Exclude<PresentationLoadingMode, 'none'>;
   intentId?: string;
   requiresCoverage?: boolean;
 };
@@ -46,15 +93,12 @@ type InternalState = {
   phase: PresentationPhase;
   kind: PresentationMutationKind | null;
   loadingMode: PresentationLoadingMode;
+  resultsCoverVisible: boolean;
   startedAtMs: number | null;
   dataReady: boolean;
-  listReady: boolean;
-  mapReady: boolean;
+  listFirstPaintReady: boolean;
+  presentationLane: PresentationLaneState;
   coverageReady: boolean;
-  revealEpoch: number;
-  dismissEpoch: number;
-  mapRevealRequested: boolean;
-  mapRevealRequestKey: string | null;
   requiresCoverage: boolean;
 };
 
@@ -73,24 +117,21 @@ export class PresentationTransitionController {
 
   private intentSeq = 0;
 
-  private pendingFeedbackShouldBumpDismiss = false;
-
   private state: InternalState = {
     intentId: null,
     phase: 'idle',
     kind: null,
     loadingMode: 'none',
+    resultsCoverVisible: false,
     startedAtMs: null,
     dataReady: false,
-    listReady: false,
-    mapReady: false,
+    listFirstPaintReady: false,
+    presentationLane: null,
     coverageReady: true,
-    revealEpoch: 0,
-    dismissEpoch: 0,
-    mapRevealRequested: false,
-    mapRevealRequestKey: null,
     requiresCoverage: false,
   };
+
+  public pendingFeedbackIntentId: string | null = null;
 
   public constructor(options: PresentationTransitionControllerOptions) {
     this.publish = options.publish;
@@ -105,14 +146,69 @@ export class PresentationTransitionController {
     return `${INTENT_PREFIX}${this.intentSeq}`;
   }
 
+  private getRevealLane(state: InternalState = this.state): PresentationRevealLaneState | null {
+    return state.presentationLane?.kind === 'reveal' ? state.presentationLane : null;
+  }
+
+  private getDismissLane(state: InternalState = this.state): PresentationDismissLaneState | null {
+    return state.presentationLane?.kind === 'dismiss' ? state.presentationLane : null;
+  }
+
+  private deriveMapPresentationPhase(state: InternalState): PresentationMapPhase {
+    const lane = state.presentationLane;
+    if (lane?.kind === 'dismiss') {
+      return lane.status === 'dismissing' ? 'dismissing' : 'dismiss_preroll';
+    }
+    if (lane?.kind === 'reveal') {
+      switch (lane.status) {
+        case 'pending_mount':
+        case 'mounted_hidden':
+          return 'reveal_requested';
+        case 'revealing':
+          return 'revealing';
+        case 'live':
+          return 'live';
+      }
+    }
+    if (state.loadingMode === 'initial_cover' && state.resultsCoverVisible) {
+      return 'covered';
+    }
+    return 'idle';
+  }
+
   private publishProjection(): void {
     this.publish({
       presentationTransitionKind:
         this.state.phase === 'idle' || this.state.phase === 'settled' ? null : this.state.kind,
       presentationTransitionLoadingMode: this.state.loadingMode,
-      presentationMapRevealRequestKey: this.state.mapRevealRequestKey,
-      presentationDismissEpoch: this.state.dismissEpoch,
+      presentationResultsCoverVisible: this.state.resultsCoverVisible,
+      presentationLane: this.state.presentationLane,
+      mapPresentationPhase: this.deriveMapPresentationPhase(this.state),
     });
+  }
+
+  private clearPresentationLane(draft: InternalState): void {
+    draft.presentationLane = null;
+  }
+
+  private resetPresentationState(
+    draft: InternalState,
+    options?: {
+      clearCover?: boolean;
+      loadingMode?: PresentationLoadingMode;
+    }
+  ): void {
+    this.clearPresentationLane(draft);
+    draft.dataReady = false;
+    draft.listFirstPaintReady = false;
+    draft.coverageReady = true;
+    draft.requiresCoverage = false;
+    draft.startedAtMs = null;
+    draft.phase = 'idle';
+    draft.kind = null;
+    draft.intentId = null;
+    draft.loadingMode = options?.loadingMode ?? 'none';
+    draft.resultsCoverVisible = options?.clearCover ?? false;
   }
 
   private mutate(mutator: (draft: InternalState) => boolean): void {
@@ -135,104 +231,62 @@ export class PresentationTransitionController {
 
   public enterTransitionMode(loadingMode: Exclude<PresentationLoadingMode, 'none'>): void {
     this.pendingFeedbackIntentId = null;
-    this.pendingFeedbackShouldBumpDismiss = false;
     const prevLoadingMode = this.state.loadingMode;
     const hadActiveIntent = this.state.intentId != null;
     this.log('enterTransitionMode', { loadingMode, prevLoadingMode, hadActiveIntent });
     this.mutate((draft) => {
-      // If an intent is mid-flight (e.g. reveal already started), cancel it.
-      // The new toggle supersedes whatever was in progress — pins must stay
-      // dismissed until the new intent settles and completes its own reveal.
       if (draft.intentId != null) {
-        draft.phase = 'cancelled';
-        draft.intentId = null;
-        draft.kind = null;
-        draft.startedAtMs = null;
-        draft.dataReady = false;
-        draft.listReady = false;
-        draft.mapReady = false;
-        draft.coverageReady = true;
-        draft.mapRevealRequested = false;
-        draft.mapRevealRequestKey = null;
-        draft.requiresCoverage = false;
+        this.resetPresentationState(draft, {
+          clearCover: false,
+          loadingMode,
+        });
       }
       draft.loadingMode = loadingMode;
-      // Increment dismiss epoch when entering frost from idle, OR when
-      // cancelling an active intent whose reveal may have already started.
-      // In both cases visible pins need a coordinated fade-out.  During
-      // rapid toggles where no intent completed (frost → frost, no intent),
-      // the existing dismiss continues uninterrupted.
-      if (loadingMode === 'interaction_frost' && (prevLoadingMode === 'none' || hadActiveIntent)) {
-        draft.dismissEpoch += 1;
-      }
+      draft.resultsCoverVisible = true;
       return true;
     });
   }
 
-  /**
-   * Feedback-only lane: sets loading mode without bumping dismiss epoch.
-   * Used by toggles so chip/frost commit is not blocked by map dismiss reconciliation.
-   */
   public startFeedback(loadingMode: Exclude<PresentationLoadingMode, 'none'>): void {
     const prevLoadingMode = this.state.loadingMode;
     const hadActiveIntent = this.state.intentId != null;
-    this.pendingFeedbackShouldBumpDismiss =
-      loadingMode === 'interaction_frost' && (prevLoadingMode === 'none' || hadActiveIntent);
     this.log('startFeedback', { loadingMode, prevLoadingMode, hadActiveIntent });
     this.mutate((draft) => {
       if (draft.intentId != null) {
-        draft.phase = 'cancelled';
-        draft.intentId = null;
-        draft.kind = null;
-        draft.startedAtMs = null;
-        draft.dataReady = false;
-        draft.listReady = false;
-        draft.mapReady = false;
-        draft.coverageReady = true;
-        draft.mapRevealRequested = false;
-        draft.mapRevealRequestKey = null;
-        draft.requiresCoverage = false;
+        this.resetPresentationState(draft, {
+          clearCover: false,
+          loadingMode,
+        });
       }
       draft.loadingMode = loadingMode;
+      draft.resultsCoverVisible = true;
       return true;
     });
   }
 
-  /**
-   * Dismiss lane: bump dismiss epoch only for the active pending feedback intent.
-   */
   public armDismiss(intentId: string): boolean {
     if (intentId !== this.pendingFeedbackIntentId) {
-      this.log('armDismiss:skip', { intentId, pendingFeedbackIntentId: this.pendingFeedbackIntentId });
+      this.log('armDismiss:skip', {
+        intentId,
+        pendingFeedbackIntentId: this.pendingFeedbackIntentId,
+      });
       return false;
     }
     this.pendingFeedbackIntentId = null;
-    const shouldBumpDismiss = this.pendingFeedbackShouldBumpDismiss;
-    this.pendingFeedbackShouldBumpDismiss = false;
-    if (!shouldBumpDismiss) {
-      this.log('armDismiss:skipNoBump', { intentId });
-      return true;
-    }
     this.log('armDismiss', { intentId });
-    this.mutate((draft) => {
-      draft.dismissEpoch += 1;
-      return true;
-    });
     return true;
   }
 
   public clearPendingDismissIntent(intentId?: string): void {
-    if (intentId != null && this.pendingFeedbackIntentId != null && this.pendingFeedbackIntentId !== intentId) {
+    if (
+      intentId != null &&
+      this.pendingFeedbackIntentId != null &&
+      this.pendingFeedbackIntentId !== intentId
+    ) {
       return;
     }
     this.pendingFeedbackIntentId = null;
-    this.pendingFeedbackShouldBumpDismiss = false;
   }
-
-  /**
-   * Pending dismiss token for fast-path feedback->dismiss sequencing.
-   */
-  public pendingFeedbackIntentId: string | null = null;
 
   public exitTransitionMode(): void {
     this.clearPendingDismissIntent();
@@ -242,17 +296,13 @@ export class PresentationTransitionController {
     this.log('exitTransitionMode', { prevLoadingMode: this.state.loadingMode });
     this.mutate((draft) => {
       draft.loadingMode = 'none';
+      draft.resultsCoverVisible = false;
       return true;
     });
   }
 
   public beginIntent(options: BeginPresentationIntentOptions): string {
-    const {
-      kind,
-      loadingMode,
-      intentId = this.nextIntentId(),
-      requiresCoverage = false,
-    } = options;
+    const { kind, loadingMode, intentId = this.nextIntentId(), requiresCoverage = false } = options;
     const nowMs = this.now();
     this.log('beginIntent', { intentId, kind, loadingMode, requiresCoverage });
     this.mutate((draft) => {
@@ -260,13 +310,12 @@ export class PresentationTransitionController {
       draft.phase = 'executing';
       draft.kind = kind;
       draft.loadingMode = loadingMode;
+      draft.resultsCoverVisible = true;
       draft.startedAtMs = nowMs;
       draft.dataReady = false;
-      draft.listReady = false;
-      draft.mapReady = false;
+      draft.listFirstPaintReady = false;
+      this.clearPresentationLane(draft);
       draft.coverageReady = !requiresCoverage;
-      draft.mapRevealRequested = false;
-      draft.mapRevealRequestKey = null;
       draft.requiresCoverage = requiresCoverage;
       return true;
     });
@@ -282,17 +331,10 @@ export class PresentationTransitionController {
     this.log('cancelIntent', { intentId });
     this.mutate((draft) => {
       draft.phase = 'cancelled';
-      draft.intentId = null;
-      draft.kind = null;
-      draft.loadingMode = 'none';
-      draft.startedAtMs = null;
-      draft.dataReady = false;
-      draft.listReady = false;
-      draft.mapReady = false;
-      draft.coverageReady = true;
-      draft.mapRevealRequested = false;
-      draft.mapRevealRequestKey = null;
-      draft.requiresCoverage = false;
+      this.resetPresentationState(draft, {
+        clearCover: false,
+        loadingMode: 'none',
+      });
       return true;
     });
   }
@@ -308,29 +350,30 @@ export class PresentationTransitionController {
         return false;
       }
       draft.dataReady = true;
-      draft.listReady = false; // invalidate stale list readiness
       if (draft.phase === 'executing') {
         draft.phase = 'awaiting_readiness';
       }
-      this.tryReveal(draft);
+      this.maybeRequestRevealMount(draft);
+      this.tryStartReveal(draft);
       return true;
     });
   }
 
-  public markListReady(intentId: string, ready: boolean): void {
+  public markListFirstPaintReady(intentId: string, ready: boolean): void {
     if (!this.isActiveIntent(intentId)) {
       return;
     }
-    this.log('markListReady', { intentId, ready, phase: this.state.phase });
+    this.log('markListFirstPaintReady', { intentId, ready, phase: this.state.phase });
     this.mutate((draft) => {
-      if (draft.listReady === ready) {
+      if (draft.listFirstPaintReady === ready) {
         return false;
       }
-      draft.listReady = ready;
+      draft.listFirstPaintReady = ready;
       if (ready && draft.phase === 'executing') {
         draft.phase = 'awaiting_readiness';
       }
-      this.tryReveal(draft);
+      this.maybeRequestRevealMount(draft);
+      this.tryStartReveal(draft);
       return true;
     });
   }
@@ -348,26 +391,123 @@ export class PresentationTransitionController {
       if (ready && draft.phase === 'executing') {
         draft.phase = 'awaiting_readiness';
       }
-      this.tryReveal(draft);
+      this.maybeRequestRevealMount(draft);
+      this.tryStartReveal(draft);
       return true;
     });
   }
 
-  private tryReveal(draft: InternalState): void {
-    if (draft.mapRevealRequested) return;
-    if (!draft.intentId) return;
-    if (!draft.dataReady || !draft.listReady || !draft.coverageReady) return;
-    this.log('tryReveal', { intentId: draft.intentId });
-    draft.mapRevealRequested = true;
-    draft.mapRevealRequestKey = draft.intentId;
+  public markRevealBatchMountedHidden(
+    intentId: string,
+    revealBatch: PresentationRevealBatchRef
+  ): void {
+    if (!this.isActiveIntent(intentId)) {
+      return;
+    }
+    this.log('markRevealBatchMountedHidden', {
+      intentId,
+      revealBatchId: revealBatch.batchId,
+      generationId: revealBatch.generationId,
+      phase: this.state.phase,
+      revealBatchStatus: this.getRevealLane()?.status ?? null,
+    });
+    this.mutate((draft) => {
+      const revealLane = this.getRevealLane(draft);
+      if (revealLane == null || revealLane.requestKey !== revealBatch.requestKey) {
+        return false;
+      }
+      if (revealLane.status !== 'pending_mount') {
+        return false;
+      }
+      draft.presentationLane = {
+        ...revealLane,
+        batch: revealBatch,
+        status: 'mounted_hidden',
+      };
+      this.tryStartReveal(draft);
+      return true;
+    });
+  }
+
+  private maybeRequestRevealMount(draft: InternalState): void {
+    if (!draft.intentId || draft.presentationLane != null) {
+      return;
+    }
+    if (!draft.dataReady || !draft.listFirstPaintReady || !draft.coverageReady) {
+      this.log('requestRevealMount:blocked', {
+        intentId: draft.intentId,
+        dataReady: draft.dataReady,
+        listFirstPaintReady: draft.listFirstPaintReady,
+        coverageReady: draft.coverageReady,
+        phase: draft.phase,
+        loadingMode: draft.loadingMode,
+      });
+      return;
+    }
+    this.log('requestRevealMount', { intentId: draft.intentId });
+    draft.presentationLane = {
+      kind: 'reveal',
+      requestKey: draft.intentId,
+      batch: null,
+      status: 'pending_mount',
+      startToken: null,
+    };
     if (draft.phase === 'executing') {
       draft.phase = 'awaiting_readiness';
     }
   }
 
-  public markMapRevealStarted(intentId: string): void {
+  private tryStartReveal(draft: InternalState): void {
+    const revealLane = this.getRevealLane(draft);
+    if (!draft.intentId || revealLane?.startToken != null) {
+      return;
+    }
+    if (
+      !draft.dataReady ||
+      !draft.listFirstPaintReady ||
+      !draft.coverageReady ||
+      revealLane == null ||
+      revealLane.batch == null ||
+      revealLane.status !== 'mounted_hidden'
+    ) {
+      this.log('tryStartReveal:blocked', {
+        intentId: draft.intentId,
+        dataReady: draft.dataReady,
+        listFirstPaintReady: draft.listFirstPaintReady,
+        coverageReady: draft.coverageReady,
+        activeRevealRequestKey: revealLane?.requestKey ?? null,
+        activeRevealBatchId: revealLane?.batch?.batchId ?? null,
+        activeRevealGenerationId: revealLane?.batch?.generationId ?? null,
+        revealBatchStatus: revealLane?.status ?? null,
+        phase: draft.phase,
+        loadingMode: draft.loadingMode,
+      });
+      return;
+    }
+    const revealBatch = revealLane.batch;
+    draft.resultsCoverVisible = false;
+    draft.presentationLane = {
+      ...revealLane,
+      status: 'revealing',
+      startToken: this.now(),
+    };
+    if (draft.phase === 'executing') {
+      draft.phase = 'awaiting_readiness';
+    }
+    this.log('startReveal', {
+      intentId: draft.intentId,
+      revealBatchId: revealBatch.batchId,
+      generationId: revealBatch.generationId,
+      revealStartToken: (draft.presentationLane as PresentationRevealLaneState).startToken,
+    });
+  }
+
+  public markRevealBatchSettled(
+    intentId: string,
+    revealBatch: PresentationRevealBatchRef | null
+  ): void {
     if (!this.isActiveIntent(intentId)) {
-      this.log('markMapRevealStarted:SKIP_NOT_ACTIVE', {
+      this.log('markRevealBatchSettled:skip_not_active', {
         intentId,
         activeIntentId: this.state.intentId,
         phase: this.state.phase,
@@ -375,25 +515,46 @@ export class PresentationTransitionController {
       });
       return;
     }
-    this.log('markMapRevealStarted', { intentId, phase: this.state.phase });
+    const revealLane = this.getRevealLane();
+    if (revealLane == null || revealLane.requestKey !== intentId) {
+      return;
+    }
+    if (revealBatch != null && revealBatch.requestKey !== intentId) {
+      this.log('markRevealBatchSettled:skip_request_mismatch', {
+        intentId,
+        settledRequestKey: revealBatch.requestKey,
+      });
+      return;
+    }
+    this.log('markRevealBatchSettled', {
+      intentId,
+      phase: this.state.phase,
+      revealBatchId: revealBatch?.batchId ?? revealLane.batch?.batchId ?? null,
+      generationId: revealBatch?.generationId ?? revealLane.batch?.generationId ?? null,
+    });
     const completingIntentId = this.state.intentId;
     this.mutate((draft) => {
-      if (draft.mapReady) {
+      const activeRevealLane = this.getRevealLane(draft);
+      if (activeRevealLane == null || activeRevealLane.requestKey !== intentId) {
         return false;
       }
-      draft.mapReady = true;
       draft.phase = 'settled';
+      draft.presentationLane = {
+        kind: 'reveal',
+        requestKey: intentId,
+        batch: revealBatch ?? activeRevealLane.batch,
+        status: 'live',
+        startToken: activeRevealLane.startToken,
+      };
       draft.loadingMode = 'none';
       draft.intentId = null;
       draft.kind = null;
       draft.startedAtMs = null;
       draft.dataReady = false;
-      draft.listReady = false;
+      draft.listFirstPaintReady = false;
+      draft.resultsCoverVisible = false;
       draft.coverageReady = true;
-      draft.mapRevealRequested = false;
-      draft.mapRevealRequestKey = null;
       draft.requiresCoverage = false;
-      draft.revealEpoch += 1;
       return true;
     });
     if (completingIntentId) {
@@ -401,6 +562,132 @@ export class PresentationTransitionController {
     }
   }
 
+  public startClosePresentation(options?: { intentId?: string }): string {
+    const intentId = options?.intentId ?? this.nextIntentId();
+    const nowMs = this.now();
+    this.clearPendingDismissIntent();
+    this.log('startClosePresentation', { intentId });
+    this.mutate((draft) => {
+      draft.intentId = intentId;
+      draft.phase = 'executing';
+      draft.kind = 'close_search';
+      draft.loadingMode = 'interaction_frost';
+      draft.resultsCoverVisible = true;
+      draft.startedAtMs = nowMs;
+      draft.dataReady = false;
+      draft.listFirstPaintReady = false;
+      draft.presentationLane = {
+        kind: 'dismiss',
+        requestKey: intentId,
+        status: 'requested',
+        startToken: null,
+      };
+      draft.coverageReady = true;
+      draft.requiresCoverage = false;
+      return true;
+    });
+    return intentId;
+  }
+
+  public requestMapPresentationTarget(options: RequestPresentationTargetOptions): string {
+    if (options.target === 'default') {
+      const activeIntentId = this.getActiveIntentId();
+      if (activeIntentId != null) {
+        this.cancelIntent(activeIntentId);
+      }
+      return this.startClosePresentation({ intentId: options.intentId });
+    }
+
+    const dismissRequestKey = this.getDismissLane()?.requestKey ?? null;
+    if (dismissRequestKey != null) {
+      this.cancelClosePresentation(dismissRequestKey);
+    }
+    const activeIntentId = this.getActiveIntentId();
+    if (activeIntentId != null) {
+      this.cancelIntent(activeIntentId);
+    }
+    return this.beginIntent({
+      intentId: options.intentId,
+      kind: options.kind ?? 'initial_search',
+      loadingMode: options.loadingMode ?? 'interaction_frost',
+      requiresCoverage: options.requiresCoverage,
+    });
+  }
+
+  public markMapDismissStarted(payload: { requestKey: string; startedAtMs: number }): void {
+    const dismissLane = this.getDismissLane();
+    if (dismissLane == null || dismissLane.requestKey !== payload.requestKey) {
+      this.log('markMapDismissStarted:skip', {
+        requestKey: payload.requestKey,
+        activeDismissRequestKey: dismissLane?.requestKey ?? null,
+      });
+      return;
+    }
+    this.log('markMapDismissStarted', payload);
+    this.mutate((draft) => {
+      const activeDismissLane = this.getDismissLane(draft);
+      if (activeDismissLane == null || activeDismissLane.requestKey !== payload.requestKey) {
+        return false;
+      }
+      draft.presentationLane = {
+        ...activeDismissLane,
+        status: 'dismissing',
+        startToken: payload.startedAtMs,
+      };
+      return true;
+    });
+  }
+
+  public markMapDismissSettled(payload: { requestKey: string; settledAtMs: number }): void {
+    const dismissLane = this.getDismissLane();
+    if (dismissLane == null || dismissLane.requestKey !== payload.requestKey) {
+      this.log('markMapDismissSettled:skip', {
+        requestKey: payload.requestKey,
+        activeDismissRequestKey: dismissLane?.requestKey ?? null,
+      });
+      return;
+    }
+    this.log('markMapDismissSettled', payload);
+    this.mutate((draft) => {
+      const activeDismissLane = this.getDismissLane(draft);
+      if (activeDismissLane == null || activeDismissLane.requestKey !== payload.requestKey) {
+        return false;
+      }
+      draft.phase = 'settled';
+      draft.loadingMode = 'none';
+      draft.resultsCoverVisible = false;
+      draft.startedAtMs = null;
+      draft.intentId = null;
+      draft.kind = null;
+      draft.dataReady = false;
+      draft.listFirstPaintReady = false;
+      draft.coverageReady = true;
+      draft.requiresCoverage = false;
+      draft.presentationLane = null;
+      return true;
+    });
+  }
+
+  public cancelClosePresentation(intentId?: string): void {
+    if (intentId != null && this.getDismissLane()?.requestKey !== intentId) {
+      return;
+    }
+    if (this.getDismissLane() == null) {
+      return;
+    }
+    this.clearPendingDismissIntent();
+    this.log('cancelClosePresentation', {
+      intentId,
+      activeDismissRequestKey: this.getDismissLane()?.requestKey ?? null,
+    });
+    this.mutate((draft) => {
+      this.resetPresentationState(draft, {
+        clearCover: false,
+        loadingMode: 'none',
+      });
+      return true;
+    });
+  }
 }
 
 export const createPresentationTransitionController = (

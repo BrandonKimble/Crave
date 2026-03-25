@@ -105,9 +105,15 @@ const SearchResultsSheetTree = ({
             headerActionMode={overlayHeaderActionModeForRender}
             navBarHeight={navBarCutoutHeight}
             applyNavBarCutout={overlaySheetPropsForRender.overlaySheetApplyNavBarCutout}
-            navBarCutoutProgress={bottomNavHideProgress}
+            navBarCutoutProgress={
+              overlaySheetPropsForRender.overlaySheetKey === 'search'
+                ? bottomNavHideProgress
+                : undefined
+            }
             navBarHiddenTranslateY={bottomNavHiddenTranslateY}
-            navBarCutoutIsHiding={shouldHideBottomNav}
+            navBarCutoutIsHiding={
+              overlaySheetPropsForRender.overlaySheetKey === 'search' ? shouldHideBottomNav : false
+            }
           />
         ) : null}
       </React.Profiler>

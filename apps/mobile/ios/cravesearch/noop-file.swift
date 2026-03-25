@@ -1,6 +1,9 @@
 import Foundation
+import CoreLocation
+import MapboxMaps
 import QuartzCore
 import React
+import Turf
 import UIKit
 
 @objc(UIFrameSampler)
@@ -257,5 +260,7902 @@ final class UIFrameSampler: RCTEventEmitter {
 
   private func round1(_ value: Double) -> Double {
     (value * 10).rounded() / 10
+  }
+}
+
+private final class PresentationOpacityAnimator {
+  weak var owner: SearchMapRenderController?
+  let instanceId: String
+  let reason: String
+  let startOpacity: Double
+  let targetOpacity: Double
+  let durationMs: Double
+  let startedAtMs: Double
+  private var displayLink: CADisplayLink?
+
+  init(
+    owner: SearchMapRenderController,
+    instanceId: String,
+    reason: String,
+    startOpacity: Double,
+    targetOpacity: Double,
+    durationMs: Double,
+    startedAtMs: Double
+  ) {
+    self.owner = owner
+    self.instanceId = instanceId
+    self.reason = reason
+    self.startOpacity = startOpacity
+    self.targetOpacity = targetOpacity
+    self.durationMs = durationMs
+    self.startedAtMs = startedAtMs
+  }
+
+  func start() {
+    let displayLink = CADisplayLink(target: self, selector: #selector(handleDisplayLink(_:)))
+    if #available(iOS 15.0, *) {
+      let preferredFps = Float(UIScreen.main.maximumFramesPerSecond)
+      displayLink.preferredFrameRateRange = CAFrameRateRange(
+        minimum: 60,
+        maximum: preferredFps,
+        preferred: preferredFps
+      )
+    } else {
+      displayLink.preferredFramesPerSecond = UIScreen.main.maximumFramesPerSecond
+    }
+    displayLink.add(to: .main, forMode: .common)
+    self.displayLink = displayLink
+  }
+
+  func stop() {
+    displayLink?.invalidate()
+    displayLink = nil
+  }
+
+  @objc
+  private func handleDisplayLink(_ displayLink: CADisplayLink) {
+    owner?.stepPresentationOpacityAnimation(
+      instanceId: instanceId,
+      timestampMs: displayLink.timestamp * 1000
+    )
+  }
+}
+
+@objc(SearchMapRenderController)
+final class SearchMapRenderController: RCTEventEmitter {
+  private let eventName = "searchMapRenderControllerEvent"
+  private let enableVisualDiagnostics = true
+  private let dismissSettleDelayMs = 300
+  private let revealSettleDelayMs = 300
+  private let lodVisibleDelayMs = 16
+  private let mapResolveTimeoutMs = 10_000.0
+  private let nativeViewportEventThrottleMs = 16.0
+  private static let transientVisualPropertyKeys: Set<String> = [
+    "nativeDotOpacity",
+    "nativeHighlighted",
+    "nativeLabelOpacity",
+    "nativeLodOpacity",
+    "nativeLodRankOpacity",
+    "nativePresentationOpacity",
+  ]
+  private static let addGestureDelegateSelector = NSSelectorFromString("addGestureDelegate:")
+  private static let removeGestureDelegateSelector = NSSelectorFromString("removeGestureDelegate:")
+
+  private enum SourceLifecyclePhase {
+    case uninitialized
+    case incremental
+  }
+
+  private enum SourceMutationMode {
+    case none
+    case baselineReplace
+    case incrementalPatch
+  }
+
+  private struct SourceState {
+    var lifecyclePhase: SourceLifecyclePhase
+    var sourceRevision: String
+    var featureStateRevision: String
+    var featureStateEntryRevisionById: [String: String]
+    var featureStateChangedIds: Set<String>
+    var idsInOrder: [String]
+    var featureIds: Set<String>
+    var addedFeatureIdsInOrder: [String]
+    var updatedFeatureIdsInOrder: [String]
+    var removedFeatureIds: Set<String>
+    var diffKeyById: [String: String]
+    var markerKeyByFeatureId: [String: String]
+    var featureStateById: [String: [String: Any]]
+  }
+
+  private final class NativeCameraGestureObserver: NSObject, GestureManagerDelegate {
+    private var activeGestureCount: Int = 0
+
+    var isGestureActive: Bool {
+      activeGestureCount > 0
+    }
+
+    func gestureManager(_ gestureManager: GestureManager, didBegin gestureType: GestureType) {
+      activeGestureCount += 1
+    }
+
+    func gestureManager(
+      _ gestureManager: GestureManager,
+      didEnd gestureType: GestureType,
+      willAnimate: Bool
+    ) {
+      if !willAnimate {
+        activeGestureCount = max(0, activeGestureCount - 1)
+      }
+    }
+
+    func gestureManager(
+      _ gestureManager: GestureManager,
+      didEndAnimatingFor gestureType: GestureType
+    ) {
+      activeGestureCount = max(0, activeGestureCount - 1)
+    }
+
+    func reset() {
+      activeGestureCount = 0
+    }
+  }
+
+  private final class ViewLifecycleProbeView: UIView {
+    let probeName: String
+    var onEvent: ((String) -> Void)?
+
+    init(probeName: String) {
+      self.probeName = probeName
+      super.init(frame: .zero)
+      isHidden = true
+      isUserInteractionEnabled = false
+      accessibilityIdentifier = "search-map-probe-\(probeName)"
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+      fatalError("init(coder:) has not been implemented")
+    }
+
+    override func didMoveToWindow() {
+      super.didMoveToWindow()
+      onEvent?("didMoveToWindow")
+    }
+
+    override func didMoveToSuperview() {
+      super.didMoveToSuperview()
+      onEvent?("didMoveToSuperview")
+    }
+  }
+
+  private final class ResolvedMapHandle {
+    let rootView: UIView
+    let gestureDelegateHostView: UIView?
+    let mapView: MapView
+    var sourceDataLoadedCancelable: AnyCancelable?
+    var styleLoadedCancelable: AnyCancelable?
+    var cameraChangedCancelable: AnyCancelable?
+    var mapIdleCancelable: AnyCancelable?
+    let gestureObserver = NativeCameraGestureObserver()
+    var isGestureObserverRegistered = false
+    var lastNativeCameraDiagAtMs: Double = 0
+    var lastNativeCameraDiagSignature: String?
+    var rootLifecycleProbeView: ViewLifecycleProbeView?
+    var mapLifecycleProbeView: ViewLifecycleProbeView?
+
+    init(rootView: UIView, gestureDelegateHostView: UIView?, mapView: MapView) {
+      self.rootView = rootView
+      self.gestureDelegateHostView = gestureDelegateHostView
+      self.mapView = mapView
+    }
+
+    func cancelSubscriptions() {
+      sourceDataLoadedCancelable?.cancel()
+      sourceDataLoadedCancelable = nil
+      styleLoadedCancelable?.cancel()
+      styleLoadedCancelable = nil
+      cameraChangedCancelable?.cancel()
+      cameraChangedCancelable = nil
+      mapIdleCancelable?.cancel()
+      mapIdleCancelable = nil
+      if isGestureObserverRegistered {
+        if let gestureDelegateHostView {
+          SearchMapRenderController.removeGestureDelegate(gestureObserver, from: gestureDelegateHostView)
+        }
+        isGestureObserverRegistered = false
+      }
+      gestureObserver.reset()
+      rootLifecycleProbeView?.removeFromSuperview()
+      rootLifecycleProbeView = nil
+      mapLifecycleProbeView?.removeFromSuperview()
+      mapLifecycleProbeView = nil
+    }
+  }
+
+  private struct MutationSummary {
+    var addCount: Int
+    var updateCount: Int
+    var removeCount: Int
+    var dataId: String?
+    var addedFeatureIds: [String]
+
+    var hasMutations: Bool {
+      addCount > 0 || updateCount > 0 || removeCount > 0
+    }
+  }
+
+  private struct ParsedCollectionApplyPlan {
+    var sourceId: String
+    var next: ParsedFeatureCollection
+    var previousSourceState: SourceState?
+    var previousFeatureStateById: [String: [String: Any]]
+    var previousFeatureStateRevision: String
+  }
+
+  private struct ResolvedParsedCollectionApplyPlan {
+    var sourceId: String
+    var next: ParsedFeatureCollection
+    var previousSourceLifecyclePhase: SourceLifecyclePhase
+    var previousSourceRevision: String
+    var previousFeatureStateById: [String: [String: Any]]
+    var previousFeatureStateRevision: String
+    var nextSourceState: SourceState
+  }
+
+  private struct ResolvedSourceMutationPlan {
+    var sourceId: String
+    var previousSourceLifecyclePhase: SourceLifecyclePhase
+    var previousSourceRevision: String
+    var next: ParsedFeatureCollection
+    var mutationMode: SourceMutationMode
+    var mutationSummary: MutationSummary
+    var dataId: String?
+  }
+
+  private struct PreparedDerivedPinAndLabelOutput {
+    var plans: [ParsedCollectionApplyPlan]
+    var pinSourceId: String
+    var pinStartedAtMs: Double
+  }
+
+  private struct PreparedDerivedDotOutput {
+    var plans: [ParsedCollectionApplyPlan]
+    var dotSourceId: String
+  }
+
+  private struct DerivedFamilyState {
+    var desiredCollection: ParsedFeatureCollection
+    var collection: ParsedFeatureCollection
+    var sourceState: SourceState
+    var transientFeatureStateById: [String: [String: Any]]
+    var pinRuntime: PinFamilyRuntimeState
+    var dotRuntime: DotFamilyRuntimeState
+    var labelObservation: LabelFamilyObservationState
+
+    var lastDesiredPinSnapshot: DesiredPinSnapshotState {
+      get { pinRuntime.lastDesiredSnapshot }
+      set { pinRuntime.lastDesiredSnapshot = newValue }
+    }
+
+    var lastDesiredCollection: ParsedFeatureCollection {
+      get { dotRuntime.lastDesiredCollection }
+      set { dotRuntime.lastDesiredCollection = newValue }
+    }
+
+    var livePinTransitionsByMarkerKey: [String: LivePinTransition] {
+      get { pinRuntime.liveTransitionsByMarkerKey }
+      set { pinRuntime.liveTransitionsByMarkerKey = newValue }
+    }
+
+    var liveDotTransitionsByMarkerKey: [String: LiveDotTransition] {
+      get { dotRuntime.liveTransitionsByMarkerKey }
+      set { dotRuntime.liveTransitionsByMarkerKey = newValue }
+    }
+
+    var settledVisibleFeatureIds: Set<String> {
+      get { labelObservation.settledVisibleFeatureIds }
+      set { labelObservation.settledVisibleFeatureIds = newValue }
+    }
+
+    var liveTransitionMidOpacityDiagnosticKeyByMarkerKey: [String: String] {
+      get { pinRuntime.liveTransitionMidOpacityDiagnosticKeyByMarkerKey }
+      set { pinRuntime.liveTransitionMidOpacityDiagnosticKeyByMarkerKey = newValue }
+    }
+  }
+
+  private struct PinFamilyRuntimeState {
+    var lastDesiredSnapshot: DesiredPinSnapshotState = DesiredPinSnapshotState()
+    var liveTransitionsByMarkerKey: [String: LivePinTransition] = [:]
+    var liveTransitionMidOpacityDiagnosticKeyByMarkerKey: [String: String] = [:]
+  }
+
+  private struct DotFamilyRuntimeState {
+    var lastDesiredCollection: ParsedFeatureCollection
+    var liveTransitionsByMarkerKey: [String: LiveDotTransition] = [:]
+  }
+
+  private struct LabelFamilyObservationState {
+    var settledVisibleFeatureIds: Set<String> = []
+  }
+
+  private struct DesiredPinSnapshotState {
+    var inputRevision: String = ""
+    var pinIdsInOrder: [String] = []
+    var pinFeatureByMarkerKey: [String: Feature] = [:]
+    var pinFeatureRevisionByMarkerKey: [String: String] = [:]
+    var pinInteractionFeatureByMarkerKey: [String: Feature] = [:]
+    var pinInteractionFeatureRevisionByMarkerKey: [String: String] = [:]
+    var pinLodZByMarkerKey: [String: Int] = [:]
+    var labelFeaturesByMarkerKey: [String: [(id: String, feature: Feature)]] = [:]
+    var labelMarkerKeyByFeatureId: [String: String] = [:]
+    var labelFeatureRevisionByMarkerKey: [String: String] = [:]
+    var labelCollisionFeatureByMarkerKey: [String: Feature] = [:]
+    var labelCollisionFeatureRevisionByMarkerKey: [String: String] = [:]
+    var dirtyPinMarkerKeys: Set<String> = []
+    var dirtyPinInteractionMarkerKeys: Set<String> = []
+    var dirtyLabelMarkerKeys: Set<String> = []
+    var dirtyLabelCollisionMarkerKeys: Set<String> = []
+  }
+
+  private struct LivePinTransition {
+    var startOpacity: Double
+    var targetOpacity: Double
+    var startedAtMs: Double
+    var durationMs: Double
+    var isAwaitingSourceCommit: Bool
+    var awaitingSourceDataId: String?
+    var pinFeature: Feature
+    var labelFeatures: [(id: String, feature: Feature)]
+    var pinInteractionFeature: Feature?
+    var lodZ: Int
+    var orderHint: Int
+  }
+
+  private struct LiveDotTransition {
+    var startOpacity: Double
+    var targetOpacity: Double
+    var startedAtMs: Double
+    var durationMs: Double
+    var isAwaitingSourceCommit: Bool
+    var awaitingSourceDataId: String?
+    var dotFeature: Feature
+    var orderHint: Int
+  }
+
+  private struct RevealBatchRef: Equatable {
+    var requestKey: String
+    var batchId: String
+    var generationId: String
+  }
+
+  private struct RevealLaneState {
+    var requestedRequestKey: String? = nil
+    var mountedHidden: RevealBatchRef? = nil
+    var revealing: RevealBatchRef? = nil
+    var liveBaseline: RevealBatchRef? = nil
+  }
+
+  private struct InstanceState {
+    var mapTag: NSNumber
+    var pinSourceId: String
+    var pinInteractionSourceId: String
+    var dotSourceId: String
+    var dotInteractionSourceId: String
+    var labelSourceId: String
+    var labelInteractionSourceId: String
+    var labelCollisionSourceId: String
+    var lastPinCount: Int
+    var lastDotCount: Int
+    var lastLabelCount: Int
+    var lastPresentationPhase: String
+    var lastRevealRequestKey: String?
+    var revealLane: RevealLaneState
+    var lastRevealStartToken: Double?
+    var lastRevealStartedRequestKey: String?
+    var lastRevealSettledRequestKey: String?
+    var lastDismissRequestKey: String?
+    var presentationExecutionPhase: String
+    var lastPresentationStateJSON: String?
+    var activeFrameGenerationId: String?
+    var activeRevealBatchId: String?
+    var highlightedMarkerKey: String?
+    var interactionMode: String
+    var currentViewportIsMoving: Bool
+    var keepSourcesHiddenUntilReveal: Bool
+    var allowEmptyReveal: Bool
+    var currentPresentationOpacityTarget: Double
+    var currentPresentationOpacityValue: Double
+    var nextSourceCommitSequence: Int
+    var pendingPresentationSettleRequestKey: String?
+    var pendingPresentationSettleKind: String?
+    var blockedRevealStartRequestKey: String?
+    var blockedRevealStartCommitFenceStartedAtMs: Double?
+    var blockedPresentationSettleRequestKey: String?
+    var blockedPresentationSettleKind: String?
+    var blockedPresentationCommitFenceStartedAtMs: Double?
+    var blockedRevealStartCommitFenceBySourceId: [String: Set<String>]
+    var blockedPresentationCommitFenceBySourceId: [String: Set<String>]
+    var pendingSourceCommitDataIdsBySourceId: [String: Set<String>]
+    var derivedFamilyStates: [String: DerivedFamilyState]
+    var isAwaitingSourceRecovery: Bool
+    var isReplayingSourceRecovery: Bool
+    var sourceRecoveryPausedAtMs: Double?
+  }
+
+  private struct SlowActionWindowState {
+    var streak: Int = 0
+    var startedAtMs: Double = 0
+    var maxDurationMs: Double = 0
+  }
+
+  private struct ResolvedMapHandleResolution {
+    let handle: ResolvedMapHandle
+    let didRefresh: Bool
+  }
+
+  private var hasListeners = false
+  private var instances: [String: InstanceState] = [:]
+  private var resolvedMapHandles: [String: ResolvedMapHandle] = [:]
+  private var revealSettleWorkItems: [String: DispatchWorkItem] = [:]
+  private var dismissSettleWorkItems: [String: DispatchWorkItem] = [:]
+  private var revealFrameFallbackWorkItems: [String: DispatchWorkItem] = [:]
+  private var dismissFrameFallbackWorkItems: [String: DispatchWorkItem] = [:]
+  private var sourceRecoveryWorkItems: [String: DispatchWorkItem] = [:]
+  private var presentationOpacityAnimators: [String: PresentationOpacityAnimator] = [:]
+  private var livePinTransitionAnimators: [String: CADisplayLink] = [:]
+  private var lastVisualDiagByInstance: [String: String] = [:]
+  private var slowActionWindowsByInstanceAndScope: [String: SlowActionWindowState] = [:]
+  private var lastRenderedFeatureProbeAtMsByInstance: [String: Double] = [:]
+  private var lastRenderedFeatureProbeFrameByInstance: [String: String] = [:]
+  private var lastViewCompositionProbeAtMsByInstance: [String: Double] = [:]
+  private var lastViewCompositionProbeFrameByInstance: [String: String] = [:]
+  private var lastHandleIdentitySignatureByMapTag: [String: String] = [:]
+  private let slowActionThresholdMs = 12.0
+  private let renderedFeatureProbeThrottleMs = 120.0
+  private let frameSettleFallbackDelayMs = 96
+  private let sourceRecoveryRetryDelayMs = 32
+  // Keep native LOD enter/exit fades aligned with the shared pin fade contract in search-map.tsx.
+  private let livePinTransitionDurationMs = 300.0
+
+  @objc
+  override static func requiresMainQueueSetup() -> Bool {
+    true
+  }
+
+  override func supportedEvents() -> [String]! {
+    [eventName]
+  }
+
+  override func startObserving() {
+    hasListeners = true
+  }
+
+  override func stopObserving() {
+    hasListeners = false
+  }
+
+  override func invalidate() {
+    for instanceId in Array(presentationOpacityAnimators.keys) {
+      cancelPresentationOpacityAnimation(instanceId: instanceId)
+    }
+    for instanceId in Array(livePinTransitionAnimators.keys) {
+      cancelLivePinTransitionAnimation(instanceId: instanceId)
+    }
+    super.invalidate()
+  }
+
+  @objc
+  func attach(
+    _ payload: NSDictionary,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else {
+        reject("search_map_render_controller_unavailable", "controller deallocated", nil)
+        return
+      }
+      guard
+        let instanceId = payload["instanceId"] as? String,
+        let mapTag = payload["mapTag"] as? NSNumber,
+        let pinSourceId = payload["pinSourceId"] as? String,
+        let pinInteractionSourceId = payload["pinInteractionSourceId"] as? String,
+        let dotSourceId = payload["dotSourceId"] as? String,
+        let dotInteractionSourceId = payload["dotInteractionSourceId"] as? String,
+        let labelSourceId = payload["labelSourceId"] as? String,
+        let labelInteractionSourceId = payload["labelInteractionSourceId"] as? String,
+        let labelCollisionSourceId = payload["labelCollisionSourceId"] as? String
+      else {
+        reject("search_map_render_controller_attach_invalid", "invalid attach payload", nil)
+        return
+      }
+      self.instances[instanceId] = InstanceState(
+        mapTag: mapTag,
+        pinSourceId: pinSourceId,
+        pinInteractionSourceId: pinInteractionSourceId,
+        dotSourceId: dotSourceId,
+        dotInteractionSourceId: dotInteractionSourceId,
+        labelSourceId: labelSourceId,
+        labelInteractionSourceId: labelInteractionSourceId,
+        labelCollisionSourceId: labelCollisionSourceId,
+        lastPinCount: 0,
+        lastDotCount: 0,
+        lastLabelCount: 0,
+        lastPresentationPhase: "idle",
+        lastRevealRequestKey: nil,
+        revealLane: RevealLaneState(),
+        lastRevealStartToken: nil,
+        lastRevealStartedRequestKey: nil,
+        lastRevealSettledRequestKey: nil,
+        lastDismissRequestKey: nil,
+        presentationExecutionPhase: "idle",
+        lastPresentationStateJSON: nil,
+        activeFrameGenerationId: nil,
+        activeRevealBatchId: nil,
+        highlightedMarkerKey: nil,
+        interactionMode: "enabled",
+        currentViewportIsMoving: false,
+        keepSourcesHiddenUntilReveal: false,
+        allowEmptyReveal: true,
+        currentPresentationOpacityTarget: 1,
+        currentPresentationOpacityValue: 1,
+        nextSourceCommitSequence: 0,
+        pendingPresentationSettleRequestKey: nil,
+        pendingPresentationSettleKind: nil,
+        blockedRevealStartRequestKey: nil,
+        blockedRevealStartCommitFenceStartedAtMs: nil,
+        blockedPresentationSettleRequestKey: nil,
+        blockedPresentationSettleKind: nil,
+        blockedPresentationCommitFenceStartedAtMs: nil,
+        blockedRevealStartCommitFenceBySourceId: [:],
+        blockedPresentationCommitFenceBySourceId: [:],
+        pendingSourceCommitDataIdsBySourceId: [:],
+        derivedFamilyStates: Self.makeInitialDerivedFamilyStates(
+          pinSourceId: pinSourceId,
+          pinInteractionSourceId: pinInteractionSourceId,
+          dotSourceId: dotSourceId,
+          dotInteractionSourceId: dotInteractionSourceId,
+          labelSourceId: labelSourceId,
+          labelInteractionSourceId: labelInteractionSourceId,
+          labelCollisionSourceId: labelCollisionSourceId
+        ),
+        isAwaitingSourceRecovery: false,
+        isReplayingSourceRecovery: false,
+        sourceRecoveryPausedAtMs: nil
+      )
+      self.lastRenderedFeatureProbeAtMsByInstance.removeValue(forKey: instanceId)
+      self.lastRenderedFeatureProbeFrameByInstance.removeValue(forKey: instanceId)
+      self.lastViewCompositionProbeAtMsByInstance.removeValue(forKey: instanceId)
+      self.lastViewCompositionProbeFrameByInstance.removeValue(forKey: instanceId)
+      self.resolveMapHandle(for: mapTag, attemptCount: 0, startTimeMs: CACurrentMediaTime() * 1000) {
+        [weak self] result in
+        guard let self else {
+          reject("search_map_render_controller_unavailable", "controller deallocated", nil)
+          return
+        }
+        switch result {
+        case .success(let handle):
+          self.installMapSubscriptions(for: mapTag, handle: handle)
+          self.resolvedMapHandles[mapTag.stringValue] = handle
+          self.emit([
+            "type": "attached",
+            "instanceId": instanceId,
+            "mapTag": mapTag,
+          ])
+          resolve(nil)
+        case .failure(let error):
+          self.instances.removeValue(forKey: instanceId)
+          self.slowActionWindowsByInstanceAndScope = self.slowActionWindowsByInstanceAndScope.filter {
+            !$0.key.hasPrefix("\(instanceId)::")
+          }
+          self.lastRenderedFeatureProbeAtMsByInstance.removeValue(forKey: instanceId)
+          self.lastRenderedFeatureProbeFrameByInstance.removeValue(forKey: instanceId)
+          self.lastViewCompositionProbeAtMsByInstance.removeValue(forKey: instanceId)
+          self.lastViewCompositionProbeFrameByInstance.removeValue(forKey: instanceId)
+          self.resolvedMapHandles.removeValue(forKey: mapTag.stringValue)
+          reject("search_map_render_controller_attach_resolve_failed", error.localizedDescription, error)
+        }
+      }
+    }
+  }
+
+  @objc
+  func detach(
+    _ instanceId: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.main.async { [weak self] in
+      self?.revealSettleWorkItems[instanceId]?.cancel()
+      self?.revealSettleWorkItems[instanceId] = nil
+      self?.dismissSettleWorkItems[instanceId]?.cancel()
+      self?.dismissSettleWorkItems[instanceId] = nil
+      self?.revealFrameFallbackWorkItems[instanceId]?.cancel()
+      self?.revealFrameFallbackWorkItems[instanceId] = nil
+      self?.dismissFrameFallbackWorkItems[instanceId]?.cancel()
+      self?.dismissFrameFallbackWorkItems[instanceId] = nil
+      self?.sourceRecoveryWorkItems[instanceId]?.cancel()
+      self?.sourceRecoveryWorkItems[instanceId] = nil
+      self?.cancelPresentationOpacityAnimation(instanceId: instanceId)
+      self?.cancelLivePinTransitionAnimation(instanceId: instanceId)
+      let mapTag = self?.instances[instanceId]?.mapTag
+      self?.instances.removeValue(forKey: instanceId)
+      self?.slowActionWindowsByInstanceAndScope = self?.slowActionWindowsByInstanceAndScope.filter {
+        !$0.key.hasPrefix("\(instanceId)::")
+      } ?? [:]
+      self?.lastRenderedFeatureProbeAtMsByInstance.removeValue(forKey: instanceId)
+      self?.lastRenderedFeatureProbeFrameByInstance.removeValue(forKey: instanceId)
+      self?.lastViewCompositionProbeAtMsByInstance.removeValue(forKey: instanceId)
+      self?.lastViewCompositionProbeFrameByInstance.removeValue(forKey: instanceId)
+      if let mapTag {
+        self?.cleanupMapHandleIfUnused(for: mapTag)
+      }
+      self?.emit([
+        "type": "detached",
+        "instanceId": instanceId,
+      ])
+      resolve(nil)
+    }
+  }
+
+  @objc
+  func setRenderFrame(
+    _ payload: NSDictionary,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else {
+        reject("search_map_render_controller_unavailable", "controller deallocated", nil)
+        return
+      }
+      guard let instanceId = payload["instanceId"] as? String else {
+        reject("search_map_render_controller_frame_invalid", "invalid render frame payload: missing instanceId", nil)
+        return
+      }
+      guard self.instances[instanceId] != nil else {
+        reject("search_map_render_controller_frame_invalid", "unknown instance or frame", nil)
+        return
+      }
+      guard let frameGenerationId = payload["frameGenerationId"] as? String else {
+        reject("search_map_render_controller_frame_invalid", "invalid render frame payload: missing frameGenerationId", nil)
+        return
+      }
+      guard let revealBatchId = payload["revealBatchId"] as? String else {
+        reject("search_map_render_controller_frame_invalid", "invalid render frame payload: missing revealBatchId", nil)
+        return
+      }
+      guard let presentationStateJSON = payload["presentationStateJson"] as? String else {
+        reject("search_map_render_controller_frame_invalid", "invalid render frame payload: missing presentationStateJson", nil)
+        return
+      }
+
+      let sourceDeltas = payload["sourceDeltas"] as? [[String: Any]]
+      let highlightedMarkerKey = payload["highlightedMarkerKey"] as? String
+      let interactionMode = (payload["interactionMode"] as? String) ?? "enabled"
+      let actionStartedAt = CACurrentMediaTime() * 1000
+      do {
+        let shouldBypassSnapshotApply =
+          Self.readDismissRequestKey(fromJSON: presentationStateJSON) != nil &&
+          (sourceDeltas?.isEmpty ?? true)
+        let didSyncResidentFrame: Bool
+        if shouldBypassSnapshotApply {
+          guard var state = self.instances[instanceId] else {
+            throw NSError(
+              domain: "SearchMapRenderController",
+              code: 1,
+              userInfo: [NSLocalizedDescriptionKey: "unknown instance"]
+            )
+          }
+          state.activeFrameGenerationId = frameGenerationId
+          state.activeRevealBatchId = revealBatchId
+          self.instances[instanceId] = state
+          self.emitVisualDiag(
+            instanceId: instanceId,
+            message:
+              "frame_snapshot_bypass reason=dismiss_presentation_only phase=\(state.lastPresentationPhase)"
+          )
+          try self.applyPresentationPayload(
+            instanceId: instanceId,
+            presentationStateJSON: presentationStateJSON
+          )
+          didSyncResidentFrame = true
+        } else {
+          didSyncResidentFrame = try self.applyRenderFrameSnapshotPayload(
+            instanceId: instanceId,
+            generationId: frameGenerationId,
+            revealBatchId: revealBatchId,
+            sourceDeltas: sourceDeltas
+          )
+          try self.applyPresentationPayload(
+            instanceId: instanceId,
+            presentationStateJSON: presentationStateJSON
+          )
+        }
+        try self.applyInteractionModePayload(
+          instanceId: instanceId,
+          interactionMode: interactionMode
+        )
+        try self.applyHighlightedMarkerPayload(
+          instanceId: instanceId,
+          markerKey: highlightedMarkerKey
+        )
+        if didSyncResidentFrame, let state = self.instances[instanceId] {
+          self.emit([
+            "type": "render_frame_synced",
+            "instanceId": instanceId,
+            "frameGenerationId": frameGenerationId,
+            "revealBatchId": revealBatchId,
+            "pinCount": state.lastPinCount,
+            "dotCount": state.lastDotCount,
+            "labelCount": state.lastLabelCount,
+            "sourceRevisions": [
+              "pins": Self.mountedSourceState(sourceId: state.pinSourceId, state: state)?.sourceRevision ?? "",
+              "pinInteractions": Self.mountedSourceState(sourceId: state.pinInteractionSourceId, state: state)?.sourceRevision ?? "",
+              "dots": Self.mountedSourceState(sourceId: state.dotSourceId, state: state)?.sourceRevision ?? "",
+              "dotInteractions": Self.mountedSourceState(sourceId: state.dotInteractionSourceId, state: state)?.sourceRevision ?? "",
+              "labels": Self.mountedSourceState(sourceId: state.labelSourceId, state: state)?.sourceRevision ?? "",
+              "labelInteractions": Self.mountedSourceState(sourceId: state.labelInteractionSourceId, state: state)?.sourceRevision ?? "",
+              "labelCollisions": Self.mountedSourceState(sourceId: state.labelCollisionSourceId, state: state)?.sourceRevision ?? "",
+            ],
+          ])
+          let totalDurationMs = CACurrentMediaTime() * 1000 - actionStartedAt
+          self.recordSlowActionWindow(
+            instanceId: instanceId,
+            scope: "moving_native_set_render_frame",
+            durationMs: totalDurationMs,
+            thresholdMs: state.currentViewportIsMoving ? 90 : .greatestFiniteMagnitude,
+            state: state,
+            extra: "frame=\(frameGenerationId)"
+          )
+          self.recordSlowActionWindow(
+            instanceId: instanceId,
+            scope: "reveal_native_set_render_frame",
+            durationMs: totalDurationMs,
+            thresholdMs: state.lastPresentationPhase == "revealing" ? 120 : .greatestFiniteMagnitude,
+            state: state,
+            extra: "frame=\(frameGenerationId)"
+          )
+          if totalDurationMs >= self.slowActionThresholdMs {
+            self.emit([
+              "type": "error",
+              "instanceId": "__native_diag__",
+              "message":
+                "slow_action action=setRenderFrame phase=\(state.lastPresentationPhase) totalMs=\(Int(totalDurationMs.rounded())) pins=\(state.lastPinCount) dots=\(state.lastDotCount) labels=\(state.lastLabelCount)",
+            ])
+          }
+        }
+        resolve(nil)
+      } catch {
+        reject(
+          "search_map_render_controller_frame_apply_failed",
+          error.localizedDescription,
+          error
+        )
+      }
+    }
+  }
+
+  @objc
+  func notifyFrameRendered(
+    _ instanceId: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    resolve(nil)
+  }
+
+  private func applyRenderFrameSnapshotPayload(
+    instanceId: String,
+    generationId: String,
+    revealBatchId: String,
+    sourceDeltas: [[String: Any]]?
+  ) throws -> Bool {
+    guard var state = self.instances[instanceId] else {
+      throw NSError(
+        domain: "SearchMapRenderController",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "unknown instance"]
+      )
+    }
+    let actionStartedAt = CACurrentMediaTime() * 1000
+    self.emitVisualDiag(
+      instanceId: instanceId,
+      message:
+        "frame_begin phase=\(state.lastPresentationPhase) opacity=\(state.currentPresentationOpacityTarget) revealRequest=\(state.lastRevealRequestKey ?? "nil") revealStarted=\(state.lastRevealStartedRequestKey ?? "nil") revealSettled=\(state.lastRevealSettledRequestKey ?? "nil") dismissRequest=\(state.lastDismissRequestKey ?? "nil")"
+    )
+    if let sourceDeltas {
+      for delta in try Self.parseSourceDeltas(sourceDeltas) {
+        var familyState = Self.derivedFamilyState(sourceId: delta.sourceId, state: state)
+        familyState.desiredCollection = try Self.applyParsedCollectionDelta(
+          delta,
+          to: familyState.desiredCollection
+        )
+        Self.setDerivedFamilyState(familyState, sourceId: delta.sourceId, state: &state)
+      }
+    }
+    state.lastPinCount =
+      Self.derivedFamilyState(sourceId: state.pinSourceId, state: state).desiredCollection.idsInOrder.count
+    state.lastDotCount =
+      Self.derivedFamilyState(sourceId: state.dotSourceId, state: state).desiredCollection.idsInOrder.count
+    state.lastLabelCount =
+      Self.derivedFamilyState(sourceId: state.labelSourceId, state: state).desiredCollection.idsInOrder.count
+    state.activeFrameGenerationId = generationId
+    state.activeRevealBatchId = revealBatchId
+    self.instances[instanceId] = state
+    try self.reconcileAndApplyCurrentFrameSnapshots(for: instanceId)
+    state = self.instances[instanceId] ?? state
+    if Self.isSourceRecoveryActive(state) {
+      self.emitVisualDiag(
+        instanceId: instanceId,
+        message: "frame_apply_deferred reason=source_recovery phase=\(state.lastPresentationPhase)"
+      )
+      self.instances[instanceId] = state
+      return false
+    }
+    self.emitVisualDiag(
+      instanceId: instanceId,
+      message:
+        "frame_after_reconcile phase=\(state.lastPresentationPhase) opacity=\(state.currentPresentationOpacityTarget) revealRequest=\(state.lastRevealRequestKey ?? "nil") revealStarted=\(state.lastRevealStartedRequestKey ?? "nil") revealSettled=\(state.lastRevealSettledRequestKey ?? "nil") dismissRequest=\(state.lastDismissRequestKey ?? "nil")"
+    )
+    try self.applyHighlightedMarkerState(for: state, instanceId: instanceId)
+    if self.shouldSuppressInteractions(state: state) {
+      try self.applyInteractionSuppression(for: &state, instanceId: instanceId)
+    }
+    try self.applyCurrentPresentationOpacity(
+      for: &state,
+      instanceId: instanceId,
+      reason: "frame_apply"
+    )
+    let presentationOpacity = state.currentPresentationOpacityValue
+    self.emitVisualDiag(
+      instanceId: instanceId,
+      message:
+        "frame_apply phase=\(state.lastPresentationPhase) opacity=\(presentationOpacity) pins=\(state.lastPinCount) dots=\(state.lastDotCount) labels=\(state.lastLabelCount) \(Self.phaseSummary(for: state))"
+    )
+    if let latestState = self.instances[instanceId],
+       (latestState.lastPresentationPhase != state.lastPresentationPhase ||
+         latestState.currentPresentationOpacityTarget != state.currentPresentationOpacityTarget ||
+         latestState.lastRevealStartedRequestKey != state.lastRevealStartedRequestKey ||
+         latestState.lastRevealSettledRequestKey != state.lastRevealSettledRequestKey) {
+      self.emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "frame_final_write_mismatch localPhase=\(state.lastPresentationPhase) localOpacity=\(state.currentPresentationOpacityTarget) localRevealStarted=\(state.lastRevealStartedRequestKey ?? "nil") localRevealSettled=\(state.lastRevealSettledRequestKey ?? "nil") latestPhase=\(latestState.lastPresentationPhase) latestOpacity=\(latestState.currentPresentationOpacityTarget) latestRevealStarted=\(latestState.lastRevealStartedRequestKey ?? "nil") latestRevealSettled=\(latestState.lastRevealSettledRequestKey ?? "nil")"
+      )
+    }
+    state = self.instances[instanceId] ?? state
+    let totalDurationMs = CACurrentMediaTime() * 1000 - actionStartedAt
+    self.recordSlowActionWindow(
+      instanceId: instanceId,
+      scope: "moving_native_snapshot_apply",
+      durationMs: totalDurationMs,
+      thresholdMs: state.currentViewportIsMoving ? 90 : .greatestFiniteMagnitude,
+      state: state,
+      extra: "frame=\(generationId)"
+    )
+    self.recordSlowActionWindow(
+      instanceId: instanceId,
+      scope: "reveal_native_snapshot_apply",
+      durationMs: totalDurationMs,
+      thresholdMs: state.lastPresentationPhase == "revealing" ? 120 : .greatestFiniteMagnitude,
+      state: state,
+      extra: "frame=\(generationId)"
+    )
+    if totalDurationMs >= self.slowActionThresholdMs {
+      self.emit([
+        "type": "error",
+        "instanceId": "__native_diag__",
+        "message":
+          "slow_action action=applyFrameSnapshot phase=\(state.lastPresentationPhase) totalMs=\(Int(totalDurationMs.rounded())) pins=\(state.lastPinCount) dots=\(state.lastDotCount) labels=\(state.lastLabelCount)",
+      ])
+    }
+    return true
+  }
+
+  private static func makeRevealBatchRef(
+    requestKey: String?,
+    batchId: String?,
+    generationId: String?
+  ) -> RevealBatchRef? {
+    guard let requestKey, let batchId, let generationId else {
+      return nil
+    }
+    return RevealBatchRef(requestKey: requestKey, batchId: batchId, generationId: generationId)
+  }
+
+  private func applyPresentationPayload(
+    instanceId: String,
+    presentationStateJSON: String
+  ) throws {
+    guard var state = self.instances[instanceId] else {
+      throw NSError(
+        domain: "SearchMapRenderController",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "unknown instance"]
+      )
+    }
+    let actionStartedAt = CACurrentMediaTime() * 1000
+    if state.lastPresentationStateJSON == presentationStateJSON {
+      self.instances[instanceId] = state
+      return
+    }
+    let previousPresentationPhase = state.lastPresentationPhase
+    let previousPresentationOpacityTarget = state.currentPresentationOpacityTarget
+    state.lastPresentationStateJSON = presentationStateJSON
+    state.lastPresentationPhase = Self.readPresentationPhase(fromJSON: presentationStateJSON)
+    let revealRequestKey = Self.readRevealRequestKey(fromJSON: presentationStateJSON)
+    let revealStatus = Self.readRevealStatus(fromJSON: presentationStateJSON)
+    let revealStartToken = Self.readRevealStartToken(fromJSON: presentationStateJSON)
+    state.allowEmptyReveal = Self.readAllowEmptyReveal(fromJSON: presentationStateJSON)
+    if revealRequestKey != state.lastRevealRequestKey {
+      self.revealSettleWorkItems[instanceId]?.cancel()
+      self.revealSettleWorkItems[instanceId] = nil
+      state.lastRevealRequestKey = revealRequestKey
+      state.revealLane = RevealLaneState()
+      state.lastRevealStartToken = nil
+      state.lastRevealStartedRequestKey = nil
+      state.lastRevealSettledRequestKey = nil
+      state.pendingPresentationSettleRequestKey = nil
+      state.pendingPresentationSettleKind = nil
+      state.blockedRevealStartRequestKey = nil
+      state.blockedRevealStartCommitFenceStartedAtMs = nil
+      state.blockedRevealStartCommitFenceBySourceId.removeAll()
+      state.blockedPresentationCommitFenceBySourceId.removeAll()
+      state.blockedPresentationSettleRequestKey = nil
+      state.blockedPresentationSettleKind = nil
+      state.blockedPresentationCommitFenceStartedAtMs = nil
+      if let revealRequestKey {
+        self.resetLiveMarkerRevealState(
+          instanceId: instanceId,
+          state: &state,
+          reason: "new_reveal_request"
+        )
+        state.keepSourcesHiddenUntilReveal = false
+        state.presentationExecutionPhase = "reveal_preroll"
+        state.currentPresentationOpacityTarget = 0
+        self.instances[instanceId] = state
+        try self.reconcileAndApplyCurrentFrameSnapshots(for: instanceId)
+        state = self.instances[instanceId] ?? state
+        try self.setPresentationOpacityImmediate(
+          0,
+          for: &state,
+          instanceId: instanceId,
+          reason: "reveal_preroll"
+        )
+        let commitFence = self.capturePendingVisualSourceCommitFence(state: state)
+        if self.hasPendingCommitFence(commitFence) {
+          state.blockedRevealStartRequestKey = revealRequestKey
+          state.blockedRevealStartCommitFenceStartedAtMs = Self.nowMs()
+          state.blockedRevealStartCommitFenceBySourceId = commitFence
+          state.presentationExecutionPhase = "reveal_wait_commit"
+          self.instances[instanceId] = state
+          self.emitVisualDiag(
+            instanceId: instanceId,
+            message:
+              "reveal_start_commit_fence_blocked pending=\(self.describeCommitFence(commitFence)) \(self.commitFenceWaitSummary(state: state))"
+          )
+        } else {
+          state.blockedRevealStartCommitFenceStartedAtMs = nil
+        }
+        self.emitVisualDiag(
+          instanceId: instanceId,
+          message:
+            "reveal_generation_ready frame=\(state.activeFrameGenerationId ?? "nil") phase=\(state.presentationExecutionPhase)"
+        )
+      }
+    }
+    state.revealLane.requestedRequestKey = revealRequestKey
+    maybeElectMountedHiddenRevealBatch(instanceId: instanceId, state: &state)
+    if
+      let revealRequestKey,
+      let revealStartToken,
+      revealStatus == "revealing",
+      state.lastPresentationPhase == "revealing",
+      state.revealLane.requestedRequestKey == revealRequestKey,
+      state.revealLane.mountedHidden != nil,
+      state.lastRevealStartToken != revealStartToken,
+      state.lastRevealStartedRequestKey != revealRequestKey,
+      state.blockedRevealStartRequestKey == nil
+    {
+      do {
+        try self.startRevealPresentation(
+          instanceId: instanceId,
+          requestKey: revealRequestKey,
+          revealStartToken: revealStartToken,
+          previousPresentationPhase: previousPresentationPhase,
+          previousPresentationOpacityTarget: previousPresentationOpacityTarget
+        )
+        state = self.instances[instanceId] ?? state
+      } catch {
+        self.emit([
+          "type": "error",
+          "instanceId": instanceId,
+          "message": "reveal_start_opacity_apply_failed: \(error.localizedDescription)",
+        ])
+      }
+    }
+    let previousDismissRequestKey = state.lastDismissRequestKey
+    let dismissRequestKey = Self.readDismissRequestKey(fromJSON: presentationStateJSON)
+    if dismissRequestKey != state.lastDismissRequestKey {
+      self.revealSettleWorkItems[instanceId]?.cancel()
+      self.revealSettleWorkItems[instanceId] = nil
+      self.revealFrameFallbackWorkItems[instanceId]?.cancel()
+      self.revealFrameFallbackWorkItems[instanceId] = nil
+      state.pendingPresentationSettleRequestKey = nil
+      state.pendingPresentationSettleKind = nil
+      state.blockedPresentationSettleRequestKey = nil
+      state.blockedPresentationSettleKind = nil
+      state.blockedPresentationCommitFenceBySourceId.removeAll()
+      self.dismissSettleWorkItems[instanceId]?.cancel()
+      self.dismissSettleWorkItems[instanceId] = nil
+      self.dismissFrameFallbackWorkItems[instanceId]?.cancel()
+      self.dismissFrameFallbackWorkItems[instanceId] = nil
+      state.lastDismissRequestKey = dismissRequestKey
+      if let dismissRequestKey {
+        state.keepSourcesHiddenUntilReveal = true
+        state.presentationExecutionPhase = "dismissing"
+        state.currentPresentationOpacityTarget = 0
+        self.instances[instanceId] = state
+        try self.animatePresentationOpacity(
+          to: 0,
+          for: &state,
+          instanceId: instanceId,
+          reason: "dismiss_start"
+        )
+        let startedAtMs = Self.nowMs()
+        self.emit([
+          "type": "presentation_dismiss_started",
+          "instanceId": instanceId,
+          "requestKey": dismissRequestKey,
+          "frameGenerationId": state.activeFrameGenerationId as Any,
+          "startedAtMs": startedAtMs,
+        ])
+        self.emitVisualDiag(
+          instanceId: instanceId,
+          message:
+            "presentation_transition previousPhase=\(previousPresentationPhase) nextPhase=\(state.lastPresentationPhase) previousOpacity=\(previousPresentationOpacityTarget) nextOpacity=\(state.currentPresentationOpacityTarget) revealRequest=\(state.lastRevealRequestKey ?? "nil") dismissRequest=\(dismissRequestKey)"
+        )
+        let workItem = DispatchWorkItem { [weak self] in
+          guard let self else { return }
+          self.dismissSettleWorkItems[instanceId] = nil
+          guard var latestState = self.instances[instanceId] else { return }
+          guard latestState.lastDismissRequestKey == dismissRequestKey else { return }
+          let commitFence = self.capturePendingVisualSourceCommitFence(state: latestState)
+          if self.hasPendingCommitFence(commitFence) {
+            latestState.blockedPresentationSettleRequestKey = dismissRequestKey
+            latestState.blockedPresentationSettleKind = "dismiss"
+            latestState.blockedPresentationCommitFenceStartedAtMs = Self.nowMs()
+            latestState.blockedPresentationCommitFenceBySourceId = commitFence
+            latestState.presentationExecutionPhase = "dismiss_preroll"
+            self.emitVisualDiag(
+              instanceId: instanceId,
+              message:
+                "dismiss_commit_fence_blocked pending=\(self.describeCommitFence(commitFence)) \(self.commitFenceWaitSummary(state: latestState))"
+            )
+          } else {
+            latestState.blockedPresentationCommitFenceStartedAtMs = nil
+            latestState.presentationExecutionPhase = "dismissing"
+            latestState.pendingPresentationSettleRequestKey = dismissRequestKey
+            latestState.pendingPresentationSettleKind = "dismiss"
+            self.armNativeDismissSettle(instanceId: instanceId, requestKey: dismissRequestKey)
+          }
+          self.instances[instanceId] = latestState
+        }
+        self.dismissSettleWorkItems[instanceId] = workItem
+        DispatchQueue.main.asyncAfter(
+          deadline: .now() + .milliseconds(self.dismissSettleDelayMs),
+          execute: workItem
+        )
+      } else if previousDismissRequestKey != nil {
+        state.presentationExecutionPhase = state.lastPresentationPhase == "idle" ? "live" : "idle"
+        self.instances[instanceId] = state
+        try self.reconcileAndApplyCurrentFrameSnapshots(for: instanceId)
+        state = self.instances[instanceId] ?? state
+        let restoredOpacity =
+          state.keepSourcesHiddenUntilReveal
+          ? 0.0
+          : (state.lastPresentationPhase == "idle" ? 1.0 : state.currentPresentationOpacityTarget)
+        state.currentPresentationOpacityTarget = restoredOpacity
+        self.instances[instanceId] = state
+        try self.setPresentationOpacityImmediate(
+          restoredOpacity,
+          for: &state,
+          instanceId: instanceId,
+          reason: "dismiss_clear"
+        )
+      }
+    }
+    if
+      state.lastDismissRequestKey == nil,
+      state.lastRevealRequestKey == nil,
+      state.lastPresentationPhase != "idle",
+      state.currentPresentationOpacityTarget != 0
+    {
+      state.currentPresentationOpacityTarget = 0
+      self.instances[instanceId] = state
+      try self.setPresentationOpacityImmediate(
+        0,
+        for: &state,
+        instanceId: instanceId,
+        reason: "presentation_preroll"
+      )
+    }
+    if previousPresentationPhase != "idle", state.lastPresentationPhase == "idle" {
+      state.presentationExecutionPhase = "live"
+      let idleOpacityTarget = state.keepSourcesHiddenUntilReveal ? 0.0 : 1.0
+      if state.currentPresentationOpacityTarget != idleOpacityTarget {
+        state.currentPresentationOpacityTarget = idleOpacityTarget
+        self.instances[instanceId] = state
+        try? self.setPresentationOpacityImmediate(
+          idleOpacityTarget,
+          for: &state,
+          instanceId: instanceId,
+          reason: "presentation_idle"
+        )
+        state = self.instances[instanceId] ?? state
+      }
+    }
+    self.instances[instanceId] = state
+    let totalDurationMs = CACurrentMediaTime() * 1000 - actionStartedAt
+    self.recordSlowActionWindow(
+      instanceId: instanceId,
+      scope: "moving_native_presentation_apply",
+      durationMs: totalDurationMs,
+      thresholdMs: state.currentViewportIsMoving ? 90 : .greatestFiniteMagnitude,
+      state: state
+    )
+    self.recordSlowActionWindow(
+      instanceId: instanceId,
+      scope: "reveal_native_presentation_apply",
+      durationMs: totalDurationMs,
+      thresholdMs: state.lastPresentationPhase == "revealing" ? 120 : .greatestFiniteMagnitude,
+      state: state
+    )
+    if totalDurationMs >= self.slowActionThresholdMs {
+      self.emit([
+        "type": "error",
+        "instanceId": "__native_diag__",
+        "message":
+          "slow_action action=applyFramePresentation phase=\(state.lastPresentationPhase) totalMs=\(Int(totalDurationMs.rounded())) revealKey=\(state.lastRevealRequestKey ?? "nil") dismissKey=\(state.lastDismissRequestKey ?? "nil")",
+      ])
+    }
+  }
+
+  private func applyHighlightedMarkerPayload(
+    instanceId: String,
+    markerKey: String?
+  ) throws {
+    guard var state = instances[instanceId] else {
+      throw NSError(
+        domain: "SearchMapRenderController",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "unknown instance"]
+      )
+    }
+    if state.highlightedMarkerKey == markerKey {
+      return
+    }
+    state.highlightedMarkerKey = markerKey
+    instances[instanceId] = state
+    try applyHighlightedMarkerState(for: state, instanceId: instanceId)
+  }
+
+  private func applyInteractionModePayload(
+    instanceId: String,
+    interactionMode: String
+  ) throws {
+    guard var state = instances[instanceId] else {
+      throw NSError(
+        domain: "SearchMapRenderController",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "unknown instance"]
+      )
+    }
+    let nextMode = interactionMode == "suppressed" ? "suppressed" : "enabled"
+    if state.interactionMode == nextMode {
+      return
+    }
+    state.interactionMode = nextMode
+    instances[instanceId] = state
+    if shouldSuppressInteractions(state: state) {
+      var updatedState = state
+      try applyInteractionSuppression(for: &updatedState, instanceId: instanceId)
+      instances[instanceId] = updatedState
+    } else {
+      try reconcileAndApplyCurrentFrameSnapshots(for: instanceId)
+      if var updatedState = instances[instanceId] {
+        try applyHighlightedMarkerState(for: updatedState, instanceId: instanceId)
+        try applyCurrentPresentationOpacity(
+          for: &updatedState,
+          instanceId: instanceId,
+          reason: "interaction_mode_apply"
+        )
+      }
+    }
+  }
+
+  @objc
+  func querySourceMembership(
+    _ payload: NSDictionary,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    guard let instanceId = payload["instanceId"] as? String,
+          let sourceId = payload["sourceId"] as? String
+    else {
+      reject(
+        "search_map_render_controller_query_source_membership_invalid",
+        "missing instanceId or sourceId",
+        nil
+      )
+      return
+    }
+    let featureIds = instances[instanceId].flatMap {
+      Self.mountedSourceState(sourceId: sourceId, state: $0)
+    }.map { Array($0.featureIds) } ?? []
+    resolve([
+      "sourceId": sourceId,
+      "featureIds": featureIds.sorted(),
+    ])
+  }
+
+  @objc
+  func queryRenderedLabelObservation(
+    _ payload: NSDictionary,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else {
+        reject("search_map_render_controller_unavailable", "controller deallocated", nil)
+        return
+      }
+      guard let instanceId = payload["instanceId"] as? String else {
+        reject(
+          "search_map_render_controller_query_rendered_label_observation_invalid",
+          "missing instanceId",
+          nil
+        )
+        return
+      }
+      guard let state = self.instances[instanceId] else {
+        reject(
+          "search_map_render_controller_query_rendered_label_observation_invalid",
+          "unknown instance",
+          nil
+        )
+        return
+      }
+      let layerIds = (payload["layerIds"] as? [String]) ??
+        ((payload["layerIds"] as? [Any])?.compactMap { $0 as? String } ?? [])
+      let allowFallback = (payload["allowFallback"] as? Bool) ?? false
+      let commitInteractionVisibility = (payload["commitInteractionVisibility"] as? Bool) ?? false
+      do {
+        try self.withResolvedMapHandleResult(for: state.mapTag) { handle in
+          let queryRect = handle.mapView.bounds
+          guard queryRect.width > 0, queryRect.height > 0 else {
+            if commitInteractionVisibility, var mutableState = self.instances[instanceId] {
+              var labelFamilyState = Self.derivedFamilyState(
+                sourceId: mutableState.labelSourceId,
+                state: mutableState
+              )
+              labelFamilyState.settledVisibleFeatureIds = []
+              Self.setDerivedFamilyState(
+                labelFamilyState,
+                sourceId: mutableState.labelSourceId,
+                state: &mutableState
+              )
+              self.instances[instanceId] = mutableState
+            }
+            resolve(Self.emptyRenderedLabelObservationResult())
+            return
+          }
+          let fallbackLayerIds = try self.resolveRenderedProbeLayerIds(
+            for: [state.labelSourceId],
+            mapboxMap: handle.mapView.mapboxMap
+          )
+          handle.mapView.mapboxMap.queryRenderedFeatures(
+            with: queryRect,
+            options: RenderedQueryOptions(layerIds: layerIds, filter: nil)
+          ) { [weak self] result in
+            DispatchQueue.main.async {
+              guard let self else {
+                reject("search_map_render_controller_unavailable", "controller deallocated", nil)
+                return
+              }
+              switch result {
+              case .failure(let error):
+                reject(
+                  "search_map_render_controller_query_rendered_label_observation_failed",
+                  error.localizedDescription,
+                  error
+                )
+              case .success(let features):
+                let primaryObservation = Self.buildRenderedLabelObservation(
+                  from: features,
+                  requiredSourceId: state.labelSourceId
+                )
+                if features.count > 0 || !allowFallback {
+                  if commitInteractionVisibility, var mutableState = self.instances[instanceId] {
+                    var labelFamilyState = Self.derivedFamilyState(
+                      sourceId: mutableState.labelSourceId,
+                      state: mutableState
+                    )
+                    labelFamilyState.settledVisibleFeatureIds = Set(primaryObservation.visibleLabelFeatureIds)
+                    Self.setDerivedFamilyState(
+                      labelFamilyState,
+                      sourceId: mutableState.labelSourceId,
+                      state: &mutableState
+                    )
+                    self.instances[instanceId] = mutableState
+                  }
+                  resolve([
+                    "visibleLabelFeatureIds": primaryObservation.visibleLabelFeatureIds,
+                    "placedLabels": primaryObservation.placedLabels,
+                    "layerRenderedFeatureCount": features.count,
+                    "effectiveRenderedFeatureCount": features.count,
+                  ])
+                  return
+                }
+                let nextLayerIds = fallbackLayerIds.isEmpty ? layerIds : fallbackLayerIds
+                handle.mapView.mapboxMap.queryRenderedFeatures(
+                  with: queryRect,
+                  options: RenderedQueryOptions(layerIds: nextLayerIds, filter: nil)
+                ) { fallbackResult in
+                  DispatchQueue.main.async {
+                    switch fallbackResult {
+                    case .failure(let error):
+                      reject(
+                        "search_map_render_controller_query_rendered_label_observation_failed",
+                        error.localizedDescription,
+                        error
+                      )
+                    case .success(let fallbackFeatures):
+                    let fallbackObservation = Self.buildRenderedLabelObservation(
+                      from: fallbackFeatures,
+                      requiredSourceId: state.labelSourceId
+                    )
+                    if commitInteractionVisibility, var mutableState = self.instances[instanceId] {
+                      var labelFamilyState = Self.derivedFamilyState(
+                        sourceId: mutableState.labelSourceId,
+                        state: mutableState
+                      )
+                      labelFamilyState.settledVisibleFeatureIds = Set(fallbackObservation.visibleLabelFeatureIds)
+                      Self.setDerivedFamilyState(
+                        labelFamilyState,
+                        sourceId: mutableState.labelSourceId,
+                        state: &mutableState
+                      )
+                      self.instances[instanceId] = mutableState
+                    }
+                    resolve([
+                        "visibleLabelFeatureIds": fallbackObservation.visibleLabelFeatureIds,
+                        "placedLabels": fallbackObservation.placedLabels,
+                        "layerRenderedFeatureCount": features.count,
+                        "effectiveRenderedFeatureCount": fallbackFeatures.count,
+                      ])
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch {
+        reject(
+          "search_map_render_controller_query_rendered_label_observation_failed",
+          error.localizedDescription,
+          error
+        )
+      }
+    }
+  }
+
+  @objc
+  func queryRenderedDotObservation(
+    _ payload: NSDictionary,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else {
+        reject("search_map_render_controller_unavailable", "controller deallocated", nil)
+        return
+      }
+      guard let instanceId = payload["instanceId"] as? String else {
+        reject(
+          "search_map_render_controller_query_rendered_dot_observation_invalid",
+          "missing instanceId",
+          nil
+        )
+        return
+      }
+      guard let state = self.instances[instanceId] else {
+        reject(
+          "search_map_render_controller_query_rendered_dot_observation_invalid",
+          "unknown instance",
+          nil
+        )
+        return
+      }
+      let layerIds = (payload["layerIds"] as? [String]) ??
+        ((payload["layerIds"] as? [Any])?.compactMap { $0 as? String } ?? [])
+      let queryBoxValues = ((payload["queryBox"] as? [NSNumber]) ??
+        ((payload["queryBox"] as? [Any])?.compactMap {
+          if let value = $0 as? NSNumber {
+            return value
+          }
+          if let value = $0 as? Double {
+            return NSNumber(value: value)
+          }
+          return nil
+        } ?? []))
+      do {
+        try self.withResolvedMapHandleResult(for: state.mapTag) { handle in
+          let bounds = handle.mapView.bounds
+          guard bounds.width > 0, bounds.height > 0 else {
+            resolve(Self.emptyRenderedDotObservationResult())
+            return
+          }
+          let queryRect: CGRect
+          if queryBoxValues.count == 4 {
+            let x1 = CGFloat(truncating: queryBoxValues[0])
+            let y1 = CGFloat(truncating: queryBoxValues[1])
+            let x2 = CGFloat(truncating: queryBoxValues[2])
+            let y2 = CGFloat(truncating: queryBoxValues[3])
+            queryRect = CGRect(
+              x: min(x1, x2),
+              y: min(y1, y2),
+              width: abs(x2 - x1),
+              height: abs(y2 - y1)
+            )
+          } else {
+            queryRect = bounds
+          }
+          guard queryRect.width > 0, queryRect.height > 0 else {
+            resolve(Self.emptyRenderedDotObservationResult())
+            return
+          }
+          handle.mapView.mapboxMap.queryRenderedFeatures(
+            with: queryRect,
+            options: RenderedQueryOptions(layerIds: layerIds, filter: nil)
+          ) { result in
+            DispatchQueue.main.async {
+              switch result {
+              case .failure(let error):
+                reject(
+                  "search_map_render_controller_query_rendered_dot_observation_failed",
+                  error.localizedDescription,
+                  error
+                )
+              case .success(let features):
+                let observation = Self.buildRenderedDotObservation(
+                  from: features,
+                  requiredSourceId: state.dotSourceId
+                )
+                resolve([
+                  "restaurantIds": observation.restaurantIds,
+                  "renderedDots": observation.renderedDots,
+                  "renderedFeatureCount": features.count,
+                ])
+              }
+            }
+          }
+        }
+      } catch {
+        reject(
+          "search_map_render_controller_query_rendered_dot_observation_failed",
+          error.localizedDescription,
+          error
+        )
+      }
+    }
+  }
+
+  @objc
+  func queryRenderedPressTarget(
+    _ payload: NSDictionary,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else {
+        reject("search_map_render_controller_unavailable", "controller deallocated", nil)
+        return
+      }
+      guard let instanceId = payload["instanceId"] as? String else {
+        reject(
+          "search_map_render_controller_query_rendered_press_target_invalid",
+          "missing instanceId",
+          nil
+        )
+        return
+      }
+      guard let state = self.instances[instanceId] else {
+        reject(
+          "search_map_render_controller_query_rendered_press_target_invalid",
+          "unknown instance",
+          nil
+        )
+        return
+      }
+      guard let point = payload["point"] as? [String: Any],
+            let x = (point["x"] as? NSNumber)?.doubleValue,
+            let y = (point["y"] as? NSNumber)?.doubleValue
+      else {
+        reject(
+          "search_map_render_controller_query_rendered_press_target_invalid",
+          "missing point",
+          nil
+        )
+        return
+      }
+      let pinLayerIds = (payload["pinLayerIds"] as? [String]) ??
+        ((payload["pinLayerIds"] as? [Any])?.compactMap { $0 as? String } ?? [])
+      let labelLayerIds = (payload["labelLayerIds"] as? [String]) ??
+        ((payload["labelLayerIds"] as? [Any])?.compactMap { $0 as? String } ?? [])
+      do {
+        try self.withResolvedMapHandleResult(for: state.mapTag) { handle in
+          let queryRect = CGRect(x: x - 0.5, y: y - 0.5, width: 1, height: 1)
+          guard !pinLayerIds.isEmpty || !labelLayerIds.isEmpty else {
+            resolve(NSNull())
+            return
+          }
+          guard !pinLayerIds.isEmpty else {
+            handle.mapView.mapboxMap.queryRenderedFeatures(
+              with: queryRect,
+              options: RenderedQueryOptions(layerIds: labelLayerIds, filter: nil)
+            ) { labelResult in
+              DispatchQueue.main.async {
+                switch labelResult {
+                case .failure(let error):
+                  reject(
+                    "search_map_render_controller_query_rendered_press_target_failed",
+                    error.localizedDescription,
+                    error
+                  )
+                case .success(let labelFeatures):
+                  if let labelTarget = Self.buildRenderedLabelPressTarget(
+                    from: labelFeatures,
+                    requiredSourceId: state.labelInteractionSourceId
+                  ) {
+                    resolve(labelTarget)
+                  } else {
+                    resolve(NSNull())
+                  }
+                }
+              }
+            }
+            return
+          }
+          handle.mapView.mapboxMap.queryRenderedFeatures(
+            with: queryRect,
+            options: RenderedQueryOptions(layerIds: pinLayerIds, filter: nil)
+          ) { pinResult in
+            DispatchQueue.main.async {
+              switch pinResult {
+              case .failure(let error):
+                reject(
+                  "search_map_render_controller_query_rendered_press_target_failed",
+                  error.localizedDescription,
+                  error
+                )
+              case .success(let pinFeatures):
+                if let pinTarget = Self.buildRenderedPinPressTarget(
+                  from: pinFeatures,
+                  requiredSourceId: state.pinInteractionSourceId
+                ) {
+                  resolve(pinTarget)
+                  return
+                }
+                guard !labelLayerIds.isEmpty else {
+                  resolve(NSNull())
+                  return
+                }
+                handle.mapView.mapboxMap.queryRenderedFeatures(
+                  with: queryRect,
+                  options: RenderedQueryOptions(layerIds: labelLayerIds, filter: nil)
+                ) { labelResult in
+                  DispatchQueue.main.async {
+                    switch labelResult {
+                    case .failure(let error):
+                      reject(
+                        "search_map_render_controller_query_rendered_press_target_failed",
+                        error.localizedDescription,
+                        error
+                      )
+                    case .success(let labelFeatures):
+                      if let labelTarget = Self.buildRenderedLabelPressTarget(
+                        from: labelFeatures,
+                        requiredSourceId: state.labelInteractionSourceId
+                      ) {
+                        resolve(labelTarget)
+                      } else {
+                        resolve(NSNull())
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch {
+        reject(
+          "search_map_render_controller_query_rendered_press_target_failed",
+          error.localizedDescription,
+          error
+        )
+      }
+    }
+  }
+
+  @objc
+  func reset(
+    _ instanceId: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else {
+        reject("search_map_render_controller_unavailable", "controller deallocated", nil)
+        return
+      }
+      guard var state = self.instances[instanceId] else {
+        resolve(nil)
+        return
+      }
+      state.lastPinCount = 0
+      state.lastDotCount = 0
+      state.lastLabelCount = 0
+      state.lastPresentationPhase = "idle"
+      state.lastRevealRequestKey = nil
+      state.revealLane = RevealLaneState()
+      state.lastRevealStartToken = nil
+      state.lastRevealStartedRequestKey = nil
+      state.lastRevealSettledRequestKey = nil
+      state.lastDismissRequestKey = nil
+      state.presentationExecutionPhase = "idle"
+      state.lastPresentationStateJSON = nil
+      state.activeFrameGenerationId = nil
+      state.activeRevealBatchId = nil
+      state.highlightedMarkerKey = nil
+      state.interactionMode = "enabled"
+      state.currentPresentationOpacityTarget = 1
+      state.currentPresentationOpacityValue = 1
+      state.nextSourceCommitSequence = 0
+      state.pendingPresentationSettleRequestKey = nil
+      state.pendingPresentationSettleKind = nil
+      state.blockedRevealStartRequestKey = nil
+      state.blockedRevealStartCommitFenceStartedAtMs = nil
+      state.blockedPresentationSettleRequestKey = nil
+      state.blockedPresentationSettleKind = nil
+      state.blockedPresentationCommitFenceStartedAtMs = nil
+      state.blockedRevealStartCommitFenceBySourceId = [:]
+      state.blockedPresentationCommitFenceBySourceId = [:]
+      state.pendingSourceCommitDataIdsBySourceId = [:]
+      state.derivedFamilyStates = Self.makeInitialDerivedFamilyStates(
+        pinSourceId: state.pinSourceId,
+        pinInteractionSourceId: state.pinInteractionSourceId,
+        dotSourceId: state.dotSourceId,
+        dotInteractionSourceId: state.dotInteractionSourceId,
+        labelSourceId: state.labelSourceId,
+        labelInteractionSourceId: state.labelInteractionSourceId,
+        labelCollisionSourceId: state.labelCollisionSourceId
+      )
+      state.isAwaitingSourceRecovery = false
+      state.isReplayingSourceRecovery = false
+      state.sourceRecoveryPausedAtMs = nil
+      self.cancelPresentationOpacityAnimation(instanceId: instanceId)
+      self.cancelLivePinTransitionAnimation(instanceId: instanceId)
+      self.sourceRecoveryWorkItems[instanceId]?.cancel()
+      self.sourceRecoveryWorkItems[instanceId] = nil
+      self.dismissSettleWorkItems[instanceId]?.cancel()
+      self.dismissSettleWorkItems[instanceId] = nil
+      self.revealSettleWorkItems[instanceId]?.cancel()
+      self.revealSettleWorkItems[instanceId] = nil
+      self.instances[instanceId] = state
+      resolve(nil)
+    }
+  }
+
+  private func applySnapshots(
+    instanceId: String?,
+    _ snapshots: [(sourceId: String, json: String)],
+    allowDuringRecovery: Bool = false,
+    state: inout InstanceState
+  ) throws {
+    if Self.isSourceRecoveryActive(state) && !allowDuringRecovery {
+      if let instanceId {
+        cancelLivePinTransitionAnimation(instanceId: instanceId)
+      }
+      return
+    }
+    let diagnosticInstanceId =
+      instanceId ?? self.instances.first(where: { $0.value.mapTag == state.mapTag })?.key ?? "__native_diag__"
+    guard let mapboxMap = try readyMapboxMap(
+      for: state.mapTag,
+      instanceId: instanceId,
+      state: &state,
+      sourceIds: snapshots.map(\.sourceId),
+      reason: "apply_snapshots"
+    ) else {
+      return
+    }
+    var plans: [ParsedCollectionApplyPlan] = []
+    for snapshot in snapshots {
+      let next = try Self.parseFeatureCollectionJSON(snapshot.json, sourceId: snapshot.sourceId)
+      let previousSourceState = Self.mountedSourceState(sourceId: snapshot.sourceId, state: state)
+      plans.append(
+        ParsedCollectionApplyPlan(
+          sourceId: snapshot.sourceId,
+          next: next,
+          previousSourceState: previousSourceState,
+          previousFeatureStateById: previousSourceState?.featureStateById ?? [:],
+          previousFeatureStateRevision: previousSourceState?.featureStateRevision ?? ""
+        )
+      )
+    }
+    _ = try applyParsedCollectionBatch(
+      instanceId: diagnosticInstanceId,
+      plans: plans,
+      state: &state,
+      mapboxMap: mapboxMap
+    )
+  }
+
+  private func prepareDerivedPinAndLabelOutput(
+    desiredPinSnapshot: DesiredPinSnapshotState,
+    nowMs: Double,
+    state: inout InstanceState
+  ) -> PreparedDerivedPinAndLabelOutput {
+    var pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
+    var pinInteractionFamilyState = Self.derivedFamilyState(
+      sourceId: state.pinInteractionSourceId,
+      state: state
+    )
+    var labelFamilyState = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
+    var labelCollisionFamilyState = Self.derivedFamilyState(
+      sourceId: state.labelCollisionSourceId,
+      state: state
+    )
+    let desiredPinIds = Set(desiredPinSnapshot.pinIdsInOrder)
+    let exitingMarkerKeys = pinFamilyState.livePinTransitionsByMarkerKey
+      .filter {
+        !$0.value.isAwaitingSourceCommit &&
+        !desiredPinIds.contains($0.key) &&
+        Self.livePinTransitionOpacity($0.value, atMs: nowMs) > 0.001
+      }
+      .sorted { $0.value.orderHint < $1.value.orderHint }
+      .map(\.key)
+    let orderedMarkerKeys = desiredPinSnapshot.pinIdsInOrder + exitingMarkerKeys
+    let dirtyPinMarkerKeys = Set(desiredPinSnapshot.dirtyPinMarkerKeys)
+      .union(pinFamilyState.livePinTransitionsByMarkerKey.keys)
+    let dirtyPinInteractionMarkerKeys = Set(desiredPinSnapshot.dirtyPinInteractionMarkerKeys)
+      .union(dirtyPinMarkerKeys)
+    let dirtyLabelMarkerKeys = Set(desiredPinSnapshot.dirtyLabelMarkerKeys)
+      .union(pinFamilyState.livePinTransitionsByMarkerKey.keys)
+    let dirtyLabelCollisionMarkerKeys = Set(desiredPinSnapshot.dirtyLabelCollisionMarkerKeys)
+    let reusePins = dirtyPinMarkerKeys.isEmpty
+    let reusePinInteractions = dirtyPinInteractionMarkerKeys.isEmpty
+    let reuseLabels = dirtyLabelMarkerKeys.isEmpty
+    let reuseLabelCollisions = dirtyLabelCollisionMarkerKeys.isEmpty
+    let orderedMarkerKeySet = Set(orderedMarkerKeys)
+    var nextPinIdsInOrder: [String]? = reusePins ? nil : []
+    var nextPinFeatureById: [String: Feature]? = reusePins ? nil : pinFamilyState.collection.featureById
+    var nextPinFeatureStateById: [String: [String: Any]]? =
+      reusePins ? nil : pinFamilyState.collection.featureStateById
+    var nextPinMarkerKeyByFeatureId: [String: String]? =
+      reusePins ? nil : pinFamilyState.collection.markerKeyByFeatureId
+    var nextPinInteractionIdsInOrder: [String]? = reusePinInteractions ? nil : []
+    var nextPinInteractionFeatureById: [String: Feature]? =
+      reusePinInteractions ? nil : pinInteractionFamilyState.collection.featureById
+    var nextPinInteractionMarkerKeyByFeatureId: [String: String]? =
+      reusePinInteractions ? nil : pinInteractionFamilyState.collection.markerKeyByFeatureId
+    var nextLabelIdsInOrder: [String]? = reuseLabels ? nil : []
+    var nextLabelFeatureById: [String: Feature]? = reuseLabels ? nil : labelFamilyState.collection.featureById
+    var nextLabelFeatureStateById: [String: [String: Any]]? =
+      reuseLabels ? nil : labelFamilyState.collection.featureStateById
+    var nextLabelMarkerKeyByFeatureId: [String: String]? =
+      reuseLabels ? nil : labelFamilyState.collection.markerKeyByFeatureId
+    var previousLabelIdsByMarkerKey: [String: [String]] = [:]
+    var previousLabelIdsByMarkerKeySnapshot: [String: [String]] = [:]
+    if !reuseLabels {
+      for featureId in labelFamilyState.collection.idsInOrder {
+        let markerKey = labelFamilyState.collection.markerKeyByFeatureId[featureId] ?? featureId
+        previousLabelIdsByMarkerKey[markerKey, default: []].append(featureId)
+      }
+      previousLabelIdsByMarkerKeySnapshot = previousLabelIdsByMarkerKey
+      for markerKey in dirtyLabelMarkerKeys where !orderedMarkerKeySet.contains(markerKey) {
+        for featureId in previousLabelIdsByMarkerKey[markerKey] ?? [] {
+          nextLabelFeatureById?.removeValue(forKey: featureId)
+          nextLabelFeatureStateById?.removeValue(forKey: featureId)
+          nextLabelMarkerKeyByFeatureId?.removeValue(forKey: featureId)
+        }
+        previousLabelIdsByMarkerKey.removeValue(forKey: markerKey)
+      }
+    }
+    if !reusePins {
+      for markerKey in dirtyPinMarkerKeys where !orderedMarkerKeySet.contains(markerKey) {
+        nextPinFeatureById?.removeValue(forKey: markerKey)
+        nextPinFeatureStateById?.removeValue(forKey: markerKey)
+        nextPinMarkerKeyByFeatureId?.removeValue(forKey: markerKey)
+      }
+    }
+    if !reusePinInteractions {
+      for markerKey in dirtyPinInteractionMarkerKeys where !orderedMarkerKeySet.contains(markerKey) {
+        nextPinInteractionFeatureById?.removeValue(forKey: markerKey)
+        nextPinInteractionMarkerKeyByFeatureId?.removeValue(forKey: markerKey)
+      }
+    }
+
+    for markerKey in orderedMarkerKeys {
+      let desiredPresent = desiredPinIds.contains(markerKey)
+      let transition = pinFamilyState.livePinTransitionsByMarkerKey[markerKey]
+      let lodZ = desiredPinSnapshot.pinLodZByMarkerKey[markerKey] ?? transition?.lodZ ?? 0
+      let shouldRenderMarker =
+        desiredPresent ||
+        (transition.map { Self.livePinTransitionOpacity($0, atMs: nowMs) > 0.001 } ?? false)
+      guard shouldRenderMarker else {
+        continue
+      }
+
+      if !reusePins {
+        nextPinIdsInOrder!.append(markerKey)
+        if dirtyPinMarkerKeys.contains(markerKey),
+           let feature = desiredPinSnapshot.pinFeatureByMarkerKey[markerKey] ?? transition?.pinFeature
+        {
+          let shouldSeedHidden = desiredPresent && transition?.targetOpacity == 1
+          let renderFeature = Self.featureBySettingNumericProperties(
+            feature,
+            numericProperties: [
+              "nativeLodOpacity": shouldSeedHidden ? 0 : 1,
+              "nativeLodRankOpacity": shouldSeedHidden ? 0 : 1,
+              "nativeLodZ": Double(lodZ),
+            ]
+          )
+          nextPinFeatureById![markerKey] = renderFeature
+          nextPinMarkerKeyByFeatureId![markerKey] = markerKey
+          if let featureState = pinFamilyState.transientFeatureStateById[markerKey] {
+            nextPinFeatureStateById![markerKey] = featureState
+          } else {
+            nextPinFeatureStateById!.removeValue(forKey: markerKey)
+          }
+        }
+      }
+
+      let shouldRenderPinInteraction =
+        desiredPresent &&
+        transition?.targetOpacity != 1 &&
+        desiredPinSnapshot.pinInteractionFeatureByMarkerKey[markerKey] != nil
+      if !reusePinInteractions {
+        if shouldRenderPinInteraction {
+          nextPinInteractionIdsInOrder!.append(markerKey)
+          if dirtyPinInteractionMarkerKeys.contains(markerKey),
+             let feature = desiredPinSnapshot.pinInteractionFeatureByMarkerKey[markerKey]
+          {
+            let interactionFeature = Self.featureBySettingNumericProperties(
+              feature,
+              numericProperties: ["nativeLodZ": Double(lodZ)]
+            )
+            nextPinInteractionFeatureById![markerKey] = interactionFeature
+            nextPinInteractionMarkerKeyByFeatureId![markerKey] = markerKey
+          }
+        } else if dirtyPinInteractionMarkerKeys.contains(markerKey) {
+          nextPinInteractionFeatureById!.removeValue(forKey: markerKey)
+          nextPinInteractionMarkerKeyByFeatureId!.removeValue(forKey: markerKey)
+        }
+      }
+
+      let markerLabelFeatures =
+        desiredPinSnapshot.labelFeaturesByMarkerKey[markerKey] ??
+        transition?.labelFeatures ??
+        []
+      if !reuseLabels {
+        if dirtyLabelMarkerKeys.contains(markerKey) {
+          for featureId in previousLabelIdsByMarkerKey[markerKey] ?? [] {
+            nextLabelFeatureById!.removeValue(forKey: featureId)
+            nextLabelFeatureStateById!.removeValue(forKey: featureId)
+            nextLabelMarkerKeyByFeatureId!.removeValue(forKey: featureId)
+          }
+          let shouldSeedHidden = desiredPresent && transition?.targetOpacity == 1
+          var nextMarkerLabelIds: [String] = []
+          for labelFeature in markerLabelFeatures {
+            let renderFeature = Self.featureBySettingNumericProperties(
+              labelFeature.feature,
+              numericProperties: [
+                "nativeLabelOpacity": shouldSeedHidden ? 0 : 1,
+              ]
+            )
+            nextMarkerLabelIds.append(labelFeature.id)
+            nextLabelFeatureById![labelFeature.id] = renderFeature
+            nextLabelMarkerKeyByFeatureId![labelFeature.id] = markerKey
+            if let featureState = labelFamilyState.transientFeatureStateById[labelFeature.id] {
+              nextLabelFeatureStateById![labelFeature.id] = featureState
+            } else {
+              nextLabelFeatureStateById!.removeValue(forKey: labelFeature.id)
+            }
+          }
+          previousLabelIdsByMarkerKey[markerKey] = nextMarkerLabelIds
+        }
+        for featureId in previousLabelIdsByMarkerKey[markerKey] ?? [] {
+          nextLabelIdsInOrder!.append(featureId)
+        }
+      }
+    }
+    let previousPinsSourceState = pinFamilyState.sourceState
+    let nextPins: ParsedFeatureCollection
+    if reusePins {
+      nextPins = pinFamilyState.collection
+    } else {
+      let nextPinIdSet = Set(nextPinIdsInOrder!)
+      for removedFeatureId in Set(pinFamilyState.collection.idsInOrder).subtracting(nextPinIdSet) {
+        nextPinFeatureById!.removeValue(forKey: removedFeatureId)
+        nextPinFeatureStateById!.removeValue(forKey: removedFeatureId)
+        nextPinMarkerKeyByFeatureId!.removeValue(forKey: removedFeatureId)
+      }
+      Self.replaceParsedFeatureCollection(
+        &pinFamilyState.collection,
+        baseSourceState: previousPinsSourceState,
+        idsInOrder: nextPinIdsInOrder!,
+        featureById: nextPinFeatureById!,
+        featureStateById: nextPinFeatureStateById!,
+        markerKeyByFeatureId: nextPinMarkerKeyByFeatureId!,
+        dirtyGroupIds: dirtyPinMarkerKeys,
+        orderChangedGroupIds: dirtyPinMarkerKeys,
+        removedGroupIds: Set(dirtyPinMarkerKeys.filter { !nextPinIdSet.contains($0) })
+      )
+      Self.setDerivedFamilyState(pinFamilyState, sourceId: state.pinSourceId, state: &state)
+      nextPins = pinFamilyState.collection
+    }
+    let pinStartedAt = CACurrentMediaTime() * 1000
+
+    let previousPinInteractionsSourceState = pinInteractionFamilyState.sourceState
+    let nextPinInteractions: ParsedFeatureCollection
+    if reusePinInteractions {
+      nextPinInteractions = pinInteractionFamilyState.collection
+    } else {
+      let nextPinInteractionIdSet = Set(nextPinInteractionIdsInOrder!)
+      for removedFeatureId in Set(pinInteractionFamilyState.collection.idsInOrder).subtracting(nextPinInteractionIdSet) {
+        nextPinInteractionFeatureById!.removeValue(forKey: removedFeatureId)
+        nextPinInteractionMarkerKeyByFeatureId!.removeValue(forKey: removedFeatureId)
+      }
+      Self.replaceParsedFeatureCollection(
+        &pinInteractionFamilyState.collection,
+        baseSourceState: previousPinInteractionsSourceState,
+        idsInOrder: nextPinInteractionIdsInOrder!,
+        featureById: nextPinInteractionFeatureById!,
+        markerKeyByFeatureId: nextPinInteractionMarkerKeyByFeatureId!,
+        dirtyGroupIds: dirtyPinInteractionMarkerKeys,
+        orderChangedGroupIds: dirtyPinInteractionMarkerKeys,
+        removedGroupIds: Set(
+          dirtyPinInteractionMarkerKeys.filter { !nextPinInteractionIdSet.contains($0) }
+        )
+      )
+      Self.setDerivedFamilyState(
+        pinInteractionFamilyState,
+        sourceId: state.pinInteractionSourceId,
+        state: &state
+      )
+      nextPinInteractions = pinInteractionFamilyState.collection
+    }
+    let previousLabelsSourceState = labelFamilyState.sourceState
+    let nextLabels: ParsedFeatureCollection
+    if reuseLabels {
+      nextLabels = labelFamilyState.collection
+    } else {
+      let nextLabelIdSet = Set(nextLabelIdsInOrder!)
+      for removedFeatureId in Set(labelFamilyState.collection.idsInOrder).subtracting(nextLabelIdSet) {
+        nextLabelFeatureById!.removeValue(forKey: removedFeatureId)
+        nextLabelFeatureStateById!.removeValue(forKey: removedFeatureId)
+        nextLabelMarkerKeyByFeatureId!.removeValue(forKey: removedFeatureId)
+      }
+      Self.replaceParsedFeatureCollection(
+        &labelFamilyState.collection,
+        baseSourceState: previousLabelsSourceState,
+        idsInOrder: nextLabelIdsInOrder!,
+        featureById: nextLabelFeatureById!,
+        featureStateById: nextLabelFeatureStateById!,
+        markerKeyByFeatureId: nextLabelMarkerKeyByFeatureId!,
+        dirtyGroupIds: dirtyLabelMarkerKeys,
+        orderChangedGroupIds: dirtyLabelMarkerKeys,
+        removedGroupIds: Set(
+          dirtyLabelMarkerKeys.filter {
+            !(previousLabelIdsByMarkerKeySnapshot[$0] ?? []).isEmpty &&
+            (previousLabelIdsByMarkerKey[$0] ?? []).isEmpty
+          }
+        )
+      )
+      Self.setDerivedFamilyState(labelFamilyState, sourceId: state.labelSourceId, state: &state)
+      nextLabels = labelFamilyState.collection
+    }
+    let previousLabelCollisionSourceState = labelCollisionFamilyState.sourceState
+    let nextLabelCollisions: ParsedFeatureCollection
+    if reuseLabelCollisions {
+      nextLabelCollisions = labelCollisionFamilyState.collection
+    } else {
+      let nextLabelCollisionIdsInOrder = desiredPinSnapshot.labelCollisionFeatureByMarkerKey.keys.sorted()
+      var nextLabelCollisionFeatureById = labelCollisionFamilyState.collection.featureById
+      var nextLabelCollisionMarkerKeyByFeatureId = labelCollisionFamilyState.collection.markerKeyByFeatureId
+      for markerKey in dirtyLabelCollisionMarkerKeys {
+        if let feature = desiredPinSnapshot.labelCollisionFeatureByMarkerKey[markerKey] {
+          nextLabelCollisionFeatureById[markerKey] = feature
+          nextLabelCollisionMarkerKeyByFeatureId[markerKey] = markerKey
+        } else {
+          nextLabelCollisionFeatureById.removeValue(forKey: markerKey)
+          nextLabelCollisionMarkerKeyByFeatureId.removeValue(forKey: markerKey)
+        }
+      }
+      Self.replaceParsedFeatureCollection(
+        &labelCollisionFamilyState.collection,
+        baseSourceState: previousLabelCollisionSourceState,
+        idsInOrder: nextLabelCollisionIdsInOrder,
+        featureById: nextLabelCollisionFeatureById,
+        markerKeyByFeatureId: nextLabelCollisionMarkerKeyByFeatureId,
+        dirtyGroupIds: dirtyLabelCollisionMarkerKeys,
+        orderChangedGroupIds: dirtyLabelCollisionMarkerKeys,
+        removedGroupIds: Set(
+          dirtyLabelCollisionMarkerKeys.filter {
+            desiredPinSnapshot.labelCollisionFeatureByMarkerKey[$0] == nil
+          }
+        )
+      )
+      Self.setDerivedFamilyState(
+        labelCollisionFamilyState,
+        sourceId: state.labelCollisionSourceId,
+        state: &state
+      )
+      nextLabelCollisions = labelCollisionFamilyState.collection
+    }
+    return PreparedDerivedPinAndLabelOutput(
+      plans: [
+        ParsedCollectionApplyPlan(
+          sourceId: state.pinSourceId,
+          next: nextPins,
+          previousSourceState: previousPinsSourceState,
+          previousFeatureStateById: previousPinsSourceState.featureStateById,
+          previousFeatureStateRevision: previousPinsSourceState.featureStateRevision
+        ),
+        ParsedCollectionApplyPlan(
+          sourceId: state.pinInteractionSourceId,
+          next: nextPinInteractions,
+          previousSourceState: previousPinInteractionsSourceState,
+          previousFeatureStateById: previousPinInteractionsSourceState.featureStateById,
+          previousFeatureStateRevision: previousPinInteractionsSourceState.featureStateRevision
+        ),
+        ParsedCollectionApplyPlan(
+          sourceId: state.labelSourceId,
+          next: nextLabels,
+          previousSourceState: previousLabelsSourceState,
+          previousFeatureStateById: previousLabelsSourceState.featureStateById,
+          previousFeatureStateRevision: previousLabelsSourceState.featureStateRevision
+        ),
+        ParsedCollectionApplyPlan(
+          sourceId: state.labelCollisionSourceId,
+          next: nextLabelCollisions,
+          previousSourceState: previousLabelCollisionSourceState,
+          previousFeatureStateById: previousLabelCollisionSourceState.featureStateById,
+          previousFeatureStateRevision: previousLabelCollisionSourceState.featureStateRevision
+        ),
+      ],
+      pinSourceId: state.pinSourceId,
+      pinStartedAtMs: pinStartedAt
+    )
+  }
+
+  private func finalizePreparedPinAndLabelOutput(
+    instanceId: String,
+    prepared: PreparedDerivedPinAndLabelOutput,
+    mutationSummaryBySourceId: [String: MutationSummary],
+    state: inout InstanceState
+  ) {
+    let pinMutationSummary = mutationSummaryBySourceId[prepared.pinSourceId] ?? MutationSummary(
+      addCount: 0,
+      updateCount: 0,
+      removeCount: 0,
+      dataId: nil,
+      addedFeatureIds: []
+    )
+    if let dataId = pinMutationSummary.dataId, !pinMutationSummary.addedFeatureIds.isEmpty {
+      var pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
+      for featureId in pinMutationSummary.addedFeatureIds {
+        guard var transition = pinFamilyState.livePinTransitionsByMarkerKey[featureId],
+              transition.isAwaitingSourceCommit
+        else {
+          continue
+        }
+        transition.awaitingSourceDataId = dataId
+        pinFamilyState.livePinTransitionsByMarkerKey[featureId] = transition
+      }
+      Self.setDerivedFamilyState(pinFamilyState, sourceId: state.pinSourceId, state: &state)
+    }
+    if pinMutationSummary.hasMutations {
+      let liveTransitionSummary = Self.describeLivePinTransitionSummary(
+        state,
+        atMs: Self.nowMs()
+      )
+      let durationMs = CACurrentMediaTime() * 1000 - prepared.pinStartedAtMs
+      self.emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "pin_lod_apply phase=\(state.lastPresentationPhase) execution=\(state.presentationExecutionPhase) opacity=\(state.currentPresentationOpacityValue) pins=\(state.lastPinCount) add=\(pinMutationSummary.addCount) update=\(pinMutationSummary.updateCount) remove=\(pinMutationSummary.removeCount) liveTransitions=\(liveTransitionSummary) durationMs=\(Int(durationMs.rounded()))"
+      )
+    }
+  }
+
+  private func prepareDerivedLabelInteractionOutputPlans(
+    desiredPinSnapshot: DesiredPinSnapshotState,
+    state: inout InstanceState
+  ) -> [ParsedCollectionApplyPlan] {
+    var labelInteractionFamilyState = Self.derivedFamilyState(
+      sourceId: state.labelInteractionSourceId,
+      state: state
+    )
+    let settledVisibleLabelFeatureIds =
+      Self.derivedFamilyState(sourceId: state.labelSourceId, state: state).settledVisibleFeatureIds
+    let previousVisibleLabelFeatureIds = Set(labelInteractionFamilyState.collection.idsInOrder)
+    let visibilityDirtyFeatureIds = previousVisibleLabelFeatureIds
+      .symmetricDifference(settledVisibleLabelFeatureIds)
+    var dirtyLabelInteractionMarkerKeys: Set<String> = []
+    for featureId in visibilityDirtyFeatureIds {
+      if let markerKey =
+        desiredPinSnapshot.labelMarkerKeyByFeatureId[featureId] ??
+        labelInteractionFamilyState.collection.markerKeyByFeatureId[featureId]
+      {
+        dirtyLabelInteractionMarkerKeys.insert(markerKey)
+      }
+    }
+    dirtyLabelInteractionMarkerKeys.formUnion(desiredPinSnapshot.dirtyLabelMarkerKeys)
+    let markerOrderChanged =
+      desiredPinSnapshot.pinIdsInOrder !=
+      Self.derivedFamilyState(sourceId: state.pinSourceId, state: state).lastDesiredPinSnapshot.pinIdsInOrder
+    let previousLabelInteractionSourceState = labelInteractionFamilyState.sourceState
+    let next: ParsedFeatureCollection
+    if dirtyLabelInteractionMarkerKeys.isEmpty && !markerOrderChanged {
+      next = labelInteractionFamilyState.collection
+    } else {
+      let previousLabelInteractionIdsByMarkerKey =
+        labelInteractionFamilyState.collection.groupedFeatureIdsByGroup
+      let previousLabelInteractionMarkerOrder = labelInteractionFamilyState.collection.groupOrder
+      var nextLabelInteractionIdsByMarkerKey = previousLabelInteractionIdsByMarkerKey
+      var nextLabelInteractionFeatureById = labelInteractionFamilyState.collection.featureById
+      var nextLabelInteractionMarkerKeyByFeatureId = labelInteractionFamilyState.collection.markerKeyByFeatureId
+      var removedGroupIds: Set<String> = []
+
+      for markerKey in dirtyLabelInteractionMarkerKeys {
+        let previousFeatureIds = previousLabelInteractionIdsByMarkerKey[markerKey] ?? []
+        for featureId in previousFeatureIds {
+          nextLabelInteractionFeatureById.removeValue(forKey: featureId)
+          nextLabelInteractionMarkerKeyByFeatureId.removeValue(forKey: featureId)
+        }
+        let nextVisibleLabelFeatures = (desiredPinSnapshot.labelFeaturesByMarkerKey[markerKey] ?? [])
+          .filter { settledVisibleLabelFeatureIds.contains($0.id) }
+        guard !nextVisibleLabelFeatures.isEmpty else {
+          nextLabelInteractionIdsByMarkerKey.removeValue(forKey: markerKey)
+          if !previousFeatureIds.isEmpty {
+            removedGroupIds.insert(markerKey)
+          }
+          continue
+        }
+        let nextFeatureIds = nextVisibleLabelFeatures.map(\.id)
+        nextLabelInteractionIdsByMarkerKey[markerKey] = nextFeatureIds
+        for labelFeature in nextVisibleLabelFeatures {
+          nextLabelInteractionFeatureById[labelFeature.id] = labelFeature.feature
+          nextLabelInteractionMarkerKeyByFeatureId[labelFeature.id] = markerKey
+        }
+      }
+
+      let visibleMarkerKeys = Set(
+        nextLabelInteractionIdsByMarkerKey.compactMap { markerKey, featureIds in
+          featureIds.isEmpty ? nil : markerKey
+        }
+      )
+      var nextLabelInteractionMarkerOrder: [String] = []
+      var seenMarkerKeys: Set<String> = []
+      for markerKey in desiredPinSnapshot.pinIdsInOrder
+      where visibleMarkerKeys.contains(markerKey) && seenMarkerKeys.insert(markerKey).inserted {
+        nextLabelInteractionMarkerOrder.append(markerKey)
+      }
+      for markerKey in previousLabelInteractionMarkerOrder
+      where visibleMarkerKeys.contains(markerKey) && seenMarkerKeys.insert(markerKey).inserted {
+        nextLabelInteractionMarkerOrder.append(markerKey)
+      }
+      for markerKey in visibleMarkerKeys.sorted() where seenMarkerKeys.insert(markerKey).inserted {
+        nextLabelInteractionMarkerOrder.append(markerKey)
+      }
+      let orderChangedGroupIds =
+        previousLabelInteractionMarkerOrder == nextLabelInteractionMarkerOrder
+          ? Set<String>()
+          : Set(previousLabelInteractionMarkerOrder).union(nextLabelInteractionMarkerOrder)
+      let nextLabelInteractionIdsInOrder: [String]
+      if orderChangedGroupIds.isEmpty {
+        var patchedIdsInOrder: [String] = []
+        var emittedDirtyMarkerKeys: Set<String> = []
+        for featureId in labelInteractionFamilyState.collection.idsInOrder {
+          let markerKey = labelInteractionFamilyState.collection.markerKeyByFeatureId[featureId] ?? featureId
+          guard dirtyLabelInteractionMarkerKeys.contains(markerKey) else {
+            patchedIdsInOrder.append(featureId)
+            continue
+          }
+          if emittedDirtyMarkerKeys.insert(markerKey).inserted {
+            patchedIdsInOrder.append(contentsOf: nextLabelInteractionIdsByMarkerKey[markerKey] ?? [])
+          }
+        }
+        nextLabelInteractionIdsInOrder = patchedIdsInOrder
+      } else {
+        nextLabelInteractionIdsInOrder = nextLabelInteractionMarkerOrder.flatMap {
+          nextLabelInteractionIdsByMarkerKey[$0] ?? []
+        }
+      }
+
+      labelInteractionFamilyState.collection.groupedFeatureIdsByGroup =
+        nextLabelInteractionIdsByMarkerKey
+      labelInteractionFamilyState.collection.groupOrder = nextLabelInteractionMarkerOrder
+      let nextLabelInteractionDirtyGroupIds = dirtyLabelInteractionMarkerKeys.union(orderChangedGroupIds)
+      Self.replaceParsedFeatureCollection(
+        &labelInteractionFamilyState.collection,
+        baseSourceState: previousLabelInteractionSourceState,
+        idsInOrder: nextLabelInteractionIdsInOrder,
+        featureById: nextLabelInteractionFeatureById,
+        markerKeyByFeatureId: nextLabelInteractionMarkerKeyByFeatureId,
+        dirtyGroupIds: nextLabelInteractionDirtyGroupIds,
+        orderChangedGroupIds: orderChangedGroupIds,
+        removedGroupIds: removedGroupIds
+      )
+      Self.setDerivedFamilyState(
+        labelInteractionFamilyState,
+        sourceId: state.labelInteractionSourceId,
+        state: &state
+      )
+      next = labelInteractionFamilyState.collection
+    }
+    return [
+      ParsedCollectionApplyPlan(
+        sourceId: state.labelInteractionSourceId,
+        next: next,
+        previousSourceState: previousLabelInteractionSourceState,
+        previousFeatureStateById: previousLabelInteractionSourceState.featureStateById,
+        previousFeatureStateRevision: previousLabelInteractionSourceState.featureStateRevision
+      ),
+    ]
+  }
+
+  private static func usesFrozenPresentationSnapshot(_ state: InstanceState) -> Bool {
+    false
+  }
+
+  private static func isSourceRecoveryActive(_ state: InstanceState) -> Bool {
+    state.isAwaitingSourceRecovery || state.isReplayingSourceRecovery
+  }
+
+  private static func allowsIncrementalMarkerTransitions(
+    _ state: InstanceState,
+    allowNewTransitions: Bool
+  ) -> Bool {
+    allowNewTransitions &&
+      state.lastPresentationPhase == "live" &&
+      state.lastDismissRequestKey == nil
+  }
+
+  private func reconcileAndApplyCurrentFrameSnapshots(
+    for instanceId: String,
+    allowNewTransitions: Bool = true,
+    allowDuringRecovery: Bool = false
+  ) throws {
+    guard var state = instances[instanceId] else {
+      return
+    }
+    if Self.isSourceRecoveryActive(state) && !allowDuringRecovery {
+      cancelLivePinTransitionAnimation(instanceId: instanceId)
+      instances[instanceId] = state
+      return
+    }
+    let desiredPins = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state).desiredCollection
+    let desiredPinInteractions =
+      Self.derivedFamilyState(sourceId: state.pinInteractionSourceId, state: state).desiredCollection
+    let desiredDots = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state).desiredCollection
+    let desiredDotInteractions =
+      Self.derivedFamilyState(sourceId: state.dotInteractionSourceId, state: state).desiredCollection
+    let desiredLabels =
+      Self.derivedFamilyState(sourceId: state.labelSourceId, state: state).desiredCollection
+    let desiredLabelCollisions =
+      Self.derivedFamilyState(sourceId: state.labelCollisionSourceId, state: state).desiredCollection
+    let desiredPinSnapshotInputRevision = Self.desiredPinSnapshotInputRevision(
+      desiredPins: desiredPins,
+      desiredPinInteractions: desiredPinInteractions,
+      desiredLabels: desiredLabels,
+      desiredLabelCollisions: desiredLabelCollisions
+    )
+    let pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
+    let previousDesiredPinSnapshot = pinFamilyState.lastDesiredPinSnapshot
+    let desiredPinSnapshot: DesiredPinSnapshotState
+    if previousDesiredPinSnapshot.inputRevision == desiredPinSnapshotInputRevision {
+      desiredPinSnapshot = previousDesiredPinSnapshot
+    } else {
+      let nextDesiredPinSnapshot = Self.makeDesiredPinSnapshotState(
+        desiredPins: desiredPins,
+        desiredPinInteractions: desiredPinInteractions,
+        desiredLabels: desiredLabels,
+        desiredLabelCollisions: desiredLabelCollisions,
+        previousSnapshot: previousDesiredPinSnapshot
+      )
+      desiredPinSnapshot = nextDesiredPinSnapshot
+    }
+    let nowMs = Self.nowMs()
+    let shouldAnimateIncrementalTransitions = Self.allowsIncrementalMarkerTransitions(
+      state,
+      allowNewTransitions: allowNewTransitions
+    )
+    updateLivePinTransitions(
+      state: &state,
+      previousPinSnapshot: previousDesiredPinSnapshot,
+      desiredPinSnapshot: desiredPinSnapshot,
+      nowMs: nowMs,
+      allowNewTransitions: shouldAnimateIncrementalTransitions
+    )
+    updateLiveDotTransitions(
+      state: &state,
+      desiredDots: desiredDots,
+      nowMs: nowMs,
+      allowNewTransitions: shouldAnimateIncrementalTransitions
+    )
+    guard let mapboxMap = try readyMapboxMap(
+      for: state.mapTag,
+      instanceId: instanceId,
+      state: &state,
+      sourceIds: [
+        state.pinSourceId,
+        state.pinInteractionSourceId,
+        state.dotSourceId,
+        state.dotInteractionSourceId,
+        state.labelSourceId,
+        state.labelInteractionSourceId,
+        state.labelCollisionSourceId,
+      ],
+      reason: "reconcile_outputs"
+    ) else {
+      instances[instanceId] = state
+      return
+    }
+    let preparedPinAndLabelOutput = prepareDerivedPinAndLabelOutput(
+      desiredPinSnapshot: desiredPinSnapshot,
+      nowMs: nowMs,
+      state: &state
+    )
+    let preparedDotOutput = prepareDerivedDotOutput(
+      desiredDots: desiredDots,
+      desiredDotInteractions: desiredDotInteractions,
+      nowMs: nowMs,
+      state: &state
+    )
+    let labelInteractionPlans = prepareDerivedLabelInteractionOutputPlans(
+      desiredPinSnapshot: desiredPinSnapshot,
+      state: &state
+    )
+    if state.lastRevealRequestKey != nil && state.lastPresentationPhase != "live" {
+      let nextPinCount =
+        preparedPinAndLabelOutput.plans.first(where: { $0.sourceId == state.pinSourceId })?.next.idsInOrder.count ??
+        0
+      let nextDotCount =
+        preparedDotOutput.plans.first(where: { $0.sourceId == state.dotSourceId })?.next.idsInOrder.count ?? 0
+      let nextLabelCount =
+        preparedPinAndLabelOutput.plans.first(where: { $0.sourceId == state.labelSourceId })?.next.idsInOrder.count ??
+        0
+      self.emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "reveal_apply_plan frame=\(state.activeFrameGenerationId ?? "nil") phase=\(state.lastPresentationPhase) execution=\(state.presentationExecutionPhase) desiredPinsRaw=\(desiredPins.idsInOrder.count) desiredPinsSnapshot=\(desiredPinSnapshot.pinIdsInOrder.count) desiredDotsRaw=\(desiredDots.idsInOrder.count) desiredLabelsRaw=\(desiredLabels.idsInOrder.count) nextPins=\(nextPinCount) nextDots=\(nextDotCount) nextLabels=\(nextLabelCount) dirtyPins=\(desiredPinSnapshot.dirtyPinMarkerKeys.count) dirtyPinInteractions=\(desiredPinSnapshot.dirtyPinInteractionMarkerKeys.count) dirtyLabels=\(desiredPinSnapshot.dirtyLabelMarkerKeys.count) dirtyLabelCollisions=\(desiredPinSnapshot.dirtyLabelCollisionMarkerKeys.count)"
+      )
+    }
+    let mutationSummaryBySourceId = try applyParsedCollectionBatch(
+      instanceId: instanceId,
+      plans: preparedPinAndLabelOutput.plans + preparedDotOutput.plans + labelInteractionPlans,
+      state: &state,
+      mapboxMap: mapboxMap
+    )
+    if state.lastRevealRequestKey != nil && state.lastPresentationPhase != "live" {
+      let pinMutationSummary = mutationSummaryBySourceId[state.pinSourceId] ?? MutationSummary(
+        addCount: 0,
+        updateCount: 0,
+        removeCount: 0,
+        dataId: nil,
+        addedFeatureIds: []
+      )
+      let dotMutationSummary = mutationSummaryBySourceId[state.dotSourceId] ?? MutationSummary(
+        addCount: 0,
+        updateCount: 0,
+        removeCount: 0,
+        dataId: nil,
+        addedFeatureIds: []
+      )
+      let labelMutationSummary = mutationSummaryBySourceId[state.labelSourceId] ?? MutationSummary(
+        addCount: 0,
+        updateCount: 0,
+        removeCount: 0,
+        dataId: nil,
+        addedFeatureIds: []
+      )
+      self.emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "reveal_apply_result frame=\(state.activeFrameGenerationId ?? "nil") phase=\(state.lastPresentationPhase) execution=\(state.presentationExecutionPhase) pinAdd=\(pinMutationSummary.addCount) pinUpdate=\(pinMutationSummary.updateCount) pinRemove=\(pinMutationSummary.removeCount) dotAdd=\(dotMutationSummary.addCount) dotUpdate=\(dotMutationSummary.updateCount) dotRemove=\(dotMutationSummary.removeCount) labelAdd=\(labelMutationSummary.addCount) labelUpdate=\(labelMutationSummary.updateCount) labelRemove=\(labelMutationSummary.removeCount) \(Self.phaseSummary(for: state))"
+      )
+    }
+    finalizePreparedPinAndLabelOutput(
+      instanceId: instanceId,
+      prepared: preparedPinAndLabelOutput,
+      mutationSummaryBySourceId: mutationSummaryBySourceId,
+      state: &state
+    )
+    finalizePreparedDotOutput(
+      prepared: preparedDotOutput,
+      mutationSummaryBySourceId: mutationSummaryBySourceId,
+      state: &state
+    )
+    guard !Self.isSourceRecoveryActive(state) else {
+      cancelLivePinTransitionAnimation(instanceId: instanceId)
+      instances[instanceId] = state
+      return
+    }
+    var latestPinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
+    var latestDotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
+    latestPinFamilyState.lastDesiredPinSnapshot = desiredPinSnapshot
+    latestDotFamilyState.lastDesiredCollection = desiredDots
+    Self.setDerivedFamilyState(latestPinFamilyState, sourceId: state.pinSourceId, state: &state)
+    Self.setDerivedFamilyState(latestDotFamilyState, sourceId: state.dotSourceId, state: &state)
+    maybeElectMountedHiddenRevealBatch(instanceId: instanceId, state: &state)
+    instances[instanceId] = state
+    updateLivePinTransitionAnimation(instanceId: instanceId, state: state)
+  }
+
+  private func prepareDerivedDotOutput(
+    desiredDots: ParsedFeatureCollection,
+    desiredDotInteractions: ParsedFeatureCollection,
+    nowMs: Double,
+    state: inout InstanceState
+  ) -> PreparedDerivedDotOutput {
+    var dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
+    var dotInteractionFamilyState = Self.derivedFamilyState(
+      sourceId: state.dotInteractionSourceId,
+      state: state
+    )
+    let desiredDotFeatureByMarkerKey = desiredDots.featureById
+    let dotMarkerKeys = Set(desiredDotFeatureByMarkerKey.keys).union(
+      dotFamilyState.liveDotTransitionsByMarkerKey.keys
+    )
+    let orderedDotMarkerKeys = dotMarkerKeys.sorted()
+    let dirtyDotMarkerKeys = Set(desiredDots.dirtyGroupIds)
+      .union(desiredDots.orderChangedGroupIds)
+      .union(desiredDots.removedGroupIds)
+      .union(dotFamilyState.liveDotTransitionsByMarkerKey.keys)
+    let reuseDots = dirtyDotMarkerKeys.isEmpty
+    let previousDotSourceState = dotFamilyState.sourceState
+    let nextDots: ParsedFeatureCollection
+    if reuseDots {
+      nextDots = dotFamilyState.collection
+    } else {
+      var nextDotIdsInOrder: [String] = []
+      var nextDotFeatureById = dotFamilyState.collection.featureById
+      var nextDotFeatureStateById = dotFamilyState.collection.featureStateById
+      var nextDotMarkerKeyByFeatureId = dotFamilyState.collection.markerKeyByFeatureId
+      var nextDotIdSet = Set<String>()
+      for markerKey in orderedDotMarkerKeys {
+        let transition = dotFamilyState.liveDotTransitionsByMarkerKey[markerKey]
+        let desiredDotFeature = desiredDotFeatureByMarkerKey[markerKey]
+        let transitionDotFeature = transition?.dotFeature
+        let dotOpacity = transition.map { Self.liveDotTransitionOpacity($0, atMs: nowMs) } ?? 1
+        let shouldRenderDot =
+          desiredDotFeature != nil ||
+          (transitionDotFeature != nil && dotOpacity > 0.001)
+        guard shouldRenderDot, let feature = desiredDotFeature ?? transitionDotFeature else {
+          continue
+        }
+        nextDotIdsInOrder.append(markerKey)
+        nextDotIdSet.insert(markerKey)
+        if dirtyDotMarkerKeys.contains(markerKey) {
+          let shouldSeedHidden = desiredDotFeature != nil && transition?.targetOpacity == 1
+          let renderFeature = Self.featureBySettingNumericProperties(
+            feature,
+            numericProperties: [
+              "nativeDotOpacity": shouldSeedHidden ? 0 : 1,
+            ]
+          )
+          nextDotFeatureById[markerKey] = renderFeature
+          nextDotMarkerKeyByFeatureId[markerKey] = desiredDots.markerKeyByFeatureId[markerKey] ?? markerKey
+          nextDotFeatureStateById[markerKey] =
+            dotFamilyState.transientFeatureStateById[markerKey] ??
+            desiredDots.featureStateById[markerKey] ??
+            [:]
+        }
+      }
+      for removedDotId in dirtyDotMarkerKeys where !nextDotIdSet.contains(removedDotId) {
+        nextDotFeatureById.removeValue(forKey: removedDotId)
+        nextDotFeatureStateById.removeValue(forKey: removedDotId)
+        nextDotMarkerKeyByFeatureId.removeValue(forKey: removedDotId)
+      }
+      Self.replaceParsedFeatureCollection(
+        &dotFamilyState.collection,
+        baseSourceState: previousDotSourceState,
+        idsInOrder: nextDotIdsInOrder,
+        featureById: nextDotFeatureById,
+        featureStateById: nextDotFeatureStateById,
+        markerKeyByFeatureId: nextDotMarkerKeyByFeatureId,
+        dirtyGroupIds: dirtyDotMarkerKeys,
+        orderChangedGroupIds: dirtyDotMarkerKeys,
+        removedGroupIds: Set(dirtyDotMarkerKeys.filter { !nextDotIdSet.contains($0) })
+      )
+      Self.setDerivedFamilyState(dotFamilyState, sourceId: state.dotSourceId, state: &state)
+      nextDots = dotFamilyState.collection
+    }
+    let previousDotInteractionSourceState = dotInteractionFamilyState.sourceState
+    let nextDotInteractions: ParsedFeatureCollection
+    let dirtyDotInteractionIds = Set(desiredDotInteractions.dirtyGroupIds)
+      .union(desiredDotInteractions.orderChangedGroupIds)
+      .union(desiredDotInteractions.removedGroupIds)
+      .union(dirtyDotMarkerKeys)
+    if dirtyDotInteractionIds.isEmpty {
+      nextDotInteractions = dotInteractionFamilyState.collection
+    } else {
+      var nextDotInteractionIdsInOrder: [String] = []
+      var nextDotInteractionFeatureById = dotInteractionFamilyState.collection.featureById
+      var nextDotInteractionMarkerKeyByFeatureId = dotInteractionFamilyState.collection.markerKeyByFeatureId
+      var nextDotInteractionIdSet = Set<String>()
+      for featureId in desiredDotInteractions.idsInOrder {
+        guard desiredDotFeatureByMarkerKey[featureId] != nil,
+              let feature = desiredDotInteractions.featureById[featureId]
+        else {
+          continue
+        }
+        nextDotInteractionIdsInOrder.append(featureId)
+        nextDotInteractionIdSet.insert(featureId)
+        if dirtyDotInteractionIds.contains(featureId) {
+          nextDotInteractionFeatureById[featureId] = feature
+          nextDotInteractionMarkerKeyByFeatureId[featureId] =
+            desiredDotInteractions.markerKeyByFeatureId[featureId] ?? featureId
+        }
+      }
+      for removedInteractionId in dirtyDotInteractionIds where !nextDotInteractionIdSet.contains(removedInteractionId) {
+        nextDotInteractionFeatureById.removeValue(forKey: removedInteractionId)
+        nextDotInteractionMarkerKeyByFeatureId.removeValue(forKey: removedInteractionId)
+      }
+      Self.replaceParsedFeatureCollection(
+        &dotInteractionFamilyState.collection,
+        baseSourceState: previousDotInteractionSourceState,
+        idsInOrder: nextDotInteractionIdsInOrder,
+        featureById: nextDotInteractionFeatureById,
+        markerKeyByFeatureId: nextDotInteractionMarkerKeyByFeatureId,
+        dirtyGroupIds: dirtyDotInteractionIds,
+        orderChangedGroupIds: dirtyDotInteractionIds,
+        removedGroupIds: Set(
+          dirtyDotInteractionIds.filter { !nextDotInteractionIdSet.contains($0) }
+        )
+      )
+      Self.setDerivedFamilyState(
+        dotInteractionFamilyState,
+        sourceId: state.dotInteractionSourceId,
+        state: &state
+      )
+      nextDotInteractions = dotInteractionFamilyState.collection
+    }
+    return PreparedDerivedDotOutput(
+      plans: [
+        ParsedCollectionApplyPlan(
+          sourceId: state.dotSourceId,
+          next: nextDots,
+          previousSourceState: previousDotSourceState,
+          previousFeatureStateById: previousDotSourceState.featureStateById,
+          previousFeatureStateRevision: previousDotSourceState.featureStateRevision
+        ),
+        ParsedCollectionApplyPlan(
+          sourceId: state.dotInteractionSourceId,
+          next: nextDotInteractions,
+          previousSourceState: previousDotInteractionSourceState,
+          previousFeatureStateById: previousDotInteractionSourceState.featureStateById,
+          previousFeatureStateRevision: previousDotInteractionSourceState.featureStateRevision
+        ),
+      ],
+      dotSourceId: state.dotSourceId
+    )
+  }
+
+  private func finalizePreparedDotOutput(
+    prepared: PreparedDerivedDotOutput,
+    mutationSummaryBySourceId: [String: MutationSummary],
+    state: inout InstanceState
+  ) {
+    var dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
+    let dotMutationSummary = mutationSummaryBySourceId[prepared.dotSourceId] ?? MutationSummary(
+      addCount: 0,
+      updateCount: 0,
+      removeCount: 0,
+      dataId: nil,
+      addedFeatureIds: []
+    )
+    if let dataId = dotMutationSummary.dataId, !dotMutationSummary.addedFeatureIds.isEmpty {
+      for featureId in dotMutationSummary.addedFeatureIds {
+        guard var transition = dotFamilyState.liveDotTransitionsByMarkerKey[featureId],
+              transition.isAwaitingSourceCommit
+        else {
+          continue
+        }
+        transition.awaitingSourceDataId = dataId
+        dotFamilyState.liveDotTransitionsByMarkerKey[featureId] = transition
+      }
+      Self.setDerivedFamilyState(dotFamilyState, sourceId: state.dotSourceId, state: &state)
+    }
+  }
+
+  private static func makeDesiredPinSnapshotState(
+    desiredPins: ParsedFeatureCollection,
+    desiredPinInteractions: ParsedFeatureCollection,
+    desiredLabels: ParsedFeatureCollection,
+    desiredLabelCollisions: ParsedFeatureCollection,
+    previousSnapshot: DesiredPinSnapshotState? = nil
+  ) -> DesiredPinSnapshotState {
+    let priorSnapshot = previousSnapshot ?? DesiredPinSnapshotState()
+    var snapshot = previousSnapshot ?? DesiredPinSnapshotState()
+    snapshot.inputRevision = desiredPinSnapshotInputRevision(
+      desiredPins: desiredPins,
+      desiredPinInteractions: desiredPinInteractions,
+      desiredLabels: desiredLabels,
+      desiredLabelCollisions: desiredLabelCollisions
+    )
+    snapshot.dirtyPinMarkerKeys = []
+    snapshot.dirtyPinInteractionMarkerKeys = []
+    snapshot.dirtyLabelMarkerKeys = []
+    snapshot.dirtyLabelCollisionMarkerKeys = []
+    snapshot.pinIdsInOrder = desiredPins.idsInOrder
+    let nextPinMarkerKeys = Set(desiredPins.idsInOrder)
+    for markerKey in nextPinMarkerKeys {
+      if let feature = desiredPins.featureById[markerKey] {
+        snapshot.pinFeatureByMarkerKey[markerKey] = feature
+      }
+      let revision = desiredPins.diffKeyById[markerKey] ?? ""
+      snapshot.pinFeatureRevisionByMarkerKey[markerKey] = revision
+      if priorSnapshot.pinFeatureRevisionByMarkerKey[markerKey] != revision ||
+          priorSnapshot.pinLodZByMarkerKey[markerKey] != snapshot.pinLodZByMarkerKey[markerKey] {
+        snapshot.dirtyPinMarkerKeys.insert(markerKey)
+      }
+    }
+    for removedMarkerKey in Set(snapshot.pinFeatureByMarkerKey.keys).subtracting(nextPinMarkerKeys) {
+      snapshot.pinFeatureByMarkerKey.removeValue(forKey: removedMarkerKey)
+      snapshot.pinFeatureRevisionByMarkerKey.removeValue(forKey: removedMarkerKey)
+      snapshot.dirtyPinMarkerKeys.insert(removedMarkerKey)
+    }
+    let nextPinInteractionMarkerKeys = Set(desiredPinInteractions.idsInOrder)
+    for markerKey in nextPinInteractionMarkerKeys {
+      if let feature = desiredPinInteractions.featureById[markerKey] {
+        snapshot.pinInteractionFeatureByMarkerKey[markerKey] = feature
+      }
+      let revision = desiredPinInteractions.diffKeyById[markerKey] ?? ""
+      snapshot.pinInteractionFeatureRevisionByMarkerKey[markerKey] = revision
+      if priorSnapshot.pinInteractionFeatureRevisionByMarkerKey[markerKey] != revision {
+        snapshot.dirtyPinInteractionMarkerKeys.insert(markerKey)
+      }
+    }
+    for removedMarkerKey in Set(snapshot.pinInteractionFeatureByMarkerKey.keys).subtracting(nextPinInteractionMarkerKeys) {
+      snapshot.pinInteractionFeatureByMarkerKey.removeValue(forKey: removedMarkerKey)
+      snapshot.pinInteractionFeatureRevisionByMarkerKey.removeValue(forKey: removedMarkerKey)
+      snapshot.dirtyPinInteractionMarkerKeys.insert(removedMarkerKey)
+    }
+    for (index, markerKey) in desiredPins.idsInOrder.enumerated() {
+      guard let feature = desiredPins.featureById[markerKey] else {
+        continue
+      }
+      let featurePropertyLodZ =
+        ((feature.properties?.turfRawValue as? [String: Any])?["nativeLodZ"] as? NSNumber)?.intValue
+      let fallbackLodZ = max(0, desiredPins.idsInOrder.count - 1 - index)
+      snapshot.pinLodZByMarkerKey[markerKey] = featurePropertyLodZ ?? fallbackLodZ
+      if priorSnapshot.pinLodZByMarkerKey[markerKey] != snapshot.pinLodZByMarkerKey[markerKey] {
+        snapshot.dirtyPinMarkerKeys.insert(markerKey)
+        snapshot.dirtyPinInteractionMarkerKeys.insert(markerKey)
+      }
+    }
+    for removedMarkerKey in Set(snapshot.pinLodZByMarkerKey.keys).subtracting(nextPinMarkerKeys) {
+      snapshot.pinLodZByMarkerKey.removeValue(forKey: removedMarkerKey)
+    }
+    let nextLabelMarkerKeys = Set(desiredLabels.markerKeyByFeatureId.values)
+    for markerKey in nextLabelMarkerKeys {
+      snapshot.labelFeaturesByMarkerKey[markerKey] = []
+    }
+    snapshot.labelMarkerKeyByFeatureId = [:]
+    for featureId in desiredLabels.idsInOrder {
+      guard let feature = desiredLabels.featureById[featureId] else {
+        continue
+      }
+      let markerKey = desiredLabels.markerKeyByFeatureId[featureId] ?? featureId
+      snapshot.labelFeaturesByMarkerKey[markerKey, default: []].append((featureId, feature))
+      snapshot.labelMarkerKeyByFeatureId[featureId] = markerKey
+    }
+    for markerKey in nextLabelMarkerKeys {
+      let labelFeatures = snapshot.labelFeaturesByMarkerKey[markerKey] ?? []
+      var hash = fnv1a64OffsetBasis
+      Self.fnv1a64Append(&hash, string: markerKey)
+      Self.fnv1a64Append(&hash, string: String(labelFeatures.count))
+      for labelFeature in labelFeatures {
+        Self.fnv1a64Append(&hash, string: labelFeature.id)
+        Self.fnv1a64Append(&hash, string: desiredLabels.diffKeyById[labelFeature.id] ?? "")
+      }
+      let revision = Self.finishHashedRevision(hash: hash, count: labelFeatures.count)
+      snapshot.labelFeatureRevisionByMarkerKey[markerKey] = revision
+      if priorSnapshot.labelFeatureRevisionByMarkerKey[markerKey] != revision {
+        snapshot.dirtyLabelMarkerKeys.insert(markerKey)
+      }
+    }
+    for removedMarkerKey in Set(snapshot.labelFeaturesByMarkerKey.keys).subtracting(nextLabelMarkerKeys) {
+      snapshot.labelFeaturesByMarkerKey.removeValue(forKey: removedMarkerKey)
+      snapshot.labelFeatureRevisionByMarkerKey.removeValue(forKey: removedMarkerKey)
+      snapshot.dirtyLabelMarkerKeys.insert(removedMarkerKey)
+    }
+    let nextLabelCollisionMarkerKeys = Set(
+      desiredLabelCollisions.idsInOrder.map { desiredLabelCollisions.markerKeyByFeatureId[$0] ?? $0 }
+    )
+    for featureId in desiredLabelCollisions.idsInOrder {
+      guard let feature = desiredLabelCollisions.featureById[featureId] else {
+        continue
+      }
+      let markerKey = desiredLabelCollisions.markerKeyByFeatureId[featureId] ?? featureId
+      snapshot.labelCollisionFeatureByMarkerKey[markerKey] = feature
+      let revision = desiredLabelCollisions.diffKeyById[featureId] ?? ""
+      snapshot.labelCollisionFeatureRevisionByMarkerKey[markerKey] = revision
+      if priorSnapshot.labelCollisionFeatureRevisionByMarkerKey[markerKey] != revision {
+        snapshot.dirtyLabelCollisionMarkerKeys.insert(markerKey)
+      }
+    }
+    for removedMarkerKey in Set(snapshot.labelCollisionFeatureByMarkerKey.keys).subtracting(nextLabelCollisionMarkerKeys) {
+      snapshot.labelCollisionFeatureByMarkerKey.removeValue(forKey: removedMarkerKey)
+      snapshot.labelCollisionFeatureRevisionByMarkerKey.removeValue(forKey: removedMarkerKey)
+      snapshot.dirtyLabelCollisionMarkerKeys.insert(removedMarkerKey)
+    }
+    return snapshot
+  }
+
+  private static func desiredPinSnapshotInputRevision(
+    desiredPins: ParsedFeatureCollection,
+    desiredPinInteractions: ParsedFeatureCollection,
+    desiredLabels: ParsedFeatureCollection,
+    desiredLabelCollisions: ParsedFeatureCollection
+  ) -> String {
+    var hash = fnv1a64OffsetBasis
+    Self.fnv1a64Append(&hash, string: "pins")
+    Self.fnv1a64Append(&hash, string: desiredPins.sourceRevision)
+    Self.fnv1a64Append(&hash, string: "pinInteractions")
+    Self.fnv1a64Append(&hash, string: desiredPinInteractions.sourceRevision)
+    Self.fnv1a64Append(&hash, string: "labels")
+    Self.fnv1a64Append(&hash, string: desiredLabels.sourceRevision)
+    Self.fnv1a64Append(&hash, string: "labelCollisions")
+    Self.fnv1a64Append(&hash, string: desiredLabelCollisions.sourceRevision)
+    return Self.finishHashedRevision(hash: hash, count: 4)
+  }
+
+  private func startRevealPresentation(
+    instanceId: String,
+    requestKey: String,
+    revealStartToken: Double,
+    previousPresentationPhase: String? = nil,
+    previousPresentationOpacityTarget: Double? = nil
+  ) throws {
+    guard var state = instances[instanceId] else {
+      return
+    }
+    guard
+      let requestedRevealRequestKey = state.revealLane.requestedRequestKey,
+      requestedRevealRequestKey == requestKey,
+      let mountedHiddenRevealBatch = state.revealLane.mountedHidden,
+      state.activeFrameGenerationId == mountedHiddenRevealBatch.generationId
+    else {
+      return
+    }
+    guard state.lastRevealRequestKey == requestKey else {
+      return
+    }
+    guard state.lastRevealStartedRequestKey != requestKey else {
+      return
+    }
+    guard state.lastDismissRequestKey == nil else {
+      return
+    }
+    state.blockedRevealStartRequestKey = nil
+    state.blockedRevealStartCommitFenceStartedAtMs = nil
+    state.blockedRevealStartCommitFenceBySourceId.removeAll()
+    state.lastRevealStartToken = revealStartToken
+    state.revealLane.revealing = mountedHiddenRevealBatch
+    state.presentationExecutionPhase = "revealing"
+    instances[instanceId] = state
+    try animatePresentationOpacity(
+      to: 1,
+      for: &state,
+      instanceId: instanceId,
+      reason: "reveal_start"
+    )
+    state.lastRevealStartedRequestKey = requestKey
+    instances[instanceId] = state
+    emitVisualDiag(
+      instanceId: instanceId,
+      message:
+        "presentation_transition previousPhase=\(previousPresentationPhase ?? state.lastPresentationPhase) nextPhase=\(state.lastPresentationPhase) previousOpacity=\(previousPresentationOpacityTarget ?? state.currentPresentationOpacityTarget) nextOpacity=\(state.currentPresentationOpacityTarget) revealRequest=\(requestKey) dismissRequest=\(state.lastDismissRequestKey ?? "nil")"
+    )
+    emitVisualDiag(
+      instanceId: instanceId,
+      message:
+        "reveal_started phase=\(state.lastPresentationPhase) pins=\(state.lastPinCount) dots=\(state.lastDotCount) labels=\(state.lastLabelCount) \(Self.phaseSummary(for: state))"
+    )
+    emit([
+      "type": "presentation_reveal_started",
+      "instanceId": instanceId,
+      "requestKey": requestKey,
+      "frameGenerationId": state.revealLane.revealing?.generationId as Any,
+      "revealBatchId": state.revealLane.revealing?.batchId as Any,
+      "startedAtMs": Self.nowMs(),
+    ])
+    let workItem = DispatchWorkItem { [weak self] in
+      guard let self else { return }
+      self.revealSettleWorkItems[instanceId] = nil
+      guard var latestState = self.instances[instanceId] else { return }
+      guard latestState.lastRevealRequestKey == requestKey else { return }
+      guard latestState.lastRevealStartedRequestKey == requestKey else { return }
+      guard latestState.lastRevealSettledRequestKey != requestKey else { return }
+      guard latestState.lastDismissRequestKey == nil else { return }
+      let commitFence = self.capturePendingVisualSourceCommitFence(state: latestState)
+      if self.hasPendingCommitFence(commitFence) {
+        latestState.blockedPresentationSettleRequestKey = requestKey
+        latestState.blockedPresentationSettleKind = "reveal"
+        latestState.blockedPresentationCommitFenceStartedAtMs = Self.nowMs()
+        latestState.blockedPresentationCommitFenceBySourceId = commitFence
+        latestState.presentationExecutionPhase = "reveal_wait_commit"
+        self.emitVisualDiag(
+          instanceId: instanceId,
+          message:
+            "reveal_commit_fence_blocked pending=\(self.describeCommitFence(commitFence)) \(self.commitFenceWaitSummary(state: latestState))"
+        )
+      } else {
+        latestState.blockedPresentationCommitFenceStartedAtMs = nil
+        latestState.presentationExecutionPhase = "reveal_settling"
+        latestState.pendingPresentationSettleRequestKey = requestKey
+        latestState.pendingPresentationSettleKind = "reveal"
+        self.armNativeRevealSettle(instanceId: instanceId, requestKey: requestKey)
+      }
+      self.instances[instanceId] = latestState
+    }
+    revealSettleWorkItems[instanceId] = workItem
+    DispatchQueue.main.asyncAfter(
+      deadline: .now() + .milliseconds(revealSettleDelayMs),
+      execute: workItem
+    )
+  }
+
+  private func emitRevealBatchMountedHidden(
+    instanceId: String,
+    revealBatch: RevealBatchRef,
+    state: inout InstanceState
+  ) {
+    guard state.lastRevealRequestKey == revealBatch.requestKey else {
+      return
+    }
+    guard state.revealLane.requestedRequestKey == revealBatch.requestKey else {
+      return
+    }
+    guard state.revealLane.mountedHidden != revealBatch else {
+      return
+    }
+    state.revealLane.mountedHidden = revealBatch
+    instances[instanceId] = state
+    emitVisualDiag(
+      instanceId: instanceId,
+      message:
+        "reveal_batch_mounted_hidden phase=\(state.lastPresentationPhase) frame=\(state.activeFrameGenerationId ?? "nil") \(Self.phaseSummary(for: state))"
+    )
+    emit([
+      "type": "presentation_reveal_batch_mounted_hidden",
+      "instanceId": instanceId,
+      "requestKey": revealBatch.requestKey,
+      "frameGenerationId": revealBatch.generationId,
+      "revealBatchId": revealBatch.batchId,
+      "readyAtMs": Self.nowMs(),
+    ])
+  }
+
+  private func maybeElectMountedHiddenRevealBatch(
+    instanceId: String,
+    state: inout InstanceState
+  ) {
+    guard let requestKey = state.revealLane.requestedRequestKey else {
+      return
+    }
+    guard state.lastRevealRequestKey == requestKey else {
+      return
+    }
+    guard state.lastDismissRequestKey == nil else {
+      return
+    }
+    guard state.lastRevealStartedRequestKey != requestKey else {
+      return
+    }
+    guard let activeRevealBatchId = state.activeRevealBatchId else {
+      return
+    }
+    guard let activeFrameGenerationId = state.activeFrameGenerationId else {
+      return
+    }
+    if !state.allowEmptyReveal, state.lastPinCount + state.lastDotCount + state.lastLabelCount == 0 {
+      return
+    }
+    emitRevealBatchMountedHidden(
+      instanceId: instanceId,
+      revealBatch: RevealBatchRef(
+        requestKey: requestKey,
+        batchId: activeRevealBatchId,
+        generationId: activeFrameGenerationId
+      ),
+      state: &state
+    )
+  }
+
+  private func settleRevealAfterRenderedFrame(instanceId: String, requestKey: String) {
+    revealFrameFallbackWorkItems[instanceId]?.cancel()
+    revealFrameFallbackWorkItems[instanceId] = nil
+    guard var state = instances[instanceId] else {
+      return
+    }
+    guard state.lastRevealRequestKey == requestKey else {
+      return
+    }
+    guard state.lastRevealStartedRequestKey == requestKey else {
+      return
+    }
+    guard state.lastRevealSettledRequestKey != requestKey else {
+      return
+    }
+    guard state.lastDismissRequestKey == nil else {
+      return
+    }
+    state.revealLane.liveBaseline = state.revealLane.revealing
+    state.revealLane.requestedRequestKey = nil
+    state.revealLane.mountedHidden = nil
+    state.revealLane.revealing = nil
+    state.lastRevealSettledRequestKey = requestKey
+    state.pendingPresentationSettleRequestKey = nil
+    state.pendingPresentationSettleKind = nil
+    state.blockedPresentationSettleRequestKey = nil
+    state.blockedPresentationSettleKind = nil
+    state.blockedPresentationCommitFenceStartedAtMs = nil
+    state.blockedPresentationCommitFenceBySourceId.removeAll()
+    state.presentationExecutionPhase = "live"
+    instances[instanceId] = state
+    emitVisualDiag(
+      instanceId: instanceId,
+      message:
+        "reveal_settled phase=\(state.lastPresentationPhase) pins=\(state.lastPinCount) dots=\(state.lastDotCount) labels=\(state.lastLabelCount) \(Self.phaseSummary(for: state))"
+    )
+    emit([
+      "type": "presentation_reveal_settled",
+      "instanceId": instanceId,
+      "requestKey": requestKey,
+      "frameGenerationId": state.revealLane.liveBaseline?.generationId as Any,
+      "revealBatchId": state.revealLane.liveBaseline?.batchId as Any,
+      "settledAtMs": Self.nowMs(),
+    ])
+  }
+
+  private func settleDismissAfterRenderedFrame(instanceId: String, requestKey: String) {
+    dismissFrameFallbackWorkItems[instanceId]?.cancel()
+    dismissFrameFallbackWorkItems[instanceId] = nil
+    guard var state = instances[instanceId], state.lastDismissRequestKey == requestKey else {
+      return
+    }
+    state.pendingPresentationSettleRequestKey = nil
+    state.pendingPresentationSettleKind = nil
+    state.blockedPresentationSettleRequestKey = nil
+    state.blockedPresentationSettleKind = nil
+    state.blockedPresentationCommitFenceStartedAtMs = nil
+    state.blockedPresentationCommitFenceBySourceId.removeAll()
+    state.presentationExecutionPhase = "idle"
+    state.keepSourcesHiddenUntilReveal = true
+    state.currentPresentationOpacityTarget = 0
+    state.currentPresentationOpacityValue = 0
+    do {
+      try clearResidentSources(for: state)
+    } catch {
+      emit([
+        "type": "error",
+        "instanceId": instanceId,
+        "message": "dismiss_clear_sources_failed: \(error.localizedDescription)",
+      ])
+    }
+    state.pendingSourceCommitDataIdsBySourceId = [:]
+    state.derivedFamilyStates = Self.makeInitialDerivedFamilyStates(
+      pinSourceId: state.pinSourceId,
+      pinInteractionSourceId: state.pinInteractionSourceId,
+      dotSourceId: state.dotSourceId,
+      dotInteractionSourceId: state.dotInteractionSourceId,
+      labelSourceId: state.labelSourceId,
+      labelInteractionSourceId: state.labelInteractionSourceId,
+      labelCollisionSourceId: state.labelCollisionSourceId
+    )
+    cancelLivePinTransitionAnimation(instanceId: instanceId)
+    instances[instanceId] = state
+    emit([
+      "type": "presentation_dismiss_settled",
+      "instanceId": instanceId,
+      "requestKey": requestKey,
+      "frameGenerationId": state.activeFrameGenerationId as Any,
+      "settledAtMs": Self.nowMs(),
+    ])
+  }
+
+  private func clearResidentSources(for state: InstanceState) throws {
+    try withMapboxMap(for: state.mapTag) { mapboxMap in
+      let emptyCollection = FeatureCollection(features: [])
+      for sourceId in [
+        state.pinSourceId,
+        state.pinInteractionSourceId,
+        state.dotSourceId,
+        state.dotInteractionSourceId,
+        state.labelSourceId,
+        state.labelInteractionSourceId,
+        state.labelCollisionSourceId,
+      ] {
+        mapboxMap.updateGeoJSONSource(
+          withId: sourceId,
+          geoJSON: .featureCollection(emptyCollection)
+        )
+      }
+    }
+  }
+
+  private func updateLivePinTransitions(
+    state: inout InstanceState,
+    previousPinSnapshot: DesiredPinSnapshotState,
+    desiredPinSnapshot: DesiredPinSnapshotState,
+    nowMs: Double,
+    allowNewTransitions: Bool
+  ) {
+    var pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
+    let previousSnapshot = previousPinSnapshot
+    let previousPinIds = Set(previousSnapshot.pinIdsInOrder)
+    let nextPinIds = Set(desiredPinSnapshot.pinIdsInOrder)
+    var nextTransitions = pinFamilyState.livePinTransitionsByMarkerKey
+    let previousOrderByMarkerKey = Dictionary(
+      uniqueKeysWithValues: previousSnapshot.pinIdsInOrder.enumerated().map { ($1, $0) }
+    )
+    let markerKeys = previousPinIds.union(nextPinIds).union(nextTransitions.keys)
+
+    for markerKey in markerKeys {
+      let existing = nextTransitions[markerKey]
+      let previousPresent = previousPinIds.contains(markerKey)
+      let nextPresent = nextPinIds.contains(markerKey)
+      let currentOpacity =
+        existing.map { Self.livePinTransitionOpacity($0, atMs: nowMs) } ??
+        (previousPresent ? 1 : 0)
+      let targetOpacity = nextPresent ? 1.0 : 0.0
+
+      let pinFeature =
+        desiredPinSnapshot.pinFeatureByMarkerKey[markerKey] ??
+        previousSnapshot.pinFeatureByMarkerKey[markerKey] ??
+        existing?.pinFeature
+      guard let pinFeature else {
+        nextTransitions.removeValue(forKey: markerKey)
+        continue
+      }
+      let payloadPinInteraction =
+        desiredPinSnapshot.pinInteractionFeatureByMarkerKey[markerKey] ??
+        previousSnapshot.pinInteractionFeatureByMarkerKey[markerKey] ??
+        existing?.pinInteractionFeature
+      let payloadLabelFeatures =
+        desiredPinSnapshot.labelFeaturesByMarkerKey[markerKey] ??
+        previousSnapshot.labelFeaturesByMarkerKey[markerKey] ??
+        existing?.labelFeatures ??
+        []
+      let lodZ =
+        desiredPinSnapshot.pinLodZByMarkerKey[markerKey] ??
+        previousSnapshot.pinLodZByMarkerKey[markerKey] ??
+        existing?.lodZ ??
+        0
+      let orderHint =
+        previousOrderByMarkerKey[markerKey] ??
+        desiredPinSnapshot.pinIdsInOrder.firstIndex(of: markerKey) ??
+        existing?.orderHint ??
+        .max
+
+      guard allowNewTransitions || existing != nil else {
+        continue
+      }
+
+      if let existing {
+        if abs(currentOpacity - targetOpacity) < 0.001 {
+          if (targetOpacity == 1 && nextPresent) || (targetOpacity == 0 && !nextPresent) {
+            nextTransitions.removeValue(forKey: markerKey)
+          }
+          continue
+        }
+        if existing.targetOpacity != targetOpacity {
+          let shouldAwaitSourceCommit =
+            targetOpacity == 1 && !previousPresent && currentOpacity <= 0.001
+          nextTransitions[markerKey] = LivePinTransition(
+            startOpacity: currentOpacity,
+            targetOpacity: targetOpacity,
+            startedAtMs: nowMs,
+            durationMs: livePinTransitionDurationMs,
+            isAwaitingSourceCommit: shouldAwaitSourceCommit,
+            awaitingSourceDataId: shouldAwaitSourceCommit ? existing.awaitingSourceDataId : nil,
+            pinFeature: pinFeature,
+            labelFeatures: payloadLabelFeatures,
+            pinInteractionFeature: payloadPinInteraction,
+            lodZ: lodZ,
+            orderHint: orderHint
+          )
+          continue
+        }
+        var updated = existing
+        updated.pinFeature = pinFeature
+        updated.labelFeatures = payloadLabelFeatures
+        updated.pinInteractionFeature = payloadPinInteraction
+        updated.lodZ = lodZ
+        updated.orderHint = orderHint
+        nextTransitions[markerKey] = updated
+        continue
+      }
+
+      guard previousPresent != nextPresent, abs(currentOpacity - targetOpacity) >= 0.001 else {
+        continue
+      }
+      nextTransitions[markerKey] = LivePinTransition(
+        startOpacity: currentOpacity,
+        targetOpacity: targetOpacity,
+        startedAtMs: nowMs,
+        durationMs: livePinTransitionDurationMs,
+        isAwaitingSourceCommit: targetOpacity == 1,
+        awaitingSourceDataId: nil,
+        pinFeature: pinFeature,
+        labelFeatures: payloadLabelFeatures,
+        pinInteractionFeature: payloadPinInteraction,
+        lodZ: lodZ,
+        orderHint: orderHint
+      )
+    }
+
+    pinFamilyState.liveTransitionMidOpacityDiagnosticKeyByMarkerKey =
+      pinFamilyState.liveTransitionMidOpacityDiagnosticKeyByMarkerKey.filter {
+        nextTransitions[$0.key] != nil
+      }
+    pinFamilyState.livePinTransitionsByMarkerKey = nextTransitions
+    Self.setDerivedFamilyState(pinFamilyState, sourceId: state.pinSourceId, state: &state)
+  }
+
+  private func updateLiveDotTransitions(
+    state: inout InstanceState,
+    desiredDots: ParsedFeatureCollection,
+    nowMs: Double,
+    allowNewTransitions: Bool
+  ) {
+    var dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
+    let previousDotsByMarkerKey = dotFamilyState.lastDesiredCollection.featureById
+    let nextDotsByMarkerKey = desiredDots.featureById
+    let previousDotIds = Set(previousDotsByMarkerKey.keys)
+    let nextDotIds = Set(nextDotsByMarkerKey.keys)
+    var nextTransitions = dotFamilyState.liveDotTransitionsByMarkerKey
+    let previousOrderByMarkerKey = Dictionary(
+      uniqueKeysWithValues: dotFamilyState.lastDesiredCollection.idsInOrder.enumerated().map { ($1, $0) }
+    )
+    let nextOrderByMarkerKey = Dictionary(
+      uniqueKeysWithValues: desiredDots.idsInOrder.enumerated().map { ($1, $0) }
+    )
+    let markerKeys = previousDotIds.union(nextDotIds).union(nextTransitions.keys)
+
+    for markerKey in markerKeys {
+      let existing = nextTransitions[markerKey]
+      let previousPresent = previousDotIds.contains(markerKey)
+      let nextPresent = nextDotIds.contains(markerKey)
+      let currentOpacity =
+        existing.map { Self.liveDotTransitionOpacity($0, atMs: nowMs) } ??
+        (previousPresent ? 1 : 0)
+      let targetOpacity = nextPresent ? 1.0 : 0.0
+      let dotFeature =
+        nextDotsByMarkerKey[markerKey] ??
+        previousDotsByMarkerKey[markerKey] ??
+        existing?.dotFeature
+      guard let dotFeature else {
+        nextTransitions.removeValue(forKey: markerKey)
+        continue
+      }
+      let orderHint =
+        previousOrderByMarkerKey[markerKey] ??
+        nextOrderByMarkerKey[markerKey] ??
+        existing?.orderHint ??
+        .max
+
+      guard allowNewTransitions || existing != nil else {
+        continue
+      }
+
+      if let existing {
+        if abs(currentOpacity - targetOpacity) < 0.001 {
+          if (targetOpacity == 1 && nextPresent) || (targetOpacity == 0 && !nextPresent) {
+            nextTransitions.removeValue(forKey: markerKey)
+          }
+          continue
+        }
+        if existing.targetOpacity != targetOpacity {
+          let shouldAwaitSourceCommit =
+            targetOpacity == 1 && !previousPresent && currentOpacity <= 0.001
+          nextTransitions[markerKey] = LiveDotTransition(
+            startOpacity: currentOpacity,
+            targetOpacity: targetOpacity,
+            startedAtMs: nowMs,
+            durationMs: livePinTransitionDurationMs,
+            isAwaitingSourceCommit: shouldAwaitSourceCommit,
+            awaitingSourceDataId: shouldAwaitSourceCommit ? existing.awaitingSourceDataId : nil,
+            dotFeature: dotFeature,
+            orderHint: orderHint
+          )
+          continue
+        }
+        var updated = existing
+        updated.dotFeature = dotFeature
+        updated.orderHint = orderHint
+        nextTransitions[markerKey] = updated
+        continue
+      }
+
+      guard previousPresent != nextPresent, abs(currentOpacity - targetOpacity) >= 0.001 else {
+        continue
+      }
+      nextTransitions[markerKey] = LiveDotTransition(
+        startOpacity: currentOpacity,
+        targetOpacity: targetOpacity,
+        startedAtMs: nowMs,
+        durationMs: livePinTransitionDurationMs,
+        isAwaitingSourceCommit: targetOpacity == 1,
+        awaitingSourceDataId: nil,
+        dotFeature: dotFeature,
+        orderHint: orderHint
+      )
+    }
+
+    dotFamilyState.liveDotTransitionsByMarkerKey = nextTransitions
+    Self.setDerivedFamilyState(dotFamilyState, sourceId: state.dotSourceId, state: &state)
+  }
+
+  private static func groupFeaturesByMarkerKey(
+    _ collection: ParsedFeatureCollection
+  ) -> [String: [(id: String, feature: Feature)]] {
+    var grouped: [String: [(id: String, feature: Feature)]] = [:]
+    for featureId in collection.idsInOrder {
+      guard let feature = collection.featureById[featureId] else {
+        continue
+      }
+      let markerKey = collection.markerKeyByFeatureId[featureId] ?? featureId
+      grouped[markerKey, default: []].append((id: featureId, feature: feature))
+    }
+    return grouped
+  }
+
+  private static func makeParsedFeatureCollection(
+    features: [(id: String, feature: Feature)],
+    featureStateById: [String: [String: Any]] = [:],
+    markerKeyByFeatureId: [String: String]? = nil
+  ) -> ParsedFeatureCollection {
+    let featureById = Dictionary(uniqueKeysWithValues: features.map { ($0.id, $0.feature) })
+    return makeParsedFeatureCollection(
+      idsInOrder: features.map(\.id),
+      featureById: featureById,
+      featureStateById: featureStateById,
+      markerKeyByFeatureId: markerKeyByFeatureId
+    )
+  }
+
+  private static func makeParsedFeatureCollection(
+    idsInOrder sourceIdsInOrder: [String],
+    featureById: [String: Feature],
+    featureStateById: [String: [String: Any]] = [:],
+    markerKeyByFeatureId: [String: String]? = nil
+  ) -> ParsedFeatureCollection {
+    var idsInOrder: [String] = []
+    var nextFeatureById: [String: Feature] = [:]
+    var diffKeyById: [String: String] = [:]
+    var nextFeatureStateById: [String: [String: Any]] = [:]
+    var nextMarkerKeyByFeatureId: [String: String] = [:]
+    for id in sourceIdsInOrder {
+      guard let feature = featureById[id] else {
+        continue
+      }
+      idsInOrder.append(id)
+      nextFeatureById[id] = feature
+      if let diffKey = Self.makeFeatureDiffKey(feature: feature) {
+        diffKeyById[id] = diffKey
+      }
+      if let featureState = featureStateById[id] {
+        nextFeatureStateById[id] = featureState
+      }
+      nextMarkerKeyByFeatureId[id] = markerKeyByFeatureId?[id] ?? id
+    }
+    let sourceRevision = buildParsedCollectionRevision(
+      idsInOrder: idsInOrder,
+      diffKeyById: diffKeyById
+    )
+    let featureStateEntryRevisionById = makeFeatureStateEntryRevisionById(
+      featureStateById: nextFeatureStateById
+    )
+    let featureStateRevision = buildFeatureStateRevision(
+      featureStateEntryRevisionById: featureStateEntryRevisionById
+    )
+    let featureIds = Set(idsInOrder)
+    let (groupedFeatureIdsByGroup, groupOrder) = buildGroupedFeatureIdsByGroup(
+      idsInOrder: idsInOrder,
+      markerKeyByFeatureId: nextMarkerKeyByFeatureId
+    )
+    return ParsedFeatureCollection(
+      baseSourceRevision: "",
+      baseFeatureStateRevision: "",
+      sourceRevision: sourceRevision,
+      featureStateRevision: featureStateRevision,
+      dirtyGroupIds: Set(groupOrder),
+      orderChangedGroupIds: Set(groupOrder),
+      removedGroupIds: [],
+      featureStateEntryRevisionById: featureStateEntryRevisionById,
+      featureStateChangedIds: Set(featureStateEntryRevisionById.keys),
+      featureIds: featureIds,
+      addedFeatureIdsInOrder: idsInOrder,
+      updatedFeatureIdsInOrder: [],
+      removedFeatureIds: [],
+      removedFeatureIdsInOrder: [],
+      idsInOrder: idsInOrder,
+      groupedFeatureIdsByGroup: groupedFeatureIdsByGroup,
+      groupOrder: groupOrder,
+      featureById: nextFeatureById,
+      diffKeyById: diffKeyById,
+      featureStateById: nextFeatureStateById,
+      markerKeyByFeatureId: nextMarkerKeyByFeatureId,
+      addedFeatures: Self.mutationFeatures(idsInOrder: idsInOrder, featureById: nextFeatureById),
+      updatedFeatures: []
+    )
+  }
+
+  private static func parsedCollectionBase(
+    from sourceState: SourceState
+  ) -> ParsedFeatureCollection {
+    let (groupedFeatureIdsByGroup, groupOrder) = buildGroupedFeatureIdsByGroup(
+      idsInOrder: sourceState.idsInOrder,
+      markerKeyByFeatureId: sourceState.markerKeyByFeatureId
+    )
+    return ParsedFeatureCollection(
+      baseSourceRevision: sourceState.sourceRevision,
+      baseFeatureStateRevision: sourceState.featureStateRevision,
+      sourceRevision: sourceState.sourceRevision,
+      featureStateRevision: sourceState.featureStateRevision,
+      dirtyGroupIds: [],
+      orderChangedGroupIds: [],
+      removedGroupIds: [],
+      featureStateEntryRevisionById: sourceState.featureStateEntryRevisionById,
+      featureStateChangedIds: [],
+      featureIds: sourceState.featureIds,
+      addedFeatureIdsInOrder: [],
+      updatedFeatureIdsInOrder: [],
+      removedFeatureIds: [],
+      removedFeatureIdsInOrder: [],
+      idsInOrder: sourceState.idsInOrder,
+      groupedFeatureIdsByGroup: groupedFeatureIdsByGroup,
+      groupOrder: groupOrder,
+      featureById: [:],
+      diffKeyById: sourceState.diffKeyById,
+      featureStateById: sourceState.featureStateById,
+      markerKeyByFeatureId: sourceState.markerKeyByFeatureId,
+      addedFeatures: [],
+      updatedFeatures: []
+    )
+  }
+
+  private static func replaceParsedFeatureCollection(
+    _ collection: inout ParsedFeatureCollection,
+    baseSourceState: SourceState?,
+    idsInOrder sourceIdsInOrder: [String],
+    featureById: [String: Feature],
+    featureStateById: [String: [String: Any]] = [:],
+    markerKeyByFeatureId: [String: String]? = nil,
+    dirtyGroupIds explicitDirtyGroupIds: Set<String>,
+    orderChangedGroupIds explicitOrderChangedGroupIds: Set<String>,
+    removedGroupIds explicitRemovedGroupIds: Set<String>
+  ) {
+    let baseCollection = baseSourceState.map(Self.parsedCollectionBase) ?? collection
+    var idsInOrder: [String] = []
+    var nextFeatureById: [String: Feature] = [:]
+    var diffKeyById: [String: String] = [:]
+    var nextFeatureStateById: [String: [String: Any]] = [:]
+    var nextMarkerKeyByFeatureId: [String: String] = [:]
+    let previousFeatureById = collection.featureById
+    let dedupedSourceIdsInOrder = Self.requireUniqueOrderedFeatureIds(
+      sourceIdsInOrder,
+      context: "replaceParsedFeatureCollection"
+    )
+    var matchesBaseSourceShape = baseCollection.idsInOrder.count == dedupedSourceIdsInOrder.count
+    for (index, id) in dedupedSourceIdsInOrder.enumerated() {
+      guard let feature = featureById[id] else {
+        preconditionFailure("Missing feature \(id) in replaceParsedFeatureCollection")
+      }
+      idsInOrder.append(id)
+      nextFeatureById[id] = feature
+      if matchesBaseSourceShape && baseCollection.idsInOrder[index] != id {
+        matchesBaseSourceShape = false
+      }
+      let reusedDiffKey =
+        previousFeatureById[id] == feature
+          ? collection.diffKeyById[id]
+          : nil
+      if let diffKey = reusedDiffKey ?? Self.makeFeatureDiffKey(feature: feature) {
+        diffKeyById[id] = diffKey
+        if matchesBaseSourceShape && baseCollection.diffKeyById[id] != diffKey {
+          matchesBaseSourceShape = false
+        }
+      } else {
+        matchesBaseSourceShape = false
+      }
+      if let featureState = featureStateById[id] {
+        nextFeatureStateById[id] = featureState
+      }
+      nextMarkerKeyByFeatureId[id] = markerKeyByFeatureId?[id] ?? id
+    }
+    let sourceRevision =
+      matchesBaseSourceShape
+        ? baseCollection.sourceRevision
+        : buildParsedCollectionRevision(
+            idsInOrder: idsInOrder,
+            diffKeyById: diffKeyById
+          )
+    let featureIds = Set(idsInOrder)
+    let featureStateEntryRevisionById = makeFeatureStateEntryRevisionById(
+      featureStateById: nextFeatureStateById
+    )
+    let featureStateChangedIds =
+      baseCollection.featureStateEntryRevisionById == featureStateEntryRevisionById
+        ? Set<String>()
+        : Set(
+            featureStateEntryRevisionById.compactMap { featureId, revision in
+              baseCollection.featureStateEntryRevisionById[featureId] == revision ? nil : featureId
+            }
+          )
+    let featureStateRevision =
+      baseCollection.featureStateEntryRevisionById == featureStateEntryRevisionById
+        ? baseCollection.featureStateRevision
+        : buildFeatureStateRevision(
+            featureStateEntryRevisionById: featureStateEntryRevisionById
+          )
+    let addedFeatureIdsInOrder = idsInOrder.filter { !baseCollection.featureIds.contains($0) }
+    let updatedFeatureIdsInOrder = idsInOrder.filter { featureId in
+      guard baseCollection.featureIds.contains(featureId) else {
+        return false
+      }
+      return baseCollection.diffKeyById[featureId] != diffKeyById[featureId]
+    }
+    let removedFeatureIds = baseCollection.featureIds.subtracting(featureIds)
+    let removedFeatureIdsInOrder = baseCollection.idsInOrder.filter { removedFeatureIds.contains($0) }
+    collection.baseSourceRevision = baseCollection.sourceRevision
+    collection.baseFeatureStateRevision = baseCollection.featureStateRevision
+    collection.sourceRevision = sourceRevision
+    collection.featureStateRevision = featureStateRevision
+    collection.dirtyGroupIds = explicitDirtyGroupIds
+    collection.orderChangedGroupIds = explicitOrderChangedGroupIds
+    collection.removedGroupIds = explicitRemovedGroupIds
+    collection.featureStateEntryRevisionById = featureStateEntryRevisionById
+    collection.featureStateChangedIds = featureStateChangedIds
+    collection.featureIds = featureIds
+    collection.addedFeatureIdsInOrder = addedFeatureIdsInOrder
+    collection.updatedFeatureIdsInOrder = updatedFeatureIdsInOrder
+    collection.removedFeatureIds = removedFeatureIds
+    collection.removedFeatureIdsInOrder = removedFeatureIdsInOrder
+    collection.idsInOrder = idsInOrder
+    collection.featureById = nextFeatureById
+    collection.diffKeyById = diffKeyById
+    collection.featureStateById = nextFeatureStateById
+    collection.markerKeyByFeatureId = nextMarkerKeyByFeatureId
+    collection.addedFeatures = Self.mutationFeatures(
+      idsInOrder: addedFeatureIdsInOrder,
+      featureById: nextFeatureById
+    )
+    collection.updatedFeatures = Self.mutationFeatures(
+      idsInOrder: updatedFeatureIdsInOrder,
+      featureById: nextFeatureById
+    )
+  }
+
+  private static func livePinTransitionOpacity(
+    _ transition: LivePinTransition,
+    atMs nowMs: Double
+  ) -> Double {
+    if transition.isAwaitingSourceCommit {
+      return transition.startOpacity
+    }
+    let elapsedMs = max(0, nowMs - transition.startedAtMs)
+    let progress = transition.durationMs <= 0 ? 1 : min(1, elapsedMs / transition.durationMs)
+    let easedProgress = progress * progress * (3 - 2 * progress)
+    return transition.startOpacity + (transition.targetOpacity - transition.startOpacity) * easedProgress
+  }
+
+  private static func liveDotTransitionOpacity(
+    _ transition: LiveDotTransition,
+    atMs nowMs: Double
+  ) -> Double {
+    if transition.isAwaitingSourceCommit {
+      return transition.startOpacity
+    }
+    let elapsedMs = max(0, nowMs - transition.startedAtMs)
+    let progress = transition.durationMs <= 0 ? 1 : min(1, elapsedMs / transition.durationMs)
+    let easedProgress = progress * progress * (3 - 2 * progress)
+    return transition.startOpacity + (transition.targetOpacity - transition.startOpacity) * easedProgress
+  }
+
+  private static func describeLivePinTransitionSummary(
+    _ state: InstanceState,
+    atMs nowMs: Double
+  ) -> String {
+    let pinFamilyState = derivedFamilyState(sourceId: state.pinSourceId, state: state)
+    guard !pinFamilyState.livePinTransitionsByMarkerKey.isEmpty else {
+      return "count=0"
+    }
+    let opacities = pinFamilyState.livePinTransitionsByMarkerKey.values.map {
+      livePinTransitionOpacity($0, atMs: nowMs)
+    }
+    let minOpacity = opacities.min() ?? 0
+    let maxOpacity = opacities.max() ?? 0
+    return
+      "count=\(pinFamilyState.livePinTransitionsByMarkerKey.count) min=\(round3(minOpacity)) max=\(round3(maxOpacity))"
+  }
+
+  private func emitMidOpacityLivePinTransitionDiagnostic(
+    instanceId: String,
+    markerKey: String,
+    transition: LivePinTransition,
+    opacity: Double,
+    nowMs: Double,
+    state: inout InstanceState,
+    pinSourceState: SourceState,
+    dotSourceState: SourceState,
+    labelSourceState: SourceState
+  ) {
+    let elapsedMs = max(0, nowMs - transition.startedAtMs)
+    let thresholdMs = max(transition.durationMs * 2, 450)
+    let isMidOpacity = opacity > 0.05 && opacity < 0.95
+    guard !transition.isAwaitingSourceCommit, elapsedMs >= thresholdMs, isMidOpacity else {
+      if
+        transition.isAwaitingSourceCommit ||
+        !isMidOpacity ||
+        abs(opacity - transition.targetOpacity) < 0.001
+      {
+        var pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
+        pinFamilyState.liveTransitionMidOpacityDiagnosticKeyByMarkerKey.removeValue(forKey: markerKey)
+        Self.setDerivedFamilyState(pinFamilyState, sourceId: state.pinSourceId, state: &state)
+      }
+      return
+    }
+
+    let diagnosticKey =
+      "\(Int(transition.startedAtMs.rounded())):\(Self.round3(transition.targetOpacity)):\(transition.labelFeatures.count)"
+    var pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
+    guard pinFamilyState.liveTransitionMidOpacityDiagnosticKeyByMarkerKey[markerKey] != diagnosticKey else {
+      return
+    }
+    pinFamilyState.liveTransitionMidOpacityDiagnosticKeyByMarkerKey[markerKey] = diagnosticKey
+    Self.setDerivedFamilyState(pinFamilyState, sourceId: state.pinSourceId, state: &state)
+
+    let labelIds = transition.labelFeatures.prefix(3).map(\.id).joined(separator: ",")
+    let labelCountInSource = transition.labelFeatures.reduce(into: 0) { count, labelFeature in
+      if labelSourceState.diffKeyById[labelFeature.id] != nil {
+        count += 1
+      }
+    }
+    emit([
+      "type": "error",
+      "instanceId": instanceId,
+      "message":
+        "live_pin_transition_mid_opacity markerKey=\(markerKey) opacity=\(Self.round3(opacity)) target=\(Self.round3(transition.targetOpacity)) elapsedMs=\(Int(elapsedMs.rounded())) durationMs=\(Int(transition.durationMs.rounded())) pinInSource=\(pinSourceState.diffKeyById[markerKey] != nil) dotInSource=\(dotSourceState.diffKeyById[markerKey] != nil) labelCount=\(transition.labelFeatures.count) labelInSourceCount=\(labelCountInSource) labelIds=\(labelIds.isEmpty ? "none" : labelIds) moving=\(state.currentViewportIsMoving) phase=\(state.presentationExecutionPhase) \(Self.describeLivePinTransitionSummary(state, atMs: nowMs))",
+    ])
+  }
+
+  private func updateLivePinTransitionAnimation(instanceId: String, state: InstanceState) {
+    if
+      Self.isSourceRecoveryActive(state) ||
+      (
+        Self.derivedFamilyState(sourceId: state.pinSourceId, state: state).livePinTransitionsByMarkerKey.isEmpty &&
+        Self.derivedFamilyState(sourceId: state.dotSourceId, state: state).liveDotTransitionsByMarkerKey.isEmpty
+      ) ||
+      state.lastPresentationPhase != "live"
+    {
+      cancelLivePinTransitionAnimation(instanceId: instanceId)
+      return
+    }
+    guard livePinTransitionAnimators[instanceId] == nil else {
+      return
+    }
+    let displayLink = CADisplayLink(target: self, selector: #selector(handleLivePinTransitionFrame(_:)))
+    if #available(iOS 15.0, *) {
+      let preferredFps = Float(UIScreen.main.maximumFramesPerSecond)
+      displayLink.preferredFrameRateRange = CAFrameRateRange(
+        minimum: 60,
+        maximum: preferredFps,
+        preferred: preferredFps
+      )
+    } else {
+      displayLink.preferredFramesPerSecond = UIScreen.main.maximumFramesPerSecond
+    }
+    displayLink.add(to: .main, forMode: .common)
+    livePinTransitionAnimators[instanceId] = displayLink
+  }
+
+  private func cancelLivePinTransitionAnimation(instanceId: String) {
+    livePinTransitionAnimators[instanceId]?.invalidate()
+    livePinTransitionAnimators.removeValue(forKey: instanceId)
+  }
+
+  private func resetLiveMarkerRevealState(
+    instanceId: String,
+    state: inout InstanceState,
+    reason: String
+  ) {
+    cancelLivePinTransitionAnimation(instanceId: instanceId)
+
+    var pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
+    var dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
+    var labelFamilyState = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
+    var pinSourceState = pinFamilyState.sourceState
+    var dotSourceState = dotFamilyState.sourceState
+    var labelSourceState = labelFamilyState.sourceState
+
+    let pinTransitionCount = pinFamilyState.livePinTransitionsByMarkerKey.count
+    let dotTransitionCount = dotFamilyState.liveDotTransitionsByMarkerKey.count
+    let pinTransientIds = Array(pinFamilyState.transientFeatureStateById.keys)
+    let dotTransientIds = Array(dotFamilyState.transientFeatureStateById.keys)
+    let labelTransientIds = Array(labelFamilyState.transientFeatureStateById.keys)
+
+    for featureId in pinTransientIds {
+      Self.clearTransientFeatureState(
+        sourceState: &pinSourceState,
+        familyState: &pinFamilyState,
+        featureId: featureId
+      )
+    }
+    for featureId in dotTransientIds {
+      Self.clearTransientFeatureState(
+        sourceState: &dotSourceState,
+        familyState: &dotFamilyState,
+        featureId: featureId
+      )
+    }
+    for featureId in labelTransientIds {
+      Self.clearTransientFeatureState(
+        sourceState: &labelSourceState,
+        familyState: &labelFamilyState,
+        featureId: featureId
+      )
+    }
+
+    pinFamilyState.livePinTransitionsByMarkerKey.removeAll()
+    pinFamilyState.liveTransitionMidOpacityDiagnosticKeyByMarkerKey.removeAll()
+    dotFamilyState.liveDotTransitionsByMarkerKey.removeAll()
+
+    Self.refreshFeatureStateRevision(&pinSourceState)
+    Self.refreshFeatureStateRevision(&dotSourceState)
+    Self.refreshFeatureStateRevision(&labelSourceState)
+    Self.syncMountedSourceState(
+      pinSourceState,
+      sourceId: state.pinSourceId,
+      familyState: &pinFamilyState,
+      state: &state
+    )
+    Self.syncMountedSourceState(
+      dotSourceState,
+      sourceId: state.dotSourceId,
+      familyState: &dotFamilyState,
+      state: &state
+    )
+    Self.syncMountedSourceState(
+      labelSourceState,
+      sourceId: state.labelSourceId,
+      familyState: &labelFamilyState,
+      state: &state
+    )
+
+    emitVisualDiag(
+      instanceId: instanceId,
+      message:
+        "live_reveal_state_reset reason=\(reason) pinTransitions=\(pinTransitionCount) dotTransitions=\(dotTransitionCount) pinTransient=\(pinTransientIds.count) dotTransient=\(dotTransientIds.count) labelTransient=\(labelTransientIds.count)"
+    )
+  }
+
+  private static func livePinFeatureState(opacity: Double) -> [String: Any] {
+    [
+      "nativeLodOpacity": opacity,
+      "nativeLodRankOpacity": opacity,
+    ]
+  }
+
+  private static func liveLabelFeatureState(opacity: Double) -> [String: Any] {
+    [
+      "nativeLabelOpacity": opacity,
+    ]
+  }
+
+  private static func liveDotFeatureState(opacity: Double) -> [String: Any] {
+    [
+      "nativeDotOpacity": opacity,
+    ]
+  }
+
+  private func startAwaitingLivePinTransitions(
+    instanceId: String,
+    dataId: String,
+    state: inout InstanceState
+  ) {
+    let nowMs = Self.nowMs()
+    var didStartTransition = false
+    var awaitingTransitionCount = 0
+    var startedTransitionCount = 0
+    var pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
+    var labelFamilyState = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
+    var pinSourceState = pinFamilyState.sourceState
+    var labelSourceState = labelFamilyState.sourceState
+    for markerKey in pinFamilyState.livePinTransitionsByMarkerKey.keys.sorted() {
+      if pinFamilyState.livePinTransitionsByMarkerKey[markerKey]?.isAwaitingSourceCommit == true {
+        awaitingTransitionCount += 1
+      }
+      guard var transition = pinFamilyState.livePinTransitionsByMarkerKey[markerKey],
+            transition.isAwaitingSourceCommit,
+            Self.shouldAcknowledgePendingCommitDataId(
+              transition.awaitingSourceDataId,
+              sourceId: state.pinSourceId,
+              acknowledgedDataId: dataId
+            )
+      else {
+        continue
+      }
+      transition.isAwaitingSourceCommit = false
+      transition.awaitingSourceDataId = nil
+      transition.startedAtMs = nowMs
+      transition.startOpacity = 0
+      pinFamilyState.livePinTransitionsByMarkerKey[markerKey] = transition
+      startedTransitionCount += 1
+      Self.applyTransientFeatureState(
+        sourceState: &pinSourceState,
+        familyState: &pinFamilyState,
+        featureId: markerKey,
+        transientState: Self.livePinFeatureState(opacity: 0)
+      )
+      for labelFeature in transition.labelFeatures {
+        Self.applyTransientFeatureState(
+          sourceState: &labelSourceState,
+          familyState: &labelFamilyState,
+          featureId: labelFeature.id,
+          transientState: Self.liveLabelFeatureState(opacity: 0)
+        )
+      }
+      didStartTransition = true
+    }
+    if didStartTransition {
+      Self.refreshFeatureStateRevision(&pinSourceState)
+      Self.refreshFeatureStateRevision(&labelSourceState)
+      Self.syncMountedSourceState(
+        pinSourceState,
+        sourceId: state.pinSourceId,
+        familyState: &pinFamilyState,
+        state: &state
+      )
+      Self.syncMountedSourceState(
+        labelSourceState,
+        sourceId: state.labelSourceId,
+        familyState: &labelFamilyState,
+        state: &state
+      )
+      instances[instanceId] = state
+      updateLivePinTransitionAnimation(instanceId: instanceId, state: state)
+    }
+  }
+
+  private func startAwaitingLiveDotTransitions(
+    instanceId: String,
+    dataId: String,
+    state: inout InstanceState
+  ) {
+    let nowMs = Self.nowMs()
+    var didStartTransition = false
+    var awaitingTransitionCount = 0
+    var startedTransitionCount = 0
+    var dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
+    var dotSourceState = dotFamilyState.sourceState
+    for markerKey in dotFamilyState.liveDotTransitionsByMarkerKey.keys.sorted() {
+      if dotFamilyState.liveDotTransitionsByMarkerKey[markerKey]?.isAwaitingSourceCommit == true {
+        awaitingTransitionCount += 1
+      }
+      guard var transition = dotFamilyState.liveDotTransitionsByMarkerKey[markerKey],
+            transition.isAwaitingSourceCommit,
+            Self.shouldAcknowledgePendingCommitDataId(
+              transition.awaitingSourceDataId,
+              sourceId: state.dotSourceId,
+              acknowledgedDataId: dataId
+            )
+      else {
+        continue
+      }
+      transition.isAwaitingSourceCommit = false
+      transition.awaitingSourceDataId = nil
+      transition.startedAtMs = nowMs
+      transition.startOpacity = 0
+      dotFamilyState.liveDotTransitionsByMarkerKey[markerKey] = transition
+      startedTransitionCount += 1
+      Self.applyTransientFeatureState(
+        sourceState: &dotSourceState,
+        familyState: &dotFamilyState,
+        featureId: markerKey,
+        transientState: Self.liveDotFeatureState(opacity: 0)
+      )
+      didStartTransition = true
+    }
+    if didStartTransition {
+      Self.refreshFeatureStateRevision(&dotSourceState)
+      Self.syncMountedSourceState(
+        dotSourceState,
+        sourceId: state.dotSourceId,
+        familyState: &dotFamilyState,
+        state: &state
+      )
+      instances[instanceId] = state
+      updateLivePinTransitionAnimation(instanceId: instanceId, state: state)
+    }
+  }
+
+  private func applyLivePinTransitionFeatureStates(for instanceId: String) throws {
+    guard var state = instances[instanceId] else {
+      return
+    }
+    guard !Self.isSourceRecoveryActive(state) else {
+      instances[instanceId] = state
+      cancelLivePinTransitionAnimation(instanceId: instanceId)
+      return
+    }
+    if try withReadyMapboxMap(
+      for: state.mapTag,
+      instanceId: instanceId,
+      state: &state,
+      sourceIds: [state.pinSourceId, state.dotSourceId, state.labelSourceId],
+      reason: "live_pin_transition_feature_states",
+      allowRecoveryEscalation: false,
+      { _ in }
+    ) == false {
+      instances[instanceId] = state
+      return
+    }
+    var pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
+    guard !pinFamilyState.sourceState.sourceRevision.isEmpty ||
+      !pinFamilyState.sourceState.featureIds.isEmpty ||
+      !pinFamilyState.collection.idsInOrder.isEmpty
+    else {
+      return
+    }
+    var pinSourceState = pinFamilyState.sourceState
+    var dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
+    var dotSourceState = dotFamilyState.sourceState
+    var labelFamilyState = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
+    var labelSourceState = labelFamilyState.sourceState
+
+    let nowMs = Self.nowMs()
+    var completedEnterMarkerKeys: [String] = []
+    var completedExitMarkerKeys: [String] = []
+    var completedDotEnterMarkerKeys: [String] = []
+    var completedDotExitMarkerKeys: [String] = []
+    var featureStatesToApply: [(featureId: String, state: [String: Any])] = []
+    var dotFeatureStatesToApply: [(featureId: String, state: [String: Any])] = []
+    var labelFeatureStatesToApply: [(featureId: String, state: [String: Any])] = []
+    var pinSourceFeatureStateChanged = false
+    var dotSourceFeatureStateChanged = false
+    var labelSourceFeatureStateChanged = false
+
+    for markerKey in pinFamilyState.livePinTransitionsByMarkerKey.keys.sorted() {
+      guard let transition = pinFamilyState.livePinTransitionsByMarkerKey[markerKey],
+            !transition.isAwaitingSourceCommit
+      else {
+        continue
+      }
+      let opacity = Self.livePinTransitionOpacity(transition, atMs: nowMs)
+      Self.applyTransientFeatureState(
+        sourceState: &pinSourceState,
+        familyState: &pinFamilyState,
+        featureId: markerKey,
+        transientState: Self.livePinFeatureState(opacity: opacity),
+        applyList: &featureStatesToApply,
+        sourceStateChanged: &pinSourceFeatureStateChanged
+      )
+      for labelFeature in transition.labelFeatures {
+        Self.applyTransientFeatureState(
+          sourceState: &labelSourceState,
+          familyState: &labelFamilyState,
+          featureId: labelFeature.id,
+          transientState: Self.liveLabelFeatureState(opacity: opacity),
+          applyList: &labelFeatureStatesToApply,
+          sourceStateChanged: &labelSourceFeatureStateChanged
+        )
+      }
+
+      emitMidOpacityLivePinTransitionDiagnostic(
+        instanceId: instanceId,
+        markerKey: markerKey,
+        transition: transition,
+        opacity: opacity,
+        nowMs: nowMs,
+        state: &state,
+        pinSourceState: pinSourceState,
+        dotSourceState: dotSourceState,
+        labelSourceState: labelSourceState
+      )
+
+      if abs(opacity - transition.targetOpacity) < 0.001 {
+        if transition.targetOpacity >= 0.999 {
+          completedEnterMarkerKeys.append(markerKey)
+        } else {
+          completedExitMarkerKeys.append(markerKey)
+        }
+      }
+    }
+
+    for markerKey in dotFamilyState.liveDotTransitionsByMarkerKey.keys.sorted() {
+      guard let transition = dotFamilyState.liveDotTransitionsByMarkerKey[markerKey],
+            !transition.isAwaitingSourceCommit
+      else {
+        continue
+      }
+      let opacity = Self.liveDotTransitionOpacity(transition, atMs: nowMs)
+      Self.applyTransientFeatureState(
+        sourceState: &dotSourceState,
+        familyState: &dotFamilyState,
+        featureId: markerKey,
+        transientState: Self.liveDotFeatureState(opacity: opacity),
+        applyList: &dotFeatureStatesToApply,
+        sourceStateChanged: &dotSourceFeatureStateChanged
+      )
+      if abs(opacity - transition.targetOpacity) < 0.001 {
+        if transition.targetOpacity >= 0.999 {
+          completedDotEnterMarkerKeys.append(markerKey)
+        } else {
+          completedDotExitMarkerKeys.append(markerKey)
+        }
+      }
+    }
+    if pinSourceFeatureStateChanged {
+      Self.refreshFeatureStateRevision(&pinSourceState)
+    }
+    if labelSourceFeatureStateChanged {
+      Self.refreshFeatureStateRevision(&labelSourceState)
+    }
+    if dotSourceFeatureStateChanged {
+      Self.refreshFeatureStateRevision(&dotSourceState)
+    }
+
+    if !featureStatesToApply.isEmpty {
+      try withMapboxMap(for: state.mapTag) { mapboxMap in
+        for entry in featureStatesToApply {
+          mapboxMap.setFeatureState(
+            sourceId: state.pinSourceId,
+            featureId: entry.featureId,
+            state: entry.state
+          ) { _ in }
+        }
+      }
+    }
+    if !dotFeatureStatesToApply.isEmpty {
+      try withMapboxMap(for: state.mapTag) { mapboxMap in
+        for entry in dotFeatureStatesToApply {
+          mapboxMap.setFeatureState(
+            sourceId: state.dotSourceId,
+            featureId: entry.featureId,
+            state: entry.state
+          ) { _ in }
+        }
+      }
+    }
+    if !labelFeatureStatesToApply.isEmpty {
+      try withMapboxMap(for: state.mapTag) { mapboxMap in
+        for entry in labelFeatureStatesToApply {
+          mapboxMap.setFeatureState(
+            sourceId: state.labelSourceId,
+            featureId: entry.featureId,
+            state: entry.state
+          ) { _ in }
+        }
+      }
+    }
+
+    Self.syncMountedSourceState(
+      pinSourceState,
+      sourceId: state.pinSourceId,
+      familyState: &pinFamilyState,
+      state: &state
+    )
+    Self.syncMountedSourceState(
+      dotSourceState,
+      sourceId: state.dotSourceId,
+      familyState: &dotFamilyState,
+      state: &state
+    )
+    Self.syncMountedSourceState(
+      labelSourceState,
+      sourceId: state.labelSourceId,
+      familyState: &labelFamilyState,
+      state: &state
+    )
+    instances[instanceId] = state
+
+    if !completedEnterMarkerKeys.isEmpty || !completedExitMarkerKeys.isEmpty {
+      try finalizeCompletedLivePinTransitions(
+        instanceId: instanceId,
+        enteredMarkerKeys: completedEnterMarkerKeys,
+        exitedMarkerKeys: completedExitMarkerKeys
+      )
+      state = instances[instanceId] ?? state
+    }
+
+    if !completedDotEnterMarkerKeys.isEmpty || !completedDotExitMarkerKeys.isEmpty {
+      try finalizeCompletedLiveDotTransitions(
+        instanceId: instanceId,
+        enteredMarkerKeys: completedDotEnterMarkerKeys,
+        exitedMarkerKeys: completedDotExitMarkerKeys
+      )
+      state = instances[instanceId] ?? state
+    }
+
+    updateLivePinTransitionAnimation(instanceId: instanceId, state: state)
+  }
+
+  @objc
+  private func handleLivePinTransitionFrame(_ displayLink: CADisplayLink) {
+    guard let instanceId = livePinTransitionAnimators.first(where: { $0.value === displayLink })?.key else {
+      return
+    }
+    do {
+      try applyLivePinTransitionFeatureStates(for: instanceId)
+      guard let state = instances[instanceId] else {
+        cancelLivePinTransitionAnimation(instanceId: instanceId)
+        return
+      }
+      if
+        (
+          Self.derivedFamilyState(sourceId: state.pinSourceId, state: state).livePinTransitionsByMarkerKey.isEmpty &&
+          Self.derivedFamilyState(sourceId: state.dotSourceId, state: state).liveDotTransitionsByMarkerKey.isEmpty
+        ) ||
+        state.lastPresentationPhase != "live"
+      {
+        cancelLivePinTransitionAnimation(instanceId: instanceId)
+      }
+    } catch {
+      emit([
+        "type": "error",
+        "instanceId": instanceId,
+        "message": "live_pin_transition_failed: \(error.localizedDescription)",
+      ])
+      cancelLivePinTransitionAnimation(instanceId: instanceId)
+    }
+  }
+
+  private func finalizeCompletedLivePinTransitions(
+    instanceId: String,
+    enteredMarkerKeys: [String],
+    exitedMarkerKeys: [String]
+  ) throws {
+    guard var state = instances[instanceId] else {
+      return
+    }
+    let enteredMarkerKeySet = Set(enteredMarkerKeys)
+    let exitedMarkerKeySet = Set(exitedMarkerKeys)
+    let completedMarkerKeys = Array(enteredMarkerKeySet.union(exitedMarkerKeySet)).sorted()
+    guard !completedMarkerKeys.isEmpty else {
+      return
+    }
+
+    var pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
+    var labelFamilyState = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
+    for markerKey in completedMarkerKeys {
+      let transition = pinFamilyState.livePinTransitionsByMarkerKey[markerKey]
+      pinFamilyState.livePinTransitionsByMarkerKey.removeValue(forKey: markerKey)
+
+      if enteredMarkerKeySet.contains(markerKey) {
+        var pinSourceState = pinFamilyState.sourceState
+        if !pinSourceState.sourceRevision.isEmpty || !pinSourceState.featureIds.isEmpty || !pinFamilyState.collection.idsInOrder.isEmpty {
+          Self.applyTransientFeatureState(
+            sourceState: &pinSourceState,
+            familyState: &pinFamilyState,
+            featureId: markerKey,
+            transientState: Self.livePinFeatureState(opacity: 1)
+          )
+          Self.syncMountedSourceState(
+            pinSourceState,
+            sourceId: state.pinSourceId,
+            familyState: &pinFamilyState,
+            state: &state
+          )
+        }
+      } else {
+        var pinSourceState = pinFamilyState.sourceState
+        if !pinSourceState.sourceRevision.isEmpty || !pinSourceState.featureIds.isEmpty || !pinFamilyState.collection.idsInOrder.isEmpty {
+          Self.clearTransientFeatureState(
+            sourceState: &pinSourceState,
+            familyState: &pinFamilyState,
+            featureId: markerKey
+          )
+          Self.syncMountedSourceState(
+            pinSourceState,
+            sourceId: state.pinSourceId,
+            familyState: &pinFamilyState,
+            state: &state
+          )
+        }
+      }
+      pinFamilyState.liveTransitionMidOpacityDiagnosticKeyByMarkerKey.removeValue(forKey: markerKey)
+
+      var labelSourceState = labelFamilyState.sourceState
+      if (!labelSourceState.sourceRevision.isEmpty || !labelSourceState.featureIds.isEmpty || !labelFamilyState.collection.idsInOrder.isEmpty), let transition {
+        for labelFeature in transition.labelFeatures {
+          if enteredMarkerKeySet.contains(markerKey) {
+            Self.applyTransientFeatureState(
+              sourceState: &labelSourceState,
+              familyState: &labelFamilyState,
+              featureId: labelFeature.id,
+              transientState: Self.liveLabelFeatureState(opacity: 1)
+            )
+          } else {
+            Self.clearTransientFeatureState(
+              sourceState: &labelSourceState,
+              familyState: &labelFamilyState,
+              featureId: labelFeature.id
+            )
+          }
+        }
+        Self.syncMountedSourceState(
+          labelSourceState,
+          sourceId: state.labelSourceId,
+          familyState: &labelFamilyState,
+          state: &state
+        )
+      }
+    }
+
+    var pinSourceState = pinFamilyState.sourceState
+    if !pinSourceState.sourceRevision.isEmpty || !pinSourceState.featureIds.isEmpty || !pinFamilyState.collection.idsInOrder.isEmpty {
+      Self.refreshFeatureStateRevision(&pinSourceState)
+      Self.syncMountedSourceState(
+        pinSourceState,
+        sourceId: state.pinSourceId,
+        familyState: &pinFamilyState,
+        state: &state
+      )
+    }
+    var labelSourceState = labelFamilyState.sourceState
+    if !labelSourceState.sourceRevision.isEmpty || !labelSourceState.featureIds.isEmpty || !labelFamilyState.collection.idsInOrder.isEmpty {
+      Self.refreshFeatureStateRevision(&labelSourceState)
+      Self.syncMountedSourceState(
+        labelSourceState,
+        sourceId: state.labelSourceId,
+        familyState: &labelFamilyState,
+        state: &state
+      )
+    }
+
+    instances[instanceId] = state
+    try reconcileAndApplyCurrentFrameSnapshots(for: instanceId, allowNewTransitions: false)
+  }
+
+  private func finalizeCompletedLiveDotTransitions(
+    instanceId: String,
+    enteredMarkerKeys: [String],
+    exitedMarkerKeys: [String]
+  ) throws {
+    guard var state = instances[instanceId] else {
+      return
+    }
+    let enteredMarkerKeySet = Set(enteredMarkerKeys)
+    let exitedMarkerKeySet = Set(exitedMarkerKeys)
+    let completedMarkerKeys = Array(enteredMarkerKeySet.union(exitedMarkerKeySet)).sorted()
+    guard !completedMarkerKeys.isEmpty else {
+      return
+    }
+
+    for markerKey in completedMarkerKeys {
+      var dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
+      dotFamilyState.liveDotTransitionsByMarkerKey.removeValue(forKey: markerKey)
+      var dotSourceState = dotFamilyState.sourceState
+      if !dotSourceState.sourceRevision.isEmpty || !dotSourceState.featureIds.isEmpty || !dotFamilyState.collection.idsInOrder.isEmpty {
+        if enteredMarkerKeySet.contains(markerKey) {
+          Self.applyTransientFeatureState(
+            sourceState: &dotSourceState,
+            familyState: &dotFamilyState,
+            featureId: markerKey,
+            transientState: Self.liveDotFeatureState(opacity: 1)
+          )
+        } else {
+          Self.clearTransientFeatureState(
+            sourceState: &dotSourceState,
+            familyState: &dotFamilyState,
+            featureId: markerKey
+          )
+        }
+        Self.syncMountedSourceState(
+          dotSourceState,
+          sourceId: state.dotSourceId,
+          familyState: &dotFamilyState,
+          state: &state
+        )
+      }
+    }
+
+    var dotSourceState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state).sourceState
+    if !dotSourceState.sourceRevision.isEmpty || !dotSourceState.featureIds.isEmpty || !Self.derivedFamilyState(sourceId: state.dotSourceId, state: state).collection.idsInOrder.isEmpty {
+      Self.refreshFeatureStateRevision(&dotSourceState)
+      var dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
+      Self.syncMountedSourceState(
+        dotSourceState,
+        sourceId: state.dotSourceId,
+        familyState: &dotFamilyState,
+        state: &state
+      )
+    }
+
+    instances[instanceId] = state
+    try reconcileAndApplyCurrentFrameSnapshots(for: instanceId, allowNewTransitions: false)
+  }
+
+  private func applyInteractionSuppression(
+    for state: inout InstanceState,
+    instanceId: String,
+    allowDuringRecovery: Bool = false
+  ) throws {
+    let snapshots = [
+      (state.pinInteractionSourceId, Self.emptyFeatureCollectionJSON),
+      (state.dotInteractionSourceId, Self.emptyFeatureCollectionJSON),
+      (state.labelInteractionSourceId, Self.emptyFeatureCollectionJSON),
+    ]
+    try applySnapshots(
+      instanceId: instanceId,
+      snapshots,
+      allowDuringRecovery: allowDuringRecovery,
+      state: &state
+    )
+  }
+
+  private func shouldSuppressInteractions(state: InstanceState) -> Bool {
+    state.interactionMode != "enabled"
+  }
+
+  private func applyHighlightedMarkerState(
+    for state: InstanceState,
+    instanceId: String,
+    allowDuringRecovery: Bool = false
+  ) throws {
+    var mutableState = state
+    if Self.isSourceRecoveryActive(mutableState) && !allowDuringRecovery {
+      instances[instanceId] = mutableState
+      return
+    }
+    if try withReadyMapboxMap(
+      for: state.mapTag,
+      instanceId: instanceId,
+      state: &mutableState,
+      sourceIds: visualSourceIds(for: state),
+      reason: "apply_highlighted_marker_state",
+      allowRecoveryEscalation: false,
+      { _ in }
+    ) == false {
+      instances[instanceId] = mutableState
+      return
+    }
+    try withMapboxMap(for: state.mapTag) { mapboxMap in
+      for sourceId in [state.pinSourceId, state.dotSourceId, state.labelSourceId] {
+        guard let sourceState = Self.mountedSourceState(sourceId: sourceId, state: state) else {
+          continue
+        }
+        for featureId in sourceState.featureIds {
+          let markerKey = sourceState.markerKeyByFeatureId[featureId] ?? featureId
+          mapboxMap.setFeatureState(
+            sourceId: sourceId,
+            featureId: featureId,
+            state: [
+              "nativeHighlighted": state.highlightedMarkerKey == markerKey ? 1 : 0,
+            ]
+          ) { _ in }
+        }
+      }
+    }
+  }
+
+  private func cancelPresentationOpacityAnimation(instanceId: String) {
+    presentationOpacityAnimators[instanceId]?.stop()
+    presentationOpacityAnimators.removeValue(forKey: instanceId)
+  }
+
+  private func setPresentationOpacityImmediate(
+    _ opacity: Double,
+    for state: inout InstanceState,
+    instanceId: String,
+    reason: String,
+    allowDuringRecovery: Bool = false
+  ) throws {
+    cancelPresentationOpacityAnimation(instanceId: instanceId)
+    let clampedOpacity = Self.clamp(opacity, min: 0, max: 1)
+    state.currentPresentationOpacityTarget = clampedOpacity
+    state.currentPresentationOpacityValue = clampedOpacity
+    instances[instanceId] = state
+    try applyPresentationOpacity(
+      clampedOpacity,
+      for: state,
+      instanceId: instanceId,
+      reason: reason,
+      allowDuringRecovery: allowDuringRecovery
+    )
+    emitPinOpacitySummary(instanceId: instanceId, state: state, reason: reason)
+  }
+
+  private func applyCurrentPresentationOpacity(
+    for state: inout InstanceState,
+    instanceId: String,
+    reason: String,
+    allowDuringRecovery: Bool = false
+  ) throws {
+    let clampedOpacity = Self.clamp(state.currentPresentationOpacityValue, min: 0, max: 1)
+    state.currentPresentationOpacityValue = clampedOpacity
+    instances[instanceId] = state
+    try applyPresentationOpacity(
+      clampedOpacity,
+      for: state,
+      instanceId: instanceId,
+      reason: reason,
+      allowDuringRecovery: allowDuringRecovery
+    )
+    emitPinOpacitySummary(instanceId: instanceId, state: state, reason: reason)
+  }
+
+  private func animatePresentationOpacity(
+    to targetOpacity: Double,
+    for state: inout InstanceState,
+    instanceId: String,
+    reason: String,
+    allowDuringRecovery: Bool = false
+  ) throws {
+    cancelPresentationOpacityAnimation(instanceId: instanceId)
+    let clampedTarget = Self.clamp(targetOpacity, min: 0, max: 1)
+    let startOpacity = Self.clamp(state.currentPresentationOpacityValue, min: 0, max: 1)
+    state.currentPresentationOpacityTarget = clampedTarget
+    state.currentPresentationOpacityValue = startOpacity
+    instances[instanceId] = state
+
+    if abs(startOpacity - clampedTarget) < 0.001 {
+      try applyPresentationOpacity(
+        clampedTarget,
+        for: state,
+        instanceId: instanceId,
+        reason: reason,
+        allowDuringRecovery: allowDuringRecovery
+      )
+      emitPinOpacitySummary(instanceId: instanceId, state: state, reason: reason)
+      return
+    }
+
+    emitVisualDiag(
+      instanceId: instanceId,
+      message:
+        "presentation_opacity_animation_start reason=\(reason) start=\(Self.round3(startOpacity)) target=\(Self.round3(clampedTarget)) durationMs=\(Int(revealSettleDelayMs))"
+    )
+
+    let animator = PresentationOpacityAnimator(
+      owner: self,
+      instanceId: instanceId,
+      reason: reason,
+      startOpacity: startOpacity,
+      targetOpacity: clampedTarget,
+      durationMs: Double(revealSettleDelayMs),
+      startedAtMs: Self.nowMs()
+    )
+    presentationOpacityAnimators[instanceId] = animator
+    animator.start()
+  }
+
+  fileprivate func stepPresentationOpacityAnimation(instanceId: String, timestampMs: Double) {
+    guard let animator = presentationOpacityAnimators[instanceId] else {
+      return
+    }
+    guard var state = instances[instanceId] else {
+      cancelPresentationOpacityAnimation(instanceId: instanceId)
+      return
+    }
+    let elapsedMs = max(0, timestampMs - animator.startedAtMs)
+    let rawProgress = animator.durationMs <= 0 ? 1 : min(1, elapsedMs / animator.durationMs)
+    let easedProgress = rawProgress * rawProgress * (3 - 2 * rawProgress)
+    let opacity =
+      animator.startOpacity + (animator.targetOpacity - animator.startOpacity) * easedProgress
+    state.currentPresentationOpacityValue = opacity
+    instances[instanceId] = state
+    do {
+      try applyPresentationOpacity(
+        opacity,
+        for: state,
+        instanceId: instanceId,
+        reason: animator.reason,
+        emitDiagnostic: rawProgress >= 1
+      )
+      if rawProgress >= 1 {
+        emitVisualDiag(
+          instanceId: instanceId,
+          message:
+            "presentation_opacity_animation_complete reason=\(animator.reason) target=\(Self.round3(animator.targetOpacity))"
+        )
+        emitPinOpacitySummary(instanceId: instanceId, state: state, reason: animator.reason)
+        cancelPresentationOpacityAnimation(instanceId: instanceId)
+      }
+    } catch {
+      emit([
+        "type": "error",
+        "instanceId": instanceId,
+        "message": "presentation_opacity_animation_failed: \(error.localizedDescription)",
+      ])
+      cancelPresentationOpacityAnimation(instanceId: instanceId)
+    }
+  }
+
+  private func emitPinOpacitySummary(instanceId: String, state: InstanceState, reason: String) {
+    let visiblePinIds = Self.mountedSourceState(sourceId: state.pinSourceId, state: state).map {
+      Array($0.featureIds).sorted()
+    } ?? []
+    let sampleVisiblePinIds = Array(visiblePinIds.prefix(3)).joined(separator: ",")
+    emit([
+      "type": "error",
+      "instanceId": "__native_diag__",
+      "message":
+        "pin_opacity_summary reason=\(reason) presentationOpacity=\(Self.round3(state.currentPresentationOpacityValue)) target=\(Self.round3(state.currentPresentationOpacityTarget)) visible=\(visiblePinIds.count) sampleVisible=\(sampleVisiblePinIds.isEmpty ? "none" : sampleVisiblePinIds)"
+    ])
+  }
+
+  private static func round3(_ value: Double) -> Double {
+    (value * 1000).rounded() / 1000
+  }
+
+  private static func clamp(_ value: Double, min: Double, max: Double) -> Double {
+    Swift.max(min, Swift.min(max, value))
+  }
+
+  private func applyPresentationOpacity(
+    _ opacity: Double,
+    for state: InstanceState,
+    instanceId: String,
+    reason: String,
+    allowDuringRecovery: Bool = false,
+    emitDiagnostic: Bool = true
+  ) throws {
+    var mutableState = state
+    if Self.isSourceRecoveryActive(mutableState) && !allowDuringRecovery {
+      instances[instanceId] = mutableState
+      return
+    }
+    if try withReadyMapboxMap(
+      for: state.mapTag,
+      instanceId: instanceId,
+      state: &mutableState,
+      sourceIds: visualSourceIds(for: state),
+      reason: "apply_presentation_opacity",
+      allowRecoveryEscalation: false,
+      { _ in }
+    ) == false {
+      instances[instanceId] = mutableState
+      return
+    }
+    let startedAt = CACurrentMediaTime() * 1000
+    try withMapboxMap(for: state.mapTag) { mapboxMap in
+      var featureCount = 0
+      for sourceId in [state.pinSourceId, state.dotSourceId, state.labelSourceId] {
+        var familyState = Self.derivedFamilyState(sourceId: sourceId, state: mutableState)
+        let featureIds = Array(familyState.sourceState.featureIds)
+        featureCount += featureIds.count
+        for featureId in featureIds {
+          mapboxMap.setFeatureState(
+            sourceId: sourceId,
+            featureId: featureId,
+            state: ["nativePresentationOpacity": opacity]
+          ) { _ in }
+        }
+        guard !featureIds.isEmpty else {
+          continue
+        }
+        var sourceState = familyState.sourceState
+        for featureId in featureIds {
+          _ = Self.applyRetainedFeatureStatePatch(
+            sourceState: &sourceState,
+            featureId: featureId,
+            statePatch: ["nativePresentationOpacity": opacity]
+          )
+        }
+        Self.refreshFeatureStateRevision(&sourceState)
+        Self.syncMountedSourceState(
+          sourceState,
+          sourceId: sourceId,
+          familyState: &familyState,
+          state: &mutableState
+        )
+      }
+      let durationMs = CACurrentMediaTime() * 1000 - startedAt
+      if emitDiagnostic && ((featureCount > 0 && opacity > 0) || durationMs >= self.slowActionThresholdMs) {
+        self.emit([
+          "type": "error",
+          "instanceId": "__native_diag__",
+          "message":
+            "presentation_opacity_apply reason=\(reason) opacity=\(opacity) phase=\(state.lastPresentationPhase) featureCount=\(featureCount) pins=\(state.lastPinCount) dots=\(state.lastDotCount) labels=\(state.lastLabelCount) durationMs=\(Int(durationMs.rounded()))",
+        ])
+      }
+    }
+    instances[instanceId] = mutableState
+  }
+
+  private static func phaseSummary(for state: InstanceState) -> String {
+    let pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
+    let dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
+    let labelFamilyState = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
+    let pinMounted = Self.mountedSourceState(sourceId: state.pinSourceId, state: state)?.diffKeyById.count ?? 0
+    let dotMounted = Self.mountedSourceState(sourceId: state.dotSourceId, state: state)?.diffKeyById.count ?? 0
+    let labelMounted =
+      Self.mountedSourceState(sourceId: state.labelSourceId, state: state)?.diffKeyById.count ?? 0
+    return [
+      "pinMounted=\(pinMounted)",
+      "dotMounted=\(dotMounted)",
+      "labelMounted=\(labelMounted)",
+      "pinDesired=\(pinFamilyState.lastDesiredPinSnapshot.pinIdsInOrder.count)",
+      "dotDesired=\(dotFamilyState.lastDesiredCollection.idsInOrder.count)",
+      "labelDesired=\(labelFamilyState.desiredCollection.idsInOrder.count)",
+      "pinTransient=\(pinFamilyState.transientFeatureStateById.count)",
+      "dotTransient=\(dotFamilyState.transientFeatureStateById.count)",
+      "labelTransient=\(labelFamilyState.transientFeatureStateById.count)",
+      "pinLive=\(pinFamilyState.livePinTransitionsByMarkerKey.count)",
+      "dotLive=\(dotFamilyState.liveDotTransitionsByMarkerKey.count)",
+    ].joined(separator: " ")
+  }
+
+  private func recoveryContextSummary(for state: InstanceState) -> String {
+    let recoveryPausedMs = state.sourceRecoveryPausedAtMs.map { max(0, Int((Self.nowMs() - $0).rounded())) }
+    return "phase=\(state.lastPresentationPhase) moving=\(state.currentViewportIsMoving) pins=\(state.lastPinCount) dots=\(state.lastDotCount) labels=\(state.lastLabelCount) \(Self.phaseSummary(for: state)) \(commitFenceWaitSummary(state: state)) recoveryPausedMs=\(recoveryPausedMs.map(String.init) ?? "nil")"
+  }
+
+  private func visualSourceIds(for state: InstanceState) -> [String] {
+    [state.pinSourceId, state.dotSourceId, state.labelSourceId]
+  }
+
+  private static func emptyRenderedLabelObservationResult() -> [String: Any] {
+    [
+      "visibleLabelFeatureIds": [],
+      "placedLabels": [],
+      "layerRenderedFeatureCount": 0,
+      "effectiveRenderedFeatureCount": 0,
+    ]
+  }
+
+  private static func emptyRenderedDotObservationResult() -> [String: Any] {
+    [
+      "restaurantIds": [],
+      "renderedDots": [],
+      "renderedFeatureCount": 0,
+    ]
+  }
+
+  private static func buildRenderedLabelObservation(
+    from features: [QueriedRenderedFeature],
+    requiredSourceId: String
+  ) -> (
+    visibleLabelFeatureIds: [String],
+    placedLabels: [[String: Any]]
+  ) {
+    var visibleLabelFeatureIds = Set<String>()
+    var placedLabels: [[String: Any]] = []
+    for feature in features {
+      guard feature.queriedFeature.source == requiredSourceId,
+            let parsed = Self.parseRenderedLabelObservationFeature(feature)
+      else {
+        continue
+      }
+      visibleLabelFeatureIds.insert(parsed.featureId)
+      placedLabels.append(parsed.placedLabel)
+    }
+    let sortedVisibleLabelFeatureIds = Array(visibleLabelFeatureIds).sorted()
+    return (
+      visibleLabelFeatureIds: sortedVisibleLabelFeatureIds,
+      placedLabels: placedLabels
+    )
+  }
+
+  private static func parseRenderedLabelObservationFeature(
+    _ feature: QueriedRenderedFeature
+  ) -> (
+    featureId: String,
+    placedLabel: [String: Any]
+  )? {
+    let rawFeature = feature.queriedFeature.feature
+    let properties = rawFeature.properties?.turfRawValue as? [String: Any]
+    let featureId = rawFeature.identifier.flatMap(Self.featureIdentifierString)
+    let parsedFeatureId = featureId.flatMap(Self.parseRenderedLabelCandidateFeatureId)
+    let markerKey = (properties?["markerKey"] as? String) ?? parsedFeatureId?.markerKey
+    guard let markerKey, !markerKey.isEmpty else {
+      return nil
+    }
+    let candidate = Self.labelCandidateString(from: properties?["labelCandidate"]) ??
+      parsedFeatureId?.candidate
+    guard let candidate else {
+      return nil
+    }
+    let restaurantId = properties?["restaurantId"] as? String
+    return (
+      featureId: featureId ?? Self.buildRenderedLabelCandidateFeatureId(markerKey: markerKey, candidate: candidate),
+      placedLabel: [
+        "markerKey": markerKey,
+        "candidate": candidate,
+        "restaurantId": restaurantId ?? NSNull(),
+      ]
+    )
+  }
+
+  private static func buildRenderedDotObservation(
+    from features: [QueriedRenderedFeature],
+    requiredSourceId: String
+  ) -> (
+    restaurantIds: [String],
+    renderedDots: [[String: Any]]
+  ) {
+    var restaurantIds = Set<String>()
+    var renderedDots: [[String: Any]] = []
+    for feature in features {
+      guard feature.queriedFeature.source == requiredSourceId,
+            let parsed = Self.parseRenderedDotObservationFeature(feature)
+      else {
+        continue
+      }
+      restaurantIds.insert(parsed.restaurantId)
+      renderedDots.append(parsed.renderedDot)
+    }
+    return (
+      restaurantIds: Array(restaurantIds).sorted(),
+      renderedDots: renderedDots
+    )
+  }
+
+  private static func parseRenderedDotObservationFeature(
+    _ feature: QueriedRenderedFeature
+  ) -> (
+    restaurantId: String,
+    renderedDot: [String: Any]
+  )? {
+    let rawFeature = feature.queriedFeature.feature
+    let properties = rawFeature.properties?.turfRawValue as? [String: Any]
+    guard let restaurantId = properties?["restaurantId"] as? String, !restaurantId.isEmpty else {
+      return nil
+    }
+    var coordinatePayload: [String: Any]? = nil
+    if let geometry = rawFeature.geometry,
+       case let .point(point) = geometry {
+      coordinatePayload = [
+        "lng": point.coordinates.longitude,
+        "lat": point.coordinates.latitude,
+      ]
+    }
+    return (
+      restaurantId: restaurantId,
+      renderedDot: [
+        "restaurantId": restaurantId,
+        "coordinate": coordinatePayload ?? NSNull(),
+      ]
+    )
+  }
+
+  private static func buildRenderedPinPressTarget(
+    from features: [QueriedRenderedFeature],
+    requiredSourceId: String
+  ) -> [String: Any]? {
+    var bestTarget: (
+      restaurantId: String,
+      coordinate: [String: Any]?,
+      lodZ: Double,
+      rank: Double,
+      featureIndex: Int
+    )?
+
+    for (featureIndex, feature) in features.enumerated() {
+      guard feature.queriedFeature.source == requiredSourceId,
+            let parsed = Self.parseRenderedPinPressFeature(feature)
+      else {
+        continue
+      }
+      guard let existing = bestTarget else {
+        bestTarget = (
+          restaurantId: parsed.restaurantId,
+          coordinate: parsed.coordinate,
+          lodZ: parsed.lodZ,
+          rank: parsed.rank,
+          featureIndex: featureIndex
+        )
+        continue
+      }
+      if parsed.lodZ > existing.lodZ ||
+          (parsed.lodZ == existing.lodZ && parsed.rank < existing.rank) ||
+          (parsed.lodZ == existing.lodZ && parsed.rank == existing.rank && featureIndex < existing.featureIndex) {
+        bestTarget = (
+          restaurantId: parsed.restaurantId,
+          coordinate: parsed.coordinate,
+          lodZ: parsed.lodZ,
+          rank: parsed.rank,
+          featureIndex: featureIndex
+        )
+      }
+    }
+
+    guard let bestTarget else {
+      return nil
+    }
+    return [
+      "restaurantId": bestTarget.restaurantId,
+      "coordinate": bestTarget.coordinate ?? NSNull(),
+      "targetKind": "pin",
+    ]
+  }
+
+  private static func parseRenderedPinPressFeature(
+    _ feature: QueriedRenderedFeature
+  ) -> (
+    restaurantId: String,
+    coordinate: [String: Any]?,
+    lodZ: Double,
+    rank: Double
+  )? {
+    let rawFeature = feature.queriedFeature.feature
+    let properties = rawFeature.properties?.turfRawValue as? [String: Any]
+    guard let restaurantId = properties?["restaurantId"] as? String, !restaurantId.isEmpty else {
+      return nil
+    }
+    let lodZ =
+      (properties?["nativeLodZ"] as? NSNumber)?.doubleValue ??
+      (properties?["lodZ"] as? NSNumber)?.doubleValue ??
+      -Double.greatestFiniteMagnitude
+    let rank = (properties?["rank"] as? NSNumber)?.doubleValue ?? .greatestFiniteMagnitude
+    var coordinatePayload: [String: Any]? = nil
+    if let geometry = rawFeature.geometry,
+       case let .point(point) = geometry {
+      coordinatePayload = [
+        "lng": point.coordinates.longitude,
+        "lat": point.coordinates.latitude,
+      ]
+    }
+    return (
+      restaurantId: restaurantId,
+      coordinate: coordinatePayload,
+      lodZ: lodZ,
+      rank: rank
+    )
+  }
+
+  private static func buildRenderedLabelPressTarget(
+    from features: [QueriedRenderedFeature],
+    requiredSourceId: String
+  ) -> [String: Any]? {
+    for feature in features {
+      guard feature.queriedFeature.source == requiredSourceId,
+            let parsed = Self.parseRenderedLabelPressFeature(feature)
+      else {
+        continue
+      }
+      return parsed
+    }
+    return nil
+  }
+
+  private static func parseRenderedLabelPressFeature(
+    _ feature: QueriedRenderedFeature
+  ) -> [String: Any]? {
+    let rawFeature = feature.queriedFeature.feature
+    let properties = rawFeature.properties?.turfRawValue as? [String: Any]
+    guard let restaurantId = properties?["restaurantId"] as? String, !restaurantId.isEmpty else {
+      return nil
+    }
+    var coordinatePayload: [String: Any]? = nil
+    if let geometry = rawFeature.geometry,
+       case let .point(point) = geometry {
+      coordinatePayload = [
+        "lng": point.coordinates.longitude,
+        "lat": point.coordinates.latitude,
+      ]
+    }
+    return [
+      "restaurantId": restaurantId,
+      "coordinate": coordinatePayload ?? NSNull(),
+      "targetKind": "label",
+    ]
+  }
+
+  private static func parseRenderedLabelCandidateFeatureId(
+    _ featureId: String
+  ) -> (
+    markerKey: String,
+    candidate: String
+  )? {
+    let delimiter = "::label::"
+    guard let range = featureId.range(of: delimiter, options: .backwards) else {
+      return nil
+    }
+    let markerKey = String(featureId[..<range.lowerBound])
+    let candidate = String(featureId[range.upperBound...])
+    guard !markerKey.isEmpty, let normalizedCandidate = labelCandidateString(from: candidate) else {
+      return nil
+    }
+    return (
+      markerKey: markerKey,
+      candidate: normalizedCandidate
+    )
+  }
+
+  private static func buildRenderedLabelCandidateFeatureId(
+    markerKey: String,
+    candidate: String
+  ) -> String {
+    "\(markerKey)::label::\(candidate)"
+  }
+
+  private static func labelCandidateString(from value: Any?) -> String? {
+    guard let candidate = value as? String else {
+      return nil
+    }
+    switch candidate {
+    case "bottom", "right", "top", "left":
+      return candidate
+    default:
+      return nil
+    }
+  }
+
+  private func resolveRenderedProbeLayerIds(
+    for sourceIds: [String],
+    mapboxMap: MapboxMap
+  ) throws -> [String] {
+    let sourceIdSet = Set(sourceIds)
+    guard !sourceIdSet.isEmpty else {
+      return []
+    }
+    return try mapboxMap.allLayerIdentifiers.compactMap { layerInfo in
+      let properties = try mapboxMap.layerProperties(for: layerInfo.id)
+      guard let sourceId = properties["source"] as? String, sourceIdSet.contains(sourceId) else {
+        return nil
+      }
+      return layerInfo.id
+    }
+  }
+
+  private func managedSourceIds(for state: InstanceState) -> [String] {
+    [
+      state.pinSourceId,
+      state.pinInteractionSourceId,
+      state.dotSourceId,
+      state.dotInteractionSourceId,
+      state.labelSourceId,
+      state.labelInteractionSourceId,
+      state.labelCollisionSourceId,
+    ]
+  }
+
+  private func ensureSourcesReady(
+    for mapTag: NSNumber,
+    instanceId: String?,
+    state: inout InstanceState,
+    sourceIds: [String],
+    reason: String,
+    allowRecoveryEscalation: Bool = true
+  ) throws -> Bool {
+    let uniqueSourceIds = Array(Set(sourceIds)).sorted()
+    guard !uniqueSourceIds.isEmpty else {
+      return true
+    }
+    let arePresent = try withMapboxMapResult(for: mapTag) { mapboxMap in
+      uniqueSourceIds.allSatisfy { mapboxMap.sourceExists(withId: $0) }
+    }
+    if arePresent {
+      return true
+    }
+    if !allowRecoveryEscalation && !Self.isSourceRecoveryActive(state) {
+      emit([
+        "type": "error",
+        "instanceId": "__native_diag__",
+        "message":
+          "source_ready_skip reason=\(reason) mapTag=\(mapTag.stringValue) sources=\(uniqueSourceIds.joined(separator: ","))",
+      ])
+      return false
+    }
+    state.isAwaitingSourceRecovery = true
+    state.isReplayingSourceRecovery = false
+    if state.sourceRecoveryPausedAtMs == nil {
+      state.sourceRecoveryPausedAtMs = Self.nowMs()
+    }
+    if let instanceId {
+      instances[instanceId] = state
+      scheduleSourceRecoveryReplay(instanceId: instanceId, reason: reason)
+    }
+    return false
+  }
+
+  private func beginSourceRecovery(
+    instanceId: String,
+    state: inout InstanceState,
+    reason: String,
+    resetTrackedSources: Bool
+  ) {
+    if resetTrackedSources {
+      state.pendingSourceCommitDataIdsBySourceId = [:]
+      state.pendingPresentationSettleRequestKey = nil
+      state.pendingPresentationSettleKind = nil
+      state.blockedRevealStartRequestKey = nil
+      state.blockedRevealStartCommitFenceStartedAtMs = nil
+      state.blockedPresentationSettleRequestKey = nil
+      state.blockedPresentationSettleKind = nil
+      state.blockedPresentationCommitFenceStartedAtMs = nil
+      state.blockedRevealStartCommitFenceBySourceId = [:]
+      state.blockedPresentationCommitFenceBySourceId = [:]
+      revealFrameFallbackWorkItems[instanceId]?.cancel()
+      revealFrameFallbackWorkItems[instanceId] = nil
+      dismissFrameFallbackWorkItems[instanceId]?.cancel()
+      dismissFrameFallbackWorkItems[instanceId] = nil
+      sourceRecoveryWorkItems[instanceId]?.cancel()
+      sourceRecoveryWorkItems[instanceId] = nil
+      emitVisualDiag(
+        instanceId: instanceId,
+        message: "source_recovery_begin reason=\(reason) \(recoveryContextSummary(for: state))"
+      )
+    }
+    cancelLivePinTransitionAnimation(instanceId: instanceId)
+    state.isAwaitingSourceRecovery = true
+    state.isReplayingSourceRecovery = false
+    if state.sourceRecoveryPausedAtMs == nil {
+      state.sourceRecoveryPausedAtMs = Self.nowMs()
+    }
+    instances[instanceId] = state
+    scheduleSourceRecoveryReplay(instanceId: instanceId, reason: reason)
+  }
+
+  private func withReadyMapboxMap(
+    for mapTag: NSNumber,
+    instanceId: String?,
+    state: inout InstanceState,
+    sourceIds: [String],
+    reason: String,
+    allowRecoveryEscalation: Bool = true,
+    _ block: (MapboxMap) throws -> Void
+  ) throws -> Bool {
+    guard let mapboxMap = try readyMapboxMap(
+      for: mapTag,
+      instanceId: instanceId,
+      state: &state,
+      sourceIds: sourceIds,
+      reason: reason,
+      allowRecoveryEscalation: allowRecoveryEscalation
+    ) else {
+      return false
+    }
+    try block(mapboxMap)
+    return true
+  }
+
+  private func readyMapboxMap(
+    for mapTag: NSNumber,
+    instanceId: String?,
+    state: inout InstanceState,
+    sourceIds: [String],
+    reason: String,
+    allowRecoveryEscalation: Bool = true
+  ) throws -> MapboxMap? {
+    let uniqueSourceIds = Array(Set(sourceIds)).sorted()
+    guard let resolution = currentResolvedMapHandleResolution(for: mapTag) else {
+      let cacheKey = mapTag.stringValue
+      emit([
+        "type": "error",
+        "instanceId": "__native_diag__",
+        "message": "map_lookup_cache_miss_unresolved tag=\(cacheKey) bridge=\(bridge != nil)",
+      ])
+      throw NSError(
+        domain: "SearchMapRenderController",
+        code: 14,
+        userInfo: [NSLocalizedDescriptionKey: "SearchMapRenderController ready Mapbox handle not resolved for react tag \(mapTag)"]
+      )
+    }
+    installMapSubscriptions(for: mapTag, handle: resolution.handle)
+    if resolution.didRefresh {
+      if let instanceId {
+        emitVisualDiag(
+          instanceId: instanceId,
+          message: "map_handle_refresh_context reason=\(reason) \(recoveryContextSummary(for: state))"
+        )
+        beginSourceRecovery(
+          instanceId: instanceId,
+          state: &state,
+          reason: "\(reason)_map_handle_refresh",
+          resetTrackedSources: true
+        )
+      } else {
+        state.isAwaitingSourceRecovery = true
+        state.isReplayingSourceRecovery = false
+        if state.sourceRecoveryPausedAtMs == nil {
+          state.sourceRecoveryPausedAtMs = Self.nowMs()
+        }
+      }
+      return nil
+    }
+    let arePresent =
+      uniqueSourceIds.isEmpty ||
+      uniqueSourceIds.allSatisfy { resolution.handle.mapView.mapboxMap.sourceExists(withId: $0) }
+    if !arePresent {
+      if !allowRecoveryEscalation && !Self.isSourceRecoveryActive(state) {
+        emit([
+          "type": "error",
+          "instanceId": "__native_diag__",
+          "message":
+            "source_ready_skip reason=\(reason) mapTag=\(mapTag.stringValue) sources=\(uniqueSourceIds.joined(separator: ","))",
+        ])
+        return nil
+      }
+      if let instanceId {
+        beginSourceRecovery(
+          instanceId: instanceId,
+          state: &state,
+          reason: reason,
+          resetTrackedSources: !Self.isSourceRecoveryActive(state)
+        )
+      } else {
+        state.isAwaitingSourceRecovery = true
+        state.isReplayingSourceRecovery = false
+        if state.sourceRecoveryPausedAtMs == nil {
+          state.sourceRecoveryPausedAtMs = Self.nowMs()
+        }
+      }
+      return nil
+    }
+    return resolution.handle.mapView.mapboxMap
+  }
+
+  private func scheduleSourceRecoveryReplay(instanceId: String, reason: String, attempt: Int = 0) {
+    guard sourceRecoveryWorkItems[instanceId] == nil else {
+      return
+    }
+    let workItem = DispatchWorkItem { [weak self] in
+      guard let self else {
+        return
+      }
+      self.sourceRecoveryWorkItems[instanceId] = nil
+      guard var state = self.instances[instanceId] else {
+        return
+      }
+      do {
+        guard try self.ensureSourcesReady(
+          for: state.mapTag,
+          instanceId: instanceId,
+          state: &state,
+          sourceIds: self.managedSourceIds(for: state),
+          reason: "source_recovery_wait"
+        ) else {
+          if attempt < 120 {
+            self.scheduleSourceRecoveryReplay(instanceId: instanceId, reason: reason, attempt: attempt + 1)
+          }
+          return
+        }
+        if let pausedAtMs = state.sourceRecoveryPausedAtMs {
+          let deltaMs = max(0, Self.nowMs() - pausedAtMs)
+          if deltaMs > 0 {
+            var pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
+            for markerKey in pinFamilyState.livePinTransitionsByMarkerKey.keys {
+              if pinFamilyState.livePinTransitionsByMarkerKey[markerKey]?.isAwaitingSourceCommit == false {
+                pinFamilyState.livePinTransitionsByMarkerKey[markerKey]?.startedAtMs += deltaMs
+              }
+            }
+            Self.setDerivedFamilyState(pinFamilyState, sourceId: state.pinSourceId, state: &state)
+          }
+        }
+        state.isAwaitingSourceRecovery = false
+        state.isReplayingSourceRecovery = true
+        self.instances[instanceId] = state
+        try self.reconcileAndApplyCurrentFrameSnapshots(
+          for: instanceId,
+          allowNewTransitions: false,
+          allowDuringRecovery: true
+        )
+        guard var updatedState = self.instances[instanceId] else {
+          return
+        }
+        guard updatedState.isReplayingSourceRecovery, !updatedState.isAwaitingSourceRecovery else {
+          if attempt < 120 {
+            self.scheduleSourceRecoveryReplay(instanceId: instanceId, reason: reason, attempt: attempt + 1)
+          }
+          return
+        }
+        try self.applyHighlightedMarkerState(
+          for: updatedState,
+          instanceId: instanceId,
+          allowDuringRecovery: true
+        )
+        updatedState = self.instances[instanceId] ?? updatedState
+        guard updatedState.isReplayingSourceRecovery, !updatedState.isAwaitingSourceRecovery else {
+          if attempt < 120 {
+            self.scheduleSourceRecoveryReplay(instanceId: instanceId, reason: reason, attempt: attempt + 1)
+          }
+          return
+        }
+        if self.shouldSuppressInteractions(state: updatedState) {
+          try self.applyInteractionSuppression(
+            for: &updatedState,
+            instanceId: instanceId,
+            allowDuringRecovery: true
+          )
+        }
+        updatedState = self.instances[instanceId] ?? updatedState
+        guard updatedState.isReplayingSourceRecovery, !updatedState.isAwaitingSourceRecovery else {
+          if attempt < 120 {
+            self.scheduleSourceRecoveryReplay(instanceId: instanceId, reason: reason, attempt: attempt + 1)
+          }
+          return
+        }
+        try self.applyCurrentPresentationOpacity(
+          for: &updatedState,
+          instanceId: instanceId,
+          reason: "style_reload_replay",
+          allowDuringRecovery: true
+        )
+        updatedState = self.instances[instanceId] ?? updatedState
+        guard updatedState.isReplayingSourceRecovery, !updatedState.isAwaitingSourceRecovery else {
+          if attempt < 120 {
+            self.scheduleSourceRecoveryReplay(instanceId: instanceId, reason: reason, attempt: attempt + 1)
+          }
+          return
+        }
+        self.promoteBlockedCommitFencesIfReady(instanceId: instanceId, state: &updatedState)
+        updatedState.isAwaitingSourceRecovery = false
+        updatedState.isReplayingSourceRecovery = false
+        updatedState.sourceRecoveryPausedAtMs = nil
+        self.instances[instanceId] = updatedState
+        self.emit([
+          "type": "render_owner_recovered_after_style_reload",
+          "instanceId": instanceId,
+          "frameGenerationId": updatedState.activeFrameGenerationId as Any,
+          "recoveredAtMs": Self.nowMs(),
+        ])
+      } catch {
+        if attempt < 120 {
+          self.scheduleSourceRecoveryReplay(instanceId: instanceId, reason: reason, attempt: attempt + 1)
+        } else {
+          self.emit([
+            "type": "error",
+            "instanceId": instanceId,
+            "message": "style reload replay failed: \(error.localizedDescription)",
+          ])
+        }
+      }
+    }
+    sourceRecoveryWorkItems[instanceId] = workItem
+    DispatchQueue.main.asyncAfter(
+      deadline: .now() + .milliseconds(sourceRecoveryRetryDelayMs),
+      execute: workItem
+    )
+  }
+
+  private func withMapboxMap(
+    for mapTag: NSNumber,
+    _ block: (MapboxMap) throws -> Void
+  ) throws {
+    if let resolvedHandle = currentResolvedMapHandle(for: mapTag) {
+      installMapSubscriptions(for: mapTag, handle: resolvedHandle)
+      try block(resolvedHandle.mapView.mapboxMap)
+      return
+    }
+    let cacheKey = mapTag.stringValue
+    emit([
+      "type": "error",
+      "instanceId": "__native_diag__",
+      "message": "map_lookup_cache_miss_unresolved tag=\(cacheKey) bridge=\(bridge != nil)",
+    ])
+    throw NSError(
+      domain: "SearchMapRenderController",
+      code: 4,
+      userInfo: [NSLocalizedDescriptionKey: "SearchMapRenderController diag-v2: Mapbox MapView not resolved for react tag \(mapTag)"]
+    )
+  }
+
+  private func withMapboxMapResult<T>(
+    for mapTag: NSNumber,
+    _ block: (MapboxMap) throws -> T
+  ) throws -> T {
+    var result: T?
+    try withMapboxMap(for: mapTag) { mapboxMap in
+      result = try block(mapboxMap)
+    }
+    if let result {
+      return result
+    }
+    throw NSError(
+      domain: "SearchMapRenderController",
+      code: 12,
+      userInfo: [NSLocalizedDescriptionKey: "SearchMapRenderController missing Mapbox result for react tag \(mapTag)"]
+    )
+  }
+
+  private func withResolvedMapHandleResult<T>(
+    for mapTag: NSNumber,
+    _ block: (ResolvedMapHandle) throws -> T
+  ) throws -> T {
+    if let resolvedHandle = currentResolvedMapHandle(for: mapTag) {
+      installMapSubscriptions(for: mapTag, handle: resolvedHandle)
+      return try block(resolvedHandle)
+    }
+    let cacheKey = mapTag.stringValue
+    emit([
+      "type": "error",
+      "instanceId": "__native_diag__",
+      "message": "map_lookup_cache_miss_unresolved tag=\(cacheKey) bridge=\(bridge != nil)",
+    ])
+    throw NSError(
+      domain: "SearchMapRenderController",
+      code: 13,
+      userInfo: [NSLocalizedDescriptionKey: "SearchMapRenderController missing resolved Mapbox handle for react tag \(mapTag)"]
+    )
+  }
+
+  private static func pointerSummary(_ object: AnyObject?) -> String {
+    guard let object else {
+      return "nil"
+    }
+    return String(describing: Unmanaged.passUnretained(object).toOpaque())
+  }
+
+  private static func reactTagSummary(for view: UIView?) -> String {
+    guard let view else {
+      return "nil"
+    }
+    if let reactTag = view.value(forKey: "reactTag") as? NSNumber {
+      return reactTag.stringValue
+    }
+    return "nil"
+  }
+
+  private static func windowSummary(for view: UIView) -> String {
+    guard let window = view.window else {
+      return "nil"
+    }
+    return "\(shortTypeName(window))@\(pointerSummary(window))"
+  }
+
+  private static func handleIdentitySummary(_ handle: ResolvedMapHandle) -> String {
+    "root=\(shortTypeName(handle.rootView))@\(pointerSummary(handle.rootView)) rootTag=\(reactTagSummary(for: handle.rootView)) map=\(shortTypeName(handle.mapView))@\(pointerSummary(handle.mapView)) mapTag=\(reactTagSummary(for: handle.mapView)) window=\(windowSummary(for: handle.mapView))"
+  }
+
+  private func emitMapTagDiag(mapTag: NSNumber, message: String) {
+    let instanceIds = instances.compactMap { $0.value.mapTag == mapTag ? $0.key : nil }
+    if instanceIds.isEmpty {
+      emit([
+        "type": "error",
+        "instanceId": "__native_diag__",
+        "message": message,
+      ])
+      return
+    }
+    for instanceId in instanceIds.sorted() {
+      emitVisualDiag(instanceId: instanceId, message: message)
+    }
+  }
+
+  private func installLifecycleProbes(for mapTag: NSNumber, handle: ResolvedMapHandle) {
+    let installProbe = { [weak self] (parentView: UIView, probeName: String) -> ViewLifecycleProbeView in
+      let probeIdentifier = "search-map-probe-\(probeName)"
+      if let existingProbe = parentView.subviews.first(where: { $0.accessibilityIdentifier == probeIdentifier }) as? ViewLifecycleProbeView {
+        return existingProbe
+      }
+      let probe = ViewLifecycleProbeView(probeName: probeName)
+      probe.onEvent = { [weak self, weak probe, weak parentView] eventName in
+        DispatchQueue.main.async {
+          guard let self else {
+            return
+          }
+          let parentSummary = parentView.map {
+            "\(Self.shortTypeName($0))@\(Self.pointerSummary($0)) tag=\(Self.reactTagSummary(for: $0))"
+          } ?? "nil"
+          let probeWindowSummary = probe?.window.map {
+            "\(Self.shortTypeName($0))@\(Self.pointerSummary($0))"
+          } ?? "nil"
+          self.emitMapTagDiag(
+            mapTag: mapTag,
+            message:
+              "view_lifecycle_probe probe=\(probeName) event=\(eventName) parent=\(parentSummary) probeWindow=\(probeWindowSummary)"
+          )
+        }
+      }
+      parentView.addSubview(probe)
+      return probe
+    }
+
+    if handle.rootLifecycleProbeView == nil {
+      handle.rootLifecycleProbeView = installProbe(handle.rootView, "root")
+    }
+    if handle.mapLifecycleProbeView == nil {
+      handle.mapLifecycleProbeView = installProbe(handle.mapView, "map")
+    }
+  }
+
+  private func installMapSubscriptions(for mapTag: NSNumber, handle: ResolvedMapHandle) {
+    installLifecycleProbes(for: mapTag, handle: handle)
+    if handle.sourceDataLoadedCancelable == nil {
+      handle.sourceDataLoadedCancelable = handle.mapView.mapboxMap.onSourceDataLoaded.observe { [weak self] event in
+        DispatchQueue.main.async {
+          self?.handleSourceDataLoaded(mapTag: mapTag, event: event)
+        }
+      }
+    }
+    if handle.styleLoadedCancelable == nil {
+      handle.styleLoadedCancelable = handle.mapView.mapboxMap.onStyleLoaded.observe { [weak self] _ in
+        DispatchQueue.main.async {
+          self?.handleStyleLoaded(mapTag: mapTag)
+        }
+      }
+    }
+    if handle.cameraChangedCancelable == nil {
+      handle.cameraChangedCancelable = handle.mapView.mapboxMap.onCameraChanged.observe { [weak self, weak handle] _ in
+        guard let self, let handle else {
+          return
+        }
+        DispatchQueue.main.async {
+          self.handleNativeCameraChanged(mapTag: mapTag, handle: handle, isMoving: true)
+        }
+      }
+    }
+    if handle.mapIdleCancelable == nil {
+      handle.mapIdleCancelable = handle.mapView.mapboxMap.onMapIdle.observe { [weak self, weak handle] _ in
+        guard let self, let handle else {
+          return
+        }
+        DispatchQueue.main.async {
+          self.handleNativeCameraChanged(mapTag: mapTag, handle: handle, isMoving: false)
+        }
+      }
+    }
+    if !handle.isGestureObserverRegistered {
+      if let gestureDelegateHostView = handle.gestureDelegateHostView {
+        if Self.addGestureDelegate(handle.gestureObserver, to: gestureDelegateHostView) {
+          handle.isGestureObserverRegistered = true
+        }
+      }
+    }
+  }
+
+  private func currentResolvedMapHandleResolution(
+    for mapTag: NSNumber
+  ) -> ResolvedMapHandleResolution? {
+    let cacheKey = mapTag.stringValue
+    if let cachedHandle = resolvedMapHandles[cacheKey] {
+      if cachedHandle.rootView.window != nil, cachedHandle.mapView.window != nil {
+        return ResolvedMapHandleResolution(handle: cachedHandle, didRefresh: false)
+      }
+      if let liveHandle = lookupMapHandle(for: mapTag, emitDiagnostic: false) {
+        let sameRoot = cachedHandle.rootView === liveHandle.rootView
+        let sameMap = cachedHandle.mapView === liveHandle.mapView
+        if !sameRoot || !sameMap {
+          cachedHandle.cancelSubscriptions()
+          resolvedMapHandles[cacheKey] = liveHandle
+          emitMapTagDiag(
+            mapTag: mapTag,
+            message:
+              "map_handle_refresh reason=cached_detached old{\(Self.handleIdentitySummary(cachedHandle))} new{\(Self.handleIdentitySummary(liveHandle))} sameRoot=\(Self.intFlag(sameRoot)) sameMap=\(Self.intFlag(sameMap))"
+          )
+          return ResolvedMapHandleResolution(handle: liveHandle, didRefresh: true)
+        }
+      }
+      return ResolvedMapHandleResolution(handle: cachedHandle, didRefresh: false)
+    }
+    if let resolvedHandle = lookupMapHandle(for: mapTag) {
+      resolvedMapHandles[cacheKey] = resolvedHandle
+      return ResolvedMapHandleResolution(handle: resolvedHandle, didRefresh: false)
+    }
+    return nil
+  }
+
+  private func currentResolvedMapHandle(for mapTag: NSNumber) -> ResolvedMapHandle? {
+    currentResolvedMapHandleResolution(for: mapTag)?.handle
+  }
+
+  private func cleanupMapHandleIfUnused(for mapTag: NSNumber) {
+    guard !instances.values.contains(where: { $0.mapTag == mapTag }) else {
+      return
+    }
+    let key = mapTag.stringValue
+    resolvedMapHandles[key]?.cancelSubscriptions()
+    resolvedMapHandles.removeValue(forKey: key)
+    lastHandleIdentitySignatureByMapTag.removeValue(forKey: key)
+  }
+
+  private func handleSourceDataLoaded(mapTag: NSNumber, event: SourceDataLoaded) {
+    let sourceId = event.sourceId
+    guard let dataId = event.dataId else {
+      return
+    }
+    if event.loaded == false {
+      return
+    }
+    for instanceId in Array(instances.keys) {
+      guard var state = instances[instanceId], state.mapTag == mapTag else {
+        continue
+      }
+      guard var pendingDataIds = state.pendingSourceCommitDataIdsBySourceId[sourceId] else {
+        continue
+      }
+      guard Self.removeCommittedPendingDataIds(
+        sourceId: sourceId,
+        acknowledgedDataId: dataId,
+        pendingDataIds: &pendingDataIds
+      ) else {
+        continue
+      }
+      if pendingDataIds.isEmpty {
+        state.pendingSourceCommitDataIdsBySourceId.removeValue(forKey: sourceId)
+      } else {
+        state.pendingSourceCommitDataIdsBySourceId[sourceId] = pendingDataIds
+      }
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "source_commit_ack sourceId=\(sourceId) dataId=\(dataId) pending=\(hasPendingCommitFence(capturePendingVisualSourceCommitFence(state: state)) ? describeCommitFence(capturePendingVisualSourceCommitFence(state: state)) : "none") \(commitFenceWaitSummary(state: state))"
+      )
+      removeCommittedPendingDataIds(
+        sourceId: sourceId,
+        acknowledgedDataId: dataId,
+        fenceBySourceId: &state.blockedRevealStartCommitFenceBySourceId
+      )
+      removeCommittedPendingDataIds(
+        sourceId: sourceId,
+        acknowledgedDataId: dataId,
+        fenceBySourceId: &state.blockedPresentationCommitFenceBySourceId
+      )
+      if sourceId == state.pinSourceId {
+        startAwaitingLivePinTransitions(instanceId: instanceId, dataId: dataId, state: &state)
+      }
+      if sourceId == state.dotSourceId {
+        startAwaitingLiveDotTransitions(instanceId: instanceId, dataId: dataId, state: &state)
+      }
+      promoteBlockedCommitFencesIfReady(instanceId: instanceId, state: &state)
+      instances[instanceId] = state
+    }
+  }
+
+  private func handleStyleLoaded(mapTag: NSNumber) {
+    for instanceId in Array(instances.keys) {
+      guard var state = instances[instanceId], state.mapTag == mapTag else {
+        continue
+      }
+      beginSourceRecovery(
+        instanceId: instanceId,
+        state: &state,
+        reason: "style_loaded",
+        resetTrackedSources: true
+      )
+    }
+  }
+
+  private func handleNativeCameraChanged(
+    mapTag: NSNumber,
+    handle: ResolvedMapHandle,
+    isMoving: Bool
+  ) {
+    let cameraState = handle.mapView.mapboxMap.cameraState
+    let center = cameraState.center
+    let visibleBounds = handle.mapView.mapboxMap.coordinateBounds(for: handle.mapView.bounds)
+    let signature = [
+      String(Int((center.latitude * 10_000).rounded())),
+      String(Int((center.longitude * 10_000).rounded())),
+      String(Int((cameraState.zoom * 100).rounded())),
+    ].joined(separator: "|")
+    if isMoving && handle.lastNativeCameraDiagSignature == signature {
+      return
+    }
+    let now = Self.nowMs()
+    if isMoving && now - handle.lastNativeCameraDiagAtMs < nativeViewportEventThrottleMs {
+      return
+    }
+    handle.lastNativeCameraDiagAtMs = now
+    handle.lastNativeCameraDiagSignature = signature
+    for (instanceId, state) in instances where state.mapTag == mapTag {
+      var nextState = state
+      nextState.currentViewportIsMoving = isMoving
+      instances[instanceId] = nextState
+      emit([
+        "type": "camera_changed",
+        "instanceId": instanceId,
+        "centerLat": center.latitude,
+        "centerLng": center.longitude,
+        "zoom": cameraState.zoom,
+        "northEastLat": visibleBounds.northeast.latitude,
+        "northEastLng": visibleBounds.northeast.longitude,
+        "southWestLat": visibleBounds.southwest.latitude,
+        "southWestLng": visibleBounds.southwest.longitude,
+        "isGestureActive": handle.gestureObserver.isGestureActive,
+        "isMoving": isMoving,
+      ])
+    }
+  }
+
+  private func registerPendingSourceCommit(
+    instanceId: String,
+    sourceId: String,
+    mutationSummary: MutationSummary,
+    state: inout InstanceState
+  ) {
+    guard mutationSummary.hasMutations, let dataId = mutationSummary.dataId else {
+      return
+    }
+    state.pendingSourceCommitDataIdsBySourceId[sourceId, default: []].insert(dataId)
+    emitVisualDiag(
+      instanceId: instanceId,
+      message:
+        "source_commit_pending sourceId=\(sourceId) dataId=\(dataId) pending=\(describeCommitFence(capturePendingVisualSourceCommitFence(state: state))) \(commitFenceWaitSummary(state: state))"
+    )
+  }
+
+  private static func nextSourceCommitDataId(
+    sourceId: String,
+    state: inout InstanceState
+  ) -> String {
+    state.nextSourceCommitSequence += 1
+    return "\(sourceId)::\(state.nextSourceCommitSequence)"
+  }
+
+  private func promoteBlockedCommitFencesIfReady(instanceId: String, state: inout InstanceState) {
+    if let blockedRevealStartRequestKey = state.blockedRevealStartRequestKey,
+       !hasPendingCommitFence(state.blockedRevealStartCommitFenceBySourceId) {
+      let blockedWaitMs = state.blockedRevealStartCommitFenceStartedAtMs.map { max(0, Int((Self.nowMs() - $0).rounded())) }
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "reveal_start_commit_fence_cleared waitMs=\(blockedWaitMs.map(String.init) ?? "nil") pending=none \(commitFenceWaitSummary(state: state))"
+      )
+      state.blockedRevealStartRequestKey = nil
+      state.blockedRevealStartCommitFenceStartedAtMs = nil
+      state.blockedRevealStartCommitFenceBySourceId.removeAll()
+      state.presentationExecutionPhase = "reveal_preroll"
+      instances[instanceId] = state
+      if
+        let presentationStateJSON = state.lastPresentationStateJSON,
+        Self.readRevealStatus(fromJSON: presentationStateJSON) == "revealing",
+        let revealStartToken = Self.readRevealStartToken(fromJSON: presentationStateJSON)
+      {
+        do {
+          try startRevealPresentation(
+            instanceId: instanceId,
+            requestKey: blockedRevealStartRequestKey,
+            revealStartToken: revealStartToken
+          )
+          state = instances[instanceId] ?? state
+        } catch {
+          emit([
+            "type": "error",
+            "instanceId": instanceId,
+            "message": "reveal_start_opacity_apply_failed: \(error.localizedDescription)",
+          ])
+          state = instances[instanceId] ?? state
+        }
+      }
+    }
+    if let blockedPresentationSettleRequestKey = state.blockedPresentationSettleRequestKey,
+       !hasPendingCommitFence(state.blockedPresentationCommitFenceBySourceId) {
+      let blockedWaitMs = state.blockedPresentationCommitFenceStartedAtMs.map { max(0, Int((Self.nowMs() - $0).rounded())) }
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "\(state.blockedPresentationSettleKind == "dismiss" ? "dismiss" : "reveal")_commit_fence_cleared waitMs=\(blockedWaitMs.map(String.init) ?? "nil") pending=none \(commitFenceWaitSummary(state: state))"
+      )
+      state.pendingPresentationSettleRequestKey = blockedPresentationSettleRequestKey
+      state.pendingPresentationSettleKind = state.blockedPresentationSettleKind
+      state.presentationExecutionPhase =
+        state.blockedPresentationSettleKind == "dismiss" ? "dismissing" : "reveal_settling"
+      state.blockedPresentationSettleRequestKey = nil
+      state.blockedPresentationSettleKind = nil
+      state.blockedPresentationCommitFenceStartedAtMs = nil
+      state.blockedPresentationCommitFenceBySourceId.removeAll()
+      if state.pendingPresentationSettleKind == "dismiss" {
+        armNativeDismissSettle(instanceId: instanceId, requestKey: blockedPresentationSettleRequestKey)
+      } else {
+        armNativeRevealSettle(instanceId: instanceId, requestKey: blockedPresentationSettleRequestKey)
+      }
+    }
+  }
+
+  private func hasPendingVisualSourceCommits(state: InstanceState) -> Bool {
+    [state.pinSourceId, state.dotSourceId, state.labelSourceId].contains { sourceId in
+      !(state.pendingSourceCommitDataIdsBySourceId[sourceId] ?? []).isEmpty
+    }
+  }
+
+  private func capturePendingVisualSourceCommitFence(state: InstanceState) -> [String: Set<String>] {
+    var fenceBySourceId: [String: Set<String>] = [:]
+    for sourceId in [state.pinSourceId, state.dotSourceId, state.labelSourceId] {
+      let pending = state.pendingSourceCommitDataIdsBySourceId[sourceId] ?? []
+      if !pending.isEmpty {
+        fenceBySourceId[sourceId] = pending
+      }
+    }
+    return fenceBySourceId
+  }
+
+  private func hasPendingCommitFence(_ fenceBySourceId: [String: Set<String>]) -> Bool {
+    fenceBySourceId.contains { !$0.value.isEmpty }
+  }
+
+  private func commitFenceWaitSummary(state: InstanceState) -> String {
+    let pendingFence = capturePendingVisualSourceCommitFence(state: state)
+    let pendingSummary = hasPendingCommitFence(pendingFence) ? describeCommitFence(pendingFence) : "none"
+    let nowMs = Self.nowMs()
+    let revealWaitMs = state.blockedRevealStartCommitFenceStartedAtMs.map { max(0, Int((nowMs - $0).rounded())) }
+    let settleWaitMs = state.blockedPresentationCommitFenceStartedAtMs.map { max(0, Int((nowMs - $0).rounded())) }
+    return "pendingVisualCommits=\(pendingSummary) blockedRevealWaitMs=\(revealWaitMs.map(String.init) ?? "nil") blockedSettleWaitMs=\(settleWaitMs.map(String.init) ?? "nil")"
+  }
+
+  private func describeCommitFence(_ fenceBySourceId: [String: Set<String>]) -> String {
+    fenceBySourceId
+      .filter { !$0.value.isEmpty }
+      .sorted { $0.key < $1.key }
+      .map { "\($0.key)=\($0.value.count)" }
+      .joined(separator: ",")
+  }
+
+  private static func commitSequence(
+    from dataId: String?,
+    sourceId: String
+  ) -> Int? {
+    guard let dataId, dataId.hasPrefix("\(sourceId)::") else {
+      return nil
+    }
+    let suffix = dataId.dropFirst(sourceId.count + 2)
+    return Int(suffix)
+  }
+
+  private static func shouldAcknowledgePendingCommitDataId(
+    _ pendingDataId: String?,
+    sourceId: String,
+    acknowledgedDataId: String
+  ) -> Bool {
+    guard let pendingDataId else {
+      return false
+    }
+    if pendingDataId == acknowledgedDataId {
+      return true
+    }
+    guard
+      let acknowledgedSequence = commitSequence(from: acknowledgedDataId, sourceId: sourceId),
+      let pendingSequence = commitSequence(from: pendingDataId, sourceId: sourceId)
+    else {
+      return false
+    }
+    return pendingSequence <= acknowledgedSequence
+  }
+
+  private static func removeCommittedPendingDataIds(
+    sourceId: String,
+    acknowledgedDataId: String,
+    pendingDataIds: inout Set<String>
+  ) -> Bool {
+    let removedIds = pendingDataIds.filter {
+      shouldAcknowledgePendingCommitDataId(
+        $0,
+        sourceId: sourceId,
+        acknowledgedDataId: acknowledgedDataId
+      )
+    }
+    guard !removedIds.isEmpty else {
+      return false
+    }
+    pendingDataIds.subtract(removedIds)
+    return true
+  }
+
+  private func removeCommittedPendingDataIds(
+    sourceId: String,
+    acknowledgedDataId: String,
+    fenceBySourceId: inout [String: Set<String>]
+  ) {
+    guard var pending = fenceBySourceId[sourceId] else {
+      return
+    }
+    guard Self.removeCommittedPendingDataIds(
+      sourceId: sourceId,
+      acknowledgedDataId: acknowledgedDataId,
+      pendingDataIds: &pending
+    ) else {
+      return
+    }
+    if pending.isEmpty {
+      fenceBySourceId.removeValue(forKey: sourceId)
+    } else {
+      fenceBySourceId[sourceId] = pending
+    }
+  }
+
+  private func armNativeRevealSettle(instanceId: String, requestKey: String) {
+    revealFrameFallbackWorkItems[instanceId]?.cancel()
+    let workItem = DispatchWorkItem { [weak self] in
+      guard let self, let state = self.instances[instanceId] else { return }
+      guard state.pendingPresentationSettleRequestKey == requestKey else { return }
+      guard state.pendingPresentationSettleKind == "reveal" else { return }
+      self.settleRevealAfterRenderedFrame(instanceId: instanceId, requestKey: requestKey)
+    }
+    revealFrameFallbackWorkItems[instanceId] = workItem
+    DispatchQueue.main.asyncAfter(
+      deadline: .now() + .milliseconds(frameSettleFallbackDelayMs),
+      execute: workItem
+    )
+  }
+
+  private func armNativeDismissSettle(instanceId: String, requestKey: String) {
+    dismissFrameFallbackWorkItems[instanceId]?.cancel()
+    let workItem = DispatchWorkItem { [weak self] in
+      guard let self, let state = self.instances[instanceId] else { return }
+      guard state.pendingPresentationSettleRequestKey == requestKey else { return }
+      guard state.pendingPresentationSettleKind == "dismiss" else { return }
+      self.settleDismissAfterRenderedFrame(instanceId: instanceId, requestKey: requestKey)
+    }
+    dismissFrameFallbackWorkItems[instanceId] = workItem
+    DispatchQueue.main.asyncAfter(
+      deadline: .now() + .milliseconds(frameSettleFallbackDelayMs),
+      execute: workItem
+    )
+  }
+
+  private func resolveMapHandle(
+    for mapTag: NSNumber,
+    attemptCount: Int,
+    startTimeMs: Double,
+    completion: @escaping (Result<ResolvedMapHandle, Error>) -> Void
+  ) {
+    if let resolvedHandle = lookupMapHandle(for: mapTag) {
+      emit([
+        "type": "error",
+        "instanceId": "__native_diag__",
+        "message": "attach_map_resolved tag=\(mapTag.stringValue) attempt=\(attemptCount) root=\(Unmanaged.passUnretained(resolvedHandle.rootView).toOpaque()) map=\(Unmanaged.passUnretained(resolvedHandle.mapView).toOpaque())",
+      ])
+      completion(.success(resolvedHandle))
+      return
+    }
+    let elapsedMs = CACurrentMediaTime() * 1000 - startTimeMs
+    if elapsedMs >= mapResolveTimeoutMs {
+      emit([
+        "type": "error",
+        "instanceId": "__native_diag__",
+        "message": "attach_map_resolve_timeout tag=\(mapTag.stringValue) attempts=\(attemptCount) elapsedMs=\(Int(elapsedMs))",
+      ])
+      completion(
+        .failure(
+          NSError(
+            domain: "SearchMapRenderController",
+            code: 5,
+            userInfo: [
+              NSLocalizedDescriptionKey:
+                "Mapbox MapView not found for react tag \(mapTag) after \(Int(elapsedMs))ms"
+            ]
+          )
+        )
+      )
+      return
+    }
+    emit([
+      "type": "error",
+      "instanceId": "__native_diag__",
+      "message": "attach_map_resolve_retry tag=\(mapTag.stringValue) attempt=\(attemptCount) elapsedMs=\(Int(elapsedMs))",
+    ])
+    let delayMs: Double
+    if attemptCount == 0 {
+      delayMs = 1
+    } else if attemptCount <= 5 {
+      delayMs = 10
+    } else {
+      delayMs = 200
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + delayMs / 1000) { [weak self] in
+      guard self != nil else {
+        completion(
+          .failure(
+            NSError(
+              domain: "SearchMapRenderController",
+              code: 6,
+              userInfo: [NSLocalizedDescriptionKey: "controller deallocated during map resolve"]
+            )
+          )
+        )
+        return
+      }
+      self?.resolveMapHandle(
+        for: mapTag,
+        attemptCount: attemptCount + 1,
+        startTimeMs: startTimeMs,
+        completion: completion
+      )
+    }
+  }
+
+  private static func applySourceMutation(
+    sourceId: String,
+    previousSourceLifecyclePhase: SourceLifecyclePhase,
+    previousSourceRevision: String,
+    next: ParsedFeatureCollection,
+    state: inout InstanceState,
+    mapboxMap: MapboxMap
+  ) throws -> MutationSummary {
+    guard previousSourceRevision != next.sourceRevision else {
+      return MutationSummary(
+        addCount: 0,
+        updateCount: 0,
+        removeCount: 0,
+        dataId: nil,
+        addedFeatureIds: []
+      )
+    }
+    if previousSourceLifecyclePhase != .incremental {
+      try replaceSourceData(sourceId: sourceId, next: next, mapboxMap: mapboxMap)
+      return MutationSummary(
+        addCount: next.idsInOrder.count,
+        updateCount: 0,
+        removeCount: 0,
+        dataId: nil,
+        addedFeatureIds: next.idsInOrder
+      )
+    }
+    let removeIds = next.removedFeatureIdsInOrder
+    let addFeatureIds = next.addedFeatureIdsInOrder
+    let updateFeatureIds = next.updatedFeatureIdsInOrder
+    let dataId: String? =
+      (!removeIds.isEmpty || !addFeatureIds.isEmpty || !updateFeatureIds.isEmpty)
+      ? nextSourceCommitDataId(sourceId: sourceId, state: &state)
+      : nil
+    if !removeIds.isEmpty {
+      mapboxMap.removeGeoJSONSourceFeatures(
+        forSourceId: sourceId,
+        featureIds: Array(removeIds),
+        dataId: dataId
+      )
+    }
+    let addFeatures = next.addedFeatures
+    if !addFeatures.isEmpty {
+      mapboxMap.addGeoJSONSourceFeatures(
+        forSourceId: sourceId,
+        features: addFeatures,
+        dataId: dataId
+      )
+    }
+    let updateFeatures = next.updatedFeatures
+    if !updateFeatures.isEmpty {
+      mapboxMap.updateGeoJSONSourceFeatures(
+        forSourceId: sourceId,
+        features: updateFeatures,
+        dataId: dataId
+      )
+    }
+    return MutationSummary(
+      addCount: addFeatureIds.count,
+      updateCount: updateFeatureIds.count,
+      removeCount: removeIds.count,
+      dataId: dataId,
+      addedFeatureIds: addFeatureIds
+    )
+  }
+
+  private static func replaceSourceData(
+    sourceId: String,
+    next: ParsedFeatureCollection,
+    mapboxMap: MapboxMap
+  ) throws {
+    let orderedFeatures = mutationFeatures(idsInOrder: next.idsInOrder, featureById: next.featureById)
+    mapboxMap.updateGeoJSONSource(
+      withId: sourceId,
+      geoJSON: .featureCollection(FeatureCollection(features: orderedFeatures))
+    )
+  }
+
+  private static func resolveSourceMutationPlan(
+    sourceId: String,
+    previousSourceLifecyclePhase: SourceLifecyclePhase,
+    previousSourceRevision: String,
+    next: ParsedFeatureCollection,
+    state: inout InstanceState
+  ) -> ResolvedSourceMutationPlan {
+    guard previousSourceRevision != next.sourceRevision else {
+      return ResolvedSourceMutationPlan(
+        sourceId: sourceId,
+        previousSourceLifecyclePhase: previousSourceLifecyclePhase,
+        previousSourceRevision: previousSourceRevision,
+        next: next,
+        mutationMode: .none,
+        mutationSummary: MutationSummary(
+          addCount: 0,
+          updateCount: 0,
+          removeCount: 0,
+          dataId: nil,
+          addedFeatureIds: []
+        ),
+        dataId: nil
+      )
+    }
+
+    if previousSourceLifecyclePhase != .incremental {
+      return ResolvedSourceMutationPlan(
+        sourceId: sourceId,
+        previousSourceLifecyclePhase: previousSourceLifecyclePhase,
+        previousSourceRevision: previousSourceRevision,
+        next: next,
+        mutationMode: .baselineReplace,
+        mutationSummary: MutationSummary(
+          addCount: next.idsInOrder.count,
+          updateCount: 0,
+          removeCount: 0,
+          dataId: nil,
+          addedFeatureIds: next.idsInOrder
+        ),
+        dataId: nil
+      )
+    }
+
+    let removeIds = next.removedFeatureIdsInOrder
+    let addFeatureIds = next.addedFeatureIdsInOrder
+    let updateFeatureIds = next.updatedFeatureIdsInOrder
+    let dataId: String? =
+      (!removeIds.isEmpty || !addFeatureIds.isEmpty || !updateFeatureIds.isEmpty)
+      ? nextSourceCommitDataId(sourceId: sourceId, state: &state)
+      : nil
+
+    return ResolvedSourceMutationPlan(
+      sourceId: sourceId,
+      previousSourceLifecyclePhase: previousSourceLifecyclePhase,
+      previousSourceRevision: previousSourceRevision,
+      next: next,
+      mutationMode: .incrementalPatch,
+      mutationSummary: MutationSummary(
+        addCount: addFeatureIds.count,
+        updateCount: updateFeatureIds.count,
+        removeCount: removeIds.count,
+        dataId: dataId,
+        addedFeatureIds: addFeatureIds
+      ),
+      dataId: dataId
+    )
+  }
+
+  private static func applySourceMutationBatch(
+    _ plans: [ResolvedSourceMutationPlan],
+    mapboxMap: MapboxMap
+  ) throws {
+    for plan in plans {
+      guard plan.mutationMode == .baselineReplace,
+            plan.previousSourceRevision != plan.next.sourceRevision
+      else {
+        continue
+      }
+      try replaceSourceData(sourceId: plan.sourceId, next: plan.next, mapboxMap: mapboxMap)
+    }
+
+    for plan in plans {
+      guard plan.mutationMode == .incrementalPatch,
+            plan.previousSourceRevision != plan.next.sourceRevision,
+            !plan.next.removedFeatureIdsInOrder.isEmpty
+      else {
+        continue
+      }
+      mapboxMap.removeGeoJSONSourceFeatures(
+        forSourceId: plan.sourceId,
+        featureIds: plan.next.removedFeatureIdsInOrder,
+        dataId: plan.dataId
+      )
+    }
+
+    for plan in plans {
+      guard plan.mutationMode == .incrementalPatch,
+            plan.previousSourceRevision != plan.next.sourceRevision,
+            !plan.next.addedFeatures.isEmpty
+      else {
+        continue
+      }
+      mapboxMap.addGeoJSONSourceFeatures(
+        forSourceId: plan.sourceId,
+        features: plan.next.addedFeatures,
+        dataId: plan.dataId
+      )
+    }
+
+    for plan in plans {
+      guard plan.mutationMode == .incrementalPatch,
+            plan.previousSourceRevision != plan.next.sourceRevision,
+            !plan.next.updatedFeatures.isEmpty
+      else {
+        continue
+      }
+      mapboxMap.updateGeoJSONSourceFeatures(
+        forSourceId: plan.sourceId,
+        features: plan.next.updatedFeatures,
+        dataId: plan.dataId
+      )
+    }
+  }
+
+  private static func sourceStateFromCollection(_ collection: ParsedFeatureCollection) -> SourceState {
+    SourceState(
+      lifecyclePhase: collection.sourceRevision.isEmpty ? .uninitialized : .incremental,
+      sourceRevision: collection.sourceRevision,
+      featureStateRevision: collection.featureStateRevision,
+      featureStateEntryRevisionById: collection.featureStateEntryRevisionById,
+      featureStateChangedIds: collection.featureStateChangedIds,
+      idsInOrder: collection.idsInOrder,
+      featureIds: collection.featureIds,
+      addedFeatureIdsInOrder: collection.addedFeatureIdsInOrder,
+      updatedFeatureIdsInOrder: collection.updatedFeatureIdsInOrder,
+      removedFeatureIds: collection.removedFeatureIds,
+      diffKeyById: collection.diffKeyById,
+      markerKeyByFeatureId: collection.markerKeyByFeatureId,
+      featureStateById: collection.featureStateById
+    )
+  }
+
+  private static func applyCollectionMetadataToSourceState(
+    _ collection: ParsedFeatureCollection,
+    previousSourceState: SourceState?
+  ) -> SourceState {
+    guard var nextSourceState = previousSourceState else {
+      return Self.sourceStateFromCollection(collection)
+    }
+
+    nextSourceState.lifecyclePhase = collection.sourceRevision.isEmpty ? .uninitialized : .incremental
+    nextSourceState.sourceRevision = collection.sourceRevision
+    nextSourceState.featureStateRevision = collection.featureStateRevision
+    nextSourceState.featureStateChangedIds = collection.featureStateChangedIds
+    nextSourceState.idsInOrder = collection.idsInOrder
+    nextSourceState.featureIds = collection.featureIds
+    nextSourceState.addedFeatureIdsInOrder = collection.addedFeatureIdsInOrder
+    nextSourceState.updatedFeatureIdsInOrder = collection.updatedFeatureIdsInOrder
+    nextSourceState.removedFeatureIds = collection.removedFeatureIds
+
+    for featureId in collection.removedFeatureIds {
+      nextSourceState.diffKeyById.removeValue(forKey: featureId)
+      nextSourceState.markerKeyByFeatureId.removeValue(forKey: featureId)
+      nextSourceState.featureStateById.removeValue(forKey: featureId)
+      nextSourceState.featureStateEntryRevisionById.removeValue(forKey: featureId)
+    }
+
+    for featureId in collection.addedFeatureIdsInOrder {
+      if let diffKey = collection.diffKeyById[featureId] {
+        nextSourceState.diffKeyById[featureId] = diffKey
+      }
+      if let markerKey = collection.markerKeyByFeatureId[featureId] {
+        nextSourceState.markerKeyByFeatureId[featureId] = markerKey
+      }
+    }
+
+    for featureId in collection.updatedFeatureIdsInOrder {
+      if let diffKey = collection.diffKeyById[featureId] {
+        nextSourceState.diffKeyById[featureId] = diffKey
+      }
+      if let markerKey = collection.markerKeyByFeatureId[featureId] {
+        nextSourceState.markerKeyByFeatureId[featureId] = markerKey
+      }
+    }
+
+    for featureId in collection.featureStateChangedIds {
+      if let featureState = collection.featureStateById[featureId], !featureState.isEmpty {
+        nextSourceState.featureStateById[featureId] = featureState
+      } else {
+        nextSourceState.featureStateById.removeValue(forKey: featureId)
+      }
+      if let entryRevision = collection.featureStateEntryRevisionById[featureId] {
+        nextSourceState.featureStateEntryRevisionById[featureId] = entryRevision
+      } else {
+        nextSourceState.featureStateEntryRevisionById.removeValue(forKey: featureId)
+      }
+    }
+
+    return nextSourceState
+  }
+
+  private static func applyParsedCollection(
+    sourceId: String,
+    next: ParsedFeatureCollection,
+    previousSourceState: SourceState?,
+    state: inout InstanceState,
+    mapboxMap: MapboxMap
+  ) throws -> (sourceState: SourceState, mutationSummary: MutationSummary) {
+    let nextSourceState: SourceState
+    if let previousSourceState,
+       previousSourceState.sourceRevision == next.sourceRevision,
+       previousSourceState.featureStateRevision == next.featureStateRevision {
+      var reusedSourceState = previousSourceState
+      reusedSourceState.featureStateChangedIds.removeAll(keepingCapacity: true)
+      reusedSourceState.addedFeatureIdsInOrder.removeAll(keepingCapacity: true)
+      reusedSourceState.updatedFeatureIdsInOrder.removeAll(keepingCapacity: true)
+      reusedSourceState.removedFeatureIds.removeAll(keepingCapacity: true)
+      let mutationSummary = try Self.applySourceMutation(
+        sourceId: sourceId,
+        previousSourceLifecyclePhase: previousSourceState.lifecyclePhase,
+        previousSourceRevision: previousSourceState.sourceRevision,
+        next: next,
+        state: &state,
+        mapboxMap: mapboxMap
+      )
+      return (reusedSourceState, mutationSummary)
+    }
+    if let previousSourceState,
+       (previousSourceState.sourceRevision != next.baseSourceRevision ||
+        previousSourceState.featureStateRevision != next.baseFeatureStateRevision) {
+      throw NSError(
+        domain: "SearchMapRenderController",
+        code: 5,
+        userInfo: [
+          NSLocalizedDescriptionKey:
+            "Parsed collection base mismatch for \(sourceId): expected source=\(previousSourceState.sourceRevision) featureState=\(previousSourceState.featureStateRevision) got source=\(next.baseSourceRevision) featureState=\(next.baseFeatureStateRevision)"
+        ]
+      )
+    }
+    nextSourceState = Self.applyCollectionMetadataToSourceState(
+      next,
+      previousSourceState: previousSourceState
+    )
+    let mutationSummary = try Self.applySourceMutation(
+      sourceId: sourceId,
+      previousSourceLifecyclePhase: previousSourceState?.lifecyclePhase ?? .uninitialized,
+      previousSourceRevision: previousSourceState?.sourceRevision ?? "",
+      next: next,
+      state: &state,
+      mapboxMap: mapboxMap
+    )
+    return (nextSourceState, mutationSummary)
+  }
+
+  private static func resolveParsedCollectionApplyPlan(
+    _ plan: ParsedCollectionApplyPlan
+  ) throws -> ResolvedParsedCollectionApplyPlan {
+    let nextSourceState: SourceState
+    if let previousSourceState = plan.previousSourceState,
+       previousSourceState.sourceRevision == plan.next.sourceRevision,
+       previousSourceState.featureStateRevision == plan.next.featureStateRevision
+    {
+      var reusedSourceState = previousSourceState
+      reusedSourceState.featureStateChangedIds.removeAll(keepingCapacity: true)
+      reusedSourceState.addedFeatureIdsInOrder.removeAll(keepingCapacity: true)
+      reusedSourceState.updatedFeatureIdsInOrder.removeAll(keepingCapacity: true)
+      reusedSourceState.removedFeatureIds.removeAll(keepingCapacity: true)
+      nextSourceState = reusedSourceState
+    } else {
+      if let previousSourceState = plan.previousSourceState,
+         previousSourceState.sourceRevision != plan.next.baseSourceRevision ||
+         previousSourceState.featureStateRevision != plan.next.baseFeatureStateRevision
+      {
+        throw NSError(
+          domain: "SearchMapRenderController",
+          code: 5,
+          userInfo: [
+            NSLocalizedDescriptionKey:
+              "Parsed collection base mismatch for \(plan.sourceId): expected source=\(previousSourceState.sourceRevision) featureState=\(previousSourceState.featureStateRevision) got source=\(plan.next.baseSourceRevision) featureState=\(plan.next.baseFeatureStateRevision)"
+          ]
+        )
+      }
+      nextSourceState = Self.applyCollectionMetadataToSourceState(
+        plan.next,
+        previousSourceState: plan.previousSourceState
+      )
+    }
+    return ResolvedParsedCollectionApplyPlan(
+      sourceId: plan.sourceId,
+      next: plan.next,
+      previousSourceLifecyclePhase: plan.previousSourceState?.lifecyclePhase ?? .uninitialized,
+      previousSourceRevision: plan.previousSourceState?.sourceRevision ?? "",
+      previousFeatureStateById: plan.previousFeatureStateById,
+      previousFeatureStateRevision: plan.previousFeatureStateRevision,
+      nextSourceState: nextSourceState
+    )
+  }
+
+  private func applyParsedCollectionBatch(
+    instanceId: String,
+    plans: [ParsedCollectionApplyPlan],
+    state: inout InstanceState,
+    mapboxMap: MapboxMap
+  ) throws -> [String: MutationSummary] {
+    if plans.isEmpty {
+      return [:]
+    }
+    let resolvedPlans = try plans.map(Self.resolveParsedCollectionApplyPlan)
+    var mutationSummaryBySourceId: [String: MutationSummary] = [:]
+    var resolvedMutationPlans: [ResolvedSourceMutationPlan] = []
+
+    for plan in resolvedPlans {
+      let resolvedMutationPlan = Self.resolveSourceMutationPlan(
+        sourceId: plan.sourceId,
+        previousSourceLifecyclePhase: plan.previousSourceLifecyclePhase,
+        previousSourceRevision: plan.previousSourceRevision,
+        next: plan.next,
+        state: &state
+      )
+      mutationSummaryBySourceId[plan.sourceId] = resolvedMutationPlan.mutationSummary
+      resolvedMutationPlans.append(resolvedMutationPlan)
+    }
+
+    try Self.applySourceMutationBatch(resolvedMutationPlans, mapboxMap: mapboxMap)
+
+    for plan in resolvedPlans {
+      let mutationSummary = mutationSummaryBySourceId[plan.sourceId] ?? MutationSummary(
+        addCount: 0,
+        updateCount: 0,
+        removeCount: 0,
+        dataId: nil,
+        addedFeatureIds: []
+      )
+      Self.applyFeatureStates(
+        sourceId: plan.sourceId,
+        previousFeatureStateRevision: plan.previousFeatureStateRevision,
+        nextFeatureStateRevision: plan.next.featureStateRevision,
+        changedFeatureStateIds: plan.nextSourceState.featureStateChangedIds,
+        featureStateById: plan.next.featureStateById,
+        previousFeatureStateById: plan.previousFeatureStateById,
+        mapboxMap: mapboxMap
+      )
+      self.registerPendingSourceCommit(
+        instanceId: instanceId,
+        sourceId: plan.sourceId,
+        mutationSummary: mutationSummary,
+        state: &state
+      )
+      Self.syncMountedSourceState(plan.nextSourceState, sourceId: plan.sourceId, state: &state)
+    }
+
+    return mutationSummaryBySourceId
+  }
+
+  private struct ParsedFeatureCollection {
+    var baseSourceRevision: String
+    var baseFeatureStateRevision: String
+    var sourceRevision: String
+    var featureStateRevision: String
+    var dirtyGroupIds: Set<String>
+    var orderChangedGroupIds: Set<String>
+    var removedGroupIds: Set<String>
+    var featureStateEntryRevisionById: [String: String]
+    var featureStateChangedIds: Set<String>
+    var featureIds: Set<String>
+    var addedFeatureIdsInOrder: [String]
+    var updatedFeatureIdsInOrder: [String]
+    var removedFeatureIds: Set<String>
+    var removedFeatureIdsInOrder: [String]
+    var idsInOrder: [String]
+    var groupedFeatureIdsByGroup: [String: [String]]
+    var groupOrder: [String]
+    var featureById: [String: Feature]
+    var diffKeyById: [String: String]
+    var featureStateById: [String: [String: Any]]
+    var markerKeyByFeatureId: [String: String]
+    var addedFeatures: [Feature]
+    var updatedFeatures: [Feature]
+  }
+
+  private struct ParsedFeatureCollectionDelta {
+    let sourceId: String
+    let mode: String
+    let nextFeatureIdsInOrder: [String]
+    let removeIds: Set<String>
+    let dirtyGroupIds: Set<String>
+    let orderChangedGroupIds: Set<String>
+    let removedGroupIds: Set<String>
+    let upsertCollection: ParsedFeatureCollection?
+  }
+
+  private static func emptyParsedFeatureCollection() -> ParsedFeatureCollection {
+    ParsedFeatureCollection(
+      baseSourceRevision: "",
+      baseFeatureStateRevision: "",
+      sourceRevision: "",
+      featureStateRevision: "",
+      dirtyGroupIds: [],
+      orderChangedGroupIds: [],
+      removedGroupIds: [],
+      featureStateEntryRevisionById: [:],
+      featureStateChangedIds: [],
+      featureIds: [],
+      addedFeatureIdsInOrder: [],
+      updatedFeatureIdsInOrder: [],
+      removedFeatureIds: [],
+      removedFeatureIdsInOrder: [],
+      idsInOrder: [],
+      groupedFeatureIdsByGroup: [:],
+      groupOrder: [],
+      featureById: [:],
+      diffKeyById: [:],
+      featureStateById: [:],
+      markerKeyByFeatureId: [:],
+      addedFeatures: [],
+      updatedFeatures: []
+    )
+  }
+
+  private static func emptyDerivedFamilyState() -> DerivedFamilyState {
+    let collection = emptyParsedFeatureCollection()
+    return DerivedFamilyState(
+      desiredCollection: collection,
+      collection: collection,
+      sourceState: sourceStateFromCollection(collection),
+      transientFeatureStateById: [:],
+      pinRuntime: PinFamilyRuntimeState(),
+      dotRuntime: DotFamilyRuntimeState(lastDesiredCollection: collection),
+      labelObservation: LabelFamilyObservationState()
+    )
+  }
+
+  private static func makeInitialDerivedFamilyStates(
+    pinSourceId: String,
+    pinInteractionSourceId: String,
+    dotSourceId: String,
+    dotInteractionSourceId: String,
+    labelSourceId: String,
+    labelInteractionSourceId: String,
+    labelCollisionSourceId: String
+  ) -> [String: DerivedFamilyState] {
+    [
+      pinSourceId: emptyDerivedFamilyState(),
+      pinInteractionSourceId: emptyDerivedFamilyState(),
+      dotSourceId: emptyDerivedFamilyState(),
+      dotInteractionSourceId: emptyDerivedFamilyState(),
+      labelSourceId: emptyDerivedFamilyState(),
+      labelInteractionSourceId: emptyDerivedFamilyState(),
+      labelCollisionSourceId: emptyDerivedFamilyState(),
+    ]
+  }
+
+  private static func derivedFamilyState(
+    sourceId: String,
+    state: InstanceState
+  ) -> DerivedFamilyState {
+    state.derivedFamilyStates[sourceId] ?? emptyDerivedFamilyState()
+  }
+
+  private static func mountedSourceState(
+    sourceId: String,
+    state: InstanceState
+  ) -> SourceState? {
+    state.derivedFamilyStates[sourceId]?.sourceState
+  }
+
+  private static func setDerivedFamilyState(
+    _ familyState: DerivedFamilyState,
+    sourceId: String,
+    state: inout InstanceState
+  ) {
+    state.derivedFamilyStates[sourceId] = familyState
+  }
+
+  private static func syncCollectionMetadataFromMountedSourceState(
+    _ collection: inout ParsedFeatureCollection,
+    sourceState: SourceState
+  ) {
+    collection.baseSourceRevision = sourceState.sourceRevision
+    collection.baseFeatureStateRevision = sourceState.featureStateRevision
+    collection.sourceRevision = sourceState.sourceRevision
+    collection.featureStateRevision = sourceState.featureStateRevision
+    collection.featureStateEntryRevisionById = sourceState.featureStateEntryRevisionById
+    collection.featureStateChangedIds = []
+    collection.featureStateById = sourceState.featureStateById
+  }
+
+  private static func syncMountedSourceState(
+    _ sourceState: SourceState,
+    sourceId: String,
+    familyState: inout DerivedFamilyState,
+    state: inout InstanceState
+  ) {
+    familyState.sourceState = sourceState
+    syncCollectionMetadataFromMountedSourceState(&familyState.desiredCollection, sourceState: sourceState)
+    syncCollectionMetadataFromMountedSourceState(&familyState.collection, sourceState: sourceState)
+    setDerivedFamilyState(familyState, sourceId: sourceId, state: &state)
+  }
+
+  private static func syncMountedSourceState(
+    _ sourceState: SourceState,
+    sourceId: String,
+    state: inout InstanceState
+  ) {
+    if var familyState = state.derivedFamilyStates[sourceId] {
+      familyState.sourceState = sourceState
+      syncCollectionMetadataFromMountedSourceState(&familyState.desiredCollection, sourceState: sourceState)
+      syncCollectionMetadataFromMountedSourceState(&familyState.collection, sourceState: sourceState)
+      state.derivedFamilyStates[sourceId] = familyState
+    }
+  }
+
+  private static func setTransientDerivedFeatureState(
+    sourceId: String,
+    featureId: String,
+    featureState: [String: Any]?,
+    state: inout InstanceState
+  ) {
+    var familyState = derivedFamilyState(sourceId: sourceId, state: state)
+    if let featureState {
+      familyState.transientFeatureStateById[featureId] = featureState
+    } else {
+      familyState.transientFeatureStateById.removeValue(forKey: featureId)
+    }
+    setDerivedFamilyState(familyState, sourceId: sourceId, state: &state)
+  }
+
+  private static func applyTransientFeatureState(
+    sourceState: inout SourceState,
+    familyState: inout DerivedFamilyState,
+    featureId: String,
+    transientState: [String: Any],
+    applyList: inout [(featureId: String, state: [String: Any])],
+    sourceStateChanged: inout Bool
+  ) {
+    let previousState = sourceState.featureStateById[featureId]
+    let mergedState = applyRetainedFeatureStatePatch(
+      sourceState: &sourceState,
+      featureId: featureId,
+      statePatch: transientState
+    )
+    if !featureStatesEqual(previousState, mergedState) {
+      applyList.append((featureId: featureId, state: mergedState))
+      sourceStateChanged = true
+    }
+    familyState.transientFeatureStateById[featureId] = transientState
+  }
+
+  private static func applyTransientFeatureState(
+    sourceState: inout SourceState,
+    familyState: inout DerivedFamilyState,
+    featureId: String,
+    transientState: [String: Any]
+  ) {
+    _ = applyRetainedFeatureStatePatch(
+      sourceState: &sourceState,
+      featureId: featureId,
+      statePatch: transientState
+    )
+    familyState.transientFeatureStateById[featureId] = transientState
+  }
+
+  private static func clearTransientFeatureState(
+    sourceState: inout SourceState,
+    familyState: inout DerivedFamilyState,
+    featureId: String
+  ) {
+    if let transientState = familyState.transientFeatureStateById[featureId] {
+      clearRetainedFeatureStateKeys(
+        sourceState: &sourceState,
+        featureId: featureId,
+        stateKeys: Array(transientState.keys)
+      )
+    }
+    familyState.transientFeatureStateById.removeValue(forKey: featureId)
+  }
+
+  private static func applyRetainedFeatureStatePatch(
+    sourceState: inout SourceState,
+    featureId: String,
+    statePatch: [String: Any]
+  ) -> [String: Any] {
+    let mergedState = mergedFeatureState(
+      sourceState.featureStateById[featureId] ?? [:],
+      with: statePatch
+    )
+    sourceState.featureStateById[featureId] = mergedState
+    sourceState.featureStateEntryRevisionById[featureId] = buildFeatureStateEntryRevision(
+      state: mergedState
+    )
+    return mergedState
+  }
+
+  private static func clearRetainedFeatureStateKeys(
+    sourceState: inout SourceState,
+    featureId: String,
+    stateKeys: [String]
+  ) {
+    guard var nextState = sourceState.featureStateById[featureId] else {
+      sourceState.featureStateEntryRevisionById.removeValue(forKey: featureId)
+      return
+    }
+    for key in stateKeys {
+      nextState.removeValue(forKey: key)
+    }
+    if nextState.isEmpty {
+      sourceState.featureStateById.removeValue(forKey: featureId)
+      sourceState.featureStateEntryRevisionById.removeValue(forKey: featureId)
+      return
+    }
+    sourceState.featureStateById[featureId] = nextState
+    sourceState.featureStateEntryRevisionById[featureId] = buildFeatureStateEntryRevision(
+      state: nextState
+    )
+  }
+
+  private static func refreshFeatureStateRevision(_ sourceState: inout SourceState) {
+    sourceState.featureStateRevision = buildFeatureStateRevision(
+      featureStateEntryRevisionById: sourceState.featureStateEntryRevisionById
+    )
+  }
+
+  private static func mutationFeatures(
+    idsInOrder: [String],
+    featureById: [String: Feature]
+  ) -> [Feature] {
+    idsInOrder.compactMap { featureId in featureById[featureId] }
+  }
+
+  private static func buildGroupedFeatureIdsByGroup(
+    idsInOrder: [String],
+    markerKeyByFeatureId: [String: String]
+  ) -> ([String: [String]], [String]) {
+    var groupedFeatureIdsByGroup: [String: [String]] = [:]
+    var groupOrder: [String] = []
+    for featureId in idsInOrder {
+      let groupId = markerKeyByFeatureId[featureId] ?? featureId
+      if groupedFeatureIdsByGroup[groupId] == nil {
+        groupedFeatureIdsByGroup[groupId] = []
+        groupOrder.append(groupId)
+      }
+      groupedFeatureIdsByGroup[groupId, default: []].append(featureId)
+    }
+    return (groupedFeatureIdsByGroup, groupOrder)
+  }
+
+  private static func requireUniqueOrderedFeatureIds(
+    _ sourceIdsInOrder: [String],
+    context: String
+  ) -> [String] {
+    var seenFeatureIds = Set<String>()
+    var idsInOrder: [String] = []
+    idsInOrder.reserveCapacity(sourceIdsInOrder.count)
+    for featureId in sourceIdsInOrder {
+      guard !featureId.isEmpty else {
+        preconditionFailure("Missing feature id in \(context)")
+      }
+      guard seenFeatureIds.insert(featureId).inserted else {
+        preconditionFailure("Duplicate feature id \(featureId) in \(context)")
+      }
+      idsInOrder.append(featureId)
+    }
+    return idsInOrder
+  }
+
+  private static func requireUniqueStringSet(
+    _ values: [String],
+    context: String
+  ) -> Set<String> {
+    var nextValues = Set<String>()
+    for value in values {
+      guard !value.isEmpty else {
+        preconditionFailure("Missing value in \(context)")
+      }
+      guard nextValues.insert(value).inserted else {
+        preconditionFailure("Duplicate value \(value) in \(context)")
+      }
+    }
+    return nextValues
+  }
+
+  private static func parseFeatureCollectionJSON(
+    _ json: String,
+    sourceId: String
+  ) throws -> ParsedFeatureCollection {
+    guard let data = json.data(using: .utf8) else {
+      throw NSError(
+        domain: "SearchMapRenderController",
+        code: 5,
+        userInfo: [NSLocalizedDescriptionKey: "Feature collection JSON was not UTF-8"]
+      )
+    }
+    return try Self.parseFeatureCollectionData(data, sourceId: sourceId)
+  }
+
+  private static func parseFeatureCollectionData(
+    _ data: Data,
+    sourceId: String
+  ) throws -> ParsedFeatureCollection {
+    let collection = try JSONDecoder().decode(FeatureCollection.self, from: data)
+    let rawObject = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+    let rawFeatures = rawObject?["features"] as? [[String: Any]] ?? []
+    var diffKeyById: [String: String] = [:]
+    var idsInOrder: [String] = []
+    var featureById: [String: Feature] = [:]
+    var featureStateById: [String: [String: Any]] = [:]
+    var markerKeyByFeatureId: [String: String] = [:]
+    var seenFeatureIds = Set<String>()
+    let encoder = JSONEncoder()
+    for (index, feature) in collection.features.enumerated() {
+      guard let id = feature.identifier.flatMap(Self.featureIdentifierString) else {
+        throw NSError(
+          domain: "SearchMapRenderController",
+          code: 5,
+          userInfo: [NSLocalizedDescriptionKey: "Feature missing id in parsed source \(sourceId)"]
+        )
+      }
+      guard seenFeatureIds.insert(id).inserted else {
+        throw NSError(
+          domain: "SearchMapRenderController",
+          code: 5,
+          userInfo: [NSLocalizedDescriptionKey: "Duplicate feature id \(id) in parsed source \(sourceId)"]
+        )
+      }
+      idsInOrder.append(id)
+      featureById[id] = feature
+      let encoded = try encoder.encode(feature)
+      guard let encodedString = String(data: encoded, encoding: .utf8) else {
+        throw NSError(
+          domain: "SearchMapRenderController",
+          code: 5,
+          userInfo: [NSLocalizedDescriptionKey: "Feature \(id) could not be encoded in parsed source \(sourceId)"]
+        )
+      }
+      let rawFeature = rawFeatures[safe: index]
+      diffKeyById[id] = rawFeature.flatMap { Self.makeFeatureDiffKey(rawFeature: $0) } ?? encodedString
+      let rawProperties = rawFeature?["properties"]
+      featureStateById[id] = Self.extractFeatureState(from: rawProperties)
+      let markerKey = try Self.extractMarkerKey(from: rawProperties, featureId: id, sourceId: sourceId)
+      markerKeyByFeatureId[id] = markerKey
+    }
+    let sourceRevision = buildParsedCollectionRevision(
+      idsInOrder: idsInOrder,
+      diffKeyById: diffKeyById
+    )
+    let featureStateEntryRevisionById = makeFeatureStateEntryRevisionById(
+      featureStateById: featureStateById
+    )
+    let featureStateRevision = buildFeatureStateRevision(
+      featureStateEntryRevisionById: featureStateEntryRevisionById
+    )
+    let featureIds = Set(idsInOrder)
+    let (groupedFeatureIdsByGroup, groupOrder) = buildGroupedFeatureIdsByGroup(
+      idsInOrder: idsInOrder,
+      markerKeyByFeatureId: markerKeyByFeatureId
+    )
+    return ParsedFeatureCollection(
+      baseSourceRevision: "",
+      baseFeatureStateRevision: "",
+      sourceRevision: sourceRevision,
+      featureStateRevision: featureStateRevision,
+      dirtyGroupIds: Set(groupOrder),
+      orderChangedGroupIds: Set(groupOrder),
+      removedGroupIds: [],
+      featureStateEntryRevisionById: featureStateEntryRevisionById,
+      featureStateChangedIds: Set(featureStateEntryRevisionById.keys),
+      featureIds: featureIds,
+      addedFeatureIdsInOrder: idsInOrder,
+      updatedFeatureIdsInOrder: [],
+      removedFeatureIds: [],
+      removedFeatureIdsInOrder: [],
+      idsInOrder: idsInOrder,
+      groupedFeatureIdsByGroup: groupedFeatureIdsByGroup,
+      groupOrder: groupOrder,
+      featureById: featureById,
+      diffKeyById: diffKeyById,
+      featureStateById: featureStateById,
+      markerKeyByFeatureId: markerKeyByFeatureId,
+      addedFeatures: Self.mutationFeatures(idsInOrder: idsInOrder, featureById: featureById),
+      updatedFeatures: []
+    )
+  }
+
+  private static func parseSourceDeltas(
+    _ rawDeltas: [[String: Any]]
+  ) throws -> [ParsedFeatureCollectionDelta] {
+    return try rawDeltas.map { rawDelta in
+      guard let sourceId = rawDelta["sourceId"] as? String else {
+        throw NSError(
+          domain: "SearchMapRenderController",
+          code: 5,
+          userInfo: [NSLocalizedDescriptionKey: "Source delta missing sourceId"]
+        )
+      }
+      let nextFeatureIdsInOrder = rawDelta["nextFeatureIdsInOrder"] as? [String] ?? []
+      let mode = (rawDelta["mode"] as? String) ?? "patch"
+      let validatedNextFeatureIdsInOrder = Self.requireUniqueOrderedFeatureIds(
+        nextFeatureIdsInOrder,
+        context: "source delta \(sourceId) nextFeatureIdsInOrder"
+      )
+      let removeIds = Self.requireUniqueStringSet(
+        rawDelta["removeIds"] as? [String] ?? [],
+        context: "source delta \(sourceId) removeIds"
+      )
+      let dirtyGroupIds = Self.requireUniqueStringSet(
+        rawDelta["dirtyGroupIds"] as? [String] ?? [],
+        context: "source delta \(sourceId) dirtyGroupIds"
+      )
+      let orderChangedGroupIds = Self.requireUniqueStringSet(
+        rawDelta["orderChangedGroupIds"] as? [String] ?? [],
+        context: "source delta \(sourceId) orderChangedGroupIds"
+      )
+      let removedGroupIds = Self.requireUniqueStringSet(
+        rawDelta["removedGroupIds"] as? [String] ?? [],
+        context: "source delta \(sourceId) removedGroupIds"
+      )
+      let upsertCollection: ParsedFeatureCollection?
+      if let rawUpsertFeatures = rawDelta["upsertFeatures"] as? [[String: Any]] {
+        upsertCollection = try Self.parseTransportFeatureRecords(rawUpsertFeatures)
+      } else {
+        upsertCollection = nil
+      }
+      return ParsedFeatureCollectionDelta(
+        sourceId: sourceId,
+        mode: mode,
+        nextFeatureIdsInOrder: validatedNextFeatureIdsInOrder,
+        removeIds: removeIds,
+        dirtyGroupIds: dirtyGroupIds,
+        orderChangedGroupIds: orderChangedGroupIds,
+        removedGroupIds: removedGroupIds,
+        upsertCollection: upsertCollection
+      )
+    }
+  }
+
+  private static func parseTransportFeatureRecords(
+    _ rawRecords: [[String: Any]]
+  ) throws -> ParsedFeatureCollection {
+    var idsInOrder: [String] = []
+    var featureById: [String: Feature] = [:]
+    var diffKeyById: [String: String] = [:]
+    var featureStateById: [String: [String: Any]] = [:]
+    var markerKeyByFeatureId: [String: String] = [:]
+    var seenFeatureIds = Set<String>()
+
+    for rawRecord in rawRecords {
+      guard let id = rawRecord["id"] as? String, !id.isEmpty else {
+        throw NSError(
+          domain: "SearchMapRenderController",
+          code: 5,
+          userInfo: [NSLocalizedDescriptionKey: "Transport feature missing id"]
+        )
+      }
+      guard seenFeatureIds.insert(id).inserted else {
+        throw NSError(
+          domain: "SearchMapRenderController",
+          code: 5,
+          userInfo: [NSLocalizedDescriptionKey: "Duplicate feature id \(id) in transport features"]
+        )
+      }
+      guard let lng = numberValue(from: rawRecord["lng"]),
+            let lat = numberValue(from: rawRecord["lat"])
+      else {
+        throw NSError(
+          domain: "SearchMapRenderController",
+          code: 5,
+          userInfo: [NSLocalizedDescriptionKey: "Feature \(id) missing point transport payload"]
+        )
+      }
+      var feature = Feature(geometry: Point(CLLocationCoordinate2D(latitude: lat, longitude: lng)))
+      feature.identifier = .string(id)
+      feature.properties = transportJSONObject(from: rawRecord["properties"])
+      idsInOrder.append(id)
+      featureById[id] = feature
+      diffKeyById[id] = (rawRecord["diffKey"] as? String)?.isEmpty == false
+        ? (rawRecord["diffKey"] as? String ?? id)
+        : id
+      let markerKey = (rawRecord["markerKey"] as? String)?.isEmpty == false
+        ? (rawRecord["markerKey"] as? String ?? id)
+        : id
+      markerKeyByFeatureId[id] = markerKey
+      if let featureState = rawRecord["featureState"] as? [String: Any], !featureState.isEmpty {
+        featureStateById[id] = featureState
+      }
+    }
+
+    let sourceRevision = buildParsedCollectionRevision(
+      idsInOrder: idsInOrder,
+      diffKeyById: diffKeyById
+    )
+    let featureStateEntryRevisionById = makeFeatureStateEntryRevisionById(
+      featureStateById: featureStateById
+    )
+    let featureStateRevision = buildFeatureStateRevision(
+      featureStateEntryRevisionById: featureStateEntryRevisionById
+    )
+    let featureIds = Set(idsInOrder)
+    let (groupedFeatureIdsByGroup, groupOrder) = buildGroupedFeatureIdsByGroup(
+      idsInOrder: idsInOrder,
+      markerKeyByFeatureId: markerKeyByFeatureId
+    )
+    return ParsedFeatureCollection(
+      baseSourceRevision: "",
+      baseFeatureStateRevision: "",
+      sourceRevision: sourceRevision,
+      featureStateRevision: featureStateRevision,
+      dirtyGroupIds: Set(markerKeyByFeatureId.values),
+      orderChangedGroupIds: Set(markerKeyByFeatureId.values),
+      removedGroupIds: [],
+      featureStateEntryRevisionById: featureStateEntryRevisionById,
+      featureStateChangedIds: Set(featureStateEntryRevisionById.keys),
+      featureIds: featureIds,
+      addedFeatureIdsInOrder: idsInOrder,
+      updatedFeatureIdsInOrder: [],
+      removedFeatureIds: [],
+      removedFeatureIdsInOrder: [],
+      idsInOrder: idsInOrder,
+      groupedFeatureIdsByGroup: groupedFeatureIdsByGroup,
+      groupOrder: groupOrder,
+      featureById: featureById,
+      diffKeyById: diffKeyById,
+      featureStateById: featureStateById,
+      markerKeyByFeatureId: markerKeyByFeatureId,
+      addedFeatures: Self.mutationFeatures(idsInOrder: idsInOrder, featureById: featureById),
+      updatedFeatures: []
+    )
+  }
+
+  private static func transportJSONObject(from rawProperties: Any?) -> JSONObject? {
+    guard let rawProperties = rawProperties as? [String: Any], !rawProperties.isEmpty else {
+      return nil
+    }
+    var properties: JSONObject = [:]
+    for (key, value) in rawProperties {
+      properties[key] = JSONValue(rawValue: value)
+    }
+    return properties
+  }
+
+  private static func numberValue(from value: Any?) -> Double? {
+    if let number = value as? NSNumber {
+      return number.doubleValue
+    }
+    return value as? Double
+  }
+
+  private static func applyParsedCollectionDelta(
+    _ delta: ParsedFeatureCollectionDelta,
+    to base: ParsedFeatureCollection
+  ) throws -> ParsedFeatureCollection {
+    let effectiveBase = base
+    var featureById = effectiveBase.featureById
+    var diffKeyById = effectiveBase.diffKeyById
+    var featureStateById = effectiveBase.featureStateById
+    var featureStateEntryRevisionById = effectiveBase.featureStateEntryRevisionById
+    var markerKeyByFeatureId = effectiveBase.markerKeyByFeatureId
+
+    for removeId in delta.removeIds {
+      featureById.removeValue(forKey: removeId)
+      diffKeyById.removeValue(forKey: removeId)
+      featureStateById.removeValue(forKey: removeId)
+      featureStateEntryRevisionById.removeValue(forKey: removeId)
+      markerKeyByFeatureId.removeValue(forKey: removeId)
+    }
+
+    if let upsertCollection = delta.upsertCollection {
+      for id in upsertCollection.idsInOrder {
+        guard let feature = upsertCollection.featureById[id] else {
+          throw NSError(
+            domain: "SearchMapRenderController",
+            code: 5,
+            userInfo: [NSLocalizedDescriptionKey: "Source delta upsert missing feature \(id) for \(delta.sourceId)"]
+          )
+        }
+        featureById[id] = feature
+      }
+      diffKeyById.merge(upsertCollection.diffKeyById) { _, next in next }
+      featureStateById.merge(upsertCollection.featureStateById) { _, next in next }
+      featureStateEntryRevisionById.merge(upsertCollection.featureStateEntryRevisionById) { _, next in next }
+      markerKeyByFeatureId.merge(upsertCollection.markerKeyByFeatureId) { _, next in next }
+    }
+
+    var nextIdsInOrder: [String] = []
+    var nextFeatureById: [String: Feature] = [:]
+    var nextDiffKeyById: [String: String] = [:]
+    var nextFeatureStateById: [String: [String: Any]] = [:]
+    var nextFeatureStateEntryRevisionById: [String: String] = [:]
+    var nextMarkerKeyByFeatureId: [String: String] = [:]
+    var seenFeatureIds = Set<String>()
+
+    for featureId in Self.requireUniqueOrderedFeatureIds(
+      delta.nextFeatureIdsInOrder,
+      context: "source delta \(delta.sourceId)"
+    ) {
+      if !seenFeatureIds.insert(featureId).inserted {
+        throw NSError(
+          domain: "SearchMapRenderController",
+          code: 5,
+          userInfo: [NSLocalizedDescriptionKey: "Duplicate feature id \(featureId) in source delta \(delta.sourceId)"]
+        )
+      }
+      guard
+        let feature = featureById[featureId],
+        let diffKey = diffKeyById[featureId],
+        let markerKey = markerKeyByFeatureId[featureId]
+      else {
+        throw NSError(
+          domain: "SearchMapRenderController",
+          code: 5,
+          userInfo: [NSLocalizedDescriptionKey: "Source delta missing feature \(featureId) for \(delta.sourceId)"]
+        )
+      }
+      nextIdsInOrder.append(featureId)
+      nextFeatureById[featureId] = feature
+      nextDiffKeyById[featureId] = diffKey
+      if let featureState = featureStateById[featureId] {
+        nextFeatureStateById[featureId] = featureState
+        nextFeatureStateEntryRevisionById[featureId] = featureStateEntryRevisionById[featureId] ??
+          Self.buildFeatureStateEntryRevision(state: featureState)
+      }
+      nextMarkerKeyByFeatureId[featureId] = markerKey
+    }
+
+    let sourceRevision: String
+    if effectiveBase.idsInOrder == nextIdsInOrder, effectiveBase.diffKeyById == nextDiffKeyById {
+      sourceRevision = effectiveBase.sourceRevision
+    } else {
+      sourceRevision = buildParsedCollectionRevision(
+        idsInOrder: nextIdsInOrder,
+        diffKeyById: nextDiffKeyById
+      )
+    }
+    let featureStateRevision: String
+    if effectiveBase.featureStateEntryRevisionById == nextFeatureStateEntryRevisionById {
+      featureStateRevision = effectiveBase.featureStateRevision
+    } else {
+      featureStateRevision = buildFeatureStateRevision(
+        featureStateEntryRevisionById: nextFeatureStateEntryRevisionById
+      )
+    }
+    let featureIds = Set(nextIdsInOrder)
+    let featureStateChangedIds =
+      effectiveBase.featureStateEntryRevisionById == nextFeatureStateEntryRevisionById
+        ? Set<String>()
+        : Set(
+            nextFeatureStateEntryRevisionById.compactMap { featureId, revision in
+              effectiveBase.featureStateEntryRevisionById[featureId] == revision ? nil : featureId
+            }
+          )
+    let addedFeatureIdsInOrder = nextIdsInOrder.filter { !effectiveBase.featureIds.contains($0) }
+    let updatedFeatureIdsInOrder = nextIdsInOrder.filter { featureId in
+      guard effectiveBase.featureIds.contains(featureId) else {
+        return false
+      }
+      return effectiveBase.diffKeyById[featureId] != nextDiffKeyById[featureId]
+    }
+    let removedFeatureIds = effectiveBase.featureIds.subtracting(featureIds)
+    let removedFeatureIdsInOrder = effectiveBase.idsInOrder.filter { removedFeatureIds.contains($0) }
+    let derivedRemovedGroupIds = Set(
+      removedFeatureIds.compactMap { featureId in
+        effectiveBase.markerKeyByFeatureId[featureId]
+      }
+    )
+    let dirtyGroupIds =
+      (
+        !delta.dirtyGroupIds.isEmpty ? delta.dirtyGroupIds : Set(nextMarkerKeyByFeatureId.values)
+      ).union(derivedRemovedGroupIds)
+    let orderChangedGroupIds =
+      (
+        !delta.orderChangedGroupIds.isEmpty ? delta.orderChangedGroupIds : dirtyGroupIds
+      ).union(derivedRemovedGroupIds)
+    let removedGroupIds = delta.removedGroupIds.union(derivedRemovedGroupIds)
+    let (groupedFeatureIdsByGroup, groupOrder) = buildGroupedFeatureIdsByGroup(
+      idsInOrder: nextIdsInOrder,
+      markerKeyByFeatureId: nextMarkerKeyByFeatureId
+    )
+    return ParsedFeatureCollection(
+      baseSourceRevision: effectiveBase.sourceRevision,
+      baseFeatureStateRevision: effectiveBase.featureStateRevision,
+      sourceRevision: sourceRevision,
+      featureStateRevision: featureStateRevision,
+      dirtyGroupIds: dirtyGroupIds,
+      orderChangedGroupIds: orderChangedGroupIds,
+      removedGroupIds: removedGroupIds,
+      featureStateEntryRevisionById: nextFeatureStateEntryRevisionById,
+      featureStateChangedIds: featureStateChangedIds,
+      featureIds: featureIds,
+      addedFeatureIdsInOrder: addedFeatureIdsInOrder,
+      updatedFeatureIdsInOrder: updatedFeatureIdsInOrder,
+      removedFeatureIds: removedFeatureIds,
+      removedFeatureIdsInOrder: removedFeatureIdsInOrder,
+      idsInOrder: nextIdsInOrder,
+      groupedFeatureIdsByGroup: groupedFeatureIdsByGroup,
+      groupOrder: groupOrder,
+      featureById: nextFeatureById,
+      diffKeyById: nextDiffKeyById,
+      featureStateById: nextFeatureStateById,
+      markerKeyByFeatureId: nextMarkerKeyByFeatureId,
+      addedFeatures: Self.mutationFeatures(
+        idsInOrder: addedFeatureIdsInOrder,
+        featureById: nextFeatureById
+      ),
+      updatedFeatures: Self.mutationFeatures(
+        idsInOrder: updatedFeatureIdsInOrder,
+        featureById: nextFeatureById
+      )
+    )
+  }
+
+  private static func buildParsedCollectionRevision(
+    idsInOrder: [String],
+    diffKeyById: [String: String]
+  ) -> String {
+    var hash = fnv1a64OffsetBasis
+    Self.fnv1a64Append(&hash, string: String(idsInOrder.count))
+    for featureId in idsInOrder {
+      Self.fnv1a64Append(&hash, string: "|")
+      Self.fnv1a64Append(&hash, string: featureId)
+      Self.fnv1a64Append(&hash, string: "=")
+      Self.fnv1a64Append(&hash, string: diffKeyById[featureId] ?? "")
+    }
+    return "\(idsInOrder.count):\(String(hash, radix: 16))"
+  }
+
+  private static let fnv1a64OffsetBasis: UInt64 = 0xcbf29ce484222325
+  private static let fnv1a64Prime: UInt64 = 0x100000001b3
+
+  private static func fnv1a64Append(_ hash: inout UInt64, string: String) {
+    for byte in string.utf8 {
+      hash ^= UInt64(byte)
+      hash = hash &* fnv1a64Prime
+    }
+  }
+
+  private static func buildFeatureStateRevision(
+    featureStateById: [String: [String: Any]]
+  ) -> String {
+    buildFeatureStateRevision(
+      featureStateEntryRevisionById: makeFeatureStateEntryRevisionById(featureStateById: featureStateById)
+    )
+  }
+
+  private static func makeFeatureStateEntryRevisionById(
+    featureStateById: [String: [String: Any]]
+  ) -> [String: String] {
+    var revisionById: [String: String] = [:]
+    revisionById.reserveCapacity(featureStateById.count)
+    for (featureId, state) in featureStateById {
+      revisionById[featureId] = buildFeatureStateEntryRevision(state: state)
+    }
+    return revisionById
+  }
+
+  private static func buildFeatureStateRevision(
+    featureStateEntryRevisionById: [String: String]
+  ) -> String {
+    let orderedFeatureIds = featureStateEntryRevisionById.keys.sorted()
+    var hash = fnv1a64OffsetBasis
+    Self.fnv1a64Append(&hash, string: String(orderedFeatureIds.count))
+    for featureId in orderedFeatureIds {
+      Self.fnv1a64Append(&hash, string: "|")
+      Self.fnv1a64Append(&hash, string: featureId)
+      Self.fnv1a64Append(&hash, string: "=")
+      Self.fnv1a64Append(&hash, string: featureStateEntryRevisionById[featureId] ?? "")
+    }
+    return Self.finishHashedRevision(hash: hash, count: orderedFeatureIds.count)
+  }
+
+  private static func finishHashedRevision(hash: UInt64, count: Int) -> String {
+    "\(count):\(String(hash, radix: 16))"
+  }
+
+  private static func buildFeatureStateEntryRevision(
+    state: [String: Any]
+  ) -> String {
+    guard
+      let data = try? JSONSerialization.data(
+        withJSONObject: sanitizeFeatureDiffJSONObject(state, isFeatureRoot: false),
+        options: [.sortedKeys]
+      ),
+      let stateString = String(data: data, encoding: .utf8)
+    else {
+      return ""
+    }
+    return stateString
+  }
+
+  private static func makeFeatureDiffKey(encodedFeatureData: Data) -> String? {
+    guard let rawFeature = try? JSONSerialization.jsonObject(with: encodedFeatureData) as? [String: Any] else {
+      return nil
+    }
+    return makeFeatureDiffKey(rawFeature: rawFeature)
+  }
+
+  private static func makeFeatureDiffKey(feature: Feature) -> String? {
+    var rawFeature: [String: Any] = [
+      "type": "Feature",
+    ]
+    if let properties = feature.properties?.turfRawValue as? [String: Any] {
+      rawFeature["properties"] = properties
+    }
+    if let geometry = feature.geometry {
+      switch geometry {
+      case .point(let point):
+        rawFeature["geometry"] = [
+          "type": "Point",
+          "coordinates": [
+            point.coordinates.longitude,
+            point.coordinates.latitude,
+          ],
+        ]
+      default:
+        return nil
+      }
+    }
+    return makeFeatureDiffKey(rawFeature: rawFeature)
+  }
+
+  private static func makeFeatureDiffKey(rawFeature: [String: Any]) -> String? {
+    let normalizedFeature = sanitizeFeatureDiffJSONObject(rawFeature, isFeatureRoot: true)
+    guard JSONSerialization.isValidJSONObject(normalizedFeature),
+          let data = try? JSONSerialization.data(withJSONObject: normalizedFeature, options: [.sortedKeys])
+    else {
+      return nil
+    }
+    return String(data: data, encoding: .utf8)
+  }
+
+  private static func sanitizeFeatureDiffJSONObject(
+    _ object: [String: Any],
+    isFeatureRoot: Bool = false
+  ) -> [String: Any] {
+    var sanitized: [String: Any] = [:]
+    for (key, value) in object {
+      if isFeatureRoot && key == "id" {
+        continue
+      }
+      if key == "properties", let properties = value as? [String: Any] {
+        sanitized[key] = sanitizeFeatureDiffProperties(properties)
+        continue
+      }
+      sanitized[key] = sanitizeFeatureDiffValue(value)
+    }
+    return sanitized
+  }
+
+  private static func sanitizeFeatureDiffProperties(_ properties: [String: Any]) -> [String: Any] {
+    var sanitized: [String: Any] = [:]
+    for (key, value) in properties {
+      if transientVisualPropertyKeys.contains(key) {
+        continue
+      }
+      sanitized[key] = sanitizeFeatureDiffValue(value)
+    }
+    return sanitized
+  }
+
+  private static func sanitizeFeatureDiffValue(_ value: Any) -> Any {
+    switch value {
+    case let object as [String: Any]:
+      return sanitizeFeatureDiffJSONObject(object)
+    case let array as [Any]:
+      return array.map { sanitizeFeatureDiffValue($0) }
+    default:
+      return value
+    }
+  }
+
+  private static func featureBySettingNumericProperties(
+    _ feature: Feature,
+    numericProperties: [String: Double]
+  ) -> Feature {
+    var nextFeature = feature
+    var properties = nextFeature.properties ?? JSONObject()
+    for (key, value) in numericProperties {
+      properties[key] = JSONValue(rawValue: value)
+    }
+    nextFeature.properties = properties
+    return nextFeature
+  }
+
+  private static func extractFeatureState(from rawProperties: Any?) -> [String: Any] {
+    guard let properties = rawProperties as? [String: Any] else {
+      return [:]
+    }
+    var state: [String: Any] = [:]
+    for key in transientVisualPropertyKeys {
+      if let value = properties[key] as? NSNumber {
+        state[key] = value.doubleValue
+      }
+    }
+    return state
+  }
+
+  private static func applyFeatureStates(
+    sourceId: String,
+    previousFeatureStateRevision: String,
+    nextFeatureStateRevision: String,
+    changedFeatureStateIds: Set<String>,
+    featureStateById: [String: [String: Any]],
+    previousFeatureStateById: [String: [String: Any]],
+    mapboxMap: MapboxMap
+  ) {
+    guard previousFeatureStateRevision != nextFeatureStateRevision else {
+      return
+    }
+    guard !changedFeatureStateIds.isEmpty else {
+      return
+    }
+    for featureId in changedFeatureStateIds {
+      guard let state = featureStateById[featureId], !state.isEmpty else {
+        continue
+      }
+      if Self.featureStatesEqual(previousFeatureStateById[featureId], state) {
+        continue
+      }
+      mapboxMap.setFeatureState(sourceId: sourceId, featureId: featureId, state: state) { _ in }
+    }
+  }
+
+  private static func mergedFeatureState(
+    _ existing: [String: Any],
+    with updates: [String: Any]
+  ) -> [String: Any] {
+    var merged = existing
+    for (key, value) in updates {
+      merged[key] = value
+    }
+    return merged
+  }
+
+  private static func featureStatesEqual(_ left: [String: Any]?, _ right: [String: Any]) -> Bool {
+    guard let left else {
+      return false
+    }
+    guard left.count == right.count else {
+      return false
+    }
+    for (key, value) in right {
+      let lhsNumber = left[key] as? NSNumber
+      let rhsNumber = value as? NSNumber
+      if let lhsNumber, let rhsNumber {
+        if lhsNumber.doubleValue != rhsNumber.doubleValue {
+          return false
+        }
+        continue
+      }
+      let lhsString = left[key] as? String
+      let rhsString = value as? String
+      if let lhsString, let rhsString {
+        if lhsString != rhsString {
+          return false
+        }
+        continue
+      }
+      return false
+    }
+    return true
+  }
+
+  private static func featureIdentifierString(_ identifier: FeatureIdentifier) -> String {
+    switch identifier {
+    case .string(let value):
+      return value
+    case .number(let value):
+      return String(value)
+    @unknown default:
+      return String(describing: identifier)
+    }
+  }
+
+  private static func extractMarkerKey(
+    from rawProperties: Any?,
+    featureId: String,
+    sourceId: String
+  ) throws -> String {
+    guard let properties = rawProperties as? [String: Any] else {
+      throw NSError(
+        domain: "SearchMapRenderController",
+        code: 8,
+        userInfo: [
+          NSLocalizedDescriptionKey:
+            "Feature \(featureId) missing markerKey properties payload sourceId=\(sourceId)"
+        ]
+      )
+    }
+    guard let markerKey = properties["markerKey"] as? String, !markerKey.isEmpty else {
+      let labelCandidate = properties["labelCandidate"] as? String ?? ""
+      let restaurantId = properties["restaurantId"] as? String ?? ""
+      throw NSError(
+        domain: "SearchMapRenderController",
+        code: 9,
+        userInfo: [
+          NSLocalizedDescriptionKey:
+            "Feature \(featureId) missing required markerKey sourceId=\(sourceId) labelCandidate=\(labelCandidate) restaurantId=\(restaurantId)"
+        ]
+      )
+    }
+    let labelCandidate = properties["labelCandidate"] as? String ?? ""
+    let restaurantId = properties["restaurantId"] as? String ?? ""
+    if properties["labelCandidate"] as? String != nil {
+      let expectedPrefix = "\(markerKey)::label::"
+      guard featureId.hasPrefix(expectedPrefix) else {
+        throw NSError(
+          domain: "SearchMapRenderController",
+          code: 10,
+          userInfo: [
+            NSLocalizedDescriptionKey:
+              "Feature \(featureId) markerKey mismatch sourceId=\(sourceId) labelCandidate=\(labelCandidate) restaurantId=\(restaurantId) expected label feature.id prefix \(expectedPrefix) gotFeatureId=\(featureId) markerKey=\(markerKey)"
+          ]
+        )
+      }
+      return markerKey
+    }
+    guard markerKey == featureId else {
+      throw NSError(
+        domain: "SearchMapRenderController",
+        code: 10,
+        userInfo: [
+          NSLocalizedDescriptionKey:
+            "Feature \(featureId) markerKey mismatch sourceId=\(sourceId) restaurantId=\(restaurantId) expected feature.id contract, got \(markerKey)"
+        ]
+      )
+    }
+    return markerKey
+  }
+  private static func findMapboxMapView(in view: UIView) -> MapView? {
+    if let mapView = view as? MapView {
+      return mapView
+    }
+    for subview in view.subviews {
+      if let found = findMapboxMapView(in: subview) {
+        return found
+      }
+    }
+    return nil
+  }
+
+  private static func isGestureDelegateHostView(_ view: UIView) -> Bool {
+    view.responds(to: addGestureDelegateSelector) && view.responds(to: removeGestureDelegateSelector)
+  }
+
+  private static func addGestureDelegate(_ delegate: GestureManagerDelegate, to view: UIView) -> Bool {
+    guard isGestureDelegateHostView(view) else {
+      return false
+    }
+    _ = view.perform(addGestureDelegateSelector, with: delegate)
+    return true
+  }
+
+  private static func removeGestureDelegate(_ delegate: GestureManagerDelegate, from view: UIView) {
+    guard isGestureDelegateHostView(view) else {
+      return
+    }
+    _ = view.perform(removeGestureDelegateSelector, with: delegate)
+  }
+
+  private static func findGestureDelegateHostView(in view: UIView) -> UIView? {
+    if isGestureDelegateHostView(view) {
+      return view
+    }
+    for subview in view.subviews {
+      if let found = findGestureDelegateHostView(in: subview) {
+        return found
+      }
+    }
+    return nil
+  }
+
+  private func lookupMapHandle(
+    for mapTag: NSNumber,
+    emitDiagnostic: Bool = true
+  ) -> ResolvedMapHandle? {
+    if
+      let viewRegistry = viewRegistry_DEPRECATED,
+      let resolvedView = Self.resolveReactView(from: viewRegistry, mapTag: mapTag),
+      let mapView = Self.findMapboxMapView(in: resolvedView)
+    {
+      let gestureDelegateHostView = Self.findGestureDelegateHostView(in: resolvedView)
+      if emitDiagnostic {
+        emit([
+          "type": "error",
+          "instanceId": "__native_diag__",
+          "message": "lookup_used_viewRegistry tag=\(mapTag.stringValue)",
+        ])
+      }
+      return ResolvedMapHandle(rootView: resolvedView, gestureDelegateHostView: gestureDelegateHostView, mapView: mapView)
+    }
+
+    if
+      let bridge,
+      let uiManager = bridge.value(forKey: "uiManager") as? NSObject,
+      let resolvedView = Self.resolveReactView(from: uiManager, mapTag: mapTag),
+      let mapView = Self.findMapboxMapView(in: resolvedView)
+    {
+      let gestureDelegateHostView = Self.findGestureDelegateHostView(in: resolvedView)
+      if emitDiagnostic {
+        emit([
+          "type": "error",
+          "instanceId": "__native_diag__",
+          "message": "lookup_used_uiManager tag=\(mapTag.stringValue)",
+        ])
+      }
+      return ResolvedMapHandle(rootView: resolvedView, gestureDelegateHostView: gestureDelegateHostView, mapView: mapView)
+    }
+
+    if emitDiagnostic {
+      emit([
+        "type": "error",
+        "instanceId": "__native_diag__",
+        "message": "lookup_no_owner tag=\(mapTag.stringValue) hasViewRegistry=\(viewRegistry_DEPRECATED != nil) hasBridge=\(bridge != nil)",
+      ])
+    }
+    return nil
+  }
+
+  private static func resolveReactView(
+    from owner: NSObject,
+    mapTag: NSNumber
+  ) -> UIView? {
+    let selector = NSSelectorFromString("viewForReactTag:")
+    guard owner.responds(to: selector) else {
+      return nil
+    }
+    guard
+      let unmanagedView = owner.perform(selector, with: mapTag),
+      var resolvedView = unmanagedView.takeUnretainedValue() as? UIView
+    else {
+      return nil
+    }
+    if resolvedView.responds(to: Selector(("contentView"))),
+       let contentView = resolvedView.value(forKey: "contentView") as? UIView {
+      resolvedView = contentView
+    }
+    return resolvedView
+  }
+
+  private func emit(_ body: [String: Any]) {
+    guard hasListeners else {
+      return
+    }
+    sendEvent(withName: eventName, body: body)
+  }
+
+  private func emitVisualDiag(instanceId: String, message: String) {
+    guard enableVisualDiagnostics else {
+      return
+    }
+    if lastVisualDiagByInstance[instanceId] == message {
+      return
+    }
+    lastVisualDiagByInstance[instanceId] = message
+    emit([
+      "type": "error",
+      "instanceId": instanceId,
+      "message": message,
+    ])
+  }
+
+  private func maybeProbeHandleIdentity(
+    mapTag: NSNumber,
+    handle: ResolvedMapHandle
+  ) -> String {
+    let mapTagKey = mapTag.stringValue
+    let cachedSummary = Self.handleIdentitySummary(handle)
+    var parts = ["cached{\(cachedSummary)}"]
+    if let liveHandle = lookupMapHandle(for: mapTag, emitDiagnostic: false) {
+      installLifecycleProbes(for: mapTag, handle: liveHandle)
+      let liveSummary = Self.handleIdentitySummary(liveHandle)
+      parts.append("live{\(liveSummary)}")
+      parts.append(
+        "sameRoot=\(Self.intFlag(handle.rootView === liveHandle.rootView)) sameMap=\(Self.intFlag(handle.mapView === liveHandle.mapView))"
+      )
+      let signature = parts.joined(separator: " ")
+      if signature != lastHandleIdentitySignatureByMapTag[mapTagKey] {
+        lastHandleIdentitySignatureByMapTag[mapTagKey] = signature
+        emitMapTagDiag(mapTag: mapTag, message: "map_handle_identity \(signature)")
+      }
+    } else {
+      let signature = "\(cachedSummary) live{nil}"
+      if signature != lastHandleIdentitySignatureByMapTag[mapTagKey] {
+        lastHandleIdentitySignatureByMapTag[mapTagKey] = signature
+        emitMapTagDiag(mapTag: mapTag, message: "map_handle_identity cached{\(cachedSummary)} live{nil}")
+      }
+      parts.append("live{nil}")
+    }
+    return parts.joined(separator: " ")
+  }
+
+  private func managedSourcePresenceSummary(
+    for state: InstanceState,
+    handle: ResolvedMapHandle
+  ) -> String {
+    let sourceIds = managedSourceIds(for: state)
+    let presentIds = sourceIds.filter { handle.mapView.mapboxMap.sourceExists(withId: $0) }
+    let missingIds = sourceIds.filter { !presentIds.contains($0) }
+    return
+      "sourcesPresent=\(presentIds.count)/\(sourceIds.count) missing=\(missingIds.isEmpty ? "none" : missingIds.joined(separator: ","))"
+  }
+
+  private static func shortTypeName(_ object: AnyObject) -> String {
+    let fullName = NSStringFromClass(type(of: object))
+    return fullName.components(separatedBy: ".").last ?? fullName
+  }
+
+  private static func intFlag(_ value: Bool) -> Int {
+    value ? 1 : 0
+  }
+
+  private static func opacitySummary(for layer: CALayer?) -> String {
+    guard let layer else {
+      return "nil"
+    }
+    return String(Self.round3(Double(layer.opacity)))
+  }
+
+  private static func rectSummary(_ rect: CGRect) -> String {
+    "\(Int(rect.origin.x.rounded())),\(Int(rect.origin.y.rounded())),\(Int(rect.width.rounded()))x\(Int(rect.height.rounded()))"
+  }
+
+  private func isVisibleForCompositionProbe(_ view: UIView) -> Bool {
+    !view.isHidden &&
+      view.alpha > 0.01 &&
+      view.layer.opacity > 0.01 &&
+      view.bounds.width > 0 &&
+      view.bounds.height > 0
+  }
+
+  private func visibleIntersectingSiblingSummary(for view: UIView) -> String {
+    guard
+      let parent = view.superview,
+      let siblingIndex = parent.subviews.firstIndex(of: view)
+    else {
+      return "0:none"
+    }
+    let targetRect = parent.convert(view.bounds, from: view)
+    guard siblingIndex + 1 < parent.subviews.count else {
+      return "0:none"
+    }
+    var visibleCount = 0
+    var samples: [String] = []
+    for sibling in parent.subviews[(siblingIndex + 1)...] {
+      guard isVisibleForCompositionProbe(sibling) else {
+        continue
+      }
+      let siblingRect = parent.convert(sibling.bounds, from: sibling)
+      guard siblingRect.intersects(targetRect) else {
+        continue
+      }
+      visibleCount += 1
+      if samples.count < 3 {
+        samples.append(
+          "\(Self.shortTypeName(sibling))(a=\(Self.round3(Double(sibling.alpha))),h=\(Self.intFlag(sibling.isHidden)),lo=\(Self.round3(Double(sibling.layer.opacity))),po=\(Self.opacitySummary(for: sibling.layer.presentation())))"
+        )
+      }
+    }
+    return "\(visibleCount):\(samples.isEmpty ? "none" : samples.joined(separator: ","))"
+  }
+
+  private func viewCompositionChainSummary(for handle: ResolvedMapHandle) -> String {
+    var entries: [String] = []
+    var currentView: UIView? = handle.mapView
+    var depth = 0
+    while let view = currentView, depth < 6 {
+      let layer = view.layer
+      let rootRect = handle.rootView.convert(view.bounds, from: view)
+      entries.append(
+        "\(Self.shortTypeName(view))(a=\(Self.round3(Double(view.alpha))),h=\(Self.intFlag(view.isHidden)),lo=\(Self.round3(Double(layer.opacity))),po=\(Self.opacitySummary(for: layer.presentation())),w=\(Self.intFlag(view.window != nil)),c=\(Self.intFlag(view.clipsToBounds)),b=\(Int(view.bounds.width.rounded()))x\(Int(view.bounds.height.rounded())),r=\(Self.rectSummary(rootRect)),above=\(visibleIntersectingSiblingSummary(for: view)))"
+      )
+      if view === handle.rootView {
+        break
+      }
+      currentView = view.superview
+      depth += 1
+    }
+    if let currentView, currentView !== handle.rootView {
+      entries.append("...")
+    }
+    return entries.joined(separator: " > ")
+  }
+
+  private func maybeProbeViewComposition(
+    instanceId: String,
+    scope: String,
+    state: InstanceState
+  ) {
+    guard scope.hasPrefix("moving_native_") || scope.hasPrefix("reveal_native_") else {
+      return
+    }
+    guard let frameGenerationId = state.activeFrameGenerationId else {
+      return
+    }
+    let nowMs = Self.nowMs()
+    if lastViewCompositionProbeFrameByInstance[instanceId] == frameGenerationId {
+      return
+    }
+    if let lastProbeAtMs = lastViewCompositionProbeAtMsByInstance[instanceId],
+       nowMs - lastProbeAtMs < renderedFeatureProbeThrottleMs {
+      return
+    }
+    lastViewCompositionProbeAtMsByInstance[instanceId] = nowMs
+    lastViewCompositionProbeFrameByInstance[instanceId] = frameGenerationId
+
+    let phase = state.lastPresentationPhase
+    let moving = state.currentViewportIsMoving
+    let commitSummary = commitFenceWaitSummary(state: state)
+    do {
+      try withResolvedMapHandleResult(for: state.mapTag) { handle in
+        let mapView = handle.mapView
+        let windowName = mapView.window.map { Self.shortTypeName($0) } ?? "nil"
+        let chainSummary = viewCompositionChainSummary(for: handle)
+        let sourcePresenceSummary = managedSourcePresenceSummary(for: state, handle: handle)
+        let handleIdentitySummary = maybeProbeHandleIdentity(mapTag: state.mapTag, handle: handle)
+        emitVisualDiag(
+          instanceId: instanceId,
+          message:
+            "view_composition_probe scope=\(scope) frame=\(frameGenerationId) phase=\(phase) moving=\(moving) window=\(windowName) chain=\(chainSummary) \(sourcePresenceSummary) \(handleIdentitySummary) \(commitSummary)"
+        )
+      }
+    } catch {
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "view_composition_probe_failed scope=\(scope) frame=\(frameGenerationId) phase=\(phase) error=\(error.localizedDescription)"
+      )
+    }
+  }
+
+  private func maybeProbeRenderedFeatures(
+    instanceId: String,
+    scope: String,
+    state: InstanceState
+  ) {
+    guard scope.hasPrefix("moving_native_") || scope.hasPrefix("reveal_native_") else {
+      return
+    }
+    guard let frameGenerationId = state.activeFrameGenerationId else {
+      return
+    }
+    let nowMs = Self.nowMs()
+    if lastRenderedFeatureProbeFrameByInstance[instanceId] == frameGenerationId {
+      return
+    }
+    if let lastProbeAtMs = lastRenderedFeatureProbeAtMsByInstance[instanceId],
+       nowMs - lastProbeAtMs < renderedFeatureProbeThrottleMs {
+      return
+    }
+    let sourcePinCount = Self.mountedSourceState(sourceId: state.pinSourceId, state: state)?.diffKeyById.count ?? 0
+    let sourceDotCount = Self.mountedSourceState(sourceId: state.dotSourceId, state: state)?.diffKeyById.count ?? 0
+    let sourceLabelCount = Self.mountedSourceState(sourceId: state.labelSourceId, state: state)?.diffKeyById.count ?? 0
+    guard sourcePinCount > 0 || sourceDotCount > 0 || sourceLabelCount > 0 else {
+      return
+    }
+    lastRenderedFeatureProbeAtMsByInstance[instanceId] = nowMs
+    lastRenderedFeatureProbeFrameByInstance[instanceId] = frameGenerationId
+
+    let mapTag = state.mapTag
+    let phase = state.lastPresentationPhase
+    let moving = state.currentViewportIsMoving
+    let commitSummary = commitFenceWaitSummary(state: state)
+    let visualSourceIds = visualSourceIds(for: state)
+    do {
+      try withResolvedMapHandleResult(for: mapTag) { handle in
+        let queryRect = handle.mapView.bounds
+        guard queryRect.width > 0, queryRect.height > 0 else {
+          emitVisualDiag(
+            instanceId: instanceId,
+            message:
+              "rendered_feature_probe_skip scope=\(scope) frame=\(frameGenerationId) phase=\(phase) reason=empty_bounds width=\(Int(queryRect.width.rounded())) height=\(Int(queryRect.height.rounded()))"
+          )
+          return
+        }
+        let layerIds = try resolveRenderedProbeLayerIds(for: visualSourceIds, mapboxMap: handle.mapView.mapboxMap)
+        guard !layerIds.isEmpty else {
+          emitVisualDiag(
+            instanceId: instanceId,
+            message:
+              "rendered_feature_probe_skip scope=\(scope) frame=\(frameGenerationId) phase=\(phase) reason=no_visual_layers sources=\(visualSourceIds.joined(separator: ","))"
+          )
+          return
+        }
+        let queryStartedAtMs = Self.nowMs()
+        _ = handle.mapView.mapboxMap.queryRenderedFeatures(
+          with: queryRect,
+          options: RenderedQueryOptions(layerIds: layerIds, filter: nil)
+        ) { [weak self] result in
+          DispatchQueue.main.async {
+            guard let self else {
+              return
+            }
+            let queryDurationMs = Self.nowMs() - queryStartedAtMs
+            switch result {
+            case .success(let features):
+              let renderedPinCount = features.reduce(into: 0) { count, feature in
+                if feature.queriedFeature.source == state.pinSourceId {
+                  count += 1
+                }
+              }
+              let renderedDotCount = features.reduce(into: 0) { count, feature in
+                if feature.queriedFeature.source == state.dotSourceId {
+                  count += 1
+                }
+              }
+              let renderedLabelCount = features.reduce(into: 0) { count, feature in
+                if feature.queriedFeature.source == state.labelSourceId {
+                  count += 1
+                }
+              }
+              var zeroRenderedSources: [String] = []
+              if sourcePinCount > 0 && renderedPinCount == 0 {
+                zeroRenderedSources.append("pins")
+              }
+              if sourceDotCount > 0 && renderedDotCount == 0 {
+                zeroRenderedSources.append("dots")
+              }
+              if sourceLabelCount > 0 && renderedLabelCount == 0 {
+                zeroRenderedSources.append("labels")
+              }
+              self.emitVisualDiag(
+                instanceId: instanceId,
+                message:
+                  "rendered_feature_probe scope=\(scope) frame=\(frameGenerationId) phase=\(phase) moving=\(moving) sourcePins=\(sourcePinCount) sourceDots=\(sourceDotCount) sourceLabels=\(sourceLabelCount) renderedPins=\(renderedPinCount) renderedDots=\(renderedDotCount) renderedLabels=\(renderedLabelCount) layerCount=\(layerIds.count) queryMs=\(Int(queryDurationMs.rounded())) zeroRendered=\(zeroRenderedSources.isEmpty ? "none" : zeroRenderedSources.joined(separator: ",")) \(commitSummary)"
+              )
+            case .failure(let error):
+              self.emitVisualDiag(
+                instanceId: instanceId,
+                message:
+                  "rendered_feature_probe_failed scope=\(scope) frame=\(frameGenerationId) phase=\(phase) queryMs=\(Int(queryDurationMs.rounded())) error=\(error.localizedDescription)"
+              )
+            }
+          }
+        }
+      }
+    } catch {
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "rendered_feature_probe_failed scope=\(scope) frame=\(frameGenerationId) phase=\(phase) error=\(error.localizedDescription)"
+      )
+    }
+  }
+
+  private func slowActionWindowKey(instanceId: String, scope: String) -> String {
+    "\(instanceId)::\(scope)"
+  }
+
+  private func recordSlowActionWindow(
+    instanceId: String,
+    scope: String,
+    durationMs: Double,
+    thresholdMs: Double,
+    state: InstanceState,
+    extra: String = ""
+  ) {
+    let key = slowActionWindowKey(instanceId: instanceId, scope: scope)
+    let nowMs = Self.nowMs()
+    let commitSummary = commitFenceWaitSummary(state: state)
+    if durationMs >= thresholdMs {
+      var window = slowActionWindowsByInstanceAndScope[key] ?? SlowActionWindowState()
+      if window.streak == 0 {
+        window.startedAtMs = nowMs
+        window.maxDurationMs = durationMs
+      }
+      window.streak += 1
+      window.maxDurationMs = max(window.maxDurationMs, durationMs)
+      slowActionWindowsByInstanceAndScope[key] = window
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "slow_action_window scope=\(scope) streak=\(window.streak) windowMs=\(Int((nowMs - window.startedAtMs).rounded())) durationMs=\(Int(durationMs.rounded())) maxDurationMs=\(Int(window.maxDurationMs.rounded())) phase=\(state.lastPresentationPhase) moving=\(state.currentViewportIsMoving) pins=\(state.lastPinCount) dots=\(state.lastDotCount) labels=\(state.lastLabelCount) \(commitSummary)\(extra.isEmpty ? "" : " \(extra)")"
+      )
+      maybeProbeViewComposition(instanceId: instanceId, scope: scope, state: state)
+      maybeProbeRenderedFeatures(instanceId: instanceId, scope: scope, state: state)
+      return
+    }
+    guard let window = slowActionWindowsByInstanceAndScope[key], window.streak > 0 else {
+      return
+    }
+    slowActionWindowsByInstanceAndScope.removeValue(forKey: key)
+    emitVisualDiag(
+      instanceId: instanceId,
+      message:
+        "slow_action_window_settled scope=\(scope) streak=\(window.streak) windowMs=\(Int((nowMs - window.startedAtMs).rounded())) maxDurationMs=\(Int(window.maxDurationMs.rounded())) phase=\(state.lastPresentationPhase) moving=\(state.currentViewportIsMoving) pins=\(state.lastPinCount) dots=\(state.lastDotCount) labels=\(state.lastLabelCount) \(commitSummary)\(extra.isEmpty ? "" : " \(extra)")"
+    )
+  }
+
+  private static func readFeatureCount(fromJSON json: String) -> Int {
+    guard
+      let data = json.data(using: .utf8),
+      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+      let features = object["features"] as? [Any]
+    else {
+      return 0
+    }
+    return features.count
+  }
+
+  private static func readPresentationPhase(fromJSON json: String) -> String {
+    guard
+      let data = json.data(using: .utf8),
+      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+      let phase = object["batchPhase"] as? String
+    else {
+      return "unknown"
+    }
+    return phase
+  }
+
+  private static func readDismissRequestKey(fromJSON json: String) -> String? {
+    guard
+      let data = json.data(using: .utf8),
+      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else {
+      return nil
+    }
+    let laneObject = object["lane"] as? [String: Any]
+    if laneObject?["kind"] as? String == "dismiss" {
+      return laneObject?["requestKey"] as? String
+    }
+    return object["dismissRequestKey"] as? String
+  }
+
+  private static func readRevealRequestKey(fromJSON json: String) -> String? {
+    guard
+      let data = json.data(using: .utf8),
+      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else {
+      return nil
+    }
+    let revealObject =
+      ((object["lane"] as? [String: Any])?["kind"] as? String) == "reveal"
+      ? object["lane"] as? [String: Any]
+      : object["reveal"] as? [String: Any]
+    if let requestKey = revealObject?["requestKey"] as? String {
+      return requestKey
+    }
+    return (revealObject?["batch"] as? [String: Any])?["requestKey"] as? String
+  }
+
+  private static func readRevealStatus(fromJSON json: String) -> String? {
+    guard
+      let data = json.data(using: .utf8),
+      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else {
+      return nil
+    }
+    let revealObject =
+      ((object["lane"] as? [String: Any])?["kind"] as? String) == "reveal"
+      ? object["lane"] as? [String: Any]
+      : object["reveal"] as? [String: Any]
+    return revealObject?["status"] as? String
+  }
+
+  private static func readRevealStartToken(fromJSON json: String) -> Double? {
+    guard
+      let data = json.data(using: .utf8),
+      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else {
+      return nil
+    }
+    let revealObject =
+      ((object["lane"] as? [String: Any])?["kind"] as? String) == "reveal"
+      ? object["lane"] as? [String: Any]
+      : object["reveal"] as? [String: Any]
+    if let value = revealObject?["startToken"] as? NSNumber {
+      return value.doubleValue
+    }
+    if let value = revealObject?["startToken"] as? Double {
+      return value
+    }
+    return nil
+  }
+
+  private static func readAllowEmptyReveal(fromJSON json: String) -> Bool {
+    guard
+      let data = json.data(using: .utf8),
+      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else {
+      return true
+    }
+    if let value = object["allowEmptyReveal"] as? Bool {
+      return value
+    }
+    if let value = object["allowEmptyReveal"] as? NSNumber {
+      return value.boolValue
+    }
+    let revealObject = object["reveal"] as? [String: Any]
+    if let value = revealObject?["allowEmptyReveal"] as? Bool {
+      return value
+    }
+    if let value = revealObject?["allowEmptyReveal"] as? NSNumber {
+      return value.boolValue
+    }
+    return true
+  }
+
+  private static func nowMs() -> Double {
+    CACurrentMediaTime() * 1000
+  }
+
+  private static let emptyFeatureCollectionJSON = #"{"type":"FeatureCollection","features":[]}"#
+}
+
+private extension Array {
+  subscript(safe index: Int) -> Element? {
+    guard indices.contains(index) else {
+      return nil
+    }
+    return self[index]
   }
 }

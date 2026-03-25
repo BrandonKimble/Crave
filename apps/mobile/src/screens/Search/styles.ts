@@ -182,7 +182,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     columnGap: 6,
-    opacity: 0,
   },
   searchThisAreaContainer: {
     position: 'absolute',

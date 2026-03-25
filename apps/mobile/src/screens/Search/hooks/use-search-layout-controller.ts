@@ -26,8 +26,6 @@ type UseSearchLayoutControllerResult = {
   searchBarFrame: LayoutRectangle | null;
   searchShortcutsFrame: LayoutRectangle | null;
   searchShortcutChipFrames: Record<string, LayoutRectangle>;
-  searchShortcutsFadeResetKey: number;
-  setSearchShortcutsFadeResetKey: React.Dispatch<React.SetStateAction<number>>;
   searchContainerLayoutCacheRef: React.MutableRefObject<LayoutRectangle | null>;
   searchShortcutsLayoutCacheRef: React.MutableRefObject<SearchShortcutsLayoutCache>;
   handleSearchHeaderLayout: (event: LayoutChangeEvent) => void;
@@ -50,7 +48,6 @@ export const useSearchLayoutController = ({
   const [searchShortcutsFrame, setSearchShortcutsFrame] = React.useState<LayoutRectangle | null>(
     null
   );
-  const [searchShortcutsFadeResetKey, setSearchShortcutsFadeResetKey] = React.useState(0);
   const [searchShortcutChipFrames, setSearchShortcutChipFrames] = React.useState<
     Record<string, LayoutRectangle>
   >({});
@@ -184,8 +181,6 @@ export const useSearchLayoutController = ({
     searchBarFrame,
     searchShortcutsFrame,
     searchShortcutChipFrames,
-    searchShortcutsFadeResetKey,
-    setSearchShortcutsFadeResetKey,
     searchContainerLayoutCacheRef,
     searchShortcutsLayoutCacheRef,
     handleSearchHeaderLayout,

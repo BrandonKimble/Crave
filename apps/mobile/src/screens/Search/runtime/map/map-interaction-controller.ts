@@ -65,7 +65,6 @@ type UseMapInteractionControllerArgs = {
   cancelAutocomplete: () => void;
   cameraIntentArbiter: CameraIntentArbiter;
   viewportBoundsService: ViewportBoundsService;
-  recomputeLodPinnedMarkers: (bounds: MapBounds | null) => void;
   cancelMapUpdateTimeouts: () => void;
   markMapMovedIfNeeded: (bounds: MapBounds) => boolean;
   scheduleMapIdleReveal: () => void;
@@ -86,7 +85,7 @@ type UseMapInteractionControllerArgs = {
 
 type UseMapInteractionControllerResult = {
   handleMapPress: () => void;
-  handleCameraChanged: (state: MapboxMapState) => void;
+  handleNativeViewportChanged: (state: MapboxMapState) => void;
   handleMapIdle: (state: MapboxMapState) => void;
   handleMapTouchStart: () => void;
   handleMapTouchEnd: () => void;
@@ -121,7 +120,6 @@ export const useMapInteractionController = (
     cancelAutocomplete,
     cameraIntentArbiter,
     viewportBoundsService,
-    recomputeLodPinnedMarkers,
     cancelMapUpdateTimeouts,
     markMapMovedIfNeeded,
     scheduleMapIdleReveal,
@@ -209,7 +207,7 @@ export const useMapInteractionController = (
     suppressAutocompleteResults,
   ]);
 
-  const handleCameraChanged = React.useCallback(
+  const handleNativeViewportChanged = React.useCallback(
     (state: MapboxMapState) => {
       if (shouldLogMapEventRates) {
         mapEventStatsRef.current.cameraChanged += 1;
@@ -237,7 +235,6 @@ export const useMapInteractionController = (
         mapGestureSessionRef.current = null;
         return;
       }
-      recomputeLodPinnedMarkers(bounds);
 
       if (searchInteractionRef.current.isInteracting || anySheetDraggingRef.current) {
         cancelMapUpdateTimeouts();
@@ -329,7 +326,6 @@ export const useMapInteractionController = (
       logMapEventRates,
       mapGestureActiveRef,
       markMapMovedIfNeeded,
-      recomputeLodPinnedMarkers,
       scheduleMapIdleReveal,
       searchInteractionRef,
       sheetState,
@@ -353,9 +349,6 @@ export const useMapInteractionController = (
       }
       const bounds = mapStateBoundsToMapBounds(state);
       if (bounds) {
-        if (!isBusy) {
-          recomputeLodPinnedMarkers(bounds);
-        }
         if (!isBusy && shouldShowPollsSheet) {
           schedulePollBoundsUpdate(bounds);
         }
@@ -406,7 +399,6 @@ export const useMapInteractionController = (
       lastCameraStateRef,
       lastPersistedCameraRef,
       logMapEventRates,
-      recomputeLodPinnedMarkers,
       schedulePollBoundsUpdate,
       searchInteractionRef,
       shouldLogMapEventRates,
@@ -429,7 +421,7 @@ export const useMapInteractionController = (
 
   return {
     handleMapPress,
-    handleCameraChanged,
+    handleNativeViewportChanged,
     handleMapIdle,
     handleMapTouchStart,
     handleMapTouchEnd,

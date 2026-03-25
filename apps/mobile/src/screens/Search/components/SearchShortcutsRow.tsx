@@ -1,5 +1,11 @@
 import React from 'react';
-import { Pressable, type LayoutRectangle, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  Pressable,
+  View,
+  type LayoutRectangle,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import Reanimated from 'react-native-reanimated';
 import { HandPlatter, Store } from 'lucide-react-native';
 
@@ -13,7 +19,6 @@ type SearchShortcutsRowProps = {
   interactive: boolean;
   containerAnimatedStyle: StyleProp<ViewStyle>;
   chipAnimatedStyle: StyleProp<ViewStyle>;
-  contentAnimatedStyle: StyleProp<ViewStyle>;
   onPressBestRestaurants: () => void;
   onPressBestDishes: () => void;
   onRowLayout: (layout: LayoutRectangle) => void;
@@ -26,7 +31,6 @@ const SearchShortcutsRow = ({
   interactive,
   containerAnimatedStyle,
   chipAnimatedStyle,
-  contentAnimatedStyle,
   onPressBestRestaurants,
   onPressBestDishes,
   onRowLayout,
@@ -55,12 +59,12 @@ const SearchShortcutsRow = ({
           onRestaurantsChipLayout(layout);
         }}
       >
-        <Reanimated.View style={[styles.searchShortcutContent, contentAnimatedStyle]}>
+        <View style={styles.searchShortcutContent}>
           <Store size={18} color="#0f172a" strokeWidth={2} />
           <Text variant="body" weight="semibold" style={styles.searchShortcutChipText}>
             Best restaurants
           </Text>
-        </Reanimated.View>
+        </View>
       </AnimatedPressable>
       <AnimatedPressable
         onPress={onPressBestDishes}
@@ -72,12 +76,12 @@ const SearchShortcutsRow = ({
           onDishesChipLayout(layout);
         }}
       >
-        <Reanimated.View style={[styles.searchShortcutContent, contentAnimatedStyle]}>
+        <View style={styles.searchShortcutContent}>
           <HandPlatter size={18} color="#0f172a" strokeWidth={2} />
           <Text variant="body" weight="semibold" style={styles.searchShortcutChipText}>
             Best dishes
           </Text>
-        </Reanimated.View>
+        </View>
       </AnimatedPressable>
     </Reanimated.View>
   );

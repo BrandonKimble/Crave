@@ -67,6 +67,19 @@ target 'cravesearch' do
         config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
       end
     end
+
+    [
+      '[CP-User] Generate updates resources for expo-updates',
+    ].each do |phase_name|
+      installer.pods_project.targets.each do |target|
+        target.shell_script_build_phases.each do |phase|
+          next unless phase.name == phase_name
+
+          phase.always_out_of_date = '1' if phase.respond_to?(:always_out_of_date=)
+        end
+      end
+    end
+    installer.pods_project.save
   end
 
   post_integrate do |installer|

@@ -6,7 +6,10 @@ import { startUiFrameSampler } from '../../../../perf/ui-frame-sampler';
 import type { NaturalSearchRequest } from '../../../../types';
 import type { SearchSessionController } from '../controller/search-session-controller';
 import type { RuntimeWorkScheduler } from '../scheduler/runtime-work-scheduler';
-import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
+import {
+  type SearchRuntimeBus,
+  isSearchRuntimeMapPresentationPending,
+} from '../shared/search-runtime-bus';
 import { useSearchRuntimeBusSelector } from '../shared/use-search-runtime-bus-selector';
 
 type HarnessMechanismEvent =
@@ -173,13 +176,13 @@ export const useShortcutHarnessObserver = (
   const { isMapRevealPending, shouldHydrateResultsForRender } = useSearchRuntimeBusSelector(
     searchRuntimeBus!,
     (state) => ({
-      isMapRevealPending: state.presentationMapRevealRequestKey != null,
+      isMapRevealPending: isSearchRuntimeMapPresentationPending(state.mapPresentationPhase),
       shouldHydrateResultsForRender: state.shouldHydrateResultsForRender,
     }),
     (left, right) =>
       left.isMapRevealPending === right.isMapRevealPending &&
       left.shouldHydrateResultsForRender === right.shouldHydrateResultsForRender,
-    ['presentationMapRevealRequestKey', 'shouldHydrateResultsForRender'] as const
+    ['mapPresentationPhase', 'shouldHydrateResultsForRender'] as const
   );
 
   const isShortcutLoopScenario =

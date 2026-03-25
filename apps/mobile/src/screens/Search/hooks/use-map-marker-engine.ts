@@ -1,15 +1,22 @@
 import React from 'react';
-import type { Feature, FeatureCollection, Point } from 'geojson';
+import type { Feature, Point } from 'geojson';
 import MapboxGL from '@rnmapbox/maps';
 
 import { logger } from '../../../utils';
-import type { Coordinate, FoodResult, MapBounds, RestaurantResult } from '../../../types';
+import type { Coordinate, FoodResult, RestaurantResult } from '../../../types';
 import type { RestaurantFeatureProperties } from '../components/search-map';
 import { ACTIVE_TAB_COLOR_DARK, LABEL_TEXT_SIZE } from '../constants/search';
 import { useMapPresentationController } from '../runtime/map/map-presentation-controller';
 import type { MapQueryBudget } from '../runtime/map/map-query-budget';
 import { buildMarkerCatalogReadModel } from '../runtime/map/map-read-model-builder';
 import { useMapDiffApplier } from '../runtime/map/map-diff-applier';
+import {
+  createSearchMapSourceTransportFeature,
+  createSearchMapSourceStoreBuilder,
+  EMPTY_SEARCH_MAP_SOURCE_STORE,
+  getSearchMapSourceTransportFeature,
+  type SearchMapSourceStore,
+} from '../runtime/map/search-map-source-store';
 import { useShortcutCoverageOwner } from '../runtime/map/use-shortcut-coverage-owner';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
@@ -18,9 +25,6 @@ import type { ResolvedRestaurantMapLocation } from './use-restaurant-location-se
 
 const EMPTY_RESTAURANTS: RestaurantResult[] = [];
 const EMPTY_DISHES: FoodResult[] = [];
-// ---------------------------------------------------------------------------
-// Stable-key fingerprinting (mirrored from index.tsx)
-// ---------------------------------------------------------------------------
 
 const FNV1A_OFFSET_BASIS = 0x811c9dc5;
 const FNV1A_PRIME = 0x01000193;
@@ -49,9 +53,43 @@ const buildStableKeyFingerprint = (keys: readonly string[]): string => {
   return `${keys.length}:${firstKey}:${lastKey}:${hash.toString(36)}`;
 };
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+const buildPinSemanticRevision = ({
+  baseDiffKey,
+  markerKey,
+  labelOrder,
+  nativeLodZ,
+}: {
+  baseDiffKey: string;
+  markerKey: string;
+  labelOrder: number;
+  nativeLodZ: number | null | undefined;
+}): string =>
+  `${baseDiffKey}|pin|marker:${markerKey}|labelOrder:${labelOrder}|lodZ:${
+    typeof nativeLodZ === 'number' && Number.isFinite(nativeLodZ) ? nativeLodZ : ''
+  }`;
+
+const buildDotSemanticRevision = ({
+  baseDiffKey,
+  markerKey,
+}: {
+  baseDiffKey: string;
+  markerKey: string;
+}): string => `${baseDiffKey}|dot|marker:${markerKey}`;
+
+const buildInteractionSemanticRevision = ({
+  markerKey,
+  restaurantId,
+  lng,
+  lat,
+  family,
+}: {
+  markerKey: string;
+  restaurantId: string | null | undefined;
+  lng: number;
+  lat: number;
+  family: 'pinInteraction' | 'dotInteraction';
+}): string =>
+  `${family}|marker:${markerKey}|restaurant:${restaurantId ?? ''}|lng:${lng}|lat:${lat}`;
 
 type UseMapMarkerEngineArgs = {
   searchRuntimeBus: SearchRuntimeBus;
@@ -76,13 +114,16 @@ type UseMapMarkerEngineArgs = {
   lodPinToggleStableMsMoving: number;
   lodPinToggleStableMsIdle: number;
   lodPinOffscreenToggleStableMsMoving: number;
+  isMapMoving: boolean;
   externalMapQueryBudget?: MapQueryBudget;
 };
 
 type UseMapMarkerEngineResult = {
   visibleSortedRestaurantMarkers: Array<Feature<Point, RestaurantFeatureProperties>>;
-  visibleDotRestaurantFeatures: FeatureCollection<Point, RestaurantFeatureProperties> | null;
-  visibleRestaurantFeatures: FeatureCollection<Point, RestaurantFeatureProperties>;
+  pinSourceStore: SearchMapSourceStore;
+  dotSourceStore: SearchMapSourceStore | null;
+  pinInteractionSourceStore: SearchMapSourceStore;
+  dotInteractionSourceStore: SearchMapSourceStore;
   markersRenderKey: string;
   pinsRenderKey: string;
   restaurantLabelStyle: MapboxGL.SymbolLayerStyle;
@@ -96,16 +137,10 @@ type UseMapMarkerEngineResult = {
   anchoredShortcutCoverageFeatures: ReturnType<
     typeof useShortcutCoverageOwner
   >['anchoredShortcutCoverageFeatures'];
-  lodPinnedMarkersRef: React.MutableRefObject<Array<Feature<Point, RestaurantFeatureProperties>>>;
-  recomputeLodPinnedMarkers: (bounds: MapBounds | null) => void;
   canonicalRestaurantRankById: Map<string, number>;
   restaurantsById: Map<string, RestaurantResult>;
   restaurants: RestaurantResult[];
 };
-
-// ---------------------------------------------------------------------------
-// Hook
-// ---------------------------------------------------------------------------
 
 export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEngineResult => {
   const {
@@ -128,11 +163,8 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
     lodPinToggleStableMsMoving,
     lodPinToggleStableMsIdle,
     lodPinOffscreenToggleStableMsMoving,
+    isMapMoving,
   } = args;
-
-  // -------------------------------------------------------------------------
-  // Bus selectors — results + presentation mode
-  // -------------------------------------------------------------------------
 
   const { mapMarkerRestaurants, mapMarkerDishes, mapSearchRequestId } = useSearchRuntimeBusSelector(
     searchRuntimeBus,
@@ -161,7 +193,6 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
   const mapPresentationMode = runtimeMapPresentationInput.mode;
   const mapPresentationActiveTab = runtimeMapPresentationInput.mapPresentationActiveTab;
 
-  // Pre-computed marker pipeline (populated by response handler)
   const precomputedMarkerData = useSearchRuntimeBusSelector(
     searchRuntimeBus,
     (state) => ({
@@ -188,14 +219,8 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
     ] as const
   );
 
-  // -------------------------------------------------------------------------
-  // Inline read model (canonicalRestaurantRankById + restaurantsById)
-  // -------------------------------------------------------------------------
-
   const missingRestaurantRankByIdRef = React.useRef<Set<string>>(new Set());
-
   const canonicalRestaurantRankById = React.useMemo(() => {
-    // Use pre-computed rank map when available and matching current results
     if (
       precomputedMarkerData.canonicalRankById &&
       precomputedMarkerData.resultsKey === mapSearchRequestId
@@ -225,7 +250,6 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
   }, [mapMarkerRestaurants, mapSearchRequestId, precomputedMarkerData]);
 
   const restaurantsById = React.useMemo(() => {
-    // Use pre-computed restaurant lookup when available and matching current results
     if (
       precomputedMarkerData.restaurantsById &&
       precomputedMarkerData.resultsKey === mapSearchRequestId
@@ -281,28 +305,32 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
     shouldLogSearchComputes,
   ]);
 
-  // -------------------------------------------------------------------------
-  // 1. buildMarkerKey
-  // -------------------------------------------------------------------------
-
   const buildMarkerKey = React.useCallback(
-    (feature: Feature<Point, RestaurantFeatureProperties>) =>
-      feature.id?.toString() ?? `${feature.properties.restaurantId}-${feature.properties.rank}`,
+    (feature: Feature<Point, RestaurantFeatureProperties>) => {
+      const markerKey = feature.id?.toString() ?? null;
+      if (markerKey && markerKey.length > 0) {
+        return markerKey;
+      }
+      logger.error('Marker feature missing stable id', {
+        restaurantId: feature.properties.restaurantId,
+        rank: feature.properties.rank,
+      });
+      throw new Error(
+        `Search map marker feature missing stable id for restaurant ${feature.properties.restaurantId}`
+      );
+    },
     []
   );
 
-  // -------------------------------------------------------------------------
-  // 2. markerCatalogReadModel
-  // -------------------------------------------------------------------------
+  const selectedRestaurantId = overlaySelectedRestaurantId ?? highlightedRestaurantId;
 
   const markerCatalogReadModel = React.useMemo(() => {
-    // Reuse pre-computed catalog only when request + tab match, otherwise rebuild for current tab.
     if (
       precomputedMarkerData.catalog &&
       precomputedMarkerData.resultsKey === mapSearchRequestId &&
       precomputedMarkerData.activeTab === mapPresentationActiveTab &&
       restaurantOnlyId === null &&
-      overlaySelectedRestaurantId === null
+      selectedRestaurantId === null
     ) {
       return {
         catalog: precomputedMarkerData.catalog,
@@ -316,7 +344,7 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
       markerRestaurants: mapMarkerRestaurants,
       scoreMode,
       restaurantOnlyId,
-      selectedRestaurantId: overlaySelectedRestaurantId,
+      selectedRestaurantId,
       canonicalRestaurantRankById,
       locationSelectionAnchor: resolveRestaurantLocationSelectionAnchor(),
       resolveRestaurantMapLocations,
@@ -341,32 +369,24 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
     mapMarkerDishes,
     mapMarkerRestaurants,
     mapSearchRequestId,
-    overlaySelectedRestaurantId,
     pickPreferredRestaurantMapLocation,
     precomputedMarkerData,
     resolveRestaurantLocationSelectionAnchor,
     resolveRestaurantMapLocations,
     restaurantOnlyId,
     scoreMode,
+    selectedRestaurantId,
     shouldLogSearchComputes,
   ]);
 
   const markerCatalogEntries = markerCatalogReadModel.catalog;
-  const selectedRestaurantId = overlaySelectedRestaurantId;
-
-  // -------------------------------------------------------------------------
-  // 3. restaurantLabelStyle
-  // -------------------------------------------------------------------------
 
   const restaurantLabelStyle = React.useMemo<MapboxGL.SymbolLayerStyle>(() => {
     const secondaryTextSize = LABEL_TEXT_SIZE * 0.85;
     return {
-      // For dish pins: show dish name + restaurant name on two lines
-      // For restaurant pins: show just restaurant name
       textField: [
         'case',
         ['==', ['get', 'isDishPin'], true],
-        // Dish pin: two-line label using format for different sizes
         [
           'format',
           ['coalesce', ['get', 'dishName'], ''],
@@ -376,7 +396,6 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
           ['coalesce', ['get', 'restaurantName'], ''],
           { 'font-scale': secondaryTextSize / LABEL_TEXT_SIZE },
         ],
-        // Restaurant pin: single line
         ['coalesce', ['get', 'restaurantName'], ''],
       ],
       textJustify: 'auto',
@@ -396,34 +415,21 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
       textHaloBlur: 0.9,
       symbolZOrder: 'viewport-y',
     };
-    // Depend on the exported geometry constants so Fast Refresh picks up tuning changes without
-    // requiring a full app reload.
-  }, [ACTIVE_TAB_COLOR_DARK, LABEL_TEXT_SIZE, highlightedRestaurantId]);
+  }, [highlightedRestaurantId]);
 
-  // -------------------------------------------------------------------------
-  // 4. useMapPresentationController
-  // -------------------------------------------------------------------------
-
-  const {
-    mapQueryBudget,
-    markerCandidatesRef,
-    visibleMarkerCandidates,
-    recomputeVisibleCandidates,
-  } = useMapPresentationController({
-    markerCatalogEntries,
-    searchMode: mapPresentationMode,
-    selectedRestaurantId,
-    viewportBoundsService,
-    buildMarkerKey,
-    shouldLogSearchComputes,
-    getPerfNow,
-    logSearchCompute,
-    externalMapQueryBudget: args.externalMapQueryBudget,
-  });
-
-  // -------------------------------------------------------------------------
-  // 5. useShortcutCoverageOwner
-  // -------------------------------------------------------------------------
+  const { mapQueryBudget, markerCandidatesRef, visibleMarkerCandidates } =
+    useMapPresentationController({
+      markerCatalogEntries,
+      searchMode: mapPresentationMode,
+      selectedRestaurantId,
+      viewportBoundsService,
+      mapGestureActiveRef,
+      buildMarkerKey,
+      shouldLogSearchComputes,
+      getPerfNow,
+      logSearchCompute,
+      externalMapQueryBudget: args.externalMapQueryBudget,
+    });
 
   const {
     handleShortcutSearchCoverageSnapshot,
@@ -444,10 +450,6 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
     pickPreferredRestaurantMapLocation,
     getQualityColorFromScore,
   });
-
-  // -------------------------------------------------------------------------
-  // 6. useMapDiffApplier
-  // -------------------------------------------------------------------------
 
   const { lodPinnedMarkerMeta, lodPinnedMarkersRef, recomputeLodPinnedMarkers } = useMapDiffApplier(
     {
@@ -471,16 +473,13 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
     }
   );
 
-  // -------------------------------------------------------------------------
-  // 7. Recompute effects
-  // -------------------------------------------------------------------------
-
   React.useEffect(() => {
     recomputeLodPinnedMarkers(viewportBoundsService.getBounds());
   }, [
     mapPresentationActiveTab,
-    mapSearchRequestId,
     mapPresentationMode,
+    markerCatalogEntries,
+    rankedShortcutCoverageFeatures,
     selectedRestaurantId,
     scoreMode,
     recomputeLodPinnedMarkers,
@@ -488,21 +487,10 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
   ]);
 
   React.useEffect(() => {
-    if (mapPresentationMode !== 'shortcut' || selectedRestaurantId !== null) {
-      return;
-    }
-    recomputeVisibleCandidates(viewportBoundsService.getBounds());
-  }, [
-    mapSearchRequestId,
-    mapPresentationMode,
-    selectedRestaurantId,
-    recomputeVisibleCandidates,
-    viewportBoundsService,
-  ]);
-
-  // -------------------------------------------------------------------------
-  // 8. LOD memos
-  // -------------------------------------------------------------------------
+    return viewportBoundsService.subscribe((bounds) => {
+      recomputeLodPinnedMarkers(bounds);
+    });
+  }, [recomputeLodPinnedMarkers, viewportBoundsService]);
 
   const lodPinnedMarkerFeatureByKey = React.useMemo(() => {
     const map = new Map<string, Feature<Point, RestaurantFeatureProperties>>();
@@ -552,6 +540,7 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
           ...feature,
           properties: {
             ...feature.properties,
+            nativeLodZ: lodZ,
             lodZ,
           },
         };
@@ -561,42 +550,35 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
     buildMarkerKey,
     lodPinnedMarkerFeatureByKey,
     lodPinnedMarkerMeta,
+    lodPinnedMarkersRef,
     mapPresentationMode,
     maxFullPins,
     rankedShortcutCoverageFeatures,
   ]);
 
-  // Recompute LOD pinned markers when shortcut coverage ranked features change.
-  React.useEffect(() => {
-    if (mapPresentationMode !== 'shortcut') {
-      return;
-    }
-    recomputeLodPinnedMarkers(viewportBoundsService.getBounds());
-  }, [
-    rankedShortcutCoverageFeatures,
-    recomputeLodPinnedMarkers,
-    mapPresentationMode,
-    viewportBoundsService,
-  ]);
-
-  const dotRestaurantFeatures = React.useMemo<FeatureCollection<
-    Point,
-    RestaurantFeatureProperties
+  const visibleDotRestaurantMarkerFeatures = React.useMemo<Array<
+    Feature<Point, RestaurantFeatureProperties>
   > | null>(() => {
     if (mapPresentationMode === 'shortcut') {
-      const coverageFeatureCollection =
-        anchoredShortcutCoverageFeatures ?? shortcutCoverageDotFeatures;
-      const shortcutFeatures = coverageFeatureCollection?.features ?? [];
+      const shortcutFeatures =
+        (anchoredShortcutCoverageFeatures ?? shortcutCoverageDotFeatures)?.features ?? [];
       if (shortcutFeatures.length > 0) {
-        return coverageFeatureCollection;
+        return shortcutFeatures;
       }
       return null;
     }
-    const features = visibleMarkerCandidates.map((entry) => entry.feature);
-    return features.length ? { type: 'FeatureCollection', features } : null;
+    const pinnedMarkerKeys = new Set(
+      lodSortedRestaurantMarkers.map((feature) => buildMarkerKey(feature))
+    );
+    const visibleDotFeatures = visibleMarkerCandidates
+      .map((entry) => entry.feature)
+      .filter((feature) => !pinnedMarkerKeys.has(buildMarkerKey(feature)));
+    return visibleDotFeatures.length ? visibleDotFeatures : null;
   }, [
-    anchoredShortcutCoverageFeatures,
+    buildMarkerKey,
+    lodSortedRestaurantMarkers,
     mapPresentationMode,
+    anchoredShortcutCoverageFeatures,
     shortcutCoverageDotFeatures,
     visibleMarkerCandidates,
   ]);
@@ -606,53 +588,202 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
     return buildStableKeyFingerprint(markerKeys);
   }, [buildMarkerKey, lodSortedRestaurantMarkers]);
 
-  // -------------------------------------------------------------------------
-  // Visible markers — always computed from current data.
-  // The PTC's loadingMode (frost/cover) controls what the user sees;
-  // the marker engine always keeps markers up-to-date so the reveal
-  // chain can complete without gating on interaction state.
-  // -------------------------------------------------------------------------
-
   const visibleSortedRestaurantMarkers = lodSortedRestaurantMarkers;
-  const visibleDotRestaurantFeatures = dotRestaurantFeatures;
+  const previousPinSourceStoreRef = React.useRef<SearchMapSourceStore | null>(null);
+  const pinSourceStore = React.useMemo(() => {
+    const builder = createSearchMapSourceStoreBuilder(previousPinSourceStoreRef.current);
+    visibleSortedRestaurantMarkers.forEach((feature, index) => {
+      const markerKey =
+        typeof feature.id === 'string' && feature.id.length > 0
+          ? feature.id
+          : buildMarkerKey(feature);
+      const labelOrder = index + 1;
+      const nativeLodZ =
+        typeof feature.properties.nativeLodZ === 'number'
+          ? feature.properties.nativeLodZ
+          : feature.properties.lodZ;
+      const semanticRevision = buildPinSemanticRevision({
+        baseDiffKey: getSearchMapSourceTransportFeature(feature).diffKey,
+        markerKey,
+        labelOrder,
+        nativeLodZ,
+      });
+      const nextFeature = {
+        ...feature,
+        id: markerKey,
+        properties: {
+          ...feature.properties,
+          markerKey,
+          labelOrder,
+          nativeLodZ,
+          nativeLodOpacity: 1,
+          nativeLodRankOpacity: 1,
+          nativePresentationOpacity: 1,
+        },
+      } satisfies Feature<Point, RestaurantFeatureProperties>;
+      builder.appendFeature(
+        {
+          ...nextFeature,
+        },
+        {
+          semanticRevision,
+          transportFeature: createSearchMapSourceTransportFeature({
+            feature: nextFeature,
+            diffKey: semanticRevision,
+          }),
+        }
+      );
+    });
+    const next = builder.finish();
+    previousPinSourceStoreRef.current = next;
+    return next;
+  }, [buildMarkerKey, visibleSortedRestaurantMarkers]);
 
-  const visibleRestaurantFeatures = React.useMemo<
-    FeatureCollection<Point, RestaurantFeatureProperties>
-  >(
-    () => ({
-      type: 'FeatureCollection',
-      features: visibleSortedRestaurantMarkers,
-    }),
-    [visibleSortedRestaurantMarkers]
-  );
-
-  const visiblePinsRenderKey = pinsRenderKey;
+  const previousDotSourceStoreRef = React.useRef<SearchMapSourceStore | null>(null);
+  const dotSourceStore = React.useMemo(() => {
+    if (!visibleDotRestaurantMarkerFeatures) {
+      previousDotSourceStoreRef.current = null;
+      return null;
+    }
+    const builder = createSearchMapSourceStoreBuilder(previousDotSourceStoreRef.current);
+    visibleDotRestaurantMarkerFeatures.forEach((feature) => {
+      const markerKey =
+        typeof feature.id === 'string' && feature.id.length > 0
+          ? feature.id
+          : buildMarkerKey(feature);
+      const semanticRevision = buildDotSemanticRevision({
+        baseDiffKey: getSearchMapSourceTransportFeature(feature).diffKey,
+        markerKey,
+      });
+      const nextFeature = {
+        ...feature,
+        id: markerKey,
+        properties: {
+          ...feature.properties,
+          markerKey,
+          nativeDotOpacity: 1,
+          nativePresentationOpacity: 1,
+        },
+      } satisfies Feature<Point, RestaurantFeatureProperties>;
+      builder.appendFeature(nextFeature, {
+        semanticRevision,
+        transportFeature: createSearchMapSourceTransportFeature({
+          feature: nextFeature,
+          diffKey: semanticRevision,
+        }),
+      });
+    });
+    const next = builder.finish();
+    previousDotSourceStoreRef.current = next;
+    return next;
+  }, [buildMarkerKey, visibleDotRestaurantMarkerFeatures]);
 
   const visibleDotRenderKey = React.useMemo(() => {
-    const dotFeatures = visibleDotRestaurantFeatures?.features ?? [];
-    if (dotFeatures.length === 0) {
+    if (!dotSourceStore || dotSourceStore.idsInOrder.length === 0) {
       return '0:empty:empty:0';
     }
-    const dotKeys = dotFeatures.map((feature) => buildMarkerKey(feature));
-    return buildStableKeyFingerprint(dotKeys);
-  }, [buildMarkerKey, visibleDotRestaurantFeatures?.features]);
+    return buildStableKeyFingerprint(dotSourceStore.idsInOrder);
+  }, [dotSourceStore]);
 
   const markersRenderKey = React.useMemo(
-    () => `dots:${visibleDotRenderKey}`,
-    [visibleDotRenderKey]
+    () => `pins:${pinsRenderKey}:dots:${visibleDotRenderKey}`,
+    [pinsRenderKey, visibleDotRenderKey]
   );
 
-  // -------------------------------------------------------------------------
-  // -------------------------------------------------------------------------
-  // Return
-  // -------------------------------------------------------------------------
+  const settledPinInteractionSourceStoreRef = React.useRef<SearchMapSourceStore | null>(null);
+  const pinInteractionSourceStore = React.useMemo(() => {
+    if (isMapMoving && settledPinInteractionSourceStoreRef.current) {
+      return settledPinInteractionSourceStoreRef.current;
+    }
+    const builder = createSearchMapSourceStoreBuilder(settledPinInteractionSourceStoreRef.current);
+    pinSourceStore.idsInOrder.forEach((markerKey) => {
+      const feature = pinSourceStore.featureById.get(markerKey);
+      if (!feature) {
+        return;
+      }
+      const [lng, lat] = feature.geometry.coordinates;
+      const nextFeature = {
+        type: 'Feature',
+        id: markerKey,
+        geometry: feature.geometry,
+        properties: {
+          markerKey,
+          restaurantId: feature.properties.restaurantId,
+        } as RestaurantFeatureProperties,
+      } satisfies Feature<Point, RestaurantFeatureProperties>;
+      const semanticRevision = buildInteractionSemanticRevision({
+        family: 'pinInteraction',
+        markerKey,
+        restaurantId: feature.properties.restaurantId,
+        lng,
+        lat,
+      });
+      builder.appendFeature(nextFeature, {
+        semanticRevision,
+        transportFeature: createSearchMapSourceTransportFeature({
+          feature: nextFeature,
+          diffKey: semanticRevision,
+        }),
+      });
+    });
+    const next = builder.finish();
+    settledPinInteractionSourceStoreRef.current = next;
+    return next;
+  }, [isMapMoving, pinSourceStore]);
+
+  const settledDotInteractionSourceStoreRef = React.useRef<SearchMapSourceStore | null>(null);
+  const dotInteractionSourceStore = React.useMemo(() => {
+    if (isMapMoving && settledDotInteractionSourceStoreRef.current) {
+      return settledDotInteractionSourceStoreRef.current;
+    }
+    if (!dotSourceStore || dotSourceStore.idsInOrder.length === 0) {
+      settledDotInteractionSourceStoreRef.current = null;
+      return EMPTY_SEARCH_MAP_SOURCE_STORE;
+    }
+    const builder = createSearchMapSourceStoreBuilder(settledDotInteractionSourceStoreRef.current);
+    dotSourceStore.idsInOrder.forEach((markerKey) => {
+      const feature = dotSourceStore.featureById.get(markerKey);
+      if (!feature) {
+        return;
+      }
+      const [lng, lat] = feature.geometry.coordinates;
+      const nextFeature = {
+        type: 'Feature',
+        id: markerKey,
+        geometry: feature.geometry,
+        properties: {
+          markerKey,
+          restaurantId: feature.properties.restaurantId,
+        } as RestaurantFeatureProperties,
+      } satisfies Feature<Point, RestaurantFeatureProperties>;
+      const semanticRevision = buildInteractionSemanticRevision({
+        family: 'dotInteraction',
+        markerKey,
+        restaurantId: feature.properties.restaurantId,
+        lng,
+        lat,
+      });
+      builder.appendFeature(nextFeature, {
+        semanticRevision,
+        transportFeature: createSearchMapSourceTransportFeature({
+          feature: nextFeature,
+          diffKey: semanticRevision,
+        }),
+      });
+    });
+    const next = builder.finish();
+    settledDotInteractionSourceStoreRef.current = next;
+    return next;
+  }, [dotSourceStore, isMapMoving]);
 
   return {
     visibleSortedRestaurantMarkers,
-    visibleDotRestaurantFeatures,
-    visibleRestaurantFeatures,
+    pinSourceStore,
+    dotSourceStore,
+    pinInteractionSourceStore,
+    dotInteractionSourceStore,
     markersRenderKey,
-    pinsRenderKey: visiblePinsRenderKey,
+    pinsRenderKey,
     restaurantLabelStyle,
     buildMarkerKey,
     mapQueryBudget,
@@ -660,8 +791,6 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
     resetShortcutCoverageState,
     isShortcutCoverageLoading,
     anchoredShortcutCoverageFeatures,
-    lodPinnedMarkersRef,
-    recomputeLodPinnedMarkers,
     canonicalRestaurantRankById,
     restaurantsById,
     restaurants: mapMarkerRestaurants,

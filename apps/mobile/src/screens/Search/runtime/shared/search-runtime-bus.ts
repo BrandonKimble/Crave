@@ -5,6 +5,7 @@ import type { MarkerCatalogEntry } from '../map/map-viewport-query';
 import type { RunOneHandoffPhase } from '../controller/run-one-handoff-phase';
 import type {
   PresentationLoadingMode,
+  PresentationLaneState,
   PresentationMutationKind,
 } from '../controller/presentation-transition-controller';
 
@@ -18,6 +19,23 @@ export type SearchRuntimeOperationLane =
   | 'lane_d_map_dots'
   | 'lane_e_map_pins'
   | 'lane_f_polish';
+
+export type SearchRuntimeMapPresentationPhase =
+  | 'idle'
+  | 'covered'
+  | 'reveal_requested'
+  | 'revealing'
+  | 'live'
+  | 'dismiss_preroll'
+  | 'dismissing';
+
+export const isSearchRuntimeMapPresentationPending = (
+  phase: SearchRuntimeMapPresentationPhase
+): boolean => phase !== 'idle' && phase !== 'live';
+
+export const isSearchRuntimeMapPresentationSettled = (
+  phase: SearchRuntimeMapPresentationPhase
+): boolean => !isSearchRuntimeMapPresentationPending(phase);
 
 export type SearchRuntimeBusState = {
   results: SearchResponse | null;
@@ -36,6 +54,8 @@ export type SearchRuntimeBusState = {
   toggleInteractionKind: PresentationMutationKind | null;
   shouldRetrySearchOnReconnect: boolean;
   hasSystemStatusBanner: boolean;
+  resultsFirstPaintKey: string | null;
+  listFirstPaintReady: boolean;
   shouldHydrateResultsForRender: boolean;
   isResultsHydrationSettled: boolean;
   runOneCommitSpanPressureActive: boolean;
@@ -81,9 +101,10 @@ export type SearchRuntimeBusState = {
   // Presentation transition mirror (Slice 1: telemetry/contract only).
   presentationTransitionKind: PresentationMutationKind | null;
   presentationTransitionLoadingMode: PresentationLoadingMode;
+  presentationResultsCoverVisible: boolean;
   // Presentation controller-driven map coordination.
-  presentationMapRevealRequestKey: string | null;
-  presentationDismissEpoch: number;
+  presentationLane: PresentationLaneState;
+  mapPresentationPhase: SearchRuntimeMapPresentationPhase;
 };
 
 export type SearchRuntimeBusKey = keyof SearchRuntimeBusState;
@@ -107,6 +128,8 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   toggleInteractionKind: null,
   shouldRetrySearchOnReconnect: false,
   hasSystemStatusBanner: false,
+  resultsFirstPaintKey: null,
+  listFirstPaintReady: false,
   shouldHydrateResultsForRender: false,
   isResultsHydrationSettled: true,
   runOneCommitSpanPressureActive: false,
@@ -148,8 +171,9 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   isSubmitChromePriming: false,
   presentationTransitionKind: null,
   presentationTransitionLoadingMode: 'none',
-  presentationMapRevealRequestKey: null,
-  presentationDismissEpoch: 0,
+  presentationResultsCoverVisible: false,
+  presentationLane: null,
+  mapPresentationPhase: 'idle',
 };
 
 export class SearchRuntimeBus {

@@ -19,7 +19,6 @@ export type SuggestionTransitionHold = {
   isRecentLoading: boolean;
   isRecentlyViewedLoading: boolean;
   isRecentlyViewedFoodsLoading: boolean;
-  holdShortcuts: boolean;
   holdSuggestionPanel: boolean;
   holdSuggestionBackground: boolean;
   holdAutocomplete: boolean;
@@ -27,7 +26,6 @@ export type SuggestionTransitionHold = {
 };
 
 type TransitionHoldFlags = {
-  holdShortcuts: boolean;
   holdSuggestionPanel: boolean;
   holdSuggestionBackground: boolean;
   holdAutocomplete: boolean;
@@ -53,8 +51,6 @@ type UseSuggestionTransitionHoldArgs = {
   isRecentlyViewedLoading: boolean;
   isRecentlyViewedFoodsLoading: boolean;
   setSearchTransitionVariant: React.Dispatch<React.SetStateAction<SearchTransitionVariant>>;
-  shortcutContentFadeMode: { value: number };
-  shortcutFadeDefault: number;
 };
 
 type UseSuggestionTransitionHoldResult = {
@@ -75,7 +71,6 @@ const createEmptySuggestionTransitionHold = (): SuggestionTransitionHold => ({
   isRecentLoading: false,
   isRecentlyViewedLoading: false,
   isRecentlyViewedFoodsLoading: false,
-  holdShortcuts: false,
   holdSuggestionPanel: false,
   holdSuggestionBackground: false,
   holdAutocomplete: false,
@@ -92,8 +87,6 @@ export const useSuggestionTransitionHold = ({
   isRecentlyViewedLoading,
   isRecentlyViewedFoodsLoading,
   setSearchTransitionVariant,
-  shortcutContentFadeMode,
-  shortcutFadeDefault,
 }: UseSuggestionTransitionHoldArgs): UseSuggestionTransitionHoldResult => {
   const submitTransitionHoldRef = React.useRef<SuggestionTransitionHold>(
     createEmptySuggestionTransitionHold()
@@ -132,7 +125,6 @@ export const useSuggestionTransitionHold = ({
         isRecentLoading,
         isRecentlyViewedLoading,
         isRecentlyViewedFoodsLoading,
-        holdShortcuts: flags.holdShortcuts,
         holdSuggestionPanel: flags.holdSuggestionPanel,
         holdSuggestionBackground: flags.holdSuggestionBackground,
         holdAutocomplete: flags.holdAutocomplete,
@@ -155,18 +147,12 @@ export const useSuggestionTransitionHold = ({
   const beginSubmitTransition = React.useCallback(
     (options: TransitionHoldCaptureOptions) => {
       const didHold = captureSuggestionTransitionHold(options);
-      shortcutContentFadeMode.value = shortcutFadeDefault;
       if (didHold) {
         setSearchTransitionVariant('submitting');
       }
       return didHold;
     },
-    [
-      captureSuggestionTransitionHold,
-      setSearchTransitionVariant,
-      shortcutContentFadeMode,
-      shortcutFadeDefault,
-    ]
+    [captureSuggestionTransitionHold, setSearchTransitionVariant]
   );
 
   const beginSuggestionCloseHold = React.useCallback(

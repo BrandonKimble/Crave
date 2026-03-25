@@ -1,12 +1,50 @@
+import org.gradle.authentication.http.BasicAuthentication
+
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+def resolveMapboxDownloadsToken = {
+    def token =
+        System.getenv("MAPBOX_DOWNLOADS_TOKEN") ?:
+        System.getenv("MAPBOX_STYLES_TOKEN") ?:
+        findProperty("MAPBOX_DOWNLOADS_TOKEN") ?:
+        findProperty("MAPBOX_STYLES_TOKEN")
+    if (token != null && token.toString().trim()) {
+        return token.toString().trim()
+    }
+    def envFiles = [
+        new File(rootDir.getParentFile(), ".env.local"),
+        new File(rootDir.getParentFile(), ".env"),
+    ]
+    for (def envFile : envFiles) {
+        if (!envFile.exists()) {
+            continue
+        }
+        for (def line : envFile.readLines()) {
+            if (!line.startsWith("MAPBOX_DOWNLOADS_TOKEN=") && !line.startsWith("MAPBOX_STYLES_TOKEN=")) {
+                continue
+            }
+            def separatorIndex = line.indexOf("=")
+            if (separatorIndex < 0) {
+                continue
+            }
+            def value = line.substring(separatorIndex + 1).trim()
+            if (value) {
+                return value
+            }
+        }
+    }
+    return null
+}
+
+def mapboxDownloadsToken = resolveMapboxDownloadsToken()
 
 buildscript {
     ext {
-        buildToolsVersion = findProperty('android.buildToolsVersion') ?: '33.0.0'
-        minSdkVersion = Integer.parseInt(findProperty('android.minSdkVersion') ?: '21')
-        compileSdkVersion = Integer.parseInt(findProperty('android.compileSdkVersion') ?: '33')
-        targetSdkVersion = Integer.parseInt(findProperty('android.targetSdkVersion') ?: '33')
-        kotlinVersion = findProperty('android.kotlinVersion') ?: '1.8.10'
+        buildToolsVersion = findProperty('android.buildToolsVersion') ?: '35.0.0'
+        minSdkVersion = Integer.parseInt(findProperty('android.minSdkVersion') ?: '24')
+        compileSdkVersion = Integer.parseInt(findProperty('android.compileSdkVersion') ?: '35')
+        targetSdkVersion = Integer.parseInt(findProperty('android.targetSdkVersion') ?: '35')
+        kotlinVersion = findProperty('android.kotlinVersion') ?: '2.1.20'
         frescoVersion = findProperty('expo.frescoVersion') ?: '2.5.0'
 
         // We use NDK 23 which has both M1 support and is the side-by-side NDK version from AGP.
@@ -17,7 +55,7 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath('com.android.tools.build:gradle:7.4.2')
+        classpath('com.android.tools.build:gradle:8.11.0')
         classpath('com.facebook.react:react-native-gradle-plugin')
     }
 }
@@ -35,6 +73,18 @@ allprojects {
 
         google()
         mavenCentral()
+        if (mapboxDownloadsToken != null) {
+            maven {
+                url = uri("https://api.mapbox.com/downloads/v2/releases/maven")
+                authentication {
+                    basic(BasicAuthentication)
+                }
+                credentials {
+                    username = "mapbox"
+                    password = mapboxDownloadsToken
+                }
+            }
+        }
         maven { url 'https://www.jitpack.io' }
     }
 }

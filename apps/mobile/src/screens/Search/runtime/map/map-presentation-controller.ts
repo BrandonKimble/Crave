@@ -5,6 +5,7 @@ import type { MapBounds } from '../../../../types';
 import type { RestaurantFeatureProperties } from '../../components/search-map';
 import type { ViewportBoundsService } from '../viewport/viewport-bounds-service';
 import { createMapQueryBudget, type MapQueryBudget } from './map-query-budget';
+import { buildViewportMotionToken, decideMotionDerivation } from './map-motion-budget';
 import { createMapViewportQueryService, type MarkerCatalogEntry } from './map-viewport-query';
 
 const FNV1A_OFFSET_BASIS = 0x811c9dc5;
@@ -59,6 +60,7 @@ type UseMapPresentationControllerArgs = {
   searchMode: 'shortcut' | 'natural' | 'entity' | null;
   selectedRestaurantId: string | null;
   viewportBoundsService: ViewportBoundsService;
+  mapGestureActiveRef: React.MutableRefObject<boolean>;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
   shouldLogSearchComputes: boolean;
   getPerfNow: () => number;
@@ -70,7 +72,13 @@ export type MapPresentationController = {
   mapQueryBudget: MapQueryBudget;
   visibleMarkerCandidates: MarkerCatalogEntry[];
   markerCandidatesRef: React.MutableRefObject<Array<Feature<Point, RestaurantFeatureProperties>>>;
-  recomputeVisibleCandidates: (bounds: MapBounds | null) => void;
+};
+
+type VisibleCandidateQuerySnapshot = {
+  bounds: MapBounds | null;
+  selectedRestaurantId: string | null;
+  shouldPublishVisibleCandidates: boolean;
+  markerCatalogEntries: MarkerCatalogEntry[];
 };
 
 export const useMapPresentationController = (
@@ -81,6 +89,7 @@ export const useMapPresentationController = (
     searchMode,
     selectedRestaurantId,
     viewportBoundsService,
+    mapGestureActiveRef,
     buildMarkerKey,
     shouldLogSearchComputes,
     getPerfNow,
@@ -100,12 +109,81 @@ export const useMapPresentationController = (
     MarkerCatalogEntry[]
   >([]);
   const visibleMarkerCandidateKeyRef = React.useRef('');
+  const lastVisibleCandidateQueryRef = React.useRef<VisibleCandidateQuerySnapshot | null>(null);
+  const lastMovingVisibleCandidateDerivationRef = React.useRef<{
+    token: ReturnType<typeof buildViewportMotionToken>;
+    runAtMs: number;
+  }>({
+    token: null,
+    runAtMs: 0,
+  });
   const shouldTrackViewportCandidates = searchMode !== 'shortcut' || selectedRestaurantId !== null;
   const shouldPublishVisibleCandidates = shouldTrackViewportCandidates;
 
   const recomputeVisibleCandidates = React.useCallback(
     (bounds: MapBounds | null) => {
       const start = shouldLogSearchComputes ? getPerfNow() : 0;
+      const lastQuery = lastVisibleCandidateQueryRef.current;
+      const isMoving = mapGestureActiveRef.current;
+      const nowMs = Date.now();
+      const boundsUnchanged =
+        lastQuery?.bounds?.northEast.lat === bounds?.northEast.lat &&
+        lastQuery?.bounds?.northEast.lng === bounds?.northEast.lng &&
+        lastQuery?.bounds?.southWest.lat === bounds?.southWest.lat &&
+        lastQuery?.bounds?.southWest.lng === bounds?.southWest.lng;
+      const canCoalesceMovingBoundsOnly =
+        isMoving &&
+        lastQuery != null &&
+        lastQuery.selectedRestaurantId === selectedRestaurantId &&
+        lastQuery.shouldPublishVisibleCandidates === shouldPublishVisibleCandidates &&
+        lastQuery.markerCatalogEntries === markerCatalogEntries;
+      if (canCoalesceMovingBoundsOnly) {
+        const motionDecision = decideMotionDerivation({
+          budgetClass: 'moving',
+          previousToken: lastMovingVisibleCandidateDerivationRef.current.token,
+          nextToken: buildViewportMotionToken({
+            bounds,
+            budgetClass: 'moving',
+          }),
+          lastRunAtMs: lastMovingVisibleCandidateDerivationRef.current.runAtMs,
+          nowMs,
+          minIntervalMs: 90,
+        });
+        if (!motionDecision.shouldRun) {
+          mapQueryBudget.incrementRuntimeCounter('map_visible_candidates_moving_coalesced');
+          return;
+        }
+        lastMovingVisibleCandidateDerivationRef.current = {
+          token: motionDecision.token,
+          runAtMs: nowMs,
+        };
+        mapQueryBudget.incrementRuntimeCounter(
+          `map_visible_candidates_moving_runs_${motionDecision.reason}`
+        );
+      } else if (!isMoving) {
+        lastMovingVisibleCandidateDerivationRef.current = {
+          token: buildViewportMotionToken({
+            bounds,
+            budgetClass: 'settled',
+          }),
+          runAtMs: nowMs,
+        };
+      }
+      if (
+        lastQuery &&
+        boundsUnchanged &&
+        lastQuery.selectedRestaurantId === selectedRestaurantId &&
+        lastQuery.shouldPublishVisibleCandidates === shouldPublishVisibleCandidates &&
+        lastQuery.markerCatalogEntries === markerCatalogEntries
+      ) {
+        return;
+      }
+      lastVisibleCandidateQueryRef.current = {
+        bounds,
+        selectedRestaurantId,
+        shouldPublishVisibleCandidates,
+        markerCatalogEntries,
+      };
       const candidates = mapViewportQueryService.queryVisibleCandidates(
         {
           bounds,
@@ -132,6 +210,7 @@ export const useMapPresentationController = (
       buildMarkerKey,
       getPerfNow,
       logSearchCompute,
+      mapGestureActiveRef,
       mapQueryBudget,
       mapViewportQueryService,
       shouldPublishVisibleCandidates,
@@ -146,6 +225,7 @@ export const useMapPresentationController = (
     }
     markerCandidatesRef.current = [];
     visibleMarkerCandidateKeyRef.current = '';
+    lastVisibleCandidateQueryRef.current = null;
     if (visibleMarkerCandidates.length !== 0) {
       setVisibleMarkerCandidates([]);
     }
@@ -174,6 +254,5 @@ export const useMapPresentationController = (
     mapQueryBudget,
     visibleMarkerCandidates,
     markerCandidatesRef,
-    recomputeVisibleCandidates,
   };
 };

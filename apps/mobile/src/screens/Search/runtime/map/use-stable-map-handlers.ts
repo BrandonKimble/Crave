@@ -5,64 +5,80 @@ import type { Coordinate } from '../../../../types';
 
 type UseStableMapHandlersArgs = {
   handleMapPress: () => void;
-  handleCameraChanged: (state: MapboxMapState) => void;
+  handleNativeViewportChanged: (state: MapboxMapState) => void;
   handleMapIdle: (state: MapboxMapState) => void;
   handleMapLoaded: () => void;
   handleMarkerPress: (restaurantId: string, pressedCoordinate?: Coordinate | null) => void;
-  handleMarkerRevealStarted: (payload: {
+  handleRevealBatchMountedHidden: (payload: {
     requestKey: string;
-    markerRevealCommitId: number | null;
-    startedAtMs: number;
+    frameGenerationId: string | null;
+    revealBatchId: string | null;
+    readyAtMs: number;
   }) => void;
   handleMarkerRevealSettled: (payload: {
     requestKey: string;
+    frameGenerationId: string | null;
+    revealBatchId: string | null;
     markerRevealCommitId: number | null;
     settledAtMs: number;
   }) => void;
+  handleMarkerDismissStarted: (payload: { requestKey: string; startedAtMs: number }) => void;
+  handleMarkerDismissSettled: (payload: { requestKey: string; settledAtMs: number }) => void;
 };
 
 type StableMapHandlers = {
   onMapPress: () => void;
-  onCameraChanged: (state: MapboxMapState) => void;
+  onNativeViewportChanged: (state: MapboxMapState) => void;
   onMapIdle: (state: MapboxMapState) => void;
   onMapLoaded: () => void;
   onMarkerPress: (restaurantId: string, pressedCoordinate?: Coordinate | null) => void;
-  onMarkerRevealStarted: (payload: {
+  onRevealBatchMountedHidden: (payload: {
     requestKey: string;
-    markerRevealCommitId: number | null;
-    startedAtMs: number;
+    frameGenerationId: string | null;
+    revealBatchId: string | null;
+    readyAtMs: number;
   }) => void;
   onMarkerRevealSettled: (payload: {
     requestKey: string;
+    frameGenerationId: string | null;
+    revealBatchId: string | null;
     markerRevealCommitId: number | null;
     settledAtMs: number;
   }) => void;
+  onMarkerDismissStarted: (payload: { requestKey: string; startedAtMs: number }) => void;
+  onMarkerDismissSettled: (payload: { requestKey: string; settledAtMs: number }) => void;
 };
 
 export const useStableMapHandlers = ({
   handleMapPress,
-  handleCameraChanged,
+  handleNativeViewportChanged,
   handleMapIdle,
   handleMapLoaded,
   handleMarkerPress,
-  handleMarkerRevealStarted,
+  handleRevealBatchMountedHidden,
   handleMarkerRevealSettled,
+  handleMarkerDismissStarted,
+  handleMarkerDismissSettled,
 }: UseStableMapHandlersArgs): StableMapHandlers => {
   const handleMapPressRef = React.useRef(handleMapPress);
-  const handleCameraChangedRef = React.useRef(handleCameraChanged);
+  const handleNativeViewportChangedRef = React.useRef(handleNativeViewportChanged);
   const handleMapIdleRef = React.useRef(handleMapIdle);
   const handleMapLoadedRef = React.useRef(handleMapLoaded);
   const handleMarkerPressRef = React.useRef(handleMarkerPress);
-  const handleMarkerRevealStartedRef = React.useRef(handleMarkerRevealStarted);
+  const handleRevealBatchMountedHiddenRef = React.useRef(handleRevealBatchMountedHidden);
   const handleMarkerRevealSettledRef = React.useRef(handleMarkerRevealSettled);
+  const handleMarkerDismissStartedRef = React.useRef(handleMarkerDismissStarted);
+  const handleMarkerDismissSettledRef = React.useRef(handleMarkerDismissSettled);
 
   handleMapPressRef.current = handleMapPress;
-  handleCameraChangedRef.current = handleCameraChanged;
+  handleNativeViewportChangedRef.current = handleNativeViewportChanged;
   handleMapIdleRef.current = handleMapIdle;
   handleMapLoadedRef.current = handleMapLoaded;
   handleMarkerPressRef.current = handleMarkerPress;
-  handleMarkerRevealStartedRef.current = handleMarkerRevealStarted;
+  handleRevealBatchMountedHiddenRef.current = handleRevealBatchMountedHidden;
   handleMarkerRevealSettledRef.current = handleMarkerRevealSettled;
+  handleMarkerDismissStartedRef.current = handleMarkerDismissStarted;
+  handleMarkerDismissSettledRef.current = handleMarkerDismissSettled;
 
   const stableMapHandlersRef = React.useRef<StableMapHandlers | null>(null);
 
@@ -71,8 +87,8 @@ export const useStableMapHandlers = ({
       onMapPress: () => {
         handleMapPressRef.current();
       },
-      onCameraChanged: (state: MapboxMapState) => {
-        handleCameraChangedRef.current(state);
+      onNativeViewportChanged: (state: MapboxMapState) => {
+        handleNativeViewportChangedRef.current(state);
       },
       onMapIdle: (state: MapboxMapState) => {
         handleMapIdleRef.current(state);
@@ -83,11 +99,17 @@ export const useStableMapHandlers = ({
       onMarkerPress: (restaurantId: string, pressedCoordinate?: Coordinate | null) => {
         handleMarkerPressRef.current(restaurantId, pressedCoordinate);
       },
-      onMarkerRevealStarted: (payload) => {
-        handleMarkerRevealStartedRef.current(payload);
+      onRevealBatchMountedHidden: (payload) => {
+        handleRevealBatchMountedHiddenRef.current(payload);
       },
       onMarkerRevealSettled: (payload) => {
         handleMarkerRevealSettledRef.current(payload);
+      },
+      onMarkerDismissStarted: (payload) => {
+        handleMarkerDismissStartedRef.current(payload);
+      },
+      onMarkerDismissSettled: (payload) => {
+        handleMarkerDismissSettledRef.current(payload);
       },
     };
   }

@@ -8,6 +8,8 @@ type ClearSearchStateOptions = {
   skipSheetAnimation?: boolean;
   deferSuggestionClear?: boolean;
   skipProfileDismissWait?: boolean;
+  skipPostSearchRestore?: boolean;
+  preserveForegroundEditing?: boolean;
 };
 
 type RestaurantFocusSessionRefState = {
@@ -22,6 +24,7 @@ type UseSearchClearControllerArgs<TSearchMode, TError, TSuggestion> = {
   isSearchLoading: boolean;
   isSuggestionPanelActive: boolean;
   isSuggestionPanelVisible: boolean;
+  shouldPreserveForegroundEditingOnClose: boolean;
   searchRuntimeBus: SearchRuntimeBus;
   inputRef: React.RefObject<TextInput | null>;
   ignoreNextSearchBlurRef: React.MutableRefObject<boolean>;
@@ -29,12 +32,16 @@ type UseSearchClearControllerArgs<TSearchMode, TError, TSuggestion> = {
   shouldClearSearchOnProfileDismissRef: React.MutableRefObject<boolean>;
   isClearingSearchRef: React.MutableRefObject<boolean>;
   closeRestaurantProfileRef: React.MutableRefObject<(() => void) | null>;
-  lodPinnedMarkersRef: React.MutableRefObject<unknown[]>;
   lastAutoOpenKeyRef: React.MutableRefObject<string | null>;
   restaurantFocusSessionRef: React.MutableRefObject<RestaurantFocusSessionRefState>;
   searchSessionQueryRef: React.MutableRefObject<string>;
-  beginSearchCloseRestore: (options: { allowFallback: boolean }) => boolean;
-  flushPendingSearchOriginRestore: () => void;
+  armSearchCloseRestore: (options: {
+    allowFallback: boolean;
+    searchRootRestoreSnap?: 'expanded' | 'middle' | 'collapsed';
+  }) => boolean;
+  commitSearchCloseRestore: () => boolean;
+  cancelSearchCloseRestore: () => void;
+  flushPendingSearchOriginRestore: () => boolean;
   requestDefaultPostSearchRestore: () => void;
   cancelActiveSearchRequest: () => void;
   cancelAutocomplete: () => void;
@@ -44,13 +51,9 @@ type UseSearchClearControllerArgs<TSearchMode, TError, TSuggestion> = {
   resetFocusedMapState: () => void;
   resetMapMoveFlag: () => void;
   resetSheetToHidden: () => void;
-  recomputeLodPinnedMarkers: (next: null) => void;
   scrollResultsToTop: () => void;
   setRestaurantOnlyIntent: (restaurantId: string | null) => void;
   setSearchTransitionVariant: React.Dispatch<React.SetStateAction<'default' | 'submitting'>>;
-  shortcutContentFadeMode: { value: number };
-  shortcutFadeDefault: number;
-  setSearchShortcutsFadeResetKey: React.Dispatch<React.SetStateAction<number>>;
   setIsFilterTogglePending: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSearchFocused: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSuggestionPanelActive: React.Dispatch<React.SetStateAction<boolean>>;
@@ -62,11 +65,16 @@ type UseSearchClearControllerArgs<TSearchMode, TError, TSuggestion> = {
   setIsSearchSessionActive: React.Dispatch<React.SetStateAction<boolean>>;
   setSearchMode: React.Dispatch<React.SetStateAction<TSearchMode | null>>;
   resetShortcutCoverageState: () => void;
+  startClosePresentation: (options?: { intentId?: string }) => string;
+  cancelClosePresentation: (intentId?: string) => void;
   onCloseResultsUiReset: () => void;
 };
 
 type UseSearchClearControllerResult = {
   clearSearchState: (options?: ClearSearchStateOptions) => void;
+  beginCloseSearch: () => void;
+  finalizeCloseSearch: (intentId: string) => void;
+  cancelCloseSearch: (intentId?: string) => void;
   handleClear: () => void;
   handleCloseResults: () => void;
 };
@@ -77,6 +85,7 @@ export const useSearchClearController = <TSearchMode, TError, TSuggestion>({
   isSearchLoading,
   isSuggestionPanelActive,
   isSuggestionPanelVisible,
+  shouldPreserveForegroundEditingOnClose,
   searchRuntimeBus,
   inputRef,
   ignoreNextSearchBlurRef,
@@ -84,11 +93,12 @@ export const useSearchClearController = <TSearchMode, TError, TSuggestion>({
   shouldClearSearchOnProfileDismissRef,
   isClearingSearchRef,
   closeRestaurantProfileRef,
-  lodPinnedMarkersRef,
   lastAutoOpenKeyRef,
   restaurantFocusSessionRef,
   searchSessionQueryRef,
-  beginSearchCloseRestore,
+  armSearchCloseRestore,
+  commitSearchCloseRestore,
+  cancelSearchCloseRestore,
   flushPendingSearchOriginRestore,
   requestDefaultPostSearchRestore,
   cancelActiveSearchRequest,
@@ -99,13 +109,9 @@ export const useSearchClearController = <TSearchMode, TError, TSuggestion>({
   resetFocusedMapState,
   resetMapMoveFlag,
   resetSheetToHidden,
-  recomputeLodPinnedMarkers,
   scrollResultsToTop,
   setRestaurantOnlyIntent,
   setSearchTransitionVariant,
-  shortcutContentFadeMode,
-  shortcutFadeDefault,
-  setSearchShortcutsFadeResetKey,
   setIsFilterTogglePending,
   setIsSearchFocused,
   setIsSuggestionPanelActive,
@@ -117,18 +123,24 @@ export const useSearchClearController = <TSearchMode, TError, TSuggestion>({
   setIsSearchSessionActive,
   setSearchMode,
   resetShortcutCoverageState,
+  startClosePresentation,
+  cancelClosePresentation,
   onCloseResultsUiReset,
 }: UseSearchClearControllerArgs<
   TSearchMode,
   TError,
   TSuggestion
 >): UseSearchClearControllerResult => {
+  const pendingCloseIntentIdRef = React.useRef<string | null>(null);
+
   const clearSearchState = React.useCallback(
     ({
       shouldRefocusInput = false,
       skipSheetAnimation = false,
       deferSuggestionClear = false,
       skipProfileDismissWait = false,
+      skipPostSearchRestore = false,
+      preserveForegroundEditing = false,
     }: ClearSearchStateOptions = {}) => {
       if (isRestaurantOverlayVisible && !isClearingSearchRef.current) {
         profileDismissBehaviorRef.current = 'clear';
@@ -140,18 +152,16 @@ export const useSearchClearController = <TSearchMode, TError, TSuggestion>({
         }
       }
       const busState = searchRuntimeBus.getState();
-      const hasOriginRestorePending = beginSearchCloseRestore({
-        allowFallback:
-          isSearchSessionActive || Boolean(busState.results) || busState.submittedQuery.length > 0,
-      });
+      const hasOriginRestorePending = skipPostSearchRestore
+        ? false
+        : armSearchCloseRestore({
+            allowFallback:
+              isSearchSessionActive ||
+              Boolean(busState.results) ||
+              busState.submittedQuery.length > 0,
+            searchRootRestoreSnap: 'collapsed',
+          });
       isClearingSearchRef.current = true;
-      if (
-        isSearchSessionActive ||
-        Boolean(busState.results) ||
-        busState.submittedQuery.length > 0
-      ) {
-        setSearchShortcutsFadeResetKey((current) => current + 1);
-      }
       cancelActiveSearchRequest();
       cancelAutocomplete();
       cancelPendingMutationWork();
@@ -160,13 +170,15 @@ export const useSearchClearController = <TSearchMode, TError, TSuggestion>({
       }
       resetFilters();
       setIsFilterTogglePending(false);
-      setIsSearchFocused(false);
-      setIsSuggestionPanelActive(false);
-      setIsAutocompleteSuppressed(true);
-      if (!deferSuggestionClear) {
-        setShowSuggestions(false);
+      if (!preserveForegroundEditing) {
+        setIsSearchFocused(false);
+        setIsSuggestionPanelActive(false);
+        setIsAutocompleteSuppressed(true);
+        if (!deferSuggestionClear) {
+          setShowSuggestions(false);
+        }
+        setQuery('');
       }
-      setQuery('');
       searchRuntimeBus.publish({
         results: null,
         resultsRequestKey: null,
@@ -179,11 +191,9 @@ export const useSearchClearController = <TSearchMode, TError, TSuggestion>({
         canLoadMore: false,
       });
       resetShortcutCoverageState();
-      lodPinnedMarkersRef.current = [];
-      recomputeLodPinnedMarkers(null);
       resetMapMoveFlag();
       setError(null);
-      if (!deferSuggestionClear) {
+      if (!deferSuggestionClear && !preserveForegroundEditing) {
         setSuggestions([]);
       }
       setIsSearchSessionActive(false);
@@ -192,8 +202,9 @@ export const useSearchClearController = <TSearchMode, TError, TSuggestion>({
         resetSheetToHidden();
       }
       if (hasOriginRestorePending) {
+        commitSearchCloseRestore();
         flushPendingSearchOriginRestore();
-      } else {
+      } else if (!skipPostSearchRestore) {
         requestDefaultPostSearchRestore();
       }
       lastAutoOpenKeyRef.current = null;
@@ -206,11 +217,12 @@ export const useSearchClearController = <TSearchMode, TError, TSuggestion>({
       setRestaurantOnlyIntent(null);
       searchSessionQueryRef.current = '';
       setSearchTransitionVariant('default');
-      shortcutContentFadeMode.value = shortcutFadeDefault;
       profileDismissBehaviorRef.current = 'restore';
       shouldClearSearchOnProfileDismissRef.current = false;
-      Keyboard.dismiss();
-      inputRef.current?.blur();
+      if (!preserveForegroundEditing) {
+        Keyboard.dismiss();
+        inputRef.current?.blur();
+      }
       scrollResultsToTop();
       isClearingSearchRef.current = false;
       if (shouldRefocusInput) {
@@ -220,7 +232,8 @@ export const useSearchClearController = <TSearchMode, TError, TSuggestion>({
       }
     },
     [
-      beginSearchCloseRestore,
+      armSearchCloseRestore,
+      commitSearchCloseRestore,
       cancelActiveSearchRequest,
       cancelAutocomplete,
       cancelPendingMutationWork,
@@ -231,9 +244,7 @@ export const useSearchClearController = <TSearchMode, TError, TSuggestion>({
       isSearchSessionActive,
       isClearingSearchRef,
       lastAutoOpenKeyRef,
-      lodPinnedMarkersRef,
       profileDismissBehaviorRef,
-      recomputeLodPinnedMarkers,
       requestDefaultPostSearchRestore,
       resetFilters,
       resetFocusedMapState,
@@ -254,12 +265,9 @@ export const useSearchClearController = <TSearchMode, TError, TSuggestion>({
       setQuery,
       setRestaurantOnlyIntent,
       setSearchMode,
-      setSearchShortcutsFadeResetKey,
       setSearchTransitionVariant,
       setShowSuggestions,
       setSuggestions,
-      shortcutContentFadeMode,
-      shortcutFadeDefault,
       shouldClearSearchOnProfileDismissRef,
     ]
   );
@@ -278,14 +286,103 @@ export const useSearchClearController = <TSearchMode, TError, TSuggestion>({
     setSuggestions,
   ]);
 
+  const finalizeCloseSearch = React.useCallback(
+    (intentId: string) => {
+      if (pendingCloseIntentIdRef.current !== intentId) {
+        return;
+      }
+      clearSearchState({
+        skipProfileDismissWait: true,
+        skipPostSearchRestore: true,
+        preserveForegroundEditing: shouldPreserveForegroundEditingOnClose,
+      });
+      pendingCloseIntentIdRef.current = null;
+    },
+    [clearSearchState, shouldPreserveForegroundEditingOnClose]
+  );
+
+  const cancelCloseSearch = React.useCallback(
+    (intentId?: string) => {
+      if (
+        intentId != null &&
+        pendingCloseIntentIdRef.current != null &&
+        pendingCloseIntentIdRef.current !== intentId
+      ) {
+        return;
+      }
+      pendingCloseIntentIdRef.current = null;
+      isClearingSearchRef.current = false;
+      cancelSearchCloseRestore();
+      cancelClosePresentation(intentId);
+    },
+    [cancelClosePresentation, cancelSearchCloseRestore, isClearingSearchRef]
+  );
+
+  const beginCloseSearch = React.useCallback(() => {
+    const busState = searchRuntimeBus.getState();
+    const hasSearchToClose =
+      isSearchSessionActive || Boolean(busState.results) || busState.submittedQuery.length > 0;
+    if (!hasSearchToClose) {
+      clearTypedQuery();
+      return;
+    }
+
+    ignoreNextSearchBlurRef.current = true;
+    onCloseResultsUiReset();
+    pendingCloseIntentIdRef.current = startClosePresentation();
+    isClearingSearchRef.current = true;
+    cancelActiveSearchRequest();
+    cancelAutocomplete();
+    cancelPendingMutationWork();
+    resetSubmitTransitionHold();
+    setIsFilterTogglePending(false);
+    setIsSearchFocused(false);
+    setIsSuggestionPanelActive(false);
+    setIsAutocompleteSuppressed(true);
+    setShowSuggestions(false);
+    setQuery('');
+    setError(null);
+    setSuggestions([]);
+    Keyboard.dismiss();
+    inputRef.current?.blur();
+  }, [
+    cancelActiveSearchRequest,
+    cancelAutocomplete,
+    cancelPendingMutationWork,
+    clearTypedQuery,
+    inputRef,
+    ignoreNextSearchBlurRef,
+    isClearingSearchRef,
+    isSearchSessionActive,
+    onCloseResultsUiReset,
+    resetSubmitTransitionHold,
+    searchRuntimeBus,
+    setError,
+    setIsAutocompleteSuppressed,
+    setIsFilterTogglePending,
+    setIsSearchFocused,
+    setIsSuggestionPanelActive,
+    setQuery,
+    setShowSuggestions,
+    setSuggestions,
+    startClosePresentation,
+  ]);
+
   const handleClear = React.useCallback(() => {
     const shouldCloseSuggestions = isSuggestionPanelActive || isSuggestionPanelVisible;
+    const busState = searchRuntimeBus.getState();
+    const hasSearchToClose =
+      isSearchSessionActive || Boolean(busState.results) || busState.submittedQuery.length > 0;
     if (isSuggestionPanelActive) {
       clearTypedQuery();
       return;
     }
     if (!isSearchSessionActive && !shouldCloseSuggestions && !isRestaurantOverlayVisible) {
       clearTypedQuery();
+      return;
+    }
+    if (hasSearchToClose) {
+      beginCloseSearch();
       return;
     }
     ignoreNextSearchBlurRef.current = true;
@@ -303,19 +400,19 @@ export const useSearchClearController = <TSearchMode, TError, TSuggestion>({
     isSearchSessionActive,
     isSuggestionPanelActive,
     isSuggestionPanelVisible,
+    beginCloseSearch,
     searchRuntimeBus,
   ]);
 
   const handleCloseResults = React.useCallback(() => {
-    ignoreNextSearchBlurRef.current = true;
-    onCloseResultsUiReset();
-    clearSearchState({
-      skipProfileDismissWait: true,
-    });
-  }, [clearSearchState, ignoreNextSearchBlurRef, onCloseResultsUiReset]);
+    beginCloseSearch();
+  }, [beginCloseSearch]);
 
   return {
     clearSearchState,
+    beginCloseSearch,
+    finalizeCloseSearch,
+    cancelCloseSearch,
     handleClear,
     handleCloseResults,
   };

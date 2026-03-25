@@ -7,7 +7,10 @@ import { FrostedGlassBackground } from '../../../components/FrostedGlassBackgrou
 import SquircleSpinner from '../../../components/SquircleSpinner';
 import { Text } from '../../../components';
 import EmptyState from '../components/empty-state';
-import type { SnapPoints } from '../../../overlays/BottomSheetWithFlashList';
+import type {
+  BottomSheetMotionCommand,
+  SnapPoints,
+} from '../../../overlays/BottomSheetWithFlashList';
 import { OVERLAY_TAB_HEADER_HEIGHT } from '../../../overlays/overlaySheetStyles';
 import { useSearchPanelSpec } from '../../../overlays/panels/SearchPanel';
 import type { OverlaySheetSnap } from '../../../overlays/types';
@@ -35,6 +38,7 @@ import { useSearchRuntimeBusSelector } from '../runtime/shared/use-search-runtim
 import { logger } from '../../../utils';
 import { getMarkerColorForDish, getMarkerColorForRestaurant } from '../utils/marker-lod';
 import styles from '../styles';
+import type { SearchSheetContentLane } from './use-search-presentation-controller';
 
 type SearchInteractionState = {
   isInteracting: boolean;
@@ -53,6 +57,7 @@ const HIDDEN_SCROLL_HEADER_STYLE: ViewStyle = { opacity: 0 };
 
 type SearchResultsPanelSpecArgs = {
   searchRuntimeBus: SearchRuntimeBus;
+  searchSheetContentLane: SearchSheetContentLane;
   activeOverlayKey: string;
   scheduleTabToggleCommit: (next: 'dishes' | 'restaurants') => void;
   toggleRankSelector: () => void;
@@ -92,7 +97,7 @@ type SearchResultsPanelSpecArgs = {
   shouldDisableResultsSheetInteraction: boolean;
   snapPoints: SnapPoints;
   sheetState: OverlaySheetSnap;
-  resultsSheetSnapTo: OverlaySheetSnap | null;
+  resultsSheetMotionCommand: SharedValue<BottomSheetMotionCommand | null>;
   handleResultsSheetSnapStart: (
     snap: OverlaySheetSnap,
     meta?: { source?: 'gesture' | 'programmatic' | 'restore' }
@@ -111,6 +116,7 @@ type SearchResultsPanelSpecArgs = {
 
 export const useSearchResultsPanelSpec = ({
   searchRuntimeBus,
+  searchSheetContentLane,
   activeOverlayKey,
   scheduleTabToggleCommit,
   toggleRankSelector,
@@ -140,7 +146,7 @@ export const useSearchResultsPanelSpec = ({
   shouldDisableResultsSheetInteraction,
   snapPoints,
   sheetState,
-  resultsSheetSnapTo,
+  resultsSheetMotionCommand,
   handleResultsSheetSnapStart,
   handleResultsListScrollBegin,
   handleResultsListScrollEnd,
@@ -245,11 +251,17 @@ export const useSearchResultsPanelSpec = ({
     (state) => ({
       presentationTransitionLoadingMode: state.presentationTransitionLoadingMode,
       presentationTransitionKind: state.presentationTransitionKind,
+      presentationResultsCoverVisible: state.presentationResultsCoverVisible,
     }),
     (left, right) =>
       left.presentationTransitionLoadingMode === right.presentationTransitionLoadingMode &&
-      left.presentationTransitionKind === right.presentationTransitionKind,
-    ['presentationTransitionLoadingMode', 'presentationTransitionKind'] as const
+      left.presentationTransitionKind === right.presentationTransitionKind &&
+      left.presentationResultsCoverVisible === right.presentationResultsCoverVisible,
+    [
+      'presentationTransitionLoadingMode',
+      'presentationTransitionKind',
+      'presentationResultsCoverVisible',
+    ] as const
   );
   const {
     results,
@@ -278,17 +290,41 @@ export const useSearchResultsPanelSpec = ({
     isRunOneChromeFreezeActive,
     isChromeDeferred,
   } = hydrationRuntimeState;
-  const { presentationTransitionLoadingMode, presentationTransitionKind } =
-    presentationTransitionRuntimeState;
+  const {
+    presentationTransitionLoadingMode,
+    presentationTransitionKind,
+    presentationResultsCoverVisible,
+  } = presentationTransitionRuntimeState;
   const isRunOneChromeDeferred =
     isRunOneChromeFreezeActive || runOneCommitSpanPressureActive || isChromeDeferred;
+  const isResultsClosing = searchSheetContentLane.kind === 'results_closing';
+  const isPersistentPollLane = searchSheetContentLane.kind === 'persistent_poll';
+  const shouldRetainCommittedResults = !isPersistentPollLane;
+  const [retainedResults, setRetainedResults] = React.useState(results);
+  React.useEffect(() => {
+    if (results != null) {
+      setRetainedResults(results);
+      return;
+    }
+    if (!shouldRetainCommittedResults) {
+      setRetainedResults(null);
+    }
+  }, [results, shouldRetainCommittedResults]);
+  const resolvedResults =
+    shouldRetainCommittedResults && results == null ? retainedResults : results;
+  const hasCommittedResultsPayload = resolvedResults != null;
   const shouldShowInteractionLoadingState =
-    presentationTransitionLoadingMode === 'interaction_frost';
+    presentationTransitionLoadingMode === 'interaction_frost' &&
+    presentationResultsCoverVisible &&
+    !isResultsClosing &&
+    !isPersistentPollLane &&
+    !hasCommittedResultsPayload;
   const shouldGateCardsForPresentationLoading = shouldShowInteractionLoadingState;
 
   // --- Diagnostic: track when panel spec renders with toggled values ---
   const prevDiagOpenNowRef = React.useRef(openNow);
   const prevDiagFrostRef = React.useRef(shouldShowInteractionLoadingState);
+  const prevDiagCoverRef = React.useRef(presentationResultsCoverVisible);
   if (openNow !== prevDiagOpenNowRef.current) {
     logger.info('[TOGGLE-DIAG] panelSpec:openNowChanged', {
       from: prevDiagOpenNowRef.current,
@@ -305,6 +341,14 @@ export const useSearchResultsPanelSpec = ({
     });
     prevDiagFrostRef.current = shouldShowInteractionLoadingState;
   }
+  if (presentationResultsCoverVisible !== prevDiagCoverRef.current) {
+    logger.info('[TOGGLE-DIAG] panelSpec:coverChanged', {
+      from: prevDiagCoverRef.current,
+      to: presentationResultsCoverVisible,
+      ts: Date.now(),
+    });
+    prevDiagCoverRef.current = presentationResultsCoverVisible;
+  }
 
   const handleInteractionTabChange = React.useCallback(
     (next: 'dishes' | 'restaurants') => {
@@ -316,7 +360,9 @@ export const useSearchResultsPanelSpec = ({
   const shouldDisableFiltersHeader = false;
   const shouldDisableResultsHeader = false;
   const shouldUsePlaceholderRows = false;
-  const cardsResults = shouldGateCardsForPresentationLoading ? null : results;
+  const shouldDisableResultsSheetInteractionForRender =
+    shouldDisableResultsSheetInteraction || isResultsClosing;
+  const cardsResults = shouldGateCardsForPresentationLoading ? null : resolvedResults;
   const dishes = cardsResults?.dishes ?? EMPTY_DISHES;
   const restaurants = cardsResults?.restaurants ?? EMPTY_RESTAURANTS;
   const searchRequestId = cardsResults?.metadata?.searchRequestId ?? null;
@@ -332,7 +378,7 @@ export const useSearchResultsPanelSpec = ({
     logSearchCompute: noopLogCompute,
   });
 
-  const primaryCoverageKey = results?.metadata?.coverageKey ?? null;
+  const primaryCoverageKey = resolvedResults?.metadata?.coverageKey ?? null;
   const hasCrossCoverage = React.useMemo(() => {
     const coverageKeys = new Set<string>();
     dishes.forEach((dish) => {
@@ -349,7 +395,7 @@ export const useSearchResultsPanelSpec = ({
   }, [dishes, restaurants]);
 
   const primaryFoodTerm = React.useMemo(() => {
-    const term = results?.metadata?.primaryFoodTerm;
+    const term = resolvedResults?.metadata?.primaryFoodTerm;
     if (typeof term === 'string') {
       const normalized = term.trim();
       if (normalized.length) {
@@ -357,7 +403,7 @@ export const useSearchResultsPanelSpec = ({
       }
     }
     return null;
-  }, [results?.metadata?.primaryFoodTerm]);
+  }, [resolvedResults?.metadata?.primaryFoodTerm]);
 
   const restaurantQualityColorByIdRef = React.useRef<Map<string, string>>(new Map());
   const dishQualityColorByConnectionIdRef = React.useRef<Map<string, string>>(new Map());
@@ -470,38 +516,41 @@ export const useSearchResultsPanelSpec = ({
     },
     [searchRuntimeBus]
   );
-  const resultsPage = results?.metadata?.page ?? 1;
-  // Hydration candidate uses ungated results data so the hydration key
-  // reflects the actual committed data, not the presentation-gated view.
-  // During frost, cardsResults is null but results still holds real data —
-  // readiness must track the real data to prevent stale listReady signals.
-  const ungatedDishesLength = results?.dishes?.length ?? 0;
-  const ungatedRestaurantsLength = results?.restaurants?.length ?? 0;
+  const resultsPage = resolvedResults?.metadata?.page ?? 1;
+  // Hydration candidate uses the controller-retained payload rather than the
+  // presentation-gated render view so interrupted reveal can keep the last
+  // committed list alive until the next payload arrives.
+  const ungatedDishesLength = resolvedResults?.dishes?.length ?? 0;
+  const ungatedRestaurantsLength = resolvedResults?.restaurants?.length ?? 0;
   const resultsHydrationCandidate = React.useMemo(() => {
-    if (!results) {
+    if (!resolvedResults) {
       return null;
     }
-    const requestKey = results?.metadata?.searchRequestId ?? 'no-request';
+    const requestKey = resolvedResults?.metadata?.searchRequestId ?? 'no-request';
     const totalFoodResults =
-      typeof results.metadata?.totalFoodResults === 'number'
-        ? results.metadata.totalFoodResults
+      typeof resolvedResults.metadata?.totalFoodResults === 'number'
+        ? resolvedResults.metadata.totalFoodResults
         : 'na';
     const totalRestaurantResults =
-      typeof results.metadata?.totalRestaurantResults === 'number'
-        ? results.metadata.totalRestaurantResults
+      typeof resolvedResults.metadata?.totalRestaurantResults === 'number'
+        ? resolvedResults.metadata.totalRestaurantResults
         : 'na';
     return `${requestKey}:page:${resultsPage}:dishes:${ungatedDishesLength}:restaurants:${ungatedRestaurantsLength}:totalFood:${totalFoodResults}:totalRestaurants:${totalRestaurantResults}`;
   }, [
     ungatedDishesLength,
     ungatedRestaurantsLength,
-    results,
-    results?.metadata?.searchRequestId,
-    results?.metadata?.totalFoodResults,
-    results?.metadata?.totalRestaurantResults,
+    resolvedResults,
+    resolvedResults?.metadata?.searchRequestId,
+    resolvedResults?.metadata?.totalFoodResults,
+    resolvedResults?.metadata?.totalRestaurantResults,
     resultsPage,
   ]);
   const resultsHydrationKey =
-    results == null ? null : resultsPage === 1 ? resultsHydrationCandidate : hydratedResultsKey;
+    resolvedResults == null
+      ? null
+      : resultsPage === 1
+      ? resultsHydrationCandidate
+      : hydratedResultsKey;
   const isHydrationPendingForRuntime =
     resultsHydrationKey != null &&
     resultsHydrationKey !== (hydratedResultsKeyRef.current ?? hydratedResultsKey);
@@ -517,16 +566,16 @@ export const useSearchResultsPanelSpec = ({
     }
   }, [runtimeHydratedResultsKey]);
   React.useEffect(() => {
-    if (!results) {
+    if (!resolvedResults) {
       setHydratedResultsKeySync(null);
     }
-  }, [results, setHydratedResultsKeySync]);
+  }, [resolvedResults, setHydratedResultsKeySync]);
   const onDemandNotice = React.useMemo(() => {
-    if (!results?.metadata?.onDemandQueued) {
+    if (!resolvedResults?.metadata?.onDemandQueued) {
       return null;
     }
-    const term = submittedQuery.trim() || results?.metadata?.sourceQuery?.trim() || '';
-    const etaMs = results?.metadata?.onDemandEtaMs;
+    const term = submittedQuery.trim() || resolvedResults?.metadata?.sourceQuery?.trim() || '';
+    const etaMs = resolvedResults?.metadata?.onDemandEtaMs;
     let etaText: string | null = null;
     if (etaMs && Number.isFinite(etaMs) && etaMs > 0) {
       const totalMinutes = Math.round(etaMs / 60000);
@@ -546,10 +595,10 @@ export const useSearchResultsPanelSpec = ({
         </Text>
       </View>
     );
-  }, [results, submittedQuery]);
-  const searchResultsRequestVersionKey = `${results?.metadata?.searchRequestId ?? 'no-request'}::${
-    resultsHydrationKey ?? 'no-hydration'
-  }`;
+  }, [resolvedResults, submittedQuery]);
+  const searchResultsRequestVersionKey = `${
+    resolvedResults?.metadata?.searchRequestId ?? 'no-request'
+  }::${resultsHydrationKey ?? 'no-hydration'}`;
 
   const filterChipReadModel = useSearchFilterChipReadModel({
     requestVersionKey: searchResultsRequestVersionKey,
@@ -707,7 +756,7 @@ export const useSearchResultsPanelSpec = ({
   const filtersHeaderHeightRef = React.useRef(filtersHeaderHeight);
   filtersHeaderHeightRef.current = filtersHeaderHeight;
 
-  const hasResolvedResults = results != null;
+  const hasResolvedResults = resolvedResults != null;
 
   const effectiveFiltersHeaderHeight = shouldDisableFiltersHeader ? 0 : filtersHeaderHeight;
   const effectiveResultsHeaderHeight = shouldDisableResultsHeader ? 0 : resultsSheetHeaderHeight;
@@ -774,7 +823,9 @@ export const useSearchResultsPanelSpec = ({
     presentationTransitionKind === 'initial_search' ||
     presentationTransitionKind === 'shortcut_rerun';
   const shouldShowInitialLoadingState =
-    presentationTransitionLoadingMode === 'initial_cover' && isInitialPresentationKind;
+    presentationTransitionLoadingMode === 'initial_cover' &&
+    isInitialPresentationKind &&
+    presentationResultsCoverVisible;
   const shouldShowResultsLoadingStateBase =
     shouldShowInteractionLoadingState || shouldShowInitialLoadingState;
   const shouldFreezeResultsChrome = isRunOneChromeDeferred && !hasResolvedResults;
@@ -849,15 +900,19 @@ export const useSearchResultsPanelSpec = ({
     phaseBMaterializerRef,
     contentHorizontalPadding: CONTENT_HORIZONTAL_PADDING,
   });
+  const resultsFirstPaintKey = cardsResults != null ? resultsHydrationKey : null;
   React.useEffect(() => {
     searchRuntimeBus.publish({
       resultsHydrationKey,
       hydratedResultsKey,
+      resultsFirstPaintKey,
+      listFirstPaintReady: resultsFirstPaintKey != null,
       shouldHydrateResultsForRender,
       isResultsHydrationSettled: resultsReadModelSelectors.isResultsHydrationSettled,
     });
   }, [
     hydratedResultsKey,
+    resultsFirstPaintKey,
     resultsHydrationKey,
     resultsReadModelSelectors.isResultsHydrationSettled,
     searchRuntimeBus,
@@ -894,7 +949,8 @@ export const useSearchResultsPanelSpec = ({
     ? 'empty'
     : 'none';
 
-  const shouldShowResultsSurface = surfaceMode !== 'none' || hasRenderableRows || shouldUsePlaceholderRows;
+  const shouldShowResultsSurface =
+    surfaceMode !== 'none' || hasRenderableRows || shouldUsePlaceholderRows;
   const surfaceActive = surfaceMode !== 'none';
   const shouldUseInteractionSurface = surfaceMode === 'interaction_loading';
   const shouldHideScrollHeaderForSurface = surfaceMode === 'initial_loading';
@@ -919,7 +975,8 @@ export const useSearchResultsPanelSpec = ({
     if (surfaceMode === 'empty') {
       const emptyTitle = activeTab === 'dishes' ? 'No dishes found.' : 'No restaurants found.';
       const emptySubtitle =
-        results?.metadata?.emptyQueryMessage ?? 'Try moving the map or adjusting your search.';
+        resolvedResults?.metadata?.emptyQueryMessage ??
+        'Try moving the map or adjusting your search.';
       return (
         <View style={styles.emptyState}>
           {onDemandNotice}
@@ -934,14 +991,15 @@ export const useSearchResultsPanelSpec = ({
         <SquircleSpinner size={22} color={ACTIVE_TAB_COLOR} />
       </View>
     );
-  }, [surfaceMode, activeTab, results?.metadata?.emptyQueryMessage, onDemandNotice]);
+  }, [surfaceMode, activeTab, resolvedResults?.metadata?.emptyQueryMessage, onDemandNotice]);
 
   const resultsRenderItem = shouldUsePlaceholderRows
     ? renderPlaceholderFlashListItem
     : resultsReadModelSelectors.renderListItem;
   const initialLoadingTopOffset =
     effectiveResultsHeaderHeightForRender || OVERLAY_TAB_HEADER_HEIGHT;
-  const interactionLoadingTopOffset = initialLoadingTopOffset + effectiveFiltersHeaderHeightForRender;
+  const interactionLoadingTopOffset =
+    initialLoadingTopOffset + effectiveFiltersHeaderHeightForRender;
 
   const preMeasureOverlay = resultsReadModelSelectors.preMeasureOverlay;
   const resultsListBackground = React.useMemo(() => {
@@ -1033,13 +1091,95 @@ export const useSearchResultsPanelSpec = ({
 
   const primaryTab: 'restaurants' | 'dishes' = 'restaurants';
   const secondaryTab: 'restaurants' | 'dishes' = 'dishes';
-  const activeList = activeTab === primaryTab ? 'primary' : 'secondary';
+  const activeList: 'primary' | 'secondary' = activeTab === primaryTab ? 'primary' : 'secondary';
+  const panelDiagRef = React.useRef<{
+    shouldRenderResultsSheet: boolean;
+    shouldDisableResultsSheetInteraction: boolean;
+    shouldShowInteractionLoadingState: boolean;
+    shouldFreezeResultsChrome: boolean;
+    surfaceMode: ResultsSurfaceMode;
+    activeTab: 'dishes' | 'restaurants';
+    activeList: 'primary' | 'secondary';
+    primaryRowCount: number;
+    secondaryRowCount: number;
+    renderRowCount: number;
+    effectiveResultsHeaderHeightForRender: number;
+    effectiveFiltersHeaderHeightForRender: number;
+    presentationTransitionLoadingMode: string | null;
+    presentationTransitionKind: string | null;
+    presentationResultsCoverVisible: boolean;
+  } | null>(null);
+  React.useEffect(() => {
+    const nextSnapshot = {
+      shouldRenderResultsSheet,
+      shouldDisableResultsSheetInteraction: shouldDisableResultsSheetInteractionForRender,
+      shouldShowInteractionLoadingState,
+      shouldFreezeResultsChrome,
+      surfaceMode,
+      activeTab,
+      activeList,
+      primaryRowCount: resultsReadModelSelectors.rowsByTab[primaryTab].length,
+      secondaryRowCount: resultsReadModelSelectors.rowsByTab[secondaryTab].length,
+      renderRowCount: resultsReadModelSelectors.rowsByTab[activeTab].length,
+      effectiveResultsHeaderHeightForRender,
+      effectiveFiltersHeaderHeightForRender,
+      presentationTransitionLoadingMode,
+      presentationTransitionKind,
+      presentationResultsCoverVisible,
+    };
+    const previousSnapshot = panelDiagRef.current;
+    if (
+      previousSnapshot &&
+      previousSnapshot.shouldRenderResultsSheet === nextSnapshot.shouldRenderResultsSheet &&
+      previousSnapshot.shouldDisableResultsSheetInteraction ===
+        nextSnapshot.shouldDisableResultsSheetInteraction &&
+      previousSnapshot.shouldShowInteractionLoadingState ===
+        nextSnapshot.shouldShowInteractionLoadingState &&
+      previousSnapshot.shouldFreezeResultsChrome === nextSnapshot.shouldFreezeResultsChrome &&
+      previousSnapshot.surfaceMode === nextSnapshot.surfaceMode &&
+      previousSnapshot.activeTab === nextSnapshot.activeTab &&
+      previousSnapshot.activeList === nextSnapshot.activeList &&
+      previousSnapshot.primaryRowCount === nextSnapshot.primaryRowCount &&
+      previousSnapshot.secondaryRowCount === nextSnapshot.secondaryRowCount &&
+      previousSnapshot.renderRowCount === nextSnapshot.renderRowCount &&
+      previousSnapshot.effectiveResultsHeaderHeightForRender ===
+        nextSnapshot.effectiveResultsHeaderHeightForRender &&
+      previousSnapshot.effectiveFiltersHeaderHeightForRender ===
+        nextSnapshot.effectiveFiltersHeaderHeightForRender &&
+      previousSnapshot.presentationTransitionLoadingMode ===
+        nextSnapshot.presentationTransitionLoadingMode &&
+      previousSnapshot.presentationTransitionKind === nextSnapshot.presentationTransitionKind &&
+      previousSnapshot.presentationResultsCoverVisible ===
+        nextSnapshot.presentationResultsCoverVisible
+    ) {
+      return;
+    }
+    logger.info('[RESULTS-PANEL-DIAG] panelState', nextSnapshot);
+    panelDiagRef.current = nextSnapshot;
+  }, [
+    activeList,
+    activeTab,
+    effectiveFiltersHeaderHeightForRender,
+    effectiveResultsHeaderHeightForRender,
+    presentationResultsCoverVisible,
+    presentationTransitionKind,
+    presentationTransitionLoadingMode,
+    primaryTab,
+    resultsReadModelSelectors.rowsByTab,
+    secondaryTab,
+    shouldDisableResultsSheetInteractionForRender,
+    shouldFreezeResultsChrome,
+    shouldRenderResultsSheet,
+    shouldShowInteractionLoadingState,
+    surfaceMode,
+  ]);
   return useSearchPanelSpec<ResultsListItem>({
     visible: shouldRenderResultsSheet,
-    listScrollEnabled: !shouldShowInteractionLoadingState && !shouldDisableResultsSheetInteraction,
+    listScrollEnabled:
+      !shouldShowInteractionLoadingState && !shouldDisableResultsSheetInteractionForRender,
     snapPoints,
     initialSnapPoint: sheetState === 'hidden' ? 'middle' : sheetState,
-    snapTo: resultsSheetSnapTo,
+    motionCommand: resultsSheetMotionCommand,
     onSnapStart: handleResultsSheetSnapStart,
     onScrollBeginDrag: handleResultsListScrollBegin,
     onScrollEndDrag: handleResultsListScrollEnd,
@@ -1047,7 +1187,7 @@ export const useSearchResultsPanelSpec = ({
     onMomentumEndJS: handleResultsListMomentumEnd,
     onDragStateChange: handleResultsSheetDragStateChange,
     onSettleStateChange: handleResultsSheetSettlingChange,
-    interactionEnabled: !shouldDisableResultsSheetInteraction,
+    interactionEnabled: !shouldDisableResultsSheetInteractionForRender,
     onEndReached: handleResultsEndReached,
     scrollIndicatorInsets: {
       top: effectiveResultsHeaderHeightForRender,

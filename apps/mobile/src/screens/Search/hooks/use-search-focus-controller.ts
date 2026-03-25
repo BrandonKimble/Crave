@@ -4,30 +4,27 @@ import type { TextInput } from 'react-native';
 type UseSearchFocusControllerArgs<TSuggestion> = {
   inputRef: React.RefObject<TextInput | null>;
   isSuggestionPanelActive: boolean;
+  searchBackdropTarget: 'default' | 'results';
   isSearchSessionActive: boolean;
   isRestaurantOverlayVisible: boolean;
   isSearchLoading: boolean;
   showPollsOverlay: boolean;
   query: string;
-  shouldShowSearchShortcuts: boolean;
   isSearchEditingRef: React.MutableRefObject<boolean>;
   allowSearchBlurExitRef: React.MutableRefObject<boolean>;
   ignoreNextSearchBlurRef: React.MutableRefObject<boolean>;
   cancelSearchEditOnBackRef: React.MutableRefObject<boolean>;
   restoreHomeOnSearchBackRef: React.MutableRefObject<boolean>;
   searchSessionQueryRef: React.MutableRefObject<string>;
-  pendingResultsSheetRevealRef: React.MutableRefObject<boolean>;
-  shortcutContentFadeMode: { value: number };
-  shortcutFadeDefault: number;
-  shortcutFadeHold: number;
   captureSearchSessionQuery: () => void;
   dismissTransientOverlays: () => void;
   allowAutocompleteResults: () => void;
   suppressAutocompleteResults: () => void;
   beginSuggestionCloseHold: (variant?: 'default' | 'submitting') => boolean;
-  flushPendingResultsSheetReveal: () => void;
   cancelAutocomplete: () => void;
   restoreDockedPolls: () => void;
+  enterEditing: () => void;
+  exitEditing: () => void;
   setIsSearchFocused: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSuggestionPanelActive: React.Dispatch<React.SetStateAction<boolean>>;
   setIsAutocompleteSuppressed: React.Dispatch<React.SetStateAction<boolean>>;
@@ -45,30 +42,27 @@ type UseSearchFocusControllerResult = {
 export const useSearchFocusController = <TSuggestion>({
   inputRef,
   isSuggestionPanelActive,
+  searchBackdropTarget,
   isSearchSessionActive,
   isRestaurantOverlayVisible,
   isSearchLoading,
   showPollsOverlay,
   query,
-  shouldShowSearchShortcuts,
   isSearchEditingRef,
   allowSearchBlurExitRef,
   ignoreNextSearchBlurRef,
   cancelSearchEditOnBackRef,
   restoreHomeOnSearchBackRef,
   searchSessionQueryRef,
-  pendingResultsSheetRevealRef,
-  shortcutContentFadeMode,
-  shortcutFadeDefault,
-  shortcutFadeHold,
   captureSearchSessionQuery,
   dismissTransientOverlays,
   allowAutocompleteResults,
   suppressAutocompleteResults,
   beginSuggestionCloseHold,
-  flushPendingResultsSheetReveal,
   cancelAutocomplete,
   restoreDockedPolls,
+  enterEditing,
+  exitEditing,
   setIsSearchFocused,
   setIsSuggestionPanelActive,
   setIsAutocompleteSuppressed,
@@ -76,7 +70,10 @@ export const useSearchFocusController = <TSuggestion>({
   setSuggestions,
   setQuery,
 }: UseSearchFocusControllerArgs<TSuggestion>): UseSearchFocusControllerResult => {
+  const shouldTreatSearchAsResults = searchBackdropTarget === 'results' && isSearchSessionActive;
+
   const handleSearchFocus = React.useCallback(() => {
+    enterEditing();
     isSearchEditingRef.current = true;
     allowSearchBlurExitRef.current = false;
     captureSearchSessionQuery();
@@ -90,6 +87,7 @@ export const useSearchFocusController = <TSuggestion>({
     allowSearchBlurExitRef,
     captureSearchSessionQuery,
     dismissTransientOverlays,
+    enterEditing,
     isSearchEditingRef,
     setIsAutocompleteSuppressed,
     setIsSearchFocused,
@@ -111,20 +109,18 @@ export const useSearchFocusController = <TSuggestion>({
       cancelSearchEditOnBackRef.current = false;
       ignoreNextSearchBlurRef.current = false;
       const shouldDeferSuggestionClear = beginSuggestionCloseHold(
-        isSearchSessionActive || isRestaurantOverlayVisible ? 'submitting' : 'default'
+        shouldTreatSearchAsResults || isRestaurantOverlayVisible ? 'submitting' : 'default'
       );
       setIsAutocompleteSuppressed(true);
       setIsSuggestionPanelActive(false);
+      exitEditing();
       const nextQuery = searchSessionQueryRef.current.trim();
-      if (isSearchSessionActive && nextQuery && nextQuery !== query) {
+      if (shouldTreatSearchAsResults && nextQuery && nextQuery !== query) {
         setQuery(nextQuery);
       }
       if (!shouldDeferSuggestionClear) {
         setShowSuggestions(false);
         setSuggestions([]);
-      }
-      if (isSearchSessionActive) {
-        flushPendingResultsSheetReveal();
       }
       return;
     }
@@ -136,9 +132,10 @@ export const useSearchFocusController = <TSuggestion>({
     const shouldRestoreHome = restoreHomeOnSearchBackRef.current;
     restoreHomeOnSearchBackRef.current = false;
     const shouldDeferSuggestionClear = beginSuggestionCloseHold(
-      isSearchSessionActive || isRestaurantOverlayVisible ? 'submitting' : 'default'
+      shouldTreatSearchAsResults || isRestaurantOverlayVisible ? 'submitting' : 'default'
     );
     setIsSuggestionPanelActive(false);
+    exitEditing();
     if (!shouldDeferSuggestionClear && !shouldRestoreHome) {
       setShowSuggestions(false);
       setSuggestions([]);
@@ -149,18 +146,14 @@ export const useSearchFocusController = <TSuggestion>({
       if (!showPollsOverlay && !isSearchLoading) {
         restoreDockedPolls();
       }
-      pendingResultsSheetRevealRef.current = false;
       return;
-    }
-    if (isSearchSessionActive) {
-      flushPendingResultsSheetReveal();
     }
   }, [
     allowSearchBlurExitRef,
     beginSuggestionCloseHold,
     cancelAutocomplete,
     cancelSearchEditOnBackRef,
-    flushPendingResultsSheetReveal,
+    exitEditing,
     ignoreNextSearchBlurRef,
     inputRef,
     isRestaurantOverlayVisible,
@@ -168,10 +161,10 @@ export const useSearchFocusController = <TSuggestion>({
     isSearchLoading,
     isSearchSessionActive,
     isSuggestionPanelActive,
-    pendingResultsSheetRevealRef,
     query,
     restoreDockedPolls,
     restoreHomeOnSearchBackRef,
+    searchBackdropTarget,
     searchSessionQueryRef,
     setIsAutocompleteSuppressed,
     setIsSearchFocused,
@@ -179,19 +172,17 @@ export const useSearchFocusController = <TSuggestion>({
     setQuery,
     setShowSuggestions,
     setSuggestions,
+    shouldTreatSearchAsResults,
     showPollsOverlay,
   ]);
 
   const handleSearchBack = React.useCallback(() => {
     suppressAutocompleteResults();
-    if (!isSearchSessionActive) {
+    if (!shouldTreatSearchAsResults) {
       ignoreNextSearchBlurRef.current = false;
       cancelSearchEditOnBackRef.current = false;
       restoreHomeOnSearchBackRef.current = true;
       allowSearchBlurExitRef.current = true;
-      shortcutContentFadeMode.value = shouldShowSearchShortcuts
-        ? shortcutFadeHold
-        : shortcutFadeDefault;
       if (inputRef.current?.isFocused?.()) {
         inputRef.current?.blur();
         return;
@@ -213,12 +204,9 @@ export const useSearchFocusController = <TSuggestion>({
     handleSearchBlur,
     ignoreNextSearchBlurRef,
     inputRef,
-    isSearchSessionActive,
     restoreHomeOnSearchBackRef,
-    shortcutContentFadeMode,
-    shortcutFadeDefault,
-    shortcutFadeHold,
-    shouldShowSearchShortcuts,
+    searchBackdropTarget,
+    shouldTreatSearchAsResults,
     suppressAutocompleteResults,
   ]);
 

@@ -40,6 +40,7 @@ import type {
   SearchRuntimeBusState,
   SearchRuntimeOperationLane,
 } from '../runtime/shared/search-runtime-bus';
+import { isSearchRuntimeMapPresentationSettled } from '../runtime/shared/search-runtime-bus';
 import { computeMarkerPipeline } from '../runtime/map/compute-marker-pipeline';
 import { boundsFromPairs, isLngLatTuple } from '../utils/geo';
 import { mergeSearchResponses } from '../utils/merge';
@@ -110,7 +111,6 @@ type UseSearchSubmitOptions = {
   onSearchRequestLoadingChange?: (isLoading: boolean) => void;
   runtimeWorkSchedulerRef?: React.MutableRefObject<RuntimeWorkScheduler> | null;
   searchRuntimeBus: SearchRuntimeBus;
-  showPanel: () => void;
   resetSheetToHidden: () => void;
   scrollResultsToTop: () => void;
   isSearchEditingRef?: React.MutableRefObject<boolean>;
@@ -129,7 +129,6 @@ type UseSearchSubmitOptions = {
   loadRecentHistory: (options?: { force?: boolean }) => Promise<void>;
   updateLocalRecentSearches: (value: string | RecentSearchInput) => void;
   isRestaurantOverlayVisibleRef?: React.MutableRefObject<boolean>;
-  prepareShortcutSheetTransition?: () => boolean;
   onPageOneResultsCommitted?: () => void;
   onShortcutSearchCoverageSnapshot?: (snapshot: {
     searchRequestId: string;
@@ -143,6 +142,9 @@ type UseSearchSubmitOptions = {
     kind: 'initial_search' | 'shortcut_rerun';
     mode: SearchMode;
     preserveSheetState: boolean;
+    transitionFromDockedPolls: boolean;
+    targetTab: SegmentValue;
+    submittedLabel?: string;
   }) => void;
   onPresentationIntentAbort?: () => void;
 };
@@ -164,7 +166,6 @@ type BufferedSearchResponse = {
     submittedLabel?: string;
     pushToHistory?: boolean;
     submissionContext?: NaturalSearchRequest['submissionContext'];
-    showPanelOnResponse?: boolean;
     responseReceivedPayload: SearchSessionEventPayload;
     runtimeShadow: HandleSearchResponseRuntimeShadow;
   };
@@ -339,8 +340,8 @@ const isRateLimitError = (error: unknown) => {
   return false;
 };
 
-const shouldPreclearNaturalResults = true;
-const shouldPrimeSubmittedQueryBeforeResponse = true;
+const shouldPreclearNaturalResults = false;
+const shouldPrimeSubmittedQueryBeforeResponse = false;
 
 const useSearchSubmit = ({
   query,
@@ -352,7 +353,6 @@ const useSearchSubmit = ({
   onSearchRequestLoadingChange,
   runtimeWorkSchedulerRef,
   searchRuntimeBus,
-  showPanel,
   resetSheetToHidden,
   scrollResultsToTop,
   isSearchEditingRef,
@@ -371,7 +371,6 @@ const useSearchSubmit = ({
   loadRecentHistory,
   updateLocalRecentSearches,
   isRestaurantOverlayVisibleRef,
-  prepareShortcutSheetTransition,
   onPageOneResultsCommitted,
   onShortcutSearchCoverageSnapshot,
   runtimeSessionController,
@@ -722,7 +721,9 @@ const useSearchSubmit = ({
         // the handoff phase (h3_hydration_ramp) intentionally blocks further
         // hydration commits via allowHydrationFinalizeCommit — creating a circular
         // dependency if we waited for hydration here.
-        const visualSettled = runtimeState?.presentationMapRevealRequestKey == null;
+        const visualSettled = isSearchRuntimeMapPresentationSettled(
+          runtimeState?.mapPresentationPhase ?? 'idle'
+        );
         const schedulerQueueDepth =
           runtimeWorkSchedulerRef?.current.snapshotPressure().queueDepth ?? 0;
         const schedulerQuiet = schedulerQueueDepth <= 0;
@@ -776,13 +777,7 @@ const useSearchSubmit = ({
 
       // Execute submit UI lanes synchronously (no frame deferral) so sheet
       // slides up and loading cover shows on the same frame as submit.
-      if (transitionFromDockedPolls && !shouldHoldResultPanel) {
-        prepareShortcutSheetTransition?.();
-      }
       unstable_batchedUpdates(() => {
-        if (shouldRevealPanel) {
-          showPanel();
-        }
         lastAutoOpenKeyRef.current = null;
         activeLoadingMoreTokenRef.current = null;
       });
@@ -812,12 +807,10 @@ const useSearchSubmit = ({
     },
     [
       lastAutoOpenKeyRef,
-      prepareShortcutSheetTransition,
       publishRuntimeLaneState,
       runNonCriticalStateUpdate,
       scheduleAfterTwoFrames,
       setActiveTab,
-      showPanel,
       searchRuntimeBus,
     ]
   );
@@ -1021,7 +1014,6 @@ const useSearchSubmit = ({
         submittedLabel?: string;
         pushToHistory?: boolean;
         submissionContext?: NaturalSearchRequest['submissionContext'];
-        showPanelOnResponse?: boolean;
         responseReceivedPayload: SearchSessionEventPayload;
         runtimeShadow: HandleSearchResponseRuntimeShadow;
       }
@@ -1074,7 +1066,6 @@ const useSearchSubmit = ({
         const mergedSearchRequestId =
           merged.metadata?.searchRequestId ??
           normalizedResponse.metadata.searchRequestId ??
-          normalizedResponse.metadata.requestId ??
           `${runtimeTuple.mode}:${runtimeTuple.requestId}`;
         const mergedForPublish =
           typeof mergedSearchRequestId === 'string' &&
@@ -1095,7 +1086,6 @@ const useSearchSubmit = ({
         const searchRequestId =
           mergedForPublish.metadata.searchRequestId ??
           normalizedResponse.metadata.searchRequestId ??
-          normalizedResponse.metadata.requestId ??
           `${runtimeTuple.mode}:${runtimeTuple.requestId}`;
         const runtimeStateForPipeline = append ? searchRuntimeBus.getState() : null;
         const markerPipelineActiveTab =
@@ -1275,8 +1265,6 @@ const useSearchSubmit = ({
                   if (!isRestaurantOverlayVisibleRef?.current) {
                     resetSheetToHidden();
                   }
-                } else if (options.showPanelOnResponse) {
-                  showPanel();
                 }
               });
             });
@@ -1438,7 +1426,6 @@ const useSearchSubmit = ({
       scrollResultsToTop,
       setActiveTab,
       searchRuntimeBus,
-      showPanel,
       scheduleOnNextFrame,
       runNonCriticalStateUpdate,
       scheduleAfterHealthyFrames,
@@ -1580,13 +1567,16 @@ const useSearchSubmit = ({
       if (!append) {
         setSearchRequestInFlight(true);
         preserveSheetState = Boolean(options?.preserveSheetState);
+        const transitionFromDockedPolls =
+          !preserveSheetState && Boolean(options?.transitionFromDockedPolls);
         onPresentationIntentStart?.({
           kind: 'initial_search',
           mode: 'natural',
           preserveSheetState,
+          transitionFromDockedPolls,
+          targetTab: preRequestTab,
+          submittedLabel: trimmed,
         });
-        const transitionFromDockedPolls =
-          !preserveSheetState && Boolean(options?.transitionFromDockedPolls);
         const shouldHoldRestaurantOverlaySheet = isRestaurantOverlayVisibleRef?.current === true;
         scheduleSubmitUiLanes({
           requestId,
@@ -1703,7 +1693,6 @@ const useSearchSubmit = ({
             submittedLabel,
             pushToHistory: !append,
             submissionContext: options?.submission?.context,
-            showPanelOnResponse: false,
             responseReceivedPayload: createNaturalResponseReceivedPayload(response, targetPage),
             runtimeShadow: createHandleSearchResponseRuntimeShadow(naturalTuple),
           });
@@ -1838,6 +1827,9 @@ const useSearchSubmit = ({
         kind: 'initial_search',
         mode: 'natural',
         preserveSheetState,
+        transitionFromDockedPolls: false,
+        targetTab: 'restaurants',
+        submittedLabel: trimmedName,
       });
       const shouldHoldRestaurantOverlaySheet = isRestaurantOverlayVisibleRef?.current === true;
       scheduleSubmitUiLanes({
@@ -1922,7 +1914,6 @@ const useSearchSubmit = ({
             submittedLabel: trimmedName,
             pushToHistory: true,
             submissionContext,
-            showPanelOnResponse: false,
             responseReceivedPayload: createEntityResponseReceivedPayload(response),
             runtimeShadow: createHandleSearchResponseRuntimeShadow(entityTuple),
           });
@@ -2033,13 +2024,16 @@ const useSearchSubmit = ({
       resetMapMoveFlag();
       setSearchRequestInFlight(true);
       const preserveSheetState = Boolean(options?.preserveSheetState);
+      const transitionFromDockedPolls =
+        !preserveSheetState && Boolean(options?.transitionFromDockedPolls);
       onPresentationIntentStart?.({
         kind: 'shortcut_rerun',
         mode: 'shortcut',
         preserveSheetState,
+        transitionFromDockedPolls,
+        targetTab,
+        submittedLabel,
       });
-      const transitionFromDockedPolls =
-        !preserveSheetState && Boolean(options?.transitionFromDockedPolls);
       scheduleSubmitUiLanes({
         requestId,
         mode: 'shortcut',
@@ -2113,7 +2107,6 @@ const useSearchSubmit = ({
             fallbackSearchRequestId: `shortcut:${requestId}`,
             submittedLabel,
             pushToHistory: false,
-            showPanelOnResponse: false,
             responseReceivedPayload: createShortcutResponseReceivedPayload(response),
             runtimeShadow: createHandleSearchResponseRuntimeShadow(shortcutTuple),
           });
@@ -2261,7 +2254,6 @@ const useSearchSubmit = ({
             fallbackSearchRequestId: undefined,
             submittedLabel: busSubmittedQuery || 'Best dishes here',
             pushToHistory: false,
-            showPanelOnResponse: false,
             responseReceivedPayload: createShortcutResponseReceivedPayload(response),
             runtimeShadow: createHandleSearchResponseRuntimeShadow(shortcutAppendTuple),
           });

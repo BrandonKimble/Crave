@@ -22,6 +22,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SHEET_SPRING_CONFIG, clampValue } from './sheetUtils';
 import { overlaySheetStyles } from './overlaySheetStyles';
+import { logger } from '../utils';
 
 const TOP_EPSILON = 2;
 const DRAG_EPSILON = 2;
@@ -61,6 +62,12 @@ type SnapPoints = Record<SheetSnapPoint, number> & {
 type SnapChangeSource = 'gesture' | 'programmatic';
 type SnapChangeMeta = { source: SnapChangeSource };
 type DualListSelection = 'primary' | 'secondary';
+type MotionCommand = {
+  snapTo: SheetSnapPoint | 'hidden';
+  token: number;
+  velocity?: number;
+};
+type BottomSheetMotionCommand = MotionCommand;
 
 const AnimatedFlashList = Animated.createAnimatedComponent(FlashList) as typeof FlashList;
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
@@ -280,6 +287,7 @@ type BottomSheetWithFlashListProps<T> = {
   onSettleStateChange?: (isSettling: boolean) => void;
   snapTo?: SheetSnapPoint | 'hidden' | null;
   snapToToken?: number;
+  motionCommand?: SharedValue<MotionCommand | null>;
   dismissThreshold?: number;
   listKey?: string;
   preventSwipeDismiss?: boolean;
@@ -364,6 +372,7 @@ const BottomSheetWithFlashList = <T,>({
   onSettleStateChange,
   snapTo,
   snapToToken,
+  motionCommand,
   dismissThreshold,
   preventSwipeDismiss = false,
   interactionEnabled = true,
@@ -381,6 +390,7 @@ const BottomSheetWithFlashList = <T,>({
   const { height: screenHeight } = useWindowDimensions();
   const pixelRatio = PixelRatio.get();
   const shouldEnableScroll = visible && listScrollEnabled && interactionEnabled;
+  const isSearchResultsSheet = testID === 'search-results-flatlist';
   const expandedSnap = snapPoints.expanded;
   const middleSnap = snapPoints.middle;
   const collapsedSnap = snapPoints.collapsed;
@@ -524,8 +534,14 @@ const BottomSheetWithFlashList = <T,>({
   const lastSnapToTokenRef = React.useRef<number | null>(null);
 
   const notifyHidden = React.useCallback(() => {
+    if (isSearchResultsSheet) {
+      logger.info('[BOTTOM-SHEET-DIAG] hidden', {
+        testID,
+        listKey,
+      });
+    }
     onHiddenRef.current?.();
-  }, []);
+  }, [isSearchResultsSheet, listKey, testID]);
 
   const notifySnapChange = React.useCallback(
     (
@@ -536,17 +552,34 @@ const BottomSheetWithFlashList = <T,>({
       if (!options?.force && currentSnapKeyRef.current === snapKey) {
         return;
       }
+      if (isSearchResultsSheet) {
+        logger.info('[BOTTOM-SHEET-DIAG] snapChange', {
+          testID,
+          listKey,
+          snapKey,
+          source,
+          force: Boolean(options?.force),
+        });
+      }
       currentSnapKeyRef.current = snapKey;
       onSnapChangeRef.current?.(snapKey, { source });
     },
-    []
+    [isSearchResultsSheet, listKey, testID]
   );
 
   const notifySnapStart = React.useCallback(
     (snapKey: SheetSnapPoint | 'hidden', source: SnapChangeSource) => {
+      if (isSearchResultsSheet) {
+        logger.info('[BOTTOM-SHEET-DIAG] snapStart', {
+          testID,
+          listKey,
+          snapKey,
+          source,
+        });
+      }
       onSnapStartRef.current?.(snapKey, { source });
     },
-    []
+    [isSearchResultsSheet, listKey, testID]
   );
 
   const notifyDragStateChange = React.useCallback((value: boolean) => {
@@ -849,6 +882,7 @@ const BottomSheetWithFlashList = <T,>({
 
   const resolveSnapValue = React.useCallback(
     (snapKey: SheetSnapPoint | 'hidden') => {
+      'worklet';
       switch (snapKey) {
         case 'expanded':
           return expandedSnap;
@@ -867,6 +901,7 @@ const BottomSheetWithFlashList = <T,>({
 
   const resolveProgrammaticSnapVelocity = React.useCallback(
     (fromValue: number, toValue: number) => {
+      'worklet';
       const delta = toValue - fromValue;
       if (Math.abs(delta) < 0.5) {
         return 0;
@@ -905,6 +940,83 @@ const BottomSheetWithFlashList = <T,>({
     initialSnapValue,
     sheetYValue,
     startSpringOnJS,
+    visible,
+  ]);
+
+  const sheetDiagRef = React.useRef<{
+    visible: boolean;
+    listScrollEnabled: boolean;
+    interactionEnabled: boolean;
+    shouldEnableScroll: boolean;
+    gestureEnabled: boolean;
+    activeList: DualListSelection;
+    snapTo: SheetSnapPoint | 'hidden' | null;
+    snapToToken: number | null;
+    currentSnapKey: SheetSnapPoint | 'hidden';
+    dataCount: number;
+    secondaryDataCount: number;
+    touchBlockingEnabled: boolean;
+    scrollHeaderHeight: number;
+  } | null>(null);
+  React.useEffect(() => {
+    if (!isSearchResultsSheet) {
+      return;
+    }
+    const nextSnapshot = {
+      visible,
+      listScrollEnabled,
+      interactionEnabled,
+      shouldEnableScroll,
+      gestureEnabled,
+      activeList: resolvedActiveList,
+      snapTo: snapTo ?? null,
+      snapToToken: snapToToken ?? null,
+      currentSnapKey: currentSnapKeyRef.current,
+      dataCount: data.length,
+      secondaryDataCount: secondaryList?.data.length ?? 0,
+      touchBlockingEnabled,
+      scrollHeaderHeight,
+    };
+    const previousSnapshot = sheetDiagRef.current;
+    if (
+      previousSnapshot &&
+      previousSnapshot.visible === nextSnapshot.visible &&
+      previousSnapshot.listScrollEnabled === nextSnapshot.listScrollEnabled &&
+      previousSnapshot.interactionEnabled === nextSnapshot.interactionEnabled &&
+      previousSnapshot.shouldEnableScroll === nextSnapshot.shouldEnableScroll &&
+      previousSnapshot.gestureEnabled === nextSnapshot.gestureEnabled &&
+      previousSnapshot.activeList === nextSnapshot.activeList &&
+      previousSnapshot.snapTo === nextSnapshot.snapTo &&
+      previousSnapshot.snapToToken === nextSnapshot.snapToToken &&
+      previousSnapshot.currentSnapKey === nextSnapshot.currentSnapKey &&
+      previousSnapshot.dataCount === nextSnapshot.dataCount &&
+      previousSnapshot.secondaryDataCount === nextSnapshot.secondaryDataCount &&
+      previousSnapshot.touchBlockingEnabled === nextSnapshot.touchBlockingEnabled &&
+      previousSnapshot.scrollHeaderHeight === nextSnapshot.scrollHeaderHeight
+    ) {
+      return;
+    }
+    logger.info('[BOTTOM-SHEET-DIAG] props', {
+      testID,
+      listKey,
+      ...nextSnapshot,
+    });
+    sheetDiagRef.current = nextSnapshot;
+  }, [
+    data.length,
+    gestureEnabled,
+    interactionEnabled,
+    isSearchResultsSheet,
+    listKey,
+    listScrollEnabled,
+    resolvedActiveList,
+    scrollHeaderHeight,
+    secondaryList?.data.length,
+    shouldEnableScroll,
+    snapTo,
+    snapToToken,
+    testID,
+    touchBlockingEnabled,
     visible,
   ]);
 
@@ -977,6 +1089,47 @@ const BottomSheetWithFlashList = <T,>({
     snapToToken,
     startSpringOnJS,
   ]);
+
+  useAnimatedReaction(
+    () => motionCommand?.value?.token ?? null,
+    (token, previousToken) => {
+      if (token == null || token === previousToken || !motionCommand?.value) {
+        return;
+      }
+      const command = motionCommand.value;
+      const target = resolveSnapValue(command.snapTo);
+      if (target === undefined) {
+        return;
+      }
+      if (Math.abs(sheetY.value - target) < 0.5) {
+        runOnJS(notifySnapChange)(command.snapTo, 'programmatic', { force: true });
+        if (command.snapTo === 'hidden' && !hasNotifiedHidden.value) {
+          hasNotifiedHidden.value = true;
+          runOnJS(notifyHidden)();
+        }
+        return;
+      }
+      if (hiddenSnap !== undefined && target !== hiddenSnap) {
+        hasNotifiedHidden.value = false;
+      }
+      const velocity =
+        typeof command.velocity === 'number'
+          ? command.velocity
+          : resolveProgrammaticSnapVelocity(sheetY.value, target);
+      startSpring(target, velocity, command.snapTo === 'hidden', 'programmatic');
+    },
+    [
+      hasNotifiedHidden,
+      hiddenSnap,
+      motionCommand,
+      notifyHidden,
+      notifySnapChange,
+      resolveProgrammaticSnapVelocity,
+      resolveSnapValue,
+      sheetY,
+      startSpring,
+    ]
+  );
 
   const onHeaderLayout = React.useCallback(
     (event: LayoutChangeEvent) => {
@@ -1460,11 +1613,12 @@ const BottomSheetWithFlashList = <T,>({
     } as ViewStyle;
   }, [sanitizedContentContainerStyle, scrollHeaderComponent, scrollHeaderHeight]);
 
-  const flashListSurfaceStyle = React.useMemo(
-    () => [
-      flashListProps?.style,
-      scrollHeaderComponent ? styles.transparentFlashListSurface : null,
-    ],
+  const flashListSurfaceStyle = React.useMemo<ViewStyle | undefined>(
+    () =>
+      StyleSheet.flatten([
+        flashListProps?.style,
+        scrollHeaderComponent ? styles.transparentFlashListSurface : null,
+      ]) ?? undefined,
     [flashListProps?.style, scrollHeaderComponent]
   );
 
@@ -1711,5 +1865,11 @@ const styles = StyleSheet.create({
   },
 });
 
-export type { BottomSheetWithFlashListProps, SnapChangeMeta, SnapChangeSource, SnapPoints };
+export type {
+  BottomSheetMotionCommand,
+  BottomSheetWithFlashListProps,
+  SnapChangeMeta,
+  SnapChangeSource,
+  SnapPoints,
+};
 export default BottomSheetWithFlashList;

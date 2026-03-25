@@ -8,6 +8,7 @@ import { useSaveListPanelSpec } from '../../../overlays/panels/SaveListPanel';
 import type { OverlayContentSpec, OverlaySheetSnap } from '../../../overlays/types';
 import type { OverlayHeaderActionMode } from '../../../overlays/useOverlayHeaderActionController';
 import { useSearchOverlaySheetResolution } from './use-search-overlay-sheet-resolution';
+import type { SearchSheetContentLane } from './use-search-presentation-controller';
 
 type PollsPanelOptions = Parameters<typeof usePollsPanelSpec>[0];
 type BookmarksPanelOptions = Parameters<typeof useBookmarksPanelSpec>[0];
@@ -31,7 +32,9 @@ type UseSearchOverlayPanelsArgs = {
   shouldShowPollsSheet: boolean;
   shouldRenderResultsSheet: boolean;
   isSearchOverlay: boolean;
+  searchSheetContentLane: SearchSheetContentLane;
   isSuggestionPanelActive: boolean;
+  isForegroundEditing: boolean;
   searchHeaderActionModeOverride: OverlayHeaderActionMode | null;
   setSearchHeaderActionModeOverride: React.Dispatch<
     React.SetStateAction<OverlayHeaderActionMode | null>
@@ -67,7 +70,9 @@ export const useSearchOverlayPanels = ({
   shouldShowPollsSheet,
   shouldRenderResultsSheet,
   isSearchOverlay,
+  searchSheetContentLane,
   isSuggestionPanelActive,
+  isForegroundEditing,
   searchHeaderActionModeOverride,
   setSearchHeaderActionModeOverride,
   handleResultsSheetDragStateChange,
@@ -128,7 +133,9 @@ export const useSearchOverlayPanels = ({
     shouldShowPollsSheet,
     shouldRenderResultsSheet,
     isSearchOverlay,
+    searchSheetContentLane,
     isSuggestionPanelActive,
+    isForegroundEditing,
     searchHeaderActionModeOverride,
     setSearchHeaderActionModeOverride,
     handleResultsSheetDragStateChange,

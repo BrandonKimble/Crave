@@ -50,9 +50,9 @@ require_pattern "if \\(!naturalShadowActivated\\) \\{" \
   "Natural submit has explicit rejected-activation guard."
 require_pattern "clearActiveOperationTuple\\(naturalTuple\\);" \
   "Natural submit clears tuple when controller rejects activation."
-require_pattern "if \\(!emitShadowTransition\\('response_received'" \
+require_pattern "!emitShadowTransition\\('response_received'" \
   "Response apply path is gated by controller transition acceptance."
-require_pattern "if \\(!emitShadowTransition\\('phase_a_committed'" \
+require_pattern "!emitShadowTransition\\('phase_a_committed'" \
   "Phase-A commit path is gated by controller transition acceptance."
 
 forbid_pattern "EXPO_PUBLIC_SEARCH_RUNTIME_NATURAL_CONTROLLER_CUTOVER" \

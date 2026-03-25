@@ -13,7 +13,6 @@ type UseSuggestionDisplayModelArgs = {
   isSuggestionPanelActive: boolean;
   isSuggestionPanelVisible: boolean;
   hasSearchChromeRawQuery: boolean;
-  isSearchSessionActive: boolean;
   isAutocompleteSuppressed: boolean;
   isAutocompleteLoading: boolean;
   query: string;
@@ -50,8 +49,6 @@ type UseSuggestionDisplayModelResult = {
   shouldHoldRecent: boolean;
   shouldHoldSuggestionPanel: boolean;
   shouldHoldSuggestionBackground: boolean;
-  shouldHoldShortcuts: boolean;
-  shouldForceHideShortcuts: boolean;
   shouldFreezeSuggestionHeader: boolean;
   baseShouldShowRecentSection: boolean;
   baseShouldRenderRecentSection: boolean;
@@ -71,7 +68,6 @@ export const useSuggestionDisplayModel = ({
   isSuggestionPanelActive,
   isSuggestionPanelVisible,
   hasSearchChromeRawQuery,
-  isSearchSessionActive,
   isAutocompleteSuppressed,
   isAutocompleteLoading,
   query,
@@ -135,13 +131,6 @@ export const useSuggestionDisplayModel = ({
     isSuggestionHoldActive && submitTransitionHold.holdSuggestionPanel;
   const shouldHoldSuggestionBackground =
     isSuggestionHoldActive && submitTransitionHold.holdSuggestionBackground;
-  const shouldHoldShortcuts = isSuggestionHoldActive && submitTransitionHold.holdShortcuts;
-
-  const shouldForceHideShortcuts =
-    shouldDriveSuggestionLayout &&
-    hasSearchChromeRawQuery &&
-    isSearchSessionActive &&
-    !isSuggestionHoldActive;
   const shouldFreezeSuggestionHeader =
     shouldDriveSuggestionLayout && !isSuggestionPanelActive && hasSearchChromeRawQuery;
 
@@ -207,8 +196,6 @@ export const useSuggestionDisplayModel = ({
     shouldHoldRecent,
     shouldHoldSuggestionPanel,
     shouldHoldSuggestionBackground,
-    shouldHoldShortcuts,
-    shouldForceHideShortcuts,
     shouldFreezeSuggestionHeader,
     baseShouldShowRecentSection,
     baseShouldRenderRecentSection,

@@ -5,6 +5,7 @@ import type { MapBounds } from '../../../../types';
 import type { RestaurantFeatureProperties } from '../../components/search-map';
 import { buildMarkerRenderModel } from '../../utils/map-render-model';
 import type { MapQueryBudget } from './map-query-budget';
+import { buildViewportMotionToken, decideMotionDerivation } from './map-motion-budget';
 
 type UseMapDiffApplierArgs = {
   searchMode: 'shortcut' | 'natural' | 'entity' | null;
@@ -29,6 +30,21 @@ type UseMapDiffApplierArgs = {
 };
 
 type LodPinnedMarkerMeta = { markerKey: string; lodZ: number };
+
+type PlannerInvocationSnapshot = {
+  searchMode: UseMapDiffApplierArgs['searchMode'];
+  activeTab: UseMapDiffApplierArgs['activeTab'];
+  selectedRestaurantId: string | null;
+  scoreMode: UseMapDiffApplierArgs['scoreMode'];
+  isGestureActive: boolean;
+  northEastLat: number;
+  northEastLng: number;
+  southWestLat: number;
+  southWestLng: number;
+  rankedCandidates: Array<Feature<Point, RestaurantFeatureProperties>>;
+  markerCandidates: Array<Feature<Point, RestaurantFeatureProperties>>;
+  pinnedKey: string;
+};
 
 type UseMapDiffApplierResult = {
   lodPinnedMarkerMeta: LodPinnedMarkerMeta[];
@@ -64,19 +80,27 @@ export const useMapDiffApplier = (args: UseMapDiffApplierArgs): UseMapDiffApplie
   const lodPinProposedDemoteSinceByMarkerKeyRef = React.useRef<Map<string, number>>(new Map());
   const lodPinnedResetKeyRef = React.useRef<string>('');
   const lodContextRef = React.useRef({ searchMode, activeTab, selectedRestaurantId });
+  const lastPlannerInvocationRef = React.useRef<PlannerInvocationSnapshot | null>(null);
+  const lastMovingLodDerivationRef = React.useRef<{
+    token: ReturnType<typeof buildViewportMotionToken>;
+    runAtMs: number;
+  }>({
+    token: null,
+    runAtMs: 0,
+  });
 
   React.useEffect(() => {
     lodContextRef.current = { searchMode, activeTab, selectedRestaurantId };
   }, [activeTab, searchMode, selectedRestaurantId]);
 
   React.useEffect(() => {
-    // Keep LOD pin state stable across request id churn; reset only on true mode/style pivots.
     const resetKey = `${searchMode ?? 'none'}::${activeTab}::${scoreMode}`;
     if (lodPinnedResetKeyRef.current === resetKey) {
       return;
     }
     lodPinnedResetKeyRef.current = resetKey;
     lodPinnedKeyRef.current = '';
+    lastPlannerInvocationRef.current = null;
     lodPinProposedPromoteSinceByMarkerKeyRef.current.clear();
     lodPinProposedDemoteSinceByMarkerKeyRef.current.clear();
   }, [activeTab, scoreMode, searchMode]);
@@ -90,10 +114,12 @@ export const useMapDiffApplier = (args: UseMapDiffApplierArgs): UseMapDiffApplie
           lodPinnedMarkersRef.current = [];
           setLodPinnedMarkerMeta([]);
         }
+        lastPlannerInvocationRef.current = null;
         return;
       }
 
       const context = lodContextRef.current;
+      const isGestureActive = mapGestureActiveRef.current;
       const rankedCandidates =
         context.searchMode === 'shortcut'
           ? shortcutCoverageRankedRef.current
@@ -109,12 +135,86 @@ export const useMapDiffApplier = (args: UseMapDiffApplierArgs): UseMapDiffApplie
           lodPinnedMarkersRef.current = [];
           setLodPinnedMarkerMeta([]);
         }
+        lastPlannerInvocationRef.current = null;
         return;
       }
 
-      const stableMs = mapGestureActiveRef.current ? stableMsMoving : stableMsIdle;
-      const offscreenStableMs = mapGestureActiveRef.current ? offscreenStableMsMoving : 0;
+      const lastPlannerInvocation = lastPlannerInvocationRef.current;
       const now = Date.now();
+      const samePlannerInputsExceptBounds =
+        lastPlannerInvocation != null &&
+        lastPlannerInvocation.searchMode === context.searchMode &&
+        lastPlannerInvocation.activeTab === context.activeTab &&
+        lastPlannerInvocation.selectedRestaurantId === selectedId &&
+        lastPlannerInvocation.scoreMode === scoreMode &&
+        lastPlannerInvocation.isGestureActive === isGestureActive &&
+        lastPlannerInvocation.rankedCandidates === rankedCandidates &&
+        lastPlannerInvocation.markerCandidates === markerCandidatesRef.current &&
+        lastPlannerInvocation.pinnedKey === lodPinnedKeyRef.current;
+      if (isGestureActive && samePlannerInputsExceptBounds) {
+        const motionDecision = decideMotionDerivation({
+          budgetClass: 'moving',
+          previousToken: lastMovingLodDerivationRef.current.token,
+          nextToken: buildViewportMotionToken({
+            bounds,
+            budgetClass: 'moving',
+          }),
+          lastRunAtMs: lastMovingLodDerivationRef.current.runAtMs,
+          nowMs: now,
+          minIntervalMs: 90,
+        });
+        if (!motionDecision.shouldRun) {
+          mapQueryBudget.incrementRuntimeCounter('map_lod_moving_coalesced');
+          return;
+        }
+        lastMovingLodDerivationRef.current = {
+          token: motionDecision.token,
+          runAtMs: now,
+        };
+        mapQueryBudget.incrementRuntimeCounter(`map_lod_moving_runs_${motionDecision.reason}`);
+      } else if (!isGestureActive) {
+        lastMovingLodDerivationRef.current = {
+          token: buildViewportMotionToken({
+            bounds,
+            budgetClass: 'settled',
+          }),
+          runAtMs: now,
+        };
+      }
+      if (
+        lastPlannerInvocation &&
+        lastPlannerInvocation.searchMode === context.searchMode &&
+        lastPlannerInvocation.activeTab === context.activeTab &&
+        lastPlannerInvocation.selectedRestaurantId === selectedId &&
+        lastPlannerInvocation.scoreMode === scoreMode &&
+        lastPlannerInvocation.isGestureActive === isGestureActive &&
+        lastPlannerInvocation.northEastLat === bounds.northEast.lat &&
+        lastPlannerInvocation.northEastLng === bounds.northEast.lng &&
+        lastPlannerInvocation.southWestLat === bounds.southWest.lat &&
+        lastPlannerInvocation.southWestLng === bounds.southWest.lng &&
+        lastPlannerInvocation.rankedCandidates === rankedCandidates &&
+        lastPlannerInvocation.markerCandidates === markerCandidatesRef.current &&
+        lastPlannerInvocation.pinnedKey === lodPinnedKeyRef.current
+      ) {
+        return;
+      }
+
+      const stableMs = isGestureActive ? stableMsMoving : stableMsIdle;
+      const offscreenStableMs = isGestureActive ? offscreenStableMsMoving : 0;
+      lastPlannerInvocationRef.current = {
+        searchMode: context.searchMode,
+        activeTab: context.activeTab,
+        selectedRestaurantId: selectedId,
+        scoreMode,
+        isGestureActive,
+        northEastLat: bounds.northEast.lat,
+        northEastLng: bounds.northEast.lng,
+        southWestLat: bounds.southWest.lat,
+        southWestLng: bounds.southWest.lng,
+        rankedCandidates,
+        markerCandidates: markerCandidatesRef.current,
+        pinnedKey: lodPinnedKeyRef.current,
+      };
       const readModelBuildStartMs = getPerfNow();
       const nextModel = buildMarkerRenderModel({
         bounds,
@@ -145,11 +245,17 @@ export const useMapDiffApplier = (args: UseMapDiffApplierArgs): UseMapDiffApplie
 
       const nextKey = nextModel.nextPinnedKey;
       if (nextKey === lodPinnedKeyRef.current) {
+        if (lastPlannerInvocationRef.current) {
+          lastPlannerInvocationRef.current.pinnedKey = nextKey;
+        }
         return;
       }
 
       const mapDiffApplyStartMs = getPerfNow();
       lodPinnedKeyRef.current = nextKey;
+      if (lastPlannerInvocationRef.current) {
+        lastPlannerInvocationRef.current.pinnedKey = nextKey;
+      }
       lodPinnedMarkersRef.current = nextModel.nextPinnedMarkers;
       setLodPinnedMarkerMeta(nextModel.nextPinnedMeta);
       mapQueryBudget.recordMapDiffApplySliceDurationMs(getPerfNow() - mapDiffApplyStartMs);

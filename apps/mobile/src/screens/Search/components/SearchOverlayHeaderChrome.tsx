@@ -13,10 +13,11 @@ import { ACTIVE_TAB_COLOR } from '../constants/search';
 import styles from '../styles';
 import SearchHeader from './SearchHeader';
 import SearchShortcutsRow from './SearchShortcutsRow';
+import type { SearchHeaderVisualModel } from '../hooks/use-search-presentation-controller';
 
 type SearchOverlayHeaderChromeProps = {
   handleSearchContainerLayout: (event: LayoutChangeEvent) => void;
-  query: string;
+  headerVisualModel: SearchHeaderVisualModel;
   shouldShowAutocompleteSpinnerInBar: boolean;
   handleQueryChange: (value: string) => void;
   handleSubmit: () => void;
@@ -25,7 +26,6 @@ type SearchOverlayHeaderChromeProps = {
   handleClear: () => void;
   focusSearchInput: () => void;
   handleSearchPressIn: () => void;
-  isSuggestionPanelActive: boolean;
   handleSearchBack: () => void;
   handleSearchHeaderLayout: (event: LayoutChangeEvent) => void;
   inputRef: React.RefObject<TextInput | null>;
@@ -34,19 +34,15 @@ type SearchOverlayHeaderChromeProps = {
     typeof SearchHeader
   >['containerAnimatedStyle'];
   isSuggestionScrollDismissing: boolean;
-  isSearchSessionActive: boolean;
   searchHeaderFocusProgress: SharedValue<number>;
   shouldMountSearchShortcuts: boolean;
-  shouldRenderSearchShortcuts: boolean;
+  shouldEnableSearchShortcutsInteraction: boolean;
   searchShortcutsAnimatedStyle: React.ComponentProps<
     typeof SearchShortcutsRow
   >['containerAnimatedStyle'];
   searchShortcutChipAnimatedStyle: React.ComponentProps<
     typeof SearchShortcutsRow
   >['chipAnimatedStyle'];
-  searchShortcutContentAnimatedStyle: React.ComponentProps<
-    typeof SearchShortcutsRow
-  >['contentAnimatedStyle'];
   handleBestRestaurantsHere: () => void;
   handleBestDishesHere: () => void;
   handleSearchShortcutsRowLayout: (layout: LayoutRectangle) => void;
@@ -60,7 +56,7 @@ type SearchOverlayHeaderChromeProps = {
 
 const SearchOverlayHeaderChrome = ({
   handleSearchContainerLayout,
-  query,
+  headerVisualModel,
   shouldShowAutocompleteSpinnerInBar,
   handleQueryChange,
   handleSubmit,
@@ -69,20 +65,17 @@ const SearchOverlayHeaderChrome = ({
   handleClear,
   focusSearchInput,
   handleSearchPressIn,
-  isSuggestionPanelActive,
   handleSearchBack,
   handleSearchHeaderLayout,
   inputRef,
   searchBarInputAnimatedStyle,
   searchBarContainerAnimatedStyle,
   isSuggestionScrollDismissing,
-  isSearchSessionActive,
   searchHeaderFocusProgress,
   shouldMountSearchShortcuts,
-  shouldRenderSearchShortcuts,
+  shouldEnableSearchShortcutsInteraction,
   searchShortcutsAnimatedStyle,
   searchShortcutChipAnimatedStyle,
-  searchShortcutContentAnimatedStyle,
   handleBestRestaurantsHere,
   handleBestDishesHere,
   handleSearchShortcutsRowLayout,
@@ -101,7 +94,8 @@ const SearchOverlayHeaderChrome = ({
         onLayout={handleSearchContainerLayout}
       >
         <SearchHeader
-          value={query}
+          value={headerVisualModel.displayQuery}
+          displayValue={headerVisualModel.displayQuery}
           placeholder="What are you craving?"
           loading={shouldShowAutocompleteSpinnerInBar}
           onChangeText={handleQueryChange}
@@ -109,28 +103,28 @@ const SearchOverlayHeaderChrome = ({
           onFocus={handleSearchFocus}
           onBlur={handleSearchBlur}
           onClear={handleClear}
-          onPress={focusSearchInput}
-          onPressIn={handleSearchPressIn}
-          onInputTouchStart={handleSearchPressIn}
+          onPress={headerVisualModel.editable ? focusSearchInput : undefined}
+          onPressIn={headerVisualModel.editable ? handleSearchPressIn : undefined}
+          onInputTouchStart={headerVisualModel.editable ? handleSearchPressIn : undefined}
           accentColor={ACTIVE_TAB_COLOR}
-          showBack={Boolean(isSuggestionPanelActive)}
+          showBack={headerVisualModel.leadingIconMode === 'back'}
           onBackPress={handleSearchBack}
           onLayout={handleSearchHeaderLayout}
           inputRef={inputRef}
           inputAnimatedStyle={searchBarInputAnimatedStyle}
           containerAnimatedStyle={searchBarContainerAnimatedStyle}
-          editable={!isSuggestionScrollDismissing}
-          showInactiveSearchIcon={!isSuggestionPanelActive && !isSearchSessionActive}
-          isSearchSessionActive={isSearchSessionActive && !isSuggestionPanelActive}
+          editable={headerVisualModel.editable && !isSuggestionScrollDismissing}
+          showInactiveSearchIcon={headerVisualModel.leadingIconMode === 'search'}
+          isSearchSessionActive={headerVisualModel.chromeMode === 'results'}
           focusProgress={searchHeaderFocusProgress}
+          trailingActionMode={headerVisualModel.trailingActionMode}
         />
       </View>
       <SearchShortcutsRow
         visible={shouldMountSearchShortcuts}
-        interactive={shouldRenderSearchShortcuts}
+        interactive={shouldEnableSearchShortcutsInteraction}
         containerAnimatedStyle={[styles.searchShortcutsRow, searchShortcutsAnimatedStyle]}
         chipAnimatedStyle={searchShortcutChipAnimatedStyle}
-        contentAnimatedStyle={searchShortcutContentAnimatedStyle}
         onPressBestRestaurants={handleBestRestaurantsHere}
         onPressBestDishes={handleBestDishesHere}
         onRowLayout={handleSearchShortcutsRowLayout}

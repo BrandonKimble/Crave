@@ -16,6 +16,7 @@ type UseSearchPanelSpecOptions<T> = {
   snapPoints: SnapPoints;
   initialSnapPoint: Exclude<OverlaySheetSnap, 'hidden'>;
   snapTo?: OverlaySheetSnap | null;
+  motionCommand?: BottomSheetWithFlashListProps<T>['motionCommand'];
   onScrollOffsetChange?: (offsetY: number) => void;
   onScrollBeginDrag: () => void;
   onScrollEndDrag: () => void;
@@ -61,6 +62,7 @@ export const useSearchPanelSpec = <T,>({
   snapPoints,
   initialSnapPoint,
   snapTo,
+  motionCommand,
   onScrollOffsetChange,
   onScrollBeginDrag,
   onScrollEndDrag,
@@ -139,6 +141,7 @@ export const useSearchPanelSpec = <T,>({
       listScrollEnabled,
       initialSnapPoint,
       snapTo,
+      motionCommand,
       preventSwipeDismiss: true,
       onScrollOffsetChange,
       onScrollBeginDrag,
@@ -223,6 +226,7 @@ export const useSearchPanelSpec = <T,>({
       scrollIndicatorInsets,
       snapPoints,
       snapTo,
+      motionCommand,
       underlayComponent,
     ]
   );

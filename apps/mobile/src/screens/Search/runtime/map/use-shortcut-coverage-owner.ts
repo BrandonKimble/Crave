@@ -11,8 +11,6 @@ import {
   buildRankedShortcutCoverageFeatures,
   type ResolvedRestaurantMapLocation,
 } from './map-read-model-builder';
-import { useSearchBus } from '../shared/search-runtime-bus';
-import { useSearchRuntimeBusSelector } from '../shared/use-search-runtime-bus-selector';
 
 type UseShortcutCoverageOwnerArgs = {
   searchMode: 'shortcut' | 'natural' | 'entity' | null;
@@ -71,20 +69,6 @@ export const useShortcutCoverageOwner = ({
   pickPreferredRestaurantMapLocation,
   getQualityColorFromScore,
 }: UseShortcutCoverageOwnerArgs): UseShortcutCoverageOwnerResult => {
-  const searchRuntimeBus = useSearchBus();
-
-  // Read presentationMapRevealRequestKey imperatively to avoid making the
-  // coverage fetch effect depend on visual-sync state. When the effect
-  // depended on it reactively, every toggle caused effect cleanup → cancelled
-  // in-flight fetches or unnecessary re-fetch cycles.
-  const isMapRevealPendingRef = React.useRef(false);
-  isMapRevealPendingRef.current = useSearchRuntimeBusSelector(
-    searchRuntimeBus,
-    (state) => state.presentationMapRevealRequestKey != null,
-    Object.is,
-    ['presentationMapRevealRequestKey'] as const
-  );
-
   const shortcutCoverageSnapshotByRequestIdRef = React.useRef<
     Map<
       string,
@@ -107,7 +91,6 @@ export const useShortcutCoverageOwner = ({
     >
   >(new Map());
   const shortcutCoverageFetchSeqRef = React.useRef(0);
-  const deferredCoverageRequestIdRef = React.useRef<string | null>(null);
   const shortcutCoverageResolvedTabRef = React.useRef<'dishes' | 'restaurants' | null>(null);
   const shortcutCoverageRankedRef = React.useRef<
     Array<Feature<Point, RestaurantFeatureProperties>>
@@ -174,7 +157,6 @@ export const useShortcutCoverageOwner = ({
       return;
     }
     if (!searchRequestId) {
-      deferredCoverageRequestIdRef.current = null;
       shortcutCoverageFetchKeyRef.current = null;
       shortcutCoverageResolvedTabRef.current = null;
       shortcutCoverageRankedRef.current = [];
@@ -182,21 +164,13 @@ export const useShortcutCoverageOwner = ({
       setIsShortcutCoverageLoading(false);
       return;
     }
-    if (isMapRevealPendingRef.current) {
+    {
       const hasResolvedCoverage = shortcutCoverageFetchKeyRef.current != null;
       const hasCoverageForActiveTab =
         hasResolvedCoverage && shortcutCoverageResolvedTabRef.current === activeTab;
       if (hasCoverageForActiveTab) {
         return;
       }
-      // Always proceed with coverage fetch — even during initial reveal.
-      // Coverage is required to produce markers, which the reveal chain
-      // needs before it can complete.  Deferring here would deadlock:
-      // reveal waits for markers → markers wait for coverage → coverage
-      // waits for reveal to clear isMapRevealPending.
-      deferredCoverageRequestIdRef.current = null;
-    } else {
-      deferredCoverageRequestIdRef.current = null;
     }
     const snapshot = shortcutCoverageSnapshotByRequestIdRef.current.get(searchRequestId) ?? null;
     const pendingSnapshot =
@@ -390,21 +364,6 @@ export const useShortcutCoverageOwner = ({
     searchRequestId,
     viewportBoundsService,
   ]);
-
-  // When a coverage fetch was deferred because a map reveal was pending,
-  // bump coverageBoundsRevision to re-trigger the effect once reveal clears.
-  React.useEffect(() => {
-    if (searchMode !== 'shortcut' || !searchRequestId) {
-      return;
-    }
-    return searchRuntimeBus.subscribe(() => {
-      const pending = searchRuntimeBus.getState().presentationMapRevealRequestKey != null;
-      if (!pending && deferredCoverageRequestIdRef.current != null) {
-        deferredCoverageRequestIdRef.current = null;
-        setCoverageBoundsRevision((prev) => prev + 1);
-      }
-    }, ['presentationMapRevealRequestKey']);
-  }, [searchMode, searchRequestId, searchRuntimeBus]);
 
   const anchoredShortcutCoverageFeatures = React.useMemo(
     () =>
