@@ -184,7 +184,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                       {showBack ? (
                         <Pressable
                           style={styles.leadingButton}
-                          onPress={(event) => {
+                          onPressOut={(event) => {
                             event.stopPropagation?.();
                             if (onBackPress) {
                               onBackPress();
@@ -309,7 +309,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
               <Reanimated.View style={trailingContainerStyle}>
                 {trailingActionMode !== 'hidden' ? (
                   <Pressable
-                    onPress={(event) => {
+                    onPressOut={(event) => {
                       event.stopPropagation?.();
                       onClear();
                     }}

@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Query,
+  Put,
   UseGuards,
 } from '@nestjs/common';
 import type { User } from '@prisma/client';
@@ -16,6 +17,7 @@ import { ClerkAuthGuard } from './auth/clerk-auth.guard';
 import { UserService } from './user.service';
 import { UserProfileDto, UserEntitlementDto } from './dto/user-profile.dto';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
+import { UpdateUserOnboardingDto } from './dto/update-user-onboarding.dto';
 import { UsernameCheckDto } from './dto/username-check.dto';
 import { UsernameClaimDto } from './dto/username-claim.dto';
 import { UsernameSuggestDto } from './dto/username-suggest.dto';
@@ -40,6 +42,14 @@ export class UserController {
   @Patch('me')
   async updateMe(@CurrentUser() user: User, @Body() dto: UpdateUserProfileDto) {
     return this.userService.updateProfile(user.userId, dto);
+  }
+
+  @Put('me/onboarding')
+  async updateOnboarding(
+    @CurrentUser() user: User,
+    @Body() dto: UpdateUserOnboardingDto,
+  ): Promise<UserProfileDto> {
+    return this.userService.updateOnboarding(user.userId, dto);
   }
 
   @Get('me/entitlements')

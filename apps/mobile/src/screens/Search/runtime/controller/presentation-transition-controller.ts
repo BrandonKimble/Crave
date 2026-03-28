@@ -18,6 +18,16 @@ export type PresentationPhase =
   | 'cancelled';
 
 export type PresentationLoadingMode = 'none' | 'initial_cover' | 'interaction_frost';
+export type PresentationRevealMode = 'fresh_reveal' | 'in_place_rerun' | 'close';
+export type PresentationRevealPhase =
+  | 'idle'
+  | 'covered'
+  | 'awaiting_map_reveal_start'
+  | 'revealing'
+  | 'live'
+  | 'closing';
+export type PresentationResultsSurfaceMode = 'none' | 'initial_loading' | 'interaction_loading';
+export type PresentationResultsCardVisibility = 'hidden' | 'frozen' | 'live';
 
 export type PresentationRevealBatchRef = {
   requestKey: string;
@@ -62,6 +72,12 @@ type PresentationTransitionPublishPatch = {
   presentationResultsCoverVisible: boolean;
   presentationLane: PresentationLaneState;
   mapPresentationPhase: PresentationMapPhase;
+  presentationRevealTransactionId: string | null;
+  presentationRevealMode: PresentationRevealMode | null;
+  presentationRevealPhase: PresentationRevealPhase;
+  presentationResultsSurfaceMode: PresentationResultsSurfaceMode;
+  presentationResultsCardVisibility: PresentationResultsCardVisibility;
+  presentationShouldShowResultsCards: boolean;
 };
 
 export type BeginPresentationIntentOptions = {
@@ -69,6 +85,7 @@ export type BeginPresentationIntentOptions = {
   loadingMode: Exclude<PresentationLoadingMode, 'none'>;
   intentId?: string;
   requiresCoverage?: boolean;
+  revealMode?: PresentationRevealMode;
 };
 
 export type RequestPresentationTargetOptions = {
@@ -77,6 +94,7 @@ export type RequestPresentationTargetOptions = {
   loadingMode?: Exclude<PresentationLoadingMode, 'none'>;
   intentId?: string;
   requiresCoverage?: boolean;
+  revealMode?: PresentationRevealMode;
 };
 
 type PresentationTransitionControllerLog = (label: string, data?: Record<string, unknown>) => void;
@@ -100,6 +118,11 @@ type InternalState = {
   presentationLane: PresentationLaneState;
   coverageReady: boolean;
   requiresCoverage: boolean;
+  revealTransactionId: string | null;
+  revealMode: PresentationRevealMode | null;
+  revealPhase: PresentationRevealPhase;
+  resultsSurfaceMode: PresentationResultsSurfaceMode;
+  resultsCardVisibility: PresentationResultsCardVisibility;
 };
 
 const INTENT_PREFIX = 'presentation-intent:';
@@ -129,6 +152,11 @@ export class PresentationTransitionController {
     presentationLane: null,
     coverageReady: true,
     requiresCoverage: false,
+    revealTransactionId: null,
+    revealMode: null,
+    revealPhase: 'idle',
+    resultsSurfaceMode: 'none',
+    resultsCardVisibility: 'hidden',
   };
 
   public pendingFeedbackIntentId: string | null = null;
@@ -184,6 +212,12 @@ export class PresentationTransitionController {
       presentationResultsCoverVisible: this.state.resultsCoverVisible,
       presentationLane: this.state.presentationLane,
       mapPresentationPhase: this.deriveMapPresentationPhase(this.state),
+      presentationRevealTransactionId: this.state.revealTransactionId,
+      presentationRevealMode: this.state.revealMode,
+      presentationRevealPhase: this.state.revealPhase,
+      presentationResultsSurfaceMode: this.state.resultsSurfaceMode,
+      presentationResultsCardVisibility: this.state.resultsCardVisibility,
+      presentationShouldShowResultsCards: this.state.resultsCardVisibility === 'live',
     });
   }
 
@@ -209,6 +243,11 @@ export class PresentationTransitionController {
     draft.intentId = null;
     draft.loadingMode = options?.loadingMode ?? 'none';
     draft.resultsCoverVisible = options?.clearCover ?? false;
+    draft.revealTransactionId = null;
+    draft.revealMode = null;
+    draft.revealPhase = 'idle';
+    draft.resultsSurfaceMode = 'none';
+    draft.resultsCardVisibility = 'hidden';
   }
 
   private mutate(mutator: (draft: InternalState) => boolean): void {
@@ -243,6 +282,9 @@ export class PresentationTransitionController {
       }
       draft.loadingMode = loadingMode;
       draft.resultsCoverVisible = true;
+      draft.resultsSurfaceMode =
+        loadingMode === 'initial_cover' ? 'initial_loading' : 'interaction_loading';
+      draft.resultsCardVisibility = 'frozen';
       return true;
     });
   }
@@ -260,6 +302,9 @@ export class PresentationTransitionController {
       }
       draft.loadingMode = loadingMode;
       draft.resultsCoverVisible = true;
+      draft.resultsSurfaceMode =
+        loadingMode === 'initial_cover' ? 'initial_loading' : 'interaction_loading';
+      draft.resultsCardVisibility = 'frozen';
       return true;
     });
   }
@@ -297,14 +342,22 @@ export class PresentationTransitionController {
     this.mutate((draft) => {
       draft.loadingMode = 'none';
       draft.resultsCoverVisible = false;
+      draft.resultsSurfaceMode = 'none';
+      draft.resultsCardVisibility = draft.revealMode === 'close' ? 'hidden' : 'live';
       return true;
     });
   }
 
   public beginIntent(options: BeginPresentationIntentOptions): string {
-    const { kind, loadingMode, intentId = this.nextIntentId(), requiresCoverage = false } = options;
+    const {
+      kind,
+      loadingMode,
+      intentId = this.nextIntentId(),
+      requiresCoverage = false,
+      revealMode = loadingMode === 'initial_cover' ? 'fresh_reveal' : 'in_place_rerun',
+    } = options;
     const nowMs = this.now();
-    this.log('beginIntent', { intentId, kind, loadingMode, requiresCoverage });
+    this.log('beginIntent', { intentId, kind, loadingMode, requiresCoverage, revealMode });
     this.mutate((draft) => {
       draft.intentId = intentId;
       draft.phase = 'executing';
@@ -317,6 +370,21 @@ export class PresentationTransitionController {
       this.clearPresentationLane(draft);
       draft.coverageReady = !requiresCoverage;
       draft.requiresCoverage = requiresCoverage;
+      draft.revealTransactionId = intentId;
+      draft.revealMode = revealMode;
+      draft.revealPhase = 'covered';
+      draft.resultsSurfaceMode =
+        revealMode === 'fresh_reveal'
+          ? 'initial_loading'
+          : revealMode === 'in_place_rerun'
+          ? 'interaction_loading'
+          : 'none';
+      draft.resultsCardVisibility =
+        revealMode === 'fresh_reveal'
+          ? 'frozen'
+          : revealMode === 'in_place_rerun'
+          ? 'frozen'
+          : 'hidden';
       return true;
     });
     return intentId;
@@ -424,6 +492,7 @@ export class PresentationTransitionController {
         batch: revealBatch,
         status: 'mounted_hidden',
       };
+      draft.revealPhase = 'awaiting_map_reveal_start';
       this.tryStartReveal(draft);
       return true;
     });
@@ -485,7 +554,6 @@ export class PresentationTransitionController {
       return;
     }
     const revealBatch = revealLane.batch;
-    draft.resultsCoverVisible = false;
     draft.presentationLane = {
       ...revealLane,
       status: 'revealing',
@@ -494,11 +562,86 @@ export class PresentationTransitionController {
     if (draft.phase === 'executing') {
       draft.phase = 'awaiting_readiness';
     }
+    draft.revealPhase = 'revealing';
+    draft.resultsCoverVisible = false;
+    draft.resultsSurfaceMode = 'none';
+    draft.resultsCardVisibility = 'live';
     this.log('startReveal', {
       intentId: draft.intentId,
       revealBatchId: revealBatch.batchId,
       generationId: revealBatch.generationId,
       revealStartToken: (draft.presentationLane as PresentationRevealLaneState).startToken,
+    });
+  }
+
+  public markRevealStarted(intentId: string, revealBatch: PresentationRevealBatchRef | null): void {
+    if (!this.isActiveIntent(intentId)) {
+      this.log('markRevealStarted:skip_not_active', {
+        intentId,
+        activeIntentId: this.state.intentId,
+      });
+      return;
+    }
+    const revealLane = this.getRevealLane();
+    if (revealLane == null || revealLane.requestKey !== intentId) {
+      return;
+    }
+    if (revealBatch != null && revealBatch.requestKey !== intentId) {
+      this.log('markRevealStarted:skip_request_mismatch', {
+        intentId,
+        revealRequestKey: revealBatch.requestKey,
+      });
+      return;
+    }
+    this.log('markRevealStarted', {
+      intentId,
+      revealBatchId: revealBatch?.batchId ?? revealLane.batch?.batchId ?? null,
+      generationId: revealBatch?.generationId ?? revealLane.batch?.generationId ?? null,
+      revealMode: this.state.revealMode,
+    });
+    this.mutate((draft) => {
+      const activeRevealLane = this.getRevealLane(draft);
+      if (activeRevealLane == null || activeRevealLane.requestKey !== intentId) {
+        return false;
+      }
+      draft.presentationLane = {
+        ...activeRevealLane,
+        batch: revealBatch ?? activeRevealLane.batch,
+      };
+      return true;
+    });
+  }
+
+  public markRevealFirstVisibleFrame(
+    intentId: string,
+    revealBatch: PresentationRevealBatchRef | null
+  ): void {
+    if (!this.isActiveIntent(intentId)) {
+      return;
+    }
+    const revealLane = this.getRevealLane();
+    if (revealLane == null || revealLane.requestKey !== intentId) {
+      return;
+    }
+    if (revealBatch != null && revealBatch.requestKey !== intentId) {
+      return;
+    }
+    this.log('markRevealFirstVisibleFrame', {
+      intentId,
+      revealBatchId: revealBatch?.batchId ?? revealLane.batch?.batchId ?? null,
+      generationId: revealBatch?.generationId ?? revealLane.batch?.generationId ?? null,
+      revealMode: this.state.revealMode,
+    });
+    this.mutate((draft) => {
+      const activeRevealLane = this.getRevealLane(draft);
+      if (activeRevealLane == null || activeRevealLane.requestKey !== intentId) {
+        return false;
+      }
+      draft.presentationLane = {
+        ...activeRevealLane,
+        batch: revealBatch ?? activeRevealLane.batch,
+      };
+      return true;
     });
   }
 
@@ -547,6 +690,9 @@ export class PresentationTransitionController {
         startToken: activeRevealLane.startToken,
       };
       draft.loadingMode = 'none';
+      draft.revealPhase = 'live';
+      draft.resultsSurfaceMode = 'none';
+      draft.resultsCardVisibility = 'live';
       draft.intentId = null;
       draft.kind = null;
       draft.startedAtMs = null;
@@ -584,6 +730,11 @@ export class PresentationTransitionController {
       };
       draft.coverageReady = true;
       draft.requiresCoverage = false;
+      draft.revealTransactionId = intentId;
+      draft.revealMode = 'close';
+      draft.revealPhase = 'closing';
+      draft.resultsSurfaceMode = 'none';
+      draft.resultsCardVisibility = 'live';
       return true;
     });
     return intentId;
@@ -611,6 +762,7 @@ export class PresentationTransitionController {
       kind: options.kind ?? 'initial_search',
       loadingMode: options.loadingMode ?? 'interaction_frost',
       requiresCoverage: options.requiresCoverage,
+      revealMode: options.revealMode,
     });
   }
 
@@ -664,6 +816,11 @@ export class PresentationTransitionController {
       draft.coverageReady = true;
       draft.requiresCoverage = false;
       draft.presentationLane = null;
+      draft.revealTransactionId = null;
+      draft.revealMode = null;
+      draft.revealPhase = 'idle';
+      draft.resultsSurfaceMode = 'none';
+      draft.resultsCardVisibility = 'hidden';
       return true;
     });
   }

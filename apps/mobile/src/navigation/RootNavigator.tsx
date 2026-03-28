@@ -1,5 +1,4 @@
 import React from 'react';
-import { Image, StyleSheet, View } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import {
   SearchScreen,
@@ -10,55 +9,85 @@ import {
   RecentSearchesScreen,
   RecentlyViewedScreen,
 } from '../screens';
+import StaticSplashArtShell from '../components/StaticSplashArtShell';
+import SplashStudioScreen from '../splash-studio/SplashStudioScreen';
+import { isSplashStudioEnabled } from '../splash-studio/config';
 import type { RootStackParamList } from '../types/navigation';
-import { useNavigationBootstrapRuntime } from './runtime/use-navigation-bootstrap-runtime';
-import splashImage from '../assets/splash.png';
+import { useAppRouteCoordinator } from './runtime/AppRouteCoordinator';
+import { useMainLaunchCoordinator } from './runtime/MainLaunchCoordinator';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
-const RootNavigator: React.FC = () => {
-  const { isReady, hasCompletedOnboarding, isSignedIn } = useNavigationBootstrapRuntime();
+const OnboardingNavigator: React.FC = () => (
+  <Stack.Navigator
+    screenOptions={{
+      headerShown: false,
+      cardStyle: { backgroundColor: 'transparent' },
+    }}
+  >
+    <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+  </Stack.Navigator>
+);
 
-  if (!isReady) {
-    return (
-      <View style={styles.loadingContainer}>
-        <Image source={splashImage} style={styles.loadingImage} resizeMode="contain" />
-      </View>
-    );
+const AuthNavigator: React.FC = () => (
+  <Stack.Navigator
+    screenOptions={{
+      headerShown: false,
+      cardStyle: { backgroundColor: 'transparent' },
+    }}
+  >
+    <Stack.Screen name="SignIn" component={SignInScreen} />
+  </Stack.Navigator>
+);
+
+const MainNavigator: React.FC = () => (
+  <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Screen name="Main" component={SearchScreen} />
+    <Stack.Screen name="Profile" component={ProfileScreen} />
+    <Stack.Screen name="RecentSearches" component={RecentSearchesScreen} />
+    <Stack.Screen name="RecentlyViewed" component={RecentlyViewedScreen} />
+    <Stack.Screen
+      name="FavoritesListDetail"
+      component={FavoritesListDetailScreen}
+      options={{ presentation: 'modal', headerShown: false }}
+    />
+  </Stack.Navigator>
+);
+
+const RootNavigator: React.FC = () => {
+  const { isReady, routeState } = useAppRouteCoordinator();
+  const { isReadyToRender } = useMainLaunchCoordinator();
+
+  if (!isReady || !routeState) {
+    return null;
   }
 
-  const showOnboarding = !hasCompletedOnboarding;
-  const showSignIn = hasCompletedOnboarding && !isSignedIn;
+  if (routeState.destination === 'main' && isSplashStudioEnabled) {
+    return <SplashStudioScreen />;
+  }
 
-  return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {showOnboarding ? <Stack.Screen name="Onboarding" component={OnboardingScreen} /> : null}
-      {showSignIn ? <Stack.Screen name="SignIn" component={SignInScreen} /> : null}
-      <Stack.Screen name="Main" component={SearchScreen} />
-      <Stack.Screen name="Profile" component={ProfileScreen} />
-      <Stack.Screen name="RecentSearches" component={RecentSearchesScreen} />
-      <Stack.Screen name="RecentlyViewed" component={RecentlyViewedScreen} />
-      <Stack.Screen
-        name="FavoritesListDetail"
-        component={FavoritesListDetailScreen}
-        options={{ presentation: 'modal', headerShown: false }}
-      />
-    </Stack.Navigator>
-  );
+  if (!isReadyToRender) {
+    return routeState.destination === 'main' ? <MainNavigator /> : null;
+  }
+
+  switch (routeState.destination) {
+    case 'onboarding':
+      return (
+        <StaticSplashArtShell>
+          <OnboardingNavigator />
+        </StaticSplashArtShell>
+      );
+    case 'sign_in':
+      return (
+        <StaticSplashArtShell>
+          <AuthNavigator />
+        </StaticSplashArtShell>
+      );
+    case 'main':
+      return <MainNavigator />;
+    default:
+      return null;
+  }
 };
-
-const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#ffffff',
-  },
-  loadingImage: {
-    width: '70%',
-    maxWidth: 280,
-    height: 220,
-  },
-});
 
 export default RootNavigator;

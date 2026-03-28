@@ -59,14 +59,17 @@ const parseHostnameFromHostLike = (value: unknown) => {
 };
 
 const readMetroBundleHostname = () => {
-  const sourceCode = (NativeModules as unknown as { SourceCode?: { scriptURL?: string } }).SourceCode;
+  const sourceCode = (NativeModules as unknown as { SourceCode?: { scriptURL?: string } })
+    .SourceCode;
   const scriptURL = sourceCode?.scriptURL;
   const fromScriptUrl = parseHostnameFromHostLike(scriptURL);
   if (fromScriptUrl && !(Constants.isDevice && isLocalhostHostname(fromScriptUrl))) {
     return fromScriptUrl;
   }
 
-  const legacyDebuggerHost = parseHostnameFromHostLike((Constants.manifest as { debuggerHost?: unknown })?.debuggerHost);
+  const legacyDebuggerHost = parseHostnameFromHostLike(
+    (Constants.manifest as { debuggerHost?: unknown })?.debuggerHost
+  );
   if (legacyDebuggerHost && !(Constants.isDevice && isLocalhostHostname(legacyDebuggerHost))) {
     return legacyDebuggerHost;
   }
@@ -155,20 +158,28 @@ const deriveApiUrl = () => {
       const hostname = parsed.hostname;
 
       const isDeviceAndLocalhost =
-        Constants.isDevice && (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1');
+        Constants.isDevice &&
+        (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1');
 
       if (!isDeviceAndLocalhost) {
         if (typeof __DEV__ !== 'undefined' && __DEV__ && isTailscaleIp(hostname)) {
-          logger.info('EXPO_PUBLIC_API_URL points to a Tailscale IP; ensure your iPhone can reach it.', { envUrl });
+          logger.info(
+            'EXPO_PUBLIC_API_URL points to a Tailscale IP; ensure your iPhone can reach it.',
+            { envUrl }
+          );
         }
         return envUrl;
       }
 
       if (isDeviceAndLocalhost) {
-        logger.warn('EXPO_PUBLIC_API_URL is localhost on a device; falling back to Metro host for dev.');
+        logger.warn(
+          'EXPO_PUBLIC_API_URL is localhost on a device; falling back to Metro host for dev.'
+        );
       }
     } catch {
-      logger.warn('EXPO_PUBLIC_API_URL is invalid; falling back to Metro host for dev.', { envUrl });
+      logger.warn('EXPO_PUBLIC_API_URL is invalid; falling back to Metro host for dev.', {
+        envUrl,
+      });
     }
   }
 
@@ -181,11 +192,15 @@ const deriveApiUrl = () => {
   }
 
   if (typeof __DEV__ !== 'undefined' && __DEV__) {
-    logger.warn('No EXPO_PUBLIC_API_URL and could not infer Metro host; falling back to localhost.', {
-      isDevice: Constants.isDevice,
-      scriptURL: (NativeModules as unknown as { SourceCode?: { scriptURL?: string } }).SourceCode?.scriptURL,
-      experienceUrl: Constants.experienceUrl,
-    });
+    logger.warn(
+      'No EXPO_PUBLIC_API_URL and could not infer Metro host; falling back to localhost.',
+      {
+        isDevice: Constants.isDevice,
+        scriptURL: (NativeModules as unknown as { SourceCode?: { scriptURL?: string } }).SourceCode
+          ?.scriptURL,
+        experienceUrl: Constants.experienceUrl,
+      }
+    );
   }
 
   return DEFAULT_API_URL;
@@ -193,7 +208,8 @@ const deriveApiUrl = () => {
 
 const API_URL = deriveApiUrl();
 export const API_BASE_URL = API_URL;
-const API_TIMEOUT_MS = Number.parseInt(process.env.EXPO_PUBLIC_API_TIMEOUT_MS || '', 10) || DEFAULT_API_TIMEOUT_MS;
+const API_TIMEOUT_MS =
+  Number.parseInt(process.env.EXPO_PUBLIC_API_TIMEOUT_MS || '', 10) || DEFAULT_API_TIMEOUT_MS;
 
 type TokenResolver = () => Promise<string | null>;
 
@@ -223,6 +239,11 @@ const api = axios.create({
   },
 });
 
+type RequestBehaviorFlags = {
+  suppressSystemStatus?: boolean;
+  suppressErrorLog?: boolean;
+};
+
 // Request interceptor for adding token
 api.interceptors.request.use(
   async (config) => {
@@ -246,6 +267,7 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
+    const requestFlags = (error?.config as RequestBehaviorFlags | undefined) ?? {};
     const systemStatus = useSystemStatusStore.getState();
     const status: number | undefined =
       typeof error?.response?.status === 'number' ? error.response.status : undefined;
@@ -263,7 +285,12 @@ api.interceptors.response.use(
         ? responseRecord.message
         : undefined;
 
-    if (typeof status === 'number' && status >= 500 && !systemStatus.isOffline) {
+    if (
+      !requestFlags.suppressSystemStatus &&
+      typeof status === 'number' &&
+      status >= 500 &&
+      !systemStatus.isOffline
+    ) {
       const scope = errorCode === 'LLM_UNAVAILABLE' ? 'search' : 'global';
       systemStatus.reportServiceIssue({
         scope,
@@ -271,13 +298,15 @@ api.interceptors.response.use(
       });
     }
 
-    logger.error('API request failed', {
-      message: error.message,
-      baseURL: error.config?.baseURL,
-      url: error.config?.url,
-      method: error.config?.method,
-      status: error.response?.status,
-    });
+    if (!requestFlags.suppressErrorLog) {
+      logger.error('API request failed', {
+        message: error.message,
+        baseURL: error.config?.baseURL,
+        url: error.config?.url,
+        method: error.config?.method,
+        status: error.response?.status,
+      });
+    }
     return Promise.reject(error);
   }
 );

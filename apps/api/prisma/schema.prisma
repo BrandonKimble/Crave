@@ -498,6 +498,12 @@ model User {
   avatarUrl            String?               @map("avatar_url") @db.VarChar(2048)
   usernameStatus       UsernameStatus        @default(unset) @map("username_status")
   usernameUpdatedAt    DateTime?             @map("username_updated_at")
+  onboardingStatus     OnboardingStatus      @default(not_started) @map("onboarding_status")
+  onboardingCompletedAt DateTime?            @map("onboarding_completed_at")
+  onboardingVersion    Int                   @default(1) @map("onboarding_version")
+  onboardingSelectedCity String?             @map("onboarding_selected_city") @db.VarChar(255)
+  onboardingPreviewCity String?              @map("onboarding_preview_city") @db.VarChar(255)
+  onboardingResponses  Json?                 @map("onboarding_responses")
   createdAt            DateTime              @default(now()) @map("created_at")
   trialStartedAt       DateTime?             @map("trial_started_at")
   trialEndsAt          DateTime?             @map("trial_ends_at")
@@ -531,6 +537,7 @@ model User {
 
   @@index([email], map: "idx_users_email")
   @@index([username], map: "idx_users_username")
+  @@index([onboardingStatus], map: "idx_users_onboarding_status")
   @@index([authProvider], map: "idx_users_auth_provider")
   @@index([authProviderUserId], map: "idx_users_auth_provider_user_id")
   @@index([revenueCatAppUserId], map: "idx_users_revenuecat_app_user_id")
@@ -917,6 +924,14 @@ enum UsernameStatus {
   active
 
   @@map("username_status")
+}
+
+enum OnboardingStatus {
+  not_started
+  in_progress
+  completed
+
+  @@map("onboarding_status")
 }
 
 enum PollTopicStatus {

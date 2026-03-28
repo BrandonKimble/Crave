@@ -16,7 +16,7 @@ export const useCityStore = create<CityState>()(
       selectedCity: 'Austin',
       setSelectedCity: (city) => {
         const normalized = sanitizeCity(city);
-        set({ selectedCity: normalized });
+        set((state) => (state.selectedCity === normalized ? state : { selectedCity: normalized }));
       },
     }),
     {

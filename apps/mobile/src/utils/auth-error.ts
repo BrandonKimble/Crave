@@ -99,6 +99,19 @@ export const getOAuthErrorMessage = (
   });
 };
 
+export const isExistingSessionOAuthError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+  const record = error as Record<string, unknown>;
+  const errors = Array.isArray(record.errors) ? record.errors : undefined;
+  const firstError =
+    errors && errors[0] && typeof errors[0] === 'object'
+      ? (errors[0] as Record<string, unknown>)
+      : null;
+  return firstError?.code === 'session_exists';
+};
+
 export const serializeOAuthErrorForLog = (
   error: unknown,
   { fallbackMessage = DEFAULT_OAUTH_SIGN_IN_ERROR_MESSAGE }: OAuthErrorMessageOptions = {}

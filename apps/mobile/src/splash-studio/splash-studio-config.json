@@ -1,0 +1,25 @@
+{
+  "studioCamera": {
+    "center": [-97.73297003, 30.29611394],
+    "zoom": 11.55
+  },
+  "backdrop": {
+    "baseColor": "#eaf1f4",
+    "dotCount": 75,
+    "primaryColorChance": 0.15,
+    "gradientBias": 0.94,
+    "centerPull": 0.26
+  },
+  "frost": {
+    "intensity": 45,
+    "tint": "light",
+    "tintColor": "#f8fbff",
+    "tintOpacity": 0.3
+  },
+  "grid": {
+    "minorSize": 32,
+    "majorSize": 128,
+    "minorStroke": "rgba(31, 41, 55, 0.055)",
+    "majorStroke": "rgba(31, 41, 55, 0.095)"
+  }
+}

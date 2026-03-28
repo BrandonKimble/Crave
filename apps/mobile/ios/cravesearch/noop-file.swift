@@ -632,6 +632,7 @@ final class SearchMapRenderController: RCTEventEmitter {
   private struct RevealLaneState {
     var requestedRequestKey: String? = nil
     var mountedHidden: RevealBatchRef? = nil
+    var armed: RevealBatchRef? = nil
     var revealing: RevealBatchRef? = nil
     var liveBaseline: RevealBatchRef? = nil
   }
@@ -653,6 +654,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     var revealLane: RevealLaneState
     var lastRevealStartToken: Double?
     var lastRevealStartedRequestKey: String?
+    var lastRevealFirstVisibleRequestKey: String?
     var lastRevealSettledRequestKey: String?
     var lastDismissRequestKey: String?
     var presentationExecutionPhase: String
@@ -787,6 +789,7 @@ final class SearchMapRenderController: RCTEventEmitter {
         revealLane: RevealLaneState(),
         lastRevealStartToken: nil,
         lastRevealStartedRequestKey: nil,
+        lastRevealFirstVisibleRequestKey: nil,
         lastRevealSettledRequestKey: nil,
         lastDismissRequestKey: nil,
         presentationExecutionPhase: "idle",
@@ -981,7 +984,7 @@ final class SearchMapRenderController: RCTEventEmitter {
           instanceId: instanceId,
           markerKey: highlightedMarkerKey
         )
-        if didSyncResidentFrame, let state = self.instances[instanceId] {
+        if didSyncResidentFrame, var state = self.instances[instanceId] {
           self.emit([
             "type": "render_frame_synced",
             "instanceId": instanceId,
@@ -1000,6 +1003,7 @@ final class SearchMapRenderController: RCTEventEmitter {
               "labelCollisions": Self.mountedSourceState(sourceId: state.labelCollisionSourceId, state: state)?.sourceRevision ?? "",
             ],
           ])
+          self.maybeEmitRevealBatchArmed(instanceId: instanceId, state: &state)
           let totalDurationMs = CACurrentMediaTime() * 1000 - actionStartedAt
           self.recordSlowActionWindow(
             instanceId: instanceId,
@@ -1196,6 +1200,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.revealLane = RevealLaneState()
       state.lastRevealStartToken = nil
       state.lastRevealStartedRequestKey = nil
+      state.lastRevealFirstVisibleRequestKey = nil
       state.lastRevealSettledRequestKey = nil
       state.pendingPresentationSettleRequestKey = nil
       state.pendingPresentationSettleKind = nil
@@ -1915,6 +1920,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.revealLane = RevealLaneState()
       state.lastRevealStartToken = nil
       state.lastRevealStartedRequestKey = nil
+      state.lastRevealFirstVisibleRequestKey = nil
       state.lastRevealSettledRequestKey = nil
       state.lastDismissRequestKey = nil
       state.presentationExecutionPhase = "idle"
@@ -3155,6 +3161,52 @@ final class SearchMapRenderController: RCTEventEmitter {
       "revealBatchId": revealBatch.batchId,
       "readyAtMs": Self.nowMs(),
     ])
+    maybeEmitRevealBatchArmed(instanceId: instanceId, state: &state)
+  }
+
+  private func maybeEmitRevealBatchArmed(
+    instanceId: String,
+    state: inout InstanceState
+  ) {
+    guard let revealBatch = state.revealLane.mountedHidden else {
+      return
+    }
+    guard state.lastRevealRequestKey == revealBatch.requestKey else {
+      return
+    }
+    guard state.revealLane.requestedRequestKey == revealBatch.requestKey else {
+      return
+    }
+    guard state.revealLane.armed != revealBatch else {
+      return
+    }
+    guard state.lastDismissRequestKey == nil else {
+      return
+    }
+    guard state.lastRevealStartedRequestKey != revealBatch.requestKey else {
+      return
+    }
+    guard state.blockedRevealStartRequestKey == nil else {
+      return
+    }
+    guard state.activeFrameGenerationId == revealBatch.generationId else {
+      return
+    }
+    state.revealLane.armed = revealBatch
+    instances[instanceId] = state
+    emitVisualDiag(
+      instanceId: instanceId,
+      message:
+        "reveal_armed phase=\(state.lastPresentationPhase) frame=\(state.activeFrameGenerationId ?? "nil") \(Self.phaseSummary(for: state))"
+    )
+    emit([
+      "type": "presentation_reveal_armed",
+      "instanceId": instanceId,
+      "requestKey": revealBatch.requestKey,
+      "frameGenerationId": revealBatch.generationId,
+      "revealBatchId": revealBatch.batchId,
+      "armedAtMs": Self.nowMs(),
+    ])
   }
 
   private func maybeElectMountedHiddenRevealBatch(
@@ -3214,6 +3266,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     state.revealLane.liveBaseline = state.revealLane.revealing
     state.revealLane.requestedRequestKey = nil
     state.revealLane.mountedHidden = nil
+    state.revealLane.armed = nil
     state.revealLane.revealing = nil
     state.lastRevealSettledRequestKey = requestKey
     state.pendingPresentationSettleRequestKey = nil
@@ -4676,6 +4729,7 @@ final class SearchMapRenderController: RCTEventEmitter {
         reason: animator.reason,
         emitDiagnostic: rawProgress >= 1
       )
+      emitRevealFirstVisibleFrameIfNeeded(instanceId: instanceId, state: &state, opacity: opacity)
       if rawProgress >= 1 {
         emitVisualDiag(
           instanceId: instanceId,
@@ -4693,6 +4747,38 @@ final class SearchMapRenderController: RCTEventEmitter {
       ])
       cancelPresentationOpacityAnimation(instanceId: instanceId)
     }
+  }
+
+  private func emitRevealFirstVisibleFrameIfNeeded(
+    instanceId: String,
+    state: inout InstanceState,
+    opacity: Double
+  ) {
+    guard opacity > 0.001 else {
+      return
+    }
+    guard state.lastPresentationPhase == "revealing" else {
+      return
+    }
+    guard let requestKey = state.lastRevealRequestKey else {
+      return
+    }
+    guard state.lastRevealStartedRequestKey == requestKey else {
+      return
+    }
+    guard state.lastRevealFirstVisibleRequestKey != requestKey else {
+      return
+    }
+    state.lastRevealFirstVisibleRequestKey = requestKey
+    instances[instanceId] = state
+    emit([
+      "type": "presentation_reveal_first_visible_frame",
+      "instanceId": instanceId,
+      "requestKey": requestKey,
+      "frameGenerationId": state.revealLane.revealing?.generationId as Any,
+      "revealBatchId": state.revealLane.revealing?.batchId as Any,
+      "syncedAtMs": Self.nowMs(),
+    ])
   }
 
   private func emitPinOpacitySummary(instanceId: String, state: InstanceState, reason: String) {
@@ -5813,6 +5899,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.blockedRevealStartCommitFenceBySourceId.removeAll()
       state.presentationExecutionPhase = "reveal_preroll"
       instances[instanceId] = state
+      maybeEmitRevealBatchArmed(instanceId: instanceId, state: &state)
       if
         let presentationStateJSON = state.lastPresentationStateJSON,
         Self.readRevealStatus(fromJSON: presentationStateJSON) == "revealing",

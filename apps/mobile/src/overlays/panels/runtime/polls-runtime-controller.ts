@@ -4,7 +4,16 @@ import { io, type Socket } from 'socket.io-client';
 
 import { API_BASE_URL } from '../../../services/api';
 import { resolveCoverage } from '../../../services/coverage';
-import { addPollOption, fetchPolls, voteOnPoll, type Poll } from '../../../services/polls';
+import {
+  addPollOption,
+  createNetworkPollBootstrapSnapshot,
+  fetchPolls,
+  readPollBootstrapSnapshotForCoverage,
+  voteOnPoll,
+  writePollBootstrapSnapshot,
+  type Poll,
+  type PollBootstrapSnapshot,
+} from '../../../services/polls';
 import type { MapBounds } from '../../../types';
 import { logger } from '../../../utils';
 
@@ -27,13 +36,17 @@ type RefreshPollFeedOptions = {
 type UsePollsRuntimeControllerArgs = {
   visible: boolean;
   bounds?: MapBounds | null;
+  bootstrapSnapshot?: PollBootstrapSnapshot | null;
   coverageOverride?: string | null;
-  selectedPollId: string | null;
+  pollFeedRequiresFreshNetwork: boolean;
   setSelectedPollId: React.Dispatch<React.SetStateAction<string | null>>;
   setPolls: React.Dispatch<React.SetStateAction<Poll[]>>;
   setCoverageKey: React.Dispatch<React.SetStateAction<string | null>>;
   setCoverageName: React.Dispatch<React.SetStateAction<string | null>>;
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
+  setPollFeedRefreshing: React.Dispatch<React.SetStateAction<boolean>>;
+  setPollFeedRequiresFreshNetwork: React.Dispatch<React.SetStateAction<boolean>>;
+  setPollFeedFreshnessError: React.Dispatch<React.SetStateAction<boolean>>;
   setPersistedCity: (city: string) => void;
   isSystemUnavailable: boolean;
   pollIdParam?: string | null;
@@ -49,13 +62,17 @@ type UsePollsRuntimeControllerResult = {
 export const usePollsRuntimeController = ({
   visible,
   bounds,
+  bootstrapSnapshot,
   coverageOverride,
-  selectedPollId,
+  pollFeedRequiresFreshNetwork,
   setSelectedPollId,
   setPolls,
   setCoverageKey,
   setCoverageName,
   setLoading,
+  setPollFeedRefreshing,
+  setPollFeedRequiresFreshNetwork,
+  setPollFeedFreshnessError,
   setPersistedCity,
   isSystemUnavailable,
   pollIdParam,
@@ -64,13 +81,76 @@ export const usePollsRuntimeController = ({
   const socketRef = React.useRef<Socket | null>(null);
   const pendingPollIdRef = React.useRef<string | null>(null);
   const lastResolvedCoverageKeyRef = React.useRef<string | null>(null);
+  const refreshSeqRef = React.useRef(0);
+  const bootstrapCoverageKey =
+    typeof bootstrapSnapshot?.coverageKey === 'string' && bootstrapSnapshot.coverageKey.trim()
+      ? bootstrapSnapshot.coverageKey.trim().toLowerCase()
+      : null;
+  const hasBootstrapSnapshot = Boolean(
+    bootstrapSnapshot &&
+      (bootstrapSnapshot.polls.length > 0 || bootstrapSnapshot.coverageName || bootstrapCoverageKey)
+  );
+
+  const applyPollSnapshot = React.useCallback(
+    (snapshot: PollBootstrapSnapshot, focusPollId?: string | null) => {
+      const nextCoverageKey = snapshot.coverageKey;
+      const normalizedKey =
+        typeof nextCoverageKey === 'string' ? nextCoverageKey.trim().toLowerCase() : null;
+      if (normalizedKey) {
+        lastResolvedCoverageKeyRef.current = normalizedKey;
+      }
+      setPolls(snapshot.polls);
+      setCoverageKey(nextCoverageKey);
+      setCoverageName(snapshot.coverageName);
+      setPollFeedRequiresFreshNetwork(snapshot.source !== 'network');
+      setPollFeedFreshnessError(false);
+      if (nextCoverageKey && !coverageOverride) {
+        setPersistedCity(nextCoverageKey);
+      }
+
+      setSelectedPollId((current) => {
+        const normalizedPolls = snapshot.polls;
+        if (!normalizedPolls.length) {
+          return null;
+        }
+        if (focusPollId && normalizedPolls.some((poll) => poll.pollId === focusPollId)) {
+          return focusPollId;
+        }
+        if (
+          pendingPollIdRef.current &&
+          normalizedPolls.some((poll) => poll.pollId === pendingPollIdRef.current)
+        ) {
+          const nextSelection = pendingPollIdRef.current;
+          pendingPollIdRef.current = null;
+          return nextSelection;
+        }
+        if (current && normalizedPolls.some((poll) => poll.pollId === current)) {
+          return current;
+        }
+        return normalizedPolls[0].pollId;
+      });
+    },
+    [
+      coverageOverride,
+      setCoverageKey,
+      setCoverageName,
+      setPersistedCity,
+      setPollFeedRequiresFreshNetwork,
+      setPollFeedFreshnessError,
+      setPolls,
+      setSelectedPollId,
+    ]
+  );
 
   const refreshPollFeed = React.useCallback(
     async (options?: RefreshPollFeedOptions) => {
+      const refreshSeq = ++refreshSeqRef.current;
       const skipSpinner = options?.skipSpinner ?? false;
       const focusPollId = options?.focusPollId ?? null;
       const coverageKeyOverride = options?.coverageKeyOverride ?? null;
 
+      setPollFeedFreshnessError(false);
+      setPollFeedRefreshing(true);
       if (!skipSpinner) {
         setLoading(true);
       }
@@ -83,6 +163,9 @@ export const usePollsRuntimeController = ({
         : null;
 
       if (!payload) {
+        if (refreshSeq === refreshSeqRef.current) {
+          setPollFeedRefreshing(false);
+        }
         if (!skipSpinner) {
           setLoading(false);
         }
@@ -91,89 +174,101 @@ export const usePollsRuntimeController = ({
 
       try {
         const response = await fetchPolls(payload);
-        const normalizedPolls = response.polls ?? [];
-        const nextCoverageKey = response.coverageKey ?? resolvedCoverageKey ?? null;
-        const normalizedKey =
-          typeof nextCoverageKey === 'string' ? nextCoverageKey.trim().toLowerCase() : null;
-        if (normalizedKey) {
-          lastResolvedCoverageKeyRef.current = normalizedKey;
-        }
-        const nextCoverageName = response.coverageName ?? normalizedPolls[0]?.coverageName ?? null;
-
-        setPolls(normalizedPolls);
-        setCoverageKey(nextCoverageKey);
-        setCoverageName(nextCoverageName);
-        if (nextCoverageKey && !coverageOverride) {
-          setPersistedCity(nextCoverageKey);
-        }
-
-        if (!normalizedPolls.length) {
-          setSelectedPollId(null);
-          return;
-        }
-
-        const hasCurrentSelection =
-          selectedPollId && normalizedPolls.some((poll) => poll.pollId === selectedPollId);
-        let nextSelection: string | null = null;
-
-        if (focusPollId && normalizedPolls.some((poll) => poll.pollId === focusPollId)) {
-          nextSelection = focusPollId;
-        } else if (
-          pendingPollIdRef.current &&
-          normalizedPolls.some((poll) => poll.pollId === pendingPollIdRef.current)
-        ) {
-          nextSelection = pendingPollIdRef.current;
-        } else if (hasCurrentSelection) {
-          nextSelection = selectedPollId;
-        } else {
-          nextSelection = normalizedPolls[0].pollId;
-        }
-
-        if (nextSelection) {
-          setSelectedPollId(nextSelection);
-          if (pendingPollIdRef.current === nextSelection) {
-            pendingPollIdRef.current = null;
-          }
-        } else {
-          setSelectedPollId(null);
+        const snapshot = createNetworkPollBootstrapSnapshot(response);
+        applyPollSnapshot(snapshot, focusPollId);
+        if (snapshot.coverageKey) {
+          void writePollBootstrapSnapshot(snapshot);
         }
       } catch (error) {
+        if (pollFeedRequiresFreshNetwork) {
+          setPollFeedFreshnessError(true);
+        }
         logger.error('Failed to load polls', error);
       } finally {
+        if (refreshSeq === refreshSeqRef.current) {
+          setPollFeedRefreshing(false);
+        }
         if (!skipSpinner) {
           setLoading(false);
         }
       }
     },
     [
+      applyPollSnapshot,
       bounds,
       coverageOverride,
-      selectedPollId,
-      setCoverageKey,
-      setCoverageName,
+      pollFeedRequiresFreshNetwork,
       setLoading,
-      setPersistedCity,
-      setPolls,
-      setSelectedPollId,
+      setPollFeedFreshnessError,
+      setPollFeedRefreshing,
     ]
   );
+
+  React.useEffect(() => {
+    if (!bootstrapCoverageKey) {
+      return;
+    }
+    lastResolvedCoverageKeyRef.current = bootstrapCoverageKey;
+  }, [bootstrapCoverageKey]);
 
   React.useEffect(() => {
     if (!visible || isSystemUnavailable || !coverageOverride) {
       return;
     }
-    void refreshPollFeed({ coverageKeyOverride: coverageOverride });
-  }, [coverageOverride, isSystemUnavailable, refreshPollFeed, visible]);
+    const normalizedOverride = coverageOverride.trim().toLowerCase();
+    let cancelled = false;
+
+    void (async () => {
+      const activeCoverageKey = lastResolvedCoverageKeyRef.current ?? bootstrapCoverageKey;
+      if (normalizedOverride !== activeCoverageKey) {
+        const cachedSnapshot = await readPollBootstrapSnapshotForCoverage(normalizedOverride);
+        if (cancelled) {
+          return;
+        }
+        if (cachedSnapshot) {
+          applyPollSnapshot(cachedSnapshot, pollIdParam);
+          setPollFeedRefreshing(true);
+        }
+      }
+
+      if (!cancelled) {
+        void refreshPollFeed({
+          coverageKeyOverride: coverageOverride,
+          skipSpinner: hasBootstrapSnapshot && normalizedOverride === bootstrapCoverageKey,
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    applyPollSnapshot,
+    bootstrapCoverageKey,
+    coverageOverride,
+    hasBootstrapSnapshot,
+    isSystemUnavailable,
+    pollIdParam,
+    refreshPollFeed,
+    setPollFeedRefreshing,
+    visible,
+  ]);
 
   React.useEffect(() => {
     if (!visible || isSystemUnavailable || coverageOverride || !bounds) {
       return;
     }
+    const activeCoverageKey = lastResolvedCoverageKeyRef.current ?? bootstrapCoverageKey;
+    if (!activeCoverageKey || !hasBootstrapSnapshot) {
+      void refreshPollFeed({ skipSpinner: hasBootstrapSnapshot });
+      return;
+    }
 
-    let isActive = true;
-    resolveCoverage(bounds)
-      .then((response) => {
-        if (!isActive) {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await resolveCoverage(bounds);
+        if (cancelled) {
           return;
         }
         const nextKey =
@@ -183,48 +278,56 @@ export const usePollsRuntimeController = ({
             ? response.coverageName.trim()
             : null;
 
-        if (!nextKey) {
-          setLoading(true);
-          lastResolvedCoverageKeyRef.current = null;
-          setCoverageName(null);
-          setCoverageKey(null);
-          setPolls([]);
-          setSelectedPollId(null);
-          void refreshPollFeed();
-          return;
-        }
-
-        if (lastResolvedCoverageKeyRef.current === nextKey) {
+        if (nextKey && nextKey === activeCoverageKey) {
           if (nextName) {
             setCoverageName(nextName);
+          }
+          if (pollFeedRequiresFreshNetwork) {
+            void refreshPollFeed({
+              coverageKeyOverride: nextKey || null,
+              skipSpinner: true,
+            });
           }
           return;
         }
 
-        lastResolvedCoverageKeyRef.current = nextKey;
-        setCoverageKey(nextKey);
-        setCoverageName(nextName);
-        void refreshPollFeed({ coverageKeyOverride: nextKey });
-      })
-      .catch((error) => {
-        logger.warn('Coverage resolve failed', {
+        if (nextKey) {
+          const cachedSnapshot = await readPollBootstrapSnapshotForCoverage(nextKey);
+          if (cancelled) {
+            return;
+          }
+          if (cachedSnapshot) {
+            applyPollSnapshot(cachedSnapshot);
+            setPollFeedRefreshing(true);
+          }
+        }
+
+        void refreshPollFeed({
+          coverageKeyOverride: nextKey || null,
+          skipSpinner: true,
+        });
+      } catch (error) {
+        logger.warn('Coverage revalidation failed', {
           message: error instanceof Error ? error.message : 'unknown',
         });
-      });
+        void refreshPollFeed({ skipSpinner: hasBootstrapSnapshot });
+      }
+    })();
 
     return () => {
-      isActive = false;
+      cancelled = true;
     };
   }, [
+    bootstrapCoverageKey,
     bounds,
     coverageOverride,
+    hasBootstrapSnapshot,
     isSystemUnavailable,
+    pollFeedRequiresFreshNetwork,
     refreshPollFeed,
-    setCoverageKey,
+    applyPollSnapshot,
     setCoverageName,
-    setLoading,
-    setPolls,
-    setSelectedPollId,
+    setPollFeedRefreshing,
     visible,
   ]);
 

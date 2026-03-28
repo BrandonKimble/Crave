@@ -15,6 +15,18 @@ type UseStableMapHandlersArgs = {
     revealBatchId: string | null;
     readyAtMs: number;
   }) => void;
+  handleMarkerRevealStarted: (payload: {
+    requestKey: string;
+    frameGenerationId: string | null;
+    revealBatchId: string | null;
+    startedAtMs: number;
+  }) => void;
+  handleMarkerRevealFirstVisibleFrame: (payload: {
+    requestKey: string;
+    frameGenerationId: string | null;
+    revealBatchId: string | null;
+    syncedAtMs: number;
+  }) => void;
   handleMarkerRevealSettled: (payload: {
     requestKey: string;
     frameGenerationId: string | null;
@@ -38,6 +50,18 @@ type StableMapHandlers = {
     revealBatchId: string | null;
     readyAtMs: number;
   }) => void;
+  onMarkerRevealStarted: (payload: {
+    requestKey: string;
+    frameGenerationId: string | null;
+    revealBatchId: string | null;
+    startedAtMs: number;
+  }) => void;
+  onMarkerRevealFirstVisibleFrame: (payload: {
+    requestKey: string;
+    frameGenerationId: string | null;
+    revealBatchId: string | null;
+    syncedAtMs: number;
+  }) => void;
   onMarkerRevealSettled: (payload: {
     requestKey: string;
     frameGenerationId: string | null;
@@ -56,6 +80,8 @@ export const useStableMapHandlers = ({
   handleMapLoaded,
   handleMarkerPress,
   handleRevealBatchMountedHidden,
+  handleMarkerRevealStarted,
+  handleMarkerRevealFirstVisibleFrame,
   handleMarkerRevealSettled,
   handleMarkerDismissStarted,
   handleMarkerDismissSettled,
@@ -66,6 +92,8 @@ export const useStableMapHandlers = ({
   const handleMapLoadedRef = React.useRef(handleMapLoaded);
   const handleMarkerPressRef = React.useRef(handleMarkerPress);
   const handleRevealBatchMountedHiddenRef = React.useRef(handleRevealBatchMountedHidden);
+  const handleMarkerRevealStartedRef = React.useRef(handleMarkerRevealStarted);
+  const handleMarkerRevealFirstVisibleFrameRef = React.useRef(handleMarkerRevealFirstVisibleFrame);
   const handleMarkerRevealSettledRef = React.useRef(handleMarkerRevealSettled);
   const handleMarkerDismissStartedRef = React.useRef(handleMarkerDismissStarted);
   const handleMarkerDismissSettledRef = React.useRef(handleMarkerDismissSettled);
@@ -76,6 +104,8 @@ export const useStableMapHandlers = ({
   handleMapLoadedRef.current = handleMapLoaded;
   handleMarkerPressRef.current = handleMarkerPress;
   handleRevealBatchMountedHiddenRef.current = handleRevealBatchMountedHidden;
+  handleMarkerRevealStartedRef.current = handleMarkerRevealStarted;
+  handleMarkerRevealFirstVisibleFrameRef.current = handleMarkerRevealFirstVisibleFrame;
   handleMarkerRevealSettledRef.current = handleMarkerRevealSettled;
   handleMarkerDismissStartedRef.current = handleMarkerDismissStarted;
   handleMarkerDismissSettledRef.current = handleMarkerDismissSettled;
@@ -101,6 +131,12 @@ export const useStableMapHandlers = ({
       },
       onRevealBatchMountedHidden: (payload) => {
         handleRevealBatchMountedHiddenRef.current(payload);
+      },
+      onMarkerRevealStarted: (payload) => {
+        handleMarkerRevealStartedRef.current(payload);
+      },
+      onMarkerRevealFirstVisibleFrame: (payload) => {
+        handleMarkerRevealFirstVisibleFrameRef.current(payload);
       },
       onMarkerRevealSettled: (payload) => {
         handleMarkerRevealSettledRef.current(payload);

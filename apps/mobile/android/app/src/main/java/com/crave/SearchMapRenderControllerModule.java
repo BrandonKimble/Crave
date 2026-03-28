@@ -301,6 +301,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
   private static final class RevealLaneState {
     String requestedRequestKey;
     RevealBatchRef mountedHidden;
+    RevealBatchRef armed;
     RevealBatchRef revealing;
     RevealBatchRef liveBaseline;
   }
@@ -322,6 +323,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     RevealLaneState revealLane = new RevealLaneState();
     Double lastRevealStartToken;
     String lastRevealStartedRequestKey;
+    String lastRevealFirstVisibleRequestKey;
     String lastRevealSettledRequestKey;
     String lastDismissRequestKey;
     String presentationExecutionPhase;
@@ -622,6 +624,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     state.revealLane = new RevealLaneState();
     state.lastRevealStartToken = null;
     state.lastRevealStartedRequestKey = null;
+    state.lastRevealFirstVisibleRequestKey = null;
     state.lastRevealSettledRequestKey = null;
     state.lastDismissRequestKey = null;
     state.presentationExecutionPhase = "idle";
@@ -811,6 +814,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         );
         event.putMap("sourceRevisions", sourceRevisions);
         emit(event);
+        maybeEmitRevealBatchArmed(instanceId, state);
         double totalDurationMs = (System.nanoTime() - actionStartedAt) / 1_000_000.0;
         if (totalDurationMs >= SLOW_ACTION_THRESHOLD_MS) {
           emitError(
@@ -975,6 +979,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       state.revealLane = new RevealLaneState();
       state.lastRevealStartToken = null;
       state.lastRevealStartedRequestKey = null;
+      state.lastRevealFirstVisibleRequestKey = null;
       state.lastRevealSettledRequestKey = null;
       state.pendingPresentationSettleRequestKey = null;
       state.pendingPresentationSettleKind = null;
@@ -1629,6 +1634,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       state.revealLane = new RevealLaneState();
       state.lastRevealStartToken = null;
       state.lastRevealStartedRequestKey = null;
+      state.lastRevealFirstVisibleRequestKey = null;
       state.lastRevealSettledRequestKey = null;
       state.lastDismissRequestKey = null;
       state.presentationExecutionPhase = "idle";
@@ -2388,6 +2394,23 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     );
     startedEvent.putDouble("startedAtMs", nowMs());
     emit(startedEvent);
+    if (!stringEquals(state.lastRevealFirstVisibleRequestKey, requestKey)) {
+      state.lastRevealFirstVisibleRequestKey = requestKey;
+      WritableMap firstVisibleEvent = Arguments.createMap();
+      firstVisibleEvent.putString("type", "presentation_reveal_first_visible_frame");
+      firstVisibleEvent.putString("instanceId", instanceId);
+      firstVisibleEvent.putString("requestKey", requestKey);
+      firstVisibleEvent.putString(
+        "frameGenerationId",
+        state.revealLane.revealing != null ? state.revealLane.revealing.generationId : null
+      );
+      firstVisibleEvent.putString(
+        "revealBatchId",
+        state.revealLane.revealing != null ? state.revealLane.revealing.batchId : null
+      );
+      firstVisibleEvent.putDouble("syncedAtMs", nowMs());
+      emit(firstVisibleEvent);
+    }
     Runnable settledRunnable = () -> {
       revealSettleRunnables.remove(instanceId);
       InstanceState latestState = instances.get(instanceId);
@@ -2462,6 +2485,54 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     readyEvent.putString("revealBatchId", revealBatch.batchId);
     readyEvent.putDouble("readyAtMs", nowMs());
     emit(readyEvent);
+    maybeEmitRevealBatchArmed(instanceId, state);
+  }
+
+  private void maybeEmitRevealBatchArmed(String instanceId, InstanceState state) {
+    RevealBatchRef revealBatch = state.revealLane.mountedHidden;
+    if (revealBatch == null) {
+      return;
+    }
+    if (!stringEquals(state.lastRevealRequestKey, revealBatch.requestKey)) {
+      return;
+    }
+    if (!stringEquals(state.revealLane.requestedRequestKey, revealBatch.requestKey)) {
+      return;
+    }
+    if (sameRevealBatch(state.revealLane.armed, revealBatch)) {
+      return;
+    }
+    if (state.lastDismissRequestKey != null) {
+      return;
+    }
+    if (stringEquals(state.lastRevealStartedRequestKey, revealBatch.requestKey)) {
+      return;
+    }
+    if (state.blockedRevealStartRequestKey != null) {
+      return;
+    }
+    if (!stringEquals(state.activeFrameGenerationId, revealBatch.generationId)) {
+      return;
+    }
+    state.revealLane.armed = revealBatch;
+    instances.put(instanceId, state);
+    emitVisualDiag(
+      instanceId,
+      "reveal_armed phase=" +
+      state.lastPresentationPhase +
+      " frame=" +
+      (state.activeFrameGenerationId != null ? state.activeFrameGenerationId : "nil") +
+      " " +
+      phaseSummary(state)
+    );
+    WritableMap armedEvent = Arguments.createMap();
+    armedEvent.putString("type", "presentation_reveal_armed");
+    armedEvent.putString("instanceId", instanceId);
+    armedEvent.putString("requestKey", revealBatch.requestKey);
+    armedEvent.putString("frameGenerationId", revealBatch.generationId);
+    armedEvent.putString("revealBatchId", revealBatch.batchId);
+    armedEvent.putDouble("armedAtMs", nowMs());
+    emit(armedEvent);
   }
 
   private void maybeElectMountedHiddenRevealBatch(String instanceId, InstanceState state) {
@@ -4985,6 +5056,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       state.blockedRevealStartCommitFenceDataIdsBySourceId.clear();
       state.presentationExecutionPhase = "reveal_preroll";
       instances.put(instanceId, state);
+      maybeEmitRevealBatchArmed(instanceId, state);
       if (
         "revealing".equals(readRevealStatus(state.lastPresentationStateJson)) &&
         readRevealStartToken(state.lastPresentationStateJson) != null
@@ -6403,6 +6475,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     state.revealLane.liveBaseline = state.revealLane.revealing;
     state.revealLane.requestedRequestKey = null;
     state.revealLane.mountedHidden = null;
+    state.revealLane.armed = null;
     state.revealLane.revealing = null;
     state.lastRevealSettledRequestKey = requestKey;
     state.pendingPresentationSettleRequestKey = null;

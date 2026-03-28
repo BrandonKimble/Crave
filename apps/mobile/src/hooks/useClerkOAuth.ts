@@ -1,7 +1,7 @@
 import React from 'react';
 import { useOAuth } from '@clerk/clerk-expo';
 import { logger } from '../utils';
-import { summarizeOAuthError } from '../utils/auth-error';
+import { isExistingSessionOAuthError, summarizeOAuthError } from '../utils/auth-error';
 
 type OAuthStrategy = 'oauth_apple' | 'oauth_google';
 
@@ -35,6 +35,10 @@ export const useClerkOAuth = (strategy: OAuthStrategy) => {
           setActive: result.setActive,
         };
       } catch (error) {
+        if (isExistingSessionOAuthError(error)) {
+          logger.info('OAuth flow reported existing session', { strategy });
+          throw error;
+        }
         const summary = summarizeOAuthError(error);
         logger.error(
           'OAuth flow threw',

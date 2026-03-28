@@ -40,6 +40,11 @@ export class QueryPollsDto {
   bounds?: BoundsDto;
 
   @IsOptional()
+  @ValidateNested()
+  @Type(() => CoordinateDto)
+  fallbackLocation?: CoordinateDto;
+
+  @IsOptional()
   @IsEnum(PollListState)
   state?: PollListState;
 }

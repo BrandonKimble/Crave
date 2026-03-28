@@ -24,15 +24,11 @@ type RestaurantSnapRequest = {
 type UseSearchOverlayPanelsArgs = {
   searchPanelSpec: OverlayContentSpec<unknown> | null;
   pollCreationPanelSpec: OverlayContentSpec<unknown> | null;
-  shouldShowPollCreationPanel: boolean;
-  showSaveListOverlay: boolean;
   shouldShowRestaurantOverlay: boolean;
-  showProfileOverlay: boolean;
-  showBookmarksOverlay: boolean;
   shouldShowPollsSheet: boolean;
   shouldRenderResultsSheet: boolean;
-  isSearchOverlay: boolean;
   searchSheetContentLane: SearchSheetContentLane;
+  isDockedPollsDismissed: boolean;
   isSuggestionPanelActive: boolean;
   isForegroundEditing: boolean;
   searchHeaderActionModeOverride: OverlayHeaderActionMode | null;
@@ -57,20 +53,17 @@ type UseSearchOverlayPanelsResult = {
   overlaySheetVisible: boolean;
   overlaySheetApplyNavBarCutout: boolean;
   overlayHeaderActionMode: OverlayHeaderActionMode;
+  pollsPanelSpec: OverlayContentSpec<unknown> | null;
 };
 
 export const useSearchOverlayPanels = ({
   searchPanelSpec,
   pollCreationPanelSpec,
-  shouldShowPollCreationPanel,
-  showSaveListOverlay,
   shouldShowRestaurantOverlay,
-  showProfileOverlay,
-  showBookmarksOverlay,
   shouldShowPollsSheet,
   shouldRenderResultsSheet,
-  isSearchOverlay,
   searchSheetContentLane,
+  isDockedPollsDismissed,
   isSuggestionPanelActive,
   isForegroundEditing,
   searchHeaderActionModeOverride,
@@ -110,6 +103,7 @@ export const useSearchOverlayPanels = ({
   ]);
 
   const saveListPanelSpec = useSaveListPanelSpec(saveListPanelOptions);
+  const showSaveListOverlay = saveListPanelOptions.visible;
 
   const {
     overlaySheetKey,
@@ -125,15 +119,12 @@ export const useSearchOverlayPanels = ({
     restaurantPanelSpec,
     saveListPanelSpec,
     pollCreationPanelSpec,
-    shouldShowPollCreationPanel,
     showSaveListOverlay,
     shouldShowRestaurantOverlay,
-    showProfileOverlay,
-    showBookmarksOverlay,
     shouldShowPollsSheet,
     shouldRenderResultsSheet,
-    isSearchOverlay,
     searchSheetContentLane,
+    isDockedPollsDismissed,
     isSuggestionPanelActive,
     isForegroundEditing,
     searchHeaderActionModeOverride,
@@ -148,5 +139,6 @@ export const useSearchOverlayPanels = ({
     overlaySheetVisible,
     overlaySheetApplyNavBarCutout,
     overlayHeaderActionMode,
+    pollsPanelSpec: pollsPanelSpec as OverlayContentSpec<unknown> | null,
   };
 };

@@ -43,7 +43,7 @@ const OverlayHeaderActionButton: React.FC<OverlayHeaderActionButtonProps> = ({
 
   return (
     <Pressable
-      onPress={onPress}
+      onPressOut={onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       style={[overlaySheetStyles.closeButton, style]}

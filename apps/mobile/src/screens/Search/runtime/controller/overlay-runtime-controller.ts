@@ -8,6 +8,11 @@ type SearchRestoreOptions = {
 
 type RestoreDockedPolls = (options?: SearchRestoreOptions) => void;
 
+const SEARCH_ROOT_ENTRY_RESTORE_OPTIONS: SearchRestoreOptions = {
+  snap: 'collapsed',
+  clearTabSnapRequest: true,
+};
+
 export type OverlayRuntimeController = {
   setRootOverlay: (overlay: OverlayKey) => void;
   setOverlayData: (overlay: OverlayKey, params?: unknown) => void;
@@ -34,14 +39,17 @@ export const createOverlayRuntimeController = (): OverlayRuntimeController => ({
     useOverlayStore.getState().popToRootOverlay();
   },
   switchToSearchRootWithDockedPolls: (restoreDockedPolls, options = {}) => {
-    restoreDockedPolls(options);
+    restoreDockedPolls({
+      ...SEARCH_ROOT_ENTRY_RESTORE_OPTIONS,
+      ...options,
+    });
     useOverlayStore.getState().setOverlay('search');
   },
   ensureSearchOverlay: (restoreDockedPolls) => {
     const overlayState = useOverlayStore.getState();
     const rootOverlay = overlayState.overlayStack[0] ?? overlayState.activeOverlay;
     if (rootOverlay !== 'search') {
-      restoreDockedPolls({ clearTabSnapRequest: true });
+      restoreDockedPolls(SEARCH_ROOT_ENTRY_RESTORE_OPTIONS);
       overlayState.setOverlay('search');
       return;
     }

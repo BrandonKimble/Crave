@@ -9,6 +9,8 @@ type AppBlurViewProps = {
   style?: StyleProp<ViewStyle>;
   children?: React.ReactNode;
   pointerEvents?: ViewProps['pointerEvents'];
+  reducedTransparencyFallbackColor?: string;
+  enabled?: boolean;
 };
 
 const resolveBlurAmount = (intensity?: number): number => {
@@ -33,10 +35,19 @@ const AppBlurView: React.FC<AppBlurViewProps> = ({
   style,
   children,
   pointerEvents,
+  reducedTransparencyFallbackColor,
+  enabled = true,
 }) => {
+  if (!enabled) {
+    return null;
+  }
+
   const iosFallbackProps =
     Platform.OS === 'ios'
-      ? { reducedTransparencyFallbackColor: 'rgba(248, 251, 255, 0.85)' }
+      ? {
+          reducedTransparencyFallbackColor:
+            reducedTransparencyFallbackColor ?? 'rgba(248, 251, 255, 0.85)',
+        }
       : undefined;
 
   return (

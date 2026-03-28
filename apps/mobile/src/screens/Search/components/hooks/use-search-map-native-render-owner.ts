@@ -36,6 +36,18 @@ type SearchMapNativeRenderOwnerStatusArgs = {
     revealBatchId: string | null;
     readyAtMs: number;
   }) => void;
+  onMarkerRevealStarted?: (payload: {
+    requestKey: string;
+    frameGenerationId: string | null;
+    revealBatchId: string | null;
+    startedAtMs: number;
+  }) => void;
+  onMarkerRevealFirstVisibleFrame?: (payload: {
+    requestKey: string;
+    frameGenerationId: string | null;
+    revealBatchId: string | null;
+    syncedAtMs: number;
+  }) => void;
   onMarkerRevealSettled?: (payload: {
     requestKey: string;
     frameGenerationId: string | null;
@@ -163,7 +175,12 @@ const parseSourceIdFromCommitMessage = (message: string): string | null => {
 };
 
 const shouldLogNativeRevealVisualDiag = (message: string): boolean =>
+  message.startsWith('frame_begin') ||
+  message.startsWith('frame_after_reconcile') ||
+  message.startsWith('frame_apply') ||
+  message.startsWith('frame_final_write_mismatch') ||
   message.startsWith('live_reveal_state_reset') ||
+  message.startsWith('pin_opacity_summary') ||
   message.startsWith('reveal_apply_plan') ||
   message.startsWith('reveal_apply_result') ||
   message.startsWith('reveal_batch_mounted_hidden') ||
@@ -216,6 +233,8 @@ export const useSearchMapNativeRenderOwnerStatus = ({
   labelInteractionSourceId,
   labelCollisionSourceId,
   onRevealBatchMountedHidden,
+  onMarkerRevealStarted,
+  onMarkerRevealFirstVisibleFrame,
   onMarkerRevealSettled,
   onMarkerDismissStarted,
   onMarkerDismissSettled,
@@ -486,12 +505,41 @@ export const useSearchMapNativeRenderOwnerStatus = ({
           setHasSyncedInitialFrame(true);
           return;
         }
-        if (event.type === 'presentation_reveal_batch_mounted_hidden') {
+        if (event.type === 'presentation_reveal_armed') {
+          logger.info('[REVEAL-ARMED-DIAG] native', {
+            label: 'armedEvent',
+            instanceId,
+            requestKey: event.requestKey,
+            frameGenerationId: event.frameGenerationId,
+            revealBatchId: event.revealBatchId,
+            armedAtMs: event.armedAtMs,
+          });
           onRevealBatchMountedHidden?.({
             requestKey: event.requestKey,
             frameGenerationId: event.frameGenerationId,
             revealBatchId: event.revealBatchId,
-            readyAtMs: event.readyAtMs,
+            readyAtMs: event.armedAtMs,
+          });
+          return;
+        }
+        if (event.type === 'presentation_reveal_batch_mounted_hidden') {
+          return;
+        }
+        if (event.type === 'presentation_reveal_first_visible_frame') {
+          onMarkerRevealFirstVisibleFrame?.({
+            requestKey: event.requestKey,
+            frameGenerationId: event.frameGenerationId,
+            revealBatchId: event.revealBatchId,
+            syncedAtMs: event.syncedAtMs,
+          });
+          return;
+        }
+        if (event.type === 'presentation_reveal_started') {
+          onMarkerRevealStarted?.({
+            requestKey: event.requestKey,
+            frameGenerationId: event.frameGenerationId,
+            revealBatchId: event.revealBatchId,
+            startedAtMs: event.startedAtMs,
           });
           return;
         }
@@ -539,6 +587,8 @@ export const useSearchMapNativeRenderOwnerStatus = ({
     onRevealBatchMountedHidden,
     onMarkerDismissSettled,
     onMarkerDismissStarted,
+    onMarkerRevealFirstVisibleFrame,
+    onMarkerRevealStarted,
     onMarkerRevealSettled,
     onViewportChanged,
     onRecoveredAfterStyleReload,
@@ -822,7 +872,7 @@ export const useSearchMapNativeRenderOwnerSync = ({
     return () => {
       removeListener?.();
     };
-  }, [instanceId, isNativeAvailable]);
+  }, [flushQueuedFrame, instanceId, isNativeAvailable]);
 
   React.useEffect(() => {
     if (!isNativeAvailable) {

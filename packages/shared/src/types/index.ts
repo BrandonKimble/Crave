@@ -159,4 +159,18 @@ export interface LocationQuery {
   includeInactive?: boolean;
 }
 
+export type OnboardingStatus = 'not_started' | 'in_progress' | 'completed';
+
+export type OnboardingAnswerValue = string | string[] | number | undefined;
+
+export type OnboardingAnswers = Record<string, OnboardingAnswerValue>;
+
+export interface UserOnboardingProfile {
+  status: OnboardingStatus;
+  completedAt: string | null;
+  onboardingVersion: number;
+  selectedCity: string | null;
+  previewCity: string | null;
+}
+
 export * from './search';

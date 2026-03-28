@@ -3,6 +3,10 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import {
+  ONBOARDING_VERSION,
+  type UserOnboardingProfile,
+} from '@crave-search/shared';
 import { ConfigService } from '@nestjs/config';
 import {
   AuthProvider,
@@ -20,6 +24,23 @@ import type { ClerkJwtClaims } from './auth/clerk-auth.service';
 import { UserProfileDto, UserEntitlementDto } from './dto/user-profile.dto';
 import { UserStatsService } from './user-stats.service';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
+import { UpdateUserOnboardingDto } from './dto/update-user-onboarding.dto';
+
+type OnboardingProfileRow = {
+  onboardingStatus: UserOnboardingProfile['status'] | null;
+  onboardingCompletedAt: Date | string | null;
+  onboardingVersion: number | null;
+  onboardingSelectedCity: string | null;
+  onboardingPreviewCity: string | null;
+};
+
+const DEFAULT_ONBOARDING_PROFILE_ROW: OnboardingProfileRow = {
+  onboardingStatus: null,
+  onboardingCompletedAt: null,
+  onboardingVersion: null,
+  onboardingSelectedCity: null,
+  onboardingPreviewCity: null,
+};
 
 @Injectable()
 export class UserService {
@@ -125,6 +146,7 @@ export class UserService {
       throw new NotFoundException('User not found');
     }
 
+    const onboardingRow = await this.getOnboardingProfileRow(userId);
     const activeSubscription = user.subscriptions[0];
     const stats = user.stats ?? (await this.userStats.ensure(userId));
     return {
@@ -148,6 +170,7 @@ export class UserService {
             currentPeriodEnd: activeSubscription.currentPeriodEnd ?? undefined,
           }
         : undefined,
+      onboarding: this.buildOnboardingProfile(onboardingRow),
       stats: {
         pollsCreatedCount: stats.pollsCreatedCount,
         pollsContributedCount: stats.pollsContributedCount,
@@ -164,6 +187,55 @@ export class UserService {
         isGracePeriod: entitlement.isGracePeriod,
       })),
     };
+  }
+
+  async updateOnboarding(
+    userId: string,
+    dto: UpdateUserOnboardingDto,
+  ): Promise<UserProfileDto> {
+    const selectedCity = this.normalizeNullable(dto.selectedCity);
+    const previewCity = this.normalizeNullable(dto.previewCity);
+    const responses =
+      dto.answers == null
+        ? null
+        : JSON.stringify(dto.answers as Prisma.InputJsonValue);
+
+    try {
+      await this.prisma.$executeRaw`
+        UPDATE "users"
+        SET
+          "onboarding_status" = 'completed'::"onboarding_status",
+          "onboarding_completed_at" = NOW(),
+          "onboarding_version" = ${dto.onboardingVersion},
+          "onboarding_selected_city" = ${selectedCity},
+          "onboarding_preview_city" = ${previewCity},
+          "onboarding_responses" = ${responses}::jsonb
+        WHERE "user_id" = ${userId}::uuid
+      `;
+
+      return this.getProfile(userId);
+    } catch (error) {
+      if (!this.isMissingOnboardingSchemaError(error)) {
+        throw error;
+      }
+
+      this.logger.warn(
+        'Onboarding schema columns missing; returning development fallback onboarding profile',
+        { userId },
+      );
+
+      const profile = await this.getProfile(userId);
+      return {
+        ...profile,
+        onboarding: {
+          status: 'completed',
+          completedAt: new Date().toISOString(),
+          onboardingVersion: dto.onboardingVersion,
+          selectedCity,
+          previewCity,
+        },
+      };
+    }
   }
 
   async getPublicProfile(userId: string) {
@@ -294,6 +366,36 @@ export class UserService {
     });
   }
 
+  private async getOnboardingProfileRow(
+    userId: string,
+  ): Promise<OnboardingProfileRow> {
+    try {
+      const rows = await this.prisma.$queryRaw<OnboardingProfileRow[]>`
+        SELECT
+          "onboarding_status" AS "onboardingStatus",
+          "onboarding_completed_at" AS "onboardingCompletedAt",
+          "onboarding_version" AS "onboardingVersion",
+          "onboarding_selected_city" AS "onboardingSelectedCity",
+          "onboarding_preview_city" AS "onboardingPreviewCity"
+        FROM "users"
+        WHERE "user_id" = ${userId}::uuid
+        LIMIT 1
+      `;
+
+      return rows[0] ?? DEFAULT_ONBOARDING_PROFILE_ROW;
+    } catch (error) {
+      if (!this.isMissingOnboardingSchemaError(error)) {
+        throw error;
+      }
+
+      this.logger.warn(
+        'Onboarding schema columns missing; falling back to default onboarding profile',
+        { userId },
+      );
+      return DEFAULT_ONBOARDING_PROFILE_ROW;
+    }
+  }
+
   private resolveAuthIdentifier(claims: ClerkJwtClaims): string | undefined {
     return (
       claims.sub || claims.sid || (claims['user_id'] as string | undefined)
@@ -325,5 +427,46 @@ export class UserService {
     }
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;
+  }
+
+  private isMissingOnboardingSchemaError(error: unknown): boolean {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+      return false;
+    }
+
+    const message = typeof error.message === 'string' ? error.message : '';
+    return (
+      message.includes('onboarding_status') ||
+      message.includes('onboarding_responses') ||
+      message.includes('"onboarding_status" does not exist') ||
+      message.includes('type "onboarding_status" does not exist') ||
+      message.includes('onboarding_completed_at') ||
+      message.includes('onboarding_version') ||
+      message.includes('onboarding_selected_city') ||
+      message.includes('onboarding_preview_city')
+    );
+  }
+
+  private buildOnboardingProfile(
+    user: OnboardingProfileRow,
+  ): UserOnboardingProfile {
+    const onboardingVersion =
+      typeof user.onboardingVersion === 'number' &&
+      Number.isFinite(user.onboardingVersion)
+        ? user.onboardingVersion
+        : ONBOARDING_VERSION;
+    const completedAtValue =
+      user.onboardingCompletedAt instanceof Date
+        ? user.onboardingCompletedAt.toISOString()
+        : typeof user.onboardingCompletedAt === 'string'
+        ? user.onboardingCompletedAt
+        : null;
+    return {
+      status: user.onboardingStatus ?? 'not_started',
+      completedAt: completedAtValue,
+      onboardingVersion,
+      selectedCity: user.onboardingSelectedCity ?? null,
+      previewCity: user.onboardingPreviewCity ?? null,
+    };
   }
 }

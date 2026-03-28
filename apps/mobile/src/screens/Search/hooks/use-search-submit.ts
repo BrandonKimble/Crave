@@ -49,6 +49,7 @@ import { resolveSingleRestaurantCandidate } from '../utils/response';
 
 type SearchMode = 'natural' | 'shortcut' | null;
 type ShadowMode = 'natural' | 'entity' | 'shortcut';
+type SearchSubmitRevealMode = 'fresh_reveal' | 'in_place_rerun';
 type RuntimeMechanismEmitter = (
   event: 'runtime_write_span',
   payload?: Record<string, unknown>
@@ -141,6 +142,7 @@ type UseSearchSubmitOptions = {
   onPresentationIntentStart?: (params: {
     kind: 'initial_search' | 'shortcut_rerun';
     mode: SearchMode;
+    revealMode: SearchSubmitRevealMode;
     preserveSheetState: boolean;
     transitionFromDockedPolls: boolean;
     targetTab: SegmentValue;
@@ -214,6 +216,9 @@ type SubmitUiLanesOptions = {
   shouldResetPagination: boolean;
   submittedLabel?: string;
 };
+
+const resolveSubmitRevealMode = (preserveSheetState: boolean): SearchSubmitRevealMode =>
+  preserveSheetState ? 'in_place_rerun' : 'fresh_reveal';
 
 type InitialResultUiState = {
   mode: SearchMode;
@@ -1567,11 +1572,13 @@ const useSearchSubmit = ({
       if (!append) {
         setSearchRequestInFlight(true);
         preserveSheetState = Boolean(options?.preserveSheetState);
+        const revealMode = resolveSubmitRevealMode(preserveSheetState);
         const transitionFromDockedPolls =
           !preserveSheetState && Boolean(options?.transitionFromDockedPolls);
         onPresentationIntentStart?.({
           kind: 'initial_search',
           mode: 'natural',
+          revealMode,
           preserveSheetState,
           transitionFromDockedPolls,
           targetTab: preRequestTab,
@@ -1823,9 +1830,11 @@ const useSearchSubmit = ({
       resetMapMoveFlag();
       setSearchRequestInFlight(true);
       const preserveSheetState = Boolean(params.preserveSheetState);
+      const revealMode = resolveSubmitRevealMode(preserveSheetState);
       onPresentationIntentStart?.({
         kind: 'initial_search',
         mode: 'natural',
+        revealMode,
         preserveSheetState,
         transitionFromDockedPolls: false,
         targetTab: 'restaurants',
@@ -2024,11 +2033,13 @@ const useSearchSubmit = ({
       resetMapMoveFlag();
       setSearchRequestInFlight(true);
       const preserveSheetState = Boolean(options?.preserveSheetState);
+      const revealMode = resolveSubmitRevealMode(preserveSheetState);
       const transitionFromDockedPolls =
         !preserveSheetState && Boolean(options?.transitionFromDockedPolls);
       onPresentationIntentStart?.({
         kind: 'shortcut_rerun',
         mode: 'shortcut',
+        revealMode,
         preserveSheetState,
         transitionFromDockedPolls,
         targetTab,

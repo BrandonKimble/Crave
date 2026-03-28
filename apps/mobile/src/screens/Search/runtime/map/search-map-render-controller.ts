@@ -116,6 +116,14 @@ export type SearchMapRenderControllerEvent =
       sourceRevisions: SearchMapRenderSourceRevisionState;
     }
   | {
+      type: 'presentation_reveal_armed';
+      instanceId: string;
+      requestKey: string;
+      frameGenerationId: string | null;
+      revealBatchId: string | null;
+      armedAtMs: number;
+    }
+  | {
       type: 'presentation_reveal_batch_mounted_hidden';
       instanceId: string;
       requestKey: string;
@@ -130,6 +138,14 @@ export type SearchMapRenderControllerEvent =
       frameGenerationId: string | null;
       revealBatchId: string | null;
       startedAtMs: number;
+    }
+  | {
+      type: 'presentation_reveal_first_visible_frame';
+      instanceId: string;
+      requestKey: string;
+      frameGenerationId: string | null;
+      revealBatchId: string | null;
+      syncedAtMs: number;
     }
   | {
       type: 'presentation_reveal_settled';

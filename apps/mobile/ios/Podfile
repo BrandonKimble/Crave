@@ -10,6 +10,7 @@ ENV['EX_DEV_CLIENT_NETWORK_INSPECTOR'] = podfile_properties['EX_DEV_CLIENT_NETWO
 platform :ios, podfile_properties['ios.deploymentTarget'] || '15.1'
 install! 'cocoapods',
   :deterministic_uuids => false
+inhibit_all_warnings!
 
 prepare_react_native_project!
 
@@ -65,6 +66,20 @@ target 'cravesearch' do
     installer.pods_project.targets.each do |target|
       target.build_configurations.each do |config|
         config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
+        config.build_settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
+        config.build_settings['SWIFT_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
+        config.build_settings['CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER'] = 'NO'
+
+        if target.name == 'fmt'
+          definitions = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] || ['$(inherited)']
+          definitions = Array(definitions)
+
+          unless definitions.include?('FMT_USE_CONSTEVAL=0')
+            definitions << 'FMT_USE_CONSTEVAL=0'
+          end
+
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = definitions
+        end
       end
     end
 

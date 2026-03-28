@@ -132,6 +132,7 @@ export const useSearchClearController = <TSearchMode, TError, TSuggestion>({
   TSuggestion
 >): UseSearchClearControllerResult => {
   const pendingCloseIntentIdRef = React.useRef<string | null>(null);
+  const pendingCloseCleanupFrameRef = React.useRef<number | null>(null);
 
   const clearSearchState = React.useCallback(
     ({
@@ -311,11 +312,20 @@ export const useSearchClearController = <TSearchMode, TError, TSuggestion>({
         return;
       }
       pendingCloseIntentIdRef.current = null;
+      if (pendingCloseCleanupFrameRef.current != null) {
+        cancelAnimationFrame(pendingCloseCleanupFrameRef.current);
+        pendingCloseCleanupFrameRef.current = null;
+      }
       isClearingSearchRef.current = false;
       cancelSearchCloseRestore();
       cancelClosePresentation(intentId);
     },
-    [cancelClosePresentation, cancelSearchCloseRestore, isClearingSearchRef]
+    [
+      cancelClosePresentation,
+      cancelSearchCloseRestore,
+      isClearingSearchRef,
+      pendingCloseCleanupFrameRef,
+    ]
   );
 
   const beginCloseSearch = React.useCallback(() => {
@@ -328,23 +338,33 @@ export const useSearchClearController = <TSearchMode, TError, TSuggestion>({
     }
 
     ignoreNextSearchBlurRef.current = true;
-    onCloseResultsUiReset();
-    pendingCloseIntentIdRef.current = startClosePresentation();
+    const closeIntentId = startClosePresentation();
+    pendingCloseIntentIdRef.current = closeIntentId;
     isClearingSearchRef.current = true;
-    cancelActiveSearchRequest();
-    cancelAutocomplete();
-    cancelPendingMutationWork();
-    resetSubmitTransitionHold();
-    setIsFilterTogglePending(false);
-    setIsSearchFocused(false);
-    setIsSuggestionPanelActive(false);
-    setIsAutocompleteSuppressed(true);
-    setShowSuggestions(false);
-    setQuery('');
-    setError(null);
-    setSuggestions([]);
-    Keyboard.dismiss();
-    inputRef.current?.blur();
+    onCloseResultsUiReset();
+    if (pendingCloseCleanupFrameRef.current != null) {
+      cancelAnimationFrame(pendingCloseCleanupFrameRef.current);
+    }
+    pendingCloseCleanupFrameRef.current = requestAnimationFrame(() => {
+      pendingCloseCleanupFrameRef.current = null;
+      if (pendingCloseIntentIdRef.current !== closeIntentId) {
+        return;
+      }
+      cancelActiveSearchRequest();
+      cancelAutocomplete();
+      cancelPendingMutationWork();
+      resetSubmitTransitionHold();
+      setIsFilterTogglePending(false);
+      setIsSearchFocused(false);
+      setIsSuggestionPanelActive(false);
+      setIsAutocompleteSuppressed(true);
+      setShowSuggestions(false);
+      setQuery('');
+      setError(null);
+      setSuggestions([]);
+      Keyboard.dismiss();
+      inputRef.current?.blur();
+    });
   }, [
     cancelActiveSearchRequest,
     cancelAutocomplete,
@@ -355,6 +375,7 @@ export const useSearchClearController = <TSearchMode, TError, TSuggestion>({
     isClearingSearchRef,
     isSearchSessionActive,
     onCloseResultsUiReset,
+    pendingCloseCleanupFrameRef,
     resetSubmitTransitionHold,
     searchRuntimeBus,
     setError,

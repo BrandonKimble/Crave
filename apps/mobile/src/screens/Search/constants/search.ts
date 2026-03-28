@@ -146,8 +146,6 @@ export const RESULT_TITLE_RIGHT_PADDING = 48;
 export const RESULT_DETAILS_INDENT = RANK_BADGE_WIDTH + CARD_LINE_GAP;
 export const CARD_VERTICAL_PADDING = 12;
 export const CARD_VERTICAL_PADDING_BALANCE = 2;
-export const CAMERA_STORAGE_KEY = 'search:lastCamera';
-export const LOCATION_STORAGE_KEY = 'search:lastLocation';
 export const SCORE_INFO_MAX_HEIGHT = SCREEN_HEIGHT * 0.25;
 export const SEGMENT_OPTIONS = [
   { label: 'Restaurants', value: 'restaurants' as const },

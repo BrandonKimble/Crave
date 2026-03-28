@@ -4,9 +4,13 @@ import type { RestaurantResult, SearchResponse } from '../../../../types';
 import type { MarkerCatalogEntry } from '../map/map-viewport-query';
 import type { RunOneHandoffPhase } from '../controller/run-one-handoff-phase';
 import type {
+  PresentationResultsCardVisibility,
+  PresentationResultsSurfaceMode,
   PresentationLoadingMode,
   PresentationLaneState,
   PresentationMutationKind,
+  PresentationRevealMode,
+  PresentationRevealPhase,
 } from '../controller/presentation-transition-controller';
 
 export type SearchRuntimeActiveTab = 'dishes' | 'restaurants';
@@ -105,6 +109,12 @@ export type SearchRuntimeBusState = {
   // Presentation controller-driven map coordination.
   presentationLane: PresentationLaneState;
   mapPresentationPhase: SearchRuntimeMapPresentationPhase;
+  presentationRevealTransactionId: string | null;
+  presentationRevealMode: PresentationRevealMode | null;
+  presentationRevealPhase: PresentationRevealPhase;
+  presentationResultsSurfaceMode: PresentationResultsSurfaceMode;
+  presentationResultsCardVisibility: PresentationResultsCardVisibility;
+  presentationShouldShowResultsCards: boolean;
 };
 
 export type SearchRuntimeBusKey = keyof SearchRuntimeBusState;
@@ -174,6 +184,12 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   presentationResultsCoverVisible: false,
   presentationLane: null,
   mapPresentationPhase: 'idle',
+  presentationRevealTransactionId: null,
+  presentationRevealMode: null,
+  presentationRevealPhase: 'idle',
+  presentationResultsSurfaceMode: 'none',
+  presentationResultsCardVisibility: 'hidden',
+  presentationShouldShowResultsCards: false,
 };
 
 export class SearchRuntimeBus {

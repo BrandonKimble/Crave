@@ -1,3 +1,4 @@
+import type { OnboardingAnswers, UserOnboardingProfile } from '@crave-search/shared';
 import api from './api';
 
 export interface UserStats {
@@ -16,6 +17,7 @@ export interface UserProfile {
   displayName?: string | null;
   avatarUrl?: string | null;
   usernameStatus?: string | null;
+  onboarding: UserOnboardingProfile;
   stats: UserStats;
 }
 
@@ -33,6 +35,20 @@ export const usersService = {
   },
   async updateMe(payload: { displayName?: string; avatarUrl?: string }): Promise<UserProfile> {
     const response = await api.patch<UserProfile>('/users/me', payload);
+    return response.data;
+  },
+  async completeOnboarding(payload: {
+    status: 'completed';
+    onboardingVersion: number;
+    selectedCity?: string | null;
+    previewCity?: string | null;
+    answers?: OnboardingAnswers;
+    username?: string | null;
+  }): Promise<UserProfile> {
+    const response = await api.put<UserProfile>('/users/me/onboarding', payload, {
+      suppressSystemStatus: true,
+      suppressErrorLog: true,
+    } as const);
     return response.data;
   },
   async checkUsername(username: string): Promise<UsernameAvailability> {

@@ -1,20 +1,16 @@
 import React from 'react';
 import {
-  Animated,
-  AppState,
   InteractionManager,
   Keyboard,
   PixelRatio,
   unstable_batchedUpdates,
   View,
-  Easing as RNEasing,
 } from 'react-native';
 import type { LayoutChangeEvent, LayoutRectangle, TextInput } from 'react-native';
 import type { FlashListRef } from '@shopify/flash-list';
 import {
   Easing,
-  Extrapolation,
-  interpolate,
+  runOnJS,
   runOnUI,
   useAnimatedReaction,
   useAnimatedScrollHandler,
@@ -24,8 +20,7 @@ import {
   withTiming,
 } from 'react-native-reanimated';
 import MapboxGL from '@rnmapbox/maps';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@clerk/clerk-expo';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
@@ -48,16 +43,16 @@ import type {
 import type { RootStackParamList } from '../../types/navigation';
 import { type RestaurantOverlayData } from '../../overlays/panels/RestaurantPanel';
 import { buildMapStyleURL } from '../../constants/map';
-import { type OverlayKey } from '../../store/overlayStore';
+import { type OverlayKey, useOverlayStore } from '../../store/overlayStore';
 import { useOverlaySheetPositionStore } from '../../overlays/useOverlaySheetPositionStore';
 import { type MaskedHole } from '../../components/MaskedHoleOverlay';
 import { useSearchRequests } from '../../hooks/useSearchRequests';
-import useTransitionDriver from '../../hooks/use-transition-driver';
 import SearchBottomNav from './components/SearchBottomNav';
-import SearchMapLoadingGrid from './components/SearchMapLoadingGrid';
-import SearchOverlayHeaderChrome from './components/SearchOverlayHeaderChrome';
+import SearchMapStage from './components/SearchMapStage';
+import SearchOverlayChromeTree from './components/SearchOverlayChromeTree';
 import SearchPriceSheet from './components/SearchPriceSheet';
 import SearchResultsSheetTree from './components/SearchResultsSheetTree';
+import { SearchSheetVisualProvider } from './context/SearchSheetVisualContext';
 import SearchRankAndScoreSheets, {
   type ScoreInfoPayload,
 } from './components/SearchRankAndScoreSheets';
@@ -66,12 +61,10 @@ import {
   type SearchBottomNavItemKey,
 } from './components/search-bottom-nav-icons';
 import SearchStatusBarFade from './components/SearchStatusBarFade';
-import SearchSuggestionSurface from './components/SearchSuggestionSurface';
 import { type SearchFiltersLayoutCache } from './components/SearchFilters';
+import { CONTENT_HORIZONTAL_PADDING } from './constants/search';
 import { type MapboxMapRef } from './components/search-map';
-import SearchMapWithMarkerEngine, {
-  type SearchMapMarkerEngineHandle,
-} from './components/SearchMapWithMarkerEngine';
+import { type SearchMapMarkerEngineHandle } from './components/SearchMapWithMarkerEngine';
 import useSearchChromeTransition from './hooks/use-search-chrome-transition';
 import useSearchHistory from './hooks/use-search-history';
 import { usePollCreationPanelController } from './hooks/use-poll-creation-panel-controller';
@@ -90,8 +83,8 @@ import { useSuggestionDisplayModel } from './hooks/use-suggestion-display-model'
 import { useSuggestionLayoutWarmth } from './hooks/use-suggestion-layout-warmth';
 import { useSuggestionHistoryBuffer } from './hooks/use-suggestion-history-buffer';
 import { useSuggestionTransitionHold } from './hooks/use-suggestion-transition-hold';
-import { useUserLocationController } from './hooks/use-user-location-controller';
 import { useResponseFrameFreeze } from './hooks/use-response-frame-freeze';
+import useSearchChromeVisualModel from './hooks/use-search-chrome-visual-model';
 import useSearchSheet from './hooks/use-search-sheet';
 import useSearchPresentationController from './hooks/use-search-presentation-controller';
 import useScrollDividerStyle from './hooks/use-scroll-divider-style';
@@ -128,6 +121,8 @@ import {
 import { useSearchRuntimeBusSelector } from './runtime/shared/use-search-runtime-bus-selector';
 import useSearchTransition from './hooks/use-search-transition';
 import { useSearchSessionCoordinator } from './session/use-search-session-coordinator';
+import { useAppRouteCoordinator } from '../../navigation/runtime/AppRouteCoordinator';
+import { useMainLaunchCoordinator } from '../../navigation/runtime/MainLaunchCoordinator';
 import styles from './styles';
 import { SEARCH_BAR_SHADOW, SEARCH_SHORTCUT_SHADOW } from './shadows';
 import { LINE_HEIGHTS } from '../../constants/typography';
@@ -141,14 +136,11 @@ import {
   ACTIVE_TAB_COLOR_DARK,
   AUTOCOMPLETE_CACHE_TTL_MS,
   AUTOCOMPLETE_MIN_CHARS,
-  CAMERA_STORAGE_KEY,
-  LOCATION_STORAGE_KEY,
   MINIMUM_VOTES_FILTER,
   NAV_TOP_PADDING,
   NAV_BOTTOM_PADDING,
   SCORE_INFO_MAX_HEIGHT,
   SCREEN_HEIGHT,
-  SEARCH_CHROME_FADE_ZONE_PX,
   SEARCH_CONTAINER_PADDING_TOP,
   SEARCH_BAR_HOLE_PADDING,
   SEARCH_BAR_HOLE_RADIUS,
@@ -159,7 +151,6 @@ import {
   SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM,
   SHORTCUT_CHIP_HOLE_PADDING,
   SHORTCUT_CHIP_HOLE_RADIUS,
-  SINGLE_LOCATION_ZOOM_LEVEL,
   USA_FALLBACK_CENTER,
   USA_FALLBACK_ZOOM,
 } from './constants/search';
@@ -219,7 +210,7 @@ const SUGGESTION_PANEL_LAYOUT_HOLD_MS = 200;
 const SUGGESTION_PANEL_KEYBOARD_DELAY_MS = 0;
 const SUGGESTION_PANEL_MIN_MS = 160;
 const SUGGESTION_PANEL_MAX_MS = 320;
-const SEARCH_SHORTCUTS_FADE_MS = 200;
+const SEARCH_SHORTCUTS_FADE_MS = 0;
 const SEARCH_SHORTCUTS_STRIP_FALLBACK_HEIGHT = 52;
 const JS_FLOOR_PROBE_PROFILER_ATTRIBUTION_MODE =
   process.env.EXPO_PUBLIC_PERF_SHORTCUT_PROBE_PROFILER_ATTRIBUTION === '1';
@@ -300,6 +291,17 @@ type ProfileTransitionState = {
 const SearchScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { isSignedIn } = useAuth();
+  const {
+    userLocation,
+    userLocationRef,
+    ensureUserLocation,
+    startupLocationSnapshot,
+    startupCamera,
+    startupPollBounds,
+    startupPollsSnapshot,
+    markMainMapReady,
+  } = useMainLaunchCoordinator();
+  const { activeMainIntent, consumeActiveMainIntent } = useAppRouteCoordinator();
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, 'Main'>>();
   const useMemo = React.useMemo;
@@ -311,8 +313,10 @@ const SearchScreen: React.FC = () => {
   const mapQueryBudget = mapQueryBudgetRef.current;
   const lastSearchBoundsCaptureSeqRef = React.useRef(0);
   const hasPrimedInitialBoundsRef = React.useRef(false);
-  const [mapCenter, setMapCenter] = React.useState<[number, number] | null>(null);
-  const [mapZoom, setMapZoom] = React.useState<number | null>(null);
+  const [mapCenter, setMapCenter] = React.useState<[number, number] | null>(
+    () => startupCamera?.center ?? null
+  );
+  const [mapZoom, setMapZoom] = React.useState<number | null>(() => startupCamera?.zoom ?? null);
   const {
     viewportBoundsService,
     latestBoundsRef,
@@ -324,6 +328,7 @@ const SearchScreen: React.FC = () => {
     runtimeWorkSchedulerRef,
     phaseBMaterializerRef,
   } = useSearchRuntimeComposition({
+    initialBounds: startupPollBounds,
     setMapCenter,
     setMapZoom,
   });
@@ -341,22 +346,11 @@ const SearchScreen: React.FC = () => {
     [cameraIntentArbiter]
   );
   const [mapCameraPadding, setMapCameraPadding] = React.useState<MapCameraPadding | null>(null);
-  const [isInitialCameraHydrated, setIsInitialCameraHydrated] = React.useState(false);
-  const [isInitialCameraReady, setIsInitialCameraReady] = React.useState(false);
+  const [isInitialCameraReady, setIsInitialCameraReady] = React.useState(
+    () => startupCamera != null
+  );
   const [isMapStyleReady, setIsMapStyleReady] = React.useState(false);
   const [isFollowingUser, setIsFollowingUser] = React.useState(false);
-  const {
-    userLocation,
-    setUserLocation,
-    userLocationRef,
-    userLocationIsCachedRef,
-    locationPermissionDenied,
-    ensureUserLocation,
-  } = useUserLocationController({
-    locationStorageKey: LOCATION_STORAGE_KEY,
-  });
-  const locationPulse = React.useRef(new Animated.Value(0)).current;
-  const locationPulseAnimationRef = React.useRef<Animated.CompositeAnimation | null>(null);
   const { hasUserSharedSnap, sharedSnap } = useSheetPositionSlice();
   const suppressMapMovedRef = React.useRef(false);
   const suppressMapMovedTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -390,7 +384,6 @@ const SearchScreen: React.FC = () => {
   const profileHydrateRestaurantByIdRef = React.useRef<(restaurantId: string) => void>(
     () => undefined
   );
-  const mapLoadingOpacity = useSharedValue(1);
 
   React.useLayoutEffect(() => {
     if (accessToken) {
@@ -404,6 +397,68 @@ const SearchScreen: React.FC = () => {
       hasStyleUrl: true,
     });
   }, [accessToken]);
+
+  React.useEffect(() => {
+    if (activeMainIntent.type === 'none') {
+      return;
+    }
+
+    if (activeMainIntent.type === 'polls') {
+      useOverlayStore.getState().setOverlayParams('polls', {
+        coverageKey: activeMainIntent.coverageKey,
+        pollId: activeMainIntent.pollId,
+      });
+      useOverlayStore.getState().setOverlay('polls', {
+        coverageKey: activeMainIntent.coverageKey,
+        pollId: activeMainIntent.pollId,
+      });
+      consumeActiveMainIntent();
+      return;
+    }
+
+    if (activeMainIntent.type === 'search') {
+      navigation.setParams({ searchIntent: activeMainIntent.searchIntent });
+      consumeActiveMainIntent();
+      return;
+    }
+
+    if (activeMainIntent.type === 'restaurant') {
+      let cancelled = false;
+      void searchService
+        .restaurantProfile(activeMainIntent.restaurantId)
+        .then((profile) => {
+          if (cancelled) {
+            return;
+          }
+          const restaurant = profile?.restaurant;
+          if (!restaurant?.restaurantId || !restaurant.restaurantName) {
+            return;
+          }
+          openRestaurantProfilePreviewRef.current?.(
+            restaurant.restaurantId,
+            restaurant.restaurantName
+          );
+        })
+        .catch((error) => {
+          logger.warn('Failed to open restaurant launch intent', {
+            message: error instanceof Error ? error.message : 'unknown error',
+            restaurantId: activeMainIntent.restaurantId,
+          });
+        })
+        .finally(() => {
+          if (!cancelled) {
+            consumeActiveMainIntent();
+          }
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    consumeActiveMainIntent();
+    return undefined;
+  }, [activeMainIntent, consumeActiveMainIntent, navigation]);
 
   const suppressMapMoved = React.useCallback((duration = 800) => {
     suppressMapMovedRef.current = true;
@@ -420,21 +475,6 @@ const SearchScreen: React.FC = () => {
       setIsMapStyleReady(false);
     }
   }, [isInitialCameraReady]);
-
-  React.useEffect(() => {
-    if (!isInitialCameraReady || !isMapStyleReady) {
-      mapLoadingOpacity.value = 1;
-      return;
-    }
-    mapLoadingOpacity.value = withTiming(0, {
-      duration: 240,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [isInitialCameraReady, isMapStyleReady, mapLoadingOpacity]);
-
-  const mapLoadingAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: mapLoadingOpacity.value,
-  }));
 
   const handleMapLoaded = React.useCallback(() => {
     setIsMapStyleReady(true);
@@ -464,6 +504,10 @@ const SearchScreen: React.FC = () => {
       }
     })();
   }, [viewportBoundsService]);
+
+  const handleMainMapFullyRendered = React.useCallback(() => {
+    markMainMapReady();
+  }, [markMainMapReady]);
 
   React.useEffect(() => {
     return () => {
@@ -507,255 +551,31 @@ const SearchScreen: React.FC = () => {
     };
   }, []);
 
-  // Hydrate last camera or cached location before mounting the map to avoid the globe spin.
   React.useEffect(() => {
-    let isActive = true;
-    void (async () => {
-      try {
-        const [storedCamera, storedLocation] = await Promise.all([
-          AsyncStorage.getItem(CAMERA_STORAGE_KEY),
-          AsyncStorage.getItem(LOCATION_STORAGE_KEY),
-        ]);
-        if (!isActive) {
-          return;
-        }
-
-        let hydrated = false;
-        const shouldDeferInitialCamera = () =>
-          profileTransitionRef.current.status !== 'idle' || Boolean(lastCameraStateRef.current);
-        const hasActiveCamera = Boolean(lastCameraStateRef.current);
-        const cacheDeferredCamera = (center: [number, number], zoom: number) => {
-          const transition = profileTransitionRef.current;
-          if (!transition.savedCamera) {
-            transition.savedCamera = {
-              center: [center[0], center[1]],
-              zoom,
-              padding: null,
-            };
-          }
-        };
-        const applyInitialCamera = (center: [number, number], zoom: number) => {
-          commitCameraViewport({ center, zoom }, { allowDuringGesture: true });
-          lastCameraStateRef.current = { center, zoom };
-          lastPersistedCameraRef.current = JSON.stringify({ center, zoom });
-          setIsFollowingUser(false);
-          hasCenteredOnLocationRef.current = true;
-          hydrated = true;
-        };
-        if (hasActiveCamera) {
-          hydrated = true;
-        }
-
-        if (!hydrated && storedCamera) {
-          const parsedCamera = JSON.parse(storedCamera);
-          if (
-            parsedCamera &&
-            Array.isArray(parsedCamera.center) &&
-            parsedCamera.center.length === 2 &&
-            typeof parsedCamera.center[0] === 'number' &&
-            typeof parsedCamera.center[1] === 'number' &&
-            typeof parsedCamera.zoom === 'number'
-          ) {
-            const center: [number, number] = [parsedCamera.center[0], parsedCamera.center[1]];
-            if (shouldDeferInitialCamera()) {
-              cacheDeferredCamera(center, parsedCamera.zoom);
-              hydrated = true;
-            } else {
-              applyInitialCamera(center, parsedCamera.zoom);
-            }
-          }
-        }
-
-        if (!hydrated && storedLocation) {
-          const parsedLocation = JSON.parse(storedLocation);
-          if (
-            parsedLocation &&
-            typeof parsedLocation.lat === 'number' &&
-            Number.isFinite(parsedLocation.lat) &&
-            typeof parsedLocation.lng === 'number' &&
-            Number.isFinite(parsedLocation.lng) &&
-            (!parsedLocation.updatedAt ||
-              (typeof parsedLocation.updatedAt === 'number' &&
-                Number.isFinite(parsedLocation.updatedAt) &&
-                Date.now() - parsedLocation.updatedAt <= 6 * 60 * 60 * 1000))
-          ) {
-            const center: [number, number] = [parsedLocation.lng, parsedLocation.lat];
-            userLocationIsCachedRef.current = true;
-            setUserLocation({ lat: parsedLocation.lat, lng: parsedLocation.lng });
-            if (shouldDeferInitialCamera()) {
-              cacheDeferredCamera(center, SINGLE_LOCATION_ZOOM_LEVEL);
-              hydrated = true;
-            } else {
-              applyInitialCamera(center, SINGLE_LOCATION_ZOOM_LEVEL);
-            }
-          }
-        }
-
-        if (hydrated && isActive) {
-          setIsInitialCameraReady(true);
-        }
-      } catch {
-        // ignore
-      } finally {
-        if (isActive) {
-          setIsInitialCameraHydrated(true);
-        }
-      }
-    })();
-    return () => {
-      isActive = false;
-    };
-  }, [commitCameraViewport]);
-
-  React.useEffect(() => {
-    if (isInitialCameraReady || !isInitialCameraHydrated) {
+    if (!startupCamera) {
       return;
     }
-    if (!locationPermissionDenied) {
-      return;
-    }
-    if (mapCenter && mapZoom !== null) {
-      setIsInitialCameraReady(true);
-      return;
-    }
-    const fallbackCenter = USA_FALLBACK_CENTER;
-    const fallbackZoom = USA_FALLBACK_ZOOM;
     commitCameraViewport(
       {
-        center: fallbackCenter,
-        zoom: fallbackZoom,
+        center: startupCamera.center,
+        zoom: startupCamera.zoom,
       },
       { allowDuringGesture: true }
     );
-    lastCameraStateRef.current = { center: fallbackCenter, zoom: fallbackZoom };
-    setIsFollowingUser(false);
-    setIsInitialCameraReady(true);
-  }, [
-    commitCameraViewport,
-    isInitialCameraHydrated,
-    isInitialCameraReady,
-    locationPermissionDenied,
-    mapCenter,
-    mapZoom,
-    setIsFollowingUser,
-  ]);
-
-  React.useEffect(() => {
-    if (!isInitialCameraHydrated || isInitialCameraReady) {
-      return;
-    }
-    if (mapCenter || mapZoom !== null) {
-      return;
-    }
-    if (locationPermissionDenied) {
-      return;
-    }
-
-    const timeout = setTimeout(() => {
-      if (mapCenter || mapZoom !== null) {
-        return;
-      }
-      const fallbackCenter = USA_FALLBACK_CENTER;
-      const fallbackZoom = USA_FALLBACK_ZOOM;
-      commitCameraViewport(
-        {
-          center: fallbackCenter,
-          zoom: fallbackZoom,
-        },
-        { allowDuringGesture: true }
-      );
-      lastCameraStateRef.current = { center: fallbackCenter, zoom: fallbackZoom };
-      setIsFollowingUser(false);
-      setIsInitialCameraReady(true);
-    }, 600);
-
-    return () => clearTimeout(timeout);
-  }, [
-    commitCameraViewport,
-    isInitialCameraHydrated,
-    isInitialCameraReady,
-    locationPermissionDenied,
-    mapCenter,
-    mapZoom,
-    setIsFollowingUser,
-  ]);
-
-  const stopLocationPulse = React.useCallback(() => {
-    locationPulseAnimationRef.current?.stop();
-    locationPulseAnimationRef.current = null;
-    locationPulse.setValue(0);
-  }, [locationPulse]);
-
-  const startLocationPulse = React.useCallback(() => {
-    locationPulseAnimationRef.current?.stop();
-    locationPulse.setValue(0);
-    locationPulseAnimationRef.current = Animated.loop(
-      Animated.sequence([
-        Animated.timing(locationPulse, {
-          toValue: 1,
-          duration: 1500,
-          easing: RNEasing.out(RNEasing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(locationPulse, {
-          toValue: 0,
-          duration: 1000,
-          easing: RNEasing.in(RNEasing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    locationPulseAnimationRef.current.start();
-  }, [locationPulse]);
-
-  React.useEffect(() => {
-    startLocationPulse();
-    return () => {
-      stopLocationPulse();
+    lastCameraStateRef.current = {
+      center: startupCamera.center,
+      zoom: startupCamera.zoom,
     };
-  }, [startLocationPulse, stopLocationPulse]);
-
-  React.useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') {
-        startLocationPulse();
-        return;
-      }
-      stopLocationPulse();
+    lastPersistedCameraRef.current = JSON.stringify({
+      center: startupCamera.center,
+      zoom: startupCamera.zoom,
     });
-    return () => {
-      subscription.remove();
-    };
-  }, [startLocationPulse, stopLocationPulse]);
-
-  React.useEffect(() => {
-    if (!isInitialCameraHydrated) {
-      return;
-    }
-    if (!userLocation || hasCenteredOnLocationRef.current) {
-      return;
-    }
-    const center: [number, number] = [userLocation.lng, userLocation.lat];
-    const zoom = SINGLE_LOCATION_ZOOM_LEVEL;
-    const payload = JSON.stringify({ center, zoom });
-    commitCameraViewport({ center, zoom }, { allowDuringGesture: true });
-    lastCameraStateRef.current = { center, zoom };
-    lastPersistedCameraRef.current = payload;
     hasCenteredOnLocationRef.current = true;
+    setMapCenter((current) => current ?? startupCamera.center);
+    setMapZoom((current) => current ?? startupCamera.zoom);
     setIsFollowingUser(false);
-    if (cameraRef.current?.setCamera) {
-      cameraRef.current.setCamera({
-        centerCoordinate: center,
-        zoomLevel: zoom,
-        animationDuration: 0,
-        animationMode: 'none',
-        pitch: 0,
-        heading: 0,
-      });
-    }
     setIsInitialCameraReady(true);
-    void AsyncStorage.setItem(CAMERA_STORAGE_KEY, payload).catch(() => undefined);
-  }, [commitCameraViewport, isInitialCameraHydrated, userLocation]);
+  }, [commitCameraViewport, startupCamera]);
 
   const mapStyleURL = useMemo(() => buildMapStyleURL(accessToken), [accessToken]);
 
@@ -1312,10 +1132,13 @@ const SearchScreen: React.FC = () => {
 
   const requestDockedPollsRestore = React.useCallback(
     (snap?: Exclude<OverlaySheetSnap, 'hidden'>) => {
+      const isImplicitRecallFromHidden = snap == null && pollsSheetSnap === 'hidden';
       const resolvedSnap: Exclude<OverlaySheetSnap, 'hidden'> =
         snap ??
         (pollsSheetSnap !== 'hidden'
           ? pollsSheetSnap
+          : isDockedPollsDismissed
+          ? 'collapsed'
           : hasUserSharedSnap
           ? sharedSnap
           : 'collapsed');
@@ -1324,8 +1147,15 @@ const SearchScreen: React.FC = () => {
       setIsDockedPollsDismissed(false);
       setPollsDockedSnapRequest((previous) => {
         // Keep explicit non-collapsed restore requests from being overwritten by
-        // a generic docked-polls "show again" request.
-        if (resolvedSnap === 'collapsed' && previous && previous.snap !== 'collapsed') {
+        // a generic docked-polls "show again" request. Explicit snap requests,
+        // including Search-entry collapse, should always win.
+        if (
+          snap == null &&
+          resolvedSnap === 'collapsed' &&
+          previous &&
+          previous.snap !== 'collapsed' &&
+          !isImplicitRecallFromHidden
+        ) {
           return previous;
         }
         pollsDockedSnapTokenRef.current += 1;
@@ -1336,6 +1166,7 @@ const SearchScreen: React.FC = () => {
       });
     },
     [
+      isDockedPollsDismissed,
       hasUserSharedSnap,
       pollsSheetSnap,
       setIsDockedPollsDismissed,
@@ -1379,7 +1210,7 @@ const SearchScreen: React.FC = () => {
     listType: FavoriteListType;
     target: { restaurantId?: string; connectionId?: string } | null;
   } | null>(null);
-  const [pollBounds, setPollBounds] = React.useState<MapBounds | null>(null);
+  const [pollBounds, setPollBounds] = React.useState<MapBounds | null>(() => startupPollBounds);
   isRestaurantOverlayVisibleRef.current = isRestaurantOverlayVisible;
   const [mapMovedSinceSearch, setMapMovedSinceSearch] = React.useState(false);
   const resultsSheetDraggingRef = React.useRef(false);
@@ -1392,7 +1223,7 @@ const SearchScreen: React.FC = () => {
   const pendingMapMovedRevealRef = React.useRef(false);
   const mapGestureActiveRef = React.useRef(false);
   const mapIdleTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pollBoundsRef = React.useRef<MapBounds | null>(null);
+  const pollBoundsRef = React.useRef<MapBounds | null>(startupPollBounds);
   const pollBoundsTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const anySheetDraggingRef = React.useRef(false);
   const updateSearchInteractionRef = React.useCallback(
@@ -1418,6 +1249,19 @@ const SearchScreen: React.FC = () => {
       cameraPersistTimeoutRef.current = null;
     }
   }, []);
+  React.useEffect(() => {
+    if (!startupPollBounds) {
+      return;
+    }
+    if (!latestBoundsRef.current) {
+      viewportBoundsService.setBounds(startupPollBounds);
+    }
+    if (pollBoundsRef.current) {
+      return;
+    }
+    pollBoundsRef.current = startupPollBounds;
+    setPollBounds(startupPollBounds);
+  }, [latestBoundsRef, startupPollBounds, viewportBoundsService]);
   const setResultsSheetDragging = React.useCallback(
     (isDragging: boolean) => {
       if (!isDragging && resultsSheetSettlingRef.current) {
@@ -1643,13 +1487,12 @@ const SearchScreen: React.FC = () => {
     React.useState<OverlayHeaderActionMode | null>(null);
   const inputRef = React.useRef<TextInput | null>(null);
   const ignoreNextSearchBlurRef = React.useRef(false);
-  const cancelSearchEditOnBackRef = React.useRef(false);
-  const restoreHomeOnSearchBackRef = React.useRef(false);
   const resultsScrollRef = React.useRef<FlashListRef<ResultsListItem> | null>(null);
   const resultsScrollingTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasUserScrolledResultsRef = React.useRef(false);
   const allowLoadMoreForCurrentScrollRef = React.useRef(true);
   const searchFiltersLayoutCacheRef = React.useRef<SearchFiltersLayoutCache | null>(null);
+  const [isSearchFiltersLayoutWarm, setIsSearchFiltersLayoutWarm] = React.useState(false);
   const cameraPersistTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCameraStateRef = React.useRef<{ center: [number, number]; zoom: number } | null>(null);
   const lastPersistedCameraRef = React.useRef<string | null>(null);
@@ -1708,7 +1551,7 @@ const SearchScreen: React.FC = () => {
       return;
     }
     unstable_batchedUpdates(() => {
-      restoreDockedPolls({ clearTabSnapRequest: true });
+      restoreDockedPolls({ snap: 'collapsed', clearTabSnapRequest: true });
     });
   }, [restoreDockedPolls, rootOverlay]);
   const pollOverlayParams = overlayParams.polls;
@@ -1757,14 +1600,6 @@ const SearchScreen: React.FC = () => {
   }, [overlayRuntimeController, restoreDockedPolls]);
 
   const bottomInset = Math.max(insets.bottom, 12);
-  const shouldHideBottomNavForTabSuggestions = !isSearchOverlay && isSuggestionPanelActive;
-  // Hide the bottom nav while search is active, and also while suggestion UI is presented
-  // from non-search root tabs so tab chrome doesn't show through the suggestion surface.
-  const shouldHideBottomNavForSearchSession =
-    isSearchOverlay &&
-    (isSearchSessionActive || isSuggestionPanelActive || isSearchLoading || isNavRestorePending);
-  const shouldHideBottomNav =
-    shouldHideBottomNavForTabSuggestions || shouldHideBottomNavForSearchSession;
   const [bottomNavFrame, setBottomNavFrame] = React.useState<LayoutRectangle | null>(() => {
     const cached = getCachedBottomNavMetrics();
     if (!cached) {
@@ -1804,22 +1639,13 @@ const SearchScreen: React.FC = () => {
     bottomNavFrame?.height && bottomNavFrame.height > 0
       ? bottomNavFrame.height
       : resolvedEstimatedNavBarHeight;
-  const bottomNavHideProgress = useSharedValue(shouldHideBottomNav ? 0 : 1);
   const bottomNavHiddenTranslateY = Math.max(24, fallbackNavBarHeight + bottomInset + 12);
-  React.useEffect(() => {
-    bottomNavHideProgress.value = withTiming(shouldHideBottomNav ? 0 : 1, {
-      duration: 260,
-      easing: Easing.inOut(Easing.cubic),
-    });
-  }, [bottomNavHideProgress, shouldHideBottomNav]);
   // Snap points should track the measured nav-bar top when available. This keeps collapsed
   // overlays flush to the nav edge even when root-level layout shifts (e.g. status banner push).
   const navBarTopForSnaps =
     bottomNavFrame && Number.isFinite(bottomNavFrame.y) && bottomNavFrame.y > 0
       ? bottomNavFrame.y
       : SCREEN_HEIGHT - fallbackNavBarHeight;
-  const navBarTop = shouldHideBottomNav ? SCREEN_HEIGHT : navBarTopForSnaps;
-  const navBarHeight = shouldHideBottomNav ? 0 : fallbackNavBarHeight;
   const navBarCutoutHeight = fallbackNavBarHeight;
 
   const shouldShowDockedPolls =
@@ -1829,6 +1655,14 @@ const SearchScreen: React.FC = () => {
     !isSearchLoading &&
     !isSearchOriginRestorePending &&
     !isDockedPollsDismissed;
+  const initialDockedPollsSnap: Exclude<OverlaySheetSnap, 'hidden'> | undefined =
+    shouldShowDockedPolls
+      ? pollsSheetSnap !== 'hidden'
+        ? pollsSheetSnap
+        : hasUserSharedSnap
+        ? sharedSnap
+        : 'collapsed'
+      : undefined;
   const {
     panelVisible,
     sheetState,
@@ -1852,6 +1686,7 @@ const SearchScreen: React.FC = () => {
     insetTop: insets.top,
     navBarTop: navBarTopForSnaps,
     headerHeight: OVERLAY_TAB_HEADER_HEIGHT,
+    initialPosition: initialDockedPollsSnap,
   });
   const prepareShortcutSheetTransition = React.useCallback(() => {
     if (!shouldShowDockedPolls) {
@@ -1910,10 +1745,8 @@ const SearchScreen: React.FC = () => {
     if (resultsSheetDraggingRef.current || resultsSheetSettlingRef.current) {
       return;
     }
-    requestAnimationFrame(() => {
-      animateSheetTo('collapsed');
-    });
-  }, [animateSheetTo, navBarTopForSnaps, sheetState]);
+    showPanelInstant('collapsed');
+  }, [navBarTopForSnaps, sheetState, showPanelInstant]);
   const isSearchEditingRef = React.useRef(false);
   const allowSearchBlurExitRef = React.useRef(false);
   React.useEffect(() => {
@@ -2085,6 +1918,13 @@ const SearchScreen: React.FC = () => {
     },
     [handleSheetSnapChange]
   );
+  const closeVisualHandoffLatch = useSharedValue(0);
+  const markSearchSheetCloseCollapsedReachedRef = React.useRef<(snap: OverlaySheetSnap) => void>(
+    () => undefined
+  );
+  const notifyCloseCollapsedBoundaryReached = React.useCallback(() => {
+    markSearchSheetCloseCollapsedReachedRef.current('collapsed');
+  }, []);
   const handleResultsSheetSnapStart = React.useCallback(
     (snap: OverlaySheetSnap | 'hidden') => {
       if (snap === 'hidden') {
@@ -2151,6 +1991,7 @@ const SearchScreen: React.FC = () => {
   );
   const handleSearchFiltersLayoutCache = React.useCallback((cache: SearchFiltersLayoutCache) => {
     searchFiltersLayoutCacheRef.current = cache;
+    setIsSearchFiltersLayoutWarm(true);
   }, []);
   const handleResultsListScrollBegin = React.useCallback(() => {
     if (resultsScrollingTimeoutRef.current) {
@@ -2454,14 +2295,6 @@ const SearchScreen: React.FC = () => {
   const showDockedPolls = shouldShowDockedPolls;
   const shouldShowPollsSheet = showPollsOverlay || showDockedPolls;
   const pollsOverlayMode: 'overlay' | 'docked' = showPollsOverlay ? 'overlay' : 'docked';
-  const lastShowDockedPollsRef = React.useRef(showDockedPolls);
-  React.useEffect(() => {
-    const wasShowing = lastShowDockedPollsRef.current;
-    lastShowDockedPollsRef.current = showDockedPolls;
-    if (showDockedPolls && !wasShowing) {
-      restoreDockedPolls();
-    }
-  }, [restoreDockedPolls, showDockedPolls]);
   const pollsOverlaySnapPoint: 'expanded' | 'middle' | 'collapsed' = showPollsOverlay
     ? hasUserSharedSnap
       ? (sharedSnap as 'expanded' | 'middle' | 'collapsed')
@@ -2481,19 +2314,20 @@ const SearchScreen: React.FC = () => {
     (options: {
       target: 'default' | 'results';
       kind?: 'initial_search' | 'shortcut_rerun' | 'close_search';
-      preserveSheetState?: boolean;
       requiresCoverage?: boolean;
-    }) =>
-      presentationTransitionControllerRef.current!.requestMapPresentationTarget({
+      revealMode?: 'fresh_reveal' | 'in_place_rerun' | 'close';
+    }) => {
+      const shouldUseInitialCover =
+        options.target === 'results' && options.revealMode !== 'in_place_rerun';
+      return presentationTransitionControllerRef.current!.requestMapPresentationTarget({
         target: options.target,
         kind: options.kind,
-        loadingMode:
-          options.target === 'results' && !hasResults && !options.preserveSheetState
-            ? 'initial_cover'
-            : 'interaction_frost',
+        loadingMode: shouldUseInitialCover ? 'initial_cover' : 'interaction_frost',
         requiresCoverage: options.requiresCoverage,
-      }),
-    [hasResults]
+        revealMode: options.revealMode,
+      });
+    },
+    []
   );
   const {
     backdropTarget,
@@ -2502,8 +2336,10 @@ const SearchScreen: React.FC = () => {
     defaultChromeProgress: searchHeaderDefaultChromeProgress,
     headerVisualModel,
     searchSheetContentLane,
+    isCloseTransitionActive,
     requestIntent: requestSearchPresentationIntent,
     markMapTargetSettled: markSearchSheetCloseMapDismissSettled,
+    markSheetCollapsedReached: markSearchSheetCloseCollapsedReached,
     markSheetSettled: markSearchSheetCloseSheetSettled,
     cancelActiveClose: cancelSearchSheetCloseTransition,
   } = useSearchPresentationController({
@@ -2528,43 +2364,103 @@ const SearchScreen: React.FC = () => {
     requestDefaultPostSearchRestore,
     finalizeCloseSearch: finalizeCloseSearchBridge,
   });
-  const shouldDriveBottomNavFromDismissProgress =
-    isSearchOverlay && inputMode !== 'editing' && searchSheetContentLane.kind === 'results_closing';
-  const bottomNavVisualProgress = useDerivedValue(() => {
-    if (isSuggestionPanelActive || inputMode === 'editing') {
-      return bottomNavHideProgress.value;
+  markSearchSheetCloseCollapsedReachedRef.current = markSearchSheetCloseCollapsedReached;
+  React.useEffect(() => {
+    if (!isCloseTransitionActive) {
+      closeVisualHandoffLatch.value = 0;
     }
-    if (shouldDriveBottomNavFromDismissProgress) {
-      return searchHeaderDefaultChromeProgress.value;
-    }
-    return bottomNavHideProgress.value;
-  });
-  const bottomNavAnimatedStyle = useAnimatedStyle(
+  }, [closeVisualHandoffLatch, isCloseTransitionActive]);
+  useAnimatedReaction(
     () => ({
-      transform: [{ translateY: (1 - bottomNavVisualProgress.value) * bottomNavHiddenTranslateY }],
+      closeActive: isCloseTransitionActive ? 1 : 0,
+      thresholdPassed: sheetTranslateY.value >= snapPoints.collapsed ? 1 : 0,
+      sheetY: sheetTranslateY.value,
+      latch: closeVisualHandoffLatch.value,
     }),
-    [bottomNavHiddenTranslateY]
+    (next) => {
+      if (next.closeActive !== 1 || next.thresholdPassed !== 1 || next.latch >= 1) {
+        return;
+      }
+      closeVisualHandoffLatch.value = 1;
+      runOnJS(notifyCloseCollapsedBoundaryReached)();
+    },
+    [
+      closeVisualHandoffLatch,
+      isCloseTransitionActive,
+      notifyCloseCollapsedBoundaryReached,
+      sheetTranslateY,
+      snapPoints.collapsed,
+    ]
   );
-  const shouldShowSearchShortcuts =
+  const closeVisualHandoffProgress = useDerivedValue(() => {
+    if (!isCloseTransitionActive) {
+      return 0;
+    }
+    return closeVisualHandoffLatch.value >= 1 ? 1 : 0;
+  }, [closeVisualHandoffLatch, isCloseTransitionActive]);
+  const shouldShowSearchShortcutsTarget =
     !shouldDisableSearchShortcutsRef.current &&
     shouldRenderSearchOverlay &&
     (isSearchOverlay ? isSuggestionPanelActive || headerVisualModel.shortcutsVisibleTarget : true);
-  const shouldRenderSearchShortcuts = shouldShowSearchShortcuts;
-  const shouldEnableSearchShortcutsInteraction =
-    shouldRenderSearchShortcuts && headerVisualModel.shortcutsInteractive;
-  const { progress: searchShortcutsFadeProgress, isVisible: shouldRenderSearchShortcutsRow } =
-    useTransitionDriver({
-      enabled: true,
-      target: shouldRenderSearchShortcuts ? 1 : 0,
-      getDurationMs: () => SEARCH_SHORTCUTS_FADE_MS,
-      getEasing: () => Easing.linear,
+  const shouldEnableSearchShortcutsInteractionTarget =
+    shouldShowSearchShortcutsTarget && headerVisualModel.shortcutsInteractive;
+  const shouldKeepSearchShortcutsMountedForResultsExit =
+    isSearchOverlay &&
+    !isSuggestionPanelActive &&
+    isSuggestionOverlayVisible &&
+    backdropTarget === 'results';
+  const shouldHideBottomNavForSearchResultsMotion =
+    isSearchOverlay &&
+    inputMode !== 'editing' &&
+    (backdropTarget === 'results' || searchSheetContentLane.kind === 'results_closing');
+  const shouldHideBottomNavForSuggestionSurface = !isSearchOverlay && isSuggestionPanelActive;
+  const bottomNavHideProgress = useSharedValue(shouldHideBottomNavForSearchResultsMotion ? 0 : 1);
+  React.useEffect(() => {
+    bottomNavHideProgress.value = withTiming(shouldHideBottomNavForSearchResultsMotion ? 0 : 1, {
+      duration: 260,
+      easing: Easing.inOut(Easing.cubic),
     });
-  const shouldMountSearchShortcuts = shouldRenderSearchShortcuts || shouldRenderSearchShortcutsRow;
+  }, [bottomNavHideProgress, shouldHideBottomNavForSearchResultsMotion]);
+  const navBarTop = shouldHideBottomNavForSearchResultsMotion ? SCREEN_HEIGHT : navBarTopForSnaps;
+  const navBarHeight = shouldHideBottomNavForSearchResultsMotion ? 0 : fallbackNavBarHeight;
+  const {
+    bottomNavVisualProgress,
+    bottomNavAnimatedStyle,
+    shouldHideBottomNavForRender,
+    navBarCutoutProgress,
+    navBarCutoutIsHiding,
+    shouldMountSearchShortcuts,
+    shouldEnableSearchShortcutsInteraction,
+    searchShortcutsAnimatedStyle,
+    searchShortcutChipAnimatedStyle,
+  } = useSearchChromeVisualModel({
+    isSearchOverlay,
+    inputMode,
+    backdropTarget,
+    searchSheetContentLane,
+    isSuggestionPanelActive,
+    isSuggestionOverlayVisible,
+    shouldHideBottomNavForMotion: shouldHideBottomNavForSearchResultsMotion,
+    shouldHideBottomNavForSuggestionSurface,
+    bottomNavHideProgress,
+    bottomNavHiddenTranslateY,
+    searchHeaderDefaultChromeProgress,
+    shouldShowSearchShortcutsTarget,
+    shouldKeepSearchShortcutsMountedForResultsExit,
+    shouldEnableSearchShortcutsInteraction: shouldEnableSearchShortcutsInteractionTarget,
+    searchShortcutsFadeDurationMs: SEARCH_SHORTCUTS_FADE_MS,
+    suggestionProgress,
+    sheetTranslateY,
+    chromeTransitionExpandedY: chromeTransitionConfig.expanded,
+    chromeTransitionMiddleY: chromeTransitionConfig.middle,
+    searchChromeOpacity,
+    searchChromeScale,
+    shouldLockSearchChromeTransform,
+    shortcutShadowOpacity: SEARCH_SHORTCUT_BASE_SHADOW_OPACITY,
+    shortcutShadowElevation: SEARCH_SHORTCUT_BASE_ELEVATION,
+  });
   const shouldUseSearchShortcutFrames =
-    shouldDriveSuggestionLayout ||
-    shouldMountSearchShortcuts ||
-    shouldRenderSearchShortcuts ||
-    shouldShowSearchShortcuts;
+    shouldDriveSuggestionLayout || shouldMountSearchShortcuts || shouldShowSearchShortcutsTarget;
   const cachedSearchShortcutsFrame = searchShortcutsLayoutCacheRef.current.frame;
   const cachedSearchShortcutChipFrames = searchShortcutsLayoutCacheRef.current.chipFrames;
   const cachedSearchContainerFrame = searchContainerLayoutCacheRef.current;
@@ -2585,10 +2481,7 @@ const SearchScreen: React.FC = () => {
   }, [cachedSearchShortcutChipFrames, searchShortcutChipFrames, shouldUseSearchShortcutFrames]);
   const hasResolvedSearchShortcutsFrame = Boolean(resolvedSearchShortcutsFrame);
   const shouldIncludeShortcutCutout =
-    shouldDriveSuggestionLayout &&
-    (shouldRenderSearchShortcuts ||
-      shouldRenderSearchShortcutsRow ||
-      hasResolvedSearchShortcutsFrame);
+    shouldDriveSuggestionLayout && (shouldMountSearchShortcuts || hasResolvedSearchShortcutsFrame);
   const shouldIncludeShortcutHoles = shouldIncludeShortcutCutout;
   const shouldIncludeShortcutLayout = shouldIncludeShortcutCutout;
   const resolvedSearchContainerFrame = useMemo(() => {
@@ -3016,58 +2909,6 @@ const SearchScreen: React.FC = () => {
       display: chromeOpacity < 0.02 ? 'none' : 'flex',
     };
   }, [shouldLockSearchChromeTransform]);
-  const searchShortcutChipAnimatedStyle = useAnimatedStyle(() => {
-    const progress = suggestionProgress.value;
-    const backgroundAlpha = 1 - progress;
-    return {
-      backgroundColor: `rgba(255, 255, 255, ${backgroundAlpha})`,
-      ...shadowFadeStyle(
-        SEARCH_SHORTCUT_BASE_SHADOW_OPACITY,
-        SEARCH_SHORTCUT_BASE_ELEVATION,
-        backgroundAlpha
-      ),
-    };
-  });
-  const searchShortcutsChromeVisibilityProgress = useDerivedValue(() => {
-    if (isSuggestionPanelActive) {
-      return 1;
-    }
-    if (inputMode === 'editing') {
-      return 0;
-    }
-    return headerVisualModel.shortcutsVisibleTarget ? 1 - searchBackdropProgress.value : 0;
-  });
-  const searchShortcutsAnimatedStyle = useAnimatedStyle(() => {
-    const sheetTop = sheetTranslateY.value;
-    const expandedY = chromeTransitionConfig.expanded;
-    const middleY = chromeTransitionConfig.middle;
-    const fadeEndY = Math.min(middleY, expandedY + SEARCH_CHROME_FADE_ZONE_PX);
-    const uncoverProgress =
-      fadeEndY > expandedY
-        ? interpolate(sheetTop, [expandedY, fadeEndY], [0, 1], Extrapolation.CLAMP)
-        : middleY <= expandedY
-        ? 1
-        : 0;
-    const chromeVisibility = Math.max(
-      0,
-      Math.min(1, searchShortcutsChromeVisibilityProgress.value)
-    );
-    const visibility = Math.min(
-      searchShortcutsFadeProgress.value,
-      uncoverProgress,
-      chromeVisibility
-    );
-    const opacity = searchChromeOpacity.value * visibility;
-    const chromeScale = shouldLockSearchChromeTransform ? 1 : searchChromeScale.value;
-    return {
-      opacity,
-      transform: [{ scale: chromeScale }],
-    };
-  }, [
-    chromeTransitionConfig.expanded,
-    chromeTransitionConfig.middle,
-    shouldLockSearchChromeTransform,
-  ]);
   const suggestionPanelAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: 0 }],
   }));
@@ -3984,6 +3825,7 @@ const SearchScreen: React.FC = () => {
     (params: {
       kind: 'initial_search' | 'shortcut_rerun';
       mode: 'natural' | 'shortcut' | null;
+      revealMode: 'fresh_reveal' | 'in_place_rerun';
       preserveSheetState: boolean;
       transitionFromDockedPolls: boolean;
       targetTab: 'dishes' | 'restaurants';
@@ -3995,6 +3837,7 @@ const SearchScreen: React.FC = () => {
         query:
           params.submittedLabel ?? (params.mode === 'shortcut' ? submittedQuery : query.trim()),
         targetTab: params.targetTab,
+        revealMode: params.revealMode,
         preserveSheetState: params.preserveSheetState,
         transitionFromDockedPolls: params.transitionFromDockedPolls,
       });
@@ -4487,8 +4330,6 @@ const SearchScreen: React.FC = () => {
     isSearchEditingRef,
     allowSearchBlurExitRef,
     ignoreNextSearchBlurRef,
-    cancelSearchEditOnBackRef,
-    restoreHomeOnSearchBackRef,
     searchSessionQueryRef,
     captureSearchSessionQuery,
     dismissTransientOverlays,
@@ -4861,12 +4702,32 @@ const SearchScreen: React.FC = () => {
       const activeIntentId = presentationTransitionControllerRef.current!.getActiveIntentId();
       const revealLane =
         runtimeState.presentationLane?.kind === 'reveal' ? runtimeState.presentationLane : null;
+      logger.info('[REVEAL-ARMED-DIAG] controller', {
+        label: 'armedEvent',
+        requestKey: payload.requestKey,
+        frameGenerationId: payload.frameGenerationId,
+        revealBatchId: payload.revealBatchId,
+        activeIntentId,
+        revealLaneRequestKey: revealLane?.requestKey ?? null,
+        revealLaneStatus: revealLane?.status ?? null,
+        revealLaneBatchId: revealLane?.batch?.batchId ?? null,
+        revealLaneGenerationId: revealLane?.batch?.generationId ?? null,
+        mapPresentationPhase: runtimeState.mapPresentationPhase,
+      });
       if (
         payload.requestKey !== activeIntentId ||
         revealLane == null ||
         revealLane.requestKey !== payload.requestKey ||
         revealLane.status !== 'pending_mount'
       ) {
+        logger.info('[REVEAL-ARMED-DIAG] controller', {
+          label: 'armedEvent:ignored',
+          requestKey: payload.requestKey,
+          activeIntentId,
+          revealLaneRequestKey: revealLane?.requestKey ?? null,
+          revealLaneStatus: revealLane?.status ?? null,
+          mapPresentationPhase: runtimeState.mapPresentationPhase,
+        });
         return;
       }
       presentationTransitionControllerRef.current!.markRevealBatchMountedHidden(
@@ -4953,8 +4814,25 @@ const SearchScreen: React.FC = () => {
         revealLane.requestKey !== payload.requestKey ||
         revealLane.status !== 'revealing'
       ) {
+        logger.info('[REVEAL-ARMED-DIAG] controller', {
+          label: 'revealSettled:ignored',
+          requestKey: payload.requestKey,
+          frameGenerationId: payload.frameGenerationId,
+          revealBatchId: payload.revealBatchId,
+          revealLaneRequestKey: revealLane?.requestKey ?? null,
+          revealLaneStatus: revealLane?.status ?? null,
+          mapPresentationPhase: runtimeState.mapPresentationPhase,
+        });
         return;
       }
+      logger.info('[REVEAL-ARMED-DIAG] controller', {
+        label: 'revealSettled',
+        requestKey: payload.requestKey,
+        frameGenerationId: payload.frameGenerationId,
+        revealBatchId: payload.revealBatchId,
+        revealLaneStatus: revealLane.status,
+        mapPresentationPhase: runtimeState.mapPresentationPhase,
+      });
       presentationTransitionControllerRef.current!.markRevealBatchSettled(payload.requestKey, {
         requestKey: payload.requestKey,
         batchId: payload.revealBatchId,
@@ -4973,6 +4851,96 @@ const SearchScreen: React.FC = () => {
       flushPendingMarkerRevealSettled();
     },
     [flushPendingMarkerRevealSettled, runOneHandoffCoordinatorRef, searchRuntimeBus]
+  );
+  const handleMarkerRevealStarted = React.useCallback(
+    (payload: {
+      requestKey: string;
+      frameGenerationId: string | null;
+      revealBatchId: string | null;
+      startedAtMs: number;
+    }) => {
+      if (payload.revealBatchId == null || payload.frameGenerationId == null) {
+        return;
+      }
+      const runtimeState = searchRuntimeBus.getState();
+      const revealLane =
+        runtimeState.presentationLane?.kind === 'reveal' ? runtimeState.presentationLane : null;
+      if (
+        revealLane == null ||
+        revealLane.requestKey !== payload.requestKey ||
+        revealLane.status !== 'revealing'
+      ) {
+        logger.info('[REVEAL-ARMED-DIAG] controller', {
+          label: 'revealStarted:ignored',
+          requestKey: payload.requestKey,
+          frameGenerationId: payload.frameGenerationId,
+          revealBatchId: payload.revealBatchId,
+          revealLaneRequestKey: revealLane?.requestKey ?? null,
+          revealLaneStatus: revealLane?.status ?? null,
+          mapPresentationPhase: runtimeState.mapPresentationPhase,
+        });
+        return;
+      }
+      logger.info('[REVEAL-ARMED-DIAG] controller', {
+        label: 'revealStarted',
+        requestKey: payload.requestKey,
+        frameGenerationId: payload.frameGenerationId,
+        revealBatchId: payload.revealBatchId,
+        revealLaneStatus: revealLane.status,
+        mapPresentationPhase: runtimeState.mapPresentationPhase,
+      });
+      presentationTransitionControllerRef.current!.markRevealStarted(payload.requestKey, {
+        requestKey: payload.requestKey,
+        batchId: payload.revealBatchId,
+        generationId: payload.frameGenerationId,
+      });
+    },
+    [searchRuntimeBus]
+  );
+  const handleMarkerRevealFirstVisibleFrame = React.useCallback(
+    (payload: {
+      requestKey: string;
+      frameGenerationId: string | null;
+      revealBatchId: string | null;
+      syncedAtMs: number;
+    }) => {
+      if (payload.revealBatchId == null || payload.frameGenerationId == null) {
+        return;
+      }
+      const runtimeState = searchRuntimeBus.getState();
+      const revealLane =
+        runtimeState.presentationLane?.kind === 'reveal' ? runtimeState.presentationLane : null;
+      if (
+        revealLane == null ||
+        revealLane.requestKey !== payload.requestKey ||
+        revealLane.status !== 'revealing'
+      ) {
+        logger.info('[REVEAL-ARMED-DIAG] controller', {
+          label: 'revealFirstVisible:ignored',
+          requestKey: payload.requestKey,
+          frameGenerationId: payload.frameGenerationId,
+          revealBatchId: payload.revealBatchId,
+          revealLaneRequestKey: revealLane?.requestKey ?? null,
+          revealLaneStatus: revealLane?.status ?? null,
+          mapPresentationPhase: runtimeState.mapPresentationPhase,
+        });
+        return;
+      }
+      logger.info('[REVEAL-ARMED-DIAG] controller', {
+        label: 'revealFirstVisible',
+        requestKey: payload.requestKey,
+        frameGenerationId: payload.frameGenerationId,
+        revealBatchId: payload.revealBatchId,
+        revealLaneStatus: revealLane.status,
+        mapPresentationPhase: runtimeState.mapPresentationPhase,
+      });
+      presentationTransitionControllerRef.current!.markRevealFirstVisibleFrame(payload.requestKey, {
+        requestKey: payload.requestKey,
+        batchId: payload.revealBatchId,
+        generationId: payload.frameGenerationId,
+      });
+    },
+    [searchRuntimeBus]
   );
   const handleMarkerDismissStarted = React.useCallback(
     (payload: { requestKey: string; startedAtMs: number }) => {
@@ -5014,6 +4982,8 @@ const SearchScreen: React.FC = () => {
     handleMapLoaded,
     handleMarkerPress: noopMarkerPress,
     handleRevealBatchMountedHidden,
+    handleMarkerRevealStarted,
+    handleMarkerRevealFirstVisibleFrame,
     handleMarkerRevealSettled,
     handleMarkerDismissStarted,
     handleMarkerDismissSettled,
@@ -5023,6 +4993,9 @@ const SearchScreen: React.FC = () => {
   const stableHandleMapIdle = stableMapHandlers.onMapIdle;
   const stableHandleMapLoaded = stableMapHandlers.onMapLoaded;
   const stableHandleRevealBatchMountedHidden = stableMapHandlers.onRevealBatchMountedHidden;
+  const stableHandleMarkerRevealStarted = stableMapHandlers.onMarkerRevealStarted;
+  const stableHandleMarkerRevealFirstVisibleFrame =
+    stableMapHandlers.onMarkerRevealFirstVisibleFrame;
   const stableHandleMarkerRevealSettled = stableMapHandlers.onMarkerRevealSettled;
   const stableHandleMarkerDismissStarted = stableMapHandlers.onMarkerDismissStarted;
   const stableHandleMarkerDismissSettled = stableMapHandlers.onMarkerDismissSettled;
@@ -5090,99 +5063,6 @@ const SearchScreen: React.FC = () => {
       hydrationOperationId,
     });
   }, [hydrationOperationId, searchRuntimeBus]);
-  const searchResultsPanelSpecArgs = React.useMemo(
-    () => ({
-      searchRuntimeBus,
-      searchSheetContentLane,
-      activeOverlayKey: activeOverlay,
-      scheduleTabToggleCommit,
-      toggleRankSelector,
-      toggleOpenNow,
-      toggleVotesFilter,
-      togglePriceSelector,
-      shouldDisableSearchBlur,
-      searchFiltersLayoutCacheRef,
-      handleSearchFiltersLayoutCache,
-      searchInteractionRef,
-      mapQueryBudget,
-      handleCloseResults,
-      overlayHeaderActionProgress,
-      headerDividerAnimatedStyle,
-      shouldLogResultsViewability,
-      scoreMode,
-      getDishSaveHandler,
-      getRestaurantSaveHandler,
-      stableOpenRestaurantProfileFromResults,
-      openScoreInfo,
-      onRuntimeMechanismEvent: emitRuntimeMechanismEvent,
-      phaseBMaterializerRef,
-      resultsWashAnimatedStyle,
-      resultsContainerAnimatedStyle,
-      resultsSheetVisibilityAnimatedStyle,
-      shouldRenderResultsSheet,
-      shouldDisableResultsSheetInteraction,
-      snapPoints,
-      sheetState,
-      resultsSheetMotionCommand,
-      handleResultsSheetSnapStart,
-      handleResultsListScrollBegin,
-      handleResultsListScrollEnd,
-      handleResultsListMomentumBegin,
-      handleResultsListMomentumEnd,
-      handleResultsSheetDragStateChange,
-      handleResultsSheetSettlingChange,
-      handleResultsEndReached,
-      handleResultsSheetSnapChange,
-      resetSheetToHidden,
-      resultsScrollRef,
-    }),
-    [
-      searchRuntimeBus,
-      searchSheetContentLane,
-      activeOverlay,
-      scheduleTabToggleCommit,
-      toggleRankSelector,
-      toggleOpenNow,
-      toggleVotesFilter,
-      togglePriceSelector,
-      shouldDisableSearchBlur,
-      searchFiltersLayoutCacheRef,
-      handleSearchFiltersLayoutCache,
-      searchInteractionRef,
-      mapQueryBudget,
-      snapPoints.middle,
-      handleCloseResults,
-      overlayHeaderActionProgress,
-      headerDividerAnimatedStyle,
-      shouldLogResultsViewability,
-      scoreMode,
-      getDishSaveHandler,
-      getRestaurantSaveHandler,
-      stableOpenRestaurantProfileFromResults,
-      openScoreInfo,
-      emitRuntimeMechanismEvent,
-      phaseBMaterializerRef,
-      resultsWashAnimatedStyle,
-      resultsContainerAnimatedStyle,
-      resultsSheetVisibilityAnimatedStyle,
-      shouldRenderResultsSheet,
-      shouldDisableResultsSheetInteraction,
-      snapPoints,
-      sheetState,
-      resultsSheetMotionCommand,
-      handleResultsSheetSnapStart,
-      handleResultsListScrollBegin,
-      handleResultsListScrollEnd,
-      handleResultsListMomentumBegin,
-      handleResultsListMomentumEnd,
-      handleResultsSheetDragStateChange,
-      handleResultsSheetSettlingChange,
-      handleResultsEndReached,
-      handleResultsSheetSnapChange,
-      resetSheetToHidden,
-      resultsScrollRef,
-    ]
-  );
   const searchThisAreaTop = Math.max(searchLayout.top + searchLayout.height + 12, insets.top + 12);
   const statusBarFadeHeightFallback = Math.max(0, insets.top + 16);
   const statusBarFadeHeight = Math.max(
@@ -5191,7 +5071,7 @@ const SearchScreen: React.FC = () => {
   );
 
   const pollCreationParams = overlayParams.pollCreation;
-  const { shouldShowPollCreationPanel, pollCreationPanelSpec } = usePollCreationPanelController({
+  const { pollCreationPanelSpec } = usePollCreationPanelController({
     activeOverlay,
     pollCreationParams,
     setPollCreationSnapRequest,
@@ -5206,13 +5086,18 @@ const SearchScreen: React.FC = () => {
     () => ({
       visible:
         shouldShowPollsSheet ||
-        (isSearchOverlay && searchSheetContentLane.kind === 'persistent_poll'),
+        (isSearchOverlay &&
+          searchSheetContentLane.kind === 'persistent_poll' &&
+          !isDockedPollsDismissed),
       bounds: pollBounds,
+      bootstrapSnapshot: startupPollsSnapshot,
       params: pollOverlayParams,
       initialSnapPoint: pollsOverlaySnapPoint,
       mode: pollsOverlayMode,
       currentSnap:
-        isSearchOverlay && searchSheetContentLane.kind === 'persistent_poll'
+        isSearchOverlay &&
+        searchSheetContentLane.kind === 'persistent_poll' &&
+        !isDockedPollsDismissed
           ? 'collapsed'
           : pollsSheetSnap,
       navBarTop: navBarTopForSnaps,
@@ -5237,7 +5122,9 @@ const SearchScreen: React.FC = () => {
       shouldShowPollsSheet,
       isSearchOverlay,
       searchSheetContentLane.kind,
+      isDockedPollsDismissed,
       pollBounds,
+      startupPollsSnapshot,
       pollOverlayParams,
       pollsOverlaySnapPoint,
       pollsOverlayMode,
@@ -5347,68 +5234,38 @@ const SearchScreen: React.FC = () => {
       setSaveSheetSnap,
     ]
   );
-  const searchOverlayPanelsArgs = React.useMemo(
-    () => ({
-      pollCreationPanelSpec,
-      shouldShowPollCreationPanel,
-      showSaveListOverlay,
-      shouldShowRestaurantOverlay,
-      showProfileOverlay,
-      showBookmarksOverlay,
-      shouldShowPollsSheet,
-      shouldRenderResultsSheet,
-      isSearchOverlay,
-      searchSheetContentLane,
-      isSuggestionPanelActive,
-      isForegroundEditing: inputMode === 'editing',
-      searchHeaderActionModeOverride,
-      setSearchHeaderActionModeOverride,
-      handleResultsSheetDragStateChange,
-      handleResultsSheetSettlingChange,
-      pollsPanelOptions,
-      bookmarksPanelOptions,
-      profilePanelOptions,
-      restaurantPanelBaseOptions,
-      restaurantSnapRequest,
-      handleRestaurantOverlaySnapStart,
-      handleRestaurantOverlaySnapChange,
-      saveListPanelOptions,
-    }),
-    [
-      pollCreationPanelSpec,
-      shouldShowPollCreationPanel,
-      showSaveListOverlay,
-      shouldShowRestaurantOverlay,
-      showProfileOverlay,
-      showBookmarksOverlay,
-      shouldShowPollsSheet,
-      shouldRenderResultsSheet,
-      isSearchOverlay,
-      searchSheetContentLane,
-      isSuggestionPanelActive,
-      inputMode,
-      searchHeaderActionModeOverride,
-      setSearchHeaderActionModeOverride,
-      handleResultsSheetDragStateChange,
-      handleResultsSheetSettlingChange,
-      pollsPanelOptions,
-      bookmarksPanelOptions,
-      profilePanelOptions,
-      restaurantPanelBaseOptions,
-      restaurantSnapRequest,
-      handleRestaurantOverlaySnapStart,
-      handleRestaurantOverlaySnapChange,
-      saveListPanelOptions,
-    ]
-  );
-  const shouldFreezeRunOneChromeProps =
+  const shouldFreezeSuggestionSurfaceForRunOne =
     isRunOneChromeFreezeActive || isRunOnePreflightFreezeActive || isResponseFrameFreezeActive;
-  const shouldFreezeDeferredChromeProps = shouldFreezeRunOneChromeProps;
+  const shouldFreezeOverlayHeaderChromeForRunOne = shouldFreezeSuggestionSurfaceForRunOne;
+  const shouldFreezeOverlaySheetForCloseHandoff = isCloseTransitionActive;
   const shouldFreezeBottomNavDuringShortcutLoad =
     searchMode === 'shortcut' && (resultsPage == null || resultsPage === 1) && isSearchLoading;
+  const searchSheetVisualContextValue = React.useMemo(
+    () => ({
+      sheetTranslateY,
+      resultsScrollOffset,
+      resultsMomentum,
+      closeVisualHandoffProgress,
+      navBarCutoutHeight,
+      navBarCutoutProgress,
+      bottomNavHiddenTranslateY,
+      navBarCutoutIsHiding,
+    }),
+    [
+      bottomNavHiddenTranslateY,
+      closeVisualHandoffProgress,
+      navBarCutoutHeight,
+      navBarCutoutIsHiding,
+      navBarCutoutProgress,
+      resultsMomentum,
+      resultsScrollOffset,
+      sheetTranslateY,
+    ]
+  );
   const resultsSheetDiagRef = React.useRef<{
     shouldRenderResultsSheet: boolean;
-    shouldFreezeDeferredChromeProps: boolean;
+    shouldFreezeOverlayHeaderChromeForRunOne: boolean;
+    shouldFreezeOverlaySheetForCloseHandoff: boolean;
     shouldFreezeBottomNavDuringShortcutLoad: boolean;
     runOneHandoffPhase: ReturnType<typeof searchRuntimeBus.getState>['runOneHandoffPhase'];
     mapPresentationPhase: ReturnType<typeof searchRuntimeBus.getState>['mapPresentationPhase'];
@@ -5421,7 +5278,8 @@ const SearchScreen: React.FC = () => {
     const runtimeState = searchRuntimeBus.getState();
     const nextSnapshot = {
       shouldRenderResultsSheet,
-      shouldFreezeDeferredChromeProps,
+      shouldFreezeOverlayHeaderChromeForRunOne,
+      shouldFreezeOverlaySheetForCloseHandoff,
       shouldFreezeBottomNavDuringShortcutLoad,
       runOneHandoffPhase: runtimeState.runOneHandoffPhase,
       mapPresentationPhase: runtimeState.mapPresentationPhase,
@@ -5432,8 +5290,10 @@ const SearchScreen: React.FC = () => {
     if (
       previousSnapshot &&
       previousSnapshot.shouldRenderResultsSheet === nextSnapshot.shouldRenderResultsSheet &&
-      previousSnapshot.shouldFreezeDeferredChromeProps ===
-        nextSnapshot.shouldFreezeDeferredChromeProps &&
+      previousSnapshot.shouldFreezeOverlayHeaderChromeForRunOne ===
+        nextSnapshot.shouldFreezeOverlayHeaderChromeForRunOne &&
+      previousSnapshot.shouldFreezeOverlaySheetForCloseHandoff ===
+        nextSnapshot.shouldFreezeOverlaySheetForCloseHandoff &&
       previousSnapshot.shouldFreezeBottomNavDuringShortcutLoad ===
         nextSnapshot.shouldFreezeBottomNavDuringShortcutLoad &&
       previousSnapshot.runOneHandoffPhase === nextSnapshot.runOneHandoffPhase &&
@@ -5450,300 +5310,264 @@ const SearchScreen: React.FC = () => {
   }, [
     searchRuntimeBus,
     shouldFreezeBottomNavDuringShortcutLoad,
-    shouldFreezeDeferredChromeProps,
+    shouldFreezeOverlayHeaderChromeForRunOne,
+    shouldFreezeOverlaySheetForCloseHandoff,
     shouldRenderResultsSheet,
   ]);
-  const frozenSuggestionSurfacePropsRef = React.useRef<{
-    suggestionDisplaySuggestions: typeof suggestionDisplaySuggestions;
-    recentSearchesDisplay: typeof recentSearchesDisplay;
-    recentlyViewedRestaurantsDisplay: typeof recentlyViewedRestaurantsDisplay;
-    recentlyViewedFoodsDisplay: typeof recentlyViewedFoodsDisplay;
-    hasRecentSearchesDisplay: typeof hasRecentSearchesDisplay;
-    hasRecentlyViewedRestaurantsDisplay: typeof hasRecentlyViewedRestaurantsDisplay;
-    hasRecentlyViewedFoodsDisplay: typeof hasRecentlyViewedFoodsDisplay;
-    isRecentLoadingDisplay: typeof isRecentLoadingDisplay;
-    isRecentlyViewedLoadingDisplay: typeof isRecentlyViewedLoadingDisplay;
-    isRecentlyViewedFoodsLoadingDisplay: typeof isRecentlyViewedFoodsLoadingDisplay;
-  } | null>(null);
-  const nextSuggestionSurfaceProps = {
-    suggestionDisplaySuggestions,
-    recentSearchesDisplay,
-    recentlyViewedRestaurantsDisplay,
-    recentlyViewedFoodsDisplay,
-    hasRecentSearchesDisplay,
-    hasRecentlyViewedRestaurantsDisplay,
-    hasRecentlyViewedFoodsDisplay,
-    isRecentLoadingDisplay,
-    isRecentlyViewedLoadingDisplay,
-    isRecentlyViewedFoodsLoadingDisplay,
-  };
-  if (!shouldFreezeDeferredChromeProps) {
-    frozenSuggestionSurfacePropsRef.current = nextSuggestionSurfaceProps;
-  }
-  const suggestionSurfacePropsForRender = shouldFreezeDeferredChromeProps
-    ? frozenSuggestionSurfacePropsRef.current ?? nextSuggestionSurfaceProps
-    : nextSuggestionSurfaceProps;
-  const shouldFreezeDeferredBottomNavProps =
-    isRun1HandoffActive || shouldFreezeBottomNavDuringShortcutLoad;
-  const frozenBottomNavPropsRef = React.useRef<{
-    shouldHideBottomNav: boolean;
-    shouldDisableSearchBlur: boolean;
-    rootOverlay: OverlayKey | null;
-    handleProfilePress: typeof handleProfilePress;
-    handleOverlaySelect: typeof handleOverlaySelect;
-  } | null>(null);
-  const shouldHideBottomNavForRender =
-    !isSearchOverlay || inputMode === 'editing' ? shouldHideBottomNav : false;
-  const nextBottomNavProps = {
-    shouldHideBottomNav: shouldHideBottomNavForRender,
-    shouldDisableSearchBlur,
-    rootOverlay,
-    handleProfilePress,
-    handleOverlaySelect,
-  };
-  if (!shouldFreezeDeferredBottomNavProps) {
-    frozenBottomNavPropsRef.current = nextBottomNavProps;
-  }
-  const bottomNavPropsForRender = shouldFreezeDeferredBottomNavProps
-    ? frozenBottomNavPropsRef.current ?? nextBottomNavProps
-    : nextBottomNavProps;
-  const frozenOverlayHeaderChromePropsRef = React.useRef<{
-    shouldMountSearchShortcuts: typeof shouldMountSearchShortcuts;
-    shouldEnableSearchShortcutsInteraction: typeof shouldEnableSearchShortcutsInteraction;
-    searchShortcutsAnimatedStyle: typeof searchShortcutsAnimatedStyle;
-    searchShortcutChipAnimatedStyle: typeof searchShortcutChipAnimatedStyle;
-    shouldShowSearchThisArea: typeof shouldShowSearchThisArea;
-    searchThisAreaTop: typeof searchThisAreaTop;
-    searchThisAreaAnimatedStyle: typeof searchThisAreaAnimatedStyle;
-  } | null>(null);
-  const nextOverlayHeaderChromeProps = {
-    shouldMountSearchShortcuts,
-    shouldEnableSearchShortcutsInteraction,
-    searchShortcutsAnimatedStyle,
-    searchShortcutChipAnimatedStyle,
-    shouldShowSearchThisArea,
-    searchThisAreaTop,
-    searchThisAreaAnimatedStyle,
-  };
-  if (!shouldFreezeDeferredChromeProps) {
-    frozenOverlayHeaderChromePropsRef.current = nextOverlayHeaderChromeProps;
-  }
-  const overlayHeaderChromePropsForRender = shouldFreezeDeferredChromeProps
-    ? frozenOverlayHeaderChromePropsRef.current ?? nextOverlayHeaderChromeProps
-    : nextOverlayHeaderChromeProps;
   return (
     <SearchRuntimeBusContext.Provider value={searchRuntimeBus}>
       <React.Profiler id="SearchScreen" onRender={handleProfilerRender}>
         <View style={styles.container}>
-          {isInitialCameraReady ? (
-            <React.Profiler id="SearchMapTree" onRender={handleProfilerRender}>
-              <SearchMapWithMarkerEngine
-                ref={markerEngineRef}
-                scoreMode={scoreMode}
-                restaurantOnlyId={restaurantOnlyId}
-                overlaySelectedRestaurantId={overlaySelectedRestaurantId}
-                viewportBoundsService={viewportBoundsService}
-                resolveRestaurantMapLocations={resolveRestaurantMapLocations}
-                resolveRestaurantLocationSelectionAnchor={resolveRestaurantLocationSelectionAnchor}
-                pickPreferredRestaurantMapLocation={pickPreferredRestaurantMapLocation}
-                getQualityColorFromScore={getQualityColorFromScore}
-                mapGestureActiveRef={mapGestureActiveRef}
-                shouldLogSearchComputes={shouldLogSearchComputes}
-                getPerfNow={getPerfNow}
-                logSearchCompute={logSearchCompute}
-                maxFullPins={MAX_FULL_PINS}
-                lodVisibleCandidateBuffer={LOD_VISIBLE_CANDIDATE_BUFFER}
-                lodPinToggleStableMsMoving={LOD_PIN_TOGGLE_STABLE_MS_MOVING}
-                lodPinToggleStableMsIdle={LOD_PIN_TOGGLE_STABLE_MS_IDLE}
-                lodPinOffscreenToggleStableMsMoving={LOD_PIN_OFFSCREEN_TOGGLE_STABLE_MS_MOVING}
-                mapQueryBudget={mapQueryBudget}
-                pendingMarkerOpenAnimationFrameRef={pendingMarkerOpenAnimationFrameRef}
-                forceRestaurantProfileMiddleSnapRef={forceRestaurantProfileMiddleSnapRef}
-                profileRuntimeController={profileRuntimeController}
-                mapRef={mapRef}
-                cameraRef={cameraRef}
-                styleURL={mapStyleURL}
-                mapCenter={mapCenter}
-                mapZoom={mapZoom ?? USA_FALLBACK_ZOOM}
-                cameraPadding={mapCameraPadding}
-                isFollowingUser={isFollowingUser}
-                onPress={stableHandleMapPress}
-                onTouchStart={handleMapTouchStart}
-                onTouchEnd={handleMapTouchEnd}
-                onNativeViewportChanged={stableHandleNativeViewportChanged}
-                onMapIdle={stableHandleMapIdle}
-                onMapLoaded={stableHandleMapLoaded}
-                onRevealBatchMountedHidden={stableHandleRevealBatchMountedHidden}
-                onMarkerRevealSettled={stableHandleMarkerRevealSettled}
-                onMarkerDismissStarted={stableHandleMarkerDismissStarted}
-                onMarkerDismissSettled={stableHandleMarkerDismissSettled}
-                isMapStyleReady={isMapStyleReady}
-                userLocation={userLocation}
-                locationPulse={locationPulse}
-                disableMarkers={shouldDisableMarkerViews}
-                disableBlur={shouldDisableSearchBlur}
-                onProfilerRender={handleProfilerRender}
-                onRuntimeMechanismEvent={emitRuntimeMechanismEvent}
-              />
-            </React.Profiler>
-          ) : (
-            <React.Profiler id="SearchMapPlaceholder" onRender={handleProfilerRender}>
-              <View pointerEvents="none" style={styles.mapPlaceholder} />
-            </React.Profiler>
-          )}
-          <SearchMapLoadingGrid mapLoadingAnimatedStyle={mapLoadingAnimatedStyle} />
+          <SearchMapStage
+            isInitialCameraReady={isInitialCameraReady}
+            ref={markerEngineRef}
+            scoreMode={scoreMode}
+            restaurantOnlyId={restaurantOnlyId}
+            overlaySelectedRestaurantId={overlaySelectedRestaurantId}
+            viewportBoundsService={viewportBoundsService}
+            resolveRestaurantMapLocations={resolveRestaurantMapLocations}
+            resolveRestaurantLocationSelectionAnchor={resolveRestaurantLocationSelectionAnchor}
+            pickPreferredRestaurantMapLocation={pickPreferredRestaurantMapLocation}
+            getQualityColorFromScore={getQualityColorFromScore}
+            mapGestureActiveRef={mapGestureActiveRef}
+            shouldLogSearchComputes={shouldLogSearchComputes}
+            getPerfNow={getPerfNow}
+            logSearchCompute={logSearchCompute}
+            maxFullPins={MAX_FULL_PINS}
+            lodVisibleCandidateBuffer={LOD_VISIBLE_CANDIDATE_BUFFER}
+            lodPinToggleStableMsMoving={LOD_PIN_TOGGLE_STABLE_MS_MOVING}
+            lodPinToggleStableMsIdle={LOD_PIN_TOGGLE_STABLE_MS_IDLE}
+            lodPinOffscreenToggleStableMsMoving={LOD_PIN_OFFSCREEN_TOGGLE_STABLE_MS_MOVING}
+            mapQueryBudget={mapQueryBudget}
+            pendingMarkerOpenAnimationFrameRef={pendingMarkerOpenAnimationFrameRef}
+            forceRestaurantProfileMiddleSnapRef={forceRestaurantProfileMiddleSnapRef}
+            profileRuntimeController={profileRuntimeController}
+            mapRef={mapRef}
+            cameraRef={cameraRef}
+            styleURL={mapStyleURL}
+            mapCenter={mapCenter}
+            mapZoom={mapZoom ?? USA_FALLBACK_ZOOM}
+            cameraPadding={mapCameraPadding}
+            isFollowingUser={isFollowingUser}
+            onPress={stableHandleMapPress}
+            onTouchStart={handleMapTouchStart}
+            onTouchEnd={handleMapTouchEnd}
+            onNativeViewportChanged={stableHandleNativeViewportChanged}
+            onMapIdle={stableHandleMapIdle}
+            onMapLoaded={stableHandleMapLoaded}
+            onMapFullyRendered={handleMainMapFullyRendered}
+            onRevealBatchMountedHidden={stableHandleRevealBatchMountedHidden}
+            onMarkerRevealStarted={stableHandleMarkerRevealStarted}
+            onMarkerRevealFirstVisibleFrame={stableHandleMarkerRevealFirstVisibleFrame}
+            onMarkerRevealSettled={stableHandleMarkerRevealSettled}
+            onMarkerDismissStarted={stableHandleMarkerDismissStarted}
+            onMarkerDismissSettled={stableHandleMarkerDismissSettled}
+            isMapStyleReady={isMapStyleReady}
+            userLocation={userLocation}
+            userLocationSnapshot={startupLocationSnapshot}
+            disableMarkers={shouldDisableMarkerViews}
+            disableBlur={shouldDisableSearchBlur}
+            onProfilerRender={handleProfilerRender}
+            onRuntimeMechanismEvent={emitRuntimeMechanismEvent}
+          />
           <SearchStatusBarFade statusBarFadeHeight={statusBarFadeHeight} />
           {shouldRenderSearchOverlay && (
             <>
-              <React.Profiler id="SearchOverlayChrome" onRender={handleProfilerRender}>
-                <SafeAreaView
-                  style={[
-                    styles.overlay,
-                    isSuggestionOverlayVisible
-                      ? { zIndex: shouldHideBottomNavForRender ? 200 : 110 }
-                      : null,
-                  ]}
-                  pointerEvents="box-none"
-                  edges={['top', 'left', 'right']}
-                >
-                  <SearchSuggestionSurface
-                    pointerEvents={isSuggestionOverlayVisible ? 'auto' : 'none'}
-                    searchSurfaceAnimatedStyle={searchSurfaceAnimatedStyle}
-                    shouldDisableSearchBlur={shouldDisableSearchBlur}
-                    shouldShowSuggestionSurface={shouldShowSuggestionSurface}
-                    resolvedSuggestionHeaderHoles={resolvedSuggestionHeaderHoles}
-                    suggestionHeaderHeightAnimatedStyle={suggestionHeaderHeightAnimatedStyle}
-                    suggestionPanelAnimatedStyle={suggestionPanelAnimatedStyle}
-                    shouldDriveSuggestionLayout={shouldDriveSuggestionLayout}
-                    shouldShowSuggestionBackground={shouldShowSuggestionBackground}
-                    suggestionTopFillHeight={suggestionTopFillHeight}
-                    suggestionScrollTopAnimatedStyle={suggestionScrollTopAnimatedStyle}
-                    suggestionScrollMaxHeightTarget={suggestionScrollMaxHeightTarget}
-                    suggestionScrollMaxHeightAnimatedStyle={suggestionScrollMaxHeightAnimatedStyle}
-                    searchLayoutTop={searchLayout.top}
-                    searchLayoutHeight={searchLayout.height}
-                    shouldHideBottomNav={shouldHideBottomNavForRender}
-                    navBarHeight={navBarHeight}
-                    bottomInset={bottomInset}
-                    onSuggestionScroll={suggestionScrollHandler}
-                    onSuggestionTouchStart={handleSuggestionTouchStart}
-                    onSuggestionContentSizeChange={handleSuggestionContentSizeChange}
-                    onSuggestionInteractionStart={handleSuggestionInteractionStart}
-                    onSuggestionInteractionEnd={handleSuggestionInteractionEnd}
-                    isSuggestionScreenActive={isSuggestionScreenActive}
-                    shouldRenderSuggestionPanel={shouldRenderSuggestionPanel}
-                    shouldRenderAutocompleteSection={shouldRenderAutocompleteSection}
-                    shouldRenderRecentSection={shouldRenderRecentSection}
-                    suggestionDisplaySuggestions={
-                      suggestionSurfacePropsForRender.suggestionDisplaySuggestions
-                    }
-                    recentSearchesDisplay={suggestionSurfacePropsForRender.recentSearchesDisplay}
-                    recentlyViewedRestaurantsDisplay={
-                      suggestionSurfacePropsForRender.recentlyViewedRestaurantsDisplay
-                    }
-                    recentlyViewedFoodsDisplay={
-                      suggestionSurfacePropsForRender.recentlyViewedFoodsDisplay
-                    }
-                    hasRecentSearchesDisplay={
-                      suggestionSurfacePropsForRender.hasRecentSearchesDisplay
-                    }
-                    hasRecentlyViewedRestaurantsDisplay={
-                      suggestionSurfacePropsForRender.hasRecentlyViewedRestaurantsDisplay
-                    }
-                    hasRecentlyViewedFoodsDisplay={
-                      suggestionSurfacePropsForRender.hasRecentlyViewedFoodsDisplay
-                    }
-                    isRecentLoadingDisplay={suggestionSurfacePropsForRender.isRecentLoadingDisplay}
-                    isRecentlyViewedLoadingDisplay={
-                      suggestionSurfacePropsForRender.isRecentlyViewedLoadingDisplay
-                    }
-                    isRecentlyViewedFoodsLoadingDisplay={
-                      suggestionSurfacePropsForRender.isRecentlyViewedFoodsLoadingDisplay
-                    }
-                    onSuggestionPress={handleSuggestionPress}
-                    onRecentSearchPress={handleRecentSearchPress}
-                    onRecentlyViewedRestaurantPress={handleRecentlyViewedRestaurantPress}
-                    onRecentlyViewedFoodPress={handleRecentlyViewedFoodPress}
-                    onRecentViewMorePress={handleRecentViewMorePress}
-                    onRecentlyViewedMorePress={handleRecentlyViewedMorePress}
-                    suggestionHeaderDividerAnimatedStyle={suggestionHeaderDividerAnimatedStyle}
-                  />
-                  <SearchOverlayHeaderChrome
-                    handleSearchContainerLayout={handleSearchContainerLayout}
-                    headerVisualModel={headerVisualModel}
-                    shouldShowAutocompleteSpinnerInBar={shouldShowAutocompleteSpinnerInBar}
-                    handleQueryChange={handleQueryChange}
-                    handleSubmit={handleSubmit}
-                    handleSearchFocus={handleSearchFocus}
-                    handleSearchBlur={handleSearchBlur}
-                    handleClear={handleClear}
-                    focusSearchInput={focusSearchInput}
-                    handleSearchPressIn={handleSearchPressIn}
-                    handleSearchBack={handleSearchBack}
-                    handleSearchHeaderLayout={handleSearchHeaderLayout}
-                    inputRef={inputRef}
-                    searchBarInputAnimatedStyle={searchBarInputAnimatedStyle}
-                    searchBarContainerAnimatedStyle={searchBarContainerAnimatedStyle}
-                    isSuggestionScrollDismissing={isSuggestionScrollDismissing}
-                    searchHeaderFocusProgress={searchHeaderFocusProgress}
-                    shouldMountSearchShortcuts={
-                      overlayHeaderChromePropsForRender.shouldMountSearchShortcuts
-                    }
-                    shouldEnableSearchShortcutsInteraction={
-                      overlayHeaderChromePropsForRender.shouldEnableSearchShortcutsInteraction
-                    }
-                    searchShortcutsAnimatedStyle={
-                      overlayHeaderChromePropsForRender.searchShortcutsAnimatedStyle
-                    }
-                    searchShortcutChipAnimatedStyle={
-                      overlayHeaderChromePropsForRender.searchShortcutChipAnimatedStyle
-                    }
-                    handleBestRestaurantsHere={handleBestRestaurantsHere}
-                    handleBestDishesHere={handleBestDishesHere}
-                    handleSearchShortcutsRowLayout={handleSearchShortcutsRowLayout}
-                    handleRestaurantsShortcutLayout={handleRestaurantsShortcutLayout}
-                    handleDishesShortcutLayout={handleDishesShortcutLayout}
-                    shouldShowSearchThisArea={
-                      overlayHeaderChromePropsForRender.shouldShowSearchThisArea
-                    }
-                    searchThisAreaTop={overlayHeaderChromePropsForRender.searchThisAreaTop}
-                    searchThisAreaAnimatedStyle={
-                      overlayHeaderChromePropsForRender.searchThisAreaAnimatedStyle
-                    }
-                    handleSearchThisArea={handleSearchThisArea}
-                  />
-                </SafeAreaView>
-              </React.Profiler>
-              <SearchResultsSheetTree
-                searchPanelSpecArgs={searchResultsPanelSpecArgs}
-                overlayPanelsArgs={searchOverlayPanelsArgs}
-                shouldFreezeOverlaySheetProps={false}
-                shouldFreezeOverlayHeaderActionMode={shouldFreezeDeferredChromeProps}
-                searchInteractionContextValue={searchInteractionContextValue}
-                sheetTranslateY={sheetTranslateY}
-                resultsScrollOffset={resultsScrollOffset}
-                resultsMomentum={resultsMomentum}
-                overlayHeaderActionProgress={overlayHeaderActionProgress}
-                navBarCutoutHeight={navBarCutoutHeight}
-                bottomNavHideProgress={bottomNavVisualProgress}
-                bottomNavHiddenTranslateY={bottomNavHiddenTranslateY}
-                shouldHideBottomNav={shouldHideBottomNavForRender}
+              <SearchOverlayChromeTree
+                shouldFreezeSuggestionSurfaceForRunOne={shouldFreezeSuggestionSurfaceForRunOne}
+                shouldFreezeOverlayHeaderChromeForRunOne={shouldFreezeOverlayHeaderChromeForRunOne}
+                overlayContainerStyle={{
+                  paddingTop: insets.top,
+                  paddingLeft: insets.left,
+                  paddingRight: insets.right,
+                }}
+                isSuggestionOverlayVisible={isSuggestionOverlayVisible}
+                shouldHideBottomNavForRender={shouldHideBottomNavForRender}
+                suggestionSurfaceProps={{
+                  pointerEvents: isSuggestionOverlayVisible ? 'auto' : 'none',
+                  searchSurfaceAnimatedStyle,
+                  shouldDisableSearchBlur,
+                  shouldShowSuggestionSurface,
+                  resolvedSuggestionHeaderHoles,
+                  suggestionHeaderHeightAnimatedStyle,
+                  suggestionPanelAnimatedStyle,
+                  shouldDriveSuggestionLayout,
+                  shouldShowSuggestionBackground,
+                  suggestionTopFillHeight,
+                  suggestionScrollTopAnimatedStyle,
+                  suggestionScrollMaxHeightTarget,
+                  suggestionScrollMaxHeightAnimatedStyle,
+                  searchLayoutTop: searchLayout.top,
+                  searchLayoutHeight: searchLayout.height,
+                  shouldHideBottomNav: shouldHideBottomNavForRender,
+                  navBarHeight,
+                  bottomInset,
+                  onSuggestionScroll: suggestionScrollHandler,
+                  onSuggestionTouchStart: handleSuggestionTouchStart,
+                  onSuggestionContentSizeChange: handleSuggestionContentSizeChange,
+                  onSuggestionInteractionStart: handleSuggestionInteractionStart,
+                  onSuggestionInteractionEnd: handleSuggestionInteractionEnd,
+                  isSuggestionScreenActive,
+                  shouldRenderSuggestionPanel,
+                  shouldRenderAutocompleteSection,
+                  shouldRenderRecentSection,
+                  suggestionDisplaySuggestions,
+                  recentSearchesDisplay,
+                  recentlyViewedRestaurantsDisplay,
+                  recentlyViewedFoodsDisplay,
+                  hasRecentSearchesDisplay,
+                  hasRecentlyViewedRestaurantsDisplay,
+                  hasRecentlyViewedFoodsDisplay,
+                  isRecentLoadingDisplay,
+                  isRecentlyViewedLoadingDisplay,
+                  isRecentlyViewedFoodsLoadingDisplay,
+                  onSuggestionPress: handleSuggestionPress,
+                  onRecentSearchPress: handleRecentSearchPress,
+                  onRecentlyViewedRestaurantPress: handleRecentlyViewedRestaurantPress,
+                  onRecentlyViewedFoodPress: handleRecentlyViewedFoodPress,
+                  onRecentViewMorePress: handleRecentViewMorePress,
+                  onRecentlyViewedMorePress: handleRecentlyViewedMorePress,
+                  suggestionHeaderDividerAnimatedStyle,
+                }}
+                headerChromeProps={{
+                  handleSearchContainerLayout,
+                  headerVisualModel,
+                  shouldShowAutocompleteSpinnerInBar,
+                  handleQueryChange,
+                  handleSubmit,
+                  handleSearchFocus,
+                  handleSearchBlur,
+                  handleClear,
+                  focusSearchInput,
+                  handleSearchPressIn,
+                  handleSearchBack,
+                  handleSearchHeaderLayout,
+                  inputRef,
+                  searchBarInputAnimatedStyle,
+                  searchBarContainerAnimatedStyle,
+                  isSuggestionScrollDismissing,
+                  searchHeaderFocusProgress,
+                  shouldMountSearchShortcuts,
+                  shouldEnableSearchShortcutsInteraction,
+                  searchShortcutsAnimatedStyle,
+                  searchShortcutChipAnimatedStyle,
+                  handleBestRestaurantsHere,
+                  handleBestDishesHere,
+                  handleSearchShortcutsRowLayout,
+                  handleRestaurantsShortcutLayout,
+                  handleDishesShortcutLayout,
+                  shouldShowSearchThisArea,
+                  searchThisAreaTop,
+                  searchThisAreaAnimatedStyle,
+                  handleSearchThisArea,
+                }}
+                hiddenSearchFiltersWarmupProps={
+                  !isSearchFiltersLayoutWarm
+                    ? {
+                        activeTab,
+                        onTabChange: () => undefined,
+                        rankButtonLabel: rankButtonLabelText,
+                        rankButtonActive: rankButtonIsActive,
+                        onToggleRankSelector: () => undefined,
+                        isRankSelectorVisible: false,
+                        openNow,
+                        onToggleOpenNow: () => undefined,
+                        votesFilterActive,
+                        onToggleVotesFilter: () => undefined,
+                        priceButtonLabel: priceButtonLabelText,
+                        priceButtonActive: priceButtonIsActive,
+                        onTogglePriceSelector: () => undefined,
+                        isPriceSelectorVisible: false,
+                        contentHorizontalPadding: CONTENT_HORIZONTAL_PADDING,
+                        accentColor: ACTIVE_TAB_COLOR,
+                        initialLayoutCache: searchFiltersLayoutCacheRef.current,
+                        onLayoutCacheChange: handleSearchFiltersLayoutCache,
+                      }
+                    : null
+                }
                 onProfilerRender={handleProfilerRender}
               />
+              <SearchSheetVisualProvider value={searchSheetVisualContextValue}>
+                <SearchResultsSheetTree
+                  shouldFreezeOverlaySheetForCloseHandoff={shouldFreezeOverlaySheetForCloseHandoff}
+                  shouldFreezeOverlayHeaderActionForRunOne={
+                    shouldFreezeOverlayHeaderChromeForRunOne
+                  }
+                  searchInteractionContextValue={searchInteractionContextValue}
+                  onProfilerRender={handleProfilerRender}
+                  pollCreationPanelSpec={pollCreationPanelSpec}
+                  shouldShowRestaurantOverlay={shouldShowRestaurantOverlay}
+                  shouldShowPollsSheet={shouldShowPollsSheet}
+                  shouldRenderResultsSheet={shouldRenderResultsSheet}
+                  searchSheetContentLane={searchSheetContentLane}
+                  isDockedPollsDismissed={isDockedPollsDismissed}
+                  isSuggestionPanelActive={isSuggestionPanelActive}
+                  isForegroundEditing={inputMode === 'editing'}
+                  searchHeaderActionModeOverride={searchHeaderActionModeOverride}
+                  setSearchHeaderActionModeOverride={setSearchHeaderActionModeOverride}
+                  handleResultsSheetDragStateChange={handleResultsSheetDragStateChange}
+                  handleResultsSheetSettlingChange={handleResultsSheetSettlingChange}
+                  pollsPanelOptions={pollsPanelOptions}
+                  bookmarksPanelOptions={bookmarksPanelOptions}
+                  profilePanelOptions={profilePanelOptions}
+                  restaurantPanelBaseOptions={restaurantPanelBaseOptions}
+                  restaurantSnapRequest={restaurantSnapRequest}
+                  handleRestaurantOverlaySnapStart={handleRestaurantOverlaySnapStart}
+                  handleRestaurantOverlaySnapChange={handleRestaurantOverlaySnapChange}
+                  saveListPanelOptions={saveListPanelOptions}
+                  scheduleTabToggleCommit={scheduleTabToggleCommit}
+                  toggleRankSelector={toggleRankSelector}
+                  toggleOpenNow={toggleOpenNow}
+                  toggleVotesFilter={toggleVotesFilter}
+                  togglePriceSelector={togglePriceSelector}
+                  shouldDisableSearchBlur={shouldDisableSearchBlur}
+                  searchFiltersLayoutCacheRef={searchFiltersLayoutCacheRef}
+                  handleSearchFiltersLayoutCache={handleSearchFiltersLayoutCache}
+                  searchInteractionRef={searchInteractionRef}
+                  mapQueryBudget={mapQueryBudget}
+                  handleCloseResults={handleCloseResults}
+                  overlayHeaderActionProgress={overlayHeaderActionProgress}
+                  headerDividerAnimatedStyle={headerDividerAnimatedStyle}
+                  shouldLogResultsViewability={shouldLogResultsViewability}
+                  scoreMode={scoreMode}
+                  getDishSaveHandler={getDishSaveHandler}
+                  getRestaurantSaveHandler={getRestaurantSaveHandler}
+                  stableOpenRestaurantProfileFromResults={stableOpenRestaurantProfileFromResults}
+                  openScoreInfo={openScoreInfo}
+                  onRuntimeMechanismEvent={emitRuntimeMechanismEvent}
+                  phaseBMaterializerRef={phaseBMaterializerRef}
+                  resultsWashAnimatedStyle={resultsWashAnimatedStyle}
+                  resultsContainerAnimatedStyle={resultsContainerAnimatedStyle}
+                  resultsSheetVisibilityAnimatedStyle={resultsSheetVisibilityAnimatedStyle}
+                  shouldDisableResultsSheetInteraction={shouldDisableResultsSheetInteraction}
+                  snapPoints={snapPoints}
+                  sheetState={sheetState}
+                  resultsSheetMotionCommand={resultsSheetMotionCommand}
+                  handleResultsSheetSnapStart={handleResultsSheetSnapStart}
+                  handleResultsListScrollBegin={handleResultsListScrollBegin}
+                  handleResultsListScrollEnd={handleResultsListScrollEnd}
+                  handleResultsListMomentumBegin={handleResultsListMomentumBegin}
+                  handleResultsListMomentumEnd={handleResultsListMomentumEnd}
+                  handleResultsEndReached={handleResultsEndReached}
+                  handleResultsSheetSnapChange={handleResultsSheetSnapChange}
+                  resetSheetToHidden={resetSheetToHidden}
+                  resultsScrollRef={resultsScrollRef}
+                />
+              </SearchSheetVisualProvider>
             </>
           )}
           <React.Profiler id="BottomNav" onRender={handleProfilerRender}>
             <SearchBottomNav
               bottomNavAnimatedStyle={bottomNavAnimatedStyle}
-              shouldHideBottomNav={bottomNavPropsForRender.shouldHideBottomNav}
+              shouldHideBottomNav={shouldHideBottomNavForRender}
               bottomInset={bottomInset}
               handleBottomNavLayout={handleBottomNavLayout}
-              shouldDisableSearchBlur={bottomNavPropsForRender.shouldDisableSearchBlur}
+              shouldDisableSearchBlur={shouldDisableSearchBlur}
               navItems={SEARCH_BOTTOM_NAV_ITEMS}
-              rootOverlay={bottomNavPropsForRender.rootOverlay}
+              rootOverlay={rootOverlay}
               navIconRenderers={navIconRenderers}
-              handleProfilePress={bottomNavPropsForRender.handleProfilePress}
-              handleOverlaySelect={bottomNavPropsForRender.handleOverlaySelect}
+              handleProfilePress={handleProfilePress}
+              handleOverlaySelect={handleOverlaySelect}
               bottomNavItemVisibilityAnimatedStyle={bottomNavItemVisibilityAnimatedStyle}
             />
           </React.Profiler>

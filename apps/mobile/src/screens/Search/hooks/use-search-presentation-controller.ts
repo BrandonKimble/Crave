@@ -15,6 +15,7 @@ export type SearchSheetContentLane =
 type SearchCloseTransitionState = {
   closeIntentId: string;
   mapDismissSettled: boolean;
+  sheetCollapsedReached: boolean;
   sheetCollapsedSettled: boolean;
 } | null;
 
@@ -24,6 +25,7 @@ export type SearchPresentationIntent =
       kind: 'shortcut_submit';
       query: string;
       targetTab: 'restaurants' | 'dishes';
+      revealMode: 'fresh_reveal' | 'in_place_rerun';
       preserveSheetState?: boolean;
       transitionFromDockedPolls?: boolean;
     }
@@ -31,6 +33,7 @@ export type SearchPresentationIntent =
       kind: 'manual_submit' | 'autocomplete_submit' | 'recent_submit' | 'search_this_area';
       query: string;
       targetTab?: 'restaurants' | 'dishes';
+      revealMode: 'fresh_reveal' | 'in_place_rerun';
       preserveSheetState?: boolean;
       transitionFromDockedPolls?: boolean;
     }
@@ -50,8 +53,8 @@ export type SearchHeaderVisualModel = {
 type MapPresentationTargetOptions = {
   target: SearchBackdropTarget;
   kind?: 'initial_search' | 'shortcut_rerun' | 'close_search';
-  preserveSheetState?: boolean;
   requiresCoverage?: boolean;
+  revealMode?: 'fresh_reveal' | 'in_place_rerun' | 'close';
 };
 
 type ArmSearchCloseRestoreOptions = {
@@ -89,8 +92,11 @@ type UseSearchPresentationControllerResult = {
   defaultChromeProgress: SharedValue<number>;
   headerVisualModel: SearchHeaderVisualModel;
   searchSheetContentLane: SearchSheetContentLane;
+  isCloseTransitionActive: boolean;
+  isCloseCollapsedReached: boolean;
   requestIntent: (intent: SearchPresentationIntent) => string | null;
   markMapTargetSettled: (requestKey: string) => void;
+  markSheetCollapsedReached: (snap: OverlaySheetSnap) => void;
   markSheetSettled: (snap: OverlaySheetSnap) => void;
   cancelActiveClose: (closeIntentId?: string) => void;
 };
@@ -189,6 +195,7 @@ export const useSearchPresentationController = ({
       setSearchCloseTransitionState({
         closeIntentId,
         mapDismissSettled: false,
+        sheetCollapsedReached: false,
         sheetCollapsedSettled: false,
       });
       animateSheetTo('collapsed');
@@ -217,6 +224,29 @@ export const useSearchPresentationController = ({
     [finalizeClose]
   );
 
+  const markSheetCollapsedReached = React.useCallback((snap: OverlaySheetSnap) => {
+    if (snap !== 'collapsed') {
+      return;
+    }
+    const activeCloseIntentId = activeCloseIntentIdRef.current;
+    if (!activeCloseIntentId) {
+      return;
+    }
+    setSearchCloseTransitionState((current) => {
+      if (
+        !current ||
+        current.closeIntentId !== activeCloseIntentId ||
+        current.sheetCollapsedReached
+      ) {
+        return current;
+      }
+      return {
+        ...current,
+        sheetCollapsedReached: true,
+      };
+    });
+  }, []);
+
   const markSheetSettled = React.useCallback(
     (snap: OverlaySheetSnap) => {
       if (snap !== 'collapsed') {
@@ -229,8 +259,9 @@ export const useSearchPresentationController = ({
       if (hasArmedRestoreRef.current && !hasCommittedRestoreRef.current) {
         hasCommittedRestoreRef.current = commitSearchCloseRestore();
       }
+      // Keep the results-closing owner mounted until the full close finalizes.
+      // Flipping to the persistent-poll lane here mutates the sheet tree mid-dismiss.
       holdPersistentPollLaneRef.current = true;
-      setSearchSheetContentLane({ kind: 'persistent_poll' });
       let nextState: SearchCloseTransitionState = null;
       setSearchCloseTransitionState((current) => {
         if (
@@ -243,6 +274,7 @@ export const useSearchPresentationController = ({
         }
         nextState = {
           ...current,
+          sheetCollapsedReached: true,
           sheetCollapsedSettled: true,
         };
         return nextState;
@@ -354,6 +386,7 @@ export const useSearchPresentationController = ({
           const closeIntentId = requestMapPresentationTarget({
             target: 'default',
             kind: 'close_search',
+            revealMode: 'close',
           });
           beginClose(closeIntentId);
           return closeIntentId;
@@ -380,9 +413,9 @@ export const useSearchPresentationController = ({
           return requestMapPresentationTarget({
             target: 'results',
             kind: revealKind,
-            preserveSheetState: intent.preserveSheetState,
             requiresCoverage:
               intent.kind === 'shortcut_submit' || intent.kind === 'search_this_area',
+            revealMode: intent.revealMode,
           });
         }
       }
@@ -455,8 +488,11 @@ export const useSearchPresentationController = ({
     defaultChromeProgress,
     headerVisualModel,
     searchSheetContentLane,
+    isCloseTransitionActive: searchCloseTransitionState != null,
+    isCloseCollapsedReached: Boolean(searchCloseTransitionState?.sheetCollapsedReached),
     requestIntent,
     markMapTargetSettled: markMapDismissSettled,
+    markSheetCollapsedReached,
     markSheetSettled,
     cancelActiveClose: cancelClose,
   };

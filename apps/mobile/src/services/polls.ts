@@ -1,5 +1,6 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from './api';
-import type { MapBounds } from '../types';
+import type { Coordinate, MapBounds } from '../types';
 
 export interface PollOption {
   optionId: string;
@@ -53,7 +54,31 @@ export type PollQueryResponse = {
 export type PollQueryPayload = {
   coverageKey?: string;
   bounds?: MapBounds | null;
+  fallbackLocation?: Coordinate | null;
   state?: string;
+};
+
+export type PollFeedSource = 'cache' | 'network';
+
+export type PollBootstrapSnapshot = {
+  coverageKey: string | null;
+  coverageName: string | null;
+  polls: Poll[];
+  resolvedAtMs: number;
+  source: PollFeedSource;
+};
+
+type PersistedPollBootstrapCache = {
+  byCoverageKey: Record<
+    string,
+    {
+      coverageKey: string;
+      coverageName: string | null;
+      polls: Poll[];
+      resolvedAtMs: number;
+    }
+  >;
+  lastCoverageKey: string | null;
 };
 
 export type CreatePollPayload = {
@@ -134,6 +159,127 @@ const normalizePoll = (payload: unknown): Poll | null => {
     }
   }
   return null;
+};
+
+const POLL_BOOTSTRAP_CACHE_STORAGE_KEY = 'polls:bootstrap-cache:v1';
+const POLL_BOOTSTRAP_CACHE_TTL_MS = 30 * 60 * 1000;
+const POLL_BOOTSTRAP_CACHE_MAX_ENTRIES = 12;
+let pollBootstrapCacheMemory: PersistedPollBootstrapCache | null = null;
+
+export const normalizePollCoverageKey = (value: string | null | undefined): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+};
+
+export const createNetworkPollBootstrapSnapshot = (
+  response: PollQueryResponse,
+  resolvedAtMs: number = Date.now()
+): PollBootstrapSnapshot => ({
+  coverageKey: normalizePollCoverageKey(response.coverageKey),
+  coverageName:
+    typeof response.coverageName === 'string' && response.coverageName.trim()
+      ? response.coverageName.trim()
+      : null,
+  polls: response.polls ?? [],
+  resolvedAtMs,
+  source: 'network',
+});
+
+const buildPollBootstrapSnapshot = (entry: {
+  coverageKey: string;
+  coverageName: string | null;
+  polls: Poll[];
+  resolvedAtMs: number;
+}): PollBootstrapSnapshot => ({
+  coverageKey: entry.coverageKey,
+  coverageName: entry.coverageName,
+  polls: entry.polls,
+  resolvedAtMs: entry.resolvedAtMs,
+  source: 'cache',
+});
+
+const readPollBootstrapCache = async (): Promise<PersistedPollBootstrapCache> => {
+  if (pollBootstrapCacheMemory) {
+    return pollBootstrapCacheMemory;
+  }
+
+  try {
+    const raw = await AsyncStorage.getItem(POLL_BOOTSTRAP_CACHE_STORAGE_KEY);
+    if (!raw) {
+      pollBootstrapCacheMemory = { byCoverageKey: {}, lastCoverageKey: null };
+      return pollBootstrapCacheMemory;
+    }
+    const parsed = JSON.parse(raw) as PersistedPollBootstrapCache;
+    pollBootstrapCacheMemory = {
+      byCoverageKey: parsed?.byCoverageKey ?? {},
+      lastCoverageKey: normalizePollCoverageKey(parsed?.lastCoverageKey) ?? null,
+    };
+    return pollBootstrapCacheMemory;
+  } catch {
+    pollBootstrapCacheMemory = { byCoverageKey: {}, lastCoverageKey: null };
+    return pollBootstrapCacheMemory;
+  }
+};
+
+const persistPollBootstrapCache = async (cache: PersistedPollBootstrapCache): Promise<void> => {
+  pollBootstrapCacheMemory = cache;
+  try {
+    await AsyncStorage.setItem(POLL_BOOTSTRAP_CACHE_STORAGE_KEY, JSON.stringify(cache));
+  } catch {
+    // ignore cache persistence failures
+  }
+};
+
+export const readPollBootstrapSnapshotForCoverage = async (
+  coverageKey: string
+): Promise<PollBootstrapSnapshot | null> => {
+  const normalizedKey = normalizePollCoverageKey(coverageKey);
+  if (!normalizedKey) {
+    return null;
+  }
+  const cache = await readPollBootstrapCache();
+  const entry = cache.byCoverageKey[normalizedKey];
+  if (!entry) {
+    return null;
+  }
+  if (Date.now() - entry.resolvedAtMs > POLL_BOOTSTRAP_CACHE_TTL_MS) {
+    delete cache.byCoverageKey[normalizedKey];
+    if (cache.lastCoverageKey === normalizedKey) {
+      cache.lastCoverageKey = null;
+    }
+    await persistPollBootstrapCache(cache);
+    return null;
+  }
+  return buildPollBootstrapSnapshot(entry);
+};
+
+export const writePollBootstrapSnapshot = async (
+  snapshot: PollBootstrapSnapshot
+): Promise<void> => {
+  const normalizedKey = normalizePollCoverageKey(snapshot.coverageKey);
+  if (!normalizedKey) {
+    return;
+  }
+  const cache = await readPollBootstrapCache();
+  cache.byCoverageKey[normalizedKey] = {
+    coverageKey: normalizedKey,
+    coverageName: snapshot.coverageName,
+    polls: snapshot.polls,
+    resolvedAtMs: snapshot.resolvedAtMs,
+  };
+  cache.lastCoverageKey = normalizedKey;
+
+  const sortedKeys = Object.keys(cache.byCoverageKey).sort((left, right) => {
+    return cache.byCoverageKey[right]!.resolvedAtMs - cache.byCoverageKey[left]!.resolvedAtMs;
+  });
+  for (const staleKey of sortedKeys.slice(POLL_BOOTSTRAP_CACHE_MAX_ENTRIES)) {
+    delete cache.byCoverageKey[staleKey];
+  }
+
+  await persistPollBootstrapCache(cache);
 };
 
 export const fetchPolls = async (payload: PollQueryPayload): Promise<PollQueryResponse> => {

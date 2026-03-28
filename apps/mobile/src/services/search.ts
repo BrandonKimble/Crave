@@ -77,11 +77,65 @@ type RequestOptions = {
   debugMinMs?: number;
 };
 
+type CachedSearchEntry<T> = {
+  expiresAt: number;
+  promise: Promise<T>;
+};
+
+const SEARCH_CACHE_TTL_MS = 45 * 1000;
+const naturalSearchCache = new Map<string, CachedSearchEntry<SearchResponse>>();
+const structuredSearchCache = new Map<string, CachedSearchEntry<SearchResponse>>();
+const restaurantProfileCache = new Map<string, CachedSearchEntry<RestaurantProfile>>();
+
 const getPerfNow = () => {
   if (typeof performance?.now === 'function') {
     return performance.now();
   }
   return Date.now();
+};
+
+const normalizeSearchCacheValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    const normalized = value
+      .map((item) => normalizeSearchCacheValue(item))
+      .filter((item) => item !== undefined);
+    return normalized.length > 0 ? normalized : undefined;
+  }
+  if (value && typeof value === 'object') {
+    const normalizedEntries = Object.entries(value as Record<string, unknown>)
+      .map(([key, entryValue]) => [key, normalizeSearchCacheValue(entryValue)] as const)
+      .filter(([, entryValue]) => entryValue !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right));
+    if (!normalizedEntries.length) {
+      return undefined;
+    }
+    return Object.fromEntries(normalizedEntries);
+  }
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  return value;
+};
+
+const buildSearchCacheKey = (payload: unknown): string =>
+  JSON.stringify(normalizeSearchCacheValue(payload) ?? {});
+
+const getCachedRequest = <T>(
+  cache: Map<string, CachedSearchEntry<T>>,
+  key: string,
+  load: () => Promise<T>
+): Promise<T> => {
+  const now = Date.now();
+  const existing = cache.get(key);
+  if (existing && existing.expiresAt > now) {
+    return existing.promise;
+  }
+  const promise = load().catch((error) => {
+    cache.delete(key);
+    throw error;
+  });
+  cache.set(key, { expiresAt: now + SEARCH_CACHE_TTL_MS, promise });
+  return promise;
 };
 
 const buildDebugTransform = (label: string, minMs: number) => [
@@ -105,27 +159,39 @@ export const searchService = {
     payload: NaturalSearchRequest,
     options: RequestOptions = {}
   ): Promise<SearchResponse> => {
-    const transformResponse = options.debugParse
-      ? buildDebugTransform(options.debugLabel ?? 'natural', options.debugMinMs ?? 0)
-      : undefined;
-    const { data } = await api.post<SearchResponse>('/search/natural', payload, {
-      signal: options.signal,
-      transformResponse,
+    const cacheKey = buildSearchCacheKey({
+      kind: 'natural',
+      payload,
     });
-    return data;
+    return getCachedRequest(naturalSearchCache, cacheKey, async () => {
+      const transformResponse = options.debugParse
+        ? buildDebugTransform(options.debugLabel ?? 'natural', options.debugMinMs ?? 0)
+        : undefined;
+      const { data } = await api.post<SearchResponse>('/search/natural', payload, {
+        signal: options.signal,
+        transformResponse,
+      });
+      return data;
+    });
   },
   structuredSearch: async (
     payload: StructuredSearchRequest,
     options: RequestOptions = {}
   ): Promise<SearchResponse> => {
-    const transformResponse = options.debugParse
-      ? buildDebugTransform(options.debugLabel ?? 'structured', options.debugMinMs ?? 0)
-      : undefined;
-    const { data } = await api.post<SearchResponse>('/search/run', payload, {
-      signal: options.signal,
-      transformResponse,
+    const cacheKey = buildSearchCacheKey({
+      kind: 'structured',
+      payload,
     });
-    return data;
+    return getCachedRequest(structuredSearchCache, cacheKey, async () => {
+      const transformResponse = options.debugParse
+        ? buildDebugTransform(options.debugLabel ?? 'structured', options.debugMinMs ?? 0)
+        : undefined;
+      const { data } = await api.post<SearchResponse>('/search/run', payload, {
+        signal: options.signal,
+        transformResponse,
+      });
+      return data;
+    });
   },
   shortcutCoverage: async (payload: {
     entities?: StructuredSearchRequest['entities'];
@@ -141,10 +207,12 @@ export const searchService = {
     return data;
   },
   restaurantProfile: async (restaurantId: string): Promise<RestaurantProfile> => {
-    const { data } = await api.get<RestaurantProfile>(
-      `/search/restaurants/${restaurantId}/profile`
-    );
-    return data;
+    return getCachedRequest(restaurantProfileCache, restaurantId, async () => {
+      const { data } = await api.get<RestaurantProfile>(
+        `/search/restaurants/${restaurantId}/profile`
+      );
+      return data;
+    });
   },
   recentHistory: async (limit = 8): Promise<RecentSearch[]> => {
     const { data } = await api.get<RecentSearch[]>('/search/history', {

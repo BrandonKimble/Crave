@@ -167,11 +167,9 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
     }
 
     if (badge && badgeLayout && badgeLayout.width > 0 && badgeLayout.height > 0) {
-      const rowX = paddingHorizontal;
-      const rowY = headerRowY;
       const rect = {
-        x: rowX + badgeLayout.x - badgePadding,
-        y: rowY + badgeLayout.y - badgePadding + badgeYOffset + maskPadding,
+        x: paddingHorizontal + badgeLayout.x - badgePadding,
+        y: headerRowY + badgeLayout.y - badgePadding + badgeYOffset + maskPadding,
         width: badgeLayout.width + badgePadding * 2,
         height: badgeLayout.height + badgePadding * 2,
       };
@@ -230,7 +228,7 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
     <View style={overlaySheetStyles.grabHandleWrapper}>
       {onGrabHandlePress ? (
         <Pressable
-          onPress={onGrabHandlePress}
+          onPressOut={onGrabHandlePress}
           accessibilityRole="button"
           accessibilityLabel={grabHandleAccessibilityLabel}
           hitSlop={10}

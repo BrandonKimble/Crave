@@ -1,10 +1,8 @@
 import React from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { MapState as MapboxMapState } from '@rnmapbox/maps';
 
 import type { AutocompleteMatch } from '../../../../services/autocomplete';
 import type { MapBounds } from '../../../../types';
-import { CAMERA_STORAGE_KEY } from '../../constants/search';
 import {
   getBoundsCenter,
   haversineDistanceMiles,
@@ -390,7 +388,6 @@ export const useMapInteractionController = (
         return;
       }
       lastPersistedCameraRef.current = payload;
-      void AsyncStorage.setItem(CAMERA_STORAGE_KEY, payload).catch(() => undefined);
     },
     [
       anySheetDraggingRef,

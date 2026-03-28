@@ -453,53 +453,69 @@ export class EntityTextSearchService {
       ) AS v(term, prefix_pattern, similarity_threshold, term_index)
       CROSS JOIN LATERAL (
         SELECT
-          e.entity_id AS "entityId",
-          e.name AS "name",
-          e.type AS "type",
-          CASE WHEN lower(e.name) = v.term THEN 1 ELSE 0 END AS "exactHit",
-          similarity(lower(e.name), v.term) AS "nameSimilarity",
-          similarity(crave_aliases_haystack_lower(e.aliases), v.term) AS "aliasSimilarity",
-          ts_rank_cd(
-            crave_entity_search_tsv(e.name::text, e.aliases),
-            websearch_to_tsquery('simple', v.term)
-          ) AS "ftsRank",
-          CASE WHEN lower(e.name) LIKE v.prefix_pattern THEN 1 ELSE 0 END AS "prefixHit",
-          CASE
-            WHEN to_tsvector('simple', lower(e.name)) @@
+          scored."entityId",
+          scored."name",
+          scored."type",
+          scored."exactHit",
+          scored."nameSimilarity",
+          scored."aliasSimilarity",
+          scored."ftsRank",
+          scored."prefixHit",
+          scored."nameFtsHit",
+          scored."aliasTrgmHit",
+          scored."phoneticMatch",
+          scored."restaurantQualityScore",
+          scored."generalPraiseUpvotes"
+        FROM (
+          SELECT
+            e.entity_id AS "entityId",
+            e.name AS "name",
+            e.type AS "type",
+            CASE WHEN lower(e.name) = v.term THEN 1 ELSE 0 END AS "exactHit",
+            similarity(lower(e.name), v.term) AS "nameSimilarity",
+            similarity(crave_aliases_haystack_lower(e.aliases), v.term) AS "aliasSimilarity",
+            ts_rank_cd(
+              crave_entity_search_tsv(e.name::text, e.aliases),
               websearch_to_tsquery('simple', v.term)
-              THEN 1
-            ELSE 0
-          END AS "nameFtsHit",
-          CASE WHEN crave_aliases_haystack_lower(e.aliases) % v.term THEN 1 ELSE 0 END AS "aliasTrgmHit",
-          0 AS "phoneticMatch",
-          e.restaurant_quality_score AS "restaurantQualityScore",
-          e.general_praise_upvotes AS "generalPraiseUpvotes"
-        FROM core_entities e
-        WHERE e.type = ANY(${entityTypeArray})
-          ${locationFilter}
-          AND (
-            crave_entity_search_tsv(e.name::text, e.aliases) @@
-              websearch_to_tsquery('simple', v.term)
-            OR (
-              lower(e.name) % v.term
-              AND similarity(lower(e.name), v.term) >= v.similarity_threshold
+            ) AS "ftsRank",
+            CASE WHEN lower(e.name) LIKE v.prefix_pattern THEN 1 ELSE 0 END AS "prefixHit",
+            CASE
+              WHEN to_tsvector('simple', lower(e.name)) @@
+                websearch_to_tsquery('simple', v.term)
+                THEN 1
+              ELSE 0
+            END AS "nameFtsHit",
+            CASE WHEN crave_aliases_haystack_lower(e.aliases) % v.term THEN 1 ELSE 0 END AS "aliasTrgmHit",
+            0 AS "phoneticMatch",
+            e.restaurant_quality_score AS "restaurantQualityScore",
+            e.general_praise_upvotes AS "generalPraiseUpvotes"
+          FROM core_entities e
+          WHERE e.type = ANY(${entityTypeArray})
+            ${locationFilter}
+            AND (
+              crave_entity_search_tsv(e.name::text, e.aliases) @@
+                websearch_to_tsquery('simple', v.term)
+              OR (
+                lower(e.name) % v.term
+                AND similarity(lower(e.name), v.term) >= v.similarity_threshold
+              )
+              OR (
+                crave_aliases_haystack_lower(e.aliases) % v.term
+                AND similarity(crave_aliases_haystack_lower(e.aliases), v.term) >= v.similarity_threshold
+              )
             )
-            OR (
-              crave_aliases_haystack_lower(e.aliases) % v.term
-              AND similarity(crave_aliases_haystack_lower(e.aliases), v.term) >= v.similarity_threshold
-            )
-          )
+        ) scored
         ORDER BY
-          "exactHit" DESC,
-          "prefixHit" DESC,
-          COALESCE("ftsRank", 0) DESC,
+          scored."exactHit" DESC,
+          scored."prefixHit" DESC,
+          COALESCE(scored."ftsRank", 0) DESC,
           GREATEST(
-            COALESCE("nameSimilarity", 0),
-            COALESCE("aliasSimilarity", 0)
+            COALESCE(scored."nameSimilarity", 0),
+            COALESCE(scored."aliasSimilarity", 0)
           ) DESC,
-          COALESCE(e.restaurant_quality_score, 0) DESC,
-          COALESCE(e.general_praise_upvotes, 0) DESC,
-          e.name ASC
+          COALESCE(scored."restaurantQualityScore", 0) DESC,
+          COALESCE(scored."generalPraiseUpvotes", 0) DESC,
+          scored."name" ASC
         LIMIT ${options.perTermLimit}
       ) r
       ORDER BY v.term_index ASC;

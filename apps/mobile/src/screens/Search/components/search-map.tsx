@@ -1,5 +1,5 @@
 import React from 'react';
-import { Animated, View, findNodeHandle } from 'react-native';
+import { Animated, Easing, View, findNodeHandle } from 'react-native';
 
 import MapboxGL, { type MapState as MapboxMapState } from '@rnmapbox/maps';
 
@@ -8,12 +8,13 @@ type OnPressEvent = {
   coordinates: { latitude: number; longitude: number };
   point: { x: number; y: number };
 };
-import type { Feature, FeatureCollection, Point } from 'geojson';
+import type { Feature, FeatureCollection, Point, Polygon } from 'geojson';
 
 import pinAsset from '../../../assets/pin.png';
 import pinFillAsset from '../../../assets/pin-fill.png';
 import pinShadowAsset from '../../../assets/pin-shadow.png';
-import AppBlurView from '../../../components/app-blur-view';
+import { colors as themeColors } from '../../../constants/theme';
+import type { StartupLocationSnapshot } from '../../../navigation/runtime/MainLaunchCoordinator';
 import type { Coordinate, MapBounds } from '../../../types';
 import { logger } from '../../../utils';
 import {
@@ -38,7 +39,10 @@ import { type SearchMapNativePresentationState } from './hooks/use-search-map-pr
 import { useSearchMapLabelRuntime } from './hooks/use-search-map-label-runtime';
 import { useSearchMapInteractionRuntime } from './hooks/use-search-map-interaction-runtime';
 import type { MapQueryBudget } from '../runtime/map/map-query-budget';
-import { type SearchMapRenderInteractionMode } from '../runtime/map/search-map-render-controller';
+import {
+  searchMapRenderController,
+  type SearchMapRenderInteractionMode,
+} from '../runtime/map/search-map-render-controller';
 import { isSearchRuntimeMapPresentationPending } from '../runtime/shared/search-runtime-bus';
 import {
   EMPTY_SEARCH_MAP_SOURCE_STORE,
@@ -86,8 +90,6 @@ const LABEL_STICKY_LOCK_STABLE_MS_IDLE = 80;
 const LABEL_STICKY_UNLOCK_MISSING_MS_MOVING = 260;
 const LABEL_STICKY_UNLOCK_MISSING_MS_IDLE = 700;
 const LABEL_STICKY_UNLOCK_MISSING_STREAK_MOVING = 3;
-const USER_LOCATION_ANCHOR = { x: 0.5, y: 0.5 } as const;
-
 // Experimental: render restaurant pins via Mapbox style layers (instead of MarkerView).
 // This avoids view-annotation gaps during fast pans and is the foundation for truly reversible fade.
 const USE_STYLE_LAYER_PINS = true;
@@ -255,6 +257,227 @@ const DOT_SOURCE_ID = 'restaurant-dot-source';
 const DOT_LAYER_ID = 'restaurant-dot-layer';
 const DOT_INTERACTION_SOURCE_ID = 'restaurant-dot-interaction-source';
 const DOT_INTERACTION_LAYER_ID = 'restaurant-dot-interaction-layer';
+const USER_LOCATION_SOURCE_ID = 'user-location-source';
+const USER_LOCATION_ACCURACY_SOURCE_ID = 'user-location-accuracy-source';
+const USER_LOCATION_ACCURACY_FILL_LAYER_ID = 'user-location-accuracy-fill-layer';
+const USER_LOCATION_ACCURACY_STROKE_LAYER_ID = 'user-location-accuracy-stroke-layer';
+const USER_LOCATION_SHADOW_LAYER_ID = 'user-location-shadow-layer';
+const USER_LOCATION_DOT_LAYER_ID = 'user-location-dot-layer';
+const USER_LOCATION_RING_LAYER_ID = 'user-location-ring-layer';
+const USER_LOCATION_PULSE_MIN_SCALE = 1.4;
+const USER_LOCATION_PULSE_MAX_SCALE = 1.8;
+
+type UserLocationVisualSpec = {
+  uncertaintyRadiusMeters: number;
+  dotRadius: number;
+  ringRadius: number;
+  shadowRadius: number;
+  accuracyOpacity: number;
+  accuracyStrokeOpacity: number;
+  shadowOpacity: number;
+  dotColor: string;
+  ringColor: string;
+  ringOpacity: number;
+  dotOpacity: number;
+};
+
+const areUserLocationVisualSpecsEqual = (
+  left: UserLocationVisualSpec,
+  right: UserLocationVisualSpec
+): boolean =>
+  left.uncertaintyRadiusMeters === right.uncertaintyRadiusMeters &&
+  left.dotRadius === right.dotRadius &&
+  left.ringRadius === right.ringRadius &&
+  left.shadowRadius === right.shadowRadius &&
+  left.accuracyOpacity === right.accuracyOpacity &&
+  left.accuracyStrokeOpacity === right.accuracyStrokeOpacity &&
+  left.shadowOpacity === right.shadowOpacity &&
+  left.dotColor === right.dotColor &&
+  left.ringColor === right.ringColor &&
+  left.ringOpacity === right.ringOpacity &&
+  left.dotOpacity === right.dotOpacity;
+
+const EARTH_RADIUS_METERS = 6_371_000;
+const USER_LOCATION_UNCERTAINTY_STEPS = 128;
+const USER_LOCATION_UNCERTAINTY_SCALE = 0.7;
+
+const resolveDisplayedUncertaintyRadiusMeters = ({
+  accuracyMeters,
+  reducedAccuracy,
+  isStale,
+}: {
+  accuracyMeters: number | null;
+  reducedAccuracy: boolean;
+  isStale: boolean;
+}): number => {
+  if (accuracyMeters != null) {
+    return Math.max(Math.round(accuracyMeters * USER_LOCATION_UNCERTAINTY_SCALE), 18);
+  }
+  if (reducedAccuracy) {
+    return 112;
+  }
+  if (isStale) {
+    return 56;
+  }
+  return 32;
+};
+
+const buildCirclePolygon = (center: Coordinate, radiusMeters: number): Feature<Polygon> => {
+  const latRadians = (center.lat * Math.PI) / 180;
+  const angularDistance = radiusMeters / EARTH_RADIUS_METERS;
+  const coordinates: number[][] = [];
+
+  for (let step = 0; step <= USER_LOCATION_UNCERTAINTY_STEPS; step += 1) {
+    const bearing = (2 * Math.PI * step) / USER_LOCATION_UNCERTAINTY_STEPS;
+    const sinLat = Math.sin(latRadians);
+    const cosLat = Math.cos(latRadians);
+    const sinAngular = Math.sin(angularDistance);
+    const cosAngular = Math.cos(angularDistance);
+    const nextLat = Math.asin(sinLat * cosAngular + cosLat * sinAngular * Math.cos(bearing));
+    const nextLng =
+      (center.lng * Math.PI) / 180 +
+      Math.atan2(Math.sin(bearing) * sinAngular * cosLat, cosAngular - sinLat * Math.sin(nextLat));
+    coordinates.push([(nextLng * 180) / Math.PI, (nextLat * 180) / Math.PI]);
+  }
+
+  return {
+    type: 'Feature',
+    properties: {},
+    geometry: {
+      type: 'Polygon',
+      coordinates: [coordinates],
+    },
+  };
+};
+
+const UserLocationLayers = React.memo(
+  function UserLocationLayers({
+    userLocationAccuracyFeatureCollection,
+    userLocationFeatureCollection,
+    userLocationVisualSpec,
+  }: {
+    userLocationAccuracyFeatureCollection: FeatureCollection<Polygon>;
+    userLocationFeatureCollection: FeatureCollection<Point>;
+    userLocationVisualSpec: UserLocationVisualSpec;
+  }) {
+    const [pulseScale, setPulseScale] = React.useState(USER_LOCATION_PULSE_MIN_SCALE);
+
+    React.useEffect(() => {
+      const pulse = new Animated.Value(0);
+      let lastQuantizedValue = USER_LOCATION_PULSE_MIN_SCALE;
+      const listenerId = pulse.addListener(({ value }) => {
+        const nextScale =
+          USER_LOCATION_PULSE_MIN_SCALE +
+          (USER_LOCATION_PULSE_MAX_SCALE - USER_LOCATION_PULSE_MIN_SCALE) * value;
+        const quantizedScale = Math.round(nextScale * 100) / 100;
+        if (quantizedScale !== lastQuantizedValue) {
+          lastQuantizedValue = quantizedScale;
+          setPulseScale(quantizedScale);
+        }
+      });
+      const animation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulse, {
+            toValue: 1,
+            duration: 1500,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: false,
+          }),
+          Animated.timing(pulse, {
+            toValue: 0,
+            duration: 1000,
+            easing: Easing.in(Easing.quad),
+            useNativeDriver: false,
+          }),
+        ])
+      );
+      animation.start();
+      return () => {
+        animation.stop();
+        pulse.removeListener(listenerId);
+        pulse.removeAllListeners();
+      };
+    }, []);
+
+    return (
+      <React.Fragment>
+        <MapboxGL.ShapeSource
+          id={USER_LOCATION_ACCURACY_SOURCE_ID}
+          shape={userLocationAccuracyFeatureCollection}
+        >
+          <MapboxGL.FillLayer
+            id={USER_LOCATION_ACCURACY_FILL_LAYER_ID}
+            slot="top"
+            sourceID={USER_LOCATION_ACCURACY_SOURCE_ID}
+            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+            style={{
+              fillColor: userLocationVisualSpec.dotColor,
+              fillOpacity: userLocationVisualSpec.accuracyOpacity,
+            }}
+          />
+          <MapboxGL.LineLayer
+            id={USER_LOCATION_ACCURACY_STROKE_LAYER_ID}
+            slot="top"
+            sourceID={USER_LOCATION_ACCURACY_SOURCE_ID}
+            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+            style={{
+              lineColor: userLocationVisualSpec.dotColor,
+              lineOpacity: userLocationVisualSpec.accuracyStrokeOpacity,
+              lineWidth: 1.5,
+              lineJoin: 'round',
+              lineCap: 'round',
+            }}
+          />
+        </MapboxGL.ShapeSource>
+        <MapboxGL.ShapeSource id={USER_LOCATION_SOURCE_ID} shape={userLocationFeatureCollection}>
+          <MapboxGL.CircleLayer
+            id={USER_LOCATION_SHADOW_LAYER_ID}
+            slot="top"
+            sourceID={USER_LOCATION_SOURCE_ID}
+            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+            style={{
+              circleRadius: userLocationVisualSpec.shadowRadius,
+              circleColor: 'rgba(15, 23, 42, 1)',
+              circleOpacity: userLocationVisualSpec.shadowOpacity,
+              circleBlur: 0.9,
+              circleTranslate: [0, 1],
+              circleTranslateAnchor: 'viewport',
+              circlePitchAlignment: 'viewport',
+            }}
+          />
+          <MapboxGL.CircleLayer
+            id={USER_LOCATION_RING_LAYER_ID}
+            slot="top"
+            sourceID={USER_LOCATION_SOURCE_ID}
+            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+            style={{
+              circleRadius: userLocationVisualSpec.ringRadius,
+              circleColor: userLocationVisualSpec.ringColor,
+              circleOpacity: userLocationVisualSpec.ringOpacity,
+              circlePitchAlignment: 'viewport',
+            }}
+          />
+          <MapboxGL.CircleLayer
+            id={USER_LOCATION_DOT_LAYER_ID}
+            slot="top"
+            sourceID={USER_LOCATION_SOURCE_ID}
+            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+            style={{
+              circleRadius: userLocationVisualSpec.dotRadius * pulseScale,
+              circleColor: userLocationVisualSpec.dotColor,
+              circleOpacity: userLocationVisualSpec.dotOpacity,
+              circlePitchAlignment: 'viewport',
+            }}
+          />
+        </MapboxGL.ShapeSource>
+      </React.Fragment>
+    );
+  },
+  (prev, next) =>
+    prev.userLocationAccuracyFeatureCollection === next.userLocationAccuracyFeatureCollection &&
+    prev.userLocationFeatureCollection === next.userLocationFeatureCollection &&
+    areUserLocationVisualSpecsEqual(prev.userLocationVisualSpec, next.userLocationVisualSpec)
+);
 const DOT_TEXT_SIZE = 17;
 // Keep in sync with SearchScreen's MAX_FULL_PINS. These slots guarantee deterministic pin stacking
 // even as the pinned set changes during live LOD updates.
@@ -607,11 +830,24 @@ type SearchMapProps = {
   onNativeViewportChanged: (state: MapboxMapState) => void;
   onMapIdle: (state: MapboxMapState) => void;
   onMapLoaded: () => void;
+  onMapFullyRendered?: () => void;
   onRevealBatchMountedHidden?: (payload: {
     requestKey: string;
     frameGenerationId: string | null;
     revealBatchId: string | null;
     readyAtMs: number;
+  }) => void;
+  onMarkerRevealStarted?: (payload: {
+    requestKey: string;
+    frameGenerationId: string | null;
+    revealBatchId: string | null;
+    startedAtMs: number;
+  }) => void;
+  onMarkerRevealFirstVisibleFrame?: (payload: {
+    requestKey: string;
+    frameGenerationId: string | null;
+    revealBatchId: string | null;
+    syncedAtMs: number;
   }) => void;
   onMarkerPress?: (restaurantId: string, pressedCoordinate?: Coordinate | null) => void;
   onMarkerRevealSettled?: (payload: {
@@ -633,7 +869,7 @@ type SearchMapProps = {
   restaurantLabelStyle: MapboxGL.SymbolLayerStyle;
   isMapStyleReady: boolean;
   userLocation: Coordinate | null;
-  locationPulse: Animated.Value;
+  userLocationSnapshot: StartupLocationSnapshot | null;
   disableMarkers?: boolean;
   disableBlur?: boolean;
   onProfilerRender?: React.ProfilerOnRenderCallback;
@@ -672,7 +908,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
   onNativeViewportChanged,
   onMapIdle,
   onMapLoaded,
+  onMapFullyRendered,
   onRevealBatchMountedHidden,
+  onMarkerRevealStarted,
+  onMarkerRevealFirstVisibleFrame,
   onMarkerPress,
   onMarkerRevealSettled,
   onMarkerDismissStarted,
@@ -687,9 +926,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
   restaurantLabelStyle,
   isMapStyleReady,
   userLocation,
-  locationPulse,
+  userLocationSnapshot,
   disableMarkers = false,
-  disableBlur = false,
   onProfilerRender,
   mapQueryBudget = null,
   onRuntimeMechanismEvent: _onRuntimeMechanismEvent,
@@ -709,7 +947,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }
   const searchMapComponentInstanceId = searchMapComponentInstanceIdRef.current;
   const shouldDisableMarkers = disableMarkers === true;
-  const shouldDisableBlur = disableBlur === true;
   const visualReadyRequestKey = labelResetRequestKey;
   const markersRenderKey = incomingMarkersRenderKey;
   const shouldRenderLabels = !shouldDisableMarkers && isMapStyleReady;
@@ -719,6 +956,88 @@ const SearchMap: React.FC<SearchMapProps> = ({
     dotSourceStore != null &&
     dotSourceStore.idsInOrder.length > 0;
   const shouldMountDotLayers = !shouldDisableMarkers && isMapStyleReady;
+  const userLocationFeatureCollection = React.useMemo<FeatureCollection<Point>>(() => {
+    if (!userLocation) {
+      return {
+        type: 'FeatureCollection',
+        features: [],
+      };
+    }
+    return {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          id: 'user-location',
+          properties: {},
+          geometry: {
+            type: 'Point',
+            coordinates: [userLocation.lng, userLocation.lat],
+          },
+        },
+      ],
+    };
+  }, [userLocation]);
+  const userLocationAccuracyFeatureCollection = React.useMemo<FeatureCollection<Polygon>>(() => {
+    if (!userLocation) {
+      return {
+        type: 'FeatureCollection',
+        features: [],
+      };
+    }
+    const snapshot = userLocationSnapshot;
+    const isStale = snapshot?.isStale ?? true;
+    const reducedAccuracy = snapshot?.reducedAccuracy ?? false;
+    const accuracyMeters =
+      typeof snapshot?.accuracyMeters === 'number' && Number.isFinite(snapshot.accuracyMeters)
+        ? snapshot.accuracyMeters
+        : null;
+    const shouldShowAccuracyCircle =
+      reducedAccuracy || isStale || (accuracyMeters != null && accuracyMeters > 24);
+    if (!shouldShowAccuracyCircle) {
+      return {
+        type: 'FeatureCollection',
+        features: [],
+      };
+    }
+    const uncertaintyRadiusMeters = resolveDisplayedUncertaintyRadiusMeters({
+      accuracyMeters,
+      reducedAccuracy,
+      isStale,
+    });
+    return {
+      type: 'FeatureCollection',
+      features: [buildCirclePolygon(userLocation, uncertaintyRadiusMeters)],
+    };
+  }, [userLocation, userLocationSnapshot]);
+  const userLocationVisualSpec = React.useMemo(() => {
+    const snapshot = userLocationSnapshot;
+    const isStale = snapshot?.isStale ?? true;
+    const reducedAccuracy = snapshot?.reducedAccuracy ?? false;
+    const accuracyMeters =
+      typeof snapshot?.accuracyMeters === 'number' && Number.isFinite(snapshot.accuracyMeters)
+        ? snapshot.accuracyMeters
+        : null;
+    const shouldShowAccuracyCircle =
+      reducedAccuracy || isStale || (accuracyMeters != null && accuracyMeters > 24);
+    return {
+      uncertaintyRadiusMeters: resolveDisplayedUncertaintyRadiusMeters({
+        accuracyMeters,
+        reducedAccuracy,
+        isStale,
+      }),
+      dotRadius: 4.5,
+      ringRadius: 11,
+      shadowRadius: 16,
+      accuracyOpacity: shouldShowAccuracyCircle ? (reducedAccuracy ? 0.18 : 0.1) : 0,
+      accuracyStrokeOpacity: shouldShowAccuracyCircle ? 0.9 : 0,
+      shadowOpacity: isStale ? 0.22 : 0.4,
+      dotColor: themeColors.secondaryAccent,
+      ringColor: '#FFFFFF',
+      ringOpacity: 1,
+      dotOpacity: isStale ? 0.9 : 1,
+    };
+  }, [userLocationSnapshot]);
 
   const recordRuntimeAttribution = React.useCallback(
     (contributor: string, durationMs: number) => {
@@ -832,6 +1151,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
     labelInteractionSourceId: LABEL_INTERACTION_SOURCE_ID,
     labelCollisionSourceId: RESTAURANT_LABEL_COLLISION_SOURCE_ID,
     onRevealBatchMountedHidden,
+    onMarkerRevealStarted,
+    onMarkerRevealFirstVisibleFrame,
     onMarkerRevealSettled: (payload) => {
       onMarkerRevealSettled?.({
         requestKey: payload.requestKey,
@@ -1006,9 +1327,15 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const handleDidFinishRenderingFrame = React.useCallback(() => {
     logRenderCallback('frame');
   }, [logRenderCallback]);
+  const hasReportedFirstFullyRenderedFrameRef = React.useRef(false);
   const handleDidFinishRenderingFrameFully = React.useCallback(() => {
     logRenderCallback('frameFully');
-  }, [logRenderCallback]);
+    if (hasReportedFirstFullyRenderedFrameRef.current || !isMapStyleReady) {
+      return;
+    }
+    hasReportedFirstFullyRenderedFrameRef.current = true;
+    onMapFullyRendered?.();
+  }, [isMapStyleReady, logRenderCallback, onMapFullyRendered]);
   const nativePresentationOpacityExpression = React.useMemo(
     () =>
       [
@@ -1181,6 +1508,96 @@ const SearchMap: React.FC<SearchMapProps> = ({
       visibleLabelCount: settledVisibleLabelCount,
     };
   }
+  React.useEffect(() => {
+    if (batchPhase !== 'reveal_requested' && batchPhase !== 'revealing' && batchPhase !== 'live') {
+      return;
+    }
+    const dotCount = dotSourceStore?.idsInOrder.length ?? 0;
+    logger.info('[LABEL-REVEAL-DIAG] map', {
+      instanceId: nativeRenderOwnerInstanceId,
+      batchPhase,
+      isMapStyleReady,
+      isNativeRenderOwnerAttached,
+      nativeRenderOwnerAttachState,
+      isNativeOwnedMarkerRuntimeReady,
+      shouldRenderLabels,
+      pinCount: pinSourceStore.idsInOrder.length,
+      dotCount,
+      labelCandidateCount: nativeLabelSourceStore.idsInOrder.length,
+      visibleLabelCount: settledVisibleLabelCount,
+      viewportMoving: nativeViewportState.isMoving,
+      visualReadyRequestKey,
+    });
+  }, [
+    batchPhase,
+    dotSourceStore?.idsInOrder.length,
+    isMapStyleReady,
+    isNativeOwnedMarkerRuntimeReady,
+    isNativeRenderOwnerAttached,
+    nativeLabelSourceStore.idsInOrder.length,
+    nativeRenderOwnerAttachState,
+    nativeRenderOwnerInstanceId,
+    nativeViewportState.isMoving,
+    pinSourceStore.idsInOrder.length,
+    settledVisibleLabelCount,
+    shouldRenderLabels,
+    visualReadyRequestKey,
+  ]);
+  React.useEffect(() => {
+    if (
+      batchPhase !== 'live' ||
+      nativeViewportState.isMoving ||
+      !isMapStyleReady ||
+      !isNativeOwnedMarkerRuntimeReady
+    ) {
+      return;
+    }
+    let cancelled = false;
+    void searchMapRenderController
+      .queryRenderedDotObservation({
+        instanceId: nativeRenderOwnerInstanceId,
+        layerIds: [DOT_LAYER_ID],
+      })
+      .then((observation) => {
+        if (cancelled) {
+          return;
+        }
+        logger.info('[DOT-REVEAL-DIAG] map', {
+          instanceId: nativeRenderOwnerInstanceId,
+          batchPhase,
+          renderedFeatureCount: observation.renderedFeatureCount,
+          renderedDotCount: observation.renderedDots.length,
+          dotCount: dotSourceStore?.idsInOrder.length ?? 0,
+          pinCount: pinSourceStore.idsInOrder.length,
+          labelCandidateCount: nativeLabelSourceStore.idsInOrder.length,
+          visualReadyRequestKey,
+        });
+      })
+      .catch((error: unknown) => {
+        if (cancelled) {
+          return;
+        }
+        logger.info('[DOT-REVEAL-DIAG] map', {
+          instanceId: nativeRenderOwnerInstanceId,
+          batchPhase,
+          error: error instanceof Error ? error.message : String(error),
+          visualReadyRequestKey,
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    batchPhase,
+    dotSourceStore?.idsInOrder.length,
+    isMapStyleReady,
+    isNativeOwnedMarkerRuntimeReady,
+    nativeLabelSourceStore.idsInOrder.length,
+    nativeRenderOwnerInstanceId,
+    nativeViewportState.isMoving,
+    pinSourceStore.idsInOrder.length,
+    visualReadyRequestKey,
+  ]);
   const nativeDesiredDotInteractionFeatures = dotInteractionSourceStore;
   const nativeDesiredLabelInteractionFeatures = EMPTY_SEARCH_MAP_SOURCE_STORE;
 
@@ -1856,56 +2273,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
           </React.Fragment>
         </React.Profiler>
         {userLocation ? (
-          <MapboxGL.MarkerView
-            id="user-location"
-            coordinate={[userLocation.lng, userLocation.lat]}
-            anchor={USER_LOCATION_ANCHOR}
-            allowOverlap
-            isSelected
-            style={[styles.markerView, styles.userLocationMarkerView]}
-          >
-            <View style={styles.userLocationWrapper}>
-              <View style={styles.userLocationShadow}>
-                {shouldDisableBlur ? (
-                  <View style={styles.userLocationHaloWrapper}>
-                    <Animated.View
-                      style={[
-                        styles.userLocationDot,
-                        {
-                          transform: [
-                            {
-                              scale: locationPulse.interpolate({
-                                inputRange: [0, 1],
-                                outputRange: [1.4, 1.8],
-                              }),
-                            },
-                          ],
-                        },
-                      ]}
-                    />
-                  </View>
-                ) : (
-                  <AppBlurView intensity={25} tint="light" style={styles.userLocationHaloWrapper}>
-                    <Animated.View
-                      style={[
-                        styles.userLocationDot,
-                        {
-                          transform: [
-                            {
-                              scale: locationPulse.interpolate({
-                                inputRange: [0, 1],
-                                outputRange: [1.4, 1.8],
-                              }),
-                            },
-                          ],
-                        },
-                      ]}
-                    />
-                  </AppBlurView>
-                )}
-              </View>
-            </View>
-          </MapboxGL.MarkerView>
+          <UserLocationLayers
+            userLocationAccuracyFeatureCollection={userLocationAccuracyFeatureCollection}
+            userLocationFeatureCollection={userLocationFeatureCollection}
+            userLocationVisualSpec={userLocationVisualSpec}
+          />
         ) : null}
       </MapboxGL.MapView>
     </View>
@@ -1945,6 +2317,27 @@ const areUserLocationsEqual = (left?: Coordinate | null, right?: Coordinate | nu
     return false;
   }
   return left.lat === right.lat && left.lng === right.lng;
+};
+
+const areStartupLocationSnapshotsEqual = (
+  left?: StartupLocationSnapshot | null,
+  right?: StartupLocationSnapshot | null
+) => {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right) {
+    return false;
+  }
+  return (
+    left.source === right.source &&
+    left.permission === right.permission &&
+    left.reducedAccuracy === right.reducedAccuracy &&
+    left.isStale === right.isStale &&
+    left.acquiredAtMs === right.acquiredAtMs &&
+    left.accuracyMeters === right.accuracyMeters &&
+    areUserLocationsEqual(left.coordinate, right.coordinate)
+  );
 };
 
 const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
@@ -1987,7 +2380,7 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
   if (!areUserLocationsEqual(prev.userLocation, next.userLocation)) {
     return false;
   }
-  if (prev.locationPulse !== next.locationPulse) {
+  if (!areStartupLocationSnapshotsEqual(prev.userLocationSnapshot, next.userLocationSnapshot)) {
     return false;
   }
   if (prev.restaurantLabelStyle !== next.restaurantLabelStyle) {
@@ -2014,7 +2407,16 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
   if (prev.onMapLoaded !== next.onMapLoaded) {
     return false;
   }
+  if (prev.onMapFullyRendered !== next.onMapFullyRendered) {
+    return false;
+  }
   if (prev.onRevealBatchMountedHidden !== next.onRevealBatchMountedHidden) {
+    return false;
+  }
+  if (prev.onMarkerRevealStarted !== next.onMarkerRevealStarted) {
+    return false;
+  }
+  if (prev.onMarkerRevealFirstVisibleFrame !== next.onMarkerRevealFirstVisibleFrame) {
     return false;
   }
   if (prev.onMarkerPress !== next.onMarkerPress) {

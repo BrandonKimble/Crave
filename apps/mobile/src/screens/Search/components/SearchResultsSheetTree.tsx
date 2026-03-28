@@ -1,54 +1,85 @@
 import React from 'react';
-import type { SharedValue } from 'react-native-reanimated';
+import { StyleSheet, View } from 'react-native';
+import Reanimated, { useAnimatedStyle } from 'react-native-reanimated';
 
 import OverlaySheetShell from '../../../overlays/OverlaySheetShell';
 import type { OverlayContentSpec } from '../../../overlays/types';
 import { SearchInteractionProvider } from '../context/SearchInteractionContext';
+import { useSearchSheetVisualContext } from '../context/SearchSheetVisualContext';
 import { useSearchOverlayPanels } from '../hooks/use-search-overlay-panels';
 import { useSearchResultsPanelSpec } from '../hooks/use-search-results-panel-spec';
 
+type AnimatedNumberLike = { value: number };
+type SearchPanelSpecArgs = Parameters<typeof useSearchResultsPanelSpec>[0];
+type OverlayPanelsArgs = Omit<Parameters<typeof useSearchOverlayPanels>[0], 'searchPanelSpec'>;
+type SearchResultsSheetTreeHookInputs = SearchPanelSpecArgs & OverlayPanelsArgs;
+
 type SearchResultsSheetTreeProps = {
-  searchPanelSpecArgs: Parameters<typeof useSearchResultsPanelSpec>[0];
-  overlayPanelsArgs: Omit<Parameters<typeof useSearchOverlayPanels>[0], 'searchPanelSpec'>;
-  shouldFreezeOverlaySheetProps: boolean;
-  shouldFreezeOverlayHeaderActionMode: boolean;
+  shouldFreezeOverlaySheetForCloseHandoff: boolean;
+  shouldFreezeOverlayHeaderActionForRunOne: boolean;
   searchInteractionContextValue: React.ComponentProps<typeof SearchInteractionProvider>['value'];
-  sheetTranslateY: SharedValue<number>;
-  resultsScrollOffset: SharedValue<number>;
-  resultsMomentum: SharedValue<boolean>;
-  overlayHeaderActionProgress: SharedValue<number>;
-  navBarCutoutHeight: number;
-  bottomNavHideProgress: SharedValue<number>;
-  bottomNavHiddenTranslateY: number;
-  shouldHideBottomNav: boolean;
   onProfilerRender: React.ProfilerOnRenderCallback;
+} & SearchResultsSheetTreeHookInputs;
+
+const CloseHandoffHeaderSwap: React.FC<{
+  searchHeader: React.ReactNode;
+  pollsHeader: React.ReactNode;
+  handoffProgress: AnimatedNumberLike;
+}> = ({ searchHeader, pollsHeader, handoffProgress }) => {
+  const searchHeaderAnimatedStyle = useAnimatedStyle(
+    () => ({
+      opacity: handoffProgress.value >= 1 ? 0 : 1,
+    }),
+    [handoffProgress]
+  );
+  const pollsHeaderAnimatedStyle = useAnimatedStyle(
+    () => ({
+      opacity: handoffProgress.value >= 1 ? 1 : 0,
+    }),
+    [handoffProgress]
+  );
+
+  return (
+    <View style={styles.headerSwapContainer}>
+      <Reanimated.View style={searchHeaderAnimatedStyle}>{searchHeader}</Reanimated.View>
+      <Reanimated.View
+        pointerEvents="none"
+        style={[styles.headerSwapOverlay, pollsHeaderAnimatedStyle]}
+      >
+        {pollsHeader}
+      </Reanimated.View>
+    </View>
+  );
 };
 
 const SearchResultsSheetTree = ({
-  searchPanelSpecArgs,
-  overlayPanelsArgs,
-  shouldFreezeOverlaySheetProps,
-  shouldFreezeOverlayHeaderActionMode,
+  shouldFreezeOverlaySheetForCloseHandoff,
+  shouldFreezeOverlayHeaderActionForRunOne,
   searchInteractionContextValue,
-  sheetTranslateY,
-  resultsScrollOffset,
-  resultsMomentum,
-  overlayHeaderActionProgress,
-  navBarCutoutHeight,
-  bottomNavHideProgress,
-  bottomNavHiddenTranslateY,
-  shouldHideBottomNav,
   onProfilerRender,
+  ...searchResultsSheetInputs
 }: SearchResultsSheetTreeProps) => {
-  const searchPanelSpec = useSearchResultsPanelSpec(searchPanelSpecArgs);
+  const {
+    sheetTranslateY,
+    resultsScrollOffset,
+    resultsMomentum,
+    closeVisualHandoffProgress,
+    navBarCutoutHeight,
+    navBarCutoutProgress,
+    bottomNavHiddenTranslateY,
+    navBarCutoutIsHiding,
+  } = useSearchSheetVisualContext();
+  const overlayHeaderActionProgress = searchResultsSheetInputs.overlayHeaderActionProgress;
+  const searchPanelSpec = useSearchResultsPanelSpec(searchResultsSheetInputs);
   const {
     overlaySheetKey,
     overlaySheetSpec,
     overlaySheetVisible,
     overlaySheetApplyNavBarCutout,
     overlayHeaderActionMode,
+    pollsPanelSpec,
   } = useSearchOverlayPanels({
-    ...overlayPanelsArgs,
+    ...searchResultsSheetInputs,
     searchPanelSpec: searchPanelSpec as OverlayContentSpec<unknown> | null,
   });
 
@@ -58,34 +89,74 @@ const SearchResultsSheetTree = ({
     overlaySheetVisible: boolean;
     overlaySheetApplyNavBarCutout: boolean;
   } | null>(null);
+  const nextOverlaySheetProps = {
+    overlaySheetKey,
+    overlaySheetSpec,
+    overlaySheetVisible,
+    overlaySheetApplyNavBarCutout,
+  };
 
-  if (!shouldFreezeOverlaySheetProps || !frozenOverlaySheetPropsRef.current) {
-    frozenOverlaySheetPropsRef.current = {
-      overlaySheetKey,
-      overlaySheetSpec,
-      overlaySheetVisible,
-      overlaySheetApplyNavBarCutout,
-    };
+  if (!shouldFreezeOverlaySheetForCloseHandoff || !frozenOverlaySheetPropsRef.current) {
+    frozenOverlaySheetPropsRef.current = nextOverlaySheetProps;
   }
 
-  const overlaySheetPropsForRender =
-    shouldFreezeOverlaySheetProps && frozenOverlaySheetPropsRef.current
+  const frozenOverlaySheetProps =
+    shouldFreezeOverlaySheetForCloseHandoff && frozenOverlaySheetPropsRef.current
       ? frozenOverlaySheetPropsRef.current
-      : {
-          overlaySheetKey,
-          overlaySheetSpec,
-          overlaySheetVisible,
-          overlaySheetApplyNavBarCutout,
-        };
+      : null;
+
+  const overlaySheetPropsForRender = frozenOverlaySheetProps
+    ? frozenOverlaySheetProps
+    : {
+        overlaySheetKey,
+        overlaySheetSpec,
+        overlaySheetVisible,
+        overlaySheetApplyNavBarCutout,
+      };
+  const shouldMountLivePollsHeaderHandoff =
+    overlaySheetPropsForRender.overlaySheetKey === 'search' &&
+    Boolean(pollsPanelSpec?.headerComponent) &&
+    (shouldFreezeOverlaySheetForCloseHandoff ||
+      searchResultsSheetInputs.searchSheetContentLane.kind === 'persistent_poll');
+  const frozenCloseHandoffHeadersRef = React.useRef<{
+    searchHeader: React.ReactNode;
+    pollsHeader: React.ReactNode;
+  } | null>(null);
+  const liveCloseHandoffHeaders = {
+    searchHeader: overlaySheetPropsForRender.overlaySheetSpec?.headerComponent ?? null,
+    pollsHeader: pollsPanelSpec?.headerComponent ?? null,
+  };
+  if (!shouldFreezeOverlaySheetForCloseHandoff || !frozenCloseHandoffHeadersRef.current) {
+    frozenCloseHandoffHeadersRef.current = liveCloseHandoffHeaders;
+  }
+  const closeHandoffHeadersForRender =
+    shouldFreezeOverlaySheetForCloseHandoff && frozenCloseHandoffHeadersRef.current
+      ? frozenCloseHandoffHeadersRef.current
+      : liveCloseHandoffHeaders;
+  const overlaySheetSpecForRender =
+    shouldMountLivePollsHeaderHandoff && overlaySheetPropsForRender.overlaySheetSpec
+      ? {
+          ...overlaySheetPropsForRender.overlaySheetSpec,
+          headerComponent: (
+            <CloseHandoffHeaderSwap
+              searchHeader={closeHandoffHeadersForRender.searchHeader}
+              pollsHeader={closeHandoffHeadersForRender.pollsHeader}
+              handoffProgress={closeVisualHandoffProgress}
+            />
+          ),
+        }
+      : overlaySheetPropsForRender.overlaySheetSpec;
 
   const frozenOverlayHeaderActionModeRef =
     React.useRef<typeof overlayHeaderActionMode>(overlayHeaderActionMode);
+  const shouldFreezeOverlayHeaderAction =
+    shouldFreezeOverlayHeaderActionForRunOne || shouldFreezeOverlaySheetForCloseHandoff;
 
-  if (!shouldFreezeOverlayHeaderActionMode) {
+  if (!shouldFreezeOverlayHeaderAction) {
     frozenOverlayHeaderActionModeRef.current = overlayHeaderActionMode;
   }
 
-  const overlayHeaderActionModeForRender = shouldFreezeOverlayHeaderActionMode
+  const overlayHeaderActionModeForRender = shouldFreezeOverlayHeaderAction
     ? frozenOverlayHeaderActionModeRef.current
     : overlayHeaderActionMode;
 
@@ -97,7 +168,7 @@ const SearchResultsSheetTree = ({
           <OverlaySheetShell
             visible={overlaySheetPropsForRender.overlaySheetVisible}
             activeOverlayKey={overlaySheetPropsForRender.overlaySheetKey}
-            spec={overlaySheetPropsForRender.overlaySheetSpec}
+            spec={overlaySheetSpecForRender}
             sheetY={sheetTranslateY}
             scrollOffset={resultsScrollOffset}
             momentumFlag={resultsMomentum}
@@ -107,12 +178,12 @@ const SearchResultsSheetTree = ({
             applyNavBarCutout={overlaySheetPropsForRender.overlaySheetApplyNavBarCutout}
             navBarCutoutProgress={
               overlaySheetPropsForRender.overlaySheetKey === 'search'
-                ? bottomNavHideProgress
+                ? navBarCutoutProgress
                 : undefined
             }
             navBarHiddenTranslateY={bottomNavHiddenTranslateY}
             navBarCutoutIsHiding={
-              overlaySheetPropsForRender.overlaySheetKey === 'search' ? shouldHideBottomNav : false
+              overlaySheetPropsForRender.overlaySheetKey === 'search' ? navBarCutoutIsHiding : false
             }
           />
         ) : null}
@@ -122,3 +193,12 @@ const SearchResultsSheetTree = ({
 };
 
 export default React.memo(SearchResultsSheetTree);
+
+const styles = StyleSheet.create({
+  headerSwapContainer: {
+    position: 'relative',
+  },
+  headerSwapOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+});

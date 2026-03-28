@@ -163,7 +163,7 @@ export const useSearchSessionCoordinator = ({
     if (pendingSearchOriginRestoreRef.current) {
       return;
     }
-    requestDockedPollsRestore();
+    requestDockedPollsRestore('collapsed');
   }, [requestDockedPollsRestore]);
 
   return {

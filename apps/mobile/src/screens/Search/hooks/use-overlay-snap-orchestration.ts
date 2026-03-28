@@ -115,6 +115,7 @@ export const useOverlaySnapOrchestration = ({
             return;
           }
           dockedPollsRestoreInFlightRef.current = false;
+          setPollsDockedSnapRequest(null);
           setIsDockedPollsDismissed(true);
           return;
         }

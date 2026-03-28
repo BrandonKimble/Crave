@@ -1,7 +1,7 @@
 import React from 'react';
-import { Animated } from 'react-native';
 import type { MapState as MapboxMapState } from '@rnmapbox/maps';
 
+import type { StartupLocationSnapshot } from '../../../navigation/runtime/MainLaunchCoordinator';
 import type { Coordinate, MapBounds, RestaurantResult } from '../../../types';
 import { useMapMarkerEngine } from '../hooks/use-map-marker-engine';
 import type { ResolvedRestaurantMapLocation } from '../hooks/use-restaurant-location-selection';
@@ -81,11 +81,24 @@ type SearchMapWithMarkerEngineProps = {
   onNativeViewportChanged: (state: MapboxMapState) => void;
   onMapIdle: (state: MapboxMapState) => void;
   onMapLoaded: () => void;
+  onMapFullyRendered?: () => void;
   onRevealBatchMountedHidden?: (payload: {
     requestKey: string;
     frameGenerationId: string | null;
     revealBatchId: string | null;
     readyAtMs: number;
+  }) => void;
+  onMarkerRevealStarted?: (payload: {
+    requestKey: string;
+    frameGenerationId: string | null;
+    revealBatchId: string | null;
+    startedAtMs: number;
+  }) => void;
+  onMarkerRevealFirstVisibleFrame?: (payload: {
+    requestKey: string;
+    frameGenerationId: string | null;
+    revealBatchId: string | null;
+    syncedAtMs: number;
   }) => void;
   onMarkerRevealSettled?: (payload: {
     requestKey: string;
@@ -98,7 +111,7 @@ type SearchMapWithMarkerEngineProps = {
   onMarkerDismissSettled?: (payload: { requestKey: string; settledAtMs: number }) => void;
   isMapStyleReady: boolean;
   userLocation: Coordinate | null;
-  locationPulse: Animated.Value;
+  userLocationSnapshot: StartupLocationSnapshot | null;
   disableMarkers?: boolean;
   disableBlur?: boolean;
   onProfilerRender?: React.ProfilerOnRenderCallback;
@@ -156,13 +169,16 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     onNativeViewportChanged,
     onMapIdle,
     onMapLoaded,
+    onMapFullyRendered,
     onRevealBatchMountedHidden,
+    onMarkerRevealStarted,
+    onMarkerRevealFirstVisibleFrame,
     onMarkerRevealSettled,
     onMarkerDismissStarted,
     onMarkerDismissSettled,
     isMapStyleReady,
     userLocation,
-    locationPulse,
+    userLocationSnapshot,
     disableMarkers,
     disableBlur,
     onProfilerRender,
@@ -476,8 +492,11 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
       onNativeViewportChanged={handleSearchMapNativeViewportChanged}
       onMapIdle={handleSearchMapIdle}
       onMapLoaded={onMapLoaded}
+      onMapFullyRendered={onMapFullyRendered}
       onMarkerPress={stableHandleMarkerPress}
       onRevealBatchMountedHidden={onRevealBatchMountedHidden}
+      onMarkerRevealStarted={onMarkerRevealStarted}
+      onMarkerRevealFirstVisibleFrame={onMarkerRevealFirstVisibleFrame}
       onMarkerRevealSettled={onMarkerRevealSettled}
       onMarkerDismissStarted={onMarkerDismissStarted}
       onMarkerDismissSettled={onMarkerDismissSettled}
@@ -491,7 +510,7 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
       restaurantLabelStyle={restaurantLabelStyle}
       isMapStyleReady={isMapStyleReady}
       userLocation={userLocation}
-      locationPulse={locationPulse}
+      userLocationSnapshot={userLocationSnapshot}
       disableMarkers={disableMarkers}
       disableBlur={disableBlur}
       onProfilerRender={onProfilerRender}

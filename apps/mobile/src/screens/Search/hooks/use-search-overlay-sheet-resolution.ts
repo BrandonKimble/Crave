@@ -3,6 +3,7 @@ import React from 'react';
 import { createOverlayRegistry } from '../../../overlays/OverlayRegistry';
 import type { OverlayContentSpec, OverlayKey } from '../../../overlays/types';
 import type { OverlayHeaderActionMode } from '../../../overlays/useOverlayHeaderActionController';
+import { useOverlayStore } from '../../../store/overlayStore';
 import type { SearchSheetContentLane } from './use-search-presentation-controller';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic overlay specs use varying item types
@@ -16,15 +17,12 @@ type UseSearchOverlaySheetResolutionArgs = {
   restaurantPanelSpec: OverlaySpec;
   saveListPanelSpec: OverlaySpec;
   pollCreationPanelSpec: OverlaySpec;
-  shouldShowPollCreationPanel: boolean;
   showSaveListOverlay: boolean;
   shouldShowRestaurantOverlay: boolean;
-  showProfileOverlay: boolean;
-  showBookmarksOverlay: boolean;
   shouldShowPollsSheet: boolean;
   shouldRenderResultsSheet: boolean;
-  isSearchOverlay: boolean;
   searchSheetContentLane: SearchSheetContentLane;
+  isDockedPollsDismissed: boolean;
   isSuggestionPanelActive: boolean;
   isForegroundEditing: boolean;
   searchHeaderActionModeOverride: OverlayHeaderActionMode | null;
@@ -52,15 +50,12 @@ export const useSearchOverlaySheetResolution = ({
   restaurantPanelSpec,
   saveListPanelSpec,
   pollCreationPanelSpec,
-  shouldShowPollCreationPanel,
   showSaveListOverlay,
   shouldShowRestaurantOverlay,
-  showProfileOverlay,
-  showBookmarksOverlay,
   shouldShowPollsSheet,
   shouldRenderResultsSheet,
-  isSearchOverlay,
   searchSheetContentLane,
+  isDockedPollsDismissed,
   isSuggestionPanelActive,
   isForegroundEditing,
   searchHeaderActionModeOverride,
@@ -68,6 +63,12 @@ export const useSearchOverlaySheetResolution = ({
   handleResultsSheetDragStateChange,
   handleResultsSheetSettlingChange,
 }: UseSearchOverlaySheetResolutionArgs): UseSearchOverlaySheetResolutionResult => {
+  const activeOverlay = useOverlayStore((state) => state.activeOverlay);
+  const rootOverlay = useOverlayStore((state) => state.overlayStack[0] ?? state.activeOverlay);
+  const shouldShowPollCreationPanel = activeOverlay === 'pollCreation';
+  const isSearchOverlay = rootOverlay === 'search';
+  const showProfileOverlay = rootOverlay === 'profile';
+  const showBookmarksOverlay = rootOverlay === 'bookmarks';
   const overlayRegistry = React.useMemo(
     () =>
       createOverlayRegistry({
@@ -96,11 +97,16 @@ export const useSearchOverlaySheetResolution = ({
     if (!isSearchOverlay) {
       return shouldRenderResultsSheet ? 'search' : null;
     }
-    if (searchSheetContentLane.kind === 'persistent_poll') {
+    if (searchSheetContentLane.kind === 'persistent_poll' && !isDockedPollsDismissed) {
       return 'polls';
     }
     return shouldRenderResultsSheet ? 'search' : null;
-  }, [isSearchOverlay, searchSheetContentLane.kind, shouldRenderResultsSheet]);
+  }, [
+    isDockedPollsDismissed,
+    isSearchOverlay,
+    searchSheetContentLane.kind,
+    shouldRenderResultsSheet,
+  ]);
 
   const activeOverlayKey = React.useMemo<OverlayKey | null>(() => {
     if (shouldShowPollCreationPanel) {

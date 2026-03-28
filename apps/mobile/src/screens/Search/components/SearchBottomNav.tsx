@@ -9,10 +9,10 @@ import {
 import Reanimated from 'react-native-reanimated';
 
 import { Text } from '../../../components';
-import { FrostedGlassBackground } from '../../../components/FrostedGlassBackground';
 import { colors as themeColors } from '../../../constants/theme';
 import { ACTIVE_TAB_COLOR, NAV_BOTTOM_PADDING } from '../constants/search';
 import styles from '../styles';
+import NavBarSilhouetteBackground from './NavBarSilhouetteBackground';
 
 type NavItem = {
   key: string;
@@ -55,9 +55,10 @@ const SearchBottomNavComponent = ({
         style={[styles.bottomNav, { paddingBottom: bottomInset + NAV_BOTTOM_PADDING }]}
         onLayout={handleBottomNavLayout}
       >
-        <View style={styles.bottomNavBackground} pointerEvents="none">
-          {!shouldDisableSearchBlur && <FrostedGlassBackground />}
-        </View>
+        <NavBarSilhouetteBackground
+          bottomInset={bottomInset}
+          disableBlur={shouldDisableSearchBlur}
+        />
         {navItems.map((item) => {
           const active = rootOverlay === item.key;
           const iconColor = active ? ACTIVE_TAB_COLOR : themeColors.textBody;

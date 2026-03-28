@@ -18,6 +18,7 @@ import type { LayoutChangeEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { StackScreenProps } from '@react-navigation/stack';
+import { ONBOARDING_VERSION } from '@crave-search/shared';
 import { Text, Button } from '../components';
 import EmailAuthModal from '../components/EmailAuthModal';
 import { colors as themeColors } from '../constants/theme';
@@ -28,10 +29,17 @@ import {
   getMultiChoiceLabels,
   type OnboardingStep,
 } from '../constants/onboarding';
-import { useOnboardingStore } from '../store/onboardingStore';
+import {
+  DEFAULT_ONBOARDING_STEP_ID,
+  useOnboardingStore,
+  type OnboardingAnswerValue,
+} from '../store/onboardingStore';
+import { useCityStore } from '../store/cityStore';
 import type { RootStackParamList } from '../types/navigation';
 import { logger } from '../utils';
 import { usersService, type UsernameAvailability } from '../services/users';
+import { normalizePersistedCity } from '../navigation/runtime/city-viewports';
+import { useSystemStatusStore } from '../store/systemStatusStore';
 import {
   findAdjacentVisibleStepIndex,
   getVisibleStepPosition,
@@ -41,12 +49,10 @@ import { useOnboardingAuthLane } from './onboarding/runtime/use-onboarding-auth-
 
 type OnboardingProps = StackScreenProps<RootStackParamList, 'Onboarding'>;
 
-type AnswerValue = string | string[] | number | undefined;
-
 const PRIMARY_ACCENT_COLOR = themeColors.primary ?? '#F97383';
 const CTA_BUTTON_COLOR = themeColors.accentDark ?? PRIMARY_ACCENT_COLOR;
-const SCREEN_BACKGROUND = '#ffffff';
-const SCREEN_BACKGROUND_TINT = 'rgba(249, 115, 131, 0.03)';
+const SCREEN_BACKGROUND = 'transparent';
+const SCREEN_BACKGROUND_TINT = 'rgba(249, 115, 131, 0.08)';
 const CTA_BUTTON_PULSE_COLOR = 'rgba(249, 115, 131, 0.7)';
 const CRAVE_ACCENT = PRIMARY_ACCENT_COLOR;
 const CRAVE_ACCENT_LIGHT = 'rgba(249, 115, 131, 0.25)';
@@ -216,18 +222,30 @@ const CarouselStepView: React.FC<{ step: CarouselStepType }> = ({ step }) => {
   );
 };
 
-const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
-  const [stepIndex, setStepIndexState] = React.useState(0);
-  const [answers, setAnswers] = React.useState<Record<string, AnswerValue>>({});
+const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }) => {
   const [processingReady, setProcessingReady] = React.useState(true);
   const [usernameValue, setUsernameValue] = React.useState('');
   const [usernameStatus, setUsernameStatus] = React.useState<UsernameAvailability | null>(null);
   const [usernameLoading, setUsernameLoading] = React.useState(false);
   const [usernameError, setUsernameError] = React.useState<string | null>(null);
   const [usernameSubmitting, setUsernameSubmitting] = React.useState(false);
+  const [completionSubmitting, setCompletionSubmitting] = React.useState(false);
+  const [completionError, setCompletionError] = React.useState<string | null>(null);
   const usernameDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const usernameRequestIdRef = React.useRef(0);
-  const completeOnboarding = useOnboardingStore((state) => state.completeOnboarding);
+  const currentStepId = useOnboardingStore((state) => state.draft.currentStepId);
+  const answers = useOnboardingStore((state) => state.draft.answers);
+  const setCurrentStepId = useOnboardingStore((state) => state.setCurrentStepId);
+  const setStoredAnswer = useOnboardingStore((state) => state.setAnswer);
+  const toggleStoredMultiValue = useOnboardingStore((state) => state.toggleMultiValue);
+  const addStoredCustomMultiValue = useOnboardingStore((state) => state.addCustomMultiValue);
+  const completeOnboardingLocally = useOnboardingStore((state) => state.completeOnboardingLocally);
+  const setSelectedCity = useCityStore((state) => state.setSelectedCity);
+  const clearServiceIssue = useSystemStatusStore((state) => state.clearServiceIssue);
+  const stepIndex = React.useMemo(() => {
+    const resolvedIndex = onboardingSteps.findIndex((step) => step.id === currentStepId);
+    return resolvedIndex >= 0 ? resolvedIndex : 0;
+  }, [currentStepId]);
   const activeStep = onboardingSteps[stepIndex];
   const regretBaselineAnim = React.useRef(new Animated.Value(0)).current;
   const regretCraveAnim = React.useRef(new Animated.Value(0)).current;
@@ -261,11 +279,10 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     setEmailModalVisible,
     continueWithApple,
     continueWithGoogle,
-    navigateToMain,
-  } = useOnboardingAuthLane({ navigation });
-  const hasCompletedOnboarding = useOnboardingStore((state) => state.hasCompletedOnboarding);
+  } = useOnboardingAuthLane({ navigation: _navigation });
 
   const locationValue = typeof answers.location === 'string' ? answers.location.trim() : '';
+  const storedUsername = typeof answers.username === 'string' ? answers.username : '';
   const isLiveCitySelection =
     locationValue.length > 0 && locationAllowedCityValues.includes(locationValue);
   const isWaitlistSelection = locationValue.length > 0 && !isLiveCitySelection;
@@ -286,6 +303,9 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
 
   const isStepVisible = React.useCallback(
     (step: OnboardingStep) => {
+      if (step.id === 'username') {
+        return false;
+      }
       if (
         step.id === 'waitlist-info' ||
         step.id === 'waitlist-preview' ||
@@ -330,15 +350,15 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     if (step && !isStepVisible(step)) {
       const previousIndex = findPreviousVisibleIndex(stepIndex);
       if (previousIndex !== stepIndex) {
-        setStepIndexState(previousIndex);
+        setCurrentStepId(onboardingSteps[previousIndex]?.id ?? DEFAULT_ONBOARDING_STEP_ID);
         return;
       }
       const nextIndex = findNextVisibleIndex(stepIndex);
       if (nextIndex !== stepIndex) {
-        setStepIndexState(nextIndex);
+        setCurrentStepId(onboardingSteps[nextIndex]?.id ?? DEFAULT_ONBOARDING_STEP_ID);
       }
     }
-  }, [findNextVisibleIndex, findPreviousVisibleIndex, isStepVisible, stepIndex]);
+  }, [findNextVisibleIndex, findPreviousVisibleIndex, isStepVisible, setCurrentStepId, stepIndex]);
 
   const getPositionForIndex = React.useCallback(
     (index: number) => {
@@ -368,34 +388,129 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     }
   }, [currentStepPosition, isAnimating, progress]);
 
-  const completeAndEnterApp = React.useCallback(() => {
-    completeOnboarding();
-    navigateToMain();
-  }, [completeOnboarding, navigateToMain]);
+  const completeAndEnterApp = React.useCallback(async () => {
+    const normalizedCity = normalizePersistedCity(locationValue);
+    const selectedCity = normalizedCity;
+    const previewCity = normalizedCity ? null : locationValue || null;
+    const username =
+      typeof answers.username === 'string' && answers.username.trim().length > 0
+        ? answers.username.trim()
+        : null;
+
+    setCompletionError(null);
+    setCompletionSubmitting(true);
+
+    try {
+      if (selectedCity) {
+        setSelectedCity(selectedCity);
+      }
+
+      if (isSignedIn) {
+        const profile = await usersService.completeOnboarding({
+          status: 'completed',
+          onboardingVersion: ONBOARDING_VERSION,
+          selectedCity,
+          previewCity,
+          answers,
+          username,
+        });
+        completeOnboardingLocally({
+          selectedCity: profile.onboarding?.selectedCity ?? selectedCity,
+          previewCity: profile.onboarding?.previewCity ?? previewCity,
+          completedAt: profile.onboarding?.completedAt ?? null,
+          onboardingVersion: profile.onboarding?.onboardingVersion ?? ONBOARDING_VERSION,
+        });
+        return true;
+      }
+
+      completeOnboardingLocally({
+        selectedCity,
+        previewCity,
+        onboardingVersion: ONBOARDING_VERSION,
+      });
+      return true;
+    } catch (error) {
+      if (isSignedIn) {
+        logger.warn('Onboarding completion API failed; falling back to local completion', {
+          message: error instanceof Error ? error.message : 'unknown error',
+        });
+        clearServiceIssue('global');
+        completeOnboardingLocally({
+          selectedCity,
+          previewCity,
+          onboardingVersion: ONBOARDING_VERSION,
+        });
+        return true;
+      }
+      setCompletionError(
+        error instanceof Error
+          ? error.message
+          : 'We could not finish setting up your account. Please try again.'
+      );
+      return false;
+    } finally {
+      setCompletionSubmitting(false);
+    }
+  }, [
+    answers,
+    clearServiceIssue,
+    completeOnboardingLocally,
+    isSignedIn,
+    locationValue,
+    setSelectedCity,
+  ]);
 
   React.useEffect(() => {
-    if (isSignedIn && hasCompletedOnboarding) {
-      completeAndEnterApp();
+    if (
+      activeStep.type !== 'account' ||
+      !isSignedIn ||
+      isAnimating ||
+      completionSubmitting ||
+      completionError
+    ) {
+      return;
     }
-  }, [completeAndEnterApp, hasCompletedOnboarding, isSignedIn]);
+    setAuthError(null);
+    setEmailModalVisible(false);
+    const nextIndex = findNextVisibleIndex(stepIndex);
+    if (nextIndex === stepIndex) {
+      void completeAndEnterApp();
+      return;
+    }
+    setCurrentStepId(onboardingSteps[nextIndex]?.id ?? DEFAULT_ONBOARDING_STEP_ID);
+  }, [
+    activeStep.type,
+    completionError,
+    completionSubmitting,
+    completeAndEnterApp,
+    findNextVisibleIndex,
+    isAnimating,
+    isSignedIn,
+    setAuthError,
+    setCurrentStepId,
+    setEmailModalVisible,
+    stepIndex,
+  ]);
 
-  const updateAnswer = React.useCallback((stepId: string, value: AnswerValue) => {
-    setAnswers((prev) => ({ ...prev, [stepId]: value }));
-  }, []);
+  const updateAnswer = React.useCallback(
+    (stepId: string, value: OnboardingAnswerValue) => {
+      setStoredAnswer(stepId, value);
+    },
+    [setStoredAnswer]
+  );
 
-  const toggleMultiValue = React.useCallback((stepId: string, optionId: string) => {
-    setAnswers((prev) => {
-      const existing = prev[stepId];
-      const current = Array.isArray(existing) ? existing : [];
-      const next = current.includes(optionId)
-        ? current.filter((value) => value !== optionId)
-        : [...current, optionId];
-      return {
-        ...prev,
-        [stepId]: next,
-      };
-    });
-  }, []);
+  React.useEffect(() => {
+    if (storedUsername !== usernameValue) {
+      setUsernameValue(storedUsername);
+    }
+  }, [storedUsername, usernameValue]);
+
+  const toggleMultiValue = React.useCallback(
+    (stepId: string, optionId: string) => {
+      toggleStoredMultiValue(stepId, optionId);
+    },
+    [toggleStoredMultiValue]
+  );
 
   const openEmailModal = React.useCallback(() => {
     setAuthError(null);
@@ -698,11 +813,17 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
   ]);
 
   const continueLabel = React.useMemo(() => {
+    if (completionSubmitting) {
+      return 'Finishing…';
+    }
+    if (activeStep.type === 'account' && isSignedIn) {
+      return 'Continue';
+    }
     if (activeStep.ctaLabel) {
       return activeStep.ctaLabel;
     }
     return isFinalStep ? 'Finish' : 'Continue';
-  }, [activeStep, isFinalStep]);
+  }, [activeStep, completionSubmitting, isFinalStep, isSignedIn]);
 
   const renderHero = (step: Extract<OnboardingStep, { type: 'hero' }>) => (
     <View style={styles.heroContainer}>
@@ -827,24 +948,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
       typeof answers[customInputKey] === 'string' ? (answers[customInputKey] as string) : '';
 
     const handleAddCustomValue = () => {
-      const trimmed = customInputValue.trim();
-      if (!trimmed) {
-        return;
-      }
-      setAnswers((prev) => {
-        const current = Array.isArray(prev[step.id]) ? (prev[step.id] as string[]) : [];
-        if (current.some((value) => value.toLowerCase() === trimmed.toLowerCase())) {
-          return {
-            ...prev,
-            [customInputKey]: '',
-          };
-        }
-        return {
-          ...prev,
-          [step.id]: [...current, trimmed],
-          [customInputKey]: '',
-        };
-      });
+      addStoredCustomMultiValue(step.id, customInputKey);
     };
 
     return (
@@ -1242,35 +1346,46 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
             </Text>
           </View>
         ) : null}
-        <View style={styles.accountButtons}>
-          <Pressable
-            style={styles.accountButton}
-            onPress={continueWithApple}
-            disabled={oauthStatus !== 'idle'}
-          >
-            <Text variant="body" weight="semibold" style={styles.accountButtonText}>
-              {oauthStatus === 'apple' ? '🍎 Connecting…' : '🍎 Continue with Apple'}
+        {isSignedIn ? (
+          <View style={styles.signedInCard}>
+            <Text variant="body" weight="semibold" style={styles.signedInCardTitle}>
+              You’re already signed in
             </Text>
-          </Pressable>
-          <Pressable
-            style={styles.accountButton}
-            onPress={continueWithGoogle}
-            disabled={oauthStatus !== 'idle'}
-          >
-            <Text variant="body" weight="semibold" style={styles.accountButtonText}>
-              {oauthStatus === 'google' ? '🔍 Connecting…' : '🔍 Continue with Google'}
+            <Text variant="caption" style={styles.signedInCardCopy}>
+              We kept your session. Continue and finish setting up your Crave profile.
             </Text>
-          </Pressable>
-          <Pressable
-            style={styles.accountButton}
-            onPress={openEmailModal}
-            disabled={oauthStatus !== 'idle'}
-          >
-            <Text variant="body" weight="semibold" style={styles.accountButtonText}>
-              ✉️ Continue with email
-            </Text>
-          </Pressable>
-        </View>
+          </View>
+        ) : (
+          <View style={styles.accountButtons}>
+            <Pressable
+              style={styles.accountButton}
+              onPress={continueWithApple}
+              disabled={oauthStatus !== 'idle'}
+            >
+              <Text variant="body" weight="semibold" style={styles.accountButtonText}>
+                {oauthStatus === 'apple' ? '🍎 Connecting…' : '🍎 Continue with Apple'}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={styles.accountButton}
+              onPress={continueWithGoogle}
+              disabled={oauthStatus !== 'idle'}
+            >
+              <Text variant="body" weight="semibold" style={styles.accountButtonText}>
+                {oauthStatus === 'google' ? '🔍 Connecting…' : '🔍 Continue with Google'}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={styles.accountButton}
+              onPress={openEmailModal}
+              disabled={oauthStatus !== 'idle'}
+            >
+              <Text variant="body" weight="semibold" style={styles.accountButtonText}>
+                ✉️ Continue with email
+              </Text>
+            </Pressable>
+          </View>
+        )}
         {authError ? (
           <Text variant="caption" style={styles.authErrorText}>
             {authError}
@@ -1971,7 +2086,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
       }
       const targetPosition = getPositionForIndex(nextIndex) - 1;
       setIsAnimating(true);
-      setStepIndexState(nextIndex);
+      setCurrentStepId(onboardingSteps[nextIndex]?.id ?? DEFAULT_ONBOARDING_STEP_ID);
       const isForward = nextIndex > stepIndex;
       if (isForward) {
         ctaPulse.setValue(0);
@@ -2022,7 +2137,15 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
         setIsAnimating(false);
       });
     },
-    [ctaPulse, ctaTransitionScale, getPositionForIndex, isAnimating, progress, stepIndex]
+    [
+      ctaPulse,
+      ctaTransitionScale,
+      getPositionForIndex,
+      isAnimating,
+      progress,
+      setCurrentStepId,
+      stepIndex,
+    ]
   );
 
   const requiresAuthToAdvance = React.useMemo(
@@ -2087,7 +2210,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
         const nextIndex = findNextVisibleIndex(stepIndex);
         if (nextIndex === stepIndex) {
           logger.info('Onboarding preferences', answers);
-          completeAndEnterApp();
+          await completeAndEnterApp();
           return;
         }
         animateToStepIndex(nextIndex);
@@ -2098,7 +2221,9 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     const nextIndex = findNextVisibleIndex(stepIndex);
     if (nextIndex === stepIndex) {
       logger.info('Onboarding preferences', answers);
-      completeAndEnterApp();
+      void (async () => {
+        await completeAndEnterApp();
+      })();
       return;
     }
     animateToStepIndex(nextIndex);
@@ -2122,7 +2247,10 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     animateToStepIndex(previousIndex);
   }, [findPreviousVisibleIndex, stepIndex, animateToStepIndex]);
 
-  const canContinue = isStepComplete && (activeStep.type === 'processing' ? processingReady : true);
+  const canContinue =
+    isStepComplete &&
+    (activeStep.type === 'processing' ? processingReady : true) &&
+    !completionSubmitting;
   const isCTAInteractionDisabled = !canContinue || isAnimating;
   const handleCTAPressIn = React.useCallback(() => {
     if (isCTAInteractionDisabled) {
@@ -2268,6 +2396,11 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
               />
             </Animated.View>
           </View>
+          {completionError ? (
+            <Text variant="caption" style={styles.authErrorText}>
+              {completionError}
+            </Text>
+          ) : null}
         </View>
       </KeyboardAvoidingView>
       <EmailAuthModal visible={emailModalVisible} onClose={() => setEmailModalVisible(false)} />
@@ -2772,6 +2905,22 @@ const styles = StyleSheet.create({
   },
   accountButtonText: {
     color: '#0f172a',
+  },
+  signedInCard: {
+    marginTop: 24,
+    borderRadius: 18,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    backgroundColor: '#fff1f4',
+    borderWidth: 1,
+    borderColor: 'rgba(249, 115, 131, 0.18)',
+    gap: 6,
+  },
+  signedInCardTitle: {
+    color: '#0f172a',
+  },
+  signedInCardCopy: {
+    color: SECONDARY_TEXT,
   },
   authErrorText: {
     color: '#dc2626',

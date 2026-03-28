@@ -1,4 +1,5 @@
 import React from 'react';
+import type { MapBounds } from '../../../types';
 import {
   createSearchSessionController,
   type SearchSessionController,
@@ -35,6 +36,7 @@ import {
 import { useHandoffBusBridge } from '../runtime/shared/use-handoff-bus-bridge';
 
 type UseSearchRuntimeCompositionArgs = {
+  initialBounds?: MapBounds | null;
   setMapCenter: React.Dispatch<React.SetStateAction<[number, number] | null>>;
   setMapZoom: React.Dispatch<React.SetStateAction<number | null>>;
 };
@@ -52,12 +54,13 @@ type UseSearchRuntimeCompositionResult = {
 };
 
 export const useSearchRuntimeComposition = ({
+  initialBounds = null,
   setMapCenter,
   setMapZoom,
 }: UseSearchRuntimeCompositionArgs): UseSearchRuntimeCompositionResult => {
   const viewportBoundsServiceRef = React.useRef<ViewportBoundsService | null>(null);
   if (!viewportBoundsServiceRef.current) {
-    viewportBoundsServiceRef.current = createViewportBoundsService();
+    viewportBoundsServiceRef.current = createViewportBoundsService(initialBounds);
   }
   const viewportBoundsService = viewportBoundsServiceRef.current;
 

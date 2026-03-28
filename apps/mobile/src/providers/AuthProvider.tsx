@@ -7,10 +7,7 @@ import * as SecureStore from 'expo-secure-store';
 import { setAuthTokenResolver } from '../services/api';
 import { notificationsService } from '../services/notifications';
 import { useCityStore } from '../store/cityStore';
-import { useOnboardingStore } from '../store/onboardingStore';
 import { useNotificationStore } from '../store/notificationStore';
-import { navigationRef } from '../navigation/navigationRef';
-import PollNotificationListener from './PollNotificationListener';
 import SearchHistoryPreload from './SearchHistoryPreload';
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
@@ -191,49 +188,6 @@ const PushNotificationRegistrar: React.FC = () => {
   return null;
 };
 
-const AuthStateMonitor: React.FC = () => {
-  const { isLoaded, isSignedIn } = useAuth();
-  const hasCompletedOnboarding = useOnboardingStore((state) => state.hasCompletedOnboarding);
-  const lastRouteRef = React.useRef<string | null>(null);
-
-  React.useEffect(() => {
-    if (!isLoaded) {
-      return;
-    }
-
-    const targetRoute = isSignedIn ? 'Main' : hasCompletedOnboarding ? 'SignIn' : 'Onboarding';
-    if (lastRouteRef.current === targetRoute) {
-      return;
-    }
-
-    const applyReset = () => {
-      if (!navigationRef.isReady()) {
-        return false;
-      }
-      lastRouteRef.current = targetRoute;
-      navigationRef.reset({
-        index: 0,
-        routes: [{ name: targetRoute as never }],
-      });
-      return true;
-    };
-
-    if (applyReset()) {
-      return;
-    }
-
-    const interval = setInterval(() => {
-      if (applyReset()) {
-        clearInterval(interval);
-      }
-    }, 100);
-
-    return () => clearInterval(interval);
-  }, [hasCompletedOnboarding, isLoaded, isSignedIn]);
-
-  return null;
-};
-
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   if (!publishableKey) {
     return <>{children}</>;
@@ -243,9 +197,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <ClerkSessionBridge />
       <PushNotificationRegistrar />
-      <AuthStateMonitor />
       <SearchHistoryPreload />
-      <PollNotificationListener />
       {children}
     </ClerkProvider>
   );

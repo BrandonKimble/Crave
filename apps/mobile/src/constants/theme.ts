@@ -1,10 +1,15 @@
 import type { ViewStyle } from 'react-native';
+import colorPalette from './color-palette.json';
+
+const typedColorPalette = colorPalette as {
+  primaryColor: string;
+};
 
 export const colors = {
-  primary: '#ff3368',
+  primary: typedColorPalette.primaryColor,
   primaryDark: '#d92358',
   secondary: '#4ECDC4',
-  accentDark: '#ff3368',
+  accentDark: typedColorPalette.primaryColor,
   background: '#F7F7F7',
   surface: '#FFFFFF',
   textPrimary: '#0f172a',

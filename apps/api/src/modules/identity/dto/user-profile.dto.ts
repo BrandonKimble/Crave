@@ -4,6 +4,7 @@ import {
   EntitlementStatus,
   UsernameStatus,
 } from '@prisma/client';
+import type { UserOnboardingProfile } from '@crave-search/shared';
 
 export interface ActiveSubscriptionDto {
   provider: SubscriptionProvider;
@@ -43,6 +44,7 @@ export interface UserProfileDto {
   stripeCustomerId?: string;
   lastSignInAt?: Date | null;
   activeSubscription?: ActiveSubscriptionDto;
+  onboarding: UserOnboardingProfile;
   stats: UserStatsDto;
   entitlements: UserEntitlementDto[];
 }

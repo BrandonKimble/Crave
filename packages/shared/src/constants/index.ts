@@ -20,3 +20,5 @@ export const API_ENDPOINTS = {
   SEARCH: '/api/search',
   ENTITIES: '/api/entities',
 } as const;
+
+export const ONBOARDING_VERSION = 1;

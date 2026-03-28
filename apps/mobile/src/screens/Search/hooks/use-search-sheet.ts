@@ -17,6 +17,7 @@ type UseSearchSheetOptions = {
   insetTop: number;
   navBarTop: number;
   headerHeight?: number;
+  initialPosition?: SheetPosition;
 };
 
 type UseSearchSheetResult = {
@@ -44,20 +45,25 @@ const useSearchSheet = ({
   insetTop,
   navBarTop,
   headerHeight,
+  initialPosition,
 }: UseSearchSheetOptions): UseSearchSheetResult => {
-  const [panelVisible, setPanelVisible] = React.useState(false);
-  const [sheetState, setSheetState] = React.useState<SheetPosition>('hidden');
-  const panelVisibleRef = React.useRef(false);
-  const sheetStateRef = React.useRef<SheetPosition>('hidden');
-  const sheetTranslateY = useSharedValue(SCREEN_HEIGHT);
+  const snapPoints = React.useMemo<SnapPoints>(() => {
+    return calculateSnapPoints(SCREEN_HEIGHT, searchBarTop, insetTop, navBarTop, headerHeight ?? 0);
+  }, [headerHeight, insetTop, navBarTop, searchBarTop]);
+  const initialSheetPosition = initialPosition ?? 'hidden';
+  const initialPanelVisible = initialSheetPosition !== 'hidden';
+
+  const [panelVisible, setPanelVisible] = React.useState(initialPanelVisible);
+  const [sheetState, setSheetState] = React.useState<SheetPosition>(initialSheetPosition);
+  const panelVisibleRef = React.useRef(initialPanelVisible);
+  const sheetStateRef = React.useRef<SheetPosition>(initialSheetPosition);
+  const sheetTranslateY = useSharedValue(
+    initialPanelVisible ? snapPoints[initialSheetPosition] ?? SCREEN_HEIGHT : SCREEN_HEIGHT
+  );
   const resultsScrollOffset = useSharedValue(0);
   const resultsMomentum = useSharedValue(false);
   const motionCommand = useSharedValue<BottomSheetMotionCommand | null>(null);
   const motionCommandTokenRef = React.useRef(0);
-
-  const snapPoints = React.useMemo<SnapPoints>(() => {
-    return calculateSnapPoints(SCREEN_HEIGHT, searchBarTop, insetTop, navBarTop, headerHeight ?? 0);
-  }, [headerHeight, insetTop, navBarTop, searchBarTop]);
 
   const shouldRenderSheet = isSearchOverlay && (panelVisible || sheetState !== 'hidden');
 

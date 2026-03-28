@@ -738,11 +738,8 @@ const BottomSheetWithFlashList = <T,>({
     ]
   );
 
-  const snapCandidates = React.useMemo(() => {
+  const visibleSnapCandidates = React.useMemo(() => {
     const points = [snapPoints.expanded, snapPoints.middle, snapPoints.collapsed];
-    if (typeof snapPoints.hidden === 'number' && !preventSwipeDismiss) {
-      points.push(snapPoints.hidden);
-    }
     points.sort((a, b) => a - b);
     const deduped: number[] = [];
     for (let i = 0; i < points.length; i += 1) {
@@ -753,13 +750,7 @@ const BottomSheetWithFlashList = <T,>({
       }
     }
     return deduped;
-  }, [
-    preventSwipeDismiss,
-    snapPoints.collapsed,
-    snapPoints.expanded,
-    snapPoints.hidden,
-    snapPoints.middle,
-  ]);
+  }, [snapPoints.collapsed, snapPoints.expanded, snapPoints.middle]);
 
   const dismissThresholdValue =
     typeof dismissThreshold === 'number'
@@ -778,7 +769,12 @@ const BottomSheetWithFlashList = <T,>({
           return hiddenSnap;
         }
       }
-      return resolveSteppedSnapPoint(clampedValue, velocity, gestureStartValue, snapCandidates);
+      return resolveSteppedSnapPoint(
+        clampedValue,
+        velocity,
+        gestureStartValue,
+        visibleSnapCandidates
+      );
     },
     [
       collapsedSnap,
@@ -786,7 +782,7 @@ const BottomSheetWithFlashList = <T,>({
       expandedSnap,
       hiddenSnap,
       preventSwipeDismiss,
-      snapCandidates,
+      visibleSnapCandidates,
     ]
   );
 

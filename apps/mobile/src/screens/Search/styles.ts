@@ -5,6 +5,7 @@ import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
 import { colors as themeColors } from '../../constants/theme';
 import {
   OVERLAY_CORNER_RADIUS,
+  OVERLAY_HEADER_CLOSE_BUTTON_SIZE,
   OVERLAY_HORIZONTAL_PADDING,
 } from '../../overlays/overlaySheetStyles';
 import {
@@ -63,14 +64,6 @@ const styles = StyleSheet.create({
   mapPlaceholder: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: themeColors.surface,
-  },
-  mapLoadingGrid: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: themeColors.background,
-    zIndex: 2,
-  },
-  mapLoadingGridSvg: {
-    ...StyleSheet.absoluteFillObject,
   },
   statusBarFade: {
     position: 'absolute',
@@ -425,10 +418,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     paddingTop: NAV_TOP_PADDING,
     backgroundColor: 'transparent',
-    overflow: 'hidden',
-  },
-  bottomNavBackground: {
-    ...StyleSheet.absoluteFillObject,
+    overflow: 'visible',
   },
   navButton: {
     alignItems: 'center',
@@ -595,6 +585,37 @@ const styles = StyleSheet.create({
   },
   resultsHeaderSurfaceSolid: {
     backgroundColor: '#ffffff',
+  },
+  closeShellHeaderTitlePlaceholder: {
+    flex: 1,
+    minHeight: 1,
+  },
+  closeVisualHeaderTitleContainer: {
+    flex: 1,
+    minWidth: 0,
+  },
+  closeVisualHeaderTitleText: {
+    flex: 1,
+    color: themeColors.text,
+    fontSize: FONT_SIZES.title,
+    lineHeight: LINE_HEIGHTS.title,
+    minWidth: 0,
+  },
+  closeVisualHeaderBadge: {
+    height: OVERLAY_HEADER_CLOSE_BUTTON_SIZE,
+    paddingHorizontal: 10,
+    borderRadius: OVERLAY_HEADER_CLOSE_BUTTON_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  closeVisualHeaderBadgeText: {
+    color: themeColors.text,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
+  },
+  closeVisualHeaderActionButton: {
+    marginRight: 0,
   },
   resultsHeaderHandle: {
     backgroundColor: 'transparent',
