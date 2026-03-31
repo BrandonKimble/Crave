@@ -284,6 +284,42 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
 
   private static final class LabelFamilyObservationState {
     final Set<String> settledVisibleFeatureIds = new LinkedHashSet<>();
+    boolean observationEnabled = false;
+    boolean allowFallback = false;
+    boolean commitInteractionVisibility = false;
+    double refreshMsIdle = 0d;
+    double refreshMsMoving = 0d;
+    boolean stickyEnabled = false;
+    double stickyLockStableMsMoving = 0d;
+    double stickyLockStableMsIdle = 0d;
+    double stickyUnlockMissingMsMoving = 0d;
+    double stickyUnlockMissingMsIdle = 0d;
+    int stickyUnlockMissingStreakMoving = 1;
+    String configuredResetRequestKey = null;
+    final ArrayList<String> lastVisibleLabelFeatureIds = new ArrayList<>();
+    int lastLayerRenderedFeatureCount = 0;
+    int lastEffectiveRenderedFeatureCount = 0;
+    int stickyRevision = 0;
+    final Map<String, String> stickyCandidateByIdentity = new HashMap<>();
+    final Map<String, Double> stickyLastSeenAtMsByIdentity = new HashMap<>();
+    final Map<String, Integer> stickyMissingStreakByIdentity = new HashMap<>();
+    final Map<String, String> stickyProposedCandidateByIdentity = new HashMap<>();
+    final Map<String, Double> stickyProposedSinceAtMsByIdentity = new HashMap<>();
+    String lastResetRequestKey = null;
+    boolean isRefreshInFlight = false;
+    Double queuedRefreshDelayMs = null;
+  }
+
+  private static final class RenderedPlacedLabelObservation {
+    final String markerKey;
+    final String candidate;
+    final String restaurantId;
+
+    RenderedPlacedLabelObservation(String markerKey, String candidate, String restaurantId) {
+      this.markerKey = markerKey;
+      this.candidate = candidate;
+      this.restaurantId = restaurantId;
+    }
   }
 
   private static final class RevealBatchRef {
@@ -344,6 +380,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     final Map<String, Set<String>> blockedPresentationCommitFenceDataIdsBySourceId = new HashMap<>();
     final Map<String, Set<String>> pendingSourceCommitDataIdsBySourceId = new HashMap<>();
     final Map<String, DerivedFamilyState> derivedFamilyStates = new HashMap<>();
+    boolean currentViewportIsMoving = false;
     boolean isAwaitingSourceRecovery;
     Double sourceRecoveryPausedAtMs;
   }
@@ -484,7 +521,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
 
   private static final class LabelObservationResult {
     final ArrayList<String> visibleLabelFeatureIds = new ArrayList<>();
-    final ArrayList<WritableMap> placedLabels = new ArrayList<>();
+    final ArrayList<RenderedPlacedLabelObservation> placedLabels = new ArrayList<>();
   }
 
   private static final class DotObservationResult {
@@ -566,6 +603,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
   private final Map<String, Runnable> dismissFrameFallbackRunnables = new ConcurrentHashMap<>();
   private final Map<String, Runnable> sourceRecoveryRunnables = new ConcurrentHashMap<>();
   private final Map<String, Runnable> livePinTransitionRunnables = new ConcurrentHashMap<>();
+  private final Map<String, Runnable> labelObservationRefreshRunnables = new ConcurrentHashMap<>();
   private final Map<String, Cancelable> sourceDataLoadedSubscriptions = new ConcurrentHashMap<>();
   private final Map<String, Cancelable> styleLoadedSubscriptions = new ConcurrentHashMap<>();
   private final Map<String, Cancelable> cameraChangedSubscriptions = new ConcurrentHashMap<>();
@@ -683,6 +721,10 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     Runnable sourceRecoveryRunnable = sourceRecoveryRunnables.remove(instanceId);
     if (sourceRecoveryRunnable != null) {
       mainHandler.removeCallbacks(sourceRecoveryRunnable);
+    }
+    Runnable labelObservationRefreshRunnable = labelObservationRefreshRunnables.remove(instanceId);
+    if (labelObservationRefreshRunnable != null) {
+      mainHandler.removeCallbacks(labelObservationRefreshRunnable);
     }
     cancelLivePinTransitionAnimation(instanceId);
     instances.remove(instanceId);
@@ -1232,131 +1274,64 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       );
       return;
     }
-    ArrayList<String> layerIds = new ArrayList<>();
-    if (payload.hasKey("layerIds") && !payload.isNull("layerIds")) {
-      com.facebook.react.bridge.ReadableArray readableLayerIds = payload.getArray("layerIds");
-      if (readableLayerIds != null) {
-        for (int index = 0; index < readableLayerIds.size(); index += 1) {
-          if (!readableLayerIds.isNull(index)) {
-            String layerId = readableLayerIds.getString(index);
-            if (layerId != null && !layerId.isEmpty()) {
-              layerIds.add(layerId);
-            }
-          }
-        }
-      }
-    }
     boolean allowFallback = payload.hasKey("allowFallback") && payload.getBoolean("allowFallback");
     boolean commitInteractionVisibility =
       payload.hasKey("commitInteractionVisibility") && payload.getBoolean("commitInteractionVisibility");
+    double refreshMsIdle =
+      payload.hasKey("refreshMsIdle") && !payload.isNull("refreshMsIdle")
+        ? payload.getDouble("refreshMsIdle")
+        : 0d;
+    double refreshMsMoving =
+      payload.hasKey("refreshMsMoving") && !payload.isNull("refreshMsMoving")
+        ? payload.getDouble("refreshMsMoving")
+        : 0d;
+    boolean enableStickyLabelCandidates =
+      payload.hasKey("enableStickyLabelCandidates") &&
+      payload.getBoolean("enableStickyLabelCandidates");
+    double stickyLockStableMsMoving =
+      payload.hasKey("stickyLockStableMsMoving") && !payload.isNull("stickyLockStableMsMoving")
+        ? payload.getDouble("stickyLockStableMsMoving")
+        : 0d;
+    double stickyLockStableMsIdle =
+      payload.hasKey("stickyLockStableMsIdle") && !payload.isNull("stickyLockStableMsIdle")
+        ? payload.getDouble("stickyLockStableMsIdle")
+        : 0d;
+    double stickyUnlockMissingMsMoving =
+      payload.hasKey("stickyUnlockMissingMsMoving") && !payload.isNull("stickyUnlockMissingMsMoving")
+        ? payload.getDouble("stickyUnlockMissingMsMoving")
+        : 0d;
+    double stickyUnlockMissingMsIdle =
+      payload.hasKey("stickyUnlockMissingMsIdle") && !payload.isNull("stickyUnlockMissingMsIdle")
+        ? payload.getDouble("stickyUnlockMissingMsIdle")
+        : 0d;
+    int stickyUnlockMissingStreakMoving =
+      payload.hasKey("stickyUnlockMissingStreakMoving") &&
+      !payload.isNull("stickyUnlockMissingStreakMoving")
+        ? payload.getInt("stickyUnlockMissingStreakMoving")
+        : 1;
+    String labelResetRequestKey =
+      payload.hasKey("labelResetRequestKey") && !payload.isNull("labelResetRequestKey")
+        ? payload.getString("labelResetRequestKey")
+        : null;
 
     mainHandler.post(() -> {
       try {
-        RNMBXMapView mapView = resolveMapView(state.mapTag);
-        if (mapView == null) {
-          throw new IllegalStateException("Map view not found for react tag " + state.mapTag);
-        }
-        int width = mapView.getWidth();
-        int height = mapView.getHeight();
-        if (width <= 0 || height <= 0) {
-          if (commitInteractionVisibility) {
-            InstanceState mutableState = instances.get(instanceId);
-            if (mutableState != null) {
-              DerivedFamilyState labelFamilyState = derivedFamilyState(mutableState, mutableState.labelSourceId);
-              labelFamilyState.settledVisibleFeatureIds.clear();
-              instances.put(instanceId, mutableState);
-            }
-          }
-          promise.resolve(emptyRenderedLabelObservationResult());
-          return;
-        }
-        ScreenBox queryBox = new ScreenBox(
-          new ScreenCoordinate(0d, 0d),
-          new ScreenCoordinate((double) width, (double) height)
+        configureLabelObservation(
+          instanceId,
+          allowFallback,
+          commitInteractionVisibility,
+          enableStickyLabelCandidates,
+          refreshMsIdle,
+          refreshMsMoving,
+          stickyLockStableMsMoving,
+          stickyLockStableMsIdle,
+          stickyUnlockMissingMsMoving,
+          stickyUnlockMissingMsIdle,
+          stickyUnlockMissingStreakMoving,
+          labelResetRequestKey
         );
-        RenderedQueryGeometry queryGeometry = new RenderedQueryGeometry(queryBox);
-        RenderedQueryOptions primaryOptions = new RenderedQueryOptions(layerIds, null);
-        mapView.getMapboxMap().queryRenderedFeatures(
-          queryGeometry,
-          primaryOptions,
-          primaryResult -> mainHandler.post(() -> {
-            if (primaryResult.isError()) {
-              promise.reject(
-                "search_map_render_controller_query_rendered_label_observation_failed",
-                primaryResult.getError()
-              );
-              return;
-            }
-            List<QueriedRenderedFeature> primaryFeatures = primaryResult.getValue();
-            LabelObservationResult primaryObservation = buildRenderedLabelObservation(
-              primaryFeatures,
-              state.labelSourceId
-            );
-            if (primaryFeatures.size() > 0 || !allowFallback) {
-              if (commitInteractionVisibility) {
-                InstanceState mutableState = instances.get(instanceId);
-                if (mutableState != null) {
-                  DerivedFamilyState labelFamilyState = derivedFamilyState(mutableState, mutableState.labelSourceId);
-                  labelFamilyState.settledVisibleFeatureIds.clear();
-                  labelFamilyState.settledVisibleFeatureIds.addAll(primaryObservation.visibleLabelFeatureIds);
-                  instances.put(instanceId, mutableState);
-                }
-              }
-              WritableMap result = emptyRenderedLabelObservationResult();
-              result.putArray(
-                "visibleLabelFeatureIds",
-                Arguments.fromList(primaryObservation.visibleLabelFeatureIds)
-              );
-              result.putArray("placedLabels", toWritableMapArray(primaryObservation.placedLabels));
-              result.putInt("layerRenderedFeatureCount", primaryFeatures.size());
-              result.putInt("effectiveRenderedFeatureCount", primaryFeatures.size());
-              promise.resolve(result);
-              return;
-            }
-
-            ArrayList<String> fallbackLayerIds = resolveRenderedQueryLayerIdsForSource(state);
-            RenderedQueryOptions fallbackOptions = new RenderedQueryOptions(
-              fallbackLayerIds.isEmpty() ? layerIds : fallbackLayerIds,
-              null
-            );
-            mapView.getMapboxMap().queryRenderedFeatures(
-              queryGeometry,
-              fallbackOptions,
-              fallbackResult -> mainHandler.post(() -> {
-                if (fallbackResult.isError()) {
-                  promise.reject(
-                    "search_map_render_controller_query_rendered_label_observation_failed",
-                    fallbackResult.getError()
-                  );
-                  return;
-                }
-                List<QueriedRenderedFeature> fallbackFeatures = fallbackResult.getValue();
-                LabelObservationResult fallbackObservation = buildRenderedLabelObservation(
-                  fallbackFeatures,
-                  state.labelSourceId
-                );
-                if (commitInteractionVisibility) {
-                  InstanceState mutableState = instances.get(instanceId);
-                  if (mutableState != null) {
-                    DerivedFamilyState labelFamilyState = derivedFamilyState(mutableState, mutableState.labelSourceId);
-                    labelFamilyState.settledVisibleFeatureIds.clear();
-                    labelFamilyState.settledVisibleFeatureIds.addAll(fallbackObservation.visibleLabelFeatureIds);
-                    instances.put(instanceId, mutableState);
-                  }
-                }
-                WritableMap result = emptyRenderedLabelObservationResult();
-                result.putArray(
-                  "visibleLabelFeatureIds",
-                  Arguments.fromList(fallbackObservation.visibleLabelFeatureIds)
-                );
-                result.putArray("placedLabels", toWritableMapArray(fallbackObservation.placedLabels));
-                result.putInt("layerRenderedFeatureCount", primaryFeatures.size());
-                result.putInt("effectiveRenderedFeatureCount", fallbackFeatures.size());
-                promise.resolve(result);
-              })
-            );
-          })
-        );
+        scheduleLabelObservationRefresh(instanceId, 0d);
+        promise.resolve(currentRenderedLabelObservationSnapshot(instanceId));
       } catch (Exception error) {
         promise.reject(
           "search_map_render_controller_query_rendered_label_observation_failed",
@@ -1652,6 +1627,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       state.blockedRevealStartCommitFenceDataIdsBySourceId.clear();
       state.blockedPresentationCommitFenceDataIdsBySourceId.clear();
       state.pendingSourceCommitDataIdsBySourceId.clear();
+      state.currentViewportIsMoving = false;
       initializeDerivedFamilyStates(state);
     }
     cancelLivePinTransitionAnimation(instanceId);
@@ -1662,6 +1638,10 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     Runnable pendingRunnable = dismissSettleRunnables.remove(instanceId);
     if (pendingRunnable != null) {
       mainHandler.removeCallbacks(pendingRunnable);
+    }
+    Runnable labelObservationRefreshRunnable = labelObservationRefreshRunnables.remove(instanceId);
+    if (labelObservationRefreshRunnable != null) {
+      mainHandler.removeCallbacks(labelObservationRefreshRunnable);
     }
     promise.resolve(null);
   }
@@ -4282,7 +4262,55 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     result.putArray("placedLabels", Arguments.createArray());
     result.putInt("layerRenderedFeatureCount", 0);
     result.putInt("effectiveRenderedFeatureCount", 0);
+    result.putInt("stickyRevision", 0);
+    result.putArray("stickyCandidates", Arguments.createArray());
+    result.putArray("dirtyStickyIdentityKeys", Arguments.createArray());
     return result;
+  }
+
+  private static com.facebook.react.bridge.WritableArray toWritableStringArray(List<String> values) {
+    com.facebook.react.bridge.WritableArray array = Arguments.createArray();
+    for (String value : values) {
+      array.pushString(value);
+    }
+    return array;
+  }
+
+  private static List<WritableMap> serializeRenderedPlacedLabels(
+    List<RenderedPlacedLabelObservation> placedLabels
+  ) {
+    ArrayList<WritableMap> maps = new ArrayList<>();
+    for (RenderedPlacedLabelObservation placedLabel : placedLabels) {
+      WritableMap map = Arguments.createMap();
+      map.putString("markerKey", placedLabel.markerKey);
+      map.putString("candidate", placedLabel.candidate);
+      if (placedLabel.restaurantId != null) {
+        map.putString("restaurantId", placedLabel.restaurantId);
+      } else {
+        map.putNull("restaurantId");
+      }
+      maps.add(map);
+    }
+    return maps;
+  }
+
+  private static List<WritableMap> serializeStickyLabelCandidates(
+    Map<String, String> stickyCandidateByIdentity
+  ) {
+    ArrayList<String> identityKeys = new ArrayList<>(stickyCandidateByIdentity.keySet());
+    Collections.sort(identityKeys);
+    ArrayList<WritableMap> maps = new ArrayList<>();
+    for (String identityKey : identityKeys) {
+      String candidate = stickyCandidateByIdentity.get(identityKey);
+      if (candidate == null) {
+        continue;
+      }
+      WritableMap map = Arguments.createMap();
+      map.putString("identityKey", identityKey);
+      map.putString("candidate", candidate);
+      maps.add(map);
+    }
+    return maps;
   }
 
   private static WritableMap emptyRenderedDotObservationResult() {
@@ -4339,24 +4367,492 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
           ? featureId
           : buildRenderedLabelCandidateFeatureId(markerKey, candidate);
       visibleLabelFeatureIds.add(resolvedFeatureId);
-      WritableMap placedLabel = Arguments.createMap();
-      placedLabel.putString("markerKey", markerKey);
-      placedLabel.putString("candidate", candidate);
-      if (
+      String restaurantId =
         properties != null &&
         properties.has("restaurantId") &&
         properties.get("restaurantId").isJsonPrimitive()
-      ) {
-        placedLabel.putString("restaurantId", properties.get("restaurantId").getAsString());
-      } else {
-        placedLabel.putNull("restaurantId");
-      }
-      result.placedLabels.add(placedLabel);
+          ? properties.get("restaurantId").getAsString()
+          : null;
+      result.placedLabels.add(new RenderedPlacedLabelObservation(markerKey, candidate, restaurantId));
     }
     ArrayList<String> sortedVisibleLabelFeatureIds = new ArrayList<>(visibleLabelFeatureIds);
     Collections.sort(sortedVisibleLabelFeatureIds);
     result.visibleLabelFeatureIds.addAll(sortedVisibleLabelFeatureIds);
     return result;
+  }
+
+  private static String buildLabelStickyIdentityKey(String restaurantId, String markerKey) {
+    if (restaurantId != null && !restaurantId.isEmpty()) {
+      return "restaurant:" + restaurantId;
+    }
+    if (markerKey != null && !markerKey.isEmpty()) {
+      return "marker:" + markerKey;
+    }
+    return null;
+  }
+
+  private static Set<String> resetStickyLabelObservationIfNeeded(
+    LabelFamilyObservationState labelObservation,
+    String labelResetRequestKey
+  ) {
+    if (labelResetRequestKey == null || labelResetRequestKey.isEmpty()) {
+      return new LinkedHashSet<>();
+    }
+    if (Objects.equals(labelObservation.lastResetRequestKey, labelResetRequestKey)) {
+      return new LinkedHashSet<>();
+    }
+    labelObservation.lastResetRequestKey = labelResetRequestKey;
+    LinkedHashSet<String> previousIdentityKeys =
+      new LinkedHashSet<>(labelObservation.stickyCandidateByIdentity.keySet());
+    labelObservation.stickyCandidateByIdentity.clear();
+    labelObservation.stickyLastSeenAtMsByIdentity.clear();
+    labelObservation.stickyMissingStreakByIdentity.clear();
+    labelObservation.stickyProposedCandidateByIdentity.clear();
+    labelObservation.stickyProposedSinceAtMsByIdentity.clear();
+    if (!previousIdentityKeys.isEmpty()) {
+      labelObservation.stickyRevision += 1;
+    }
+    return previousIdentityKeys;
+  }
+
+  private static Set<String> updateStickyLabelObservation(
+    LabelFamilyObservationState labelObservation,
+    List<RenderedPlacedLabelObservation> placedLabels,
+    boolean isMoving,
+    boolean enableStickyLabelCandidates,
+    double stickyLockStableMsMoving,
+    double stickyLockStableMsIdle,
+    double stickyUnlockMissingMsMoving,
+    double stickyUnlockMissingMsIdle,
+    int stickyUnlockMissingStreakMoving,
+    double nowMs
+  ) {
+    if (!enableStickyLabelCandidates) {
+      LinkedHashSet<String> previousIdentityKeys =
+        new LinkedHashSet<>(labelObservation.stickyCandidateByIdentity.keySet());
+      labelObservation.stickyCandidateByIdentity.clear();
+      labelObservation.stickyLastSeenAtMsByIdentity.clear();
+      labelObservation.stickyMissingStreakByIdentity.clear();
+      labelObservation.stickyProposedCandidateByIdentity.clear();
+      labelObservation.stickyProposedSinceAtMsByIdentity.clear();
+      if (!previousIdentityKeys.isEmpty()) {
+        labelObservation.stickyRevision += 1;
+      }
+      return previousIdentityKeys;
+    }
+
+    HashMap<String, String> renderedCandidateByIdentity = new HashMap<>();
+    for (RenderedPlacedLabelObservation placedLabel : placedLabels) {
+      String stickyIdentityKey =
+        buildLabelStickyIdentityKey(placedLabel.restaurantId, placedLabel.markerKey);
+      if (stickyIdentityKey == null || renderedCandidateByIdentity.containsKey(stickyIdentityKey)) {
+        continue;
+      }
+      renderedCandidateByIdentity.put(stickyIdentityKey, placedLabel.candidate);
+    }
+
+    LinkedHashSet<String> changedIdentityKeys = new LinkedHashSet<>();
+    for (Map.Entry<String, String> entry : renderedCandidateByIdentity.entrySet()) {
+      String stickyIdentityKey = entry.getKey();
+      String candidate = entry.getValue();
+      labelObservation.stickyLastSeenAtMsByIdentity.put(stickyIdentityKey, nowMs);
+      labelObservation.stickyMissingStreakByIdentity.put(stickyIdentityKey, 0);
+      String locked = labelObservation.stickyCandidateByIdentity.get(stickyIdentityKey);
+      if (Objects.equals(locked, candidate)) {
+        labelObservation.stickyProposedCandidateByIdentity.remove(stickyIdentityKey);
+        labelObservation.stickyProposedSinceAtMsByIdentity.remove(stickyIdentityKey);
+        continue;
+      }
+
+      if (isMoving) {
+        labelObservation.stickyCandidateByIdentity.put(stickyIdentityKey, candidate);
+        labelObservation.stickyProposedCandidateByIdentity.remove(stickyIdentityKey);
+        labelObservation.stickyProposedSinceAtMsByIdentity.remove(stickyIdentityKey);
+        changedIdentityKeys.add(stickyIdentityKey);
+        continue;
+      }
+
+      double stableMs = isMoving ? stickyLockStableMsMoving : stickyLockStableMsIdle;
+      String proposed = labelObservation.stickyProposedCandidateByIdentity.get(stickyIdentityKey);
+      if (!Objects.equals(proposed, candidate)) {
+        labelObservation.stickyProposedCandidateByIdentity.put(stickyIdentityKey, candidate);
+        labelObservation.stickyProposedSinceAtMsByIdentity.put(stickyIdentityKey, nowMs);
+        continue;
+      }
+      Double sinceAt = labelObservation.stickyProposedSinceAtMsByIdentity.get(stickyIdentityKey);
+      if (sinceAt == null) {
+        sinceAt = nowMs;
+      }
+      if (nowMs - sinceAt < stableMs) {
+        continue;
+      }
+      labelObservation.stickyCandidateByIdentity.put(stickyIdentityKey, candidate);
+      labelObservation.stickyProposedCandidateByIdentity.remove(stickyIdentityKey);
+      labelObservation.stickyProposedSinceAtMsByIdentity.remove(stickyIdentityKey);
+      changedIdentityKeys.add(stickyIdentityKey);
+    }
+
+    if (!placedLabels.isEmpty()) {
+      double unlockMs = isMoving ? stickyUnlockMissingMsMoving : stickyUnlockMissingMsIdle;
+      int requiredStreak = isMoving ? stickyUnlockMissingStreakMoving : 1;
+      ArrayList<String> stickyIdentityKeys =
+        new ArrayList<>(labelObservation.stickyCandidateByIdentity.keySet());
+      for (String stickyIdentityKey : stickyIdentityKeys) {
+        if (renderedCandidateByIdentity.containsKey(stickyIdentityKey)) {
+          continue;
+        }
+        int nextMissingStreak =
+          labelObservation.stickyMissingStreakByIdentity.containsKey(stickyIdentityKey)
+            ? labelObservation.stickyMissingStreakByIdentity.get(stickyIdentityKey) + 1
+            : 1;
+        labelObservation.stickyMissingStreakByIdentity.put(stickyIdentityKey, nextMissingStreak);
+        Double lastSeenAt = labelObservation.stickyLastSeenAtMsByIdentity.get(stickyIdentityKey);
+        if (
+          nextMissingStreak < requiredStreak ||
+          lastSeenAt == null ||
+          nowMs - lastSeenAt < unlockMs
+        ) {
+          continue;
+        }
+        labelObservation.stickyCandidateByIdentity.remove(stickyIdentityKey);
+        labelObservation.stickyLastSeenAtMsByIdentity.remove(stickyIdentityKey);
+        labelObservation.stickyMissingStreakByIdentity.remove(stickyIdentityKey);
+        labelObservation.stickyProposedCandidateByIdentity.remove(stickyIdentityKey);
+        labelObservation.stickyProposedSinceAtMsByIdentity.remove(stickyIdentityKey);
+        changedIdentityKeys.add(stickyIdentityKey);
+      }
+    }
+
+    if (!changedIdentityKeys.isEmpty()) {
+      labelObservation.stickyRevision += 1;
+    }
+    return changedIdentityKeys;
+  }
+
+  private WritableMap commitRenderedLabelObservation(
+    String instanceId,
+    LabelObservationResult observation,
+    int layerRenderedFeatureCount,
+    int effectiveRenderedFeatureCount,
+    boolean commitInteractionVisibility,
+    boolean enableStickyLabelCandidates,
+    double stickyLockStableMsMoving,
+    double stickyLockStableMsIdle,
+    double stickyUnlockMissingMsMoving,
+    double stickyUnlockMissingMsIdle,
+    int stickyUnlockMissingStreakMoving,
+    String labelResetRequestKey
+  ) {
+    InstanceState mutableState = instances.get(instanceId);
+    if (mutableState == null) {
+      return emptyRenderedLabelObservationResult();
+    }
+    DerivedFamilyState labelFamilyState = derivedFamilyState(mutableState, mutableState.labelSourceId);
+    if (commitInteractionVisibility) {
+      labelFamilyState.settledVisibleFeatureIds.clear();
+      labelFamilyState.settledVisibleFeatureIds.addAll(observation.visibleLabelFeatureIds);
+    }
+    Set<String> resetIdentityKeys =
+      resetStickyLabelObservationIfNeeded(labelFamilyState.labelObservation, labelResetRequestKey);
+    Set<String> changedIdentityKeys =
+      updateStickyLabelObservation(
+        labelFamilyState.labelObservation,
+        observation.placedLabels,
+        mutableState.currentViewportIsMoving,
+        enableStickyLabelCandidates,
+        stickyLockStableMsMoving,
+        stickyLockStableMsIdle,
+        stickyUnlockMissingMsMoving,
+        stickyUnlockMissingMsIdle,
+        stickyUnlockMissingStreakMoving,
+        nowMs()
+      );
+    labelFamilyState.labelObservation.lastVisibleLabelFeatureIds.clear();
+    labelFamilyState.labelObservation.lastVisibleLabelFeatureIds.addAll(observation.visibleLabelFeatureIds);
+    labelFamilyState.labelObservation.lastLayerRenderedFeatureCount = layerRenderedFeatureCount;
+    labelFamilyState.labelObservation.lastEffectiveRenderedFeatureCount = effectiveRenderedFeatureCount;
+    instances.put(instanceId, mutableState);
+
+    ArrayList<String> dirtyStickyIdentityKeys = new ArrayList<>();
+    dirtyStickyIdentityKeys.addAll(resetIdentityKeys);
+    for (String identityKey : changedIdentityKeys) {
+      if (!dirtyStickyIdentityKeys.contains(identityKey)) {
+        dirtyStickyIdentityKeys.add(identityKey);
+      }
+    }
+    Collections.sort(dirtyStickyIdentityKeys);
+
+    WritableMap result = emptyRenderedLabelObservationResult();
+    result.putArray("visibleLabelFeatureIds", toWritableStringArray(observation.visibleLabelFeatureIds));
+    result.putArray("placedLabels", toWritableMapArray(serializeRenderedPlacedLabels(observation.placedLabels)));
+    result.putInt("layerRenderedFeatureCount", layerRenderedFeatureCount);
+    result.putInt("effectiveRenderedFeatureCount", effectiveRenderedFeatureCount);
+    result.putInt("stickyRevision", labelFamilyState.labelObservation.stickyRevision);
+    result.putArray(
+      "stickyCandidates",
+      toWritableMapArray(serializeStickyLabelCandidates(labelFamilyState.labelObservation.stickyCandidateByIdentity))
+    );
+    result.putArray("dirtyStickyIdentityKeys", toWritableStringArray(dirtyStickyIdentityKeys));
+    return result;
+  }
+
+  private WritableMap currentRenderedLabelObservationSnapshot(String instanceId) {
+    InstanceState state = instances.get(instanceId);
+    if (state == null) {
+      return emptyRenderedLabelObservationResult();
+    }
+    LabelFamilyObservationState labelObservation =
+      derivedFamilyState(state, state.labelSourceId).labelObservation;
+    WritableMap result = emptyRenderedLabelObservationResult();
+    result.putArray(
+      "visibleLabelFeatureIds",
+      toWritableStringArray(labelObservation.lastVisibleLabelFeatureIds)
+    );
+    result.putInt("layerRenderedFeatureCount", labelObservation.lastLayerRenderedFeatureCount);
+    result.putInt(
+      "effectiveRenderedFeatureCount",
+      labelObservation.lastEffectiveRenderedFeatureCount
+    );
+    result.putInt("stickyRevision", labelObservation.stickyRevision);
+    result.putArray(
+      "stickyCandidates",
+      toWritableMapArray(serializeStickyLabelCandidates(labelObservation.stickyCandidateByIdentity))
+    );
+    return result;
+  }
+
+  private void configureLabelObservation(
+    String instanceId,
+    boolean allowFallback,
+    boolean commitInteractionVisibility,
+    boolean enableStickyLabelCandidates,
+    double refreshMsIdle,
+    double refreshMsMoving,
+    double stickyLockStableMsMoving,
+    double stickyLockStableMsIdle,
+    double stickyUnlockMissingMsMoving,
+    double stickyUnlockMissingMsIdle,
+    int stickyUnlockMissingStreakMoving,
+    String labelResetRequestKey
+  ) {
+    InstanceState state = instances.get(instanceId);
+    if (state == null) {
+      return;
+    }
+    LabelFamilyObservationState labelObservation =
+      derivedFamilyState(state, state.labelSourceId).labelObservation;
+    labelObservation.observationEnabled = true;
+    labelObservation.allowFallback = allowFallback;
+    labelObservation.commitInteractionVisibility = commitInteractionVisibility;
+    labelObservation.refreshMsIdle = refreshMsIdle;
+    labelObservation.refreshMsMoving = refreshMsMoving;
+    labelObservation.stickyEnabled = enableStickyLabelCandidates;
+    labelObservation.stickyLockStableMsMoving = stickyLockStableMsMoving;
+    labelObservation.stickyLockStableMsIdle = stickyLockStableMsIdle;
+    labelObservation.stickyUnlockMissingMsMoving = stickyUnlockMissingMsMoving;
+    labelObservation.stickyUnlockMissingMsIdle = stickyUnlockMissingMsIdle;
+    labelObservation.stickyUnlockMissingStreakMoving = stickyUnlockMissingStreakMoving;
+    labelObservation.configuredResetRequestKey = labelResetRequestKey;
+    instances.put(instanceId, state);
+  }
+
+  private void scheduleLabelObservationRefresh(String instanceId, double delayMs) {
+    InstanceState state = instances.get(instanceId);
+    if (state == null) {
+      return;
+    }
+    LabelFamilyObservationState labelObservation =
+      derivedFamilyState(state, state.labelSourceId).labelObservation;
+    if (!labelObservation.observationEnabled) {
+      Runnable pending = labelObservationRefreshRunnables.remove(instanceId);
+      if (pending != null) {
+        mainHandler.removeCallbacks(pending);
+      }
+      return;
+    }
+    if (labelObservation.isRefreshInFlight) {
+      labelObservation.queuedRefreshDelayMs =
+        labelObservation.queuedRefreshDelayMs != null
+          ? Math.min(labelObservation.queuedRefreshDelayMs, delayMs)
+          : delayMs;
+      instances.put(instanceId, state);
+      return;
+    }
+    Runnable pending = labelObservationRefreshRunnables.remove(instanceId);
+    if (pending != null) {
+      mainHandler.removeCallbacks(pending);
+    }
+    Runnable runnable = () -> {
+      labelObservationRefreshRunnables.remove(instanceId);
+      performLabelObservationRefresh(instanceId);
+    };
+    labelObservationRefreshRunnables.put(instanceId, runnable);
+    mainHandler.postDelayed(runnable, Math.max(0L, Math.round(delayMs)));
+  }
+
+  private void completeLabelObservationRefresh(String instanceId) {
+    InstanceState state = instances.get(instanceId);
+    if (state == null) {
+      return;
+    }
+    LabelFamilyObservationState labelObservation =
+      derivedFamilyState(state, state.labelSourceId).labelObservation;
+    labelObservation.isRefreshInFlight = false;
+    Double nextDelayMs = labelObservation.queuedRefreshDelayMs;
+    labelObservation.queuedRefreshDelayMs = null;
+    instances.put(instanceId, state);
+    if (nextDelayMs != null) {
+      scheduleLabelObservationRefresh(instanceId, nextDelayMs);
+    }
+  }
+
+  private void emitLabelObservationUpdated(String instanceId, WritableMap snapshot) {
+    WritableMap event = Arguments.createMap();
+    event.merge(snapshot);
+    event.putString("type", "label_observation_updated");
+    event.putString("instanceId", instanceId);
+    emit(event);
+  }
+
+  private void performLabelObservationRefresh(String instanceId) {
+    InstanceState state = instances.get(instanceId);
+    if (state == null) {
+      return;
+    }
+    LabelFamilyObservationState labelObservation =
+      derivedFamilyState(state, state.labelSourceId).labelObservation;
+    if (!labelObservation.observationEnabled) {
+      return;
+    }
+    RNMBXMapView mapView = resolveMapView(state.mapTag);
+    if (mapView == null) {
+      return;
+    }
+    int width = mapView.getWidth();
+    int height = mapView.getHeight();
+    if (width <= 0 || height <= 0) {
+      LabelObservationResult emptyObservation = new LabelObservationResult();
+      WritableMap snapshot =
+        commitRenderedLabelObservation(
+          instanceId,
+          emptyObservation,
+          0,
+          0,
+          labelObservation.commitInteractionVisibility,
+          labelObservation.stickyEnabled,
+          labelObservation.stickyLockStableMsMoving,
+          labelObservation.stickyLockStableMsIdle,
+          labelObservation.stickyUnlockMissingMsMoving,
+          labelObservation.stickyUnlockMissingMsIdle,
+          labelObservation.stickyUnlockMissingStreakMoving,
+          labelObservation.configuredResetRequestKey
+        );
+      emitLabelObservationUpdated(instanceId, snapshot);
+      completeLabelObservationRefresh(instanceId);
+      return;
+    }
+
+    labelObservation.isRefreshInFlight = true;
+    labelObservation.queuedRefreshDelayMs = null;
+    instances.put(instanceId, state);
+
+    ScreenBox queryBox = new ScreenBox(
+      new ScreenCoordinate(0d, 0d),
+      new ScreenCoordinate((double) width, (double) height)
+    );
+    RenderedQueryGeometry queryGeometry = new RenderedQueryGeometry(queryBox);
+    ArrayList<String> resolvedLayerIds = resolveRenderedQueryLayerIdsForSource(state);
+    if (resolvedLayerIds.isEmpty()) {
+      emitLabelObservationUpdated(instanceId, currentRenderedLabelObservationSnapshot(instanceId));
+      completeLabelObservationRefresh(instanceId);
+      return;
+    }
+    RenderedQueryOptions primaryOptions = new RenderedQueryOptions(resolvedLayerIds, null);
+    mapView
+      .getMapboxMap()
+      .queryRenderedFeatures(
+        queryGeometry,
+        primaryOptions,
+        primaryResult -> mainHandler.post(() -> {
+          InstanceState latestState = instances.get(instanceId);
+          if (latestState == null) {
+            return;
+          }
+          LabelFamilyObservationState latestLabelObservation =
+            derivedFamilyState(latestState, latestState.labelSourceId).labelObservation;
+          if (primaryResult.isError()) {
+            completeLabelObservationRefresh(instanceId);
+            return;
+          }
+          List<QueriedRenderedFeature> primaryFeatures = primaryResult.getValue();
+          LabelObservationResult primaryObservation =
+            buildRenderedLabelObservation(primaryFeatures, latestState.labelSourceId);
+          if (primaryFeatures.size() > 0 || !latestLabelObservation.allowFallback) {
+            WritableMap snapshot =
+              commitRenderedLabelObservation(
+                instanceId,
+                primaryObservation,
+                primaryFeatures.size(),
+                primaryFeatures.size(),
+                latestLabelObservation.commitInteractionVisibility,
+                latestLabelObservation.stickyEnabled,
+                latestLabelObservation.stickyLockStableMsMoving,
+                latestLabelObservation.stickyLockStableMsIdle,
+                latestLabelObservation.stickyUnlockMissingMsMoving,
+                latestLabelObservation.stickyUnlockMissingMsIdle,
+                latestLabelObservation.stickyUnlockMissingStreakMoving,
+                latestLabelObservation.configuredResetRequestKey
+              );
+            emitLabelObservationUpdated(instanceId, snapshot);
+            completeLabelObservationRefresh(instanceId);
+            return;
+          }
+
+          ArrayList<String> fallbackLayerIds = resolveRenderedQueryLayerIdsForSource(latestState);
+          RenderedQueryOptions fallbackOptions = new RenderedQueryOptions(
+            fallbackLayerIds.isEmpty() ? resolvedLayerIds : fallbackLayerIds,
+            null
+          );
+          mapView
+            .getMapboxMap()
+            .queryRenderedFeatures(
+              queryGeometry,
+              fallbackOptions,
+              fallbackResult -> mainHandler.post(() -> {
+                InstanceState fallbackState = instances.get(instanceId);
+                if (fallbackState == null) {
+                  return;
+                }
+                LabelFamilyObservationState fallbackLabelObservation =
+                  derivedFamilyState(fallbackState, fallbackState.labelSourceId).labelObservation;
+                if (fallbackResult.isError()) {
+                  completeLabelObservationRefresh(instanceId);
+                  return;
+                }
+                List<QueriedRenderedFeature> fallbackFeatures = fallbackResult.getValue();
+                LabelObservationResult fallbackObservation =
+                  buildRenderedLabelObservation(fallbackFeatures, fallbackState.labelSourceId);
+                WritableMap snapshot =
+                  commitRenderedLabelObservation(
+                    instanceId,
+                    fallbackObservation,
+                    primaryFeatures.size(),
+                    fallbackFeatures.size(),
+                    fallbackLabelObservation.commitInteractionVisibility,
+                    fallbackLabelObservation.stickyEnabled,
+                    fallbackLabelObservation.stickyLockStableMsMoving,
+                    fallbackLabelObservation.stickyLockStableMsIdle,
+                    fallbackLabelObservation.stickyUnlockMissingMsMoving,
+                    fallbackLabelObservation.stickyUnlockMissingMsIdle,
+                    fallbackLabelObservation.stickyUnlockMissingStreakMoving,
+                    fallbackLabelObservation.configuredResetRequestKey
+                  );
+                emitLabelObservationUpdated(instanceId, snapshot);
+                completeLabelObservationRefresh(instanceId);
+              })
+            );
+        })
+      );
   }
 
   private static DotObservationResult buildRenderedDotObservation(
@@ -4932,6 +5428,17 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       if (sourceId.equals(state.dotSourceId)) {
         startAwaitingLiveDotTransitions(entry.getKey(), dataId, state);
       }
+      if (sourceId.equals(state.labelSourceId)) {
+        LabelFamilyObservationState labelObservation =
+          derivedFamilyState(state, state.labelSourceId).labelObservation;
+        if (labelObservation.observationEnabled) {
+          double refreshDelayMs =
+            state.currentViewportIsMoving
+              ? labelObservation.refreshMsMoving
+              : labelObservation.refreshMsIdle;
+          scheduleLabelObservationRefresh(entry.getKey(), refreshDelayMs);
+        }
+      }
       promoteBlockedCommitFencesIfReady(entry.getKey(), state);
       instances.put(entry.getKey(), state);
     }
@@ -5008,9 +5515,18 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     lastNativeCameraDiagSignatureByMapKey.put(mapKey, signature);
     lastNativeCameraDiagAtMsByMapKey.put(mapKey, nowMs);
     for (Map.Entry<String, InstanceState> entry : instances.entrySet()) {
-      if (entry.getValue().mapTag != mapTag) {
+      InstanceState state = entry.getValue();
+      if (state.mapTag != mapTag) {
         continue;
       }
+      state.currentViewportIsMoving = isMoving;
+      LabelFamilyObservationState labelObservation =
+        derivedFamilyState(state, state.labelSourceId).labelObservation;
+      if (labelObservation.observationEnabled) {
+        double refreshDelayMs = isMoving ? labelObservation.refreshMsMoving : 0d;
+        scheduleLabelObservationRefresh(entry.getKey(), refreshDelayMs);
+      }
+      instances.put(entry.getKey(), state);
       WritableMap event = Arguments.createMap();
       event.putString("type", "camera_changed");
       event.putString("instanceId", entry.getKey());

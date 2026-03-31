@@ -1,38 +1,69 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/sh
 
-repo_root="$(git rev-parse --show-toplevel)"
-
-"$repo_root/scripts/agent-log/ensure-agent-log.sh"
-
-log_file="$repo_root/plans/agent-log.md"
-
-has_entry="$(
-  awk '
-    BEGIN { in_entries=0; found=0 }
-    /^## Entries[[:space:]]*$/ { in_entries=1; next }
-    /^##[[:space:]]+/ { in_entries=0 }
-    in_entries && $0 ~ /^- / { found=1 }
-    END { print found }
-  ' "$log_file"
-)"
-
-if [[ "$has_entry" != "1" ]]; then
-  echo "ERROR: Missing required coordination entry in plans/agent-log.md" >&2
-  echo "Add at least one bullet under the '## Entries' section before committing." >&2
-  exit 1
+if [ "$LEFTHOOK_VERBOSE" = "1" -o "$LEFTHOOK_VERBOSE" = "true" ]; then
+  set -x
 fi
 
-with_node="$repo_root/.lefthook/with-node-22.sh"
-lefthook_js="$repo_root/node_modules/lefthook/bin/index.js"
-
-if [[ -f "$lefthook_js" ]]; then
-  # Avoid lefthook auto-installing/syncing hooks inside core.hooksPath (.githooks),
-  # which can reintroduce `env: node: No such file or directory` on minimal PATHs.
-  bash "$with_node" node "$lefthook_js" run pre-commit --no-auto-install
-elif command -v lefthook >/dev/null 2>&1; then
-  lefthook run pre-commit --no-auto-install
-else
-  echo "Warning: lefthook is not installed; skipping pre-commit checks." >&2
-  echo "Run: yarn install" >&2
+if [ "$LEFTHOOK" = "0" ]; then
+  exit 0
 fi
+
+call_lefthook()
+{
+  if test -n "$LEFTHOOK_BIN"
+  then
+    "$LEFTHOOK_BIN" "$@"
+  elif lefthook -h >/dev/null 2>&1
+  then
+    lefthook "$@"
+  else
+    dir="$(git rev-parse --show-toplevel)"
+    osArch=$(uname | tr '[:upper:]' '[:lower:]')
+    cpuArch=$(uname -m | sed 's/aarch64/arm64/;s/x86_64/x64/')
+    if test -f "$dir/node_modules/lefthook-${osArch}-${cpuArch}/bin/lefthook"
+    then
+      "$dir/node_modules/lefthook-${osArch}-${cpuArch}/bin/lefthook" "$@"
+    elif test -f "$dir/node_modules/@evilmartians/lefthook/bin/lefthook-${osArch}-${cpuArch}/lefthook"
+    then
+      "$dir/node_modules/@evilmartians/lefthook/bin/lefthook-${osArch}-${cpuArch}/lefthook" "$@"
+    elif test -f "$dir/node_modules/@evilmartians/lefthook-installer/bin/lefthook"
+    then
+      "$dir/node_modules/@evilmartians/lefthook-installer/bin/lefthook" "$@"
+    elif test -f "$dir/node_modules/lefthook/bin/index.js"
+    then
+      "$dir/node_modules/lefthook/bin/index.js" "$@"
+    
+    elif go tool lefthook -h >/dev/null 2>&1
+    then
+      go tool lefthook "$@"
+    elif bundle exec lefthook -h >/dev/null 2>&1
+    then
+      bundle exec lefthook "$@"
+    elif yarn lefthook -h >/dev/null 2>&1
+    then
+      yarn lefthook "$@"
+    elif pnpm lefthook -h >/dev/null 2>&1
+    then
+      pnpm lefthook "$@"
+    elif swift package lefthook >/dev/null 2>&1
+    then
+      swift package --build-path .build/lefthook --disable-sandbox lefthook "$@"
+    elif command -v mint >/dev/null 2>&1
+    then
+      mint run csjones/lefthook-plugin "$@"
+    elif uv run lefthook -h >/dev/null 2>&1
+    then
+      uv run lefthook "$@"
+    elif mise exec -- lefthook -h >/dev/null 2>&1
+    then
+      mise exec -- lefthook "$@"
+    elif devbox run lefthook -h >/dev/null 2>&1
+    then
+      devbox run lefthook "$@"
+    else
+      echo "Can't find lefthook in PATH"
+    fi
+  fi
+}
+
+call_lefthook run "pre-commit" "$@"

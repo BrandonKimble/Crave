@@ -87,6 +87,65 @@ const collectSelectedEntries = <TProps extends MarkerLikeProperties>(
   return selectedEntries;
 };
 
+const buildStableLodSlotMap = <TProps extends MarkerLikeProperties>({
+  nextPinnedMarkers,
+  currentPinnedMarkers,
+  buildMarkerKey,
+  maxPins,
+}: {
+  nextPinnedMarkers: Array<MarkerFeature<TProps>>;
+  currentPinnedMarkers: Array<MarkerFeature<TProps>>;
+  buildMarkerKey: (feature: MarkerFeature<TProps>) => string;
+  maxPins: number;
+}): Map<string, number> => {
+  const nextMarkerKeySet = new Set(nextPinnedMarkers.map((feature) => buildMarkerKey(feature)));
+  const nextLodZByMarkerKey = new Map<string, number>();
+  const availableSlots = Array.from({ length: maxPins }, (_, index) => index);
+  const claimedSlots = new Set<number>();
+
+  currentPinnedMarkers.forEach((feature) => {
+    const markerKey = buildMarkerKey(feature);
+    if (!nextMarkerKeySet.has(markerKey)) {
+      return;
+    }
+    const lodZ = feature.properties.lodZ;
+    if (
+      typeof lodZ !== 'number' ||
+      !Number.isFinite(lodZ) ||
+      lodZ < 0 ||
+      lodZ >= maxPins ||
+      claimedSlots.has(lodZ)
+    ) {
+      return;
+    }
+    nextLodZByMarkerKey.set(markerKey, lodZ);
+    claimedSlots.add(lodZ);
+  });
+
+  const freeSlotsDescending = availableSlots
+    .filter((slot) => !claimedSlots.has(slot))
+    .sort((left, right) => right - left);
+  const unassignedMarkers = nextPinnedMarkers
+    .filter((feature) => !nextLodZByMarkerKey.has(buildMarkerKey(feature)))
+    .sort((left, right) => {
+      const rankDiff = left.properties.rank - right.properties.rank;
+      if (rankDiff !== 0) {
+        return rankDiff;
+      }
+      return buildMarkerKey(left).localeCompare(buildMarkerKey(right));
+    });
+
+  unassignedMarkers.forEach((feature, index) => {
+    const slot = freeSlotsDescending[index];
+    if (slot == null) {
+      return;
+    }
+    nextLodZByMarkerKey.set(buildMarkerKey(feature), slot);
+  });
+
+  return nextLodZByMarkerKey;
+};
+
 export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
   args: BuildMarkerRenderModelArgs<TProps>
 ): BuildMarkerRenderModelResult<TProps> => {
@@ -132,6 +191,9 @@ export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
   const remainingBudget = Math.max(0, maxPins - selectedEntries.length);
   const desiredOthers = visibleRankedCandidates.slice(0, remainingBudget);
   const desiredOthersKeySet = new Set(desiredOthers.map((feature) => buildMarkerKey(feature)));
+  const retentionBudget = Math.max(remainingBudget, remainingBudget + visibleCandidateBuffer);
+  const retainedOthers = visibleRankedCandidates.slice(0, retentionBudget);
+  const retainedOthersKeySet = new Set(retainedOthers.map((feature) => buildMarkerKey(feature)));
 
   const currentPinned = currentPinnedMarkers.filter((feature) =>
     selectedRestaurantId ? feature.properties.restaurantId !== selectedRestaurantId : true
@@ -161,7 +223,7 @@ export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
   }
 
   for (const key of currentPinnedKeySet) {
-    if (desiredOthersKeySet.has(key)) {
+    if (retainedOthersKeySet.has(key)) {
       nextProposedDemoteSinceByMarkerKey.delete(key);
       continue;
     }
@@ -176,8 +238,17 @@ export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
   }
 
   const rankByMarkerKey = new Map<string, number>();
+  const visibleRankedCandidateByKey = new Map<string, MarkerFeature<TProps>>();
   for (const feature of desiredOthers) {
-    rankByMarkerKey.set(buildMarkerKey(feature), feature.properties.rank);
+    const markerKey = buildMarkerKey(feature);
+    rankByMarkerKey.set(markerKey, feature.properties.rank);
+    visibleRankedCandidateByKey.set(markerKey, feature);
+  }
+  for (const feature of visibleRankedCandidates) {
+    const markerKey = buildMarkerKey(feature);
+    if (!visibleRankedCandidateByKey.has(markerKey)) {
+      visibleRankedCandidateByKey.set(markerKey, feature);
+    }
   }
   for (const [markerKey, feature] of currentPinnedByKey) {
     if (!rankByMarkerKey.has(markerKey)) {
@@ -252,15 +323,31 @@ export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
 
   const nextOthersInOrder: Array<MarkerFeature<TProps>> = [];
   const usedKeys = new Set<string>();
-  for (const feature of visibleRankedCandidates) {
+  for (const feature of currentPinnedMarkers) {
     const markerKey = buildMarkerKey(feature);
     if (!nextPinnedKeySet.has(markerKey) || usedKeys.has(markerKey)) {
       continue;
     }
-    nextOthersInOrder.push(feature);
+    if (selectedRestaurantId && feature.properties.restaurantId === selectedRestaurantId) {
+      continue;
+    }
+    nextOthersInOrder.push(visibleRankedCandidateByKey.get(markerKey) ?? feature);
     usedKeys.add(markerKey);
     if (nextOthersInOrder.length >= remainingBudget) {
       break;
+    }
+  }
+  if (nextOthersInOrder.length < remainingBudget) {
+    for (const feature of visibleRankedCandidates) {
+      const markerKey = buildMarkerKey(feature);
+      if (!nextPinnedKeySet.has(markerKey) || usedKeys.has(markerKey)) {
+        continue;
+      }
+      nextOthersInOrder.push(feature);
+      usedKeys.add(markerKey);
+      if (nextOthersInOrder.length >= remainingBudget) {
+        break;
+      }
     }
   }
   if (nextOthersInOrder.length < remainingBudget) {
@@ -278,17 +365,11 @@ export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
 
   const nextPinnedMarkers = [...selectedEntries, ...nextOthersInOrder];
 
-  const zSorted = [...nextPinnedMarkers].sort((left, right) => {
-    const rankDiff = left.properties.rank - right.properties.rank;
-    if (rankDiff !== 0) {
-      return rankDiff;
-    }
-    return buildMarkerKey(left).localeCompare(buildMarkerKey(right));
-  });
-  const zByMarkerKey = new Map<string, number>();
-  zSorted.forEach((feature, index) => {
-    const slot = maxPins - 1 - index;
-    zByMarkerKey.set(buildMarkerKey(feature), slot);
+  const zByMarkerKey = buildStableLodSlotMap({
+    nextPinnedMarkers,
+    currentPinnedMarkers,
+    buildMarkerKey,
+    maxPins,
   });
   const nextPinnedMarkersWithZ = nextPinnedMarkers.map((feature) => ({
     ...feature,

@@ -336,35 +336,6 @@ export const useSearchResultsPanelSpec = ({
     !isResultsClosing &&
     !isPersistentPollLane;
 
-  // --- Diagnostic: track when panel spec renders with toggled values ---
-  const prevDiagOpenNowRef = React.useRef(openNow);
-  const prevDiagFrostRef = React.useRef(shouldShowInteractionLoadingState);
-  const prevDiagCoverRef = React.useRef(presentationResultsCoverVisible);
-  if (openNow !== prevDiagOpenNowRef.current) {
-    logger.info('[TOGGLE-DIAG] panelSpec:openNowChanged', {
-      from: prevDiagOpenNowRef.current,
-      to: openNow,
-      ts: Date.now(),
-    });
-    prevDiagOpenNowRef.current = openNow;
-  }
-  if (shouldShowInteractionLoadingState !== prevDiagFrostRef.current) {
-    logger.info('[TOGGLE-DIAG] panelSpec:frostChanged', {
-      from: prevDiagFrostRef.current,
-      to: shouldShowInteractionLoadingState,
-      ts: Date.now(),
-    });
-    prevDiagFrostRef.current = shouldShowInteractionLoadingState;
-  }
-  if (presentationResultsCoverVisible !== prevDiagCoverRef.current) {
-    logger.info('[TOGGLE-DIAG] panelSpec:coverChanged', {
-      from: prevDiagCoverRef.current,
-      to: presentationResultsCoverVisible,
-      ts: Date.now(),
-    });
-    prevDiagCoverRef.current = presentationResultsCoverVisible;
-  }
-
   const handleInteractionTabChange = React.useCallback(
     (next: 'dishes' | 'restaurants') => {
       scheduleTabToggleCommit(next);

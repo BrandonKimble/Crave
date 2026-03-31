@@ -17,6 +17,7 @@ type UseMapDiffApplierArgs = {
     Array<Feature<Point, RestaurantFeatureProperties>>
   >;
   mapGestureActiveRef: React.MutableRefObject<boolean>;
+  isMapMoving: boolean;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
   mapQueryBudget: MapQueryBudget;
   shouldLogSearchComputes: boolean;
@@ -36,7 +37,7 @@ type PlannerInvocationSnapshot = {
   activeTab: UseMapDiffApplierArgs['activeTab'];
   selectedRestaurantId: string | null;
   scoreMode: UseMapDiffApplierArgs['scoreMode'];
-  isGestureActive: boolean;
+  isMapMoving: boolean;
   northEastLat: number;
   northEastLng: number;
   southWestLat: number;
@@ -60,7 +61,7 @@ export const useMapDiffApplier = (args: UseMapDiffApplierArgs): UseMapDiffApplie
     scoreMode,
     markerCandidatesRef,
     shortcutCoverageRankedRef,
-    mapGestureActiveRef,
+    isMapMoving,
     buildMarkerKey,
     mapQueryBudget,
     shouldLogSearchComputes,
@@ -119,7 +120,6 @@ export const useMapDiffApplier = (args: UseMapDiffApplierArgs): UseMapDiffApplie
       }
 
       const context = lodContextRef.current;
-      const isGestureActive = mapGestureActiveRef.current;
       const rankedCandidates =
         context.searchMode === 'shortcut'
           ? shortcutCoverageRankedRef.current
@@ -147,11 +147,11 @@ export const useMapDiffApplier = (args: UseMapDiffApplierArgs): UseMapDiffApplie
         lastPlannerInvocation.activeTab === context.activeTab &&
         lastPlannerInvocation.selectedRestaurantId === selectedId &&
         lastPlannerInvocation.scoreMode === scoreMode &&
-        lastPlannerInvocation.isGestureActive === isGestureActive &&
+        lastPlannerInvocation.isMapMoving === isMapMoving &&
         lastPlannerInvocation.rankedCandidates === rankedCandidates &&
         lastPlannerInvocation.markerCandidates === markerCandidatesRef.current &&
         lastPlannerInvocation.pinnedKey === lodPinnedKeyRef.current;
-      if (isGestureActive && samePlannerInputsExceptBounds) {
+      if (isMapMoving && samePlannerInputsExceptBounds) {
         const motionDecision = decideMotionDerivation({
           budgetClass: 'moving',
           previousToken: lastMovingLodDerivationRef.current.token,
@@ -172,7 +172,7 @@ export const useMapDiffApplier = (args: UseMapDiffApplierArgs): UseMapDiffApplie
           runAtMs: now,
         };
         mapQueryBudget.incrementRuntimeCounter(`map_lod_moving_runs_${motionDecision.reason}`);
-      } else if (!isGestureActive) {
+      } else if (!isMapMoving) {
         lastMovingLodDerivationRef.current = {
           token: buildViewportMotionToken({
             bounds,
@@ -187,7 +187,7 @@ export const useMapDiffApplier = (args: UseMapDiffApplierArgs): UseMapDiffApplie
         lastPlannerInvocation.activeTab === context.activeTab &&
         lastPlannerInvocation.selectedRestaurantId === selectedId &&
         lastPlannerInvocation.scoreMode === scoreMode &&
-        lastPlannerInvocation.isGestureActive === isGestureActive &&
+        lastPlannerInvocation.isMapMoving === isMapMoving &&
         lastPlannerInvocation.northEastLat === bounds.northEast.lat &&
         lastPlannerInvocation.northEastLng === bounds.northEast.lng &&
         lastPlannerInvocation.southWestLat === bounds.southWest.lat &&
@@ -199,14 +199,14 @@ export const useMapDiffApplier = (args: UseMapDiffApplierArgs): UseMapDiffApplie
         return;
       }
 
-      const stableMs = isGestureActive ? stableMsMoving : stableMsIdle;
-      const offscreenStableMs = isGestureActive ? offscreenStableMsMoving : 0;
+      const stableMs = isMapMoving ? stableMsMoving : stableMsIdle;
+      const offscreenStableMs = isMapMoving ? offscreenStableMsMoving : 0;
       lastPlannerInvocationRef.current = {
         searchMode: context.searchMode,
         activeTab: context.activeTab,
         selectedRestaurantId: selectedId,
         scoreMode,
-        isGestureActive,
+        isMapMoving,
         northEastLat: bounds.northEast.lat,
         northEastLng: bounds.northEast.lng,
         southWestLat: bounds.southWest.lat,
@@ -270,8 +270,8 @@ export const useMapDiffApplier = (args: UseMapDiffApplierArgs): UseMapDiffApplie
     [
       buildMarkerKey,
       getPerfNow,
+      isMapMoving,
       logSearchCompute,
-      mapGestureActiveRef,
       mapQueryBudget,
       markerCandidatesRef,
       maxPins,

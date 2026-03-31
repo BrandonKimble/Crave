@@ -6,6 +6,7 @@ import { Store } from 'lucide-react-native';
 
 import { Text } from '../../../components';
 import { colors as themeColors } from '../../../constants/theme';
+import { FONT_SIZES } from '../../../constants/typography';
 import { getPriceRangeLabel } from '../../../constants/pricing';
 import type { FoodResult, RestaurantResult } from '../../../types';
 import { useSearchInteraction } from '../context/SearchInteractionContext';
@@ -13,6 +14,7 @@ import { useTopFoodMeasurement } from '../hooks/use-top-food-measurement';
 import styles from '../styles';
 import { SECONDARY_METRIC_ICON_SIZE, TOP_FOOD_RENDER_LIMIT } from '../constants/search';
 import { formatDistanceMiles, resolveCoverageDisplayLabel } from '../utils/format';
+import { formatRankLabel, getRankFontSize } from '../utils/rank-badge';
 import { InfoCircleIcon } from './metric-icons';
 import { renderMetaDetailLine } from './render-meta-detail-line';
 
@@ -354,8 +356,14 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
           <View style={styles.resultTitleContainer}>
             <View style={[styles.titleRow, styles.titleRowWithActions]}>
               <View style={[styles.rankBadge, { backgroundColor: qualityColor }]}>
-                <Text variant="body" style={styles.rankBadgeText}>
-                  {rank}
+                <Text
+                  variant="body"
+                  style={[
+                    styles.rankBadgeText,
+                    { fontSize: getRankFontSize(FONT_SIZES.title, rank) },
+                  ]}
+                >
+                  {formatRankLabel(rank)}
                 </Text>
               </View>
               <Text

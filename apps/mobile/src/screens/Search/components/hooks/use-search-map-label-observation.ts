@@ -3,35 +3,16 @@ import React from 'react';
 import { type MapState as MapboxMapState } from '@rnmapbox/maps';
 
 import { searchMapRenderController } from '../../runtime/map/search-map-render-controller';
-import {
-  buildViewportMotionToken,
-  decideMotionDerivation,
-} from '../../runtime/map/map-motion-budget';
 import type { SearchRuntimeMapPresentationPhase } from '../../runtime/shared/search-runtime-bus';
 import type { SearchMapSourceStore } from '../../runtime/map/search-map-source-store';
-import type { MapBounds } from '../../../../types';
 import { logger } from '../../../../utils';
 import type { LabelCandidate } from './use-search-map-label-sources';
 
-type LabelStickyRuntime = {
-  styleURL: string;
-  isMapStyleReady: boolean;
-  shouldDisableMarkers: boolean;
-  shouldRenderLabels: boolean;
-  viewport: { width: number; height: number };
-  markerCount: number;
+export type StickyLabelStateSnapshot = {
+  revision: number;
+  candidateByIdentity: ReadonlyMap<string, LabelCandidate>;
+  dirtyIdentityKeys: ReadonlySet<string>;
 };
-
-export type LabelPublishDiagContext = {
-  refreshSeq: number | null;
-  reasons: string[];
-  isMovingAtStart: boolean;
-  isMovingAtEnd: boolean;
-  visibleIdsChanged: boolean;
-  publishVisibleLabelFeatureIds: boolean;
-  effectiveRenderedFeatures: number;
-  layerRenderedFeatures: number;
-} | null;
 
 type UseSearchMapLabelObservationArgs = {
   styleURL: string;
@@ -46,12 +27,7 @@ type UseSearchMapLabelObservationArgs = {
   nativeRenderOwnerInstanceId: string;
   isNativeOwnedMarkerRuntimeReady: boolean;
   restaurantLabelSourceId: string;
-  buildLabelStickyIdentityKey: (
-    restaurantId: string | null,
-    markerKey: string | null
-  ) => string | null;
   areStringArraysEqual: (left: string[], right: string[]) => boolean;
-  labelLayerIdsByCandidate: Record<LabelCandidate, string>;
   enableStickyLabelCandidates: boolean;
   labelStickyRefreshMsIdle: number;
   labelStickyRefreshMsMoving: number;
@@ -71,56 +47,17 @@ type UseSearchMapLabelObservationArgs = {
 
 type UseSearchMapLabelObservationResult = {
   settledVisibleLabelCount: number;
-  labelPublishDiagContextRef: React.MutableRefObject<LabelPublishDiagContext>;
-  labelStickyCandidateByMarkerKeyRef: React.MutableRefObject<Map<string, LabelCandidate>>;
-  labelStickyEpoch: number;
+  stickyLabelState: StickyLabelStateSnapshot;
+  isMapMoving: boolean;
   isMapMovingRef: React.MutableRefObject<boolean>;
   handleNativeViewportChanged: (state: MapboxMapState) => void;
   handleMapIdle: (state: MapboxMapState) => void;
   handleMapLoaded: () => void;
 };
 
-const getBoundsFromMapState = (state: MapboxMapState): MapBounds | null => {
-  const properties = state.properties as unknown as
-    | {
-        bounds?: {
-          ne?: [number, number];
-          sw?: [number, number];
-        };
-      }
-    | undefined;
-  const northEast = properties?.bounds?.ne;
-  const southWest = properties?.bounds?.sw;
-  if (
-    !Array.isArray(northEast) ||
-    !Array.isArray(southWest) ||
-    northEast.length < 2 ||
-    southWest.length < 2
-  ) {
-    return null;
-  }
-  return {
-    northEast: {
-      lat: northEast[1],
-      lng: northEast[0],
-    },
-    southWest: {
-      lat: southWest[1],
-      lng: southWest[0],
-    },
-  };
-};
-
-const getZoomFromMapState = (state: MapboxMapState): number | null => {
-  const properties = state.properties as { zoom?: number } | undefined;
-  return typeof properties?.zoom === 'number' && Number.isFinite(properties.zoom)
-    ? properties.zoom
-    : null;
-};
-
 export const useSearchMapLabelObservation = ({
   styleURL,
-  isMapStyleReady,
+  isMapStyleReady: _isMapStyleReady,
   shouldDisableMarkers,
   shouldRenderLabels,
   allowLiveLabelUpdates,
@@ -131,9 +68,7 @@ export const useSearchMapLabelObservation = ({
   nativeRenderOwnerInstanceId,
   isNativeOwnedMarkerRuntimeReady,
   restaurantLabelSourceId,
-  buildLabelStickyIdentityKey,
   areStringArraysEqual,
-  labelLayerIdsByCandidate,
   enableStickyLabelCandidates,
   labelStickyRefreshMsIdle,
   labelStickyRefreshMsMoving,
@@ -150,68 +85,132 @@ export const useSearchMapLabelObservation = ({
   onMapLoaded,
   pinLabelInputKey,
 }: UseSearchMapLabelObservationArgs): UseSearchMapLabelObservationResult => {
+  const nativeManagedObservation =
+    searchMapRenderController.platform === 'ios' ||
+    searchMapRenderController.platform === 'android';
   const [settledVisibleLabelCount, setSettledVisibleLabelCount] = React.useState(0);
   const labelStickyRefreshSeqRef = React.useRef(0);
   const labelStickyRefreshTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const labelStickyRefreshInFlightRef = React.useRef(false);
   const labelStickyRefreshQueuedRef = React.useRef(false);
-  const labelPublishDiagContextRef = React.useRef<LabelPublishDiagContext>(null);
   const lastLoggedLabelPublishRef = React.useRef<{
     mapPresentationPhase: SearchRuntimeMapPresentationPhase;
     publishVisibleLabelFeatureIds: boolean;
     visibleLabelCount: number;
   } | null>(null);
-  const labelStickyCandidateByMarkerKeyRef = React.useRef<Map<string, LabelCandidate>>(new Map());
-  const labelStickyLastSeenAtByMarkerKeyRef = React.useRef<Map<string, number>>(new Map());
-  const labelStickyMissingStreakByMarkerKeyRef = React.useRef<Map<string, number>>(new Map());
-  const labelStickyProposedCandidateByMarkerKeyRef = React.useRef<Map<string, LabelCandidate>>(
-    new Map()
-  );
-  const labelStickyProposedSinceAtByMarkerKeyRef = React.useRef<Map<string, number>>(new Map());
-  const labelStickyRuntimeRef = React.useRef<LabelStickyRuntime>({
-    styleURL,
-    isMapStyleReady,
-    shouldDisableMarkers,
-    shouldRenderLabels,
-    viewport: { width: 0, height: 0 },
-    markerCount: 0,
-  });
   const [labelStickyMarkersReadyAt, setLabelStickyMarkersReadyAt] = React.useState<number | null>(
     null
   );
   const labelStickyMarkersReadyKeyRef = React.useRef<string | null>(null);
   const labelStickyResetRequestKeyRef = React.useRef<string | null>(null);
-  const [labelStickyEpoch, setLabelStickyEpoch] = React.useState(0);
+  const [stickyLabelState, setStickyLabelState] = React.useState<StickyLabelStateSnapshot>({
+    revision: 0,
+    candidateByIdentity: new Map(),
+    dirtyIdentityKeys: new Set(),
+  });
+  const [isMapMoving, setIsMapMoving] = React.useState(false);
   const isMapMovingRef = React.useRef(false);
   const visibleLabelFeatureIdListRef = React.useRef<string[]>([]);
   const refreshReasonsRef = React.useRef<Set<string>>(new Set());
   const lastRefreshCompletedAtMsRef = React.useRef(0);
   const lastRefreshVisibleIdsChangedRef = React.useRef(true);
   const lastRefreshStickyChangedRef = React.useRef(true);
-  const labelRefreshDiagSeqRef = React.useRef(0);
-  const lastMovingCameraRefreshRef = React.useRef<{
-    token: ReturnType<typeof buildViewportMotionToken>;
-    runAtMs: number;
-  }>({
-    token: null,
-    runAtMs: 0,
-  });
-  const labelRefreshInputRef = React.useRef({
-    styleURL,
-    isMapStyleReady,
-    shouldDisableMarkers,
-    shouldRenderLabels,
-    viewportWidth: 0,
-    viewportHeight: 0,
-    pinCount: 0,
-    labelCandidateCount: 0,
-    isMoving: false,
-    markersReady: false,
-  });
   const runStickyLabelRefreshRef = React.useRef<() => void>(() => undefined);
   const scheduleStickyLabelRefreshRef = React.useRef<(reason: string) => void>(() => undefined);
   const refreshStickyLabelCandidatesRef = React.useRef<(reasons?: string[]) => Promise<void>>(() =>
     Promise.resolve()
+  );
+
+  const applyObservationSnapshot = React.useCallback(
+    (
+      observation: {
+        visibleLabelFeatureIds: string[];
+        layerRenderedFeatureCount: number;
+        effectiveRenderedFeatureCount: number;
+        stickyRevision: number;
+        stickyCandidates: Array<{ identityKey: string; candidate: string }>;
+        dirtyStickyIdentityKeys: string[];
+      },
+      reasons: string[],
+      isMovingAtStart: boolean
+    ) => {
+      const layerRenderedFeatures = observation.layerRenderedFeatureCount;
+      const effectiveRenderedFeatures = observation.effectiveRenderedFeatureCount;
+      const nextVisibleLabelFeatureIds = [...observation.visibleLabelFeatureIds].sort();
+      const previousVisibleLabelFeatureIds = visibleLabelFeatureIdListRef.current;
+      const visibleIdsChanged = !areStringArraysEqual(
+        previousVisibleLabelFeatureIds,
+        nextVisibleLabelFeatureIds
+      );
+      visibleLabelFeatureIdListRef.current = nextVisibleLabelFeatureIds;
+      const nextStickyLabelState: StickyLabelStateSnapshot = {
+        revision: observation.stickyRevision,
+        candidateByIdentity: new Map(
+          observation.stickyCandidates.flatMap(({ identityKey, candidate }) =>
+            candidate === 'bottom' ||
+            candidate === 'right' ||
+            candidate === 'top' ||
+            candidate === 'left'
+              ? ([[identityKey, candidate]] as const)
+              : []
+          )
+        ),
+        dirtyIdentityKeys: new Set(observation.dirtyStickyIdentityKeys),
+      };
+      const previousLoggedState = lastLoggedLabelPublishRef.current;
+      const shouldLogVisibilitySequence =
+        previousLoggedState == null ||
+        previousLoggedState.mapPresentationPhase !== mapPresentationPhase ||
+        previousLoggedState.publishVisibleLabelFeatureIds !== publishVisibleLabelFeatureIds ||
+        (!isMovingAtStart &&
+          !isMapMovingRef.current &&
+          (visibleIdsChanged ||
+            previousLoggedState.visibleLabelCount !== nextVisibleLabelFeatureIds.length));
+      if (shouldLogVisibilitySequence) {
+        logger.info('[LABEL-VIS-SEQ] publish', {
+          mapPresentationPhase,
+          publishVisibleLabelFeatureIds,
+          previousVisibleLabelCount: previousVisibleLabelFeatureIds.length,
+          nextVisibleLabelCount: nextVisibleLabelFeatureIds.length,
+          visibleIdsChanged,
+          reasons,
+          layerRenderedFeatures,
+          effectiveRenderedFeatures,
+          isMovingAtStart,
+          isMovingAtEnd: isMapMovingRef.current,
+          labelResetRequestKey,
+        });
+      }
+      lastLoggedLabelPublishRef.current = {
+        mapPresentationPhase,
+        publishVisibleLabelFeatureIds,
+        visibleLabelCount: nextVisibleLabelFeatureIds.length,
+      };
+      if (publishVisibleLabelFeatureIds) {
+        setSettledVisibleLabelCount((previous) =>
+          previous === nextVisibleLabelFeatureIds.length
+            ? previous
+            : nextVisibleLabelFeatureIds.length
+        );
+      }
+      setStickyLabelState((previous) =>
+        previous.revision === nextStickyLabelState.revision &&
+        previous.candidateByIdentity.size === nextStickyLabelState.candidateByIdentity.size &&
+        previous.dirtyIdentityKeys.size === nextStickyLabelState.dirtyIdentityKeys.size
+          ? previous
+          : nextStickyLabelState
+      );
+      lastRefreshCompletedAtMsRef.current = getNowMs();
+      lastRefreshVisibleIdsChangedRef.current = visibleIdsChanged;
+      lastRefreshStickyChangedRef.current = nextStickyLabelState.dirtyIdentityKeys.size > 0;
+    },
+    [
+      areStringArraysEqual,
+      getNowMs,
+      labelResetRequestKey,
+      mapPresentationPhase,
+      publishVisibleLabelFeatureIds,
+    ]
   );
 
   React.useEffect(() => {
@@ -222,15 +221,6 @@ export const useSearchMapLabelObservation = ({
       return;
     }
   }, [shouldRenderLabels, styleURL]);
-
-  labelStickyRuntimeRef.current = {
-    styleURL,
-    isMapStyleReady,
-    shouldDisableMarkers,
-    shouldRenderLabels,
-    viewport: { width: mapViewportSize.width, height: mapViewportSize.height },
-    markerCount: pinFeaturesForDerivedSources.idsInOrder.length,
-  };
 
   React.useEffect(() => {
     if (!enableStickyLabelCandidates) {
@@ -286,19 +276,6 @@ export const useSearchMapLabelObservation = ({
     styleURL,
   ]);
 
-  labelRefreshInputRef.current = {
-    styleURL,
-    isMapStyleReady,
-    shouldDisableMarkers,
-    shouldRenderLabels,
-    viewportWidth: mapViewportSize.width,
-    viewportHeight: mapViewportSize.height,
-    pinCount: pinFeaturesForDerivedSources.idsInOrder.length,
-    labelCandidateCount: 0,
-    isMoving: isMapMovingRef.current,
-    markersReady: labelStickyMarkersReadyAt != null,
-  };
-
   const runStickyLabelRefresh = React.useCallback(() => {
     if (labelStickyRefreshInFlightRef.current || !labelStickyRefreshQueuedRef.current) {
       return;
@@ -315,6 +292,10 @@ export const useSearchMapLabelObservation = ({
         return;
       }
       labelStickyRefreshInFlightRef.current = false;
+      if (labelStickyRefreshQueuedRef.current && nativeManagedObservation) {
+        runStickyLabelRefreshRef.current();
+        return;
+      }
       if (labelStickyRefreshQueuedRef.current && !labelStickyRefreshTimeoutRef.current) {
         const delayMs = isMapMovingRef.current
           ? labelStickyRefreshMsMoving
@@ -330,6 +311,21 @@ export const useSearchMapLabelObservation = ({
 
   const scheduleStickyLabelRefresh = React.useCallback(
     (reason: string) => {
+      if (nativeManagedObservation) {
+        if (reason === 'camera_motion' || reason === 'map_idle') {
+          return;
+        }
+        refreshReasonsRef.current.add(reason);
+        labelStickyRefreshQueuedRef.current = true;
+        if (labelStickyRefreshInFlightRef.current) {
+          return;
+        }
+        runStickyLabelRefreshRef.current();
+        return;
+      }
+      if (isMapMovingRef.current && reason === 'runtime_inputs_changed') {
+        return;
+      }
       if (
         reason === 'runtime_inputs_changed' &&
         isMapMovingRef.current &&
@@ -387,10 +383,14 @@ export const useSearchMapLabelObservation = ({
     if (mapViewportSize.width <= 0 || mapViewportSize.height <= 0) {
       return;
     }
+    if (isMapMoving) {
+      return;
+    }
     scheduleStickyLabelRefresh('runtime_inputs_changed');
   }, [
     allowLiveLabelUpdates,
     enableStickyLabelCandidates,
+    isMapMoving,
     mapViewportSize.height,
     mapViewportSize.width,
     pinLabelInputKey,
@@ -401,25 +401,19 @@ export const useSearchMapLabelObservation = ({
   const refreshStickyLabelCandidates = React.useCallback(
     async (reasons: string[] = []) => {
       const refreshStartedAtMs = getNowMs();
-      const refreshSeq = ++labelRefreshDiagSeqRef.current;
-      const refreshInputAtStart = { ...labelRefreshInputRef.current };
-      const runtime = labelStickyRuntimeRef.current;
-      if (runtime.shouldDisableMarkers || !runtime.shouldRenderLabels) {
+      const isMovingAtStart = isMapMovingRef.current;
+      if (shouldDisableMarkers || !shouldRenderLabels) {
         visibleLabelFeatureIdListRef.current = [];
-        if (publishVisibleLabelFeatureIds) {
-          setSettledVisibleLabelCount((previous) => (previous === 0 ? previous : 0));
-        }
+        setSettledVisibleLabelCount((previous) => (previous === 0 ? previous : 0));
         return;
       }
       if (!allowLiveLabelUpdates) {
         return;
       }
-      if (runtime.viewport.width <= 0 || runtime.viewport.height <= 0) {
+      if (mapViewportSize.width <= 0 || mapViewportSize.height <= 0) {
         return;
       }
 
-      const now = Date.now();
-      const layerIDs = Object.values(labelLayerIdsByCandidate);
       const shouldRunFallbackQuery =
         !isMapMovingRef.current ||
         reasons.includes('map_idle') ||
@@ -430,229 +424,116 @@ export const useSearchMapLabelObservation = ({
       try {
         observation = await searchMapRenderController.queryRenderedLabelObservation({
           instanceId: nativeRenderOwnerInstanceId,
-          layerIds: layerIDs,
           allowFallback: shouldRunFallbackQuery,
           commitInteractionVisibility: publishVisibleLabelFeatureIds,
+          refreshMsIdle: labelStickyRefreshMsIdle,
+          refreshMsMoving: labelStickyRefreshMsMoving,
+          enableStickyLabelCandidates,
+          stickyLockStableMsMoving: labelStickyLockStableMsMoving,
+          stickyLockStableMsIdle: labelStickyLockStableMsIdle,
+          stickyUnlockMissingMsMoving: labelStickyUnlockMissingMsMoving,
+          stickyUnlockMissingMsIdle: labelStickyUnlockMissingMsIdle,
+          stickyUnlockMissingStreakMoving: labelStickyUnlockMissingStreakMoving,
+          labelResetRequestKey,
         });
       } catch {
         return;
       }
       const queryDurationMs = getNowMs() - queryStartedAtMs;
-
-      const layerRenderedFeatures = observation.layerRenderedFeatureCount;
-      const effectiveRenderedFeatures = observation.effectiveRenderedFeatureCount;
-      const nextVisibleLabelFeatureIds = [...observation.visibleLabelFeatureIds].sort();
-      const renderedCandidateByStickyIdentityKey = new Map<string, LabelCandidate>();
-      for (const placedLabel of observation.placedLabels) {
-        const candidate = placedLabel.candidate;
-        if (
-          candidate !== 'bottom' &&
-          candidate !== 'right' &&
-          candidate !== 'top' &&
-          candidate !== 'left'
-        ) {
-          continue;
-        }
-        const stickyIdentityKey = buildLabelStickyIdentityKey(
-          placedLabel.restaurantId,
-          placedLabel.markerKey
-        );
-        if (!stickyIdentityKey || renderedCandidateByStickyIdentityKey.has(stickyIdentityKey)) {
-          continue;
-        }
-        renderedCandidateByStickyIdentityKey.set(stickyIdentityKey, candidate);
-      }
-      const previousVisibleLabelFeatureIds = visibleLabelFeatureIdListRef.current;
-      const visibleIdsChanged = !areStringArraysEqual(
-        previousVisibleLabelFeatureIds,
-        nextVisibleLabelFeatureIds
-      );
-      labelPublishDiagContextRef.current = {
-        refreshSeq,
-        reasons,
-        isMovingAtStart: refreshInputAtStart.isMoving,
-        isMovingAtEnd: isMapMovingRef.current,
-        visibleIdsChanged,
-        publishVisibleLabelFeatureIds,
-        effectiveRenderedFeatures,
-        layerRenderedFeatures,
-      };
-      visibleLabelFeatureIdListRef.current = nextVisibleLabelFeatureIds;
-      const previousLoggedState = lastLoggedLabelPublishRef.current;
-      const shouldLogVisibilitySequence =
-        visibleIdsChanged ||
-        previousLoggedState == null ||
-        previousLoggedState.mapPresentationPhase !== mapPresentationPhase ||
-        previousLoggedState.publishVisibleLabelFeatureIds !== publishVisibleLabelFeatureIds ||
-        previousLoggedState.visibleLabelCount !== nextVisibleLabelFeatureIds.length;
-      if (shouldLogVisibilitySequence) {
-        logger.info('[LABEL-VIS-SEQ] publish', {
-          mapPresentationPhase,
-          publishVisibleLabelFeatureIds,
-          previousVisibleLabelCount: previousVisibleLabelFeatureIds.length,
-          nextVisibleLabelCount: nextVisibleLabelFeatureIds.length,
-          visibleIdsChanged,
-          reasons,
-          layerRenderedFeatures,
-          effectiveRenderedFeatures,
-          isMovingAtStart: refreshInputAtStart.isMoving,
-          isMovingAtEnd: isMapMovingRef.current,
-          labelResetRequestKey,
-        });
-      }
-      lastLoggedLabelPublishRef.current = {
-        mapPresentationPhase,
-        publishVisibleLabelFeatureIds,
-        visibleLabelCount: nextVisibleLabelFeatureIds.length,
-      };
-      if (publishVisibleLabelFeatureIds) {
-        setSettledVisibleLabelCount((previous) =>
-          previous === nextVisibleLabelFeatureIds.length
-            ? previous
-            : nextVisibleLabelFeatureIds.length
-        );
-      }
-
-      if (!enableStickyLabelCandidates) {
-        return;
-      }
-
-      const stickyMap = labelStickyCandidateByMarkerKeyRef.current;
-      const lastSeenAt = labelStickyLastSeenAtByMarkerKeyRef.current;
-      const missingStreak = labelStickyMissingStreakByMarkerKeyRef.current;
-      const proposedCandidate = labelStickyProposedCandidateByMarkerKeyRef.current;
-      const proposedSinceAt = labelStickyProposedSinceAtByMarkerKeyRef.current;
-      let didChange = false;
-
-      for (const [stickyIdentityKey, candidate] of renderedCandidateByStickyIdentityKey) {
-        lastSeenAt.set(stickyIdentityKey, now);
-        missingStreak.set(stickyIdentityKey, 0);
-        const locked = stickyMap.get(stickyIdentityKey);
-        if (locked === candidate) {
-          proposedCandidate.delete(stickyIdentityKey);
-          proposedSinceAt.delete(stickyIdentityKey);
-          continue;
-        }
-
-        const stableMs = isMapMovingRef.current
-          ? labelStickyLockStableMsMoving
-          : labelStickyLockStableMsIdle;
-        const proposed = proposedCandidate.get(stickyIdentityKey);
-        if (proposed !== candidate) {
-          proposedCandidate.set(stickyIdentityKey, candidate);
-          proposedSinceAt.set(stickyIdentityKey, now);
-          continue;
-        }
-        const sinceAt = proposedSinceAt.get(stickyIdentityKey) ?? now;
-        if (now - sinceAt < stableMs) {
-          continue;
-        }
-
-        stickyMap.set(stickyIdentityKey, candidate);
-        proposedCandidate.delete(stickyIdentityKey);
-        proposedSinceAt.delete(stickyIdentityKey);
-        didChange = true;
-      }
-
-      if (effectiveRenderedFeatures > 0) {
-        const unlockMs = isMapMovingRef.current
-          ? labelStickyUnlockMissingMsMoving
-          : labelStickyUnlockMissingMsIdle;
-        const requiredStreak = isMapMovingRef.current ? labelStickyUnlockMissingStreakMoving : 1;
-        for (const stickyIdentityKey of stickyMap.keys()) {
-          if (renderedCandidateByStickyIdentityKey.has(stickyIdentityKey)) {
-            continue;
-          }
-          const nextStreak = (missingStreak.get(stickyIdentityKey) ?? 0) + 1;
-          missingStreak.set(stickyIdentityKey, nextStreak);
-          const seenAt = lastSeenAt.get(stickyIdentityKey) ?? 0;
-          if (nextStreak >= requiredStreak && now - seenAt > unlockMs) {
-            stickyMap.delete(stickyIdentityKey);
-            proposedCandidate.delete(stickyIdentityKey);
-            proposedSinceAt.delete(stickyIdentityKey);
-            missingStreak.delete(stickyIdentityKey);
-            didChange = true;
-          }
-        }
-      }
-
-      if (didChange) {
-        setLabelStickyEpoch((value) => value + 1);
-      }
+      applyObservationSnapshot(observation, reasons, isMovingAtStart);
       const refreshDurationMs = getNowMs() - refreshStartedAtMs;
-      lastRefreshCompletedAtMsRef.current = getNowMs();
-      lastRefreshVisibleIdsChangedRef.current = visibleIdsChanged;
-      lastRefreshStickyChangedRef.current = didChange;
       recordRuntimeAttribution('map_label_refresh_query', queryDurationMs);
       recordRuntimeAttribution('map_label_refresh_total', refreshDurationMs);
     },
     [
       allowLiveLabelUpdates,
-      areStringArraysEqual,
-      buildLabelStickyIdentityKey,
+      applyObservationSnapshot,
       enableStickyLabelCandidates,
       getNowMs,
-      labelLayerIdsByCandidate,
+      labelStickyRefreshMsIdle,
+      labelStickyRefreshMsMoving,
       labelStickyLockStableMsIdle,
       labelStickyLockStableMsMoving,
       labelStickyUnlockMissingMsIdle,
       labelStickyUnlockMissingMsMoving,
       labelStickyUnlockMissingStreakMoving,
+      labelResetRequestKey,
+      mapViewportSize.height,
+      mapViewportSize.width,
       nativeRenderOwnerInstanceId,
       publishVisibleLabelFeatureIds,
       recordRuntimeAttribution,
+      shouldDisableMarkers,
+      shouldRenderLabels,
     ]
   );
   refreshStickyLabelCandidatesRef.current = refreshStickyLabelCandidates;
 
+  React.useEffect(() => {
+    if (!nativeManagedObservation) {
+      return;
+    }
+    const removeListener = searchMapRenderController.addListener((event) => {
+      if (event.type !== 'label_observation_updated') {
+        return;
+      }
+      if (event.instanceId !== nativeRenderOwnerInstanceId) {
+        return;
+      }
+      if (!allowLiveLabelUpdates || shouldDisableMarkers || !shouldRenderLabels) {
+        return;
+      }
+      applyObservationSnapshot(event, ['native_event'], isMapMovingRef.current);
+    });
+    return () => {
+      removeListener?.();
+    };
+  }, [
+    allowLiveLabelUpdates,
+    applyObservationSnapshot,
+    nativeManagedObservation,
+    nativeRenderOwnerInstanceId,
+    shouldDisableMarkers,
+    shouldRenderLabels,
+  ]);
+
   const handleNativeViewportChanged = React.useCallback(
     (state: MapboxMapState) => {
-      isMapMovingRef.current = true;
-      if (allowLiveLabelUpdates && shouldRenderLabels) {
-        const nowMs = getNowMs();
-        const motionDecision = decideMotionDerivation({
-          budgetClass: 'moving',
-          previousToken: lastMovingCameraRefreshRef.current.token,
-          nextToken: buildViewportMotionToken({
-            bounds: getBoundsFromMapState(state),
-            budgetClass: 'moving',
-            zoom: getZoomFromMapState(state),
-          }),
-          lastRunAtMs: lastMovingCameraRefreshRef.current.runAtMs,
-          nowMs,
-          minIntervalMs: labelStickyRefreshMsMoving,
-        });
-        if (motionDecision.shouldRun) {
-          lastMovingCameraRefreshRef.current = {
-            token: motionDecision.token,
-            runAtMs: nowMs,
-          };
-          scheduleStickyLabelRefreshRef.current('camera_motion');
-        }
+      if (!isMapMovingRef.current) {
+        isMapMovingRef.current = true;
+        setIsMapMoving(true);
+      }
+      if (
+        !nativeManagedObservation &&
+        allowLiveLabelUpdates &&
+        enableStickyLabelCandidates &&
+        shouldRenderLabels
+      ) {
+        scheduleStickyLabelRefresh('camera_motion');
       }
       onNativeViewportChanged(state);
     },
     [
       allowLiveLabelUpdates,
-      getNowMs,
-      labelStickyRefreshMsMoving,
+      enableStickyLabelCandidates,
+      nativeManagedObservation,
       onNativeViewportChanged,
+      scheduleStickyLabelRefresh,
       shouldRenderLabels,
     ]
   );
 
   const handleMapIdle = React.useCallback(
     (state: MapboxMapState) => {
-      isMapMovingRef.current = false;
-      lastMovingCameraRefreshRef.current = {
-        token: buildViewportMotionToken({
-          bounds: getBoundsFromMapState(state),
-          budgetClass: 'settled',
-          zoom: getZoomFromMapState(state),
-        }),
-        runAtMs: getNowMs(),
-      };
+      if (isMapMovingRef.current) {
+        isMapMovingRef.current = false;
+        setIsMapMoving(false);
+      }
       if (!allowLiveLabelUpdates) {
+        onMapIdle(state);
+        return;
+      }
+      if (nativeManagedObservation) {
         onMapIdle(state);
         return;
       }
@@ -665,7 +546,7 @@ export const useSearchMapLabelObservation = ({
       runStickyLabelRefreshRef.current();
       onMapIdle(state);
     },
-    [allowLiveLabelUpdates, getNowMs, onMapIdle]
+    [allowLiveLabelUpdates, nativeManagedObservation, onMapIdle]
   );
 
   const handleMapLoaded = React.useCallback(() => {
@@ -674,35 +555,33 @@ export const useSearchMapLabelObservation = ({
       return;
     }
     try {
-      refreshReasonsRef.current.add('map_loaded');
-      labelStickyRefreshQueuedRef.current = true;
-      runStickyLabelRefreshRef.current();
+      scheduleStickyLabelRefresh('map_loaded');
     } catch {
       // noop
     }
-  }, [allowLiveLabelUpdates, onMapLoaded]);
+  }, [allowLiveLabelUpdates, onMapLoaded, scheduleStickyLabelRefresh]);
 
   React.useEffect(() => {
-    if (!enableStickyLabelCandidates) {
+    if (!shouldRenderLabels || !labelResetRequestKey) {
       return;
     }
-    if (!shouldRenderLabels) {
-      return;
-    }
-    if (!labelResetRequestKey) {
-      return;
-    }
+    scheduleStickyLabelRefresh('label_reset_request_changed');
     if (labelStickyResetRequestKeyRef.current === labelResetRequestKey) {
       return;
     }
     labelStickyResetRequestKeyRef.current = labelResetRequestKey;
-    labelStickyCandidateByMarkerKeyRef.current.clear();
-    labelStickyLastSeenAtByMarkerKeyRef.current.clear();
-    labelStickyMissingStreakByMarkerKeyRef.current.clear();
-    labelStickyProposedCandidateByMarkerKeyRef.current.clear();
-    labelStickyProposedSinceAtByMarkerKeyRef.current.clear();
-    setLabelStickyEpoch((value) => value + 1);
-  }, [enableStickyLabelCandidates, labelResetRequestKey, shouldRenderLabels, styleURL]);
+    setStickyLabelState((previous) => ({
+      revision: previous.revision + 1,
+      candidateByIdentity: new Map(),
+      dirtyIdentityKeys: new Set(previous.candidateByIdentity.keys()),
+    }));
+  }, [
+    enableStickyLabelCandidates,
+    labelResetRequestKey,
+    scheduleStickyLabelRefresh,
+    shouldRenderLabels,
+    styleURL,
+  ]);
 
   React.useEffect(
     () => () => {
@@ -715,9 +594,8 @@ export const useSearchMapLabelObservation = ({
 
   return {
     settledVisibleLabelCount,
-    labelPublishDiagContextRef,
-    labelStickyCandidateByMarkerKeyRef,
-    labelStickyEpoch,
+    stickyLabelState,
+    isMapMoving,
     isMapMovingRef,
     handleNativeViewportChanged,
     handleMapIdle,

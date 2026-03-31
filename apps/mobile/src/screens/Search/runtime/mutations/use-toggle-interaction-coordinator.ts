@@ -112,12 +112,7 @@ export const useToggleInteractionCoordinator = ({
       }
       return true;
     },
-    [
-      clearSettleTimeout,
-      onLifecycleEvent,
-      searchRuntimeBus,
-      setIsFilterTogglePending,
-    ]
+    [clearSettleTimeout, onLifecycleEvent, searchRuntimeBus, setIsFilterTogglePending]
   );
 
   const cancelToggleInteraction = React.useCallback(() => {
@@ -141,12 +136,7 @@ export const useToggleInteractionCoordinator = ({
         kind,
       });
     }
-  }, [
-    clearSettleTimeout,
-    onLifecycleEvent,
-    searchRuntimeBus,
-    setIsFilterTogglePending,
-  ]);
+  }, [clearSettleTimeout, onLifecycleEvent, searchRuntimeBus, setIsFilterTogglePending]);
 
   const notifyIntentComplete = React.useCallback(
     (intentId: string) => {
@@ -168,21 +158,10 @@ export const useToggleInteractionCoordinator = ({
       activeIntentIdRef.current = intentId;
       awaitingVisualSyncRef.current = false;
       clearSettleTimeout();
-      const scheduleTs = Date.now();
-      logger.info('[TOGGLE-DIAG] schedule:entry', {
-        intentId,
-        kind: interactionKind,
-        settleMs,
-        ts: scheduleTs,
-      });
       onLifecycleEvent?.({
         type: 'started',
         intentId,
         kind: interactionKind,
-      });
-      logger.info('[TOGGLE-DIAG] schedule:afterStartEvent', {
-        intentId,
-        elapsed: Date.now() - scheduleTs,
       });
       searchRuntimeBus.batch(() => {
         setIsFilterTogglePending(true);
@@ -190,21 +169,14 @@ export const useToggleInteractionCoordinator = ({
           toggleInteractionKind: interactionKind,
         });
       });
-      logger.info('[TOGGLE-DIAG] schedule:afterBusPublish', {
-        intentId,
-        elapsed: Date.now() - scheduleTs,
-      });
       settleTimeoutRef.current = setTimeout(() => {
         settleTimeoutRef.current = null;
-        const settleTs = Date.now();
-        logger.info('[TOGGLE-DIAG] settle:fired', {
-          intentId,
-          kind: interactionKind,
-          msSinceSchedule: settleTs - scheduleTs,
-          ts: settleTs,
-        });
         if (interactionSeqRef.current !== seq) {
-          logger.info('[TOGGLE] settle:superseded', { intentId, seq, currentSeq: interactionSeqRef.current });
+          logger.info('[TOGGLE] settle:superseded', {
+            intentId,
+            seq,
+            currentSeq: interactionSeqRef.current,
+          });
           return;
         }
         logger.info('[TOGGLE] settle:commit', { intentId, kind: interactionKind });
@@ -214,7 +186,6 @@ export const useToggleInteractionCoordinator = ({
           kind: interactionKind,
         });
         let outcome: ToggleCommitOutcome | void;
-        const runnerStartTs = Date.now();
         try {
           outcome = runner({ intentId });
         } catch (error) {
@@ -228,12 +199,6 @@ export const useToggleInteractionCoordinator = ({
           return;
         }
         const awaitVisualSync = outcome?.awaitVisualSync === true;
-        logger.info('[TOGGLE-DIAG] commit:result', {
-          intentId,
-          awaitVisualSync,
-          runnerDurationMs: Date.now() - runnerStartTs,
-          totalMsSinceSchedule: Date.now() - scheduleTs,
-        });
         if (!awaitVisualSync) {
           finalizeInteraction(seq, false);
           return;

@@ -7,12 +7,14 @@ import { HandPlatter } from 'lucide-react-native';
 import { Text } from '../../../components';
 import { colors as themeColors } from '../../../constants/theme';
 import { getPriceRangeLabel } from '../../../constants/pricing';
+import { FONT_SIZES } from '../../../constants/typography';
 import type { FoodResult, RestaurantResult } from '../../../types';
 import styles from '../styles';
 import { SECONDARY_METRIC_ICON_SIZE } from '../constants/search';
 import { InfoCircleIcon } from './metric-icons';
 import { renderMetaDetailLine } from './render-meta-detail-line';
 import { resolveCoverageDisplayLabel } from '../utils/format';
+import { formatRankLabel, getRankFontSize } from '../utils/rank-badge';
 import { searchService } from '../../../services/search';
 import { useSearchHistoryStore } from '../../../store/searchHistoryStore';
 
@@ -74,6 +76,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   openRestaurantProfile,
   openScoreInfo,
 }) => {
+  const rank = index + 1;
   const trackRecentlyViewedFood = useSearchHistoryStore((state) => state.trackRecentlyViewedFood);
   const dishPriceLabel = getPriceRangeLabel(item.restaurantPriceLevel);
   const hasStatus = Boolean(item.restaurantOperatingStatus);
@@ -181,8 +184,14 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
           <View style={styles.resultTitleContainer}>
             <View style={[styles.titleRow, styles.titleRowWithActions]}>
               <View style={[styles.rankBadge, { backgroundColor: qualityColor }]}>
-                <Text variant="body" style={styles.rankBadgeText}>
-                  {index + 1}
+                <Text
+                  variant="body"
+                  style={[
+                    styles.rankBadgeText,
+                    { fontSize: getRankFontSize(FONT_SIZES.title, rank) },
+                  ]}
+                >
+                  {formatRankLabel(rank)}
                 </Text>
               </View>
               <Text

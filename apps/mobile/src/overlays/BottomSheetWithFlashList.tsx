@@ -44,6 +44,7 @@ const STEP_SNAP_REVERSAL_CANCEL_VELOCITY_PX_PER_S = 220;
 const STEP_SNAP_REVERSAL_CANCEL_DRAG_PX = 140;
 const STEP_SNAP_PROGRESS_FOR_STEP = 0.18;
 const STEP_SNAP_PROGRESS_FOR_SKIP = 1.03;
+const ENABLE_SEARCH_RESULTS_SHEET_PROP_DIAGNOSTICS = false;
 
 const AXIS_LOCK_SLOP_PX = 4;
 const AXIS_LOCK_RATIO = 1.15;
@@ -955,7 +956,7 @@ const BottomSheetWithFlashList = <T,>({
     scrollHeaderHeight: number;
   } | null>(null);
   React.useEffect(() => {
-    if (!isSearchResultsSheet) {
+    if (!isSearchResultsSheet || !ENABLE_SEARCH_RESULTS_SHEET_PROP_DIAGNOSTICS) {
       return;
     }
     const nextSnapshot = {

@@ -61,6 +61,7 @@ type UseMapPresentationControllerArgs = {
   selectedRestaurantId: string | null;
   viewportBoundsService: ViewportBoundsService;
   mapGestureActiveRef: React.MutableRefObject<boolean>;
+  isMapMoving: boolean;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
   shouldLogSearchComputes: boolean;
   getPerfNow: () => number;
@@ -89,7 +90,7 @@ export const useMapPresentationController = (
     searchMode,
     selectedRestaurantId,
     viewportBoundsService,
-    mapGestureActiveRef,
+    isMapMoving,
     buildMarkerKey,
     shouldLogSearchComputes,
     getPerfNow,
@@ -124,7 +125,7 @@ export const useMapPresentationController = (
     (bounds: MapBounds | null) => {
       const start = shouldLogSearchComputes ? getPerfNow() : 0;
       const lastQuery = lastVisibleCandidateQueryRef.current;
-      const isMoving = mapGestureActiveRef.current;
+      const isMoving = isMapMoving;
       const nowMs = Date.now();
       const boundsUnchanged =
         lastQuery?.bounds?.northEast.lat === bounds?.northEast.lat &&
@@ -209,8 +210,8 @@ export const useMapPresentationController = (
     [
       buildMarkerKey,
       getPerfNow,
+      isMapMoving,
       logSearchCompute,
-      mapGestureActiveRef,
       mapQueryBudget,
       mapViewportQueryService,
       shouldPublishVisibleCandidates,

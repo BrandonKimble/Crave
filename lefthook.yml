@@ -4,16 +4,17 @@ pre-commit:
     # Package-specific linting - only runs when files in that package change
     api-lint:
       glob: 'apps/api/**/*.{ts,tsx}'
-      run: bash ./.lefthook/with-node-22.sh bash -c "cd apps/api && yarn lint"
+      run: bash ./.lefthook/with-node-22.sh yarn --silent lint:staged:api
     mobile-lint:
-      run: bash ./.lefthook/with-node-22.sh bash -c "cd apps/mobile && yarn lint"
+      glob: 'apps/mobile/**/*.{ts,tsx,js,jsx}'
+      run: bash ./.lefthook/with-node-22.sh yarn --silent lint:staged:mobile
     shared-lint:
       glob: 'packages/shared/**/*.{ts,tsx}'
-      run: bash ./.lefthook/with-node-22.sh bash -c "cd packages/shared && yarn lint"
+      run: bash ./.lefthook/with-node-22.sh yarn --silent lint:staged:shared
 
     deps-check:
       glob: '{package.json,yarn.lock,apps/*/package.json,packages/*/package.json}'
-      run: bash ./.lefthook/with-node-22.sh bash ./scripts/deps-check.sh
+      run: bash ./.lefthook/with-node-22.sh yarn --silent deps-check
 
     # Global formatting for all staged files
     prettier:

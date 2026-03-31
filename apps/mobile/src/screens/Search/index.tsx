@@ -42,7 +42,6 @@ import type {
 } from '../../types';
 import type { RootStackParamList } from '../../types/navigation';
 import { type RestaurantOverlayData } from '../../overlays/panels/RestaurantPanel';
-import { buildMapStyleURL } from '../../constants/map';
 import { type OverlayKey, useOverlayStore } from '../../store/overlayStore';
 import { useOverlaySheetPositionStore } from '../../overlays/useOverlaySheetPositionStore';
 import { type MaskedHole } from '../../components/MaskedHoleOverlay';
@@ -163,7 +162,6 @@ const SEARCH_BOTTOM_NAV_ITEMS: ReadonlyArray<{ key: SearchBottomNavItemKey; labe
 ];
 
 import { getRangeFromLevels, type PriceRangeTuple } from './utils/price';
-import { getQualityColorFromScore } from './utils/quality';
 import { formatCompactCount } from './utils/format';
 import { boundsFromPairs, hasBoundsMovedSignificantly, isLngLatTuple } from './utils/geo';
 
@@ -229,12 +227,7 @@ const RUN_ONE_COMMIT_SPAN_PRESSURE_COMPONENT_IDS = new Set([
   'SearchOverlayChrome',
   'BottomNav',
 ]);
-const MAX_FULL_PINS = 30;
 const LOD_CAMERA_THROTTLE_MS = 80;
-const LOD_PIN_TOGGLE_STABLE_MS_MOVING = 190;
-const LOD_PIN_TOGGLE_STABLE_MS_IDLE = 0;
-const LOD_PIN_OFFSCREEN_TOGGLE_STABLE_MS_MOVING = 120;
-const LOD_VISIBLE_CANDIDATE_BUFFER = 16;
 const PROFILE_PIN_TARGET_CENTER_RATIO = 0.25;
 const PROFILE_PIN_MIN_VISIBLE_HEIGHT = 160;
 const PROFILE_CAMERA_ANIMATION_MS = 800;
@@ -576,8 +569,6 @@ const SearchScreen: React.FC = () => {
     setIsFollowingUser(false);
     setIsInitialCameraReady(true);
   }, [commitCameraViewport, startupCamera]);
-
-  const mapStyleURL = useMemo(() => buildMapStyleURL(accessToken), [accessToken]);
 
   const [query, setQuery] = React.useState('');
   // Results-arrival composite selector — these all change at the same moment
@@ -3151,8 +3142,6 @@ const SearchScreen: React.FC = () => {
     typeof InteractionManager.runAfterInteractions
   > | null>(null);
   const shouldDisableSearchBlur = false;
-  const forceDisableMarkerViews = false;
-  const shouldDisableMarkerViews = forceDisableMarkerViews;
   const shouldDisableSearchShortcuts = false;
   shouldDisableSearchShortcutsRef.current = shouldDisableSearchShortcuts;
   const shouldLogJsStalls = false;
@@ -4702,32 +4691,12 @@ const SearchScreen: React.FC = () => {
       const activeIntentId = presentationTransitionControllerRef.current!.getActiveIntentId();
       const revealLane =
         runtimeState.presentationLane?.kind === 'reveal' ? runtimeState.presentationLane : null;
-      logger.info('[REVEAL-ARMED-DIAG] controller', {
-        label: 'armedEvent',
-        requestKey: payload.requestKey,
-        frameGenerationId: payload.frameGenerationId,
-        revealBatchId: payload.revealBatchId,
-        activeIntentId,
-        revealLaneRequestKey: revealLane?.requestKey ?? null,
-        revealLaneStatus: revealLane?.status ?? null,
-        revealLaneBatchId: revealLane?.batch?.batchId ?? null,
-        revealLaneGenerationId: revealLane?.batch?.generationId ?? null,
-        mapPresentationPhase: runtimeState.mapPresentationPhase,
-      });
       if (
         payload.requestKey !== activeIntentId ||
         revealLane == null ||
         revealLane.requestKey !== payload.requestKey ||
         revealLane.status !== 'pending_mount'
       ) {
-        logger.info('[REVEAL-ARMED-DIAG] controller', {
-          label: 'armedEvent:ignored',
-          requestKey: payload.requestKey,
-          activeIntentId,
-          revealLaneRequestKey: revealLane?.requestKey ?? null,
-          revealLaneStatus: revealLane?.status ?? null,
-          mapPresentationPhase: runtimeState.mapPresentationPhase,
-        });
         return;
       }
       presentationTransitionControllerRef.current!.markRevealBatchMountedHidden(
@@ -4814,25 +4783,8 @@ const SearchScreen: React.FC = () => {
         revealLane.requestKey !== payload.requestKey ||
         revealLane.status !== 'revealing'
       ) {
-        logger.info('[REVEAL-ARMED-DIAG] controller', {
-          label: 'revealSettled:ignored',
-          requestKey: payload.requestKey,
-          frameGenerationId: payload.frameGenerationId,
-          revealBatchId: payload.revealBatchId,
-          revealLaneRequestKey: revealLane?.requestKey ?? null,
-          revealLaneStatus: revealLane?.status ?? null,
-          mapPresentationPhase: runtimeState.mapPresentationPhase,
-        });
         return;
       }
-      logger.info('[REVEAL-ARMED-DIAG] controller', {
-        label: 'revealSettled',
-        requestKey: payload.requestKey,
-        frameGenerationId: payload.frameGenerationId,
-        revealBatchId: payload.revealBatchId,
-        revealLaneStatus: revealLane.status,
-        mapPresentationPhase: runtimeState.mapPresentationPhase,
-      });
       presentationTransitionControllerRef.current!.markRevealBatchSettled(payload.requestKey, {
         requestKey: payload.requestKey,
         batchId: payload.revealBatchId,
@@ -4870,25 +4822,8 @@ const SearchScreen: React.FC = () => {
         revealLane.requestKey !== payload.requestKey ||
         revealLane.status !== 'revealing'
       ) {
-        logger.info('[REVEAL-ARMED-DIAG] controller', {
-          label: 'revealStarted:ignored',
-          requestKey: payload.requestKey,
-          frameGenerationId: payload.frameGenerationId,
-          revealBatchId: payload.revealBatchId,
-          revealLaneRequestKey: revealLane?.requestKey ?? null,
-          revealLaneStatus: revealLane?.status ?? null,
-          mapPresentationPhase: runtimeState.mapPresentationPhase,
-        });
         return;
       }
-      logger.info('[REVEAL-ARMED-DIAG] controller', {
-        label: 'revealStarted',
-        requestKey: payload.requestKey,
-        frameGenerationId: payload.frameGenerationId,
-        revealBatchId: payload.revealBatchId,
-        revealLaneStatus: revealLane.status,
-        mapPresentationPhase: runtimeState.mapPresentationPhase,
-      });
       presentationTransitionControllerRef.current!.markRevealStarted(payload.requestKey, {
         requestKey: payload.requestKey,
         batchId: payload.revealBatchId,
@@ -4915,25 +4850,8 @@ const SearchScreen: React.FC = () => {
         revealLane.requestKey !== payload.requestKey ||
         revealLane.status !== 'revealing'
       ) {
-        logger.info('[REVEAL-ARMED-DIAG] controller', {
-          label: 'revealFirstVisible:ignored',
-          requestKey: payload.requestKey,
-          frameGenerationId: payload.frameGenerationId,
-          revealBatchId: payload.revealBatchId,
-          revealLaneRequestKey: revealLane?.requestKey ?? null,
-          revealLaneStatus: revealLane?.status ?? null,
-          mapPresentationPhase: runtimeState.mapPresentationPhase,
-        });
         return;
       }
-      logger.info('[REVEAL-ARMED-DIAG] controller', {
-        label: 'revealFirstVisible',
-        requestKey: payload.requestKey,
-        frameGenerationId: payload.frameGenerationId,
-        revealBatchId: payload.revealBatchId,
-        revealLaneStatus: revealLane.status,
-        mapPresentationPhase: runtimeState.mapPresentationPhase,
-      });
       presentationTransitionControllerRef.current!.markRevealFirstVisibleFrame(payload.requestKey, {
         requestKey: payload.requestKey,
         batchId: payload.revealBatchId,
@@ -5320,6 +5238,7 @@ const SearchScreen: React.FC = () => {
         <View style={styles.container}>
           <SearchMapStage
             isInitialCameraReady={isInitialCameraReady}
+            accessToken={accessToken}
             ref={markerEngineRef}
             scoreMode={scoreMode}
             restaurantOnlyId={restaurantOnlyId}
@@ -5328,25 +5247,18 @@ const SearchScreen: React.FC = () => {
             resolveRestaurantMapLocations={resolveRestaurantMapLocations}
             resolveRestaurantLocationSelectionAnchor={resolveRestaurantLocationSelectionAnchor}
             pickPreferredRestaurantMapLocation={pickPreferredRestaurantMapLocation}
-            getQualityColorFromScore={getQualityColorFromScore}
             mapGestureActiveRef={mapGestureActiveRef}
             shouldLogSearchComputes={shouldLogSearchComputes}
             getPerfNow={getPerfNow}
             logSearchCompute={logSearchCompute}
-            maxFullPins={MAX_FULL_PINS}
-            lodVisibleCandidateBuffer={LOD_VISIBLE_CANDIDATE_BUFFER}
-            lodPinToggleStableMsMoving={LOD_PIN_TOGGLE_STABLE_MS_MOVING}
-            lodPinToggleStableMsIdle={LOD_PIN_TOGGLE_STABLE_MS_IDLE}
-            lodPinOffscreenToggleStableMsMoving={LOD_PIN_OFFSCREEN_TOGGLE_STABLE_MS_MOVING}
             mapQueryBudget={mapQueryBudget}
             pendingMarkerOpenAnimationFrameRef={pendingMarkerOpenAnimationFrameRef}
             forceRestaurantProfileMiddleSnapRef={forceRestaurantProfileMiddleSnapRef}
             profileRuntimeController={profileRuntimeController}
             mapRef={mapRef}
             cameraRef={cameraRef}
-            styleURL={mapStyleURL}
             mapCenter={mapCenter}
-            mapZoom={mapZoom ?? USA_FALLBACK_ZOOM}
+            mapZoom={mapZoom}
             cameraPadding={mapCameraPadding}
             isFollowingUser={isFollowingUser}
             onPress={stableHandleMapPress}
@@ -5365,7 +5277,6 @@ const SearchScreen: React.FC = () => {
             isMapStyleReady={isMapStyleReady}
             userLocation={userLocation}
             userLocationSnapshot={startupLocationSnapshot}
-            disableMarkers={shouldDisableMarkerViews}
             disableBlur={shouldDisableSearchBlur}
             onProfilerRender={handleProfilerRender}
             onRuntimeMechanismEvent={emitRuntimeMechanismEvent}

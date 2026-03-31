@@ -34,10 +34,8 @@ export const useSearchMapLabelRuntime = ({
   isNativeOwnedMarkerRuntimeReady,
   restaurantLabelSourceId,
   buildLabelCandidateFeatureId,
-  buildLabelStickyIdentityKey,
   getLabelStickyIdentityKeyFromFeature,
   areStringArraysEqual,
-  labelLayerIdsByCandidate,
   enableStickyLabelCandidates,
   labelStickyRefreshMsIdle,
   labelStickyRefreshMsMoving,
@@ -65,15 +63,10 @@ export const useSearchMapLabelRuntime = ({
   isNativeOwnedMarkerRuntimeReady: boolean;
   restaurantLabelSourceId: string;
   buildLabelCandidateFeatureId: (markerKey: string, candidate: LabelCandidate) => string;
-  buildLabelStickyIdentityKey: (
-    restaurantId: string | null,
-    markerKey: string | null
-  ) => string | null;
   getLabelStickyIdentityKeyFromFeature: (
     feature: Feature<Point, RestaurantFeatureProperties>
   ) => string | null;
   areStringArraysEqual: (left: string[], right: string[]) => boolean;
-  labelLayerIdsByCandidate: Record<LabelCandidate, string>;
   enableStickyLabelCandidates: boolean;
   labelStickyRefreshMsIdle: number;
   labelStickyRefreshMsMoving: number;
@@ -103,9 +96,7 @@ export const useSearchMapLabelRuntime = ({
 
   const {
     settledVisibleLabelCount,
-    labelStickyCandidateByMarkerKeyRef,
-    labelStickyEpoch,
-    isMapMovingRef,
+    stickyLabelState,
     handleNativeViewportChanged,
     handleMapIdle,
     handleMapLoaded,
@@ -122,9 +113,7 @@ export const useSearchMapLabelRuntime = ({
     nativeRenderOwnerInstanceId,
     isNativeOwnedMarkerRuntimeReady,
     restaurantLabelSourceId,
-    buildLabelStickyIdentityKey,
     areStringArraysEqual,
-    labelLayerIdsByCandidate,
     enableStickyLabelCandidates,
     labelStickyRefreshMsIdle,
     labelStickyRefreshMsMoving,
@@ -150,9 +139,7 @@ export const useSearchMapLabelRuntime = ({
     enableStickyLabelCandidates,
     getLabelStickyIdentityKeyFromFeature,
     buildLabelCandidateFeatureId,
-    labelStickyCandidateByMarkerKeyRef,
-    labelStickyEpoch,
-    isMapMovingRef,
+    stickyLabelState,
   });
 
   const handleMapViewportLayout = React.useCallback((event: LayoutChangeEvent) => {

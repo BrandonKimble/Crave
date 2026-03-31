@@ -188,21 +188,24 @@ export const useQueryMutationOrchestrator = (
       return;
     }
     const minimumVotes = nextValue ? minimumVotesFilter : null;
-    scheduleToggleCommit(() => {
-      setVotes100Plus(nextValue);
-      fireRerunActiveSearch({
-        searchMode,
-        activeTab,
-        submittedQuery,
-        query,
-        isSearchSessionActive,
-        preserveSheetState: true,
-        filters: { minimumVotes },
-      });
-      return {
-        awaitVisualSync: true,
-      };
-    }, { kind: 'filter_votes' });
+    scheduleToggleCommit(
+      () => {
+        setVotes100Plus(nextValue);
+        fireRerunActiveSearch({
+          searchMode,
+          activeTab,
+          submittedQuery,
+          query,
+          isSearchSessionActive,
+          preserveSheetState: true,
+          filters: { minimumVotes },
+        });
+        return {
+          awaitVisualSync: true,
+        };
+      },
+      { kind: 'filter_votes' }
+    );
   }, [
     activeTab,
     canRerunForCurrentQuery,
@@ -240,21 +243,24 @@ export const useQueryMutationOrchestrator = (
         setPreferredScoreMode(nextMode);
         return;
       }
-      scheduleToggleCommit(() => {
-        setPreferredScoreMode(nextMode);
-        fireRerunActiveSearch({
-          searchMode,
-          activeTab,
-          submittedQuery,
-          query,
-          isSearchSessionActive,
-          preserveSheetState: true,
-          scoreMode: nextMode,
-        });
-        return {
-          awaitVisualSync: true,
-        };
-      }, { kind: 'filter_rank' });
+      scheduleToggleCommit(
+        () => {
+          setPreferredScoreMode(nextMode);
+          fireRerunActiveSearch({
+            searchMode,
+            activeTab,
+            submittedQuery,
+            query,
+            isSearchSessionActive,
+            preserveSheetState: true,
+            scoreMode: nextMode,
+          });
+          return {
+            awaitVisualSync: true,
+          };
+        },
+        { kind: 'filter_rank' }
+      );
       searchRuntimeBus.publish({
         rankButtonLabelText: nextRankButtonLabelText,
         rankButtonIsActive: nextRankButtonIsActive,
@@ -278,8 +284,6 @@ export const useQueryMutationOrchestrator = (
   );
 
   const toggleOpenNow = React.useCallback(() => {
-    const t0 = Date.now();
-    logger.info('[TOGGLE-DIAG] openNow:pressed', { ts: t0 });
     setIsPriceSelectorVisible(false);
     setIsRankSelectorVisible(false);
     clearPendingTabSwitchDraft();
@@ -289,26 +293,27 @@ export const useQueryMutationOrchestrator = (
       openNow: nextValue,
     });
     if (!canRerunForCurrentQuery()) {
-      logger.info('[TOGGLE-DIAG] openNow:noRerun', { elapsed: Date.now() - t0 });
       setOpenNow(nextValue);
       return;
     }
-    logger.info('[TOGGLE-DIAG] openNow:scheduling', { elapsed: Date.now() - t0 });
-    scheduleToggleCommit(() => {
-      setOpenNow(nextValue);
-      fireRerunActiveSearch({
-        searchMode,
-        activeTab,
-        submittedQuery,
-        query,
-        isSearchSessionActive,
-        preserveSheetState: true,
-        filters: { openNow: nextValue },
-      });
-      return {
-        awaitVisualSync: true,
-      };
-    }, { kind: 'filter_open_now' });
+    scheduleToggleCommit(
+      () => {
+        setOpenNow(nextValue);
+        fireRerunActiveSearch({
+          searchMode,
+          activeTab,
+          submittedQuery,
+          query,
+          isSearchSessionActive,
+          preserveSheetState: true,
+          filters: { openNow: nextValue },
+        });
+        return {
+          awaitVisualSync: true,
+        };
+      },
+      { kind: 'filter_open_now' }
+    );
   }, [
     activeTab,
     canRerunForCurrentQuery,
@@ -352,21 +357,24 @@ export const useQueryMutationOrchestrator = (
       return;
     }
 
-    scheduleToggleCommit(() => {
-      setPriceLevels(nextLevels);
-      fireRerunActiveSearch({
-        searchMode,
-        activeTab,
-        submittedQuery,
-        query,
-        isSearchSessionActive,
-        preserveSheetState: true,
-        filters: { priceLevels: nextLevels },
-      });
-      return {
-        awaitVisualSync: true,
-      };
-    }, { kind: 'filter_price' });
+    scheduleToggleCommit(
+      () => {
+        setPriceLevels(nextLevels);
+        fireRerunActiveSearch({
+          searchMode,
+          activeTab,
+          submittedQuery,
+          query,
+          isSearchSessionActive,
+          preserveSheetState: true,
+          filters: { priceLevels: nextLevels },
+        });
+        return {
+          awaitVisualSync: true,
+        };
+      },
+      { kind: 'filter_price' }
+    );
   }, [
     activeTab,
     canRerunForCurrentQuery,

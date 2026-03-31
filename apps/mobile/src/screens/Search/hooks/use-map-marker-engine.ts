@@ -56,15 +56,13 @@ const buildStableKeyFingerprint = (keys: readonly string[]): string => {
 const buildPinSemanticRevision = ({
   baseDiffKey,
   markerKey,
-  labelOrder,
   nativeLodZ,
 }: {
   baseDiffKey: string;
   markerKey: string;
-  labelOrder: number;
   nativeLodZ: number | null | undefined;
 }): string =>
-  `${baseDiffKey}|pin|marker:${markerKey}|labelOrder:${labelOrder}|lodZ:${
+  `${baseDiffKey}|pin|marker:${markerKey}|lodZ:${
     typeof nativeLodZ === 'number' && Number.isFinite(nativeLodZ) ? nativeLodZ : ''
   }`;
 
@@ -424,6 +422,7 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
       selectedRestaurantId,
       viewportBoundsService,
       mapGestureActiveRef,
+      isMapMoving,
       buildMarkerKey,
       shouldLogSearchComputes,
       getPerfNow,
@@ -460,6 +459,7 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
       markerCandidatesRef,
       shortcutCoverageRankedRef,
       mapGestureActiveRef,
+      isMapMoving,
       buildMarkerKey,
       mapQueryBudget,
       shouldLogSearchComputes,
@@ -605,7 +605,6 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
       const semanticRevision = buildPinSemanticRevision({
         baseDiffKey: getSearchMapSourceTransportFeature(feature).diffKey,
         markerKey,
-        labelOrder,
         nativeLodZ,
       });
       const nextFeature = {
@@ -634,15 +633,15 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
         }
       );
     });
-    const next = builder.finish();
-    previousPinSourceStoreRef.current = next;
-    return next;
+    return builder.finish();
   }, [buildMarkerKey, visibleSortedRestaurantMarkers]);
+  React.useEffect(() => {
+    previousPinSourceStoreRef.current = pinSourceStore;
+  }, [pinSourceStore]);
 
   const previousDotSourceStoreRef = React.useRef<SearchMapSourceStore | null>(null);
   const dotSourceStore = React.useMemo(() => {
     if (!visibleDotRestaurantMarkerFeatures) {
-      previousDotSourceStoreRef.current = null;
       return null;
     }
     const builder = createSearchMapSourceStoreBuilder(previousDotSourceStoreRef.current);
@@ -673,10 +672,11 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
         }),
       });
     });
-    const next = builder.finish();
-    previousDotSourceStoreRef.current = next;
-    return next;
+    return builder.finish();
   }, [buildMarkerKey, visibleDotRestaurantMarkerFeatures]);
+  React.useEffect(() => {
+    previousDotSourceStoreRef.current = dotSourceStore;
+  }, [dotSourceStore]);
 
   const visibleDotRenderKey = React.useMemo(() => {
     if (!dotSourceStore || dotSourceStore.idsInOrder.length === 0) {
@@ -726,10 +726,13 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
         }),
       });
     });
-    const next = builder.finish();
-    settledPinInteractionSourceStoreRef.current = next;
-    return next;
+    return builder.finish();
   }, [isMapMoving, pinSourceStore]);
+  React.useEffect(() => {
+    if (!isMapMoving) {
+      settledPinInteractionSourceStoreRef.current = pinInteractionSourceStore;
+    }
+  }, [isMapMoving, pinInteractionSourceStore]);
 
   const settledDotInteractionSourceStoreRef = React.useRef<SearchMapSourceStore | null>(null);
   const dotInteractionSourceStore = React.useMemo(() => {
@@ -737,7 +740,6 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
       return settledDotInteractionSourceStoreRef.current;
     }
     if (!dotSourceStore || dotSourceStore.idsInOrder.length === 0) {
-      settledDotInteractionSourceStoreRef.current = null;
       return EMPTY_SEARCH_MAP_SOURCE_STORE;
     }
     const builder = createSearchMapSourceStoreBuilder(settledDotInteractionSourceStoreRef.current);
@@ -771,10 +773,14 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
         }),
       });
     });
-    const next = builder.finish();
-    settledDotInteractionSourceStoreRef.current = next;
-    return next;
+    return builder.finish();
   }, [dotSourceStore, isMapMoving]);
+  React.useEffect(() => {
+    settledDotInteractionSourceStoreRef.current =
+      !isMapMoving && dotSourceStore && dotSourceStore.idsInOrder.length > 0
+        ? dotInteractionSourceStore
+        : null;
+  }, [dotInteractionSourceStore, dotSourceStore, isMapMoving]);
 
   return {
     visibleSortedRestaurantMarkers,

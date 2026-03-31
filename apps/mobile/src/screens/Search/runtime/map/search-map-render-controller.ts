@@ -38,9 +38,17 @@ type SearchMapRenderControllerNativeModule = {
   }>;
   queryRenderedLabelObservation: (payload: {
     instanceId: string;
-    layerIds: string[];
     allowFallback: boolean;
     commitInteractionVisibility: boolean;
+    refreshMsIdle: number;
+    refreshMsMoving: number;
+    enableStickyLabelCandidates: boolean;
+    stickyLockStableMsMoving: number;
+    stickyLockStableMsIdle: number;
+    stickyUnlockMissingMsMoving: number;
+    stickyUnlockMissingMsIdle: number;
+    stickyUnlockMissingStreakMoving: number;
+    labelResetRequestKey: string | null;
   }) => Promise<{
     visibleLabelFeatureIds: string[];
     placedLabels: Array<{
@@ -50,6 +58,12 @@ type SearchMapRenderControllerNativeModule = {
     }>;
     layerRenderedFeatureCount: number;
     effectiveRenderedFeatureCount: number;
+    stickyRevision: number;
+    stickyCandidates: Array<{
+      identityKey: string;
+      candidate: string;
+    }>;
+    dirtyStickyIdentityKeys: string[];
   }>;
   queryRenderedDotObservation: (payload: {
     instanceId: string;
@@ -189,6 +203,19 @@ export type SearchMapRenderControllerEvent =
       isMoving: boolean;
     }
   | {
+      type: 'label_observation_updated';
+      instanceId: string;
+      visibleLabelFeatureIds: string[];
+      layerRenderedFeatureCount: number;
+      effectiveRenderedFeatureCount: number;
+      stickyRevision: number;
+      stickyCandidates: Array<{
+        identityKey: string;
+        candidate: string;
+      }>;
+      dirtyStickyIdentityKeys: string[];
+    }
+  | {
       type: 'error';
       instanceId: string;
       message: string;
@@ -208,6 +235,12 @@ export type SearchMapRenderedLabelObservation = {
   }>;
   layerRenderedFeatureCount: number;
   effectiveRenderedFeatureCount: number;
+  stickyRevision: number;
+  stickyCandidates: Array<{
+    identityKey: string;
+    candidate: string;
+  }>;
+  dirtyStickyIdentityKeys: string[];
 };
 
 export type SearchMapRenderedDotObservation = {
@@ -589,9 +622,17 @@ export const searchMapRenderController = {
 
   async queryRenderedLabelObservation(payload: {
     instanceId: string;
-    layerIds: string[];
     allowFallback: boolean;
     commitInteractionVisibility: boolean;
+    refreshMsIdle: number;
+    refreshMsMoving: number;
+    enableStickyLabelCandidates: boolean;
+    stickyLockStableMsMoving: number;
+    stickyLockStableMsIdle: number;
+    stickyUnlockMissingMsMoving: number;
+    stickyUnlockMissingMsIdle: number;
+    stickyUnlockMissingStreakMoving: number;
+    labelResetRequestKey: string | null;
   }): Promise<SearchMapRenderedLabelObservation> {
     if (!nativeModule) {
       return {
@@ -599,6 +640,9 @@ export const searchMapRenderController = {
         placedLabels: [],
         layerRenderedFeatureCount: 0,
         effectiveRenderedFeatureCount: 0,
+        stickyRevision: 0,
+        stickyCandidates: [],
+        dirtyStickyIdentityKeys: [],
       };
     }
     return nativeModule.queryRenderedLabelObservation(payload);

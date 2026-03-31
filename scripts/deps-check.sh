@@ -22,10 +22,15 @@ if [[ "$needs_check" != "1" ]]; then
 fi
 
 echo "deps-check: running knip (dependency hygiene)…"
-npx -y knip \
+knip_bin="$REPO_ROOT/node_modules/.bin/knip"
+if [[ ! -x "$knip_bin" ]]; then
+  echo "deps-check: knip is not installed. Run 'yarn install'." >&2
+  exit 1
+fi
+
+"$knip_bin" \
   --workspace 'apps/*' \
   --workspace 'packages/*' \
   --dependencies \
   --no-progress \
-  --reporter compact \
-  --isolate-workspaces
+  --reporter compact

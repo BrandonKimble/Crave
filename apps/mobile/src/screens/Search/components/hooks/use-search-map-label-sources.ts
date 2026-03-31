@@ -5,11 +5,12 @@ import type { Feature, Point } from 'geojson';
 import type { RestaurantFeatureProperties } from '../search-map';
 import {
   createSearchMapSourceTransportFeature,
-  createSearchMapMutableSourceStore,
+  createSearchMapSourceStoreBuilder,
   getSearchMapSourceTransportFeature,
-  type SearchMapMutableSourceStore,
   type SearchMapSourceStore,
+  EMPTY_SEARCH_MAP_SOURCE_STORE,
 } from '../../runtime/map/search-map-source-store';
+import type { StickyLabelStateSnapshot } from './use-search-map-label-observation';
 
 export type LabelCandidate = 'bottom' | 'right' | 'top' | 'left';
 const LABEL_CANDIDATES_IN_ORDER: readonly LabelCandidate[] = ['bottom', 'right', 'top', 'left'];
@@ -18,6 +19,44 @@ const buildLabelSourceFeatureDiffKey = (
   feature: Feature<Point, RestaurantFeatureProperties>,
   extraKey: string
 ): string => `${extraKey}:${getSearchMapSourceTransportFeature(feature).diffKey}`;
+
+const buildStableLabelBaseFeature = (
+  feature: Feature<Point, RestaurantFeatureProperties>,
+  markerKey: string
+): Feature<Point, RestaurantFeatureProperties> => {
+  const stableProperties = { ...feature.properties };
+  delete stableProperties.nativeLodZ;
+  delete stableProperties.nativeLodOpacity;
+  delete stableProperties.nativeLodRankOpacity;
+  delete stableProperties.nativeLabelOpacity;
+  delete stableProperties.nativeDotOpacity;
+  delete stableProperties.nativePresentationOpacity;
+  delete stableProperties.labelOrder;
+  delete stableProperties.lodZ;
+  return {
+    type: 'Feature',
+    id: markerKey,
+    geometry: feature.geometry,
+    properties: {
+      ...stableProperties,
+      markerKey,
+    },
+  } satisfies Feature<Point, RestaurantFeatureProperties>;
+};
+
+const buildStableCollisionFeature = (
+  feature: Feature<Point, RestaurantFeatureProperties>,
+  markerKey: string
+): Feature<Point, RestaurantFeatureProperties> =>
+  ({
+    type: 'Feature',
+    id: markerKey,
+    geometry: feature.geometry,
+    properties: {
+      markerKey,
+      restaurantId: feature.properties.restaurantId,
+    } as RestaurantFeatureProperties,
+  } satisfies Feature<Point, RestaurantFeatureProperties>);
 
 type UseSearchMapLabelSourcesArgs = {
   pinFeaturesForDerivedSources: SearchMapSourceStore;
@@ -29,9 +68,7 @@ type UseSearchMapLabelSourcesArgs = {
     feature: Feature<Point, RestaurantFeatureProperties>
   ) => string | null;
   buildLabelCandidateFeatureId: (markerKey: string, candidate: LabelCandidate) => string;
-  labelStickyCandidateByMarkerKeyRef: React.MutableRefObject<Map<string, LabelCandidate>>;
-  labelStickyEpoch: number;
-  isMapMovingRef: React.MutableRefObject<boolean>;
+  stickyLabelState: StickyLabelStateSnapshot;
 };
 
 type UseSearchMapLabelSourcesResult = {
@@ -44,6 +81,11 @@ type LabelFeatureRecord = {
   feature: Feature<Point, RestaurantFeatureProperties>;
   semanticRevision: string;
   transportFeature: ReturnType<typeof createSearchMapSourceTransportFeature>;
+};
+
+type DerivedSourceStoreResult = {
+  store: SearchMapSourceStore;
+  recordsByMarkerKey: Map<string, LabelFeatureRecord[]>;
 };
 
 const areLabelFeatureRecordsEqual = (
@@ -72,25 +114,19 @@ export const useSearchMapLabelSources = ({
   enableStickyLabelCandidates,
   getLabelStickyIdentityKeyFromFeature,
   buildLabelCandidateFeatureId,
-  labelStickyCandidateByMarkerKeyRef,
-  labelStickyEpoch,
-  isMapMovingRef,
+  stickyLabelState,
 }: UseSearchMapLabelSourcesArgs): UseSearchMapLabelSourcesResult => {
-  const collisionSourceStoreRef = React.useRef<SearchMapMutableSourceStore>(
-    createSearchMapMutableSourceStore()
+  const collisionSourceStoreRef = React.useRef<SearchMapSourceStore>(EMPTY_SEARCH_MAP_SOURCE_STORE);
+  const labelCandidateSourceStoreRef = React.useRef<SearchMapSourceStore>(
+    EMPTY_SEARCH_MAP_SOURCE_STORE
   );
-  const labelCandidateSourceStoreRef = React.useRef<SearchMapMutableSourceStore>(
-    createSearchMapMutableSourceStore()
-  );
-  const nativeLabelSourceStoreRef = React.useRef<SearchMapMutableSourceStore>(
-    createSearchMapMutableSourceStore()
+  const nativeLabelSourceStoreRef = React.useRef<SearchMapSourceStore>(
+    EMPTY_SEARCH_MAP_SOURCE_STORE
   );
   const labelMarkerIdentityKeyRef = React.useRef('');
   const labelCandidateAppliedStickyEpochRef = React.useRef(-1);
   const previousPinSemanticRevisionByMarkerKeyRef = React.useRef<Map<string, string>>(new Map());
-  const collisionRecordByMarkerKeyRef = React.useRef<
-    Map<string, { feature: Feature<Point, RestaurantFeatureProperties>; semanticRevision: string }>
-  >(new Map());
+  const collisionRecordByMarkerKeyRef = React.useRef<Map<string, LabelFeatureRecord[]>>(new Map());
   const labelCandidateRecordsByMarkerKeyRef = React.useRef<Map<string, LabelFeatureRecord[]>>(
     new Map()
   );
@@ -99,7 +135,7 @@ export const useSearchMapLabelSources = ({
   );
   const pinFeatureIdsInOrder = pinFeaturesForDerivedSources.idsInOrder;
 
-  const dirtyPinMarkerKeys = React.useMemo(() => {
+  const { dirtyPinMarkerKeys, nextPinSemanticRevisionByMarkerKey } = React.useMemo(() => {
     const nextDirtyMarkerKeys = new Set<string>();
     const previousSemanticRevisionByMarkerKey = previousPinSemanticRevisionByMarkerKeyRef.current;
     const nextSemanticRevisionByMarkerKey = new Map<string, string>();
@@ -118,106 +154,174 @@ export const useSearchMapLabelSources = ({
         nextDirtyMarkerKeys.add(markerKey);
       }
     });
-    previousPinSemanticRevisionByMarkerKeyRef.current = nextSemanticRevisionByMarkerKey;
-    return nextDirtyMarkerKeys;
+    return {
+      dirtyPinMarkerKeys: nextDirtyMarkerKeys,
+      nextPinSemanticRevisionByMarkerKey: nextSemanticRevisionByMarkerKey,
+    };
   }, [pinFeatureIdsInOrder, pinFeaturesForDerivedSources.semanticRevisionById]);
 
-  const collisionSourceStore = React.useMemo<SearchMapSourceStore>(() => {
+  React.useEffect(() => {
+    previousPinSemanticRevisionByMarkerKeyRef.current = nextPinSemanticRevisionByMarkerKey;
+  }, [nextPinSemanticRevisionByMarkerKey]);
+
+  const buildOrderedRecords = React.useCallback(
+    (
+      recordsByMarkerKey: ReadonlyMap<string, readonly LabelFeatureRecord[]>
+    ): LabelFeatureRecord[] =>
+      pinFeatureIdsInOrder.flatMap((markerKey) => recordsByMarkerKey.get(markerKey) ?? []),
+    [pinFeatureIdsInOrder]
+  );
+
+  const buildStoreFromRecords = React.useCallback(
+    (
+      previousStore: SearchMapSourceStore,
+      orderedRecords: readonly LabelFeatureRecord[]
+    ): SearchMapSourceStore => {
+      const builder = createSearchMapSourceStoreBuilder(previousStore);
+      orderedRecords.forEach((record) => {
+        builder.appendFeature(record.feature, {
+          featureId: record.featureId,
+          semanticRevision: record.semanticRevision,
+          transportFeature: record.transportFeature,
+        });
+      });
+      return builder.finish();
+    },
+    []
+  );
+
+  const collisionResult = React.useMemo<DerivedSourceStoreResult>(() => {
     const startedAtMs = getNowMs();
-    if (!pinFeatureIdsInOrder.length) {
-      collisionRecordByMarkerKeyRef.current.clear();
-      collisionSourceStoreRef.current.clear();
-      collisionSourceStoreRef.current.setOrder([]);
-      return collisionSourceStoreRef.current.commit();
-    }
+    const previousStore = collisionSourceStoreRef.current;
+    const previousRecordsByMarkerKey = collisionRecordByMarkerKeyRef.current;
     const hasCommittedCollisionSourceStore =
-      collisionSourceStoreRef.current.sourceRevision.length > 0 ||
-      collisionSourceStoreRef.current.idsInOrder.length > 0;
-    const nextCollisionRecordsByMarkerKey = collisionRecordByMarkerKeyRef.current;
+      previousStore.sourceRevision.length > 0 || previousStore.idsInOrder.length > 0;
+    if (!pinFeatureIdsInOrder.length) {
+      const store = hasCommittedCollisionSourceStore
+        ? buildStoreFromRecords(previousStore, [])
+        : previousStore;
+      recordRuntimeAttribution('map_label_collision_build', getNowMs() - startedAtMs);
+      return {
+        store,
+        recordsByMarkerKey: new Map(),
+      };
+    }
+    const nextCollisionRecordsByMarkerKey = new Map(previousRecordsByMarkerKey);
     let didChange = !hasCommittedCollisionSourceStore;
     for (const markerKey of dirtyPinMarkerKeys) {
       const feature = pinFeaturesForDerivedSources.featureById.get(markerKey);
       if (!feature) {
         if (nextCollisionRecordsByMarkerKey.delete(markerKey)) {
-          collisionSourceStoreRef.current.removeFeature(markerKey);
           didChange = true;
         }
         continue;
       }
-      const collisionDiffKey = buildLabelSourceFeatureDiffKey(feature, 'collision');
+      const nextFeature = buildStableCollisionFeature(feature, markerKey);
+      const collisionDiffKey = buildLabelSourceFeatureDiffKey(nextFeature, 'collision');
       const previousRecord = nextCollisionRecordsByMarkerKey.get(markerKey);
-      if (previousRecord?.semanticRevision === collisionDiffKey) {
+      if (previousRecord?.[0]?.semanticRevision === collisionDiffKey) {
         continue;
       }
-      const nextFeature = {
-        type: 'Feature',
-        id: markerKey,
-        geometry: feature.geometry,
-        properties: {
-          markerKey,
-          restaurantId: feature.properties.restaurantId,
-        } as RestaurantFeatureProperties,
-      } satisfies Feature<Point, RestaurantFeatureProperties>;
-      nextCollisionRecordsByMarkerKey.set(markerKey, {
-        feature: nextFeature,
-        semanticRevision: collisionDiffKey,
-      });
-      collisionSourceStoreRef.current.upsertFeature(nextFeature, {
-        featureId: markerKey,
-        semanticRevision: collisionDiffKey,
-        transportFeature: createSearchMapSourceTransportFeature({
+      nextCollisionRecordsByMarkerKey.set(markerKey, [
+        {
+          featureId: markerKey,
           feature: nextFeature,
-          diffKey: collisionDiffKey,
-        }),
-      });
+          semanticRevision: collisionDiffKey,
+          transportFeature: createSearchMapSourceTransportFeature({
+            feature: nextFeature,
+            diffKey: collisionDiffKey,
+          }),
+        },
+      ]);
       didChange = true;
     }
-    if (!didChange) {
-      return collisionSourceStoreRef.current;
-    }
-    collisionSourceStoreRef.current.setOrderFromGroupedIds(pinFeatureIdsInOrder, (markerKey) =>
-      nextCollisionRecordsByMarkerKey.has(markerKey) ? [markerKey] : []
-    );
+    const orderedRecords = buildOrderedRecords(nextCollisionRecordsByMarkerKey);
+    const orderChanged =
+      previousStore.idsInOrder.length !== orderedRecords.length ||
+      previousStore.idsInOrder.some(
+        (featureId, index) => orderedRecords[index]?.featureId !== featureId
+      );
+    const store =
+      didChange || orderChanged
+        ? buildStoreFromRecords(previousStore, orderedRecords)
+        : previousStore;
     recordRuntimeAttribution('map_label_collision_build', getNowMs() - startedAtMs);
-    return collisionSourceStoreRef.current.commit();
-  }, [getNowMs, pinFeatureIdsInOrder, pinFeaturesForDerivedSources, recordRuntimeAttribution]);
+    return {
+      store,
+      recordsByMarkerKey: nextCollisionRecordsByMarkerKey,
+    };
+  }, [
+    buildOrderedRecords,
+    buildStoreFromRecords,
+    dirtyPinMarkerKeys,
+    getNowMs,
+    pinFeatureIdsInOrder,
+    pinFeaturesForDerivedSources,
+    recordRuntimeAttribution,
+  ]);
 
-  const labelCandidateSourceStore = React.useMemo<SearchMapSourceStore>(() => {
+  React.useEffect(() => {
+    collisionRecordByMarkerKeyRef.current = collisionResult.recordsByMarkerKey;
+    collisionSourceStoreRef.current = collisionResult.store;
+  }, [collisionResult]);
+
+  const labelCandidateResult = React.useMemo<
+    DerivedSourceStoreResult & {
+      identityKey: string;
+      appliedStickyEpoch: number;
+    }
+  >(() => {
     const startedAtMs = getNowMs();
+    const previousStore = labelCandidateSourceStoreRef.current;
+    const previousRecordsByMarkerKey = labelCandidateRecordsByMarkerKeyRef.current;
+    const previousIdentityKey = labelMarkerIdentityKeyRef.current;
+    const previousStickyRevision = labelCandidateAppliedStickyEpochRef.current;
     const hasCachedResult =
-      labelCandidateSourceStoreRef.current.sourceRevision.length > 0 ||
-      labelCandidateSourceStoreRef.current.idsInOrder.length > 0;
+      previousStore.sourceRevision.length > 0 || previousStore.idsInOrder.length > 0;
     if (!pinFeatureIdsInOrder.length) {
-      labelMarkerIdentityKeyRef.current = '';
-      labelCandidateAppliedStickyEpochRef.current = labelStickyEpoch;
-      labelCandidateRecordsByMarkerKeyRef.current.clear();
-      labelCandidateSourceStoreRef.current.clear();
+      const store = hasCachedResult ? buildStoreFromRecords(previousStore, []) : previousStore;
       recordRuntimeAttribution('map_label_candidate_build', getNowMs() - startedAtMs);
-      labelCandidateSourceStoreRef.current.setOrder([]);
-      return labelCandidateSourceStoreRef.current.commit();
+      return {
+        store,
+        recordsByMarkerKey: new Map(),
+        identityKey: '',
+        appliedStickyEpoch: stickyLabelState.revision,
+      };
     }
 
     const identityKey = pinFeaturesForDerivedSources.sourceRevision;
-
-    const identityChanged = identityKey !== labelMarkerIdentityKeyRef.current;
+    const identityChanged = identityKey !== previousIdentityKey;
     const shouldFreezeRebuild = !allowLiveLabelUpdates && hasCachedResult;
-    const shouldDeferRebuild =
-      identityChanged && hasCachedResult && (isMapMovingRef.current || shouldFreezeRebuild);
-    const stickyEpochChanged = labelCandidateAppliedStickyEpochRef.current !== labelStickyEpoch;
+    const shouldDeferRebuild = identityChanged && hasCachedResult && shouldFreezeRebuild;
+    const stickyRevisionChanged =
+      enableStickyLabelCandidates && previousStickyRevision !== stickyLabelState.revision;
 
-    if (!stickyEpochChanged && ((!identityChanged && hasCachedResult) || shouldDeferRebuild)) {
-      labelCandidateAppliedStickyEpochRef.current = labelStickyEpoch;
+    if (!stickyRevisionChanged && ((!identityChanged && hasCachedResult) || shouldDeferRebuild)) {
       recordRuntimeAttribution('map_label_candidate_build', getNowMs() - startedAtMs);
-      return labelCandidateSourceStoreRef.current;
+      return {
+        store: previousStore,
+        recordsByMarkerKey: previousRecordsByMarkerKey,
+        identityKey: previousIdentityKey,
+        appliedStickyEpoch: stickyLabelState.revision,
+      };
     }
 
-    labelMarkerIdentityKeyRef.current = identityKey;
-    const nextLabelCandidateRecordsByMarkerKey = labelCandidateRecordsByMarkerKeyRef.current;
-    const dirtyCandidateMarkerKeys = stickyEpochChanged
-      ? new Set(pinFeatureIdsInOrder)
-      : new Set(dirtyPinMarkerKeys);
-    labelCandidateSourceStoreRef.current.idsInOrder.forEach((featureId) => {
-      const feature = labelCandidateSourceStoreRef.current.featureById.get(featureId);
+    const nextLabelCandidateRecordsByMarkerKey = new Map(previousRecordsByMarkerKey);
+    const dirtyCandidateMarkerKeys = new Set(dirtyPinMarkerKeys);
+    if (stickyRevisionChanged && stickyLabelState.dirtyIdentityKeys.size > 0) {
+      for (const markerKey of pinFeatureIdsInOrder) {
+        const feature = pinFeaturesForDerivedSources.featureById.get(markerKey);
+        if (!feature) {
+          continue;
+        }
+        const stickyIdentityKey = getLabelStickyIdentityKeyFromFeature(feature);
+        if (stickyIdentityKey && stickyLabelState.dirtyIdentityKeys.has(stickyIdentityKey)) {
+          dirtyCandidateMarkerKeys.add(markerKey);
+        }
+      }
+    }
+    previousStore.idsInOrder.forEach((featureId) => {
+      const feature = previousStore.featureById.get(featureId);
       const markerKey = feature?.properties.markerKey;
       if (markerKey && !pinFeaturesForDerivedSources.featureById.has(markerKey)) {
         dirtyCandidateMarkerKeys.add(markerKey);
@@ -229,24 +333,24 @@ export const useSearchMapLabelSources = ({
       const previousRecords = nextLabelCandidateRecordsByMarkerKey.get(markerKey) ?? [];
       if (!feature) {
         if (previousRecords.length > 0) {
-          for (const previousRecord of previousRecords) {
-            labelCandidateSourceStoreRef.current.removeFeature(previousRecord.featureId);
-          }
           nextLabelCandidateRecordsByMarkerKey.delete(markerKey);
           didChange = true;
         }
         continue;
       }
       const stickyIdentityKey = getLabelStickyIdentityKeyFromFeature(feature);
-      const lockedCandidate = enableStickyLabelCandidates
-        ? stickyIdentityKey
-          ? labelStickyCandidateByMarkerKeyRef.current.get(stickyIdentityKey)
-          : null
-        : null;
-      const candidates = lockedCandidate ? [lockedCandidate] : LABEL_CANDIDATES_IN_ORDER;
+      const stableLabelBaseFeature = buildStableLabelBaseFeature(feature, markerKey);
+      const preferredCandidate =
+        (enableStickyLabelCandidates && stickyIdentityKey
+          ? stickyLabelState.candidateByIdentity.get(stickyIdentityKey)
+          : null) ?? LABEL_CANDIDATES_IN_ORDER[0];
+      const candidates = LABEL_CANDIDATES_IN_ORDER;
       const nextRecords = candidates.map((candidate) => {
         const featureId = buildLabelCandidateFeatureId(markerKey, candidate);
-        const semanticRevision = buildLabelSourceFeatureDiffKey(feature, `candidate:${candidate}`);
+        const semanticRevision = buildLabelSourceFeatureDiffKey(
+          stableLabelBaseFeature,
+          `candidate:${candidate}:preferred:${preferredCandidate ?? LABEL_CANDIDATES_IN_ORDER[0]}`
+        );
         const previousRecord = nextLabelCandidateRecordsByMarkerKey
           .get(markerKey)
           ?.find(
@@ -258,9 +362,14 @@ export const useSearchMapLabelSources = ({
         }
         didChange = true;
         const nextFeature = {
-          ...feature,
+          ...stableLabelBaseFeature,
           id: featureId,
-          properties: { ...feature.properties, labelCandidate: candidate, markerKey },
+          properties: {
+            ...stableLabelBaseFeature.properties,
+            labelCandidate: candidate,
+            labelPreference: preferredCandidate ?? LABEL_CANDIDATES_IN_ORDER[0],
+            markerKey,
+          },
         } satisfies Feature<Point, RestaurantFeatureProperties>;
         const transportFeature = createSearchMapSourceTransportFeature({
           feature: nextFeature,
@@ -279,98 +388,90 @@ export const useSearchMapLabelSources = ({
           (right.feature.properties.labelOrder ?? 9999)
       );
       if (!areLabelFeatureRecordsEqual(previousRecords, nextRecords)) {
-        const nextRecordById = new Map(
-          nextRecords.map((record) => [record.featureId, record] as const)
-        );
-        for (const previousRecord of previousRecords) {
-          const nextRecord = nextRecordById.get(previousRecord.featureId);
-          if (!nextRecord) {
-            labelCandidateSourceStoreRef.current.removeFeature(previousRecord.featureId);
-            continue;
-          }
-          if (nextRecord.semanticRevision !== previousRecord.semanticRevision) {
-            labelCandidateSourceStoreRef.current.upsertFeature(nextRecord.feature, {
-              featureId: nextRecord.featureId,
-              semanticRevision: nextRecord.semanticRevision,
-              transportFeature: nextRecord.transportFeature,
-            });
-          }
-        }
-        for (const nextRecord of nextRecords) {
-          if (!previousRecords.some((record) => record.featureId === nextRecord.featureId)) {
-            labelCandidateSourceStoreRef.current.upsertFeature(nextRecord.feature, {
-              featureId: nextRecord.featureId,
-              semanticRevision: nextRecord.semanticRevision,
-              transportFeature: nextRecord.transportFeature,
-            });
-          }
-        }
         didChange = true;
       }
       nextLabelCandidateRecordsByMarkerKey.set(markerKey, nextRecords);
     }
-    if (!didChange) {
-      labelCandidateAppliedStickyEpochRef.current = labelStickyEpoch;
-      recordRuntimeAttribution('map_label_candidate_build', getNowMs() - startedAtMs);
-      return labelCandidateSourceStoreRef.current;
-    }
-    labelCandidateAppliedStickyEpochRef.current = labelStickyEpoch;
-    labelCandidateSourceStoreRef.current.setOrderFromGroupedIds(
-      pinFeatureIdsInOrder,
-      (markerKey) =>
-        nextLabelCandidateRecordsByMarkerKey.get(markerKey)?.map((record) => record.featureId) ?? []
-    );
+    const orderedRecords = buildOrderedRecords(nextLabelCandidateRecordsByMarkerKey);
+    const orderChanged =
+      previousStore.idsInOrder.length !== orderedRecords.length ||
+      previousStore.idsInOrder.some(
+        (featureId, index) => orderedRecords[index]?.featureId !== featureId
+      );
+    const store =
+      didChange || orderChanged
+        ? buildStoreFromRecords(previousStore, orderedRecords)
+        : previousStore;
     recordRuntimeAttribution('map_label_candidate_build', getNowMs() - startedAtMs);
-    return labelCandidateSourceStoreRef.current.commit();
+    return {
+      store,
+      recordsByMarkerKey: nextLabelCandidateRecordsByMarkerKey,
+      identityKey,
+      appliedStickyEpoch: stickyLabelState.revision,
+    };
   }, [
     allowLiveLabelUpdates,
     buildLabelCandidateFeatureId,
+    buildOrderedRecords,
+    buildStoreFromRecords,
+    dirtyPinMarkerKeys,
     enableStickyLabelCandidates,
     getNowMs,
     getLabelStickyIdentityKeyFromFeature,
-    labelStickyCandidateByMarkerKeyRef,
-    labelStickyEpoch,
     pinFeatureIdsInOrder,
     pinFeaturesForDerivedSources,
     recordRuntimeAttribution,
-    isMapMovingRef,
+    stickyLabelState,
   ]);
 
-  const nativeLabelSourceStore = React.useMemo<SearchMapSourceStore>(() => {
+  React.useEffect(() => {
+    labelMarkerIdentityKeyRef.current = labelCandidateResult.identityKey;
+    labelCandidateAppliedStickyEpochRef.current = labelCandidateResult.appliedStickyEpoch;
+    labelCandidateRecordsByMarkerKeyRef.current = labelCandidateResult.recordsByMarkerKey;
+    labelCandidateSourceStoreRef.current = labelCandidateResult.store;
+  }, [labelCandidateResult]);
+
+  const nativeLabelResult = React.useMemo<DerivedSourceStoreResult>(() => {
+    const previousStore = nativeLabelSourceStoreRef.current;
+    const previousRecordsByMarkerKey = nativeLabelRecordsByMarkerKeyRef.current;
     const hasCommittedNativeLabelSourceStore =
-      nativeLabelSourceStoreRef.current.sourceRevision.length > 0 ||
-      nativeLabelSourceStoreRef.current.idsInOrder.length > 0;
+      previousStore.sourceRevision.length > 0 || previousStore.idsInOrder.length > 0;
     if (!pinFeatureIdsInOrder.length) {
-      nativeLabelRecordsByMarkerKeyRef.current.clear();
-      nativeLabelSourceStoreRef.current.clear();
-      nativeLabelSourceStoreRef.current.setOrder([]);
-      return nativeLabelSourceStoreRef.current.commit();
+      const store = hasCommittedNativeLabelSourceStore
+        ? buildStoreFromRecords(previousStore, [])
+        : previousStore;
+      return {
+        store,
+        recordsByMarkerKey: new Map(),
+      };
     }
-    const nextNativeLabelRecordsByMarkerKey = nativeLabelRecordsByMarkerKeyRef.current;
+    const nextNativeLabelRecordsByMarkerKey = new Map(previousRecordsByMarkerKey);
     let didChange = !hasCommittedNativeLabelSourceStore;
     const markAllNativeDirty =
       !hasCommittedNativeLabelSourceStore ||
-      nativeLabelSourceStoreRef.current.idsInOrder.length !==
-        labelCandidateSourceStore.idsInOrder.length;
+      previousStore.idsInOrder.length !== labelCandidateResult.store.idsInOrder.length;
     const dirtyNativeMarkerKeys = markAllNativeDirty
       ? new Set(pinFeatureIdsInOrder)
       : new Set<string>();
     if (!markAllNativeDirty) {
       dirtyPinMarkerKeys.forEach((markerKey) => dirtyNativeMarkerKeys.add(markerKey));
-      nativeLabelRecordsByMarkerKeyRef.current.forEach((_, markerKey) => {
-        if (!labelCandidateRecordsByMarkerKeyRef.current.has(markerKey)) {
+      labelCandidateResult.recordsByMarkerKey.forEach((candidateRecords, markerKey) => {
+        const previousRecords = previousRecordsByMarkerKey.get(markerKey) ?? [];
+        if (!areLabelFeatureRecordsEqual(previousRecords, candidateRecords)) {
+          dirtyNativeMarkerKeys.add(markerKey);
+        }
+      });
+      previousRecordsByMarkerKey.forEach((_, markerKey) => {
+        if (!labelCandidateResult.recordsByMarkerKey.has(markerKey)) {
           dirtyNativeMarkerKeys.add(markerKey);
         }
       });
     }
     for (const markerKey of dirtyNativeMarkerKeys) {
-      const candidateRecords = labelCandidateRecordsByMarkerKeyRef.current.get(markerKey);
+      const candidateRecords = labelCandidateResult.recordsByMarkerKey.get(markerKey);
       const previousRecords = nextNativeLabelRecordsByMarkerKey.get(markerKey) ?? [];
       if (!candidateRecords || candidateRecords.length === 0) {
         if (previousRecords.length > 0) {
-          for (const previousRecord of previousRecords) {
-            nativeLabelSourceStoreRef.current.removeFeature(previousRecord.featureId);
-          }
           nextNativeLabelRecordsByMarkerKey.delete(markerKey);
           didChange = true;
         }
@@ -409,46 +510,40 @@ export const useSearchMapLabelSources = ({
         } satisfies LabelFeatureRecord;
       });
       if (!areLabelFeatureRecordsEqual(previousRecords, nextRecords)) {
-        const nextRecordById = new Map(
-          nextRecords.map((record) => [record.featureId, record] as const)
-        );
-        for (const previousRecord of previousRecords) {
-          const nextRecord = nextRecordById.get(previousRecord.featureId);
-          if (!nextRecord) {
-            nativeLabelSourceStoreRef.current.removeFeature(previousRecord.featureId);
-            continue;
-          }
-          if (nextRecord.semanticRevision !== previousRecord.semanticRevision) {
-            nativeLabelSourceStoreRef.current.upsertFeature(nextRecord.feature, {
-              featureId: nextRecord.featureId,
-              semanticRevision: nextRecord.semanticRevision,
-              transportFeature: nextRecord.transportFeature,
-            });
-          }
-        }
-        for (const nextRecord of nextRecords) {
-          if (!previousRecords.some((record) => record.featureId === nextRecord.featureId)) {
-            nativeLabelSourceStoreRef.current.upsertFeature(nextRecord.feature, {
-              featureId: nextRecord.featureId,
-              semanticRevision: nextRecord.semanticRevision,
-              transportFeature: nextRecord.transportFeature,
-            });
-          }
-        }
         didChange = true;
       }
       nextNativeLabelRecordsByMarkerKey.set(markerKey, nextRecords);
     }
-    if (!didChange) {
-      return nativeLabelSourceStoreRef.current;
-    }
-    nativeLabelSourceStoreRef.current.setOrderFromGroupedIds(
-      pinFeatureIdsInOrder,
-      (markerKey) =>
-        nextNativeLabelRecordsByMarkerKey.get(markerKey)?.map((record) => record.featureId) ?? []
-    );
-    return nativeLabelSourceStoreRef.current.commit();
-  }, [dirtyPinMarkerKeys, labelCandidateSourceStore, pinFeatureIdsInOrder]);
+    const orderedRecords = buildOrderedRecords(nextNativeLabelRecordsByMarkerKey);
+    const orderChanged =
+      previousStore.idsInOrder.length !== orderedRecords.length ||
+      previousStore.idsInOrder.some(
+        (featureId, index) => orderedRecords[index]?.featureId !== featureId
+      );
+    const store =
+      didChange || orderChanged
+        ? buildStoreFromRecords(previousStore, orderedRecords)
+        : previousStore;
+    return {
+      store,
+      recordsByMarkerKey: nextNativeLabelRecordsByMarkerKey,
+    };
+  }, [
+    buildOrderedRecords,
+    buildStoreFromRecords,
+    dirtyPinMarkerKeys,
+    labelCandidateResult,
+    pinFeatureIdsInOrder,
+  ]);
+
+  React.useEffect(() => {
+    nativeLabelRecordsByMarkerKeyRef.current = nativeLabelResult.recordsByMarkerKey;
+    nativeLabelSourceStoreRef.current = nativeLabelResult.store;
+  }, [nativeLabelResult]);
+
+  const collisionSourceStore = collisionResult.store;
+
+  const nativeLabelSourceStore = nativeLabelResult.store;
 
   return {
     collisionSourceStore,
