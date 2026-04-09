@@ -9,8 +9,11 @@ import { X as LucideX } from 'lucide-react-native';
 import { Text } from '../components';
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import { colors as themeColors } from '../constants/theme';
+import { createRestaurantRoutePanelDraft } from '../overlays/restaurantRoutePanelContract';
+import { useRestaurantRouteProducer } from '../overlays/useRestaurantRouteProducer';
 import { useFavoriteListDetail, favoriteListKeys } from '../hooks/use-favorite-lists';
 import { favoriteListsService } from '../services/favorite-lists';
+import { searchService } from '../services/search';
 import { RestaurantResult, FoodResult } from '../types';
 import type { RootStackParamList } from '../types/navigation';
 import RestaurantResultCard from './Search/components/restaurant-result-card';
@@ -19,11 +22,38 @@ import DishResultCard from './Search/components/dish-result-card';
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const SHARE_BASE_URL = process.env.EXPO_PUBLIC_SHARE_BASE_URL || 'https://crave-search.app';
 
+const buildRestaurantRouteSeedFromFoodResult = (foodResult: FoodResult): RestaurantResult => ({
+  restaurantId: foodResult.restaurantId,
+  restaurantName: foodResult.restaurantName,
+  restaurantAliases: foodResult.restaurantAliases,
+  contextualScore:
+    foodResult.restaurantDisplayScore ?? foodResult.displayScore ?? foodResult.qualityScore,
+  displayScore: foodResult.restaurantDisplayScore ?? null,
+  displayPercentile: foodResult.restaurantDisplayPercentile ?? null,
+  coverageKey: foodResult.coverageKey,
+  coverageName: foodResult.coverageName ?? null,
+  latitude: foodResult.restaurantLatitude ?? null,
+  longitude: foodResult.restaurantLongitude ?? null,
+  restaurantLocationId: foodResult.restaurantLocationId ?? null,
+  priceLevel: foodResult.restaurantPriceLevel ?? null,
+  priceSymbol: foodResult.restaurantPriceSymbol ?? null,
+  topFood: [],
+  totalDishCount: 0,
+  operatingStatus: foodResult.restaurantOperatingStatus ?? null,
+  distanceMiles: foodResult.restaurantDistanceMiles ?? null,
+});
+
 const FavoritesListDetailScreen: React.FC<
   StackScreenProps<RootStackParamList, 'FavoritesListDetail'>
 > = ({ navigation, route }) => {
   const { listId } = route.params;
   const queryClient = useQueryClient();
+  const {
+    closeRestaurantRoute,
+    getActiveRestaurantRouteSessionToken,
+    openRestaurantRoute: openProducedRestaurantRoute,
+    updateRestaurantRoutePanel,
+  } = useRestaurantRouteProducer();
   const { data, isLoading } = useFavoriteListDetail(listId);
   const list = data?.list;
   const restaurants = data?.restaurants ?? [];
@@ -33,6 +63,68 @@ const FavoritesListDetailScreen: React.FC<
   const [draftName, setDraftName] = React.useState('');
   const [draftDescription, setDraftDescription] = React.useState('');
   const [isSaving, setIsSaving] = React.useState(false);
+
+  const openRestaurantProfileRoute = React.useCallback(
+    ({
+      restaurant,
+      queryLabel,
+      initialDishes = [],
+      isFavorite,
+      onToggleFavorite,
+    }: {
+      restaurant: RestaurantResult;
+      queryLabel: string;
+      initialDishes?: FoodResult[];
+      isFavorite: boolean;
+      onToggleFavorite?: (id: string) => void;
+    }) => {
+      const sessionToken = openProducedRestaurantRoute({
+        restaurantId: restaurant.restaurantId,
+        panel: createRestaurantRoutePanelDraft({
+          data: {
+            restaurant,
+            dishes: initialDishes,
+            queryLabel,
+            isFavorite,
+            isLoading: true,
+          },
+          onToggleFavorite: onToggleFavorite ?? (() => undefined),
+        }),
+      });
+
+      void searchService
+        .restaurantProfile(restaurant.restaurantId)
+        .then((profile) => {
+          if (getActiveRestaurantRouteSessionToken() !== sessionToken || !profile?.restaurant) {
+            return;
+          }
+          updateRestaurantRoutePanel(
+            sessionToken,
+            createRestaurantRoutePanelDraft({
+              data: {
+                restaurant: profile.restaurant,
+                dishes: profile.foodResults ?? [],
+                queryLabel,
+                isFavorite,
+              },
+              onToggleFavorite: onToggleFavorite ?? (() => undefined),
+            })
+          );
+        })
+        .catch(() => {
+          if (getActiveRestaurantRouteSessionToken() !== sessionToken) {
+            return;
+          }
+          closeRestaurantRoute(sessionToken);
+        });
+    },
+    [
+      closeRestaurantRoute,
+      getActiveRestaurantRouteSessionToken,
+      openProducedRestaurantRoute,
+      updateRestaurantRoutePanel,
+    ]
+  );
 
   React.useEffect(() => {
     if (!list || isEditing) {
@@ -123,6 +215,13 @@ const FavoritesListDetailScreen: React.FC<
     }
   }, [draftDescription, draftName, list, listId, queryClient]);
 
+  React.useEffect(
+    () => () => {
+      closeRestaurantRoute();
+    },
+    [closeRestaurantRoute]
+  );
+
   const renderRestaurant = React.useCallback(
     ({ item, index }: { item: RestaurantResult; index: number }) => (
       <RestaurantResultCard
@@ -134,12 +233,18 @@ const FavoritesListDetailScreen: React.FC<
         primaryCoverageKey={null}
         showCoverageLabel={false}
         onSavePress={() => undefined}
-        openRestaurantProfile={() => undefined}
+        openRestaurantProfile={(restaurant) => {
+          openRestaurantProfileRoute({
+            restaurant,
+            queryLabel: list?.name ?? 'Favorites',
+            isFavorite: true,
+          });
+        }}
         openScoreInfo={() => undefined}
         primaryFoodTerm={null}
       />
     ),
-    []
+    [list?.name, openRestaurantProfileRoute]
   );
 
   const renderDish = React.useCallback(
@@ -151,13 +256,20 @@ const FavoritesListDetailScreen: React.FC<
         isLiked={false}
         primaryCoverageKey={null}
         showCoverageLabel={false}
-        restaurantForDish={undefined}
+        restaurantForDish={buildRestaurantRouteSeedFromFoodResult(item)}
         onSavePress={() => undefined}
-        openRestaurantProfile={() => undefined}
+        openRestaurantProfile={(restaurant) => {
+          openRestaurantProfileRoute({
+            restaurant,
+            queryLabel: list?.name ?? 'Favorites',
+            initialDishes: [item],
+            isFavorite: true,
+          });
+        }}
         openScoreInfo={() => undefined}
       />
     ),
-    []
+    [list?.name, openRestaurantProfileRoute]
   );
 
   return (

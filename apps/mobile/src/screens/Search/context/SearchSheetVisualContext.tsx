@@ -1,18 +1,7 @@
 import React from 'react';
-import type { DerivedValue, SharedValue } from 'react-native-reanimated';
+import type { SearchRouteHostVisualState } from '../../../overlays/searchRouteHostVisualState';
 
-type AnimatedNumberLike = { value: number };
-
-export type SearchSheetVisualContextValue = {
-  sheetTranslateY: SharedValue<number>;
-  resultsScrollOffset: SharedValue<number>;
-  resultsMomentum: SharedValue<boolean>;
-  closeVisualHandoffProgress: AnimatedNumberLike;
-  navBarCutoutHeight: number;
-  navBarCutoutProgress: SharedValue<number> | DerivedValue<number>;
-  bottomNavHiddenTranslateY: number;
-  navBarCutoutIsHiding: boolean;
-};
+export type SearchSheetVisualContextValue = SearchRouteHostVisualState;
 
 const SearchSheetVisualContext = React.createContext<SearchSheetVisualContextValue | null>(null);
 

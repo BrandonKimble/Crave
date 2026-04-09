@@ -1,24 +1,40 @@
 import React from 'react';
-import { InteractionManager, StyleSheet, useWindowDimensions } from 'react-native';
+import { StyleSheet, useWindowDimensions } from 'react-native';
 
-import type { FlashListRef } from '@shopify/flash-list';
 import Reanimated, { type SharedValue, useAnimatedStyle } from 'react-native-reanimated';
 
-import BottomSheetWithFlashList, {
-  type BottomSheetWithFlashListProps,
-} from './BottomSheetWithFlashList';
+import { BottomSheetContentSurface } from './BottomSheetContentSurface';
+import { BottomSheetFlashListSurface } from './BottomSheetFlashListSurface';
+import { BottomSheetHostShell } from './BottomSheetHostShell';
+import { useBottomSheetHostCommandRuntime } from './useBottomSheetHostCommandRuntime';
+import { useBottomSheetNativeEventRuntime } from './useBottomSheetNativeEventRuntime';
+import { useBottomSheetNativeHostPropsRuntime } from './useBottomSheetNativeHostPropsRuntime';
 import { OVERLAY_STACK_ZINDEX, overlaySheetStyles } from './overlaySheetStyles';
-import { useOverlayStore } from '../store/overlayStore';
-import type { OverlayContentSpec, OverlayKey, OverlaySheetSnap } from './types';
+import type { OverlayContentSpec, OverlaySheetSnap } from './types';
+import { isOverlayListContentSpec } from './types';
+import type { BottomSheetRuntimeModel } from './useBottomSheetRuntime';
 import {
   useOverlayHeaderActionController,
   type OverlayHeaderActionMode,
 } from './useOverlayHeaderActionController';
-import { TAB_OVERLAY_SNAP_KEY, useOverlaySheetPositionStore } from './useOverlaySheetPositionStore';
+import { useOverlayStore } from '../store/overlayStore';
+import { useBottomSheetContentContainerStyleRuntime } from './useBottomSheetContentContainerStyleRuntime';
+import { useBottomSheetFlashListVisualPropsRuntime } from './useBottomSheetFlashListVisualPropsRuntime';
+import { useBottomSheetHostActiveScrollRuntime } from './useBottomSheetHostActiveScrollRuntime';
+import { useBottomSheetHostScrollIndicatorRuntime } from './useBottomSheetHostScrollIndicatorRuntime';
+import { useBottomSheetPrimaryScrollHandlerRuntime } from './useBottomSheetPrimaryScrollHandlerRuntime';
+import { useBottomSheetRuntimeModel } from './useBottomSheetRuntime';
+import { useBottomSheetSecondaryScrollHandlerRuntime } from './useBottomSheetSecondaryScrollHandlerRuntime';
+import { useBottomSheetSurfaceRefsRuntime } from './useBottomSheetSurfaceRefsRuntime';
+import { useBottomSheetSurfaceScrollCallbacksRuntime } from './useBottomSheetSurfaceScrollCallbacksRuntime';
+import { useOverlaySheetDefaultSnapRuntime } from './useOverlaySheetDefaultSnapRuntime';
+import { useOverlaySheetListRuntime } from './useOverlaySheetListRuntime';
+import { useOverlaySheetRequestedSnapRuntime } from './useOverlaySheetRequestedSnapRuntime';
+import { useOverlaySheetResolvedSnapRuntime } from './useOverlaySheetResolvedSnapRuntime';
+import { useOverlaySheetSnapRequestRuntime } from './useOverlaySheetSnapRequestRuntime';
 
 type OverlaySheetShellProps = {
   visible: boolean;
-  activeOverlayKey: OverlayKey;
   spec: OverlayContentSpec<unknown> | null;
   sheetY: SharedValue<number>;
   scrollOffset: SharedValue<number>;
@@ -30,11 +46,11 @@ type OverlaySheetShellProps = {
   navBarCutoutProgress?: SharedValue<number>;
   navBarHiddenTranslateY?: number;
   navBarCutoutIsHiding?: boolean;
+  runtimeModel?: BottomSheetRuntimeModel;
 };
 
 const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
   visible,
-  activeOverlayKey,
   spec,
   sheetY,
   scrollOffset,
@@ -46,239 +62,296 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
   navBarCutoutProgress,
   navBarHiddenTranslateY = 0,
   navBarCutoutIsHiding = false,
+  runtimeModel,
 }) => {
   const { height: screenHeight } = useWindowDimensions();
-  const setOverlayScrollOffset = useOverlayStore((state) => state.setOverlayScrollOffset);
-  const previousOverlay = useOverlayStore((state) => state.previousOverlay);
-  const overlayStack = useOverlayStore((state) => state.overlayStack);
-  const rootOverlay = useOverlayStore((state) => state.overlayStack[0] ?? state.activeOverlay);
-  const recordUserSnap = useOverlaySheetPositionStore((state) => state.recordUserSnap);
-  const recordPersistentSnap = useOverlaySheetPositionStore((state) => state.recordPersistentSnap);
-
-  const internalListRef = React.useRef<FlashListRef<unknown> | null>(null);
-  const resolvedListRef = spec?.listRef ?? internalListRef;
-  const specRef = React.useRef<OverlayContentSpec<unknown> | null>(null);
-  specRef.current = spec;
-
-  const resolvedSnapPersistenceKey = React.useMemo(() => {
-    if (!spec) {
-      return null;
-    }
-
-    if (spec.snapPersistenceKey === null) {
-      return null;
-    }
-
-    if (typeof spec.snapPersistenceKey === 'string') {
-      return spec.snapPersistenceKey;
-    }
-
-    const isTabOverlay =
-      activeOverlayKey === 'polls' ||
-      activeOverlayKey === 'pollCreation' ||
-      activeOverlayKey === 'bookmarks' ||
-      activeOverlayKey === 'profile';
-    if (isTabOverlay) {
-      return TAB_OVERLAY_SNAP_KEY;
-    }
-
-    if (overlayStack.length > 1) {
-      return `overlay-stack:${rootOverlay}`;
-    }
-
-    return `overlay:${activeOverlayKey}`;
-  }, [activeOverlayKey, overlayStack.length, rootOverlay, spec?.snapPersistenceKey]);
-
-  const persistedSnap = useOverlaySheetPositionStore((state) =>
-    resolvedSnapPersistenceKey ? state.persistentSnaps[resolvedSnapPersistenceKey] ?? null : null
+  const activeOverlayRouteKey = useOverlayStore((state) => state.activeOverlayRoute.key);
+  const overlayRouteStack = useOverlayStore((state) => state.overlayRouteStack);
+  const rootOverlay = useOverlayStore(
+    (state) => state.overlayRouteStack[0]?.key ?? state.activeOverlayRoute.key
   );
-
-  const [shellSnapTo, setShellSnapTo] = React.useState<OverlaySheetSnap | null>(null);
-  const shellSnapToRef = React.useRef<OverlaySheetSnap | null>(null);
-  React.useEffect(() => {
-    shellSnapToRef.current = shellSnapTo;
-  }, [shellSnapTo]);
-  const currentSnapRef = React.useRef<OverlaySheetSnap>('hidden');
-  const lastOverlayKeyRef = React.useRef<OverlayKey | null>(null);
-  const lastSnapOverlayKeyRef = React.useRef<OverlayKey | null>(null);
-  const lastSnapPointsKeyRef = React.useRef<string | null>(null);
-
-  const handleScrollOffsetChange = React.useCallback(
-    (nextOffset: number) => {
-      specRef.current?.onScrollOffsetChange?.(nextOffset);
-      setOverlayScrollOffset(activeOverlayKey, nextOffset);
+  const resolvedOverlayKey = spec?.overlayKey ?? activeOverlayRouteKey;
+  const shellSheetRuntimeModel = useBottomSheetRuntimeModel({
+    presentationStateOverride: {
+      sheetY,
+      scrollOffset,
+      momentumFlag,
     },
-    [activeOverlayKey, setOverlayScrollOffset, specRef]
-  );
-
-  const handleSnapChange = React.useCallback<
-    NonNullable<BottomSheetWithFlashListProps<unknown>['onSnapChange']>
-  >(
-    (snap, meta) => {
-      currentSnapRef.current = snap;
-      specRef.current?.onSnapChange?.(snap, meta);
-      if (resolvedSnapPersistenceKey) {
-        recordPersistentSnap({ key: resolvedSnapPersistenceKey, snap });
-      }
-      if (meta?.source === 'gesture') {
-        recordUserSnap({
-          rootOverlay,
-          activeOverlayKey,
-          snap,
-        });
-      }
-      if (shellSnapToRef.current && snap === shellSnapToRef.current) {
-        setShellSnapTo(null);
-      }
-    },
-    [
-      activeOverlayKey,
-      recordPersistentSnap,
-      recordUserSnap,
-      resolvedSnapPersistenceKey,
-      rootOverlay,
-      setShellSnapTo,
-    ]
-  );
-
-  const handleSnapStart = React.useCallback<
-    NonNullable<BottomSheetWithFlashListProps<unknown>['onSnapStart']>
-  >(
-    (snap, meta) => {
-      specRef.current?.onSnapStart?.(snap, meta);
-      if (resolvedSnapPersistenceKey) {
-        recordPersistentSnap({ key: resolvedSnapPersistenceKey, snap });
-      }
-      if (meta?.source === 'gesture') {
-        recordUserSnap({
-          rootOverlay,
-          activeOverlayKey,
-          snap,
-        });
-      }
-    },
-    [
-      activeOverlayKey,
-      recordPersistentSnap,
-      recordUserSnap,
-      resolvedSnapPersistenceKey,
-      rootOverlay,
-    ]
-  );
-
-  const handleDragStateChange = React.useCallback(
-    (isDragging: boolean) => {
-      specRef.current?.onDragStateChange?.(isDragging);
-    },
-    [specRef]
-  );
-
-  const handleSettleStateChange = React.useCallback(
-    (isSettling: boolean) => {
-      specRef.current?.onSettleStateChange?.(isSettling);
-    },
-    [specRef]
-  );
-
-  React.useEffect(() => {
-    if (!visible || !spec) {
-      lastSnapOverlayKeyRef.current = null;
-      lastSnapPointsKeyRef.current = null;
-      setShellSnapTo(null);
-      return;
-    }
-
-    const snapPointsKey = `${spec.snapPoints.expanded}:${spec.snapPoints.middle}:${
-      spec.snapPoints.collapsed
-    }:${spec.snapPoints.hidden ?? ''}`;
-    const overlayChanged = lastSnapOverlayKeyRef.current !== activeOverlayKey;
-    const snapPointsChanged = lastSnapPointsKeyRef.current !== snapPointsKey;
-    if (overlayChanged || snapPointsChanged) {
-      lastSnapOverlayKeyRef.current = activeOverlayKey;
-      lastSnapPointsKeyRef.current = snapPointsKey;
-    }
-
-    if (spec.snapTo) {
-      setShellSnapTo(null);
-      return;
-    }
-
-    const sheetYValue = sheetY.value;
-    const isSheetOffscreen =
-      Number.isFinite(screenHeight) &&
-      screenHeight > 0 &&
-      Number.isFinite(sheetYValue) &&
-      sheetYValue >= screenHeight - 0.5;
-    if (currentSnapRef.current !== 'hidden' && !isSheetOffscreen) {
-      if (shellSnapToRef.current !== null) {
-        setShellSnapTo(null);
-      }
-      return;
-    }
-
-    if (isSheetOffscreen) {
-      currentSnapRef.current = 'hidden';
-    }
-
-    const desiredSnap: OverlaySheetSnap = persistedSnap ?? spec.initialSnapPoint ?? 'middle';
-    if (resolvedSnapPersistenceKey && !persistedSnap) {
-      recordPersistentSnap({ key: resolvedSnapPersistenceKey, snap: desiredSnap });
-    }
-    if (shellSnapToRef.current !== desiredSnap) {
-      setShellSnapTo(desiredSnap);
-    }
-  }, [
-    activeOverlayKey,
+  });
+  const resolvedRuntimeModel = runtimeModel ?? spec?.runtimeModel ?? shellSheetRuntimeModel;
+  const { resolvedListRef, handleScrollOffsetChange } = useOverlaySheetListRuntime({
+    visible,
+    spec,
+    scrollOffset,
+    resolvedOverlayKey,
+  });
+  const {
     persistedSnap,
-    previousOverlay,
-    recordPersistentSnap,
     resolvedSnapPersistenceKey,
+    ensurePersistedSnap,
+    handleSnapChange: handleSnapChangeBase,
+    handleSnapStart: handleSnapStartBase,
+  } = useOverlaySheetResolvedSnapRuntime({
+    spec,
+    resolvedOverlayKey,
+    rootOverlay,
+    overlayRouteStackLength: overlayRouteStack.length,
+  });
+  const {
+    handleSnapChange,
+    handleSnapStart,
+    requestShellSnap,
+    requestedShellSnapRef,
+    currentSnapRef,
+  } = useOverlaySheetSnapRequestRuntime({
+    runtime: resolvedRuntimeModel,
+    handleSnapChangeBase,
+    handleSnapStartBase,
+  });
+  const resolvedInteractionEnabled = spec?.interactionEnabled ?? true;
+  const resolveSnapTargetY = React.useCallback(
+    (snapKey: OverlaySheetSnap | 'hidden') => {
+      'worklet';
+      const snapPoints = spec?.snapPoints;
+      if (!snapPoints) {
+        return undefined;
+      }
+      switch (snapKey) {
+        case 'expanded':
+          return snapPoints.expanded;
+        case 'middle':
+          return snapPoints.middle;
+        case 'collapsed':
+          return snapPoints.collapsed;
+        case 'hidden':
+          return snapPoints.hidden ?? snapPoints.collapsed;
+        default:
+          return undefined;
+      }
+    },
+    [spec?.snapPoints]
+  );
+  const hasRequestedSnap = useOverlaySheetRequestedSnapRuntime({
+    visible,
+    spec,
+    resolvedOverlayKey,
+    requestShellSnap,
+    requestedShellSnapRef,
+  });
+  useOverlaySheetDefaultSnapRuntime({
+    visible,
+    spec,
+    persistedSnap,
+    resolvedSnapPersistenceKey,
+    ensurePersistedSnap,
     screenHeight,
     sheetY,
-    spec,
+    requestShellSnap,
+    requestedShellSnapRef,
+    currentSnapRef,
+    hasRequestedSnap,
+  });
+  const handleDragStateChange = React.useCallback(
+    (isDragging: boolean) => {
+      spec?.onDragStateChange?.(isDragging);
+    },
+    [spec]
+  );
+  const handleSettleStateChange = React.useCallback(
+    (isSettling: boolean) => {
+      spec?.onSettleStateChange?.(isSettling);
+    },
+    [spec]
+  );
+  const sheetCommand = useBottomSheetHostCommandRuntime({
+    runtime: resolvedRuntimeModel,
+  });
+  const resolvedSheetProps =
+    spec && isOverlayListContentSpec(spec) ? { ...spec, listRef: resolvedListRef } : spec;
+
+  if (!resolvedSheetProps) {
+    return null;
+  }
+
+  const {
+    snapPoints,
+    shellSnapRequest,
+    runtimeModel: specRuntimeModel,
+    style: sheetStyle,
+    headerComponent,
+    backgroundComponent,
+    overlayComponent,
+    contentContainerStyle,
+    keyboardShouldPersistTaps = 'handled',
+    scrollIndicatorInsets,
+    onHidden,
+    onScrollBeginDrag,
+    onScrollEndDrag,
+    onMomentumBeginJS,
+    onMomentumEndJS,
+    onEndReached,
+    onEndReachedThreshold,
+    showsVerticalScrollIndicator,
+    keyboardDismissMode,
+    bounces,
+    alwaysBounceVertical,
+    overScrollMode,
+    testID,
+    activeList = 'primary',
+    listScrollEnabled = true,
+    dismissThreshold,
+    preventSwipeDismiss = false,
+    animateOnMount = false,
+    flashListProps,
+    surfaceStyle,
+    shadowStyle,
+    contentSurfaceStyle,
+    initialSnapPoint = 'middle',
+    ...surfaceProps
+  } = resolvedSheetProps;
+  void shellSnapRequest;
+  void specRuntimeModel;
+  const { hostEventProps } = useBottomSheetNativeEventRuntime({
     visible,
-  ]);
-
-  React.useLayoutEffect(() => {
-    if (!visible) {
-      return;
-    }
-
-    const previousKey = lastOverlayKeyRef.current;
-    if (previousKey && previousKey !== activeOverlayKey) {
-      setOverlayScrollOffset(previousKey, scrollOffset.value);
-    }
-    lastOverlayKeyRef.current = activeOverlayKey;
-
-    const storedOffset = useOverlayStore.getState().overlayScrollOffsets[activeOverlayKey] ?? 0;
-    const nextOffset = Math.max(0, storedOffset);
-
-    const applyOffset = () => {
-      const list = (specRef.current?.listRef ?? internalListRef).current;
-      scrollOffset.value = nextOffset;
-      if (!list?.scrollToOffset) {
-        return false;
-      }
-      list.scrollToOffset({ offset: nextOffset, animated: false });
-      return true;
-    };
-
-    applyOffset();
-
-    const task = InteractionManager.runAfterInteractions(() => {
-      requestAnimationFrame(() => {
-        applyOffset();
-      });
+    initialSnapPoint,
+    runtime: resolvedRuntimeModel,
+    resolveSnapTargetY,
+    onHidden,
+    onSnapStart: handleSnapStart,
+    onSnapChange: handleSnapChange,
+    onDragStateChange: handleDragStateChange,
+    onSettleStateChange: handleSettleStateChange,
+  });
+  const hostProps = useBottomSheetNativeHostPropsRuntime({
+    hostKey: 'app_overlay_sheet',
+    visible,
+    snapPoints,
+    initialSnapPoint,
+    preservePositionOnSnapPointsChange: true,
+    preventSwipeDismiss,
+    interactionEnabled: resolvedInteractionEnabled,
+    animateOnMount,
+    dismissThreshold,
+    style: sheetStyle ?? overlaySheetStyles.container,
+    hostEventProps,
+    sheetCommand,
+  });
+  const {
+    listProps,
+    contentProps,
+    flashListRef,
+    secondaryFlashListRef,
+    shouldRenderDualLists,
+    resolvedActiveList,
+  } = useBottomSheetSurfaceRefsRuntime({
+    activeList,
+    surfaceProps,
+  });
+  const listContentContainerStyle = useBottomSheetContentContainerStyleRuntime({
+    contentContainerStyle,
+  });
+  const { flashListSurfaceStyle, resolvedFlashListProps } =
+    useBottomSheetFlashListVisualPropsRuntime({
+      flashListProps,
+      listProps,
     });
-    const timeout = setTimeout(() => {
-      applyOffset();
-    }, 80);
-
-    return () => {
-      task.cancel();
-      clearTimeout(timeout);
-    };
-  }, [activeOverlayKey, internalListRef, scrollOffset, setOverlayScrollOffset, specRef, visible]);
+  const shouldEnableScroll = visible && listScrollEnabled && resolvedInteractionEnabled;
+  const { handleScrollBeginDrag, handleScrollEndDrag, handleContentScrollEndDrag } =
+    useBottomSheetSurfaceScrollCallbacksRuntime({
+      flashListProps,
+      onScrollBeginDrag,
+      onScrollEndDrag,
+      onScrollOffsetChange: handleScrollOffsetChange,
+      scrollOffset: resolvedRuntimeModel.presentationState.scrollOffset,
+    });
+  const { momentumFlag: sheetMomentumFlag } = resolvedRuntimeModel.presentationState;
+  const {
+    activePrimaryList,
+    primaryScrollOffset,
+    secondaryScrollOffset,
+    primaryScrollTopOffset,
+    secondaryScrollTopOffset,
+    scrollTopOffset,
+  } = useBottomSheetHostActiveScrollRuntime({
+    activeList: resolvedActiveList,
+    dualListEnabled: shouldRenderDualLists,
+    scrollOffset: resolvedRuntimeModel.presentationState.scrollOffset,
+  });
+  const effectiveShowsVerticalScrollIndicator = useBottomSheetHostScrollIndicatorRuntime({
+    showsVerticalScrollIndicator: Boolean(showsVerticalScrollIndicator),
+    scrollOffset: resolvedRuntimeModel.presentationState.scrollOffset,
+    scrollTopOffset,
+  });
+  const primaryAnimatedScrollHandler = useBottomSheetPrimaryScrollHandlerRuntime({
+    activePrimaryList,
+    momentumFlag: sheetMomentumFlag,
+    onMomentumBegin: onMomentumBeginJS,
+    onMomentumEnd: onMomentumEndJS,
+    onScrollOffsetChange: handleScrollOffsetChange,
+    primaryScrollOffset,
+    primaryScrollTopOffset,
+    scrollOffset: resolvedRuntimeModel.presentationState.scrollOffset,
+    scrollTopOffset,
+  });
+  const secondaryAnimatedScrollHandler = useBottomSheetSecondaryScrollHandlerRuntime({
+    activePrimaryList,
+    momentumFlag: sheetMomentumFlag,
+    onMomentumBegin: onMomentumBeginJS,
+    onMomentumEnd: onMomentumEndJS,
+    onScrollOffsetChange: handleScrollOffsetChange,
+    secondaryScrollOffset,
+    secondaryScrollTopOffset,
+    scrollOffset: resolvedRuntimeModel.presentationState.scrollOffset,
+    scrollTopOffset,
+  });
+  const sheetContent = contentProps ? (
+    <BottomSheetContentSurface
+      contentComponent={contentProps.contentComponent}
+      shouldEnableScroll={shouldEnableScroll}
+      surfaceStyle={flashListSurfaceStyle}
+      contentContainerStyle={listContentContainerStyle}
+      keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+      primaryAnimatedScrollHandler={primaryAnimatedScrollHandler}
+      onScrollBeginDrag={onScrollBeginDrag}
+      onScrollEndDrag={handleContentScrollEndDrag}
+      onMomentumBeginJS={onMomentumBeginJS}
+      onMomentumEndJS={onMomentumEndJS}
+      showsVerticalScrollIndicator={effectiveShowsVerticalScrollIndicator}
+      keyboardDismissMode={keyboardDismissMode}
+      bounces={bounces}
+      alwaysBounceVertical={alwaysBounceVertical}
+      overScrollMode={overScrollMode}
+      testID={testID}
+      scrollIndicatorInsets={scrollIndicatorInsets}
+    />
+  ) : listProps ? (
+    <BottomSheetFlashListSurface
+      listProps={listProps}
+      flashListRef={flashListRef}
+      secondaryFlashListRef={secondaryFlashListRef}
+      shouldEnableScroll={shouldEnableScroll}
+      shouldRenderDualLists={shouldRenderDualLists}
+      resolvedActiveList={resolvedActiveList}
+      flashListSurfaceStyle={flashListSurfaceStyle}
+      contentContainerStyle={listContentContainerStyle}
+      keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+      primaryAnimatedScrollHandler={primaryAnimatedScrollHandler}
+      secondaryAnimatedScrollHandler={secondaryAnimatedScrollHandler}
+      onScrollBeginDrag={handleScrollBeginDrag}
+      onScrollEndDrag={handleScrollEndDrag}
+      onEndReached={onEndReached}
+      onEndReachedThreshold={onEndReachedThreshold}
+      effectiveShowsVerticalScrollIndicator={effectiveShowsVerticalScrollIndicator}
+      keyboardDismissMode={keyboardDismissMode}
+      bounces={bounces}
+      alwaysBounceVertical={alwaysBounceVertical}
+      overScrollMode={overScrollMode}
+      testID={testID}
+      scrollIndicatorInsets={scrollIndicatorInsets}
+      flashListProps={resolvedFlashListProps}
+      extraData={listProps.extraData}
+    />
+  ) : null;
 
   const resolvedNavBarHeight = Math.max(navBarHeight, 0);
   const sheetClipAnimatedStyle = useAnimatedStyle(() => {
@@ -290,7 +363,6 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
       : 1;
     const navTranslateY = Math.max(0, (1 - progress) * Math.max(0, navBarHiddenTranslateY));
     const hideLead = navBarCutoutIsHiding ? 1.18 : 1;
-    // Keep the cutout attached to the moving nav object, not animation progress itself.
     const cutout = Math.max(
       0,
       Math.min(resolvedNavBarHeight, resolvedNavBarHeight - navTranslateY * hideLead)
@@ -315,37 +387,26 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
     progress: headerActionProgress,
   });
 
-  if (!spec) {
-    return null;
-  }
+  const onHeaderLayout = React.useCallback((_event: unknown) => {}, []);
 
-  const { snapPoints, ...specProps } = spec;
-  const resolvedInteractionEnabled = spec.interactionEnabled ?? true;
-
-  return (
+  const renderedSheet = (
     <Reanimated.View pointerEvents="box-none" style={[styles.sheetClip, sheetClipAnimatedStyle]}>
       {spec.underlayComponent ?? null}
-      <BottomSheetWithFlashList
-        visible={visible}
-        snapPoints={snapPoints}
-        preservePositionOnSnapPointsChange
-        sheetYValue={sheetY}
-        scrollOffsetValue={scrollOffset}
-        momentumFlag={momentumFlag}
-        listRef={resolvedListRef}
-        {...specProps}
-        snapTo={spec.snapTo ?? shellSnapTo}
-        snapToToken={spec.snapToToken}
-        interactionEnabled={resolvedInteractionEnabled}
-        onScrollOffsetChange={handleScrollOffsetChange}
-        onSnapStart={handleSnapStart}
-        onSnapChange={handleSnapChange}
-        onDragStateChange={handleDragStateChange}
-        onSettleStateChange={handleSettleStateChange}
-        style={spec.style ?? overlaySheetStyles.container}
+      <BottomSheetHostShell
+        hostProps={hostProps}
+        backgroundComponent={backgroundComponent}
+        headerComponent={headerComponent}
+        overlayComponent={overlayComponent}
+        onHeaderLayout={onHeaderLayout}
+        surfaceStyle={surfaceStyle}
+        shadowStyle={shadowStyle}
+        contentSurfaceStyle={contentSurfaceStyle}
+        content={sheetContent}
       />
     </Reanimated.View>
   );
+
+  return spec.renderWrapper ? <>{spec.renderWrapper(renderedSheet)}</> : renderedSheet;
 };
 
 const styles = StyleSheet.create({

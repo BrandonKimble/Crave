@@ -1,12 +1,11 @@
 import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
 import type { MapBounds } from '../../../../types';
-import type { PresentationLaneState } from '../controller/presentation-transition-controller';
+import {
+  isResultsPresentationExecutionStageSettled,
+  type ResultsPresentationTransportState,
+} from '../shared/results-presentation-runtime-contract';
 import type { SearchRuntimeMapPresentationPhase } from '../shared/search-runtime-bus';
-import type {
-  SearchMapCommittedSourceDeltaJournal,
-  SearchMapSourceStoreDelta,
-  SearchMapSourceStore,
-} from './search-map-source-store';
+import type { SearchMapSourceStoreDelta } from './search-map-source-store';
 import type { SearchMapSourceTransportFeature } from './search-map-source-store';
 
 type SearchMapRenderControllerNativeModule = {
@@ -24,47 +23,23 @@ type SearchMapRenderControllerNativeModule = {
   detach: (instanceId: string) => Promise<void>;
   setRenderFrame: (payload: {
     instanceId: string;
+    ownerEpoch: number;
     frameGenerationId: string;
-    revealBatchId: string;
+    executionBatchId: string;
     sourceDeltas?: SearchMapRenderControllerNativeSourceDelta[];
     presentationStateJson: string;
     highlightedMarkerKey: string | null;
     interactionMode: string;
   }) => Promise<void>;
   notifyFrameRendered: (instanceId: string) => Promise<void>;
-  querySourceMembership: (payload: { instanceId: string; sourceId: string }) => Promise<{
-    sourceId: string;
-    featureIds: string[];
-  }>;
-  queryRenderedLabelObservation: (payload: {
-    instanceId: string;
-    allowFallback: boolean;
-    commitInteractionVisibility: boolean;
-    refreshMsIdle: number;
-    refreshMsMoving: number;
-    enableStickyLabelCandidates: boolean;
-    stickyLockStableMsMoving: number;
-    stickyLockStableMsIdle: number;
-    stickyUnlockMissingMsMoving: number;
-    stickyUnlockMissingMsIdle: number;
-    stickyUnlockMissingStreakMoving: number;
-    labelResetRequestKey: string | null;
-  }) => Promise<{
-    visibleLabelFeatureIds: string[];
-    placedLabels: Array<{
-      markerKey: string;
-      candidate: string;
-      restaurantId: string | null;
-    }>;
-    layerRenderedFeatureCount: number;
-    effectiveRenderedFeatureCount: number;
-    stickyRevision: number;
-    stickyCandidates: Array<{
-      identityKey: string;
-      candidate: string;
-    }>;
-    dirtyStickyIdentityKeys: string[];
-  }>;
+  configureLabelObservation: (
+    payload: {
+      instanceId: string;
+      observationEnabled: boolean;
+      allowFallback: boolean;
+      commitInteractionVisibility: boolean;
+    } & SearchMapLabelObservationConfig
+  ) => Promise<void>;
   queryRenderedDotObservation: (payload: {
     instanceId: string;
     layerIds: string[];
@@ -99,7 +74,9 @@ type SearchMapRenderControllerNativeModule = {
   reset: (instanceId: string) => Promise<void>;
 };
 
-type SearchMapRenderControllerAttachedSourceIds = {
+type SearchMapRenderControllerAttachPayload = {
+  instanceId: string;
+  mapTag: number;
   pinSourceId: string;
   pinInteractionSourceId: string;
   dotSourceId: string;
@@ -109,11 +86,24 @@ type SearchMapRenderControllerAttachedSourceIds = {
   labelCollisionSourceId: string;
 };
 
-export type SearchMapRenderControllerEvent =
+type SearchMapLabelObservationConfig = {
+  refreshMsIdle: number;
+  refreshMsMoving: number;
+  enableStickyLabelCandidates: boolean;
+  stickyLockStableMsMoving: number;
+  stickyLockStableMsIdle: number;
+  stickyUnlockMissingMsMoving: number;
+  stickyUnlockMissingMsIdle: number;
+  stickyUnlockMissingStreakMoving: number;
+  labelResetRequestKey: string | null;
+};
+
+type SearchMapRenderControllerEvent =
   | {
       type: 'attached';
       instanceId: string;
       mapTag: number;
+      ownerEpoch: number;
     }
   | {
       type: 'detached';
@@ -123,70 +113,71 @@ export type SearchMapRenderControllerEvent =
       type: 'render_frame_synced';
       instanceId: string;
       frameGenerationId: string | null;
-      revealBatchId: string | null;
+      executionBatchId: string | null;
+      ownerEpoch: number;
       pinCount: number;
       dotCount: number;
       labelCount: number;
-      sourceRevisions: SearchMapRenderSourceRevisionState;
+      sourceRevisions: Record<SearchMapRenderSourceId, string>;
     }
   | {
-      type: 'presentation_reveal_armed';
+      type: 'presentation_enter_armed';
       instanceId: string;
       requestKey: string;
       frameGenerationId: string | null;
-      revealBatchId: string | null;
+      executionBatchId: string | null;
       armedAtMs: number;
     }
   | {
-      type: 'presentation_reveal_batch_mounted_hidden';
+      type: 'presentation_execution_batch_mounted_hidden';
       instanceId: string;
       requestKey: string;
       frameGenerationId: string | null;
-      revealBatchId: string | null;
+      executionBatchId: string | null;
       readyAtMs: number;
     }
   | {
-      type: 'presentation_reveal_started';
+      type: 'presentation_enter_started';
       instanceId: string;
       requestKey: string;
       frameGenerationId: string | null;
-      revealBatchId: string | null;
+      executionBatchId: string | null;
       startedAtMs: number;
     }
   | {
-      type: 'presentation_reveal_first_visible_frame';
+      type: 'presentation_enter_settled';
       instanceId: string;
       requestKey: string;
       frameGenerationId: string | null;
-      revealBatchId: string | null;
-      syncedAtMs: number;
-    }
-  | {
-      type: 'presentation_reveal_settled';
-      instanceId: string;
-      requestKey: string;
-      frameGenerationId: string | null;
-      revealBatchId: string | null;
+      executionBatchId: string | null;
       settledAtMs: number;
     }
   | {
-      type: 'presentation_dismiss_started';
+      type: 'presentation_exit_started';
       instanceId: string;
       requestKey: string;
       frameGenerationId: string | null;
       startedAtMs: number;
     }
   | {
-      type: 'presentation_dismiss_settled';
+      type: 'presentation_exit_settled';
       instanceId: string;
       requestKey: string;
       frameGenerationId: string | null;
       settledAtMs: number;
+    }
+  | {
+      type: 'render_owner_invalidated';
+      instanceId: string;
+      ownerEpoch: number;
+      reason: string;
+      invalidatedAtMs: number;
     }
   | {
       type: 'render_owner_recovered_after_style_reload';
       instanceId: string;
       frameGenerationId: string | null;
+      ownerEpoch: number;
       recoveredAtMs: number;
     }
   | {
@@ -208,12 +199,7 @@ export type SearchMapRenderControllerEvent =
       visibleLabelFeatureIds: string[];
       layerRenderedFeatureCount: number;
       effectiveRenderedFeatureCount: number;
-      stickyRevision: number;
-      stickyCandidates: Array<{
-        identityKey: string;
-        candidate: string;
-      }>;
-      dirtyStickyIdentityKeys: string[];
+      stickyChanged: boolean;
     }
   | {
       type: 'error';
@@ -221,29 +207,7 @@ export type SearchMapRenderControllerEvent =
       message: string;
     };
 
-export type SearchMapRenderSourceMembership = {
-  sourceId: string;
-  featureIds: string[];
-};
-
-export type SearchMapRenderedLabelObservation = {
-  visibleLabelFeatureIds: string[];
-  placedLabels: Array<{
-    markerKey: string;
-    candidate: string;
-    restaurantId: string | null;
-  }>;
-  layerRenderedFeatureCount: number;
-  effectiveRenderedFeatureCount: number;
-  stickyRevision: number;
-  stickyCandidates: Array<{
-    identityKey: string;
-    candidate: string;
-  }>;
-  dirtyStickyIdentityKeys: string[];
-};
-
-export type SearchMapRenderedDotObservation = {
+type SearchMapRenderedDotObservation = {
   restaurantIds: string[];
   renderedDots: Array<{
     restaurantId: string;
@@ -255,7 +219,7 @@ export type SearchMapRenderedDotObservation = {
   renderedFeatureCount: number;
 };
 
-export type SearchMapRenderedPressTarget = {
+type SearchMapRenderedPressTarget = {
   restaurantId: string;
   coordinate: {
     lng: number;
@@ -264,19 +228,9 @@ export type SearchMapRenderedPressTarget = {
   targetKind: 'pin' | 'label';
 };
 
-export type SearchMapRenderSnapshot = {
-  pins: SearchMapSourceStore;
-  pinInteractions: SearchMapSourceStore;
-  dots: SearchMapSourceStore;
-  dotInteractions: SearchMapSourceStore;
-  labels: SearchMapSourceStore;
-  labelInteractions: SearchMapSourceStore;
-  labelCollisions: SearchMapSourceStore;
-};
+type SearchMapRenderSourceRevisionState = Record<SearchMapRenderSourceId, string>;
 
-export type SearchMapRenderSourceRevisionState = Record<SearchMapRenderSourceId, string>;
-
-export type SearchMapRenderSourceId =
+type SearchMapRenderSourceId =
   | 'pins'
   | 'pinInteractions'
   | 'dots'
@@ -285,12 +239,12 @@ export type SearchMapRenderSourceId =
   | 'labelInteractions'
   | 'labelCollisions';
 
-export type SearchMapRenderSourceTransportPayload = {
+type SearchMapRenderSourceTransportPayload = {
   effectiveChangedSourceIds: SearchMapRenderSourceId[];
   sourceDeltas?: SearchMapRenderSourceDelta[];
 };
 
-export type SearchMapRenderFrame = {
+type SearchMapRenderFrame = {
   sourceRevisions: SearchMapRenderSourceRevisionState;
   viewport: SearchMapRenderViewportState;
   presentation: SearchMapRenderPresentationState;
@@ -298,19 +252,89 @@ export type SearchMapRenderFrame = {
   interactionMode: SearchMapRenderInteractionMode;
 };
 
-export type SearchMapRenderViewportState = {
+type SearchMapRenderViewportState = {
   bounds: MapBounds | null;
   isGestureActive: boolean;
   isMoving: boolean;
 };
 
 export type SearchMapRenderPresentationState = {
-  lane: PresentationLaneState;
-  loadingMode: string;
+  transactionId: ResultsPresentationTransportState['transactionId'];
+  snapshotKind: ResultsPresentationTransportState['snapshotKind'];
+  executionBatch: ResultsPresentationTransportState['executionBatch'];
+  executionStage: ResultsPresentationTransportState['executionStage'];
+  startToken: ResultsPresentationTransportState['startToken'];
+  coverState: ResultsPresentationTransportState['coverState'];
   selectedRestaurantId: string | null;
-  allowEmptyReveal: boolean;
-  batchPhase: SearchRuntimeMapPresentationPhase;
+  allowEmptyEnter: boolean;
 };
+
+const areSearchMapRenderExecutionBatchesEqual = (
+  left: SearchMapRenderPresentationState['executionBatch'],
+  right: SearchMapRenderPresentationState['executionBatch']
+): boolean => {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right) {
+    return false;
+  }
+  return left.batchId === right.batchId && left.generationId === right.generationId;
+};
+
+export const areSearchMapRenderPresentationStatesEqual = (
+  left: SearchMapRenderPresentationState,
+  right: SearchMapRenderPresentationState
+): boolean =>
+  left.coverState === right.coverState &&
+  left.transactionId === right.transactionId &&
+  left.snapshotKind === right.snapshotKind &&
+  left.executionStage === right.executionStage &&
+  left.startToken === right.startToken &&
+  left.selectedRestaurantId === right.selectedRestaurantId &&
+  left.allowEmptyEnter === right.allowEmptyEnter &&
+  areSearchMapRenderExecutionBatchesEqual(left.executionBatch, right.executionBatch);
+
+export const deriveSearchMapRenderPresentationPhase = (
+  presentationState: SearchMapRenderPresentationState
+): SearchRuntimeMapPresentationPhase => {
+  if (presentationState.snapshotKind === 'results_exit') {
+    if (presentationState.executionStage === 'exit_executing') {
+      return 'exiting';
+    }
+    if (presentationState.executionStage === 'exit_requested') {
+      return 'exit_preroll';
+    }
+  }
+  if (presentationState.snapshotKind != null && presentationState.snapshotKind !== 'results_exit') {
+    if (presentationState.executionStage === 'enter_executing') {
+      return 'entering';
+    }
+    if (
+      presentationState.executionStage === 'enter_pending_mount' ||
+      presentationState.executionStage === 'enter_mounted_hidden'
+    ) {
+      return 'enter_requested';
+    }
+    if (presentationState.executionStage === 'settled') {
+      return 'live';
+    }
+  }
+  if (presentationState.coverState === 'initial_loading') {
+    return 'covered';
+  }
+  return 'idle';
+};
+
+export const deriveSearchMapRenderPresentationRequestKey = (
+  presentationState: SearchMapRenderPresentationState
+): string | null =>
+  presentationState.transactionId != null &&
+  presentationState.snapshotKind != null &&
+  presentationState.snapshotKind !== 'results_exit' &&
+  !isResultsPresentationExecutionStageSettled(presentationState.executionStage)
+    ? presentationState.transactionId
+    : null;
 
 export type SearchMapRenderInteractionMode = 'enabled' | 'suppressed';
 
@@ -322,7 +346,17 @@ const nativeModule = NativeModules[MODULE_NAME] as
 const nativeEmitter =
   nativeModule != null ? new NativeEventEmitter(nativeModule as never) : undefined;
 
-const attachedSourceIdsByInstanceId = new Map<string, SearchMapRenderControllerAttachedSourceIds>();
+const attachedPayloadByInstanceId = new Map<string, SearchMapRenderControllerAttachPayload>();
+
+const isRecoverableNativeRenderOwnerFrameError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes('unknown instance or frame') ||
+    message.includes('invalid render frame payload') ||
+    message.includes('Source delta missing feature') ||
+    message.includes('Source delta upsert missing feature')
+  );
+};
 
 const presentationSerializationCache = new WeakMap<SearchMapRenderPresentationState, string>();
 
@@ -336,41 +370,7 @@ const serializePresentationState = (presentation: SearchMapRenderPresentationSta
   return serialized;
 };
 
-const getSnapshotSource = (
-  snapshot: SearchMapRenderSnapshot,
-  sourceId: SearchMapRenderSourceId
-): SearchMapSourceStore => {
-  switch (sourceId) {
-    case 'pins':
-      return snapshot.pins;
-    case 'pinInteractions':
-      return snapshot.pinInteractions;
-    case 'dots':
-      return snapshot.dots;
-    case 'dotInteractions':
-      return snapshot.dotInteractions;
-    case 'labels':
-      return snapshot.labels;
-    case 'labelInteractions':
-      return snapshot.labelInteractions;
-    case 'labelCollisions':
-      return snapshot.labelCollisions;
-  }
-};
-
-export const getSearchMapRenderSourceRevisions = (
-  snapshot: SearchMapRenderSnapshot
-): SearchMapRenderSourceRevisionState => ({
-  pins: snapshot.pins.sourceRevision,
-  pinInteractions: snapshot.pinInteractions.sourceRevision,
-  dots: snapshot.dots.sourceRevision,
-  dotInteractions: snapshot.dotInteractions.sourceRevision,
-  labels: snapshot.labels.sourceRevision,
-  labelInteractions: snapshot.labelInteractions.sourceRevision,
-  labelCollisions: snapshot.labelCollisions.sourceRevision,
-});
-
-export type SearchMapRenderSourceDelta = {
+type SearchMapRenderSourceDelta = {
   sourceId: SearchMapRenderSourceId;
   mode: SearchMapSourceStoreDelta['mode'];
   nextFeatureIdsInOrder: string[];
@@ -381,27 +381,13 @@ export type SearchMapRenderSourceDelta = {
   upsertFeatures?: SearchMapSourceTransportFeature[];
 };
 
-const toRenderSourceDelta = (
-  sourceId: SearchMapRenderSourceId,
-  delta: SearchMapSourceStoreDelta
-): SearchMapRenderSourceDelta => ({
-  sourceId,
-  mode: delta.mode,
-  nextFeatureIdsInOrder: delta.nextFeatureIdsInOrder,
-  removeIds: delta.removeIds,
-  ...(delta.dirtyGroupIds ? { dirtyGroupIds: delta.dirtyGroupIds } : {}),
-  ...(delta.orderChangedGroupIds ? { orderChangedGroupIds: delta.orderChangedGroupIds } : {}),
-  ...(delta.removedGroupIds ? { removedGroupIds: delta.removedGroupIds } : {}),
-  ...(delta.upsertFeatures ? { upsertFeatures: delta.upsertFeatures } : {}),
-});
-
 type SearchMapRenderControllerNativeSourceDelta = Omit<SearchMapRenderSourceDelta, 'sourceId'> & {
   sourceId: string;
 };
 
 const toNativeSourceId = (
   sourceId: SearchMapRenderSourceId,
-  attachedSourceIds: SearchMapRenderControllerAttachedSourceIds | null
+  attachedSourceIds: SearchMapRenderControllerAttachPayload | null
 ): string => {
   if (attachedSourceIds == null) {
     return sourceId;
@@ -426,119 +412,11 @@ const toNativeSourceId = (
 
 const toNativeRenderSourceDelta = (
   delta: SearchMapRenderSourceDelta,
-  attachedSourceIds: SearchMapRenderControllerAttachedSourceIds | null
+  attachedSourceIds: SearchMapRenderControllerAttachPayload | null
 ): SearchMapRenderControllerNativeSourceDelta => ({
   ...delta,
   sourceId: toNativeSourceId(delta.sourceId, attachedSourceIds),
 });
-
-const buildReplayJournalDelta = (
-  baseSourceRevision: string,
-  nextSourceStore: SearchMapSourceStore
-): SearchMapSourceStoreDelta | null => {
-  const journals = nextSourceStore.committedDeltaJournalHistory;
-  const startIndex = journals.findIndex(
-    (journal) => journal.baseSourceRevision === baseSourceRevision
-  );
-  if (startIndex === -1) {
-    return null;
-  }
-  const replayJournals = journals.slice(startIndex);
-  if (replayJournals.length === 0) {
-    return null;
-  }
-  const removeIds = new Set<string>();
-  const dirtyGroupIds = new Set<string>();
-  const orderChangedGroupIds = new Set<string>();
-  const removedGroupIds = new Set<string>();
-  const upsertFeatureIds = new Set<string>();
-
-  for (const journal of replayJournals) {
-    for (const featureId of journal.delta.removeIds) {
-      removeIds.add(featureId);
-    }
-    for (const groupId of journal.delta.dirtyGroupIds ?? []) {
-      dirtyGroupIds.add(groupId);
-    }
-    for (const groupId of journal.delta.orderChangedGroupIds ?? []) {
-      orderChangedGroupIds.add(groupId);
-    }
-    for (const groupId of journal.delta.removedGroupIds ?? []) {
-      removedGroupIds.add(groupId);
-    }
-    for (const feature of journal.delta.upsertFeatures ?? []) {
-      upsertFeatureIds.add(feature.id);
-      dirtyGroupIds.add(feature.markerKey);
-    }
-  }
-
-  const upsertFeatures = [...upsertFeatureIds].flatMap((featureId) => {
-    const transportFeature = nextSourceStore.transportFeatureById.get(featureId);
-    return transportFeature ? [transportFeature] : [];
-  });
-
-  return {
-    mode: 'patch',
-    nextFeatureIdsInOrder: [...nextSourceStore.idsInOrder],
-    removeIds: [...removeIds],
-    ...(dirtyGroupIds.size > 0 ? { dirtyGroupIds: [...dirtyGroupIds] } : {}),
-    ...(orderChangedGroupIds.size > 0 ? { orderChangedGroupIds: [...orderChangedGroupIds] } : {}),
-    ...(removedGroupIds.size > 0 ? { removedGroupIds: [...removedGroupIds] } : {}),
-    ...(upsertFeatures.length > 0 ? { upsertFeatures } : {}),
-  };
-};
-
-const buildSourceDelta = (
-  sourceId: SearchMapRenderSourceId,
-  acknowledgedSourceRevision: string | null,
-  nextSourceStore: SearchMapSourceStore
-): SearchMapRenderSourceDelta | null => {
-  if (acknowledgedSourceRevision === nextSourceStore.sourceRevision) {
-    return null;
-  }
-  const committedDeltaJournal: SearchMapCommittedSourceDeltaJournal | null =
-    nextSourceStore.committedDeltaJournal;
-  const delta =
-    acknowledgedSourceRevision == null
-      ? nextSourceStore.buildReplaceDelta()
-      : committedDeltaJournal?.baseSourceRevision === acknowledgedSourceRevision
-      ? committedDeltaJournal.delta
-      : buildReplayJournalDelta(acknowledgedSourceRevision, nextSourceStore) ??
-        nextSourceStore.buildReplaceDelta();
-  return delta ? toRenderSourceDelta(sourceId, delta) : null;
-};
-
-export const buildSearchMapRenderSourceTransport = ({
-  previousSourceRevisions,
-  nextSnapshot,
-  changedSourceIds,
-}: {
-  previousSourceRevisions: SearchMapRenderSourceRevisionState | null;
-  nextSnapshot: SearchMapRenderSnapshot;
-  changedSourceIds: SearchMapRenderSourceId[];
-}): SearchMapRenderSourceTransportPayload => {
-  const sourceDeltas: SearchMapRenderSourceDelta[] = [];
-  const effectiveChangedSourceIds: SearchMapRenderSourceId[] = [];
-
-  for (const sourceId of changedSourceIds) {
-    const nextCollection = getSnapshotSource(nextSnapshot, sourceId);
-    const delta = buildSourceDelta(
-      sourceId,
-      previousSourceRevisions?.[sourceId] ?? null,
-      nextCollection
-    );
-    if (!delta) {
-      continue;
-    }
-    sourceDeltas.push(delta);
-    effectiveChangedSourceIds.push(sourceId);
-  }
-
-  return {
-    effectiveChangedSourceIds,
-    ...(sourceDeltas.length > 0 ? { sourceDeltas } : {}),
-  };
-};
 
 export const searchMapRenderController = {
   isAvailable(): boolean {
@@ -559,15 +437,7 @@ export const searchMapRenderController = {
     if (!nativeModule) {
       return;
     }
-    attachedSourceIdsByInstanceId.set(payload.instanceId, {
-      pinSourceId: payload.pinSourceId,
-      pinInteractionSourceId: payload.pinInteractionSourceId,
-      dotSourceId: payload.dotSourceId,
-      dotInteractionSourceId: payload.dotInteractionSourceId,
-      labelSourceId: payload.labelSourceId,
-      labelInteractionSourceId: payload.labelInteractionSourceId,
-      labelCollisionSourceId: payload.labelCollisionSourceId,
-    });
+    attachedPayloadByInstanceId.set(payload.instanceId, payload);
     await nativeModule.attach(payload);
   },
 
@@ -575,25 +445,27 @@ export const searchMapRenderController = {
     if (!nativeModule) {
       return;
     }
-    attachedSourceIdsByInstanceId.delete(instanceId);
+    attachedPayloadByInstanceId.delete(instanceId);
     await nativeModule.detach(instanceId);
   },
 
   async setRenderFrame(payload: {
     instanceId: string;
+    ownerEpoch: number;
     frameGenerationId: string;
-    revealBatchId: string;
+    executionBatchId: string;
     frame: SearchMapRenderFrame;
     sourceTransport: SearchMapRenderSourceTransportPayload;
   }): Promise<void> {
     if (!nativeModule) {
       return;
     }
-    const attachedSourceIds = attachedSourceIdsByInstanceId.get(payload.instanceId) ?? null;
-    await nativeModule.setRenderFrame({
+    const attachedSourceIds = attachedPayloadByInstanceId.get(payload.instanceId) ?? null;
+    const nativePayload = {
       instanceId: payload.instanceId,
+      ownerEpoch: payload.ownerEpoch,
       frameGenerationId: payload.frameGenerationId,
-      revealBatchId: payload.revealBatchId,
+      executionBatchId: payload.executionBatchId,
       ...(payload.sourceTransport.sourceDeltas
         ? {
             sourceDeltas: payload.sourceTransport.sourceDeltas.map((delta) =>
@@ -604,48 +476,34 @@ export const searchMapRenderController = {
       presentationStateJson: serializePresentationState(payload.frame.presentation),
       highlightedMarkerKey: payload.frame.highlightedMarkerKey,
       interactionMode: payload.frame.interactionMode,
-    });
+    };
+    try {
+      await nativeModule.setRenderFrame(nativePayload);
+    } catch (error) {
+      if (!isRecoverableNativeRenderOwnerFrameError(error)) {
+        throw error;
+      }
+      const attachedPayload = attachedPayloadByInstanceId.get(payload.instanceId);
+      if (attachedPayload == null) {
+        throw error;
+      }
+      await nativeModule.attach(attachedPayload);
+      throw new Error('stale owner epoch');
+    }
   },
 
-  async querySourceMembership(payload: {
-    instanceId: string;
-    sourceId: string;
-  }): Promise<SearchMapRenderSourceMembership> {
+  async configureLabelObservation(
+    payload: {
+      instanceId: string;
+      observationEnabled: boolean;
+      allowFallback: boolean;
+      commitInteractionVisibility: boolean;
+    } & SearchMapLabelObservationConfig
+  ): Promise<void> {
     if (!nativeModule) {
-      return {
-        sourceId: payload.sourceId,
-        featureIds: [],
-      };
+      return;
     }
-    return nativeModule.querySourceMembership(payload);
-  },
-
-  async queryRenderedLabelObservation(payload: {
-    instanceId: string;
-    allowFallback: boolean;
-    commitInteractionVisibility: boolean;
-    refreshMsIdle: number;
-    refreshMsMoving: number;
-    enableStickyLabelCandidates: boolean;
-    stickyLockStableMsMoving: number;
-    stickyLockStableMsIdle: number;
-    stickyUnlockMissingMsMoving: number;
-    stickyUnlockMissingMsIdle: number;
-    stickyUnlockMissingStreakMoving: number;
-    labelResetRequestKey: string | null;
-  }): Promise<SearchMapRenderedLabelObservation> {
-    if (!nativeModule) {
-      return {
-        visibleLabelFeatureIds: [],
-        placedLabels: [],
-        layerRenderedFeatureCount: 0,
-        effectiveRenderedFeatureCount: 0,
-        stickyRevision: 0,
-        stickyCandidates: [],
-        dirtyStickyIdentityKeys: [],
-      };
-    }
-    return nativeModule.queryRenderedLabelObservation(payload);
+    await nativeModule.configureLabelObservation(payload);
   },
 
   async queryRenderedDotObservation(payload: {

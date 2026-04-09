@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+fix_mode=0
+if [[ "${1:-}" == "--fix" ]]; then
+  fix_mode=1
+  shift
+fi
+
 if [[ $# -lt 1 ]]; then
-  echo "usage: $0 <package-dir>" >&2
+  echo "usage: $0 [--fix] <package-dir>" >&2
   exit 1
 fi
 
@@ -43,7 +49,13 @@ fi
 
 (
   cd "$PACKAGE_DIR"
-  "${eslint_cmd[@]}" --fix "${relative_files[@]}"
+  if [[ "$fix_mode" == "1" ]]; then
+    "${eslint_cmd[@]}" --fix "${relative_files[@]}"
+  else
+    "${eslint_cmd[@]}" "${relative_files[@]}"
+  fi
 )
 
-git add -- "${lintable_files[@]}"
+if [[ "$fix_mode" == "1" ]]; then
+  git add -- "${lintable_files[@]}"
+fi

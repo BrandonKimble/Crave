@@ -19,9 +19,9 @@ import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import { colors as themeColors } from '../../constants/theme';
+import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useNotificationStore } from '../../store/notificationStore';
-import { useOverlayStore } from '../../store/overlayStore';
 import { logger } from '../../utils';
 import { notificationsService } from '../../services/notifications';
 import { usersService } from '../../services/users';
@@ -34,9 +34,9 @@ import {
   OVERLAY_HORIZONTAL_PADDING,
   overlaySheetStyles,
 } from '../overlaySheetStyles';
-import type { SnapPoints } from '../BottomSheetWithFlashList';
+import type { SnapPoints } from '../bottomSheetMotionTypes';
 import { calculateSnapPoints } from '../sheetUtils';
-import type { OverlayContentSpec, OverlaySheetSnap } from '../types';
+import type { OverlayContentSpec, OverlaySheetSnap, OverlaySheetSnapRequest } from '../types';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
 
@@ -51,7 +51,7 @@ type UseProfilePanelSpecOptions = {
   headerActionProgress?: SharedValue<number>;
   onSnapStart?: (snap: OverlaySheetSnap) => void;
   onSnapChange?: (snap: OverlaySheetSnap) => void;
-  snapTo?: Exclude<OverlaySheetSnap, 'hidden'> | null;
+  shellSnapRequest?: OverlaySheetSnapRequest | null;
 };
 
 type Navigation = StackNavigationProp<RootStackParamList>;
@@ -94,13 +94,13 @@ export const useProfilePanelSpec = ({
   headerActionProgress: headerActionProgressProp,
   onSnapStart,
   onSnapChange,
-  snapTo,
+  shellSnapRequest,
 }: UseProfilePanelSpecOptions): OverlayContentSpec<unknown> => {
   const resetOnboarding = useOnboardingStore((state) => state.__forceOnboarding);
   const { signOut, isSignedIn } = useAuth();
   const navigation = useNavigation<Navigation>();
   const insets = useSafeAreaInsets();
-  const setOverlay = useOverlayStore((state) => state.setOverlay);
+  const { setRootRoute } = useAppOverlayRouteController();
   const pushToken = useNotificationStore((state) => state.pushToken);
   const setPushToken = useNotificationStore((state) => state.setPushToken);
   const [activeSegment, setActiveSegment] = React.useState<ProfileSegment>('created');
@@ -208,12 +208,12 @@ export const useProfilePanelSpec = ({
 
   const handlePollPress = React.useCallback(
     (poll: Poll) => {
-      setOverlay('polls', {
+      setRootRoute('polls', {
         pollId: poll.pollId,
         coverageKey: poll.coverageKey ?? null,
       });
     },
-    [setOverlay]
+    [setRootRoute]
   );
 
   const handleListPress = React.useCallback(
@@ -224,8 +224,8 @@ export const useProfilePanelSpec = ({
   );
 
   const handleClose = React.useCallback(() => {
-    setOverlay('search');
-  }, [setOverlay]);
+    setRootRoute('search');
+  }, [setRootRoute]);
 
   const displayName = profile?.displayName?.trim() || profile?.username || 'Crave Explorer';
   const usernameLabel = profile?.username ? `@${profile.username}` : 'Pick a username';
@@ -485,9 +485,10 @@ export const useProfilePanelSpec = ({
 
   return {
     overlayKey: 'profile',
+    surfaceKind: 'list',
     snapPoints,
     initialSnapPoint: 'expanded',
-    snapTo,
+    shellSnapRequest,
     data: [],
     renderItem: () => null,
     estimatedItemSize: 720,

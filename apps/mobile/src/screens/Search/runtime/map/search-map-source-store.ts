@@ -1,4 +1,4 @@
-import type { Feature, Point } from 'geojson';
+import type { Feature, FeatureCollection, Point } from 'geojson';
 
 import type { RestaurantFeatureProperties } from '../../components/search-map';
 
@@ -633,7 +633,7 @@ export const createSearchMapMutableSourceStore = (
       return store;
     },
   };
-  (store as SearchMapSourceStoreInternal)[transportSyncStateSymbol] = transportSyncState;
+  (store as unknown as SearchMapSourceStoreInternal)[transportSyncStateSymbol] = transportSyncState;
   return store;
 };
 

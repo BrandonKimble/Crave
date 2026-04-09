@@ -37,10 +37,10 @@ const MaskedHoleOverlay = React.forwardRef<View, MaskedHoleOverlayProps>(
     },
     ref
   ) => {
-    const maskIdRef = React.useRef<string>(
-      `masked-hole-overlay-mask-${Math.random().toString(36).slice(2, 8)}`
+    const maskId = React.useMemo(
+      () => `masked-hole-overlay-mask-${Math.random().toString(36).slice(2, 8)}`,
+      []
     );
-    const maskId = maskIdRef.current;
 
     const containerStyle = style
       ? [overlayStyles.absoluteTopLeft, style]

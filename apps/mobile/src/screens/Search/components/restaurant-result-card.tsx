@@ -8,7 +8,7 @@ import { Text } from '../../../components';
 import { colors as themeColors } from '../../../constants/theme';
 import { FONT_SIZES } from '../../../constants/typography';
 import { getPriceRangeLabel } from '../../../constants/pricing';
-import type { FoodResult, RestaurantResult } from '../../../types';
+import type { RestaurantResult } from '../../../types';
 import { useSearchInteraction } from '../context/SearchInteractionContext';
 import { useTopFoodMeasurement } from '../hooks/use-top-food-measurement';
 import styles from '../styles';
@@ -60,7 +60,6 @@ type RestaurantResultCardProps = {
   onSavePress: () => void;
   openRestaurantProfile: (
     restaurant: RestaurantResult,
-    foodResultsOverride?: FoodResult[],
     source?: 'results_sheet' | 'auto_open_single_candidate'
   ) => void;
   openScoreInfo: (payload: ScoreInfoPayload) => void;

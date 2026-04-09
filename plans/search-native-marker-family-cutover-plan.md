@@ -2,7 +2,7 @@
 
 Last updated: 2026-03-29
 Status: active
-Scope: `/Users/brandonkimble/crave-search/apps/mobile/ios/cravesearch/noop-file.swift`
+Scope: `/Users/brandonkimble/crave-search/apps/mobile/ios/cravesearch/SearchMapRenderController.swift`
 
 ## Objective
 
@@ -137,7 +137,7 @@ Delete gate:
 
 Always:
 
-- `swiftc -parse /Users/brandonkimble/crave-search/apps/mobile/ios/cravesearch/noop-file.swift`
+- `swiftc -parse /Users/brandonkimble/crave-search/apps/mobile/ios/cravesearch/SearchMapRenderController.swift`
 - `bash /Users/brandonkimble/crave-search/scripts/no-bypass-search-runtime.sh`
 
 Manual/device validation after each meaningful slice:

@@ -2,16 +2,23 @@ import React from 'react';
 
 import type { RestaurantResult, SearchResponse } from '../../../../types';
 import type { MarkerCatalogEntry } from '../map/map-viewport-query';
-import type { RunOneHandoffPhase } from '../controller/run-one-handoff-phase';
 import type {
-  PresentationResultsCardVisibility,
-  PresentationResultsSurfaceMode,
-  PresentationLoadingMode,
-  PresentationLaneState,
-  PresentationMutationKind,
-  PresentationRevealMode,
-  PresentationRevealPhase,
-} from '../controller/presentation-transition-controller';
+  CameraSnapshot,
+  ProfileTransitionStatus,
+  RestaurantPanelSnapshot,
+} from '../profile/profile-transition-state-contract';
+import type { RunOneHandoffPhase } from '../controller/run-one-handoff-phase';
+import {
+  IDLE_RESULTS_PRESENTATION_READ_MODEL,
+  IDLE_RESULTS_PRESENTATION_TRANSPORT_STATE,
+  isResultsPresentationExecutionStageSettled,
+  type ResultsPresentationReadModel,
+  type ResultsPresentationTransportState,
+} from './results-presentation-runtime-contract';
+import {
+  IDLE_TOGGLE_INTERACTION_STATE,
+  type ToggleInteractionState,
+} from './results-toggle-interaction-contract';
 
 export type SearchRuntimeActiveTab = 'dishes' | 'restaurants';
 export type SearchRuntimeSearchMode = 'natural' | 'shortcut' | null;
@@ -27,11 +34,11 @@ export type SearchRuntimeOperationLane =
 export type SearchRuntimeMapPresentationPhase =
   | 'idle'
   | 'covered'
-  | 'reveal_requested'
-  | 'revealing'
+  | 'enter_requested'
+  | 'entering'
   | 'live'
-  | 'dismiss_preroll'
-  | 'dismissing';
+  | 'exit_preroll'
+  | 'exiting';
 
 export const isSearchRuntimeMapPresentationPending = (
   phase: SearchRuntimeMapPresentationPhase
@@ -40,6 +47,29 @@ export const isSearchRuntimeMapPresentationPending = (
 export const isSearchRuntimeMapPresentationSettled = (
   phase: SearchRuntimeMapPresentationPhase
 ): boolean => !isSearchRuntimeMapPresentationPending(phase);
+
+export const deriveCommittedPreparedResultsSnapshotKey = (
+  state: Pick<
+    SearchRuntimeBusState,
+    'resultsPresentationTransport' | 'resultsHydrationKey' | 'resultsRequestKey'
+  >
+): string | null => {
+  const resultsSnapshotKey = state.resultsHydrationKey ?? state.resultsRequestKey;
+  const { executionStage, snapshotKind, transactionId } = state.resultsPresentationTransport;
+  return isResultsPresentationExecutionStageSettled(executionStage) ||
+    snapshotKind == null ||
+    transactionId == null
+    ? null
+    : resultsSnapshotKey;
+};
+
+export const derivePreparedPresentationSnapshotKey = (
+  state: Pick<
+    SearchRuntimeBusState,
+    'preparedPresentationSnapshotKey' | 'resultsHydrationKey' | 'resultsRequestKey'
+  >
+): string | null =>
+  state.preparedPresentationSnapshotKey ?? state.resultsHydrationKey ?? state.resultsRequestKey;
 
 export type SearchRuntimeBusState = {
   results: SearchResponse | null;
@@ -54,8 +84,7 @@ export type SearchRuntimeBusState = {
   votesFilterActive: boolean;
   isRankSelectorVisible: boolean;
   isPriceSelectorVisible: boolean;
-  isFilterTogglePending: boolean;
-  toggleInteractionKind: PresentationMutationKind | null;
+  toggleInteraction: ToggleInteractionState;
   shouldRetrySearchOnReconnect: boolean;
   hasSystemStatusBanner: boolean;
   resultsFirstPaintKey: string | null;
@@ -80,7 +109,6 @@ export type SearchRuntimeBusState = {
   hasMoreRestaurants: boolean;
   isPaginationExhausted: boolean;
   resultsRequestKey: string | null;
-  mapHighlightedRestaurantId: string | null;
   visibleSortedRestaurantMarkersCount: number;
   visibleDotRestaurantFeaturesCount: number;
   isShortcutCoverageLoading: boolean;
@@ -102,24 +130,29 @@ export type SearchRuntimeBusState = {
   // Freeze gate fields (moved from useState hooks to bus for fewer re-renders)
   isResponseFrameFreezeActive: boolean;
   isSubmitChromePriming: boolean;
-  // Presentation transition mirror (Slice 1: telemetry/contract only).
-  presentationTransitionKind: PresentationMutationKind | null;
-  presentationTransitionLoadingMode: PresentationLoadingMode;
-  presentationResultsCoverVisible: boolean;
+  resultsPresentation: ResultsPresentationReadModel;
+  resultsPresentationTransport: ResultsPresentationTransportState;
   // Presentation controller-driven map coordination.
-  presentationLane: PresentationLaneState;
-  mapPresentationPhase: SearchRuntimeMapPresentationPhase;
-  presentationRevealTransactionId: string | null;
-  presentationRevealMode: PresentationRevealMode | null;
-  presentationRevealPhase: PresentationRevealPhase;
-  presentationResultsSurfaceMode: PresentationResultsSurfaceMode;
-  presentationResultsCardVisibility: PresentationResultsCardVisibility;
-  presentationShouldShowResultsCards: boolean;
+  mapPreparedLabelSourcesReady: boolean;
+  preparedPresentationSnapshotKey: string | null;
+  profileShellState: SearchRuntimeProfileShellState;
+};
+
+export type SearchRuntimeProfileShellState = {
+  transitionStatus: ProfileTransitionStatus;
+  restaurantPanelSnapshot: RestaurantPanelSnapshot | null;
+  mapCameraPadding: CameraSnapshot['padding'];
 };
 
 export type SearchRuntimeBusKey = keyof SearchRuntimeBusState;
 
 type SearchRuntimeBusListener = () => void;
+
+const IDLE_PROFILE_SHELL_STATE: SearchRuntimeProfileShellState = {
+  transitionStatus: 'idle',
+  restaurantPanelSnapshot: null,
+  mapCameraPadding: null,
+};
 
 const INITIAL_STATE: SearchRuntimeBusState = {
   results: null,
@@ -134,8 +167,7 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   votesFilterActive: false,
   isRankSelectorVisible: false,
   isPriceSelectorVisible: false,
-  isFilterTogglePending: false,
-  toggleInteractionKind: null,
+  toggleInteraction: IDLE_TOGGLE_INTERACTION_STATE,
   shouldRetrySearchOnReconnect: false,
   hasSystemStatusBanner: false,
   resultsFirstPaintKey: null,
@@ -160,7 +192,6 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   hasMoreRestaurants: false,
   isPaginationExhausted: false,
   resultsRequestKey: null,
-  mapHighlightedRestaurantId: null,
   visibleSortedRestaurantMarkersCount: 0,
   visibleDotRestaurantFeaturesCount: 0,
   isShortcutCoverageLoading: false,
@@ -179,17 +210,11 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   runOneSelectionFeedbackOperationId: null,
   isResponseFrameFreezeActive: false,
   isSubmitChromePriming: false,
-  presentationTransitionKind: null,
-  presentationTransitionLoadingMode: 'none',
-  presentationResultsCoverVisible: false,
-  presentationLane: null,
-  mapPresentationPhase: 'idle',
-  presentationRevealTransactionId: null,
-  presentationRevealMode: null,
-  presentationRevealPhase: 'idle',
-  presentationResultsSurfaceMode: 'none',
-  presentationResultsCardVisibility: 'hidden',
-  presentationShouldShowResultsCards: false,
+  resultsPresentation: IDLE_RESULTS_PRESENTATION_READ_MODEL,
+  resultsPresentationTransport: IDLE_RESULTS_PRESENTATION_TRANSPORT_STATE,
+  mapPreparedLabelSourcesReady: false,
+  preparedPresentationSnapshotKey: null,
+  profileShellState: IDLE_PROFILE_SHELL_STATE,
 };
 
 export class SearchRuntimeBus {

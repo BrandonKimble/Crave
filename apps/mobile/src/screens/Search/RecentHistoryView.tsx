@@ -5,7 +5,13 @@ import { ChevronLeft, Clock, HandPlatter, View as ViewIcon } from 'lucide-react-
 import { useAuth } from '@clerk/clerk-expo';
 import { CommonActions, StackActions, useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
-import Reanimated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
+import Reanimated, {
+  Extrapolation,
+  interpolate,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
 
 import { Text } from '../../components';
 import { colors as themeColors } from '../../constants/theme';
@@ -21,7 +27,6 @@ import useSearchHistory from './hooks/use-search-history';
 import { CONTENT_HORIZONTAL_PADDING } from './constants/search';
 import { filterRecentlyViewedByRecentSearches } from './utils/history';
 import { renderMetaDetailLine } from './components/render-meta-detail-line';
-import useScrollDividerStyle from './hooks/use-scroll-divider-style';
 
 type HistoryMode = 'recentSearches' | 'recentlyViewed';
 
@@ -201,7 +206,12 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
   const hasSections = sections.length > 0;
   const emptyLabel = isRecentMode ? 'No recent searches yet' : 'No recently viewed items yet';
   const historyScrollOffset = useSharedValue(0);
-  const headerDividerAnimatedStyle = useScrollDividerStyle(historyScrollOffset, 16);
+  const headerDividerAnimatedStyle = useAnimatedStyle(
+    () => ({
+      opacity: interpolate(historyScrollOffset.value, [0, 16], [0, 1], Extrapolation.CLAMP),
+    }),
+    [historyScrollOffset]
+  );
   const historyScrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       historyScrollOffset.value = event.contentOffset.y;

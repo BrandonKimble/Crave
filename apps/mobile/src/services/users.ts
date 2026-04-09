@@ -1,4 +1,5 @@
 import type { OnboardingAnswers, UserOnboardingProfile } from '@crave-search/shared';
+import type { AxiosRequestConfig } from 'axios';
 import api from './api';
 
 export interface UserStats {
@@ -28,6 +29,11 @@ export interface UsernameAvailability {
   suggestions: string[];
 }
 
+type UserServiceRequestConfig = AxiosRequestConfig & {
+  suppressSystemStatus?: boolean;
+  suppressErrorLog?: boolean;
+};
+
 export const usersService = {
   async getMe(): Promise<UserProfile> {
     const response = await api.get<UserProfile>('/users/me');
@@ -45,11 +51,12 @@ export const usersService = {
     answers?: OnboardingAnswers;
     username?: string | null;
   }): Promise<UserProfile> {
-    const response = await api.put<UserProfile>('/users/me/onboarding', payload, {
+    const requestConfig: UserServiceRequestConfig = {
       suppressSystemStatus: true,
       suppressErrorLog: true,
-    } as const);
-    return response.data;
+    };
+    const response = await api.put<UserProfile>('/users/me/onboarding', payload, requestConfig);
+    return response.data as UserProfile;
   },
   async checkUsername(username: string): Promise<UsernameAvailability> {
     const response = await api.get<UsernameAvailability>('/users/username/check', {

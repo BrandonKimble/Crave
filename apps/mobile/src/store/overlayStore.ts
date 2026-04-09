@@ -3,30 +3,38 @@ import { create } from 'zustand';
 import type { OverlayKey } from '../overlays/types';
 export type { OverlayKey } from '../overlays/types';
 
-type OverlayParamsMap = {
+export type OverlayRouteParamsMap = {
   search?: undefined;
   bookmarks?: undefined;
   polls?: { coverageKey?: string | null; pollId?: string | null };
   profile?: undefined;
-  restaurant?: undefined;
+  restaurant?: {
+    restaurantId: string | null;
+    source?: 'search' | 'global';
+    sessionToken?: number | null;
+  };
   saveList?: undefined;
   price?: undefined;
   scoreInfo?: undefined;
   pollCreation?: { coverageKey: string | null; coverageName?: string | null };
 };
 
+export type OverlayRouteEntry<K extends OverlayKey = OverlayKey> = {
+  key: K;
+  params: OverlayRouteParamsMap[K];
+};
+
 type DismissHandler = () => void;
 
 interface OverlayState {
-  activeOverlay: OverlayKey;
-  previousOverlay: OverlayKey | null;
-  overlayStack: OverlayKey[];
-  overlayParams: OverlayParamsMap;
+  activeOverlayRoute: OverlayRouteEntry;
+  previousOverlayRoute: OverlayRouteEntry | null;
+  overlayRouteStack: OverlayRouteEntry[];
   overlayScrollOffsets: Partial<Record<OverlayKey, number>>;
   transientDismissors: DismissHandler[];
-  setOverlay: <K extends OverlayKey>(overlay: K, params?: OverlayParamsMap[K]) => void;
-  setOverlayParams: <K extends OverlayKey>(overlay: K, params?: OverlayParamsMap[K]) => void;
-  pushOverlay: <K extends OverlayKey>(overlay: K, params?: OverlayParamsMap[K]) => void;
+  setOverlay: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
+  setOverlayParams: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
+  pushOverlay: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
   popOverlay: () => void;
   popToRootOverlay: () => void;
   setOverlayScrollOffset: (overlay: OverlayKey, offset: number) => void;
@@ -34,72 +42,113 @@ interface OverlayState {
   dismissTransientOverlays: () => void;
 }
 
+const SEARCH_ROUTE: OverlayRouteEntry<'search'> = {
+  key: 'search',
+  params: undefined,
+};
+
+const createRouteEntry = <K extends OverlayKey>(
+  key: K,
+  params?: OverlayRouteParamsMap[K]
+): OverlayRouteEntry<K> => ({
+  key,
+  params,
+});
+
+const projectOverlayRouteState = (
+  activeOverlayRoute: OverlayRouteEntry,
+  previousOverlayRoute: OverlayRouteEntry | null,
+  overlayRouteStack: OverlayRouteEntry[]
+) => ({
+  activeOverlayRoute,
+  previousOverlayRoute,
+  overlayRouteStack,
+});
+
 export const useOverlayStore = create<OverlayState>((set, get) => ({
-  activeOverlay: 'search',
-  previousOverlay: null,
-  overlayStack: ['search'],
-  overlayParams: {},
+  ...projectOverlayRouteState(SEARCH_ROUTE, null, [SEARCH_ROUTE]),
   overlayScrollOffsets: {},
   transientDismissors: [],
   setOverlay: (overlay, params) =>
-    set((state) => ({
-      previousOverlay:
-        state.activeOverlay === overlay ? state.previousOverlay : state.activeOverlay,
-      activeOverlay: overlay,
-      overlayStack: [overlay],
-      overlayParams: {
-        ...state.overlayParams,
-        [overlay]: params,
-      },
-    })),
+    set((state) => {
+      const nextRoute = createRouteEntry(overlay, params);
+      const nextPrevious =
+        state.activeOverlayRoute.key === overlay
+          ? state.previousOverlayRoute
+          : state.activeOverlayRoute;
+      return {
+        ...projectOverlayRouteState(nextRoute, nextPrevious, [nextRoute]),
+      };
+    }),
   setOverlayParams: (overlay, params) =>
-    set((state) => ({
-      overlayParams: {
-        ...state.overlayParams,
-        [overlay]: params,
-      },
-    })),
+    set((state) => {
+      let didUpdate = false;
+      const overlayRouteStack = state.overlayRouteStack.map((route) => {
+        if (route.key !== overlay) {
+          return route;
+        }
+        didUpdate = true;
+        return createRouteEntry(overlay, params);
+      });
+      if (!didUpdate) {
+        return state;
+      }
+      const activeOverlayRoute =
+        overlayRouteStack[overlayRouteStack.length - 1] ?? state.activeOverlayRoute;
+      const previousOverlayRoute =
+        overlayRouteStack.length > 1
+          ? overlayRouteStack[overlayRouteStack.length - 2] ?? state.previousOverlayRoute
+          : state.previousOverlayRoute;
+      return {
+        ...projectOverlayRouteState(activeOverlayRoute, previousOverlayRoute, overlayRouteStack),
+        overlayScrollOffsets: state.overlayScrollOffsets,
+        transientDismissors: state.transientDismissors,
+      };
+    }),
   pushOverlay: (overlay, params) =>
     set((state) => {
-      const currentTop = state.overlayStack[state.overlayStack.length - 1];
-      const nextStack =
-        currentTop === overlay ? state.overlayStack : [...state.overlayStack, overlay];
+      const nextRoute = createRouteEntry(overlay, params);
+      const currentTop = state.overlayRouteStack[state.overlayRouteStack.length - 1];
+      const overlayRouteStack =
+        currentTop?.key === overlay
+          ? [...state.overlayRouteStack.slice(0, -1), nextRoute]
+          : [...state.overlayRouteStack, nextRoute];
       const nextPrevious =
-        state.activeOverlay === overlay ? state.previousOverlay : state.activeOverlay;
+        state.activeOverlayRoute.key === overlay
+          ? state.previousOverlayRoute
+          : state.activeOverlayRoute;
       return {
-        previousOverlay: nextPrevious,
-        activeOverlay: overlay,
-        overlayStack: nextStack,
-        overlayParams: {
-          ...state.overlayParams,
-          [overlay]: params,
-        },
+        ...projectOverlayRouteState(nextRoute, nextPrevious, overlayRouteStack),
       };
     }),
   popOverlay: () =>
     set((state) => {
-      if (state.overlayStack.length <= 1) {
+      if (state.overlayRouteStack.length <= 1) {
         return state;
       }
-      const nextStack = state.overlayStack.slice(0, -1);
-      const nextActive = nextStack[nextStack.length - 1] ?? 'search';
+      const overlayRouteStack = state.overlayRouteStack.slice(0, -1);
+      const activeOverlayRoute = overlayRouteStack[overlayRouteStack.length - 1] ?? SEARCH_ROUTE;
+      const previousOverlayRoute =
+        overlayRouteStack.length > 1
+          ? overlayRouteStack[overlayRouteStack.length - 2] ?? null
+          : null;
       return {
-        previousOverlay:
-          state.activeOverlay === nextActive ? state.previousOverlay : state.activeOverlay,
-        activeOverlay: nextActive,
-        overlayStack: nextStack,
+        ...projectOverlayRouteState(activeOverlayRoute, previousOverlayRoute, overlayRouteStack),
       };
     }),
   popToRootOverlay: () =>
     set((state) => {
-      const root = state.overlayStack[0] ?? 'search';
-      if (state.overlayStack.length <= 1 && state.activeOverlay === root) {
+      const rootOverlayRoute = state.overlayRouteStack[0] ?? SEARCH_ROUTE;
+      if (
+        state.overlayRouteStack.length <= 1 &&
+        state.activeOverlayRoute.key === rootOverlayRoute.key
+      ) {
         return state;
       }
       return {
-        previousOverlay: state.activeOverlay === root ? state.previousOverlay : state.activeOverlay,
-        activeOverlay: root,
-        overlayStack: [root],
+        ...projectOverlayRouteState(rootOverlayRoute, state.previousOverlayRoute, [
+          rootOverlayRoute,
+        ]),
       };
     }),
   setOverlayScrollOffset: (overlay, offset) =>

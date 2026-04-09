@@ -35,7 +35,7 @@ type UseSearchResultsReadModelSelectorsArgs = {
   dishes: FoodResult[];
   restaurants: RestaurantResult[];
   results: SearchResponse | null;
-  isFilterTogglePending: boolean;
+  isInteractionLoadingActive: boolean;
   shouldHydrateResultsForRender: boolean;
   runOneCommitSpanPressureActive: boolean;
   allowHydrationFinalizeCommit: boolean;
@@ -117,7 +117,7 @@ export const useSearchResultsReadModelSelectors = (
     dishes,
     restaurants,
     results,
-    isFilterTogglePending,
+    isInteractionLoadingActive,
     shouldHydrateResultsForRender,
     runOneCommitSpanPressureActive,
     allowHydrationFinalizeCommit,
@@ -428,12 +428,12 @@ export const useSearchResultsReadModelSelectors = (
 
   const listFooterComponent = React.useMemo(() => {
     const shouldShowNotice = Boolean(
-      onDemandNotice && activeSafeResultsData.length > 0 && !isFilterTogglePending
+      onDemandNotice && activeSafeResultsData.length > 0 && !isInteractionLoadingActive
     );
     return (
       <View style={styles.loadMoreSpacer}>
         {shouldShowNotice ? onDemandNotice : null}
-        {!isFilterTogglePending && isLoadingMore && canLoadMore ? (
+        {!isInteractionLoadingActive && isLoadingMore && canLoadMore ? (
           <View style={styles.loadMoreSpinner}>
             <SquircleSpinner size={18} color={activeTabColor} />
           </View>
@@ -443,7 +443,7 @@ export const useSearchResultsReadModelSelectors = (
   }, [
     activeTabColor,
     canLoadMore,
-    isFilterTogglePending,
+    isInteractionLoadingActive,
     isLoadingMore,
     activeSafeResultsData.length,
     onDemandNotice,

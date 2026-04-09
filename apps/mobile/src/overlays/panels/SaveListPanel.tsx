@@ -8,7 +8,7 @@ import { Text } from '../../components';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import { colors as themeColors } from '../../constants/theme';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
-import type { SnapPoints } from '../BottomSheetWithFlashList';
+import type { SnapPoints } from '../bottomSheetMotionTypes';
 import { resolveExpandedTop } from '../sheetUtils';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
@@ -310,12 +310,7 @@ export const useSaveListPanelSpec = ({
         }
       />
     ),
-    [
-      headerActionProgress,
-      headerPaddingTop,
-      listType,
-      onClose,
-    ]
+    [headerActionProgress, headerPaddingTop, listType, onClose]
   );
 
   const contentContainerStyle = React.useMemo(
@@ -349,6 +344,7 @@ export const useSaveListPanelSpec = ({
 
   return {
     overlayKey: 'saveList',
+    surfaceKind: 'list',
     snapPoints,
     initialSnapPoint: 'expanded',
     data: lists,

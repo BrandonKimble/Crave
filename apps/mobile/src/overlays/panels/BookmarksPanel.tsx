@@ -9,14 +9,14 @@ import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import { colors as themeColors } from '../../constants/theme';
-import { useOverlayStore } from '../../store/overlayStore';
+import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useSystemStatusStore } from '../../store/systemStatusStore';
 import {
   OVERLAY_TAB_HEADER_HEIGHT,
   OVERLAY_HORIZONTAL_PADDING,
   overlaySheetStyles,
 } from '../overlaySheetStyles';
-import type { SnapPoints } from '../BottomSheetWithFlashList';
+import type { SnapPoints } from '../bottomSheetMotionTypes';
 import { calculateSnapPoints } from '../sheetUtils';
 import {
   favoriteListsService,
@@ -26,7 +26,7 @@ import {
 } from '../../services/favorite-lists';
 import { useFavoriteLists, favoriteListKeys } from '../../hooks/use-favorite-lists';
 import type { RootStackParamList } from '../../types/navigation';
-import type { OverlayContentSpec, OverlaySheetSnap } from '../types';
+import type { OverlayContentSpec, OverlaySheetSnap, OverlaySheetSnapRequest } from '../types';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
 
@@ -72,7 +72,7 @@ type UseBookmarksPanelSpecOptions = {
   headerActionProgress?: SharedValue<number>;
   onSnapStart?: (snap: OverlaySheetSnap) => void;
   onSnapChange?: (snap: OverlaySheetSnap) => void;
-  snapTo?: OverlaySheetSnap | null;
+  shellSnapRequest?: OverlaySheetSnapRequest | null;
 };
 
 type Navigation = StackNavigationProp<RootStackParamList>;
@@ -94,12 +94,12 @@ export const useBookmarksPanelSpec = ({
   headerActionProgress: headerActionProgressProp,
   onSnapStart,
   onSnapChange,
-  snapTo,
+  shellSnapRequest,
 }: UseBookmarksPanelSpecOptions): OverlayContentSpec<FavoriteListSummary> => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<Navigation>();
   const queryClient = useQueryClient();
-  const setOverlay = useOverlayStore((state) => state.setOverlay);
+  const { setRootRoute } = useAppOverlayRouteController();
   const isOffline = useSystemStatusStore((state) => state.isOffline);
   const serviceIssue = useSystemStatusStore((state) => state.serviceIssue);
   const isSystemUnavailable = isOffline || Boolean(serviceIssue);
@@ -129,8 +129,8 @@ export const useBookmarksPanelSpec = ({
   const headerActionProgress = headerActionProgressProp ?? localHeaderActionProgress;
 
   const handleClose = React.useCallback(() => {
-    setOverlay('search');
-  }, [setOverlay]);
+    setRootRoute('search');
+  }, [setRootRoute]);
 
   const resetForm = React.useCallback(() => {
     setFormState({
@@ -440,9 +440,10 @@ export const useBookmarksPanelSpec = ({
 
   return {
     overlayKey: 'bookmarks',
+    surfaceKind: 'list',
     snapPoints,
     initialSnapPoint: 'expanded',
-    snapTo,
+    shellSnapRequest,
     data: lists,
     renderItem: renderListTile,
     keyExtractor: (item) => item.listId,

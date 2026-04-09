@@ -2,7 +2,7 @@ type BuildResultsSurfaceVisibilityArgs = {
   isSearchLoading: boolean;
   hasSystemStatusBanner: boolean;
   shouldRetrySearchOnReconnect: boolean;
-  isFilterTogglePending: boolean;
+  isInteractionLoadingActive: boolean;
   hasResults: boolean;
   safeResultsCount: number;
 };
@@ -11,7 +11,7 @@ export const buildResultsSurfaceVisibility = ({
   isSearchLoading,
   hasSystemStatusBanner,
   shouldRetrySearchOnReconnect,
-  isFilterTogglePending,
+  isInteractionLoadingActive,
   hasResults,
   safeResultsCount,
 }: BuildResultsSurfaceVisibilityArgs): boolean => {
@@ -19,7 +19,7 @@ export const buildResultsSurfaceVisibility = ({
     (isSearchLoading ||
       hasSystemStatusBanner ||
       shouldRetrySearchOnReconnect ||
-      isFilterTogglePending) &&
+      isInteractionLoadingActive) &&
     !hasResults;
   return isLoadingWithoutResults || safeResultsCount > 0 || hasResults;
 };

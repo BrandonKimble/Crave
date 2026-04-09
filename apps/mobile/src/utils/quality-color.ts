@@ -1,7 +1,7 @@
 type RgbTuple = [number, number, number];
 import colorPaletteData from '../constants/color-palette.json';
 
-const colorPalette = colorPaletteData as {
+const colorPalette = colorPaletteData as unknown as {
   qualityGradientStops: Array<{ t: number; color: RgbTuple }>;
 };
 

@@ -9,12 +9,12 @@ import {
   RecentSearchesScreen,
   RecentlyViewedScreen,
 } from '../screens';
+import AppOverlayRouteHost from '../overlays/AppOverlayRouteHost';
 import StaticSplashArtShell from '../components/StaticSplashArtShell';
 import SplashStudioScreen from '../splash-studio/SplashStudioScreen';
 import { isSplashStudioEnabled } from '../splash-studio/config';
 import type { RootStackParamList } from '../types/navigation';
-import { useAppRouteCoordinator } from './runtime/AppRouteCoordinator';
-import { useMainLaunchCoordinator } from './runtime/MainLaunchCoordinator';
+import { useNavigationBootstrapRuntime } from './runtime/use-navigation-bootstrap-runtime';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
@@ -41,22 +41,24 @@ const AuthNavigator: React.FC = () => (
 );
 
 const MainNavigator: React.FC = () => (
-  <Stack.Navigator screenOptions={{ headerShown: false }}>
-    <Stack.Screen name="Main" component={SearchScreen} />
-    <Stack.Screen name="Profile" component={ProfileScreen} />
-    <Stack.Screen name="RecentSearches" component={RecentSearchesScreen} />
-    <Stack.Screen name="RecentlyViewed" component={RecentlyViewedScreen} />
-    <Stack.Screen
-      name="FavoritesListDetail"
-      component={FavoritesListDetailScreen}
-      options={{ presentation: 'modal', headerShown: false }}
-    />
-  </Stack.Navigator>
+  <>
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="Main" component={SearchScreen} />
+      <Stack.Screen name="Profile" component={ProfileScreen} />
+      <Stack.Screen name="RecentSearches" component={RecentSearchesScreen} />
+      <Stack.Screen name="RecentlyViewed" component={RecentlyViewedScreen} />
+      <Stack.Screen
+        name="FavoritesListDetail"
+        component={FavoritesListDetailScreen}
+        options={{ presentation: 'modal', headerShown: false }}
+      />
+    </Stack.Navigator>
+    <AppOverlayRouteHost />
+  </>
 );
 
 const RootNavigator: React.FC = () => {
-  const { isReady, routeState } = useAppRouteCoordinator();
-  const { isReadyToRender } = useMainLaunchCoordinator();
+  const { isReady, isReadyToRender, routeState } = useNavigationBootstrapRuntime();
 
   if (!isReady || !routeState) {
     return null;

@@ -30,7 +30,7 @@
       },
       {
         "id": "submit_hook_no_shortcut_alias_export",
-        "path": "apps/mobile/src/screens/Search/hooks/use-search-submit.ts",
+        "path": "apps/mobile/src/screens/Search/hooks/use-search-submit-owner.ts",
         "pattern": "\\brunShortcutSearch\\s*:",
         "maxCount": 0,
         "description": "S8 requires shortcut execution to stay runtime-owned without exporting direct root shortcut submit aliases."
@@ -452,7 +452,7 @@
       },
       {
         "id": "s11_no_shadow_controller_in_submit_hook",
-        "path": "apps/mobile/src/screens/Search/hooks/use-search-submit.ts",
+        "path": "apps/mobile/src/screens/Search/hooks/use-search-submit-owner.ts",
         "pattern": "\\bruntimeShadowController\\b",
         "maxCount": 0,
         "description": "S11 requires submit runtime to remove shadow controller path."
@@ -473,7 +473,7 @@
       },
       {
         "id": "s11_no_console_log_submit_runtime",
-        "path": "apps/mobile/src/screens/Search/hooks/use-search-submit.ts",
+        "path": "apps/mobile/src/screens/Search/hooks/use-search-submit-owner.ts",
         "pattern": "\\bconsole\\.log\\(",
         "maxCount": 0,
         "description": "S11 requires removal of submit-runtime console logging debug probes."

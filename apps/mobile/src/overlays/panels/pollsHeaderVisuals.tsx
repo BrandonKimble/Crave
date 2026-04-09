@@ -87,8 +87,6 @@ export const PollsHeaderBadge: React.FC<{
   </View>
 );
 
-export const pollsHeaderVisualStyles = styles;
-
 const styles = StyleSheet.create({
   sheetTitle: {
     fontSize: FONT_SIZES.title,
@@ -119,3 +117,5 @@ const styles = StyleSheet.create({
     color: themeColors.text,
   },
 });
+
+export const pollsHeaderVisualStyles = styles;

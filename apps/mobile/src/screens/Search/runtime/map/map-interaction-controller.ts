@@ -10,15 +10,101 @@ import {
   mapStateBoundsToMapBounds,
 } from '../../utils/geo';
 import type { CameraIntentArbiter } from './camera-intent-arbiter';
+import { createMapInteractionDiagnostics } from './map-interaction-diagnostics';
+import {
+  shouldDeferMapMovementWork,
+  type MotionPressureState,
+  type MapMotionPressureController,
+} from './map-motion-pressure';
 import type { ViewportBoundsService } from '../viewport/viewport-bounds-service';
 
 const CAMERA_CENTER_PRECISION = 1e5;
 const CAMERA_ZOOM_PRECISION = 1e2;
+const VIEWPORT_CENTER_PRECISION = 1e4;
+const VIEWPORT_SPAN_PRECISION = 1e4;
+const VIEWPORT_ZOOM_PRECISION = 1e1;
 
 const roundCameraCenterValue = (value: number) =>
   Math.round(value * CAMERA_CENTER_PRECISION) / CAMERA_CENTER_PRECISION;
 const roundCameraZoomValue = (value: number) =>
   Math.round(value * CAMERA_ZOOM_PRECISION) / CAMERA_ZOOM_PRECISION;
+const quantizeViewportValue = (value: number, precision: number): number =>
+  Math.round(value * precision) / precision;
+
+const buildMapViewportMotionToken = ({
+  bounds,
+  zoom,
+  phase,
+}: {
+  bounds: MapBounds;
+  zoom: number | null;
+  phase: MotionPressureState['phase'];
+}): string => {
+  const center = getBoundsCenter(bounds);
+  const latSpan = Math.abs(bounds.northEast.lat - bounds.southWest.lat);
+  const lngSpan = Math.abs(bounds.northEast.lng - bounds.southWest.lng);
+
+  return [
+    phase,
+    quantizeViewportValue(center.lat, VIEWPORT_CENTER_PRECISION),
+    quantizeViewportValue(center.lng, VIEWPORT_CENTER_PRECISION),
+    quantizeViewportValue(latSpan, VIEWPORT_SPAN_PRECISION),
+    quantizeViewportValue(lngSpan, VIEWPORT_SPAN_PRECISION),
+    zoom == null ? 'z:none' : `z:${quantizeViewportValue(zoom, VIEWPORT_ZOOM_PRECISION)}`,
+  ].join('|');
+};
+
+const resolveMapViewportGesturePhase = ({
+  nativeGestureActive,
+  isMapTouchActive,
+}: {
+  nativeGestureActive: boolean;
+  isMapTouchActive: boolean;
+}): MotionPressureState['phase'] => {
+  if (!nativeGestureActive) {
+    return 'settled';
+  }
+  return isMapTouchActive ? 'gesture' : 'inertia';
+};
+
+const hasMaterialUserMapGestureDelta = ({
+  movedMiles,
+  zoomDelta,
+  eventCount,
+}: {
+  movedMiles: number;
+  zoomDelta: number;
+  eventCount: number;
+}): boolean => eventCount >= 2 && (movedMiles >= 0.0015 || zoomDelta >= 0.01);
+
+const shouldAutoCollapseResultsSheetForGesture = ({
+  hasAlreadyCollapsed,
+  startedWithResultsSheetOpen,
+  sheetState,
+  isSearchOverlay,
+  hasResults,
+  isSearchSessionActive,
+  shouldDisableResultsSheetInteraction,
+}: {
+  hasAlreadyCollapsed: boolean;
+  startedWithResultsSheetOpen: boolean;
+  sheetState: 'expanded' | 'middle' | 'collapsed' | 'hidden';
+  isSearchOverlay: boolean;
+  hasResults: boolean;
+  isSearchSessionActive: boolean;
+  shouldDisableResultsSheetInteraction: boolean;
+}): boolean => {
+  return (
+    !hasAlreadyCollapsed &&
+    startedWithResultsSheetOpen &&
+    sheetState !== 'hidden' &&
+    sheetState !== 'collapsed' &&
+    isSearchOverlay &&
+    hasResults &&
+    isSearchSessionActive &&
+    !shouldDisableResultsSheetInteraction
+  );
+};
 
 type OverlaySheetSnap = 'expanded' | 'middle' | 'collapsed' | 'hidden';
 
@@ -41,7 +127,6 @@ type UseMapInteractionControllerArgs = {
   shouldLogMapEventRates: boolean;
   mapEventLogIntervalMs: number;
   shouldLogSearchStateChanges: boolean;
-  lodCameraThrottleMs: number;
   searchInteractionRef: React.MutableRefObject<SearchInteractionState>;
   anySheetDraggingRef: React.MutableRefObject<boolean>;
   mapGestureActiveRef: React.MutableRefObject<boolean>;
@@ -53,19 +138,20 @@ type UseMapInteractionControllerArgs = {
   dismissSearchKeyboard: () => void;
   beginSuggestionCloseHold: (variant?: 'default' | 'submitting') => boolean;
   isSearchSessionActive: boolean;
-  isRestaurantOverlayVisible: boolean;
+  isProfilePresentationActive: boolean;
   setIsAutocompleteSuppressed: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSearchFocused: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSuggestionPanelActive: React.Dispatch<React.SetStateAction<boolean>>;
   setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
-  setMapHighlightedRestaurantId: React.Dispatch<React.SetStateAction<string | null>>;
+  clearMapHighlightedRestaurantId: () => void;
   cancelAutocomplete: () => void;
+  mapMotionPressureController: MapMotionPressureController;
   cameraIntentArbiter: CameraIntentArbiter;
   viewportBoundsService: ViewportBoundsService;
-  cancelMapUpdateTimeouts: () => void;
+  cancelPendingMapMovementUpdates: () => void;
   markMapMovedIfNeeded: (bounds: MapBounds) => boolean;
-  scheduleMapIdleReveal: () => void;
+  scheduleMapIdleEnter: () => void;
   sheetState: OverlaySheetSnap;
   isSearchOverlay: boolean;
   hasResults: boolean;
@@ -85,6 +171,10 @@ type UseMapInteractionControllerResult = {
   handleMapPress: () => void;
   handleNativeViewportChanged: (state: MapboxMapState) => void;
   handleMapIdle: (state: MapboxMapState) => void;
+  handleCameraAnimationComplete: (payload: {
+    animationCompletionId: string | null;
+    status: 'finished' | 'cancelled';
+  }) => void;
   handleMapTouchStart: () => void;
   handleMapTouchEnd: () => void;
 };
@@ -96,7 +186,6 @@ export const useMapInteractionController = (
     shouldLogMapEventRates,
     mapEventLogIntervalMs,
     shouldLogSearchStateChanges,
-    lodCameraThrottleMs,
     searchInteractionRef,
     anySheetDraggingRef,
     mapGestureActiveRef,
@@ -108,19 +197,20 @@ export const useMapInteractionController = (
     dismissSearchKeyboard,
     beginSuggestionCloseHold,
     isSearchSessionActive,
-    isRestaurantOverlayVisible,
+    isProfilePresentationActive,
     setIsAutocompleteSuppressed,
     setIsSearchFocused,
     setIsSuggestionPanelActive,
     setShowSuggestions,
     setSuggestions,
-    setMapHighlightedRestaurantId,
+    clearMapHighlightedRestaurantId,
     cancelAutocomplete,
+    mapMotionPressureController,
     cameraIntentArbiter,
     viewportBoundsService,
-    cancelMapUpdateTimeouts,
+    cancelPendingMapMovementUpdates,
     markMapMovedIfNeeded,
-    scheduleMapIdleReveal,
+    scheduleMapIdleEnter,
     sheetState,
     isSearchOverlay,
     hasResults,
@@ -136,42 +226,53 @@ export const useMapInteractionController = (
   const mapTouchActiveRef = React.useRef(false);
   const mapTouchStartedWithResultsSheetOpenRef = React.useRef(false);
   const mapGestureSessionRef = React.useRef<MapGestureSession | null>(null);
-  const lastCameraChangedHandledRef = React.useRef(0);
+  const lastViewportMotionTokenRef = React.useRef<string | null>(null);
   const mapEventStatsRef = React.useRef({
     cameraChanged: 0,
     mapIdle: 0,
     lastLog: 0,
   });
+  const mapInteractionDiagnostics = React.useMemo(
+    () =>
+      createMapInteractionDiagnostics({
+        enabled: shouldLogMapEventRates,
+        logIntervalMs: mapEventLogIntervalMs,
+        shouldLogSearchStateChanges,
+        state: mapEventStatsRef.current,
+        getSearchInteractionState: () => searchInteractionRef.current,
+      }),
+    [
+      mapEventLogIntervalMs,
+      searchInteractionRef,
+      shouldLogMapEventRates,
+      shouldLogSearchStateChanges,
+    ]
+  );
 
-  const logMapEventRates = React.useCallback(() => {
-    if (!shouldLogMapEventRates) {
-      return;
-    }
-    const now = Date.now();
-    const stats = mapEventStatsRef.current;
-    if (stats.lastLog === 0) {
-      stats.lastLog = now;
-      return;
-    }
-    if (now - stats.lastLog < mapEventLogIntervalMs) {
-      return;
-    }
-    const interactionState = searchInteractionRef.current;
-    // eslint-disable-next-line no-console
-    console.log(
-      `[SearchPerf] Map events ${mapEventLogIntervalMs}ms cameraChanged=${stats.cameraChanged} mapIdle=${stats.mapIdle} drag=${interactionState.isResultsSheetDragging} scroll=${interactionState.isResultsListScrolling} settle=${interactionState.isResultsSheetSettling}`
-    );
-    stats.cameraChanged = 0;
-    stats.mapIdle = 0;
-    stats.lastLog = now;
-  }, [mapEventLogIntervalMs, searchInteractionRef, shouldLogMapEventRates]);
+  const persistSettledCameraViewport = React.useCallback(
+    (center: [number, number], zoom: number) => {
+      lastCameraStateRef.current = { center, zoom };
+
+      const roundedCenter: [number, number] = [
+        roundCameraCenterValue(center[0]),
+        roundCameraCenterValue(center[1]),
+      ];
+      const roundedZoom = roundCameraZoomValue(zoom);
+      const payload = JSON.stringify({ center: roundedCenter, zoom: roundedZoom });
+      if (payload === lastPersistedCameraRef.current) {
+        return;
+      }
+      lastPersistedCameraRef.current = payload;
+    },
+    [lastCameraStateRef, lastPersistedCameraRef]
+  );
 
   const handleMapPress = React.useCallback(() => {
     allowSearchBlurExitRef.current = true;
     suppressAutocompleteResults();
     dismissSearchKeyboard();
     const shouldDeferSuggestionClear = beginSuggestionCloseHold(
-      isSearchSessionActive || isRestaurantOverlayVisible ? 'submitting' : 'default'
+      isSearchSessionActive || isProfilePresentationActive ? 'submitting' : 'default'
     );
     setIsAutocompleteSuppressed(true);
     setIsSearchFocused(false);
@@ -186,20 +287,20 @@ export const useMapInteractionController = (
       }
       pendingMarkerOpenAnimationFrameRef.current = null;
     }
-    setMapHighlightedRestaurantId(null);
+    clearMapHighlightedRestaurantId();
     cancelAutocomplete();
   }, [
     allowSearchBlurExitRef,
     beginSuggestionCloseHold,
     cancelAutocomplete,
     dismissSearchKeyboard,
-    isRestaurantOverlayVisible,
+    isProfilePresentationActive,
     isSearchSessionActive,
     pendingMarkerOpenAnimationFrameRef,
     setIsAutocompleteSuppressed,
     setIsSearchFocused,
     setIsSuggestionPanelActive,
-    setMapHighlightedRestaurantId,
+    clearMapHighlightedRestaurantId,
     setShowSuggestions,
     setSuggestions,
     suppressAutocompleteResults,
@@ -208,42 +309,63 @@ export const useMapInteractionController = (
   const handleNativeViewportChanged = React.useCallback(
     (state: MapboxMapState) => {
       if (shouldLogMapEventRates) {
-        mapEventStatsRef.current.cameraChanged += 1;
-        logMapEventRates();
+        mapInteractionDiagnostics.recordCameraChanged();
       }
-      const isGestureActive = Boolean(state?.gestures?.isGestureActive);
-      mapGestureActiveRef.current = isGestureActive;
-      cameraIntentArbiter.setGestureActive(isGestureActive);
-
-      const now = Date.now();
-      if (now - lastCameraChangedHandledRef.current < lodCameraThrottleMs) {
-        return;
-      }
-      lastCameraChangedHandledRef.current = now;
+      const nativeGestureActive = Boolean(state?.gestures?.isGestureActive);
+      // Mapbox's gesture flag is not reliable across every runtime path.
+      // Treat a touch-backed viewport session as the real owner for
+      // "user is moving the map" semantics, and use the native flag as advisory.
+      const isUserViewportGestureActive =
+        nativeGestureActive || mapTouchActiveRef.current || mapGestureSessionRef.current !== null;
+      mapGestureActiveRef.current = isUserViewportGestureActive;
+      cameraIntentArbiter.setGestureActive(isUserViewportGestureActive);
 
       const bounds = mapStateBoundsToMapBounds(state);
       if (!bounds) {
         return;
       }
+      const zoomCandidate = state?.properties?.zoom as unknown;
+      const zoom =
+        typeof zoomCandidate === 'number' && Number.isFinite(zoomCandidate) ? zoomCandidate : null;
+      const viewportMotionToken = buildMapViewportMotionToken({
+        bounds,
+        zoom,
+        phase: resolveMapViewportGesturePhase({
+          nativeGestureActive: isUserViewportGestureActive,
+          isMapTouchActive: mapTouchActiveRef.current,
+        }),
+      });
+      mapMotionPressureController.updateViewportState({
+        motionTokenIdentity: viewportMotionToken,
+        phase: resolveMapViewportGesturePhase({
+          nativeGestureActive: isUserViewportGestureActive,
+          isMapTouchActive: mapTouchActiveRef.current,
+        }),
+        nowMs: Date.now(),
+      });
+      if (lastViewportMotionTokenRef.current === viewportMotionToken) {
+        return;
+      }
+      lastViewportMotionTokenRef.current = viewportMotionToken;
       viewportBoundsService.setBounds(bounds);
 
       // Programmatic camera animations (profile open/restore) can emit many camera ticks.
       // Skip per-tick LOD churn there and refresh once on idle instead.
-      if (suppressMapMovedRef.current && !isGestureActive) {
+      if (suppressMapMovedRef.current && !isUserViewportGestureActive) {
         mapGestureSessionRef.current = null;
         return;
       }
 
-      if (searchInteractionRef.current.isInteracting || anySheetDraggingRef.current) {
-        cancelMapUpdateTimeouts();
+      if (
+        shouldDeferMapMovementWork({
+          pressureState: mapMotionPressureController.getState(),
+        })
+      ) {
+        cancelPendingMapMovementUpdates();
         return;
       }
-      const zoomCandidate = state?.properties?.zoom as unknown;
-      const zoom =
-        typeof zoomCandidate === 'number' && Number.isFinite(zoomCandidate) ? zoomCandidate : null;
-
-      if (isGestureActive) {
-        if (!mapTouchActiveRef.current) {
+      if (isUserViewportGestureActive) {
+        if (!mapTouchActiveRef.current && mapGestureSessionRef.current === null) {
           mapGestureSessionRef.current = null;
           return;
         }
@@ -266,39 +388,41 @@ export const useMapInteractionController = (
         const zoomDelta =
           zoom !== null && session.startZoom !== null ? Math.abs(zoom - session.startZoom) : 0;
 
-        const didMoveEnoughForGesture = movedMiles >= 0.0015 || zoomDelta >= 0.01;
-        if (session.eventCount < 2 || !didMoveEnoughForGesture) {
+        if (
+          !hasMaterialUserMapGestureDelta({
+            movedMiles,
+            zoomDelta,
+            eventCount: session.eventCount,
+          })
+        ) {
           return;
         }
 
         if (
-          !session.didCollapse &&
-          session.startedWithResultsSheetOpen &&
-          sheetState !== 'hidden' &&
-          sheetState !== 'collapsed' &&
-          isSearchOverlay &&
-          hasResults &&
-          isSearchSessionActive &&
-          !shouldDisableResultsSheetInteraction
+          shouldAutoCollapseResultsSheetForGesture({
+            hasAlreadyCollapsed: session.didCollapse,
+            startedWithResultsSheetOpen: session.startedWithResultsSheetOpen,
+            sheetState,
+            isSearchOverlay,
+            hasResults,
+            isSearchSessionActive,
+            shouldDisableResultsSheetInteraction,
+          })
         ) {
-          if (shouldLogSearchStateChanges) {
-            // eslint-disable-next-line no-console
-            console.log(
-              `[SearchPerf] AutoSnap collapsed reason=mapGesture movedMiles=${movedMiles.toFixed(
-                4
-              )} zoomDelta=${zoomDelta.toFixed(3)} eventCount=${
-                session.eventCount
-              } sheetState=${sheetState} touchActive=${mapTouchActiveRef.current} startedOpen=${
-                session.startedWithResultsSheetOpen
-              }`
-            );
-          }
+          mapInteractionDiagnostics.logAutoCollapse({
+            movedMiles,
+            zoomDelta,
+            eventCount: session.eventCount,
+            sheetState,
+            touchActive: mapTouchActiveRef.current,
+            startedOpen: session.startedWithResultsSheetOpen,
+          });
           animateSheetTo('collapsed');
           session.didCollapse = true;
         }
 
         if (isSearchOverlay && isSearchSessionActive && markMapMovedIfNeeded(bounds)) {
-          scheduleMapIdleReveal();
+          scheduleMapIdleEnter();
         }
         return;
       }
@@ -316,21 +440,20 @@ export const useMapInteractionController = (
       animateSheetTo,
       anySheetDraggingRef,
       cameraIntentArbiter,
-      cancelMapUpdateTimeouts,
+      cancelPendingMapMovementUpdates,
       hasResults,
       isSearchOverlay,
       isSearchSessionActive,
-      lodCameraThrottleMs,
-      logMapEventRates,
+      mapInteractionDiagnostics,
       mapGestureActiveRef,
+      mapMotionPressureController,
       markMapMovedIfNeeded,
-      scheduleMapIdleReveal,
+      scheduleMapIdleEnter,
       searchInteractionRef,
       sheetState,
       suppressMapMovedRef,
       shouldDisableResultsSheetInteraction,
       shouldLogMapEventRates,
-      shouldLogSearchStateChanges,
       viewportBoundsService,
     ]
   );
@@ -338,19 +461,41 @@ export const useMapInteractionController = (
   const handleMapIdle = React.useCallback(
     (state: MapboxMapState) => {
       if (shouldLogMapEventRates) {
-        mapEventStatsRef.current.mapIdle += 1;
-        logMapEventRates();
+        mapInteractionDiagnostics.recordMapIdle();
       }
-      const isBusy = searchInteractionRef.current.isInteracting || anySheetDraggingRef.current;
+      mapGestureSessionRef.current = null;
+      mapGestureActiveRef.current = false;
+      cameraIntentArbiter.setGestureActive(false);
+      const isBusy = shouldDeferMapMovementWork({
+        pressureState: mapMotionPressureController.getState(),
+      });
       if (isBusy) {
-        cancelMapUpdateTimeouts();
+        cancelPendingMapMovementUpdates();
       }
       const bounds = mapStateBoundsToMapBounds(state);
       if (bounds) {
-        if (!isBusy && shouldShowPollsSheet) {
+        const zoomCandidate = state?.properties?.zoom as unknown;
+        const zoom =
+          typeof zoomCandidate === 'number' && Number.isFinite(zoomCandidate)
+            ? zoomCandidate
+            : null;
+        lastViewportMotionTokenRef.current = buildMapViewportMotionToken({
+          bounds,
+          zoom,
+          phase: 'settled',
+        });
+        mapMotionPressureController.updateViewportState({
+          motionTokenIdentity: lastViewportMotionTokenRef.current,
+          phase: 'settled',
+          nowMs: Date.now(),
+        });
+        if (shouldShowPollsSheet) {
           schedulePollBoundsUpdate(bounds);
         }
         viewportBoundsService.setBounds(bounds);
+      }
+      if (isSearchOverlay && isSearchSessionActive) {
+        scheduleMapIdleEnter();
       }
 
       if (isBusy) {
@@ -369,7 +514,13 @@ export const useMapInteractionController = (
 
       const exactCenter: [number, number] = [nextCenter[0], nextCenter[1]];
       const exactZoom = nextZoom;
-      lastCameraStateRef.current = { center: exactCenter, zoom: exactZoom };
+      persistSettledCameraViewport(exactCenter, exactZoom);
+      if (
+        suppressMapMovedRef.current &&
+        cameraIntentArbiter.hasPendingProgrammaticCameraCompletion()
+      ) {
+        return;
+      }
       commitCameraViewport(
         {
           center: exactCenter,
@@ -377,25 +528,18 @@ export const useMapInteractionController = (
         },
         { allowDuringGesture: true }
       );
-
-      const roundedCenter: [number, number] = [
-        roundCameraCenterValue(exactCenter[0]),
-        roundCameraCenterValue(exactCenter[1]),
-      ];
-      const roundedZoom = roundCameraZoomValue(exactZoom);
-      const payload = JSON.stringify({ center: roundedCenter, zoom: roundedZoom });
-      if (payload === lastPersistedCameraRef.current) {
-        return;
-      }
-      lastPersistedCameraRef.current = payload;
+      suppressMapMovedRef.current = false;
     },
     [
       anySheetDraggingRef,
-      cancelMapUpdateTimeouts,
+      cameraIntentArbiter,
+      cancelPendingMapMovementUpdates,
       commitCameraViewport,
-      lastCameraStateRef,
-      lastPersistedCameraRef,
-      logMapEventRates,
+      mapInteractionDiagnostics,
+      mapGestureActiveRef,
+      mapMotionPressureController,
+      persistSettledCameraViewport,
+      scheduleMapIdleEnter,
       schedulePollBoundsUpdate,
       searchInteractionRef,
       shouldLogMapEventRates,
@@ -408,18 +552,36 @@ export const useMapInteractionController = (
     mapTouchActiveRef.current = true;
     mapTouchStartedWithResultsSheetOpenRef.current = shouldRenderResultsSheetRef.current;
     mapGestureSessionRef.current = null;
-  }, [shouldRenderResultsSheetRef]);
+    mapGestureActiveRef.current = true;
+    suppressMapMovedRef.current = false;
+    cameraIntentArbiter.setGestureActive(true);
+  }, [cameraIntentArbiter, mapGestureActiveRef, suppressMapMovedRef, shouldRenderResultsSheetRef]);
 
   const handleMapTouchEnd = React.useCallback(() => {
     mapTouchActiveRef.current = false;
     mapTouchStartedWithResultsSheetOpenRef.current = false;
-    mapGestureSessionRef.current = null;
-  }, []);
+    const keepGestureActive = mapGestureSessionRef.current !== null;
+    mapGestureActiveRef.current = keepGestureActive;
+    cameraIntentArbiter.setGestureActive(keepGestureActive);
+  }, [cameraIntentArbiter, mapGestureActiveRef]);
+
+  const handleCameraAnimationComplete = React.useCallback(
+    (payload: { animationCompletionId: string | null; status: 'finished' | 'cancelled' }) => {
+      if (
+        suppressMapMovedRef.current &&
+        cameraIntentArbiter.handleProgrammaticCameraAnimationCompletion(payload)
+      ) {
+        suppressMapMovedRef.current = false;
+      }
+    },
+    [cameraIntentArbiter, suppressMapMovedRef]
+  );
 
   return {
     handleMapPress,
     handleNativeViewportChanged,
     handleMapIdle,
+    handleCameraAnimationComplete,
     handleMapTouchStart,
     handleMapTouchEnd,
   };

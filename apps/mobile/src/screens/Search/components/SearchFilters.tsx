@@ -1,7 +1,7 @@
 import React from 'react';
 import {
-  Dimensions,
   Pressable,
+  ScrollView,
   StyleSheet,
   View,
   type LayoutChangeEvent,
@@ -13,7 +13,6 @@ import Reanimated, {
   Easing,
   interpolate,
   runOnJS,
-  useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -28,6 +27,7 @@ import { SEGMENT_OPTIONS } from '../constants/search';
 
 import { Text } from '../../../components';
 import MaskedHoleOverlay, { type MaskedHole } from '../../../components/MaskedHoleOverlay';
+import { FrostedGlassBackground } from '../../../components/FrostedGlassBackground';
 
 const TOGGLE_HEIGHT = CONTROL_HEIGHT;
 const TOGGLE_BORDER_RADIUS = CONTROL_RADIUS; // fixed radius as before
@@ -36,8 +36,6 @@ const TOGGLE_VERTICAL_PADDING = CONTROL_VERTICAL_PADDING;
 const TOGGLE_STACK_GAP = 8;
 const TOGGLE_MIN_HEIGHT = TOGGLE_HEIGHT;
 const PRICE_TOGGLE_RIGHT_PADDING = Math.max(0, TOGGLE_HORIZONTAL_PADDING - 3);
-const STRIP_BACKGROUND_HEIGHT = 14;
-const DEFAULT_VIEWPORT_WIDTH = Dimensions.get('window').width;
 
 const SEGMENT_TRAVEL_MIN_MS = 34;
 const SEGMENT_TRAVEL_FULL_MS = 150;
@@ -89,6 +87,44 @@ export type SearchFiltersLayoutCache = {
   segmentLayouts?: Partial<Record<SegmentValue, LayoutRectangle>>;
 };
 
+const cloneLayoutRectangle = (layout: LayoutRectangle): LayoutRectangle => ({
+  x: layout.x,
+  y: layout.y,
+  width: layout.width,
+  height: layout.height,
+});
+
+const cloneMaskedHole = (hole: MaskedHole): MaskedHole => ({
+  x: hole.x,
+  y: hole.y,
+  width: hole.width,
+  height: hole.height,
+  borderRadius: hole.borderRadius,
+});
+
+export const cloneSearchFiltersLayoutCache = (
+  cache: SearchFiltersLayoutCache | null | undefined
+): SearchFiltersLayoutCache | null => {
+  if (!cache) {
+    return null;
+  }
+  return {
+    viewportWidth: cache.viewportWidth,
+    rowHeight: cache.rowHeight,
+    holeMap: Object.fromEntries(
+      Object.entries(cache.holeMap).map(([key, hole]) => [key, cloneMaskedHole(hole)])
+    ),
+    segmentLayouts: cache.segmentLayouts
+      ? Object.fromEntries(
+          Object.entries(cache.segmentLayouts).map(([key, layout]) => [
+            key,
+            layout ? cloneLayoutRectangle(layout) : layout,
+          ])
+        )
+      : undefined,
+  };
+};
+
 type SearchFiltersProps = {
   activeTab: SegmentValue;
   onTabChange: (value: SegmentValue) => void;
@@ -106,6 +142,7 @@ type SearchFiltersProps = {
   isPriceSelectorVisible: boolean;
   contentHorizontalPadding: number;
   accentColor: string;
+  disableBlur?: boolean;
   initialLayoutCache?: SearchFiltersLayoutCache | null;
   onLayoutCacheChange?: (cache: SearchFiltersLayoutCache) => void;
 };
@@ -127,14 +164,16 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   isPriceSelectorVisible,
   contentHorizontalPadding,
   accentColor,
+  disableBlur = false,
   initialLayoutCache,
   onLayoutCacheChange,
 }) => {
-  const [viewportWidth, setViewportWidth] = React.useState(
-    initialLayoutCache?.viewportWidth ?? DEFAULT_VIEWPORT_WIDTH
-  );
   const [rowHeight, setRowHeight] = React.useState(
     initialLayoutCache?.rowHeight ?? TOGGLE_MIN_HEIGHT
+  );
+  const [viewportWidth, setViewportWidth] = React.useState(initialLayoutCache?.viewportWidth ?? 0);
+  const [stripContentWidth, setStripContentWidth] = React.useState(
+    initialLayoutCache?.viewportWidth ?? 0
   );
   const [holeMap, setHoleMap] = React.useState<Record<string, MaskedHole>>(
     initialLayoutCache?.holeMap ?? {}
@@ -155,7 +194,6 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   );
 
   const inset = contentHorizontalPadding;
-  const scrollX = useSharedValue(0);
   const segmentSelectionProgress = useSharedValue(activeTab === 'restaurants' ? 0 : 1);
   const segmentTargetProgress = useSharedValue(activeTab === 'restaurants' ? 0 : 1);
   const restaurantSegmentX = useSharedValue(initialRestaurantLayout?.x ?? 0);
@@ -163,10 +201,6 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   const dishesSegmentX = useSharedValue(initialDishesLayout?.x ?? 0);
   const dishesSegmentWidth = useSharedValue(initialDishesLayout?.width ?? 0);
   const segmentLayoutReady = useSharedValue(initialSegmentLayoutReady ? 1 : 0);
-
-  const onScroll = useAnimatedScrollHandler((event) => {
-    scrollX.value = event.contentOffset.x;
-  });
 
   const animateSegmentSelection = React.useCallback(
     (value: SegmentValue, animated: boolean) => {
@@ -255,20 +289,16 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   const maskWidth = Math.max(viewportWidth, maxHoleExtent + overscrollMargin * 2);
   const maskHeight = rowHeight > 0 ? rowHeight + TOGGLE_STACK_GAP + 1 : 0;
   const maskTopOffset = rowHeight > 0 ? -1 : 0;
-
-  const maskAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: -scrollX.value }],
-  }));
   const maskedHoles = React.useMemo(
     () =>
       holes.map((hole) => ({
-        x: hole.x + inset + overscrollMargin,
+        x: hole.x + overscrollMargin,
         y: hole.y + 1,
         width: hole.width,
         height: hole.height,
         borderRadius: (hole.borderRadius ?? TOGGLE_BORDER_RADIUS) + HOLE_RADIUS_BOOST,
       })),
-    [holes, inset, overscrollMargin]
+    [holes, overscrollMargin]
   );
   const highlightAnimatedStyle = useAnimatedStyle(() => ({
     opacity: segmentLayoutReady.value,
@@ -354,45 +384,80 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     if (!onLayoutCacheChange) {
       return;
     }
-    if (viewportWidth <= 0 || rowHeight <= 0) {
+    const nextViewportWidth = viewportWidth || initialLayoutCache?.viewportWidth || 0;
+    if (nextViewportWidth <= 0 || rowHeight <= 0) {
       return;
     }
     onLayoutCacheChange({
-      viewportWidth,
+      viewportWidth: nextViewportWidth,
       rowHeight,
-      holeMap,
-      segmentLayouts: { ...segmentLayoutsRef.current },
+      holeMap: Object.fromEntries(
+        Object.entries(holeMap).map(([key, hole]) => [key, cloneMaskedHole(hole)])
+      ),
+      segmentLayouts: Object.fromEntries(
+        Object.entries(segmentLayoutsRef.current).map(([key, layout]) => [
+          key,
+          layout ? cloneLayoutRectangle(layout) : layout,
+        ])
+      ),
     });
-  }, [holeMap, onLayoutCacheChange, rowHeight, segmentLayoutsVersion, viewportWidth]);
+  }, [
+    holeMap,
+    initialLayoutCache?.viewportWidth,
+    onLayoutCacheChange,
+    rowHeight,
+    segmentLayoutsVersion,
+    viewportWidth,
+  ]);
 
   return (
     <View style={styles.resultFiltersWrapper}>
-      <View style={styles.paddedWrapper}>
-        <View
-          style={styles.stripContainer}
-          onLayout={(event) => {
-            const nextWidth = event.nativeEvent.layout.width;
-            setViewportWidth((prev) => (Math.abs(prev - nextWidth) < 0.5 ? prev : nextWidth));
-          }}
+      {!disableBlur ? <FrostedGlassBackground /> : null}
+      <View
+        style={styles.paddedWrapper}
+        onLayout={(event) => {
+          const nextWidth = event.nativeEvent.layout.width;
+          setViewportWidth((previous) =>
+            Math.abs(previous - nextWidth) < 0.5 ? previous : nextWidth
+          );
+        }}
+      >
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          directionalLockEnabled
+          alwaysBounceHorizontal
+          contentContainerStyle={[styles.filterButtonsContent, { paddingHorizontal: inset }]}
+          style={styles.filterButtonsScroll}
         >
-          <Reanimated.ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            directionalLockEnabled
-            scrollEventThrottle={16}
-            onScroll={onScroll}
-            alwaysBounceHorizontal
-            contentContainerStyle={[styles.filterButtonsContent, { paddingHorizontal: inset }]}
-            style={styles.filterButtonsScroll}
+          <View
+            style={styles.cutoutStrip}
+            onLayout={(event) => {
+              const { width, height } = event.nativeEvent.layout;
+              setStripContentWidth((previous) =>
+                Math.abs(previous - width) < 0.5 ? previous : width
+              );
+              setRowHeight((previous) => (Math.abs(previous - height) < 0.5 ? previous : height));
+            }}
           >
-            <View
-              style={styles.cutoutStrip}
-              onLayout={(event) => {
-                const nextHeight = event.nativeEvent.layout.height;
-                setRowHeight((prev) => (Math.abs(prev - nextHeight) < 0.5 ? prev : nextHeight));
-              }}
-            >
-              <View style={styles.toggleRow}>
+            <View style={styles.toggleRow}>
+              {stripContentWidth > 0 && rowHeight > 0 && maskedHoles.length > 0 ? (
+                <MaskedHoleOverlay
+                  pointerEvents="none"
+                  holes={maskedHoles}
+                  backgroundColor="#ffffff"
+                  style={[
+                    styles.maskOverlay,
+                    {
+                      width: maskWidth,
+                      height: maskHeight,
+                      top: maskTopOffset,
+                      left: -overscrollMargin,
+                    },
+                  ]}
+                />
+              ) : null}
+              <View style={styles.toggleRowContent}>
                 <Pressable
                   onLayout={registerHole('toggle-rank')}
                   onPress={onToggleRankSelector}
@@ -593,26 +658,8 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                 </Pressable>
               </View>
             </View>
-          </Reanimated.ScrollView>
-
-          {viewportWidth > 0 && rowHeight > 0 && maskedHoles.length > 0 ? (
-            <MaskedHoleOverlay
-              pointerEvents="none"
-              holes={maskedHoles}
-              backgroundColor="#ffffff"
-              style={[
-                styles.maskOverlay,
-                {
-                  width: maskWidth,
-                  height: maskHeight,
-                  top: maskTopOffset,
-                  left: -overscrollMargin,
-                },
-                maskAnimatedStyle,
-              ]}
-            />
-          ) : null}
-        </View>
+          </View>
+        </ScrollView>
       </View>
     </View>
   );
@@ -641,24 +688,13 @@ const styles = StyleSheet.create({
   },
   paddedWrapper: {
     width: '100%',
-  },
-  stripBackground: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: STRIP_BACKGROUND_HEIGHT,
-    backgroundColor: '#ffffff',
-    zIndex: 1,
-  },
-  stripContainer: {
     position: 'relative',
-    width: '100%',
   },
   filterButtonsScroll: {
     flexGrow: 0,
     width: '100%',
     backgroundColor: 'transparent',
+    zIndex: 1,
   },
   filterButtonsContent: {
     flexDirection: 'row',
@@ -673,6 +709,9 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   toggleRow: {
+    position: 'relative',
+  },
+  toggleRowContent: {
     position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
@@ -787,6 +826,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     left: 0,
+    zIndex: 1,
   },
 });
 

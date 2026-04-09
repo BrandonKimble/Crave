@@ -4,23 +4,22 @@ import perfHarnessConfig from '../../../../perf/harness-config';
 import { startJsFrameSampler } from '../../../../perf/js-frame-sampler';
 import { startUiFrameSampler } from '../../../../perf/ui-frame-sampler';
 import type { NaturalSearchRequest } from '../../../../types';
+import { logger } from '../../../../utils';
 import type { SearchSessionController } from '../controller/search-session-controller';
 import type { RuntimeWorkScheduler } from '../scheduler/runtime-work-scheduler';
-import {
-  type SearchRuntimeBus,
-  isSearchRuntimeMapPresentationPending,
-} from '../shared/search-runtime-bus';
+import { areResultsPresentationReadModelsEqual } from '../shared/results-presentation-runtime-contract';
+import { type SearchRuntimeBus } from '../shared/search-runtime-bus';
 import { useSearchRuntimeBusSelector } from '../shared/use-search-runtime-bus-selector';
 
 type HarnessMechanismEvent =
   | 'shortcut_harness_settle_eval'
   | 'shortcut_harness_observer_render_bump';
 
-type RuntimeMechanismEvent =
+export type RuntimeMechanismEvent =
   | 'query_mutation_coalesced'
   | 'profile_intent_cancelled'
   | 'run_one_handoff_phase'
-  | 'marker_reveal_settled'
+  | 'marker_enter_settled'
   | 'handoff_phase_violation'
   | 'submit_write_bucket'
   | 'runtime_write_span';
@@ -31,7 +30,7 @@ type SubmitShortcutSearchRef = React.MutableRefObject<
     label: string;
     preserveSheetState: boolean;
     transitionFromDockedPolls: boolean;
-    scoreMode: NaturalSearchRequest['scoreMode'];
+    scoreMode?: NaturalSearchRequest['scoreMode'];
   }) => Promise<void>
 >;
 type ToggleOpenNowRef = React.MutableRefObject<() => void>;
@@ -144,10 +143,17 @@ export const useShortcutHarnessObserver = (
     runtimeWorkSchedulerRef,
   } = args;
 
-  const results = useSearchRuntimeBusSelector(
+  const { resultsDishCount, resultsRestaurantCount, hasResults } = useSearchRuntimeBusSelector(
     searchRuntimeBus!,
-    (state) => state.results,
-    Object.is,
+    (state) => ({
+      resultsDishCount: state.results?.dishes?.length ?? 0,
+      resultsRestaurantCount: state.results?.restaurants?.length ?? 0,
+      hasResults: Boolean(state.results),
+    }),
+    (left, right) =>
+      left.resultsDishCount === right.resultsDishCount &&
+      left.resultsRestaurantCount === right.resultsRestaurantCount &&
+      left.hasResults === right.hasResults,
     ['results'] as const
   );
 
@@ -173,17 +179,36 @@ export const useShortcutHarnessObserver = (
     ] as const
   );
 
-  const { isMapRevealPending, shouldHydrateResultsForRender } = useSearchRuntimeBusSelector(
+  const {
+    resultsPresentation,
+    shouldHydrateResultsForRender,
+    activeOperationId,
+    activeOperationLane,
+    isResultsHydrationSettled,
+  } = useSearchRuntimeBusSelector(
     searchRuntimeBus!,
     (state) => ({
-      isMapRevealPending: isSearchRuntimeMapPresentationPending(state.mapPresentationPhase),
+      resultsPresentation: state.resultsPresentation,
       shouldHydrateResultsForRender: state.shouldHydrateResultsForRender,
+      activeOperationId: state.activeOperationId,
+      activeOperationLane: state.activeOperationLane,
+      isResultsHydrationSettled: state.isResultsHydrationSettled,
     }),
     (left, right) =>
-      left.isMapRevealPending === right.isMapRevealPending &&
-      left.shouldHydrateResultsForRender === right.shouldHydrateResultsForRender,
-    ['mapPresentationPhase', 'shouldHydrateResultsForRender'] as const
+      areResultsPresentationReadModelsEqual(left.resultsPresentation, right.resultsPresentation) &&
+      left.shouldHydrateResultsForRender === right.shouldHydrateResultsForRender &&
+      left.activeOperationId === right.activeOperationId &&
+      left.activeOperationLane === right.activeOperationLane &&
+      left.isResultsHydrationSettled === right.isResultsHydrationSettled,
+    [
+      'resultsPresentation',
+      'shouldHydrateResultsForRender',
+      'activeOperationId',
+      'activeOperationLane',
+      'isResultsHydrationSettled',
+    ] as const
   );
+  const isMapRevealPending = resultsPresentation.isPending;
 
   const isShortcutLoopScenario =
     perfHarnessConfig.enabled && perfHarnessConfig.scenario === 'search_shortcut_loop';
@@ -199,8 +224,7 @@ export const useShortcutHarnessObserver = (
       channel: 'Harness' | 'JsFrameSampler' | 'UiFrameSampler',
       payload: Record<string, unknown>
     ) => {
-      // eslint-disable-next-line no-console
-      console.log(`[SearchPerf][${channel}] ${JSON.stringify(payload)}`);
+      logger.debug(`[SearchPerf][${channel}]`, payload);
     },
     []
   );
@@ -349,10 +373,10 @@ export const useShortcutHarnessObserver = (
     isShortcutCoverageLoading,
     shouldHydrateResultsForRender,
     isRunOneHandoffActive,
-    hasResults: Boolean(results),
-    activeOperationId: searchRuntimeBus?.getState().activeOperationId ?? null,
-    activeOperationLane: searchRuntimeBus?.getState().activeOperationLane ?? 'idle',
-    isResultsHydrationSettled: searchRuntimeBus?.getState().isResultsHydrationSettled ?? true,
+    hasResults,
+    activeOperationId,
+    activeOperationLane,
+    isResultsHydrationSettled,
   });
 
   const resolveShortcutDerivedStage = React.useCallback(() => {
@@ -405,7 +429,6 @@ export const useShortcutHarnessObserver = (
   }, [getPerfNow, resolveShortcutDerivedStage]);
 
   React.useEffect(() => {
-    const runtimeState = searchRuntimeBus?.getState();
     harnessInputsRef.current = {
       searchMode,
       isSearchLoading,
@@ -414,27 +437,29 @@ export const useShortcutHarnessObserver = (
       isShortcutCoverageLoading,
       shouldHydrateResultsForRender,
       isRunOneHandoffActive,
-      hasResults: Boolean(results),
-      activeOperationId: runtimeState?.activeOperationId ?? null,
-      activeOperationLane: runtimeState?.activeOperationLane ?? 'idle',
-      isResultsHydrationSettled: runtimeState?.isResultsHydrationSettled ?? true,
+      hasResults,
+      activeOperationId,
+      activeOperationLane,
+      isResultsHydrationSettled,
     };
     syncShortcutTraceStage();
   }, [
+    activeOperationId,
+    activeOperationLane,
+    isResultsHydrationSettled,
     isLoadingMore,
     isSearchLoading,
     isShortcutCoverageLoading,
     isMapRevealPending,
-    results,
+    hasResults,
     searchMode,
     shouldHydrateResultsForRender,
     isRunOneHandoffActive,
-    searchRuntimeBus,
     syncShortcutTraceStage,
   ]);
 
   React.useEffect(() => {
-    const finalVisibleCount = (results?.dishes?.length ?? 0) + (results?.restaurants?.length ?? 0);
+    const finalVisibleCount = resultsDishCount + resultsRestaurantCount;
     shortcutHarnessSnapshotRef.current = {
       isSearchLoading,
       isMapRevealPending,
@@ -448,8 +473,8 @@ export const useShortcutHarnessObserver = (
   }, [
     isSearchLoading,
     isMapRevealPending,
-    results?.dishes?.length,
-    results?.restaurants?.length,
+    resultsDishCount,
+    resultsRestaurantCount,
     resultsRequestKey,
     visibleDotRestaurantFeaturesCount,
     visibleSortedRestaurantMarkersCount,
@@ -876,13 +901,9 @@ export const useShortcutHarnessObserver = (
         const usesShadowConvergenceBoundary =
           settleBoundaryPolicy === 'shadow_converged_or_quiet_snapshot';
         const inputs = harnessInputsRef.current;
-        const runtimeState = searchRuntimeBus?.getState();
-        const activeOperationId = runtimeState?.activeOperationId ?? inputs.activeOperationId;
-        const activeOperationLane = runtimeState?.activeOperationLane ?? inputs.activeOperationLane;
-        const isResultsHydrationSettled =
-          runtimeState?.isResultsHydrationSettled ?? inputs.isResultsHydrationSettled;
-        const shouldHydrateResultsForRenderRuntime =
-          runtimeState?.shouldHydrateResultsForRender ?? inputs.shouldHydrateResultsForRender;
+        const activeOperationId = inputs.activeOperationId;
+        const activeOperationLane = inputs.activeOperationLane;
+        const shouldHydrateResultsForRenderRuntime = inputs.shouldHydrateResultsForRender;
         const schedulerPressure = runtimeWorkSchedulerRef?.current.snapshotPressure() ?? null;
         const snapshot = shortcutHarnessSnapshotRef.current;
         if (snapshot.finalRequestKey && snapshot.finalRequestKey !== lifecycle.runStartRequestKey) {

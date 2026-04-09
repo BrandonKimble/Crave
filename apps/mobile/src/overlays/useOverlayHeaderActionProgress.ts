@@ -9,6 +9,7 @@ import {
   type SharedValue,
 } from 'react-native-reanimated';
 
+import { logger } from '../utils';
 import { clampValue } from './sheetUtils';
 
 type HeaderActionHandoff = {
@@ -56,8 +57,7 @@ export const useOverlayHeaderActionProgress = ({
       if (!debugEnabled) {
         return;
       }
-      // eslint-disable-next-line no-console
-      console.log(`[OverlayHeaderAction] ${label} ${message}`, payload ?? {});
+      logger.debug(`[OverlayHeaderAction] ${label} ${message}`, payload ?? {});
     },
     [debugEnabled, label]
   );
@@ -103,7 +103,12 @@ export const useOverlayHeaderActionProgress = ({
       const minTarget = handoff?.minTarget ?? 0;
       const maxTarget = handoff?.maxTarget ?? 1;
       if (target < minTarget || target > maxTarget) {
-        debugLog('handoff skip (target out of range)', { key: nextKey, target, minTarget, maxTarget });
+        debugLog('handoff skip (target out of range)', {
+          key: nextKey,
+          target,
+          minTarget,
+          maxTarget,
+        });
         lastHandoffKeyRef.current = null;
         overrideActive.value = true;
         cancelAnimation(progress);
@@ -125,19 +130,15 @@ export const useOverlayHeaderActionProgress = ({
         rangeStart: progressRange.start,
         rangeEnd: progressRange.end,
       });
-      progress.value = withTiming(
-        target,
-        { duration: handoff?.durationMs ?? 220 },
-        (finished) => {
-          'worklet';
-          if (debugEnabled) {
-            runOnJS(debugLog)('handoff end', { key: nextKey, finished });
-          }
-          if (finished) {
-            overrideActive.value = false;
-          }
+      progress.value = withTiming(target, { duration: handoff?.durationMs ?? 220 }, (finished) => {
+        'worklet';
+        if (debugEnabled) {
+          runOnJS(debugLog)('handoff end', { key: nextKey, finished });
         }
-      );
+        if (finished) {
+          overrideActive.value = false;
+        }
+      });
       return;
     }
 

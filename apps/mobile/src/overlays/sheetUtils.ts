@@ -1,4 +1,5 @@
 import type { WithSpringConfig } from 'react-native-reanimated';
+import type { BottomSheetSnapPoints as SnapPoints } from './bottomSheetMotionTypes';
 
 export type SheetPosition = 'hidden' | 'collapsed' | 'middle' | 'expanded';
 
@@ -54,13 +55,6 @@ export const snapPointForState = (
     default:
       return hidden;
   }
-};
-
-export type SnapPoints = {
-  expanded: number;
-  middle: number;
-  collapsed: number;
-  hidden: number;
 };
 
 /**

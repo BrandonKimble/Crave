@@ -96,3 +96,7 @@ export const useOverlaySheetPositionStore = create<OverlaySheetPositionState>((s
     });
   },
 }));
+
+export const setSharedOverlaySnap = (snap: SharedSnap) => {
+  useOverlaySheetPositionStore.getState().setSharedSnap(snap);
+};

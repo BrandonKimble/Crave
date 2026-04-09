@@ -3,14 +3,7 @@ import type { Feature, FeatureCollection, Point } from 'geojson';
 import type { Coordinate, FoodResult, RestaurantResult } from '../../../../types';
 import type { RestaurantFeatureProperties } from '../../components/search-map';
 import type { MarkerCatalogEntry } from './map-viewport-query';
-
-export type ResolvedRestaurantMapLocation = {
-  locationId: string;
-  latitude: number;
-  longitude: number;
-  isPrimary: boolean;
-  locationIndex: number;
-};
+import type { ResolvedRestaurantMapLocation } from './restaurant-location-selection';
 
 type BuildMarkerCatalogArgs = {
   activeTab: 'dishes' | 'restaurants';

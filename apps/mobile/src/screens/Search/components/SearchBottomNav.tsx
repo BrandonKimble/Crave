@@ -10,26 +10,29 @@ import Reanimated from 'react-native-reanimated';
 
 import { Text } from '../../../components';
 import { colors as themeColors } from '../../../constants/theme';
+import type { OverlayKey } from '../../../store/overlayStore';
 import { ACTIVE_TAB_COLOR, NAV_BOTTOM_PADDING } from '../constants/search';
 import styles from '../styles';
 import NavBarSilhouetteBackground from './NavBarSilhouetteBackground';
 
 type NavItem = {
-  key: string;
+  key: OverlayKey;
   label: string;
 };
 
-type SearchBottomNavProps = {
+export type SearchBottomNavProps = {
   bottomNavAnimatedStyle: StyleProp<ViewStyle>;
   shouldHideBottomNav: boolean;
   bottomInset: number;
   handleBottomNavLayout: (event: LayoutChangeEvent) => void;
   shouldDisableSearchBlur: boolean;
   navItems: readonly NavItem[];
-  rootOverlay: string | null;
-  navIconRenderers: Record<string, (color: string, active: boolean) => React.ReactNode>;
+  rootOverlay: OverlayKey;
+  navIconRenderers: Partial<
+    Record<OverlayKey, (color: string, active: boolean) => React.ReactNode>
+  >;
   handleProfilePress: () => void;
-  handleOverlaySelect: (key: string) => void;
+  handleOverlaySelect: (key: OverlayKey) => void;
   bottomNavItemVisibilityAnimatedStyle: StyleProp<ViewStyle>;
 };
 

@@ -27,7 +27,7 @@
     },
     {
       "id": "search_submit_hook",
-      "path": "apps/mobile/src/screens/Search/hooks/use-search-submit.ts",
+      "path": "apps/mobile/src/screens/Search/hooks/use-search-submit-owner.ts",
       "kind": "file",
       "baselineLoc": 1847,
       "maxDelta": 0

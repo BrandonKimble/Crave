@@ -17,12 +17,16 @@ public class SearchMapRenderControllerPackage implements ReactPackage {
   public List<NativeModule> createNativeModules(@NonNull ReactApplicationContext reactContext) {
     List<NativeModule> modules = new ArrayList<>();
     modules.add(new SearchMapRenderControllerModule(reactContext));
+    modules.add(new ProfilePresentationTransactionExecutorModule(reactContext));
     return modules;
   }
 
   @NonNull
   @Override
   public List<ViewManager> createViewManagers(@NonNull ReactApplicationContext reactContext) {
-    return Collections.emptyList();
+    List<ViewManager> managers = new ArrayList<>();
+    managers.add(new BottomSheetHostViewManager());
+    managers.add(new RestaurantPanelSnapshotViewManager());
+    return managers;
   }
 }

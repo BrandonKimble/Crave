@@ -32,7 +32,7 @@ const MemoOverlayModalSheet = React.memo(
   (prev, next) => !prev.visible && !next.visible
 );
 
-type SearchRankAndScoreSheetsProps = {
+export type SearchRankAndScoreSheetsProps = {
   rankSheetRef: React.RefObject<OverlayModalSheetHandle | null>;
   isRankSelectorVisible: boolean;
   closeRankSelector: () => void;
@@ -45,7 +45,7 @@ type SearchRankAndScoreSheetsProps = {
   isScoreInfoVisible: boolean;
   scoreInfo: ScoreInfoPayload | null;
   closeScoreInfo: () => void;
-  setScoreInfo: React.Dispatch<React.SetStateAction<ScoreInfoPayload | null>>;
+  clearScoreInfo: () => void;
   scoreInfoMaxHeight: number;
   formatCompactCount: (value: number) => string;
   onProfilerRender: React.ProfilerOnRenderCallback;
@@ -64,7 +64,7 @@ const SearchRankAndScoreSheets = ({
   isScoreInfoVisible,
   scoreInfo,
   closeScoreInfo,
-  setScoreInfo,
+  clearScoreInfo,
   scoreInfoMaxHeight,
   formatCompactCount,
   onProfilerRender,
@@ -181,7 +181,7 @@ const SearchRankAndScoreSheets = ({
         <MemoOverlayModalSheet
           visible={Boolean(isScoreInfoVisible && scoreInfo)}
           onRequestClose={closeScoreInfo}
-          onDismiss={() => setScoreInfo(null)}
+          onDismiss={clearScoreInfo}
           paddingHorizontal={CONTENT_HORIZONTAL_PADDING}
           paddingTop={12}
           sheetStyle={{ height: scoreInfoMaxHeight }}

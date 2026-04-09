@@ -15,6 +15,18 @@ type UseSearchHistoryOptions = {
   autoLoad?: boolean;
 };
 
+type LocalRecentSearchInput = {
+  queryText: string;
+  selectedEntityId?: string | null;
+  selectedEntityType?: RecentSearch['selectedEntityType'] | null;
+  statusPreview?: RecentSearch['statusPreview'] | null;
+};
+
+type TrackRecentlyViewedFoodInput = Pick<
+  RecentlyViewedFood,
+  'connectionId' | 'foodId' | 'foodName' | 'restaurantId' | 'restaurantName' | 'statusPreview'
+>;
+
 type UseSearchHistoryResult = {
   recentSearches: RecentSearch[];
   isRecentLoading: boolean;
@@ -29,18 +41,6 @@ type UseSearchHistoryResult = {
   trackRecentlyViewedRestaurant: (restaurantId: string, restaurantName: string) => void;
   trackRecentlyViewedFood: (value: TrackRecentlyViewedFoodInput) => void;
 };
-
-type LocalRecentSearchInput = {
-  queryText: string;
-  selectedEntityId?: string | null;
-  selectedEntityType?: RecentSearch['selectedEntityType'] | null;
-  statusPreview?: RecentSearch['statusPreview'] | null;
-};
-
-type TrackRecentlyViewedFoodInput = Pick<
-  RecentlyViewedFood,
-  'connectionId' | 'foodId' | 'foodName' | 'restaurantId' | 'restaurantName' | 'statusPreview'
->;
 
 let recentHistoryRequest: Promise<void> | null = null;
 let recentlyViewedRequest: Promise<void> | null = null;

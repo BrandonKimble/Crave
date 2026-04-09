@@ -27,8 +27,8 @@ import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
 import { OVERLAY_HORIZONTAL_PADDING, overlaySheetStyles } from '../overlaySheetStyles';
 import { resolveExpandedTop } from '../sheetUtils';
 import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
-import type { SnapPoints } from '../BottomSheetWithFlashList';
-import type { OverlayContentSpec, OverlaySheetSnap } from '../types';
+import type { SnapPoints } from '../bottomSheetMotionTypes';
+import type { OverlayContentSpec, OverlaySheetSnap, OverlaySheetSnapRequest } from '../types';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -42,7 +42,7 @@ type UsePollCreationPanelSpecOptions = {
   coverageName?: string | null;
   searchBarTop?: number;
   snapPoints?: SnapPoints;
-  snapTo?: Exclude<OverlaySheetSnap, 'hidden'> | null;
+  shellSnapRequest?: OverlaySheetSnapRequest | null;
   onClose: () => void;
   onCreated: (poll: Poll) => void;
   onSnapChange?: (snap: OverlaySheetSnap) => void;
@@ -179,7 +179,7 @@ export const usePollCreationPanelSpec = ({
   coverageName,
   searchBarTop = 0,
   snapPoints: snapPointsOverride,
-  snapTo,
+  shellSnapRequest,
   onClose,
   onCreated,
   onSnapChange,
@@ -556,9 +556,10 @@ export const usePollCreationPanelSpec = ({
 
   return {
     overlayKey: 'pollCreation',
+    surfaceKind: 'list',
     snapPoints,
     initialSnapPoint: 'expanded',
-    snapTo,
+    shellSnapRequest,
     preventSwipeDismiss: true,
     data: [],
     renderItem: () => null,

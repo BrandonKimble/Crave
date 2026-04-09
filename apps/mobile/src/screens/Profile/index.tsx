@@ -20,9 +20,10 @@ import Svg, { Path } from 'react-native-svg';
 import { Text } from '../../components';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import { colors as themeColors } from '../../constants/theme';
+import { useAppOverlayRouteController } from '../../overlays/useAppOverlayRouteController';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useNotificationStore } from '../../store/notificationStore';
-import { useOverlayStore, type OverlayKey } from '../../store/overlayStore';
+import type { OverlayKey } from '../../store/overlayStore';
 import { logger } from '../../utils';
 import { notificationsService } from '../../services/notifications';
 import { usersService } from '../../services/users';
@@ -69,7 +70,7 @@ const ProfileScreen: React.FC = () => {
   const { signOut, isSignedIn } = useAuth();
   const navigation = useNavigation<Navigation>();
   const insets = useSafeAreaInsets();
-  const setOverlay = useOverlayStore((state) => state.setOverlay);
+  const { setRootRoute } = useAppOverlayRouteController();
   const pushToken = useNotificationStore((state) => state.pushToken);
   const setPushToken = useNotificationStore((state) => state.setPushToken);
   const [activeSegment, setActiveSegment] = React.useState<ProfileSegment>('created');
@@ -180,21 +181,19 @@ const ProfileScreen: React.FC = () => {
       if (target === 'profile') {
         return;
       }
-      setOverlay(target);
-      navigation.navigate('Main');
+      setRootRoute(target);
     },
-    [navigation, setOverlay]
+    [setRootRoute]
   );
 
   const handlePollPress = React.useCallback(
     (poll: Poll) => {
-      setOverlay('polls', {
+      setRootRoute('polls', {
         pollId: poll.pollId,
         coverageKey: poll.coverageKey ?? null,
       });
-      navigation.navigate('Main');
     },
-    [navigation, setOverlay]
+    [setRootRoute]
   );
 
   const handleListPress = React.useCallback(

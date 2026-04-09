@@ -1,6 +1,12 @@
 import React from 'react';
 import { Pressable, View } from 'react-native';
-import Reanimated, { LinearTransition, type SharedValue } from 'react-native-reanimated';
+import Reanimated, {
+  Extrapolation,
+  LinearTransition,
+  interpolate,
+  useAnimatedStyle,
+  type SharedValue,
+} from 'react-native-reanimated';
 
 import { Text } from '../../../components';
 import type { OverlayModalSheetHandle } from '../../../overlays/OverlayModalSheet';
@@ -16,7 +22,7 @@ const MemoOverlayModalSheet = React.memo(
   (prev, next) => !prev.visible && !next.visible
 );
 
-type SearchPriceSheetProps = {
+export type SearchPriceSheetProps = {
   priceSheetRef: React.RefObject<OverlayModalSheetHandle | null>;
   isPriceSelectorVisible: boolean;
   closePriceSelector: () => void;
@@ -25,7 +31,14 @@ type SearchPriceSheetProps = {
   summaryPillPaddingX: number;
   summaryPillWidth: number | null;
   summaryLabel: string;
-  summaryReelItems: React.ReactNode;
+  summaryReelItems: ReadonlyArray<{
+    key: string;
+    label: string;
+    index: number;
+  }>;
+  summaryReelPosition: SharedValue<number>;
+  summaryReelNearestIndex: SharedValue<number>;
+  summaryReelNeighborVisibility: SharedValue<number>;
   isPriceSheetContentReady: boolean;
   priceSliderLowValue: SharedValue<number>;
   priceSliderHighValue: SharedValue<number>;
@@ -34,6 +47,64 @@ type SearchPriceSheetProps = {
   handlePriceDone: () => void;
   activeTabColor: string;
 };
+
+const PRICE_SUMMARY_REEL_STEP_Y = 16;
+const PRICE_SUMMARY_REEL_ROTATE_DEG = 82;
+const PRICE_SUMMARY_REEL_PERSPECTIVE = 900;
+
+type PriceSummaryReelItemProps = {
+  label: string;
+  index: number;
+  reelPosition: SharedValue<number>;
+  nearestIndex: SharedValue<number>;
+  neighborVisibility: SharedValue<number>;
+};
+
+const PriceSummaryReelItem: React.FC<PriceSummaryReelItemProps> = React.memo(
+  ({ label, index, reelPosition, nearestIndex, neighborVisibility }) => {
+    const animatedStyle = useAnimatedStyle(() => {
+      const distance = index - reelPosition.value;
+      const absDistance = Math.abs(distance);
+      const isNearest = index === nearestIndex.value;
+      const clampedAbsDistance = Math.min(absDistance, 1.1);
+      const baseOpacity = interpolate(
+        clampedAbsDistance,
+        [0, 0.35, 0.7, 1.1],
+        [1, 0.7, 0.3, 0],
+        Extrapolation.CLAMP
+      );
+      const opacity = isNearest ? baseOpacity : baseOpacity * neighborVisibility.value * 0.85;
+      const spacingCompensation = 1 - Math.min(absDistance, 1.5) * 0.1;
+      return {
+        opacity,
+        transform: [
+          { perspective: PRICE_SUMMARY_REEL_PERSPECTIVE },
+          { translateY: distance * PRICE_SUMMARY_REEL_STEP_Y * spacingCompensation },
+          { rotateX: `${-distance * PRICE_SUMMARY_REEL_ROTATE_DEG}deg` },
+        ],
+      };
+    });
+
+    return (
+      <Reanimated.View
+        pointerEvents="none"
+        style={[styles.priceSheetSummaryReelItem, animatedStyle]}
+      >
+        <Text
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          variant="subtitle"
+          weight="semibold"
+          style={styles.priceSheetSummaryText}
+        >
+          {label}
+        </Text>
+      </Reanimated.View>
+    );
+  }
+);
+
+PriceSummaryReelItem.displayName = 'PriceSummaryReelItem';
 
 const SearchPriceSheet = ({
   priceSheetRef,
@@ -45,6 +116,9 @@ const SearchPriceSheet = ({
   summaryPillWidth,
   summaryLabel,
   summaryReelItems,
+  summaryReelPosition,
+  summaryReelNearestIndex,
+  summaryReelNeighborVisibility,
   isPriceSheetContentReady,
   priceSliderLowValue,
   priceSliderHighValue,
@@ -97,7 +171,16 @@ const SearchPriceSheet = ({
             >
               {summaryLabel}
             </Text>
-            {summaryReelItems}
+            {summaryReelItems.map((item) => (
+              <PriceSummaryReelItem
+                key={item.key}
+                label={item.label}
+                index={item.index}
+                reelPosition={summaryReelPosition}
+                nearestIndex={summaryReelNearestIndex}
+                neighborVisibility={summaryReelNeighborVisibility}
+              />
+            ))}
           </Reanimated.View>
           <Text
             numberOfLines={1}

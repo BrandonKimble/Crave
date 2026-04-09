@@ -3,21 +3,36 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-TARGET="$REPO_ROOT/apps/mobile/src/screens/Search/hooks/use-search-submit.ts"
-
-if [[ ! -f "$TARGET" ]]; then
-  echo "[s4-cutover-contract] FAIL: target file not found: $TARGET" >&2
-  exit 1
-fi
+HOOKS_DIR="$REPO_ROOT/apps/mobile/src/screens/Search/hooks"
+REQUEST_RUNTIME_TARGET="$HOOKS_DIR/use-search-request-runtime-owner.ts"
+NATURAL_SUBMIT_TARGET="$HOOKS_DIR/use-search-natural-submit-owner.ts"
+STRUCTURED_SUBMIT_TARGET="$HOOKS_DIR/use-search-structured-submit-owner.ts"
+EXECUTION_TARGET="$HOOKS_DIR/use-search-submit-execution-owner.ts"
+RESPONSE_TARGET="$HOOKS_DIR/use-search-submit-response-owner.ts"
 
 failures=0
 checks=0
 
+ensure_target() {
+  local target="$1"
+  if [[ ! -f "$target" ]]; then
+    echo "[s4-cutover-contract] FAIL: target file not found: $target" >&2
+    exit 1
+  fi
+}
+
+ensure_target "$REQUEST_RUNTIME_TARGET"
+ensure_target "$NATURAL_SUBMIT_TARGET"
+ensure_target "$STRUCTURED_SUBMIT_TARGET"
+ensure_target "$EXECUTION_TARGET"
+ensure_target "$RESPONSE_TARGET"
+
 require_pattern() {
-  local pattern="$1"
-  local description="$2"
+  local target="$1"
+  local pattern="$2"
+  local description="$3"
   checks=$((checks + 1))
-  if rg -n --pcre2 "$pattern" "$TARGET" >/dev/null; then
+  if rg -n --pcre2 "$pattern" "$target" >/dev/null; then
     echo "[s4-cutover-contract] PASS: $description"
   else
     echo "[s4-cutover-contract] FAIL: $description" >&2
@@ -26,61 +41,55 @@ require_pattern() {
 }
 
 forbid_pattern() {
-  local pattern="$1"
-  local description="$2"
+  local target="$1"
+  local pattern="$2"
+  local description="$3"
   checks=$((checks + 1))
-  if rg -n --pcre2 "$pattern" "$TARGET" >/dev/null; then
+  if rg -n --pcre2 "$pattern" "$target" >/dev/null; then
     echo "[s4-cutover-contract] FAIL: $description" >&2
-    rg -n --pcre2 "$pattern" "$TARGET" >&2 || true
+    rg -n --pcre2 "$pattern" "$target" >&2 || true
     failures=$((failures + 1))
   else
     echo "[s4-cutover-contract] PASS: $description"
   fi
 }
 
-require_pattern "runtimeShadow: HandleSearchResponseRuntimeShadow;" \
+require_pattern "$RESPONSE_TARGET" "runtimeShadow:\\s*SearchSubmitHandleSearchResponseRuntimeShadow;" \
   "Response apply requires runtimeShadow (no optional bypass)."
-require_pattern "runtimeTuple: ActiveOperationTuple;" \
+require_pattern "$RESPONSE_TARGET" "runtimeTuple:\\s*SearchSubmitActiveOperationTuple;" \
   "Response apply requires runtime tuple guard (no optional bypass)."
-forbid_pattern "runtimeShadow\\?:" \
+forbid_pattern "$HOOKS_DIR" "runtimeShadow\\?:" \
   "No optional runtimeShadow path remains in response apply options."
-forbid_pattern "runtimeTuple\\?:" \
+forbid_pattern "$HOOKS_DIR" "runtimeTuple\\?:" \
   "No optional runtimeTuple path remains in response apply options."
-forbid_pattern "if \\(runtimeShadow\\)" \
+forbid_pattern "$HOOKS_DIR" "if \\(runtimeShadow\\)" \
   "No mode/runtime branch bypass around transition emission remains."
-forbid_pattern "else if \\(runtimeShadow\\)" \
+forbid_pattern "$HOOKS_DIR" "else if \\(runtimeShadow\\)" \
   "No append-mode runtime bypass branch remains."
 
-require_pattern "const naturalShadowActivated = activateRuntimeShadowOperation\\(" \
-  "Natural mode activation is controller-gated."
-require_pattern "const entityShadowActivated = activateRuntimeShadowOperation\\(" \
-  "Entity mode activation is controller-gated."
-require_pattern "const shortcutShadowActivated = activateRuntimeShadowOperation\\(" \
-  "Shortcut mode activation is controller-gated."
-require_pattern "const shortcutAppendShadowActivated = activateRuntimeShadowOperation\\(" \
-  "Shortcut append activation is controller-gated."
+require_pattern "$REQUEST_RUNTIME_TARGET" "const requestAttempt = startSearchRequestAttempt\\(\\{" \
+  "All mode activation is controller-gated through the shared runtime owner."
+require_pattern "$REQUEST_RUNTIME_TARGET" "if \\(!requestAttempt\\) \\{" \
+  "Shared runtime owner aborts when controller rejects activation."
+require_pattern "$NATURAL_SUBMIT_TARGET" "mode:\\s*'natural'" \
+  "Natural mode activation flows through the shared request runtime owner."
+require_pattern "$STRUCTURED_SUBMIT_TARGET" "mode:\\s*'entity'" \
+  "Entity mode activation flows through the shared request runtime owner."
+require_pattern "$STRUCTURED_SUBMIT_TARGET" "mode:\\s*'shortcut'" \
+  "Shortcut mode activation flows through the shared request runtime owner."
 
-require_pattern "if \\(!naturalShadowActivated\\) \\{" \
-  "Natural mode aborts when controller rejects activation."
-require_pattern "if \\(!entityShadowActivated\\) \\{" \
-  "Entity mode aborts when controller rejects activation."
-require_pattern "if \\(!shortcutShadowActivated\\) \\{" \
-  "Shortcut mode aborts when controller rejects activation."
-require_pattern "if \\(!shortcutAppendShadowActivated\\) \\{" \
-  "Shortcut append aborts when controller rejects activation."
-
-require_pattern "createNaturalResponseReceivedPayload\\(" \
+require_pattern "$EXECUTION_TARGET" "createNaturalResponseReceivedPayload\\(" \
   "Natural mode response is adapter-normalized before transition."
-require_pattern "createEntityResponseReceivedPayload\\(" \
+require_pattern "$EXECUTION_TARGET" "createEntityResponseReceivedPayload\\(" \
   "Entity mode response is adapter-normalized before transition."
-require_pattern "createShortcutResponseReceivedPayload\\(" \
+require_pattern "$EXECUTION_TARGET" "createShortcutResponseReceivedPayload\\(" \
   "Shortcut mode response is adapter-normalized before transition."
 
-require_pattern "emitShadowTransition\\('response_received'" \
+require_pattern "$RESPONSE_TARGET" "emitShadowTransition\\('response_received'" \
   "All response apply paths emit response_received transition."
-require_pattern "emitShadowTransition\\('phase_a_committed'" \
+require_pattern "$RESPONSE_TARGET" "emitShadowTransition\\('phase_a_committed'" \
   "All response apply paths emit phase_a_committed transition."
-require_pattern "emitShadowTransition\\('phase_b_materializing'" \
+require_pattern "$RESPONSE_TARGET" "emitShadowTransition\\('phase_b_materializing'" \
   "All response apply paths emit phase_b_materializing transition."
 
 if [[ "$checks" -eq 0 ]]; then

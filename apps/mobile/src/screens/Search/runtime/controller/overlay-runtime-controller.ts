@@ -1,3 +1,8 @@
+import { appOverlayRouteController } from '../../../../overlays/useAppOverlayRouteController';
+import {
+  requestSearchRouteDockedRestore,
+  useSearchRouteOverlayCommandStore,
+} from '../../../../overlays/searchRouteOverlayCommandStore';
 import type { OverlayKey } from '../../../../store/overlayStore';
 import { useOverlayStore } from '../../../../store/overlayStore';
 
@@ -6,11 +11,23 @@ type SearchRestoreOptions = {
   clearTabSnapRequest?: boolean;
 };
 
-type RestoreDockedPolls = (options?: SearchRestoreOptions) => void;
-
 const SEARCH_ROOT_ENTRY_RESTORE_OPTIONS: SearchRestoreOptions = {
   snap: 'collapsed',
   clearTabSnapRequest: true,
+};
+
+const restoreSearchRootEntry = (options: SearchRestoreOptions = {}): void => {
+  const resolvedOptions = {
+    ...SEARCH_ROOT_ENTRY_RESTORE_OPTIONS,
+    ...options,
+  };
+  const commandState = useSearchRouteOverlayCommandStore.getState();
+  if (resolvedOptions.clearTabSnapRequest) {
+    commandState.setTabOverlaySnapRequest(null);
+  }
+  requestSearchRouteDockedRestore({
+    snap: resolvedOptions.snap ?? 'collapsed',
+  });
 };
 
 export type OverlayRuntimeController = {
@@ -18,43 +35,43 @@ export type OverlayRuntimeController = {
   setOverlayData: (overlay: OverlayKey, params?: unknown) => void;
   closeActiveOverlay: () => void;
   popToRootOverlay: () => void;
-  switchToSearchRootWithDockedPolls: (
-    restoreDockedPolls: RestoreDockedPolls,
-    options?: SearchRestoreOptions
-  ) => void;
-  ensureSearchOverlay: (restoreDockedPolls: RestoreDockedPolls) => void;
+  restoreSearchRootEntry: (options?: SearchRestoreOptions) => void;
+  switchToSearchRootWithDockedPolls: (options?: SearchRestoreOptions) => void;
+  ensureSearchOverlay: () => void;
 };
 
 export const createOverlayRuntimeController = (): OverlayRuntimeController => ({
   setRootOverlay: (overlay) => {
-    useOverlayStore.getState().setOverlay(overlay);
+    appOverlayRouteController.setRootRoute(overlay);
   },
   setOverlayData: (overlay, params) => {
-    useOverlayStore.getState().setOverlayParams(overlay, params as never);
+    appOverlayRouteController.updateRoute(overlay, params as never);
   },
   closeActiveOverlay: () => {
-    useOverlayStore.getState().popOverlay();
+    appOverlayRouteController.closeActiveRoute();
   },
   popToRootOverlay: () => {
-    useOverlayStore.getState().popToRootOverlay();
+    appOverlayRouteController.popToRootRoute();
   },
-  switchToSearchRootWithDockedPolls: (restoreDockedPolls, options = {}) => {
-    restoreDockedPolls({
+  restoreSearchRootEntry,
+  switchToSearchRootWithDockedPolls: (options = {}) => {
+    restoreSearchRootEntry({
       ...SEARCH_ROOT_ENTRY_RESTORE_OPTIONS,
       ...options,
     });
-    useOverlayStore.getState().setOverlay('search');
+    appOverlayRouteController.setRootRoute('search');
   },
-  ensureSearchOverlay: (restoreDockedPolls) => {
+  ensureSearchOverlay: () => {
     const overlayState = useOverlayStore.getState();
-    const rootOverlay = overlayState.overlayStack[0] ?? overlayState.activeOverlay;
+    const rootOverlay =
+      overlayState.overlayRouteStack[0]?.key ?? overlayState.activeOverlayRoute.key;
     if (rootOverlay !== 'search') {
-      restoreDockedPolls(SEARCH_ROOT_ENTRY_RESTORE_OPTIONS);
-      overlayState.setOverlay('search');
+      restoreSearchRootEntry(SEARCH_ROOT_ENTRY_RESTORE_OPTIONS);
+      appOverlayRouteController.setRootRoute('search');
       return;
     }
-    if (overlayState.activeOverlay !== 'search') {
-      overlayState.popToRootOverlay();
+    if (overlayState.activeOverlayRoute.key !== 'search') {
+      appOverlayRouteController.popToRootRoute();
     }
   },
 });

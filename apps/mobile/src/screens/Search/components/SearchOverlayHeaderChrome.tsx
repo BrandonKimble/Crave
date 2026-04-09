@@ -13,7 +13,7 @@ import { ACTIVE_TAB_COLOR } from '../constants/search';
 import styles from '../styles';
 import SearchHeader from './SearchHeader';
 import SearchShortcutsRow from './SearchShortcutsRow';
-import type { SearchHeaderVisualModel } from '../hooks/use-search-presentation-controller';
+import type { SearchHeaderVisualModel } from '../runtime/shared/use-results-presentation-runtime-owner';
 
 type SearchOverlayHeaderChromeProps = {
   handleSearchContainerLayout: (event: LayoutChangeEvent) => void;

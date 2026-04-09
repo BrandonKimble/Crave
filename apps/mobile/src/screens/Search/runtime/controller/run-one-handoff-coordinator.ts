@@ -5,9 +5,9 @@ type RunOneHandoffCoordinatorListener = (snapshot: RunOneHandoffSnapshot) => voi
 export type RunOneHandoffAdvanceMetadata = {
   operationId?: string | null;
   requestKey?: string | null;
-  markerRevealCommitId?: number | null;
-  markerRevealSettledAtMs?: number | null;
-  markerRevealSettled?: boolean;
+  markerEnterCommitId?: number | null;
+  markerEnterSettledAtMs?: number | null;
+  markerEnterSettled?: boolean;
   [key: string]: unknown;
 };
 
@@ -17,7 +17,7 @@ export type RunOneHandoffSnapshot = {
   seq: number | null;
   page: number | null;
   phase: RunOneHandoffPhase;
-  markerRevealSettledAtMs: number | null;
+  markerEnterSettledAtMs: number | null;
   metadata: Readonly<Record<string, unknown>>;
   updatedAtMs: number;
 };
@@ -46,7 +46,7 @@ export class RunOneHandoffCoordinator {
     seq: null,
     page: null,
     phase: 'idle',
-    markerRevealSettledAtMs: null,
+    markerEnterSettledAtMs: null,
     metadata: {},
     updatedAtMs: nowMs(),
   };
@@ -61,7 +61,7 @@ export class RunOneHandoffCoordinator {
       seq,
       page,
       phase: 'idle',
-      markerRevealSettledAtMs: null,
+      markerEnterSettledAtMs: null,
       metadata: {},
       updatedAtMs: nowMs(),
     };
@@ -91,9 +91,9 @@ export class RunOneHandoffCoordinator {
       }
     }
 
-    const markerRevealSettledAtMs = metadata?.markerRevealSettled
-      ? metadata?.markerRevealSettledAtMs ?? nowMs()
-      : this.snapshot.markerRevealSettledAtMs;
+    const markerEnterSettledAtMs = metadata?.markerEnterSettled
+      ? metadata?.markerEnterSettledAtMs ?? nowMs()
+      : this.snapshot.markerEnterSettledAtMs;
     const nextMetadata: Record<string, unknown> = {
       ...this.snapshot.metadata,
       ...(metadata ?? {}),
@@ -106,7 +106,7 @@ export class RunOneHandoffCoordinator {
         seq: null,
         page: null,
         phase: 'idle',
-        markerRevealSettledAtMs: null,
+        markerEnterSettledAtMs: null,
         metadata: {},
         updatedAtMs: nowMs(),
       };
@@ -117,7 +117,7 @@ export class RunOneHandoffCoordinator {
     this.snapshot = {
       ...this.snapshot,
       phase,
-      markerRevealSettledAtMs,
+      markerEnterSettledAtMs,
       metadata: cloneMetadata(nextMetadata),
       updatedAtMs: nowMs(),
     };
@@ -149,7 +149,7 @@ export class RunOneHandoffCoordinator {
       seq: null,
       page: null,
       phase: 'idle',
-      markerRevealSettledAtMs: null,
+      markerEnterSettledAtMs: null,
       metadata: {},
       updatedAtMs: nowMs(),
     };

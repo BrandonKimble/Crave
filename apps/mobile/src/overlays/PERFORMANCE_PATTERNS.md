@@ -288,7 +288,6 @@ function useSaveSheetState() {
 ### Available Hooks
 
 - `useSaveSheetState` - Save sheet state management
-- `useResultsSheetInteraction` - Drag/scroll interaction tracking
 - `useTopFoodMeasurement` - Dynamic item truncation measurement
 - `useDebouncedLayoutMeasurement` - General debounced layout
 

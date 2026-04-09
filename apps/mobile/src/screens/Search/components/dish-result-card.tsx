@@ -57,7 +57,6 @@ type DishResultCardProps = {
   onSavePress: () => void;
   openRestaurantProfile: (
     restaurant: RestaurantResult,
-    foodResultsOverride?: FoodResult[],
     source?: 'results_sheet' | 'auto_open_single_candidate' | 'dish_card'
   ) => void;
   openScoreInfo: (payload: ScoreInfoPayload) => void;

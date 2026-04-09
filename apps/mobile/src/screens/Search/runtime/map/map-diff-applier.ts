@@ -5,7 +5,10 @@ import type { MapBounds } from '../../../../types';
 import type { RestaurantFeatureProperties } from '../../components/search-map';
 import { buildMarkerRenderModel } from '../../utils/map-render-model';
 import type { MapQueryBudget } from './map-query-budget';
-import { buildViewportMotionToken, decideMotionDerivation } from './map-motion-budget';
+import {
+  type MapMotionPressureController,
+  resolveMapPlannerAdmission,
+} from './map-motion-pressure';
 
 type UseMapDiffApplierArgs = {
   searchMode: 'shortcut' | 'natural' | 'entity' | null;
@@ -17,6 +20,7 @@ type UseMapDiffApplierArgs = {
     Array<Feature<Point, RestaurantFeatureProperties>>
   >;
   mapGestureActiveRef: React.MutableRefObject<boolean>;
+  mapMotionPressureController: MapMotionPressureController;
   isMapMoving: boolean;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
   mapQueryBudget: MapQueryBudget;
@@ -25,7 +29,8 @@ type UseMapDiffApplierArgs = {
   logSearchCompute: (label: string, durationMs: number) => void;
   maxPins: number;
   visibleCandidateBuffer: number;
-  stableMsMoving: number;
+  promoteStableMsMoving: number;
+  demoteStableMsMoving: number;
   stableMsIdle: number;
   offscreenStableMsMoving: number;
 };
@@ -38,14 +43,50 @@ type PlannerInvocationSnapshot = {
   selectedRestaurantId: string | null;
   scoreMode: UseMapDiffApplierArgs['scoreMode'];
   isMapMoving: boolean;
-  northEastLat: number;
-  northEastLng: number;
-  southWestLat: number;
-  southWestLng: number;
-  rankedCandidates: Array<Feature<Point, RestaurantFeatureProperties>>;
-  markerCandidates: Array<Feature<Point, RestaurantFeatureProperties>>;
+  bounds: {
+    northEastLat: number;
+    northEastLng: number;
+    southWestLat: number;
+    southWestLng: number;
+  };
+  rankedCandidates: readonly Feature<Point, RestaurantFeatureProperties>[];
+  markerCandidates: readonly Feature<Point, RestaurantFeatureProperties>[];
   pinnedKey: string;
 };
+
+const captureMapBoundsSnapshot = (bounds: MapBounds): PlannerInvocationSnapshot['bounds'] => ({
+  northEastLat: bounds.northEast.lat,
+  northEastLng: bounds.northEast.lng,
+  southWestLat: bounds.southWest.lat,
+  southWestLng: bounds.southWest.lng,
+});
+
+const areBoundsSnapshotsMateriallyEqual = (
+  left: PlannerInvocationSnapshot['bounds'],
+  right: PlannerInvocationSnapshot['bounds']
+): boolean =>
+  left.northEastLat === right.northEastLat &&
+  left.northEastLng === right.northEastLng &&
+  left.southWestLat === right.southWestLat &&
+  left.southWestLng === right.southWestLng;
+
+const hasMaterialLodPlannerInputChange = ({
+  previousInvocation,
+  nextInvocation,
+}: {
+  previousInvocation: PlannerInvocationSnapshot | null;
+  nextInvocation: PlannerInvocationSnapshot;
+}): boolean =>
+  previousInvocation == null ||
+  previousInvocation.searchMode !== nextInvocation.searchMode ||
+  previousInvocation.activeTab !== nextInvocation.activeTab ||
+  previousInvocation.selectedRestaurantId !== nextInvocation.selectedRestaurantId ||
+  previousInvocation.scoreMode !== nextInvocation.scoreMode ||
+  previousInvocation.isMapMoving !== nextInvocation.isMapMoving ||
+  !areBoundsSnapshotsMateriallyEqual(previousInvocation.bounds, nextInvocation.bounds) ||
+  previousInvocation.rankedCandidates !== nextInvocation.rankedCandidates ||
+  previousInvocation.markerCandidates !== nextInvocation.markerCandidates ||
+  previousInvocation.pinnedKey !== nextInvocation.pinnedKey;
 
 type UseMapDiffApplierResult = {
   lodPinnedMarkerMeta: LodPinnedMarkerMeta[];
@@ -61,6 +102,7 @@ export const useMapDiffApplier = (args: UseMapDiffApplierArgs): UseMapDiffApplie
     scoreMode,
     markerCandidatesRef,
     shortcutCoverageRankedRef,
+    mapMotionPressureController,
     isMapMoving,
     buildMarkerKey,
     mapQueryBudget,
@@ -69,7 +111,8 @@ export const useMapDiffApplier = (args: UseMapDiffApplierArgs): UseMapDiffApplie
     logSearchCompute,
     maxPins,
     visibleCandidateBuffer,
-    stableMsMoving,
+    promoteStableMsMoving,
+    demoteStableMsMoving,
     stableMsIdle,
     offscreenStableMsMoving,
   } = args;
@@ -82,13 +125,6 @@ export const useMapDiffApplier = (args: UseMapDiffApplierArgs): UseMapDiffApplie
   const lodPinnedResetKeyRef = React.useRef<string>('');
   const lodContextRef = React.useRef({ searchMode, activeTab, selectedRestaurantId });
   const lastPlannerInvocationRef = React.useRef<PlannerInvocationSnapshot | null>(null);
-  const lastMovingLodDerivationRef = React.useRef<{
-    token: ReturnType<typeof buildViewportMotionToken>;
-    runAtMs: number;
-  }>({
-    token: null,
-    runAtMs: 0,
-  });
 
   React.useEffect(() => {
     lodContextRef.current = { searchMode, activeTab, selectedRestaurantId };
@@ -140,81 +176,36 @@ export const useMapDiffApplier = (args: UseMapDiffApplierArgs): UseMapDiffApplie
       }
 
       const lastPlannerInvocation = lastPlannerInvocationRef.current;
-      const now = Date.now();
-      const samePlannerInputsExceptBounds =
-        lastPlannerInvocation != null &&
-        lastPlannerInvocation.searchMode === context.searchMode &&
-        lastPlannerInvocation.activeTab === context.activeTab &&
-        lastPlannerInvocation.selectedRestaurantId === selectedId &&
-        lastPlannerInvocation.scoreMode === scoreMode &&
-        lastPlannerInvocation.isMapMoving === isMapMoving &&
-        lastPlannerInvocation.rankedCandidates === rankedCandidates &&
-        lastPlannerInvocation.markerCandidates === markerCandidatesRef.current &&
-        lastPlannerInvocation.pinnedKey === lodPinnedKeyRef.current;
-      if (isMapMoving && samePlannerInputsExceptBounds) {
-        const motionDecision = decideMotionDerivation({
-          budgetClass: 'moving',
-          previousToken: lastMovingLodDerivationRef.current.token,
-          nextToken: buildViewportMotionToken({
-            bounds,
-            budgetClass: 'moving',
-          }),
-          lastRunAtMs: lastMovingLodDerivationRef.current.runAtMs,
-          nowMs: now,
-          minIntervalMs: 90,
-        });
-        if (!motionDecision.shouldRun) {
-          mapQueryBudget.incrementRuntimeCounter('map_lod_moving_coalesced');
-          return;
-        }
-        lastMovingLodDerivationRef.current = {
-          token: motionDecision.token,
-          runAtMs: now,
-        };
-        mapQueryBudget.incrementRuntimeCounter(`map_lod_moving_runs_${motionDecision.reason}`);
-      } else if (!isMapMoving) {
-        lastMovingLodDerivationRef.current = {
-          token: buildViewportMotionToken({
-            bounds,
-            budgetClass: 'settled',
-          }),
-          runAtMs: now,
-        };
-      }
-      if (
-        lastPlannerInvocation &&
-        lastPlannerInvocation.searchMode === context.searchMode &&
-        lastPlannerInvocation.activeTab === context.activeTab &&
-        lastPlannerInvocation.selectedRestaurantId === selectedId &&
-        lastPlannerInvocation.scoreMode === scoreMode &&
-        lastPlannerInvocation.isMapMoving === isMapMoving &&
-        lastPlannerInvocation.northEastLat === bounds.northEast.lat &&
-        lastPlannerInvocation.northEastLng === bounds.northEast.lng &&
-        lastPlannerInvocation.southWestLat === bounds.southWest.lat &&
-        lastPlannerInvocation.southWestLng === bounds.southWest.lng &&
-        lastPlannerInvocation.rankedCandidates === rankedCandidates &&
-        lastPlannerInvocation.markerCandidates === markerCandidatesRef.current &&
-        lastPlannerInvocation.pinnedKey === lodPinnedKeyRef.current
-      ) {
-        return;
-      }
-
-      const stableMs = isMapMoving ? stableMsMoving : stableMsIdle;
-      const offscreenStableMs = isMapMoving ? offscreenStableMsMoving : 0;
-      lastPlannerInvocationRef.current = {
+      const nowMs = Date.now();
+      const nextPlannerInvocation: PlannerInvocationSnapshot = {
         searchMode: context.searchMode,
         activeTab: context.activeTab,
         selectedRestaurantId: selectedId,
         scoreMode,
         isMapMoving,
-        northEastLat: bounds.northEast.lat,
-        northEastLng: bounds.northEast.lng,
-        southWestLat: bounds.southWest.lat,
-        southWestLng: bounds.southWest.lng,
+        bounds: captureMapBoundsSnapshot(bounds),
         rankedCandidates,
         markerCandidates: markerCandidatesRef.current,
         pinnedKey: lodPinnedKeyRef.current,
       };
+      const plannerAdmission = resolveMapPlannerAdmission({
+        hasMaterialChange: hasMaterialLodPlannerInputChange({
+          previousInvocation: lastPlannerInvocation,
+          nextInvocation: nextPlannerInvocation,
+        }),
+        pressureState: mapMotionPressureController.getState(),
+        nowMs,
+        workClass: 'lod_pins',
+      });
+      mapMotionPressureController.applyNormalWorkEffect(plannerAdmission.normalWorkEffect, nowMs);
+      if (plannerAdmission.decision !== 'run_now') {
+        return;
+      }
+
+      const promoteStableMs = isMapMoving ? promoteStableMsMoving : stableMsIdle;
+      const demoteStableMs = isMapMoving ? demoteStableMsMoving : stableMsIdle;
+      const offscreenDemoteStableMs = isMapMoving ? offscreenStableMsMoving : 0;
+      lastPlannerInvocationRef.current = nextPlannerInvocation;
       const readModelBuildStartMs = getPerfNow();
       const nextModel = buildMarkerRenderModel({
         bounds,
@@ -225,9 +216,10 @@ export const useMapDiffApplier = (args: UseMapDiffApplierArgs): UseMapDiffApplie
         buildMarkerKey,
         maxPins,
         visibleCandidateBuffer,
-        stableMs,
-        offscreenStableMs,
-        nowMs: now,
+        promoteStableMs,
+        demoteStableMs,
+        offscreenDemoteStableMs,
+        nowMs,
         proposedPromoteSinceByMarkerKey: lodPinProposedPromoteSinceByMarkerKeyRef.current,
         proposedDemoteSinceByMarkerKey: lodPinProposedDemoteSinceByMarkerKeyRef.current,
       });
@@ -272,14 +264,16 @@ export const useMapDiffApplier = (args: UseMapDiffApplierArgs): UseMapDiffApplie
       getPerfNow,
       isMapMoving,
       logSearchCompute,
+      mapMotionPressureController,
       mapQueryBudget,
       markerCandidatesRef,
       maxPins,
       offscreenStableMsMoving,
+      promoteStableMsMoving,
+      demoteStableMsMoving,
       shouldLogSearchComputes,
       shortcutCoverageRankedRef,
       stableMsIdle,
-      stableMsMoving,
       visibleCandidateBuffer,
     ]
   );

@@ -1,14 +1,13 @@
 # Search Label Observation Finalization Plan
 
-Last updated: 2026-03-29
-Status: active
+Last updated: 2026-04-03
+Status: active, but now focused on final executor-shape cleanup rather than JS sticky ownership promotion
 Scope:
 
-- `/Users/brandonkimble/crave-search/apps/mobile/ios/cravesearch/noop-file.swift`
+- `/Users/brandonkimble/crave-search/apps/mobile/ios/cravesearch/SearchMapRenderController.swift`
 - `/Users/brandonkimble/crave-search/apps/mobile/android/app/src/main/java/com/crave/SearchMapRenderControllerModule.java`
-- `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/components/hooks/use-search-map-label-observation.ts`
-- `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/components/hooks/use-search-map-label-runtime.ts`
-- `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/components/hooks/use-search-map-label-sources.ts`
+- `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/map/use-map-label-sources.ts`
+- `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/components/search-map.tsx`
 - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/map/search-map-render-controller.ts`
 
 ## Objective
@@ -37,17 +36,19 @@ After the native marker-family cutover, the remaining non-ideal areas were:
 
 - JS planner owns:
   - sticky feature enablement and policy config
-  - candidate projection from pin source store + sticky snapshot
-  - source invalidation boundaries
+  - marker existence and the static four-candidate label universe per marker
+  - source invalidation boundaries for pin/candidate membership changes
+  - optional semantic snapshots for diagnostics/non-render consumers
 - Native executor owns:
   - settled visible label ids
   - sticky candidate lock state
   - sticky revision + dirty identity tracking
   - rendered-label observation cadence/coalescing
   - layer/source resolution for observation
+  - live preferred-side application for label rendering
 - Cross-boundary contract:
   - JS sends policy/config, not per-tick timing decisions
-  - native returns observation snapshot state, not ad hoc render-local internals
+  - native returns compact observation/preference snapshots, but ordinary side-switching does not require JS to rewrite label source data
 
 ### Design constraints
 
@@ -82,9 +83,10 @@ Exit gate:
 
 Exit gate:
 
-- `use-search-map-label-observation` is a thin scheduler/snapshot consumer
+- the old single-use observation hook is deleted, and only minimal event-gating/reset glue remains inline in `search-map.tsx`
 - JS sticky ref/epoch protocol is deleted
-- candidate projection reads immutable sticky snapshot
+- candidate projection no longer rewrites label source properties just because a preferred side changed
+- the remaining inline glue no longer carries query-era readiness or deferred-state behavior beyond minimal event gating/reset
 
 ### LO3: Native observation cadence/coalescing
 
@@ -130,29 +132,68 @@ Exit gate:
 - dead diagnostics from the split-owner native pin/label crash hunt are deleted or justified
 - native/JS declarations match runtime behavior
 
+### LO7: Static candidate source + native-owned preferred side
+
+Exit gate:
+
+- JS emits all four candidate label features for each mounted pin marker as a mostly static source universe
+- ordinary sticky side changes do not dirty/rebuild the JS label source store
+- native applies the currently preferred side locally without requiring JS to rewrite label source payloads
+- Mapbox placement can still choose fallback sides immediately when collisions change
+- sticky behavior remains live and immediate while moving
+
+Delete gate:
+
+- remove source-diff dependence on `labelPreference`
+- remove sticky-revision-driven label source rebuilds from `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/map/use-map-label-sources.ts`
+- remove native/source rewrite dependence on `labelPreference` / `labelMutexMode` as transport properties in favor of retained feature-state / render-local preference admission
+
 ## Current State
 
-1. LO0 is partially established in code, but not yet fully documented in the repo plan
-2. LO1 is in progress: iOS native now owns sticky lock state and returns sticky snapshot data from `queryRenderedLabelObservation`
-3. LO2 is in progress: JS observation hook now consumes the native sticky snapshot instead of mutating sticky refs/maps
-4. LO3 is done on iOS: native owns label observation cadence/coalescing there
-5. LO4 is decided: `DesiredPinSnapshotState` is now limited to planner bookkeeping only
-  - retained intentionally:
-    - `inputRevision`
-    - `pinIdsInOrder`
-    - per-family revision maps
-    - `pinLodZByMarkerKey`
-  - deleted:
-    - long-lived dirty marker sets
-6. LO5 is partially done: Android has native observation scaffolding, but JS still consumes the proven JS-managed sticky path there until sticky parity is verified
-7. LO6 is done for the targeted split-owner crash-hunt diagnostics; any remaining diagnostics should be justified by active runtime risk
+1. LO0/LO1/LO3 are now in place on iOS and Android:
+   - native render controllers own sticky state, sticky memory, observation cadence, and revisioned observation snapshots
+   - native observation configuration now executes under `use-search-map-native-render-owner.ts`
+   - JS consumes `label_observation_updated` events instead of running moving-time observation queries
+2. LO2 is largely in place:
+   - the old single-use `use-search-map-label-observation` hook is now deleted entirely
+   - native label-observation event listening now also terminates under `use-search-map-native-render-owner.ts` instead of `search-map.tsx` subscribing to controller events directly
+   - `search-map.tsx` now keeps only settled visible-label-count/reset bookkeeping
+   - there is no longer a separate JS wrapper boundary around native viewport/idle callbacks or native label-observation events
+   - remaining non-ideal parts are residual inline settled-count/reset glue, not sticky ownership or a JS-owned configure loop
+3. LO4 is decided: `DesiredPinSnapshotState` is now limited to planner bookkeeping only
+
+- retained intentionally:
+  - `inputRevision`
+  - `pinIdsInOrder`
+  - per-family revision maps
+  - `pinLodZByMarkerKey`
+- deleted:
+  - long-lived dirty marker sets
+
+5. LO5 is effectively done for cadence/snapshot parity: iOS and Android both use the native-managed observation contract.
+6. LO6 is partially done: old component-local label source/runtime hooks were deleted, but diagnostic and transitional compatibility code still exists in map/profile/presentation runtime.
+7. LO7 is materially landed and the former source-property seam is now deleted:
+   - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/map/use-map-label-sources.ts` is candidate-static
+   - ordinary sticky side changes no longer rebuild the JS label source store
+   - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/components/search-map.tsx` mounts the full candidate universe and native-owned `nativeLabelPreference` feature-state determines the active preference group
+   - sticky memory now persists across temporary absence in native, so labels and re-promoted pins can resume their last successful side
+   - native now drives preferred-side ordering through retained feature-state instead of rewriting source-feature properties before publication
+
+## Remaining Non-Ideal Seams
+
+- Native publishes baseline snapshots directly on configure/reset, and `use-search-map-native-render-owner.ts` now owns both native observation configuration and native observation event listening, but `search-map.tsx` still owns a small amount of settled visible-label-count/reset glue instead of being a completely stateless native event consumer.
+- The plan’s true remaining work is therefore not ownership promotion. It is final executor-shape cleanup:
+  - remove any remaining query-era/deferred/reset glue from the JS observation hook where safe
+  - delete any stale diagnostics/compatibility seams left from the old JS sticky era
+
+So the remaining work in this area is cleanup/final simplification, not a missing ownership promotion.
 
 ## Validation
 
 Always:
 
-- `swiftc -parse /Users/brandonkimble/crave-search/apps/mobile/ios/cravesearch/noop-file.swift`
-- `yarn eslint /Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/components/hooks/use-search-map-label-observation.ts /Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/components/hooks/use-search-map-label-runtime.ts /Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/components/hooks/use-search-map-label-sources.ts /Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/map/search-map-render-controller.ts /Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/components/search-map.tsx`
+- `swiftc -parse /Users/brandonkimble/crave-search/apps/mobile/ios/cravesearch/SearchMapRenderController.swift`
+- `yarn eslint /Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/map/use-map-label-sources.ts /Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/map/search-map-render-controller.ts /Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/components/search-map.tsx`
 - `bash /Users/brandonkimble/crave-search/scripts/no-bypass-search-runtime.sh`
 
 When relevant:

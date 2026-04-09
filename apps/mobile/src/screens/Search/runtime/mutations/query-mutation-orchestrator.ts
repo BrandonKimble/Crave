@@ -2,10 +2,7 @@ import React from 'react';
 
 import { useSearchStore } from '../../../../store/searchStore';
 import { logger } from '../../../../utils';
-import type {
-  ToggleCommitOptions,
-  ToggleCommitOutcome,
-} from './use-toggle-interaction-coordinator';
+import type { ScheduleToggleCommit } from '../shared/results-toggle-interaction-contract';
 import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
 import {
   buildLevelsFromRange,
@@ -48,6 +45,8 @@ type UseQueryMutationOrchestratorArgs = {
   submittedQuery: string;
   query: string;
   isSearchSessionActive: boolean;
+  openNow: boolean;
+  votesFilterActive: boolean;
   scoreMode: ScoreMode;
   pendingPriceRange: PriceRangeTuple;
   setPendingPriceRange: (next: PriceRangeTuple) => void;
@@ -62,10 +61,7 @@ type UseQueryMutationOrchestratorArgs = {
   setOpenNow: (next: boolean) => void;
   setPriceLevels: (next: number[]) => void;
   setPreferredScoreMode: (next: ScoreMode) => void;
-  scheduleToggleCommit: (
-    runner: () => ToggleCommitOutcome | void,
-    options?: ToggleCommitOptions
-  ) => void;
+  scheduleToggleCommit: ScheduleToggleCommit;
   rerunActiveSearch: (options: RerunActiveSearchOptions) => Promise<void>;
   priceSheetRef: React.MutableRefObject<{ requestClose: () => void } | null>;
   rankSheetRef: React.MutableRefObject<{ requestClose: () => void } | null>;
@@ -98,6 +94,8 @@ export const useQueryMutationOrchestrator = (
     submittedQuery,
     query,
     isSearchSessionActive,
+    openNow,
+    votesFilterActive,
     scoreMode,
     pendingPriceRange,
     setPendingPriceRange,
@@ -178,8 +176,7 @@ export const useQueryMutationOrchestrator = (
     setIsPriceSelectorVisible(false);
     setIsRankSelectorVisible(false);
     clearPendingTabSwitchDraft();
-    const runtimeVotesFilterActive = searchRuntimeBus.getState().votesFilterActive;
-    const nextValue = !runtimeVotesFilterActive;
+    const nextValue = !votesFilterActive;
     searchRuntimeBus.publish({
       votesFilterActive: nextValue,
     });
@@ -221,6 +218,7 @@ export const useQueryMutationOrchestrator = (
     setIsRankSelectorVisible,
     setVotes100Plus,
     submittedQuery,
+    votesFilterActive,
   ]);
 
   const handleScoreModeChange = React.useCallback(
@@ -287,8 +285,7 @@ export const useQueryMutationOrchestrator = (
     setIsPriceSelectorVisible(false);
     setIsRankSelectorVisible(false);
     clearPendingTabSwitchDraft();
-    const runtimeOpenNow = searchRuntimeBus.getState().openNow;
-    const nextValue = !runtimeOpenNow;
+    const nextValue = !openNow;
     searchRuntimeBus.publish({
       openNow: nextValue,
     });
@@ -320,6 +317,7 @@ export const useQueryMutationOrchestrator = (
     clearPendingTabSwitchDraft,
     fireRerunActiveSearch,
     isSearchSessionActive,
+    openNow,
     query,
     scheduleToggleCommit,
     searchRuntimeBus,

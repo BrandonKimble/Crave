@@ -27,8 +27,9 @@ type BuildMarkerRenderModelArgs<TProps extends MarkerLikeProperties> = {
   buildMarkerKey: (feature: MarkerFeature<TProps>) => string;
   maxPins: number;
   visibleCandidateBuffer: number;
-  stableMs: number;
-  offscreenStableMs: number;
+  promoteStableMs: number;
+  demoteStableMs: number;
+  offscreenDemoteStableMs: number;
   nowMs: number;
   proposedPromoteSinceByMarkerKey: Map<string, number>;
   proposedDemoteSinceByMarkerKey: Map<string, number>;
@@ -158,8 +159,9 @@ export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
     buildMarkerKey,
     maxPins,
     visibleCandidateBuffer,
-    stableMs,
-    offscreenStableMs,
+    promoteStableMs,
+    demoteStableMs,
+    offscreenDemoteStableMs,
     nowMs,
     proposedPromoteSinceByMarkerKey,
     proposedDemoteSinceByMarkerKey,
@@ -191,9 +193,6 @@ export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
   const remainingBudget = Math.max(0, maxPins - selectedEntries.length);
   const desiredOthers = visibleRankedCandidates.slice(0, remainingBudget);
   const desiredOthersKeySet = new Set(desiredOthers.map((feature) => buildMarkerKey(feature)));
-  const retentionBudget = Math.max(remainingBudget, remainingBudget + visibleCandidateBuffer);
-  const retainedOthers = visibleRankedCandidates.slice(0, retentionBudget);
-  const retainedOthersKeySet = new Set(retainedOthers.map((feature) => buildMarkerKey(feature)));
 
   const currentPinned = currentPinnedMarkers.filter((feature) =>
     selectedRestaurantId ? feature.properties.restaurantId !== selectedRestaurantId : true
@@ -223,7 +222,7 @@ export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
   }
 
   for (const key of currentPinnedKeySet) {
-    if (retainedOthersKeySet.has(key)) {
+    if (desiredOthersKeySet.has(key)) {
       nextProposedDemoteSinceByMarkerKey.delete(key);
       continue;
     }
@@ -259,7 +258,7 @@ export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
     rankByMarkerKey.get(markerKey) ?? Number.POSITIVE_INFINITY;
 
   const readyToPromote = Array.from(nextProposedPromoteSinceByMarkerKey.entries())
-    .filter(([, sinceAt]) => nowMs - sinceAt >= stableMs)
+    .filter(([, sinceAt]) => nowMs - sinceAt >= promoteStableMs)
     .map(([markerKey]) => markerKey)
     .sort((left, right) => {
       const rankDiff = resolveRankForKey(left) - resolveRankForKey(right);
@@ -273,7 +272,7 @@ export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
     .filter(([markerKey, sinceAt]) => {
       const feature = currentPinnedByKey.get(markerKey);
       const effectiveStableMs =
-        feature && !isVisibleInBounds(feature, bounds) ? offscreenStableMs : stableMs;
+        feature && !isVisibleInBounds(feature, bounds) ? offscreenDemoteStableMs : demoteStableMs;
       return nowMs - sinceAt >= effectiveStableMs;
     })
     .map(([markerKey]) => markerKey)

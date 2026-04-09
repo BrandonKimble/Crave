@@ -4,19 +4,20 @@ import { type StyleProp, type ViewStyle } from 'react-native';
 import type { FlashListProps, FlashListRef } from '@shopify/flash-list';
 import Reanimated from 'react-native-reanimated';
 
-import type { BottomSheetWithFlashListProps, SnapPoints } from '../BottomSheetWithFlashList';
+import type { SnapPoints } from '../bottomSheetMotionTypes';
+import type { BottomSheetWithFlashListProps } from '../bottomSheetWithFlashListContract';
 import { overlaySheetStyles } from '../overlaySheetStyles';
 import { RESULTS_BOTTOM_PADDING } from '../../screens/Search/constants/search';
 import searchStyles from '../../screens/Search/styles';
 import type { OverlayContentSpec, OverlaySheetSnap } from '../types';
+import type { BottomSheetRuntimeModel } from '../useBottomSheetRuntime';
 
 type UseSearchPanelSpecOptions<T> = {
   visible: boolean;
   listScrollEnabled: boolean;
   snapPoints: SnapPoints;
   initialSnapPoint: Exclude<OverlaySheetSnap, 'hidden'>;
-  snapTo?: OverlaySheetSnap | null;
-  motionCommand?: BottomSheetWithFlashListProps<T>['motionCommand'];
+  runtimeModel?: BottomSheetRuntimeModel;
   onScrollOffsetChange?: (offsetY: number) => void;
   onScrollBeginDrag: () => void;
   onScrollEndDrag: () => void;
@@ -30,7 +31,6 @@ type UseSearchPanelSpecOptions<T> = {
   extraData?: FlashListProps<T>['extraData'];
   secondaryList?: BottomSheetWithFlashListProps<T>['secondaryList'];
   activeList?: BottomSheetWithFlashListProps<T>['activeList'];
-  scrollHeaderComponent?: BottomSheetWithFlashListProps<T>['scrollHeaderComponent'];
   interactionEnabled?: boolean;
   data: ReadonlyArray<T>;
   renderItem: FlashListProps<T>['renderItem'];
@@ -61,8 +61,7 @@ export const useSearchPanelSpec = <T,>({
   listScrollEnabled,
   snapPoints,
   initialSnapPoint,
-  snapTo,
-  motionCommand,
+  runtimeModel,
   onScrollOffsetChange,
   onScrollBeginDrag,
   onScrollEndDrag,
@@ -76,7 +75,6 @@ export const useSearchPanelSpec = <T,>({
   extraData,
   secondaryList,
   activeList,
-  scrollHeaderComponent,
   interactionEnabled = true,
   data,
   renderItem,
@@ -136,12 +134,12 @@ export const useSearchPanelSpec = <T,>({
   return React.useMemo(
     () => ({
       overlayKey: 'search',
+      surfaceKind: 'list',
       snapPersistenceKey: null,
       snapPoints,
       listScrollEnabled,
       initialSnapPoint,
-      snapTo,
-      motionCommand,
+      runtimeModel,
       preventSwipeDismiss: true,
       onScrollOffsetChange,
       onScrollBeginDrag,
@@ -164,7 +162,6 @@ export const useSearchPanelSpec = <T,>({
       extraData,
       secondaryList,
       activeList,
-      scrollHeaderComponent,
       data,
       renderItem,
       keyExtractor,
@@ -197,7 +194,6 @@ export const useSearchPanelSpec = <T,>({
       extraData,
       secondaryList,
       activeList,
-      scrollHeaderComponent,
       headerComponent,
       initialSnapPoint,
       interactionEnabled,
@@ -225,8 +221,7 @@ export const useSearchPanelSpec = <T,>({
       resolvedSurfaceStyle,
       scrollIndicatorInsets,
       snapPoints,
-      snapTo,
-      motionCommand,
+      runtimeModel,
       underlayComponent,
     ]
   );

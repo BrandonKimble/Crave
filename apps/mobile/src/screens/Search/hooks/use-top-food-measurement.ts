@@ -1,6 +1,7 @@
 import React from 'react';
 import { type LayoutChangeEvent } from 'react-native';
 
+import { logger } from '../../../utils';
 import searchPerfDebug from '../search-perf-debug';
 
 const getPerfNow = () => {
@@ -328,11 +329,12 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
       if (!shouldLogTopFoodMeasurement || duration < topFoodMeasurementMinMs) {
         return;
       }
-      const suffix = extra ? ` ${extra}` : '';
-      // eslint-disable-next-line no-console
-      console.log(
-        `[SearchPerf] TopFood ${label} ${duration.toFixed(1)}ms drag=${getIsDragging()}${suffix}`
-      );
+      logger.debug('[SearchPerf] TopFood measurement', {
+        label,
+        durationMs: Number(duration.toFixed(1)),
+        isDragging: getIsDragging(),
+        extra: extra ?? null,
+      });
     },
     [getIsDragging, shouldLogTopFoodMeasurement, topFoodMeasurementMinMs]
   );
