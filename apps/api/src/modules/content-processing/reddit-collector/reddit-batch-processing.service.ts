@@ -1,44 +1,30 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { CoverageSourceType } from '@prisma/client';
-import { LoggerService, CorrelationUtils } from '../../../shared';
+import { LoggerService } from '../../../shared';
 import { RedditService } from '../../external-integrations/reddit/reddit.service';
 import { filterAndTransformToLLM } from '../../external-integrations/reddit/reddit-data-filter';
-import {
-  LLMChunkingService,
-  ChunkMetadata,
-} from '../../external-integrations/llm/llm-chunking.service';
-import {
-  LLMConcurrentProcessingService,
-  ProcessingResult as ConcurrentProcessingResult,
-} from '../../external-integrations/llm/llm-concurrent-processing.service';
-import { LLMService } from '../../external-integrations/llm/llm.service';
-import { UnifiedProcessingService } from './unified-processing.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RankScoreRefreshQueueService } from '../rank-score/rank-score-refresh.service';
 import {
   BatchJob,
   BatchProcessingResult,
 } from './batch-processing-queue.types';
-import {
-  LLMInputStructure,
-  LLMPost,
-  LLMOutputStructure,
-  LLMMention,
-} from '../../external-integrations/llm/llm.types';
+import { LLMPost } from '../../external-integrations/llm/llm.types';
+import { MarketRegistryService } from '../../markets/market-registry.service';
+import { ExtractionPipelineService } from './extraction-pipeline.service';
 
-const DEFAULT_COVERAGE_KEY_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-const DEFAULT_COVERAGE_KEY_CACHE_MAX_ENTRIES = 512;
+const DEFAULT_MARKET_KEY_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const DEFAULT_MARKET_KEY_CACHE_MAX_ENTRIES = 512;
 
 @Injectable()
 export class RedditBatchProcessingService implements OnModuleInit {
   private logger!: LoggerService;
-  private readonly coverageKeyCache = new Map<
+  private readonly marketKeyCache = new Map<
     string,
     { value: string; expiresAt: number }
   >();
-  private readonly coverageKeyCacheTtlMs: number;
-  private readonly coverageKeyCacheMaxEntries: number;
+  private readonly marketKeyCacheTtlMs: number;
+  private readonly marketKeyCacheMaxEntries: number;
   private keywordGateConfig!: {
     lookbackMs: number;
     commentSampleLimit: number;
@@ -49,24 +35,19 @@ export class RedditBatchProcessingService implements OnModuleInit {
   constructor(
     @Inject(LoggerService) private readonly loggerService: LoggerService,
     @Inject(RedditService) private readonly redditService: RedditService,
-    @Inject(LLMChunkingService)
-    private readonly llmChunkingService: LLMChunkingService,
-    @Inject(LLMConcurrentProcessingService)
-    private readonly llmConcurrentService: LLMConcurrentProcessingService,
-    @Inject(LLMService) private readonly llmService: LLMService,
-    @Inject(UnifiedProcessingService)
-    private readonly unifiedProcessingService: UnifiedProcessingService,
     private readonly configService: ConfigService,
     @Inject(PrismaService) private readonly prismaService: PrismaService,
+    private readonly marketRegistry: MarketRegistryService,
     private readonly rankScoreRefreshQueue: RankScoreRefreshQueueService,
+    private readonly extractionPipelineService: ExtractionPipelineService,
   ) {
-    this.coverageKeyCacheTtlMs =
+    this.marketKeyCacheTtlMs =
       this.parsePositiveInt(process.env.REDDIT_BATCH_COVERAGE_CACHE_TTL_MS) ??
-      DEFAULT_COVERAGE_KEY_CACHE_TTL_MS;
-    this.coverageKeyCacheMaxEntries =
+      DEFAULT_MARKET_KEY_CACHE_TTL_MS;
+    this.marketKeyCacheMaxEntries =
       this.parsePositiveInt(
         process.env.REDDIT_BATCH_COVERAGE_CACHE_MAX_ENTRIES,
-      ) ?? DEFAULT_COVERAGE_KEY_CACHE_MAX_ENTRIES;
+      ) ?? DEFAULT_MARKET_KEY_CACHE_MAX_ENTRIES;
   }
 
   onModuleInit(): void {
@@ -77,8 +58,8 @@ export class RedditBatchProcessingService implements OnModuleInit {
       commentSampleLimit: this.keywordGateConfig.commentSampleLimit,
       minNewComments: this.keywordGateConfig.minNewComments,
       pipelineScope: this.keywordGateConfig.pipelineScope,
-      coverageKeyCacheTtlMs: this.coverageKeyCacheTtlMs,
-      coverageKeyCacheMaxEntries: this.coverageKeyCacheMaxEntries,
+      marketKeyCacheTtlMs: this.marketKeyCacheTtlMs,
+      marketKeyCacheMaxEntries: this.marketKeyCacheMaxEntries,
     });
   }
 
@@ -170,8 +151,6 @@ export class RedditBatchProcessingService implements OnModuleInit {
         };
       }
 
-      const llmInput: LLMInputStructure = { posts: llmPosts };
-
       const llmPostSampleCount =
         this.parsePositiveInt(process.env.TEST_LLM_POST_SAMPLE_COUNT) ?? 0;
       const commentSampleLimit =
@@ -186,69 +165,24 @@ export class RedditBatchProcessingService implements OnModuleInit {
             )
           : null;
 
-      const llmStartTime = Date.now();
-
-      const chunkStartTime = Date.now();
-      const chunkData =
-        this.llmChunkingService.createContextualChunks(llmInput);
-      const chunkDuration = Date.now() - chunkStartTime;
-      const chunkStats = this.summarizeChunkMetadata(chunkData.metadata);
-      this.logStage('info', 'chunk', 'Chunking completed', job, correlationId, {
-        durationMs: chunkDuration,
-        ...chunkStats,
+      const pipelineResult = await this.extractionPipelineService.processPosts({
+        pipeline: job.collectionType,
+        platform: 'reddit',
+        community: job.subreddit,
+        llmPosts,
+        batchId: job.batchId,
+        parentJobId: job.parentJobId,
+        collectionRunScopeKey: `collection:${job.parentJobId ?? job.batchId}`,
+        activateDocumentsBeforeProcessing: true,
+        runMetadata: {
+          subreddit: job.subreddit,
+        },
       });
 
-      const processingResult: ConcurrentProcessingResult =
-        await this.llmConcurrentService.processConcurrent(
-          chunkData,
-          this.llmService,
-        );
-
-      const flatMentions: LLMMention[] = processingResult.results.flatMap(
-        (result) => result.mentions,
-      );
-
-      const enrichment = this.buildSourceEnrichmentMaps(llmPosts);
-
-      const llmOutput: LLMOutputStructure = {
-        mentions: flatMentions.map((mention) => {
-          const metadata = enrichment.metadataById.get(mention.source_id);
-          const contentOverride =
-            enrichment.contentById.get(mention.source_id) ??
-            mention.source_content ??
-            '';
-          const postContext =
-            enrichment.postContextBySource.get(mention.source_id) ?? '';
-          const sourceType = metadata?.type ?? mention.source_type;
-          const sourceUps = metadata?.ups ?? mention.source_ups ?? 0;
-          const sourceUrl = metadata?.url ?? mention.source_url ?? '';
-          const createdAt =
-            metadata?.created_at ??
-            mention.source_created_at ??
-            new Date().toISOString();
-          const subreddit =
-            metadata?.subreddit ?? mention.subreddit ?? 'unknown';
-
-          return {
-            ...mention,
-            source_content: contentOverride,
-            source_type: sourceType,
-            source_ups: sourceUps,
-            source_url: sourceUrl,
-            source_created_at: createdAt,
-            subreddit,
-            post_context: postContext,
-          };
-        }),
-      };
-
-      this.ensureSurfaceDefaults(llmOutput.mentions);
-      this.normalizeRestaurantNames(llmOutput.mentions, enrichment);
-      this.dropDuplicateRestaurantMentions(llmOutput.mentions, enrichment);
-
-      const rawMentionsSample = [...llmOutput.mentions];
-
-      const llmProcessingTime = Date.now() - llmStartTime;
+      this.logStage('info', 'chunk', 'Chunking completed', job, correlationId, {
+        durationMs: pipelineResult.chunkDurationMs,
+        ...pipelineResult.chunkStats,
+      });
       this.logStage(
         'info',
         'llm',
@@ -256,43 +190,21 @@ export class RedditBatchProcessingService implements OnModuleInit {
         job,
         correlationId,
         {
-          durationMs: llmProcessingTime,
-          chunksProcessed: processingResult.metrics.chunksProcessed,
-          successRate: processingResult.metrics.successRate,
-          failures: processingResult.failures.length,
-          averageChunkTime: processingResult.metrics.averageChunkTime,
-          totalDuration: processingResult.metrics.totalDuration,
-          mentionsExtracted: llmOutput.mentions.length,
+          durationMs: pipelineResult.llmProcessingTimeMs,
+          chunksProcessed: pipelineResult.processingMetrics.chunksProcessed,
+          successRate: pipelineResult.processingMetrics.successRate,
+          failures:
+            pipelineResult.processingMetrics.chunksProcessed -
+            Math.round(
+              (pipelineResult.processingMetrics.chunksProcessed *
+                pipelineResult.processingMetrics.successRate) /
+                100,
+            ),
+          averageChunkTime: pipelineResult.processingMetrics.averageChunkTime,
+          totalDuration: pipelineResult.processingMetrics.totalDuration,
+          mentionsExtracted: pipelineResult.llmOutput.mentions.length,
         },
       );
-      const dbStartTime = Date.now();
-
-      const sourceBreakdown = {
-        pushshift_archive:
-          job.collectionType === 'archive' ? llmPosts.length : 0,
-        reddit_api_chronological:
-          job.collectionType === 'chronological' ? llmPosts.length : 0,
-        reddit_api_keyword_search:
-          job.collectionType === 'keyword' ? llmPosts.length : 0,
-        reddit_api_on_demand:
-          job.collectionType === 'on-demand' ? llmPosts.length : 0,
-      };
-
-      const temporalRange = this.computeTemporalRange(llmPosts);
-
-      const dbResult = await this.unifiedProcessingService.processLLMOutput({
-        mentions: llmOutput.mentions,
-        sourceMetadata: {
-          batchId: job.batchId,
-          collectionType: job.collectionType,
-          subreddit: job.subreddit,
-          searchEntity: undefined,
-          sourceBreakdown,
-          temporalRange,
-        },
-      });
-
-      const dbProcessingTime = Date.now() - dbStartTime;
       this.logStage(
         'info',
         'persist',
@@ -300,9 +212,9 @@ export class RedditBatchProcessingService implements OnModuleInit {
         job,
         correlationId,
         {
-          durationMs: dbProcessingTime,
-          entitiesCreated: dbResult.entitiesCreated,
-          connectionsCreated: dbResult.connectionsCreated,
+          durationMs: pipelineResult.dbProcessingTimeMs,
+          entitiesCreated: pipelineResult.dbResult.entitiesCreated,
+          connectionsCreated: pipelineResult.dbResult.connectionsCreated,
         },
       );
 
@@ -313,19 +225,20 @@ export class RedditBatchProcessingService implements OnModuleInit {
         success: true,
         metrics: {
           postsProcessed: llmPosts.length,
-          mentionsExtracted: llmOutput.mentions.length,
-          entitiesCreated: dbResult.entitiesCreated,
-          connectionsCreated: dbResult.connectionsCreated,
+          mentionsExtracted: pipelineResult.llmOutput.mentions.length,
+          entitiesCreated: pipelineResult.dbResult.entitiesCreated,
+          connectionsCreated: pipelineResult.dbResult.connectionsCreated,
           processingTimeMs: Date.now() - startTime,
-          llmProcessingTimeMs: llmProcessingTime,
-          dbProcessingTimeMs: dbProcessingTime,
+          llmProcessingTimeMs: pipelineResult.llmProcessingTimeMs,
+          dbProcessingTimeMs: pipelineResult.dbProcessingTimeMs,
         },
         completedAt: new Date(),
         details: {
-          createdEntityIds: dbResult.createdEntityIds || [],
-          updatedConnectionIds: dbResult.affectedConnectionIds || [],
-          createdEntities: dbResult.createdEntitySummaries || [],
-          reusedEntities: dbResult.reusedEntitySummaries || [],
+          createdEntityIds: pipelineResult.dbResult.createdEntityIds || [],
+          updatedConnectionIds:
+            pipelineResult.dbResult.affectedConnectionIds || [],
+          createdEntities: pipelineResult.dbResult.createdEntitySummaries || [],
+          reusedEntities: pipelineResult.dbResult.reusedEntitySummaries || [],
           ...(llmPostSample ? { llmPostSample } : {}),
           keywordGateSummary: {
             totalCandidates,
@@ -334,7 +247,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
             skippedDueToDeltaThreshold,
           },
         },
-        rawMentionsSample,
+        rawMentionsSample: pipelineResult.rawMentionsSample,
       };
       this.logStage(
         'info',
@@ -345,9 +258,9 @@ export class RedditBatchProcessingService implements OnModuleInit {
         {
           durationMs: Date.now() - startTime,
           postsProcessed: llmPosts.length,
-          mentionsExtracted: llmOutput.mentions.length,
-          entitiesCreated: dbResult.entitiesCreated,
-          connectionsCreated: dbResult.connectionsCreated,
+          mentionsExtracted: pipelineResult.llmOutput.mentions.length,
+          entitiesCreated: pipelineResult.dbResult.entitiesCreated,
+          connectionsCreated: pipelineResult.dbResult.connectionsCreated,
         },
       );
       await this.refreshRankScoresIfFinalBatch(job, correlationId);
@@ -512,7 +425,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
       this.buildPostSourceId(postId),
     );
 
-    const existingRecords = await this.prismaService.source.findMany({
+    const existingRecords = await this.prismaService.processedSource.findMany({
       where: {
         pipeline: { in: pipelineScope },
         sourceId: { in: postSourceIds },
@@ -625,13 +538,14 @@ export class RedditBatchProcessingService implements OnModuleInit {
         return false;
       }
 
-      const existingComments = await this.prismaService.source.findMany({
-        where: {
-          pipeline: { in: pipelineScope },
-          sourceId: { in: recentCommentIds },
-        },
-        select: { sourceId: true },
-      });
+      const existingComments =
+        await this.prismaService.processedSource.findMany({
+          where: {
+            pipeline: { in: pipelineScope },
+            sourceId: { in: recentCommentIds },
+          },
+          select: { sourceId: true },
+        });
 
       const existingSet = new Set(existingComments.map((row) => row.sourceId));
       const newCount = recentCommentIds.reduce((count, commentId) => {
@@ -710,439 +624,6 @@ export class RedditBatchProcessingService implements OnModuleInit {
     };
   }
 
-  private buildSourceEnrichmentMaps(llmPosts: LLMPost[]): {
-    contentById: Map<string, string>;
-    idToPostId: Map<string, string>;
-    metadataById: Map<
-      string,
-      {
-        type: 'post' | 'comment';
-        ups: number;
-        url: string;
-        created_at: string;
-        subreddit: string;
-      }
-    >;
-    postContextBySource: Map<string, string>;
-  } {
-    const contentById = new Map<string, string>();
-    const idToPostId = new Map<string, string>();
-    const metadataById = new Map<
-      string,
-      {
-        type: 'post' | 'comment';
-        ups: number;
-        url: string;
-        created_at: string;
-        subreddit: string;
-      }
-    >();
-
-    for (const post of llmPosts) {
-      contentById.set(post.id, post.content);
-      idToPostId.set(post.id, post.id);
-      metadataById.set(post.id, {
-        type: 'post',
-        ups: Math.max(0, post.score),
-        url: post.url,
-        created_at: post.created_at,
-        subreddit: post.subreddit || 'unknown',
-      });
-
-      for (const comment of post.comments) {
-        contentById.set(comment.id, comment.content);
-        idToPostId.set(comment.id, post.id);
-        metadataById.set(comment.id, {
-          type: 'comment',
-          ups: Math.max(0, comment.score),
-          url: comment.url,
-          created_at: comment.created_at,
-          subreddit: post.subreddit || 'unknown',
-        });
-      }
-    }
-
-    const postContextBySource = new Map<string, string>();
-    for (const post of llmPosts) {
-      postContextBySource.set(post.id, post.content);
-      for (const comment of post.comments) {
-        postContextBySource.set(comment.id, post.content);
-      }
-    }
-
-    return {
-      contentById,
-      idToPostId,
-      metadataById,
-      postContextBySource,
-    };
-  }
-
-  private ensureSurfaceDefaults(mentions: LLMMention[]): void {
-    const alignSurfaces = (
-      canonicalValues: unknown,
-      surfaceValues: unknown,
-    ): (string | null)[] | null => {
-      if (!Array.isArray(canonicalValues)) {
-        return Array.isArray(surfaceValues)
-          ? (surfaceValues as unknown[]).map((value) =>
-              typeof value === 'string' && value.length > 0 ? value : null,
-            )
-          : null;
-      }
-
-      const canonicalArray = canonicalValues as unknown[];
-      const surfaceArray = Array.isArray(surfaceValues)
-        ? (surfaceValues as unknown[])
-        : [];
-
-      return canonicalArray.map((value, index) => {
-        const surfaceCandidate = surfaceArray[index];
-        if (
-          typeof surfaceCandidate === 'string' &&
-          surfaceCandidate.length > 0
-        ) {
-          return surfaceCandidate;
-        }
-        if (typeof value === 'string' && value.length > 0) {
-          return value;
-        }
-        return null;
-      });
-    };
-
-    for (const mention of mentions) {
-      const restaurantName =
-        typeof mention?.restaurant === 'string' ? mention.restaurant : null;
-      if (
-        typeof mention?.restaurant_surface !== 'string' ||
-        mention.restaurant_surface.length === 0
-      ) {
-        mention.restaurant_surface = restaurantName;
-      }
-
-      const foodName = typeof mention?.food === 'string' ? mention.food : null;
-      if (
-        mention.food_surface === undefined ||
-        (mention.food_surface === null && foodName)
-      ) {
-        mention.food_surface = foodName;
-      } else if (
-        typeof mention.food_surface !== 'string' ||
-        mention.food_surface.length === 0
-      ) {
-        mention.food_surface = foodName;
-      }
-
-      mention.food_category_surfaces = alignSurfaces(
-        mention.food_categories,
-        mention.food_category_surfaces,
-      );
-
-      mention.food_attribute_surfaces = alignSurfaces(
-        mention.food_attributes,
-        mention.food_attribute_surfaces,
-      );
-
-      mention.restaurant_attribute_surfaces = alignSurfaces(
-        mention.restaurant_attributes,
-        mention.restaurant_attribute_surfaces,
-      );
-    }
-  }
-
-  private normalizeRestaurantNames(
-    mentions: LLMMention[],
-    enrichment: ReturnType<typeof this.buildSourceEnrichmentMaps>,
-  ): void {
-    const tokenize = (s: string | null | undefined): string[] => {
-      if (!s || typeof s !== 'string') return [];
-      return s
-        .toLowerCase()
-        .split(/[^a-z0-9]+/g)
-        .filter(Boolean);
-    };
-
-    const keyFromTokens = (tokens: string[]) => tokens.join(' ');
-    const isSubset = (small: Set<string>, big: Set<string>) => {
-      for (const t of small) if (!big.has(t)) return false;
-      return true;
-    };
-
-    const postNormalizationStats = new Map<
-      string,
-      {
-        nameCounts: Map<
-          string,
-          { count: number; upvotes: number; tokens: string[] }
-        >;
-        dishSets: string[][];
-      }
-    >();
-
-    const idToPostId = enrichment.idToPostId;
-
-    try {
-      const mentionsByPost = new Map<string, LLMMention[]>();
-      for (const mention of mentions) {
-        const postId = idToPostId.get(mention.source_id);
-        if (!postId) continue;
-        if (!mentionsByPost.has(postId)) {
-          mentionsByPost.set(postId, []);
-        }
-        mentionsByPost.get(postId)!.push(mention);
-      }
-
-      for (const [postId, postMentions] of mentionsByPost.entries()) {
-        const nameCounts = new Map<
-          string,
-          { count: number; upvotes: number; tokens: string[] }
-        >();
-
-        for (const mention of postMentions) {
-          const tokens = tokenize(mention.restaurant);
-          const key = keyFromTokens(tokens);
-          if (!key) continue;
-          const prev = nameCounts.get(key) || {
-            count: 0,
-            upvotes: 0,
-            tokens,
-          };
-          nameCounts.set(key, {
-            count: prev.count + 1,
-            upvotes: prev.upvotes + mention.source_ups,
-            tokens,
-          });
-        }
-
-        const dishSets: string[][] = [];
-        const dishKeys = new Set<string>();
-        for (const mention of postMentions) {
-          const dishTokens = tokenize(mention.food);
-          if (dishTokens.length === 0) continue;
-          const key = keyFromTokens(dishTokens);
-          if (!dishKeys.has(key)) {
-            dishKeys.add(key);
-            dishSets.push(dishTokens);
-          }
-        }
-
-        postNormalizationStats.set(postId, {
-          nameCounts,
-          dishSets,
-        });
-
-        for (const mention of postMentions) {
-          const restaurantTokens = tokenize(mention.restaurant);
-          if (restaurantTokens.length === 0) continue;
-
-          let rewritten = false;
-          const foodTokens = tokenize(mention.food);
-          if (foodTokens.length > 0) {
-            const restaurantSet = new Set(restaurantTokens);
-            const foodSet = new Set(foodTokens);
-            let overlap = false;
-            for (const token of foodSet) {
-              if (restaurantSet.has(token)) {
-                overlap = true;
-                break;
-              }
-            }
-
-            if (overlap) {
-              const remainder = restaurantTokens.filter(
-                (token) => !foodSet.has(token),
-              );
-              if (remainder.length > 0) {
-                const remainderSet = new Set(remainder);
-                let bestMatch: {
-                  key: string;
-                  count: number;
-                  upvotes: number;
-                  tokens: string[];
-                } | null = null;
-
-                for (const [key, info] of nameCounts.entries()) {
-                  const tokenSet = new Set(info.tokens);
-                  if (isSubset(tokenSet, remainderSet)) {
-                    if (
-                      !bestMatch ||
-                      info.count > bestMatch.count ||
-                      (info.count === bestMatch.count &&
-                        info.upvotes > bestMatch.upvotes) ||
-                      (info.count === bestMatch.count &&
-                        info.upvotes === bestMatch.upvotes &&
-                        info.tokens.length > bestMatch.tokens.length)
-                    ) {
-                      bestMatch = {
-                        key,
-                        count: info.count,
-                        upvotes: info.upvotes,
-                        tokens: info.tokens,
-                      };
-                    }
-                  }
-                }
-
-                if (
-                  bestMatch &&
-                  bestMatch.key !== keyFromTokens(restaurantTokens)
-                ) {
-                  mention.restaurant = bestMatch.key;
-                  rewritten = true;
-                }
-              }
-            }
-          }
-
-          if (!rewritten && dishSets.length > 0) {
-            const restaurantSet = new Set(restaurantTokens);
-            let bestMatch: {
-              key: string;
-              count: number;
-              upvotes: number;
-              tokens: string[];
-            } | null = null;
-
-            for (const dishTokens of dishSets) {
-              const dishSet = new Set(dishTokens);
-              if (!isSubset(dishSet, restaurantSet)) continue;
-
-              const remainder = restaurantTokens.filter(
-                (token) => !dishSet.has(token),
-              );
-              if (remainder.length === 0) continue;
-
-              const remainderSet = new Set(remainder);
-              for (const [key, info] of nameCounts.entries()) {
-                const tokenSet = new Set(info.tokens);
-                if (isSubset(tokenSet, remainderSet)) {
-                  if (
-                    !bestMatch ||
-                    info.count > bestMatch.count ||
-                    (info.count === bestMatch.count &&
-                      info.upvotes > bestMatch.upvotes) ||
-                    (info.count === bestMatch.count &&
-                      info.upvotes === bestMatch.upvotes &&
-                      info.tokens.length > bestMatch.tokens.length)
-                  ) {
-                    bestMatch = {
-                      key,
-                      count: info.count,
-                      upvotes: info.upvotes,
-                      tokens: info.tokens,
-                    };
-                  }
-                }
-              }
-            }
-
-            if (
-              bestMatch &&
-              bestMatch.key !== keyFromTokens(restaurantTokens)
-            ) {
-              mention.restaurant = bestMatch.key;
-            }
-          }
-        }
-      }
-    } catch (error) {
-      this.logger.debug('Post-level normalization skipped due to error', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        error: {
-          message: error instanceof Error ? error.message : String(error),
-        },
-      });
-    }
-  }
-
-  private dropDuplicateRestaurantMentions(
-    mentions: LLMMention[],
-    enrichment: ReturnType<typeof this.buildSourceEnrichmentMaps>,
-  ): void {
-    const tokenize = (s: string | null | undefined): string[] => {
-      if (!s || typeof s !== 'string') return [];
-      return s
-        .toLowerCase()
-        .split(/[^a-z0-9]+/g)
-        .filter(Boolean);
-    };
-
-    const idToPostId = enrichment.idToPostId;
-    const postNormalizationStats = new Map<
-      string,
-      { nameCounts: Map<string, { tokens: string[] } | undefined> }
-    >();
-
-    mentions.forEach((mention) => {
-      const postId = idToPostId.get(mention.source_id);
-      if (!postId) {
-        return;
-      }
-      if (!postNormalizationStats.has(postId)) {
-        postNormalizationStats.set(postId, {
-          nameCounts: new Map(),
-        });
-      }
-      const stats = postNormalizationStats.get(postId)!;
-      const tokens = tokenize(mention.restaurant);
-      if (tokens.length === 0) {
-        return;
-      }
-      const key = tokens.join(' ');
-      if (!stats.nameCounts.has(key)) {
-        stats.nameCounts.set(key, { tokens });
-      }
-    });
-
-    const filtered = mentions.filter((mention) => {
-      const restaurantTokens = tokenize(mention.restaurant);
-      if (restaurantTokens.length === 0) {
-        return false;
-      }
-
-      const foodTokenSet = new Set(tokenize(mention.food));
-      if (Array.isArray(mention.food_categories)) {
-        for (const category of mention.food_categories) {
-          tokenize(category).forEach((token) => foodTokenSet.add(token));
-        }
-      }
-
-      if (foodTokenSet.size === 0) {
-        return true;
-      }
-
-      const restaurantSet = new Set(restaurantTokens);
-      if (restaurantSet.size !== foodTokenSet.size) {
-        return true;
-      }
-
-      for (const token of restaurantSet) {
-        if (!foodTokenSet.has(token)) {
-          return true;
-        }
-      }
-
-      const postId = enrichment.idToPostId.get(mention.source_id);
-      const stats = postId ? postNormalizationStats.get(postId) : null;
-      const hasLongerVariant = stats?.nameCounts
-        ? Array.from(stats.nameCounts.values()).some((info) => {
-            if (!info?.tokens) return false;
-            if (info.tokens.length <= restaurantTokens.length) {
-              return false;
-            }
-            const infoSet = new Set(info.tokens);
-            return restaurantTokens.every((token) => infoSet.has(token));
-          })
-        : false;
-
-      return hasLongerVariant;
-    });
-
-    mentions.length = 0;
-    mentions.push(...filtered);
-  }
-
   private parsePositiveInt(value?: string | null): number | null {
     if (!value) return null;
     const parsed = Number.parseInt(value, 10);
@@ -1191,81 +672,6 @@ export class RedditBatchProcessingService implements OnModuleInit {
     });
   }
 
-  private computeTemporalRange(llmPosts: LLMPost[]): {
-    earliest: number;
-    latest: number;
-  } {
-    const now = Date.now();
-
-    const timestamps = llmPosts
-      .map((post) => {
-        try {
-          return new Date(post.created_at).getTime();
-        } catch {
-          return undefined;
-        }
-      })
-      .filter((value): value is number => typeof value === 'number');
-
-    if (!timestamps.length) {
-      return {
-        earliest: now,
-        latest: now,
-      };
-    }
-
-    return {
-      earliest: Math.min(...timestamps),
-      latest: Math.max(...timestamps),
-    };
-  }
-
-  private summarizeChunkMetadata(metadata: ChunkMetadata[]): {
-    chunkCount: number;
-    totalComments: number;
-    avgComments: number;
-    minComments: number;
-    maxComments: number;
-    avgEstimatedTokens: number;
-    maxEstimatedTokens: number;
-  } {
-    if (!metadata.length) {
-      return {
-        chunkCount: 0,
-        totalComments: 0,
-        avgComments: 0,
-        minComments: 0,
-        maxComments: 0,
-        avgEstimatedTokens: 0,
-        maxEstimatedTokens: 0,
-      };
-    }
-
-    const commentCounts = metadata.map((m) => m.commentCount || 0);
-    const totalComments = commentCounts.reduce((sum, value) => sum + value, 0);
-    const minComments = Math.min(...commentCounts);
-    const maxComments = Math.max(...commentCounts);
-    const avgComments = Math.round(totalComments / metadata.length);
-
-    const tokenEstimates = metadata.map((m) => m.estimatedTokenCount || 0);
-    const totalTokens = tokenEstimates.reduce((sum, value) => sum + value, 0);
-    const avgEstimatedTokens =
-      tokenEstimates.length > 0
-        ? Math.round(totalTokens / tokenEstimates.length)
-        : 0;
-    const maxEstimatedTokens = Math.max(...tokenEstimates);
-
-    return {
-      chunkCount: metadata.length,
-      totalComments,
-      avgComments,
-      minComments,
-      maxComments,
-      avgEstimatedTokens,
-      maxEstimatedTokens,
-    };
-  }
-
   private logStage(
     level: 'debug' | 'info' | 'warn' | 'error',
     stage: 'gate' | 'chunk' | 'llm' | 'persist' | 'batch',
@@ -1296,101 +702,83 @@ export class RedditBatchProcessingService implements OnModuleInit {
     );
   }
 
-  private async resolveCoverageKeyForSubreddit(
-    subreddit: string,
+  private async resolveMarketKeyForCommunity(
+    communityName: string,
   ): Promise<string | null> {
-    const normalized = subreddit?.trim().toLowerCase();
+    const normalized = communityName?.trim().toLowerCase();
     if (!normalized) {
       return null;
     }
 
-    const cached = this.getCachedCoverageKey(normalized);
+    const cached = this.getCachedMarketKey(normalized);
     if (cached) {
       return cached;
     }
 
-    const record = (await this.prismaService.coverageArea.findFirst({
-      where: {
-        name: {
-          equals: subreddit,
-          mode: 'insensitive',
-        },
-        sourceType: CoverageSourceType.all,
-      },
-      select: { coverageKey: true, name: true },
-    })) as { coverageKey: string | null; name: string } | null;
-
     const resolved =
-      typeof record?.coverageKey === 'string' && record.coverageKey.trim()
-        ? record.coverageKey.trim().toLowerCase()
-        : record?.name
-          ? record.name.trim().toLowerCase()
-          : normalized;
-
-    this.setCachedCoverageKey(normalized, resolved);
-    return resolved;
-  }
-
-  private getCachedCoverageKey(key: string): string | null {
-    if (
-      this.coverageKeyCacheTtlMs <= 0 ||
-      this.coverageKeyCacheMaxEntries <= 0
-    ) {
+      await this.marketRegistry.resolveMarketKeyForCommunity(communityName);
+    if (!resolved) {
       return null;
     }
 
-    const entry = this.coverageKeyCache.get(key);
+    this.setCachedMarketKey(normalized, resolved);
+    return resolved;
+  }
+
+  private getCachedMarketKey(key: string): string | null {
+    if (this.marketKeyCacheTtlMs <= 0 || this.marketKeyCacheMaxEntries <= 0) {
+      return null;
+    }
+
+    const entry = this.marketKeyCache.get(key);
     if (!entry) {
       return null;
     }
 
     if (entry.expiresAt <= Date.now()) {
-      this.coverageKeyCache.delete(key);
+      this.marketKeyCache.delete(key);
       return null;
     }
 
     // Refresh recency when a hot key is reused.
-    this.coverageKeyCache.delete(key);
-    this.coverageKeyCache.set(key, entry);
+    this.marketKeyCache.delete(key);
+    this.marketKeyCache.set(key, entry);
     return entry.value;
   }
 
-  private setCachedCoverageKey(key: string, value: string): void {
-    if (
-      this.coverageKeyCacheTtlMs <= 0 ||
-      this.coverageKeyCacheMaxEntries <= 0
-    ) {
+  private setCachedMarketKey(key: string, value: string): void {
+    if (this.marketKeyCacheTtlMs <= 0 || this.marketKeyCacheMaxEntries <= 0) {
       return;
     }
 
-    this.coverageKeyCache.set(key, {
+    this.marketKeyCache.set(key, {
       value,
-      expiresAt: Date.now() + this.coverageKeyCacheTtlMs,
+      expiresAt: Date.now() + this.marketKeyCacheTtlMs,
     });
-    this.pruneCoverageKeyCache();
+    this.pruneMarketKeyCache();
   }
 
-  private pruneCoverageKeyCache(): void {
-    if (this.coverageKeyCacheMaxEntries <= 0) {
-      this.coverageKeyCache.clear();
+  private pruneMarketKeyCache(): void {
+    if (this.marketKeyCacheMaxEntries <= 0) {
+      this.marketKeyCache.clear();
       return;
     }
 
     const now = Date.now();
-    for (const [key, entry] of this.coverageKeyCache.entries()) {
+    for (const [key, entry] of this.marketKeyCache.entries()) {
       if (entry.expiresAt <= now) {
-        this.coverageKeyCache.delete(key);
+        this.marketKeyCache.delete(key);
       }
     }
 
-    while (this.coverageKeyCache.size > this.coverageKeyCacheMaxEntries) {
-      const oldestKey = this.coverageKeyCache.keys().next().value as
+    while (this.marketKeyCache.size > this.marketKeyCacheMaxEntries) {
+      const oldestKey = this.marketKeyCache.keys().next().value as
         | string
         | undefined;
       if (!oldestKey) {
         break;
       }
-      this.coverageKeyCache.delete(oldestKey);
+      this.marketKeyCache.delete(oldestKey);
     }
   }
 
@@ -1402,11 +790,9 @@ export class RedditBatchProcessingService implements OnModuleInit {
       return;
     }
 
-    const coverageKey = await this.resolveCoverageKeyForSubreddit(
-      job.subreddit,
-    );
-    if (!coverageKey) {
-      this.logger.warn('Rank refresh skipped (missing coverage key)', {
+    const marketKey = await this.resolveMarketKeyForCommunity(job.subreddit);
+    if (!marketKey) {
+      this.logger.warn('Rank refresh skipped (missing market key)', {
         correlationId,
         batchId: job.batchId,
         parentJobId: job.parentJobId,
@@ -1417,7 +803,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
     }
 
     try {
-      await this.rankScoreRefreshQueue.queueRefreshForLocations([coverageKey], {
+      await this.rankScoreRefreshQueue.queueRefreshForMarkets([marketKey], {
         source: 'collection',
         force: true,
       });
@@ -1425,7 +811,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
         correlationId,
         parentJobId: job.parentJobId,
         collectionType: job.collectionType,
-        coverageKey,
+        marketKey,
       });
     } catch (error) {
       this.logger.error(
@@ -1434,7 +820,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
           correlationId,
           parentJobId: job.parentJobId,
           collectionType: job.collectionType,
-          coverageKey,
+          marketKey,
           error: error instanceof Error ? error.message : String(error),
         },
       );

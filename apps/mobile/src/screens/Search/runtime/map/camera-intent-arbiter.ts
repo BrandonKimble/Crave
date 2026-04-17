@@ -121,6 +121,19 @@ export class CameraIntentArbiter {
     return true;
   }
 
+  public resolvePendingProgrammaticCameraAnimation(
+    status: 'finished' | 'cancelled' = 'finished'
+  ): boolean {
+    const completionId = this.pendingProgrammaticCameraCompletionId;
+    if (!completionId) {
+      return false;
+    }
+    return this.handleProgrammaticCameraAnimationCompletion({
+      animationCompletionId: completionId,
+      status,
+    });
+  }
+
   public hasPendingProgrammaticCameraCompletion(): boolean {
     return this.pendingProgrammaticCameraCompletionId != null;
   }

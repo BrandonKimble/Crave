@@ -2,24 +2,12 @@ import type { Coordinate, FoodResult, MapBounds, RestaurantResult } from '../../
 
 import { getQualityColorFromScore } from './quality';
 
-export const getMarkerColorForRestaurant = (
-  restaurant: RestaurantResult,
-  scoreMode: 'global_quality' | 'coverage_display' = 'global_quality'
-): string => {
-  if (scoreMode === 'coverage_display') {
-    return getQualityColorFromScore(restaurant.displayScore);
-  }
-  return getQualityColorFromScore(restaurant.restaurantQualityScore);
+export const getMarkerColorForRestaurant = (restaurant: RestaurantResult): string => {
+  return getQualityColorFromScore(restaurant.contextualScore ?? restaurant.restaurantQualityScore);
 };
 
-export const getMarkerColorForDish = (
-  dish: FoodResult,
-  scoreMode: 'global_quality' | 'coverage_display' = 'global_quality'
-): string => {
-  if (scoreMode === 'coverage_display') {
-    return getQualityColorFromScore(dish.displayScore);
-  }
-  return getQualityColorFromScore(dish.qualityScore);
+export const getMarkerColorForDish = (dish: FoodResult): string => {
+  return getQualityColorFromScore(dish.contextualScore ?? dish.qualityScore);
 };
 
 const clamp = (value: number, min: number, max: number): number =>

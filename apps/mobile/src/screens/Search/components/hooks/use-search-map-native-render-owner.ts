@@ -14,6 +14,7 @@ import {
   type MapMotionPressureController,
   type MotionPressureState,
 } from '../../runtime/map/map-motion-pressure';
+import { EMPTY_SEARCH_MAP_SOURCE_STORE } from '../../runtime/map/search-map-source-store';
 import type {
   SearchMapCommittedSourceDeltaJournal,
   SearchMapSourceStore,
@@ -216,6 +217,10 @@ type SearchMapRenderFrame = {
   interactionMode: SearchMapRenderInteractionMode;
 };
 
+const resolveSearchMapSourceStore = (
+  sourceStore: SearchMapSourceStore | null | undefined
+): SearchMapSourceStore => sourceStore ?? EMPTY_SEARCH_MAP_SOURCE_STORE;
+
 const resolveNativeRenderOwnerFrameAdmission = ({
   hasPreviousDesiredFrame,
   snapshotChanged,
@@ -358,7 +363,7 @@ type NativeRenderOwnerTransportState<TFrame extends MapRenderFrameTransportQueue
 };
 
 const createNativeRenderOwnerTransportState = <
-  TFrame extends MapRenderFrameTransportQueueFrame
+  TFrame extends MapRenderFrameTransportQueueFrame,
 >(): NativeRenderOwnerTransportState<TFrame> => ({
   lastDesiredFrame: null,
   lastDesiredFrameGenerationId: null,
@@ -394,7 +399,7 @@ const resetNativeRenderOwnerTransportState = <TFrame extends MapRenderFrameTrans
 };
 
 const queueLatestNativeRenderOwnerFrameForTransport = <
-  TFrame extends MapRenderFrameTransportQueueFrame
+  TFrame extends MapRenderFrameTransportQueueFrame,
 >(
   transportState: NativeRenderOwnerTransportState<TFrame>,
   nextFrame: TFrame
@@ -403,7 +408,7 @@ const queueLatestNativeRenderOwnerFrameForTransport = <
 };
 
 const takeNextNativeRenderOwnerFrameForTransport = <
-  TFrame extends MapRenderFrameTransportQueueFrame
+  TFrame extends MapRenderFrameTransportQueueFrame,
 >({
   transportState,
   ownerEpoch,
@@ -437,7 +442,7 @@ const takeNextNativeRenderOwnerFrameForTransport = <
 };
 
 const acknowledgeNativeRenderOwnerFrameTransportSync = <
-  TFrame extends MapRenderFrameTransportQueueFrame
+  TFrame extends MapRenderFrameTransportQueueFrame,
 >(
   transportState: NativeRenderOwnerTransportState<TFrame>,
   frameGenerationId: string
@@ -450,7 +455,7 @@ const acknowledgeNativeRenderOwnerFrameTransportSync = <
 };
 
 const markNativeRenderOwnerFrameTransportFailed = <
-  TFrame extends MapRenderFrameTransportQueueFrame
+  TFrame extends MapRenderFrameTransportQueueFrame,
 >(
   transportState: NativeRenderOwnerTransportState<TFrame>,
   frameGenerationId: string
@@ -462,7 +467,7 @@ const markNativeRenderOwnerFrameTransportFailed = <
 };
 
 const requeueDroppedNativeRenderOwnerFrameForTransport = <
-  TFrame extends MapRenderFrameTransportQueueFrame
+  TFrame extends MapRenderFrameTransportQueueFrame,
 >({
   transportState,
   droppedFrame,
@@ -480,7 +485,7 @@ const requeueDroppedNativeRenderOwnerFrameForTransport = <
 };
 
 const retargetNativeRenderOwnerTransportOwnerEpoch = <
-  TFrame extends MapRenderFrameTransportQueueFrame
+  TFrame extends MapRenderFrameTransportQueueFrame,
 >(
   transportState: NativeRenderOwnerTransportState<TFrame>,
   ownerEpoch: number
@@ -521,32 +526,32 @@ const getSnapshotSource = (
 ): SearchMapSourceStore => {
   switch (sourceId) {
     case 'pins':
-      return snapshot.pins;
+      return resolveSearchMapSourceStore(snapshot.pins);
     case 'pinInteractions':
-      return snapshot.pinInteractions;
+      return resolveSearchMapSourceStore(snapshot.pinInteractions);
     case 'dots':
-      return snapshot.dots;
+      return resolveSearchMapSourceStore(snapshot.dots);
     case 'dotInteractions':
-      return snapshot.dotInteractions;
+      return resolveSearchMapSourceStore(snapshot.dotInteractions);
     case 'labels':
-      return snapshot.labels;
+      return resolveSearchMapSourceStore(snapshot.labels);
     case 'labelInteractions':
-      return snapshot.labelInteractions;
+      return resolveSearchMapSourceStore(snapshot.labelInteractions);
     case 'labelCollisions':
-      return snapshot.labelCollisions;
+      return resolveSearchMapSourceStore(snapshot.labelCollisions);
   }
 };
 
 const getSearchMapRenderSourceRevisions = (
   snapshot: SearchMapRenderSnapshot
 ): SearchMapRenderSourceRevisionState => ({
-  pins: snapshot.pins.sourceRevision,
-  pinInteractions: snapshot.pinInteractions.sourceRevision,
-  dots: snapshot.dots.sourceRevision,
-  dotInteractions: snapshot.dotInteractions.sourceRevision,
-  labels: snapshot.labels.sourceRevision,
-  labelInteractions: snapshot.labelInteractions.sourceRevision,
-  labelCollisions: snapshot.labelCollisions.sourceRevision,
+  pins: resolveSearchMapSourceStore(snapshot.pins).sourceRevision,
+  pinInteractions: resolveSearchMapSourceStore(snapshot.pinInteractions).sourceRevision,
+  dots: resolveSearchMapSourceStore(snapshot.dots).sourceRevision,
+  dotInteractions: resolveSearchMapSourceStore(snapshot.dotInteractions).sourceRevision,
+  labels: resolveSearchMapSourceStore(snapshot.labels).sourceRevision,
+  labelInteractions: resolveSearchMapSourceStore(snapshot.labelInteractions).sourceRevision,
+  labelCollisions: resolveSearchMapSourceStore(snapshot.labelCollisions).sourceRevision,
 });
 
 const toRenderSourceDelta = (
@@ -633,9 +638,9 @@ const buildSourceDelta = (
     acknowledgedSourceRevision == null
       ? nextSourceStore.buildReplaceDelta()
       : committedDeltaJournal?.baseSourceRevision === acknowledgedSourceRevision
-      ? committedDeltaJournal.delta
-      : buildReplayJournalDelta(acknowledgedSourceRevision, nextSourceStore) ??
-        nextSourceStore.buildReplaceDelta();
+        ? committedDeltaJournal.delta
+        : (buildReplayJournalDelta(acknowledgedSourceRevision, nextSourceStore) ??
+          nextSourceStore.buildReplaceDelta());
   return delta ? toRenderSourceDelta(sourceId, delta) : null;
 };
 
@@ -699,8 +704,8 @@ const deriveNativeDiagnosticMessageState = (message: string) => {
   const eventKind = message.startsWith('source_commit_pending')
     ? 'pending'
     : message.startsWith('source_commit_ack')
-    ? 'ack'
-    : 'other';
+      ? 'ack'
+      : 'other';
   const sourceId = sourceIdMatch?.[1]?.trim();
   return {
     eventKind,
@@ -735,8 +740,8 @@ const derivePresentationDiagnosticsState = (
     presentationState.snapshotKind == null
       ? null
       : presentationState.snapshotKind === 'results_exit'
-      ? 'dismiss'
-      : 'reveal',
+        ? 'dismiss'
+        : 'reveal',
   batchPhase: deriveSearchMapRenderPresentationStatusState(presentationState).batchPhase,
 });
 
@@ -878,7 +883,7 @@ const deriveExecutionBatchId = ({
 }): string => {
   const presentationBatchId =
     presentationSyncState.currentRequestKey != null
-      ? presentationState.executionBatch?.batchId ?? null
+      ? (presentationState.executionBatch?.batchId ?? null)
       : null;
   if (presentationBatchId != null) {
     return presentationBatchId;
@@ -904,8 +909,8 @@ const deriveMotionPressurePresentationTransaction = (
       presentationPhase === 'covered'
         ? ('preparing' as const)
         : presentationPhase === 'enter_requested' || presentationPhase === 'exit_preroll'
-        ? ('committing' as const)
-        : ('executing' as const),
+          ? ('committing' as const)
+          : ('executing' as const),
   };
 };
 
@@ -1420,6 +1425,14 @@ const useSearchMapNativeRenderOwnerSync = ({
   interactionMode,
   onSyncError,
 }: SearchMapNativeRenderOwnerSyncArgs): void => {
+  const resolvedPins = resolveSearchMapSourceStore(pins);
+  const resolvedPinInteractions = resolveSearchMapSourceStore(pinInteractions);
+  const resolvedDots = resolveSearchMapSourceStore(dots);
+  const resolvedDotInteractions = resolveSearchMapSourceStore(dotInteractions);
+  const resolvedLabels = resolveSearchMapSourceStore(labels);
+  const resolvedLabelInteractions = resolveSearchMapSourceStore(labelInteractions);
+  const resolvedLabelCollisions = resolveSearchMapSourceStore(labelCollisions);
+
   type NativeRenderOwnerFrameEnvelope = {
     ownerEpoch: number;
     frameGenerationId: string;
@@ -1430,15 +1443,23 @@ const useSearchMapNativeRenderOwnerSync = ({
   };
   const buildSourceSnapshot = React.useCallback(
     (): SearchMapRenderSnapshot => ({
-      pins,
-      pinInteractions,
-      dots,
-      dotInteractions,
-      labels,
-      labelInteractions,
-      labelCollisions,
+      pins: resolvedPins,
+      pinInteractions: resolvedPinInteractions,
+      dots: resolvedDots,
+      dotInteractions: resolvedDotInteractions,
+      labels: resolvedLabels,
+      labelInteractions: resolvedLabelInteractions,
+      labelCollisions: resolvedLabelCollisions,
     }),
-    [dots, dotInteractions, labelCollisions, labelInteractions, labels, pinInteractions, pins]
+    [
+      resolvedDotInteractions,
+      resolvedDots,
+      resolvedLabelCollisions,
+      resolvedLabelInteractions,
+      resolvedLabels,
+      resolvedPinInteractions,
+      resolvedPins,
+    ]
   );
   const transportStateRef = React.useRef(
     createNativeRenderOwnerTransportState<NativeRenderOwnerFrameEnvelope>()
@@ -1686,19 +1707,19 @@ const useSearchMapNativeRenderOwnerSync = ({
       ? null
       : getSourceSyncBaselineRevisions();
     const nominalChangedSources = [
-      sourceSyncBaselineRevisions?.pins !== pins.sourceRevision ? 'pins' : null,
-      sourceSyncBaselineRevisions?.pinInteractions !== pinInteractions.sourceRevision
+      sourceSyncBaselineRevisions?.pins !== resolvedPins.sourceRevision ? 'pins' : null,
+      sourceSyncBaselineRevisions?.pinInteractions !== resolvedPinInteractions.sourceRevision
         ? 'pinInteractions'
         : null,
-      sourceSyncBaselineRevisions?.dots !== dots.sourceRevision ? 'dots' : null,
-      sourceSyncBaselineRevisions?.dotInteractions !== dotInteractions.sourceRevision
+      sourceSyncBaselineRevisions?.dots !== resolvedDots.sourceRevision ? 'dots' : null,
+      sourceSyncBaselineRevisions?.dotInteractions !== resolvedDotInteractions.sourceRevision
         ? 'dotInteractions'
         : null,
-      sourceSyncBaselineRevisions?.labels !== labels.sourceRevision ? 'labels' : null,
-      sourceSyncBaselineRevisions?.labelInteractions !== labelInteractions.sourceRevision
+      sourceSyncBaselineRevisions?.labels !== resolvedLabels.sourceRevision ? 'labels' : null,
+      sourceSyncBaselineRevisions?.labelInteractions !== resolvedLabelInteractions.sourceRevision
         ? 'labelInteractions'
         : null,
-      sourceSyncBaselineRevisions?.labelCollisions !== labelCollisions.sourceRevision
+      sourceSyncBaselineRevisions?.labelCollisions !== resolvedLabelCollisions.sourceRevision
         ? 'labelCollisions'
         : null,
     ].filter((value): value is SearchMapRenderSourceId => value != null);

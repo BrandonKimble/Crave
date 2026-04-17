@@ -67,14 +67,16 @@ export interface Connection {
   foodAttributes: string[];
   mentionCount: number;
   totalUpvotes: number;
+  supportMentionCount?: number;
+  supportTotalUpvotes?: number;
   sourceDiversity: number;
   recentMentionCount: number;
+  supportRecentMentionCount?: number;
   lastMentionedAt?: Date;
   activityLevel: 'normal' | 'active' | 'trending';
   foodQualityScore: number;
   lastUpdated: Date;
   createdAt: Date;
-  boostLastAppliedAt?: Date;
 }
 
 /**

@@ -128,10 +128,6 @@ export const cloneSearchFiltersLayoutCache = (
 type SearchFiltersProps = {
   activeTab: SegmentValue;
   onTabChange: (value: SegmentValue) => void;
-  rankButtonLabel: string;
-  rankButtonActive: boolean;
-  onToggleRankSelector: () => void;
-  isRankSelectorVisible: boolean;
   openNow: boolean;
   onToggleOpenNow: () => void;
   votesFilterActive: boolean;
@@ -150,10 +146,6 @@ type SearchFiltersProps = {
 const SearchFilters: React.FC<SearchFiltersProps> = ({
   activeTab,
   onTabChange,
-  rankButtonLabel,
-  rankButtonActive,
-  onToggleRankSelector,
-  isRankSelectorVisible,
   openNow,
   onToggleOpenNow,
   votesFilterActive,
@@ -458,46 +450,6 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                 />
               ) : null}
               <View style={styles.toggleRowContent}>
-                <Pressable
-                  onLayout={registerHole('toggle-rank')}
-                  onPress={onToggleRankSelector}
-                  accessibilityRole="button"
-                  accessibilityLabel="Select rank mode"
-                  accessibilityState={{
-                    expanded: isRankSelectorVisible,
-                    selected: rankButtonActive,
-                  }}
-                  style={[
-                    styles.rankButton,
-                    rankButtonActive && [styles.rankButtonActive, { backgroundColor: accentColor }],
-                  ]}
-                >
-                  <Text
-                    variant="caption"
-                    weight="semibold"
-                    style={[
-                      styles.rankButtonLabel,
-                      rankButtonActive && styles.rankButtonLabelActive,
-                    ]}
-                  >
-                    {rankButtonLabel}
-                  </Text>
-                  {isRankSelectorVisible ? (
-                    <ChevronUp
-                      size={16}
-                      strokeWidth={3}
-                      color={rankButtonActive ? '#ffffff' : '#111827'}
-                      style={styles.rankButtonChevron}
-                    />
-                  ) : (
-                    <ChevronDown
-                      size={16}
-                      strokeWidth={3}
-                      color={rankButtonActive ? '#ffffff' : '#111827'}
-                      style={styles.rankButtonChevron}
-                    />
-                  )}
-                </Pressable>
                 <GestureDetector gesture={segmentToggleTapGesture}>
                   <View
                     style={styles.segmentedControl}

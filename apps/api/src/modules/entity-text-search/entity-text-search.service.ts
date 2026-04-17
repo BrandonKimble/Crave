@@ -55,7 +55,7 @@ export class EntityTextSearchService {
     term: string,
     entityTypes: EntityType[],
     limit: number,
-    options: { locationKey?: string | null } = {},
+    options: { marketKey?: string | null } = {},
   ): Promise<TextSearchMatch[]> {
     const normalizedTerm = this.normalizeTerm(term);
     if (
@@ -67,16 +67,16 @@ export class EntityTextSearchService {
     }
 
     const safeLimit = Math.max(1, Math.min(limit, this.maxLimit));
-    const normalizedLocationKey =
-      typeof options.locationKey === 'string'
-        ? options.locationKey.trim().toLowerCase()
+    const normalizedMarketKey =
+      typeof options.marketKey === 'string'
+        ? options.marketKey.trim().toLowerCase()
         : null;
 
     const resultsByTerm = await this.searchEntitiesForTerms(
       [normalizedTerm],
       entityTypes,
       safeLimit,
-      { locationKey: normalizedLocationKey, allowPhonetic: true },
+      { marketKey: normalizedMarketKey, allowPhonetic: true },
     );
     return resultsByTerm.get(normalizedTerm) ?? [];
   }
@@ -85,7 +85,7 @@ export class EntityTextSearchService {
     terms: string[],
     entityTypes: EntityType[],
     perTermLimit: number,
-    options: { locationKey?: string | null; allowPhonetic?: boolean } = {},
+    options: { marketKey?: string | null; allowPhonetic?: boolean } = {},
   ): Promise<Map<string, TextSearchMatch[]>> {
     const normalizedTerms = terms
       .map((term) => this.normalizeTerm(term))
@@ -108,9 +108,9 @@ export class EntityTextSearchService {
     }
 
     const safePerTermLimit = Math.max(1, Math.min(perTermLimit, this.maxLimit));
-    const normalizedLocationKey =
-      typeof options.locationKey === 'string'
-        ? options.locationKey.trim().toLowerCase()
+    const normalizedMarketKey =
+      typeof options.marketKey === 'string'
+        ? options.marketKey.trim().toLowerCase()
         : null;
     const allowPhonetic =
       options.allowPhonetic !== undefined ? options.allowPhonetic : true;
@@ -120,7 +120,7 @@ export class EntityTextSearchService {
       const cached = this.getCachedTermResults({
         term,
         entityTypes,
-        locationKey: normalizedLocationKey,
+        marketKey: normalizedMarketKey,
         limit: safePerTermLimit,
       });
       if (cached) {
@@ -148,7 +148,7 @@ export class EntityTextSearchService {
           terms: shortTerms,
           entityTypes,
           perTermLimit: safePerTermLimit,
-          locationKey: normalizedLocationKey,
+          marketKey: normalizedMarketKey,
         });
         rows.forEach((row) => {
           const term = row.term ?? '';
@@ -163,7 +163,7 @@ export class EntityTextSearchService {
           terms: longTerms,
           entityTypes,
           perTermLimit: safePerTermLimit,
-          locationKey: normalizedLocationKey,
+          marketKey: normalizedMarketKey,
           thresholdsByTerm,
         });
         rows.forEach((row) => {
@@ -206,7 +206,7 @@ export class EntityTextSearchService {
         const phoneticRows = await this.fetchPhoneticRowsForTerms({
           terms: phoneticTerms,
           entityTypes,
-          locationKey: normalizedLocationKey,
+          marketKey: normalizedMarketKey,
         });
         phoneticRows.forEach((row) => {
           const term = row.term ?? '';
@@ -242,7 +242,7 @@ export class EntityTextSearchService {
         this.setCachedTermResults({
           term,
           entityTypes,
-          locationKey: normalizedLocationKey,
+          marketKey: normalizedMarketKey,
           limit: safePerTermLimit,
           results: matches,
         });
@@ -291,20 +291,20 @@ export class EntityTextSearchService {
   private buildCacheKey(options: {
     term: string;
     entityTypes: EntityType[];
-    locationKey?: string | null;
+    marketKey?: string | null;
   }): string {
-    const normalizedLocationKey =
-      typeof options.locationKey === 'string'
-        ? options.locationKey.trim().toLowerCase()
+    const normalizedMarketKey =
+      typeof options.marketKey === 'string'
+        ? options.marketKey.trim().toLowerCase()
         : '';
     const entityTypesKey = [...options.entityTypes].sort().join(',');
-    return `${normalizedLocationKey}::${entityTypesKey}::${options.term}`;
+    return `${normalizedMarketKey}::${entityTypesKey}::${options.term}`;
   }
 
   private getCachedTermResults(options: {
     term: string;
     entityTypes: EntityType[];
-    locationKey?: string | null;
+    marketKey?: string | null;
     limit: number;
   }): TextSearchMatch[] | null {
     const key = this.buildCacheKey(options);
@@ -323,7 +323,7 @@ export class EntityTextSearchService {
   private setCachedTermResults(options: {
     term: string;
     entityTypes: EntityType[];
-    locationKey?: string | null;
+    marketKey?: string | null;
     limit: number;
     results: TextSearchMatch[];
   }): void {
@@ -346,7 +346,7 @@ export class EntityTextSearchService {
     terms: string[];
     entityTypes: EntityType[];
     perTermLimit: number;
-    locationKey: string | null;
+    marketKey: string | null;
   }): Promise<EntitySearchRow[]> {
     const values = Prisma.join(
       options.terms.map((term, idx) => {
@@ -357,9 +357,10 @@ export class EntityTextSearchService {
     const entityTypeArray = Prisma.sql`ARRAY[${Prisma.join(
       options.entityTypes.map((type) => Prisma.sql`${type}::entity_type`),
     )}]`;
-    const locationFilter = options.locationKey
-      ? Prisma.sql`AND (e.type != 'restaurant' OR e.location_key = ${options.locationKey})`
-      : Prisma.empty;
+    const marketFilter = this.buildRestaurantMarketFilter(
+      'e',
+      options.marketKey,
+    );
 
     return this.prisma.$queryRaw<EntitySearchRow[]>(Prisma.sql`
       SELECT
@@ -397,7 +398,7 @@ export class EntityTextSearchService {
           e.general_praise_upvotes AS "generalPraiseUpvotes"
         FROM core_entities e
         WHERE e.type = ANY(${entityTypeArray})
-          ${locationFilter}
+          ${marketFilter}
           AND lower(e.name) LIKE v.prefix_pattern
         ORDER BY
           CASE WHEN lower(e.name) = v.term THEN 1 ELSE 0 END DESC,
@@ -415,7 +416,7 @@ export class EntityTextSearchService {
     terms: string[];
     entityTypes: EntityType[];
     perTermLimit: number;
-    locationKey: string | null;
+    marketKey: string | null;
     thresholdsByTerm: Map<string, number>;
   }): Promise<EntitySearchRow[]> {
     const values = Prisma.join(
@@ -428,9 +429,10 @@ export class EntityTextSearchService {
     const entityTypeArray = Prisma.sql`ARRAY[${Prisma.join(
       options.entityTypes.map((type) => Prisma.sql`${type}::entity_type`),
     )}]`;
-    const locationFilter = options.locationKey
-      ? Prisma.sql`AND (e.type != 'restaurant' OR e.location_key = ${options.locationKey})`
-      : Prisma.empty;
+    const marketFilter = this.buildRestaurantMarketFilter(
+      'e',
+      options.marketKey,
+    );
 
     return this.prisma.$queryRaw<EntitySearchRow[]>(Prisma.sql`
       SELECT
@@ -491,7 +493,7 @@ export class EntityTextSearchService {
             e.general_praise_upvotes AS "generalPraiseUpvotes"
           FROM core_entities e
           WHERE e.type = ANY(${entityTypeArray})
-            ${locationFilter}
+            ${marketFilter}
             AND (
               crave_entity_search_tsv(e.name::text, e.aliases) @@
                 websearch_to_tsquery('simple', v.term)
@@ -530,7 +532,7 @@ export class EntityTextSearchService {
       remaining: number;
     }[];
     entityTypes: EntityType[];
-    locationKey: string | null;
+    marketKey: string | null;
   }): Promise<EntitySearchRow[]> {
     const values = Prisma.join(
       options.terms.map((entry, idx) => {
@@ -546,9 +548,10 @@ export class EntityTextSearchService {
     const entityTypeArray = Prisma.sql`ARRAY[${Prisma.join(
       options.entityTypes.map((type) => Prisma.sql`${type}::entity_type`),
     )}]`;
-    const locationFilter = options.locationKey
-      ? Prisma.sql`AND (e.type != 'restaurant' OR e.location_key = ${options.locationKey})`
-      : Prisma.empty;
+    const marketFilter = this.buildRestaurantMarketFilter(
+      'e',
+      options.marketKey,
+    );
 
     return this.prisma.$queryRaw<EntitySearchRow[]>(Prisma.sql`
       SELECT
@@ -586,7 +589,7 @@ export class EntityTextSearchService {
           e.general_praise_upvotes AS "generalPraiseUpvotes"
         FROM core_entities e
         WHERE e.type = ANY(${entityTypeArray})
-          ${locationFilter}
+          ${marketFilter}
           AND (array_length(v.excluded_ids, 1) IS NULL OR e.entity_id <> ALL(v.excluded_ids))
           AND dmetaphone(regexp_replace(lower(e.name), '[^a-z0-9 ]', '', 'g')) =
             dmetaphone(v.phonetic_term)
@@ -598,5 +601,27 @@ export class EntityTextSearchService {
       ) r
       ORDER BY v.term_index ASC;
     `);
+  }
+
+  private buildRestaurantMarketFilter(
+    entityAlias: string,
+    marketKey: string | null,
+  ): Prisma.Sql {
+    if (!marketKey) {
+      return Prisma.empty;
+    }
+
+    const entityReference = Prisma.raw(entityAlias);
+    return Prisma.sql`
+      AND (
+        ${entityReference}.type != 'restaurant'
+        OR EXISTS (
+          SELECT 1
+          FROM core_entity_market_presence emp
+          WHERE emp.entity_id = ${entityReference}.entity_id
+            AND LOWER(emp.market_key) = LOWER(${marketKey})
+        )
+      )
+    `;
   }
 }

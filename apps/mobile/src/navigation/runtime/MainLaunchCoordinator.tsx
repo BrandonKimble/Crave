@@ -8,8 +8,8 @@ import { useCityStore } from '../../store/cityStore';
 import {
   createNetworkPollBootstrapSnapshot,
   fetchPolls,
-  normalizePollCoverageKey,
-  readPollBootstrapSnapshotForCoverage,
+  normalizePollMarketKey,
+  readPollBootstrapSnapshotForMarket,
   writePollBootstrapSnapshot,
   type PollBootstrapSnapshot,
 } from '../../services/polls';
@@ -48,6 +48,8 @@ export type StartupCameraSpec = {
   source: StartupLocationSnapshot['source'];
 };
 
+export type UserLocationState = 'current' | 'last_known' | 'unavailable';
+
 type MainLaunchContextValue = {
   isReadyToRender: boolean;
   startupCamera: StartupCameraSpec | null;
@@ -55,11 +57,13 @@ type MainLaunchContextValue = {
   startupPollBounds: MapBounds | null;
   startupPollsSnapshot: PollBootstrapSnapshot | null;
   userLocation: Coordinate | null;
+  userLocationState: UserLocationState;
   userLocationRef: React.MutableRefObject<Coordinate | null>;
   locationPermissionDenied: boolean;
-  ensureUserLocation: () => Promise<Coordinate | null>;
   markMainMapReady: () => void;
 };
+
+export type MainLaunchCoordinatorValue = MainLaunchContextValue;
 
 const MainLaunchContext = React.createContext<MainLaunchContextValue | null>(null);
 
@@ -74,6 +78,25 @@ const defaultLocationSnapshot = (
   reducedAccuracy: false,
   isStale: false,
 });
+
+const resolveUserLocationState = (
+  snapshot: StartupLocationSnapshot | null | undefined
+): UserLocationState => {
+  switch (snapshot?.source) {
+    case 'current':
+      return 'current';
+    case 'last_known_os':
+    case 'cached_app':
+      return 'last_known';
+    default:
+      return 'unavailable';
+  }
+};
+
+const resolveSemanticUserLocation = (
+  snapshot: StartupLocationSnapshot | null | undefined
+): Coordinate | null =>
+  resolveUserLocationState(snapshot) === 'unavailable' ? null : (snapshot?.coordinate ?? null);
 
 const getPermissionState = (
   status: Location.PermissionStatus | null | undefined
@@ -226,7 +249,7 @@ const buildCameraFromSnapshot = (
       center: [snapshot.coordinate.lng, snapshot.coordinate.lat],
       zoom:
         snapshot.source === 'city_fallback'
-          ? resolveCityViewport(selectedCity)?.zoom ?? USA_FALLBACK_ZOOM
+          ? (resolveCityViewport(selectedCity)?.zoom ?? USA_FALLBACK_ZOOM)
           : SINGLE_LOCATION_ZOOM_LEVEL,
       pitch: 0,
       heading: 0,
@@ -347,15 +370,15 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
   const [startupPollsSnapshot, setStartupPollsSnapshot] =
     React.useState<PollBootstrapSnapshot | null>(null);
   const [userLocation, setUserLocation] = React.useState<Coordinate | null>(null);
+  const [userLocationState, setUserLocationState] =
+    React.useState<UserLocationState>('unavailable');
   const [locationPermissionDenied, setLocationPermissionDenied] = React.useState(false);
   const [mainLaunchFailure, setMainLaunchFailure] = React.useState<Error | null>(null);
 
   const userLocationRef = React.useRef<Coordinate | null>(null);
-  const latestLocationSnapshotRef = React.useRef<StartupLocationSnapshot>(
-    defaultLocationSnapshot()
-  );
+  const latestLocationSnapshotRef =
+    React.useRef<StartupLocationSnapshot>(defaultLocationSnapshot());
   const locationWatchRef = React.useRef<Location.LocationSubscription | null>(null);
-  const locationRequestInFlightRef = React.useRef(false);
   const startupResolutionSeqRef = React.useRef(0);
   const startupPollBootstrapSeqRef = React.useRef(0);
   const lastStartupPollBootstrapKeyRef = React.useRef<string | null>(null);
@@ -401,7 +424,8 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     latestLocationSnapshotRef.current = snapshot;
     setStartupLocationSnapshot(snapshot);
     setLocationPermissionDenied(snapshot.permission === 'denied');
-    setUserLocation(snapshot.coordinate);
+    setUserLocation(resolveSemanticUserLocation(snapshot));
+    setUserLocationState(resolveUserLocationState(snapshot));
   }, []);
 
   const startLocationWatch = React.useCallback(
@@ -466,58 +490,6 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     },
     []
   );
-
-  const ensureUserLocation = React.useCallback(async (): Promise<Coordinate | null> => {
-    const latestSnapshot = latestLocationSnapshotRef.current;
-    if (
-      latestSnapshot.coordinate &&
-      latestSnapshot.permission === 'granted' &&
-      latestSnapshot.source === 'current'
-    ) {
-      return latestSnapshot.coordinate;
-    }
-    if (locationRequestInFlightRef.current) {
-      return userLocationRef.current;
-    }
-
-    locationRequestInFlightRef.current = true;
-    try {
-      const existingPermission = await Location.getForegroundPermissionsAsync();
-      let status = existingPermission.status;
-      let reducedAccuracy = isReducedAccuracyPermission(existingPermission);
-
-      if (status !== 'granted') {
-        const requested = await Location.requestForegroundPermissionsAsync();
-        status = requested.status;
-        reducedAccuracy = isReducedAccuracyPermission(requested);
-      }
-
-      const permission = getPermissionState(status);
-      if (permission !== 'granted') {
-        applyLocationSnapshot(defaultLocationSnapshot(permission));
-        return null;
-      }
-
-      const lastKnownSnapshot = await resolveLastKnownPosition(permission, reducedAccuracy);
-      if (lastKnownSnapshot) {
-        applyLocationSnapshot(lastKnownSnapshot);
-      }
-
-      await startLocationWatch(permission, reducedAccuracy);
-
-      const currentSnapshot = await resolveCurrentPosition(permission, reducedAccuracy);
-      if (currentSnapshot) {
-        applyLocationSnapshot(currentSnapshot);
-        return currentSnapshot.coordinate;
-      }
-      return userLocationRef.current;
-    } catch (error) {
-      logger.warn('Failed to ensure user location from main launch coordinator', error);
-      return userLocationRef.current;
-    } finally {
-      locationRequestInFlightRef.current = false;
-    }
-  }, [applyLocationSnapshot, resolveCurrentPosition, resolveLastKnownPosition, startLocationWatch]);
 
   React.useEffect(() => {
     if (!isRouteReady || !routeState) {
@@ -631,19 +603,19 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     }
 
     const launchIntent = routeState.launchIntent;
-    const launchIntentCoverageKey =
-      launchIntent?.type === 'polls' && typeof launchIntent.coverageKey === 'string'
-        ? launchIntent.coverageKey.trim().toLowerCase()
+    const launchIntentMarketKey =
+      launchIntent?.type === 'polls' && typeof launchIntent.marketKey === 'string'
+        ? launchIntent.marketKey.trim().toLowerCase()
         : null;
-    const startupCacheCoverageKey =
-      launchIntentCoverageKey ??
-      (startupCamera.source === 'city_fallback' ? normalizePollCoverageKey(selectedCity) : null);
+    const startupCacheMarketKey =
+      launchIntentMarketKey ??
+      (startupCamera.source === 'city_fallback' ? normalizePollMarketKey(selectedCity) : null);
     const bootstrapKey = JSON.stringify({
-      launchIntentCoverageKey,
+      launchIntentMarketKey,
       center: startupCamera.center.map((value) => Math.round(value * 1e5) / 1e5),
       zoom: Math.round(startupCamera.zoom * 100) / 100,
     });
-    if (!launchIntentCoverageKey && !startupPollBounds) {
+    if (!launchIntentMarketKey && !startupPollBounds) {
       setIsStartupPollsResolved(true);
       return;
     }
@@ -668,8 +640,8 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
 
     void (async () => {
       try {
-        const cachedSnapshot = startupCacheCoverageKey
-          ? await readPollBootstrapSnapshotForCoverage(startupCacheCoverageKey)
+        const cachedSnapshot = startupCacheMarketKey
+          ? await readPollBootstrapSnapshotForMarket(startupCacheMarketKey)
           : null;
         if (cachedSnapshot && !cancelled && seq === startupPollBootstrapSeqRef.current) {
           setStartupPollsSnapshot(cachedSnapshot);
@@ -678,12 +650,16 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
           pollsGraceTimeout = setTimeout(resolveStartupPolls, STARTUP_POLLS_GRACE_MS);
         }
 
+        const startupUserLocation = resolveSemanticUserLocation(latestLocationSnapshotRef.current);
         const response = await fetchPolls(
-          launchIntentCoverageKey
-            ? { coverageKey: launchIntentCoverageKey }
+          launchIntentMarketKey
+            ? { marketKey: launchIntentMarketKey }
             : startupPollBounds
-            ? { bounds: startupPollBounds }
-            : {}
+              ? {
+                  bounds: startupPollBounds,
+                  ...(startupUserLocation ? { userLocation: startupUserLocation } : {}),
+                }
+              : {}
         );
         if (cancelled || seq !== startupPollBootstrapSeqRef.current) {
           return;
@@ -725,9 +701,20 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     }
 
     const launchIntent = routeState.launchIntent;
-    const fallbackLocation = startupLocationSnapshot?.coordinate ?? null;
+    const startupLocation = resolveSemanticUserLocation(startupLocationSnapshot);
+    const startupMarketKey =
+      typeof startupPollsSnapshot?.marketKey === 'string' &&
+      startupPollsSnapshot.marketKey.trim().length
+        ? startupPollsSnapshot.marketKey.trim().toLowerCase()
+        : startupCamera?.source === 'city_fallback'
+          ? normalizePollMarketKey(selectedCity)
+          : null;
     if (launchIntent.type === 'restaurant') {
-      void searchService.restaurantProfile(launchIntent.restaurantId).catch(() => undefined);
+      void searchService
+        .restaurantProfile(launchIntent.restaurantId, {
+          marketKey: startupMarketKey ?? null,
+        })
+        .catch(() => undefined);
       return;
     }
 
@@ -754,7 +741,7 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
               ],
             },
             bounds: startupPollBounds ?? undefined,
-            userLocation: fallbackLocation ?? undefined,
+            userLocation: startupLocation ?? undefined,
             sourceQuery: trimmedQuery,
             submissionSource: 'recent',
             submissionContext: {
@@ -771,7 +758,7 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
         .naturalSearch({
           query: trimmedQuery,
           bounds: startupPollBounds ?? undefined,
-          userLocation: fallbackLocation ?? undefined,
+          userLocation: startupLocation ?? undefined,
           submissionSource: 'recent',
         })
         .catch(() => undefined);
@@ -803,7 +790,7 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
           ],
         },
         bounds: startupPollBounds ?? undefined,
-        userLocation: fallbackLocation ?? undefined,
+        userLocation: startupLocation ?? undefined,
         sourceQuery: restaurantName,
         submissionSource: 'recent',
         submissionContext: {
@@ -819,7 +806,10 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     isStartupResolved,
     routeState?.destination,
     routeState?.launchIntent,
+    selectedCity,
+    startupCamera?.source,
     startupLocationSnapshot?.coordinate,
+    startupPollsSnapshot?.marketKey,
     startupPollBounds,
   ]);
 
@@ -911,13 +901,12 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
       startupPollBounds,
       startupPollsSnapshot,
       userLocation,
+      userLocationState,
       userLocationRef,
       locationPermissionDenied,
-      ensureUserLocation,
       markMainMapReady,
     }),
     [
-      ensureUserLocation,
       isReadyToRender,
       locationPermissionDenied,
       markMainMapReady,
@@ -926,6 +915,7 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
       startupPollBounds,
       startupPollsSnapshot,
       userLocation,
+      userLocationState,
     ]
   );
 

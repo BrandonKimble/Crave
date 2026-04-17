@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.util.TypedValue;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
@@ -22,6 +23,7 @@ import java.util.List;
 
 public class RestaurantPanelSnapshotView extends LinearLayout {
   public static final String EVENT_ACTION = "topAction";
+  private static final String TAG = "RestaurantSnapshotView";
 
   private static final String ACTION_CLOSE = "close";
   private static final String ACTION_FAVORITE = "favorite";
@@ -45,8 +47,13 @@ public class RestaurantPanelSnapshotView extends LinearLayout {
   }
 
   public void setSnapshot(ReadableMap nextSnapshot) {
-    RestaurantPanelSnapshotPayload nextSnapshotPayload =
-      RestaurantPanelSnapshotPayload.fromReadableMap(nextSnapshot);
+    RestaurantPanelSnapshotPayload nextSnapshotPayload;
+    try {
+      nextSnapshotPayload = RestaurantPanelSnapshotPayload.fromReadableMap(nextSnapshot);
+    } catch (RestaurantPanelSnapshotPayload.DecodeException error) {
+      Log.e(TAG, "Ignoring invalid snapshot payload: " + error.getMessage());
+      nextSnapshotPayload = null;
+    }
     if (nextSnapshotPayload == null && snapshotPayload == null) {
       return;
     }
@@ -66,6 +73,9 @@ public class RestaurantPanelSnapshotView extends LinearLayout {
     addView(createDetailRow("Price", payload.priceLabel));
     addView(createDetailRow("Hours", payload.hoursSummary));
     addView(createPrimaryActionsRow(payload));
+    if (!payload.matchedTags.isEmpty()) {
+      addView(createMatchedTagsSection(payload.matchedTags));
+    }
 
     if (!payload.locations.isEmpty()) {
       addView(createSectionHeader("Locations", payload.locationsLabel));
@@ -226,6 +236,40 @@ public class RestaurantPanelSnapshotView extends LinearLayout {
       row.addView(createActionPill("Call", ACTION_CALL));
     }
     return row;
+  }
+
+  private View createMatchedTagsSection(@NonNull List<String> matchedTags) {
+    LinearLayout section = new LinearLayout(getContext());
+    section.setOrientation(VERTICAL);
+    section.setPadding(dp(H_PADDING_DP), dp(16), dp(H_PADDING_DP), 0);
+    section.setLayoutParams(new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+
+    section.addView(createText("Mentioned for", 15, "#64748b", Typeface.BOLD));
+
+    LinearLayout row = new LinearLayout(getContext());
+    row.setOrientation(HORIZONTAL);
+    LayoutParams rowParams = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+    rowParams.topMargin = dp(8);
+    row.setLayoutParams(rowParams);
+
+    for (int index = 0; index < matchedTags.size(); index += 1) {
+      row.addView(createTagPill(matchedTags.get(index), index > 0 ? dp(8) : 0));
+    }
+
+    section.addView(row);
+    return section;
+  }
+
+  private View createTagPill(@NonNull String label, int leftMargin) {
+    TextView pill = createText(label, 13, "#475569", Typeface.BOLD);
+    LayoutParams params = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+    params.leftMargin = leftMargin;
+    pill.setLayoutParams(params);
+    pill.setPadding(dp(10), dp(6), dp(10), dp(6));
+    pill.setBackground(
+      createRoundedBackground(Color.parseColor("#f8fafc"), dp(16), Color.parseColor("#e2e8f0"))
+    );
+    return pill;
   }
 
   private View createSectionHeader(String title, String subtitle) {

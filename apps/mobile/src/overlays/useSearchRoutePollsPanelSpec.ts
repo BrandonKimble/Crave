@@ -5,12 +5,13 @@ import type {
 import type { SearchRoutePollsPanelInputs } from './searchOverlayRouteHostContract';
 import type { UsePollsPanelSpecOptions } from './panels/runtime/polls-panel-runtime-contract';
 import type { SearchRouteHostVisualState } from './searchRouteHostVisualState';
-import { usePollsPanelSpec } from './panels/PollsPanel';
+import { usePollsSceneDefinition } from './panels/PollsPanel';
 import type { SearchRouteOverlaySheetKeys } from './searchResolvedRouteHostModelContract';
 import { useSearchRoutePollsPanelActions } from './useSearchRoutePollsPanelActions';
 import { useSearchRoutePollsPanelRuntimeModel } from './useSearchRoutePollsPanelRuntimeModel';
-import type { OverlayContentSpec } from './types';
+import type { SearchRouteOverlayTransitionController } from './useSearchRouteOverlayTransitionController';
 import type { OverlayKey } from './types';
+import type { SearchRouteSceneDefinition } from './searchOverlayRouteHostContract';
 
 type UseSearchRoutePollsPanelSpecArgs = {
   publishedVisualState: SearchRouteHostVisualState | null;
@@ -18,19 +19,21 @@ type UseSearchRoutePollsPanelSpecArgs = {
   pollOverlayParams: UsePollsPanelSpecOptions['params'];
   commandState: SearchRouteOverlayCommandState;
   commandActions: SearchRouteOverlayCommandActions;
+  transitionController: SearchRouteOverlayTransitionController;
   overlaySheetKeys: SearchRouteOverlaySheetKeys;
   searchRouteDockedPollsPanelInputs: SearchRoutePollsPanelInputs | null;
 };
 
-export const useSearchRoutePollsPanelSpec = ({
+export const useSearchRoutePollsSceneDefinition = ({
   publishedVisualState,
   rootOverlayKey,
   pollOverlayParams,
   commandState,
   commandActions,
+  transitionController,
   overlaySheetKeys,
   searchRouteDockedPollsPanelInputs,
-}: UseSearchRoutePollsPanelSpecArgs): OverlayContentSpec<unknown> | null => {
+}: UseSearchRoutePollsPanelSpecArgs): SearchRouteSceneDefinition => {
   const pollsPanelRuntimeModel = useSearchRoutePollsPanelRuntimeModel({
     publishedVisualState,
     pollOverlayParams,
@@ -47,12 +50,14 @@ export const useSearchRoutePollsPanelSpec = ({
     rootOverlayKey,
     commandState,
     commandActions,
+    transitionController,
   });
 
-  const pollsPanelSpec = usePollsPanelSpec({
+  return usePollsSceneDefinition({
     visible: pollsPanelRuntimeModel.visible,
     bounds: pollsPanelRuntimeModel.bounds,
     bootstrapSnapshot: pollsPanelRuntimeModel.bootstrapSnapshot,
+    userLocation: pollsPanelRuntimeModel.userLocation,
     params: pollsPanelRuntimeModel.params,
     initialSnapPoint: pollsPanelRuntimeModel.initialSnapPoint,
     mode: pollsPanelRuntimeModel.mode,
@@ -66,10 +71,6 @@ export const useSearchRoutePollsPanelSpec = ({
     shellSnapRequest: pollsPanelRuntimeModel.shellSnapRequest,
     onRequestReturnToSearch: requestReturnToSearchFromPolls,
     onRequestPollCreationExpand: requestPollCreationExpand,
-    sheetY: pollsPanelRuntimeModel.sheetY,
-    headerActionAnimationToken: pollsPanelRuntimeModel.headerActionAnimationToken,
-    headerActionProgress: pollsPanelRuntimeModel.headerActionProgress,
     interactionRef: pollsPanelRuntimeModel.interactionRef,
   });
-  return pollsPanelSpec;
 };

@@ -40,7 +40,7 @@ export const executeProfileRefreshSelectionAction = ({
 }): void => {
   ports.seedRestaurantProfile(restaurant, queryLabel);
   ports.focusRestaurantProfileCamera(restaurant, 'autocomplete');
-  ports.hydrateRestaurantProfileById(restaurant.restaurantId);
+  ports.hydrateRestaurantProfileById(restaurant.restaurantId, restaurant.marketKey ?? null);
 };
 
 export const executeProfileAutoOpenAction = ({

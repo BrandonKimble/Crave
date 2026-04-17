@@ -1,7 +1,9 @@
 import React from 'react';
 
+import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
 import { createSearchCloseTransitionState } from './results-presentation-shell-close-transition-state';
-import type { UseResultsPresentationOwnerActionRuntimeArgs } from './results-presentation-owner-action-runtime-contract';
+import type { ArmSearchCloseRestoreOptions } from './results-presentation-shell-runtime-contract';
+import type { ResultsPresentationShellLocalState } from './use-results-presentation-shell-local-state';
 
 type ResultsPresentationOwnerCloseTransitionLifecycleRuntime = {
   setPendingCloseIntentId: (intentId: string | null) => void;
@@ -13,16 +15,15 @@ type ResultsPresentationOwnerCloseTransitionLifecycleRuntime = {
   finalizeCloseTransition: (closeIntentId: string) => void;
 };
 
-type UseResultsPresentationOwnerCloseTransitionLifecycleRuntimeArgs = Pick<
-  UseResultsPresentationOwnerActionRuntimeArgs<never>,
-  | 'clearSearchState'
-  | 'armSearchCloseRestore'
-  | 'commitSearchCloseRestore'
-  | 'cancelSearchCloseRestore'
-  | 'flushPendingSearchOriginRestore'
-  | 'requestDefaultPostSearchRestore'
-  | 'shellLocalState'
->;
+type UseResultsPresentationOwnerCloseTransitionLifecycleRuntimeArgs = {
+  clearSearchState: SearchClearOwner['clearSearchState'];
+  armSearchCloseRestore: (options?: ArmSearchCloseRestoreOptions) => boolean;
+  commitSearchCloseRestore: () => boolean;
+  cancelSearchCloseRestore: () => void;
+  flushPendingSearchOriginRestore: () => boolean;
+  requestDefaultPostSearchRestore: () => void;
+  shellLocalState: ResultsPresentationShellLocalState;
+};
 
 export const useResultsPresentationOwnerCloseTransitionLifecycleRuntime = ({
   clearSearchState,

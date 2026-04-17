@@ -1,11 +1,12 @@
 import type { MainSearchIntent } from '../../types/navigation';
+import { isPerfHarnessUrl } from '../../perf/perf-harness-deep-link';
 
 export type AppRouteDestination = 'onboarding' | 'sign_in' | 'main';
 
 export type LaunchIntent =
   | { type: 'none' }
   | { type: 'restaurant'; restaurantId: string }
-  | { type: 'polls'; coverageKey?: string | null; pollId?: string | null }
+  | { type: 'polls'; marketKey?: string | null; pollId?: string | null }
   | { type: 'search'; searchIntent: MainSearchIntent }
   | { type: 'saved_place'; placeId: string }
   | { type: 'external'; rawUrl: string };
@@ -26,6 +27,10 @@ export const NO_LAUNCH_INTENT: LaunchIntent = { type: 'none' };
 
 export const parseLaunchIntentFromUrl = (url: string | null): LaunchIntent => {
   if (!url) {
+    return NO_LAUNCH_INTENT;
+  }
+
+  if (isPerfHarnessUrl(url)) {
     return NO_LAUNCH_INTENT;
   }
 

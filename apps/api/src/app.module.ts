@@ -22,6 +22,7 @@ import { ModerationModule } from './modules/moderation/moderation.module';
 import { PollsModule } from './modules/polls/polls.module';
 import { FavoritesModule } from './modules/favorites/favorites.module';
 import { HistoryModule } from './modules/history/history.module';
+import { MarketsModule } from './modules/markets/markets.module';
 // Production readiness modules
 import { HealthModule } from './modules/health/health.module';
 import { SentryModule } from './sentry/sentry.module';
@@ -83,6 +84,7 @@ const runtimeWithSchedulers = isSchedulerRuntime();
     PollsModule,
     FavoritesModule,
     HistoryModule,
+    MarketsModule,
     // Production readiness: Health checks for Railway/container orchestration
     HealthModule,
     // Production readiness: Rate limiting to prevent abuse

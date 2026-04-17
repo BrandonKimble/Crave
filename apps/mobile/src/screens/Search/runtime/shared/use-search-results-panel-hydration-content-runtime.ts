@@ -1,5 +1,6 @@
 import React from 'react';
 
+import type { SearchRuntimeBus } from './search-runtime-bus';
 import type {
   SearchResultsPanelHydrationKeyRuntime,
   SearchResultsPanelOnDemandQueryRuntime,
@@ -11,6 +12,7 @@ import { useSearchResultsPanelRetainedResultsRuntime } from './use-search-result
 import type { SearchResultsPanelInputRuntime } from './use-search-results-panel-input-runtime';
 
 type UseSearchResultsPanelHydrationContentRuntimeArgs = {
+  searchRuntimeBus: SearchRuntimeBus;
   panelInputRuntime: SearchResultsPanelInputRuntime;
 };
 
@@ -19,6 +21,7 @@ export type SearchResultsPanelHydrationContentRuntime = SearchResultsPanelRetain
   SearchResultsPanelOnDemandQueryRuntime;
 
 export const useSearchResultsPanelHydrationContentRuntime = ({
+  searchRuntimeBus,
   panelInputRuntime,
 }: UseSearchResultsPanelHydrationContentRuntimeArgs): SearchResultsPanelHydrationContentRuntime => {
   const retainedResultsRuntime = useSearchResultsPanelRetainedResultsRuntime({
@@ -26,6 +29,7 @@ export const useSearchResultsPanelHydrationContentRuntime = ({
     searchSheetContentLane: panelInputRuntime.searchSheetContentLane,
   });
   const hydrationKeyRuntime = useSearchResultsPanelHydrationKeyRuntime({
+    searchRuntimeBus,
     resolvedResults: retainedResultsRuntime.resolvedResults,
     runtimeHydratedResultsKey: panelInputRuntime.runtimeHydratedResultsKey,
     activeOverlayKey: panelInputRuntime.activeOverlayKey,

@@ -12,7 +12,7 @@ import {
 } from './profile-panel-hydration-snapshot-runtime';
 
 export type ProfilePanelHydrationRuntime = {
-  hydrateRestaurantProfileById: (restaurantId: string) => void;
+  hydrateRestaurantProfileById: (restaurantId: string, marketKey?: string | null) => void;
 };
 
 type UseProfilePanelHydrationRuntimeArgs = {
@@ -41,13 +41,17 @@ export const useProfilePanelHydrationRuntime = ({
   const { getCachedRestaurantProfile, loadRestaurantProfileData } = hydrationRequestRuntime;
 
   const hydrateRestaurantProfileById = React.useCallback(
-    (restaurantId: string) => {
+    (restaurantId: string, marketKey?: string | null) => {
       if (!restaurantId) {
         return;
       }
 
       const requestSeq = beginRestaurantProfileHydrationIntent(restaurantId);
-      const cachedProfile = getCachedRestaurantProfile(restaurantId);
+      const normalizedMarketKey =
+        typeof marketKey === 'string' && marketKey.trim().length
+          ? marketKey.trim().toLowerCase()
+          : null;
+      const cachedProfile = getCachedRestaurantProfile(restaurantId, normalizedMarketKey);
 
       if (cachedProfile) {
         setRestaurantPanelSnapshot((prev) =>
@@ -71,7 +75,7 @@ export const useProfilePanelHydrationRuntime = ({
         })
       );
 
-      void loadRestaurantProfileData(restaurantId)
+      void loadRestaurantProfileData(restaurantId, normalizedMarketKey)
         .then((loadedProfile) => {
           if (!isRestaurantProfileRequestCurrent(requestSeq)) {
             return;

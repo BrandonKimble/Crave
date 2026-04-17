@@ -3,12 +3,12 @@ import React from 'react';
 import type { AutocompleteMatch } from '../../../../services/autocomplete';
 
 import type {
+  SearchForegroundSubmitRuntimeArgs,
   SearchForegroundInteractionSubmitHandlers,
-  UseSearchForegroundInteractionRuntimeArgs,
 } from './use-search-foreground-interaction-runtime-contract';
 
 type UseSearchForegroundSuggestionSubmitRuntimeArgs = Pick<
-  UseSearchForegroundInteractionRuntimeArgs,
+  SearchForegroundSubmitRuntimeArgs,
   | 'submitRuntime'
   | 'query'
   | 'captureSearchSessionOrigin'

@@ -204,11 +204,6 @@ export class SearchQueryRequestDto {
   @ValidateNested()
   @Type(() => SearchSubmissionContextDto)
   submissionContext?: SearchSubmissionContextDto;
-
-  @IsOptional()
-  @IsString()
-  @IsIn(['global_quality', 'coverage_display'])
-  scoreMode?: 'global_quality' | 'coverage_display';
 }
 
 export const EntityScope = {
@@ -232,14 +227,12 @@ export interface SearchPlanResponseDto {
 export interface FoodResultDto extends SharedFoodResult {
   restaurantLocationId?: string;
   restaurantDistanceMiles?: number | null;
-  coverageName?: string | null;
 }
 
 export type RestaurantFoodSnippetDto = SharedRestaurantFoodSnippet;
 
 export interface RestaurantResultDto extends SharedRestaurantResult {
   distanceMiles?: number | null;
-  coverageName?: string | null;
 }
 
 export type RestaurantProfileDto = SharedRestaurantProfile;
@@ -318,11 +311,6 @@ export class NaturalSearchRequestDto {
   @ValidateNested()
   @Type(() => SearchSubmissionContextDto)
   submissionContext?: SearchSubmissionContextDto;
-
-  @IsOptional()
-  @IsString()
-  @IsIn(['global_quality', 'coverage_display'])
-  scoreMode?: 'global_quality' | 'coverage_display';
 }
 
 export class SearchResultClickDto {

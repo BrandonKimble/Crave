@@ -41,7 +41,6 @@ type UseSearchNaturalSubmitOwnerArgs = {
     append: boolean;
     targetPage: number;
     trimmedQuery: string;
-    scoreModeOverride?: NaturalSearchRequest['scoreMode'];
     submissionSource?: NaturalSearchRequest['submissionSource'];
     submissionContext?: NaturalSearchRequest['submissionContext'];
     openNow?: boolean;
@@ -99,13 +98,11 @@ export const useSearchNaturalSubmitOwner = ({
       append,
       targetPage,
       trimmedQuery,
-      scoreModeOverride,
       naturalAttemptConfig,
     }: {
       append: boolean;
       targetPage: number;
       trimmedQuery: string;
-      scoreModeOverride?: NaturalSearchRequest['scoreMode'];
       naturalAttemptConfig: ResolveNaturalSearchAttemptConfigResult;
     }) => {
       if (!append) {
@@ -149,7 +146,6 @@ export const useSearchNaturalSubmitOwner = ({
             append,
             targetPage,
             trimmedQuery,
-            scoreModeOverride,
             submissionSource: naturalAttemptConfig.submissionSource,
             submissionContext: naturalAttemptConfig.submissionContext,
             openNow: naturalAttemptConfig.effectiveOpenNow,
@@ -210,7 +206,6 @@ export const useSearchNaturalSubmitOwner = ({
         append,
         targetPage,
         trimmedQuery,
-        scoreModeOverride: options?.scoreMode,
         naturalAttemptConfig,
       });
     },

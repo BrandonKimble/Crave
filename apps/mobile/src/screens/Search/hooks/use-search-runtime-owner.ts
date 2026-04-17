@@ -92,7 +92,7 @@ export const useSearchRuntimeOwner = ({
         zoom,
         animationMode,
         animationDurationMs,
-        completionId,
+        completionId: _completionId,
       }) => {
         if (
           searchMapNativeCameraExecutor.executeCameraCommand({
@@ -100,7 +100,6 @@ export const useSearchRuntimeOwner = ({
             zoom,
             animationMode,
             animationDurationMs,
-            animationCompletionId: completionId,
           })
         ) {
           return true;
@@ -115,18 +114,25 @@ export const useSearchRuntimeOwner = ({
           zoomLevel: zoom,
           animationMode,
           animationDuration: animationDurationMs,
-          animationCompletionId: completionId,
         });
         return true;
       },
       setMapCenter: (center: [number, number]) => {
-        setMapCenter(center);
+        setMapCenter((previous) =>
+          previous && previous[0] === center[0] && previous[1] === center[1] ? previous : center
+        );
       },
       setMapZoom: (zoom: number) => {
-        setMapZoom(zoom);
+        setMapZoom((previous) => (previous === zoom ? previous : zoom));
       },
       setMapCameraAnimation: (animation: MapCameraAnimation) => {
-        setMapCameraAnimation(animation);
+        setMapCameraAnimation((previous) =>
+          previous.mode === animation.mode &&
+          previous.durationMs === animation.durationMs &&
+          previous.completionId === animation.completionId
+            ? previous
+            : animation
+        );
       },
     });
   }

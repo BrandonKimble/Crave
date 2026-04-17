@@ -15,7 +15,7 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
-import { Prisma, Connection, $Enums, CoverageSourceType } from '@prisma/client';
+import { Prisma, $Enums } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { EntityResolutionService } from '../entity-resolver/entity-resolution.service';
@@ -27,8 +27,8 @@ import {
   CreatedEntitySummary,
 } from './unified-processing.types';
 import {
-  LLMOutputStructure,
-  LLMMention,
+  EnrichedLLMOutputStructure,
+  EnrichedLLMMention,
 } from '../../external-integrations/llm/llm.types';
 import {
   EntityResolutionInput,
@@ -36,32 +36,18 @@ import {
 } from '../entity-resolver/entity-resolution.types';
 import { UnifiedProcessingExceptionFactory } from './unified-processing.exceptions';
 import { RestaurantLocationEnrichmentService } from '../../restaurant-enrichment';
+import { MarketRegistryService } from '../../markets/market-registry.service';
+import type { ExtractionTraceContext } from './collection-evidence.service';
+import { ProjectionRebuildService } from './projection-rebuild.service';
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const DEFAULT_UNIFIED_PROCESSING_TX_TIMEOUT_MS = 15 * 60 * 1000;
 const DEFAULT_RESTAURANT_ENRICHMENT_CONCURRENCY = 5;
 const DEFAULT_SUBREDDIT_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_SUBREDDIT_CACHE_MAX_ENTRIES = 1024;
 
-type OperationSummary = {
-  affectedConnectionIds: string[];
-  newConnectionIds: string[];
-};
-
-type CategoryBoostEvent = {
-  restaurantId: string;
-  categoryId: string;
-  mentionCreatedAt: Date;
-  upvotes: number;
-  foodAttributeIds: string[];
-};
-
-type CategoryReplayKey = {
-  restaurantId: string;
-  categoryId: string;
-};
-
-type SourceLedgerRecord = Prisma.SourceCreateManyInput;
+type SourceLedgerRecord = Prisma.ProcessedSourceCreateManyInput;
+type RestaurantEventRecord = Prisma.RestaurantEventCreateManyInput;
+type RestaurantEntityEventRecord = Prisma.RestaurantEntityEventCreateManyInput;
 
 type SourceBreakdown = {
   pushshift_archive: number;
@@ -70,10 +56,18 @@ type SourceBreakdown = {
   reddit_api_on_demand: number;
 };
 
-type CoverageKeyRecord = {
-  coverageKey: string | null;
+type MarketKeyRecord = {
+  marketKey: string | null;
   name: string;
 } | null;
+
+type RestaurantEnrichmentDispatchContext = {
+  locationBias?: {
+    lat: number;
+    lng: number;
+    radiusMeters?: number;
+  };
+};
 
 type TimedCacheEntry<T> = {
   value: T;
@@ -90,80 +84,17 @@ interface SourceMetadata {
     earliest: number;
     latest: number;
   };
+  extractionTrace: ExtractionTraceContext;
 }
 
-type ProcessableMention = LLMMention;
+type ProcessableMention = EnrichedLLMMention;
 type PrismaTransaction = Prisma.TransactionClient;
-
-interface ConnectionScoreSnapshot {
-  decayedMentionScore?: Prisma.Decimal | number | null;
-  decayedUpvoteScore?: Prisma.Decimal | number | null;
-  decayedScoresUpdatedAt?: Date | string | null;
-  lastMentionedAt?: Date | string | null;
-  createdAt?: Date | string | null;
-}
 
 interface RestaurantMetadataUpdateOperation {
   type: 'restaurant_metadata_update';
   restaurantEntityId: string;
   attributeIds: string[];
 }
-
-interface FoodAttributeProcessingOperation {
-  type: 'food_attribute_processing';
-  restaurantEntityId: string;
-  foodEntityId: string;
-  upvotes: number;
-  isRecent: boolean;
-  mentionCreatedAt: Date;
-  activityLevel: $Enums.ActivityLevel;
-  foodAttributeIds: string[];
-  foodAttributeNames: string[];
-  hasFoodAttrs: boolean;
-  allowCreate: boolean;
-  categoryEntityIds: string[];
-}
-
-interface AttributeBoostOperation {
-  type: 'attribute_boost';
-  restaurantEntityId: string;
-  upvotes: number;
-  isRecent: boolean;
-  mentionCreatedAt: Date;
-  activityLevel: $Enums.ActivityLevel;
-  foodAttributeIds: string[];
-  foodAttributeNames: string[];
-  categoryEntityIds: string[];
-}
-
-interface GeneralPraiseBoostOperation {
-  type: 'general_praise_boost';
-}
-
-type ConnectionOperation =
-  | RestaurantMetadataUpdateOperation
-  | FoodAttributeProcessingOperation
-  | AttributeBoostOperation
-  | GeneralPraiseBoostOperation
-  | Prisma.ConnectionUpsertArgs;
-
-type ComponentResult = {
-  operations?: Array<{ connectionId?: string | null }>;
-};
-
-const createEmptySummary = (): OperationSummary => ({
-  affectedConnectionIds: [],
-  newConnectionIds: [],
-});
-
-const mergeIntoSummary = (
-  target: OperationSummary,
-  addition: OperationSummary | null | undefined,
-) => {
-  if (!addition) return;
-  target.affectedConnectionIds.push(...addition.affectedConnectionIds);
-  target.newConnectionIds.push(...addition.newConnectionIds);
-};
 
 const DEFAULT_UNIFIED_BATCH_SIZE = 250;
 const DEFAULT_ENTITY_RESOLUTION_BATCH_SIZE = 100;
@@ -223,7 +154,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     string,
     TimedCacheEntry<{ latitude: number; longitude: number }>
   >();
-  private readonly subredditCoverageCache = new Map<
+  private readonly subredditMarketCache = new Map<
     string,
     TimedCacheEntry<string>
   >();
@@ -232,8 +163,10 @@ export class UnifiedProcessingService implements OnModuleInit {
     private readonly prismaService: PrismaService,
     private readonly entityResolutionService: EntityResolutionService,
     private readonly qualityScoreService: QualityScoreService,
+    private readonly projectionRebuildService: ProjectionRebuildService,
     private readonly configService: ConfigService,
     private readonly restaurantLocationEnrichmentService: RestaurantLocationEnrichmentService,
+    private readonly marketRegistry: MarketRegistryService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {
     this.defaultBatchSize = this.getNumericConfig(
@@ -389,6 +322,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     entitiesCreated: number;
     connectionsCreated: number;
     affectedConnectionIds: string[];
+    affectedRestaurantIds: string[];
     createdEntityIds?: string[];
     createdEntitySummaries?: CreatedEntitySummary[];
     reusedEntitySummaries?: {
@@ -413,6 +347,7 @@ export class UnifiedProcessingService implements OnModuleInit {
         mentions,
         pipelineKey,
         sourceMetadata.subreddit,
+        processingConfig.skipSourceLedgerDedupe,
       );
 
     if (skippedCount > 0) {
@@ -435,6 +370,7 @@ export class UnifiedProcessingService implements OnModuleInit {
         entitiesCreated: 0,
         connectionsCreated: 0,
         affectedConnectionIds: [],
+        affectedRestaurantIds: [],
         createdEntityIds: [],
         createdEntitySummaries: [],
         reusedEntitySummaries: [],
@@ -450,21 +386,13 @@ export class UnifiedProcessingService implements OnModuleInit {
       });
 
       if (this.dryRunEnabled) {
-        const locationKey = await this.resolveCoverageKey(
+        const marketKey = await this.resolveMarketKey(
           sourceMetadata.subreddit ?? null,
         );
-        const entityResolutionInput = this.extractEntitiesFromLLMOutput(
+        const resolutionResult = await this.resolveEntitiesForOutput(
           { mentions: filteredMentions },
-          { locationKey },
+          marketKey,
         );
-        const resolutionResult =
-          await this.entityResolutionService.resolveBatch(
-            entityResolutionInput,
-            {
-              batchSize: this.entityResolutionBatchSize,
-              enableFuzzyMatching: true,
-            },
-          );
 
         this.logger.info('Unified processing dry run enabled', {
           batchId,
@@ -479,6 +407,7 @@ export class UnifiedProcessingService implements OnModuleInit {
           entitiesCreated: resolutionResult.newEntitiesCreated,
           connectionsCreated: 0,
           affectedConnectionIds: [],
+          affectedRestaurantIds: [],
           createdEntityIds: [],
           createdEntitySummaries: [],
           reusedEntitySummaries: [],
@@ -486,7 +415,9 @@ export class UnifiedProcessingService implements OnModuleInit {
       }
 
       // Create LLM output structure for existing pipeline
-      const llmOutput: LLMOutputStructure = { mentions: filteredMentions };
+      const llmOutput: EnrichedLLMOutputStructure = {
+        mentions: filteredMentions,
+      };
 
       // PRD 6.6.4: Check if batch needs to be split
       if (filteredMentions.length > processingConfig.batchSize) {
@@ -505,6 +436,8 @@ export class UnifiedProcessingService implements OnModuleInit {
             batchResult.databaseOperations?.connectionsCreated || 0,
           affectedConnectionIds:
             batchResult.databaseOperations?.affectedConnectionIds || [],
+          affectedRestaurantIds:
+            batchResult.databaseOperations?.affectedRestaurantIds || [],
           createdEntityIds:
             batchResult.databaseOperations?.createdEntityIds || [],
           createdEntitySummaries:
@@ -526,7 +459,10 @@ export class UnifiedProcessingService implements OnModuleInit {
 
       const singleBatchEntitySummaries =
         batchResult.databaseOperations?.createdEntitySummaries || [];
-      await this.scheduleRestaurantEnrichment(singleBatchEntitySummaries);
+      await this.scheduleRestaurantEnrichment(
+        singleBatchEntitySummaries,
+        sourceMetadata,
+      );
 
       return {
         entitiesCreated: batchResult.entityResolution?.newEntitiesCreated || 0,
@@ -534,6 +470,8 @@ export class UnifiedProcessingService implements OnModuleInit {
           batchResult.databaseOperations?.connectionsCreated || 0,
         affectedConnectionIds:
           batchResult.databaseOperations?.affectedConnectionIds || [],
+        affectedRestaurantIds:
+          batchResult.databaseOperations?.affectedRestaurantIds || [],
         createdEntityIds:
           batchResult.databaseOperations?.createdEntityIds || [],
         createdEntitySummaries:
@@ -572,7 +510,7 @@ export class UnifiedProcessingService implements OnModuleInit {
    * Sequential processing with robust error handling
    */
   private async processMentionsInBatches(
-    llmOutput: LLMOutputStructure,
+    llmOutput: EnrichedLLMOutputStructure,
     sourceMetadata: SourceMetadata,
     parentBatchId: string,
     config: UnifiedProcessingConfig,
@@ -673,7 +611,10 @@ export class UnifiedProcessingService implements OnModuleInit {
       createdEntitySummaryMap.values(),
     );
 
-    await this.scheduleRestaurantEnrichment(uniqueCreatedEntitySummaries);
+    await this.scheduleRestaurantEnrichment(
+      uniqueCreatedEntitySummaries,
+      sourceMetadata,
+    );
 
     const reusedEntitySummaryMap = new Map<
       string,
@@ -721,7 +662,7 @@ export class UnifiedProcessingService implements OnModuleInit {
    * Process a single batch with retry logic (PRD approach)
    */
   private async processSingleBatch(
-    llmOutput: LLMOutputStructure,
+    llmOutput: EnrichedLLMOutputStructure,
     sourceMetadata: SourceMetadata,
     batchId: string,
     processingConfig: UnifiedProcessingConfig,
@@ -729,11 +670,11 @@ export class UnifiedProcessingService implements OnModuleInit {
     startTime: number,
   ): Promise<ProcessingResult> {
     // Step 4a: Entity Resolution (cached for retries)
-    const locationKey = await this.resolveCoverageKey(
+    const marketKey = await this.resolveMarketKey(
       sourceMetadata.subreddit ?? null,
     );
-    if (!locationKey || locationKey === 'global') {
-      this.logger.warn('Coverage key missing; defaulting to global', {
+    if (!marketKey) {
+      this.logger.warn('Market key missing for ingestion batch', {
         batchId,
         collectionType: sourceMetadata.collectionType,
         subreddit: sourceMetadata.subreddit,
@@ -741,15 +682,9 @@ export class UnifiedProcessingService implements OnModuleInit {
         sourceBreakdown: sourceMetadata.sourceBreakdown,
       });
     }
-    const entityResolutionInput = this.extractEntitiesFromLLMOutput(llmOutput, {
-      locationKey,
-    });
-    const resolutionResult = await this.entityResolutionService.resolveBatch(
-      entityResolutionInput,
-      {
-        batchSize: this.entityResolutionBatchSize,
-        enableFuzzyMatching: true,
-      },
+    const resolutionResult = await this.resolveEntitiesForOutput(
+      llmOutput,
+      marketKey,
     );
 
     // Step 4b-5: Single Consolidated Processing Phase with retry logic
@@ -766,13 +701,28 @@ export class UnifiedProcessingService implements OnModuleInit {
       ledgerRecords,
     );
 
+    if (databaseResult.affectedRestaurantIds.length > 0) {
+      const rebuildResult =
+        await this.projectionRebuildService.rebuildForRestaurants(
+          databaseResult.affectedRestaurantIds,
+        );
+      databaseResult.affectedConnectionIds = [
+        ...new Set([
+          ...(databaseResult.affectedConnectionIds ?? []),
+          ...rebuildResult.connectionIds,
+        ]),
+      ];
+    }
+
     // Step 6: Quality Score Updates (PRD Section 5.3)
     if (
       processingConfig.enableQualityScores &&
-      databaseResult.affectedConnectionIds
+      (databaseResult.affectedConnectionIds.length > 0 ||
+        databaseResult.affectedRestaurantIds.length > 0)
     ) {
       await this.triggerQualityScoreUpdates(
         databaseResult.affectedConnectionIds,
+        databaseResult.affectedRestaurantIds,
       );
     }
 
@@ -808,18 +758,31 @@ export class UnifiedProcessingService implements OnModuleInit {
     return result;
   }
 
+  private async resolveEntitiesForOutput(
+    llmOutput: EnrichedLLMOutputStructure,
+    marketKey: string | null,
+  ): Promise<BatchResolutionResult> {
+    const entityResolutionInput = this.extractEntitiesFromLLMOutput(llmOutput, {
+      marketKey,
+    });
+    return this.entityResolutionService.resolveBatch(entityResolutionInput, {
+      batchSize: this.entityResolutionBatchSize,
+      enableFuzzyMatching: true,
+    });
+  }
+
   /**
    * Extract entities from LLM output for resolution
    * Converts LLM mentions to entity resolution input format
    */
   private extractEntitiesFromLLMOutput(
-    llmOutput: LLMOutputStructure,
-    options: { locationKey?: string | null } = {},
+    llmOutput: EnrichedLLMOutputStructure,
+    options: { marketKey?: string | null } = {},
   ): EntityResolutionInput[] {
     const entities: EntityResolutionInput[] = [];
-    const normalizedLocationKey =
-      typeof options.locationKey === 'string'
-        ? options.locationKey.trim().toLowerCase()
+    const normalizedMarketKey =
+      typeof options.marketKey === 'string'
+        ? options.marketKey.trim().toLowerCase()
         : null;
 
     const getSurfaceString = (surface: unknown, fallback: unknown): string => {
@@ -878,7 +841,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             originalText: restaurantSurface,
             entityType: 'restaurant' as const,
             tempId: restaurantTempId,
-            locationKey: normalizedLocationKey,
+            marketKey: normalizedMarketKey,
             aliases:
               restaurantSurface && restaurantSurface !== mention.restaurant
                 ? [restaurantSurface]
@@ -1180,13 +1143,54 @@ export class UnifiedProcessingService implements OnModuleInit {
     return null;
   }
 
+  private buildMentionKey(mention: ProcessableMention): string {
+    const parts = [
+      mention.source_id ?? '',
+      mention.temp_id ?? '',
+      mention.restaurant ?? '',
+      mention.food ?? '',
+      Array.isArray(mention.food_categories)
+        ? mention.food_categories.join('|')
+        : '',
+      Array.isArray(mention.food_attributes)
+        ? mention.food_attributes.join('|')
+        : '',
+      Array.isArray(mention.restaurant_attributes)
+        ? mention.restaurant_attributes.join('|')
+        : '',
+      mention.general_praise ? 'praise' : 'neutral',
+    ];
+
+    return `mention::${this.stableHash(parts.join('||'))}`;
+  }
+
+  private getMentionProvenance(mention: ProcessableMention): {
+    inputId: string | null;
+    sourceDocumentId: string | null;
+    mentionKey: string;
+  } {
+    return {
+      inputId:
+        typeof mention.__extractionInputId === 'string' &&
+        mention.__extractionInputId.trim().length > 0
+          ? mention.__extractionInputId.trim()
+          : null,
+      sourceDocumentId:
+        typeof mention.__sourceDocumentId === 'string' &&
+        mention.__sourceDocumentId.trim().length > 0
+          ? mention.__sourceDocumentId.trim()
+          : null,
+      mentionKey: this.buildMentionKey(mention),
+    };
+  }
+
   /**
    * Single Consolidated Processing Phase - PRD Section 6.4
    * Performs all operations in-memory within one database transaction
    * Input: LLM output structure | Output: Direct database updates
    */
   private async performConsolidatedProcessing(
-    llmOutput: LLMOutputStructure,
+    llmOutput: EnrichedLLMOutputStructure,
     resolutionResult: BatchResolutionResult,
     sourceMetadata: SourceMetadata,
     batchId: string,
@@ -1195,9 +1199,10 @@ export class UnifiedProcessingService implements OnModuleInit {
     entitiesCreated: number;
     connectionsCreated: number;
     affectedConnectionIds: string[];
+    affectedRestaurantIds: string[];
   }> {
     const startTime = Date.now();
-    const resolvedLocationKey = await this.resolveCoverageKey(
+    const resolvedMarketKey = await this.resolveMarketKey(
       sourceMetadata.subreddit ?? null,
     );
 
@@ -1208,6 +1213,7 @@ export class UnifiedProcessingService implements OnModuleInit {
         resolvedEntitiesCount: resolutionResult.resolutionResults.length,
       });
 
+      // PRD 6.4: Single consolidated processing phase - all operations in-memory
       // PRD 6.4: Single consolidated processing phase - all operations in-memory
       // Build temp_id to entity_id mapping from resolution result
       const tempIdToEntityIdMap = new Map<string, string>();
@@ -1244,9 +1250,6 @@ export class UnifiedProcessingService implements OnModuleInit {
         }
       }
 
-      const categoryBoostEvents: CategoryBoostEvent[] = [];
-      const categoryReplayMap = new Map<string, Set<string>>();
-
       // PRD 6.6.2: Single atomic transaction
       const result = await this.prismaService.$transaction(
         async (tx) => {
@@ -1259,11 +1262,11 @@ export class UnifiedProcessingService implements OnModuleInit {
             Array.isArray(sourceLedgerRecords) &&
             sourceLedgerRecords.length > 0
           ) {
-            await tx.source.createMany({
+            await tx.processedSource.createMany({
               data: sourceLedgerRecords.map((record) => ({
                 pipeline: record.pipeline,
                 sourceId: record.sourceId,
-                subreddit: record.subreddit ?? null,
+                community: record.community ?? null,
                 processedAt: record.processedAt ?? new Date(),
               })),
               skipDuplicates: true,
@@ -1356,18 +1359,36 @@ export class UnifiedProcessingService implements OnModuleInit {
               entityType,
             );
             resolution.normalizedName = canonicalName;
-            const entityLocationKey =
-              entityType === 'restaurant'
-                ? (resolvedLocationKey ?? 'global')
-                : 'global';
+            let entityMarketKey: string;
+            if (entityType === 'restaurant') {
+              if (!resolvedMarketKey) {
+                this.logger.warn(
+                  'Skipping restaurant entity creation without resolved market',
+                  {
+                    batchId,
+                    tempId: resolution.tempId,
+                    normalizedName: canonicalName,
+                    subreddit: sourceMetadata.subreddit ?? undefined,
+                  },
+                );
+                continue;
+              }
+              entityMarketKey = resolvedMarketKey;
+            } else {
+              entityMarketKey = 'global';
+            }
 
-            const existing = await tx.entity.findUnique({
+            const existing = await tx.entity.findFirst({
               where: {
-                name_type_locationKey: {
-                  name: canonicalName,
-                  type: entityType,
-                  locationKey: entityLocationKey,
-                },
+                name: canonicalName,
+                type: entityType,
+                ...(entityType === 'restaurant'
+                  ? {
+                      marketPresences: {
+                        some: { marketKey: entityMarketKey },
+                      },
+                    }
+                  : {}),
               },
               select: {
                 entityId: true,
@@ -1449,13 +1470,15 @@ export class UnifiedProcessingService implements OnModuleInit {
                   entityType,
                 ),
                 type: entityType,
-                locationKey: entityLocationKey,
                 aliases: Array.from(new Set(aliasSet.filter(Boolean))),
                 createdAt: new Date(),
                 lastUpdated: new Date(),
               };
 
               if (entityType === 'restaurant') {
+                entityData.marketPresences = {
+                  create: [{ marketKey: entityMarketKey }],
+                };
                 entityData.restaurantAttributes = { set: [] };
                 entityData.restaurantQualityScore = 0;
                 entityData.generalPraiseUpvotes = 0;
@@ -1564,122 +1587,55 @@ export class UnifiedProcessingService implements OnModuleInit {
             }
           }
 
-          const connectionOperations: ConnectionOperation[] = [];
+          const restaurantMetadataOperations: RestaurantMetadataUpdateOperation[] =
+            [];
           const affectedConnectionIds: string[] = [];
-          const restaurantPraiseUpvotes = new Map<string, number>();
+          const affectedRestaurantIds = new Set<string>();
+          const restaurantEvents: RestaurantEventRecord[] = [];
+          const restaurantEntityEvents: RestaurantEntityEventRecord[] = [];
 
           for (const mention of llmOutput.mentions) {
             const mentionResult = this.processConsolidatedMention(
               mention,
               tempIdToEntityIdMap,
               batchId,
+              sourceMetadata.extractionTrace,
             );
 
-            connectionOperations.push(...mentionResult.connectionOperations);
+            restaurantMetadataOperations.push(
+              ...mentionResult.restaurantMetadataOperations,
+            );
             affectedConnectionIds.push(...mentionResult.affectedConnectionIds);
-            if (
-              Array.isArray(mentionResult.categoryBoostEvents) &&
-              mentionResult.categoryBoostEvents.length > 0
-            ) {
-              categoryBoostEvents.push(...mentionResult.categoryBoostEvents);
-              for (const key of mentionResult.categoryReplayKeys) {
-                if (!categoryReplayMap.has(key.restaurantId)) {
-                  categoryReplayMap.set(key.restaurantId, new Set());
-                }
-                categoryReplayMap.get(key.restaurantId)!.add(key.categoryId);
-              }
-            }
-
-            if (mentionResult.generalPraiseUpvotes > 0) {
-              const currentTotal =
-                restaurantPraiseUpvotes.get(mentionResult.restaurantEntityId) ||
-                0;
-              restaurantPraiseUpvotes.set(
-                mentionResult.restaurantEntityId,
-                currentTotal + mentionResult.generalPraiseUpvotes,
-              );
+            restaurantEvents.push(...mentionResult.restaurantEvents);
+            restaurantEntityEvents.push(
+              ...mentionResult.restaurantEntityEvents,
+            );
+            if (mentionResult.restaurantEntityId) {
+              affectedRestaurantIds.add(mentionResult.restaurantEntityId);
             }
           }
 
-          // Execute all connection operations and collect affected connection IDs
-          const additionalAffectedIds: string[] = [];
-          let newConnectionsCreated = 0;
-
-          const mergeSummaries = (
-            summary: OperationSummary | null | undefined,
-          ) => {
-            if (!summary) return;
-            additionalAffectedIds.push(...summary.affectedConnectionIds);
-            newConnectionsCreated += summary.newConnectionIds.length;
-          };
-
-          for (const connectionOp of connectionOperations) {
-            if ('type' in connectionOp) {
-              switch (connectionOp.type) {
-                case 'attribute_boost': {
-                  const summary = await this.handleAttributeBoost(
-                    tx,
-                    connectionOp,
-                    batchId,
-                  );
-                  mergeSummaries(summary);
-                  break;
-                }
-                case 'food_attribute_processing': {
-                  const summary = await this.handleFoodAttributeProcessing(
-                    tx,
-                    connectionOp,
-                    batchId,
-                  );
-                  mergeSummaries(summary);
-                  break;
-                }
-                case 'restaurant_metadata_update': {
-                  await this.handleRestaurantMetadataUpdate(
-                    tx,
-                    connectionOp,
-                    batchId,
-                  );
-                  break;
-                }
-                case 'general_praise_boost': {
-                  // No-op by design. General praise is persisted on the restaurant entity only.
-                  break;
-                }
-              }
-            } else {
-              // Regular upsert operation
-              await tx.connection.upsert(connectionOp);
-            }
-          }
-
-          if (categoryBoostEvents.length > 0) {
-            await this.recordCategoryBoostEvents(
+          for (const metadataOperation of restaurantMetadataOperations) {
+            await this.handleRestaurantMetadataUpdate(
               tx,
-              categoryBoostEvents,
+              metadataOperation,
               batchId,
             );
           }
 
-          // Update restaurant entities with aggregated general praise upvotes
-          for (const [restaurantEntityId, upvotes] of restaurantPraiseUpvotes) {
-            if (upvotes && upvotes > 0) {
-              await tx.entity.update({
-                where: { entityId: restaurantEntityId },
-                data: {
-                  generalPraiseUpvotes: { increment: upvotes },
-                  lastUpdated: new Date(),
-                },
-              });
-            }
+          if (restaurantEvents.length > 0) {
+            await this.recordRestaurantEvents(tx, restaurantEvents);
+          }
+
+          if (restaurantEntityEvents.length > 0) {
+            await this.recordRestaurantEntityEvents(tx, restaurantEntityEvents);
           }
 
           return {
             entitiesCreated,
-            connectionsCreated: newConnectionsCreated,
-            affectedConnectionIds: [
-              ...new Set([...affectedConnectionIds, ...additionalAffectedIds]),
-            ],
+            connectionsCreated: 0,
+            affectedConnectionIds: [...new Set(affectedConnectionIds)],
+            affectedRestaurantIds: Array.from(affectedRestaurantIds),
             createdEntityIds,
             createdEntitySummaries,
             reusedEntitySummaries,
@@ -1687,28 +1643,6 @@ export class UnifiedProcessingService implements OnModuleInit {
         },
         { timeout: this.transactionTimeoutMs },
       );
-
-      if (categoryReplayMap.size > 0) {
-        const replayTargets = Array.from(categoryReplayMap.entries()).map(
-          ([restaurantId, categorySet]) => ({
-            restaurantId,
-            categoryIds: Array.from(categorySet),
-          }),
-        );
-
-        const replayedConnectionIds = await this.replayCategoryBoosts(
-          replayTargets,
-          batchId,
-        );
-        if (replayedConnectionIds.length > 0) {
-          result.affectedConnectionIds = [
-            ...new Set([
-              ...(result.affectedConnectionIds || []),
-              ...replayedConnectionIds,
-            ]),
-          ];
-        }
-      }
 
       const processingTime = Date.now() - startTime;
       this.performanceMetrics.databaseOperations++;
@@ -1761,7 +1695,7 @@ export class UnifiedProcessingService implements OnModuleInit {
    * Cached resolution results enable efficient retries
    */
   private async performConsolidatedProcessingWithRetry(
-    llmOutput: LLMOutputStructure,
+    llmOutput: EnrichedLLMOutputStructure,
     resolutionResult: BatchResolutionResult,
     sourceMetadata: SourceMetadata,
     batchId: string,
@@ -1771,6 +1705,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     entitiesCreated: number;
     connectionsCreated: number;
     affectedConnectionIds: string[];
+    affectedRestaurantIds: string[];
   }> {
     let lastError: Error | undefined;
 
@@ -1871,18 +1806,19 @@ export class UnifiedProcessingService implements OnModuleInit {
     mention: ProcessableMention,
     tempIdToEntityIdMap: Map<string, string>,
     batchId: string,
+    extractionTrace: ExtractionTraceContext,
   ): {
-    connectionOperations: ConnectionOperation[];
-    categoryBoostEvents: CategoryBoostEvent[];
-    categoryReplayKeys: CategoryReplayKey[];
+    restaurantMetadataOperations: RestaurantMetadataUpdateOperation[];
     affectedConnectionIds: string[];
-    generalPraiseUpvotes: number;
     restaurantEntityId: string;
+    restaurantEvents: RestaurantEventRecord[];
+    restaurantEntityEvents: RestaurantEntityEventRecord[];
   } {
-    const connectionOperations: ConnectionOperation[] = [];
-    const categoryBoostEvents: CategoryBoostEvent[] = [];
-    const categoryReplayKeys: CategoryReplayKey[] = [];
+    const restaurantMetadataOperations: RestaurantMetadataUpdateOperation[] =
+      [];
     const affectedConnectionIds: string[] = [];
+    const restaurantEvents: RestaurantEventRecord[] = [];
+    const restaurantEntityEvents: RestaurantEntityEventRecord[] = [];
 
     try {
       // Validate required restaurant data
@@ -1893,12 +1829,11 @@ export class UnifiedProcessingService implements OnModuleInit {
           mentionTempId: mention.temp_id,
         });
         return {
-          connectionOperations: [],
-          categoryBoostEvents: [],
-          categoryReplayKeys: [],
+          restaurantMetadataOperations: [],
           affectedConnectionIds: [],
-          generalPraiseUpvotes: 0,
           restaurantEntityId: '',
+          restaurantEvents: [],
+          restaurantEntityEvents: [],
         };
       }
 
@@ -1910,19 +1845,15 @@ export class UnifiedProcessingService implements OnModuleInit {
           restaurantTempId: restaurantLookupKey,
         });
         return {
-          connectionOperations: [],
-          categoryBoostEvents: [],
-          categoryReplayKeys: [],
+          restaurantMetadataOperations: [],
           affectedConnectionIds: [],
-          generalPraiseUpvotes: 0,
           restaurantEntityId: '',
+          restaurantEvents: [],
+          restaurantEntityEvents: [],
         };
       }
 
-      // PRD 6.4.2: Calculate time-weighted mention score
       const mentionCreatedAt = new Date(mention.source_created_at);
-      const daysSince =
-        (Date.now() - mentionCreatedAt.getTime()) / (1000 * 60 * 60 * 24);
 
       const foodEntityLookupKey = this.getFoodEntityLookupKey(mention);
 
@@ -1943,6 +1874,8 @@ export class UnifiedProcessingService implements OnModuleInit {
       const uniqueCategoryEntityIds = Array.from(
         new Set(categoryEntityIds.filter(Boolean)),
       );
+      const { inputId, sourceDocumentId, mentionKey } =
+        this.getMentionProvenance(mention);
 
       // Resolve attribute entity IDs emitted by the LLM for this mention
       const foodAttributeNames: string[] = Array.isArray(
@@ -1968,35 +1901,13 @@ export class UnifiedProcessingService implements OnModuleInit {
         }
       }
 
-      const hasFoodAttrs = foodAttributeIds.length > 0;
+      const restaurantAttributeIds: string[] = [];
 
-      // PRD 6.5 Component Processing Logic (inline implementation)
-
-      // Component 1: Restaurant Entity (always processed)
-      // PRD 6.6.3: Implement proper metric aggregation
-      const isRecent = daysSince <= 30; // Within last 30 days
-
-      // PRD 6.4.2: Activity level calculation
-      let activityLevel: $Enums.ActivityLevel = 'normal';
-      if (daysSince <= 7) {
-        activityLevel = 'active'; // 🕐 active if within 7 days
-      }
-      // Note: "trending" (🔥) requires checking if ALL top mentions are within 30 days
-      // This will be calculated in Step 6 quality score updates
-
-      // Component 1: Restaurant Entity (always processed)
-      // Note: Component 1 processes restaurant entities, not connections
-      // Restaurant entity processing is handled by entity resolution
-      // No restaurant→restaurant connections needed per PRD architecture
-
-      // Component 2: Restaurant Attributes (when present)
-      // PRD 6.5.1: Add restaurant_attribute entity IDs to restaurant entity's metadata
       if (
         mention.restaurant_attributes &&
         mention.restaurant_attributes.length > 0
       ) {
         // Get restaurant attribute entity IDs from tempIdToEntityIdMap
-        const restaurantAttributeIds: string[] = [];
         for (const attr of mention.restaurant_attributes) {
           const tempId = this.buildAttributeTempId('restaurant', attr);
           const attributeEntityId = tempIdToEntityIdMap.get(tempId);
@@ -2012,7 +1923,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             restaurantEntityId: restaurantEntityId,
             attributeIds: restaurantAttributeIds,
           };
-          connectionOperations.push(metadataOperation);
+          restaurantMetadataOperations.push(metadataOperation);
 
           this.logger.debug(
             'Restaurant attributes queued for metadata update',
@@ -2025,11 +1936,9 @@ export class UnifiedProcessingService implements OnModuleInit {
         }
       }
 
-      // Component 3: General Praise (when general_praise is true)
-      // Updated design: Only increment restaurant.generalPraiseUpvotes (no connection boosts or mentions)
       if (mention.general_praise) {
         this.logger.debug(
-          'General praise detected; aggregating restaurant upvotes only',
+          'General praise detected; recording restaurant event only',
           {
             batchId,
             restaurantEntityId,
@@ -2037,100 +1946,102 @@ export class UnifiedProcessingService implements OnModuleInit {
           },
         );
       }
-      const generalPraiseUpvotes = mention.general_praise
-        ? mention.source_ups
-        : 0;
 
-      // Component 4: Specific Food Processing (when food + is_menu_item = true)
-      // PRD 6.5.3: Complex attribute logic for specific foods
-      // PRD 6.5.2: Always create connections for specific foods
-      if (foodEntityLookupKey && mention.is_menu_item === true) {
-        const foodEntityId = tempIdToEntityIdMap.get(foodEntityLookupKey);
-        if (foodEntityId) {
-          // Always use food_attribute_processing for consistent handling
-          // PRD 6.5.1 Component 4: Clear distinction between boost existing vs create new
-          // The handler will check for existing connections and decide whether to boost or create
-          const foodAttributeOperation: FoodAttributeProcessingOperation = {
-            type: 'food_attribute_processing',
-            restaurantEntityId,
-            foodEntityId,
-            upvotes: mention.source_ups,
-            isRecent,
-            mentionCreatedAt,
-            activityLevel,
-            foodAttributeIds: [...foodAttributeIds],
-            foodAttributeNames: [...foodAttributeNames],
-            hasFoodAttrs,
-            allowCreate: true, // Component 4 always allows creation of new connections
-            categoryEntityIds,
-          };
-          connectionOperations.push(foodAttributeOperation);
-
-          this.logger.debug('Component 4: Specific food processing queued', {
-            batchId,
-            restaurantEntityId,
-            foodEntityId: foodEntityId,
-            hasFoodAttrs,
-          });
-        }
-      }
-
-      // Category boosts now recorded as events for later replay and aggregation.
-      if (
-        uniqueCategoryEntityIds.length > 0 &&
-        (mention.is_menu_item === false || !foodEntityLookupKey)
-      ) {
-        for (const categoryId of uniqueCategoryEntityIds) {
-          categoryBoostEvents.push({
-            restaurantId: restaurantEntityId,
-            categoryId,
-            mentionCreatedAt,
-            upvotes: mention.source_ups ?? 0,
-            foodAttributeIds: [...foodAttributeIds],
-          });
-          categoryReplayKeys.push({
-            restaurantId: restaurantEntityId,
-            categoryId,
-          });
-        }
-
-        this.logger.debug('Category boost events queued for replay', {
-          batchId,
-          restaurantEntityId,
-          categoryIds: uniqueCategoryEntityIds,
-          hasFoodAttrs,
-          foodAttributeNames,
+      if (inputId && sourceDocumentId && mention.general_praise) {
+        restaurantEvents.push({
+          extractionRunId: extractionTrace.extractionRunId,
+          inputId,
+          sourceDocumentId,
+          restaurantId: restaurantEntityId,
+          mentionKey,
+          evidenceType: 'general_praise',
+          mentionedAt: mentionCreatedAt,
+          sourceUpvotes: mention.source_ups ?? 0,
+          metadata: {},
         });
       }
 
-      // Component 6: Attribute-Only Processing (when no food but food_attributes present)
-      // PRD 6.5.1: Find existing food connections with ANY overlapping attributes
-      // PRD 6.5.2: Never create attribute connections - only boost existing ones
-      if (!foodEntityLookupKey && hasFoodAttrs) {
-        const attributeBoostOperation: AttributeBoostOperation = {
-          type: 'attribute_boost',
-          restaurantEntityId,
-          upvotes: mention.source_ups,
-          isRecent,
-          mentionCreatedAt,
-          activityLevel,
-          foodAttributeIds: [...foodAttributeIds],
-          foodAttributeNames: [...foodAttributeNames],
-          categoryEntityIds,
-        };
-        connectionOperations.push(attributeBoostOperation);
+      if (inputId && sourceDocumentId) {
+        const foodEntityId = foodEntityLookupKey
+          ? (tempIdToEntityIdMap.get(foodEntityLookupKey) ?? null)
+          : null;
+
+        if (foodEntityId) {
+          restaurantEntityEvents.push({
+            extractionRunId: extractionTrace.extractionRunId,
+            inputId,
+            sourceDocumentId,
+            restaurantId: restaurantEntityId,
+            mentionKey,
+            entityId: foodEntityId,
+            entityType: 'food',
+            evidenceType:
+              mention.is_menu_item === true ? 'menu_item_food' : 'food_mention',
+            isMenuItem: mention.is_menu_item ?? null,
+            mentionedAt: mentionCreatedAt,
+            sourceUpvotes: mention.source_ups ?? 0,
+            metadata: {},
+          });
+        }
+
+        uniqueCategoryEntityIds.forEach((categoryId) => {
+          restaurantEntityEvents.push({
+            extractionRunId: extractionTrace.extractionRunId,
+            inputId,
+            sourceDocumentId,
+            restaurantId: restaurantEntityId,
+            mentionKey,
+            entityId: categoryId,
+            entityType: 'food',
+            evidenceType: 'food_category',
+            isMenuItem: mention.is_menu_item ?? null,
+            mentionedAt: mentionCreatedAt,
+            sourceUpvotes: mention.source_ups ?? 0,
+            metadata: {},
+          });
+        });
+
+        foodAttributeIds.forEach((attributeId) => {
+          restaurantEntityEvents.push({
+            extractionRunId: extractionTrace.extractionRunId,
+            inputId,
+            sourceDocumentId,
+            restaurantId: restaurantEntityId,
+            mentionKey,
+            entityId: attributeId,
+            entityType: 'food_attribute',
+            evidenceType: 'food_attribute',
+            isMenuItem: mention.is_menu_item ?? null,
+            mentionedAt: mentionCreatedAt,
+            sourceUpvotes: mention.source_ups ?? 0,
+            metadata: {},
+          });
+        });
+
+        restaurantAttributeIds.forEach((attributeId) => {
+          restaurantEntityEvents.push({
+            extractionRunId: extractionTrace.extractionRunId,
+            inputId,
+            sourceDocumentId,
+            restaurantId: restaurantEntityId,
+            mentionKey,
+            entityId: attributeId,
+            entityType: 'restaurant_attribute',
+            evidenceType: 'restaurant_attribute',
+            isMenuItem: null,
+            mentionedAt: mentionCreatedAt,
+            sourceUpvotes: mention.source_ups ?? 0,
+            metadata: {},
+          });
+        });
       }
 
-      // Store general praise upvotes for later restaurant entity update
-      // This will be aggregated and applied in the main transaction
-
       return {
-        connectionOperations,
-        categoryBoostEvents,
-        categoryReplayKeys,
+        restaurantMetadataOperations,
         affectedConnectionIds,
-        generalPraiseUpvotes,
         restaurantEntityId,
+        restaurantEvents,
+        restaurantEntityEvents,
       };
     } catch (error) {
       this.logger.error('Failed to process consolidated mention', {
@@ -2140,762 +2051,41 @@ export class UnifiedProcessingService implements OnModuleInit {
       });
 
       return {
-        connectionOperations: [],
-        categoryBoostEvents: [],
-        categoryReplayKeys: [],
+        restaurantMetadataOperations: [],
         affectedConnectionIds: [],
-        generalPraiseUpvotes: 0,
         restaurantEntityId: '',
+        restaurantEvents: [],
+        restaurantEntityEvents: [],
       };
     }
   }
 
-  /**
-   * Handle Attribute Boost Operations (Component 6 - PRD 6.5.1)
-   * Find existing food connections with matching attributes
-   * Returns array of affected connection IDs for top mentions update
-   */
-  private async handleAttributeBoost(
+  private async recordRestaurantEvents(
     tx: PrismaTransaction,
-    operation: AttributeBoostOperation,
-    batchId: string,
-  ): Promise<OperationSummary> {
-    const summary = createEmptySummary();
-
-    try {
-      if (
-        !operation.foodAttributeIds ||
-        !Array.isArray(operation.foodAttributeIds) ||
-        operation.foodAttributeIds.length === 0
-      ) {
-        this.logger.debug(
-          'No food attributes provided for attribute boost - skipping',
-          {
-            batchId,
-            restaurantId: operation.restaurantEntityId,
-          },
-        );
-        return summary;
-      }
-
-      const existingConnections = await tx.connection.findMany({
-        where: {
-          restaurantId: operation.restaurantEntityId,
-          foodAttributes: { hasSome: operation.foodAttributeIds },
-        },
-      });
-
-      if (existingConnections.length === 0) {
-        this.logger.debug(
-          'No existing connections found for attribute boost - skipping',
-          {
-            batchId,
-            restaurantId: operation.restaurantEntityId,
-            attributes: operation.foodAttributeNames,
-          },
-        );
-        return summary;
-      }
-
-      for (const connection of existingConnections) {
-        summary.affectedConnectionIds.push(connection.connectionId);
-
-        const decayUpdate = this.computeDecayedScoreUpdate(
-          connection,
-          operation.mentionCreatedAt,
-          1,
-          operation.upvotes ?? 0,
-        );
-        const existingLastMentionedAt = connection.lastMentionedAt;
-        const shouldUpdateLastMentionedAt =
-          !existingLastMentionedAt ||
-          operation.mentionCreatedAt.getTime() >
-            existingLastMentionedAt.getTime();
-
-        await tx.connection.update({
-          where: { connectionId: connection.connectionId },
-          data: {
-            mentionCount: { increment: 1 },
-            totalUpvotes: { increment: operation.upvotes ?? 0 },
-            recentMentionCount: { increment: operation.isRecent ? 1 : 0 },
-            lastMentionedAt: shouldUpdateLastMentionedAt
-              ? operation.mentionCreatedAt
-              : undefined,
-            activityLevel: operation.activityLevel,
-            lastUpdated: new Date(),
-            decayedMentionScore: decayUpdate.decayedMentionScore,
-            decayedUpvoteScore: decayUpdate.decayedUpvoteScore,
-            decayedScoresUpdatedAt: decayUpdate.decayedScoresUpdatedAt,
-            ...(Array.isArray(operation.foodAttributeIds) &&
-            operation.foodAttributeIds.length > 0
-              ? {
-                  foodAttributes: [
-                    ...new Set([
-                      ...(connection.foodAttributes || []),
-                      ...operation.foodAttributeIds,
-                    ]),
-                  ],
-                }
-              : {}),
-          },
-        });
-
-        this.logger.debug('Boosted existing attribute connection', {
-          batchId,
-          connectionId: connection.connectionId,
-          attributes: operation.foodAttributeNames,
-        });
-      }
-
-      return summary;
-    } catch (error) {
-      this.logger.error('Failed to handle attribute boost', {
-        batchId,
-        operation,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return summary;
-    }
-  }
-
-  /**
-   * Handle Food Attribute Processing (Component 4 - PRD 6.5.3)
-   * Uses unified OR-matching logic for food attributes
-   * PRD 6.5.2: Always creates connections for specific foods (is_menu_item = true)
-   */
-  private async handleFoodAttributeProcessing(
-    tx: PrismaTransaction,
-    operation: FoodAttributeProcessingOperation,
-    batchId: string,
-  ): Promise<OperationSummary> {
-    const summary = createEmptySummary();
-
-    try {
-      const { hasFoodAttrs } = operation;
-
-      if (hasFoodAttrs) {
-        mergeIntoSummary(
-          summary,
-          await this.handleFoodAttributes(tx, operation, batchId),
-        );
-      } else {
-        mergeIntoSummary(
-          summary,
-          await this.handleSimpleFoodConnection(tx, operation, batchId),
-        );
-      }
-
-      return summary;
-    } catch (error) {
-      this.logger.error('Failed to handle food attribute processing', {
-        batchId,
-        operation,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return summary;
-    }
-  }
-
-  /**
-   * Handle Simple Food Connection without attributes (PRD 6.5.2)
-   * Find or create restaurant→food connection and boost it
-   */
-  private async handleSimpleFoodConnection(
-    tx: PrismaTransaction,
-    operation: FoodAttributeProcessingOperation,
-    batchId: string,
-  ): Promise<OperationSummary> {
-    const summary = createEmptySummary();
-
-    const existingConnection = await tx.connection.findFirst({
-      where: {
-        restaurantId: operation.restaurantEntityId,
-        foodId: operation.foodEntityId,
-      },
-    });
-
-    if (existingConnection) {
-      summary.affectedConnectionIds.push(existingConnection.connectionId);
-      await this.boostConnection(tx, existingConnection, operation);
-    } else {
-      mergeIntoSummary(
-        summary,
-        await this.createNewFoodConnection(tx, operation, []),
-      );
-
-      this.logger.debug('Created new simple food connection', {
-        batchId,
-        restaurantId: operation.restaurantEntityId,
-        foodId: operation.foodEntityId,
-      });
-    }
-
-    return summary;
-  }
-
-  private async handleFoodAttributes(
-    tx: PrismaTransaction,
-    operation: FoodAttributeProcessingOperation,
-    batchId: string,
-  ): Promise<OperationSummary> {
-    const summary = createEmptySummary();
-
-    if (
-      !operation.foodAttributeIds ||
-      !Array.isArray(operation.foodAttributeIds) ||
-      operation.foodAttributeIds.length === 0
-    ) {
-      this.logger.debug(
-        'No food attributes provided for attribute processing - falling back to simple handling',
-        { batchId },
-      );
-      mergeIntoSummary(
-        summary,
-        await this.handleSimpleFoodConnection(tx, operation, batchId),
-      );
-      return summary;
-    }
-
-    const existingConnection = await tx.connection.findFirst({
-      where: {
-        restaurantId: operation.restaurantEntityId,
-        foodId: operation.foodEntityId,
-      },
-    });
-
-    if (existingConnection) {
-      summary.affectedConnectionIds.push(existingConnection.connectionId);
-      await this.boostConnection(tx, existingConnection, operation, {
-        additionalAttributeIds: operation.foodAttributeIds,
-      });
-      return summary;
-    }
-
-    mergeIntoSummary(
-      summary,
-      await this.createNewFoodConnection(
-        tx,
-        operation,
-        operation.foodAttributeIds,
-      ),
-    );
-    return summary;
-  }
-
-  private async boostConnection(
-    tx: PrismaTransaction,
-    connection: Connection,
-    operation: FoodAttributeProcessingOperation,
-    options: { additionalAttributeIds?: string[] } = {},
+    events: RestaurantEventRecord[],
   ): Promise<void> {
-    const decayUpdate = this.computeDecayedScoreUpdate(
-      connection,
-      operation.mentionCreatedAt,
-      1,
-      operation.upvotes ?? 0,
-    );
-
-    const currentLastMentionedAt = connection.lastMentionedAt;
-    const shouldUpdateLastMentionedAt =
-      !currentLastMentionedAt ||
-      operation.mentionCreatedAt.getTime() > currentLastMentionedAt.getTime();
-
-    const updateData: Prisma.ConnectionUpdateInput = {
-      mentionCount: { increment: 1 },
-      totalUpvotes: { increment: operation.upvotes ?? 0 },
-      recentMentionCount: { increment: operation.isRecent ? 1 : 0 },
-      lastMentionedAt: shouldUpdateLastMentionedAt
-        ? operation.mentionCreatedAt
-        : undefined,
-      activityLevel: operation.activityLevel,
-      lastUpdated: new Date(),
-      decayedMentionScore: decayUpdate.decayedMentionScore,
-      decayedUpvoteScore: decayUpdate.decayedUpvoteScore,
-      decayedScoresUpdatedAt: decayUpdate.decayedScoresUpdatedAt,
-    };
-
-    if (
-      Array.isArray(operation.categoryEntityIds) &&
-      operation.categoryEntityIds.length > 0
-    ) {
-      const existingCategories = connection.categories || [];
-      const mergedCategories = [
-        ...new Set([...existingCategories, ...operation.categoryEntityIds]),
-      ];
-      updateData.categories = mergedCategories;
-    }
-
-    if (
-      Array.isArray(options.additionalAttributeIds) &&
-      options.additionalAttributeIds.length > 0
-    ) {
-      const existingAttributes = connection.foodAttributes || [];
-      const mergedAttributes = [
-        ...new Set([...existingAttributes, ...options.additionalAttributeIds]),
-      ];
-      updateData.foodAttributes = mergedAttributes;
-    }
-
-    await tx.connection.update({
-      where: { connectionId: connection.connectionId },
-      data: updateData,
-    });
-  }
-
-  private computeDecayedScoreUpdate(
-    connection: ConnectionScoreSnapshot,
-    mentionCreatedAtInput: Date | string | undefined,
-    mentionWeight = 1,
-    upvoteIncrement = 0,
-  ): {
-    decayedMentionScore: number;
-    decayedUpvoteScore: number;
-    decayedScoresUpdatedAt: Date;
-  } {
-    const config = this.qualityScoreService.getConfig();
-
-    let mentionCreatedAt =
-      mentionCreatedAtInput instanceof Date
-        ? mentionCreatedAtInput
-        : new Date(mentionCreatedAtInput || Date.now());
-    if (Number.isNaN(mentionCreatedAt.getTime())) {
-      mentionCreatedAt = new Date();
-    }
-
-    const lastUpdatedRaw =
-      connection.decayedScoresUpdatedAt ||
-      connection.lastMentionedAt ||
-      connection.createdAt ||
-      mentionCreatedAt;
-    const lastUpdatedAt =
-      lastUpdatedRaw instanceof Date
-        ? lastUpdatedRaw
-        : new Date(lastUpdatedRaw);
-
-    const deltaMs = Math.max(
-      0,
-      mentionCreatedAt.getTime() - lastUpdatedAt.getTime(),
-    );
-
-    const mentionDecayMs = Math.max(
-      1,
-      config.timeDecay.mentionCountDecayDays * MS_PER_DAY,
-    );
-    const upvoteDecayMs = Math.max(
-      1,
-      config.timeDecay.upvoteDecayDays * MS_PER_DAY,
-    );
-
-    const mentionDecayFactor = Math.exp(-deltaMs / mentionDecayMs);
-    const upvoteDecayFactor = Math.exp(-deltaMs / upvoteDecayMs);
-
-    const previousMentionScore = Number(connection.decayedMentionScore ?? 0);
-    const previousUpvoteScore = Number(connection.decayedUpvoteScore ?? 0);
-
-    const decayedMentionScore =
-      previousMentionScore * mentionDecayFactor + Math.max(0, mentionWeight);
-    const decayedUpvoteScore =
-      previousUpvoteScore * upvoteDecayFactor + Math.max(0, upvoteIncrement);
-
-    return {
-      decayedMentionScore,
-      decayedUpvoteScore,
-      decayedScoresUpdatedAt: mentionCreatedAt,
-    };
-  }
-
-  private async createNewFoodConnection(
-    tx: PrismaTransaction,
-    operation: FoodAttributeProcessingOperation,
-    attributes: string[],
-  ): Promise<OperationSummary> {
-    const summary = createEmptySummary();
-    const uniqueCategories = Array.isArray(operation.categoryEntityIds)
-      ? Array.from(new Set(operation.categoryEntityIds))
-      : [];
-    const uniqueAttributes = Array.from(new Set(attributes));
-
-    const upvoteValue = operation.upvotes ?? 0;
-    const mentionCreatedAt = operation.mentionCreatedAt
-      ? new Date(operation.mentionCreatedAt)
-      : new Date();
-
-    const newConnection = await tx.connection.create({
-      data: {
-        restaurantId: operation.restaurantEntityId,
-        foodId: operation.foodEntityId,
-        categories: uniqueCategories,
-        foodAttributes: uniqueAttributes,
-        mentionCount: 1,
-        totalUpvotes: upvoteValue,
-        recentMentionCount: operation.isRecent ? 1 : 0,
-        lastMentionedAt: mentionCreatedAt,
-        activityLevel: operation.activityLevel,
-        // Seed with 0 and let the quality score batch recompute the final value
-        foodQualityScore: 0,
-        lastUpdated: new Date(),
-        createdAt: new Date(),
-        decayedMentionScore: 1,
-        decayedUpvoteScore: Math.max(0, upvoteValue),
-        decayedScoresUpdatedAt: mentionCreatedAt,
-      },
-    });
-
-    this.logger.debug('Created new food connection', {
-      restaurantId: operation.restaurantEntityId,
-      foodId: operation.foodEntityId,
-      attributeIds: uniqueAttributes,
-      foodAttributeNames: operation.foodAttributeNames || [],
-    });
-
-    summary.affectedConnectionIds.push(newConnection.connectionId);
-    summary.newConnectionIds.push(newConnection.connectionId);
-
-    return summary;
-  }
-
-  private async recordCategoryBoostEvents(
-    tx: PrismaTransaction,
-    events: CategoryBoostEvent[],
-    batchId: string,
-  ): Promise<void> {
-    if (!Array.isArray(events) || events.length === 0) {
+    if (!events.length) {
       return;
     }
 
-    const sortedEvents = [...events].sort(
-      (a, b) => a.mentionCreatedAt.getTime() - b.mentionCreatedAt.getTime(),
-    );
-
-    await tx.boost.createMany({
-      data: sortedEvents.map((event) => ({
-        restaurantId: event.restaurantId,
-        categoryId: event.categoryId,
-        foodAttributeIds: Array.from(new Set(event.foodAttributeIds || [])),
-        mentionCreatedAt: event.mentionCreatedAt,
-        upvotes: event.upvotes ?? 0,
-      })),
-    });
-
-    for (const event of sortedEvents) {
-      await this.applyCategoryAggregateUpdate(tx, event);
-    }
-
-    this.logger.debug('Category boost events recorded', {
-      batchId,
-      count: sortedEvents.length,
-      restaurantIds: Array.from(
-        new Set(sortedEvents.map((event) => event.restaurantId)),
-      ),
+    await tx.restaurantEvent.createMany({
+      data: events,
+      skipDuplicates: true,
     });
   }
 
-  private async applyCategoryAggregateUpdate(
+  private async recordRestaurantEntityEvents(
     tx: PrismaTransaction,
-    event: CategoryBoostEvent,
+    events: RestaurantEntityEventRecord[],
   ): Promise<void> {
-    const mentionCreatedAt =
-      event.mentionCreatedAt instanceof Date
-        ? event.mentionCreatedAt
-        : new Date(event.mentionCreatedAt);
-    const upvotes = event.upvotes ?? 0;
-
-    const existing = await tx.categoryAggregate.findUnique({
-      where: {
-        restaurantId_categoryId: {
-          restaurantId: event.restaurantId,
-          categoryId: event.categoryId,
-        },
-      },
-    });
-
-    if (!existing) {
-      await tx.categoryAggregate.create({
-        data: {
-          restaurantId: event.restaurantId,
-          categoryId: event.categoryId,
-          mentionsCount: 1,
-          totalUpvotes: upvotes,
-          firstMentionedAt: mentionCreatedAt,
-          lastMentionedAt: mentionCreatedAt,
-          decayedMentionScore: 1,
-          decayedUpvoteScore: Math.max(0, upvotes),
-          decayedScoresUpdatedAt: mentionCreatedAt,
-        },
-      });
+    if (!events.length) {
       return;
     }
 
-    const update = this.computeDecayedScoreUpdate(
-      {
-        decayedMentionScore: existing.decayedMentionScore,
-        decayedUpvoteScore: existing.decayedUpvoteScore,
-        decayedScoresUpdatedAt:
-          existing.decayedScoresUpdatedAt ??
-          existing.lastMentionedAt ??
-          existing.firstMentionedAt,
-        lastMentionedAt: existing.lastMentionedAt,
-        createdAt: existing.firstMentionedAt,
-      },
-      mentionCreatedAt,
-      1,
-      upvotes,
-    );
-
-    const nextLastMentionedAt =
-      mentionCreatedAt > existing.lastMentionedAt
-        ? mentionCreatedAt
-        : existing.lastMentionedAt;
-
-    await tx.categoryAggregate.update({
-      where: {
-        restaurantId_categoryId: {
-          restaurantId: event.restaurantId,
-          categoryId: event.categoryId,
-        },
-      },
-      data: {
-        mentionsCount: { increment: 1 },
-        totalUpvotes: { increment: upvotes },
-        lastMentionedAt: nextLastMentionedAt,
-        decayedMentionScore: update.decayedMentionScore,
-        decayedUpvoteScore: update.decayedUpvoteScore,
-        decayedScoresUpdatedAt: update.decayedScoresUpdatedAt,
-      },
+    await tx.restaurantEntityEvent.createMany({
+      data: events,
+      skipDuplicates: true,
     });
-  }
-
-  private async replayCategoryBoosts(
-    targets: { restaurantId: string; categoryIds: string[] }[],
-    batchId: string,
-  ): Promise<string[]> {
-    if (!Array.isArray(targets) || targets.length === 0) {
-      return [];
-    }
-
-    const affectedConnectionIds: string[] = [];
-    const config = this.qualityScoreService.getConfig();
-    const recentThresholdMs =
-      config.timeDecay.recentMentionThresholdDays * MS_PER_DAY;
-    const activeThresholdMs = 7 * MS_PER_DAY;
-    const now = Date.now();
-
-    for (const { restaurantId } of targets) {
-      try {
-        const connections = await this.prismaService.connection.findMany({
-          where: {
-            restaurantId,
-          },
-        });
-
-        if (connections.length === 0) {
-          continue;
-        }
-
-        let minLastApplied: Date | null = null;
-        for (const connection of connections) {
-          if (!connection.boostLastAppliedAt) {
-            minLastApplied = null;
-            break;
-          }
-          if (
-            !minLastApplied ||
-            connection.boostLastAppliedAt < minLastApplied
-          ) {
-            minLastApplied = connection.boostLastAppliedAt;
-          }
-        }
-
-        const events = await this.prismaService.boost.findMany({
-          where: {
-            restaurantId,
-            ...(minLastApplied
-              ? { mentionCreatedAt: { gt: minLastApplied } }
-              : {}),
-          },
-          orderBy: { mentionCreatedAt: 'asc' },
-        });
-
-        if (events.length === 0) {
-          continue;
-        }
-
-        for (const connection of connections) {
-          const connectionCategorySet = new Set(connection.categories || []);
-          if (connectionCategorySet.size === 0) {
-            continue;
-          }
-
-          const relevantEvents = events.filter((event) =>
-            connectionCategorySet.has(event.categoryId),
-          );
-
-          if (relevantEvents.length === 0) {
-            continue;
-          }
-
-          const connectionAttributes = new Set(connection.foodAttributes || []);
-
-          let mentionIncrement = 0;
-          let upvoteIncrement = 0;
-          let recentIncrement = 0;
-          let latestAppliedAt: Date | null = null;
-          let latestProcessedAt: Date | null = null;
-          let activityLevel: $Enums.ActivityLevel | null = null;
-          const attributeMerge = new Set(connection.foodAttributes || []);
-
-          let decayedMentionScore = Number(connection.decayedMentionScore ?? 0);
-          let decayedUpvoteScore = Number(connection.decayedUpvoteScore ?? 0);
-          let decayedScoresUpdatedAt =
-            connection.decayedScoresUpdatedAt ||
-            connection.lastMentionedAt ||
-            connection.createdAt;
-          let lastMentionedAt =
-            connection.lastMentionedAt || connection.createdAt;
-
-          for (const event of relevantEvents) {
-            const eventTime =
-              event.mentionCreatedAt instanceof Date
-                ? event.mentionCreatedAt
-                : new Date(event.mentionCreatedAt);
-            if (
-              !latestProcessedAt ||
-              eventTime.getTime() > latestProcessedAt.getTime()
-            ) {
-              latestProcessedAt = eventTime;
-            }
-
-            if (
-              connection.boostLastAppliedAt &&
-              eventTime.getTime() <= connection.boostLastAppliedAt.getTime()
-            ) {
-              continue;
-            }
-
-            const eventAttributes = Array.isArray(event.foodAttributeIds)
-              ? event.foodAttributeIds
-              : [];
-            if (
-              eventAttributes.length > 0 &&
-              !eventAttributes.some((attr) => connectionAttributes.has(attr))
-            ) {
-              continue;
-            }
-
-            const synthetic = {
-              decayedMentionScore,
-              decayedUpvoteScore,
-              decayedScoresUpdatedAt,
-              lastMentionedAt,
-              createdAt: connection.createdAt,
-            };
-
-            const update = this.computeDecayedScoreUpdate(
-              synthetic,
-              eventTime,
-              1,
-              event.upvotes ?? 0,
-            );
-
-            decayedMentionScore = update.decayedMentionScore;
-            decayedUpvoteScore = update.decayedUpvoteScore;
-            decayedScoresUpdatedAt = update.decayedScoresUpdatedAt;
-            if (eventTime.getTime() > lastMentionedAt.getTime()) {
-              lastMentionedAt = eventTime;
-            }
-
-            mentionIncrement += 1;
-            upvoteIncrement += event.upvotes ?? 0;
-
-            if (now - eventTime.getTime() <= recentThresholdMs) {
-              recentIncrement += 1;
-            }
-
-            if (eventAttributes.length > 0) {
-              eventAttributes.forEach((attr) => attributeMerge.add(attr));
-            }
-
-            if (now - eventTime.getTime() <= activeThresholdMs) {
-              activityLevel =
-                connection.activityLevel === 'trending' ? 'trending' : 'active';
-            }
-
-            if (
-              !latestAppliedAt ||
-              eventTime.getTime() > latestAppliedAt.getTime()
-            ) {
-              latestAppliedAt = eventTime;
-            }
-          }
-
-          if (!latestProcessedAt) {
-            continue;
-          }
-
-          const previousBoostApplied = connection.boostLastAppliedAt
-            ? connection.boostLastAppliedAt.getTime()
-            : 0;
-          const latestProcessedTime = latestProcessedAt.getTime();
-
-          const updateData: Prisma.ConnectionUpdateInput = {
-            lastUpdated: new Date(),
-            boostLastAppliedAt:
-              latestProcessedTime > previousBoostApplied
-                ? latestProcessedAt
-                : connection.boostLastAppliedAt,
-          };
-
-          if (mentionIncrement > 0) {
-            updateData.mentionCount = { increment: mentionIncrement };
-            updateData.totalUpvotes = { increment: upvoteIncrement };
-            if (recentIncrement > 0) {
-              updateData.recentMentionCount = { increment: recentIncrement };
-            }
-            updateData.decayedMentionScore = decayedMentionScore;
-            updateData.decayedUpvoteScore = decayedUpvoteScore;
-            updateData.decayedScoresUpdatedAt = decayedScoresUpdatedAt;
-            if (
-              latestAppliedAt &&
-              (!connection.lastMentionedAt ||
-                latestAppliedAt > connection.lastMentionedAt)
-            ) {
-              updateData.lastMentionedAt = latestAppliedAt;
-            }
-            if (attributeMerge.size !== connectionAttributes.size) {
-              updateData.foodAttributes = Array.from(attributeMerge);
-            }
-            if (activityLevel && activityLevel !== connection.activityLevel) {
-              updateData.activityLevel = activityLevel;
-            }
-
-            await this.prismaService.connection.update({
-              where: { connectionId: connection.connectionId },
-              data: updateData,
-            });
-            affectedConnectionIds.push(connection.connectionId);
-          } else if (
-            updateData.boostLastAppliedAt &&
-            updateData.boostLastAppliedAt !== connection.boostLastAppliedAt
-          ) {
-            await this.prismaService.connection.update({
-              where: { connectionId: connection.connectionId },
-              data: {
-                boostLastAppliedAt: updateData.boostLastAppliedAt,
-                lastUpdated: new Date(),
-              },
-            });
-          }
-        }
-      } catch (error) {
-        this.logger.error('Failed to replay category boosts', {
-          batchId,
-          restaurantId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
-    return affectedConnectionIds;
   }
 
   /**
@@ -2964,64 +2154,38 @@ export class UnifiedProcessingService implements OnModuleInit {
    */
   private async triggerQualityScoreUpdates(
     affectedConnectionIds: string[],
+    affectedRestaurantIds: string[] = [],
   ): Promise<void> {
     try {
-      if (affectedConnectionIds.length === 0) {
-        this.logger.debug('No connections to update quality scores for');
+      if (
+        affectedConnectionIds.length === 0 &&
+        affectedRestaurantIds.length === 0
+      ) {
+        this.logger.debug('No projections to update quality scores for');
         return;
       }
 
       this.logger.debug(
-        `Triggering quality score updates for ${affectedConnectionIds.length} connections`,
+        `Triggering quality score refresh for ${affectedConnectionIds.length} connections and ${affectedRestaurantIds.length} restaurants`,
       );
 
-      const updateResult =
-        await this.qualityScoreService.updateQualityScoresForConnections(
-          affectedConnectionIds,
-        );
-
-      this.logger.info('Quality score updates completed', {
-        connectionsUpdated: updateResult.connectionsUpdated,
-        restaurantsUpdated: updateResult.restaurantsUpdated,
-        errors: updateResult.errors.length,
-        averageTimeMs: updateResult.averageProcessingTimeMs,
+      await this.projectionRebuildService.refreshQualityScores({
+        connectionIds: affectedConnectionIds,
+        restaurantIds: affectedRestaurantIds,
       });
 
-      if (updateResult.errors.length > 0) {
-        this.logger.warn('Some quality score updates failed', {
-          errorCount: updateResult.errors.length,
-          errors: updateResult.errors.slice(0, 5), // Log first 5 errors
-        });
-      }
+      this.logger.info('Quality score refresh completed', {
+        affectedConnectionIds: affectedConnectionIds.length,
+        affectedRestaurantIds: affectedRestaurantIds.length,
+      });
     } catch (error) {
       // Non-critical error - log and continue
-      this.logger.error('Quality score update batch failed', {
+      this.logger.error('Quality score refresh batch failed', {
         error: error instanceof Error ? error.message : String(error),
         affectedConnectionIds: affectedConnectionIds.length,
+        affectedRestaurantIds: affectedRestaurantIds.length,
       });
     }
-  }
-
-  /**
-   * Extract connection IDs from component processing results
-   * Used to trigger quality score updates for affected connections
-   */
-  private extractConnectionIdsFromComponentResults(
-    componentResults: ComponentResult[],
-  ): string[] {
-    const connectionIds = new Set<string>();
-
-    for (const result of componentResults) {
-      if (result.operations) {
-        for (const operation of result.operations) {
-          if (operation.connectionId) {
-            connectionIds.add(operation.connectionId);
-          }
-        }
-      }
-    }
-
-    return Array.from(connectionIds);
   }
 
   /**
@@ -3089,6 +2253,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     mentions: ProcessableMention[],
     pipeline: string,
     defaultSubreddit?: string,
+    skipDedupe?: boolean,
   ): Promise<{
     filteredMentions: ProcessableMention[];
     newRecordsBySourceId: Map<string, SourceLedgerRecord>;
@@ -3097,6 +2262,14 @@ export class UnifiedProcessingService implements OnModuleInit {
     if (!Array.isArray(mentions) || mentions.length === 0) {
       return {
         filteredMentions: [],
+        newRecordsBySourceId: new Map(),
+        skippedCount: 0,
+      };
+    }
+
+    if (skipDedupe) {
+      return {
+        filteredMentions: [...mentions],
         newRecordsBySourceId: new Map(),
         skippedCount: 0,
       };
@@ -3121,7 +2294,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     }
 
     const sourceIds = Array.from(sourceIdSet);
-    const existingRecords = await this.prismaService.source.findMany({
+    const existingRecords = await this.prismaService.processedSource.findMany({
       where: {
         pipeline: normalizedPipeline,
         sourceId: { in: sourceIds },
@@ -3132,26 +2305,22 @@ export class UnifiedProcessingService implements OnModuleInit {
     const existingSet = new Set(
       existingRecords.map((record) => record.sourceId),
     );
-    const filteredMentions: ProcessableMention[] = [];
     const newRecordsBySourceId = new Map<string, SourceLedgerRecord>();
-    const seenInBatch = new Set<string>();
-    let skippedCount = 0;
+    let skippedCount = existingSet.size;
 
     for (const mention of mentions) {
       const rawSourceId = mention.source_id.trim();
 
       if (!rawSourceId) {
-        filteredMentions.push(mention);
         continue;
       }
 
-      if (seenInBatch.has(rawSourceId) || existingSet.has(rawSourceId)) {
-        skippedCount += 1;
+      if (
+        newRecordsBySourceId.has(rawSourceId) ||
+        existingSet.has(rawSourceId)
+      ) {
         continue;
       }
-
-      seenInBatch.add(rawSourceId);
-      filteredMentions.push(mention);
 
       let mentionSubreddit = '';
       if (typeof mention.subreddit === 'string') {
@@ -3166,13 +2335,13 @@ export class UnifiedProcessingService implements OnModuleInit {
       newRecordsBySourceId.set(rawSourceId, {
         pipeline: normalizedPipeline,
         sourceId: rawSourceId,
-        subreddit: subredditValue,
+        community: subredditValue,
         processedAt: new Date(),
       });
     }
 
     return {
-      filteredMentions,
+      filteredMentions: [...mentions],
       newRecordsBySourceId,
       skippedCount,
     };
@@ -3212,6 +2381,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       maxRetries: 3,
       batchTimeout: 300000, // 5 minutes
       batchSize: this.defaultBatchSize,
+      skipSourceLedgerDedupe: false,
     };
   }
 
@@ -3230,7 +2400,7 @@ export class UnifiedProcessingService implements OnModuleInit {
   }
 
   private async resolveSubredditLocation(
-    tx: PrismaTransaction,
+    tx: PrismaTransaction | PrismaService,
     subreddit?: string | null,
   ): Promise<{ latitude: number; longitude: number } | null> {
     if (!subreddit || !subreddit.trim()) {
@@ -3243,20 +2413,28 @@ export class UnifiedProcessingService implements OnModuleInit {
       return cached;
     }
 
-    const record = await tx.coverageArea.findFirst({
-      where: { name: subreddit, sourceType: CoverageSourceType.all },
+    const resolvedMarketKey = await this.resolveMarketKey(subreddit);
+    if (!resolvedMarketKey) {
+      return null;
+    }
+
+    const marketRecord = await tx.market.findFirst({
+      where: {
+        marketKey: resolvedMarketKey,
+        isActive: true,
+      },
       select: {
         centerLatitude: true,
         centerLongitude: true,
       },
     });
 
-    if (!record) {
+    if (!marketRecord) {
       return null;
     }
 
-    const latitude = this.toNumeric(record.centerLatitude);
-    const longitude = this.toNumeric(record.centerLongitude);
+    const latitude = this.toNumeric(marketRecord.centerLatitude);
+    const longitude = this.toNumeric(marketRecord.centerLongitude);
 
     if (
       typeof latitude === 'number' &&
@@ -3272,7 +2450,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     return null;
   }
 
-  private async resolveCoverageKey(
+  private async resolveMarketKey(
     subreddit?: string | null,
   ): Promise<string | null> {
     if (!subreddit || !subreddit.trim()) {
@@ -3280,31 +2458,19 @@ export class UnifiedProcessingService implements OnModuleInit {
     }
 
     const cacheKey = subreddit.trim().toLowerCase();
-    const cached = this.getCachedValue(this.subredditCoverageCache, cacheKey);
+    const cached = this.getCachedValue(this.subredditMarketCache, cacheKey);
     if (cached) {
       return cached;
     }
 
-    const record = (await this.prismaService.coverageArea.findFirst({
-      where: {
-        name: {
-          equals: subreddit,
-          mode: 'insensitive',
-        },
-        sourceType: CoverageSourceType.all,
-      },
-      select: { coverageKey: true, name: true },
-    })) as CoverageKeyRecord;
+    const mappedMarketKey =
+      await this.marketRegistry.resolveMarketKeyForCommunity(subreddit);
+    if (!mappedMarketKey) {
+      return null;
+    }
 
-    const resolved =
-      typeof record?.coverageKey === 'string' && record.coverageKey.trim()
-        ? record.coverageKey.trim().toLowerCase()
-        : record?.name
-          ? record.name.trim().toLowerCase()
-          : cacheKey;
-
-    this.setCachedValue(this.subredditCoverageCache, cacheKey, resolved);
-    return resolved;
+    this.setCachedValue(this.subredditMarketCache, cacheKey, mappedMarketKey);
+    return mappedMarketKey;
   }
 
   private getCachedValue<T>(
@@ -3385,6 +2551,7 @@ export class UnifiedProcessingService implements OnModuleInit {
 
   private async scheduleRestaurantEnrichment(
     summaries: CreatedEntitySummary[],
+    sourceMetadata?: SourceMetadata,
   ): Promise<void> {
     if (!summaries.length) {
       return;
@@ -3403,12 +2570,18 @@ export class UnifiedProcessingService implements OnModuleInit {
     }
 
     const concurrency = Math.max(1, this.restaurantEnrichmentConcurrency);
+    const enrichmentContext =
+      await this.resolveRestaurantEnrichmentDispatchContext(
+        sourceMetadata?.subreddit ?? null,
+      );
 
     for (let index = 0; index < restaurantIds.length; index += concurrency) {
       const batch = restaurantIds.slice(index, index + concurrency);
       const enrichmentPromises = batch.map((entityId) =>
         this.restaurantLocationEnrichmentService
-          .enrichRestaurantById(entityId)
+          .enrichRestaurantById(entityId, {
+            locationBias: enrichmentContext.locationBias,
+          })
           .catch((error) => {
             this.logger.warn('Restaurant enrichment failed', {
               entityId,
@@ -3422,5 +2595,110 @@ export class UnifiedProcessingService implements OnModuleInit {
 
       await Promise.all(enrichmentPromises);
     }
+  }
+
+  private async resolveRestaurantEnrichmentDispatchContext(
+    subreddit?: string | null,
+  ): Promise<RestaurantEnrichmentDispatchContext> {
+    const preferredMarketKey = await this.resolveMarketKey(subreddit);
+    const location = await this.resolveSubredditLocation(
+      this.prismaService,
+      subreddit,
+    );
+
+    if (!location) {
+      return {};
+    }
+
+    const radiusMeters = preferredMarketKey
+      ? await this.resolveMarketBiasRadiusMeters(preferredMarketKey)
+      : undefined;
+
+    return {
+      locationBias: {
+        lat: location.latitude,
+        lng: location.longitude,
+        radiusMeters,
+      },
+    };
+  }
+
+  private async resolveMarketBiasRadiusMeters(
+    marketKey: string,
+  ): Promise<number> {
+    const market = await this.prismaService.market.findFirst({
+      where: {
+        marketKey: {
+          equals: marketKey,
+          mode: 'insensitive',
+        },
+        isActive: true,
+      },
+      select: {
+        centerLatitude: true,
+        centerLongitude: true,
+        bboxNeLat: true,
+        bboxNeLng: true,
+        bboxSwLat: true,
+        bboxSwLng: true,
+      },
+    });
+
+    const centerLatitude = this.toNumeric(market?.centerLatitude);
+    const centerLongitude = this.toNumeric(market?.centerLongitude);
+    const northEastLat = this.toNumeric(market?.bboxNeLat);
+    const northEastLng = this.toNumeric(market?.bboxNeLng);
+    const southWestLat = this.toNumeric(market?.bboxSwLat);
+    const southWestLng = this.toNumeric(market?.bboxSwLng);
+
+    if (
+      centerLatitude === null ||
+      centerLongitude === null ||
+      northEastLat === null ||
+      northEastLng === null ||
+      southWestLat === null ||
+      southWestLng === null
+    ) {
+      throw new Error(
+        `Missing market bbox/center for enrichment bias radius: ${marketKey}`,
+      );
+    }
+
+    const northEastDistance = this.calculateDistanceMeters(
+      { lat: centerLatitude, lng: centerLongitude },
+      { lat: northEastLat, lng: northEastLng },
+    );
+    const southWestDistance = this.calculateDistanceMeters(
+      { lat: centerLatitude, lng: centerLongitude },
+      { lat: southWestLat, lng: southWestLng },
+    );
+
+    return Math.max(
+      15000,
+      Math.min(Math.max(northEastDistance, southWestDistance) + 5000, 50000),
+    );
+  }
+
+  private calculateDistanceMeters(
+    origin: { lat: number; lng: number },
+    destination: { lat: number; lng: number },
+  ): number {
+    const toRadians = (value: number) => (value * Math.PI) / 180;
+    const earthRadiusMeters = 6371000;
+
+    const originLatRad = toRadians(origin.lat);
+    const destinationLatRad = toRadians(destination.lat);
+    const deltaLat = toRadians(destination.lat - origin.lat);
+    const deltaLng = toRadians(destination.lng - origin.lng);
+
+    const a =
+      Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+      Math.cos(originLatRad) *
+        Math.cos(destinationLatRad) *
+        Math.sin(deltaLng / 2) *
+        Math.sin(deltaLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return Math.round(earthRadiusMeters * c);
   }
 }

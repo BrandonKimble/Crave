@@ -137,7 +137,6 @@ const buildInteractionSemanticRevision = ({
 
 type UseMapMarkerEngineArgs = {
   searchRuntimeBus: SearchRuntimeBus;
-  scoreMode: 'global_quality' | 'coverage_display';
   restaurantOnlyId: string | null;
   highlightedRestaurantId: string | null;
   viewportBoundsService: ViewportBoundsService;
@@ -394,8 +393,8 @@ const buildCoverageEntitiesFingerprint = (
 const useShortcutCoverageOwner = ({
   searchMode,
   activeTab,
-  scoreMode,
   searchRequestId,
+  marketKey,
   viewportBoundsService,
   restaurantsById,
   resolveRestaurantLocationSelectionAnchor,
@@ -404,8 +403,8 @@ const useShortcutCoverageOwner = ({
 }: {
   searchMode: 'shortcut' | 'natural' | 'entity' | null;
   activeTab: 'dishes' | 'restaurants';
-  scoreMode: 'coverage_display' | 'global_quality';
   searchRequestId: string | null;
+  marketKey: string | null;
   viewportBoundsService: ViewportBoundsService;
   restaurantsById: Map<string, RestaurantResult>;
   resolveRestaurantLocationSelectionAnchor: () => Coordinate | null;
@@ -554,7 +553,7 @@ const useShortcutCoverageOwner = ({
       buildCoverageEntitiesFingerprint(entitiesSnapshot);
     const fetchKey = `${boundsKey}::${
       includeTopDish ? 'dishes' : 'restaurants'
-    }::${scoreMode}::${entitiesKey}`;
+    }::${marketKey ?? ''}::${entitiesKey}`;
     if (shortcutCoverageFetchKeyRef.current === fetchKey) {
       return;
     }
@@ -568,7 +567,7 @@ const useShortcutCoverageOwner = ({
         entities: entitiesSnapshot,
         bounds: boundsSnapshot,
         includeTopDish,
-        scoreMode,
+        marketKey,
       })
       .then((collection) => {
         if (fetchSeq !== shortcutCoverageFetchSeqRef.current) {
@@ -604,40 +603,29 @@ const useShortcutCoverageOwner = ({
               typeof properties.restaurantQualityScore === 'number'
                 ? (properties.restaurantQualityScore as number)
                 : null;
-            const displayScore =
-              typeof properties.displayScore === 'number'
-                ? (properties.displayScore as number)
+            const contextualPercentile =
+              typeof properties.contextualPercentile === 'number'
+                ? (properties.contextualPercentile as number)
                 : null;
-            const displayPercentile =
-              typeof properties.displayPercentile === 'number'
-                ? (properties.displayPercentile as number)
+            const topDishContextualPercentile =
+              includeTopDish && typeof properties.topDishContextualPercentile === 'number'
+                ? (properties.topDishContextualPercentile as number)
                 : null;
-            const topDishDisplayPercentile =
-              includeTopDish && typeof properties.topDishDisplayPercentile === 'number'
-                ? (properties.topDishDisplayPercentile as number)
+            const topDishContextualScore =
+              includeTopDish && typeof properties.topDishContextualScore === 'number'
+                ? (properties.topDishContextualScore as number)
                 : null;
-            const topDishDisplayScore =
-              includeTopDish && typeof properties.topDishDisplayScore === 'number'
-                ? (properties.topDishDisplayScore as number)
-                : null;
-            const scoreForColor =
-              scoreMode === 'coverage_display'
-                ? includeTopDish
-                  ? topDishDisplayScore
-                  : displayScore
-                : includeTopDish
-                ? contextualScore
-                : typeof restaurantQualityScore === 'number'
-                ? restaurantQualityScore
-                : null;
+            const scoreForColor = contextualScore;
             const globalScoreForColor = includeTopDish
               ? contextualScore
               : typeof restaurantQualityScore === 'number'
-              ? restaurantQualityScore
-              : null;
-            const localScoreForColor = includeTopDish ? topDishDisplayScore : displayScore;
+                ? restaurantQualityScore
+                : null;
+            const contextualScoreForColor = includeTopDish
+              ? topDishContextualScore
+              : contextualScore;
             const pinColorGlobal = getQualityColorFromScore(globalScoreForColor);
-            const pinColorLocal = getQualityColorFromScore(localScoreForColor);
+            const pinColorContextual = getQualityColorFromScore(contextualScoreForColor);
             const pinColor = getQualityColorFromScore(scoreForColor);
             const isDishPin = includeTopDish ? true : false;
             const dishName =
@@ -656,20 +644,19 @@ const useShortcutCoverageOwner = ({
                 restaurantName,
                 contextualScore,
                 rank,
-                displayScore,
-                displayPercentile,
+                contextualPercentile,
                 restaurantQualityScore:
                   typeof restaurantQualityScore === 'number' ? restaurantQualityScore : null,
                 pinColor,
                 pinColorGlobal,
-                pinColorLocal,
+                pinColorContextual,
                 ...(isDishPin
                   ? {
                       isDishPin: true,
                       dishName,
                       connectionId,
-                      topDishDisplayPercentile,
-                      topDishDisplayScore,
+                      topDishContextualPercentile,
+                      topDishContextualScore,
                     }
                   : null),
               },
@@ -705,9 +692,9 @@ const useShortcutCoverageOwner = ({
     coverageBoundsRevision,
     getQualityColorFromScore,
     resetShortcutCoverageState,
-    scoreMode,
     searchMode,
     searchRequestId,
+    marketKey,
     viewportBoundsService,
   ]);
 
@@ -750,7 +737,6 @@ const useShortcutCoverageOwner = ({
 export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEngineResult => {
   const {
     searchRuntimeBus,
-    scoreMode,
     restaurantOnlyId,
     highlightedRestaurantId,
     viewportBoundsService,
@@ -772,19 +758,22 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
     isMapMoving,
   } = args;
 
-  const { mapMarkerRestaurants, mapMarkerDishes, mapSearchRequestId } = useSearchRuntimeBusSelector(
-    searchRuntimeBus,
-    (state) => ({
-      mapMarkerRestaurants: state.results?.restaurants ?? EMPTY_RESTAURANTS,
-      mapMarkerDishes: state.results?.dishes ?? EMPTY_DISHES,
-      mapSearchRequestId: state.results?.metadata?.searchRequestId ?? null,
-    }),
-    (left, right) =>
-      left.mapMarkerRestaurants === right.mapMarkerRestaurants &&
-      left.mapMarkerDishes === right.mapMarkerDishes &&
-      left.mapSearchRequestId === right.mapSearchRequestId,
-    ['results'] as const
-  );
+  const { mapMarkerRestaurants, mapMarkerDishes, mapSearchRequestId, mapSearchMarketKey } =
+    useSearchRuntimeBusSelector(
+      searchRuntimeBus,
+      (state) => ({
+        mapMarkerRestaurants: state.results?.restaurants ?? EMPTY_RESTAURANTS,
+        mapMarkerDishes: state.results?.dishes ?? EMPTY_DISHES,
+        mapSearchRequestId: state.results?.metadata?.searchRequestId ?? null,
+        mapSearchMarketKey: state.results?.metadata?.marketKey ?? null,
+      }),
+      (left, right) =>
+        left.mapMarkerRestaurants === right.mapMarkerRestaurants &&
+        left.mapMarkerDishes === right.mapMarkerDishes &&
+        left.mapSearchRequestId === right.mapSearchRequestId &&
+        left.mapSearchMarketKey === right.mapSearchMarketKey,
+      ['results'] as const
+    );
 
   const runtimeMapPresentationInput = useSearchRuntimeBusSelector(
     searchRuntimeBus,
@@ -834,7 +823,7 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
       return precomputedMarkerData.canonicalRankById;
     }
     const map = new Map<string, number>();
-    mapMarkerRestaurants.forEach((restaurant) => {
+    mapMarkerRestaurants.forEach((restaurant: RestaurantResult) => {
       if (
         typeof restaurant.rank === 'number' &&
         Number.isFinite(restaurant.rank) &&
@@ -864,7 +853,7 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
     }
     const start = shouldLogSearchComputes ? getPerfNow() : 0;
     const map = new Map<string, RestaurantResult>();
-    mapMarkerRestaurants.forEach((restaurant) => {
+    mapMarkerRestaurants.forEach((restaurant: RestaurantResult) => {
       const locationList: Array<{ latitude?: number | null; longitude?: number | null }> =
         Array.isArray(restaurant.locations) ? restaurant.locations : [];
       const displayLocation =
@@ -885,7 +874,7 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
       }
       map.set(restaurant.restaurantId, restaurant);
     });
-    mapMarkerDishes.forEach((dish) => {
+    mapMarkerDishes.forEach((dish: FoodResult) => {
       if (
         !map.has(dish.restaurantId) &&
         (typeof dish.restaurantLatitude !== 'number' ||
@@ -948,7 +937,6 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
       activeTab: mapPresentationActiveTab,
       dishes: mapMarkerDishes,
       markerRestaurants: mapMarkerRestaurants,
-      scoreMode,
       restaurantOnlyId,
       selectedRestaurantId,
       canonicalRestaurantRankById,
@@ -980,7 +968,6 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
     resolveRestaurantLocationSelectionAnchor,
     resolveRestaurantMapLocations,
     restaurantOnlyId,
-    scoreMode,
     selectedRestaurantId,
     shouldLogSearchComputes,
   ]);
@@ -1048,8 +1035,8 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
   } = useShortcutCoverageOwner({
     searchMode: mapPresentationMode,
     activeTab: mapPresentationActiveTab,
-    scoreMode,
     searchRequestId: mapSearchRequestId,
+    marketKey: mapSearchMarketKey,
     viewportBoundsService,
     restaurantsById,
     resolveRestaurantLocationSelectionAnchor,
@@ -1062,7 +1049,6 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
       searchMode: mapPresentationMode,
       activeTab: mapPresentationActiveTab,
       selectedRestaurantId,
-      scoreMode,
       markerCandidatesRef,
       shortcutCoverageRankedRef,
       mapGestureActiveRef,
@@ -1090,7 +1076,6 @@ export const useMapMarkerEngine = (args: UseMapMarkerEngineArgs): UseMapMarkerEn
     markerCatalogEntries,
     rankedShortcutCoverageFeatures,
     selectedRestaurantId,
-    scoreMode,
     recomputeLodPinnedMarkers,
     viewportBoundsService,
   ]);

@@ -16,7 +16,7 @@ export const renderMetaDetailLine = (
   showLocationDetails = true,
   statusFirst = false,
   locationCount?: number | null,
-  coverageLabel?: string | null,
+  marketLabel?: string | null,
   textStyle?: StyleProp<TextStyle>
 ): React.ReactNode => {
   const segments: React.ReactNode[] = [];
@@ -62,8 +62,8 @@ export const renderMetaDetailLine = (
     status?.isOpen && typeof status.closesInMinutes === 'number'
       ? status.closesInMinutes
       : status?.isOpen
-      ? minutesUntilCloseFromDisplay(status?.closesAtDisplay)
-      : null;
+        ? minutesUntilCloseFromDisplay(status?.closesAtDisplay)
+        : null;
   const isClosingSoon =
     status?.isOpen &&
     typeof effectiveMinutesUntilClose === 'number' &&
@@ -150,10 +150,10 @@ export const renderMetaDetailLine = (
         </Text>
       );
     }
-    if (coverageLabel) {
+    if (marketLabel) {
       pushSegment(
         <Text key="coverage" variant="body" style={applyTextStyle(styles.resultMetaDistance)}>
-          {coverageLabel}
+          {marketLabel}
         </Text>
       );
     }

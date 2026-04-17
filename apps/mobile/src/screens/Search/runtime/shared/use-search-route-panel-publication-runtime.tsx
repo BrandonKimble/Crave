@@ -1,6 +1,9 @@
 import React from 'react';
 
-import type { SearchRouteHostVisualState } from '../../../../overlays/searchOverlayRouteHostContract';
+import {
+  coerceSearchRouteSceneDefinition,
+  type SearchRouteHostVisualState,
+} from '../../../../overlays/searchOverlayRouteHostContract';
 import { useSearchRouteOverlayRuntime } from '../../../../overlays/useSearchRouteOverlayRuntime';
 import type { UseSearchResultsRoutePublicationArgs } from './search-results-panel-runtime-contract';
 import { useSearchResultsPanelCoveredRenderRuntime } from './use-search-results-panel-covered-render-runtime';
@@ -24,21 +27,21 @@ type UseSearchRoutePanelPublicationRuntimeArgs = UseSearchResultsRoutePublicatio
 };
 
 export const useSearchRoutePanelPublicationRuntime = ({
+  searchRuntimeBus,
   resultsPresentationOwner,
   resultsSheetRuntime,
   resultsSheetInteractionModel,
   resultsPanelVisualRuntimeModel,
   pollBounds,
   startupPollsSnapshot,
+  userLocation,
   searchInteractionRef,
-  toggleRankSelector,
   toggleOpenNow,
   toggleVotesFilter,
   togglePriceSelector,
   shouldDisableSearchBlur,
   searchFiltersLayoutCacheRef,
   handleSearchFiltersLayoutCache,
-  scoreMode,
   getDishSaveHandler,
   getRestaurantSaveHandler,
   stableOpenRestaurantProfileFromResults,
@@ -56,20 +59,20 @@ export const useSearchRoutePanelPublicationRuntime = ({
   isSuggestionPanelActive,
 }: UseSearchRoutePanelPublicationRuntimeArgs): void => {
   const panelDataRuntime = useSearchResultsPanelDataRuntime({
+    searchRuntimeBus,
     resultsPresentationOwner,
     searchFiltersLayoutCacheRef,
     handleSearchFiltersLayoutCache,
-    toggleRankSelector,
     toggleOpenNow,
     toggleVotesFilter,
     togglePriceSelector,
-    scoreMode,
     getDishSaveHandler,
     getRestaurantSaveHandler,
     stableOpenRestaurantProfileFromResults,
     openScoreInfo,
   });
   const readModelRuntime = useSearchResultsPanelReadModelRuntime({
+    searchRuntimeBus,
     resultsSheetRuntime,
     searchInteractionRef,
     shouldDisableSearchBlur,
@@ -133,10 +136,11 @@ export const useSearchRoutePanelPublicationRuntime = ({
     visualState,
     shouldShowSearchPanel: routeVisibilityRuntime.shouldShowSearchPanel,
     shouldShowDockedPollsPanel: routeVisibilityRuntime.shouldShowDockedPollsPanel,
-    searchPanelSpec: specRuntime.searchPanelSpec,
+    searchSceneDefinition: coerceSearchRouteSceneDefinition(specRuntime.searchPanelSpec),
     searchInteractionRef,
     pollBounds,
     startupPollsSnapshot,
+    userLocation,
     shouldFreezeOverlaySheetForCloseHandoff,
     shouldFreezeOverlayHeaderActionForRunOne,
     isForegroundEditing,

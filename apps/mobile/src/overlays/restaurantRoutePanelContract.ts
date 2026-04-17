@@ -107,8 +107,8 @@ const resolveLocationCandidates = (restaurant: RestaurantResult | null) => {
     Array.isArray(restaurant.locations) && restaurant.locations.length > 0
       ? restaurant.locations
       : restaurant.displayLocation
-      ? [restaurant.displayLocation]
-      : [];
+        ? [restaurant.displayLocation]
+        : [];
   const seen = new Set<string>();
   return source.filter((location, index) => {
     const locationId = location.locationId ?? `${restaurant.restaurantId}-${index}`;
@@ -118,6 +118,17 @@ const resolveLocationCandidates = (restaurant: RestaurantResult | null) => {
     seen.add(locationId);
     return true;
   });
+};
+
+const formatMatchedTagLabel = (name: string, mentionCount: number): string => {
+  const trimmedName = name.trim();
+  if (!trimmedName.length) {
+    return '';
+  }
+  if (!Number.isFinite(mentionCount) || mentionCount <= 0) {
+    return trimmedName;
+  }
+  return `${trimmedName} ${mentionCount}`;
 };
 
 export const createRestaurantPanelSnapshotPayload = (
@@ -149,15 +160,19 @@ export const createRestaurantPanelSnapshotPayload = (
     locationCandidates[0]?.address ??
     (isLoading ? 'Loading details...' : 'Address unavailable');
   const priceLabel = restaurant
-    ? getPriceRangeLabel(restaurant.priceLevel) ??
+    ? (getPriceRangeLabel(restaurant.priceLevel) ??
       restaurant.priceText ??
       restaurant.priceSymbol ??
-      null
+      null)
     : null;
   const hoursSummary =
     formatOperatingStatus(restaurant?.displayLocation?.operatingStatus) ?? 'Hours unavailable';
   const locationsLabel =
     locationCandidates.length === 1 ? '1 location' : `${locationCandidates.length} locations`;
+  const matchedTags = (restaurant?.matchedTags ?? [])
+    .map((tag) => formatMatchedTagLabel(tag.name, tag.mentionCount))
+    .filter((tag): tag is string => tag.length > 0)
+    .slice(0, 3);
 
   return {
     restaurantId: restaurantId || null,
@@ -179,6 +194,7 @@ export const createRestaurantPanelSnapshotPayload = (
     favoriteEnabled: Boolean(restaurantId),
     showWebsiteAction: Boolean(sharedWebsiteUrl),
     showCallAction: true,
+    matchedTags,
     locations: locationCandidates.map((location) => {
       const statusLabel = formatOperatingStatus(location.operatingStatus);
       const locationWebsite = normalizeWebsiteUrl(location.websiteUrl);
@@ -197,7 +213,7 @@ export const createRestaurantPanelSnapshotPayload = (
     dishes: dishes.map((dish) => ({
       id: dish.connectionId,
       name: dish.foodName,
-      score: (dish.displayScore ?? dish.qualityScore).toFixed(1),
+      score: (dish.contextualScore ?? dish.qualityScore).toFixed(1),
       activity: dish.activityLevel,
       pollCount: String(dish.mentionCount),
       totalVotes: String(dish.totalUpvotes),

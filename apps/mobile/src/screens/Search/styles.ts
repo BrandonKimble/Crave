@@ -415,16 +415,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 22,
+    paddingHorizontal: 0,
     paddingTop: NAV_TOP_PADDING,
     backgroundColor: 'transparent',
     overflow: 'visible',
   },
+  navTouchShield: {
+    ...StyleSheet.absoluteFillObject,
+  },
   navButton: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 68,
-    paddingHorizontal: 4,
+    minWidth: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
   navIcon: {
     marginBottom: 2,
@@ -1276,6 +1281,31 @@ const styles = StyleSheet.create({
     marginBottom: 0,
     gap: CARD_LINE_GAP,
     alignSelf: 'stretch',
+  },
+  matchedTagsSection: {
+    gap: 6,
+    alignSelf: 'stretch',
+  },
+  matchedTagsLabel: {
+    color: themeColors.textMuted,
+    letterSpacing: 0.2,
+  },
+  matchedTagsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: 8,
+    rowGap: 8,
+  },
+  matchedTagPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  matchedTagText: {
+    color: themeColors.textBody,
   },
   topFoodLabel: {
     color: themeColors.textBody,

@@ -6,8 +6,8 @@
  */
 
 import type {
+  EnrichedLLMMention,
   LLMPost,
-  LLMMention,
 } from '../../external-integrations/llm/llm.types';
 
 export interface BatchJob {
@@ -159,7 +159,7 @@ export interface BatchProcessingResult {
   };
 
   /** Optional raw mentions sample for debugging (unchanged objects) */
-  rawMentionsSample?: LLMMention[];
+  rawMentionsSample?: EnrichedLLMMention[];
 }
 
 /**

@@ -3,22 +3,23 @@ import React from 'react';
 import type {
   SearchRoutePanelInteractionRef,
   SearchRoutePollsPanelInputs,
+  SearchRouteSceneDefinition,
   SearchRouteHostVisualState,
 } from './searchOverlayRouteHostContract';
 import { useSearchRouteDockedPollsPanelInputs } from './useSearchRouteDockedPollsPanelInputs';
 import { useSearchRouteOverlayRenderPolicy } from './useSearchRouteOverlayRenderPolicy';
 import { useSearchRouteOverlayRuntimePublication } from './useSearchRouteOverlayRuntimePublication';
-import type { OverlayContentSpec } from './types';
 
 type UseSearchRouteOverlayRuntimeArgs = {
   shouldRenderSearchOverlay: boolean;
   visualState: SearchRouteHostVisualState | null;
   shouldShowSearchPanel: boolean;
   shouldShowDockedPollsPanel: boolean;
-  searchPanelSpec: OverlayContentSpec<unknown> | null;
+  searchSceneDefinition: SearchRouteSceneDefinition | null;
   searchInteractionRef: SearchRoutePanelInteractionRef | null;
   pollBounds: SearchRoutePollsPanelInputs['pollBounds'];
   startupPollsSnapshot: SearchRoutePollsPanelInputs['startupPollsSnapshot'];
+  userLocation: SearchRoutePollsPanelInputs['userLocation'];
   shouldFreezeOverlaySheetForCloseHandoff: boolean;
   shouldFreezeOverlayHeaderActionForRunOne: boolean;
   isForegroundEditing: boolean;
@@ -30,10 +31,11 @@ export const useSearchRouteOverlayRuntime = ({
   visualState,
   shouldShowSearchPanel,
   shouldShowDockedPollsPanel,
-  searchPanelSpec,
+  searchSceneDefinition,
   searchInteractionRef,
   pollBounds,
   startupPollsSnapshot,
+  userLocation,
   shouldFreezeOverlaySheetForCloseHandoff,
   shouldFreezeOverlayHeaderActionForRunOne,
   isForegroundEditing,
@@ -42,6 +44,7 @@ export const useSearchRouteOverlayRuntime = ({
   const dockedPollsPanelInputs = useSearchRouteDockedPollsPanelInputs({
     pollBounds,
     startupPollsSnapshot,
+    userLocation,
     searchInteractionRef,
   });
   const renderPolicy = useSearchRouteOverlayRenderPolicy({
@@ -56,7 +59,7 @@ export const useSearchRouteOverlayRuntime = ({
   useSearchRouteOverlayRuntimePublication({
     shouldRenderSearchOverlay,
     visualState,
-    searchPanelSpec,
+    searchSceneDefinition,
     searchPanelInteractionRef: searchInteractionRef,
     dockedPollsPanelInputs,
     renderPolicy,

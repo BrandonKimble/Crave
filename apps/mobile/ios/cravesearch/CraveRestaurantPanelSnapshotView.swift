@@ -6,11 +6,6 @@ struct RestaurantPanelSnapshotPayload {
   struct HoursRow {
     let label: String
     let value: String
-
-    init(dictionary: [String: Any]) {
-      label = RestaurantPanelSnapshotPayload.stringValue(dictionary["label"], fallback: "")
-      value = RestaurantPanelSnapshotPayload.stringValue(dictionary["value"], fallback: "")
-    }
   }
 
   struct Location {
@@ -20,18 +15,6 @@ struct RestaurantPanelSnapshotPayload {
     let phone: String?
     let hoursRows: [HoursRow]
     let websiteHost: String?
-
-    init(dictionary: [String: Any]) {
-      title = RestaurantPanelSnapshotPayload.stringValue(dictionary["title"], fallback: "Location")
-      status = RestaurantPanelSnapshotPayload.optionalStringValue(dictionary["status"])
-      address = RestaurantPanelSnapshotPayload.stringValue(
-        dictionary["address"],
-        fallback: "Address unavailable"
-      )
-      phone = RestaurantPanelSnapshotPayload.optionalStringValue(dictionary["phone"])
-      hoursRows = (dictionary["hoursRows"] as? [[String: Any]] ?? []).map(HoursRow.init)
-      websiteHost = RestaurantPanelSnapshotPayload.optionalStringValue(dictionary["websiteHost"])
-    }
   }
 
   struct Dish {
@@ -41,18 +24,6 @@ struct RestaurantPanelSnapshotPayload {
     let activity: String
     let pollCount: String
     let totalVotes: String
-
-    init(dictionary: [String: Any]) {
-      id = RestaurantPanelSnapshotPayload.stringValue(dictionary["id"], fallback: "")
-      name = RestaurantPanelSnapshotPayload.stringValue(dictionary["name"], fallback: "")
-      score = RestaurantPanelSnapshotPayload.stringValue(dictionary["score"], fallback: "—")
-      activity = RestaurantPanelSnapshotPayload.stringValue(dictionary["activity"], fallback: "")
-      pollCount = RestaurantPanelSnapshotPayload.stringValue(dictionary["pollCount"], fallback: "0")
-      totalVotes = RestaurantPanelSnapshotPayload.stringValue(
-        dictionary["totalVotes"],
-        fallback: "0"
-      )
-    }
   }
 
   let restaurantId: String?
@@ -74,59 +45,235 @@ struct RestaurantPanelSnapshotPayload {
   let favoriteEnabled: Bool
   let showWebsiteAction: Bool
   let showCallAction: Bool
+  let matchedTags: [String]
   let locations: [Location]
   let dishes: [Dish]
+}
 
-  init?(snapshotDictionary: NSDictionary?) {
-    guard let object = snapshotDictionary as? [String: Any] else {
+private enum RestaurantPanelSnapshotDecodeError: LocalizedError {
+  case expectedObject(path: String, actual: String)
+  case expectedArray(path: String, actual: String)
+  case expectedString(path: String, actual: String)
+  case expectedBoolean(path: String, actual: String)
+
+  var errorDescription: String? {
+    switch self {
+    case let .expectedObject(path, actual):
+      return "Expected object at \(path), received \(actual)"
+    case let .expectedArray(path, actual):
+      return "Expected array at \(path), received \(actual)"
+    case let .expectedString(path, actual):
+      return "Expected string at \(path), received \(actual)"
+    case let .expectedBoolean(path, actual):
+      return "Expected boolean at \(path), received \(actual)"
+    }
+  }
+}
+
+private enum RestaurantPanelSnapshotDecoder {
+  static func decode(snapshot bridgeSnapshot: NSDictionary?) throws -> RestaurantPanelSnapshotPayload? {
+    guard let bridgeSnapshot else {
       return nil
     }
-
-    restaurantId = Self.optionalStringValue(object["restaurantId"])
-    restaurantName = Self.stringValue(object["restaurantName"], fallback: "")
-    primaryAddress = Self.stringValue(object["primaryAddress"], fallback: "")
-    shareMessage = Self.optionalStringValue(object["shareMessage"])
-    restaurantScore = Self.stringValue(object["restaurantScore"], fallback: "—")
-    queryScoreLabel = Self.stringValue(object["queryScoreLabel"], fallback: "Query score")
-    queryScoreValue = Self.stringValue(object["queryScoreValue"], fallback: "—")
-    priceLabel = Self.stringValue(object["priceLabel"], fallback: "—")
-    hoursSummary = Self.stringValue(object["hoursSummary"], fallback: "Hours unavailable")
-    locationsLabel = Self.stringValue(object["locationsLabel"], fallback: "")
-    websiteUrl = Self.optionalStringValue(object["websiteUrl"])
-    websiteSearchQuery = Self.optionalStringValue(object["websiteSearchQuery"])
-    phoneNumber = Self.optionalStringValue(object["phoneNumber"])
-    phoneSearchQuery = Self.optionalStringValue(object["phoneSearchQuery"])
-    isLoading = Self.boolValue(object["isLoading"])
-    isFavorite = Self.boolValue(object["isFavorite"])
-    favoriteEnabled = Self.boolValue(object["favoriteEnabled"])
-    showWebsiteAction = Self.boolValue(object["showWebsiteAction"])
-    showCallAction = Self.boolValue(object["showCallAction"])
-    locations = (object["locations"] as? [[String: Any]] ?? []).map(Location.init)
-    dishes = (object["dishes"] as? [[String: Any]] ?? []).map(Dish.init)
-  }
-
-  private static func stringValue(_ raw: Any?, fallback: String) -> String {
-    guard let string = raw as? String, !string.isEmpty else {
-      return fallback
+    guard let snapshot = bridgeSnapshot as? [String: Any] else {
+      throw RestaurantPanelSnapshotDecodeError.expectedObject(
+        path: "snapshot",
+        actual: describe(bridgeSnapshot)
+      )
     }
-    return string
+    return try decodePayload(snapshot, path: "snapshot")
   }
 
-  private static func optionalStringValue(_ raw: Any?) -> String? {
-    guard let string = raw as? String, !string.isEmpty else {
+  private static func decodePayload(
+    _ dictionary: [String: Any],
+    path: String
+  ) throws -> RestaurantPanelSnapshotPayload {
+    RestaurantPanelSnapshotPayload(
+      restaurantId: try decodeOptionalString(dictionary, key: "restaurantId", path: path),
+      restaurantName: try decodeString(dictionary, key: "restaurantName", path: path),
+      primaryAddress: try decodeString(dictionary, key: "primaryAddress", path: path),
+      shareMessage: try decodeOptionalString(dictionary, key: "shareMessage", path: path),
+      restaurantScore: try decodeString(dictionary, key: "restaurantScore", path: path),
+      queryScoreLabel: try decodeString(dictionary, key: "queryScoreLabel", path: path),
+      queryScoreValue: try decodeString(dictionary, key: "queryScoreValue", path: path),
+      priceLabel: try decodeString(dictionary, key: "priceLabel", path: path),
+      hoursSummary: try decodeString(dictionary, key: "hoursSummary", path: path),
+      locationsLabel: try decodeString(dictionary, key: "locationsLabel", path: path),
+      websiteUrl: try decodeOptionalString(dictionary, key: "websiteUrl", path: path),
+      websiteSearchQuery: try decodeOptionalString(dictionary, key: "websiteSearchQuery", path: path),
+      phoneNumber: try decodeOptionalString(dictionary, key: "phoneNumber", path: path),
+      phoneSearchQuery: try decodeOptionalString(dictionary, key: "phoneSearchQuery", path: path),
+      isLoading: try decodeBoolean(dictionary, key: "isLoading", path: path),
+      isFavorite: try decodeBoolean(dictionary, key: "isFavorite", path: path),
+      favoriteEnabled: try decodeBoolean(dictionary, key: "favoriteEnabled", path: path),
+      showWebsiteAction: try decodeBoolean(dictionary, key: "showWebsiteAction", path: path),
+      showCallAction: try decodeBoolean(dictionary, key: "showCallAction", path: path),
+      matchedTags: try decodeStringArray(dictionary, key: "matchedTags", path: path),
+      locations: try decodeArray(dictionary, key: "locations", path: path, transform: decodeLocation),
+      dishes: try decodeArray(dictionary, key: "dishes", path: path, transform: decodeDish)
+    )
+  }
+
+  private static func decodeLocation(
+    _ dictionary: [String: Any],
+    path: String
+  ) throws -> RestaurantPanelSnapshotPayload.Location {
+    RestaurantPanelSnapshotPayload.Location(
+      title: try decodeString(dictionary, key: "title", path: path),
+      status: try decodeOptionalString(dictionary, key: "status", path: path),
+      address: try decodeString(dictionary, key: "address", path: path),
+      phone: try decodeOptionalString(dictionary, key: "phone", path: path),
+      hoursRows: try decodeArray(
+        dictionary,
+        key: "hoursRows",
+        path: path,
+        transform: decodeHoursRow
+      ),
+      websiteHost: try decodeOptionalString(dictionary, key: "websiteHost", path: path)
+    )
+  }
+
+  private static func decodeHoursRow(
+    _ dictionary: [String: Any],
+    path: String
+  ) throws -> RestaurantPanelSnapshotPayload.HoursRow {
+    RestaurantPanelSnapshotPayload.HoursRow(
+      label: try decodeString(dictionary, key: "label", path: path),
+      value: try decodeString(dictionary, key: "value", path: path)
+    )
+  }
+
+  private static func decodeDish(
+    _ dictionary: [String: Any],
+    path: String
+  ) throws -> RestaurantPanelSnapshotPayload.Dish {
+    RestaurantPanelSnapshotPayload.Dish(
+      id: try decodeString(dictionary, key: "id", path: path),
+      name: try decodeString(dictionary, key: "name", path: path),
+      score: try decodeString(dictionary, key: "score", path: path),
+      activity: try decodeString(dictionary, key: "activity", path: path),
+      pollCount: try decodeString(dictionary, key: "pollCount", path: path),
+      totalVotes: try decodeString(dictionary, key: "totalVotes", path: path)
+    )
+  }
+
+  private static func decodeArray<Element>(
+    _ dictionary: [String: Any],
+    key: String,
+    path: String,
+    transform: ([String: Any], String) throws -> Element
+  ) throws -> [Element] {
+    let fieldPath = "\(path).\(key)"
+    guard let rawArray = dictionary[key] as? [Any] else {
+      throw RestaurantPanelSnapshotDecodeError.expectedArray(
+        path: fieldPath,
+        actual: describe(dictionary[key])
+      )
+    }
+    return try rawArray.enumerated().map { index, element in
+      guard let object = element as? [String: Any] else {
+        throw RestaurantPanelSnapshotDecodeError.expectedObject(
+          path: "\(fieldPath)[\(index)]",
+          actual: describe(element)
+        )
+      }
+      return try transform(object, "\(fieldPath)[\(index)]")
+    }
+  }
+
+  private static func decodeStringArray(
+    _ dictionary: [String: Any],
+    key: String,
+    path: String
+  ) throws -> [String] {
+    let fieldPath = "\(path).\(key)"
+    guard let rawArray = dictionary[key] as? [Any] else {
+      throw RestaurantPanelSnapshotDecodeError.expectedArray(
+        path: fieldPath,
+        actual: describe(dictionary[key])
+      )
+    }
+
+    return try rawArray.enumerated().map { index, element in
+      guard let value = element as? String else {
+        throw RestaurantPanelSnapshotDecodeError.expectedString(
+          path: "\(fieldPath)[\(index)]",
+          actual: describe(element)
+        )
+      }
+      return value
+    }
+  }
+
+  private static func decodeString(
+    _ dictionary: [String: Any],
+    key: String,
+    path: String
+  ) throws -> String {
+    let fieldPath = "\(path).\(key)"
+    guard let raw = dictionary[key] as? String else {
+      throw RestaurantPanelSnapshotDecodeError.expectedString(
+        path: fieldPath,
+        actual: describe(dictionary[key])
+      )
+    }
+    return raw
+  }
+
+  private static func decodeOptionalString(
+    _ dictionary: [String: Any],
+    key: String,
+    path: String
+  ) throws -> String? {
+    let fieldPath = "\(path).\(key)"
+    guard let raw = dictionary[key] else {
       return nil
     }
-    return string
+    if raw is NSNull {
+      return nil
+    }
+    guard let string = raw as? String else {
+      throw RestaurantPanelSnapshotDecodeError.expectedString(
+        path: fieldPath,
+        actual: describe(raw)
+      )
+    }
+    let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
   }
 
-  private static func boolValue(_ raw: Any?) -> Bool {
+  private static func decodeBoolean(
+    _ dictionary: [String: Any],
+    key: String,
+    path: String
+  ) throws -> Bool {
+    let fieldPath = "\(path).\(key)"
+    let raw = dictionary[key]
     if let bool = raw as? Bool {
       return bool
     }
     if let number = raw as? NSNumber {
       return number.boolValue
     }
-    return false
+    throw RestaurantPanelSnapshotDecodeError.expectedBoolean(
+      path: fieldPath,
+      actual: describe(raw)
+    )
+  }
+
+  private static func describe(_ raw: Any?) -> String {
+    guard let raw else {
+      return "nil"
+    }
+    return String(describing: type(of: raw))
+  }
+}
+
+private enum RestaurantPanelSnapshotBridgeAdapter {
+  static func decodePayload(
+    from bridgeSnapshot: NSDictionary?
+  ) throws -> RestaurantPanelSnapshotPayload? {
+    try RestaurantPanelSnapshotDecoder.decode(snapshot: bridgeSnapshot)
   }
 }
 
@@ -143,10 +290,8 @@ final class CraveRestaurantPanelSnapshotViewManager: RCTViewManager {
 
 final class CraveRestaurantPanelSnapshotView: UIView {
   @objc var snapshot: NSDictionary? {
-    didSet {
-      snapshotPayload = RestaurantPanelSnapshotPayload(snapshotDictionary: snapshot)
-      applySnapshot()
-    }
+    get { nil }
+    set { applyBridgeSnapshot(newValue) }
   }
   @objc var onAction: RCTDirectEventBlock?
 
@@ -189,6 +334,23 @@ final class CraveRestaurantPanelSnapshotView: UIView {
     ])
   }
 
+  private func applyBridgeSnapshot(_ bridgeSnapshot: NSDictionary?) {
+    snapshotPayload = decodeSnapshotPayload(from: bridgeSnapshot)
+    applySnapshot()
+  }
+
+  private func decodeSnapshotPayload(from bridgeSnapshot: NSDictionary?) -> RestaurantPanelSnapshotPayload? {
+    do {
+      return try RestaurantPanelSnapshotBridgeAdapter.decodePayload(from: bridgeSnapshot)
+    } catch {
+      NSLog(
+        "[CraveRestaurantPanelSnapshotView] Ignoring invalid snapshot payload: %@",
+        error.localizedDescription
+      )
+      return nil
+    }
+  }
+
   private func applySnapshot() {
     rootStack.arrangedSubviews.forEach { view in
       rootStack.removeArrangedSubview(view)
@@ -210,6 +372,9 @@ final class CraveRestaurantPanelSnapshotView: UIView {
     rootStack.addArrangedSubview(
       makeDetailRow(label: "Hours", value: snapshotPayload.hoursSummary)
     )
+    if !snapshotPayload.matchedTags.isEmpty {
+      rootStack.addArrangedSubview(makeMatchedTagsSection(snapshotPayload.matchedTags))
+    }
 
     if !snapshotPayload.locations.isEmpty {
       rootStack.addArrangedSubview(
@@ -377,6 +542,52 @@ final class CraveRestaurantPanelSnapshotView: UIView {
       })
     }
     return row
+  }
+
+  private func makeMatchedTagsSection(_ matchedTags: [String]) -> UIView {
+    let stack = UIStackView()
+    stack.axis = .vertical
+    stack.spacing = 8
+    stack.alignment = .leading
+    stack.isLayoutMarginsRelativeArrangement = true
+    stack.layoutMargins = UIEdgeInsets(top: 16, left: 20, bottom: 0, right: 20)
+
+    stack.addArrangedSubview(
+      makeLabel(text: "Mentioned for", size: 15, weight: .semibold, color: UIColor(hex: "#64748b"))
+    )
+
+    let row = UIStackView()
+    row.axis = .horizontal
+    row.spacing = 8
+    row.alignment = .leading
+    matchedTags.forEach { tag in
+      row.addArrangedSubview(makeTagPill(tag))
+    }
+    stack.addArrangedSubview(row)
+
+    return stack
+  }
+
+  private func makeTagPill(_ label: String) -> UIView {
+    let container = UIView()
+    container.translatesAutoresizingMaskIntoConstraints = false
+    container.backgroundColor = UIColor(hex: "#f8fafc")
+    container.layer.cornerRadius = 16
+    container.layer.borderWidth = 1
+    container.layer.borderColor = UIColor(hex: "#e2e8f0").cgColor
+
+    let text = makeLabel(text: label, size: 13, weight: .semibold, color: UIColor(hex: "#475569"))
+    text.translatesAutoresizingMaskIntoConstraints = false
+    container.addSubview(text)
+
+    NSLayoutConstraint.activate([
+      text.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
+      text.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -10),
+      text.topAnchor.constraint(equalTo: container.topAnchor, constant: 6),
+      text.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -6),
+    ])
+
+    return container
   }
 
   private func makeMetricCard(title: String, value: String) -> UIView {

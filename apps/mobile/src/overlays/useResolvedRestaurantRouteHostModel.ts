@@ -8,7 +8,15 @@ import {
 import { useRestaurantRouteRuntimeStore } from './restaurantRouteRuntimeStore';
 import { useBottomSheetProgrammaticRuntimeModel } from './useBottomSheetRuntime';
 import { closeRestaurantRouteSession } from './useRestaurantRouteProducer';
-import { useOverlayStore } from '../store/overlayStore';
+import { useOverlayStore, type OverlayRouteEntry } from '../store/overlayStore';
+
+const isGlobalRestaurantRouteEntry = (
+  route: OverlayRouteEntry
+): route is OverlayRouteEntry<'restaurant'> =>
+  route.key === 'restaurant' &&
+  route.params != null &&
+  'source' in route.params &&
+  route.params.source === 'global';
 
 const useGlobalRestaurantRouteHostModel = (
   activeSessionToken: number | null,
@@ -45,10 +53,12 @@ export const useResolvedRestaurantRouteHostModel = (): RestaurantRouteHostModel 
     (state) => state.publishedRestaurantRouteHostModel
   );
 
-  const isGlobalRestaurantRouteActive =
-    activeOverlayRoute.key === 'restaurant' && activeOverlayRoute.params?.source === 'global';
+  const activeGlobalRestaurantRoute = isGlobalRestaurantRouteEntry(activeOverlayRoute)
+    ? activeOverlayRoute
+    : null;
+  const isGlobalRestaurantRouteActive = activeGlobalRestaurantRoute != null;
   const activeGlobalRestaurantSessionToken = isGlobalRestaurantRouteActive
-    ? activeOverlayRoute.params?.sessionToken ?? null
+    ? (activeGlobalRestaurantRoute.params?.sessionToken ?? null)
     : null;
   const globalRestaurantPanel =
     isGlobalRestaurantRouteActive &&

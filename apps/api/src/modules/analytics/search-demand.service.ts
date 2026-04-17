@@ -4,14 +4,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 
 export interface LocationDemandRecord {
-  locationKey: string;
+  marketKey: string;
   impressions: number;
 }
 
 export interface EntityDemandRecord {
   entityId: string;
   entityType: EntityType;
-  locationKey: string;
+  marketKey: string;
   impressions: number;
   lastSeenAt: Date;
 }
@@ -30,25 +30,32 @@ export class SearchDemandService {
   }): Promise<LocationDemandRecord[]> {
     try {
       const rows = await this.prisma.$queryRaw<
-        Array<{ location_key: string | null; impressions: bigint }>
+        Array<{ market_key: string | null; impressions: bigint }>
       >(
         Prisma.sql`
           SELECT
-            COALESCE(location_key, 'global') AS location_key,
+            market_key,
             COUNT(*)::bigint AS impressions
           FROM user_search_logs
           WHERE logged_at >= ${params.since}
-          GROUP BY COALESCE(location_key, 'global')
+            AND market_key IS NOT NULL
+          GROUP BY market_key
           HAVING COUNT(*) >= ${params.minImpressions}
           ORDER BY impressions DESC
           ${params.limit ? Prisma.sql`LIMIT ${params.limit}` : Prisma.empty}
         `,
       );
 
-      return rows.map((row) => ({
-        locationKey: row.location_key ?? 'global',
-        impressions: Number(row.impressions),
-      }));
+      return rows
+        .filter(
+          (row): row is { market_key: string; impressions: bigint } =>
+            typeof row.market_key === 'string' &&
+            row.market_key.trim().length > 0,
+        )
+        .map((row) => ({
+          marketKey: row.market_key.trim().toLowerCase(),
+          impressions: Number(row.impressions),
+        }));
     } catch (error) {
       this.logger.warn('Failed to load active search locations', {
         error:
@@ -61,22 +68,20 @@ export class SearchDemandService {
   }
 
   async getTopEntitiesForLocation(params: {
-    locationKey: string | null;
+    marketKey: string | null;
     since: Date;
     entityTypes?: EntityType[];
     minImpressions: number;
     limit: number;
   }): Promise<EntityDemandRecord[]> {
-    const locationKey = params.locationKey ?? 'global';
-    const filters: Prisma.Sql[] = [Prisma.sql`logged_at >= ${params.since}`];
-
-    if (locationKey === 'global') {
-      filters.push(
-        Prisma.sql`(location_key IS NULL OR location_key = 'global')`,
-      );
-    } else {
-      filters.push(Prisma.sql`LOWER(location_key) = LOWER(${locationKey})`);
+    const marketKey =
+      typeof params.marketKey === 'string' ? params.marketKey.trim() : '';
+    if (!marketKey) {
+      return [];
     }
+
+    const filters: Prisma.Sql[] = [Prisma.sql`logged_at >= ${params.since}`];
+    filters.push(Prisma.sql`LOWER(market_key) = LOWER(${marketKey})`);
 
     if (params.entityTypes?.length) {
       filters.push(
@@ -89,7 +94,7 @@ export class SearchDemandService {
         Array<{
           entity_id: string;
           entity_type: EntityType;
-          location_key: string | null;
+          market_key: string | null;
           impressions: bigint;
           last_logged_at: Date;
         }>
@@ -98,28 +103,42 @@ export class SearchDemandService {
           SELECT
             entity_id,
             entity_type,
-            COALESCE(location_key, 'global') AS location_key,
+            market_key,
             COUNT(*)::bigint AS impressions,
             MAX(logged_at) AS last_logged_at
           FROM user_search_logs
           WHERE ${Prisma.join(filters, ' AND ')}
-          GROUP BY entity_id, entity_type, COALESCE(location_key, 'global')
+          GROUP BY entity_id, entity_type, market_key
           HAVING COUNT(*) >= ${params.minImpressions}
           ORDER BY impressions DESC
           LIMIT ${params.limit}
         `,
       );
 
-      return rows.map((row) => ({
-        entityId: row.entity_id,
-        entityType: row.entity_type,
-        locationKey: row.location_key ?? 'global',
-        impressions: Number(row.impressions),
-        lastSeenAt: row.last_logged_at,
-      }));
+      return rows
+        .filter(
+          (
+            row,
+          ): row is {
+            entity_id: string;
+            entity_type: EntityType;
+            market_key: string;
+            impressions: bigint;
+            last_logged_at: Date;
+          } =>
+            typeof row.market_key === 'string' &&
+            row.market_key.trim().length > 0,
+        )
+        .map((row) => ({
+          entityId: row.entity_id,
+          entityType: row.entity_type,
+          marketKey: row.market_key.trim().toLowerCase(),
+          impressions: Number(row.impressions),
+          lastSeenAt: row.last_logged_at,
+        }));
     } catch (error) {
       this.logger.warn('Failed to load entity demand for location', {
-        locationKey,
+        marketKey,
         error:
           error instanceof Error
             ? { message: error.message, stack: error.stack }

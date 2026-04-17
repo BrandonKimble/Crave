@@ -4,7 +4,7 @@ import type { SharedValue } from 'react-native-reanimated';
 import type { FlashListRef } from '@shopify/flash-list';
 
 import type { SearchRoutePollsPanelInputs } from '../../../../overlays/searchOverlayRouteHostContract';
-import type { SearchScoreMode } from '../../../../store/searchStore';
+import type { SearchInteractionSnapshot } from '../../context/SearchInteractionContext';
 import type { RestaurantResult } from '../../../../types';
 import type { SearchFiltersLayoutCache } from '../../components/SearchFilters';
 import type { ResultsListItem } from '../read-models/read-model-selectors';
@@ -13,11 +13,7 @@ import type { PhaseBMaterializer } from '../scheduler/phase-b-materializer';
 import type { ResultsPresentationOwner } from './results-presentation-owner-contract';
 import type { ResultsSheetInteractionModel } from './results-sheet-interaction-contract';
 import type { ResultsSheetRuntimeOwner } from './results-sheet-runtime-contract';
-
-export type SearchInteractionState = {
-  isInteracting: boolean;
-  isResultsListScrolling: boolean;
-};
+import type { SearchRuntimeBus } from './search-runtime-bus';
 
 export type RuntimeMechanismEmitter = (
   event: 'runtime_write_span',
@@ -43,6 +39,7 @@ export type ResultsPanelSheetRuntimeModel = Pick<
 >;
 
 export type UseSearchResultsRoutePublicationArgs = {
+  searchRuntimeBus: SearchRuntimeBus;
   resultsPresentationOwner: Pick<
     ResultsPresentationOwner,
     'shellModel' | 'presentationActions' | 'interactionModel'
@@ -52,15 +49,14 @@ export type UseSearchResultsRoutePublicationArgs = {
   resultsPanelVisualRuntimeModel: ResultsPanelVisualRuntimeModel;
   pollBounds: SearchRoutePollsPanelInputs['pollBounds'];
   startupPollsSnapshot: SearchRoutePollsPanelInputs['startupPollsSnapshot'];
-  searchInteractionRef: React.MutableRefObject<SearchInteractionState>;
-  toggleRankSelector: () => void;
+  userLocation: SearchRoutePollsPanelInputs['userLocation'];
+  searchInteractionRef: React.MutableRefObject<SearchInteractionSnapshot>;
   toggleOpenNow: () => void;
   toggleVotesFilter: () => void;
   togglePriceSelector: () => void;
   shouldDisableSearchBlur: boolean;
   searchFiltersLayoutCacheRef: React.MutableRefObject<SearchFiltersLayoutCache | null>;
   handleSearchFiltersLayoutCache: (next: SearchFiltersLayoutCache) => void;
-  scoreMode: SearchScoreMode;
   getDishSaveHandler: (connectionId: string) => () => void;
   getRestaurantSaveHandler: (restaurantId: string) => () => void;
   stableOpenRestaurantProfileFromResults: (

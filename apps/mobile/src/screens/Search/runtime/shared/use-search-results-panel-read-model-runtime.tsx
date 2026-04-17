@@ -1,5 +1,6 @@
 import React from 'react';
 
+import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { UseSearchResultsRoutePublicationArgs } from './search-results-panel-runtime-contract';
 import {
   useSearchResultsPanelChromeRuntime,
@@ -18,6 +19,7 @@ import {
 
 type UseSearchResultsPanelReadModelRuntimeArgs = Pick<
   UseSearchResultsRoutePublicationArgs,
+  | 'searchRuntimeBus'
   | 'resultsSheetRuntime'
   | 'searchInteractionRef'
   | 'shouldDisableSearchBlur'
@@ -48,6 +50,7 @@ export type SearchResultsPanelReadModelRuntime = {
 };
 
 export const useSearchResultsPanelReadModelRuntime = ({
+  searchRuntimeBus,
   resultsSheetRuntime,
   searchInteractionRef,
   shouldDisableSearchBlur,
@@ -74,6 +77,7 @@ export const useSearchResultsPanelReadModelRuntime = ({
     chromeRuntime,
   });
   useSearchResultsPanelListPublicationRuntime({
+    searchRuntimeBus,
     resolvedResults: panelDataRuntime.resolvedResults,
     resultsHydrationKey: panelDataRuntime.resultsHydrationKey,
     hydratedResultsKey: panelDataRuntime.hydratedResultsKey,

@@ -1,7 +1,9 @@
 import type React from 'react';
+import type { SearchRouteOverlayTransitionController } from './useSearchRouteOverlayTransitionController';
 
 import type {
   DockedPollsSnapRequest,
+  SearchRoutePollsPanelParams,
   SearchRouteSaveSheetState,
 } from './searchRouteOverlayCommandStore';
 import type { OverlaySheetSnap } from './types';
@@ -13,8 +15,6 @@ export type SearchRouteOverlayCommandState = {
   tabOverlaySnapRequest: Exclude<OverlaySheetSnap, 'hidden'> | null;
   pollsSheetSnap: OverlaySheetSnap;
   isDockedPollsDismissed: boolean;
-  isNavRestorePending: boolean;
-  overlaySwitchInFlight: boolean;
   dockedPollsRestoreInFlight: boolean;
   ignoreDockedPollsHiddenUntilMs: number;
   bookmarksSheetSnap: OverlaySheetSnap;
@@ -22,6 +22,7 @@ export type SearchRouteOverlayCommandState = {
   saveSheetState: SearchRouteSaveSheetState;
   saveSheetSnap: OverlaySheetSnap;
   pollCreationSnapRequest: Exclude<OverlaySheetSnap, 'hidden'> | null;
+  pollsPanelParams: SearchRoutePollsPanelParams;
 };
 
 export type SearchRouteOverlayCommandActions = {
@@ -33,8 +34,6 @@ export type SearchRouteOverlayCommandActions = {
   setPollsHeaderActionAnimationToken: (next: React.SetStateAction<number>) => void;
   setPollsSheetSnap: (next: React.SetStateAction<OverlaySheetSnap>) => void;
   setIsDockedPollsDismissed: (next: React.SetStateAction<boolean>) => void;
-  setIsNavRestorePending: (next: React.SetStateAction<boolean>) => void;
-  setOverlaySwitchInFlight: (next: React.SetStateAction<boolean>) => void;
   setDockedPollsRestoreInFlight: (next: React.SetStateAction<boolean>) => void;
   setIgnoreDockedPollsHiddenUntilMs: (next: React.SetStateAction<number>) => void;
   setBookmarksSheetSnap: (next: React.SetStateAction<OverlaySheetSnap>) => void;
@@ -44,6 +43,7 @@ export type SearchRouteOverlayCommandActions = {
   setPollCreationSnapRequest: (
     next: React.SetStateAction<Exclude<OverlaySheetSnap, 'hidden'> | null>
   ) => void;
+  setPollsPanelParams: (next: React.SetStateAction<SearchRoutePollsPanelParams>) => void;
 };
 
 export type SearchRouteOverlaySaveSheetRuntime = {
@@ -65,4 +65,8 @@ export type SearchRouteOverlayDockedPollsRestoreRuntime = {
 
 export type SearchRouteOverlayResultsUiResetRuntime = {
   handleCloseResultsUiReset: () => void;
+};
+
+export type SearchRouteOverlayTransientRuntime = {
+  transitionController: SearchRouteOverlayTransitionController;
 };

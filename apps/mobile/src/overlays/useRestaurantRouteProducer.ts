@@ -9,7 +9,7 @@ import {
   appOverlayRouteController,
   useAppOverlayRouteController,
 } from './useAppOverlayRouteController';
-import { useOverlayStore } from '../store/overlayStore';
+import { useOverlayStore, type OverlayRouteEntry } from '../store/overlayStore';
 
 type OpenRestaurantRouteArgs = {
   restaurantId: string;
@@ -27,6 +27,14 @@ let nextRestaurantRouteSessionToken = 1;
 
 const createRestaurantRouteSessionToken = () => nextRestaurantRouteSessionToken++;
 
+const isGlobalRestaurantRouteEntry = (
+  route: OverlayRouteEntry
+): route is OverlayRouteEntry<'restaurant'> =>
+  route.key === 'restaurant' &&
+  route.params != null &&
+  'source' in route.params &&
+  route.params.source === 'global';
+
 const getRestaurantRouteSessionToken = (): number | null =>
   useRestaurantRouteRuntimeStore.getState().globalRestaurantRoutePublication?.sessionToken ?? null;
 
@@ -37,11 +45,10 @@ export const isRestaurantRouteSessionActive = (
     return false;
   }
   const overlayState = useOverlayStore.getState();
-  if (
-    overlayState.activeOverlayRoute.key !== 'restaurant' ||
-    overlayState.activeOverlayRoute.params?.source !== 'global' ||
-    overlayState.activeOverlayRoute.params?.sessionToken !== sessionToken
-  ) {
+  if (!isGlobalRestaurantRouteEntry(overlayState.activeOverlayRoute)) {
+    return false;
+  }
+  if (overlayState.activeOverlayRoute.params?.sessionToken !== sessionToken) {
     return false;
   }
   return getRestaurantRouteSessionToken() === sessionToken;

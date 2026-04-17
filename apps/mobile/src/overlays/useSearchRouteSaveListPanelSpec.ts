@@ -2,25 +2,28 @@ import type {
   SearchRouteOverlayCommandActions,
   SearchRouteOverlayCommandState,
 } from './searchRouteOverlayCommandRuntimeContract';
+import {
+  coerceSearchRouteSceneDefinition,
+  type SearchRouteSceneDefinition,
+} from './searchOverlayRouteHostContract';
 import type { SearchRouteHostVisualState } from './searchRouteHostVisualState';
 import { useSaveListPanelSpec } from './panels/SaveListPanel';
 import { EMPTY_SEARCH_ROUTE_VISUAL_STATE } from './searchResolvedRouteHostModelContract';
-import type { OverlayContentSpec } from './types';
 
 type UseSearchRouteSaveListPanelSpecArgs = {
   publishedVisualState: SearchRouteHostVisualState | null;
-  commandState: SearchRouteOverlayCommandState;
-  commandActions: SearchRouteOverlayCommandActions;
+  saveSheetState: SearchRouteOverlayCommandState['saveSheetState'];
+  setSaveSheetState: SearchRouteOverlayCommandActions['setSaveSheetState'];
+  setSaveSheetSnap: SearchRouteOverlayCommandActions['setSaveSheetSnap'];
 };
 
 export const useSearchRouteSaveListPanelSpec = ({
   publishedVisualState,
-  commandState,
-  commandActions,
-}: UseSearchRouteSaveListPanelSpecArgs): OverlayContentSpec<unknown> | null => {
+  saveSheetState,
+  setSaveSheetState,
+  setSaveSheetSnap,
+}: UseSearchRouteSaveListPanelSpecArgs): SearchRouteSceneDefinition | null => {
   const visualState = publishedVisualState ?? EMPTY_SEARCH_ROUTE_VISUAL_STATE;
-  const { saveSheetState } = commandState;
-  const { setSaveSheetState, setSaveSheetSnap } = commandActions;
 
   const saveListPanelSpec = useSaveListPanelSpec({
     visible: saveSheetState.visible,
@@ -33,5 +36,5 @@ export const useSearchRouteSaveListPanelSpec = ({
     onSnapChange: setSaveSheetSnap,
   });
 
-  return saveListPanelSpec;
+  return coerceSearchRouteSceneDefinition(saveListPanelSpec);
 };

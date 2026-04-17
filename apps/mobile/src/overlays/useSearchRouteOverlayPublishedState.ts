@@ -1,22 +1,15 @@
+import { useShallow } from 'zustand/react/shallow';
+
 import { useSearchRouteOverlayRuntimeStore } from './searchRouteOverlayRuntimeStore';
 import type { SearchRouteOverlayPublishedState } from './searchResolvedRouteHostModelContract';
 
-export const useSearchRouteOverlayPublishedState = (): SearchRouteOverlayPublishedState => {
-  const publishedVisualState = useSearchRouteOverlayRuntimeStore((state) => state.visualState);
-  const searchPanelSpec = useSearchRouteOverlayRuntimeStore((state) => state.searchPanelSpec);
-  const searchPanelInteractionRef = useSearchRouteOverlayRuntimeStore(
-    (state) => state.searchPanelInteractionRef
+export const useSearchRouteOverlayPublishedState = (): SearchRouteOverlayPublishedState =>
+  useSearchRouteOverlayRuntimeStore(
+    useShallow((state) => ({
+      publishedVisualState: state.visualState,
+      searchSceneDefinition: state.searchSceneDefinition,
+      searchPanelInteractionRef: state.searchPanelInteractionRef,
+      dockedPollsPanelInputs: state.dockedPollsPanelInputs,
+      renderPolicy: state.renderPolicy,
+    }))
   );
-  const dockedPollsPanelInputs = useSearchRouteOverlayRuntimeStore(
-    (state) => state.dockedPollsPanelInputs
-  );
-  const renderPolicy = useSearchRouteOverlayRuntimeStore((state) => state.renderPolicy);
-
-  return {
-    publishedVisualState,
-    searchPanelSpec,
-    searchPanelInteractionRef,
-    dockedPollsPanelInputs,
-    renderPolicy,
-  };
-};

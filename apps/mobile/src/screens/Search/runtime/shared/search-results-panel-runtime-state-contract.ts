@@ -18,13 +18,10 @@ export type SearchResultsPanelResultsRuntimeState = {
 };
 
 export type SearchResultsPanelFiltersRuntimeState = {
-  rankButtonLabelText: string;
-  rankButtonIsActive: boolean;
   priceButtonLabelText: string;
   priceButtonIsActive: boolean;
   openNow: boolean;
   votesFilterActive: boolean;
-  isRankSelectorVisible: boolean;
   isPriceSelectorVisible: boolean;
 };
 

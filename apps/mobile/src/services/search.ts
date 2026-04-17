@@ -30,7 +30,6 @@ export interface StructuredSearchRequest {
   submissionContext?: NaturalSearchRequest['submissionContext'];
   sourceQuery?: string;
   searchRequestId?: string;
-  scoreMode?: NaturalSearchRequest['scoreMode'];
   compactResponse?: boolean;
 }
 
@@ -197,7 +196,7 @@ export const searchService = {
     entities?: StructuredSearchRequest['entities'];
     bounds: MapBounds;
     includeTopDish?: boolean;
-    scoreMode?: NaturalSearchRequest['scoreMode'];
+    marketKey?: string | null;
   }): Promise<FeatureCollection<Point>> => {
     const { data } = await api.post<FeatureCollection<Point>>('/search/shortcut/coverage', payload);
     return data;
@@ -206,10 +205,25 @@ export const searchService = {
     const { data } = await api.get<FoodResult[]>(`/search/restaurants/${restaurantId}/dishes`);
     return data;
   },
-  restaurantProfile: async (restaurantId: string): Promise<RestaurantProfile> => {
-    return getCachedRequest(restaurantProfileCache, restaurantId, async () => {
+  restaurantProfile: async (
+    restaurantId: string,
+    options: { marketKey?: string | null } = {}
+  ): Promise<RestaurantProfile> => {
+    const normalizedMarketKey =
+      typeof options.marketKey === 'string' && options.marketKey.trim().length
+        ? options.marketKey.trim().toLowerCase()
+        : null;
+    const cacheKey = buildSearchCacheKey({
+      kind: 'restaurant-profile',
+      restaurantId,
+      marketKey: normalizedMarketKey,
+    });
+    return getCachedRequest(restaurantProfileCache, cacheKey, async () => {
       const { data } = await api.get<RestaurantProfile>(
-        `/search/restaurants/${restaurantId}/profile`
+        `/search/restaurants/${restaurantId}/profile`,
+        {
+          params: normalizedMarketKey ? { marketKey: normalizedMarketKey } : undefined,
+        }
       );
       return data;
     });

@@ -92,11 +92,13 @@ export interface LLMOutputStructure {
   rateLimitInfo?: RateLimitInfo;
 }
 
-/**
- * Flat mention structure with ALL properties preserved
- * Optimized structure for better LLM parsing performance and compound term support
- */
-export interface LLMMention {
+export interface EnrichedLLMOutputStructure {
+  mentions: EnrichedLLMMention[];
+  usageMetadata?: LLMUsageMetadata | null;
+  rateLimitInfo?: RateLimitInfo;
+}
+
+interface LLMMentionBase {
   temp_id: string;
 
   // Restaurant fields (REQUIRED)
@@ -119,10 +121,23 @@ export interface LLMMention {
   // Core processing fields (VITAL)
   general_praise: boolean;
 
-  // Source tracking
+  // Source tracking from the prompt input, using canonical Reddit fullnames
+  // such as t3_<postId> for posts and t1_<commentId> for comments.
   source_id: string;
-  // The following are injected server-side (LLM should not emit them),
-  // but are required in the enriched mention shape used downstream.
+}
+
+/**
+ * Flat mention structure with ALL properties preserved
+ * Optimized structure for better LLM parsing performance and compound term support
+ */
+export interface LLMMention extends LLMMentionBase {}
+
+/**
+ * Enriched mention shape used after the collector hydrates model output
+ * with source metadata and internal provenance.
+ */
+export interface EnrichedLLMMention extends LLMMentionBase {
+  source_id: string;
   source_type: 'post' | 'comment';
   source_content?: string;
   source_ups: number;
@@ -139,6 +154,9 @@ export interface LLMMention {
     tempId: string;
     surface?: string | null;
   }>;
+  __inputChunkId?: string | null;
+  __extractionInputId?: string | null;
+  __sourceDocumentId?: string | null;
 }
 
 /**

@@ -6,8 +6,6 @@ export type QueryFormat = 'dual_list' | 'single_list';
 
 export type FilterStage = 'restaurant' | 'connection';
 
-export type SearchScoreMode = 'global_quality' | 'coverage_display';
-
 export interface FilterClause {
   scope: FilterStage;
   description: string;
@@ -47,10 +45,10 @@ export interface FoodResult {
   restaurantAliases: string[];
   restaurantLocationId?: string;
   qualityScore: number;
-  displayScore?: number | null;
-  displayPercentile?: number | null;
-  coverageKey?: string;
-  coverageName?: string | null;
+  contextualScore?: number | null;
+  contextualPercentile?: number | null;
+  marketKey?: string;
+  marketName?: string | null;
   activityLevel: ActivityLevel;
   mentionCount: number;
   totalUpvotes: number;
@@ -63,8 +61,8 @@ export interface FoodResult {
   restaurantDistanceMiles?: number | null;
   restaurantOperatingStatus?: OperatingStatus | null;
   // Additional fields for map pins in dishes tab
-  restaurantDisplayScore?: number | null;
-  restaurantDisplayPercentile?: number | null;
+  restaurantContextualScore?: number | null;
+  restaurantContextualPercentile?: number | null;
   restaurantLatitude?: number | null;
   restaurantLongitude?: number | null;
 }
@@ -74,8 +72,8 @@ export interface RestaurantFoodSnippet {
   foodId: string;
   foodName: string;
   qualityScore: number;
-  displayScore?: number | null;
-  displayPercentile?: number | null;
+  contextualScore?: number | null;
+  contextualPercentile?: number | null;
   activityLevel: ActivityLevel;
 }
 
@@ -101,6 +99,13 @@ export interface RestaurantLocationResult {
   updatedAt?: string | null;
 }
 
+export interface RestaurantMatchedTag {
+  entityId: string;
+  name: string;
+  entityType: string;
+  mentionCount: number;
+}
+
 export interface RestaurantResult {
   restaurantId: string;
   restaurantName: string;
@@ -111,11 +116,10 @@ export interface RestaurantResult {
    */
   rank?: number;
   contextualScore: number;
+  contextualPercentile?: number | null;
   restaurantQualityScore?: number | null;
-  displayScore?: number | null;
-  displayPercentile?: number | null;
-  coverageKey?: string;
-  coverageName?: string | null;
+  marketKey?: string;
+  marketName?: string | null;
   mentionCount?: number;
   totalUpvotes?: number;
   latitude?: number | null;
@@ -133,6 +137,9 @@ export interface RestaurantResult {
   displayLocation?: RestaurantLocationResult | null;
   locations?: RestaurantLocationResult[];
   locationCount?: number;
+  matchedTags?: RestaurantMatchedTag[];
+  matchEvidenceType?: 'connection' | 'tag_signal' | 'mixed' | null;
+  hasMenuItems?: boolean;
 }
 
 export interface RestaurantProfile {
@@ -153,8 +160,8 @@ export interface DishRestaurantData {
   restaurantId: string;
   restaurantName: string;
   restaurantAliases: string[];
-  displayScore?: number | null;
-  displayPercentile?: number | null;
+  contextualScore?: number | null;
+  contextualPercentile?: number | null;
   priceLevel?: number | null;
   priceSymbol?: string | null;
   operatingStatus?: OperatingStatus | null;
@@ -167,10 +174,10 @@ export interface DishResult {
   foodName: string;
   foodAliases: string[];
   qualityScore: number;
-  displayScore?: number | null;
-  displayPercentile?: number | null;
-  coverageKey?: string;
-  coverageName?: string | null;
+  contextualScore?: number | null;
+  contextualPercentile?: number | null;
+  marketKey?: string;
+  marketName?: string | null;
   activityLevel: ActivityLevel;
   mentionCount: number;
   totalUpvotes: number;
@@ -209,17 +216,16 @@ export interface SearchResponseMetadata {
     | 'relaxed_restaurant_attributes'
     | 'relaxed_food_attributes'
     | 'relaxed_modifiers';
-  coverageStatus?: 'full' | 'partial' | 'unresolved';
+  marketStatus?: 'full' | 'partial' | 'unresolved';
   unresolvedEntities?: Array<{
     type: EntityScope;
     terms: string[];
   }>;
   sourceQuery?: string;
   searchRequestId?: string;
-  scoreMode?: SearchScoreMode;
   analysisMetadata?: Record<string, unknown>;
   primaryFoodTerm?: string;
-  coverageKey?: string | null;
+  marketKey?: string | null;
   emptyQueryMessage?: string;
   onDemandQueued?: boolean;
   onDemandEtaMs?: number;
@@ -262,7 +268,6 @@ export interface Pagination {
 export interface NaturalSearchRequest {
   query: string;
   searchRequestId?: string;
-  scoreMode?: SearchScoreMode;
   compactResponse?: boolean;
   submissionSource?: 'manual' | 'recent' | 'autocomplete' | 'shortcut';
   submissionContext?: Record<string, unknown>;

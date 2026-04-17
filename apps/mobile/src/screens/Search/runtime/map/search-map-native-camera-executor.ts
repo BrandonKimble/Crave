@@ -9,7 +9,6 @@ type NativeCameraStopPayload = {
   zoom: number;
   mode: 2 | 5;
   duration: number;
-  animationCompletionId?: string | null;
 };
 
 type NativeCameraCommandPayload = {
@@ -33,7 +32,6 @@ type SearchMapCameraCommand = {
   zoom: number;
   animationMode?: 'none' | 'easeTo';
   animationDurationMs?: number;
-  animationCompletionId?: string | null;
 };
 
 export type SearchMapNativeCameraExecutor = {
@@ -57,9 +55,6 @@ const buildNativeCameraStopPayload = (
     typeof command.animationDurationMs === 'number' && Number.isFinite(command.animationDurationMs)
       ? Math.max(0, command.animationDurationMs)
       : 0,
-  ...(command.animationCompletionId !== undefined
-    ? { animationCompletionId: command.animationCompletionId }
-    : {}),
 });
 
 export const useSearchMapNativeCameraExecutor = (): SearchMapNativeCameraExecutor => {

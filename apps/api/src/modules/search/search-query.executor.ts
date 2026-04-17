@@ -84,11 +84,11 @@ interface QueryResultRow {
   restaurant_name: string;
   restaurant_aliases: string[];
   restaurant_quality_score?: Prisma.Decimal | number | string | null;
-  restaurant_location_key?: string | null;
-  restaurant_display_score?: Prisma.Decimal | number | string | null;
-  restaurant_display_percentile?: Prisma.Decimal | number | string | null;
-  connection_display_score?: Prisma.Decimal | number | string | null;
-  connection_display_percentile?: Prisma.Decimal | number | string | null;
+  restaurant_market_key?: string | null;
+  restaurant_contextual_score?: Prisma.Decimal | number | string | null;
+  restaurant_contextual_percentile?: Prisma.Decimal | number | string | null;
+  connection_contextual_score?: Prisma.Decimal | number | string | null;
+  connection_contextual_percentile?: Prisma.Decimal | number | string | null;
   restaurant_metadata?: Prisma.JsonValue | null;
   restaurant_price_level?: Prisma.Decimal | number | string | null;
   restaurant_price_level_updated_at?: Date | null;
@@ -125,12 +125,12 @@ interface RestaurantQueryRow {
   restaurant_name: string;
   restaurant_aliases: string[];
   restaurant_quality_score?: Prisma.Decimal | number | string | null;
-  location_key?: string | null;
+  market_key?: string | null;
   restaurant_metadata?: Prisma.JsonValue | null;
   price_level?: Prisma.Decimal | number | string | null;
   price_level_updated_at?: Date | null;
-  display_score?: Prisma.Decimal | number | string | null;
-  display_percentile?: Prisma.Decimal | number | string | null;
+  contextual_score?: Prisma.Decimal | number | string | null;
+  contextual_percentile?: Prisma.Decimal | number | string | null;
   total_upvotes?: Prisma.Decimal | number | string | null;
   total_mentions?: Prisma.Decimal | number | string | null;
   location_id: string;
@@ -155,6 +155,9 @@ interface RestaurantQueryRow {
   location_count?: Prisma.Decimal | number | string | null;
   top_dishes?: Prisma.JsonValue | null;
   total_dish_count?: number | null;
+  matched_tags?: Prisma.JsonValue | null;
+  match_evidence_type?: string | null;
+  has_menu_items?: boolean | null;
 }
 
 /**
@@ -172,17 +175,17 @@ interface DishQueryRow {
   last_mentioned_at: Date | null;
   activity_level: ActivityLevel;
   food_quality_score: Prisma.Decimal | number | string;
-  connection_display_score?: Prisma.Decimal | number | string | null;
-  connection_display_percentile?: Prisma.Decimal | number | string | null;
+  connection_contextual_score?: Prisma.Decimal | number | string | null;
+  connection_contextual_percentile?: Prisma.Decimal | number | string | null;
   food_name: string;
   food_aliases: string[];
-  coverage_key?: string | null;
+  market_key?: string | null;
   // Restaurant data for map pins
   restaurant_entity_id: string;
   restaurant_name: string;
   restaurant_aliases: string[];
-  restaurant_display_score?: Prisma.Decimal | number | string | null;
-  restaurant_display_percentile?: Prisma.Decimal | number | string | null;
+  restaurant_contextual_score?: Prisma.Decimal | number | string | null;
+  restaurant_contextual_percentile?: Prisma.Decimal | number | string | null;
   restaurant_price_level?: Prisma.Decimal | number | string | null;
   restaurant_price_level_updated_at?: Date | null;
   // Location data for map pins
@@ -392,7 +395,7 @@ export class SearchQueryExecutor {
     );
     const mapRestaurantMs = performance.now() - mapRestaurantStart;
 
-    await this.attachCoverageNames({
+    await this.attachMarketNames({
       restaurants: restaurantResults,
       dishes: foodResults,
     });
@@ -588,7 +591,7 @@ export class SearchQueryExecutor {
     );
     const mapDishMs = performance.now() - mapDishStart;
 
-    await this.attachCoverageNames({ restaurants, dishes });
+    await this.attachMarketNames({ restaurants, dishes });
 
     const postProcessMs = performance.now() - postProcessStart;
     const executeMs = performance.now() - executeStart;
@@ -667,120 +670,116 @@ export class SearchQueryExecutor {
     return ids.size;
   }
 
-  private resolveCoverageName(row: {
-    displayName?: string | null;
-    locationName?: string | null;
-    coverageKey?: string | null;
-    name?: string | null;
+  private resolveMarketName(row: {
+    marketName?: string | null;
+    marketShortName?: string | null;
+    marketKey?: string | null;
   }): string | null {
-    const displayName = row.displayName?.trim();
-    if (displayName) {
-      return displayName;
+    const shortName = row.marketShortName?.trim();
+    if (shortName) {
+      return shortName;
     }
-    const locationName = row.locationName?.trim();
-    if (locationName) {
-      const [first] = locationName.split(',');
-      return first?.trim() || locationName;
+    const marketName = row.marketName?.trim();
+    if (marketName) {
+      return marketName;
     }
-    const key = row.coverageKey?.trim();
+    const key = row.marketKey?.trim();
     if (key) {
       return key;
     }
-    const name = row.name?.trim();
-    return name || null;
+    return null;
   }
 
-  private async attachCoverageNames(payload: {
+  private async attachMarketNames(payload: {
     restaurants: RestaurantResultDto[];
     dishes: FoodResultDto[];
   }): Promise<void> {
-    const coverageKeys = new Set<string>();
+    const marketKeys = new Set<string>();
 
     payload.dishes.forEach((dish) => {
       const key =
-        typeof dish.coverageKey === 'string' ? dish.coverageKey.trim() : '';
+        typeof dish.marketKey === 'string' ? dish.marketKey.trim() : '';
       if (key) {
-        coverageKeys.add(key);
+        marketKeys.add(key);
       }
     });
     payload.restaurants.forEach((restaurant) => {
       const key =
-        typeof restaurant.coverageKey === 'string'
-          ? restaurant.coverageKey.trim()
+        typeof restaurant.marketKey === 'string'
+          ? restaurant.marketKey.trim()
           : '';
       if (key) {
-        coverageKeys.add(key);
+        marketKeys.add(key);
       }
     });
 
-    if (!coverageKeys.size) {
+    if (!marketKeys.size) {
       return;
     }
 
-    const rows = await this.prisma.coverageArea.findMany({
+    const rows = await this.prisma.market.findMany({
       where: {
-        coverageKey: { in: Array.from(coverageKeys) },
+        marketKey: { in: Array.from(marketKeys) },
         isActive: true,
       },
       orderBy: {
         updatedAt: 'desc',
       },
       select: {
-        coverageKey: true,
-        displayName: true,
-        locationName: true,
-        name: true,
+        marketKey: true,
+        marketName: true,
+        marketShortName: true,
       },
     });
 
-    const coverageNameByKey = new Map<string, string>();
+    const marketNameByKey = new Map<string, string>();
     rows.forEach((row) => {
-      const key = row.coverageKey?.trim();
+      const key = row.marketKey?.trim();
       if (!key) {
         return;
       }
-      if (coverageNameByKey.has(key)) {
+      if (marketNameByKey.has(key)) {
         return;
       }
-      const coverageName = this.resolveCoverageName(row);
-      if (coverageName) {
-        coverageNameByKey.set(key, coverageName);
+      const marketName = this.resolveMarketName(row);
+      if (marketName) {
+        marketNameByKey.set(key, marketName);
       }
     });
 
-    if (!coverageNameByKey.size) {
+    if (!marketNameByKey.size) {
       return;
     }
 
     payload.dishes.forEach((dish) => {
-      if (dish.coverageName) {
+      if (dish.marketName) {
         return;
       }
       const key =
-        typeof dish.coverageKey === 'string' ? dish.coverageKey.trim() : '';
+        typeof dish.marketKey === 'string' ? dish.marketKey.trim() : '';
       if (!key) {
         return;
       }
-      const coverageName = coverageNameByKey.get(key);
-      if (coverageName) {
-        dish.coverageName = coverageName;
+      const marketName = marketNameByKey.get(key);
+      if (marketName) {
+        dish.marketName = marketName;
       }
     });
 
     payload.restaurants.forEach((restaurant) => {
-      if (restaurant.coverageName) {
+      if (restaurant.marketName) {
         return;
       }
       const key =
-        typeof restaurant.coverageKey === 'string'
-          ? restaurant.coverageKey.trim()
+        typeof restaurant.marketKey === 'string'
+          ? restaurant.marketKey.trim()
           : '';
       if (!key) {
         return;
       }
-      const coverageName = coverageNameByKey.get(key);
-      if (coverageName) {
-        restaurant.coverageName = coverageName;
+      const marketName = marketNameByKey.get(key);
+      if (marketName) {
+        restaurant.marketName = marketName;
       }
     });
   }
@@ -1029,12 +1028,14 @@ export class SearchQueryExecutor {
       const operatingStatus =
         restaurantContext?.operatingStatus ??
         this.evaluateOperatingStatus(operatingMetadata, referenceDate);
-      const displayScore = this.toOptionalNumber(
-        connection.connection_display_score,
-      );
-      const displayPercentile = this.toOptionalNumber(
-        connection.connection_display_percentile,
-      );
+      const contextualScore =
+        this.toOptionalNumber(connection.connection_contextual_score) ??
+        this.toNumber(connection.food_quality_score);
+      const contextualPercentile =
+        this.toOptionalNumber(connection.connection_contextual_percentile) ??
+        (typeof contextualScore === 'number' && Number.isFinite(contextualScore)
+          ? contextualScore / 100
+          : null);
 
       results.push({
         connectionId: connection.connection_id,
@@ -1045,9 +1046,9 @@ export class SearchQueryExecutor {
         restaurantName: connection.restaurant_name,
         restaurantAliases: connection.restaurant_aliases || [],
         qualityScore: this.toNumber(connection.food_quality_score),
-        displayScore,
-        displayPercentile,
-        coverageKey: connection.restaurant_location_key ?? undefined,
+        contextualScore,
+        contextualPercentile,
+        marketKey: connection.restaurant_market_key ?? undefined,
         activityLevel: connection.activity_level,
         mentionCount: connection.mention_count,
         totalUpvotes: connection.total_upvotes,
@@ -1083,9 +1084,9 @@ export class SearchQueryExecutor {
         name: string;
         aliases: string[];
         restaurantQualityScore?: Prisma.Decimal | number | string | null;
-        restaurantDisplayScore?: number | null;
-        restaurantDisplayPercentile?: number | null;
-        coverageKey?: string | null;
+        restaurantContextualScore?: number | null;
+        restaurantContextualPercentile?: number | null;
+        marketKey?: string | null;
         latitude?: Prisma.Decimal | number | string | null;
         longitude?: Prisma.Decimal | number | string | null;
         address?: string | null;
@@ -1124,12 +1125,13 @@ export class SearchQueryExecutor {
         foodId: connection.food_id,
         foodName: connection.food_name,
         qualityScore: this.toNumber(connection.food_quality_score),
-        displayScore: this.toOptionalNumber(
-          connection.connection_display_score,
-        ),
-        displayPercentile: this.toOptionalNumber(
-          connection.connection_display_percentile,
-        ),
+        contextualScore:
+          this.toOptionalNumber(connection.connection_contextual_score) ??
+          this.toNumber(connection.food_quality_score),
+        contextualPercentile:
+          this.toOptionalNumber(connection.connection_contextual_percentile) ??
+          (this.toOptionalNumber(connection.connection_contextual_score) ??
+            this.toNumber(connection.food_quality_score)) / 100,
         activityLevel: connection.activity_level,
       };
 
@@ -1200,23 +1202,23 @@ export class SearchQueryExecutor {
           existing.locationCount = connection.location_count;
         }
         if (
-          existing.restaurantDisplayScore === null ||
-          existing.restaurantDisplayScore === undefined
+          existing.restaurantContextualScore === null ||
+          existing.restaurantContextualScore === undefined
         ) {
-          existing.restaurantDisplayScore = this.toOptionalNumber(
-            connection.restaurant_display_score,
+          existing.restaurantContextualScore = this.toOptionalNumber(
+            connection.restaurant_contextual_score,
           );
         }
         if (
-          existing.restaurantDisplayPercentile === null ||
-          existing.restaurantDisplayPercentile === undefined
+          existing.restaurantContextualPercentile === null ||
+          existing.restaurantContextualPercentile === undefined
         ) {
-          existing.restaurantDisplayPercentile = this.toOptionalNumber(
-            connection.restaurant_display_percentile,
+          existing.restaurantContextualPercentile = this.toOptionalNumber(
+            connection.restaurant_contextual_percentile,
           );
         }
-        if (!existing.coverageKey && connection.restaurant_location_key) {
-          existing.coverageKey = connection.restaurant_location_key;
+        if (!existing.marketKey && connection.restaurant_market_key) {
+          existing.marketKey = connection.restaurant_market_key;
         }
       } else {
         const parsedPrice = this.toOptionalNumber(
@@ -1228,13 +1230,13 @@ export class SearchQueryExecutor {
           name: connection.restaurant_name,
           aliases: connection.restaurant_aliases || [],
           restaurantQualityScore: connection.restaurant_quality_score,
-          restaurantDisplayScore: this.toOptionalNumber(
-            connection.restaurant_display_score,
+          restaurantContextualScore: this.toOptionalNumber(
+            connection.restaurant_contextual_score,
           ),
-          restaurantDisplayPercentile: this.toOptionalNumber(
-            connection.restaurant_display_percentile,
+          restaurantContextualPercentile: this.toOptionalNumber(
+            connection.restaurant_contextual_percentile,
           ),
-          coverageKey: connection.restaurant_location_key ?? null,
+          marketKey: connection.restaurant_market_key ?? null,
           latitude: connection.latitude,
           longitude: connection.longitude,
           address: connection.address,
@@ -1280,9 +1282,9 @@ export class SearchQueryExecutor {
           name,
           aliases,
           restaurantQualityScore,
-          restaurantDisplayScore,
-          restaurantDisplayPercentile,
-          coverageKey,
+          restaurantContextualScore,
+          restaurantContextualPercentile,
+          marketKey,
           latitude,
           longitude,
           address,
@@ -1382,15 +1384,30 @@ export class SearchQueryExecutor {
             restaurantId,
             restaurantName: name,
             restaurantAliases: aliases || [],
-            contextualScore: count ? scoreSum / count : 0,
+            contextualScore:
+              restaurantContextualScore ??
+              (restaurantQualityScore === null ||
+              restaurantQualityScore === undefined
+                ? count
+                  ? scoreSum / count
+                  : 0
+                : this.toNumber(restaurantQualityScore)),
+            contextualPercentile:
+              restaurantContextualPercentile ??
+              (restaurantContextualScore != null
+                ? restaurantContextualScore / 100
+                : restaurantQualityScore === null ||
+                    restaurantQualityScore === undefined
+                  ? count
+                    ? scoreSum / count / 100
+                    : 0
+                  : this.toNumber(restaurantQualityScore) / 100),
             restaurantQualityScore:
               restaurantQualityScore === null ||
               restaurantQualityScore === undefined
                 ? null
                 : this.toNumber(restaurantQualityScore),
-            displayScore: restaurantDisplayScore ?? null,
-            displayPercentile: restaurantDisplayPercentile ?? null,
-            coverageKey: coverageKey ?? undefined,
+            marketKey: marketKey ?? undefined,
             mentionCount:
               totalMentions === undefined || totalMentions === null
                 ? undefined
@@ -1419,8 +1436,8 @@ export class SearchQueryExecutor {
             locationCount: resolvedLocationCount,
             topFood: snippets
               .sort((a, b) => {
-                const scoreA = a.displayScore ?? a.qualityScore;
-                const scoreB = b.displayScore ?? b.qualityScore;
+                const scoreA = a.contextualScore ?? a.qualityScore;
+                const scoreB = b.contextualScore ?? b.qualityScore;
                 return scoreB - scoreA;
               })
               .slice(0, TOP_RESTAURANT_FOOD_SNIPPETS),
@@ -1447,12 +1464,6 @@ export class SearchQueryExecutor {
       }
       if (order.includes('quality_score')) {
         return restaurant.restaurantQualityScore ?? 0;
-      }
-      if (restaurant.displayPercentile != null) {
-        return restaurant.displayPercentile;
-      }
-      if (restaurant.displayScore != null) {
-        return restaurant.displayScore;
       }
       if (restaurant.restaurantQualityScore != null) {
         return restaurant.restaurantQualityScore;
@@ -2340,6 +2351,7 @@ export class SearchQueryExecutor {
 
       // Parse top_dishes JSON
       const topDishes = this.parseTopDishesJson(row.top_dishes);
+      const matchedTags = this.parseMatchedTagsJson(row.matched_tags);
 
       // Parse locations JSON
       const locations = this.parseLocationsJson(
@@ -2383,13 +2395,16 @@ export class SearchQueryExecutor {
         restaurantName: row.restaurant_name,
         restaurantAliases: row.restaurant_aliases || [],
         rank: rankStart + index,
-        contextualScore: 0, // Not applicable for dual query
+        contextualScore:
+          this.toOptionalNumber(row.contextual_score) ??
+          this.toOptionalNumber(row.restaurant_quality_score) ??
+          0,
         restaurantQualityScore: this.toOptionalNumber(
           row.restaurant_quality_score,
         ),
-        displayScore: this.toOptionalNumber(row.display_score),
-        displayPercentile: this.toOptionalNumber(row.display_percentile),
-        coverageKey: row.location_key ?? undefined,
+        contextualPercentile: this.toOptionalNumber(row.contextual_percentile),
+        marketKey: row.market_key ?? undefined,
+        marketName: null,
         mentionCount: totalMentions,
         totalUpvotes,
         latitude,
@@ -2407,6 +2422,17 @@ export class SearchQueryExecutor {
         locationCount,
         topFood: topDishes,
         totalDishCount: row.total_dish_count ?? 0,
+        matchedTags,
+        matchEvidenceType:
+          row.match_evidence_type === 'connection' ||
+          row.match_evidence_type === 'tag_signal' ||
+          row.match_evidence_type === 'mixed'
+            ? row.match_evidence_type
+            : null,
+        hasMenuItems:
+          row.has_menu_items !== null && row.has_menu_items !== undefined
+            ? Boolean(row.has_menu_items)
+            : (row.total_dish_count ?? 0) > 0,
       };
     });
   }
@@ -2446,11 +2472,14 @@ export class SearchQueryExecutor {
         restaurantAliases: row.restaurant_aliases || [],
         restaurantLocationId: row.location_id,
         qualityScore: this.toNumber(row.food_quality_score),
-        displayScore: this.toOptionalNumber(row.connection_display_score),
-        displayPercentile: this.toOptionalNumber(
-          row.connection_display_percentile,
+        contextualScore:
+          this.toOptionalNumber(row.connection_contextual_score) ??
+          this.toNumber(row.food_quality_score),
+        contextualPercentile: this.toOptionalNumber(
+          row.connection_contextual_percentile,
         ),
-        coverageKey: row.coverage_key ?? undefined,
+        marketKey: row.market_key ?? undefined,
+        marketName: null,
         activityLevel: row.activity_level,
         mentionCount: row.mention_count,
         totalUpvotes: row.total_upvotes,
@@ -2463,11 +2492,11 @@ export class SearchQueryExecutor {
         restaurantDistanceMiles: context?.distanceMiles ?? null,
         restaurantOperatingStatus: operatingStatus,
         // Additional fields for map pins
-        restaurantDisplayScore: this.toOptionalNumber(
-          row.restaurant_display_score,
+        restaurantContextualScore: this.toOptionalNumber(
+          row.restaurant_contextual_score,
         ),
-        restaurantDisplayPercentile: this.toOptionalNumber(
-          row.restaurant_display_percentile,
+        restaurantContextualPercentile: this.toOptionalNumber(
+          row.restaurant_contextual_percentile,
         ),
         restaurantLatitude: latitude,
         restaurantLongitude: longitude,
@@ -2501,13 +2530,63 @@ export class SearchQueryExecutor {
         qualityScore: this.toNumber(
           record.qualityScore as Prisma.Decimal | number | string | null,
         ),
-        displayScore: this.toOptionalNumber(
-          record.displayScore as Prisma.Decimal | number | string | null,
-        ),
-        displayPercentile: this.toOptionalNumber(
-          record.displayPercentile as Prisma.Decimal | number | string | null,
+        contextualScore:
+          this.toOptionalNumber(
+            record.contextualScore as Prisma.Decimal | number | string | null,
+          ) ??
+          this.toNumber(
+            record.qualityScore as Prisma.Decimal | number | string | null,
+          ),
+        contextualPercentile: this.toOptionalNumber(
+          record.contextualPercentile as
+            | Prisma.Decimal
+            | number
+            | string
+            | null,
         ),
         activityLevel: (record.activityLevel as ActivityLevel) || 'normal',
+      });
+    }
+
+    return results;
+  }
+
+  private parseMatchedTagsJson(
+    value: Prisma.JsonValue | null | undefined,
+  ): Array<{
+    entityId: string;
+    name: string;
+    entityType: string;
+    mentionCount: number;
+  }> {
+    if (!value || !Array.isArray(value)) {
+      return [];
+    }
+
+    const results: Array<{
+      entityId: string;
+      name: string;
+      entityType: string;
+      mentionCount: number;
+    }> = [];
+
+    for (const entry of value) {
+      if (!entry || typeof entry !== 'object') continue;
+
+      const record = entry as Record<string, unknown>;
+      const entityId = record.entityId as string | null;
+      const name = record.name as string | null;
+      const entityType = record.entityType as string | null;
+
+      if (!entityId || !name || !entityType) continue;
+
+      results.push({
+        entityId,
+        name,
+        entityType,
+        mentionCount: this.toNumber(
+          record.mentionCount as Prisma.Decimal | number | string | null,
+        ),
       });
     }
 

@@ -1,32 +1,30 @@
 import React from 'react';
 import { Alert } from 'react-native';
-import { useSharedValue } from 'react-native-reanimated';
+import { type SharedValue, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import type { AutocompleteMatch } from '../../../services/autocomplete';
 import type { Poll } from '../../../services/polls';
+import type { MapBounds } from '../../../types';
 import { useAppOverlayRouteController } from '../../useAppOverlayRouteController';
 import type { OverlayContentSpec, OverlaySheetSnap, OverlaySheetSnapRequest } from '../../types';
 import type { PollsPanelSnapMeta, UsePollsPanelSpecOptions } from './polls-panel-runtime-contract';
-
-const HEADER_ACTION_CREATE_PROGRESS_THRESHOLD = 0.98;
-const HEADER_ACTION_CREATE_POSITION_EPSILON_PX = 6;
 
 type UsePollsPanelInteractionRuntimeArgs = Pick<
   UsePollsPanelSpecOptions,
   | 'mode'
   | 'shellSnapRequest'
-  | 'sheetY'
-  | 'headerActionProgress'
   | 'onSnapStart'
   | 'onSnapChange'
   | 'onRequestPollCreationExpand'
   | 'onRequestReturnToSearch'
 > & {
-  snapPoints: UsePollsPanelSpecOptions['snapPoints'];
+  bounds?: MapBounds | null;
   headerAction: 'create' | 'close';
-  coverageKey: string | null;
-  coverageName: string | null;
-  coverageOverride: string | null;
+  marketKey: string | null;
+  marketName: string | null;
+  candidatePlaceName: string | null;
+  createPollPrompt: string | null;
+  marketOverride: string | null;
   activePoll: Poll | undefined;
   activePollType: string;
   selectedPollId: string | null;
@@ -56,7 +54,7 @@ type UsePollsPanelInteractionRuntimeArgs = Pick<
 
 type PollsPanelInteractionRuntime = {
   activeShellSnapRequest: OverlaySheetSnapRequest | null;
-  headerActionProgress: NonNullable<UsePollsPanelSpecOptions['headerActionProgress']>;
+  headerActionProgress: SharedValue<number>;
   submitOptionFromPanel: () => Promise<void>;
   onRestaurantSuggestionPick: (match: AutocompleteMatch) => void;
   onDishSuggestionPick: (match: AutocompleteMatch) => void;
@@ -131,17 +129,17 @@ const buildOptionPayload = ({
 export const usePollsPanelInteractionRuntime = ({
   mode = 'docked',
   shellSnapRequest,
-  sheetY,
-  headerActionProgress: headerActionProgressProp,
   onSnapStart,
   onSnapChange,
   onRequestPollCreationExpand,
   onRequestReturnToSearch,
-  snapPoints,
+  bounds,
   headerAction,
-  coverageKey,
-  coverageName,
-  coverageOverride,
+  marketKey,
+  marketName,
+  candidatePlaceName,
+  createPollPrompt: _createPollPrompt,
+  marketOverride,
   activePoll,
   activePollType,
   selectedPollId,
@@ -261,18 +259,24 @@ export const usePollsPanelInteractionRuntime = ({
   }, [mode, onRequestReturnToSearch]);
 
   const handleOpenCreate = React.useCallback(() => {
-    if (!coverageKey && !coverageOverride) {
-      Alert.alert('Pick a city', 'Move the map to a city before creating a poll.');
+    if (!bounds && !marketKey && !marketOverride) {
+      Alert.alert('Pick a market', 'Move the map to a local market before creating a poll.');
       return;
     }
     pushRoute('pollCreation', {
-      coverageKey: coverageOverride ?? coverageKey ?? null,
-      coverageName: coverageName ?? null,
+      marketKey: marketOverride ?? marketKey ?? null,
+      marketName: marketName ?? candidatePlaceName ?? null,
+      bounds: bounds ?? null,
     });
-  }, [coverageKey, coverageName, coverageOverride, pushRoute]);
+  }, [bounds, candidatePlaceName, marketOverride, marketKey, marketName, pushRoute]);
 
   const localHeaderActionProgress = useSharedValue(0);
-  const headerActionProgress = headerActionProgressProp ?? localHeaderActionProgress;
+
+  React.useEffect(() => {
+    localHeaderActionProgress.value = withTiming(headerAction === 'create' ? 1 : 0, {
+      duration: 180,
+    });
+  }, [headerAction, localHeaderActionProgress]);
 
   const handleSnapChange = React.useCallback(
     (snap: OverlaySheetSnap, meta?: PollsPanelSnapMeta) => {
@@ -291,32 +295,18 @@ export const usePollsPanelInteractionRuntime = ({
     [onSnapStart]
   );
 
-  const resolveHeaderActionForPress = React.useCallback((): 'create' | 'close' => {
-    if (!headerActionProgressProp) {
-      return headerAction;
-    }
-
-    const isAtCollapsed =
-      Math.abs(sheetY.value - (snapPoints?.collapsed ?? 0)) <=
-      HEADER_ACTION_CREATE_POSITION_EPSILON_PX;
-    return headerActionProgress.value >= HEADER_ACTION_CREATE_PROGRESS_THRESHOLD && isAtCollapsed
-      ? 'create'
-      : 'close';
-  }, [headerAction, headerActionProgress, headerActionProgressProp, sheetY, snapPoints?.collapsed]);
-
   const handleHeaderActionPress = React.useCallback(() => {
-    const action = resolveHeaderActionForPress();
-    if (action === 'create') {
+    if (headerAction === 'create') {
       onRequestPollCreationExpand?.();
       handleOpenCreate();
       return;
     }
     handleClose();
-  }, [handleClose, handleOpenCreate, onRequestPollCreationExpand, resolveHeaderActionForPress]);
+  }, [handleClose, handleOpenCreate, headerAction, onRequestPollCreationExpand]);
 
   return {
     activeShellSnapRequest,
-    headerActionProgress,
+    headerActionProgress: localHeaderActionProgress,
     submitOptionFromPanel,
     onRestaurantSuggestionPick,
     onDishSuggestionPick,

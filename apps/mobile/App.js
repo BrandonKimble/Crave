@@ -4,7 +4,8 @@ import './src/polyfills/react-native-codegen';
 import 'react-native-gesture-handler';
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
@@ -20,7 +21,10 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { RootNavigator } from './src/navigation';
 import { AuthProvider } from './src/providers/AuthProvider';
+import { AppRouteCoordinator } from './src/navigation/runtime/AppRouteCoordinator';
+import { MainLaunchCoordinator } from './src/navigation/runtime/MainLaunchCoordinator';
 import NetworkStatusListener from './src/providers/NetworkStatusListener';
+import PollNotificationListener from './src/providers/PollNotificationListener';
 import { navigationRef } from './src/navigation/navigationRef';
 import SystemStatusBanner from './src/components/SystemStatusBanner';
 import { useSystemStatusStore } from './src/store/systemStatusStore';
@@ -43,6 +47,10 @@ Notifications.setNotificationHandler({
 SplashScreen.preventAutoHideAsync().catch(() => {
   // noop if already prevented
 });
+SplashScreen.setOptions({
+  fade: true,
+  duration: 280,
+});
 export default function App() {
   const isBannerVisible = useSystemStatusStore(
     (state) => state.isOffline || Boolean(state.serviceIssue)
@@ -59,32 +67,36 @@ export default function App() {
     borderTopLeftRadius: OVERLAY_CORNER_RADIUS * bannerProgress.value,
     borderTopRightRadius: OVERLAY_CORNER_RADIUS * bannerProgress.value,
   }));
-  const onLayoutRootView = React.useCallback(async () => {
-    await SplashScreen.hideAsync();
-  }, []);
   return (
     <QueryClientProvider client={queryClient}>
-      <View
-        style={[styles.appRoot, isBannerVisible ? styles.appRootBannerVisible : null]}
-        onLayout={onLayoutRootView}
-      >
-        <SafeAreaProvider>
-          <NetworkStatusListener />
-          <AuthProvider>
-            <SystemStatusBanner />
-            <Reanimated.View style={[styles.contentSurface, contentAnimatedStyle]}>
-              <NavigationContainer ref={navigationRef}>
-                <RootNavigator />
-              </NavigationContainer>
-            </Reanimated.View>
-          </AuthProvider>
-          <StatusBar style={isBannerVisible ? 'light' : 'auto'} />
-        </SafeAreaProvider>
-      </View>
+      <GestureHandlerRootView style={styles.gestureRoot}>
+        <View style={[styles.appRoot, isBannerVisible ? styles.appRootBannerVisible : null]}>
+          <SafeAreaProvider initialMetrics={initialWindowMetrics ?? undefined}>
+            <NetworkStatusListener />
+            <AuthProvider>
+              <AppRouteCoordinator>
+                <MainLaunchCoordinator>
+                  <PollNotificationListener />
+                  <SystemStatusBanner />
+                  <Reanimated.View style={[styles.contentSurface, contentAnimatedStyle]}>
+                    <NavigationContainer ref={navigationRef}>
+                      <RootNavigator />
+                    </NavigationContainer>
+                  </Reanimated.View>
+                </MainLaunchCoordinator>
+              </AppRouteCoordinator>
+            </AuthProvider>
+            <StatusBar style={isBannerVisible ? 'light' : 'auto'} />
+          </SafeAreaProvider>
+        </View>
+      </GestureHandlerRootView>
     </QueryClientProvider>
   );
 }
 const styles = StyleSheet.create({
+  gestureRoot: {
+    flex: 1,
+  },
   appRoot: {
     flex: 1,
     backgroundColor: colors.background,

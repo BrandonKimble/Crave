@@ -41,7 +41,6 @@ export type SearchSubmitResponseHandlerOptions = {
   append: boolean;
   targetPage: number;
   initialUiState: SearchSubmitInitialResultUiState;
-  fallbackSearchRequestId?: string;
   submittedLabel?: string;
   pushToHistory?: boolean;
   submissionContext?: NaturalSearchRequest['submissionContext'];
@@ -181,7 +180,6 @@ type UseSearchSubmitResponseOwnerArgs = {
   activeTab: SegmentValue;
   currentResults: SearchResponse | null;
   pendingTabSwitchTab: SegmentValue | null;
-  scoreMode: NaturalSearchRequest['scoreMode'];
   isPaginationExhausted: boolean;
   searchRuntimeBus: SearchRuntimeBus;
   latestBoundsRef: React.MutableRefObject<MapBounds | null>;
@@ -378,7 +376,6 @@ const deriveSearchResponseResultsCommitPatch = (params: {
   runtimeMode: SearchSubmitActiveOperationTuple['mode'];
   requestId: number;
   markerPipelineActiveTab: ResultsActiveTab;
-  scoreMode: NaturalSearchRequest['scoreMode'];
   bounds: MapBounds | null;
   userLocation: Coordinate | null;
 }): SearchResponseResultsCommitProjection => {
@@ -388,7 +385,6 @@ const deriveSearchResponseResultsCommitPatch = (params: {
     runtimeMode,
     requestId,
     markerPipelineActiveTab,
-    scoreMode,
     bounds,
     userLocation,
   } = params;
@@ -412,7 +408,6 @@ const deriveSearchResponseResultsCommitPatch = (params: {
     restaurants: committedResponse.restaurants ?? [],
     dishes: committedResponse.dishes ?? [],
     activeTab: markerPipelineActiveTab,
-    scoreMode: scoreMode ?? 'global_quality',
     restaurantOnlyId: null,
     selectedRestaurantId: null,
     bounds,
@@ -447,7 +442,6 @@ const deriveSearchResponseLifecycleContext = (params: {
   initialTargetTab: SegmentValue;
   activeTab: SegmentValue;
   pendingTabSwitchTab: SegmentValue | null;
-  scoreMode: NaturalSearchRequest['scoreMode'];
   bounds: MapBounds | null;
   userLocation: Coordinate | null;
 }): SearchResponseLifecycleContext => {
@@ -457,7 +451,7 @@ const deriveSearchResponseLifecycleContext = (params: {
     params.append
   );
   const markerPipelineActiveTab =
-    (params.append ? params.pendingTabSwitchTab ?? params.activeTab : params.initialTargetTab) ??
+    (params.append ? (params.pendingTabSwitchTab ?? params.activeTab) : params.initialTargetTab) ??
     'dishes';
   const responseCommitProjection = deriveSearchResponseResultsCommitPatch({
     mergedResponse: merged,
@@ -465,7 +459,6 @@ const deriveSearchResponseLifecycleContext = (params: {
     runtimeMode: params.runtimeMode,
     requestId: params.requestId,
     markerPipelineActiveTab: markerPipelineActiveTab as ResultsActiveTab,
-    scoreMode: params.scoreMode,
     bounds: params.bounds,
     userLocation: params.userLocation,
   });
@@ -531,26 +524,18 @@ const deriveSearchResponseHistoryProjection = (params: {
   };
 };
 
-const normalizeSearchResponse = (
-  response: SearchResponse,
-  targetPage: number,
-  fallbackSearchRequestId?: string
-): SearchResponse => {
+const normalizeSearchResponse = (response: SearchResponse, targetPage: number): SearchResponse => {
   const normalizedPage = resolveResponsePage(response, targetPage);
   const hasSearchRequestId =
     typeof response.metadata?.searchRequestId === 'string' &&
     response.metadata.searchRequestId.length > 0;
-  const normalizedSearchRequestId = hasSearchRequestId
-    ? response.metadata.searchRequestId
-    : fallbackSearchRequestId;
+  if (!hasSearchRequestId) {
+    throw new Error('Search response missing required metadata.searchRequestId');
+  }
 
   const shouldPatchPage = normalizedPage !== response.metadata?.page;
-  const shouldPatchSearchRequestId =
-    typeof normalizedSearchRequestId === 'string' &&
-    normalizedSearchRequestId.length > 0 &&
-    normalizedSearchRequestId !== response.metadata?.searchRequestId;
 
-  if (!shouldPatchPage && !shouldPatchSearchRequestId) {
+  if (!shouldPatchPage) {
     return response;
   }
 
@@ -559,7 +544,6 @@ const normalizeSearchResponse = (
     metadata: {
       ...response.metadata,
       page: normalizedPage,
-      ...(shouldPatchSearchRequestId ? { searchRequestId: normalizedSearchRequestId } : {}),
     },
   };
 };
@@ -568,7 +552,6 @@ export const useSearchSubmitResponseOwner = ({
   activeTab,
   currentResults,
   pendingTabSwitchTab,
-  scoreMode,
   isPaginationExhausted,
   searchRuntimeBus,
   latestBoundsRef,
@@ -1207,7 +1190,6 @@ export const useSearchSubmitResponseOwner = ({
         initialTargetTab: initialUiState.targetTab,
         activeTab,
         pendingTabSwitchTab,
-        scoreMode,
         bounds: latestBoundsRef.current,
         userLocation: userLocationRef.current,
       });
@@ -1240,7 +1222,6 @@ export const useSearchSubmitResponseOwner = ({
       logSearchPhase,
       logSearchResponseTiming,
       pendingTabSwitchTab,
-      scoreMode,
       shouldLogSearchResponseTimings,
       userLocationRef,
     ]
@@ -1251,25 +1232,14 @@ export const useSearchSubmitResponseOwner = ({
       response: SearchResponse,
       options: Pick<
         SearchSubmitResponseHandlerOptions,
-        | 'append'
-        | 'targetPage'
-        | 'fallbackSearchRequestId'
-        | 'responseReceivedPayload'
-        | 'runtimeShadow'
+        'append' | 'targetPage' | 'responseReceivedPayload' | 'runtimeShadow'
       >
     ): SearchResponseLifecycleEntry | null => {
       const handleStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
-      const { append, targetPage, fallbackSearchRequestId, runtimeShadow } = options;
+      const { targetPage, runtimeShadow } = options;
       const { runtimeTuple } = runtimeShadow;
       const emitShadowTransition = runtimeShadow.emitShadowTransition;
-      const appendFallbackSearchRequestId = append
-        ? currentResults?.metadata?.searchRequestId ?? undefined
-        : undefined;
-      const normalizedResponse = normalizeSearchResponse(
-        response,
-        targetPage,
-        fallbackSearchRequestId ?? appendFallbackSearchRequestId
-      );
+      const normalizedResponse = normalizeSearchResponse(response, targetPage);
       const responseApplyToken = responseApplyTokenRef.current + 1;
       responseApplyTokenRef.current = responseApplyToken;
       const isResponseApplyStale = () => {

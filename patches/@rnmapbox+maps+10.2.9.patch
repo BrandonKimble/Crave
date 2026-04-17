@@ -12823,6 +12823,85 @@ index 262e595..3cd1ea8 100644
      const val REGION_WILL_CHANGE = "regionwillchange"
      const val REGION_IS_CHANGING = "regionischanging" // deprecated
      const val CAMERA_CHANGED = "camerachanged"
+diff --git a/node_modules/@rnmapbox/maps/ios/RNMBX/ProfilePresentationCameraHostRegistry.swift b/node_modules/@rnmapbox/maps/ios/RNMBX/ProfilePresentationCameraHostRegistry.swift
+new file mode 100644
+index 0000000..317459a
+--- /dev/null
++++ b/node_modules/@rnmapbox/maps/ios/RNMBX/ProfilePresentationCameraHostRegistry.swift
+@@ -0,0 +1,73 @@
++import Foundation
++
++private final class WeakCameraHost {
++  weak var value: RNMBXCamera?
++
++  init(value: RNMBXCamera) {
++    self.value = value
++  }
++}
++
++private struct PendingCameraCommand {
++  let stop: [String: Any]
++  let token: String?
++}
++
++public final class ProfilePresentationCameraHostRegistry {
++  public static let shared = ProfilePresentationCameraHostRegistry()
++
++  private var hostsByKey: [String: WeakCameraHost] = [:]
++  private var pendingCommandsByKey: [String: PendingCameraCommand] = [:]
++
++  private init() {}
++
++  public func register(host: RNMBXCamera, hostKey: String) {
++    hostsByKey[hostKey] = WeakCameraHost(value: host)
++    if let pendingCommand = pendingCommandsByKey[hostKey] {
++      dispatchCommand(hostKey: hostKey, stop: pendingCommand.stop, token: pendingCommand.token)
++    }
++  }
++
++  public func unregister(host: RNMBXCamera, hostKey: String) {
++    guard hostsByKey[hostKey]?.value === host else {
++      return
++    }
++    hostsByKey.removeValue(forKey: hostKey)
++  }
++
++  public func dispatchCommand(hostKey: String, stop: [String: Any], token: String?) {
++    pendingCommandsByKey[hostKey] = PendingCameraCommand(stop: stop, token: token)
++    guard let host = hostsByKey[hostKey]?.value else {
++      return
++    }
++    DispatchQueue.main.async {
++      host.applyProfilePresentationCameraCommand(stop)
++    }
++  }
++}
++
++@objc(ProfilePresentationCameraHostRegistryBridge)
++public final class ProfilePresentationCameraHostRegistryBridge: NSObject {
++  private static let sharedInstance = ProfilePresentationCameraHostRegistryBridge()
++
++  @objc(sharedBridge)
++  public static func sharedBridge() -> ProfilePresentationCameraHostRegistryBridge {
++    sharedInstance
++  }
++
++  @objc(dispatchCommand:)
++  public func dispatchCommand(_ payload: NSDictionary) {
++    guard
++      let hostKey = payload["hostKey"] as? String,
++      let stop = payload["stop"] as? [String: Any]
++    else {
++      return
++    }
++
++    ProfilePresentationCameraHostRegistry.shared.dispatchCommand(
++      hostKey: hostKey,
++      stop: stop,
++      token: payload["token"] as? String
++    )
++  }
++}
 diff --git a/node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXCamera.swift b/node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXCamera.swift
 index e51c8b6..3b02fdf 100644
 --- a/node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXCamera.swift

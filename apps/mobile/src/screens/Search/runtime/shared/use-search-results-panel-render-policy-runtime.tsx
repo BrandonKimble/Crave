@@ -4,7 +4,6 @@ import {
   resolveResultsPresentationPanelState,
   type ResultsPresentationPanelState,
 } from './results-presentation-panel-state-contract';
-import type { type ResultsPresentationPanelState } from './results-presentation-panel-state-contract';
 import type { SearchResultsPanelDataRuntime } from './search-results-panel-data-runtime-contract';
 import type { SearchResultsPanelReadModelRuntime } from './use-search-results-panel-read-model-runtime';
 

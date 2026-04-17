@@ -1,14 +1,15 @@
 import type React from 'react';
-import type { SharedValue } from 'react-native-reanimated';
 
 import type { PollBootstrapSnapshot } from '../../../services/polls';
-import type { MapBounds } from '../../../types';
+import type { Coordinate, MapBounds } from '../../../types';
 import type { SnapPoints } from '../../bottomSheetMotionTypes';
 import type { OverlaySheetSnap, OverlaySheetSnapRequest } from '../../types';
 
 export type PollsPanelParams = {
-  coverageKey?: string | null;
+  marketKey?: string | null;
+  marketName?: string | null;
   pollId?: string | null;
+  pinnedMarket?: boolean | null;
 };
 
 export type PollsPanelMode = 'docked' | 'overlay';
@@ -23,6 +24,7 @@ export type UsePollsPanelSpecOptions = {
   visible: boolean;
   bounds?: MapBounds | null;
   bootstrapSnapshot?: PollBootstrapSnapshot | null;
+  userLocation?: Coordinate | null;
   params?: PollsPanelParams;
   initialSnapPoint?: PollsPanelInitialSnapPoint;
   mode?: PollsPanelMode;
@@ -36,8 +38,5 @@ export type UsePollsPanelSpecOptions = {
   shellSnapRequest?: OverlaySheetSnapRequest | null;
   onRequestPollCreationExpand?: () => void;
   onRequestReturnToSearch?: () => void;
-  sheetY: SharedValue<number>;
-  headerActionAnimationToken?: number;
-  headerActionProgress?: SharedValue<number>;
   interactionRef?: PollsPanelInteractionRef;
 };

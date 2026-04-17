@@ -35,7 +35,7 @@ export class CreatePollDto {
 
   @IsOptional()
   @IsString()
-  coverageKey?: string;
+  marketKey?: string;
 
   @IsOptional()
   @ValidateNested()

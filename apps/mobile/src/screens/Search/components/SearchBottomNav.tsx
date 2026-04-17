@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Pressable,
   TouchableOpacity,
   View,
   type LayoutChangeEvent,
@@ -12,6 +13,10 @@ import { Text } from '../../../components';
 import { colors as themeColors } from '../../../constants/theme';
 import type { OverlayKey } from '../../../store/overlayStore';
 import { ACTIVE_TAB_COLOR, NAV_BOTTOM_PADDING } from '../constants/search';
+import {
+  resolveSearchBottomInset,
+  resolveSearchBottomNavHeight,
+} from '../runtime/shared/search-startup-geometry';
 import styles from '../styles';
 import NavBarSilhouetteBackground from './NavBarSilhouetteBackground';
 
@@ -49,17 +54,28 @@ const SearchBottomNavComponent = ({
   handleOverlaySelect,
   bottomNavItemVisibilityAnimatedStyle,
 }: SearchBottomNavProps) => {
+  const resolvedBottomInset = resolveSearchBottomInset(bottomInset);
+  const resolvedBottomNavHeight = resolveSearchBottomNavHeight(resolvedBottomInset);
+
   return (
     <Reanimated.View
       style={[styles.bottomNavWrapper, bottomNavAnimatedStyle]}
       pointerEvents={shouldHideBottomNav ? 'none' : 'box-none'}
     >
       <View
-        style={[styles.bottomNav, { paddingBottom: bottomInset + NAV_BOTTOM_PADDING }]}
+        style={[
+          styles.bottomNav,
+          {
+            height: resolvedBottomNavHeight,
+            minHeight: resolvedBottomNavHeight,
+            paddingBottom: resolvedBottomInset + NAV_BOTTOM_PADDING,
+          },
+        ]}
         onLayout={handleBottomNavLayout}
       >
+        <Pressable style={styles.navTouchShield} onPress={() => {}} />
         <NavBarSilhouetteBackground
-          bottomInset={bottomInset}
+          bottomInset={resolvedBottomInset}
           disableBlur={shouldDisableSearchBlur}
         />
         {navItems.map((item) => {
@@ -72,7 +88,12 @@ const SearchBottomNavComponent = ({
           const onPress =
             item.key === 'profile' ? handleProfilePress : () => handleOverlaySelect(item.key);
           return (
-            <TouchableOpacity key={item.key} style={styles.navButton} onPress={onPress}>
+            <TouchableOpacity
+              key={item.key}
+              style={styles.navButton}
+              onPress={onPress}
+              activeOpacity={0.85}
+            >
               <Reanimated.View
                 style={[
                   { alignItems: 'center', justifyContent: 'center' },
@@ -96,6 +117,17 @@ const SearchBottomNavComponent = ({
   );
 };
 
-const SearchBottomNav = React.memo(SearchBottomNavComponent);
+const SearchBottomNav = React.memo(
+  SearchBottomNavComponent,
+  (previousProps, nextProps) =>
+    previousProps.rootOverlay === nextProps.rootOverlay &&
+    previousProps.shouldHideBottomNav === nextProps.shouldHideBottomNav &&
+    previousProps.bottomInset === nextProps.bottomInset &&
+    previousProps.bottomNavAnimatedStyle === nextProps.bottomNavAnimatedStyle &&
+    previousProps.bottomNavItemVisibilityAnimatedStyle ===
+      nextProps.bottomNavItemVisibilityAnimatedStyle &&
+    previousProps.navItems === nextProps.navItems &&
+    previousProps.navIconRenderers === nextProps.navIconRenderers
+);
 
 export default SearchBottomNav;

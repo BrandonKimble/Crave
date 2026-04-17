@@ -41,11 +41,15 @@ if (shouldDryRun) {
   process.env.UNIFIED_PROCESSING_DRY_RUN = 'true';
 }
 
-const testBullPrefix =
+const configuredTestBullPrefix =
   process.env.TEST_BULL_PREFIX ?? process.env.TEST_BULL_QUEUE_PREFIX;
-if (typeof testBullPrefix === 'string' && testBullPrefix.trim()) {
-  process.env.BULL_PREFIX = testBullPrefix.trim();
-}
+const testBullRunSuffix = `${Date.now()}:${process.pid}`;
+const effectiveTestBullPrefix =
+  typeof configuredTestBullPrefix === 'string' &&
+  configuredTestBullPrefix.trim()
+    ? `${configuredTestBullPrefix.trim()}:${testBullRunSuffix}`
+    : `test-pipeline:${Date.now()}:${process.pid}`;
+process.env.BULL_PREFIX = effectiveTestBullPrefix;
 
 // Ensure winston rotating files land inside apps/api/logs rather than repo root
 const apiRootDir = path.resolve(__dirname);
@@ -271,6 +275,7 @@ async function testPipeline() {
   }
   console.log(`- Reset DB before run: ${SHOULD_RESET_DB ? 'yes' : 'no'}`);
   console.log(`- DB write dry run: ${SHOULD_DRY_RUN ? 'yes' : 'no'}`);
+  console.log(`- Bull prefix: ${process.env.BULL_PREFIX}`);
   if (LLM_POST_SAMPLE_COUNT > 0) {
     console.log(
       `- LLM post sample: ${LLM_POST_SAMPLE_COUNT} posts (comment preview: ${LLM_POST_SAMPLE_COMMENT_LIMIT})`,
@@ -282,6 +287,7 @@ async function testPipeline() {
   let chronologicalQueue: Queue | null = null;
   let chronologicalBatchQueue: Queue | null = null;
   let archiveBatchQueue: Queue | null = null;
+  let restaurantCuisineQueue: Queue | null = null;
   let archiveCollectionQueue: Queue | null = null;
 
   const shouldCleanupQueues =
@@ -360,6 +366,9 @@ async function testPipeline() {
     archiveBatchQueue = app.get<Queue>(
       getQueueToken('archive-batch-processing-queue'),
     );
+    restaurantCuisineQueue = app.get<Queue>(
+      getQueueToken('restaurant-cuisine-extraction'),
+    );
     archiveCollectionQueue = app.get<Queue>(
       getQueueToken('archive-collection'),
     );
@@ -388,17 +397,25 @@ async function testPipeline() {
           [
             'TRUNCATE TABLE',
             [
-              'core_boosts',
-              'core_category_aggregates',
-              'core_connections',
+              'core_restaurant_items',
+              'core_restaurant_entity_signals',
+              'core_restaurant_entity_events',
+              'core_restaurant_events',
               'core_display_rank_scores',
               'core_entities',
               'collection_on_demand_requests',
+              'collection_on_demand_request_users',
+              'collection_keyword_attempt_history',
               'user_search_logs',
               'collection_entity_priority_metrics',
               'billing_subscriptions',
               'user_events',
-              'collection_sources',
+              'collection_processed_sources',
+              'collection_runs',
+              'collection_extraction_input_documents',
+              'collection_extraction_inputs',
+              'collection_source_documents',
+              'collection_extraction_runs',
               'poll_category_aggregates',
               'poll_metrics',
               'poll_options',
@@ -409,15 +426,19 @@ async function testPipeline() {
             'RESTART IDENTITY CASCADE',
           ].join(' '),
         );
-        await prisma.$executeRawUnsafe(
-          'UPDATE core_coverage_areas SET last_processed = NULL',
-        );
         console.log('🌱 Seeding base data...');
         await runSeed();
         console.log('✅ Seed completed');
+        await prisma.$executeRawUnsafe(
+          'UPDATE collection_communities SET last_processed = NULL',
+        );
         await cleanQueue(chronologicalQueue, 'chronological collection');
         await cleanQueue(chronologicalBatchQueue, 'chronological batch');
         await cleanQueue(archiveBatchQueue, 'archive batch');
+        await cleanQueue(
+          restaurantCuisineQueue,
+          'restaurant cuisine extraction',
+        );
         await cleanQueue(archiveCollectionQueue, 'archive collection');
         const resetDuration = Date.now() - resetStartTime;
         console.log(
@@ -428,6 +449,10 @@ async function testPipeline() {
         await cleanQueue(chronologicalQueue, 'chronological collection');
         await cleanQueue(chronologicalBatchQueue, 'chronological batch');
         await cleanQueue(archiveBatchQueue, 'archive batch');
+        await cleanQueue(
+          restaurantCuisineQueue,
+          'restaurant cuisine extraction',
+        );
         await cleanQueue(archiveCollectionQueue, 'archive collection');
         console.log('OK • Queues cleared for testing');
       }
@@ -509,9 +534,9 @@ async function testPipeline() {
         llmPostSample,
         error: success
           ? null
-          : (result?.error as string | undefined) ??
+          : ((result?.error as string | undefined) ??
             (job?.failedReason as string | undefined) ??
-            null,
+            null),
       });
 
       if (llmPostSample) {
@@ -732,6 +757,47 @@ async function testPipeline() {
       }
     };
 
+    const waitForQueueToDrain = async (
+      queue: Queue | null | undefined,
+      label: string,
+      idleCyclesRequired = 3,
+    ): Promise<void> => {
+      if (!queue) {
+        console.log(`⚠️  ${label} queue not available`);
+        return;
+      }
+
+      console.log(`\n⏳ Waiting for ${label} queue to drain...`);
+      let idleCycles = 0;
+      let elapsed = 0;
+
+      while (idleCycles < idleCyclesRequired) {
+        const [waiting, active, delayed] = await Promise.all([
+          queue.getWaiting(),
+          queue.getActive(),
+          queue.getDelayed(),
+        ]);
+
+        const pendingCount = waiting.length + active.length + delayed.length;
+
+        if (pendingCount === 0) {
+          idleCycles += 1;
+        } else {
+          idleCycles = 0;
+          console.log(
+            `   ⏳ ${label} queue (${elapsed}s): waiting=${waiting.length}, active=${active.length}, delayed=${delayed.length}`,
+          );
+        }
+
+        if (idleCycles < idleCyclesRequired) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          elapsed += 1;
+        }
+      }
+
+      console.log(`OK • ${label} queue drained`);
+    };
+
     if (TEST_MODE === 'observe') {
       await observeQueue(targetQueue, queueLabel);
       console.log('Observer mode active. Exiting after observation.');
@@ -800,8 +866,8 @@ async function testPipeline() {
           typeof rv.mentionsExtracted === 'number'
             ? rv.mentionsExtracted
             : typeof rv.metrics?.mentionsExtracted === 'number'
-            ? rv.metrics.mentionsExtracted
-            : 0;
+              ? rv.metrics.mentionsExtracted
+              : 0;
         archiveMentions += mentions;
 
         const summaryAdded = addBatchSummary(job, rv, rv?.success !== false);
@@ -908,8 +974,8 @@ async function testPipeline() {
             typeof rv.mentionsExtracted === 'number'
               ? rv.mentionsExtracted
               : typeof rv.metrics?.mentionsExtracted === 'number'
-              ? rv.metrics.mentionsExtracted
-              : 0;
+                ? rv.metrics.mentionsExtracted
+                : 0;
           batchMentions += mentions;
 
           const summaryAdded = addBatchSummary(job, rv, rv?.success !== false);
@@ -931,8 +997,8 @@ async function testPipeline() {
           const jobPostIds = Array.isArray(job?.data?.postIds)
             ? job.data.postIds
             : Array.isArray(rv.postIds)
-            ? rv.postIds
-            : [];
+              ? rv.postIds
+              : [];
           collectedPostIds.push(...jobPostIds.map((id: string) => id || ''));
         }
 
@@ -1144,6 +1210,11 @@ async function testPipeline() {
     // ========================================
     const overallDuration = Date.now() - overallStartTime;
 
+    await waitForQueueToDrain(
+      restaurantCuisineQueue,
+      'Restaurant cuisine extraction',
+    );
+
     // Calculate comprehensive stats
     const avgTimePerPost = postsCount > 0 ? overallDuration / postsCount : 0;
     const postsPerSecond =
@@ -1305,6 +1376,7 @@ async function testPipeline() {
       await cleanQueue(chronologicalQueue, 'chronological collection');
       await cleanQueue(chronologicalBatchQueue, 'chronological batch');
       await cleanQueue(archiveBatchQueue, 'archive batch');
+      await cleanQueue(restaurantCuisineQueue, 'restaurant cuisine extraction');
       await cleanQueue(archiveCollectionQueue, 'archive collection');
     }
 

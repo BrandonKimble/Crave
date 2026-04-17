@@ -23,9 +23,10 @@ import { CreatePollOptionDto } from './dto/create-poll-option.dto';
 import { CastPollVoteDto } from './dto/cast-poll-vote.dto';
 import {
   PollEntitySeedService,
-  type CoverageContext,
+  type MarketContext,
 } from './poll-entity-seed.service';
-import { CoverageRegistryService } from '../coverage-key/coverage-registry.service';
+import { MarketRegistryService } from '../markets/market-registry.service';
+import { MarketResolverService } from '../markets/market-resolver.service';
 import { QueryPollsDto } from './dto/query-polls.dto';
 import { CreatePollDto } from './dto/create-poll.dto';
 import { UserEventService } from '../identity/user-event.service';
@@ -44,7 +45,8 @@ export class PollsService {
     private readonly moderation: ModerationService,
     private readonly pollEntitySeedService: PollEntitySeedService,
     private readonly gateway: PollsGateway,
-    private readonly coverageRegistry: CoverageRegistryService,
+    private readonly marketResolver: MarketResolverService,
+    private readonly marketRegistry: MarketRegistryService,
     private readonly userEventService: UserEventService,
     private readonly userStats: UserStatsService,
   ) {
@@ -54,12 +56,12 @@ export class PollsService {
   async listPolls(query: ListPollsQueryDto, user?: User | null) {
     const targetState =
       (query.state as PollState | undefined) ?? PollState.active;
-    const targetCoverageKey = query.coverageKey ?? query.city;
+    const targetMarketKey = query.marketKey ?? null;
 
     const polls = await this.prisma.poll.findMany({
       where: {
-        coverageKey: targetCoverageKey
-          ? { equals: targetCoverageKey, mode: 'insensitive' }
+        marketKey: targetMarketKey
+          ? { equals: targetMarketKey, mode: 'insensitive' }
           : undefined,
         state: targetState,
       },
@@ -76,7 +78,7 @@ export class PollsService {
             targetRestaurantId: true,
             targetFoodAttributeId: true,
             targetRestaurantAttributeId: true,
-            coverageKey: true,
+            marketKey: true,
             title: true,
             description: true,
             metadata: true,
@@ -86,53 +88,78 @@ export class PollsService {
       take: 25,
     });
 
-    const enriched = await this.attachCoverageLabels(polls, targetCoverageKey);
+    const enriched = await this.attachMarketLabels(polls, targetMarketKey);
     return this.attachCurrentUserVotes(enriched, user?.userId);
   }
 
   async queryPolls(query: QueryPollsDto, user?: User | null) {
-    let coverageKey = query.coverageKey ?? null;
-    if (!coverageKey && query.bounds) {
-      const resolved = await this.coverageRegistry.resolveOrCreateCoverage({
+    let resolvedMarket: Awaited<
+      ReturnType<MarketResolverService['resolve']>
+    > | null = null;
+    let marketKey = query.marketKey ?? null;
+    if (!marketKey && query.bounds) {
+      resolvedMarket = await this.marketResolver.resolve({
         bounds: query.bounds,
-        fallbackLocation: query.fallbackLocation
+        userLocation: query.userLocation
           ? {
-              latitude: query.fallbackLocation.lat,
-              longitude: query.fallbackLocation.lng,
+              lat: query.userLocation.lat,
+              lng: query.userLocation.lng,
             }
           : null,
+        mode: 'polls',
       });
-      coverageKey = resolved.coverageKey ?? null;
-    } else if (!coverageKey && query.fallbackLocation) {
-      const resolved = await this.coverageRegistry.resolveOrCreateCoverage({
-        fallbackLocation: {
-          latitude: query.fallbackLocation.lat,
-          longitude: query.fallbackLocation.lng,
+      marketKey = resolvedMarket.market?.marketKey ?? null;
+    } else if (!marketKey && query.userLocation) {
+      resolvedMarket = await this.marketResolver.resolve({
+        userLocation: {
+          lat: query.userLocation.lat,
+          lng: query.userLocation.lng,
         },
+        mode: 'polls',
       });
-      coverageKey = resolved.coverageKey ?? null;
+      marketKey = resolvedMarket.market?.marketKey ?? null;
     }
-    if (!coverageKey) {
+    if (!marketKey) {
       return {
-        coverageKey: null,
-        coverageName: null,
+        marketKey: null,
+        marketName: null,
+        marketStatus: resolvedMarket?.status ?? ('no_market' as const),
+        candidatePlaceName:
+          resolvedMarket?.resolution.candidatePlaceName ?? null,
+        candidatePlaceGeoId:
+          resolvedMarket?.resolution.candidatePlaceGeoId ?? null,
+        cta: resolvedMarket?.cta ?? {
+          kind: 'none' as const,
+          label: null,
+          prompt: null,
+        },
         polls: [],
       };
     }
     const polls = await this.listPolls(
       {
-        coverageKey: coverageKey ?? undefined,
+        marketKey: marketKey ?? undefined,
         state: query.state,
       },
       user ?? null,
     );
-    const coverageName =
-      polls[0]?.coverageName ??
-      (coverageKey ? await this.resolveCoverageName(coverageKey) : null);
+    const marketName =
+      polls[0]?.marketName ??
+      (marketKey ? await this.resolveMarketNameForKey(marketKey) : null);
 
     return {
-      coverageKey,
-      coverageName,
+      marketKey,
+      marketName,
+      marketStatus: 'resolved' as const,
+      candidatePlaceName: null,
+      candidatePlaceGeoId: null,
+      cta: {
+        kind: 'create_poll' as const,
+        label: marketName ? `Create a poll for ${marketName}` : 'Create a poll',
+        prompt: marketName
+          ? `Create a poll for ${marketName}`
+          : 'Create a poll',
+      },
       polls,
     };
   }
@@ -154,26 +181,27 @@ export class PollsService {
       );
     }
 
-    let coverageKey = dto.coverageKey?.trim() || null;
-    if (!coverageKey && dto.bounds) {
-      const resolved = await this.coverageRegistry.resolveOrCreateCoverage({
-        bounds: dto.bounds,
-        allowCreate: false,
-      });
-      coverageKey = resolved.coverageKey ?? null;
+    let marketKey = dto.marketKey?.trim() || null;
+    if (!marketKey) {
+      const resolved = await this.marketRegistry.resolveOrEnsureForPollCreation(
+        {
+          bounds: dto.bounds ?? null,
+        },
+      );
+      marketKey = resolved?.marketKey ?? null;
     }
-    if (!coverageKey) {
-      throw new BadRequestException('Unable to resolve poll location');
+    if (!marketKey) {
+      throw new BadRequestException('Unable to resolve poll market');
     }
 
-    const coverageContext =
-      (await this.resolveCoverageContext(coverageKey)) ??
+    const marketContext =
+      (await this.resolveMarketContext(marketKey)) ??
       ({
-        coverageKey,
+        marketKey,
         center: undefined,
         cityLabel: null,
         countryCode: null,
-      } satisfies CoverageContext);
+      } satisfies MarketContext);
 
     let targetDishId: string | null = null;
     let targetRestaurantId: string | null = null;
@@ -195,7 +223,7 @@ export class PollsService {
         const restaurant = await this.pollEntitySeedService.resolveRestaurant({
           entityId: dto.targetRestaurantId ?? null,
           name: dto.targetRestaurantName ?? null,
-          coverage: coverageContext,
+          market: marketContext,
           sessionToken: dto.sessionToken,
         });
         targetRestaurantId = restaurant.entityId;
@@ -240,7 +268,7 @@ export class PollsService {
         data: {
           title: question,
           description,
-          coverageKey,
+          marketKey,
           topicType: dto.topicType,
           createdByUserId: userId,
           targetDishId,
@@ -267,7 +295,7 @@ export class PollsService {
         data: {
           topicId: topic.topicId,
           question,
-          coverageKey,
+          marketKey,
           state: PollState.active,
           scheduledFor: now,
           launchedAt: now,
@@ -287,7 +315,7 @@ export class PollsService {
               targetRestaurantId: true,
               targetFoodAttributeId: true,
               targetRestaurantAttributeId: true,
-              coverageKey: true,
+              marketKey: true,
               title: true,
               description: true,
               metadata: true,
@@ -316,12 +344,12 @@ export class PollsService {
       eventData: {
         pollId: poll.pollId,
         topicId: poll.topicId,
-        coverageKey: poll.coverageKey,
+        marketKey: poll.marketKey,
         topicType: dto.topicType,
       },
     });
     await this.userStats.applyDelta(userId, { pollsCreatedCount: 1 });
-    const [enriched] = await this.attachCoverageLabels([poll], coverageKey);
+    const [enriched] = await this.attachMarketLabels([poll], marketKey);
     return enriched;
   }
 
@@ -340,7 +368,7 @@ export class PollsService {
             targetRestaurantId: true,
             targetFoodAttributeId: true,
             targetRestaurantAttributeId: true,
-            coverageKey: true,
+            marketKey: true,
             title: true,
             description: true,
             metadata: true,
@@ -354,7 +382,7 @@ export class PollsService {
     }
 
     const [hydrated] = await this.attachCurrentUserVotes([poll], user?.userId);
-    const [enriched] = await this.attachCoverageLabels([hydrated]);
+    const [enriched] = await this.attachMarketLabels([hydrated]);
     return enriched;
   }
 
@@ -436,9 +464,8 @@ export class PollsService {
           })
           .trim()
       : '';
-    const moderationDecision = await this.moderation.moderateText(
-      sanitizedLabel,
-    );
+    const moderationDecision =
+      await this.moderation.moderateText(sanitizedLabel);
     if (!moderationDecision.allowed) {
       throw new BadRequestException(
         `Option rejected by moderation: ${moderationDecision.reason}`,
@@ -449,16 +476,17 @@ export class PollsService {
       throw new BadRequestException('Poll topic metadata missing');
     }
 
-    const coverageContext =
-      (await this.resolveCoverageContext(
-        poll.coverageKey ?? poll.topic.coverageKey ?? null,
-      )) ??
+    if (!poll.marketKey) {
+      throw new BadRequestException('Poll market metadata missing');
+    }
+    const marketContext =
+      (await this.resolveMarketContext(poll.marketKey)) ??
       ({
-        coverageKey: 'global',
+        marketKey: poll.marketKey,
         center: undefined,
         cityLabel: null,
         countryCode: null,
-      } satisfies CoverageContext);
+      } satisfies MarketContext);
 
     let foodId: string | null = null;
     let restaurantId: string | null = null;
@@ -475,7 +503,7 @@ export class PollsService {
           await this.pollEntitySeedService.resolveRestaurant({
             entityId: dto.restaurantId ?? null,
             name: sanitizedRestaurantName || sanitizedLabel,
-            coverage: coverageContext,
+            market: marketContext,
             sessionToken: dto.sessionToken,
           });
         restaurantId = restaurantResult.entityId;
@@ -512,7 +540,7 @@ export class PollsService {
           await this.pollEntitySeedService.resolveRestaurant({
             entityId: dto.restaurantId ?? null,
             name: sanitizedRestaurantName || null,
-            coverage: coverageContext,
+            market: marketContext,
             sessionToken: dto.sessionToken,
           });
         foodId = dishResult.entityId;
@@ -533,7 +561,7 @@ export class PollsService {
           await this.pollEntitySeedService.resolveRestaurant({
             entityId: dto.restaurantId ?? null,
             name: sanitizedRestaurantName || sanitizedLabel,
-            coverage: coverageContext,
+            market: marketContext,
             sessionToken: dto.sessionToken,
           });
         restaurantId = restaurantResult.entityId;
@@ -754,15 +782,15 @@ export class PollsService {
     const activity = query.activity ?? UserPollActivity.participated;
     const limit = query.limit ?? 25;
     const offset = query.offset ?? 0;
-    const coverageKey = query.coverageKey?.trim();
+    const marketKey = query.marketKey?.trim();
     const state = query.state;
 
     if (activity === UserPollActivity.created) {
       const polls = await this.prisma.poll.findMany({
         where: {
           createdByUserId: userId,
-          coverageKey: coverageKey
-            ? { equals: coverageKey, mode: 'insensitive' }
+          marketKey: marketKey
+            ? { equals: marketKey, mode: 'insensitive' }
             : undefined,
           state,
         },
@@ -781,7 +809,7 @@ export class PollsService {
               targetRestaurantId: true,
               targetFoodAttributeId: true,
               targetRestaurantAttributeId: true,
-              coverageKey: true,
+              marketKey: true,
               title: true,
               description: true,
               metadata: true,
@@ -790,7 +818,7 @@ export class PollsService {
         },
       });
 
-      const enriched = await this.attachCoverageLabels(polls, coverageKey);
+      const enriched = await this.attachMarketLabels(polls, marketKey);
       return {
         activity,
         polls: await this.attachCurrentUserVotes(enriched, userId),
@@ -839,8 +867,8 @@ export class PollsService {
         ? await this.prisma.poll.findMany({
             where: {
               pollId: { in: Array.from(pollIds.values()) },
-              coverageKey: coverageKey
-                ? { equals: coverageKey, mode: 'insensitive' }
+              marketKey: marketKey
+                ? { equals: marketKey, mode: 'insensitive' }
                 : undefined,
               state,
             },
@@ -859,7 +887,7 @@ export class PollsService {
                   targetRestaurantId: true,
                   targetFoodAttributeId: true,
                   targetRestaurantAttributeId: true,
-                  coverageKey: true,
+                  marketKey: true,
                   title: true,
                   description: true,
                   metadata: true,
@@ -869,121 +897,106 @@ export class PollsService {
           })
         : [];
 
-    const enriched = await this.attachCoverageLabels(polls, coverageKey);
+    const enriched = await this.attachMarketLabels(polls, marketKey);
     return {
       activity,
       polls: await this.attachCurrentUserVotes(enriched, userId),
     };
   }
 
-  private async attachCoverageLabels<
+  private async attachMarketLabels<
     T extends {
-      coverageKey?: string | null;
-      topic?: { coverageKey?: string | null } | null;
+      marketKey?: string | null;
+      topic?: { marketKey?: string | null } | null;
     },
   >(
     polls: T[],
-    fallbackCoverageKey?: string | null,
-  ): Promise<Array<T & { coverageName?: string | null }>> {
-    const coverageKeys = new Set<string>();
+    fallbackMarketKey?: string | null,
+  ): Promise<Array<T & { marketName?: string | null }>> {
+    const marketKeys = new Set<string>();
     for (const poll of polls) {
       const rawKey =
-        poll.coverageKey ??
-        poll.topic?.coverageKey ??
-        fallbackCoverageKey ??
-        null;
+        poll.marketKey ?? poll.topic?.marketKey ?? fallbackMarketKey ?? null;
       if (typeof rawKey === 'string' && rawKey.trim()) {
-        coverageKeys.add(rawKey.trim().toLowerCase());
+        marketKeys.add(rawKey.trim().toLowerCase());
       }
     }
 
-    if (coverageKeys.size === 0) {
+    if (marketKeys.size === 0) {
       return polls;
     }
 
-    const keys = Array.from(coverageKeys.values());
-    const rows = await this.prisma.coverageArea.findMany({
+    const keys = Array.from(marketKeys.values());
+    const marketRows = await this.prisma.market.findMany({
       where: {
-        OR: [{ coverageKey: { in: keys } }, { name: { in: keys } }],
+        marketKey: { in: keys },
       },
       select: {
-        coverageKey: true,
-        name: true,
-        displayName: true,
-        locationName: true,
+        marketKey: true,
+        marketName: true,
+        marketShortName: true,
       },
     });
 
     const labelByKey = new Map<string, string>();
-    for (const row of rows) {
-      const label = this.resolveCoverageLabel(row);
+    for (const row of marketRows) {
+      const label = this.resolveMarketLabel(row);
       if (!label) {
         continue;
       }
-      if (row.coverageKey) {
-        labelByKey.set(row.coverageKey.toLowerCase(), label);
-      }
-      labelByKey.set(row.name.toLowerCase(), label);
+      labelByKey.set(row.marketKey.toLowerCase(), label);
     }
 
     return polls.map((poll) => {
       const rawKey =
-        poll.coverageKey ??
-        poll.topic?.coverageKey ??
-        fallbackCoverageKey ??
-        null;
+        poll.marketKey ?? poll.topic?.marketKey ?? fallbackMarketKey ?? null;
       const key = typeof rawKey === 'string' ? rawKey.trim().toLowerCase() : '';
-      const coverageName = key ? labelByKey.get(key) ?? null : null;
+      const marketName = key ? (labelByKey.get(key) ?? null) : null;
       return {
         ...poll,
-        coverageName,
+        marketName,
       };
     });
   }
 
-  private async resolveCoverageName(
-    coverageKey: string,
+  private async resolveMarketNameForKey(
+    marketKey: string,
   ): Promise<string | null> {
-    const normalized = coverageKey.trim().toLowerCase();
+    const normalized = marketKey.trim().toLowerCase();
     if (!normalized) {
       return null;
     }
 
-    const row = await this.prisma.coverageArea.findFirst({
+    const market = await this.prisma.market.findFirst({
       where: {
-        OR: [
-          { coverageKey: { equals: normalized, mode: 'insensitive' } },
-          { name: { equals: normalized, mode: 'insensitive' } },
-        ],
+        marketKey: { equals: normalized, mode: 'insensitive' },
       },
       select: {
-        coverageKey: true,
-        name: true,
-        displayName: true,
-        locationName: true,
+        marketKey: true,
+        marketName: true,
+        marketShortName: true,
       },
     });
 
-    return row ? this.resolveCoverageLabel(row) : null;
+    if (market) {
+      return this.resolveMarketLabel(market);
+    }
+
+    return null;
   }
 
-  private resolveCoverageLabel(row: {
-    displayName: string | null;
-    locationName: string | null;
-    coverageKey: string | null;
-    name: string;
+  private resolveMarketLabel(row: {
+    marketKey: string;
+    marketName: string;
+    marketShortName: string | null;
   }): string | null {
-    if (row.displayName && row.displayName.trim()) {
-      return row.displayName.trim();
+    if (row.marketShortName && row.marketShortName.trim()) {
+      return row.marketShortName.trim();
     }
-    if (row.locationName && row.locationName.trim()) {
-      const [first] = row.locationName.split(',');
-      return first?.trim() || row.locationName.trim();
+    if (row.marketName && row.marketName.trim()) {
+      return row.marketName.trim();
     }
-    if (row.coverageKey && row.coverageKey.trim()) {
-      return row.coverageKey.trim();
-    }
-    return row.name?.trim() || null;
+    return row.marketKey.trim() || null;
   }
 
   private buildPollQuestion(
@@ -1004,62 +1017,46 @@ export class PollsService {
     }
   }
 
-  private async resolveCoverageContext(
-    coverageKey: string | null,
-  ): Promise<CoverageContext | null> {
-    if (!coverageKey || !coverageKey.trim()) {
+  private async resolveMarketContext(
+    marketKey: string | null,
+  ): Promise<MarketContext | null> {
+    if (!marketKey || !marketKey.trim()) {
       return null;
     }
 
-    const normalized = coverageKey.trim().toLowerCase();
-    const record = await this.prisma.coverageArea.findFirst({
+    const normalized = marketKey.trim().toLowerCase();
+    const market = await this.prisma.market.findFirst({
       where: {
-        OR: [
-          { coverageKey: { equals: normalized, mode: 'insensitive' } },
-          { name: { equals: normalized, mode: 'insensitive' } },
-        ],
+        marketKey: { equals: normalized, mode: 'insensitive' },
       },
       select: {
-        coverageKey: true,
-        name: true,
-        displayName: true,
-        locationName: true,
+        marketKey: true,
+        marketName: true,
+        marketShortName: true,
+        countryCode: true,
         centerLatitude: true,
         centerLongitude: true,
       },
     });
 
-    if (!record) {
+    if (market) {
+      const centerLat = this.toNumber(market.centerLatitude);
+      const centerLng = this.toNumber(market.centerLongitude);
+      const center =
+        centerLat !== null && centerLng !== null
+          ? { lat: centerLat, lng: centerLng }
+          : undefined;
+
       return {
-        coverageKey: normalized,
+        marketKey: market.marketKey.toLowerCase(),
+        center,
+        cityLabel: this.resolveMarketLabel(market),
+        countryCode: market.countryCode ?? null,
       };
     }
 
-    const centerLat = this.toNumber(record.centerLatitude);
-    const centerLng = this.toNumber(record.centerLongitude);
-    const center =
-      centerLat !== null && centerLng !== null
-        ? { lat: centerLat, lng: centerLng }
-        : undefined;
-
-    const cityLabel = this.resolveCoverageLabel({
-      displayName: record.displayName,
-      locationName: record.locationName,
-      coverageKey: record.coverageKey,
-      name: record.name,
-    });
-
-    const countryCode = this.extractCountryCode(record.locationName ?? null);
-
     return {
-      coverageKey: (
-        record.coverageKey ??
-        record.name ??
-        normalized
-      ).toLowerCase(),
-      center,
-      cityLabel,
-      countryCode,
+      marketKey: normalized,
     };
   }
 

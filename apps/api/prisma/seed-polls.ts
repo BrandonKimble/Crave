@@ -11,7 +11,7 @@ import {
 const prisma = new PrismaClient();
 
 const SEED_TAG = 'test-poll-seed';
-const DEFAULT_COVERAGE_KEY = 'austin_tx_us';
+const DEFAULT_MARKET_KEY = 'us-cbsa-12420';
 
 const parsePositiveInt = (
   value: string | undefined,
@@ -24,8 +24,10 @@ const parsePositiveInt = (
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
-const COVERAGE_KEY = (
-  process.env.TEST_POLL_COVERAGE_KEY ?? DEFAULT_COVERAGE_KEY
+const MARKET_KEY = (
+  process.env.TEST_POLL_MARKET_KEY ??
+  process.env.TEST_POLL_COVERAGE_KEY ??
+  DEFAULT_MARKET_KEY
 )
   .trim()
   .toLowerCase();
@@ -38,7 +40,7 @@ const SEED_VOTES = process.env.TEST_POLL_SEED_VOTES !== 'false';
 const RESET_SEEDS = process.env.TEST_POLL_RESET === 'true';
 const CREATED_BY_USER_ID = process.env.TEST_POLL_CREATED_BY_USER_ID;
 
-type CoverageLabel = {
+type MarketLabel = {
   label: string;
   cityHint: string | null;
 };
@@ -86,18 +88,18 @@ const shuffle = <T>(items: T[]): T[] => {
   return copy;
 };
 
-const resolveCoverageLabel = (row?: {
+const resolveMarketLabel = (row?: {
   displayName: string | null;
   locationName: string | null;
-  coverageKey: string | null;
+  marketKey: string | null;
   name: string;
-}): CoverageLabel => {
+}): MarketLabel => {
   const rawLabel =
     row?.displayName?.trim() ||
     row?.locationName?.split(',')[0]?.trim() ||
-    row?.coverageKey?.trim() ||
+    row?.marketKey?.trim() ||
     row?.name?.trim() ||
-    COVERAGE_KEY;
+    MARKET_KEY;
   const cityHint =
     row?.locationName?.split(',')[0]?.trim() ||
     row?.displayName?.trim() ||
@@ -108,7 +110,7 @@ const resolveCoverageLabel = (row?: {
 const ensureSeedUsers = async (count: number): Promise<string[]> => {
   const ids: string[] = [];
   for (let i = 1; i <= count; i += 1) {
-    const email = `seed.polls.${COVERAGE_KEY}.${i}@crave.test`;
+    const email = `seed.polls.${MARKET_KEY}.${i}@crave.test`;
     const user = await prisma.user.upsert({
       where: { email },
       update: {},
@@ -158,13 +160,13 @@ const resolvePrimaryUser = async (): Promise<{
 const resetSeededPolls = async (): Promise<void> => {
   const deletedPolls = await prisma.$executeRaw`
 DELETE FROM polls
-WHERE coverage_key = ${COVERAGE_KEY}
+WHERE market_key = ${MARKET_KEY}
   AND metadata->>'seedTag' = ${SEED_TAG}`;
 
   const deletedTopics = await prisma.$executeRaw`
 DELETE FROM poll_topics
 WHERE metadata->>'seedTag' = ${SEED_TAG}
-  AND (coverage_key = ${COVERAGE_KEY} OR coverage_key IS NULL)`;
+  AND (market_key = ${MARKET_KEY} OR market_key IS NULL)`;
 
   console.log(
     `Reset complete: removed ${deletedPolls} poll(s) and ${deletedTopics} topic(s).`,
@@ -185,10 +187,15 @@ const fetchTopFoods = async (limit: number): Promise<Candidate[]> => {
       f.name AS food_name,
       SUM(c.total_upvotes)::int AS upvotes,
       SUM(c.mention_count)::int AS mentions
-    FROM core_connections c
+    FROM core_restaurant_items c
     JOIN core_entities r ON r.entity_id = c.restaurant_id
     JOIN core_entities f ON f.entity_id = c.food_id
-    WHERE r.location_key = ${COVERAGE_KEY}
+    WHERE EXISTS (
+      SELECT 1
+      FROM core_entity_market_presence emp
+      WHERE emp.entity_id = r.entity_id
+        AND emp.market_key = ${MARKET_KEY}
+    )
     GROUP BY c.food_id, f.name
     ORDER BY SUM(c.total_upvotes) DESC, SUM(c.mention_count) DESC
     LIMIT ${limit};
@@ -214,9 +221,14 @@ const fetchTopRestaurants = async (limit: number): Promise<Candidate[]> => {
       r.name AS restaurant_name,
       SUM(c.total_upvotes)::int AS upvotes,
       SUM(c.mention_count)::int AS mentions
-    FROM core_connections c
+    FROM core_restaurant_items c
     JOIN core_entities r ON r.entity_id = c.restaurant_id
-    WHERE r.location_key = ${COVERAGE_KEY}
+    WHERE EXISTS (
+      SELECT 1
+      FROM core_entity_market_presence emp
+      WHERE emp.entity_id = r.entity_id
+        AND emp.market_key = ${MARKET_KEY}
+    )
     GROUP BY r.entity_id, r.name
     ORDER BY SUM(c.total_upvotes) DESC, SUM(c.mention_count) DESC
     LIMIT ${limit};
@@ -251,11 +263,16 @@ const fetchTopRestaurantsForFood = async (
       f.name AS food_name,
       c.total_upvotes::int AS upvotes,
       c.mention_count::int AS mentions
-    FROM core_connections c
+    FROM core_restaurant_items c
     JOIN core_entities r ON r.entity_id = c.restaurant_id
     JOIN core_entities f ON f.entity_id = c.food_id
     WHERE c.food_id = ${foodId}::uuid
-      AND r.location_key = ${COVERAGE_KEY}
+      AND EXISTS (
+        SELECT 1
+        FROM core_entity_market_presence emp
+        WHERE emp.entity_id = r.entity_id
+          AND emp.market_key = ${MARKET_KEY}
+      )
     ORDER BY c.total_upvotes DESC, c.mention_count DESC
     LIMIT ${limit};
   `);
@@ -292,7 +309,7 @@ const fetchTopFoodsForRestaurant = async (
       f.name AS food_name,
       c.total_upvotes::int AS upvotes,
       c.mention_count::int AS mentions
-    FROM core_connections c
+    FROM core_restaurant_items c
     JOIN core_entities r ON r.entity_id = c.restaurant_id
     JOIN core_entities f ON f.entity_id = c.food_id
     WHERE c.restaurant_id = ${restaurantId}::uuid
@@ -315,9 +332,14 @@ const fetchTopFoodAttributes = async (limit: number): Promise<Candidate[]> => {
   >(Prisma.sql`
     WITH attr_usage AS (
       SELECT unnest(c.food_attributes) AS attribute_id
-      FROM core_connections c
+      FROM core_restaurant_items c
       JOIN core_entities r ON r.entity_id = c.restaurant_id
-      WHERE r.location_key = ${COVERAGE_KEY}
+      WHERE EXISTS (
+        SELECT 1
+        FROM core_entity_market_presence emp
+        WHERE emp.entity_id = r.entity_id
+          AND emp.market_key = ${MARKET_KEY}
+      )
     )
     SELECT
       e.entity_id AS attribute_id,
@@ -360,10 +382,15 @@ const fetchConnectionsForFoodAttribute = async (
       f.name AS food_name,
       c.total_upvotes::int AS upvotes,
       c.mention_count::int AS mentions
-    FROM core_connections c
+    FROM core_restaurant_items c
     JOIN core_entities r ON r.entity_id = c.restaurant_id
     JOIN core_entities f ON f.entity_id = c.food_id
-    WHERE r.location_key = ${COVERAGE_KEY}
+    WHERE EXISTS (
+      SELECT 1
+      FROM core_entity_market_presence emp
+      WHERE emp.entity_id = r.entity_id
+        AND emp.market_key = ${MARKET_KEY}
+    )
       AND ${attributeId}::uuid = ANY(c.food_attributes)
     ORDER BY c.total_upvotes DESC, c.mention_count DESC
     LIMIT ${limit};
@@ -388,7 +415,12 @@ const fetchTopRestaurantAttributes = async (
       SELECT unnest(r.restaurant_attributes) AS attribute_id
       FROM core_entities r
       WHERE r.type = 'restaurant'
-        AND r.location_key = ${COVERAGE_KEY}
+        AND EXISTS (
+          SELECT 1
+          FROM core_entity_market_presence emp
+          WHERE emp.entity_id = r.entity_id
+            AND emp.market_key = ${MARKET_KEY}
+        )
     )
     SELECT
       e.entity_id AS attribute_id,
@@ -427,7 +459,12 @@ const fetchRestaurantsForRestaurantAttribute = async (
       COALESCE(r.general_praise_upvotes, 0)::int AS praise
     FROM core_entities r
     WHERE r.type = 'restaurant'
-      AND r.location_key = ${COVERAGE_KEY}
+      AND EXISTS (
+        SELECT 1
+        FROM core_entity_market_presence emp
+        WHERE emp.entity_id = r.entity_id
+          AND emp.market_key = ${MARKET_KEY}
+      )
       AND ${attributeId}::uuid = ANY(r.restaurant_attributes)
     ORDER BY COALESCE(r.restaurant_quality_score, 0) DESC,
              COALESCE(r.general_praise_upvotes, 0) DESC
@@ -451,7 +488,7 @@ const createPollWithOptions = async (params: {
   categoryEntityIds: string[];
   seedEntityIds: string[];
   options: PollOptionSeed[];
-  coverageKey: string;
+  marketKey: string;
   usersToVote: string[];
   cityLabel?: string | null;
   createdByUserId?: string | null;
@@ -459,7 +496,7 @@ const createPollWithOptions = async (params: {
   const question = normalizeLabel(params.question);
   const existing = await prisma.poll.findFirst({
     where: {
-      coverageKey: params.coverageKey,
+      marketKey: params.marketKey,
       question,
     },
     select: { pollId: true },
@@ -475,7 +512,7 @@ const createPollWithOptions = async (params: {
     data: {
       title: question,
       description: params.description,
-      coverageKey: params.coverageKey,
+      marketKey: params.marketKey,
       status: PollTopicStatus.archived,
       topicType: params.topicType,
       createdByUserId: params.createdByUserId ?? null,
@@ -487,7 +524,7 @@ const createPollWithOptions = async (params: {
       seedEntityIds: params.seedEntityIds,
       metadata: {
         seedTag: SEED_TAG,
-        coverageKey: params.coverageKey,
+        marketKey: params.marketKey,
         cityLabel: params.cityLabel ?? null,
       },
     },
@@ -497,14 +534,14 @@ const createPollWithOptions = async (params: {
     data: {
       topicId: topic.topicId,
       question,
-      coverageKey: params.coverageKey,
+      marketKey: params.marketKey,
       state: PollState.active,
       scheduledFor: now,
       launchedAt: now,
       allowUserAdditions: true,
       metadata: {
         seedTag: SEED_TAG,
-        coverageKey: params.coverageKey,
+        marketKey: params.marketKey,
       },
       createdByUserId: params.createdByUserId ?? null,
     },
@@ -648,7 +685,7 @@ const seedVotesForPoll = async (
 
 const buildBestDishPoll = async (
   candidate: Candidate,
-  coverageLabel: CoverageLabel,
+  marketLabel: MarketLabel,
   users: string[],
   createdByUserId?: string | null,
 ): Promise<CreatedPoll | null> => {
@@ -666,8 +703,8 @@ const buildBestDishPoll = async (
     categoryId: candidate.id,
   }));
 
-  const description = coverageLabel.cityHint
-    ? `Which spot has the best ${candidate.name} in ${coverageLabel.cityHint}?`
+  const description = marketLabel.cityHint
+    ? `Which spot has the best ${candidate.name} in ${marketLabel.cityHint}?`
     : `Which spot has the best ${candidate.name}?`;
 
   return createPollWithOptions({
@@ -678,16 +715,16 @@ const buildBestDishPoll = async (
     categoryEntityIds: [candidate.id],
     seedEntityIds: [candidate.id],
     options,
-    coverageKey: COVERAGE_KEY,
+    marketKey: MARKET_KEY,
     usersToVote: users,
-    cityLabel: coverageLabel.label,
+    cityLabel: marketLabel.label,
     createdByUserId,
   });
 };
 
 const buildWhatToOrderPoll = async (
   candidate: Candidate,
-  coverageLabel: CoverageLabel,
+  marketLabel: MarketLabel,
   users: string[],
   createdByUserId?: string | null,
 ): Promise<CreatedPoll | null> => {
@@ -706,7 +743,7 @@ const buildWhatToOrderPoll = async (
     connectionId: connection.connectionId,
   }));
 
-  const description = coverageLabel.cityHint
+  const description = marketLabel.cityHint
     ? `Help newcomers pick a must-order dish at ${candidate.name}.`
     : `What is the one dish you should not skip at ${candidate.name}?`;
 
@@ -718,16 +755,16 @@ const buildWhatToOrderPoll = async (
     categoryEntityIds: [],
     seedEntityIds: [candidate.id],
     options,
-    coverageKey: COVERAGE_KEY,
+    marketKey: MARKET_KEY,
     usersToVote: users,
-    cityLabel: coverageLabel.label,
+    cityLabel: marketLabel.label,
     createdByUserId,
   });
 };
 
 const buildBestDishAttributePoll = async (
   candidate: Candidate,
-  coverageLabel: CoverageLabel,
+  marketLabel: MarketLabel,
   users: string[],
   createdByUserId?: string | null,
 ): Promise<CreatedPoll | null> => {
@@ -747,8 +784,8 @@ const buildBestDishAttributePoll = async (
     connectionId: connection.connectionId,
   }));
 
-  const description = coverageLabel.cityHint
-    ? `Which dish best captures ${candidate.name} in ${coverageLabel.cityHint}?`
+  const description = marketLabel.cityHint
+    ? `Which dish best captures ${candidate.name} in ${marketLabel.cityHint}?`
     : `Which dish best captures ${candidate.name}?`;
 
   return createPollWithOptions({
@@ -759,16 +796,16 @@ const buildBestDishAttributePoll = async (
     categoryEntityIds: [candidate.id],
     seedEntityIds: [candidate.id],
     options,
-    coverageKey: COVERAGE_KEY,
+    marketKey: MARKET_KEY,
     usersToVote: users,
-    cityLabel: coverageLabel.label,
+    cityLabel: marketLabel.label,
     createdByUserId,
   });
 };
 
 const buildBestRestaurantAttributePoll = async (
   candidate: Candidate,
-  coverageLabel: CoverageLabel,
+  marketLabel: MarketLabel,
   users: string[],
   createdByUserId?: string | null,
 ): Promise<CreatedPoll | null> => {
@@ -786,8 +823,8 @@ const buildBestRestaurantAttributePoll = async (
     restaurantId: restaurant.id,
   }));
 
-  const description = coverageLabel.cityHint
-    ? `Which restaurants are most ${candidate.name} in ${coverageLabel.cityHint}?`
+  const description = marketLabel.cityHint
+    ? `Which restaurants are most ${candidate.name} in ${marketLabel.cityHint}?`
     : `Which restaurants are most ${candidate.name}?`;
 
   return createPollWithOptions({
@@ -798,35 +835,45 @@ const buildBestRestaurantAttributePoll = async (
     categoryEntityIds: [candidate.id],
     seedEntityIds: [candidate.id],
     options,
-    coverageKey: COVERAGE_KEY,
+    marketKey: MARKET_KEY,
     usersToVote: users,
-    cityLabel: coverageLabel.label,
+    cityLabel: marketLabel.label,
     createdByUserId,
   });
 };
 
 async function main() {
-  console.log(`Seeding polls for coverage key: ${COVERAGE_KEY}`);
+  console.log(`Seeding polls for market key: ${MARKET_KEY}`);
 
   if (RESET_SEEDS) {
     await resetSeededPolls();
   }
 
-  const coverageRow = await prisma.coverageArea.findFirst({
+  const marketRow = await prisma.market.findFirst({
     where: {
       OR: [
-        { coverageKey: { equals: COVERAGE_KEY, mode: 'insensitive' } },
-        { name: { equals: COVERAGE_KEY, mode: 'insensitive' } },
+        { marketKey: { equals: MARKET_KEY, mode: 'insensitive' } },
+        { marketName: { equals: MARKET_KEY, mode: 'insensitive' } },
       ],
     },
     select: {
-      coverageKey: true,
-      name: true,
+      marketKey: true,
+      marketName: true,
+      marketShortName: true,
       displayName: true,
       locationName: true,
     },
   });
-  const coverageLabel = resolveCoverageLabel(coverageRow ?? undefined);
+  const marketLabel = resolveMarketLabel(
+    marketRow
+      ? {
+          marketKey: marketRow.marketKey,
+          name: marketRow.marketShortName ?? marketRow.marketName,
+          displayName: marketRow.displayName,
+          locationName: marketRow.locationName,
+        }
+      : undefined,
+  );
 
   const primaryUser = await resolvePrimaryUser();
   const seedUsers = SEED_VOTES ? await ensureSeedUsers(USER_COUNT) : [];
@@ -858,7 +905,7 @@ async function main() {
   if (primaryFood) {
     const poll = await buildBestDishPoll(
       primaryFood,
-      coverageLabel,
+      marketLabel,
       users,
       createdByUserId,
     );
@@ -868,7 +915,7 @@ async function main() {
   if (primaryRestaurant && created.length < MAX_POLLS) {
     const poll = await buildWhatToOrderPoll(
       primaryRestaurant,
-      coverageLabel,
+      marketLabel,
       users,
       createdByUserId,
     );
@@ -878,7 +925,7 @@ async function main() {
   if (primaryFoodAttribute && created.length < MAX_POLLS) {
     const poll = await buildBestDishAttributePoll(
       primaryFoodAttribute,
-      coverageLabel,
+      marketLabel,
       users,
       createdByUserId,
     );
@@ -888,7 +935,7 @@ async function main() {
   if (primaryRestaurantAttribute && created.length < MAX_POLLS) {
     const poll = await buildBestRestaurantAttributePoll(
       primaryRestaurantAttribute,
-      coverageLabel,
+      marketLabel,
       users,
       createdByUserId,
     );
@@ -901,7 +948,7 @@ async function main() {
     if (foodIndex < topFoods.length) {
       const poll = await buildBestDishPoll(
         topFoods[foodIndex],
-        coverageLabel,
+        marketLabel,
         users,
         createdByUserId,
       );
@@ -915,7 +962,7 @@ async function main() {
     if (restaurantIndex < topRestaurants.length) {
       const poll = await buildWhatToOrderPoll(
         topRestaurants[restaurantIndex],
-        coverageLabel,
+        marketLabel,
         users,
         createdByUserId,
       );

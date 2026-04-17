@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { QualityScoreService } from './quality-score.service';
 import { SharedModule } from '../../../shared';
 import { RepositoryModule } from '../../../repositories/repository.module';
+import { PrismaModule } from '../../../prisma/prisma.module';
 
 /**
  * Quality Score Module
@@ -18,6 +19,7 @@ import { RepositoryModule } from '../../../repositories/repository.module';
  */
 @Module({
   imports: [
+    PrismaModule,
     SharedModule, // Provides LoggerService
     RepositoryModule, // Provides ConnectionRepository, EntityRepository
   ],

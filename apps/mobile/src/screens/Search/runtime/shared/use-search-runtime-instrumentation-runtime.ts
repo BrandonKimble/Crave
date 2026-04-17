@@ -1,11 +1,11 @@
 import React from 'react';
 
 import { areResultsPresentationReadModelsEqual } from './results-presentation-runtime-contract';
-import type { SearchRuntimeBus } from './search-runtime-bus';
 import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
 import { useShortcutHarnessObserver } from '../telemetry/shortcut-harness-observer';
+import { useNavSwitchHarnessObserver } from '../telemetry/nav-switch-harness-observer';
 import {
-  type ShortcutHarnessObserverResult,
+  type ShortcutHarnessObserverArgs,
   type UseSearchRuntimeInstrumentationRuntimeArgs,
   type UseSearchRuntimeInstrumentationRuntimeResult,
 } from './use-search-runtime-instrumentation-runtime-contract';
@@ -14,7 +14,6 @@ import { useSearchRuntimeRunOneTelemetryRuntime } from './use-search-runtime-run
 import { useSearchRuntimeStallInstrumentationRuntime } from './use-search-runtime-stall-instrumentation-runtime';
 import { useSearchRuntimeStateTelemetryRuntime } from './use-search-runtime-state-telemetry-runtime';
 
-const SHOULD_LOG_JS_STALLS = false;
 const SHOULD_LOG_MAP_EVENT_RATES = false;
 const MAP_EVENT_LOG_INTERVAL_MS = 0;
 const SHOULD_LOG_SEARCH_COMPUTES = false;
@@ -24,8 +23,6 @@ export const useSearchRuntimeInstrumentationRuntime = ({
   getPerfNow,
   roundPerfValue,
   searchSessionController,
-  scoreMode,
-  setPreferredScoreMode,
   searchMode,
   isSearchLoading,
   isLoadingMore: _isLoadingMore,
@@ -55,6 +52,9 @@ export const useSearchRuntimeInstrumentationRuntime = ({
   >(async () => undefined);
   const toggleOpenNowHarnessRef = React.useRef<
     ShortcutHarnessObserverArgs['toggleOpenNowRef']['current']
+  >(() => undefined);
+  const selectOverlayHarnessRef = React.useRef<
+    (target: 'search' | 'bookmarks' | 'profile') => void
   >(() => undefined);
 
   const profilerRuntimeState = useSearchRuntimeBusSelector(
@@ -97,8 +97,6 @@ export const useSearchRuntimeInstrumentationRuntime = ({
     searchSessionController,
     submitShortcutSearchRef,
     toggleOpenNowRef: toggleOpenNowHarnessRef,
-    scoreMode,
-    setPreferredScoreMode,
     mapQueryBudget,
     searchMode,
     isSearchLoading,
@@ -112,6 +110,15 @@ export const useSearchRuntimeInstrumentationRuntime = ({
     settleQuietPeriodMs,
     searchRuntimeBus,
     runtimeWorkSchedulerRef,
+  });
+  useNavSwitchHarnessObserver({
+    getPerfNow,
+    roundPerfValue,
+    selectOverlayHarnessRef,
+    isSearchOverlay,
+    isInitialCameraReady,
+    rootOverlay,
+    activeOverlayKey,
   });
 
   const resolveProfilerStageHint = React.useCallback(() => {
@@ -176,6 +183,7 @@ export const useSearchRuntimeInstrumentationRuntime = ({
     emitRuntimeMechanismEvent,
     submitShortcutSearchRef,
     toggleOpenNowHarnessRef,
+    selectOverlayHarnessRef,
     handleProfilerRender,
     shouldLogSearchComputes: SHOULD_LOG_SEARCH_COMPUTES,
     logSearchCompute,

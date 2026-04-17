@@ -12,8 +12,6 @@ export const useSearchRouteOverlayCommandState = (): SearchRouteOverlayCommandSt
       tabOverlaySnapRequest: state.tabOverlaySnapRequest,
       pollsSheetSnap: state.pollsSheetSnap,
       isDockedPollsDismissed: state.isDockedPollsDismissed,
-      isNavRestorePending: state.isNavRestorePending,
-      overlaySwitchInFlight: state.overlaySwitchInFlight,
       dockedPollsRestoreInFlight: state.dockedPollsRestoreInFlight,
       ignoreDockedPollsHiddenUntilMs: state.ignoreDockedPollsHiddenUntilMs,
       bookmarksSheetSnap: state.bookmarksSheetSnap,
@@ -21,5 +19,6 @@ export const useSearchRouteOverlayCommandState = (): SearchRouteOverlayCommandSt
       saveSheetState: state.saveSheetState,
       saveSheetSnap: state.saveSheetSnap,
       pollCreationSnapRequest: state.pollCreationSnapRequest,
+      pollsPanelParams: state.pollsPanelParams,
     }))
   );

@@ -4,14 +4,17 @@ import type { Feature, FeatureCollection, Point } from 'geojson';
 
 import type { StartupLocationSnapshot } from '../../../navigation/runtime/MainLaunchCoordinator';
 import type { Coordinate, MapBounds, RestaurantResult } from '../../../types';
+import { logger } from '../../../utils';
 import { useMapMarkerEngine } from '../hooks/use-map-marker-engine';
 import type { MapQueryBudget } from '../runtime/map/map-query-budget';
 import {
-  type MapMotionPressureController,
   type MapSnapshotPresentationPolicy,
   type SearchMapPresentationScene,
 } from '../runtime/map/map-presentation-runtime-contract';
-import type { MotionPressureState } from '../runtime/map/map-motion-pressure';
+import type {
+  MapMotionPressureController,
+  MotionPressureState,
+} from '../runtime/map/map-motion-pressure';
 import type { ResolvedRestaurantMapLocation } from '../runtime/map/restaurant-location-selection';
 import {
   derivePreparedPresentationSnapshotKey,
@@ -20,6 +23,10 @@ import {
   useSearchBus,
 } from '../runtime/shared/search-runtime-bus';
 import { useSearchRuntimeBusSelector } from '../runtime/shared/use-search-runtime-bus-selector';
+import type {
+  SearchMapPresentationLifecyclePort,
+  SearchMapProfileCommandPort,
+} from '../runtime/shared/search-map-protocol-contract';
 import {
   createSearchMapSourceTransportFeature,
   createSearchMapSourceStoreBuilder,
@@ -42,25 +49,6 @@ import SearchMap, {
   buildLabelCandidateFeatureId,
   type RestaurantFeatureProperties,
 } from './search-map';
-
-type MarkerProfileActions = {
-  openRestaurantProfilePreview: (
-    restaurantId: string,
-    restaurantName: string,
-    options?: {
-      pressedCoordinate?: Coordinate | null;
-      forceMiddleSnap?: boolean;
-    }
-  ) => void;
-  openRestaurantProfile: (
-    restaurant: RestaurantResult,
-    options?: {
-      pressedCoordinate?: Coordinate | null;
-      forceMiddleSnap?: boolean;
-      source?: 'results_sheet' | 'auto_open_single_candidate' | 'dish_card';
-    }
-  ) => void;
-};
 
 type ShortcutCoverageFeatureProps = {
   restaurantId?: string;
@@ -144,7 +132,7 @@ const buildStableCollisionFeature = (
       markerKey,
       restaurantId: feature.properties.restaurantId,
     } as RestaurantFeatureProperties,
-  } satisfies Feature<Point, RestaurantFeatureProperties>);
+  }) satisfies Feature<Point, RestaurantFeatureProperties>;
 
 const buildNativeLabelProperties = (
   properties: RestaurantFeatureProperties
@@ -865,13 +853,11 @@ const useSearchMapLaneAdvancement = ({
 const useMarkerInteractionController = ({
   anchoredShortcutCoverageFeatures,
   restaurants,
-  pendingMarkerOpenAnimationFrameRef,
-  profileActions,
+  profileCommandPort,
 }: {
   anchoredShortcutCoverageFeatures: FeatureCollection<Point, ShortcutCoverageFeatureProps> | null;
   restaurants: RestaurantResult[];
-  pendingMarkerOpenAnimationFrameRef: React.MutableRefObject<number | null>;
-  profileActions: MarkerProfileActions;
+  profileCommandPort: SearchMapProfileCommandPort;
 }): {
   handleMarkerPress: (restaurantId: string, pressedCoordinate?: Coordinate | null) => void;
 } => {
@@ -891,38 +877,15 @@ const useMarkerInteractionController = ({
 
   const handleMarkerPress = React.useCallback(
     (restaurantId: string, pressedCoordinate?: Coordinate | null) => {
-      if (pendingMarkerOpenAnimationFrameRef.current != null) {
-        if (typeof cancelAnimationFrame === 'function') {
-          cancelAnimationFrame(pendingMarkerOpenAnimationFrameRef.current);
-        }
-        pendingMarkerOpenAnimationFrameRef.current = null;
-      }
       const restaurant = restaurants.find((item) => item.restaurantId === restaurantId);
-      const openProfile = () => {
-        if (!restaurant) {
-          const fallbackName = shortcutCoverageRestaurantNameById.get(restaurantId);
-          if (fallbackName) {
-            profileActions.openRestaurantProfilePreview(restaurantId, fallbackName, {
-              pressedCoordinate: pressedCoordinate ?? null,
-              forceMiddleSnap: true,
-            });
-          }
-          return;
-        }
-        profileActions.openRestaurantProfile(restaurant, {
-          pressedCoordinate,
-          forceMiddleSnap: true,
-          source: 'results_sheet',
-        });
-      };
-      openProfile();
+      profileCommandPort.openProfileFromMarker({
+        restaurantId,
+        restaurantName: shortcutCoverageRestaurantNameById.get(restaurantId),
+        restaurant,
+        pressedCoordinate,
+      });
     },
-    [
-      pendingMarkerOpenAnimationFrameRef,
-      profileActions,
-      restaurants,
-      shortcutCoverageRestaurantNameById,
-    ]
+    [profileCommandPort, restaurants, shortcutCoverageRestaurantNameById]
   );
 
   return { handleMarkerPress };
@@ -1176,7 +1139,6 @@ export type SearchMapMarkerEngineHandle = {
 
 export type SearchMapWithMarkerEngineProps = {
   // --- Marker engine inputs ---
-  scoreMode: 'global_quality' | 'coverage_display';
   restaurantOnlyId: string | null;
   highlightedRestaurantId: string | null;
   viewportBoundsService: ViewportBoundsService;
@@ -1201,8 +1163,7 @@ export type SearchMapWithMarkerEngineProps = {
   mapQueryBudget: MapQueryBudget;
 
   // --- Marker interaction inputs ---
-  pendingMarkerOpenAnimationFrameRef: React.MutableRefObject<number | null>;
-  profileActions: MarkerProfileActions;
+  profileCommandPort: SearchMapProfileCommandPort;
 
   // --- SearchMap pass-through props ---
   mapRef: React.RefObject<MapboxMapRef | null>;
@@ -1227,43 +1188,15 @@ export type SearchMapWithMarkerEngineProps = {
   onTouchEnd?: () => void;
   onNativeViewportChanged: (state: MapboxMapState) => void;
   onMapIdle: (state: MapboxMapState) => void;
-  onCameraAnimationComplete: (payload: {
-    animationCompletionId: string | null;
-    status: 'finished' | 'cancelled';
-  }) => void;
   onMapLoaded: () => void;
   onMapFullyRendered?: () => void;
-  onExecutionBatchMountedHidden?: (payload: {
-    requestKey: string;
-    frameGenerationId: string | null;
-    executionBatchId: string | null;
-    readyAtMs: number;
-  }) => void;
-  onMarkerEnterStarted?: (payload: {
-    requestKey: string;
-    frameGenerationId: string | null;
-    executionBatchId: string | null;
-    startedAtMs: number;
-  }) => void;
-  onMarkerEnterSettled?: (payload: {
-    requestKey: string;
-    frameGenerationId: string | null;
-    executionBatchId: string | null;
-    markerEnterCommitId: number | null;
-    settledAtMs: number;
-  }) => void;
-  onMarkerExitStarted?: (payload: { requestKey: string; startedAtMs: number }) => void;
-  onMarkerExitSettled?: (payload: { requestKey: string; settledAtMs: number }) => void;
+  presentationLifecyclePort?: SearchMapPresentationLifecyclePort;
   isMapStyleReady: boolean;
   userLocation: Coordinate | null;
   userLocationSnapshot: StartupLocationSnapshot | null;
   disableMarkers?: boolean;
   disableBlur?: boolean;
   onProfilerRender?: React.ProfilerOnRenderCallback;
-  onRuntimeMechanismEvent?: (
-    event: 'runtime_write_span',
-    payload?: Record<string, unknown>
-  ) => void;
 };
 
 // ---------------------------------------------------------------------------
@@ -1276,7 +1209,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
 > = (
   {
     // Marker engine inputs
-    scoreMode,
     restaurantOnlyId,
     highlightedRestaurantId,
     viewportBoundsService,
@@ -1298,8 +1230,7 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     mapQueryBudget,
 
     // Marker interaction inputs
-    pendingMarkerOpenAnimationFrameRef,
-    profileActions,
+    profileCommandPort,
 
     // SearchMap pass-through props
     mapRef,
@@ -1315,21 +1246,15 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     onTouchEnd,
     onNativeViewportChanged,
     onMapIdle,
-    onCameraAnimationComplete,
     onMapLoaded,
     onMapFullyRendered,
-    onExecutionBatchMountedHidden,
-    onMarkerEnterStarted,
-    onMarkerEnterSettled,
-    onMarkerExitStarted,
-    onMarkerExitSettled,
+    presentationLifecyclePort,
     isMapStyleReady,
     userLocation,
     userLocationSnapshot,
     disableMarkers,
     disableBlur,
     onProfilerRender,
-    onRuntimeMechanismEvent,
   },
   ref
 ) => {
@@ -1337,6 +1262,7 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
   if (engineInstanceIdRef.current == null) {
     engineInstanceIdRef.current = `search-map-engine:${Math.random().toString(36).slice(2)}`;
   }
+  const engineInstanceId = engineInstanceIdRef.current;
   const [nativeViewportState, setNativeViewportState] = React.useState<{
     bounds: MapBounds | null;
     isGestureActive: boolean;
@@ -1352,6 +1278,18 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
   // -------------------------------------------------------------------------
 
   const searchRuntimeBus = useSearchBus();
+
+  React.useEffect(() => {
+    logger.debug('[MAP-MOUNT-DIAG] SearchMapWithMarkerEngine:mount', {
+      engineInstanceId,
+      styleURL,
+    });
+    return () => {
+      logger.debug('[MAP-MOUNT-DIAG] SearchMapWithMarkerEngine:unmount', {
+        engineInstanceId,
+      });
+    };
+  }, [engineInstanceId, styleURL]);
 
   const { isMapActivationDeferred, runOneCommitSpanPressureActive } = useSearchRuntimeBusSelector(
     searchRuntimeBus,
@@ -1406,7 +1344,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     restaurants,
   } = useMapMarkerEngine({
     searchRuntimeBus,
-    scoreMode,
     restaurantOnlyId,
     highlightedRestaurantId,
     viewportBoundsService,
@@ -1545,8 +1482,7 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
   const { handleMarkerPress } = useMarkerInteractionController({
     anchoredShortcutCoverageFeatures,
     restaurants,
-    pendingMarkerOpenAnimationFrameRef,
-    profileActions,
+    profileCommandPort,
   });
 
   // -------------------------------------------------------------------------
@@ -1611,7 +1547,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
       mapRef={mapRef}
       cameraRef={cameraRef}
       styleURL={styleURL}
-      scoreMode={scoreMode}
       mapCenter={mapCenter}
       mapZoom={mapZoom}
       mapCameraAnimation={mapCameraAnimation}
@@ -1622,16 +1557,11 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
       onTouchEnd={handleSearchMapTouchEnd}
       onNativeViewportChanged={handleSearchMapNativeViewportChanged}
       onMapIdle={handleSearchMapIdle}
-      onCameraAnimationComplete={onCameraAnimationComplete}
       onMapLoaded={onMapLoaded}
       onMapFullyRendered={onMapFullyRendered}
       onPreparedLabelSourcesReadyChange={handlePreparedLabelSourcesReadyChange}
       onMarkerPress={stableHandleMarkerPress}
-      onExecutionBatchMountedHidden={onExecutionBatchMountedHidden}
-      onMarkerEnterStarted={onMarkerEnterStarted}
-      onMarkerEnterSettled={onMarkerEnterSettled}
-      onMarkerExitStarted={onMarkerExitStarted}
-      onMarkerExitSettled={onMarkerExitSettled}
+      presentationLifecyclePort={presentationLifecyclePort}
       onNativeMountedSourceCountsChanged={handleNativeMountedSourceCountsChanged}
       mapSceneSnapshot={mapTreePropsForRender}
       buildMarkerKey={buildMarkerKey}
@@ -1643,7 +1573,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
       disableBlur={disableBlur}
       onProfilerRender={onProfilerRender}
       mapQueryBudget={mapQueryBudget}
-      onRuntimeMechanismEvent={onRuntimeMechanismEvent}
       nativeViewportState={nativeViewportState}
       nativePresentationState={nativePresentationState}
       mapSnapshotPresentationPolicy={mapSnapshotPresentationPolicy}

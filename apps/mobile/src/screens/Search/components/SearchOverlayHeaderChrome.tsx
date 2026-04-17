@@ -111,7 +111,7 @@ const SearchOverlayHeaderChrome = ({
           onBackPress={handleSearchBack}
           onLayout={handleSearchHeaderLayout}
           inputRef={inputRef}
-          inputAnimatedStyle={searchBarInputAnimatedStyle}
+          inputAnimatedStyle={undefined}
           containerAnimatedStyle={searchBarContainerAnimatedStyle}
           editable={headerVisualModel.editable && !isSuggestionScrollDismissing}
           showInactiveSearchIcon={headerVisualModel.leadingIconMode === 'search'}
@@ -121,8 +121,7 @@ const SearchOverlayHeaderChrome = ({
         />
       </View>
       <SearchShortcutsRow
-        visible={shouldMountSearchShortcuts}
-        interactive={shouldEnableSearchShortcutsInteraction}
+        interactive={shouldMountSearchShortcuts && shouldEnableSearchShortcutsInteraction}
         containerAnimatedStyle={[styles.searchShortcutsRow, searchShortcutsAnimatedStyle]}
         chipAnimatedStyle={searchShortcutChipAnimatedStyle}
         onPressBestRestaurants={handleBestRestaurantsHere}

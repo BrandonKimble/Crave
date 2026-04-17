@@ -10,8 +10,8 @@ export type SearchResultsPanelCardRuntime = {
 export type SearchResultsPanelCardMetricsRuntime = {
   canonicalRestaurantRankById: Map<string, number>;
   restaurantsById: Map<string, RestaurantResult>;
-  primaryCoverageKey: string | null;
-  hasCrossCoverage: boolean;
+  primaryMarketKey: string | null;
+  hasCrossMarketResults: boolean;
   primaryFoodTerm: string | null;
   restaurantQualityColorById: Map<string, string>;
   dishQualityColorByConnectionId: Map<string, string>;

@@ -13,6 +13,7 @@ IOS_SIMULATOR_NAME="${IOS_SIMULATOR_NAME:-}"
 IOS_PREFER_DEVICE="${IOS_PREFER_DEVICE:-0}"
 IOS_REQUIRE_DEVICE="${IOS_REQUIRE_DEVICE:-0}"
 IOS_RUN="${IOS_RUN:-1}"
+IOS_REQUIRE_OPEN="${IOS_REQUIRE_OPEN:-0}"
 FOLLOW_METRO_LOGS="${FOLLOW_METRO_LOGS:-1}"
 METRO_LOG="${EXPO_METRO_LOG_PATH:-/tmp/expo-metro.log}"
 EXPO_START_HOST="${EXPO_START_HOST:-lan}"
@@ -445,6 +446,8 @@ is_offline_ios_device_udid() {
 open_dev_client() {
   local url
   local launched_without_deeplink=0
+  local launch_succeeded=1
+  local hard_failure=0
   while IFS= read -r url; do
     [[ -n "$url" ]] || continue
     echo "Dev client URL: ${url}"
@@ -453,13 +456,25 @@ open_dev_client() {
         if ! xcrun simctl openurl "$IOS_DEVICE_UDID" "$url" >/dev/null 2>&1; then
           echo "Note: Failed to open dev client URL in simulator. Open it manually:"
           echo "  ${url}"
+        else
+          launch_succeeded=0
         fi
       elif [[ -n "$IOS_BUNDLE_ID" ]]; then
         local launch_error=""
-        if ! launch_error="$(
-          env -u PREFIX -u NPM_CONFIG_PREFIX -u npm_config_prefix xcrun devicectl device process launch --device "$IOS_DEVICE_UDID" \
-            --terminate-existing --payload-url "$url" "$IOS_BUNDLE_ID" 2>&1
-        )"; then
+        local launch_ok=1
+        local attempt
+        for attempt in 1 2 3; do
+          if launch_error="$(
+            env -u PREFIX -u NPM_CONFIG_PREFIX -u npm_config_prefix xcrun devicectl device process launch --device "$IOS_DEVICE_UDID" \
+              --terminate-existing --activate --payload-url "$url" "$IOS_BUNDLE_ID" 2>&1
+          )"; then
+            launch_ok=0
+            launch_succeeded=0
+            break
+          fi
+          sleep 2
+        done
+        if [[ "$launch_ok" != "0" ]]; then
           echo "Note: Failed to deep-link dev client on device. Open it manually:"
           echo "  ${url}"
           echo "Or in the app, enter: $(dev_server_url)"
@@ -474,10 +489,15 @@ open_dev_client() {
           if [[ -n "$reason" ]]; then
             echo "devicectl reason: ${reason}"
           fi
+          if printf '%s\n' "$launch_error" | rg -q 'Unable to launch .*unlocked|BSErrorCodeDescription = Locked|reason: Locked'; then
+            echo "Device launch was denied because the iPhone is locked."
+            echo "Unlock the phone, keep it awake, and run the command again."
+            hard_failure=1
+          fi
           if is_offline_ios_device_udid "$IOS_DEVICE_UDID"; then
             echo "Device appears offline to Xcode. Connect iPhone by USB (or re-enable Wireless Debugging) and unlock it."
           fi
-          if [[ "$launched_without_deeplink" == "0" ]] && env -u PREFIX -u NPM_CONFIG_PREFIX -u npm_config_prefix xcrun devicectl device process launch --device "$IOS_DEVICE_UDID" \
+          if [[ "$IOS_REQUIRE_OPEN" != "1" ]] && [[ "$hard_failure" != "1" ]] && [[ "$launched_without_deeplink" == "0" ]] && env -u PREFIX -u NPM_CONFIG_PREFIX -u npm_config_prefix xcrun devicectl device process launch --device "$IOS_DEVICE_UDID" \
             --terminate-existing "$IOS_BUNDLE_ID" >/dev/null 2>&1; then
             echo "Opened iOS app without deep-link payload."
             launched_without_deeplink=1
@@ -486,6 +506,11 @@ open_dev_client() {
       fi
     fi
   done < <(dev_client_urls)
+
+  if [[ "$hard_failure" == "1" ]]; then
+    return 1
+  fi
+  return "$launch_succeeded"
 }
 
 detect_physical_ios_device() {
@@ -528,7 +553,11 @@ run_ios() {
 
   echo "If the app says “No development servers found”, manually enter:"
   echo "  $(dev_server_url)"
-  open_dev_client
+  if ! open_dev_client && [[ "$IOS_REQUIRE_OPEN" == "1" ]]; then
+    echo "Failed to open the dev client on the selected target after install." >&2
+    echo "If this is a physical device, verify it is unlocked and reachable from Xcode." >&2
+    exit 1
+  fi
 }
 
 if command -v lsof >/dev/null 2>&1; then

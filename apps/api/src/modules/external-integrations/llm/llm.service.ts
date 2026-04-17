@@ -728,76 +728,41 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   }
 
   private loadSystemPrompt(): string {
-    try {
-      // Path to collection-prompt.md in project root (relative from apps/api when running)
-      const promptPath = join(
-        process.cwd(),
-        '..',
-        '..',
-        'collection-prompt.md',
-      );
-      return readFileSync(promptPath, 'utf-8');
-    } catch (error) {
-      this.logger.error(
-        'Failed to load system prompt from collection-prompt.md',
-        {
-          correlationId: CorrelationUtils.getCorrelationId(),
-          operation: 'load_system_prompt',
-          error: {
-            message: error instanceof Error ? error.message : String(error),
-          },
-        },
-      );
-
-      // Fallback to basic prompt if file cannot be loaded
-      return `You are an expert entity extraction system for a food discovery app. Your task is to extract structured information about restaurants, food, and attributes from Reddit food community content.
-
-EXTRACTION GUIDELINES:
-1. Only process content with positive sentiment about food/restaurant quality
-2. Extract entities: restaurants, food/categories, food attributes, restaurant attributes
-3. Apply context-dependent attribute scoping (food vs restaurant)
-4. Use hierarchical category decomposition for food terms
-5. Set is_menu_item based on specificity and context
-6. Mark general_praise for holistic restaurant praise
-
-OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
-    }
+    return this.loadRequiredPromptFile(
+      'collection-prompt.md',
+      'load_system_prompt',
+    );
   }
 
   private loadQueryPrompt(): string {
+    return this.loadRequiredPromptFile('query-prompt.md', 'load_query_prompt');
+  }
+
+  private loadCuisinePrompt(): string {
+    return this.loadRequiredPromptFile(
+      'cuisine-prompt.md',
+      'load_cuisine_prompt',
+    );
+  }
+
+  private loadRequiredPromptFile(filename: string, operation: string): string {
+    const promptPath = join(process.cwd(), '..', '..', filename);
+
     try {
-      const promptPath = join(process.cwd(), '..', '..', 'query-prompt.md');
       return readFileSync(promptPath, 'utf-8');
     } catch (error) {
-      this.logger.error('Failed to load query prompt from query-prompt.md', {
+      const message = `Failed to load required prompt file: ${filename}`;
+
+      this.logger.error(message, {
         correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'load_query_prompt',
+        operation,
+        promptPath,
         error: {
           message: error instanceof Error ? error.message : String(error),
         },
       });
 
-      return `You are Crave Search's query understanding assistant. Given a user's natural language request for food or restaurants, return JSON with four arrays: restaurants, foods, foodAttributes, restaurantAttributes. Each array should contain canonical, normalized strings; omit items you cannot deduce confidently. Return minified JSON.`;
-    }
-  }
-
-  private loadCuisinePrompt(): string {
-    try {
-      const promptPath = join(process.cwd(), '..', '..', 'cuisine-prompt.md');
-      return readFileSync(promptPath, 'utf-8');
-    } catch (error) {
-      this.logger.error(
-        'Failed to load cuisine prompt from cuisine-prompt.md',
-        {
-          correlationId: CorrelationUtils.getCorrelationId(),
-          operation: 'load_cuisine_prompt',
-          error: {
-            message: error instanceof Error ? error.message : String(error),
-          },
-        },
-      );
-
-      return `Extract cuisines from a restaurant summary. Return minified JSON with a single key "cuisines" (array of lowercased strings). If no cuisines are present, return {"cuisines":[]}.`;
+      throw new Error(message);
     }
   }
 
@@ -1052,6 +1017,25 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     }
 
     return this.decorateSearchQueryAnalysis(analysis, false, null);
+  }
+
+  getSystemPrompt(): string {
+    return this.systemPrompt;
+  }
+
+  getContentModel(): string {
+    return this.llmConfig.model;
+  }
+
+  getGenerationConfigSnapshot(): Record<string, unknown> {
+    return {
+      temperature: this.llmConfig.temperature ?? null,
+      maxOutputTokens: this.llmConfig.maxTokens ?? null,
+      topP: this.llmConfig.topP ?? null,
+      topK: this.llmConfig.topK ?? null,
+      candidateCount: this.llmConfig.candidateCount ?? null,
+      thinking: this.llmConfig.thinking ?? null,
+    };
   }
 
   async extractCuisineFromSummary(
@@ -2023,7 +2007,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       responseJsonSchema: {
         type: 'object',
         description:
-          'Restaurant and food mentions extracted from Reddit content',
+          'Restaurant and food mentions extracted from food community content',
         properties: {
           mentions: {
             type: 'array',
@@ -2075,7 +2059,8 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
                 },
                 source_id: {
                   type: 'string',
-                  description: 'Reddit ID of the source (t3_ or t1_ prefixed)',
+                  description:
+                    'Canonical fullname copied exactly from the input payload id field (t3_<postId> for posts, t1_<commentId> for comments)',
                 },
               },
               required: [

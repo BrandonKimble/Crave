@@ -1,6 +1,9 @@
 import React from 'react';
 
-import { TAB_OVERLAY_SNAP_KEY, useOverlaySheetPositionStore } from './useOverlaySheetPositionStore';
+import {
+  SEARCH_ROUTE_SHARED_SNAP_KEY,
+  useOverlaySheetPositionStore,
+} from './useOverlaySheetPositionStore';
 import type {
   OverlaySheetResolvedSnapRuntime,
   OverlaySheetResolvedSnapRuntimeArgs,
@@ -9,7 +12,8 @@ import type { OverlaySheetSnap } from './types';
 
 export const useOverlaySheetResolvedSnapRuntime = ({
   spec,
-  resolvedOverlayKey,
+  resolvedShellIdentityKey,
+  activeOverlayKey,
   rootOverlay,
   overlayRouteStackLength,
 }: OverlaySheetResolvedSnapRuntimeArgs): OverlaySheetResolvedSnapRuntime => {
@@ -29,23 +33,29 @@ export const useOverlaySheetResolvedSnapRuntime = ({
     }
 
     const isTabOverlay =
-      resolvedOverlayKey === 'polls' ||
-      resolvedOverlayKey === 'pollCreation' ||
-      resolvedOverlayKey === 'bookmarks' ||
-      resolvedOverlayKey === 'profile';
+      activeOverlayKey === 'polls' ||
+      activeOverlayKey === 'pollCreation' ||
+      activeOverlayKey === 'bookmarks' ||
+      activeOverlayKey === 'profile';
     if (isTabOverlay) {
-      return TAB_OVERLAY_SNAP_KEY;
+      return SEARCH_ROUTE_SHARED_SNAP_KEY;
     }
 
     if (overlayRouteStackLength > 1) {
       return `overlay-stack:${rootOverlay}`;
     }
 
-    return `overlay:${resolvedOverlayKey}`;
-  }, [overlayRouteStackLength, resolvedOverlayKey, rootOverlay, spec?.snapPersistenceKey]);
+    return `overlay:${resolvedShellIdentityKey}`;
+  }, [
+    activeOverlayKey,
+    overlayRouteStackLength,
+    resolvedShellIdentityKey,
+    rootOverlay,
+    spec?.snapPersistenceKey,
+  ]);
 
   const persistedSnap = useOverlaySheetPositionStore((state) =>
-    resolvedSnapPersistenceKey ? state.persistentSnaps[resolvedSnapPersistenceKey] ?? null : null
+    resolvedSnapPersistenceKey ? (state.persistentSnaps[resolvedSnapPersistenceKey] ?? null) : null
   );
 
   const ensurePersistedSnap = React.useCallback(
@@ -62,11 +72,11 @@ export const useOverlaySheetResolvedSnapRuntime = ({
     (snap: OverlaySheetSnap) => {
       recordUserSnap({
         rootOverlay,
-        activeOverlayKey: resolvedOverlayKey,
+        activeOverlayKey,
         snap,
       });
     },
-    [recordUserSnap, resolvedOverlayKey, rootOverlay]
+    [activeOverlayKey, recordUserSnap, rootOverlay]
   );
 
   const handleSnapChangeBase = React.useCallback<
@@ -79,18 +89,14 @@ export const useOverlaySheetResolvedSnapRuntime = ({
         recordGestureSnap(snap);
       }
     },
-    [ensurePersistedSnap, recordGestureSnap, spec]
+    [ensurePersistedSnap, recordGestureSnap, resolvedSnapPersistenceKey, spec]
   );
 
   const handleSnapStartBase = React.useCallback<OverlaySheetResolvedSnapRuntime['handleSnapStart']>(
     (snap, meta) => {
       spec?.onSnapStart?.(snap, meta);
-      ensurePersistedSnap(snap);
-      if (meta?.source === 'gesture') {
-        recordGestureSnap(snap);
-      }
     },
-    [ensurePersistedSnap, recordGestureSnap, spec]
+    [spec]
   );
 
   return React.useMemo(

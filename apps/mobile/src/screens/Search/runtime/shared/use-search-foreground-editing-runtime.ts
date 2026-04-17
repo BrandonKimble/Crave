@@ -1,45 +1,9 @@
 import React from 'react';
 
 import type {
+  SearchForegroundEditingRuntimeArgs,
   SearchForegroundInteractionEditingHandlers,
-  UseSearchForegroundInteractionRuntimeArgs,
 } from './use-search-foreground-interaction-runtime-contract';
-
-type UseSearchForegroundEditingRuntimeArgs = Pick<
-  UseSearchForegroundInteractionRuntimeArgs,
-  | 'clearOwner'
-  | 'query'
-  | 'submittedQuery'
-  | 'hasResults'
-  | 'isSearchLoading'
-  | 'isLoadingMore'
-  | 'isSearchSessionActive'
-  | 'isSuggestionPanelActive'
-  | 'isSuggestionPanelVisible'
-  | 'shouldTreatSearchAsResults'
-  | 'showPollsOverlay'
-  | 'profilePresentationActive'
-  | 'captureSearchSessionQuery'
-  | 'dismissTransientOverlays'
-  | 'allowAutocompleteResults'
-  | 'suppressAutocompleteResults'
-  | 'cancelAutocomplete'
-  | 'beginSuggestionCloseHold'
-  | 'requestSearchPresentationIntent'
-  | 'beginCloseSearch'
-  | 'restoreDockedPolls'
-  | 'setIsSearchFocused'
-  | 'setIsSuggestionPanelActive'
-  | 'setShowSuggestions'
-  | 'setSuggestions'
-  | 'setQuery'
-  | 'setIsAutocompleteSuppressed'
-  | 'searchSessionQueryRef'
-  | 'isSearchEditingRef'
-  | 'allowSearchBlurExitRef'
-  | 'ignoreNextSearchBlurRef'
-  | 'inputRef'
->;
 
 export const useSearchForegroundEditingRuntime = ({
   clearOwner,
@@ -74,7 +38,7 @@ export const useSearchForegroundEditingRuntime = ({
   allowSearchBlurExitRef,
   ignoreNextSearchBlurRef,
   inputRef,
-}: UseSearchForegroundEditingRuntimeArgs): SearchForegroundInteractionEditingHandlers => {
+}: SearchForegroundEditingRuntimeArgs): SearchForegroundInteractionEditingHandlers => {
   const { clearTypedQuery, clearSearchState } = clearOwner;
 
   const handleClear = React.useCallback(() => {

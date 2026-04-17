@@ -17,7 +17,10 @@ export type SearchRestaurantRouteCommand =
 const isSearchRestaurantRouteEntry = (
   route: OverlayRouteEntry
 ): route is OverlayRouteEntry<'restaurant'> =>
-  route.key === 'restaurant' && route.params?.source === 'search';
+  route.key === 'restaurant' &&
+  route.params != null &&
+  'source' in route.params &&
+  route.params.source === 'search';
 
 export const getActiveSearchRestaurantRouteRestaurantId = (): string | null => {
   const activeOverlayRoute = useOverlayStore.getState().activeOverlayRoute;

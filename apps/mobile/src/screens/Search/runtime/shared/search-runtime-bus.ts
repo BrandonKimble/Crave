@@ -76,13 +76,10 @@ export type SearchRuntimeBusState = {
   resultsHydrationKey: string | null;
   hydratedResultsKey: string | null;
   canLoadMore: boolean;
-  rankButtonLabelText: string;
-  rankButtonIsActive: boolean;
   priceButtonLabelText: string;
   priceButtonIsActive: boolean;
   openNow: boolean;
   votesFilterActive: boolean;
-  isRankSelectorVisible: boolean;
   isPriceSelectorVisible: boolean;
   toggleInteraction: ToggleInteractionState;
   shouldRetrySearchOnReconnect: boolean;
@@ -159,13 +156,10 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   resultsHydrationKey: null,
   hydratedResultsKey: null,
   canLoadMore: false,
-  rankButtonLabelText: '',
-  rankButtonIsActive: false,
   priceButtonLabelText: '',
   priceButtonIsActive: false,
   openNow: false,
   votesFilterActive: false,
-  isRankSelectorVisible: false,
   isPriceSelectorVisible: false,
   toggleInteraction: IDLE_TOGGLE_INTERACTION_STATE,
   shouldRetrySearchOnReconnect: false,

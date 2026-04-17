@@ -11,7 +11,6 @@ import { useSearchResultsPanelOnDemandNoticeRuntime } from './use-search-results
 
 type UseSearchResultsPanelCardContentRuntimeArgs = Pick<
   UseSearchResultsPanelDataRuntimeArgs,
-  | 'scoreMode'
   | 'getDishSaveHandler'
   | 'getRestaurantSaveHandler'
   | 'stableOpenRestaurantProfileFromResults'
@@ -26,7 +25,6 @@ export type SearchResultsPanelCardContentRuntime = Pick<
 >;
 
 export const useSearchResultsPanelCardContentRuntime = ({
-  scoreMode,
   getDishSaveHandler,
   getRestaurantSaveHandler,
   stableOpenRestaurantProfileFromResults,
@@ -37,14 +35,12 @@ export const useSearchResultsPanelCardContentRuntime = ({
     dishes: hydrationContentRuntime.dishes,
     restaurants: hydrationContentRuntime.restaurants,
     resolvedResults: hydrationContentRuntime.resolvedResults,
-    scoreMode,
   });
   const onDemandNotice = useSearchResultsPanelOnDemandNoticeRuntime({
     resolvedResults: hydrationContentRuntime.resolvedResults,
     onDemandNoticeQuery: hydrationContentRuntime.onDemandNoticeQuery,
   });
   const { renderDishCard, renderRestaurantCard } = useSearchResultsPanelCardRenderRuntime({
-    scoreMode,
     getDishSaveHandler,
     getRestaurantSaveHandler,
     stableOpenRestaurantProfileFromResults,

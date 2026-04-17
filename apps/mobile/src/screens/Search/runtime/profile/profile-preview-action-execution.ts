@@ -37,7 +37,7 @@ export const executeProfilePreviewPresentationPlan = ({
     plan.status
   );
   ports.seedRestaurantProfile(plan.seededRestaurant, plan.seededRestaurant.restaurantName);
-  ports.hydrateRestaurantProfileById(restaurantId);
+  ports.hydrateRestaurantProfileById(restaurantId, plan.seededRestaurant.marketKey ?? null);
 };
 
 export const executeProfilePreviewAction = ({

@@ -61,17 +61,17 @@ export const resolveRestaurantLocationSelectionAnchorFromBounds = ({
 export const resolveRestaurantLocationSelectionAnchor = ({
   viewportBoundsService,
   userLocation,
-  fallbackUserLocation,
+  latestUserLocation,
 }: {
   viewportBoundsService: ViewportBoundsService;
   userLocation: Coordinate | null;
-  fallbackUserLocation: Coordinate | null;
+  latestUserLocation: Coordinate | null;
 }): Coordinate | null => {
   const bounds =
     viewportBoundsService.getSearchBaselineBounds() ?? viewportBoundsService.getBounds() ?? null;
   return resolveRestaurantLocationSelectionAnchorFromBounds({
     bounds,
-    userLocation: userLocation ?? fallbackUserLocation,
+    userLocation: userLocation ?? latestUserLocation,
   });
 };
 
@@ -141,7 +141,7 @@ export const pickClosestLocationToCenter = (
     return null;
   }
   if (!center) {
-    return locations.find((location) => location.isPrimary) ?? locations[0] ?? null;
+    return locations.find((location) => location.isPrimary) ?? null;
   }
 
   let best = locations[0];
@@ -172,5 +172,5 @@ export const pickPreferredRestaurantMapLocation = (
   anchor: Coordinate | null
 ): ResolvedRestaurantMapLocation | null => {
   const locations = resolveRestaurantMapLocations(restaurant);
-  return pickClosestLocationToCenter(locations, anchor) ?? locations[0] ?? null;
+  return pickClosestLocationToCenter(locations, anchor);
 };

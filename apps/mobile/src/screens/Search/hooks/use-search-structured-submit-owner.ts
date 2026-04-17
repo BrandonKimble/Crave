@@ -28,7 +28,6 @@ type RunBestHereOptions = {
   transitionFromDockedPolls?: boolean;
   filters?: StructuredSearchFilters;
   forceFreshBounds?: boolean;
-  scoreMode?: NaturalSearchRequest['scoreMode'];
 };
 
 type UseSearchStructuredSubmitOwnerArgs = {
@@ -70,7 +69,6 @@ type UseSearchStructuredSubmitOwnerArgs = {
     logLabel: string;
     loadingMoreLogLabel?: string;
     filters?: StructuredSearchFilters;
-    scoreMode?: NaturalSearchRequest['scoreMode'];
     forceFreshBounds: boolean;
   }) => Promise<StructuredSearchRequest | null>;
   prepareStructuredAppendRequestPayload: (params: {
@@ -222,7 +220,6 @@ export const useSearchStructuredSubmitOwner = ({
       targetTab,
       submittedLabel,
       filters,
-      scoreMode,
       forceFreshBounds,
       replaceResultsInPlace,
     }: {
@@ -231,7 +228,6 @@ export const useSearchStructuredSubmitOwner = ({
       targetTab: SegmentValue;
       submittedLabel: string;
       filters?: StructuredSearchFilters;
-      scoreMode?: NaturalSearchRequest['scoreMode'];
       forceFreshBounds: boolean;
       replaceResultsInPlace: boolean;
     }) => {
@@ -240,7 +236,6 @@ export const useSearchStructuredSubmitOwner = ({
         logLabel: 'runBestHere:loading-state',
         loadingMoreLogLabel: 'runBestHere:loading-more',
         filters,
-        scoreMode,
         forceFreshBounds,
       });
       if (!payload) {
@@ -418,7 +413,6 @@ export const useSearchStructuredSubmitOwner = ({
             targetTab,
             submittedLabel,
             filters: options?.filters,
-            scoreMode: options?.scoreMode,
             forceFreshBounds: shouldForceFreshBounds,
             replaceResultsInPlace: shouldReplaceResultsInPlace,
           }),

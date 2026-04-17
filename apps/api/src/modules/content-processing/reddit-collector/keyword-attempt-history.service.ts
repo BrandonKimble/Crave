@@ -21,7 +21,7 @@ export class KeywordAttemptHistoryService {
   }
 
   async recordAttempt(params: {
-    collectionCoverageKey: string;
+    collectableMarketKey: string;
     normalizedTerm: string;
     outcome: KeywordAttemptOutcome;
     safeIntervalDays: number;
@@ -32,12 +32,12 @@ export class KeywordAttemptHistoryService {
       !Number.isNaN(params.attemptedAt.getTime())
         ? params.attemptedAt
         : new Date();
-    const collectionCoverageKey = params.collectionCoverageKey
+    const collectableMarketKey = params.collectableMarketKey
       .trim()
       .toLowerCase();
     const normalizedTerm = params.normalizedTerm.trim().toLowerCase();
 
-    if (!collectionCoverageKey.length || !normalizedTerm.length) {
+    if (!collectableMarketKey.length || !normalizedTerm.length) {
       return;
     }
 
@@ -50,13 +50,13 @@ export class KeywordAttemptHistoryService {
     try {
       await this.prisma.keywordAttemptHistory.upsert({
         where: {
-          collectionCoverageKey_normalizedTerm: {
-            collectionCoverageKey,
+          collectableMarketKey_normalizedTerm: {
+            collectableMarketKey,
             normalizedTerm,
           },
         },
         create: {
-          collectionCoverageKey,
+          collectableMarketKey,
           normalizedTerm,
           lastAttemptAt: attemptedAt,
           lastOutcome: params.outcome,
@@ -76,7 +76,7 @@ export class KeywordAttemptHistoryService {
       });
     } catch (error) {
       this.logger.warn('Failed to record keyword attempt history', {
-        collectionCoverageKey,
+        collectableMarketKey,
         normalizedTerm,
         outcome: params.outcome,
         error:

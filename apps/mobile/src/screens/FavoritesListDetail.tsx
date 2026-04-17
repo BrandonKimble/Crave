@@ -26,12 +26,10 @@ const buildRestaurantRouteSeedFromFoodResult = (foodResult: FoodResult): Restaur
   restaurantId: foodResult.restaurantId,
   restaurantName: foodResult.restaurantName,
   restaurantAliases: foodResult.restaurantAliases,
-  contextualScore:
-    foodResult.restaurantDisplayScore ?? foodResult.displayScore ?? foodResult.qualityScore,
-  displayScore: foodResult.restaurantDisplayScore ?? null,
-  displayPercentile: foodResult.restaurantDisplayPercentile ?? null,
-  coverageKey: foodResult.coverageKey,
-  coverageName: foodResult.coverageName ?? null,
+  contextualScore: foodResult.restaurantContextualScore ?? foodResult.qualityScore,
+  contextualPercentile: foodResult.restaurantContextualPercentile ?? null,
+  marketKey: foodResult.marketKey,
+  marketName: foodResult.marketName ?? null,
   latitude: foodResult.restaurantLatitude ?? null,
   longitude: foodResult.restaurantLongitude ?? null,
   restaurantLocationId: foodResult.restaurantLocationId ?? null,
@@ -93,7 +91,9 @@ const FavoritesListDetailScreen: React.FC<
       });
 
       void searchService
-        .restaurantProfile(restaurant.restaurantId)
+        .restaurantProfile(restaurant.restaurantId, {
+          marketKey: restaurant.marketKey ?? null,
+        })
         .then((profile) => {
           if (getActiveRestaurantRouteSessionToken() !== sessionToken || !profile?.restaurant) {
             return;
@@ -103,7 +103,7 @@ const FavoritesListDetailScreen: React.FC<
             createRestaurantRoutePanelDraft({
               data: {
                 restaurant: profile.restaurant,
-                dishes: profile.foodResults ?? [],
+                dishes: profile.dishes ?? [],
                 queryLabel,
                 isFavorite,
               },
@@ -230,8 +230,8 @@ const FavoritesListDetailScreen: React.FC<
         rank={index + 1}
         qualityColor="#6B7280"
         isLiked={false}
-        primaryCoverageKey={null}
-        showCoverageLabel={false}
+        primaryMarketKey={null}
+        showMarketLabel={false}
         onSavePress={() => undefined}
         openRestaurantProfile={(restaurant) => {
           openRestaurantProfileRoute({
@@ -254,8 +254,8 @@ const FavoritesListDetailScreen: React.FC<
         index={index}
         qualityColor="#6B7280"
         isLiked={false}
-        primaryCoverageKey={null}
-        showCoverageLabel={false}
+        primaryMarketKey={null}
+        showMarketLabel={false}
         restaurantForDish={buildRestaurantRouteSeedFromFoodResult(item)}
         onSavePress={() => undefined}
         openRestaurantProfile={(restaurant) => {

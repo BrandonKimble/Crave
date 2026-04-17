@@ -1,7 +1,6 @@
 // Repository exports for Bull jobs + LLM processing architecture
 export { EntityRepository } from './entity.repository';
 export { ConnectionRepository } from './connection.repository';
-export { CategoryAggregateRepository } from './category-aggregate.repository';
 export { RepositoryModule } from './repository.module';
 
 // Base exceptions needed by entity resolution

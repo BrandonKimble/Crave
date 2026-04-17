@@ -9,7 +9,6 @@ type BuildMarkerCatalogArgs = {
   activeTab: 'dishes' | 'restaurants';
   dishes: FoodResult[];
   markerRestaurants: RestaurantResult[];
-  scoreMode: 'coverage_display' | 'global_quality';
   restaurantOnlyId: string | null;
   selectedRestaurantId: string | null;
   canonicalRestaurantRankById: Map<string, number>;
@@ -43,7 +42,6 @@ export const buildMarkerCatalogReadModel = (
     activeTab,
     dishes,
     markerRestaurants,
-    scoreMode,
     restaurantOnlyId,
     selectedRestaurantId,
     canonicalRestaurantRankById,
@@ -80,15 +78,10 @@ export const buildMarkerCatalogReadModel = (
     });
 
     dishesByLocation.forEach(({ dish, rank }) => {
+      const contextualScore = dish.contextualScore ?? dish.qualityScore;
+      const pinColorContextual = getQualityColorFromScore(contextualScore);
       const pinColorGlobal = getQualityColorFromScore(dish.qualityScore);
-      const pinColorLocal = getQualityColorFromScore(dish.displayScore);
-      const pinColor = scoreMode === 'coverage_display' ? pinColorLocal : pinColorGlobal;
-      const contextualScore =
-        scoreMode === 'coverage_display'
-          ? typeof dish.displayScore === 'number' && Number.isFinite(dish.displayScore)
-            ? dish.displayScore
-            : 0
-          : dish.qualityScore;
+      const pinColor = pinColorContextual;
       const featureId = `dish-${dish.connectionId}`;
       const feature: Feature<Point, RestaurantFeatureProperties> = {
         type: 'Feature',
@@ -104,7 +97,7 @@ export const buildMarkerCatalogReadModel = (
           rank,
           pinColor,
           pinColorGlobal,
-          pinColorLocal,
+          pinColorContextual,
           isDishPin: true,
           dishName: dish.foodName,
           connectionId: dish.connectionId,
@@ -128,8 +121,10 @@ export const buildMarkerCatalogReadModel = (
       }
 
       const pinColorGlobal = getQualityColorFromScore(restaurant.restaurantQualityScore);
-      const pinColorLocal = getQualityColorFromScore(restaurant.displayScore);
-      const pinColor = scoreMode === 'coverage_display' ? pinColorLocal : pinColorGlobal;
+      const pinColorContextual = getQualityColorFromScore(
+        restaurant.contextualScore ?? restaurant.restaurantQualityScore
+      );
+      const pinColor = pinColorContextual;
       const locations = resolveRestaurantMapLocations(restaurant);
       const shouldRenderAllLocations =
         selectedRestaurantId !== null && restaurant.restaurantId === selectedRestaurantId;
@@ -139,8 +134,8 @@ export const buildMarkerCatalogReadModel = (
       const locationsToRender = shouldRenderAllLocations
         ? locations
         : closestLocation
-        ? [closestLocation]
-        : [];
+          ? [closestLocation]
+          : [];
 
       locationsToRender.forEach((location) => {
         const featureId = `${restaurant.restaurantId}-${location.locationId}`;
@@ -158,7 +153,7 @@ export const buildMarkerCatalogReadModel = (
             rank,
             pinColor,
             pinColorGlobal,
-            pinColorLocal,
+            pinColorContextual,
           },
         };
         entries.push({

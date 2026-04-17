@@ -20,7 +20,7 @@ import {
   MapBoundsDto,
 } from './dto/search-query.dto';
 import { OnDemandRequestService } from './on-demand-request.service';
-import { SearchSubredditResolverService } from './search-subreddit-resolver.service';
+import { MarketResolverService } from '../markets/market-resolver.service';
 
 const METERS_PER_MILE = 1609.34;
 const ON_DEMAND_MIN_VIEWPORT_WIDTH_MILES = 2;
@@ -40,6 +40,11 @@ interface InterpretationResult {
   phaseTimings?: Record<string, number>;
 }
 
+type SearchInterpretationMarketContext = {
+  marketKey: string | null;
+  collectableMarketKey: string | null;
+};
+
 @Injectable()
 export class SearchQueryInterpretationService {
   private readonly logger: LoggerService;
@@ -49,7 +54,7 @@ export class SearchQueryInterpretationService {
     private readonly llmService: LLMService,
     private readonly entityResolutionService: EntityResolutionService,
     private readonly onDemandRequestService: OnDemandRequestService,
-    private readonly subredditResolver: SearchSubredditResolverService,
+    private readonly marketResolver: MarketResolverService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchQueryInterpretationService');
@@ -105,12 +110,10 @@ export class SearchQueryInterpretationService {
       foods: cleanedAnalysis.foods,
     });
 
-    const uiCoverageKey = await this.resolveLocationKey(request);
-    const collectionCoverageKey =
-      await this.resolveCollectionCoverageKey(request);
+    const resolvedMarket = await this.resolveSearchMarketContext(request);
     const resolutionInputs = this.buildResolutionInputs(
       cleanedAnalysis,
-      uiCoverageKey,
+      resolvedMarket.marketKey,
     );
     let entityResolutionMs = 0;
     const resolutionStart = performance.now();
@@ -172,7 +175,9 @@ export class SearchQueryInterpretationService {
       const viewportEligible = this.isViewportEligibleForOnDemand(
         request.bounds,
       );
-      const onDemandLocationKey = request.bounds ? collectionCoverageKey : null;
+      const onDemandMarketKey = request.bounds
+        ? resolvedMarket.collectableMarketKey
+        : null;
       const onDemandContext: Record<string, unknown> = {
         query: request.query,
       };
@@ -190,20 +195,12 @@ export class SearchQueryInterpretationService {
           term,
           entityType: group.type,
           reason,
-          locationKey: onDemandLocationKey ?? 'global',
+          marketKey: onDemandMarketKey ?? null,
           metadata: { source: 'natural_query', unresolvedType: group.type },
         })),
       );
 
-      if (viewportEligible && onDemandLocationKey) {
-        const recordedRequests =
-          await this.onDemandRequestService.recordRequests(
-            unresolvedRequests,
-            { userId: request.userId ?? null },
-            onDemandContext,
-          );
-        onDemandQueued = recordedRequests.length > 0;
-      } else if (!onDemandLocationKey) {
+      if (viewportEligible && onDemandMarketKey) {
         const recordedRequests =
           await this.onDemandRequestService.recordRequests(
             unresolvedRequests,
@@ -238,12 +235,12 @@ export class SearchQueryInterpretationService {
 
   private buildResolutionInputs(
     analysis: LLMSearchQueryAnalysis,
-    locationKey: string | null,
+    marketKey: string | null,
   ): EntityResolutionInput[] {
     const inputs: EntityResolutionInput[] = [];
 
-    const normalizedLocationKey =
-      typeof locationKey === 'string' ? locationKey.trim().toLowerCase() : null;
+    const normalizedMarketKey =
+      typeof marketKey === 'string' ? marketKey.trim().toLowerCase() : null;
     const addEntries = (names: string[], entityType: EntityType) => {
       const seen = new Set<string>();
       for (const name of names) {
@@ -263,8 +260,7 @@ export class SearchQueryInterpretationService {
           originalText: normalized,
           entityType,
           aliases: [normalized],
-          locationKey:
-            entityType === 'restaurant' ? normalizedLocationKey : null,
+          marketKey: entityType === 'restaurant' ? normalizedMarketKey : null,
         });
       }
     };
@@ -402,82 +398,30 @@ export class SearchQueryInterpretationService {
     }));
   }
 
-  private async resolveLocationKey(
+  private async resolveSearchMarketContext(
     request: NaturalSearchRequestDto,
-  ): Promise<string | null> {
+  ): Promise<SearchInterpretationMarketContext> {
     try {
-      const fallbackLocation = this.resolveFallbackLocation(request);
-      const match = await this.subredditResolver.resolvePrimary({
+      const resolved = await this.marketResolver.resolve({
         bounds: request.bounds ?? null,
-        fallbackLocation: fallbackLocation ?? null,
-        referenceLocations: fallbackLocation ? [fallbackLocation] : undefined,
+        userLocation: request.userLocation ?? null,
+        mode: 'search',
       });
-      return match ? match.toLowerCase() : null;
-    } catch (error) {
-      this.logger.debug('Unable to resolve search location key', {
-        error:
-          error instanceof Error
-            ? { message: error.message, stack: error.stack }
-            : { message: String(error) },
-      });
-      return null;
-    }
-  }
 
-  private async resolveCollectionCoverageKey(
-    request: NaturalSearchRequestDto,
-  ): Promise<string | null> {
-    try {
-      const fallbackLocation = this.resolveFallbackLocation(request);
-      const match = await this.subredditResolver.resolvePrimaryCollectable({
-        bounds: request.bounds ?? null,
-        fallbackLocation: fallbackLocation ?? null,
-        referenceLocations: fallbackLocation ? [fallbackLocation] : undefined,
-      });
-      return match ? match.toLowerCase() : null;
-    } catch (error) {
-      this.logger.debug('Unable to resolve search collection coverage key', {
-        error:
-          error instanceof Error
-            ? { message: error.message, stack: error.stack }
-            : { message: String(error) },
-      });
-      return null;
-    }
-  }
-
-  private resolveFallbackLocation(
-    request: NaturalSearchRequestDto,
-  ): { latitude: number; longitude: number } | undefined {
-    if (
-      typeof request.userLocation?.lat === 'number' &&
-      typeof request.userLocation?.lng === 'number'
-    ) {
+      const marketKey = resolved.market?.marketKey ?? null;
       return {
-        latitude: request.userLocation.lat,
-        longitude: request.userLocation.lng,
+        marketKey,
+        collectableMarketKey: resolved.market?.isCollectable ? marketKey : null,
       };
+    } catch (error) {
+      this.logger.debug('Unable to resolve search market context', {
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : { message: String(error) },
+      });
+      return { marketKey: null, collectableMarketKey: null };
     }
-
-    const bounds = request.bounds;
-    if (!bounds) {
-      return undefined;
-    }
-
-    const { northEast, southWest } = bounds;
-    if (
-      typeof northEast?.lat !== 'number' ||
-      typeof northEast?.lng !== 'number' ||
-      typeof southWest?.lat !== 'number' ||
-      typeof southWest?.lng !== 'number'
-    ) {
-      return undefined;
-    }
-
-    return {
-      latitude: (northEast.lat + southWest.lat) / 2,
-      longitude: (northEast.lng + southWest.lng) / 2,
-    };
   }
 
   private isViewportEligibleForOnDemand(bounds?: MapBoundsDto): boolean {
@@ -512,11 +456,13 @@ export class SearchQueryInterpretationService {
       };
     }
 
-    const fallbackLocation = this.resolveFallbackLocation(request);
-    if (fallbackLocation) {
+    if (
+      typeof request.userLocation?.lat === 'number' &&
+      typeof request.userLocation?.lng === 'number'
+    ) {
       return {
-        lat: fallbackLocation.latitude,
-        lng: fallbackLocation.longitude,
+        lat: request.userLocation.lat,
+        lng: request.userLocation.lng,
       };
     }
 
@@ -621,7 +567,6 @@ export class SearchQueryInterpretationService {
       priceLevels: request.priceLevels,
       minimumVotes: request.minimumVotes,
       sourceQuery: request.query,
-      scoreMode: request.scoreMode,
     };
   }
 

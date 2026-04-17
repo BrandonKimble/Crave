@@ -36,8 +36,7 @@ import {
   OnDemandRequestInput,
 } from './on-demand-request.service';
 import { SearchMetricsService } from './search-metrics.service';
-import { SearchSubredditResolverService } from './search-subreddit-resolver.service';
-import { CoverageRegistryService } from '../coverage-key/coverage-registry.service';
+import { MarketResolverService } from '../markets/market-resolver.service';
 import { RestaurantStatusService } from './restaurant-status.service';
 import type { RestaurantStatusPreviewDto } from './dto/restaurant-status-preview.dto';
 import {
@@ -65,10 +64,10 @@ type RestaurantDishRow = {
   food_quality_score: unknown;
   restaurant_name: string;
   restaurant_aliases: string[];
-  coverage_key: string;
+  market_key: string;
   restaurant_price_level: number | null;
-  connection_display_score: unknown;
-  connection_display_percentile: unknown;
+  connection_contextual_score: unknown;
+  connection_contextual_percentile: unknown;
   food_name: string;
   food_aliases: string[];
 };
@@ -121,6 +120,11 @@ interface StageExecutionResult {
   exec: DualExecutionResult;
   timings: { planMs: number; executeMs: number };
 }
+
+type SearchMarketContext = {
+  marketKey: string | null;
+  collectableMarketKey: string | null;
+};
 
 type SearchExplainInput = {
   request: SearchQueryRequestDto;
@@ -183,8 +187,7 @@ export class SearchService {
     private readonly searchMetrics: SearchMetricsService,
     private readonly textSanitizer: TextSanitizerService,
     private readonly prisma: PrismaService,
-    private readonly subredditResolver: SearchSubredditResolverService,
-    private readonly coverageRegistry: CoverageRegistryService,
+    private readonly marketResolver: MarketResolverService,
     private readonly restaurantStatusService: RestaurantStatusService,
   ) {
     this.logger = loggerService.setContext('SearchService');
@@ -278,7 +281,6 @@ export class SearchService {
         totalRestaurantResults: 0,
         queryExecutionTimeMs: Date.now() - start,
         searchRequestId,
-        scoreMode: request.scoreMode ?? 'global_quality',
         boundsApplied: false,
         openNowApplied: false,
         openNowSupportedRestaurants: 0,
@@ -290,7 +292,7 @@ export class SearchService {
         page: pagination.page,
         pageSize: pagination.pageSize,
         perRestaurantLimit,
-        coverageStatus: 'unresolved',
+        marketStatus: 'unresolved',
         primaryFoodTerm: primaryFoodTerm || undefined,
         emptyQueryMessage: options.emptyQueryMessage,
       },
@@ -301,6 +303,7 @@ export class SearchService {
     const start = Date.now();
     const searchRequestId = request.searchRequestId ?? randomUUID();
     request.searchRequestId = searchRequestId;
+    const resolvedMarket = await this.resolveSearchMarketContext(request);
 
     let plan: QueryPlan | undefined;
     const phaseTimings: Record<string, number> = {};
@@ -357,6 +360,7 @@ export class SearchService {
           request,
           stage: params.stage,
           planExpansion,
+          activeMarketKey: resolvedMarket.marketKey,
           pagination,
           restaurantPagination: params.restaurantPagination,
           dishPagination: params.dishPagination,
@@ -512,12 +516,8 @@ export class SearchService {
         const totalFoodResults = strictPage.exec.totalDishCount;
         const totalResults = totalFoodResults + totalRestaurantResults;
 
-        const [uiCoverageKey, collectionCoverageKey] = await Promise.all([
-          this.resolveLocationKey(request),
-          this.resolveCollectionCoverageKey(request),
-        ]);
-        const onDemandLocationKey = request.bounds
-          ? collectionCoverageKey
+        const onDemandMarketKey = request.bounds
+          ? resolvedMarket.collectableMarketKey
           : null;
         const viewportEligible = this.isViewportEligibleForOnDemand(
           request.bounds,
@@ -535,14 +535,14 @@ export class SearchService {
               restaurantCount: strictPage.exec.restaurants.length,
               dishCount: strictPage.exec.dishes.length,
               viewportEligible,
-              onDemandLocationKey,
+              onDemandMarketKey,
               expansionSignals: expansionAnalysisMetadata,
             })
           : { queued: false, etaMs: undefined };
         const onDemandQueued = onDemandResult.queued;
         const onDemandEtaMs = onDemandResult.etaMs;
 
-        const coverageStatus = this.calculateCoverageStatus({
+        const marketStatus = this.calculateCoverageStatus({
           request,
           totalFoodResults,
           totalRestaurantResults,
@@ -568,9 +568,9 @@ export class SearchService {
           page: pagination.page,
           pageSize: pagination.pageSize,
           perRestaurantLimit,
-          coverageStatus,
+          marketStatus,
           primaryFoodTerm: primaryFoodTerm || undefined,
-          coverageKey: uiCoverageKey ?? null,
+          marketKey: resolvedMarket.marketKey,
           onDemandQueued: onDemandQueued || undefined,
           onDemandEtaMs,
         };
@@ -617,11 +617,11 @@ export class SearchService {
                 totalFoodResults,
                 totalRestaurantResults,
                 queryExecutionTimeMs: metadata.queryExecutionTimeMs,
-                coverageStatus,
+                marketStatus,
               },
               {
-                uiCoverageKey: metadata.coverageKey ?? null,
-                collectionCoverageKey,
+                marketKey: metadata.marketKey ?? null,
+                collectableMarketKey: resolvedMarket.collectableMarketKey,
               },
             );
           } catch (error) {
@@ -644,7 +644,7 @@ export class SearchService {
           this.logger.info('Search debug: runQuery end (no relaxation)', {
             searchRequestId,
             queryExecutionTimeMs: metadata.queryExecutionTimeMs,
-            coverageStatus: metadata.coverageStatus,
+            marketStatus: metadata.marketStatus,
             totals: {
               totalRestaurantResults,
               totalFoodResults,
@@ -791,11 +791,9 @@ export class SearchService {
         : strictPage.exec.totalRestaurantCount;
       const totalResults = totalFoodResults + totalRestaurantResults;
 
-      const [uiCoverageKey, collectionCoverageKey] = await Promise.all([
-        this.resolveLocationKey(request),
-        this.resolveCollectionCoverageKey(request),
-      ]);
-      const onDemandLocationKey = request.bounds ? collectionCoverageKey : null;
+      const onDemandMarketKey = request.bounds
+        ? resolvedMarket.collectableMarketKey
+        : null;
       const viewportEligible = this.isViewportEligibleForOnDemand(
         request.bounds,
       );
@@ -812,7 +810,7 @@ export class SearchService {
             restaurantCount: strictRestaurantExactCount,
             dishCount: strictDishExactCount,
             viewportEligible,
-            onDemandLocationKey,
+            onDemandMarketKey,
             expansionSignals: expansionAnalysisMetadata,
             relaxation: {
               stage: selectedStage,
@@ -830,7 +828,7 @@ export class SearchService {
         : { queued: false, etaMs: undefined };
       const onDemandQueued = onDemandResult.queued;
 
-      const coverageStatus = this.calculateCoverageStatus({
+      const marketStatus = this.calculateCoverageStatus({
         request,
         totalFoodResults,
         totalRestaurantResults,
@@ -842,7 +840,6 @@ export class SearchService {
         totalRestaurantResults,
         queryExecutionTimeMs: Date.now() - start,
         searchRequestId,
-        scoreMode: request.scoreMode ?? 'global_quality',
         boundsApplied:
           strictPage.exec.metadata.boundsApplied ||
           relaxed.exec.metadata.boundsApplied,
@@ -873,9 +870,9 @@ export class SearchService {
         page: pagination.page,
         pageSize: pagination.pageSize,
         perRestaurantLimit,
-        coverageStatus,
+        marketStatus,
         primaryFoodTerm: primaryFoodTerm || undefined,
-        coverageKey: uiCoverageKey ?? null,
+        marketKey: resolvedMarket.marketKey,
         onDemandQueued: onDemandQueued || undefined,
         onDemandEtaMs: undefined,
         exactDishCountOnPage:
@@ -941,9 +938,12 @@ export class SearchService {
               totalFoodResults,
               totalRestaurantResults,
               queryExecutionTimeMs: metadata.queryExecutionTimeMs,
-              coverageStatus,
+              marketStatus,
             },
-            { uiCoverageKey, collectionCoverageKey },
+            {
+              marketKey: resolvedMarket.marketKey,
+              collectableMarketKey: resolvedMarket.collectableMarketKey,
+            },
           );
         } catch (error) {
           this.logger.warn('Failed to record search query impressions', {
@@ -965,7 +965,7 @@ export class SearchService {
         this.logger.info('Search debug: runQuery end (relaxation)', {
           searchRequestId,
           queryExecutionTimeMs: metadata.queryExecutionTimeMs,
-          coverageStatus: metadata.coverageStatus,
+          marketStatus: metadata.marketStatus,
           totals: {
             totalRestaurantResults,
             totalFoodResults,
@@ -1107,7 +1107,10 @@ export class SearchService {
     };
   }
 
-  async listRestaurantDishes(restaurantId: string): Promise<FoodResultDto[]> {
+  async listRestaurantDishes(
+    restaurantId: string,
+    activeMarketKey?: string | null,
+  ): Promise<FoodResultDto[]> {
     const toNumber = (value: unknown): number | null => {
       if (typeof value === 'number' && Number.isFinite(value)) {
         return value;
@@ -1123,8 +1126,77 @@ export class SearchService {
       return null;
     };
 
+    const normalizedActiveMarketKey =
+      typeof activeMarketKey === 'string' && activeMarketKey.trim().length
+        ? activeMarketKey.trim().toLowerCase()
+        : null;
+
     const startedAt = Date.now();
+    const contextualWithSql = normalizedActiveMarketKey
+      ? Prisma.sql`
+        WITH market_restaurants AS (
+          SELECT DISTINCT rl.restaurant_id
+          FROM core_restaurant_locations rl
+          JOIN core_markets m
+            ON m.market_key = ${normalizedActiveMarketKey}
+           AND m.geometry IS NOT NULL
+           AND m.is_active = true
+          WHERE rl.latitude IS NOT NULL
+            AND rl.longitude IS NOT NULL
+            AND ST_Contains(
+              m.geometry,
+              ST_SetSRID(
+                ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision),
+                4326
+              )
+            )
+        ),
+        contextual_connection_scores AS (
+          WITH ranked AS (
+            SELECT
+              c.connection_id AS subject_id,
+              ROW_NUMBER() OVER (
+                ORDER BY
+                  COALESCE(c.food_quality_score, 0) DESC,
+                  COALESCE(c.total_upvotes, 0) DESC,
+                  COALESCE(c.mention_count, 0) DESC,
+                  c.connection_id ASC
+              ) AS row_number,
+              PERCENT_RANK() OVER (
+                ORDER BY
+                  COALESCE(c.food_quality_score, 0) DESC,
+                  COALESCE(c.total_upvotes, 0) DESC,
+                  COALESCE(c.mention_count, 0) DESC,
+                  c.connection_id ASC
+              ) AS percent_rank
+            FROM core_restaurant_items c
+            JOIN market_restaurants mr ON mr.restaurant_id = c.restaurant_id
+          )
+          SELECT
+            subject_id,
+            CASE
+              WHEN row_number = 1 THEN 100::numeric
+              ELSE floor(LEAST(99.9, GREATEST(0, 100 * (1 - percent_rank))) * 10)::numeric / 10
+            END AS rank_score_display,
+            (1 - percent_rank)::numeric AS rank_percentile
+          FROM ranked
+        )
+      `
+      : Prisma.sql``;
+    const contextualJoinSql = normalizedActiveMarketKey
+      ? Prisma.sql`
+        LEFT JOIN contextual_connection_scores drc
+          ON drc.subject_id = c.connection_id
+      `
+      : Prisma.sql``;
+    const connectionContextualScoreSql = normalizedActiveMarketKey
+      ? Prisma.sql`drc.rank_score_display`
+      : Prisma.sql`NULL::numeric`;
+    const connectionContextualPercentileSql = normalizedActiveMarketKey
+      ? Prisma.sql`drc.rank_percentile`
+      : Prisma.sql`NULL::numeric`;
     const rows = await this.prisma.$queryRaw<RestaurantDishRow[]>(Prisma.sql`
+      ${contextualWithSql}
       SELECT
         c.connection_id AS connection_id,
         c.restaurant_id AS restaurant_id,
@@ -1139,24 +1211,21 @@ export class SearchService {
         c.food_quality_score AS food_quality_score,
         r.name AS restaurant_name,
         r.aliases AS restaurant_aliases,
-        r.location_key AS coverage_key,
+        ${normalizedActiveMarketKey}::varchar(255) AS market_key,
         r.price_level AS restaurant_price_level,
-        drc.rank_score_display AS connection_display_score,
-        drc.rank_percentile AS connection_display_percentile,
+        ${connectionContextualScoreSql} AS connection_contextual_score,
+        ${connectionContextualPercentileSql} AS connection_contextual_percentile,
         f.name AS food_name,
         f.aliases AS food_aliases
-      FROM core_connections c
+      FROM core_restaurant_items c
       JOIN core_entities r
         ON r.entity_id = c.restaurant_id
       JOIN core_entities f
         ON f.entity_id = c.food_id
-      LEFT JOIN core_display_rank_scores drc
-        ON drc.location_key = r.location_key
-        AND drc.subject_type = 'connection'
-        AND drc.subject_id = c.connection_id
+      ${contextualJoinSql}
       WHERE c.restaurant_id = ${restaurantId}::uuid
       ORDER BY
-        COALESCE(drc.rank_score_display, c.food_quality_score) DESC,
+        COALESCE(${connectionContextualScoreSql}, c.food_quality_score) DESC,
         c.mention_count DESC,
         c.total_upvotes DESC;
     `);
@@ -1169,8 +1238,13 @@ export class SearchService {
 
     return rows.map((row) => {
       const qualityScore = toNumber(row.food_quality_score) ?? 0;
-      const displayScore = toNumber(row.connection_display_score);
-      const displayPercentile = toNumber(row.connection_display_percentile);
+      const contextualScore =
+        toNumber(row.connection_contextual_score) ?? qualityScore;
+      const contextualPercentile =
+        toNumber(row.connection_contextual_percentile) ??
+        (typeof contextualScore === 'number' && Number.isFinite(contextualScore)
+          ? contextualScore / 100
+          : null);
       return {
         connectionId: row.connection_id,
         foodId: row.food_id,
@@ -1182,10 +1256,10 @@ export class SearchService {
           ? row.restaurant_aliases
           : [],
         qualityScore,
-        displayScore,
-        displayPercentile,
-        coverageKey: row.coverage_key ?? undefined,
-        coverageName: null,
+        contextualScore,
+        contextualPercentile,
+        marketKey: row.market_key ?? undefined,
+        marketName: null,
         activityLevel:
           row.activity_level === 'trending' ||
           row.activity_level === 'active' ||
@@ -1209,8 +1283,8 @@ export class SearchService {
         restaurantPriceSymbol: null,
         restaurantDistanceMiles: null,
         restaurantOperatingStatus: null,
-        restaurantDisplayScore: null,
-        restaurantDisplayPercentile: null,
+        restaurantContextualScore: null,
+        restaurantContextualPercentile: null,
         restaurantLatitude: null,
         restaurantLongitude: null,
       };
@@ -1219,6 +1293,7 @@ export class SearchService {
 
   async getRestaurantProfile(
     restaurantId: string,
+    activeMarketKey?: string | null,
   ): Promise<RestaurantProfileDto | null> {
     const startedAt = Date.now();
     const referenceDate = new Date();
@@ -1270,7 +1345,6 @@ export class SearchService {
         entityId: true,
         name: true,
         aliases: true,
-        locationKey: true,
         restaurantQualityScore: true,
         latitude: true,
         longitude: true,
@@ -1322,34 +1396,42 @@ export class SearchService {
       return null;
     }
 
-    const [displayRank, aggregate, dishes] = await Promise.all([
-      this.prisma.displayRankScore.findUnique({
-        where: {
-          locationKey_subjectType_subjectId: {
-            locationKey: restaurant.locationKey,
-            subjectType: 'restaurant',
-            subjectId: restaurant.entityId,
+    const normalizedActiveMarketKey =
+      typeof activeMarketKey === 'string' && activeMarketKey.trim().length
+        ? activeMarketKey.trim().toLowerCase()
+        : null;
+
+    const [displayRank, aggregate, dishes, activeMarketLocationIds] =
+      await Promise.all([
+        normalizedActiveMarketKey
+          ? this.getRestaurantContextualDisplayRank(
+              restaurant.entityId,
+              normalizedActiveMarketKey,
+            )
+          : Promise.resolve(null),
+        this.prisma.connection.aggregate({
+          where: {
+            restaurantId: restaurant.entityId,
           },
-        },
-        select: {
-          rankScoreDisplay: true,
-          rankPercentile: true,
-        },
-      }),
-      this.prisma.connection.aggregate({
-        where: {
-          restaurantId: restaurant.entityId,
-        },
-        _sum: {
-          mentionCount: true,
-          totalUpvotes: true,
-        },
-        _count: {
-          _all: true,
-        },
-      }),
-      this.listRestaurantDishes(restaurant.entityId),
-    ]);
+          _sum: {
+            mentionCount: true,
+            totalUpvotes: true,
+          },
+          _count: {
+            _all: true,
+          },
+        }),
+        this.listRestaurantDishes(
+          restaurant.entityId,
+          normalizedActiveMarketKey,
+        ),
+        normalizedActiveMarketKey
+          ? this.listRestaurantLocationIdsInMarket(
+              restaurant.entityId,
+              normalizedActiveMarketKey,
+            )
+          : Promise.resolve<string[] | null>(null),
+      ]);
 
     type RestaurantProfileLocation = NonNullable<
       RestaurantProfileDto['restaurant']['locations']
@@ -1390,12 +1472,20 @@ export class SearchService {
       };
     };
 
+    const allowedLocationIds = activeMarketLocationIds
+      ? new Set(activeMarketLocationIds)
+      : null;
+    const filteredLocations = allowedLocationIds
+      ? restaurant.locations.filter((location) =>
+          allowedLocationIds.has(location.locationId),
+        )
+      : restaurant.locations;
     const locationResults: RestaurantProfileLocation[] =
-      restaurant.locations.map(mapLocation);
+      filteredLocations.map(mapLocation);
     const fallbackMetadata = buildOperatingMetadata({
       restaurantMetadataValue: restaurant.restaurantMetadata,
     });
-    if (locationResults.length === 0) {
+    if (locationResults.length === 0 && !normalizedActiveMarketKey) {
       locationResults.push({
         locationId: restaurant.primaryLocationId ?? restaurant.entityId,
         googlePlaceId: null,
@@ -1427,7 +1517,8 @@ export class SearchService {
     }
     const displayLocation =
       locationResults.find((location) => location.isPrimary) ??
-      locationResults[0];
+      locationResults[0] ??
+      null;
     const parsedPriceLevel = toOptionalNumber(restaurant.priceLevel);
     const priceDetails = describePriceLevel(parsedPriceLevel);
     const topFood = dishes.slice(0, 10).map((dish) => ({
@@ -1435,8 +1526,10 @@ export class SearchService {
       foodId: dish.foodId,
       foodName: dish.foodName,
       qualityScore: dish.qualityScore,
-      displayScore: dish.displayScore ?? null,
-      displayPercentile: dish.displayPercentile ?? null,
+      contextualScore: dish.contextualScore ?? dish.qualityScore,
+      contextualPercentile:
+        dish.contextualPercentile ??
+        (dish.contextualScore ?? dish.qualityScore) / 100,
       activityLevel: dish.activityLevel,
     }));
     const totalDishCount =
@@ -1450,21 +1543,28 @@ export class SearchService {
         restaurantAliases: Array.isArray(restaurant.aliases)
           ? restaurant.aliases
           : [],
-        contextualScore: 0,
+        contextualScore:
+          toOptionalNumber(displayRank?.rankScoreDisplay) ??
+          toOptionalNumber(restaurant.restaurantQualityScore) ??
+          0,
+        contextualPercentile:
+          toOptionalNumber(displayRank?.rankPercentile) ??
+          (toOptionalNumber(displayRank?.rankScoreDisplay) ??
+            toOptionalNumber(restaurant.restaurantQualityScore) ??
+            0) / 100,
         restaurantQualityScore: toOptionalNumber(
           restaurant.restaurantQualityScore,
         ),
-        displayScore: toOptionalNumber(displayRank?.rankScoreDisplay),
-        displayPercentile: toOptionalNumber(displayRank?.rankPercentile),
-        coverageKey: restaurant.locationKey,
+        marketKey: normalizedActiveMarketKey ?? undefined,
+        marketName: null,
         mentionCount: aggregate._sum.mentionCount ?? 0,
         totalUpvotes: aggregate._sum.totalUpvotes ?? 0,
         latitude:
-          displayLocation.latitude ?? toOptionalNumber(restaurant.latitude),
+          displayLocation?.latitude ?? toOptionalNumber(restaurant.latitude),
         longitude:
-          displayLocation.longitude ?? toOptionalNumber(restaurant.longitude),
-        address: displayLocation.address ?? restaurant.address ?? null,
-        restaurantLocationId: displayLocation.locationId,
+          displayLocation?.longitude ?? toOptionalNumber(restaurant.longitude),
+        address: displayLocation?.address ?? restaurant.address ?? null,
+        restaurantLocationId: displayLocation?.locationId ?? null,
         priceLevel: parsedPriceLevel ?? null,
         priceSymbol: priceDetails.symbol,
         priceText: priceDetails.text,
@@ -1472,14 +1572,16 @@ export class SearchService {
           restaurant.priceLevelUpdatedAt?.toISOString() ?? null,
         topFood,
         totalDishCount,
-        operatingStatus: displayLocation.operatingStatus ?? null,
+        operatingStatus: displayLocation?.operatingStatus ?? null,
         distanceMiles: null,
-        displayLocation,
+        displayLocation: displayLocation ?? undefined,
         locations: locationResults,
         locationCount:
-          typeof restaurant._count.locations === 'number'
-            ? restaurant._count.locations
-            : locationResults.length,
+          allowedLocationIds !== null
+            ? locationResults.length
+            : typeof restaurant._count.locations === 'number'
+              ? restaurant._count.locations
+              : locationResults.length,
       },
       dishes,
     };
@@ -1493,21 +1595,166 @@ export class SearchService {
     return profile;
   }
 
+  private async listRestaurantLocationIdsInMarket(
+    restaurantId: string,
+    marketKey: string,
+  ): Promise<string[]> {
+    const normalizedMarketKey = marketKey.trim().toLowerCase();
+    if (!normalizedMarketKey.length) {
+      return [];
+    }
+
+    const rows = await this.prisma.$queryRaw<Array<{ locationId: string }>>(
+      Prisma.sql`
+        SELECT rl.location_id AS "locationId"
+        FROM core_restaurant_locations rl
+        JOIN core_markets m
+          ON m.market_key = ${normalizedMarketKey}
+         AND m.geometry IS NOT NULL
+         AND m.is_active = true
+        WHERE rl.restaurant_id = ${restaurantId}::uuid
+          AND rl.latitude IS NOT NULL
+          AND rl.longitude IS NOT NULL
+          AND ST_Contains(
+            m.geometry,
+            ST_SetSRID(
+              ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision),
+              4326
+            )
+          )
+      `,
+    );
+
+    return rows
+      .map((row) => row.locationId)
+      .filter(
+        (value): value is string =>
+          typeof value === 'string' && value.length > 0,
+      );
+  }
+
+  private async getRestaurantContextualDisplayRank(
+    restaurantId: string,
+    marketKey: string,
+  ): Promise<{
+    rankScoreDisplay: number | null;
+    rankPercentile: number | null;
+  } | null> {
+    const toOptionalNumber = (value: unknown): number | null => {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+      }
+      if (typeof value === 'string') {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+      if (value && typeof value === 'object' && 'toNumber' in value) {
+        const numeric = (value as { toNumber: () => number }).toNumber();
+        return Number.isFinite(numeric) ? numeric : null;
+      }
+      return null;
+    };
+    const normalizedMarketKey = marketKey.trim().toLowerCase();
+    if (!normalizedMarketKey.length) {
+      return null;
+    }
+
+    const rows = await this.prisma.$queryRaw<
+      Array<{ rankScoreDisplay: unknown; rankPercentile: unknown }>
+    >(Prisma.sql`
+      WITH market_restaurants AS (
+        SELECT DISTINCT rl.restaurant_id
+        FROM core_restaurant_locations rl
+        JOIN core_markets m
+          ON m.market_key = ${normalizedMarketKey}
+         AND m.geometry IS NOT NULL
+         AND m.is_active = true
+        WHERE rl.latitude IS NOT NULL
+          AND rl.longitude IS NOT NULL
+          AND ST_Contains(
+            m.geometry,
+            ST_SetSRID(
+              ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision),
+              4326
+            )
+          )
+      ),
+      restaurant_vote_totals AS (
+        SELECT
+          c.restaurant_id,
+          SUM(c.total_upvotes) AS total_upvotes,
+          SUM(c.mention_count) AS total_mentions
+        FROM core_restaurant_items c
+        JOIN market_restaurants mr ON mr.restaurant_id = c.restaurant_id
+        GROUP BY c.restaurant_id
+      ),
+      ranked AS (
+        SELECT
+          mr.restaurant_id AS subject_id,
+          ROW_NUMBER() OVER (
+            ORDER BY
+              COALESCE(r.restaurant_quality_score, 0) DESC,
+              COALESCE(rvt.total_upvotes, 0) DESC,
+              COALESCE(rvt.total_mentions, 0) DESC,
+              mr.restaurant_id ASC
+          ) AS row_number,
+          PERCENT_RANK() OVER (
+            ORDER BY
+              COALESCE(r.restaurant_quality_score, 0) DESC,
+              COALESCE(rvt.total_upvotes, 0) DESC,
+              COALESCE(rvt.total_mentions, 0) DESC,
+              mr.restaurant_id ASC
+          ) AS percent_rank
+        FROM market_restaurants mr
+        JOIN core_entities r ON r.entity_id = mr.restaurant_id
+        LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = mr.restaurant_id
+      )
+      SELECT
+        CASE
+          WHEN row_number = 1 THEN 100::numeric
+          ELSE floor(LEAST(99.9, GREATEST(0, 100 * (1 - percent_rank))) * 10)::numeric / 10
+        END AS "rankScoreDisplay",
+        (1 - percent_rank)::numeric AS "rankPercentile"
+      FROM ranked
+      WHERE subject_id = ${restaurantId}::uuid
+      LIMIT 1
+    `);
+
+    const row = rows[0];
+    if (!row) {
+      return null;
+    }
+
+    const rankScoreDisplay = toOptionalNumber(row.rankScoreDisplay);
+    const rankPercentile = toOptionalNumber(row.rankPercentile);
+    return {
+      rankScoreDisplay,
+      rankPercentile,
+    };
+  }
+
   private buildExecutionDirectives(
     constraints: SearchConstraints,
     planExpansion: PlanExpansionState | null,
+    activeMarketKey: string | null,
   ): SearchExecutionDirectives | undefined {
-    if (!constraints.primaryFoodAttributeQuery) {
+    const textFoodIds =
+      planExpansion?.foodIdsFromPrimaryFoodAttributeText ?? [];
+    const hasPrimaryFoodAttributeQuery = constraints.primaryFoodAttributeQuery;
+    const hasActiveMarketKey =
+      typeof activeMarketKey === 'string' && activeMarketKey.trim().length > 0;
+
+    if (!hasPrimaryFoodAttributeQuery && !hasActiveMarketKey) {
       return undefined;
     }
 
-    const textFoodIds =
-      planExpansion?.foodIdsFromPrimaryFoodAttributeText ?? [];
     return {
-      primaryFoodAttributeQuery: true,
-      primaryFoodAttributeTextFoodIds: textFoodIds.length
-        ? textFoodIds
-        : undefined,
+      activeMarketKey: hasActiveMarketKey ? activeMarketKey : undefined,
+      primaryFoodAttributeQuery: hasPrimaryFoodAttributeQuery || undefined,
+      primaryFoodAttributeTextFoodIds:
+        hasPrimaryFoodAttributeQuery && textFoodIds.length
+          ? textFoodIds
+          : undefined,
     };
   }
 
@@ -1515,6 +1762,7 @@ export class SearchService {
     request: SearchQueryRequestDto;
     stage: RelaxationStage;
     planExpansion: PlanExpansionState | null;
+    activeMarketKey: string | null;
     pagination: PaginationState;
     restaurantPagination: { skip: number; take: number };
     dishPagination: { skip: number; take: number };
@@ -1544,6 +1792,7 @@ export class SearchService {
     const directives = this.buildExecutionDirectives(
       constraints,
       params.planExpansion,
+      params.activeMarketKey,
     );
 
     const executeStart = performance.now();
@@ -1621,7 +1870,6 @@ export class SearchService {
     return {
       stage,
       format: inputs.format,
-      scoreMode: request.scoreMode ?? 'global_quality',
       inputPresence,
       stagePresence,
       hadFoodGroup,
@@ -1885,7 +2133,7 @@ export class SearchService {
     restaurantCount: number;
     dishCount: number;
     viewportEligible: boolean;
-    onDemandLocationKey: string | null;
+    onDemandMarketKey: string | null;
     expansionSignals?: Record<string, unknown> | null;
     relaxation?: {
       stage: RelaxationStage;
@@ -1896,7 +2144,7 @@ export class SearchService {
     try {
       const lowResultRequests = this.buildLowResultRequests(
         params.request,
-        params.onDemandLocationKey,
+        params.onDemandMarketKey,
       );
       if (!lowResultRequests.length) {
         return { queued: false, etaMs: undefined };
@@ -1930,9 +2178,14 @@ export class SearchService {
         };
       }
 
-      const fallbackLocation = this.resolveFallbackLocation(params.request);
-      if (fallbackLocation) {
-        context.location = fallbackLocation;
+      if (
+        typeof params.request.userLocation?.lat === 'number' &&
+        typeof params.request.userLocation?.lng === 'number'
+      ) {
+        context.location = {
+          latitude: params.request.userLocation.lat,
+          longitude: params.request.userLocation.lng,
+        };
       }
       const locationBias = this.buildLocationBias(params.request);
       if (locationBias) {
@@ -1946,11 +2199,11 @@ export class SearchService {
           context,
         );
 
-      if (params.viewportEligible && params.onDemandLocationKey) {
+      if (params.viewportEligible && params.onDemandMarketKey) {
         const recorded = await record();
         return { queued: recorded.length > 0, etaMs: undefined };
       }
-      if (!params.onDemandLocationKey) {
+      if (!params.onDemandMarketKey) {
         const recorded = await record();
         return { queued: recorded.length > 0, etaMs: undefined };
       }
@@ -2032,11 +2285,11 @@ export class SearchService {
       totalFoodResults: number;
       totalRestaurantResults: number;
       queryExecutionTimeMs: number;
-      coverageStatus: 'full' | 'partial' | 'unresolved';
+      marketStatus: 'full' | 'partial' | 'unresolved';
     },
-    coverageKeys?: {
-      uiCoverageKey: string | null;
-      collectionCoverageKey: string | null;
+    marketKeys?: {
+      marketKey: string | null;
+      collectableMarketKey: string | null;
     },
   ): Promise<void> {
     const targets = this.gatherEntityImpressionTargets(request);
@@ -2045,10 +2298,8 @@ export class SearchService {
     }
 
     const now = new Date();
-    const resolvedCoverageKeys = coverageKeys ?? {
-      uiCoverageKey: await this.resolveLocationKey(request),
-      collectionCoverageKey: await this.resolveCollectionCoverageKey(request),
-    };
+    const resolvedMarketKeys =
+      marketKeys ?? (await this.resolveSearchMarketContext(request));
 
     await this.recordSearchLogEntries(
       request,
@@ -2056,7 +2307,7 @@ export class SearchService {
       now,
       request.userId,
       context,
-      resolvedCoverageKeys,
+      resolvedMarketKeys,
     );
   }
 
@@ -2157,11 +2408,11 @@ export class SearchService {
       totalFoodResults: number;
       totalRestaurantResults: number;
       queryExecutionTimeMs: number;
-      coverageStatus: 'full' | 'partial' | 'unresolved';
+      marketStatus: 'full' | 'partial' | 'unresolved';
     },
-    coverageKeys?: {
-      uiCoverageKey: string | null;
-      collectionCoverageKey: string | null;
+    marketKeys?: {
+      marketKey: string | null;
+      collectableMarketKey: string | null;
     },
   ): Promise<void> {
     if (
@@ -2173,8 +2424,8 @@ export class SearchService {
     }
 
     try {
-      const locationKey = coverageKeys?.uiCoverageKey ?? null;
-      const collectionCoverageKey = coverageKeys?.collectionCoverageKey ?? null;
+      const marketKey = marketKeys?.marketKey ?? null;
+      const collectableMarketKey = marketKeys?.collectableMarketKey ?? null;
       const filtersApplied = {
         openNow: Boolean(request.openNow),
         priceLevels: this.normalizePriceLevels(request.priceLevels),
@@ -2201,15 +2452,15 @@ export class SearchService {
       const rows = targets.map(({ entityId, entityType }) => ({
         entityId,
         entityType,
-        locationKey,
-        collectionCoverageKey,
+        marketKey,
+        collectableMarketKey,
         queryText: request.sourceQuery ?? null,
         searchRequestId: context.searchRequestId,
         totalResults: context.totalResults,
         totalFoodResults: context.totalFoodResults,
         totalRestaurantResults: context.totalRestaurantResults,
         queryExecutionTimeMs: context.queryExecutionTimeMs,
-        coverageStatus: context.coverageStatus,
+        marketStatus: context.marketStatus,
         source: SearchLogSource.search,
         metadata,
         loggedAt,
@@ -2230,62 +2481,91 @@ export class SearchService {
     }
   }
 
-  private async resolveLocationKey(
+  private async resolveSearchMarketContext(
     request: SearchQueryRequestDto,
-  ): Promise<string | null> {
+  ): Promise<SearchMarketContext> {
     try {
-      const fallbackLocation = this.resolveFallbackLocation(request);
-      const match = await this.subredditResolver.resolvePrimary({
+      const resolved = await this.marketResolver.resolve({
         bounds: request.bounds ?? null,
-        fallbackLocation: fallbackLocation ?? null,
-        referenceLocations: fallbackLocation ? [fallbackLocation] : undefined,
+        userLocation: request.userLocation ?? null,
+        mode: 'search',
       });
 
-      if (match) {
-        return match.toLowerCase();
+      let marketKey = resolved.market?.marketKey ?? null;
+      if (
+        marketKey &&
+        request.bounds &&
+        (await this.shouldTreatBoundsAsMultiMarket(request.bounds, marketKey))
+      ) {
+        marketKey = null;
       }
-
-      if (request.bounds) {
-        const created = await this.coverageRegistry.resolveOrCreateCoverage({
-          bounds: request.bounds,
-          fallbackLocation: fallbackLocation ?? null,
-        });
-        return created.coverageKey ?? null;
-      }
-
-      return null;
+      return {
+        marketKey,
+        collectableMarketKey:
+          marketKey && resolved.market?.isCollectable ? marketKey : null,
+      };
     } catch (error) {
-      this.logger.debug('Unable to resolve search location key', {
+      this.logger.debug('Unable to resolve search market context', {
         error:
           error instanceof Error
             ? { message: error.message, stack: error.stack }
             : { message: String(error) },
       });
-      return null;
+      return { marketKey: null, collectableMarketKey: null };
     }
   }
 
-  private async resolveCollectionCoverageKey(
-    request: SearchQueryRequestDto,
-  ): Promise<string | null> {
-    try {
-      const fallbackLocation = this.resolveFallbackLocation(request);
-      const match = await this.subredditResolver.resolvePrimaryCollectable({
-        bounds: request.bounds ?? null,
-        fallbackLocation: fallbackLocation ?? null,
-        referenceLocations: fallbackLocation ? [fallbackLocation] : undefined,
-      });
-
-      return match ? match.toLowerCase() : null;
-    } catch (error) {
-      this.logger.debug('Unable to resolve search collection coverage key', {
-        error:
-          error instanceof Error
-            ? { message: error.message, stack: error.stack }
-            : { message: String(error) },
-      });
-      return null;
+  private async shouldTreatBoundsAsMultiMarket(
+    bounds: NonNullable<SearchQueryRequestDto['bounds']>,
+    marketKey: string,
+  ): Promise<boolean> {
+    const normalizedMarketKey = marketKey.trim().toLowerCase();
+    if (!normalizedMarketKey.length) {
+      return false;
     }
+
+    const swLng = Math.min(bounds.southWest.lng, bounds.northEast.lng);
+    const neLng = Math.max(bounds.southWest.lng, bounds.northEast.lng);
+    const swLat = Math.min(bounds.southWest.lat, bounds.northEast.lat);
+    const neLat = Math.max(bounds.southWest.lat, bounds.northEast.lat);
+
+    const envelopeSql = Prisma.sql`ST_SetSRID(ST_MakeEnvelope(${swLng}, ${swLat}, ${neLng}, ${neLat}), 4326)`;
+
+    const containmentRows = await this.prisma.$queryRaw<
+      Array<{ containsBounds: boolean }>
+    >(
+      Prisma.sql`
+        SELECT ST_Contains(m.geometry, ${envelopeSql}) AS "containsBounds"
+        FROM core_markets m
+        WHERE m.market_key = ${normalizedMarketKey}
+          AND m.is_active = true
+          AND m.geometry IS NOT NULL
+        LIMIT 1
+      `,
+    );
+
+    if (containmentRows[0]?.containsBounds) {
+      return false;
+    }
+
+    const overlapRows = await this.prisma.$queryRaw<
+      Array<{ marketCount: bigint }>
+    >(
+      Prisma.sql`
+        SELECT COUNT(DISTINCT m.market_key)::bigint AS "marketCount"
+        FROM core_markets m
+        WHERE m.is_active = true
+          AND m.geometry IS NOT NULL
+          AND m.market_type IN ('cbsa_metro'::market_type, 'cbsa_micro'::market_type)
+          AND m.bbox_ne_latitude >= ${swLat}
+          AND m.bbox_sw_latitude <= ${neLat}
+          AND m.bbox_ne_longitude >= ${swLng}
+          AND m.bbox_sw_longitude <= ${neLng}
+          AND ST_Intersects(m.geometry, ${envelopeSql})
+      `,
+    );
+
+    return Number(overlapRows[0]?.marketCount ?? 0) > 1;
   }
 
   recordResultClick(dto: SearchResultClickDto): void {
@@ -2496,40 +2776,6 @@ export class SearchService {
     return 'full';
   }
 
-  private resolveFallbackLocation(
-    request: SearchQueryRequestDto,
-  ): { latitude: number; longitude: number } | undefined {
-    if (
-      typeof request.userLocation?.lat === 'number' &&
-      typeof request.userLocation?.lng === 'number'
-    ) {
-      return {
-        latitude: request.userLocation.lat,
-        longitude: request.userLocation.lng,
-      };
-    }
-
-    const bounds = request.bounds;
-    if (!bounds) {
-      return undefined;
-    }
-
-    const { northEast, southWest } = bounds;
-    if (
-      typeof northEast?.lat !== 'number' ||
-      typeof northEast?.lng !== 'number' ||
-      typeof southWest?.lat !== 'number' ||
-      typeof southWest?.lng !== 'number'
-    ) {
-      return undefined;
-    }
-
-    return {
-      latitude: (northEast.lat + southWest.lat) / 2,
-      longitude: (northEast.lng + southWest.lng) / 2,
-    };
-  }
-
   private isViewportEligibleForOnDemand(bounds?: MapBoundsDto): boolean {
     const widthMiles = this.calculateBoundsWidthMiles(bounds);
     if (!widthMiles) {
@@ -2562,11 +2808,13 @@ export class SearchService {
       };
     }
 
-    const fallbackLocation = this.resolveFallbackLocation(request);
-    if (fallbackLocation) {
+    if (
+      typeof request.userLocation?.lat === 'number' &&
+      typeof request.userLocation?.lng === 'number'
+    ) {
       return {
-        lat: fallbackLocation.latitude,
-        lng: fallbackLocation.longitude,
+        lat: request.userLocation.lat,
+        lng: request.userLocation.lng,
       };
     }
 
@@ -2651,12 +2899,16 @@ export class SearchService {
 
   private buildLowResultRequests(
     request: SearchQueryRequestDto,
-    locationKey: string | null,
+    marketKey: string | null,
   ): OnDemandRequestInput[] {
+    if (!marketKey || !marketKey.trim()) {
+      return [];
+    }
+
     const results: OnDemandRequestInput[] = [];
     const seen = new Set<string>();
     const reason: OnDemandReason = 'low_result';
-    const resolvedLocationKey = locationKey ?? 'global';
+    const resolvedMarketKey = marketKey.trim().toLowerCase();
 
     const pushEntities = (
       entities: QueryEntityDto[] | undefined,
@@ -2685,7 +2937,7 @@ export class SearchService {
           entityType,
           reason,
           entityId,
-          locationKey: resolvedLocationKey,
+          marketKey: resolvedMarketKey,
           metadata: entity.originalText
             ? { originalText: entity.originalText }
             : undefined,

@@ -16,7 +16,7 @@ export interface EntityResolutionInput {
   originalText: string;
   entityType: EntityType;
   aliases?: string[];
-  locationKey?: string | null;
+  marketKey?: string | null;
 }
 
 /**

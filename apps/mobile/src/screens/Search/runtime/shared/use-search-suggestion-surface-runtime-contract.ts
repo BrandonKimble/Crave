@@ -12,6 +12,7 @@ import type {
   RecentlyViewedFood,
   RecentlyViewedRestaurant,
 } from '../../../../services/search';
+import type { SearchStartupGeometrySeed } from './search-startup-geometry';
 
 export type SearchInteractionRef = React.MutableRefObject<{
   isInteracting: boolean;
@@ -324,6 +325,7 @@ export type SearchSuggestionHoldRuntime = {
 
 export type SearchSuggestionLayoutRuntimeArgs = {
   searchInteractionRef: SearchInteractionRef;
+  startupGeometrySeed: SearchStartupGeometrySeed;
   query: string;
   isSuggestionPanelActive: boolean;
   isSuggestionPanelVisible: boolean;
@@ -334,6 +336,7 @@ export type SearchSuggestionLayoutRuntimeArgs = {
 
 export type SearchSuggestionLayoutStateRuntimeArgs = Pick<
   SearchSuggestionLayoutRuntimeArgs,
+  | 'startupGeometrySeed'
   | 'searchInteractionRef'
   | 'query'
   | 'isSuggestionPanelActive'

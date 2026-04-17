@@ -12,8 +12,6 @@ export const useSearchRouteOverlayCommandActions = (): SearchRouteOverlayCommand
       setPollsHeaderActionAnimationToken: state.setPollsHeaderActionAnimationToken,
       setPollsSheetSnap: state.setPollsSheetSnap,
       setIsDockedPollsDismissed: state.setIsDockedPollsDismissed,
-      setIsNavRestorePending: state.setIsNavRestorePending,
-      setOverlaySwitchInFlight: state.setOverlaySwitchInFlight,
       setDockedPollsRestoreInFlight: state.setDockedPollsRestoreInFlight,
       setIgnoreDockedPollsHiddenUntilMs: state.setIgnoreDockedPollsHiddenUntilMs,
       setBookmarksSheetSnap: state.setBookmarksSheetSnap,
@@ -21,5 +19,6 @@ export const useSearchRouteOverlayCommandActions = (): SearchRouteOverlayCommand
       setSaveSheetState: state.setSaveSheetState,
       setSaveSheetSnap: state.setSaveSheetSnap,
       setPollCreationSnapRequest: state.setPollCreationSnapRequest,
+      setPollsPanelParams: state.setPollsPanelParams,
     }))
   );

@@ -17,7 +17,7 @@ export class EntitySearchService {
     term: string,
     entityTypes: EntityType[],
     limit: number,
-    options: { locationKey?: string | null } = {},
+    options: { marketKey?: string | null } = {},
   ): Promise<EntitySearchResult[]> {
     const matches = await this.textSearch.searchEntities(
       term,

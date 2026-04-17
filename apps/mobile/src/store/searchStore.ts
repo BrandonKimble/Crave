@@ -6,9 +6,7 @@ import type { MapBounds } from '../types';
 import { logger } from '../utils';
 
 const HISTORY_LIMIT = 8;
-const SEARCH_STORE_VERSION = 6;
-
-export type SearchScoreMode = 'global_quality' | 'coverage_display';
+const SEARCH_STORE_VERSION = 7;
 export type SearchActiveTab = 'restaurants' | 'dishes';
 
 const normalizePriceLevels = (levels: unknown): number[] => {
@@ -47,8 +45,6 @@ interface SearchState extends SearchFilters {
   activeTab: SearchActiveTab;
   preferredActiveTab: SearchActiveTab;
   hasActiveTabPreference: boolean;
-  scoreMode: SearchScoreMode;
-  hasScoreModePreference: boolean;
   history: SearchHistoryEntry[];
   setQuery: (query: string) => void;
   clearQuery: () => void;
@@ -65,8 +61,6 @@ interface SearchState extends SearchFilters {
   removeHistoryEntry: (query: string) => void;
   clearHistory: () => void;
   setVotes100Plus: (enabled: boolean) => void;
-  setScoreMode: (mode: SearchScoreMode) => void;
-  setPreferredScoreMode: (mode: SearchScoreMode) => void;
   setActiveTab: (tab: SetStateAction<SearchActiveTab>) => void;
   setActiveTabPreference: (tab: SearchActiveTab) => void;
   setPreferredActiveTab: (tab: SearchActiveTab) => void;
@@ -84,8 +78,6 @@ const defaultState = {
   boundsPresetId: null,
   priceLevels: [],
   votes100Plus: false,
-  scoreMode: 'coverage_display' as SearchScoreMode,
-  hasScoreModePreference: false,
   history: [] as SearchHistoryEntry[],
 } as const satisfies Pick<
   SearchState,
@@ -100,17 +92,8 @@ const defaultState = {
   | 'boundsPresetId'
   | 'priceLevels'
   | 'votes100Plus'
-  | 'scoreMode'
-  | 'hasScoreModePreference'
   | 'history'
 >;
-
-const normalizeScoreMode = (mode: unknown): SearchScoreMode => {
-  if (mode === 'coverage_display' || mode === 'global_quality') {
-    return mode;
-  }
-  return defaultState.scoreMode;
-};
 
 const normalizeActiveTab = (tab: unknown): SearchActiveTab => {
   if (tab === 'restaurants' || tab === 'dishes') {
@@ -165,15 +148,6 @@ export const useSearchStore = create<SearchState>()(
       setVotes100Plus: (enabled) =>
         set(() => ({
           votes100Plus: Boolean(enabled),
-        })),
-      setScoreMode: (mode) =>
-        set(() => ({
-          scoreMode: normalizeScoreMode(mode),
-        })),
-      setPreferredScoreMode: (mode) =>
-        set(() => ({
-          scoreMode: normalizeScoreMode(mode),
-          hasScoreModePreference: true,
         })),
       setActiveTab: (tab) =>
         set((state) => {
@@ -243,15 +217,12 @@ export const useSearchStore = create<SearchState>()(
         }
 
         const state = persistedState as Partial<SearchState>;
-        const normalizedScoreMode = normalizeScoreMode(state.scoreMode);
         return {
           ...state,
           activeTab: defaultState.activeTab,
           preferredActiveTab: defaultState.preferredActiveTab,
           hasActiveTabPreference: false,
           priceLevels: normalizePriceLevels(state.priceLevels),
-          scoreMode: normalizedScoreMode,
-          hasScoreModePreference: state.hasScoreModePreference === true,
         };
       },
       storage: createJSONStorage(() => {
@@ -308,8 +279,6 @@ export const useSearchStore = create<SearchState>()(
         boundsPresetId: state.boundsPresetId,
         priceLevels: state.priceLevels,
         votes100Plus: state.votes100Plus,
-        scoreMode: state.scoreMode,
-        hasScoreModePreference: state.hasScoreModePreference,
         history: state.history,
       }),
     }

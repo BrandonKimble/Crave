@@ -13,7 +13,7 @@ import { useSearchInteraction } from '../context/SearchInteractionContext';
 import { useTopFoodMeasurement } from '../hooks/use-top-food-measurement';
 import styles from '../styles';
 import { SECONDARY_METRIC_ICON_SIZE, TOP_FOOD_RENDER_LIMIT } from '../constants/search';
-import { formatDistanceMiles, resolveCoverageDisplayLabel } from '../utils/format';
+import { formatDistanceMiles, resolveMarketDisplayLabel } from '../utils/format';
 import { formatRankLabel, getRankFontSize } from '../utils/rank-badge';
 import { InfoCircleIcon } from './metric-icons';
 import { renderMetaDetailLine } from './render-meta-detail-line';
@@ -40,6 +40,8 @@ const INFO_CIRCLE_ICON_RESTAURANT = (
 
 const SHARE_ICON = <LucideShare size={20} color={themeColors.textBody} strokeWidth={2} />;
 
+const MAX_MATCHED_TAGS = 3;
+
 type ScoreInfoPayload = {
   type: 'dish' | 'restaurant';
   title: string;
@@ -54,9 +56,8 @@ type RestaurantResultCardProps = {
   rank: number;
   qualityColor: string;
   isLiked: boolean;
-  scoreMode?: 'global_quality' | 'coverage_display';
-  primaryCoverageKey?: string | null;
-  showCoverageLabel?: boolean;
+  primaryMarketKey?: string | null;
+  showMarketLabel?: boolean;
   onSavePress: () => void;
   openRestaurantProfile: (
     restaurant: RestaurantResult,
@@ -72,9 +73,8 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   rank,
   qualityColor,
   isLiked,
-  scoreMode = 'global_quality',
-  primaryCoverageKey = null,
-  showCoverageLabel = false,
+  primaryMarketKey = null,
+  showMarketLabel = false,
   onSavePress,
   openRestaurantProfile,
   openScoreInfo,
@@ -101,30 +101,34 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     restaurant.totalDishCount ?? topFoodItems.length,
     topFoodItems.length
   );
-  const displayScoreValue = React.useMemo(() => {
-    if (scoreMode === 'coverage_display') {
-      if (typeof restaurant.displayScore === 'number' && Number.isFinite(restaurant.displayScore)) {
-        return restaurant.displayScore;
-      }
-      return null;
-    }
+  const contextualScoreValue = React.useMemo(() => {
     if (
-      typeof restaurant.restaurantQualityScore === 'number' &&
-      Number.isFinite(restaurant.restaurantQualityScore)
+      typeof restaurant.contextualScore === 'number' &&
+      Number.isFinite(restaurant.contextualScore)
     ) {
-      return restaurant.restaurantQualityScore;
+      return restaurant.contextualScore;
     }
-    return null;
-  }, [restaurant.displayScore, restaurant.restaurantQualityScore, scoreMode]);
-  const coverageLabel =
-    showCoverageLabel && restaurant.coverageKey && restaurant.coverageKey !== primaryCoverageKey
-      ? resolveCoverageDisplayLabel(restaurant.coverageName, restaurant.coverageKey)
+    return typeof restaurant.restaurantQualityScore === 'number' &&
+      Number.isFinite(restaurant.restaurantQualityScore)
+      ? restaurant.restaurantQualityScore
+      : null;
+  }, [restaurant.contextualScore, restaurant.restaurantQualityScore]);
+  const marketLabel =
+    showMarketLabel && restaurant.marketKey && restaurant.marketKey !== primaryMarketKey
+      ? resolveMarketDisplayLabel(restaurant.marketName, restaurant.marketKey ?? null)
       : null;
 
   const { interactionRef } = useSearchInteraction();
   const candidateTopFoods = React.useMemo(
     () => topFoodItems.slice(0, TOP_FOOD_RENDER_LIMIT),
     [topFoodItems]
+  );
+  const matchedTags = React.useMemo(
+    () =>
+      (restaurant.matchedTags ?? [])
+        .filter((tag) => typeof tag.name === 'string' && tag.name.trim().length > 0)
+        .slice(0, MAX_MATCHED_TAGS),
+    [restaurant.matchedTags]
   );
   const dishCountLabel = totalDishCount === 1 ? '1 dish' : `${totalDishCount} dishes`;
   const [topFoodLineWidth, setTopFoodLineWidth] = React.useState<number | null>(null);
@@ -301,6 +305,16 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     visibleTopFoodsForRender,
   ]);
   const shouldRenderTopFoodMeasurementNodes = measuredCandidateTopFoods.length > 0 && !allCached;
+  const renderMatchedTagLabel = React.useCallback((name: string, mentionCount: number): string => {
+    const trimmedName = name.trim();
+    if (!trimmedName.length) {
+      return '';
+    }
+    if (!Number.isFinite(mentionCount) || mentionCount <= 0) {
+      return trimmedName;
+    }
+    return `${trimmedName} ${mentionCount}`;
+  }, []);
 
   const restaurantStatusLine = renderMetaDetailLine(
     hasStatus ? restaurant.operatingStatus : null,
@@ -311,7 +325,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     true,
     true,
     undefined,
-    hasStatus ? coverageLabel : null
+    hasStatus ? marketLabel : null
   );
 
   const handleShare = React.useCallback(() => {
@@ -324,7 +338,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     openScoreInfo({
       type: 'restaurant',
       title: restaurant.restaurantName,
-      score: displayScoreValue,
+      score: contextualScoreValue,
       votes: restaurant.totalUpvotes,
       polls: restaurant.mentionCount,
     });
@@ -333,7 +347,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     restaurant.mentionCount,
     restaurant.restaurantName,
     restaurant.totalUpvotes,
-    displayScoreValue,
+    contextualScoreValue,
   ]);
 
   const handleRestaurantPress = React.useCallback(() => {
@@ -375,13 +389,13 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
               </Text>
             </View>
             <View style={[styles.resultContent, styles.resultContentStack]}>
-              {displayScoreValue !== null && displayScoreValue !== undefined ? (
+              {contextualScoreValue !== null && contextualScoreValue !== undefined ? (
                 <View style={styles.metricBlock}>
                   <View style={[styles.restaurantMetricRow, styles.metricSupportRow]}>
                     <View style={styles.restaurantMetricLeft}>
                       {STORE_ICON}
                       <Text variant="body" weight="semibold" style={styles.metricValue}>
-                        {displayScoreValue != null ? displayScoreValue.toFixed(1) : '—'}
+                        {contextualScoreValue != null ? contextualScoreValue.toFixed(1) : '—'}
                       </Text>
                       <Text
                         variant="body"
@@ -425,7 +439,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                             >
                               {distanceLabel ?? ''}
                             </Text>
-                            {coverageLabel ? (
+                            {marketLabel ? (
                               <>
                                 <Text variant="body" style={styles.metricDot}>
                                   {'·'}
@@ -435,7 +449,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                                   style={styles.resultMetaDistance}
                                   numberOfLines={1}
                                 >
-                                  {coverageLabel}
+                                  {marketLabel}
                                 </Text>
                               </>
                             ) : null}
@@ -511,6 +525,25 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                         </View>
                       ) : null}
                     </View>
+                  </View>
+                </View>
+              ) : null}
+              {matchedTags.length > 0 ? (
+                <View style={styles.matchedTagsSection}>
+                  <Text variant="caption" weight="semibold" style={styles.matchedTagsLabel}>
+                    Mentioned for
+                  </Text>
+                  <View style={styles.matchedTagsRow}>
+                    {matchedTags.map((tag) => (
+                      <View
+                        key={`${restaurant.restaurantId}-${tag.entityId}`}
+                        style={styles.matchedTagPill}
+                      >
+                        <Text variant="caption" weight="semibold" style={styles.matchedTagText}>
+                          {renderMatchedTagLabel(tag.name, tag.mentionCount)}
+                        </Text>
+                      </View>
+                    ))}
                   </View>
                 </View>
               ) : null}

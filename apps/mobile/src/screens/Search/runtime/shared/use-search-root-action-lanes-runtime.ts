@@ -1,87 +1,166 @@
-import type { SearchRootActionLanes } from './search-root-action-runtime-contract';
-import type { SearchRootProfileActionRuntime } from './use-search-root-profile-action-runtime-contract';
-import type { UseSearchRootRuntimeArgs } from './use-search-root-runtime-contract';
-import type { SearchRootPrimitivesRuntime } from './use-search-root-primitives-runtime';
-import type { SearchRootRequestLaneRuntime } from './use-search-root-request-lane-runtime';
-import type { SearchRootScaffoldRuntime } from './use-search-root-scaffold-runtime';
+import React from 'react';
+
+import type { SearchRootEnvironment } from './search-root-environment-contract';
+import type { SearchRootSuggestionRuntime } from './search-root-core-runtime-contract';
 import type { SearchRootSessionRuntime } from './use-search-root-session-runtime-contract';
-import type { SearchRootSuggestionRuntime } from './use-search-root-suggestion-runtime';
-import { useSearchRootResultsPublicationOwnerRuntime } from './use-search-root-results-publication-owner-runtime';
-import { useSearchRootSessionActionOwnerRuntime } from './use-search-root-session-action-owner-runtime';
+import type { SearchRootScaffoldRuntime } from './search-root-scaffold-runtime-contract';
+import type { SearchRootRequestLaneRuntime } from './search-root-request-lane-runtime-contract';
+import type { SearchRootPrimitivesRuntime } from './search-root-primitives-runtime-contract';
+import {
+  type SearchRootActionLanesRuntime,
+  type SearchRootProfileActionRuntime,
+} from './use-search-root-action-lanes-runtime-contract';
+import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
+import { useSearchRootForegroundActionRuntime } from './use-search-root-foreground-action-runtime';
+import { useSearchRootResultsActionRuntime } from './use-search-root-results-action-runtime';
 
 type UseSearchRootActionLanesRuntimeArgs = Pick<
-  UseSearchRootRuntimeArgs,
-  | 'insets'
-  | 'isSignedIn'
-  | 'userLocation'
-  | 'userLocationRef'
-  | 'navigation'
-  | 'routeSearchIntent'
+  SearchRootEnvironment,
   | 'activeMainIntent'
   | 'consumeActiveMainIntent'
+  | 'navigation'
+  | 'routeSearchIntent'
+  | 'userLocation'
 > & {
-  rootSessionRuntime: SearchRootSessionRuntime;
   rootPrimitivesRuntime: SearchRootPrimitivesRuntime;
-  rootSuggestionRuntime: SearchRootSuggestionRuntime;
+  rootSessionRuntime: SearchRootSessionRuntime;
+  rootSuggestionRuntime: Pick<
+    SearchRootSuggestionRuntime,
+    | 'isSuggestionPanelVisible'
+    | 'isSuggestionScreenActive'
+    | 'beginSubmitTransition'
+    | 'beginSuggestionCloseHold'
+    | 'resetSearchHeaderFocusProgress'
+    | 'resetSubmitTransitionHold'
+    | 'setIsSuggestionLayoutWarm'
+    | 'setSearchTransitionVariant'
+  >;
   rootScaffoldRuntime: SearchRootScaffoldRuntime;
   requestLaneRuntime: SearchRootRequestLaneRuntime;
-};
-
-export type SearchRootActionLanesRuntime = SearchRootActionLanes & {
-  pendingMarkerOpenAnimationFrameRef: SearchRootProfileActionRuntime['pendingMarkerOpenAnimationFrameRef'];
-  restaurantSelectionModel: SearchRootProfileActionRuntime['restaurantSelectionModel'];
+  profileActionRuntime: SearchRootProfileActionRuntime;
+  lastAutoOpenKeyRef: React.MutableRefObject<string | null>;
 };
 
 export const useSearchRootActionLanesRuntime = ({
-  insets,
-  isSignedIn,
-  userLocation,
-  userLocationRef,
-  navigation,
-  routeSearchIntent,
   activeMainIntent,
   consumeActiveMainIntent,
-  rootSessionRuntime,
+  navigation,
+  routeSearchIntent,
+  userLocation,
   rootPrimitivesRuntime,
+  rootSessionRuntime,
   rootSuggestionRuntime,
   rootScaffoldRuntime,
   requestLaneRuntime,
+  profileActionRuntime,
+  lastAutoOpenKeyRef,
 }: UseSearchRootActionLanesRuntimeArgs): SearchRootActionLanesRuntime => {
-  const { resetResultsListScrollProgressRef } = requestLaneRuntime;
+  const {
+    requestPresentationFlowRuntime: {
+      requestPresentationRuntime: { resultsPresentationOwner },
+    },
+  } = requestLaneRuntime;
+  const { profileOwner } = profileActionRuntime;
+  const { preparedResultsSnapshotKey } = resultsPresentationOwner;
 
-  const sessionActionOwnerRuntime = useSearchRootSessionActionOwnerRuntime({
-    insets,
-    isSignedIn,
-    userLocation,
-    userLocationRef,
-    navigation,
-    routeSearchIntent,
+  const foregroundActionRuntime = useSearchRootForegroundActionRuntime({
     activeMainIntent,
     consumeActiveMainIntent,
-    rootSessionRuntime,
+    navigation,
+    routeSearchIntent,
+    userLocation,
     rootPrimitivesRuntime,
+    rootSessionRuntime,
     rootSuggestionRuntime,
     rootScaffoldRuntime,
     requestLaneRuntime,
+    profileActionRuntime,
+    lastAutoOpenKeyRef,
   });
-  const { sessionActionRuntime, pendingMarkerOpenAnimationFrameRef, restaurantSelectionModel } =
-    sessionActionOwnerRuntime;
 
-  const { resultsSheetInteractionModel, presentationState } =
-    useSearchRootResultsPublicationOwnerRuntime({
-      sessionActionOwnerRuntime,
-      rootSessionRuntime,
-      rootPrimitivesRuntime,
-      rootSuggestionRuntime,
-      rootScaffoldRuntime,
-      resetResultsListScrollProgressRef,
+  const resultsActionRuntime = useSearchRootResultsActionRuntime({
+    rootPrimitivesRuntime,
+    rootSessionRuntime,
+    rootSuggestionRuntime,
+    rootScaffoldRuntime,
+    requestLaneRuntime,
+    loadMoreResults: foregroundActionRuntime.submitRuntimeResult.loadMoreResults,
+    searchMode: rootSessionRuntime.runtimeFlags.searchMode,
+    isSearchLoading: rootSessionRuntime.runtimeFlags.isSearchLoading,
+    isLoadingMore: rootSessionRuntime.resultsArrivalState.isLoadingMore,
+    canLoadMore: rootSessionRuntime.resultsArrivalState.canLoadMore,
+    currentPage: rootSessionRuntime.resultsArrivalState.currentPage,
+    resultsPresentationOwner,
+    profileOwner,
+  });
+
+  const filterToggleDraftRuntimeState = useSearchRuntimeBusSelector(
+    rootSessionRuntime.runtimeOwner.searchRuntimeBus,
+    (state) => ({
+      toggleInteraction: state.toggleInteraction,
+      openNow: state.openNow,
+      votesFilterActive: state.votesFilterActive,
+    }),
+    (left, right) =>
+      left.toggleInteraction === right.toggleInteraction &&
+      left.openNow === right.openNow &&
+      left.votesFilterActive === right.votesFilterActive,
+    ['toggleInteraction', 'openNow', 'votesFilterActive'] as const
+  );
+
+  React.useEffect(() => {
+    const shouldPreserveInteractionDraft =
+      filterToggleDraftRuntimeState.toggleInteraction.kind != null;
+    rootSessionRuntime.runtimeOwner.searchRuntimeBus.publish({
+      priceButtonLabelText: foregroundActionRuntime.filterModalRuntime.priceButtonLabelText,
+      priceButtonIsActive: foregroundActionRuntime.filterModalRuntime.priceButtonIsActive,
+      openNow: shouldPreserveInteractionDraft
+        ? filterToggleDraftRuntimeState.openNow
+        : foregroundActionRuntime.filterModalRuntime.openNow,
+      votesFilterActive: shouldPreserveInteractionDraft
+        ? filterToggleDraftRuntimeState.votesFilterActive
+        : foregroundActionRuntime.filterModalRuntime.votesFilterActive,
+      isPriceSelectorVisible: foregroundActionRuntime.filterModalRuntime.isPriceSelectorVisible,
+      shouldRetrySearchOnReconnect:
+        foregroundActionRuntime.foregroundInteractionRuntime.shouldRetrySearchOnReconnect,
+      hasSystemStatusBanner: rootSessionRuntime.requestStatusRuntime.hasSystemStatusBanner,
     });
+  }, [
+    filterToggleDraftRuntimeState,
+    foregroundActionRuntime.filterModalRuntime.isPriceSelectorVisible,
+    foregroundActionRuntime.filterModalRuntime.openNow,
+    foregroundActionRuntime.filterModalRuntime.priceButtonIsActive,
+    foregroundActionRuntime.filterModalRuntime.priceButtonLabelText,
+    foregroundActionRuntime.filterModalRuntime.votesFilterActive,
+    foregroundActionRuntime.foregroundInteractionRuntime.shouldRetrySearchOnReconnect,
+    rootSessionRuntime.requestStatusRuntime.hasSystemStatusBanner,
+    rootSessionRuntime.runtimeOwner.searchRuntimeBus,
+  ]);
+
+  React.useEffect(() => {
+    rootSessionRuntime.runtimeOwner.searchRuntimeBus.publish({
+      hydrationOperationId: rootSessionRuntime.runtimeFlags.hydrationOperationId,
+    });
+  }, [
+    rootSessionRuntime.runtimeFlags.hydrationOperationId,
+    rootSessionRuntime.runtimeOwner.searchRuntimeBus,
+  ]);
+
+  React.useEffect(() => {
+    const nextPreparedSnapshotKey =
+      profileOwner.profileViewState.presentation.preparedSnapshotKey ?? preparedResultsSnapshotKey;
+    rootSessionRuntime.runtimeOwner.searchRuntimeBus.publish({
+      preparedPresentationSnapshotKey: nextPreparedSnapshotKey,
+    });
+  }, [
+    preparedResultsSnapshotKey,
+    profileOwner.profileViewState.presentation.preparedSnapshotKey,
+    rootSessionRuntime.runtimeOwner.searchRuntimeBus,
+  ]);
 
   return {
-    sessionActionRuntime,
-    resultsSheetInteractionModel,
-    presentationState,
-    pendingMarkerOpenAnimationFrameRef,
-    restaurantSelectionModel,
+    profileActionRuntime,
+    foregroundActionRuntime,
+    resultsActionRuntime,
   };
 };

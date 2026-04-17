@@ -6,6 +6,7 @@ import { useSearchRouteOverlayCommandState } from './useSearchRouteOverlayComman
 import { useSearchRouteOverlayDockedPollsRestoreRuntime } from './useSearchRouteOverlayDockedPollsRestoreRuntime';
 import { useSearchRouteOverlayResultsUiResetRuntime } from './useSearchRouteOverlayResultsUiResetRuntime';
 import { useSearchRouteOverlaySaveSheetRuntime } from './useSearchRouteOverlaySaveSheetRuntime';
+import { useSearchRouteOverlayTransitionController } from './useSearchRouteOverlayTransitionController';
 
 type UseSearchRouteOverlayCommandRuntimeArgs = {
   hasUserSharedSnap: boolean;
@@ -18,6 +19,7 @@ export const useSearchRouteOverlayCommandRuntime = ({
 }: UseSearchRouteOverlayCommandRuntimeArgs) => {
   const commandState = useSearchRouteOverlayCommandState();
   const commandActions = useSearchRouteOverlayCommandActions();
+  const transitionController = useSearchRouteOverlayTransitionController();
 
   const { restoreDockedPolls } = useSearchRouteOverlayDockedPollsRestoreRuntime({
     pollsSheetSnap: commandState.pollsSheetSnap,
@@ -34,7 +36,7 @@ export const useSearchRouteOverlayCommandRuntime = ({
 
   const { handleCloseResultsUiReset } = useSearchRouteOverlayResultsUiResetRuntime({
     requestSearchHeaderActionFollowCollapse: commandActions.requestSearchHeaderActionFollowCollapse,
-    setIsNavRestorePending: commandActions.setIsNavRestorePending,
+    transitionController,
     setPollsHeaderActionAnimationToken: commandActions.setPollsHeaderActionAnimationToken,
   });
 
@@ -42,10 +44,18 @@ export const useSearchRouteOverlayCommandRuntime = ({
     () => ({
       commandState,
       commandActions,
+      transitionController,
       restoreDockedPolls,
       handleCloseResultsUiReset,
       ...saveSheetRuntime,
     }),
-    [commandActions, commandState, handleCloseResultsUiReset, restoreDockedPolls, saveSheetRuntime]
+    [
+      commandActions,
+      commandState,
+      handleCloseResultsUiReset,
+      restoreDockedPolls,
+      saveSheetRuntime,
+      transitionController,
+    ]
   );
 };

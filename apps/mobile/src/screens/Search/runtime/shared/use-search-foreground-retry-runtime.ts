@@ -1,21 +1,9 @@
 import React from 'react';
 
 import type {
+  SearchForegroundRetryRuntimeArgs,
   SearchForegroundInteractionRetryRuntime,
-  UseSearchForegroundInteractionRuntimeArgs,
 } from './use-search-foreground-interaction-runtime-contract';
-
-type UseSearchForegroundRetryRuntimeArgs = Pick<
-  UseSearchForegroundInteractionRuntimeArgs,
-  | 'submitRuntime'
-  | 'query'
-  | 'submittedQuery'
-  | 'hasResults'
-  | 'isOffline'
-  | 'isSearchLoading'
-  | 'isLoadingMore'
-  | 'isSearchSessionActive'
->;
 
 export const useSearchForegroundRetryRuntime = ({
   submitRuntime,
@@ -26,7 +14,7 @@ export const useSearchForegroundRetryRuntime = ({
   isSearchLoading,
   isLoadingMore,
   isSearchSessionActive,
-}: UseSearchForegroundRetryRuntimeArgs): SearchForegroundInteractionRetryRuntime => {
+}: SearchForegroundRetryRuntimeArgs): SearchForegroundInteractionRetryRuntime => {
   const { submitSearch } = submitRuntime;
   const [shouldRetrySearchOnReconnect, setShouldRetrySearchOnReconnect] = React.useState(false);
 

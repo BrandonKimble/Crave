@@ -1,42 +1,27 @@
 import React from 'react';
 
-import type {
-  SearchRouteOverlayActiveSheetSpec,
-  SearchRouteOverlaySheetVisibilityState,
-} from './searchResolvedRouteHostModelContract';
-import type { OverlayContentSpec, OverlayKey } from './types';
-
-type FrozenOverlaySheetProps = {
-  overlaySheetKey: OverlayKey | null;
-  overlaySheetSpec: OverlayContentSpec<unknown> | null;
-  overlaySheetVisible: boolean;
-  overlaySheetApplyNavBarCutout: boolean;
-};
+import type { SearchRouteResolvedHostInput } from './searchResolvedRouteHostModelContract';
 
 type UseSearchRouteFrozenOverlaySheetPropsArgs = {
-  shouldFreezeOverlaySheetForCloseHandoff: boolean;
-  activeSheetSpec: SearchRouteOverlayActiveSheetSpec;
-  visibilityState: SearchRouteOverlaySheetVisibilityState;
+  shouldFreezeOverlaySheetForRender: boolean;
+  nextOverlaySheetProps: SearchRouteResolvedHostInput;
 };
 
 export const useSearchRouteFrozenOverlaySheetProps = ({
-  shouldFreezeOverlaySheetForCloseHandoff,
-  activeSheetSpec,
-  visibilityState,
-}: UseSearchRouteFrozenOverlaySheetPropsArgs): FrozenOverlaySheetProps => {
-  const frozenOverlaySheetPropsRef = React.useRef<FrozenOverlaySheetProps | null>(null);
-  const nextOverlaySheetProps = {
-    overlaySheetKey: activeSheetSpec.overlaySheetKey,
-    overlaySheetSpec: visibilityState.overlaySheetSpec,
-    overlaySheetVisible: visibilityState.overlaySheetVisible,
-    overlaySheetApplyNavBarCutout: visibilityState.overlaySheetApplyNavBarCutout,
-  };
+  shouldFreezeOverlaySheetForRender,
+  nextOverlaySheetProps,
+}: UseSearchRouteFrozenOverlaySheetPropsArgs): SearchRouteResolvedHostInput => {
+  const frozenOverlaySheetPropsRef = React.useRef<SearchRouteResolvedHostInput | null>(null);
 
-  if (!shouldFreezeOverlaySheetForCloseHandoff || !frozenOverlaySheetPropsRef.current) {
+  if (
+    !shouldFreezeOverlaySheetForRender ||
+    !frozenOverlaySheetPropsRef.current ||
+    frozenOverlaySheetPropsRef.current.activeSceneKey !== nextOverlaySheetProps.activeSceneKey
+  ) {
     frozenOverlaySheetPropsRef.current = nextOverlaySheetProps;
   }
 
-  return shouldFreezeOverlaySheetForCloseHandoff && frozenOverlaySheetPropsRef.current
+  return shouldFreezeOverlaySheetForRender && frozenOverlaySheetPropsRef.current
     ? frozenOverlaySheetPropsRef.current
     : nextOverlaySheetProps;
 };

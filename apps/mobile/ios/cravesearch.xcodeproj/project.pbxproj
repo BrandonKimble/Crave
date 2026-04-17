@@ -13,12 +13,14 @@
 		13B07FC11A68108700A75B9A /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB71A68108700A75B9A /* main.m */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
 		79D5BFFE536A4B67ADCB2910 /* UIFrameSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9E31D8C33BA44E4BABA8D1A /* UIFrameSampler.swift */; };
+		7CD79B4E3899C6FFFC6803B8 /* CraveRestaurantPanelSnapshotView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30ECF73B64305C29EC1C9A77 /* CraveRestaurantPanelSnapshotView.swift */; };
 		96905EF65AED1B983A6B3ABC /* libPods-cravesearch.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 58EEBF8E8E6FB1BC6CAF49B5 /* libPods-cravesearch.a */; };
 		A1B2C3D4E5F60718293A4B5C /* UIFrameSamplerBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* UIFrameSamplerBridge.m */; };
 		A52DB86C44D54A8A900CF38D /* SearchMapRenderController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CF57C818A534B2AB7E4A2D5 /* SearchMapRenderController.swift */; };
-		B45E1D9037B14A6E8C2F11A7 /* ProfilePresentationTransactionExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A61D1BA369448428AAB54D7 /* ProfilePresentationTransactionExecutor.swift */; };
 		B18059E884C0ABDD17F3DC3D /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC715A2D49A985799AEE119 /* ExpoModulesProvider.swift */; };
+		B45E1D9037B14A6E8C2F11A7 /* ProfilePresentationTransactionExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A61D1BA369448428AAB54D7 /* ProfilePresentationTransactionExecutor.swift */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
+		BEBD14DE1E7307331DCE07D9 /* CraveBottomSheetHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84FAA3D9D0A1E87016273DAB /* CraveBottomSheetHostView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,16 +29,18 @@
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = cravesearch/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = cravesearch/Info.plist; sourceTree = "<group>"; };
 		13B07FB71A68108700A75B9A /* main.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = main.m; path = cravesearch/main.m; sourceTree = "<group>"; };
+		1CF57C818A534B2AB7E4A2D5 /* SearchMapRenderController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = SearchMapRenderController.swift; path = cravesearch/SearchMapRenderController.swift; sourceTree = "<group>"; };
 		1EDC36F3559E128237E8523D /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = cravesearch/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		228C4788C25B4AFBABD14DAE /* cravesearch-Bridging-Header.h */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.c.h; name = "cravesearch-Bridging-Header.h"; path = "cravesearch/cravesearch-Bridging-Header.h"; sourceTree = "<group>"; };
+		30ECF73B64305C29EC1C9A77 /* CraveRestaurantPanelSnapshotView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = cravesearch/CraveRestaurantPanelSnapshotView.swift; sourceTree = "<group>"; };
+		4A61D1BA369448428AAB54D7 /* ProfilePresentationTransactionExecutor.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = ProfilePresentationTransactionExecutor.swift; path = cravesearch/ProfilePresentationTransactionExecutor.swift; sourceTree = "<group>"; };
 		58EEBF8E8E6FB1BC6CAF49B5 /* libPods-cravesearch.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-cravesearch.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		6C2E3173556A471DD304B334 /* Pods-cravesearch.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-cravesearch.debug.xcconfig"; path = "Target Support Files/Pods-cravesearch/Pods-cravesearch.debug.xcconfig"; sourceTree = "<group>"; };
 		7A4D352CD337FB3A3BF06240 /* Pods-cravesearch.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-cravesearch.release.xcconfig"; path = "Target Support Files/Pods-cravesearch/Pods-cravesearch.release.xcconfig"; sourceTree = "<group>"; };
-		4A61D1BA369448428AAB54D7 /* ProfilePresentationTransactionExecutor.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = ProfilePresentationTransactionExecutor.swift; path = cravesearch/ProfilePresentationTransactionExecutor.swift; sourceTree = "<group>"; };
+		84FAA3D9D0A1E87016273DAB /* CraveBottomSheetHostView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = cravesearch/CraveBottomSheetHostView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B5D /* UIFrameSamplerBridge.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = cravesearch/UIFrameSamplerBridge.m; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = cravesearch/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
-		1CF57C818A534B2AB7E4A2D5 /* SearchMapRenderController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = SearchMapRenderController.swift; path = cravesearch/SearchMapRenderController.swift; sourceTree = "<group>"; };
 		C9E31D8C33BA44E4BABA8D1A /* UIFrameSampler.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = UIFrameSampler.swift; path = cravesearch/UIFrameSampler.swift; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		FAC715A2D49A985799AEE119 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-cravesearch/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
@@ -69,6 +73,8 @@
 				4A61D1BA369448428AAB54D7 /* ProfilePresentationTransactionExecutor.swift */,
 				228C4788C25B4AFBABD14DAE /* cravesearch-Bridging-Header.h */,
 				1EDC36F3559E128237E8523D /* PrivacyInfo.xcprivacy */,
+				84FAA3D9D0A1E87016273DAB /* CraveBottomSheetHostView.swift */,
+				30ECF73B64305C29EC1C9A77 /* CraveRestaurantPanelSnapshotView.swift */,
 			);
 			name = cravesearch;
 			sourceTree = "<group>";
@@ -387,6 +393,8 @@
 				79D5BFFE536A4B67ADCB2910 /* UIFrameSampler.swift in Sources */,
 				A52DB86C44D54A8A900CF38D /* SearchMapRenderController.swift in Sources */,
 				B45E1D9037B14A6E8C2F11A7 /* ProfilePresentationTransactionExecutor.swift in Sources */,
+				BEBD14DE1E7307331DCE07D9 /* CraveBottomSheetHostView.swift in Sources */,
+				7CD79B4E3899C6FFFC6803B8 /* CraveRestaurantPanelSnapshotView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

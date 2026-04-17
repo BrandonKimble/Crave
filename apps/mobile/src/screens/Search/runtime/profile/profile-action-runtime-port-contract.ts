@@ -14,6 +14,8 @@ import type {
   SearchProfileSource,
 } from './profile-action-model-contract';
 
+export type { ProfileForegroundUiRestoreState } from './profile-transition-state-contract';
+
 export type ProfileActionExecutionPorts = {
   prepareForegroundUiForProfileOpen: (options?: {
     captureSaveSheetState?: boolean;
@@ -41,7 +43,7 @@ export type ProfileActionExecutionPorts = {
   closePreparedProfilePresentation: (restaurantId: string | null) => void;
   focusPreparedProfileCamera: (targetCamera: CameraSnapshot) => void;
   seedRestaurantProfile: (restaurant: RestaurantResult, queryLabel: string) => void;
-  hydrateRestaurantProfileById: (restaurantId: string) => void;
+  hydrateRestaurantProfileById: (restaurantId: string, marketKey?: string | null) => void;
   deferRecentlyViewedTrack: (restaurantId: string, restaurantName: string) => void;
   recordRestaurantView: (restaurantId: string, source: SearchProfileSource) => Promise<void>;
   prepareForProfileClose: () => void;
@@ -50,7 +52,7 @@ export type ProfileActionExecutionPorts = {
 export type ProfileRefreshSelectionExecutionPorts = {
   seedRestaurantProfile: (restaurant: RestaurantResult, queryLabel: string) => void;
   focusRestaurantProfileCamera: (restaurant: RestaurantResult, source: SearchProfileSource) => void;
-  hydrateRestaurantProfileById: (restaurantId: string) => void;
+  hydrateRestaurantProfileById: (restaurantId: string, marketKey?: string | null) => void;
 };
 
 export type ProfileAutoOpenActionExecutionPorts = {

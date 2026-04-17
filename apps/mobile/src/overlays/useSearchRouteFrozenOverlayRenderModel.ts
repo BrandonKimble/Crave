@@ -1,61 +1,62 @@
 import type { SearchRouteHostVisualState } from './searchRouteHostVisualState';
 import type {
-  SearchRouteOverlayActiveSheetSpec,
   ResolvedSearchRouteHostModel,
-  SearchRouteOverlaySheetVisibilityState,
+  SearchRouteResolvedHostInput,
 } from './searchResolvedRouteHostModelContract';
 import { EMPTY_SEARCH_ROUTE_VISUAL_STATE } from './searchResolvedRouteHostModelContract';
 import { useSearchRouteFrozenOverlaySheetProps } from './useSearchRouteFrozenOverlaySheetProps';
 import { useSearchRouteOverlayHeaderActionMode } from './useSearchRouteOverlayHeaderActionMode';
+import type { OverlaySceneRegistrySpec } from './types';
 
 type UseSearchRouteFrozenOverlayRenderModelArgs = {
   publishedVisualState: SearchRouteHostVisualState | null;
   searchHeaderActionResetToken: number;
+  shouldFreezeOverlaySheetForRender: boolean;
   shouldFreezeOverlaySheetForCloseHandoff: boolean;
   shouldFreezeOverlayHeaderActionForRunOne: boolean;
-  activeSheetSpec: SearchRouteOverlayActiveSheetSpec;
-  visibilityState: SearchRouteOverlaySheetVisibilityState;
+  hostRenderInput: SearchRouteResolvedHostInput;
 };
 
 export const useSearchRouteFrozenOverlayRenderModel = ({
   publishedVisualState,
   searchHeaderActionResetToken,
+  shouldFreezeOverlaySheetForRender,
   shouldFreezeOverlaySheetForCloseHandoff,
   shouldFreezeOverlayHeaderActionForRunOne,
-  activeSheetSpec,
-  visibilityState,
+  hostRenderInput,
 }: UseSearchRouteFrozenOverlayRenderModelArgs): ResolvedSearchRouteHostModel | null => {
   const visualState = publishedVisualState ?? EMPTY_SEARCH_ROUTE_VISUAL_STATE;
   const overlaySheetPropsForRender = useSearchRouteFrozenOverlaySheetProps({
-    shouldFreezeOverlaySheetForCloseHandoff,
-    activeSheetSpec,
-    visibilityState,
+    shouldFreezeOverlaySheetForRender,
+    nextOverlaySheetProps: hostRenderInput,
   });
+  const activeSceneKey = overlaySheetPropsForRender.activeSceneKey;
+  const activeShellSpec = overlaySheetPropsForRender.activeShellSpec;
   const overlayHeaderActionModeForRender = useSearchRouteOverlayHeaderActionMode({
     searchHeaderActionResetToken,
     shouldFreezeOverlaySheetForCloseHandoff,
     shouldFreezeOverlayHeaderActionForRunOne,
-    overlaySheetKey: activeSheetSpec.overlaySheetKey,
+    overlaySheetKey: activeSceneKey,
   });
 
-  if (
-    !publishedVisualState ||
-    !overlaySheetPropsForRender.overlaySheetSpec ||
-    !overlaySheetPropsForRender.overlaySheetKey
-  ) {
+  if (!publishedVisualState || !activeShellSpec || !activeSceneKey) {
     return null;
   }
 
+  const activeSceneSpec: OverlaySceneRegistrySpec = {
+    ...activeShellSpec,
+    surfaceKind: 'scene-registry',
+    activeSceneKey,
+    sceneKeys: overlaySheetPropsForRender.sceneKeys,
+  };
+
   return {
-    overlaySheetKey: overlaySheetPropsForRender.overlaySheetKey,
-    overlaySheetSpec: overlaySheetPropsForRender.overlaySheetSpec,
+    activeSceneKey,
+    activeSceneSpec,
     overlaySheetVisible: overlaySheetPropsForRender.overlaySheetVisible,
     overlaySheetApplyNavBarCutout: overlaySheetPropsForRender.overlaySheetApplyNavBarCutout,
     overlayHeaderActionMode: overlayHeaderActionModeForRender,
-    searchInteractionRef:
-      overlaySheetPropsForRender.overlaySheetKey === 'search'
-        ? activeSheetSpec.searchInteractionRef
-        : null,
+    searchInteractionRef: overlaySheetPropsForRender.searchInteractionRef,
     visualState,
   };
 };

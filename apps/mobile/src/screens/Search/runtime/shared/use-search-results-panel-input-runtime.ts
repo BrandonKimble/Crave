@@ -1,5 +1,6 @@
 import React from 'react';
 
+import type { SearchRuntimeBus } from './search-runtime-bus';
 import type {
   SearchResultsPanelDataRuntime,
   UseSearchResultsPanelDataRuntimeArgs,
@@ -12,7 +13,7 @@ import { useSearchResultsPanelResultsRuntimeState } from './use-search-results-p
 
 type UseSearchResultsPanelInputRuntimeArgs = Pick<
   UseSearchResultsPanelDataRuntimeArgs,
-  'resultsPresentationOwner'
+  'searchRuntimeBus' | 'resultsPresentationOwner'
 >;
 
 export type SearchResultsPanelInputRuntime = Pick<
@@ -35,18 +36,16 @@ export type SearchResultsPanelInputRuntime = Pick<
 > & {
   results: SearchResultsPanelDataRuntime['resolvedResults'];
   pendingTabSwitchTab: 'dishes' | 'restaurants' | null;
-  rankButtonLabelText: string;
-  rankButtonIsActive: boolean;
   priceButtonLabelText: string;
   priceButtonIsActive: boolean;
   openNow: boolean;
   votesFilterActive: boolean;
-  isRankSelectorVisible: boolean;
   isPriceSelectorVisible: boolean;
   runtimeHydratedResultsKey: string | null;
 };
 
 export const useSearchResultsPanelInputRuntime = ({
+  searchRuntimeBus,
   resultsPresentationOwner,
 }: UseSearchResultsPanelInputRuntimeArgs): SearchResultsPanelInputRuntime => {
   const {
@@ -65,26 +64,23 @@ export const useSearchResultsPanelInputRuntime = ({
     isSearchLoading,
     isLoadingMore,
     submittedQuery,
-  } = useSearchResultsPanelResultsRuntimeState();
+  } = useSearchResultsPanelResultsRuntimeState(searchRuntimeBus);
   const {
-    rankButtonLabelText,
-    rankButtonIsActive,
     priceButtonLabelText,
     priceButtonIsActive,
     openNow,
     votesFilterActive,
-    isRankSelectorVisible,
     isPriceSelectorVisible,
-  } = useSearchResultsPanelFiltersRuntimeState();
+  } = useSearchResultsPanelFiltersRuntimeState(searchRuntimeBus);
   const {
     runOneCommitSpanPressureActive,
     hydrationOperationId,
     allowHydrationFinalizeCommit,
     runtimeHydratedResultsKey,
     isRunOneChromeDeferred,
-  } = useSearchResultsPanelHydrationRuntimeState();
+  } = useSearchResultsPanelHydrationRuntimeState(searchRuntimeBus);
   const { pendingPresentationIntentId, renderPolicy } =
-    useSearchResultsPanelPresentationRuntimeState();
+    useSearchResultsPanelPresentationRuntimeState(searchRuntimeBus);
   const { activeOverlayKey } = useSearchResultsPanelOverlayRuntime();
 
   return React.useMemo(
@@ -106,13 +102,10 @@ export const useSearchResultsPanelInputRuntime = ({
       isRunOneChromeDeferred,
       hydrationOperationId,
       allowHydrationFinalizeCommit,
-      rankButtonLabelText,
-      rankButtonIsActive,
       priceButtonLabelText,
       priceButtonIsActive,
       openNow,
       votesFilterActive,
-      isRankSelectorVisible,
       isPriceSelectorVisible,
       runtimeHydratedResultsKey,
     }),
@@ -125,7 +118,6 @@ export const useSearchResultsPanelInputRuntime = ({
       hydrationOperationId,
       isLoadingMore,
       isPriceSelectorVisible,
-      isRankSelectorVisible,
       isRunOneChromeDeferred,
       isSearchLoading,
       notifyToggleInteractionFrostReady,
@@ -134,8 +126,6 @@ export const useSearchResultsPanelInputRuntime = ({
       pendingTabSwitchTab,
       priceButtonIsActive,
       priceButtonLabelText,
-      rankButtonIsActive,
-      rankButtonLabelText,
       renderPolicy,
       results,
       runOneCommitSpanPressureActive,

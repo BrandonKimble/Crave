@@ -106,7 +106,7 @@ export class KeywordSearchOrchestratorService
     options: {
       sortPlan?: KeywordSearchSortPlan[];
       source?: KeywordSearchJobData['source'] | 'manual';
-      collectionCoverageKey?: string;
+      collectableMarketKey?: string;
       safeIntervalDays?: number;
     } = {},
   ): Promise<KeywordSearchExecutionResult> {
@@ -118,8 +118,8 @@ export class KeywordSearchOrchestratorService
       const startTime = Date.now();
       const source = options.source ?? 'manual';
       const dryRun = this.keywordCollectionDryRunEnabled();
-      const collectionCoverageKey =
-        options.collectionCoverageKey ?? subreddit.trim().toLowerCase();
+      const collectableMarketKey =
+        options.collectableMarketKey ?? subreddit.trim().toLowerCase();
       const safeIntervalDays =
         typeof options.safeIntervalDays === 'number' &&
         Number.isFinite(options.safeIntervalDays) &&
@@ -137,7 +137,7 @@ export class KeywordSearchOrchestratorService
         subreddit,
         source,
         dryRun,
-        collectionCoverageKey,
+        collectableMarketKey,
         safeIntervalDays,
         requestedTermCount: terms.length,
         selectedTermCount: termNames.length,
@@ -500,7 +500,7 @@ export class KeywordSearchOrchestratorService
                   : 'deferred';
 
           await this.keywordAttemptHistory.recordAttempt({
-            collectionCoverageKey,
+            collectableMarketKey,
             normalizedTerm: entry.normalizedTerm,
             outcome: attemptOutcome,
             safeIntervalDays,
@@ -1401,7 +1401,7 @@ export class KeywordSearchOrchestratorService
         await this.enqueueKeywordSearchJob({
           cycleId: CorrelationUtils.generateCorrelationId(),
           subreddit: schedule.subreddit,
-          collectionCoverageKey: schedule.collectionCoverageKey,
+          collectableMarketKey: schedule.collectableMarketKey,
           safeIntervalDays: schedule.safeIntervalDays,
           sortPlan: schedule.sortPlan,
           terms: schedule.terms,
@@ -1416,7 +1416,7 @@ export class KeywordSearchOrchestratorService
 
       for (const candidate of hotSpikeCandidates) {
         const jobId =
-          `hot_spike-${candidate.collectionCoverageKey}:${candidate.normalizedTerm}`
+          `hot_spike-${candidate.collectableMarketKey}:${candidate.normalizedTerm}`
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, '-')
             .replace(/^-+|-+$/g, '')
@@ -1426,7 +1426,7 @@ export class KeywordSearchOrchestratorService
           jobId,
           cycleId: CorrelationUtils.generateCorrelationId(),
           subreddit: candidate.subreddit,
-          collectionCoverageKey: candidate.collectionCoverageKey,
+          collectableMarketKey: candidate.collectableMarketKey,
           safeIntervalDays: candidate.safeIntervalDays,
           sortPlan: candidate.sortPlan,
           terms: [
@@ -1542,7 +1542,7 @@ export class KeywordSearchOrchestratorService
               status: s.status,
               nextRun: s.nextRun,
               lastRun: s.lastRun,
-              collectionCoverageKey: s.collectionCoverageKey,
+              collectableMarketKey: s.collectableMarketKey,
               termCount: s.terms.length,
             };
             return acc;
@@ -1579,7 +1579,7 @@ export class KeywordSearchOrchestratorService
       cycleId,
       correlationId: cycleId,
       subreddit: data.subreddit,
-      collectionCoverageKey: data.collectionCoverageKey ?? null,
+      collectableMarketKey: data.collectableMarketKey ?? null,
       source: data.source,
       termCount: data.terms.length,
       sortsPlanned: data.sortPlan?.map((entry) => entry.sort) ?? undefined,
@@ -1822,7 +1822,7 @@ export interface KeywordSearchJobData {
   jobId?: string;
   cycleId?: string;
   subreddit: string;
-  collectionCoverageKey?: string;
+  collectableMarketKey?: string;
   safeIntervalDays?: number;
   sortPlan?: KeywordSearchSortPlan[];
   terms: KeywordSearchTerm[];

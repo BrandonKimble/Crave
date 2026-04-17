@@ -6,7 +6,7 @@ SELECT c.food_id,
        c.restaurant_id,
        r.name AS restaurant_name,
        c.last_mentioned_at
-FROM core_connections c
+FROM core_restaurant_items c
 JOIN core_entities f ON f.entity_id = c.food_id
 JOIN core_entities r ON r.entity_id = c.restaurant_id
 ORDER BY c.last_mentioned_at DESC

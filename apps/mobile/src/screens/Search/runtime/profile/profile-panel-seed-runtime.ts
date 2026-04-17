@@ -32,7 +32,7 @@ export const useProfilePanelSeedRuntime = ({
   const seedRestaurantProfile = React.useCallback(
     (restaurant: RestaurantResult, queryLabel: string) => {
       const restaurantId = restaurant.restaurantId;
-      const cachedProfile = getCachedRestaurantProfile(restaurantId);
+      const cachedProfile = getCachedRestaurantProfile(restaurantId, restaurant.marketKey ?? null);
 
       resetPreparedProfileDismissHandling(profileControllerStateRef.current.runtime.transition);
 

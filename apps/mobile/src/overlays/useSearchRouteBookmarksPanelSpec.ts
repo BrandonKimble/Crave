@@ -2,77 +2,82 @@ import React from 'react';
 import { unstable_batchedUpdates } from 'react-native';
 
 import { requestSearchRouteDockedRestore } from './searchRouteOverlayCommandStore';
-import type {
-  SearchRouteOverlayCommandActions,
-  SearchRouteOverlayCommandState,
-} from './searchRouteOverlayCommandRuntimeContract';
 import { appOverlayRouteController } from './useAppOverlayRouteController';
-import type { SearchRouteTabPanelRuntimeModel } from './useSearchRouteTabPanelRuntime';
-import { useBookmarksPanelSpec } from './panels/BookmarksPanel';
-import type { OverlayContentSpec } from './types';
+import type { SearchRouteOverlayTransitionController } from './useSearchRouteOverlayTransitionController';
+import type { SearchRouteHostVisualState } from './searchRouteHostVisualState';
+import { useBookmarksSceneDefinition } from './panels/BookmarksPanel';
 import type { OverlayKey, OverlaySheetSnap, OverlaySheetSnapRequest } from './types';
+import type { SearchRouteSceneDefinition } from './searchOverlayRouteHostContract';
 
 type UseSearchRouteBookmarksPanelSpecArgs = {
+  mounted?: boolean;
+  visible: boolean;
   rootOverlayKey: OverlayKey;
-  tabPanelRuntime: SearchRouteTabPanelRuntimeModel;
-  commandState: SearchRouteOverlayCommandState;
-  commandActions: SearchRouteOverlayCommandActions;
+  navBarTop: SearchRouteHostVisualState['navBarTopForSnaps'];
+  searchBarTop: SearchRouteHostVisualState['searchBarTop'];
+  snapPoints: SearchRouteHostVisualState['snapPoints'];
+  tabOverlaySnapRequest: Exclude<OverlaySheetSnap, 'hidden'> | null;
+  setBookmarksSheetSnap: (next: React.SetStateAction<OverlaySheetSnap>) => void;
+  setTabOverlaySnapRequest: (
+    next: React.SetStateAction<Exclude<OverlaySheetSnap, 'hidden'> | null>
+  ) => void;
+  transitionController: SearchRouteOverlayTransitionController;
 };
 
 const buildShellSnapRequest = (
   snap: OverlaySheetSnap | null | undefined
 ): OverlaySheetSnapRequest | null => (snap ? { snap, token: null } : null);
 
-export const useSearchRouteBookmarksPanelSpec = ({
+export const useSearchRouteBookmarksSceneDefinition = ({
+  mounted,
+  visible,
   rootOverlayKey,
-  tabPanelRuntime,
-  commandState,
-  commandActions,
-}: UseSearchRouteBookmarksPanelSpecArgs): OverlayContentSpec<unknown> | null => {
-  const handleBookmarksSnapStart = React.useCallback(
-    (snap: OverlaySheetSnap) => {
-      commandActions.setBookmarksSheetSnap(snap);
-    },
-    [commandActions]
-  );
+  navBarTop,
+  searchBarTop,
+  snapPoints,
+  tabOverlaySnapRequest,
+  setBookmarksSheetSnap,
+  setTabOverlaySnapRequest,
+  transitionController,
+}: UseSearchRouteBookmarksPanelSpecArgs): SearchRouteSceneDefinition => {
+  const tabOverlaySnapRequestRef = React.useRef(tabOverlaySnapRequest);
+  React.useEffect(() => {
+    tabOverlaySnapRequestRef.current = tabOverlaySnapRequest;
+  }, [tabOverlaySnapRequest]);
 
   const handleBookmarksSnapChange = React.useCallback(
     (snap: OverlaySheetSnap) => {
-      commandActions.setBookmarksSheetSnap(snap);
-      if (commandState.tabOverlaySnapRequest && commandState.tabOverlaySnapRequest === snap) {
-        commandActions.setTabOverlaySnapRequest(null);
+      setBookmarksSheetSnap(snap);
+      if (tabOverlaySnapRequestRef.current && tabOverlaySnapRequestRef.current === snap) {
+        setTabOverlaySnapRequest(null);
       }
       if (
         snap === 'hidden' &&
         rootOverlayKey === 'bookmarks' &&
-        !commandState.overlaySwitchInFlight
+        !transitionController.isOverlaySwitchInFlight()
       ) {
-        commandActions.setTabOverlaySnapRequest(null);
+        setTabOverlaySnapRequest(null);
         unstable_batchedUpdates(() => {
           requestSearchRouteDockedRestore({ snap: 'collapsed' });
           appOverlayRouteController.setRootRoute('search');
         });
       }
     },
-    [
-      commandActions,
-      commandState.overlaySwitchInFlight,
-      commandState.tabOverlaySnapRequest,
-      rootOverlayKey,
-    ]
+    [rootOverlayKey, setBookmarksSheetSnap, setTabOverlaySnapRequest, transitionController]
   );
 
-  const bookmarksPanelSpec = useBookmarksPanelSpec({
-    visible: tabPanelRuntime.showBookmarksOverlay,
-    navBarTop: tabPanelRuntime.navBarTop,
-    searchBarTop: tabPanelRuntime.searchBarTop,
-    snapPoints: tabPanelRuntime.snapPoints,
-    sheetY: tabPanelRuntime.sheetY,
-    headerActionProgress: tabPanelRuntime.headerActionProgress,
-    onSnapStart: handleBookmarksSnapStart,
-    onSnapChange: handleBookmarksSnapChange,
-    shellSnapRequest: buildShellSnapRequest(commandState.tabOverlaySnapRequest),
-  });
+  const activeShellSnapRequest = React.useMemo(
+    () => (visible ? buildShellSnapRequest(tabOverlaySnapRequest) : null),
+    [tabOverlaySnapRequest, visible]
+  );
 
-  return bookmarksPanelSpec;
+  return useBookmarksSceneDefinition({
+    mounted,
+    visible,
+    navBarTop,
+    searchBarTop,
+    snapPoints,
+    onSnapChange: handleBookmarksSnapChange,
+    shellSnapRequest: activeShellSnapRequest,
+  });
 };

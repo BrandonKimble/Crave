@@ -2,7 +2,7 @@ import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Entity, EntityType, Prisma, RestaurantLocation } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
-import * as stringSimilarity from 'string-similarity';
+import { parse as parseDomain } from 'tldts';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EntityRepository } from '../../repositories/entity.repository';
 import {
@@ -14,7 +14,7 @@ import {
 import { LoggerService } from '../../shared';
 import { AliasManagementService } from '../content-processing/entity-resolver/alias-management.service';
 import { RankScoreRefreshQueueService } from '../content-processing/rank-score/rank-score-refresh.service';
-import { CoverageKeyResolverService } from '../coverage-key/coverage-key-resolver.service';
+import { MarketRegistryService } from '../markets/market-registry.service';
 import { RestaurantEntityMergeService } from './restaurant-entity-merge.service';
 import { RestaurantCuisineExtractionQueueService } from './restaurant-cuisine-extraction-queue.service';
 import {
@@ -23,7 +23,6 @@ import {
 } from './google-place-type-attributes';
 
 const DEFAULT_COUNTRY = 'US';
-const DEFAULT_MIN_SCORE_THRESHOLD = 0.1;
 const PREFERRED_PLACE_TYPES = new Set([
   'acai_shop',
   'afghani_restaurant',
@@ -101,6 +100,17 @@ const GOOGLE_DAY_NAMES = [
 ] as const;
 const DEFAULT_ENRICHMENT_TX_TIMEOUT_MS = 15 * 60 * 1000;
 const DEFAULT_ENRICHMENT_TX_MAX_WAIT_MS = 30 * 1000;
+const GENERIC_WEBSITE_DOMAIN_DENYLIST = new Set([
+  'doordash.com',
+  'ubereats.com',
+  'grubhub.com',
+  'seamless.com',
+  'toasttab.com',
+  'toast.site',
+  'square.site',
+  'menufy.com',
+  'opentable.com',
+]);
 
 type GoogleDayName = (typeof GOOGLE_DAY_NAMES)[number];
 
@@ -299,7 +309,7 @@ interface NormalizedOpeningHours {
 
 interface MatchMetadata {
   query: string;
-  score: number;
+  score?: number;
   predictionDescription?: string;
   mainText?: string;
   secondaryText?: string;
@@ -360,7 +370,7 @@ interface EnrichmentSearchContext {
   city?: string;
   region?: string;
   country?: string;
-  locationBias?: { lat: number; lng: number };
+  locationBias?: { lat: number; lng: number; radiusMeters?: number };
 }
 
 interface PlaceCandidate {
@@ -374,13 +384,18 @@ interface PlaceCandidate {
 
 type RankedCandidate = {
   candidate: PlaceCandidate;
-  score: number;
+  score?: number;
+};
+
+type ResolvedPlaceMatch = {
+  place: GooglePlacesV1Place;
+  matchMetadata: MatchMetadata;
+  score?: number;
 };
 
 @Injectable()
 export class RestaurantLocationEnrichmentService {
   private readonly logger: LoggerService;
-  private readonly minScoreThreshold: number;
   private readonly transactionTimeoutMs: number;
   private readonly transactionMaxWaitMs: number;
 
@@ -390,7 +405,7 @@ export class RestaurantLocationEnrichmentService {
     private readonly googlePlacesService: GooglePlacesService,
     private readonly aliasManagementService: AliasManagementService,
     private readonly restaurantEntityMergeService: RestaurantEntityMergeService,
-    private readonly coverageKeyResolver: CoverageKeyResolverService,
+    private readonly marketRegistry: MarketRegistryService,
     private readonly rankScoreRefreshQueue: RankScoreRefreshQueueService,
     private readonly cuisineExtractionQueue: RestaurantCuisineExtractionQueueService,
     private readonly configService: ConfigService,
@@ -399,7 +414,6 @@ export class RestaurantLocationEnrichmentService {
     this.logger = loggerService.setContext(
       'RestaurantLocationEnrichmentService',
     );
-    this.minScoreThreshold = this.resolveMinScoreThreshold();
     this.transactionTimeoutMs = DEFAULT_ENRICHMENT_TX_TIMEOUT_MS;
     this.transactionMaxWaitMs = DEFAULT_ENRICHMENT_TX_MAX_WAIT_MS;
   }
@@ -487,12 +501,12 @@ export class RestaurantLocationEnrichmentService {
     city?: string;
     region?: string;
     country?: string;
-    locationBias?: { lat: number; lng: number };
+    locationBias?: { lat: number; lng: number; radiusMeters?: number };
     sessionToken?: string;
   }): Promise<{
     place: GooglePlacesV1Place;
     matchMetadata: MatchMetadata;
-    score: number;
+    score?: number;
   } | null> {
     const entity = {
       name: params.name,
@@ -528,7 +542,7 @@ export class RestaurantLocationEnrichmentService {
     const candidates = this.extractAutocompleteCandidates(
       autocomplete.suggestions,
     );
-    let ranked = this.rankCandidates(candidates, entity, searchContext);
+    let ranked = this.rankCandidates(candidates);
     let matchSource: 'autocomplete' | 'find_place' = 'autocomplete';
     let fallbackStatus: string | undefined;
 
@@ -554,7 +568,7 @@ export class RestaurantLocationEnrichmentService {
       }
     }
 
-    const best = this.selectQualifiedCandidate(ranked);
+    const best = this.selectQualifiedCandidate(ranked, entity);
     if (!best) {
       if (fallbackStatus) {
         this.logger.debug('Place match failed after fallback', {
@@ -581,7 +595,6 @@ export class RestaurantLocationEnrichmentService {
 
     const matchMetadata: MatchMetadata = {
       query: searchContext.query ?? '',
-      score: best.score,
       predictionDescription: best.candidate.description,
       mainText: best.candidate.mainText,
       secondaryText: best.candidate.secondaryText,
@@ -591,16 +604,28 @@ export class RestaurantLocationEnrichmentService {
       source: matchSource,
     };
 
+    const override = await this.resolveOutOfMarketSearchTextOverride({
+      entity,
+      context: searchContext,
+      sessionToken: params.sessionToken,
+      selectedCandidate: best.candidate,
+      selectedPlace: placeDetails,
+      selectedMatchSource: matchSource,
+    });
+
+    if (override) {
+      return override;
+    }
+
     return {
       place: placeDetails,
       matchMetadata,
-      score: best.score,
     };
   }
 
   async buildRestaurantCreateInput(params: {
     name: string;
-    coverageKey: string;
+    marketKey: string;
     place: GooglePlacesV1Place;
     matchMetadata: MatchMetadata;
     alias?: string | null;
@@ -646,8 +671,16 @@ export class RestaurantLocationEnrichmentService {
       ...createUpdateData,
       name: displayName,
       type: EntityType.restaurant,
-      locationKey: params.coverageKey,
+      canonicalDomain:
+        this.resolveTrustedWebsiteDomain(params.place.websiteUri) ?? undefined,
       aliases: alias,
+      marketPresences: {
+        create: [
+          {
+            marketKey: this.normalizeRequiredMarketKey(params.marketKey),
+          },
+        ],
+      },
       restaurantAttributes: mergedRestaurantAttributes,
       restaurantQualityScore: 0,
       generalPraiseUpvotes: 0,
@@ -678,11 +711,10 @@ export class RestaurantLocationEnrichmentService {
     let combinedUpdateData: Prisma.EntityUpdateInput | null = null;
     let combinedUpdatedFields: string[] = [];
     let targetNameForUpdate: string | null = null;
-    let enrichmentScore = 0;
+    let enrichmentScore: number | undefined;
     let googleRestaurantAttributeIds: string[] = [];
 
     const hasPlaceId =
-      Boolean(entity.googlePlaceId) ||
       Boolean(entity.primaryLocation?.googlePlaceId) ||
       Boolean(entity.locations?.some((loc) => loc.googlePlaceId));
 
@@ -690,7 +722,7 @@ export class RestaurantLocationEnrichmentService {
       return {
         entityId: entity.entityId,
         status: 'skipped',
-        reason: 'already has googlePlaceId',
+        reason: 'already has place-backed location identity',
       };
     }
 
@@ -732,7 +764,7 @@ export class RestaurantLocationEnrichmentService {
         autocomplete.suggestions,
       );
 
-      let ranked = this.rankCandidates(candidates, entity, searchContext);
+      let ranked = this.rankCandidates(candidates);
 
       let matchSource: 'autocomplete' | 'find_place' = 'autocomplete';
       let fallbackAttempted = false;
@@ -778,7 +810,7 @@ export class RestaurantLocationEnrichmentService {
         }
       }
 
-      const best = this.selectQualifiedCandidate(ranked);
+      const best = this.selectQualifiedCandidate(ranked, entity);
 
       if (!best) {
         const noMatchMetadata = this.buildNoMatchMetadata(
@@ -792,7 +824,7 @@ export class RestaurantLocationEnrichmentService {
               }
             : undefined,
         );
-        const reason = `no prediction matched preferred place types with min score ${this.minScoreThreshold}`;
+        const reason = 'no prediction matched preferred place types';
         await this.recordNoMatchCandidates(entity, reason, noMatchMetadata);
         return {
           entityId: entity.entityId,
@@ -832,7 +864,6 @@ export class RestaurantLocationEnrichmentService {
 
       const matchMetadata: MatchMetadata = {
         query: searchContext.query ?? '',
-        score: best.score,
         predictionDescription: best.candidate.description,
         mainText: best.candidate.mainText,
         secondaryText: best.candidate.secondaryText,
@@ -843,16 +874,38 @@ export class RestaurantLocationEnrichmentService {
       };
       latestMatchMetadata = matchMetadata;
 
+      const override = await this.resolveOutOfMarketSearchTextOverride({
+        entity,
+        context: searchContext,
+        sessionToken: options.sessionToken,
+        selectedCandidate: best.candidate,
+        selectedPlace: placeDetails,
+        selectedMatchSource: matchSource,
+      });
+
+      if (override) {
+        latestDetails = {
+          place: override.place,
+          metadata: details.metadata,
+          raw: details.raw,
+        };
+        latestMatchMetadata = override.matchMetadata;
+        enrichmentScore = override.score;
+      }
+
+      const resolvedPlaceDetails = override?.place ?? placeDetails;
+      const resolvedMatchMetadata = override?.matchMetadata ?? matchMetadata;
+
       const { updateData, updatedFields } = this.buildEntityUpdate(
         entity,
-        placeDetails,
+        resolvedPlaceDetails,
         details.metadata.fieldMask,
-        matchMetadata,
+        resolvedMatchMetadata,
       );
       const { updateData: aliasUpdate, updatedFields: aliasFields } =
         this.computeNameAndAliasUpdate(
           entity,
-          this.getPlaceDisplayName(placeDetails),
+          this.getPlaceDisplayName(resolvedPlaceDetails),
         );
       combinedUpdateData = this.mergeEntityUpdates(updateData, aliasUpdate);
       combinedUpdatedFields = this.mergeUpdatedFieldLists(
@@ -861,45 +914,44 @@ export class RestaurantLocationEnrichmentService {
       );
       targetNameForUpdate = this.extractTargetNameFromUpdate(
         combinedUpdateData,
-        this.getPlaceDisplayName(placeDetails),
+        this.getPlaceDisplayName(resolvedPlaceDetails),
       );
       const targetLocation =
         entity.locations?.find(
-          (location) => location.googlePlaceId === placeDetails.id,
+          (location) => location.googlePlaceId === resolvedPlaceDetails.id,
         ) ??
         entity.primaryLocation ??
-        entity.locations?.[0] ??
         null;
       const locationUpsert = this.buildLocationUpsertData(
         entity.entityId,
         targetLocation,
-        placeDetails,
+        resolvedPlaceDetails,
       );
 
       if (options.dryRun) {
         this.logger.info('Dry-run enrichment preview', {
           entityId: entity.entityId,
-          placeId: placeDetails.id,
+          placeId: resolvedPlaceDetails.id,
           updatedFields: combinedUpdatedFields,
         });
         return {
           entityId: entity.entityId,
           status: 'skipped',
           reason: 'dry_run',
-          placeId: placeDetails.id,
-          score: best.score,
+          placeId: resolvedPlaceDetails.id,
+          score: enrichmentScore,
           updatedFields: combinedUpdatedFields,
         };
       }
 
       const googleAttributeDefinitions =
-        this.extractGoogleRestaurantAttributeDefinitions(placeDetails);
+        this.extractGoogleRestaurantAttributeDefinitions(resolvedPlaceDetails);
       googleRestaurantAttributeIds =
         await this.resolveRestaurantAttributeIdsForDefinitions(
           googleAttributeDefinitions,
         );
       const placeTypeAttributes =
-        this.mapPlaceTypesToRestaurantAttributeNames(placeDetails);
+        this.mapPlaceTypesToRestaurantAttributeNames(resolvedPlaceDetails);
       const placeTypeAttributeIds =
         await this.resolveRestaurantAttributeIdsForNames(placeTypeAttributes);
       googleRestaurantAttributeIds = this.unionStringArrays(
@@ -987,31 +1039,83 @@ export class RestaurantLocationEnrichmentService {
         updatedFields: combinedUpdatedFields,
       });
 
-      const coverageRehome = await this.reconcileCoverageKeyForEntity({
+      const marketPresence = await this.reconcileMarketPresenceForEntity({
         entity,
         placeDetails,
         context: 'enrichment_update',
       });
-      const cuisineTargetId = coverageRehome?.mergedInto ?? entity.entityId;
-      await this.cuisineExtractionQueue.queueExtraction(cuisineTargetId, {
-        source: 'google_places_enrichment',
-      });
-      if (coverageRehome?.mergedInto) {
+      if (marketPresence?.mergedInto) {
+        await this.cuisineExtractionQueue.queueExtraction(
+          marketPresence.mergedInto,
+          {
+            source: 'google_places_enrichment',
+          },
+        );
         return {
           entityId: entity.entityId,
-          mergedInto: coverageRehome.mergedInto,
+          mergedInto: marketPresence.mergedInto,
           status: 'updated',
           placeId: placeDetails.id,
           score: best.score,
           updatedFields: combinedUpdatedFields,
         };
       }
-      const entityForSecondary = coverageRehome?.locationKey
-        ? { ...entity, locationKey: coverageRehome.locationKey }
-        : entity;
+      const trustedCanonicalDomain =
+        this.resolveTrustedWebsiteDomain(placeDetails.websiteUri) ??
+        this.resolveTrustedWebsiteDomain(combinedUpdateData.canonicalDomain) ??
+        this.resolveTrustedWebsiteDomain(entity.canonicalDomain);
+      const resolvedMarketKey =
+        marketPresence?.resolvedMarketKey ??
+        (await this.resolveMarketKeyFromPlace(placeDetails));
+      const entityForSecondary: RestaurantEntity = {
+        ...entity,
+        canonicalDomain: trustedCanonicalDomain ?? entity.canonicalDomain,
+      };
 
-      await this.enrichSecondaryLocations(entityForSecondary, placeDetails);
+      const domainMerge = await this.mergeIntoCanonicalDomainEntityIfNeeded({
+        entity: entityForSecondary,
+        placeDetails,
+        details,
+        matchMetadata,
+        score: best.score,
+        googleRestaurantAttributeIds,
+      });
 
+      const enrichmentTarget =
+        domainMerge?.canonicalEntity ?? entityForSecondary;
+      const secondaryLocationTarget: RestaurantEntity = {
+        ...enrichmentTarget,
+        canonicalDomain:
+          trustedCanonicalDomain ?? enrichmentTarget.canonicalDomain,
+      };
+
+      await this.enrichSecondaryLocations(
+        secondaryLocationTarget,
+        placeDetails,
+        options.locationBias,
+      );
+
+      const cuisineTargetId =
+        domainMerge?.mergedInto ?? entityForSecondary.entityId;
+      await this.cuisineExtractionQueue.queueExtraction(cuisineTargetId, {
+        source: domainMerge
+          ? 'google_places_domain_merge'
+          : 'google_places_enrichment',
+      });
+
+      if (domainMerge) {
+        return {
+          entityId: entity.entityId,
+          mergedInto: domainMerge.mergedInto,
+          status: 'updated',
+          placeId: placeDetails.id,
+          score: best.score,
+          updatedFields: this.mergeUpdatedFieldLists(
+            combinedUpdatedFields,
+            domainMerge.updatedFields,
+          ),
+        };
+      }
       return {
         entityId: entity.entityId,
         status: 'updated',
@@ -1065,6 +1169,24 @@ export class RestaurantLocationEnrichmentService {
       }
     }
     return Array.from(merged);
+  }
+
+  private getOwnedPlaceId(
+    entity: RestaurantEntityWithLocations,
+  ): string | null {
+    const primaryPlaceId = entity.primaryLocation?.googlePlaceId?.trim();
+    if (primaryPlaceId) {
+      return primaryPlaceId;
+    }
+
+    const locationPlaceId = (entity.locations ?? [])
+      .map((location) => location.googlePlaceId?.trim())
+      .find((value): value is string => Boolean(value));
+    if (locationPlaceId) {
+      return locationPlaceId;
+    }
+
+    return null;
   }
 
   private computeNameAndAliasUpdate(
@@ -1232,7 +1354,7 @@ export class RestaurantLocationEnrichmentService {
     entity: RestaurantEntity;
     details: GooglePlacesV1PlaceDetailsResponse;
     matchMetadata: MatchMetadata;
-    score: number;
+    score?: number;
     googleRestaurantAttributeIds?: string[];
   }): Promise<RestaurantEnrichmentResult> {
     const {
@@ -1279,13 +1401,17 @@ export class RestaurantLocationEnrichmentService {
       throw new Error('Canonical entity not found for Google Place ID');
     }
 
-    if (canonical.locationKey !== entity.locationKey) {
-      this.logger.warn('Google Place collision across coverage keys', {
+    const [canonicalMarketKeys, duplicateMarketKeys] = await Promise.all([
+      this.listMarketKeysForRestaurantEntity(canonical.entityId),
+      this.listMarketKeysForRestaurantEntity(entity.entityId),
+    ]);
+    if (canonicalMarketKeys.join('|') !== duplicateMarketKeys.join('|')) {
+      this.logger.warn('Google Place collision across seed market keys', {
         placeId,
         canonicalId: canonical.entityId,
-        canonicalLocationKey: canonical.locationKey,
+        canonicalMarketKeys,
         duplicateId: entity.entityId,
-        duplicateLocationKey: entity.locationKey,
+        duplicateMarketKeys,
       });
     }
 
@@ -1356,6 +1482,18 @@ export class RestaurantLocationEnrichmentService {
       },
     );
 
+    const previousMarketKeys = await this.listMarketKeysForRestaurantEntity(
+      updatedCanonical.entityId,
+    );
+    const syncedMarketKeys = await this.syncRestaurantMarketPresences({
+      restaurantId: updatedCanonical.entityId,
+      pruneToVerifiedLocationsOnly: true,
+    });
+    await this.rankScoreRefreshQueue.queueRefreshForMarkets(
+      [...previousMarketKeys, ...syncedMarketKeys],
+      { source: 'google_place_collision', force: true },
+    );
+
     this.logger.info('Merged restaurant into canonical entity', {
       duplicateId: entity.entityId,
       canonicalId: updatedCanonical.entityId,
@@ -1363,12 +1501,12 @@ export class RestaurantLocationEnrichmentService {
       updatedFields: mergedFields,
     });
 
-    const coverageRehome = await this.reconcileCoverageKeyForEntity({
+    const marketPresence = await this.reconcileMarketPresenceForEntity({
       entity: updatedCanonical,
       placeDetails,
       context: 'place_collision',
     });
-    const mergedInto = coverageRehome?.mergedInto ?? updatedCanonical.entityId;
+    const mergedInto = marketPresence?.mergedInto ?? updatedCanonical.entityId;
     await this.cuisineExtractionQueue.queueExtraction(mergedInto, {
       source: 'google_places_collision',
     });
@@ -1388,7 +1526,7 @@ export class RestaurantLocationEnrichmentService {
     canonicalName: string | null;
     details: GooglePlacesV1PlaceDetailsResponse;
     matchMetadata: MatchMetadata;
-    score: number;
+    score?: number;
     googleRestaurantAttributeIds?: string[];
   }): Promise<RestaurantEnrichmentResult> {
     const {
@@ -1409,23 +1547,48 @@ export class RestaurantLocationEnrichmentService {
     }
 
     const placeDetails = details.place;
-    const locationKey = entity.locationKey;
+    const trustedCanonicalDomain =
+      this.resolveTrustedWebsiteDomain(placeDetails.websiteUri) ??
+      this.resolveTrustedWebsiteDomain(entity.canonicalDomain);
+    const marketKey = await this.resolveMarketKeyFromPlace(placeDetails);
     const canonical: RestaurantEntityWithLocations | null =
-      await this.prisma.entity.findFirst({
-        where: {
-          type: EntityType.restaurant,
-          name:
-            resolvedName ?? this.getPlaceDisplayName(placeDetails) ?? undefined,
-          locationKey,
-        },
-        include: { primaryLocation: true, locations: true },
-      });
+      trustedCanonicalDomain
+        ? await this.prisma.entity.findFirst({
+            where: {
+              entityId: { not: entity.entityId },
+              type: EntityType.restaurant,
+              canonicalDomain: {
+                equals: trustedCanonicalDomain,
+                mode: 'insensitive',
+              },
+            },
+            include: { primaryLocation: true, locations: true },
+          })
+        : await this.prisma.entity.findFirst({
+            where: {
+              entityId: { not: entity.entityId },
+              type: EntityType.restaurant,
+              name:
+                resolvedName ??
+                this.getPlaceDisplayName(placeDetails) ??
+                undefined,
+              ...(marketKey
+                ? {
+                    marketPresences: {
+                      some: { marketKey },
+                    },
+                  }
+                : {}),
+            },
+            include: { primaryLocation: true, locations: true },
+          });
 
     if (!canonical) {
       this.logger.error(
         'Name conflict encountered but canonical restaurant missing',
         {
           entityId: entity.entityId,
+          canonicalDomain: trustedCanonicalDomain,
           targetName: resolvedName ?? this.getPlaceDisplayName(placeDetails),
         },
       );
@@ -1444,7 +1607,6 @@ export class RestaurantLocationEnrichmentService {
         (location) => location.googlePlaceId === placeDetails.id,
       ) ??
       canonical.primaryLocation ??
-      canonicalLocations[0] ??
       null;
     const locationUpsert = this.buildLocationUpsertData(
       canonical.entityId,
@@ -1501,18 +1663,30 @@ export class RestaurantLocationEnrichmentService {
       },
     );
 
+    const previousMarketKeys = await this.listMarketKeysForRestaurantEntity(
+      updatedCanonical.entityId,
+    );
+    const syncedMarketKeys = await this.syncRestaurantMarketPresences({
+      restaurantId: updatedCanonical.entityId,
+      pruneToVerifiedLocationsOnly: true,
+    });
+    await this.rankScoreRefreshQueue.queueRefreshForMarkets(
+      [...previousMarketKeys, ...syncedMarketKeys],
+      { source: 'google_place_name_conflict', force: true },
+    );
+
     this.logger.info('Merged restaurant into existing canonical by name', {
       duplicateId: entity.entityId,
       canonicalId: updatedCanonical.entityId,
       targetName: resolvedName ?? this.getPlaceDisplayName(placeDetails),
     });
 
-    const coverageRehome = await this.reconcileCoverageKeyForEntity({
+    const marketPresence = await this.reconcileMarketPresenceForEntity({
       entity: updatedCanonical,
       placeDetails,
       context: 'name_collision',
     });
-    const mergedInto = coverageRehome?.mergedInto ?? updatedCanonical.entityId;
+    const mergedInto = marketPresence?.mergedInto ?? updatedCanonical.entityId;
     await this.cuisineExtractionQueue.queueExtraction(mergedInto, {
       source: 'google_places_name_collision',
     });
@@ -1553,30 +1727,130 @@ export class RestaurantLocationEnrichmentService {
       updatedFields.push('restaurantAttributes');
     }
 
-    const totalPraise =
-      (canonical.generalPraiseUpvotes ?? 0) +
-      (duplicate.generalPraiseUpvotes ?? 0);
-    if (totalPraise !== (canonical.generalPraiseUpvotes ?? 0)) {
-      updateData.generalPraiseUpvotes = totalPraise;
-      updatedFields.push('generalPraiseUpvotes');
-    }
-
-    const qualityScore = this.maxDecimalValue(
-      canonical.restaurantQualityScore,
-      duplicate.restaurantQualityScore,
-    );
-    if (
-      qualityScore &&
-      (!canonical.restaurantQualityScore ||
-        !qualityScore.equals(canonical.restaurantQualityScore))
-    ) {
-      updateData.restaurantQualityScore = qualityScore;
-      updatedFields.push('restaurantQualityScore');
+    const canonicalDomain =
+      typeof canonical.canonicalDomain === 'string' &&
+      canonical.canonicalDomain.trim().length
+        ? canonical.canonicalDomain.trim().toLowerCase()
+        : typeof duplicate.canonicalDomain === 'string' &&
+            duplicate.canonicalDomain.trim().length
+          ? duplicate.canonicalDomain.trim().toLowerCase()
+          : null;
+    if (canonicalDomain && canonicalDomain !== canonical.canonicalDomain) {
+      updateData.canonicalDomain = canonicalDomain;
+      updatedFields.push('canonicalDomain');
     }
 
     updateData.lastUpdated = new Date();
 
     return { updateData, updatedFields };
+  }
+
+  private async mergeIntoCanonicalDomainEntityIfNeeded(params: {
+    entity: RestaurantEntity;
+    placeDetails: GooglePlacesV1Place;
+    details: GooglePlacesV1PlaceDetailsResponse;
+    matchMetadata: MatchMetadata;
+    score?: number;
+    googleRestaurantAttributeIds?: string[];
+  }): Promise<{
+    mergedInto: string;
+    canonicalEntity: RestaurantEntityWithLocations;
+    updatedFields: string[];
+  } | null> {
+    const canonicalDomain =
+      this.resolveTrustedWebsiteDomain(params.placeDetails.websiteUri) ??
+      this.resolveTrustedWebsiteDomain(params.entity.canonicalDomain);
+    if (!canonicalDomain) {
+      return null;
+    }
+
+    const canonical = await this.prisma.entity.findFirst({
+      where: {
+        type: EntityType.restaurant,
+        canonicalDomain,
+        entityId: { not: params.entity.entityId },
+      },
+      include: { primaryLocation: true, locations: true },
+      orderBy: [{ createdAt: 'asc' }, { entityId: 'asc' }],
+    });
+
+    if (!canonical) {
+      return null;
+    }
+
+    const canonicalUpdate = this.buildEntityUpdate(
+      canonical,
+      params.placeDetails,
+      params.details.metadata?.fieldMask ?? '',
+      params.matchMetadata,
+    );
+    const canonicalAliasUpdate = this.computeNameAndAliasUpdate(
+      canonical,
+      this.getPlaceDisplayName(params.placeDetails),
+      this.collectAliasCandidates(params.entity),
+    );
+    const mergeAugmentations = this.buildCanonicalMergeAugmentations(
+      canonical,
+      params.entity,
+      params.googleRestaurantAttributeIds,
+    );
+    const mergedUpdate = this.mergeEntityUpdates(
+      canonicalUpdate.updateData,
+      canonicalAliasUpdate.updateData,
+      mergeAugmentations.updateData,
+      { canonicalDomain },
+    );
+    const mergedFields = this.mergeUpdatedFieldLists(
+      canonicalUpdate.updatedFields,
+      canonicalAliasUpdate.updatedFields,
+      mergeAugmentations.updatedFields,
+      ['canonicalDomain'],
+    );
+
+    const mergedCanonical =
+      await this.restaurantEntityMergeService.mergeDuplicateRestaurant({
+        canonical,
+        duplicate: params.entity,
+        canonicalUpdate: mergedUpdate,
+      });
+
+    const refreshedCanonical = await this.prisma.entity.findUnique({
+      where: { entityId: mergedCanonical.entityId },
+      include: { primaryLocation: true, locations: true },
+    });
+
+    if (!refreshedCanonical) {
+      throw new Error('Merged canonical entity not found after domain merge');
+    }
+
+    const previousMarketKeys = await this.listMarketKeysForRestaurantEntity(
+      refreshedCanonical.entityId,
+    );
+    const syncedMarketKeys = await this.syncRestaurantMarketPresences({
+      restaurantId: refreshedCanonical.entityId,
+      pruneToVerifiedLocationsOnly: true,
+    });
+
+    this.logger.info('Merged restaurant into canonical entity by domain', {
+      duplicateId: params.entity.entityId,
+      canonicalId: refreshedCanonical.entityId,
+      canonicalDomain,
+      score: params.score,
+    });
+
+    await this.rankScoreRefreshQueue.queueRefreshForMarkets(
+      [...previousMarketKeys, ...syncedMarketKeys],
+      {
+        source: 'restaurant_domain_merge',
+        force: true,
+      },
+    );
+
+    return {
+      mergedInto: refreshedCanonical.entityId,
+      canonicalEntity: refreshedCanonical,
+      updatedFields: mergedFields,
+    };
   }
 
   private setsEqual<T>(a: Set<T>, b: Set<T>): boolean {
@@ -1604,49 +1878,6 @@ export class RestaurantLocationEnrichmentService {
       }
     }
     return Array.from(merged);
-  }
-
-  private maxDecimalValue(
-    current: Prisma.Decimal | number | string | null | undefined,
-    next: Prisma.Decimal | number | string | null | undefined,
-  ): Prisma.Decimal | null {
-    if (current === null || current === undefined) {
-      return next === null || next === undefined ? null : this.toDecimal(next);
-    }
-    if (next === null || next === undefined) {
-      return this.toDecimal(current);
-    }
-    const currentDecimal = this.toDecimal(current);
-    const nextDecimal = this.toDecimal(next);
-    return currentDecimal.greaterThan(nextDecimal)
-      ? currentDecimal
-      : nextDecimal;
-  }
-
-  private toDecimal(value: Prisma.Decimal | number | string): Prisma.Decimal {
-    if (value instanceof Prisma.Decimal) {
-      return value;
-    }
-    return new Prisma.Decimal(value);
-  }
-
-  private resolveMinScoreThreshold(): number {
-    const configured = this.configService.get<string | number | undefined>(
-      'restaurantEnrichment.minScoreThreshold',
-    );
-
-    const numeric =
-      typeof configured === 'number'
-        ? configured
-        : typeof configured === 'string'
-          ? Number(configured)
-          : NaN;
-
-    if (Number.isFinite(numeric) && numeric >= 0 && numeric <= 1) {
-      return Number(numeric.toFixed(3));
-    }
-
-    return DEFAULT_MIN_SCORE_THRESHOLD;
   }
 
   private normalizeCountryCodeForStorage(
@@ -1680,7 +1911,66 @@ export class RestaurantLocationEnrichmentService {
       return null;
     }
     const trimmed = value.trim();
-    return trimmed.length ? trimmed : null;
+    if (!trimmed.length) {
+      return null;
+    }
+
+    try {
+      const parsed = new URL(trimmed);
+      if (!parsed.hostname?.trim()) {
+        return null;
+      }
+      return parsed.toString();
+    } catch {
+      try {
+        const parsed = new URL(`https://${trimmed}`);
+        if (!parsed.hostname?.trim()) {
+          return null;
+        }
+        return parsed.toString();
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  private normalizeWebsiteDomain(value: unknown): string | null {
+    const normalizedUrl = this.normalizeWebsiteUrl(value);
+    if (!normalizedUrl) {
+      return null;
+    }
+
+    const parsed = parseDomain(normalizedUrl, { allowPrivateDomains: true });
+    const domain =
+      typeof parsed.domain === 'string'
+        ? parsed.domain.trim().toLowerCase()
+        : '';
+    if (!domain.length) {
+      return null;
+    }
+
+    return domain.startsWith('www.') ? domain.slice(4) : domain;
+  }
+
+  private resolveTrustedWebsiteDomain(value: unknown): string | null {
+    const domain = this.normalizeWebsiteDomain(value);
+    if (!domain) {
+      return null;
+    }
+    return this.isTrustedWebsiteDomain(domain) ? domain : null;
+  }
+
+  private isTrustedWebsiteDomain(domain: string | null | undefined): boolean {
+    if (!domain) {
+      return false;
+    }
+
+    const normalized = domain.trim().toLowerCase();
+    if (!normalized.length) {
+      return false;
+    }
+
+    return !GENERIC_WEBSITE_DOMAIN_DENYLIST.has(normalized);
   }
 
   private normalizeCountryCodeForAutocomplete(
@@ -1755,7 +2045,7 @@ export class RestaurantLocationEnrichmentService {
 
   private buildLocationBias(
     entity: RestaurantEntity,
-  ): { lat: number; lng: number } | undefined {
+  ): { lat: number; lng: number; radiusMeters?: number } | undefined {
     const lat =
       this.toNumberValue(entity.primaryLocation?.latitude) ??
       this.toNumberValue(entity.latitude);
@@ -1776,12 +2066,15 @@ export class RestaurantLocationEnrichmentService {
   private async enrichSecondaryLocations(
     entity: RestaurantEntity,
     placeDetails: GooglePlacesV1Place,
+    locationBias?: { lat: number; lng: number; radiusMeters?: number },
   ): Promise<void> {
     try {
-      const locationRestriction = await this.resolveLocationRestriction(
-        entity.locationKey ?? null,
-      );
-      if (!locationRestriction) {
+      const canonicalDomain =
+        this.resolveTrustedWebsiteDomain(placeDetails.websiteUri) ??
+        (this.isTrustedWebsiteDomain(entity.canonicalDomain)
+          ? entity.canonicalDomain!.trim().toLowerCase()
+          : null);
+      if (!canonicalDomain) {
         return;
       }
 
@@ -1805,12 +2098,11 @@ export class RestaurantLocationEnrichmentService {
 
       let pageToken: string | undefined;
       let totalProcessed = 0;
-
       do {
         const response = await this.googlePlacesService.findPlaceFromText(
           canonicalName,
           {
-            locationRestriction,
+            locationBias,
             includedType: includedType ?? undefined,
             strictTypeFiltering: Boolean(includedType),
             pageToken,
@@ -1830,12 +2122,14 @@ export class RestaurantLocationEnrichmentService {
           },
         );
 
-        const matches = response.places.filter((place) =>
-          this.isCanonicalPlaceMatch(place, canonicalName),
-        );
-
-        for (const place of matches) {
+        for (const place of response.places) {
           if (!place?.id || seenPlaceIds.has(place.id)) {
+            continue;
+          }
+          const candidateDomain = this.resolveTrustedWebsiteDomain(
+            place.websiteUri,
+          );
+          if (!candidateDomain || candidateDomain !== canonicalDomain) {
             continue;
           }
           if (
@@ -1853,22 +2147,24 @@ export class RestaurantLocationEnrichmentService {
             place,
           );
 
-          await this.prisma.restaurantLocation.upsert({
-            where: { googlePlaceId: place.id },
-            update: {
-              ...locationUpsert.update,
-              restaurantId: entity.entityId,
-              isPrimary: existingLocation?.isPrimary ?? false,
-              updatedAt: new Date(),
-            } as Prisma.RestaurantLocationUncheckedUpdateInput,
-            create: {
-              ...locationUpsert.create,
-              restaurantId: entity.entityId,
-              isPrimary: false,
-            } as Prisma.RestaurantLocationUncheckedCreateInput,
+          const ownedPlaceId = place.id;
+          await this.prisma.$transaction(async (tx) => {
+            await tx.restaurantLocation.upsert({
+              where: { googlePlaceId: ownedPlaceId },
+              update: {
+                ...locationUpsert.update,
+                restaurantId: entity.entityId,
+                isPrimary: existingLocation?.isPrimary ?? false,
+                updatedAt: new Date(),
+              } as Prisma.RestaurantLocationUncheckedUpdateInput,
+              create: {
+                ...locationUpsert.create,
+                restaurantId: entity.entityId,
+                isPrimary: false,
+              } as Prisma.RestaurantLocationUncheckedCreateInput,
+            });
           });
-
-          seenPlaceIds.add(place.id);
+          seenPlaceIds.add(ownedPlaceId);
           totalProcessed += 1;
           if (totalProcessed >= 60) {
             break;
@@ -1882,12 +2178,141 @@ export class RestaurantLocationEnrichmentService {
         pageToken = response.nextPageToken;
         await this.delay(2000);
       } while (pageToken);
+
+      await this.syncRestaurantMarketPresences({
+        restaurantId: entity.entityId,
+        pruneToVerifiedLocationsOnly: true,
+      });
     } catch (error) {
       this.logger.warn('Failed to enrich secondary locations', {
         entityId: entity.entityId,
         message: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  private async listLocationDerivedMarketKeysForRestaurantEntity(
+    restaurantId: string,
+  ): Promise<string[]> {
+    const locations = await this.prisma.restaurantLocation.findMany({
+      where: {
+        restaurantId,
+        latitude: { not: null },
+        longitude: { not: null },
+      },
+      select: {
+        latitude: true,
+        longitude: true,
+      },
+    });
+
+    const resolved = await Promise.all(
+      locations.map((location) =>
+        this.marketRegistry.resolveOrEnsureForLocation({
+          userLocation: {
+            lat: Number(location.latitude),
+            lng: Number(location.longitude),
+          },
+        }),
+      ),
+    );
+
+    return Array.from(
+      new Set(
+        resolved
+          .map((result) => this.normalizeMarketKey(result?.marketKey ?? null))
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
+  }
+
+  private async listMarketKeysForRestaurantEntity(
+    restaurantId: string,
+  ): Promise<string[]> {
+    const rows = await this.prisma.entityMarketPresence.findMany({
+      where: { entityId: restaurantId },
+      select: { marketKey: true },
+      orderBy: [{ createdAt: 'asc' }, { marketKey: 'asc' }],
+    });
+
+    return Array.from(
+      new Set(
+        rows
+          .map((row) => this.normalizeMarketKey(row.marketKey))
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
+  }
+
+  private async syncRestaurantMarketPresences(params: {
+    restaurantId: string;
+    seedMarketKeys?: Array<string | null | undefined>;
+    tx?: Prisma.TransactionClient;
+    pruneToVerifiedLocationsOnly?: boolean;
+  }): Promise<string[]> {
+    const delegate = params.tx ?? this.prisma;
+    const pruneToVerifiedLocationsOnly =
+      params.pruneToVerifiedLocationsOnly === true;
+    const seedMarketKeys = Array.from(
+      new Set(
+        (params.seedMarketKeys ?? [])
+          .map((value) => this.normalizeMarketKey(value))
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
+
+    const locationDerivedMarketKeys =
+      await this.listLocationDerivedMarketKeysForRestaurantEntity(
+        params.restaurantId,
+      );
+    const desiredMarketKeys = pruneToVerifiedLocationsOnly
+      ? locationDerivedMarketKeys
+      : Array.from(new Set([...seedMarketKeys, ...locationDerivedMarketKeys]));
+
+    const existingRows = await delegate.entityMarketPresence.findMany({
+      where: { entityId: params.restaurantId },
+      select: { marketKey: true },
+    });
+    const existing = new Set(
+      existingRows
+        .map((row) => this.normalizeMarketKey(row.marketKey))
+        .filter((value): value is string => Boolean(value)),
+    );
+
+    if (pruneToVerifiedLocationsOnly) {
+      const desiredSet = new Set(desiredMarketKeys);
+      const staleMarketKeys = Array.from(existing).filter(
+        (marketKey) => !desiredSet.has(marketKey),
+      );
+      if (staleMarketKeys.length > 0) {
+        await delegate.entityMarketPresence.deleteMany({
+          where: {
+            entityId: params.restaurantId,
+            marketKey: { in: staleMarketKeys },
+          },
+        });
+        staleMarketKeys.forEach((marketKey) => existing.delete(marketKey));
+      }
+    }
+
+    if (!desiredMarketKeys.length) {
+      return [];
+    }
+
+    for (const marketKey of desiredMarketKeys) {
+      if (existing.has(marketKey)) {
+        continue;
+      }
+      await delegate.entityMarketPresence.create({
+        data: {
+          entityId: params.restaurantId,
+          marketKey,
+        },
+      });
+      existing.add(marketKey);
+    }
+
+    return desiredMarketKeys;
   }
 
   private resolveIncludedType(primaryType?: string | null): string | null {
@@ -1899,10 +2324,114 @@ export class RestaurantLocationEnrichmentService {
 
   private normalizePlaceName(value: string): string {
     return value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
       .replace(/['’`]/g, '')
       .replace(/[^a-z0-9]+/g, ' ')
       .trim();
+  }
+
+  private normalizePlaceNameCompact(value: string): string {
+    return this.normalizePlaceName(value).replace(/\s+/g, '');
+  }
+
+  private tokenizeNormalizedPlaceName(value: string): string[] {
+    const normalized = this.normalizePlaceName(value);
+    return normalized.length > 0 ? normalized.split(/\s+/).filter(Boolean) : [];
+  }
+
+  private singularizePlaceToken(token: string): string {
+    if (token.endsWith('ies') && token.length > 3) {
+      return `${token.slice(0, -3)}y`;
+    }
+    if (token.endsWith('s') && token.length > 3) {
+      return token.slice(0, -1);
+    }
+    return token;
+  }
+
+  private calculateLevenshteinDistance(left: string, right: string): number {
+    if (left === right) {
+      return 0;
+    }
+    if (left.length === 0) {
+      return right.length;
+    }
+    if (right.length === 0) {
+      return left.length;
+    }
+
+    const previous = Array.from({ length: right.length + 1 }, (_, i) => i);
+    const current = new Array<number>(right.length + 1);
+
+    for (let row = 1; row <= left.length; row += 1) {
+      current[0] = row;
+      for (let col = 1; col <= right.length; col += 1) {
+        const cost = left[row - 1] === right[col - 1] ? 0 : 1;
+        current[col] = Math.min(
+          current[col - 1] + 1,
+          previous[col] + 1,
+          previous[col - 1] + cost,
+        );
+      }
+      for (let col = 0; col <= right.length; col += 1) {
+        previous[col] = current[col];
+      }
+    }
+
+    return previous[right.length];
+  }
+
+  private isLooselyEquivalentPlaceToken(left: string, right: string): boolean {
+    if (!left || !right) {
+      return false;
+    }
+
+    if (left === right) {
+      return true;
+    }
+
+    if (left.startsWith(right) || right.startsWith(left)) {
+      return true;
+    }
+
+    return this.calculateLevenshteinDistance(left, right) <= 1;
+  }
+
+  private isSalientSearchTextCandidateNameMatch(
+    candidateName: string,
+    requestedName: string,
+  ): boolean {
+    const candidateTokens = this.tokenizeNormalizedPlaceName(candidateName).map(
+      (token) => this.singularizePlaceToken(token),
+    );
+    const requestedTokens = this.tokenizeNormalizedPlaceName(requestedName).map(
+      (token) => this.singularizePlaceToken(token),
+    );
+
+    if (candidateTokens.length === 0 || requestedTokens.length === 0) {
+      return false;
+    }
+
+    const longestRequestedTokenLength = Math.max(
+      ...requestedTokens.map((token) => token.length),
+    );
+    const anchorTokens = requestedTokens.filter(
+      (token) => token.length === longestRequestedTokenLength,
+    );
+
+    for (const anchorToken of anchorTokens) {
+      if (
+        candidateTokens.some((candidateToken) =>
+          this.isLooselyEquivalentPlaceToken(candidateToken, anchorToken),
+        )
+      ) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private isCanonicalPlaceMatch(
@@ -1948,101 +2477,14 @@ export class RestaurantLocationEnrichmentService {
     );
   }
 
-  private async resolveLocationRestriction(
-    locationKey: string | null,
-  ): Promise<{
-    northEast: { lat: number; lng: number };
-    southWest: { lat: number; lng: number };
-  } | null> {
-    const normalizedKey =
-      typeof locationKey === 'string' ? locationKey.trim().toLowerCase() : '';
-    if (!normalizedKey || normalizedKey === 'global') {
-      return null;
-    }
-
-    const coverageMatches = await this.prisma.coverageArea.findMany({
-      where: {
-        isActive: true,
-        coverageKey: {
-          equals: normalizedKey,
-          mode: 'insensitive',
-        },
-      },
-      select: {
-        viewportNeLat: true,
-        viewportNeLng: true,
-        viewportSwLat: true,
-        viewportSwLng: true,
-      },
-    });
-
-    const rows =
-      coverageMatches.length > 0
-        ? coverageMatches
-        : await this.prisma.coverageArea.findMany({
-            where: {
-              isActive: true,
-              name: {
-                equals: normalizedKey,
-                mode: 'insensitive',
-              },
-            },
-            select: {
-              viewportNeLat: true,
-              viewportNeLng: true,
-              viewportSwLat: true,
-              viewportSwLng: true,
-            },
-          });
-
-    if (!rows.length) {
-      return null;
-    }
-
-    let bounds: {
-      northEast: { lat: number; lng: number };
-      southWest: { lat: number; lng: number };
-    } | null = null;
-
-    for (const row of rows) {
-      const northEastLat = this.toNumberValue(row.viewportNeLat);
-      const northEastLng = this.toNumberValue(row.viewportNeLng);
-      const southWestLat = this.toNumberValue(row.viewportSwLat);
-      const southWestLng = this.toNumberValue(row.viewportSwLng);
-
-      if (
-        northEastLat === undefined ||
-        northEastLng === undefined ||
-        southWestLat === undefined ||
-        southWestLng === undefined
-      ) {
-        continue;
-      }
-
-      if (!bounds) {
-        bounds = {
-          northEast: { lat: northEastLat, lng: northEastLng },
-          southWest: { lat: southWestLat, lng: southWestLng },
-        };
-        continue;
-      }
-
-      bounds = {
-        northEast: {
-          lat: Math.max(bounds.northEast.lat, northEastLat),
-          lng: Math.max(bounds.northEast.lng, northEastLng),
-        },
-        southWest: {
-          lat: Math.min(bounds.southWest.lat, southWestLat),
-          lng: Math.min(bounds.southWest.lng, southWestLng),
-        },
-      };
-    }
-
-    return bounds;
+  private isRestaurantishPlaceTypes(types?: string[]): boolean {
+    return (
+      Array.isArray(types) &&
+      types.some((type) => PREFERRED_PLACE_TYPES.has(type.toLowerCase()))
+    );
   }
 
-  private normalizeLocationKey(value?: string | null): string | null {
+  private normalizeMarketKey(value?: string | null): string | null {
     if (typeof value !== 'string') {
       return null;
     }
@@ -2050,7 +2492,15 @@ export class RestaurantLocationEnrichmentService {
     return normalized.length ? normalized : null;
   }
 
-  private async resolveCoverageKeyFromPlace(
+  private normalizeRequiredMarketKey(value?: string | null): string {
+    const normalized = this.normalizeMarketKey(value);
+    if (!normalized) {
+      throw new Error('Restaurant market key is required');
+    }
+    return normalized;
+  }
+
+  private async resolveMarketKeyFromPlace(
     placeDetails: GooglePlacesV1Place,
   ): Promise<string | null> {
     const latitude = placeDetails.location?.latitude;
@@ -2059,31 +2509,30 @@ export class RestaurantLocationEnrichmentService {
       return null;
     }
 
-    const resolved = await this.coverageKeyResolver.resolvePrimary({
-      fallbackLocation: {
-        latitude: latitude as number,
-        longitude: longitude as number,
+    const resolved = await this.marketRegistry.resolveOrEnsureForLocation({
+      userLocation: {
+        lat: latitude as number,
+        lng: longitude as number,
       },
     });
 
-    return this.normalizeLocationKey(resolved);
+    return this.normalizeMarketKey(resolved?.marketKey ?? null);
   }
 
-  private async reconcileCoverageKeyForEntity(params: {
+  private async reconcileMarketPresenceForEntity(params: {
     entity: RestaurantEntity;
     placeDetails: GooglePlacesV1Place;
     context: string;
   }): Promise<{
-    updated: boolean;
-    locationKey: string | null;
+    resolvedMarketKey: string | null;
     mergedInto?: string;
   } | null> {
-    const currentKey = this.normalizeLocationKey(params.entity.locationKey);
-    const targetKey = await this.resolveCoverageKeyFromPlace(
-      params.placeDetails,
+    const currentMarketKeys = await this.listMarketKeysForRestaurantEntity(
+      params.entity.entityId,
     );
+    const targetKey = await this.resolveMarketKeyFromPlace(params.placeDetails);
 
-    if (!targetKey || targetKey === 'global' || targetKey === currentKey) {
+    if (!targetKey || currentMarketKeys.includes(targetKey)) {
       return null;
     }
 
@@ -2097,7 +2546,9 @@ export class RestaurantLocationEnrichmentService {
         entityId: { not: params.entity.entityId },
         type: EntityType.restaurant,
         name,
-        locationKey: targetKey,
+        marketPresences: {
+          some: { marketKey: targetKey },
+        },
       },
       select: { entityId: true },
     });
@@ -2105,14 +2556,18 @@ export class RestaurantLocationEnrichmentService {
     if (conflict) {
       const canonical = await this.prisma.entity.findUnique({
         where: { entityId: conflict.entityId },
+        include: { primaryLocation: true, locations: true },
       });
 
       if (!canonical) {
-        this.logger.warn('Coverage rehome conflict missing canonical entity', {
-          entityId: params.entity.entityId,
-          conflictEntityId: conflict.entityId,
-          context: params.context,
-        });
+        this.logger.warn(
+          'Market-presence reconciliation conflict missing canonical entity',
+          {
+            entityId: params.entity.entityId,
+            conflictEntityId: conflict.entityId,
+            context: params.context,
+          },
+        );
         return null;
       }
 
@@ -2121,20 +2576,20 @@ export class RestaurantLocationEnrichmentService {
           ? params.placeDetails.id.trim()
           : '';
       if (!placeId) {
-        this.logger.warn('Coverage rehome conflict missing place id', {
-          entityId: params.entity.entityId,
-          canonicalId: canonical.entityId,
-          currentLocationKey: currentKey,
-          targetLocationKey: targetKey,
-          context: params.context,
-        });
+        this.logger.warn(
+          'Market-presence reconciliation conflict missing place id',
+          {
+            entityId: params.entity.entityId,
+            canonicalId: canonical.entityId,
+            currentMarketKeys,
+            targetMarketKey: targetKey,
+            context: params.context,
+          },
+        );
         return null;
       }
 
-      const canonicalPlaceId =
-        typeof canonical.googlePlaceId === 'string'
-          ? canonical.googlePlaceId.trim()
-          : null;
+      const canonicalPlaceId = this.getOwnedPlaceId(canonical);
       let placeIdMatches = canonicalPlaceId === placeId;
 
       if (!placeIdMatches) {
@@ -2151,14 +2606,14 @@ export class RestaurantLocationEnrichmentService {
 
       if (!placeIdMatches) {
         this.logger.warn(
-          'Coverage rehome conflict skipped due to place id mismatch',
+          'Market-presence reconciliation conflict skipped due to place id mismatch',
           {
             entityId: params.entity.entityId,
             canonicalId: canonical.entityId,
             placeId,
             canonicalPlaceId,
-            currentLocationKey: currentKey,
-            targetLocationKey: targetKey,
+            currentMarketKeys,
+            targetMarketKey: targetKey,
             context: params.context,
           },
         );
@@ -2186,44 +2641,51 @@ export class RestaurantLocationEnrichmentService {
           canonicalUpdate: mergedUpdate,
         });
 
-      this.logger.info('Coverage rehome merged into existing restaurant', {
+      await this.syncRestaurantMarketPresences({
+        restaurantId: mergedCanonical.entityId,
+        pruneToVerifiedLocationsOnly: true,
+      });
+
+      this.logger.info('Market-presence merge completed', {
         entityId: params.entity.entityId,
         mergedInto: mergedCanonical.entityId,
-        currentLocationKey: currentKey,
-        targetLocationKey: targetKey,
+        currentMarketKeys,
+        targetMarketKey: targetKey,
         context: params.context,
       });
 
-      await this.rankScoreRefreshQueue.queueRefreshForLocations(
-        [currentKey, targetKey],
+      await this.rankScoreRefreshQueue.queueRefreshForMarkets(
+        [...currentMarketKeys, targetKey],
         { source: 'enrichment' },
       );
 
       return {
-        updated: true,
-        locationKey: targetKey,
+        resolvedMarketKey: targetKey,
         mergedInto: mergedCanonical.entityId,
       };
     }
 
-    await this.prisma.entity.update({
-      where: { entityId: params.entity.entityId },
-      data: { locationKey: targetKey },
+    this.logger.info(
+      'Resolved restaurant market presence from place geometry',
+      {
+        entityId: params.entity.entityId,
+        currentMarketKeys,
+        targetMarketKey: targetKey,
+        context: params.context,
+      },
+    );
+
+    await this.syncRestaurantMarketPresences({
+      restaurantId: params.entity.entityId,
+      pruneToVerifiedLocationsOnly: true,
     });
 
-    this.logger.info('Restaurant coverage key updated from place geometry', {
-      entityId: params.entity.entityId,
-      previousLocationKey: currentKey,
-      targetLocationKey: targetKey,
-      context: params.context,
-    });
-
-    await this.rankScoreRefreshQueue.queueRefreshForLocations(
-      [currentKey, targetKey],
+    await this.rankScoreRefreshQueue.queueRefreshForMarkets(
+      [...currentMarketKeys, targetKey],
       { source: 'enrichment' },
     );
 
-    return { updated: true, locationKey: targetKey };
+    return { resolvedMarketKey: targetKey };
   }
 
   private async delay(ms: number): Promise<void> {
@@ -2437,28 +2899,21 @@ export class RestaurantLocationEnrichmentService {
     return candidates;
   }
 
-  private rankCandidates(
-    candidates: PlaceCandidate[],
-    entity: RestaurantEntity,
-    context: EnrichmentSearchContext,
-  ): RankedCandidate[] {
-    return candidates
-      .map((candidate) => ({
-        candidate,
-        score: this.scoreCandidate(candidate, entity, context),
-      }))
-      .sort((a, b) => b.score - a.score);
+  private rankCandidates(candidates: PlaceCandidate[]): RankedCandidate[] {
+    return candidates.map((candidate) => ({
+      candidate,
+    }));
   }
 
   private selectQualifiedCandidate(
     ranked: RankedCandidate[],
+    entity: RestaurantEntity,
   ): RankedCandidate | undefined {
     for (const entry of ranked) {
       const types = entry.candidate.types;
       if (
-        Array.isArray(types) &&
-        types.some((type) => PREFERRED_PLACE_TYPES.has(type.toLowerCase())) &&
-        entry.score >= this.minScoreThreshold
+        this.isRestaurantishPlaceTypes(types) &&
+        this.isPrimaryCandidateNameMatch(entry.candidate, entity.name)
       ) {
         return entry;
       }
@@ -2466,49 +2921,53 @@ export class RestaurantLocationEnrichmentService {
     return undefined;
   }
 
-  private scoreCandidate(
+  private isPrimaryCandidateNameMatch(
     candidate: PlaceCandidate,
-    entity: RestaurantEntity,
-    context: EnrichmentSearchContext,
-  ): number {
-    const normalizedEntityName = entity.name.toLowerCase().trim();
+    requestedName: string,
+  ): boolean {
     const candidateName =
       candidate.mainText || candidate.description?.split(',')[0] || '';
+    if (!candidateName.trim() || !requestedName.trim()) {
+      return false;
+    }
 
-    let score = stringSimilarity.compareTwoStrings(
-      normalizedEntityName,
-      candidateName.toLowerCase(),
+    if (
+      this.isCanonicalPlaceMatch(
+        { displayName: { text: candidateName } },
+        requestedName,
+      )
+    ) {
+      return true;
+    }
+
+    const normalizedCandidate = this.normalizePlaceNameCompact(candidateName);
+    const normalizedRequested = this.normalizePlaceNameCompact(requestedName);
+
+    return Boolean(
+      normalizedCandidate &&
+        normalizedRequested &&
+        normalizedCandidate.startsWith(normalizedRequested),
     );
+  }
 
-    if (context.city) {
-      if (
-        candidate.description
-          ?.toLowerCase()
-          .includes(context.city.toLowerCase())
-      ) {
-        score += 0.15;
-      }
+  private isSearchTextCandidateNameMatch(
+    candidate: PlaceCandidate,
+    requestedName: string,
+  ): boolean {
+    if (this.isPrimaryCandidateNameMatch(candidate, requestedName)) {
+      return true;
     }
 
-    if (context.region) {
-      if (
-        candidate.description
-          ?.toLowerCase()
-          .includes(context.region.toLowerCase())
-      ) {
-        score += 0.1;
-      }
+    const candidateName =
+      candidate.mainText || candidate.description?.split(',')[0] || '';
+    if (!candidateName.trim() || !requestedName.trim()) {
+      return false;
     }
 
-    if (typeof candidate.distanceMeters === 'number') {
-      const dist = Math.max(0, candidate.distanceMeters);
-      const maxBoostDistance = 10000; // 10km
-      const proximityBoost =
-        dist <= maxBoostDistance ? 0.05 * (1 - dist / maxBoostDistance) : 0;
-      score += proximityBoost;
-    }
-
-    return Math.min(score, 1);
+    return this.isSalientSearchTextCandidateNameMatch(
+      candidateName,
+      requestedName,
+    );
   }
 
   private buildEntityUpdate(
@@ -2526,6 +2985,9 @@ export class RestaurantLocationEnrichmentService {
       details,
       matchMetadata,
     );
+    const trustedWebsiteDomain = this.resolveTrustedWebsiteDomain(
+      details.websiteUri,
+    );
     const metadata = this.mergeRestaurantMetadata(
       entity.restaurantMetadata,
       googlePlacesMetadata,
@@ -2534,12 +2996,20 @@ export class RestaurantLocationEnrichmentService {
     );
 
     const updateData: Prisma.EntityUpdateInput = {
-      googlePlaceId: details.id ?? null,
       lastUpdated: new Date(),
       restaurantMetadata: metadata,
     };
 
-    const updatedFields: string[] = ['googlePlaceId', 'restaurantMetadata'];
+    const updatedFields: string[] = ['restaurantMetadata'];
+
+    if (
+      trustedWebsiteDomain &&
+      trustedWebsiteDomain !==
+        (entity.canonicalDomain?.trim().toLowerCase() ?? null)
+    ) {
+      updateData.canonicalDomain = trustedWebsiteDomain;
+      updatedFields.push('canonicalDomain');
+    }
 
     if (typeof details.location?.latitude === 'number') {
       updateData.latitude = details.location.latitude;
@@ -2607,9 +3077,9 @@ export class RestaurantLocationEnrichmentService {
   ): Partial<Prisma.EntityCreateInput> {
     const createData: Partial<Prisma.EntityCreateInput> = {};
 
-    const googlePlaceId = this.unwrapUpdateValue(updateData.googlePlaceId);
-    if (googlePlaceId !== undefined) {
-      createData.googlePlaceId = googlePlaceId;
+    const canonicalDomain = this.unwrapUpdateValue(updateData.canonicalDomain);
+    if (canonicalDomain !== undefined) {
+      createData.canonicalDomain = canonicalDomain;
     }
 
     const lastUpdated = this.unwrapUpdateValue(updateData.lastUpdated);
@@ -2703,6 +3173,7 @@ export class RestaurantLocationEnrichmentService {
     const normalizedHours = this.normalizeGoogleOpeningHours(details);
     const phoneNumber = this.resolvePrimaryPhoneNumber(details);
     const websiteUrl = this.normalizeWebsiteUrl(details.websiteUri);
+    const websiteDomain = this.normalizeWebsiteDomain(details.websiteUri);
 
     const baseData = {
       restaurantId,
@@ -2727,6 +3198,7 @@ export class RestaurantLocationEnrichmentService {
       postalCode: addressParts.postalCode ?? null,
       phoneNumber,
       websiteUrl,
+      websiteDomain,
       hours: normalizedHours.hours ?? Prisma.DbNull,
       utcOffsetMinutes:
         normalizedHours.utcOffsetMinutes !== undefined
@@ -2747,6 +3219,7 @@ export class RestaurantLocationEnrichmentService {
       'postalCode',
       'phoneNumber',
       'websiteUrl',
+      'websiteDomain',
       'hours',
       'utcOffsetMinutes',
       'timeZone',
@@ -2983,8 +3456,11 @@ export class RestaurantLocationEnrichmentService {
     const candidates = ranked.slice(0, 5).map(({ candidate, score }) => {
       const candidateRecord: Record<string, unknown> = {
         placeId: candidate.placeId,
-        score,
       };
+
+      if (typeof score === 'number') {
+        candidateRecord.score = score;
+      }
 
       if (candidate.description) {
         candidateRecord.description = candidate.description;
@@ -3015,7 +3491,6 @@ export class RestaurantLocationEnrichmentService {
       city: context.city,
       region: context.region,
       preferredTypes: Array.from(PREFERRED_PLACE_TYPES),
-      threshold: this.minScoreThreshold,
       attemptedAt: new Date().toISOString(),
       count: ranked.length,
       candidates,
@@ -3050,6 +3525,7 @@ export class RestaurantLocationEnrichmentService {
             ? {
                 lat: context.locationBias.lat,
                 lng: context.locationBias.lng,
+                radiusMeters: context.locationBias.radiusMeters,
               }
             : undefined,
         },
@@ -3058,7 +3534,7 @@ export class RestaurantLocationEnrichmentService {
       const candidates = response.places
         .map((place) => this.mapTextSearchPlaceToCandidate(place, context))
         .filter((candidate): candidate is PlaceCandidate => candidate !== null);
-      const ranked = this.rankCandidates(candidates, entity, context);
+      const ranked = this.rankCandidates(candidates);
 
       this.logger.debug('Find place fallback attempt completed', {
         entityId: entity.entityId,
@@ -3084,6 +3560,148 @@ export class RestaurantLocationEnrichmentService {
       });
       return null;
     }
+  }
+
+  private shouldCrossCheckWithSearchText(params: {
+    selectedCandidate: PlaceCandidate;
+    selectedPlace: GooglePlacesV1Place;
+    context: EnrichmentSearchContext;
+    selectedMatchSource: 'autocomplete' | 'find_place';
+  }): boolean {
+    if (params.selectedMatchSource !== 'autocomplete') {
+      return false;
+    }
+
+    const radiusMeters = params.context.locationBias?.radiusMeters;
+    if (
+      typeof radiusMeters !== 'number' ||
+      !Number.isFinite(radiusMeters) ||
+      radiusMeters <= 0
+    ) {
+      return false;
+    }
+
+    const distance =
+      this.calculatePlaceDistanceMeters(params.selectedPlace, params.context) ??
+      params.selectedCandidate.distanceMeters;
+
+    return (
+      typeof distance === 'number' &&
+      Number.isFinite(distance) &&
+      distance > radiusMeters
+    );
+  }
+
+  private selectSearchTextOverrideCandidate(
+    ranked: RankedCandidate[],
+    entity: RestaurantEntity,
+    context: EnrichmentSearchContext,
+  ): RankedCandidate | undefined {
+    for (const entry of ranked) {
+      if (
+        !this.isRestaurantishPlaceTypes(entry.candidate.types) ||
+        !this.isSearchTextCandidateNameMatch(entry.candidate, entity.name) ||
+        !this.isCandidateWithinSourceMarket(entry.candidate, context)
+      ) {
+        continue;
+      }
+      return entry;
+    }
+
+    return undefined;
+  }
+
+  private isCandidateWithinSourceMarket(
+    candidate: PlaceCandidate,
+    context: EnrichmentSearchContext,
+  ): boolean {
+    const radiusMeters = context.locationBias?.radiusMeters;
+    if (
+      typeof radiusMeters !== 'number' ||
+      !Number.isFinite(radiusMeters) ||
+      radiusMeters <= 0
+    ) {
+      return false;
+    }
+
+    return (
+      typeof candidate.distanceMeters === 'number' &&
+      Number.isFinite(candidate.distanceMeters) &&
+      candidate.distanceMeters <= radiusMeters
+    );
+  }
+
+  private async resolveOutOfMarketSearchTextOverride(params: {
+    entity: RestaurantEntity;
+    context: EnrichmentSearchContext;
+    sessionToken?: string;
+    selectedCandidate: PlaceCandidate;
+    selectedPlace: GooglePlacesV1Place;
+    selectedMatchSource: 'autocomplete' | 'find_place';
+  }): Promise<ResolvedPlaceMatch | null> {
+    if (!this.shouldCrossCheckWithSearchText(params)) {
+      return null;
+    }
+
+    const fallbackResult = await this.tryFindPlaceFallback(
+      params.entity,
+      params.context,
+      {
+        sessionToken: params.sessionToken,
+      },
+    );
+
+    if (!fallbackResult || fallbackResult.ranked.length === 0) {
+      return null;
+    }
+
+    const override = this.selectSearchTextOverrideCandidate(
+      fallbackResult.ranked,
+      params.entity,
+      params.context,
+    );
+    if (!override) {
+      return null;
+    }
+
+    const details = await this.googlePlacesService.getPlaceDetails(
+      override.candidate.placeId,
+      { includeRaw: true },
+    );
+
+    if (!details.place) {
+      return null;
+    }
+
+    const place = details.place;
+    if (typeof place.id !== 'string' || !place.id.trim()) {
+      place.id = override.candidate.placeId;
+    }
+
+    this.logger.debug(
+      'Replacing out-of-market autocomplete match with searchText match',
+      {
+        entityName: params.entity.name,
+        originalDescription: params.selectedCandidate.description,
+        overrideDescription: override.candidate.description,
+        query: params.context.query,
+      },
+    );
+
+    return {
+      place,
+      matchMetadata: {
+        query: params.context.query ?? '',
+        predictionDescription: override.candidate.description,
+        mainText: override.candidate.mainText,
+        secondaryText: override.candidate.secondaryText,
+        candidateTypes: override.candidate.types,
+        predictionsConsidered: fallbackResult.ranked.length,
+        timestamp: new Date().toISOString(),
+        source: 'find_place',
+      },
+      score: override.score,
+    };
   }
 
   private mapTextSearchPlaceToCandidate(

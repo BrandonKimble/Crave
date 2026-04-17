@@ -1,9 +1,9 @@
 import React from 'react';
 
-import type { UseSearchForegroundInteractionRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
+import type { SearchForegroundSubmitRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
 
 type UseSearchForegroundSubmitPreparationRuntimeArgs = Pick<
-  UseSearchForegroundInteractionRuntimeArgs,
+  SearchForegroundSubmitRuntimeArgs,
   | 'captureSearchSessionOrigin'
   | 'ensureSearchOverlay'
   | 'suppressAutocompleteResults'

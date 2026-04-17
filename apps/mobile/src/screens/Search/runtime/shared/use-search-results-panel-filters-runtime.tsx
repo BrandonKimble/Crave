@@ -10,7 +10,6 @@ type UseSearchResultsPanelFiltersRuntimeArgs = Pick<
   UseSearchResultsRoutePublicationArgs,
   | 'searchFiltersLayoutCacheRef'
   | 'handleSearchFiltersLayoutCache'
-  | 'toggleRankSelector'
   | 'toggleOpenNow'
   | 'toggleVotesFilter'
   | 'togglePriceSelector'
@@ -19,13 +18,10 @@ type UseSearchResultsPanelFiltersRuntimeArgs = Pick<
   pendingTabSwitchTab: 'dishes' | 'restaurants' | null;
   scheduleTabToggleCommit: ResultsInteractionModel['scheduleTabToggleCommit'];
   requestVersionKey: string;
-  rankButtonLabelText: string;
-  rankButtonIsActive: boolean;
   priceButtonLabelText: string;
   priceButtonIsActive: boolean;
   openNow: boolean;
   votesFilterActive: boolean;
-  isRankSelectorVisible: boolean;
   isPriceSelectorVisible: boolean;
 };
 
@@ -36,7 +32,6 @@ export type SearchResultsPanelFiltersRuntime = {
 export const useSearchResultsPanelFiltersRuntime = ({
   searchFiltersLayoutCacheRef,
   handleSearchFiltersLayoutCache,
-  toggleRankSelector,
   toggleOpenNow,
   toggleVotesFilter,
   togglePriceSelector,
@@ -44,13 +39,10 @@ export const useSearchResultsPanelFiltersRuntime = ({
   pendingTabSwitchTab,
   scheduleTabToggleCommit,
   requestVersionKey,
-  rankButtonLabelText,
-  rankButtonIsActive,
   priceButtonLabelText,
   priceButtonIsActive,
   openNow,
   votesFilterActive,
-  isRankSelectorVisible,
   isPriceSelectorVisible,
 }: UseSearchResultsPanelFiltersRuntimeArgs): SearchResultsPanelFiltersRuntime => {
   const filtersActiveTab = pendingTabSwitchTab ?? activeTab;
@@ -65,13 +57,10 @@ export const useSearchResultsPanelFiltersRuntime = ({
   const filterChipReadModel = useSearchFilterChipReadModel({
     requestVersionKey,
     activeTab,
-    rankButtonLabel: rankButtonLabelText,
-    rankButtonActive: rankButtonIsActive,
     priceButtonLabel: priceButtonLabelText,
     priceButtonActive: priceButtonIsActive,
     openNow,
     votesFilterActive,
-    isRankSelectorVisible,
     isPriceSelectorVisible,
   });
 
@@ -80,10 +69,6 @@ export const useSearchResultsPanelFiltersRuntime = ({
       <SearchFilters
         activeTab={filtersActiveTab}
         onTabChange={handleInteractionTabChange}
-        rankButtonLabel={filterChipReadModel.rankButtonLabel}
-        rankButtonActive={filterChipReadModel.rankButtonActive}
-        onToggleRankSelector={toggleRankSelector}
-        isRankSelectorVisible={filterChipReadModel.isRankSelectorVisible}
         openNow={filterChipReadModel.openNow}
         onToggleOpenNow={toggleOpenNow}
         votesFilterActive={filterChipReadModel.votesFilterActive}
@@ -100,12 +85,9 @@ export const useSearchResultsPanelFiltersRuntime = ({
     ),
     [
       filterChipReadModel.isPriceSelectorVisible,
-      filterChipReadModel.isRankSelectorVisible,
       filterChipReadModel.openNow,
       filterChipReadModel.priceButtonActive,
       filterChipReadModel.priceButtonLabel,
-      filterChipReadModel.rankButtonActive,
-      filterChipReadModel.rankButtonLabel,
       filterChipReadModel.votesFilterActive,
       filtersActiveTab,
       handleInteractionTabChange,
@@ -113,7 +95,6 @@ export const useSearchResultsPanelFiltersRuntime = ({
       searchFiltersLayoutCacheRef,
       toggleOpenNow,
       togglePriceSelector,
-      toggleRankSelector,
       toggleVotesFilter,
     ]
   );

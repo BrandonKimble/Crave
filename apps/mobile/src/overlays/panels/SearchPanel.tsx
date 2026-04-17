@@ -5,7 +5,10 @@ import type { FlashListProps, FlashListRef } from '@shopify/flash-list';
 import Reanimated from 'react-native-reanimated';
 
 import type { SnapPoints } from '../bottomSheetMotionTypes';
-import type { BottomSheetWithFlashListProps } from '../bottomSheetWithFlashListContract';
+import type {
+  BottomSheetWithFlashListBaseProps,
+  BottomSheetWithFlashListListProps,
+} from '../bottomSheetWithFlashListContract';
 import { overlaySheetStyles } from '../overlaySheetStyles';
 import { RESULTS_BOTTOM_PADDING } from '../../screens/Search/constants/search';
 import searchStyles from '../../screens/Search/styles';
@@ -29,8 +32,8 @@ type UseSearchPanelSpecOptions<T> = {
   onEndReached?: FlashListProps<T>['onEndReached'];
   scrollIndicatorInsets?: FlashListProps<T>['scrollIndicatorInsets'];
   extraData?: FlashListProps<T>['extraData'];
-  secondaryList?: BottomSheetWithFlashListProps<T>['secondaryList'];
-  activeList?: BottomSheetWithFlashListProps<T>['activeList'];
+  secondaryList?: BottomSheetWithFlashListListProps<T>['secondaryList'];
+  activeList?: BottomSheetWithFlashListBaseProps<T>['activeList'];
   interactionEnabled?: boolean;
   data: ReadonlyArray<T>;
   renderItem: FlashListProps<T>['renderItem'];
@@ -42,7 +45,7 @@ type UseSearchPanelSpecOptions<T> = {
   ListFooterComponent?: FlashListProps<T>['ListFooterComponent'];
   ListEmptyComponent?: FlashListProps<T>['ListEmptyComponent'];
   ItemSeparatorComponent?: FlashListProps<T>['ItemSeparatorComponent'];
-  flashListProps?: BottomSheetWithFlashListProps<T>['flashListProps'];
+  flashListProps?: BottomSheetWithFlashListBaseProps<T>['flashListProps'];
   headerComponent?: React.ReactNode;
   backgroundComponent?: React.ReactNode;
   overlayComponent?: React.ReactNode;
@@ -50,7 +53,7 @@ type UseSearchPanelSpecOptions<T> = {
   resultsContainerAnimatedStyle: StyleProp<ViewStyle>;
   listRef?: React.RefObject<FlashListRef<T> | null>;
   onHidden: () => void;
-  onSnapStart?: BottomSheetWithFlashListProps<T>['onSnapStart'];
+  onSnapStart?: BottomSheetWithFlashListBaseProps<T>['onSnapStart'];
   onSnapChange: (snap: OverlaySheetSnap) => void;
   style?: StyleProp<ViewStyle>;
   surfaceStyle?: StyleProp<ViewStyle>;

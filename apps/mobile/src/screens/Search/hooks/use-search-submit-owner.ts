@@ -40,7 +40,6 @@ type SearchSubmitOwnerReadModel = {
   openNow: boolean;
   priceLevels: number[];
   votes100Plus: boolean;
-  scoreMode: NaturalSearchRequest['scoreMode'];
 };
 
 type SearchSubmitOwnerUiPorts = {
@@ -84,7 +83,6 @@ type SearchSubmitOwnerRuntimePorts = {
   mapRef: React.RefObject<MapboxMapRef | null>;
   latestBoundsRef: React.MutableRefObject<MapBounds | null>;
   viewportBoundsService: ViewportBoundsService;
-  ensureUserLocation: () => Promise<Coordinate | null>;
   userLocationRef: React.MutableRefObject<Coordinate | null>;
   requestRuntimeOwner: SearchRequestRuntimeOwner;
 };
@@ -120,7 +118,6 @@ type SearchSubmitOwner = {
       transitionFromDockedPolls?: boolean;
       filters?: StructuredSearchFilters;
       forceFreshBounds?: boolean;
-      scoreMode?: NaturalSearchRequest['scoreMode'];
     }
   ) => Promise<void>;
   rerunActiveSearch: (params: {
@@ -156,7 +153,6 @@ const useSearchSubmitOwner = ({
     openNow,
     priceLevels,
     votes100Plus,
-    scoreMode,
   } = readModel;
   const {
     setActiveTab,
@@ -183,7 +179,6 @@ const useSearchSubmitOwner = ({
     mapRef,
     latestBoundsRef,
     viewportBoundsService,
-    ensureUserLocation,
     userLocationRef,
     requestRuntimeOwner,
   } = runtimePorts;
@@ -208,7 +203,6 @@ const useSearchSubmitOwner = ({
     prepareNaturalSearchAttemptPayload,
   } = useSearchRequestPreparationOwner({
     isLoadingMore,
-    scoreMode,
     openNow,
     priceLevels,
     votes100Plus,
@@ -216,7 +210,6 @@ const useSearchSubmitOwner = ({
     latestBoundsRef,
     viewportBoundsService,
     mapRef,
-    ensureUserLocation,
     userLocationRef,
     lastSearchRequestIdRef,
     isOperationTupleStillActive,
@@ -256,7 +249,6 @@ const useSearchSubmitOwner = ({
     activeTab,
     currentResults,
     pendingTabSwitchTab,
-    scoreMode,
     isPaginationExhausted,
     searchRuntimeBus,
     latestBoundsRef,

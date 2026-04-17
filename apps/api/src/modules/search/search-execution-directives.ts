@@ -1,4 +1,5 @@
 export interface SearchExecutionDirectives {
+  activeMarketKey?: string | null;
   /**
    * When the primary target is a food attribute (no explicit food/restaurant),
    * allow a fallback that includes connections whose food/category text matches

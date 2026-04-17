@@ -1,15 +1,15 @@
 import React from 'react';
-import { PixelRatio, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import MaskedView from '@react-native-masked-view/masked-view';
 import Svg, { Defs, Mask, Rect } from 'react-native-svg';
 
 import { FrostedGlassBackground } from '../../../components/FrostedGlassBackground';
-import { LINE_HEIGHTS } from '../../../constants/typography';
 import { OVERLAY_CORNER_RADIUS } from '../../../overlays/overlaySheetStyles';
-import { NAV_BOTTOM_PADDING, NAV_TOP_PADDING } from '../constants/search';
+import {
+  resolveSearchBottomInset,
+  resolveSearchBottomNavHeight,
+} from '../runtime/shared/search-startup-geometry';
 
-const ESTIMATED_NAV_ICON_SIZE = 24;
-const ESTIMATED_NAV_ICON_LABEL_GAP = 2;
 const NAV_BAR_SILHOUETTE_EXTRA_TOP = OVERLAY_CORNER_RADIUS + 2;
 const NAV_BAR_SILHOUETTE_SOLID_BG = 'rgba(248, 251, 255, 0.94)';
 
@@ -23,14 +23,7 @@ const NavBarSilhouetteBackground = ({
   disableBlur,
 }: NavBarSilhouetteBackgroundProps) => {
   const { width: windowWidth } = useWindowDimensions();
-  const estimatedBodyHeight = PixelRatio.roundToNearestPixel(
-    NAV_TOP_PADDING +
-      ESTIMATED_NAV_ICON_SIZE +
-      ESTIMATED_NAV_ICON_LABEL_GAP +
-      LINE_HEIGHTS.body +
-      bottomInset +
-      NAV_BOTTOM_PADDING
-  );
+  const estimatedBodyHeight = resolveSearchBottomNavHeight(resolveSearchBottomInset(bottomInset));
   const bodyTop = NAV_BAR_SILHOUETTE_EXTRA_TOP;
   const fullHeight = estimatedBodyHeight + bodyTop;
   const cutoutWidth = Math.max(windowWidth, 0);

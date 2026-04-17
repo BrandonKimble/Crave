@@ -11,7 +11,10 @@ import { useProfilePanelSeedRuntime } from './profile-panel-seed-runtime';
 type UseProfileHydrationRuntimeStateOwnerArgs = {
   profileControllerStateRef: React.RefObject<ProfileControllerState>;
   publishRestaurantPanelSnapshot: ProfileShellStatePublisher['setRestaurantPanelSnapshot'];
-  emitRuntimeMechanismEvent: (event: string, payload: Record<string, unknown>) => void;
+  emitRuntimeMechanismEvent: (
+    event: 'profile_intent_cancelled',
+    payload: Record<string, unknown>
+  ) => void;
 };
 
 export const useProfileHydrationRuntimeStateOwner = ({

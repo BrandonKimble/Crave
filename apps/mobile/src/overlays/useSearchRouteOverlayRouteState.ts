@@ -1,5 +1,10 @@
-import { useOverlayStore } from '../store/overlayStore';
+import { useOverlayStore, type OverlayRouteEntry } from '../store/overlayStore';
+import { useSearchRouteOverlayCommandStore } from './searchRouteOverlayCommandStore';
 import type { SearchRouteOverlayRouteState } from './searchResolvedRouteHostModelContract';
+
+const isPollCreationRouteEntry = (
+  route: OverlayRouteEntry
+): route is OverlayRouteEntry<'pollCreation'> => route.key === 'pollCreation';
 
 export const useSearchRouteOverlayRouteState = (): SearchRouteOverlayRouteState => {
   const rootOverlayKey = useOverlayStore(
@@ -7,24 +12,24 @@ export const useSearchRouteOverlayRouteState = (): SearchRouteOverlayRouteState 
   );
   const activeOverlayRoute = useOverlayStore((state) => state.activeOverlayRoute);
   const activeOverlayRouteKey = activeOverlayRoute.key;
-  const pollOverlayParams = useOverlayStore(
-    (state) =>
-      state.overlayRouteStack
-        .slice()
-        .reverse()
-        .find((route) => route.key === 'polls')?.params
-  );
-  const shouldShowPollCreationPanel = activeOverlayRoute.key === 'pollCreation';
+  const pollOverlayParams = useSearchRouteOverlayCommandStore((state) => state.pollsPanelParams);
+  const activePollCreationRoute = isPollCreationRouteEntry(activeOverlayRoute)
+    ? activeOverlayRoute
+    : null;
+  const shouldShowPollCreationPanel = activePollCreationRoute != null;
 
   return {
     rootOverlayKey,
     activeOverlayRouteKey,
     pollOverlayParams,
-    pollCreationCoverageKey: shouldShowPollCreationPanel
-      ? activeOverlayRoute.params?.coverageKey ?? null
+    pollCreationMarketKey: shouldShowPollCreationPanel
+      ? (activePollCreationRoute.params?.marketKey ?? null)
       : null,
-    pollCreationCoverageName: shouldShowPollCreationPanel
-      ? activeOverlayRoute.params?.coverageName ?? null
+    pollCreationMarketName: shouldShowPollCreationPanel
+      ? (activePollCreationRoute.params?.marketName ?? null)
+      : null,
+    pollCreationBounds: shouldShowPollCreationPanel
+      ? (activePollCreationRoute.params?.bounds ?? null)
       : null,
     shouldShowPollCreationPanel,
   };

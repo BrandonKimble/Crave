@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { logger } from '../../../../utils';
+import { getActiveSearchNavSwitchPerfProbe } from './search-nav-switch-perf-probe';
 
 import type {
   InstrumentationMapQueryBudget,
@@ -23,6 +24,7 @@ const RUN_ONE_COMMIT_SPAN_PRESSURE_COMPONENT_IDS = new Set([
 ]);
 const SHOULD_LOG_PROFILER = false;
 const PROFILER_MIN_MS = Number.POSITIVE_INFINITY;
+const NAV_SWITCH_PROFILER_LOG_MIN_MS = 4;
 
 type UseSearchRuntimeProfilerInstrumentationRuntimeArgs = {
   getPerfNow: () => number;
@@ -70,6 +72,7 @@ export const useSearchRuntimeProfilerInstrumentationRuntime = ({
 }: UseSearchRuntimeProfilerInstrumentationRuntimeArgs): React.ProfilerOnRenderCallback =>
   React.useCallback<React.ProfilerOnRenderCallback>(
     (id, phase, actualDuration, baseDuration, startTime, commitTime) => {
+      const activeNavSwitchProbe = getActiveSearchNavSwitchPerfProbe();
       if (SHOULD_LOG_PROFILER && actualDuration >= PROFILER_MIN_MS) {
         logger.debug(
           `[SearchPerf] Profiler ${id} ${phase} actual=${actualDuration.toFixed(
@@ -82,16 +85,28 @@ export const useSearchRuntimeProfilerInstrumentationRuntime = ({
       const shouldEmitProfilerSpanLog =
         JS_FLOOR_PROBE_PROFILER_SPAN_LOG_MODE && searchMode === 'shortcut';
       const shouldCaptureProfilerSpanForHarness = isShortcutPerfHarnessScenario;
+      const shouldEmitNavSwitchProfilerLog = activeNavSwitchProbe != null;
       if (
         !shouldRecordProfilerAttribution &&
         !shouldEmitProfilerSpanLog &&
-        !shouldCaptureProfilerSpanForHarness
+        !shouldCaptureProfilerSpanForHarness &&
+        !shouldEmitNavSwitchProfilerLog
       ) {
         return;
       }
 
-      const activeRunNumber = getActiveShortcutRunNumber();
-      if (activeRunNumber == null) {
+      const activeRunNumber =
+        shouldRecordProfilerAttribution ||
+        shouldEmitProfilerSpanLog ||
+        shouldCaptureProfilerSpanForHarness
+          ? getActiveShortcutRunNumber()
+          : null;
+      if (
+        (shouldRecordProfilerAttribution ||
+          shouldEmitProfilerSpanLog ||
+          shouldCaptureProfilerSpanForHarness) &&
+        activeRunNumber == null
+      ) {
         return;
       }
 
@@ -169,6 +184,24 @@ export const useSearchRuntimeProfilerInstrumentationRuntime = ({
             nowMs: Number(getPerfNow().toFixed(1)),
             runNumber: activeRunNumber,
             harnessRunId: shortcutHarnessRunId,
+          });
+        }
+        if (
+          shouldEmitNavSwitchProfilerLog &&
+          activeNavSwitchProbe &&
+          (actualDuration >= NAV_SWITCH_PROFILER_LOG_MIN_MS ||
+            commitSpanMs >= NAV_SWITCH_PROFILER_LOG_MIN_MS)
+        ) {
+          logger.debug('[NAV-SWITCH-PERF] profilerSpan', {
+            seq: activeNavSwitchProbe.seq,
+            from: activeNavSwitchProbe.from,
+            to: activeNavSwitchProbe.to,
+            id,
+            phase,
+            actualDurationMs: Number(actualDuration.toFixed(1)),
+            baseDurationMs: Number(baseDuration.toFixed(1)),
+            commitSpanMs: Number(commitSpanMs.toFixed(1)),
+            ageMs: Number((getPerfNow() - activeNavSwitchProbe.startedAtMs).toFixed(1)),
           });
         }
       }

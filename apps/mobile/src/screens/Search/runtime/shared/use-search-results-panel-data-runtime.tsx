@@ -15,30 +15,30 @@ export type {
 } from './search-results-panel-data-runtime-contract';
 
 export const useSearchResultsPanelDataRuntime = ({
+  searchRuntimeBus,
   resultsPresentationOwner,
   searchFiltersLayoutCacheRef,
   handleSearchFiltersLayoutCache,
-  toggleRankSelector,
   toggleOpenNow,
   toggleVotesFilter,
   togglePriceSelector,
-  scoreMode,
   getDishSaveHandler,
   getRestaurantSaveHandler,
   stableOpenRestaurantProfileFromResults,
   openScoreInfo,
 }: UseSearchResultsPanelDataRuntimeArgs): SearchResultsPanelDataRuntime => {
   const panelInputRuntime = useSearchResultsPanelInputRuntime({
+    searchRuntimeBus,
     resultsPresentationOwner,
   });
   const { scheduleTabToggleCommit } = resultsPresentationOwner.interactionModel;
   const hydrationContentRuntime = useSearchResultsPanelHydrationContentRuntime({
+    searchRuntimeBus,
     panelInputRuntime,
   });
   const filtersContentRuntime = useSearchResultsPanelFiltersContentRuntime({
     searchFiltersLayoutCacheRef,
     handleSearchFiltersLayoutCache,
-    toggleRankSelector,
     toggleOpenNow,
     toggleVotesFilter,
     togglePriceSelector,
@@ -47,7 +47,6 @@ export const useSearchResultsPanelDataRuntime = ({
     scheduleTabToggleCommit,
   });
   const cardContentRuntime = useSearchResultsPanelCardContentRuntime({
-    scoreMode,
     getDishSaveHandler,
     getRestaurantSaveHandler,
     stableOpenRestaurantProfileFromResults,

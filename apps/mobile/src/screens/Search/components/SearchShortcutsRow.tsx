@@ -15,7 +15,6 @@ import styles from '../styles';
 const AnimatedPressable = Reanimated.createAnimatedComponent(Pressable);
 
 type SearchShortcutsRowProps = {
-  visible: boolean;
   interactive: boolean;
   containerAnimatedStyle: StyleProp<ViewStyle>;
   chipAnimatedStyle: StyleProp<ViewStyle>;
@@ -27,7 +26,6 @@ type SearchShortcutsRowProps = {
 };
 
 const SearchShortcutsRow = ({
-  visible,
   interactive,
   containerAnimatedStyle,
   chipAnimatedStyle,
@@ -37,10 +35,6 @@ const SearchShortcutsRow = ({
   onRestaurantsChipLayout,
   onDishesChipLayout,
 }: SearchShortcutsRowProps) => {
-  if (!visible) {
-    return null;
-  }
-
   return (
     <Reanimated.View
       style={containerAnimatedStyle}

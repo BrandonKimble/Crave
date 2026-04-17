@@ -3,8 +3,9 @@ import type React from 'react';
 import type { ResultsPresentationTransportState } from './results-presentation-runtime-contract';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { useShortcutHarnessObserver } from '../telemetry/shortcut-harness-observer';
+import type { PerfNavSwitchOverlay } from '../../../../perf/harness-config';
 
-type ShortcutHarnessObserverArgs = Parameters<typeof useShortcutHarnessObserver>[0];
+export type ShortcutHarnessObserverArgs = Parameters<typeof useShortcutHarnessObserver>[0];
 export type ShortcutHarnessObserverResult = ReturnType<typeof useShortcutHarnessObserver>;
 
 export type RunOneHandoffCoordinatorLike = {
@@ -44,8 +45,6 @@ export type UseSearchRuntimeInstrumentationRuntimeArgs = Pick<
   | 'getPerfNow'
   | 'roundPerfValue'
   | 'searchSessionController'
-  | 'scoreMode'
-  | 'setPreferredScoreMode'
   | 'searchMode'
   | 'isSearchLoading'
   | 'isLoadingMore'
@@ -77,6 +76,7 @@ export type UseSearchRuntimeInstrumentationRuntimeResult = Pick<
 > & {
   submitShortcutSearchRef: ShortcutHarnessObserverArgs['submitShortcutSearchRef'];
   toggleOpenNowHarnessRef: ShortcutHarnessObserverArgs['toggleOpenNowRef'];
+  selectOverlayHarnessRef: React.MutableRefObject<(target: PerfNavSwitchOverlay) => void>;
   handleProfilerRender: React.ProfilerOnRenderCallback;
   shouldLogSearchComputes: boolean;
   logSearchCompute: (label: string, duration: number) => void;

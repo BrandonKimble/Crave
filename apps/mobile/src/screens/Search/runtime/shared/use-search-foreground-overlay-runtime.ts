@@ -1,41 +1,16 @@
 import React from 'react';
-import { Keyboard } from 'react-native';
+import { Keyboard, unstable_batchedUpdates } from 'react-native';
 
+import { clearSearchRoutePollsPanelParams } from '../../../../overlays/searchRouteOverlayCommandStore';
 import { useOverlaySheetPositionStore } from '../../../../overlays/useOverlaySheetPositionStore';
+import { logger } from '../../../../utils';
+import { beginSearchNavSwitchPerfProbe } from './search-nav-switch-perf-probe';
 
 import type {
+  SearchForegroundOverlayRuntimeArgs,
   SearchForegroundInteractionOverlayHandlers,
   SearchForegroundInteractionSubmitHandlers,
-  UseSearchForegroundInteractionRuntimeArgs,
 } from './use-search-foreground-interaction-runtime-contract';
-
-type UseSearchForegroundOverlayRuntimeArgs = Pick<
-  UseSearchForegroundInteractionRuntimeArgs,
-  | 'navigation'
-  | 'routeSearchIntent'
-  | 'userLocation'
-  | 'rootOverlay'
-  | 'profilePresentationActive'
-  | 'overlayRuntimeController'
-  | 'closeRestaurantProfile'
-  | 'dismissTransientOverlays'
-  | 'beginSuggestionCloseHoldRef'
-  | 'setOverlaySwitchInFlight'
-  | 'setTabOverlaySnapRequest'
-  | 'setIsSearchFocused'
-  | 'setIsSuggestionPanelActive'
-  | 'setShowSuggestions'
-  | 'setSuggestions'
-  | 'setIsAutocompleteSuppressed'
-  | 'setIsSuggestionLayoutWarm'
-  | 'setSearchTransitionVariant'
-  | 'ignoreNextSearchBlurRef'
-  | 'allowSearchBlurExitRef'
-  | 'inputRef'
-  | 'cancelAutocomplete'
-  | 'resetSearchHeaderFocusProgress'
-  | 'resetSubmitTransitionHold'
->;
 
 type UseSearchForegroundOverlayRuntimeDependencies = {
   submitHandlers: Pick<
@@ -56,7 +31,7 @@ export const useSearchForegroundOverlayRuntime = ({
   closeRestaurantProfile,
   dismissTransientOverlays,
   beginSuggestionCloseHoldRef,
-  setOverlaySwitchInFlight,
+  transitionController,
   setTabOverlaySnapRequest,
   setIsSearchFocused,
   setIsSuggestionPanelActive,
@@ -72,8 +47,13 @@ export const useSearchForegroundOverlayRuntime = ({
   resetSearchHeaderFocusProgress,
   resetSubmitTransitionHold,
   submitHandlers,
-}: UseSearchForegroundOverlayRuntimeArgs &
+}: SearchForegroundOverlayRuntimeArgs &
   UseSearchForegroundOverlayRuntimeDependencies): SearchForegroundInteractionOverlayHandlers => {
+  const getNowMs = React.useCallback(() => {
+    const perfNow = globalThis.performance?.now?.();
+    return typeof perfNow === 'number' && Number.isFinite(perfNow) ? perfNow : Date.now();
+  }, []);
+
   const resetSuggestionUiForExternalSubmit = React.useCallback(() => {
     ignoreNextSearchBlurRef.current = true;
     resetSearchHeaderFocusProgress();
@@ -107,7 +87,7 @@ export const useSearchForegroundOverlayRuntime = ({
   ]);
 
   const runViewMoreIntent = React.useCallback(
-    (intent: NonNullable<UseSearchForegroundInteractionRuntimeArgs['routeSearchIntent']>) => {
+    (intent: NonNullable<SearchForegroundOverlayRuntimeArgs['routeSearchIntent']>) => {
       if (intent.type === 'recentSearch') {
         submitHandlers.handleRecentSearchPress(intent.entry);
         return;
@@ -151,22 +131,56 @@ export const useSearchForegroundOverlayRuntime = ({
   }, [navigation, prepareForViewMoreNavigation, userLocation]);
 
   const handleOverlaySelect = React.useCallback(
-    (target: UseSearchForegroundInteractionRuntimeArgs['rootOverlay']) => {
+    (target: SearchForegroundOverlayRuntimeArgs['rootOverlay']) => {
+      const perfProbe = beginSearchNavSwitchPerfProbe({
+        from: rootOverlay,
+        to: target,
+      });
+      const startedAtMs = getNowMs();
+      const logNavSwitchStep = (step: string) => {
+        logger.debug('[NAV-SWITCH-PERF] handlerStep', {
+          seq: perfProbe.seq,
+          from: perfProbe.from,
+          to: perfProbe.to,
+          step,
+          elapsedMs: Number((getNowMs() - startedAtMs).toFixed(1)),
+        });
+      };
+
+      logNavSwitchStep('begin');
       dismissTransientOverlays();
+      logNavSwitchStep('dismissTransientOverlays');
       const shouldDeferSuggestionClear = beginSuggestionCloseHoldRef.current();
+      logNavSwitchStep('beginSuggestionCloseHold');
       setIsSuggestionPanelActive(false);
-      if (target === 'search') {
-        setOverlaySwitchInFlight(true);
-        overlayRuntimeController.switchToSearchRootWithDockedPolls();
-        setIsSearchFocused(false);
-        setIsAutocompleteSuppressed(true);
-        if (!shouldDeferSuggestionClear) {
-          setShowSuggestions(false);
-          setSuggestions([]);
-        }
-        inputRef.current?.blur?.();
+      logNavSwitchStep('setIsSuggestionPanelActive:false');
+      if (target === 'search' || target === 'polls') {
+        transitionController.beginOverlaySwitch();
+        unstable_batchedUpdates(() => {
+          clearSearchRoutePollsPanelParams();
+          logNavSwitchStep('setOverlaySwitchInFlight:true');
+          overlayRuntimeController.switchToSearchRootWithDockedPolls();
+          logNavSwitchStep('switchToSearchRootWithDockedPolls');
+          setIsSearchFocused(false);
+          setIsAutocompleteSuppressed(true);
+          logNavSwitchStep('setSearchFlagsForSearchRoot');
+          if (!shouldDeferSuggestionClear) {
+            setShowSuggestions(false);
+            setSuggestions([]);
+            logNavSwitchStep('clearSuggestions');
+          }
+          inputRef.current?.blur?.();
+        });
+        logNavSwitchStep('blurInput');
         requestAnimationFrame(() => {
-          setOverlaySwitchInFlight(false);
+          transitionController.endOverlaySwitch();
+          logger.debug('[NAV-SWITCH-PERF] handlerStep', {
+            seq: perfProbe.seq,
+            from: perfProbe.from,
+            to: perfProbe.to,
+            step: 'setOverlaySwitchInFlight:false',
+            elapsedMs: Number((getNowMs() - startedAtMs).toFixed(1)),
+          });
         });
         return;
       }
@@ -177,22 +191,38 @@ export const useSearchForegroundOverlayRuntime = ({
         : 'expanded';
       const shouldRequestTabSnap = rootOverlay === 'search';
 
-      setTabOverlaySnapRequest(shouldRequestTabSnap ? desiredTabSnap : null);
-      if (profilePresentationActive) {
-        closeRestaurantProfile();
-      }
+      transitionController.beginOverlaySwitch();
+      unstable_batchedUpdates(() => {
+        clearSearchRoutePollsPanelParams();
+        setTabOverlaySnapRequest(shouldRequestTabSnap ? desiredTabSnap : null);
+        logNavSwitchStep('setTabOverlaySnapRequest');
+        if (profilePresentationActive) {
+          closeRestaurantProfile();
+          logNavSwitchStep('closeRestaurantProfile');
+        }
 
-      setOverlaySwitchInFlight(true);
-      overlayRuntimeController.setRootOverlay(target);
-      inputRef.current?.blur?.();
+        logNavSwitchStep('setOverlaySwitchInFlight:true');
+        overlayRuntimeController.setRootOverlay(target);
+        logNavSwitchStep('setRootOverlay');
+        inputRef.current?.blur?.();
+      });
+      logNavSwitchStep('blurInput');
       requestAnimationFrame(() => {
-        setOverlaySwitchInFlight(false);
+        transitionController.endOverlaySwitch();
+        logger.debug('[NAV-SWITCH-PERF] handlerStep', {
+          seq: perfProbe.seq,
+          from: perfProbe.from,
+          to: perfProbe.to,
+          step: 'setOverlaySwitchInFlight:false',
+          elapsedMs: Number((getNowMs() - startedAtMs).toFixed(1)),
+        });
       });
     },
     [
       beginSuggestionCloseHoldRef,
       closeRestaurantProfile,
       dismissTransientOverlays,
+      getNowMs,
       inputRef,
       overlayRuntimeController,
       profilePresentationActive,
@@ -200,10 +230,10 @@ export const useSearchForegroundOverlayRuntime = ({
       setIsAutocompleteSuppressed,
       setIsSearchFocused,
       setIsSuggestionPanelActive,
-      setOverlaySwitchInFlight,
       setShowSuggestions,
       setSuggestions,
       setTabOverlaySnapRequest,
+      transitionController,
     ]
   );
 

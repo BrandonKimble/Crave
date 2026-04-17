@@ -1,10 +1,15 @@
 import type React from 'react';
 
 import type { BottomSheetSnap, SnapPoints } from './bottomSheetMotionTypes';
-import type { BottomSheetWithFlashListProps } from './bottomSheetWithFlashListContract';
+import type {
+  BottomSheetWithFlashListBaseProps,
+  BottomSheetWithFlashListProps,
+  BottomSheetWithSceneRegistryProps,
+} from './bottomSheetWithFlashListContract';
 
 export type OverlayKey =
   | 'search'
+  | 'searchRoute'
   | 'polls'
   | 'bookmarks'
   | 'profile'
@@ -28,8 +33,15 @@ export type SnapProfile = {
   dismissThreshold?: number;
 };
 
-type OverlayContentSpecBase = {
+export type OverlayContentSpecBase = {
   overlayKey: OverlayKey;
+  semanticOverlayKey?: OverlayKey | null;
+  shellIdentityKey?: string | null;
+  /**
+   * Optional scene identity used by the shell runtime for per-scene scroll/state persistence.
+   * This lets a persistent shell stay stable while scene-local state still tracks the active scene.
+   */
+  sceneIdentityKey?: string | null;
   snapPoints: SnapPoints;
   /**
    * Optional key used to persist and restore a sheet snap position across overlay switches.
@@ -42,6 +54,10 @@ type OverlayContentSpecBase = {
   underlayComponent?: React.ReactNode;
   renderWrapper?: (children: React.ReactNode) => React.ReactNode;
 };
+
+export type OverlaySceneRegistrySpec = OverlayContentSpecBase &
+  Omit<BottomSheetWithFlashListBaseProps<unknown>, 'visible' | 'snapPoints'> &
+  BottomSheetWithSceneRegistryProps;
 
 export type OverlayListContentSpec<T> = OverlayContentSpecBase &
   Omit<
@@ -57,6 +73,8 @@ export type OverlayComponentContentSpec = OverlayContentSpecBase &
 
 export type OverlayContentSpec<T> = OverlayListContentSpec<T> | OverlayComponentContentSpec;
 
+export type OverlayResolvedSpec<T> = OverlayContentSpec<T> | OverlaySceneRegistrySpec;
+
 export const isOverlayListContentSpec = <T>(
-  spec: OverlayContentSpec<T> | null | undefined
+  spec: OverlayResolvedSpec<T> | null | undefined
 ): spec is OverlayListContentSpec<T> => spec?.surfaceKind === 'list';

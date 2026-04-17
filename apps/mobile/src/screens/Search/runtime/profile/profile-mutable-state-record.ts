@@ -7,6 +7,15 @@ import type {
   RestaurantFocusSession,
 } from './profile-transition-state-contract';
 
+const buildRestaurantProfileCacheKey = (
+  restaurantId: string,
+  marketKey?: string | null
+): string => {
+  const normalizedMarketKey =
+    typeof marketKey === 'string' && marketKey.trim().length ? marketKey.trim().toLowerCase() : '';
+  return `${restaurantId}::${normalizedMarketKey}`;
+};
+
 export const getRestaurantProfileRequestSeqFromRecord = (
   controllerState: ProfileControllerState
 ): number => controllerState.mutable.restaurantProfileRequestSeq;
@@ -78,35 +87,52 @@ export const clearActiveHydrationIntentForRequestSeqOnRecord = (
 
 export const getRestaurantProfileCacheEntryFromRecord = (
   controllerState: ProfileControllerState,
-  restaurantId: string
+  restaurantId: string,
+  marketKey?: string | null
 ): HydratedRestaurantProfile | undefined =>
-  controllerState.mutable.restaurantProfileCache.get(restaurantId);
+  controllerState.mutable.restaurantProfileCache.get(
+    buildRestaurantProfileCacheKey(restaurantId, marketKey)
+  );
 
 export const setRestaurantProfileCacheEntryOnRecord = (
   controllerState: ProfileControllerState,
   restaurantId: string,
+  marketKey: string | null | undefined,
   hydratedRestaurantProfile: HydratedRestaurantProfile
 ): void => {
-  controllerState.mutable.restaurantProfileCache.set(restaurantId, hydratedRestaurantProfile);
+  controllerState.mutable.restaurantProfileCache.set(
+    buildRestaurantProfileCacheKey(restaurantId, marketKey),
+    hydratedRestaurantProfile
+  );
 };
 
 export const getRestaurantProfileRequestByIdFromRecord = (
   controllerState: ProfileControllerState,
-  restaurantId: string
+  restaurantId: string,
+  marketKey?: string | null
 ): RestaurantProfileRequestById | undefined =>
-  controllerState.mutable.restaurantProfileRequestById.get(restaurantId);
+  controllerState.mutable.restaurantProfileRequestById.get(
+    buildRestaurantProfileCacheKey(restaurantId, marketKey)
+  );
 
 export const setRestaurantProfileRequestByIdOnRecord = (
   controllerState: ProfileControllerState,
   restaurantId: string,
+  marketKey: string | null | undefined,
   request: RestaurantProfileRequestById
 ): void => {
-  controllerState.mutable.restaurantProfileRequestById.set(restaurantId, request);
+  controllerState.mutable.restaurantProfileRequestById.set(
+    buildRestaurantProfileCacheKey(restaurantId, marketKey),
+    request
+  );
 };
 
 export const deleteRestaurantProfileRequestByIdOnRecord = (
   controllerState: ProfileControllerState,
-  restaurantId: string
+  restaurantId: string,
+  marketKey?: string | null
 ): void => {
-  controllerState.mutable.restaurantProfileRequestById.delete(restaurantId);
+  controllerState.mutable.restaurantProfileRequestById.delete(
+    buildRestaurantProfileCacheKey(restaurantId, marketKey)
+  );
 };

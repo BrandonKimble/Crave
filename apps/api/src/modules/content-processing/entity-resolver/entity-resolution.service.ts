@@ -454,7 +454,7 @@ export class EntityResolutionService implements OnModuleInit {
     globalNewEntityMap: Map<string, EntityResolutionResult>,
   ): Promise<EntityResolutionResult[]> {
     if (entityType !== 'restaurant') {
-      return this.resolveEntitiesByTypeForLocation(
+      return this.resolveEntitiesByTypeForMarket(
         entities,
         entityType,
         config,
@@ -463,23 +463,23 @@ export class EntityResolutionService implements OnModuleInit {
       );
     }
 
-    const entitiesByLocation = new Map<string, EntityResolutionInput[]>();
+    const entitiesByMarket = new Map<string, EntityResolutionInput[]>();
     for (const entity of entities) {
-      const locationKey = this.normalizeLocationKey(entity.locationKey);
-      if (!entitiesByLocation.has(locationKey)) {
-        entitiesByLocation.set(locationKey, []);
+      const marketKey = this.normalizeMarketKey(entity.marketKey);
+      if (!entitiesByMarket.has(marketKey)) {
+        entitiesByMarket.set(marketKey, []);
       }
-      entitiesByLocation.get(locationKey)!.push(entity);
+      entitiesByMarket.get(marketKey)!.push(entity);
     }
 
     const results: EntityResolutionResult[] = [];
-    for (const [locationKey, group] of entitiesByLocation.entries()) {
-      const resolved = await this.resolveEntitiesByTypeForLocation(
+    for (const [marketKey, group] of entitiesByMarket.entries()) {
+      const resolved = await this.resolveEntitiesByTypeForMarket(
         group,
         entityType,
         config,
         globalNewEntityMap,
-        locationKey,
+        marketKey,
       );
       results.push(...resolved);
     }
@@ -487,16 +487,16 @@ export class EntityResolutionService implements OnModuleInit {
     return results;
   }
 
-  private async resolveEntitiesByTypeForLocation(
+  private async resolveEntitiesByTypeForMarket(
     entities: EntityResolutionInput[],
     entityType: EntityType,
     config: EntityResolutionConfig,
     globalNewEntityMap: Map<string, EntityResolutionResult>,
-    locationKey: string | null,
+    marketKey: string | null,
   ): Promise<EntityResolutionResult[]> {
     this.logger.debug('Resolving entities by type', {
       entityType,
-      locationKey: locationKey ?? undefined,
+      marketKey: marketKey ?? undefined,
       count: entities.length,
     });
 
@@ -504,7 +504,7 @@ export class EntityResolutionService implements OnModuleInit {
     const exactMatchResults = await this.performExactMatches(
       entities,
       entityType,
-      locationKey,
+      marketKey,
     );
     const unmatchedAfterExact = entities.filter(
       (entity) =>
@@ -515,7 +515,7 @@ export class EntityResolutionService implements OnModuleInit {
 
     this.logger.debug('Exact match results', {
       entityType,
-      locationKey: locationKey ?? undefined,
+      marketKey: marketKey ?? undefined,
       matched: exactMatchResults.filter((r) => r.entityId).length,
       unmatched: unmatchedAfterExact.length,
     });
@@ -524,7 +524,7 @@ export class EntityResolutionService implements OnModuleInit {
     const aliasMatchResults = await this.performAliasMatches(
       unmatchedAfterExact,
       entityType,
-      locationKey,
+      marketKey,
     );
     const unmatchedAfterAlias = unmatchedAfterExact.filter(
       (entity) =>
@@ -535,7 +535,7 @@ export class EntityResolutionService implements OnModuleInit {
 
     this.logger.debug('Alias match results', {
       entityType,
-      locationKey: locationKey ?? undefined,
+      marketKey: marketKey ?? undefined,
       matched: aliasMatchResults.filter((r) => r.entityId).length,
       unmatched: unmatchedAfterAlias.length,
     });
@@ -546,7 +546,7 @@ export class EntityResolutionService implements OnModuleInit {
           unmatchedAfterAlias,
           entityType,
           config,
-          locationKey,
+          marketKey,
         )
       : [];
 
@@ -559,7 +559,7 @@ export class EntityResolutionService implements OnModuleInit {
 
     this.logger.debug('Fuzzy match results', {
       entityType,
-      locationKey: locationKey ?? undefined,
+      marketKey: marketKey ?? undefined,
       matched: fuzzyMatchResults.filter((r) => r.entityId).length,
       unmatched: unmatchedAfterFuzzy.length,
     });
@@ -621,7 +621,7 @@ export class EntityResolutionService implements OnModuleInit {
   private async performExactMatches(
     entities: EntityResolutionInput[],
     entityType: EntityType,
-    locationKey: string | null,
+    marketKey: string | null,
   ): Promise<EntityResolutionResult[]> {
     if (entities.length === 0) return [];
 
@@ -640,7 +640,11 @@ export class EntityResolutionService implements OnModuleInit {
       };
 
       if (entityType === 'restaurant') {
-        whereClause.locationKey = this.normalizeLocationKey(locationKey);
+        whereClause.marketPresences = {
+          some: {
+            marketKey: this.normalizeMarketKey(marketKey),
+          },
+        };
       }
 
       const matchedEntities = await this.prisma.entity.findMany({
@@ -676,7 +680,7 @@ export class EntityResolutionService implements OnModuleInit {
       this.logger.error('Exact match query failed', {
         error: error instanceof Error ? error.message : String(error),
         entityType,
-        locationKey: locationKey ?? undefined,
+        marketKey: marketKey ?? undefined,
         count: entities.length,
       });
       throw error;
@@ -690,7 +694,7 @@ export class EntityResolutionService implements OnModuleInit {
   private async performAliasMatches(
     entities: EntityResolutionInput[],
     entityType: EntityType,
-    locationKey: string | null,
+    marketKey: string | null,
   ): Promise<EntityResolutionResult[]> {
     if (entities.length === 0) return [];
 
@@ -723,7 +727,11 @@ export class EntityResolutionService implements OnModuleInit {
       };
 
       if (entityType === 'restaurant') {
-        whereClause.locationKey = this.normalizeLocationKey(locationKey);
+        whereClause.marketPresences = {
+          some: {
+            marketKey: this.normalizeMarketKey(marketKey),
+          },
+        };
       }
 
       const matchedEntities = await this.prisma.entity.findMany({
@@ -765,7 +773,7 @@ export class EntityResolutionService implements OnModuleInit {
       this.logger.error('Alias match query failed', {
         error: error instanceof Error ? error.message : String(error),
         entityType,
-        locationKey: locationKey ?? undefined,
+        marketKey: marketKey ?? undefined,
         count: entities.length,
       });
       throw error;
@@ -780,7 +788,7 @@ export class EntityResolutionService implements OnModuleInit {
     entities: EntityResolutionInput[],
     entityType: EntityType,
     config: EntityResolutionConfig,
-    locationKey: string | null,
+    marketKey: string | null,
   ): Promise<EntityResolutionResult[]> {
     if (entities.length === 0) return [];
 
@@ -790,7 +798,11 @@ export class EntityResolutionService implements OnModuleInit {
     const whereClause: Prisma.EntityWhereInput = { type: entityType };
 
     if (entityType === 'restaurant') {
-      whereClause.locationKey = this.normalizeLocationKey(locationKey);
+      whereClause.marketPresences = {
+        some: {
+          marketKey: this.normalizeMarketKey(marketKey),
+        },
+      };
     }
 
     const allEntitiesOfType = await this.prisma.entity.findMany({
@@ -974,8 +986,8 @@ export class EntityResolutionService implements OnModuleInit {
         const normalizedName = entity.normalizedName.toLowerCase().trim();
         const normalizedKey =
           entityType === 'restaurant'
-            ? `${entityType}:${this.normalizeLocationKey(
-                entity.locationKey,
+            ? `${entityType}:${this.normalizeMarketKey(
+                entity.marketKey,
               )}:${normalizedName}`
             : `${entityType}:${normalizedName}`;
         const existingPrimary = primaryNewEntityMap.get(normalizedKey);
@@ -1000,9 +1012,9 @@ export class EntityResolutionService implements OnModuleInit {
           this.logger.debug('Resolver reused primary new entity within batch', {
             entityType,
             normalizedName: entity.normalizedName,
-            locationKey:
+            marketKey:
               entityType === 'restaurant'
-                ? this.normalizeLocationKey(entity.locationKey)
+                ? this.normalizeMarketKey(entity.marketKey)
                 : undefined,
             primaryTempId: existingPrimary.tempId,
             duplicateTempId: entity.tempId,
@@ -1045,9 +1057,9 @@ export class EntityResolutionService implements OnModuleInit {
             {
               entityType,
               normalizedName: entity.normalizedName,
-              locationKey:
+              marketKey:
                 entityType === 'restaurant'
-                  ? this.normalizeLocationKey(entity.locationKey)
+                  ? this.normalizeMarketKey(entity.marketKey)
                   : undefined,
               primaryTempId: similarPrimary.tempId,
               duplicateTempId: entity.tempId,
@@ -1095,9 +1107,9 @@ export class EntityResolutionService implements OnModuleInit {
         this.logger.warn('Resolver created new entity', {
           entityType,
           normalizedName: entity.normalizedName,
-          locationKey:
+          marketKey:
             entityType === 'restaurant'
-              ? this.normalizeLocationKey(entity.locationKey)
+              ? this.normalizeMarketKey(entity.marketKey)
               : undefined,
           originalText: entity.originalText,
           aliases: entity.aliases,
@@ -1212,9 +1224,9 @@ export class EntityResolutionService implements OnModuleInit {
     return grouped;
   }
 
-  private normalizeLocationKey(locationKey?: string | null): string {
+  private normalizeMarketKey(marketKey?: string | null): string {
     const normalized =
-      typeof locationKey === 'string' ? locationKey.trim().toLowerCase() : '';
+      typeof marketKey === 'string' ? marketKey.trim().toLowerCase() : '';
     return normalized.length ? normalized : 'global';
   }
 
@@ -1349,9 +1361,9 @@ export class EntityResolutionService implements OnModuleInit {
     const cacheSignature = JSON.stringify({
       version: this.cacheVersion,
       entityType: entity.entityType,
-      locationKey:
+      marketKey:
         entity.entityType === 'restaurant'
-          ? this.normalizeLocationKey(entity.locationKey)
+          ? this.normalizeMarketKey(entity.marketKey)
           : 'global',
       tokens: tokenSignature,
       config: {
@@ -1821,11 +1833,11 @@ export class EntityResolutionService implements OnModuleInit {
         continue;
       }
       if (entityType === 'restaurant') {
-        const candidateLocationKey = this.normalizeLocationKey(
-          candidate.originalInput.locationKey,
+        const candidateMarketKey = this.normalizeMarketKey(
+          candidate.originalInput.marketKey,
         );
-        const inputLocationKey = this.normalizeLocationKey(entity.locationKey);
-        if (candidateLocationKey !== inputLocationKey) {
+        const inputMarketKey = this.normalizeMarketKey(entity.marketKey);
+        if (candidateMarketKey !== inputMarketKey) {
           continue;
         }
       }

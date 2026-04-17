@@ -9,7 +9,6 @@ import type { SearchResultsPanelCardMetricsRuntime } from './search-results-pane
 
 type UseSearchResultsPanelCardRenderRuntimeArgs = Pick<
   UseSearchResultsRoutePublicationArgs,
-  | 'scoreMode'
   | 'getDishSaveHandler'
   | 'getRestaurantSaveHandler'
   | 'stableOpenRestaurantProfileFromResults'
@@ -24,7 +23,6 @@ export type SearchResultsPanelCardRenderRuntime = {
 };
 
 export const useSearchResultsPanelCardRenderRuntime = ({
-  scoreMode,
   getDishSaveHandler,
   getRestaurantSaveHandler,
   stableOpenRestaurantProfileFromResults,
@@ -36,16 +34,15 @@ export const useSearchResultsPanelCardRenderRuntime = ({
       const restaurantForDish = metricsRuntime.restaurantsById.get(item.restaurantId);
       const qualityColor =
         metricsRuntime.dishQualityColorByConnectionId.get(item.connectionId) ??
-        getMarkerColorForDish(item, scoreMode);
+        getMarkerColorForDish(item);
       return (
         <DishResultCard
           item={item}
           index={index}
           qualityColor={qualityColor}
           isLiked={false}
-          scoreMode={scoreMode}
-          primaryCoverageKey={metricsRuntime.primaryCoverageKey}
-          showCoverageLabel={metricsRuntime.hasCrossCoverage}
+          primaryMarketKey={metricsRuntime.primaryMarketKey}
+          showMarketLabel={false}
           restaurantForDish={restaurantForDish}
           onSavePress={getDishSaveHandler(item.connectionId)}
           openRestaurantProfile={stableOpenRestaurantProfileFromResults}
@@ -53,13 +50,7 @@ export const useSearchResultsPanelCardRenderRuntime = ({
         />
       );
     },
-    [
-      getDishSaveHandler,
-      metricsRuntime,
-      openScoreInfo,
-      scoreMode,
-      stableOpenRestaurantProfileFromResults,
-    ]
+    [getDishSaveHandler, metricsRuntime, openScoreInfo, stableOpenRestaurantProfileFromResults]
   );
 
   const renderRestaurantCard = React.useCallback(
@@ -70,7 +61,7 @@ export const useSearchResultsPanelCardRenderRuntime = ({
       }
       const qualityColor =
         metricsRuntime.restaurantQualityColorById.get(restaurant.restaurantId) ??
-        getMarkerColorForRestaurant(restaurant, scoreMode);
+        getMarkerColorForRestaurant(restaurant);
       return (
         <RestaurantResultCard
           restaurant={restaurant}
@@ -78,9 +69,8 @@ export const useSearchResultsPanelCardRenderRuntime = ({
           rank={rank}
           qualityColor={qualityColor}
           isLiked={false}
-          scoreMode={scoreMode}
-          primaryCoverageKey={metricsRuntime.primaryCoverageKey}
-          showCoverageLabel={metricsRuntime.hasCrossCoverage}
+          primaryMarketKey={metricsRuntime.primaryMarketKey}
+          showMarketLabel={false}
           onSavePress={getRestaurantSaveHandler(restaurant.restaurantId)}
           openRestaurantProfile={stableOpenRestaurantProfileFromResults}
           openScoreInfo={openScoreInfo}
@@ -92,7 +82,6 @@ export const useSearchResultsPanelCardRenderRuntime = ({
       getRestaurantSaveHandler,
       metricsRuntime,
       openScoreInfo,
-      scoreMode,
       stableOpenRestaurantProfileFromResults,
     ]
   );

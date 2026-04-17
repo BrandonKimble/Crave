@@ -27,35 +27,35 @@ export class RankScoreRefreshQueueService {
     this.refreshWindowMs = this.resolveWindowMs();
   }
 
-  async queueRefreshForLocations(
-    locationKeys: Array<string | null | undefined>,
+  async queueRefreshForMarkets(
+    marketKeys: Array<string | null | undefined>,
     options: RankScoreRefreshQueueOptions = {},
   ): Promise<string[]> {
-    const normalized = this.normalizeLocationKeys(locationKeys);
+    const normalized = this.normalizeMarketKeys(marketKeys);
     if (!normalized.length) {
       return [];
     }
 
     const scheduled: string[] = [];
-    for (const locationKey of normalized) {
+    for (const marketKey of normalized) {
       const shouldSchedule = await this.acquireRefreshWindow(
-        locationKey,
+        marketKey,
         Boolean(options.force),
       );
       if (!shouldSchedule) {
         this.logger.debug('Rank score refresh skipped (debounced)', {
-          locationKey,
+          marketKey,
           source: options.source,
         });
         continue;
       }
 
-      const jobId = this.buildJobId(locationKey);
+      const jobId = this.buildJobId(marketKey);
       try {
         const job = await this.refreshQueue.add(
           JOB_NAME,
           {
-            locationKey,
+            marketKey,
             requestedAt: new Date().toISOString(),
             source: options.source,
           },
@@ -70,7 +70,7 @@ export class RankScoreRefreshQueueService {
       } catch (error) {
         if (this.isDuplicateJobError(error)) {
           this.logger.debug('Rank score refresh already queued', {
-            locationKey,
+            marketKey,
             source: options.source,
           });
           continue;
@@ -82,12 +82,12 @@ export class RankScoreRefreshQueueService {
     return scheduled;
   }
 
-  private normalizeLocationKeys(
-    locationKeys: Array<string | null | undefined>,
+  private normalizeMarketKeys(
+    marketKeys: Array<string | null | undefined>,
   ): string[] {
     return Array.from(
       new Set(
-        locationKeys
+        marketKeys
           .filter((key): key is string => typeof key === 'string')
           .map((key) => key.trim().toLowerCase())
           .filter((key) => key.length > 0),
@@ -96,7 +96,7 @@ export class RankScoreRefreshQueueService {
   }
 
   private async acquireRefreshWindow(
-    locationKey: string,
+    marketKey: string,
     force: boolean,
   ): Promise<boolean> {
     if (this.refreshWindowMs <= 0) {
@@ -104,7 +104,7 @@ export class RankScoreRefreshQueueService {
     }
 
     const redisKey = this.refreshQueue.toKey(
-      `${WINDOW_KEY_PREFIX}:${locationKey}`,
+      `${WINDOW_KEY_PREFIX}:${marketKey}`,
     );
     const timestamp = Date.now().toString();
 
@@ -129,7 +129,7 @@ export class RankScoreRefreshQueueService {
       return result === 'OK';
     } catch (error) {
       this.logger.warn('Failed to apply rank refresh debounce window', {
-        locationKey,
+        marketKey,
         error:
           error instanceof Error
             ? { message: error.message, stack: error.stack }
@@ -148,8 +148,8 @@ export class RankScoreRefreshQueueService {
     return DEFAULT_REFRESH_WINDOW_MINUTES * 60 * 1000;
   }
 
-  private buildJobId(locationKey: string): string {
-    return `rank-score-refresh:${locationKey}`;
+  private buildJobId(marketKey: string): string {
+    return `rank-score-refresh:${marketKey}`;
   }
 
   private isDuplicateJobError(error: unknown): boolean {

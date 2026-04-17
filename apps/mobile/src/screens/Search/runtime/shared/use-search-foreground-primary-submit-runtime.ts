@@ -1,13 +1,13 @@
 import React from 'react';
 
 import type {
+  SearchForegroundSubmitRuntimeArgs,
   SearchForegroundInteractionSubmitHandlers,
-  UseSearchForegroundInteractionRuntimeArgs,
 } from './use-search-foreground-interaction-runtime-contract';
 import type { SearchForegroundSubmitPreparationRuntime } from './use-search-foreground-submit-preparation-runtime';
 
 type UseSearchForegroundPrimarySubmitRuntimeArgs = Pick<
-  UseSearchForegroundInteractionRuntimeArgs,
+  SearchForegroundSubmitRuntimeArgs,
   | 'submitRuntime'
   | 'query'
   | 'submittedQuery'

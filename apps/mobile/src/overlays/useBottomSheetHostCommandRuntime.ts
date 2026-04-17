@@ -9,19 +9,19 @@ export const useBottomSheetHostCommandRuntime = ({
   runtime,
 }: BottomSheetHostCommandRuntimeArgs): BottomSheetMotionCommand | null => {
   const { snapController } = runtime;
-  const [sheetCommand, setSheetCommand] = React.useState<BottomSheetMotionCommand | null>(
-    snapController.motionCommand.value
-  );
+  const [sheetCommand, setSheetCommand] = React.useState<BottomSheetMotionCommand | null>(null);
 
   useAnimatedReaction(
-    () => snapController.motionCommand.value?.token ?? null,
-    (token, previousToken) => {
-      if (token == null || token === previousToken || !snapController.motionCommand.value) {
+    () => snapController.motionCommand.value,
+    (nextCommand, previousCommand) => {
+      const nextToken = nextCommand?.token ?? null;
+      const previousToken = previousCommand?.token ?? null;
+      if (nextToken === previousToken) {
         return;
       }
-      runOnJS(setSheetCommand)(snapController.motionCommand.value);
+      runOnJS(setSheetCommand)(nextCommand ?? null);
     },
-    [snapController.motionCommand]
+    [setSheetCommand, snapController.motionCommand]
   );
 
   return sheetCommand;

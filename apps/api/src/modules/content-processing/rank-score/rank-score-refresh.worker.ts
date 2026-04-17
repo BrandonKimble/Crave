@@ -22,9 +22,9 @@ export class RankScoreRefreshWorker implements OnModuleInit {
 
   @Process(JOB_NAME)
   async handleRefresh(job: Job<RankScoreRefreshJobData>): Promise<void> {
-    const locationKey = job.data?.locationKey?.trim().toLowerCase();
-    if (!locationKey) {
-      this.logger.warn('Rank score refresh job missing location key', {
+    const marketKey = job.data?.marketKey?.trim().toLowerCase();
+    if (!marketKey) {
+      this.logger.warn('Rank score refresh job missing market key', {
         jobId: job.id,
         data: job.data,
       });
@@ -33,10 +33,10 @@ export class RankScoreRefreshWorker implements OnModuleInit {
 
     this.logger.info('Processing rank score refresh', {
       jobId: job.id,
-      locationKey,
+      marketKey,
       source: job.data?.source,
     });
 
-    await this.rankScoreService.refreshRankScoresForLocations([locationKey]);
+    await this.rankScoreService.refreshRankScoresForMarkets([marketKey]);
   }
 }

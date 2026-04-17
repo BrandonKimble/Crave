@@ -28,7 +28,6 @@ export const computeMarkerPipeline = (args: {
   restaurants: RestaurantResult[];
   dishes: FoodResult[];
   activeTab: 'dishes' | 'restaurants';
-  scoreMode: 'coverage_display' | 'global_quality';
   restaurantOnlyId: string | null;
   selectedRestaurantId: string | null;
   bounds: MapBounds | null;
@@ -39,7 +38,6 @@ export const computeMarkerPipeline = (args: {
     restaurants,
     dishes,
     activeTab,
-    scoreMode,
     restaurantOnlyId,
     selectedRestaurantId,
     bounds,
@@ -89,7 +87,6 @@ export const computeMarkerPipeline = (args: {
     activeTab,
     dishes,
     markerRestaurants: restaurants,
-    scoreMode,
     restaurantOnlyId,
     selectedRestaurantId,
     canonicalRestaurantRankById,

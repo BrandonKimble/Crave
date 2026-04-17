@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { SharedModule } from '../../shared/shared.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { RepositoryModule } from '../../repositories/repository.module';
-import { CoverageKeyModule } from '../coverage-key/coverage-key.module';
+import { MarketsModule } from '../markets/markets.module';
 import { RedditCollectorModule } from '../content-processing/reddit-collector/reddit-collector.module';
 import { EntityResolverModule } from '../content-processing/entity-resolver/entity-resolver.module';
 import { ExternalIntegrationsModule } from '../external-integrations/external-integrations.module';
@@ -18,7 +18,6 @@ import { SearchMetricsService } from './search-metrics.service';
 import { SearchQueryInterpretationService } from './search-query-interpretation.service';
 import { SearchOrchestrationService } from './search-orchestration.service';
 import { OnDemandRequestService } from './on-demand-request.service';
-import { SearchSubredditResolverService } from './search-subreddit-resolver.service';
 import { OnDemandPlaceholderCleanupService } from './on-demand-placeholder-cleanup.service';
 import { OnDemandRequestUsersCleanupService } from './on-demand-request-users-cleanup.service';
 import { SearchQuerySuggestionService } from './search-query-suggestion.service';
@@ -31,7 +30,7 @@ import { SearchEntityExpansionService } from './search-entity-expansion.service'
     SharedModule,
     PrismaModule,
     RepositoryModule,
-    CoverageKeyModule,
+    MarketsModule,
     RedditCollectorModule,
     EntityResolverModule,
     ExternalIntegrationsModule,
@@ -49,7 +48,6 @@ import { SearchEntityExpansionService } from './search-entity-expansion.service'
     SearchQueryInterpretationService,
     OnDemandRequestService,
     SearchOrchestrationService,
-    SearchSubredditResolverService,
     OnDemandPlaceholderCleanupService,
     OnDemandRequestUsersCleanupService,
     SearchQuerySuggestionService,
@@ -61,7 +59,6 @@ import { SearchEntityExpansionService } from './search-entity-expansion.service'
     SearchService,
     SearchOrchestrationService,
     OnDemandRequestService,
-    SearchSubredditResolverService,
     SearchQuerySuggestionService,
     SearchPopularityService,
     RestaurantStatusService,

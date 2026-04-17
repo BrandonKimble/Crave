@@ -3,16 +3,17 @@ import type { FlashListRef } from '@shopify/flash-list';
 import type { SharedValue } from 'react-native-reanimated';
 
 import type {
-  OverlayContentSpec,
   OverlayKey,
+  OverlayResolvedSpec,
   OverlaySheetSnap,
   OverlaySheetSnapRequest,
 } from './types';
 import type { BottomSheetRuntimeModel } from './useBottomSheetRuntime';
 
 export type OverlaySheetResolvedSnapRuntimeArgs = {
-  spec: OverlayContentSpec<unknown> | null;
-  resolvedOverlayKey: OverlayKey;
+  spec: OverlayResolvedSpec<unknown> | null;
+  resolvedShellIdentityKey: string;
+  activeOverlayKey: OverlayKey;
   rootOverlay: OverlayKey;
   overlayRouteStackLength: number;
 };
@@ -31,8 +32,9 @@ export type OverlaySheetSnapCommandRuntimeArgs = {
 
 export type OverlaySheetDesiredSnapRuntimeArgs = {
   visible: boolean;
-  spec: OverlayContentSpec<unknown> | null;
-  resolvedOverlayKey: OverlayKey;
+  spec: OverlayResolvedSpec<unknown> | null;
+  shellSnapRequest: OverlaySheetSnapRequest | null;
+  resolvedShellIdentityKey: string;
   persistedSnap: OverlaySheetSnap | null;
   resolvedSnapPersistenceKey: string | null;
   ensurePersistedSnap: (snap: OverlaySheetSnap) => void;
@@ -45,8 +47,8 @@ export type OverlaySheetDesiredSnapRuntimeArgs = {
 
 export type OverlaySheetListRuntimeArgs = {
   visible: boolean;
-  spec: OverlayContentSpec<unknown> | null;
-  resolvedOverlayKey: OverlayKey;
+  spec: OverlayResolvedSpec<unknown> | null;
+  sceneIdentityKey: string;
   scrollOffset: SharedValue<number>;
 };
 

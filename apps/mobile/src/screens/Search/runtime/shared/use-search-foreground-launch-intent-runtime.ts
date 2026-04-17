@@ -1,22 +1,19 @@
 import React from 'react';
 
+import { openSearchRoutePollsHome } from '../../../../overlays/searchRouteOverlayCommandStore';
 import { useAppOverlayRouteController } from '../../../../overlays/useAppOverlayRouteController';
 import { searchService } from '../../../../services/search';
 import { logger } from '../../../../utils';
 
-import type { UseSearchForegroundInteractionRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
-
-type UseSearchForegroundLaunchIntentRuntimeArgs = Pick<
-  UseSearchForegroundInteractionRuntimeArgs,
-  'navigation' | 'activeMainIntent' | 'consumeActiveMainIntent' | 'openRestaurantProfilePreview'
->;
+import type { SearchForegroundLaunchIntentRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
 
 export const useSearchForegroundLaunchIntentRuntime = ({
   navigation,
   activeMainIntent,
   consumeActiveMainIntent,
   openRestaurantProfilePreview,
-}: UseSearchForegroundLaunchIntentRuntimeArgs): void => {
+  currentMarketKey,
+}: SearchForegroundLaunchIntentRuntimeArgs): void => {
   const overlayRouteController = useAppOverlayRouteController();
 
   React.useEffect(() => {
@@ -25,9 +22,13 @@ export const useSearchForegroundLaunchIntentRuntime = ({
     }
 
     if (activeMainIntent.type === 'polls') {
-      overlayRouteController.setRootRoute('polls', {
-        coverageKey: activeMainIntent.coverageKey,
-        pollId: activeMainIntent.pollId,
+      openSearchRoutePollsHome({
+        params: {
+          marketKey: activeMainIntent.marketKey,
+          pollId: activeMainIntent.pollId,
+          pinnedMarket: Boolean(activeMainIntent.marketKey || activeMainIntent.pollId),
+        },
+        snap: 'expanded',
       });
       consumeActiveMainIntent();
       return;
@@ -42,7 +43,9 @@ export const useSearchForegroundLaunchIntentRuntime = ({
     if (activeMainIntent.type === 'restaurant') {
       let cancelled = false;
       void searchService
-        .restaurantProfile(activeMainIntent.restaurantId)
+        .restaurantProfile(activeMainIntent.restaurantId, {
+          marketKey: currentMarketKey ?? null,
+        })
         .then((profile) => {
           if (cancelled) {
             return;
@@ -75,6 +78,7 @@ export const useSearchForegroundLaunchIntentRuntime = ({
   }, [
     activeMainIntent,
     consumeActiveMainIntent,
+    currentMarketKey,
     navigation,
     openRestaurantProfilePreview,
     overlayRouteController,

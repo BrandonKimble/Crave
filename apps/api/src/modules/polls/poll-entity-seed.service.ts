@@ -6,8 +6,8 @@ import { AliasManagementService } from '../content-processing/entity-resolver/al
 import { RestaurantCuisineExtractionQueueService } from '../restaurant-enrichment/restaurant-cuisine-extraction-queue.service';
 import { RestaurantLocationEnrichmentService } from '../restaurant-enrichment/restaurant-location-enrichment.service';
 
-export type CoverageContext = {
-  coverageKey: string;
+export type MarketContext = {
+  marketKey: string | null;
   center?: { lat: number; lng: number };
   cityLabel?: string | null;
   countryCode?: string | null;
@@ -64,7 +64,6 @@ export class PollEntitySeedService {
       data: {
         name,
         type: EntityType.food,
-        locationKey: 'global',
         aliases: [],
       },
     });
@@ -109,7 +108,6 @@ export class PollEntitySeedService {
       data: {
         name,
         type: params.entityType,
-        locationKey: 'global',
         aliases: [],
       },
     });
@@ -120,7 +118,7 @@ export class PollEntitySeedService {
   async resolveRestaurant(params: {
     entityId?: string | null;
     name?: string | null;
-    coverage: CoverageContext;
+    market: MarketContext;
     sessionToken?: string;
   }): Promise<ResolvedEntity> {
     if (params.entityId) {
@@ -134,9 +132,9 @@ export class PollEntitySeedService {
 
     const match = await this.restaurantEnrichment.resolvePlaceForInput({
       name,
-      city: params.coverage.cityLabel ?? undefined,
-      country: params.coverage.countryCode ?? undefined,
-      locationBias: params.coverage.center,
+      city: params.market.cityLabel ?? undefined,
+      country: params.market.countryCode ?? undefined,
+      locationBias: params.market.center,
       sessionToken: params.sessionToken,
     });
 
@@ -165,7 +163,7 @@ export class PollEntitySeedService {
     const entityData =
       await this.restaurantEnrichment.buildRestaurantCreateInput({
         name,
-        coverageKey: this.normalizeCoverageKey(params.coverage.coverageKey),
+        marketKey: this.normalizeMarketKey(params.market.marketKey),
         place: match.place,
         matchMetadata: match.matchMetadata,
         alias: name,
@@ -192,7 +190,7 @@ export class PollEntitySeedService {
     this.logger.info('Created restaurant from poll input', {
       entityId: created.entityId,
       name: created.name,
-      coverageKey: params.coverage.coverageKey,
+      marketKey: params.market.marketKey,
     });
 
     await this.cuisineExtractionQueue.queueExtraction(created.entityId, {
@@ -258,14 +256,6 @@ export class PollEntitySeedService {
   }
 
   private async findRestaurantByPlaceId(placeId: string) {
-    const entity = await this.prisma.entity.findFirst({
-      where: { googlePlaceId: placeId },
-      select: { entityId: true, name: true },
-    });
-    if (entity) {
-      return entity;
-    }
-
     const location = await this.prisma.restaurantLocation.findUnique({
       where: { googlePlaceId: placeId },
       select: { restaurantId: true },
@@ -298,8 +288,6 @@ export class PollEntitySeedService {
     return this.prisma.entity.findFirst({
       where: {
         type: entityType,
-        locationKey:
-          entityType === EntityType.restaurant ? undefined : 'global',
         OR: [
           { name: { equals: name, mode: 'insensitive' } },
           { aliases: { has: name } },
@@ -317,7 +305,12 @@ export class PollEntitySeedService {
     return trimmed.length ? trimmed : null;
   }
 
-  private normalizeCoverageKey(value: string): string {
-    return value.trim().toLowerCase();
+  private normalizeMarketKey(value: string | null | undefined): string {
+    const normalized =
+      typeof value === 'string' ? value.trim().toLowerCase() : '';
+    if (!normalized) {
+      throw new BadRequestException('Restaurant market is required');
+    }
+    return normalized;
   }
 }

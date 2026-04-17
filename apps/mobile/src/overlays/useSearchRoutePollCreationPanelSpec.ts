@@ -2,22 +2,28 @@ import type {
   SearchRouteOverlayCommandActions,
   SearchRouteOverlayCommandState,
 } from './searchRouteOverlayCommandRuntimeContract';
+import {
+  coerceSearchRouteSceneDefinition,
+  type SearchRouteSceneDefinition,
+} from './searchOverlayRouteHostContract';
 import type { SearchRouteHostVisualState } from './searchRouteHostVisualState';
 import { usePollCreationPanelSpec } from './panels/PollCreationPanel';
 import { EMPTY_SEARCH_ROUTE_VISUAL_STATE } from './searchResolvedRouteHostModelContract';
+import { openSearchRoutePollsHome } from './searchRouteOverlayCommandStore';
 import { appOverlayRouteController } from './useAppOverlayRouteController';
-import type { OverlayContentSpec } from './types';
 import type { OverlaySheetSnap, OverlaySheetSnapRequest } from './types';
 
 type PollCreationPanelParams = Parameters<typeof usePollCreationPanelSpec>[0];
 
 type UseSearchRoutePollCreationPanelSpecArgs = {
   publishedVisualState: SearchRouteHostVisualState | null;
-  pollCreationCoverageKey: PollCreationPanelParams['coverageKey'];
-  pollCreationCoverageName: PollCreationPanelParams['coverageName'];
+  pollCreationMarketKey: PollCreationPanelParams['marketKey'];
+  pollCreationMarketName: PollCreationPanelParams['marketName'];
+  pollCreationBounds: PollCreationPanelParams['bounds'];
   shouldShowPollCreationPanel: boolean;
-  commandState: SearchRouteOverlayCommandState;
-  commandActions: SearchRouteOverlayCommandActions;
+  pollCreationSnapRequest: SearchRouteOverlayCommandState['pollCreationSnapRequest'];
+  setPollCreationSnapRequest: SearchRouteOverlayCommandActions['setPollCreationSnapRequest'];
+  setPollsSheetSnap: SearchRouteOverlayCommandActions['setPollsSheetSnap'];
 };
 
 const buildShellSnapRequest = (
@@ -26,20 +32,21 @@ const buildShellSnapRequest = (
 
 export const useSearchRoutePollCreationPanelSpec = ({
   publishedVisualState,
-  pollCreationCoverageKey,
-  pollCreationCoverageName,
+  pollCreationMarketKey,
+  pollCreationMarketName,
+  pollCreationBounds,
   shouldShowPollCreationPanel,
-  commandState,
-  commandActions,
-}: UseSearchRoutePollCreationPanelSpecArgs): OverlayContentSpec<unknown> | null => {
+  pollCreationSnapRequest,
+  setPollCreationSnapRequest,
+  setPollsSheetSnap,
+}: UseSearchRoutePollCreationPanelSpecArgs): SearchRouteSceneDefinition | null => {
   const visualState = publishedVisualState ?? EMPTY_SEARCH_ROUTE_VISUAL_STATE;
-  const { pollCreationSnapRequest } = commandState;
-  const { setPollCreationSnapRequest, setPollsSheetSnap } = commandActions;
 
   const pollCreationPanelSpec = usePollCreationPanelSpec({
     visible: shouldShowPollCreationPanel,
-    coverageKey: pollCreationCoverageKey,
-    coverageName: pollCreationCoverageName,
+    marketKey: pollCreationMarketKey,
+    marketName: pollCreationMarketName,
+    bounds: pollCreationBounds,
     searchBarTop: visualState.searchBarTop,
     snapPoints: visualState.snapPoints,
     shellSnapRequest: buildShellSnapRequest(pollCreationSnapRequest),
@@ -49,9 +56,14 @@ export const useSearchRoutePollCreationPanelSpec = ({
     },
     onCreated: (poll) => {
       setPollCreationSnapRequest(null);
-      appOverlayRouteController.updateRoute('polls', {
-        pollId: poll.pollId,
-        coverageKey: poll.coverageKey ?? pollCreationCoverageKey ?? null,
+      openSearchRoutePollsHome({
+        params: {
+          pollId: poll.pollId,
+          marketKey: poll.marketKey ?? pollCreationMarketKey ?? null,
+          marketName: poll.marketName ?? pollCreationMarketName ?? null,
+          pinnedMarket: true,
+        },
+        snap: 'expanded',
       });
       appOverlayRouteController.closeActiveRoute();
     },
@@ -63,5 +75,5 @@ export const useSearchRoutePollCreationPanelSpec = ({
     },
   });
 
-  return pollCreationPanelSpec;
+  return coerceSearchRouteSceneDefinition(pollCreationPanelSpec);
 };

@@ -32,7 +32,7 @@ class BoundsDto {
 export class QueryPollsDto {
   @IsOptional()
   @IsString()
-  coverageKey?: string;
+  marketKey?: string;
 
   @IsOptional()
   @ValidateNested()
@@ -42,7 +42,7 @@ export class QueryPollsDto {
   @IsOptional()
   @ValidateNested()
   @Type(() => CoordinateDto)
-  fallbackLocation?: CoordinateDto;
+  userLocation?: CoordinateDto;
 
   @IsOptional()
   @IsEnum(PollListState)

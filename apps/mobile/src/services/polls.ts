@@ -24,15 +24,15 @@ export interface PollTopic {
   targetRestaurantAttributeId?: string | null;
   title?: string | null;
   description?: string | null;
-  coverageKey?: string | null;
+  marketKey?: string | null;
 }
 
 export interface Poll {
   pollId: string;
   question: string;
   state: string;
-  coverageKey?: string | null;
-  coverageName?: string | null;
+  marketKey?: string | null;
+  marketName?: string | null;
   createdByUserId?: string | null;
   createdAt?: string | null;
   launchedAt?: string | null;
@@ -46,45 +46,61 @@ export interface UserPollsResponse {
 }
 
 export type PollQueryResponse = {
-  coverageKey?: string | null;
-  coverageName?: string | null;
+  marketKey?: string | null;
+  marketName?: string | null;
+  marketStatus?: string | null;
+  candidatePlaceName?: string | null;
+  candidatePlaceGeoId?: string | null;
+  cta?: {
+    kind?: 'create_poll' | 'none' | null;
+    label?: string | null;
+    prompt?: string | null;
+  } | null;
   polls: Poll[];
 };
 
 export type PollQueryPayload = {
-  coverageKey?: string;
+  marketKey?: string;
   bounds?: MapBounds | null;
-  fallbackLocation?: Coordinate | null;
+  userLocation?: Coordinate | null;
   state?: string;
 };
 
 export type PollFeedSource = 'cache' | 'network';
 
 export type PollBootstrapSnapshot = {
-  coverageKey: string | null;
-  coverageName: string | null;
+  marketKey: string | null;
+  marketName: string | null;
+  marketStatus?: string | null;
+  candidatePlaceName?: string | null;
+  candidatePlaceGeoId?: string | null;
+  cta?: {
+    kind?: 'create_poll' | 'none' | null;
+    label?: string | null;
+    prompt?: string | null;
+  } | null;
   polls: Poll[];
   resolvedAtMs: number;
   source: PollFeedSource;
 };
 
 type PersistedPollBootstrapCache = {
-  byCoverageKey: Record<
+  byMarketKey: Record<
     string,
     {
-      coverageKey: string;
-      coverageName: string | null;
+      marketKey: string;
+      marketName: string | null;
       polls: Poll[];
       resolvedAtMs: number;
     }
   >;
-  lastCoverageKey: string | null;
+  lastMarketKey: string | null;
 };
 
 export type CreatePollPayload = {
   topicType: PollTopicType;
   description?: string;
-  coverageKey?: string;
+  marketKey?: string;
   bounds?: MapBounds | null;
   targetDishId?: string;
   targetRestaurantId?: string;
@@ -130,17 +146,34 @@ const normalizePollQueryResponse = (payload: unknown): PollQueryResponse => {
       return normalizePollQueryResponse(anyPayload.data);
     }
     if (Array.isArray(anyPayload.polls)) {
+      const marketKey = typeof anyPayload.marketKey === 'string' ? anyPayload.marketKey : null;
+      const marketName = typeof anyPayload.marketName === 'string' ? anyPayload.marketName : null;
       return {
-        coverageKey: typeof anyPayload.coverageKey === 'string' ? anyPayload.coverageKey : null,
-        coverageName: typeof anyPayload.coverageName === 'string' ? anyPayload.coverageName : null,
+        marketKey,
+        marketName,
+        marketStatus: typeof anyPayload.marketStatus === 'string' ? anyPayload.marketStatus : null,
+        candidatePlaceName:
+          typeof anyPayload.candidatePlaceName === 'string' ? anyPayload.candidatePlaceName : null,
+        candidatePlaceGeoId:
+          typeof anyPayload.candidatePlaceGeoId === 'string'
+            ? anyPayload.candidatePlaceGeoId
+            : null,
+        cta:
+          anyPayload.cta && typeof anyPayload.cta === 'object'
+            ? (anyPayload.cta as PollQueryResponse['cta'])
+            : null,
         polls: normalizePollList(anyPayload.polls),
       };
     }
   }
 
   return {
-    coverageKey: null,
-    coverageName: null,
+    marketKey: null,
+    marketName: null,
+    marketStatus: null,
+    candidatePlaceName: null,
+    candidatePlaceGeoId: null,
+    cta: null,
     polls: normalizePollList(payload),
   };
 };
@@ -166,7 +199,7 @@ const POLL_BOOTSTRAP_CACHE_TTL_MS = 30 * 60 * 1000;
 const POLL_BOOTSTRAP_CACHE_MAX_ENTRIES = 12;
 let pollBootstrapCacheMemory: PersistedPollBootstrapCache | null = null;
 
-export const normalizePollCoverageKey = (value: string | null | undefined): string | null => {
+export const normalizePollMarketKey = (value: string | null | undefined): string | null => {
   if (typeof value !== 'string') {
     return null;
   }
@@ -178,24 +211,38 @@ export const createNetworkPollBootstrapSnapshot = (
   response: PollQueryResponse,
   resolvedAtMs: number = Date.now()
 ): PollBootstrapSnapshot => ({
-  coverageKey: normalizePollCoverageKey(response.coverageKey),
-  coverageName:
-    typeof response.coverageName === 'string' && response.coverageName.trim()
-      ? response.coverageName.trim()
+  marketKey: normalizePollMarketKey(response.marketKey),
+  marketName:
+    typeof response.marketName === 'string' && response.marketName.trim()
+      ? response.marketName.trim()
       : null,
+  marketStatus: typeof response.marketStatus === 'string' ? response.marketStatus : null,
+  candidatePlaceName:
+    typeof response.candidatePlaceName === 'string' && response.candidatePlaceName.trim()
+      ? response.candidatePlaceName.trim()
+      : null,
+  candidatePlaceGeoId:
+    typeof response.candidatePlaceGeoId === 'string' && response.candidatePlaceGeoId.trim()
+      ? response.candidatePlaceGeoId.trim()
+      : null,
+  cta: response.cta ?? null,
   polls: response.polls ?? [],
   resolvedAtMs,
   source: 'network',
 });
 
 const buildPollBootstrapSnapshot = (entry: {
-  coverageKey: string;
-  coverageName: string | null;
+  marketKey: string;
+  marketName: string | null;
   polls: Poll[];
   resolvedAtMs: number;
 }): PollBootstrapSnapshot => ({
-  coverageKey: entry.coverageKey,
-  coverageName: entry.coverageName,
+  marketKey: normalizePollMarketKey(entry.marketKey),
+  marketName: entry.marketName ?? null,
+  marketStatus: 'resolved',
+  candidatePlaceName: null,
+  candidatePlaceGeoId: null,
+  cta: null,
   polls: entry.polls,
   resolvedAtMs: entry.resolvedAtMs,
   source: 'cache',
@@ -209,17 +256,20 @@ const readPollBootstrapCache = async (): Promise<PersistedPollBootstrapCache> =>
   try {
     const raw = await AsyncStorage.getItem(POLL_BOOTSTRAP_CACHE_STORAGE_KEY);
     if (!raw) {
-      pollBootstrapCacheMemory = { byCoverageKey: {}, lastCoverageKey: null };
+      pollBootstrapCacheMemory = { byMarketKey: {}, lastMarketKey: null };
       return pollBootstrapCacheMemory;
     }
     const parsed = JSON.parse(raw) as PersistedPollBootstrapCache;
+    const nextByMarketKey: PersistedPollBootstrapCache['byMarketKey'] = {
+      ...(parsed?.byMarketKey ?? {}),
+    };
     pollBootstrapCacheMemory = {
-      byCoverageKey: parsed?.byCoverageKey ?? {},
-      lastCoverageKey: normalizePollCoverageKey(parsed?.lastCoverageKey) ?? null,
+      byMarketKey: nextByMarketKey,
+      lastMarketKey: normalizePollMarketKey(parsed?.lastMarketKey) ?? null,
     };
     return pollBootstrapCacheMemory;
   } catch {
-    pollBootstrapCacheMemory = { byCoverageKey: {}, lastCoverageKey: null };
+    pollBootstrapCacheMemory = { byMarketKey: {}, lastMarketKey: null };
     return pollBootstrapCacheMemory;
   }
 };
@@ -233,22 +283,22 @@ const persistPollBootstrapCache = async (cache: PersistedPollBootstrapCache): Pr
   }
 };
 
-export const readPollBootstrapSnapshotForCoverage = async (
-  coverageKey: string
+export const readPollBootstrapSnapshotForMarket = async (
+  marketKey: string
 ): Promise<PollBootstrapSnapshot | null> => {
-  const normalizedKey = normalizePollCoverageKey(coverageKey);
+  const normalizedKey = normalizePollMarketKey(marketKey);
   if (!normalizedKey) {
     return null;
   }
   const cache = await readPollBootstrapCache();
-  const entry = cache.byCoverageKey[normalizedKey];
+  const entry = cache.byMarketKey[normalizedKey];
   if (!entry) {
     return null;
   }
   if (Date.now() - entry.resolvedAtMs > POLL_BOOTSTRAP_CACHE_TTL_MS) {
-    delete cache.byCoverageKey[normalizedKey];
-    if (cache.lastCoverageKey === normalizedKey) {
-      cache.lastCoverageKey = null;
+    delete cache.byMarketKey[normalizedKey];
+    if (cache.lastMarketKey === normalizedKey) {
+      cache.lastMarketKey = null;
     }
     await persistPollBootstrapCache(cache);
     return null;
@@ -259,24 +309,24 @@ export const readPollBootstrapSnapshotForCoverage = async (
 export const writePollBootstrapSnapshot = async (
   snapshot: PollBootstrapSnapshot
 ): Promise<void> => {
-  const normalizedKey = normalizePollCoverageKey(snapshot.coverageKey);
+  const normalizedKey = normalizePollMarketKey(snapshot.marketKey);
   if (!normalizedKey) {
     return;
   }
   const cache = await readPollBootstrapCache();
-  cache.byCoverageKey[normalizedKey] = {
-    coverageKey: normalizedKey,
-    coverageName: snapshot.coverageName,
+  cache.byMarketKey[normalizedKey] = {
+    marketKey: normalizedKey,
+    marketName: snapshot.marketName ?? null,
     polls: snapshot.polls,
     resolvedAtMs: snapshot.resolvedAtMs,
   };
-  cache.lastCoverageKey = normalizedKey;
+  cache.lastMarketKey = normalizedKey;
 
-  const sortedKeys = Object.keys(cache.byCoverageKey).sort((left, right) => {
-    return cache.byCoverageKey[right]!.resolvedAtMs - cache.byCoverageKey[left]!.resolvedAtMs;
+  const sortedKeys = Object.keys(cache.byMarketKey).sort((left, right) => {
+    return cache.byMarketKey[right]!.resolvedAtMs - cache.byMarketKey[left]!.resolvedAtMs;
   });
   for (const staleKey of sortedKeys.slice(POLL_BOOTSTRAP_CACHE_MAX_ENTRIES)) {
-    delete cache.byCoverageKey[staleKey];
+    delete cache.byMarketKey[staleKey];
   }
 
   await persistPollBootstrapCache(cache);
@@ -324,7 +374,7 @@ export const voteOnPoll = async (pollId: string, body: { optionId: string }) => 
 
 export const fetchUserPolls = async (params: {
   activity?: 'created' | 'voted' | 'option_added' | 'participated';
-  coverageKey?: string;
+  marketKey?: string;
   state?: string;
   limit?: number;
   offset?: number;

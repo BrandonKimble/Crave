@@ -54,9 +54,6 @@ const resolveOverlaySheetKey = ({
   if (rootOverlayKey === 'bookmarks') {
     return 'bookmarks';
   }
-  if (rootOverlayKey === 'polls') {
-    return 'polls';
-  }
   if (searchRouteOverlayKey === 'polls') {
     return 'polls';
   }
@@ -96,7 +93,7 @@ export const useSearchRouteOverlaySheetKeys = ({
       overlaySheetApplyNavBarCutout: resolvedOverlaySheetVisible,
       isPersistentPollLane: searchRouteOverlayKey === 'polls',
       isSearchOverlay: rootOverlayKey === 'search',
-      showPollsOverlay: rootOverlayKey === 'polls',
+      showPollsOverlay: false,
       showBookmarksOverlay: rootOverlayKey === 'bookmarks',
       showProfileOverlay: rootOverlayKey === 'profile',
       showSaveListOverlay,

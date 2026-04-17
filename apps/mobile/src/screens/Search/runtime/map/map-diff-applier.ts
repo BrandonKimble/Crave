@@ -14,7 +14,6 @@ type UseMapDiffApplierArgs = {
   searchMode: 'shortcut' | 'natural' | 'entity' | null;
   activeTab: 'dishes' | 'restaurants';
   selectedRestaurantId: string | null;
-  scoreMode: 'coverage_display' | 'global_quality';
   markerCandidatesRef: React.MutableRefObject<Array<Feature<Point, RestaurantFeatureProperties>>>;
   shortcutCoverageRankedRef: React.MutableRefObject<
     Array<Feature<Point, RestaurantFeatureProperties>>
@@ -41,7 +40,6 @@ type PlannerInvocationSnapshot = {
   searchMode: UseMapDiffApplierArgs['searchMode'];
   activeTab: UseMapDiffApplierArgs['activeTab'];
   selectedRestaurantId: string | null;
-  scoreMode: UseMapDiffApplierArgs['scoreMode'];
   isMapMoving: boolean;
   bounds: {
     northEastLat: number;
@@ -81,7 +79,6 @@ const hasMaterialLodPlannerInputChange = ({
   previousInvocation.searchMode !== nextInvocation.searchMode ||
   previousInvocation.activeTab !== nextInvocation.activeTab ||
   previousInvocation.selectedRestaurantId !== nextInvocation.selectedRestaurantId ||
-  previousInvocation.scoreMode !== nextInvocation.scoreMode ||
   previousInvocation.isMapMoving !== nextInvocation.isMapMoving ||
   !areBoundsSnapshotsMateriallyEqual(previousInvocation.bounds, nextInvocation.bounds) ||
   previousInvocation.rankedCandidates !== nextInvocation.rankedCandidates ||
@@ -99,7 +96,6 @@ export const useMapDiffApplier = (args: UseMapDiffApplierArgs): UseMapDiffApplie
     searchMode,
     activeTab,
     selectedRestaurantId,
-    scoreMode,
     markerCandidatesRef,
     shortcutCoverageRankedRef,
     mapMotionPressureController,
@@ -131,7 +127,7 @@ export const useMapDiffApplier = (args: UseMapDiffApplierArgs): UseMapDiffApplie
   }, [activeTab, searchMode, selectedRestaurantId]);
 
   React.useEffect(() => {
-    const resetKey = `${searchMode ?? 'none'}::${activeTab}::${scoreMode}`;
+    const resetKey = `${searchMode ?? 'none'}::${activeTab}`;
     if (lodPinnedResetKeyRef.current === resetKey) {
       return;
     }
@@ -140,7 +136,7 @@ export const useMapDiffApplier = (args: UseMapDiffApplierArgs): UseMapDiffApplie
     lastPlannerInvocationRef.current = null;
     lodPinProposedPromoteSinceByMarkerKeyRef.current.clear();
     lodPinProposedDemoteSinceByMarkerKeyRef.current.clear();
-  }, [activeTab, scoreMode, searchMode]);
+  }, [activeTab, searchMode]);
 
   const recomputeLodPinnedMarkers = React.useCallback(
     (bounds: MapBounds | null) => {
@@ -181,7 +177,6 @@ export const useMapDiffApplier = (args: UseMapDiffApplierArgs): UseMapDiffApplie
         searchMode: context.searchMode,
         activeTab: context.activeTab,
         selectedRestaurantId: selectedId,
-        scoreMode,
         isMapMoving,
         bounds: captureMapBoundsSnapshot(bounds),
         rankedCandidates,

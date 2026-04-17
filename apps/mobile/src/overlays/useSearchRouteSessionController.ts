@@ -9,6 +9,7 @@ import {
 } from './searchRouteOverlayCommandStore';
 import { useSearchRouteSessionStore } from './searchRouteSessionStore';
 import { resolveSearchLaunchOriginSnap } from './searchRouteSessionUtils';
+import { searchRouteOverlayTransitionController } from './useSearchRouteOverlayTransitionController';
 import type {
   SearchOverlaySheetSnap,
   SearchSessionOriginContext,
@@ -43,8 +44,10 @@ export type SearchRouteSessionControllerRuntime = {
 const restoreSearchOriginContext = (origin: SearchSessionOriginContext): void => {
   const overlayCommandState = useSearchRouteOverlayCommandStore.getState();
   const sessionState = useSearchRouteSessionStore.getState();
+  const resolvedOriginRootOverlay = origin.rootOverlay === 'polls' ? 'search' : origin.rootOverlay;
 
-  if (origin.rootOverlay === 'search') {
+  if (resolvedOriginRootOverlay === 'search') {
+    searchRouteOverlayTransitionController.setNavRestorePending(false);
     requestSearchRouteDockedRestore({
       snap: origin.tabSnap,
     });
@@ -53,11 +56,8 @@ const restoreSearchOriginContext = (origin: SearchSessionOriginContext): void =>
   }
 
   unstable_batchedUpdates(() => {
-    overlayCommandState.setIsNavRestorePending(false);
-    if (origin.rootOverlay === 'polls') {
-      overlayCommandState.setIsDockedPollsDismissed(false);
-    }
-    appOverlayRouteController.setRootRoute(origin.rootOverlay);
+    searchRouteOverlayTransitionController.setNavRestorePending(false);
+    appOverlayRouteController.setRootRoute(resolvedOriginRootOverlay);
     overlayCommandState.setTabOverlaySnapRequest(origin.tabSnap);
   });
   sessionState.setIsSearchOriginRestorePending(false);
@@ -157,6 +157,7 @@ export const useSearchRouteSessionController = ({
 
   const requestDefaultPostSearchRestore = React.useCallback(() => {
     const sessionState = useSearchRouteSessionStore.getState();
+    searchRouteOverlayTransitionController.setNavRestorePending(false);
     if (sessionState.pendingOriginRestoreContext) {
       sessionState.setIsSearchOriginRestorePending(false);
       return;

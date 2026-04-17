@@ -9,6 +9,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { normalizeKeywordTerm } from './keyword-term-normalization';
 import { stripGenericTokens } from '../../../shared/utils/generic-token-handling';
+import { MarketRegistryService } from '../../markets/market-registry.service';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -102,7 +103,7 @@ export interface KeywordSliceSelectionStats {
 
 export interface KeywordSliceSelectionResult {
   subreddit: string;
-  collectionCoverageKey: string;
+  collectableMarketKey: string;
   safeIntervalDays: number;
   windowDays: number;
   maxTerms: number;
@@ -111,9 +112,7 @@ export interface KeywordSliceSelectionResult {
   stats: KeywordSliceSelectionStats;
 }
 
-type CoverageAreaLookup = {
-  coverageKey: string | null;
-  name: string;
+type CommunityLookup = {
   safeIntervalDays: number | null;
 } | null;
 
@@ -123,6 +122,7 @@ export class KeywordSliceSelectionService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly marketRegistry: MarketRegistryService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('KeywordSliceSelectionService');
@@ -132,12 +132,18 @@ export class KeywordSliceSelectionService {
     subreddit: string,
   ): Promise<KeywordSliceSelectionResult> {
     const normalizedSubreddit = subreddit.trim();
-    const coverage = await this.lookupCoverageArea(normalizedSubreddit);
-    const collectionCoverageKey = this.resolveCollectionCoverageKey(
-      normalizedSubreddit,
-      coverage,
-    );
-    const safeIntervalDays = this.resolveSafeIntervalDays(coverage);
+    const community = await this.lookupCommunity(normalizedSubreddit);
+    const mappedMarketKey =
+      await this.marketRegistry.resolveMarketKeyForCommunity(
+        normalizedSubreddit,
+      );
+    if (!mappedMarketKey) {
+      throw new Error(
+        `No marketKey configured for collection community "${normalizedSubreddit}"`,
+      );
+    }
+    const collectableMarketKey = mappedMarketKey;
+    const safeIntervalDays = this.resolveSafeIntervalDays(community);
     const now = new Date();
     const windowDays = this.resolveWindowDays(
       process.env.KEYWORD_DEMAND_WINDOW_DAYS,
@@ -158,11 +164,11 @@ export class KeywordSliceSelectionService {
     };
 
     const candidatesBySlice: Record<KeywordSlice, KeywordTermCandidate[]> = {
-      unmet: await this.loadUnmetCandidates(collectionCoverageKey, since, now),
-      refresh: await this.loadRefreshCandidates(collectionCoverageKey, now),
-      demand: await this.loadDemandCandidates(collectionCoverageKey, since),
+      unmet: await this.loadUnmetCandidates(collectableMarketKey, since, now),
+      refresh: await this.loadRefreshCandidates(collectableMarketKey, now),
+      demand: await this.loadDemandCandidates(collectableMarketKey, since),
       explore: await this.loadExploreCandidates({
-        collectionCoverageKey,
+        collectableMarketKey,
         since,
         now,
         trendWindowDays,
@@ -184,7 +190,7 @@ export class KeywordSliceSelectionService {
     }
 
     const attemptHistoryMap = await this.loadAttemptHistoryByTerm({
-      collectionCoverageKey,
+      collectableMarketKey,
       normalizedTerms: Array.from(
         new Set(
           SLICE_PRIORITY.flatMap((slice) =>
@@ -283,7 +289,7 @@ export class KeywordSliceSelectionService {
 
     this.logger.debug('Selected keyword terms for cycle', {
       subreddit: normalizedSubreddit,
-      collectionCoverageKey,
+      collectableMarketKey,
       maxTerms,
       quotas,
       stats,
@@ -297,7 +303,7 @@ export class KeywordSliceSelectionService {
 
     return {
       subreddit: normalizedSubreddit,
-      collectionCoverageKey,
+      collectableMarketKey,
       safeIntervalDays,
       windowDays,
       maxTerms,
@@ -519,13 +525,13 @@ export class KeywordSliceSelectionService {
   }
 
   private async loadUnmetCandidates(
-    locationKey: string,
+    marketKey: string,
     since: Date,
     now: Date,
   ): Promise<KeywordTermCandidate[]> {
     const requests = await this.prisma.onDemandRequest.findMany({
       where: {
-        locationKey,
+        marketKey,
         distinctUserCount: { gt: 0 },
         lastSeenAt: { gte: since },
         reason: { in: ['unresolved', 'low_result'] satisfies OnDemandReason[] },
@@ -555,11 +561,11 @@ export class KeywordSliceSelectionService {
   }
 
   private async loadDemandCandidates(
-    collectionCoverageKey: string,
+    collectableMarketKey: string,
     since: Date,
   ): Promise<KeywordTermCandidate[]> {
     const rows = await this.loadEntityDemandSignalRows({
-      collectionCoverageKey,
+      collectableMarketKey,
       since,
       limit: ENTITY_SIGNAL_CANDIDATE_LIMIT,
     });
@@ -594,13 +600,13 @@ export class KeywordSliceSelectionService {
   }
 
   private async loadExploreCandidates(params: {
-    collectionCoverageKey: string;
+    collectableMarketKey: string;
     since: Date;
     now: Date;
     trendWindowDays: number;
   }): Promise<KeywordTermCandidate[]> {
     const rows = await this.loadEntityDemandSignalRows({
-      collectionCoverageKey: params.collectionCoverageKey,
+      collectableMarketKey: params.collectableMarketKey,
       since: params.since,
       limit: ENTITY_SIGNAL_CANDIDATE_LIMIT,
     });
@@ -611,7 +617,7 @@ export class KeywordSliceSelectionService {
 
     const unmetRequests = await this.prisma.onDemandRequest.findMany({
       where: {
-        locationKey: params.collectionCoverageKey,
+        marketKey: params.collectableMarketKey,
         distinctUserCount: { gt: 0 },
         lastSeenAt: { gte: params.since },
         reason: { in: ['unresolved', 'low_result'] satisfies OnDemandReason[] },
@@ -653,7 +659,7 @@ export class KeywordSliceSelectionService {
 
     const entityIds = Array.from(new Set(rows.map((row) => row.entityId)));
     const trendByEntityId = await this.loadTrendCountsByEntity({
-      collectionCoverageKey: params.collectionCoverageKey,
+      collectableMarketKey: params.collectableMarketKey,
       entityIds,
       since: prevTrendSince,
       trendSince,
@@ -733,7 +739,7 @@ export class KeywordSliceSelectionService {
   }
 
   private async loadEntityDemandSignalRows(params: {
-    collectionCoverageKey: string;
+    collectableMarketKey: string;
     since: Date;
     limit: number;
   }): Promise<
@@ -754,7 +760,7 @@ export class KeywordSliceSelectionService {
         ? Math.floor(params.limit)
         : ENTITY_SIGNAL_CANDIDATE_LIMIT;
 
-    if (!params.collectionCoverageKey.trim()) {
+    if (!params.collectableMarketKey.trim()) {
       return [];
     }
 
@@ -771,7 +777,27 @@ export class KeywordSliceSelectionService {
         lastViewAt: Date | null;
       }>
     >(Prisma.sql`
-      WITH local_query AS (
+      WITH market_restaurants AS (
+        SELECT DISTINCT rl.restaurant_id
+        FROM core_restaurant_locations rl
+        JOIN core_markets m
+          ON m.market_key = ${params.collectableMarketKey}
+         AND m.geometry IS NOT NULL
+         AND m.is_active = true
+        WHERE rl.latitude IS NOT NULL
+          AND rl.longitude IS NOT NULL
+          AND ST_Contains(
+            m.geometry,
+            ST_SetSRID(
+              ST_MakePoint(
+                rl.longitude::double precision,
+                rl.latitude::double precision
+              ),
+              4326
+            )
+          )
+      ),
+      local_query AS (
         SELECT
           entity_id,
           entity_type,
@@ -783,8 +809,8 @@ export class KeywordSliceSelectionService {
           AND user_id IS NOT NULL
           AND entity_id IS NOT NULL
           AND entity_type IS NOT NULL
-          AND collection_coverage_key IS NOT NULL
-          AND LOWER(collection_coverage_key) = LOWER(${params.collectionCoverageKey})
+          AND collectable_market_key IS NOT NULL
+          AND LOWER(collectable_market_key) = LOWER(${params.collectableMarketKey})
         GROUP BY entity_id, entity_type
         ORDER BY query_users_primary DESC, last_query_at DESC
         LIMIT ${limit}
@@ -800,8 +826,8 @@ export class KeywordSliceSelectionService {
           AND user_id IS NOT NULL
           AND entity_id IS NOT NULL
           AND entity_type IS NOT NULL
-          AND collection_coverage_key IS NOT NULL
-          AND LOWER(collection_coverage_key) = LOWER(${params.collectionCoverageKey})
+          AND collectable_market_key IS NOT NULL
+          AND LOWER(collectable_market_key) = LOWER(${params.collectableMarketKey})
           AND metadata->>'submissionSource' = 'autocomplete'
           AND metadata->'submissionContext'->>'selectedEntityId' IS NOT NULL
           AND metadata->'submissionContext'->>'selectedEntityType' IS NOT NULL
@@ -818,9 +844,10 @@ export class KeywordSliceSelectionService {
           COUNT(*)::int AS view_users,
           MAX(rv.last_viewed_at) AS last_view_at
         FROM user_restaurant_views rv
-        JOIN core_entities e ON e.entity_id = rv.restaurant_id
         WHERE rv.last_viewed_at >= ${params.since}
-          AND LOWER(e.location_key) = LOWER(${params.collectionCoverageKey})
+          AND rv.restaurant_id IN (
+            SELECT restaurant_id FROM market_restaurants
+          )
         GROUP BY rv.restaurant_id
         ORDER BY view_users DESC, last_view_at DESC
         LIMIT ${limit}
@@ -832,10 +859,11 @@ export class KeywordSliceSelectionService {
 	          COUNT(DISTINCT fv.user_id)::int AS view_users,
 	          MAX(fv.last_viewed_at) AS last_view_at
 	        FROM user_food_views fv
-	        JOIN core_connections c ON c.connection_id = fv.connection_id
-	        JOIN core_entities r ON r.entity_id = c.restaurant_id
+	        JOIN core_restaurant_items c ON c.connection_id = fv.connection_id
 	        WHERE fv.last_viewed_at >= ${params.since}
-	          AND LOWER(r.location_key) = LOWER(${params.collectionCoverageKey})
+	          AND c.restaurant_id IN (
+	            SELECT restaurant_id FROM market_restaurants
+	          )
 	        GROUP BY fv.food_id
 	        ORDER BY view_users DESC, last_view_at DESC
 	        LIMIT ${limit}
@@ -855,7 +883,10 @@ export class KeywordSliceSelectionService {
         FROM favorite_counts f
         JOIN core_entities e ON e.entity_id = f.entity_id
         WHERE e.type IN ('restaurant', 'food', 'food_attribute', 'restaurant_attribute')
-          AND (e.type <> 'restaurant' OR LOWER(e.location_key) = LOWER(${params.collectionCoverageKey}))
+          AND (
+            e.type <> 'restaurant'
+            OR e.entity_id IN (SELECT restaurant_id FROM market_restaurants)
+          )
           AND f.favorite_users > 0
         ORDER BY f.favorite_users DESC
         LIMIT ${limit}
@@ -898,7 +929,10 @@ export class KeywordSliceSelectionService {
       LEFT JOIN local_query lq
         ON lq.entity_id = c.entity_id AND lq.entity_type = c.entity_type
       WHERE e.type IN ('restaurant', 'food', 'food_attribute', 'restaurant_attribute')
-        AND (e.type <> 'restaurant' OR LOWER(e.location_key) = LOWER(${params.collectionCoverageKey}))
+        AND (
+          e.type <> 'restaurant'
+          OR e.entity_id IN (SELECT restaurant_id FROM market_restaurants)
+        )
       ORDER BY
         (
           COALESCE(fc.favorite_users, 0) * 3
@@ -916,7 +950,7 @@ export class KeywordSliceSelectionService {
   }
 
   private async loadTrendCountsByEntity(params: {
-    collectionCoverageKey: string;
+    collectableMarketKey: string;
     entityIds: string[];
     since: Date;
     trendSince: Date;
@@ -946,9 +980,9 @@ export class KeywordSliceSelectionService {
       WHERE logged_at >= ${params.since}
         AND source = 'search'
         AND user_id IS NOT NULL
-        AND collection_coverage_key IS NOT NULL
-        AND LOWER(collection_coverage_key) = LOWER(${
-          params.collectionCoverageKey
+        AND collectable_market_key IS NOT NULL
+        AND LOWER(collectable_market_key) = LOWER(${
+          params.collectableMarketKey
         })
         AND entity_id IN (${Prisma.join(params.entityIds)})
       GROUP BY entity_id
@@ -1004,11 +1038,11 @@ export class KeywordSliceSelectionService {
   }
 
   private async loadRefreshCandidates(
-    collectionCoverageKey: string,
+    collectableMarketKey: string,
     now: Date,
   ): Promise<KeywordTermCandidate[]> {
     const rows = await this.prisma.keywordAttemptHistory.findMany({
-      where: { collectionCoverageKey },
+      where: { collectableMarketKey },
       orderBy: [{ lastSuccessAt: 'asc' }, { lastAttemptAt: 'asc' }],
       take: MAX_TERMS_PER_CYCLE * 10,
     });
@@ -1056,7 +1090,7 @@ export class KeywordSliceSelectionService {
   }
 
   private async loadAttemptHistoryByTerm(params: {
-    collectionCoverageKey: string;
+    collectableMarketKey: string;
     normalizedTerms: string[];
   }): Promise<
     Map<
@@ -1074,7 +1108,7 @@ export class KeywordSliceSelectionService {
 
     const rows = await this.prisma.keywordAttemptHistory.findMany({
       where: {
-        collectionCoverageKey: params.collectionCoverageKey,
+        collectableMarketKey: params.collectableMarketKey,
         normalizedTerm: { in: params.normalizedTerms },
       },
       select: {
@@ -1097,47 +1131,23 @@ export class KeywordSliceSelectionService {
     );
   }
 
-  private async lookupCoverageArea(
-    subreddit: string,
-  ): Promise<CoverageAreaLookup> {
+  private async lookupCommunity(subreddit: string): Promise<CommunityLookup> {
     if (!subreddit.length) {
       return null;
     }
 
-    return (await this.prisma.coverageArea.findFirst({
+    return (await this.prisma.collectionCommunity.findFirst({
       where: {
-        name: { equals: subreddit, mode: 'insensitive' },
+        communityName: { equals: subreddit, mode: 'insensitive' },
       },
-      select: { coverageKey: true, name: true, safeIntervalDays: true },
-    })) as CoverageAreaLookup;
+      select: { safeIntervalDays: true },
+    })) as CommunityLookup;
   }
 
-  private resolveCollectionCoverageKey(
-    subreddit: string,
-    coverage: CoverageAreaLookup,
-  ): string {
-    const normalizedSubreddit = subreddit.trim().toLowerCase();
-    const fromCoverageKey =
-      typeof coverage?.coverageKey === 'string'
-        ? coverage.coverageKey.trim()
-        : '';
-    if (fromCoverageKey.length) {
-      return fromCoverageKey.toLowerCase();
-    }
-
-    const fromName =
-      typeof coverage?.name === 'string' ? coverage.name.trim() : '';
-    if (fromName.length) {
-      return fromName.toLowerCase();
-    }
-
-    return normalizedSubreddit.length ? normalizedSubreddit : subreddit;
-  }
-
-  private resolveSafeIntervalDays(coverage: CoverageAreaLookup): number {
+  private resolveSafeIntervalDays(community: CommunityLookup): number {
     const raw =
-      typeof coverage?.safeIntervalDays === 'number'
-        ? coverage.safeIntervalDays
+      typeof community?.safeIntervalDays === 'number'
+        ? community.safeIntervalDays
         : null;
     if (raw && Number.isFinite(raw) && raw > 0) {
       return raw;

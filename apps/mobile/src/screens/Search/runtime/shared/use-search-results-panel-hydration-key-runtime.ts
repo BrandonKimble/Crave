@@ -1,21 +1,22 @@
 import React from 'react';
 
-import { useSearchBus } from './search-runtime-bus';
+import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { SearchResultsPanelHydrationKeyRuntime } from './search-results-panel-hydration-runtime-contract';
 import type { SearchResultsPayload } from './search-results-panel-runtime-state-contract';
 
 type UseSearchResultsPanelHydrationKeyRuntimeArgs = {
+  searchRuntimeBus: SearchRuntimeBus;
   resolvedResults: SearchResultsPayload;
   runtimeHydratedResultsKey: string | null;
   activeOverlayKey: string | null;
 };
 
 export const useSearchResultsPanelHydrationKeyRuntime = ({
+  searchRuntimeBus,
   resolvedResults,
   runtimeHydratedResultsKey,
   activeOverlayKey,
 }: UseSearchResultsPanelHydrationKeyRuntimeArgs): SearchResultsPanelHydrationKeyRuntime => {
-  const searchRuntimeBus = useSearchBus();
   const [hydratedResultsKey, setHydratedResultsKey] = React.useState<string | null>(null);
   const hydratedResultsKeyRef = React.useRef<string | null>(hydratedResultsKey);
   hydratedResultsKeyRef.current = hydratedResultsKey;
@@ -59,8 +60,8 @@ export const useSearchResultsPanelHydrationKeyRuntime = ({
     resolvedResults == null
       ? null
       : resultsPage === 1
-      ? resultsHydrationCandidate
-      : hydratedResultsKey;
+        ? resultsHydrationCandidate
+        : hydratedResultsKey;
   const isHydrationPendingForRuntime =
     resultsHydrationKey != null &&
     resultsHydrationKey !== (hydratedResultsKeyRef.current ?? hydratedResultsKey);

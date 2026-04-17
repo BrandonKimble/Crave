@@ -22,7 +22,7 @@ export type ProfileOwnerNativeExecutionArgs = Omit<
 
 export type ProfileRuntimeActions = {
   clearMapHighlightedRestaurantId: () => void;
-  hydrateRestaurantProfileById: (restaurantId: string) => void;
+  hydrateRestaurantProfileById: (restaurantId: string, marketKey?: string | null) => void;
   focusRestaurantProfileCamera: (
     restaurant: RestaurantResult,
     source: SearchProfileSource,

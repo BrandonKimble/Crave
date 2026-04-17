@@ -321,7 +321,6 @@ export class RestaurantCuisineExtractionService {
         data: {
           name: cuisine,
           type: EntityType.restaurant_attribute,
-          locationKey: 'global',
           aliases: scopedAliases.length ? scopedAliases : [cuisine],
         },
         select: { entityId: true },

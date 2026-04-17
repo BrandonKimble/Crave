@@ -3,7 +3,6 @@ import { Job, Queue } from 'bull';
 import { OnModuleInit, Inject } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { LoggerService, CorrelationUtils } from '../../../../shared';
-import { CoverageSourceType } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { RedditService } from '../../../external-integrations/reddit/reddit.service';
 import { CollectionJobSchedulerService } from './collection-job-scheduler.service';
@@ -135,10 +134,9 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
       // Use DB as source of truth so delayed jobs/retries remain correct
       let effectiveLastProcessed = options.lastProcessedTimestamp;
       if (typeof effectiveLastProcessed !== 'number') {
-        const sr = await this.prisma.coverageArea.findFirst({
+        const sr = await this.prisma.collectionCommunity.findFirst({
           where: {
-            name: subreddit.toLowerCase(),
-            sourceType: CoverageSourceType.all,
+            communityName: subreddit.toLowerCase(),
           },
           select: { lastProcessed: true, safeIntervalDays: true },
         });
@@ -312,8 +310,8 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         // For async queue approach, we update the timestamp immediately after queuing
         // The actual LLM processing will happen asynchronously
         // CRITICAL: Use collection start time to prevent missing posts during processing
-        await this.prisma.coverageArea.update({
-          where: { name: subreddit.toLowerCase() },
+        await this.prisma.collectionCommunity.update({
+          where: { communityName: subreddit.toLowerCase() },
           data: {
             lastProcessed: new Date(collectionStartTime * 1000),
           },
@@ -418,6 +416,7 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
     batchIndex: number,
   ): Promise<Job<BatchJob>> {
     return this.batchQueue.add('process-chronological-batch', batchJob, {
+      jobId: batchJob.batchId,
       priority: 1,
       attempts: 3,
       backoff: {

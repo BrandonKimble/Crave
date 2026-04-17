@@ -1,10 +1,20 @@
 import React from 'react';
+import type { SharedValue } from 'react-native-reanimated';
 
 import OverlaySheetShell from './OverlaySheetShell';
+import SearchRouteMountedSceneOwners from './SearchRouteMountedSceneOwners';
 import { useResolvedSearchRouteHostModel } from './useResolvedSearchRouteHostModel';
 import { SearchInteractionProvider } from '../screens/Search/context/SearchInteractionContext';
 
-const SearchRouteLayerHost = () => {
+type SearchRouteLayerHostProps = {
+  chromeTransitionProgress?: SharedValue<number>;
+  backdropDimProgress?: SharedValue<number>;
+};
+
+const ResolvedSearchRouteSheetHost = ({
+  chromeTransitionProgress,
+  backdropDimProgress,
+}: SearchRouteLayerHostProps) => {
   const searchRouteHostModel = useResolvedSearchRouteHostModel();
 
   if (!searchRouteHostModel) {
@@ -16,27 +26,25 @@ const SearchRouteLayerHost = () => {
   const renderedSheet = (
     <OverlaySheetShell
       visible={searchRouteHostModel.overlaySheetVisible}
-      spec={searchRouteHostModel.overlaySheetSpec}
-      sheetY={visualState.sheetTranslateY}
-      scrollOffset={visualState.resultsScrollOffset}
-      momentumFlag={visualState.resultsMomentum}
-      headerActionProgress={visualState.overlayHeaderActionProgress}
+      spec={searchRouteHostModel.activeSceneSpec}
+      chromeTransitionProgress={chromeTransitionProgress}
+      backdropDimProgress={backdropDimProgress}
       headerActionMode={searchRouteHostModel.overlayHeaderActionMode}
       navBarHeight={visualState.navBarCutoutHeight}
       applyNavBarCutout={searchRouteHostModel.overlaySheetApplyNavBarCutout}
       navBarCutoutProgress={
-        searchRouteHostModel.overlaySheetKey === 'search'
+        searchRouteHostModel.activeSceneKey === 'search'
           ? visualState.navBarCutoutProgress
           : undefined
       }
       navBarHiddenTranslateY={visualState.bottomNavHiddenTranslateY}
       navBarCutoutIsHiding={
-        searchRouteHostModel.overlaySheetKey === 'search' ? visualState.navBarCutoutIsHiding : false
+        searchRouteHostModel.activeSceneKey === 'search' ? visualState.navBarCutoutIsHiding : false
       }
     />
   );
 
-  return searchRouteHostModel.overlaySheetKey === 'search' && searchInteractionRef ? (
+  return searchRouteHostModel.activeSceneKey === 'search' && searchInteractionRef ? (
     <SearchInteractionProvider value={{ interactionRef: searchInteractionRef }}>
       {renderedSheet}
     </SearchInteractionProvider>
@@ -44,5 +52,18 @@ const SearchRouteLayerHost = () => {
     renderedSheet
   );
 };
+
+const SearchRouteLayerHost = ({
+  chromeTransitionProgress,
+  backdropDimProgress,
+}: SearchRouteLayerHostProps) => (
+  <>
+    <SearchRouteMountedSceneOwners />
+    <ResolvedSearchRouteSheetHost
+      chromeTransitionProgress={chromeTransitionProgress}
+      backdropDimProgress={backdropDimProgress}
+    />
+  </>
+);
 
 export default React.memo(SearchRouteLayerHost);

@@ -1,24 +1,24 @@
 import React from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@clerk/clerk-expo';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 
 import type { RootStackParamList } from '../../types/navigation';
 import { useAppRouteCoordinator } from '../../navigation/runtime/AppRouteCoordinator';
 import { useMainLaunchCoordinator } from '../../navigation/runtime/MainLaunchCoordinator';
-import { SearchRootRenderSurface } from './components/SearchRootRenderSurface';
+import { SearchMapRenderSurface } from './components/SearchMapRenderSurface';
 import { SearchRuntimeBusContext } from './runtime/shared/search-runtime-bus';
 import { useSearchRootRuntime } from './runtime/shared/use-search-root-runtime';
 
 const SearchScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { isSignedIn } = useAuth();
+  const isFocused = useIsFocused();
   const {
     userLocation,
     userLocationRef,
-    ensureUserLocation,
     startupLocationSnapshot,
     startupCamera,
     startupPollBounds,
@@ -33,15 +33,10 @@ const SearchScreen: React.FC = () => {
     searchRuntimeBus,
     markerEngineRef,
     isInitialCameraReady,
-    shouldRenderSearchOverlay,
-    statusBarFadeHeight,
-    searchOverlayChromeModel,
-    searchMapProps,
-    bottomNavProps,
-    rankAndScoreSheetsProps,
-    priceSheetProps,
+    mapRenderSurfaceModel,
     handleProfilerRender,
   } = useSearchRootRuntime({
+    isSearchScreenFocused: isFocused,
     insets,
     isSignedIn: !!isSignedIn,
     accessToken,
@@ -52,7 +47,6 @@ const SearchScreen: React.FC = () => {
     markMainMapReady,
     userLocation,
     userLocationRef,
-    ensureUserLocation,
     activeMainIntent,
     consumeActiveMainIntent,
     navigation,
@@ -61,16 +55,10 @@ const SearchScreen: React.FC = () => {
 
   return (
     <SearchRuntimeBusContext.Provider value={searchRuntimeBus}>
-      <SearchRootRenderSurface
+      <SearchMapRenderSurface
         isInitialCameraReady={isInitialCameraReady}
         markerEngineRef={markerEngineRef}
-        searchMapProps={searchMapProps}
-        statusBarFadeHeight={statusBarFadeHeight}
-        shouldRenderSearchOverlay={shouldRenderSearchOverlay}
-        searchOverlayChromeModel={searchOverlayChromeModel}
-        bottomNavProps={bottomNavProps}
-        rankAndScoreSheetsProps={rankAndScoreSheetsProps}
-        priceSheetProps={priceSheetProps}
+        mapRenderSurfaceModel={mapRenderSurfaceModel}
         onProfilerRender={handleProfilerRender}
       />
     </SearchRuntimeBusContext.Provider>

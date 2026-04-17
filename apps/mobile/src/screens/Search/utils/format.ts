@@ -3,7 +3,7 @@ import { DISTANCE_MAX_DECIMALS, DISTANCE_MIN_DECIMALS } from '../constants/searc
 export const capitalizeFirst = (value: string): string =>
   value.length ? value.charAt(0).toUpperCase() + value.slice(1) : value;
 
-export const formatCoverageLabel = (value?: string | null): string | null => {
+export const formatMarketLabel = (value?: string | null): string | null => {
   if (!value || typeof value !== 'string') {
     return null;
   }
@@ -18,15 +18,15 @@ export const formatCoverageLabel = (value?: string | null): string | null => {
     .join(' ');
 };
 
-export const resolveCoverageDisplayLabel = (
-  coverageName?: string | null,
-  coverageKey?: string | null
+export const resolveMarketDisplayLabel = (
+  marketName?: string | null,
+  marketKey?: string | null
 ): string | null => {
-  const name = typeof coverageName === 'string' ? coverageName.trim() : '';
+  const name = typeof marketName === 'string' ? marketName.trim() : '';
   if (name) {
     return name;
   }
-  return formatCoverageLabel(coverageKey);
+  return formatMarketLabel(marketKey);
 };
 
 const parseTimeDisplayToMinutes = (value?: string | null): number | null => {

@@ -9,6 +9,7 @@ import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
 import { boundsFromPairs, isLngLatTuple } from '../utils/geo';
 import { normalizePriceFilter } from '../utils/price';
+import type { SearchSubmitActiveOperationTuple } from './use-search-submit-response-owner';
 
 export type StructuredSearchFilters = {
   openNow?: boolean;
@@ -16,16 +17,13 @@ export type StructuredSearchFilters = {
   minimumVotes?: number | null;
 };
 
-export type SearchRequestPreparationTuple = {
-  requestId: number;
-};
+export type SearchRequestPreparationTuple = SearchSubmitActiveOperationTuple;
 
 export type PrepareStructuredInitialRequestPayloadOptions = {
   tuple: SearchRequestPreparationTuple;
   logLabel: string;
   loadingMoreLogLabel?: string;
   filters?: StructuredSearchFilters;
-  scoreMode?: NaturalSearchRequest['scoreMode'];
   forceFreshBounds?: boolean;
 };
 
@@ -39,7 +37,6 @@ export type PrepareNaturalSearchAttemptPayloadOptions = {
   append: boolean;
   targetPage: number;
   trimmedQuery: string;
-  scoreModeOverride?: NaturalSearchRequest['scoreMode'];
   submissionSource?: NaturalSearchRequest['submissionSource'];
   submissionContext?: NaturalSearchRequest['submissionContext'];
   openNow?: boolean;
@@ -55,7 +52,6 @@ export type PrepareNaturalSearchAttemptPayloadResult = {
 
 type UseSearchRequestPreparationOwnerArgs = {
   isLoadingMore: boolean;
-  scoreMode: NaturalSearchRequest['scoreMode'];
   openNow: boolean;
   priceLevels: number[];
   votes100Plus: boolean;
@@ -63,7 +59,6 @@ type UseSearchRequestPreparationOwnerArgs = {
   latestBoundsRef: React.MutableRefObject<MapBounds | null>;
   viewportBoundsService: ViewportBoundsService;
   mapRef: React.RefObject<MapboxMapRef | null>;
-  ensureUserLocation: () => Promise<Coordinate | null>;
   userLocationRef: React.MutableRefObject<Coordinate | null>;
   lastSearchRequestIdRef: React.MutableRefObject<string | null>;
   isOperationTupleStillActive: (tuple: SearchRequestPreparationTuple) => boolean;
@@ -94,7 +89,6 @@ const getPerfNow = () => {
 
 export const useSearchRequestPreparationOwner = ({
   isLoadingMore,
-  scoreMode,
   openNow,
   priceLevels,
   votes100Plus,
@@ -102,7 +96,6 @@ export const useSearchRequestPreparationOwner = ({
   latestBoundsRef,
   viewportBoundsService,
   mapRef,
-  ensureUserLocation,
   userLocationRef,
   lastSearchRequestIdRef,
   isOperationTupleStillActive,
@@ -175,7 +168,6 @@ export const useSearchRequestPreparationOwner = ({
     async (
       page: number,
       filters: StructuredSearchFilters = {},
-      scoreModeOverride?: NaturalSearchRequest['scoreMode'],
       options?: {
         forceFreshBounds?: boolean;
       }
@@ -185,7 +177,6 @@ export const useSearchRequestPreparationOwner = ({
         entities: {},
         pagination: { page, pageSize: DEFAULT_PAGE_SIZE },
         includeSqlPreview: false,
-        scoreMode: scoreModeOverride ?? scoreMode,
       };
 
       const effectiveOpenNow = filters.openNow ?? openNow;
@@ -196,8 +187,8 @@ export const useSearchRequestPreparationOwner = ({
         filters.minimumVotes !== undefined
           ? filters.minimumVotes
           : votes100Plus
-          ? MINIMUM_VOTES_FILTER
-          : null;
+            ? MINIMUM_VOTES_FILTER
+            : null;
 
       if (effectiveOpenNow) {
         payload.openNow = true;
@@ -220,7 +211,7 @@ export const useSearchRequestPreparationOwner = ({
         payload.bounds = bounds;
       }
 
-      const resolvedLocation = userLocationRef.current ?? (await ensureUserLocation());
+      const resolvedLocation = userLocationRef.current;
       if (resolvedLocation) {
         payload.userLocation = resolvedLocation;
       }
@@ -232,12 +223,10 @@ export const useSearchRequestPreparationOwner = ({
       return payload;
     },
     [
-      ensureUserLocation,
       logSearchResponseTiming,
       openNow,
       priceLevels,
       resolveRequestBounds,
-      scoreMode,
       shouldLogSearchResponseTimings,
       userLocationRef,
       votes100Plus,
@@ -250,7 +239,6 @@ export const useSearchRequestPreparationOwner = ({
       logLabel,
       loadingMoreLogLabel,
       filters,
-      scoreMode: scoreModeOverride,
       forceFreshBounds,
     }: PrepareStructuredInitialRequestPayloadOptions): Promise<StructuredSearchRequest | null> => {
       if (isLoadingMore) {
@@ -260,7 +248,7 @@ export const useSearchRequestPreparationOwner = ({
         }
       }
       logSearchPhase(logLabel);
-      const payload = await buildStructuredSearchPayload(1, filters, scoreModeOverride, {
+      const payload = await buildStructuredSearchPayload(1, filters, {
         forceFreshBounds,
       });
       if (!isOperationTupleStillActive(tuple)) {
@@ -297,7 +285,6 @@ export const useSearchRequestPreparationOwner = ({
       append,
       targetPage,
       trimmedQuery,
-      scoreModeOverride,
       submissionSource,
       submissionContext,
       openNow: nextOpenNow,
@@ -316,7 +303,6 @@ export const useSearchRequestPreparationOwner = ({
         query: trimmedQuery,
         pagination: { page: targetPage, pageSize: DEFAULT_PAGE_SIZE },
         includeSqlPreview: false,
-        scoreMode: scoreModeOverride ?? scoreMode,
       };
       if (append && lastSearchRequestIdRef.current) {
         payload.searchRequestId = lastSearchRequestIdRef.current;
@@ -355,7 +341,7 @@ export const useSearchRequestPreparationOwner = ({
         payload.bounds = requestBounds;
       }
 
-      const resolvedLocation = userLocationRef.current ?? (await ensureUserLocation());
+      const resolvedLocation = userLocationRef.current;
       if (!isOperationTupleStillActive(tuple)) {
         return null;
       }
@@ -365,16 +351,14 @@ export const useSearchRequestPreparationOwner = ({
 
       return {
         payload,
-        requestBounds: append ? null : requestBounds ?? null,
+        requestBounds: append ? null : (requestBounds ?? null),
       };
     },
     [
-      ensureUserLocation,
       isOperationTupleStillActive,
       lastSearchRequestIdRef,
       logSearchPhase,
       resolveRequestBounds,
-      scoreMode,
       setError,
       userLocationRef,
     ]

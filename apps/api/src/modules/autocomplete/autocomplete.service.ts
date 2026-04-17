@@ -151,7 +151,7 @@ export class AutocompleteService {
       const entityTypes = this.resolveEntityTypes(dto);
       const primaryEntityType = entityTypes[0] ?? EntityType.food;
       // Contract: autocomplete is intentionally global/unscoped.
-      const locationKey: string | null = null;
+      const marketKey: string | null = null;
 
       if (normalizedQuery.length < MIN_QUERY_LENGTH) {
         return {
@@ -202,7 +202,7 @@ export class AutocompleteService {
             normalizedQuery,
             entityTypes,
             Math.min(limit * entityTypes.length, limit * 3),
-            { locationKey },
+            { marketKey },
           ),
         (seconds) => {
           totalDbDurationSeconds += seconds;
@@ -228,7 +228,7 @@ export class AutocompleteService {
               normalizedQuery,
               primaryEntityType,
               limit,
-              locationKey,
+              marketKey,
             ),
           (seconds) => {
             totalDbDurationSeconds += seconds;
@@ -658,7 +658,7 @@ export class AutocompleteService {
     normalizedQuery: string,
     entityType: EntityType,
     limit: number,
-    locationKey: string | null,
+    marketKey: string | null,
   ): Promise<AutocompleteMatchDto[]> {
     const resolution = await this.entityResolutionService.resolveBatch(
       [
@@ -667,7 +667,7 @@ export class AutocompleteService {
           normalizedName: normalizedQuery,
           originalText: dto.query,
           entityType,
-          locationKey: entityType === 'restaurant' ? locationKey : null,
+          marketKey: entityType === 'restaurant' ? marketKey : null,
         },
       ],
       {

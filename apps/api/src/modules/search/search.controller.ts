@@ -99,16 +99,21 @@ export class SearchController {
   async restaurantDishes(
     @Param('restaurantId', new ParseUUIDPipe({ version: '4' }))
     restaurantId: string,
+    @Query('marketKey') marketKey?: string,
   ): Promise<FoodResultDto[]> {
-    return this.searchService.listRestaurantDishes(restaurantId);
+    return this.searchService.listRestaurantDishes(restaurantId, marketKey);
   }
 
   @Get('restaurants/:restaurantId/profile')
   async restaurantProfile(
     @Param('restaurantId', new ParseUUIDPipe({ version: '4' }))
     restaurantId: string,
+    @Query('marketKey') marketKey?: string,
   ): Promise<RestaurantProfileDto> {
-    const profile = await this.searchService.getRestaurantProfile(restaurantId);
+    const profile = await this.searchService.getRestaurantProfile(
+      restaurantId,
+      marketKey ?? null,
+    );
     if (!profile) {
       throw new NotFoundException('Restaurant profile not found');
     }

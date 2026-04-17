@@ -58,32 +58,13 @@ export class RestaurantStatusService {
             longitude: true,
           },
         },
-        locations: {
-          select: {
-            hours: true,
-            utcOffsetMinutes: true,
-            timeZone: true,
-            latitude: true,
-            longitude: true,
-            isPrimary: true,
-            lastPolledAt: true,
-            createdAt: true,
-          },
-          orderBy: [
-            { isPrimary: 'desc' },
-            { lastPolledAt: 'desc' },
-            { createdAt: 'desc' },
-          ],
-          take: 1,
-        },
       },
     });
 
     const previewMap = new Map<string, RestaurantStatusPreviewDto>();
 
     restaurants.forEach((restaurant) => {
-      const fallbackLocation = restaurant.locations[0] ?? null;
-      const location = restaurant.primaryLocation ?? fallbackLocation;
+      const location = restaurant.primaryLocation;
       const operatingMetadata = buildOperatingMetadata({
         hoursValue: location?.hours ?? null,
         utcOffsetMinutesValue: location?.utcOffsetMinutes ?? null,

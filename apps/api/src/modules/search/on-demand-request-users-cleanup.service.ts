@@ -75,7 +75,7 @@ export class OnDemandRequestUsersCleanupService
         SET distinct_user_count = counts.distinct_count
         FROM (
           SELECT request_id, COUNT(*)::int AS distinct_count
-          FROM on_demand_request_users
+          FROM collection_on_demand_request_users
           GROUP BY request_id
         ) counts
         WHERE r.request_id = counts.request_id
@@ -88,7 +88,7 @@ export class OnDemandRequestUsersCleanupService
         SET distinct_user_count = 0
         WHERE NOT EXISTS (
           SELECT 1
-          FROM on_demand_request_users u
+          FROM collection_on_demand_request_users u
           WHERE u.request_id = r.request_id
         )
       `,

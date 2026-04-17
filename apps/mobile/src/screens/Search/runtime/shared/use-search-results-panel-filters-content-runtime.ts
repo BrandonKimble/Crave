@@ -12,7 +12,6 @@ type UseSearchResultsPanelFiltersContentRuntimeArgs = Pick<
   UseSearchResultsPanelDataRuntimeArgs,
   | 'searchFiltersLayoutCacheRef'
   | 'handleSearchFiltersLayoutCache'
-  | 'toggleRankSelector'
   | 'toggleOpenNow'
   | 'toggleVotesFilter'
   | 'togglePriceSelector'
@@ -30,7 +29,6 @@ export type SearchResultsPanelFiltersContentRuntime = Pick<
 export const useSearchResultsPanelFiltersContentRuntime = ({
   searchFiltersLayoutCacheRef,
   handleSearchFiltersLayoutCache,
-  toggleRankSelector,
   toggleOpenNow,
   toggleVotesFilter,
   togglePriceSelector,
@@ -41,7 +39,6 @@ export const useSearchResultsPanelFiltersContentRuntime = ({
   const { filtersHeader } = useSearchResultsPanelFiltersRuntime({
     searchFiltersLayoutCacheRef,
     handleSearchFiltersLayoutCache,
-    toggleRankSelector,
     toggleOpenNow,
     toggleVotesFilter,
     togglePriceSelector,
@@ -49,13 +46,10 @@ export const useSearchResultsPanelFiltersContentRuntime = ({
     pendingTabSwitchTab: panelInputRuntime.pendingTabSwitchTab,
     scheduleTabToggleCommit,
     requestVersionKey: hydrationContentRuntime.requestVersionKey,
-    rankButtonLabelText: panelInputRuntime.rankButtonLabelText,
-    rankButtonIsActive: panelInputRuntime.rankButtonIsActive,
     priceButtonLabelText: panelInputRuntime.priceButtonLabelText,
     priceButtonIsActive: panelInputRuntime.priceButtonIsActive,
     openNow: panelInputRuntime.openNow,
     votesFilterActive: panelInputRuntime.votesFilterActive,
-    isRankSelectorVisible: panelInputRuntime.isRankSelectorVisible,
     isPriceSelectorVisible: panelInputRuntime.isPriceSelectorVisible,
   });
 

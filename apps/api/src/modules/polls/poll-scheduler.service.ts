@@ -89,19 +89,19 @@ export class PollSchedulerService {
     const since = new Date(
       Date.now() - this.config.demandWindowDays * MS_PER_DAY,
     );
-    const locations = await this.demandService.listActiveLocations({
+    const markets = await this.demandService.listActiveLocations({
       since,
       minImpressions: this.config.minImpressions,
       limit: this.config.topicLimit,
     });
 
     let created = 0;
-    for (const location of locations) {
+    for (const market of markets) {
       if (created >= this.config.topicLimit) {
         break;
       }
-      created += await this.seedLocationTopics(
-        location.locationKey,
+      created += await this.seedMarketTopics(
+        market.marketKey,
         since,
         this.config.topicLimit - created,
       );
@@ -114,14 +114,14 @@ export class PollSchedulerService {
     }
   }
 
-  private async seedLocationTopics(
-    locationKey: string,
+  private async seedMarketTopics(
+    marketKey: string,
     since: Date,
     remainingSlots: number,
   ): Promise<number> {
     let created = 0;
     const dishCandidates = await this.demandService.getTopEntitiesForLocation({
-      locationKey,
+      marketKey,
       since,
       entityTypes: [EntityType.food],
       minImpressions: this.config.minImpressions,
@@ -132,7 +132,7 @@ export class PollSchedulerService {
       if (created >= remainingSlots) {
         break;
       }
-      const ok = await this.createDishTopic(locationKey, candidate);
+      const ok = await this.createDishTopic(marketKey, candidate);
       if (ok) {
         created += 1;
       }
@@ -144,7 +144,7 @@ export class PollSchedulerService {
 
     const restaurantCandidates =
       await this.demandService.getTopEntitiesForLocation({
-        locationKey,
+        marketKey,
         since,
         entityTypes: [EntityType.restaurant],
         minImpressions: this.config.minImpressions,
@@ -155,7 +155,7 @@ export class PollSchedulerService {
       if (created >= remainingSlots) {
         break;
       }
-      const ok = await this.createRestaurantTopic(locationKey, candidate);
+      const ok = await this.createRestaurantTopic(marketKey, candidate);
       if (ok) {
         created += 1;
       }
@@ -165,7 +165,7 @@ export class PollSchedulerService {
   }
 
   private async createDishTopic(
-    locationKey: string,
+    marketKey: string,
     candidate: { entityId: string; impressions: number },
   ): Promise<boolean> {
     const entity = await this.prisma.entity.findUnique({
@@ -192,7 +192,7 @@ export class PollSchedulerService {
     const exists = await this.topicExists(
       PollTopicType.best_dish,
       entity.entityId,
-      locationKey,
+      marketKey,
     );
     if (exists) {
       return false;
@@ -202,7 +202,7 @@ export class PollSchedulerService {
       data: {
         title: this.buildDishQuestion(entity.name),
         description: `Which spot has the best ${entity.name}?`,
-        coverageKey: locationKey,
+        marketKey,
         region: entity.region,
         country: entity.country,
         topicType: PollTopicType.best_dish,
@@ -212,7 +212,7 @@ export class PollSchedulerService {
         status: PollTopicStatus.ready,
         metadata: {
           source: 'search_log',
-          locationKey,
+          marketKey,
           impressions: candidate.impressions,
         } satisfies Prisma.JsonObject,
       },
@@ -222,7 +222,7 @@ export class PollSchedulerService {
   }
 
   private async createRestaurantTopic(
-    locationKey: string,
+    marketKey: string,
     candidate: { entityId: string; impressions: number },
   ): Promise<boolean> {
     const entity = await this.prisma.entity.findUnique({
@@ -249,7 +249,7 @@ export class PollSchedulerService {
     const exists = await this.topicExists(
       PollTopicType.what_to_order,
       entity.entityId,
-      locationKey,
+      marketKey,
     );
     if (exists) {
       return false;
@@ -259,7 +259,7 @@ export class PollSchedulerService {
       data: {
         title: this.buildRestaurantQuestion(entity.name),
         description: `Help everyone decide what to order at ${entity.name}.`,
-        coverageKey: locationKey,
+        marketKey,
         region: entity.region,
         country: entity.country,
         topicType: PollTopicType.what_to_order,
@@ -268,7 +268,7 @@ export class PollSchedulerService {
         status: PollTopicStatus.ready,
         metadata: {
           source: 'search_log',
-          locationKey,
+          marketKey,
           impressions: candidate.impressions,
         } satisfies Prisma.JsonObject,
       },
@@ -309,12 +309,12 @@ export class PollSchedulerService {
   private async topicExists(
     topicType: PollTopicType,
     targetId: string,
-    locationKey: string,
+    marketKey: string,
   ): Promise<boolean> {
     const where: Prisma.PollTopicWhereInput = {
       topicType,
       status: { in: [PollTopicStatus.draft, PollTopicStatus.ready] },
-      coverageKey: locationKey,
+      marketKey,
     };
 
     if (topicType === PollTopicType.best_dish) {
@@ -354,13 +354,16 @@ export class PollSchedulerService {
       take: Math.max(this.config.topicLimit, 50),
     });
 
-    const pollsByCity = new Map<string, string[]>();
-    const cityCounts = new Map<string, number>();
+    const pollsByMarket = new Map<string, string[]>();
+    const marketCounts = new Map<string, number>();
     let published = 0;
 
     for (const topic of topics) {
-      const cityKey = topic.coverageKey?.toLowerCase() ?? 'global';
-      const currentCount = cityCounts.get(cityKey) ?? 0;
+      const marketKey = topic.marketKey?.toLowerCase().trim();
+      if (!marketKey) {
+        continue;
+      }
+      const currentCount = marketCounts.get(marketKey) ?? 0;
       if (currentCount >= this.config.maxPollsPerCity) {
         continue;
       }
@@ -369,7 +372,7 @@ export class PollSchedulerService {
         data: {
           topicId: topic.topicId,
           question: topic.title,
-          coverageKey: topic.coverageKey,
+          marketKey: topic.marketKey,
           region: topic.region,
           state: PollState.active,
           scheduledFor: now,
@@ -395,17 +398,17 @@ export class PollSchedulerService {
         });
       }
 
-      cityCounts.set(cityKey, currentCount + 1);
-      pollsByCity.set(cityKey, [
-        ...(pollsByCity.get(cityKey) ?? []),
+      marketCounts.set(marketKey, currentCount + 1);
+      pollsByMarket.set(marketKey, [
+        ...(pollsByMarket.get(marketKey) ?? []),
         poll.pollId,
       ]);
       published += 1;
     }
 
-    for (const [cityKey, pollIds] of pollsByCity.entries()) {
+    for (const [marketKey, pollIds] of pollsByMarket.entries()) {
       await this.notifications.queuePollReleaseNotification({
-        city: cityKey === 'global' ? undefined : cityKey,
+        city: marketKey,
         pollIds,
         scheduledFor: now,
       });

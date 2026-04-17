@@ -38,6 +38,7 @@ export type RestaurantPanelSnapshotNativePayload = {
   favoriteEnabled: boolean;
   showWebsiteAction: boolean;
   showCallAction: boolean;
+  matchedTags: string[];
   locations: Array<{
     title: string;
     status: string | null;

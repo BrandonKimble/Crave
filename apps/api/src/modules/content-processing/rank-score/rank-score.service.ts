@@ -29,16 +29,16 @@ export class RankScoreService {
       return;
     }
 
-    const locationKeys = await this.fetchLocationKeysForConnections(uniqueIds);
-    await this.refreshRankScoresForLocations(locationKeys);
+    const marketKeys = await this.fetchMarketKeysForConnections(uniqueIds);
+    await this.refreshRankScoresForMarkets(marketKeys);
   }
 
-  async refreshRankScoresForLocations(
-    locationKeys: Array<string | null | undefined>,
+  async refreshRankScoresForMarkets(
+    marketKeys: Array<string | null | undefined>,
   ): Promise<void> {
     const normalized = Array.from(
       new Set(
-        locationKeys
+        marketKeys
           .filter((key): key is string => typeof key === 'string')
           .map((key) => key.trim().toLowerCase())
           .filter((key) => key.length > 0),
@@ -46,26 +46,24 @@ export class RankScoreService {
     );
 
     if (!normalized.length) {
-      this.logger.debug('No coverage keys resolved for rank refresh');
+      this.logger.debug('No market keys resolved for rank refresh');
       return;
     }
 
-    for (const locationKey of normalized) {
+    for (const marketKey of normalized) {
       try {
-        await this.refreshRankScoresForLocation(locationKey);
+        await this.refreshRankScoresForMarket(marketKey);
       } catch (error) {
         this.logger.error('Rank score refresh failed', {
-          locationKey,
+          marketKey,
           error: error instanceof Error ? error.message : String(error),
         });
       }
     }
   }
 
-  private async refreshRankScoresForLocation(
-    locationKey: string,
-  ): Promise<void> {
-    const normalizedKey = locationKey.trim().toLowerCase();
+  private async refreshRankScoresForMarket(marketKey: string): Promise<void> {
+    const normalizedKey = marketKey.trim().toLowerCase();
     if (!normalizedKey) {
       return;
     }
@@ -74,27 +72,25 @@ export class RankScoreService {
     await this.refreshRestaurantRankScores(normalizedKey);
   }
 
-  private async refreshConnectionRankScores(
-    locationKey: string,
-  ): Promise<void> {
+  private async refreshConnectionRankScores(marketKey: string): Promise<void> {
     await this.prisma.$transaction(
       async (tx) => {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`rank_score:${locationKey}:connection`}))`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`rank_score:${marketKey}:connection`}))`;
         await tx.$executeRaw`
 DELETE FROM core_display_rank_scores
-WHERE location_key = ${locationKey}
+WHERE market_key = ${marketKey}
   AND subject_type = 'connection'::display_rank_subject_type`;
 
         await tx.$executeRaw`
 WITH ranked AS (
   SELECT
     c.connection_id AS subject_id,
-    r.location_key AS location_key,
+    ${marketKey}::varchar(255) AS market_key,
     COALESCE(c.food_quality_score, 0) AS quality_score,
     COALESCE(c.total_upvotes, 0) AS total_upvotes,
     COALESCE(c.mention_count, 0) AS mention_count,
     ROW_NUMBER() OVER (
-      PARTITION BY r.location_key
+      PARTITION BY ${marketKey}::varchar(255)
       ORDER BY
         COALESCE(c.food_quality_score, 0) DESC,
         COALESCE(c.total_upvotes, 0) DESC,
@@ -102,20 +98,27 @@ WITH ranked AS (
         c.connection_id ASC
     ) AS row_number,
     PERCENT_RANK() OVER (
-      PARTITION BY r.location_key
+      PARTITION BY ${marketKey}::varchar(255)
       ORDER BY
         COALESCE(c.food_quality_score, 0) DESC,
         COALESCE(c.total_upvotes, 0) DESC,
         COALESCE(c.mention_count, 0) DESC,
         c.connection_id ASC
     ) AS percent_rank
-  FROM core_connections c
-  JOIN core_entities r ON r.entity_id = c.restaurant_id
-  WHERE r.location_key = ${locationKey}
+  FROM (
+    SELECT DISTINCT emp.entity_id AS restaurant_id
+    FROM core_entity_market_presence emp
+    JOIN core_markets m
+      ON m.market_key = ${marketKey}
+     AND m.market_key = emp.market_key
+     AND m.is_active = true
+  ) mr
+  JOIN core_entities r ON r.entity_id = mr.restaurant_id
+  JOIN core_restaurant_items c ON c.restaurant_id = r.entity_id
 ),
 scored AS (
   SELECT
-    location_key,
+    market_key,
     subject_id,
     row_number,
     (1 - percent_rank) AS rank_percentile,
@@ -126,7 +129,7 @@ scored AS (
   FROM ranked
 )
 INSERT INTO core_display_rank_scores (
-  location_key,
+  market_key,
   subject_type,
   subject_id,
   rank_score_raw,
@@ -135,7 +138,7 @@ INSERT INTO core_display_rank_scores (
   computed_at
 )
 SELECT
-  location_key,
+  market_key,
   'connection'::display_rank_subject_type,
   subject_id,
   rank_score_raw,
@@ -153,43 +156,48 @@ FROM scored`;
       },
     );
 
-    this.logger.info('Connection display ranks refreshed', { locationKey });
+    this.logger.info('Connection display ranks refreshed', { marketKey });
   }
 
-  private async refreshRestaurantRankScores(
-    locationKey: string,
-  ): Promise<void> {
+  private async refreshRestaurantRankScores(marketKey: string): Promise<void> {
     await this.prisma.$transaction(
       async (tx) => {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`rank_score:${locationKey}:restaurant`}))`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`rank_score:${marketKey}:restaurant`}))`;
         await tx.$executeRaw`
 DELETE FROM core_display_rank_scores
-WHERE location_key = ${locationKey}
+WHERE market_key = ${marketKey}
   AND subject_type = 'restaurant'::display_rank_subject_type`;
 
         await tx.$executeRaw`
 WITH restaurant_metrics AS (
   SELECT
     r.entity_id AS subject_id,
-    r.location_key AS location_key,
+    ${marketKey}::varchar(255) AS market_key,
     COALESCE(r.restaurant_quality_score, 0) AS quality_score,
     COALESCE(SUM(c.total_upvotes), 0) AS total_upvotes,
     COALESCE(SUM(c.mention_count), 0) AS mention_count
-  FROM core_entities r
-  LEFT JOIN core_connections c ON c.restaurant_id = r.entity_id
+  FROM (
+    SELECT DISTINCT emp.entity_id AS restaurant_id
+    FROM core_entity_market_presence emp
+    JOIN core_markets m
+      ON m.market_key = ${marketKey}
+     AND m.market_key = emp.market_key
+     AND m.is_active = true
+  ) mr
+  JOIN core_entities r ON r.entity_id = mr.restaurant_id
+  LEFT JOIN core_restaurant_items c ON c.restaurant_id = r.entity_id
   WHERE r.type = 'restaurant'
-    AND r.location_key = ${locationKey}
-  GROUP BY r.entity_id, r.location_key, r.restaurant_quality_score
+  GROUP BY r.entity_id, r.restaurant_quality_score
 ),
 ranked AS (
   SELECT
     subject_id,
-    location_key,
+    market_key,
     quality_score,
     total_upvotes,
     mention_count,
     ROW_NUMBER() OVER (
-      PARTITION BY location_key
+      PARTITION BY market_key
       ORDER BY
         quality_score DESC,
         total_upvotes DESC,
@@ -197,7 +205,7 @@ ranked AS (
         subject_id ASC
     ) AS row_number,
     PERCENT_RANK() OVER (
-      PARTITION BY location_key
+      PARTITION BY market_key
       ORDER BY
         quality_score DESC,
         total_upvotes DESC,
@@ -208,7 +216,7 @@ ranked AS (
 ),
 scored AS (
   SELECT
-    location_key,
+    market_key,
     subject_id,
     row_number,
     (1 - percent_rank) AS rank_percentile,
@@ -219,7 +227,7 @@ scored AS (
   FROM ranked
 )
 INSERT INTO core_display_rank_scores (
-  location_key,
+  market_key,
   subject_type,
   subject_id,
   rank_score_raw,
@@ -228,7 +236,7 @@ INSERT INTO core_display_rank_scores (
   computed_at
 )
 SELECT
-  location_key,
+  market_key,
   'restaurant'::display_rank_subject_type,
   subject_id,
   rank_score_raw,
@@ -246,22 +254,26 @@ FROM scored`;
       },
     );
 
-    this.logger.info('Restaurant display ranks refreshed', { locationKey });
+    this.logger.info('Restaurant display ranks refreshed', { marketKey });
   }
 
-  private async fetchLocationKeysForConnections(
+  private async fetchMarketKeysForConnections(
     connectionIds: string[],
   ): Promise<string[]> {
-    const rows = await this.prisma.$queryRaw<Array<{ location_key: string }>>(
+    const rows = await this.prisma.$queryRaw<Array<{ market_key: string }>>(
       Prisma.sql`
-SELECT DISTINCT r.location_key
-FROM core_connections c
-JOIN core_entities r ON r.entity_id = c.restaurant_id
-WHERE c.connection_id = ANY(${this.buildUuidArray(connectionIds)})`,
+SELECT DISTINCT m.market_key AS market_key
+FROM core_restaurant_items c
+JOIN core_entity_market_presence emp ON emp.entity_id = c.restaurant_id
+JOIN core_markets m
+  ON m.market_key = emp.market_key
+ AND m.is_active = true
+WHERE c.connection_id = ANY(${this.buildUuidArray(connectionIds)})
+`,
     );
 
     const keys = rows
-      .map((row) => row.location_key)
+      .map((row) => row.market_key)
       .filter((value): value is string => Boolean(value));
 
     return Array.from(new Set(keys.map((value) => value.trim().toLowerCase())));

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Animated, Easing, View, findNodeHandle } from 'react-native';
+import { View, findNodeHandle } from 'react-native';
 
 import MapboxGL, { type MapState as MapboxMapState } from '@rnmapbox/maps';
 
@@ -8,20 +8,7 @@ type OnPressEvent = {
   coordinates: { latitude: number; longitude: number };
   point: { x: number; y: number };
 };
-
-type CameraAnimationCompleteEvent = {
-  nativeEvent?: {
-    payload?: {
-      animationCompletionId?: string | null;
-      status?: string;
-    };
-    payloadRenamed?: {
-      animationCompletionId?: string | null;
-      status?: string;
-    };
-  };
-};
-import type { Feature, FeatureCollection, Point, Polygon } from 'geojson';
+import type { Feature, FeatureCollection, Point } from 'geojson';
 
 import pinAsset from '../../../assets/pin.png';
 import pinFillAsset from '../../../assets/pin-fill.png';
@@ -29,6 +16,7 @@ import pinShadowAsset from '../../../assets/pin-shadow.png';
 import { colors as themeColors } from '../../../constants/theme';
 import type { StartupLocationSnapshot } from '../../../navigation/runtime/MainLaunchCoordinator';
 import type { Coordinate, MapBounds } from '../../../types';
+import { logger } from '../../../utils';
 import {
   LABEL_RADIAL_OFFSET_EM,
   LABEL_TEXT_SIZE,
@@ -56,11 +44,16 @@ import {
 } from '../runtime/map/map-presentation-runtime-contract';
 import type { MapMotionPressureController } from '../runtime/map/map-motion-pressure';
 import {
+  EMPTY_SEARCH_MAP_SOURCE_STORE,
+  type SearchMapSourceStore,
+} from '../runtime/map/search-map-source-store';
+import {
   areSearchMapRenderPresentationStatesEqual,
   searchMapRenderController,
   type SearchMapRenderInteractionMode,
   type SearchMapRenderPresentationState,
 } from '../runtime/map/search-map-render-controller';
+import type { SearchMapPresentationLifecyclePort } from '../runtime/shared/search-map-protocol-contract';
 
 const MAP_PAN_DECELERATION_FACTOR = 0.995;
 const SEARCH_MAP_COMPONENT_INSTANCE_ID_PREFIX = 'search-map-component';
@@ -176,7 +169,7 @@ const withIconOpacity = (
   ({
     ...baseStyle,
     iconOpacity,
-  } as MapboxGL.SymbolLayerStyle);
+  }) as MapboxGL.SymbolLayerStyle;
 
 const withTextOpacity = ({
   baseStyle,
@@ -191,7 +184,7 @@ const withTextOpacity = ({
     ...baseStyle,
     ...(textColor === undefined ? {} : { textColor }),
     textOpacity,
-  } as MapboxGL.SymbolLayerStyle);
+  }) as MapboxGL.SymbolLayerStyle;
 
 type SearchMapLabelLayersProps = {
   shouldMountLabelSource: boolean;
@@ -579,7 +572,7 @@ type SearchMapViewSceneProps = {
   handleMapLoadedMap: () => void;
   handleDidFinishRenderingFrame: () => void;
   handleDidFinishRenderingFrameFully: () => void;
-  handleCameraAnimationComplete: (event: CameraAnimationCompleteEvent) => void;
+  shouldRenderStyleManagedContent: boolean;
   mapCenter: [number, number] | null;
   mapZoom: number;
   mapCameraAnimation: {
@@ -591,9 +584,9 @@ type SearchMapViewSceneProps = {
   isFollowingUser: boolean;
   markerSceneProps: SearchMapMarkerSceneProps;
   userLocationLayerProps: {
-    userLocationAccuracyFeatureCollection: FeatureCollection<Polygon>;
-    userLocationFeatureCollection: FeatureCollection<Point>;
-    userLocationVisualSpec: UserLocationVisualSpec;
+    pulsingColor: string;
+    pulsingRadius: 'accuracy' | number;
+    shouldAnimatePulse: boolean;
   } | null;
 };
 
@@ -623,7 +616,7 @@ const SearchMapViewScene = React.memo(
     handleMapLoadedMap,
     handleDidFinishRenderingFrame,
     handleDidFinishRenderingFrameFully,
-    handleCameraAnimationComplete,
+    shouldRenderStyleManagedContent: _shouldRenderStyleManagedContent,
     mapCenter,
     mapZoom,
     mapCameraAnimation,
@@ -666,50 +659,48 @@ const SearchMapViewScene = React.memo(
           centerCoordinate={mapCenter ?? USA_FALLBACK_CENTER}
           zoomLevel={mapZoom}
           padding={cameraPadding ?? ZERO_CAMERA_PADDING}
-          animationCompletionId={mapCameraAnimation.completionId}
           followUserLocation={isFollowingUser}
           followZoomLevel={13}
           followPitch={0}
           followHeading={0}
           animationMode={mapCameraAnimation.mode}
           animationDuration={mapCameraAnimation.durationMs}
-          onCameraAnimationComplete={handleCameraAnimationComplete}
         />
-        <MapboxGL.ShapeSource
-          id={OVERLAY_Z_ANCHOR_SOURCE_ID}
-          shape={EMPTY_POINT_FEATURES as FeatureCollection<Point, RestaurantFeatureProperties>}
-        >
-          <MapboxGL.SymbolLayer
-            id={OVERLAY_Z_ANCHOR_LAYER_ID}
-            slot="top"
-            sourceID={OVERLAY_Z_ANCHOR_SOURCE_ID}
-            style={OVERLAY_Z_ANCHOR_STYLE}
-          />
-          <MapboxGL.SymbolLayer
-            id={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
-            slot="top"
-            sourceID={OVERLAY_Z_ANCHOR_SOURCE_ID}
-            style={OVERLAY_Z_ANCHOR_STYLE}
-            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-          />
-          <MapboxGL.SymbolLayer
-            id={SEARCH_PINS_Z_ANCHOR_LAYER_ID}
-            slot="top"
-            sourceID={OVERLAY_Z_ANCHOR_SOURCE_ID}
-            style={OVERLAY_Z_ANCHOR_STYLE}
-            belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
-          />
-        </MapboxGL.ShapeSource>
-        <SearchMapMarkerScene {...markerSceneProps} />
-        {userLocationLayerProps ? (
-          <UserLocationLayers
-            userLocationAccuracyFeatureCollection={
-              userLocationLayerProps.userLocationAccuracyFeatureCollection
-            }
-            userLocationFeatureCollection={userLocationLayerProps.userLocationFeatureCollection}
-            userLocationVisualSpec={userLocationLayerProps.userLocationVisualSpec}
-          />
-        ) : null}
+        <React.Fragment>
+          <MapboxGL.ShapeSource
+            id={OVERLAY_Z_ANCHOR_SOURCE_ID}
+            shape={EMPTY_POINT_FEATURES as FeatureCollection<Point, RestaurantFeatureProperties>}
+          >
+            <MapboxGL.SymbolLayer
+              id={OVERLAY_Z_ANCHOR_LAYER_ID}
+              slot="top"
+              sourceID={OVERLAY_Z_ANCHOR_SOURCE_ID}
+              style={OVERLAY_Z_ANCHOR_STYLE}
+            />
+            <MapboxGL.SymbolLayer
+              id={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
+              slot="top"
+              sourceID={OVERLAY_Z_ANCHOR_SOURCE_ID}
+              style={OVERLAY_Z_ANCHOR_STYLE}
+              belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+            />
+            <MapboxGL.SymbolLayer
+              id={SEARCH_PINS_Z_ANCHOR_LAYER_ID}
+              slot="top"
+              sourceID={OVERLAY_Z_ANCHOR_SOURCE_ID}
+              style={OVERLAY_Z_ANCHOR_STYLE}
+              belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
+            />
+          </MapboxGL.ShapeSource>
+          <SearchMapMarkerScene {...markerSceneProps} />
+          {userLocationLayerProps ? (
+            <UserLocationLayers
+              pulsingColor={userLocationLayerProps.pulsingColor}
+              pulsingRadius={userLocationLayerProps.pulsingRadius}
+              shouldAnimatePulse={userLocationLayerProps.shouldAnimatePulse}
+            />
+          ) : null}
+        </React.Fragment>
       </MapboxGL.MapView>
     </View>
   ),
@@ -726,7 +717,7 @@ const SearchMapViewScene = React.memo(
     previousProps.handleDidFinishRenderingFrame === nextProps.handleDidFinishRenderingFrame &&
     previousProps.handleDidFinishRenderingFrameFully ===
       nextProps.handleDidFinishRenderingFrameFully &&
-    previousProps.handleCameraAnimationComplete === nextProps.handleCameraAnimationComplete &&
+    previousProps.shouldRenderStyleManagedContent === nextProps.shouldRenderStyleManagedContent &&
     areCoordinatesEqual(previousProps.mapCenter, nextProps.mapCenter) &&
     previousProps.mapZoom === nextProps.mapZoom &&
     previousProps.mapCameraAnimation.mode === nextProps.mapCameraAnimation.mode &&
@@ -742,6 +733,7 @@ export type RestaurantFeatureProperties = {
   restaurantId: string;
   restaurantName: string;
   contextualScore: number;
+  contextualPercentile?: number | null;
   markerKey?: string;
   nativeLodZ?: number;
   nativeLodOpacity?: number;
@@ -754,20 +746,18 @@ export type RestaurantFeatureProperties = {
   labelOrder?: number;
   // For pin SymbolLayer z-ordering: fixed slot index (0 = bottom ... 39 = top).
   lodZ?: number;
-  displayScore?: number | null;
-  displayPercentile?: number | null;
   restaurantQualityScore?: number | null;
   pinColor: string;
   pinColorGlobal?: string;
-  pinColorLocal?: string;
+  pinColorContextual?: string;
   anchor?: 'top' | 'bottom' | 'left' | 'right';
   labelCandidate?: LabelCandidate;
   // Dish-specific fields (populated when rendering dish pins)
   isDishPin?: boolean;
   dishName?: string;
   connectionId?: string;
-  topDishDisplayPercentile?: number | null;
-  topDishDisplayScore?: number | null;
+  topDishContextualPercentile?: number | null;
+  topDishContextualScore?: number | null;
 };
 
 export type MapboxMapRef = InstanceType<typeof MapboxGL.MapView> & {
@@ -796,49 +786,6 @@ const DOT_SOURCE_ID = 'restaurant-dot-source';
 const DOT_LAYER_ID = 'restaurant-dot-layer';
 const DOT_INTERACTION_SOURCE_ID = 'restaurant-dot-interaction-source';
 const DOT_INTERACTION_LAYER_ID = 'restaurant-dot-interaction-layer';
-const USER_LOCATION_SOURCE_ID = 'user-location-source';
-const USER_LOCATION_ACCURACY_SOURCE_ID = 'user-location-accuracy-source';
-const USER_LOCATION_ACCURACY_FILL_LAYER_ID = 'user-location-accuracy-fill-layer';
-const USER_LOCATION_ACCURACY_STROKE_LAYER_ID = 'user-location-accuracy-stroke-layer';
-const USER_LOCATION_COLLISION_LAYER_ID = 'user-location-collision-layer';
-const USER_LOCATION_SHADOW_LAYER_ID = 'user-location-shadow-layer';
-const USER_LOCATION_DOT_LAYER_ID = 'user-location-dot-layer';
-const USER_LOCATION_RING_LAYER_ID = 'user-location-ring-layer';
-const USER_LOCATION_PULSE_MIN_SCALE = 1.4;
-const USER_LOCATION_PULSE_MAX_SCALE = 1.8;
-
-type UserLocationVisualSpec = {
-  uncertaintyRadiusMeters: number;
-  dotRadius: number;
-  ringRadius: number;
-  shadowRadius: number;
-  accuracyOpacity: number;
-  accuracyStrokeOpacity: number;
-  shadowOpacity: number;
-  dotColor: string;
-  ringColor: string;
-  ringOpacity: number;
-  dotOpacity: number;
-};
-
-const areUserLocationVisualSpecsEqual = (
-  left: UserLocationVisualSpec,
-  right: UserLocationVisualSpec
-): boolean =>
-  left.uncertaintyRadiusMeters === right.uncertaintyRadiusMeters &&
-  left.dotRadius === right.dotRadius &&
-  left.ringRadius === right.ringRadius &&
-  left.shadowRadius === right.shadowRadius &&
-  left.accuracyOpacity === right.accuracyOpacity &&
-  left.accuracyStrokeOpacity === right.accuracyStrokeOpacity &&
-  left.shadowOpacity === right.shadowOpacity &&
-  left.dotColor === right.dotColor &&
-  left.ringColor === right.ringColor &&
-  left.ringOpacity === right.ringOpacity &&
-  left.dotOpacity === right.dotOpacity;
-
-const EARTH_RADIUS_METERS = 6_371_000;
-const USER_LOCATION_UNCERTAINTY_STEPS = 128;
 const USER_LOCATION_UNCERTAINTY_SCALE = 0.7;
 
 const resolveDisplayedUncertaintyRadiusMeters = ({
@@ -862,193 +809,31 @@ const resolveDisplayedUncertaintyRadiusMeters = ({
   return 32;
 };
 
-const buildCirclePolygon = (center: Coordinate, radiusMeters: number): Feature<Polygon> => {
-  const latRadians = (center.lat * Math.PI) / 180;
-  const angularDistance = radiusMeters / EARTH_RADIUS_METERS;
-  const coordinates: number[][] = [];
-
-  for (let step = 0; step <= USER_LOCATION_UNCERTAINTY_STEPS; step += 1) {
-    const bearing = (2 * Math.PI * step) / USER_LOCATION_UNCERTAINTY_STEPS;
-    const sinLat = Math.sin(latRadians);
-    const cosLat = Math.cos(latRadians);
-    const sinAngular = Math.sin(angularDistance);
-    const cosAngular = Math.cos(angularDistance);
-    const nextLat = Math.asin(sinLat * cosAngular + cosLat * sinAngular * Math.cos(bearing));
-    const nextLng =
-      (center.lng * Math.PI) / 180 +
-      Math.atan2(Math.sin(bearing) * sinAngular * cosLat, cosAngular - sinLat * Math.sin(nextLat));
-    coordinates.push([(nextLng * 180) / Math.PI, (nextLat * 180) / Math.PI]);
-  }
-
-  return {
-    type: 'Feature',
-    properties: {},
-    geometry: {
-      type: 'Polygon',
-      coordinates: [coordinates],
-    },
-  };
-};
-
 const UserLocationLayers = React.memo(
   function UserLocationLayers({
-    userLocationAccuracyFeatureCollection,
-    userLocationFeatureCollection,
-    userLocationVisualSpec,
+    pulsingColor,
+    pulsingRadius,
+    shouldAnimatePulse,
   }: {
-    userLocationAccuracyFeatureCollection: FeatureCollection<Polygon>;
-    userLocationFeatureCollection: FeatureCollection<Point>;
-    userLocationVisualSpec: UserLocationVisualSpec;
+    pulsingColor: string;
+    pulsingRadius: 'accuracy' | number;
+    shouldAnimatePulse: boolean;
   }) {
-    const [pulseScale, setPulseScale] = React.useState(USER_LOCATION_PULSE_MIN_SCALE);
-    const userLocationCollisionStyle = React.useMemo<MapboxGL.SymbolLayerStyle>(() => {
-      const collisionRadiusPx =
-        Math.max(
-          userLocationVisualSpec.shadowRadius,
-          userLocationVisualSpec.ringRadius,
-          userLocationVisualSpec.dotRadius * USER_LOCATION_PULSE_MAX_SCALE
-        ) + 4;
-
-      return {
-        iconImage: LABEL_MUTEX_IMAGE_ID,
-        // Transparent 1px image scaled into a collision box matching the marker footprint.
-        iconSize: collisionRadiusPx * 2,
-        iconAnchor: 'center',
-        symbolZOrder: 'source',
-        iconAllowOverlap: true,
-        iconIgnorePlacement: false,
-        iconPadding: 0,
-        iconOpacity: 0.001,
-        iconPitchAlignment: 'viewport',
-      } as MapboxGL.SymbolLayerStyle;
-    }, [
-      userLocationVisualSpec.dotRadius,
-      userLocationVisualSpec.ringRadius,
-      userLocationVisualSpec.shadowRadius,
-    ]);
-
-    React.useEffect(() => {
-      const pulse = new Animated.Value(0);
-      let lastQuantizedValue = USER_LOCATION_PULSE_MIN_SCALE;
-      const listenerId = pulse.addListener(({ value }) => {
-        const nextScale =
-          USER_LOCATION_PULSE_MIN_SCALE +
-          (USER_LOCATION_PULSE_MAX_SCALE - USER_LOCATION_PULSE_MIN_SCALE) * value;
-        const quantizedScale = Math.round(nextScale * 100) / 100;
-        if (quantizedScale !== lastQuantizedValue) {
-          lastQuantizedValue = quantizedScale;
-          setPulseScale(quantizedScale);
-        }
-      });
-      const animation = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulse, {
-            toValue: 1,
-            duration: 1500,
-            easing: Easing.out(Easing.quad),
-            useNativeDriver: false,
-          }),
-          Animated.timing(pulse, {
-            toValue: 0,
-            duration: 1000,
-            easing: Easing.in(Easing.quad),
-            useNativeDriver: false,
-          }),
-        ])
-      );
-      animation.start();
-      return () => {
-        animation.stop();
-        pulse.removeListener(listenerId);
-        pulse.removeAllListeners();
-      };
-    }, []);
-
     return (
-      <React.Fragment>
-        <MapboxGL.ShapeSource
-          id={USER_LOCATION_ACCURACY_SOURCE_ID}
-          shape={userLocationAccuracyFeatureCollection}
-        >
-          <MapboxGL.FillLayer
-            id={USER_LOCATION_ACCURACY_FILL_LAYER_ID}
-            slot="top"
-            sourceID={USER_LOCATION_ACCURACY_SOURCE_ID}
-            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-            style={{
-              fillColor: userLocationVisualSpec.dotColor,
-              fillOpacity: userLocationVisualSpec.accuracyOpacity,
-            }}
-          />
-          <MapboxGL.LineLayer
-            id={USER_LOCATION_ACCURACY_STROKE_LAYER_ID}
-            slot="top"
-            sourceID={USER_LOCATION_ACCURACY_SOURCE_ID}
-            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-            style={{
-              lineColor: userLocationVisualSpec.dotColor,
-              lineOpacity: userLocationVisualSpec.accuracyStrokeOpacity,
-              lineWidth: 1.5,
-              lineJoin: 'round',
-              lineCap: 'round',
-            }}
-          />
-        </MapboxGL.ShapeSource>
-        <MapboxGL.ShapeSource id={USER_LOCATION_SOURCE_ID} shape={userLocationFeatureCollection}>
-          <MapboxGL.SymbolLayer
-            id={USER_LOCATION_COLLISION_LAYER_ID}
-            slot="top"
-            sourceID={USER_LOCATION_SOURCE_ID}
-            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-            style={userLocationCollisionStyle}
-          />
-          <MapboxGL.CircleLayer
-            id={USER_LOCATION_SHADOW_LAYER_ID}
-            slot="top"
-            sourceID={USER_LOCATION_SOURCE_ID}
-            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-            style={{
-              circleRadius: userLocationVisualSpec.shadowRadius,
-              circleColor: 'rgba(15, 23, 42, 1)',
-              circleOpacity: userLocationVisualSpec.shadowOpacity,
-              circleBlur: 0.9,
-              circleTranslate: [0, 1],
-              circleTranslateAnchor: 'viewport',
-              circlePitchAlignment: 'viewport',
-            }}
-          />
-          <MapboxGL.CircleLayer
-            id={USER_LOCATION_RING_LAYER_ID}
-            slot="top"
-            sourceID={USER_LOCATION_SOURCE_ID}
-            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-            style={{
-              circleRadius: userLocationVisualSpec.ringRadius,
-              circleColor: userLocationVisualSpec.ringColor,
-              circleOpacity: userLocationVisualSpec.ringOpacity,
-              circlePitchAlignment: 'viewport',
-            }}
-          />
-          <MapboxGL.CircleLayer
-            id={USER_LOCATION_DOT_LAYER_ID}
-            slot="top"
-            sourceID={USER_LOCATION_SOURCE_ID}
-            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-            style={{
-              circleRadius: userLocationVisualSpec.dotRadius * pulseScale,
-              circleColor: userLocationVisualSpec.dotColor,
-              circleOpacity: userLocationVisualSpec.dotOpacity,
-              circlePitchAlignment: 'viewport',
-            }}
-          />
-        </MapboxGL.ShapeSource>
-      </React.Fragment>
+      <MapboxGL.LocationPuck
+        visible
+        pulsing={{
+          isEnabled: shouldAnimatePulse,
+          color: pulsingColor,
+          radius: pulsingRadius,
+        }}
+      />
     );
   },
   (prev, next) =>
-    prev.userLocationAccuracyFeatureCollection === next.userLocationAccuracyFeatureCollection &&
-    prev.userLocationFeatureCollection === next.userLocationFeatureCollection &&
-    areUserLocationVisualSpecsEqual(prev.userLocationVisualSpec, next.userLocationVisualSpec)
+    prev.pulsingColor === next.pulsingColor &&
+    prev.pulsingRadius === next.pulsingRadius &&
+    prev.shouldAnimatePulse === next.shouldAnimatePulse
 );
 const DOT_TEXT_SIZE = 17;
 // Keep in sync with SearchScreen's MAX_FULL_PINS. These slots guarantee deterministic pin stacking
@@ -1249,9 +1034,6 @@ const isTapInsideDotInteractionGeometry = ({
     })
     .catch(() => false);
 };
-
-const areStringArraysEqual = (left: string[], right: string[]) =>
-  left.length === right.length && left.every((value, index) => value === right[index]);
 
 const STYLE_PINS_OUTLINE_GLYPH_STYLE: MapboxGL.SymbolLayerStyle = {
   textField: PIN_GLYPH_OUTLINE,
@@ -1512,7 +1294,7 @@ const resolveMapPresentedMarkerScene = ({
     ? pinInteractionSourceStore
     : EMPTY_SEARCH_MAP_SOURCE_STORE,
   presentedDotSourceStore: phasePolicy.shouldProjectSearchMarkerFamilies
-    ? dotSourceStore ?? EMPTY_SEARCH_MAP_SOURCE_STORE
+    ? (dotSourceStore ?? EMPTY_SEARCH_MAP_SOURCE_STORE)
     : EMPTY_SEARCH_MAP_SOURCE_STORE,
   presentedDotInteractionSourceStore: phasePolicy.shouldProjectSearchMarkerFamilies
     ? dotInteractionSourceStore
@@ -1949,7 +1731,6 @@ type SearchMapProps = {
   mapRef: React.RefObject<MapboxMapRef | null>;
   cameraRef: React.RefObject<MapboxGL.Camera | null>;
   styleURL: string;
-  scoreMode: 'global_quality' | 'coverage_display';
   mapCenter: [number, number] | null;
   mapZoom: number;
   mapCameraAnimation: {
@@ -1964,35 +1745,11 @@ type SearchMapProps = {
   onTouchEnd?: () => void;
   onNativeViewportChanged: (state: MapboxMapState) => void;
   onMapIdle: (state: MapboxMapState) => void;
-  onCameraAnimationComplete: (payload: {
-    animationCompletionId: string | null;
-    status: 'finished' | 'cancelled';
-  }) => void;
   onMapLoaded: () => void;
   onMapFullyRendered?: () => void;
   onPreparedLabelSourcesReadyChange?: (ready: boolean) => void;
-  onExecutionBatchMountedHidden?: (payload: {
-    requestKey: string;
-    frameGenerationId: string | null;
-    executionBatchId: string | null;
-    readyAtMs: number;
-  }) => void;
-  onMarkerEnterStarted?: (payload: {
-    requestKey: string;
-    frameGenerationId: string | null;
-    executionBatchId: string | null;
-    startedAtMs: number;
-  }) => void;
+  presentationLifecyclePort?: SearchMapPresentationLifecyclePort;
   onMarkerPress?: (restaurantId: string, pressedCoordinate?: Coordinate | null) => void;
-  onMarkerEnterSettled?: (payload: {
-    requestKey: string;
-    frameGenerationId: string | null;
-    executionBatchId: string | null;
-    markerEnterCommitId: number | null;
-    settledAtMs: number;
-  }) => void;
-  onMarkerExitStarted?: (payload: { requestKey: string; startedAtMs: number }) => void;
-  onMarkerExitSettled?: (payload: { requestKey: string; settledAtMs: number }) => void;
   onNativeMountedSourceCountsChanged?: (counts: {
     pinCount: number;
     dotCount: number;
@@ -2008,10 +1765,6 @@ type SearchMapProps = {
   disableBlur?: boolean;
   onProfilerRender?: React.ProfilerOnRenderCallback;
   mapQueryBudget?: MapQueryBudget | null;
-  onRuntimeMechanismEvent?: (
-    event: 'runtime_write_span',
-    payload?: Record<string, unknown>
-  ) => void;
   nativeViewportState: {
     bounds: MapBounds | null;
     isGestureActive: boolean;
@@ -2033,7 +1786,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
   mapRef,
   cameraRef,
   styleURL,
-  scoreMode,
   mapCenter,
   mapZoom,
   mapCameraAnimation,
@@ -2044,16 +1796,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
   onTouchEnd,
   onNativeViewportChanged,
   onMapIdle,
-  onCameraAnimationComplete,
   onMapLoaded,
   onMapFullyRendered,
   onPreparedLabelSourcesReadyChange,
-  onExecutionBatchMountedHidden,
-  onMarkerEnterStarted,
+  presentationLifecyclePort,
   onMarkerPress,
-  onMarkerEnterSettled,
-  onMarkerExitStarted,
-  onMarkerExitSettled,
   onNativeMountedSourceCountsChanged,
   mapSceneSnapshot,
   buildMarkerKey,
@@ -2064,7 +1811,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
   disableMarkers = false,
   onProfilerRender,
   mapQueryBudget = null,
-  onRuntimeMechanismEvent: _onRuntimeMechanismEvent,
   nativeViewportState,
   nativePresentationState,
   mapSnapshotPresentationPolicy,
@@ -2082,6 +1828,17 @@ const SearchMap: React.FC<SearchMapProps> = ({
     searchMapComponentInstanceIdRef.current = nextSearchMapComponentInstanceId();
   }
   const searchMapComponentInstanceId = searchMapComponentInstanceIdRef.current;
+  React.useEffect(() => {
+    logger.debug('[MAP-MOUNT-DIAG] SearchMap:mount', {
+      searchMapComponentInstanceId,
+      styleURL,
+    });
+    return () => {
+      logger.debug('[MAP-MOUNT-DIAG] SearchMap:unmount', {
+        searchMapComponentInstanceId,
+      });
+    };
+  }, [searchMapComponentInstanceId, styleURL]);
   const shouldDisableMarkers = disableMarkers === true;
   const phasePolicy = mapSnapshotPresentationPolicy;
   const presentationTelemetryPhase = phasePolicy.batchPhase;
@@ -2110,7 +1867,31 @@ const SearchMap: React.FC<SearchMapProps> = ({
     dotSourceStore,
     dotInteractionSourceStore,
   });
-  const shouldMountSearchMarkerLayers = !shouldDisableMarkers && isMapStyleReady;
+  const [isStyleManagedContentReady, setIsStyleManagedContentReady] = React.useState(false);
+  React.useEffect(() => {
+    if (!isMapStyleReady) {
+      setIsStyleManagedContentReady(false);
+    }
+  }, [isMapStyleReady]);
+  const effectiveMapStyleReady = isMapStyleReady && isStyleManagedContentReady;
+  const mapStyleGateDiagnosticRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const nextDiagnostic = JSON.stringify({
+      isMapStyleReady,
+      isStyleManagedContentReady,
+      effectiveMapStyleReady,
+    });
+    if (mapStyleGateDiagnosticRef.current === nextDiagnostic) {
+      return;
+    }
+    logger.debug('[MAP-STYLE-GATE-DIAG] styleManagedContent', {
+      isMapStyleReady,
+      isStyleManagedContentReady,
+      effectiveMapStyleReady,
+    });
+    mapStyleGateDiagnosticRef.current = nextDiagnostic;
+  }, [effectiveMapStyleReady, isMapStyleReady, isStyleManagedContentReady]);
+  const shouldMountSearchMarkerLayers = !shouldDisableMarkers && effectiveMapStyleReady;
   const shouldPrepareLabelLayers =
     shouldProjectSearchMarkerFamilies && presentedPinSourceStore.idsInOrder.length > 0;
   const shouldRenderLabels = shouldPrepareLabelLayers;
@@ -2145,34 +1926,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
     presentationTelemetryPhase === 'live' &&
     shouldRenderLabels &&
     !shouldDisableMarkers;
-  const userLocationFeatureCollection = React.useMemo<FeatureCollection<Point>>(() => {
+  const userLocationPuckProps = React.useMemo(() => {
     if (!userLocation) {
-      return {
-        type: 'FeatureCollection',
-        features: [],
-      };
-    }
-    return {
-      type: 'FeatureCollection',
-      features: [
-        {
-          type: 'Feature',
-          id: 'user-location',
-          properties: {},
-          geometry: {
-            type: 'Point',
-            coordinates: [userLocation.lng, userLocation.lat],
-          },
-        },
-      ],
-    };
-  }, [userLocation]);
-  const userLocationAccuracyFeatureCollection = React.useMemo<FeatureCollection<Polygon>>(() => {
-    if (!userLocation) {
-      return {
-        type: 'FeatureCollection',
-        features: [],
-      };
+      return null;
     }
     const snapshot = userLocationSnapshot;
     const isStale = snapshot?.isStale ?? true;
@@ -2181,52 +1937,19 @@ const SearchMap: React.FC<SearchMapProps> = ({
       typeof snapshot?.accuracyMeters === 'number' && Number.isFinite(snapshot.accuracyMeters)
         ? snapshot.accuracyMeters
         : null;
-    const shouldShowAccuracyCircle =
-      reducedAccuracy || isStale || (accuracyMeters != null && accuracyMeters > 24);
-    if (!shouldShowAccuracyCircle) {
-      return {
-        type: 'FeatureCollection',
-        features: [],
-      };
-    }
-    const uncertaintyRadiusMeters = resolveDisplayedUncertaintyRadiusMeters({
-      accuracyMeters,
-      reducedAccuracy,
-      isStale,
-    });
     return {
-      type: 'FeatureCollection',
-      features: [buildCirclePolygon(userLocation, uncertaintyRadiusMeters)],
+      pulsingColor: themeColors.secondaryAccent,
+      pulsingRadius:
+        reducedAccuracy || accuracyMeters == null
+          ? 'accuracy'
+          : resolveDisplayedUncertaintyRadiusMeters({
+              accuracyMeters,
+              reducedAccuracy,
+              isStale,
+            }),
+      shouldAnimatePulse: effectiveMapStyleReady && !isStale,
     };
-  }, [userLocation, userLocationSnapshot]);
-  const userLocationVisualSpec = React.useMemo(() => {
-    const snapshot = userLocationSnapshot;
-    const isStale = snapshot?.isStale ?? true;
-    const reducedAccuracy = snapshot?.reducedAccuracy ?? false;
-    const accuracyMeters =
-      typeof snapshot?.accuracyMeters === 'number' && Number.isFinite(snapshot.accuracyMeters)
-        ? snapshot.accuracyMeters
-        : null;
-    const shouldShowAccuracyCircle =
-      reducedAccuracy || isStale || (accuracyMeters != null && accuracyMeters > 24);
-    return {
-      uncertaintyRadiusMeters: resolveDisplayedUncertaintyRadiusMeters({
-        accuracyMeters,
-        reducedAccuracy,
-        isStale,
-      }),
-      dotRadius: 4.5,
-      ringRadius: 11,
-      shadowRadius: 16,
-      accuracyOpacity: shouldShowAccuracyCircle ? (reducedAccuracy ? 0.18 : 0.1) : 0,
-      accuracyStrokeOpacity: shouldShowAccuracyCircle ? 0.9 : 0,
-      shadowOpacity: isStale ? 0.22 : 0.4,
-      dotColor: themeColors.secondaryAccent,
-      ringColor: '#FFFFFF',
-      ringOpacity: 1,
-      dotOpacity: isStale ? 0.9 : 1,
-    };
-  }, [userLocationSnapshot]);
+  }, [effectiveMapStyleReady, userLocation, userLocationSnapshot]);
 
   const recordRuntimeAttribution = React.useCallback(
     (contributor: string, durationMs: number) => {
@@ -2297,7 +2020,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   } = useSearchMapNativeRenderOwner({
     mapComponentInstanceId: searchMapComponentInstanceId,
     resolvedMapTag,
-    isMapStyleReady,
+    isMapStyleReady: effectiveMapStyleReady,
     mapMotionPressureController,
     presentationState: {
       ...nativePresentationState,
@@ -2327,10 +2050,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
     },
     highlightedMarkerKey,
     interactionMode: nativeInteractionMode,
-    onExecutionBatchMountedHidden,
-    onMarkerEnterStarted,
+    onExecutionBatchMountedHidden: presentationLifecyclePort?.handleExecutionBatchMountedHidden,
+    onMarkerEnterStarted: presentationLifecyclePort?.handleMarkerEnterStarted,
     onMarkerEnterSettled: (payload) => {
-      onMarkerEnterSettled?.({
+      presentationLifecyclePort?.handleMarkerEnterSettled({
         requestKey: payload.requestKey,
         frameGenerationId: payload.frameGenerationId,
         executionBatchId: payload.executionBatchId,
@@ -2338,8 +2061,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
         settledAtMs: payload.settledAtMs,
       });
     },
-    onMarkerExitStarted,
-    onMarkerExitSettled,
+    onMarkerExitStarted: presentationLifecyclePort?.handleMarkerExitStarted,
+    onMarkerExitSettled: presentationLifecyclePort?.handleMarkerExitSettled,
     onViewportChanged: handleNativeViewportChangedFromOwner,
     onLabelObservationUpdated: ({ visibleLabelFeatureIds }) => {
       const nextVisibleLabelFeatureIds = [...visibleLabelFeatureIds].sort();
@@ -2358,14 +2081,21 @@ const SearchMap: React.FC<SearchMapProps> = ({
     },
   });
   const nativeRenderOwnerInstanceId = resolvedNativeRenderOwnerInstanceId;
+  React.useEffect(() => {
+    logger.debug('[MAP-MOUNT-DIAG] SearchMap:nativeOwner', {
+      searchMapComponentInstanceId,
+      instanceId: nativeRenderOwnerInstanceId,
+      resolvedMapTag,
+    });
+  }, [nativeRenderOwnerInstanceId, resolvedMapTag, searchMapComponentInstanceId]);
   const isNativeRenderOwnerAvailable = resolvedIsNativeRenderOwnerAvailable;
   const nativeRenderOwnerAttachState = resolvedNativeRenderOwnerAttachState;
   const isNativeRenderOwnerReady = resolvedIsNativeRenderOwnerReady;
   const nativeFatalErrorMessage = resolvedNativeFatalErrorMessage;
-  if (isMapStyleReady && !isNativeRenderOwnerAvailable) {
+  if (effectiveMapStyleReady && !isNativeRenderOwnerAvailable) {
     throw new Error('SearchMap native render owner is required for the full cutover');
   }
-  if (isMapStyleReady && nativeRenderOwnerAttachState === 'failed') {
+  if (effectiveMapStyleReady && nativeRenderOwnerAttachState === 'failed') {
     throw new Error(
       nativeFatalErrorMessage ?? 'SearchMap native render owner attach failed during full cutover'
     );
@@ -2373,27 +2103,23 @@ const SearchMap: React.FC<SearchMapProps> = ({
   if (nativeFatalErrorMessage != null) {
     throw new Error(nativeFatalErrorMessage);
   }
-  const isNativeOwnedMarkerRuntimeReady = isMapStyleReady && isNativeRenderOwnerReady;
+  const isNativeOwnedMarkerRuntimeReady = effectiveMapStyleReady && isNativeRenderOwnerReady;
   const handleDidFinishRenderingFrame = React.useCallback(() => {}, []);
   const hasReportedFirstFullyRenderedFrameRef = React.useRef(false);
   const handleDidFinishRenderingFrameFully = React.useCallback(() => {
-    if (hasReportedFirstFullyRenderedFrameRef.current || !isMapStyleReady) {
+    if (!isMapStyleReady) {
+      return;
+    }
+    if (!isStyleManagedContentReady) {
+      setIsStyleManagedContentReady(true);
+      return;
+    }
+    if (hasReportedFirstFullyRenderedFrameRef.current) {
       return;
     }
     hasReportedFirstFullyRenderedFrameRef.current = true;
     onMapFullyRendered?.();
-  }, [isMapStyleReady, onMapFullyRendered]);
-  const handleCameraAnimationCompleteEvent = React.useCallback(
-    (event: CameraAnimationCompleteEvent) => {
-      const payload = event.nativeEvent?.payload ?? event.nativeEvent?.payloadRenamed ?? null;
-      onCameraAnimationComplete({
-        animationCompletionId:
-          typeof payload?.animationCompletionId === 'string' ? payload.animationCompletionId : null,
-        status: payload?.status === 'cancelled' ? 'cancelled' : 'finished',
-      });
-    },
-    [onCameraAnimationComplete]
-  );
+  }, [isMapStyleReady, isStyleManagedContentReady, onMapFullyRendered]);
   const nativePresentationOpacityExpression = React.useMemo(
     () =>
       [
@@ -2474,7 +2200,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     presentedPinSourceStore,
   ]);
   const dotLayerStyle = React.useMemo(() => {
-    const scoreModeLiteral = scoreMode;
     return {
       symbolZOrder: 'source',
       // Use a font/glyph combo that reliably renders as a true circle (avoid tofu/missing-glyph boxes).
@@ -2496,19 +2221,13 @@ const SearchMap: React.FC<SearchMapProps> = ({
         'case',
         nativeHighlightedExpression,
         PRIMARY_COLOR,
-        [
-          'case',
-          ['==', ['literal', scoreModeLiteral], 'coverage_display'],
-          ['coalesce', ['get', 'pinColorLocal'], ['get', 'pinColor']],
-          ['coalesce', ['get', 'pinColorGlobal'], ['get', 'pinColor']],
-        ],
+        ['coalesce', ['get', 'pinColor'], ['get', 'pinColorContextual'], ['get', 'pinColorGlobal']],
       ],
     } as MapboxGL.SymbolLayerStyle;
   }, [
     nativeHighlightedExpression,
     nativeDotOpacityExpression,
     nativePresentationOpacityExpression,
-    scoreMode,
   ]);
   const labelObservationEnabled =
     requestedNativeLabelObservationEnabled && isNativeOwnedMarkerRuntimeReady;
@@ -2697,19 +2416,13 @@ const SearchMap: React.FC<SearchMapProps> = ({
   );
 
   const pinFillColorExpression = React.useMemo(() => {
-    const scoreModeLiteral = scoreMode;
     return [
       'case',
       nativeHighlightedExpression,
       PRIMARY_COLOR,
-      [
-        'case',
-        ['==', ['literal', scoreModeLiteral], 'coverage_display'],
-        ['coalesce', ['get', 'pinColorLocal'], ['get', 'pinColor']],
-        ['coalesce', ['get', 'pinColorGlobal'], ['get', 'pinColor']],
-      ],
+      ['coalesce', ['get', 'pinColor'], ['get', 'pinColorContextual'], ['get', 'pinColorGlobal']],
     ] as const;
-  }, [nativeHighlightedExpression, scoreMode]);
+  }, [nativeHighlightedExpression]);
 
   const stylePinsShadowSteadyStyle = React.useMemo(
     () =>
@@ -2721,7 +2434,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
           STYLE_PINS_SHADOW_OPACITY,
         ]),
         iconOpacityTransition: PIN_OPACITY_TRANSITION,
-      } as MapboxGL.SymbolLayerStyle),
+      }) as MapboxGL.SymbolLayerStyle,
     [nativeLodOpacityExpression, nativePresentationOpacityExpression]
   );
 
@@ -2733,7 +2446,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
           textOpacity: ['*', nativePresentationOpacityExpression, nativeLodOpacityExpression],
         }),
         textOpacityTransition: PIN_OPACITY_TRANSITION,
-      } as MapboxGL.SymbolLayerStyle),
+      }) as MapboxGL.SymbolLayerStyle,
     [nativeLodOpacityExpression, nativePresentationOpacityExpression]
   );
 
@@ -2746,7 +2459,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
           textColor: pinFillColorExpression,
         }),
         textOpacityTransition: PIN_OPACITY_TRANSITION,
-      } as MapboxGL.SymbolLayerStyle),
+      }) as MapboxGL.SymbolLayerStyle,
     [nativeLodOpacityExpression, nativePresentationOpacityExpression, pinFillColorExpression]
   );
 
@@ -2758,7 +2471,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
           textOpacity: ['*', nativePresentationOpacityExpression, nativeLodRankOpacityExpression],
         }),
         textOpacityTransition: PIN_RANK_OPACITY_TRANSITION,
-      } as MapboxGL.SymbolLayerStyle),
+      }) as MapboxGL.SymbolLayerStyle,
     [nativeLodRankOpacityExpression, nativePresentationOpacityExpression]
   );
 
@@ -2843,7 +2556,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         textAllowOverlap: true,
         textIgnorePlacement: true,
         textPadding: 0,
-      } as MapboxGL.SymbolLayerStyle);
+      }) as MapboxGL.SymbolLayerStyle;
 
     return {
       bottom: toInteractionStyle(labelCandidateStyles.bottom),
@@ -2994,6 +2707,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }, [onMapLoaded, recordTimedRuntimeAttribution]);
 
   const handleMapLoadedStyle = React.useCallback(() => {
+    setIsStyleManagedContentReady(false);
     handleMapLoaded();
   }, [handleMapLoaded]);
 
@@ -3087,22 +2801,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
   );
 
   const userLocationLayerProps = React.useMemo(
-    () =>
-      userLocation
-        ? {
-            userLocationAccuracyFeatureCollection,
-            userLocationFeatureCollection,
-            userLocationVisualSpec,
-          }
-        : null,
-    [
-      userLocation,
-      userLocationAccuracyFeatureCollection,
-      userLocationFeatureCollection,
-      userLocationVisualSpec,
-    ]
+    () => userLocationPuckProps,
+    [userLocationPuckProps]
   );
-
   return (
     <SearchMapViewScene
       mapRef={mapRef}
@@ -3115,7 +2816,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       handleMapLoadedMap={handleMapLoadedMap}
       handleDidFinishRenderingFrame={handleDidFinishRenderingFrame}
       handleDidFinishRenderingFrameFully={handleDidFinishRenderingFrameFully}
-      handleCameraAnimationComplete={handleCameraAnimationCompleteEvent}
+      shouldRenderStyleManagedContent={effectiveMapStyleReady}
       mapCenter={mapCenter}
       mapZoom={mapZoom}
       mapCameraAnimation={mapCameraAnimation}
@@ -3187,9 +2888,6 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
   if (prev.styleURL !== next.styleURL) {
     return false;
   }
-  if (prev.scoreMode !== next.scoreMode) {
-    return false;
-  }
   if (prev.isMapStyleReady !== next.isMapStyleReady) {
     return false;
   }
@@ -3248,9 +2946,6 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
   if (prev.onMapIdle !== next.onMapIdle) {
     return false;
   }
-  if (prev.onCameraAnimationComplete !== next.onCameraAnimationComplete) {
-    return false;
-  }
   if (prev.onMapLoaded !== next.onMapLoaded) {
     return false;
   }
@@ -3260,16 +2955,10 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
   if (prev.onPreparedLabelSourcesReadyChange !== next.onPreparedLabelSourcesReadyChange) {
     return false;
   }
-  if (prev.onExecutionBatchMountedHidden !== next.onExecutionBatchMountedHidden) {
-    return false;
-  }
-  if (prev.onMarkerEnterStarted !== next.onMarkerEnterStarted) {
+  if (prev.presentationLifecyclePort !== next.presentationLifecyclePort) {
     return false;
   }
   if (prev.onMarkerPress !== next.onMarkerPress) {
-    return false;
-  }
-  if (prev.onMarkerEnterSettled !== next.onMarkerEnterSettled) {
     return false;
   }
   const shouldDeferPresentationDelta = shouldDeferPreSourceRevealRender({
@@ -3302,9 +2991,6 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
     return false;
   }
   if (prev.nativeViewportState !== next.nativeViewportState) {
-    return false;
-  }
-  if (prev.onRuntimeMechanismEvent !== next.onRuntimeMechanismEvent) {
     return false;
   }
   if (prev.onProfilerRender !== next.onProfilerRender) {

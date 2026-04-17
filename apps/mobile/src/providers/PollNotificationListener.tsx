@@ -28,7 +28,7 @@ const PollNotificationListener: React.FC = () => {
 
       dispatchLaunchIntent({
         type: 'polls',
-        coverageKey: normalizedCity ?? null,
+        marketKey: normalizedCity ?? null,
         pollId: pollIds[0] ?? null,
       });
     },

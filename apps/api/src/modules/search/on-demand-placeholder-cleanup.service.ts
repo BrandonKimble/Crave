@@ -71,7 +71,7 @@ export class OnDemandPlaceholderCleanupService
           AND e.created_at < ${cutoff}
           AND NOT EXISTS (
             SELECT 1
-            FROM core_connections c
+            FROM core_restaurant_items c
             WHERE c.restaurant_id = e.entity_id
           )
       `,

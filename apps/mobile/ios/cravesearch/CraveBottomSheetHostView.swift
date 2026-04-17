@@ -57,6 +57,33 @@ final class BottomSheetHostRegistry {
   }
 }
 
+@objc(BottomSheetHostRegistryBridge)
+final class BottomSheetHostRegistryBridge: NSObject {
+  private static let sharedInstance = BottomSheetHostRegistryBridge()
+
+  @objc(sharedBridge)
+  static func sharedBridge() -> BottomSheetHostRegistryBridge {
+    sharedInstance
+  }
+
+  @objc(dispatchCommand:)
+  func dispatchCommand(_ payload: NSDictionary) {
+    guard
+      let hostKey = payload["hostKey"] as? String,
+      let snapTo = payload["snapTo"] as? String,
+      let token = payload["token"] as? Int
+    else {
+      return
+    }
+
+    BottomSheetHostRegistry.shared.dispatchCommand(
+      hostKey: hostKey,
+      snapTo: snapTo,
+      token: token
+    )
+  }
+}
+
 @objc(CraveBottomSheetHostViewManager)
 final class CraveBottomSheetHostViewManager: RCTViewManager {
   override static func requiresMainQueueSetup() -> Bool {
@@ -117,6 +144,19 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
     }
   }
 
+  @objc var hostKey: NSString? {
+    didSet {
+      let previousKey = oldValue as String?
+      if previousKey == hostKey as String? {
+        return
+      }
+      BottomSheetHostRegistry.shared.unregister(host: self, hostKey: previousKey)
+      if let nextKey = hostKey as String? {
+        BottomSheetHostRegistry.shared.register(host: self, hostKey: nextKey)
+      }
+    }
+  }
+
   @objc var onSheetHostEvent: RCTDirectEventBlock?
 
   private lazy var panGesture = UIPanGestureRecognizer(
@@ -132,6 +172,9 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
   private var currentSnapPoint = "hidden"
   private var lastCommandToken: Int = -1
   private var dragStartY: CGFloat = 0
+  private var currentSheetY: CGFloat = 0
+  private var lastDebugHierarchySignature: String?
+  private var lastTouchDiagnosticSignature: String?
 
   override init(frame: CGRect) {
     super.init(frame: frame)
@@ -149,18 +192,20 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
 
   override func layoutSubviews() {
     super.layoutSubviews()
+    syncSheetPresentationViewLayout()
+    debugLogPresentationHierarchyIfNeeded(reason: "layoutSubviews")
+    emitGeometryDiagnostic(reason: "layoutSubviews")
     let nextSnapY = resolveSnapValue(currentSnapPoint) ?? bounds.height
     if !visible && currentSnapPoint == "hidden" {
       applySheetY(nextSnapY, emitEvent: false)
     }
   }
 
-  override func insertReactSubview(_ subview: UIView!, at atIndex: Int) {
-    insertSubview(subview, at: atIndex)
-  }
-
-  override func removeReactSubview(_ subview: UIView!) {
-    subview.removeFromSuperview()
+  override func didAddSubview(_ subview: UIView) {
+    super.didAddSubview(subview)
+    syncSheetPresentationViewLayout()
+    debugLogPresentationHierarchyIfNeeded(reason: "didAddSubview")
+    emitGeometryDiagnostic(reason: "didAddSubview")
   }
 
   func gestureRecognizer(
@@ -170,7 +215,7 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
     true
   }
 
-  func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+  override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
     guard
       gestureRecognizer === panGesture,
       let recognizer = gestureRecognizer as? UIPanGestureRecognizer
@@ -189,7 +234,9 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
       return true
     }
 
-    let scrollView = findScrollableDescendant(in: self)
+    let scrollView = (reactManagedSheetPresentationView() ?? subviews.last).flatMap(
+      findScrollableDescendant(in:)
+    )
     let canScrollUp = scrollView.map(isScrollViewAboveTop) ?? false
 
     if velocity.y < 0, canScrollUp {
@@ -208,6 +255,43 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
     panGesture.delegate = self
     panGesture.isEnabled = interactionEnabled
     addGestureRecognizer(panGesture)
+  }
+
+  override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+    let interactiveFrame = currentSheetInteractiveFrame()
+    let result = visible && interactiveFrame.contains(point)
+    emitTouchDiagnosticIfNeeded(
+      phase: "point_inside",
+      point: point,
+      result: result,
+      hitView: nil,
+      interactiveFrame: interactiveFrame
+    )
+    return result
+  }
+
+  override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+    let interactiveFrame = currentSheetInteractiveFrame()
+    guard visible, interactiveFrame.contains(point) else {
+      emitTouchDiagnosticIfNeeded(
+        phase: "hit_test_rejected",
+        point: point,
+        result: false,
+        hitView: nil,
+        interactiveFrame: interactiveFrame
+      )
+      return nil
+    }
+    let hitView = super.hitTest(point, with: event)
+    let resolvedHitView = hitView === self ? nil : hitView
+    emitTouchDiagnosticIfNeeded(
+      phase: "hit_test",
+      point: point,
+      result: resolvedHitView != nil,
+      hitView: hitView,
+      interactiveFrame: interactiveFrame
+    )
+    return resolvedHitView
   }
 
   private func applySnapPoints(previousValue: NSDictionary?) {
@@ -284,7 +368,7 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
 
     switch recognizer.state {
     case .began:
-      layer.removeAllAnimations()
+      reactManagedSheetPresentationView()?.layer.removeAllAnimations()
       dragStartY = sheetY
       setDragging(true)
       setSettling(false)
@@ -324,7 +408,157 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
   }
 
   private var sheetY: CGFloat {
-    transform.ty
+    currentSheetY
+  }
+
+  private func reactManagedSheetPresentationView() -> UIView? {
+    let selector = NSSelectorFromString("reactSubviews")
+    guard
+      responds(to: selector),
+      let unmanagedValue = perform(selector)
+    else {
+      return nil
+    }
+
+    if let reactSubviews = unmanagedValue.takeUnretainedValue() as? [UIView] {
+      return reactSubviews.last
+    }
+
+    return nil
+  }
+
+  private func resolvedSheetPresentationView() -> UIView? {
+    reactManagedSheetPresentationView() ?? subviews.last
+  }
+
+  private func syncSheetPresentationViewLayout() {
+    guard let sheetPresentationView = resolvedSheetPresentationView() else {
+      return
+    }
+    if sheetPresentationView.frame != bounds {
+      sheetPresentationView.frame = bounds
+    }
+    if transform != .identity {
+      transform = .identity
+    }
+    let nextTransform = CGAffineTransform(translationX: 0, y: sheetY)
+    if sheetPresentationView.transform != nextTransform {
+      sheetPresentationView.transform = nextTransform
+    }
+  }
+
+  private func currentSheetInteractiveFrame() -> CGRect {
+    CGRect(
+      x: 0,
+      y: sheetY,
+      width: bounds.width,
+      height: max(bounds.height - sheetY, 0)
+    )
+  }
+
+  private func emitTouchDiagnosticIfNeeded(
+    phase: String,
+    point: CGPoint,
+    result: Bool,
+    hitView: UIView?,
+    interactiveFrame: CGRect
+  ) {
+    #if DEBUG
+      let hitViewClass = hitView.map { String(describing: type(of: $0)) } ?? "nil"
+      let signature =
+        "\(phase)|result=\(result)|point=\(Int(point.x.rounded()))x\(Int(point.y.rounded()))|sheetY=\(Int(sheetY.rounded()))|frame=\(NSCoder.string(for: interactiveFrame.integral))|hit=\(hitViewClass)|visible=\(visible)|interactionEnabled=\(interactionEnabled)"
+      guard signature != lastTouchDiagnosticSignature else {
+        return
+      }
+      lastTouchDiagnosticSignature = signature
+      onSheetHostEvent?([
+        "eventType": "diag",
+        "phase": phase,
+        "payload": [
+          "result": result,
+          "pointX": Int(point.x.rounded()),
+          "pointY": Int(point.y.rounded()),
+          "sheetY": Int(sheetY.rounded()),
+          "interactiveFrame": NSCoder.string(for: interactiveFrame.integral),
+          "hitViewClass": hitViewClass,
+          "hitViewIsSelf": hitView === self,
+          "visible": visible,
+          "interactionEnabled": interactionEnabled,
+          "hostFrame": NSCoder.string(for: frame.integral),
+          "hostBounds": NSCoder.string(for: bounds.integral),
+          "hostTransformTy": Int(transform.ty.rounded()),
+          "sheetTransformTy": Int(resolvedSheetPresentationView()?.transform.ty.rounded() ?? 0),
+          "hierarchy": describePresentationHierarchy(),
+        ],
+      ])
+    #endif
+  }
+
+  private func emitGeometryDiagnostic(reason: String) {
+    #if DEBUG
+      let presentationView = resolvedSheetPresentationView()
+      onSheetHostEvent?([
+        "eventType": "diag",
+        "phase": "geometry_\(reason)",
+        "payload": [
+          "sheetY": Int(sheetY.rounded()),
+          "visible": visible,
+          "interactionEnabled": interactionEnabled,
+          "hostFrame": NSCoder.string(for: frame.integral),
+          "hostBounds": NSCoder.string(for: bounds.integral),
+          "hostTransformTy": Int(transform.ty.rounded()),
+          "interactiveFrame": NSCoder.string(for: currentSheetInteractiveFrame().integral),
+          "presentationClass": presentationView.map { String(describing: type(of: $0)) } ?? "nil",
+          "presentationFrame": presentationView.map { NSCoder.string(for: $0.frame.integral) } ?? "nil",
+          "presentationBounds": presentationView.map { NSCoder.string(for: $0.bounds.integral) } ?? "nil",
+          "presentationTransformTy": Int(presentationView?.transform.ty.rounded() ?? 0),
+          "presentationVisualTop":
+            Int(((presentationView?.frame.minY ?? 0) + (presentationView?.transform.ty ?? 0)).rounded()),
+          "presentationVisualBottom":
+            Int(((presentationView?.frame.maxY ?? 0) + (presentationView?.transform.ty ?? 0)).rounded()),
+          "hierarchy": describePresentationHierarchy(),
+        ],
+      ])
+    #endif
+  }
+
+  private func debugLogPresentationHierarchyIfNeeded(reason: String) {
+    #if DEBUG
+      let hierarchyDescription = describePresentationHierarchy()
+      let nextSignature =
+        "\(reason)|visible=\(visible)|snap=\(currentSnapPoint)|sheetY=\(Int(sheetY.rounded()))|frame=\(NSCoder.string(for: frame.integral))|bounds=\(NSCoder.string(for: bounds.integral))|transformTy=\(Int(transform.ty.rounded()))|interactive=\(NSCoder.string(for: currentSheetInteractiveFrame().integral))|hierarchy=\(hierarchyDescription)"
+      guard nextSignature != lastDebugHierarchySignature else {
+        return
+      }
+      lastDebugHierarchySignature = nextSignature
+      print("[SHEET-HOST-DIAG] \(nextSignature)")
+    #endif
+  }
+
+  private func describePresentationHierarchy() -> String {
+    let roots = reactManagedSheetPresentationView().map { [$0] } ?? subviews
+    guard !roots.isEmpty else {
+      return "no_subviews"
+    }
+    return roots
+      .map { describeViewTree($0, depth: 0, maxDepth: 4) }
+      .joined(separator: " || ")
+  }
+
+  private func describeViewTree(_ view: UIView, depth: Int, maxDepth: Int) -> String {
+    let frame = NSCoder.string(for: view.frame.integral)
+    let bounds = NSCoder.string(for: view.bounds.integral)
+    let className = String(describing: type(of: view))
+    let alphaString = String(format: "%.2f", view.alpha)
+    let currentDescription =
+      "\(className){frame=\(frame),bounds=\(bounds),transformTy=\(Int(view.transform.ty.rounded())),interactive=\(view.isUserInteractionEnabled),hidden=\(view.isHidden),alpha=\(alphaString),subviews=\(view.subviews.count)}"
+    guard depth < maxDepth, !view.subviews.isEmpty else {
+      return currentDescription
+    }
+    let children = view.subviews
+      .map { describeViewTree($0, depth: depth + 1, maxDepth: maxDepth) }
+      .joined(separator: " > ")
+    return "\(currentDescription) -> [\(children)]"
   }
 
   private func resolveSnapValue(_ snapPoint: String) -> CGFloat? {
@@ -490,15 +724,22 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
   }
 
   private func animateSheet(to targetY: CGFloat, source: String, snapPoint: String) {
+    let animations = { [weak self] in
+      guard let self else {
+        return
+      }
+      self.resolvedSheetPresentationView()?.transform = CGAffineTransform(
+        translationX: 0,
+        y: targetY
+      )
+    }
     UIView.animate(
       withDuration: 0.34,
       delay: 0,
       usingSpringWithDamping: 0.88,
       initialSpringVelocity: 0,
       options: [.allowUserInteraction, .beginFromCurrentState],
-      animations: { [weak self] in
-        self?.transform = CGAffineTransform(translationX: 0, y: targetY)
-      },
+      animations: animations,
       completion: { [weak self] finished in
         guard let self else {
           return
@@ -513,7 +754,16 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
   }
 
   private func applySheetY(_ value: CGFloat, emitEvent: Bool) {
-    transform = CGAffineTransform(translationX: 0, y: value)
+    currentSheetY = value
+    if transform != .identity {
+      transform = .identity
+    }
+    let nextTransform = CGAffineTransform(translationX: 0, y: value)
+    if let sheetPresentationView = resolvedSheetPresentationView(),
+      sheetPresentationView.transform != nextTransform
+    {
+      sheetPresentationView.transform = nextTransform
+    }
     guard emitEvent else {
       return
     }
@@ -573,15 +823,3 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
     scrollView.contentOffset.y > -scrollView.adjustedContentInset.top + 2
   }
 }
-  @objc var hostKey: NSString? {
-    didSet {
-      let previousKey = oldValue as String?
-      if previousKey == hostKey as String? {
-        return
-      }
-      BottomSheetHostRegistry.shared.unregister(host: self, hostKey: previousKey)
-      if let nextKey = hostKey as String? {
-        BottomSheetHostRegistry.shared.register(host: self, hostKey: nextKey)
-      }
-    }
-  }

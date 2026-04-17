@@ -20,7 +20,7 @@ type OverlaySheetPositionState = {
 
 const DEFAULT_SHARED_SNAP: SharedSnap = 'expanded';
 
-export const TAB_OVERLAY_SNAP_KEY = 'overlay-tabs';
+export const SEARCH_ROUTE_SHARED_SNAP_KEY = 'search-route-shared-snap';
 
 const isSharedOverlayKey = (overlayKey: OverlayKey) =>
   overlayKey === 'polls' ||
@@ -37,7 +37,7 @@ export const useOverlaySheetPositionStore = create<OverlaySheetPositionState>((s
       return;
     }
 
-    if (key === TAB_OVERLAY_SNAP_KEY && snap === 'collapsed') {
+    if (key === SEARCH_ROUTE_SHARED_SNAP_KEY && snap === 'collapsed') {
       return;
     }
 
@@ -62,10 +62,10 @@ export const useOverlaySheetPositionStore = create<OverlaySheetPositionState>((s
         next.hasUserSharedSnap = true;
         next.sharedSnap = snap;
       }
-      if (state.persistentSnaps[TAB_OVERLAY_SNAP_KEY] !== snap) {
+      if (state.persistentSnaps[SEARCH_ROUTE_SHARED_SNAP_KEY] !== snap) {
         next.persistentSnaps = {
           ...state.persistentSnaps,
-          [TAB_OVERLAY_SNAP_KEY]: snap,
+          [SEARCH_ROUTE_SHARED_SNAP_KEY]: snap,
         };
       }
       return Object.keys(next).length > 0 ? next : state;
@@ -86,10 +86,10 @@ export const useOverlaySheetPositionStore = create<OverlaySheetPositionState>((s
         next.hasUserSharedSnap = true;
         next.sharedSnap = snap;
       }
-      if (state.persistentSnaps[TAB_OVERLAY_SNAP_KEY] !== snap) {
+      if (state.persistentSnaps[SEARCH_ROUTE_SHARED_SNAP_KEY] !== snap) {
         next.persistentSnaps = {
           ...state.persistentSnaps,
-          [TAB_OVERLAY_SNAP_KEY]: snap,
+          [SEARCH_ROUTE_SHARED_SNAP_KEY]: snap,
         };
       }
       return Object.keys(next).length > 0 ? next : state;

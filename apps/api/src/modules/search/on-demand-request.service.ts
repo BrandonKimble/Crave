@@ -9,7 +9,7 @@ export interface OnDemandRequestInput {
   entityType: EntityType;
   reason: OnDemandReason;
   entityId?: string | null;
-  locationKey?: string | null;
+  marketKey?: string | null;
   metadata?: Record<string, unknown>;
 }
 
@@ -38,7 +38,12 @@ export class OnDemandRequestService {
     options: OnDemandRequestRecordOptions = {},
     context: Record<string, unknown> = {},
   ): Promise<OnDemandRequestInput[]> {
-    const deduped = this.deduplicateRequests(requests);
+    const scopedRequests = requests.filter((request) => {
+      const marketKey =
+        typeof request.marketKey === 'string' ? request.marketKey.trim() : '';
+      return marketKey.length > 0;
+    });
+    const deduped = this.deduplicateRequests(scopedRequests);
     const capped =
       this.maxEntities > 0 ? deduped.slice(0, this.maxEntities) : deduped;
     if (!capped.length) {
@@ -65,14 +70,14 @@ export class OnDemandRequestService {
           context.restaurantCount,
         );
         const resultFoodCount = this.extractInteger(context.foodCount);
-        const locationKey = this.normalizeLocationKey(request.locationKey);
+        const marketKey = this.normalizeMarketKey(request.marketKey);
         const metadata = this.buildMetadata(request.metadata, context);
 
         const createData: Prisma.OnDemandRequestCreateInput = {
           term: request.term,
           entityType: request.entityType,
           reason: request.reason,
-          locationKey,
+          marketKey,
           lastSeenAt: seenAt,
           metadata,
         };
@@ -92,7 +97,7 @@ export class OnDemandRequestService {
 
         const updateData: Prisma.OnDemandRequestUpdateInput = {
           lastSeenAt: seenAt,
-          locationKey,
+          marketKey,
         };
 
         if (metadata) {
@@ -113,11 +118,11 @@ export class OnDemandRequestService {
 
         const record = await tx.onDemandRequest.upsert({
           where: {
-            term_entityType_reason_locationKey: {
+            term_entityType_reason_marketKey: {
               term: request.term,
               entityType: request.entityType,
               reason: request.reason,
-              locationKey,
+              marketKey,
             },
           },
           create: createData,
@@ -177,11 +182,11 @@ export class OnDemandRequestService {
       if (!sanitizedTerm) {
         continue;
       }
-      const locationKey = this.normalizeLocationKey(request.locationKey);
+      const marketKey = this.normalizeMarketKey(request.marketKey);
       const key = `${request.reason}:${
         request.entityType
       }:${sanitizedTerm.toLowerCase()}`;
-      const scopedKey = `${key}:${locationKey}`;
+      const scopedKey = `${key}:${marketKey}`;
       if (seen.has(scopedKey)) {
         continue;
       }
@@ -191,17 +196,17 @@ export class OnDemandRequestService {
         entityType: request.entityType,
         reason: request.reason,
         entityId: request.entityId,
-        locationKey,
+        marketKey,
         metadata: request.metadata,
       });
     }
     return result;
   }
 
-  private normalizeLocationKey(locationKey?: string | null): string {
+  private normalizeMarketKey(marketKey?: string | null): string {
     const normalized =
-      typeof locationKey === 'string' ? locationKey.trim().toLowerCase() : '';
-    return normalized.length ? normalized : 'global';
+      typeof marketKey === 'string' ? marketKey.trim().toLowerCase() : '';
+    return normalized;
   }
 
   private normalizeUserId(userId?: string | null): string | null {
@@ -237,10 +242,10 @@ export class OnDemandRequestService {
   }
 
   private composeCooldownKey(request: OnDemandRequestInput): string {
-    const locationKey = this.normalizeLocationKey(request.locationKey);
+    const marketKey = this.normalizeMarketKey(request.marketKey);
     return `${request.reason}:${
       request.entityType
-    }:${request.term.toLowerCase()}:${locationKey}`;
+    }:${request.term.toLowerCase()}:${marketKey}`;
   }
 
   private async filterByCooldown(
@@ -255,7 +260,7 @@ export class OnDemandRequestService {
       term: request.term,
       entityType: request.entityType,
       reason: request.reason,
-      locationKey: this.normalizeLocationKey(request.locationKey),
+      marketKey: this.normalizeMarketKey(request.marketKey),
     }));
 
     const existing = await this.prisma.onDemandRequest.findMany({
@@ -264,16 +269,14 @@ export class OnDemandRequestService {
         term: true,
         entityType: true,
         reason: true,
-        locationKey: true,
+        marketKey: true,
         lastSeenAt: true,
       },
     });
 
     const cutoffByKey = new Map<string, Date>();
     for (const row of existing) {
-      const key = `${row.reason}:${row.entityType}:${row.term.toLowerCase()}:${
-        row.locationKey
-      }`;
+      const key = `${row.reason}:${row.entityType}:${row.term.toLowerCase()}:${row.marketKey}`;
       cutoffByKey.set(key, row.lastSeenAt);
     }
 

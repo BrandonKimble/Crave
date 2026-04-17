@@ -14,7 +14,6 @@ import {
 
 type SearchMode = 'natural' | 'shortcut' | null;
 type SegmentValue = 'dishes' | 'restaurants';
-type ScoreMode = 'coverage_display' | 'global_quality';
 
 type StructuredSearchFilters = {
   minimumVotes?: number | null;
@@ -30,7 +29,6 @@ type RerunActiveSearchOptions = {
   isSearchSessionActive: boolean;
   preserveSheetState?: boolean;
   filters?: StructuredSearchFilters;
-  scoreMode?: ScoreMode;
 };
 
 type QueryMutationMechanismEmitter = (
@@ -47,24 +45,17 @@ type UseQueryMutationOrchestratorArgs = {
   isSearchSessionActive: boolean;
   openNow: boolean;
   votesFilterActive: boolean;
-  scoreMode: ScoreMode;
   pendingPriceRange: PriceRangeTuple;
   setPendingPriceRange: (next: PriceRangeTuple) => void;
-  pendingScoreMode: ScoreMode;
-  setPendingScoreMode: (next: ScoreMode) => void;
   isPriceSelectorVisible: boolean;
   setIsPriceSelectorVisible: (next: boolean) => void;
-  isRankSelectorVisible: boolean;
-  setIsRankSelectorVisible: (next: boolean) => void;
   priceLevels: number[];
   setVotes100Plus: (next: boolean) => void;
   setOpenNow: (next: boolean) => void;
   setPriceLevels: (next: number[]) => void;
-  setPreferredScoreMode: (next: ScoreMode) => void;
   scheduleToggleCommit: ScheduleToggleCommit;
   rerunActiveSearch: (options: RerunActiveSearchOptions) => Promise<void>;
   priceSheetRef: React.MutableRefObject<{ requestClose: () => void } | null>;
-  rankSheetRef: React.MutableRefObject<{ requestClose: () => void } | null>;
   minimumVotesFilter: number;
   onMechanismEvent?: QueryMutationMechanismEmitter;
 };
@@ -76,12 +67,7 @@ type QueryMutationOrchestrator = {
   commitPriceSelection: () => void;
   closePriceSelector: () => void;
   dismissPriceSelector: () => void;
-  commitRankSelection: () => void;
-  closeRankSelector: () => void;
-  dismissRankSelector: () => void;
-  toggleRankSelector: () => void;
   handlePriceDone: () => void;
-  handleScoreModeChange: (nextMode: ScoreMode) => void;
 };
 
 export const useQueryMutationOrchestrator = (
@@ -96,38 +82,26 @@ export const useQueryMutationOrchestrator = (
     isSearchSessionActive,
     openNow,
     votesFilterActive,
-    scoreMode,
     pendingPriceRange,
     setPendingPriceRange,
-    pendingScoreMode,
-    setPendingScoreMode,
     isPriceSelectorVisible,
     setIsPriceSelectorVisible,
-    isRankSelectorVisible,
-    setIsRankSelectorVisible,
     priceLevels,
     setVotes100Plus,
     setOpenNow,
     setPriceLevels,
-    setPreferredScoreMode,
     scheduleToggleCommit,
     rerunActiveSearch,
     priceSheetRef,
-    rankSheetRef,
     minimumVotesFilter,
     onMechanismEvent,
   } = args;
 
   const pendingPriceRangeRef = React.useRef<PriceRangeTuple>(pendingPriceRange);
-  const pendingScoreModeRef = React.useRef<ScoreMode>(pendingScoreMode);
 
   React.useEffect(() => {
     pendingPriceRangeRef.current = pendingPriceRange;
   }, [pendingPriceRange]);
-
-  React.useEffect(() => {
-    pendingScoreModeRef.current = pendingScoreMode;
-  }, [pendingScoreMode]);
 
   React.useEffect(() => {
     if (!isPriceSelectorVisible) {
@@ -138,12 +112,6 @@ export const useQueryMutationOrchestrator = (
       }
     }
   }, [isPriceSelectorVisible, priceLevels, setPendingPriceRange]);
-
-  React.useEffect(() => {
-    if (!isRankSelectorVisible && pendingScoreModeRef.current !== scoreMode) {
-      setPendingScoreMode(scoreMode);
-    }
-  }, [isRankSelectorVisible, scoreMode, setPendingScoreMode]);
 
   const emitMutationCoalesced = React.useCallback(
     (payload: Record<string, unknown>) => {
@@ -156,11 +124,13 @@ export const useQueryMutationOrchestrator = (
     const hasCommittedQuery = Boolean((isSearchSessionActive ? submittedQuery : query).trim());
     return searchMode === 'shortcut' || hasCommittedQuery;
   }, [isSearchSessionActive, query, searchMode, submittedQuery]);
+
   const clearPendingTabSwitchDraft = React.useCallback(() => {
     searchRuntimeBus.publish({
       pendingTabSwitchTab: null,
     });
   }, [searchRuntimeBus]);
+
   const fireRerunActiveSearch = React.useCallback(
     (options: RerunActiveSearchOptions) => {
       void rerunActiveSearch(options).catch((error) => {
@@ -174,7 +144,6 @@ export const useQueryMutationOrchestrator = (
 
   const toggleVotesFilter = React.useCallback(() => {
     setIsPriceSelectorVisible(false);
-    setIsRankSelectorVisible(false);
     clearPendingTabSwitchDraft();
     const nextValue = !votesFilterActive;
     searchRuntimeBus.publish({
@@ -215,75 +184,13 @@ export const useQueryMutationOrchestrator = (
     searchRuntimeBus,
     searchMode,
     setIsPriceSelectorVisible,
-    setIsRankSelectorVisible,
     setVotes100Plus,
     submittedQuery,
     votesFilterActive,
   ]);
 
-  const handleScoreModeChange = React.useCallback(
-    (nextMode: ScoreMode) => {
-      if (nextMode === scoreMode) {
-        emitMutationCoalesced({
-          reason: 'score_mode_duplicate_intent',
-          scoreMode: nextMode,
-        });
-        return;
-      }
-      clearPendingTabSwitchDraft();
-      const nextRankButtonIsActive = nextMode === 'global_quality';
-      const nextRankButtonLabelText = nextRankButtonIsActive ? 'Global' : 'Rank';
-      if (!canRerunForCurrentQuery()) {
-        searchRuntimeBus.publish({
-          rankButtonLabelText: nextRankButtonLabelText,
-          rankButtonIsActive: nextRankButtonIsActive,
-        });
-        setPreferredScoreMode(nextMode);
-        return;
-      }
-      scheduleToggleCommit(
-        () => {
-          setPreferredScoreMode(nextMode);
-          fireRerunActiveSearch({
-            searchMode,
-            activeTab,
-            submittedQuery,
-            query,
-            isSearchSessionActive,
-            preserveSheetState: true,
-            scoreMode: nextMode,
-          });
-          return {
-            awaitVisualSync: true,
-          };
-        },
-        { kind: 'filter_rank' }
-      );
-      searchRuntimeBus.publish({
-        rankButtonLabelText: nextRankButtonLabelText,
-        rankButtonIsActive: nextRankButtonIsActive,
-      });
-    },
-    [
-      activeTab,
-      canRerunForCurrentQuery,
-      clearPendingTabSwitchDraft,
-      emitMutationCoalesced,
-      fireRerunActiveSearch,
-      isSearchSessionActive,
-      query,
-      scheduleToggleCommit,
-      scoreMode,
-      searchRuntimeBus,
-      searchMode,
-      setPreferredScoreMode,
-      submittedQuery,
-    ]
-  );
-
   const toggleOpenNow = React.useCallback(() => {
     setIsPriceSelectorVisible(false);
-    setIsRankSelectorVisible(false);
     clearPendingTabSwitchDraft();
     const nextValue = !openNow;
     searchRuntimeBus.publish({
@@ -323,7 +230,6 @@ export const useQueryMutationOrchestrator = (
     searchRuntimeBus,
     searchMode,
     setIsPriceSelectorVisible,
-    setIsRankSelectorVisible,
     setOpenNow,
     submittedQuery,
   ]);
@@ -346,6 +252,7 @@ export const useQueryMutationOrchestrator = (
       nextLevels.some((value, index) => value !== currentLevels[index]);
 
     if (!hasChanged) {
+      emitMutationCoalesced({ reason: 'price_filter_duplicate_intent' });
       return;
     }
     clearPendingTabSwitchDraft();
@@ -377,6 +284,7 @@ export const useQueryMutationOrchestrator = (
     activeTab,
     canRerunForCurrentQuery,
     clearPendingTabSwitchDraft,
+    emitMutationCoalesced,
     fireRerunActiveSearch,
     isSearchSessionActive,
     priceSheetRef,
@@ -401,62 +309,13 @@ export const useQueryMutationOrchestrator = (
     closePriceSelector();
   }, [closePriceSelector, priceSheetRef]);
 
-  const commitRankSelection = React.useCallback(() => {
-    const snapshot = pendingScoreModeRef.current;
-    const sheet = rankSheetRef.current;
-    if (sheet) {
-      sheet.requestClose();
-    } else {
-      setIsRankSelectorVisible(false);
-    }
-    handleScoreModeChange(snapshot);
-  }, [handleScoreModeChange, rankSheetRef, setIsRankSelectorVisible]);
-
-  const closeRankSelector = React.useCallback(() => {
-    setIsRankSelectorVisible(false);
-  }, [setIsRankSelectorVisible]);
-
-  const dismissRankSelector = React.useCallback(() => {
-    const sheet = rankSheetRef.current;
-    if (sheet) {
-      sheet.requestClose();
-      return;
-    }
-    closeRankSelector();
-  }, [closeRankSelector, rankSheetRef]);
-
-  const toggleRankSelector = React.useCallback(() => {
-    if (isRankSelectorVisible) {
-      commitRankSelection();
-      return;
-    }
-    setIsPriceSelectorVisible(false);
-    if (pendingScoreModeRef.current !== scoreMode) {
-      setPendingScoreMode(scoreMode);
-    }
-    setIsRankSelectorVisible(true);
-  }, [
-    commitRankSelection,
-    isRankSelectorVisible,
-    scoreMode,
-    setIsPriceSelectorVisible,
-    setIsRankSelectorVisible,
-    setPendingScoreMode,
-  ]);
-
   const togglePriceSelector = React.useCallback(() => {
-    setIsRankSelectorVisible(false);
     if (isPriceSelectorVisible) {
       commitPriceSelection();
       return;
     }
     setIsPriceSelectorVisible(true);
-  }, [
-    commitPriceSelection,
-    isPriceSelectorVisible,
-    setIsPriceSelectorVisible,
-    setIsRankSelectorVisible,
-  ]);
+  }, [commitPriceSelection, isPriceSelectorVisible, setIsPriceSelectorVisible]);
 
   const handlePriceDone = React.useCallback(() => {
     commitPriceSelection();
@@ -469,11 +328,6 @@ export const useQueryMutationOrchestrator = (
     commitPriceSelection,
     closePriceSelector,
     dismissPriceSelector,
-    commitRankSelection,
-    closeRankSelector,
-    dismissRankSelector,
-    toggleRankSelector,
     handlePriceDone,
-    handleScoreModeChange,
   };
 };

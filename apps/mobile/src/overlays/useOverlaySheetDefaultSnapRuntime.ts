@@ -14,9 +14,7 @@ type UseOverlaySheetDefaultSnapRuntimeArgs = Pick<
   | 'requestShellSnap'
   | 'requestedShellSnapRef'
   | 'currentSnapRef'
-> & {
-  hasRequestedSnap: boolean;
-};
+>;
 
 export const useOverlaySheetDefaultSnapRuntime = ({
   visible,
@@ -24,33 +22,20 @@ export const useOverlaySheetDefaultSnapRuntime = ({
   persistedSnap,
   resolvedSnapPersistenceKey,
   ensurePersistedSnap,
-  screenHeight,
-  sheetY,
   requestShellSnap,
   requestedShellSnapRef,
   currentSnapRef,
-  hasRequestedSnap,
 }: UseOverlaySheetDefaultSnapRuntimeArgs): void => {
   React.useEffect(() => {
-    if (!visible || !spec || hasRequestedSnap) {
+    if (!visible || !spec || requestedShellSnapRef.current !== null) {
       return;
     }
 
-    const sheetYValue = sheetY.value;
-    const isSheetOffscreen =
-      Number.isFinite(screenHeight) &&
-      screenHeight > 0 &&
-      Number.isFinite(sheetYValue) &&
-      sheetYValue >= screenHeight - 0.5;
-    if (currentSnapRef.current !== 'hidden' && !isSheetOffscreen) {
+    if (currentSnapRef.current !== 'hidden') {
       if (requestedShellSnapRef.current !== null) {
         requestShellSnap(null);
       }
       return;
-    }
-
-    if (isSheetOffscreen) {
-      currentSnapRef.current = 'hidden';
     }
 
     const desiredSnap = persistedSnap ?? spec.initialSnapPoint ?? 'middle';
@@ -67,10 +52,7 @@ export const useOverlaySheetDefaultSnapRuntime = ({
     requestShellSnap,
     requestedShellSnapRef,
     resolvedSnapPersistenceKey,
-    screenHeight,
-    sheetY,
     spec,
     visible,
-    hasRequestedSnap,
   ]);
 };

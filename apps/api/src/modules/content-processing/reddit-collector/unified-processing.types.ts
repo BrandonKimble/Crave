@@ -24,6 +24,7 @@ export interface UnifiedProcessingConfig {
   maxRetries: number;
   batchTimeout: number;
   batchSize: number;
+  skipSourceLedgerDedupe?: boolean;
 }
 
 export interface CreatedEntitySummary {
@@ -67,6 +68,7 @@ export interface ProcessingResult {
     entitiesCreated: number;
     connectionsCreated: number;
     affectedConnectionIds: string[];
+    affectedRestaurantIds?: string[];
     createdEntityIds?: string[];
     createdEntitySummaries?: CreatedEntitySummary[];
     reusedEntitySummaries?: {

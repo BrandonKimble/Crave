@@ -10,14 +10,14 @@ type CoverageRestaurantRow = {
   restaurant_name: string;
   longitude: unknown;
   latitude: unknown;
-  display_score: unknown;
-  display_percentile: unknown;
+  contextual_score: unknown;
+  contextual_percentile: unknown;
   restaurant_quality_score: unknown;
   top_connection_id?: unknown;
   top_food_name?: unknown;
   top_food_quality_score?: unknown;
-  top_food_display_score?: unknown;
-  top_food_display_percentile?: unknown;
+  top_food_contextual_score?: unknown;
+  top_food_contextual_percentile?: unknown;
 };
 
 @Injectable()
@@ -61,7 +61,7 @@ export class SearchCoverageService {
 
     const conditions: Prisma.Sql[] = [
       Prisma.sql`e.type = 'restaurant'`,
-      Prisma.sql`EXISTS (SELECT 1 FROM core_connections c WHERE c.restaurant_id = e.entity_id)`,
+      Prisma.sql`EXISTS (SELECT 1 FROM core_restaurant_items c WHERE c.restaurant_id = e.entity_id)`,
     ];
 
     if (restaurantEntityIds.length) {
@@ -84,7 +84,7 @@ export class SearchCoverageService {
       conditions.push(
         Prisma.sql`EXISTS (
           SELECT 1
-          FROM core_connections c
+          FROM core_restaurant_items c
           WHERE c.restaurant_id = e.entity_id
             AND c.food_id = ANY(ARRAY[${Prisma.join(foodEntityIds)}]::uuid[])
         )`,
@@ -95,7 +95,7 @@ export class SearchCoverageService {
       conditions.push(
         Prisma.sql`EXISTS (
           SELECT 1
-          FROM core_connections c
+          FROM core_restaurant_items c
           WHERE c.restaurant_id = e.entity_id
             AND c.food_attributes && ARRAY[${Prisma.join(
               foodAttributeIds,
@@ -113,12 +113,14 @@ export class SearchCoverageService {
 
     const maxRestaurants = 50000;
     const includeTopDish = request.includeTopDish === true;
-    const scoreMode = request.scoreMode ?? 'global_quality';
+    const activeMarketKey =
+      typeof request.marketKey === 'string' && request.marketKey.trim().length
+        ? request.marketKey.trim().toLowerCase()
+        : null;
     const topDishJoinSql = includeTopDish
       ? this.buildTopDishJoinSql({
           foodEntityIds,
           foodAttributeIds,
-          scoreMode,
         })
       : Prisma.sql``;
     const topDishSelectSql = includeTopDish
@@ -126,60 +128,156 @@ export class SearchCoverageService {
         td.connection_id AS top_connection_id,
         td.food_name AS top_food_name,
         td.food_quality_score AS top_food_quality_score,
-        td.display_score AS top_food_display_score,
-        td.display_percentile AS top_food_display_percentile`
+        td.contextual_score AS top_food_contextual_score,
+        td.contextual_percentile AS top_food_contextual_percentile`
       : Prisma.sql``;
     const coverageOrderSql = (() => {
-      if (scoreMode === 'coverage_display') {
-        if (includeTopDish) {
-          return Prisma.sql`COALESCE(td.display_score, drs.rank_score_display, -1) DESC, e.entity_id ASC`;
-        }
-        return Prisma.sql`COALESCE(drs.rank_score_display, -1) DESC, e.entity_id ASC`;
-      }
       if (includeTopDish) {
-        return Prisma.sql`COALESCE(td.food_quality_score, e.restaurant_quality_score, -1) DESC, e.entity_id ASC`;
+        return Prisma.sql`COALESCE(td.contextual_score, td.food_quality_score, drs.rank_score_display, e.restaurant_quality_score, -1) DESC, e.entity_id ASC`;
       }
-      return Prisma.sql`COALESCE(e.restaurant_quality_score, -1) DESC, e.entity_id ASC`;
+      return Prisma.sql`COALESCE(drs.rank_score_display, e.restaurant_quality_score, -1) DESC, e.entity_id ASC`;
     })();
-    const locationJoinSql = Prisma.sql`
-      JOIN LATERAL (
+    const marketLocationFilterSql = activeMarketKey
+      ? Prisma.sql`
+          AND EXISTS (
+            SELECT 1
+            FROM core_markets m
+            WHERE m.market_key = ${activeMarketKey}
+              AND m.is_active = true
+              AND m.geometry IS NOT NULL
+              AND m.bbox_ne_latitude >= rl.latitude
+              AND m.bbox_sw_latitude <= rl.latitude
+              AND m.bbox_ne_longitude >= rl.longitude
+              AND m.bbox_sw_longitude <= rl.longitude
+              AND ST_Contains(
+                m.geometry,
+                ST_SetSRID(
+                  ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision),
+                  4326
+                )
+              )
+          )
+        `
+      : Prisma.sql``;
+    const startedAt = Date.now();
+    const rows = await this.prisma.$queryRaw<
+      CoverageRestaurantRow[]
+    >(Prisma.sql`
+      WITH candidate_locations AS (
         SELECT
           rl.location_id,
+          rl.restaurant_id,
           rl.longitude,
-          rl.latitude
+          rl.latitude,
+          rl.updated_at
         FROM core_restaurant_locations rl
-        WHERE rl.restaurant_id = e.entity_id
-          AND rl.longitude IS NOT NULL
+        WHERE rl.longitude IS NOT NULL
           AND rl.latitude IS NOT NULL
           AND rl.google_place_id IS NOT NULL
           AND rl.address IS NOT NULL
           AND rl.longitude BETWEEN ${minLng} AND ${maxLng}
           AND rl.latitude BETWEEN ${minLat} AND ${maxLat}
+          ${marketLocationFilterSql}
+      ),
+      selected_locations AS (
+        SELECT DISTINCT ON (cl.restaurant_id)
+          cl.restaurant_id,
+          cl.location_id,
+          cl.longitude,
+          cl.latitude
+        FROM candidate_locations cl
         ORDER BY
-          POWER(rl.latitude - ${centerLat}, 2) + POWER(rl.longitude - ${centerLng}, 2) ASC,
-          rl.updated_at DESC
-        LIMIT 1
-      ) pl ON true
-    `;
-    const startedAt = Date.now();
-    const rows = await this.prisma.$queryRaw<
-      CoverageRestaurantRow[]
-    >(Prisma.sql`
+          cl.restaurant_id,
+          POWER(cl.latitude - ${centerLat}, 2) + POWER(cl.longitude - ${centerLng}, 2) ASC,
+          cl.updated_at DESC
+      ),
+      geographic_restaurants AS (
+        SELECT DISTINCT restaurant_id
+        FROM candidate_locations
+      ),
+      restaurant_vote_totals AS (
+        SELECT
+          c.restaurant_id,
+          SUM(c.total_upvotes) AS total_upvotes,
+          SUM(c.mention_count) AS total_mentions
+        FROM core_restaurant_items c
+        JOIN geographic_restaurants gr ON gr.restaurant_id = c.restaurant_id
+        GROUP BY c.restaurant_id
+      ),
+      contextual_restaurant_scores AS (
+        WITH ranked AS (
+          SELECT
+            gr.restaurant_id AS subject_id,
+            ROW_NUMBER() OVER (
+              ORDER BY
+                COALESCE(e.restaurant_quality_score, 0) DESC,
+                COALESCE(rvt.total_upvotes, 0) DESC,
+                COALESCE(rvt.total_mentions, 0) DESC,
+                gr.restaurant_id ASC
+            ) AS row_number,
+            PERCENT_RANK() OVER (
+              ORDER BY
+                COALESCE(e.restaurant_quality_score, 0) DESC,
+                COALESCE(rvt.total_upvotes, 0) DESC,
+                COALESCE(rvt.total_mentions, 0) DESC,
+                gr.restaurant_id ASC
+            ) AS percent_rank
+          FROM geographic_restaurants gr
+          JOIN core_entities e ON e.entity_id = gr.restaurant_id
+          LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = gr.restaurant_id
+        )
+        SELECT
+          subject_id,
+          CASE
+            WHEN row_number = 1 THEN 100::numeric
+            ELSE floor(LEAST(99.9, GREATEST(0, 100 * (1 - percent_rank))) * 10)::numeric / 10
+          END AS rank_score_display,
+          (1 - percent_rank)::numeric AS rank_percentile
+        FROM ranked
+      ),
+      contextual_connection_scores AS (
+        WITH ranked AS (
+          SELECT
+            c.connection_id AS subject_id,
+            ROW_NUMBER() OVER (
+              ORDER BY
+                COALESCE(c.food_quality_score, 0) DESC,
+                COALESCE(c.total_upvotes, 0) DESC,
+                COALESCE(c.mention_count, 0) DESC,
+                c.connection_id ASC
+            ) AS row_number,
+            PERCENT_RANK() OVER (
+              ORDER BY
+                COALESCE(c.food_quality_score, 0) DESC,
+                COALESCE(c.total_upvotes, 0) DESC,
+                COALESCE(c.mention_count, 0) DESC,
+                c.connection_id ASC
+            ) AS percent_rank
+          FROM core_restaurant_items c
+          JOIN geographic_restaurants gr ON gr.restaurant_id = c.restaurant_id
+        )
+        SELECT
+          subject_id,
+          CASE
+            WHEN row_number = 1 THEN 100::numeric
+            ELSE floor(LEAST(99.9, GREATEST(0, 100 * (1 - percent_rank))) * 10)::numeric / 10
+          END AS rank_score_display,
+          (1 - percent_rank)::numeric AS rank_percentile
+        FROM ranked
+      )
       SELECT
         e.entity_id AS restaurant_id,
         e.name AS restaurant_name,
         pl.longitude AS longitude,
         pl.latitude AS latitude,
-        drs.rank_score_display AS display_score,
-        drs.rank_percentile AS display_percentile,
+        drs.rank_score_display AS contextual_score,
+        drs.rank_percentile AS contextual_percentile,
         e.restaurant_quality_score AS restaurant_quality_score
         ${topDishSelectSql}
       FROM core_entities e
-      ${locationJoinSql}
-      LEFT JOIN core_display_rank_scores drs
-        ON drs.location_key = e.location_key
-        AND drs.subject_type = 'restaurant'
-        AND drs.subject_id = e.entity_id
+      JOIN selected_locations pl ON pl.restaurant_id = e.entity_id
+      LEFT JOIN contextual_restaurant_scores drs
+        ON drs.subject_id = e.entity_id
       ${topDishJoinSql}
       WHERE ${Prisma.join(conditions, ' AND ')}
       ORDER BY ${coverageOrderSql}
@@ -200,13 +298,13 @@ export class SearchCoverageService {
           if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
             return null;
           }
-          const displayPercentile = Number(row.display_percentile);
-          const displayScore = Number(row.display_score);
+          const contextualPercentile = Number(row.contextual_percentile);
+          const contextualScore = Number(row.contextual_score);
           const restaurantQualityScore = Number(row.restaurant_quality_score);
           const topFoodQualityScore = Number(row.top_food_quality_score);
-          const topFoodDisplayScore = Number(row.top_food_display_score);
-          const topFoodDisplayPercentile = Number(
-            row.top_food_display_percentile,
+          const topFoodContextualScore = Number(row.top_food_contextual_score);
+          const topFoodContextualPercentile = Number(
+            row.top_food_contextual_percentile,
           );
           return {
             type: 'Feature',
@@ -215,15 +313,24 @@ export class SearchCoverageService {
             properties: {
               restaurantId: row.restaurant_id,
               restaurantName: row.restaurant_name,
-              contextualScore:
-                includeTopDish && Number.isFinite(topFoodQualityScore)
-                  ? topFoodQualityScore
-                  : 0,
+              contextualScore: includeTopDish
+                ? Number.isFinite(topFoodContextualScore)
+                  ? topFoodContextualScore
+                  : Number.isFinite(topFoodQualityScore)
+                    ? topFoodQualityScore
+                    : 0
+                : Number.isFinite(contextualScore)
+                  ? contextualScore
+                  : Number.isFinite(restaurantQualityScore)
+                    ? restaurantQualityScore
+                    : 0,
+              contextualPercentile:
+                includeTopDish && Number.isFinite(topFoodContextualPercentile)
+                  ? topFoodContextualPercentile
+                  : Number.isFinite(contextualPercentile)
+                    ? contextualPercentile
+                    : null,
               rank: index + 1,
-              displayScore: Number.isFinite(displayScore) ? displayScore : null,
-              displayPercentile: Number.isFinite(displayPercentile)
-                ? displayPercentile
-                : null,
               restaurantQualityScore: Number.isFinite(restaurantQualityScore)
                 ? restaurantQualityScore
                 : null,
@@ -236,13 +343,13 @@ export class SearchCoverageService {
                 includeTopDish && typeof row.top_connection_id === 'string'
                   ? row.top_connection_id
                   : undefined,
-              topDishDisplayPercentile:
-                includeTopDish && Number.isFinite(topFoodDisplayPercentile)
-                  ? topFoodDisplayPercentile
+              topDishContextualPercentile:
+                includeTopDish && Number.isFinite(topFoodContextualPercentile)
+                  ? topFoodContextualPercentile
                   : null,
-              topDishDisplayScore:
-                includeTopDish && Number.isFinite(topFoodDisplayScore)
-                  ? topFoodDisplayScore
+              topDishContextualScore:
+                includeTopDish && Number.isFinite(topFoodContextualScore)
+                  ? topFoodContextualScore
                   : null,
             },
           };
@@ -254,9 +361,8 @@ export class SearchCoverageService {
   private buildTopDishJoinSql(params: {
     foodEntityIds: string[];
     foodAttributeIds: string[];
-    scoreMode: 'global_quality' | 'coverage_display';
   }): Prisma.Sql {
-    const { foodEntityIds, foodAttributeIds, scoreMode } = params;
+    const { foodEntityIds, foodAttributeIds } = params;
     const conditions: Prisma.Sql[] = [
       Prisma.sql`c.restaurant_id = e.entity_id`,
     ];
@@ -274,11 +380,7 @@ export class SearchCoverageService {
         )}]::uuid[]`,
       );
     }
-
-    const orderSql =
-      scoreMode === 'global_quality'
-        ? Prisma.sql`c.food_quality_score DESC, c.connection_id ASC`
-        : Prisma.sql`COALESCE(drc.rank_score_raw, -1) DESC, c.connection_id ASC`;
+    const orderSql = Prisma.sql`COALESCE(drc.rank_score_display, c.food_quality_score, -1) DESC, c.connection_id ASC`;
 
     return Prisma.sql`
       LEFT JOIN LATERAL (
@@ -286,14 +388,12 @@ export class SearchCoverageService {
           c.connection_id,
           f.name AS food_name,
           c.food_quality_score,
-          drc.rank_score_display AS display_score,
-          drc.rank_percentile AS display_percentile
-        FROM core_connections c
+          drc.rank_score_display AS contextual_score,
+          drc.rank_percentile AS contextual_percentile
+        FROM core_restaurant_items c
         JOIN core_entities f ON f.entity_id = c.food_id
-        LEFT JOIN core_display_rank_scores drc
-          ON drc.location_key = e.location_key
-          AND drc.subject_type = 'connection'
-          AND drc.subject_id = c.connection_id
+        LEFT JOIN contextual_connection_scores drc
+          ON drc.subject_id = c.connection_id
         WHERE ${Prisma.join(conditions, ' AND ')}
         ORDER BY ${orderSql}
         LIMIT 1

@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { useSearchBus } from './search-runtime-bus';
+import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { SearchResultsPanelDataRuntime } from './search-results-panel-data-runtime-contract';
 import type { SearchResultsPanelListSelectorsRuntime } from './use-search-results-panel-list-selectors-runtime';
 
@@ -8,16 +8,18 @@ type UseSearchResultsPanelListPublicationRuntimeArgs = Pick<
   SearchResultsPanelDataRuntime,
   'resolvedResults' | 'resultsHydrationKey' | 'hydratedResultsKey' | 'shouldHydrateResultsForRender'
 > &
-  SearchResultsPanelListSelectorsRuntime;
+  SearchResultsPanelListSelectorsRuntime & {
+    searchRuntimeBus: SearchRuntimeBus;
+  };
 
 export const useSearchResultsPanelListPublicationRuntime = ({
+  searchRuntimeBus,
   resolvedResults,
   resultsHydrationKey,
   hydratedResultsKey,
   shouldHydrateResultsForRender,
   resultsReadModelSelectors,
 }: UseSearchResultsPanelListPublicationRuntimeArgs): void => {
-  const searchRuntimeBus = useSearchBus();
   const resultsFirstPaintKey = resolvedResults != null ? resultsHydrationKey : null;
 
   React.useEffect(() => {

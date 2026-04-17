@@ -1,5 +1,5 @@
 export type RankScoreRefreshJobData = {
-  locationKey: string;
+  marketKey: string;
   requestedAt: string;
   source?: string;
 };

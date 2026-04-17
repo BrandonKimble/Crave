@@ -13,7 +13,7 @@ import styles from '../styles';
 import { SECONDARY_METRIC_ICON_SIZE } from '../constants/search';
 import { InfoCircleIcon } from './metric-icons';
 import { renderMetaDetailLine } from './render-meta-detail-line';
-import { resolveCoverageDisplayLabel } from '../utils/format';
+import { resolveMarketDisplayLabel } from '../utils/format';
 import { formatRankLabel, getRankFontSize } from '../utils/rank-badge';
 import { searchService } from '../../../services/search';
 import { useSearchHistoryStore } from '../../../store/searchHistoryStore';
@@ -50,9 +50,8 @@ type DishResultCardProps = {
   index: number;
   qualityColor: string;
   isLiked: boolean;
-  scoreMode?: 'global_quality' | 'coverage_display';
-  primaryCoverageKey?: string | null;
-  showCoverageLabel?: boolean;
+  primaryMarketKey?: string | null;
+  showMarketLabel?: boolean;
   restaurantForDish?: RestaurantResult;
   onSavePress: () => void;
   openRestaurantProfile: (
@@ -67,9 +66,8 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   index,
   qualityColor,
   isLiked,
-  scoreMode = 'global_quality',
-  primaryCoverageKey = null,
-  showCoverageLabel = false,
+  primaryMarketKey = null,
+  showMarketLabel = false,
   restaurantForDish,
   onSavePress,
   openRestaurantProfile,
@@ -96,20 +94,17 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
     true,
     true
   );
-  const displayScoreValue = React.useMemo(() => {
-    if (scoreMode === 'coverage_display') {
-      if (typeof item.displayScore === 'number' && Number.isFinite(item.displayScore)) {
-        return item.displayScore;
-      }
-      return null;
+  const contextualScoreValue = React.useMemo(() => {
+    if (typeof item.contextualScore === 'number' && Number.isFinite(item.contextualScore)) {
+      return item.contextualScore;
     }
     return typeof item.qualityScore === 'number' && Number.isFinite(item.qualityScore)
       ? item.qualityScore
       : null;
-  }, [item.displayScore, item.qualityScore, scoreMode]);
-  const coverageLabel =
-    showCoverageLabel && item.coverageKey && item.coverageKey !== primaryCoverageKey
-      ? resolveCoverageDisplayLabel(item.coverageName, item.coverageKey)
+  }, [item.contextualScore, item.qualityScore]);
+  const marketLabel =
+    showMarketLabel && item.marketKey && item.marketKey !== primaryMarketKey
+      ? resolveMarketDisplayLabel(item.marketName, item.marketKey ?? null)
       : null;
 
   const handleShare = React.useCallback(() => {
@@ -145,7 +140,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
       },
     });
 
-    openRestaurantProfile(restaurantForDish, undefined, 'dish_card');
+    openRestaurantProfile(restaurantForDish, 'dish_card');
   }, [
     item.connectionId,
     item.foodId,
@@ -161,11 +156,11 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
     openScoreInfo({
       type: 'dish',
       title: item.foodName,
-      score: displayScoreValue,
+      score: contextualScoreValue,
       votes: item.totalUpvotes,
       polls: item.mentionCount,
     });
-  }, [item.foodName, item.mentionCount, item.totalUpvotes, displayScoreValue, openScoreInfo]);
+  }, [item.foodName, item.mentionCount, item.totalUpvotes, contextualScoreValue, openScoreInfo]);
 
   return (
     <View
@@ -207,7 +202,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
                 <View style={styles.metricLine}>
                   {HAND_PLATTER_ICON}
                   <Text variant="body" weight="semibold" style={styles.metricValue}>
-                    {displayScoreValue != null ? displayScoreValue.toFixed(1) : '—'}
+                    {contextualScoreValue != null ? contextualScoreValue.toFixed(1) : '—'}
                   </Text>
                   <Text variant="body" weight="regular" style={styles.metricLabel}>
                     Dish score
@@ -231,10 +226,10 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
                   {dishStatusLine}
                 </View>
               ) : null}
-              {coverageLabel ? (
+              {marketLabel ? (
                 <View style={styles.coverageBadge}>
                   <Text variant="body" style={styles.coverageBadgeText}>
-                    {coverageLabel}
+                    {marketLabel}
                   </Text>
                 </View>
               ) : null}

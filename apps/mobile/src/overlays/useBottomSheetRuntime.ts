@@ -51,14 +51,20 @@ const useBottomSheetPresentationState = ({
   sheetYOverride,
   scrollOffsetOverride,
   momentumFlagOverride,
+  initialSheetY = 0,
+  initialScrollOffset = 0,
+  initialMomentumFlag = false,
 }: {
   sheetYOverride?: SharedValue<number>;
   scrollOffsetOverride?: SharedValue<number>;
   momentumFlagOverride?: SharedValue<boolean>;
+  initialSheetY?: number;
+  initialScrollOffset?: number;
+  initialMomentumFlag?: boolean;
 } = {}): BottomSheetPresentationState => {
-  const ownedSheetY = useSharedValue(0);
-  const ownedScrollOffset = useSharedValue(0);
-  const ownedMomentumFlag = useSharedValue(false);
+  const ownedSheetY = useSharedValue(initialSheetY);
+  const ownedScrollOffset = useSharedValue(initialScrollOffset);
+  const ownedMomentumFlag = useSharedValue(initialMomentumFlag);
   const sheetY = sheetYOverride ?? ownedSheetY;
   const scrollOffset = scrollOffsetOverride ?? ownedScrollOffset;
   const momentumFlag = momentumFlagOverride ?? ownedMomentumFlag;
@@ -161,6 +167,9 @@ export const useBottomSheetRuntimeModel = ({
   scrollOffsetOverride,
   momentumFlagOverride,
   motionCommandOverride,
+  initialSheetY,
+  initialScrollOffset,
+  initialMomentumFlag,
 }: {
   presentationStateOverride?: BottomSheetRuntimeModel['presentationState'];
   snapControllerOverride?: BottomSheetRuntimeModel['snapController'];
@@ -168,11 +177,17 @@ export const useBottomSheetRuntimeModel = ({
   scrollOffsetOverride?: SharedValue<number>;
   momentumFlagOverride?: SharedValue<boolean>;
   motionCommandOverride?: SharedValue<BottomSheetMotionCommand | null>;
+  initialSheetY?: number;
+  initialScrollOffset?: number;
+  initialMomentumFlag?: boolean;
 } = {}): BottomSheetRuntimeModel => {
   const ownedPresentationState = useBottomSheetPresentationState({
     sheetYOverride,
     scrollOffsetOverride,
     momentumFlagOverride,
+    initialSheetY,
+    initialScrollOffset,
+    initialMomentumFlag,
   });
   const ownedSnapController = useBottomSheetSnapController({
     motionCommandOverride,
@@ -195,6 +210,9 @@ export const useBottomSheetProgrammaticRuntimeModel = ({
   scrollOffsetOverride,
   momentumFlagOverride,
   motionCommandOverride,
+  initialSheetY,
+  initialScrollOffset,
+  initialMomentumFlag,
   onProgrammaticHidden,
   onProgrammaticSnapSettled,
 }: {
@@ -204,6 +222,9 @@ export const useBottomSheetProgrammaticRuntimeModel = ({
   scrollOffsetOverride?: SharedValue<number>;
   momentumFlagOverride?: SharedValue<boolean>;
   motionCommandOverride?: SharedValue<BottomSheetMotionCommand | null>;
+  initialSheetY?: number;
+  initialScrollOffset?: number;
+  initialMomentumFlag?: boolean;
   onProgrammaticHidden: (requestToken: number | null) => void;
   onProgrammaticSnapSettled?: (
     snap: Exclude<BottomSheetSnap, 'hidden'>,
@@ -214,6 +235,9 @@ export const useBottomSheetProgrammaticRuntimeModel = ({
     sheetYOverride,
     scrollOffsetOverride,
     momentumFlagOverride,
+    initialSheetY,
+    initialScrollOffset,
+    initialMomentumFlag,
   });
   const ownedSnapController = useBottomSheetProgrammaticSnapController({
     onProgrammaticHidden,

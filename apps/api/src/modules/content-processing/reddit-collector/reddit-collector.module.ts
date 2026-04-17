@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
 import { SharedModule } from '../../../shared/shared.module';
@@ -31,10 +31,23 @@ import { KeywordSearchMetricsService } from './keyword-search-metrics.service';
 import { ArchiveBatchProcessingWorker } from './archive/archive-batch.worker';
 import { ArchiveCollectionWorker } from './archive/archive-collection.worker';
 import { RedditBatchProcessingService } from './reddit-batch-processing.service';
+import { CollectionEvidenceService } from './collection-evidence.service';
+import { ExtractionPipelineService } from './extraction-pipeline.service';
+import { ProjectionRebuildService } from './projection-rebuild.service';
+import { ReplayService } from './replay.service';
 import { RestaurantEnrichmentModule } from '../../restaurant-enrichment/restaurant-enrichment.module';
 import { AnalyticsModule } from '../../analytics/analytics.module';
+import { MarketsModule } from '../../markets/markets.module';
 import { BullQueueMetricsService } from './bull-queue-metrics.service';
 import { isWorkerRuntime } from '../../../shared/utils/process-role';
+
+const redditCollectorCoreProviders = [
+  CollectionEvidenceService,
+  ExtractionPipelineService,
+  ProjectionRebuildService,
+  ReplayService,
+  UnifiedProcessingService,
+];
 
 const redditCollectorWorkerProviders = isWorkerRuntime()
   ? [
@@ -63,8 +76,6 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
       KeywordSliceSelectionService,
       KeywordAttemptHistoryService,
       KeywordSearchOrchestratorService,
-      // Unified Processing Integration components (PRD Section 5.1.2 & 6.1)
-      UnifiedProcessingService,
       // Volume Tracking components (PRD Section 5.1.2)
       SubredditVolumeTrackingService,
       VolumeTrackingProcessor,
@@ -144,10 +155,14 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
     BullModule.registerQueue({
       name: 'archive-collection',
     }),
-    RestaurantEnrichmentModule,
+    forwardRef(() => RestaurantEnrichmentModule),
     AnalyticsModule,
+    MarketsModule,
   ],
-  providers: [...redditCollectorWorkerProviders],
-  exports: [...redditCollectorWorkerProviders],
+  providers: [
+    ...redditCollectorCoreProviders,
+    ...redditCollectorWorkerProviders,
+  ],
+  exports: [...redditCollectorCoreProviders, ...redditCollectorWorkerProviders],
 })
 export class RedditCollectorModule {}

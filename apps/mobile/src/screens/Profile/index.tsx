@@ -20,6 +20,10 @@ import Svg, { Path } from 'react-native-svg';
 import { Text } from '../../components';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import { colors as themeColors } from '../../constants/theme';
+import {
+  clearSearchRoutePollsPanelParams,
+  openSearchRoutePollsHome,
+} from '../../overlays/searchRouteOverlayCommandStore';
 import { useAppOverlayRouteController } from '../../overlays/useAppOverlayRouteController';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useNotificationStore } from '../../store/notificationStore';
@@ -31,7 +35,6 @@ import { fetchUserPolls, type Poll } from '../../services/polls';
 import { useFavoriteLists } from '../../hooks/use-favorite-lists';
 import type { FavoriteListSummary } from '../../services/favorite-lists';
 import type { RootStackParamList } from '../../types/navigation';
-import { PollIcon } from '../Search/components/metric-icons';
 
 type Navigation = StackNavigationProp<RootStackParamList>;
 type ProfileSegment = 'created' | 'contributed' | 'favorites';
@@ -181,20 +184,27 @@ const ProfileScreen: React.FC = () => {
       if (target === 'profile') {
         return;
       }
+      if (target === 'search') {
+        openSearchRoutePollsHome({ snap: 'collapsed' });
+        return;
+      }
+      clearSearchRoutePollsPanelParams();
       setRootRoute(target);
     },
     [setRootRoute]
   );
 
-  const handlePollPress = React.useCallback(
-    (poll: Poll) => {
-      setRootRoute('polls', {
+  const handlePollPress = React.useCallback((poll: Poll) => {
+    openSearchRoutePollsHome({
+      params: {
         pollId: poll.pollId,
-        coverageKey: poll.coverageKey ?? null,
-      });
-    },
-    [setRootRoute]
-  );
+        marketKey: poll.marketKey ?? null,
+        marketName: poll.marketName ?? null,
+        pinnedMarket: true,
+      },
+      snap: 'expanded',
+    });
+  }, []);
 
   const handleListPress = React.useCallback(
     (listId: string) => {
@@ -225,15 +235,15 @@ const ProfileScreen: React.FC = () => {
     activeSegment === 'created'
       ? createdPolls
       : activeSegment === 'contributed'
-      ? contributedPolls
-      : [];
+        ? contributedPolls
+        : [];
 
   const isActivePollListLoading =
     activeSegment === 'created'
       ? createdPollsQuery.isLoading
       : activeSegment === 'contributed'
-      ? contributedPollsQuery.isLoading
-      : false;
+        ? contributedPollsQuery.isLoading
+        : false;
 
   const renderPollCard = (poll: Poll) => {
     const totalVotes = poll.options.reduce((sum, option) => sum + option.voteCount, 0);
@@ -248,7 +258,9 @@ const ProfileScreen: React.FC = () => {
           </Text>
         ) : null}
         <Text variant="caption" style={styles.pollMeta}>
-          {poll.coverageName ?? 'Local'} - {poll.options.length} options - {totalVotes} votes
+          {[poll.marketName, `${poll.options.length} options`, `${totalVotes} votes`]
+            .filter((value): value is string => typeof value === 'string' && value.length > 0)
+            .join(' - ')}
         </Text>
       </Pressable>
     );
@@ -434,13 +446,13 @@ const ProfileScreen: React.FC = () => {
 
       <View style={styles.bottomNavWrapper} pointerEvents="box-none">
         <View style={[styles.bottomNav, { paddingBottom: bottomInset + NAV_BOTTOM_PADDING }]}>
+          <Pressable style={styles.navTouchShield} onPress={() => {}} />
           <View style={styles.bottomNavBackground} pointerEvents="none">
             <FrostedGlassBackground />
           </View>
           {(
             [
               { key: 'search' as OverlayKey, label: 'Search' },
-              { key: 'polls' as OverlayKey, label: 'Polls' },
               { key: 'bookmarks' as OverlayKey, label: 'Favorites' },
               { key: 'profile' as const, label: 'Profile' },
             ] as const
@@ -480,9 +492,6 @@ const ProfileScreen: React.FC = () => {
                   />
                 );
               }
-              if (item.key === 'polls') {
-                return <PollIcon color={color} size={24} strokeWidth={active ? 2.5 : 2} />;
-              }
               if (active) {
                 return (
                   <Svg width={24} height={24} viewBox="0 0 24 24" fill={color} stroke="none">
@@ -516,6 +525,7 @@ const ProfileScreen: React.FC = () => {
                 key={item.key}
                 style={styles.navButton}
                 onPress={() => handleNavPress(item.key)}
+                hitSlop={0}
               >
                 <View style={styles.navIcon}>{renderIcon(iconColor, isActive)}</View>
                 <Text
@@ -713,18 +723,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 22,
+    paddingHorizontal: 0,
     paddingTop: 12,
     backgroundColor: 'transparent',
+  },
+  navTouchShield: {
+    ...StyleSheet.absoluteFillObject,
   },
   bottomNavBackground: {
     ...StyleSheet.absoluteFillObject,
   },
   navButton: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 68,
-    paddingHorizontal: 4,
+    minWidth: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
   navIcon: {
     marginBottom: 2,

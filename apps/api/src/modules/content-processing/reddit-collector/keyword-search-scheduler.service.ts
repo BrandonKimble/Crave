@@ -1,11 +1,11 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService, CorrelationUtils } from '../../../shared';
-import { CoverageSourceType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { stripGenericTokens } from '../../../shared/utils/generic-token-handling';
 import { normalizeKeywordTerm } from './keyword-term-normalization';
 import { KeywordSliceSelectionService } from './keyword-slice-selection.service';
+import { MarketRegistryService } from '../../markets/market-registry.service';
 import type {
   KeywordSearchSortPlan,
   KeywordSearchTerm,
@@ -18,7 +18,7 @@ export interface KeywordSearchConfig {
 
 export interface KeywordSearchSchedule {
   subreddit: string;
-  collectionCoverageKey: string;
+  collectableMarketKey: string;
   safeIntervalDays: number;
   scheduledDate: Date;
   terms: KeywordSearchTerm[];
@@ -39,7 +39,7 @@ const HOT_SPIKE_MAX_JOBS_PER_RUN = 10;
 
 export interface HotSpikeKeywordCandidate {
   subreddit: string;
-  collectionCoverageKey: string;
+  collectableMarketKey: string;
   safeIntervalDays: number;
   term: string;
   normalizedTerm: string;
@@ -83,6 +83,7 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     @Inject(ConfigService) private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly sliceSelection: KeywordSliceSelectionService,
+    private readonly marketRegistry: MarketRegistryService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
@@ -108,15 +109,15 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
       return;
     }
 
-    // Initialize schedules for each coverage key (primary subreddit per key)
+    // Initialize schedules for each market key (primary subreddit per key)
     const scheduleTargets = await this.loadActiveScheduleTargets();
     for (const target of scheduleTargets) {
-      await this.initializeCoverageSchedule(target);
+      await this.initializeMarketSchedule(target);
     }
 
     this.logger.info('Keyword search scheduling initialized', {
       nextRuns: this.getAllSchedules().map((schedule) => ({
-        collectionCoverageKey: schedule.collectionCoverageKey,
+        collectableMarketKey: schedule.collectableMarketKey,
         subreddit: schedule.subreddit,
         nextRun: schedule.nextRun,
       })),
@@ -124,20 +125,20 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
   }
 
   /**
-   * Initialize keyword search schedule for a specific collection coverage key
+   * Initialize keyword search schedule for a specific collection market key
    */
-  private async initializeCoverageSchedule(target: {
+  private async initializeMarketSchedule(target: {
     subreddit: string;
-    collectionCoverageKey: string;
+    collectableMarketKey: string;
   }): Promise<void> {
     const correlationId = CorrelationUtils.generateCorrelationId();
     const subreddit = target.subreddit.trim();
 
-    this.logger.info('Initializing keyword search schedule for coverage key', {
+    this.logger.info('Initializing keyword search schedule for market key', {
       correlationId,
       operation: 'initialize_subreddit_schedule',
       subreddit,
-      collectionCoverageKey: target.collectionCoverageKey,
+      collectableMarketKey: target.collectableMarketKey,
     });
 
     // Calculate next run date (first of next month + offset)
@@ -145,7 +146,7 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
 
     const selection = await this.selectTermsForSubreddit({
       subreddit,
-      collectionCoverageKeyHint: target.collectionCoverageKey,
+      collectableMarketKeyHint: target.collectableMarketKey,
     });
     const sortPlan = this.buildSortPlan({
       safeIntervalDays: selection.safeIntervalDays,
@@ -154,7 +155,7 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
 
     const schedule: KeywordSearchSchedule = {
       subreddit,
-      collectionCoverageKey: selection.collectionCoverageKey,
+      collectableMarketKey: selection.collectableMarketKey,
       safeIntervalDays: selection.safeIntervalDays,
       scheduledDate: nextRun,
       terms: selection.terms,
@@ -163,14 +164,14 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
       nextRun,
     };
 
-    this.schedules.set(schedule.collectionCoverageKey, schedule);
+    this.schedules.set(schedule.collectableMarketKey, schedule);
 
     this.logger.info('Keyword search schedule initialized', {
       correlationId,
       subreddit,
       nextRun,
       termCount: selection.terms.length,
-      collectionCoverageKey: selection.collectionCoverageKey,
+      collectableMarketKey: selection.collectableMarketKey,
       sortsPlanned: sortPlan.map((entry) => entry.sort),
       topTerms: selection.terms.slice(0, 5).map((term) => ({
         term: term.term,
@@ -237,9 +238,9 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
       if (schedule.status !== 'scheduled' && now >= schedule.nextRun) {
         const selection = await this.selectTermsForSubreddit({
           subreddit: schedule.subreddit,
-          collectionCoverageKeyHint: schedule.collectionCoverageKey,
+          collectableMarketKeyHint: schedule.collectableMarketKey,
         });
-        schedule.collectionCoverageKey = selection.collectionCoverageKey;
+        schedule.collectableMarketKey = selection.collectableMarketKey;
         schedule.safeIntervalDays = selection.safeIntervalDays;
         schedule.terms = selection.terms;
         schedule.sortPlan = this.buildSortPlan({
@@ -252,16 +253,16 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
           correlationId,
           subreddit: schedule.subreddit,
           scheduledTime: schedule.nextRun,
-          collectionCoverageKey: schedule.collectionCoverageKey,
+          collectableMarketKey: schedule.collectableMarketKey,
           termCount: schedule.terms.length,
           sortsPlanned: schedule.sortPlan.map((entry) => entry.sort),
         });
 
         schedule.status = 'scheduled';
-        if (schedule.collectionCoverageKey !== scheduleKey) {
+        if (schedule.collectableMarketKey !== scheduleKey) {
           this.schedules.delete(scheduleKey);
         }
-        this.schedules.set(schedule.collectionCoverageKey, schedule);
+        this.schedules.set(schedule.collectableMarketKey, schedule);
         dueSchedules.push(schedule);
       }
     }
@@ -280,17 +281,17 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     const since48h = new Date(now.getTime() - HOT_SPIKE_WINDOW_MS * 2);
     const since24h = new Date(now.getTime() - HOT_SPIKE_WINDOW_MS);
 
-    const scheduleByCoverageKey = new Map<string, KeywordSearchSchedule>();
+    const scheduleByMarketKey = new Map<string, KeywordSearchSchedule>();
     for (const schedule of this.schedules.values()) {
       if (schedule.status === 'scheduled') {
         continue;
       }
-      if (!scheduleByCoverageKey.has(schedule.collectionCoverageKey)) {
-        scheduleByCoverageKey.set(schedule.collectionCoverageKey, schedule);
+      if (!scheduleByMarketKey.has(schedule.collectableMarketKey)) {
+        scheduleByMarketKey.set(schedule.collectableMarketKey, schedule);
       }
     }
 
-    if (!scheduleByCoverageKey.size) {
+    if (!scheduleByMarketKey.size) {
       return [];
     }
 
@@ -301,7 +302,7 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
         createdAt: true,
         request: {
           select: {
-            locationKey: true,
+            marketKey: true,
             term: true,
           },
         },
@@ -315,7 +316,7 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     const aggregates = new Map<
       string,
       {
-        collectionCoverageKey: string;
+        collectableMarketKey: string;
         normalizedTerm: string;
         term: string;
         lastSeenAt: Date;
@@ -326,8 +327,8 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
 
     for (const row of rows) {
       const request = row.request;
-      const collectionCoverageKey = request.locationKey.trim().toLowerCase();
-      if (!scheduleByCoverageKey.has(collectionCoverageKey)) {
+      const collectableMarketKey = request.marketKey.trim().toLowerCase();
+      if (!scheduleByMarketKey.has(collectableMarketKey)) {
         continue;
       }
 
@@ -338,11 +339,11 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
         continue;
       }
 
-      const key = `${collectionCoverageKey}::${normalizedTerm}`;
+      const key = `${collectableMarketKey}::${normalizedTerm}`;
       let aggregate = aggregates.get(key);
       if (!aggregate) {
         aggregate = {
-          collectionCoverageKey,
+          collectableMarketKey,
           normalizedTerm,
           term,
           lastSeenAt: row.createdAt,
@@ -351,16 +352,17 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
         };
         aggregates.set(key, aggregate);
       }
+      const current = aggregate;
 
-      if (row.createdAt > aggregate.lastSeenAt) {
-        aggregate.lastSeenAt = row.createdAt;
-        aggregate.term = term;
+      if (row.createdAt > current.lastSeenAt) {
+        current.lastSeenAt = row.createdAt;
+        current.term = term;
       }
 
       if (row.createdAt >= since24h) {
-        aggregate.last24Users.add(row.userId);
+        current.last24Users.add(row.userId);
       } else {
-        aggregate.prev24Users.add(row.userId);
+        current.prev24Users.add(row.userId);
       }
     }
 
@@ -381,16 +383,14 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
         continue;
       }
 
-      const schedule = scheduleByCoverageKey.get(
-        aggregate.collectionCoverageKey,
-      );
+      const schedule = scheduleByMarketKey.get(aggregate.collectableMarketKey);
       if (!schedule) {
         continue;
       }
 
       candidates.push({
         subreddit: schedule.subreddit,
-        collectionCoverageKey: schedule.collectionCoverageKey,
+        collectableMarketKey: schedule.collectableMarketKey,
         safeIntervalDays: schedule.safeIntervalDays,
         term: aggregate.term,
         normalizedTerm: aggregate.normalizedTerm,
@@ -414,12 +414,12 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     const historyRows = await this.prisma.keywordAttemptHistory.findMany({
       where: {
         OR: candidates.map((candidate) => ({
-          collectionCoverageKey: candidate.collectionCoverageKey,
+          collectableMarketKey: candidate.collectableMarketKey,
           normalizedTerm: candidate.normalizedTerm,
         })),
       },
       select: {
-        collectionCoverageKey: true,
+        collectableMarketKey: true,
         normalizedTerm: true,
         lastAttemptAt: true,
       },
@@ -427,7 +427,7 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
 
     const historyMap = new Map<string, Date | null>(
       historyRows.map((row) => [
-        `${row.collectionCoverageKey}::${row.normalizedTerm}`,
+        `${row.collectableMarketKey}::${row.normalizedTerm}`,
         row.lastAttemptAt,
       ]),
     );
@@ -435,7 +435,7 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     const eligible = candidates
       .filter((candidate) => {
         const lastAttemptAt = historyMap.get(
-          `${candidate.collectionCoverageKey}::${candidate.normalizedTerm}`,
+          `${candidate.collectableMarketKey}::${candidate.normalizedTerm}`,
         );
         if (!lastAttemptAt) {
           return true;
@@ -455,10 +455,10 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     const seenCoverageKeys = new Set<string>();
 
     for (const candidate of eligible) {
-      if (seenCoverageKeys.has(candidate.collectionCoverageKey)) {
+      if (seenCoverageKeys.has(candidate.collectableMarketKey)) {
         continue;
       }
-      seenCoverageKeys.add(candidate.collectionCoverageKey);
+      seenCoverageKeys.add(candidate.collectableMarketKey);
       final.push(candidate);
       if (final.length >= HOT_SPIKE_MAX_JOBS_PER_RUN) {
         break;
@@ -471,7 +471,7 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
         count: final.length,
         candidates: final.slice(0, 10).map((candidate) => ({
           subreddit: candidate.subreddit,
-          collectionCoverageKey: candidate.collectionCoverageKey,
+          collectableMarketKey: candidate.collectableMarketKey,
           normalizedTerm: candidate.normalizedTerm,
           distinctUsersLast24h: candidate.distinctUsersLast24h,
           distinctUsersPrev24h: candidate.distinctUsersPrev24h,
@@ -487,18 +487,18 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
    * Mark keyword search as completed and schedule next run
    */
   async markSearchCompleted(
-    collectionCoverageKey: string,
+    collectableMarketKey: string,
     success: boolean,
     termsProcessed?: number,
   ): Promise<void> {
     const correlationId = CorrelationUtils.generateCorrelationId();
-    const scheduleKey = collectionCoverageKey.trim().toLowerCase();
+    const scheduleKey = collectableMarketKey.trim().toLowerCase();
     const schedule = this.schedules.get(scheduleKey);
 
     if (!schedule) {
       this.logger.warn('Attempted to mark completion for unknown schedule', {
         correlationId,
-        collectionCoverageKey: scheduleKey,
+        collectableMarketKey: scheduleKey,
         success,
       });
       return;
@@ -517,9 +517,9 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
 
     const selection = await this.selectTermsForSubreddit({
       subreddit: schedule.subreddit,
-      collectionCoverageKeyHint: schedule.collectionCoverageKey,
+      collectableMarketKeyHint: schedule.collectableMarketKey,
     });
-    schedule.collectionCoverageKey = selection.collectionCoverageKey;
+    schedule.collectableMarketKey = selection.collectableMarketKey;
     schedule.safeIntervalDays = selection.safeIntervalDays;
     schedule.terms = selection.terms;
     schedule.sortPlan = this.buildSortPlan({
@@ -528,10 +528,10 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
       runAt: schedule.nextRun,
     });
 
-    if (schedule.collectionCoverageKey !== scheduleKey) {
+    if (schedule.collectableMarketKey !== scheduleKey) {
       this.schedules.delete(scheduleKey);
     }
-    this.schedules.set(schedule.collectionCoverageKey, schedule);
+    this.schedules.set(schedule.collectableMarketKey, schedule);
 
     this.logger.info('Keyword search marked as completed', {
       correlationId,
@@ -539,14 +539,14 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
       success,
       termsProcessed,
       nextRun: schedule.nextRun,
-      collectionCoverageKey: schedule.collectionCoverageKey,
+      collectableMarketKey: schedule.collectableMarketKey,
       newTermCount: schedule.terms.length,
       sortsPlanned: schedule.sortPlan.map((entry) => entry.sort),
     });
   }
 
-  recordTopRelevanceRun(collectionCoverageKey: string, executedAt: Date): void {
-    const scheduleKey = collectionCoverageKey.trim().toLowerCase();
+  recordTopRelevanceRun(collectableMarketKey: string, executedAt: Date): void {
+    const scheduleKey = collectableMarketKey.trim().toLowerCase();
     const schedule = this.schedules.get(scheduleKey);
     if (!schedule) {
       return;
@@ -568,26 +568,24 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
 
     this.logger.debug('Recorded top/relevance run for schedule', {
       subreddit: schedule.subreddit,
-      collectionCoverageKey: schedule.collectionCoverageKey,
+      collectableMarketKey: schedule.collectableMarketKey,
       executedAt: safeExecutedAt,
       sortsPlanned: schedule.sortPlan.map((entry) => entry.sort),
     });
   }
 
   /**
-   * Get current schedules for all coverage keys
+   * Get current schedules for all market keys
    */
   getAllSchedules(): KeywordSearchSchedule[] {
     return Array.from(this.schedules.values());
   }
 
   /**
-   * Get schedule for specific coverage key
+   * Get schedule for specific market key
    */
-  getSchedule(
-    collectionCoverageKey: string,
-  ): KeywordSearchSchedule | undefined {
-    return this.schedules.get(collectionCoverageKey.trim().toLowerCase());
+  getSchedule(collectableMarketKey: string): KeywordSearchSchedule | undefined {
+    return this.schedules.get(collectableMarketKey.trim().toLowerCase());
   }
 
   isEnabled(): boolean {
@@ -600,16 +598,16 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
 
   private async selectTermsForSubreddit(params: {
     subreddit: string;
-    collectionCoverageKeyHint?: string | null;
+    collectableMarketKeyHint?: string | null;
   }): Promise<{
-    collectionCoverageKey: string;
+    collectableMarketKey: string;
     safeIntervalDays: number;
     terms: KeywordSearchTerm[];
   }> {
     const correlationId = CorrelationUtils.generateCorrelationId();
     const subreddit = params.subreddit.trim();
-    const fallbackCoverageKey = params.collectionCoverageKeyHint
-      ? params.collectionCoverageKeyHint.trim().toLowerCase()
+    const fallbackCoverageKey = params.collectableMarketKeyHint
+      ? params.collectableMarketKeyHint.trim().toLowerCase()
       : subreddit.trim().toLowerCase();
 
     try {
@@ -617,7 +615,7 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
         await this.sliceSelection.selectTermsForSubreddit(subreddit);
 
       return {
-        collectionCoverageKey: selection.collectionCoverageKey,
+        collectableMarketKey: selection.collectableMarketKey,
         safeIntervalDays: selection.safeIntervalDays,
         terms: selection.terms,
       };
@@ -625,7 +623,7 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
       this.logger.error('Failed to select keyword terms for schedule', {
         correlationId,
         subreddit,
-        collectionCoverageKey: fallbackCoverageKey,
+        collectableMarketKey: fallbackCoverageKey,
         error:
           error instanceof Error
             ? { message: error.message, name: error.name, stack: error.stack }
@@ -633,7 +631,7 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
       });
 
       return {
-        collectionCoverageKey: fallbackCoverageKey,
+        collectableMarketKey: fallbackCoverageKey,
         safeIntervalDays: 7,
         terms: [],
       };
@@ -670,39 +668,25 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
   }
 
   private async loadActiveScheduleTargets(): Promise<
-    Array<{ subreddit: string; collectionCoverageKey: string }>
+    Array<{ subreddit: string; collectableMarketKey: string }>
   > {
-    const records = await this.prisma.coverageArea.findMany({
-      where: { isActive: true, sourceType: CoverageSourceType.all },
-      select: { name: true, coverageKey: true },
-      orderBy: { name: 'asc' },
+    const targets = await this.marketRegistry.listCommunityMarketTargets({
+      onlyCollectable: true,
     });
 
-    const schedulesByCoverageKey = new Map<
-      string,
-      { subreddit: string; collectionCoverageKey: string }
-    >();
-
-    for (const record of records) {
-      const collectionCoverageKey = this.buildCollectionCoverageKey(record);
-      if (!schedulesByCoverageKey.has(collectionCoverageKey)) {
-        schedulesByCoverageKey.set(collectionCoverageKey, {
-          subreddit: record.name,
-          collectionCoverageKey,
-        });
-      }
-    }
-
-    return Array.from(schedulesByCoverageKey.values());
+    return targets.map((target) => ({
+      subreddit: target.community,
+      collectableMarketKey: target.marketKey,
+    }));
   }
 
-  private buildCollectionCoverageKey(record: {
+  private buildCollectionMarketKey(record: {
     name: string;
-    coverageKey: string | null;
+    marketKey: string | null;
   }): string {
     const rawKey =
-      typeof record.coverageKey === 'string' && record.coverageKey.trim()
-        ? record.coverageKey
+      typeof record.marketKey === 'string' && record.marketKey.trim()
+        ? record.marketKey
         : record.name;
     return rawKey.trim().toLowerCase();
   }

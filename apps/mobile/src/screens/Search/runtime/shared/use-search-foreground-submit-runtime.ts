@@ -1,46 +1,11 @@
 import type {
+  SearchForegroundSubmitRuntimeArgs,
   SearchForegroundInteractionSubmitHandlers,
-  UseSearchForegroundInteractionRuntimeArgs,
 } from './use-search-foreground-interaction-runtime-contract';
 import { useSearchForegroundPrimarySubmitRuntime } from './use-search-foreground-primary-submit-runtime';
 import { useSearchForegroundRecentSubmitRuntime } from './use-search-foreground-recent-submit-runtime';
 import { useSearchForegroundSubmitPreparationRuntime } from './use-search-foreground-submit-preparation-runtime';
 import { useSearchForegroundSuggestionSubmitRuntime } from './use-search-foreground-suggestion-submit-runtime';
-
-type UseSearchForegroundSubmitRuntimeArgs = Pick<
-  UseSearchForegroundInteractionRuntimeArgs,
-  | 'submitRuntime'
-  | 'query'
-  | 'submittedQuery'
-  | 'searchMode'
-  | 'activeTab'
-  | 'hasResults'
-  | 'isSearchLoading'
-  | 'isLoadingMore'
-  | 'isSearchSessionActive'
-  | 'isSuggestionPanelActive'
-  | 'shouldShowDockedPolls'
-  | 'captureSearchSessionOrigin'
-  | 'ensureSearchOverlay'
-  | 'suppressAutocompleteResults'
-  | 'cancelAutocomplete'
-  | 'dismissSearchKeyboard'
-  | 'beginSubmitTransition'
-  | 'resetFocusedMapState'
-  | 'resetMapMoveFlag'
-  | 'setIsSearchFocused'
-  | 'setIsSuggestionPanelActive'
-  | 'setShowSuggestions'
-  | 'setSuggestions'
-  | 'setQuery'
-  | 'setRestaurantOnlyIntent'
-  | 'pendingRestaurantSelectionRef'
-  | 'isSearchEditingRef'
-  | 'allowSearchBlurExitRef'
-  | 'ignoreNextSearchBlurRef'
-  | 'deferRecentSearchUpsert'
-  | 'openRestaurantProfilePreview'
->;
 
 export const useSearchForegroundSubmitRuntime = ({
   submitRuntime,
@@ -74,7 +39,7 @@ export const useSearchForegroundSubmitRuntime = ({
   ignoreNextSearchBlurRef,
   deferRecentSearchUpsert,
   openRestaurantProfilePreview,
-}: UseSearchForegroundSubmitRuntimeArgs): SearchForegroundInteractionSubmitHandlers => {
+}: SearchForegroundSubmitRuntimeArgs): SearchForegroundInteractionSubmitHandlers => {
   const preparationRuntime = useSearchForegroundSubmitPreparationRuntime({
     captureSearchSessionOrigin,
     ensureSearchOverlay,

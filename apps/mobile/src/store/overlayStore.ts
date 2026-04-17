@@ -1,12 +1,19 @@
 import { create } from 'zustand';
 
 import type { OverlayKey } from '../overlays/types';
+import type { MapBounds } from '../types';
 export type { OverlayKey } from '../overlays/types';
 
 export type OverlayRouteParamsMap = {
   search?: undefined;
+  searchRoute?: undefined;
   bookmarks?: undefined;
-  polls?: { coverageKey?: string | null; pollId?: string | null };
+  polls?: {
+    marketKey?: string | null;
+    marketName?: string | null;
+    pollId?: string | null;
+    pinnedMarket?: boolean | null;
+  };
   profile?: undefined;
   restaurant?: {
     restaurantId: string | null;
@@ -16,7 +23,11 @@ export type OverlayRouteParamsMap = {
   saveList?: undefined;
   price?: undefined;
   scoreInfo?: undefined;
-  pollCreation?: { coverageKey: string | null; coverageName?: string | null };
+  pollCreation?: {
+    marketKey?: string | null;
+    marketName?: string | null;
+    bounds?: MapBounds | null;
+  };
 };
 
 export type OverlayRouteEntry<K extends OverlayKey = OverlayKey> = {
@@ -30,14 +41,14 @@ interface OverlayState {
   activeOverlayRoute: OverlayRouteEntry;
   previousOverlayRoute: OverlayRouteEntry | null;
   overlayRouteStack: OverlayRouteEntry[];
-  overlayScrollOffsets: Partial<Record<OverlayKey, number>>;
+  overlayScrollOffsets: Record<string, number>;
   transientDismissors: DismissHandler[];
   setOverlay: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
   setOverlayParams: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
   pushOverlay: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
   popOverlay: () => void;
   popToRootOverlay: () => void;
-  setOverlayScrollOffset: (overlay: OverlayKey, offset: number) => void;
+  setOverlayScrollOffset: (overlayIdentity: string, offset: number) => void;
   registerTransientDismissor: (handler: DismissHandler) => () => void;
   dismissTransientOverlays: () => void;
 }
@@ -97,7 +108,7 @@ export const useOverlayStore = create<OverlayState>((set, get) => ({
         overlayRouteStack[overlayRouteStack.length - 1] ?? state.activeOverlayRoute;
       const previousOverlayRoute =
         overlayRouteStack.length > 1
-          ? overlayRouteStack[overlayRouteStack.length - 2] ?? state.previousOverlayRoute
+          ? (overlayRouteStack[overlayRouteStack.length - 2] ?? state.previousOverlayRoute)
           : state.previousOverlayRoute;
       return {
         ...projectOverlayRouteState(activeOverlayRoute, previousOverlayRoute, overlayRouteStack),
@@ -130,7 +141,7 @@ export const useOverlayStore = create<OverlayState>((set, get) => ({
       const activeOverlayRoute = overlayRouteStack[overlayRouteStack.length - 1] ?? SEARCH_ROUTE;
       const previousOverlayRoute =
         overlayRouteStack.length > 1
-          ? overlayRouteStack[overlayRouteStack.length - 2] ?? null
+          ? (overlayRouteStack[overlayRouteStack.length - 2] ?? null)
           : null;
       return {
         ...projectOverlayRouteState(activeOverlayRoute, previousOverlayRoute, overlayRouteStack),
@@ -151,17 +162,17 @@ export const useOverlayStore = create<OverlayState>((set, get) => ({
         ]),
       };
     }),
-  setOverlayScrollOffset: (overlay, offset) =>
+  setOverlayScrollOffset: (overlayIdentity, offset) =>
     set((state) => {
       const next = Math.max(0, offset);
-      const existing = state.overlayScrollOffsets[overlay];
+      const existing = state.overlayScrollOffsets[overlayIdentity];
       if (existing != null && Math.abs(existing - next) < 1) {
         return state;
       }
       return {
         overlayScrollOffsets: {
           ...state.overlayScrollOffsets,
-          [overlay]: next,
+          [overlayIdentity]: next,
         },
       };
     }),

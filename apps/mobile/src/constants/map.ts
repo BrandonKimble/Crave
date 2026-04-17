@@ -1,5 +1,6 @@
 const DEFAULT_STYLE_URL = 'mapbox://styles/brandonkimble/cmhjzgs6i00cl01s69ff1fsmf';
 const DEFAULT_MAP_CENTER: [number, number] = [-97.7431, 30.2672];
+const STYLE_CACHE_BUSTER = Date.now();
 
 const buildMapStyleURL = (accessToken: string): string => {
   const styleEnv =
@@ -16,7 +17,7 @@ const buildMapStyleURL = (accessToken: string): string => {
         params.push(`access_token=${encodeURIComponent(accessToken)}`);
       }
       params.push('fresh=true');
-      params.push(`cachebuster=${Date.now()}`);
+      params.push(`cachebuster=${STYLE_CACHE_BUSTER}`);
       const joiner = styleEnv.includes('?') ? '&' : '?';
       return `${styleEnv}${joiner}${params.join('&')}`;
     }
@@ -25,7 +26,7 @@ const buildMapStyleURL = (accessToken: string): string => {
   }
 
   const stylePath = styleEnv.replace('mapbox://styles/', '');
-  const params = ['fresh=true', `cachebuster=${Date.now()}`];
+  const params = ['fresh=true', `cachebuster=${STYLE_CACHE_BUSTER}`];
   if (accessToken) {
     params.push(`access_token=${encodeURIComponent(accessToken)}`);
   }

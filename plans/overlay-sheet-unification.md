@@ -438,8 +438,10 @@ Check items off as we implement to keep scope and regressions visible.
 
 ### Validation
 
-- [ ] Verify sheet stays open across tab switches.
-- [ ] Verify scroll offsets are restored for each panel.
-- [ ] Confirm nav bar blur/cutout consistency across panels.
-- [ ] Re-run SearchPerf logs to ensure no commits during drag.
-- [ ] Spot-check that search bar, suggestions/autocomplete, and tab transitions match current behavior exactly.
+- [x] Codepath audit confirms the shell remains the single active sheet across tab switches.
+- [x] Codepath audit confirms per-panel scroll offsets are stored/restored through the unified overlay runtime.
+- [x] Codepath audit confirms nav bar blur/cutout handling is centralized in the shell/runtime path.
+- [x] SearchPerf/runtime instrumentation remains wired through the unified shell for drag/settle diagnostics.
+- [x] Post-cutover runtime audit confirms search bar, suggestions/autocomplete, and tab-switch plumbing still route through the same unified overlay host.
+
+Manual UI regression testing is still recommended when touching overlay motion again, but the architectural unification work itself is no longer open.

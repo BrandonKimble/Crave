@@ -384,19 +384,16 @@ Represent each restaurant->food connection as one composed dish. Do not emit sep
 Run this procedure for each composed dish after Step 3 cleansing:
 
 1. Anchor the head dish noun phrase.
-
    - Identify the noun chunk the diner would speak when ordering.
    - If the phrase ends with a generic classifier (wrap, taco, sandwich, roll, burger, pasta, soup, salad, pizza, bowl, plate, toast, skewer, snack, grain bowl, noodle, dumpling, bao, bun, slider, fry, sando, lavash, arepa, etc.), keep it attached to the specific head words for now; it can be trimmed later when building categories.
    - When the specifier trails the head (e.g., "pho tai", "ramen abura soba"), keep the head noun inside the phrase—never drop it in pursuit of a shorter form.
 
 2. Attach only identity-defining specifiers.
-
    - Retain proteins, broths, or preparation words that change the dish identity ("duck carnitas taco", "tonkotsu ramen").
    - Do not reattach modifiers already exported to `food_attributes` in Step 3.
    - For additive clauses introduced by "with/and", keep the core dish as `food` and push the list items into `food_categories`.
 
 3. Sanity-check the phrase.
-
    - Ask: "Would this exact wording appear on a menu?" If not, peel a modifier until it does while keeping the head noun intact.
    - Confirm the remaining phrase is still an orderable dish rather than a single ingredient. If you end up with a lone ingredient, move that noun to `food_categories` and keep the broader dish for `food`.
 
@@ -415,24 +412,20 @@ Self-check examples:
 Produce a cascading, high-signal list of categories after locking the `food` phrase:
 
 1. Seed with the most specific dish noun.
-
    - Start with the `food` phrase unless it still includes attribute words; otherwise use the first attribute-free variant (e.g., "tuna roll" instead of "spicy tuna roll").
    - If no shorter variant exists, keep the single item as the seed.
 
 2. Derive progressive fallbacks.
-
    - Iteratively remove leading modifiers that remain after Step 3, asking "Does the remainder still name a recognizable dish?" Only keep versions that pass.
    - After each iteration, consider trimming a trailing classifier (wrap, taco, sandwich, roll, burger, pasta, soup, salad, pizza, bowl, plate, toast, skewer, snack, grain bowl, noodle, dumpling, bao, bun, slider, fry, sando, lavash, arepa, etc.) when the preceding chunk is dish-like. Treat the list as guidance—if a new tail word functions as a serving format, handle it the same way.
    - Preserve head-first constructions: "pho tai" → `["pho tai", "pho"]`, not `["tai"]`.
    - Stop before the remainder is a lone ingredient; ingredient nouns belong in the component step below.
 
 3. Add parent categories (menu-section parents).
-
    - Use the parent-category rules in 4.4 to add section-level parents (dessert, pastry, coffee, tea, sandwich, soup, etc.) that the dish implies.
    - Add these even when not explicitly stated, but only when the dish clearly belongs to that section.
 
 4. Append component nouns.
-
    - Add distinct edible components revealed during the peeling process ("tuna" from "tuna roll", "pork belly" from "pork belly bao bun", "bao" in addition to "bao bun").
    - Exclude adjectives, cuisines, meal periods, and service styles.
 
@@ -536,7 +529,6 @@ Outputs
 ### 5.2 Decision Framework (apply in order)
 
 1. Confirm link to canonical restaurant (from Step 2)
-
    - If this composed dish has no confirmed link for this source, skip (do not emit placeholders).
 
 2. Confirm composed dish terms (from Step 4)
@@ -545,7 +537,6 @@ Outputs
 - When Step 4 has no composed dish because the reply only names the restaurant, inherit the ask's target category as `food` and set `food_categories` to a minimal list (e.g., `["burger"]`). Keep `is_menu_item: false` in this scenario.
 
 3. Assess itemhood evidence (aggregate; do not rely on a single cue)
-
    - Local tie: Dish and restaurant are linked in the same clause/sentence or an immediately adjacent reference (e.g., "at [restaurant]", "from here", "their/this/that [dish]", clear ordering verbs like "got/ordered/had/tried"). A clear combination suffices; not all signals are required.
    - Specificity: The dish is specific enough that a typical diner could order it without additional specification (e.g., "duck carnitas tacos", "sesame noodles"), not just a broad type ("sushi", "pizza", "shawarma") unless the context makes it specific.
    - Coherence: If earlier text in the same input has already established a dish->restaurant pairing, concise follow-ups (e.g., "the tacos are insane", "this was incredible") may inherit itemhood when unambiguous.
@@ -637,10 +628,10 @@ For every mention, populate fields as follows:
 - Core flags
   - `general_praise`: boolean as defined above.
 - Source attribution
-  - `source_id`: the Reddit ID of the exact source text for this mention.
-    - For post-derived mentions (only when `extract_from_post: true`): use the post's `id`.
-    - For comment-derived mentions: use that comment's `id` (even when sentiment/entities are inherited from the parent).
-  - Do not include `source_type`, `source_url`, `source_created_at`, or upvote fields - these are injected server-side.
+  - `source_id`: copy the exact `id` value from the input payload for this mention.
+    - For post-derived mentions (only when `extract_from_post: true`): use that post's full canonical ID in fullname format (for example `t3_abc123`).
+    - For comment-derived mentions: use that comment's full canonical ID in fullname format (for example `t1_def456`), even when sentiment/entities are inherited from the parent.
+    - Preserve the `t3_` / `t1_` prefix exactly; do not shorten, strip, or reformat the ID.
 
 Additional rules:
 
@@ -668,7 +659,7 @@ Source text: "Nixta's duck carnitas tacos are incredibly rich, Suerte's version 
 "food_attributes": ["rich"],
 "restaurant_attributes": null,
 "general_praise": false,
-"source_id": "t1_comment"
+"source_id": "t1_def456"
 },
 {
 "restaurant": "suerte",
@@ -678,7 +669,7 @@ Source text: "Nixta's duck carnitas tacos are incredibly rich, Suerte's version 
 "food_attributes": ["smoky"],
 "restaurant_attributes": null,
 "general_praise": false,
-"source_id": "t1_comment"
+"source_id": "t1_def456"
 },
 {
 "restaurant": "nixta",
@@ -688,7 +679,7 @@ Source text: "Nixta's duck carnitas tacos are incredibly rich, Suerte's version 
 "food_attributes": null,
 "restaurant_attributes": ["patio"],
 "general_praise": true,
-"source_id": "t1_comment"
+"source_id": "t1_def456"
 }
 ]
 }

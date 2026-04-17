@@ -66,6 +66,7 @@ private final class PresentationOpacityAnimator {
 
 @objc(SearchMapRenderController)
 final class SearchMapRenderController: RCTEventEmitter {
+  private let overlayZAnchorSourceId = "search-overlay-z-anchor-source"
   private let eventName = "searchMapRenderControllerEvent"
   private let enableVisualDiagnostics = true
   private let dismissSettleDelayMs = 300
@@ -2019,6 +2020,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     state: inout InstanceState
   ) throws -> [ParsedCollectionApplyPlan] {
     let pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
+    let labelFamilyState = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
     let orderedMarkerStates = Self.orderedMarkerRenderStates(pinFamilyState.markerRenderStateByMarkerKey)
     let settledVisibleLabelFeatureIds =
       Self.derivedFamilyState(sourceId: state.labelSourceId, state: state).settledVisibleFeatureIds
@@ -5309,6 +5311,10 @@ final class SearchMapRenderController: RCTEventEmitter {
     ]
   }
 
+  private func requiredSourceIds(for state: InstanceState) -> [String] {
+    managedSourceIds(for: state) + [overlayZAnchorSourceId]
+  }
+
   private func ensureSourcesReady(
     for mapTag: NSNumber,
     instanceId: String?,
@@ -5502,7 +5508,7 @@ final class SearchMapRenderController: RCTEventEmitter {
           for: state.mapTag,
           instanceId: instanceId,
           state: &state,
-          sourceIds: self.managedSourceIds(for: state),
+          sourceIds: self.requiredSourceIds(for: state),
           reason: "source_recovery_wait"
         ) else {
           if attempt < 120 {

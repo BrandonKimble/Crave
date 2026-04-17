@@ -6,8 +6,10 @@ import type { AutocompleteMatch } from '../../../services/autocomplete';
 import type { Poll, PollTopicType } from '../../../services/polls';
 import { useCityStore } from '../../../store/cityStore';
 import { useSystemStatusStore } from '../../../store/systemStatusStore';
-import { LINE_HEIGHTS } from '../../../constants/typography';
-import { NAV_BOTTOM_PADDING, NAV_TOP_PADDING } from '../../../screens/Search/constants/search';
+import {
+  resolveSearchBottomInset,
+  resolveSearchBottomNavHeight,
+} from '../../../screens/Search/runtime/shared/search-startup-geometry';
 import type { SnapPoints } from '../../bottomSheetMotionTypes';
 import { OVERLAY_TAB_HEADER_HEIGHT } from '../../overlaySheetStyles';
 import { calculateSnapPoints } from '../../sheetUtils';
@@ -20,14 +22,12 @@ import { usePollsRuntimeController } from './polls-runtime-controller';
 import { buildPollsHeaderVisualModel } from '../pollsHeaderVisuals';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
-const NAV_ICON_SIZE = 24;
-const NAV_ICON_LABEL_GAP = 2;
-
 type UsePollsPanelStateRuntimeArgs = Pick<
   UsePollsPanelSpecOptions,
   | 'visible'
   | 'bounds'
   | 'bootstrapSnapshot'
+  | 'userLocation'
   | 'params'
   | 'mode'
   | 'currentSnap'
@@ -42,8 +42,11 @@ type UsePollsPanelStateRuntimeArgs = Pick<
 type PollsPanelStateRuntime = {
   polls: Poll[];
   visiblePolls: Poll[];
-  coverageKey: string | null;
-  coverageName: string | null;
+  marketKey: string | null;
+  marketName: string | null;
+  marketStatus: 'resolved' | 'no_market' | 'error' | null;
+  candidatePlaceName: string | null;
+  createPollPrompt: string | null;
   isPollFeedRefreshing: boolean;
   pollFeedFreshnessError: boolean;
   selectedPollId: string | null;
@@ -67,7 +70,7 @@ type PollsPanelStateRuntime = {
   activePoll: Poll | undefined;
   activePollType: PollTopicType;
   totalVotes: number;
-  coverageOverride: string | null;
+  marketOverride: string | null;
   needsRestaurantInput: boolean;
   needsDishInput: boolean;
   headerVisualModel: ReturnType<typeof buildPollsHeaderVisualModel>;
@@ -88,6 +91,7 @@ export const usePollsPanelStateRuntime = ({
   visible,
   bounds,
   bootstrapSnapshot,
+  userLocation,
   params,
   mode = 'docked',
   currentSnap,
@@ -104,21 +108,31 @@ export const usePollsPanelStateRuntime = ({
   const serviceIssue = useSystemStatusStore((state) => state.serviceIssue);
   const isSystemUnavailable = isOffline || Boolean(serviceIssue);
   const headerHeight = OVERLAY_TAB_HEADER_HEIGHT;
-  const estimatedNavBarHeight =
-    NAV_TOP_PADDING +
-    NAV_BOTTOM_PADDING +
-    NAV_ICON_SIZE +
-    NAV_ICON_LABEL_GAP +
-    LINE_HEIGHTS.body +
-    insets.bottom;
+  const estimatedNavBarHeight = resolveSearchBottomNavHeight(
+    resolveSearchBottomInset(insets.bottom)
+  );
   const navBarInset = Math.max(navBarHeight > 0 ? navBarHeight : estimatedNavBarHeight, 0);
   const navBarOffset = Math.max(navBarTop > 0 ? navBarTop : SCREEN_HEIGHT - navBarInset, 0);
   const [polls, setPolls] = React.useState<Poll[]>(() => bootstrapSnapshot?.polls ?? []);
-  const [coverageKey, setCoverageKey] = React.useState<string | null>(
-    () => bootstrapSnapshot?.coverageKey ?? null
+  const [marketKey, setMarketKey] = React.useState<string | null>(
+    () => bootstrapSnapshot?.marketKey ?? null
   );
-  const [coverageName, setCoverageName] = React.useState<string | null>(
-    () => bootstrapSnapshot?.coverageName ?? null
+  const [marketName, setMarketName] = React.useState<string | null>(
+    () => bootstrapSnapshot?.marketName ?? null
+  );
+  const [marketStatus, setMarketStatus] = React.useState<'resolved' | 'no_market' | 'error' | null>(
+    () =>
+      bootstrapSnapshot?.marketStatus === 'resolved' ||
+      bootstrapSnapshot?.marketStatus === 'no_market' ||
+      bootstrapSnapshot?.marketStatus === 'error'
+        ? bootstrapSnapshot.marketStatus
+        : null
+  );
+  const [candidatePlaceName, setCandidatePlaceName] = React.useState<string | null>(
+    () => bootstrapSnapshot?.candidatePlaceName ?? null
+  );
+  const [createPollPrompt, setCreatePollPrompt] = React.useState<string | null>(
+    () => bootstrapSnapshot?.cta?.prompt ?? bootstrapSnapshot?.cta?.label ?? null
   );
   const [isPollFeedRefreshing, setIsPollFeedRefreshing] = React.useState<boolean>(() =>
     bootstrapSnapshot ? bootstrapSnapshot.source !== 'network' : false
@@ -158,33 +172,40 @@ export const usePollsPanelStateRuntime = ({
   const activePoll = visiblePolls.find((poll) => poll.pollId === selectedPollId);
   const activePollType = (activePoll?.topic?.topicType ?? 'best_dish') as PollTopicType;
   const totalVotes = activePoll?.options.reduce((sum, option) => sum + option.voteCount, 0) ?? 0;
-  const coverageOverride = mode === 'overlay' ? params?.coverageKey?.trim() || null : null;
+  const isPinnedMarket = params?.pinnedMarket === true || Boolean(params?.pollId);
+  const marketOverride = isPinnedMarket ? params?.marketKey?.trim() || null : null;
   const needsRestaurantInput =
     activePollType === 'best_dish' ||
     activePollType === 'best_restaurant_attribute' ||
     activePollType === 'best_dish_attribute';
   const needsDishInput =
     activePollType === 'what_to_order' || activePollType === 'best_dish_attribute';
-  const hasCoverageKey = Boolean(coverageOverride ?? coverageKey);
-  const showResolvingLocation = loading && !coverageName && !hasCoverageKey;
+  const hasMarketKey = Boolean(marketOverride ?? marketKey);
+  const showResolvingLocation = loading && !marketName && !hasMarketKey;
   const headerVisualModel = buildPollsHeaderVisualModel({
-    coverageName,
-    coverageKey: coverageOverride ?? coverageKey,
+    marketName,
+    marketKey: marketOverride ?? marketKey,
+    marketStatus,
+    candidatePlaceName,
     pollCount: polls.length,
     isUpdating: shouldHoldFreshLiveContent,
-    isResolvingLocation: showResolvingLocation,
+    isResolvingMarket: showResolvingLocation,
   });
 
   const { castVote, submitPollOption } = usePollsRuntimeController({
     visible,
     bounds,
     bootstrapSnapshot,
-    coverageOverride,
+    userLocation,
+    marketOverride,
     pollFeedRequiresFreshNetwork,
     setSelectedPollId,
     setPolls,
-    setCoverageKey,
-    setCoverageName,
+    setMarketKey,
+    setMarketName,
+    setMarketStatus,
+    setCandidatePlaceName,
+    setCreatePollPrompt,
     setLoading,
     setPollFeedRefreshing: setIsPollFeedRefreshing,
     setPollFeedRequiresFreshNetwork,
@@ -206,8 +227,17 @@ export const usePollsPanelStateRuntime = ({
     }
     appliedBootstrapSnapshotAtRef.current = bootstrapSnapshot.resolvedAtMs;
     setPolls(bootstrapSnapshot.polls);
-    setCoverageKey(bootstrapSnapshot.coverageKey);
-    setCoverageName(bootstrapSnapshot.coverageName);
+    setMarketKey(bootstrapSnapshot.marketKey);
+    setMarketName(bootstrapSnapshot.marketName);
+    setMarketStatus(
+      bootstrapSnapshot.marketStatus === 'resolved' ||
+        bootstrapSnapshot.marketStatus === 'no_market' ||
+        bootstrapSnapshot.marketStatus === 'error'
+        ? bootstrapSnapshot.marketStatus
+        : null
+    );
+    setCandidatePlaceName(bootstrapSnapshot.candidatePlaceName ?? null);
+    setCreatePollPrompt(bootstrapSnapshot.cta?.prompt ?? bootstrapSnapshot.cta?.label ?? null);
     setIsPollFeedRefreshing(bootstrapSnapshot.source !== 'network');
     setPollFeedRequiresFreshNetwork(bootstrapSnapshot.source !== 'network');
     setPollFeedFreshnessError(false);
@@ -253,8 +283,11 @@ export const usePollsPanelStateRuntime = ({
   return {
     polls,
     visiblePolls,
-    coverageKey,
-    coverageName,
+    marketKey,
+    marketName,
+    marketStatus,
+    candidatePlaceName,
+    createPollPrompt,
     isPollFeedRefreshing,
     pollFeedFreshnessError,
     selectedPollId,
@@ -278,7 +311,7 @@ export const usePollsPanelStateRuntime = ({
     activePoll,
     activePollType,
     totalVotes,
-    coverageOverride,
+    marketOverride,
     needsRestaurantInput,
     needsDishInput,
     headerVisualModel,

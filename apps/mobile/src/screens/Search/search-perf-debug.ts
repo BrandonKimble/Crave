@@ -1,6 +1,5 @@
 type SearchPerfDebugFlags = {
   enabled: boolean;
-  scoreMode: 'global_quality' | 'coverage_display';
   disableBlur: boolean;
   disableMarkerViews: boolean;
   disableTopFoodMeasurement: boolean;
@@ -39,8 +38,6 @@ const isDevEnvironment = __DEV__;
 const DEV_FLAGS = {
   // Master toggle for perf logging (commit info, js stalls, map events, etc.)
   perfLogsEnabled: false,
-  // Select which score model to use end-to-end (API ordering + UI display + map colors).
-  scoreMode: 'global_quality' as const,
   // Overlay state logging
   overlayLogsEnabled: false,
   // Log full search response payloads
@@ -86,7 +83,6 @@ const thresholds = isDevEnvironment ? DEV_THRESHOLDS : PROD_THRESHOLDS;
 
 const searchPerfDebug: SearchPerfDebugFlags = {
   enabled: isDevEnvironment && DEV_FLAGS.perfLogsEnabled,
-  scoreMode: isDevEnvironment ? DEV_FLAGS.scoreMode : 'global_quality',
   disableBlur: false,
   disableMarkerViews: isDevEnvironment && DEV_FLAGS.disableMarkerViews,
   disableTopFoodMeasurement: isDevEnvironment && DEV_FLAGS.disableTopFoodMeasurement,

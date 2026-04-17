@@ -1,10 +1,10 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Connection, Entity, CategoryAggregate, Prisma } from '@prisma/client';
+import { Connection, Entity, Prisma } from '@prisma/client';
 import { LoggerService } from '../../../shared';
 import { ConnectionRepository } from '../../../repositories/connection.repository';
 import { EntityRepository } from '../../../repositories/entity.repository';
-import { CategoryAggregateRepository } from '../../../repositories/category-aggregate.repository';
+import { PrismaService } from '../../../prisma/prisma.service';
 import {
   QualityScoreService as IQualityScoreService,
   ConnectionStrengthMetrics,
@@ -39,7 +39,7 @@ export class QualityScoreService implements IQualityScoreService {
   constructor(
     private readonly connectionRepository: ConnectionRepository,
     private readonly entityRepository: EntityRepository,
-    private readonly categoryAggregateRepository: CategoryAggregateRepository,
+    private readonly prismaService: PrismaService,
     private readonly configService: ConfigService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
@@ -307,19 +307,16 @@ export class QualityScoreService implements IQualityScoreService {
     try {
       const startTime = Date.now();
 
-      // Find all connections and aggregated signals for this category
-      const [categoryConnections, categoryAggregate] = await Promise.all([
+      // Find all direct item connections and derived category support for this category
+      const [categoryConnections, categorySignal] = await Promise.all([
         this.connectionRepository.findConnectionsInCategory(
           restaurantId,
           category,
         ),
-        this.categoryAggregateRepository.findByRestaurantAndCategory(
-          restaurantId,
-          category,
-        ),
+        this.loadCategorySignalMetrics(restaurantId, category),
       ]);
 
-      if (categoryConnections.length === 0 && !categoryAggregate) {
+      if (categoryConnections.length === 0 && !categorySignal) {
         this.logger.debug('No category data available', {
           restaurantId,
           category,
@@ -327,14 +324,13 @@ export class QualityScoreService implements IQualityScoreService {
         return 0;
       }
 
-      const restaurantScoreForSignal = categoryAggregate
+      const restaurantScoreForSignal = categorySignal
         ? await this.calculateRestaurantQualityScore(restaurantId)
         : undefined;
 
-      // Calculate performance data including signal fallback
       const performanceData = this.calculateCategoryPerformanceData(
         categoryConnections,
-        categoryAggregate ?? undefined,
+        categorySignal ?? undefined,
         restaurantScoreForSignal,
       );
       const finalScore = performanceData.weightedAverage;
@@ -344,7 +340,7 @@ export class QualityScoreService implements IQualityScoreService {
         category,
         finalScore,
         totalConnections: categoryConnections.length,
-        hasSignal: Boolean(categoryAggregate),
+        hasSignal: Boolean(categorySignal),
         processingTimeMs: Date.now() - startTime,
       });
 
@@ -546,23 +542,38 @@ export class QualityScoreService implements IQualityScoreService {
   ): ConnectionStrengthMetrics {
     const { mentionScore, upvoteScore, lastUpdatedAt, elapsedMs } =
       this.getCurrentDecayedMetrics(connection);
+    const supportMentionScore = this.toNumberOrNull(
+      connection.supportDecayedMentionScore,
+    );
+    const supportUpvoteScore = this.toNumberOrNull(
+      connection.supportDecayedUpvoteScore,
+    );
+    const totalMentionScore =
+      mentionScore + Math.max(0, supportMentionScore ?? 0);
+    const totalUpvoteScore = upvoteScore + Math.max(0, supportUpvoteScore ?? 0);
+    const totalMentionCount =
+      connection.mentionCount + connection.supportMentionCount;
+    const totalUpvotes =
+      connection.totalUpvotes + connection.supportTotalUpvotes;
+    const totalRecentMentions =
+      connection.recentMentionCount + connection.supportRecentMentionCount;
 
     const averageMentionAge =
       elapsedMs > 0
         ? elapsedMs / MS_PER_DAY
         : this.config.timeDecay.mentionCountDecayDays;
 
-    const totalMentions = Math.max(1, connection.mentionCount);
+    const totalMentions = Math.max(1, totalMentionCount);
     const recentMentionRatio = Math.min(
       1,
-      Math.max(0, connection.recentMentionCount / totalMentions),
+      Math.max(0, totalRecentMentions / totalMentions),
     );
 
     return {
-      decayedMentionScore: mentionScore,
-      decayedUpvoteScore: upvoteScore,
-      mentionCount: connection.mentionCount,
-      totalUpvotes: connection.totalUpvotes,
+      decayedMentionScore: totalMentionScore,
+      decayedUpvoteScore: totalUpvoteScore,
+      mentionCount: totalMentionCount,
+      totalUpvotes,
       decayedScoresUpdatedAt: lastUpdatedAt ?? null,
       averageMentionAge,
       recentMentionRatio,
@@ -677,6 +688,104 @@ export class QualityScoreService implements IQualityScoreService {
     }
   }
 
+  private async loadCategorySignalMetrics(
+    restaurantId: string,
+    categoryId: string,
+  ): Promise<{ mentionScore: number; upvoteScore: number } | null> {
+    const categoryEvents =
+      await this.prismaService.restaurantEntityEvent.findMany({
+        where: {
+          restaurantId,
+          entityId: categoryId,
+          evidenceType: 'food_category',
+        },
+        select: {
+          extractionRunId: true,
+          mentionKey: true,
+          mentionedAt: true,
+          sourceUpvotes: true,
+          sourceDocument: {
+            select: { activeExtractionRunId: true },
+          },
+        },
+      });
+
+    const activeCategoryEvents = categoryEvents.filter(
+      (event) =>
+        event.sourceDocument.activeExtractionRunId === event.extractionRunId,
+    );
+    if (activeCategoryEvents.length === 0) {
+      return null;
+    }
+
+    const mentionKeys = Array.from(
+      new Set(activeCategoryEvents.map((event) => event.mentionKey)),
+    );
+    const siblingFoodEvents =
+      await this.prismaService.restaurantEntityEvent.findMany({
+        where: {
+          restaurantId,
+          mentionKey: { in: mentionKeys },
+          entityType: 'food',
+          evidenceType: { in: ['menu_item_food', 'food_mention'] },
+        },
+        select: {
+          extractionRunId: true,
+          mentionKey: true,
+          evidenceType: true,
+          isMenuItem: true,
+          sourceDocument: {
+            select: { activeExtractionRunId: true },
+          },
+        },
+      });
+
+    const blockedMentionKeys = new Set(
+      siblingFoodEvents
+        .filter(
+          (event) =>
+            event.sourceDocument.activeExtractionRunId ===
+              event.extractionRunId &&
+            event.evidenceType === 'menu_item_food' &&
+            event.isMenuItem === true,
+        )
+        .map((event) => event.mentionKey),
+    );
+
+    const supportEvents = activeCategoryEvents.filter(
+      (event) => !blockedMentionKeys.has(event.mentionKey),
+    );
+    if (supportEvents.length === 0) {
+      return null;
+    }
+
+    const mentionDecayMs = Math.max(
+      1,
+      this.config.timeDecay.mentionCountDecayDays * MS_PER_DAY,
+    );
+    const upvoteDecayMs = Math.max(
+      1,
+      this.config.timeDecay.upvoteDecayDays * MS_PER_DAY,
+    );
+    const now = Date.now();
+
+    let mentionScore = 0;
+    let upvoteScore = 0;
+    for (const event of supportEvents) {
+      const elapsedMs = Math.max(0, now - event.mentionedAt.getTime());
+      mentionScore += Math.exp(-elapsedMs / mentionDecayMs);
+      upvoteScore +=
+        Math.max(0, event.sourceUpvotes ?? 0) *
+        Math.exp(-elapsedMs / upvoteDecayMs);
+    }
+
+    if (mentionScore <= 0 && upvoteScore <= 0) {
+      return null;
+    }
+
+    return { mentionScore, upvoteScore };
+  }
+
   /**
    * Normalize general praise upvotes to a 0-100 score
    */
@@ -694,17 +803,20 @@ export class QualityScoreService implements IQualityScoreService {
   /**
    * Convert aggregated category signals into a connection-weight equivalent
    */
-  private calculateSignalWeight(signal: CategoryAggregate): number {
-    const { mentionScore, upvoteScore } =
-      this.getCurrentDecayedAggregateMetrics(signal);
+  private calculateSignalWeight(signal: {
+    mentionScore: number;
+    upvoteScore: number;
+  }): number {
+    const mentionScore = Math.max(0, signal.mentionScore);
+    const upvoteScore = Math.max(0, signal.upvoteScore);
 
     const mentionComponent = Math.max(
       this.config.normalization.weightFloor,
-      Math.log1p(Math.max(mentionScore, 0)),
+      Math.log1p(mentionScore),
     );
     const upvoteComponent = Math.max(
       this.config.normalization.weightFloor,
-      Math.log1p(Math.max(upvoteScore, 0)),
+      Math.log1p(upvoteScore),
     );
 
     const baseWeight = Math.sqrt(mentionComponent * upvoteComponent);
@@ -788,56 +900,15 @@ export class QualityScoreService implements IQualityScoreService {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
-  private getCurrentDecayedAggregateMetrics(signal: CategoryAggregate): {
-    mentionScore: number;
-    upvoteScore: number;
-    lastUpdatedAt: Date | null;
-  } {
-    const baseMentionScore = Number(signal.decayedMentionScore ?? 0);
-    const baseUpvoteScore = Number(signal.decayedUpvoteScore ?? 0);
-
-    const lastUpdatedRaw =
-      signal.decayedScoresUpdatedAt ||
-      signal.lastMentionedAt ||
-      signal.firstMentionedAt ||
-      null;
-
-    let lastUpdatedAt: Date | null = null;
-    if (lastUpdatedRaw instanceof Date) {
-      lastUpdatedAt = lastUpdatedRaw;
-    } else if (lastUpdatedRaw) {
-      const parsed = new Date(lastUpdatedRaw);
-      lastUpdatedAt = Number.isNaN(parsed.getTime()) ? null : parsed;
-    }
-
-    const now = new Date();
-    const elapsedMs =
-      lastUpdatedAt !== null
-        ? Math.max(0, now.getTime() - lastUpdatedAt.getTime())
-        : 0;
-
-    const mentionDecayMs = Math.max(
-      1,
-      this.config.timeDecay.mentionCountDecayDays * MS_PER_DAY,
-    );
-    const upvoteDecayMs = Math.max(
-      1,
-      this.config.timeDecay.upvoteDecayDays * MS_PER_DAY,
-    );
-
-    const mentionScore =
-      baseMentionScore * Math.exp(-elapsedMs / mentionDecayMs);
-    const upvoteScore = baseUpvoteScore * Math.exp(-elapsedMs / upvoteDecayMs);
-
-    return { mentionScore, upvoteScore, lastUpdatedAt };
-  }
-
   /**
    * Calculate category performance data
    */
   private calculateCategoryPerformanceData(
     connections: Connection[],
-    categoryAggregate?: CategoryAggregate,
+    categorySignal?: {
+      mentionScore: number;
+      upvoteScore: number;
+    },
     restaurantScoreForSignal?: number,
   ): CategoryPerformanceData {
     const relevantConnections: CategoryPerformanceData['relevantConnections'] =
@@ -871,15 +942,15 @@ export class QualityScoreService implements IQualityScoreService {
         },
       );
 
-    if (categoryAggregate) {
-      const signalWeight = this.calculateSignalWeight(categoryAggregate);
+    if (categorySignal) {
+      const signalWeight = this.calculateSignalWeight(categorySignal);
       if (signalWeight > 0) {
         const contextualScore =
           restaurantScoreForSignal && restaurantScoreForSignal > 0
             ? restaurantScoreForSignal
             : this.config.defaults.categoryFallbackScore;
         relevantConnections.push({
-          connectionId: `signal:${categoryAggregate.categoryId}`,
+          connectionId: 'signal:category',
           foodQualityScore: contextualScore,
           weight: signalWeight,
           isSignal: true,

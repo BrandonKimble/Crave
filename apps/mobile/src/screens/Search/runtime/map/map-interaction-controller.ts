@@ -171,10 +171,6 @@ type UseMapInteractionControllerResult = {
   handleMapPress: () => void;
   handleNativeViewportChanged: (state: MapboxMapState) => void;
   handleMapIdle: (state: MapboxMapState) => void;
-  handleCameraAnimationComplete: (payload: {
-    animationCompletionId: string | null;
-    status: 'finished' | 'cancelled';
-  }) => void;
   handleMapTouchStart: () => void;
   handleMapTouchEnd: () => void;
 };
@@ -519,6 +515,8 @@ export const useMapInteractionController = (
         suppressMapMovedRef.current &&
         cameraIntentArbiter.hasPendingProgrammaticCameraCompletion()
       ) {
+        cameraIntentArbiter.resolvePendingProgrammaticCameraAnimation('finished');
+        suppressMapMovedRef.current = false;
         return;
       }
       commitCameraViewport(
@@ -565,23 +563,10 @@ export const useMapInteractionController = (
     cameraIntentArbiter.setGestureActive(keepGestureActive);
   }, [cameraIntentArbiter, mapGestureActiveRef]);
 
-  const handleCameraAnimationComplete = React.useCallback(
-    (payload: { animationCompletionId: string | null; status: 'finished' | 'cancelled' }) => {
-      if (
-        suppressMapMovedRef.current &&
-        cameraIntentArbiter.handleProgrammaticCameraAnimationCompletion(payload)
-      ) {
-        suppressMapMovedRef.current = false;
-      }
-    },
-    [cameraIntentArbiter, suppressMapMovedRef]
-  );
-
   return {
     handleMapPress,
     handleNativeViewportChanged,
     handleMapIdle,
-    handleCameraAnimationComplete,
     handleMapTouchStart,
     handleMapTouchEnd,
   };

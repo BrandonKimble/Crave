@@ -12,7 +12,6 @@ import { MINIMUM_VOTES_FILTER } from '../constants/search';
 import type { ScoreInfoPayload } from '../components/SearchRankAndScoreSheets';
 import { useQueryMutationOrchestrator } from '../runtime/mutations/query-mutation-orchestrator';
 import { formatPriceRangeSummary, getRangeFromLevels, type PriceRangeTuple } from '../utils/price';
-import type { SearchScoreMode } from '../../../store/searchStore';
 
 type SearchMode = 'natural' | 'shortcut' | null;
 type SegmentValue = 'dishes' | 'restaurants';
@@ -32,13 +31,11 @@ type UseSearchFilterModalOwnerArgs = {
   isSearchSessionActive: boolean;
   openNow: boolean;
   votesFilterActive: boolean;
-  scoreMode: SearchScoreMode;
   priceLevels: number[];
   panelVisible: boolean;
   setVotes100Plus: (next: boolean) => void;
   setOpenNow: (next: boolean) => void;
   setPriceLevels: (next: number[]) => void;
-  setPreferredScoreMode: (next: SearchScoreMode) => void;
   scheduleToggleCommit: Parameters<typeof useQueryMutationOrchestrator>[0]['scheduleToggleCommit'];
   rerunActiveSearch: (options: {
     searchMode: SearchMode;
@@ -49,7 +46,6 @@ type UseSearchFilterModalOwnerArgs = {
     preserveSheetState?: boolean;
     replaceResultsInPlace?: boolean;
     filters?: StructuredSearchFilters;
-    scoreMode?: SearchScoreMode;
   }) => Promise<void>;
   registerTransientDismissor: (handler: () => void) => () => void;
   onMechanismEvent?: (event: 'query_mutation_coalesced', payload?: Record<string, unknown>) => void;
@@ -132,13 +128,9 @@ const getPriceSummaryReelIndexFromBoundaries = (
 
 type SearchFilterModalOwner = {
   priceSheetRef: React.RefObject<OverlayModalSheetHandle | null>;
-  rankSheetRef: React.RefObject<OverlayModalSheetHandle | null>;
   isPriceSelectorVisible: boolean;
-  isRankSelectorVisible: boolean;
   isPriceSheetContentReady: boolean;
   pendingPriceRange: PriceRangeTuple;
-  pendingScoreMode: SearchScoreMode;
-  setPendingScoreMode: React.Dispatch<React.SetStateAction<SearchScoreMode>>;
   scoreInfo: ScoreInfoPayload | null;
   isScoreInfoVisible: boolean;
   openScoreInfo: (payload: ScoreInfoPayload) => void;
@@ -166,11 +158,7 @@ type SearchFilterModalOwner = {
   toggleOpenNow: () => void;
   closePriceSelector: () => void;
   dismissPriceSelector: () => void;
-  closeRankSelector: () => void;
-  dismissRankSelector: () => void;
-  toggleRankSelector: () => void;
   handlePriceDone: () => void;
-  handleRankDone: () => void;
 };
 
 export const useSearchFilterModalOwner = ({
@@ -182,27 +170,22 @@ export const useSearchFilterModalOwner = ({
   isSearchSessionActive,
   openNow,
   votesFilterActive,
-  scoreMode,
   priceLevels,
   panelVisible,
   setVotes100Plus,
   setOpenNow,
   setPriceLevels,
-  setPreferredScoreMode,
   scheduleToggleCommit,
   rerunActiveSearch,
   registerTransientDismissor,
   onMechanismEvent,
 }: UseSearchFilterModalOwnerArgs): SearchFilterModalOwner => {
   const [isPriceSelectorVisible, setIsPriceSelectorVisible] = React.useState(false);
-  const [isRankSelectorVisible, setIsRankSelectorVisible] = React.useState(false);
   const [isPriceSheetContentReady, setIsPriceSheetContentReady] = React.useState(false);
-  const rankSheetRef = React.useRef<OverlayModalSheetHandle | null>(null);
   const priceSheetRef = React.useRef<OverlayModalSheetHandle | null>(null);
   const [pendingPriceRange, setPendingPriceRange] = React.useState<PriceRangeTuple>(
     () => [Math.min(...priceLevels), Math.max(...priceLevels)] as PriceRangeTuple
   );
-  const [pendingScoreMode, setPendingScoreMode] = React.useState<SearchScoreMode>(scoreMode);
   const [scoreInfo, setScoreInfo] = React.useState<ScoreInfoPayload | null>(null);
   const [isScoreInfoVisible, setScoreInfoVisible] = React.useState(false);
 
@@ -286,12 +269,8 @@ export const useSearchFilterModalOwner = ({
     togglePriceSelector,
     toggleVotesFilter,
     toggleOpenNow,
-    commitRankSelection,
     closePriceSelector,
     dismissPriceSelector,
-    closeRankSelector,
-    dismissRankSelector,
-    toggleRankSelector,
     handlePriceDone,
   } = useQueryMutationOrchestrator({
     searchRuntimeBus,
@@ -302,24 +281,17 @@ export const useSearchFilterModalOwner = ({
     isSearchSessionActive,
     openNow,
     votesFilterActive,
-    scoreMode,
     pendingPriceRange,
     setPendingPriceRange,
-    pendingScoreMode,
-    setPendingScoreMode,
     isPriceSelectorVisible,
     setIsPriceSelectorVisible,
-    isRankSelectorVisible,
-    setIsRankSelectorVisible,
     priceLevels,
     setVotes100Plus,
     setOpenNow,
     setPriceLevels,
-    setPreferredScoreMode,
     scheduleToggleCommit,
     rerunActiveSearch,
     priceSheetRef,
-    rankSheetRef,
     minimumVotesFilter: MINIMUM_VOTES_FILTER,
     onMechanismEvent,
   });
@@ -329,12 +301,6 @@ export const useSearchFilterModalOwner = ({
       setIsPriceSelectorVisible(false);
     }
   }, [isPriceSelectorVisible, panelVisible]);
-
-  React.useEffect(() => {
-    if (!panelVisible && isRankSelectorVisible) {
-      setIsRankSelectorVisible(false);
-    }
-  }, [isRankSelectorVisible, panelVisible]);
 
   React.useEffect(() => {
     if (!isPriceSelectorVisible) {
@@ -353,25 +319,16 @@ export const useSearchFilterModalOwner = ({
   React.useEffect(() => {
     return registerTransientDismissor(() => {
       closePriceSelector();
-      closeRankSelector();
       closeScoreInfo();
     });
-  }, [closePriceSelector, closeRankSelector, closeScoreInfo, registerTransientDismissor]);
-
-  const handleRankDone = React.useCallback(() => {
-    commitRankSelection();
-  }, [commitRankSelection]);
+  }, [closePriceSelector, closeScoreInfo, registerTransientDismissor]);
 
   return React.useMemo(
     () => ({
       priceSheetRef,
-      rankSheetRef,
       isPriceSelectorVisible,
-      isRankSelectorVisible,
       isPriceSheetContentReady,
       pendingPriceRange,
-      pendingScoreMode,
-      setPendingScoreMode,
       scoreInfo,
       isScoreInfoVisible,
       openScoreInfo,
@@ -395,30 +352,21 @@ export const useSearchFilterModalOwner = ({
       toggleOpenNow,
       closePriceSelector,
       dismissPriceSelector,
-      closeRankSelector,
-      dismissRankSelector,
-      toggleRankSelector,
       handlePriceDone,
-      handleRankDone,
     }),
     [
       clearScoreInfo,
       closePriceSelector,
-      closeRankSelector,
       closeScoreInfo,
       dismissPriceSelector,
-      dismissRankSelector,
       handlePriceDone,
       handlePriceSliderCommit,
-      handleRankDone,
       isPriceSelectorVisible,
       isPriceSheetContentReady,
-      isRankSelectorVisible,
       isScoreInfoVisible,
       measureSummaryCandidateWidth,
       openScoreInfo,
       pendingPriceRange,
-      pendingScoreMode,
       priceButtonLabelText,
       priceSheetSummary,
       priceSheetSummaryNeighborVisibility,
@@ -428,13 +376,10 @@ export const useSearchFilterModalOwner = ({
       priceSliderHighValue,
       priceSliderLowValue,
       priceSummaryPillWidth,
-      rankSheetRef,
       scoreInfo,
-      setPendingScoreMode,
       summaryReelItems,
       toggleOpenNow,
       togglePriceSelector,
-      toggleRankSelector,
       toggleVotesFilter,
     ]
   );

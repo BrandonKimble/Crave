@@ -3,7 +3,6 @@ import React from 'react';
 import type { FoodResult, RestaurantResult } from '../../../../types';
 import { logger } from '../../../../utils';
 import { getMarkerColorForDish, getMarkerColorForRestaurant } from '../../utils/marker-lod';
-import type { SearchScoreMode } from '../../../../store/searchStore';
 import type { SearchResultsPayload } from './search-results-panel-runtime-state-contract';
 import type { SearchResultsPanelCardMetricsRuntime } from './search-results-panel-card-runtime-contract';
 
@@ -11,14 +10,12 @@ type UseSearchResultsPanelCardMetricsRuntimeArgs = {
   dishes: FoodResult[];
   restaurants: RestaurantResult[];
   resolvedResults: SearchResultsPayload;
-  scoreMode: SearchScoreMode;
 };
 
 export const useSearchResultsPanelCardMetricsRuntime = ({
   dishes,
   restaurants,
   resolvedResults,
-  scoreMode,
 }: UseSearchResultsPanelCardMetricsRuntimeArgs): SearchResultsPanelCardMetricsRuntime => {
   const searchRequestId = resolvedResults?.metadata?.searchRequestId ?? null;
   const missingRestaurantRankByIdRef = React.useRef<Set<string>>(new Set());
@@ -88,20 +85,25 @@ export const useSearchResultsPanelCardMetricsRuntime = ({
     return map;
   }, [dishes, restaurants]);
 
-  const primaryCoverageKey = resolvedResults?.metadata?.coverageKey ?? null;
-  const hasCrossCoverage = React.useMemo(() => {
-    const coverageKeys = new Set<string>();
+  const primaryMarketKey = React.useMemo(() => {
+    const candidate = resolvedResults?.metadata?.marketKey;
+    return typeof candidate === 'string' && candidate.trim().length > 0 ? candidate : null;
+  }, [resolvedResults?.metadata?.marketKey]);
+  const hasCrossMarketResults = React.useMemo(() => {
+    const marketKeys = new Set<string>();
     dishes.forEach((dish) => {
-      if (dish.coverageKey) {
-        coverageKeys.add(dish.coverageKey);
+      const marketKey = dish.marketKey;
+      if (marketKey) {
+        marketKeys.add(marketKey);
       }
     });
     restaurants.forEach((restaurant) => {
-      if (restaurant.coverageKey) {
-        coverageKeys.add(restaurant.coverageKey);
+      const marketKey = restaurant.marketKey;
+      if (marketKey) {
+        marketKeys.add(marketKey);
       }
     });
-    return coverageKeys.size > 1;
+    return marketKeys.size > 1;
   }, [dishes, restaurants]);
 
   const primaryFoodTerm = React.useMemo(() => {
@@ -118,25 +120,25 @@ export const useSearchResultsPanelCardMetricsRuntime = ({
   const restaurantQualityColorById = React.useMemo(() => {
     const map = new Map<string, string>();
     restaurants.forEach((restaurant) => {
-      map.set(restaurant.restaurantId, getMarkerColorForRestaurant(restaurant, scoreMode));
+      map.set(restaurant.restaurantId, getMarkerColorForRestaurant(restaurant));
     });
     return map;
-  }, [restaurants, scoreMode]);
+  }, [restaurants]);
 
   const dishQualityColorByConnectionId = React.useMemo(() => {
     const map = new Map<string, string>();
     dishes.forEach((dish) => {
-      map.set(dish.connectionId, getMarkerColorForDish(dish, scoreMode));
+      map.set(dish.connectionId, getMarkerColorForDish(dish));
     });
     return map;
-  }, [dishes, scoreMode]);
+  }, [dishes]);
 
   return React.useMemo(
     () => ({
       canonicalRestaurantRankById,
       restaurantsById,
-      primaryCoverageKey,
-      hasCrossCoverage,
+      primaryMarketKey,
+      hasCrossMarketResults,
       primaryFoodTerm,
       restaurantQualityColorById,
       dishQualityColorByConnectionId,
@@ -144,8 +146,8 @@ export const useSearchResultsPanelCardMetricsRuntime = ({
     [
       canonicalRestaurantRankById,
       restaurantsById,
-      primaryCoverageKey,
-      hasCrossCoverage,
+      primaryMarketKey,
+      hasCrossMarketResults,
       primaryFoodTerm,
       restaurantQualityColorById,
       dishQualityColorByConnectionId,

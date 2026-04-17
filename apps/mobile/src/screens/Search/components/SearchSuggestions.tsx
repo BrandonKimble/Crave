@@ -126,9 +126,9 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
 
   const renderStatusLine = (
     statusPreview?: RecentSearch['statusPreview'] | null,
-    fallbackLocationCount?: number | null
+    locationCountHint?: number | null
   ) => {
-    const locationCount = statusPreview?.locationCount ?? fallbackLocationCount ?? null;
+    const locationCount = statusPreview?.locationCount ?? locationCountHint ?? null;
     if (!statusPreview?.operatingStatus && !locationCount) {
       return null;
     }
@@ -168,7 +168,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
             const locationCount =
               typeof match.locationCount === 'number'
                 ? match.locationCount
-                : match.statusPreview?.locationCount ?? null;
+                : (match.statusPreview?.locationCount ?? null);
             const shouldShowLocationCount =
               match.entityType === 'restaurant' && locationCount !== null && locationCount > 1;
             const isRecentQuery = Boolean(match.badges?.recentQuery);

@@ -11,14 +11,14 @@ import type {
 export const useOverlaySheetListRuntime = ({
   visible,
   spec,
-  resolvedOverlayKey,
+  sceneIdentityKey,
   scrollOffset,
 }: OverlaySheetListRuntimeArgs): OverlaySheetListRuntime => {
   const setOverlayScrollOffset = useOverlayStore((state) => state.setOverlayScrollOffset);
   const isListBackedSpec = isOverlayListContentSpec(spec);
   const internalListRef = React.useRef<FlashListRef<unknown> | null>(null);
   const resolvedListRef = isListBackedSpec && spec.listRef ? spec.listRef : internalListRef;
-  const lastOverlayKeyRef = React.useRef<string | null>(null);
+  const lastSceneIdentityRef = React.useRef<string | null>(null);
 
   const handleScrollOffsetChange = React.useCallback(
     (nextOffset: number) => {
@@ -26,9 +26,9 @@ export const useOverlaySheetListRuntime = ({
       if (!isListBackedSpec) {
         return;
       }
-      setOverlayScrollOffset(resolvedOverlayKey, nextOffset);
+      setOverlayScrollOffset(sceneIdentityKey, nextOffset);
     },
-    [isListBackedSpec, resolvedOverlayKey, setOverlayScrollOffset, spec]
+    [isListBackedSpec, sceneIdentityKey, setOverlayScrollOffset, spec]
   );
 
   React.useLayoutEffect(() => {
@@ -36,13 +36,13 @@ export const useOverlaySheetListRuntime = ({
       return;
     }
 
-    const previousKey = lastOverlayKeyRef.current;
-    if (previousKey && previousKey !== resolvedOverlayKey) {
-      setOverlayScrollOffset(previousKey as never, scrollOffset.value);
+    const previousKey = lastSceneIdentityRef.current;
+    if (previousKey && previousKey !== sceneIdentityKey) {
+      setOverlayScrollOffset(previousKey, scrollOffset.value);
     }
-    lastOverlayKeyRef.current = resolvedOverlayKey;
+    lastSceneIdentityRef.current = sceneIdentityKey;
 
-    const storedOffset = useOverlayStore.getState().overlayScrollOffsets[resolvedOverlayKey] ?? 0;
+    const storedOffset = useOverlayStore.getState().overlayScrollOffsets[sceneIdentityKey] ?? 0;
     const nextOffset = Math.max(0, storedOffset);
 
     const applyOffset = () => {
@@ -67,7 +67,7 @@ export const useOverlaySheetListRuntime = ({
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [isListBackedSpec, resolvedOverlayKey, scrollOffset, setOverlayScrollOffset, spec, visible]);
+  }, [isListBackedSpec, sceneIdentityKey, scrollOffset, setOverlayScrollOffset, spec, visible]);
 
   return React.useMemo(
     () => ({

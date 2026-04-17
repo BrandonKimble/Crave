@@ -107,14 +107,8 @@ export function compileQueryPlanFromConstraints(
     restaurantFilters,
     connectionFilters,
     ranking: {
-      foodOrder:
-        constraints.scoreMode === 'global_quality'
-          ? 'quality_score DESC'
-          : 'display_rank DESC',
-      restaurantOrder:
-        constraints.scoreMode === 'global_quality'
-          ? 'quality_score DESC'
-          : 'display_rank DESC',
+      foodOrder: 'contextual_score DESC',
+      restaurantOrder: 'contextual_score DESC',
     },
     diagnostics: {
       missingEntities: getMissingScopes(constraints.stagePresence),

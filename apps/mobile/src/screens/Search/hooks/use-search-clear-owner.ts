@@ -297,7 +297,6 @@ export const useSearchClearOwner = <Suggestion>({
       cancelActiveSearchRequest,
       cancelAutocomplete,
       cancelToggleInteraction,
-      closeRestaurantProfile,
       commitSearchCloseRestore,
       flushPendingSearchOriginRestore,
       handleCancelPendingMutationWork,

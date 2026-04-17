@@ -598,8 +598,8 @@ export class FavoriteListsService {
         foodId: food.foodId,
         foodName: food.food?.name ?? 'Dish',
         qualityScore: Number(food.foodQualityScore ?? 0),
-        displayScore: Number(food.foodQualityScore ?? 0),
-        displayPercentile: null,
+        contextualScore: Number(food.foodQualityScore ?? 0),
+        contextualPercentile: null,
         activityLevel: food.activityLevel,
       }));
 
@@ -613,14 +613,11 @@ export class FavoriteListsService {
         restaurantName: restaurant.name,
         restaurantAliases: restaurant.aliases ?? [],
         contextualScore: Number(restaurant.restaurantQualityScore ?? 0),
+        contextualPercentile: null,
         restaurantQualityScore: restaurant.restaurantQualityScore
           ? Number(restaurant.restaurantQualityScore)
           : null,
-        displayScore: restaurant.restaurantQualityScore
-          ? Number(restaurant.restaurantQualityScore)
-          : null,
-        displayPercentile: null,
-        coverageKey: restaurant.locationKey ?? undefined,
+        marketKey: undefined,
         mentionCount: undefined,
         totalUpvotes: restaurant.generalPraiseUpvotes ?? undefined,
         latitude: primaryLocation?.latitude
@@ -667,9 +664,9 @@ export class FavoriteListsService {
         restaurantAliases: connection.restaurant.aliases ?? [],
         restaurantLocationId: primaryLocation?.locationId ?? undefined,
         qualityScore: Number(connection.foodQualityScore ?? 0),
-        displayScore: Number(connection.foodQualityScore ?? 0),
-        displayPercentile: null,
-        coverageKey: connection.restaurant.locationKey ?? undefined,
+        contextualScore: Number(connection.foodQualityScore ?? 0),
+        contextualPercentile: null,
+        marketKey: undefined,
         activityLevel: connection.activityLevel,
         mentionCount: connection.mentionCount ?? 0,
         totalUpvotes: connection.totalUpvotes ?? 0,
@@ -681,6 +678,10 @@ export class FavoriteListsService {
         restaurantPriceSymbol: null,
         restaurantDistanceMiles: null,
         restaurantOperatingStatus: null,
+        restaurantContextualScore: connection.restaurant.restaurantQualityScore
+          ? Number(connection.restaurant.restaurantQualityScore)
+          : null,
+        restaurantContextualPercentile: null,
       });
     });
 

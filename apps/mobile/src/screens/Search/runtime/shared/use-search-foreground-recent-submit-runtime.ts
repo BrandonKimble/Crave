@@ -7,13 +7,13 @@ import type {
 } from '../../../../services/search';
 
 import type {
+  SearchForegroundSubmitRuntimeArgs,
   SearchForegroundInteractionSubmitHandlers,
-  UseSearchForegroundInteractionRuntimeArgs,
 } from './use-search-foreground-interaction-runtime-contract';
 import type { SearchForegroundSubmitPreparationRuntime } from './use-search-foreground-submit-preparation-runtime';
 
 type UseSearchForegroundRecentSubmitRuntimeArgs = Pick<
-  UseSearchForegroundInteractionRuntimeArgs,
+  SearchForegroundSubmitRuntimeArgs,
   | 'submitRuntime'
   | 'setRestaurantOnlyIntent'
   | 'pendingRestaurantSelectionRef'
@@ -49,7 +49,7 @@ export const useSearchForegroundRecentSubmitRuntime = ({
       }
       prepareRecentIntentSubmit(trimmedValue);
       const restaurantId =
-        entry.selectedEntityType === 'restaurant' ? entry.selectedEntityId ?? null : null;
+        entry.selectedEntityType === 'restaurant' ? (entry.selectedEntityId ?? null) : null;
       if (restaurantId) {
         pendingRestaurantSelectionRef.current = { restaurantId };
         openRestaurantProfilePreview(restaurantId, trimmedValue);

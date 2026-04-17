@@ -2,79 +2,82 @@ import React from 'react';
 import { unstable_batchedUpdates } from 'react-native';
 
 import { requestSearchRouteDockedRestore } from './searchRouteOverlayCommandStore';
-import type {
-  SearchRouteOverlayCommandActions,
-  SearchRouteOverlayCommandState,
-} from './searchRouteOverlayCommandRuntimeContract';
 import { appOverlayRouteController } from './useAppOverlayRouteController';
-import type { SearchRouteTabPanelRuntimeModel } from './useSearchRouteTabPanelRuntime';
-import { useProfilePanelSpec } from './panels/ProfilePanel';
-import type { OverlayContentSpec } from './types';
+import type { SearchRouteOverlayTransitionController } from './useSearchRouteOverlayTransitionController';
+import type { SearchRouteHostVisualState } from './searchRouteHostVisualState';
+import { useProfileSceneDefinition } from './panels/ProfilePanel';
 import type { OverlayKey, OverlaySheetSnap, OverlaySheetSnapRequest } from './types';
+import type { SearchRouteSceneDefinition } from './searchOverlayRouteHostContract';
 
 type UseSearchRouteProfilePanelSpecArgs = {
+  mounted?: boolean;
+  visible: boolean;
   rootOverlayKey: OverlayKey;
-  tabPanelRuntime: SearchRouteTabPanelRuntimeModel;
-  commandState: SearchRouteOverlayCommandState;
-  commandActions: SearchRouteOverlayCommandActions;
+  navBarTop: SearchRouteHostVisualState['navBarTopForSnaps'];
+  searchBarTop: SearchRouteHostVisualState['searchBarTop'];
+  snapPoints: SearchRouteHostVisualState['snapPoints'];
+  tabOverlaySnapRequest: Exclude<OverlaySheetSnap, 'hidden'> | null;
+  setProfileSheetSnap: (next: React.SetStateAction<OverlaySheetSnap>) => void;
+  setTabOverlaySnapRequest: (
+    next: React.SetStateAction<Exclude<OverlaySheetSnap, 'hidden'> | null>
+  ) => void;
+  transitionController: SearchRouteOverlayTransitionController;
 };
 
 const buildShellSnapRequest = (
   snap: OverlaySheetSnap | null | undefined
 ): OverlaySheetSnapRequest | null => (snap ? { snap, token: null } : null);
 
-export const useSearchRouteProfilePanelSpec = ({
+export const useSearchRouteProfileSceneDefinition = ({
+  mounted,
+  visible,
   rootOverlayKey,
-  tabPanelRuntime,
-  commandState,
-  commandActions,
-}: UseSearchRouteProfilePanelSpecArgs): OverlayContentSpec<unknown> | null => {
-  const handleProfileSnapStart = React.useCallback(
-    (snap: OverlaySheetSnap) => {
-      commandActions.setProfileSheetSnap(snap);
-    },
-    [commandActions]
-  );
+  navBarTop,
+  searchBarTop,
+  snapPoints,
+  tabOverlaySnapRequest,
+  setProfileSheetSnap,
+  setTabOverlaySnapRequest,
+  transitionController,
+}: UseSearchRouteProfilePanelSpecArgs): SearchRouteSceneDefinition => {
+  const tabOverlaySnapRequestRef = React.useRef(tabOverlaySnapRequest);
+  React.useEffect(() => {
+    tabOverlaySnapRequestRef.current = tabOverlaySnapRequest;
+  }, [tabOverlaySnapRequest]);
 
   const handleProfileSnapChange = React.useCallback(
     (snap: OverlaySheetSnap) => {
-      commandActions.setProfileSheetSnap(snap);
-      if (commandState.tabOverlaySnapRequest && commandState.tabOverlaySnapRequest === snap) {
-        commandActions.setTabOverlaySnapRequest(null);
+      setProfileSheetSnap(snap);
+      if (tabOverlaySnapRequestRef.current && tabOverlaySnapRequestRef.current === snap) {
+        setTabOverlaySnapRequest(null);
       }
       if (
         snap === 'hidden' &&
         rootOverlayKey === 'profile' &&
-        !commandState.overlaySwitchInFlight
+        !transitionController.isOverlaySwitchInFlight()
       ) {
-        commandActions.setTabOverlaySnapRequest(null);
+        setTabOverlaySnapRequest(null);
         unstable_batchedUpdates(() => {
           requestSearchRouteDockedRestore({ snap: 'collapsed' });
           appOverlayRouteController.setRootRoute('search');
         });
       }
     },
-    [
-      commandActions,
-      commandState.overlaySwitchInFlight,
-      commandState.tabOverlaySnapRequest,
-      rootOverlayKey,
-    ]
+    [rootOverlayKey, setProfileSheetSnap, setTabOverlaySnapRequest, transitionController]
   );
 
-  const profilePanelSpec = useProfilePanelSpec({
-    visible: tabPanelRuntime.showProfileOverlay,
-    navBarTop: tabPanelRuntime.navBarTop,
-    searchBarTop: tabPanelRuntime.searchBarTop,
-    snapPoints: tabPanelRuntime.snapPoints,
-    sheetY: tabPanelRuntime.sheetY,
-    headerActionProgress: tabPanelRuntime.headerActionProgress,
-    onSnapStart: handleProfileSnapStart,
-    onSnapChange: handleProfileSnapChange,
-    shellSnapRequest: buildShellSnapRequest(
-      commandState.tabOverlaySnapRequest === 'hidden' ? null : commandState.tabOverlaySnapRequest
-    ),
-  });
+  const activeShellSnapRequest = React.useMemo(
+    () => (visible ? buildShellSnapRequest(tabOverlaySnapRequest) : null),
+    [tabOverlaySnapRequest, visible]
+  );
 
-  return profilePanelSpec;
+  return useProfileSceneDefinition({
+    mounted,
+    visible,
+    navBarTop,
+    searchBarTop,
+    snapPoints,
+    onSnapChange: handleProfileSnapChange,
+    shellSnapRequest: activeShellSnapRequest,
+  });
 };

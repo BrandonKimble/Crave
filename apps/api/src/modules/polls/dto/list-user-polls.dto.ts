@@ -20,7 +20,7 @@ export class ListUserPollsDto {
 
   @IsOptional()
   @IsString()
-  coverageKey?: string;
+  marketKey?: string;
 
   @IsOptional()
   @Type(() => Number)

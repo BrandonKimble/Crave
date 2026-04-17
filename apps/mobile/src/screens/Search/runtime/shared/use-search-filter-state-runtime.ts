@@ -12,7 +12,5 @@ export const useSearchFilterStateRuntime = () =>
       votes100Plus: state.votes100Plus,
       setVotes100Plus: state.setVotes100Plus,
       resetFilters: state.resetFilters,
-      scoreMode: state.scoreMode,
-      setPreferredScoreMode: state.setPreferredScoreMode,
     }))
   );

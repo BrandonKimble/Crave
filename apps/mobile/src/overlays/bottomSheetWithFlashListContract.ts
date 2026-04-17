@@ -18,15 +18,24 @@ export type DualListSelection = 'primary' | 'secondary';
 
 export type SecondaryListSpec<T> = {
   data: ReadonlyArray<T>;
+  renderItem?: FlashListProps<T>['renderItem'];
+  keyExtractor?: FlashListProps<T>['keyExtractor'];
+  estimatedItemSize?: number;
   listKey?: string;
   listRef?: React.RefObject<FlashListRef<T> | null>;
   extraData?: FlashListProps<T>['extraData'];
   onEndReached?: FlashListProps<T>['onEndReached'];
   scrollIndicatorInsets?: FlashListProps<T>['scrollIndicatorInsets'];
+  ListHeaderComponent?: FlashListProps<T>['ListHeaderComponent'];
+  ListFooterComponent?: FlashListProps<T>['ListFooterComponent'];
+  ListEmptyComponent?: FlashListProps<T>['ListEmptyComponent'];
+  ItemSeparatorComponent?: FlashListProps<T>['ItemSeparatorComponent'];
+  contentContainerStyle?: FlashListProps<T>['contentContainerStyle'];
+  flashListProps?: BottomSheetWithFlashListBaseProps<T>['flashListProps'];
   testID?: string;
 };
 
-type BottomSheetWithFlashListBaseProps<T> = {
+export type BottomSheetWithFlashListBaseProps<T> = {
   nativeHostKey?: string;
   visible: boolean;
   listScrollEnabled?: boolean;
@@ -109,6 +118,7 @@ export type BottomSheetWithFlashListListProps<T> = {
 export type BottomSheetWithFlashListContentOnlyProps = {
   surfaceKind: 'content';
   contentComponent: React.ReactNode;
+  contentScrollMode?: 'scroll' | 'static';
   data?: never;
   renderItem?: never;
   keyExtractor?: never;
@@ -125,12 +135,65 @@ export type BottomSheetWithFlashListContentOnlyProps = {
   onEndReachedThreshold?: never;
 };
 
+export type BottomSheetSceneSurfaceSharedProps<T> = Omit<
+  BottomSheetWithFlashListBaseProps<T>,
+  | 'nativeHostKey'
+  | 'visible'
+  | 'snapPoints'
+  | 'initialSnapPoint'
+  | 'preservePositionOnSnapPointsChange'
+  | 'onHidden'
+  | 'onSnapStart'
+  | 'onSnapChange'
+  | 'runtimeModel'
+  | 'dismissThreshold'
+  | 'preventSwipeDismiss'
+  | 'animateOnMount'
+  | 'style'
+  | 'surfaceStyle'
+  | 'shadowStyle'
+> & {
+  inactiveRenderMode?: 'freeze' | 'live';
+};
+
+export type BottomSheetSceneSurfaceDecoratorProps = {
+  underlayComponent?: React.ReactNode;
+};
+
+export type BottomSheetSceneSurfaceListProps<T> = BottomSheetSceneSurfaceSharedProps<T> &
+  BottomSheetSceneSurfaceDecoratorProps &
+  BottomSheetWithFlashListListProps<T>;
+
+export type BottomSheetSceneSurfaceContentProps = BottomSheetSceneSurfaceSharedProps<never> &
+  BottomSheetSceneSurfaceDecoratorProps &
+  BottomSheetWithFlashListContentOnlyProps;
+
+export type BottomSheetSceneSurfaceProps<T> =
+  | BottomSheetSceneSurfaceListProps<T>
+  | BottomSheetSceneSurfaceContentProps;
+
+export type BottomSheetWithSceneRegistryProps = {
+  surfaceKind: 'scene-registry';
+  activeSceneKey: string;
+  sceneKeys: string[];
+};
+
 export type BottomSheetWithFlashListProps<T> = BottomSheetWithFlashListBaseProps<T> &
-  (BottomSheetWithFlashListListProps<T> | BottomSheetWithFlashListContentOnlyProps);
+  (
+    | BottomSheetWithFlashListListProps<T>
+    | BottomSheetWithFlashListContentOnlyProps
+    | BottomSheetWithSceneRegistryProps
+  );
 
 export const isBottomSheetListSurface = <T>(
   props:
     | BottomSheetWithFlashListListProps<T>
     | BottomSheetWithFlashListContentOnlyProps
+    | BottomSheetWithSceneRegistryProps
     | BottomSheetWithFlashListProps<T>
 ): props is BottomSheetWithFlashListListProps<T> => props.surfaceKind === 'list';
+
+export const isBottomSheetSceneRegistrySurface = (
+  props: BottomSheetWithFlashListProps<unknown>
+): props is BottomSheetWithFlashListBaseProps<unknown> & BottomSheetWithSceneRegistryProps =>
+  props.surfaceKind === 'scene-registry';

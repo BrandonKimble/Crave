@@ -4,6 +4,7 @@ import './src/polyfills/react-native-codegen';
 import 'react-native-gesture-handler';
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -26,6 +27,7 @@ import NetworkStatusListener from './src/providers/NetworkStatusListener';
 import PollNotificationListener from './src/providers/PollNotificationListener';
 import { navigationRef } from './src/navigation/navigationRef';
 import SystemStatusBanner from './src/components/SystemStatusBanner';
+import { PerfHarnessCoordinator } from './src/perf/PerfHarnessCoordinator';
 import { useSystemStatusStore } from './src/store/systemStatusStore';
 import { OVERLAY_CORNER_RADIUS } from './src/overlays/overlaySheetStyles';
 import { colors } from './src/constants/theme';
@@ -76,30 +78,36 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <View style={[styles.appRoot, isBannerVisible ? styles.appRootBannerVisible : null]}>
-        <SafeAreaProvider initialMetrics={initialWindowMetrics ?? undefined}>
-          <NetworkStatusListener />
-          <AuthProvider>
-            <AppRouteCoordinator>
-              <MainLaunchCoordinator>
-                <PollNotificationListener />
-                <SystemStatusBanner />
-                <Reanimated.View style={[styles.contentSurface, contentAnimatedStyle]}>
-                  <NavigationContainer ref={navigationRef}>
-                    <RootNavigator />
-                  </NavigationContainer>
-                </Reanimated.View>
-              </MainLaunchCoordinator>
-            </AppRouteCoordinator>
-          </AuthProvider>
-          <StatusBar style={isBannerVisible ? 'light' : 'auto'} />
-        </SafeAreaProvider>
-      </View>
+      <GestureHandlerRootView style={styles.gestureRoot}>
+        <View style={[styles.appRoot, isBannerVisible ? styles.appRootBannerVisible : null]}>
+          <SafeAreaProvider initialMetrics={initialWindowMetrics ?? undefined}>
+            <NetworkStatusListener />
+            <PerfHarnessCoordinator />
+            <AuthProvider>
+              <AppRouteCoordinator>
+                <MainLaunchCoordinator>
+                  <PollNotificationListener />
+                  <SystemStatusBanner />
+                  <Reanimated.View style={[styles.contentSurface, contentAnimatedStyle]}>
+                    <NavigationContainer ref={navigationRef}>
+                      <RootNavigator />
+                    </NavigationContainer>
+                  </Reanimated.View>
+                </MainLaunchCoordinator>
+              </AppRouteCoordinator>
+            </AuthProvider>
+            <StatusBar style={isBannerVisible ? 'light' : 'auto'} />
+          </SafeAreaProvider>
+        </View>
+      </GestureHandlerRootView>
     </QueryClientProvider>
   );
 }
 
 const styles = StyleSheet.create({
+  gestureRoot: {
+    flex: 1,
+  },
   appRoot: {
     flex: 1,
     backgroundColor: colors.background,

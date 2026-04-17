@@ -5,6 +5,12 @@ type RestaurantAttributeSeed = {
   aliases: string[];
 };
 
+type CollectionCommunitySeed = {
+  communityName: string;
+  locationName: string;
+  marketKey: string;
+};
+
 const BASE_RESTAURANT_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
   {
     canonicalName: 'allows dogs',
@@ -504,6 +510,19 @@ const RESTAURANT_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
   ...GOOGLE_PLACE_TYPE_ATTRIBUTE_SEEDS,
 ];
 
+const COLLECTION_COMMUNITY_SEEDS: CollectionCommunitySeed[] = [
+  {
+    communityName: 'austinfood',
+    locationName: 'Austin, TX',
+    marketKey: 'us-cbsa-12420',
+  },
+  {
+    communityName: 'foodnyc',
+    locationName: 'New York, NY',
+    marketKey: 'us-cbsa-35620',
+  },
+];
+
 function normalize(value: string): string {
   return value.trim().toLowerCase();
 }
@@ -524,21 +543,29 @@ async function seedRestaurantAttributes(prisma: PrismaClient): Promise<void> {
   console.log(`Seeding ${seeds.length} restaurant attributes...`);
 
   for (const seed of seeds) {
-    await prisma.entity.upsert({
+    const existing = await prisma.entity.findFirst({
       where: {
-        name_type_locationKey: {
-          name: seed.canonicalName,
-          type: EntityType.restaurant_attribute,
-          locationKey: 'global',
-        },
-      },
-      update: {
-        aliases: seed.aliases,
-      },
-      create: {
         name: seed.canonicalName,
         type: EntityType.restaurant_attribute,
-        locationKey: 'global',
+      },
+      select: { entityId: true },
+    });
+
+    if (existing) {
+      await prisma.entity.update({
+        where: { entityId: existing.entityId },
+        data: {
+          aliases: seed.aliases,
+        },
+        select: { entityId: true },
+      });
+      continue;
+    }
+
+    await prisma.entity.create({
+      data: {
+        name: seed.canonicalName,
+        type: EntityType.restaurant_attribute,
         aliases: seed.aliases,
       },
       select: { entityId: true },
@@ -548,10 +575,57 @@ async function seedRestaurantAttributes(prisma: PrismaClient): Promise<void> {
   console.log('✅ Restaurant attributes seeded');
 }
 
+async function seedCollectionCommunities(prisma: PrismaClient): Promise<void> {
+  console.log(
+    `Seeding ${COLLECTION_COMMUNITY_SEEDS.length} collection communities...`,
+  );
+
+  for (const seed of COLLECTION_COMMUNITY_SEEDS) {
+    const communityName = normalize(seed.communityName);
+    const locationName = seed.locationName.trim();
+    const marketKey = normalize(seed.marketKey);
+    const linkedMarket = await prisma.market.findFirst({
+      where: {
+        marketKey,
+        isActive: true,
+      },
+      select: {
+        marketKey: true,
+      },
+    });
+
+    if (!linkedMarket?.marketKey) {
+      throw new Error(
+        `Collection community "${communityName}" references missing active market "${marketKey}"`,
+      );
+    }
+
+    await prisma.collectionCommunity.upsert({
+      where: {
+        communityName,
+      },
+      update: {
+        locationName,
+        marketKey,
+        isActive: true,
+      },
+      create: {
+        communityName,
+        locationName,
+        marketKey,
+        isActive: true,
+      },
+    });
+  }
+
+  console.log('✅ Collection communities seeded');
+}
+
 export async function runSeed(): Promise<void> {
   const prisma = new PrismaClient();
   try {
     await seedRestaurantAttributes(prisma);
+    await seedCollectionCommunities(prisma);
   } finally {
     await prisma.$disconnect();
   }

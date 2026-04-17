@@ -1,26 +1,27 @@
 import React from 'react';
 
 import type { SearchRouteOverlayResultsUiResetRuntime } from './searchRouteOverlayCommandRuntimeContract';
+import type { SearchRouteOverlayTransitionController } from './useSearchRouteOverlayTransitionController';
 
 type UseSearchRouteOverlayResultsUiResetRuntimeArgs = {
   requestSearchHeaderActionFollowCollapse: () => void;
-  setIsNavRestorePending: (next: React.SetStateAction<boolean>) => void;
+  transitionController: SearchRouteOverlayTransitionController;
   setPollsHeaderActionAnimationToken: (next: React.SetStateAction<number>) => void;
 };
 
 export const useSearchRouteOverlayResultsUiResetRuntime = ({
   requestSearchHeaderActionFollowCollapse,
-  setIsNavRestorePending,
+  transitionController,
   setPollsHeaderActionAnimationToken,
 }: UseSearchRouteOverlayResultsUiResetRuntimeArgs): SearchRouteOverlayResultsUiResetRuntime => {
   const handleCloseResultsUiReset = React.useCallback(() => {
-    setIsNavRestorePending(true);
+    transitionController.setNavRestorePending(true);
     requestSearchHeaderActionFollowCollapse();
     setPollsHeaderActionAnimationToken((current) => current + 1);
   }, [
     requestSearchHeaderActionFollowCollapse,
-    setIsNavRestorePending,
     setPollsHeaderActionAnimationToken,
+    transitionController,
   ]);
 
   return React.useMemo(

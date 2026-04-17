@@ -18,9 +18,7 @@ export type UseSearchForegroundVisualRuntimeArgs = {
   headerShortcutsInteractive: boolean;
   backdropTarget: 'suggestions' | 'results' | 'none';
   isSuggestionPanelActive: boolean;
-  chromeTransitionExpanded: number;
-  chromeTransitionMiddle: number;
-  sheetTranslateY: SharedValue<number>;
+  searchChromeTransitionProgress: SharedValue<number>;
   searchChromeOpacity: SharedValue<number>;
   searchChromeScale: SharedValue<number>;
   isSearchSessionActive: boolean;

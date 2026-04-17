@@ -3,7 +3,6 @@ import React from 'react';
 import type { OverlaySheetSnap } from '../../../../overlays/types';
 import type { SheetPosition } from '../../../../overlays/sheetUtils';
 import type { ResultsSheetRuntimeOwner } from './results-sheet-runtime-contract';
-import type { ResultsSheetRuntimeModelRuntime } from './use-results-sheet-runtime-model-runtime';
 import type { ResultsSheetSharedValuesRuntime } from './use-results-sheet-shared-values-runtime';
 import type { ResultsSheetVisibilityStateRuntime } from './use-results-sheet-visibility-state-runtime';
 
@@ -14,7 +13,7 @@ type UseResultsSheetVisibilityActionsRuntimeArgs = {
   isDockedPollsDismissed: boolean;
   hasUserSharedSnap: boolean;
   sharedSnap: Exclude<OverlaySheetSnap, 'hidden'>;
-  sheetLayoutRuntime: Pick<ResultsSheetRuntimeModelRuntime, 'resultsSheetRuntimeModel'> &
+  sheetLayoutRuntime: Pick<ResultsSheetRuntimeOwner, 'resultsSheetRuntimeModel'> &
     Pick<ResultsSheetSharedValuesRuntime, 'setSheetTranslateYTo'>;
   visibilityStateRuntime: Pick<
     ResultsSheetVisibilityStateRuntime,
@@ -83,10 +82,10 @@ export const useResultsSheetVisibilityActionsRuntime = ({
       pollsSheetSnap !== 'hidden'
         ? pollsSheetSnap
         : isDockedPollsDismissed
-        ? 'collapsed'
-        : hasUserSharedSnap
-        ? sharedSnap
-        : 'expanded';
+          ? 'collapsed'
+          : hasUserSharedSnap
+            ? sharedSnap
+            : 'expanded';
     showPanelInstant(transitionSnap);
     return true;
   }, [

@@ -3,18 +3,18 @@ import { InteractionManager } from 'react-native';
 import { io, type Socket } from 'socket.io-client';
 
 import { API_BASE_URL } from '../../../services/api';
-import { resolveCoverage } from '../../../services/coverage';
+import { resolveMarket } from '../../../services/markets';
 import {
   addPollOption,
   createNetworkPollBootstrapSnapshot,
   fetchPolls,
-  readPollBootstrapSnapshotForCoverage,
+  readPollBootstrapSnapshotForMarket,
   voteOnPoll,
   writePollBootstrapSnapshot,
   type Poll,
   type PollBootstrapSnapshot,
 } from '../../../services/polls';
-import type { MapBounds } from '../../../types';
+import type { Coordinate, MapBounds } from '../../../types';
 import { logger } from '../../../utils';
 
 type InteractionRef = React.MutableRefObject<{ isInteracting: boolean }>;
@@ -30,19 +30,24 @@ type PollOptionPayload = {
 type RefreshPollFeedOptions = {
   focusPollId?: string | null;
   skipSpinner?: boolean;
-  coverageKeyOverride?: string | null;
+  marketKeyOverride?: string | null;
+  marketNameFallback?: string | null;
 };
 
 type UsePollsRuntimeControllerArgs = {
   visible: boolean;
   bounds?: MapBounds | null;
   bootstrapSnapshot?: PollBootstrapSnapshot | null;
-  coverageOverride?: string | null;
+  userLocation?: Coordinate | null;
+  marketOverride?: string | null;
   pollFeedRequiresFreshNetwork: boolean;
   setSelectedPollId: React.Dispatch<React.SetStateAction<string | null>>;
   setPolls: React.Dispatch<React.SetStateAction<Poll[]>>;
-  setCoverageKey: React.Dispatch<React.SetStateAction<string | null>>;
-  setCoverageName: React.Dispatch<React.SetStateAction<string | null>>;
+  setMarketKey: React.Dispatch<React.SetStateAction<string | null>>;
+  setMarketName: React.Dispatch<React.SetStateAction<string | null>>;
+  setMarketStatus: React.Dispatch<React.SetStateAction<'resolved' | 'no_market' | 'error' | null>>;
+  setCandidatePlaceName: React.Dispatch<React.SetStateAction<string | null>>;
+  setCreatePollPrompt: React.Dispatch<React.SetStateAction<string | null>>;
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setPollFeedRefreshing: React.Dispatch<React.SetStateAction<boolean>>;
   setPollFeedRequiresFreshNetwork: React.Dispatch<React.SetStateAction<boolean>>;
@@ -63,12 +68,16 @@ export const usePollsRuntimeController = ({
   visible,
   bounds,
   bootstrapSnapshot,
-  coverageOverride,
+  userLocation,
+  marketOverride,
   pollFeedRequiresFreshNetwork,
   setSelectedPollId,
   setPolls,
-  setCoverageKey,
-  setCoverageName,
+  setMarketKey,
+  setMarketName,
+  setMarketStatus,
+  setCandidatePlaceName,
+  setCreatePollPrompt,
   setLoading,
   setPollFeedRefreshing,
   setPollFeedRequiresFreshNetwork,
@@ -80,32 +89,53 @@ export const usePollsRuntimeController = ({
 }: UsePollsRuntimeControllerArgs): UsePollsRuntimeControllerResult => {
   const socketRef = React.useRef<Socket | null>(null);
   const pendingPollIdRef = React.useRef<string | null>(null);
-  const lastResolvedCoverageKeyRef = React.useRef<string | null>(null);
+  const lastResolvedMarketKeyRef = React.useRef<string | null>(null);
   const refreshSeqRef = React.useRef(0);
-  const bootstrapCoverageKey =
-    typeof bootstrapSnapshot?.coverageKey === 'string' && bootstrapSnapshot.coverageKey.trim()
-      ? bootstrapSnapshot.coverageKey.trim().toLowerCase()
+  const bootstrapMarketKey =
+    typeof bootstrapSnapshot?.marketKey === 'string' && bootstrapSnapshot.marketKey.trim()
+      ? bootstrapSnapshot.marketKey.trim().toLowerCase()
       : null;
   const hasBootstrapSnapshot = Boolean(
     bootstrapSnapshot &&
-      (bootstrapSnapshot.polls.length > 0 || bootstrapSnapshot.coverageName || bootstrapCoverageKey)
+      (bootstrapSnapshot.polls.length > 0 || bootstrapSnapshot.marketName || bootstrapMarketKey)
   );
 
   const applyPollSnapshot = React.useCallback(
-    (snapshot: PollBootstrapSnapshot, focusPollId?: string | null) => {
-      const nextCoverageKey = snapshot.coverageKey;
+    (
+      snapshot: PollBootstrapSnapshot,
+      focusPollId?: string | null,
+      marketNameFallback?: string | null
+    ) => {
+      const nextMarketKey = snapshot.marketKey;
       const normalizedKey =
-        typeof nextCoverageKey === 'string' ? nextCoverageKey.trim().toLowerCase() : null;
+        typeof nextMarketKey === 'string' ? nextMarketKey.trim().toLowerCase() : null;
+      const resolvedMarketName =
+        typeof snapshot.marketName === 'string' && snapshot.marketName.trim()
+          ? snapshot.marketName.trim()
+          : typeof marketNameFallback === 'string' && marketNameFallback.trim()
+            ? marketNameFallback.trim()
+            : null;
       if (normalizedKey) {
-        lastResolvedCoverageKeyRef.current = normalizedKey;
+        lastResolvedMarketKeyRef.current = normalizedKey;
       }
       setPolls(snapshot.polls);
-      setCoverageKey(nextCoverageKey);
-      setCoverageName(snapshot.coverageName);
+      setMarketKey(nextMarketKey);
+      setMarketName(resolvedMarketName);
+      setMarketStatus(
+        snapshot.marketStatus === 'resolved' ||
+          snapshot.marketStatus === 'no_market' ||
+          snapshot.marketStatus === 'error'
+          ? snapshot.marketStatus
+          : nextMarketKey
+            ? 'resolved'
+            : null
+      );
+      setCandidatePlaceName(snapshot.candidatePlaceName ?? null);
+      setCreatePollPrompt(snapshot.cta?.prompt ?? snapshot.cta?.label ?? null);
       setPollFeedRequiresFreshNetwork(snapshot.source !== 'network');
       setPollFeedFreshnessError(false);
-      if (nextCoverageKey && !coverageOverride) {
-        setPersistedCity(nextCoverageKey);
+      if (nextMarketKey && !marketOverride) {
+        setPersistedCity(nextMarketKey);
       }
 
       setSelectedPollId((current) => {
@@ -131,9 +161,12 @@ export const usePollsRuntimeController = ({
       });
     },
     [
-      coverageOverride,
-      setCoverageKey,
-      setCoverageName,
+      marketOverride,
+      setMarketKey,
+      setMarketName,
+      setCandidatePlaceName,
+      setCreatePollPrompt,
+      setMarketStatus,
       setPersistedCity,
       setPollFeedRequiresFreshNetwork,
       setPollFeedFreshnessError,
@@ -147,7 +180,8 @@ export const usePollsRuntimeController = ({
       const refreshSeq = ++refreshSeqRef.current;
       const skipSpinner = options?.skipSpinner ?? false;
       const focusPollId = options?.focusPollId ?? null;
-      const coverageKeyOverride = options?.coverageKeyOverride ?? null;
+      const marketKeyOverride = options?.marketKeyOverride ?? null;
+      const marketNameFallback = options?.marketNameFallback ?? null;
 
       setPollFeedFreshnessError(false);
       setPollFeedRefreshing(true);
@@ -155,12 +189,15 @@ export const usePollsRuntimeController = ({
         setLoading(true);
       }
 
-      const resolvedCoverageKey = coverageKeyOverride ?? coverageOverride ?? null;
-      const payload = resolvedCoverageKey
-        ? { coverageKey: resolvedCoverageKey }
+      const resolvedMarketKey = marketKeyOverride ?? marketOverride ?? null;
+      const payload = resolvedMarketKey
+        ? { marketKey: resolvedMarketKey }
         : bounds
-        ? { bounds }
-        : null;
+          ? {
+              bounds,
+              ...(userLocation ? { userLocation } : {}),
+            }
+          : null;
 
       if (!payload) {
         if (refreshSeq === refreshSeqRef.current) {
@@ -174,9 +211,12 @@ export const usePollsRuntimeController = ({
 
       try {
         const response = await fetchPolls(payload);
+        if (refreshSeq !== refreshSeqRef.current) {
+          return;
+        }
         const snapshot = createNetworkPollBootstrapSnapshot(response);
-        applyPollSnapshot(snapshot, focusPollId);
-        if (snapshot.coverageKey) {
+        applyPollSnapshot(snapshot, focusPollId, marketNameFallback);
+        if (snapshot.marketKey) {
           void writePollBootstrapSnapshot(snapshot);
         }
       } catch (error) {
@@ -196,7 +236,8 @@ export const usePollsRuntimeController = ({
     [
       applyPollSnapshot,
       bounds,
-      coverageOverride,
+      userLocation,
+      marketOverride,
       pollFeedRequiresFreshNetwork,
       setLoading,
       setPollFeedFreshnessError,
@@ -205,23 +246,23 @@ export const usePollsRuntimeController = ({
   );
 
   React.useEffect(() => {
-    if (!bootstrapCoverageKey) {
+    if (!bootstrapMarketKey) {
       return;
     }
-    lastResolvedCoverageKeyRef.current = bootstrapCoverageKey;
-  }, [bootstrapCoverageKey]);
+    lastResolvedMarketKeyRef.current = bootstrapMarketKey;
+  }, [bootstrapMarketKey]);
 
   React.useEffect(() => {
-    if (!visible || isSystemUnavailable || !coverageOverride) {
+    if (!visible || isSystemUnavailable || !marketOverride) {
       return;
     }
-    const normalizedOverride = coverageOverride.trim().toLowerCase();
+    const normalizedOverride = marketOverride.trim().toLowerCase();
     let cancelled = false;
 
     void (async () => {
-      const activeCoverageKey = lastResolvedCoverageKeyRef.current ?? bootstrapCoverageKey;
-      if (normalizedOverride !== activeCoverageKey) {
-        const cachedSnapshot = await readPollBootstrapSnapshotForCoverage(normalizedOverride);
+      const activeMarketKey = lastResolvedMarketKeyRef.current ?? bootstrapMarketKey;
+      if (normalizedOverride !== activeMarketKey) {
+        const cachedSnapshot = await readPollBootstrapSnapshotForMarket(normalizedOverride);
         if (cancelled) {
           return;
         }
@@ -233,8 +274,8 @@ export const usePollsRuntimeController = ({
 
       if (!cancelled) {
         void refreshPollFeed({
-          coverageKeyOverride: coverageOverride,
-          skipSpinner: hasBootstrapSnapshot && normalizedOverride === bootstrapCoverageKey,
+          marketKeyOverride: marketOverride,
+          skipSpinner: hasBootstrapSnapshot && normalizedOverride === bootstrapMarketKey,
         });
       }
     })();
@@ -244,8 +285,8 @@ export const usePollsRuntimeController = ({
     };
   }, [
     applyPollSnapshot,
-    bootstrapCoverageKey,
-    coverageOverride,
+    bootstrapMarketKey,
+    marketOverride,
     hasBootstrapSnapshot,
     isSystemUnavailable,
     pollIdParam,
@@ -255,11 +296,11 @@ export const usePollsRuntimeController = ({
   ]);
 
   React.useEffect(() => {
-    if (!visible || isSystemUnavailable || coverageOverride || !bounds) {
+    if (!visible || isSystemUnavailable || marketOverride || !bounds) {
       return;
     }
-    const activeCoverageKey = lastResolvedCoverageKeyRef.current ?? bootstrapCoverageKey;
-    if (!activeCoverageKey || !hasBootstrapSnapshot) {
+    const activeMarketKey = lastResolvedMarketKeyRef.current ?? bootstrapMarketKey;
+    if (!activeMarketKey || !hasBootstrapSnapshot) {
       void refreshPollFeed({ skipSpinner: hasBootstrapSnapshot });
       return;
     }
@@ -267,47 +308,80 @@ export const usePollsRuntimeController = ({
     let cancelled = false;
     void (async () => {
       try {
-        const response = await resolveCoverage(bounds);
+        const response = await resolveMarket(bounds, userLocation ?? null);
         if (cancelled) {
           return;
         }
         const nextKey =
-          typeof response.coverageKey === 'string' ? response.coverageKey.trim().toLowerCase() : '';
+          typeof response.market?.marketKey === 'string'
+            ? response.market.marketKey.trim().toLowerCase()
+            : '';
         const nextName =
-          typeof response.coverageName === 'string' && response.coverageName.trim()
-            ? response.coverageName.trim()
+          typeof response.market?.marketShortName === 'string' &&
+          response.market.marketShortName.trim()
+            ? response.market.marketShortName.trim()
+            : typeof response.market?.marketName === 'string' && response.market.marketName.trim()
+              ? response.market.marketName.trim()
+              : null;
+        const nextStatus =
+          response.status === 'resolved' ||
+          response.status === 'no_market' ||
+          response.status === 'error'
+            ? response.status
             : null;
+        const nextCandidatePlaceName =
+          typeof response.resolution?.candidatePlaceName === 'string' &&
+          response.resolution.candidatePlaceName.trim()
+            ? response.resolution.candidatePlaceName.trim()
+            : null;
+        const nextPrompt =
+          typeof response.cta?.prompt === 'string' && response.cta.prompt.trim()
+            ? response.cta.prompt.trim()
+            : typeof response.cta?.label === 'string' && response.cta.label.trim()
+              ? response.cta.label.trim()
+              : null;
 
-        if (nextKey && nextKey === activeCoverageKey) {
+        if (nextKey && nextKey === activeMarketKey) {
           if (nextName) {
-            setCoverageName(nextName);
+            setMarketName(nextName);
           }
+          setMarketStatus(nextStatus);
+          setCandidatePlaceName(nextCandidatePlaceName);
+          setCreatePollPrompt(nextPrompt);
           if (pollFeedRequiresFreshNetwork) {
             void refreshPollFeed({
-              coverageKeyOverride: nextKey || null,
+              marketKeyOverride: nextKey || null,
+              marketNameFallback: nextName,
               skipSpinner: true,
             });
           }
           return;
         }
 
+        setMarketKey(nextKey || null);
+        setMarketName(nextName);
+        setMarketStatus(nextStatus);
+        setCandidatePlaceName(nextCandidatePlaceName);
+        setCreatePollPrompt(nextPrompt);
+
         if (nextKey) {
-          const cachedSnapshot = await readPollBootstrapSnapshotForCoverage(nextKey);
+          const cachedSnapshot = await readPollBootstrapSnapshotForMarket(nextKey);
           if (cancelled) {
             return;
           }
           if (cachedSnapshot) {
-            applyPollSnapshot(cachedSnapshot);
+            applyPollSnapshot(cachedSnapshot, null, nextName);
             setPollFeedRefreshing(true);
           }
         }
 
         void refreshPollFeed({
-          coverageKeyOverride: nextKey || null,
+          marketKeyOverride: nextKey || null,
+          marketNameFallback: nextName,
           skipSpinner: true,
         });
       } catch (error) {
-        logger.warn('Coverage revalidation failed', {
+        logger.warn('Market revalidation failed', {
           message: error instanceof Error ? error.message : 'unknown',
         });
         void refreshPollFeed({ skipSpinner: hasBootstrapSnapshot });
@@ -318,15 +392,20 @@ export const usePollsRuntimeController = ({
       cancelled = true;
     };
   }, [
-    bootstrapCoverageKey,
+    bootstrapMarketKey,
     bounds,
-    coverageOverride,
+    userLocation,
+    marketOverride,
     hasBootstrapSnapshot,
     isSystemUnavailable,
     pollFeedRequiresFreshNetwork,
     refreshPollFeed,
     applyPollSnapshot,
-    setCoverageName,
+    setMarketKey,
+    setMarketName,
+    setCandidatePlaceName,
+    setCreatePollPrompt,
+    setMarketStatus,
     setPollFeedRefreshing,
     visible,
   ]);

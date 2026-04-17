@@ -61,6 +61,16 @@
       "restaurantName": "Ramen Tatsu-Ya",
       "contextualScore": 85.2,
       "restaurantQualityScore": 90.1,
+      "matchEvidenceType": "mixed",
+      "hasMenuItems": true,
+      "matchedTags": [
+        {
+          "entityId": "uuid-food",
+          "name": "ramen",
+          "entityType": "food",
+          "mentionCount": 12
+        }
+      ],
       "latitude": 30.321,
       "longitude": -97.742,
       "address": "123 Main St, Austin, TX",
@@ -93,7 +103,13 @@
 
 `sqlPreview` is returned when the request sets `includeSqlPreview: true` or the `SEARCH_ALWAYS_INCLUDE_SQL_PREVIEW` environment flag is enabled. The preview mirrors the SQL executed by the service (includes `WITH filtered_restaurants` / `filtered_connections` CTEs, ORDER BY, LIMIT/OFFSET).
 
-When a query supplies food entities/attributes but returns fewer than `SEARCH_ON_DEMAND_MIN_RESULTS` restaurants, the API automatically enqueues keyword search cycles—first choosing the closest subreddit whose `center_latitude/center_longitude` (stored on the `collection_subreddits` table) matches the request’s bounds/results, then falling back to every active subreddit—so Section 5/7 on-demand enrichment stays fed by real query traffic.
+Restaurant rows can now include:
+
+- `matchEvidenceType`: whether the restaurant matched via menu-item connections, tag signals, or both
+- `matchedTags`: the matched restaurant-level tags returned for card/profile rendering
+- `hasMenuItems`: explicit guard showing the restaurant still has menu-item inventory backing eligibility
+
+When a query supplies food entities/attributes but returns fewer than `SEARCH_ON_DEMAND_MIN_RESULTS` restaurants, the API automatically enqueues keyword search cycles—first choosing the closest active community whose `center_latitude/center_longitude` (stored on the `collection_communities` table) matches the request’s bounds/results, then falling back to every active subreddit—so Section 5/7 on-demand enrichment stays fed by real query traffic.
 
 ## POST /search/events/click
 

@@ -68,7 +68,6 @@ export class SearchOrchestrationService {
         searchRequestId: request.searchRequestId,
         submissionSource: 'shortcut',
         submissionContext: request.submissionContext,
-        scoreMode: request.scoreMode,
       });
 
       response.metadata.sourceQuery = originalQuery;
@@ -77,7 +76,7 @@ export class SearchOrchestrationService {
       if (this.debugMode !== 'off') {
         this.logger.info('Search debug: generic-only response', {
           searchRequestId: response.metadata.searchRequestId,
-          coverageStatus: response.metadata.coverageStatus,
+          marketStatus: response.metadata.marketStatus,
           totalRestaurantResults: response.metadata.totalRestaurantResults,
           totalFoodResults: response.metadata.totalFoodResults,
           queryExecutionTimeMs: response.metadata.queryExecutionTimeMs,
@@ -226,7 +225,7 @@ export class SearchOrchestrationService {
     if (this.debugMode !== 'off') {
       this.logger.info('Search debug: final response', {
         searchRequestId: response.metadata.searchRequestId,
-        coverageStatus: response.metadata.coverageStatus,
+        marketStatus: response.metadata.marketStatus,
         totalRestaurantResults: response.metadata.totalRestaurantResults,
         totalFoodResults: response.metadata.totalFoodResults,
         restaurantsOnPage: response.restaurants?.length ?? 0,
@@ -249,13 +248,13 @@ export class SearchOrchestrationService {
     );
 
     if (interpretation.unresolved.length) {
-      response.metadata.coverageStatus =
+      response.metadata.marketStatus =
         totalResults > 0 ? 'partial' : 'unresolved';
-    } else if (!response.metadata.coverageStatus) {
+    } else if (!response.metadata.marketStatus) {
       if (hasQueryTargets && totalResults === 0) {
-        response.metadata.coverageStatus = 'unresolved';
+        response.metadata.marketStatus = 'unresolved';
       } else {
-        response.metadata.coverageStatus = totalResults > 0 ? 'full' : 'full';
+        response.metadata.marketStatus = totalResults > 0 ? 'full' : 'full';
       }
     }
 

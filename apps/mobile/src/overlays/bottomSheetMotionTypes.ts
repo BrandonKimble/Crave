@@ -6,6 +6,8 @@ export type BottomSheetSnapPoints = Record<BottomSheetSnapPoint, number> & {
   hidden?: number;
 };
 
+export type SnapPoints = BottomSheetSnapPoints;
+
 export type BottomSheetSnapChangeSource = 'gesture' | 'programmatic';
 
 export type BottomSheetSnapChangeMeta = {

@@ -4,6 +4,7 @@ import { LoggerService, CorrelationUtils } from '../../../shared';
 import { LLMService } from './llm.service';
 import { LLMOutputStructure } from './llm.types';
 import { ChunkResult, ChunkMetadata } from './llm-chunking.service';
+import { LLMInputDto } from './dto/llm-input.dto';
 // LLMPerformanceOptimizerService removed - optimization handled by SmartLLMProcessor
 import { SmartLLMProcessor } from './rate-limiting/smart-llm-processor.service';
 
@@ -17,6 +18,8 @@ export interface ChunkProcessingResult {
   chunkId: string;
   commentCount: number;
   duration: number;
+  metadata: ChunkMetadata;
+  input: LLMInputDto;
 }
 
 /**
@@ -24,6 +27,7 @@ export interface ChunkProcessingResult {
  */
 export interface ProcessingResult {
   results: LLMOutputStructure[];
+  chunkResults: ChunkProcessingResult[];
   failures: ChunkProcessingResult[];
   metrics: {
     totalDuration: number;
@@ -54,6 +58,7 @@ export interface ProcessingResult {
  */
 @Injectable()
 export class LLMConcurrentProcessingService implements OnModuleInit {
+  private static readonly REDDIT_SOURCE_REF_PATTERN = /^t[13]_[A-Za-z0-9]+$/;
   private logger!: LoggerService;
   private limit!: ReturnType<typeof pLimit>;
   private concurrencyLimit: number = 16; // default; can be overridden by CONCURRENCY env
@@ -122,6 +127,7 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
 
       return {
         results: [],
+        chunkResults: [],
         failures: [],
         metrics: {
           totalDuration: 0,
@@ -236,6 +242,8 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
             chunkId: meta.chunkId,
             commentCount: meta.commentCount,
             duration,
+            metadata: meta,
+            input: chunk,
           };
         } catch (error) {
           const duration = (Date.now() - chunkStart) / 1000;
@@ -255,6 +263,8 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
             chunkId: meta.chunkId,
             commentCount: meta.commentCount,
             duration,
+            metadata: meta,
+            input: chunk,
           };
         }
       }),
@@ -283,6 +293,8 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
           chunkId: meta.chunkId,
           commentCount: meta.commentCount,
           duration: 0,
+          metadata: meta,
+          input: chunks[index],
         });
       }
     });
@@ -348,6 +360,7 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
 
     return {
       results: successfulResults,
+      chunkResults: successful,
       failures: failed,
       metrics: {
         totalDuration,
@@ -461,6 +474,16 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
       if (!mention.source_id) {
         throw new Error(
           `Missing vital field: source_id in chunk ${chunkId}, mention ${mention.temp_id}`,
+        );
+      }
+
+      if (
+        !LLMConcurrentProcessingService.REDDIT_SOURCE_REF_PATTERN.test(
+          mention.source_id.trim(),
+        )
+      ) {
+        throw new Error(
+          `Invalid source_id format in chunk ${chunkId}, mention ${mention.temp_id}: ${mention.source_id}`,
         );
       }
     }

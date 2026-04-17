@@ -10,7 +10,7 @@ import { RestaurantEnrichmentModule } from '../restaurant-enrichment/restaurant-
 import { EntityResolverModule } from '../content-processing/entity-resolver/entity-resolver.module';
 import { QualityScoreModule } from '../content-processing/quality-score/quality-score.module';
 import { RankScoreModule } from '../content-processing/rank-score/rank-score.module';
-import { CoverageKeyModule } from '../coverage-key/coverage-key.module';
+import { MarketsModule } from '../markets/markets.module';
 import { PollsService } from './polls.service';
 import { PollsController } from './polls.controller';
 import { PollsGateway } from './polls.gateway';
@@ -34,7 +34,7 @@ import { PollScoreRefreshService } from './poll-score-refresh.service';
     EntityResolverModule,
     QualityScoreModule,
     RankScoreModule,
-    CoverageKeyModule,
+    MarketsModule,
   ],
   controllers: [PollsController],
   providers: [

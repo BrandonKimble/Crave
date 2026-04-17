@@ -8,12 +8,14 @@ import type {
 } from './searchRouteOverlayCommandRuntimeContract';
 import { appOverlayRouteController } from './useAppOverlayRouteController';
 import { useOverlaySheetPositionStore } from './useOverlaySheetPositionStore';
+import type { SearchRouteOverlayTransitionController } from './useSearchRouteOverlayTransitionController';
 import type { OverlayKey, OverlaySheetSnap } from './types';
 
 type UseSearchRoutePollsPanelActionsArgs = {
   rootOverlayKey: OverlayKey;
   commandState: SearchRouteOverlayCommandState;
   commandActions: SearchRouteOverlayCommandActions;
+  transitionController: SearchRouteOverlayTransitionController;
 };
 
 type PollsSnapMeta = { source: 'gesture' | 'programmatic' };
@@ -22,13 +24,13 @@ export const useSearchRoutePollsPanelActions = ({
   rootOverlayKey,
   commandState,
   commandActions,
+  transitionController,
 }: UseSearchRoutePollsPanelActionsArgs) => {
-  const handlePollsSnapStart = React.useCallback(
-    (snap: OverlaySheetSnap) => {
-      commandActions.setPollsSheetSnap(snap);
-    },
-    [commandActions]
-  );
+  const handlePollsSnapStart = React.useCallback((_snap: OverlaySheetSnap) => {
+    // Avoid driving JS overlay state from pre-settle snap predictions.
+    // The sheet/header animation already has a shared-value path; committing
+    // the snap in JS on settle is sufficient and reduces drag-adjacent churn.
+  }, []);
 
   const handlePollsSnapChange = React.useCallback(
     (snap: OverlaySheetSnap, meta?: PollsSnapMeta) => {
@@ -63,15 +65,9 @@ export const useSearchRoutePollsPanelActions = ({
           return;
         }
         commandActions.setTabOverlaySnapRequest(null);
-        if (rootOverlayKey === 'polls' && !commandState.overlaySwitchInFlight) {
-          unstable_batchedUpdates(() => {
-            requestSearchRouteDockedRestore({ snap: 'collapsed' });
-            appOverlayRouteController.setRootRoute('search');
-          });
-        }
       }
     },
-    [commandActions, commandState, rootOverlayKey]
+    [commandActions, commandState, rootOverlayKey, transitionController]
   );
 
   const requestPollCreationExpand = React.useCallback(() => {

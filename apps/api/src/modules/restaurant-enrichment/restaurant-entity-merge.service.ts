@@ -1,7 +1,8 @@
-import { Injectable, Inject } from '@nestjs/common';
-import { Prisma, Entity, ActivityLevel } from '@prisma/client';
+import { Injectable, Inject, forwardRef } from '@nestjs/common';
+import { Prisma, Entity } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import { ProjectionRebuildService } from '../content-processing/reddit-collector/projection-rebuild.service';
 
 type RestaurantEntity = Entity;
 
@@ -11,6 +12,8 @@ export class RestaurantEntityMergeService {
 
   constructor(
     private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => ProjectionRebuildService))
+    private readonly projectionRebuildService: ProjectionRebuildService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('RestaurantEntityMergeService');
@@ -26,18 +29,31 @@ export class RestaurantEntityMergeService {
     this.logger.info('Merging duplicate restaurant entity', {
       canonicalId: canonical.entityId,
       duplicateId: duplicate.entityId,
-      googlePlaceId: canonical.googlePlaceId || canonicalUpdate.googlePlaceId,
     });
 
     const result = await this.prisma.$transaction(async (tx) => {
-      await this.mergeConnections(tx, canonical.entityId, duplicate.entityId);
-      await this.mergeCategoryAggregates(
+      await this.mergeRestaurantEvents(
         tx,
         canonical.entityId,
         duplicate.entityId,
       );
-      await this.mergeBoosts(tx, canonical.entityId, duplicate.entityId);
+      await this.mergeRestaurantEntityEvents(
+        tx,
+        canonical.entityId,
+        duplicate.entityId,
+      );
+      await this.rehomeRestaurantEntityReferences(
+        tx,
+        canonical.entityId,
+        duplicate.entityId,
+      );
+      await this.mergeConnections(tx, canonical.entityId, duplicate.entityId);
       await this.mergePriorityMetrics(
+        tx,
+        canonical.entityId,
+        duplicate.entityId,
+      );
+      await this.mergeMarketPresences(
         tx,
         canonical.entityId,
         duplicate.entityId,
@@ -60,7 +76,411 @@ export class RestaurantEntityMergeService {
       canonicalId: result.entityId,
     });
 
+    const rebuildResult =
+      await this.projectionRebuildService.rebuildForRestaurants([
+        result.entityId,
+      ]);
+    await this.projectionRebuildService.refreshQualityScores({
+      connectionIds: rebuildResult.connectionIds,
+      restaurantIds: [result.entityId],
+    });
+
     return result;
+  }
+
+  private async mergeRestaurantEvents(
+    tx: Prisma.TransactionClient,
+    canonicalId: string,
+    duplicateId: string,
+  ): Promise<void> {
+    const duplicateEvents = await tx.restaurantEvent.findMany({
+      where: { restaurantId: duplicateId },
+      select: {
+        eventId: true,
+        extractionRunId: true,
+        mentionKey: true,
+        evidenceType: true,
+      },
+    });
+
+    for (const event of duplicateEvents) {
+      const conflicting = await tx.restaurantEvent.findFirst({
+        where: {
+          extractionRunId: event.extractionRunId,
+          mentionKey: event.mentionKey,
+          restaurantId: canonicalId,
+          evidenceType: event.evidenceType,
+        },
+        select: { eventId: true },
+      });
+
+      if (conflicting) {
+        await tx.restaurantEvent.delete({
+          where: { eventId: event.eventId },
+        });
+        continue;
+      }
+
+      await tx.restaurantEvent.update({
+        where: { eventId: event.eventId },
+        data: { restaurantId: canonicalId },
+      });
+    }
+  }
+
+  private async mergeRestaurantEntityEvents(
+    tx: Prisma.TransactionClient,
+    canonicalId: string,
+    duplicateId: string,
+  ): Promise<void> {
+    const duplicateEvents = await tx.restaurantEntityEvent.findMany({
+      where: { restaurantId: duplicateId },
+      select: {
+        eventId: true,
+        extractionRunId: true,
+        mentionKey: true,
+        entityId: true,
+        evidenceType: true,
+      },
+    });
+
+    for (const event of duplicateEvents) {
+      const conflicting = await tx.restaurantEntityEvent.findFirst({
+        where: {
+          extractionRunId: event.extractionRunId,
+          mentionKey: event.mentionKey,
+          restaurantId: canonicalId,
+          entityId: event.entityId,
+          evidenceType: event.evidenceType,
+        },
+        select: { eventId: true },
+      });
+
+      if (conflicting) {
+        await tx.restaurantEntityEvent.delete({
+          where: { eventId: event.eventId },
+        });
+        continue;
+      }
+
+      await tx.restaurantEntityEvent.update({
+        where: { eventId: event.eventId },
+        data: { restaurantId: canonicalId },
+      });
+    }
+  }
+
+  private async rehomeRestaurantEntityReferences(
+    tx: Prisma.TransactionClient,
+    canonicalId: string,
+    duplicateId: string,
+  ): Promise<void> {
+    await this.rehomeSearchLogs(tx, canonicalId, duplicateId);
+    await this.rehomeRestaurantViews(tx, canonicalId, duplicateId);
+    await this.rehomeUserFavorites(tx, canonicalId, duplicateId);
+    await this.rehomeFavoriteListRestaurantItems(tx, canonicalId, duplicateId);
+    await this.rehomePollOptionRestaurantReferences(
+      tx,
+      canonicalId,
+      duplicateId,
+    );
+    await this.rehomePollTopicRestaurantTargets(tx, canonicalId, duplicateId);
+    await this.rehomeOnDemandRequestEntities(tx, canonicalId, duplicateId);
+  }
+
+  private async rehomeSearchLogs(
+    tx: Prisma.TransactionClient,
+    canonicalId: string,
+    duplicateId: string,
+  ): Promise<void> {
+    const duplicateLogs = await tx.searchLog.findMany({
+      where: { entityId: duplicateId },
+      select: {
+        logId: true,
+        searchRequestId: true,
+        loggedAt: true,
+        totalResults: true,
+        totalFoodResults: true,
+        totalRestaurantResults: true,
+        queryExecutionTimeMs: true,
+        marketStatus: true,
+        metadata: true,
+      },
+    });
+
+    for (const log of duplicateLogs) {
+      const conflicting = log.searchRequestId
+        ? await tx.searchLog.findFirst({
+            where: {
+              searchRequestId: log.searchRequestId,
+              entityId: canonicalId,
+              logId: { not: log.logId },
+            },
+            select: {
+              logId: true,
+              loggedAt: true,
+              totalResults: true,
+              totalFoodResults: true,
+              totalRestaurantResults: true,
+              queryExecutionTimeMs: true,
+              marketStatus: true,
+            },
+          })
+        : null;
+
+      if (!conflicting) {
+        await tx.searchLog.update({
+          where: { logId: log.logId },
+          data: { entityId: canonicalId },
+        });
+        continue;
+      }
+
+      await tx.searchLog.update({
+        where: { logId: conflicting.logId },
+        data: {
+          loggedAt:
+            this.maxDate(conflicting.loggedAt, log.loggedAt) ??
+            conflicting.loggedAt,
+          totalResults: Math.max(
+            conflicting.totalResults ?? 0,
+            log.totalResults ?? 0,
+          ),
+          totalFoodResults: Math.max(
+            conflicting.totalFoodResults ?? 0,
+            log.totalFoodResults ?? 0,
+          ),
+          totalRestaurantResults: Math.max(
+            conflicting.totalRestaurantResults ?? 0,
+            log.totalRestaurantResults ?? 0,
+          ),
+          queryExecutionTimeMs: this.minNumber(
+            conflicting.queryExecutionTimeMs,
+            log.queryExecutionTimeMs,
+          ),
+          marketStatus: conflicting.marketStatus ?? log.marketStatus,
+        },
+      });
+
+      await tx.searchLog.delete({
+        where: { logId: log.logId },
+      });
+    }
+  }
+
+  private async rehomeRestaurantViews(
+    tx: Prisma.TransactionClient,
+    canonicalId: string,
+    duplicateId: string,
+  ): Promise<void> {
+    const duplicateViews = await tx.restaurantView.findMany({
+      where: { restaurantId: duplicateId },
+      select: {
+        userId: true,
+        restaurantId: true,
+        viewCount: true,
+        lastViewedAt: true,
+      },
+    });
+
+    for (const view of duplicateViews) {
+      const conflicting = await tx.restaurantView.findUnique({
+        where: {
+          userId_restaurantId: {
+            userId: view.userId,
+            restaurantId: canonicalId,
+          },
+        },
+        select: {
+          userId: true,
+          restaurantId: true,
+          viewCount: true,
+          lastViewedAt: true,
+        },
+      });
+
+      if (!conflicting) {
+        await tx.restaurantView.update({
+          where: {
+            userId_restaurantId: {
+              userId: view.userId,
+              restaurantId: view.restaurantId,
+            },
+          },
+          data: { restaurantId: canonicalId },
+        });
+        continue;
+      }
+
+      await tx.restaurantView.update({
+        where: {
+          userId_restaurantId: {
+            userId: conflicting.userId,
+            restaurantId: conflicting.restaurantId,
+          },
+        },
+        data: {
+          viewCount: conflicting.viewCount + view.viewCount,
+          lastViewedAt:
+            this.maxDate(conflicting.lastViewedAt, view.lastViewedAt) ??
+            conflicting.lastViewedAt,
+        },
+      });
+
+      await tx.restaurantView.delete({
+        where: {
+          userId_restaurantId: {
+            userId: view.userId,
+            restaurantId: view.restaurantId,
+          },
+        },
+      });
+    }
+  }
+
+  private async rehomeUserFavorites(
+    tx: Prisma.TransactionClient,
+    canonicalId: string,
+    duplicateId: string,
+  ): Promise<void> {
+    const duplicateFavorites = await tx.userFavorite.findMany({
+      where: { entityId: duplicateId },
+      select: { favoriteId: true, userId: true },
+    });
+
+    for (const favorite of duplicateFavorites) {
+      const conflicting = await tx.userFavorite.findFirst({
+        where: {
+          userId: favorite.userId,
+          entityId: canonicalId,
+          favoriteId: { not: favorite.favoriteId },
+        },
+        select: { favoriteId: true },
+      });
+
+      if (conflicting) {
+        await tx.userFavorite.delete({
+          where: { favoriteId: favorite.favoriteId },
+        });
+        continue;
+      }
+
+      await tx.userFavorite.update({
+        where: { favoriteId: favorite.favoriteId },
+        data: { entityId: canonicalId },
+      });
+    }
+  }
+
+  private async rehomeFavoriteListRestaurantItems(
+    tx: Prisma.TransactionClient,
+    canonicalId: string,
+    duplicateId: string,
+  ): Promise<void> {
+    const sourceItems = await tx.favoriteListItem.findMany({
+      where: { restaurantId: duplicateId },
+      select: { itemId: true, listId: true },
+    });
+
+    for (const item of sourceItems) {
+      const conflicting = await tx.favoriteListItem.findFirst({
+        where: {
+          listId: item.listId,
+          restaurantId: canonicalId,
+          itemId: { not: item.itemId },
+        },
+        select: { itemId: true },
+      });
+
+      if (conflicting) {
+        await tx.favoriteListItem.delete({
+          where: { itemId: item.itemId },
+        });
+        continue;
+      }
+
+      await tx.favoriteListItem.update({
+        where: { itemId: item.itemId },
+        data: { restaurantId: canonicalId },
+      });
+    }
+  }
+
+  private async rehomePollOptionRestaurantReferences(
+    tx: Prisma.TransactionClient,
+    canonicalId: string,
+    duplicateId: string,
+  ): Promise<void> {
+    await tx.pollOption.updateMany({
+      where: { restaurantId: duplicateId },
+      data: { restaurantId: canonicalId },
+    });
+
+    await tx.pollOption.updateMany({
+      where: { entityId: duplicateId },
+      data: { entityId: canonicalId },
+    });
+  }
+
+  private async rehomePollTopicRestaurantTargets(
+    tx: Prisma.TransactionClient,
+    canonicalId: string,
+    duplicateId: string,
+  ): Promise<void> {
+    await tx.pollTopic.updateMany({
+      where: { targetRestaurantId: duplicateId },
+      data: { targetRestaurantId: canonicalId },
+    });
+  }
+
+  private async rehomeOnDemandRequestEntities(
+    tx: Prisma.TransactionClient,
+    canonicalId: string,
+    duplicateId: string,
+  ): Promise<void> {
+    await tx.onDemandRequest.updateMany({
+      where: { entityId: duplicateId },
+      data: { entityId: canonicalId },
+    });
+  }
+
+  private async mergeMarketPresences(
+    tx: Prisma.TransactionClient,
+    canonicalId: string,
+    duplicateId: string,
+  ): Promise<void> {
+    const duplicatePresences = await tx.entityMarketPresence.findMany({
+      where: { entityId: duplicateId },
+      select: { marketKey: true },
+    });
+
+    if (!duplicatePresences.length) {
+      return;
+    }
+
+    const canonicalPresences = new Set(
+      (
+        await tx.entityMarketPresence.findMany({
+          where: { entityId: canonicalId },
+          select: { marketKey: true },
+        })
+      ).map((row) => row.marketKey.trim().toLowerCase()),
+    );
+
+    for (const presence of duplicatePresences) {
+      const normalizedKey = presence.marketKey.trim().toLowerCase();
+      if (!normalizedKey || canonicalPresences.has(normalizedKey)) {
+        continue;
+      }
+
+      await tx.entityMarketPresence.create({
+        data: {
+          entityId: canonicalId,
+          marketKey: normalizedKey,
+        },
+      });
+      canonicalPresences.add(normalizedKey);
+    }
   }
 
   private async mergeLocations(
@@ -155,14 +575,19 @@ export class RestaurantEntityMergeService {
           restaurantId: canonicalId,
           foodId: connection.foodId,
         },
+        select: {
+          connectionId: true,
+          foodId: true,
+        },
       });
 
       if (conflicting) {
-        await tx.connection.update({
-          where: { connectionId: conflicting.connectionId },
-          data: this.mergeConnectionRecords(conflicting, connection),
-        });
-
+        await this.rehomeConnectionReferences(
+          tx,
+          connection.connectionId,
+          conflicting.connectionId,
+          conflicting.foodId,
+        );
         await tx.connection.delete({
           where: { connectionId: connection.connectionId },
         });
@@ -175,197 +600,151 @@ export class RestaurantEntityMergeService {
     }
   }
 
-  private mergeConnectionRecords(
-    target: Prisma.ConnectionGetPayload<{
-      select: {
-        connectionId: true;
-        categories: true;
-        foodAttributes: true;
-        mentionCount: true;
-        totalUpvotes: true;
-        recentMentionCount: true;
-        lastMentionedAt: true;
-        activityLevel: true;
-        foodQualityScore: true;
-        decayedMentionScore: true;
-        decayedUpvoteScore: true;
-        decayedScoresUpdatedAt: true;
-        boostLastAppliedAt: true;
-      };
-    }>,
-    source: Prisma.ConnectionGetPayload<{
-      select: {
-        categories: true;
-        foodAttributes: true;
-        mentionCount: true;
-        totalUpvotes: true;
-        recentMentionCount: true;
-        lastMentionedAt: true;
-        activityLevel: true;
-        foodQualityScore: true;
-        decayedMentionScore: true;
-        decayedUpvoteScore: true;
-        decayedScoresUpdatedAt: true;
-        boostLastAppliedAt: true;
-      };
-    }>,
-  ): Prisma.ConnectionUpdateInput {
-    const categories = this.mergeStringArrays(
-      target.categories,
-      source.categories,
+  private async rehomeConnectionReferences(
+    tx: Prisma.TransactionClient,
+    sourceConnectionId: string,
+    targetConnectionId: string,
+    targetFoodId: string,
+  ): Promise<void> {
+    await this.rehomePollOptionConnections(
+      tx,
+      sourceConnectionId,
+      targetConnectionId,
     );
-    const foodAttributes = this.mergeStringArrays(
-      target.foodAttributes,
-      source.foodAttributes,
+    await this.rehomeFavoriteListItemConnections(
+      tx,
+      sourceConnectionId,
+      targetConnectionId,
     );
-    const mentionCount = target.mentionCount + source.mentionCount;
-    const totalUpvotes = target.totalUpvotes + source.totalUpvotes;
-    const recentMentionCount =
-      target.recentMentionCount + source.recentMentionCount;
-    const lastMentionedAt = this.maxDate(
-      target.lastMentionedAt,
-      source.lastMentionedAt,
+    await this.rehomeFoodViews(
+      tx,
+      sourceConnectionId,
+      targetConnectionId,
+      targetFoodId,
     );
-    const boostLastAppliedAt = this.maxDate(
-      target.boostLastAppliedAt,
-      source.boostLastAppliedAt,
-    );
-    const activityLevel = this.mergeActivityLevel(
-      target.activityLevel,
-      source.activityLevel,
-    );
-    const foodQualityScore = this.sumDecimal(
-      target.foodQualityScore,
-      source.foodQualityScore,
-    );
-    const decayedMentionScore = this.sumDecimal(
-      target.decayedMentionScore,
-      source.decayedMentionScore,
-    );
-    const decayedUpvoteScore = this.sumDecimal(
-      target.decayedUpvoteScore,
-      source.decayedUpvoteScore,
-    );
-    const decayedScoresUpdatedAt = this.maxDate(
-      target.decayedScoresUpdatedAt,
-      source.decayedScoresUpdatedAt,
-    );
-
-    return {
-      categories,
-      foodAttributes,
-      mentionCount,
-      totalUpvotes,
-      recentMentionCount,
-      lastMentionedAt,
-      boostLastAppliedAt,
-      activityLevel,
-      foodQualityScore,
-      decayedMentionScore,
-      decayedUpvoteScore,
-      decayedScoresUpdatedAt,
-      lastUpdated: new Date(),
-    };
   }
 
-  private async mergeCategoryAggregates(
+  private async rehomePollOptionConnections(
     tx: Prisma.TransactionClient,
-    canonicalId: string,
-    duplicateId: string,
+    sourceConnectionId: string,
+    targetConnectionId: string,
   ): Promise<void> {
-    const aggregates = await tx.categoryAggregate.findMany({
-      where: { restaurantId: duplicateId },
+    await tx.pollOption.updateMany({
+      where: { connectionId: sourceConnectionId },
+      data: { connectionId: targetConnectionId },
+    });
+  }
+
+  private async rehomeFavoriteListItemConnections(
+    tx: Prisma.TransactionClient,
+    sourceConnectionId: string,
+    targetConnectionId: string,
+  ): Promise<void> {
+    const sourceItems = await tx.favoriteListItem.findMany({
+      where: { connectionId: sourceConnectionId },
+      select: {
+        itemId: true,
+        listId: true,
+      },
     });
 
-    if (!aggregates.length) {
-      return;
-    }
-
-    for (const aggregate of aggregates) {
-      const existing = await tx.categoryAggregate.findUnique({
+    for (const item of sourceItems) {
+      const conflicting = await tx.favoriteListItem.findFirst({
         where: {
-          restaurantId_categoryId: {
-            restaurantId: canonicalId,
-            categoryId: aggregate.categoryId,
+          listId: item.listId,
+          connectionId: targetConnectionId,
+          itemId: { not: item.itemId },
+        },
+        select: { itemId: true },
+      });
+
+      if (conflicting) {
+        await tx.favoriteListItem.delete({
+          where: { itemId: item.itemId },
+        });
+        continue;
+      }
+
+      await tx.favoriteListItem.update({
+        where: { itemId: item.itemId },
+        data: { connectionId: targetConnectionId },
+      });
+    }
+  }
+
+  private async rehomeFoodViews(
+    tx: Prisma.TransactionClient,
+    sourceConnectionId: string,
+    targetConnectionId: string,
+    targetFoodId: string,
+  ): Promise<void> {
+    const sourceViews = await tx.foodView.findMany({
+      where: { connectionId: sourceConnectionId },
+      select: {
+        userId: true,
+        connectionId: true,
+        viewCount: true,
+        lastViewedAt: true,
+      },
+    });
+
+    for (const view of sourceViews) {
+      const conflicting = await tx.foodView.findUnique({
+        where: {
+          userId_connectionId: {
+            userId: view.userId,
+            connectionId: targetConnectionId,
           },
+        },
+        select: {
+          userId: true,
+          connectionId: true,
+          viewCount: true,
+          lastViewedAt: true,
         },
       });
 
-      if (existing) {
-        await tx.categoryAggregate.update({
+      if (conflicting) {
+        await tx.foodView.update({
           where: {
-            restaurantId_categoryId: {
-              restaurantId: canonicalId,
-              categoryId: aggregate.categoryId,
+            userId_connectionId: {
+              userId: conflicting.userId,
+              connectionId: conflicting.connectionId,
             },
           },
           data: {
-            mentionsCount: existing.mentionsCount + aggregate.mentionsCount,
-            totalUpvotes: existing.totalUpvotes + aggregate.totalUpvotes,
-            lastMentionedAt:
-              this.maxDate(
-                existing.lastMentionedAt,
-                aggregate.lastMentionedAt,
-              ) ??
-              existing.lastMentionedAt ??
-              aggregate.lastMentionedAt ??
-              new Date(),
-            firstMentionedAt:
-              this.minDate(
-                existing.firstMentionedAt,
-                aggregate.firstMentionedAt,
-              ) ??
-              existing.firstMentionedAt ??
-              aggregate.firstMentionedAt ??
-              new Date(),
-            decayedMentionScore: this.sumDecimal(
-              existing.decayedMentionScore,
-              aggregate.decayedMentionScore,
-            ),
-            decayedUpvoteScore: this.sumDecimal(
-              existing.decayedUpvoteScore,
-              aggregate.decayedUpvoteScore,
-            ),
-            decayedScoresUpdatedAt: this.maxDate(
-              existing.decayedScoresUpdatedAt,
-              aggregate.decayedScoresUpdatedAt,
-            ),
+            viewCount: conflicting.viewCount + view.viewCount,
+            lastViewedAt:
+              this.maxDate(conflicting.lastViewedAt, view.lastViewedAt) ??
+              conflicting.lastViewedAt,
+            foodId: targetFoodId,
           },
         });
 
-        await tx.categoryAggregate.delete({
+        await tx.foodView.delete({
           where: {
-            restaurantId_categoryId: {
-              restaurantId: duplicateId,
-              categoryId: aggregate.categoryId,
+            userId_connectionId: {
+              userId: view.userId,
+              connectionId: view.connectionId,
             },
           },
         });
-      } else {
-        await tx.categoryAggregate.update({
-          where: {
-            restaurantId_categoryId: {
-              restaurantId: duplicateId,
-              categoryId: aggregate.categoryId,
-            },
-          },
-          data: {
-            restaurantId: canonicalId,
-          },
-        });
+        continue;
       }
-    }
-  }
 
-  private async mergeBoosts(
-    tx: Prisma.TransactionClient,
-    canonicalId: string,
-    duplicateId: string,
-  ): Promise<void> {
-    await tx.boost.updateMany({
-      where: { restaurantId: duplicateId },
-      data: { restaurantId: canonicalId },
-    });
+      await tx.foodView.update({
+        where: {
+          userId_connectionId: {
+            userId: view.userId,
+            connectionId: view.connectionId,
+          },
+        },
+        data: {
+          connectionId: targetConnectionId,
+          foodId: targetFoodId,
+        },
+      });
+    }
   }
 
   private async mergePriorityMetrics(
@@ -431,54 +810,6 @@ export class RestaurantEntityMergeService {
     }
   }
 
-  private mergeStringArrays(
-    target: string[] | null | undefined,
-    source: string[] | null | undefined,
-  ): string[] {
-    const merged = new Set<string>();
-    for (const value of target ?? []) {
-      if (value) merged.add(value);
-    }
-    for (const value of source ?? []) {
-      if (value) merged.add(value);
-    }
-    return Array.from(merged);
-  }
-
-  private sumDecimal(
-    a: Prisma.Decimal | number | string | null | undefined,
-    b: Prisma.Decimal | number | string | null | undefined,
-  ): Prisma.Decimal {
-    return this.toDecimal(a).add(this.toDecimal(b));
-  }
-
-  private maxDecimal(
-    a: Prisma.Decimal | number | string | null | undefined,
-    b: Prisma.Decimal | number | string | null | undefined,
-  ): Prisma.Decimal | null {
-    if (a === null || a === undefined) {
-      return b === null || b === undefined ? null : this.toDecimal(b);
-    }
-    if (b === null || b === undefined) {
-      return this.toDecimal(a);
-    }
-    const decA = this.toDecimal(a);
-    const decB = this.toDecimal(b);
-    return decA.greaterThan(decB) ? decA : decB;
-  }
-
-  private toDecimal(
-    value: Prisma.Decimal | number | string | null | undefined,
-  ): Prisma.Decimal {
-    if (value === null || value === undefined) {
-      return new Prisma.Decimal(0);
-    }
-    if (value instanceof Prisma.Decimal) {
-      return value;
-    }
-    return new Prisma.Decimal(value);
-  }
-
   private maxDate(
     a: Date | null | undefined,
     b: Date | null | undefined,
@@ -489,26 +820,13 @@ export class RestaurantEntityMergeService {
     return a ?? b ?? undefined;
   }
 
-  private minDate(
-    a: Date | null | undefined,
-    b: Date | null | undefined,
-  ): Date | undefined {
-    if (a && b) {
-      return a.getTime() <= b.getTime() ? a : b;
+  private minNumber(
+    a: number | null | undefined,
+    b: number | null | undefined,
+  ): number | undefined {
+    if (typeof a === 'number' && typeof b === 'number') {
+      return Math.min(a, b);
     }
     return a ?? b ?? undefined;
-  }
-
-  private mergeActivityLevel(
-    a: ActivityLevel,
-    b: ActivityLevel,
-  ): ActivityLevel {
-    const priority: Record<ActivityLevel, number> = {
-      trending: 3,
-      active: 2,
-      normal: 1,
-    };
-
-    return priority[a] >= priority[b] ? a : b;
   }
 }

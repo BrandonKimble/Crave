@@ -25,6 +25,5 @@ export class ShortcutCoverageRequestDto {
 
   @IsOptional()
   @IsString()
-  @IsIn(['global_quality', 'coverage_display'])
-  scoreMode?: 'global_quality' | 'coverage_display';
+  marketKey?: string;
 }

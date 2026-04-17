@@ -11,14 +11,13 @@ import type { SearchResultsShellModel } from './results-presentation-shell-contr
 
 export type UseSearchResultsPanelDataRuntimeArgs = Pick<
   UseSearchResultsRoutePublicationArgs,
+  | 'searchRuntimeBus'
   | 'resultsPresentationOwner'
   | 'searchFiltersLayoutCacheRef'
   | 'handleSearchFiltersLayoutCache'
-  | 'toggleRankSelector'
   | 'toggleOpenNow'
   | 'toggleVotesFilter'
   | 'togglePriceSelector'
-  | 'scoreMode'
   | 'getDishSaveHandler'
   | 'getRestaurantSaveHandler'
   | 'stableOpenRestaurantProfileFromResults'

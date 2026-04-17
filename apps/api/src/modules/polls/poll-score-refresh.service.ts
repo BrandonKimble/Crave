@@ -25,8 +25,8 @@ export class PollScoreRefreshService {
     }
 
     await this.qualityScoreService.updateQualityScoresForConnections(unique);
-    const coverageKeys = await this.fetchCoverageKeysForConnections(unique);
-    await this.refreshRankScores(coverageKeys);
+    const marketKeys = await this.fetchMarketKeysForConnections(unique);
+    await this.refreshRankScores(marketKeys);
   }
 
   async refreshForRestaurants(restaurantIds: string[]): Promise<void> {
@@ -56,49 +56,58 @@ export class PollScoreRefreshService {
       }
     }
 
-    const coverageKeys = await this.fetchCoverageKeysForRestaurants(unique);
-    await this.refreshRankScores(coverageKeys);
+    const marketKeys = await this.fetchMarketKeysForRestaurants(unique);
+    await this.refreshRankScores(marketKeys);
   }
 
-  async refreshRankScores(coverageKeys: string[]): Promise<void> {
-    await this.rankScoreRefreshQueue.queueRefreshForLocations(coverageKeys, {
+  async refreshRankScores(marketKeys: string[]): Promise<void> {
+    await this.rankScoreRefreshQueue.queueRefreshForMarkets(marketKeys, {
       source: 'poll',
     });
   }
 
-  private async fetchCoverageKeysForConnections(
+  private async fetchMarketKeysForConnections(
     connectionIds: string[],
   ): Promise<string[]> {
-    const rows = await this.prisma.$queryRaw<Array<{ location_key: string }>>(
+    const rows = await this.prisma.$queryRaw<Array<{ market_key: string }>>(
       Prisma.sql`
-SELECT DISTINCT r.location_key
-FROM core_connections c
-JOIN core_entities r ON r.entity_id = c.restaurant_id
-WHERE c.connection_id = ANY(${this.buildUuidArray(connectionIds)})`,
+SELECT DISTINCT m.market_key
+FROM core_restaurant_items c
+JOIN core_entity_market_presence emp ON emp.entity_id = c.restaurant_id
+JOIN core_markets m
+  ON m.market_key = emp.market_key
+ AND m.is_active = true
+WHERE c.connection_id = ANY(${this.buildUuidArray(connectionIds)})
+`,
     );
 
     return Array.from(
       new Set(
         rows
-          .map((row) => row.location_key)
+          .map((row) => row.market_key)
           .filter((value): value is string => Boolean(value))
           .map((value) => value.trim().toLowerCase()),
       ),
     );
   }
 
-  private async fetchCoverageKeysForRestaurants(
+  private async fetchMarketKeysForRestaurants(
     restaurantIds: string[],
   ): Promise<string[]> {
-    const rows = await this.prisma.entity.findMany({
-      where: { entityId: { in: restaurantIds } },
-      select: { locationKey: true },
-    });
+    const rows = await this.prisma.$queryRaw<Array<{ market_key: string }>>(
+      Prisma.sql`
+SELECT DISTINCT m.market_key
+FROM core_entity_market_presence emp
+JOIN core_markets m
+  ON m.market_key = emp.market_key
+ AND m.is_active = true
+WHERE emp.entity_id = ANY(${this.buildUuidArray(restaurantIds)})`,
+    );
 
     return Array.from(
       new Set(
         rows
-          .map((row) => row.locationKey)
+          .map((row) => row.market_key)
           .filter((value): value is string => Boolean(value))
           .map((value) => value.trim().toLowerCase()),
       ),

@@ -1,9 +1,8 @@
 import React from 'react';
-import { View } from 'react-native';
-import { ChartNoAxesColumn, Heart } from 'lucide-react-native';
+import { Heart } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
 
-export type SearchBottomNavItemKey = 'search' | 'polls' | 'bookmarks' | 'profile';
+export type SearchBottomNavItemKey = 'search' | 'bookmarks' | 'profile';
 
 export const SEARCH_BOTTOM_NAV_ICON_RENDERERS: Record<
   SearchBottomNavItemKey,
@@ -33,19 +32,6 @@ export const SEARCH_BOTTOM_NAV_ICON_RENDERERS: Record<
   },
   bookmarks: (color: string, active: boolean) => (
     <Heart size={24} color={color} strokeWidth={active ? 0 : 2} fill={active ? color : 'none'} />
-  ),
-  polls: (color: string, active: boolean) => (
-    <View
-      style={{
-        width: 24,
-        height: 24,
-        alignItems: 'center',
-        justifyContent: 'center',
-        transform: [{ rotate: '-90deg' }, { scaleY: -1 }],
-      }}
-    >
-      <ChartNoAxesColumn size={24} color={color} strokeWidth={active ? 2.5 : 2} />
-    </View>
   ),
   profile: (color: string, active: boolean) => {
     if (active) {

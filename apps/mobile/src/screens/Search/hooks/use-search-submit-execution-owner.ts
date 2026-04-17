@@ -25,7 +25,6 @@ type StartStructuredResponseLifecycleOptions = {
   append: boolean;
   targetPage: number;
   initialUiState: SearchSubmitInitialResultUiState;
-  fallbackSearchRequestId?: string;
   submittedLabel: string;
   pushToHistory: boolean;
   requestBounds: MapBounds | null;
@@ -65,7 +64,6 @@ type StartShortcutStructuredResponseLifecycleOptions = {
   append: boolean;
   targetPage: number;
   initialUiState: SearchSubmitInitialResultUiState;
-  fallbackSearchRequestId?: string;
   submittedLabel: string;
   requestBounds: MapBounds | null;
   replaceResultsInPlace: boolean;
@@ -174,7 +172,6 @@ export const useSearchSubmitExecutionOwner = ({
       append,
       targetPage,
       initialUiState,
-      fallbackSearchRequestId,
       submittedLabel,
       pushToHistory,
       requestBounds,
@@ -190,7 +187,6 @@ export const useSearchSubmitExecutionOwner = ({
         append,
         targetPage,
         initialUiState,
-        fallbackSearchRequestId,
         submittedLabel,
         pushToHistory,
         submissionContext,
@@ -230,7 +226,6 @@ export const useSearchSubmitExecutionOwner = ({
           mode: 'natural',
           targetTab,
         },
-        fallbackSearchRequestId: append ? undefined : `natural:${requestId}`,
         submittedLabel,
         pushToHistory: !append,
         submissionContext,
@@ -263,7 +258,6 @@ export const useSearchSubmitExecutionOwner = ({
           mode: 'natural',
           targetTab: 'restaurants',
         },
-        fallbackSearchRequestId: `restaurant-entity:${requestId}`,
         submittedLabel,
         pushToHistory: true,
         submissionContext,
@@ -283,7 +277,6 @@ export const useSearchSubmitExecutionOwner = ({
       append,
       targetPage,
       initialUiState,
-      fallbackSearchRequestId,
       submittedLabel,
       requestBounds,
       replaceResultsInPlace,
@@ -296,7 +289,6 @@ export const useSearchSubmitExecutionOwner = ({
         append,
         targetPage,
         initialUiState,
-        fallbackSearchRequestId,
         submittedLabel,
         pushToHistory: false,
         requestBounds,
@@ -334,7 +326,6 @@ export const useSearchSubmitExecutionOwner = ({
           mode: 'shortcut',
           targetTab,
         },
-        fallbackSearchRequestId: `shortcut:${requestId}`,
         submittedLabel,
         requestBounds,
         replaceResultsInPlace,
@@ -362,7 +353,6 @@ export const useSearchSubmitExecutionOwner = ({
           mode: 'shortcut',
           targetTab,
         },
-        fallbackSearchRequestId: undefined,
         submittedLabel,
         requestBounds: null,
         replaceResultsInPlace: false,

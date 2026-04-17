@@ -1,6 +1,5 @@
 import React from 'react';
 
-import type { NaturalSearchRequest } from '../../../types';
 import type { SegmentValue } from '../constants/search';
 import type { SearchMode, SubmitSearchOptions } from './use-search-submit-entry-owner';
 import type { StructuredSearchFilters } from './use-search-request-preparation-owner';
@@ -25,7 +24,6 @@ type SearchSubmitActionOwnerArgs = {
       transitionFromDockedPolls?: boolean;
       filters?: StructuredSearchFilters;
       forceFreshBounds?: boolean;
-      scoreMode?: NaturalSearchRequest['scoreMode'];
     }
   ) => Promise<void>;
 };

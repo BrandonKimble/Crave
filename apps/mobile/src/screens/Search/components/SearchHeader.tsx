@@ -21,6 +21,7 @@ import { colors as themeColors } from '../../../constants/theme';
 import SquircleSpinner from '../../../components/SquircleSpinner';
 import { XCircleIcon } from '../../../components/icons/HeroIcons';
 import { FONT_SIZES } from '../../../constants/typography';
+import { SEARCH_HEADER_HEIGHT } from '../constants/search';
 
 type AnimatedStyle = ReanimatedAnimatedStyle<ViewStyle>;
 type TrailingActionMode = 'hidden' | 'default_clear' | 'session_clear';
@@ -343,8 +344,8 @@ const styles = StyleSheet.create({
   promptCard: {
     borderRadius: 14,
     backgroundColor: '#ffffff',
-    minHeight: 50,
-    height: 50,
+    minHeight: SEARCH_HEADER_HEIGHT,
+    height: SEARCH_HEADER_HEIGHT,
     ...SEARCH_BAR_SHADOW,
   },
   promptCardInner: {
@@ -353,13 +354,13 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     backgroundColor: 'transparent',
     overflow: 'hidden',
-    minHeight: 50,
-    height: 50,
+    minHeight: SEARCH_HEADER_HEIGHT,
+    height: SEARCH_HEADER_HEIGHT,
   },
   promptRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 50,
+    height: SEARCH_HEADER_HEIGHT,
     flex: 1,
     width: '100%',
   },
@@ -367,28 +368,28 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    height: 50,
+    height: SEARCH_HEADER_HEIGHT,
   },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-    height: 50,
+    height: SEARCH_HEADER_HEIGHT,
   },
   leadingSlot: {
     width: LEADING_SLOT_WIDTH,
-    height: 50,
+    height: SEARCH_HEADER_HEIGHT,
     marginRight: ICON_TEXT_GAP,
     alignItems: 'center',
     justifyContent: 'center',
   },
   leadingSlotContainer: {
-    height: 50,
+    height: SEARCH_HEADER_HEIGHT,
     justifyContent: 'center',
   },
   leadingButton: {
     width: LEADING_SLOT_WIDTH,
-    height: 50,
+    height: SEARCH_HEADER_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -406,7 +407,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'center',
     paddingVertical: 0,
     paddingHorizontal: 0,
-    height: 50,
+    height: SEARCH_HEADER_HEIGHT,
     includeFontPadding: false,
   },
   promptInputInlineLoading: {
@@ -415,7 +416,7 @@ const styles = StyleSheet.create({
   inputTextArea: {
     flex: 1,
     position: 'relative',
-    height: 50,
+    height: SEARCH_HEADER_HEIGHT,
     overflow: 'hidden',
   },
   textInputContainer: {
@@ -462,7 +463,7 @@ const styles = StyleSheet.create({
     width: TRAILING_SLOT_SIZE,
     alignItems: 'flex-end',
     justifyContent: 'center',
-    height: 50,
+    height: SEARCH_HEADER_HEIGHT,
   },
   trailingContainerInlineLoading: {
     marginLeft: TRAILING_CONTAINER_LOADING_MARGIN_LEFT,

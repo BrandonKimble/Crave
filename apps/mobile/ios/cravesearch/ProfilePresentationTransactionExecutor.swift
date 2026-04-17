@@ -1,48 +1,61 @@
 import Foundation
 import React
 
-private final class WeakCameraHost {
-  weak var value: RNMBXCamera?
+private func dispatchProfilePresentationCameraCommand(
+  hostKey: String,
+  stop: [String: Any]
+) -> Bool {
+  let bridgeClass =
+    (NSClassFromString("rnmapbox_maps.ProfilePresentationCameraHostRegistryBridge")
+      ?? NSClassFromString("ProfilePresentationCameraHostRegistryBridge")) as? NSObject.Type
+  let sharedSelector = NSSelectorFromString("sharedBridge")
+  let dispatchSelector = NSSelectorFromString("dispatchCommand:")
 
-  init(value: RNMBXCamera) {
-    self.value = value
+  guard
+    let bridgeClass,
+    bridgeClass.responds(to: sharedSelector),
+    let bridge = bridgeClass.perform(sharedSelector)?.takeUnretainedValue() as? NSObject,
+    bridge.responds(to: dispatchSelector)
+  else {
+    return false
   }
+
+  let payload: NSDictionary = [
+    "hostKey": hostKey,
+    "stop": stop,
+    "token": stop["animationCompletionId"] as? String as Any,
+  ]
+  bridge.perform(dispatchSelector, with: payload)
+  return true
 }
 
-private struct PendingCameraCommand {
-  let stop: [String: Any]
-  let token: String?
-}
+private func dispatchBottomSheetCommand(
+  hostKey: String,
+  snapTo: String,
+  token: Int
+) -> Bool {
+  let bridgeClass =
+    (NSClassFromString("cravesearch.BottomSheetHostRegistryBridge")
+      ?? NSClassFromString("BottomSheetHostRegistryBridge")) as? NSObject.Type
+  let sharedSelector = NSSelectorFromString("sharedBridge")
+  let dispatchSelector = NSSelectorFromString("dispatchCommand:")
 
-final class ProfilePresentationCameraHostRegistry {
-  static let shared = ProfilePresentationCameraHostRegistry()
-
-  private var hostsByKey: [String: WeakCameraHost] = [:]
-  private var pendingCommandsByKey: [String: PendingCameraCommand] = [:]
-
-  func register(host: RNMBXCamera, hostKey: String) {
-    hostsByKey[hostKey] = WeakCameraHost(value: host)
-    if let pendingCommand = pendingCommandsByKey[hostKey] {
-      dispatchCommand(hostKey: hostKey, stop: pendingCommand.stop, token: pendingCommand.token)
-    }
+  guard
+    let bridgeClass,
+    bridgeClass.responds(to: sharedSelector),
+    let bridge = bridgeClass.perform(sharedSelector)?.takeUnretainedValue() as? NSObject,
+    bridge.responds(to: dispatchSelector)
+  else {
+    return false
   }
 
-  func unregister(host: RNMBXCamera, hostKey: String) {
-    guard hostsByKey[hostKey]?.value === host else {
-      return
-    }
-    hostsByKey.removeValue(forKey: hostKey)
-  }
-
-  func dispatchCommand(hostKey: String, stop: [String: Any], token: String?) {
-    pendingCommandsByKey[hostKey] = PendingCameraCommand(stop: stop, token: token)
-    guard let host = hostsByKey[hostKey]?.value else {
-      return
-    }
-    DispatchQueue.main.async {
-      host.applyProfilePresentationCameraCommand(stop)
-    }
-  }
+  let payload: NSDictionary = [
+    "hostKey": hostKey,
+    "snapTo": snapTo,
+    "token": token,
+  ]
+  bridge.perform(dispatchSelector, with: payload)
+  return true
 }
 
 @objc(PresentationCommandExecutor)
@@ -74,11 +87,11 @@ final class ProfilePresentationTransactionExecutor: NSObject {
       return
     }
 
-    ProfilePresentationCameraHostRegistry.shared.dispatchCommand(
-      hostKey: hostKey,
-      stop: stop,
-      token: stop["animationCompletionId"] as? String
-    )
+    guard dispatchProfilePresentationCameraCommand(hostKey: hostKey, stop: stop) else {
+      reject("camera_command_unavailable", "Camera command bridge unavailable", nil)
+      return
+    }
+
     resolve(nil)
   }
 
@@ -99,7 +112,7 @@ final class ProfilePresentationTransactionExecutor: NSObject {
       let snapTo = restaurantSheetCommand["snap"] as? String,
       let requestToken
     {
-      BottomSheetHostRegistry.shared.dispatchCommand(
+      _ = dispatchBottomSheetCommand(
         hostKey: "restaurant_profile_sheet",
         snapTo: snapTo,
         token: requestToken
@@ -112,13 +125,13 @@ final class ProfilePresentationTransactionExecutor: NSObject {
       let requestToken
     {
       if type == "request", let snapTo = resultsSheetCommand["snap"] as? String {
-        BottomSheetHostRegistry.shared.dispatchCommand(
+        _ = dispatchBottomSheetCommand(
           hostKey: "app_overlay_sheet",
           snapTo: snapTo,
           token: requestToken
         )
       } else if type == "hide" {
-        BottomSheetHostRegistry.shared.dispatchCommand(
+        _ = dispatchBottomSheetCommand(
           hostKey: "app_overlay_sheet",
           snapTo: "hidden",
           token: requestToken

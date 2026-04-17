@@ -21,7 +21,6 @@ export type SubmitSearchOptions = {
   replaceResultsInPlace?: boolean;
   transitionFromDockedPolls?: boolean;
   forceFreshBounds?: boolean;
-  scoreMode?: NaturalSearchRequest['scoreMode'];
   submission?: {
     source: NaturalSearchRequest['submissionSource'];
     context?: NaturalSearchRequest['submissionContext'];
@@ -489,8 +488,8 @@ export const useSearchSubmitEntryOwner = ({
         options?.minimumVotes !== undefined
           ? options.minimumVotes
           : votes100Plus
-          ? MINIMUM_VOTES_FILTER
-          : null;
+            ? MINIMUM_VOTES_FILTER
+            : null;
 
       return {
         submissionSource,

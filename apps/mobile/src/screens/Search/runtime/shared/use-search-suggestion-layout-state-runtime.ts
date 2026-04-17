@@ -2,6 +2,10 @@ import React from 'react';
 import type { LayoutChangeEvent, LayoutRectangle } from 'react-native';
 
 import { SEARCH_CONTAINER_PADDING_TOP } from '../../constants/search';
+import {
+  assertSearchStartupGeometryRect,
+  assertSearchStartupGeometryValue,
+} from './search-startup-geometry';
 import type {
   SearchLayout,
   SearchSuggestionLayoutStateRuntime,
@@ -20,7 +24,13 @@ const cloneSearchLayoutRectangle = (layout: LayoutRectangle): LayoutRectangle =>
   height: layout.height,
 });
 
+const hasUsableSearchContainerHeight = (height: number): boolean =>
+  height > SEARCH_CONTAINER_PADDING_TOP + 0.5;
+
+const hasUsableSearchHeaderHeight = (height: number): boolean => height > 0.5;
+
 export const useSearchSuggestionLayoutStateRuntime = ({
+  startupGeometrySeed,
   searchInteractionRef,
   query,
   isSuggestionPanelActive,
@@ -29,12 +39,19 @@ export const useSearchSuggestionLayoutStateRuntime = ({
 }: SearchSuggestionLayoutStateRuntimeArgs): SearchSuggestionLayoutStateRuntime => {
   const [suggestionContentHeight, setSuggestionContentHeight] = React.useState(0);
   const suggestionContentHeightRef = React.useRef(0);
-  const [searchLayout, setSearchLayout] = React.useState<SearchLayout>({ top: 0, height: 0 });
+  const [searchLayout, setSearchLayout] = React.useState<SearchLayout>(() => ({
+    top: startupGeometrySeed.searchContainerFrame.y,
+    height: startupGeometrySeed.searchContainerFrame.height,
+  }));
   const [searchContainerFrame, setSearchContainerFrame] = React.useState<LayoutRectangle | null>(
-    null
+    () => startupGeometrySeed.searchContainerFrame
   );
-  const searchContainerLayoutCacheRef = React.useRef<LayoutRectangle | null>(null);
-  const [searchBarFrame, setSearchBarFrame] = React.useState<LayoutRectangle | null>(null);
+  const searchContainerLayoutCacheRef = React.useRef<LayoutRectangle | null>(
+    startupGeometrySeed.searchContainerFrame
+  );
+  const [searchBarFrame, setSearchBarFrame] = React.useState<LayoutRectangle | null>(
+    () => startupGeometrySeed.searchHeaderFrame
+  );
   const [searchShortcutsFrame, setSearchShortcutsFrame] = React.useState<LayoutRectangle | null>(
     null
   );
@@ -72,7 +89,19 @@ export const useSearchSuggestionLayoutStateRuntime = ({
         return;
       }
       const { layout } = nativeEvent;
+      assertSearchStartupGeometryRect(
+        'searchHeaderFrame',
+        startupGeometrySeed.searchHeaderFrame,
+        layout
+      );
       setSearchBarFrame((prev) => {
+        if (
+          prev &&
+          hasUsableSearchHeaderHeight(prev.height) &&
+          !hasUsableSearchHeaderHeight(layout.height)
+        ) {
+          return prev;
+        }
         if (
           prev &&
           Math.abs(prev.x - layout.x) < 0.5 &&
@@ -85,7 +114,7 @@ export const useSearchSuggestionLayoutStateRuntime = ({
         return layout;
       });
     },
-    [searchBarFrame, searchInteractionRef]
+    [searchBarFrame, searchInteractionRef, startupGeometrySeed.searchHeaderFrame]
   );
   const handleSearchContainerLayout = React.useCallback(
     ({ nativeEvent }: LayoutChangeEvent) => {
@@ -97,15 +126,29 @@ export const useSearchSuggestionLayoutStateRuntime = ({
         return;
       }
       const { layout } = nativeEvent;
+      assertSearchStartupGeometryValue(
+        'searchContainerFrame.y',
+        startupGeometrySeed.searchContainerFrame.y,
+        layout.y
+      );
+      assertSearchStartupGeometryValue(
+        'searchContainerFrame.height',
+        startupGeometrySeed.searchContainerFrame.height,
+        layout.height
+      );
+      const hasUsableIncomingLayout = hasUsableSearchContainerHeight(layout.height);
       if (layout.height > 0) {
         setSearchLayout((prev) => {
+          if (hasUsableSearchContainerHeight(prev.height) && !hasUsableIncomingLayout) {
+            return prev;
+          }
           if (prev.top === layout.y && prev.height === layout.height) {
             return prev;
           }
           return { top: layout.y, height: layout.height };
         });
       }
-      const isUsableLayout = layout.width > 0 && layout.height > SEARCH_CONTAINER_PADDING_TOP + 0.5;
+      const isUsableLayout = layout.width > 0 && hasUsableIncomingLayout;
       if (isUsableLayout) {
         const nextLayout = cloneSearchLayoutRectangle(layout);
         searchContainerLayoutCacheRef.current = nextLayout;
@@ -123,7 +166,13 @@ export const useSearchSuggestionLayoutStateRuntime = ({
         });
       }
     },
-    [searchContainerFrame, searchInteractionRef, searchLayout.height]
+    [
+      searchContainerFrame,
+      searchInteractionRef,
+      searchLayout.height,
+      startupGeometrySeed.searchContainerFrame.height,
+      startupGeometrySeed.searchContainerFrame.y,
+    ]
   );
   const handleSearchShortcutsRowLayout = React.useCallback((layout: LayoutRectangle) => {
     const nextLayout = cloneSearchLayoutRectangle(layout);

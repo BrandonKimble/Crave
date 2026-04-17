@@ -1,9 +1,10 @@
 type PerfHarnessScenario =
   | 'none'
   | 'search_shortcut_loop'
-  | 'search_shortcut_loop_open_now_roundtrip';
+  | 'search_shortcut_loop_open_now_roundtrip'
+  | 'search_nav_switch_loop';
 type PerfShortcutTab = 'dishes' | 'restaurants';
-type PerfShortcutScoreMode = 'global_quality' | 'coverage_display';
+type PerfNavSwitchOverlay = 'search' | 'bookmarks' | 'profile';
 type PerfShortcutSettleBoundaryPolicy =
   | 'quiet_snapshot_only'
   | 'shadow_converged_or_quiet_snapshot';
@@ -11,10 +12,16 @@ type PerfShortcutSettleBoundaryPolicy =
 type PerfShortcutLoopConfig = {
   label: string;
   targetTab: PerfShortcutTab;
-  scoreMode: PerfShortcutScoreMode;
   preserveSheetState: boolean;
   transitionFromDockedPolls: boolean;
   settleBoundaryPolicy: PerfShortcutSettleBoundaryPolicy;
+};
+
+type PerfNavSwitchLoopConfig = {
+  sequence: PerfNavSwitchOverlay[];
+  stepCooldownMs: number;
+  settleQuietPeriodMs: number;
+  stepTimeoutMs: number;
 };
 
 type PerfJsFrameSamplerConfig = {
@@ -39,6 +46,7 @@ type PerfHarnessConfig = {
   startDelayMs: number;
   cooldownMs: number;
   shortcutLoop: PerfShortcutLoopConfig;
+  navSwitchLoop: PerfNavSwitchLoopConfig;
   jsFrameSampler: PerfJsFrameSamplerConfig;
   uiFrameSampler: PerfUiFrameSamplerConfig;
   signature: string;
@@ -91,6 +99,9 @@ const parseScenario = (value: string | undefined): PerfHarnessScenario => {
   if (value === 'search_shortcut_loop_open_now_roundtrip') {
     return 'search_shortcut_loop_open_now_roundtrip';
   }
+  if (value === 'search_nav_switch_loop') {
+    return 'search_nav_switch_loop';
+  }
   return 'none';
 };
 
@@ -101,13 +112,6 @@ const parseShortcutTab = (value: string | undefined): PerfShortcutTab => {
   return value === 'dishes' ? 'dishes' : 'restaurants';
 };
 
-const parseShortcutScoreMode = (value: string | undefined): PerfShortcutScoreMode => {
-  if (!value) {
-    return 'coverage_display';
-  }
-  return value === 'global_quality' ? 'global_quality' : 'coverage_display';
-};
-
 const parseSettleBoundaryPolicy = (value: string | undefined): PerfShortcutSettleBoundaryPolicy => {
   if (!value) {
     return 'shadow_converged_or_quiet_snapshot';
@@ -115,6 +119,34 @@ const parseSettleBoundaryPolicy = (value: string | undefined): PerfShortcutSettl
   return value === 'quiet_snapshot_only'
     ? 'quiet_snapshot_only'
     : 'shadow_converged_or_quiet_snapshot';
+};
+
+const parseNavSwitchOverlay = (value: string | undefined): PerfNavSwitchOverlay | null => {
+  if (!value) {
+    return null;
+  }
+  if (value === 'search' || value === 'bookmarks' || value === 'profile') {
+    return value;
+  }
+  return null;
+};
+
+const DEFAULT_NAV_SWITCH_SEQUENCE: PerfNavSwitchOverlay[] = [
+  'bookmarks',
+  'profile',
+  'bookmarks',
+  'search',
+];
+
+const parseNavSwitchSequence = (value: string | undefined): PerfNavSwitchOverlay[] => {
+  if (!value) {
+    return DEFAULT_NAV_SWITCH_SEQUENCE;
+  }
+  const parsed = value
+    .split(',')
+    .map((entry) => parseNavSwitchOverlay(entry.trim().toLowerCase()))
+    .filter((entry): entry is PerfNavSwitchOverlay => entry != null);
+  return parsed.length > 0 ? parsed : DEFAULT_NAV_SWITCH_SEQUENCE;
 };
 
 const isDevEnvironment = __DEV__;
@@ -187,9 +219,6 @@ const perfHarnessConfig: PerfHarnessConfig = {
   shortcutLoop: {
     label: readEnv('EXPO_PUBLIC_PERF_SHORTCUT_LABEL')?.trim() || 'Best restaurants',
     targetTab: parseShortcutTab(normalizeEnv(readEnv('EXPO_PUBLIC_PERF_SHORTCUT_TAB'))),
-    scoreMode: parseShortcutScoreMode(
-      normalizeEnv(readEnv('EXPO_PUBLIC_PERF_SHORTCUT_SCORE_MODE'))
-    ),
     preserveSheetState: parseBoolean(readEnv('EXPO_PUBLIC_PERF_SHORTCUT_PRESERVE_SHEET_STATE')),
     transitionFromDockedPolls: parseBoolean(
       readEnv('EXPO_PUBLIC_PERF_SHORTCUT_TRANSITION_FROM_DOCKED_POLLS'),
@@ -197,6 +226,27 @@ const perfHarnessConfig: PerfHarnessConfig = {
     ),
     settleBoundaryPolicy: parseSettleBoundaryPolicy(
       normalizeEnv(readEnv('EXPO_PUBLIC_PERF_SHORTCUT_SETTLE_BOUNDARY_POLICY'))
+    ),
+  },
+  navSwitchLoop: {
+    sequence: parseNavSwitchSequence(readEnv('EXPO_PUBLIC_PERF_NAV_SWITCH_SEQUENCE')),
+    stepCooldownMs: parseInteger(
+      readEnv('EXPO_PUBLIC_PERF_NAV_SWITCH_STEP_COOLDOWN_MS'),
+      250,
+      0,
+      10000
+    ),
+    settleQuietPeriodMs: parseInteger(
+      readEnv('EXPO_PUBLIC_PERF_NAV_SWITCH_SETTLE_QUIET_PERIOD_MS'),
+      250,
+      50,
+      10000
+    ),
+    stepTimeoutMs: parseInteger(
+      readEnv('EXPO_PUBLIC_PERF_NAV_SWITCH_STEP_TIMEOUT_MS'),
+      2500,
+      100,
+      30000
     ),
   },
   jsFrameSampler: {
@@ -223,10 +273,13 @@ perfHarnessConfig.signature = [
   `cooldown:${perfHarnessConfig.cooldownMs}`,
   `label:${perfHarnessConfig.shortcutLoop.label}`,
   `tab:${perfHarnessConfig.shortcutLoop.targetTab}`,
-  `score:${perfHarnessConfig.shortcutLoop.scoreMode}`,
   `preserve:${perfHarnessConfig.shortcutLoop.preserveSheetState ? 1 : 0}`,
   `dock:${perfHarnessConfig.shortcutLoop.transitionFromDockedPolls ? 1 : 0}`,
   `settleBoundary:${perfHarnessConfig.shortcutLoop.settleBoundaryPolicy}`,
+  `navSequence:${perfHarnessConfig.navSwitchLoop.sequence.join('>')}`,
+  `navStepCooldown:${perfHarnessConfig.navSwitchLoop.stepCooldownMs}`,
+  `navSettleQuiet:${perfHarnessConfig.navSwitchLoop.settleQuietPeriodMs}`,
+  `navStepTimeout:${perfHarnessConfig.navSwitchLoop.stepTimeoutMs}`,
   `sampler:${perfHarnessConfig.jsFrameSampler.enabled ? 1 : 0}`,
   `window:${perfHarnessConfig.jsFrameSampler.windowMs}`,
   `stall:${perfHarnessConfig.jsFrameSampler.stallFrameMs}`,
@@ -240,11 +293,12 @@ perfHarnessConfig.signature = [
 export type {
   PerfHarnessConfig,
   PerfHarnessScenario,
+  PerfNavSwitchLoopConfig,
+  PerfNavSwitchOverlay,
   PerfJsFrameSamplerConfig,
   PerfUiFrameSamplerConfig,
   PerfShortcutLoopConfig,
   PerfShortcutSettleBoundaryPolicy,
-  PerfShortcutScoreMode,
   PerfShortcutTab,
 };
 export default perfHarnessConfig;

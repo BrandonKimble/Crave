@@ -11,6 +11,7 @@ export const SCREEN_WIDTH = Dimensions.get('window').width;
 export const CONTENT_HORIZONTAL_PADDING = OVERLAY_HORIZONTAL_PADDING;
 export const SEARCH_HORIZONTAL_PADDING = CONTENT_HORIZONTAL_PADDING;
 export const SEARCH_CONTAINER_PADDING_TOP = 8;
+export const SEARCH_HEADER_HEIGHT = 50;
 // Keep search chrome fully opaque until the sheet enters this near-expanded zone.
 export const SEARCH_CHROME_FADE_ZONE_PX = 220;
 export const CARD_GAP = 6;

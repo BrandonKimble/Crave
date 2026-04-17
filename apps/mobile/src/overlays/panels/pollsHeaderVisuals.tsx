@@ -17,33 +17,46 @@ export type PollsHeaderVisualModel = {
 };
 
 type BuildPollsHeaderVisualModelArgs = {
-  coverageName?: string | null;
-  coverageKey?: string | null;
-  fallbackCoverageName?: string | null;
+  marketName?: string | null;
+  marketKey?: string | null;
+  fallbackMarketName?: string | null;
+  marketStatus?: 'resolved' | 'no_market' | 'error' | null;
+  candidatePlaceName?: string | null;
   pollCount?: number;
   isUpdating?: boolean;
-  isResolvingLocation?: boolean;
+  isResolvingMarket?: boolean;
 };
 
 export const buildPollsHeaderVisualModel = ({
-  coverageName,
-  coverageKey: _coverageKey,
-  fallbackCoverageName,
+  marketName,
+  marketKey: _marketKey,
+  fallbackMarketName,
+  marketStatus,
+  candidatePlaceName,
   pollCount = 0,
   isUpdating = false,
-  isResolvingLocation = false,
+  isResolvingMarket = false,
 }: BuildPollsHeaderVisualModelArgs): PollsHeaderVisualModel => {
-  const trimmedCoverageName = typeof coverageName === 'string' ? coverageName.trim() : '';
-  const trimmedFallbackCoverageName =
-    typeof fallbackCoverageName === 'string' ? fallbackCoverageName.trim() : '';
+  const trimmedMarketName = typeof marketName === 'string' ? marketName.trim() : '';
+  const trimmedFallbackMarketName =
+    typeof fallbackMarketName === 'string' ? fallbackMarketName.trim() : '';
+  const trimmedCandidatePlaceName =
+    typeof candidatePlaceName === 'string' ? candidatePlaceName.trim() : '';
+
+  const title = isResolvingMarket
+    ? 'Finding market...'
+    : marketStatus === 'no_market' && trimmedCandidatePlaceName
+      ? `No polls in ${trimmedCandidatePlaceName} yet`
+      : marketStatus === 'no_market'
+        ? 'No local polls here yet'
+        : trimmedMarketName
+          ? `Polls in ${trimmedMarketName}`
+          : trimmedFallbackMarketName
+            ? `Polls in ${trimmedFallbackMarketName}`
+            : 'Polls';
+
   return {
-    title: isResolvingLocation
-      ? 'Finding location...'
-      : trimmedCoverageName
-      ? `Polls in ${trimmedCoverageName}`
-      : trimmedFallbackCoverageName
-      ? `Polls in ${trimmedFallbackCoverageName}`
-      : 'Polls',
+    title,
     badgeCount: isUpdating ? '--' : String(pollCount),
     badgeLabel: isUpdating ? 'updating' : 'live',
     isBadgeMuted: isUpdating || pollCount <= 0,

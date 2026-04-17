@@ -1,6 +1,7 @@
 import React from 'react';
 
 import type {
+  SearchForegroundEffectsRuntimeArgs,
   SearchForegroundInteractionRuntime,
   UseSearchForegroundInteractionRuntimeArgs,
 } from './use-search-foreground-interaction-runtime-contract';
@@ -11,193 +12,24 @@ import { useSearchForegroundRetryRuntime } from './use-search-foreground-retry-r
 import { useSearchForegroundSubmitRuntime } from './use-search-foreground-submit-runtime';
 
 export const useSearchForegroundInteractionRuntime = ({
-  navigation,
-  routeSearchIntent,
-  activeMainIntent,
-  consumeActiveMainIntent,
-  userLocation,
-  submitRuntime,
-  clearOwner,
-  query,
-  submittedQuery,
-  searchMode,
-  activeTab,
-  hasResults,
-  isOffline,
-  isSearchLoading,
-  isLoadingMore,
-  isSearchSessionActive,
-  isSuggestionPanelActive,
-  isSuggestionPanelVisible,
-  shouldTreatSearchAsResults,
-  shouldShowDockedPolls,
-  showPollsOverlay,
-  rootOverlay,
-  profilePresentationActive,
-  overlayRuntimeController,
-  openRestaurantProfilePreview,
-  closeRestaurantProfile,
-  captureSearchSessionOrigin,
-  captureSearchSessionQuery,
-  ensureSearchOverlay,
-  restoreDockedPolls,
-  dismissTransientOverlays,
-  suppressAutocompleteResults,
-  allowAutocompleteResults,
-  cancelAutocomplete,
-  dismissSearchKeyboard,
-  beginSubmitTransition,
-  beginSuggestionCloseHold,
-  beginSuggestionCloseHoldRef,
-  requestSearchPresentationIntent,
-  resetFocusedMapState,
-  resetMapMoveFlag,
-  resetSearchHeaderFocusProgress,
-  resetSubmitTransitionHold,
-  beginCloseSearch,
-  setOverlaySwitchInFlight,
-  setTabOverlaySnapRequest,
-  setIsSearchFocused,
-  setIsSuggestionPanelActive,
-  setShowSuggestions,
-  setSuggestions,
-  setQuery,
-  setRestaurantOnlyIntent,
-  setIsAutocompleteSuppressed,
-  setIsSuggestionLayoutWarm,
-  setSearchTransitionVariant,
-  registerPendingMutationWorkCancel,
-  cancelToggleInteraction,
-  toggleOpenNowHarnessRef,
-  toggleOpenNow,
-  isSearchOverlay,
-  isSearchFocused,
-  isSuggestionScreenActive,
-  pendingRestaurantSelectionRef,
-  restaurantOnlySearchRef,
-  restaurantResults,
-  searchSessionQueryRef,
-  isSearchEditingRef,
-  allowSearchBlurExitRef,
-  ignoreNextSearchBlurRef,
-  inputRef,
-  deferRecentSearchUpsert,
-  setRestaurantOnlyId,
-  saveSheetVisible,
-  handleCloseSaveSheet,
+  launchIntentArgs,
+  submitRuntimeArgs,
+  retryRuntimeArgs,
+  editingRuntimeArgs,
+  overlayRuntimeArgs,
+  effectsRuntimeArgs,
+  restaurantOnlyResolutionArgs,
 }: UseSearchForegroundInteractionRuntimeArgs): SearchForegroundInteractionRuntime => {
-  useSearchForegroundLaunchIntentRuntime({
-    navigation,
-    activeMainIntent,
-    consumeActiveMainIntent,
-    openRestaurantProfilePreview,
-  });
+  useSearchForegroundLaunchIntentRuntime(launchIntentArgs);
 
-  const submitHandlers = useSearchForegroundSubmitRuntime({
-    submitRuntime,
-    query,
-    submittedQuery,
-    searchMode,
-    activeTab,
-    hasResults,
-    isSearchLoading,
-    isLoadingMore,
-    isSearchSessionActive,
-    isSuggestionPanelActive,
-    shouldShowDockedPolls,
-    captureSearchSessionOrigin,
-    ensureSearchOverlay,
-    suppressAutocompleteResults,
-    cancelAutocomplete,
-    dismissSearchKeyboard,
-    beginSubmitTransition,
-    resetFocusedMapState,
-    resetMapMoveFlag,
-    setIsSearchFocused,
-    setIsSuggestionPanelActive,
-    setShowSuggestions,
-    setSuggestions,
-    setQuery,
-    setRestaurantOnlyIntent,
-    pendingRestaurantSelectionRef,
-    isSearchEditingRef,
-    allowSearchBlurExitRef,
-    ignoreNextSearchBlurRef,
-    deferRecentSearchUpsert,
-    openRestaurantProfilePreview,
-  });
+  const submitHandlers = useSearchForegroundSubmitRuntime(submitRuntimeArgs);
 
-  const retryRuntime = useSearchForegroundRetryRuntime({
-    submitRuntime,
-    query,
-    submittedQuery,
-    hasResults,
-    isOffline,
-    isSearchLoading,
-    isLoadingMore,
-    isSearchSessionActive,
-  });
+  const retryRuntime = useSearchForegroundRetryRuntime(retryRuntimeArgs);
 
-  const editingHandlers = useSearchForegroundEditingRuntime({
-    clearOwner,
-    query,
-    submittedQuery,
-    hasResults,
-    isSearchLoading,
-    isLoadingMore,
-    isSearchSessionActive,
-    isSuggestionPanelActive,
-    isSuggestionPanelVisible,
-    shouldTreatSearchAsResults,
-    showPollsOverlay,
-    profilePresentationActive,
-    captureSearchSessionQuery,
-    dismissTransientOverlays,
-    allowAutocompleteResults,
-    suppressAutocompleteResults,
-    cancelAutocomplete,
-    beginSuggestionCloseHold,
-    requestSearchPresentationIntent,
-    beginCloseSearch,
-    restoreDockedPolls,
-    setIsSearchFocused,
-    setIsSuggestionPanelActive,
-    setShowSuggestions,
-    setSuggestions,
-    setQuery,
-    setIsAutocompleteSuppressed,
-    searchSessionQueryRef,
-    isSearchEditingRef,
-    allowSearchBlurExitRef,
-    ignoreNextSearchBlurRef,
-    inputRef,
-  });
+  const editingHandlers = useSearchForegroundEditingRuntime(editingRuntimeArgs);
 
   const overlayHandlers = useSearchForegroundOverlayRuntime({
-    navigation,
-    routeSearchIntent,
-    userLocation,
-    rootOverlay,
-    profilePresentationActive,
-    overlayRuntimeController,
-    closeRestaurantProfile,
-    dismissTransientOverlays,
-    beginSuggestionCloseHoldRef,
-    setOverlaySwitchInFlight,
-    setTabOverlaySnapRequest,
-    setIsSearchFocused,
-    setIsSuggestionPanelActive,
-    setShowSuggestions,
-    setSuggestions,
-    setIsAutocompleteSuppressed,
-    setIsSuggestionLayoutWarm,
-    setSearchTransitionVariant,
-    ignoreNextSearchBlurRef,
-    allowSearchBlurExitRef,
-    inputRef,
-    cancelAutocomplete,
-    resetSearchHeaderFocusProgress,
-    resetSubmitTransitionHold,
+    ...overlayRuntimeArgs,
     submitHandlers: {
       handleRecentSearchPress: submitHandlers.handleRecentSearchPress,
       handleRecentlyViewedRestaurantPress: submitHandlers.handleRecentlyViewedRestaurantPress,
@@ -205,10 +37,56 @@ export const useSearchForegroundInteractionRuntime = ({
     },
   });
 
-  toggleOpenNowHarnessRef.current = toggleOpenNow;
-  registerPendingMutationWorkCancel(() => {
-    cancelToggleInteraction();
+  const applyForegroundInteractionEffects = React.useCallback(
+    ({
+      registerPendingMutationWorkCancel,
+      cancelToggleInteraction,
+      toggleOpenNowHarnessRef,
+      toggleOpenNow,
+      selectOverlayHarnessRef,
+      selectOverlay,
+    }: Pick<
+      SearchForegroundEffectsRuntimeArgs,
+      | 'registerPendingMutationWorkCancel'
+      | 'cancelToggleInteraction'
+      | 'toggleOpenNowHarnessRef'
+      | 'toggleOpenNow'
+      | 'selectOverlayHarnessRef'
+    > & {
+      selectOverlay: (target: 'search' | 'bookmarks' | 'profile') => void;
+    }) => {
+      toggleOpenNowHarnessRef.current = toggleOpenNow;
+      selectOverlayHarnessRef.current = selectOverlay;
+      registerPendingMutationWorkCancel(() => {
+        cancelToggleInteraction();
+      });
+    },
+    []
+  );
+  applyForegroundInteractionEffects({
+    ...effectsRuntimeArgs,
+    selectOverlay: overlayHandlers.handleOverlaySelect,
   });
+
+  const {
+    isSearchOverlay,
+    saveSheetVisible,
+    handleCloseSaveSheet,
+    isSearchFocused,
+    isSuggestionPanelActive,
+    setIsSearchFocused,
+    setIsSuggestionPanelActive,
+    isSuggestionScreenActive,
+    dismissTransientOverlays,
+    hasResults,
+    resetMapMoveFlag,
+  } = effectsRuntimeArgs;
+  const {
+    hasResults: hasRestaurantOnlyResults,
+    restaurantOnlySearchRef,
+    restaurantResults,
+    setRestaurantOnlyId,
+  } = restaurantOnlyResolutionArgs;
 
   React.useEffect(() => {
     if (!isSearchOverlay && saveSheetVisible) {
@@ -241,7 +119,7 @@ export const useSearchForegroundInteractionRuntime = ({
   }, [hasResults, resetMapMoveFlag]);
 
   React.useEffect(() => {
-    if (!hasResults) {
+    if (!hasRestaurantOnlyResults) {
       setRestaurantOnlyId(null);
       return;
     }
@@ -254,7 +132,7 @@ export const useSearchForegroundInteractionRuntime = ({
       (restaurant: { restaurantId: string }) => restaurant.restaurantId === intent
     );
     setRestaurantOnlyId(hasMatch ? intent : null);
-  }, [hasResults, restaurantOnlySearchRef, restaurantResults, setRestaurantOnlyId]);
+  }, [hasRestaurantOnlyResults, restaurantOnlySearchRef, restaurantResults, setRestaurantOnlyId]);
 
   return {
     ...retryRuntime,

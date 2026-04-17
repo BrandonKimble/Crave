@@ -29,11 +29,11 @@ export class KeywordSearchJobWorker {
       subreddit,
       terms,
       source,
-      collectionCoverageKey,
+      collectableMarketKey,
       safeIntervalDays,
       sortPlan,
     } = job.data;
-    const scheduleKey = (collectionCoverageKey ?? subreddit)
+    const scheduleKey = (collectableMarketKey ?? subreddit)
       .trim()
       .toLowerCase();
     const cycleId =
@@ -47,7 +47,7 @@ export class KeywordSearchJobWorker {
           correlationId: cycleId,
           jobId: job.id,
           subreddit,
-          collectionCoverageKey,
+          collectableMarketKey,
           source,
           termCount: terms.length,
           sortsPlanned: sortPlan?.map((entry) => entry.sort) ?? undefined,
@@ -57,7 +57,7 @@ export class KeywordSearchJobWorker {
           const result = await this.orchestrator.executeKeywordSearchCycle(
             subreddit,
             terms,
-            { source, collectionCoverageKey, safeIntervalDays, sortPlan },
+            { source, collectableMarketKey, safeIntervalDays, sortPlan },
           );
 
           if (job.data.trackCompletion) {

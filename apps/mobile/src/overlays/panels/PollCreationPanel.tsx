@@ -29,6 +29,7 @@ import { resolveExpandedTop } from '../sheetUtils';
 import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
 import type { SnapPoints } from '../bottomSheetMotionTypes';
 import type { OverlayContentSpec, OverlaySheetSnap, OverlaySheetSnapRequest } from '../types';
+import type { MapBounds } from '../../types';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -38,8 +39,9 @@ const SURFACE = themeColors.surface;
 
 type UsePollCreationPanelSpecOptions = {
   visible: boolean;
-  coverageKey: string | null;
-  coverageName?: string | null;
+  marketKey: string | null;
+  marketName?: string | null;
+  bounds?: MapBounds | null;
   searchBarTop?: number;
   snapPoints?: SnapPoints;
   shellSnapRequest?: OverlaySheetSnapRequest | null;
@@ -175,8 +177,9 @@ const useAutocompleteField = (entityType: string, enabled: boolean): Autocomplet
 
 export const usePollCreationPanelSpec = ({
   visible,
-  coverageKey,
-  coverageName,
+  marketKey,
+  marketName,
+  bounds,
   searchBarTop = 0,
   snapPoints: snapPointsOverride,
   shellSnapRequest,
@@ -271,8 +274,8 @@ export const usePollCreationPanelSpec = ({
   };
 
   const handleSubmit = useCallback(async () => {
-    if (!coverageKey) {
-      Alert.alert('Pick a city', 'Move the map to a city before creating a poll.');
+    if (!marketKey && !bounds) {
+      Alert.alert('Pick a market', 'Move the map to a local market before creating a poll.');
       return;
     }
     if (!selectedType) {
@@ -282,7 +285,8 @@ export const usePollCreationPanelSpec = ({
 
     const payload: CreatePollPayload = {
       topicType: selectedType,
-      coverageKey,
+      marketKey: marketKey ?? undefined,
+      bounds,
       description: description.trim() || undefined,
     };
 
@@ -324,10 +328,11 @@ export const usePollCreationPanelSpec = ({
       setSubmitting(false);
     }
   }, [
-    coverageKey,
+    bounds,
     description,
     dishField,
     foodAttributeField,
+    marketKey,
     onCreated,
     restaurantAttributeField,
     restaurantField,
@@ -344,11 +349,11 @@ export const usePollCreationPanelSpec = ({
     field.setShowSuggestions(false);
   };
 
-  const headerTitle = coverageName?.trim()
-    ? `Add a poll in ${coverageName.trim()}`
-    : coverageKey
-    ? 'Add a poll'
-    : 'Add a poll near here';
+  const headerTitle = marketName?.trim()
+    ? `Add a poll in ${marketName.trim()}`
+    : marketKey
+      ? 'Add a poll'
+      : 'Add a poll near here';
 
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const expanded = resolveExpandedTop(searchBarTop, insets.top);
