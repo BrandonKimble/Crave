@@ -32,7 +32,7 @@ export class SearchPopularityService {
         }[]
       >(Prisma.sql`
         SELECT entity_id AS "entityId",
-               COUNT(*)::float AS score
+               COUNT(DISTINCT COALESCE(search_request_id, log_id))::float AS score
         FROM user_search_logs
         WHERE source = 'search'
           AND entity_id = ANY(${entityIdArray})
@@ -71,7 +71,7 @@ export class SearchPopularityService {
         }[]
       >(Prisma.sql`
         SELECT entity_id AS "entityId",
-               COUNT(*)::float AS score
+               COUNT(DISTINCT COALESCE(search_request_id, log_id))::float AS score
         FROM user_search_logs
         WHERE user_id = ${userUuid}
           AND source = 'search'

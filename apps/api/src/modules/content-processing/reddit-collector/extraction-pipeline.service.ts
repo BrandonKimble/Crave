@@ -15,9 +15,12 @@ import {
   EnrichedLLMMention,
   EnrichedLLMOutputStructure,
   LLMComment,
-  LLMInputStructure,
+  LLMModelInput,
   LLMMention,
   LLMPost,
+  LLMProcessingInput,
+  LLMSourceMap,
+  LLMSourceMapEntry,
 } from '../../external-integrations/llm/llm.types';
 import {
   buildSourceDocumentKey,
@@ -74,10 +77,13 @@ type HydratingMention = LLMMention &
 
 export interface StoredExtractionInputChunk {
   inputIndex: number;
-  inputPayload: LLMInputStructure;
+  inputPayload: LLMModelInput;
+  sourceMap: LLMSourceMap;
   sourceDocumentIds: string[];
   sourceInputId?: string | null;
 }
+
+type ProcessingChunkResult = ChunkResult<LLMProcessingInput>;
 
 interface ExtractionPipelineBaseParams {
   pipeline: BatchJob['collectionType'];
@@ -130,6 +136,7 @@ export interface ExtractionPipelineResult {
 
 @Injectable()
 export class ExtractionPipelineService implements OnModuleInit {
+  private static readonly SOURCE_REF_PREFIX = 'SRC';
   private logger!: LoggerService;
 
   constructor(
@@ -148,7 +155,7 @@ export class ExtractionPipelineService implements OnModuleInit {
   async processPosts(
     params: ExtractionPipelinePostsParams,
   ): Promise<ExtractionPipelineResult> {
-    const llmInput: LLMInputStructure = { posts: params.llmPosts };
+    const llmInput: LLMModelInput = { posts: params.llmPosts };
     const sourceDocumentIdBySourceKey =
       await this.collectionEvidenceService.persistSourceDocuments({
         platform: 'reddit',
@@ -157,7 +164,7 @@ export class ExtractionPipelineService implements OnModuleInit {
       });
 
     const chunkStartTime = Date.now();
-    const chunkData = this.normalizeCanonicalSourceIdsInChunkData(
+    const chunkData = this.normalizeSourceRefsInChunkData(
       this.llmChunkingService.createContextualChunks(llmInput),
     );
     const chunkDurationMs = Date.now() - chunkStartTime;
@@ -177,6 +184,8 @@ export class ExtractionPipelineService implements OnModuleInit {
   async processStoredInputs(
     params: ExtractionPipelineStoredInputsParams,
   ): Promise<ExtractionPipelineResult> {
+    this.assertStoredInputsUseSourceRefs(params.inputChunks);
+
     const sourceDocumentIdBySourceKey = new Map<SourceDocumentKey, string>(
       params.sourceDocuments.map((document) => [
         buildSourceDocumentKey(document.sourceType, document.sourceId),
@@ -184,7 +193,7 @@ export class ExtractionPipelineService implements OnModuleInit {
       ]),
     );
     const chunkStartTime = Date.now();
-    const chunkData = this.normalizeCanonicalSourceIdsInChunkData(
+    const chunkData = this.normalizeSourceRefsInChunkData(
       this.buildChunkDataFromStoredInputs(params.inputChunks),
     );
     const chunkDurationMs = Date.now() - chunkStartTime;
@@ -215,7 +224,7 @@ export class ExtractionPipelineService implements OnModuleInit {
   private async processChunkPlan(params: {
     baseParams: ExtractionPipelineBaseParams;
     llmPosts: LLMPost[];
-    chunkData: ChunkResult;
+    chunkData: ProcessingChunkResult;
     sourceDocumentIdBySourceKey: Map<SourceDocumentKey, string>;
     activateDocumentIds: string[];
     chunkDurationMs: number;
@@ -249,7 +258,7 @@ export class ExtractionPipelineService implements OnModuleInit {
         });
 
       const llmStartTime = Date.now();
-      const processingResult: ConcurrentProcessingResult =
+      const processingResult: ConcurrentProcessingResult<LLMProcessingInput> =
         await this.llmConcurrentService.processConcurrent(
           params.chunkData,
           this.llmService,
@@ -273,6 +282,11 @@ export class ExtractionPipelineService implements OnModuleInit {
         processingResult.chunkResults.flatMap((chunkResult) =>
           (chunkResult.result?.mentions ?? []).map((mention) => ({
             ...mention,
+            source_id: this.resolveCanonicalSourceIdForMention(
+              mention.source_id,
+              chunkResult.input,
+              chunkResult.chunkId,
+            ),
             __inputChunkId: chunkResult.chunkId,
             __extractionInputId:
               extractionInputIdByChunkId.get(chunkResult.chunkId) ?? null,
@@ -415,89 +429,383 @@ export class ExtractionPipelineService implements OnModuleInit {
 
   private buildChunkDataFromStoredInputs(
     inputChunks: StoredExtractionInputChunk[],
-  ): ChunkResult {
+  ): ProcessingChunkResult {
     const sortedChunks = [...inputChunks].sort(
       (left, right) => left.inputIndex - right.inputIndex,
     );
 
     return {
-      chunks: sortedChunks.map((chunk) => chunk.inputPayload),
+      chunks: sortedChunks.map((chunk) =>
+        this.buildStoredInputModelPayload(chunk),
+      ),
       metadata: sortedChunks.map((chunk) =>
         this.createStoredInputMetadata(chunk),
       ),
     };
   }
 
-  private normalizeCanonicalSourceIdsInChunkData(
-    chunkData: ChunkResult,
-  ): ChunkResult {
+  private buildStoredInputModelPayload(
+    chunk: StoredExtractionInputChunk,
+  ): LLMProcessingInput {
+    return {
+      ...chunk.inputPayload,
+      source_map: chunk.sourceMap,
+    };
+  }
+
+  private normalizeSourceRefsInChunkData(
+    chunkData: ChunkResult<LLMModelInput>,
+  ): ProcessingChunkResult {
     return {
       chunks: chunkData.chunks.map((chunk) =>
-        this.normalizeCanonicalSourceIdsInInput(chunk),
+        this.normalizeSourceRefsInInput(chunk),
       ),
       metadata: chunkData.metadata,
     };
   }
 
-  private normalizeCanonicalSourceIdsInInput(
-    input: LLMInputStructure,
-  ): LLMInputStructure {
-    const postIds = new Map<string, string>();
-    const commentIds = new Map<string, string>();
+  private normalizeSourceRefsInInput(
+    input: LLMModelInput | LLMProcessingInput,
+  ): LLMProcessingInput {
+    const normalizedSourceMap = this.normalizeSourceMap(
+      'source_map' in input ? input.source_map : undefined,
+    );
+    if (Object.keys(normalizedSourceMap).length > 0) {
+      return this.assertSourceRefInput(input, normalizedSourceMap);
+    }
+
+    const canonicalToRef = new Map<string, string>();
+    const refToEntry = new Map<string, LLMSourceMapEntry>();
+    let nextRefIndex = 1;
+
+    const assignRef = (
+      canonicalId: string,
+      sourceType: 'post' | 'comment',
+      existingValue?: string | null,
+    ): string => {
+      const trimmedCanonicalId = canonicalId.trim();
+      const existingRef =
+        canonicalToRef.get(trimmedCanonicalId) ??
+        this.findSourceRefForCanonicalId(
+          normalizedSourceMap,
+          trimmedCanonicalId,
+          sourceType,
+        );
+
+      if (existingRef) {
+        canonicalToRef.set(trimmedCanonicalId, existingRef);
+        refToEntry.set(existingRef, {
+          canonical_id: trimmedCanonicalId,
+          source_type: sourceType,
+        });
+        return existingRef;
+      }
+
+      const preferredRef =
+        typeof existingValue === 'string' && this.isSourceRef(existingValue)
+          ? existingValue.trim()
+          : null;
+      let ref = preferredRef;
+
+      while (!ref || refToEntry.has(ref)) {
+        ref = this.formatSourceRef(nextRefIndex);
+        nextRefIndex += 1;
+      }
+
+      canonicalToRef.set(trimmedCanonicalId, ref);
+      refToEntry.set(ref, {
+        canonical_id: trimmedCanonicalId,
+        source_type: sourceType,
+      });
+
+      return ref;
+    };
 
     const posts = (input.posts ?? []).map((post) => {
-      const postId = post.id.trim();
-      postIds.set(postId, postId);
+      const canonicalPostId = post.id.trim();
+      const postRef = assignRef(canonicalPostId, 'post', post.id);
 
       const comments = (post.comments ?? []).map((comment) => {
-        const commentId = comment.id.trim();
-        commentIds.set(commentId, commentId);
+        const canonicalCommentId = comment.id.trim();
+        const commentRef = assignRef(
+          canonicalCommentId,
+          'comment',
+          comment.id,
+        );
+
         return {
           ...comment,
-          id: commentId,
+          id: commentRef,
         };
       });
 
       return {
         ...post,
-        id: postId,
+        id: postRef,
         comments,
       };
     });
 
-    posts.forEach((post) => {
-      post.comments = (post.comments ?? []).map((comment) => ({
-        ...comment,
-        parent_id: this.resolveCanonicalParentId(
-          comment.parent_id,
-          postIds,
-          commentIds,
-        ),
-      }));
+    const sourceMap = Object.fromEntries(refToEntry.entries());
+    const postRefsByCanonicalId = new Map<string, string>();
+    const commentRefsByCanonicalId = new Map<string, string>();
+
+    Object.entries(sourceMap).forEach(([ref, entry]) => {
+      if (entry.source_type === 'post') {
+        postRefsByCanonicalId.set(entry.canonical_id, ref);
+      } else {
+        commentRefsByCanonicalId.set(entry.canonical_id, ref);
+      }
     });
 
     return {
-      posts,
+      posts: posts.map((post) => ({
+        ...post,
+        comments: (post.comments ?? []).map((comment) => ({
+          ...comment,
+          parent_id: this.resolveSourceRefParentId(
+            comment.parent_id,
+            sourceMap,
+            postRefsByCanonicalId,
+            commentRefsByCanonicalId,
+          ),
+        })),
+      })),
+      source_map: sourceMap,
     };
   }
 
-  private resolveCanonicalParentId(
+  private normalizeSourceMap(sourceMap?: LLMSourceMap): LLMSourceMap {
+    if (!sourceMap) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(sourceMap).map(([ref, entry]) => {
+        const trimmedRef = ref.trim();
+        const trimmedCanonicalId = entry?.canonical_id?.trim();
+        const sourceType = entry?.source_type;
+
+        if (!this.isSourceRef(trimmedRef)) {
+          throw new Error(`Invalid source_map ref: ${ref}`);
+        }
+        if (!trimmedCanonicalId) {
+          throw new Error(`Missing canonical_id for source_map ref: ${ref}`);
+        }
+        if (sourceType !== 'post' && sourceType !== 'comment') {
+          throw new Error(`Invalid source_type for source_map ref: ${ref}`);
+        }
+
+        return [
+          trimmedRef,
+          {
+            canonical_id: trimmedCanonicalId,
+            source_type: sourceType,
+          } satisfies LLMSourceMapEntry,
+        ];
+      }),
+    );
+  }
+
+  private resolveSourceRefParentId(
     parentId: string | null | undefined,
-    postIds: Map<string, string>,
-    commentIds: Map<string, string>,
+    sourceMap: LLMSourceMap,
+    postRefsByCanonicalId: Map<string, string>,
+    commentRefsByCanonicalId: Map<string, string>,
   ): string | null {
     const trimmedParentId = parentId?.trim();
     if (!trimmedParentId) {
       return null;
     }
 
-    return (
-      commentIds.get(trimmedParentId) ??
-      postIds.get(trimmedParentId) ??
-      postIds.get(`t3_${trimmedParentId}`) ??
-      commentIds.get(`t1_${trimmedParentId}`) ??
-      null
+    const canonicalParentId = this.resolveCanonicalSourceIdFromInput(
+      trimmedParentId,
+      sourceMap,
     );
+    const parentCandidates = [
+      canonicalParentId,
+      trimmedParentId,
+    ].filter((candidate): candidate is string => Boolean(candidate));
+
+    for (const candidate of parentCandidates) {
+      const commentRef = commentRefsByCanonicalId.get(candidate);
+      if (commentRef) {
+        return commentRef;
+      }
+      const postRef = postRefsByCanonicalId.get(candidate);
+      if (postRef) {
+        return postRef;
+      }
+    }
+
+    return null;
+  }
+
+  private resolveCanonicalSourceIdFromInput(
+    sourceId: string | null | undefined,
+    sourceMap: LLMSourceMap,
+  ): string | null {
+    const trimmedSourceId = sourceId?.trim();
+    if (!trimmedSourceId) {
+      return null;
+    }
+
+    if (this.isSourceRef(trimmedSourceId)) {
+      return sourceMap[trimmedSourceId]?.canonical_id ?? null;
+    }
+
+    return trimmedSourceId;
+  }
+
+  private resolveCanonicalSourceIdForMention(
+    sourceId: string | null | undefined,
+    input: LLMProcessingInput,
+    chunkId: string,
+  ): string {
+    const trimmedSourceId = sourceId?.trim();
+    if (!trimmedSourceId) {
+      throw new Error('Missing source_id in model output');
+    }
+
+    const sourceMap = this.normalizeSourceMap(input.source_map);
+    if (Object.keys(sourceMap).length === 0) {
+      throw new Error(`Missing source_map for chunk=${chunkId}`);
+    }
+
+    const mappedSource = sourceMap[trimmedSourceId];
+    if (!mappedSource) {
+      const allowedRefs = Object.keys(sourceMap)
+        .sort()
+        .slice(0, 10)
+        .join(', ');
+      throw new Error(
+        `Invalid source_id=${trimmedSourceId} for chunk=${chunkId}; expected one of ${allowedRefs}`,
+      );
+    }
+
+    return mappedSource.canonical_id;
+  }
+
+  private findSourceRefForCanonicalId(
+    sourceMap: LLMSourceMap,
+    canonicalId: string,
+    sourceType: 'post' | 'comment',
+  ): string | null {
+    for (const [ref, entry] of Object.entries(sourceMap)) {
+      if (
+        entry.canonical_id === canonicalId &&
+        entry.source_type === sourceType
+      ) {
+        return ref;
+      }
+    }
+
+    return null;
+  }
+
+  private getNextSourceRefIndex(sourceMap: LLMSourceMap): number {
+    const numericSuffixes = Object.keys(sourceMap)
+      .map((ref) => {
+        const match = /^SRC(\d+)$/.exec(ref);
+        return match ? Number.parseInt(match[1], 10) : null;
+      })
+      .filter((value): value is number => Number.isFinite(value));
+
+    if (numericSuffixes.length === 0) {
+      return 1;
+    }
+
+    return Math.max(...numericSuffixes) + 1;
+  }
+
+  private formatSourceRef(index: number): string {
+    return `${ExtractionPipelineService.SOURCE_REF_PREFIX}${String(index).padStart(3, '0')}`;
+  }
+
+  private isSourceRef(value: string | null | undefined): boolean {
+    return typeof value === 'string' && /^SRC\d+$/.test(value.trim());
+  }
+
+  private assertStoredInputsUseSourceRefs(
+    inputChunks: StoredExtractionInputChunk[],
+  ): void {
+    inputChunks.forEach((chunk) => {
+      if (!chunk.sourceMap || Object.keys(chunk.sourceMap).length === 0) {
+        throw new Error(
+          `Stored input ${chunk.sourceInputId ?? chunk.inputIndex} is missing source_map`,
+        );
+      }
+      this.assertSourceRefInput(
+        this.buildStoredInputModelPayload(chunk),
+        this.normalizeSourceMap(chunk.sourceMap),
+      );
+    });
+  }
+
+  private assertSourceRefInput(
+    input: LLMModelInput | LLMProcessingInput,
+    sourceMap: LLMSourceMap,
+  ): LLMProcessingInput {
+    const posts = (input.posts ?? []).map((post) => {
+      const postRef = post.id?.trim();
+      const postEntry = postRef ? sourceMap[postRef] : null;
+      if (!postRef || !this.isSourceRef(postRef) || !postEntry) {
+        throw new Error(`Invalid post source ref: ${post.id ?? '<missing>'}`);
+      }
+      if (postEntry.source_type !== 'post') {
+        throw new Error(`Post ref ${postRef} does not map to a post`);
+      }
+
+      const comments = (post.comments ?? []).map((comment) => {
+        const commentRef = comment.id?.trim();
+        const commentEntry = commentRef ? sourceMap[commentRef] : null;
+        if (!commentRef || !this.isSourceRef(commentRef) || !commentEntry) {
+          throw new Error(
+            `Invalid comment source ref: ${comment.id ?? '<missing>'}`,
+          );
+        }
+        if (commentEntry.source_type !== 'comment') {
+          throw new Error(`Comment ref ${commentRef} does not map to a comment`);
+        }
+
+        return {
+          ...comment,
+          id: commentRef,
+          parent_id: this.assertMappedParentRef(comment.parent_id, sourceMap),
+        };
+      });
+
+      return {
+        ...post,
+        id: postRef,
+        comments,
+      };
+    });
+
+    return {
+      posts,
+      source_map: sourceMap,
+    };
+  }
+
+  private assertMappedParentRef(
+    parentId: string | null | undefined,
+    sourceMap: LLMSourceMap,
+  ): string | null {
+    const trimmedParentId = parentId?.trim();
+    if (!trimmedParentId) {
+      return null;
+    }
+
+    if (!this.isSourceRef(trimmedParentId)) {
+      throw new Error(`Parent source ref must use SRC format: ${trimmedParentId}`);
+    }
+
+    if (!sourceMap[trimmedParentId]) {
+      throw new Error(`Parent source ref is missing from source_map: ${trimmedParentId}`);
+    }
+
+    return trimmedParentId;
   }
 
   private createStoredInputMetadata(
@@ -536,7 +844,7 @@ export class ExtractionPipelineService implements OnModuleInit {
     };
   }
 
-  private estimateTokensFromInputPayload(input: LLMInputStructure): number {
+  private estimateTokensFromInputPayload(input: LLMModelInput): number {
     const charCount = (input.posts ?? []).reduce((sum, post) => {
       const postChars = (post.title?.length ?? 0) + (post.content?.length ?? 0);
       const commentChars = (post.comments ?? []).reduce(
@@ -758,38 +1066,23 @@ export class ExtractionPipelineService implements OnModuleInit {
     mentions: EnrichedLLMMention[],
     enrichment: SourceEnrichmentMaps,
   ): void {
-    const canonicalNameBySource = new Map<string, string>();
-
     mentions.forEach((mention) => {
       const sourceId = mention.source_id?.trim();
       const restaurant = mention.restaurant?.trim();
-      if (!sourceId || !restaurant) {
+      if (!restaurant) {
         return;
       }
 
-      const currentCanonical = canonicalNameBySource.get(sourceId);
-      if (!currentCanonical || restaurant.length > currentCanonical.length) {
-        canonicalNameBySource.set(sourceId, restaurant);
-      }
-    });
-
-    mentions.forEach((mention) => {
-      const sourceId = mention.source_id?.trim();
-      if (!sourceId) {
-        return;
-      }
-
-      const canonicalName = canonicalNameBySource.get(sourceId);
-      if (!canonicalName) {
-        return;
-      }
-
-      mention.restaurant = canonicalName;
+      mention.restaurant = restaurant;
       if (
         typeof mention.restaurant_surface !== 'string' ||
         !mention.restaurant_surface.trim().length
       ) {
-        mention.restaurant_surface = canonicalName;
+        mention.restaurant_surface = restaurant;
+      }
+
+      if (!sourceId) {
+        return;
       }
 
       const content = enrichment.contentById.get(sourceId) ?? '';
@@ -797,7 +1090,7 @@ export class ExtractionPipelineService implements OnModuleInit {
         return;
       }
 
-      const existingSurface = mention.restaurant_surface ?? canonicalName;
+      const existingSurface = mention.restaurant_surface ?? restaurant;
       if (
         existingSurface &&
         content.toLowerCase().includes(existingSurface.toLowerCase())
@@ -806,7 +1099,7 @@ export class ExtractionPipelineService implements OnModuleInit {
       }
 
       const regex = new RegExp(
-        `\\b${canonicalName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
+        `\\b${restaurant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
         'iu',
       );
       const match = content.match(regex);

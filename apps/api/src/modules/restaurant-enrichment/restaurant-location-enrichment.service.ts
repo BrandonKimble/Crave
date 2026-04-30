@@ -11,12 +11,14 @@ import {
   GooglePlacesV1Place,
   GooglePlacesV1PlaceDetailsResponse,
 } from '../external-integrations/google-places';
+import { LLMService } from '../external-integrations/llm/llm.service';
 import { LoggerService } from '../../shared';
 import { AliasManagementService } from '../content-processing/entity-resolver/alias-management.service';
 import { RankScoreRefreshQueueService } from '../content-processing/rank-score/rank-score-refresh.service';
 import { MarketRegistryService } from '../markets/market-registry.service';
 import { RestaurantEntityMergeService } from './restaurant-entity-merge.service';
 import { RestaurantCuisineExtractionQueueService } from './restaurant-cuisine-extraction-queue.service';
+import { RestaurantSecondaryLocationExpansionQueueService } from './restaurant-secondary-location-expansion-queue.service';
 import {
   GOOGLE_PLACE_TYPE_ATTRIBUTE_CANONICAL_NAMES,
   GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP,
@@ -317,14 +319,22 @@ interface MatchMetadata {
   predictionsConsidered: number;
   timestamp: string;
   source?: 'autocomplete' | 'find_place';
+  redirectedFromPlaceId?: string;
+  redirectedToPlaceId?: string;
+  redirectedFromBusinessStatus?: string;
 }
 
 export interface RestaurantEnrichmentOptions {
   force?: boolean;
   dryRun?: boolean;
   sessionToken?: string;
-  overrideQuery?: string;
-  countryFallback?: string;
+  query?: string;
+  sourceText?: string;
+  sourceMarket?: {
+    city?: string | null;
+    region?: string | null;
+  };
+  countryCode?: string;
   locationBias?: {
     lat: number;
     lng: number;
@@ -367,9 +377,10 @@ type RestaurantEntityWithLocations = Prisma.EntityGetPayload<{
 
 interface EnrichmentSearchContext {
   query: string | null;
+  sourceText?: string;
   city?: string;
   region?: string;
-  country?: string;
+  countryCode?: string;
   locationBias?: { lat: number; lng: number; radiusMeters?: number };
 }
 
@@ -379,7 +390,8 @@ interface PlaceCandidate {
   mainText?: string;
   secondaryText?: string;
   types?: string[];
-  distanceMeters?: number;
+  latitude?: number;
+  longitude?: number;
 }
 
 type RankedCandidate = {
@@ -393,6 +405,58 @@ type ResolvedPlaceMatch = {
   score?: number;
 };
 
+type CandidateSelectionSource = 'autocomplete' | 'find_place';
+
+type CandidateSelectionTrailEntry = {
+  placeId: string;
+  candidateName: string;
+  source: CandidateSelectionSource;
+  sameBusiness: boolean;
+  reason?: string;
+  autocompleteRank?: number;
+  searchTextRank?: number;
+  inMarket?: boolean;
+  exactNameMatch?: boolean;
+  consensusCandidate?: boolean;
+};
+
+type CandidateSelectionResult = {
+  selected?: {
+    entry: RankedCandidate;
+    matchSource: CandidateSelectionSource;
+    score?: number;
+  };
+  adjudicationTrail: CandidateSelectionTrailEntry[];
+  strategy: 'gemini_staged';
+};
+
+type CandidateStageEvaluation = {
+  selection: CandidateSelectionResult;
+};
+
+type GeminiSelectionFlowResult = {
+  selection: CandidateSelectionResult;
+  retryAutocompleteAttempted: boolean;
+  retryAutocompleteRanked: RankedCandidate[];
+  retryQuery?: string;
+  fallbackAttempted: boolean;
+  fallbackStatus?: string;
+  fallbackRanked: RankedCandidate[];
+  initialEvaluation: CandidateStageEvaluation;
+  retryEvaluation?: CandidateStageEvaluation;
+  finalEvaluation?: CandidateStageEvaluation;
+};
+
+type GeminiChooserCandidate = {
+  candidateId: string;
+  entry: RankedCandidate;
+  matchSource: CandidateSelectionSource;
+  autocompleteRank?: number;
+  searchTextRank?: number;
+  sourceLabels: CandidateSelectionSource[];
+  restaurantish: boolean;
+};
+
 @Injectable()
 export class RestaurantLocationEnrichmentService {
   private readonly logger: LoggerService;
@@ -403,11 +467,13 @@ export class RestaurantLocationEnrichmentService {
     private readonly entityRepository: EntityRepository,
     private readonly prisma: PrismaService,
     private readonly googlePlacesService: GooglePlacesService,
+    private readonly llmService: LLMService,
     private readonly aliasManagementService: AliasManagementService,
     private readonly restaurantEntityMergeService: RestaurantEntityMergeService,
     private readonly marketRegistry: MarketRegistryService,
     private readonly rankScoreRefreshQueue: RankScoreRefreshQueueService,
     private readonly cuisineExtractionQueue: RestaurantCuisineExtractionQueueService,
+    private readonly secondaryLocationExpansionQueue: RestaurantSecondaryLocationExpansionQueueService,
     private readonly configService: ConfigService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
@@ -496,11 +562,61 @@ export class RestaurantLocationEnrichmentService {
     return this.enrichRestaurant(entity, options);
   }
 
+  async expandSecondaryLocationsForRestaurant(
+    restaurantId: string,
+    placeId: string,
+  ): Promise<void> {
+    const normalizedRestaurantId = restaurantId?.trim();
+    const normalizedPlaceId = placeId?.trim();
+    if (!normalizedRestaurantId || !normalizedPlaceId) {
+      return;
+    }
+
+    const entity = await this.prisma.entity.findUnique({
+      where: { entityId: normalizedRestaurantId },
+      include: { primaryLocation: true, locations: true },
+    });
+
+    if (!entity || entity.type !== EntityType.restaurant) {
+      return;
+    }
+
+    const details = await this.googlePlacesService.getPlaceDetails(
+      normalizedPlaceId,
+      { includeRaw: true },
+    );
+    const resolvedDetails = await this.resolveEligiblePlaceDetails({
+      details,
+      fallbackPlaceId: normalizedPlaceId,
+      query: entity.name,
+      candidate: {
+        placeId: normalizedPlaceId,
+        description: entity.name,
+        mainText: entity.name,
+      },
+      matchMetadata: {
+        query: entity.name,
+        predictionsConsidered: 1,
+        timestamp: new Date().toISOString(),
+        source: 'find_place',
+      },
+    });
+
+    if (!resolvedDetails.details?.place) {
+      return;
+    }
+
+    await this.enrichSecondaryLocations(
+      entity,
+      resolvedDetails.details.place,
+    );
+  }
+
   async resolvePlaceForInput(params: {
     name: string;
     city?: string;
     region?: string;
-    country?: string;
+    countryCode?: string;
     locationBias?: { lat: number; lng: number; radiusMeters?: number };
     sessionToken?: string;
   }): Promise<{
@@ -512,65 +628,59 @@ export class RestaurantLocationEnrichmentService {
       name: params.name,
       city: params.city ?? null,
       region: params.region ?? null,
-      country: params.country ?? null,
+      country: params.countryCode ?? null,
       restaurantMetadata: null,
     } as RestaurantEntity;
 
-    const searchContext = this.buildSearchContext(entity, {
+    const searchContext = await this.buildSearchContext(entity, {
+      sourceMarket: {
+        city: params.city ?? null,
+        region: params.region ?? null,
+      },
       locationBias: params.locationBias,
-      countryFallback: params.country,
+      countryCode: params.countryCode,
       sessionToken: params.sessionToken,
+      query: params.name,
     });
 
     if (!searchContext.query) {
       return null;
     }
 
-    const autocomplete = await this.googlePlacesService.autocompletePlace(
+    const ranked = await this.collectAutocompleteCandidates(
       searchContext.query,
       {
-        language: 'en',
-        components: searchContext.country
-          ? { country: searchContext.country }
-          : undefined,
-        sessionToken: params.sessionToken,
         locationBias: searchContext.locationBias,
-        includeRaw: false,
+        countryCode: searchContext.countryCode,
+        sessionToken: params.sessionToken,
       },
+      searchContext,
     );
-
-    const candidates = this.extractAutocompleteCandidates(
-      autocomplete.suggestions,
-    );
-    let ranked = this.rankCandidates(candidates);
     let matchSource: 'autocomplete' | 'find_place' = 'autocomplete';
+    let fallbackAttempted = false;
     let fallbackStatus: string | undefined;
+    let fallbackRanked: RankedCandidate[] = [];
+    let retryAutocompleteRanked: RankedCandidate[] = [];
+    let selection: CandidateSelectionResult;
 
-    if (ranked.length === 0) {
-      const fallbackResult = await this.tryFindPlaceFallback(
-        entity,
-        searchContext,
-        {
-          locationBias: searchContext.locationBias,
-          countryFallback: params.country,
-          sessionToken: params.sessionToken,
-        },
-      );
+    const flow = await this.runGeminiSelectionFlow({
+      autocompleteRanked: ranked,
+      entity,
+      context: searchContext,
+      options: {
+        locationBias: searchContext.locationBias,
+        countryCode: searchContext.countryCode,
+        sessionToken: params.sessionToken,
+      },
+    });
+    selection = flow.selection;
+    fallbackAttempted = flow.fallbackAttempted;
+    fallbackStatus = flow.fallbackStatus;
+    fallbackRanked = flow.fallbackRanked;
+    retryAutocompleteRanked = flow.retryAutocompleteRanked;
 
-      if (fallbackResult) {
-        fallbackStatus = fallbackResult.status;
-        ranked = fallbackResult.ranked;
-        if (ranked.length > 0) {
-          matchSource = 'find_place';
-        }
-      } else {
-        fallbackStatus = 'error';
-      }
-    }
-
-    const best = this.selectQualifiedCandidate(ranked, entity);
-    if (!best) {
-      if (fallbackStatus) {
+    if (!selection.selected) {
+      if (fallbackAttempted && fallbackStatus) {
         this.logger.debug('Place match failed after fallback', {
           name: params.name,
           fallbackStatus,
@@ -579,8 +689,11 @@ export class RestaurantLocationEnrichmentService {
       return null;
     }
 
+    const best = selection.selected;
+    matchSource = best.matchSource;
+
     const details = await this.googlePlacesService.getPlaceDetails(
-      best.candidate.placeId,
+      best.entry.candidate.placeId,
       { includeRaw: true },
     );
 
@@ -590,35 +703,46 @@ export class RestaurantLocationEnrichmentService {
 
     const placeDetails = details.place;
     if (typeof placeDetails.id !== 'string' || !placeDetails.id.trim()) {
-      placeDetails.id = best.candidate.placeId;
+      placeDetails.id = best.entry.candidate.placeId;
     }
 
     const matchMetadata: MatchMetadata = {
       query: searchContext.query ?? '',
-      predictionDescription: best.candidate.description,
-      mainText: best.candidate.mainText,
-      secondaryText: best.candidate.secondaryText,
-      candidateTypes: best.candidate.types,
-      predictionsConsidered: ranked.length,
+      predictionDescription: best.entry.candidate.description,
+      mainText: best.entry.candidate.mainText,
+      secondaryText: best.entry.candidate.secondaryText,
+      candidateTypes: best.entry.candidate.types,
+      predictionsConsidered:
+        matchSource === 'find_place'
+          ? fallbackRanked.length
+          : this.mergeRankedCandidates([
+              ...ranked,
+              ...retryAutocompleteRanked,
+            ]).length,
       timestamp: new Date().toISOString(),
       source: matchSource,
     };
 
-    const override = await this.resolveOutOfMarketSearchTextOverride({
-      entity,
-      context: searchContext,
-      sessionToken: params.sessionToken,
-      selectedCandidate: best.candidate,
-      selectedPlace: placeDetails,
-      selectedMatchSource: matchSource,
+    const resolvedDetails = await this.resolveEligiblePlaceDetails({
+      details,
+      fallbackPlaceId: best.entry.candidate.placeId,
+      query: searchContext.query ?? '',
+      candidate: best.entry.candidate,
+      matchMetadata,
     });
-
-    if (override) {
-      return override;
+    if (!resolvedDetails.details?.place) {
+      if (fallbackAttempted && fallbackStatus) {
+        this.logger.debug('Place match rejected after details resolution', {
+          name: params.name,
+          fallbackStatus,
+          reason: resolvedDetails.rejectionReason,
+        });
+      }
+      return null;
     }
 
     return {
-      place: placeDetails,
+      place: resolvedDetails.details.place,
       matchMetadata,
     };
   }
@@ -726,7 +850,7 @@ export class RestaurantLocationEnrichmentService {
       };
     }
 
-    const searchContext = this.buildSearchContext(entity, options);
+    const searchContext = await this.buildSearchContext(entity, options);
     if (!searchContext.query) {
       await this.recordEnrichmentFailure(
         entity,
@@ -747,82 +871,54 @@ export class RestaurantLocationEnrichmentService {
     }
 
     try {
-      const autocomplete = await this.googlePlacesService.autocompletePlace(
+      const ranked = await this.collectAutocompleteCandidates(
         searchContext.query,
-        {
-          language: 'en',
-          components: searchContext.country
-            ? { country: searchContext.country }
-            : undefined,
-          sessionToken: options.sessionToken,
-          locationBias: searchContext.locationBias,
-          includeRaw: false,
-        },
+        options,
+        searchContext,
       );
-
-      const candidates = this.extractAutocompleteCandidates(
-        autocomplete.suggestions,
-      );
-
-      let ranked = this.rankCandidates(candidates);
 
       let matchSource: 'autocomplete' | 'find_place' = 'autocomplete';
+      let selection: CandidateSelectionResult;
       let fallbackAttempted = false;
       let fallbackStatus: string | undefined;
+      let fallbackRanked: RankedCandidate[] = [];
+      let retryAutocompleteRanked: RankedCandidate[] = [];
 
-      if (ranked.length === 0) {
-        fallbackAttempted = true;
-        const fallbackResult = await this.tryFindPlaceFallback(
-          entity,
-          searchContext,
-          options,
-        );
+      const flow = await this.runGeminiSelectionFlow({
+        autocompleteRanked: ranked,
+        entity,
+        context: searchContext,
+        options,
+      });
+      selection = flow.selection;
+      fallbackAttempted = flow.fallbackAttempted;
+      fallbackStatus = flow.fallbackStatus;
+      fallbackRanked = flow.fallbackRanked;
+      retryAutocompleteRanked = flow.retryAutocompleteRanked;
 
-        if (fallbackResult) {
-          fallbackStatus = fallbackResult.status;
-          ranked = fallbackResult.ranked;
-          if (ranked.length > 0) {
-            matchSource = 'find_place';
-          }
-        } else {
-          fallbackStatus = 'error';
-        }
-
-        if (ranked.length === 0) {
-          const noMatchMetadata = this.buildNoMatchMetadata(
-            ranked,
-            searchContext,
-            {
-              fallbackAttempted: true,
-              fallbackStatus,
-            },
-          );
-          await this.recordNoMatchCandidates(
-            entity,
-            'no predictions returned',
-            noMatchMetadata,
-          );
-          return {
-            entityId: entity.entityId,
-            status: 'no_match',
-            reason: 'no predictions returned',
-          };
-        }
-      }
-
-      const best = this.selectQualifiedCandidate(ranked, entity);
-
-      if (!best) {
+      if (!selection.selected) {
         const noMatchMetadata = this.buildNoMatchMetadata(
-          ranked,
+          this.mergeRankedCandidates([
+            ...ranked,
+            ...retryAutocompleteRanked,
+            ...fallbackRanked,
+          ]),
           searchContext,
           fallbackAttempted
             ? {
                 fallbackAttempted: true,
                 fallbackStatus,
-                fallbackUsed: matchSource === 'find_place',
+                fallbackUsed: fallbackRanked.length > 0,
+                searchTextCandidates: this.serializeRankedCandidates(
+                  fallbackRanked,
+                ),
+                candidateSelectionStrategy: selection.strategy,
+                adjudicationTrail: selection.adjudicationTrail,
               }
-            : undefined,
+            : {
+                candidateSelectionStrategy: selection.strategy,
+                adjudicationTrail: selection.adjudicationTrail,
+              },
         );
         const reason = 'no prediction matched preferred place types';
         await this.recordNoMatchCandidates(entity, reason, noMatchMetadata);
@@ -833,15 +929,22 @@ export class RestaurantLocationEnrichmentService {
         };
       }
 
+      const best = selection.selected;
+      matchSource = best.matchSource;
+
       const details = await this.googlePlacesService.getPlaceDetails(
-        best.candidate.placeId,
+        best.entry.candidate.placeId,
         { includeRaw: true },
       );
       latestDetails = details;
 
       if (!details.place) {
         const noMatchMetadata = this.buildNoMatchMetadata(
-          ranked,
+          this.mergeRankedCandidates([
+            ...ranked,
+            ...retryAutocompleteRanked,
+            ...fallbackRanked,
+          ]),
           searchContext,
         );
         await this.recordNoMatchCandidates(
@@ -858,43 +961,67 @@ export class RestaurantLocationEnrichmentService {
 
       const placeDetails = details.place;
       if (typeof placeDetails.id !== 'string' || !placeDetails.id.trim()) {
-        placeDetails.id = best.candidate.placeId;
+        placeDetails.id = best.entry.candidate.placeId;
       }
       enrichmentScore = best.score;
 
       const matchMetadata: MatchMetadata = {
         query: searchContext.query ?? '',
-        predictionDescription: best.candidate.description,
-        mainText: best.candidate.mainText,
-        secondaryText: best.candidate.secondaryText,
-        candidateTypes: best.candidate.types,
-        predictionsConsidered: ranked.length,
+        predictionDescription: best.entry.candidate.description,
+        mainText: best.entry.candidate.mainText,
+        secondaryText: best.entry.candidate.secondaryText,
+        candidateTypes: best.entry.candidate.types,
+        predictionsConsidered:
+          matchSource === 'find_place'
+            ? fallbackRanked.length
+            : ranked.length,
         timestamp: new Date().toISOString(),
         source: matchSource,
       };
       latestMatchMetadata = matchMetadata;
 
-      const override = await this.resolveOutOfMarketSearchTextOverride({
-        entity,
-        context: searchContext,
-        sessionToken: options.sessionToken,
-        selectedCandidate: best.candidate,
-        selectedPlace: placeDetails,
-        selectedMatchSource: matchSource,
+      const resolvedDetails = await this.resolveEligiblePlaceDetails({
+        details,
+        fallbackPlaceId: best.entry.candidate.placeId,
+        query: searchContext.query ?? '',
+        candidate: best.entry.candidate,
+        matchMetadata,
       });
-
-      if (override) {
-        latestDetails = {
-          place: override.place,
-          metadata: details.metadata,
-          raw: details.raw,
+      if (!resolvedDetails.details?.place) {
+        const noMatchMetadata = this.buildNoMatchMetadata(
+          ranked,
+          searchContext,
+          fallbackAttempted
+            ? {
+                fallbackAttempted: true,
+                fallbackStatus,
+                fallbackUsed: matchSource === 'find_place',
+                searchTextCandidates: this.serializeRankedCandidates(
+                  fallbackRanked,
+                ),
+                candidateSelectionStrategy: selection.strategy,
+                adjudicationTrail: selection.adjudicationTrail,
+              }
+            : {
+                candidateSelectionStrategy: selection.strategy,
+                adjudicationTrail: selection.adjudicationTrail,
+              },
+        );
+        await this.recordNoMatchCandidates(
+          entity,
+          resolvedDetails.rejectionReason ?? 'place details missing',
+          noMatchMetadata,
+        );
+        return {
+          entityId: entity.entityId,
+          status: 'no_match',
+          reason: resolvedDetails.rejectionReason ?? 'place details missing',
         };
-        latestMatchMetadata = override.matchMetadata;
-        enrichmentScore = override.score;
       }
+      latestDetails = resolvedDetails.details;
 
-      const resolvedPlaceDetails = override?.place ?? placeDetails;
-      const resolvedMatchMetadata = override?.matchMetadata ?? matchMetadata;
+      const resolvedPlaceDetails = placeDetails;
+      const resolvedMatchMetadata = matchMetadata;
 
       const { updateData, updatedFields } = this.buildEntityUpdate(
         entity,
@@ -1089,10 +1216,14 @@ export class RestaurantLocationEnrichmentService {
           trustedCanonicalDomain ?? enrichmentTarget.canonicalDomain,
       };
 
-      await this.enrichSecondaryLocations(
-        secondaryLocationTarget,
-        placeDetails,
-        options.locationBias,
+      await this.secondaryLocationExpansionQueue.queueExpansion(
+        secondaryLocationTarget.entityId,
+        placeDetails.id,
+        {
+          source: domainMerge
+            ? 'google_places_domain_merge'
+            : 'google_places_enrichment',
+        },
       );
 
       const cuisineTargetId =
@@ -1973,94 +2104,44 @@ export class RestaurantLocationEnrichmentService {
     return !GENERIC_WEBSITE_DOMAIN_DENYLIST.has(normalized);
   }
 
-  private normalizeCountryCodeForAutocomplete(
-    country?: string | null,
-  ): string | undefined {
-    if (!country) {
-      return undefined;
-    }
-    const trimmed = country.trim();
-    return trimmed ? trimmed.toLowerCase() : undefined;
-  }
-
-  private buildSearchContext(
+  private async buildSearchContext(
     entity: RestaurantEntity,
     options: RestaurantEnrichmentOptions,
-  ): EnrichmentSearchContext {
-    const countrySource =
-      entity.country ??
-      entity.primaryLocation?.country ??
-      options.countryFallback ??
-      this.inferCountryFromAddress(
-        entity.primaryLocation?.address ?? entity.address,
-      ) ??
-      DEFAULT_COUNTRY;
-    const normalizedCountry =
-      this.normalizeCountryCodeForAutocomplete(countrySource);
-
-    if (options.overrideQuery) {
-      return {
-        query: options.overrideQuery,
-        city: entity.city ?? undefined,
-        region: entity.region ?? undefined,
-        country: normalizedCountry,
-        locationBias: options.locationBias ?? this.buildLocationBias(entity),
-      };
-    }
-
-    const parts: string[] = [entity.name];
-
-    const primaryLocation = entity.primaryLocation;
-    const city =
-      entity.city ||
-      primaryLocation?.city ||
-      this.extractCityFromAddress(primaryLocation?.address ?? entity.address) ||
-      this.extractCityFromMetadata(entity.restaurantMetadata);
-
-    const region =
-      entity.region ||
-      primaryLocation?.region ||
-      this.extractRegionFromAddress(
-        primaryLocation?.address ?? entity.address,
-      ) ||
-      this.extractRegionFromMetadata(entity.restaurantMetadata);
-
-    if (city) {
-      parts.push(city);
-    }
-
-    if (region) {
-      parts.push(region);
-    }
-
-    const query = parts.filter(Boolean).join(' ');
+  ): Promise<EnrichmentSearchContext> {
+    const sourceMarket = this.normalizeSourceMarket(options.sourceMarket);
+    const query = options.query?.trim() || entity.name?.trim() || '';
     return {
       query: query.trim().length ? query : null,
-      city: city ?? undefined,
-      region: region ?? undefined,
-      country: normalizedCountry,
-      locationBias: options.locationBias ?? this.buildLocationBias(entity),
+      sourceText: options.sourceText?.trim() || undefined,
+      city: sourceMarket.city ?? undefined,
+      region: sourceMarket.region ?? undefined,
+      countryCode: this.normalizeCountryCode(options.countryCode) ?? undefined,
+      locationBias: options.locationBias,
     };
   }
 
-  private buildLocationBias(
-    entity: RestaurantEntity,
-  ): { lat: number; lng: number; radiusMeters?: number } | undefined {
-    const lat =
-      this.toNumberValue(entity.primaryLocation?.latitude) ??
-      this.toNumberValue(entity.latitude);
-    const lng =
-      this.toNumberValue(entity.primaryLocation?.longitude) ??
-      this.toNumberValue(entity.longitude);
-    if (
-      lat !== undefined &&
-      lng !== undefined &&
-      Number.isFinite(lat) &&
-      Number.isFinite(lng)
-    ) {
-      return { lat, lng };
+  private normalizeSourceMarket(sourceMarket?: {
+    city?: string | null;
+    region?: string | null;
+  } | null): {
+    city?: string;
+    region?: string;
+  } {
+    const city = sourceMarket?.city?.trim();
+    const region = sourceMarket?.region?.trim();
+
+    return {
+      city: city || undefined,
+      region: region || undefined,
+    };
+  }
+
+  private normalizeCountryCode(value?: string | null): string | null {
+    if (typeof value !== 'string') {
+      return null;
     }
-    return undefined;
+    const normalized = value.trim().toUpperCase();
+    return normalized.length ? normalized : null;
   }
 
   private async enrichSecondaryLocations(
@@ -2110,6 +2191,7 @@ export class RestaurantLocationEnrichmentService {
               'id',
               'displayName',
               'formattedAddress',
+              'addressComponents',
               'location',
               'internationalPhoneNumber',
               'nationalPhoneNumber',
@@ -2122,6 +2204,7 @@ export class RestaurantLocationEnrichmentService {
           },
         );
 
+        let processedThisPage = 0;
         for (const place of response.places) {
           if (!place?.id || seenPlaceIds.has(place.id)) {
             continue;
@@ -2166,12 +2249,17 @@ export class RestaurantLocationEnrichmentService {
           });
           seenPlaceIds.add(ownedPlaceId);
           totalProcessed += 1;
+          processedThisPage += 1;
           if (totalProcessed >= 60) {
             break;
           }
         }
 
-        if (!response.nextPageToken || totalProcessed >= 60) {
+        if (
+          !response.nextPageToken ||
+          totalProcessed >= 60 ||
+          processedThisPage === 0
+        ) {
           break;
         }
 
@@ -2330,151 +2418,6 @@ export class RestaurantLocationEnrichmentService {
       .replace(/['’`]/g, '')
       .replace(/[^a-z0-9]+/g, ' ')
       .trim();
-  }
-
-  private normalizePlaceNameCompact(value: string): string {
-    return this.normalizePlaceName(value).replace(/\s+/g, '');
-  }
-
-  private tokenizeNormalizedPlaceName(value: string): string[] {
-    const normalized = this.normalizePlaceName(value);
-    return normalized.length > 0 ? normalized.split(/\s+/).filter(Boolean) : [];
-  }
-
-  private singularizePlaceToken(token: string): string {
-    if (token.endsWith('ies') && token.length > 3) {
-      return `${token.slice(0, -3)}y`;
-    }
-    if (token.endsWith('s') && token.length > 3) {
-      return token.slice(0, -1);
-    }
-    return token;
-  }
-
-  private calculateLevenshteinDistance(left: string, right: string): number {
-    if (left === right) {
-      return 0;
-    }
-    if (left.length === 0) {
-      return right.length;
-    }
-    if (right.length === 0) {
-      return left.length;
-    }
-
-    const previous = Array.from({ length: right.length + 1 }, (_, i) => i);
-    const current = new Array<number>(right.length + 1);
-
-    for (let row = 1; row <= left.length; row += 1) {
-      current[0] = row;
-      for (let col = 1; col <= right.length; col += 1) {
-        const cost = left[row - 1] === right[col - 1] ? 0 : 1;
-        current[col] = Math.min(
-          current[col - 1] + 1,
-          previous[col] + 1,
-          previous[col - 1] + cost,
-        );
-      }
-      for (let col = 0; col <= right.length; col += 1) {
-        previous[col] = current[col];
-      }
-    }
-
-    return previous[right.length];
-  }
-
-  private isLooselyEquivalentPlaceToken(left: string, right: string): boolean {
-    if (!left || !right) {
-      return false;
-    }
-
-    if (left === right) {
-      return true;
-    }
-
-    if (left.startsWith(right) || right.startsWith(left)) {
-      return true;
-    }
-
-    return this.calculateLevenshteinDistance(left, right) <= 1;
-  }
-
-  private isSalientSearchTextCandidateNameMatch(
-    candidateName: string,
-    requestedName: string,
-  ): boolean {
-    const candidateTokens = this.tokenizeNormalizedPlaceName(candidateName).map(
-      (token) => this.singularizePlaceToken(token),
-    );
-    const requestedTokens = this.tokenizeNormalizedPlaceName(requestedName).map(
-      (token) => this.singularizePlaceToken(token),
-    );
-
-    if (candidateTokens.length === 0 || requestedTokens.length === 0) {
-      return false;
-    }
-
-    const longestRequestedTokenLength = Math.max(
-      ...requestedTokens.map((token) => token.length),
-    );
-    const anchorTokens = requestedTokens.filter(
-      (token) => token.length === longestRequestedTokenLength,
-    );
-
-    for (const anchorToken of anchorTokens) {
-      if (
-        candidateTokens.some((candidateToken) =>
-          this.isLooselyEquivalentPlaceToken(candidateToken, anchorToken),
-        )
-      ) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  private isCanonicalPlaceMatch(
-    place: GooglePlacesV1Place,
-    canonicalName: string,
-  ): boolean {
-    const candidateName = this.getPlaceDisplayName(place);
-    if (!candidateName) {
-      return false;
-    }
-    const normalizedCandidate = this.normalizePlaceName(candidateName);
-    const normalizedCanonical = this.normalizePlaceName(canonicalName);
-
-    if (normalizedCandidate === normalizedCanonical) {
-      return true;
-    }
-
-    const lowerCandidate = candidateName.trim().toLowerCase();
-    const lowerCanonical = canonicalName.trim().toLowerCase();
-    if (!lowerCandidate.startsWith(lowerCanonical)) {
-      return false;
-    }
-
-    const suffix = lowerCandidate.slice(lowerCanonical.length);
-    return this.isDelimiterSuffix(suffix);
-  }
-
-  private isDelimiterSuffix(value: string): boolean {
-    const trimmed = value.trimStart();
-    if (!trimmed) {
-      return false;
-    }
-    if (trimmed.startsWith('at ')) {
-      return true;
-    }
-    return (
-      trimmed.startsWith('-') ||
-      trimmed.startsWith('–') ||
-      trimmed.startsWith('—') ||
-      trimmed.startsWith('(') ||
-      trimmed.startsWith('@') ||
-      trimmed.startsWith('/')
-    );
   }
 
   private isRestaurantishPlaceTypes(types?: string[]): boolean {
@@ -2889,10 +2832,6 @@ export class RestaurantLocationEnrichmentService {
           (value): value is string => typeof value === 'string',
         );
       }
-      if (typeof prediction?.distanceMeters === 'number') {
-        candidate.distanceMeters = prediction.distanceMeters;
-      }
-
       candidates.push(candidate);
     }
 
@@ -2905,69 +2844,590 @@ export class RestaurantLocationEnrichmentService {
     }));
   }
 
-  private selectQualifiedCandidate(
+  private hasCandidateMarketPreferenceContext(
+    context: EnrichmentSearchContext,
+  ): boolean {
+    const radiusMeters = context.locationBias?.radiusMeters;
+    return (
+      typeof radiusMeters === 'number' &&
+      Number.isFinite(radiusMeters) &&
+      radiusMeters > 0
+    );
+  }
+
+  private filterViableRankedCandidates(
     ranked: RankedCandidate[],
-    entity: RestaurantEntity,
-  ): RankedCandidate | undefined {
-    for (const entry of ranked) {
-      const types = entry.candidate.types;
-      if (
-        this.isRestaurantishPlaceTypes(types) &&
-        this.isPrimaryCandidateNameMatch(entry.candidate, entity.name)
-      ) {
-        return entry;
+  ): RankedCandidate[] {
+    return ranked.filter((entry) =>
+      this.isRestaurantishPlaceTypes(entry.candidate.types),
+    );
+  }
+
+  private serializeRankedCandidates(
+    ranked: RankedCandidate[],
+  ): Array<Record<string, unknown>> {
+    return ranked.slice(0, 5).map(({ candidate, score }) => {
+      const candidateRecord: Record<string, unknown> = {
+        placeId: candidate.placeId,
+      };
+
+      if (typeof score === 'number') {
+        candidateRecord.score = score;
+      }
+      if (candidate.description) {
+        candidateRecord.description = candidate.description;
+      }
+      if (candidate.mainText) {
+        candidateRecord.mainText = candidate.mainText;
+      }
+      if (candidate.secondaryText) {
+        candidateRecord.secondaryText = candidate.secondaryText;
+      }
+      if (Array.isArray(candidate.types) && candidate.types.length > 0) {
+        candidateRecord.types = candidate.types;
+      }
+      return candidateRecord;
+    });
+  }
+
+  private finalizeSelectedCandidate(params: {
+    selected?: {
+      entry: RankedCandidate;
+      matchSource: CandidateSelectionSource;
+      score?: number;
+    };
+    adjudicationTrail: CandidateSelectionTrailEntry[];
+    strategy: CandidateSelectionResult['strategy'];
+    extras?: Partial<CandidateSelectionTrailEntry>;
+  }): CandidateSelectionResult {
+    const selected = params.selected;
+    if (!selected) {
+      return {
+        adjudicationTrail: params.adjudicationTrail,
+        strategy: params.strategy,
+      };
+    }
+
+    if (!this.isRestaurantishPlaceTypes(selected.entry.candidate.types)) {
+      const candidate = selected.entry.candidate;
+      const candidateName =
+        candidate.mainText || candidate.description?.split(',')[0] || '';
+      params.adjudicationTrail.push({
+        placeId: candidate.placeId,
+        candidateName,
+        source: selected.matchSource,
+        sameBusiness: true,
+        reason: 'selected_candidate_failed_restaurant_type_gate',
+        ...params.extras,
+      });
+      return {
+        adjudicationTrail: params.adjudicationTrail,
+        strategy: params.strategy,
+      };
+    }
+
+    return {
+      selected,
+      adjudicationTrail: params.adjudicationTrail,
+      strategy: params.strategy,
+    };
+  }
+
+  private async selectQualifiedCandidate(params: {
+    autocompleteRanked: RankedCandidate[];
+    entity: RestaurantEntity;
+    context?: EnrichmentSearchContext;
+    options?: RestaurantEnrichmentOptions;
+  }): Promise<CandidateSelectionResult> {
+    const flow = await this.runGeminiSelectionFlow({
+      autocompleteRanked: params.autocompleteRanked,
+      entity: params.entity,
+      context: params.context,
+      options: params.options ?? {},
+    });
+    return flow.selection;
+  }
+
+  private async evaluateGeminiCandidateSet(
+    params: {
+      autocompleteRanked: RankedCandidate[];
+      searchTextRanked: RankedCandidate[];
+      entity: RestaurantEntity;
+      context?: EnrichmentSearchContext;
+    },
+    strategy: CandidateSelectionResult['strategy'],
+  ): Promise<CandidateStageEvaluation> {
+    const adjudicationTrail: CandidateSelectionTrailEntry[] = [];
+    const chooserCandidates = this.buildGeminiChooserCandidates({
+      ...params,
+      autocompleteCandidateLimit: 10,
+      searchTextCandidateLimit: 5,
+    });
+    if (!chooserCandidates.length) {
+      adjudicationTrail.push({
+        placeId: 'retry',
+        candidateName: 'no candidate selected',
+        source: 'autocomplete',
+        sameBusiness: false,
+        reason: 'no candidates available',
+      });
+      return {
+        selection: {
+          adjudicationTrail,
+          strategy,
+        },
+      };
+    }
+
+    try {
+      const decision = await this.llmService.chooseRestaurantPlaceCandidate({
+        query: params.entity.name,
+        sourceText: params.context?.sourceText,
+        sourceMarket: {
+          city: params.context?.city,
+          region: params.context?.region,
+        },
+        candidates: chooserCandidates.map((candidate) => ({
+          candidateId: candidate.candidateId,
+          name:
+            candidate.entry.candidate.mainText ||
+            candidate.entry.candidate.description.split(',')[0] ||
+            candidate.entry.candidate.description,
+          address: candidate.entry.candidate.description,
+          types: candidate.entry.candidate.types ?? [],
+          sourceLabels: candidate.sourceLabels,
+          autocompleteRank: candidate.autocompleteRank ?? null,
+          searchTextRank: candidate.searchTextRank ?? null,
+        })),
+      });
+
+      if (decision.decision !== 'select' || !decision.candidateId) {
+        adjudicationTrail.push({
+          placeId: 'reject',
+          candidateName: 'no candidate selected',
+          source: 'autocomplete',
+          sameBusiness: false,
+          reason: 'chooser rejected current candidates',
+        });
+        return {
+          selection: {
+            adjudicationTrail,
+            strategy,
+          },
+        };
+      }
+
+      const chosen = chooserCandidates.find(
+        (candidate) => candidate.candidateId === decision.candidateId,
+      );
+      if (!chosen) {
+        adjudicationTrail.push({
+          placeId: 'reject',
+          candidateName: 'invalid candidate selected',
+          source: 'autocomplete',
+          sameBusiness: false,
+          reason: 'chooser selected unknown candidate id',
+        });
+        return {
+          selection: {
+            adjudicationTrail,
+            strategy,
+          },
+        };
+      }
+
+      adjudicationTrail.push({
+        placeId: chosen.entry.candidate.placeId,
+        candidateName:
+          chosen.entry.candidate.mainText ||
+          chosen.entry.candidate.description.split(',')[0] ||
+          chosen.entry.candidate.description,
+        source: chosen.matchSource,
+        sameBusiness: true,
+        reason: 'chooser selected candidate',
+        autocompleteRank: chosen.autocompleteRank,
+        searchTextRank: chosen.searchTextRank,
+        exactNameMatch: false,
+        consensusCandidate:
+          typeof chosen.autocompleteRank === 'number' &&
+          typeof chosen.searchTextRank === 'number',
+      });
+
+      return {
+        selection: this.finalizeSelectedCandidate({
+          selected: {
+            entry: chosen.entry,
+            matchSource: chosen.matchSource,
+            score: chosen.entry.score,
+          },
+          adjudicationTrail,
+          strategy,
+          extras: {
+            autocompleteRank: chosen.autocompleteRank,
+            searchTextRank: chosen.searchTextRank,
+            exactNameMatch: false,
+            consensusCandidate:
+              typeof chosen.autocompleteRank === 'number' &&
+              typeof chosen.searchTextRank === 'number',
+          },
+        }),
+      };
+    } catch (error) {
+      this.logger.warn('Restaurant place chooser failed', {
+        query: params.entity.name,
+        sourceText: params.context?.sourceText?.slice(0, 300),
+        candidateCount: chooserCandidates.length,
+        strategy,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          name: error instanceof Error ? error.name : undefined,
+        },
+      });
+      adjudicationTrail.push({
+        placeId: 'reject',
+        candidateName: 'chooser failed',
+        source: 'autocomplete',
+        sameBusiness: false,
+        reason: 'chooser failed',
+      });
+      return {
+        selection: {
+          adjudicationTrail,
+          strategy,
+        },
+      };
+    }
+  }
+
+  private async runGeminiSelectionFlow(params: {
+    autocompleteRanked: RankedCandidate[];
+    entity: RestaurantEntity;
+    context?: EnrichmentSearchContext;
+    options: RestaurantEnrichmentOptions;
+  }): Promise<GeminiSelectionFlowResult> {
+    const strategy: CandidateSelectionResult['strategy'] = 'gemini_staged';
+
+    const initialEvaluation = await this.evaluateGeminiCandidateSet(
+      {
+        autocompleteRanked: params.autocompleteRanked,
+        searchTextRanked: [],
+        entity: params.entity,
+        context: params.context,
+      },
+      strategy,
+    );
+
+    if (initialEvaluation.selection.selected) {
+      return {
+        selection: initialEvaluation.selection,
+        retryAutocompleteAttempted: false,
+        retryAutocompleteRanked: [],
+        fallbackAttempted: false,
+        fallbackRanked: [],
+        initialEvaluation,
+      };
+    }
+
+    let latestEvaluation = initialEvaluation;
+    let combinedAutocompleteRanked = params.autocompleteRanked;
+    let retryAutocompleteAttempted = false;
+    let retryAutocompleteRanked: RankedCandidate[] = [];
+    let retryQuery: string | undefined;
+    let retryEvaluation: CandidateStageEvaluation | undefined;
+
+    retryQuery =
+      this.buildAutocompleteMarketRetryQuery(
+        params.context,
+        params.context?.query ?? params.entity.name ?? null,
+      ) ?? undefined;
+    if (retryQuery) {
+      retryAutocompleteAttempted = true;
+      retryAutocompleteRanked = await this.collectAutocompleteCandidates(
+        retryQuery,
+        params.options,
+        params.context,
+      );
+      if (retryAutocompleteRanked.length > 0) {
+        combinedAutocompleteRanked = this.mergeRankedCandidates([
+          ...params.autocompleteRanked,
+          ...retryAutocompleteRanked,
+        ]);
+      }
+      latestEvaluation = await this.evaluateGeminiCandidateSet(
+        {
+          autocompleteRanked: combinedAutocompleteRanked,
+          searchTextRanked: [],
+          entity: params.entity,
+          context: params.context,
+        },
+        strategy,
+      );
+      retryEvaluation = latestEvaluation;
+      if (latestEvaluation.selection.selected) {
+        return {
+          selection: {
+            ...latestEvaluation.selection,
+            adjudicationTrail: [
+              ...initialEvaluation.selection.adjudicationTrail,
+              ...latestEvaluation.selection.adjudicationTrail,
+            ],
+          },
+          retryAutocompleteAttempted,
+          retryAutocompleteRanked,
+          retryQuery,
+          fallbackAttempted: false,
+          fallbackRanked: [],
+          initialEvaluation,
+          retryEvaluation,
+        };
       }
     }
-    return undefined;
+
+    const fallback = await this.collectFallbackSearchCandidates(
+      params.entity,
+      params.context ?? {
+        query: params.entity.name ?? null,
+      },
+      params.options,
+    );
+    const finalEvaluation = await this.evaluateGeminiCandidateSet(
+      {
+        autocompleteRanked: combinedAutocompleteRanked,
+        searchTextRanked: fallback.ranked,
+        entity: params.entity,
+        context: params.context,
+      },
+      strategy,
+    );
+
+    return {
+      selection: {
+        ...finalEvaluation.selection,
+        adjudicationTrail: [
+          ...(retryAutocompleteAttempted
+            ? initialEvaluation.selection.adjudicationTrail
+            : []),
+          ...latestEvaluation.selection.adjudicationTrail,
+          ...finalEvaluation.selection.adjudicationTrail,
+        ],
+      },
+      retryAutocompleteAttempted,
+      retryAutocompleteRanked,
+      retryQuery,
+      fallbackAttempted: fallback.attempted,
+      fallbackStatus: fallback.status,
+      fallbackRanked: fallback.ranked,
+      initialEvaluation,
+      retryEvaluation,
+      finalEvaluation,
+    };
   }
 
-  private isPrimaryCandidateNameMatch(
-    candidate: PlaceCandidate,
-    requestedName: string,
-  ): boolean {
-    const candidateName =
-      candidate.mainText || candidate.description?.split(',')[0] || '';
-    if (!candidateName.trim() || !requestedName.trim()) {
-      return false;
+  private async collectFallbackSearchCandidates(
+    entity: RestaurantEntity,
+    context: EnrichmentSearchContext,
+    options: RestaurantEnrichmentOptions,
+  ): Promise<{
+    attempted: boolean;
+    status?: string;
+    ranked: RankedCandidate[];
+  }> {
+    const fallbackResult = await this.tryFindPlaceFallback(
+      entity,
+      context,
+      options,
+    );
+    if (fallbackResult) {
+      return {
+        attempted: true,
+        status: fallbackResult.status,
+        ranked: fallbackResult.ranked,
+      };
     }
 
-    if (
-      this.isCanonicalPlaceMatch(
-        { displayName: { text: candidateName } },
-        requestedName,
-      )
-    ) {
-      return true;
+    return {
+      attempted: true,
+      status: 'error',
+      ranked: [],
+    };
+  }
+
+  private async collectAutocompleteCandidates(
+    query: string,
+    options: RestaurantEnrichmentOptions,
+    context?: EnrichmentSearchContext,
+  ): Promise<RankedCandidate[]> {
+    if (!query.trim()) {
+      return [];
     }
 
-    const normalizedCandidate = this.normalizePlaceNameCompact(candidateName);
-    const normalizedRequested = this.normalizePlaceNameCompact(requestedName);
+    const autocomplete = await this.googlePlacesService.autocompletePlace(query, {
+      language: 'en',
+      sessionToken: options.sessionToken,
+      locationBias: context?.locationBias,
+      includeRaw: false,
+    });
 
-    return Boolean(
-      normalizedCandidate &&
-        normalizedRequested &&
-        normalizedCandidate.startsWith(normalizedRequested),
+    return this.rankCandidates(
+      this.extractAutocompleteCandidates(autocomplete.suggestions),
     );
   }
 
-  private isSearchTextCandidateNameMatch(
-    candidate: PlaceCandidate,
-    requestedName: string,
-  ): boolean {
-    if (this.isPrimaryCandidateNameMatch(candidate, requestedName)) {
-      return true;
+  private buildAutocompleteMarketRetryQuery(
+    context: EnrichmentSearchContext | undefined,
+    query: string | null,
+  ): string | null {
+    const trimmedQuery = query?.trim() ?? '';
+    if (!trimmedQuery) {
+      return null;
     }
 
-    const candidateName =
-      candidate.mainText || candidate.description?.split(',')[0] || '';
-    if (!candidateName.trim() || !requestedName.trim()) {
-      return false;
-    }
-
-    return this.isSalientSearchTextCandidateNameMatch(
-      candidateName,
-      requestedName,
+    const marketParts = [context?.city?.trim(), context?.region?.trim()].filter(
+      (value): value is string => Boolean(value && value.length > 0),
     );
+    if (!marketParts.length) {
+      return null;
+    }
+
+    const normalizedQuery = trimmedQuery.toLowerCase();
+    const missingParts = marketParts.filter(
+      (part) => !normalizedQuery.includes(part.toLowerCase()),
+    );
+    if (!missingParts.length) {
+      return null;
+    }
+
+    return `${trimmedQuery} ${missingParts.join(' ')}`.trim();
+  }
+
+  private mergeRankedCandidates(candidates: RankedCandidate[]): RankedCandidate[] {
+    const mergedByPlaceId = new Map<string, RankedCandidate>();
+
+    for (const entry of candidates) {
+      const placeId = entry.candidate.placeId?.trim();
+      if (!placeId) {
+        continue;
+      }
+      const existing = mergedByPlaceId.get(placeId);
+      if (!existing) {
+        mergedByPlaceId.set(placeId, entry);
+        continue;
+      }
+      const existingScore =
+        typeof existing.score === 'number' ? existing.score : Number.NEGATIVE_INFINITY;
+      const nextScore =
+        typeof entry.score === 'number' ? entry.score : Number.NEGATIVE_INFINITY;
+      if (nextScore > existingScore) {
+        mergedByPlaceId.set(placeId, entry);
+      }
+    }
+
+    return Array.from(mergedByPlaceId.values()).sort((left, right) => {
+      const leftScore =
+        typeof left.score === 'number' ? left.score : Number.NEGATIVE_INFINITY;
+      const rightScore =
+        typeof right.score === 'number' ? right.score : Number.NEGATIVE_INFINITY;
+      if (leftScore !== rightScore) {
+        return rightScore - leftScore;
+      }
+      return left.candidate.placeId.localeCompare(right.candidate.placeId);
+    });
+  }
+
+  private buildGeminiChooserCandidates(params: {
+    autocompleteRanked: RankedCandidate[];
+    searchTextRanked: RankedCandidate[];
+    entity: RestaurantEntity;
+    context?: EnrichmentSearchContext;
+    autocompleteCandidateLimit?: number;
+    searchTextCandidateLimit?: number;
+  }): GeminiChooserCandidate[] {
+    const candidatesByPlaceId = new Map<string, GeminiChooserCandidate>();
+    const autocompleteCandidateLimit = Math.max(
+      1,
+      params.autocompleteCandidateLimit ?? 5,
+    );
+    const searchTextCandidateLimit = Math.max(
+      1,
+      params.searchTextCandidateLimit ?? 5,
+    );
+
+    const addCandidate = (
+      entry: RankedCandidate,
+      source: CandidateSelectionSource,
+      rank: number,
+    ) => {
+      const placeId = entry.candidate.placeId;
+      if (!placeId?.trim()) {
+        return;
+      }
+
+      const existing = candidatesByPlaceId.get(placeId);
+      if (existing) {
+        if (!existing.sourceLabels.includes(source)) {
+          existing.sourceLabels.push(source);
+        }
+        if (source === 'autocomplete') {
+          existing.autocompleteRank = Math.min(
+            existing.autocompleteRank ?? Number.POSITIVE_INFINITY,
+            rank,
+          );
+          existing.entry = entry;
+          existing.matchSource = 'autocomplete';
+        } else {
+          existing.searchTextRank = Math.min(
+            existing.searchTextRank ?? Number.POSITIVE_INFINITY,
+            rank,
+          );
+        }
+        existing.restaurantish =
+          existing.restaurantish ||
+          this.isRestaurantishPlaceTypes(entry.candidate.types);
+        return;
+      }
+
+      candidatesByPlaceId.set(placeId, {
+        candidateId: `c${candidatesByPlaceId.size + 1}`,
+        entry,
+        matchSource: source,
+        autocompleteRank: source === 'autocomplete' ? rank : undefined,
+        searchTextRank: source === 'find_place' ? rank : undefined,
+        sourceLabels: [source],
+        restaurantish: this.isRestaurantishPlaceTypes(entry.candidate.types),
+      });
+    };
+
+    params.autocompleteRanked
+      .slice(0, autocompleteCandidateLimit)
+      .forEach((entry, index) => addCandidate(entry, 'autocomplete', index));
+    params.searchTextRanked
+      .slice(0, searchTextCandidateLimit)
+      .forEach((entry, index) => addCandidate(entry, 'find_place', index));
+
+    params.autocompleteRanked
+      .filter((entry) => this.isRestaurantishPlaceTypes(entry.candidate.types))
+      .slice(0, autocompleteCandidateLimit)
+      .forEach((entry, index) => addCandidate(entry, 'autocomplete', index));
+    params.searchTextRanked
+      .filter((entry) => this.isRestaurantishPlaceTypes(entry.candidate.types))
+      .slice(0, searchTextCandidateLimit)
+      .forEach((entry, index) => addCandidate(entry, 'find_place', index));
+
+    return Array.from(candidatesByPlaceId.values()).sort((a, b) => {
+      const aBestRank = Math.min(
+        a.autocompleteRank ?? Number.POSITIVE_INFINITY,
+        a.searchTextRank ?? Number.POSITIVE_INFINITY,
+      );
+      const bBestRank = Math.min(
+        b.autocompleteRank ?? Number.POSITIVE_INFINITY,
+        b.searchTextRank ?? Number.POSITIVE_INFINITY,
+      );
+      if (aBestRank !== bBestRank) {
+        return aBestRank - bBestRank;
+      }
+      return a.candidateId.localeCompare(b.candidateId);
+    });
   }
 
   private buildEntityUpdate(
@@ -3362,6 +3822,14 @@ export class RestaurantLocationEnrichmentService {
       metadata.businessStatus = details.businessStatus;
     }
 
+    if (details.movedPlace) {
+      metadata.movedPlace = details.movedPlace;
+    }
+
+    if (details.movedPlaceId) {
+      metadata.movedPlaceId = details.movedPlaceId;
+    }
+
     if (details.nationalPhoneNumber) {
       metadata.formattedPhoneNumber = details.nationalPhoneNumber;
     }
@@ -3441,6 +3909,19 @@ export class RestaurantLocationEnrichmentService {
       summary.source = matchMetadata.source;
     }
 
+    if (matchMetadata.redirectedFromPlaceId) {
+      summary.redirectedFromPlaceId = matchMetadata.redirectedFromPlaceId;
+    }
+
+    if (matchMetadata.redirectedToPlaceId) {
+      summary.redirectedToPlaceId = matchMetadata.redirectedToPlaceId;
+    }
+
+    if (matchMetadata.redirectedFromBusinessStatus) {
+      summary.redirectedFromBusinessStatus =
+        matchMetadata.redirectedFromBusinessStatus;
+    }
+
     return summary;
   }
 
@@ -3450,7 +3931,7 @@ export class RestaurantLocationEnrichmentService {
     extras: Record<string, unknown> = {},
   ): Record<string, unknown> {
     const storageCountry = this.normalizeCountryCodeForStorage(
-      context.country ?? null,
+      context.countryCode ?? null,
     );
 
     const candidates = ranked.slice(0, 5).map(({ candidate, score }) => {
@@ -3476,10 +3957,6 @@ export class RestaurantLocationEnrichmentService {
 
       if (Array.isArray(candidate.types) && candidate.types.length > 0) {
         candidateRecord.types = candidate.types;
-      }
-
-      if (typeof candidate.distanceMeters === 'number') {
-        candidateRecord.distanceMeters = candidate.distanceMeters;
       }
 
       return candidateRecord;
@@ -3562,146 +4039,79 @@ export class RestaurantLocationEnrichmentService {
     }
   }
 
-  private shouldCrossCheckWithSearchText(params: {
-    selectedCandidate: PlaceCandidate;
-    selectedPlace: GooglePlacesV1Place;
-    context: EnrichmentSearchContext;
-    selectedMatchSource: 'autocomplete' | 'find_place';
-  }): boolean {
-    if (params.selectedMatchSource !== 'autocomplete') {
-      return false;
+  private async resolveEligiblePlaceDetails(params: {
+    details: GooglePlacesV1PlaceDetailsResponse;
+    fallbackPlaceId: string;
+    query: string;
+    candidate: PlaceCandidate;
+    matchMetadata: MatchMetadata;
+  }): Promise<{
+    details: GooglePlacesV1PlaceDetailsResponse | null;
+    rejectionReason?: string;
+  }> {
+    const place = params.details.place;
+    if (!place) {
+      return { details: null, rejectionReason: 'place details missing' };
     }
 
-    const radiusMeters = params.context.locationBias?.radiusMeters;
-    if (
-      typeof radiusMeters !== 'number' ||
-      !Number.isFinite(radiusMeters) ||
-      radiusMeters <= 0
-    ) {
-      return false;
+    if (typeof place.id !== 'string' || !place.id.trim()) {
+      place.id = params.fallbackPlaceId;
     }
 
-    const distance =
-      this.calculatePlaceDistanceMeters(params.selectedPlace, params.context) ??
-      params.selectedCandidate.distanceMeters;
-
-    return (
-      typeof distance === 'number' &&
-      Number.isFinite(distance) &&
-      distance > radiusMeters
-    );
-  }
-
-  private selectSearchTextOverrideCandidate(
-    ranked: RankedCandidate[],
-    entity: RestaurantEntity,
-    context: EnrichmentSearchContext,
-  ): RankedCandidate | undefined {
-    for (const entry of ranked) {
-      if (
-        !this.isRestaurantishPlaceTypes(entry.candidate.types) ||
-        !this.isSearchTextCandidateNameMatch(entry.candidate, entity.name) ||
-        !this.isCandidateWithinSourceMarket(entry.candidate, context)
-      ) {
-        continue;
-      }
-      return entry;
+    if (place.businessStatus !== 'CLOSED_PERMANENTLY') {
+      return { details: params.details };
     }
 
-    return undefined;
-  }
-
-  private isCandidateWithinSourceMarket(
-    candidate: PlaceCandidate,
-    context: EnrichmentSearchContext,
-  ): boolean {
-    const radiusMeters = context.locationBias?.radiusMeters;
-    if (
-      typeof radiusMeters !== 'number' ||
-      !Number.isFinite(radiusMeters) ||
-      radiusMeters <= 0
-    ) {
-      return false;
+    const movedPlaceId =
+      typeof place.movedPlaceId === 'string' ? place.movedPlaceId.trim() : '';
+    if (!movedPlaceId) {
+      this.logger.debug('Rejecting permanently closed place without move target', {
+        query: params.query,
+        candidateName:
+          params.candidate.mainText ||
+          params.candidate.description?.split(',')[0] ||
+          null,
+        placeId: place.id,
+      });
+      return {
+        details: null,
+        rejectionReason: 'place permanently closed',
+      };
     }
 
-    return (
-      typeof candidate.distanceMeters === 'number' &&
-      Number.isFinite(candidate.distanceMeters) &&
-      candidate.distanceMeters <= radiusMeters
-    );
-  }
-
-  private async resolveOutOfMarketSearchTextOverride(params: {
-    entity: RestaurantEntity;
-    context: EnrichmentSearchContext;
-    sessionToken?: string;
-    selectedCandidate: PlaceCandidate;
-    selectedPlace: GooglePlacesV1Place;
-    selectedMatchSource: 'autocomplete' | 'find_place';
-  }): Promise<ResolvedPlaceMatch | null> {
-    if (!this.shouldCrossCheckWithSearchText(params)) {
-      return null;
-    }
-
-    const fallbackResult = await this.tryFindPlaceFallback(
-      params.entity,
-      params.context,
-      {
-        sessionToken: params.sessionToken,
-      },
-    );
-
-    if (!fallbackResult || fallbackResult.ranked.length === 0) {
-      return null;
-    }
-
-    const override = this.selectSearchTextOverrideCandidate(
-      fallbackResult.ranked,
-      params.entity,
-      params.context,
-    );
-    if (!override) {
-      return null;
-    }
-
-    const details = await this.googlePlacesService.getPlaceDetails(
-      override.candidate.placeId,
+    const redirectedDetails = await this.googlePlacesService.getPlaceDetails(
+      movedPlaceId,
       { includeRaw: true },
     );
-
-    if (!details.place) {
-      return null;
+    if (!redirectedDetails.place) {
+      return {
+        details: null,
+        rejectionReason: 'moved place details missing',
+      };
     }
 
-    const place = details.place;
-    if (typeof place.id !== 'string' || !place.id.trim()) {
-      place.id = override.candidate.placeId;
+    if (
+      typeof redirectedDetails.place.id !== 'string' ||
+      !redirectedDetails.place.id.trim()
+    ) {
+      redirectedDetails.place.id = movedPlaceId;
     }
 
-    this.logger.debug(
-      'Replacing out-of-market autocomplete match with searchText match',
-      {
-        entityName: params.entity.name,
-        originalDescription: params.selectedCandidate.description,
-        overrideDescription: override.candidate.description,
-        query: params.context.query,
-      },
-    );
+    params.matchMetadata.redirectedFromPlaceId = place.id;
+    params.matchMetadata.redirectedToPlaceId = movedPlaceId;
+    params.matchMetadata.redirectedFromBusinessStatus = place.businessStatus;
 
-    return {
-      place,
-      matchMetadata: {
-        query: params.context.query ?? '',
-        predictionDescription: override.candidate.description,
-        mainText: override.candidate.mainText,
-        secondaryText: override.candidate.secondaryText,
-        candidateTypes: override.candidate.types,
-        predictionsConsidered: fallbackResult.ranked.length,
-        timestamp: new Date().toISOString(),
-        source: 'find_place',
-      },
-      score: override.score,
-    };
+    this.logger.info('Following moved place redirect for closed location', {
+      query: params.query,
+      candidateName:
+        params.candidate.mainText ||
+        params.candidate.description?.split(',')[0] ||
+        null,
+      fromPlaceId: place.id,
+      toPlaceId: movedPlaceId,
+    });
+
+    return { details: redirectedDetails };
   }
 
   private mapTextSearchPlaceToCandidate(
@@ -3744,66 +4154,16 @@ export class RestaurantLocationEnrichmentService {
       );
     }
 
-    const distance = this.calculatePlaceDistanceMeters(place, context);
-    if (distance !== undefined) {
-      candidate.distanceMeters = distance;
+    if (typeof place.location?.latitude === 'number') {
+      candidate.latitude = place.location.latitude;
+    }
+    if (typeof place.location?.longitude === 'number') {
+      candidate.longitude = place.location.longitude;
     }
 
     return candidate;
   }
 
-  private calculatePlaceDistanceMeters(
-    place: GooglePlacesV1Place,
-    context: EnrichmentSearchContext,
-  ): number | undefined {
-    const origin = context.locationBias;
-    const destination = place.location;
-
-    if (
-      !origin ||
-      typeof origin.lat !== 'number' ||
-      typeof origin.lng !== 'number'
-    ) {
-      return undefined;
-    }
-
-    if (
-      !destination ||
-      typeof destination.latitude !== 'number' ||
-      typeof destination.longitude !== 'number'
-    ) {
-      return undefined;
-    }
-
-    return this.calculateDistanceMeters(
-      { lat: origin.lat, lng: origin.lng },
-      { lat: destination.latitude, lng: destination.longitude },
-    );
-  }
-
-  private calculateDistanceMeters(
-    origin: { lat: number; lng: number },
-    destination: { lat: number; lng: number },
-  ): number {
-    const toRadians = (value: number) => (value * Math.PI) / 180;
-    const earthRadiusMeters = 6371000;
-
-    const originLatRad = toRadians(origin.lat);
-    const destinationLatRad = toRadians(destination.lat);
-    const deltaLat = toRadians(destination.lat - origin.lat);
-    const deltaLng = toRadians(destination.lng - origin.lng);
-
-    const a =
-      Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
-      Math.cos(originLatRad) *
-        Math.cos(destinationLatRad) *
-        Math.sin(deltaLng / 2) *
-        Math.sin(deltaLng / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    const distance = earthRadiusMeters * c;
-    return Math.round(distance);
-  }
 
   private async recordNoMatchCandidates(
     entity: RestaurantEntity,

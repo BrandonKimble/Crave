@@ -26,7 +26,6 @@ import {
   type MarketContext,
 } from './poll-entity-seed.service';
 import { MarketRegistryService } from '../markets/market-registry.service';
-import { MarketResolverService } from '../markets/market-resolver.service';
 import { QueryPollsDto } from './dto/query-polls.dto';
 import { CreatePollDto } from './dto/create-poll.dto';
 import { UserEventService } from '../identity/user-event.service';
@@ -45,7 +44,6 @@ export class PollsService {
     private readonly moderation: ModerationService,
     private readonly pollEntitySeedService: PollEntitySeedService,
     private readonly gateway: PollsGateway,
-    private readonly marketResolver: MarketResolverService,
     private readonly marketRegistry: MarketRegistryService,
     private readonly userEventService: UserEventService,
     private readonly userStats: UserStatsService,
@@ -94,11 +92,11 @@ export class PollsService {
 
   async queryPolls(query: QueryPollsDto, user?: User | null) {
     let resolvedMarket: Awaited<
-      ReturnType<MarketResolverService['resolve']>
+      ReturnType<MarketRegistryService['resolveViewportCoverage']>
     > | null = null;
     let marketKey = query.marketKey ?? null;
     if (!marketKey && query.bounds) {
-      resolvedMarket = await this.marketResolver.resolve({
+      resolvedMarket = await this.marketRegistry.resolveViewportCoverage({
         bounds: query.bounds,
         userLocation: query.userLocation
           ? {
@@ -107,15 +105,17 @@ export class PollsService {
             }
           : null,
         mode: 'polls',
+        ensureLocalFallbackMarkets: false,
       });
       marketKey = resolvedMarket.market?.marketKey ?? null;
     } else if (!marketKey && query.userLocation) {
-      resolvedMarket = await this.marketResolver.resolve({
+      resolvedMarket = await this.marketRegistry.resolveViewportCoverage({
         userLocation: {
           lat: query.userLocation.lat,
           lng: query.userLocation.lng,
         },
         mode: 'polls',
+        ensureLocalFallbackMarkets: false,
       });
       marketKey = resolvedMarket.market?.marketKey ?? null;
     }
@@ -145,21 +145,28 @@ export class PollsService {
     );
     const marketName =
       polls[0]?.marketName ??
+      resolvedMarket?.market?.marketShortName ??
+      resolvedMarket?.market?.marketName ??
       (marketKey ? await this.resolveMarketNameForKey(marketKey) : null);
 
     return {
       marketKey,
       marketName,
-      marketStatus: 'resolved' as const,
+      marketStatus: (resolvedMarket?.status ?? 'resolved') as
+        | 'resolved'
+        | 'multi_market'
+        | 'no_market'
+        | 'error',
       candidatePlaceName: null,
       candidatePlaceGeoId: null,
-      cta: {
-        kind: 'create_poll' as const,
-        label: marketName ? `Create a poll for ${marketName}` : 'Create a poll',
-        prompt: marketName
-          ? `Create a poll for ${marketName}`
-          : 'Create a poll',
-      },
+      cta:
+        resolvedMarket?.cta ?? {
+          kind: 'create_poll' as const,
+          label: marketName ? `Create a poll for ${marketName}` : 'Create a poll',
+          prompt: marketName
+            ? `Create a poll for ${marketName}`
+            : 'Create a poll',
+        },
       polls,
     };
   }
@@ -199,7 +206,8 @@ export class PollsService {
       ({
         marketKey,
         center: undefined,
-        cityLabel: null,
+        city: null,
+        region: null,
         countryCode: null,
       } satisfies MarketContext);
 
@@ -484,7 +492,8 @@ export class PollsService {
       ({
         marketKey: poll.marketKey,
         center: undefined,
-        cityLabel: null,
+        city: null,
+        region: null,
         countryCode: null,
       } satisfies MarketContext);
 
@@ -1050,7 +1059,12 @@ export class PollsService {
       return {
         marketKey: market.marketKey.toLowerCase(),
         center,
-        cityLabel: this.resolveMarketLabel(market),
+        city:
+          market.marketShortName?.trim() ||
+          market.marketName?.split(',')[0]?.trim() ||
+          null,
+        region:
+          market.marketName?.match(/,\s*([A-Z]{2})(?:\s|$)/)?.[1] ?? null,
         countryCode: market.countryCode ?? null,
       };
     }

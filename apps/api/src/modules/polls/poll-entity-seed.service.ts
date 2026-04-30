@@ -9,7 +9,8 @@ import { RestaurantLocationEnrichmentService } from '../restaurant-enrichment/re
 export type MarketContext = {
   marketKey: string | null;
   center?: { lat: number; lng: number };
-  cityLabel?: string | null;
+  city?: string | null;
+  region?: string | null;
   countryCode?: string | null;
 };
 
@@ -132,8 +133,9 @@ export class PollEntitySeedService {
 
     const match = await this.restaurantEnrichment.resolvePlaceForInput({
       name,
-      city: params.market.cityLabel ?? undefined,
-      country: params.market.countryCode ?? undefined,
+      city: params.market.city ?? undefined,
+      region: params.market.region ?? undefined,
+      countryCode: params.market.countryCode ?? undefined,
       locationBias: params.market.center,
       sessionToken: params.sessionToken,
     });

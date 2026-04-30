@@ -20,7 +20,7 @@ import {
   MapBoundsDto,
 } from './dto/search-query.dto';
 import { OnDemandRequestService } from './on-demand-request.service';
-import { MarketResolverService } from '../markets/market-resolver.service';
+import { MarketRegistryService } from '../markets/market-registry.service';
 
 const METERS_PER_MILE = 1609.34;
 const ON_DEMAND_MIN_VIEWPORT_WIDTH_MILES = 2;
@@ -42,7 +42,11 @@ interface InterpretationResult {
 
 type SearchInterpretationMarketContext = {
   marketKey: string | null;
-  collectableMarketKey: string | null;
+  displayMarketName: string | null;
+  marketResolutionStatus: 'resolved' | 'multi_market' | 'no_market' | 'error';
+  candidatePlaceName: string | null;
+  attributionMarketKeys: string[];
+  collectableMarketKeys: string[];
 };
 
 @Injectable()
@@ -54,7 +58,7 @@ export class SearchQueryInterpretationService {
     private readonly llmService: LLMService,
     private readonly entityResolutionService: EntityResolutionService,
     private readonly onDemandRequestService: OnDemandRequestService,
-    private readonly marketResolver: MarketResolverService,
+    private readonly marketRegistry: MarketRegistryService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchQueryInterpretationService');
@@ -175,9 +179,9 @@ export class SearchQueryInterpretationService {
       const viewportEligible = this.isViewportEligibleForOnDemand(
         request.bounds,
       );
-      const onDemandMarketKey = request.bounds
-        ? resolvedMarket.collectableMarketKey
-        : null;
+      const onDemandMarketKeys = request.bounds
+        ? resolvedMarket.collectableMarketKeys
+        : [];
       const onDemandContext: Record<string, unknown> = {
         query: request.query,
       };
@@ -191,16 +195,18 @@ export class SearchQueryInterpretationService {
 
       const reason: OnDemandReason = 'unresolved';
       const unresolvedRequests = unresolved.flatMap((group) =>
-        group.terms.map((term) => ({
-          term,
-          entityType: group.type,
-          reason,
-          marketKey: onDemandMarketKey ?? null,
-          metadata: { source: 'natural_query', unresolvedType: group.type },
-        })),
+        group.terms.flatMap((term) =>
+          onDemandMarketKeys.map((marketKey) => ({
+            term,
+            entityType: group.type,
+            reason,
+            marketKey,
+            metadata: { source: 'natural_query', unresolvedType: group.type },
+          })),
+        ),
       );
 
-      if (viewportEligible && onDemandMarketKey) {
+      if (viewportEligible && onDemandMarketKeys.length > 0) {
         const recordedRequests =
           await this.onDemandRequestService.recordRequests(
             unresolvedRequests,
@@ -402,16 +408,21 @@ export class SearchQueryInterpretationService {
     request: NaturalSearchRequestDto,
   ): Promise<SearchInterpretationMarketContext> {
     try {
-      const resolved = await this.marketResolver.resolve({
+      const resolved = await this.marketRegistry.resolveViewportCoverage({
         bounds: request.bounds ?? null,
         userLocation: request.userLocation ?? null,
         mode: 'search',
+        ensureLocalFallbackMarkets: true,
       });
 
-      const marketKey = resolved.market?.marketKey ?? null;
       return {
-        marketKey,
-        collectableMarketKey: resolved.market?.isCollectable ? marketKey : null,
+        marketKey: resolved.market?.marketKey ?? null,
+        displayMarketName:
+          resolved.market?.marketShortName ?? resolved.market?.marketName ?? null,
+        marketResolutionStatus: resolved.status,
+        candidatePlaceName: resolved.resolution.candidatePlaceName ?? null,
+        attributionMarketKeys: resolved.markets.map((market) => market.marketKey),
+        collectableMarketKeys: resolved.collectableMarketKeys,
       };
     } catch (error) {
       this.logger.debug('Unable to resolve search market context', {
@@ -420,7 +431,14 @@ export class SearchQueryInterpretationService {
             ? { message: error.message, stack: error.stack }
             : { message: String(error) },
       });
-      return { marketKey: null, collectableMarketKey: null };
+      return {
+        marketKey: null,
+        displayMarketName: null,
+        marketResolutionStatus: 'error',
+        candidatePlaceName: null,
+        attributionMarketKeys: [],
+        collectableMarketKeys: [],
+      };
     }
   }
 

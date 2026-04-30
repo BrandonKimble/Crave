@@ -13,7 +13,8 @@
   - existing `collection_extraction_inputs.input_payload`
   - exact stored chunk payloads replayed through `ExtractionPipelineService.processStoredInputs(...)`
   - source documents provide timestamps, scores, subreddit, and URLs for enrichment
-  - chunk payloads carry local source refs like `P1` / `C4`; the pipeline maps them back to canonical Reddit IDs after model output
+  - `input_payload` stays model-facing only, with chunk-local source IDs such as `SRC001`
+  - `collection_extraction_inputs.source_map` stores the replay-only mapping from `SRC###` refs back to canonical Reddit IDs
 
 - Replay by collection run:
   - existing `collection_runs`
@@ -34,6 +35,13 @@
 - [replay.service.ts](/Users/brandonkimble/crave-search/apps/api/src/modules/content-processing/reddit-collector/replay.service.ts): Replay orchestration.
 - [projection-rebuild.service.ts](/Users/brandonkimble/crave-search/apps/api/src/modules/content-processing/reddit-collector/projection-rebuild.service.ts): Rebuilds projections from active evidence.
 - [unified-processing.service.ts](/Users/brandonkimble/crave-search/apps/api/src/modules/content-processing/reddit-collector/unified-processing.service.ts): Persists entities, events, items, and triggers rebuild.
+
+## Community / Market Boundary
+
+- Reddit collection coverage is driven only by active community-to-market links in `collection_communities`.
+- A market existing in `core_markets` does not automatically make it collectible.
+- Search and polls can bootstrap local fallback markets for new areas, but those markets remain poll/search-only until a real community is linked manually.
+- Keyword scheduling loads its targets from the linked collectable markets surfaced by `MarketRegistryService.listCommunityMarketTargets(...)`.
 
 ## Projection Notes
 
@@ -110,7 +118,8 @@ yarn workspace api ts-node scripts/archive-collect.ts --subreddit austinfood --w
 
 - `--activate` switches the selected source documents to the new extraction run before unified processing rebuilds projections.
 - Replay by extraction run reuses the exact stored chunk payloads, not a re-chunked approximation.
+- Replay requires `collection_extraction_inputs.source_map`; older stored inputs from before the `SRC###` cutover are not supported.
 - Replay by date range can pull in parent post documents when comments in the range depend on older posts for context.
 - Projection rebuild is order-independent because active evidence is the source of truth.
 - `core_restaurant_items` now stores direct menu-item metrics plus separate derived support metrics; legacy category boost replay tables are no longer used.
-- The LLM no longer returns raw Reddit fullnames for attribution. It returns chunk-local source refs (`P#` for posts, `C#` for comments), and the collector resolves those refs back to canonical source documents before persisting events.
+- The LLM returns chunk-local `source_id` refs such as `SRC001`, and the collector resolves them back to canonical Reddit source IDs through the separately stored `source_map` before persisting events.

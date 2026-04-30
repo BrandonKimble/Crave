@@ -19,12 +19,15 @@ import { LoggerService, CorrelationUtils } from '../../../shared';
 import { MetricsService } from '../../metrics/metrics.service';
 import {
   LLMConfig,
-  LLMInputStructure,
+  LLMModelInput,
   LLMOutputStructure,
   LLMApiResponse,
   LLMPerformanceMetrics,
   LLMSearchQueryAnalysis,
   LLMCuisineExtractionResult,
+  LLMRestaurantPlaceChooserCandidate,
+  LLMRestaurantPlaceChooserDecision,
+  LLMRestaurantPlaceChooserInput,
   SystemInstructionCacheState,
 } from './llm.types';
 import { LLMInputDto, LLMOutputDto } from './dto';
@@ -36,6 +39,13 @@ import {
   LLMApiError,
   LLMResponseParsingError,
 } from './llm.exceptions';
+import { buildRestaurantPlaceChooserPrompt } from './prompts/restaurant-place-chooser.prompt';
+import {
+  COLLECTION_RESPONSE_JSON_SCHEMA,
+  CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA,
+  RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA,
+  SEARCH_QUERY_RESPONSE_JSON_SCHEMA,
+} from './prompts/llm-response-schemas';
 
 interface GeminiCacheEntry {
   name: string;
@@ -406,7 +416,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
 
       const { expiresAt, refreshedAt, cacheId } = persisted;
 
-      if (this.isCacheStateFresh({ expiresAt, refreshedAt, cacheId })) {
+      if (this.isCacheStateFresh(persisted)) {
         const expiresAtIso = new Date(Number(expiresAt)).toISOString();
         const refreshedAtIso = new Date(Number(refreshedAt)).toISOString();
         this.systemInstructionCache = { name: cacheId };
@@ -498,6 +508,8 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       cacheId: cacheName,
       refreshedAt,
       expiresAt,
+      promptHash: this.getSystemPromptCacheFingerprint(),
+      model: this.llmConfig.model,
     });
 
     this.logger.info('System instruction cache created successfully', {
@@ -546,8 +558,16 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     if (
       !state ||
       typeof state.cacheId !== 'string' ||
-      typeof state.expiresAt !== 'number'
+      typeof state.expiresAt !== 'number' ||
+      typeof state.promptHash !== 'string' ||
+      typeof state.model !== 'string'
     ) {
+      return false;
+    }
+    if (state.promptHash !== this.getSystemPromptCacheFingerprint()) {
+      return false;
+    }
+    if (state.model !== this.llmConfig.model) {
       return false;
     }
     const freshnessBoundary = state.expiresAt - this.systemCacheRefreshLeadMs;
@@ -567,7 +587,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       if (
         typeof parsed?.cacheId === 'string' &&
         typeof parsed?.expiresAt === 'number' &&
-        typeof parsed?.refreshedAt === 'number'
+        typeof parsed?.refreshedAt === 'number' &&
+        typeof parsed?.promptHash === 'string' &&
+        typeof parsed?.model === 'string'
       ) {
         return parsed;
       }
@@ -624,6 +646,15 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     this.systemInstructionCache = null;
     this.systemInstructionCacheExpiresAt = null;
     await this.persistSystemInstructionCacheState(null);
+  }
+
+  private getSystemPromptCacheFingerprint(): string {
+    return this.hashString(
+      JSON.stringify({
+        model: this.llmConfig.model,
+        systemPrompt: this.systemPrompt,
+      }),
+    );
   }
 
   private async rebuildQueryInstructionCache(
@@ -746,7 +777,15 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   }
 
   private loadRequiredPromptFile(filename: string, operation: string): string {
-    const promptPath = join(process.cwd(), '..', '..', filename);
+    const promptPath = join(
+      process.cwd(),
+      'src',
+      'modules',
+      'external-integrations',
+      'llm',
+      'prompts',
+      filename,
+    );
 
     try {
       return readFileSync(promptPath, 'utf-8');
@@ -782,7 +821,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
    * Process Reddit content through Gemini LLM for entity extraction
    * Implements PRD Section 6.3 LLM Data Collection Input/Output Structures
    */
-  async processContent(input: LLMInputStructure): Promise<LLMOutputStructure> {
+  async processContent(input: LLMModelInput): Promise<LLMOutputStructure> {
     this.logger.debug('Processing content through Gemini', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'process_content',
@@ -862,41 +901,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       candidateCount: 1,
       maxOutputTokens: Math.min(this.llmConfig.maxTokens || 2048, 2048),
       responseMimeType: 'application/json',
-      responseJsonSchema: {
-        type: 'object',
-        description: 'Structured representation of the search request',
-        properties: {
-          restaurants: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Restaurant names explicitly requested or implied',
-          },
-          foods: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Food or dish names derived from the query',
-          },
-          foodAttributes: {
-            type: 'array',
-            items: { type: 'string' },
-            description:
-              'Food-level attributes such as dietary or flavor notes',
-          },
-          restaurantAttributes: {
-            type: 'array',
-            items: { type: 'string' },
-            description:
-              'Restaurant-level attributes such as ambiance or amenities',
-          },
-        },
-        required: [
-          'restaurants',
-          'foods',
-          'foodAttributes',
-          'restaurantAttributes',
-        ],
-        additionalProperties: false,
-      },
+      responseJsonSchema: SEARCH_QUERY_RESPONSE_JSON_SCHEMA,
     };
     const queryThinkingConfig = this.getThinkingConfig(
       this.queryModel,
@@ -1060,19 +1065,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       candidateCount: 1,
       maxOutputTokens: 512,
       responseMimeType: 'application/json',
-      responseJsonSchema: {
-        type: 'object',
-        description: 'Cuisine extraction result',
-        properties: {
-          cuisines: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'List of cuisine names inferred from the summary',
-          },
-        },
-        required: ['cuisines'],
-        additionalProperties: false,
-      },
+      responseJsonSchema: CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA,
     };
     const thinkingConfig = this.getThinkingConfig(this.queryModel, 'query');
     if (thinkingConfig) {
@@ -1116,10 +1109,117 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     return parsed;
   }
 
+  async chooseRestaurantPlaceCandidate(
+    input: LLMRestaurantPlaceChooserInput,
+  ): Promise<LLMRestaurantPlaceChooserDecision> {
+    const trimmedQuery = input.query?.trim() ?? '';
+    const candidates = Array.isArray(input.candidates)
+      ? input.candidates.filter(
+          (candidate): candidate is LLMRestaurantPlaceChooserCandidate =>
+            Boolean(candidate?.candidateId?.trim()) &&
+            Boolean(candidate?.name?.trim()),
+        )
+      : [];
+
+    if (!trimmedQuery || candidates.length === 0) {
+      return {
+        decision: 'reject',
+        candidateId: null,
+      };
+    }
+
+    const prompt = buildRestaurantPlaceChooserPrompt({
+      ...input,
+      query: trimmedQuery,
+      candidates,
+    });
+
+    const generationConfig: GeminiGenerationConfig = {
+      temperature: 0,
+      topP: this.llmConfig.topP,
+      topK: this.llmConfig.topK,
+      candidateCount: 1,
+      maxOutputTokens: this.llmConfig.maxTokens || 65536,
+      responseMimeType: 'application/json',
+      responseJsonSchema: RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA,
+    };
+
+    const response = await this.callLLMApi(prompt, {
+      generationConfig,
+      model: 'gemini-3.1-flash-lite-preview',
+      timeoutMs:
+        typeof this.llmConfig.queryTimeout === 'number' &&
+        Number.isFinite(this.llmConfig.queryTimeout) &&
+        this.llmConfig.queryTimeout > 0
+          ? this.llmConfig.queryTimeout
+          : undefined,
+      maxRetries: 0,
+      thinkingContext: 'query',
+    });
+    const content = this.extractTextContent(
+      response,
+      'choose_restaurant_place_candidate',
+    );
+
+    try {
+      const parsed = JSON.parse(
+        content,
+      ) as Partial<LLMRestaurantPlaceChooserDecision>;
+      const decision = parsed.decision === 'select' ? 'select' : 'reject';
+      const candidateId =
+        typeof parsed.candidateId === 'string' && parsed.candidateId.trim().length
+          ? parsed.candidateId.trim()
+          : null;
+
+      if (
+        decision === 'select' &&
+        candidateId &&
+        candidates.some((candidate) => candidate.candidateId === candidateId)
+      ) {
+        this.logger.debug('Restaurant place chooser selected candidate', {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'choose_restaurant_place_candidate',
+          query: trimmedQuery,
+          candidateId,
+          candidateCount: candidates.length,
+        });
+        return { decision, candidateId };
+      }
+
+      this.logger.debug('Restaurant place chooser rejected candidates', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'choose_restaurant_place_candidate',
+        query: trimmedQuery,
+        candidateCount: candidates.length,
+        decision,
+      });
+      return {
+        decision,
+        candidateId: decision === 'select' ? candidateId : null,
+      };
+    } catch (error) {
+      this.logger.warn('Failed to parse restaurant place chooser response', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'choose_restaurant_place_candidate',
+        query: trimmedQuery,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          name: error instanceof Error ? error.name : undefined,
+        },
+        responsePreview: content.slice(0, 500),
+      });
+      return {
+        decision: 'reject',
+        candidateId: null,
+      };
+    }
+  }
+
   /**
    * Build the processing prompt using the complete collection-prompt.md system prompt
    */
-  private buildProcessingPrompt(input: LLMInputStructure): string {
+  private buildProcessingPrompt(input: LLMModelInput): string {
     // Validate input structure first to prevent undefined access errors
     if (!input || !input.posts || !Array.isArray(input.posts)) {
       throw new Error(
@@ -1987,16 +2087,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       };
     };
 
-    const nullableStringSchema = {
-      anyOf: [{ type: 'string' }, { type: 'null' }],
-    };
-    const nullableBooleanSchema = {
-      anyOf: [{ type: 'boolean' }, { type: 'null' }],
-    };
-    const nullableStringArraySchema = {
-      anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }],
-    };
-
     const defaultGenerationConfig: GeminiGenerationConfig = {
       temperature: this.llmConfig.temperature,
       topP: this.llmConfig.topP,
@@ -2004,88 +2094,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       candidateCount: this.llmConfig.candidateCount,
       maxOutputTokens: this.llmConfig.maxTokens || 65536,
       responseMimeType: 'application/json',
-      responseJsonSchema: {
-        type: 'object',
-        description:
-          'Restaurant and food mentions extracted from food community content',
-        properties: {
-          mentions: {
-            type: 'array',
-            description:
-              'Array of restaurant/food mentions with entity details',
-            items: {
-              type: 'object',
-              description:
-                'Single mention of restaurant or food with complete metadata',
-              properties: {
-                temp_id: {
-                  type: 'string',
-                  description: 'Unique identifier for this mention',
-                },
-                restaurant: {
-                  type: 'string',
-                  description:
-                    'Canonical restaurant name: lowercase, no articles (the/a/an), standardized spacing',
-                },
-                restaurant_attributes: {
-                  description:
-                    'Restaurant-scoped attributes: ambiance, features, service model, cuisine when applied to restaurant',
-                  ...nullableStringArraySchema,
-                },
-                food: {
-                  description:
-                    'Complete compound food term as primary name, singular form, excluding attributes',
-                  ...nullableStringSchema,
-                },
-                food_categories: {
-                  description:
-                    'Hierarchical decomposition: parent categories, ingredient categories, related food terms',
-                  ...nullableStringArraySchema,
-                },
-                food_attributes: {
-                  description:
-                    'Food attributes: dietary filters, preparation styles, textures, flavors, or other descriptors applied to the dish',
-                  ...nullableStringArraySchema,
-                },
-                is_menu_item: {
-                  description:
-                    'True if specific menu item, false if general food type',
-                  ...nullableBooleanSchema,
-                },
-                general_praise: {
-                  type: 'boolean',
-                  description:
-                    'True if mention contains holistic restaurant praise, regardless of specific food praise',
-                },
-                source_id: {
-                  type: 'string',
-                  description:
-                    'Canonical fullname copied exactly from the input payload id field (t3_<postId> for posts, t1_<commentId> for comments)',
-                },
-              },
-              required: [
-                'temp_id',
-                'restaurant',
-                'general_praise',
-                'source_id',
-              ],
-              propertyOrdering: [
-                'temp_id',
-                'restaurant',
-                'restaurant_attributes',
-                'food',
-                'food_categories',
-                'is_menu_item',
-                'food_attributes',
-                'general_praise',
-                'source_id',
-              ],
-            },
-          },
-        },
-        required: ['mentions'],
-        propertyOrdering: ['mentions'],
-      },
+      responseJsonSchema: COLLECTION_RESPONSE_JSON_SCHEMA,
     };
     const thinkingContext = options.thinkingContext ?? 'content';
     const baseThinkingConfig = this.getThinkingConfig(
@@ -2175,7 +2184,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         options.cacheName ??
         (options.systemInstruction
           ? null
-          : (this.systemInstructionCache?.name ?? null));
+          : targetModel === this.llmConfig.model
+            ? (this.systemInstructionCache?.name ?? null)
+            : null);
       try {
         this.logger.debug('Making LLM API request via @google/genai', {
           correlationId: CorrelationUtils.getCorrelationId(),
@@ -2263,6 +2274,14 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         const finishReason = response.candidates?.[0]?.finishReason;
         const tokensUsed = response.usageMetadata?.totalTokenCount || 0;
         const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
+        const tokenLimit =
+          typeof requestConfigWithTimeout.maxOutputTokens === 'number' &&
+          Number.isFinite(requestConfigWithTimeout.maxOutputTokens)
+            ? requestConfigWithTimeout.maxOutputTokens
+            : typeof generationConfig.maxOutputTokens === 'number' &&
+                Number.isFinite(generationConfig.maxOutputTokens)
+              ? generationConfig.maxOutputTokens
+              : this.llmConfig.maxTokens || 65536;
 
         if (finishReason === FinishReason.MAX_TOKENS) {
           this.logger.warn('🚨 TOKEN LIMIT HIT - Response truncated!', {
@@ -2271,7 +2290,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
             finishReason,
             outputTokens,
             totalTokens: tokensUsed,
-            tokenLimit: 65536,
+            tokenLimit,
             contentLength:
               response.candidates?.[0]?.content?.parts?.[0]?.text?.length || 0,
             warning:
@@ -3200,7 +3219,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     error?: string;
   }> {
     try {
-      const testInput: LLMInputStructure = {
+      const testInput: LLMModelInput = {
         posts: [
           {
             id: 'test',
@@ -3305,7 +3324,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   /**
    * Validate LLM input structure using custom validators
    */
-  async validateInput(input: LLMInputStructure): Promise<string[]> {
+  async validateInput(input: LLMModelInput): Promise<string[]> {
     const inputDto = plainToClass(LLMInputDto, input);
     const errors = await validate(inputDto);
 

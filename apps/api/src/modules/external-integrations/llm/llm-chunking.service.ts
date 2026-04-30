@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { LLMInputDto } from './dto/llm-input.dto';
 import { LLMCommentDto } from './dto/llm-input.dto';
+import { LLMModelInput } from './llm.types';
 
 const DEFAULT_MAX_CHUNK_COMMENTS = 80;
 const DEFAULT_MAX_CHUNK_CHAR_LENGTH = 12000;
@@ -26,8 +27,8 @@ export interface ChunkMetadata {
 /**
  * Result structure for chunking operation
  */
-export interface ChunkResult {
-  chunks: LLMInputDto[];
+export interface ChunkResult<TInput extends LLMModelInput = LLMModelInput> {
+  chunks: TInput[];
   metadata: ChunkMetadata[];
 }
 

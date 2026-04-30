@@ -3,7 +3,8 @@ export * from './shared';
 export { RedditService, RedditConfig, RedditTokenResponse } from './reddit';
 export {
   LLMService,
-  LLMInputStructure,
+  LLMModelInput,
+  LLMProcessingInput,
   LLMOutputStructure,
   EnrichedLLMOutputStructure,
   EnrichedLLMMention,

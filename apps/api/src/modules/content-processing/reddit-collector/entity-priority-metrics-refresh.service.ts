@@ -12,6 +12,8 @@ export class EntityPriorityMetricsRefreshService implements OnModuleInit {
   private readonly logger: LoggerService;
   private readonly windowDays = DEFAULT_WINDOW_DAYS;
   private refreshInFlight = false;
+  private readonly startupRefreshDisabled =
+    process.env.TEST_PIPELINE_DISABLE_STARTUP_REFRESH === 'true';
 
   constructor(
     private readonly prisma: PrismaService,
@@ -23,6 +25,13 @@ export class EntityPriorityMetricsRefreshService implements OnModuleInit {
   }
 
   onModuleInit(): void {
+    if (this.startupRefreshDisabled) {
+      this.logger.info(
+        'Skipping initial entity priority metrics refresh for test pipeline',
+      );
+      return;
+    }
+
     void this.refreshDemandMetrics().catch((error) => {
       this.logger.error('Initial entity priority metrics refresh failed', {
         error:

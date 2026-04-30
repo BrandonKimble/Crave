@@ -10,7 +10,7 @@ import {
 import { LlmRateLimiterMetricsService } from './llm-rate-limiter-metrics.service';
 import { RateLimitMetrics, TokenUsage } from './rate-limiting.types';
 import {
-  LLMInputStructure,
+  LLMModelInput,
   LLMOutputStructure,
   LLMUsageMetadata,
   RateLimitInfo,
@@ -134,7 +134,7 @@ export class SmartLLMProcessor implements OnModuleInit {
    * It uses a reservation system to guarantee each request gets a slot.
    */
   async processContent(
-    input: LLMInputStructure,
+    input: LLMModelInput,
     llmService: LLMService,
     workerId?: string,
   ): Promise<LLMOutputStructure> {
@@ -467,7 +467,7 @@ export class SmartLLMProcessor implements OnModuleInit {
   /**
    * Estimate token usage for the upcoming request using recent TPM stats.
    */
-  private async estimateInputTokens(input: LLMInputStructure): Promise<number> {
+  private async estimateInputTokens(input: LLMModelInput): Promise<number> {
     // Char-based estimate for prompt tokens: tokens ~= chars / 4
     const promptEstimate = (() => {
       try {

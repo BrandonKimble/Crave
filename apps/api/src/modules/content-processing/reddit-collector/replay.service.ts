@@ -3,8 +3,9 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import {
-  LLMInputStructure,
+  LLMModelInput,
   LLMPost,
+  LLMSourceMap,
 } from '../../external-integrations/llm/llm.types';
 import { BatchJob } from './batch-processing-queue.types';
 import {
@@ -78,6 +79,7 @@ export class ReplayService implements OnModuleInit {
             inputId: true,
             inputIndex: true,
             inputPayload: true,
+            sourceMap: true,
             sourceDocuments: {
               orderBy: { ordinal: 'asc' },
               select: {
@@ -124,6 +126,7 @@ export class ReplayService implements OnModuleInit {
       (input) => ({
         inputIndex: input.inputIndex,
         inputPayload: this.asInputPayload(input.inputPayload),
+        sourceMap: this.asSourceMap(input.sourceMap, input.inputId),
         sourceDocumentIds: input.sourceDocuments.map(
           (documentLink) => documentLink.document.documentId,
         ),
@@ -261,6 +264,7 @@ export class ReplayService implements OnModuleInit {
                   inputId: true,
                   inputIndex: true,
                   inputPayload: true,
+                  sourceMap: true,
                   sourceDocuments: {
                     orderBy: { ordinal: 'asc' },
                     select: {
@@ -320,6 +324,7 @@ export class ReplayService implements OnModuleInit {
         (input) => ({
           inputIndex: input.inputIndex,
           inputPayload: this.asInputPayload(input.inputPayload),
+          sourceMap: this.asSourceMap(input.sourceMap, input.inputId),
           sourceDocumentIds: input.sourceDocuments.map(
             (documentLink) => documentLink.document.documentId,
           ),
@@ -727,11 +732,26 @@ export class ReplayService implements OnModuleInit {
     return 'chronological';
   }
 
-  private asInputPayload(value: Prisma.JsonValue): LLMInputStructure {
+  private asInputPayload(value: Prisma.JsonValue): LLMModelInput {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       return { posts: [] };
     }
-    return value as unknown as LLMInputStructure;
+    if ('source_map' in value) {
+      throw new Error(
+        'Stored input_payload must be model-facing only and cannot contain source_map',
+      );
+    }
+    return value as unknown as LLMModelInput;
+  }
+
+  private asSourceMap(
+    value: Prisma.JsonValue | undefined | null,
+    inputId: string,
+  ): LLMSourceMap {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error(`Stored input ${inputId} is missing source_map`);
+    }
+    return value as unknown as LLMSourceMap;
   }
 
   private asRecord(

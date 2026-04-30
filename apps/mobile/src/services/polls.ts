@@ -48,7 +48,7 @@ export interface UserPollsResponse {
 export type PollQueryResponse = {
   marketKey?: string | null;
   marketName?: string | null;
-  marketStatus?: string | null;
+  marketStatus?: 'resolved' | 'multi_market' | 'no_market' | 'error' | null;
   candidatePlaceName?: string | null;
   candidatePlaceGeoId?: string | null;
   cta?: {
@@ -71,7 +71,7 @@ export type PollFeedSource = 'cache' | 'network';
 export type PollBootstrapSnapshot = {
   marketKey: string | null;
   marketName: string | null;
-  marketStatus?: string | null;
+  marketStatus?: 'resolved' | 'multi_market' | 'no_market' | 'error' | null;
   candidatePlaceName?: string | null;
   candidatePlaceGeoId?: string | null;
   cta?: {
@@ -151,7 +151,13 @@ const normalizePollQueryResponse = (payload: unknown): PollQueryResponse => {
       return {
         marketKey,
         marketName,
-        marketStatus: typeof anyPayload.marketStatus === 'string' ? anyPayload.marketStatus : null,
+        marketStatus:
+          anyPayload.marketStatus === 'resolved' ||
+          anyPayload.marketStatus === 'multi_market' ||
+          anyPayload.marketStatus === 'no_market' ||
+          anyPayload.marketStatus === 'error'
+            ? anyPayload.marketStatus
+            : null,
         candidatePlaceName:
           typeof anyPayload.candidatePlaceName === 'string' ? anyPayload.candidatePlaceName : null,
         candidatePlaceGeoId:

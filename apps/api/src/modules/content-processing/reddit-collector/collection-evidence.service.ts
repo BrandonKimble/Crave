@@ -4,7 +4,11 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { ChunkProcessingResult } from '../../external-integrations/llm/llm-concurrent-processing.service';
-import { LLMPost } from '../../external-integrations/llm/llm.types';
+import {
+  LLMModelInput,
+  LLMPost,
+  LLMProcessingInput,
+} from '../../external-integrations/llm/llm.types';
 
 export type SourceDocumentKey = `${'post' | 'comment'}:${string}`;
 
@@ -123,7 +127,7 @@ export class CollectionEvidenceService implements OnModuleInit {
 
   async persistExtractionInputs(params: {
     extractionRunId: string;
-    chunkResults: ChunkProcessingResult[];
+    chunkResults: ChunkProcessingResult<LLMProcessingInput>[];
     sourceDocumentIdBySourceKey: Map<SourceDocumentKey, string>;
   }): Promise<Map<string, string>> {
     if (!params.chunkResults.length) {
@@ -153,7 +157,8 @@ export class CollectionEvidenceService implements OnModuleInit {
         data: {
           extractionRunId: params.extractionRunId,
           inputIndex: index,
-          inputPayload: this.toLightweightInputPayload(chunk.input.posts),
+          inputPayload: this.toLightweightInputPayload(chunk.input),
+          sourceMap: this.toPersistedSourceMap(chunk.input),
           rawOutput:
             chunk.result === null
               ? Prisma.JsonNull
@@ -163,7 +168,7 @@ export class CollectionEvidenceService implements OnModuleInit {
       });
 
       const inputDocumentLinks = this.buildInputDocumentLinks(
-        chunk.input.posts,
+        chunk.input,
         params.sourceDocumentIdBySourceKey,
       );
       if (inputDocumentLinks.length > 0) {
@@ -426,9 +431,11 @@ export class CollectionEvidenceService implements OnModuleInit {
     return Array.from(byKey.values());
   }
 
-  private toLightweightInputPayload(posts: LLMPost[]): Prisma.InputJsonObject {
+  private toLightweightInputPayload(
+    input: LLMModelInput,
+  ): Prisma.InputJsonObject {
     return {
-      posts: posts.map(
+      posts: (input.posts ?? []).map(
         (post) =>
           ({
             id: post.id,
@@ -445,17 +452,36 @@ export class CollectionEvidenceService implements OnModuleInit {
     };
   }
 
+  private toPersistedSourceMap(
+    input: LLMProcessingInput,
+  ): Prisma.InputJsonValue {
+    const sourceMap = input.source_map;
+    if (!sourceMap || Object.keys(sourceMap).length === 0) {
+      throw new Error('Missing source_map for extraction input persistence');
+    }
+
+    return sourceMap as unknown as Prisma.InputJsonValue;
+  }
+
   private buildInputDocumentLinks(
-    posts: LLMPost[],
+    input: LLMProcessingInput,
     sourceDocumentIdBySourceKey: Map<SourceDocumentKey, string>,
   ): Array<{ documentId: string; ordinal: number }> {
     const links: Array<{ documentId: string; ordinal: number }> = [];
     const seen = new Set<string>();
     let ordinal = 0;
+    const sourceMap = input.source_map;
+    const resolveCanonicalId = (sourceId: string) => {
+      const canonicalId = sourceMap[sourceId]?.canonical_id;
+      if (!canonicalId) {
+        throw new Error(`Missing canonical mapping for source ref ${sourceId}`);
+      }
+      return canonicalId;
+    };
 
-    posts.forEach((post) => {
+    (input.posts ?? []).forEach((post) => {
       const postDocumentId = sourceDocumentIdBySourceKey.get(
-        buildSourceDocumentKey('post', post.id),
+        buildSourceDocumentKey('post', resolveCanonicalId(post.id)),
       );
       if (postDocumentId && !seen.has(postDocumentId)) {
         links.push({ documentId: postDocumentId, ordinal });
@@ -465,7 +491,7 @@ export class CollectionEvidenceService implements OnModuleInit {
 
       (post.comments ?? []).forEach((comment) => {
         const commentDocumentId = sourceDocumentIdBySourceKey.get(
-          buildSourceDocumentKey('comment', comment.id),
+          buildSourceDocumentKey('comment', resolveCanonicalId(comment.id)),
         );
         if (commentDocumentId && !seen.has(commentDocumentId)) {
           links.push({ documentId: commentDocumentId, ordinal });

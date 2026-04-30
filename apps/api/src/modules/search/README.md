@@ -109,7 +109,12 @@ Restaurant rows can now include:
 - `matchedTags`: the matched restaurant-level tags returned for card/profile rendering
 - `hasMenuItems`: explicit guard showing the restaurant still has menu-item inventory backing eligibility
 
-When a query supplies food entities/attributes but returns fewer than `SEARCH_ON_DEMAND_MIN_RESULTS` restaurants, the API automatically enqueues keyword search cycles—first choosing the closest active community whose `center_latitude/center_longitude` (stored on the `collection_communities` table) matches the request’s bounds/results, then falling back to every active subreddit—so Section 5/7 on-demand enrichment stays fed by real query traffic.
+When a query supplies food entities/attributes but returns fewer than `SEARCH_ON_DEMAND_MIN_RESULTS` restaurants, the API can automatically enqueue keyword search cycles for the overlapping `collectableMarketKeys` resolved from the viewport. A market only counts as collectable when it has an active linked community target in `collection_communities`; markets without linked communities still accumulate search demand and support polls, but they do not enqueue Reddit collection work.
+
+Search responses now distinguish two different coverage concepts in metadata:
+
+- `resultCoverageStatus`: whether the returned results fully satisfied the search intent (`full`, `partial`, `unresolved`)
+- `marketResolutionStatus`: whether the viewport resolved to one market, multiple overlapping markets, no market, or an error (`resolved`, `multi_market`, `no_market`, `error`)
 
 ## POST /search/events/click
 

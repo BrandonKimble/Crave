@@ -41,6 +41,11 @@ if (shouldDryRun) {
   process.env.UNIFIED_PROCESSING_DRY_RUN = 'true';
 }
 
+// Prevent startup maintenance jobs from racing the harness reset step.
+if (!process.env.TEST_PIPELINE_DISABLE_STARTUP_REFRESH) {
+  process.env.TEST_PIPELINE_DISABLE_STARTUP_REFRESH = 'true';
+}
+
 const configuredTestBullPrefix =
   process.env.TEST_BULL_PREFIX ?? process.env.TEST_BULL_QUEUE_PREFIX;
 const testBullRunSuffix = `${Date.now()}:${process.pid}`;

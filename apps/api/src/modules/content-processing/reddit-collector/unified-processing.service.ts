@@ -62,6 +62,11 @@ type MarketKeyRecord = {
 } | null;
 
 type RestaurantEnrichmentDispatchContext = {
+  sourceMarket?: {
+    city?: string;
+    region?: string;
+  };
+  countryCode?: string;
   locationBias?: {
     lat: number;
     lng: number;
@@ -1483,14 +1488,6 @@ export class UnifiedProcessingService implements OnModuleInit {
                 entityData.restaurantQualityScore = 0;
                 entityData.generalPraiseUpvotes = 0;
                 entityData.restaurantMetadata = Prisma.DbNull;
-                if (subredditLocation) {
-                  entityData.latitude = new Prisma.Decimal(
-                    subredditLocation.latitude.toFixed(8),
-                  );
-                  entityData.longitude = new Prisma.Decimal(
-                    subredditLocation.longitude.toFixed(8),
-                  );
-                }
               } else {
                 entityData.generalPraiseUpvotes = null;
               }
@@ -1506,16 +1503,8 @@ export class UnifiedProcessingService implements OnModuleInit {
                 const location = await tx.restaurantLocation.create({
                   data: {
                     restaurantId: createdEntity.entityId,
-                    latitude: subredditLocation
-                      ? new Prisma.Decimal(
-                          subredditLocation.latitude.toFixed(8),
-                        )
-                      : null,
-                    longitude: subredditLocation
-                      ? new Prisma.Decimal(
-                          subredditLocation.longitude.toFixed(8),
-                        )
-                      : null,
+                    latitude: null,
+                    longitude: null,
                     isPrimary: true,
                   },
                 });
@@ -2580,6 +2569,8 @@ export class UnifiedProcessingService implements OnModuleInit {
       const enrichmentPromises = batch.map((entityId) =>
         this.restaurantLocationEnrichmentService
           .enrichRestaurantById(entityId, {
+            sourceMarket: enrichmentContext.sourceMarket,
+            countryCode: enrichmentContext.countryCode,
             locationBias: enrichmentContext.locationBias,
           })
           .catch((error) => {
@@ -2606,20 +2597,50 @@ export class UnifiedProcessingService implements OnModuleInit {
       subreddit,
     );
 
-    if (!location) {
+    if (!location && !preferredMarketKey) {
       return {};
     }
+
+    const marketRecord = preferredMarketKey
+      ? await this.prismaService.market.findFirst({
+          where: {
+            marketKey: { equals: preferredMarketKey, mode: 'insensitive' },
+            isActive: true,
+          },
+          select: {
+            marketShortName: true,
+            marketName: true,
+            stateCode: true,
+            countryCode: true,
+          },
+        })
+      : null;
 
     const radiusMeters = preferredMarketKey
       ? await this.resolveMarketBiasRadiusMeters(preferredMarketKey)
       : undefined;
 
     return {
-      locationBias: {
-        lat: location.latitude,
-        lng: location.longitude,
-        radiusMeters,
-      },
+      sourceMarket: marketRecord
+        ? {
+            city:
+              marketRecord.marketShortName?.trim() ||
+              marketRecord.marketName?.split(',')[0]?.trim() ||
+              undefined,
+            region:
+              marketRecord.stateCode?.trim() ||
+              marketRecord.marketName?.match(/,\s*([A-Z]{2})(?:\s|$)/)?.[1] ||
+              undefined,
+          }
+        : undefined,
+      countryCode: marketRecord?.countryCode?.trim() || undefined,
+      locationBias: location
+        ? {
+            lat: location.latitude,
+            lng: location.longitude,
+            radiusMeters,
+          }
+        : undefined,
     };
   }
 

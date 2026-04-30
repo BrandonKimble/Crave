@@ -136,8 +136,7 @@ export class SearchQueryBuilder {
       'EXISTS (SELECT 1 FROM core_restaurant_items c WHERE c.restaurant_id = r.entity_id)';
 
     const connectionMatch = this.buildConnectionMatchConditions(filters);
-    const { sql: connectionMatchSql, preview: connectionMatchPreview } =
-      connectionMatch;
+    const { sql: connectionMatchSql } = connectionMatch;
     const {
       sql: restaurantAttributeMatchSql,
       preview: restaurantAttributeMatchPreview,
@@ -290,7 +289,9 @@ ranked_restaurants AS (
     const rankedRestaurantsCtePreview = `
 ranked_restaurants AS (
   SELECT fr.entity_id AS restaurant_id, fr.name AS restaurant_name, fr.aliases AS restaurant_aliases,
-         fr.restaurant_quality_score, ${activeMarketKey ? `'${activeMarketKey}'` : 'NULL'}::varchar(255) AS market_key, fr.restaurant_metadata,
+         fr.restaurant_quality_score, ${
+           activeMarketKey ? `'${activeMarketKey}'` : 'NULL'
+         }::varchar(255) AS market_key, fr.restaurant_metadata,
          fr.price_level, fr.price_level_updated_at,
          COALESCE(drr.rank_score_display, 0) AS contextual_score,
          COALESCE(drr.rank_percentile, 0) AS contextual_percentile,
@@ -539,6 +540,8 @@ filtered_restaurants AS (
     );
 
     const restaurantVoteTotalsCte = this.buildRestaurantVoteTotalsCte();
+    const geographicRestaurantVoteTotalsCte =
+      this.buildGeographicRestaurantVoteTotalsCte();
     const contextualRestaurantScoresCte =
       this.buildContextualRestaurantScoresCte();
     const contextualConnectionScoresCte =
@@ -598,7 +601,9 @@ filtered_connections AS (
 filtered_connections AS (
   SELECT c.connection_id, c.restaurant_id, c.food_id, c.categories, c.food_attributes, c.mention_count, c.total_upvotes, c.recent_mention_count, c.last_mentioned_at, c.activity_level, c.food_quality_score,
          drc.rank_score_display AS connection_contextual_score, drc.rank_percentile AS connection_contextual_percentile,
-         f.name AS food_name, f.aliases AS food_aliases, ${activeMarketKey ? `'${activeMarketKey}'` : 'NULL'}::varchar(255) AS market_key,
+         f.name AS food_name, f.aliases AS food_aliases, ${
+           activeMarketKey ? `'${activeMarketKey}'` : 'NULL'
+         }::varchar(255) AS market_key,
          fr.entity_id AS restaurant_entity_id, fr.name AS restaurant_name, fr.aliases AS restaurant_aliases,
          drr.rank_score_display AS restaurant_contextual_score, drr.rank_percentile AS restaurant_contextual_percentile,
          fr.price_level AS restaurant_price_level, fr.price_level_updated_at AS restaurant_price_level_updated_at,
@@ -623,6 +628,7 @@ WITH
   ${filteredLocationsCte.sql},
   ${selectedLocationsCte.sql},
   ${restaurantVoteTotalsCte.sql},
+  ${geographicRestaurantVoteTotalsCte.sql},
   ${contextualRestaurantScoresCte.sql},
   ${contextualConnectionScoresCte.sql},
   ${filteredConnectionsCte}
@@ -634,6 +640,7 @@ WITH
   ${filteredLocationsCte.preview},
   ${selectedLocationsCte.preview},
   ${restaurantVoteTotalsCte.preview},
+  ${geographicRestaurantVoteTotalsCte.preview},
   ${contextualRestaurantScoresCte.preview},
   ${contextualConnectionScoresCte.preview},
   ${filteredConnectionsCtePreview}`;
@@ -775,7 +782,10 @@ LIMIT ${pagination.take};`.trim();
       SELECT 1
       FROM core_restaurant_entity_signals res
       WHERE res.restaurant_id = r.entity_id
-        AND ${this.buildInClause('res.entity_id', filters.restaurantAttributeIds)}
+        AND ${this.buildInClause(
+          'res.entity_id',
+          filters.restaurantAttributeIds,
+        )}
     )`;
 
     return {

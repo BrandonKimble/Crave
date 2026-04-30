@@ -55,8 +55,19 @@ export interface LLMConfig {
 /**
  * LLM Input Structure as defined in PRD Section 6.3.1
  */
-export interface LLMInputStructure {
+export interface LLMSourceMapEntry {
+  canonical_id: string;
+  source_type: 'post' | 'comment';
+}
+
+export type LLMSourceMap = Record<string, LLMSourceMapEntry>;
+
+export interface LLMModelInput {
   posts: LLMPost[];
+}
+
+export interface LLMProcessingInput extends LLMModelInput {
+  source_map: LLMSourceMap;
 }
 
 export interface LLMPost {
@@ -121,8 +132,8 @@ interface LLMMentionBase {
   // Core processing fields (VITAL)
   general_praise: boolean;
 
-  // Source tracking from the prompt input, using canonical Reddit fullnames
-  // such as t3_<postId> for posts and t1_<commentId> for comments.
+  // Source tracking from the prompt input, using chunk-local source refs
+  // such as SRC001 that are resolved back to canonical IDs server-side.
   source_id: string;
 }
 
@@ -278,6 +289,31 @@ export interface LLMCuisineExtractionResult {
   cuisines: string[];
 }
 
+export interface LLMRestaurantPlaceChooserCandidate {
+  candidateId: string;
+  name: string;
+  address?: string | null;
+  types?: string[] | null;
+  sourceLabels?: string[] | null;
+  autocompleteRank?: number | null;
+  searchTextRank?: number | null;
+}
+
+export interface LLMRestaurantPlaceChooserInput {
+  query: string;
+  sourceText?: string | null;
+  sourceMarket?: {
+    city?: string | null;
+    region?: string | null;
+  } | null;
+  candidates: LLMRestaurantPlaceChooserCandidate[];
+}
+
+export interface LLMRestaurantPlaceChooserDecision {
+  decision: 'select' | 'reject';
+  candidateId?: string | null;
+}
+
 export type LLMUsageMetadata = NonNullable<LLMApiResponse['usageMetadata']>;
 
 export interface RateLimitInfo {
@@ -295,4 +331,6 @@ export interface SystemInstructionCacheState {
   cacheId: string;
   expiresAt: number;
   refreshedAt: number;
+  promptHash: string;
+  model: string;
 }

@@ -290,6 +290,7 @@ model ExtractionInput {
   extractionRunId        String                   @map("extraction_run_id") @db.Uuid
   inputIndex             Int                      @map("input_index")
   inputPayload           Json                     @map("input_payload")
+  sourceMap              Json?                    @map("source_map")
   rawOutput              Json?                    @map("raw_output")
   createdAt              DateTime                 @default(now()) @map("created_at")
   extractionRun          ExtractionRun            @relation(fields: [extractionRunId], references: [extractionRunId], onDelete: Cascade)

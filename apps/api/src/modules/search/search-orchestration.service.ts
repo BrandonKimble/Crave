@@ -76,7 +76,7 @@ export class SearchOrchestrationService {
       if (this.debugMode !== 'off') {
         this.logger.info('Search debug: generic-only response', {
           searchRequestId: response.metadata.searchRequestId,
-          marketStatus: response.metadata.marketStatus,
+          resultCoverageStatus: response.metadata.resultCoverageStatus,
           totalRestaurantResults: response.metadata.totalRestaurantResults,
           totalFoodResults: response.metadata.totalFoodResults,
           queryExecutionTimeMs: response.metadata.queryExecutionTimeMs,
@@ -225,7 +225,7 @@ export class SearchOrchestrationService {
     if (this.debugMode !== 'off') {
       this.logger.info('Search debug: final response', {
         searchRequestId: response.metadata.searchRequestId,
-        marketStatus: response.metadata.marketStatus,
+        resultCoverageStatus: response.metadata.resultCoverageStatus,
         totalRestaurantResults: response.metadata.totalRestaurantResults,
         totalFoodResults: response.metadata.totalFoodResults,
         restaurantsOnPage: response.restaurants?.length ?? 0,
@@ -248,13 +248,13 @@ export class SearchOrchestrationService {
     );
 
     if (interpretation.unresolved.length) {
-      response.metadata.marketStatus =
+      response.metadata.resultCoverageStatus =
         totalResults > 0 ? 'partial' : 'unresolved';
-    } else if (!response.metadata.marketStatus) {
+    } else if (!response.metadata.resultCoverageStatus) {
       if (hasQueryTargets && totalResults === 0) {
-        response.metadata.marketStatus = 'unresolved';
+        response.metadata.resultCoverageStatus = 'unresolved';
       } else {
-        response.metadata.marketStatus = totalResults > 0 ? 'full' : 'full';
+        response.metadata.resultCoverageStatus = totalResults > 0 ? 'full' : 'full';
       }
     }
 

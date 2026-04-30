@@ -20,7 +20,6 @@ const DEFAULT_PLACE_DETAILS_FIELD_MASK_FIELDS = [
   'displayName',
   'editorialSummary',
   'primaryType',
-  'primaryTypeDisplayName',
   'formattedAddress',
   'addressComponents',
   'location',
@@ -30,6 +29,7 @@ const DEFAULT_PLACE_DETAILS_FIELD_MASK_FIELDS = [
   'utcOffsetMinutes',
   'timeZone',
   'businessStatus',
+  'movedPlaceId',
   'types',
   'websiteUri',
   'nationalPhoneNumber',
@@ -69,8 +69,7 @@ const AUTOCOMPLETE_FIELD_MASK =
   'suggestions.placePrediction.placeId,' +
   'suggestions.placePrediction.structuredFormat.mainText.text,' +
   'suggestions.placePrediction.structuredFormat.secondaryText.text,' +
-  'suggestions.placePrediction.types,' +
-  'suggestions.placePrediction.distanceMeters';
+  'suggestions.placePrediction.types';
 
 type PlacesNewErrorResponse = {
   error?: {
@@ -110,6 +109,8 @@ export interface GooglePlacesV1Place {
   };
   types?: string[];
   businessStatus?: string;
+  movedPlace?: string;
+  movedPlaceId?: string;
   websiteUri?: string;
   internationalPhoneNumber?: string;
   nationalPhoneNumber?: string;
@@ -158,7 +159,6 @@ export interface GooglePlacesV1PlacePrediction {
     secondaryText?: { text?: string };
   };
   types?: string[];
-  distanceMeters?: number;
   [key: string]: unknown;
 }
 
@@ -449,7 +449,6 @@ export class GooglePlacesService {
             radius,
           },
         };
-        payload.origin = { latitude: lat, longitude: lng };
       }
     }
 

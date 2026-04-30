@@ -216,7 +216,7 @@ export interface SearchResponseMetadata {
     | 'relaxed_restaurant_attributes'
     | 'relaxed_food_attributes'
     | 'relaxed_modifiers';
-  marketStatus?: 'full' | 'partial' | 'unresolved';
+  resultCoverageStatus?: 'full' | 'partial' | 'unresolved';
   unresolvedEntities?: Array<{
     type: EntityScope;
     terms: string[];
@@ -226,6 +226,11 @@ export interface SearchResponseMetadata {
   analysisMetadata?: Record<string, unknown>;
   primaryFoodTerm?: string;
   marketKey?: string | null;
+  displayMarketName?: string | null;
+  marketResolutionStatus?: 'resolved' | 'multi_market' | 'no_market' | 'error';
+  candidatePlaceName?: string | null;
+  attributionMarketKeys?: string[];
+  collectableMarketKeys?: string[];
   emptyQueryMessage?: string;
   onDemandQueued?: boolean;
   onDemandEtaMs?: number;

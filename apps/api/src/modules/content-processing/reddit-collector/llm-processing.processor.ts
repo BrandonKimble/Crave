@@ -11,7 +11,7 @@ import {
   ProcessingResult as LlmProcessingResult,
 } from '../../external-integrations/llm/llm-concurrent-processing.service';
 import {
-  LLMInputStructure,
+  LLMModelInput,
   LLMOutputStructure,
 } from '../../external-integrations/llm/llm.types';
 
@@ -154,7 +154,7 @@ export class LLMProcessingQueueProcessor implements OnModuleInit {
       }
 
       post.comments = comments;
-      const llmInput: LLMInputStructure = { posts: [post] };
+      const llmInput: LLMModelInput = { posts: [post] };
 
       this.logger.info('Content retrieved successfully', {
         correlationId: CorrelationUtils.getCorrelationId(),

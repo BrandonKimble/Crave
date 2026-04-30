@@ -2,7 +2,7 @@ import api from './api';
 import type { Coordinate, MapBounds } from '../types';
 
 export type MarketResolveResponse = {
-  status?: 'resolved' | 'no_market' | 'error' | null;
+  status?: 'resolved' | 'multi_market' | 'no_market' | 'error' | null;
   market?: {
     marketKey?: string | null;
     marketShortName?: string | null;
@@ -10,8 +10,16 @@ export type MarketResolveResponse = {
     marketType?: string | null;
     isCollectable?: boolean | null;
   } | null;
+  markets?: Array<{
+    marketKey?: string | null;
+    marketShortName?: string | null;
+    marketName?: string | null;
+    marketType?: string | null;
+    isCollectable?: boolean | null;
+    overlapAreaMeters?: number | null;
+  }> | null;
   resolution?: {
-    anchorType?: 'user_location' | 'viewport_center' | null;
+    anchorType?: 'user_location' | 'viewport_center' | 'viewport_coverage' | null;
     viewportContainsUser?: boolean | null;
     candidatePlaceName?: string | null;
     candidatePlaceGeoId?: string | null;

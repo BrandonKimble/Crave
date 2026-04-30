@@ -64,7 +64,6 @@ interface EntityResolutionCacheConfig {
 @Injectable()
 export class EntityResolutionService implements OnModuleInit {
   private logger!: LoggerService;
-  private dryRunEnabled = false;
   private redisClient: Redis | null = null;
   private cacheRedisKey = 'entity-resolution';
   private cacheVersion = 'v1';
@@ -90,8 +89,6 @@ export class EntityResolutionService implements OnModuleInit {
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('EntityResolutionService');
-    this.dryRunEnabled =
-      this.configService.get<boolean>('unifiedProcessing.dryRun') === true;
 
     const cacheConfig =
       this.configService.get<EntityResolutionCacheConfig>(
@@ -339,52 +336,6 @@ export class EntityResolutionService implements OnModuleInit {
               type: entity.type,
               aliases: entity.aliases || [],
             });
-          }
-        }
-      }
-
-      // Automatically add observed aliases for matched entities (PRD Section 9.2.1)
-      const aliasUpdates = new Map<string, Set<string>>();
-      for (const result of results) {
-        if (!result.entityId) continue;
-        if (!result.originalInput?.originalText) continue;
-        if (result.resolutionTier === 'new') continue;
-
-        const originalText = result.originalInput.originalText.trim();
-        if (!originalText) continue;
-
-        const matchedName = result.matchedName || '';
-        if (matchedName.toLowerCase() === originalText.toLowerCase()) continue;
-
-        if (!aliasUpdates.has(result.entityId)) {
-          aliasUpdates.set(result.entityId, new Set());
-        }
-        aliasUpdates.get(result.entityId)!.add(originalText);
-      }
-
-      if (this.dryRunEnabled) {
-        if (aliasUpdates.size > 0) {
-          this.logger.info('Skipping alias enrichment (dry run enabled)', {
-            aliasUpdates: aliasUpdates.size,
-          });
-        }
-      } else {
-        for (const [entityId, aliases] of aliasUpdates.entries()) {
-          for (const alias of aliases) {
-            try {
-              await this.addAliasToEntity(entityId, alias);
-            } catch (aliasError) {
-              this.logger.warn('Alias enrichment failed', {
-                entityId,
-                alias,
-                error: {
-                  message:
-                    aliasError instanceof Error
-                      ? aliasError.message
-                      : String(aliasError),
-                },
-              });
-            }
           }
         }
       }
@@ -744,21 +695,7 @@ export class EntityResolutionService implements OnModuleInit {
       });
 
       return entities.map((entity) => {
-        const entityAliases = [
-          entity.normalizedName,
-          entity.originalText,
-          ...(entity.aliases || []),
-        ].filter((alias) => alias && alias.trim().length > 0);
-
-        // Find matching entity based on alias overlap
-        const matchedEntity = matchedEntities.find((dbEntity) =>
-          entityAliases.some((alias) =>
-            dbEntity.aliases.some(
-              (dbAlias) =>
-                dbAlias.toLowerCase().trim() === alias.toLowerCase().trim(),
-            ),
-          ),
-        );
+        const matchedEntity = this.selectBestAliasMatch(entity, matchedEntities);
 
         return {
           tempId: entity.tempId,
@@ -833,6 +770,148 @@ export class EntityResolutionService implements OnModuleInit {
     }
 
     return results;
+  }
+
+  private selectBestAliasMatch(
+    inputEntity: EntityResolutionInput,
+    candidateEntities: { entityId: string; name: string; aliases: string[] }[],
+  ): { entityId: string; name: string; aliases: string[] } | null {
+    const searchTerms = [
+      inputEntity.normalizedName,
+      inputEntity.originalText,
+      ...(inputEntity.aliases || []),
+    ]
+      .filter((term): term is string => typeof term === 'string')
+      .map((term) => term.trim())
+      .filter((term) => term.length > 0);
+
+    if (searchTerms.length === 0) {
+      return null;
+    }
+
+    const normalizedSearchTerms = Array.from(
+      new Set(searchTerms.map((term) => this.normalizeAliasValue(term))),
+    );
+
+    let bestCandidate:
+      | {
+          entity: { entityId: string; name: string; aliases: string[] };
+          exactNameMatch: boolean;
+          candidateNameContainsSearch: boolean;
+          bestNameSimilarity: number;
+          bestAliasSimilarity: number;
+          bestNameEditDistance: number;
+        }
+      | null = null;
+
+    for (const candidate of candidateEntities) {
+      const normalizedCandidateAliases = (candidate.aliases || [])
+        .filter((alias): alias is string => typeof alias === 'string')
+        .map((alias) => this.normalizeAliasValue(alias))
+        .filter((alias) => alias.length > 0);
+
+      const hasAliasOverlap = normalizedSearchTerms.some((searchTerm) =>
+        normalizedCandidateAliases.includes(searchTerm),
+      );
+
+      if (!hasAliasOverlap) {
+        continue;
+      }
+
+      const normalizedCandidateName = this.normalizeAliasValue(candidate.name);
+      const exactNameMatch = normalizedSearchTerms.includes(normalizedCandidateName);
+      const candidateNameContainsSearch = normalizedSearchTerms.some(
+        (searchTerm) =>
+          searchTerm.length > 0 &&
+          normalizedCandidateName.includes(searchTerm),
+      );
+
+      let bestNameSimilarity = 0;
+      let bestAliasSimilarity = 0;
+      let bestNameEditDistance = Number.MAX_SAFE_INTEGER;
+
+      for (const searchTerm of normalizedSearchTerms) {
+        const nameSimilarity = stringSimilarity.compareTwoStrings(
+          searchTerm,
+          normalizedCandidateName,
+        );
+        bestNameSimilarity = Math.max(bestNameSimilarity, nameSimilarity);
+        bestNameEditDistance = Math.min(
+          bestNameEditDistance,
+          this.calculateEditDistance(searchTerm, normalizedCandidateName),
+        );
+
+        for (const candidateAlias of normalizedCandidateAliases) {
+          bestAliasSimilarity = Math.max(
+            bestAliasSimilarity,
+            stringSimilarity.compareTwoStrings(searchTerm, candidateAlias),
+          );
+        }
+      }
+
+      const candidateScore = {
+        entity: candidate,
+        exactNameMatch,
+        candidateNameContainsSearch,
+        bestNameSimilarity,
+        bestAliasSimilarity,
+        bestNameEditDistance,
+      };
+
+      if (!bestCandidate) {
+        bestCandidate = candidateScore;
+        continue;
+      }
+
+      if (
+        this.compareAliasCandidates(candidateScore, bestCandidate) > 0
+      ) {
+        bestCandidate = candidateScore;
+      }
+    }
+
+    return bestCandidate?.entity ?? null;
+  }
+
+  private compareAliasCandidates(
+    left: {
+      exactNameMatch: boolean;
+      candidateNameContainsSearch: boolean;
+      bestNameSimilarity: number;
+      bestAliasSimilarity: number;
+      bestNameEditDistance: number;
+      entity: { name: string };
+    },
+    right: {
+      exactNameMatch: boolean;
+      candidateNameContainsSearch: boolean;
+      bestNameSimilarity: number;
+      bestAliasSimilarity: number;
+      bestNameEditDistance: number;
+      entity: { name: string };
+    },
+  ): number {
+    if (left.exactNameMatch !== right.exactNameMatch) {
+      return left.exactNameMatch ? 1 : -1;
+    }
+    if (left.candidateNameContainsSearch !== right.candidateNameContainsSearch) {
+      return left.candidateNameContainsSearch ? 1 : -1;
+    }
+    if (left.bestNameSimilarity !== right.bestNameSimilarity) {
+      return left.bestNameSimilarity > right.bestNameSimilarity ? 1 : -1;
+    }
+    if (left.bestAliasSimilarity !== right.bestAliasSimilarity) {
+      return left.bestAliasSimilarity > right.bestAliasSimilarity ? 1 : -1;
+    }
+    if (left.bestNameEditDistance !== right.bestNameEditDistance) {
+      return left.bestNameEditDistance < right.bestNameEditDistance ? 1 : -1;
+    }
+
+    return right.entity.name.length - left.entity.name.length;
+  }
+
+  private normalizeAliasValue(value: string): string {
+    return value.toLowerCase().trim();
   }
 
   /**
@@ -1726,90 +1805,6 @@ export class EntityResolutionService implements OnModuleInit {
         sourceEntityId,
         targetEntityId,
         entityType,
-      });
-      throw error;
-    }
-  }
-
-  /**
-   * Add alias to existing entity with duplicate prevention and scope validation
-   * Implements PRD Section 9.2.1 - Automatic alias creation, duplicate prevention
-   */
-  async addAliasToEntity(
-    entityId: string,
-    newAlias: string,
-  ): Promise<{
-    updated: boolean;
-    aliasAdded: boolean;
-    violations: string[];
-  }> {
-    this.logger.debug('Adding alias to entity', {
-      entityId,
-      newAlias,
-    });
-
-    try {
-      // Fetch current entity
-      const entity = await this.prisma.entity.findUnique({
-        where: { entityId },
-        select: { entityId: true, name: true, aliases: true, type: true },
-      });
-
-      if (!entity) {
-        throw new Error(`Entity not found: ${entityId}`);
-      }
-
-      // Use alias management service to add alias
-      const aliasResult = this.aliasManagementService.addOriginalTextAsAlias(
-        entity.aliases,
-        newAlias,
-      );
-
-      // Validate scope constraints
-      const scopeValidation =
-        this.aliasManagementService.validateScopeConstraints(
-          entity.type,
-          aliasResult.updatedAliases,
-        );
-
-      if (!aliasResult.aliasAdded) {
-        this.logger.debug('Alias already exists, no update needed', {
-          entityId,
-          newAlias,
-        });
-        return {
-          updated: false,
-          aliasAdded: false,
-          violations: scopeValidation.violations,
-        };
-      }
-
-      // Update entity with new aliases
-      await this.prisma.entity.update({
-        where: { entityId },
-        data: {
-          aliases: scopeValidation.validAliases,
-          lastUpdated: new Date(),
-        },
-      });
-
-      this.logger.debug('Alias added to entity successfully', {
-        entityId,
-        newAlias,
-        finalAliasCount: scopeValidation.validAliases.length,
-        violations: scopeValidation.violations.length,
-      });
-
-      return {
-        updated: true,
-        aliasAdded: true,
-        violations: scopeValidation.violations,
-      };
-    } catch (error) {
-      this.logger.error('Failed to add alias to entity', {
-        error: error instanceof Error ? error.message : String(error),
-        entityId,
-        newAlias,
       });
       throw error;
     }

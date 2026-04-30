@@ -12,11 +12,13 @@ import { RestaurantEntityMergeService } from './restaurant-entity-merge.service'
 import { RestaurantCuisineExtractionService } from './restaurant-cuisine-extraction.service';
 import { RestaurantCuisineExtractionQueueService } from './restaurant-cuisine-extraction-queue.service';
 import { RestaurantCuisineExtractionWorker } from './restaurant-cuisine-extraction.worker';
+import { RestaurantSecondaryLocationExpansionQueueService } from './restaurant-secondary-location-expansion-queue.service';
+import { RestaurantSecondaryLocationExpansionWorker } from './restaurant-secondary-location-expansion.worker';
 import { isWorkerRuntime } from '../../shared/utils/process-role';
 import { RedditCollectorModule } from '../content-processing/reddit-collector/reddit-collector.module';
 
 const restaurantEnrichmentWorkerProviders = isWorkerRuntime()
-  ? [RestaurantCuisineExtractionWorker]
+  ? [RestaurantCuisineExtractionWorker, RestaurantSecondaryLocationExpansionWorker]
   : [];
 
 @Module({
@@ -32,17 +34,22 @@ const restaurantEnrichmentWorkerProviders = isWorkerRuntime()
     BullModule.registerQueue({
       name: 'restaurant-cuisine-extraction',
     }),
+    BullModule.registerQueue({
+      name: 'restaurant-secondary-location-expansion',
+    }),
   ],
   providers: [
     RestaurantLocationEnrichmentService,
     RestaurantEntityMergeService,
     RestaurantCuisineExtractionService,
     RestaurantCuisineExtractionQueueService,
+    RestaurantSecondaryLocationExpansionQueueService,
     ...restaurantEnrichmentWorkerProviders,
   ],
   exports: [
     RestaurantLocationEnrichmentService,
     RestaurantCuisineExtractionQueueService,
+    RestaurantSecondaryLocationExpansionQueueService,
   ],
 })
 export class RestaurantEnrichmentModule {}

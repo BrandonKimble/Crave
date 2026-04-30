@@ -2,16 +2,15 @@ import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import pLimit from 'p-limit';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { LLMService } from './llm.service';
-import { LLMOutputStructure } from './llm.types';
+import { LLMModelInput, LLMOutputStructure } from './llm.types';
 import { ChunkResult, ChunkMetadata } from './llm-chunking.service';
-import { LLMInputDto } from './dto/llm-input.dto';
 // LLMPerformanceOptimizerService removed - optimization handled by SmartLLMProcessor
 import { SmartLLMProcessor } from './rate-limiting/smart-llm-processor.service';
 
 /**
  * Processing result for a single chunk
  */
-export interface ChunkProcessingResult {
+export interface ChunkProcessingResult<TInput extends LLMModelInput = LLMModelInput> {
   success: boolean;
   result?: LLMOutputStructure;
   error?: unknown;
@@ -19,16 +18,16 @@ export interface ChunkProcessingResult {
   commentCount: number;
   duration: number;
   metadata: ChunkMetadata;
-  input: LLMInputDto;
+  input: TInput;
 }
 
 /**
  * Overall processing result for all chunks
  */
-export interface ProcessingResult {
+export interface ProcessingResult<TInput extends LLMModelInput = LLMModelInput> {
   results: LLMOutputStructure[];
-  chunkResults: ChunkProcessingResult[];
-  failures: ChunkProcessingResult[];
+  chunkResults: ChunkProcessingResult<TInput>[];
+  failures: ChunkProcessingResult<TInput>[];
   metrics: {
     totalDuration: number;
     chunksProcessed: number;
@@ -58,7 +57,7 @@ export interface ProcessingResult {
  */
 @Injectable()
 export class LLMConcurrentProcessingService implements OnModuleInit {
-  private static readonly REDDIT_SOURCE_REF_PATTERN = /^t[13]_[A-Za-z0-9]+$/;
+  private static readonly SOURCE_ID_PATTERN = /^SRC\d+$/;
   private logger!: LoggerService;
   private limit!: ReturnType<typeof pLimit>;
   private concurrencyLimit: number = 16; // default; can be overridden by CONCURRENCY env
@@ -112,10 +111,10 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
    * @param llmService - LLM service instance for processing
    * @returns Processing result with consolidated outputs and metrics
    */
-  async processConcurrent(
-    chunkData: ChunkResult,
+  async processConcurrent<TInput extends LLMModelInput>(
+    chunkData: ChunkResult<TInput>,
     llmService: LLMService,
-  ): Promise<ProcessingResult> {
+  ): Promise<ProcessingResult<TInput>> {
     const { chunks, metadata } = chunkData;
     const startTime = Date.now();
 
@@ -161,7 +160,7 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
     // Process chunks with concurrency control and optional delay strategy
     // p-limit naturally handles variable processing times
     const promises = chunks.map((chunk, index) =>
-      this.limit(async (): Promise<ChunkProcessingResult> => {
+      this.limit(async (): Promise<ChunkProcessingResult<TInput>> => {
         // No artificial delays - SmartLLMProcessor handles all timing
         // Workers start immediately and wait for their reserved time slots
 
@@ -274,8 +273,8 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
     const settledResults = await Promise.allSettled(promises);
 
     // Consolidate results
-    const successful: ChunkProcessingResult[] = [];
-    const failed: ChunkProcessingResult[] = [];
+    const successful: ChunkProcessingResult<TInput>[] = [];
+    const failed: ChunkProcessingResult<TInput>[] = [];
 
     settledResults.forEach((settled, index) => {
       if (settled.status === 'fulfilled') {
@@ -478,7 +477,7 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
       }
 
       if (
-        !LLMConcurrentProcessingService.REDDIT_SOURCE_REF_PATTERN.test(
+        !LLMConcurrentProcessingService.SOURCE_ID_PATTERN.test(
           mention.source_id.trim(),
         )
       ) {
