@@ -1,7 +1,7 @@
 import React from 'react';
 
 import type { ProfilePreparedPresentationRuntime } from './profile-prepared-presentation-runtime-contract';
-import type { PreparedProfilePresentationCompletionEvent } from './profile-prepared-presentation-transaction-contract';
+import type { PreparedProfilePresentationCompletionEvent } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
 
 export const useBindPreparedProfileCompletionHandler = ({
   preparedProfileCompletionHandlerRef,

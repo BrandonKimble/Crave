@@ -1,13 +1,13 @@
 import React from 'react';
 
-import type { ProfileAppExecutionRuntime } from './profile-app-execution-runtime-contract';
+import type { ProfileAppExecutionRuntime } from '../../../../navigation/runtime/app-route-profile-app-execution-runtime-contract';
 import { createPreparedProfileCompletionEventHandler } from './profile-prepared-presentation-event-runtime';
 import { executePreparedProfilePresentationTransaction } from './profile-prepared-presentation-state-executor';
 import type {
   CreateProfilePreparedPresentationRuntimeArgs,
   ExecutePreparedProfilePresentationTransaction,
 } from './profile-prepared-presentation-runtime-contract';
-import type { PreparedProfilePresentationCompletionEvent } from './profile-prepared-presentation-transaction-contract';
+import type { PreparedProfilePresentationCompletionEvent } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
 import type { ProfileRuntimeStateOwner } from './profile-runtime-state-contract';
 import type { ProfileNativeExecutionModel } from './profile-native-execution-runtime-contract';
 
@@ -22,7 +22,7 @@ type UseProfilePreparedPresentationTransactionRuntimeArgs = {
     'shellRuntimeState' | 'transitionRuntimeState' | 'closeRuntimeState' | 'hydrationRuntime'
   >;
   appExecutionRuntime: ProfileAppExecutionRuntime;
-  isSearchOverlay: boolean;
+  getIsSearchOverlay: () => boolean;
 };
 
 export type ProfilePreparedPresentationTransactionRuntime = {
@@ -36,15 +36,11 @@ export const useProfilePreparedPresentationTransactionRuntime = ({
   nativeExecutionModel,
   runtimeStateOwner,
   appExecutionRuntime,
-  isSearchOverlay,
+  getIsSearchOverlay,
 }: UseProfilePreparedPresentationTransactionRuntimeArgs): ProfilePreparedPresentationTransactionRuntime => {
   const {
     transitionExecutionModel: { getLastVisibleSheetSnap },
-    commandExecutionModel: {
-      restaurantSheetRuntimeModel,
-      executeAndStripNativeSheetCommands,
-      commitProfileCameraTargetCommand,
-    },
+    commandExecutionModel: { executeAndStripNativeSheetCommands, commitProfileCameraTargetCommand },
   } = nativeExecutionModel;
   const {
     shellRuntimeState: { setProfileCameraPadding },
@@ -67,7 +63,6 @@ export const useProfilePreparedPresentationTransactionRuntime = ({
       () => ({
         runBatch,
         commandExecutionRuntime: {
-          restaurantSheetRuntimeModel,
           nativeCommandExecutionModel: {
             executeAndStripNativeSheetCommands,
             commitProfileCameraTargetCommand,
@@ -98,7 +93,7 @@ export const useProfilePreparedPresentationTransactionRuntime = ({
           getProfileTransitionState,
           getProfileDismissBehavior,
           getProfileShouldClearSearchOnDismiss,
-          isSearchOverlay,
+          getIsSearchOverlay,
           getLastVisibleSheetSnap,
         },
       }),
@@ -111,9 +106,8 @@ export const useProfilePreparedPresentationTransactionRuntime = ({
         getProfileDismissBehavior,
         getProfileShouldClearSearchOnDismiss,
         getProfileTransitionState,
+        getIsSearchOverlay,
         hydrationRuntime,
-        isSearchOverlay,
-        restaurantSheetRuntimeModel,
         runBatch,
         setProfileCameraPadding,
         setProfileTransitionStatus,

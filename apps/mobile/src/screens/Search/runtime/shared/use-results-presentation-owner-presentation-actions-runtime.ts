@@ -1,20 +1,16 @@
 import React from 'react';
 
+import { createResultsPresentationActionsRuntimeValue } from '../controller/results-presentation-owner-presentation-actions-runtime';
 import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
-import {
-  createPreparedResultsEnterSnapshot,
-  createPreparedResultsExitSnapshot,
-  resolvePreparedResultsEnterCoverState,
-} from './prepared-presentation-transaction';
 import type { ResultsPresentationActions } from './results-presentation-shell-runtime-contract';
 import type { SearchPresentationIntent } from './results-presentation-shell-contract';
-import { resolvePreparedResultsEnterMutationKind } from './results-presentation-shell-prepared-intent';
 import type { ResultsPresentationRuntimeOwner } from './results-presentation-runtime-owner-contract';
 import type { ResultsPresentationShellLocalState } from './use-results-presentation-shell-local-state';
-import type { ResultsSheetRuntimeOwner } from './results-sheet-runtime-contract';
-import { useResultsPreparedEnterSnapshotExecutionRuntime } from './use-results-prepared-enter-snapshot-execution-runtime';
-import { useResultsPreparedExitSnapshotExecutionRuntime } from './use-results-prepared-exit-snapshot-execution-runtime';
-import { useResultsPreparedSnapshotShellApplicationRuntime } from './use-results-prepared-snapshot-shell-application-runtime';
+import type { AppRouteResultsSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-results-sheet-runtime-contract';
+import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
+import { useResultsPresentationCloseActionsRuntime } from './use-results-presentation-close-actions-runtime';
+import { useResultsPresentationEditingActionsRuntime } from './use-results-presentation-editing-actions-runtime';
+import { useResultsPresentationEnterActionsRuntime } from './use-results-presentation-enter-actions-runtime';
 
 type UseResultsPresentationOwnerPresentationActionsRuntimeArgs = {
   clearTypedQuery: SearchClearOwner['clearTypedQuery'];
@@ -25,14 +21,15 @@ type UseResultsPresentationOwnerPresentationActionsRuntimeArgs = {
   isClearingSearchRef: React.MutableRefObject<boolean>;
   handleCloseResultsUiReset: () => void;
   resultsSheetRuntime: Pick<
-    ResultsSheetRuntimeOwner,
+    AppRouteResultsSheetRuntimeOwner,
     | 'animateSheetTo'
     | 'prepareShortcutSheetTransition'
     | 'resultsSheetRuntimeModel'
     | 'shouldRenderResultsSheetRef'
     | 'resetResultsSheetToHidden'
+    | 'sheetState'
   > &
-    Pick<ResultsSheetRuntimeOwner, 'snapPoints'>;
+    Pick<AppRouteResultsSheetRuntimeOwner, 'snapPoints'>;
   shellLocalState: ResultsPresentationShellLocalState;
   resultsRuntimeOwner: ResultsPresentationRuntimeOwner;
   scheduleCloseSearchCleanup: (closeIntentId: string) => void;
@@ -40,7 +37,11 @@ type UseResultsPresentationOwnerPresentationActionsRuntimeArgs = {
   setPendingCloseIntentId: (intentId: string | null) => void;
   matchesPendingCloseIntentId: (intentId: string) => boolean;
   beginCloseTransition: (closeIntentId: string) => void;
+  markSearchSheetCloseSheetSettled: (
+    snap: Exclude<import('../../../../overlays/types').OverlaySheetSnap, 'hidden'>
+  ) => void;
   cancelSearchSheetCloseTransition: (closeIntentId?: string) => void;
+  routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
 };
 
 export const useResultsPresentationOwnerPresentationActionsRuntime = ({
@@ -59,161 +60,74 @@ export const useResultsPresentationOwnerPresentationActionsRuntime = ({
   setPendingCloseIntentId,
   matchesPendingCloseIntentId,
   beginCloseTransition,
+  markSearchSheetCloseSheetSettled,
   cancelSearchSheetCloseTransition,
+  routeSceneVisibilityPolicyRuntime,
 }: UseResultsPresentationOwnerPresentationActionsRuntimeArgs): ResultsPresentationActions => {
-  const preparedResultsExitTransactionSeqRef = React.useRef(0);
-  const nextPreparedResultsExitTransactionId = React.useCallback((): string => {
-    preparedResultsExitTransactionSeqRef.current += 1;
-    return `prepared-results-transaction:${preparedResultsExitTransactionSeqRef.current}`;
-  }, []);
-
-  const executePreparedExitSnapshot = useResultsPreparedExitSnapshotExecutionRuntime({
-    resultsRuntimeOwner,
-    animateSheetTo: resultsSheetRuntime.animateSheetTo,
-    setDisplayQueryOverride: shellLocalState.setDisplayQueryOverride,
-    beginCloseTransition,
-  });
-
-  const requestClosePresentationIntent = React.useCallback(
-    () =>
-      executePreparedExitSnapshot(
-        createPreparedResultsExitSnapshot(nextPreparedResultsExitTransactionId())
-      ),
-    [executePreparedExitSnapshot, nextPreparedResultsExitTransactionId]
-  );
-
-  const cancelCloseSearch = React.useCallback(
-    (intentId?: string) => {
-      if (intentId != null && !matchesPendingCloseIntentId(intentId)) {
-        return;
-      }
-      setPendingCloseIntentId(null);
-      cancelCloseSearchCleanup();
-      isClearingSearchRef.current = false;
-      resultsRuntimeOwner.clearStagedPreparedResultsSnapshot(intentId);
-      cancelSearchSheetCloseTransition(intentId);
-      resultsRuntimeOwner.cancelPresentationIntent(intentId);
-    },
-    [
-      cancelCloseSearchCleanup,
-      cancelSearchSheetCloseTransition,
-      isClearingSearchRef,
-      matchesPendingCloseIntentId,
-      resultsRuntimeOwner,
-      setPendingCloseIntentId,
-    ]
-  );
-
-  const beginCloseSearch = React.useCallback(() => {
-    const hasSearchToClose = isSearchSessionActive || hasResults || submittedQuery.length > 0;
-    if (!hasSearchToClose) {
-      clearTypedQuery();
-      return;
-    }
-
-    ignoreNextSearchBlurRef.current = true;
-    resultsRuntimeOwner.clearStagedPreparedResultsSnapshot();
-    const closeIntentId = requestClosePresentationIntent() ?? '';
-    isClearingSearchRef.current = true;
-    handleCloseResultsUiReset();
-    scheduleCloseSearchCleanup(closeIntentId);
-  }, [
+  const closeActionsRuntime = useResultsPresentationCloseActionsRuntime({
     clearTypedQuery,
-    handleCloseResultsUiReset,
+    submittedQuery,
+    isSearchSessionActive,
     hasResults,
     ignoreNextSearchBlurRef,
     isClearingSearchRef,
-    isSearchSessionActive,
-    requestClosePresentationIntent,
+    handleCloseResultsUiReset,
+    resultsSheetRuntime,
+    shellLocalState,
     resultsRuntimeOwner,
     scheduleCloseSearchCleanup,
-    submittedQuery.length,
-  ]);
-
-  const preparedResultsTransactionSeqRef = React.useRef(0);
-  const nextPreparedResultsTransactionId = React.useCallback((): string => {
-    preparedResultsTransactionSeqRef.current += 1;
-    return `prepared-results-transaction:${preparedResultsTransactionSeqRef.current}`;
-  }, []);
-
-  const requestEditingPresentationIntent = React.useCallback(
-    (intent: Extract<SearchPresentationIntent, { kind: 'focus_editing' | 'exit_editing' }>) => {
-      shellLocalState.setInputMode(intent.kind === 'focus_editing' ? 'editing' : 'idle');
-      return null;
-    },
-    [shellLocalState]
-  );
-
-  const applyPreparedSnapshotShell = useResultsPreparedSnapshotShellApplicationRuntime({
+    cancelCloseSearchCleanup,
+    setPendingCloseIntentId,
+    matchesPendingCloseIntentId,
+    beginCloseTransition,
+    markSearchSheetCloseSheetSettled,
     cancelSearchSheetCloseTransition,
-    setBackdropTarget: shellLocalState.setBackdropTarget,
-    setInputMode: shellLocalState.setInputMode,
   });
 
-  const executePreparedEnterSnapshot = useResultsPreparedEnterSnapshotExecutionRuntime({
+  const editingActionsRuntime = useResultsPresentationEditingActionsRuntime({
+    shellLocalState,
+    routeSceneVisibilityPolicyRuntime,
+  });
+
+  const enterActionsRuntime = useResultsPresentationEnterActionsRuntime({
+    resultsSheetRuntime,
+    shellLocalState,
     resultsRuntimeOwner,
-    animateSheetTo: resultsSheetRuntime.animateSheetTo,
-    prepareShortcutSheetTransition: resultsSheetRuntime.prepareShortcutSheetTransition,
-    setDisplayQueryOverride: shellLocalState.setDisplayQueryOverride,
+    cancelSearchSheetCloseTransition,
   });
-
-  const requestEnterPresentationIntent = React.useCallback(
-    (
-      intent: Exclude<
-        SearchPresentationIntent,
-        { kind: 'focus_editing' | 'exit_editing' | 'close' }
-      >
-    ) => {
-      const shouldPrepareShortcutSheetTransition =
-        intent.preserveSheetState !== true && intent.transitionFromDockedPolls === true;
-      const preserveSheetState = intent.preserveSheetState === true;
-      const snapshot = createPreparedResultsEnterSnapshot(
-        intent.transactionId ?? nextPreparedResultsTransactionId(),
-        resolvePreparedResultsEnterMutationKind(intent.kind),
-        resolvePreparedResultsEnterCoverState(preserveSheetState)
-      );
-
-      applyPreparedSnapshotShell(snapshot);
-      return executePreparedEnterSnapshot({
-        snapshot,
-        displayQueryOverride: intent.query,
-        preserveSheetState,
-        shouldPrepareShortcutSheetTransition,
-      });
-    },
-    [applyPreparedSnapshotShell, executePreparedEnterSnapshot, nextPreparedResultsTransactionId]
-  );
 
   const requestSearchPresentationIntent = React.useCallback(
     (intent: SearchPresentationIntent) => {
       switch (intent.kind) {
         case 'focus_editing':
         case 'exit_editing':
-          return requestEditingPresentationIntent(intent);
+          return editingActionsRuntime.requestEditingPresentationIntent(intent);
         case 'close':
-          return requestClosePresentationIntent();
+          return closeActionsRuntime.requestClosePresentationIntent();
         default:
-          return requestEnterPresentationIntent(intent);
+          return enterActionsRuntime.requestEnterPresentationIntent(intent);
       }
     },
     [
-      requestClosePresentationIntent,
-      requestEditingPresentationIntent,
-      requestEnterPresentationIntent,
+      closeActionsRuntime.requestClosePresentationIntent,
+      editingActionsRuntime.requestEditingPresentationIntent,
+      enterActionsRuntime.requestEnterPresentationIntent,
     ]
   );
 
-  const handleCloseResults = React.useCallback(() => {
-    beginCloseSearch();
-  }, [beginCloseSearch]);
-
   return React.useMemo(
-    () => ({
+    () =>
+      createResultsPresentationActionsRuntimeValue({
+        requestSearchPresentationIntent,
+        beginCloseSearch: closeActionsRuntime.beginCloseSearch,
+        handleCloseResults: closeActionsRuntime.handleCloseResults,
+        cancelCloseSearch: closeActionsRuntime.cancelCloseSearch,
+      }),
+    [
+      closeActionsRuntime.beginCloseSearch,
+      closeActionsRuntime.cancelCloseSearch,
+      closeActionsRuntime.handleCloseResults,
       requestSearchPresentationIntent,
-      beginCloseSearch,
-      handleCloseResults,
-      cancelCloseSearch,
-    }),
-    [beginCloseSearch, cancelCloseSearch, handleCloseResults, requestSearchPresentationIntent]
+    ]
   );
 };

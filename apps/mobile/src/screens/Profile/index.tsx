@@ -20,14 +20,11 @@ import Svg, { Path } from 'react-native-svg';
 import { Text } from '../../components';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import { colors as themeColors } from '../../constants/theme';
-import {
-  clearSearchRoutePollsPanelParams,
-  openSearchRoutePollsHome,
-} from '../../overlays/searchRouteOverlayCommandStore';
+import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { useAppOverlayRouteController } from '../../overlays/useAppOverlayRouteController';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useNotificationStore } from '../../store/notificationStore';
-import type { OverlayKey } from '../../store/overlayStore';
+import type { OverlayKey } from '../../navigation/runtime/app-overlay-route-types';
 import { logger } from '../../utils';
 import { notificationsService } from '../../services/notifications';
 import { usersService } from '../../services/users';
@@ -73,6 +70,7 @@ const ProfileScreen: React.FC = () => {
   const { signOut, isSignedIn } = useAuth();
   const navigation = useNavigation<Navigation>();
   const insets = useSafeAreaInsets();
+  const routeSceneRuntime = useAppRouteSceneRuntime();
   const { setRootRoute } = useAppOverlayRouteController();
   const pushToken = useNotificationStore((state) => state.pushToken);
   const setPushToken = useNotificationStore((state) => state.setPushToken);
@@ -185,26 +183,30 @@ const ProfileScreen: React.FC = () => {
         return;
       }
       if (target === 'search') {
-        openSearchRoutePollsHome({ snap: 'collapsed' });
+        routeSceneRuntime.routeSearchCommandActions.openAppSearchRoutePollsHome({
+          snap: 'collapsed',
+        });
         return;
       }
-      clearSearchRoutePollsPanelParams();
       setRootRoute(target);
     },
-    [setRootRoute]
+    [routeSceneRuntime.routeSearchCommandActions, setRootRoute]
   );
 
-  const handlePollPress = React.useCallback((poll: Poll) => {
-    openSearchRoutePollsHome({
-      params: {
-        pollId: poll.pollId,
-        marketKey: poll.marketKey ?? null,
-        marketName: poll.marketName ?? null,
-        pinnedMarket: true,
-      },
-      snap: 'expanded',
-    });
-  }, []);
+  const handlePollPress = React.useCallback(
+    (poll: Poll) => {
+      routeSceneRuntime.routeSearchCommandActions.openAppSearchRoutePollsHome({
+        params: {
+          pollId: poll.pollId,
+          marketKey: poll.marketKey ?? null,
+          marketName: poll.marketName ?? null,
+          pinnedMarket: true,
+        },
+        snap: 'expanded',
+      });
+    },
+    [routeSceneRuntime.routeSearchCommandActions]
+  );
 
   const handleListPress = React.useCallback(
     (listId: string) => {

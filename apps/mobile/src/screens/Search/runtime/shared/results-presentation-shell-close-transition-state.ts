@@ -32,7 +32,7 @@ export const applySearchCloseMapExitSettled = ({
   };
   return {
     nextState,
-    shouldFinalize: nextState.mapExitSettled && nextState.sheetCollapsedSettled,
+    shouldFinalize: nextState.mapExitSettled,
   };
 };
 

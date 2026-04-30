@@ -666,11 +666,15 @@ final class SearchMapRenderController: RCTEventEmitter {
         case .success(let handle):
           self.installMapSubscriptions(for: mapTag, handle: handle)
           self.resolvedMapHandles[mapTag.stringValue] = handle
+          guard let ownerEpoch = self.instances[instanceId]?.ownerEpoch else {
+            reject("search_map_render_controller_attach_missing_instance", "attach instance missing", nil)
+            return
+          }
           self.emit([
             "type": "attached",
             "instanceId": instanceId,
             "mapTag": mapTag,
-            "ownerEpoch": self.instances[instanceId]?.ownerEpoch as Any,
+            "ownerEpoch": ownerEpoch,
           ])
           resolve(nil)
         case .failure(let error):
@@ -801,16 +805,29 @@ final class SearchMapRenderController: RCTEventEmitter {
           )
           didSyncResidentFrame = true
         } else {
-          didSyncResidentFrame = try self.applyRenderFrameSnapshotPayload(
-            instanceId: instanceId,
-            generationId: frameGenerationId,
-            executionBatchId: executionBatchId,
-            sourceDeltas: sourceDeltas
-          )
-          try self.applyPresentationPayload(
-            instanceId: instanceId,
-            presentationStateJSON: presentationStateJSON
-          )
+          if Self.readEnterRequestKey(fromJSON: presentationStateJSON) == nil {
+            try self.applyPresentationPayload(
+              instanceId: instanceId,
+              presentationStateJSON: presentationStateJSON
+            )
+            didSyncResidentFrame = try self.applyRenderFrameSnapshotPayload(
+              instanceId: instanceId,
+              generationId: frameGenerationId,
+              executionBatchId: executionBatchId,
+              sourceDeltas: sourceDeltas
+            )
+          } else {
+            didSyncResidentFrame = try self.applyRenderFrameSnapshotPayload(
+              instanceId: instanceId,
+              generationId: frameGenerationId,
+              executionBatchId: executionBatchId,
+              sourceDeltas: sourceDeltas
+            )
+            try self.applyPresentationPayload(
+              instanceId: instanceId,
+              presentationStateJSON: presentationStateJSON
+            )
+          }
         }
         try self.applyInteractionModePayload(
           instanceId: instanceId,
@@ -2866,6 +2883,11 @@ final class SearchMapRenderController: RCTEventEmitter {
       return
     }
     if !state.allowEmptyEnter, state.lastPinCount + state.lastDotCount + state.lastLabelCount == 0 {
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "enter_mount_blocked_empty phase=\(state.lastPresentationBatchPhase) frame=\(state.activeFrameGenerationId ?? "nil") \(Self.phaseSummary(for: state))"
+      )
       return
     }
     emitExecutionBatchMountedHidden(

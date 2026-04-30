@@ -1,0 +1,26 @@
+import type { SharedValue } from 'react-native-reanimated';
+
+import type { RestaurantRouteHostSnapController } from '../../overlays/restaurantRouteHostContract';
+
+const NOOP = (): void => undefined;
+const NOOP_TOGGLE_FAVORITE = (_id: string): void => undefined;
+
+export type AppOverlayRestaurantInputs = {
+  suggestionProgress: SharedValue<number> | null;
+  shouldSuppressRestaurantOverlay: boolean;
+  shouldFreezeRestaurantPanelContent: boolean;
+  shouldEnableRestaurantOverlayInteraction: boolean;
+  onToggleFavorite: (id: string) => void;
+  closeRestaurantProfile: () => void;
+  restaurantSheetSnapController: RestaurantRouteHostSnapController | null;
+};
+
+export const EMPTY_APP_OVERLAY_RESTAURANT_INPUTS: AppOverlayRestaurantInputs = {
+  suggestionProgress: null,
+  shouldSuppressRestaurantOverlay: false,
+  shouldFreezeRestaurantPanelContent: false,
+  shouldEnableRestaurantOverlayInteraction: false,
+  onToggleFavorite: NOOP_TOGGLE_FAVORITE,
+  closeRestaurantProfile: NOOP,
+  restaurantSheetSnapController: null,
+};

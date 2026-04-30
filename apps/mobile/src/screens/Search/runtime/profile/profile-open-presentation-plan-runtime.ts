@@ -1,5 +1,5 @@
 import type { Coordinate, RestaurantResult } from '../../../../types';
-import type { CameraSnapshot } from './profile-transition-state-contract';
+import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type { ProfileOpenActionModel, SearchProfileSource } from './profile-action-model-contract';
 import {
   resolveRestaurantProfileCameraMotion,
@@ -30,26 +30,17 @@ const shouldTrackOpenedRestaurantProfile = (source: SearchProfileSource): boolea
 const shouldPreferPressedCoordinateForProfileOpen = ({
   source,
   pressedCoordinate,
-  transitionStatus,
-  currentPanelRestaurantId,
-  nextRestaurantId,
 }: {
   source: SearchProfileSource;
   pressedCoordinate: Coordinate | null;
-  transitionStatus: ProfileOpenActionModel['transitionStatus'];
-  currentPanelRestaurantId: string | null;
-  nextRestaurantId: string;
-}): boolean =>
-  source === 'results_sheet' &&
-  Boolean(pressedCoordinate) &&
-  (transitionStatus === 'opening' || transitionStatus === 'open') &&
-  currentPanelRestaurantId === nextRestaurantId;
+}): boolean => source === 'results_sheet' && Boolean(pressedCoordinate);
 
 export type ProfileOpenPresentationPlan = {
   dismissBehavior: 'restore' | 'clear';
   shouldClearSearchOnDismiss: boolean;
   shouldTrackRestaurantView: boolean;
   targetCamera: CameraSnapshot | null;
+  selectedLocationId: string | null;
   nextFocusSession: RestaurantProfileCameraMotionResolution['nextFocusSession'];
   nextMultiLocationZoomBaseline: number | null;
   updatedLastCameraState: RestaurantProfileCameraMotionResolution['updatedLastCameraState'];
@@ -68,7 +59,6 @@ export const resolveProfileOpenPresentationPlan = ({
 }): ProfileOpenPresentationPlan | null => {
   const {
     transitionStatus,
-    currentPanelRestaurantId,
     restaurantOnlyId,
     restaurantOnlySearchId,
     restaurantCameraActionModel,
@@ -85,9 +75,6 @@ export const resolveProfileOpenPresentationPlan = ({
   const shouldPreferPressedCoordinate = shouldPreferPressedCoordinateForProfileOpen({
     source,
     pressedCoordinate,
-    transitionStatus,
-    currentPanelRestaurantId,
-    nextRestaurantId: restaurant.restaurantId,
   });
   const focusTarget = resolveRestaurantProfileFocusTarget({
     restaurant,
@@ -106,6 +93,7 @@ export const resolveProfileOpenPresentationPlan = ({
     shouldClearSearchOnDismiss,
     shouldTrackRestaurantView: shouldTrackOpenedRestaurantProfile(source),
     targetCamera: cameraTargetResolution.targetCamera,
+    selectedLocationId: focusTarget?.focusLocationId ?? null,
     nextFocusSession: cameraTargetResolution.nextFocusSession,
     nextMultiLocationZoomBaseline: cameraTargetResolution.nextMultiLocationZoomBaseline,
     updatedLastCameraState: cameraTargetResolution.updatedLastCameraState,

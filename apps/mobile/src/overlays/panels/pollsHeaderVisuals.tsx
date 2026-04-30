@@ -20,12 +20,15 @@ type BuildPollsHeaderVisualModelArgs = {
   marketName?: string | null;
   marketKey?: string | null;
   fallbackMarketName?: string | null;
-  marketStatus?: 'resolved' | 'no_market' | 'error' | null;
+  marketStatus?: 'resolved' | 'multi_market' | 'no_market' | 'error' | null;
   candidatePlaceName?: string | null;
   pollCount?: number;
   isUpdating?: boolean;
   isResolvingMarket?: boolean;
 };
+
+const formatPossessivePlace = (value: string): string =>
+  value.endsWith('s') ? `${value}'` : `${value}'s`;
 
 export const buildPollsHeaderVisualModel = ({
   marketName,
@@ -42,18 +45,20 @@ export const buildPollsHeaderVisualModel = ({
     typeof fallbackMarketName === 'string' ? fallbackMarketName.trim() : '';
   const trimmedCandidatePlaceName =
     typeof candidatePlaceName === 'string' ? candidatePlaceName.trim() : '';
+  const headerPlaceName =
+    trimmedMarketName || trimmedFallbackMarketName || trimmedCandidatePlaceName;
 
   const title = isResolvingMarket
-    ? 'Finding market...'
-    : marketStatus === 'no_market' && trimmedCandidatePlaceName
-      ? `No polls in ${trimmedCandidatePlaceName} yet`
-      : marketStatus === 'no_market'
-        ? 'No local polls here yet'
-        : trimmedMarketName
-          ? `Polls in ${trimmedMarketName}`
-          : trimmedFallbackMarketName
-            ? `Polls in ${trimmedFallbackMarketName}`
-            : 'Polls';
+    ? 'Finding local polls...'
+    : pollCount === 0 && headerPlaceName
+      ? `Start ${formatPossessivePlace(headerPlaceName)} first poll`
+    : pollCount === 0
+      ? 'Start the first poll here'
+      : trimmedMarketName
+        ? `Polls in ${trimmedMarketName}`
+        : trimmedFallbackMarketName
+          ? `Polls in ${trimmedFallbackMarketName}`
+          : 'Polls';
 
   return {
     title,

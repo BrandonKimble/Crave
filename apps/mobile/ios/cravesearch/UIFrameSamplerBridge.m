@@ -55,3 +55,47 @@ RCT_EXPORT_VIEW_PROPERTY(dismissThreshold, NSNumber)
 RCT_EXPORT_VIEW_PROPERTY(sheetCommand, NSDictionary)
 RCT_EXPORT_VIEW_PROPERTY(onSheetHostEvent, RCTDirectEventBlock)
 @end
+
+@interface RCT_EXTERN_MODULE(SearchChromeNativeHitTargetRegistry, NSObject)
+RCT_EXTERN_METHOD(syncRegions:(NSDictionary *)payload
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+@end
+
+@interface RCT_EXTERN_MODULE(SearchChromeNativeHitTargetSurfaceManager, RCTViewManager)
+RCT_EXPORT_VIEW_PROPERTY(hostKey, NSString)
+RCT_EXPORT_VIEW_PROPERTY(onSearchChromeNativeHitTargetPress, RCTDirectEventBlock)
+@end
+
+@interface RCT_EXTERN_MODULE(SearchChromeScalarSurfaceRegistry, NSObject)
+RCT_EXTERN_METHOD(registerSurfaceHost:(NSDictionary *)payload
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(registerPlatformOwner:(NSDictionary *)payload
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(readPlatformOwnerStatus:(NSString *)hostKey
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(registerPlatformScalarSlot:(NSDictionary *)payload
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(readPlatformScalarSlotStatus:(NSString *)hostKey
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(registerMeasuredControl:(NSDictionary *)payload
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(measureRegisteredControls:(NSString *)hostKey
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(syncScalarSnapshot:(NSDictionary *)payload
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(clearMeasuredControl:(NSDictionary *)payload
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(clearSurfaceHost:(NSString *)hostKey
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+@end

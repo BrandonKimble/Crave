@@ -1,0 +1,2 @@
+export const PROFILE_CAMERA_ANIMATION_MS = 800;
+export const PROFILE_CAMERA_ANIMATION_MODE = 'easeTo';

@@ -147,11 +147,15 @@ harness_run_id="$EXPO_PUBLIC_PERF_HARNESS_RUN_ID"
 have_run_marker() {
   local marker="$1"
   local run_number="$2"
-  grep -a -q "\"event\":\"${marker}\".*\"harnessRunId\":\"${harness_run_id}\".*\"runNumber\":${run_number}" "$PERF_SHORTCUT_LOOP_LOG_FILE"
+  grep -a -E "\"event\"[[:space:]]*:[[:space:]]*\"${marker}\"" "$PERF_SHORTCUT_LOOP_LOG_FILE" \
+    | grep -a -E "\"harnessRunId\"[[:space:]]*:[[:space:]]*\"${harness_run_id}\"" \
+    | grep -a -Eq "\"runNumber\"[[:space:]]*:[[:space:]]*${run_number}"
 }
 
 have_loop_complete_marker() {
-  grep -a -q "\"event\":\"shortcut_loop_complete\".*\"harnessRunId\":\"${harness_run_id}\".*\"completedRuns\":${expected_runs}" "$PERF_SHORTCUT_LOOP_LOG_FILE"
+  grep -a -E "\"event\"[[:space:]]*:[[:space:]]*\"shortcut_loop_complete\"" "$PERF_SHORTCUT_LOOP_LOG_FILE" \
+    | grep -a -E "\"harnessRunId\"[[:space:]]*:[[:space:]]*\"${harness_run_id}\"" \
+    | grep -a -Eq "\"completedRuns\"[[:space:]]*:[[:space:]]*${expected_runs}"
 }
 
 validate_completion() {

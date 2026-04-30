@@ -14,6 +14,7 @@ import styles from '../styles';
 import SearchHeader from './SearchHeader';
 import SearchShortcutsRow from './SearchShortcutsRow';
 import type { SearchHeaderVisualModel } from '../runtime/shared/use-results-presentation-runtime-owner';
+import { useSearchChromeScalarSurfaceMeasuredControlRef } from '../runtime/native/use-search-chrome-scalar-surface-measured-control-ref';
 
 type SearchOverlayHeaderChromeProps = {
   handleSearchContainerLayout: (event: LayoutChangeEvent) => void;
@@ -51,6 +52,7 @@ type SearchOverlayHeaderChromeProps = {
   shouldShowSearchThisArea: boolean;
   searchThisAreaTop: number;
   searchThisAreaAnimatedStyle: React.ComponentProps<typeof Reanimated.View>['style'];
+  handleSearchThisAreaButtonLayout: (layout: LayoutRectangle) => void;
   handleSearchThisArea: () => void;
 };
 
@@ -84,8 +86,12 @@ const SearchOverlayHeaderChrome = ({
   shouldShowSearchThisArea,
   searchThisAreaTop,
   searchThisAreaAnimatedStyle,
+  handleSearchThisAreaButtonLayout,
   handleSearchThisArea,
 }: SearchOverlayHeaderChromeProps) => {
+  const searchThisAreaScalarSurfaceRef =
+    useSearchChromeScalarSurfaceMeasuredControlRef('search_this_area');
+
   return (
     <>
       <View
@@ -139,11 +145,15 @@ const SearchOverlayHeaderChrome = ({
         ]}
       >
         <Pressable
+          ref={searchThisAreaScalarSurfaceRef}
           onPress={handleSearchThisArea}
           style={styles.searchThisAreaButton}
           accessibilityRole="button"
           accessibilityLabel="Search this area"
           hitSlop={8}
+          onLayout={({ nativeEvent: { layout } }) => {
+            handleSearchThisAreaButtonLayout(layout);
+          }}
         >
           <Text variant="subtitle" weight="semibold" style={styles.searchThisAreaText}>
             Search this area

@@ -39,14 +39,6 @@ export type RestaurantPanelSnapshotNativePayload = {
   showWebsiteAction: boolean;
   showCallAction: boolean;
   matchedTags: string[];
-  locations: Array<{
-    title: string;
-    status: string | null;
-    address: string;
-    phone: string | null;
-    hoursRows: Array<{ label: string; value: string }>;
-    websiteHost: string | null;
-  }>;
   dishes: Array<{
     id: string;
     name: string;

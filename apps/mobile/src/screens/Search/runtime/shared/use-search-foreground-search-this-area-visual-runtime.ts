@@ -7,39 +7,38 @@ import type {
 
 type UseSearchForegroundSearchThisAreaVisualRuntimeArgs = Pick<
   UseSearchForegroundVisualRuntimeArgs,
-  | 'isSearchOverlay'
   | 'isSuggestionPanelActive'
-  | 'backdropTarget'
-  | 'isSearchSessionActive'
-  | 'mapMovedSinceSearch'
-  | 'isSearchLoading'
-  | 'isLoadingMore'
-  | 'hasResults'
   | 'searchChromeOpacity'
   | 'searchChromeScale'
   | 'searchLayoutTop'
   | 'searchLayoutHeight'
   | 'insetsTop'
   | 'isSuggestionOverlayVisible'
+  | 'isSearchOverlay'
+  | 'backdropTarget'
+  | 'isSearchSessionActive'
+  | 'mapMovedSinceSearch'
+  | 'isSearchLoading'
+  | 'isLoadingMore'
+  | 'hasResults'
 >;
 
 export const useSearchForegroundSearchThisAreaVisualRuntime = ({
-  isSearchOverlay,
   isSuggestionPanelActive,
-  backdropTarget,
-  isSearchSessionActive,
-  mapMovedSinceSearch,
-  isSearchLoading,
-  isLoadingMore,
-  hasResults,
   searchChromeOpacity,
   searchChromeScale,
   searchLayoutTop,
   searchLayoutHeight,
   insetsTop,
   isSuggestionOverlayVisible,
+  isSearchOverlay,
+  backdropTarget,
+  isSearchSessionActive,
+  mapMovedSinceSearch,
+  isSearchLoading,
+  isLoadingMore,
+  hasResults,
 }: UseSearchForegroundSearchThisAreaVisualRuntimeArgs): SearchForegroundSearchThisAreaVisualRuntime => {
-  const shouldLockSearchChromeTransform = isSuggestionPanelActive || isSuggestionOverlayVisible;
   const shouldShowSearchThisArea =
     isSearchOverlay &&
     !isSuggestionPanelActive &&
@@ -49,8 +48,11 @@ export const useSearchForegroundSearchThisAreaVisualRuntime = ({
     !isSearchLoading &&
     !isLoadingMore &&
     hasResults;
+  const shouldLockSearchChromeTransform = isSuggestionPanelActive || isSuggestionOverlayVisible;
   const searchThisAreaRevealProgress = useDerivedValue(() => {
-    return withTiming(shouldShowSearchThisArea ? 1 : 0, { duration: 200 });
+    return withTiming(shouldShowSearchThisArea ? 1 : 0, {
+      duration: 200,
+    });
   }, [shouldShowSearchThisArea]);
   const searchThisAreaAnimatedStyle = useAnimatedStyle(() => {
     const opacity = searchChromeOpacity.value * searchThisAreaRevealProgress.value;

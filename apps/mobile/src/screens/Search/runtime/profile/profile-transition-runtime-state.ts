@@ -12,7 +12,7 @@ import type {
   ProfileTransitionSnapshotCapture,
   ProfileTransitionState,
   ProfileTransitionStatus,
-} from './profile-transition-state-contract';
+} from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 
 export type ProfileTransitionRuntimeState = {
   getProfileTransitionStatus: () => ProfileTransitionStatus;

@@ -8,6 +8,13 @@ const config = getDefaultConfig(projectRoot);
 
 config.cacheVersion = 'crave-search-expo54';
 
+const sourceExts = config.resolver.sourceExts || [];
+config.resolver.sourceExts = [
+  'ts',
+  'tsx',
+  ...sourceExts.filter((ext) => ext !== 'ts' && ext !== 'tsx'),
+];
+
 config.watchFolders = [workspaceRoot];
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),

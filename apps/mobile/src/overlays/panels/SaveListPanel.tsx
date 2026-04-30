@@ -1,27 +1,25 @@
 import React from 'react';
-import { Dimensions, Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
-import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import { colors as themeColors } from '../../constants/theme';
-import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
-import type { SnapPoints } from '../bottomSheetMotionTypes';
-import { resolveExpandedTop } from '../sheetUtils';
+import { OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
 import {
   favoriteListsService,
   type FavoriteListSummary,
-  type FavoriteListType,
   type FavoriteListVisibility,
 } from '../../services/favorite-lists';
 import { useFavoriteLists, favoriteListKeys } from '../../hooks/use-favorite-lists';
-import type { OverlayContentSpec, OverlaySheetSnap } from '../types';
+import { useBottomSheetSceneStackBodyDataActivity } from '../BottomSheetSceneStackBodyActivityContext';
+import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneRuntimeProvider';
+import { useRouteAuthoritySelector } from '../../navigation/runtime/use-route-authority-selector';
+import type { AppRouteOverlayCommandSnapshot } from '../../navigation/runtime/app-route-overlay-command-controller';
+import { useDeferredSceneDataLane } from './useDeferredSceneDataLane';
 
-const SCREEN_HEIGHT = Dimensions.get('window').height;
 const ACTIVE_TAB_COLOR = themeColors.primary;
 const GRID_GAP = 12;
 const TILE_RADIUS = 16;
@@ -47,15 +45,6 @@ const resolveRankColor = (score?: number | null) => {
   return '#fb7185';
 };
 
-type UseSaveListPanelSpecOptions = {
-  visible: boolean;
-  listType: FavoriteListType;
-  target: { restaurantId?: string; connectionId?: string } | null;
-  onClose: () => void;
-  searchBarTop?: number;
-  onSnapChange?: (snap: OverlaySheetSnap) => void;
-};
-
 type ListFormState = {
   mode: 'hidden' | 'create';
   name: string;
@@ -63,40 +52,143 @@ type ListFormState = {
   visibility: FavoriteListVisibility;
 };
 
-export const useSaveListPanelSpec = ({
-  visible,
-  listType,
-  target,
-  onClose,
-  searchBarTop = 0,
-  onSnapChange,
-}: UseSaveListPanelSpecOptions): OverlayContentSpec<FavoriteListSummary> => {
-  const insets = useSafeAreaInsets();
+const selectSaveSheetListType = (snapshot: AppRouteOverlayCommandSnapshot) =>
+  snapshot.saveSheetState.listType;
+
+const selectSaveSheetState = (snapshot: AppRouteOverlayCommandSnapshot) => snapshot.saveSheetState;
+
+export const SaveListMountedSceneHeader = React.memo(() => {
+  const routeSceneRuntime = useAppRouteSceneRuntime();
+  const listType = useRouteAuthoritySelector({
+    subscribe: routeSceneRuntime.routeOverlayCommandAuthority.subscribe,
+    getSnapshot: routeSceneRuntime.routeOverlayCommandAuthority.getSnapshot,
+    selector: selectSaveSheetListType,
+  });
+  const { setSaveSheetState } = routeSceneRuntime.routeOverlayCommandActions;
+  const headerPaddingTop = 0;
+  const headerActionProgress = useSharedValue(0);
+
+  const onClose = React.useCallback(() => {
+    setSaveSheetState((prev) => ({ ...prev, visible: false, target: null }));
+  }, [setSaveSheetState]);
+
+  return (
+    <OverlaySheetHeaderChrome
+      onGrabHandlePress={onClose}
+      grabHandleAccessibilityLabel="Close save sheet"
+      paddingTop={headerPaddingTop}
+      title={
+        <View style={styles.headerTextGroup}>
+          <Text
+            variant="title"
+            weight="semibold"
+            style={styles.headerTitle}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            Save to {listType === 'restaurant' ? 'Restaurants' : 'Dishes'}
+          </Text>
+        </View>
+      }
+      actionButton={
+        <OverlayHeaderActionButton
+          progress={headerActionProgress}
+          onPress={onClose}
+          accessibilityLabel="Close save sheet"
+          accentColor={ACTIVE_TAB_COLOR}
+          closeColor="#000000"
+        />
+      }
+    />
+  );
+});
+
+SaveListMountedSceneHeader.displayName = 'SaveListMountedSceneHeader';
+
+const chunkFavoriteLists = (
+  lists: readonly FavoriteListSummary[]
+): readonly (readonly FavoriteListSummary[])[] => {
+  const rows: FavoriteListSummary[][] = [];
+  for (let index = 0; index < lists.length; index += 2) {
+    rows.push(lists.slice(index, index + 2));
+  }
+  return rows;
+};
+
+type SaveListTileProps = {
+  item: FavoriteListSummary;
+  onPress: (listId: string) => void;
+};
+
+const SaveListTile = React.memo(({ item, onPress }: SaveListTileProps) => (
+  <Pressable
+    onPress={() => void onPress(item.listId)}
+    style={({ pressed }) => [styles.tileWrapper, pressed && styles.tilePressed]}
+  >
+    <View style={styles.tile}>
+      <View style={styles.tileContent}>
+        {item.previewItems.length > 0 ? (
+          item.previewItems.map((previewItem) => (
+            <View key={previewItem.itemId} style={styles.previewRow}>
+              <View
+                style={[
+                  styles.previewDot,
+                  { backgroundColor: resolveRankColor(previewItem.score) },
+                ]}
+              />
+              <Text variant="caption" numberOfLines={1} style={styles.previewText}>
+                {previewItem.label}
+                {previewItem.subLabel ? ` • ${previewItem.subLabel}` : ''}
+              </Text>
+            </View>
+          ))
+        ) : (
+          <Text variant="caption" style={styles.previewEmpty}>
+            Empty list
+          </Text>
+        )}
+      </View>
+    </View>
+    <View style={styles.tileFooter}>
+      <Text variant="body" weight="semibold" style={styles.tileTitle} numberOfLines={1}>
+        {item.name}
+      </Text>
+    </View>
+  </Pressable>
+));
+
+SaveListTile.displayName = 'SaveListTile';
+
+export const SaveListMountedSceneBody = React.memo(() => {
+  const { shouldRunDataLane } = useBottomSheetSceneStackBodyDataActivity();
   const queryClient = useQueryClient();
+  const routeSceneRuntime = useAppRouteSceneRuntime();
+  const saveSheetState = useRouteAuthoritySelector({
+    subscribe: routeSceneRuntime.routeOverlayCommandAuthority.subscribe,
+    getSnapshot: routeSceneRuntime.routeOverlayCommandAuthority.getSnapshot,
+    selector: selectSaveSheetState,
+  });
+  const { setSaveSheetState } = routeSceneRuntime.routeOverlayCommandActions;
   const [formState, setFormState] = React.useState<ListFormState>({
     mode: 'hidden',
     name: '',
     description: '',
     visibility: 'private',
   });
-  const listsQuery = useFavoriteLists({ listType, enabled: visible });
+  const listType = saveSheetState.listType;
+  const target = saveSheetState.target;
+  const queryEnabled = useDeferredSceneDataLane(shouldRunDataLane);
+  const listsQuery = useFavoriteLists({
+    listType,
+    enabled: queryEnabled,
+    subscribed: queryEnabled,
+  });
   const lists = listsQuery.data ?? [];
+  const listRows = React.useMemo(() => chunkFavoriteLists(lists), [lists]);
 
-  const headerPaddingTop = 0;
-  const headerActionProgress = useSharedValue(0);
-  const contentBottomPadding = Math.max(insets.bottom + 48, 72);
-  const snapPoints = React.useMemo<SnapPoints>(() => {
-    const expanded = resolveExpandedTop(searchBarTop, insets.top);
-    const middle = Math.max(expanded + 140, SCREEN_HEIGHT * 0.5);
-    const collapsed = SCREEN_HEIGHT * 0.72;
-    const hidden = SCREEN_HEIGHT + 80;
-    return {
-      expanded,
-      middle,
-      collapsed,
-      hidden,
-    };
-  }, [insets.top, searchBarTop]);
+  const onClose = React.useCallback(() => {
+    setSaveSheetState((prev) => ({ ...prev, visible: false, target: null }));
+  }, [setSaveSheetState]);
 
   const resetForm = React.useCallback(() => {
     setFormState({
@@ -151,49 +243,9 @@ export const useSaveListPanelSpec = ({
     [onClose, queryClient, target]
   );
 
-  const renderPreviewRow = React.useCallback(
-    (item: FavoriteListSummary['previewItems'][number]) => (
-      <View key={item.itemId} style={styles.previewRow}>
-        <View style={[styles.previewDot, { backgroundColor: resolveRankColor(item.score) }]} />
-        <Text variant="caption" numberOfLines={1} style={styles.previewText}>
-          {item.label}
-          {item.subLabel ? ` • ${item.subLabel}` : ''}
-        </Text>
-      </View>
-    ),
-    []
-  );
-
-  const renderListTile = React.useCallback(
-    ({ item }: { item: FavoriteListSummary }) => (
-      <Pressable
-        onPress={() => void handlePickList(item.listId)}
-        style={({ pressed }) => [styles.tileWrapper, pressed && styles.tilePressed]}
-      >
-        <View style={styles.tile}>
-          <View style={styles.tileContent}>
-            {item.previewItems.length > 0 ? (
-              item.previewItems.map(renderPreviewRow)
-            ) : (
-              <Text variant="caption" style={styles.previewEmpty}>
-                Empty list
-              </Text>
-            )}
-          </View>
-        </View>
-        <View style={styles.tileFooter}>
-          <Text variant="body" weight="semibold" style={styles.tileTitle} numberOfLines={1}>
-            {item.name}
-          </Text>
-        </View>
-      </Pressable>
-    ),
-    [handlePickList, renderPreviewRow]
-  );
-
-  const renderFormPanel = React.useCallback(() => {
-    if (formState.mode === 'hidden') {
-      return (
+  return (
+    <View style={styles.sceneBody}>
+      {formState.mode === 'hidden' ? (
         <Pressable onPress={handleOpenCreateForm} style={styles.newListCard}>
           <View style={styles.newListIcon}>
             <Feather name="plus" size={20} color={TILE_SUBTEXT} />
@@ -202,172 +254,101 @@ export const useSaveListPanelSpec = ({
             New list
           </Text>
         </Pressable>
-      );
-    }
-
-    return (
-      <View style={styles.formPanel}>
-        <Text variant="subtitle" weight="semibold" style={styles.formTitle}>
-          Create list
-        </Text>
-        <TextInput
-          value={formState.name}
-          onChangeText={handleNameChange}
-          placeholder="List name"
-          placeholderTextColor={FORM_PLACEHOLDER}
-          style={styles.formInput}
-        />
-        <TextInput
-          value={formState.description}
-          onChangeText={handleDescriptionChange}
-          placeholder="Description (optional)"
-          placeholderTextColor={FORM_PLACEHOLDER}
-          style={[styles.formInput, styles.formInputMultiline]}
-          multiline
-        />
-        <View style={styles.visibilityRow}>
-          <Text variant="caption" style={styles.visibilityLabel}>
-            Visibility
+      ) : (
+        <View style={styles.formPanel}>
+          <Text variant="subtitle" weight="semibold" style={styles.formTitle}>
+            Create list
           </Text>
-          <View style={styles.visibilityToggle}>
-            {(['private', 'public'] as FavoriteListVisibility[]).map((value) => {
-              const isActive = formState.visibility === value;
-              return (
-                <Pressable
-                  key={value}
-                  onPress={() => handleVisibilityChange(value)}
-                  style={[styles.visibilityOption, isActive && styles.visibilityOptionActive]}
-                >
-                  <Text
-                    variant="caption"
-                    weight="semibold"
-                    style={[
-                      styles.visibilityOptionText,
-                      isActive && styles.visibilityOptionTextActive,
-                    ]}
-                  >
-                    {value === 'private' ? 'Private' : 'Public'}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-        <View style={styles.formActions}>
-          <Pressable onPress={resetForm} style={styles.formCancel}>
-            <Text variant="caption" weight="semibold" style={styles.formCancelText}>
-              Cancel
-            </Text>
-          </Pressable>
-          <Pressable onPress={() => void handleCreateList()} style={styles.formSave}>
-            <Text variant="caption" weight="semibold" style={styles.formSaveText}>
-              Save
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    );
-  }, [
-    formState.description,
-    formState.mode,
-    formState.name,
-    formState.visibility,
-    handleCreateList,
-    handleDescriptionChange,
-    handleNameChange,
-    handleOpenCreateForm,
-    handleVisibilityChange,
-    resetForm,
-  ]);
-
-  const headerComponent = React.useMemo(
-    () => (
-      <OverlaySheetHeaderChrome
-        onGrabHandlePress={onClose}
-        grabHandleAccessibilityLabel="Close save sheet"
-        paddingTop={headerPaddingTop}
-        title={
-          <View style={styles.headerTextGroup}>
-            <Text
-              variant="title"
-              weight="semibold"
-              style={styles.headerTitle}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              Save to {listType === 'restaurant' ? 'Restaurants' : 'Dishes'}
-            </Text>
-          </View>
-        }
-        actionButton={
-          <OverlayHeaderActionButton
-            progress={headerActionProgress}
-            onPress={onClose}
-            accessibilityLabel="Close save sheet"
-            accentColor={ACTIVE_TAB_COLOR}
-            closeColor="#000000"
+          <TextInput
+            value={formState.name}
+            onChangeText={handleNameChange}
+            placeholder="List name"
+            placeholderTextColor={FORM_PLACEHOLDER}
+            style={styles.formInput}
           />
-        }
-      />
-    ),
-    [headerActionProgress, headerPaddingTop, listType, onClose]
+          <TextInput
+            value={formState.description}
+            onChangeText={handleDescriptionChange}
+            placeholder="Description (optional)"
+            placeholderTextColor={FORM_PLACEHOLDER}
+            style={[styles.formInput, styles.formInputMultiline]}
+            multiline
+          />
+          <View style={styles.visibilityRow}>
+            <Text variant="caption" style={styles.visibilityLabel}>
+              Visibility
+            </Text>
+            <View style={styles.visibilityToggle}>
+              {(['private', 'public'] as FavoriteListVisibility[]).map((value) => {
+                const isSelected = formState.visibility === value;
+                return (
+                  <Pressable
+                    key={value}
+                    onPress={() => handleVisibilityChange(value)}
+                    style={[styles.visibilityOption, isSelected && styles.visibilityOptionActive]}
+                  >
+                    <Text
+                      variant="caption"
+                      weight="semibold"
+                      style={[
+                        styles.visibilityOptionText,
+                        isSelected && styles.visibilityOptionTextActive,
+                      ]}
+                    >
+                      {value === 'private' ? 'Private' : 'Public'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+          <View style={styles.formActions}>
+            <Pressable onPress={resetForm} style={styles.formCancel}>
+              <Text variant="caption" weight="semibold" style={styles.formCancelText}>
+                Cancel
+              </Text>
+            </Pressable>
+            <Pressable onPress={() => void handleCreateList()} style={styles.formSave}>
+              <Text variant="caption" weight="semibold" style={styles.formSaveText}>
+                Save
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+      {lists.length ? (
+        <View style={styles.gridList}>
+          {listRows.map((row, rowIndex) => (
+            <View key={`row-${rowIndex}`} style={styles.gridRow}>
+              {row.map((item) => (
+                <View key={item.listId} style={styles.gridCell}>
+                  <SaveListTile item={item} onPress={handlePickList} />
+                </View>
+              ))}
+              {row.length === 1 ? <View style={styles.gridCell} /> : null}
+            </View>
+          ))}
+        </View>
+      ) : (
+        <View style={styles.emptyState}>
+          <Text variant="body" style={styles.emptyText}>
+            No lists yet
+          </Text>
+        </View>
+      )}
+    </View>
   );
+});
 
-  const contentContainerStyle = React.useMemo(
-    () => [
-      styles.scrollContent,
-      {
-        paddingBottom: contentBottomPadding,
-      },
-    ],
-    [contentBottomPadding]
-  );
-
-  const listEmptyComponent = React.useMemo(
-    () => (
-      <View style={styles.emptyState}>
-        <Text variant="body" style={styles.emptyText}>
-          No lists yet
-        </Text>
-      </View>
-    ),
-    []
-  );
-
-  const resolvedFlashListProps = React.useMemo(
-    () => ({
-      numColumns: 2,
-      columnWrapperStyle: styles.columnWrapper,
-    }),
-    []
-  );
-
-  return {
-    overlayKey: 'saveList',
-    surfaceKind: 'list',
-    snapPoints,
-    initialSnapPoint: 'expanded',
-    data: lists,
-    renderItem: renderListTile,
-    keyExtractor: (item) => item.listId,
-    estimatedItemSize: 200,
-    contentContainerStyle,
-    ListHeaderComponent: renderFormPanel,
-    ListEmptyComponent: listEmptyComponent,
-    backgroundComponent: <FrostedGlassBackground />,
-    headerComponent,
-    style: overlaySheetStyles.container,
-    onHidden: onClose,
-    onSnapChange,
-    keyboardShouldPersistTaps: 'handled',
-    flashListProps: resolvedFlashListProps,
-  };
-};
+SaveListMountedSceneBody.displayName = 'SaveListMountedSceneBody';
 
 const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
     paddingTop: 12,
+  },
+  sceneBody: {
+    gap: GRID_GAP,
   },
   headerTextGroup: {
     flex: 1,
@@ -378,6 +359,16 @@ const styles = StyleSheet.create({
   },
   columnWrapper: {
     gap: GRID_GAP,
+  },
+  gridList: {
+    gap: GRID_GAP,
+  },
+  gridRow: {
+    flexDirection: 'row',
+    gap: GRID_GAP,
+  },
+  gridCell: {
+    flex: 1,
   },
   tileWrapper: {
     flex: 1,

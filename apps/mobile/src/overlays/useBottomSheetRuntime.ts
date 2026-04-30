@@ -16,7 +16,12 @@ type BottomSheetPresentationState = {
 
 type BottomSheetSnapController = {
   motionCommand: SharedValue<BottomSheetMotionCommand | null>;
-  requestSnap: (snapTo: BottomSheetSnap, velocity?: number, requestToken?: number | null) => void;
+  requestSnap: (
+    snapTo: BottomSheetSnap,
+    velocity?: number,
+    requestToken?: number | null,
+    settleToken?: number | null
+  ) => void;
   clearCommand: () => void;
 };
 
@@ -32,7 +37,12 @@ export type BottomSheetRuntimeModel = {
   };
   snapController: {
     motionCommand: SharedValue<BottomSheetMotionCommand | null>;
-    requestSnap: (snapTo: BottomSheetSnap, velocity?: number, requestToken?: number | null) => void;
+    requestSnap: (
+      snapTo: BottomSheetSnap,
+      velocity?: number,
+      requestToken?: number | null,
+      settleToken?: number | null
+    ) => void;
     clearCommand: () => void;
   };
 };
@@ -88,11 +98,17 @@ const useBottomSheetSnapController = ({
   const motionCommandTokenRef = React.useRef(0);
 
   const requestSnap = React.useCallback(
-    (snapTo: BottomSheetSnap, velocity?: number, requestToken?: number | null) => {
+    (
+      snapTo: BottomSheetSnap,
+      velocity?: number,
+      requestToken?: number | null,
+      settleToken?: number | null
+    ) => {
       motionCommandTokenRef.current = requestToken ?? motionCommandTokenRef.current + 1;
       motionCommand.value = {
         snapTo,
         token: motionCommandTokenRef.current,
+        settleToken: settleToken ?? null,
         velocity,
       };
     },

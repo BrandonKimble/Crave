@@ -1,5 +1,5 @@
 import type { ProfileCloseState, ProfileControllerState } from './profile-runtime-state-record';
-import { resetProfileTransitionState } from './profile-transition-state-mutations';
+import { resetProfileTransitionState } from '../../../../navigation/runtime/app-route-profile-transition-state-mutations';
 
 export const finalizePreparedProfileCloseRecord = ({
   controllerState,

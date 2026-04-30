@@ -4,7 +4,7 @@ import type {
   ProfileTransitionSnapshotCapture,
   ProfileTransitionStatus,
   RestaurantFocusSession,
-} from './profile-transition-state-contract';
+} from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 
 export type SearchProfileSource =
   | 'results_sheet'

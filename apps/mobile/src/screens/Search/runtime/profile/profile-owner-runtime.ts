@@ -48,6 +48,7 @@ export type {
 } from './profile-owner-runtime-contract';
 
 export const useProfileOwner = ({
+  routeSceneRuntime,
   searchContext,
   cameraTransitionPorts,
   selectionModel,
@@ -65,6 +66,7 @@ export const useProfileOwner = ({
     appExecutionRuntime: profileAppExecutionRuntime,
     preparedPresentationRuntime,
   } = useProfileOwnerExecutionModelsRuntime({
+    routeSceneRuntime,
     searchRuntimeBus,
     runtimeStateOwner,
     nativeExecutionArgs,

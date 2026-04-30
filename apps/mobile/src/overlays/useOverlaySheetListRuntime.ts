@@ -1,7 +1,10 @@
 import React from 'react';
 import type { FlashListRef } from '@shopify/flash-list';
 
-import { useOverlayStore } from '../store/overlayStore';
+import {
+  getOverlayScrollOffset,
+  setOverlayScrollOffset,
+} from './overlayScrollOffsetRuntime';
 import { isOverlayListContentSpec } from './types';
 import type {
   OverlaySheetListRuntime,
@@ -14,7 +17,6 @@ export const useOverlaySheetListRuntime = ({
   sceneIdentityKey,
   scrollOffset,
 }: OverlaySheetListRuntimeArgs): OverlaySheetListRuntime => {
-  const setOverlayScrollOffset = useOverlayStore((state) => state.setOverlayScrollOffset);
   const isListBackedSpec = isOverlayListContentSpec(spec);
   const internalListRef = React.useRef<FlashListRef<unknown> | null>(null);
   const resolvedListRef = isListBackedSpec && spec.listRef ? spec.listRef : internalListRef;
@@ -42,7 +44,7 @@ export const useOverlaySheetListRuntime = ({
     }
     lastSceneIdentityRef.current = sceneIdentityKey;
 
-    const storedOffset = useOverlayStore.getState().overlayScrollOffsets[sceneIdentityKey] ?? 0;
+    const storedOffset = getOverlayScrollOffset(sceneIdentityKey);
     const nextOffset = Math.max(0, storedOffset);
 
     const applyOffset = () => {

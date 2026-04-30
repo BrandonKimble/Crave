@@ -11,29 +11,29 @@ const SEARCH_SHORTCUT_BASE_ELEVATION = Number(SEARCH_SHORTCUT_SHADOW.elevation ?
 
 type UseSearchForegroundShortcutsVisualRuntimeArgs = Pick<
   UseSearchForegroundVisualRuntimeArgs,
-  | 'shouldDisableSearchShortcuts'
-  | 'shouldRenderSearchOverlay'
-  | 'headerShortcutsVisibleTarget'
-  | 'headerShortcutsInteractive'
-  | 'isSearchOverlay'
   | 'isSuggestionPanelActive'
   | 'isSuggestionOverlayVisible'
   | 'backdropTarget'
   | 'suggestionProgress'
   | 'searchChromeScale'
+  | 'shouldDisableSearchShortcuts'
+  | 'shouldRenderSearchOverlay'
+  | 'headerShortcutsVisibleTarget'
+  | 'headerShortcutsInteractive'
+  | 'isSearchOverlay'
 >;
 
 export const useSearchForegroundShortcutsVisualRuntime = ({
-  shouldDisableSearchShortcuts,
-  shouldRenderSearchOverlay,
-  headerShortcutsVisibleTarget,
-  headerShortcutsInteractive,
-  isSearchOverlay,
   isSuggestionPanelActive,
   isSuggestionOverlayVisible,
   backdropTarget,
   suggestionProgress,
   searchChromeScale,
+  shouldDisableSearchShortcuts,
+  shouldRenderSearchOverlay,
+  headerShortcutsVisibleTarget,
+  headerShortcutsInteractive,
+  isSearchOverlay,
 }: UseSearchForegroundShortcutsVisualRuntimeArgs): SearchForegroundShortcutsVisualRuntime => {
   const shouldShowSearchShortcutsTarget =
     !shouldDisableSearchShortcuts &&
@@ -48,6 +48,8 @@ export const useSearchForegroundShortcutsVisualRuntime = ({
     backdropTarget === 'results';
   const shouldMountSearchShortcuts =
     shouldShowSearchShortcutsTarget || shouldKeepSearchShortcutsMountedForResultsExit;
+  const shouldEnableSearchShortcutsInteraction =
+    shouldMountSearchShortcuts && shouldEnableSearchShortcutsInteractionTarget;
   const searchShortcutChipAnimatedStyle = useAnimatedStyle(() => {
     const isShortcutExitingToResults =
       isSuggestionOverlayVisible && !isSuggestionPanelActive && backdropTarget === 'results';
@@ -74,8 +76,7 @@ export const useSearchForegroundShortcutsVisualRuntime = ({
 
   return {
     shouldMountSearchShortcuts,
-    shouldEnableSearchShortcutsInteraction:
-      shouldMountSearchShortcuts && shouldEnableSearchShortcutsInteractionTarget,
+    shouldEnableSearchShortcutsInteraction,
     searchShortcutChipAnimatedStyle,
     searchShortcutsAnimatedStyle,
   };

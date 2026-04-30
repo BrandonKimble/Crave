@@ -22,10 +22,10 @@ import Reanimated, {
 import { RootNavigator } from './src/navigation';
 import { AuthProvider } from './src/providers/AuthProvider';
 import { AppRouteCoordinator } from './src/navigation/runtime/AppRouteCoordinator';
+import { AppRouteSceneRuntimeProvider } from './src/navigation/runtime/AppRouteSceneRuntimeProvider';
 import { MainLaunchCoordinator } from './src/navigation/runtime/MainLaunchCoordinator';
 import NetworkStatusListener from './src/providers/NetworkStatusListener';
 import PollNotificationListener from './src/providers/PollNotificationListener';
-import { navigationRef } from './src/navigation/navigationRef';
 import SystemStatusBanner from './src/components/SystemStatusBanner';
 import { PerfHarnessCoordinator } from './src/perf/PerfHarnessCoordinator';
 import { useSystemStatusStore } from './src/store/systemStatusStore';
@@ -75,7 +75,6 @@ export default function App() {
     borderTopLeftRadius: OVERLAY_CORNER_RADIUS * bannerProgress.value,
     borderTopRightRadius: OVERLAY_CORNER_RADIUS * bannerProgress.value,
   }));
-
   return (
     <QueryClientProvider client={queryClient}>
       <GestureHandlerRootView style={styles.gestureRoot}>
@@ -86,13 +85,15 @@ export default function App() {
             <AuthProvider>
               <AppRouteCoordinator>
                 <MainLaunchCoordinator>
-                  <PollNotificationListener />
-                  <SystemStatusBanner />
-                  <Reanimated.View style={[styles.contentSurface, contentAnimatedStyle]}>
-                    <NavigationContainer ref={navigationRef}>
-                      <RootNavigator />
-                    </NavigationContainer>
-                  </Reanimated.View>
+                  <AppRouteSceneRuntimeProvider>
+                    <PollNotificationListener />
+                    <SystemStatusBanner />
+                    <Reanimated.View style={[styles.contentSurface, contentAnimatedStyle]}>
+                      <NavigationContainer>
+                        <RootNavigator />
+                      </NavigationContainer>
+                    </Reanimated.View>
+                  </AppRouteSceneRuntimeProvider>
                 </MainLaunchCoordinator>
               </AppRouteCoordinator>
             </AuthProvider>

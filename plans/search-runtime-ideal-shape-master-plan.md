@@ -1,8 +1,12 @@
 # Search Runtime Ideal-Shape Master Plan
 
-Last updated: 2026-04-09
+Last updated: 2026-04-21
 Status: active master plan
-Rough doneness: ~86%
+Rough doneness:
+
+- architectural pressure relief / ownership narrowing: ~85%
+- authoritative scene-switch and motion cutover: ~25%
+- overall path to target end state: ~68%
 Scope:
 
 - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/**`
@@ -23,6 +27,12 @@ Related plans:
 - `/Users/brandonkimble/crave-search/plans/map-motion-pressure-cutover-plan.md`
 - `/Users/brandonkimble/crave-search/plans/search-label-observation-native-cutover-plan.md`
 - `/Users/brandonkimble/crave-search/plans/global-overlay-route-runtime-cutover-plan.md`
+
+Critical correction:
+
+- Pressure relief alone is not the finish line.
+- The narrowed root/control/render ownership only pays off if the remaining React-owned host-model and switch-time derivation path is fully replaced by an authoritative scene-switch runtime.
+- The plan must therefore force a final cutover program for scene-switch authority, motion-plane execution, and frozen-path containment. Stopping after contract cleanup will not reliably deliver smooth surge close or smooth overlay switches.
 
 Current profile prepared-runtime note:
 
@@ -50,6 +60,137 @@ Get the Search runtime to the best long-term architecture:
 - transaction ownership is explicit
 - motion pressure is runtime-owned and transaction-aware
 - no long-lived compatibility projection or split-owner hot path remains
+
+Hard end-state requirements:
+
+- `use-search-root-runtime.ts` becomes composition-only assembly instead of remaining a switch-time logic owner
+- the root publishes only:
+  - active scene key
+  - active transition phase
+  - global chrome model
+  - map viewport intent
+- scene switch intent enters one authoritative state machine outside the React derivation path
+- native/Reanimated executes sheet/camera motion after JS dispatches a transition contract
+- frozen render / frozen sheet behavior is limited to explicit close-handoff or recovery paths, not normal overlay switches
+
+## Mandatory Finish Program
+
+The remaining work must now be sequenced as a required finish program, not as optional cleanup.
+
+### Program 1: Authoritative Scene-Switch Cutover
+
+Goal:
+
+- Replace the remaining React-owned overlay/scene interpretation path with one authoritative scene-switch runtime.
+
+Must deliver:
+
+- one scene-switch authority that owns:
+  - active scene key
+  - pending target scene key
+  - transition phase
+  - transition token
+  - settle / interactive gate
+- persistent scene-shell ownership for search, polls, bookmarks, and profile
+- a root shell publication surface that no longer derives large merged host models on every switch
+
+Delete gates:
+
+- delete or bypass the old host-model derivation path centered on `useResolvedSearchRouteHostModel.ts`
+- delete or bypass parallel switch-time interpretation that recomputes route/spec/sheet/header state in React during the same switch
+- no inactive scene should require host-model recomputation to stay mounted but hidden
+
+Exit criteria:
+
+- scene switches are driven by the authoritative state machine, not chained host-model derivation
+- root render path subscribes to small scene summaries, not multi-surface route bags
+- route/scene identity churn is no longer a normal switch-path pattern in profiling
+
+### Program 2: Motion Plane Cutover
+
+Goal:
+
+- Make the state machine emit a stable transition contract that native/Reanimated executes with minimal JS mid-flight involvement.
+
+Must deliver:
+
+- transition contract with:
+  - scene key
+  - snap target
+  - camera intent
+  - chrome visibility target
+  - settle callback token
+- native/Reanimated ownership of sheet/camera choreography after intent dispatch
+- explicit settle signaling that re-enables scene interactivity only after motion completion
+
+Delete gates:
+
+- remove JS-driven mid-flight sheet/camera choreography from the normal switch path
+- remove any remaining requirement that React commits stay in lockstep with animation progress
+
+Exit criteria:
+
+- switch path is `intent -> state machine -> transition contract -> native motion -> settle signal`
+- JS stalls may delay intent dispatch but do not materially degrade in-flight animation smoothness
+
+### Program 3: Frozen-Path Containment
+
+Goal:
+
+- Keep freeze behavior only where it is still a true close-handoff or recovery requirement.
+
+Must deliver:
+
+- explicit classification of every remaining frozen/freeze path as one of:
+  - close handoff
+  - recovery / mismatch containment
+  - dead legacy guard
+- removal of frozen render/frozen sheet behavior from the normal overlay-switch hot path
+
+Delete gates:
+
+- delete `useSearchRouteFrozenOverlayRenderModel.ts` if it is no longer needed
+- if it must temporarily remain, it must be provably off the normal switch path and scoped to close-handoff or recovery only
+
+Exit criteria:
+
+- frozen render is not part of standard scene switches
+- standard overlay switches do not depend on retaining stale host models to stay smooth
+
+### Program 4: Smoothness Validation Gates
+
+Goal:
+
+- Prevent the plan from claiming success based only on architecture cleanup.
+
+Must prove:
+
+- smooth surge close
+- smooth overlay switches
+- reduced cold/hot variance on first interaction vs later switches
+- reduced host-wide React churn during scene changes
+
+Required validation:
+
+- profile overlay switch and close flow after the state-machine and motion cutover
+- verify lower commit count on the switch path
+- verify lower `SearchRouteOverlayHost` update churn
+- verify reduced scene-definition churn
+- verify native/UI-thread motion remains smooth under moderate JS pressure
+
+The master plan is not complete when the contracts are cleaner; it is complete when these validation gates pass.
+
+## Immediate Execution Order
+
+This is the enforced order from the current state of the codebase:
+
+1. Finish deleting mixed publication/controller payloads on the live overlay host path.
+2. Start Program 1 immediately by extracting the remaining switch-time route/spec/header/sheet interpretation out of the old host-model path.
+3. Cut the authoritative scene-switch runtime in parallel with shrinking `use-search-root-runtime.ts` to assembly-only composition.
+4. Route sheet/camera/chrome motion through the transition contract so Program 2 can land without another compatibility layer.
+5. Remove or quarantine frozen-render behavior before declaring switch smoothness complete.
+
+Do not keep taking only lower-level ownership-cleanup slices once step 1 is sufficiently complete. After that point, the highest-value work is the state-machine and motion-plane cutover.
 
 ## Current Reality
 

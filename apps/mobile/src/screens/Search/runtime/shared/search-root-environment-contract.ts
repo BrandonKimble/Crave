@@ -1,6 +1,11 @@
+import type { SearchMapWithMarkerEngineProps } from '../../components/SearchMapWithMarkerEngine';
 import type useSearchSubmitOwner from '../../hooks/use-search-submit-owner';
-import type { SearchRootMapArgs } from './search-root-render-runtime-contract';
-import { useSearchForegroundInteractionRuntime } from './use-search-foreground-interaction-runtime';
+import type {
+  SearchForegroundLaunchIntentRuntimeArgs,
+  SearchForegroundOverlayRuntimeArgs,
+} from './use-search-foreground-interaction-runtime-contract';
+import type { UsePollsPanelSpecOptions } from '../../../../overlays/panels/runtime/polls-panel-runtime-contract';
+import type { UseSearchRootSessionRuntimeArgs } from './use-search-root-session-runtime-contract';
 
 export type SearchRootInsets = {
   top: number;
@@ -12,27 +17,16 @@ export type SearchRootInsets = {
 export type SearchRootEnvironment = {
   insets: SearchRootInsets;
   isSignedIn: boolean;
-  accessToken: SearchRootMapArgs['accessToken'];
-  startupLocationSnapshot: SearchRootMapArgs['userLocationSnapshot'];
-  startupPollsSnapshot: Parameters<
-    typeof import('./use-search-route-panel-publication-runtime').useSearchRoutePanelPublicationRuntime
-  >[0]['startupPollsSnapshot'];
-  userLocation: SearchRootMapArgs['userLocation'];
+  accessToken: string | null | undefined;
+  startupLocationSnapshot: SearchMapWithMarkerEngineProps['userLocationSnapshot'];
+  startupPollsSnapshot: UsePollsPanelSpecOptions['bootstrapSnapshot'];
+  userLocation: SearchMapWithMarkerEngineProps['userLocation'];
   userLocationRef: Parameters<typeof useSearchSubmitOwner>[0]['runtimePorts']['userLocationRef'];
-  activeMainIntent: Parameters<typeof useSearchForegroundInteractionRuntime>[0]['activeMainIntent'];
-  consumeActiveMainIntent: Parameters<
-    typeof useSearchForegroundInteractionRuntime
-  >[0]['consumeActiveMainIntent'];
-  navigation: Parameters<typeof useSearchForegroundInteractionRuntime>[0]['navigation'];
-  routeSearchIntent: Parameters<
-    typeof useSearchForegroundInteractionRuntime
-  >[0]['routeSearchIntent'];
+  activeMainIntent: SearchForegroundLaunchIntentRuntimeArgs['activeMainIntent'];
+  consumeActiveMainIntent: SearchForegroundLaunchIntentRuntimeArgs['consumeActiveMainIntent'];
+  navigation: SearchForegroundLaunchIntentRuntimeArgs['navigation'];
+  routeSearchIntent: SearchForegroundOverlayRuntimeArgs['routeSearchIntent'];
 };
-
-export type SearchRootProfileEnvironment = Pick<
-  SearchRootEnvironment,
-  'insets' | 'isSignedIn' | 'userLocation' | 'userLocationRef'
->;
 
 export type SearchRootRenderEnvironment = Pick<
   SearchRootEnvironment,
@@ -48,3 +42,11 @@ export type SearchRootOverlayPublicationEnvironment = Pick<
   SearchRootRenderEnvironment,
   'startupPollsSnapshot'
 >;
+
+export type SearchRootBootstrapEnvironment = {
+  isSearchScreenFocused: boolean;
+  startupPollBounds: UseSearchRootSessionRuntimeArgs['startupPollBounds'];
+  startupCamera: UseSearchRootSessionRuntimeArgs['startupCamera'];
+  markMainMapLoaded: UseSearchRootSessionRuntimeArgs['markMainMapLoaded'];
+  markMainMapReady: UseSearchRootSessionRuntimeArgs['markMainMapReady'];
+};

@@ -1,7 +1,7 @@
 import type { Coordinate, RestaurantResult } from '../../../../types';
 import type { ProfileOpenActionModel, SearchProfileSource } from './profile-action-model-contract';
 import type { ProfileActionExecutionPorts } from './profile-action-runtime-port-contract';
-import type { ProfileTransitionSnapshotCapture } from './profile-transition-state-contract';
+import type { ProfileTransitionSnapshotCapture } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import {
   resolveProfileOpenPresentationPlan,
   type ProfileOpenPresentationPlan,
@@ -44,7 +44,9 @@ export const executeProfileOpenPresentationPlan = ({
     'opening'
   );
   ports.capturePreviousForegroundUiRestoreStateIfAbsent(savedForegroundUiState);
-  ports.seedRestaurantProfile(restaurant, queryLabel);
+  ports.seedRestaurantProfile(restaurant, queryLabel, {
+    selectedLocationId: plan.selectedLocationId,
+  });
   ports.hydrateRestaurantProfileById(restaurant.restaurantId, restaurant.marketKey ?? null);
   if (plan.shouldTrackRestaurantView) {
     ports.deferRecentlyViewedTrack(restaurant.restaurantId, restaurant.restaurantName);

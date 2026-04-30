@@ -28,8 +28,10 @@ import { OVERLAY_HORIZONTAL_PADDING, overlaySheetStyles } from '../overlaySheetS
 import { resolveExpandedTop } from '../sheetUtils';
 import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
 import type { SnapPoints } from '../bottomSheetMotionTypes';
-import type { OverlayContentSpec, OverlaySheetSnap, OverlaySheetSnapRequest } from '../types';
 import type { MapBounds } from '../../types';
+import type { SearchRoutePublishedSceneParts } from '../searchOverlayRouteHostContract';
+import { normalizeSearchRouteSceneStackShellSpec } from '../searchOverlayRouteHostContract';
+import type { SearchRouteSceneShellMotionContract } from '../searchRouteSceneShellMotionContract';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -44,11 +46,9 @@ type UsePollCreationPanelSpecOptions = {
   bounds?: MapBounds | null;
   searchBarTop?: number;
   snapPoints?: SnapPoints;
-  shellSnapRequest?: OverlaySheetSnapRequest | null;
   onClose: () => void;
   onCreated: (poll: Poll) => void;
-  onSnapChange?: (snap: OverlaySheetSnap) => void;
-};
+} & Pick<SearchRouteSceneShellMotionContract, 'onSnapChange'>;
 
 type TemplateOption = {
   type: PollTopicType;
@@ -182,11 +182,10 @@ export const usePollCreationPanelSpec = ({
   bounds,
   searchBarTop = 0,
   snapPoints: snapPointsOverride,
-  shellSnapRequest,
   onClose,
   onCreated,
   onSnapChange,
-}: UsePollCreationPanelSpecOptions): OverlayContentSpec<unknown> => {
+}: UsePollCreationPanelSpecOptions): SearchRoutePublishedSceneParts => {
   const insets = useSafeAreaInsets();
   const [selectedType, setSelectedType] = useState<PollTopicType | null>(null);
   const [description, setDescription] = useState('');
@@ -560,30 +559,39 @@ export const usePollCreationPanelSpec = ({
   );
 
   return {
-    overlayKey: 'pollCreation',
-    surfaceKind: 'list',
-    snapPoints,
-    initialSnapPoint: 'expanded',
-    shellSnapRequest,
-    preventSwipeDismiss: true,
-    data: [],
-    renderItem: () => null,
-    estimatedItemSize: 880,
-    onSnapChange: (snap) => onSnapChange?.(snap),
-    contentContainerStyle: {
-      paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-      paddingTop: 16,
-      paddingBottom: contentBottomPadding,
+    shellSpec: normalizeSearchRouteSceneStackShellSpec({
+      overlayKey: 'pollCreation',
+      snapPoints,
+      initialSnapPoint: 'expanded',
+      preventSwipeDismiss: true,
+      style: overlaySheetStyles.container,
+      onHidden: onClose,
+      onSnapChange: (snap) => onSnapChange?.(snap),
+    }),
+    sceneChrome: {
+      underlayComponent: null,
+      backgroundComponent: <FrostedGlassBackground />,
+      headerComponent,
+      overlayComponent: null,
     },
-    ListHeaderComponent: listHeaderComponent,
-    keyboardShouldPersistTaps: 'handled',
-    bounces: false,
-    alwaysBounceVertical: false,
-    overScrollMode: 'never',
-    backgroundComponent: <FrostedGlassBackground />,
-    headerComponent,
-    style: overlaySheetStyles.container,
-    onHidden: onClose,
+    sceneBodyContent: {
+      surfaceKind: 'list',
+      data: [],
+      renderItem: () => null,
+      estimatedItemSize: 880,
+      ListHeaderComponent: listHeaderComponent,
+    },
+    sceneBodyTransport: {
+      contentContainerStyle: {
+        paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
+        paddingTop: 16,
+        paddingBottom: contentBottomPadding,
+      },
+      keyboardShouldPersistTaps: 'handled',
+      bounces: false,
+      alwaysBounceVertical: false,
+      overScrollMode: 'never',
+    },
   };
 };
 

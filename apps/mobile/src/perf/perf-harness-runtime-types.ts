@@ -2,9 +2,10 @@ export type PerfHarnessScenario =
   | 'none'
   | 'search_shortcut_loop'
   | 'search_shortcut_loop_open_now_roundtrip'
+  | 'search_shortcut_submit_close_loop'
   | 'search_nav_switch_loop';
 
-export type PerfNavSwitchOverlay = 'search' | 'bookmarks' | 'profile';
+export type PerfNavSwitchOverlay = 'search' | 'bookmarks' | 'profile' | 'polls';
 
 export type PerfNavSwitchLoopConfig = {
   sequence: PerfNavSwitchOverlay[];
@@ -18,6 +19,14 @@ export type PerfJsFrameSamplerConfig = {
   windowMs: number;
   stallFrameMs: number;
   logOnlyBelowFps: number;
+};
+
+export type PerfJsTaskLatencySamplerConfig = {
+  enabled: boolean;
+  windowMs: number;
+  sampleIntervalMs: number;
+  stallLagMs: number;
+  logOnlyAboveLagMs: number;
 };
 
 export type PerfUiFrameSamplerConfig = {

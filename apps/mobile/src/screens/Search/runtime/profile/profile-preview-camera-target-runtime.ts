@@ -1,5 +1,5 @@
 import type { Coordinate } from '../../../../types';
-import type { CameraSnapshot } from './profile-transition-state-contract';
+import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type { ProfilePreviewActionModel } from './profile-action-model-contract';
 
 export type ProfilePreviewCameraTargetResolution = {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, findNodeHandle } from 'react-native';
+import { Platform, View, findNodeHandle, type LayoutChangeEvent } from 'react-native';
 
 import MapboxGL, { type MapState as MapboxMapState } from '@rnmapbox/maps';
 
@@ -17,6 +17,7 @@ import { colors as themeColors } from '../../../constants/theme';
 import type { StartupLocationSnapshot } from '../../../navigation/runtime/MainLaunchCoordinator';
 import type { Coordinate, MapBounds } from '../../../types';
 import { logger } from '../../../utils';
+import { shouldLogSearchNavSwitchDiagnosticLogs } from '../runtime/shared/search-nav-switch-perf-probe';
 import {
   LABEL_RADIAL_OFFSET_EM,
   LABEL_TEXT_SIZE,
@@ -169,7 +170,7 @@ const withIconOpacity = (
   ({
     ...baseStyle,
     iconOpacity,
-  }) as MapboxGL.SymbolLayerStyle;
+  } as MapboxGL.SymbolLayerStyle);
 
 const withTextOpacity = ({
   baseStyle,
@@ -184,7 +185,7 @@ const withTextOpacity = ({
     ...baseStyle,
     ...(textColor === undefined ? {} : { textColor }),
     textOpacity,
-  }) as MapboxGL.SymbolLayerStyle;
+  } as MapboxGL.SymbolLayerStyle);
 
 type SearchMapLabelLayersProps = {
   shouldMountLabelSource: boolean;
@@ -562,6 +563,7 @@ const SearchMapMarkerScene = React.memo(
 
 type SearchMapViewSceneProps = {
   onLayout: (event: LayoutChangeEvent) => void;
+  mapHostViewRef: React.RefObject<View | null>;
   mapRef: React.RefObject<MapboxMapRef | null>;
   cameraRef: React.RefObject<MapboxGL.Camera | null>;
   styleURL: string;
@@ -606,6 +608,7 @@ const areCoordinatesEqual = (
 const SearchMapViewScene = React.memo(
   ({
     onLayout,
+    mapHostViewRef,
     mapRef,
     cameraRef,
     styleURL,
@@ -625,7 +628,7 @@ const SearchMapViewScene = React.memo(
     markerSceneProps,
     userLocationLayerProps,
   }: SearchMapViewSceneProps) => (
-    <View style={styles.mapViewport} onLayout={onLayout}>
+    <View ref={mapHostViewRef} style={styles.mapViewport} onLayout={onLayout}>
       <MapboxGL.MapView
         ref={mapRef}
         style={[styles.map, MARKER_VIEW_OVERSCAN_STYLE]}
@@ -1294,7 +1297,7 @@ const resolveMapPresentedMarkerScene = ({
     ? pinInteractionSourceStore
     : EMPTY_SEARCH_MAP_SOURCE_STORE,
   presentedDotSourceStore: phasePolicy.shouldProjectSearchMarkerFamilies
-    ? (dotSourceStore ?? EMPTY_SEARCH_MAP_SOURCE_STORE)
+    ? dotSourceStore ?? EMPTY_SEARCH_MAP_SOURCE_STORE
     : EMPTY_SEARCH_MAP_SOURCE_STORE,
   presentedDotInteractionSourceStore: phasePolicy.shouldProjectSearchMarkerFamilies
     ? dotInteractionSourceStore
@@ -1304,25 +1307,50 @@ const resolveMapPresentedMarkerScene = ({
 const resolvePreparedLabelSourcesReady = ({
   shouldProjectSearchMarkerFamilies,
   isNativeOwnedMarkerRuntimeReady,
+  allowEmptyEnter,
   shouldRenderLabels,
   presentedPinSourceStore,
+  presentedDotSourceStore,
+  visualSceneKey,
   labelDerivedSourceIdentityKey,
   labelSourceStore,
   labelCollisionSourceStore,
 }: {
   shouldProjectSearchMarkerFamilies: boolean;
   isNativeOwnedMarkerRuntimeReady: boolean;
+  allowEmptyEnter: boolean;
   shouldRenderLabels: boolean;
   presentedPinSourceStore: SearchMapSourceStore;
+  presentedDotSourceStore: SearchMapSourceStore;
+  visualSceneKey: string | null;
   labelDerivedSourceIdentityKey: string;
   labelSourceStore: SearchMapSourceStore;
   labelCollisionSourceStore: SearchMapSourceStore;
 }): boolean => {
   const shouldWaitForPreparedNativeOwnerReady = shouldProjectSearchMarkerFamilies;
+  const hasPreparedVisualSources =
+    presentedPinSourceStore.idsInOrder.length > 0 ||
+    presentedDotSourceStore.idsInOrder.length > 0 ||
+    labelSourceStore.idsInOrder.length > 0;
+  if (shouldProjectSearchMarkerFamilies && !allowEmptyEnter && !hasPreparedVisualSources) {
+    return false;
+  }
+  const expectedLabelIdentityKey =
+    visualSceneKey == null
+      ? presentedPinSourceStore.sourceRevision
+      : `${visualSceneKey}|${presentedPinSourceStore.sourceRevision}`;
+  const sourceRevisionSuffix =
+    presentedPinSourceStore.sourceRevision.length > 0
+      ? `|${presentedPinSourceStore.sourceRevision}`
+      : null;
+  const labelIdentityMatchesPresentedPins =
+    labelDerivedSourceIdentityKey === presentedPinSourceStore.sourceRevision ||
+    labelDerivedSourceIdentityKey === expectedLabelIdentityKey ||
+    (sourceRevisionSuffix != null && labelDerivedSourceIdentityKey.endsWith(sourceRevisionSuffix));
   return (
     (!shouldWaitForPreparedNativeOwnerReady || isNativeOwnedMarkerRuntimeReady) &&
     (!shouldRenderLabels ||
-      (labelDerivedSourceIdentityKey === presentedPinSourceStore.sourceRevision &&
+      (labelIdentityMatchesPresentedPins &&
         ((presentedPinSourceStore.idsInOrder.length === 0 &&
           labelSourceStore.idsInOrder.length === 0 &&
           labelCollisionSourceStore.idsInOrder.length === 0) ||
@@ -1823,20 +1851,25 @@ const SearchMap: React.FC<SearchMapProps> = ({
   lodPinToggleStableMsIdle: _lodPinToggleStableMsIdle,
   lodPinOffscreenToggleStableMsMoving: _lodPinOffscreenToggleStableMsMoving,
 }) => {
+  const mapHostViewRef = React.useRef<View | null>(null);
   const searchMapComponentInstanceIdRef = React.useRef<string | null>(null);
   if (searchMapComponentInstanceIdRef.current == null) {
     searchMapComponentInstanceIdRef.current = nextSearchMapComponentInstanceId();
   }
   const searchMapComponentInstanceId = searchMapComponentInstanceIdRef.current;
   React.useEffect(() => {
-    logger.debug('[MAP-MOUNT-DIAG] SearchMap:mount', {
-      searchMapComponentInstanceId,
-      styleURL,
-    });
-    return () => {
-      logger.debug('[MAP-MOUNT-DIAG] SearchMap:unmount', {
+    if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+      logger.debug('[MAP-MOUNT-DIAG] SearchMap:mount', {
         searchMapComponentInstanceId,
+        styleURL,
       });
+    }
+    return () => {
+      if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+        logger.debug('[MAP-MOUNT-DIAG] SearchMap:unmount', {
+          searchMapComponentInstanceId,
+        });
+      }
     };
   }, [searchMapComponentInstanceId, styleURL]);
   const shouldDisableMarkers = disableMarkers === true;
@@ -1869,13 +1902,16 @@ const SearchMap: React.FC<SearchMapProps> = ({
   });
   const [isStyleManagedContentReady, setIsStyleManagedContentReady] = React.useState(false);
   React.useEffect(() => {
-    if (!isMapStyleReady) {
-      setIsStyleManagedContentReady(false);
-    }
-  }, [isMapStyleReady]);
+    setIsStyleManagedContentReady(false);
+  }, [styleURL]);
   const effectiveMapStyleReady = isMapStyleReady && isStyleManagedContentReady;
   const mapStyleGateDiagnosticRef = React.useRef<string | null>(null);
   React.useEffect(() => {
+    if (!shouldLogSearchNavSwitchDiagnosticLogs()) {
+      mapStyleGateDiagnosticRef.current = null;
+      return;
+    }
+
     const nextDiagnostic = JSON.stringify({
       isMapStyleReady,
       isStyleManagedContentReady,
@@ -1891,7 +1927,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     });
     mapStyleGateDiagnosticRef.current = nextDiagnostic;
   }, [effectiveMapStyleReady, isMapStyleReady, isStyleManagedContentReady]);
-  const shouldMountSearchMarkerLayers = !shouldDisableMarkers && effectiveMapStyleReady;
+  const shouldMountSearchMarkerLayers = !shouldDisableMarkers && isMapStyleReady;
   const shouldPrepareLabelLayers =
     shouldProjectSearchMarkerFamilies && presentedPinSourceStore.idsInOrder.length > 0;
   const shouldRenderLabels = shouldPrepareLabelLayers;
@@ -1926,7 +1962,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
     presentationTelemetryPhase === 'live' &&
     shouldRenderLabels &&
     !shouldDisableMarkers;
-  const userLocationPuckProps = React.useMemo(() => {
+  const userLocationPuckProps = React.useMemo<{
+    pulsingColor: string;
+    pulsingRadius: 'accuracy' | number;
+    shouldAnimatePulse: boolean;
+  } | null>(() => {
     if (!userLocation) {
       return null;
     }
@@ -1998,7 +2038,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
   );
   const [resolvedMapTag, setResolvedMapTag] = React.useState<number | null>(null);
   const nativeRefSnapshot =
-    (mapRef.current as { _nativeRef?: unknown } | null)?._nativeRef ?? mapRef.current;
+    Platform.OS === 'ios'
+      ? mapHostViewRef.current
+      : (mapRef.current as { _nativeRef?: unknown } | null)?._nativeRef ?? mapRef.current;
   const resolvedMapTagForRender = (() => {
     if (nativeRefSnapshot == null) {
       return null;
@@ -2011,6 +2053,43 @@ const SearchMap: React.FC<SearchMapProps> = ({
       previous === resolvedMapTagForRender ? previous : resolvedMapTagForRender
     );
   }, [resolvedMapTagForRender]);
+  const nativeDesiredPinFeatures = presentedPinSourceStore;
+  const nativeDesiredPinInteractionFeatures = presentedPinInteractionSourceStore;
+  const nativeDesiredDotFeatures = presentedDotSourceStore;
+  const nativeDesiredDotInteractionFeatures = presentedDotInteractionSourceStore;
+  const nativeDesiredLabelInteractionFeatures = EMPTY_SEARCH_MAP_SOURCE_STORE;
+  const [optimisticSelectedRestaurantId, setOptimisticSelectedRestaurantId] = React.useState<
+    string | null
+  >(null);
+  const effectiveSelectedRestaurantId = optimisticSelectedRestaurantId ?? selectedRestaurantId;
+  React.useEffect(() => {
+    setOptimisticSelectedRestaurantId(null);
+  }, [selectedRestaurantId]);
+  const highlightedMarkerKey = React.useMemo(() => {
+    if (!effectiveSelectedRestaurantId) {
+      return null;
+    }
+    const highlightedFeature =
+      findPresentedFeatureForRestaurantId({
+        sourceStore: presentedPinSourceStore,
+        restaurantId: effectiveSelectedRestaurantId,
+      }) ??
+      findPresentedFeatureForRestaurantId({
+        sourceStore: presentedDotSourceStore,
+        restaurantId: effectiveSelectedRestaurantId,
+      });
+    if (!highlightedFeature) {
+      return null;
+    }
+    return typeof highlightedFeature.id === 'string' && highlightedFeature.id.length > 0
+      ? highlightedFeature.id
+      : buildMarkerKey(highlightedFeature as Feature<Point, RestaurantFeatureProperties>);
+  }, [
+    buildMarkerKey,
+    effectiveSelectedRestaurantId,
+    presentedDotSourceStore,
+    presentedPinSourceStore,
+  ]);
   const {
     instanceId: resolvedNativeRenderOwnerInstanceId,
     isNativeAvailable: resolvedIsNativeRenderOwnerAvailable,
@@ -2020,7 +2099,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
   } = useSearchMapNativeRenderOwner({
     mapComponentInstanceId: searchMapComponentInstanceId,
     resolvedMapTag,
-    isMapStyleReady: effectiveMapStyleReady,
+    isMapStyleReady,
+    isRenderFrameSyncReady: isMapStyleReady,
     mapMotionPressureController,
     presentationState: {
       ...nativePresentationState,
@@ -2082,20 +2162,22 @@ const SearchMap: React.FC<SearchMapProps> = ({
   });
   const nativeRenderOwnerInstanceId = resolvedNativeRenderOwnerInstanceId;
   React.useEffect(() => {
-    logger.debug('[MAP-MOUNT-DIAG] SearchMap:nativeOwner', {
-      searchMapComponentInstanceId,
-      instanceId: nativeRenderOwnerInstanceId,
-      resolvedMapTag,
-    });
+    if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+      logger.debug('[MAP-MOUNT-DIAG] SearchMap:nativeOwner', {
+        searchMapComponentInstanceId,
+        instanceId: nativeRenderOwnerInstanceId,
+        resolvedMapTag,
+      });
+    }
   }, [nativeRenderOwnerInstanceId, resolvedMapTag, searchMapComponentInstanceId]);
   const isNativeRenderOwnerAvailable = resolvedIsNativeRenderOwnerAvailable;
   const nativeRenderOwnerAttachState = resolvedNativeRenderOwnerAttachState;
   const isNativeRenderOwnerReady = resolvedIsNativeRenderOwnerReady;
   const nativeFatalErrorMessage = resolvedNativeFatalErrorMessage;
-  if (effectiveMapStyleReady && !isNativeRenderOwnerAvailable) {
+  if (isMapStyleReady && !isNativeRenderOwnerAvailable) {
     throw new Error('SearchMap native render owner is required for the full cutover');
   }
-  if (effectiveMapStyleReady && nativeRenderOwnerAttachState === 'failed') {
+  if (isMapStyleReady && nativeRenderOwnerAttachState === 'failed') {
     throw new Error(
       nativeFatalErrorMessage ?? 'SearchMap native render owner attach failed during full cutover'
     );
@@ -2103,7 +2185,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   if (nativeFatalErrorMessage != null) {
     throw new Error(nativeFatalErrorMessage);
   }
-  const isNativeOwnedMarkerRuntimeReady = effectiveMapStyleReady && isNativeRenderOwnerReady;
+  const isNativeOwnedMarkerRuntimeReady = isMapStyleReady && isNativeRenderOwnerReady;
   const handleDidFinishRenderingFrame = React.useCallback(() => {}, []);
   const hasReportedFirstFullyRenderedFrameRef = React.useRef(false);
   const handleDidFinishRenderingFrameFully = React.useCallback(() => {
@@ -2164,41 +2246,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     () => ['==', ['coalesce', ['feature-state', 'nativeHighlighted'], 0], 1] as const,
     []
   );
-  const nativeDesiredPinFeatures = presentedPinSourceStore;
-  const nativeDesiredPinInteractionFeatures = presentedPinInteractionSourceStore;
-  const nativeDesiredDotFeatures = presentedDotSourceStore;
-  const [optimisticSelectedRestaurantId, setOptimisticSelectedRestaurantId] = React.useState<
-    string | null
-  >(null);
-  const effectiveSelectedRestaurantId = optimisticSelectedRestaurantId ?? selectedRestaurantId;
-  React.useEffect(() => {
-    setOptimisticSelectedRestaurantId(null);
-  }, [selectedRestaurantId]);
-  const highlightedMarkerKey = React.useMemo(() => {
-    if (!effectiveSelectedRestaurantId) {
-      return null;
-    }
-    const highlightedFeature =
-      findPresentedFeatureForRestaurantId({
-        sourceStore: presentedPinSourceStore,
-        restaurantId: effectiveSelectedRestaurantId,
-      }) ??
-      findPresentedFeatureForRestaurantId({
-        sourceStore: presentedDotSourceStore,
-        restaurantId: effectiveSelectedRestaurantId,
-      });
-    if (!highlightedFeature) {
-      return null;
-    }
-    return typeof highlightedFeature.id === 'string' && highlightedFeature.id.length > 0
-      ? highlightedFeature.id
-      : buildMarkerKey(highlightedFeature as Feature<Point, RestaurantFeatureProperties>);
-  }, [
-    buildMarkerKey,
-    effectiveSelectedRestaurantId,
-    presentedDotSourceStore,
-    presentedPinSourceStore,
-  ]);
   const dotLayerStyle = React.useMemo(() => {
     return {
       symbolZOrder: 'source',
@@ -2250,8 +2297,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const preparedLabelSourcesReady = resolvePreparedLabelSourcesReady({
     shouldProjectSearchMarkerFamilies,
     isNativeOwnedMarkerRuntimeReady,
+    allowEmptyEnter: nativePresentationState.allowEmptyEnter,
     shouldRenderLabels,
     presentedPinSourceStore,
+    presentedDotSourceStore,
+    visualSceneKey: phasePolicy.visualSceneKey,
     labelDerivedSourceIdentityKey,
     labelSourceStore,
     labelCollisionSourceStore,
@@ -2261,8 +2311,28 @@ const SearchMap: React.FC<SearchMapProps> = ({
     // Re-assert readiness when the map enters a new presentation batch phase even if the derived
     // readiness boolean stayed true across cycles, and when a new results snapshot lands
     // inside the same covered phase.
+    if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+      logger.debug('[MAP-VIS-DIAG] preparedLabelSourcesReady', {
+        ready: preparedLabelSourcesReady,
+        batchPhase: phasePolicy.batchPhase,
+        visualSceneKey: phasePolicy.visualSceneKey,
+        shouldProjectSearchMarkerFamilies,
+        isNativeOwnedMarkerRuntimeReady,
+        shouldRenderLabels,
+        allowEmptyEnter: nativePresentationState.allowEmptyEnter,
+        pinCount: presentedPinSourceStore.idsInOrder.length,
+        dotCount: presentedDotSourceStore.idsInOrder.length,
+        labelCount: labelSourceStore.idsInOrder.length,
+        labelCollisionCount: labelCollisionSourceStore.idsInOrder.length,
+        labelDerivedSourceIdentityKey,
+        pinSourceRevision: presentedPinSourceStore.sourceRevision,
+        labelSourceRevision: labelSourceStore.sourceRevision,
+        labelCollisionSourceRevision: labelCollisionSourceStore.sourceRevision,
+      });
+    }
     onPreparedLabelSourcesReadyChange?.(preparedLabelSourcesReady);
   }, [
+    isNativeOwnedMarkerRuntimeReady,
     labelCollisionSourceStore.sourceRevision,
     labelDerivedSourceIdentityKey,
     labelSourceStore.sourceRevision,
@@ -2270,11 +2340,13 @@ const SearchMap: React.FC<SearchMapProps> = ({
     phasePolicy.batchPhase,
     phasePolicy.visualSceneKey,
     preparedLabelSourcesReady,
+    nativePresentationState.allowEmptyEnter,
     presentedPinSourceStore.sourceRevision,
+    presentedDotSourceStore.sourceRevision,
+    shouldProjectSearchMarkerFamilies,
+    shouldRenderLabels,
     visualReadyRequestKey,
   ]);
-  const nativeDesiredDotInteractionFeatures = presentedDotInteractionSourceStore;
-
   const restaurantLabelStyleWithStableOrder = React.useMemo(() => {
     if (!STABILIZE_LABEL_ORDER) {
       return restaurantLabelStyle;
@@ -2434,7 +2506,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
           STYLE_PINS_SHADOW_OPACITY,
         ]),
         iconOpacityTransition: PIN_OPACITY_TRANSITION,
-      }) as MapboxGL.SymbolLayerStyle,
+      } as MapboxGL.SymbolLayerStyle),
     [nativeLodOpacityExpression, nativePresentationOpacityExpression]
   );
 
@@ -2446,7 +2518,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
           textOpacity: ['*', nativePresentationOpacityExpression, nativeLodOpacityExpression],
         }),
         textOpacityTransition: PIN_OPACITY_TRANSITION,
-      }) as MapboxGL.SymbolLayerStyle,
+      } as MapboxGL.SymbolLayerStyle),
     [nativeLodOpacityExpression, nativePresentationOpacityExpression]
   );
 
@@ -2459,7 +2531,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
           textColor: pinFillColorExpression,
         }),
         textOpacityTransition: PIN_OPACITY_TRANSITION,
-      }) as MapboxGL.SymbolLayerStyle,
+      } as MapboxGL.SymbolLayerStyle),
     [nativeLodOpacityExpression, nativePresentationOpacityExpression, pinFillColorExpression]
   );
 
@@ -2471,7 +2543,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
           textOpacity: ['*', nativePresentationOpacityExpression, nativeLodRankOpacityExpression],
         }),
         textOpacityTransition: PIN_RANK_OPACITY_TRANSITION,
-      }) as MapboxGL.SymbolLayerStyle,
+      } as MapboxGL.SymbolLayerStyle),
     [nativeLodRankOpacityExpression, nativePresentationOpacityExpression]
   );
 
@@ -2556,7 +2628,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         textAllowOverlap: true,
         textIgnorePlacement: true,
         textPadding: 0,
-      }) as MapboxGL.SymbolLayerStyle;
+      } as MapboxGL.SymbolLayerStyle);
 
     return {
       bottom: toInteractionStyle(labelCandidateStyles.bottom),
@@ -2588,7 +2660,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     shouldMountLabelLayers,
     shouldMountLabelInteractionLayers,
     shouldMountLabelCollisionLayers,
-    nativeDesiredLabelInteractionFeatures,
+    nativeDesiredLabelInteractionFeatures: _nativeDesiredLabelInteractionFeatures,
     mountedSourceCounts,
   } = resolveMapPresentedLabelScene({
     shouldMountSearchMarkerLayers,
@@ -2806,6 +2878,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   );
   return (
     <SearchMapViewScene
+      mapHostViewRef={mapHostViewRef}
       mapRef={mapRef}
       cameraRef={cameraRef}
       styleURL={styleURL}
@@ -2816,6 +2889,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       handleMapLoadedMap={handleMapLoadedMap}
       handleDidFinishRenderingFrame={handleDidFinishRenderingFrame}
       handleDidFinishRenderingFrameFully={handleDidFinishRenderingFrameFully}
+      onLayout={() => {}}
       shouldRenderStyleManagedContent={effectiveMapStyleReady}
       mapCenter={mapCenter}
       mapZoom={mapZoom}

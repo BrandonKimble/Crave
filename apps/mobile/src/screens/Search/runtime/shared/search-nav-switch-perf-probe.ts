@@ -6,6 +6,15 @@ type SearchNavSwitchPerfProbe = {
   untilMs: number;
 };
 
+const SEARCH_NAV_SWITCH_ATTRIBUTION_ENABLED =
+  process.env.EXPO_PUBLIC_PERF_NAV_SWITCH_ATTRIBUTION === '1';
+const SEARCH_NAV_SWITCH_DIAGNOSTIC_LOGS_ENABLED =
+  process.env.EXPO_PUBLIC_PERF_NAV_SWITCH_DIAGNOSTIC_LOGS === '1';
+const SEARCH_NAV_SWITCH_PROFILER_SPAN_LOGS_ENABLED =
+  process.env.EXPO_PUBLIC_PERF_NAV_SWITCH_PROFILER_SPAN_LOGS === '1';
+const SEARCH_NAV_SWITCH_RUNTIME_ATTRIBUTION_ENABLED =
+  process.env.EXPO_PUBLIC_PERF_NAV_SWITCH_RUNTIME_ATTRIBUTION === '1';
+
 let nextSearchNavSwitchPerfProbeSeq = 0;
 let activeSearchNavSwitchPerfProbe: SearchNavSwitchPerfProbe | null = null;
 
@@ -44,6 +53,21 @@ export const getActiveSearchNavSwitchPerfProbe = (): SearchNavSwitchPerfProbe | 
   }
   return activeSearchNavSwitchPerfProbe;
 };
+
+export const shouldLogSearchNavSwitchAttribution = (): boolean =>
+  SEARCH_NAV_SWITCH_ATTRIBUTION_ENABLED;
+
+export const shouldLogSearchNavSwitchDiagnosticLogs = (): boolean =>
+  SEARCH_NAV_SWITCH_DIAGNOSTIC_LOGS_ENABLED;
+
+export const shouldLogSearchNavSwitchProfilerSpanLogs = (): boolean =>
+  SEARCH_NAV_SWITCH_PROFILER_SPAN_LOGS_ENABLED;
+
+export const shouldRecordSearchNavSwitchRuntimeAttribution = (): boolean =>
+  SEARCH_NAV_SWITCH_RUNTIME_ATTRIBUTION_ENABLED;
+
+export const getActiveSearchNavSwitchAttributionProbe = (): SearchNavSwitchPerfProbe | null =>
+  shouldLogSearchNavSwitchAttribution() ? getActiveSearchNavSwitchPerfProbe() : null;
 
 export const getActiveSearchNavSwitchProbeAgeMs = (): number | null => {
   const probe = getActiveSearchNavSwitchPerfProbe();

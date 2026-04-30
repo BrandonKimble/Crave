@@ -1,5 +1,9 @@
-import { useOverlayStore, type OverlayRouteEntry } from '../store/overlayStore';
-import { appOverlayRouteController } from './useAppOverlayRouteController';
+import React from 'react';
+
+import type { OverlayRouteEntry } from '../navigation/runtime/app-overlay-route-types';
+import type { AppOverlayRouteCommandRuntime } from '../navigation/runtime/app-overlay-route-command-runtime';
+import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
+import type { RouteOverlayNavigationSnapshot } from '../navigation/runtime/route-overlay-navigation-snapshot-contract';
 
 export type SearchRestaurantRouteCommand =
   | {
@@ -22,35 +26,28 @@ const isSearchRestaurantRouteEntry = (
   'source' in route.params &&
   route.params.source === 'search';
 
-export const getActiveSearchRestaurantRouteRestaurantId = (): string | null => {
-  const activeOverlayRoute = useOverlayStore.getState().activeOverlayRoute;
-  if (!isSearchRestaurantRouteEntry(activeOverlayRoute)) {
-    return null;
-  }
-  return activeOverlayRoute.params?.restaurantId ?? null;
-};
-
 export const applySearchRestaurantRouteCommand = (
-  command: SearchRestaurantRouteCommand | undefined
+  command: SearchRestaurantRouteCommand | undefined,
+  routeOverlayRouteCommandRuntime: AppOverlayRouteCommandRuntime
 ) => {
   if (!command) {
     return;
   }
 
-  const activeOverlayRoute = useOverlayStore.getState().activeOverlayRoute;
+  const activeOverlayRoute = routeOverlayRouteCommandRuntime.getRouteState().activeOverlayRoute;
   const isSearchRestaurantRouteActive = isSearchRestaurantRouteEntry(activeOverlayRoute);
 
   switch (command.type) {
     case 'show_search_restaurant_route': {
       if (isSearchRestaurantRouteActive) {
-        appOverlayRouteController.updateRoute('restaurant', {
+        routeOverlayRouteCommandRuntime.updateRoute('restaurant', {
           restaurantId: command.restaurantId,
           source: 'search',
         });
         return;
       }
       if (activeOverlayRoute.key !== 'restaurant') {
-        appOverlayRouteController.pushRoute('restaurant', {
+        routeOverlayRouteCommandRuntime.pushRoute('restaurant', {
           restaurantId: command.restaurantId,
           source: 'search',
         });
@@ -59,13 +56,13 @@ export const applySearchRestaurantRouteCommand = (
     }
     case 'hide_search_restaurant_route': {
       if (isSearchRestaurantRouteActive) {
-        appOverlayRouteController.closeActiveRoute();
+        routeOverlayRouteCommandRuntime.closeActiveRoute();
       }
       return;
     }
     case 'update_search_restaurant_route': {
       if (isSearchRestaurantRouteActive) {
-        appOverlayRouteController.updateRoute('restaurant', {
+        routeOverlayRouteCommandRuntime.updateRoute('restaurant', {
           restaurantId: command.restaurantId,
           source: 'search',
         });
@@ -75,11 +72,33 @@ export const applySearchRestaurantRouteCommand = (
   }
 };
 
-export const useActiveSearchRestaurantRouteRestaurantId = (): string | null =>
-  useOverlayStore((state) => {
-    const activeOverlayRoute = state.activeOverlayRoute;
-    if (!isSearchRestaurantRouteEntry(activeOverlayRoute)) {
-      return null;
-    }
-    return activeOverlayRoute.params?.restaurantId ?? null;
-  });
+export const useActiveSearchRestaurantRouteRestaurantId = (): string | null => {
+  const routeSceneRuntime = useAppRouteSceneRuntime();
+  const selectRestaurantId = React.useCallback(
+    (state: RouteOverlayNavigationSnapshot): string | null => {
+      const activeOverlayRoute = state.activeOverlayRoute;
+      if (!isSearchRestaurantRouteEntry(activeOverlayRoute)) {
+        return null;
+      }
+      return activeOverlayRoute.params?.restaurantId ?? null;
+    },
+    []
+  );
+  const [restaurantId, setRestaurantId] = React.useState<string | null>(() =>
+    selectRestaurantId(routeSceneRuntime.routeSheetHostNavigationAuthority.getSnapshot())
+  );
+
+  React.useEffect(
+    () =>
+      routeSceneRuntime.routeSheetHostNavigationAuthority.registerTarget({
+        selector: selectRestaurantId,
+        syncNavigationSnapshot: (_snapshot, selectedRestaurantId) => {
+          setRestaurantId(selectedRestaurantId);
+        },
+        attributionLabel: 'SearchRestaurantRouteController',
+      }),
+    [routeSceneRuntime, selectRestaurantId]
+  );
+
+  return restaurantId;
+};

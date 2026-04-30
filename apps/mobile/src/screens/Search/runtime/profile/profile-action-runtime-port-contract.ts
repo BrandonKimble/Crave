@@ -5,7 +5,7 @@ import type {
   ProfileTransitionSnapshotCapture,
   ProfileTransitionStatus,
   RestaurantFocusSession,
-} from './profile-transition-state-contract';
+} from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type {
   CloseRestaurantProfileOptions,
   ProfileOpenOptions,
@@ -14,7 +14,7 @@ import type {
   SearchProfileSource,
 } from './profile-action-model-contract';
 
-export type { ProfileForegroundUiRestoreState } from './profile-transition-state-contract';
+export type { ProfileForegroundUiRestoreState } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 
 export type ProfileActionExecutionPorts = {
   prepareForegroundUiForProfileOpen: (options?: {
@@ -42,7 +42,11 @@ export type ProfileActionExecutionPorts = {
   ) => void;
   closePreparedProfilePresentation: (restaurantId: string | null) => void;
   focusPreparedProfileCamera: (targetCamera: CameraSnapshot) => void;
-  seedRestaurantProfile: (restaurant: RestaurantResult, queryLabel: string) => void;
+  seedRestaurantProfile: (
+    restaurant: RestaurantResult,
+    queryLabel: string,
+    options?: { selectedLocationId?: string | null }
+  ) => void;
   hydrateRestaurantProfileById: (restaurantId: string, marketKey?: string | null) => void;
   deferRecentlyViewedTrack: (restaurantId: string, restaurantName: string) => void;
   recordRestaurantView: (restaurantId: string, source: SearchProfileSource) => Promise<void>;
@@ -50,7 +54,11 @@ export type ProfileActionExecutionPorts = {
 };
 
 export type ProfileRefreshSelectionExecutionPorts = {
-  seedRestaurantProfile: (restaurant: RestaurantResult, queryLabel: string) => void;
+  seedRestaurantProfile: (
+    restaurant: RestaurantResult,
+    queryLabel: string,
+    options?: { selectedLocationId?: string | null }
+  ) => void;
   focusRestaurantProfileCamera: (restaurant: RestaurantResult, source: SearchProfileSource) => void;
   hydrateRestaurantProfileById: (restaurantId: string, marketKey?: string | null) => void;
 };

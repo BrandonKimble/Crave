@@ -13,6 +13,7 @@ import type {
 
 export const useSearchSuggestionTransitionRuntime = ({
   isSuggestionPanelActive,
+  searchChromeScalarSurfacePresentationRuntime,
 }: SearchSuggestionTransitionRuntimeArgs): SearchSuggestionTransitionRuntime => {
   const [, setSearchTransitionVariant] = React.useState<SuggestionTransitionVariant>('default');
   const transitionTimingRuntime: SearchSuggestionTransitionTimingRuntime =
@@ -23,6 +24,7 @@ export const useSearchSuggestionTransitionRuntime = ({
       getSuggestionTransitionDurationMs: transitionTimingRuntime.getSuggestionTransitionDurationMs,
       getSuggestionTransitionEasing: transitionTimingRuntime.getSuggestionTransitionEasing,
       getSuggestionTransitionDelayMs: transitionTimingRuntime.getSuggestionTransitionDelayMs,
+      searchChromeScalarSurfacePresentationRuntime,
     });
   const layoutWarmthRuntime: SearchSuggestionLayoutWarmthRuntime =
     useSearchSuggestionLayoutWarmthRuntime({

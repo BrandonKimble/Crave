@@ -471,54 +471,58 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
         return
       }
       lastTouchDiagnosticSignature = signature
-      onSheetHostEvent?([
+      let payload: [String: Any] = [
+        "result": result,
+        "pointX": Int(point.x.rounded()),
+        "pointY": Int(point.y.rounded()),
+        "sheetY": Int(sheetY.rounded()),
+        "interactiveFrame": NSCoder.string(for: interactiveFrame.integral),
+        "hitViewClass": hitViewClass,
+        "hitViewIsSelf": hitView === self,
+        "visible": visible,
+        "interactionEnabled": interactionEnabled,
+        "hostFrame": NSCoder.string(for: frame.integral),
+        "hostBounds": NSCoder.string(for: bounds.integral),
+        "hostTransformTy": Int(transform.ty.rounded()),
+        "sheetTransformTy": Int(resolvedSheetPresentationView()?.transform.ty.rounded() ?? 0),
+        "hierarchy": describePresentationHierarchy(),
+      ]
+      let event: [String: Any] = [
         "eventType": "diag",
         "phase": phase,
-        "payload": [
-          "result": result,
-          "pointX": Int(point.x.rounded()),
-          "pointY": Int(point.y.rounded()),
-          "sheetY": Int(sheetY.rounded()),
-          "interactiveFrame": NSCoder.string(for: interactiveFrame.integral),
-          "hitViewClass": hitViewClass,
-          "hitViewIsSelf": hitView === self,
-          "visible": visible,
-          "interactionEnabled": interactionEnabled,
-          "hostFrame": NSCoder.string(for: frame.integral),
-          "hostBounds": NSCoder.string(for: bounds.integral),
-          "hostTransformTy": Int(transform.ty.rounded()),
-          "sheetTransformTy": Int(resolvedSheetPresentationView()?.transform.ty.rounded() ?? 0),
-          "hierarchy": describePresentationHierarchy(),
-        ],
-      ])
+        "payload": payload,
+      ]
+      onSheetHostEvent?(event)
     #endif
   }
 
   private func emitGeometryDiagnostic(reason: String) {
     #if DEBUG
       let presentationView = resolvedSheetPresentationView()
-      onSheetHostEvent?([
+      let payload: [String: Any] = [
+        "sheetY": Int(sheetY.rounded()),
+        "visible": visible,
+        "interactionEnabled": interactionEnabled,
+        "hostFrame": NSCoder.string(for: frame.integral),
+        "hostBounds": NSCoder.string(for: bounds.integral),
+        "hostTransformTy": Int(transform.ty.rounded()),
+        "interactiveFrame": NSCoder.string(for: currentSheetInteractiveFrame().integral),
+        "presentationClass": presentationView.map { String(describing: type(of: $0)) } ?? "nil",
+        "presentationFrame": presentationView.map { NSCoder.string(for: $0.frame.integral) } ?? "nil",
+        "presentationBounds": presentationView.map { NSCoder.string(for: $0.bounds.integral) } ?? "nil",
+        "presentationTransformTy": Int(presentationView?.transform.ty.rounded() ?? 0),
+        "presentationVisualTop":
+          Int(((presentationView?.frame.minY ?? 0) + (presentationView?.transform.ty ?? 0)).rounded()),
+        "presentationVisualBottom":
+          Int(((presentationView?.frame.maxY ?? 0) + (presentationView?.transform.ty ?? 0)).rounded()),
+        "hierarchy": describePresentationHierarchy(),
+      ]
+      let event: [String: Any] = [
         "eventType": "diag",
         "phase": "geometry_\(reason)",
-        "payload": [
-          "sheetY": Int(sheetY.rounded()),
-          "visible": visible,
-          "interactionEnabled": interactionEnabled,
-          "hostFrame": NSCoder.string(for: frame.integral),
-          "hostBounds": NSCoder.string(for: bounds.integral),
-          "hostTransformTy": Int(transform.ty.rounded()),
-          "interactiveFrame": NSCoder.string(for: currentSheetInteractiveFrame().integral),
-          "presentationClass": presentationView.map { String(describing: type(of: $0)) } ?? "nil",
-          "presentationFrame": presentationView.map { NSCoder.string(for: $0.frame.integral) } ?? "nil",
-          "presentationBounds": presentationView.map { NSCoder.string(for: $0.bounds.integral) } ?? "nil",
-          "presentationTransformTy": Int(presentationView?.transform.ty.rounded() ?? 0),
-          "presentationVisualTop":
-            Int(((presentationView?.frame.minY ?? 0) + (presentationView?.transform.ty ?? 0)).rounded()),
-          "presentationVisualBottom":
-            Int(((presentationView?.frame.maxY ?? 0) + (presentationView?.transform.ty ?? 0)).rounded()),
-          "hierarchy": describePresentationHierarchy(),
-        ],
-      ])
+        "payload": payload,
+      ]
+      onSheetHostEvent?(event)
     #endif
   }
 

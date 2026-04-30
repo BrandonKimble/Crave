@@ -5,7 +5,7 @@ import type {
 import type {
   HydratedRestaurantProfile,
   RestaurantFocusSession,
-} from './profile-transition-state-contract';
+} from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 
 const buildRestaurantProfileCacheKey = (
   restaurantId: string,

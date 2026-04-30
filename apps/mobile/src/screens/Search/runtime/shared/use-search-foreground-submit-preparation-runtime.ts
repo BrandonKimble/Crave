@@ -2,35 +2,14 @@ import React from 'react';
 
 import type { SearchForegroundSubmitRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
 
-type UseSearchForegroundSubmitPreparationRuntimeArgs = Pick<
-  SearchForegroundSubmitRuntimeArgs,
-  | 'captureSearchSessionOrigin'
-  | 'ensureSearchOverlay'
-  | 'suppressAutocompleteResults'
-  | 'cancelAutocomplete'
-  | 'dismissSearchKeyboard'
-  | 'beginSubmitTransition'
-  | 'resetFocusedMapState'
-  | 'setIsSearchFocused'
-  | 'setIsSuggestionPanelActive'
-  | 'setShowSuggestions'
-  | 'setSuggestions'
-  | 'setQuery'
-  | 'setRestaurantOnlyIntent'
-  | 'isSuggestionPanelActive'
-  | 'isSearchEditingRef'
-  | 'allowSearchBlurExitRef'
-  | 'ignoreNextSearchBlurRef'
->;
-
-export type SearchForegroundSubmitPreparationRuntime = {
+type SearchForegroundSubmitPreparationRuntime = {
   prepareSubmitChrome: (options?: { captureOrigin?: boolean }) => void;
   prepareRecentIntentSubmit: (queryValue: string) => void;
 };
 
 export const useSearchForegroundSubmitPreparationRuntime = ({
-  captureSearchSessionOrigin,
-  ensureSearchOverlay,
+  isSuggestionPanelActive,
+  prepareSearchSessionEntry,
   suppressAutocompleteResults,
   cancelAutocomplete,
   dismissSearchKeyboard,
@@ -42,17 +21,31 @@ export const useSearchForegroundSubmitPreparationRuntime = ({
   setSuggestions,
   setQuery,
   setRestaurantOnlyIntent,
-  isSuggestionPanelActive,
   isSearchEditingRef,
   allowSearchBlurExitRef,
   ignoreNextSearchBlurRef,
-}: UseSearchForegroundSubmitPreparationRuntimeArgs): SearchForegroundSubmitPreparationRuntime => {
+}: Pick<
+  SearchForegroundSubmitRuntimeArgs,
+  | 'isSuggestionPanelActive'
+  | 'prepareSearchSessionEntry'
+  | 'suppressAutocompleteResults'
+  | 'cancelAutocomplete'
+  | 'dismissSearchKeyboard'
+  | 'beginSubmitTransition'
+  | 'resetFocusedMapState'
+  | 'setIsSearchFocused'
+  | 'setIsSuggestionPanelActive'
+  | 'setShowSuggestions'
+  | 'setSuggestions'
+  | 'setQuery'
+  | 'setRestaurantOnlyIntent'
+  | 'isSearchEditingRef'
+  | 'allowSearchBlurExitRef'
+  | 'ignoreNextSearchBlurRef'
+>): SearchForegroundSubmitPreparationRuntime => {
   const prepareSubmitChrome = React.useCallback(
     (options?: { captureOrigin?: boolean }) => {
-      if (options?.captureOrigin) {
-        captureSearchSessionOrigin();
-      }
-      ensureSearchOverlay();
+      prepareSearchSessionEntry({ captureOrigin: options?.captureOrigin });
       isSearchEditingRef.current = false;
       allowSearchBlurExitRef.current = true;
       ignoreNextSearchBlurRef.current = true;
@@ -80,12 +73,11 @@ export const useSearchForegroundSubmitPreparationRuntime = ({
     [
       allowSearchBlurExitRef,
       beginSubmitTransition,
-      captureSearchSessionOrigin,
       dismissSearchKeyboard,
-      ensureSearchOverlay,
       ignoreNextSearchBlurRef,
       isSearchEditingRef,
       isSuggestionPanelActive,
+      prepareSearchSessionEntry,
       resetFocusedMapState,
       setIsSearchFocused,
       setIsSuggestionPanelActive,
@@ -98,8 +90,7 @@ export const useSearchForegroundSubmitPreparationRuntime = ({
 
   const prepareRecentIntentSubmit = React.useCallback(
     (queryValue: string) => {
-      captureSearchSessionOrigin();
-      ensureSearchOverlay();
+      prepareSearchSessionEntry({ captureOrigin: true });
       isSearchEditingRef.current = false;
       allowSearchBlurExitRef.current = true;
       const shouldDeferSuggestionClear = beginSubmitTransition();
@@ -120,11 +111,10 @@ export const useSearchForegroundSubmitPreparationRuntime = ({
       allowSearchBlurExitRef,
       beginSubmitTransition,
       cancelAutocomplete,
-      captureSearchSessionOrigin,
       dismissSearchKeyboard,
-      ensureSearchOverlay,
       ignoreNextSearchBlurRef,
       isSearchEditingRef,
+      prepareSearchSessionEntry,
       resetFocusedMapState,
       setIsSearchFocused,
       setIsSuggestionPanelActive,
@@ -135,8 +125,11 @@ export const useSearchForegroundSubmitPreparationRuntime = ({
     ]
   );
 
-  return {
-    prepareSubmitChrome,
-    prepareRecentIntentSubmit,
-  };
+  return React.useMemo(
+    () => ({
+      prepareSubmitChrome,
+      prepareRecentIntentSubmit,
+    }),
+    [prepareRecentIntentSubmit, prepareSubmitChrome]
+  );
 };

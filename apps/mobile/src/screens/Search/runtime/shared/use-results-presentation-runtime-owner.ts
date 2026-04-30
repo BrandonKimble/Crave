@@ -5,9 +5,11 @@ import { type ResultsPresentationLog } from './results-presentation-runtime-cont
 import { type SearchRuntimeBus } from './search-runtime-bus';
 import { type ArmSearchCloseRestoreOptions } from './results-presentation-shell-runtime-contract';
 import { type ResultsPresentationOwner } from './results-presentation-owner-contract';
-import { useResultsPresentationShellLocalState } from './use-results-presentation-shell-local-state';
-import { useResultsPresentationShellModelRuntime } from './use-results-presentation-shell-model-runtime';
-import type { ResultsSheetRuntimeOwner } from './results-sheet-runtime-contract';
+import type { AppRouteResultsSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-results-sheet-runtime-contract';
+import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
+import type { SearchChromeScalarSurfacePresentationRuntime } from '../native/search-chrome-scalar-surface-presentation-runtime';
+import type { ResultsPresentationPolicyFactsLaneChange } from './results-presentation-policy-facts-controller';
+import { useResultsPresentationOwnerCompositionRuntime } from './use-results-presentation-owner-composition-runtime';
 export type { ArmSearchCloseRestoreOptions } from './results-presentation-shell-runtime-contract';
 export type {
   ResultsInteractionModel,
@@ -23,14 +25,6 @@ export type {
   SearchResultsShellModel,
 } from './results-presentation-shell-contract';
 import type { RunOneHandoffCoordinator } from '../controller/run-one-handoff-coordinator';
-import { useResultsPresentationOwnerCloseTransitionActionsRuntime } from './use-results-presentation-owner-close-transition-actions-runtime';
-import { useResultsPresentationOwnerCloseSearchCleanupRuntime } from './use-results-presentation-owner-close-search-cleanup-runtime';
-import { useResultsPresentationOwnerCloseTransitionLifecycleRuntime } from './use-results-presentation-owner-close-transition-lifecycle-runtime';
-import { useResultsPresentationOwnerInteractionModelRuntime } from './use-results-presentation-owner-interaction-model-runtime';
-import { useResultsPresentationOwnerPresentationActionsRuntime } from './use-results-presentation-owner-presentation-actions-runtime';
-import { useResultsPresentationOwnerSheetExecutionModelRuntime } from './use-results-presentation-owner-sheet-execution-model-runtime';
-import { useResultsPresentationRuntimeMachineOwner } from './use-results-presentation-runtime-machine-owner';
-import { useResultsPresentationToggleRuntime } from './use-results-presentation-toggle-runtime';
 
 export type UseResultsPresentationOwnerArgs<Suggestion> = {
   activeTab: 'dishes' | 'restaurants';
@@ -50,7 +44,7 @@ export type UseResultsPresentationOwnerArgs<Suggestion> = {
   ignoreNextSearchBlurRef: React.MutableRefObject<boolean>;
   isClearingSearchRef: React.MutableRefObject<boolean>;
   resultsSheetRuntime: Pick<
-    ResultsSheetRuntimeOwner,
+    AppRouteResultsSheetRuntimeOwner,
     | 'sheetTranslateY'
     | 'snapPoints'
     | 'animateSheetTo'
@@ -58,6 +52,7 @@ export type UseResultsPresentationOwnerArgs<Suggestion> = {
     | 'resultsSheetRuntimeModel'
     | 'shouldRenderResultsSheetRef'
     | 'resetResultsSheetToHidden'
+    | 'sheetState'
   >;
   armSearchCloseRestore: (options?: ArmSearchCloseRestoreOptions) => boolean;
   commitSearchCloseRestore: () => boolean;
@@ -81,6 +76,9 @@ export type UseResultsPresentationOwnerArgs<Suggestion> = {
   log: ResultsPresentationLog;
   runOneHandoffCoordinatorRef: React.MutableRefObject<RunOneHandoffCoordinator>;
   emitRuntimeMechanismEvent: (event: string, payload: Record<string, unknown>) => void;
+  routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
+  onSearchSheetContentLaneChanged?: (change: ResultsPresentationPolicyFactsLaneChange) => void;
+  searchChromeScalarSurfacePresentationRuntime?: SearchChromeScalarSurfacePresentationRuntime;
 };
 
 export const useResultsPresentationOwner = <Suggestion>({
@@ -123,178 +121,52 @@ export const useResultsPresentationOwner = <Suggestion>({
   log,
   runOneHandoffCoordinatorRef,
   emitRuntimeMechanismEvent,
+  routeSceneVisibilityPolicyRuntime,
+  onSearchSheetContentLaneChanged,
+  searchChromeScalarSurfacePresentationRuntime,
 }: UseResultsPresentationOwnerArgs<Suggestion>): ResultsPresentationOwner => {
-  const markSearchSheetCloseMapExitSettledRef = React.useRef<(requestKey: string) => void>(
-    () => {}
-  );
-  const setMarkSearchSheetCloseMapExitSettled = React.useCallback(
-    (handler: (requestKey: string) => void) => {
-      markSearchSheetCloseMapExitSettledRef.current = handler;
-    },
-    []
-  );
-  const notifyIntentCompleteRef = React.useRef<((intentId: string) => void) | null>(null);
-
-  const { handleToggleInteractionLifecycle, ...resultsRuntimeMachineOwner } =
-    useResultsPresentationRuntimeMachineOwner({
-      searchRuntimeBus,
-      log,
-      runOneHandoffCoordinatorRef,
-      emitRuntimeMechanismEvent,
-      markSearchSheetCloseMapExitSettledRef,
-      notifyIntentCompleteRef,
-    });
-
-  const resultsToggleRuntime = useResultsPresentationToggleRuntime({
-    searchRuntimeBus,
-    handleToggleInteractionLifecycle,
-    notifyIntentCompleteRef,
-  });
-
-  const resultsRuntimeOwner = React.useMemo(
-    () => ({
-      ...resultsRuntimeMachineOwner,
-      ...resultsToggleRuntime,
-    }),
-    [resultsRuntimeMachineOwner, resultsToggleRuntime]
-  );
-
-  const shellLocalState = useResultsPresentationShellLocalState({
+  return useResultsPresentationOwnerCompositionRuntime({
+    activeTab,
+    setActiveTab,
+    setActiveTabPreference,
+    clearTypedQuery,
+    clearSearchState,
     query,
     submittedQuery,
     hasActiveSearchContent,
     isSearchSessionActive,
+    hasResults,
     isSearchLoading,
-    isSuggestionPanelActive,
-  });
-
-  const shellModel = useResultsPresentationShellModelRuntime({
-    query,
-    submittedQuery,
-    hasActiveSearchContent,
     isSuggestionPanelActive,
     shouldRenderSearchOverlay,
     shouldEnableShortcutInteractions,
-    sheetY: resultsSheetRuntime.sheetTranslateY,
-    resultsSnapY: resultsSheetRuntime.snapPoints.middle,
-    collapsedY: resultsSheetRuntime.snapPoints.collapsed,
-    backdropTarget: shellLocalState.backdropTarget,
-    inputMode: shellLocalState.inputMode,
-    displayQueryOverride: shellLocalState.displayQueryOverride,
-    searchCloseTransitionState: shellLocalState.searchCloseTransitionState,
-    holdPersistentPollLane: shellLocalState.holdPersistentPollLane,
-  });
-
-  const {
-    setPendingCloseIntentId,
-    matchesPendingCloseIntentId,
-    beginCloseTransition,
-    cancelSearchSheetCloseTransition,
-    getActiveCloseIntentId,
-    commitArmedSearchCloseRestore,
-    finalizeCloseTransition,
-  } = useResultsPresentationOwnerCloseTransitionLifecycleRuntime({
-    clearSearchState,
+    ignoreNextSearchBlurRef,
+    isClearingSearchRef,
+    resultsSheetRuntime,
     armSearchCloseRestore,
     commitSearchCloseRestore,
     cancelSearchCloseRestore,
     flushPendingSearchOriginRestore,
     requestDefaultPostSearchRestore,
-    shellLocalState,
-  });
-
-  const closeTransitionActions = useResultsPresentationOwnerCloseTransitionActionsRuntime({
-    shellLocalState,
-    cancelSearchSheetCloseTransition,
-    getActiveCloseIntentId,
-    commitArmedSearchCloseRestore,
-    finalizeCloseTransition,
-  });
-  const resultsSheetExecutionModel = useResultsPresentationOwnerSheetExecutionModelRuntime({
-    resultsSheetRuntime,
-  });
-  const interactionModel = useResultsPresentationOwnerInteractionModelRuntime({
-    activeTab,
-    setActiveTab,
-    setActiveTabPreference,
-    isSearchSessionActive,
-    searchRuntimeBus,
-    resultsRuntimeOwner,
-  });
-  const { cancelCloseSearchCleanup, scheduleCloseSearchCleanup } =
-    useResultsPresentationOwnerCloseSearchCleanupRuntime({
-      cancelActiveSearchRequest,
-      cancelAutocomplete,
-      handleCancelPendingMutationWork,
-      resetSubmitTransitionHold,
-      setIsSearchFocused,
-      setIsSuggestionPanelActive,
-      setIsAutocompleteSuppressed,
-      setShowSuggestions,
-      setQuery,
-      setError,
-      setSuggestions,
-      inputRef,
-      setPendingCloseIntentId,
-      matchesPendingCloseIntentId,
-      resultsRuntimeOwner,
-    });
-
-  const presentationActions = useResultsPresentationOwnerPresentationActionsRuntime({
-    clearTypedQuery,
-    submittedQuery,
-    isSearchSessionActive,
-    hasResults,
-    ignoreNextSearchBlurRef,
-    isClearingSearchRef,
     handleCloseResultsUiReset,
-    resultsSheetRuntime,
-    shellLocalState,
-    resultsRuntimeOwner,
-    scheduleCloseSearchCleanup,
-    cancelCloseSearchCleanup,
-    setPendingCloseIntentId,
-    matchesPendingCloseIntentId,
-    beginCloseTransition,
-    cancelSearchSheetCloseTransition,
+    cancelActiveSearchRequest,
+    cancelAutocomplete,
+    handleCancelPendingMutationWork,
+    resetSubmitTransitionHold,
+    setIsSearchFocused,
+    setIsSuggestionPanelActive,
+    setIsAutocompleteSuppressed,
+    setShowSuggestions,
+    setQuery,
+    setError,
+    setSuggestions,
+    inputRef,
+    searchRuntimeBus,
+    log,
+    runOneHandoffCoordinatorRef,
+    emitRuntimeMechanismEvent,
+    routeSceneVisibilityPolicyRuntime,
+    onSearchSheetContentLaneChanged,
+    searchChromeScalarSurfacePresentationRuntime,
   });
-
-  React.useEffect(() => {
-    setMarkSearchSheetCloseMapExitSettled(
-      closeTransitionActions.markSearchSheetCloseMapExitSettled
-    );
-  }, [
-    closeTransitionActions.markSearchSheetCloseMapExitSettled,
-    setMarkSearchSheetCloseMapExitSettled,
-  ]);
-
-  return React.useMemo(
-    () => ({
-      preparedResultsSnapshotKey: resultsRuntimeOwner.preparedResultsSnapshotKey,
-      pendingTogglePresentationIntentId: resultsRuntimeOwner.pendingTogglePresentationIntentId,
-      scheduleToggleCommit: resultsRuntimeOwner.scheduleToggleCommit,
-      cancelToggleInteraction: resultsRuntimeOwner.cancelToggleInteraction,
-      handlePageOneResultsCommitted: resultsRuntimeOwner.handlePageOneResultsCommitted,
-      cancelPresentationIntent: resultsRuntimeOwner.cancelPresentationIntent,
-      handlePresentationIntentAbort: resultsRuntimeOwner.handlePresentationIntentAbort,
-      handleExecutionBatchMountedHidden: resultsRuntimeOwner.handleExecutionBatchMountedHidden,
-      handleMarkerEnterStarted: resultsRuntimeOwner.handleMarkerEnterStarted,
-      handleMarkerEnterSettled: resultsRuntimeOwner.handleMarkerEnterSettled,
-      handleMarkerExitStarted: resultsRuntimeOwner.handleMarkerExitStarted,
-      handleMarkerExitSettled: resultsRuntimeOwner.handleMarkerExitSettled,
-      shellModel,
-      presentationActions,
-      closeTransitionActions,
-      interactionModel,
-      resultsSheetExecutionModel,
-    }),
-    [
-      closeTransitionActions,
-      interactionModel,
-      presentationActions,
-      resultsRuntimeOwner,
-      resultsSheetExecutionModel,
-      shellModel,
-    ]
-  );
 };

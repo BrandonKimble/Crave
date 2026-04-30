@@ -23,6 +23,7 @@ import {
 import { normalizePersistedCity, resolveCityViewport } from './city-viewports';
 import { useAppRouteCoordinator } from './AppRouteCoordinator';
 import { isSplashStudioEnabled } from '../../splash-studio/config';
+import { createMainMapReadinessAuthority } from './main-map-readiness-authority';
 
 const BOOT_LOCATION_STORAGE_KEY = 'boot:lastKnownLocation';
 const STARTUP_LOCATION_MAX_WAIT_MS = 350;
@@ -60,6 +61,7 @@ type MainLaunchContextValue = {
   userLocationState: UserLocationState;
   userLocationRef: React.MutableRefObject<Coordinate | null>;
   locationPermissionDenied: boolean;
+  markMainMapLoaded: () => void;
   markMainMapReady: () => void;
 };
 
@@ -96,7 +98,7 @@ const resolveUserLocationState = (
 const resolveSemanticUserLocation = (
   snapshot: StartupLocationSnapshot | null | undefined
 ): Coordinate | null =>
-  resolveUserLocationState(snapshot) === 'unavailable' ? null : (snapshot?.coordinate ?? null);
+  resolveUserLocationState(snapshot) === 'unavailable' ? null : snapshot?.coordinate ?? null;
 
 const getPermissionState = (
   status: Location.PermissionStatus | null | undefined
@@ -249,7 +251,7 @@ const buildCameraFromSnapshot = (
       center: [snapshot.coordinate.lng, snapshot.coordinate.lat],
       zoom:
         snapshot.source === 'city_fallback'
-          ? (resolveCityViewport(selectedCity)?.zoom ?? USA_FALLBACK_ZOOM)
+          ? resolveCityViewport(selectedCity)?.zoom ?? USA_FALLBACK_ZOOM
           : SINGLE_LOCATION_ZOOM_LEVEL,
       pitch: 0,
       heading: 0,
@@ -376,22 +378,36 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
   const [mainLaunchFailure, setMainLaunchFailure] = React.useState<Error | null>(null);
 
   const userLocationRef = React.useRef<Coordinate | null>(null);
-  const latestLocationSnapshotRef =
-    React.useRef<StartupLocationSnapshot>(defaultLocationSnapshot());
+  const latestLocationSnapshotRef = React.useRef<StartupLocationSnapshot>(
+    defaultLocationSnapshot()
+  );
   const locationWatchRef = React.useRef<Location.LocationSubscription | null>(null);
   const startupResolutionSeqRef = React.useRef(0);
   const startupPollBootstrapSeqRef = React.useRef(0);
   const lastStartupPollBootstrapKeyRef = React.useRef<string | null>(null);
   const splashHiddenRef = React.useRef(false);
   const hasCompletedInitialMainLaunchRef = React.useRef(false);
+  const mainMapReadinessAuthorityRef = React.useRef(createMainMapReadinessAuthority());
+  const [mainMapReadinessRevision, setMainMapReadinessRevision] = React.useState(0);
   const startupPollBounds = React.useMemo(
     () => deriveBoundsFromCamera(startupCamera),
     [startupCamera]
   );
 
-  const markMainMapReady = React.useCallback(() => {
-    setIsMainLaunchReady((previous) => (previous ? previous : true));
+  const publishMainMapReadinessSignal = React.useCallback((publish: () => boolean) => {
+    if (!publish()) {
+      return;
+    }
+    setMainMapReadinessRevision((revision) => revision + 1);
   }, []);
+
+  const markMainMapLoaded = React.useCallback(() => {
+    publishMainMapReadinessSignal(() => mainMapReadinessAuthorityRef.current.markMapLoaded());
+  }, [publishMainMapReadinessSignal]);
+
+  const markMainMapReady = React.useCallback(() => {
+    publishMainMapReadinessSignal(() => mainMapReadinessAuthorityRef.current.markFullyRendered());
+  }, [publishMainMapReadinessSignal]);
 
   if (mainLaunchFailure) {
     throw mainLaunchFailure;
@@ -518,6 +534,7 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     }
 
     setMainLaunchFailure(null);
+    publishMainMapReadinessSignal(() => mainMapReadinessAuthorityRef.current.reset());
     setIsStartupResolved(false);
     setIsStartupPollsResolved(false);
     setIsMainLaunchReady(false);
@@ -585,6 +602,7 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
   }, [
     applyLocationSnapshot,
     isRouteReady,
+    publishMainMapReadinessSignal,
     resolveCurrentPosition,
     resolveLastKnownPosition,
     routeState,
@@ -655,11 +673,11 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
           launchIntentMarketKey
             ? { marketKey: launchIntentMarketKey }
             : startupPollBounds
-              ? {
-                  bounds: startupPollBounds,
-                  ...(startupUserLocation ? { userLocation: startupUserLocation } : {}),
-                }
-              : {}
+            ? {
+                bounds: startupPollBounds,
+                ...(startupUserLocation ? { userLocation: startupUserLocation } : {}),
+              }
+            : {}
         );
         if (cancelled || seq !== startupPollBootstrapSeqRef.current) {
           return;
@@ -707,8 +725,8 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
       startupPollsSnapshot.marketKey.trim().length
         ? startupPollsSnapshot.marketKey.trim().toLowerCase()
         : startupCamera?.source === 'city_fallback'
-          ? normalizePollMarketKey(selectedCity)
-          : null;
+        ? normalizePollMarketKey(selectedCity)
+        : null;
     if (launchIntent.type === 'restaurant') {
       void searchService
         .restaurantProfile(launchIntent.restaurantId, {
@@ -816,6 +834,44 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
   React.useEffect(() => {
     if (
       !isRouteReady ||
+      routeState?.destination !== 'main' ||
+      isSplashStudioEnabled ||
+      hasCompletedInitialMainLaunchRef.current ||
+      startupCamera == null
+    ) {
+      return;
+    }
+    publishMainMapReadinessSignal(() => mainMapReadinessAuthorityRef.current.markCameraApplied());
+  }, [isRouteReady, publishMainMapReadinessSignal, routeState?.destination, startupCamera]);
+
+  React.useEffect(() => {
+    if (
+      !isRouteReady ||
+      routeState?.destination !== 'main' ||
+      isSplashStudioEnabled ||
+      hasCompletedInitialMainLaunchRef.current ||
+      !isStartupResolved ||
+      !isStartupPollsResolved ||
+      isMainLaunchReady
+    ) {
+      return;
+    }
+    if (!mainMapReadinessAuthorityRef.current.isReady()) {
+      return;
+    }
+    setIsMainLaunchReady(true);
+  }, [
+    isMainLaunchReady,
+    isRouteReady,
+    isStartupPollsResolved,
+    isStartupResolved,
+    mainMapReadinessRevision,
+    routeState?.destination,
+  ]);
+
+  React.useEffect(() => {
+    if (
+      !isRouteReady ||
       !routeState ||
       routeState.destination !== 'main' ||
       isSplashStudioEnabled ||
@@ -825,12 +881,13 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
       return;
     }
     const timeout = setTimeout(() => {
-      const error = new Error('Main launch timed out before first fully rendered map frame');
+      const error = new Error('Main launch timed out before map readiness');
       logger.error('Main launch readiness timeout', {
         destination: routeState.destination,
         isStartupResolved,
         isStartupPollsResolved,
         isMainLaunchReady,
+        mainMapReadiness: mainMapReadinessAuthorityRef.current.getSnapshot(),
       });
       setMainLaunchFailure(error);
     }, MAIN_LAUNCH_READY_TIMEOUT_MS);
@@ -904,11 +961,13 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
       userLocationState,
       userLocationRef,
       locationPermissionDenied,
+      markMainMapLoaded,
       markMainMapReady,
     }),
     [
       isReadyToRender,
       locationPermissionDenied,
+      markMainMapLoaded,
       markMainMapReady,
       startupCamera,
       startupLocationSnapshot,

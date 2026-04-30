@@ -2,6 +2,8 @@ import React from 'react';
 
 import { logger } from '../../../../utils';
 import type { MapBounds } from '../../../../types';
+import { shouldLogSearchNavSwitchDiagnosticLogs } from '../../runtime/shared/search-nav-switch-perf-probe';
+import { withSearchNavSwitchRuntimeAttribution } from '../../runtime/shared/search-nav-switch-runtime-attribution';
 import {
   areSearchMapRenderPresentationStatesEqual,
   deriveSearchMapRenderPresentationPhase,
@@ -19,7 +21,9 @@ import type {
   SearchMapCommittedSourceDeltaJournal,
   SearchMapSourceStore,
   SearchMapSourceStoreDelta,
+  SearchMapSourceTransportFeature,
 } from '../../runtime/map/search-map-source-store';
+import type { SearchRuntimeMapPresentationPhase } from '../../runtime/shared/search-runtime-bus';
 
 type SearchMapNativeRenderOwnerStatusArgs = {
   mapComponentInstanceId: string;
@@ -103,7 +107,7 @@ type SearchMapNativeRenderOwnerSyncArgs = {
   instanceId: string;
   isAttached: boolean;
   ownerEpoch: number | null;
-  isMapStyleReady: boolean;
+  isRenderFrameSyncReady: boolean;
   isNativeAvailable: boolean;
   pins: SearchMapSourceStore;
   pinInteractions: SearchMapSourceStore;
@@ -127,6 +131,15 @@ type SearchMapNativeRenderOwnerArgs = SearchMapNativeRenderOwnerStatusArgs &
 
 const INSTANCE_ID_PREFIX = 'search-map-render-owner';
 const NATIVE_READY_TIMEOUT_MS = 4000;
+const MAP_HANDLE_ATTACH_RETRY_DELAY_MS = 250;
+const MAX_RECOVERABLE_MAP_HANDLE_ATTACH_RETRIES = 2;
+
+const isRecoverableMapHandleAttachError = (message: string): boolean =>
+  message.includes('Mapbox MapView not found for react tag') ||
+  message.includes('Map view not found for react tag') ||
+  message.includes('Mapbox MapView not resolved for react tag') ||
+  message.includes('ready Mapbox handle not resolved for react tag') ||
+  message.includes('missing resolved Mapbox handle for react tag');
 
 type NativeCommitBurstState = {
   startedAtMs: number;
@@ -184,6 +197,11 @@ type SearchMapRenderSnapshot = {
   labelInteractions: SearchMapSourceStore;
   labelCollisions: SearchMapSourceStore;
 };
+
+const isSearchMapRenderVisualSnapshotEmpty = (snapshot: SearchMapRenderSnapshot): boolean =>
+  snapshot.pins.idsInOrder.length === 0 &&
+  snapshot.dots.idsInOrder.length === 0 &&
+  snapshot.labels.idsInOrder.length === 0;
 
 type SearchMapRenderSourceRevisionState = Record<SearchMapRenderSourceId, string>;
 
@@ -363,7 +381,7 @@ type NativeRenderOwnerTransportState<TFrame extends MapRenderFrameTransportQueue
 };
 
 const createNativeRenderOwnerTransportState = <
-  TFrame extends MapRenderFrameTransportQueueFrame,
+  TFrame extends MapRenderFrameTransportQueueFrame
 >(): NativeRenderOwnerTransportState<TFrame> => ({
   lastDesiredFrame: null,
   lastDesiredFrameGenerationId: null,
@@ -399,7 +417,7 @@ const resetNativeRenderOwnerTransportState = <TFrame extends MapRenderFrameTrans
 };
 
 const queueLatestNativeRenderOwnerFrameForTransport = <
-  TFrame extends MapRenderFrameTransportQueueFrame,
+  TFrame extends MapRenderFrameTransportQueueFrame
 >(
   transportState: NativeRenderOwnerTransportState<TFrame>,
   nextFrame: TFrame
@@ -408,7 +426,7 @@ const queueLatestNativeRenderOwnerFrameForTransport = <
 };
 
 const takeNextNativeRenderOwnerFrameForTransport = <
-  TFrame extends MapRenderFrameTransportQueueFrame,
+  TFrame extends MapRenderFrameTransportQueueFrame
 >({
   transportState,
   ownerEpoch,
@@ -442,7 +460,7 @@ const takeNextNativeRenderOwnerFrameForTransport = <
 };
 
 const acknowledgeNativeRenderOwnerFrameTransportSync = <
-  TFrame extends MapRenderFrameTransportQueueFrame,
+  TFrame extends MapRenderFrameTransportQueueFrame
 >(
   transportState: NativeRenderOwnerTransportState<TFrame>,
   frameGenerationId: string
@@ -455,7 +473,7 @@ const acknowledgeNativeRenderOwnerFrameTransportSync = <
 };
 
 const markNativeRenderOwnerFrameTransportFailed = <
-  TFrame extends MapRenderFrameTransportQueueFrame,
+  TFrame extends MapRenderFrameTransportQueueFrame
 >(
   transportState: NativeRenderOwnerTransportState<TFrame>,
   frameGenerationId: string
@@ -467,7 +485,7 @@ const markNativeRenderOwnerFrameTransportFailed = <
 };
 
 const requeueDroppedNativeRenderOwnerFrameForTransport = <
-  TFrame extends MapRenderFrameTransportQueueFrame,
+  TFrame extends MapRenderFrameTransportQueueFrame
 >({
   transportState,
   droppedFrame,
@@ -485,7 +503,7 @@ const requeueDroppedNativeRenderOwnerFrameForTransport = <
 };
 
 const retargetNativeRenderOwnerTransportOwnerEpoch = <
-  TFrame extends MapRenderFrameTransportQueueFrame,
+  TFrame extends MapRenderFrameTransportQueueFrame
 >(
   transportState: NativeRenderOwnerTransportState<TFrame>,
   ownerEpoch: number
@@ -638,9 +656,9 @@ const buildSourceDelta = (
     acknowledgedSourceRevision == null
       ? nextSourceStore.buildReplaceDelta()
       : committedDeltaJournal?.baseSourceRevision === acknowledgedSourceRevision
-        ? committedDeltaJournal.delta
-        : (buildReplayJournalDelta(acknowledgedSourceRevision, nextSourceStore) ??
-          nextSourceStore.buildReplaceDelta());
+      ? committedDeltaJournal.delta
+      : buildReplayJournalDelta(acknowledgedSourceRevision, nextSourceStore) ??
+        nextSourceStore.buildReplaceDelta();
   return delta ? toRenderSourceDelta(sourceId, delta) : null;
 };
 
@@ -704,8 +722,8 @@ const deriveNativeDiagnosticMessageState = (message: string) => {
   const eventKind = message.startsWith('source_commit_pending')
     ? 'pending'
     : message.startsWith('source_commit_ack')
-      ? 'ack'
-      : 'other';
+    ? 'ack'
+    : 'other';
   const sourceId = sourceIdMatch?.[1]?.trim();
   return {
     eventKind,
@@ -726,6 +744,12 @@ const deriveNativeDiagnosticMessageState = (message: string) => {
         : null,
     shouldLogTransitionDiagnostics:
       message.startsWith('frame_final_write_mismatch') ||
+      message.startsWith('frame_begin') ||
+      message.startsWith('reveal_apply_result') ||
+      message.startsWith('reveal_generation_ready') ||
+      message.startsWith('execution_batch_mounted_hidden') ||
+      message.startsWith('enter_armed') ||
+      message.startsWith('enter_mount_blocked_empty') ||
       message.startsWith('enter_started') ||
       message.startsWith('enter_settled') ||
       message.startsWith('presentation_transition') ||
@@ -740,8 +764,8 @@ const derivePresentationDiagnosticsState = (
     presentationState.snapshotKind == null
       ? null
       : presentationState.snapshotKind === 'results_exit'
-        ? 'dismiss'
-        : 'reveal',
+      ? 'dismiss'
+      : 'reveal',
   batchPhase: deriveSearchMapRenderPresentationStatusState(presentationState).batchPhase,
 });
 
@@ -883,7 +907,7 @@ const deriveExecutionBatchId = ({
 }): string => {
   const presentationBatchId =
     presentationSyncState.currentRequestKey != null
-      ? (presentationState.executionBatch?.batchId ?? null)
+      ? presentationState.executionBatch?.batchId ?? null
       : null;
   if (presentationBatchId != null) {
     return presentationBatchId;
@@ -909,8 +933,8 @@ const deriveMotionPressurePresentationTransaction = (
       presentationPhase === 'covered'
         ? ('preparing' as const)
         : presentationPhase === 'enter_requested' || presentationPhase === 'exit_preroll'
-          ? ('committing' as const)
-          : ('executing' as const),
+        ? ('committing' as const)
+        : ('executing' as const),
   };
 };
 
@@ -957,6 +981,7 @@ const useSearchMapNativeRenderOwnerStatus = ({
   const [attachState, setAttachState] = React.useState<
     'idle' | 'attaching' | 'attached' | 'failed'
   >('idle');
+  const [attachRetryNonce, setAttachRetryNonce] = React.useState(0);
   const [ownerEpoch, setOwnerEpoch] = React.useState<number | null>(null);
   const [hasSyncedInitialFrame, setHasSyncedInitialFrame] = React.useState(false);
   const [nativeFatalErrorMessage, setNativeFatalErrorMessage] = React.useState<string | null>(null);
@@ -970,6 +995,22 @@ const useSearchMapNativeRenderOwnerStatus = ({
   }
   const instanceId = instanceIdRef.current;
   const isNativeAvailable = searchMapRenderController.isAvailable();
+
+  React.useEffect(() => {
+    setAttachRetryNonce(0);
+  }, [
+    dotInteractionSourceId,
+    dotSourceId,
+    isMapStyleReady,
+    isNativeAvailable,
+    labelCollisionSourceId,
+    labelInteractionSourceId,
+    labelSourceId,
+    mapComponentInstanceId,
+    pinInteractionSourceId,
+    pinSourceId,
+    resolvedMapTag,
+  ]);
 
   React.useEffect(() => {
     isAttachedStateRef.current = isAttached;
@@ -988,22 +1029,24 @@ const useSearchMapNativeRenderOwnerStatus = ({
         return;
       }
       const nowMs = Date.now();
-      logger.debug('[MAP-CHURN-DIAG] native:commitBurst', {
-        instanceId,
-        reason,
-        ts: nowMs,
-        windowMs: nowMs - burst.startedAtMs,
-        idleMs: burst.lastMessageAtMs > 0 ? nowMs - burst.lastMessageAtMs : 0,
-        pendingEventCount: burst.pendingEventCount,
-        ackEventCount: burst.ackEventCount,
-        maxPendingSources: burst.maxPendingSources,
-        maxPendingEntries: burst.maxPendingEntries,
-        maxBlockedRevealWaitMs: burst.maxBlockedRevealWaitMs,
-        maxBlockedSettleWaitMs: burst.maxBlockedSettleWaitMs,
-        topPendingEventSources: summarizeSourceCounts(burst.pendingEventCountBySourceId),
-        topAckEventSources: summarizeSourceCounts(burst.ackEventCountBySourceId),
-        topPendingVisualSources: summarizeSourceCounts(burst.maxPendingVisualEntriesBySourceId),
-      });
+      if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+        logger.debug('[MAP-CHURN-DIAG] native:commitBurst', {
+          instanceId,
+          reason,
+          ts: nowMs,
+          windowMs: nowMs - burst.startedAtMs,
+          idleMs: burst.lastMessageAtMs > 0 ? nowMs - burst.lastMessageAtMs : 0,
+          pendingEventCount: burst.pendingEventCount,
+          ackEventCount: burst.ackEventCount,
+          maxPendingSources: burst.maxPendingSources,
+          maxPendingEntries: burst.maxPendingEntries,
+          maxBlockedRevealWaitMs: burst.maxBlockedRevealWaitMs,
+          maxBlockedSettleWaitMs: burst.maxBlockedSettleWaitMs,
+          topPendingEventSources: summarizeSourceCounts(burst.pendingEventCountBySourceId),
+          topAckEventSources: summarizeSourceCounts(burst.ackEventCountBySourceId),
+          topPendingVisualSources: summarizeSourceCounts(burst.maxPendingVisualEntriesBySourceId),
+        });
+      }
       if (reset) {
         nativeCommitBurstRef.current = createNativeCommitBurstState();
       }
@@ -1055,171 +1098,22 @@ const useSearchMapNativeRenderOwnerStatus = ({
   }, []);
 
   React.useEffect(() => {
-    let isActive = true;
-    setIsAttached(false);
-    setOwnerEpoch(null);
-    setHasSyncedInitialFrame(false);
-    setNativeFatalErrorMessage(null);
-    if (!isNativeAvailable || !isMapStyleReady) {
-      setAttachState('idle');
-      return () => {
-        isActive = false;
-      };
-    }
-    setAttachState('attaching');
-    const mapTag = resolvedMapTag;
-    if (typeof mapTag !== 'number' || mapTag <= 0) {
-      const message = 'SearchMap native render owner attach failed: missing native map tag';
-      logger.debug('[MAP-VIS-DIAG] native:attachRejectedNoMapTag', {
-        instanceId,
-        componentInstanceId: mapComponentInstanceId,
-        mapTag,
-      });
-      setAttachState('failed');
-      setNativeFatalErrorMessage(message);
-      return () => {
-        isActive = false;
-      };
-    }
-    void searchMapRenderController
-      .attach({
-        instanceId,
-        mapTag,
-        pinSourceId,
-        pinInteractionSourceId,
-        dotSourceId,
-        dotInteractionSourceId,
-        labelSourceId,
-        labelInteractionSourceId,
-        labelCollisionSourceId,
-      })
-      .then(() => {
-        if (!isActive) {
-          return;
-        }
-        setNativeFatalErrorMessage(null);
-      })
-      .catch((error: unknown) => {
-        if (!isActive) {
-          return;
-        }
-        const message = error instanceof Error ? error.message : String(error);
-        logger.debug('[MAP-VIS-DIAG] native:attachReject', {
-          instanceId,
-          message,
-        });
-        setIsAttached(false);
-        setAttachState('failed');
-        setOwnerEpoch(null);
-        setHasSyncedInitialFrame(false);
-        setNativeFatalErrorMessage(`SearchMap native render owner attach failed: ${message}`);
-      });
-    return () => {
-      isActive = false;
-      setIsAttached(false);
-      setAttachState('idle');
-      setOwnerEpoch(null);
-      setHasSyncedInitialFrame(false);
-      setNativeFatalErrorMessage(null);
-      void searchMapRenderController.detach(instanceId);
-    };
-  }, [
-    dotInteractionSourceId,
-    dotSourceId,
-    instanceId,
-    isMapStyleReady,
-    isNativeAvailable,
-    labelCollisionSourceId,
-    labelInteractionSourceId,
-    labelSourceId,
-    mapComponentInstanceId,
-    pinInteractionSourceId,
-    pinSourceId,
-    resolvedMapTag,
-  ]);
-
-  React.useEffect(() => {
     if (!isNativeAvailable) {
       return;
     }
     const removeListener = searchMapRenderController.addListener((event) => {
-      if (event.type === 'error') {
-        const message = event.message ?? '';
-        const isNativeDiagEvent = event.instanceId === '__native_diag__';
-        if (event.instanceId !== instanceId && !isNativeDiagEvent) {
-          return;
-        }
-        if (
-          message.startsWith('source_commit_pending') ||
-          message.startsWith('source_commit_ack')
-        ) {
-          noteNativeCommitBurst(message);
-          return;
-        }
-        if (message.startsWith('map_handle_refresh_context')) {
-          flushNativeCommitBurst('map_handle_refresh_context', false);
-          logger.debug('[MAP-RELOAD-DIAG] native:mapHandleRefreshContext', {
-            instanceId,
-            message,
-          });
-          return;
-        }
-        if (message.startsWith('map_handle_refresh')) {
-          flushNativeCommitBurst('map_handle_refresh', false);
-          logger.debug('[MAP-RELOAD-DIAG] native:mapHandleRefresh', {
-            instanceId,
-            message,
-          });
-          return;
-        }
-        if (message.startsWith('source_recovery_begin')) {
-          flushNativeCommitBurst('source_recovery_begin', false);
-          logger.debug('[MAP-RELOAD-DIAG] native:sourceRecovery', {
-            instanceId,
-            message,
-          });
-          return;
-        }
-        if (deriveNativeDiagnosticMessageState(message).shouldLogTransitionDiagnostics) {
-          logger.debug('[MAP-VIS-DIAG] native:transition', {
-            instanceId,
-            message,
-          });
-          return;
-        }
-      }
       if (event.instanceId !== instanceId) {
         return;
       }
-      if (event.type === 'camera_changed') {
-        onViewportChanged?.({
-          center: [event.centerLng, event.centerLat],
-          zoom: event.zoom,
-          bounds: {
-            northEast: {
-              lat: event.northEastLat,
-              lng: event.northEastLng,
-            },
-            southWest: {
-              lat: event.southWestLat,
-              lng: event.southWestLng,
-            },
-          },
-          isGestureActive: event.isGestureActive,
-          isMoving: event.isMoving,
-        });
-        return;
-      }
-      if (event.type === 'label_observation_updated') {
-        onLabelObservationUpdated?.({
-          visibleLabelFeatureIds: event.visibleLabelFeatureIds,
-          layerRenderedFeatureCount: event.layerRenderedFeatureCount,
-          effectiveRenderedFeatureCount: event.effectiveRenderedFeatureCount,
-          stickyChanged: event.stickyChanged,
-        });
-        return;
-      }
       if (event.type === 'attached') {
+        if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+          logger.debug('[MAP-VIS-DIAG] native:statusAttached', {
+            instanceId,
+            ownerEpoch: event.ownerEpoch,
+            mapTag: event.mapTag,
+            isPresentationActive: isPresentationActiveRef.current,
+          });
+        }
         const shouldPreserveReadyState = deriveOwnerReadyStatePreservation({
           eventType: 'attached',
           wasAttached: isAttachedStateRef.current,
@@ -1232,7 +1126,7 @@ const useSearchMapNativeRenderOwnerStatus = ({
         setAttachState('attached');
         setOwnerEpoch(event.ownerEpoch);
         if (!shouldPreserveReadyState) {
-          setHasSyncedInitialFrame(false);
+          setHasSyncedInitialFrame(true);
         }
         setNativeFatalErrorMessage(null);
         return;
@@ -1262,67 +1156,377 @@ const useSearchMapNativeRenderOwnerStatus = ({
       if (event.type === 'render_frame_synced') {
         setOwnerEpoch(event.ownerEpoch);
         setHasSyncedInitialFrame(true);
-        return;
-      }
-      if (event.type === 'presentation_enter_armed') {
-        logger.debug('[PRESENTATION-LANE-DIAG] nativeEnterArmed', {
-          instanceId,
-          requestKey: event.requestKey,
-          frameGenerationId: event.frameGenerationId,
-          executionBatchId: event.executionBatchId,
-          armedAtMs: event.armedAtMs,
-        });
-        return;
-      }
-      if (event.type === 'presentation_execution_batch_mounted_hidden') {
-        onExecutionBatchMountedHidden?.({
-          requestKey: event.requestKey,
-          frameGenerationId: event.frameGenerationId,
-          executionBatchId: event.executionBatchId,
-          readyAtMs: event.readyAtMs,
-        });
-        return;
-      }
-      if (event.type === 'presentation_enter_started') {
-        onMarkerEnterStarted?.({
-          requestKey: event.requestKey,
-          frameGenerationId: event.frameGenerationId,
-          executionBatchId: event.executionBatchId,
-          startedAtMs: event.startedAtMs,
-        });
-        return;
-      }
-      if (event.type === 'presentation_enter_settled') {
-        onMarkerEnterSettled?.({
-          requestKey: event.requestKey,
-          frameGenerationId: event.frameGenerationId,
-          executionBatchId: event.executionBatchId,
-          settledAtMs: event.settledAtMs,
-        });
-        return;
-      }
-      if (event.type === 'presentation_exit_started') {
-        onMarkerExitStarted?.({
-          requestKey: event.requestKey,
-          startedAtMs: event.startedAtMs,
-        });
-        return;
-      }
-      if (event.type === 'presentation_exit_settled') {
-        onMarkerExitSettled?.({
-          requestKey: event.requestKey,
-          settledAtMs: event.settledAtMs,
-        });
-        return;
-      }
-      if (event.type === 'render_owner_recovered_after_style_reload') {
-        setOwnerEpoch(event.ownerEpoch);
-        setHasSyncedInitialFrame(true);
-        onRecoveredAfterStyleReload?.({
-          recoveredAtMs: event.recoveredAtMs,
-        });
       }
     });
+    return () => {
+      removeListener?.();
+    };
+  }, [instanceId, isNativeAvailable]);
+
+  React.useEffect(() => {
+    let isActive = true;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let attachTimer: ReturnType<typeof setTimeout> | null = null;
+    const attachAttempt = attachRetryNonce;
+    const scheduleRecoverableRetry = (reason: string) => {
+      if (attachAttempt >= MAX_RECOVERABLE_MAP_HANDLE_ATTACH_RETRIES) {
+        return false;
+      }
+      retryTimer = setTimeout(() => {
+        if (!isActive) {
+          return;
+        }
+        if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+          logger.debug('[MAP-VIS-DIAG] native:attachRetryScheduled', {
+            instanceId,
+            componentInstanceId: mapComponentInstanceId,
+            mapTag: resolvedMapTag,
+            reason,
+            nextAttempt: attachAttempt + 1,
+            isPresentationActive: isPresentationActiveRef.current,
+          });
+        }
+        setAttachRetryNonce((previous) => Math.max(previous, attachAttempt + 1));
+      }, MAP_HANDLE_ATTACH_RETRY_DELAY_MS);
+      return true;
+    };
+    setIsAttached(false);
+    setOwnerEpoch(null);
+    setHasSyncedInitialFrame(false);
+    setNativeFatalErrorMessage(null);
+    if (!isNativeAvailable || !isMapStyleReady) {
+      setAttachState('idle');
+      return () => {
+        isActive = false;
+      };
+    }
+    setAttachState('attaching');
+    const mapTag = resolvedMapTag;
+    if (typeof mapTag !== 'number' || mapTag <= 0) {
+      const message = 'SearchMap native render owner attach failed: missing native map tag';
+      logger.debug('[MAP-VIS-DIAG] native:attachRejectedNoMapTag', {
+        instanceId,
+        componentInstanceId: mapComponentInstanceId,
+        mapTag,
+        attachAttempt,
+        isPresentationActive: isPresentationActiveRef.current,
+      });
+      setAttachState('idle');
+      const retryScheduled = scheduleRecoverableRetry('missing_map_tag');
+      if (isPresentationActiveRef.current && !retryScheduled) {
+        setAttachState('failed');
+        setNativeFatalErrorMessage(message);
+      }
+      return () => {
+        isActive = false;
+        if (retryTimer != null) {
+          clearTimeout(retryTimer);
+        }
+      };
+    }
+    if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+      logger.debug('[MAP-VIS-DIAG] native:attachStart', {
+        instanceId,
+        componentInstanceId: mapComponentInstanceId,
+        mapTag,
+        attachAttempt,
+        isPresentationActive: isPresentationActiveRef.current,
+      });
+    }
+    attachTimer = setTimeout(() => {
+      if (!isActive) {
+        return;
+      }
+      void searchMapRenderController
+        .attach({
+          instanceId,
+          mapTag,
+          pinSourceId,
+          pinInteractionSourceId,
+          dotSourceId,
+          dotInteractionSourceId,
+          labelSourceId,
+          labelInteractionSourceId,
+          labelCollisionSourceId,
+        })
+        .then(() => {
+          if (!isActive) {
+            return;
+          }
+          setNativeFatalErrorMessage(null);
+        })
+        .catch((error: unknown) => {
+          if (!isActive) {
+            return;
+          }
+          const message = error instanceof Error ? error.message : String(error);
+          const isRecoverableAttachError = isRecoverableMapHandleAttachError(message);
+          const retryScheduled =
+            isRecoverableAttachError && scheduleRecoverableRetry('map_handle_lookup_failed');
+          logger.debug('[MAP-VIS-DIAG] native:attachReject', {
+            instanceId,
+            componentInstanceId: mapComponentInstanceId,
+            mapTag,
+            attachAttempt,
+            message,
+            isPresentationActive: isPresentationActiveRef.current,
+            isRecoverableAttachError,
+            retryScheduled,
+          });
+          setIsAttached(false);
+          setOwnerEpoch(null);
+          setHasSyncedInitialFrame(false);
+          if (isRecoverableAttachError && (retryScheduled || !isPresentationActiveRef.current)) {
+            setAttachState('idle');
+            setNativeFatalErrorMessage(null);
+            return;
+          }
+          setAttachState('failed');
+          setNativeFatalErrorMessage(`SearchMap native render owner attach failed: ${message}`);
+        });
+    }, 0);
+    return () => {
+      isActive = false;
+      if (attachTimer != null) {
+        clearTimeout(attachTimer);
+      }
+      if (retryTimer != null) {
+        clearTimeout(retryTimer);
+      }
+      setIsAttached(false);
+      setAttachState('idle');
+      setOwnerEpoch(null);
+      setHasSyncedInitialFrame(false);
+      setNativeFatalErrorMessage(null);
+      void searchMapRenderController.detach(instanceId);
+    };
+  }, [
+    attachRetryNonce,
+    dotInteractionSourceId,
+    dotSourceId,
+    instanceId,
+    isMapStyleReady,
+    isNativeAvailable,
+    labelCollisionSourceId,
+    labelInteractionSourceId,
+    labelSourceId,
+    mapComponentInstanceId,
+    pinInteractionSourceId,
+    pinSourceId,
+    resolvedMapTag,
+  ]);
+
+  React.useEffect(() => {
+    if (!isNativeAvailable) {
+      return;
+    }
+    const removeListener = searchMapRenderController.addListener((event) =>
+      withSearchNavSwitchRuntimeAttribution(
+        'mapNativeRenderOwner',
+        `statusEvent:${event.type}`,
+        () => {
+          if (event.type === 'error') {
+            const message = event.message ?? '';
+            const isNativeDiagEvent = event.instanceId === '__native_diag__';
+            if (event.instanceId !== instanceId && !isNativeDiagEvent) {
+              return;
+            }
+            if (
+              message.startsWith('source_commit_pending') ||
+              message.startsWith('source_commit_ack')
+            ) {
+              noteNativeCommitBurst(message);
+              return;
+            }
+            if (message.startsWith('attach_map_resolve')) {
+              if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+                logger.debug('[MAP-VIS-DIAG] native:attachResolveProbe', {
+                  instanceId,
+                  message,
+                  isPresentationActive: isPresentationActiveRef.current,
+                });
+              }
+              return;
+            }
+            if (message.startsWith('map_handle_refresh_context')) {
+              flushNativeCommitBurst('map_handle_refresh_context', false);
+              if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+                logger.debug('[MAP-RELOAD-DIAG] native:mapHandleRefreshContext', {
+                  instanceId,
+                  message,
+                });
+              }
+              return;
+            }
+            if (message.startsWith('map_handle_refresh')) {
+              flushNativeCommitBurst('map_handle_refresh', false);
+              if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+                logger.debug('[MAP-RELOAD-DIAG] native:mapHandleRefresh', {
+                  instanceId,
+                  message,
+                });
+              }
+              return;
+            }
+            if (message.startsWith('source_recovery_begin')) {
+              flushNativeCommitBurst('source_recovery_begin', false);
+              if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+                logger.debug('[MAP-RELOAD-DIAG] native:sourceRecovery', {
+                  instanceId,
+                  message,
+                });
+              }
+              return;
+            }
+            if (deriveNativeDiagnosticMessageState(message).shouldLogTransitionDiagnostics) {
+              if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+                logger.debug('[MAP-VIS-DIAG] native:transition', {
+                  instanceId,
+                  message,
+                });
+              }
+              return;
+            }
+          }
+          if (event.instanceId !== instanceId) {
+            return;
+          }
+          if (event.type === 'camera_changed') {
+            onViewportChanged?.({
+              center: [event.centerLng, event.centerLat],
+              zoom: event.zoom,
+              bounds: {
+                northEast: {
+                  lat: event.northEastLat,
+                  lng: event.northEastLng,
+                },
+                southWest: {
+                  lat: event.southWestLat,
+                  lng: event.southWestLng,
+                },
+              },
+              isGestureActive: event.isGestureActive,
+              isMoving: event.isMoving,
+            });
+            return;
+          }
+          if (event.type === 'label_observation_updated') {
+            onLabelObservationUpdated?.({
+              visibleLabelFeatureIds: event.visibleLabelFeatureIds,
+              layerRenderedFeatureCount: event.layerRenderedFeatureCount,
+              effectiveRenderedFeatureCount: event.effectiveRenderedFeatureCount,
+              stickyChanged: event.stickyChanged,
+            });
+            return;
+          }
+          if (event.type === 'attached') {
+            const shouldPreserveReadyState = deriveOwnerReadyStatePreservation({
+              eventType: 'attached',
+              wasAttached: isAttachedStateRef.current,
+              hadSyncedInitialFrame: hasSyncedInitialFrameRef.current,
+              previousOwnerEpoch: ownerEpochStateRef.current,
+              nextOwnerEpoch: event.ownerEpoch,
+              isPresentationActive: isPresentationActiveRef.current,
+            });
+            setIsAttached(true);
+            setAttachState('attached');
+            setOwnerEpoch(event.ownerEpoch);
+            if (!shouldPreserveReadyState) {
+              setHasSyncedInitialFrame(true);
+            }
+            setNativeFatalErrorMessage(null);
+            return;
+          }
+          if (event.type === 'detached') {
+            setIsAttached(false);
+            setAttachState('idle');
+            setOwnerEpoch(null);
+            setHasSyncedInitialFrame(false);
+            return;
+          }
+          if (event.type === 'render_owner_invalidated') {
+            setOwnerEpoch(event.ownerEpoch);
+            const shouldPreserveReadyState = deriveOwnerReadyStatePreservation({
+              eventType: 'invalidated',
+              wasAttached: isAttachedStateRef.current,
+              hadSyncedInitialFrame: hasSyncedInitialFrameRef.current,
+              previousOwnerEpoch: ownerEpochStateRef.current,
+              nextOwnerEpoch: event.ownerEpoch,
+              isPresentationActive: isPresentationActiveRef.current,
+            });
+            if (!shouldPreserveReadyState) {
+              setHasSyncedInitialFrame(false);
+            }
+            return;
+          }
+          if (event.type === 'render_frame_synced') {
+            setOwnerEpoch(event.ownerEpoch);
+            setHasSyncedInitialFrame(true);
+            return;
+          }
+          if (event.type === 'presentation_enter_armed') {
+            if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+              logger.debug('[PRESENTATION-LANE-DIAG] nativeEnterArmed', {
+                instanceId,
+                requestKey: event.requestKey,
+                frameGenerationId: event.frameGenerationId,
+                executionBatchId: event.executionBatchId,
+                armedAtMs: event.armedAtMs,
+              });
+            }
+            return;
+          }
+          if (event.type === 'presentation_execution_batch_mounted_hidden') {
+            onExecutionBatchMountedHidden?.({
+              requestKey: event.requestKey,
+              frameGenerationId: event.frameGenerationId,
+              executionBatchId: event.executionBatchId,
+              readyAtMs: event.readyAtMs,
+            });
+            return;
+          }
+          if (event.type === 'presentation_enter_started') {
+            onMarkerEnterStarted?.({
+              requestKey: event.requestKey,
+              frameGenerationId: event.frameGenerationId,
+              executionBatchId: event.executionBatchId,
+              startedAtMs: event.startedAtMs,
+            });
+            return;
+          }
+          if (event.type === 'presentation_enter_settled') {
+            onMarkerEnterSettled?.({
+              requestKey: event.requestKey,
+              frameGenerationId: event.frameGenerationId,
+              executionBatchId: event.executionBatchId,
+              settledAtMs: event.settledAtMs,
+            });
+            return;
+          }
+          if (event.type === 'presentation_exit_started') {
+            onMarkerExitStarted?.({
+              requestKey: event.requestKey,
+              startedAtMs: event.startedAtMs,
+            });
+            return;
+          }
+          if (event.type === 'presentation_exit_settled') {
+            onMarkerExitSettled?.({
+              requestKey: event.requestKey,
+              settledAtMs: event.settledAtMs,
+            });
+            return;
+          }
+          if (event.type === 'render_owner_recovered_after_style_reload') {
+            setOwnerEpoch(event.ownerEpoch);
+            setHasSyncedInitialFrame(true);
+            onRecoveredAfterStyleReload?.({
+              recoveredAtMs: event.recoveredAtMs,
+            });
+          }
+        }
+      )
+    );
     return () => {
       removeListener?.();
     };
@@ -1410,7 +1614,7 @@ const useSearchMapNativeRenderOwnerSync = ({
   instanceId,
   isAttached,
   ownerEpoch,
-  isMapStyleReady,
+  isRenderFrameSyncReady,
   isNativeAvailable,
   pins,
   pinInteractions,
@@ -1608,240 +1812,315 @@ const useSearchMapNativeRenderOwnerSync = ({
     if (!isNativeAvailable) {
       return;
     }
-    const removeListener = searchMapRenderController.addListener((event) => {
-      if (event.instanceId !== instanceId) {
-        return;
-      }
-      const transportState = transportStateRef.current;
-      if (event.type === 'render_owner_invalidated') {
-        logger.debug('[MAP-VIS-DIAG] native:ownerInvalidated', {
-          instanceId,
-          ownerEpoch: event.ownerEpoch,
-          reason: event.reason,
-          invalidatedAtMs: event.invalidatedAtMs,
-        });
-        ownerEpochRef.current = event.ownerEpoch;
-        retargetNativeRenderOwnerTransportOwnerEpoch(transportState, event.ownerEpoch);
-        return;
-      }
-      if (event.type === 'render_owner_recovered_after_style_reload') {
-        logger.debug('[MAP-VIS-DIAG] native:recoveredAfterStyleReload:flushLatestDesiredFrame', {
-          instanceId,
-          frameGenerationId: event.frameGenerationId,
-          ownerEpoch: event.ownerEpoch,
-          recoveredAtMs: event.recoveredAtMs,
-        });
-        ownerEpochRef.current = event.ownerEpoch;
-        retargetNativeRenderOwnerTransportOwnerEpoch(transportState, event.ownerEpoch);
-        if (transportState.queueState.pendingFrame && isAttachedRef.current) {
-          flushLatestDesiredFrame();
+    const removeListener = searchMapRenderController.addListener((event) =>
+      withSearchNavSwitchRuntimeAttribution(
+        'mapNativeRenderOwner',
+        `syncEvent:${event.type}`,
+        () => {
+          if (event.instanceId !== instanceId) {
+            return;
+          }
+          const transportState = transportStateRef.current;
+          if (event.type === 'render_owner_invalidated') {
+            if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+              logger.debug('[MAP-VIS-DIAG] native:ownerInvalidated', {
+                instanceId,
+                ownerEpoch: event.ownerEpoch,
+                reason: event.reason,
+                invalidatedAtMs: event.invalidatedAtMs,
+              });
+            }
+            ownerEpochRef.current = event.ownerEpoch;
+            retargetNativeRenderOwnerTransportOwnerEpoch(transportState, event.ownerEpoch);
+            return;
+          }
+          if (event.type === 'render_owner_recovered_after_style_reload') {
+            if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+              logger.debug(
+                '[MAP-VIS-DIAG] native:recoveredAfterStyleReload:flushLatestDesiredFrame',
+                {
+                  instanceId,
+                  frameGenerationId: event.frameGenerationId,
+                  ownerEpoch: event.ownerEpoch,
+                  recoveredAtMs: event.recoveredAtMs,
+                }
+              );
+            }
+            ownerEpochRef.current = event.ownerEpoch;
+            retargetNativeRenderOwnerTransportOwnerEpoch(transportState, event.ownerEpoch);
+            if (transportState.queueState.pendingFrame && isAttachedRef.current) {
+              flushLatestDesiredFrame();
+            }
+            return;
+          }
+          if (event.type !== 'render_frame_synced' || event.frameGenerationId == null) {
+            return;
+          }
+          if (event.ownerEpoch !== ownerEpochRef.current) {
+            return;
+          }
+          transportState.acknowledgedSourceRevisions = event.sourceRevisions;
+          const matchedFrame =
+            findNativeRenderOwnerFrameTransportMatch(transportState, event.frameGenerationId) ??
+            (transportState.lastAppliedFrame?.frameGenerationId === event.frameGenerationId
+              ? transportState.lastAppliedFrame
+              : null);
+          if (matchedFrame) {
+            acknowledgeSnapshotSourceRevisions(matchedFrame.snapshot, event.sourceRevisions);
+            transportState.lastAppliedFrame = matchedFrame;
+          }
+          if (
+            transportState.queueState.inFlightFrame?.frameGenerationId === event.frameGenerationId
+          ) {
+            acknowledgeNativeRenderOwnerFrameTransportSync(transportState, event.frameGenerationId);
+            mapMotionPressureController.applySourcePublishLifecycleEvent({
+              kind: 'synced',
+              nowMs: Date.now(),
+            });
+            if (transportState.queueState.pendingFrame && isAttachedRef.current) {
+              flushLatestDesiredFrame();
+            }
+          }
         }
-        return;
-      }
-      if (event.type !== 'render_frame_synced' || event.frameGenerationId == null) {
-        return;
-      }
-      if (event.ownerEpoch !== ownerEpochRef.current) {
-        return;
-      }
-      transportState.acknowledgedSourceRevisions = event.sourceRevisions;
-      const matchedFrame =
-        findNativeRenderOwnerFrameTransportMatch(transportState, event.frameGenerationId) ??
-        (transportState.lastAppliedFrame?.frameGenerationId === event.frameGenerationId
-          ? transportState.lastAppliedFrame
-          : null);
-      if (matchedFrame) {
-        acknowledgeSnapshotSourceRevisions(matchedFrame.snapshot, event.sourceRevisions);
-        transportState.lastAppliedFrame = matchedFrame;
-      }
-      if (transportState.queueState.inFlightFrame?.frameGenerationId === event.frameGenerationId) {
-        acknowledgeNativeRenderOwnerFrameTransportSync(transportState, event.frameGenerationId);
-        mapMotionPressureController.applySourcePublishLifecycleEvent({
-          kind: 'synced',
-          nowMs: Date.now(),
-        });
-        if (transportState.queueState.pendingFrame && isAttachedRef.current) {
-          flushLatestDesiredFrame();
-        }
-      }
-    });
+      )
+    );
     return () => {
       removeListener?.();
     };
   }, [flushLatestDesiredFrame, instanceId, isNativeAvailable, mapMotionPressureController]);
 
   React.useEffect(() => {
-    mapMotionPressureController.updatePresentationTransaction(
-      deriveMotionPressurePresentationTransaction(presentationState)
+    return withSearchNavSwitchRuntimeAttribution(
+      'mapNativeRenderOwner',
+      'renderFrameEffect',
+      () => {
+        mapMotionPressureController.updatePresentationTransaction(
+          deriveMotionPressurePresentationTransaction(presentationState)
+        );
+        if (!isNativeAvailable || !isRenderFrameSyncReady || !isAttached || ownerEpoch == null) {
+          if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+            logger.debug('[MAP-VIS-DIAG] native:renderFrameSkipped', {
+              instanceId,
+              isNativeAvailable,
+              isRenderFrameSyncReady,
+              isAttached,
+              ownerEpoch,
+            });
+          }
+          return;
+        }
+        const nextSourceSnapshot = buildSourceSnapshot();
+        const nextFrame: SearchMapRenderFrame = {
+          sourceRevisions: getSearchMapRenderSourceRevisions(nextSourceSnapshot),
+          viewport: viewportState,
+          presentation: presentationState,
+          highlightedMarkerKey,
+          interactionMode,
+        };
+        const transportState = transportStateRef.current;
+        const lastDesiredFrame = transportState.lastDesiredFrame;
+        const presentationPhase = deriveSearchMapRenderPresentationPhase(presentationState);
+        const isInitialNativeFrame =
+          transportState.lastAppliedFrame == null &&
+          transportState.queueState.inFlightFrame == null &&
+          transportState.queueState.pendingFrame == null;
+        const isInitialEmptyFrame =
+          isInitialNativeFrame &&
+          (presentationPhase === 'idle' ||
+            (presentationPhase === 'covered' &&
+              isSearchMapRenderVisualSnapshotEmpty(nextSourceSnapshot)));
+        if (isInitialEmptyFrame) {
+          if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+            logger.debug('[MAP-VIS-DIAG] native:renderFrameSkipped', {
+              instanceId,
+              reason:
+                presentationPhase === 'covered'
+                  ? 'initial_empty_covered_frame'
+                  : 'initial_idle_frame',
+              presentationPhase,
+              pinCount: nextSourceSnapshot.pins.idsInOrder.length,
+              dotCount: nextSourceSnapshot.dots.idsInOrder.length,
+              labelCount: nextSourceSnapshot.labels.idsInOrder.length,
+            });
+          }
+          return;
+        }
+        const lastDesiredPresentation = lastDesiredFrame?.presentation ?? null;
+        const presentationTransportDiagnostics = deriveTransportDiagnosticsState(presentationState);
+        const {
+          viewportBoundsChanged,
+          gestureStateChanged,
+          movingStateChanged,
+          presentationChanged,
+          controlStateChanged,
+        } = deriveFrameChangeState({
+          previousFrame: lastDesiredFrame,
+          nextFrame,
+        });
+        const presentationSyncState = derivePresentationSyncState({
+          presentationState,
+          previousPresentationState: lastDesiredPresentation,
+        });
+        const sourceSyncBaselineRevisions = presentationSyncState.shouldForceReplaceForNewRequest
+          ? null
+          : getSourceSyncBaselineRevisions();
+        const nominalChangedSources = [
+          sourceSyncBaselineRevisions?.pins !== resolvedPins.sourceRevision ? 'pins' : null,
+          sourceSyncBaselineRevisions?.pinInteractions !== resolvedPinInteractions.sourceRevision
+            ? 'pinInteractions'
+            : null,
+          sourceSyncBaselineRevisions?.dots !== resolvedDots.sourceRevision ? 'dots' : null,
+          sourceSyncBaselineRevisions?.dotInteractions !== resolvedDotInteractions.sourceRevision
+            ? 'dotInteractions'
+            : null,
+          sourceSyncBaselineRevisions?.labels !== resolvedLabels.sourceRevision ? 'labels' : null,
+          sourceSyncBaselineRevisions?.labelInteractions !==
+          resolvedLabelInteractions.sourceRevision
+            ? 'labelInteractions'
+            : null,
+          sourceSyncBaselineRevisions?.labelCollisions !== resolvedLabelCollisions.sourceRevision
+            ? 'labelCollisions'
+            : null,
+        ].filter((value): value is SearchMapRenderSourceId => value != null);
+        const sourceTransport = buildSearchMapRenderSourceTransport({
+          previousSourceRevisions: sourceSyncBaselineRevisions,
+          nextSnapshot: nextSourceSnapshot,
+          changedSourceIds:
+            sourceSyncBaselineRevisions == null
+              ? SEARCH_MAP_RENDER_SOURCE_IDS
+              : nominalChangedSources,
+        });
+        const sourceTransportDiagnostics = deriveSourceTransportDiagnostics({
+          isMoving: viewportState.isMoving,
+          sourceTransport,
+        });
+        const snapshotChanged = sourceTransport.effectiveChangedSourceIds.length > 0;
+        if (
+          sourceTransportDiagnostics.shouldLogSummary &&
+          shouldLogSearchNavSwitchDiagnosticLogs()
+        ) {
+          logger.debug('[MAP-CHURN-DIAG] js:renderFrameTransport', {
+            instanceId,
+            isMoving: viewportState.isMoving,
+            isGestureActive: viewportState.isGestureActive,
+            batchPhase: presentationTransportDiagnostics.batchPhase,
+            effectiveChangedSourceIds: sourceTransport.effectiveChangedSourceIds,
+            sourceDeltaSummary: sourceTransportDiagnostics.sourceDeltaSummary,
+          });
+        }
+        if (
+          lastDesiredFrame &&
+          !snapshotChanged &&
+          !viewportBoundsChanged &&
+          !gestureStateChanged &&
+          !movingStateChanged &&
+          !presentationChanged &&
+          !controlStateChanged
+        ) {
+          return;
+        }
+        const isSameExecutionBatchAsPreviousDesiredFrame =
+          presentationSyncState.isSameExecutionBatchAsPreviousState;
+        const executionBatchId = deriveExecutionBatchId({
+          presentationState,
+          presentationSyncState,
+          lastDesiredExecutionBatchId: transportState.lastDesiredExecutionBatchId,
+          snapshotChanged,
+          allocateExecutionBatchId: () => `batch:${++transportState.executionBatchSeq}`,
+        });
+        const nowMs = Date.now();
+        const frameAdmission = resolveNativeRenderOwnerFrameAdmission({
+          hasPreviousDesiredFrame: lastDesiredFrame != null,
+          snapshotChanged,
+          viewportBoundsChanged,
+          gestureStateChanged,
+          movingStateChanged,
+          presentationChanged,
+          controlStateChanged,
+          isSameExecutionBatchAsPreviousDesiredFrame,
+          isMoving: viewportState.isMoving,
+          isGestureActive: viewportState.isGestureActive,
+          nowMs,
+          pressureState: mapMotionPressureController.getState(),
+        });
+        mapMotionPressureController.applyNormalWorkEffect(frameAdmission.normalWorkEffect, nowMs);
+        const frameAdmissionDecision = frameAdmission.decision;
+        if (
+          frameAdmissionDecision === 'suppress_same_execution_batch_viewport_presentation_frame' ||
+          frameAdmissionDecision === 'suppress_transaction_presentation_only_frame'
+        ) {
+          transportState.lastDesiredExecutionBatchId = executionBatchId;
+          transportState.lastDesiredFrame = nextFrame;
+          return;
+        }
+        if (frameAdmissionDecision === 'suppress_viewport_only_frame') {
+          transportState.lastDesiredExecutionBatchId = executionBatchId;
+          transportState.lastDesiredFrame = nextFrame;
+          return;
+        }
+        transportState.frameGenerationSeq += 1;
+        const frameGenerationId = `frame:${transportState.frameGenerationSeq}`;
+        const previousDesiredFrameGenerationId = transportState.lastDesiredFrameGenerationId;
+        if (
+          isSameExecutionBatchAsPreviousDesiredFrame &&
+          previousDesiredFrameGenerationId != null &&
+          previousDesiredFrameGenerationId !== frameGenerationId &&
+          (snapshotChanged ||
+            viewportBoundsChanged ||
+            gestureStateChanged ||
+            movingStateChanged ||
+            presentationChanged ||
+            controlStateChanged)
+        ) {
+          if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+            logger.debug('[PRESENTATION-LANE-DIAG] revealFrameGenerationChurn', {
+              instanceId,
+              requestKey: presentationTransportDiagnostics.requestKey,
+              executionBatchId,
+              batchPhase: presentationTransportDiagnostics.batchPhase,
+              previousFrameGenerationId: previousDesiredFrameGenerationId,
+              nextFrameGenerationId: frameGenerationId,
+              snapshotChanged,
+              presentationChanged,
+              controlStateChanged,
+              viewportBoundsChanged,
+              gestureStateChanged,
+              movingStateChanged,
+              effectiveChangedSourceIds: sourceTransport.effectiveChangedSourceIds,
+            });
+          }
+        }
+        if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+          logger.debug('[MAP-VIS-DIAG] native:renderFrameQueued', {
+            instanceId,
+            frameGenerationId,
+            executionBatchId,
+            presentationPhase,
+            hasLastAppliedFrame: transportState.lastAppliedFrame != null,
+            hasLastDesiredFrame: lastDesiredFrame != null,
+            effectiveChangedSourceIds: sourceTransport.effectiveChangedSourceIds,
+          });
+        }
+        transportState.lastDesiredExecutionBatchId = executionBatchId;
+        transportState.lastDesiredFrame = nextFrame;
+        transportState.lastDesiredFrameGenerationId = frameGenerationId;
+        queueLatestNativeRenderOwnerFrameForTransport(transportState, {
+          ownerEpoch,
+          frameGenerationId,
+          executionBatchId,
+          frame: nextFrame,
+          snapshot: nextSourceSnapshot,
+          sourceTransport,
+        });
+        flushLatestDesiredFrame();
+      }
     );
-    if (!isNativeAvailable || !isMapStyleReady || !isAttached || ownerEpoch == null) {
-      return;
-    }
-    const nextSourceSnapshot = buildSourceSnapshot();
-    const nextFrame: SearchMapRenderFrame = {
-      sourceRevisions: getSearchMapRenderSourceRevisions(nextSourceSnapshot),
-      viewport: viewportState,
-      presentation: presentationState,
-      highlightedMarkerKey,
-      interactionMode,
-    };
-    const transportState = transportStateRef.current;
-    const lastDesiredFrame = transportState.lastDesiredFrame;
-    const lastDesiredPresentation = lastDesiredFrame?.presentation ?? null;
-    const presentationTransportDiagnostics = deriveTransportDiagnosticsState(presentationState);
-    const {
-      viewportBoundsChanged,
-      gestureStateChanged,
-      movingStateChanged,
-      presentationChanged,
-      controlStateChanged,
-    } = deriveFrameChangeState({
-      previousFrame: lastDesiredFrame,
-      nextFrame,
-    });
-    const presentationSyncState = derivePresentationSyncState({
-      presentationState,
-      previousPresentationState: lastDesiredPresentation,
-    });
-    const sourceSyncBaselineRevisions = presentationSyncState.shouldForceReplaceForNewRequest
-      ? null
-      : getSourceSyncBaselineRevisions();
-    const nominalChangedSources = [
-      sourceSyncBaselineRevisions?.pins !== resolvedPins.sourceRevision ? 'pins' : null,
-      sourceSyncBaselineRevisions?.pinInteractions !== resolvedPinInteractions.sourceRevision
-        ? 'pinInteractions'
-        : null,
-      sourceSyncBaselineRevisions?.dots !== resolvedDots.sourceRevision ? 'dots' : null,
-      sourceSyncBaselineRevisions?.dotInteractions !== resolvedDotInteractions.sourceRevision
-        ? 'dotInteractions'
-        : null,
-      sourceSyncBaselineRevisions?.labels !== resolvedLabels.sourceRevision ? 'labels' : null,
-      sourceSyncBaselineRevisions?.labelInteractions !== resolvedLabelInteractions.sourceRevision
-        ? 'labelInteractions'
-        : null,
-      sourceSyncBaselineRevisions?.labelCollisions !== resolvedLabelCollisions.sourceRevision
-        ? 'labelCollisions'
-        : null,
-    ].filter((value): value is SearchMapRenderSourceId => value != null);
-    const sourceTransport = buildSearchMapRenderSourceTransport({
-      previousSourceRevisions: sourceSyncBaselineRevisions,
-      nextSnapshot: nextSourceSnapshot,
-      changedSourceIds:
-        sourceSyncBaselineRevisions == null ? SEARCH_MAP_RENDER_SOURCE_IDS : nominalChangedSources,
-    });
-    const sourceTransportDiagnostics = deriveSourceTransportDiagnostics({
-      isMoving: viewportState.isMoving,
-      sourceTransport,
-    });
-    const snapshotChanged = sourceTransport.effectiveChangedSourceIds.length > 0;
-    if (sourceTransportDiagnostics.shouldLogSummary) {
-      logger.debug('[MAP-CHURN-DIAG] js:renderFrameTransport', {
-        instanceId,
-        isMoving: viewportState.isMoving,
-        isGestureActive: viewportState.isGestureActive,
-        batchPhase: presentationTransportDiagnostics.batchPhase,
-        effectiveChangedSourceIds: sourceTransport.effectiveChangedSourceIds,
-        sourceDeltaSummary: sourceTransportDiagnostics.sourceDeltaSummary,
-      });
-    }
-    if (
-      lastDesiredFrame &&
-      !snapshotChanged &&
-      !viewportBoundsChanged &&
-      !gestureStateChanged &&
-      !movingStateChanged &&
-      !presentationChanged &&
-      !controlStateChanged
-    ) {
-      return;
-    }
-    const isSameExecutionBatchAsPreviousDesiredFrame =
-      presentationSyncState.isSameExecutionBatchAsPreviousState;
-    const executionBatchId = deriveExecutionBatchId({
-      presentationState,
-      presentationSyncState,
-      lastDesiredExecutionBatchId: transportState.lastDesiredExecutionBatchId,
-      snapshotChanged,
-      allocateExecutionBatchId: () => `batch:${++transportState.executionBatchSeq}`,
-    });
-    const nowMs = Date.now();
-    const frameAdmission = resolveNativeRenderOwnerFrameAdmission({
-      hasPreviousDesiredFrame: lastDesiredFrame != null,
-      snapshotChanged,
-      viewportBoundsChanged,
-      gestureStateChanged,
-      movingStateChanged,
-      presentationChanged,
-      controlStateChanged,
-      isSameExecutionBatchAsPreviousDesiredFrame,
-      isMoving: viewportState.isMoving,
-      isGestureActive: viewportState.isGestureActive,
-      nowMs,
-      pressureState: mapMotionPressureController.getState(),
-    });
-    mapMotionPressureController.applyNormalWorkEffect(frameAdmission.normalWorkEffect, nowMs);
-    const frameAdmissionDecision = frameAdmission.decision;
-    if (
-      frameAdmissionDecision === 'suppress_same_execution_batch_viewport_presentation_frame' ||
-      frameAdmissionDecision === 'suppress_transaction_presentation_only_frame'
-    ) {
-      transportState.lastDesiredExecutionBatchId = executionBatchId;
-      transportState.lastDesiredFrame = nextFrame;
-      return;
-    }
-    if (frameAdmissionDecision === 'suppress_viewport_only_frame') {
-      transportState.lastDesiredExecutionBatchId = executionBatchId;
-      transportState.lastDesiredFrame = nextFrame;
-      return;
-    }
-    transportState.frameGenerationSeq += 1;
-    const frameGenerationId = `frame:${transportState.frameGenerationSeq}`;
-    const previousDesiredFrameGenerationId = transportState.lastDesiredFrameGenerationId;
-    if (
-      isSameExecutionBatchAsPreviousDesiredFrame &&
-      previousDesiredFrameGenerationId != null &&
-      previousDesiredFrameGenerationId !== frameGenerationId &&
-      (snapshotChanged ||
-        viewportBoundsChanged ||
-        gestureStateChanged ||
-        movingStateChanged ||
-        presentationChanged ||
-        controlStateChanged)
-    ) {
-      logger.debug('[PRESENTATION-LANE-DIAG] revealFrameGenerationChurn', {
-        instanceId,
-        requestKey: presentationTransportDiagnostics.requestKey,
-        executionBatchId,
-        batchPhase: presentationTransportDiagnostics.batchPhase,
-        previousFrameGenerationId: previousDesiredFrameGenerationId,
-        nextFrameGenerationId: frameGenerationId,
-        snapshotChanged,
-        presentationChanged,
-        controlStateChanged,
-        viewportBoundsChanged,
-        gestureStateChanged,
-        movingStateChanged,
-        effectiveChangedSourceIds: sourceTransport.effectiveChangedSourceIds,
-      });
-    }
-    transportState.lastDesiredExecutionBatchId = executionBatchId;
-    transportState.lastDesiredFrame = nextFrame;
-    transportState.lastDesiredFrameGenerationId = frameGenerationId;
-    queueLatestNativeRenderOwnerFrameForTransport(transportState, {
-      ownerEpoch,
-      frameGenerationId,
-      executionBatchId,
-      frame: nextFrame,
-      snapshot: nextSourceSnapshot,
-      sourceTransport,
-    });
-    flushLatestDesiredFrame();
   }, [
     buildSourceSnapshot,
     flushLatestDesiredFrame,
     highlightedMarkerKey,
     isAttached,
-    isMapStyleReady,
+    isRenderFrameSyncReady,
     isNativeAvailable,
     ownerEpoch,
     dots,
@@ -1873,6 +2152,7 @@ export const useSearchMapNativeRenderOwner = (
     viewportState,
     interactionMode,
     onSyncError,
+    isRenderFrameSyncReady,
     ...statusArgs
   } = args;
 
@@ -1883,7 +2163,7 @@ export const useSearchMapNativeRenderOwner = (
     instanceId: status.instanceId,
     isAttached: status.isAttached,
     ownerEpoch: status.ownerEpoch,
-    isMapStyleReady: statusArgs.isMapStyleReady,
+    isRenderFrameSyncReady,
     isNativeAvailable: status.isNativeAvailable,
     pins,
     pinInteractions,

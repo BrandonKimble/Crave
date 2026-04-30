@@ -28,6 +28,26 @@ export const useProfileOwnerPresentationActionsRuntime = ({
   runtimeState,
   actionExecutionPorts,
 }: UseProfileOwnerPresentationActionsRuntimeArgs): ProfileOwnerPresentationActionsRuntime => {
+  const actionRuntimeArgs = React.useMemo<CreateProfileActionRuntimeArgs>(
+    () => ({
+      queryState,
+      selectionState,
+      runtimeState,
+      actionExecutionPorts,
+      refreshSelectionExecutionPorts: {
+        seedRestaurantProfile: actionExecutionPorts.seedRestaurantProfile,
+        focusRestaurantProfileCamera: () => {},
+        hydrateRestaurantProfileById: actionExecutionPorts.hydrateRestaurantProfileById,
+      },
+      autoOpenActionExecutionPorts: {
+        clearPendingSelection: () => {},
+        refreshOpenRestaurantProfileSelection: () => {},
+        openRestaurantProfile: () => {},
+        setLastAutoOpenKey: () => {},
+      },
+    }),
+    [actionExecutionPorts, queryState, runtimeState, selectionState]
+  );
   const restaurantActionModelRuntime = React.useMemo(
     () =>
       createProfileRestaurantActionModelRuntime({
@@ -40,23 +60,10 @@ export const useProfileOwnerPresentationActionsRuntime = ({
 
   return React.useMemo(
     () => ({
-      ...createProfilePreviewActionRuntime({
-        runtimeState,
-        actionExecutionPorts,
-      }),
-      ...createProfileOpenActionRuntime(
-        {
-          actionExecutionPorts,
-        },
-        restaurantActionModelRuntime
-      ),
-      ...createProfileFocusActionRuntime(
-        {
-          actionExecutionPorts,
-        },
-        restaurantActionModelRuntime
-      ),
+      ...createProfilePreviewActionRuntime(actionRuntimeArgs),
+      ...createProfileOpenActionRuntime(actionRuntimeArgs, restaurantActionModelRuntime),
+      ...createProfileFocusActionRuntime(actionRuntimeArgs, restaurantActionModelRuntime),
     }),
-    [actionExecutionPorts, restaurantActionModelRuntime, runtimeState]
+    [actionRuntimeArgs, restaurantActionModelRuntime]
   );
 };

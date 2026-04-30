@@ -1,18 +1,17 @@
 import React from 'react';
 
 import type { AutocompleteMatch } from '../../../../services/autocomplete';
-
 import type {
-  SearchForegroundSubmitRuntimeArgs,
   SearchForegroundInteractionSubmitHandlers,
+  SearchForegroundSubmitRuntimeArgs,
 } from './use-search-foreground-interaction-runtime-contract';
+import type { useSearchForegroundSubmitPreparationRuntime } from './use-search-foreground-submit-preparation-runtime';
 
 type UseSearchForegroundSuggestionSubmitRuntimeArgs = Pick<
   SearchForegroundSubmitRuntimeArgs,
   | 'submitRuntime'
   | 'query'
-  | 'captureSearchSessionOrigin'
-  | 'ensureSearchOverlay'
+  | 'prepareSearchSessionEntry'
   | 'suppressAutocompleteResults'
   | 'cancelAutocomplete'
   | 'dismissSearchKeyboard'
@@ -30,7 +29,7 @@ type UseSearchForegroundSuggestionSubmitRuntimeArgs = Pick<
   | 'openRestaurantProfilePreview'
 >;
 
-export type SearchForegroundSuggestionSubmitRuntime = Pick<
+type SearchForegroundSuggestionSubmitRuntime = Pick<
   SearchForegroundInteractionSubmitHandlers,
   'handleSuggestionPress'
 >;
@@ -38,8 +37,7 @@ export type SearchForegroundSuggestionSubmitRuntime = Pick<
 export const useSearchForegroundSuggestionSubmitRuntime = ({
   submitRuntime,
   query,
-  captureSearchSessionOrigin,
-  ensureSearchOverlay,
+  prepareSearchSessionEntry,
   suppressAutocompleteResults,
   cancelAutocomplete,
   dismissSearchKeyboard,
@@ -60,8 +58,7 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
 
   const handleSuggestionPress = React.useCallback(
     (match: AutocompleteMatch) => {
-      captureSearchSessionOrigin();
-      ensureSearchOverlay();
+      prepareSearchSessionEntry({ captureOrigin: true });
       isSearchEditingRef.current = false;
       allowSearchBlurExitRef.current = true;
       ignoreNextSearchBlurRef.current = true;
@@ -108,13 +105,12 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
       allowSearchBlurExitRef,
       beginSubmitTransition,
       cancelAutocomplete,
-      captureSearchSessionOrigin,
       dismissSearchKeyboard,
-      ensureSearchOverlay,
       ignoreNextSearchBlurRef,
       isSearchEditingRef,
       openRestaurantProfilePreview,
       pendingRestaurantSelectionRef,
+      prepareSearchSessionEntry,
       query,
       setIsSearchFocused,
       setIsSuggestionPanelActive,
@@ -127,7 +123,10 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
     ]
   );
 
-  return {
-    handleSuggestionPress,
-  };
+  return React.useMemo(
+    () => ({
+      handleSuggestionPress,
+    }),
+    [handleSuggestionPress]
+  );
 };

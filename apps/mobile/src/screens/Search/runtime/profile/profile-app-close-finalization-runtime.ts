@@ -1,39 +1,36 @@
 import React from 'react';
 
-import {
-  type SearchRouteSaveSheetState as SaveSheetState,
-  useSearchRouteOverlayCommandStore,
-} from '../../../../overlays/searchRouteOverlayCommandStore';
-import type { ProfileForegroundUiRestoreState } from './profile-transition-state-contract';
+import type { AppRouteOverlayCommandActions } from '../../../../navigation/runtime/app-route-overlay-command-controller';
+import { resolveProfileForegroundSaveSheetRestoreState } from '../../../../navigation/runtime/app-route-profile-app-execution-normalizer';
+import type { PreparedProfileCloseFinalization } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
+import type { ProfileForegroundUiRestoreState } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type { ProfileRuntimeStateOwner } from './profile-runtime-state-contract';
-
-export type PreparedProfileCloseFinalization = {
-  shouldClearSearch: boolean;
-};
 
 export type ProfileAppCloseFinalizationRuntime = {
   finalizePreparedProfileClose: (closeFinalization: PreparedProfileCloseFinalization) => void;
 };
 
 type UseProfileAppCloseFinalizationRuntimeArgs = {
+  routeOverlayCommandActions: AppRouteOverlayCommandActions;
   getPreviousForegroundUiRestoreState: ProfileRuntimeStateOwner['closeRuntimeState']['foregroundRuntimeState']['getPreviousForegroundUiRestoreState'];
   finalizePreparedProfileCloseState: ProfileRuntimeStateOwner['closeRuntimeState']['finalizationRuntimeState']['finalizePreparedProfileCloseState'];
   clearSearchAfterProfileDismiss: () => void;
 };
 
 export const useProfileAppCloseFinalizationRuntime = ({
+  routeOverlayCommandActions,
   getPreviousForegroundUiRestoreState,
   finalizePreparedProfileCloseState,
   clearSearchAfterProfileDismiss,
 }: UseProfileAppCloseFinalizationRuntimeArgs): ProfileAppCloseFinalizationRuntime => {
   const restoreForegroundUiAfterProfileClose = React.useCallback(
     (state: ProfileForegroundUiRestoreState | null) => {
-      const restoreState = state as SaveSheetState | null;
-      if (restoreState?.visible) {
-        useSearchRouteOverlayCommandStore.getState().setSaveSheetState(restoreState);
+      const restoreState = resolveProfileForegroundSaveSheetRestoreState(state);
+      if (restoreState) {
+        routeOverlayCommandActions.setSaveSheetState(restoreState);
       }
     },
-    []
+    [routeOverlayCommandActions]
   );
 
   const finalizePreparedProfileClose = React.useCallback(

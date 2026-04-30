@@ -20,11 +20,18 @@ export EXPO_PUBLIC_PERF_NAV_SWITCH_SEQUENCE="${EXPO_PUBLIC_PERF_NAV_SWITCH_SEQUE
 export EXPO_PUBLIC_PERF_NAV_SWITCH_STEP_COOLDOWN_MS="${EXPO_PUBLIC_PERF_NAV_SWITCH_STEP_COOLDOWN_MS:-250}"
 export EXPO_PUBLIC_PERF_NAV_SWITCH_SETTLE_QUIET_PERIOD_MS="${EXPO_PUBLIC_PERF_NAV_SWITCH_SETTLE_QUIET_PERIOD_MS:-250}"
 export EXPO_PUBLIC_PERF_NAV_SWITCH_STEP_TIMEOUT_MS="${EXPO_PUBLIC_PERF_NAV_SWITCH_STEP_TIMEOUT_MS:-2500}"
+export EXPO_PUBLIC_PERF_NAV_SWITCH_ATTRIBUTION="${EXPO_PUBLIC_PERF_NAV_SWITCH_ATTRIBUTION:-1}"
+export EXPO_PUBLIC_PERF_NAV_SWITCH_RUNTIME_ATTRIBUTION="${EXPO_PUBLIC_PERF_NAV_SWITCH_RUNTIME_ATTRIBUTION:-1}"
 
 export EXPO_PUBLIC_PERF_JS_FRAME_SAMPLER="${EXPO_PUBLIC_PERF_JS_FRAME_SAMPLER:-1}"
 export EXPO_PUBLIC_PERF_JS_FRAME_WINDOW_MS="${EXPO_PUBLIC_PERF_JS_FRAME_WINDOW_MS:-500}"
 export EXPO_PUBLIC_PERF_JS_FRAME_STALL_FRAME_MS="${EXPO_PUBLIC_PERF_JS_FRAME_STALL_FRAME_MS:-50}"
 export EXPO_PUBLIC_PERF_JS_FRAME_LOG_ONLY_BELOW_FPS="${EXPO_PUBLIC_PERF_JS_FRAME_LOG_ONLY_BELOW_FPS:-58}"
+export EXPO_PUBLIC_PERF_JS_TASK_LATENCY_SAMPLER="${EXPO_PUBLIC_PERF_JS_TASK_LATENCY_SAMPLER:-1}"
+export EXPO_PUBLIC_PERF_JS_TASK_LATENCY_WINDOW_MS="${EXPO_PUBLIC_PERF_JS_TASK_LATENCY_WINDOW_MS:-500}"
+export EXPO_PUBLIC_PERF_JS_TASK_LATENCY_SAMPLE_INTERVAL_MS="${EXPO_PUBLIC_PERF_JS_TASK_LATENCY_SAMPLE_INTERVAL_MS:-8}"
+export EXPO_PUBLIC_PERF_JS_TASK_LATENCY_STALL_LAG_MS="${EXPO_PUBLIC_PERF_JS_TASK_LATENCY_STALL_LAG_MS:-50}"
+export EXPO_PUBLIC_PERF_JS_TASK_LATENCY_LOG_ONLY_ABOVE_MS="${EXPO_PUBLIC_PERF_JS_TASK_LATENCY_LOG_ONLY_ABOVE_MS:-12}"
 export EXPO_PUBLIC_PERF_UI_FRAME_SAMPLER="${EXPO_PUBLIC_PERF_UI_FRAME_SAMPLER:-1}"
 export EXPO_PUBLIC_PERF_UI_FRAME_WINDOW_MS="${EXPO_PUBLIC_PERF_UI_FRAME_WINDOW_MS:-500}"
 export EXPO_PUBLIC_PERF_UI_FRAME_STALL_FRAME_MS="${EXPO_PUBLIC_PERF_UI_FRAME_STALL_FRAME_MS:-50}"
@@ -49,6 +56,7 @@ fi
 export IOS_RUN="${IOS_RUN:-0}"
 export EXPO_FORCE_START="${EXPO_FORCE_START:-1}"
 export IOS_REFRESH_WRITE_ENV_LOCAL="${IOS_REFRESH_WRITE_ENV_LOCAL:-0}"
+export FOLLOW_METRO_LOGS=0
 
 METRO_LOG_PATH_DEFAULT="/tmp/expo-metro-${EXPO_PUBLIC_PERF_HARNESS_RUN_ID}.log"
 PERF_LOOP_LOG_DEFAULT="/tmp/perf-nav-switch-loop-${EXPO_PUBLIC_PERF_HARNESS_RUN_ID}.log"
@@ -61,7 +69,9 @@ echo "  runId=${EXPO_PUBLIC_PERF_HARNESS_RUN_ID}"
 echo "  scenario=${EXPO_PUBLIC_PERF_HARNESS_SCENARIO} runs=${EXPO_PUBLIC_PERF_HARNESS_RUNS} startDelayMs=${EXPO_PUBLIC_PERF_HARNESS_START_DELAY_MS} cooldownMs=${EXPO_PUBLIC_PERF_HARNESS_COOLDOWN_MS}"
 echo "  navSequence=${EXPO_PUBLIC_PERF_NAV_SWITCH_SEQUENCE}"
 echo "  navStepCooldownMs=${EXPO_PUBLIC_PERF_NAV_SWITCH_STEP_COOLDOWN_MS} navSettleQuietPeriodMs=${EXPO_PUBLIC_PERF_NAV_SWITCH_SETTLE_QUIET_PERIOD_MS} navStepTimeoutMs=${EXPO_PUBLIC_PERF_NAV_SWITCH_STEP_TIMEOUT_MS}"
+echo "  navAttribution=${EXPO_PUBLIC_PERF_NAV_SWITCH_ATTRIBUTION} runtimeAttribution=${EXPO_PUBLIC_PERF_NAV_SWITCH_RUNTIME_ATTRIBUTION}"
 echo "  jsFrameSampler enabled=${EXPO_PUBLIC_PERF_JS_FRAME_SAMPLER} windowMs=${EXPO_PUBLIC_PERF_JS_FRAME_WINDOW_MS} stallFrameMs=${EXPO_PUBLIC_PERF_JS_FRAME_STALL_FRAME_MS} fpsThreshold=${EXPO_PUBLIC_PERF_JS_FRAME_LOG_ONLY_BELOW_FPS}"
+echo "  jsTaskLatencySampler enabled=${EXPO_PUBLIC_PERF_JS_TASK_LATENCY_SAMPLER} windowMs=${EXPO_PUBLIC_PERF_JS_TASK_LATENCY_WINDOW_MS} sampleIntervalMs=${EXPO_PUBLIC_PERF_JS_TASK_LATENCY_SAMPLE_INTERVAL_MS} stallLagMs=${EXPO_PUBLIC_PERF_JS_TASK_LATENCY_STALL_LAG_MS} logOnlyAboveLagMs=${EXPO_PUBLIC_PERF_JS_TASK_LATENCY_LOG_ONLY_ABOVE_MS}"
 echo "  uiFrameSampler enabled=${EXPO_PUBLIC_PERF_UI_FRAME_SAMPLER} windowMs=${EXPO_PUBLIC_PERF_UI_FRAME_WINDOW_MS} stallFrameMs=${EXPO_PUBLIC_PERF_UI_FRAME_STALL_FRAME_MS} fpsThreshold=${EXPO_PUBLIC_PERF_UI_FRAME_LOG_ONLY_BELOW_FPS}"
 echo "  triggerMode=${PERF_NAV_SWITCH_TRIGGER_MODE} bootstrapApp=${PERF_NAV_SWITCH_BOOTSTRAP_APP}"
 echo "  metroLog=${EXPO_METRO_LOG_PATH}"
@@ -168,6 +178,11 @@ params = {
     "jsWindowMs": os.environ["EXPO_PUBLIC_PERF_JS_FRAME_WINDOW_MS"],
     "jsStallFrameMs": os.environ["EXPO_PUBLIC_PERF_JS_FRAME_STALL_FRAME_MS"],
     "jsFpsThreshold": os.environ["EXPO_PUBLIC_PERF_JS_FRAME_LOG_ONLY_BELOW_FPS"],
+    "taskSampler": os.environ["EXPO_PUBLIC_PERF_JS_TASK_LATENCY_SAMPLER"],
+    "taskWindowMs": os.environ["EXPO_PUBLIC_PERF_JS_TASK_LATENCY_WINDOW_MS"],
+    "taskSampleIntervalMs": os.environ["EXPO_PUBLIC_PERF_JS_TASK_LATENCY_SAMPLE_INTERVAL_MS"],
+    "taskStallLagMs": os.environ["EXPO_PUBLIC_PERF_JS_TASK_LATENCY_STALL_LAG_MS"],
+    "taskLogOnlyAboveLagMs": os.environ["EXPO_PUBLIC_PERF_JS_TASK_LATENCY_LOG_ONLY_ABOVE_MS"],
     "uiSampler": os.environ["EXPO_PUBLIC_PERF_UI_FRAME_SAMPLER"],
     "uiWindowMs": os.environ["EXPO_PUBLIC_PERF_UI_FRAME_WINDOW_MS"],
     "uiStallFrameMs": os.environ["EXPO_PUBLIC_PERF_UI_FRAME_STALL_FRAME_MS"],
@@ -206,8 +221,9 @@ if [[ "$PERF_NAV_SWITCH_TRIGGER_MODE" == "runtime" ]]; then
       echo "[perf-nav-switch-loop] Attaching to recent Metro log: ${existing_metro_log_path}" | tee -a "$PERF_NAV_SWITCH_LOOP_LOG_FILE"
       start_metro_log_stream "$deadline" "$existing_metro_log_path"
     else
-      echo "[perf-nav-switch-loop] No run-specific Metro log found for attach mode; following simulator logs instead." | tee -a "$PERF_NAV_SWITCH_LOOP_LOG_FILE"
-      start_runtime_log_stream "$simulator_udid"
+      echo "[perf-nav-switch-loop] No attachable Metro log found; bootstrapping app to create a deterministic run-specific Metro log." | tee -a "$PERF_NAV_SWITCH_LOOP_LOG_FILE"
+      bootstrap_app
+      start_metro_log_stream "$deadline"
     fi
   fi
   send_runtime_trigger "$simulator_udid" "${EXPO_PUBLIC_PERF_HARNESS_RUN_ID}-$(date +%s)"
@@ -222,11 +238,15 @@ harness_run_id="$EXPO_PUBLIC_PERF_HARNESS_RUN_ID"
 have_run_marker() {
   local marker="$1"
   local run_number="$2"
-  grep -a -q "\"event\":\"${marker}\".*\"harnessRunId\":\"${harness_run_id}\".*\"runNumber\":${run_number}" "$PERF_NAV_SWITCH_LOOP_LOG_FILE"
+  grep -a -E "\"event\"[[:space:]]*:[[:space:]]*\"${marker}\"" "$PERF_NAV_SWITCH_LOOP_LOG_FILE" \
+    | grep -a -E "\"harnessRunId\"[[:space:]]*:[[:space:]]*\"${harness_run_id}\"" \
+    | grep -a -Eq "\"runNumber\"[[:space:]]*:[[:space:]]*${run_number}"
 }
 
 have_loop_complete_marker() {
-  grep -a -q "\"event\":\"nav_switch_loop_complete\".*\"harnessRunId\":\"${harness_run_id}\".*\"completedRuns\":${expected_runs}" "$PERF_NAV_SWITCH_LOOP_LOG_FILE"
+  grep -a -E "\"event\"[[:space:]]*:[[:space:]]*\"nav_switch_loop_complete\"" "$PERF_NAV_SWITCH_LOOP_LOG_FILE" \
+    | grep -a -E "\"harnessRunId\"[[:space:]]*:[[:space:]]*\"${harness_run_id}\"" \
+    | grep -a -Eq "\"completedRuns\"[[:space:]]*:[[:space:]]*${expected_runs}"
 }
 
 validate_completion() {

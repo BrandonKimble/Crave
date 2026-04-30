@@ -106,20 +106,6 @@ final class ProfilePresentationTransactionExecutor: NSObject {
     let requestToken = executionContext?["requestToken"] as? Int
 
     if
-      let restaurantSheetCommand = commandSet?["restaurantSheetCommand"] as? [String: Any],
-      let type = restaurantSheetCommand["type"] as? String,
-      type == "request",
-      let snapTo = restaurantSheetCommand["snap"] as? String,
-      let requestToken
-    {
-      _ = dispatchBottomSheetCommand(
-        hostKey: "restaurant_profile_sheet",
-        snapTo: snapTo,
-        token: requestToken
-      )
-    }
-
-    if
       let resultsSheetCommand = commandSet?["resultsSheetCommand"] as? [String: Any],
       let type = resultsSheetCommand["type"] as? String,
       let requestToken

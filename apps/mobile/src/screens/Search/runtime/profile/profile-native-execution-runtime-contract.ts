@@ -1,5 +1,5 @@
 import type { CameraIntentArbiter } from '../map/camera-intent-arbiter';
-import type { PreparedProfilePresentationCompletionEvent } from './profile-prepared-presentation-transaction-contract';
+import type { PreparedProfilePresentationCompletionEvent } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
 import type { ProfileNativeCommandExecutionModel } from './profile-native-command-runtime';
 import type { ProfileNativeTransitionExecutionModel } from './profile-native-transition-runtime';
 

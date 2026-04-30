@@ -4,6 +4,7 @@ import type { ProfileRestaurantCameraActionModel } from './profile-action-model-
 export type RestaurantProfileFocusTarget = {
   focusCoordinate: Coordinate;
   focusLocationKey: string;
+  focusLocationId: string | null;
 };
 
 export const resolveRestaurantProfileFocusTarget = ({
@@ -49,5 +50,6 @@ export const resolveRestaurantProfileFocusTarget = ({
           5
         )}:${nextPressedCoordinate.lat.toFixed(5)}`
       : `${restaurant.restaurantId}:anchor`,
+    focusLocationId: focusLocation?.locationId ?? null,
   };
 };

@@ -5,6 +5,11 @@ import type { Feature, FeatureCollection, Point } from 'geojson';
 import type { StartupLocationSnapshot } from '../../../navigation/runtime/MainLaunchCoordinator';
 import type { Coordinate, MapBounds, RestaurantResult } from '../../../types';
 import { logger } from '../../../utils';
+import { shouldLogSearchNavSwitchDiagnosticLogs } from '../runtime/shared/search-nav-switch-perf-probe';
+import {
+  recordSearchNavSwitchRuntimeAttributionSpan,
+  withSearchNavSwitchRuntimeAttribution,
+} from '../runtime/shared/search-nav-switch-runtime-attribution';
 import { useMapMarkerEngine } from '../hooks/use-map-marker-engine';
 import type { MapQueryBudget } from '../runtime/map/map-query-budget';
 import {
@@ -132,7 +137,7 @@ const buildStableCollisionFeature = (
       markerKey,
       restaurantId: feature.properties.restaurantId,
     } as RestaurantFeatureProperties,
-  }) satisfies Feature<Point, RestaurantFeatureProperties>;
+  } satisfies Feature<Point, RestaurantFeatureProperties>);
 
 const buildNativeLabelProperties = (
   properties: RestaurantFeatureProperties
@@ -1000,9 +1005,14 @@ const useMapPresentationSourceUpdateGate = ({
 const useMapPresentationSceneController = <TScene,>({
   phasePolicy,
   nextPreparedSceneSnapshot,
+  shouldReplaceFrozenScene,
 }: {
   phasePolicy: import('../runtime/map/map-presentation-runtime-contract').MapSnapshotPresentationPolicy;
   nextPreparedSceneSnapshot: MapPresentationSceneSnapshot<TScene>;
+  shouldReplaceFrozenScene?: (
+    frozenSceneSnapshot: MapPresentationSceneSnapshot<TScene>,
+    nextSceneSnapshot: MapPresentationSceneSnapshot<TScene>
+  ) => boolean;
 }): MapPresentationSceneControllerResult<TScene> => {
   const preparedSceneSnapshotRef = React.useRef(nextPreparedSceneSnapshot);
   const frozenSceneSnapshotRef = React.useRef<MapPresentationSceneSnapshot<TScene> | null>(null);
@@ -1014,6 +1024,13 @@ const useMapPresentationSceneController = <TScene,>({
 
   if (phasePolicy.shouldFreezePreparedScene && frozenSceneSnapshotRef.current == null) {
     frozenSceneSnapshotRef.current = preparedSceneSnapshotRef.current;
+  }
+  if (
+    phasePolicy.shouldFreezePreparedScene &&
+    frozenSceneSnapshotRef.current != null &&
+    shouldReplaceFrozenScene?.(frozenSceneSnapshotRef.current, nextPreparedSceneSnapshot)
+  ) {
+    frozenSceneSnapshotRef.current = nextPreparedSceneSnapshot;
   }
 
   React.useEffect(() => {
@@ -1045,6 +1062,11 @@ const useMapPresentationSceneController = <TScene,>({
   };
 };
 
+const isSearchMapPresentationSceneEmpty = (scene: SearchMapPresentationScene): boolean =>
+  scene.pinSourceStore.idsInOrder.length === 0 &&
+  (scene.dotSourceStore?.idsInOrder.length ?? 0) === 0 &&
+  scene.labelSourceStore.idsInOrder.length === 0;
+
 const useSearchMapPresentationSceneSnapshot = ({
   phasePolicy,
   preparedResultsSnapshotKey,
@@ -1068,7 +1090,18 @@ const useSearchMapPresentationSceneSnapshot = ({
   getNowMs: () => number;
   buildLabelCandidateFeatureId: (markerKey: string, candidate: LabelCandidate) => string;
 }): MapPresentationSceneControllerResult<SearchMapPresentationScene> => {
-  const recordPreparedLabelRuntimeAttribution = React.useCallback(() => {}, []);
+  const recordPreparedLabelRuntimeAttribution = React.useCallback(
+    (contributor: string, durationMs: number) => {
+      const endedAtMs = getNowMs();
+      recordSearchNavSwitchRuntimeAttributionSpan({
+        owner: 'searchMapRender',
+        operation: contributor,
+        startedAtMs: endedAtMs - durationMs,
+        endedAtMs,
+      });
+    },
+    [getNowMs]
+  );
   const { shouldAllowPreparedSourceUpdates } = useMapPresentationSourceUpdateGate({
     phasePolicy,
   });
@@ -1118,6 +1151,10 @@ const useSearchMapPresentationSceneSnapshot = ({
   return useMapPresentationSceneController({
     phasePolicy,
     nextPreparedSceneSnapshot,
+    shouldReplaceFrozenScene: (frozenSceneSnapshot, nextSceneSnapshot) =>
+      frozenSceneSnapshot.snapshotKey === nextSceneSnapshot.snapshotKey &&
+      isSearchMapPresentationSceneEmpty(frozenSceneSnapshot.scene) &&
+      !isSearchMapPresentationSceneEmpty(nextSceneSnapshot.scene),
   });
 };
 
@@ -1198,6 +1235,69 @@ export type SearchMapWithMarkerEngineProps = {
   disableBlur?: boolean;
   onProfilerRender?: React.ProfilerOnRenderCallback;
 };
+
+type SearchMapRenderEngineInputKey =
+  | 'restaurantOnlyId'
+  | 'highlightedRestaurantId'
+  | 'viewportBoundsService'
+  | 'resolveRestaurantMapLocations'
+  | 'resolveRestaurantLocationSelectionAnchor'
+  | 'pickPreferredRestaurantMapLocation'
+  | 'getQualityColorFromScore'
+  | 'mapGestureActiveRef'
+  | 'mapMotionPressureController'
+  | 'shouldLogSearchComputes'
+  | 'getPerfNow'
+  | 'logSearchCompute'
+  | 'maxFullPins'
+  | 'lodVisibleCandidateBuffer'
+  | 'lodPinPromoteStableMsMoving'
+  | 'lodPinDemoteStableMsMoving'
+  | 'lodPinToggleStableMsIdle'
+  | 'lodPinOffscreenToggleStableMsMoving'
+  | 'mapQueryBudget'
+  | 'profileCommandPort';
+
+type SearchMapRenderHostConfigKey =
+  | 'mapRef'
+  | 'cameraRef'
+  | 'styleURL'
+  | 'onPress'
+  | 'onTouchStart'
+  | 'onTouchEnd'
+  | 'onNativeViewportChanged'
+  | 'onMapIdle'
+  | 'onMapLoaded'
+  | 'onMapFullyRendered'
+  | 'presentationLifecyclePort'
+  | 'onProfilerRender';
+
+type SearchMapRenderPresentationPropKey =
+  | 'mapCenter'
+  | 'mapZoom'
+  | 'mapCameraAnimation'
+  | 'cameraPadding'
+  | 'isFollowingUser'
+  | 'isMapStyleReady'
+  | 'userLocation'
+  | 'userLocationSnapshot'
+  | 'disableMarkers'
+  | 'disableBlur';
+
+export type SearchMapRenderEngineInputs = Pick<
+  SearchMapWithMarkerEngineProps,
+  SearchMapRenderEngineInputKey
+>;
+
+export type SearchMapRenderHostConfig = Pick<
+  SearchMapWithMarkerEngineProps,
+  SearchMapRenderHostConfigKey
+>;
+
+export type SearchMapRenderPresentationProps = Pick<
+  SearchMapWithMarkerEngineProps,
+  SearchMapRenderPresentationPropKey
+>;
 
 // ---------------------------------------------------------------------------
 // Component
@@ -1280,14 +1380,18 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
   const searchRuntimeBus = useSearchBus();
 
   React.useEffect(() => {
-    logger.debug('[MAP-MOUNT-DIAG] SearchMapWithMarkerEngine:mount', {
-      engineInstanceId,
-      styleURL,
-    });
-    return () => {
-      logger.debug('[MAP-MOUNT-DIAG] SearchMapWithMarkerEngine:unmount', {
+    if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+      logger.debug('[MAP-MOUNT-DIAG] SearchMapWithMarkerEngine:mount', {
         engineInstanceId,
+        styleURL,
       });
+    }
+    return () => {
+      if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+        logger.debug('[MAP-MOUNT-DIAG] SearchMapWithMarkerEngine:unmount', {
+          engineInstanceId,
+        });
+      }
     };
   }, [engineInstanceId, styleURL]);
 
@@ -1390,79 +1494,91 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
 
   const handleSearchMapIdle = React.useCallback(
     (state: MapboxMapState) => {
-      const idleBounds = viewportBoundsService.getBounds() ?? mapStateBoundsToMapBounds(state);
-      setNativeViewportState((previous) => {
-        const boundsUnchanged =
-          previous.bounds?.northEast.lat === idleBounds?.northEast.lat &&
-          previous.bounds?.northEast.lng === idleBounds?.northEast.lng &&
-          previous.bounds?.southWest.lat === idleBounds?.southWest.lat &&
-          previous.bounds?.southWest.lng === idleBounds?.southWest.lng;
-        if (boundsUnchanged && previous.isGestureActive === false && previous.isMoving === false) {
-          return previous;
-        }
-        return {
-          bounds: idleBounds,
-          isGestureActive: false,
-          isMoving: false,
-        };
+      withSearchNavSwitchRuntimeAttribution('searchMapHost', 'mapIdle', () => {
+        const idleBounds = viewportBoundsService.getBounds() ?? mapStateBoundsToMapBounds(state);
+        setNativeViewportState((previous) => {
+          const boundsUnchanged =
+            previous.bounds?.northEast.lat === idleBounds?.northEast.lat &&
+            previous.bounds?.northEast.lng === idleBounds?.northEast.lng &&
+            previous.bounds?.southWest.lat === idleBounds?.southWest.lat &&
+            previous.bounds?.southWest.lng === idleBounds?.southWest.lng;
+          if (
+            boundsUnchanged &&
+            previous.isGestureActive === false &&
+            previous.isMoving === false
+          ) {
+            return previous;
+          }
+          return {
+            bounds: idleBounds,
+            isGestureActive: false,
+            isMoving: false,
+          };
+        });
+        onMapIdle(state);
       });
-      onMapIdle(state);
     },
     [onMapIdle, viewportBoundsService]
   );
 
   const handleSearchMapNativeViewportChanged = React.useCallback(
     (state: MapboxMapState) => {
-      const nextIsGestureActive = Boolean(state?.gestures?.isGestureActive);
-      const nextBounds = mapStateBoundsToMapBounds(state);
-      setNativeViewportState((previous) => {
-        const boundsUnchanged =
-          previous.bounds?.northEast.lat === nextBounds?.northEast.lat &&
-          previous.bounds?.northEast.lng === nextBounds?.northEast.lng &&
-          previous.bounds?.southWest.lat === nextBounds?.southWest.lat &&
-          previous.bounds?.southWest.lng === nextBounds?.southWest.lng;
-        if (
-          boundsUnchanged &&
-          previous.isGestureActive === nextIsGestureActive &&
-          previous.isMoving
-        ) {
-          return previous;
-        }
-        return {
-          bounds: nextBounds,
-          isGestureActive: nextIsGestureActive,
-          isMoving: true,
-        };
+      withSearchNavSwitchRuntimeAttribution('searchMapHost', 'nativeViewportChanged', () => {
+        const nextIsGestureActive = Boolean(state?.gestures?.isGestureActive);
+        const nextBounds = mapStateBoundsToMapBounds(state);
+        setNativeViewportState((previous) => {
+          const boundsUnchanged =
+            previous.bounds?.northEast.lat === nextBounds?.northEast.lat &&
+            previous.bounds?.northEast.lng === nextBounds?.northEast.lng &&
+            previous.bounds?.southWest.lat === nextBounds?.southWest.lat &&
+            previous.bounds?.southWest.lng === nextBounds?.southWest.lng;
+          if (
+            boundsUnchanged &&
+            previous.isGestureActive === nextIsGestureActive &&
+            previous.isMoving
+          ) {
+            return previous;
+          }
+          return {
+            bounds: nextBounds,
+            isGestureActive: nextIsGestureActive,
+            isMoving: true,
+          };
+        });
+        onNativeViewportChanged(state);
       });
-      onNativeViewportChanged(state);
     },
     [onNativeViewportChanged]
   );
 
   const handleSearchMapTouchStart = React.useCallback(() => {
-    setNativeViewportState((previous) =>
-      previous.isGestureActive && previous.isMoving
-        ? previous
-        : {
-            bounds: previous.bounds,
-            isGestureActive: true,
-            isMoving: true,
-          }
-    );
-    onTouchStart?.();
+    withSearchNavSwitchRuntimeAttribution('searchMapHost', 'touchStart', () => {
+      setNativeViewportState((previous) =>
+        previous.isGestureActive && previous.isMoving
+          ? previous
+          : {
+              bounds: previous.bounds,
+              isGestureActive: true,
+              isMoving: true,
+            }
+      );
+      onTouchStart?.();
+    });
   }, [onTouchStart]);
 
   const handleSearchMapTouchEnd = React.useCallback(() => {
-    setNativeViewportState((previous) =>
-      previous.isGestureActive === false
-        ? previous
-        : {
-            bounds: previous.bounds,
-            isGestureActive: false,
-            isMoving: previous.isMoving,
-          }
-    );
-    onTouchEnd?.();
+    withSearchNavSwitchRuntimeAttribution('searchMapHost', 'touchEnd', () => {
+      setNativeViewportState((previous) =>
+        previous.isGestureActive === false
+          ? previous
+          : {
+              bounds: previous.bounds,
+              isGestureActive: false,
+              isMoving: previous.isMoving,
+            }
+      );
+      onTouchEnd?.();
+    });
   }, [onTouchEnd]);
 
   // -------------------------------------------------------------------------

@@ -17,5 +17,6 @@ export type BottomSheetSnapChangeMeta = {
 export type BottomSheetMotionCommand = {
   snapTo: BottomSheetSnap;
   token: number;
+  settleToken?: number | null;
   velocity?: number;
 };

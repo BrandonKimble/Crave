@@ -5,25 +5,24 @@ import type {
   RecentlyViewedFood,
   RecentlyViewedRestaurant,
 } from '../../../../services/search';
-
 import type {
-  SearchForegroundSubmitRuntimeArgs,
   SearchForegroundInteractionSubmitHandlers,
+  SearchForegroundSubmitRuntimeArgs,
 } from './use-search-foreground-interaction-runtime-contract';
-import type { SearchForegroundSubmitPreparationRuntime } from './use-search-foreground-submit-preparation-runtime';
+import type { useSearchForegroundSubmitPreparationRuntime } from './use-search-foreground-submit-preparation-runtime';
 
 type UseSearchForegroundRecentSubmitRuntimeArgs = Pick<
   SearchForegroundSubmitRuntimeArgs,
   | 'submitRuntime'
-  | 'setRestaurantOnlyIntent'
   | 'pendingRestaurantSelectionRef'
+  | 'setRestaurantOnlyIntent'
   | 'deferRecentSearchUpsert'
   | 'openRestaurantProfilePreview'
 > & {
-  preparationRuntime: Pick<SearchForegroundSubmitPreparationRuntime, 'prepareRecentIntentSubmit'>;
+  submitPreparationRuntime: ReturnType<typeof useSearchForegroundSubmitPreparationRuntime>;
 };
 
-export type SearchForegroundRecentSubmitRuntime = Pick<
+type SearchForegroundRecentSubmitRuntime = Pick<
   SearchForegroundInteractionSubmitHandlers,
   | 'handleRecentSearchPress'
   | 'handleRecentlyViewedRestaurantPress'
@@ -32,14 +31,13 @@ export type SearchForegroundRecentSubmitRuntime = Pick<
 
 export const useSearchForegroundRecentSubmitRuntime = ({
   submitRuntime,
-  setRestaurantOnlyIntent,
   pendingRestaurantSelectionRef,
+  setRestaurantOnlyIntent,
   deferRecentSearchUpsert,
   openRestaurantProfilePreview,
-  preparationRuntime,
+  submitPreparationRuntime,
 }: UseSearchForegroundRecentSubmitRuntimeArgs): SearchForegroundRecentSubmitRuntime => {
   const { submitSearch, runRestaurantEntitySearch } = submitRuntime;
-  const { prepareRecentIntentSubmit } = preparationRuntime;
 
   const handleRecentSearchPress = React.useCallback(
     (entry: RecentSearch) => {
@@ -47,7 +45,7 @@ export const useSearchForegroundRecentSubmitRuntime = ({
       if (!trimmedValue) {
         return;
       }
-      prepareRecentIntentSubmit(trimmedValue);
+      submitPreparationRuntime.prepareRecentIntentSubmit(trimmedValue);
       const restaurantId =
         entry.selectedEntityType === 'restaurant' ? (entry.selectedEntityId ?? null) : null;
       if (restaurantId) {
@@ -76,9 +74,9 @@ export const useSearchForegroundRecentSubmitRuntime = ({
       deferRecentSearchUpsert,
       openRestaurantProfilePreview,
       pendingRestaurantSelectionRef,
-      prepareRecentIntentSubmit,
       runRestaurantEntitySearch,
       setRestaurantOnlyIntent,
+      submitPreparationRuntime,
       submitSearch,
     ]
   );
@@ -89,7 +87,7 @@ export const useSearchForegroundRecentSubmitRuntime = ({
       if (!trimmedValue) {
         return;
       }
-      prepareRecentIntentSubmit(trimmedValue);
+      submitPreparationRuntime.prepareRecentIntentSubmit(trimmedValue);
       pendingRestaurantSelectionRef.current = { restaurantId: item.restaurantId };
       openRestaurantProfilePreview(item.restaurantId, trimmedValue);
       setRestaurantOnlyIntent(item.restaurantId);
@@ -110,9 +108,9 @@ export const useSearchForegroundRecentSubmitRuntime = ({
       deferRecentSearchUpsert,
       openRestaurantProfilePreview,
       pendingRestaurantSelectionRef,
-      prepareRecentIntentSubmit,
       runRestaurantEntitySearch,
       setRestaurantOnlyIntent,
+      submitPreparationRuntime,
     ]
   );
 
@@ -122,7 +120,7 @@ export const useSearchForegroundRecentSubmitRuntime = ({
       if (!trimmedValue) {
         return;
       }
-      prepareRecentIntentSubmit(trimmedValue);
+      submitPreparationRuntime.prepareRecentIntentSubmit(trimmedValue);
       pendingRestaurantSelectionRef.current = { restaurantId: item.restaurantId };
       openRestaurantProfilePreview(item.restaurantId, trimmedValue);
       setRestaurantOnlyIntent(item.restaurantId);
@@ -143,15 +141,22 @@ export const useSearchForegroundRecentSubmitRuntime = ({
       deferRecentSearchUpsert,
       openRestaurantProfilePreview,
       pendingRestaurantSelectionRef,
-      prepareRecentIntentSubmit,
       runRestaurantEntitySearch,
       setRestaurantOnlyIntent,
+      submitPreparationRuntime,
     ]
   );
 
-  return {
-    handleRecentSearchPress,
-    handleRecentlyViewedRestaurantPress,
-    handleRecentlyViewedFoodPress,
-  };
+  return React.useMemo(
+    () => ({
+      handleRecentSearchPress,
+      handleRecentlyViewedRestaurantPress,
+      handleRecentlyViewedFoodPress,
+    }),
+    [
+      handleRecentSearchPress,
+      handleRecentlyViewedFoodPress,
+      handleRecentlyViewedRestaurantPress,
+    ]
+  );
 };

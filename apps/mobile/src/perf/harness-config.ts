@@ -2,9 +2,10 @@ type PerfHarnessScenario =
   | 'none'
   | 'search_shortcut_loop'
   | 'search_shortcut_loop_open_now_roundtrip'
+  | 'search_shortcut_submit_close_loop'
   | 'search_nav_switch_loop';
 type PerfShortcutTab = 'dishes' | 'restaurants';
-type PerfNavSwitchOverlay = 'search' | 'bookmarks' | 'profile';
+type PerfNavSwitchOverlay = 'search' | 'bookmarks' | 'profile' | 'polls';
 type PerfShortcutSettleBoundaryPolicy =
   | 'quiet_snapshot_only'
   | 'shadow_converged_or_quiet_snapshot';
@@ -31,6 +32,14 @@ type PerfJsFrameSamplerConfig = {
   logOnlyBelowFps: number;
 };
 
+type PerfJsTaskLatencySamplerConfig = {
+  enabled: boolean;
+  windowMs: number;
+  sampleIntervalMs: number;
+  stallLagMs: number;
+  logOnlyAboveLagMs: number;
+};
+
 type PerfUiFrameSamplerConfig = {
   enabled: boolean;
   windowMs: number;
@@ -48,6 +57,7 @@ type PerfHarnessConfig = {
   shortcutLoop: PerfShortcutLoopConfig;
   navSwitchLoop: PerfNavSwitchLoopConfig;
   jsFrameSampler: PerfJsFrameSamplerConfig;
+  jsTaskLatencySampler: PerfJsTaskLatencySamplerConfig;
   uiFrameSampler: PerfUiFrameSamplerConfig;
   signature: string;
 };
@@ -99,6 +109,9 @@ const parseScenario = (value: string | undefined): PerfHarnessScenario => {
   if (value === 'search_shortcut_loop_open_now_roundtrip') {
     return 'search_shortcut_loop_open_now_roundtrip';
   }
+  if (value === 'search_shortcut_submit_close_loop') {
+    return 'search_shortcut_submit_close_loop';
+  }
   if (value === 'search_nav_switch_loop') {
     return 'search_nav_switch_loop';
   }
@@ -125,7 +138,7 @@ const parseNavSwitchOverlay = (value: string | undefined): PerfNavSwitchOverlay 
   if (!value) {
     return null;
   }
-  if (value === 'search' || value === 'bookmarks' || value === 'profile') {
+  if (value === 'search' || value === 'bookmarks' || value === 'profile' || value === 'polls') {
     return value;
   }
   return null;
@@ -187,6 +200,33 @@ const jsFrameLogOnlyBelowFps = parseInteger(
   58,
   1,
   240
+);
+const jsTaskLatencySamplerEnabled =
+  canEnableHarness &&
+  parseBoolean(readEnv('EXPO_PUBLIC_PERF_JS_TASK_LATENCY_SAMPLER'), isHarnessEnabled);
+const jsTaskLatencyWindowMs = parseInteger(
+  readEnv('EXPO_PUBLIC_PERF_JS_TASK_LATENCY_WINDOW_MS'),
+  500,
+  120,
+  60000
+);
+const jsTaskLatencySampleIntervalMs = parseInteger(
+  readEnv('EXPO_PUBLIC_PERF_JS_TASK_LATENCY_SAMPLE_INTERVAL_MS'),
+  8,
+  1,
+  1000
+);
+const jsTaskLatencyStallLagMs = parseInteger(
+  readEnv('EXPO_PUBLIC_PERF_JS_TASK_LATENCY_STALL_LAG_MS'),
+  50,
+  1,
+  5000
+);
+const jsTaskLatencyLogOnlyAboveLagMs = parseInteger(
+  readEnv('EXPO_PUBLIC_PERF_JS_TASK_LATENCY_LOG_ONLY_ABOVE_MS'),
+  12,
+  0,
+  5000
 );
 const uiFrameSamplerEnabled =
   canEnableHarness && parseBoolean(readEnv('EXPO_PUBLIC_PERF_UI_FRAME_SAMPLER'), isHarnessEnabled);
@@ -255,6 +295,13 @@ const perfHarnessConfig: PerfHarnessConfig = {
     stallFrameMs: jsFrameStallFrameMs,
     logOnlyBelowFps: jsFrameLogOnlyBelowFps,
   },
+  jsTaskLatencySampler: {
+    enabled: jsTaskLatencySamplerEnabled,
+    windowMs: jsTaskLatencyWindowMs,
+    sampleIntervalMs: jsTaskLatencySampleIntervalMs,
+    stallLagMs: jsTaskLatencyStallLagMs,
+    logOnlyAboveLagMs: jsTaskLatencyLogOnlyAboveLagMs,
+  },
   uiFrameSampler: {
     enabled: uiFrameSamplerEnabled,
     windowMs: uiFrameWindowMs,
@@ -284,6 +331,11 @@ perfHarnessConfig.signature = [
   `window:${perfHarnessConfig.jsFrameSampler.windowMs}`,
   `stall:${perfHarnessConfig.jsFrameSampler.stallFrameMs}`,
   `fps:${perfHarnessConfig.jsFrameSampler.logOnlyBelowFps}`,
+  `taskSampler:${perfHarnessConfig.jsTaskLatencySampler.enabled ? 1 : 0}`,
+  `taskWindow:${perfHarnessConfig.jsTaskLatencySampler.windowMs}`,
+  `taskInterval:${perfHarnessConfig.jsTaskLatencySampler.sampleIntervalMs}`,
+  `taskStall:${perfHarnessConfig.jsTaskLatencySampler.stallLagMs}`,
+  `taskLag:${perfHarnessConfig.jsTaskLatencySampler.logOnlyAboveLagMs}`,
   `uiSampler:${perfHarnessConfig.uiFrameSampler.enabled ? 1 : 0}`,
   `uiWindow:${perfHarnessConfig.uiFrameSampler.windowMs}`,
   `uiStall:${perfHarnessConfig.uiFrameSampler.stallFrameMs}`,
@@ -296,6 +348,7 @@ export type {
   PerfNavSwitchLoopConfig,
   PerfNavSwitchOverlay,
   PerfJsFrameSamplerConfig,
+  PerfJsTaskLatencySamplerConfig,
   PerfUiFrameSamplerConfig,
   PerfShortcutLoopConfig,
   PerfShortcutSettleBoundaryPolicy,

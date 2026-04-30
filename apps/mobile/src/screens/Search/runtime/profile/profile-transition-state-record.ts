@@ -1,6 +1,6 @@
 import type { ProfileControllerState } from './profile-runtime-state-record';
-import type { ProfileTransitionSnapshotCapture } from './profile-transition-state-contract';
-import { applyProfileTransitionSnapshotCapture } from './profile-transition-state-mutations';
+import type { ProfileTransitionSnapshotCapture } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
+import { applyProfileTransitionSnapshotCapture } from '../../../../navigation/runtime/app-route-profile-transition-state-mutations';
 
 export const getProfileTransitionStatusFromRecord = (controllerState: ProfileControllerState) =>
   controllerState.runtime.transition.status;

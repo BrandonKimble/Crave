@@ -4,10 +4,16 @@ import type React from 'react';
 import type { TextInput } from 'react-native';
 
 import type { AutocompleteMatch } from '../../../../services/autocomplete';
+import type { SearchChromeScalarSurfacePrimitiveSourceRuntime } from '../native/search-chrome-scalar-surface-primitive-source-runtime';
 import type { SearchFiltersLayoutCache } from '../../components/SearchFilters';
 import type { SearchMapMarkerEngineHandle } from '../../components/SearchMapWithMarkerEngine';
 import type { MapboxMapRef } from '../../components/search-map';
 import type { ResultsListItem } from '../read-models/read-model-selectors';
+import type {
+  SearchPrimitiveUiCleanupActions,
+  SearchPrimitiveUiStateController,
+} from './search-primitive-ui-state-controller';
+import type { SearchSuggestionPanelStateController } from './search-suggestion-panel-state-controller';
 
 export type SearchRootSearchStateRuntime = {
   pendingRestaurantSelectionRef: React.MutableRefObject<{ restaurantId: string } | null>;
@@ -18,10 +24,15 @@ export type SearchRootSearchStateRuntime = {
   resetFocusedMapState: () => void;
   searchSessionQueryRef: React.MutableRefObject<string>;
   isClearingSearchRef: React.MutableRefObject<boolean>;
+  primitiveUiStateController: SearchPrimitiveUiStateController;
+  primitiveUiCleanupActions: SearchPrimitiveUiCleanupActions;
   beginSuggestionCloseHoldRef: React.MutableRefObject<() => boolean>;
   setBeginSuggestionCloseHold: (handler: () => boolean) => void;
   shouldDisableSearchShortcutsRef: React.MutableRefObject<boolean>;
   setShouldDisableSearchShortcuts: (disabled: boolean) => void;
+  setSearchChromeScalarPrimitiveTarget: (
+    target: Pick<SearchChromeScalarSurfacePrimitiveSourceRuntime, 'updatePrimitiveSnapshot'> | null
+  ) => () => void;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   query: string;
   setQuery: React.Dispatch<React.SetStateAction<string>>;
@@ -32,6 +43,7 @@ export type SearchRootSearchStateRuntime = {
   setIsAutocompleteSuppressed: React.Dispatch<React.SetStateAction<boolean>>;
   isSearchFocused: boolean;
   setIsSearchFocused: React.Dispatch<React.SetStateAction<boolean>>;
+  suggestionPanelStateController: SearchSuggestionPanelStateController;
   isSuggestionPanelActive: boolean;
   setIsSuggestionPanelActive: React.Dispatch<React.SetStateAction<boolean>>;
   activeTab: 'dishes' | 'restaurants';

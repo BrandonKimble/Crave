@@ -1,7 +1,7 @@
 import React from 'react';
 
 import type { ProfileActionExecutionPorts } from './profile-action-runtime-port-contract';
-import type { ProfileAppExecutionRuntime } from './profile-app-execution-runtime-contract';
+import type { ProfileAppExecutionRuntime } from '../../../../navigation/runtime/app-route-profile-app-execution-runtime-contract';
 import type { ProfileAnalyticsModel } from './profile-owner-runtime-contract';
 import type { ProfilePreparedPresentationRuntime } from './profile-prepared-presentation-runtime-contract';
 

@@ -437,6 +437,8 @@ const styles = StyleSheet.create({
   navLabel: {
     marginTop: 0,
     color: themeColors.textBody,
+    textAlign: 'center',
+    includeFontPadding: false,
   },
   navLabelActive: {
     color: ACTIVE_TAB_COLOR,

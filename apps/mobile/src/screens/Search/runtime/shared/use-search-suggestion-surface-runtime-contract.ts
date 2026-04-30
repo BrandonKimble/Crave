@@ -12,6 +12,7 @@ import type {
   RecentlyViewedFood,
   RecentlyViewedRestaurant,
 } from '../../../../services/search';
+import type { SearchChromeScalarSurfacePresentationRuntime } from '../native/search-chrome-scalar-surface-presentation-runtime';
 import type { SearchStartupGeometrySeed } from './search-startup-geometry';
 
 export type SearchInteractionRef = React.MutableRefObject<{
@@ -49,6 +50,7 @@ export type UseSearchSuggestionSurfaceRuntimeArgs = {
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
   setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
   setBeginSuggestionCloseHold: (handler: () => boolean) => void;
+  searchChromeScalarSurfacePresentationRuntime?: SearchChromeScalarSurfacePresentationRuntime;
 };
 
 export type SearchSuggestionVisibilityRuntime = {
@@ -82,7 +84,7 @@ export type SearchSuggestionVisibilityRuntime = {
 
 export type SearchSuggestionTransitionRuntimeArgs = Pick<
   UseSearchSuggestionSurfaceRuntimeArgs,
-  'isSuggestionPanelActive'
+  'isSuggestionPanelActive' | 'searchChromeScalarSurfacePresentationRuntime'
 >;
 
 export type SearchSuggestionTransitionTimingRuntime = {
@@ -174,7 +176,9 @@ export type SearchSuggestionHoldRuntimeArgs = Pick<
     | 'liveShouldRenderAutocompleteSection'
     | 'liveShouldRenderRecentSection'
     | 'shouldShowAutocompleteSpinnerInBar'
-  >;
+  > & {
+    shouldFreezeSuggestionDisplayForRunOne: boolean;
+  };
 
 export type SearchSuggestionTransitionHoldFlags = {
   holdSuggestionPanel: boolean;
@@ -294,7 +298,9 @@ export type SearchSuggestionHeldDisplayRuntimeArgs = Pick<
   | 'liveShouldRenderRecentSection'
   | 'shouldShowAutocompleteSpinnerInBar'
 > &
-  Pick<SearchSuggestionHoldStateRuntime, 'submitTransitionHoldRef'>;
+  Pick<SearchSuggestionHoldStateRuntime, 'submitTransitionHoldRef'> & {
+    shouldFreezeSuggestionDisplayForRunOne: boolean;
+  };
 
 export type SearchSuggestionHeldDisplayRuntime = Omit<
   SearchSuggestionHoldRuntime,
@@ -323,26 +329,14 @@ export type SearchSuggestionHoldRuntime = {
   isRecentlyViewedFoodsLoadingDisplay: boolean;
 };
 
-export type SearchSuggestionLayoutRuntimeArgs = {
+export type SearchSuggestionLayoutStateRuntimeArgs = {
   searchInteractionRef: SearchInteractionRef;
   startupGeometrySeed: SearchStartupGeometrySeed;
   query: string;
   isSuggestionPanelActive: boolean;
-  isSuggestionPanelVisible: boolean;
   shouldDriveSuggestionLayout: boolean;
-  shouldShowSuggestionBackground: boolean;
   shouldRenderSuggestionPanel: boolean;
 };
-
-export type SearchSuggestionLayoutStateRuntimeArgs = Pick<
-  SearchSuggestionLayoutRuntimeArgs,
-  | 'startupGeometrySeed'
-  | 'searchInteractionRef'
-  | 'query'
-  | 'isSuggestionPanelActive'
-  | 'shouldDriveSuggestionLayout'
-  | 'shouldRenderSuggestionPanel'
->;
 
 export type SearchSuggestionLayoutStateRuntime = {
   shouldDriveSuggestionLayout: boolean;
@@ -363,13 +357,11 @@ export type SearchSuggestionLayoutStateRuntime = {
   resolvedSearchShortcutChipFrames: Record<string, LayoutRectangle>;
 };
 
-export type SearchSuggestionLayoutVisualRuntimeArgs = Pick<
-  SearchSuggestionLayoutRuntimeArgs,
-  | 'isSuggestionPanelActive'
-  | 'isSuggestionPanelVisible'
-  | 'shouldDriveSuggestionLayout'
-  | 'shouldShowSuggestionBackground'
-> & {
+export type SearchSuggestionLayoutVisualRuntimeArgs = {
+  isSuggestionPanelActive: boolean;
+  isSuggestionPanelVisible: boolean;
+  shouldDriveSuggestionLayout: boolean;
+  shouldShowSuggestionBackground: boolean;
   searchLayout: SearchLayout;
   suggestionContentHeight: number;
   shouldFreezeSuggestionHeader: boolean;
@@ -408,6 +400,8 @@ export type SearchSuggestionLayoutRuntime = {
   handleSuggestionContentSizeChange: (_width: number, height: number) => void;
   searchLayout: SearchLayout;
   searchBarFrame: LayoutRectangle | null;
+  resolvedSearchShortcutsFrame: LayoutRectangle | null;
+  resolvedSearchShortcutChipFrames: Record<string, LayoutRectangle>;
   handleSearchHeaderLayout: ({ nativeEvent }: LayoutChangeEvent) => void;
   handleSearchContainerLayout: ({ nativeEvent }: LayoutChangeEvent) => void;
   handleSearchShortcutsRowLayout: (layout: LayoutRectangle) => void;

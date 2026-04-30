@@ -41,7 +41,9 @@ export const useSearchRecentActivityRuntime = ({
     (value: string | RecentSearch) => {
       if (isSuggestionPanelActive || isSuggestionPanelVisible) {
         pendingRecentSearchUpsertsRef.current.push(
-          typeof value === 'string' ? { queryText: value } : value
+          typeof value === 'string'
+            ? { queryText: value, lastSearchedAt: new Date().toISOString() }
+            : value
         );
         return;
       }

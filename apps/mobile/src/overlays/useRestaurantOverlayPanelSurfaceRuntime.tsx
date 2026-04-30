@@ -6,11 +6,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import RestaurantPanelSnapshotNativeView, {
   type RestaurantPanelSnapshotActionPayload,
+  type RestaurantPanelSnapshotNativePayload,
 } from './RestaurantPanelSnapshotNativeView';
-import type {
-  RestaurantOverlayData,
-  RestaurantRoutePanelContract,
-} from './restaurantRoutePanelContract';
+import type { RestaurantRoutePanelContract } from './restaurantRoutePanelContract';
 
 export type RestaurantOverlaySurfaceModel = {
   contentComponent: React.ReactNode;
@@ -21,10 +19,22 @@ export type RestaurantOverlaySurfaceModel = {
 };
 
 type UseRestaurantOverlayPanelSurfaceRuntimeArgs = {
-  snapshotPayload: RestaurantOverlayData;
+  snapshotPayload: RestaurantPanelSnapshotNativePayload;
   shouldFreezeContent?: boolean;
   onRequestClose: RestaurantRoutePanelContract['onRequestClose'];
   onToggleFavorite: RestaurantRoutePanelContract['onToggleFavorite'];
+};
+
+const useStableEvent = <TArgs extends readonly unknown[], TResult>(
+  handler: (...args: TArgs) => TResult
+): ((...args: TArgs) => TResult) => {
+  const handlerRef = React.useRef(handler);
+  handlerRef.current = handler;
+
+  return React.useCallback(
+    (...args: TArgs) => handlerRef.current(...args),
+    []
+  );
 };
 
 export const useRestaurantOverlayPanelSurfaceRuntime = ({
@@ -35,7 +45,7 @@ export const useRestaurantOverlayPanelSurfaceRuntime = ({
 }: UseRestaurantOverlayPanelSurfaceRuntimeArgs): RestaurantOverlaySurfaceModel => {
   const insets = useSafeAreaInsets();
   const visibleSnapshotPayloadRef = React.useRef(snapshotPayload);
-  const incomingRestaurantId = snapshotPayload.restaurantId;
+  const incomingRestaurantId = snapshotPayload.restaurantId ?? null;
   const visibleSnapshotRestaurantId = visibleSnapshotPayloadRef.current?.restaurantId ?? null;
 
   if (
@@ -50,16 +60,18 @@ export const useRestaurantOverlayPanelSurfaceRuntime = ({
     ? visibleSnapshotPayloadRef.current ?? snapshotPayload
     : snapshotPayload;
   const isLoading = nativeSnapshotPayload.isLoading;
+  const stableRequestClose = useStableEvent(onRequestClose);
+  const stableToggleFavorite = useStableEvent(onToggleFavorite);
 
   const handleNativeAction = React.useCallback(
     (action: RestaurantPanelSnapshotActionPayload) => {
       switch (action.kind) {
         case 'close':
-          onRequestClose();
+          stableRequestClose();
           break;
         case 'favorite':
           if (action.restaurantId) {
-            onToggleFavorite(action.restaurantId);
+            stableToggleFavorite(action.restaurantId);
           }
           break;
         case 'share':
@@ -93,12 +105,19 @@ export const useRestaurantOverlayPanelSurfaceRuntime = ({
           break;
       }
     },
-    [onRequestClose, onToggleFavorite]
+    [stableRequestClose, stableToggleFavorite]
   );
 
   const backgroundComponent = React.useMemo(
     () => (isLoading ? <View style={styles.loadingBackground} /> : <FrostedGlassBackground />),
     [isLoading]
+  );
+  const contentBottomPadding = Math.max(insets.bottom + 48, 72);
+  const contentContainerStyle = React.useMemo(
+    () => ({
+      paddingBottom: contentBottomPadding,
+    }),
+    [contentBottomPadding]
   );
   const contentComponent = React.useMemo(
     () => (
@@ -110,17 +129,14 @@ export const useRestaurantOverlayPanelSurfaceRuntime = ({
     ),
     [handleNativeAction, nativeSnapshotPayload]
   );
-  const contentBottomPadding = Math.max(insets.bottom + 48, 72);
 
   return React.useMemo(
     () => ({
       contentComponent,
-      contentContainerStyle: {
-        paddingBottom: contentBottomPadding,
-      },
+      contentContainerStyle,
       backgroundComponent,
     }),
-    [backgroundComponent, contentBottomPadding, contentComponent]
+    [backgroundComponent, contentComponent, contentContainerStyle]
   );
 };
 

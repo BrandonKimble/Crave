@@ -1,7 +1,7 @@
 import React from 'react';
 
 import type { CreateProfileActionRuntimeArgs } from './profile-action-runtime-port-contract';
-import type { ProfileAppExecutionRuntime } from './profile-app-execution-runtime-contract';
+import type { ProfileAppExecutionRuntime } from '../../../../navigation/runtime/app-route-profile-app-execution-runtime-contract';
 import type { ProfileRuntimeActions } from './profile-owner-runtime-contract';
 import { useProfileOwnerPresentationActionsRuntime } from './profile-owner-presentation-actions-runtime';
 import { useProfileOwnerRuntimeActionsRuntime } from './profile-owner-runtime-actions-runtime';

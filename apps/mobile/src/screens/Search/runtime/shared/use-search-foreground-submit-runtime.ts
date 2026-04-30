@@ -1,11 +1,13 @@
+import React from 'react';
+
+import { createSearchForegroundSubmitHandlersRuntimeValue } from '../controller/search-foreground-submit-runtime';
 import type {
-  SearchForegroundSubmitRuntimeArgs,
   SearchForegroundInteractionSubmitHandlers,
+  SearchForegroundSubmitRuntimeArgs,
 } from './use-search-foreground-interaction-runtime-contract';
-import { useSearchForegroundPrimarySubmitRuntime } from './use-search-foreground-primary-submit-runtime';
+import { useSearchForegroundDirectSubmitRuntime } from './use-search-foreground-direct-submit-runtime';
 import { useSearchForegroundRecentSubmitRuntime } from './use-search-foreground-recent-submit-runtime';
 import { useSearchForegroundSubmitPreparationRuntime } from './use-search-foreground-submit-preparation-runtime';
-import { useSearchForegroundSuggestionSubmitRuntime } from './use-search-foreground-suggestion-submit-runtime';
 
 export const useSearchForegroundSubmitRuntime = ({
   submitRuntime,
@@ -18,9 +20,8 @@ export const useSearchForegroundSubmitRuntime = ({
   isLoadingMore,
   isSearchSessionActive,
   isSuggestionPanelActive,
-  shouldShowDockedPolls,
-  captureSearchSessionOrigin,
-  ensureSearchOverlay,
+  shouldShowDockedPollsRef,
+  prepareSearchSessionEntry,
   suppressAutocompleteResults,
   cancelAutocomplete,
   dismissSearchKeyboard,
@@ -40,9 +41,9 @@ export const useSearchForegroundSubmitRuntime = ({
   deferRecentSearchUpsert,
   openRestaurantProfilePreview,
 }: SearchForegroundSubmitRuntimeArgs): SearchForegroundInteractionSubmitHandlers => {
-  const preparationRuntime = useSearchForegroundSubmitPreparationRuntime({
-    captureSearchSessionOrigin,
-    ensureSearchOverlay,
+  const submitPreparationRuntime = useSearchForegroundSubmitPreparationRuntime({
+    isSuggestionPanelActive,
+    prepareSearchSessionEntry,
     suppressAutocompleteResults,
     cancelAutocomplete,
     dismissSearchKeyboard,
@@ -54,13 +55,12 @@ export const useSearchForegroundSubmitRuntime = ({
     setSuggestions,
     setQuery,
     setRestaurantOnlyIntent,
-    isSuggestionPanelActive,
     isSearchEditingRef,
     allowSearchBlurExitRef,
     ignoreNextSearchBlurRef,
   });
 
-  const primarySubmitRuntime = useSearchForegroundPrimarySubmitRuntime({
+  const directSubmitRuntime = useSearchForegroundDirectSubmitRuntime({
     submitRuntime,
     query,
     submittedQuery,
@@ -70,23 +70,14 @@ export const useSearchForegroundSubmitRuntime = ({
     isSearchLoading,
     isLoadingMore,
     isSearchSessionActive,
-    shouldShowDockedPolls,
-    resetFocusedMapState,
-    resetMapMoveFlag,
-    setQuery,
-    setRestaurantOnlyIntent,
-    preparationRuntime,
-  });
-
-  const suggestionSubmitRuntime = useSearchForegroundSuggestionSubmitRuntime({
-    submitRuntime,
-    query,
-    captureSearchSessionOrigin,
-    ensureSearchOverlay,
+    shouldShowDockedPollsRef,
+    prepareSearchSessionEntry,
     suppressAutocompleteResults,
     cancelAutocomplete,
     dismissSearchKeyboard,
     beginSubmitTransition,
+    resetFocusedMapState,
+    resetMapMoveFlag,
     setIsSearchFocused,
     setIsSuggestionPanelActive,
     setShowSuggestions,
@@ -98,20 +89,24 @@ export const useSearchForegroundSubmitRuntime = ({
     allowSearchBlurExitRef,
     ignoreNextSearchBlurRef,
     openRestaurantProfilePreview,
+    submitPreparationRuntime,
   });
 
   const recentSubmitRuntime = useSearchForegroundRecentSubmitRuntime({
     submitRuntime,
-    setRestaurantOnlyIntent,
     pendingRestaurantSelectionRef,
+    setRestaurantOnlyIntent,
     deferRecentSearchUpsert,
     openRestaurantProfilePreview,
-    preparationRuntime,
+    submitPreparationRuntime,
   });
 
-  return {
-    ...primarySubmitRuntime,
-    ...suggestionSubmitRuntime,
-    ...recentSubmitRuntime,
-  };
+  return React.useMemo(
+    () =>
+      createSearchForegroundSubmitHandlersRuntimeValue({
+        ...directSubmitRuntime,
+        ...recentSubmitRuntime,
+      }),
+    [directSubmitRuntime, recentSubmitRuntime]
+  );
 };

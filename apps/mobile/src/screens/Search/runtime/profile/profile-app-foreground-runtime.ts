@@ -1,59 +1,57 @@
 import React from 'react';
 
-import {
-  requestSearchRouteDockedRestore,
-  useSearchRouteOverlayCommandStore,
-} from '../../../../overlays/searchRouteOverlayCommandStore';
-import { appOverlayRouteController } from '../../../../overlays/useAppOverlayRouteController';
-import { useOverlayStore } from '../../../../store/overlayStore';
-import type { ProfileForegroundUiRestoreState } from './profile-transition-state-contract';
+import type {
+  AppRouteOverlayCommandActions,
+  AppRouteOverlayCommandAuthority,
+} from '../../../../navigation/runtime/app-route-overlay-command-controller';
+import type { AppSearchRouteCommandActions } from '../../../../navigation/runtime/app-search-route-command-runtime';
+import { dismissTransientOverlays } from '../../../../overlays/overlayTransientDismissorRuntime';
+import type { ProfileAppForegroundExecutionRuntime } from '../../../../navigation/runtime/app-route-profile-app-execution-runtime-contract';
 
 export type ProfileAppForegroundExecutionArgs = {
   dismissSearchInteractionUi: () => void;
   ensureInitialCameraReady: () => void;
 };
 
-export type ProfileAppForegroundExecutionRuntime = {
-  prepareForegroundUiForProfileOpen: (options?: {
-    captureSaveSheetState?: boolean;
-  }) => ProfileForegroundUiRestoreState | null;
-};
-
 type UseProfileAppForegroundExecutionRuntimeArgs = {
+  routeOverlayCommandActions: AppRouteOverlayCommandActions;
+  routeOverlayCommandAuthority: AppRouteOverlayCommandAuthority;
+  routeSearchCommandActions: AppSearchRouteCommandActions;
   foregroundExecutionArgs: ProfileAppForegroundExecutionArgs;
 };
 
 export const useProfileAppForegroundExecutionRuntime = ({
+  routeOverlayCommandActions,
+  routeOverlayCommandAuthority,
+  routeSearchCommandActions,
   foregroundExecutionArgs,
 }: UseProfileAppForegroundExecutionRuntimeArgs): ProfileAppForegroundExecutionRuntime => {
   const { dismissSearchInteractionUi, ensureInitialCameraReady } = foregroundExecutionArgs;
 
   const prepareForegroundUiForProfileOpen = React.useCallback(
     (options?: { captureSaveSheetState?: boolean }) => {
-      const overlayState = useOverlayStore.getState();
-      const rootOverlay =
-        overlayState.overlayRouteStack[0]?.key ?? overlayState.activeOverlayRoute.key;
-      if (rootOverlay !== 'search') {
-        useSearchRouteOverlayCommandStore.getState().setTabOverlaySnapRequest(null);
-        requestSearchRouteDockedRestore({
-          snap: 'collapsed',
-        });
-        appOverlayRouteController.setRootRoute('search');
-      } else if (overlayState.activeOverlayRoute.key !== 'search') {
-        appOverlayRouteController.popToRootRoute();
-      }
-      useOverlayStore.getState().dismissTransientOverlays();
+      routeSearchCommandActions.ensureAppSearchRouteSearchScene();
+      dismissTransientOverlays();
       dismissSearchInteractionUi();
       ensureInitialCameraReady();
-      const { saveSheetState, setSaveSheetState } = useSearchRouteOverlayCommandStore.getState();
+      const { saveSheetState } = routeOverlayCommandAuthority.getSnapshot();
       if (options?.captureSaveSheetState && saveSheetState.visible) {
         const previousSaveSheetState = saveSheetState;
-        setSaveSheetState((prev) => ({ ...prev, visible: false }));
+        routeOverlayCommandActions.setSaveSheetState((prev) => ({
+          ...prev,
+          visible: false,
+        }));
         return previousSaveSheetState;
       }
       return null;
     },
-    [dismissSearchInteractionUi, ensureInitialCameraReady]
+    [
+      dismissSearchInteractionUi,
+      ensureInitialCameraReady,
+      routeOverlayCommandActions,
+      routeOverlayCommandAuthority,
+      routeSearchCommandActions,
+    ]
   );
 
   return React.useMemo<ProfileAppForegroundExecutionRuntime>(

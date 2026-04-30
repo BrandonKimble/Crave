@@ -1,32 +1,52 @@
 import React from 'react';
 
 import type { OverlaySheetSnap } from '../../../../overlays/types';
-import { useOverlaySheetPositionStore } from '../../../../overlays/useOverlaySheetPositionStore';
-import { useSearchRouteOverlayCommandRuntime } from '../../../../overlays/useSearchRouteOverlayCommandRuntime';
 import type { MainLaunchCoordinatorValue } from '../../../../navigation/runtime/MainLaunchCoordinator';
 import type { MapBounds } from '../../../../types';
 import type { SearchResponse } from '../../../../types/search';
 import type { SearchMapMarkerEngineHandle } from '../../components/SearchMapWithMarkerEngine';
 import type { MapboxMapRef } from '../../components/search-map';
+import type { SearchRootEnvironment } from './search-root-environment-contract';
 import { useSearchRequestStatusRuntime } from './use-search-request-status-runtime';
-import { useSearchRuntimeOwner } from '../../hooks/use-search-runtime-owner';
 import { useSearchFilterStateRuntime } from './use-search-filter-state-runtime';
 import { useSearchFreezeGateRuntime } from './use-search-freeze-gate-runtime';
 import { useSearchHistoryRuntime } from './use-search-history-runtime';
-import { useSearchRuntimeFlagsRuntime } from './use-search-runtime-flags-runtime';
+import type { SearchSessionController } from '../controller/search-session-controller';
+import type { RunOneHandoffCoordinator } from '../controller/run-one-handoff-coordinator';
+import type { CameraIntentArbiter } from '../map/camera-intent-arbiter';
+import type { MapQueryBudget } from '../map/map-query-budget';
+import type { SearchMapNativeCameraExecutor } from '../map/search-map-native-camera-executor';
+import type { PhaseBMaterializer } from '../scheduler/phase-b-materializer';
+import type { RuntimeWorkScheduler } from '../scheduler/runtime-work-scheduler';
+import type { SearchRuntimeBus } from './search-runtime-bus';
+import type { ViewportBoundsService } from '../viewport/viewport-bounds-service';
+import type { UseAppRouteSceneCameraMotionTargetRuntimeArgs } from '../../../../navigation/runtime/use-app-route-scene-camera-motion-target-runtime';
+
+export type {
+  RouteOverlayNavigationAuthority,
+  RouteSceneLayoutAuthority,
+} from './route-authority-contract';
 
 export type UseSearchRootSessionRuntimeArgs = {
   isSignedIn: boolean;
-  accessToken: string;
-  startupPollBounds: Parameters<typeof useSearchRuntimeOwner>[0]['startupPollBounds'];
+  accessToken: SearchRootEnvironment['accessToken'];
+  startupPollBounds: MapBounds | null;
   startupCamera: MainLaunchCoordinatorValue['startupCamera'];
-  cameraRef: Parameters<typeof useSearchRuntimeOwner>[0]['cameraRef'];
+  cameraRef: React.RefObject<import('@rnmapbox/maps').Camera | null>;
   mapRef: React.MutableRefObject<MapboxMapRef | null>;
   markerEngineRef: React.RefObject<SearchMapMarkerEngineHandle | null>;
+  markMainMapLoaded: () => void;
   markMainMapReady: () => void;
-  setMapCenter: Parameters<typeof useSearchRuntimeOwner>[0]['setMapCenter'];
-  setMapZoom: Parameters<typeof useSearchRuntimeOwner>[0]['setMapZoom'];
-  setMapCameraAnimation: Parameters<typeof useSearchRuntimeOwner>[0]['setMapCameraAnimation'];
+  searchMapNativeCameraExecutor: SearchMapNativeCameraExecutor;
+  setMapCenter: React.Dispatch<React.SetStateAction<[number, number] | null>>;
+  setMapZoom: React.Dispatch<React.SetStateAction<number | null>>;
+  setMapCameraAnimation: React.Dispatch<
+    React.SetStateAction<{
+      mode: 'none' | 'easeTo';
+      durationMs: number;
+      completionId: string | null;
+    }>
+  >;
   setIsFollowingUser: React.Dispatch<React.SetStateAction<boolean>>;
 };
 
@@ -52,11 +72,6 @@ export type SearchRuntimePrimitivesRuntime = {
   resetShortcutCoverageState: () => void;
 };
 
-export type SearchRootSharedSnapState = {
-  hasUserSharedSnap: boolean;
-  sharedSnap: ReturnType<typeof useOverlaySheetPositionStore.getState>['sharedSnap'];
-};
-
 export type SearchRootResultsArrivalState = {
   currentResults: SearchResponse | null;
   hasResults: boolean;
@@ -64,9 +79,7 @@ export type SearchRootResultsArrivalState = {
   canLoadMore: boolean;
   currentPage: number;
   isPaginationExhausted: boolean;
-  pendingTabSwitchTab: ReturnType<
-    ReturnType<typeof useSearchRuntimeOwner>['searchRuntimeBus']['getState']
-  >['pendingTabSwitchTab'];
+  pendingTabSwitchTab: ReturnType<SearchRuntimeBus['getState']>['pendingTabSwitchTab'];
   restaurantResults: SearchResponse['restaurants'] | null;
   resultsRequestKey: string | null;
   submittedQuery: string;
@@ -76,6 +89,18 @@ export type SearchRootResultsArrivalState = {
 export type SearchRootHydrationRuntimeState = {
   resultsHydrationKey: string | null;
   hydratedResultsKey: string | null;
+};
+
+export type SearchRootRuntimeFlagsRuntime = {
+  searchMode: 'natural' | 'shortcut' | null;
+  isSearchSessionActive: boolean;
+  runOneHandoffOperationId: string | null;
+  setSearchMode: React.Dispatch<React.SetStateAction<'natural' | 'shortcut' | null>>;
+  setIsSearchSessionActive: React.Dispatch<React.SetStateAction<boolean>>;
+  isSearchLoading: boolean;
+  isSearchRequestLoadingRef: React.MutableRefObject<boolean>;
+  setSearchRequestLoading: (isLoadingNext: boolean) => void;
+  hydrationOperationId: string | null;
 };
 
 export type SearchRootCameraViewportRuntime = {
@@ -94,7 +119,7 @@ export type SearchRootCameraViewportRuntime = {
       animationDurationMs?: number;
       requestToken?: number | null;
     }
-  ) => ReturnType<ReturnType<typeof useSearchRuntimeOwner>['cameraIntentArbiter']['commit']>;
+  ) => ReturnType<CameraIntentArbiter['commit']>;
 };
 
 export type SearchRootMapBootstrapRuntime = {
@@ -105,17 +130,40 @@ export type SearchRootMapBootstrapRuntime = {
   handleMainMapFullyRendered: () => void;
 };
 
-export type SearchRootSessionRuntime = {
-  runtimeOwner: ReturnType<typeof useSearchRuntimeOwner>;
-  sharedSnapState: SearchRootSharedSnapState;
+export type SearchRootDataPlaneRuntime = {
   resultsArrivalState: SearchRootResultsArrivalState;
-  runtimeFlags: ReturnType<typeof useSearchRuntimeFlagsRuntime>;
-  primitives: SearchRuntimePrimitivesRuntime & SearchRootCameraViewportRuntime;
+  runtimeFlags: SearchRootRuntimeFlagsRuntime;
   freezeGate: ReturnType<typeof useSearchFreezeGateRuntime>;
   hydrationRuntimeState: SearchRootHydrationRuntimeState;
   historyRuntime: ReturnType<typeof useSearchHistoryRuntime>;
-  overlayCommandRuntime: ReturnType<typeof useSearchRouteOverlayCommandRuntime>;
-  mapBootstrapRuntime: SearchRootMapBootstrapRuntime;
   filterStateRuntime: ReturnType<typeof useSearchFilterStateRuntime>;
   requestStatusRuntime: ReturnType<typeof useSearchRequestStatusRuntime>;
+};
+
+export type SearchRootSessionCoreLane = {
+  searchRuntimeBus: SearchRuntimeBus;
+  mapBootstrapRuntime: SearchRootMapBootstrapRuntime;
+  mapQueryBudget: MapQueryBudget;
+  viewportBoundsService: ViewportBoundsService;
+  latestBoundsRef: React.MutableRefObject<MapBounds | null>;
+  cameraIntentArbiter: CameraIntentArbiter;
+  searchSessionController: SearchSessionController;
+  runtimeWorkSchedulerRef: React.MutableRefObject<RuntimeWorkScheduler>;
+  runOneHandoffCoordinatorRef: React.MutableRefObject<RunOneHandoffCoordinator>;
+  phaseBMaterializerRef: React.MutableRefObject<PhaseBMaterializer>;
+};
+
+export type SearchRootSessionControlServicesRuntime = Omit<
+  SearchRootSessionCoreLane,
+  'mapBootstrapRuntime'
+>;
+
+export type SearchRootSessionPrimitivesLane = {
+  primitives: SearchRuntimePrimitivesRuntime & SearchRootCameraViewportRuntime;
+  appRouteSceneCameraMotionTargetPorts: UseAppRouteSceneCameraMotionTargetRuntimeArgs;
+};
+
+export type SearchRootSessionRuntimeLanes = {
+  sessionCoreLane: SearchRootSessionCoreLane;
+  sessionPrimitivesLane: SearchRootSessionPrimitivesLane;
 };

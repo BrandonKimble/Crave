@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { closePreparedProfilePresentationTransaction } from './profile-prepared-close-presentation-builder';
-import { createFocusedProfileCameraPresentationTransaction } from './profile-prepared-focus-presentation-builder';
+import { createFocusedProfileCameraPresentationTransaction } from '../../../../navigation/runtime/app-route-profile-prepared-focus-presentation-builder';
 import { openPreparedProfilePresentationTransaction } from './profile-prepared-open-presentation-builder';
 import type {
   ExecutePreparedProfilePresentationTransaction,
@@ -52,7 +52,7 @@ export const useProfilePreparedPresentationEntryRuntime = ({
             restaurantId,
             dismissBehavior: transactionExecution.getProfileDismissBehavior(),
             shouldClearSearchOnDismiss: transactionExecution.getProfileShouldClearSearchOnDismiss(),
-            isSearchOverlay: transactionExecution.isSearchOverlay,
+            isSearchOverlay: transactionExecution.getIsSearchOverlay(),
             lastVisibleSheetSnap: transactionExecution.getLastVisibleSheetSnap(),
           })
         );

@@ -1,64 +1,93 @@
 import React from 'react';
 
-import type { ResultsPresentationRuntimeOwner } from './results-presentation-runtime-owner-contract';
+import type {
+  ExecutionBatchPayload,
+  MarkerEnterSettledPayload,
+} from './results-presentation-runtime-owner-contract';
+import type { ResultsPresentationRuntimeMachine } from './results-presentation-runtime-machine';
 import type { RunOneHandoffCoordinator } from '../controller/run-one-handoff-coordinator';
-import { useResultsPresentationMarkerEnterBatchRuntime } from './use-results-presentation-marker-enter-batch-runtime';
-import { useResultsPresentationMarkerEnterSettleBridgeRuntime } from './use-results-presentation-marker-enter-settle-bridge-runtime';
 
-type ResultsPresentationMarkerEnterRuntime = Pick<
-  ResultsPresentationRuntimeOwner,
-  'handleExecutionBatchMountedHidden' | 'handleMarkerEnterStarted' | 'handleMarkerEnterSettled'
->;
+const toExecutionBatchRef = (payload: ExecutionBatchPayload) => {
+  if (payload.executionBatchId == null || payload.frameGenerationId == null) {
+    return null;
+  }
 
-export type UseResultsPresentationMarkerEnterRuntimeArgs = {
-  runOneHandoffCoordinatorRef: React.MutableRefObject<RunOneHandoffCoordinator>;
-  emitRuntimeMechanismEvent: (event: string, payload: Record<string, unknown>) => void;
-  markEnterBatchMountedHidden: (
-    requestKey: string,
-    executionBatch: {
-      batchId: string;
-      generationId: string;
-    }
-  ) => boolean;
-  markEnterStarted: (
-    requestKey: string,
-    executionBatch: { batchId: string; generationId: string } | null
-  ) => boolean;
-  markEnterBatchSettled: (
-    requestKey: string,
-    executionBatch: { batchId: string; generationId: string } | null
-  ) => boolean;
+  return {
+    batchId: payload.executionBatchId,
+    generationId: payload.frameGenerationId,
+  };
 };
 
 export const useResultsPresentationMarkerEnterRuntime = ({
+  runtimeMachineRef,
   runOneHandoffCoordinatorRef,
-  emitRuntimeMechanismEvent,
-  markEnterBatchMountedHidden,
-  markEnterStarted,
-  markEnterBatchSettled,
-}: UseResultsPresentationMarkerEnterRuntimeArgs): ResultsPresentationMarkerEnterRuntime => {
-  const markerEnterBatchRuntime = useResultsPresentationMarkerEnterBatchRuntime({
-    markEnterBatchMountedHidden,
-    markEnterStarted,
-    markEnterBatchSettled,
-  });
+  flushPendingMarkerEnterSettled,
+  setPendingMarkerEnterSettled,
+}: {
+  runtimeMachineRef: React.MutableRefObject<ResultsPresentationRuntimeMachine | null>;
+  runOneHandoffCoordinatorRef: React.MutableRefObject<RunOneHandoffCoordinator>;
+  flushPendingMarkerEnterSettled: () => boolean;
+  setPendingMarkerEnterSettled: (
+    pending: { operationId: string; payload: MarkerEnterSettledPayload } | null
+  ) => void;
+}) => {
+  const handleExecutionBatchMountedHidden = React.useCallback(
+    (payload: ExecutionBatchPayload) => {
+      const executionBatch = toExecutionBatchRef(payload);
+      if (executionBatch == null) {
+        return;
+      }
+      runtimeMachineRef.current!.markEnterBatchMountedHidden(
+        payload.requestKey,
+        executionBatch
+      );
+    },
+    [runtimeMachineRef]
+  );
 
-  const markerEnterSettleBridgeRuntime = useResultsPresentationMarkerEnterSettleBridgeRuntime({
-    runOneHandoffCoordinatorRef,
-    emitRuntimeMechanismEvent,
-    acceptMarkerEnterSettled: markerEnterBatchRuntime.acceptMarkerEnterSettled,
-  });
+  const handleMarkerEnterStarted = React.useCallback(
+    (payload: ExecutionBatchPayload) => {
+      const executionBatch = toExecutionBatchRef(payload);
+      if (executionBatch == null) {
+        return;
+      }
+      runtimeMachineRef.current!.markEnterStarted(payload.requestKey, executionBatch);
+    },
+    [runtimeMachineRef]
+  );
 
-  return React.useMemo(
-    () => ({
-      handleExecutionBatchMountedHidden: markerEnterBatchRuntime.handleExecutionBatchMountedHidden,
-      handleMarkerEnterStarted: markerEnterBatchRuntime.handleMarkerEnterStarted,
-      handleMarkerEnterSettled: markerEnterSettleBridgeRuntime.handleMarkerEnterSettled,
-    }),
+  const handleMarkerEnterSettled = React.useCallback(
+    (payload: MarkerEnterSettledPayload) => {
+      const executionBatch = toExecutionBatchRef(payload);
+      if (executionBatch == null) {
+        return;
+      }
+      if (!runtimeMachineRef.current!.markEnterBatchSettled(payload.requestKey, executionBatch)) {
+        return;
+      }
+      const coordinatorSnapshot = runOneHandoffCoordinatorRef.current.getSnapshot();
+      const operationId = coordinatorSnapshot.operationId;
+      if (!operationId || coordinatorSnapshot.phase === 'idle') {
+        setPendingMarkerEnterSettled(null);
+        return;
+      }
+      setPendingMarkerEnterSettled({
+        operationId,
+        payload,
+      });
+      flushPendingMarkerEnterSettled();
+    },
     [
-      markerEnterBatchRuntime.handleExecutionBatchMountedHidden,
-      markerEnterBatchRuntime.handleMarkerEnterStarted,
-      markerEnterSettleBridgeRuntime.handleMarkerEnterSettled,
+      flushPendingMarkerEnterSettled,
+      runOneHandoffCoordinatorRef,
+      runtimeMachineRef,
+      setPendingMarkerEnterSettled,
     ]
   );
+
+  return {
+    handleExecutionBatchMountedHidden,
+    handleMarkerEnterStarted,
+    handleMarkerEnterSettled,
+  };
 };

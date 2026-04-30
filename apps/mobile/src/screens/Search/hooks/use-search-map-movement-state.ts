@@ -1,12 +1,14 @@
 import React from 'react';
 
 import type { MapBounds } from '../../../types';
+import type { AppRouteOverlaySessionSnapshot } from '../../../navigation/runtime/app-route-overlay-session-contract';
 import type { MapboxMapRef } from '../components/search-map';
 import {
   type MapMotionPressureController,
   shouldDeferMapMovementWork,
 } from '../runtime/map/map-motion-pressure';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
+import type { SearchChromeScalarSurfacePrimitiveSourceRuntime } from '../runtime/native/search-chrome-scalar-surface-primitive-source-runtime';
 import { boundsFromPairs, hasBoundsMovedSignificantly, isLngLatTuple } from '../utils/geo';
 
 type SearchInteractionState = {
@@ -23,7 +25,8 @@ type UseSearchMapMovementStateArgs = {
   searchInteractionRef: React.MutableRefObject<SearchInteractionState>;
   anySheetDraggingRef: React.MutableRefObject<boolean>;
   lastSearchBoundsCaptureSeqRef: React.MutableRefObject<number>;
-  shouldShowPollsSheet: boolean;
+  shouldShowPollsSheetRef: React.MutableRefObject<AppRouteOverlaySessionSnapshot>;
+  searchChromeScalarSurfacePrimitiveSourceRuntime?: SearchChromeScalarSurfacePrimitiveSourceRuntime;
 };
 
 type UseSearchMapMovementStateResult = {
@@ -104,7 +107,8 @@ export const useSearchMapMovementState = ({
   searchInteractionRef,
   anySheetDraggingRef,
   lastSearchBoundsCaptureSeqRef,
-  shouldShowPollsSheet,
+  shouldShowPollsSheetRef,
+  searchChromeScalarSurfacePrimitiveSourceRuntime,
 }: UseSearchMapMovementStateArgs): UseSearchMapMovementStateResult => {
   const [pollBounds, setPollBounds] = React.useState<MapBounds | null>(() => startupPollBounds);
   const [mapMovedSinceSearch, setMapMovedSinceSearch] = React.useState(false);
@@ -113,6 +117,15 @@ export const useSearchMapMovementState = ({
   const mapGestureActiveRef = React.useRef(false);
   const pollBoundsRef = React.useRef<MapBounds | null>(startupPollBounds);
   const pendingPollBoundsRef = React.useRef<MapBounds | null>(null);
+
+  const writeMapMovedScalarPrimitive = React.useCallback(
+    (mapMovedNext: boolean) => {
+      searchChromeScalarSurfacePrimitiveSourceRuntime?.updatePrimitiveSnapshot({
+        mapMovedSinceSearch: mapMovedNext,
+      });
+    },
+    [searchChromeScalarSurfacePrimitiveSourceRuntime]
+  );
 
   const cancelPendingMapMovementUpdates = React.useCallback(() => {
     pendingPollBoundsRef.current = null;
@@ -160,8 +173,9 @@ export const useSearchMapMovementState = ({
       }
     }
     mapMovedSinceSearchRef.current = false;
+    writeMapMovedScalarPrimitive(false);
     setMapMovedSinceSearch(false);
-  }, [lastSearchBoundsCaptureSeqRef, mapRef, viewportBoundsService]);
+  }, [lastSearchBoundsCaptureSeqRef, mapRef, viewportBoundsService, writeMapMovedScalarPrimitive]);
 
   const markMapMovedIfNeeded = React.useCallback(
     (bounds: MapBounds) => {
@@ -193,9 +207,15 @@ export const useSearchMapMovementState = ({
     });
     pendingMapMovedEnterRef.current = mapMovedRevealAdmission === 'defer_until_idle';
     if (mapMovedRevealAdmission === 'publish_now') {
+      writeMapMovedScalarPrimitive(true);
       setMapMovedSinceSearch(true);
     }
-  }, [anySheetDraggingRef, mapMotionPressureController, searchInteractionRef]);
+  }, [
+    anySheetDraggingRef,
+    mapMotionPressureController,
+    searchInteractionRef,
+    writeMapMovedScalarPrimitive,
+  ]);
 
   const flushPendingMapMovedEnter = React.useCallback(() => {
     if (!pendingMapMovedEnterRef.current) {
@@ -263,7 +283,7 @@ export const useSearchMapMovementState = ({
   }, [mapRef, viewportBoundsService]);
 
   React.useEffect(() => {
-    if (!shouldShowPollsSheet) {
+    if (!shouldShowPollsSheetRef.current.shouldShowPollsSheet) {
       return;
     }
     if (latestBoundsRef.current) {
@@ -278,7 +298,7 @@ export const useSearchMapMovementState = ({
       pollBoundsRef.current = bounds;
       setPollBounds(bounds);
     });
-  }, [latestBoundsRef, resolveCurrentMapBounds, shouldShowPollsSheet]);
+  }, [latestBoundsRef, resolveCurrentMapBounds, shouldShowPollsSheetRef]);
 
   return {
     pollBounds,

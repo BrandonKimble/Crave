@@ -8,11 +8,10 @@ import {
   type SearchHeaderChromeMode,
   type SearchInputMode,
   type SearchResultsShellModel,
+  type SearchSheetContentLane,
 } from './results-presentation-shell-contract';
-import {
-  resolveSearchHeaderVisualModel,
-  resolveSearchSheetContentLane,
-} from './results-presentation-shell-visual-runtime';
+import type { SearchChromeScalarSurfacePresentationRuntime } from '../native/search-chrome-scalar-surface-presentation-runtime';
+import { resolveSearchHeaderVisualModel } from './results-presentation-shell-visual-runtime';
 
 const clamp01 = (value: number): number => {
   'worklet';
@@ -22,7 +21,6 @@ const clamp01 = (value: number): number => {
 type UseResultsPresentationShellModelRuntimeArgs = {
   query: string;
   submittedQuery: string;
-  hasActiveSearchContent: boolean;
   isSuggestionPanelActive: boolean;
   shouldRenderSearchOverlay: boolean;
   shouldEnableShortcutInteractions: boolean;
@@ -33,13 +31,13 @@ type UseResultsPresentationShellModelRuntimeArgs = {
   inputMode: SearchInputMode;
   displayQueryOverride: string;
   searchCloseTransitionState: SearchCloseTransitionState;
-  holdPersistentPollLane: boolean;
+  searchSheetContentLane: SearchSheetContentLane;
+  searchChromeScalarSurfacePresentationRuntime?: SearchChromeScalarSurfacePresentationRuntime;
 };
 
 export const useResultsPresentationShellModelRuntime = ({
   query,
   submittedQuery,
-  hasActiveSearchContent,
   isSuggestionPanelActive,
   shouldRenderSearchOverlay,
   shouldEnableShortcutInteractions,
@@ -50,7 +48,8 @@ export const useResultsPresentationShellModelRuntime = ({
   inputMode,
   displayQueryOverride,
   searchCloseTransitionState,
-  holdPersistentPollLane,
+  searchSheetContentLane,
+  searchChromeScalarSurfacePresentationRuntime,
 }: UseResultsPresentationShellModelRuntimeArgs): SearchResultsShellModel => {
   const backgroundProgress = useDerivedValue(() => {
     const openY = Math.min(resultsSnapY, collapsedY - 1);
@@ -65,16 +64,6 @@ export const useResultsPresentationShellModelRuntime = ({
     }
     return 1 - backgroundProgress.value;
   });
-
-  const searchSheetContentLane = React.useMemo(
-    () =>
-      resolveSearchSheetContentLane({
-        hasActiveSearchContent,
-        closeTransitionState: searchCloseTransitionState,
-        holdPersistentPollLane,
-      }),
-    [hasActiveSearchContent, holdPersistentPollLane, searchCloseTransitionState]
-  );
 
   const resultsDisplayQuery =
     query.trim().length > 0
@@ -105,6 +94,13 @@ export const useResultsPresentationShellModelRuntime = ({
       shouldRenderSearchOverlay,
     ]
   );
+
+  searchChromeScalarSurfacePresentationRuntime?.syncShellPresentationScalars({
+    shouldRenderSearchOverlay,
+    headerShortcutsVisibleTarget: headerVisualModel.shortcutsVisibleTarget,
+    headerShortcutsInteractive: headerVisualModel.shortcutsInteractive,
+    backdropTarget,
+  });
 
   return React.useMemo(
     () => ({

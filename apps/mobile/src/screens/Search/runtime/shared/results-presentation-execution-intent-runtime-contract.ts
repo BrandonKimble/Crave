@@ -26,13 +26,15 @@ export type ResultsPreparedSnapshotExecutor = (args: {
 export type ResultsPreparedSnapshotExecutionBoundary = {
   resultsRuntimeOwner: Pick<
     ResultsPresentationRuntimeOwner,
-    'commitPreparedResultsSnapshot' | 'stagePreparedResultsSnapshot'
+    'cancelPresentationIntent' | 'commitPreparedResultsSnapshot' | 'stagePreparedResultsSnapshot'
   >;
   animateSheetTo: (snap: Exclude<OverlaySheetSnap, 'hidden'>, velocity?: number) => void;
+  getCurrentSheetSnap?: () => OverlaySheetSnap | 'hidden';
   prepareShortcutSheetTransition?: () => boolean;
   setBackdropTarget: React.Dispatch<React.SetStateAction<SearchBackdropTarget>>;
   setInputMode: React.Dispatch<React.SetStateAction<SearchInputMode>>;
   setDisplayQueryOverride: React.Dispatch<React.SetStateAction<string>>;
   beginCloseTransition: (closeIntentId: string) => void;
+  markSearchSheetCloseSheetSettled?: (snap: Exclude<OverlaySheetSnap, 'hidden'>) => void;
   cancelSearchSheetCloseTransition: (closeIntentId?: string) => void;
 };

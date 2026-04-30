@@ -1,4 +1,5 @@
 import type { ResultsPresentationReadModel } from './results-presentation-runtime-contract';
+import type { SearchFreezeClassification } from './search-freeze-classification-runtime';
 
 export type ResultsPresentationPanelSurfaceMode =
   | ResultsPresentationReadModel['surfaceMode']
@@ -25,6 +26,7 @@ export const resolveResultsPresentationPanelState = ({
   hasResolvedResults,
   isSearchLoading,
   shouldUsePlaceholderRows,
+  freezeClassification,
 }: {
   renderPolicy: ResultsPresentationReadModel;
   allowsInteractionLoadingState: boolean;
@@ -32,12 +34,15 @@ export const resolveResultsPresentationPanelState = ({
   hasResolvedResults: boolean;
   isSearchLoading: boolean;
   shouldUsePlaceholderRows: boolean;
+  freezeClassification: SearchFreezeClassification;
 }): ResultsPresentationPanelState => {
   const shouldShowInteractionLoadingState =
     renderPolicy.surfaceMode === 'interaction_loading' && allowsInteractionLoadingState;
   const shouldShowInitialLoadingState = renderPolicy.surfaceMode === 'initial_loading';
   const shouldFreezeCoveredResultsRender =
-    renderPolicy.surfaceMode === 'initial_loading' && !renderPolicy.isEntering;
+    freezeClassification === 'recovery' &&
+    renderPolicy.surfaceMode === 'initial_loading' &&
+    !renderPolicy.isEntering;
   const shouldShowResultsCards = renderPolicy.contentVisibility !== 'hidden';
   const isSurfaceShowingEmptyState =
     !shouldShowInteractionLoadingState &&

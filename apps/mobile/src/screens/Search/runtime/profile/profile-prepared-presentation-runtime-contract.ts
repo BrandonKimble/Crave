@@ -1,11 +1,11 @@
-import type { CameraSnapshot } from './profile-transition-state-contract';
-import type { ProfileTransitionState } from './profile-transition-state-contract';
+import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
+import type { ProfileTransitionState } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type { PreparedProfileCommandExecutionRuntime } from './profile-prepared-presentation-command-executor';
 import type { PreparedProfileStateExecutionRuntime } from './profile-prepared-presentation-state-executor';
 import type {
   PreparedProfilePresentationCompletionEvent,
   PreparedProfilePresentationTransaction,
-} from './profile-prepared-presentation-transaction-contract';
+} from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
 
 export type ExecutePreparedProfilePresentationTransaction = (
   transaction: PreparedProfilePresentationTransaction
@@ -39,7 +39,7 @@ export type CreateProfilePreparedPresentationRuntimeArgs = {
     getProfileTransitionState: CreateProfilePreparedPresentationRuntimeArgs['completionExecution']['getProfileTransitionState'];
     getProfileDismissBehavior: () => 'restore' | 'clear';
     getProfileShouldClearSearchOnDismiss: () => boolean;
-    isSearchOverlay: boolean;
+    getIsSearchOverlay: () => boolean;
     getLastVisibleSheetSnap: () => 'expanded' | 'middle' | 'collapsed' | null;
   };
 };

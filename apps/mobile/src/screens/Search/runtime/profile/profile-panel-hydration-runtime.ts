@@ -1,6 +1,6 @@
 import React from 'react';
 
-import type { RestaurantPanelSnapshot } from './profile-transition-state-contract';
+import type { RestaurantPanelSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type { ProfileControllerState } from './profile-runtime-state-record';
 import { clearActiveHydrationIntentForRequestSeqOnRecord } from './profile-mutable-state-record';
 import type { ProfileHydrationIntentRuntime } from './profile-hydration-intent-runtime';

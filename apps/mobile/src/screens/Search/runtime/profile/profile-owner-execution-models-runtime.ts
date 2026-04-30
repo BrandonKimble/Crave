@@ -1,9 +1,9 @@
 import React from 'react';
 import { unstable_batchedUpdates } from 'react-native';
 
-import { useOverlayStore } from '../../../../store/overlayStore';
+import type { AppRouteSceneRuntime } from '../../../../navigation/runtime/app-route-scene-runtime';
 import { useProfileAppExecutionModelRuntime } from './profile-app-execution-model-runtime';
-import type { ProfileAppExecutionRuntime } from './profile-app-execution-runtime-contract';
+import type { ProfileAppExecutionRuntime } from '../../../../navigation/runtime/app-route-profile-app-execution-runtime-contract';
 import { useProfileNativeExecutionModelRuntime } from './profile-native-execution-model-runtime';
 import type { ProfileNativeExecutionModel } from './profile-native-execution-runtime-contract';
 import type {
@@ -18,13 +18,8 @@ import type { ProfilePreparedPresentationRuntime } from './profile-prepared-pres
 import type { ProfileRuntimeStateOwner } from './profile-runtime-state-contract';
 import type { ProfileAppExecutionArgs } from './profile-app-execution-runtime-contract';
 
-const useIsSearchOverlayVisible = (): boolean =>
-  useOverlayStore((state) => {
-    const rootOverlay = state.overlayRouteStack[0]?.key ?? state.activeOverlayRoute.key;
-    return rootOverlay === 'search';
-  });
-
 type UseProfileOwnerExecutionModelsRuntimeArgs = {
+  routeSceneRuntime: AppRouteSceneRuntime;
   searchRuntimeBus: ProfileSearchContext['searchRuntimeBus'];
   runtimeStateOwner: ProfileRuntimeStateOwner;
   nativeExecutionArgs: ProfileOwnerNativeExecutionArgs;
@@ -38,6 +33,7 @@ export type ProfileOwnerExecutionModelsRuntime = {
 };
 
 export const useProfileOwnerExecutionModelsRuntime = ({
+  routeSceneRuntime,
   searchRuntimeBus,
   runtimeStateOwner,
   nativeExecutionArgs,
@@ -53,10 +49,16 @@ export const useProfileOwnerExecutionModelsRuntime = ({
   });
 
   const appExecutionRuntime = useProfileAppExecutionModelRuntime({
+    routeSceneRuntime,
     searchRuntimeBus,
     appExecutionArgs,
     runtimeStateOwner,
+    preparedProfileCompletionHandlerRef,
   });
+  const getIsSearchOverlay = React.useCallback(
+    () => routeSceneRuntime.routeOverlayRootAuthority.getSnapshot().isSearchOverlay,
+    [routeSceneRuntime.routeOverlayRootAuthority]
+  );
 
   const preparedPresentationRuntime = useProfilePreparedPresentationRuntime({
     preparedProfileCompletionHandlerRef,
@@ -64,7 +66,7 @@ export const useProfileOwnerExecutionModelsRuntime = ({
     nativeExecutionModel,
     runtimeStateOwner,
     appExecutionRuntime,
-    isSearchOverlay: useIsSearchOverlayVisible(),
+    getIsSearchOverlay,
   });
 
   return React.useMemo(

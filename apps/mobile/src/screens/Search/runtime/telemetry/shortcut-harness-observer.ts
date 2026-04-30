@@ -32,6 +32,7 @@ type SubmitShortcutSearchRef = React.MutableRefObject<
   }) => Promise<void>
 >;
 type ToggleOpenNowRef = React.MutableRefObject<() => void>;
+type CloseSearchRef = React.MutableRefObject<() => void>;
 
 type SearchInteractionState = {
   isInteracting: boolean;
@@ -65,7 +66,8 @@ type ShortcutProfilerWindowOwner = {
 };
 
 const SHORTCUT_PROFILER_SPAN_MAX_BUFFER = 2000;
-const SHORTCUT_WINDOW_OWNER_LIMIT = 3;
+const SHORTCUT_WINDOW_OWNER_LIMIT = 10;
+const SHORTCUT_SLOW_PROFILER_SPAN_MIN_MS = 24;
 
 type UseShortcutHarnessObserverArgs = {
   getPerfNow: () => number;
@@ -73,10 +75,12 @@ type UseShortcutHarnessObserverArgs = {
   searchSessionController: SearchSessionController;
   submitShortcutSearchRef: SubmitShortcutSearchRef;
   toggleOpenNowRef: ToggleOpenNowRef;
+  closeSearchRef: CloseSearchRef;
   mapQueryBudget: MapQueryBudgetLike | null;
   searchMode: 'natural' | 'shortcut' | null;
   isSearchLoading: boolean;
   isLoadingMore: boolean;
+  isSearchSessionActive: boolean;
   isRunOneHandoffActive: boolean;
   resultsRequestKey: string | null;
   searchInteractionRef: React.MutableRefObject<SearchInteractionState>;
@@ -119,10 +123,12 @@ export const useShortcutHarnessObserver = (
     searchSessionController,
     submitShortcutSearchRef,
     toggleOpenNowRef,
+    closeSearchRef,
     mapQueryBudget,
     searchMode,
     isSearchLoading,
     isLoadingMore,
+    isSearchSessionActive,
     isRunOneHandoffActive,
     resultsRequestKey,
     searchInteractionRef,
@@ -206,8 +212,10 @@ export const useShortcutHarnessObserver = (
   const isShortcutOpenNowRoundtripScenario =
     perfHarnessConfig.enabled &&
     perfHarnessConfig.scenario === 'search_shortcut_loop_open_now_roundtrip';
+  const isShortcutSubmitCloseScenario =
+    perfHarnessConfig.enabled && perfHarnessConfig.scenario === 'search_shortcut_submit_close_loop';
   const isShortcutPerfHarnessScenario =
-    isShortcutLoopScenario || isShortcutOpenNowRoundtripScenario;
+    isShortcutLoopScenario || isShortcutOpenNowRoundtripScenario || isShortcutSubmitCloseScenario;
   const shortcutHarnessRunId = perfHarnessConfig.runId ?? 'shortcut-loop-no-run-id';
 
   const emitSearchPerfEvent = React.useCallback(
@@ -298,6 +306,7 @@ export const useShortcutHarnessObserver = (
       | 'await_initial_settle'
       | 'await_open_now_on_settle'
       | 'await_open_now_off_settle';
+    submitClosePhase: 'idle' | 'await_submit_settle' | 'await_close_settle';
     inProgress: boolean;
     launchHandle: ReturnType<typeof setTimeout> | null;
     cooldownHandle: ReturnType<typeof setTimeout> | null;
@@ -318,6 +327,7 @@ export const useShortcutHarnessObserver = (
     responseObserved: false,
     runStartRequestKey: null,
     openNowRoundtripPhase: 'idle',
+    submitClosePhase: 'idle',
     inProgress: false,
     launchHandle: null,
     cooldownHandle: null,
@@ -368,6 +378,7 @@ export const useShortcutHarnessObserver = (
     activeOperationId,
     activeOperationLane,
     isResultsHydrationSettled,
+    isSearchSessionActive,
   });
 
   const resolveShortcutDerivedStage = React.useCallback(() => {
@@ -432,12 +443,14 @@ export const useShortcutHarnessObserver = (
       activeOperationId,
       activeOperationLane,
       isResultsHydrationSettled,
+      isSearchSessionActive,
     };
     syncShortcutTraceStage();
   }, [
     activeOperationId,
     activeOperationLane,
     isResultsHydrationSettled,
+    isSearchSessionActive,
     isLoadingMore,
     isSearchLoading,
     isShortcutCoverageLoading,
@@ -522,8 +535,24 @@ export const useShortcutHarnessObserver = (
       if (spans.length > SHORTCUT_PROFILER_SPAN_MAX_BUFFER) {
         spans.splice(0, spans.length - SHORTCUT_PROFILER_SPAN_MAX_BUFFER);
       }
+      if (
+        payload.actualDurationMs >= SHORTCUT_SLOW_PROFILER_SPAN_MIN_MS ||
+        payload.commitSpanMs >= SHORTCUT_SLOW_PROFILER_SPAN_MIN_MS
+      ) {
+        emitSearchPerfEvent('Harness', {
+          event: 'shortcut_profiler_slow_span',
+          harnessRunId: shortcutHarnessRunId,
+          nowMs: roundPerfValue(payload.nowMs),
+          runNumber: payload.runNumber,
+          id: payload.id,
+          phase: payload.phase,
+          stageHint: payload.stageHint,
+          actualDurationMs: roundPerfValue(payload.actualDurationMs),
+          commitSpanMs: roundPerfValue(payload.commitSpanMs),
+        });
+      }
     },
-    [isShortcutPerfHarnessScenario]
+    [emitSearchPerfEvent, isShortcutPerfHarnessScenario, roundPerfValue, shortcutHarnessRunId]
   );
 
   const resolveWindowProfilerOwners = React.useCallback(
@@ -614,6 +643,7 @@ export const useShortcutHarnessObserver = (
       lifecycle.openNowRoundtripPhase = isShortcutOpenNowRoundtripScenario
         ? 'await_initial_settle'
         : 'idle';
+      lifecycle.submitClosePhase = isShortcutSubmitCloseScenario ? 'await_submit_settle' : 'idle';
       lifecycle.inProgress = true;
       shortcutProfilerSpanBufferRef.current = [];
       mapQueryBudget?.resetRun();
@@ -729,6 +759,7 @@ export const useShortcutHarnessObserver = (
       lifecycle.responseObserved = false;
       lifecycle.runStartRequestKey = null;
       lifecycle.openNowRoundtripPhase = 'idle';
+      lifecycle.submitClosePhase = 'idle';
       schedulerPressureBaselineRef.current = null;
       emitSearchPerfEvent('Harness', {
         event: 'shortcut_loop_run_complete',
@@ -824,7 +855,33 @@ export const useShortcutHarnessObserver = (
         lifecycle.settleCandidateVisiblePinCount = 0;
         lifecycle.settleCandidateVisibleDotCount = 0;
       };
+      const closeSettled = (): boolean => {
+        const inputs = harnessInputsRef.current;
+        const snapshot = shortcutHarnessSnapshotRef.current;
+        return !inputs.isSearchLoading && !inputs.hasResults && !snapshot.finalRequestKey;
+      };
       const advanceOpenNowRoundtripOrComplete = () => {
+        if (isShortcutSubmitCloseScenario) {
+          if (lifecycle.submitClosePhase === 'await_submit_settle') {
+            lifecycle.submitClosePhase = 'await_close_settle';
+            emitSearchPerfEvent('Harness', {
+              event: 'shortcut_loop_close_search',
+              harnessRunId: shortcutHarnessRunId,
+              nowMs: roundPerfValue(getPerfNow()),
+              runNumber: lifecycle.runNumber,
+            });
+            closeSearchRef.current();
+            resetSettleCandidate();
+            scheduleSettleRetry();
+            return;
+          }
+          if (lifecycle.submitClosePhase === 'await_close_settle') {
+            lifecycle.submitClosePhase = 'idle';
+            clearSettleCheckHandle();
+            completeShortcutHarnessRunRef.current('settled_submit_close');
+            return;
+          }
+        }
         if (!isShortcutOpenNowRoundtripScenario) {
           clearSettleCheckHandle();
           completeShortcutHarnessRunRef.current('settled');
@@ -911,6 +968,7 @@ export const useShortcutHarnessObserver = (
             return true;
           }
           if (
+            !isShortcutSubmitCloseScenario &&
             snapshot.finalVisibleCount > 0 &&
             snapshot.finalVisiblePinCount <= 0 &&
             snapshot.finalVisibleDotCount <= 0
@@ -993,6 +1051,15 @@ export const useShortcutHarnessObserver = (
         }, settleQuietPeriodMs);
       };
       const shadowConverged = isShadowConverged();
+      if (isShortcutSubmitCloseScenario && lifecycle.submitClosePhase === 'await_close_settle') {
+        if (closeSettled()) {
+          advanceOpenNowRoundtripOrComplete();
+          return;
+        }
+        resetSettleCandidate();
+        scheduleSettleRetry();
+        return;
+      }
       if (settleBlocked(shadowConverged)) {
         resetSettleCandidate();
         scheduleSettleRetry();
@@ -1044,6 +1111,7 @@ export const useShortcutHarnessObserver = (
       getPerfNow,
       isShortcutOpenNowRoundtripScenario,
       isShortcutPerfHarnessScenario,
+      isShortcutSubmitCloseScenario,
       roundPerfValue,
       runtimeWorkSchedulerRef,
       searchRuntimeBus,
@@ -1051,6 +1119,7 @@ export const useShortcutHarnessObserver = (
       searchSessionController,
       settleQuietPeriodMs,
       shortcutHarnessRunId,
+      closeSearchRef,
       toggleOpenNowRef,
     ]
   );
@@ -1066,6 +1135,22 @@ export const useShortcutHarnessObserver = (
       // If the search session errored, complete the run immediately
       // instead of waiting for the full timeout.
       if (result.state.phase === 'error' && shortcutHarnessLifecycleRef.current.inProgress) {
+        if (isShortcutSubmitCloseScenario) {
+          const lifecycle = shortcutHarnessLifecycleRef.current;
+          if (lifecycle.submitClosePhase === 'await_submit_settle') {
+            lifecycle.submitClosePhase = 'await_close_settle';
+            emitSearchPerfEvent('Harness', {
+              event: 'shortcut_loop_close_search',
+              harnessRunId: shortcutHarnessRunId,
+              nowMs: roundPerfValue(getPerfNow()),
+              runNumber: lifecycle.runNumber,
+              reason: 'submit_error',
+            });
+            closeSearchRef.current();
+          }
+          evaluateShortcutHarnessSettleBoundary('shadow_subscription');
+          return;
+        }
         completeShortcutHarnessRunRef.current('error');
         return;
       }
@@ -1073,8 +1158,14 @@ export const useShortcutHarnessObserver = (
     });
   }, [
     evaluateShortcutHarnessSettleBoundary,
+    emitSearchPerfEvent,
+    getPerfNow,
+    isShortcutSubmitCloseScenario,
     isShortcutPerfHarnessScenario,
+    roundPerfValue,
+    closeSearchRef,
     searchSessionController,
+    shortcutHarnessRunId,
     syncShortcutTraceStage,
   ]);
 
@@ -1098,6 +1189,7 @@ export const useShortcutHarnessObserver = (
     lifecycle.responseObserved = false;
     lifecycle.runStartRequestKey = null;
     lifecycle.openNowRoundtripPhase = 'idle';
+    lifecycle.submitClosePhase = 'idle';
     lifecycle.inProgress = false;
     const now = getPerfNow();
     emitSearchPerfEvent('Harness', {
@@ -1142,6 +1234,7 @@ export const useShortcutHarnessObserver = (
         lifecycle.responseObserved = false;
         lifecycle.runStartRequestKey = null;
         lifecycle.openNowRoundtripPhase = 'idle';
+        lifecycle.submitClosePhase = 'idle';
       }
     };
   }, [

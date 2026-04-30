@@ -1,14 +1,18 @@
 import React from 'react';
 
 import type { RestaurantResult } from '../../../../types';
-import type { RestaurantPanelSnapshot } from './profile-transition-state-contract';
+import type { RestaurantPanelSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type { ProfileControllerState } from './profile-runtime-state-record';
-import { resetPreparedProfileDismissHandling } from './profile-transition-state-mutations';
+import { resetPreparedProfileDismissHandling } from '../../../../navigation/runtime/app-route-profile-transition-state-mutations';
 import type { ProfileHydrationRequestRuntime } from './profile-hydration-request-runtime';
 import { createSeededRestaurantPanelSnapshot } from './profile-panel-hydration-snapshot-runtime';
 
 export type ProfilePanelSeedRuntime = {
-  seedRestaurantProfile: (restaurant: RestaurantResult, queryLabel: string) => void;
+  seedRestaurantProfile: (
+    restaurant: RestaurantResult,
+    queryLabel: string,
+    options?: { selectedLocationId?: string | null }
+  ) => void;
 };
 
 type UseProfilePanelSeedRuntimeArgs = {
@@ -30,7 +34,11 @@ export const useProfilePanelSeedRuntime = ({
   const { getCachedRestaurantProfile } = hydrationRequestRuntime;
 
   const seedRestaurantProfile = React.useCallback(
-    (restaurant: RestaurantResult, queryLabel: string) => {
+    (
+      restaurant: RestaurantResult,
+      queryLabel: string,
+      options?: { selectedLocationId?: string | null }
+    ) => {
       const restaurantId = restaurant.restaurantId;
       const cachedProfile = getCachedRestaurantProfile(restaurantId, restaurant.marketKey ?? null);
 
@@ -42,6 +50,7 @@ export const useProfilePanelSeedRuntime = ({
           restaurant,
           queryLabel,
           cachedProfile,
+          selectedLocationId: options?.selectedLocationId ?? null,
         })
       );
     },

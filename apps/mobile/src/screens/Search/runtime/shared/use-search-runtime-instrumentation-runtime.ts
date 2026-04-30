@@ -1,7 +1,6 @@
 import React from 'react';
 
-import { areResultsPresentationReadModelsEqual } from './results-presentation-runtime-contract';
-import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
+import type { PerfNavSwitchOverlay } from '../../../../perf/harness-config';
 import { useShortcutHarnessObserver } from '../telemetry/shortcut-harness-observer';
 import { useNavSwitchHarnessObserver } from '../telemetry/nav-switch-harness-observer';
 import {
@@ -10,6 +9,7 @@ import {
   type UseSearchRuntimeInstrumentationRuntimeResult,
 } from './use-search-runtime-instrumentation-runtime-contract';
 import { useSearchRuntimeProfilerInstrumentationRuntime } from './use-search-runtime-profiler-instrumentation-runtime';
+import { useSearchRuntimeProfilerStageHintRuntime } from './use-search-runtime-profiler-stage-hint-runtime';
 import { useSearchRuntimeRunOneTelemetryRuntime } from './use-search-runtime-run-one-telemetry-runtime';
 import { useSearchRuntimeStallInstrumentationRuntime } from './use-search-runtime-stall-instrumentation-runtime';
 import { useSearchRuntimeStateTelemetryRuntime } from './use-search-runtime-state-telemetry-runtime';
@@ -29,7 +29,6 @@ export const useSearchRuntimeInstrumentationRuntime = ({
   isRunOneHandoffActive,
   resultsRequestKey,
   searchInteractionRef,
-  isSearchOverlay,
   isInitialCameraReady,
   runTimeoutMs,
   settleQuietPeriodMs,
@@ -44,6 +43,9 @@ export const useSearchRuntimeInstrumentationRuntime = ({
   isAutocompleteSuppressed,
   rootOverlay,
   activeOverlayKey,
+  isSearchOverlay,
+  getRouteOverlayIdentitySnapshot,
+  getRouteActiveSceneKey,
   resultsPage,
 }: UseSearchRuntimeInstrumentationRuntimeArgs): UseSearchRuntimeInstrumentationRuntimeResult => {
   const logSearchCompute = React.useCallback((_label: string, _duration: number) => {}, []);
@@ -53,37 +55,15 @@ export const useSearchRuntimeInstrumentationRuntime = ({
   const toggleOpenNowHarnessRef = React.useRef<
     ShortcutHarnessObserverArgs['toggleOpenNowRef']['current']
   >(() => undefined);
-  const selectOverlayHarnessRef = React.useRef<
-    (target: 'search' | 'bookmarks' | 'profile') => void
-  >(() => undefined);
-
-  const profilerRuntimeState = useSearchRuntimeBusSelector(
-    searchRuntimeBus,
-    (state) => ({
-      shouldHydrateResultsForRender: state.shouldHydrateResultsForRender,
-      isLoadingMore: state.isLoadingMore,
-      resultsPresentation: state.resultsPresentation,
-    }),
-    (left, right) =>
-      left.shouldHydrateResultsForRender === right.shouldHydrateResultsForRender &&
-      left.isLoadingMore === right.isLoadingMore &&
-      areResultsPresentationReadModelsEqual(left.resultsPresentation, right.resultsPresentation),
-    ['shouldHydrateResultsForRender', 'isLoadingMore', 'resultsPresentation'] as const
+  const closeSearchHarnessRef = React.useRef<() => void>(() => undefined);
+  const selectOverlayHarnessRef = React.useRef<(target: PerfNavSwitchOverlay) => void>(
+    () => undefined
   );
-  const profilerShouldHydrateResultsForRenderRef = React.useRef(
-    profilerRuntimeState.shouldHydrateResultsForRender
-  );
-  const profilerIsResultsPresentationPendingRef = React.useRef(
-    profilerRuntimeState.resultsPresentation.isPending
-  );
-  React.useEffect(() => {
-    profilerIsResultsPresentationPendingRef.current =
-      profilerRuntimeState.resultsPresentation.isPending;
-  }, [profilerRuntimeState.resultsPresentation]);
-  React.useEffect(() => {
-    profilerShouldHydrateResultsForRenderRef.current =
-      profilerRuntimeState.shouldHydrateResultsForRender;
-  }, [profilerRuntimeState.shouldHydrateResultsForRender]);
+  const { profilerRuntimeState, resolveProfilerStageHint } =
+    useSearchRuntimeProfilerStageHintRuntime({
+      searchRuntimeBus,
+      isSearchRequestLoadingRef,
+    });
 
   const {
     emitRuntimeMechanismEvent,
@@ -97,10 +77,12 @@ export const useSearchRuntimeInstrumentationRuntime = ({
     searchSessionController,
     submitShortcutSearchRef,
     toggleOpenNowRef: toggleOpenNowHarnessRef,
+    closeSearchRef: closeSearchHarnessRef,
     mapQueryBudget,
     searchMode,
     isSearchLoading,
     isLoadingMore: profilerRuntimeState.isLoadingMore,
+    isSearchSessionActive,
     isRunOneHandoffActive,
     resultsRequestKey,
     searchInteractionRef,
@@ -111,34 +93,30 @@ export const useSearchRuntimeInstrumentationRuntime = ({
     searchRuntimeBus,
     runtimeWorkSchedulerRef,
   });
-  useNavSwitchHarnessObserver({
+  const {
+    getActiveNavSwitchRunNumber,
+    recordNavSwitchProfilerSpan,
+    isNavSwitchPerfHarnessScenario,
+  } = useNavSwitchHarnessObserver({
     getPerfNow,
     roundPerfValue,
     selectOverlayHarnessRef,
     isSearchOverlay,
-    isInitialCameraReady,
     rootOverlay,
     activeOverlayKey,
+    getRouteOverlayIdentitySnapshot,
+    getRouteActiveSceneKey,
+    isInitialCameraReady,
   });
-
-  const resolveProfilerStageHint = React.useCallback(() => {
-    if (profilerShouldHydrateResultsForRenderRef.current) {
-      return 'results_hydration_commit';
-    }
-    if (profilerIsResultsPresentationPendingRef.current) {
-      return 'visual_sync_state';
-    }
-    if (isSearchRequestLoadingRef.current) {
-      return 'results_list_materialization';
-    }
-    return 'post_visual';
-  }, [isSearchRequestLoadingRef]);
 
   const handleProfilerRender = useSearchRuntimeProfilerInstrumentationRuntime({
     getPerfNow,
     getActiveShortcutRunNumber,
+    getActiveNavSwitchRunNumber,
     recordProfilerSpan,
+    recordNavSwitchProfilerSpan,
     isShortcutPerfHarnessScenario,
+    isNavSwitchPerfHarnessScenario,
     mapQueryBudget,
     resolveProfilerStageHint,
     runOneCommitSpanPressureByOperationRef,
@@ -183,6 +161,7 @@ export const useSearchRuntimeInstrumentationRuntime = ({
     emitRuntimeMechanismEvent,
     submitShortcutSearchRef,
     toggleOpenNowHarnessRef,
+    closeSearchHarnessRef,
     selectOverlayHarnessRef,
     handleProfilerRender,
     shouldLogSearchComputes: SHOULD_LOG_SEARCH_COMPUTES,

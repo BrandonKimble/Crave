@@ -1,4 +1,4 @@
-import type { OverlayKey } from '../store/overlayStore';
+import type { OverlayKey } from '../navigation/runtime/app-overlay-route-types';
 
 export type SearchOverlaySheetSnap = 'expanded' | 'middle' | 'collapsed' | 'hidden';
 

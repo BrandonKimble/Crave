@@ -1,28 +1,25 @@
 import React from 'react';
 
-import { openSearchRoutePollsHome } from '../../../../overlays/searchRouteOverlayCommandStore';
-import { useAppOverlayRouteController } from '../../../../overlays/useAppOverlayRouteController';
 import { searchService } from '../../../../services/search';
 import { logger } from '../../../../utils';
 
 import type { SearchForegroundLaunchIntentRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
 
 export const useSearchForegroundLaunchIntentRuntime = ({
+  routeSearchCommandActions,
   navigation,
   activeMainIntent,
   consumeActiveMainIntent,
   openRestaurantProfilePreview,
   currentMarketKey,
 }: SearchForegroundLaunchIntentRuntimeArgs): void => {
-  const overlayRouteController = useAppOverlayRouteController();
-
   React.useEffect(() => {
     if (activeMainIntent.type === 'none') {
       return;
     }
 
     if (activeMainIntent.type === 'polls') {
-      openSearchRoutePollsHome({
+      routeSearchCommandActions.openAppSearchRoutePollsHome({
         params: {
           marketKey: activeMainIntent.marketKey,
           pollId: activeMainIntent.pollId,
@@ -81,6 +78,6 @@ export const useSearchForegroundLaunchIntentRuntime = ({
     currentMarketKey,
     navigation,
     openRestaurantProfilePreview,
-    overlayRouteController,
+    routeSearchCommandActions,
   ]);
 };

@@ -1,7 +1,7 @@
 import React from 'react';
 
 import type { CameraIntentArbiter } from '../map/camera-intent-arbiter';
-import type { PreparedProfilePresentationCompletionEvent } from './profile-prepared-presentation-transaction-contract';
+import type { PreparedProfilePresentationCompletionEvent } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
 
 type OverlaySheetSnap = 'expanded' | 'middle' | 'collapsed' | 'hidden';
 

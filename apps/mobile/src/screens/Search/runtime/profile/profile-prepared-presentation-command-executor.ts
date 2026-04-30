@@ -1,12 +1,13 @@
-import type { BottomSheetProgrammaticRuntimeModel } from '../../../../overlays/useBottomSheetRuntime';
-import type { CameraSnapshot } from './profile-transition-state-contract';
-import type { ProfileAppExecutionRuntime } from './profile-app-execution-runtime-contract';
-import type { ProfilePresentationPhaseExecutionPayload } from './profile-prepared-presentation-transaction-contract';
+import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
+import type { ProfileAppExecutionRuntime } from '../../../../navigation/runtime/app-route-profile-app-execution-runtime-contract';
+import type { ProfilePresentationPhaseExecutionPayload } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
 import type { ProfileNativeExecutionModel } from './profile-native-execution-runtime-contract';
 
 export type PreparedProfileCommandExecutionRuntime = {
-  restaurantSheetRuntimeModel: BottomSheetProgrammaticRuntimeModel;
-  nativeCommandExecutionModel: ProfileNativeExecutionModel['commandExecutionModel'];
+  nativeCommandExecutionModel: Pick<
+    ProfileNativeExecutionModel['commandExecutionModel'],
+    'executeAndStripNativeSheetCommands' | 'commitProfileCameraTargetCommand'
+  >;
   appExecutionRuntime: ProfileAppExecutionRuntime;
   setProfileCameraPadding: (padding: CameraSnapshot['padding']) => void;
 };
@@ -19,7 +20,6 @@ export const executePreparedProfileCommandPayload = ({
   commandExecutionRuntime: PreparedProfileCommandExecutionRuntime;
 }): void => {
   const {
-    restaurantSheetRuntimeModel,
     nativeCommandExecutionModel: {
       executeAndStripNativeSheetCommands,
       commitProfileCameraTargetCommand,
@@ -44,6 +44,10 @@ export const executePreparedProfileCommandPayload = ({
       setProfileCameraPadding(commandSet.targetCamera.padding ?? null);
     }
   }
+  if (commandSet.profileCameraPadding !== undefined) {
+    void executionContext;
+    setProfileCameraPadding(commandSet.profileCameraPadding);
+  }
   if (commandSet.clearProfileCameraPadding) {
     void executionContext;
     setProfileCameraPadding(null);
@@ -51,17 +55,6 @@ export const executePreparedProfileCommandPayload = ({
   if (commandSet.forceSharedMiddleSnap) {
     void executionContext;
     forceSharedMiddleSnap();
-  }
-
-  const restaurantSheetCommand = commandSet.restaurantSheetCommand;
-  if (restaurantSheetCommand?.type === 'request') {
-    restaurantSheetRuntimeModel.snapController.requestSnap(
-      restaurantSheetCommand.snap,
-      undefined,
-      executionContext.requestToken
-    );
-  } else if (restaurantSheetCommand?.type === 'clear') {
-    restaurantSheetRuntimeModel.snapController.clearCommand();
   }
 
   const resultsSheetCommand = commandSet.resultsSheetCommand;

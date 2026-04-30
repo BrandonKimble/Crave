@@ -15,28 +15,67 @@ export const useSearchResultsPanelOnDemandNoticeRuntime = ({
   onDemandNoticeQuery,
 }: UseSearchResultsPanelOnDemandNoticeRuntimeArgs) => {
   return React.useMemo(() => {
-    if (!resolvedResults?.metadata?.onDemandQueued) {
-      return null;
-    }
-    const etaMs = resolvedResults?.metadata?.onDemandEtaMs;
-    let etaText: string | null = null;
-    if (etaMs && Number.isFinite(etaMs) && etaMs > 0) {
-      const totalMinutes = Math.round(etaMs / 60000);
-      if (totalMinutes < 60) {
-        etaText = `${totalMinutes} min`;
-      } else {
-        const hours = Math.ceil(totalMinutes / 60);
-        etaText = hours === 1 ? 'about 1 hour' : `about ${hours} hours`;
+    const metadata = (resolvedResults?.metadata ?? {}) as {
+      onDemandQueued?: boolean;
+      onDemandEtaMs?: number;
+      marketResolutionStatus?: 'resolved' | 'multi_market' | 'no_market' | 'error';
+      displayMarketName?: string | null;
+      candidatePlaceName?: string | null;
+      collectableMarketKeys?: string[];
+    };
+    const collectableMarketCount = Array.isArray(metadata.collectableMarketKeys)
+      ? metadata.collectableMarketKeys.length
+      : 0;
+    const displayName =
+      typeof metadata.displayMarketName === 'string' &&
+      metadata.displayMarketName.trim()
+        ? metadata.displayMarketName.trim()
+        : null;
+    const candidatePlaceName =
+      typeof metadata.candidatePlaceName === 'string' &&
+      metadata.candidatePlaceName.trim()
+        ? metadata.candidatePlaceName.trim()
+        : null;
+
+    let noticeText: string | null = null;
+
+    if (metadata.onDemandQueued) {
+      const etaMs = metadata.onDemandEtaMs;
+      let etaText: string | null = null;
+      if (etaMs && Number.isFinite(etaMs) && etaMs > 0) {
+        const totalMinutes = Math.round(etaMs / 60000);
+        if (totalMinutes < 60) {
+          etaText = `${totalMinutes} min`;
+        } else {
+          const hours = Math.ceil(totalMinutes / 60);
+          etaText = hours === 1 ? 'about 1 hour' : `about ${hours} hours`;
+        }
+      }
+      const areaLabel = displayName ?? candidatePlaceName ?? 'this area';
+      const searchLabel = onDemandNoticeQuery ? ` for ${onDemandNoticeQuery}` : '';
+      const suffix = etaText ? ` Check back in ${etaText}.` : ' Check back soon.';
+      noticeText = `Your search${searchLabel} is helping us grow coverage in ${areaLabel}. More searches like this help us learn what people want here.${suffix} Create a poll to get answers faster.`;
+    } else if (collectableMarketCount === 0) {
+      if (metadata.marketResolutionStatus === 'no_market' && candidatePlaceName) {
+        const searchLabel = onDemandNoticeQuery ? ` for ${onDemandNoticeQuery}` : '';
+        noticeText = `Your search${searchLabel} is helping us grow coverage in ${candidatePlaceName}. More searches like this help us learn what people want here. Check back soon, or create a poll to get answers faster.`;
+      } else if (displayName) {
+        const searchLabel = onDemandNoticeQuery ? ` for ${onDemandNoticeQuery}` : '';
+        noticeText = `Your search${searchLabel} is helping us grow coverage in ${displayName}. More searches like this help us learn what people want here. Check back soon, or create a poll to get answers faster.`;
+      } else if (metadata.marketResolutionStatus === 'multi_market') {
+        noticeText =
+          'Coverage is limited here. Zoom out or move the map, then run the search again.';
       }
     }
-    const prefix = onDemandNoticeQuery
-      ? `We're expanding results for ${onDemandNoticeQuery}.`
-      : `We're expanding results.`;
-    const suffix = etaText ? ` Check back in ${etaText}.` : ' Check back soon.';
+
+    if (!noticeText) {
+      return null;
+    }
+
     return (
       <View style={styles.onDemandNotice}>
         <Text variant="body" style={styles.onDemandNoticeText}>
-          {`${prefix}${suffix}`}
+          {noticeText}
         </Text>
       </View>
     );

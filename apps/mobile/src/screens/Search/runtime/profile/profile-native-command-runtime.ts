@@ -6,10 +6,9 @@ import { executeAndStripNativeProfileSheetCommands } from './profile-presentatio
 import type {
   ProfilePresentationCommandExecutionContext,
   ProfilePresentationCommandExecutionPayload,
-} from './profile-prepared-presentation-transaction-contract';
-import type { CameraSnapshot } from './profile-transition-state-contract';
-
-const PROFILE_CAMERA_ANIMATION_MODE = 'easeTo';
+} from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
+import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
+import { PROFILE_CAMERA_ANIMATION_MODE } from './profile-camera-motion-constants';
 
 export type ProfileNativeCommandExecutionModel = {
   restaurantSheetRuntimeModel: BottomSheetProgrammaticRuntimeModel;

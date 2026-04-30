@@ -2,38 +2,22 @@ import React from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
-  InteractionManager,
   Pressable,
   Share,
   StyleSheet,
   TextInput,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAuth } from '@clerk/clerk-expo';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
-import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import { colors as themeColors } from '../../constants/theme';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
-import {
-  getActiveSearchNavSwitchPerfProbe,
-  getActiveSearchNavSwitchProbeAgeMs,
-} from '../../screens/Search/runtime/shared/search-nav-switch-perf-probe';
 import { useSystemStatusStore } from '../../store/systemStatusStore';
-import { logger } from '../../utils';
-import {
-  OVERLAY_TAB_HEADER_HEIGHT,
-  OVERLAY_HORIZONTAL_PADDING,
-  overlaySheetStyles,
-} from '../overlaySheetStyles';
-import type { SnapPoints } from '../bottomSheetMotionTypes';
-import { calculateSnapPoints } from '../sheetUtils';
+import { OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
 import {
   favoriteListsService,
   type FavoriteListSummary,
@@ -42,13 +26,11 @@ import {
 } from '../../services/favorite-lists';
 import { useFavoriteLists, favoriteListKeys } from '../../hooks/use-favorite-lists';
 import type { RootStackParamList } from '../../types/navigation';
-import type { BottomSheetSceneSurfaceProps } from '../bottomSheetWithFlashListContract';
-import type { OverlayContentSpec, OverlaySheetSnap, OverlaySheetSnapRequest } from '../types';
-import type { SearchRouteSceneDefinition } from '../searchOverlayRouteHostContract';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
+import { useBottomSheetSceneStackBodyRenderActivity } from '../BottomSheetSceneStackBodyActivityContext';
+import { useSearchOverlayProfilerRender } from '../SearchOverlayProfilerContext';
 
-const SCREEN_HEIGHT = Dimensions.get('window').height;
 const ACTIVE_TAB_COLOR = themeColors.primary;
 const GRID_GAP = 12;
 const TILE_RADIUS = 16;
@@ -68,19 +50,6 @@ const FORM_TOGGLE_BG = '#f1f5f9';
 const FORM_TOGGLE_ACTIVE = '#0f172a';
 const SHARE_BASE_URL = process.env.EXPO_PUBLIC_SHARE_BASE_URL || 'https://crave-search.app';
 const EMPTY_FAVORITE_LISTS: ReadonlyArray<FavoriteListSummary> = [];
-const FAVORITES_QUERY_STALE_MS = 1000 * 20;
-
-const createFavoriteListsQueryDescriptor = ({
-  listType,
-  visibility,
-}: {
-  listType?: FavoriteListType;
-  visibility?: FavoriteListVisibility;
-}) => ({
-  queryKey: favoriteListKeys.list(listType, visibility),
-  queryFn: () => favoriteListsService.list({ listType, visibility }),
-  staleTime: FAVORITES_QUERY_STALE_MS,
-});
 
 const resolveRankColor = (score?: number | null) => {
   if (score == null) {
@@ -95,17 +64,6 @@ const resolveRankColor = (score?: number | null) => {
   return '#fb7185';
 };
 
-type UseBookmarksPanelSpecOptions = {
-  mounted?: boolean;
-  visible: boolean;
-  navBarTop?: number;
-  searchBarTop?: number;
-  snapPoints?: SnapPoints;
-  onSnapStart?: (snap: OverlaySheetSnap) => void;
-  onSnapChange?: (snap: OverlaySheetSnap) => void;
-  shellSnapRequest?: OverlaySheetSnapRequest | null;
-};
-
 type Navigation = StackNavigationProp<RootStackParamList>;
 
 type ListFormState = {
@@ -116,25 +74,20 @@ type ListFormState = {
   visibility: FavoriteListVisibility;
 };
 
-const diffSceneSnapshots = (
-  previousSnapshot: Record<string, unknown>,
-  nextSnapshot: Record<string, unknown>
-) =>
-  Object.assign(
-    {},
-    ...Object.keys({ ...previousSnapshot, ...nextSnapshot }).flatMap((key) => {
-      const previousValue = previousSnapshot[key];
-      const nextValue = nextSnapshot[key];
-      return JSON.stringify(previousValue) === JSON.stringify(nextValue)
-        ? []
-        : [{ [key]: { previous: previousValue, next: nextValue } }];
-    })
-  );
-
 const BOOKMARK_LIST_TYPES = [
   { id: 'restaurant', label: 'Restaurants' },
   { id: 'dish', label: 'Dishes' },
 ] as const;
+
+const chunkFavoriteLists = (
+  lists: readonly FavoriteListSummary[]
+): readonly (readonly FavoriteListSummary[])[] => {
+  const rows: FavoriteListSummary[][] = [];
+  for (let index = 0; index < lists.length; index += 2) {
+    rows.push(lists.slice(index, index + 2));
+  }
+  return rows;
+};
 
 type BookmarkPreviewRowProps = {
   item: FavoriteListSummary['previewItems'][number];
@@ -362,405 +315,296 @@ const BookmarksListHeader = React.memo(
 
 BookmarksListHeader.displayName = 'BookmarksListHeader';
 
-export const useBookmarksSceneDefinition = ({
-  mounted,
-  visible,
-  navBarTop = 0,
-  searchBarTop = 0,
-  snapPoints: snapPointsOverride,
-  onSnapStart,
-  onSnapChange,
-  shellSnapRequest,
-}: UseBookmarksPanelSpecOptions): SearchRouteSceneDefinition => {
-  const insets = useSafeAreaInsets();
-  const { isSignedIn } = useAuth();
-  const navigation = useNavigation<Navigation>();
-  const queryClient = useQueryClient();
-  const { setRootRoute } = useAppOverlayRouteController();
-  const isOffline = useSystemStatusStore((state) => state.isOffline);
-  const serviceIssue = useSystemStatusStore((state) => state.serviceIssue);
-  const isSystemUnavailable = isOffline || Boolean(serviceIssue);
-  const [listType, setListType] = React.useState<FavoriteListType>('restaurant');
-  const [formState, setFormState] = React.useState<ListFormState>({
-    mode: 'hidden',
-    name: '',
-    description: '',
-    visibility: 'private',
-  });
-  const [sceneReady, setSceneReady] = React.useState(false);
-  const perfStartRef = React.useRef<number | null>(null);
-  const isMounted = mounted ?? visible;
+type BookmarksSceneBodyProps = {
+  sceneReady: boolean;
+  listType: FavoriteListType;
+  formState: ListFormState;
+  lists: readonly FavoriteListSummary[];
+  onSelectListType: (value: FavoriteListType) => void;
+  onOpenCreateForm: () => void;
+  onResetForm: () => void;
+  onNameChange: (value: string) => void;
+  onDescriptionChange: (value: string) => void;
+  onVisibilityChange: (value: FavoriteListVisibility) => void;
+  onSave: () => void;
+  onListPress: (listId: string) => void;
+  onOpenMenu: (list: FavoriteListSummary) => void;
+};
 
-  React.useEffect(() => {
-    if (!isMounted || sceneReady) {
-      return;
-    }
-    perfStartRef.current = Date.now();
-    logger.debug('[NAV-SWITCH-SCENE-PERF] bookmarksMount');
-    const activeProbe = getActiveSearchNavSwitchPerfProbe();
-    if (activeProbe) {
-      logger.debug('[NAV-SWITCH-ATTRIBUTION] sceneEvent', {
-        seq: activeProbe.seq,
-        from: activeProbe.from,
-        to: activeProbe.to,
-        ageMs: getActiveSearchNavSwitchProbeAgeMs(),
-        scene: 'bookmarks',
-        event: 'scene_mount',
-      });
-    }
-    let cancelled = false;
-    const task = InteractionManager.runAfterInteractions(() => {
-      if (cancelled) {
-        return;
-      }
-      setSceneReady(true);
-      logger.debug('[NAV-SWITCH-SCENE-PERF] bookmarksReady', {
-        elapsedMs: perfStartRef.current == null ? null : Date.now() - perfStartRef.current,
-      });
-      const readyProbe = getActiveSearchNavSwitchPerfProbe();
-      if (readyProbe) {
-        logger.debug('[NAV-SWITCH-ATTRIBUTION] sceneEvent', {
-          seq: readyProbe.seq,
-          from: readyProbe.from,
-          to: readyProbe.to,
-          ageMs: getActiveSearchNavSwitchProbeAgeMs(),
-          scene: 'bookmarks',
-          event: 'scene_ready',
-        });
-      }
-    });
-    return () => {
-      cancelled = true;
-      task.cancel();
-    };
-  }, [isMounted, sceneReady]);
-
-  const queryEnabled = visible && sceneReady && !isSystemUnavailable;
-  const listsQuery = useFavoriteLists({
+const BookmarksSceneBody = React.memo(
+  ({
+    sceneReady,
     listType,
-    enabled: queryEnabled,
-  });
-  const lists = sceneReady ? (listsQuery.data ?? EMPTY_FAVORITE_LISTS) : EMPTY_FAVORITE_LISTS;
-  const sceneCauseSnapshot = React.useMemo(
-    () => ({
-      mounted: isMounted,
-      visible,
-      sceneReady,
-      listType,
-      formMode: formState.mode,
-      formVisibility: formState.visibility,
-      isSystemUnavailable,
-      queryLoading: listsQuery.isLoading,
-      queryFetching: listsQuery.isFetching,
-      queryEnabled,
-      listCount: lists.length,
-      shellSnapRequest: shellSnapRequest?.snap ?? null,
-    }),
-    [
-      formState.mode,
-      formState.visibility,
-      isMounted,
-      isSystemUnavailable,
-      listType,
-      lists.length,
-      listsQuery.isFetching,
-      listsQuery.isLoading,
-      sceneReady,
-      shellSnapRequest,
-      queryEnabled,
-      visible,
-    ]
-  );
-  const previousSceneCauseRef = React.useRef<string | null>(null);
-
-  React.useEffect(() => {
-    const activeProbe = getActiveSearchNavSwitchPerfProbe();
-    if (!activeProbe) {
-      previousSceneCauseRef.current = null;
-      return;
-    }
-
-    const nextSnapshotKey = JSON.stringify(sceneCauseSnapshot);
-    const previousSnapshotKey = previousSceneCauseRef.current;
-    if (!previousSnapshotKey) {
-      logger.debug('[NAV-SWITCH-CAUSE] bookmarksSceneSnapshot', {
-        seq: activeProbe.seq,
-        from: activeProbe.from,
-        to: activeProbe.to,
-        snapshot: sceneCauseSnapshot,
-      });
-    } else if (previousSnapshotKey !== nextSnapshotKey) {
-      logger.debug('[NAV-SWITCH-CAUSE] bookmarksSceneDelta', {
-        seq: activeProbe.seq,
-        from: activeProbe.from,
-        to: activeProbe.to,
-        changes: diffSceneSnapshots(JSON.parse(previousSnapshotKey), sceneCauseSnapshot),
-      });
-    }
-    previousSceneCauseRef.current = nextSnapshotKey;
-  }, [sceneCauseSnapshot]);
-
-  React.useEffect(() => {
-    const activeProbe = getActiveSearchNavSwitchPerfProbe();
-    if (!activeProbe) {
-      return;
-    }
-
-    if (isMounted && !visible) {
-      logger.debug('[NAV-SWITCH-ATTRIBUTION] sceneEvent', {
-        seq: activeProbe.seq,
-        from: activeProbe.from,
-        to: activeProbe.to,
-        ageMs: getActiveSearchNavSwitchProbeAgeMs(),
-        scene: 'bookmarks',
-        event: 'mounted_hidden',
-      });
-    }
-  }, [isMounted, visible]);
-
-  React.useEffect(() => {
-    const activeProbe = getActiveSearchNavSwitchPerfProbe();
-    if (!activeProbe) {
-      return;
-    }
-
-    logger.debug('[NAV-SWITCH-ATTRIBUTION] sceneEvent', {
-      seq: activeProbe.seq,
-      from: activeProbe.from,
-      to: activeProbe.to,
-      ageMs: getActiveSearchNavSwitchProbeAgeMs(),
-      scene: 'bookmarks',
-      event: listsQuery.isFetching ? 'query_fetch_start' : 'query_fetch_end',
-      queryEnabled,
-    });
-  }, [listsQuery.isFetching, queryEnabled]);
-
-  React.useEffect(() => {
-    if (!isSignedIn || !isMounted || visible || isSystemUnavailable) {
-      return;
-    }
-
-    let cancelled = false;
-    void Promise.all([
-      queryClient.prefetchQuery(
-        createFavoriteListsQueryDescriptor({
-          listType: 'restaurant',
-        })
-      ),
-      queryClient.prefetchQuery(
-        createFavoriteListsQueryDescriptor({
-          listType: 'dish',
-        })
-      ),
-    ]).catch(() => {
-      if (cancelled) {
-        return;
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isMounted, isSignedIn, isSystemUnavailable, queryClient, visible]);
-
-  const headerPaddingTop = 0;
-  const headerHeight = OVERLAY_TAB_HEADER_HEIGHT;
-  const navBarOffset = Math.max(navBarTop, 0);
-  const dismissThreshold = navBarOffset > 0 ? navBarOffset : undefined;
-  const contentBottomPadding = Math.max(insets.bottom + 48, 72);
-  const snapPoints = React.useMemo<SnapPoints>(
-    () =>
-      snapPointsOverride ??
-      calculateSnapPoints(SCREEN_HEIGHT, searchBarTop, insets.top, navBarOffset, headerHeight),
-    [headerHeight, insets.top, navBarOffset, searchBarTop, snapPointsOverride]
-  );
-
-  const localHeaderActionProgress = useSharedValue(0);
-
-  const handleClose = React.useCallback(() => {
-    setRootRoute('search');
-  }, [setRootRoute]);
-
-  const resetForm = React.useCallback(() => {
-    setFormState({
-      mode: 'hidden',
-      name: '',
-      description: '',
-      visibility: 'private',
-      list: null,
-    });
-  }, []);
-
-  const openCreateForm = React.useCallback(() => {
-    setFormState({
-      mode: 'create',
-      name: '',
-      description: '',
-      visibility: 'private',
-      list: null,
-    });
-  }, []);
-
-  const openEditForm = React.useCallback((list: FavoriteListSummary) => {
-    setFormState({
-      mode: 'edit',
-      name: list.name,
-      description: list.description ?? '',
-      visibility: list.visibility,
-      list,
-    });
-  }, []);
-
-  const handleListTypeChange = React.useCallback((value: FavoriteListType) => {
-    setListType(value);
-  }, []);
-
-  const handleFormNameChange = React.useCallback((value: string) => {
-    setFormState((prev) => ({ ...prev, name: value }));
-  }, []);
-
-  const handleFormDescriptionChange = React.useCallback((value: string) => {
-    setFormState((prev) => ({ ...prev, description: value }));
-  }, []);
-
-  const handleFormVisibilityChange = React.useCallback((value: FavoriteListVisibility) => {
-    setFormState((prev) => ({ ...prev, visibility: value }));
-  }, []);
-
-  const handleFormSave = React.useCallback(async () => {
-    if (!formState.name.trim()) {
-      return;
-    }
-    if (formState.mode === 'create') {
-      await favoriteListsService.create({
-        name: formState.name,
-        description: formState.description,
-        listType,
-        visibility: formState.visibility,
-      });
-    }
-    if (formState.mode === 'edit' && formState.list) {
-      await favoriteListsService.update(formState.list.listId, {
-        name: formState.name,
-        description: formState.description,
-        visibility: formState.visibility,
-      });
-    }
-    await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
-    resetForm();
-  }, [formState, listType, queryClient, resetForm]);
-
-  const handleListPress = React.useCallback(
-    (listId: string) => {
-      navigation.navigate('FavoritesListDetail', { listId });
-    },
-    [navigation]
-  );
-
-  const handleShare = React.useCallback(async (list: FavoriteListSummary) => {
-    try {
-      const result = await favoriteListsService.enableShare(list.listId);
-      const shareUrl = `${SHARE_BASE_URL}/l/${result.shareSlug}`;
-      await Share.share({
-        message: `${list.name} · View on Crave Search\n${shareUrl}`,
-      });
-    } catch {
-      // ignore share errors
-    }
-  }, []);
-
-  const handleToggleVisibility = React.useCallback(
-    async (list: FavoriteListSummary) => {
-      const nextVisibility = list.visibility === 'public' ? 'private' : 'public';
-      await favoriteListsService.update(list.listId, { visibility: nextVisibility });
-      await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
-    },
-    [queryClient]
-  );
-
-  const handleDelete = React.useCallback(
-    async (list: FavoriteListSummary) => {
-      await favoriteListsService.remove(list.listId);
-      await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
-    },
-    [queryClient]
-  );
-
-  const openListMenu = React.useCallback(
-    (list: FavoriteListSummary) => {
-      Alert.alert(list.name, undefined, [
-        {
-          text: 'Edit',
-          onPress: () => openEditForm(list),
-        },
-        {
-          text: 'Share',
-          onPress: () => void handleShare(list),
-        },
-        {
-          text: list.visibility === 'public' ? 'Make Private' : 'Make Public',
-          onPress: () => void handleToggleVisibility(list),
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => void handleDelete(list),
-        },
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-      ]);
-    },
-    [handleDelete, handleShare, handleToggleVisibility, openEditForm]
-  );
-
-  const renderListTile = React.useCallback(
-    ({ item }: { item: FavoriteListSummary }) => (
-      <BookmarksListTile item={item} onPress={handleListPress} onOpenMenu={openListMenu} />
-    ),
-    [handleListPress, openListMenu]
-  );
-
-  const headerComponent = React.useMemo(
-    () => (
-      <OverlaySheetHeaderChrome
-        onGrabHandlePress={handleClose}
-        grabHandleAccessibilityLabel="Close favorites"
-        paddingTop={headerPaddingTop}
-        title={
-          <View style={styles.headerTextGroup}>
-            <Text
-              variant="title"
-              weight="semibold"
-              style={styles.headerTitle}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              Favorites
-            </Text>
-          </View>
-        }
-        actionButton={
-          <OverlayHeaderActionButton
-            progress={localHeaderActionProgress}
-            onPress={handleClose}
-            accessibilityLabel="Close favorites"
-            accentColor={ACTIVE_TAB_COLOR}
-            closeColor="#000000"
-          />
-        }
-      />
-    ),
-    [handleClose, headerPaddingTop, localHeaderActionProgress]
-  );
-
-  const listHeaderComponent = React.useMemo(
-    () => (
+    formState,
+    lists,
+    onSelectListType,
+    onOpenCreateForm,
+    onResetForm,
+    onNameChange,
+    onDescriptionChange,
+    onVisibilityChange,
+    onSave,
+    onListPress,
+    onOpenMenu,
+  }: BookmarksSceneBodyProps) => {
+    const onProfilerRender = useSearchOverlayProfilerRender();
+    const listRows = React.useMemo(() => chunkFavoriteLists(lists), [lists]);
+    const listHeader = (
       <BookmarksListHeader
         sceneReady={sceneReady}
         listType={listType}
         formState={formState}
+        onSelectListType={onSelectListType}
+        onOpenCreateForm={onOpenCreateForm}
+        onResetForm={onResetForm}
+        onNameChange={onNameChange}
+        onDescriptionChange={onDescriptionChange}
+        onVisibilityChange={onVisibilityChange}
+        onSave={onSave}
+      />
+    );
+    const profiledListHeader = onProfilerRender ? (
+      <React.Profiler id="BookmarksSceneBody:header" onRender={onProfilerRender}>
+        {listHeader}
+      </React.Profiler>
+    ) : (
+      listHeader
+    );
+    const listContent = sceneReady ? (
+      lists.length ? (
+        <View style={styles.gridList}>
+          {listRows.map((row, rowIndex) => (
+            <View key={`row-${rowIndex}`} style={styles.gridRow}>
+              {row.map((item) => (
+                <View key={item.listId} style={styles.gridCell}>
+                  <BookmarksListTile item={item} onPress={onListPress} onOpenMenu={onOpenMenu} />
+                </View>
+              ))}
+              {row.length === 1 ? <View style={styles.gridCell} /> : null}
+            </View>
+          ))}
+        </View>
+      ) : (
+        <View style={styles.emptyState}>
+          <Text variant="body" style={styles.emptyText}>
+            No lists yet
+          </Text>
+        </View>
+      )
+    ) : (
+      <View style={styles.loadingState}>
+        <ActivityIndicator color={ACTIVE_TAB_COLOR} size="small" />
+      </View>
+    );
+    const profiledListContent = onProfilerRender ? (
+      <React.Profiler id="BookmarksSceneBody:list" onRender={onProfilerRender}>
+        {listContent}
+      </React.Profiler>
+    ) : (
+      listContent
+    );
+
+    return (
+      <View style={styles.sceneBody}>
+        {profiledListHeader}
+        {profiledListContent}
+      </View>
+    );
+  }
+);
+
+BookmarksSceneBody.displayName = 'BookmarksSceneBody';
+
+const BookmarksTransitionShell = React.memo(() => (
+  <View style={styles.sceneBody}>
+    <View style={styles.loadingState}>
+      <ActivityIndicator color={ACTIVE_TAB_COLOR} size="small" />
+    </View>
+  </View>
+));
+
+BookmarksTransitionShell.displayName = 'BookmarksTransitionShell';
+
+type BookmarksDataSurfaceProps = {
+  shouldSubscribeDataLane: boolean;
+  sceneReady: boolean;
+};
+
+const BookmarksDataSurface = React.memo(
+  ({ shouldSubscribeDataLane, sceneReady }: BookmarksDataSurfaceProps) => {
+    const onProfilerRender = useSearchOverlayProfilerRender();
+    const navigation = useNavigation<Navigation>();
+    const queryClient = useQueryClient();
+    const isOffline = useSystemStatusStore((state) => state.isOffline);
+    const serviceIssue = useSystemStatusStore((state) => state.serviceIssue);
+    const isSystemUnavailable = isOffline || Boolean(serviceIssue);
+    const [listType, setListType] = React.useState<FavoriteListType>('restaurant');
+    const [formState, setFormState] = React.useState<ListFormState>({
+      mode: 'hidden',
+      name: '',
+      description: '',
+      visibility: 'private',
+    });
+    const queryEnabled = !isSystemUnavailable && shouldSubscribeDataLane;
+    const listsQuery = useFavoriteLists({
+      listType,
+      enabled: queryEnabled,
+      subscribed: queryEnabled,
+    });
+    const retainedListsRef = React.useRef<Partial<Record<FavoriteListType, FavoriteListSummary[]>>>(
+      {}
+    );
+    const cachedLists = queryClient.getQueryData<FavoriteListSummary[]>(
+      favoriteListKeys.list(listType)
+    );
+    const lists =
+      listsQuery.data ?? cachedLists ?? retainedListsRef.current[listType] ?? EMPTY_FAVORITE_LISTS;
+    React.useEffect(() => {
+      if (listsQuery.data != null) {
+        retainedListsRef.current[listType] = listsQuery.data;
+      }
+    }, [listType, listsQuery.data]);
+
+    const resetForm = React.useCallback(() => {
+      setFormState({
+        mode: 'hidden',
+        name: '',
+        description: '',
+        visibility: 'private',
+        list: null,
+      });
+    }, []);
+
+    const openCreateForm = React.useCallback(() => {
+      setFormState({
+        mode: 'create',
+        name: '',
+        description: '',
+        visibility: 'private',
+        list: null,
+      });
+    }, []);
+
+    const openEditForm = React.useCallback((list: FavoriteListSummary) => {
+      setFormState({
+        mode: 'edit',
+        name: list.name,
+        description: list.description ?? '',
+        visibility: list.visibility,
+        list,
+      });
+    }, []);
+
+    const handleListTypeChange = React.useCallback((value: FavoriteListType) => {
+      setListType(value);
+    }, []);
+
+    const handleFormNameChange = React.useCallback((value: string) => {
+      setFormState((prev) => ({ ...prev, name: value }));
+    }, []);
+
+    const handleFormDescriptionChange = React.useCallback((value: string) => {
+      setFormState((prev) => ({ ...prev, description: value }));
+    }, []);
+
+    const handleFormVisibilityChange = React.useCallback((value: FavoriteListVisibility) => {
+      setFormState((prev) => ({ ...prev, visibility: value }));
+    }, []);
+
+    const handleFormSave = React.useCallback(async () => {
+      if (!formState.name.trim()) {
+        return;
+      }
+      if (formState.mode === 'create') {
+        await favoriteListsService.create({
+          name: formState.name,
+          description: formState.description,
+          listType,
+          visibility: formState.visibility,
+        });
+      }
+      if (formState.mode === 'edit' && formState.list) {
+        await favoriteListsService.update(formState.list.listId, {
+          name: formState.name,
+          description: formState.description,
+          visibility: formState.visibility,
+        });
+      }
+      await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
+      resetForm();
+    }, [formState, listType, queryClient, resetForm]);
+
+    const handleListPress = React.useCallback(
+      (listId: string) => {
+        navigation.navigate('FavoritesListDetail', { listId });
+      },
+      [navigation]
+    );
+
+    const handleShare = React.useCallback(async (list: FavoriteListSummary) => {
+      try {
+        const result = await favoriteListsService.enableShare(list.listId);
+        const shareUrl = `${SHARE_BASE_URL}/l/${result.shareSlug}`;
+        await Share.share({
+          message: `${list.name} · View on Crave Search\n${shareUrl}`,
+        });
+      } catch {
+        // ignore share errors
+      }
+    }, []);
+
+    const handleToggleVisibility = React.useCallback(
+      async (list: FavoriteListSummary) => {
+        const nextVisibility = list.visibility === 'public' ? 'private' : 'public';
+        await favoriteListsService.update(list.listId, { visibility: nextVisibility });
+        await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
+      },
+      [queryClient]
+    );
+
+    const handleDelete = React.useCallback(
+      async (list: FavoriteListSummary) => {
+        await favoriteListsService.remove(list.listId);
+        await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
+      },
+      [queryClient]
+    );
+
+    const openListMenu = React.useCallback(
+      (list: FavoriteListSummary) => {
+        Alert.alert(list.name, undefined, [
+          {
+            text: 'Edit',
+            onPress: () => openEditForm(list),
+          },
+          {
+            text: 'Share',
+            onPress: () => void handleShare(list),
+          },
+          {
+            text: list.visibility === 'public' ? 'Make Private' : 'Make Public',
+            onPress: () => void handleToggleVisibility(list),
+          },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => void handleDelete(list),
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+        ]);
+      },
+      [handleDelete, handleShare, handleToggleVisibility, openEditForm]
+    );
+
+    const dataSurface = (
+      <BookmarksSceneBody
+        sceneReady={sceneReady}
+        listType={listType}
+        formState={formState}
+        lists={lists}
         onSelectListType={handleListTypeChange}
         onOpenCreateForm={openCreateForm}
         onResetForm={resetForm}
@@ -768,118 +612,98 @@ export const useBookmarksSceneDefinition = ({
         onDescriptionChange={handleFormDescriptionChange}
         onVisibilityChange={handleFormVisibilityChange}
         onSave={() => void handleFormSave()}
+        onListPress={handleListPress}
+        onOpenMenu={openListMenu}
       />
-    ),
-    [
-      formState,
-      handleFormDescriptionChange,
-      handleFormNameChange,
-      handleFormSave,
-      handleFormVisibilityChange,
-      handleListTypeChange,
-      listType,
-      openCreateForm,
-      resetForm,
-      sceneReady,
-    ]
-  );
+    );
 
-  const listEmptyComponent = React.useMemo(
-    () => (
-      <View style={sceneReady ? styles.emptyState : styles.loadingState}>
-        {sceneReady ? (
-          <Text variant="body" style={styles.emptyText}>
-            No lists yet
-          </Text>
-        ) : (
-          <ActivityIndicator color={ACTIVE_TAB_COLOR} size="small" />
-        )}
+    return onProfilerRender ? (
+      <React.Profiler id="BookmarksDataSurface" onRender={onProfilerRender}>
+        {dataSurface}
+      </React.Profiler>
+    ) : (
+      dataSurface
+    );
+  }
+);
+
+BookmarksDataSurface.displayName = 'BookmarksDataSurface';
+
+export const BookmarksMountedSceneBody = React.memo(() => {
+  const onProfilerRender = useSearchOverlayProfilerRender();
+  const { shouldSubscribeDataLane, hasActivatedExpandedContent } =
+    useBottomSheetSceneStackBodyRenderActivity();
+
+  const mountedBody = (
+    <>
+      {hasActivatedExpandedContent ? null : <BookmarksTransitionShell />}
+      <View style={hasActivatedExpandedContent ? null : styles.prewarmedMountedBodyHidden}>
+        <BookmarksDataSurface
+          shouldSubscribeDataLane={shouldSubscribeDataLane}
+          sceneReady={hasActivatedExpandedContent}
+        />
       </View>
-    ),
-    [sceneReady]
+    </>
   );
 
-  const keyExtractor = React.useCallback((item: FavoriteListSummary) => item.listId, []);
-  const backgroundComponent = React.useMemo(() => <FrostedGlassBackground />, []);
-  const flashListProps = React.useMemo(() => ({ numColumns: 2 }), []);
-
-  const shellSpec = React.useMemo(
-    () => ({
-      overlayKey: 'bookmarks' as const,
-      snapPoints,
-      initialSnapPoint: 'expanded' as const,
-      style: overlaySheetStyles.container,
-      onSnapStart,
-      onSnapChange,
-      dismissThreshold,
-      preventSwipeDismiss: true,
-    }),
-    [dismissThreshold, onSnapChange, onSnapStart, snapPoints]
+  return onProfilerRender ? (
+    <React.Profiler id="BookmarksMountedSceneBody" onRender={onProfilerRender}>
+      {mountedBody}
+    </React.Profiler>
+  ) : (
+    mountedBody
   );
+});
 
-  const sceneSurface = React.useMemo(
-    () =>
-      ({
-        surfaceKind: 'list' as const,
-        data: lists,
-        renderItem: renderListTile,
-        keyExtractor,
-        estimatedItemSize: 220,
-        contentContainerStyle: [
-          styles.scrollContent,
-          {
-            paddingBottom: contentBottomPadding,
-          },
-        ],
-        ListHeaderComponent: listHeaderComponent,
-        ListEmptyComponent: listEmptyComponent,
-        bounces: false,
-        alwaysBounceVertical: false,
-        overScrollMode: 'never' as const,
-        backgroundComponent,
-        contentSurfaceStyle: overlaySheetStyles.contentSurfaceWhite,
-        headerComponent,
-        flashListProps,
-      }) as BottomSheetSceneSurfaceProps<unknown>,
-    [
-      backgroundComponent,
-      contentBottomPadding,
-      flashListProps,
-      headerComponent,
-      keyExtractor,
-      listEmptyComponent,
-      listHeaderComponent,
-      lists,
-      renderListTile,
-    ]
+BookmarksMountedSceneBody.displayName = 'BookmarksMountedSceneBody';
+
+export const BookmarksMountedSceneHeader = React.memo(() => {
+  const { setRootRoute } = useAppOverlayRouteController();
+  const headerPaddingTop = 0;
+  const localHeaderActionProgress = useSharedValue(0);
+
+  const handleClose = React.useCallback(() => {
+    setRootRoute('search');
+  }, [setRootRoute]);
+
+  return (
+    <OverlaySheetHeaderChrome
+      onGrabHandlePress={handleClose}
+      grabHandleAccessibilityLabel="Close favorites"
+      paddingTop={headerPaddingTop}
+      title={
+        <View style={styles.headerTextGroup}>
+          <Text
+            variant="title"
+            weight="semibold"
+            style={styles.headerTitle}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            Favorites
+          </Text>
+        </View>
+      }
+      actionButton={
+        <OverlayHeaderActionButton
+          progress={localHeaderActionProgress}
+          onPress={handleClose}
+          accessibilityLabel="Close favorites"
+          accentColor={ACTIVE_TAB_COLOR}
+          closeColor="#000000"
+        />
+      }
+    />
   );
+});
 
-  return React.useMemo(
-    () => ({
-      shellSpec,
-      shellSnapRequest,
-      sceneSurface,
-    }),
-    [sceneSurface, shellSnapRequest, shellSpec]
-  );
-};
-
-export const useBookmarksPanelSpec = (
-  options: UseBookmarksPanelSpecOptions
-): OverlayContentSpec<FavoriteListSummary> => {
-  const sceneDefinition = useBookmarksSceneDefinition(options);
-  return React.useMemo(
-    () => ({
-      ...sceneDefinition.shellSpec,
-      ...sceneDefinition.sceneSurface,
-    }),
-    [sceneDefinition]
-  ) as OverlayContentSpec<FavoriteListSummary>;
-};
+BookmarksMountedSceneHeader.displayName = 'BookmarksMountedSceneHeader';
 
 const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
+  },
+  sceneBody: {
     paddingTop: 12,
   },
   headerTextGroup: {
@@ -918,8 +742,15 @@ const styles = StyleSheet.create({
   segmentTextActive: {
     color: SEGMENT_ACTIVE_TEXT,
   },
-  columnWrapper: {
+  gridList: {
     gap: GRID_GAP,
+  },
+  gridRow: {
+    flexDirection: 'row',
+    gap: GRID_GAP,
+  },
+  gridCell: {
+    flex: 1,
   },
   tileWrapper: {
     flex: 1,
@@ -1074,6 +905,9 @@ const styles = StyleSheet.create({
     paddingVertical: 24,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  prewarmedMountedBodyHidden: {
+    display: 'none',
   },
   emptyText: {
     color: TILE_SUBTEXT,

@@ -1,6 +1,6 @@
 import React from 'react';
 
-import type { RestaurantFocusSession } from './profile-transition-state-contract';
+import type { RestaurantFocusSession } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type { ProfileControllerState } from './profile-runtime-state-record';
 import {
   getRestaurantFocusSessionFromRecord,

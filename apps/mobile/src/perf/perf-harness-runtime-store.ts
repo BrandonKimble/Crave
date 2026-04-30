@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import type {
   PerfHarnessScenario,
   PerfJsFrameSamplerConfig,
+  PerfJsTaskLatencySamplerConfig,
   PerfNavSwitchLoopConfig,
   PerfUiFrameSamplerConfig,
 } from './perf-harness-runtime-types';
@@ -16,6 +17,7 @@ export type RuntimePerfHarnessConfig = {
   cooldownMs: number;
   navSwitchLoop: PerfNavSwitchLoopConfig;
   jsFrameSampler: PerfJsFrameSamplerConfig;
+  jsTaskLatencySampler: PerfJsTaskLatencySamplerConfig;
   uiFrameSampler: PerfUiFrameSamplerConfig;
   signature: string;
 };

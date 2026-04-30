@@ -1,4 +1,5 @@
 import type { BottomSheetProgrammaticRuntimeModel } from '../../../../overlays/useBottomSheetRuntime';
+import type { AppRouteSceneRuntime } from '../../../../navigation/runtime/app-route-scene-runtime';
 import type { Coordinate, RestaurantResult } from '../../../../types';
 import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
 import type { ProfileAppExecutionArgs } from './profile-app-execution-runtime-contract';
@@ -79,6 +80,7 @@ export type ProfileAnalyticsModel = {
 };
 
 export type UseProfileOwnerArgs = {
+  routeSceneRuntime: AppRouteSceneRuntime;
   searchContext: ProfileSearchContext;
   cameraTransitionPorts: ProfilePresentationCameraLayoutModel;
   selectionModel: ProfileSelectionModel;

@@ -1,58 +1,40 @@
 import React from 'react';
 
-import {
-  useOverlayStore,
-  type OverlayKey,
-  type OverlayRouteParamsMap,
-} from '../store/overlayStore';
-
-export const appOverlayRouteController = {
-  setRootRoute<K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) {
-    useOverlayStore.getState().setOverlay(overlay, params);
-  },
-  updateRoute<K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) {
-    useOverlayStore.getState().setOverlayParams(overlay, params);
-  },
-  pushRoute<K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) {
-    useOverlayStore.getState().pushOverlay(overlay, params);
-  },
-  closeActiveRoute() {
-    useOverlayStore.getState().popOverlay();
-  },
-  popToRootRoute() {
-    useOverlayStore.getState().popToRootOverlay();
-  },
-};
+import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
+import type { OverlayKey, OverlayRouteParamsMap } from '../navigation/runtime/app-overlay-route-types';
 
 export const useAppOverlayRouteController = () => {
+  const routeSceneRuntime = useAppRouteSceneRuntime();
+  const appOverlayRouteController =
+    routeSceneRuntime.routeOverlayRouteCommandRuntime;
   const setRootRoute = React.useCallback(
     <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => {
       appOverlayRouteController.setRootRoute(overlay, params);
     },
-    []
+    [appOverlayRouteController]
   );
 
   const updateRoute = React.useCallback(
     <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => {
       appOverlayRouteController.updateRoute(overlay, params);
     },
-    []
+    [appOverlayRouteController]
   );
 
   const pushRoute = React.useCallback(
     <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => {
       appOverlayRouteController.pushRoute(overlay, params);
     },
-    []
+    [appOverlayRouteController]
   );
 
   const closeActiveRoute = React.useCallback(() => {
     appOverlayRouteController.closeActiveRoute();
-  }, []);
+  }, [appOverlayRouteController]);
 
   const popToRootRoute = React.useCallback(() => {
     appOverlayRouteController.popToRootRoute();
-  }, []);
+  }, [appOverlayRouteController]);
 
   return React.useMemo(
     () => ({

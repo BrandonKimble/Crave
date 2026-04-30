@@ -2,7 +2,7 @@ import {
   executePreparedProfileCompletionEvent,
   type PreparedProfileCompletionExecutionPorts,
 } from './profile-prepared-presentation-completion-executor';
-import type { PreparedProfilePresentationCompletionEvent } from './profile-prepared-presentation-transaction-contract';
+import type { PreparedProfilePresentationCompletionEvent } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
 import type {
   CreateProfilePreparedPresentationRuntimeArgs,
   ExecutePreparedProfilePresentationTransaction,

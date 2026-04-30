@@ -10,7 +10,7 @@ export const useSearchResultsPanelPresentationRuntimeState = (
     searchRuntimeBus,
     (state) => ({
       pendingPresentationIntentId: state.toggleInteraction.pendingPresentationIntentId,
-      renderPolicy: state.resultsPresentation,
+      renderPolicy: searchRuntimeBus.getPolicyFactsSnapshot().renderPolicy,
     }),
     (left, right) =>
       left.pendingPresentationIntentId === right.pendingPresentationIntentId &&

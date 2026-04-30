@@ -1,45 +1,35 @@
 import React from 'react';
 
-import type { ResultsPresentationRuntimeOwner } from './results-presentation-runtime-owner-contract';
-
-type ResultsPresentationMarkerExitRuntime = Pick<
-  ResultsPresentationRuntimeOwner,
-  'handleMarkerExitStarted' | 'handleMarkerExitSettled'
->;
-
-export type UseResultsPresentationMarkerExitRuntimeArgs = {
-  markSearchSheetCloseMapExitSettledRef: React.MutableRefObject<(requestKey: string) => void>;
-  markExitStarted: (payload: { requestKey: string; startedAtMs: number }) => boolean;
-  markExitSettled: (payload: { requestKey: string; settledAtMs: number }) => boolean;
-};
+import type { ResultsPresentationRuntimeMachine } from './results-presentation-runtime-machine';
 
 export const useResultsPresentationMarkerExitRuntime = ({
+  runtimeMachineRef,
   markSearchSheetCloseMapExitSettledRef,
-  markExitStarted,
-  markExitSettled,
-}: UseResultsPresentationMarkerExitRuntimeArgs): ResultsPresentationMarkerExitRuntime => {
+}: {
+  runtimeMachineRef: React.MutableRefObject<ResultsPresentationRuntimeMachine | null>;
+  markSearchSheetCloseMapExitSettledRef: React.MutableRefObject<
+    (requestKey: string) => void
+  >;
+}) => {
   const handleMarkerExitStarted = React.useCallback(
     (payload: { requestKey: string; startedAtMs: number }) => {
-      markExitStarted(payload);
+      runtimeMachineRef.current!.markExitStarted(payload);
     },
-    [markExitStarted]
+    [runtimeMachineRef]
   );
 
   const handleMarkerExitSettled = React.useCallback(
     (payload: { requestKey: string; settledAtMs: number }) => {
-      if (!markExitSettled(payload)) {
+      if (!runtimeMachineRef.current!.markExitSettled(payload)) {
         return;
       }
       markSearchSheetCloseMapExitSettledRef.current(payload.requestKey);
     },
-    [markExitSettled, markSearchSheetCloseMapExitSettledRef]
+    [markSearchSheetCloseMapExitSettledRef, runtimeMachineRef]
   );
 
-  return React.useMemo(
-    () => ({
-      handleMarkerExitStarted,
-      handleMarkerExitSettled,
-    }),
-    [handleMarkerExitSettled, handleMarkerExitStarted]
-  );
+  return {
+    handleMarkerExitStarted,
+    handleMarkerExitSettled,
+  };
 };

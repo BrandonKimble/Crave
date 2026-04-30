@@ -358,16 +358,8 @@ const isRecoverableNativeRenderOwnerFrameError = (error: unknown): boolean => {
   );
 };
 
-const presentationSerializationCache = new WeakMap<SearchMapRenderPresentationState, string>();
-
 const serializePresentationState = (presentation: SearchMapRenderPresentationState): string => {
-  const cached = presentationSerializationCache.get(presentation);
-  if (cached != null) {
-    return cached;
-  }
-  const serialized = JSON.stringify(presentation);
-  presentationSerializationCache.set(presentation, serialized);
-  return serialized;
+  return JSON.stringify(presentation);
 };
 
 type SearchMapRenderSourceDelta = {

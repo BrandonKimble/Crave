@@ -1,3 +1,5 @@
+import { withSearchNavSwitchRuntimeAttribution } from '../shared/search-nav-switch-runtime-attribution';
+
 export type CameraIntent = {
   center: [number, number];
   zoom: number;
@@ -12,7 +14,7 @@ type RawProgrammaticCameraAnimationCompletionPayload = {
   status: 'finished' | 'cancelled';
 };
 
-type ProgrammaticCameraAnimationCompletionPayload =
+export type ProgrammaticCameraAnimationCompletionPayload =
   RawProgrammaticCameraAnimationCompletionPayload & {
     requestToken: number | null;
   };
@@ -33,6 +35,9 @@ export class CameraIntentArbiter {
   private pendingProgrammaticCameraCompletionId: string | null = null;
   private pendingProgrammaticCameraRequestToken: number | null = null;
   private nextProgrammaticCameraCompletionSeq = 0;
+  private readonly programmaticCameraAnimationCompletionListeners = new Set<
+    (payload: ProgrammaticCameraAnimationCompletionPayload) => void
+  >();
   private onProgrammaticCameraAnimationComplete:
     | ((payload: ProgrammaticCameraAnimationCompletionPayload) => void)
     | null = null;
@@ -45,53 +50,77 @@ export class CameraIntentArbiter {
     this.onProgrammaticCameraAnimationComplete = handler;
   }
 
+  public subscribeProgrammaticCameraAnimationCompletion(
+    handler: (payload: ProgrammaticCameraAnimationCompletionPayload) => void
+  ): () => void {
+    this.programmaticCameraAnimationCompletionListeners.add(handler);
+    return () => {
+      this.programmaticCameraAnimationCompletionListeners.delete(handler);
+    };
+  }
+
+  private notifyProgrammaticCameraAnimationCompletion(
+    payload: ProgrammaticCameraAnimationCompletionPayload
+  ): void {
+    withSearchNavSwitchRuntimeAttribution('cameraIntentArbiter', 'notifyCompletion', () => {
+      this.onProgrammaticCameraAnimationComplete?.(payload);
+      this.programmaticCameraAnimationCompletionListeners.forEach((listener) => {
+        listener(payload);
+      });
+    });
+  }
+
   public setGestureActive(isActive: boolean): void {
-    this.gestureActive = isActive;
-    if (!isActive || this.pendingProgrammaticCameraCompletionId == null) {
-      return;
-    }
-    const cancelledCompletionId = this.pendingProgrammaticCameraCompletionId;
-    const cancelledRequestToken = this.pendingProgrammaticCameraRequestToken;
-    this.pendingProgrammaticCameraCompletionId = null;
-    this.pendingProgrammaticCameraRequestToken = null;
-    this.onProgrammaticCameraAnimationComplete?.({
-      animationCompletionId: cancelledCompletionId,
-      status: 'cancelled',
-      requestToken: cancelledRequestToken,
+    withSearchNavSwitchRuntimeAttribution('cameraIntentArbiter', 'setGestureActive', () => {
+      this.gestureActive = isActive;
+      if (!isActive || this.pendingProgrammaticCameraCompletionId == null) {
+        return;
+      }
+      const cancelledCompletionId = this.pendingProgrammaticCameraCompletionId;
+      const cancelledRequestToken = this.pendingProgrammaticCameraRequestToken;
+      this.pendingProgrammaticCameraCompletionId = null;
+      this.pendingProgrammaticCameraRequestToken = null;
+      this.notifyProgrammaticCameraAnimationCompletion({
+        animationCompletionId: cancelledCompletionId,
+        status: 'cancelled',
+        requestToken: cancelledRequestToken,
+      });
     });
   }
 
   public commit(intent: CameraIntent): boolean {
-    if (this.gestureActive && intent.allowDuringGesture !== true) {
-      return false;
-    }
-    const animationMode = intent.animationMode ?? 'none';
-    const completionId =
-      animationMode === 'none'
-        ? null
-        : `camera-animation:${(this.nextProgrammaticCameraCompletionSeq += 1)}`;
-    this.pendingProgrammaticCameraCompletionId = completionId;
-    this.pendingProgrammaticCameraRequestToken = intent.requestToken ?? null;
-    if (
-      this.writers.commandCameraViewport?.({
-        ...intent,
+    return withSearchNavSwitchRuntimeAttribution('cameraIntentArbiter', 'commit', () => {
+      if (this.gestureActive && intent.allowDuringGesture !== true) {
+        return false;
+      }
+      const animationMode = intent.animationMode ?? 'none';
+      const completionId =
+        animationMode === 'none'
+          ? null
+          : `camera-animation:${(this.nextProgrammaticCameraCompletionSeq += 1)}`;
+      this.pendingProgrammaticCameraCompletionId = completionId;
+      this.pendingProgrammaticCameraRequestToken = intent.requestToken ?? null;
+      if (
+        this.writers.commandCameraViewport?.({
+          ...intent,
+          completionId,
+        }) === true
+      ) {
+        return true;
+      }
+      this.writers.setMapCameraAnimation({
+        mode: animationMode,
+        durationMs:
+          typeof intent.animationDurationMs === 'number' &&
+          Number.isFinite(intent.animationDurationMs)
+            ? Math.max(0, intent.animationDurationMs)
+            : 0,
         completionId,
-      }) === true
-    ) {
+      });
+      this.writers.setMapCenter(intent.center);
+      this.writers.setMapZoom(intent.zoom);
       return true;
-    }
-    this.writers.setMapCameraAnimation({
-      mode: animationMode,
-      durationMs:
-        typeof intent.animationDurationMs === 'number' &&
-        Number.isFinite(intent.animationDurationMs)
-          ? Math.max(0, intent.animationDurationMs)
-          : 0,
-      completionId,
     });
-    this.writers.setMapCenter(intent.center);
-    this.writers.setMapZoom(intent.zoom);
-    return true;
   }
 
   public consumeProgrammaticCameraCompletion(completionId: string | null): boolean {
@@ -110,28 +139,40 @@ export class CameraIntentArbiter {
   public handleProgrammaticCameraAnimationCompletion(
     payload: RawProgrammaticCameraAnimationCompletionPayload
   ): boolean {
-    const requestToken = this.pendingProgrammaticCameraRequestToken;
-    if (!this.consumeProgrammaticCameraCompletion(payload.animationCompletionId)) {
-      return false;
-    }
-    this.onProgrammaticCameraAnimationComplete?.({
-      ...payload,
-      requestToken,
-    });
-    return true;
+    return withSearchNavSwitchRuntimeAttribution(
+      'cameraIntentArbiter',
+      'handleCompletion',
+      () => {
+        const requestToken = this.pendingProgrammaticCameraRequestToken;
+        if (!this.consumeProgrammaticCameraCompletion(payload.animationCompletionId)) {
+          return false;
+        }
+        this.notifyProgrammaticCameraAnimationCompletion({
+          ...payload,
+          requestToken,
+        });
+        return true;
+      }
+    );
   }
 
   public resolvePendingProgrammaticCameraAnimation(
     status: 'finished' | 'cancelled' = 'finished'
   ): boolean {
-    const completionId = this.pendingProgrammaticCameraCompletionId;
-    if (!completionId) {
-      return false;
-    }
-    return this.handleProgrammaticCameraAnimationCompletion({
-      animationCompletionId: completionId,
-      status,
-    });
+    return withSearchNavSwitchRuntimeAttribution(
+      'cameraIntentArbiter',
+      'resolvePendingCompletion',
+      () => {
+        const completionId = this.pendingProgrammaticCameraCompletionId;
+        if (!completionId) {
+          return false;
+        }
+        return this.handleProgrammaticCameraAnimationCompletion({
+          animationCompletionId: completionId,
+          status,
+        });
+      }
+    );
   }
 
   public hasPendingProgrammaticCameraCompletion(): boolean {

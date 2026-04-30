@@ -66,6 +66,14 @@ export const useSearchRequests = () => {
 
   const [isSearching, setIsSearching] = React.useState(false);
   const [isAutocompleteLoading, setIsAutocompleteLoading] = React.useState(false);
+  const isAutocompleteLoadingRef = React.useRef(false);
+  const updateAutocompleteLoading = React.useCallback((nextValue: boolean) => {
+    if (isAutocompleteLoadingRef.current === nextValue) {
+      return;
+    }
+    isAutocompleteLoadingRef.current = nextValue;
+    setIsAutocompleteLoading(nextValue);
+  }, []);
 
   const cancelAutocomplete = React.useCallback(() => {
     if (autocompleteDebounceRef.current) {
@@ -76,8 +84,8 @@ export const useSearchRequests = () => {
       autocompleteControllerRef.current.abort();
       autocompleteControllerRef.current = null;
     }
-    setIsAutocompleteLoading(false);
-  }, []);
+    updateAutocompleteLoading(false);
+  }, [updateAutocompleteLoading]);
 
   const cancelSearch = React.useCallback(() => {
     if (searchControllerRef.current) {
@@ -101,7 +109,7 @@ export const useSearchRequests = () => {
         autocompleteDebounceRef.current = setTimeout(async () => {
           const controller = new AbortController();
           autocompleteControllerRef.current = controller;
-          setIsAutocompleteLoading(true);
+          updateAutocompleteLoading(true);
 
           try {
             const response = await autocompleteService.fetchEntities(query, {
@@ -121,13 +129,13 @@ export const useSearchRequests = () => {
             }
           } finally {
             if (autocompleteControllerRef.current === controller) {
-              setIsAutocompleteLoading(false);
+              updateAutocompleteLoading(false);
               autocompleteControllerRef.current = null;
             }
           }
         }, debounceMs);
       }),
-    [cancelAutocomplete]
+    [cancelAutocomplete, updateAutocompleteLoading]
   );
 
   const runSearch = React.useCallback(

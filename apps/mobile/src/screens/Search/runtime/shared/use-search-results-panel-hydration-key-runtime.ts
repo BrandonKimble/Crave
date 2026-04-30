@@ -8,14 +8,14 @@ type UseSearchResultsPanelHydrationKeyRuntimeArgs = {
   searchRuntimeBus: SearchRuntimeBus;
   resolvedResults: SearchResultsPayload;
   runtimeHydratedResultsKey: string | null;
-  activeOverlayKey: string | null;
+  isSearchSceneRenderAdmitted: () => boolean;
 };
 
 export const useSearchResultsPanelHydrationKeyRuntime = ({
   searchRuntimeBus,
   resolvedResults,
   runtimeHydratedResultsKey,
-  activeOverlayKey,
+  isSearchSceneRenderAdmitted,
 }: UseSearchResultsPanelHydrationKeyRuntimeArgs): SearchResultsPanelHydrationKeyRuntime => {
   const [hydratedResultsKey, setHydratedResultsKey] = React.useState<string | null>(null);
   const hydratedResultsKeyRef = React.useRef<string | null>(hydratedResultsKey);
@@ -66,7 +66,7 @@ export const useSearchResultsPanelHydrationKeyRuntime = ({
     resultsHydrationKey != null &&
     resultsHydrationKey !== (hydratedResultsKeyRef.current ?? hydratedResultsKey);
   const shouldHydrateResultsForRender =
-    isHydrationPendingForRuntime && activeOverlayKey === 'search';
+    isHydrationPendingForRuntime && isSearchSceneRenderAdmitted();
   const requestVersionKey = React.useMemo(
     () =>
       `${resolvedResults?.metadata?.searchRequestId ?? 'no-request'}::${

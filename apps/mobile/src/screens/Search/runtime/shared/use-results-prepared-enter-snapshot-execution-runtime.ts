@@ -27,6 +27,7 @@ export const useResultsPreparedEnterSnapshotExecutionRuntime = ({
         }
         animateSheetTo(targetSnap);
       }
+      resultsRuntimeOwner.cancelPresentationIntent();
       resultsRuntimeOwner.stagePreparedResultsSnapshot(snapshot);
       return snapshot.transactionId;
     },

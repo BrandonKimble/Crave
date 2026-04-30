@@ -7,11 +7,13 @@ import { usePerfHarnessRuntimeStore } from './perf-harness-runtime-store';
 
 export const PerfHarnessCoordinator: React.FC = () => {
   const setActiveConfig = usePerfHarnessRuntimeStore((state) => state.setActiveConfig);
+  const clearActiveConfig = usePerfHarnessRuntimeStore((state) => state.clearActiveConfig);
 
   React.useEffect(() => {
     const handleUrl = (url: string | null) => {
       const config = parsePerfHarnessConfigFromUrl(url);
       if (!config) {
+        clearActiveConfig();
         return;
       }
       setActiveConfig(config);
@@ -42,7 +44,7 @@ export const PerfHarnessCoordinator: React.FC = () => {
     return () => {
       subscription.remove();
     };
-  }, [setActiveConfig]);
+  }, [clearActiveConfig, setActiveConfig]);
 
   return null;
 };

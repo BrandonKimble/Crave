@@ -14,18 +14,30 @@ export const favoriteListKeys = {
   detail: (listId: string) => ['favorite-list', listId] as const,
 };
 
+export const createFavoriteListsQueryOptions = ({
+  listType,
+  visibility,
+}: {
+  listType?: FavoriteListType;
+  visibility?: FavoriteListVisibility;
+}) => ({
+  queryKey: favoriteListKeys.list(listType, visibility),
+  queryFn: () => favoriteListsService.list({ listType, visibility }),
+  staleTime: 1000 * 20,
+});
+
 export const useFavoriteLists = (params: {
   listType?: FavoriteListType;
   visibility?: FavoriteListVisibility;
   enabled?: boolean;
+  subscribed?: boolean;
 }) => {
   const enabled = params.enabled ?? true;
-  const { listType, visibility } = params;
+  const subscribed = params.subscribed ?? true;
   return useQuery<FavoriteListSummary[]>({
-    queryKey: favoriteListKeys.list(params.listType, params.visibility),
-    queryFn: () => favoriteListsService.list({ listType, visibility }),
+    ...createFavoriteListsQueryOptions(params),
     enabled,
-    staleTime: 1000 * 20,
+    subscribed,
   });
 };
 

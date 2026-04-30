@@ -46,7 +46,15 @@ const parseLogEvents = (lines) => {
       const data = JSON.parse(candidate);
       events.push({ line: idx + 1, raw: line, data });
     } catch {
-      // Ignore non-JSON lines.
+      // React Native's console formatter can collapse nested objects to
+      // [Object], which breaks JSON parsing for otherwise valid perf events.
+      try {
+        const sanitizedCandidate = candidate.replace(/\[Object\]/g, 'null');
+        const data = JSON.parse(sanitizedCandidate);
+        events.push({ line: idx + 1, raw: line, data });
+      } catch {
+        // Ignore non-JSON lines.
+      }
     }
   }
   return events;

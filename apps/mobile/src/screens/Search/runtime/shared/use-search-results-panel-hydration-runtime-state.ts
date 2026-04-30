@@ -7,28 +7,34 @@ export const useSearchResultsPanelHydrationRuntimeState = (
 ): SearchResultsPanelHydrationRuntimeState => {
   return useSearchRuntimeBusSelector(
     searchRuntimeBus,
-    (state) => ({
-      runOneCommitSpanPressureActive: state.runOneCommitSpanPressureActive,
-      hydrationOperationId: state.hydrationOperationId,
-      allowHydrationFinalizeCommit: state.allowHydrationFinalizeCommit,
-      runtimeHydratedResultsKey: state.hydratedResultsKey,
-      isRunOneChromeDeferred:
-        state.isRunOneChromeFreezeActive ||
-        state.runOneCommitSpanPressureActive ||
-        state.isChromeDeferred,
-    }),
+    (state) => {
+      const policyFacts = searchRuntimeBus.getPolicyFactsSnapshot();
+
+      return {
+        runOneCommitSpanPressureActive: state.runOneCommitSpanPressureActive,
+        hydrationOperationId: state.hydrationOperationId,
+        allowHydrationFinalizeCommit: state.allowHydrationFinalizeCommit,
+        runtimeHydratedResultsKey: state.hydratedResultsKey,
+        isRunOneChromeDeferred: policyFacts.isRunOneChromeDeferred,
+        chromeFreezeClassification: policyFacts.freezeClassification,
+      };
+    },
     (left, right) =>
       left.runOneCommitSpanPressureActive === right.runOneCommitSpanPressureActive &&
       left.hydrationOperationId === right.hydrationOperationId &&
       left.allowHydrationFinalizeCommit === right.allowHydrationFinalizeCommit &&
       left.runtimeHydratedResultsKey === right.runtimeHydratedResultsKey &&
-      left.isRunOneChromeDeferred === right.isRunOneChromeDeferred,
+      left.isRunOneChromeDeferred === right.isRunOneChromeDeferred &&
+      left.chromeFreezeClassification === right.chromeFreezeClassification,
     [
       'runOneCommitSpanPressureActive',
       'hydrationOperationId',
       'allowHydrationFinalizeCommit',
       'hydratedResultsKey',
       'isRunOneChromeFreezeActive',
+      'isRunOnePreflightFreezeActive',
+      'isRun1HandoffActive',
+      'isResponseFrameFreezeActive',
       'isChromeDeferred',
     ] as const
   );

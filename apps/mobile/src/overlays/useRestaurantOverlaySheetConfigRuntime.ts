@@ -1,5 +1,6 @@
 import React from 'react';
 import { Dimensions, type ViewStyle } from 'react-native';
+import type { AnimatedStyle as ReanimatedAnimatedStyle } from 'react-native-reanimated';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -10,7 +11,7 @@ export type RestaurantOverlaySheetConfig = {
   snapPoints: import('./bottomSheetMotionTypes').BottomSheetSnapPoints;
   initialSnapPoint: Exclude<import('./bottomSheetMotionTypes').BottomSheetSnap, 'hidden'>;
   animateOnMount: true;
-  style: ViewStyle | ViewStyle[];
+  style: ViewStyle | Array<ViewStyle | ReanimatedAnimatedStyle<ViewStyle>>;
   onHidden: (() => void) | undefined;
   dismissThreshold: number | undefined;
   preventSwipeDismiss: true;
@@ -24,7 +25,7 @@ type UseRestaurantOverlaySheetConfigRuntimeArgs = {
   searchBarTop?: number;
   onDismiss?: () => void;
   interactionEnabled?: boolean;
-  containerStyle?: ViewStyle | null;
+  containerStyle?: ViewStyle | ReanimatedAnimatedStyle<ViewStyle> | null;
 };
 
 export const useRestaurantOverlaySheetConfigRuntime = ({

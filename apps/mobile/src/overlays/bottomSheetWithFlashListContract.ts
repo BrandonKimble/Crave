@@ -1,5 +1,13 @@
 import type React from 'react';
-import type { StyleProp, ViewStyle } from 'react-native';
+import type {
+  LayoutChangeEvent,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  ScrollView,
+  ScrollViewProps,
+  StyleProp,
+  ViewStyle,
+} from 'react-native';
 
 import type { FlashListProps, FlashListRef } from '@shopify/flash-list';
 
@@ -67,6 +75,7 @@ export type BottomSheetWithFlashListBaseProps<T> = {
   activeList?: DualListSelection;
   onDragStateChange?: (isDragging: boolean) => void;
   onSettleStateChange?: (isSettling: boolean) => void;
+  onSnapSettleComplete?: (settleToken: number) => void;
   runtimeModel?: BottomSheetRuntimeModel | BottomSheetProgrammaticRuntimeModel;
   dismissThreshold?: number;
   preventSwipeDismiss?: boolean;
@@ -152,9 +161,7 @@ export type BottomSheetSceneSurfaceSharedProps<T> = Omit<
   | 'style'
   | 'surfaceStyle'
   | 'shadowStyle'
-> & {
-  inactiveRenderMode?: 'freeze' | 'live';
-};
+>;
 
 export type BottomSheetSceneSurfaceDecoratorProps = {
   underlayComponent?: React.ReactNode;
@@ -172,28 +179,15 @@ export type BottomSheetSceneSurfaceProps<T> =
   | BottomSheetSceneSurfaceListProps<T>
   | BottomSheetSceneSurfaceContentProps;
 
-export type BottomSheetWithSceneRegistryProps = {
-  surfaceKind: 'scene-registry';
-  activeSceneKey: string;
-  sceneKeys: string[];
-};
-
 export type BottomSheetWithFlashListProps<T> = BottomSheetWithFlashListBaseProps<T> &
   (
     | BottomSheetWithFlashListListProps<T>
     | BottomSheetWithFlashListContentOnlyProps
-    | BottomSheetWithSceneRegistryProps
   );
 
 export const isBottomSheetListSurface = <T>(
   props:
     | BottomSheetWithFlashListListProps<T>
     | BottomSheetWithFlashListContentOnlyProps
-    | BottomSheetWithSceneRegistryProps
     | BottomSheetWithFlashListProps<T>
 ): props is BottomSheetWithFlashListListProps<T> => props.surfaceKind === 'list';
-
-export const isBottomSheetSceneRegistrySurface = (
-  props: BottomSheetWithFlashListProps<unknown>
-): props is BottomSheetWithFlashListBaseProps<unknown> & BottomSheetWithSceneRegistryProps =>
-  props.surfaceKind === 'scene-registry';

@@ -11,6 +11,7 @@ import { HandPlatter, Store } from 'lucide-react-native';
 
 import { Text } from '../../../components';
 import styles from '../styles';
+import { useSearchChromeScalarSurfaceMeasuredControlRef } from '../runtime/native/use-search-chrome-scalar-surface-measured-control-ref';
 
 const AnimatedPressable = Reanimated.createAnimatedComponent(Pressable);
 
@@ -35,6 +36,10 @@ const SearchShortcutsRow = ({
   onRestaurantsChipLayout,
   onDishesChipLayout,
 }: SearchShortcutsRowProps) => {
+  const restaurantsScalarSurfaceRef =
+    useSearchChromeScalarSurfaceMeasuredControlRef('shortcut_restaurants');
+  const dishesScalarSurfaceRef = useSearchChromeScalarSurfaceMeasuredControlRef('shortcut_dishes');
+
   return (
     <Reanimated.View
       style={containerAnimatedStyle}
@@ -44,6 +49,7 @@ const SearchShortcutsRow = ({
       }}
     >
       <AnimatedPressable
+        ref={restaurantsScalarSurfaceRef}
         onPress={onPressBestRestaurants}
         style={[styles.searchShortcutChip, chipAnimatedStyle]}
         accessibilityRole="button"
@@ -61,6 +67,7 @@ const SearchShortcutsRow = ({
         </View>
       </AnimatedPressable>
       <AnimatedPressable
+        ref={dishesScalarSurfaceRef}
         onPress={onPressBestDishes}
         style={[styles.searchShortcutChip, chipAnimatedStyle]}
         accessibilityRole="button"

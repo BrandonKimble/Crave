@@ -1,7 +1,7 @@
 import type { Coordinate } from '../../../../types';
 import type { ProfilePreviewActionModel } from './profile-action-model-contract';
 import type { ProfileActionExecutionPorts } from './profile-action-runtime-port-contract';
-import type { ProfileTransitionSnapshotCapture } from './profile-transition-state-contract';
+import type { ProfileTransitionSnapshotCapture } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import {
   resolveProfilePreviewPresentationPlan,
   type ProfilePreviewPresentationPlan,

@@ -6,7 +6,7 @@ import type {
   CameraSnapshot,
   ProfileTransitionStatus,
   RestaurantPanelSnapshot,
-} from '../profile/profile-transition-state-contract';
+} from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type { RunOneHandoffPhase } from '../controller/run-one-handoff-phase';
 import {
   IDLE_RESULTS_PRESENTATION_READ_MODEL,
@@ -19,7 +19,10 @@ import {
   IDLE_TOGGLE_INTERACTION_STATE,
   type ToggleInteractionState,
 } from './results-toggle-interaction-contract';
-
+import {
+  resolveResultsPresentationFreezePolicyFacts,
+  type ResultsPresentationFreezePolicyFacts,
+} from './results-presentation-policy-facts-resolver';
 export type SearchRuntimeActiveTab = 'dishes' | 'restaurants';
 export type SearchRuntimeSearchMode = 'natural' | 'shortcut' | null;
 export type SearchRuntimeOperationLane =
@@ -145,6 +148,19 @@ export type SearchRuntimeBusKey = keyof SearchRuntimeBusState;
 
 type SearchRuntimeBusListener = () => void;
 
+export type SearchRuntimeBusPolicyFactsSnapshot = ResultsPresentationFreezePolicyFacts & {
+  renderPolicy: ResultsPresentationReadModel;
+};
+
+export type SearchRuntimeBusSearchChromeScalarPrimitiveTarget = {
+  updatePrimitiveSnapshot: (patch: {
+    isSearchSessionActive?: boolean;
+    isSearchLoading?: boolean;
+    isLoadingMore?: boolean;
+    hasResults?: boolean;
+  }) => void;
+};
+
 const IDLE_PROFILE_SHELL_STATE: SearchRuntimeProfileShellState = {
   transitionStatus: 'idle',
   restaurantPanelSnapshot: null,
@@ -211,8 +227,25 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   profileShellState: IDLE_PROFILE_SHELL_STATE,
 };
 
+const resolveSearchRuntimeBusPolicyFactsSnapshot = (
+  state: SearchRuntimeBusState
+): SearchRuntimeBusPolicyFactsSnapshot => ({
+  ...resolveResultsPresentationFreezePolicyFacts({
+    isRunOneChromeFreezeActive: state.isRunOneChromeFreezeActive,
+    isRunOnePreflightFreezeActive: state.isRunOnePreflightFreezeActive,
+    isRun1HandoffActive: state.isRun1HandoffActive,
+    isResponseFrameFreezeActive: state.isResponseFrameFreezeActive,
+    isChromeDeferred: state.isChromeDeferred,
+    runOneCommitSpanPressureActive: state.runOneCommitSpanPressureActive,
+  }),
+  renderPolicy: state.resultsPresentation,
+});
+
 export class SearchRuntimeBus {
   private state: SearchRuntimeBusState = INITIAL_STATE;
+
+  private policyFactsSnapshot: SearchRuntimeBusPolicyFactsSnapshot =
+    resolveSearchRuntimeBusPolicyFactsSnapshot(INITIAL_STATE);
 
   private version = 0;
 
@@ -227,12 +260,19 @@ export class SearchRuntimeBus {
 
   private pendingChangedKeys: Set<SearchRuntimeBusKey> | null = null;
 
+  private searchChromeScalarPrimitiveTarget: SearchRuntimeBusSearchChromeScalarPrimitiveTarget | null =
+    null;
+
   public getState(): SearchRuntimeBusState {
     return this.state;
   }
 
   public getVersion(): number {
     return this.version;
+  }
+
+  public getPolicyFactsSnapshot(): SearchRuntimeBusPolicyFactsSnapshot {
+    return this.policyFactsSnapshot;
   }
 
   public subscribe(
@@ -249,7 +289,23 @@ export class SearchRuntimeBus {
 
   public reset(): void {
     this.state = INITIAL_STATE;
+    this.policyFactsSnapshot = resolveSearchRuntimeBusPolicyFactsSnapshot(INITIAL_STATE);
+    this.syncSearchChromeScalarPrimitiveTarget(
+      new Set(Object.keys(INITIAL_STATE) as SearchRuntimeBusKey[])
+    );
     this.bump(new Set(Object.keys(INITIAL_STATE) as SearchRuntimeBusKey[]));
+  }
+
+  public setSearchChromeScalarPrimitiveTarget(
+    target: SearchRuntimeBusSearchChromeScalarPrimitiveTarget | null
+  ): () => void {
+    this.searchChromeScalarPrimitiveTarget = target;
+    this.syncSearchChromeScalarPrimitiveTarget(null);
+    return () => {
+      if (this.searchChromeScalarPrimitiveTarget === target) {
+        this.searchChromeScalarPrimitiveTarget = null;
+      }
+    };
   }
 
   public publish(patch: Partial<SearchRuntimeBusState>): void {
@@ -270,6 +326,8 @@ export class SearchRuntimeBus {
       return;
     }
     this.state = nextState;
+    this.policyFactsSnapshot = resolveSearchRuntimeBusPolicyFactsSnapshot(nextState);
+    this.syncSearchChromeScalarPrimitiveTarget(changedKeys);
     this.bump(changedKeys);
   }
 
@@ -313,6 +371,30 @@ export class SearchRuntimeBus {
           return;
         }
       }
+    });
+  }
+
+  private syncSearchChromeScalarPrimitiveTarget(
+    changedKeys: ReadonlySet<SearchRuntimeBusKey> | null
+  ): void {
+    const target = this.searchChromeScalarPrimitiveTarget;
+    if (target == null) {
+      return;
+    }
+    if (
+      changedKeys != null &&
+      !changedKeys.has('isSearchSessionActive') &&
+      !changedKeys.has('isSearchLoading') &&
+      !changedKeys.has('isLoadingMore') &&
+      !changedKeys.has('results')
+    ) {
+      return;
+    }
+    target.updatePrimitiveSnapshot({
+      isSearchSessionActive: this.state.isSearchSessionActive,
+      isSearchLoading: this.state.isSearchLoading,
+      isLoadingMore: this.state.isLoadingMore,
+      hasResults: this.state.results != null,
     });
   }
 }

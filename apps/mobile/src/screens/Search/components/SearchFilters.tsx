@@ -125,7 +125,7 @@ export const cloneSearchFiltersLayoutCache = (
   };
 };
 
-type SearchFiltersProps = {
+export type SearchFiltersProps = {
   activeTab: SegmentValue;
   onTabChange: (value: SegmentValue) => void;
   openNow: boolean;

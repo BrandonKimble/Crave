@@ -1,9 +1,9 @@
-import type { PreparedProfilePresentationSnapshot } from '../shared/prepared-presentation-transaction';
+import type { PreparedProfilePresentationSnapshot } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-snapshot-contract';
 import type {
   CameraSnapshot,
   ProfileTransitionState,
   RestaurantPanelSnapshot,
-} from './profile-transition-state-contract';
+} from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type {
   ProfilePresentationModel,
   ProfileViewState,

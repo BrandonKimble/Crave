@@ -4,7 +4,7 @@ import type {
   SearchRuntimeBus,
   SearchRuntimeProfileShellState,
 } from '../shared/search-runtime-bus';
-import type { RestaurantPanelSnapshot } from './profile-transition-state-contract';
+import type { RestaurantPanelSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 
 export type ProfileShellStatePublisher = {
   publishProfileShellState: (

@@ -16,8 +16,9 @@ import type { PerfNavSwitchOverlay } from '../../../../perf/harness-config';
 import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
 import type useSearchHistory from '../../hooks/use-search-history';
 import type useSearchSubmitOwner from '../../hooks/use-search-submit-owner';
-import type { OverlayRuntimeController } from '../controller/overlay-runtime-controller';
-import type { SearchRouteOverlayTransitionController } from '../../../../overlays/useSearchRouteOverlayTransitionController';
+import type { AppSearchRouteCommandActions } from '../../../../navigation/runtime/app-search-route-command-runtime';
+import type { AppRouteOverlaySessionSnapshot } from '../../../../navigation/runtime/app-route-overlay-session-contract';
+import type { RouteSceneSwitchTransitionActions } from '../../../../navigation/runtime/app-route-scene-switch-controller';
 
 export type SearchForegroundSubmitRuntime = Pick<
   ReturnType<typeof useSearchSubmitOwner>,
@@ -39,7 +40,24 @@ export type SearchForegroundCloseRestaurantProfile = (options?: {
   clearSearchOnDismiss?: boolean;
 }) => void;
 
+export type SearchForegroundTransientCleanupSnapshot = {
+  isSuggestionPanelActive: boolean;
+  profilePresentationActive: boolean;
+};
+
+export type SearchForegroundTransientCleanupActions = {
+  getSnapshot: () => SearchForegroundTransientCleanupSnapshot;
+  dismissTransientOverlays: () => void;
+  beginSuggestionCloseHold: () => boolean;
+  resetSuggestionPanelActive: () => void;
+  setSearchFlagsForSearchRoot: () => void;
+  clearSuggestions: () => void;
+  closeRestaurantProfile: SearchForegroundCloseRestaurantProfile;
+  blurInput: () => void;
+};
+
 export type SearchForegroundLaunchIntentRuntimeArgs = {
+  routeSearchCommandActions: AppSearchRouteCommandActions;
   navigation: StackNavigationProp<RootStackParamList>;
   activeMainIntent: LaunchIntent;
   consumeActiveMainIntent: () => void;
@@ -58,9 +76,8 @@ export type SearchForegroundSubmitRuntimeArgs = {
   isLoadingMore: boolean;
   isSearchSessionActive: boolean;
   isSuggestionPanelActive: boolean;
-  shouldShowDockedPolls: boolean;
-  captureSearchSessionOrigin: () => void;
-  ensureSearchOverlay: () => void;
+  shouldShowDockedPollsRef: React.MutableRefObject<AppRouteOverlaySessionSnapshot>;
+  prepareSearchSessionEntry: (options?: { captureOrigin?: boolean }) => void;
   suppressAutocompleteResults: () => void;
   cancelAutocomplete: () => void;
   dismissSearchKeyboard: () => void;
@@ -83,15 +100,8 @@ export type SearchForegroundSubmitRuntimeArgs = {
   openRestaurantProfilePreview: SearchForegroundOpenRestaurantProfilePreview;
 };
 
-export type SearchForegroundRetryRuntimeArgs = {
-  submitRuntime: SearchForegroundSubmitRuntime;
-  query: string;
-  submittedQuery: string;
-  hasResults: boolean;
+export type SearchForegroundCommandRuntimeArgs = SearchForegroundSubmitRuntimeArgs & {
   isOffline: boolean;
-  isSearchLoading: boolean;
-  isLoadingMore: boolean;
-  isSearchSessionActive: boolean;
 };
 
 export type SearchForegroundEditingRuntimeArgs = {
@@ -115,10 +125,7 @@ export type SearchForegroundEditingRuntimeArgs = {
   beginSuggestionCloseHold: (mode?: 'default' | 'submitting') => boolean;
   requestSearchPresentationIntent: (intent: { kind: 'focus_editing' | 'exit_editing' }) => void;
   beginCloseSearch: () => void;
-  restoreDockedPolls: (args?: {
-    snap?: Exclude<OverlaySheetSnap, 'hidden'>;
-    clearTabSnapRequest?: boolean;
-  }) => void;
+  restoreDockedPolls: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
   setIsSearchFocused: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSuggestionPanelActive: React.Dispatch<React.SetStateAction<boolean>>;
   setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
@@ -139,15 +146,13 @@ export type SearchForegroundOverlayRuntimeArgs = {
     ? T
     : never;
   rootOverlay: OverlayKey;
+  transientCleanupActions: SearchForegroundTransientCleanupActions;
+  isSuggestionPanelActive: boolean;
   profilePresentationActive: boolean;
-  overlayRuntimeController: OverlayRuntimeController;
   closeRestaurantProfile: SearchForegroundCloseRestaurantProfile;
   dismissTransientOverlays: () => void;
   beginSuggestionCloseHoldRef: React.MutableRefObject<() => boolean>;
-  transitionController: SearchRouteOverlayTransitionController;
-  setTabOverlaySnapRequest: (
-    next: React.SetStateAction<Exclude<OverlaySheetSnap, 'hidden'> | null>
-  ) => void;
+  transitionActions: RouteSceneSwitchTransitionActions;
   setIsSearchFocused: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSuggestionPanelActive: React.Dispatch<React.SetStateAction<boolean>>;
   setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
@@ -170,7 +175,9 @@ export type SearchForegroundEffectsRuntimeArgs = {
   toggleOpenNow: () => void;
   selectOverlayHarnessRef: React.MutableRefObject<(target: PerfNavSwitchOverlay) => void>;
   isSearchOverlay: boolean;
-  saveSheetVisible: boolean;
+  saveSheetVisibleRef: React.MutableRefObject<{
+    saveSheetState: { visible: boolean };
+  }>;
   handleCloseSaveSheet: () => void;
   isSearchFocused: boolean;
   isSuggestionPanelActive: boolean;
@@ -191,13 +198,17 @@ export type SearchForegroundRestaurantOnlyResolutionArgs = {
 
 export type UseSearchForegroundInteractionRuntimeArgs = {
   launchIntentArgs: SearchForegroundLaunchIntentRuntimeArgs;
-  submitRuntimeArgs: SearchForegroundSubmitRuntimeArgs;
-  retryRuntimeArgs: SearchForegroundRetryRuntimeArgs;
+  commandRuntimeArgs: SearchForegroundCommandRuntimeArgs;
   editingRuntimeArgs: SearchForegroundEditingRuntimeArgs;
   overlayRuntimeArgs: SearchForegroundOverlayRuntimeArgs;
   effectsRuntimeArgs: SearchForegroundEffectsRuntimeArgs;
   restaurantOnlyResolutionArgs: SearchForegroundRestaurantOnlyResolutionArgs;
 };
+
+export type UseSearchForegroundTransientHandlersRuntimeArgs = Pick<
+  UseSearchForegroundInteractionRuntimeArgs,
+  'editingRuntimeArgs' | 'overlayRuntimeArgs'
+>;
 
 export type SearchForegroundInteractionRuntime = {
   shouldRetrySearchOnReconnect: boolean;
@@ -248,3 +259,9 @@ export type SearchForegroundInteractionOverlayHandlers = Pick<
   | 'handleOverlaySelect'
   | 'handleProfilePress'
 >;
+
+export type SearchForegroundInteractionCommandRuntime = SearchForegroundInteractionSubmitHandlers &
+  SearchForegroundInteractionRetryRuntime;
+
+export type SearchForegroundInteractionTransientHandlersRuntime =
+  SearchForegroundInteractionEditingHandlers & SearchForegroundInteractionOverlayHandlers;

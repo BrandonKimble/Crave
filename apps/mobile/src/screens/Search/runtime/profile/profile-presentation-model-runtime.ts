@@ -1,4 +1,5 @@
-import type { PreparedProfilePresentationSnapshot } from '../shared/prepared-presentation-transaction';
+import type { PreparedProfilePresentationSnapshot } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-snapshot-contract';
+import type { OverlaySheetSnap } from '../../../../overlays/types';
 import {
   resolveProfileCameraPadding,
   resolveProfileCameraSnapshot,
@@ -9,7 +10,7 @@ import type {
   ProfileTransitionState,
   ProfileTransitionStatus,
   RestaurantPanelSnapshot,
-} from './profile-transition-state-contract';
+} from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import { resolveProfileTransitionSnapshotCapture } from './profile-transition-snapshot-runtime';
 import { resolveProfileViewState } from './profile-view-state-runtime';
 
@@ -32,8 +33,8 @@ export type ProfileViewState = {
 export type ProfilePresentationCameraLayoutModel = {
   resultsScrollOffset: { value: number };
   sheetTranslateY: { value: number };
-  snapPoints: readonly number[];
-  sheetState: OverlaySheetSnap;
+  snapPoints: { expanded: number; middle: number; collapsed: number };
+  sheetState: Exclude<OverlaySheetSnap, 'hidden'>;
   mapCenter: [number, number] | null;
   mapZoom: number | null;
   searchBarTop: number;
@@ -125,7 +126,7 @@ export const createProfilePresentationModelRuntime = ({
         sheetTranslateY: sheetTranslateY.value,
         snapPoints,
         sheetState,
-        lastVisibleSheetSnap: getLastVisibleSheetSnap(),
+        lastVisibleSheetSnap: getLastVisibleSheetSnap() ?? sheetState,
         cameraSnapshot: captureProfileCameraSnapshot(),
         resultsScrollOffset: resultsScrollOffset.value,
       }),

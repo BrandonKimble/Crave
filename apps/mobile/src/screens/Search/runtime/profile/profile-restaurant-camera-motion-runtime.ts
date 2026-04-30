@@ -1,4 +1,7 @@
-import type { CameraSnapshot, RestaurantFocusSession } from './profile-transition-state-contract';
+import type {
+  CameraSnapshot,
+  RestaurantFocusSession,
+} from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type {
   ProfileRestaurantCameraActionModel,
   SearchProfileSource,

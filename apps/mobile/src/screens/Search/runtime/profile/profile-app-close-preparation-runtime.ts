@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { resolveProfileCloseHydrationCommitRequest } from '../../../../navigation/runtime/app-route-profile-app-execution-normalizer';
 import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
 
 export type PhaseBMaterializerLike = {
@@ -49,13 +50,18 @@ export const useProfileAppClosePreparationRuntime = ({
       pendingMarkerOpenAnimationFrameRef.current = null;
     }
 
-    if (!resultsHydrationKey || resultsHydrationKey === hydratedResultsKey) {
+    const hydrationCommitRequest = resolveProfileCloseHydrationCommitRequest({
+      resultsHydrationKey,
+      hydratedResultsKey,
+      hydrationOperationId,
+    });
+    if (!hydrationCommitRequest) {
       return;
     }
 
     phaseBMaterializerRef.current.commitHydrationImmediately({
-      operationId: hydrationOperationId ?? 'profile-close-hydration',
-      nextHydrationKey: resultsHydrationKey,
+      operationId: hydrationCommitRequest.operationId,
+      nextHydrationKey: hydrationCommitRequest.nextHydrationKey,
       commitHydrationKey: (nextHydrationKey) => {
         searchRuntimeBus.publish({
           hydratedResultsKey: nextHydrationKey,

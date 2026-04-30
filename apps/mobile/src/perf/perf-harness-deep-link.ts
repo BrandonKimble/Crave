@@ -1,6 +1,7 @@
 import type {
   PerfHarnessScenario,
   PerfJsFrameSamplerConfig,
+  PerfJsTaskLatencySamplerConfig,
   PerfNavSwitchLoopConfig,
   PerfNavSwitchOverlay,
   PerfUiFrameSamplerConfig,
@@ -46,11 +47,14 @@ const parseScenario = (value: string | null): PerfHarnessScenario => {
   if (value === 'search_shortcut_loop' || value === 'search_shortcut_loop_open_now_roundtrip') {
     return value;
   }
+  if (value === 'search_shortcut_submit_close_loop') {
+    return value;
+  }
   return 'none';
 };
 
 const parseNavSwitchOverlay = (value: string | null): PerfNavSwitchOverlay | null => {
-  if (value === 'search' || value === 'bookmarks' || value === 'profile') {
+  if (value === 'search' || value === 'bookmarks' || value === 'profile' || value === 'polls') {
     return value;
   }
   return null;
@@ -97,6 +101,16 @@ const buildFrameSamplerConfig = (
   logOnlyBelowFps: parseInteger(searchParams.get(`${prefix}FpsThreshold`), 58, 1, 240),
 });
 
+const buildTaskLatencySamplerConfig = (
+  searchParams: URLSearchParams
+): PerfJsTaskLatencySamplerConfig => ({
+  enabled: parseBoolean(searchParams.get('taskSampler'), true),
+  windowMs: parseInteger(searchParams.get('taskWindowMs'), 500, 120, 60000),
+  sampleIntervalMs: parseInteger(searchParams.get('taskSampleIntervalMs'), 8, 1, 1000),
+  stallLagMs: parseInteger(searchParams.get('taskStallLagMs'), 50, 1, 5000),
+  logOnlyAboveLagMs: parseInteger(searchParams.get('taskLogOnlyAboveLagMs'), 12, 0, 5000),
+});
+
 export const parsePerfHarnessConfigFromUrl = (
   rawUrl: string | null
 ): RuntimePerfHarnessConfig | null => {
@@ -138,6 +152,7 @@ export const parsePerfHarnessConfigFromUrl = (
       cooldownMs: parseInteger(parsed.searchParams.get('cooldownMs'), 1200, 0, 60000),
       navSwitchLoop,
       jsFrameSampler: buildFrameSamplerConfig(parsed.searchParams, 'js'),
+      jsTaskLatencySampler: buildTaskLatencySamplerConfig(parsed.searchParams),
       uiFrameSampler: buildFrameSamplerConfig(parsed.searchParams, 'ui'),
       signature:
         parsed.searchParams.get('signature')?.trim() ||

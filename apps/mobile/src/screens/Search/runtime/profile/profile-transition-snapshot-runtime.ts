@@ -1,7 +1,7 @@
 import type {
   CameraSnapshot,
   ProfileTransitionSnapshotCapture,
-} from './profile-transition-state-contract';
+} from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 
 type OverlaySheetSnap = 'expanded' | 'middle' | 'collapsed' | 'hidden';
 

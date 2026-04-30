@@ -1,5 +1,7 @@
 import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
 
+import { withSearchNavSwitchRuntimeAttribution } from '../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
+
 type UiFrameSamplerWindowSummary = {
   event: 'window';
   nowMs: number;
@@ -58,7 +60,11 @@ const resolveNativeModule = (): UiFrameSamplerNativeModule | null => {
 const startUiFrameSampler = (options: UiFrameSamplerOptions): (() => void) => {
   const nativeModule = resolveNativeModule();
   if (!nativeModule) {
-    if (__DEV__ && !hasLoggedMissingUiFrameSampler) {
+    if (
+      __DEV__ &&
+      process.env.EXPO_PUBLIC_PERF_UI_SAMPLER_MISSING_LOG === '1' &&
+      !hasLoggedMissingUiFrameSampler
+    ) {
       hasLoggedMissingUiFrameSampler = true;
       // eslint-disable-next-line no-console
       console.log(
@@ -75,13 +81,17 @@ const startUiFrameSampler = (options: UiFrameSamplerOptions): (() => void) => {
   const windowSubscription = emitter.addListener(
     UI_FRAME_WINDOW_EVENT_NAME,
     (payload: UiFrameSamplerWindowSummary) => {
-      options.onWindow?.(payload);
+      withSearchNavSwitchRuntimeAttribution('uiFrameSampler', 'onWindow', () => {
+        options.onWindow?.(payload);
+      });
     }
   );
   const stallSubscription = emitter.addListener(
     UI_FRAME_STALL_EVENT_NAME,
     (payload: UiFrameSamplerStallEvent) => {
-      options.onStall?.(payload);
+      withSearchNavSwitchRuntimeAttribution('uiFrameSampler', 'onStall', () => {
+        options.onStall?.(payload);
+      });
     }
   );
   nativeModule.start({

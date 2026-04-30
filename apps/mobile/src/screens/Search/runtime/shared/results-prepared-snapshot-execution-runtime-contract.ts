@@ -23,7 +23,12 @@ export type UseResultsPreparedEnterSnapshotExecutionRuntimeArgs = Pick<
 
 export type UseResultsPreparedExitSnapshotExecutionRuntimeArgs = Pick<
   UseResultsPreparedSnapshotExecutionRuntimeArgs,
-  'resultsRuntimeOwner' | 'animateSheetTo' | 'setDisplayQueryOverride' | 'beginCloseTransition'
+  | 'resultsRuntimeOwner'
+  | 'animateSheetTo'
+  | 'getCurrentSheetSnap'
+  | 'setDisplayQueryOverride'
+  | 'beginCloseTransition'
+  | 'markSearchSheetCloseSheetSettled'
 >;
 
 export type ResultsPreparedSnapshotShellApplier = (

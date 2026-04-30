@@ -51,7 +51,6 @@ export type UseSearchRuntimeInstrumentationRuntimeArgs = Pick<
   | 'isRunOneHandoffActive'
   | 'resultsRequestKey'
   | 'searchInteractionRef'
-  | 'isSearchOverlay'
   | 'isInitialCameraReady'
   | 'runTimeoutMs'
   | 'settleQuietPeriodMs'
@@ -67,6 +66,13 @@ export type UseSearchRuntimeInstrumentationRuntimeArgs = Pick<
   isAutocompleteSuppressed: boolean;
   rootOverlay: string;
   activeOverlayKey: string;
+  isSearchOverlay: boolean;
+  getRouteOverlayIdentitySnapshot?: () => {
+    rootOverlay: string;
+    activeOverlayKey: string;
+    isSearchOverlay: boolean;
+  };
+  getRouteActiveSceneKey?: () => string | null;
   resultsPage: number | null;
 };
 
@@ -76,6 +82,7 @@ export type UseSearchRuntimeInstrumentationRuntimeResult = Pick<
 > & {
   submitShortcutSearchRef: ShortcutHarnessObserverArgs['submitShortcutSearchRef'];
   toggleOpenNowHarnessRef: ShortcutHarnessObserverArgs['toggleOpenNowRef'];
+  closeSearchHarnessRef: React.MutableRefObject<() => void>;
   selectOverlayHarnessRef: React.MutableRefObject<(target: PerfNavSwitchOverlay) => void>;
   handleProfilerRender: React.ProfilerOnRenderCallback;
   shouldLogSearchComputes: boolean;

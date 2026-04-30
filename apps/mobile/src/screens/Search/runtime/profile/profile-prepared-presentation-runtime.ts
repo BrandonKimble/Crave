@@ -1,10 +1,10 @@
 import React from 'react';
 
-import type { ProfileAppExecutionRuntime } from './profile-app-execution-runtime-contract';
+import type { ProfileAppExecutionRuntime } from '../../../../navigation/runtime/app-route-profile-app-execution-runtime-contract';
 import { useBindPreparedProfileCompletionHandler } from './profile-prepared-presentation-binding-runtime';
 import { useProfilePreparedPresentationEntryRuntime } from './profile-prepared-presentation-entry-runtime';
 import { type ProfilePreparedPresentationRuntime } from './profile-prepared-presentation-runtime-contract';
-import { type PreparedProfilePresentationCompletionEvent } from './profile-prepared-presentation-transaction-contract';
+import { type PreparedProfilePresentationCompletionEvent } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
 import { useProfilePreparedPresentationTransactionRuntime } from './profile-prepared-presentation-transaction-runtime';
 import type { ProfileNativeExecutionModel } from './profile-native-execution-runtime-contract';
 import type { ProfileRuntimeStateOwner } from './profile-runtime-state-contract';
@@ -16,7 +16,7 @@ export type {
 export type {
   PreparedProfilePresentationCompletionEvent,
   PreparedProfilePresentationTransaction,
-} from './profile-prepared-presentation-transaction-contract';
+} from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
 
 export type UseProfilePreparedPresentationRuntimeArgs = {
   preparedProfileCompletionHandlerRef: React.MutableRefObject<
@@ -32,7 +32,7 @@ export type UseProfilePreparedPresentationRuntimeArgs = {
     'shellRuntimeState' | 'transitionRuntimeState' | 'closeRuntimeState' | 'hydrationRuntime'
   >;
   appExecutionRuntime: ProfileAppExecutionRuntime;
-  isSearchOverlay: boolean;
+  getIsSearchOverlay: () => boolean;
 };
 
 export const useProfilePreparedPresentationRuntime = ({
@@ -41,14 +41,14 @@ export const useProfilePreparedPresentationRuntime = ({
   nativeExecutionModel,
   runtimeStateOwner,
   appExecutionRuntime,
-  isSearchOverlay,
+  getIsSearchOverlay,
 }: UseProfilePreparedPresentationRuntimeArgs): ProfilePreparedPresentationRuntime => {
   const preparedPresentationTransactionRuntime = useProfilePreparedPresentationTransactionRuntime({
     runBatch,
     nativeExecutionModel,
     runtimeStateOwner,
     appExecutionRuntime,
-    isSearchOverlay,
+    getIsSearchOverlay,
   });
   const preparedPresentationEntryRuntime = useProfilePreparedPresentationEntryRuntime({
     executePreparedProfileTransaction:

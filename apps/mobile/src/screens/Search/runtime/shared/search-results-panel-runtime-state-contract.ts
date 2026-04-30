@@ -1,11 +1,8 @@
-import type { FoodResult, RestaurantResult } from '../../../../types';
+import type { SearchResponse } from '../../../../types';
 import type { ResultsPresentationReadModel } from './results-presentation-runtime-contract';
+import type { SearchFreezeClassification } from './search-freeze-classification-runtime';
 
-export type SearchResultsPayload = {
-  dishes?: FoodResult[];
-  restaurants?: RestaurantResult[];
-  metadata?: Record<string, unknown>;
-} | null;
+export type SearchResultsPayload = SearchResponse | null;
 
 export type SearchResultsPanelResultsRuntimeState = {
   results: SearchResultsPayload;
@@ -31,6 +28,7 @@ export type SearchResultsPanelHydrationRuntimeState = {
   allowHydrationFinalizeCommit: boolean;
   runtimeHydratedResultsKey: string | null;
   isRunOneChromeDeferred: boolean;
+  chromeFreezeClassification: SearchFreezeClassification;
 };
 
 export type SearchResultsPanelPresentationRuntimeState = {

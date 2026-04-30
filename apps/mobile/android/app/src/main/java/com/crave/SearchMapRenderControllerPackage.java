@@ -18,6 +18,8 @@ public class SearchMapRenderControllerPackage implements ReactPackage {
     List<NativeModule> modules = new ArrayList<>();
     modules.add(new SearchMapRenderControllerModule(reactContext));
     modules.add(new ProfilePresentationTransactionExecutorModule(reactContext));
+    modules.add(new SearchChromeNativeHitTargetRegistryModule(reactContext));
+    modules.add(new SearchChromeScalarSurfaceRegistryModule(reactContext));
     return modules;
   }
 
@@ -27,6 +29,7 @@ public class SearchMapRenderControllerPackage implements ReactPackage {
     List<ViewManager> managers = new ArrayList<>();
     managers.add(new BottomSheetHostViewManager());
     managers.add(new RestaurantPanelSnapshotViewManager());
+    managers.add(new SearchChromeNativeHitTargetSurfaceManager());
     return managers;
   }
 }

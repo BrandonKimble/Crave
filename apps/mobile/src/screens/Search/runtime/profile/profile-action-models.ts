@@ -1,4 +1,4 @@
-import type { CameraSnapshot } from './profile-transition-state-contract';
+import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type {
   ProfileCloseActionModel,
   ProfileFocusActionModel,

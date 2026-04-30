@@ -14,6 +14,8 @@
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
 		79D5BFFE536A4B67ADCB2910 /* UIFrameSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9E31D8C33BA44E4BABA8D1A /* UIFrameSampler.swift */; };
 		7CD79B4E3899C6FFFC6803B8 /* CraveRestaurantPanelSnapshotView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30ECF73B64305C29EC1C9A77 /* CraveRestaurantPanelSnapshotView.swift */; };
+		8D6A81E0C4F14E1E9A0B2112 /* SearchChromeNativeHitTargetSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D6A81DFC4F14E1E9A0B2112 /* SearchChromeNativeHitTargetSurface.swift */; };
+		8D6A81E2C4F14E1E9A0B2112 /* SearchChromeScalarSurfaceRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D6A81E1C4F14E1E9A0B2112 /* SearchChromeScalarSurfaceRegistry.swift */; };
 		96905EF65AED1B983A6B3ABC /* libPods-cravesearch.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 58EEBF8E8E6FB1BC6CAF49B5 /* libPods-cravesearch.a */; };
 		A1B2C3D4E5F60718293A4B5C /* UIFrameSamplerBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* UIFrameSamplerBridge.m */; };
 		A52DB86C44D54A8A900CF38D /* SearchMapRenderController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CF57C818A534B2AB7E4A2D5 /* SearchMapRenderController.swift */; };
@@ -38,6 +40,8 @@
 		6C2E3173556A471DD304B334 /* Pods-cravesearch.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-cravesearch.debug.xcconfig"; path = "Target Support Files/Pods-cravesearch/Pods-cravesearch.debug.xcconfig"; sourceTree = "<group>"; };
 		7A4D352CD337FB3A3BF06240 /* Pods-cravesearch.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-cravesearch.release.xcconfig"; path = "Target Support Files/Pods-cravesearch/Pods-cravesearch.release.xcconfig"; sourceTree = "<group>"; };
 		84FAA3D9D0A1E87016273DAB /* CraveBottomSheetHostView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = cravesearch/CraveBottomSheetHostView.swift; sourceTree = "<group>"; };
+		8D6A81DFC4F14E1E9A0B2112 /* SearchChromeNativeHitTargetSurface.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = cravesearch/SearchChromeNativeHitTargetSurface.swift; sourceTree = "<group>"; };
+		8D6A81E1C4F14E1E9A0B2112 /* SearchChromeScalarSurfaceRegistry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = cravesearch/SearchChromeScalarSurfaceRegistry.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B5D /* UIFrameSamplerBridge.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = cravesearch/UIFrameSamplerBridge.m; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = cravesearch/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
@@ -74,6 +78,8 @@
 				228C4788C25B4AFBABD14DAE /* cravesearch-Bridging-Header.h */,
 				1EDC36F3559E128237E8523D /* PrivacyInfo.xcprivacy */,
 				84FAA3D9D0A1E87016273DAB /* CraveBottomSheetHostView.swift */,
+				8D6A81DFC4F14E1E9A0B2112 /* SearchChromeNativeHitTargetSurface.swift */,
+				8D6A81E1C4F14E1E9A0B2112 /* SearchChromeScalarSurfaceRegistry.swift */,
 				30ECF73B64305C29EC1C9A77 /* CraveRestaurantPanelSnapshotView.swift */,
 			);
 			name = cravesearch;
@@ -188,6 +194,7 @@
 				TargetAttributes = {
 					13B07F861A680F5B00A75B9A = {
 						LastSwiftMigration = 1250;
+						ProvisioningStyle = Automatic;
 					};
 				};
 			};
@@ -394,6 +401,8 @@
 				A52DB86C44D54A8A900CF38D /* SearchMapRenderController.swift in Sources */,
 				B45E1D9037B14A6E8C2F11A7 /* ProfilePresentationTransactionExecutor.swift in Sources */,
 				BEBD14DE1E7307331DCE07D9 /* CraveBottomSheetHostView.swift in Sources */,
+				8D6A81E0C4F14E1E9A0B2112 /* SearchChromeNativeHitTargetSurface.swift in Sources */,
+				8D6A81E2C4F14E1E9A0B2112 /* SearchChromeScalarSurfaceRegistry.swift in Sources */,
 				7CD79B4E3899C6FFFC6803B8 /* CraveRestaurantPanelSnapshotView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -408,6 +417,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = cravesearch/cravesearch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = FDT67MY727;
 				ENABLE_BITCODE = NO;
@@ -445,6 +455,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = cravesearch/cravesearch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = FDT67MY727;
 				INFOPLIST_FILE = cravesearch/Info.plist;

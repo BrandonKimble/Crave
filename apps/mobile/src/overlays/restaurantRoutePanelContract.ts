@@ -28,6 +28,11 @@ export type RestaurantRoutePanelDraft = {
   onToggleFavorite: (id: string) => void;
 };
 
+export type GlobalRestaurantRouteDraft = {
+  sessionToken: number;
+  panelDraft: RestaurantRoutePanelDraft;
+};
+
 export type RestaurantRoutePanelHostConfig = {
   shouldFreezeContent?: boolean;
   interactionEnabled?: boolean;
@@ -36,15 +41,6 @@ export type RestaurantRoutePanelHostConfig = {
 
 const PHONE_FALLBACK_SEARCH = 'phone';
 const WEBSITE_FALLBACK_SEARCH = 'website';
-const DAY_LABELS: Array<{ key: string; label: string }> = [
-  { key: 'sunday', label: 'Sun' },
-  { key: 'monday', label: 'Mon' },
-  { key: 'tuesday', label: 'Tue' },
-  { key: 'wednesday', label: 'Wed' },
-  { key: 'thursday', label: 'Thu' },
-  { key: 'friday', label: 'Fri' },
-  { key: 'saturday', label: 'Sat' },
-];
 
 const normalizeWebsiteUrl = (value?: string | null): string | null => {
   if (typeof value !== 'string') {
@@ -72,33 +68,6 @@ const formatOperatingStatus = (status?: OperatingStatus | null): string | null =
   return null;
 };
 
-const formatHoursValue = (value: unknown): string | null => {
-  if (Array.isArray(value)) {
-    const filtered = value.filter((entry) => typeof entry === 'string' && entry.trim().length);
-    return filtered.length ? filtered.join(', ') : null;
-  }
-  if (typeof value === 'string' && value.trim().length) {
-    return value.trim();
-  }
-  return null;
-};
-
-const formatHoursRows = (
-  hours?: Record<string, unknown> | null
-): Array<{ label: string; value: string }> =>
-  DAY_LABELS.map((day) => {
-    const value = formatHoursValue(hours?.[day.key]);
-    return value ? { label: day.label, value } : null;
-  }).filter((entry): entry is { label: string; value: string } => Boolean(entry));
-
-const resolveLocationLabel = (address?: string | null): string => {
-  if (!address) {
-    return 'Location';
-  }
-  const [street] = address.split(',');
-  return street?.trim() || 'Location';
-};
-
 const resolveLocationCandidates = (restaurant: RestaurantResult | null) => {
   if (!restaurant) {
     return [];
@@ -107,8 +76,8 @@ const resolveLocationCandidates = (restaurant: RestaurantResult | null) => {
     Array.isArray(restaurant.locations) && restaurant.locations.length > 0
       ? restaurant.locations
       : restaurant.displayLocation
-        ? [restaurant.displayLocation]
-        : [];
+      ? [restaurant.displayLocation]
+      : [];
   const seen = new Set<string>();
   return source.filter((location, index) => {
     const locationId = location.locationId ?? `${restaurant.restaurantId}-${index}`;
@@ -143,30 +112,22 @@ export const createRestaurantPanelSnapshotPayload = (
   const restaurantId = restaurant?.restaurantId ?? '';
 
   const locationCandidates = resolveLocationCandidates(restaurant);
-  const uniqueWebsiteUrls = Array.from(
-    new Set(
-      locationCandidates
-        .map((location) => normalizeWebsiteUrl(location.websiteUrl))
-        .filter((value): value is string => Boolean(value))
-    )
-  );
-  const sharedWebsiteUrl = uniqueWebsiteUrls.length === 1 ? uniqueWebsiteUrls[0] : null;
-  const shouldShowPerLocationWebsite = uniqueWebsiteUrls.length > 1;
-  const primaryPhone =
-    restaurant?.displayLocation?.phoneNumber ?? locationCandidates[0]?.phoneNumber ?? null;
+  const activeLocation = restaurant?.displayLocation ?? locationCandidates[0] ?? null;
+  const websiteUrl = normalizeWebsiteUrl(activeLocation?.websiteUrl);
+  const primaryPhone = activeLocation?.phoneNumber ?? null;
   const primaryAddress =
-    restaurant?.displayLocation?.address ??
+    activeLocation?.address ??
     restaurant?.address ??
     locationCandidates[0]?.address ??
     (isLoading ? 'Loading details...' : 'Address unavailable');
   const priceLabel = restaurant
-    ? (getPriceRangeLabel(restaurant.priceLevel) ??
+    ? getPriceRangeLabel(restaurant.priceLevel) ??
       restaurant.priceText ??
       restaurant.priceSymbol ??
-      null)
+      null
     : null;
   const hoursSummary =
-    formatOperatingStatus(restaurant?.displayLocation?.operatingStatus) ?? 'Hours unavailable';
+    formatOperatingStatus(activeLocation?.operatingStatus) ?? 'Hours unavailable';
   const locationsLabel =
     locationCandidates.length === 1 ? '1 location' : `${locationCandidates.length} locations`;
   const matchedTags = (restaurant?.matchedTags ?? [])
@@ -185,31 +146,16 @@ export const createRestaurantPanelSnapshotPayload = (
     priceLabel: priceLabel ?? '—',
     hoursSummary,
     locationsLabel,
-    websiteUrl: sharedWebsiteUrl,
+    websiteUrl,
     websiteSearchQuery: `${restaurantName} ${queryLabel} ${WEBSITE_FALLBACK_SEARCH}`.trim(),
     phoneNumber: primaryPhone,
     phoneSearchQuery: `${restaurantName} ${PHONE_FALLBACK_SEARCH}`.trim(),
     isLoading,
     isFavorite,
     favoriteEnabled: Boolean(restaurantId),
-    showWebsiteAction: Boolean(sharedWebsiteUrl),
-    showCallAction: true,
+    showWebsiteAction: Boolean(websiteUrl),
+    showCallAction: Boolean(primaryPhone),
     matchedTags,
-    locations: locationCandidates.map((location) => {
-      const statusLabel = formatOperatingStatus(location.operatingStatus);
-      const locationWebsite = normalizeWebsiteUrl(location.websiteUrl);
-      return {
-        title: resolveLocationLabel(location.address ?? null),
-        status: statusLabel,
-        address: location.address ?? 'Address unavailable',
-        phone: location.phoneNumber ?? null,
-        hoursRows: formatHoursRows(location.hours ?? null),
-        websiteHost:
-          shouldShowPerLocationWebsite && locationWebsite
-            ? locationWebsite.replace(/^https?:\/\//, '')
-            : null,
-      };
-    }),
     dishes: dishes.map((dish) => ({
       id: dish.connectionId,
       name: dish.foodName,
@@ -242,4 +188,14 @@ export const createRestaurantRoutePanelContract = ({
   snapshotPayload,
   onRequestClose,
   onToggleFavorite,
+});
+
+export const createRestaurantRoutePanelHostConfig = ({
+  shouldFreezeContent,
+  interactionEnabled,
+  containerStyle,
+}: RestaurantRoutePanelHostConfig): RestaurantRoutePanelHostConfig => ({
+  shouldFreezeContent,
+  interactionEnabled,
+  containerStyle,
 });

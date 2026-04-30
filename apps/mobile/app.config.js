@@ -1,7 +1,7 @@
 const path = require('path');
 const dotenv = require('dotenv');
 
-dotenv.config({ path: path.resolve(__dirname, '.env') });
+dotenv.config({ path: path.resolve(__dirname, '.env'), quiet: true });
 
 const EXTRA_ENV_KEYS = [
   'SEARCH_PERF_DEBUG_ENABLED',

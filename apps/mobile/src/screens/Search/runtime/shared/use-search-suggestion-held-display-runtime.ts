@@ -1,3 +1,6 @@
+import React from 'react';
+
+import { useSearchSuggestionHeldDisplayPresentationRuntime } from './use-search-suggestion-held-display-presentation-runtime';
 import type {
   SearchSuggestionHeldDisplayRuntime,
   SearchSuggestionHeldDisplayRuntimeArgs,
@@ -19,6 +22,7 @@ export const useSearchSuggestionHeldDisplayRuntime = ({
   liveShouldRenderRecentSection,
   shouldShowAutocompleteSpinnerInBar,
   submitTransitionHoldRef,
+  shouldFreezeSuggestionDisplayForRunOne,
 }: SearchSuggestionHeldDisplayRuntimeArgs): SearchSuggestionHeldDisplayRuntime => {
   const isSuggestionClosing = isSuggestionPanelVisible && !isSuggestionPanelActive;
   const submitTransitionHold = submitTransitionHoldRef.current;
@@ -63,7 +67,7 @@ export const useSearchSuggestionHeldDisplayRuntime = ({
   const shouldRenderSuggestionPanel =
     shouldHoldSuggestionPanel || shouldRenderAutocompleteSection || shouldRenderRecentSection;
 
-  return {
+  const currentDisplayRuntime: SearchSuggestionHeldDisplayRuntime = {
     shouldShowSuggestionBackground:
       shouldShowSuggestionBackground || shouldHoldSuggestionBackground,
     shouldShowSuggestionSurface: shouldDriveSuggestionLayout,
@@ -82,4 +86,9 @@ export const useSearchSuggestionHeldDisplayRuntime = ({
     isRecentlyViewedLoadingDisplay,
     isRecentlyViewedFoodsLoadingDisplay,
   };
+
+  return useSearchSuggestionHeldDisplayPresentationRuntime({
+    shouldFreezeSuggestionDisplayForRunOne,
+    currentDisplayRuntime,
+  });
 };

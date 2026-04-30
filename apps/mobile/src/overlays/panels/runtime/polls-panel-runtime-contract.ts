@@ -4,6 +4,10 @@ import type { PollBootstrapSnapshot } from '../../../services/polls';
 import type { Coordinate, MapBounds } from '../../../types';
 import type { SnapPoints } from '../../bottomSheetMotionTypes';
 import type { OverlaySheetSnap, OverlaySheetSnapRequest } from '../../types';
+import type {
+  SearchRouteSceneShellMotionContract,
+  SearchRouteSceneSnapMeta,
+} from '../../searchRouteSceneShellMotionContract';
 
 export type PollsPanelParams = {
   marketKey?: string | null;
@@ -16,7 +20,7 @@ export type PollsPanelMode = 'docked' | 'overlay';
 
 export type PollsPanelInitialSnapPoint = 'expanded' | 'middle' | 'collapsed';
 
-export type PollsPanelSnapMeta = { source: 'gesture' | 'programmatic' };
+export type PollsPanelSnapMeta = SearchRouteSceneSnapMeta;
 
 export type PollsPanelInteractionRef = React.MutableRefObject<{ isInteracting: boolean }>;
 
@@ -33,9 +37,9 @@ export type UsePollsPanelSpecOptions = {
   navBarHeight?: number;
   searchBarTop?: number;
   snapPoints?: SnapPoints;
-  onSnapStart?: (snap: OverlaySheetSnap, meta?: PollsPanelSnapMeta) => void;
-  onSnapChange?: (snap: OverlaySheetSnap, meta?: PollsPanelSnapMeta) => void;
-  shellSnapRequest?: OverlaySheetSnapRequest | null;
+  onSnapStart?: SearchRouteSceneShellMotionContract['onSnapStart'];
+  onSnapChange?: SearchRouteSceneShellMotionContract['onSnapChange'];
+  externalSheetMotionRequest?: OverlaySheetSnapRequest | null;
   onRequestPollCreationExpand?: () => void;
   onRequestReturnToSearch?: () => void;
   interactionRef?: PollsPanelInteractionRef;

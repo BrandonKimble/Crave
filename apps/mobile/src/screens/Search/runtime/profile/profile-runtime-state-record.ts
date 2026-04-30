@@ -3,8 +3,8 @@ import type {
   ProfileTransitionState,
   RestaurantFocusSession,
   HydratedRestaurantProfile,
-} from './profile-transition-state-contract';
-import { createInitialProfileTransitionState } from './profile-transition-state-mutations';
+} from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
+import { createInitialProfileTransitionState } from '../../../../navigation/runtime/app-route-profile-transition-state-mutations';
 
 export type ActiveHydrationIntent = {
   requestSeq: number;

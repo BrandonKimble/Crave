@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Alert,
   View,
   TextInput,
   TouchableOpacity,
@@ -8,30 +9,38 @@ import {
   ScrollView,
 } from 'react-native';
 import { Plus } from 'lucide-react-native';
+import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
 import type { AutocompleteMatch } from '../../services/autocomplete';
 import type { Poll } from '../../services/polls';
 import { colors as themeColors } from '../../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
-import { getActiveSearchNavSwitchPerfProbe } from '../../screens/Search/runtime/shared/search-nav-switch-perf-probe';
+import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneRuntimeProvider';
 import {
-  overlaySheetStyles,
+  arePollsSceneHeaderModelsEqual,
+  type AppRoutePollsSceneBodySnapshot,
+  type AppRoutePollsSceneHeaderModel,
+  type AppRoutePollsSceneState,
+} from '../../navigation/runtime/app-route-polls-scene-runtime';
+import { useRouteAuthoritySelector } from '../../navigation/runtime/use-route-authority-selector';
+import {
   OVERLAY_HEADER_CLOSE_BUTTON_SIZE,
   OVERLAY_HORIZONTAL_PADDING,
 } from '../overlaySheetStyles';
-import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import SquircleSpinner from '../../components/SquircleSpinner';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
-import type { BottomSheetSceneSurfaceProps } from '../bottomSheetWithFlashListContract';
-import { type UsePollsPanelSpecOptions } from './runtime/polls-panel-runtime-contract';
-import { usePollsPanelInteractionRuntime } from './runtime/polls-panel-interaction-runtime';
-import { usePollsPanelStateRuntime } from './runtime/polls-panel-state-runtime';
+import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
+import { usePollsPanelComposerSubmitRuntime } from './runtime/polls-panel-composer-submit-runtime';
+import { usePollsPanelComposerRuntime } from './runtime/polls-panel-composer-runtime';
+import {
+  usePollsPanelFeedRuntime,
+  type PollsPanelFeedRuntime,
+} from './runtime/polls-panel-feed-runtime';
+import { usePollsPanelHeaderModelPublication } from './runtime/polls-panel-header-model-runtime';
 import { PollsHeaderBadge, PollsHeaderTitleText } from './pollsHeaderVisuals';
 import { CONTROL_HEIGHT, CONTROL_RADIUS } from '../../screens/Search/constants/ui';
-import type { OverlayContentSpec } from '../types';
-import type { SearchRouteSceneDefinition } from '../searchOverlayRouteHostContract';
-import { logger } from '../../utils';
+import { useSearchNavSwitchCommitAttribution } from '../../screens/Search/runtime/shared/use-search-nav-switch-commit-attribution';
 
 const OPTION_COLORS = ['#f97316', '#fb7185', '#c084fc', '#38bdf8', '#facc15', '#34d399'] as const;
 const CARD_GAP = 4;
@@ -41,21 +50,6 @@ const ACCENT = themeColors.primary;
 const ACCENT_DARK = themeColors.primaryDark;
 const BORDER = themeColors.border;
 const SURFACE = themeColors.surface;
-
-const diffSceneSnapshots = (
-  previousSnapshot: Record<string, unknown>,
-  nextSnapshot: Record<string, unknown>
-) =>
-  Object.assign(
-    {},
-    ...Object.keys({ ...previousSnapshot, ...nextSnapshot }).flatMap((key) => {
-      const previousValue = previousSnapshot[key];
-      const nextValue = nextSnapshot[key];
-      return JSON.stringify(previousValue) === JSON.stringify(nextValue)
-        ? []
-        : [{ [key]: { previous: previousValue, next: nextValue } }];
-    })
-  );
 
 type PollCardProps = {
   poll: Poll;
@@ -84,28 +78,430 @@ const PollCard = React.memo(({ poll, selected, onPress }: PollCardProps) => (
 
 PollCard.displayName = 'PollCard';
 
-export const usePollsSceneDefinition = ({
-  visible,
-  bounds,
-  bootstrapSnapshot,
-  userLocation,
-  params,
-  initialSnapPoint,
-  mode = 'docked',
-  currentSnap,
-  navBarTop = 0,
-  navBarHeight = 0,
-  searchBarTop = 0,
-  snapPoints: snapPointsOverride,
-  onSnapStart,
-  onSnapChange,
-  shellSnapRequest,
-  onRequestPollCreationExpand,
-  onRequestReturnToSearch,
-  interactionRef,
-}: UsePollsPanelSpecOptions): SearchRouteSceneDefinition => {
-  const pollsPanelState = usePollsPanelStateRuntime({
-    visible,
+type PollsSceneBodyState = AppRoutePollsSceneBodySnapshot;
+
+type PollsSceneBodyRenderState = Pick<
+  AppRoutePollsSceneBodySnapshot,
+  'bootstrapSnapshot' | 'userLocation' | 'params' | 'currentSnap' | 'interactionRef'
+>;
+
+const arePollsSceneBodyRenderStatesEqual = (
+  left: PollsSceneBodyRenderState,
+  right: PollsSceneBodyRenderState
+): boolean =>
+  left.bootstrapSnapshot === right.bootstrapSnapshot &&
+  left.userLocation === right.userLocation &&
+  left.params === right.params &&
+  left.currentSnap === right.currentSnap &&
+  left.interactionRef === right.interactionRef;
+
+const selectPollsSceneBodyRenderState = (
+  snapshot: AppRoutePollsSceneBodySnapshot
+): PollsSceneBodyRenderState => ({
+  bootstrapSnapshot: snapshot.bootstrapSnapshot,
+  userLocation: snapshot.userLocation,
+  params: snapshot.params,
+  currentSnap: snapshot.currentSnap,
+  interactionRef: snapshot.interactionRef,
+});
+
+const usePollsSceneBodyState = (): PollsSceneBodyState => {
+  const routeSceneRuntime = useAppRouteSceneRuntime();
+  const sceneBodyAuthority = routeSceneRuntime.routePollsSceneRuntime.sceneBodyAuthority;
+  useRouteAuthoritySelector({
+    subscribe: React.useCallback(
+      (listener: () => void) => sceneBodyAuthority.subscribe(listener),
+      [sceneBodyAuthority]
+    ),
+    getSnapshot: sceneBodyAuthority.getSnapshot,
+    selector: React.useCallback(selectPollsSceneBodyRenderState, []),
+    isEqual: arePollsSceneBodyRenderStatesEqual,
+    attributionOwner: 'PollsMountedSceneBody',
+    attributionOperation: 'sceneBodySelector',
+  });
+  return sceneBodyAuthority.getSnapshot();
+};
+
+const usePollsSceneHeaderModel = (): AppRoutePollsSceneHeaderModel => {
+  const routeSceneRuntime = useAppRouteSceneRuntime();
+  const headerModelAuthority = routeSceneRuntime.routePollsSceneRuntime.headerModelAuthority;
+  return useRouteAuthoritySelector({
+    subscribe: React.useCallback(
+      (listener: () => void) => headerModelAuthority.subscribe(listener),
+      [headerModelAuthority]
+    ),
+    getSnapshot: headerModelAuthority.getSnapshot,
+    selector: React.useCallback((snapshot: AppRoutePollsSceneHeaderModel) => snapshot, []),
+    isEqual: arePollsSceneHeaderModelsEqual,
+  });
+};
+
+type PollsMountedSceneHeaderActionRuntime = {
+  headerActionProgress: SharedValue<number>;
+  handleClose: () => void;
+  handleHeaderActionPress: () => void;
+};
+
+const resolvePollsHeaderAction = ({
+  headerModel,
+  sceneState,
+}: {
+  headerModel: AppRoutePollsSceneHeaderModel;
+  sceneState: AppRoutePollsSceneState;
+}): 'create' | 'close' =>
+  headerModel?.headerAction ??
+  (sceneState.currentSnap === 'collapsed' || sceneState.currentSnap === 'hidden'
+    ? 'create'
+    : 'close');
+
+const usePollsMountedSceneHeaderActionRuntime = (): PollsMountedSceneHeaderActionRuntime => {
+  const routeSceneRuntime = useAppRouteSceneRuntime();
+  const { pushRoute } = useAppOverlayRouteController();
+  const fallbackHeaderActionProgress = useSharedValue(0);
+  const headerActionProgress =
+    routeSceneRuntime.routeSheetVisualAuthority.getSnapshot().chromeVisualState
+      ?.overlayHeaderActionProgress ?? fallbackHeaderActionProgress;
+
+  const handleClose = React.useCallback(() => {
+    const sceneState = routeSceneRuntime.routePollsSceneRuntime.sceneAuthority.getSnapshot();
+    if ((sceneState.mode ?? 'docked') === 'overlay') {
+      sceneState.onRequestReturnToSearch?.();
+    }
+  }, [routeSceneRuntime]);
+
+  const handleHeaderActionPress = React.useCallback(() => {
+    const sceneState = routeSceneRuntime.routePollsSceneRuntime.sceneAuthority.getSnapshot();
+    const headerModel = routeSceneRuntime.routePollsSceneRuntime.headerModelAuthority.getSnapshot();
+    const headerAction = resolvePollsHeaderAction({ headerModel, sceneState });
+
+    if (headerAction !== 'create') {
+      handleClose();
+      return;
+    }
+
+    const params = sceneState.params;
+    const pinnedMarketOverride =
+      params?.pinnedMarket === true || Boolean(params?.pollId)
+        ? params?.marketKey?.trim() || null
+        : null;
+    const marketOverride = headerModel?.marketOverride ?? pinnedMarketOverride;
+    const marketKey = headerModel?.marketKey ?? params?.marketKey?.trim() ?? null;
+
+    if (!sceneState.bounds && !marketKey && !marketOverride) {
+      Alert.alert('Pick a market', 'Move the map to a local market before creating a poll.');
+      return;
+    }
+
+    sceneState.onRequestPollCreationExpand?.();
+    pushRoute('pollCreation', {
+      marketKey: marketOverride ?? marketKey ?? null,
+      marketName:
+        headerModel?.marketName ?? params?.marketName ?? headerModel?.candidatePlaceName ?? null,
+      bounds: sceneState.bounds ?? null,
+    });
+  }, [handleClose, pushRoute, routeSceneRuntime]);
+
+  return React.useMemo(
+    () => ({
+      headerActionProgress,
+      handleClose,
+      handleHeaderActionPress,
+    }),
+    [handleClose, handleHeaderActionPress, headerActionProgress]
+  );
+};
+
+export const PollsMountedSceneHeader = React.memo(() => {
+  const headerModel = usePollsSceneHeaderModel();
+  const pollsHeaderActionRuntime = usePollsMountedSceneHeaderActionRuntime();
+  return (
+    <PollsSceneHeader
+      headerModel={headerModel}
+      headerActionProgress={pollsHeaderActionRuntime.headerActionProgress}
+      handleClose={pollsHeaderActionRuntime.handleClose}
+      handleHeaderActionPress={pollsHeaderActionRuntime.handleHeaderActionPress}
+    />
+  );
+});
+
+PollsMountedSceneHeader.displayName = 'PollsMountedSceneHeader';
+
+type PollsSceneHeaderProps = {
+  headerModel: AppRoutePollsSceneHeaderModel;
+  headerActionProgress: SharedValue<number>;
+  handleClose: () => void;
+  handleHeaderActionPress: () => void;
+};
+
+const PollsSceneHeader = React.memo(
+  ({
+    headerModel,
+    headerActionProgress,
+    handleClose,
+    handleHeaderActionPress,
+  }: PollsSceneHeaderProps) => {
+    const headerTitle = headerModel?.title ?? 'Polls';
+    const badgeCount = headerModel?.badgeCount ?? '0';
+    const badgeLabel = headerModel?.badgeLabel ?? 'live';
+    const isBadgeMuted = headerModel?.isBadgeMuted ?? true;
+    return (
+      <OverlaySheetHeaderChrome
+        onGrabHandlePress={handleClose}
+        grabHandleAccessibilityLabel="Close polls"
+        rowStyle={styles.headerRow}
+        title={<PollsHeaderTitleText title={headerTitle} />}
+        badge={<PollsHeaderBadge count={badgeCount} label={badgeLabel} muted={isBadgeMuted} />}
+        badgeRadius={LIVE_BADGE_HEIGHT / 2}
+        actionButton={
+          <OverlayHeaderActionButton
+            progress={headerActionProgress}
+            onPress={handleHeaderActionPress}
+            accessibilityLabel="Create or close polls"
+            accentColor={ACCENT}
+            closeColor="#000000"
+          />
+        }
+      />
+    );
+  }
+);
+
+PollsSceneHeader.displayName = 'PollsSceneHeader';
+
+type PollsExpandedDetailProps = {
+  activePoll: Poll;
+  activePollType: PollsPanelFeedRuntime['activePollType'];
+  castVote: PollsPanelFeedRuntime['castVote'];
+  interactionRef: AppRoutePollsSceneState['interactionRef'];
+  needsDishInput: boolean;
+  needsRestaurantInput: boolean;
+  selectedPollId: string | null;
+  submitPollOption: PollsPanelFeedRuntime['submitPollOption'];
+  totalVotes: number;
+};
+
+const PollsExpandedDetail = React.memo(
+  ({
+    activePoll,
+    activePollType,
+    castVote,
+    interactionRef,
+    needsDishInput,
+    needsRestaurantInput,
+    selectedPollId,
+    submitPollOption,
+    totalVotes,
+  }: PollsExpandedDetailProps) => {
+    const pollsPanelComposerRuntime = usePollsPanelComposerRuntime({
+      activePoll,
+      interactionRef,
+      needsDishInput,
+      needsRestaurantInput,
+      selectedPollId,
+    });
+    const pollsPanelComposerSubmitRuntime = usePollsPanelComposerSubmitRuntime({
+      activePoll,
+      activePollType,
+      selectedPollId,
+      restaurantQuery: pollsPanelComposerRuntime.restaurantQuery,
+      setRestaurantQuery: pollsPanelComposerRuntime.setRestaurantQuery,
+      dishQuery: pollsPanelComposerRuntime.dishQuery,
+      setDishQuery: pollsPanelComposerRuntime.setDishQuery,
+      restaurantSelection: pollsPanelComposerRuntime.restaurantSelection,
+      setRestaurantSelection: pollsPanelComposerRuntime.setRestaurantSelection,
+      dishSelection: pollsPanelComposerRuntime.dishSelection,
+      setDishSelection: pollsPanelComposerRuntime.setDishSelection,
+      needsRestaurantInput,
+      needsDishInput,
+      hideRestaurantSuggestions: pollsPanelComposerRuntime.hideRestaurantSuggestions,
+      hideDishSuggestions: pollsPanelComposerRuntime.hideDishSuggestions,
+      submitPollOption,
+    });
+    const renderSuggestionList = React.useCallback(
+      (
+        loading: boolean,
+        matches: AutocompleteMatch[],
+        emptyText: string,
+        onSelect: (match: AutocompleteMatch) => void
+      ) => (
+        <View style={styles.autocompleteBox}>
+          {loading ? (
+            <View style={styles.autocompleteLoadingRow}>
+              <ActivityIndicator size="small" color={ACCENT} />
+              <Text variant="body" style={styles.autocompleteLoadingText}>
+                Searching...
+              </Text>
+            </View>
+          ) : matches.length === 0 ? (
+            <Text variant="body" style={styles.autocompleteEmptyText}>
+              {emptyText}
+            </Text>
+          ) : (
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {matches.map((match) => (
+                <TouchableOpacity
+                  key={match.entityId}
+                  style={styles.autocompleteItem}
+                  onPress={() => onSelect(match)}
+                >
+                  <Text variant="subtitle" weight="semibold" style={styles.autocompletePrimary}>
+                    {match.name}
+                  </Text>
+                  <Text variant="body" style={styles.autocompleteSecondary}>
+                    {match.entityType.replace(/_/g, ' ')}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+      ),
+      []
+    );
+
+    return (
+      <View style={styles.detailCard}>
+        <Text variant="title" weight="semibold" style={styles.detailQuestion}>
+          {activePoll.question}
+        </Text>
+        {activePoll.topic?.description ? (
+          <Text variant="body" style={styles.detailDescription}>
+            {activePoll.topic.description}
+          </Text>
+        ) : null}
+        {activePoll.options.map((option, index) => {
+          const color = OPTION_COLORS[index % OPTION_COLORS.length];
+          const rawFill = totalVotes > 0 ? (option.voteCount / totalVotes) * 100 : 0;
+          const minFill = option.voteCount > 0 ? 10 : 2;
+          const fillWidth = Math.min(Math.max(rawFill, minFill), 100);
+
+          return (
+            <TouchableOpacity
+              key={option.optionId}
+              style={styles.optionBarWrapper}
+              onPress={() => {
+                void castVote(activePoll.pollId, option.optionId);
+              }}
+            >
+              <View style={styles.optionBarTrack}>
+                <View
+                  style={[
+                    styles.optionBarFill,
+                    {
+                      width: `${fillWidth}%`,
+                      backgroundColor: color,
+                    },
+                  ]}
+                />
+                <View style={styles.optionLabelBubble}>
+                  <Text variant="body" weight="semibold" style={styles.optionLabelText}>
+                    {option.label}
+                  </Text>
+                  <Text variant="body" style={styles.optionVoteCount}>
+                    {option.voteCount} votes
+                  </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+        {activePollType === 'what_to_order' ? (
+          <Text variant="body" style={styles.topicNote}>
+            Votes apply to dishes at this restaurant.
+          </Text>
+        ) : null}
+        <View style={styles.addOptionBlock}>
+          {needsRestaurantInput ? (
+            <View style={styles.inputGroup}>
+              <Text variant="body" weight="semibold" style={styles.fieldLabel}>
+                Restaurant
+              </Text>
+              <TextInput
+                value={pollsPanelComposerRuntime.restaurantQuery}
+                onChangeText={(text) => {
+                  pollsPanelComposerRuntime.setRestaurantQuery(text);
+                  pollsPanelComposerRuntime.setRestaurantSelection(null);
+                }}
+                placeholder="Search for a restaurant"
+                style={styles.optionInput}
+                autoCapitalize="none"
+              />
+              {(pollsPanelComposerRuntime.showRestaurantSuggestions ||
+                pollsPanelComposerRuntime.restaurantLoading) &&
+                renderSuggestionList(
+                  pollsPanelComposerRuntime.restaurantLoading,
+                  pollsPanelComposerRuntime.restaurantSuggestions,
+                  'Keep typing to add a restaurant',
+                  pollsPanelComposerSubmitRuntime.onRestaurantSuggestionPick
+                )}
+            </View>
+          ) : null}
+          {needsDishInput ? (
+            <View style={styles.inputGroup}>
+              <Text variant="body" weight="semibold" style={styles.fieldLabel}>
+                Dish
+              </Text>
+              <TextInput
+                value={pollsPanelComposerRuntime.dishQuery}
+                onChangeText={(text) => {
+                  pollsPanelComposerRuntime.setDishQuery(text);
+                  pollsPanelComposerRuntime.setDishSelection(null);
+                }}
+                placeholder="Search for a dish"
+                style={styles.optionInput}
+                autoCapitalize="none"
+              />
+              {(pollsPanelComposerRuntime.showDishSuggestions ||
+                pollsPanelComposerRuntime.dishLoading) &&
+                renderSuggestionList(
+                  pollsPanelComposerRuntime.dishLoading,
+                  pollsPanelComposerRuntime.dishSuggestions,
+                  'Keep typing to add a dish',
+                  pollsPanelComposerSubmitRuntime.onDishSuggestionPick
+                )}
+            </View>
+          ) : null}
+          <TouchableOpacity
+            onPress={() => {
+              void pollsPanelComposerSubmitRuntime.submitOptionFromPanel();
+            }}
+            style={styles.submitButton}
+          >
+            <Text variant="body" weight="semibold" style={styles.submitButtonText}>
+              Submit option
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+);
+
+PollsExpandedDetail.displayName = 'PollsExpandedDetail';
+
+export const PollsMountedSceneBody = React.memo(() => {
+  useSearchNavSwitchCommitAttribution('PollsMountedSceneBody');
+  const { pushRoute } = useAppOverlayRouteController();
+  const routeSceneRuntime = useAppRouteSceneRuntime();
+  const pollsSceneActions = routeSceneRuntime.routePollsSceneRuntime.sceneActions;
+  const {
+    bounds,
+    bootstrapSnapshot,
+    userLocation,
+    params,
+    initialSnapPoint,
+    mode = 'docked',
+    currentSnap,
+    navBarTop = 0,
+    navBarHeight = 0,
+    searchBarTop = 0,
+    snapPoints: snapPointsOverride,
+    interactionRef,
+  } = usePollsSceneBodyState();
+  const shouldSubscribeDataLane = currentSnap !== 'hidden';
+
+  const pollsPanelFeedRuntime = usePollsPanelFeedRuntime({
+    visible: shouldSubscribeDataLane,
     bounds,
     bootstrapSnapshot,
     userLocation,
@@ -119,206 +515,41 @@ export const usePollsSceneDefinition = ({
     snapPoints: snapPointsOverride,
     interactionRef,
   });
-  const pollsPanelInteraction = usePollsPanelInteractionRuntime({
-    mode,
-    shellSnapRequest,
-    onSnapStart,
-    onSnapChange,
-    onRequestPollCreationExpand,
-    onRequestReturnToSearch,
-    bounds,
-    headerAction: pollsPanelState.headerAction,
-    marketKey: pollsPanelState.marketKey,
-    marketName: pollsPanelState.marketName,
-    candidatePlaceName: pollsPanelState.candidatePlaceName,
-    createPollPrompt: pollsPanelState.createPollPrompt,
-    marketOverride: pollsPanelState.marketOverride,
-    activePoll: pollsPanelState.activePoll,
-    activePollType: pollsPanelState.activePollType,
-    selectedPollId: pollsPanelState.selectedPollId,
-    restaurantQuery: pollsPanelState.restaurantQuery,
-    setRestaurantQuery: pollsPanelState.setRestaurantQuery,
-    dishQuery: pollsPanelState.dishQuery,
-    setDishQuery: pollsPanelState.setDishQuery,
-    restaurantSelection: pollsPanelState.restaurantSelection,
-    setRestaurantSelection: pollsPanelState.setRestaurantSelection,
-    dishSelection: pollsPanelState.dishSelection,
-    setDishSelection: pollsPanelState.setDishSelection,
-    needsRestaurantInput: pollsPanelState.needsRestaurantInput,
-    needsDishInput: pollsPanelState.needsDishInput,
-    hideRestaurantSuggestions: pollsPanelState.hideRestaurantSuggestions,
-    hideDishSuggestions: pollsPanelState.hideDishSuggestions,
-    submitPollOption: pollsPanelState.submitPollOption,
+  usePollsPanelHeaderModelPublication({
+    pollsSceneActions,
+    pollsPanelFeedRuntime,
   });
-  const sceneCauseSnapshot = React.useMemo(
-    () => ({
-      visible,
-      mode,
-      initialSnapPoint,
-      currentSnap,
-      shellSnapRequest: pollsPanelInteraction.activeShellSnapRequest?.snap ?? null,
-      pollCount: pollsPanelState.visiblePolls.length,
-      loading: pollsPanelState.loading,
-      refreshing: pollsPanelState.isPollFeedRefreshing,
-      holdFreshContent: pollsPanelState.shouldHoldFreshLiveContent,
-      activePollId: pollsPanelState.activePoll?.pollId ?? null,
-      selectedPollId: pollsPanelState.selectedPollId,
-      activePollType: pollsPanelState.activePollType,
-      needsRestaurantInput: pollsPanelState.needsRestaurantInput,
-      needsDishInput: pollsPanelState.needsDishInput,
-      showRestaurantSuggestions: pollsPanelState.showRestaurantSuggestions,
-      showDishSuggestions: pollsPanelState.showDishSuggestions,
-      restaurantLoading: pollsPanelState.restaurantLoading,
-      dishLoading: pollsPanelState.dishLoading,
-    }),
-    [
-      currentSnap,
-      initialSnapPoint,
-      mode,
-      pollsPanelInteraction.activeShellSnapRequest,
-      pollsPanelState.activePoll?.pollId,
-      pollsPanelState.activePollType,
-      pollsPanelState.dishLoading,
-      pollsPanelState.loading,
-      pollsPanelState.needsDishInput,
-      pollsPanelState.needsRestaurantInput,
-      pollsPanelState.isPollFeedRefreshing,
-      pollsPanelState.restaurantLoading,
-      pollsPanelState.selectedPollId,
-      pollsPanelState.shouldHoldFreshLiveContent,
-      pollsPanelState.showDishSuggestions,
-      pollsPanelState.showRestaurantSuggestions,
-      pollsPanelState.visiblePolls.length,
-      visible,
-    ]
-  );
-  const previousSceneCauseRef = React.useRef<string | null>(null);
 
-  React.useEffect(() => {
-    const activeProbe = getActiveSearchNavSwitchPerfProbe();
-    if (!activeProbe) {
-      previousSceneCauseRef.current = null;
+  const handleOpenCreate = React.useCallback(() => {
+    const marketKey = pollsPanelFeedRuntime.marketOverride ?? pollsPanelFeedRuntime.marketKey;
+    if (!bounds && !marketKey) {
+      Alert.alert('Pick a market', 'Move the map to a local market before creating a poll.');
       return;
     }
+    pushRoute('pollCreation', {
+      marketKey: marketKey ?? null,
+      marketName: pollsPanelFeedRuntime.marketName ?? pollsPanelFeedRuntime.candidatePlaceName,
+      bounds: bounds ?? null,
+    });
+  }, [
+    bounds,
+    pollsPanelFeedRuntime.candidatePlaceName,
+    pollsPanelFeedRuntime.marketKey,
+    pollsPanelFeedRuntime.marketName,
+    pollsPanelFeedRuntime.marketOverride,
+    pushRoute,
+  ]);
 
-    const nextSnapshotKey = JSON.stringify(sceneCauseSnapshot);
-    const previousSnapshotKey = previousSceneCauseRef.current;
-    if (!previousSnapshotKey) {
-      logger.debug('[NAV-SWITCH-CAUSE] pollsSceneSnapshot', {
-        seq: activeProbe.seq,
-        from: activeProbe.from,
-        to: activeProbe.to,
-        snapshot: sceneCauseSnapshot,
-      });
-    } else if (previousSnapshotKey !== nextSnapshotKey) {
-      logger.debug('[NAV-SWITCH-CAUSE] pollsSceneDelta', {
-        seq: activeProbe.seq,
-        from: activeProbe.from,
-        to: activeProbe.to,
-        changes: diffSceneSnapshots(JSON.parse(previousSnapshotKey), sceneCauseSnapshot),
-      });
-    }
-    previousSceneCauseRef.current = nextSnapshotKey;
-  }, [sceneCauseSnapshot]);
-
-  const renderSuggestionList = React.useCallback(
-    (
-      loading: boolean,
-      matches: AutocompleteMatch[],
-      emptyText: string,
-      onSelect: (match: AutocompleteMatch) => void
-    ) => (
-      <View style={styles.autocompleteBox}>
-        {loading ? (
-          <View style={styles.autocompleteLoadingRow}>
-            <ActivityIndicator size="small" color={ACCENT} />
-            <Text variant="body" style={styles.autocompleteLoadingText}>
-              Searching…
-            </Text>
-          </View>
-        ) : matches.length === 0 ? (
-          <Text variant="body" style={styles.autocompleteEmptyText}>
-            {emptyText}
-          </Text>
-        ) : (
-          <ScrollView keyboardShouldPersistTaps="handled">
-            {matches.map((match) => (
-              <TouchableOpacity
-                key={match.entityId}
-                style={styles.autocompleteItem}
-                onPress={() => onSelect(match)}
-              >
-                <Text variant="subtitle" weight="semibold" style={styles.autocompletePrimary}>
-                  {match.name}
-                </Text>
-                <Text variant="body" style={styles.autocompleteSecondary}>
-                  {match.entityType.replace(/_/g, ' ')}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
-      </View>
-    ),
-    []
+  const bodyContentStyle = React.useMemo(
+    () => [styles.collapsedContent, { paddingBottom: pollsPanelFeedRuntime.contentBottomPadding }],
+    [pollsPanelFeedRuntime.contentBottomPadding]
   );
 
-  const renderPoll = React.useCallback(
-    ({ item }: { item: Poll }) => (
-      <PollCard
-        poll={item}
-        selected={item.pollId === pollsPanelState.selectedPollId}
-        onPress={pollsPanelState.setSelectedPollId}
-      />
-    ),
-    [pollsPanelState.selectedPollId, pollsPanelState.setSelectedPollId]
-  );
-
-  const headerComponent = React.useMemo(
-    () => (
-      <OverlaySheetHeaderChrome
-        onGrabHandlePress={pollsPanelInteraction.handleClose}
-        grabHandleAccessibilityLabel="Close polls"
-        rowStyle={styles.headerRow}
-        title={<PollsHeaderTitleText title={pollsPanelState.headerVisualModel.title} />}
-        badge={
-          <PollsHeaderBadge
-            count={pollsPanelState.headerVisualModel.badgeCount}
-            label={pollsPanelState.headerVisualModel.badgeLabel}
-            muted={pollsPanelState.headerVisualModel.isBadgeMuted}
-          />
-        }
-        badgeRadius={LIVE_BADGE_HEIGHT / 2}
-        actionButton={
-          <OverlayHeaderActionButton
-            progress={pollsPanelInteraction.headerActionProgress}
-            onPress={pollsPanelInteraction.handleHeaderActionPress}
-            accessibilityLabel={
-              pollsPanelState.headerAction === 'close' ? 'Close polls' : 'Create a new poll'
-            }
-            accentColor={ACCENT}
-            closeColor="#000000"
-          />
-        }
-      />
-    ),
-    [
-      pollsPanelInteraction.handleClose,
-      pollsPanelInteraction.handleHeaderActionPress,
-      pollsPanelInteraction.headerActionProgress,
-      pollsPanelState.headerAction,
-      pollsPanelState.headerVisualModel.badgeCount,
-      pollsPanelState.headerVisualModel.badgeLabel,
-      pollsPanelState.headerVisualModel.isBadgeMuted,
-      pollsPanelState.headerVisualModel.title,
-    ]
-  );
-
-  const listHeaderComponent = React.useMemo(
-    () => (
+  const listHeaderComponent = React.useMemo(() => {
+    return (
       <View style={styles.listHeader}>
         <TouchableOpacity
-          onPress={pollsPanelInteraction.handleOpenCreate}
+          onPress={handleOpenCreate}
           style={styles.createButton}
           accessibilityRole="button"
           accessibilityLabel="Create a new poll"
@@ -328,355 +559,109 @@ export const usePollsSceneDefinition = ({
             new poll
           </Text>
         </TouchableOpacity>
-        {(pollsPanelState.loading || pollsPanelState.isPollFeedRefreshing) &&
-        pollsPanelState.polls.length > 0 ? (
+        {(pollsPanelFeedRuntime.loading || pollsPanelFeedRuntime.isPollFeedRefreshing) &&
+        pollsPanelFeedRuntime.polls.length > 0 ? (
           <View style={styles.loader}>
             <SquircleSpinner size={18} color={ACCENT} />
           </View>
         ) : null}
       </View>
-    ),
-    [
-      pollsPanelInteraction.handleOpenCreate,
-      pollsPanelState.isPollFeedRefreshing,
-      pollsPanelState.loading,
-      pollsPanelState.polls.length,
-    ]
-  );
+    );
+  }, [
+    pollsPanelFeedRuntime.isPollFeedRefreshing,
+    pollsPanelFeedRuntime.loading,
+    pollsPanelFeedRuntime.polls.length,
+    handleOpenCreate,
+  ]);
 
-  const listEmptyComponent = React.useCallback(() => {
-    if (pollsPanelState.shouldHoldFreshLiveContent) {
-      return (
+  const shouldShowCollapsedSpinner =
+    pollsPanelFeedRuntime.loading ||
+    (pollsPanelFeedRuntime.isSystemUnavailable && pollsPanelFeedRuntime.polls.length === 0);
+  const hasVisiblePolls = pollsPanelFeedRuntime.visiblePolls.length > 0;
+  const isExpandedSurface =
+    pollsPanelFeedRuntime.resolvedSnap === 'middle' ||
+    pollsPanelFeedRuntime.resolvedSnap === 'expanded';
+
+  let emptyMessage = 'No polls available yet.';
+  if (
+    pollsPanelFeedRuntime.marketStatus === 'no_market' &&
+    pollsPanelFeedRuntime.candidatePlaceName
+  ) {
+    emptyMessage = `Create the first poll in ${pollsPanelFeedRuntime.candidatePlaceName} and start surfacing local favorites.`;
+  } else if (pollsPanelFeedRuntime.marketName) {
+    emptyMessage = `Create the first poll in ${pollsPanelFeedRuntime.marketName} and start surfacing local favorites.`;
+  }
+
+  const pollCards = hasVisiblePolls ? (
+    <View style={styles.collapsedCards}>
+      {pollsPanelFeedRuntime.visiblePolls.map((poll) => (
+        <View key={poll.pollId} style={styles.collapsedCardRow}>
+          <PollCard
+            poll={poll}
+            selected={poll.pollId === pollsPanelFeedRuntime.selectedPollId}
+            onPress={pollsPanelFeedRuntime.setSelectedPollId}
+          />
+        </View>
+      ))}
+    </View>
+  ) : null;
+
+  const shouldRenderExpandedDetail =
+    !pollsPanelFeedRuntime.shouldHoldFreshLiveContent &&
+    isExpandedSurface &&
+    pollsPanelFeedRuntime.activePoll != null;
+  const activePollForDetail = shouldRenderExpandedDetail ? pollsPanelFeedRuntime.activePoll : null;
+
+  if (pollsPanelFeedRuntime.shouldHoldFreshLiveContent) {
+    return (
+      <View style={bodyContentStyle}>
+        {listHeaderComponent}
         <View style={styles.loaderCentered}>
-          {pollsPanelState.pollFeedFreshnessError ? null : (
+          {pollsPanelFeedRuntime.pollFeedFreshnessError ? null : (
             <SquircleSpinner size={22} color={ACCENT} />
           )}
           <Text variant="body" style={styles.emptyState}>
-            {pollsPanelState.pollFeedFreshnessError
+            {pollsPanelFeedRuntime.pollFeedFreshnessError
               ? 'Unable to refresh live polls.'
               : 'Updating live polls...'}
           </Text>
         </View>
-      );
-    }
-    if (
-      pollsPanelState.loading ||
-      (pollsPanelState.isSystemUnavailable && pollsPanelState.polls.length === 0)
-    ) {
-      return (
+      </View>
+    );
+  }
+
+  return (
+    <View style={bodyContentStyle}>
+      {listHeaderComponent}
+      {shouldShowCollapsedSpinner ? (
         <View style={styles.loaderCentered}>
           <SquircleSpinner size={22} color={ACCENT} />
         </View>
-      );
-    }
-    return (
-      <Text variant="body" style={styles.emptyState}>
-        No polls available yet.
-      </Text>
-    );
-  }, [
-    pollsPanelState.isSystemUnavailable,
-    pollsPanelState.loading,
-    pollsPanelState.pollFeedFreshnessError,
-    pollsPanelState.polls.length,
-    pollsPanelState.shouldHoldFreshLiveContent,
-  ]);
-
-  const listFooterComponent = React.useMemo(
-    () =>
-      !pollsPanelState.shouldHoldFreshLiveContent &&
-      (pollsPanelState.resolvedSnap === 'middle' || pollsPanelState.resolvedSnap === 'expanded') &&
-      pollsPanelState.activePoll ? (
-        <View style={styles.detailCard}>
-          <Text variant="title" weight="semibold" style={styles.detailQuestion}>
-            {pollsPanelState.activePoll.question}
-          </Text>
-          {pollsPanelState.activePoll.topic?.description ? (
-            <Text variant="body" style={styles.detailDescription}>
-              {pollsPanelState.activePoll.topic.description}
-            </Text>
-          ) : null}
-          {pollsPanelState.activePoll.options.map((option, index) => {
-            const color = OPTION_COLORS[index % OPTION_COLORS.length];
-            const rawFill =
-              pollsPanelState.totalVotes > 0
-                ? (option.voteCount / pollsPanelState.totalVotes) * 100
-                : 0;
-            const minFill = option.voteCount > 0 ? 10 : 2;
-            const fillWidth = Math.min(Math.max(rawFill, minFill), 100);
-            return (
-              <TouchableOpacity
-                key={option.optionId}
-                style={styles.optionBarWrapper}
-                onPress={() => {
-                  void pollsPanelState.castVote(
-                    pollsPanelState.activePoll!.pollId,
-                    option.optionId
-                  );
-                }}
-              >
-                <View style={styles.optionBarTrack}>
-                  <View
-                    style={[
-                      styles.optionBarFill,
-                      {
-                        width: `${fillWidth}%`,
-                        backgroundColor: color,
-                      },
-                    ]}
-                  />
-                  <View style={styles.optionLabelBubble}>
-                    <Text variant="body" weight="semibold" style={styles.optionLabelText}>
-                      {option.label}
-                    </Text>
-                    <Text variant="body" style={styles.optionVoteCount}>
-                      {option.voteCount} votes
-                    </Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-          {pollsPanelState.activePollType === 'what_to_order' ? (
-            <Text variant="body" style={styles.topicNote}>
-              Votes apply to dishes at this restaurant.
-            </Text>
-          ) : null}
-          <View style={styles.addOptionBlock}>
-            {pollsPanelState.needsRestaurantInput ? (
-              <View style={styles.inputGroup}>
-                <Text variant="body" weight="semibold" style={styles.fieldLabel}>
-                  Restaurant
-                </Text>
-                <TextInput
-                  value={pollsPanelState.restaurantQuery}
-                  onChangeText={(text) => {
-                    pollsPanelState.setRestaurantQuery(text);
-                    pollsPanelState.setRestaurantSelection(null);
-                  }}
-                  placeholder="Search for a restaurant"
-                  style={styles.optionInput}
-                  autoCapitalize="none"
-                />
-                {(pollsPanelState.showRestaurantSuggestions || pollsPanelState.restaurantLoading) &&
-                  renderSuggestionList(
-                    pollsPanelState.restaurantLoading,
-                    pollsPanelState.restaurantSuggestions,
-                    'Keep typing to add a restaurant',
-                    pollsPanelInteraction.onRestaurantSuggestionPick
-                  )}
-              </View>
-            ) : null}
-            {pollsPanelState.needsDishInput ? (
-              <View style={styles.inputGroup}>
-                <Text variant="body" weight="semibold" style={styles.fieldLabel}>
-                  Dish
-                </Text>
-                <TextInput
-                  value={pollsPanelState.dishQuery}
-                  onChangeText={(text) => {
-                    pollsPanelState.setDishQuery(text);
-                    pollsPanelState.setDishSelection(null);
-                  }}
-                  placeholder="Search for a dish"
-                  style={styles.optionInput}
-                  autoCapitalize="none"
-                />
-                {(pollsPanelState.showDishSuggestions || pollsPanelState.dishLoading) &&
-                  renderSuggestionList(
-                    pollsPanelState.dishLoading,
-                    pollsPanelState.dishSuggestions,
-                    'Keep typing to add a dish',
-                    pollsPanelInteraction.onDishSuggestionPick
-                  )}
-              </View>
-            ) : null}
-            <TouchableOpacity
-              onPress={() => {
-                void pollsPanelInteraction.submitOptionFromPanel();
-              }}
-              style={styles.submitButton}
-            >
-              <Text variant="body" weight="semibold" style={styles.submitButtonText}>
-                Submit option
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      ) : null,
-    [
-      pollsPanelInteraction.onDishSuggestionPick,
-      pollsPanelInteraction.onRestaurantSuggestionPick,
-      pollsPanelInteraction.submitOptionFromPanel,
-      pollsPanelState.activePoll,
-      pollsPanelState.activePollType,
-      pollsPanelState.dishLoading,
-      pollsPanelState.dishQuery,
-      pollsPanelState.dishSuggestions,
-      pollsPanelState.needsDishInput,
-      pollsPanelState.needsRestaurantInput,
-      pollsPanelState.restaurantLoading,
-      pollsPanelState.restaurantQuery,
-      pollsPanelState.restaurantSuggestions,
-      pollsPanelState.resolvedSnap,
-      pollsPanelState.shouldHoldFreshLiveContent,
-      pollsPanelState.showDishSuggestions,
-      pollsPanelState.showRestaurantSuggestions,
-      pollsPanelState.totalVotes,
-      renderSuggestionList,
-    ]
-  );
-
-  const collapsedContentComponent = React.useMemo(() => {
-    const shouldShowCollapsedSpinner =
-      pollsPanelState.loading ||
-      (pollsPanelState.isSystemUnavailable && pollsPanelState.polls.length === 0);
-    const hasVisiblePolls = pollsPanelState.visiblePolls.length > 0;
-
-    return (
-      <View style={styles.collapsedContent}>
-        {listHeaderComponent}
-        {shouldShowCollapsedSpinner ? (
-          <View style={styles.loaderCentered}>
-            <SquircleSpinner size={22} color={ACCENT} />
-          </View>
-        ) : hasVisiblePolls ? (
-          <View style={styles.collapsedCards}>
-            {pollsPanelState.visiblePolls.map((poll) => (
-              <View key={poll.pollId} style={styles.collapsedCardRow}>
-                <PollCard
-                  poll={poll}
-                  selected={poll.pollId === pollsPanelState.selectedPollId}
-                  onPress={pollsPanelState.setSelectedPollId}
-                />
-              </View>
-            ))}
-          </View>
-        ) : (
+      ) : (
+        pollCards ?? (
           <Text variant="body" style={styles.emptyState}>
-            No polls available yet.
+            {isExpandedSurface ? emptyMessage : 'No polls available yet.'}
           </Text>
-        )}
-      </View>
-    );
-  }, [
-    listHeaderComponent,
-    pollsPanelState.isSystemUnavailable,
-    pollsPanelState.loading,
-    pollsPanelState.polls.length,
-    pollsPanelState.selectedPollId,
-    pollsPanelState.setSelectedPollId,
-    pollsPanelState.visiblePolls,
-  ]);
-
-  const itemSeparator = React.useCallback(() => <View style={{ height: CARD_GAP }} />, []);
-  const backgroundComponent = React.useMemo(() => <FrostedGlassBackground />, []);
-  const isExpandedSurface =
-    pollsPanelState.resolvedSnap === 'middle' || pollsPanelState.resolvedSnap === 'expanded';
-  const collapsedSceneSurface = React.useMemo(
-    () =>
-      ({
-        surfaceKind: 'content' as const,
-        inactiveRenderMode: 'freeze' as const,
-        contentComponent: collapsedContentComponent,
-        contentScrollMode: 'scroll' as const,
-        contentContainerStyle: [
-          styles.scrollContent,
-          { paddingBottom: pollsPanelState.contentBottomPadding },
-        ],
-        bounces: false,
-        alwaysBounceVertical: false,
-        overScrollMode: 'never' as const,
-        backgroundComponent,
-        contentSurfaceStyle: overlaySheetStyles.contentSurfaceWhite,
-        headerComponent,
-        keyboardShouldPersistTaps: 'handled' as const,
-      }) as BottomSheetSceneSurfaceProps<unknown>,
-    [
-      backgroundComponent,
-      collapsedContentComponent,
-      headerComponent,
-      pollsPanelState.contentBottomPadding,
-    ]
+        )
+      )}
+      {activePollForDetail ? (
+        <PollsExpandedDetail
+          activePoll={activePollForDetail}
+          activePollType={pollsPanelFeedRuntime.activePollType}
+          castVote={pollsPanelFeedRuntime.castVote}
+          interactionRef={interactionRef}
+          needsDishInput={pollsPanelFeedRuntime.needsDishInput}
+          needsRestaurantInput={pollsPanelFeedRuntime.needsRestaurantInput}
+          selectedPollId={pollsPanelFeedRuntime.selectedPollId}
+          submitPollOption={pollsPanelFeedRuntime.submitPollOption}
+          totalVotes={pollsPanelFeedRuntime.totalVotes}
+        />
+      ) : null}
+    </View>
   );
-  const expandedSceneSurface = React.useMemo(
-    () =>
-      ({
-        surfaceKind: 'list' as const,
-        inactiveRenderMode: 'freeze' as const,
-        data: pollsPanelState.visiblePolls,
-        renderItem: renderPoll,
-        keyExtractor: (item: Poll) => item.pollId,
-        estimatedItemSize: 108,
-        ItemSeparatorComponent: itemSeparator,
-        contentContainerStyle: [
-          styles.scrollContent,
-          { paddingBottom: pollsPanelState.contentBottomPadding },
-        ],
-        ListHeaderComponent: listHeaderComponent,
-        ListFooterComponent: listFooterComponent,
-        ListEmptyComponent: listEmptyComponent,
-        keyboardShouldPersistTaps: 'handled' as const,
-        bounces: false,
-        alwaysBounceVertical: false,
-        overScrollMode: 'never' as const,
-        backgroundComponent,
-        contentSurfaceStyle: overlaySheetStyles.contentSurfaceWhite,
-        headerComponent,
-      }) as BottomSheetSceneSurfaceProps<unknown>,
-    [
-      backgroundComponent,
-      headerComponent,
-      itemSeparator,
-      listEmptyComponent,
-      listFooterComponent,
-      listHeaderComponent,
-      pollsPanelState.contentBottomPadding,
-      pollsPanelState.visiblePolls,
-      renderPoll,
-    ]
-  );
+});
 
-  return React.useMemo(
-    () => ({
-      shellSpec: {
-        overlayKey: 'polls' as const,
-        snapPoints: pollsPanelState.snapPoints,
-        initialSnapPoint: pollsPanelState.initialSnap,
-        style: overlaySheetStyles.container,
-        onSnapStart: pollsPanelInteraction.handleSnapStart,
-        onSnapChange: pollsPanelInteraction.handleSnapChange,
-        dismissThreshold: pollsPanelState.dismissThreshold,
-        preventSwipeDismiss: mode === 'overlay',
-      },
-      sceneSurface: isExpandedSurface ? expandedSceneSurface : collapsedSceneSurface,
-      shellSnapRequest: pollsPanelInteraction.activeShellSnapRequest,
-    }),
-    [
-      collapsedSceneSurface,
-      expandedSceneSurface,
-      isExpandedSurface,
-      mode,
-      pollsPanelInteraction.handleSnapChange,
-      pollsPanelInteraction.handleSnapStart,
-      pollsPanelState.dismissThreshold,
-      pollsPanelState.initialSnap,
-      pollsPanelState.snapPoints,
-      pollsPanelInteraction.activeShellSnapRequest,
-    ]
-  );
-};
-
-export const usePollsPanelSpec = (options: UsePollsPanelSpecOptions): OverlayContentSpec<Poll> => {
-  const sceneDefinition = usePollsSceneDefinition(options);
-  return React.useMemo(
-    () => ({
-      ...sceneDefinition.shellSpec,
-      ...sceneDefinition.sceneSurface,
-    }),
-    [sceneDefinition]
-  ) as OverlayContentSpec<Poll>;
-};
+PollsMountedSceneBody.displayName = 'PollsMountedSceneBody';
 
 const styles = StyleSheet.create({
   headerRow: {

@@ -3,20 +3,6 @@ import React
 import UIKit
 
 struct RestaurantPanelSnapshotPayload {
-  struct HoursRow {
-    let label: String
-    let value: String
-  }
-
-  struct Location {
-    let title: String
-    let status: String?
-    let address: String
-    let phone: String?
-    let hoursRows: [HoursRow]
-    let websiteHost: String?
-  }
-
   struct Dish {
     let id: String
     let name: String
@@ -46,7 +32,6 @@ struct RestaurantPanelSnapshotPayload {
   let showWebsiteAction: Bool
   let showCallAction: Bool
   let matchedTags: [String]
-  let locations: [Location]
   let dishes: [Dish]
 }
 
@@ -109,37 +94,7 @@ private enum RestaurantPanelSnapshotDecoder {
       showWebsiteAction: try decodeBoolean(dictionary, key: "showWebsiteAction", path: path),
       showCallAction: try decodeBoolean(dictionary, key: "showCallAction", path: path),
       matchedTags: try decodeStringArray(dictionary, key: "matchedTags", path: path),
-      locations: try decodeArray(dictionary, key: "locations", path: path, transform: decodeLocation),
       dishes: try decodeArray(dictionary, key: "dishes", path: path, transform: decodeDish)
-    )
-  }
-
-  private static func decodeLocation(
-    _ dictionary: [String: Any],
-    path: String
-  ) throws -> RestaurantPanelSnapshotPayload.Location {
-    RestaurantPanelSnapshotPayload.Location(
-      title: try decodeString(dictionary, key: "title", path: path),
-      status: try decodeOptionalString(dictionary, key: "status", path: path),
-      address: try decodeString(dictionary, key: "address", path: path),
-      phone: try decodeOptionalString(dictionary, key: "phone", path: path),
-      hoursRows: try decodeArray(
-        dictionary,
-        key: "hoursRows",
-        path: path,
-        transform: decodeHoursRow
-      ),
-      websiteHost: try decodeOptionalString(dictionary, key: "websiteHost", path: path)
-    )
-  }
-
-  private static func decodeHoursRow(
-    _ dictionary: [String: Any],
-    path: String
-  ) throws -> RestaurantPanelSnapshotPayload.HoursRow {
-    RestaurantPanelSnapshotPayload.HoursRow(
-      label: try decodeString(dictionary, key: "label", path: path),
-      value: try decodeString(dictionary, key: "value", path: path)
     )
   }
 
@@ -372,20 +327,11 @@ final class CraveRestaurantPanelSnapshotView: UIView {
     rootStack.addArrangedSubview(
       makeDetailRow(label: "Hours", value: snapshotPayload.hoursSummary)
     )
+    rootStack.addArrangedSubview(
+      makeDetailRow(label: "Locations", value: snapshotPayload.locationsLabel)
+    )
     if !snapshotPayload.matchedTags.isEmpty {
       rootStack.addArrangedSubview(makeMatchedTagsSection(snapshotPayload.matchedTags))
-    }
-
-    if !snapshotPayload.locations.isEmpty {
-      rootStack.addArrangedSubview(
-        makeSectionHeader(
-          title: "Locations",
-          subtitle: snapshotPayload.locationsLabel
-        )
-      )
-      snapshotPayload.locations.forEach { location in
-        rootStack.addArrangedSubview(makeLocationCard(location))
-      }
     }
 
     rootStack.addArrangedSubview(
@@ -645,122 +591,6 @@ final class CraveRestaurantPanelSnapshotView: UIView {
       makeLabel(text: subtitle, size: 15, weight: .regular, color: UIColor(hex: "#475569"))
     )
     return stack
-  }
-
-  private func makeLocationCard(_ location: RestaurantPanelSnapshotPayload.Location) -> UIView {
-    let card = UIStackView()
-    card.axis = .vertical
-    card.spacing = 10
-    card.isLayoutMarginsRelativeArrangement = true
-    card.layoutMargins = UIEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
-    card.backgroundColor = .white
-    card.layer.cornerRadius = 14
-    card.layer.borderWidth = 1
-    card.layer.borderColor = UIColor(white: 0.06, alpha: 0.08).cgColor
-
-    let wrapper = UIView()
-    wrapper.translatesAutoresizingMaskIntoConstraints = false
-    wrapper.layoutMargins = UIEdgeInsets(top: 12, left: 20, bottom: 0, right: 20)
-    wrapper.preservesSuperviewLayoutMargins = false
-    wrapper.addSubview(card)
-    card.translatesAutoresizingMaskIntoConstraints = false
-    NSLayoutConstraint.activate([
-      card.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor, constant: 20),
-      card.trailingAnchor.constraint(equalTo: wrapper.trailingAnchor, constant: -20),
-      card.topAnchor.constraint(equalTo: wrapper.topAnchor, constant: 12),
-      card.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor),
-    ])
-
-    let titleRow = UIView()
-    let title = makeLabel(
-      text: location.title,
-      size: 16,
-      weight: .bold,
-      color: UIColor(hex: "#0f172a")
-    )
-    let status = makeLabel(
-      text: location.status ?? "",
-      size: 14,
-      weight: .regular,
-      color: UIColor(hex: "#475569")
-    )
-    [title, status].forEach {
-      $0.translatesAutoresizingMaskIntoConstraints = false
-      titleRow.addSubview($0)
-    }
-    NSLayoutConstraint.activate([
-      title.leadingAnchor.constraint(equalTo: titleRow.leadingAnchor),
-      title.topAnchor.constraint(equalTo: titleRow.topAnchor),
-      title.bottomAnchor.constraint(equalTo: titleRow.bottomAnchor),
-      status.leadingAnchor.constraint(greaterThanOrEqualTo: title.trailingAnchor, constant: 8),
-      status.trailingAnchor.constraint(equalTo: titleRow.trailingAnchor),
-      status.centerYAnchor.constraint(equalTo: title.centerYAnchor),
-    ])
-    card.addArrangedSubview(titleRow)
-    card.addArrangedSubview(
-      makeLabel(
-        text: location.address,
-        size: 14,
-        weight: .regular,
-        color: UIColor(hex: "#475569")
-      )
-    )
-    if let phone = location.phone {
-      card.addArrangedSubview(
-        makeLabel(
-          text: "Phone  \(phone)",
-          size: 14,
-          weight: .regular,
-          color: UIColor(hex: "#475569")
-        )
-      )
-    }
-    if !location.hoursRows.isEmpty {
-      card.addArrangedSubview(
-        makeLabel(text: "Hours", size: 14, weight: .bold, color: UIColor(hex: "#0f172a"))
-      )
-      for row in location.hoursRows {
-        let hourRow = UIView()
-        let day = makeLabel(
-          text: row.label,
-          size: 12,
-          weight: .regular,
-          color: UIColor(hex: "#475569")
-        )
-        let value = makeLabel(
-          text: row.value,
-          size: 12,
-          weight: .regular,
-          color: UIColor(hex: "#475569")
-        )
-        value.textAlignment = .right
-        [day, value].forEach {
-          $0.translatesAutoresizingMaskIntoConstraints = false
-          hourRow.addSubview($0)
-        }
-        NSLayoutConstraint.activate([
-          day.leadingAnchor.constraint(equalTo: hourRow.leadingAnchor),
-          day.topAnchor.constraint(equalTo: hourRow.topAnchor),
-          day.bottomAnchor.constraint(equalTo: hourRow.bottomAnchor),
-          day.widthAnchor.constraint(equalToConstant: 32),
-          value.leadingAnchor.constraint(equalTo: day.trailingAnchor, constant: 12),
-          value.trailingAnchor.constraint(equalTo: hourRow.trailingAnchor),
-          value.centerYAnchor.constraint(equalTo: day.centerYAnchor),
-        ])
-        card.addArrangedSubview(hourRow)
-      }
-    }
-    if let website = location.websiteHost {
-      card.addArrangedSubview(
-        makeLabel(
-          text: "Website  \(website)",
-          size: 14,
-          weight: .regular,
-          color: UIColor(hex: "#475569")
-        )
-      )
-    }
-    return wrapper
   }
 
   private func makeDishCard(_ dish: RestaurantPanelSnapshotPayload.Dish, rank: Int) -> UIView {

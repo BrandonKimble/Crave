@@ -1,12 +1,12 @@
-import type { PreparedProfileCloseSnapshotPlan } from '../shared/prepared-presentation-transaction';
+import type { PreparedProfileCloseSnapshotPlan } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-snapshot-contract';
 import {
   createPreparedProfileCloseSnapshot,
   resolvePreparedProfileCloseSnapshotPlan,
-} from '../shared/prepared-presentation-transaction';
-import type { ProfileTransitionState } from './profile-transition-state-contract';
-import type { PreparedProfilePresentationTransaction } from './profile-prepared-presentation-transaction-contract';
-import { applyPreparedProfileCloseSnapshot } from './profile-prepared-presentation-transition-runtime';
-import { resolvePreparedProfilePresentationTransaction } from './profile-prepared-presentation-transaction-resolver';
+} from '../../../../navigation/runtime/app-route-profile-prepared-presentation-snapshot-contract';
+import type { ProfileTransitionState } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
+import type { PreparedProfilePresentationTransaction } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
+import { resolvePreparedProfilePresentationTransaction } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-resolver';
+import { applyPreparedProfileCloseSnapshot } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transition-runtime';
 
 type OverlaySheetSnap = 'expanded' | 'middle' | 'collapsed' | 'hidden';
 

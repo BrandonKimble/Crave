@@ -1,4 +1,4 @@
-import type { ProfileAppExecutionRuntime } from './profile-app-execution-runtime-contract';
+import type { ProfileAppExecutionRuntime } from '../../../../navigation/runtime/app-route-profile-app-execution-runtime-contract';
 import {
   executePreparedProfileCommandPayload,
   type PreparedProfileCommandExecutionRuntime,
@@ -6,7 +6,7 @@ import {
 import type {
   PreparedProfilePresentationTransaction,
   ProfilePresentationPhaseExecutionPayload,
-} from './profile-prepared-presentation-transaction-contract';
+} from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
 import type { ProfileRuntimeStateOwner } from './profile-runtime-state-contract';
 
 export type PreparedProfileStateExecutionRuntime = {
@@ -16,9 +16,11 @@ export type PreparedProfileStateExecutionRuntime = {
 
 export const applyPreparedProfileStateExecution = ({
   stateExecution,
+  executionContext,
   stateExecutionRuntime,
 }: {
   stateExecution: ProfilePresentationPhaseExecutionPayload['stateExecution'];
+  executionContext: ProfilePresentationPhaseExecutionPayload['executionContext'];
   stateExecutionRuntime: PreparedProfileStateExecutionRuntime;
 }): void => {
   if (!stateExecution) {
@@ -38,7 +40,7 @@ export const applyPreparedProfileStateExecution = ({
     setProfileTransitionStatus(transitionStatus);
   }
   if (routeIntent) {
-    applyProfileRouteIntent(routeIntent);
+    applyProfileRouteIntent(routeIntent, executionContext);
   }
   if (closeFinalization) {
     finalizePreparedProfileClose(closeFinalization);
@@ -60,6 +62,7 @@ export const executePreparedProfilePhasePayload = ({
   });
   applyPreparedProfileStateExecution({
     stateExecution: payload.stateExecution,
+    executionContext: payload.executionContext,
     stateExecutionRuntime,
   });
 };

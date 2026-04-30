@@ -483,7 +483,7 @@ export const useSearchSubmitEntryOwner = ({
       const shouldReplaceResultsInPlace = Boolean(options?.replaceResultsInPlace);
       const effectiveOpenNow = options?.openNow ?? openNow;
       const effectivePriceLevels =
-        options?.priceLevels !== undefined ? options.priceLevels : priceLevels;
+        options?.priceLevels !== undefined ? (options.priceLevels ?? []) : priceLevels;
       const effectiveMinimumVotes =
         options?.minimumVotes !== undefined
           ? options.minimumVotes

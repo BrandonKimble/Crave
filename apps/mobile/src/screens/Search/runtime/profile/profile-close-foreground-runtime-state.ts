@@ -5,7 +5,7 @@ import {
   capturePreviousForegroundUiRestoreStateIfAbsentOnRecord,
   getPreviousForegroundUiRestoreStateFromRecord,
 } from './profile-close-state-record';
-import type { ProfileForegroundUiRestoreState } from './profile-transition-state-contract';
+import type { ProfileForegroundUiRestoreState } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 
 export type ProfileCloseForegroundRuntimeState = {
   getPreviousForegroundUiRestoreState: () => ProfileForegroundUiRestoreState | null;

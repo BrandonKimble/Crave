@@ -63,22 +63,6 @@ public class ProfilePresentationTransactionExecutorModule extends ReactContextBa
         : null;
 
     if (commandSet != null && requestToken != null) {
-      ReadableMap restaurantSheetCommand =
-        commandSet.hasKey("restaurantSheetCommand")
-          ? commandSet.getMap("restaurantSheetCommand")
-          : null;
-      if (
-        restaurantSheetCommand != null &&
-        restaurantSheetCommand.hasKey("type") &&
-        "request".equals(restaurantSheetCommand.getString("type")) &&
-        restaurantSheetCommand.hasKey("snap")
-      ) {
-        String snapTo = restaurantSheetCommand.getString("snap");
-        if (snapTo != null) {
-          BottomSheetHostView.dispatchCommand("restaurant_profile_sheet", snapTo, requestToken);
-        }
-      }
-
       ReadableMap resultsSheetCommand =
         commandSet.hasKey("resultsSheetCommand")
           ? commandSet.getMap("resultsSheetCommand")

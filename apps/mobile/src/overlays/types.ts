@@ -4,7 +4,6 @@ import type { BottomSheetSnap, SnapPoints } from './bottomSheetMotionTypes';
 import type {
   BottomSheetWithFlashListBaseProps,
   BottomSheetWithFlashListProps,
-  BottomSheetWithSceneRegistryProps,
 } from './bottomSheetWithFlashListContract';
 
 export type OverlayKey =
@@ -23,6 +22,7 @@ export type OverlaySheetSnap = BottomSheetSnap;
 export type OverlaySheetSnapRequest = {
   snap: OverlaySheetSnap;
   token?: number | null;
+  settleToken?: number | null;
 };
 
 export type SnapProfile = {
@@ -55,17 +55,16 @@ export type OverlayContentSpecBase = {
   renderWrapper?: (children: React.ReactNode) => React.ReactNode;
 };
 
-export type OverlaySceneRegistrySpec = OverlayContentSpecBase &
-  Omit<BottomSheetWithFlashListBaseProps<unknown>, 'visible' | 'snapPoints'> &
-  BottomSheetWithSceneRegistryProps;
+export type OverlaySheetFrameSpec = OverlayContentSpecBase &
+  Omit<BottomSheetWithFlashListBaseProps<any>, 'visible' | 'snapPoints'>;
 
-export type OverlayListContentSpec<T> = OverlayContentSpecBase &
+export type OverlayListContentSpec<T> = OverlaySheetFrameSpec &
   Omit<
     Extract<BottomSheetWithFlashListProps<T>, { surfaceKind: 'list' }>,
     'visible' | 'snapPoints'
   >;
 
-export type OverlayComponentContentSpec = OverlayContentSpecBase &
+export type OverlayComponentContentSpec = OverlaySheetFrameSpec &
   Omit<
     Extract<BottomSheetWithFlashListProps<never>, { surfaceKind: 'content' }>,
     'visible' | 'snapPoints'
@@ -73,8 +72,6 @@ export type OverlayComponentContentSpec = OverlayContentSpecBase &
 
 export type OverlayContentSpec<T> = OverlayListContentSpec<T> | OverlayComponentContentSpec;
 
-export type OverlayResolvedSpec<T> = OverlayContentSpec<T> | OverlaySceneRegistrySpec;
-
 export const isOverlayListContentSpec = <T>(
-  spec: OverlayResolvedSpec<T> | null | undefined
+  spec: OverlayContentSpec<T> | null | undefined
 ): spec is OverlayListContentSpec<T> => spec?.surfaceKind === 'list';

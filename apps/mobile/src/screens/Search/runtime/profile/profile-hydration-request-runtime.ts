@@ -3,7 +3,7 @@ import React from 'react';
 import { searchService } from '../../../../services/search';
 import type { RestaurantProfile } from '../../../../types';
 import { logger } from '../../../../utils';
-import type { HydratedRestaurantProfile } from './profile-transition-state-contract';
+import type { HydratedRestaurantProfile } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type { ProfileControllerState } from './profile-runtime-state-record';
 import {
   deleteRestaurantProfileRequestByIdOnRecord,

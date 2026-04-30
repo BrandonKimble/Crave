@@ -16,6 +16,7 @@ import {
   type MotionPressureState,
   type MapMotionPressureController,
 } from './map-motion-pressure';
+import { withSearchNavSwitchRuntimeAttribution } from '../shared/search-nav-switch-runtime-attribution';
 import type { ViewportBoundsService } from '../viewport/viewport-bounds-service';
 
 const CAMERA_CENTER_PRECISION = 1e5;
@@ -244,7 +245,6 @@ export const useMapInteractionController = (
       shouldLogSearchStateChanges,
     ]
   );
-
   const persistSettledCameraViewport = React.useCallback(
     (center: [number, number], zoom: number) => {
       lastCameraStateRef.current = { center, zoom };
@@ -533,6 +533,8 @@ export const useMapInteractionController = (
       cameraIntentArbiter,
       cancelPendingMapMovementUpdates,
       commitCameraViewport,
+      isSearchOverlay,
+      isSearchSessionActive,
       mapInteractionDiagnostics,
       mapGestureActiveRef,
       mapMotionPressureController,
@@ -563,11 +565,47 @@ export const useMapInteractionController = (
     cameraIntentArbiter.setGestureActive(keepGestureActive);
   }, [cameraIntentArbiter, mapGestureActiveRef]);
 
+  const attributedHandleMapPress = React.useCallback(
+    () =>
+      withSearchNavSwitchRuntimeAttribution('mapInteraction', 'mapPress', () => {
+        handleMapPress();
+      }),
+    [handleMapPress]
+  );
+  const attributedHandleNativeViewportChanged = React.useCallback(
+    (state: MapboxMapState) =>
+      withSearchNavSwitchRuntimeAttribution('mapInteraction', 'nativeViewportChanged', () => {
+        handleNativeViewportChanged(state);
+      }),
+    [handleNativeViewportChanged]
+  );
+  const attributedHandleMapIdle = React.useCallback(
+    (state: MapboxMapState) =>
+      withSearchNavSwitchRuntimeAttribution('mapInteraction', 'mapIdle', () => {
+        handleMapIdle(state);
+      }),
+    [handleMapIdle]
+  );
+  const attributedHandleMapTouchStart = React.useCallback(
+    () =>
+      withSearchNavSwitchRuntimeAttribution('mapInteraction', 'mapTouchStart', () => {
+        handleMapTouchStart();
+      }),
+    [handleMapTouchStart]
+  );
+  const attributedHandleMapTouchEnd = React.useCallback(
+    () =>
+      withSearchNavSwitchRuntimeAttribution('mapInteraction', 'mapTouchEnd', () => {
+        handleMapTouchEnd();
+      }),
+    [handleMapTouchEnd]
+  );
+
   return {
-    handleMapPress,
-    handleNativeViewportChanged,
-    handleMapIdle,
-    handleMapTouchStart,
-    handleMapTouchEnd,
+    handleMapPress: attributedHandleMapPress,
+    handleNativeViewportChanged: attributedHandleNativeViewportChanged,
+    handleMapIdle: attributedHandleMapIdle,
+    handleMapTouchStart: attributedHandleMapTouchStart,
+    handleMapTouchEnd: attributedHandleMapTouchEnd,
   };
 };
