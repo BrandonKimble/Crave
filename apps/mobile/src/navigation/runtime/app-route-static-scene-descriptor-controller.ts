@@ -47,7 +47,6 @@ const BOOKMARKS_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
   bounces: false,
   alwaysBounceVertical: false,
   overScrollMode: 'never',
-  contentSurfaceStyle: overlaySheetStyles.contentSurfaceWhite,
 };
 
 const PROFILE_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
@@ -56,7 +55,6 @@ const PROFILE_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
   bounces: false,
   alwaysBounceVertical: false,
   overScrollMode: 'never',
-  contentSurfaceStyle: overlaySheetStyles.contentSurfaceWhite,
 };
 
 const SAVE_LIST_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
