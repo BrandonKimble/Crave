@@ -61,6 +61,9 @@ const LocalRestaurantSheetLayerHost = ({
   const isActiveLocalRestaurant = isLocalRestaurantRouteEntry(
     restaurantSessionSnapshot.activeOverlayRoute
   );
+  const restaurantSheetSnapController = isActiveLocalRestaurant
+    ? restaurantControlSelectionSnapshot.restaurantSheetSnapController
+    : null;
   const restaurantHostConfig = React.useMemo(
     () =>
       createRestaurantRoutePanelHostConfig({
@@ -89,13 +92,15 @@ const LocalRestaurantSheetLayerHost = ({
     },
   });
   useRestaurantRouteSheetMotionTargetRegistration({
-    enabled: restaurantControlSelectionSnapshot.restaurantSheetSnapController != null,
+    enabled: restaurantSheetSnapController != null,
     source: 'search',
-    snapController: restaurantControlSelectionSnapshot.restaurantSheetSnapController,
+    snapController: restaurantSheetSnapController,
   });
   const localRestaurantRenderLayer = useRestaurantRouteRenderLayerRuntime({
     restaurantRouteSource: 'search',
-    data: restaurantControlSelectionSnapshot.restaurantPanelSnapshot,
+    data: isActiveLocalRestaurant
+      ? restaurantControlSelectionSnapshot.restaurantPanelSnapshot
+      : null,
     onToggleFavorite: restaurantControlSelectionSnapshot.onToggleFavorite,
     onRequestClose: restaurantControlSelectionSnapshot.closeRestaurantProfile,
     hostConfig: restaurantHostConfig,
@@ -105,8 +110,8 @@ const LocalRestaurantSheetLayerHost = ({
     rootOverlayKey: restaurantSessionSnapshot.rootOverlayKey,
     overlayRouteStackLength: restaurantSessionSnapshot.overlayRouteStackLength,
     presentationState: restaurantPresentationStateRuntime.presentationState,
-    snapController: restaurantControlSelectionSnapshot.restaurantSheetSnapController,
-    visible: shouldRenderSearchOverlay,
+    snapController: restaurantSheetSnapController,
+    visible: shouldRenderSearchOverlay && isActiveLocalRestaurant,
     navBarTop: routeHostVisualSnapshot?.visualRuntime.navBarTop ?? 0,
     searchBarTop: routeHostVisualSnapshot?.overlayGeometryRuntime.searchBarTop ?? 0,
     headerActionProgress:

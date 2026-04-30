@@ -62,6 +62,7 @@ const POLLS_MOUNTED_SCENE_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
   bounces: false,
   alwaysBounceVertical: false,
   overScrollMode: 'never',
+  contentSurfaceStyle: overlaySheetStyles.contentSurfaceWhite,
 };
 
 const POLLS_MOUNTED_SCENE_BODY_ADMISSION_POLICY: AppRouteSceneBodyAdmissionPolicy = {
