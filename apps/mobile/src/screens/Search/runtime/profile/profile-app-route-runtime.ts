@@ -64,11 +64,7 @@ export const useProfileAppRouteExecutionRuntime = ({
 
       emitProfileRouteCompletionEvent(routeIntentAction.completionEvent);
     },
-    [
-      emitProfileRouteCompletionEvent,
-      routeSceneSwitchActions,
-      routeSceneSwitchRuntime,
-    ]
+    [emitProfileRouteCompletionEvent, routeSceneSwitchActions, routeSceneSwitchRuntime]
   );
 
   return React.useMemo<ProfileAppRouteExecutionRuntime>(

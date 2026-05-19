@@ -1,8 +1,6 @@
 import React from 'react';
 
-import type {
-  ProfilePresentationCommandExecutionContext,
-} from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
+import type { ProfilePresentationCommandExecutionContext } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
 import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import { PROFILE_CAMERA_ANIMATION_MODE } from './profile-camera-motion-constants';
 

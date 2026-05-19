@@ -76,5 +76,4 @@ export class RouteResultsSheetVisualStateController {
 }
 
 export const createRouteResultsSheetVisualStateController =
-  (): RouteResultsSheetVisualStateController =>
-    new RouteResultsSheetVisualStateController();
+  (): RouteResultsSheetVisualStateController => new RouteResultsSheetVisualStateController();

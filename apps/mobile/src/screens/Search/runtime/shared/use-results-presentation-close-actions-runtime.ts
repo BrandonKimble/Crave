@@ -31,9 +31,7 @@ type UseResultsPresentationCloseActionsRuntimeArgs = {
 };
 
 type ResultsPresentationCloseActionsRuntime = {
-  requestClosePresentationIntent: (
-    terminalDismissSource?: 'results' | 'profile'
-  ) => string | null;
+  requestClosePresentationIntent: (terminalDismissSource?: 'results' | 'profile') => string | null;
   beginCloseSearch: () => void;
   handleCloseResults: () => void;
   cancelCloseSearch: (intentId?: string) => void;

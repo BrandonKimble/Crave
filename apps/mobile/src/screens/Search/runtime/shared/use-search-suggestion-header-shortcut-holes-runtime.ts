@@ -25,11 +25,10 @@ export const useSearchSuggestionHeaderShortcutHolesRuntime = ({
   resolvedSearchShortcutsFrame: LayoutRectangle | null;
   resolvedSearchShortcutChipFrames: Record<string, LayoutRectangle>;
 }): SearchSuggestionShortcutHoleState => {
-  const suggestionHeaderShortcutHolesRef =
-    React.useRef<SearchSuggestionShortcutHoleState>({
-      restaurants: null,
-      dishes: null,
-    });
+  const suggestionHeaderShortcutHolesRef = React.useRef<SearchSuggestionShortcutHoleState>({
+    restaurants: null,
+    dishes: null,
+  });
 
   const suggestionHeaderShortcutHoleCandidates =
     React.useMemo<SearchSuggestionShortcutHoleState>(() => {
@@ -65,8 +64,7 @@ export const useSearchSuggestionHeaderShortcutHolesRuntime = ({
 
     const { restaurants, dishes } = suggestionHeaderShortcutHoleCandidates;
     if (restaurants) {
-      suggestionHeaderShortcutHolesRef.current.restaurants =
-        cloneSuggestionMaskedHole(restaurants);
+      suggestionHeaderShortcutHolesRef.current.restaurants = cloneSuggestionMaskedHole(restaurants);
     }
     if (dishes) {
       suggestionHeaderShortcutHolesRef.current.dishes = cloneSuggestionMaskedHole(dishes);

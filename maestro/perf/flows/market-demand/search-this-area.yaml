@@ -20,8 +20,8 @@ appId: com.brandonkimble.cravesearch
 - waitForAnimationToEnd:
     timeout: 1000
 - swipe:
-    start: "14%, 34%"
-    end: "22%, 24%"
+    start: '14%, 34%'
+    end: '22%, 24%'
     duration: 350
 - waitForAnimationToEnd:
     timeout: 1000

@@ -199,9 +199,7 @@ const readStringField = (record: Record<string, unknown>, key: string): string |
   return typeof value === 'string' && value.length > 0 ? value : null;
 };
 
-const readCoordinateField = (
-  value: unknown
-): { lat: number; lng: number } | null => {
+const readCoordinateField = (value: unknown): { lat: number; lng: number } | null => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return null;
   }
@@ -219,7 +217,9 @@ const readCoordinateField = (
   return { lat, lng };
 };
 
-const readRequestBoundsSummary = (payloadRecord: Record<string, unknown>): Record<string, unknown> => {
+const readRequestBoundsSummary = (
+  payloadRecord: Record<string, unknown>
+): Record<string, unknown> => {
   const bounds = payloadRecord.bounds;
   if (!bounds || typeof bounds !== 'object' || Array.isArray(bounds)) {
     return { payloadHasBounds: false };

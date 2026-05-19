@@ -32,10 +32,7 @@ export type ResultsPresentationToggleStateRuntime = {
     options: ToggleCommitOptions,
     startPatch?: Partial<SearchRuntimeBusState>
   ) => void;
-  scheduleToggleCommit: (
-    runner: ToggleCommitRunner,
-    options: ToggleCommitOptions
-  ) => void;
+  scheduleToggleCommit: (runner: ToggleCommitRunner, options: ToggleCommitOptions) => void;
 };
 
 type UseResultsPresentationToggleStateRuntimeArgs = {
@@ -168,11 +165,6 @@ export const useResultsPresentationToggleStateRuntime = ({
       beginToggleInteraction,
       scheduleToggleCommit,
     }),
-    [
-      beginToggleInteraction,
-      cancelToggleInteraction,
-      finalizeInteraction,
-      scheduleToggleCommit,
-    ]
+    [beginToggleInteraction, cancelToggleInteraction, finalizeInteraction, scheduleToggleCommit]
   );
 };

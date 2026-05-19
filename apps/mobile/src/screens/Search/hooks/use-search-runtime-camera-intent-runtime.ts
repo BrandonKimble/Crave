@@ -1,7 +1,10 @@
 import React from 'react';
 import MapboxGL from '@rnmapbox/maps';
 
-import { createCameraIntentArbiter, type CameraIntentArbiter } from '../runtime/map/camera-intent-arbiter';
+import {
+  createCameraIntentArbiter,
+  type CameraIntentArbiter,
+} from '../runtime/map/camera-intent-arbiter';
 import type { CameraSnapshot } from '../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type { SearchMapNativeCameraExecutor } from '../runtime/map/search-map-native-camera-executor';
 

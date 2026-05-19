@@ -48,8 +48,7 @@ export const useSearchAutocompleteRequestExecutionRuntime = ({
       return;
     }
 
-    const requestSequence =
-      ++requestStateRuntime.autocompleteRequestSequenceRef.current;
+    const requestSequence = ++requestStateRuntime.autocompleteRequestSequenceRef.current;
     let isActive = true;
 
     void runAutocomplete(trimmed, {
@@ -64,21 +63,16 @@ export const useSearchAutocompleteRequestExecutionRuntime = ({
         ) {
           return;
         }
-        const latestTrimmedQuery =
-          requestStateRuntime.latestAutocompleteQueryRef.current.trim();
+        const latestTrimmedQuery = requestStateRuntime.latestAutocompleteQueryRef.current.trim();
         if (
-          normalizeAutocompleteQuery(latestTrimmedQuery) !==
-          normalizeAutocompleteQuery(trimmed)
+          normalizeAutocompleteQuery(latestTrimmedQuery) !== normalizeAutocompleteQuery(trimmed)
         ) {
           return;
         }
         const isLatestSuppressed =
           requestStateRuntime.latestAutocompleteSuppressedRef.current ||
           requestStateRuntime.manuallySuppressedAutocompleteRef.current;
-        if (
-          isLatestSuppressed ||
-          !requestStateRuntime.latestSuggestionScreenActiveRef.current
-        ) {
+        if (isLatestSuppressed || !requestStateRuntime.latestSuggestionScreenActiveRef.current) {
           return;
         }
         writeAutocompleteCache(trimmed, matches);
@@ -94,10 +88,7 @@ export const useSearchAutocompleteRequestExecutionRuntime = ({
         const isLatestSuppressed =
           requestStateRuntime.latestAutocompleteSuppressedRef.current ||
           requestStateRuntime.manuallySuppressedAutocompleteRef.current;
-        if (
-          isLatestSuppressed ||
-          !requestStateRuntime.latestSuggestionScreenActiveRef.current
-        ) {
+        if (isLatestSuppressed || !requestStateRuntime.latestSuggestionScreenActiveRef.current) {
           return;
         }
         logger.warn('Autocomplete request failed', {

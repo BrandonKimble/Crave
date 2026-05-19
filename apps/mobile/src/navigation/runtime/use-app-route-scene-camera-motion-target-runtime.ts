@@ -109,9 +109,7 @@ export const useAppRouteSceneCameraMotionTargetRuntime = ({
         const didCommit = cameraIntentArbiter.commit({
           ...resolvedCameraIntent,
           allowDuringGesture: true,
-          animationMode:
-            resolvedCameraIntent.animationMode ??
-            ROUTE_CAMERA_RESTORE_ANIMATION_MODE,
+          animationMode: resolvedCameraIntent.animationMode ?? ROUTE_CAMERA_RESTORE_ANIMATION_MODE,
           animationDurationMs: resolvedCameraIntent.animationDurationMs,
           requestToken: transitionContract.settleToken,
           deferControlledCameraStateUntilCompletion: true,
@@ -140,25 +138,23 @@ export const useAppRouteSceneCameraMotionTargetRuntime = ({
 
   React.useEffect(
     () =>
-      cameraIntentArbiter.subscribeProgrammaticCameraAnimationCompletion(
-        (payload) => {
-          const requestToken = payload.requestToken;
-          if (requestToken == null) {
-            return;
-          }
-          const complete = pendingCompletionRef.current.get(requestToken);
-          if (!complete) {
-            return;
-          }
-          const pendingCameraState = pendingCameraStateRef.current.get(requestToken);
-          pendingCameraStateRef.current.delete(requestToken);
-          if (payload.status === 'finished' && pendingCameraState) {
-            lastCameraStateRef.current = pendingCameraState;
-          }
-          pendingCompletionRef.current.delete(requestToken);
-          complete();
+      cameraIntentArbiter.subscribeProgrammaticCameraAnimationCompletion((payload) => {
+        const requestToken = payload.requestToken;
+        if (requestToken == null) {
+          return;
         }
-      ),
+        const complete = pendingCompletionRef.current.get(requestToken);
+        if (!complete) {
+          return;
+        }
+        const pendingCameraState = pendingCameraStateRef.current.get(requestToken);
+        pendingCameraStateRef.current.delete(requestToken);
+        if (payload.status === 'finished' && pendingCameraState) {
+          lastCameraStateRef.current = pendingCameraState;
+        }
+        pendingCompletionRef.current.delete(requestToken);
+        complete();
+      }),
     [cameraIntentArbiter]
   );
 

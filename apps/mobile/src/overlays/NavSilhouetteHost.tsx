@@ -195,8 +195,7 @@ export const NavSilhouetteHost = React.memo(function NavSilhouetteHost({
     handleOverlaySelect('profile');
   }, [handleOverlaySelect]);
   const startupBottomNavVisualInputs = useStartupBottomNavVisualInputs();
-  const resolvedBottomNavVisualInputs =
-    bottomNavVisualInputs ?? startupBottomNavVisualInputs;
+  const resolvedBottomNavVisualInputs = bottomNavVisualInputs ?? startupBottomNavVisualInputs;
 
   if (!isFocused) {
     return null;
@@ -220,5 +219,4 @@ export const NavSilhouetteHost = React.memo(function NavSilhouetteHost({
   ) : (
     content
   );
-},
-areNavSilhouetteHostPropsEqual);
+}, areNavSilhouetteHostPropsEqual);

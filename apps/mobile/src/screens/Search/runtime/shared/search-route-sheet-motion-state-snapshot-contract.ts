@@ -20,7 +20,6 @@ export type SearchRouteSheetMotionStateSnapshot = {
   stateEntry: SearchRouteSheetMotionStateEntry | null;
 };
 
-export const EMPTY_SEARCH_ROUTE_SHEET_MOTION_STATE_SNAPSHOT: SearchRouteSheetMotionStateSnapshot =
-  {
-    stateEntry: null,
-  };
+export const EMPTY_SEARCH_ROUTE_SHEET_MOTION_STATE_SNAPSHOT: SearchRouteSheetMotionStateSnapshot = {
+  stateEntry: null,
+};

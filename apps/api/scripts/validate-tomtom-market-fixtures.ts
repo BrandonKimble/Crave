@@ -250,7 +250,9 @@ async function runBoundaryRestaurantLocationFilterFixture(): Promise<FixtureChec
     );
   }
 
-  const restaurantRows = await prisma.$queryRaw<Array<{ restaurantId: string }>>(
+  const restaurantRows = await prisma.$queryRaw<
+    Array<{ restaurantId: string }>
+  >(
     Prisma.sql`
       SELECT entity_id AS "restaurantId"
       FROM core_entities

@@ -156,11 +156,7 @@ export class PollsService {
     return {
       marketKey,
       marketName,
-      marketStatus: (resolvedMarket?.status ?? 'resolved') as
-        | 'resolved'
-        | 'multi_market'
-        | 'no_market'
-        | 'error',
+      marketStatus: resolvedMarket?.status ?? 'resolved',
       candidateLocalityName: null,
       candidateBoundaryProvider: null,
       candidateBoundaryId: null,
@@ -477,9 +473,8 @@ export class PollsService {
           })
           .trim()
       : '';
-    const moderationDecision = await this.moderation.moderateText(
-      sanitizedLabel,
-    );
+    const moderationDecision =
+      await this.moderation.moderateText(sanitizedLabel);
     if (!moderationDecision.allowed) {
       throw new BadRequestException(
         `Option rejected by moderation: ${moderationDecision.reason}`,
@@ -966,7 +961,7 @@ export class PollsService {
       const rawKey =
         poll.marketKey ?? poll.topic?.marketKey ?? fallbackMarketKey ?? null;
       const key = typeof rawKey === 'string' ? rawKey.trim().toLowerCase() : '';
-      const marketName = key ? labelByKey.get(key) ?? null : null;
+      const marketName = key ? (labelByKey.get(key) ?? null) : null;
       return {
         ...poll,
         marketName,

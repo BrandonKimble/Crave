@@ -54,8 +54,7 @@ export const useSearchSuggestionPresentationPlaneRuntime = ({
       setSearchTransitionVariant: transitionRuntime.setSearchTransitionVariant,
       shouldDriveSuggestionLayout: transitionRuntime.shouldDriveSuggestionLayout,
       shouldShowSuggestionBackground: displayRuntime.shouldShowSuggestionBackground,
-      liveShouldRenderAutocompleteSection:
-        displayRuntime.liveShouldRenderAutocompleteSection,
+      liveShouldRenderAutocompleteSection: displayRuntime.liveShouldRenderAutocompleteSection,
       liveShouldRenderRecentSection: displayRuntime.liveShouldRenderRecentSection,
       resetSubmitTransitionHold: holdStateRuntime.resetSubmitTransitionHold,
       resetSubmitTransitionHoldIfQueryChanged:
@@ -72,11 +71,9 @@ export const useSearchSuggestionPresentationPlaneRuntime = ({
       isSuggestionPanelVisible: transitionRuntime.isSuggestionPanelVisible,
       shouldDriveSuggestionLayout: transitionRuntime.shouldDriveSuggestionLayout,
       shouldShowSuggestionBackground: displayRuntime.shouldShowSuggestionBackground,
-      liveShouldRenderAutocompleteSection:
-        displayRuntime.liveShouldRenderAutocompleteSection,
+      liveShouldRenderAutocompleteSection: displayRuntime.liveShouldRenderAutocompleteSection,
       liveShouldRenderRecentSection: displayRuntime.liveShouldRenderRecentSection,
-      shouldShowAutocompleteSpinnerInBar:
-        displayRuntime.shouldShowAutocompleteSpinnerInBar,
+      shouldShowAutocompleteSpinnerInBar: displayRuntime.shouldShowAutocompleteSpinnerInBar,
       submitTransitionHoldRef: holdStateRuntime.submitTransitionHoldRef,
       shouldFreezeSuggestionDisplayForSearchSurfaceRedraw:
         args.shouldFreezeSuggestionDisplayForSearchSurfaceRedraw,
@@ -96,15 +93,12 @@ export const useSearchSuggestionPresentationPlaneRuntime = ({
     shouldShowSuggestionBackground: heldDisplayRuntime.shouldShowSuggestionBackground,
     shouldShowSuggestionSurface: heldDisplayRuntime.shouldShowSuggestionSurface,
     shouldRenderSuggestionPanel: heldDisplayRuntime.shouldRenderSuggestionPanel,
-    shouldRenderAutocompleteSection:
-      heldDisplayRuntime.shouldRenderAutocompleteSection,
+    shouldRenderAutocompleteSection: heldDisplayRuntime.shouldRenderAutocompleteSection,
     shouldRenderRecentSection: heldDisplayRuntime.shouldRenderRecentSection,
-    shouldShowAutocompleteSpinnerInBar:
-      heldDisplayRuntime.shouldShowAutocompleteSpinnerInBar,
+    shouldShowAutocompleteSpinnerInBar: heldDisplayRuntime.shouldShowAutocompleteSpinnerInBar,
     suggestionDisplaySuggestions: heldDisplayRuntime.suggestionDisplaySuggestions,
     recentSearchesDisplay: heldDisplayRuntime.recentSearchesDisplay,
-    recentlyViewedRestaurantsDisplay:
-      heldDisplayRuntime.recentlyViewedRestaurantsDisplay,
+    recentlyViewedRestaurantsDisplay: heldDisplayRuntime.recentlyViewedRestaurantsDisplay,
     recentlyViewedFoodsDisplay: heldDisplayRuntime.recentlyViewedFoodsDisplay,
   };
 };

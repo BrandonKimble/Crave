@@ -33,8 +33,7 @@ const shouldPreferPressedCoordinateForProfileOpen = ({
 }: {
   source: SearchProfileSource;
   pressedCoordinate: Coordinate | null;
-}): boolean =>
-  source === 'results_sheet' && Boolean(pressedCoordinate);
+}): boolean => source === 'results_sheet' && Boolean(pressedCoordinate);
 
 export type ProfileOpenPresentationPlan = {
   dismissBehavior: 'restore' | 'clear';
@@ -58,11 +57,7 @@ export const resolveProfileOpenPresentationPlan = ({
   pressedCoordinate: Coordinate | null;
   actionModel: Omit<ProfileOpenActionModel, 'queryLabel' | 'transitionSnapshotCapture'>;
 }): ProfileOpenPresentationPlan | null => {
-  const {
-    restaurantOnlyId,
-    restaurantOnlySearchId,
-    restaurantCameraActionModel,
-  } = actionModel;
+  const { restaurantOnlyId, restaurantOnlySearchId, restaurantCameraActionModel } = actionModel;
   const shouldClearSearchOnDismiss = resolveShouldClearSearchOnProfileDismiss({
     restaurantId: restaurant.restaurantId,
     source,

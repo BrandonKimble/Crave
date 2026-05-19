@@ -5,5 +5,5 @@ export const useSearchRootSearchSceneProfileSurfaceTransactionKeyRuntime = ({
 }: {
   profilePresentationControlLane: SearchRootProfilePresentationControlLane;
 }): string | null =>
-  profilePresentationControlLane.profileOwner.profileViewState.presentation
-    .preparedSnapshotKey ?? null;
+  profilePresentationControlLane.profileOwner.profileViewState.presentation.preparedSnapshotKey ??
+  null;

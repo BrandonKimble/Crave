@@ -110,27 +110,39 @@ type ExecuteStructuredSearchAttemptOptions = {
   debugLabel: 'structured' | 'bestHere' | 'pagination';
   timingLabel: 'runSearch:structured' | 'runSearch:bestHere' | 'runSearch:pagination';
   responsePhaseLabel?: string;
-  startLifecycle: (response: SearchResponse, cacheStatus: SearchRequestCacheStatus | null) => boolean;
+  startLifecycle: (
+    response: SearchResponse,
+    cacheStatus: SearchRequestCacheStatus | null
+  ) => boolean;
 };
 
 type ExecuteEntityStructuredSearchAttemptOptions = {
   payload: StructuredSearchRequest;
   requestId: number;
-  startLifecycle: (response: SearchResponse, cacheStatus: SearchRequestCacheStatus | null) => boolean;
+  startLifecycle: (
+    response: SearchResponse,
+    cacheStatus: SearchRequestCacheStatus | null
+  ) => boolean;
 };
 
 type ExecuteShortcutStructuredSearchAttemptOptions = {
   payload: StructuredSearchRequest;
   requestId: number;
   append: boolean;
-  startLifecycle: (response: SearchResponse, cacheStatus: SearchRequestCacheStatus | null) => boolean;
+  startLifecycle: (
+    response: SearchResponse,
+    cacheStatus: SearchRequestCacheStatus | null
+  ) => boolean;
 };
 
 type ExecuteNaturalSearchAttemptOptions = {
   payload: NaturalSearchRequest;
   requestId: number;
   responsePhaseLabel: string;
-  startLifecycle: (response: SearchResponse, cacheStatus: SearchRequestCacheStatus | null) => boolean;
+  startLifecycle: (
+    response: SearchResponse,
+    cacheStatus: SearchRequestCacheStatus | null
+  ) => boolean;
 };
 
 type UseSearchSubmitExecutionOwnerArgs = {

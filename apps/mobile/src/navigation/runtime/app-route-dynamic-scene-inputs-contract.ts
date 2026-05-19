@@ -71,5 +71,4 @@ export type AppRouteSceneSheetSessionInputState = {
 export const areAppRouteSceneSheetSessionInputStatesEqual = (
   left: AppRouteSceneSheetSessionInputState,
   right: AppRouteSceneSheetSessionInputState
-): boolean =>
-  left.isDockedPollsDismissed === right.isDockedPollsDismissed;
+): boolean => left.isDockedPollsDismissed === right.isDockedPollsDismissed;

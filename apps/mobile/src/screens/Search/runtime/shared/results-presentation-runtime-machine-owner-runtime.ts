@@ -22,9 +22,7 @@ export type ResultsPresentationRuntimeMachineOwnerRuntime = {
   ) => AppliedResultsPresentationRuntimeAttempt | null;
   applyTransaction: (
     resolveAttempts: Array<
-      (
-        draft: ResultsPresentationTransportState
-      ) => ResultsPresentationNamedTransportAttempt
+      (draft: ResultsPresentationTransportState) => ResultsPresentationNamedTransportAttempt
     >
   ) => AppliedResultsPresentationRuntimeAttempt[] | null;
   applyAttempt: (
@@ -41,8 +39,7 @@ export const createResultsPresentationRuntimeMachineOwnerRuntime = ({
   publish: (payload: ResultsPresentationRuntimeState) => void;
   log?: ResultsPresentationLog;
 }): ResultsPresentationRuntimeMachineOwnerRuntime => {
-  let state: ResultsPresentationTransportState =
-    resolveIdleResultsPresentationTransportState();
+  let state: ResultsPresentationTransportState = resolveIdleResultsPresentationTransportState();
 
   const applyResolvedAttempt = (
     attempt: AppliedResultsPresentationRuntimeAttempt

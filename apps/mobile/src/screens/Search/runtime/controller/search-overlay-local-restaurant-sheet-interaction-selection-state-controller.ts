@@ -49,9 +49,7 @@ export class SearchOverlayLocalRestaurantSheetInteractionSelectionStateControlle
   }) {
     this.restaurantInteractionSnapshot =
       overlayLocalRestaurantInteractionHostAuthority.getSnapshot();
-    this.snapshot = createInteractionSelectionSnapshot(
-      this.restaurantInteractionSnapshot
-    );
+    this.snapshot = createInteractionSelectionSnapshot(this.restaurantInteractionSnapshot);
     this.outputAuthority = {
       subscribe: (listener) => this.subscribe(listener),
       getSnapshot: () => this.snapshot,
@@ -89,9 +87,7 @@ export class SearchOverlayLocalRestaurantSheetInteractionSelectionStateControlle
   }
 
   private recompute(): void {
-    const nextSnapshot = createInteractionSelectionSnapshot(
-      this.restaurantInteractionSnapshot
-    );
+    const nextSnapshot = createInteractionSelectionSnapshot(this.restaurantInteractionSnapshot);
 
     if (areInteractionSelectionSnapshotsEqual(this.snapshot, nextSnapshot)) {
       return;
@@ -104,12 +100,11 @@ export class SearchOverlayLocalRestaurantSheetInteractionSelectionStateControlle
   }
 }
 
-export const createSearchOverlayLocalRestaurantSheetInteractionSelectionStateController =
-  ({
+export const createSearchOverlayLocalRestaurantSheetInteractionSelectionStateController = ({
+  overlayLocalRestaurantInteractionHostAuthority,
+}: ConstructorParameters<
+  typeof SearchOverlayLocalRestaurantSheetInteractionSelectionStateController
+>[0]): SearchOverlayLocalRestaurantSheetInteractionSelectionStateController =>
+  new SearchOverlayLocalRestaurantSheetInteractionSelectionStateController({
     overlayLocalRestaurantInteractionHostAuthority,
-  }: ConstructorParameters<
-    typeof SearchOverlayLocalRestaurantSheetInteractionSelectionStateController
-  >[0]): SearchOverlayLocalRestaurantSheetInteractionSelectionStateController =>
-    new SearchOverlayLocalRestaurantSheetInteractionSelectionStateController({
-      overlayLocalRestaurantInteractionHostAuthority,
-    });
+  });

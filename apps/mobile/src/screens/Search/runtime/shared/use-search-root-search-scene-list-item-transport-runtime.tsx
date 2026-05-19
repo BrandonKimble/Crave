@@ -13,10 +13,7 @@ export const useSearchRootSearchSceneListItemTransportRuntime = () => {
   }, []);
 
   const overrideItemLayout = React.useCallback(
-    (
-      layout: { size?: number; span?: number },
-      item: ResultsListItem
-    ) => {
+    (layout: { size?: number; span?: number }, item: ResultsListItem) => {
       if (item && typeof item === 'object' && 'kind' in item) {
         layout.size =
           item.kind === 'section' ? 44 : item.kind === 'mounted_restaurant_card' ? 270 : 88;

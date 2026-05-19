@@ -44,7 +44,9 @@ export const useSearchRuntimeWorkCoordinationRuntime = ({
     runtimeWorkSchedulerRef.current = new RuntimeWorkScheduler(frameBudgetGovernorRef.current);
   }
 
-  const searchSurfaceRedrawCoordinatorRef = React.useRef<SearchSurfaceRedrawCoordinator | null>(null);
+  const searchSurfaceRedrawCoordinatorRef = React.useRef<SearchSurfaceRedrawCoordinator | null>(
+    null
+  );
   if (!searchSurfaceRedrawCoordinatorRef.current) {
     searchSurfaceRedrawCoordinatorRef.current = createSearchSurfaceRedrawCoordinator();
   }
@@ -115,8 +117,7 @@ export const useSearchRuntimeWorkCoordinationRuntime = ({
         runtimeWorkSchedulerRef as React.MutableRefObject<RuntimeWorkScheduler>,
       searchSurfaceRedrawCoordinatorRef:
         searchSurfaceRedrawCoordinatorRef as React.MutableRefObject<SearchSurfaceRedrawCoordinator>,
-      phaseBMaterializerRef:
-        phaseBMaterializerRef as React.MutableRefObject<PhaseBMaterializer>,
+      phaseBMaterializerRef: phaseBMaterializerRef as React.MutableRefObject<PhaseBMaterializer>,
     }),
     [phaseBMaterializerRef, searchSurfaceRedrawCoordinatorRef, runtimeWorkSchedulerRef]
   );

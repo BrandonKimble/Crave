@@ -261,7 +261,12 @@ const ProfileScreen: React.FC = () => {
   const renderPreviewRow = React.useCallback(
     (item: FavoriteListSummary['previewItems'][number]) => (
       <View key={item.itemId} style={styles.previewRow}>
-        <View style={[styles.previewDot, { backgroundColor: getCraveScoreColorFromScore(item.craveScore) }]} />
+        <View
+          style={[
+            styles.previewDot,
+            { backgroundColor: getCraveScoreColorFromScore(item.craveScore) },
+          ]}
+        />
         <Text variant="caption" numberOfLines={1} style={styles.previewText}>
           {item.label}
           {item.subLabel ? ` • ${item.subLabel}` : ''}

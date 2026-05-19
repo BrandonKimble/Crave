@@ -35,17 +35,9 @@ export type AppRouteSceneSecondaryListTransportPublication = {
 
 export type AppRouteMountedSceneBodyKey = 'bookmarks' | 'polls' | 'profile' | 'saveList' | 'search';
 
-export type AppRouteMountedSceneChromeKey =
-  | 'bookmarks'
-  | 'polls'
-  | 'profile'
-  | 'saveList';
+export type AppRouteMountedSceneChromeKey = 'bookmarks' | 'polls' | 'profile' | 'saveList';
 
-export type AppRouteMountedSceneChromeSurface =
-  | 'underlay'
-  | 'background'
-  | 'header'
-  | 'overlay';
+export type AppRouteMountedSceneChromeSurface = 'underlay' | 'background' | 'header' | 'overlay';
 
 export type AppRouteInlineSceneChromePublication = {
   surfaceKind?: 'inline';
@@ -232,10 +224,7 @@ export const areAppRouteSceneChromePublicationsEqual = (
     left.surfaceKind === 'mounted' &&
     right.surfaceKind === 'mounted' &&
     left.mountedChromeKey === right.mountedChromeKey &&
-    areAppRouteMountedSceneChromeSurfacesEqual(
-      left.excludedSurfaces,
-      right.excludedSurfaces
-    )) ||
+    areAppRouteMountedSceneChromeSurfacesEqual(left.excludedSurfaces, right.excludedSurfaces)) ||
   (left != null &&
     right != null &&
     isInlineAppRouteSceneChromePublication(left) &&
@@ -254,8 +243,7 @@ export const areAppRouteSceneBodyAdmissionPoliciesEqual = (
     (right?.retainListBodyDuringTransition ?? false) &&
     (left?.retainMountedBodyDuringTransition ?? false) ===
       (right?.retainMountedBodyDuringTransition ?? false) &&
-    (left?.prewarmRetainedMountedBody ?? false) ===
-      (right?.prewarmRetainedMountedBody ?? false) &&
+    (left?.prewarmRetainedMountedBody ?? false) === (right?.prewarmRetainedMountedBody ?? false) &&
     (left?.delayFirstDataAdmission ?? false) === (right?.delayFirstDataAdmission ?? false) &&
     (left?.delayDataAdmissionOnActivation ?? false) ===
       (right?.delayDataAdmissionOnActivation ?? false) &&

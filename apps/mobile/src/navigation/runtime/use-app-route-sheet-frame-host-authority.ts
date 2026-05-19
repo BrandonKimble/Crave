@@ -99,9 +99,8 @@ export const useAppRouteSheetFrameHostAuthority = ({
   const initialChromeVisualState = resolveChromeVisualState(
     initialNativeAdapterSnapshotRef.current.chromeVisualState
   );
-  const [chromeVisualStateSource, setChromeVisualStateSource] = React.useState(
-    initialChromeVisualState
-  );
+  const [chromeVisualStateSource, setChromeVisualStateSource] =
+    React.useState(initialChromeVisualState);
 
   const sheetExclusionModeValue = useSharedValue<AppRouteNavSilhouetteSheetExclusionModeValue>(
     initialChromeVisualState.navSilhouetteSheetExclusionModeValue.value
@@ -113,9 +112,7 @@ export const useAppRouteSheetFrameHostAuthority = ({
     initialChromeVisualState.bottomNavHiddenTranslateY
   );
   const navTranslateYValue = useSharedValue(initialChromeVisualState.navTranslateY.value);
-  const navBarCutoutIsHidingValue = useSharedValue(
-    initialChromeVisualState.navBarCutoutIsHiding
-  );
+  const navBarCutoutIsHidingValue = useSharedValue(initialChromeVisualState.navBarCutoutIsHiding);
   const navBarCutoutProgressValue = useSharedValue(
     initialChromeVisualState.navBarCutoutProgress.value
   );
@@ -173,8 +170,7 @@ export const useAppRouteSheetFrameHostAuthority = ({
     };
     const unregisterSharedValues =
       nativeAdapterAuthority.registerSharedValues(nativeSharedValueTargets);
-    const unsubscribeNativeAdapter =
-      nativeAdapterAuthority.subscribe(syncChromeVisualStateSource);
+    const unsubscribeNativeAdapter = nativeAdapterAuthority.subscribe(syncChromeVisualStateSource);
     syncChromeVisualStateSource();
     return () => {
       unsubscribeNativeAdapter();
@@ -208,10 +204,7 @@ export const useAppRouteSheetFrameHostAuthority = ({
     (progress) => {
       navBarCutoutHidingProgressValue.value = progress;
     },
-    [
-      chromeVisualStateSource.navBarCutoutHidingProgress,
-      navBarCutoutHidingProgressValue,
-    ]
+    [chromeVisualStateSource.navBarCutoutHidingProgress, navBarCutoutHidingProgressValue]
   );
   const collapseProgress = useDerivedValue(() => {
     const range = collapsedSnapPointValue.value - middleSnapPointValue.value;

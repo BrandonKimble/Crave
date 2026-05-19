@@ -85,7 +85,6 @@ export type SearchSurfaceSheetClipMode =
   | 'staticPersistent'
   | 'animatedSearchTransition';
 
-
 export type SearchSurfaceVisualPolicySnapshot = {
   transactionId: string | null;
   phase: 'idle' | 'results_redrawing' | 'results_dismissing';
@@ -174,9 +173,7 @@ export const selectSearchSurfaceVisualPolicy = (
   if (redrawTransaction != null) {
     const readiness = redrawTransaction.readiness;
     const canCommitReveal =
-      readiness.cardsReady &&
-      readiness.nativeMarkerFrameReady &&
-      readiness.sheetReady;
+      readiness.cardsReady && readiness.nativeMarkerFrameReady && readiness.sheetReady;
     return {
       transactionId: redrawTransaction.id,
       phase: 'results_redrawing',
@@ -413,8 +410,8 @@ const arePageBundlesEqual = (
   (left.kind === 'poll' && right.kind === 'poll'
     ? arePollBundlesEqual(left, right)
     : left.kind === 'results' && right.kind === 'results'
-    ? areResultsBundlesEqual(left, right)
-    : false);
+      ? areResultsBundlesEqual(left, right)
+      : false);
 
 const areDismissTransactionsEqual = (
   left: SearchSurfaceDismissTransaction | null,
@@ -451,10 +448,7 @@ const areSearchSurfaceRuntimeSnapshotsEqual = (
   arePollBundlesEqual(left.pollBundle, right.pollBundle) &&
   areResultsBundlesEqual(left.heldBundle, right.heldBundle) &&
   areRedrawTransactionsEqual(left.redrawTransaction, right.redrawTransaction) &&
-  areRedrawTransactionsEqual(
-    left.completedRedrawTransaction,
-    right.completedRedrawTransaction
-  ) &&
+  areRedrawTransactionsEqual(left.completedRedrawTransaction, right.completedRedrawTransaction) &&
   areDismissTransactionsEqual(left.dismissTransaction, right.dismissTransaction) &&
   areNavSilhouetteRuntimeProjectionsEqual(left.navSilhouette, right.navSilhouette);
 
@@ -612,8 +606,7 @@ export class SearchSurfaceRuntime {
 
   public markRedrawNativeMarkerFrameReady = (
     transactionId: string | null | undefined,
-    nativeMarkerFrameBatch: SearchSurfaceRedrawTransaction['readiness']['nativeMarkerFrameBatch'] =
-      null
+    nativeMarkerFrameBatch: SearchSurfaceRedrawTransaction['readiness']['nativeMarkerFrameBatch'] = null
   ): void => {
     this.patchActiveRedrawTransaction(transactionId, {
       nativeMarkerFrameReady: true,
@@ -657,7 +650,7 @@ export class SearchSurfaceRuntime {
           transactionId: id,
           coverState: 'hidden',
           bodyBundle: this.latestResultsBodyBundle,
-      })),
+        })),
       transactionId: currentResultsBundle?.transactionId ?? id,
       bodyBundle: currentResultsBundle?.bodyBundle ?? this.latestResultsBodyBundle,
       coverState: 'hidden',
@@ -711,7 +704,10 @@ export class SearchSurfaceRuntime {
       this.pendingDismissMotionArm?.id ??
       `search-surface-dismiss:${++this.transactionSeq}`;
     this.pendingDismissMotionArm = null;
-    if (activeDismissTransaction != null && this.matchesTransaction(activeDismissTransaction.id, id)) {
+    if (
+      activeDismissTransaction != null &&
+      this.matchesTransaction(activeDismissTransaction.id, id)
+    ) {
       this.publishDismissTransaction({
         ...activeDismissTransaction,
         bottomBoundaryReached: true,
@@ -758,9 +754,9 @@ export class SearchSurfaceRuntime {
     const patch =
       part === 'header'
         ? { pollHeaderReady: true }
-      : part === 'body'
-        ? { pollBodyReady: true }
-        : { pollHostReady: true };
+        : part === 'body'
+          ? { pollBodyReady: true }
+          : { pollHostReady: true };
     this.logPollPagePartReadyContract({
       accepted,
       activeTransactionId: dismissTransaction.id,
@@ -824,10 +820,10 @@ export class SearchSurfaceRuntime {
       patch.cardsReady === true
         ? 'cards'
         : patch.nativeMarkerFrameReady === true
-        ? 'native_marker_frame'
-        : patch.sheetReady === true
-        ? 'sheet'
-        : null;
+          ? 'native_marker_frame'
+          : patch.sheetReady === true
+            ? 'sheet'
+            : null;
     const redrawTransaction = this.snapshot.redrawTransaction;
     if (
       redrawTransaction == null ||
@@ -925,8 +921,7 @@ export class SearchSurfaceRuntime {
       activeBundleKind: activeBundle.kind,
       activeResultsTransactionId:
         activeBundle.kind === 'results' ? activeBundle.transactionId : null,
-      activeResultsCoverState:
-        activeBundle.kind === 'results' ? activeBundle.coverState : null,
+      activeResultsCoverState: activeBundle.kind === 'results' ? activeBundle.coverState : null,
     });
     this.publish({
       ...this.snapshot,

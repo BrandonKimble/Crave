@@ -55,8 +55,7 @@ export const useProfilePreparedPresentationEntryRuntime = ({
           if (transactionExecution.getProfileDismissBehavior() === 'clear') {
             promotePreparedProfileCloseSnapshotToClearDismiss({
               transition,
-              shouldClearSearchOnClose:
-                transactionExecution.getProfileShouldClearSearchOnDismiss(),
+              shouldClearSearchOnClose: transactionExecution.getProfileShouldClearSearchOnDismiss(),
             });
           }
           return;

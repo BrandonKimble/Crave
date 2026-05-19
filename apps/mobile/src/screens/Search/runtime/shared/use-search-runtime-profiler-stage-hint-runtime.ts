@@ -52,10 +52,7 @@ export const useSearchRuntimeProfilerStageHintRuntime = ({
       return 'results_list_materialization';
     }
     return 'post_visual';
-  }, [
-    isSearchRequestLoadingRef,
-    resultsPresentationAuthority,
-  ]);
+  }, [isSearchRequestLoadingRef, resultsPresentationAuthority]);
 
   return {
     profilerRuntimeState,

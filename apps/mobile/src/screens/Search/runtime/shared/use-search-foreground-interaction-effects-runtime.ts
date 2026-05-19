@@ -35,10 +35,7 @@ type UseSearchForegroundInteractionRenderRegistrationRuntimeArgs = {
 export const useSearchForegroundInteractionRenderRegistrationRuntime = ({
   effectsRuntimeArgs,
 }: UseSearchForegroundInteractionRenderRegistrationRuntimeArgs): void => {
-  const {
-    registerPendingMutationWorkCancel,
-    cancelToggleInteraction,
-  } = effectsRuntimeArgs;
+  const { registerPendingMutationWorkCancel, cancelToggleInteraction } = effectsRuntimeArgs;
 
   registerPendingMutationWorkCancel(() => {
     cancelToggleInteraction();

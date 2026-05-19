@@ -83,7 +83,8 @@ export const useResultsPresentationCloseSearchCleanupRuntime = <Suggestion>({
       if (
         activeCleanupTokenRef.current !== cleanupToken ||
         currentState.activeOperationId !== scheduledOperationId ||
-        currentSurfaceSnapshot.searchSurfaceResultsTransactionKey !== scheduledSurfaceResultsTransactionKey
+        currentSurfaceSnapshot.searchSurfaceResultsTransactionKey !==
+          scheduledSurfaceResultsTransactionKey
       ) {
         setPendingCloseIntentId(null);
         return;

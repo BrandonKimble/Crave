@@ -31,56 +31,52 @@ export const useSearchRootSearchSceneSurfacePanelStateRuntime = ({
       searchResultsRuntimeState.resultsHydrationCandidateKey != null ||
       searchResultsRuntimeState.resultsDishCount > 0 ||
       searchResultsRuntimeState.resultsRestaurantCount > 0);
-  const activeTabRenderableRowCount =
-    shouldSuppressResultsSurface
-      ? 0
-      : searchResultsRuntimeState.activeTab === 'restaurants'
+  const activeTabRenderableRowCount = shouldSuppressResultsSurface
+    ? 0
+    : searchResultsRuntimeState.activeTab === 'restaurants'
       ? searchResultsRuntimeState.resultsRestaurantCount
       : searchResultsRuntimeState.resultsDishCount;
 
-  return React.useMemo(
-    () => {
-      const panelState = resolveResultsPresentationPanelPolicyFacts({
-        renderPolicy: searchPresentationRuntimeState.renderPolicy,
-        allowsInteractionLoadingState: shouldSuppressResultsSurface
-          ? false
-          : allowsInteractionLoadingState,
-        hasRenderableRows: activeTabRenderableRowCount > 0,
-        hasResolvedResults,
-        isSearchLoading: searchResultsRuntimeState.isSearchLoading,
-        shouldUsePlaceholderRows: false,
-        freezeClassification: searchHydrationRuntimeState.chromeFreezeClassification,
-      });
-      if (!shouldSuppressResultsSurface) {
-        return panelState;
-      }
-      return {
-        ...panelState,
-        shouldShowInteractionLoadingState: false,
-        shouldShowInitialLoadingState: false,
-        shouldShowLoadingState: false,
-        shouldFreezeCoveredResultsRender: false,
-        shouldShowResultsCards: false,
-        surfaceMode: 'none' as const,
-        shouldShowResultsSurface: false,
-        surfaceActive: false,
-        shouldUseInteractionSurface: false,
-        shouldHideScrollHeaderForSurface: false,
-        shouldRenderWhiteWash: false,
-      };
-    },
-    [
-      allowsInteractionLoadingState,
-      activeTabRenderableRowCount,
+  return React.useMemo(() => {
+    const panelState = resolveResultsPresentationPanelPolicyFacts({
+      renderPolicy: searchPresentationRuntimeState.renderPolicy,
+      allowsInteractionLoadingState: shouldSuppressResultsSurface
+        ? false
+        : allowsInteractionLoadingState,
+      hasRenderableRows: activeTabRenderableRowCount > 0,
       hasResolvedResults,
-      shouldSuppressResultsSurface,
-      searchHydrationRuntimeState.chromeFreezeClassification,
-      searchPresentationRuntimeState.renderPolicy,
-      searchResultsRuntimeState.activeTab,
-      searchResultsRuntimeState.resultsDishCount,
-      searchResultsRuntimeState.resultsHydrationCandidateKey,
-      searchResultsRuntimeState.resultsRestaurantCount,
-      searchResultsRuntimeState.isSearchLoading,
-    ]
-  );
+      isSearchLoading: searchResultsRuntimeState.isSearchLoading,
+      shouldUsePlaceholderRows: false,
+      freezeClassification: searchHydrationRuntimeState.chromeFreezeClassification,
+    });
+    if (!shouldSuppressResultsSurface) {
+      return panelState;
+    }
+    return {
+      ...panelState,
+      shouldShowInteractionLoadingState: false,
+      shouldShowInitialLoadingState: false,
+      shouldShowLoadingState: false,
+      shouldFreezeCoveredResultsRender: false,
+      shouldShowResultsCards: false,
+      surfaceMode: 'none' as const,
+      shouldShowResultsSurface: false,
+      surfaceActive: false,
+      shouldUseInteractionSurface: false,
+      shouldHideScrollHeaderForSurface: false,
+      shouldRenderWhiteWash: false,
+    };
+  }, [
+    allowsInteractionLoadingState,
+    activeTabRenderableRowCount,
+    hasResolvedResults,
+    shouldSuppressResultsSurface,
+    searchHydrationRuntimeState.chromeFreezeClassification,
+    searchPresentationRuntimeState.renderPolicy,
+    searchResultsRuntimeState.activeTab,
+    searchResultsRuntimeState.resultsDishCount,
+    searchResultsRuntimeState.resultsHydrationCandidateKey,
+    searchResultsRuntimeState.resultsRestaurantCount,
+    searchResultsRuntimeState.isSearchLoading,
+  ]);
 };

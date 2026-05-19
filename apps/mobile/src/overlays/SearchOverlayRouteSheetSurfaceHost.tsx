@@ -97,19 +97,19 @@ const markRouteSheetHostRuntimePropDiffs = (
     left.sceneStackSurfaceAuthority,
     right.sceneStackSurfaceAuthority
   );
-	  markRouteSheetHostRuntimePropDiff(
-	    owner,
-	    'routeSceneDisplayTargetRegistry',
-	    left.routeSceneDisplayTargetRegistry,
-	    right.routeSceneDisplayTargetRegistry
-	  );
-	  markRouteSheetHostRuntimePropDiff(
-	    owner,
-	    'routeHostVisualRuntimeAuthority',
-	    left.routeHostVisualRuntimeAuthority,
-	    right.routeHostVisualRuntimeAuthority
-	  );
-	};
+  markRouteSheetHostRuntimePropDiff(
+    owner,
+    'routeSceneDisplayTargetRegistry',
+    left.routeSceneDisplayTargetRegistry,
+    right.routeSceneDisplayTargetRegistry
+  );
+  markRouteSheetHostRuntimePropDiff(
+    owner,
+    'routeHostVisualRuntimeAuthority',
+    left.routeHostVisualRuntimeAuthority,
+    right.routeHostVisualRuntimeAuthority
+  );
+};
 
 const SearchOverlayRouteSheetFrameSurfaceHost = React.memo(
   ({ routeSheetHostRuntime }: SearchOverlayRouteSheetSurfaceHostProps) => {
@@ -124,18 +124,13 @@ const SearchOverlayRouteSheetFrameSurfaceHost = React.memo(
           sceneStackSurfaceAuthority={routeSheetHostRuntime.sceneStackSurfaceAuthority}
           routeSceneDisplayTargetRegistry={routeSheetHostRuntime.routeSceneDisplayTargetRegistry}
           routeSheetSurfaceBodyAuthority={routeSheetHostRuntime.routeSheetSurfaceBodyAuthority}
-          routeSheetRuntimeConfigAuthority={
-            routeSheetHostRuntime.routeSheetRuntimeConfigAuthority
-          }
+          routeSheetRuntimeConfigAuthority={routeSheetHostRuntime.routeSheetRuntimeConfigAuthority}
         />
       </SearchRouteSheetFrameHost>
     );
 
     const profiledFrameSurface = onProfilerRender ? (
-      <React.Profiler
-        id="SearchOverlayRouteSheetFrameSurfaceHost"
-        onRender={onProfilerRender}
-      >
+      <React.Profiler id="SearchOverlayRouteSheetFrameSurfaceHost" onRender={onProfilerRender}>
         {frameSurface}
       </React.Profiler>
     ) : (
@@ -171,10 +166,7 @@ export const SearchOverlayRouteSheetSurfaceHost = React.memo(
       }),
       [routeSheetHostRuntime.searchInteractionRef]
     );
-    const surfaceSnapshot = useRouteAuthoritySelector<
-      AppRouteSheetHostSurfaceSnapshot,
-      boolean
-    >({
+    const surfaceSnapshot = useRouteAuthoritySelector<AppRouteSheetHostSurfaceSnapshot, boolean>({
       subscribe: React.useCallback(
         (listener: () => void) =>
           routeSheetHostRuntime.routeSheetSurfaceAuthority.subscribe(listener),

@@ -4,7 +4,9 @@ import type {
   RestaurantProfileSeed,
 } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 
-type RestaurantProfileLocation = NonNullable<NonNullable<RestaurantProfileSeed['locations']>[number]>;
+type RestaurantProfileLocation = NonNullable<
+  NonNullable<RestaurantProfileSeed['locations']>[number]
+>;
 
 const resolveRestaurantDisplayLocation = ({
   restaurant,
@@ -45,7 +47,8 @@ const resolveHydratedCraveScore = ({
   currentSnapshot: RestaurantPanelSnapshot;
   hydratedProfile: HydratedRestaurantProfile;
 }): number =>
-  typeof currentSnapshot.restaurant.craveScore === 'number' && currentSnapshot.restaurant.craveScore > 0
+  typeof currentSnapshot.restaurant.craveScore === 'number' &&
+  currentSnapshot.restaurant.craveScore > 0
     ? currentSnapshot.restaurant.craveScore
     : hydratedProfile.restaurant.craveScore;
 
@@ -64,7 +67,7 @@ export const createSeededRestaurantPanelSnapshot = ({
 }): RestaurantPanelSnapshot => {
   const restaurantId = restaurant.restaurantId;
   const isSameRestaurant = currentSnapshot?.restaurant.restaurantId === restaurantId;
-  const existingDishes = isSameRestaurant ? currentSnapshot?.dishes ?? [] : [];
+  const existingDishes = isSameRestaurant ? (currentSnapshot?.dishes ?? []) : [];
   const nextDishes = cachedProfile?.dishes ?? existingDishes;
   const preferredLocationId =
     selectedLocationId ?? currentSnapshot?.restaurant.displayLocation?.locationId ?? null;
@@ -89,7 +92,7 @@ export const createSeededRestaurantPanelSnapshot = ({
     restaurant: seededRestaurant,
     dishes: nextDishes,
     queryLabel,
-    isFavorite: isSameRestaurant ? currentSnapshot?.isFavorite ?? false : false,
+    isFavorite: isSameRestaurant ? (currentSnapshot?.isFavorite ?? false) : false,
     isLoading: shouldShowLoading,
   };
 };

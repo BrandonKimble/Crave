@@ -20,10 +20,7 @@ type UseSearchForegroundClearRuntimeArgs = Pick<
   | 'ignoreNextSearchBlurRef'
 >;
 
-type SearchForegroundClearRuntime = Pick<
-  SearchForegroundInteractionEditingHandlers,
-  'handleClear'
->;
+type SearchForegroundClearRuntime = Pick<SearchForegroundInteractionEditingHandlers, 'handleClear'>;
 
 export const useSearchForegroundClearRuntime = ({
   clearOwner,

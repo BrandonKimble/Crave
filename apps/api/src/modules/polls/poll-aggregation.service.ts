@@ -158,7 +158,9 @@ export class PollAggregationService {
       }
     }
 
-    const participantRows = await this.prisma.$queryRaw<Array<{ count: bigint }>>(
+    const participantRows = await this.prisma.$queryRaw<
+      Array<{ count: bigint }>
+    >(
       Prisma.sql`
         SELECT COUNT(DISTINCT user_id)::bigint AS count
         FROM poll_votes

@@ -78,14 +78,17 @@ export const useResultsPresentationRuntimeMachineOwner = ({
 
   return React.useMemo(
     () => ({
-      searchSurfaceResultsTransactionKey: surfaceTransactionRuntime.searchSurfaceResultsTransactionKey,
+      searchSurfaceResultsTransactionKey:
+        surfaceTransactionRuntime.searchSurfaceResultsTransactionKey,
       beginSearchThisAreaPresentationPending:
         surfaceTransactionRuntime.beginSearchThisAreaPresentationPending,
-      stageSearchSurfaceResultsTransaction: surfaceTransactionRuntime.stageSearchSurfaceResultsTransaction,
+      stageSearchSurfaceResultsTransaction:
+        surfaceTransactionRuntime.stageSearchSurfaceResultsTransaction,
       clearStagedSearchSurfaceResultsTransaction:
         surfaceTransactionRuntime.clearStagedSearchSurfaceResultsTransaction,
       handlePageOneResultsCommitted: surfaceTransactionRuntime.handlePageOneResultsCommitted,
-      commitSearchSurfaceResultsTransaction: machineCoreRuntime.commitSearchSurfaceResultsTransaction,
+      commitSearchSurfaceResultsTransaction:
+        machineCoreRuntime.commitSearchSurfaceResultsTransaction,
       cancelPresentationIntent: machineCoreRuntime.cancelPresentationIntent,
       handleToggleInteractionLifecycle: machineCoreRuntime.handleToggleInteractionLifecycle,
       handlePresentationIntentAbort: surfaceTransactionRuntime.handlePresentationIntentAbort,

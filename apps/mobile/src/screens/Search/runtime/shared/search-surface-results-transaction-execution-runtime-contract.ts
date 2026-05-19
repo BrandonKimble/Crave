@@ -19,16 +19,12 @@ export type UseResultsSurfaceTransactionShellApplicationRuntimeArgs = Pick<
 
 export type UseResultsSurfaceEnterTransactionExecutionRuntimeArgs = Pick<
   UseResultsSurfaceTransactionExecutionRuntimeArgs,
-  | 'resultsRuntimeOwner'
-  | 'prepareShortcutSheetTransition'
-  | 'setDisplayQueryOverride'
+  'resultsRuntimeOwner' | 'prepareShortcutSheetTransition' | 'setDisplayQueryOverride'
 >;
 
 export type UseResultsSurfaceExitTransactionExecutionRuntimeArgs = Pick<
   UseResultsSurfaceTransactionExecutionRuntimeArgs,
-  | 'resultsRuntimeOwner'
-  | 'getCurrentSheetSnap'
-  | 'beginCloseTransition'
+  'resultsRuntimeOwner' | 'getCurrentSheetSnap' | 'beginCloseTransition'
 >;
 
 export type ResultsSurfaceTransactionShellApplier = (

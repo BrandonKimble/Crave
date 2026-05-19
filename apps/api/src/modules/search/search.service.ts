@@ -689,7 +689,7 @@ export class SearchService {
                 : undefined,
             analysisMetadataSearchExplain:
               this.debugMode === 'verbose'
-                ? metadata.analysisMetadata?.searchExplain ?? null
+                ? (metadata.analysisMetadata?.searchExplain ?? null)
                 : undefined,
           });
         }
@@ -708,7 +708,7 @@ export class SearchService {
           dishes: strictPage.exec.dishes,
           restaurants: strictPage.exec.restaurants,
           sqlPreview: includeSqlPreview
-            ? strictPage.exec.sqlPreview ?? null
+            ? (strictPage.exec.sqlPreview ?? null)
             : null,
           metadata,
         };
@@ -1029,7 +1029,7 @@ export class SearchService {
               : undefined,
           analysisMetadataSearchExplain:
             this.debugMode === 'verbose'
-              ? metadata.analysisMetadata?.searchExplain ?? null
+              ? (metadata.analysisMetadata?.searchExplain ?? null)
               : undefined,
         });
       }
@@ -1047,7 +1047,9 @@ export class SearchService {
         plan,
         dishes,
         restaurants,
-        sqlPreview: includeSqlPreview ? relaxed.exec.sqlPreview ?? null : null,
+        sqlPreview: includeSqlPreview
+          ? (relaxed.exec.sqlPreview ?? null)
+          : null,
         metadata,
       };
       return this.applySearchResponseProfile(response, request);
@@ -1110,8 +1112,8 @@ export class SearchService {
       compactLocations.length > 0
         ? compactLocations
         : displayLocation
-        ? [displayLocation]
-        : [];
+          ? [displayLocation]
+          : [];
 
     return {
       ...restaurant,
@@ -1262,10 +1264,10 @@ export class SearchService {
         restaurantPriceSymbol: null,
         restaurantDistanceMiles: null,
         restaurantOperatingStatus: null,
-	        restaurantCraveScore: toRequiredPublicScore(
-	          row.restaurant_crave_score,
-	          `restaurant:${row.restaurant_id}`,
-	        ),
+        restaurantCraveScore: toRequiredPublicScore(
+          row.restaurant_crave_score,
+          `restaurant:${row.restaurant_id}`,
+        ),
         restaurantLatitude: null,
         restaurantLongitude: null,
       };
@@ -1556,8 +1558,8 @@ export class SearchService {
           allowedLocationIds !== null
             ? locationResults.length
             : typeof restaurant._count.locations === 'number'
-            ? restaurant._count.locations
-            : locationResults.length,
+              ? restaurant._count.locations
+              : locationResults.length,
       },
       dishes,
     };
@@ -1609,9 +1611,7 @@ export class SearchService {
       );
   }
 
-  private async getPublicRestaurantScore(
-    restaurantId: string,
-  ): Promise<{
+  private async getPublicRestaurantScore(restaurantId: string): Promise<{
     craveScore: number;
     scoreDelta7d: number | null;
   } | null> {
@@ -1911,7 +1911,7 @@ export class SearchService {
 
     let selectedStage: RelaxationStage = canDropAllModifiers
       ? 'relaxed_modifiers'
-      : candidateStages[0] ?? 'strict';
+      : (candidateStages[0] ?? 'strict');
 
     if (candidateStages.length === 1) {
       selectedStage = candidateStages[0];
@@ -2574,7 +2574,7 @@ export class SearchService {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       return {};
     }
-    return { ...(value as Prisma.JsonObject) };
+    return { ...value };
   }
 
   private normalizeSearchSubmissionContext(

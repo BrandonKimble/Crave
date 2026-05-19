@@ -192,11 +192,7 @@ export type SearchSuggestionTransitionHoldCapture = {
 
 export type SearchSuggestionHoldStateRuntimeArgs = Pick<
   SearchSuggestionHoldRuntimeArgs,
-  | 'query'
-  | 'suggestions'
-  | 'recentSearches'
-  | 'recentlyViewedRestaurants'
-  | 'recentlyViewedFoods'
+  'query' | 'suggestions' | 'recentSearches' | 'recentlyViewedRestaurants' | 'recentlyViewedFoods'
 >;
 
 export type SearchSuggestionHoldStateRuntime = {

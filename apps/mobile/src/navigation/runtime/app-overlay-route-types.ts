@@ -202,9 +202,8 @@ const APP_OVERLAY_ROUTE_SCENE_SWITCH_KEY_SET = new Set<OverlayKey>(
   APP_OVERLAY_ROUTE_SCENE_SWITCH_KEYS
 );
 
-export const getAppOverlayRouteMetadata = (
-  routeKey: OverlayKey
-): AppOverlayRouteMetadata => APP_OVERLAY_ROUTE_METADATA_BY_KEY[routeKey];
+export const getAppOverlayRouteMetadata = (routeKey: OverlayKey): AppOverlayRouteMetadata =>
+  APP_OVERLAY_ROUTE_METADATA_BY_KEY[routeKey];
 
 export const isAppOverlayRouteSceneSwitchKey = (routeKey: OverlayKey): boolean =>
   APP_OVERLAY_ROUTE_SCENE_SWITCH_KEY_SET.has(routeKey);

@@ -467,7 +467,8 @@ export const useMapInteractionController = (
               : 0;
           const searchBaselineBounds = viewportBoundsService.getSearchBaselineBounds();
           const searchBaselineWouldMark =
-            searchBaselineBounds != null && hasBoundsMovedSignificantly(searchBaselineBounds, bounds);
+            searchBaselineBounds != null &&
+            hasBoundsMovedSignificantly(searchBaselineBounds, bounds);
           const gestureBaselineWouldMark = movedMiles >= MAP_MOVE_MIN_DISTANCE_MILES;
           const shouldAdmitIdleGestureMove =
             searchBaselineWouldMark ||

@@ -67,13 +67,7 @@ const flushAutocompleteCache = async () => {
     await redis.connect();
     let cursor = '0';
     do {
-      const [nextCursor, keys] = await redis.scan(
-        cursor,
-        'MATCH',
-        `${prefix}*`,
-        'COUNT',
-        100
-      );
+      const [nextCursor, keys] = await redis.scan(cursor, 'MATCH', `${prefix}*`, 'COUNT', 100);
       cursor = nextCursor;
       if (keys.length > 0) {
         deleted += await redis.del(...keys);
@@ -266,10 +260,7 @@ const seed = async () => {
     );
   }
   const sushi = await requireEntity(EntityType.food, 'sushi');
-  const happyHour = await requireEntity(
-    EntityType.restaurant_attribute,
-    'happy hour'
-  );
+  const happyHour = await requireEntity(EntityType.restaurant_attribute, 'happy hour');
 
   await insertPersonalQueryRows(appUsers, sushi);
   await insertDailyQueryDemand(fixtureUsers);

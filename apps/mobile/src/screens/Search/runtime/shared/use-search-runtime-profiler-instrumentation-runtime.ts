@@ -87,8 +87,7 @@ export const useSearchRuntimeProfilerInstrumentationRuntime = ({
         JS_FLOOR_PROBE_PROFILER_ATTRIBUTION_MODE && searchMode === 'shortcut';
       const shouldEmitProfilerSpanLog =
         JS_FLOOR_PROBE_PROFILER_SPAN_LOG_MODE && searchMode === 'shortcut';
-      const shouldEmitScenarioProfilerSpan =
-        isPerfScenarioAttributionActive(activeScenarioConfig);
+      const shouldEmitScenarioProfilerSpan = isPerfScenarioAttributionActive(activeScenarioConfig);
       const shouldEmitNavSwitchProfilerLog = activeNavSwitchProbe != null;
       if (
         !shouldRecordProfilerAttribution &&

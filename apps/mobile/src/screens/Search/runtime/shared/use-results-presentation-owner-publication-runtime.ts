@@ -43,11 +43,7 @@ export const useResultsPresentationOwnerPublicationRuntime = ({
   routeSceneVisibilityPolicyRuntime,
   ownerStateRuntime,
 }: UseResultsPresentationOwnerPublicationRuntimeArgs): ResultsPresentationOwner => {
-  const {
-    bridgeStateRuntime,
-    shellStateRuntime,
-    closeTransitionRuntime,
-  } = ownerStateRuntime;
+  const { bridgeStateRuntime, shellStateRuntime, closeTransitionRuntime } = ownerStateRuntime;
   const { resultsRuntimeOwner, interactionModel } = bridgeStateRuntime;
   const { shellLocalState, shellModel } = shellStateRuntime;
 

@@ -48,7 +48,8 @@ export const useSearchRootRouteSearchSceneSelectorResultsRuntime = ({
     rawSearchSurfaceRedrawPhase:
       routeSearchSceneDataRuntime.routeSearchSceneHydrationRuntimeState.rawSearchSurfaceRedrawPhase,
     getRawSearchSurfaceRedrawPhase:
-      routeSearchSceneDataRuntime.routeSearchSceneHydrationRuntimeState.getRawSearchSurfaceRedrawPhase,
+      routeSearchSceneDataRuntime.routeSearchSceneHydrationRuntimeState
+        .getRawSearchSurfaceRedrawPhase,
     getAllowHydrationFinalizeCommit:
       routeSearchSceneDataRuntime.routeSearchSceneHydrationRuntimeState
         .getAllowHydrationFinalizeCommit,

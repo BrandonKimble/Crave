@@ -31,15 +31,11 @@ export const useSnapshotAuthority = <TSnapshot>(
   const isEqual =
     typeof optionsOrIsEqual === 'function'
       ? optionsOrIsEqual
-      : optionsOrIsEqual.isEqual ?? Object.is;
+      : (optionsOrIsEqual.isEqual ?? Object.is);
   const attributionOwner =
-    typeof optionsOrIsEqual === 'function'
-      ? undefined
-      : optionsOrIsEqual.attributionOwner;
+    typeof optionsOrIsEqual === 'function' ? undefined : optionsOrIsEqual.attributionOwner;
   const attributionOperation =
-    typeof optionsOrIsEqual === 'function'
-      ? undefined
-      : optionsOrIsEqual.attributionOperation;
+    typeof optionsOrIsEqual === 'function' ? undefined : optionsOrIsEqual.attributionOperation;
   const listenersRef = React.useRef(new Set<SnapshotListener>());
   const selectorListenersRef = React.useRef(
     new Map<

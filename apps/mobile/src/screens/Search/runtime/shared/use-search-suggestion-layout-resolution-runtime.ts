@@ -40,8 +40,7 @@ export const useSearchSuggestionLayoutResolutionRuntime = ({
   const shouldFreezeSuggestionHeader =
     shouldDriveSuggestionLayout && !isSuggestionPanelActive && query.trim().length > 0;
 
-  const shouldShowSearchShortcutsTarget =
-    isSuggestionPanelActive && !shouldDisableSearchShortcuts;
+  const shouldShowSearchShortcutsTarget = isSuggestionPanelActive && !shouldDisableSearchShortcuts;
   const shouldUseSearchShortcutFrames =
     shouldDriveSuggestionLayout || shouldShowSearchShortcutsTarget;
   const resolvedSearchShortcutsFrame = React.useMemo(() => {
@@ -56,11 +55,7 @@ export const useSearchSuggestionLayoutResolutionRuntime = ({
       return {};
     }
     return { ...cachedSearchShortcutChipFrames, ...searchShortcutChipFrames };
-  }, [
-    cachedSearchShortcutChipFrames,
-    searchShortcutChipFrames,
-    shouldUseSearchShortcutFrames,
-  ]);
+  }, [cachedSearchShortcutChipFrames, searchShortcutChipFrames, shouldUseSearchShortcutFrames]);
 
   const hasResolvedSearchShortcutsFrame = Boolean(resolvedSearchShortcutsFrame);
   const shouldIncludeShortcutCutout =

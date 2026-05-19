@@ -17,10 +17,10 @@ export const useSearchRootSessionPrimitivesLaneRuntime = ({
   cameraIntentArbiter,
 }: UseSearchRootSessionPrimitivesLaneRuntimeArgs): SearchRootSessionPrimitivesLane => {
   const lastSearchBoundsCaptureSeqRef = React.useRef(0);
-  const lastVisibleSheetStateRef = React.useRef<Exclude<
-    import('../../../../overlays/types').OverlaySheetSnap,
-    'hidden'
-  >>('middle');
+  const lastVisibleSheetStateRef =
+    React.useRef<Exclude<import('../../../../overlays/types').OverlaySheetSnap, 'hidden'>>(
+      'middle'
+    );
   const lastCameraStateRef = React.useRef<{
     center: [number, number];
     zoom: number;

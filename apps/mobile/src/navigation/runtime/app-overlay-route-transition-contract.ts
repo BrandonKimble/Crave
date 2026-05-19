@@ -28,14 +28,9 @@ export type RouteSceneSwitchChromeVisibilityTarget = {
 
 export type RouteSceneSwitchMotionPlane = 'sheet' | 'camera' | 'chrome';
 
-export type RouteSceneSwitchSheetVisibilityTarget =
-  | 'visible'
-  | 'hidden'
-  | 'preserve';
+export type RouteSceneSwitchSheetVisibilityTarget = 'visible' | 'hidden' | 'preserve';
 
-export type RouteSceneSwitchHeaderActionModeTarget =
-  | OverlayHeaderActionMode
-  | 'preserve';
+export type RouteSceneSwitchHeaderActionModeTarget = OverlayHeaderActionMode | 'preserve';
 
 export type RouteSceneSwitchPollsParams = OverlayRouteParamsMap['polls'];
 
@@ -111,13 +106,13 @@ export type RouteSceneSwitchDockedPollsRestoreIntent = {
   token: number;
 };
 
-export const PRESERVE_ROUTE_SCENE_SWITCH_CAMERA_INTENT: RouteSceneSwitchCameraIntent =
-  { kind: 'preserve' };
+export const PRESERVE_ROUTE_SCENE_SWITCH_CAMERA_INTENT: RouteSceneSwitchCameraIntent = {
+  kind: 'preserve',
+};
 
-export const PRESERVE_ROUTE_SCENE_SWITCH_CHROME_TARGET: RouteSceneSwitchChromeVisibilityTarget =
-  {
-    searchChrome: 'preserve',
-  };
+export const PRESERVE_ROUTE_SCENE_SWITCH_CHROME_TARGET: RouteSceneSwitchChromeVisibilityTarget = {
+  searchChrome: 'preserve',
+};
 
 export type RouteSceneSwitchTransitionContract = {
   sourceSceneKey: OverlayKey | null;

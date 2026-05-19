@@ -134,22 +134,19 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     () => preparedDescriptor?.candidateTopFoods ?? topFoodItems.slice(0, TOP_FOOD_RENDER_LIMIT),
     [preparedDescriptor, topFoodItems]
   );
-  const matchedTags = React.useMemo<RestaurantResultCardMatchedTagDescriptor[]>(
-    () => {
-      if (preparedDescriptor != null) {
-        return preparedDescriptor.matchedTags;
-      }
-      return (restaurant.matchedTags ?? [])
-        .filter((tag) => typeof tag.name === 'string' && tag.name.trim().length > 0)
-        .slice(0, MAX_MATCHED_TAGS)
-        .map((tag) => ({
-          key: `${restaurant.restaurantId}-${tag.entityId}`,
-          label: formatRestaurantCardMatchedTagLabel(tag),
-        }))
-        .filter((tag) => tag.label.length > 0);
-    },
-    [preparedDescriptor, restaurant.matchedTags, restaurant.restaurantId]
-  );
+  const matchedTags = React.useMemo<RestaurantResultCardMatchedTagDescriptor[]>(() => {
+    if (preparedDescriptor != null) {
+      return preparedDescriptor.matchedTags;
+    }
+    return (restaurant.matchedTags ?? [])
+      .filter((tag) => typeof tag.name === 'string' && tag.name.trim().length > 0)
+      .slice(0, MAX_MATCHED_TAGS)
+      .map((tag) => ({
+        key: `${restaurant.restaurantId}-${tag.entityId}`,
+        label: formatRestaurantCardMatchedTagLabel(tag),
+      }))
+      .filter((tag) => tag.label.length > 0);
+  }, [preparedDescriptor, restaurant.matchedTags, restaurant.restaurantId]);
   const dishCountLabel =
     preparedDescriptor?.dishCountLabel ??
     (totalDishCount === 1 ? '1 dish' : `${totalDishCount} dishes`);
@@ -290,8 +287,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   ]);
   const shouldRenderTopFoodMeasurementNodes = measuredCandidateTopFoods.length > 0 && !allCached;
   const rankLabel = preparedDescriptor?.rankLabel ?? formatRankLabel(rank);
-  const rankFontSize =
-    preparedDescriptor?.rankFontSize ?? getRankFontSize(FONT_SIZES.title, rank);
+  const rankFontSize = preparedDescriptor?.rankFontSize ?? getRankFontSize(FONT_SIZES.title, rank);
 
   const restaurantStatusLine = renderMetaDetailLine(
     hasStatus ? restaurant.operatingStatus : null,
@@ -319,12 +315,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
       votes: restaurant.scoreInfo?.voteCount ?? null,
       polls: restaurant.scoreInfo?.pollCount ?? null,
     });
-  }, [
-    openScoreInfo,
-    restaurant.restaurantName,
-    restaurant.scoreInfo,
-    craveScoreValue,
-  ]);
+  }, [openScoreInfo, restaurant.restaurantName, restaurant.scoreInfo, craveScoreValue]);
 
   const handleRestaurantPress = React.useCallback(() => {
     openRestaurantProfile(restaurant);
@@ -345,13 +336,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
           <View style={styles.resultTitleContainer}>
             <View style={[styles.titleRow, styles.titleRowWithActions]}>
               <View style={[styles.rankBadge, { backgroundColor: qualityColor }]}>
-                <Text
-                  variant="body"
-                  style={[
-                    styles.rankBadgeText,
-                    { fontSize: rankFontSize },
-                  ]}
-                >
+                <Text variant="body" style={[styles.rankBadgeText, { fontSize: rankFontSize }]}>
                   {rankLabel}
                 </Text>
               </View>
@@ -516,10 +501,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                   </Text>
                   <View style={styles.matchedTagsRow}>
                     {matchedTags.map((tag) => (
-                      <View
-                        key={tag.key}
-                        style={styles.matchedTagPill}
-                      >
+                      <View key={tag.key} style={styles.matchedTagPill}>
                         <Text variant="caption" weight="semibold" style={styles.matchedTagText}>
                           {tag.label}
                         </Text>

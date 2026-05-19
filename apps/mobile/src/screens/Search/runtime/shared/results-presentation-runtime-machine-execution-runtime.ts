@@ -1,7 +1,5 @@
 import type { ResultsPresentationTransportState } from './results-presentation-runtime-contract';
-import {
-  resolveEnterMountedHiddenResultsPresentationTransportAttempt,
-} from './results-presentation-runtime-machine-enter-batch-transport';
+import { resolveEnterMountedHiddenResultsPresentationTransportAttempt } from './results-presentation-runtime-machine-enter-batch-transport';
 import {
   resolveEnterNativeStartRequestedResultsPresentationTransportAttempt,
   resolveEnterSettledResultsPresentationTransportAttempt,
@@ -100,13 +98,10 @@ export const createResultsPresentationRuntimeMachineExecutionRuntime = ({
     executionBatch: ResultsPresentationTransportState['executionBatch']
   ) {
     const attempt = ownerRuntime.applyResolvedAttempt(
-      resolveEnterSettledResultsPresentationTransportAttempt(
-        ownerRuntime.getState(),
-        {
-          requestKey: intentId,
-          executionBatch,
-        }
-      )
+      resolveEnterSettledResultsPresentationTransportAttempt(ownerRuntime.getState(), {
+        requestKey: intentId,
+        executionBatch,
+      })
     );
 
     if (attempt == null) {

@@ -163,9 +163,7 @@ const sourceFramesWithCollision = sourceFramesWithVisuals.filter(
 const nativeMountedHiddenEvents = visualEvents('native_execution_batch_mounted_hidden_ready');
 const commitGateEvents = visualEvents('cards_pins_transaction_commit_gate');
 const resultCardsReadyEvents = visualEvents('result_cards_ready');
-const pendingRevealEvents = [
-  ...visualEvents('results_reveal_watchdog_pending'),
-];
+const pendingRevealEvents = [...visualEvents('results_reveal_watchdog_pending')];
 const unresolvedPendingRevealEvents = pendingRevealEvents.filter((pending) => {
   const transactionId = pending.transactionId ?? pending.activeRedrawTransactionId ?? null;
   if (!transactionId) {
@@ -203,9 +201,17 @@ const countAutocompleteSource = (response, source) =>
 const countRenderedAutocompleteSource = (event, source) =>
   Number(event?.renderedAutocompleteByQuerySuggestionSource?.[source] ?? 0);
 const normalizedMatchNames = (response) =>
-  topMatches(response).map((match) => String(match?.name ?? '').trim().toLowerCase());
+  topMatches(response).map((match) =>
+    String(match?.name ?? '')
+      .trim()
+      .toLowerCase()
+  );
 const normalizedRenderedMatchNames = (event) =>
-  renderedTopMatches(event).map((match) => String(match?.name ?? '').trim().toLowerCase());
+  renderedTopMatches(event).map((match) =>
+    String(match?.name ?? '')
+      .trim()
+      .toLowerCase()
+  );
 const groupByTransaction = (items) =>
   items.reduce((groups, item) => {
     const transactionId = item.transactionId ?? item.readinessKey ?? 'unknown';
@@ -236,9 +242,12 @@ const assertVisualRevealForTransaction = (label, transactionId) => {
     });
   }
   if (sourceFramesWithCollisionForTransaction(transactionId).length === 0) {
-    fail(`${label} did not publish collision-preserving source frames for the expected transaction.`, {
-      transactionId,
-    });
+    fail(
+      `${label} did not publish collision-preserving source frames for the expected transaction.`,
+      {
+        transactionId,
+      }
+    );
   }
 };
 const numberOrNull = (value) => {
@@ -386,10 +395,13 @@ const assertPollHeaderMarketAfterLine = (
         .includes(normalizedName)
     );
     if (!hasName) {
-      fail(`${label} poll header did not expose the expected market name after the triggering event.`, {
-        expectedNameFragment,
-        matchingHeaders,
-      });
+      fail(
+        `${label} poll header did not expose the expected market name after the triggering event.`,
+        {
+          expectedNameFragment,
+          matchingHeaders,
+        }
+      );
     }
   }
 };
@@ -420,10 +432,13 @@ const assertRenderedPollHeaderMarketAfterLine = (
         .includes(normalizedName)
     );
     if (!hasName) {
-      fail(`${label} rendered poll header did not expose the expected market name after the triggering event.`, {
-        expectedNameFragment,
-        matchingHeaders,
-      });
+      fail(
+        `${label} rendered poll header did not expose the expected market name after the triggering event.`,
+        {
+          expectedNameFragment,
+          matchingHeaders,
+        }
+      );
     }
   }
 };
@@ -446,10 +461,7 @@ const assertRenderedAutocompleteEchoesResponse = (label, response) => {
   }
   const responseTopMatches = topMatches(response);
   const renderedMatches = renderedTopMatches(renderedEvent);
-  if (
-    Number(renderedEvent.renderedAutocompleteCount ?? 0) <= 0 &&
-    responseTopMatches.length > 0
-  ) {
+  if (Number(renderedEvent.renderedAutocompleteCount ?? 0) <= 0 && responseTopMatches.length > 0) {
     fail(`${label} rendered no autocomplete suggestions.`, { renderedEvent });
   }
   if (Number(renderedEvent.renderedAutocompleteCount ?? 0) > 7) {
@@ -649,11 +661,14 @@ switch (scenarioName) {
       lastMarketResolveResponse.candidateBoundaryId != null ||
       lastMarketResolveResponse.candidateBoundaryType != null
     ) {
-      fail('Passive off-region scenario exposed a provider candidate boundary, which would indicate bootstrap-oriented resolution.', {
-        candidateBoundaryProvider: lastMarketResolveResponse.candidateBoundaryProvider,
-        candidateBoundaryId: lastMarketResolveResponse.candidateBoundaryId,
-        candidateBoundaryType: lastMarketResolveResponse.candidateBoundaryType,
-      });
+      fail(
+        'Passive off-region scenario exposed a provider candidate boundary, which would indicate bootstrap-oriented resolution.',
+        {
+          candidateBoundaryProvider: lastMarketResolveResponse.candidateBoundaryProvider,
+          candidateBoundaryId: lastMarketResolveResponse.candidateBoundaryId,
+          candidateBoundaryType: lastMarketResolveResponse.candidateBoundaryType,
+        }
+      );
     }
     break;
   }
@@ -712,9 +727,12 @@ switch (scenarioName) {
       });
     }
     if (!normalizedMatchNames(lastAutocompleteResponse).includes('happy hour')) {
-      fail('Autocomplete attribute gate scenario did not expose the fixture-backed happy hour attribute.', {
-        autocompleteTopMatches: lastAutocompleteResponse.autocompleteTopMatches,
-      });
+      fail(
+        'Autocomplete attribute gate scenario did not expose the fixture-backed happy hour attribute.',
+        {
+          autocompleteTopMatches: lastAutocompleteResponse.autocompleteTopMatches,
+        }
+      );
     }
     const renderedEvent = assertRenderedAutocompleteEchoesResponse(
       'Autocomplete attribute gate scenario',
@@ -726,9 +744,12 @@ switch (scenarioName) {
       });
     }
     if (!normalizedRenderedMatchNames(renderedEvent).includes('happy hour')) {
-      fail('Autocomplete attribute gate scenario did not render the fixture-backed happy hour attribute.', {
-        renderedEvent,
-      });
+      fail(
+        'Autocomplete attribute gate scenario did not render the fixture-backed happy hour attribute.',
+        {
+          renderedEvent,
+        }
+      );
     }
     break;
   }
@@ -738,20 +759,26 @@ switch (scenarioName) {
       break;
     }
     if (Number(lastAutocompleteResponse.autocompleteAttributeCount ?? 0) !== 0) {
-      fail('Autocomplete noisy-attribute scenario returned attribute candidates despite weak support.', {
-        autocompleteAttributeCount: lastAutocompleteResponse.autocompleteAttributeCount,
-        attributeMatches: attributeMatches(lastAutocompleteResponse),
-        autocompleteTopMatches: lastAutocompleteResponse.autocompleteTopMatches,
-      });
+      fail(
+        'Autocomplete noisy-attribute scenario returned attribute candidates despite weak support.',
+        {
+          autocompleteAttributeCount: lastAutocompleteResponse.autocompleteAttributeCount,
+          attributeMatches: attributeMatches(lastAutocompleteResponse),
+          autocompleteTopMatches: lastAutocompleteResponse.autocompleteTopMatches,
+        }
+      );
     }
     const renderedEvent = assertRenderedAutocompleteEchoesResponse(
       'Autocomplete noisy-attribute scenario',
       lastAutocompleteResponse
     );
     if (Number(renderedEvent?.renderedAutocompleteAttributeCount ?? 0) !== 0) {
-      fail('Autocomplete noisy-attribute scenario rendered attribute candidates despite weak support.', {
-        renderedEvent,
-      });
+      fail(
+        'Autocomplete noisy-attribute scenario rendered attribute candidates despite weak support.',
+        {
+          renderedEvent,
+        }
+      );
     }
     break;
   }
@@ -785,18 +812,24 @@ switch (scenarioName) {
         (match) => match.matchType === 'query' && match.querySuggestionSource === 'personal'
       )
     ) {
-      fail('Autocomplete query-lane scenario did not include a personal query in the visible top slice.', {
-        autocompleteTopMatches: lastAutocompleteResponse.autocompleteTopMatches,
-      });
+      fail(
+        'Autocomplete query-lane scenario did not include a personal query in the visible top slice.',
+        {
+          autocompleteTopMatches: lastAutocompleteResponse.autocompleteTopMatches,
+        }
+      );
     }
     if (
       !queryLaneTopMatches.some(
         (match) => match.matchType === 'query' && match.querySuggestionSource === 'global'
       )
     ) {
-      fail('Autocomplete query-lane scenario did not include a global query in the visible top slice.', {
-        autocompleteTopMatches: lastAutocompleteResponse.autocompleteTopMatches,
-      });
+      fail(
+        'Autocomplete query-lane scenario did not include a global query in the visible top slice.',
+        {
+          autocompleteTopMatches: lastAutocompleteResponse.autocompleteTopMatches,
+        }
+      );
     }
     const queryLaneNames = normalizedMatchNames(lastAutocompleteResponse);
     if (!queryLaneNames.includes('supper club')) {
@@ -851,7 +884,9 @@ switch (scenarioName) {
       });
       break;
     }
-    const cacheResponses = searchResponses.filter((event) => event.responseDataReadyFrom === 'cache');
+    const cacheResponses = searchResponses.filter(
+      (event) => event.responseDataReadyFrom === 'cache'
+    );
     if (cacheResponses.length === 0) {
       fail('Cache repeat scenario did not observe a cache reveal response.', {
         dataReadyFromValues: searchResponses.map((event) => event.responseDataReadyFrom),
@@ -880,7 +915,9 @@ switch (scenarioName) {
         secondResponse,
       });
     }
-    const cacheRevealCommit = firstCommitAfterLine(secondResponse?.line ?? Number.POSITIVE_INFINITY);
+    const cacheRevealCommit = firstCommitAfterLine(
+      secondResponse?.line ?? Number.POSITIVE_INFINITY
+    );
     const cacheRevealTransactionId = cacheRevealCommit?.transactionId ?? null;
     evidence.cacheRevealTransactionId = cacheRevealTransactionId;
     assertVisualRevealForTransaction('Cache repeat second/cache reveal', cacheRevealTransactionId);
@@ -893,10 +930,13 @@ switch (scenarioName) {
       sourceFramesWithCollision.map((event) => event.transactionId ?? event.readinessKey)
     );
     if (sourceFrameTransactionsWithCollision.size < 2) {
-      fail('Cache repeat scenario did not publish label-collision source frames for both reveals.', {
-        sourceFrameTransactionsWithCollision: Array.from(sourceFrameTransactionsWithCollision),
-        visualSourceFrameWithCollisionCount: sourceFramesWithCollision.length,
-      });
+      fail(
+        'Cache repeat scenario did not publish label-collision source frames for both reveals.',
+        {
+          sourceFrameTransactionsWithCollision: Array.from(sourceFrameTransactionsWithCollision),
+          visualSourceFrameWithCollisionCount: sourceFramesWithCollision.length,
+        }
+      );
     }
     const reusedSourceFrames = visualEvents('map_source_frame_data_reuse_contract').filter(
       (event) => event.sourceFrameDataReused === true
@@ -906,9 +946,12 @@ switch (scenarioName) {
         (event) => event.didPublishReadinessState === true
       );
       if (sourceReadyOnlyReplays.length > 0) {
-        fail('Cache repeat reused source data by publishing readiness without a full source frame.', {
-          sourceReadyOnlyReplays,
-        });
+        fail(
+          'Cache repeat reused source data by publishing readiness without a full source frame.',
+          {
+            sourceReadyOnlyReplays,
+          }
+        );
       }
       const reusedByTransaction = groupByTransaction(reusedSourceFrames);
       const reusedTransactionsWithoutFullPublish = Array.from(reusedByTransaction.entries())
@@ -929,9 +972,12 @@ switch (scenarioName) {
           events,
         }));
       if (reusedTransactionsWithoutFullPublish.length > 0) {
-        fail('Cache repeat reused source data without a full source-frame publish for the transaction.', {
-          reusedTransactionsWithoutFullPublish,
-        });
+        fail(
+          'Cache repeat reused source data without a full source-frame publish for the transaction.',
+          {
+            reusedTransactionsWithoutFullPublish,
+          }
+        );
       }
     }
     break;
@@ -950,7 +996,11 @@ switch (scenarioName) {
       fail('Search This Area scenario did not emit the press-up contract event.');
     }
     const [initialSearchResponse, postPanSearchResponse] = searchResponses;
-    if (searchThisAreaPress && postPanSearchResponse && postPanSearchResponse.line <= searchThisAreaPress.line) {
+    if (
+      searchThisAreaPress &&
+      postPanSearchResponse &&
+      postPanSearchResponse.line <= searchThisAreaPress.line
+    ) {
       fail('Search This Area final search response did not happen after the press-up event.', {
         pressLine: searchThisAreaPress.line,
         finalResponseLine: postPanSearchResponse.line,

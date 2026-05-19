@@ -25,21 +25,10 @@ type BottomSheetSceneStackPageFrameProps = {
 };
 
 const HeaderScrollDivider = React.memo(
-  ({
-    headerHeight,
-    scrollOffset,
-  }: {
-    headerHeight: number;
-    scrollOffset: SharedValue<number>;
-  }) => {
+  ({ headerHeight, scrollOffset }: { headerHeight: number; scrollOffset: SharedValue<number> }) => {
     const dividerStyle = useAnimatedStyle(
       () => ({
-        opacity: interpolate(
-          scrollOffset.value,
-          [0, 3, 14],
-          [0, 0.35, 1],
-          Extrapolation.CLAMP
-        ),
+        opacity: interpolate(scrollOffset.value, [0, 3, 14], [0, 0.35, 1], Extrapolation.CLAMP),
       }),
       [scrollOffset]
     );
@@ -75,9 +64,7 @@ export const BottomSheetSceneStackPageFrame = React.memo(
   }: BottomSheetSceneStackPageFrameProps) => {
     const [headerHeight, setHeaderHeight] = React.useState(OVERLAY_TAB_HEADER_HEIGHT);
     const effectiveHeaderHeight =
-      headerComponent == null && reservedHeaderHeight != null
-        ? reservedHeaderHeight
-        : headerHeight;
+      headerComponent == null && reservedHeaderHeight != null ? reservedHeaderHeight : headerHeight;
     const handleHeaderLayout = React.useCallback(
       (event: LayoutChangeEvent) => {
         onHeaderLayout?.(event);

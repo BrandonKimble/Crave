@@ -128,10 +128,7 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
   );
   const stablePrimaryOnEndReached = React.useCallback<
     NonNullable<SearchMountedListBodyContentSpec['onEndReached']>
-  >(
-    (...args) => rawSceneBodyContentRef.current.onEndReached?.(...args),
-    [rawSceneBodyContentRef]
-  );
+  >((...args) => rawSceneBodyContentRef.current.onEndReached?.(...args), [rawSceneBodyContentRef]);
   const stableSecondaryRenderItem = React.useCallback<
     NonNullable<NonNullable<SearchMountedListBodyContentSpec['secondaryList']>['renderItem']>
   >(
@@ -228,11 +225,7 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
       onScrollEndDrag: stableOnScrollEndDragFlashList,
       onViewableItemsChanged: stableOnViewableItemsChanged,
     }),
-    [
-      stableOnScrollBeginDragFlashList,
-      stableOnScrollEndDragFlashList,
-      stableOnViewableItemsChanged,
-    ]
+    [stableOnScrollBeginDragFlashList, stableOnScrollEndDragFlashList, stableOnViewableItemsChanged]
   );
   const stableSecondaryListContent = React.useMemo<
     SearchMountedListBodyContentSpec['secondaryList']
@@ -332,12 +325,8 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
   const hasListFooterComponent = rawSceneBodyContent.ListFooterComponent != null;
   React.useEffect(() => {
     syncSearchMountedResultsListDecorationsSnapshot({
-      primaryListHeaderComponent: hasListHeaderComponent
-        ? stableListHeaderComponent
-        : null,
-      primaryListFooterComponent: hasListFooterComponent
-        ? stableListFooterComponent
-        : null,
+      primaryListHeaderComponent: hasListHeaderComponent ? stableListHeaderComponent : null,
+      primaryListFooterComponent: hasListFooterComponent ? stableListFooterComponent : null,
     });
   }, [
     hasListFooterComponent,

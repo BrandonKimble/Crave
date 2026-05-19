@@ -186,9 +186,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
   const activeDismissTransactionIdRef = React.useRef<string | null>(null);
   const activeOpenTransactionIdRef = React.useRef<string | null>(null);
   const pendingOpenMotionStartedCallbackRef = React.useRef<(() => void) | null>(null);
-  const dismissMotionBoundaryTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  );
+  const dismissMotionBoundaryTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const dismissMotionActive = useSharedValue(0);
   const openMotionActive = useSharedValue(0);
   const openMotionStartedAck = useSharedValue(0);
@@ -274,45 +272,48 @@ export const useSearchDismissMotionPlaneRuntime = ({
     notifyCloseSheetSettled();
   }, [notifyCloseCollapsedBoundaryReached, notifyCloseSheetSettled]);
 
-  const armDismissMotionBoundaryWatchdog = React.useCallback((transactionId: string) => {
-    if (dismissMotionBoundaryTimeoutRef.current != null) {
-      clearTimeout(dismissMotionBoundaryTimeoutRef.current);
-    }
-    dismissMotionBoundaryTimeoutRef.current = setTimeout(() => {
-      dismissMotionBoundaryTimeoutRef.current = null;
-      if (activeDismissTransactionIdRef.current !== transactionId) {
-        return;
+  const armDismissMotionBoundaryWatchdog = React.useCallback(
+    (transactionId: string) => {
+      if (dismissMotionBoundaryTimeoutRef.current != null) {
+        clearTimeout(dismissMotionBoundaryTimeoutRef.current);
       }
-      if (dismissMotionBoundaryReached.value >= 0.5) {
-        return;
-      }
-      if (!isPerfScenarioAttributionActive(activeScenarioConfig)) {
-        return;
-      }
-      logPerfScenarioAttributionEvent('VisualReadiness', activeScenarioConfig, {
-        event: 'search_dismiss_motion_plane_watchdog_contract',
-        authority: 'SearchSurfaceMotionPlaneRuntime',
-        collapsedY: dismissMotionCollapsedY.value,
-        dismissProgress: resolveSearchDismissProgress(
-          sheetTranslateY.value,
-          dismissMotionStartY.value,
-          dismissMotionCollapsedY.value
-        ),
-        motionObserved: sheetTranslateY.value > dismissMotionStartY.value + 1,
-        pollPageReadyForBoundary: dismissMotionPollPageReadyForBoundary.value >= 0.5,
-        sheetY: sheetTranslateY.value,
-        startY: dismissMotionStartY.value,
-        transactionId,
-      });
-    }, SEARCH_DISMISS_MOTION_BOUNDARY_TIMEOUT_MS);
-  }, [
-    activeScenarioConfig,
-    dismissMotionBoundaryReached,
-    dismissMotionCollapsedY,
-    dismissMotionPollPageReadyForBoundary,
-    dismissMotionStartY,
-    sheetTranslateY,
-  ]);
+      dismissMotionBoundaryTimeoutRef.current = setTimeout(() => {
+        dismissMotionBoundaryTimeoutRef.current = null;
+        if (activeDismissTransactionIdRef.current !== transactionId) {
+          return;
+        }
+        if (dismissMotionBoundaryReached.value >= 0.5) {
+          return;
+        }
+        if (!isPerfScenarioAttributionActive(activeScenarioConfig)) {
+          return;
+        }
+        logPerfScenarioAttributionEvent('VisualReadiness', activeScenarioConfig, {
+          event: 'search_dismiss_motion_plane_watchdog_contract',
+          authority: 'SearchSurfaceMotionPlaneRuntime',
+          collapsedY: dismissMotionCollapsedY.value,
+          dismissProgress: resolveSearchDismissProgress(
+            sheetTranslateY.value,
+            dismissMotionStartY.value,
+            dismissMotionCollapsedY.value
+          ),
+          motionObserved: sheetTranslateY.value > dismissMotionStartY.value + 1,
+          pollPageReadyForBoundary: dismissMotionPollPageReadyForBoundary.value >= 0.5,
+          sheetY: sheetTranslateY.value,
+          startY: dismissMotionStartY.value,
+          transactionId,
+        });
+      }, SEARCH_DISMISS_MOTION_BOUNDARY_TIMEOUT_MS);
+    },
+    [
+      activeScenarioConfig,
+      dismissMotionBoundaryReached,
+      dismissMotionCollapsedY,
+      dismissMotionPollPageReadyForBoundary,
+      dismissMotionStartY,
+      sheetTranslateY,
+    ]
+  );
 
   const markOpenSheetSettled = React.useCallback(() => {
     if (activeOpenTransactionIdRef.current == null) {
@@ -329,11 +330,11 @@ export const useSearchDismissMotionPlaneRuntime = ({
 
   const commitDismissBoundary = React.useCallback(() => {
     'worklet';
-      dismissMotionWaitingForPollPageAtBoundary.value = 0;
-      dismissMotionBoundaryReached.value = 1;
-      dismissMotionPageBundleHandoffProgress.value = 1;
-      dismissMotionCachedVisibleStartY.value = Number.NaN;
-      runOnJS(markDismissBoundaryReached)();
+    dismissMotionWaitingForPollPageAtBoundary.value = 0;
+    dismissMotionBoundaryReached.value = 1;
+    dismissMotionPageBundleHandoffProgress.value = 1;
+    dismissMotionCachedVisibleStartY.value = Number.NaN;
+    runOnJS(markDismissBoundaryReached)();
   }, [
     dismissMotionBoundaryReached,
     dismissMotionCachedVisibleStartY,
@@ -342,7 +343,9 @@ export const useSearchDismissMotionPlaneRuntime = ({
     markDismissBoundaryReached,
   ]);
 
-  const observeDismissMotion = React.useCallback<SearchSurfaceMotionPlaneObservationTarget['observeDismiss']>(
+  const observeDismissMotion = React.useCallback<
+    SearchSurfaceMotionPlaneObservationTarget['observeDismiss']
+  >(
     ({ transactionId }) => {
       if (
         activeDismissTransactionIdRef.current === transactionId &&
@@ -376,10 +379,10 @@ export const useSearchDismissMotionPlaneRuntime = ({
       const startY = rawStartIsVisibleDismissPosition
         ? rawStartY
         : hasVisibleSnapStart
-        ? currentSnapY
-        : hasCachedVisibleStart
-        ? cachedVisibleStartY
-        : rawStartY;
+          ? currentSnapY
+          : hasCachedVisibleStart
+            ? cachedVisibleStartY
+            : rawStartY;
       if (Math.abs(startY - rawStartY) >= 0.5) {
         runOnUI(seedDismissMotionSheetYOnUI)(sheetTranslateY, startY);
       }
@@ -432,7 +435,9 @@ export const useSearchDismissMotionPlaneRuntime = ({
     ]
   );
 
-  const observeOpenMotion = React.useCallback<SearchSurfaceMotionPlaneObservationTarget['observeOpen']>(
+  const observeOpenMotion = React.useCallback<
+    SearchSurfaceMotionPlaneObservationTarget['observeOpen']
+  >(
     ({ transactionId, onStarted }) => {
       if (dismissMotionBoundaryTimeoutRef.current != null) {
         clearTimeout(dismissMotionBoundaryTimeoutRef.current);
@@ -498,62 +503,57 @@ export const useSearchDismissMotionPlaneRuntime = ({
         dismissTransaction.pollHostReady &&
         dismissTransaction.bottomBoundaryReached &&
         policy.canReleasePersistentPolls;
-    dismissMotionPollPageReadyForBoundary.value = isPollPageReadyForActiveDismiss ? 1 : 0;
-    dismissMotionPollPageReleasedForBoundary.value = isPollPageReleasedForActiveDismiss ? 1 : 0;
+      dismissMotionPollPageReadyForBoundary.value = isPollPageReadyForActiveDismiss ? 1 : 0;
+      dismissMotionPollPageReleasedForBoundary.value = isPollPageReleasedForActiveDismiss ? 1 : 0;
 
-	    if (
-	      policy.phase === 'results_dismissing' &&
-	      policy.transactionId != null
-	    ) {
-	      activeOpenTransactionIdRef.current = null;
-	      openMotionActive.value = 0;
-	      lastPollPageReadyForBoundaryRef.current = isPollPageReadyForActiveDismiss;
-	      lastPollPageReleasedForBoundaryRef.current = isPollPageReleasedForActiveDismiss;
-	      return;
-	    }
+      if (policy.phase === 'results_dismissing' && policy.transactionId != null) {
+        activeOpenTransactionIdRef.current = null;
+        openMotionActive.value = 0;
+        lastPollPageReadyForBoundaryRef.current = isPollPageReadyForActiveDismiss;
+        lastPollPageReleasedForBoundaryRef.current = isPollPageReleasedForActiveDismiss;
+        return;
+      }
 
-    activeDismissTransactionIdRef.current = null;
-    lastPollPageReadyForBoundaryRef.current = false;
-    lastPollPageReleasedForBoundaryRef.current = false;
-    dismissMotionActive.value = 0;
-    dismissMotionBoundaryReached.value = 0;
-    dismissMotionPollPageReleasedForBoundary.value = 0;
-    dismissMotionWaitingForPollPageAtBoundary.value = 0;
+      activeDismissTransactionIdRef.current = null;
+      lastPollPageReadyForBoundaryRef.current = false;
+      lastPollPageReleasedForBoundaryRef.current = false;
+      dismissMotionActive.value = 0;
+      dismissMotionBoundaryReached.value = 0;
+      dismissMotionPollPageReleasedForBoundary.value = 0;
+      dismissMotionWaitingForPollPageAtBoundary.value = 0;
 
-	    if (
-	      policy.phase === 'results_redrawing' &&
-	      policy.transactionId != null
-	    ) {
+      if (policy.phase === 'results_redrawing' && policy.transactionId != null) {
         dismissMotionPageBundleHandoffProgress.value = 0;
-	      return;
-	    }
+        return;
+      }
 
-    activeOpenTransactionIdRef.current = null;
-    openMotionActive.value = 0;
+      activeOpenTransactionIdRef.current = null;
+      openMotionActive.value = 0;
     },
     [
-    dismissMotionActive,
-    dismissMotionBoundaryReached,
-    dismissMotionPageBundleHandoffProgress,
-    dismissMotionPollPageReadyForBoundary,
-	    dismissMotionPollPageReleasedForBoundary,
-	    dismissMotionWaitingForPollPageAtBoundary,
-	    openMotionActive,
-	  ]);
+      dismissMotionActive,
+      dismissMotionBoundaryReached,
+      dismissMotionPageBundleHandoffProgress,
+      dismissMotionPollPageReadyForBoundary,
+      dismissMotionPollPageReleasedForBoundary,
+      dismissMotionWaitingForPollPageAtBoundary,
+      openMotionActive,
+    ]
+  );
 
-	  React.useLayoutEffect(() => {
-	    const unregister = getSearchSurfaceRuntime().registerMotionPlaneObservationTarget({
-	      observeDismiss: observeDismissMotion,
-	      observeOpen: observeOpenMotion,
-	    });
-	    return () => {
-	      if (dismissMotionBoundaryTimeoutRef.current != null) {
-	        clearTimeout(dismissMotionBoundaryTimeoutRef.current);
-	        dismissMotionBoundaryTimeoutRef.current = null;
-	      }
-	      unregister();
-	    };
-	  }, [observeDismissMotion, observeOpenMotion]);
+  React.useLayoutEffect(() => {
+    const unregister = getSearchSurfaceRuntime().registerMotionPlaneObservationTarget({
+      observeDismiss: observeDismissMotion,
+      observeOpen: observeOpenMotion,
+    });
+    return () => {
+      if (dismissMotionBoundaryTimeoutRef.current != null) {
+        clearTimeout(dismissMotionBoundaryTimeoutRef.current);
+        dismissMotionBoundaryTimeoutRef.current = null;
+      }
+      unregister();
+    };
+  }, [observeDismissMotion, observeOpenMotion]);
 
   React.useLayoutEffect(() => {
     syncMotionFromSurfaceSnapshot(getSearchSurfaceRuntime().getSnapshot());
@@ -622,10 +622,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
 
   useAnimatedReaction(
     () => {
-      if (
-        dismissMotionActive.value < 0.5 ||
-        dismissMotionBoundaryReached.value >= 0.5
-      ) {
+      if (dismissMotionActive.value < 0.5 || dismissMotionBoundaryReached.value >= 0.5) {
         return 0;
       }
       const reachedCollapsedBoundary =
@@ -653,9 +650,9 @@ export const useSearchDismissMotionPlaneRuntime = ({
       dismissMotionBoundaryReached,
       dismissMotionCollapsedY,
       dismissMotionPollPageReadyForBoundary,
-        dismissMotionWaitingForPollPageAtBoundary,
-        sheetTranslateY,
-      ]
+      dismissMotionWaitingForPollPageAtBoundary,
+      sheetTranslateY,
+    ]
   );
 
   const searchDismissMotionProgress = useDerivedValue(() => {
@@ -692,7 +689,13 @@ export const useSearchDismissMotionPlaneRuntime = ({
       openMotionStartedAck.value = 1;
       runOnJS(notifyOpenMotionStarted)();
     },
-    [notifyOpenMotionStarted, openMotionActive, openMotionStartedAck, openMotionStartY, sheetTranslateY]
+    [
+      notifyOpenMotionStarted,
+      openMotionActive,
+      openMotionStartedAck,
+      openMotionStartY,
+      sheetTranslateY,
+    ]
   );
 
   useAnimatedReaction(
@@ -714,9 +717,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
 
   const searchSurfacePageBundleProgress = useDerivedValue<number>(() => {
     return dismissMotionPollPageReleasedForBoundary.value >= 0.5 ? 1 : 0;
-  }, [
-    dismissMotionPollPageReleasedForBoundary,
-  ]);
+  }, [dismissMotionPollPageReleasedForBoundary]);
 
   useAnimatedReaction(
     () => {
@@ -772,8 +773,8 @@ export const useSearchDismissMotionPlaneRuntime = ({
           dismissMotionStartSource.value === 2
             ? ('cachedVisible' as const)
             : dismissMotionStartSource.value === 1
-            ? ('visibleSnap' as const)
-            : ('sharedValue' as const),
+              ? ('visibleSnap' as const)
+              : ('sharedValue' as const),
         startY: dismissMotionStartY.value,
         visualOwnerReleasedForBoundary: boundaryReached,
         visualHandoffThresholdProgress: SEARCH_DISMISS_VISUAL_HANDOFF_PROGRESS_MIN,

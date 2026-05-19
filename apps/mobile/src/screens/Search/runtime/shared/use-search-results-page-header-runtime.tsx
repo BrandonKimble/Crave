@@ -100,36 +100,30 @@ export const useSearchResultsPageHeaderRuntime = ({
     )
   );
   const retainedModelRef = React.useRef<SearchResultsPageHeaderSnapshot | null>(null);
-  const liveModel = React.useMemo<SearchResultsPageHeaderSnapshot>(
-    () => {
-      const retainedHeaderTitle = retainedModelRef.current?.headerTitle;
-      const resolvedHeaderTitle =
-        headerTitle.trim().length > 0 ? headerTitle : retainedHeaderTitle ?? 'Results';
-      return {
-        headerTitle: resolvedHeaderTitle,
-        contentHorizontalPadding,
-        activeTabColor,
-        overlayHeaderActionProgress,
-        handleCloseResults,
-        handleResultsHeaderLayout,
-      };
-    },
-    [
-      activeTabColor,
+  const liveModel = React.useMemo<SearchResultsPageHeaderSnapshot>(() => {
+    const retainedHeaderTitle = retainedModelRef.current?.headerTitle;
+    const resolvedHeaderTitle =
+      headerTitle.trim().length > 0 ? headerTitle : (retainedHeaderTitle ?? 'Results');
+    return {
+      headerTitle: resolvedHeaderTitle,
       contentHorizontalPadding,
+      activeTabColor,
+      overlayHeaderActionProgress,
       handleCloseResults,
       handleResultsHeaderLayout,
-      headerTitle,
-      overlayHeaderActionProgress,
-      shouldDisableResultsHeader,
-      shouldRetainResultsPage,
-    ]
-  );
+    };
+  }, [
+    activeTabColor,
+    contentHorizontalPadding,
+    handleCloseResults,
+    handleResultsHeaderLayout,
+    headerTitle,
+    overlayHeaderActionProgress,
+    shouldDisableResultsHeader,
+    shouldRetainResultsPage,
+  ]);
 
   retainedModelRef.current = liveModel;
 
-  return React.useMemo(
-    () => <SearchResultsPageHeader model={liveModel} />,
-    [liveModel]
-  );
+  return React.useMemo(() => <SearchResultsPageHeader model={liveModel} />, [liveModel]);
 };

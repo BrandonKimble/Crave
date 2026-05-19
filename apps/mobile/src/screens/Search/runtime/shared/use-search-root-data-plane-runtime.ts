@@ -48,7 +48,8 @@ export const useSearchRootDataPlaneRuntime = ({
     searchSurfaceRedrawCoordinatorRef: searchSurfaceRedrawCoordinatorRef as Parameters<
       typeof useSearchFreezeGateRuntime
     >[0]['searchSurfaceRedrawCoordinatorRef'],
-    searchSurfaceRedrawCommitSpanPressureByOperationRef: primitives.searchSurfaceRedrawCommitSpanPressureByOperationRef,
+    searchSurfaceRedrawCommitSpanPressureByOperationRef:
+      primitives.searchSurfaceRedrawCommitSpanPressureByOperationRef,
   });
   const historyRuntime = useSearchHistoryRuntime({ isSignedIn });
   const filterStateRuntime = useSearchFilterStateRuntime();

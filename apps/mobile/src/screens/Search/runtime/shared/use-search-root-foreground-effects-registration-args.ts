@@ -22,8 +22,7 @@ export const useSearchRootForegroundEffectsRegistrationArgs = ({
 
   return React.useMemo(
     () => ({
-      registerPendingMutationWorkCancel:
-        mutationCancelPort.registerPendingMutationWorkCancel,
+      registerPendingMutationWorkCancel: mutationCancelPort.registerPendingMutationWorkCancel,
       cancelToggleInteraction: resultsPresentationOwner.cancelToggleInteraction,
     }),
     [

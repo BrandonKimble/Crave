@@ -146,7 +146,8 @@ export const useProfileOwner = ({
     resetRestaurantProfileFocusSession,
     getProfileTransitionState: runtimeStateOwner.transitionRuntimeState.getProfileTransitionState,
     finalizePreparedProfileCloseState:
-      runtimeStateOwner.closeRuntimeState.finalizationRuntimeState.finalizePreparedProfileCloseState,
+      runtimeStateOwner.closeRuntimeState.finalizationRuntimeState
+        .finalizePreparedProfileCloseState,
   });
 
   useProfileOwnerAutoOpenKickoffRuntime({

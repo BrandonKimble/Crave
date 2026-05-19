@@ -222,50 +222,54 @@ export const useSearchMapMovementState = ({
     [viewportBoundsService]
   );
 
-  const scheduleMapIdleEnter = React.useCallback((options?: { releaseGestureGate?: boolean }) => {
-    const pressureState = mapMotionPressureController.getState();
-    const shouldDeferMapFromPressure = shouldDeferMapMovementWork({
-      pressureState,
-    });
-    const isMapGestureActive =
-      options?.releaseGestureGate === true ? false : mapGestureActiveRef.current;
-    const mapMovedRevealAdmission = resolveMapMovedEnterAdmission({
-      hasMapMovedSinceSearch: mapMovedSinceSearchRef.current,
-      isMapGestureActive,
-      isSearchInteracting: searchInteractionRef.current.isInteracting,
-      isAnySheetDragging: anySheetDraggingRef.current,
-      shouldDeferMapFromPressure,
-    });
-    const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
-    if (isPerfScenarioAttributionActive(scenarioConfig)) {
-      logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
-        event: 'map_moved_reveal_admission_contract',
-        mapMovedRevealAdmission,
+  const scheduleMapIdleEnter = React.useCallback(
+    (options?: { releaseGestureGate?: boolean }) => {
+      const pressureState = mapMotionPressureController.getState();
+      const shouldDeferMapFromPressure = shouldDeferMapMovementWork({
+        pressureState,
+      });
+      const isMapGestureActive =
+        options?.releaseGestureGate === true ? false : mapGestureActiveRef.current;
+      const mapMovedRevealAdmission = resolveMapMovedEnterAdmission({
         hasMapMovedSinceSearch: mapMovedSinceSearchRef.current,
         isMapGestureActive,
-        mapGestureSessionActive: mapGestureActiveRef.current,
-        releaseGestureGate: options?.releaseGestureGate === true,
         isSearchInteracting: searchInteractionRef.current.isInteracting,
         isAnySheetDragging: anySheetDraggingRef.current,
         shouldDeferMapFromPressure,
-        pressurePhase: pressureState.phase,
-        pressureIsSearchInteracting: pressureState.isSearchInteracting,
-        pressureIsAnySheetDragging: pressureState.isAnySheetDragging,
-        pressureNativeSyncInFlight: pressureState.nativeSyncInFlight,
-        activePresentationTransactionPhase: pressureState.activePresentationTransaction?.phase ?? null,
       });
-    }
-    pendingMapMovedEnterRef.current = mapMovedRevealAdmission === 'defer_until_idle';
-    if (mapMovedRevealAdmission === 'publish_now') {
-      writeMapMovedScalarPrimitive(true);
-      setMapMovedSinceSearch(true);
-    }
-  }, [
-    anySheetDraggingRef,
-    mapMotionPressureController,
-    searchInteractionRef,
-    writeMapMovedScalarPrimitive,
-  ]);
+      const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+      if (isPerfScenarioAttributionActive(scenarioConfig)) {
+        logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+          event: 'map_moved_reveal_admission_contract',
+          mapMovedRevealAdmission,
+          hasMapMovedSinceSearch: mapMovedSinceSearchRef.current,
+          isMapGestureActive,
+          mapGestureSessionActive: mapGestureActiveRef.current,
+          releaseGestureGate: options?.releaseGestureGate === true,
+          isSearchInteracting: searchInteractionRef.current.isInteracting,
+          isAnySheetDragging: anySheetDraggingRef.current,
+          shouldDeferMapFromPressure,
+          pressurePhase: pressureState.phase,
+          pressureIsSearchInteracting: pressureState.isSearchInteracting,
+          pressureIsAnySheetDragging: pressureState.isAnySheetDragging,
+          pressureNativeSyncInFlight: pressureState.nativeSyncInFlight,
+          activePresentationTransactionPhase:
+            pressureState.activePresentationTransaction?.phase ?? null,
+        });
+      }
+      pendingMapMovedEnterRef.current = mapMovedRevealAdmission === 'defer_until_idle';
+      if (mapMovedRevealAdmission === 'publish_now') {
+        writeMapMovedScalarPrimitive(true);
+        setMapMovedSinceSearch(true);
+      }
+    },
+    [
+      anySheetDraggingRef,
+      mapMotionPressureController,
+      searchInteractionRef,
+      writeMapMovedScalarPrimitive,
+    ]
+  );
 
   const flushPendingMapMovedEnter = React.useCallback(() => {
     if (!pendingMapMovedEnterRef.current) {

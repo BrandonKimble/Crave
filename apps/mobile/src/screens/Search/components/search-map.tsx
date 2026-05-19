@@ -194,7 +194,7 @@ const withIconOpacity = (
   ({
     ...baseStyle,
     iconOpacity,
-  } as MapboxGL.SymbolLayerStyle);
+  }) as MapboxGL.SymbolLayerStyle;
 
 const withTextOpacity = ({
   baseStyle,
@@ -209,7 +209,7 @@ const withTextOpacity = ({
     ...baseStyle,
     ...(textColor === undefined ? {} : { textColor }),
     textOpacity,
-  } as MapboxGL.SymbolLayerStyle);
+  }) as MapboxGL.SymbolLayerStyle;
 
 type SearchMapLabelLayersProps = {
   labelLayerSpecs: ReadonlyArray<{
@@ -294,7 +294,10 @@ const SearchMapLabelLayers = React.memo(
             />
           ))}
         </MapboxGL.ShapeSource>
-        <MapboxGL.ShapeSource id={RESTAURANT_LABEL_COLLISION_SOURCE_ID} shape={EMPTY_POINT_FEATURES}>
+        <MapboxGL.ShapeSource
+          id={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
+          shape={EMPTY_POINT_FEATURES}
+        >
           <MapboxGL.SymbolLayer
             key={restaurantLabelPinCollisionLayerKey}
             id={restaurantLabelPinCollisionLayerId}
@@ -413,10 +416,7 @@ const SearchMapMarkerScene = React.memo(
             />
           </MapboxGL.ShapeSource>
         </React.Profiler>
-        <MapboxGL.ShapeSource
-          id={STYLE_PINS_SOURCE_ID}
-          shape={EMPTY_POINT_FEATURES}
-        >
+        <MapboxGL.ShapeSource id={STYLE_PINS_SOURCE_ID} shape={EMPTY_POINT_FEATURES}>
           {stylePinLayerStack}
         </MapboxGL.ShapeSource>
         <MapboxGL.ShapeSource
@@ -435,7 +435,9 @@ const SearchMapMarkerScene = React.memo(
             restaurantLabelPinCollisionLayerKey={restaurantLabelPinCollisionLayerKey}
             restaurantLabelPinCollisionLayerId={restaurantLabelPinCollisionLayerId}
             restaurantLabelPinCollisionLayerIdSideLeft={restaurantLabelPinCollisionLayerIdSideLeft}
-            restaurantLabelPinCollisionLayerIdSideRight={restaurantLabelPinCollisionLayerIdSideRight}
+            restaurantLabelPinCollisionLayerIdSideRight={
+              restaurantLabelPinCollisionLayerIdSideRight
+            }
             restaurantLabelPinCollisionStyles={restaurantLabelPinCollisionStyles}
           />
         </React.Profiler>
@@ -1768,7 +1770,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     const nativeRefSnapshot =
       Platform.OS === 'ios'
         ? mapHostViewRef.current
-        : (mapRef.current as { _nativeRef?: unknown } | null)?._nativeRef ?? mapRef.current;
+        : ((mapRef.current as { _nativeRef?: unknown } | null)?._nativeRef ?? mapRef.current);
     if (nativeRefSnapshot == null) {
       return null;
     }
@@ -2041,12 +2043,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       // Keep dots a constant screen size (like pins). The symbol can still cull/collide based on
       // Mapbox placement, but it won't scale with zoom.
       textSize: DOT_TEXT_SIZE,
-      textColor: [
-        'case',
-        nativeHighlightedExpression,
-        PRIMARY_COLOR,
-        ['get', 'pinColor'],
-      ],
+      textColor: ['case', nativeHighlightedExpression, PRIMARY_COLOR, ['get', 'pinColor']],
     } as unknown as MapboxGL.SymbolLayerStyle;
   }, [
     nativeHighlightedExpression,
@@ -2210,12 +2207,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   );
 
   const pinFillColorExpression = React.useMemo(() => {
-    return [
-      'case',
-      nativeHighlightedExpression,
-      PRIMARY_COLOR,
-      ['get', 'pinColor'],
-    ] as const;
+    return ['case', nativeHighlightedExpression, PRIMARY_COLOR, ['get', 'pinColor']] as const;
   }, [nativeHighlightedExpression]);
 
   const stylePinsShadowSteadyStyle = React.useMemo(
@@ -2228,7 +2220,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
           STYLE_PINS_SHADOW_OPACITY,
         ]),
         iconOpacityTransition: PIN_OPACITY_TRANSITION,
-      } as MapboxGL.SymbolLayerStyle),
+      }) as MapboxGL.SymbolLayerStyle,
     [nativeLodOpacityExpression, nativePresentationOpacityExpression]
   );
 
@@ -2240,7 +2232,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
           textOpacity: ['*', nativePresentationOpacityExpression, nativeLodOpacityExpression],
         }),
         textOpacityTransition: PIN_OPACITY_TRANSITION,
-      } as MapboxGL.SymbolLayerStyle),
+      }) as MapboxGL.SymbolLayerStyle,
     [nativeLodOpacityExpression, nativePresentationOpacityExpression]
   );
 
@@ -2253,7 +2245,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
           textColor: pinFillColorExpression,
         }),
         textOpacityTransition: PIN_OPACITY_TRANSITION,
-      } as MapboxGL.SymbolLayerStyle),
+      }) as MapboxGL.SymbolLayerStyle,
     [nativeLodOpacityExpression, nativePresentationOpacityExpression, pinFillColorExpression]
   );
 
@@ -2265,7 +2257,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
           textOpacity: ['*', nativePresentationOpacityExpression, nativeLodRankOpacityExpression],
         }),
         textOpacityTransition: PIN_RANK_OPACITY_TRANSITION,
-      } as MapboxGL.SymbolLayerStyle),
+      }) as MapboxGL.SymbolLayerStyle,
     [nativeLodRankOpacityExpression, nativePresentationOpacityExpression]
   );
 
@@ -2346,7 +2338,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         textAllowOverlap: true,
         textIgnorePlacement: true,
         textPadding: 0,
-      } as MapboxGL.SymbolLayerStyle);
+      }) as MapboxGL.SymbolLayerStyle;
 
     return {
       bottom: toInteractionStyle(labelCandidateStyles.bottom),
@@ -2413,17 +2405,16 @@ const SearchMap: React.FC<SearchMapProps> = ({
     }),
     [labelRadialTopEm, labelRadialXEm, labelRadialYEm, labelTextSize, labelUpShiftEm]
   );
-  const { dotInteractionFilter, handleMapPress } =
-    useSearchMapInteractionRuntime({
-      nativeRenderOwnerInstanceId,
-      onMarkerPress,
-      onBlankMapPress: onPress,
-      dotLayerId: DOT_INTERACTION_LAYER_ID,
-      pinInteractionLayerIds: PIN_INTERACTION_LAYER_IDS,
-      labelInteractionLayerIds: LABEL_INTERACTION_LAYER_IDS,
-      labelTapHitbox,
-      dotTapIntentRadiusPx: DOT_TAP_INTENT_RADIUS_PX,
-    });
+  const { dotInteractionFilter, handleMapPress } = useSearchMapInteractionRuntime({
+    nativeRenderOwnerInstanceId,
+    onMarkerPress,
+    onBlankMapPress: onPress,
+    dotLayerId: DOT_INTERACTION_LAYER_ID,
+    pinInteractionLayerIds: PIN_INTERACTION_LAYER_IDS,
+    labelInteractionLayerIds: LABEL_INTERACTION_LAYER_IDS,
+    labelTapHitbox,
+    dotTapIntentRadiusPx: DOT_TAP_INTENT_RADIUS_PX,
+  });
   const onProfilerRenderRef = React.useRef(onProfilerRender);
   React.useEffect(() => {
     onProfilerRenderRef.current = onProfilerRender;
@@ -2446,10 +2437,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   );
   nativeViewportChangedHandlerRef.current = (payload) => {
     const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
-    if (
-      payload.isGestureActive &&
-      isPerfScenarioAttributionActive(scenarioConfig)
-    ) {
+    if (payload.isGestureActive && isPerfScenarioAttributionActive(scenarioConfig)) {
       logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
         event: 'map_post_results_gesture_contract',
         source: 'native_camera',

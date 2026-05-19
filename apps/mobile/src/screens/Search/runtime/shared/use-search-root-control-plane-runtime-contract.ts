@@ -88,8 +88,7 @@ export type SearchRootSuggestionInteractionControlLane = {
 
 export type SearchRootProfilePresentationControlLane = {
   profileOwner: ProfileOwner;
-  stableOpenRestaurantProfileFromResults:
-    ProfileOwner['profileActions']['openRestaurantProfileFromResults'];
+  stableOpenRestaurantProfileFromResults: ProfileOwner['profileActions']['openRestaurantProfileFromResults'];
   pendingMarkerOpenAnimationFrameRef: React.MutableRefObject<number | null>;
 };
 

@@ -18,7 +18,10 @@ import { isWorkerRuntime } from '../../shared/utils/process-role';
 import { RedditCollectorModule } from '../content-processing/reddit-collector/reddit-collector.module';
 
 const restaurantEnrichmentWorkerProviders = isWorkerRuntime()
-  ? [RestaurantCuisineExtractionWorker, RestaurantSecondaryLocationExpansionWorker]
+  ? [
+      RestaurantCuisineExtractionWorker,
+      RestaurantSecondaryLocationExpansionWorker,
+    ]
   : [];
 
 @Module({

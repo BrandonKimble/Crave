@@ -1,13 +1,9 @@
 import React from 'react';
 
 import { createResultsPresentationInteractionRuntimeValue } from '../controller/results-presentation-interaction-runtime';
-import type {
-  ResultsInteractionModel,
-} from './results-presentation-owner-contract';
+import type { ResultsInteractionModel } from './results-presentation-owner-contract';
 import type { ResultsPresentationRuntimeOwner } from './results-presentation-runtime-owner-contract';
-import type {
-  ToggleInteractionLifecycleEvent,
-} from './results-toggle-interaction-contract';
+import type { ToggleInteractionLifecycleEvent } from './results-toggle-interaction-contract';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import { useResultsPresentationTabToggleRuntime } from './use-results-presentation-tab-toggle-runtime';
 import { useResultsPresentationToggleLifecycleRuntime } from './use-results-presentation-toggle-lifecycle-runtime';
@@ -32,8 +28,7 @@ type UseResultsPresentationInteractionRuntimeArgs = {
   notifyIntentCompleteRef: React.MutableRefObject<((intentId: string) => void) | null>;
   resultsRuntimeOwner: Pick<
     ResultsPresentationRuntimeOwner,
-    | 'clearStagedSearchSurfaceResultsTransaction'
-    | 'commitSearchSurfaceResultsTransaction'
+    'clearStagedSearchSurfaceResultsTransaction' | 'commitSearchSurfaceResultsTransaction'
   >;
 };
 
@@ -66,8 +61,7 @@ export const useResultsPresentationInteractionRuntime = ({
   return React.useMemo(
     () =>
       createResultsPresentationInteractionRuntimeValue({
-        pendingTogglePresentationIntentId:
-          toggleLifecycleRuntime.pendingTogglePresentationIntentId,
+        pendingTogglePresentationIntentId: toggleLifecycleRuntime.pendingTogglePresentationIntentId,
         scheduleToggleCommit: toggleLifecycleRuntime.scheduleToggleCommit,
         notifyFrostReady: toggleLifecycleRuntime.notifyFrostReady,
         cancelToggleInteraction: toggleLifecycleRuntime.cancelToggleInteraction,

@@ -13,14 +13,12 @@ export const useSearchRootSearchSceneListPreparedRowsPatchRuntime = ({
   SearchRootSearchSceneListHydrationPatch,
   'resultsPreparedRowsKey' | 'listPreparedRowsReady'
 > => {
-  const resultsPreparedRowsKey =
-    useSearchRootSearchSceneListPreparedRowsKeyPatchRuntime({
-      hydrationKeyRuntime,
-    });
-  const listPreparedRowsReady =
-    useSearchRootSearchSceneListPreparedRowsReadinessPatchRuntime({
-      resultsPreparedRowsKey,
-    });
+  const resultsPreparedRowsKey = useSearchRootSearchSceneListPreparedRowsKeyPatchRuntime({
+    hydrationKeyRuntime,
+  });
+  const listPreparedRowsReady = useSearchRootSearchSceneListPreparedRowsReadinessPatchRuntime({
+    resultsPreparedRowsKey,
+  });
 
   return React.useMemo(
     () => ({

@@ -42,7 +42,13 @@ type ScoreHistogramBucket = {
 const outputArg = process.argv.find((arg) => arg.startsWith('--output='));
 const outputPath = outputArg
   ? outputArg.slice('--output='.length)
-  : join(process.cwd(), '..', '..', 'plans', 'crave-score-fixture-validation-report.md');
+  : join(
+      process.cwd(),
+      '..',
+      '..',
+      'plans',
+      'crave-score-fixture-validation-report.md',
+    );
 
 const noopLogger = {
   setContext() {
@@ -92,7 +98,11 @@ function expectCheck(
   observed: unknown,
   notes?: string[],
 ): void {
-  checks.push(condition ? pass(name, expected, observed, notes) : fail(name, expected, observed, notes));
+  checks.push(
+    condition
+      ? pass(name, expected, observed, notes)
+      : fail(name, expected, observed, notes),
+  );
 }
 
 function candidate(params: {
@@ -116,7 +126,8 @@ function candidate(params: {
     scoringMarketKey: params.market,
     rawQualityScore: params.raw,
     directMentionCount: params.mentions,
-    supportMentionCount: params.supportMentions ?? Math.round(params.mentions * 0.2),
+    supportMentionCount:
+      params.supportMentions ?? Math.round(params.mentions * 0.2),
     upvoteMass: params.upvotes,
     sourceDocumentCount: params.docs,
     pollCount: params.polls ?? 0,
@@ -160,7 +171,9 @@ function byId(scored: ScoredCraveSubject[]): Map<string, ScoredCraveSubject> {
   return new Map(scored.map((row) => [row.subjectId, row]));
 }
 
-function scoredSummary(row: ScoredCraveSubject | undefined): Record<string, unknown> | null {
+function scoredSummary(
+  row: ScoredCraveSubject | undefined,
+): Record<string, unknown> | null {
   if (!row) {
     return null;
   }
@@ -192,13 +205,17 @@ function histogram(values: number[]): ScoreHistogramBucket[] {
   ];
   return buckets.map((bucket) => ({
     range: bucket.range,
-    count: values.filter((value) => value >= bucket.min && value < bucket.max).length,
+    count: values.filter((value) => value >= bucket.min && value < bucket.max)
+      .length,
   }));
 }
 
 function score(
   candidates: CraveScoreCandidate[],
-  priorScores = new Map<string, { score7d: number | null; score28d: number | null }>(),
+  priorScores = new Map<
+    string,
+    { score7d: number | null; score28d: number | null }
+  >(),
 ): ScoredCraveSubject[] {
   return scorer.scoreCandidates(candidates, priorScores, config).scored;
 }
@@ -374,7 +391,11 @@ const targetBandLosses = [
   const actual = scoredById.get(band.name)?.displayScore ?? 0;
   const [minExpected, maxExpected] = band.expectedRange;
   const loss =
-    actual < minExpected ? minExpected - actual : actual > maxExpected ? actual - maxExpected : 0;
+    actual < minExpected
+      ? minExpected - actual
+      : actual > maxExpected
+        ? actual - maxExpected
+        : 0;
   return {
     name: band.name,
     expectedRange: `${minExpected}-${maxExpected}`,
@@ -421,7 +442,10 @@ const calibrationSummary = {
     max: round(Math.max(...pureRawScores)),
   },
   selectedFixtures: Object.fromEntries(
-    selectedCalibrationFixtures.map((id) => [id, scoredSummary(scoredById.get(id))]),
+    selectedCalibrationFixtures.map((id) => [
+      id,
+      scoredSummary(scoredById.get(id)),
+    ]),
   ),
 };
 const nycEqual = scoredById.get('nyc-equal-participation-share');
@@ -430,7 +454,11 @@ const austinBroad = scoredById.get('austin-broad-consensus');
 const austinThin = scoredById.get('austin-thin-hype');
 const ruralTop = scoredById.get('rural-undefeated-small-sample');
 const nycTop = scored
-  .filter((row) => row.subjectType === 'restaurant' && row.scoringMarketKey === 'region-us-ny-new-york')
+  .filter(
+    (row) =>
+      row.subjectType === 'restaurant' &&
+      row.scoringMarketKey === 'region-us-ny-new-york',
+  )
   .sort((left, right) => right.displayScore - left.displayScore)[0];
 const austinDishBroad = scoredById.get('austin-dish-broad-consensus');
 const ruralDish = scoredById.get('rural-dish-viral-one-week');
@@ -444,7 +472,9 @@ expectCheck(
 
 expectCheck(
   'sparse rural winner is shrunk below mature elite despite raw 99',
-  Boolean(ruralTop && nycTop && ruralTop.displayScore + 5.5 < nycTop.displayScore),
+  Boolean(
+    ruralTop && nycTop && ruralTop.displayScore + 5.5 < nycTop.displayScore,
+  ),
   'rural top at least 5.5 points below mature-market elite',
   {
     ruralTop: ruralTop && {
@@ -463,7 +493,11 @@ expectCheck(
 
 expectCheck(
   'broad Austin consensus beats thin hype with same raw score',
-  Boolean(austinBroad && austinThin && austinBroad.displayScore > austinThin.displayScore + 3),
+  Boolean(
+    austinBroad &&
+      austinThin &&
+      austinBroad.displayScore > austinThin.displayScore + 3,
+  ),
   'broad evidence score > thin evidence score by more than 3',
   {
     broad: austinBroad && {
@@ -495,7 +529,9 @@ expectCheck(
       reliability: austinEqual.marketReliability,
     },
   },
-  ['NYC has more evidence, but evidence changes reliability/confidence, not a direct market-size bonus.'],
+  [
+    'NYC has more evidence, but evidence changes reliability/confidence, not a direct market-size bonus.',
+  ],
 );
 
 expectCheck(
@@ -511,7 +547,11 @@ expectCheck(
 
 expectCheck(
   'dish scoring uses the same normalization contract independently from restaurants',
-  Boolean(austinDishBroad && ruralDish && austinDishBroad.displayScore > ruralDish.displayScore + 3),
+  Boolean(
+    austinDishBroad &&
+      ruralDish &&
+      austinDishBroad.displayScore > ruralDish.displayScore + 3,
+  ),
   'broad Austin dish beats sparse rural dish by more than 3',
   {
     austinDish: austinDishBroad && {
@@ -526,7 +566,10 @@ expectCheck(
 );
 
 const zeroMovementBase = scoredById.get('austin-broad-consensus');
-const movementPriors = new Map<string, { score7d: number | null; score28d: number | null }>();
+const movementPriors = new Map<
+  string,
+  { score7d: number | null; score28d: number | null }
+>();
 if (zeroMovementBase) {
   movementPriors.set('restaurant:austin-broad-consensus', {
     score7d: zeroMovementBase.displayScore,
@@ -543,7 +586,11 @@ const coolingMovement = movementScored.get('austin-thin-hype');
 
 expectCheck(
   'weekly movement hides exact zero deltas',
-  Boolean(zeroMovement && zeroMovement.scoreDelta7d === null && zeroMovement.movementState === 'stable'),
+  Boolean(
+    zeroMovement &&
+      zeroMovement.scoreDelta7d === null &&
+      zeroMovement.movementState === 'stable',
+  ),
   'scoreDelta7d null when rounded delta is 0',
   zeroMovement && {
     scoreDelta7d: zeroMovement.scoreDelta7d,
@@ -554,7 +601,11 @@ expectCheck(
 
 expectCheck(
   'weekly movement reports cooling when current score is lower than seven-day score',
-  Boolean(coolingMovement && coolingMovement.scoreDelta7d != null && coolingMovement.scoreDelta7d < 0),
+  Boolean(
+    coolingMovement &&
+      coolingMovement.scoreDelta7d != null &&
+      coolingMovement.scoreDelta7d < 0,
+  ),
   'negative scoreDelta7d for lower current score',
   coolingMovement && {
     scoreDelta7d: coolingMovement.scoreDelta7d,
@@ -562,7 +613,11 @@ expectCheck(
   },
 );
 
-const marketStats = scorer.scoreCandidates(allCandidates, new Map(), config).marketStats;
+const marketStats = scorer.scoreCandidates(
+  allCandidates,
+  new Map(),
+  config,
+).marketStats;
 const reliabilityByMarket = new Map(
   marketStats
     .filter((row) => row.subjectType === 'restaurant')
@@ -576,7 +631,12 @@ expectCheck(
     (reliabilityByMarket.get('region-us-tx-austin') ?? 0) >
       (reliabilityByMarket.get('region-us-ok-rural') ?? 0),
   'NYC reliability > Austin reliability > rural reliability',
-  Object.fromEntries([...reliabilityByMarket.entries()].map(([key, value]) => [key, round(value, 4)])),
+  Object.fromEntries(
+    [...reliabilityByMarket.entries()].map(([key, value]) => [
+      key,
+      round(value, 4),
+    ]),
+  ),
 );
 
 const voteVolumeOnlyCandidates = [
@@ -629,13 +689,19 @@ const voteVolumeOnlyCandidates = [
     pollSignal: 0.1,
   }),
 ];
-const voteVolumeMarketStats = scorer.scoreCandidates(voteVolumeOnlyCandidates, new Map(), config).marketStats;
+const voteVolumeMarketStats = scorer.scoreCandidates(
+  voteVolumeOnlyCandidates,
+  new Map(),
+  config,
+).marketStats;
 const lowVoteVolumeReliability =
-  voteVolumeMarketStats.find((row) => row.marketKey === 'fixture-low-vote-volume')?.marketReliability ??
-  0;
+  voteVolumeMarketStats.find(
+    (row) => row.marketKey === 'fixture-low-vote-volume',
+  )?.marketReliability ?? 0;
 const highVoteVolumeReliability =
-  voteVolumeMarketStats.find((row) => row.marketKey === 'fixture-high-vote-volume')?.marketReliability ??
-  0;
+  voteVolumeMarketStats.find(
+    (row) => row.marketKey === 'fixture-high-vote-volume',
+  )?.marketReliability ?? 0;
 
 expectCheck(
   'market reliability ignores raw poll vote row volume when distinct voter breadth is unchanged',
@@ -701,13 +767,19 @@ const voterFanoutCandidates = [
     pollSignal: 0.1,
   }),
 ];
-const voterFanoutMarketStats = scorer.scoreCandidates(voterFanoutCandidates, new Map(), config).marketStats;
+const voterFanoutMarketStats = scorer.scoreCandidates(
+  voterFanoutCandidates,
+  new Map(),
+  config,
+).marketStats;
 const lowVoterFanoutReliability =
-  voterFanoutMarketStats.find((row) => row.marketKey === 'fixture-low-voter-fanout')
-    ?.marketReliability ?? 0;
+  voterFanoutMarketStats.find(
+    (row) => row.marketKey === 'fixture-low-voter-fanout',
+  )?.marketReliability ?? 0;
 const highVoterFanoutReliability =
-  voterFanoutMarketStats.find((row) => row.marketKey === 'fixture-high-voter-fanout')
-    ?.marketReliability ?? 0;
+  voterFanoutMarketStats.find(
+    (row) => row.marketKey === 'fixture-high-voter-fanout',
+  )?.marketReliability ?? 0;
 
 expectCheck(
   'market reliability uses true market-level distinct poll voters instead of summing subject voter fanout',
@@ -738,7 +810,9 @@ type SeededDbFixtureSeed = {
 
 type SeededDbCleanupCounts = Record<string, number>;
 
-async function countSeededDbFixtureResidue(prisma: PrismaClient): Promise<SeededDbCleanupCounts> {
+async function countSeededDbFixtureResidue(
+  prisma: PrismaClient,
+): Promise<SeededDbCleanupCounts> {
   const [row] = await prisma.$queryRaw<Array<Record<string, bigint>>>`
     SELECT
       (SELECT COUNT(*) FROM core_entities WHERE restaurant_metadata->>'fixtureFamily' = ${DB_FIXTURE_FAMILY}) AS entities,
@@ -818,7 +892,9 @@ async function countSeededDbFixtureResidue(prisma: PrismaClient): Promise<Seeded
   );
 }
 
-async function cleanupSeededDbFixtures(prisma: PrismaClient): Promise<SeededDbCleanupCounts> {
+async function cleanupSeededDbFixtures(
+  prisma: PrismaClient,
+): Promise<SeededDbCleanupCounts> {
   await prisma.$executeRaw`
     DELETE FROM users
     WHERE email LIKE ${`${DB_FIXTURE_FAMILY}-%@example.com`}
@@ -830,7 +906,9 @@ async function cleanupSeededDbFixtures(prisma: PrismaClient): Promise<SeededDbCl
     WHERE restaurant_metadata->>'fixtureFamily' = ${DB_FIXTURE_FAMILY}
   `;
   const entityIds = entityRows.map((row) => row.entity_id);
-  const connectionRows = await prisma.$queryRaw<Array<{ connection_id: string }>>`
+  const connectionRows = await prisma.$queryRaw<
+    Array<{ connection_id: string }>
+  >`
     SELECT c.connection_id
     FROM core_restaurant_items c
     JOIN core_entities r ON r.entity_id = c.restaurant_id
@@ -1010,7 +1088,7 @@ async function seedDbFixtures(
           ${row.upvotes}
         )
       `;
-	    }
+    }
 
     await tx.$executeRaw`
       INSERT INTO users (
@@ -1180,10 +1258,14 @@ function geoJsonFeatures(collection: unknown): Array<Record<string, unknown>> {
     return [];
   }
   const features = (collection as { features?: unknown }).features;
-  return Array.isArray(features) ? (features as Array<Record<string, unknown>>) : [];
+  return Array.isArray(features)
+    ? (features as Array<Record<string, unknown>>)
+    : [];
 }
 
-function featureProperties(feature: Record<string, unknown>): Record<string, unknown> {
+function featureProperties(
+  feature: Record<string, unknown>,
+): Record<string, unknown> {
   const properties = feature.properties;
   return properties && typeof properties === 'object'
     ? (properties as Record<string, unknown>)
@@ -1193,7 +1275,11 @@ function featureProperties(feature: Record<string, unknown>): Record<string, unk
 async function runSeededDbFixtureChecks(): Promise<void> {
   if (skipDbIntegration) {
     checks.push(
-      pass('seeded DB fixture checks skipped by flag', 'no --skip-db flag', '--skip-db'),
+      pass(
+        'seeded DB fixture checks skipped by flag',
+        'no --skip-db flag',
+        '--skip-db',
+      ),
     );
     return;
   }
@@ -1206,7 +1292,10 @@ async function runSeededDbFixtureChecks(): Promise<void> {
     const { rows, userId } = await seedDbFixtures(prisma, fixtureRunId);
     const high = rows[0];
     const low = rows[1];
-    const dbScorer = new PublicCraveScoreService(prisma as never, noopLogger as never);
+    const dbScorer = new PublicCraveScoreService(
+      prisma as never,
+      noopLogger as never,
+    );
     await dbScorer.rebuildAllScores({
       fixtureRunId,
       recencyReferenceDate: new Date(),
@@ -1240,7 +1329,8 @@ async function runSeededDbFixtureChecks(): Promise<void> {
         if (!maxRow) {
           return row;
         }
-        return Number(row.raw_quality_score ?? 0) > Number(maxRow.raw_quality_score ?? 0)
+        return Number(row.raw_quality_score ?? 0) >
+          Number(maxRow.raw_quality_score ?? 0)
           ? row
           : maxRow;
       },
@@ -1257,12 +1347,12 @@ async function runSeededDbFixtureChecks(): Promise<void> {
         ? (highTrace.privateEvidence as Record<string, unknown>)
         : {};
 
-	    expectCheck(
-	      'seeded DB poll performance affects raw quality without pseudo mentions',
-	      highRaw > lowRaw + 4,
-	      'high poll performer raw score > low poll performer by more than 4',
-	      { highRaw: round(highRaw), lowRaw: round(lowRaw) },
-	    );
+    expectCheck(
+      'seeded DB poll performance affects raw quality without pseudo mentions',
+      highRaw > lowRaw + 4,
+      'high poll performer raw score > low poll performer by more than 4',
+      { highRaw: round(highRaw), lowRaw: round(lowRaw) },
+    );
     expectCheck(
       'seeded DB raw quality remains unconstrained before public display projection',
       maxSeededRaw > 100 && maxSeededRawDisplay < 100,
@@ -1287,7 +1377,10 @@ async function runSeededDbFixtureChecks(): Promise<void> {
       { distinctPollVoterCount: privateEvidence.distinctPollVoterCount },
     );
 
-    const coverageService = new SearchCoverageService(prisma as never, noopLogger as never);
+    const coverageService = new SearchCoverageService(
+      prisma as never,
+      noopLogger as never,
+    );
     const largeCoverage = geoJsonFeatures(
       await coverageService.buildShortcutCoverageGeoJson({
         bounds: {
@@ -1305,31 +1398,37 @@ async function runSeededDbFixtureChecks(): Promise<void> {
       }),
     );
     const largeHighFeature = largeCoverage.find(
-      (feature) => featureProperties(feature).restaurantId === high.restaurantId,
+      (feature) =>
+        featureProperties(feature).restaurantId === high.restaurantId,
     );
     const singleHighFeature = singleCoverage.find(
-      (feature) => featureProperties(feature).restaurantId === high.restaurantId,
+      (feature) =>
+        featureProperties(feature).restaurantId === high.restaurantId,
     );
-    const largeHighScore = Number(featureProperties(largeHighFeature ?? {}).craveScore);
-    const singleHighScore = Number(featureProperties(singleHighFeature ?? {}).craveScore);
+    const largeHighScore = Number(
+      featureProperties(largeHighFeature ?? {}).craveScore,
+    );
+    const singleHighScore = Number(
+      featureProperties(singleHighFeature ?? {}).craveScore,
+    );
 
-	    expectCheck(
-	      'seeded DB coverage keeps the same score across large and one-result bounds',
-	      largeCoverage.length >= rows.length &&
-	        largeCoverage.length > 20 &&
-	        singleCoverage.length === 1 &&
-	        Number.isFinite(largeHighScore) &&
-	        largeHighScore === singleHighScore &&
-	        singleHighScore < 100,
-	      'large coverage exceeds page-one size and one-result coverage keeps the same non-100 score',
-	      {
-	        largeCoverageCount: largeCoverage.length,
-	        seededRestaurantCount: rows.length,
-	        singleCoverageCount: singleCoverage.length,
-	        largeHighScore,
-	        singleHighScore,
-	      },
-	    );
+    expectCheck(
+      'seeded DB coverage keeps the same score across large and one-result bounds',
+      largeCoverage.length >= rows.length &&
+        largeCoverage.length > 20 &&
+        singleCoverage.length === 1 &&
+        Number.isFinite(largeHighScore) &&
+        largeHighScore === singleHighScore &&
+        singleHighScore < 100,
+      'large coverage exceeds page-one size and one-result coverage keeps the same non-100 score',
+      {
+        largeCoverageCount: largeCoverage.length,
+        seededRestaurantCount: rows.length,
+        singleCoverageCount: singleCoverage.length,
+        largeHighScore,
+        singleHighScore,
+      },
+    );
 
     const dishCoverage = geoJsonFeatures(
       await coverageService.buildShortcutCoverageGeoJson({
@@ -1357,8 +1456,8 @@ async function runSeededDbFixtureChecks(): Promise<void> {
       {
         dishCoverageCount: dishCoverage.length,
         invalidDishFeatures: invalidDishFeatures.length,
-	      },
-	    );
+      },
+    );
 
     const searchBounds = {
       northEast: { lat: 12.5, lng: -45.5 },
@@ -1406,7 +1505,9 @@ async function runSeededDbFixtureChecks(): Promise<void> {
       dishPagination: { skip: 0, take: 20 },
       topDishesLimit: 3,
     });
-    const searchRestaurantScores = searchResult.restaurants.map((row) => row.craveScore);
+    const searchRestaurantScores = searchResult.restaurants.map(
+      (row) => row.craveScore,
+    );
     const searchDishScores = searchResult.dishes.map((row) => row.craveScore);
     const searchRestaurantScoresSorted = searchRestaurantScores.every(
       (score, index, values) => index === 0 || values[index - 1] >= score,
@@ -1421,8 +1522,12 @@ async function runSeededDbFixtureChecks(): Promise<void> {
         searchResult.dishes.length === 20 &&
         searchResult.totalRestaurantCount >= rows.length &&
         searchResult.totalDishCount >= rows.length &&
-        searchRestaurantScores.every((score) => Number.isFinite(score) && score < 100) &&
-        searchDishScores.every((score) => Number.isFinite(score) && score < 100) &&
+        searchRestaurantScores.every(
+          (score) => Number.isFinite(score) && score < 100,
+        ) &&
+        searchDishScores.every(
+          (score) => Number.isFinite(score) && score < 100,
+        ) &&
         searchRestaurantScoresSorted &&
         searchDishScoresSorted,
       'active SearchQueryExecutor dual-list readers return scored, score-sorted page-one restaurant and dish rows while total counts see the full fixture set',
@@ -1451,12 +1556,14 @@ async function runSeededDbFixtureChecks(): Promise<void> {
         visibility: FavoriteListVisibility.private,
       }),
     ]);
-    const restaurantPreviewScore = restaurantFavoriteLists[0]?.previewItems[0]?.craveScore;
+    const restaurantPreviewScore =
+      restaurantFavoriteLists[0]?.previewItems[0]?.craveScore;
     const dishPreviewScore = dishFavoriteLists[0]?.previewItems[0]?.craveScore;
 
     expectCheck(
       'seeded DB favorite readers expose numeric Crave Score preview items',
-      Number.isFinite(restaurantPreviewScore) && Number.isFinite(dishPreviewScore),
+      Number.isFinite(restaurantPreviewScore) &&
+        Number.isFinite(dishPreviewScore),
       'favorite list preview rows use numeric craveScore for restaurant and dish lists',
       {
         restaurantPreviewScore,
@@ -1470,28 +1577,40 @@ async function runSeededDbFixtureChecks(): Promise<void> {
     await prisma.$disconnect();
   }
 
-  const cleanupTotal = Object.values(cleanupRemaining).reduce((total, count) => total + count, 0);
-	  expectCheck(
-	    keepDbFixtures ? 'seeded DB fixture cleanup skipped by --keep' : 'seeded DB fixtures clean up all fixture rows',
-	    keepDbFixtures || cleanupTotal === 0,
-	    keepDbFixtures
-	      ? '--keep leaves fixture rows for debugging'
-	      : 'cleanup leaves zero fixture rows across seeded entities, polls, scores, users, favorites, and market presence',
-	    { cleanupRemaining },
-	  );
+  const cleanupTotal = Object.values(cleanupRemaining).reduce(
+    (total, count) => total + count,
+    0,
+  );
+  expectCheck(
+    keepDbFixtures
+      ? 'seeded DB fixture cleanup skipped by --keep'
+      : 'seeded DB fixtures clean up all fixture rows',
+    keepDbFixtures || cleanupTotal === 0,
+    keepDbFixtures
+      ? '--keep leaves fixture rows for debugging'
+      : 'cleanup leaves zero fixture rows across seeded entities, polls, scores, users, favorites, and market presence',
+    { cleanupRemaining },
+  );
 }
 
 async function runDbIntegrationChecks(): Promise<void> {
   if (skipDbIntegration) {
     checks.push(
-      pass('DB integration checks skipped by flag', 'no --skip-db flag', '--skip-db'),
+      pass(
+        'DB integration checks skipped by flag',
+        'no --skip-db flag',
+        '--skip-db',
+      ),
     );
     return;
   }
 
   const prisma = new PrismaClient();
   try {
-    const dbScorer = new PublicCraveScoreService(prisma as never, noopLogger as never);
+    const dbScorer = new PublicCraveScoreService(
+      prisma as never,
+      noopLogger as never,
+    );
     const rebuild = await dbScorer.rebuildAllScores({
       recencyReferenceDate: new Date(),
     });
@@ -1550,13 +1669,21 @@ async function runDbIntegrationChecks(): Promise<void> {
       'DB rebuild does not create forced 100 scores',
       score100Count === 0 && maxDbScore < 100 && minDbScore >= 60,
       '0 scores at 100, min >= 60, max < 100',
-      { score100Count, minDbScore: round(minDbScore), maxDbScore: round(maxDbScore) },
+      {
+        score100Count,
+        minDbScore: round(minDbScore),
+        maxDbScore: round(maxDbScore),
+      },
     );
     expectCheck(
       'DB rebuild writes market stats and same-day history',
       marketStatCount > 0 && currentHistoryCount === rebuild.scoredCount,
       'market stats > 0 and current history count equals scored count',
-      { marketStatCount, currentHistoryCount, scoredCount: rebuild.scoredCount },
+      {
+        marketStatCount,
+        currentHistoryCount,
+        scoredCount: rebuild.scoredCount,
+      },
     );
   } finally {
     await prisma.$disconnect();
@@ -1575,16 +1702,16 @@ async function main(): Promise<void> {
     '',
     `Status: ${failedChecks.length === 0 ? 'PASS' : 'FAIL'}`,
     '',
-	    `Candidate count: ${allCandidates.length}`,
-	    `Display range observed: ${round(minScore)}-${round(maxScore)}`,
-	    '',
+    `Candidate count: ${allCandidates.length}`,
+    `Display range observed: ${round(minScore)}-${round(maxScore)}`,
+    '',
     '## Calibration Summary',
     '',
     '```json',
     JSON.stringify(calibrationSummary, null, 2),
     '```',
     '',
-	    '## Checks',
+    '## Checks',
     '',
     ...checks.flatMap((check) => [
       `### ${check.status === 'pass' ? 'PASS' : 'FAIL'} - ${check.name}`,

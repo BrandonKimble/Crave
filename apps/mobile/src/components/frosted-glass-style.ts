@@ -5,8 +5,7 @@ export const FROSTED_GLASS_DEFAULT_TINT: FrostedGlassTint = 'light';
 export const FROSTED_GLASS_DEFAULT_TINT_COLOR = 'rgba(248, 251, 255, 0.30)';
 export const FROSTED_GLASS_DEFAULT_FALLBACK_COLOR = 'rgba(248, 251, 255, 0.85)';
 
-export const clampFrostedGlassOpacity = (value: number): number =>
-  Math.max(0, Math.min(1, value));
+export const clampFrostedGlassOpacity = (value: number): number => Math.max(0, Math.min(1, value));
 
 export const resolveFrostedGlassBlurAmount = (intensity?: number): number => {
   const resolved = intensity ?? FROSTED_GLASS_DEFAULT_INTENSITY;
@@ -17,9 +16,7 @@ export const resolveFrostedGlassBlurAmount = (intensity?: number): number => {
   return Math.min(25, Math.max(1, normalized));
 };
 
-export const resolveFrostedGlassBlurType = (
-  tint: FrostedGlassTint
-): 'light' | 'dark' => {
+export const resolveFrostedGlassBlurType = (tint: FrostedGlassTint): 'light' | 'dark' => {
   if (tint === 'dark') {
     return 'dark';
   }

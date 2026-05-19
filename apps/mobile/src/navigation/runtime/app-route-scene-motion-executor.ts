@@ -141,10 +141,7 @@ export class AppRouteSceneMotionExecutor {
 
   private lastSheetDispatchState: AppRouteSceneSheetMotionDispatchState | null = null;
 
-  private readonly pendingLocalSheetMotionByKey = new Map<
-    string,
-    PendingLocalSheetMotionRequest
-  >();
+  private readonly pendingLocalSheetMotionByKey = new Map<string, PendingLocalSheetMotionRequest>();
 
   private lastCameraDispatchState: AppRouteScenePlaneDispatchState | null = null;
 

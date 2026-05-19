@@ -11,9 +11,7 @@ const isVisibleResultsSheetSnap = (
 
 type UseSearchRootResultsSheetSnapRuntimeArgs = {
   rootOverlayFoundationRuntime: SearchRootOverlayFoundationRuntime;
-  interactionStateRuntime: ReturnType<
-    typeof useSearchRootResultsSheetInteractionStateRuntime
-  >;
+  interactionStateRuntime: ReturnType<typeof useSearchRootResultsSheetInteractionStateRuntime>;
 };
 
 export const useSearchRootResultsSheetSnapRuntime = ({
@@ -21,9 +19,7 @@ export const useSearchRootResultsSheetSnapRuntime = ({
   interactionStateRuntime,
 }: UseSearchRootResultsSheetSnapRuntimeArgs) => {
   const { appRouteResultsSheetRuntimeOwner } = rootOverlayFoundationRuntime;
-  const pendingResultsSheetSnapRef = React.useRef<Exclude<OverlaySheetSnap, 'hidden'> | null>(
-    null
-  );
+  const pendingResultsSheetSnapRef = React.useRef<Exclude<OverlaySheetSnap, 'hidden'> | null>(null);
   const activeResultsSheetSnapRef = React.useRef<OverlaySheetSnap>('hidden');
 
   const applyResultsSheetSnapChange = React.useCallback(
@@ -90,10 +86,7 @@ export const useSearchRootResultsSheetSnapRuntime = ({
       }
       interactionStateRuntime.handleResultsSheetDragStateChange(false);
     },
-    [
-      applyResultsSheetSnapChange,
-      interactionStateRuntime,
-    ]
+    [applyResultsSheetSnapChange, interactionStateRuntime]
   );
 
   return React.useMemo(
@@ -102,10 +95,6 @@ export const useSearchRootResultsSheetSnapRuntime = ({
       handleResultsSheetSnapChange,
       handleResultsSheetSettlingChange,
     }),
-    [
-      handleResultsSheetSettlingChange,
-      handleResultsSheetSnapChange,
-      handleResultsSheetSnapStart,
-    ]
+    [handleResultsSheetSettlingChange, handleResultsSheetSnapChange, handleResultsSheetSnapStart]
   );
 };

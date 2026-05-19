@@ -56,10 +56,7 @@ export const useResultsPresentationCloseTransitionIntentRuntime = ({
   }, [routeSceneVisibilityPolicyRuntime, shellLocalState]);
 
   const beginCloseTransition = React.useCallback(
-    (
-      closeIntentId: string,
-      options?: { terminalDismissSource?: 'results' | 'profile' }
-    ) => {
+    (closeIntentId: string, options?: { terminalDismissSource?: 'results' | 'profile' }) => {
       if (activeCloseIntentIdRef.current === closeIntentId) {
         return;
       }

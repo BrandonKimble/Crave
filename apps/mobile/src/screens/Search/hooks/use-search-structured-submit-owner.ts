@@ -97,13 +97,19 @@ type UseSearchStructuredSubmitOwnerArgs = {
   executeEntityStructuredSearchAttempt: (params: {
     payload: StructuredSearchRequest;
     requestId: number;
-    startLifecycle: (response: SearchResponse, cacheStatus: SearchRequestCacheStatus | null) => boolean;
+    startLifecycle: (
+      response: SearchResponse,
+      cacheStatus: SearchRequestCacheStatus | null
+    ) => boolean;
   }) => Promise<boolean>;
   executeShortcutStructuredSearchAttempt: (params: {
     payload: StructuredSearchRequest;
     requestId: number;
     append: boolean;
-    startLifecycle: (response: SearchResponse, cacheStatus: SearchRequestCacheStatus | null) => boolean;
+    startLifecycle: (
+      response: SearchResponse,
+      cacheStatus: SearchRequestCacheStatus | null
+    ) => boolean;
   }) => Promise<boolean>;
   startEntityStructuredResponseLifecycle: (params: {
     response: SearchResponse;

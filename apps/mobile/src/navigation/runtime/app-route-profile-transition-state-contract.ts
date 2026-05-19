@@ -1,8 +1,4 @@
-import type {
-  FoodResult,
-  RestaurantResult,
-  RestaurantResultScorePreview,
-} from '../../types';
+import type { FoodResult, RestaurantResult, RestaurantResultScorePreview } from '../../types';
 import type { PreparedProfilePresentationSnapshot } from './app-route-profile-prepared-presentation-snapshot-contract';
 import type { PreparedProfilePresentationTransaction } from './app-route-profile-prepared-presentation-transaction-contract';
 

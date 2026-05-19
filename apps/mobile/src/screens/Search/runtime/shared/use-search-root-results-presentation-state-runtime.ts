@@ -16,10 +16,7 @@ export const useSearchRootResultsPresentationStateRuntime = ({
   rootOverlayFoundationRuntime,
   profileOwner,
 }: UseSearchRootResultsPresentationStateRuntimeArgs): SearchRootPresentationStateRuntime => {
-  const {
-    rootPrimitivesRuntime,
-    rootSuggestionRuntime,
-  } = stateFoundationLane;
+  const { rootPrimitivesRuntime, rootSuggestionRuntime } = stateFoundationLane;
   const { appRouteResultsSheetRuntimeOwner } = rootOverlayFoundationRuntime;
 
   return React.useMemo(() => {

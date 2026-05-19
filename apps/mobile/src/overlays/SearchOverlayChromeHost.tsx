@@ -41,8 +41,7 @@ const areSearchOverlayChromeFrameSelectionsEqual = (
 ): boolean =>
   left.isFocused === right.isFocused &&
   left.shouldRenderSearchOverlay === right.shouldRenderSearchOverlay &&
-  left.shouldFreezeSuggestionSurfaceForRunOne ===
-    right.shouldFreezeSuggestionSurfaceForRunOne &&
+  left.shouldFreezeSuggestionSurfaceForRunOne === right.shouldFreezeSuggestionSurfaceForRunOne &&
   left.shouldFreezeOverlayHeaderChromeForRunOne ===
     right.shouldFreezeOverlayHeaderChromeForRunOne &&
   left.onProfilerRender === right.onProfilerRender &&
@@ -61,10 +60,7 @@ const areSearchOverlayChromeHostSelectionsEqual = (
   right: SearchOverlayChromeHostSnapshot
 ): boolean =>
   areSearchOverlayChromeFrameSelectionsEqual(left.frameSnapshot, right.frameSnapshot) &&
-  areSearchOverlayChromeContainerSelectionsEqual(
-    left.containerSnapshot,
-    right.containerSnapshot
-  ) &&
+  areSearchOverlayChromeContainerSelectionsEqual(left.containerSnapshot, right.containerSnapshot) &&
   left.headerProps === right.headerProps &&
   left.suggestionSurfaceProps === right.suggestionSurfaceProps;
 
@@ -101,8 +97,7 @@ const SearchOverlaySuggestionSurfaceHost = React.memo(
         () => ({
           suggestionDisplaySuggestions: suggestionSurfaceProps.suggestionDisplaySuggestions,
           recentSearchesDisplay: suggestionSurfaceProps.recentSearchesDisplay,
-          recentlyViewedRestaurantsDisplay:
-            suggestionSurfaceProps.recentlyViewedRestaurantsDisplay,
+          recentlyViewedRestaurantsDisplay: suggestionSurfaceProps.recentlyViewedRestaurantsDisplay,
           recentlyViewedFoodsDisplay: suggestionSurfaceProps.recentlyViewedFoodsDisplay,
         }),
         [
@@ -116,22 +111,18 @@ const SearchOverlaySuggestionSurfaceHost = React.memo(
       frozenSuggestionSurfacePropsRef.current = nextSuggestionSurfaceFrozenProps;
     }
     const suggestionSurfacePropsForRender = shouldFreezeSuggestionSurfaceForRunOne
-      ? frozenSuggestionSurfacePropsRef.current ?? nextSuggestionSurfaceFrozenProps
+      ? (frozenSuggestionSurfacePropsRef.current ?? nextSuggestionSurfaceFrozenProps)
       : nextSuggestionSurfaceFrozenProps;
 
     return (
       <SearchSuggestionSurface
         {...suggestionSurfaceProps}
-        suggestionDisplaySuggestions={
-          suggestionSurfacePropsForRender.suggestionDisplaySuggestions
-        }
+        suggestionDisplaySuggestions={suggestionSurfacePropsForRender.suggestionDisplaySuggestions}
         recentSearchesDisplay={suggestionSurfacePropsForRender.recentSearchesDisplay}
         recentlyViewedRestaurantsDisplay={
           suggestionSurfacePropsForRender.recentlyViewedRestaurantsDisplay
         }
-        recentlyViewedFoodsDisplay={
-          suggestionSurfacePropsForRender.recentlyViewedFoodsDisplay
-        }
+        recentlyViewedFoodsDisplay={suggestionSurfacePropsForRender.recentlyViewedFoodsDisplay}
       />
     );
   }
@@ -170,16 +161,14 @@ const SearchOverlayHeaderHost = React.memo(
       frozenHeaderChromePropsRef.current = nextHeaderChromeFrozenProps;
     }
     const headerChromePropsForRender = shouldFreezeOverlayHeaderChromeForRunOne
-      ? frozenHeaderChromePropsRef.current ?? nextHeaderChromeFrozenProps
+      ? (frozenHeaderChromePropsRef.current ?? nextHeaderChromeFrozenProps)
       : nextHeaderChromeFrozenProps;
 
     return (
       <SearchOverlayHeaderChrome
         {...headerProps}
         searchShortcutsAnimatedStyle={headerChromePropsForRender.searchShortcutsAnimatedStyle}
-        searchShortcutChipAnimatedStyle={
-          headerChromePropsForRender.searchShortcutChipAnimatedStyle
-        }
+        searchShortcutChipAnimatedStyle={headerChromePropsForRender.searchShortcutChipAnimatedStyle}
         searchShortcutContentAnimatedStyle={
           headerChromePropsForRender.searchShortcutContentAnimatedStyle
         }
@@ -281,10 +270,7 @@ export const SearchOverlayChromeHost = React.memo(
       ),
       subscribeSelector: overlayChromeHostAuthority.subscribeSelector,
       getSnapshot: overlayChromeHostAuthority.getSnapshot,
-      selector: React.useCallback(
-        (snapshot: SearchOverlayChromeHostSnapshot) => snapshot,
-        []
-      ),
+      selector: React.useCallback((snapshot: SearchOverlayChromeHostSnapshot) => snapshot, []),
       isEqual: areSearchOverlayChromeHostSelectionsEqual,
     });
     const { frameSnapshot, containerSnapshot, headerProps, suggestionSurfaceProps } =
@@ -312,9 +298,7 @@ export const SearchOverlayChromeHost = React.memo(
             shouldRenderChromeHost={shouldRenderChromeHost}
             hiddenSearchFiltersWarmupProps={hiddenSearchFiltersWarmupProps}
             shouldFreezeSuggestionSurfaceForRunOne={shouldFreezeSuggestionSurfaceForRunOne}
-            shouldFreezeOverlayHeaderChromeForRunOne={
-              shouldFreezeOverlayHeaderChromeForRunOne
-            }
+            shouldFreezeOverlayHeaderChromeForRunOne={shouldFreezeOverlayHeaderChromeForRunOne}
           />
         </React.Profiler>
       </>

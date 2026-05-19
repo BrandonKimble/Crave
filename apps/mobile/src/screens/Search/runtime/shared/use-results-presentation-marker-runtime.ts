@@ -19,18 +19,15 @@ export const useResultsPresentationMarkerRuntime = ({
   emitRuntimeMechanismEvent,
   markSearchSheetCloseMapExitSettledRef,
 }: UseResultsPresentationMarkerRuntimeArgs) => {
-  const markerEnterSettleRuntime =
-    useResultsPresentationMarkerEnterSettleRuntime({
-      searchSurfaceRedrawCoordinatorRef,
-      emitRuntimeMechanismEvent,
-    });
+  const markerEnterSettleRuntime = useResultsPresentationMarkerEnterSettleRuntime({
+    searchSurfaceRedrawCoordinatorRef,
+    emitRuntimeMechanismEvent,
+  });
   const markerEnterRuntime = useResultsPresentationMarkerEnterRuntime({
     runtimeMachineRef,
     searchSurfaceRedrawCoordinatorRef,
-    flushPendingMarkerEnterSettled:
-      markerEnterSettleRuntime.flushPendingMarkerEnterSettled,
-    setPendingMarkerEnterSettled:
-      markerEnterSettleRuntime.setPendingMarkerEnterSettled,
+    flushPendingMarkerEnterSettled: markerEnterSettleRuntime.flushPendingMarkerEnterSettled,
+    setPendingMarkerEnterSettled: markerEnterSettleRuntime.setPendingMarkerEnterSettled,
   });
   const markerExitRuntime = useResultsPresentationMarkerExitRuntime({
     runtimeMachineRef,
@@ -39,8 +36,7 @@ export const useResultsPresentationMarkerRuntime = ({
 
   return React.useMemo(
     () => ({
-      handleExecutionBatchMountedHidden:
-        markerEnterRuntime.handleExecutionBatchMountedHidden,
+      handleExecutionBatchMountedHidden: markerEnterRuntime.handleExecutionBatchMountedHidden,
       handleMarkerEnterStarted: markerEnterRuntime.handleMarkerEnterStarted,
       handleMarkerEnterSettled: markerEnterRuntime.handleMarkerEnterSettled,
       handleMarkerExitStarted: markerExitRuntime.handleMarkerExitStarted,

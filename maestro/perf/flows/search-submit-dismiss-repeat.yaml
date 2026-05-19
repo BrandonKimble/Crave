@@ -10,7 +10,7 @@ appId: com.brandonkimble.cravesearch
     text: 'Close results'
     optional: true
 - tapOn:
-    point: "88%, 44%"
+    point: '88%, 44%'
     waitToSettleTimeoutMs: 0
 - waitForAnimationToEnd:
     timeout: 1200
@@ -28,7 +28,7 @@ appId: com.brandonkimble.cravesearch
           visible: 'Show best restaurants here'
           timeout: 5000
       - tapOn:
-          point: "25%, 19%"
+          point: '25%, 19%'
           waitToSettleTimeoutMs: 0
       - extendedWaitUntil:
           visible: 'Close results'
@@ -36,17 +36,17 @@ appId: com.brandonkimble.cravesearch
       - waitForAnimationToEnd:
           timeout: 1000
       - tapOn:
-          point: "88%, 44%"
+          point: '88%, 44%'
           waitToSettleTimeoutMs: 0
       - waitForAnimationToEnd:
-            timeout: 1000
+          timeout: 1000
 - openLink: crave://perf-scenario-mark?phase=measured_repeat_loop_end
 - waitForAnimationToEnd:
     timeout: 1000
 - takeScreenshot: search-visual-after-results-close
 - takeScreenshot: search-visual-after-polls-restored
 - tapOn:
-    point: "25%, 19%"
+    point: '25%, 19%'
     waitToSettleTimeoutMs: 0
 - takeScreenshot: search-visual-results-entering
 - extendedWaitUntil:
@@ -58,7 +58,7 @@ appId: com.brandonkimble.cravesearch
 - takeScreenshot: search-visual-results-open-settled
 - takeScreenshot: search-visual-results-cards-ready
 - tapOn:
-    point: "88%, 44%"
+    point: '88%, 44%'
     waitToSettleTimeoutMs: 0
 - waitForAnimationToEnd:
     timeout: 1000

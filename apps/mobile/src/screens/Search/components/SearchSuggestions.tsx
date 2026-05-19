@@ -156,8 +156,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   const shouldRenderRecentSection =
     shouldRenderRecentSearchesSection || shouldRenderRecentlyViewedSection;
   const shouldShowRecentViewMore = recentSearches.length > RECENT_SEARCH_PREVIEW_LIMIT;
-  const shouldShowRecentlyViewedMore =
-    recentlyViewedItems.length > RECENTLY_VIEWED_PREVIEW_LIMIT;
+  const shouldShowRecentlyViewedMore = recentlyViewedItems.length > RECENTLY_VIEWED_PREVIEW_LIMIT;
   const containerStyles = [styles.container, style];
   const recentSectionStyles = [
     styles.recentSection,
@@ -240,9 +239,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                 style={styles.autocompleteItemRow}
                 accessibilityRole="button"
                 accessibilityLabel={`Autocomplete suggestion ${match.name}`}
-                testID={`autocomplete-suggestion-${match.entityType}-${testIdSafeName(
-                  match.name
-                )}`}
+                testID={`autocomplete-suggestion-${match.entityType}-${testIdSafeName(match.name)}`}
               >
                 <View style={styles.autocompleteLeadingIcon}>{leadingIcon}</View>
                 <View
@@ -291,9 +288,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                     <View style={styles.recentIcon}>
                       <Clock size={18} color={ICON_COLOR} strokeWidth={2} />
                     </View>
-                    <View
-                      style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}
-                    >
+                    <View style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}>
                       <View style={styles.recentRowTextGroup}>
                         <Text style={styles.recentText} numberOfLines={1}>
                           {term.queryText}

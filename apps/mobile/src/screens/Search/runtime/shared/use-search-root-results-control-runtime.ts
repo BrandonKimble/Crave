@@ -45,22 +45,21 @@ export const useSearchRootResultsControlRuntime = ({
   resultsTransitionControlLane: SearchRootResultsTransitionControlLane;
   searchSurfaceResultsTransactionControlLane: SearchRootSearchSurfaceResultsTransactionControlLane;
 } => {
-  const { closeTransitionActions, searchSurfaceResultsTransactionKey } =
-    resultsPresentationOwner;
-  const resultsSheetInteractionModel =
-    useSearchRootResultsSheetInteractionModelRuntime({
-      stateFoundationLane,
-      rootOverlayFoundationRuntime,
-      submitRuntimeResult,
-    });
+  const { closeTransitionActions, searchSurfaceResultsTransactionKey } = resultsPresentationOwner;
+  const resultsSheetInteractionModel = useSearchRootResultsSheetInteractionModelRuntime({
+    stateFoundationLane,
+    rootOverlayFoundationRuntime,
+    submitRuntimeResult,
+  });
   const presentationState = useSearchRootResultsPresentationStateRuntime({
     stateFoundationLane,
     rootOverlayFoundationRuntime,
     profileOwner,
   });
 
-  const resultsSheetControlLane =
-    useSearchRootResultsSheetControlLane(resultsSheetInteractionModel);
+  const resultsSheetControlLane = useSearchRootResultsSheetControlLane(
+    resultsSheetInteractionModel
+  );
   const resultsPresentationStateControlLane =
     useSearchRootResultsPresentationStateControlLane(presentationState);
   const resultsTransitionControlLane =

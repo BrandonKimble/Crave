@@ -28,18 +28,18 @@ export const useSearchForegroundQuerySubmitRuntime = ({
 }: UseSearchForegroundQuerySubmitRuntimeArgs): SearchForegroundQuerySubmitRuntime => {
   const { submitSearch } = submitRuntime;
 
-	  const handleSubmit = React.useCallback(() => {
-	    const entrySurface = resolveForegroundSearchSubmitEntrySurface({ isSuggestionPanelActive });
-	    const trimmed = query.trim();
+  const handleSubmit = React.useCallback(() => {
+    const entrySurface = resolveForegroundSearchSubmitEntrySurface({ isSuggestionPanelActive });
+    const trimmed = query.trim();
     if (trimmed.length > 0) {
       submitPreparationRuntime.prepareSubmitChrome({ captureOrigin: true });
     } else {
       submitPreparationRuntime.prepareSubmitChrome();
     }
-	    void submitSearch({
-	      transitionFromDockedPolls: shouldShowDockedPollsRef.current.shouldShowDockedPolls,
-	      entrySurface,
-	    });
+    void submitSearch({
+      transitionFromDockedPolls: shouldShowDockedPollsRef.current.shouldShowDockedPolls,
+      entrySurface,
+    });
   }, [
     isSuggestionPanelActive,
     query,

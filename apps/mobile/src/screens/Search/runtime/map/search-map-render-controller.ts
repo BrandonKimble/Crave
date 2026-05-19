@@ -31,10 +31,7 @@ type SearchMapRenderControllerNativeModule = {
     highlightedMarkerKey: string | null;
     interactionMode: string;
   }) => Promise<SearchMapRenderControllerNativeSetFrameTiming | null | void>;
-  resetNativeApplyAttribution?: (payload: {
-    reason?: string;
-    runId?: string;
-  }) => Promise<void>;
+  resetNativeApplyAttribution?: (payload: { reason?: string; runId?: string }) => Promise<void>;
   flushNativeApplyAttribution?: (payload: {
     reason?: string;
     reset?: boolean;
@@ -672,7 +669,9 @@ export const searchMapRenderController = {
         nativeModuleReceivedAtEpochMs: finiteNumberOrUndefined(
           nativeTiming?.nativeModuleReceivedAtEpochMs
         ),
-        nativeMainStartedAtEpochMs: finiteNumberOrUndefined(nativeTiming?.nativeMainStartedAtEpochMs),
+        nativeMainStartedAtEpochMs: finiteNumberOrUndefined(
+          nativeTiming?.nativeMainStartedAtEpochMs
+        ),
         nativeResolveStartedAtEpochMs,
         nativeResolveToJsPromiseObservedWallClockMs:
           nativeResolveToJsPromiseObservedWallClockMs == null
@@ -717,7 +716,9 @@ export const searchMapRenderController = {
       recoverNativeRenderFrameSubmissionError(payload.instanceId, error)
         .then(onError)
         .catch((recoveryError: unknown) => {
-          onError(recoveryError instanceof Error ? recoveryError : new Error(String(recoveryError)));
+          onError(
+            recoveryError instanceof Error ? recoveryError : new Error(String(recoveryError))
+          );
         });
     });
   },
@@ -736,20 +737,24 @@ export const searchMapRenderController = {
     await nativeModule.configureLabelObservation(payload);
   },
 
-  async resetNativeApplyAttribution(payload: {
-    reason?: string;
-    runId?: string;
-  } = {}): Promise<void> {
+  async resetNativeApplyAttribution(
+    payload: {
+      reason?: string;
+      runId?: string;
+    } = {}
+  ): Promise<void> {
     if (!nativeModule?.resetNativeApplyAttribution) {
       return;
     }
     await nativeModule.resetNativeApplyAttribution(payload);
   },
 
-  async flushNativeApplyAttribution(payload: {
-    reason?: string;
-    reset?: boolean;
-  } = {}): Promise<SearchMapNativeApplyAttributionSummary | null> {
+  async flushNativeApplyAttribution(
+    payload: {
+      reason?: string;
+      reset?: boolean;
+    } = {}
+  ): Promise<SearchMapNativeApplyAttributionSummary | null> {
     if (!nativeModule?.flushNativeApplyAttribution) {
       return null;
     }

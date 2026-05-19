@@ -145,8 +145,7 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
     const onProfilerRender = useSearchOverlayProfilerRender();
     const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
     const listDataAuthoritySnapshot = EMPTY_LIST_DATA_SNAPSHOT;
-    const scenePrimaryData =
-      listDataAuthoritySnapshot.primaryData ?? sceneBodyContentSpec.data;
+    const scenePrimaryData = listDataAuthoritySnapshot.primaryData ?? sceneBodyContentSpec.data;
     const scenePrimaryExtraData =
       listDataAuthoritySnapshot.primaryExtraData ?? sceneBodyContentSpec.extraData;
     const sceneKeyboardShouldPersistTaps =
@@ -191,10 +190,9 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
         sceneContentContainerStyle,
       ]
     );
-    const renderSceneScrollComponent =
-      bodyScrollRuntime.ScrollComponent as NonNullable<
-        FlashListProps<unknown>['renderScrollComponent']
-      >;
+    const renderSceneScrollComponent = bodyScrollRuntime.ScrollComponent as NonNullable<
+      FlashListProps<unknown>['renderScrollComponent']
+    >;
     const handlePrimaryScrollBeginDrag = React.useCallback(
       (event: ScrollEvent) => {
         sceneBodyTransportSpec.onScrollBeginDrag?.();
@@ -213,15 +211,14 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
 
     const sceneSecondaryList = sceneBodyContentSpec.secondaryList;
     const sceneSecondaryListTransport = sceneBodyTransportSpec.secondaryList;
-    const sceneSecondaryData =
-      listDataAuthoritySnapshot.secondaryData ?? sceneSecondaryList?.data;
+    const sceneSecondaryData = listDataAuthoritySnapshot.secondaryData ?? sceneSecondaryList?.data;
     const sceneSecondaryExtraData =
       listDataAuthoritySnapshot.secondaryExtraData ??
       sceneSecondaryList?.extraData ??
       scenePrimaryExtraData;
     const sceneShouldRenderDualLists = sceneSecondaryList != null;
     const sceneResolvedActiveList = sceneShouldRenderDualLists
-      ? listDataAuthoritySnapshot.activeList ?? sceneBodyTransportSpec.activeList ?? 'primary'
+      ? (listDataAuthoritySnapshot.activeList ?? sceneBodyTransportSpec.activeList ?? 'primary')
       : 'primary';
     const primaryOwnsScroll = !sceneShouldRenderDualLists || sceneResolvedActiveList === 'primary';
     const secondaryOwnsScroll =
@@ -271,7 +268,7 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
         sceneSecondaryList?.estimatedItemSize ?? sceneBodyContentSpec.estimatedItemSize,
       ...sceneSecondaryInputFlashListProps,
       drawDistance: secondaryOwnsScroll
-        ? sceneSecondaryInputFlashListProps.drawDistance ?? DEFAULT_DRAW_DISTANCE
+        ? (sceneSecondaryInputFlashListProps.drawDistance ?? DEFAULT_DRAW_DISTANCE)
         : INACTIVE_SECONDARY_DRAW_DISTANCE,
       overrideProps: {
         initialDrawBatchSize: secondaryOwnsScroll
@@ -449,19 +446,20 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
               } as FlashListProps<unknown>)}
               ListHeaderComponent={
                 secondaryOwnsScroll
-                  ? sceneSecondaryList.ListHeaderComponent ??
-                    sceneBodyContentSpec.ListHeaderComponent
+                  ? (sceneSecondaryList.ListHeaderComponent ??
+                    sceneBodyContentSpec.ListHeaderComponent)
                   : null
               }
               ListFooterComponent={
                 secondaryOwnsScroll
-                  ? sceneSecondaryList.ListFooterComponent ??
-                    sceneBodyContentSpec.ListFooterComponent
+                  ? (sceneSecondaryList.ListFooterComponent ??
+                    sceneBodyContentSpec.ListFooterComponent)
                   : null
               }
               ListEmptyComponent={
                 secondaryOwnsScroll
-                  ? sceneSecondaryList.ListEmptyComponent ?? sceneBodyContentSpec.ListEmptyComponent
+                  ? (sceneSecondaryList.ListEmptyComponent ??
+                    sceneBodyContentSpec.ListEmptyComponent)
                   : null
               }
               ItemSeparatorComponent={

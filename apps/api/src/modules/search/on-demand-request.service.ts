@@ -196,8 +196,8 @@ export class OnDemandRequestService {
           await tx.onDemandAskEvent.create({
             data: {
               requestId: collectableMarketKey
-                ? requestIdByCollectableMarketKey.get(collectableMarketKey) ??
-                  firstRequestId
+                ? (requestIdByCollectableMarketKey.get(collectableMarketKey) ??
+                  firstRequestId)
                 : firstRequestId,
               userId: userId ?? null,
               term: request.term,

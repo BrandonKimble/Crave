@@ -5,8 +5,7 @@ export const useSearchRootSearchSceneListPreparedRowsReadinessPatchRuntime = ({
 }: {
   resultsPreparedRowsKey: string | null;
 }): boolean => {
-  const preparedRowsSnapshot =
-    getResultsPresentationSurfaceAuthority().getSnapshot().preparedRows;
+  const preparedRowsSnapshot = getResultsPresentationSurfaceAuthority().getSnapshot().preparedRows;
 
   return (
     resultsPreparedRowsKey != null &&

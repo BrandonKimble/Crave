@@ -64,7 +64,8 @@ export const useSearchFreezeGateRuntime = ({
           freezeGateStateRuntime.freezeGateState.isSearchSurfaceRedrawChromeFreezeActive,
         isSearchSurfaceRedrawPreflightFreezeActive:
           freezeGateStateRuntime.freezeGateState.isSearchSurfaceRedrawPreflightFreezeActive,
-        isSearchSurfaceRedrawActive: freezeGateStateRuntime.freezeGateState.isSearchSurfaceRedrawActive,
+        isSearchSurfaceRedrawActive:
+          freezeGateStateRuntime.freezeGateState.isSearchSurfaceRedrawActive,
         isResponseFrameFreezeActive:
           freezeGateStateRuntime.freezeGateState.isResponseFrameFreezeActive,
         freezeClassification: freezeGateStateRuntime.freezeGateState.freezeClassification,

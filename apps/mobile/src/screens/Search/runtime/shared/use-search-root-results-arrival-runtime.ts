@@ -1,8 +1,6 @@
 import React from 'react';
 
-import {
-  createSearchRootResultsArrivalStateValue,
-} from '../controller/search-root-data-plane-runtime';
+import { createSearchRootResultsArrivalStateValue } from '../controller/search-root-data-plane-runtime';
 import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
 import type {
   SearchRootResultsArrivalState,

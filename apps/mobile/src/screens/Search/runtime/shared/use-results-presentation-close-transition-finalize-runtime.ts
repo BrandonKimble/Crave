@@ -27,7 +27,6 @@ export type ResultsPresentationCloseTransitionFinalizeRuntime = {
   cancelSearchSheetCloseTransition: (closeIntentId?: string) => void;
 };
 
-
 export const useResultsPresentationCloseTransitionFinalizeRuntime = ({
   clearSearchState,
   flushPendingSearchOriginRestore,

@@ -18,38 +18,26 @@ export const useSearchRootOverlayHeaderSearchBarInteractionRuntime = ({
 }): SearchForegroundHeaderSearchBarInteractionInputs =>
   React.useMemo(
     () => ({
-      handleQueryChange:
-        foregroundInputControlLane.foregroundInputRuntime.handleQueryChange,
-      handleSubmit:
-        foregroundInteractionControlLane.foregroundInteractionRuntime.handleSubmit,
+      handleQueryChange: foregroundInputControlLane.foregroundInputRuntime.handleQueryChange,
+      handleSubmit: foregroundInteractionControlLane.foregroundInteractionRuntime.handleSubmit,
       handleSearchFocus:
-        foregroundInteractionControlLane.foregroundInteractionRuntime
-          .handleSearchFocus,
+        foregroundInteractionControlLane.foregroundInteractionRuntime.handleSearchFocus,
       handleSearchBlur:
-        foregroundInteractionControlLane.foregroundInteractionRuntime
-          .handleSearchBlur,
-      handleClear:
-        foregroundInteractionControlLane.foregroundInteractionRuntime.handleClear,
-      focusSearchInput:
-        foregroundInputControlLane.foregroundInputRuntime.focusSearchInput,
+        foregroundInteractionControlLane.foregroundInteractionRuntime.handleSearchBlur,
+      handleClear: foregroundInteractionControlLane.foregroundInteractionRuntime.handleClear,
+      focusSearchInput: foregroundInputControlLane.foregroundInputRuntime.focusSearchInput,
       handleSearchBack:
-        foregroundInteractionControlLane.foregroundInteractionRuntime
-          .handleSearchBack,
-      inputRef:
-        suggestionInteractionControlLane.suggestionInteractionRuntime.inputRef,
+        foregroundInteractionControlLane.foregroundInteractionRuntime.handleSearchBack,
+      inputRef: suggestionInteractionControlLane.suggestionInteractionRuntime.inputRef,
     }),
     [
       foregroundInputControlLane.foregroundInputRuntime.focusSearchInput,
       foregroundInputControlLane.foregroundInputRuntime.handleQueryChange,
       foregroundInteractionControlLane.foregroundInteractionRuntime.handleClear,
-      foregroundInteractionControlLane.foregroundInteractionRuntime
-        .handleSearchBack,
-      foregroundInteractionControlLane.foregroundInteractionRuntime
-        .handleSearchBlur,
-      foregroundInteractionControlLane.foregroundInteractionRuntime
-        .handleSearchFocus,
-      foregroundInteractionControlLane.foregroundInteractionRuntime
-        .handleSubmit,
+      foregroundInteractionControlLane.foregroundInteractionRuntime.handleSearchBack,
+      foregroundInteractionControlLane.foregroundInteractionRuntime.handleSearchBlur,
+      foregroundInteractionControlLane.foregroundInteractionRuntime.handleSearchFocus,
+      foregroundInteractionControlLane.foregroundInteractionRuntime.handleSubmit,
       suggestionInteractionControlLane.suggestionInteractionRuntime.inputRef,
     ]
   );

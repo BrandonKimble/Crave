@@ -17,7 +17,8 @@ export const getSearchMapEngineInputChanges = (
     right.resolveRestaurantLocationSelectionAnchor,
   pickPreferredRestaurantMapLocation:
     left.pickPreferredRestaurantMapLocation !== right.pickPreferredRestaurantMapLocation,
-  getCraveScoreColorFromScore: left.getCraveScoreColorFromScore !== right.getCraveScoreColorFromScore,
+  getCraveScoreColorFromScore:
+    left.getCraveScoreColorFromScore !== right.getCraveScoreColorFromScore,
   mapGestureActiveRef: left.mapGestureActiveRef !== right.mapGestureActiveRef,
   mapMotionPressureController:
     left.mapMotionPressureController !== right.mapMotionPressureController,
@@ -28,8 +29,7 @@ export const getSearchMapEngineInputChanges = (
   lodVisibleCandidateBuffer: left.lodVisibleCandidateBuffer !== right.lodVisibleCandidateBuffer,
   lodPinPromoteStableMsMoving:
     left.lodPinPromoteStableMsMoving !== right.lodPinPromoteStableMsMoving,
-  lodPinDemoteStableMsMoving:
-    left.lodPinDemoteStableMsMoving !== right.lodPinDemoteStableMsMoving,
+  lodPinDemoteStableMsMoving: left.lodPinDemoteStableMsMoving !== right.lodPinDemoteStableMsMoving,
   lodPinToggleStableMsIdle: left.lodPinToggleStableMsIdle !== right.lodPinToggleStableMsIdle,
   lodPinOffscreenToggleStableMsMoving:
     left.lodPinOffscreenToggleStableMsMoving !== right.lodPinOffscreenToggleStableMsMoving,
@@ -42,23 +42,18 @@ export const createSearchRootMapEngineInputs = ({
   mapPresentationRuntime,
 }: {
   mapSurfaceState: SearchRootMapSurfaceState;
-  mapPresentationRuntime: ReturnType<
-    typeof createSearchRootMapPresentationRuntimeValue
-  >;
+  mapPresentationRuntime: ReturnType<typeof createSearchRootMapPresentationRuntimeValue>;
 }): SearchMapRenderEngineInputs => ({
   restaurantOnlyId: mapSurfaceState.restaurantOnlyId,
   highlightedRestaurantId: mapPresentationRuntime.highlightedRestaurantId,
   viewportBoundsService: mapPresentationRuntime.viewportBoundsService,
-  resolveRestaurantMapLocations:
-    mapPresentationRuntime.resolveRestaurantMapLocations,
+  resolveRestaurantMapLocations: mapPresentationRuntime.resolveRestaurantMapLocations,
   resolveRestaurantLocationSelectionAnchor:
     mapPresentationRuntime.resolveRestaurantLocationSelectionAnchor,
-  pickPreferredRestaurantMapLocation:
-    mapPresentationRuntime.pickPreferredRestaurantMapLocation,
+  pickPreferredRestaurantMapLocation: mapPresentationRuntime.pickPreferredRestaurantMapLocation,
   getCraveScoreColorFromScore,
   mapGestureActiveRef: mapPresentationRuntime.mapGestureActiveRef,
-  mapMotionPressureController:
-    mapPresentationRuntime.mapMotionPressureController,
+  mapMotionPressureController: mapPresentationRuntime.mapMotionPressureController,
   shouldLogSearchComputes: mapPresentationRuntime.shouldLogSearchComputes,
   getPerfNow: mapPresentationRuntime.getPerfNow,
   logSearchCompute: mapPresentationRuntime.logSearchCompute,

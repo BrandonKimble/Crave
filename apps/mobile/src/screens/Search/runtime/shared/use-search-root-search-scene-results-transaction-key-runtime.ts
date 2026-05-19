@@ -4,5 +4,4 @@ export const useSearchRootSearchSceneResultsTransactionKeyRuntime = ({
   searchSurfaceResultsTransactionControlLane,
 }: {
   searchSurfaceResultsTransactionControlLane: SearchRootSearchSurfaceResultsTransactionControlLane;
-}): string | null =>
-  searchSurfaceResultsTransactionControlLane.searchSurfaceResultsTransactionKey;
+}): string | null => searchSurfaceResultsTransactionControlLane.searchSurfaceResultsTransactionKey;

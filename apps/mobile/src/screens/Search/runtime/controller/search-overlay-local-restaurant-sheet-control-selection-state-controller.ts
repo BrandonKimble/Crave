@@ -37,10 +37,8 @@ const createControlSelectionSnapshot = ({
 }): RouteLocalRestaurantOverlayControlSelectionSnapshot => ({
   restaurantPanelSnapshot: panelSelectionSnapshot.restaurantPanelSnapshot,
   suggestionProgress: panelSelectionSnapshot.suggestionProgress,
-  shouldSuppressRestaurantOverlay:
-    policySelectionSnapshot.shouldSuppressRestaurantOverlay,
-  shouldFreezeRestaurantPanelContent:
-    policySelectionSnapshot.shouldFreezeRestaurantPanelContent,
+  shouldSuppressRestaurantOverlay: policySelectionSnapshot.shouldSuppressRestaurantOverlay,
+  shouldFreezeRestaurantPanelContent: policySelectionSnapshot.shouldFreezeRestaurantPanelContent,
   shouldEnableRestaurantOverlayInteraction:
     policySelectionSnapshot.shouldEnableRestaurantOverlayInteraction,
   onToggleFavorite,
@@ -79,10 +77,8 @@ export class SearchOverlayLocalRestaurantSheetControlSelectionStateController {
     localRestaurantSheetPolicySelectionAuthority: SearchOverlayLocalRestaurantSheetPolicySelectionAuthority;
     localRestaurantSheetInteractionSelectionAuthority: SearchOverlayLocalRestaurantSheetInteractionSelectionAuthority;
   }) {
-    this.panelSelectionSnapshot =
-      localRestaurantSheetPanelSelectionAuthority.getSnapshot();
-    this.policySelectionSnapshot =
-      localRestaurantSheetPolicySelectionAuthority.getSnapshot();
+    this.panelSelectionSnapshot = localRestaurantSheetPanelSelectionAuthority.getSnapshot();
+    this.policySelectionSnapshot = localRestaurantSheetPolicySelectionAuthority.getSnapshot();
     this.interactionSelectionSnapshot =
       localRestaurantSheetInteractionSelectionAuthority.getSnapshot();
     this.snapshot = createControlSelectionSnapshot({
@@ -98,14 +94,10 @@ export class SearchOverlayLocalRestaurantSheetControlSelectionStateController {
     };
     this.unsubscribers.push(
       localRestaurantSheetPanelSelectionAuthority.subscribe(() => {
-        this.setPanelSelectionSnapshot(
-          localRestaurantSheetPanelSelectionAuthority.getSnapshot()
-        );
+        this.setPanelSelectionSnapshot(localRestaurantSheetPanelSelectionAuthority.getSnapshot());
       }),
       localRestaurantSheetPolicySelectionAuthority.subscribe(() => {
-        this.setPolicySelectionSnapshot(
-          localRestaurantSheetPolicySelectionAuthority.getSnapshot()
-        );
+        this.setPolicySelectionSnapshot(localRestaurantSheetPolicySelectionAuthority.getSnapshot());
       }),
       localRestaurantSheetInteractionSelectionAuthority.subscribe(() => {
         this.setInteractionSelectionSnapshot(
@@ -169,12 +161,7 @@ export class SearchOverlayLocalRestaurantSheetControlSelectionStateController {
       closeRestaurantProfile: this.closeRestaurantProfile,
     });
 
-    if (
-      areRouteLocalRestaurantOverlayControlSelectionSnapshotsEqual(
-        this.snapshot,
-        nextSnapshot
-      )
-    ) {
+    if (areRouteLocalRestaurantOverlayControlSelectionSnapshotsEqual(this.snapshot, nextSnapshot)) {
       return;
     }
 
@@ -185,16 +172,15 @@ export class SearchOverlayLocalRestaurantSheetControlSelectionStateController {
   }
 }
 
-export const createSearchOverlayLocalRestaurantSheetControlSelectionStateController =
-  ({
+export const createSearchOverlayLocalRestaurantSheetControlSelectionStateController = ({
+  localRestaurantSheetPanelSelectionAuthority,
+  localRestaurantSheetPolicySelectionAuthority,
+  localRestaurantSheetInteractionSelectionAuthority,
+}: ConstructorParameters<
+  typeof SearchOverlayLocalRestaurantSheetControlSelectionStateController
+>[0]): SearchOverlayLocalRestaurantSheetControlSelectionStateController =>
+  new SearchOverlayLocalRestaurantSheetControlSelectionStateController({
     localRestaurantSheetPanelSelectionAuthority,
     localRestaurantSheetPolicySelectionAuthority,
     localRestaurantSheetInteractionSelectionAuthority,
-  }: ConstructorParameters<
-    typeof SearchOverlayLocalRestaurantSheetControlSelectionStateController
-  >[0]): SearchOverlayLocalRestaurantSheetControlSelectionStateController =>
-    new SearchOverlayLocalRestaurantSheetControlSelectionStateController({
-      localRestaurantSheetPanelSelectionAuthority,
-      localRestaurantSheetPolicySelectionAuthority,
-      localRestaurantSheetInteractionSelectionAuthority,
-    });
+  });

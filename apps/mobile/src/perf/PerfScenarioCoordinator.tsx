@@ -461,7 +461,12 @@ export const PerfScenarioCoordinator: React.FC = () => {
         return;
       }
       if (event.lat != null || event.lng != null || event.zoom != null) {
-        if (!registry.setMapCamera || event.lat == null || event.lng == null || event.zoom == null) {
+        if (
+          !registry.setMapCamera ||
+          event.lat == null ||
+          event.lng == null ||
+          event.zoom == null
+        ) {
           logPayload({
             event: 'perf_scenario_command_failed',
             action: event.action,
@@ -482,7 +487,9 @@ export const PerfScenarioCoordinator: React.FC = () => {
           label: event.label,
         });
         logPayload({
-          event: accepted ? 'perf_scenario_command_camera_prepared' : 'perf_scenario_command_failed',
+          event: accepted
+            ? 'perf_scenario_command_camera_prepared'
+            : 'perf_scenario_command_failed',
           action: event.action,
           step: 'submit_shortcut_restaurants_camera',
           reason: accepted ? null : 'camera_commit_rejected',

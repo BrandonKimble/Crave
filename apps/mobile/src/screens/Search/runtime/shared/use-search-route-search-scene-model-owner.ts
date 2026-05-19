@@ -156,32 +156,31 @@ export const useSearchRouteSearchSceneModelOwner = ({
     searchScenePanelSurfaceRenderRuntime: routeSearchScenePanelSurfaceRenderRuntime,
   });
   const shouldPublishResultsPageBundle =
-    routeSearchSceneDataRuntime.routeSearchSceneSearchSheetContentLane.kind !==
-    'persistent_poll';
+    routeSearchSceneDataRuntime.routeSearchSceneSearchSheetContentLane.kind !== 'persistent_poll';
   const routeSearchSceneResultsPageBundle =
     React.useMemo<SearchResultsPageBundleRenderObject | null>(
-    () =>
-      shouldPublishResultsPageBundle
-        ? {
-            kind: 'results_page_bundle',
-            underlayComponent: routeSearchScenePanelSurfaceRenderRuntime.underlayComponent,
-            backgroundComponent:
-              routeSearchScenePanelSurfaceRenderRuntime.backgroundComponent ?? null,
-            headerComponent:
-              routeSearchSceneReadModelRuntime.routeSearchSceneResultsReadModelSelectors
-                .resultsPageHeaderComponent,
-            overlayComponent: routeSearchScenePanelSurfaceRenderRuntime.overlayComponent ?? null,
-          }
-        : null,
-    [
-      routeSearchScenePanelSurfaceRenderRuntime.backgroundComponent,
-      routeSearchScenePanelSurfaceRenderRuntime.overlayComponent,
-      routeSearchScenePanelSurfaceRenderRuntime.underlayComponent,
-      routeSearchSceneReadModelRuntime.routeSearchSceneResultsReadModelSelectors
-        .resultsPageHeaderComponent,
-      shouldPublishResultsPageBundle,
-    ]
-  );
+      () =>
+        shouldPublishResultsPageBundle
+          ? {
+              kind: 'results_page_bundle',
+              underlayComponent: routeSearchScenePanelSurfaceRenderRuntime.underlayComponent,
+              backgroundComponent:
+                routeSearchScenePanelSurfaceRenderRuntime.backgroundComponent ?? null,
+              headerComponent:
+                routeSearchSceneReadModelRuntime.routeSearchSceneResultsReadModelSelectors
+                  .resultsPageHeaderComponent,
+              overlayComponent: routeSearchScenePanelSurfaceRenderRuntime.overlayComponent ?? null,
+            }
+          : null,
+      [
+        routeSearchScenePanelSurfaceRenderRuntime.backgroundComponent,
+        routeSearchScenePanelSurfaceRenderRuntime.overlayComponent,
+        routeSearchScenePanelSurfaceRenderRuntime.underlayComponent,
+        routeSearchSceneReadModelRuntime.routeSearchSceneResultsReadModelSelectors
+          .resultsPageHeaderComponent,
+        shouldPublishResultsPageBundle,
+      ]
+    );
   React.useLayoutEffect(() => {
     publishSearchResultsPageBundle(routeSearchSceneResultsPageBundle);
   }, [routeSearchSceneResultsPageBundle]);
@@ -194,7 +193,8 @@ export const useSearchRouteSearchSceneModelOwner = ({
   const shouldRunExternalPreMeasure =
     routeSearchSceneReadModelRuntime.routeSearchSceneResultsReadModelSelectors
       .isResultsHydrationSettled &&
-    routeSearchSceneDataRuntime.routeSearchSceneHydrationRuntimeState.searchSurfaceRedrawPhase === 'idle';
+    routeSearchSceneDataRuntime.routeSearchSceneHydrationRuntimeState.searchSurfaceRedrawPhase ===
+      'idle';
   const externalPreMeasureOverlay = shouldRunExternalPreMeasure
     ? routeSearchSceneReadModelRuntime.routeSearchSceneResultsReadModelSelectors.preMeasureOverlay
     : null;

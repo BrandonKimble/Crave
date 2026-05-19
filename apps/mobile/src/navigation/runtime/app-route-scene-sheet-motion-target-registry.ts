@@ -15,9 +15,7 @@ export type AppRouteSceneSheetMotionTarget = {
   localMotionKey?: string;
   motionCommandValue: SharedValue<BottomSheetMotionCommand | null>;
   resolveCurrentSnapTarget?: () => BottomSheetSnap | null;
-  matchesTransitionContract?: (
-    transitionContract: RouteSceneSwitchTransitionContract
-  ) => boolean;
+  matchesTransitionContract?: (transitionContract: RouteSceneSwitchTransitionContract) => boolean;
 };
 
 export type AppRouteSceneSheetMotionTargetResolution =
@@ -35,10 +33,7 @@ export type AppRouteSceneSheetMotionTargetResolution =
 const SEARCH_ROUTE_SHEET_TARGET_KEY: OverlayKey = 'searchRoute';
 
 export class AppRouteSceneSheetMotionTargetRegistry {
-  private readonly targetsBySceneKey = new Map<
-    OverlayKey,
-    AppRouteSceneSheetMotionTarget[]
-  >();
+  private readonly targetsBySceneKey = new Map<OverlayKey, AppRouteSceneSheetMotionTarget[]>();
 
   private readonly listeners = new Set<Listener>();
 
@@ -86,10 +81,7 @@ export class AppRouteSceneSheetMotionTargetRegistry {
     if (matchingTarget != null) {
       return matchingTarget;
     }
-    if (
-      sceneKey === 'restaurant' &&
-      transitionContract.targetSceneKey === 'restaurant'
-    ) {
+    if (sceneKey === 'restaurant' && transitionContract.targetSceneKey === 'restaurant') {
       return undefined;
     }
     return orderedCandidates[0];
@@ -116,10 +108,7 @@ export class AppRouteSceneSheetMotionTargetRegistry {
     };
   }
 
-  public targetOwnsScene(
-    target: AppRouteSceneSheetMotionTarget,
-    sceneKey: OverlayKey
-  ): boolean {
+  public targetOwnsScene(target: AppRouteSceneSheetMotionTarget, sceneKey: OverlayKey): boolean {
     return (
       target.sceneKey === sceneKey ||
       appRouteSceneUsesSharedSheetTarget({
@@ -129,9 +118,7 @@ export class AppRouteSceneSheetMotionTargetRegistry {
     );
   }
 
-  public registerTarget(
-    target: AppRouteSceneSheetMotionTarget
-  ): (() => void) {
+  public registerTarget(target: AppRouteSceneSheetMotionTarget): () => void {
     const targets = this.targetsBySceneKey.get(target.sceneKey) ?? [];
     this.targetsBySceneKey.set(target.sceneKey, [...targets, target]);
     this.notify();
@@ -140,9 +127,7 @@ export class AppRouteSceneSheetMotionTargetRegistry {
       if (!currentTargets) {
         return;
       }
-      const nextTargets = currentTargets.filter(
-        (currentTarget) => currentTarget !== target
-      );
+      const nextTargets = currentTargets.filter((currentTarget) => currentTarget !== target);
       if (nextTargets.length === 0) {
         this.targetsBySceneKey.delete(target.sceneKey);
         this.notify();
@@ -157,9 +142,7 @@ export class AppRouteSceneSheetMotionTargetRegistry {
     return this.resolveTarget(sceneKey)?.resolveCurrentSnapTarget?.() ?? null;
   }
 
-  private getSceneTargets(
-    sceneKey: OverlayKey
-  ): readonly AppRouteSceneSheetMotionTarget[] {
+  private getSceneTargets(sceneKey: OverlayKey): readonly AppRouteSceneSheetMotionTarget[] {
     return this.targetsBySceneKey.get(sceneKey) ?? [];
   }
 
@@ -182,5 +165,4 @@ export class AppRouteSceneSheetMotionTargetRegistry {
 }
 
 export const createAppRouteSceneSheetMotionTargetRegistry =
-  (): AppRouteSceneSheetMotionTargetRegistry =>
-    new AppRouteSceneSheetMotionTargetRegistry();
+  (): AppRouteSceneSheetMotionTargetRegistry => new AppRouteSceneSheetMotionTargetRegistry();

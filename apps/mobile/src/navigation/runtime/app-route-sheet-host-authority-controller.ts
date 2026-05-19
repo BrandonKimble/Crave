@@ -268,8 +268,8 @@ const resolveSnapPersistenceKey = ({
   if (activeShellSpec == null) {
     return null;
   }
-  const sceneSnapPersistence = resolveAppRouteSheetScenePolicy(activeSemanticOverlayKey)
-    .snapPersistence;
+  const sceneSnapPersistence =
+    resolveAppRouteSheetScenePolicy(activeSemanticOverlayKey).snapPersistence;
   switch (sceneSnapPersistence) {
     case 'shared':
       return ROUTE_SHARED_SNAP_PERSISTENCE_KEY;
@@ -1227,8 +1227,7 @@ class AppRouteSheetHostAuthorityController {
         : this.input.routeSceneFrameAuthority.getSceneFrameEntry(preservedOutgoingSheetSceneKey);
     const preservedOutgoingRenderableFrameEntry =
       preservedOutgoingFrameEntry?.shellSpec != null ? preservedOutgoingFrameEntry : null;
-    const preservedOutgoingFrameSceneKey =
-      preservedOutgoingRenderableFrameEntry?.sceneKey ?? null;
+    const preservedOutgoingFrameSceneKey = preservedOutgoingRenderableFrameEntry?.sceneKey ?? null;
     const shouldPreserveOutgoingSheetContent = preservedOutgoingFrameSceneKey != null;
     const isSearchDismissPollBoundaryCommitted =
       !shouldPreserveOutgoingSheetContent &&
@@ -1245,22 +1244,24 @@ class AppRouteSheetHostAuthorityController {
     const isPersistentPollSheetHostActive =
       isSearchDismissPollBoundaryCommitted ||
       (isPersistentPollLane && !shouldUseSearchSheetHostForSearchSurface);
-    const sheetPresentationSceneKey = preservedOutgoingFrameSceneKey ??
+    const sheetPresentationSceneKey =
+      preservedOutgoingFrameSceneKey ??
       (isSearchDismissPollBoundaryCommitted
         ? 'polls'
         : shouldUseSearchSheetHostForSearchSurface
-        ? 'search'
-        : isPersistentPollSheetHostActive
-        ? 'polls'
-        : activeSceneFrameEntry.sceneKey);
-    const sheetPresentationFrameEntry = preservedOutgoingRenderableFrameEntry != null
-      ? preservedOutgoingRenderableFrameEntry
-      : isSearchDismissPollBoundaryCommitted ||
-      shouldUseSearchSheetHostForSearchSurface ||
-      isPersistentPollSheetHostActive
-        ? this.input.routeSceneFrameAuthority.getSceneFrameEntry(sheetPresentationSceneKey) ??
-          activeSceneFrameEntry
-        : activeSceneFrameEntry;
+          ? 'search'
+          : isPersistentPollSheetHostActive
+            ? 'polls'
+            : activeSceneFrameEntry.sceneKey);
+    const sheetPresentationFrameEntry =
+      preservedOutgoingRenderableFrameEntry != null
+        ? preservedOutgoingRenderableFrameEntry
+        : isSearchDismissPollBoundaryCommitted ||
+            shouldUseSearchSheetHostForSearchSurface ||
+            isPersistentPollSheetHostActive
+          ? (this.input.routeSceneFrameAuthority.getSceneFrameEntry(sheetPresentationSceneKey) ??
+            activeSceneFrameEntry)
+          : activeSceneFrameEntry;
     const sheetPresentationShellSpec =
       sheetPresentationFrameEntry.shellSpec ?? EMPTY_ROUTE_SHEET_SHELL_SPEC;
     const isRenderable =
@@ -1278,8 +1279,8 @@ class AppRouteSheetHostAuthorityController {
       activeOverlayRouteKey;
     const searchRouteRuntimeModel =
       rootOverlayKey === 'search'
-        ? this.input.routeSceneFrameAuthority.getSceneFrameEntry('search')?.shellSpec
-            ?.runtimeModel ?? null
+        ? (this.input.routeSceneFrameAuthority.getSceneFrameEntry('search')?.shellSpec
+            ?.runtimeModel ?? null)
         : null;
     const initialSnapPoint = resolvePolicyInitialSnap(activeSemanticOverlayKey);
     const hiddenOrCollapsed =
@@ -1297,9 +1298,9 @@ class AppRouteSheetHostAuthorityController {
       flashListProps: sheetPresentationShellSpec.flashListProps,
     });
     const resolvedRuntimeModel = canRenderSurface
-      ? searchRouteRuntimeModel ??
+      ? (searchRouteRuntimeModel ??
         sheetPresentationShellSpec.runtimeModel ??
-        this.fallbackRuntimeModel
+        this.fallbackRuntimeModel)
       : null;
 
     return {
@@ -1314,10 +1315,10 @@ class AppRouteSheetHostAuthorityController {
         (isSearchDismissPollBoundaryCommitted
           ? 'polls'
           : shouldUseSearchSheetHostForSearchSurface
-          ? 'search'
-          : isPersistentPollSheetHostActive
-          ? 'polls'
-          : activeSceneFrameEntry.sceneKey),
+            ? 'search'
+            : isPersistentPollSheetHostActive
+              ? 'polls'
+              : activeSceneFrameEntry.sceneKey),
       initialSheetY,
       isPersistentPollLane: effectiveIsPersistentPollLane,
       isRenderable,
@@ -1471,8 +1472,7 @@ class AppRouteSheetHostAuthorityController {
             visible,
             snapPoints: activeShellSpec.snapPoints,
             initialSnapPoint,
-            currentSnapPoint:
-              this.currentSnap === 'hidden' ? initialSnapPoint : this.currentSnap,
+            currentSnapPoint: this.currentSnap === 'hidden' ? initialSnapPoint : this.currentSnap,
             sheetYValue: resolvedRuntimeModel.presentationState.sheetY,
             scrollOffsetValue: resolvedRuntimeModel.presentationState.scrollOffset,
             momentumFlag: resolvedRuntimeModel.presentationState.momentumFlag,
@@ -2192,9 +2192,10 @@ class AppRouteSheetHostAuthorityController {
   ): void => {
     const resolvedSurfaceInput = this.getResolvedSurfaceInput();
     resolvedSurfaceInput.activeRenderableShellSpec?.onSnapStart?.(snap, meta);
-    this.getParentSearchShellSpecForSearchOriginRestaurant(
-      resolvedSurfaceInput
-    )?.onSnapStart?.(snap, meta);
+    this.getParentSearchShellSpecForSearchOriginRestaurant(resolvedSurfaceInput)?.onSnapStart?.(
+      snap,
+      meta
+    );
   };
 
   private readonly handleSheetSnapChange = (
@@ -2247,9 +2248,10 @@ class AppRouteSheetHostAuthorityController {
         snap,
       });
     }
-    this.getParentSearchShellSpecForSearchOriginRestaurant(
-      resolvedSurfaceInput
-    )?.onSnapChange?.(snap, meta);
+    this.getParentSearchShellSpecForSearchOriginRestaurant(resolvedSurfaceInput)?.onSnapChange?.(
+      snap,
+      meta
+    );
   };
 
   private getParentSearchShellSpecForSearchOriginRestaurant(

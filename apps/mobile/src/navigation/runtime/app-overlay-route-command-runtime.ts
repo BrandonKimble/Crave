@@ -23,27 +23,16 @@ const resolveRouteSwitchPollsParams = <K extends OverlayKey>(
   overlay: K,
   params?: OverlayRouteParamsMap[K]
 ): OverlayRouteParamsMap['polls'] | null =>
-  overlay === 'polls' ? (params as OverlayRouteParamsMap['polls']) ?? null : null;
+  overlay === 'polls' ? ((params as OverlayRouteParamsMap['polls']) ?? null) : null;
 
 export type AppOverlayRouteCommandRuntime = {
   getRouteState: () => RouteSceneSwitchRouteStateSnapshot;
-  setRootRoute: <K extends OverlayKey>(
-    overlay: K,
-    params?: OverlayRouteParamsMap[K]
-  ) => void;
-  updateRoute: <K extends OverlayKey>(
-    overlay: K,
-    params?: OverlayRouteParamsMap[K]
-  ) => void;
-  pushRoute: <K extends OverlayKey>(
-    overlay: K,
-    params?: OverlayRouteParamsMap[K]
-  ) => void;
+  setRootRoute: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
+  updateRoute: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
+  pushRoute: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
   restoreDockedPolls: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
   closeActiveRoute: () => void;
-  closeActiveRouteAfterSettle: (
-    onSettle: RouteSceneSwitchSettleCallback
-  ) => void;
+  closeActiveRouteAfterSettle: (onSettle: RouteSceneSwitchSettleCallback) => void;
   popToRootRoute: () => void;
 };
 
@@ -57,15 +46,10 @@ export const createAppOverlayRouteCommandRuntime = ({
     onSettle?: RouteSceneSwitchSettleCallback
   ): number =>
     onSettle
-      ? routeSceneSwitchRuntime.requestOverlaySwitchWithSettleCallback(
-          input,
-          onSettle
-        )
+      ? routeSceneSwitchRuntime.requestOverlaySwitchWithSettleCallback(input, onSettle)
       : routeSceneSwitchRuntime.requestOverlaySwitch(input);
 
-  const closeActiveRoute = (
-    onSettle?: RouteSceneSwitchSettleCallback
-  ): void => {
+  const closeActiveRoute = (onSettle?: RouteSceneSwitchSettleCallback): void => {
     const routeState = routeSceneSwitchRuntime.getRouteState();
     const { activeOverlayRoute } = routeState;
     const previousOverlayRouteKey = routeSceneSwitchRuntime.getPreviousRouteKey();
@@ -73,25 +57,31 @@ export const createAppOverlayRouteCommandRuntime = ({
       previousOverlayRouteKey != null &&
       isAppOverlayRouteSceneSwitchKey(activeOverlayRoute.key)
     ) {
-      requestRouteSceneSwitch({
-        targetSceneKey: previousOverlayRouteKey,
-        routeAction: 'closeActive',
-        sheetTransitionKind: 'closeChild',
-        sheetOpenerSource: 'routeCommand',
-        sheetMotion: { kind: 'preserveLiveY' },
-      }, onSettle);
+      requestRouteSceneSwitch(
+        {
+          targetSceneKey: previousOverlayRouteKey,
+          routeAction: 'closeActive',
+          sheetTransitionKind: 'closeChild',
+          sheetOpenerSource: 'routeCommand',
+          sheetMotion: { kind: 'preserveLiveY' },
+        },
+        onSettle
+      );
       return;
     }
     if (activeOverlayRoute.key === 'restaurant') {
-      requestRouteSceneSwitch({
-        targetSceneKey: 'polls',
-        routeAction: 'setRoot',
-        sheetTransitionKind: 'terminalDismiss',
-        sheetOpenerSource: 'systemDismiss',
-        sheetMotion: { kind: 'snapTo', snap: 'collapsed' },
-        contentHandoff: 'preserveOutgoingUntilSettle',
-        dockedPollsRestoreSnap: 'collapsed',
-      }, onSettle);
+      requestRouteSceneSwitch(
+        {
+          targetSceneKey: 'polls',
+          routeAction: 'setRoot',
+          sheetTransitionKind: 'terminalDismiss',
+          sheetOpenerSource: 'systemDismiss',
+          sheetMotion: { kind: 'snapTo', snap: 'collapsed' },
+          contentHandoff: 'preserveOutgoingUntilSettle',
+          dockedPollsRestoreSnap: 'collapsed',
+        },
+        onSettle
+      );
       return;
     }
     routeSceneSwitchRuntime.closeActiveRouteState();
@@ -141,11 +131,7 @@ export const createAppOverlayRouteCommandRuntime = ({
         });
         return;
       }
-      if (
-        overlay === 'favoriteListDetail' ||
-        overlay === 'saveList' ||
-        overlay === 'restaurant'
-      ) {
+      if (overlay === 'favoriteListDetail' || overlay === 'saveList' || overlay === 'restaurant') {
         requestRouteSceneSwitch({
           targetSceneKey: overlay,
           routeAction: 'push',
@@ -166,10 +152,7 @@ export const createAppOverlayRouteCommandRuntime = ({
     popToRootRoute: () => {
       const { activeOverlayRoute } = routeSceneSwitchRuntime.getRouteState();
       const rootOverlayRouteKey = routeSceneSwitchRuntime.getRootRouteKey();
-      if (
-        rootOverlayRouteKey != null &&
-        isAppOverlayRouteSceneSwitchKey(activeOverlayRoute.key)
-      ) {
+      if (rootOverlayRouteKey != null && isAppOverlayRouteSceneSwitchKey(activeOverlayRoute.key)) {
         requestRouteSceneSwitch({
           targetSceneKey: rootOverlayRouteKey,
           routeAction: 'popToRoot',

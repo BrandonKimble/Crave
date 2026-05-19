@@ -9,9 +9,7 @@ export const useSearchRootRuntimeSceneVisualRuntime = ({
   foregroundVisualRuntime: SearchForegroundVisualRuntime;
   appRouteSceneChromeMotionRuntime: AppRouteSceneChromeMotionRuntime;
 }): SearchRootSearchSceneVisualRuntime => ({
-  overlayHeaderActionProgress:
-    appRouteSceneChromeMotionRuntime.overlayHeaderActionProgress,
-  resultsSheetVisibilityAnimatedStyle:
-    foregroundVisualRuntime.resultsSheetVisibilityAnimatedStyle,
+  overlayHeaderActionProgress: appRouteSceneChromeMotionRuntime.overlayHeaderActionProgress,
+  resultsSheetVisibilityAnimatedStyle: foregroundVisualRuntime.resultsSheetVisibilityAnimatedStyle,
   resultsWashAnimatedStyle: foregroundVisualRuntime.resultsWashAnimatedStyle,
 });

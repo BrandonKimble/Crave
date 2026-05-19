@@ -46,10 +46,7 @@ interface FixtureCheck {
 
 type FixtureUser = { userId: string; email: string };
 
-type PickedEntity = Pick<
-  Entity,
-  'entityId' | 'name' | 'type' | 'lastPolledAt'
->;
+type PickedEntity = Pick<Entity, 'entityId' | 'name' | 'type' | 'lastPolledAt'>;
 
 const prisma = new PrismaClient();
 const fixtureRunId = `demand-fixture-${new Date()
@@ -60,7 +57,13 @@ const keepRows = process.argv.includes('--keep');
 const outputArg = process.argv.find((arg) => arg.startsWith('--output='));
 const outputPath = outputArg
   ? outputArg.slice('--output='.length)
-  : join(process.cwd(), '..', '..', 'plans', 'demand-scoring-fixture-validation-report.md');
+  : join(
+      process.cwd(),
+      '..',
+      '..',
+      'plans',
+      'demand-scoring-fixture-validation-report.md',
+    );
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const marketKey = 'region-us-tx-austin';
@@ -69,12 +72,17 @@ const fixtureUiMarketA = 'locality-fixture-alpha';
 const fixtureUiMarketB = 'locality-fixture-beta';
 const counterfactualMarketKey = 'locality-fixture-counterfactual';
 const pollAdversarialMarketKey = 'locality-fixture-poll-adversarial';
-const suggestionAdversarialMarketKey = 'locality-fixture-suggestion-adversarial';
+const suggestionAdversarialMarketKey =
+  'locality-fixture-suggestion-adversarial';
 const onDemandAdversarialCollectableMarketKey =
   'region-fixture-on-demand-adversarial';
 const keywordRecoveryCollectableMarketKey = 'region-fixture-keyword-recovery';
 const keywordLiveCollectableMarketKey = 'region-fixture-keyword-live';
-const serviceWarnings: Array<{ level: string; message: string; metadata: unknown }> = [];
+const serviceWarnings: Array<{
+  level: string;
+  message: string;
+  metadata: unknown;
+}> = [];
 
 const noopLogger = {
   setContext() {
@@ -396,11 +404,16 @@ async function runAggregationFixture(
     orderBy: [{ marketKey: 'asc' }, { collectableMarketKey: 'asc' }],
   });
 
-  const uiRows = rows.filter((row) => row.marketKey && !row.collectableMarketKey);
-  const collectableRows = rows.filter(
-    (row) => !row.marketKey && row.collectableMarketKey === collectableMarketKey,
+  const uiRows = rows.filter(
+    (row) => row.marketKey && !row.collectableMarketKey,
   );
-  const globalRows = rows.filter((row) => !row.marketKey && !row.collectableMarketKey);
+  const collectableRows = rows.filter(
+    (row) =>
+      !row.marketKey && row.collectableMarketKey === collectableMarketKey,
+  );
+  const globalRows = rows.filter(
+    (row) => !row.marketKey && !row.collectableMarketKey,
+  );
   const observed = {
     uiMarketRows: uiRows.map((row) => ({
       marketKey: row.marketKey,
@@ -435,8 +448,7 @@ async function runCacheAttributionIdempotencyFixture(params: {
   users: FixtureUser[];
   entity: PickedEntity;
 }): Promise<FixtureCheck> {
-  const originalBackendSearchRequestId =
-    '33333333-3333-4333-8333-333333333333';
+  const originalBackendSearchRequestId = '33333333-3333-4333-8333-333333333333';
   const cacheRevealRequestId = '44444444-4444-4444-8444-444444444444';
   await insertSearchLog({
     userId: params.users[0].userId,
@@ -606,8 +618,7 @@ async function runCacheAttributionAggregationFixture(params: {
 }): Promise<FixtureCheck> {
   const fixtureDate = new Date(Date.UTC(2030, 1, 10, 12));
   const fixtureDay = dateOnly(fixtureDate);
-  const originalBackendSearchRequestId =
-    '77777777-7777-4777-8777-777777777777';
+  const originalBackendSearchRequestId = '77777777-7777-4777-8777-777777777777';
   const cacheRevealRequestId = '88888888-8888-4888-8888-888888888888';
   for (const uiMarketKey of [fixtureUiMarketA, fixtureUiMarketB]) {
     await insertSearchLog({
@@ -811,8 +822,7 @@ async function runAutocompleteSelectionAggregationFixture(params: {
         typeof metadata?.cacheSelectionPolicy === 'string'
           ? metadata.cacheSelectionPolicy
           : null,
-      backendCount:
-        typeof counts?.backend === 'number' ? counts.backend : null,
+      backendCount: typeof counts?.backend === 'number' ? counts.backend : null,
       cacheCount: typeof counts?.cache === 'number' ? counts.cache : null,
     };
   });
@@ -857,7 +867,14 @@ async function runUserLocationDemandFactFixture(params: {
       }),
     } as never,
     {
-      resolveBatch: async (inputs: Array<{ tempId: string; normalizedName: string; originalText: string; entityType: EntityType }>) => ({
+      resolveBatch: async (
+        inputs: Array<{
+          tempId: string;
+          normalizedName: string;
+          originalText: string;
+          entityType: EntityType;
+        }>,
+      ) => ({
         tempIdToEntityIdMap: new Map<string, string>(),
         resolutionResults: inputs.map((input) => ({
           tempId: input.tempId,
@@ -1082,9 +1099,7 @@ async function runDemandCurveCounterfactualFixture(params: {
     currentCycleDays: 7,
     halfLifeDays: 14,
   });
-  const demandById = new Map(
-    demandRows.map((row) => [row.entityId, row]),
-  );
+  const demandById = new Map(demandRows.map((row) => [row.entityId, row]));
   const labelById = new Map(
     Object.entries(entities).map(([label, entity]) => [entity.entityId, label]),
   );
@@ -1229,7 +1244,8 @@ async function runFreshPopularityOverlayFixture(params: {
   const powerScore = scores.get(params.entities.power.entityId) ?? 0;
   const autocompleteSelectedScore =
     scores.get(params.entities.autocompleteSelected.entityId) ?? 0;
-  const plainBackendScore = scores.get(params.entities.plainBackend.entityId) ?? 0;
+  const plainBackendScore =
+    scores.get(params.entities.plainBackend.entityId) ?? 0;
   const observed = {
     broadScore: round(broadScore),
     powerScore: round(powerScore),
@@ -1364,7 +1380,9 @@ async function runPollFixture(params: {
     factorBreakdown: Prisma.JsonObject;
   }>;
 
-  const fixtureIds = new Set(Object.values(entities).map((entity) => entity.entityId));
+  const fixtureIds = new Set(
+    Object.values(entities).map((entity) => entity.entityId),
+  );
   const demandRows = await params.demandService.getTopEntitiesForLocation({
     marketKey,
     since: daysAgo(35),
@@ -1391,10 +1409,12 @@ async function runPollFixture(params: {
   ).tracePollTopicSelection({
     marketKey,
     since: daysAgo(35),
-    selectedCandidates: fixtureCandidates.slice(0, 3).map((candidate, index) => ({
-      ...candidate,
-      selectedRank: index + 1,
-    })),
+    selectedCandidates: fixtureCandidates
+      .slice(0, 3)
+      .map((candidate, index) => ({
+        ...candidate,
+        selectedRank: index + 1,
+      })),
     candidatePool: fixtureCandidates,
   });
   const latestTraceRun = await prisma.demandScoringRun.findFirst({
@@ -1419,7 +1439,8 @@ async function runPollFixture(params: {
   const traceValidation = {
     runCreated: Boolean(latestTraceRun),
     candidateMinDemandScore:
-      (traceMetadata as Record<string, unknown>).candidateMinDemandScore ?? null,
+      (traceMetadata as Record<string, unknown>).candidateMinDemandScore ??
+      null,
     selectedCount: traceRows.filter((row) => row.selected).length,
     nearMissCount: traceRows.filter((row) => !row.selected).length,
     hasFactorBreakdown: traceRows.every(
@@ -1431,7 +1452,9 @@ async function runPollFixture(params: {
           'number',
     ),
   };
-  const observedOrder = fixtureCandidates.map((candidate) => candidate.entityId);
+  const observedOrder = fixtureCandidates.map(
+    (candidate) => candidate.entityId,
+  );
   const expectedOrder = [
     entities.broad.entityId,
     entities.resurgent.entityId,
@@ -1444,14 +1467,12 @@ async function runPollFixture(params: {
     finalScore: Number(candidate.finalScore.toFixed(4)),
     cooldownAvailability:
       typeof candidate.factorBreakdown.pollCooldownAvailability === 'number'
-        ? Number(
-            candidate.factorBreakdown.pollCooldownAvailability.toFixed(4),
-          )
+        ? Number(candidate.factorBreakdown.pollCooldownAvailability.toFixed(4))
         : null,
     resurgenceBoost:
       typeof candidate.factorBreakdown.pollResurgenceBoost === 'number'
         ? Number(candidate.factorBreakdown.pollResurgenceBoost.toFixed(4))
-      : null,
+        : null,
   }));
   const traceOk =
     traceValidation.runCreated &&
@@ -1465,7 +1486,9 @@ async function runPollFixture(params: {
     {
       order: expectedOrder.map((id) => ({
         entityId: id,
-        label: Object.entries(entities).find(([, entity]) => entity.entityId === id)?.[0],
+        label: Object.entries(entities).find(
+          ([, entity]) => entity.entityId === id,
+        )?.[0],
       })),
       trace: {
         candidateMinDemandScore: 1,
@@ -1486,7 +1509,9 @@ async function runPollFixture(params: {
           ]
         : []),
       ...(!traceOk
-        ? ['Poll trace rows did not satisfy the selected/near-miss/factor contract.']
+        ? [
+            'Poll trace rows did not satisfy the selected/near-miss/factor contract.',
+          ]
         : []),
     ],
   );
@@ -1595,7 +1620,9 @@ async function runPollAdversarialFixture(params: {
     since: daysAgo(45),
     limit: 80,
   });
-  const fixtureIds = new Set(Object.values(entities).map((entity) => entity.entityId));
+  const fixtureIds = new Set(
+    Object.values(entities).map((entity) => entity.entityId),
+  );
   const labelById = new Map(
     Object.entries(entities).map(([label, entity]) => [entity.entityId, label]),
   );
@@ -1814,8 +1841,7 @@ async function runPollPublishFixture(params: {
     orderBy: [{ selected: 'desc' }, { rank: 'asc' }],
   });
   const selectedTrace = traceRows.find(
-    (row) =>
-      row.selected && row.decisionReason === 'poll_published',
+    (row) => row.selected && row.decisionReason === 'poll_published',
   );
   const nearMissTrace = traceRows.find(
     (row) => row.decisionReason === 'not_published_this_cycle',
@@ -1834,7 +1860,7 @@ async function runPollPublishFixture(params: {
         row.factorBreakdown &&
         typeof row.factorBreakdown === 'object' &&
         !Array.isArray(row.factorBreakdown)
-          ? (row.factorBreakdown as Prisma.JsonObject).phase
+          ? row.factorBreakdown.phase
           : null,
     })),
   };
@@ -1867,32 +1893,89 @@ async function runKeywordSoftReservationFixture(
 ): Promise<FixtureCheck> {
   const candidatesBySlice = {
     unmet: [
-      { term: 'rare ethiopian breakfast', normalizedTerm: 'rare ethiopian breakfast', slice: 'unmet' as const, score: 10 },
-      { term: 'late night congee', normalizedTerm: 'late night congee', slice: 'unmet' as const, score: 9 },
-      { term: 'weak unmet filler', normalizedTerm: 'weak unmet filler', slice: 'unmet' as const, score: 1 },
+      {
+        term: 'rare ethiopian breakfast',
+        normalizedTerm: 'rare ethiopian breakfast',
+        slice: 'unmet' as const,
+        score: 10,
+      },
+      {
+        term: 'late night congee',
+        normalizedTerm: 'late night congee',
+        slice: 'unmet' as const,
+        score: 9,
+      },
+      {
+        term: 'weak unmet filler',
+        normalizedTerm: 'weak unmet filler',
+        slice: 'unmet' as const,
+        score: 1,
+      },
     ],
     refresh: [
-      { term: 'bbq', normalizedTerm: 'bbq', slice: 'refresh' as const, score: 8 },
-      { term: 'tacos', normalizedTerm: 'tacos', slice: 'refresh' as const, score: 7.8 },
-      { term: 'stale weak refresh', normalizedTerm: 'stale weak refresh', slice: 'refresh' as const, score: 0.7 },
+      {
+        term: 'bbq',
+        normalizedTerm: 'bbq',
+        slice: 'refresh' as const,
+        score: 8,
+      },
+      {
+        term: 'tacos',
+        normalizedTerm: 'tacos',
+        slice: 'refresh' as const,
+        score: 7.8,
+      },
+      {
+        term: 'stale weak refresh',
+        normalizedTerm: 'stale weak refresh',
+        slice: 'refresh' as const,
+        score: 0.7,
+      },
     ],
     demand: [
-      { term: 'sushi', normalizedTerm: 'sushi', slice: 'demand' as const, score: 9.5 },
-      { term: 'ramen', normalizedTerm: 'ramen', slice: 'demand' as const, score: 6 },
+      {
+        term: 'sushi',
+        normalizedTerm: 'sushi',
+        slice: 'demand' as const,
+        score: 9.5,
+      },
+      {
+        term: 'ramen',
+        normalizedTerm: 'ramen',
+        slice: 'demand' as const,
+        score: 6,
+      },
     ],
     explore: [
-      { term: 'new supper club', normalizedTerm: 'new supper club', slice: 'explore' as const, score: 5 },
-      { term: 'very weak explore', normalizedTerm: 'very weak explore', slice: 'explore' as const, score: 0.2 },
+      {
+        term: 'new supper club',
+        normalizedTerm: 'new supper club',
+        slice: 'explore' as const,
+        score: 5,
+      },
+      {
+        term: 'very weak explore',
+        normalizedTerm: 'very weak explore',
+        slice: 'explore' as const,
+        score: 0.2,
+      },
     ],
   };
   const result = (
     keywordSelection as unknown as {
       selectWithSoftReservationsAndBackfill(input: {
         candidatesBySlice: typeof candidatesBySlice;
-        reservations: Record<'unmet' | 'refresh' | 'demand' | 'explore', number>;
+        reservations: Record<
+          'unmet' | 'refresh' | 'demand' | 'explore',
+          number
+        >;
         maxTerms: number;
       }): {
-        selected: Array<{ normalizedTerm: string; slice: string; score: number }>;
+        selected: Array<{
+          normalizedTerm: string;
+          slice: string;
+          score: number;
+        }>;
         underfilledBySlice: Record<string, number>;
       };
     }
@@ -1938,10 +2021,17 @@ async function runKeywordSoftReservationFixture(
     keywordSelection as unknown as {
       selectWithSoftReservationsAndBackfill(input: {
         candidatesBySlice: typeof singletonWeakCandidatesBySlice;
-        reservations: Record<'unmet' | 'refresh' | 'demand' | 'explore', number>;
+        reservations: Record<
+          'unmet' | 'refresh' | 'demand' | 'explore',
+          number
+        >;
         maxTerms: number;
       }): {
-        selected: Array<{ normalizedTerm: string; slice: string; score: number }>;
+        selected: Array<{
+          normalizedTerm: string;
+          slice: string;
+          score: number;
+        }>;
       };
     }
   ).selectWithSoftReservationsAndBackfill({
@@ -1953,10 +2043,17 @@ async function runKeywordSoftReservationFixture(
     keywordSelection as unknown as {
       selectWithSoftReservationsAndBackfill(input: {
         candidatesBySlice: typeof singletonUsefulCandidatesBySlice;
-        reservations: Record<'unmet' | 'refresh' | 'demand' | 'explore', number>;
+        reservations: Record<
+          'unmet' | 'refresh' | 'demand' | 'explore',
+          number
+        >;
         maxTerms: number;
       }): {
-        selected: Array<{ normalizedTerm: string; slice: string; score: number }>;
+        selected: Array<{
+          normalizedTerm: string;
+          slice: string;
+          score: number;
+        }>;
       };
     }
   ).selectWithSoftReservationsAndBackfill({
@@ -1972,7 +2069,11 @@ async function runKeywordSoftReservationFixture(
         cycleStartAt: Date;
         cycleEndAt: Date;
         candidatesBySlice: typeof candidatesBySlice;
-        selected: Array<{ normalizedTerm: string; slice: string; score: number }>;
+        selected: Array<{
+          normalizedTerm: string;
+          slice: string;
+          score: number;
+        }>;
         maxTerms: number;
       }): Promise<void>;
     }
@@ -2022,7 +2123,9 @@ async function runKeywordSoftReservationFixture(
     underfilledBySlice: result.underfilledBySlice,
     traceValidation,
   };
-  const selectedTerms = result.selected.map((candidate) => candidate.normalizedTerm);
+  const selectedTerms = result.selected.map(
+    (candidate) => candidate.normalizedTerm,
+  );
   const rejectsWeakFillers =
     !selectedTerms.includes('weak unmet filler') &&
     !selectedTerms.includes('stale weak refresh') &&
@@ -2046,7 +2149,10 @@ async function runKeywordSoftReservationFixture(
     singletonUsefulResult.selected.some(
       (candidate) => candidate.normalizedTerm === 'one user useful unmet',
     );
-  return rejectsWeakFillers && includesStrongBuckets && traceOk && singletonQualityOk
+  return rejectsWeakFillers &&
+    includesStrongBuckets &&
+    traceOk &&
+    singletonQualityOk
     ? pass(
         'keyword collection: soft reservations use natural breaks, backfill strong leftovers, and trace factors',
         {
@@ -2059,7 +2165,11 @@ async function runKeywordSoftReservationFixture(
             'ramen',
             'new supper club',
           ],
-          excludes: ['weak unmet filler', 'stale weak refresh', 'very weak explore'],
+          excludes: [
+            'weak unmet filler',
+            'stale weak refresh',
+            'very weak explore',
+          ],
           singletonWeakSelected: false,
           oneUserUnmetSelected: true,
         },
@@ -2077,7 +2187,11 @@ async function runKeywordSoftReservationFixture(
             'ramen',
             'new supper club',
           ],
-          excludes: ['weak unmet filler', 'stale weak refresh', 'very weak explore'],
+          excludes: [
+            'weak unmet filler',
+            'stale weak refresh',
+            'very weak explore',
+          ],
           singletonWeakSelected: false,
           oneUserUnmetSelected: true,
         },
@@ -2122,7 +2236,8 @@ async function runKeywordNoResultsRecoveryFixture(params: {
   const keywordSelection = new KeywordSliceSelectionService(
     prisma as never,
     {
-      resolveMarketKeyForCommunity: async () => keywordRecoveryCollectableMarketKey,
+      resolveMarketKeyForCommunity: async () =>
+        keywordRecoveryCollectableMarketKey,
     } as never,
     params.scoringTrace,
     noopLogger as never,
@@ -2144,9 +2259,8 @@ async function runKeywordNoResultsRecoveryFixture(params: {
   const attemptAvailability =
     selected?.origin &&
     typeof selected.origin === 'object' &&
-    typeof (selected.origin as Record<string, unknown>).attemptAvailability ===
-      'number'
-      ? ((selected.origin as Record<string, number>).attemptAvailability)
+    typeof selected.origin.attemptAvailability === 'number'
+      ? (selected.origin as Record<string, number>).attemptAvailability
       : 0;
   const ok =
     Boolean(selected) && attemptAvailability > 0.3 && attemptAvailability < 0.5;
@@ -2303,7 +2417,11 @@ async function runHotSpikeFixture(params: {
 }): Promise<FixtureCheck> {
   const { users, scheduler } = params;
   const now = new Date();
-  (scheduler as unknown as { config: { enabled: boolean; intervalDays: number } }).config = {
+  (
+    scheduler as unknown as {
+      config: { enabled: boolean; intervalDays: number };
+    }
+  ).config = {
     enabled: true,
     intervalDays: 1,
   };
@@ -2432,8 +2550,9 @@ async function runHotSpikeFixture(params: {
     expectedContains.every((term) => observedOrder.includes(term)) &&
     observedOrder.indexOf('fixture recovered no results') <
       observedOrder.indexOf('fixture sudden sushi') &&
-    selected.filter((candidate) => candidate.collectableMarketKey === collectableMarketKey)
-      .length >= 2;
+    selected.filter(
+      (candidate) => candidate.collectableMarketKey === collectableMarketKey,
+    ).length >= 2;
   return (ok ? pass : fail)(
     'on-demand hot spike: trend boost and no-results recovery rank urgent renewed demand',
     {
@@ -2568,8 +2687,7 @@ async function runTraceAllRetentionFixture(
     if (previousFullRetention === undefined) {
       delete process.env.DEMAND_SCORING_TRACE_RETENTION_DAYS;
     } else {
-      process.env.DEMAND_SCORING_TRACE_RETENTION_DAYS =
-        previousFullRetention;
+      process.env.DEMAND_SCORING_TRACE_RETENTION_DAYS = previousFullRetention;
     }
     if (previousFullAllRetention === undefined) {
       delete process.env.DEMAND_SCORING_TRACE_ALL_RETENTION_DAYS;
@@ -2581,10 +2699,9 @@ async function runTraceAllRetentionFixture(
       where: { runId: run.runId },
       select: { runId: true },
     });
-    const candidatesAfterFullPrune =
-      await prisma.demandScoringCandidate.count({
-        where: { runId: run.runId },
-      });
+    const candidatesAfterFullPrune = await prisma.demandScoringCandidate.count({
+      where: { runId: run.runId },
+    });
     const debugRowCount = (rows: typeof beforePruneRows) =>
       rows.filter(
         (row) =>
@@ -2647,7 +2764,11 @@ async function runOnDemandAdversarialFixture(params: {
 }): Promise<FixtureCheck> {
   const { users, scheduler } = params;
   const now = new Date();
-  (scheduler as unknown as { config: { enabled: boolean; intervalDays: number } }).config = {
+  (
+    scheduler as unknown as {
+      config: { enabled: boolean; intervalDays: number };
+    }
+  ).config = {
     enabled: true,
     intervalDays: 1,
   };
@@ -2796,7 +2917,9 @@ async function runOnDemandAdversarialFixture(params: {
     orderBy: [{ finalScore: 'desc' }, { createdAt: 'asc' }],
   });
   const traceByTerm = new Map(traces.map((trace) => [trace.subjectKey, trace]));
-  const selectedTerms = new Set(selected.map((candidate) => candidate.normalizedTerm));
+  const selectedTerms = new Set(
+    selected.map((candidate) => candidate.normalizedTerm),
+  );
   const score = (term: string) => traceByTerm.get(term)?.finalScore ?? 0;
   const decisionState = (term: string) =>
     traceByTerm.get(term)?.decisionState ?? null;
@@ -2810,7 +2933,8 @@ async function runOnDemandAdversarialFixture(params: {
     selected: selected
       .filter(
         (candidate) =>
-          candidate.collectableMarketKey === onDemandAdversarialCollectableMarketKey,
+          candidate.collectableMarketKey ===
+          onDemandAdversarialCollectableMarketKey,
       )
       .map((candidate) => ({
         term: candidate.normalizedTerm,
@@ -2833,8 +2957,8 @@ async function runOnDemandAdversarialFixture(params: {
             )
           : null,
       trendBoost:
-        typeof (trace.factorBreakdown as Record<string, unknown>)
-          .trendBoost === 'number'
+        typeof (trace.factorBreakdown as Record<string, unknown>).trendBoost ===
+        'number'
           ? round((trace.factorBreakdown as Record<string, number>).trendBoost)
           : null,
       attemptAvailability:
@@ -2852,8 +2976,7 @@ async function runOnDemandAdversarialFixture(params: {
       score('fixture immediate retry no results') &&
     attemptAvailability('fixture recovered retry no results') >
       attemptAvailability('fixture immediate retry no results') &&
-    score('fixture broad unmet ramen') >
-      score('fixture two power users bao') &&
+    score('fixture broad unmet ramen') > score('fixture two power users bao') &&
     !selectedTerms.has('fixture just attempted no results') &&
     score('fixture just attempted no results') === 0 &&
     decisionState('fixture just attempted no results') ===
@@ -2929,7 +3052,8 @@ async function runQuerySuggestionFixture(params: {
   const hasPersonal =
     observed.filter((item) => item.source === 'personal').length >= 3;
   const sushi = observed.find((item) => item.text === 'fixture lane sushi');
-  const ok = hasPersonal && sushi?.source === 'global' && sushi.globalCount >= 4;
+  const ok =
+    hasPersonal && sushi?.source === 'global' && sushi.globalCount >= 4;
   return (ok ? pass : fail)(
     'query suggestions: personal recents and global demand both survive lane merge',
     {
@@ -3017,12 +3141,18 @@ async function runQuerySuggestionAggregationFixture(params: {
       globalCount: suggestion.globalCount,
     })),
   };
-  const gyros = suggestions.find((suggestion) => suggestion.text === 'fixture gyros');
+  const gyros = suggestions.find(
+    (suggestion) => suggestion.text === 'fixture gyros',
+  );
   const ok =
     gyros?.source === 'global' &&
     gyros.globalCount >= 6 &&
-    !suggestions.some((suggestion) => suggestion.text === 'fixture gelato cache') &&
-    !suggestions.some((suggestion) => suggestion.text === 'fixture garlic repeat');
+    !suggestions.some(
+      (suggestion) => suggestion.text === 'fixture gelato cache',
+    ) &&
+    !suggestions.some(
+      (suggestion) => suggestion.text === 'fixture garlic repeat',
+    );
 
   return (ok ? pass : fail)(
     'query suggestions aggregation: raw backend query logs rebuild into global suggestions while cache-only and one-user repeats stay out',
@@ -3109,13 +3239,19 @@ async function runQuerySuggestionAdversarialFixture(params: {
     globalCount: suggestion.globalCount,
     userCount: suggestion.userCount,
   }));
-  const personalCount = observed.filter((item) => item.source === 'personal').length;
-  const globalCount = observed.filter((item) => item.source === 'global').length;
+  const personalCount = observed.filter(
+    (item) => item.source === 'personal',
+  ).length;
+  const globalCount = observed.filter(
+    (item) => item.source === 'global',
+  ).length;
   const ok =
     observed.length <= 5 &&
     personalCount >= 2 &&
     globalCount >= 1 &&
-    observed.some((item) => item.text === 'sushi' && item.source === 'global') &&
+    observed.some(
+      (item) => item.text === 'sushi' && item.source === 'global',
+    ) &&
     !observed.some((item) => item.text === 'saffron single user') &&
     !observed.some((item) => item.text === 'scones cache replay');
 
@@ -3190,8 +3326,7 @@ async function runQuerySuggestionFallbackFixture(params: {
     falafel?.source === 'global' &&
     falafel.globalCount >= 8 &&
     observed.every(
-      (item) =>
-        item.text === 'fixture falafel' || item.globalCount >= 3,
+      (item) => item.text === 'fixture falafel' || item.globalCount >= 3,
     ) &&
     !observed.some((item) => item.text === 'fixture fondue weak global');
 
@@ -3352,14 +3487,8 @@ async function runViewFavoriteGlobalBoundaryFixture(params: {
       params.entities.restaurantView.entityId,
       params.entities.favorite.entityId,
     ],
-    sourceKinds: [
-      DemandSourceKind.restaurant_view,
-      DemandSourceKind.favorite,
-    ],
-    signalKinds: [
-      DemandSignalKind.restaurant_view,
-      DemandSignalKind.favorite,
-    ],
+    sourceKinds: [DemandSourceKind.restaurant_view, DemandSourceKind.favorite],
+    signalKinds: [DemandSignalKind.restaurant_view, DemandSignalKind.favorite],
     limit: 10,
   });
   const collectableRows = await params.aggregation.listEntityDemand({
@@ -3370,14 +3499,8 @@ async function runViewFavoriteGlobalBoundaryFixture(params: {
       params.entities.restaurantView.entityId,
       params.entities.favorite.entityId,
     ],
-    sourceKinds: [
-      DemandSourceKind.restaurant_view,
-      DemandSourceKind.favorite,
-    ],
-    signalKinds: [
-      DemandSignalKind.restaurant_view,
-      DemandSignalKind.favorite,
-    ],
+    sourceKinds: [DemandSourceKind.restaurant_view, DemandSourceKind.favorite],
+    signalKinds: [DemandSignalKind.restaurant_view, DemandSignalKind.favorite],
     limit: 10,
   });
   const observed = {
@@ -3675,8 +3798,10 @@ async function runAutocompleteExecutionContractFixture(
   );
 
   let interpretationCalled = false;
-  let capturedSearchRequest: { entities?: unknown; submissionSource?: string } | null =
-    null;
+  let capturedSearchRequest: {
+    entities?: unknown;
+    submissionSource?: string;
+  } | null = null;
   const orchestration = new SearchOrchestrationService(
     {
       interpret: async () => {
@@ -3694,8 +3819,7 @@ async function runAutocompleteExecutionContractFixture(
           dishes: [],
           restaurants: [],
           metadata: {
-            searchRequestId:
-              '22222222-2222-4222-8222-222222222222',
+            searchRequestId: '22222222-2222-4222-8222-222222222222',
             totalRestaurantResults: 0,
             totalFoodResults: 0,
             queryExecutionTimeMs: 0,
@@ -3718,15 +3842,13 @@ async function runAutocompleteExecutionContractFixture(
     },
   });
 
-  const searchRequest = capturedSearchRequest as
-    | {
-        entities?: {
-          restaurantAttributes?: Array<{ entityIds?: string[] }>;
-          foodAttributes?: Array<{ entityIds?: string[] }>;
-        };
-        submissionSource?: string;
-      }
-    | null;
+  const searchRequest = capturedSearchRequest as {
+    entities?: {
+      restaurantAttributes?: Array<{ entityIds?: string[] }>;
+      foodAttributes?: Array<{ entityIds?: string[] }>;
+    };
+    submissionSource?: string;
+  } | null;
   const selectedIds = [
     ...(searchRequest?.entities?.restaurantAttributes?.flatMap(
       (entry) => entry.entityIds ?? [],
@@ -3755,9 +3877,7 @@ async function runAutocompleteExecutionContractFixture(
     searchServiceHarness.shouldTriggerOnDemand(
       {
         entities: {
-          restaurantAttributes: [
-            { entityIds: [selectedAttribute.entityId] },
-          ],
+          restaurantAttributes: [{ entityIds: [selectedAttribute.entityId] }],
         },
       },
       'dual_list',
@@ -3786,7 +3906,9 @@ async function runAutocompleteExecutionContractFixture(
   };
   const ok =
     capturedPhoneticOption === false &&
-    prefixMatches.some((match) => match.entityId === selectedAttribute.entityId) &&
+    prefixMatches.some(
+      (match) => match.entityId === selectedAttribute.entityId,
+    ) &&
     interpretationCalled === false &&
     searchRequest?.submissionSource === 'autocomplete' &&
     selectedIds.length === 1 &&
@@ -3919,7 +4041,9 @@ async function runAutocompletePublicAssemblyFixture(params: {
   const querySuggestions = response.querySuggestions ?? [];
   const ok =
     response.matches.length <= 5 &&
-    response.matches.some((match) => match.entityId === params.entity.entityId) &&
+    response.matches.some(
+      (match) => match.entityId === params.entity.entityId,
+    ) &&
     response.matches.some(
       (match) => match.entityId === params.supportedAttribute.entityId,
     ) &&
@@ -4013,11 +4137,12 @@ async function cleanup(params: {
       ],
     },
   });
-  const fixtureOnDemandRequestUsers =
-    await prisma.onDemandRequestUser.findMany({
+  const fixtureOnDemandRequestUsers = await prisma.onDemandRequestUser.findMany(
+    {
       where: { userId: { in: fixtureUserIds } },
       select: { requestId: true },
-    });
+    },
+  );
   const fixtureOnDemandRequestIds = Array.from(
     new Set(fixtureOnDemandRequestUsers.map((row) => row.requestId)),
   );
@@ -4067,7 +4192,8 @@ async function cleanup(params: {
     await prisma.entity.update({
       where: { entityId: entity.entityId },
       data: {
-        lastPolledAt: params.originalLastPolledAtById.get(entity.entityId) ?? null,
+        lastPolledAt:
+          params.originalLastPolledAtById.get(entity.entityId) ?? null,
       },
     });
   }
@@ -4079,7 +4205,9 @@ function renderReport(params: {
   pickedEntities: Record<string, PickedEntity>;
   keptRows: boolean;
 }): string {
-  const passed = params.checks.filter((check) => check.status === 'pass').length;
+  const passed = params.checks.filter(
+    (check) => check.status === 'pass',
+  ).length;
   const failed = params.checks.length - passed;
   const lines = [
     '# Demand Scoring Fixture Validation Report',
@@ -4124,7 +4252,9 @@ function renderReport(params: {
     '',
   ];
   for (const check of params.checks) {
-    lines.push(`### ${check.status === 'pass' ? 'PASS' : 'FAIL'}: ${check.name}`);
+    lines.push(
+      `### ${check.status === 'pass' ? 'PASS' : 'FAIL'}: ${check.name}`,
+    );
     lines.push('');
     if (check.notes?.length) {
       for (const note of check.notes) {
@@ -4476,7 +4606,9 @@ async function main(): Promise<void> {
         scoringTrace,
       }),
     );
-    checks.push(await runHotSpikeFixture({ scheduler: keywordScheduler, users }));
+    checks.push(
+      await runHotSpikeFixture({ scheduler: keywordScheduler, users }),
+    );
     checks.push(await runTraceAllRetentionFixture(scoringTrace));
     checks.push(
       await runOnDemandAdversarialFixture({

@@ -64,24 +64,19 @@ export const useSearchRootProfileControlRuntime = ({
   );
   const profileMapCommandRuntime = useSearchRootProfileMapCommandRuntime({
     profileOwner: profileOwnerRuntime.profileOwner,
-    pendingMarkerOpenAnimationFrameRef:
-      profileOwnerRuntime.pendingMarkerOpenAnimationFrameRef,
+    pendingMarkerOpenAnimationFrameRef: profileOwnerRuntime.pendingMarkerOpenAnimationFrameRef,
     getCurrentResultsSheetSnap,
   });
 
-  const suggestionInteractionControlLane =
-    useSearchRootSuggestionInteractionControlLane(
-      profileOwnerRuntime.suggestionInteractionRuntime
-    );
-  const profilePresentationControlLane =
-    useSearchRootProfilePresentationControlLane({
-      profileOwner: profileOwnerRuntime.profileOwner,
-      pendingMarkerOpenAnimationFrameRef:
-        profileOwnerRuntime.pendingMarkerOpenAnimationFrameRef,
-    });
+  const suggestionInteractionControlLane = useSearchRootSuggestionInteractionControlLane(
+    profileOwnerRuntime.suggestionInteractionRuntime
+  );
+  const profilePresentationControlLane = useSearchRootProfilePresentationControlLane({
+    profileOwner: profileOwnerRuntime.profileOwner,
+    pendingMarkerOpenAnimationFrameRef: profileOwnerRuntime.pendingMarkerOpenAnimationFrameRef,
+  });
   const mapProfileControlLane = useSearchRootMapProfileControlLane({
-    mapProfileCommandPort:
-      profileMapCommandRuntime.mapProfileCommandPort,
+    mapProfileCommandPort: profileMapCommandRuntime.mapProfileCommandPort,
     mapViewState: profileMapCommandRuntime.mapViewState,
     restaurantSelectionModel: profileOwnerRuntime.restaurantSelectionModel,
   });

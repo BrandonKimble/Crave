@@ -318,11 +318,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                         },
                       ]}
                     >
-                      <RNText
-                        numberOfLines={1}
-                        ellipsizeMode="tail"
-                        style={styles.placeholderText}
-                      >
+                      <RNText numberOfLines={1} ellipsizeMode="tail" style={styles.placeholderText}>
                         {placeholder}
                       </RNText>
                     </View>

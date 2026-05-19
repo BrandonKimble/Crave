@@ -40,10 +40,10 @@ The key best-practice decision is: treat events as **signals** with clear semant
 
 ### Events (minimum set)
 
-| Event               | When it fires                                                                                               | Stored where                                                                           | Primary consumers                                                        | Notes                                                                                                                                       |
-| ------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `search_submitted`  | User submits a search (manual submit, recent tap, autocomplete tap, shortcut)                               | `user_search_logs` (existing)                                                          | Recents UI, query suggestions, autocomplete ranking, collection priority | 1 search ⇒ N `user_search_logs` rows (one per resolved target entity). We add `searchRequestId` + result totals to dedupe per-search later. |
-| `restaurant_opened` | Restaurant overlay opens **from Search UX only** (suggestion tap, results card, single-candidate auto-open) | `user_restaurant_views` (new)                                                          | “Recently viewed” UI, personal autocomplete boost, collection priority   | Do **not** record opens from Favorites/Bookmarks screens. In this UX, “click” and “open” are the same event.                                |
+| Event               | When it fires                                                                                               | Stored where                                                                                                                                           | Primary consumers                                                        | Notes                                                                                                                                       |
+| ------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `search_submitted`  | User submits a search (manual submit, recent tap, autocomplete tap, shortcut)                               | `user_search_logs` (existing)                                                                                                                          | Recents UI, query suggestions, autocomplete ranking, collection priority | 1 search ⇒ N `user_search_logs` rows (one per resolved target entity). We add `searchRequestId` + result totals to dedupe per-search later. |
+| `restaurant_opened` | Restaurant overlay opens **from Search UX only** (suggestion tap, results card, single-candidate auto-open) | `user_restaurant_views` (new)                                                                                                                          | “Recently viewed” UI, personal autocomplete boost, collection priority   | Do **not** record opens from Favorites/Bookmarks screens. In this UX, “click” and “open” are the same event.                                |
 | `favorite_toggled`  | User favorites/unfavorites an entity                                                                        | Historical note only. Current architecture uses append-only favorite events plus `user_search_demand_daily`, not `collection_entity_priority_metrics`. | Autocomplete boost, collection priority                                  | Favorites are durable preference; boost is “always on” when relevant.                                                                       |
 
 **About “autocomplete_selected”:** we do not emit it as a separate API event. Instead, we capture it on `search_submitted` via `submissionSource='autocomplete'` and (for non-restaurant entity selections) `selectedEntityId/selectedEntityType` so collection priority can give that entity an extra, small bump.
@@ -217,14 +217,12 @@ If none of these are needed soon, consider deleting `/search/events/click` (it�
 ### Implementation
 
 - Candidate pool construction (best practice):
-
   - Start with text search results (current behavior).
   - Union-in any matching favorites (any entity type) and matching recently viewed restaurants (so they can appear even if they wouldn’t make the top-N text list).
   - Add query suggestions (suggested search text) from `user_search_logs.query_text` prefix matches (capped at 3).
   - Deduplicate, then score and rank.
 
 - Scoring (initial, tunable defaults):
-
   - **Entity matches** keep the existing backbone score:
     - `score = 0.5*confidence + 0.35*globalPopularity + 0.1*userAffinity + favoriteBoost`
   - Add **restaurant view affinity** (restaurants only) as a small component:
@@ -236,7 +234,6 @@ If none of these are needed soon, consider deleting `/search/events/click` (it�
     - `favoriteBoost = 0.05` (applies when the entity is already a candidate match)
 
 - **Query suggestion scoring** (suggested search text):
-
   - Update `SearchQuerySuggestionService` to return `{ text, globalCount, userCount, source }` where counts are based on `COUNT(DISTINCT searchRequestId)` when available.
   - Treat query suggestions as first-class candidates with their own score so they can intermix with entities:
     - `queryScore = 0.5*1 + 0.35*normalize(globalCount) + 0.1*normalize(userCount) + personalBoost`

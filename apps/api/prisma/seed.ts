@@ -871,7 +871,10 @@ async function fetchTomTomJson<T>(
   });
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), resolveTomTomTimeoutMs());
+  const timeout = setTimeout(
+    () => controller.abort(),
+    resolveTomTomTimeoutMs(),
+  );
   try {
     const response = await fetch(`${url}?${searchParams.toString()}`, {
       headers: {
@@ -1022,7 +1025,8 @@ async function fetchTomTomBoundaryGeometry(
 ): Promise<GeoJsonFeatureCollection> {
   const apiKey = resolveTomTomApiKey();
   const additionalDataUrl =
-    process.env.TOMTOM_ADDITIONAL_DATA_URL || DEFAULT_TOMTOM_ADDITIONAL_DATA_URL;
+    process.env.TOMTOM_ADDITIONAL_DATA_URL ||
+    DEFAULT_TOMTOM_ADDITIONAL_DATA_URL;
   const params: Record<string, string | number> = {
     key: apiKey,
     geometries: sourceBoundaryId,
@@ -1093,7 +1097,9 @@ async function upsertTomTomBoundaryFeature(
       SELECT
         ${JSON.stringify(geometry)}::jsonb AS geojson,
         ${JSON.stringify(metadata)}::jsonb AS metadata,
-        ST_SetSRID(ST_MakePoint(${lookupPoint.lng}, ${lookupPoint.lat}), 4326) AS lookup_point
+        ST_SetSRID(ST_MakePoint(${lookupPoint.lng}, ${
+          lookupPoint.lat
+        }), 4326) AS lookup_point
     ),
     source_geometries AS (
       SELECT
@@ -1387,9 +1393,9 @@ async function seedRegionMarkets(prisma: PrismaClient): Promise<void> {
       storedBoundaries,
     );
     console.log(
-      `  ${region.marketKey}: ${String(region.boundaryCount)} TomTom boundaries, ${String(
-        region.areaKm2,
-      )} km²`,
+      `  ${region.marketKey}: ${String(
+        region.boundaryCount,
+      )} TomTom boundaries, ${String(region.areaKm2)} km²`,
     );
   }
 

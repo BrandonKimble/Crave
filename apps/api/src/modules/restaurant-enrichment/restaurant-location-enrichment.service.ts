@@ -24,7 +24,6 @@ import {
   GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP,
 } from './google-place-type-attributes';
 
-const DEFAULT_COUNTRY = 'US';
 const PREFERRED_PLACE_TYPES = new Set([
   'acai_shop',
   'afghani_restaurant',
@@ -399,12 +398,6 @@ type RankedCandidate = {
   score?: number;
 };
 
-type ResolvedPlaceMatch = {
-  place: GooglePlacesV1Place;
-  matchMetadata: MatchMetadata;
-  score?: number;
-};
-
 type CandidateSelectionSource = 'autocomplete' | 'find_place';
 
 type CandidateSelectionTrailEntry = {
@@ -629,7 +622,7 @@ export class RestaurantLocationEnrichmentService {
       restaurantMetadata: null,
     } as RestaurantEntity;
 
-    const searchContext = await this.buildSearchContext(entity, {
+    const searchContext = this.buildSearchContext(entity, {
       sourceMarket: {
         city: params.city ?? null,
         region: params.region ?? null,
@@ -654,12 +647,6 @@ export class RestaurantLocationEnrichmentService {
       searchContext,
     );
     let matchSource: 'autocomplete' | 'find_place' = 'autocomplete';
-    let fallbackAttempted = false;
-    let fallbackStatus: string | undefined;
-    let fallbackRanked: RankedCandidate[] = [];
-    let retryAutocompleteRanked: RankedCandidate[] = [];
-    let selection: CandidateSelectionResult;
-
     const flow = await this.runGeminiSelectionFlow({
       autocompleteRanked: ranked,
       entity,
@@ -670,11 +657,13 @@ export class RestaurantLocationEnrichmentService {
         sessionToken: params.sessionToken,
       },
     });
-    selection = flow.selection;
-    fallbackAttempted = flow.fallbackAttempted;
-    fallbackStatus = flow.fallbackStatus;
-    fallbackRanked = flow.fallbackRanked;
-    retryAutocompleteRanked = flow.retryAutocompleteRanked;
+    const {
+      selection,
+      fallbackAttempted,
+      fallbackStatus,
+      fallbackRanked,
+      retryAutocompleteRanked,
+    } = flow;
 
     if (!selection.selected) {
       if (fallbackAttempted && fallbackStatus) {
@@ -845,7 +834,7 @@ export class RestaurantLocationEnrichmentService {
       };
     }
 
-    const searchContext = await this.buildSearchContext(entity, options);
+    const searchContext = this.buildSearchContext(entity, options);
     if (!searchContext.query) {
       await this.recordEnrichmentFailure(
         entity,
@@ -873,23 +862,19 @@ export class RestaurantLocationEnrichmentService {
       );
 
       let matchSource: 'autocomplete' | 'find_place' = 'autocomplete';
-      let selection: CandidateSelectionResult;
-      let fallbackAttempted = false;
-      let fallbackStatus: string | undefined;
-      let fallbackRanked: RankedCandidate[] = [];
-      let retryAutocompleteRanked: RankedCandidate[] = [];
-
       const flow = await this.runGeminiSelectionFlow({
         autocompleteRanked: ranked,
         entity,
         context: searchContext,
         options,
       });
-      selection = flow.selection;
-      fallbackAttempted = flow.fallbackAttempted;
-      fallbackStatus = flow.fallbackStatus;
-      fallbackRanked = flow.fallbackRanked;
-      retryAutocompleteRanked = flow.retryAutocompleteRanked;
+      const {
+        selection,
+        fallbackAttempted,
+        fallbackStatus,
+        fallbackRanked,
+        retryAutocompleteRanked,
+      } = flow;
 
       if (!selection.selected) {
         const noMatchMetadata = this.buildNoMatchMetadata(
@@ -1182,9 +1167,6 @@ export class RestaurantLocationEnrichmentService {
         this.resolveTrustedWebsiteDomain(placeDetails.websiteUri) ??
         this.resolveTrustedWebsiteDomain(combinedUpdateData.canonicalDomain) ??
         this.resolveTrustedWebsiteDomain(entity.canonicalDomain);
-      const resolvedMarketKey =
-        marketPresence?.resolvedMarketKey ??
-        (await this.resolveMarketKeyFromPlace(placeDetails));
       const entityForSecondary: RestaurantEntity = {
         ...entity,
         canonicalDomain: trustedCanonicalDomain ?? entity.canonicalDomain,
@@ -1464,8 +1446,8 @@ export class RestaurantLocationEnrichmentService {
     const targets: string[] = Array.isArray(metaTarget)
       ? (metaTarget as string[])
       : typeof metaTarget === 'string'
-      ? [metaTarget]
-      : [];
+        ? [metaTarget]
+        : [];
     const normalizedTargets = targets.map((value) => value.toLowerCase());
     return (
       normalizedTargets.includes('name') && normalizedTargets.includes('type')
@@ -1854,9 +1836,9 @@ export class RestaurantLocationEnrichmentService {
       canonical.canonicalDomain.trim().length
         ? canonical.canonicalDomain.trim().toLowerCase()
         : typeof duplicate.canonicalDomain === 'string' &&
-          duplicate.canonicalDomain.trim().length
-        ? duplicate.canonicalDomain.trim().toLowerCase()
-        : null;
+            duplicate.canonicalDomain.trim().length
+          ? duplicate.canonicalDomain.trim().toLowerCase()
+          : null;
     if (canonicalDomain && canonicalDomain !== canonical.canonicalDomain) {
       updateData.canonicalDomain = canonicalDomain;
       updatedFields.push('canonicalDomain');
@@ -2016,8 +1998,8 @@ export class RestaurantLocationEnrichmentService {
       typeof details.nationalPhoneNumber === 'string'
         ? details.nationalPhoneNumber
         : typeof details.internationalPhoneNumber === 'string'
-        ? details.internationalPhoneNumber
-        : null;
+          ? details.internationalPhoneNumber
+          : null;
     if (!raw) {
       return null;
     }
@@ -2092,10 +2074,10 @@ export class RestaurantLocationEnrichmentService {
     return !GENERIC_WEBSITE_DOMAIN_DENYLIST.has(normalized);
   }
 
-  private async buildSearchContext(
+  private buildSearchContext(
     entity: RestaurantEntity,
     options: RestaurantEnrichmentOptions,
-  ): Promise<EnrichmentSearchContext> {
+  ): EnrichmentSearchContext {
     const sourceMarket = this.normalizeSourceMarket(options.sourceMarket);
     const query = options.query?.trim() || entity.name?.trim() || '';
     return {
@@ -2589,7 +2571,10 @@ export class RestaurantLocationEnrichmentService {
         context: params.context,
       });
 
-      await this.refreshPublicScoresForMarkets([...currentMarketKeys, targetKey]);
+      await this.refreshPublicScoresForMarkets([
+        ...currentMarketKeys,
+        targetKey,
+      ]);
 
       return {
         resolvedMarketKey: targetKey,
@@ -3119,10 +3104,9 @@ export class RestaurantLocationEnrichmentService {
     let combinedAutocompleteRanked = params.autocompleteRanked;
     let retryAutocompleteAttempted = false;
     let retryAutocompleteRanked: RankedCandidate[] = [];
-    let retryQuery: string | undefined;
     let retryEvaluation: CandidateStageEvaluation | undefined;
 
-    retryQuery =
+    const retryQuery =
       this.buildAutocompleteMarketRetryQuery(
         params.context,
         params.context?.query ?? params.entity.name ?? null,
@@ -4006,7 +3990,7 @@ export class RestaurantLocationEnrichmentService {
       );
 
       const candidates = response.places
-        .map((place) => this.mapTextSearchPlaceToCandidate(place, context))
+        .map((place) => this.mapTextSearchPlaceToCandidate(place))
         .filter((candidate): candidate is PlaceCandidate => candidate !== null);
       const ranked = this.rankCandidates(candidates);
 
@@ -4116,7 +4100,6 @@ export class RestaurantLocationEnrichmentService {
 
   private mapTextSearchPlaceToCandidate(
     place: GooglePlacesV1Place,
-    context: EnrichmentSearchContext,
   ): PlaceCandidate | null {
     const placeId = typeof place.id === 'string' ? place.id.trim() : '';
     if (!placeId) {
@@ -4336,10 +4319,10 @@ export class RestaurantLocationEnrichmentService {
       typeof details.timeZone === 'string'
         ? details.timeZone
         : typeof sourceRecord.timeZone === 'string'
-        ? sourceRecord.timeZone
-        : typeof sourceRecord.timezone === 'string'
-        ? sourceRecord.timezone
-        : undefined;
+          ? sourceRecord.timeZone
+          : typeof sourceRecord.timezone === 'string'
+            ? sourceRecord.timezone
+            : undefined;
 
     if (timezoneCandidate) {
       normalized.timezone = timezoneCandidate;
@@ -4713,10 +4696,10 @@ export class RestaurantLocationEnrichmentService {
       min !== null && max !== null
         ? `$${min}-${max}`
         : max !== null
-        ? `<$${max}`
-        : min !== null
-        ? `$${min}+`
-        : rawText;
+          ? `<$${max}`
+          : min !== null
+            ? `$${min}+`
+            : rawText;
 
     return {
       min,

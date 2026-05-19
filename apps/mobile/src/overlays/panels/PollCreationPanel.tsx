@@ -301,8 +301,7 @@ export const usePollCreationPanelSpec = ({
       payload.targetFoodAttributeName =
         foodAttributeField.selection?.name ?? foodAttributeField.query.trim();
     } else if (selectedType === 'best_restaurant_attribute') {
-      payload.targetRestaurantAttributeId =
-        restaurantAttributeField.selection?.entityId;
+      payload.targetRestaurantAttributeId = restaurantAttributeField.selection?.entityId;
       payload.targetRestaurantAttributeName =
         restaurantAttributeField.selection?.name ?? restaurantAttributeField.query.trim();
     }

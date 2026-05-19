@@ -74,13 +74,7 @@ export const useSearchSuggestionHoldStateRuntime = ({
       };
       return true;
     },
-    [
-      query,
-      recentSearches,
-      recentlyViewedFoods,
-      recentlyViewedRestaurants,
-      suggestions,
-    ]
+    [query, recentSearches, recentlyViewedFoods, recentlyViewedRestaurants, suggestions]
   );
 
   return {

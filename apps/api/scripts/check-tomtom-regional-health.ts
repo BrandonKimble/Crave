@@ -117,12 +117,13 @@ async function main() {
     }
     if (row.metadataSource !== 'tomtom_boundary_union') {
       failures.push(
-        `${expected.marketKey}: metadata.source=${row.metadataSource ?? 'null'}`,
+        `${expected.marketKey}: metadata.source=${
+          row.metadataSource ?? 'null'
+        }`,
       );
     }
     if (
-      toNumber(row.sourceBoundaryCount) <
-      expected.minimumSourceBoundaryCount
+      toNumber(row.sourceBoundaryCount) < expected.minimumSourceBoundaryCount
     ) {
       failures.push(`${expected.marketKey}: missing sourceBoundaries metadata`);
     }
@@ -130,7 +131,9 @@ async function main() {
       toNumber(row.sourceBoundaryFeatureCount) <
       expected.minimumSourceBoundaryCount
     ) {
-      failures.push(`${expected.marketKey}: missing TomTom source boundary rows`);
+      failures.push(
+        `${expected.marketKey}: missing TomTom source boundary rows`,
+      );
     }
     if (
       toNumber(row.sourceBoundaryFeatureCount) !==

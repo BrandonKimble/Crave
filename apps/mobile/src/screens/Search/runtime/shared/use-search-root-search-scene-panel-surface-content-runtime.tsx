@@ -17,8 +17,7 @@ export const useSearchRootSearchScenePanelSurfaceContentRuntime = ({
   activeTab: 'dishes' | 'restaurants';
   onDemandNotice: React.ReactNode;
 }) => {
-  const resultsMetadata =
-    (resolvedResults?.metadata ?? {}) as { emptyQueryMessage?: string };
+  const resultsMetadata = (resolvedResults?.metadata ?? {}) as { emptyQueryMessage?: string };
 
   const loadingContent = React.useMemo(
     () => (
@@ -30,24 +29,16 @@ export const useSearchRootSearchScenePanelSurfaceContentRuntime = ({
   );
 
   const emptyContent = React.useMemo(() => {
-    const emptyTitle =
-      activeTab === 'dishes'
-        ? 'No dishes found.'
-        : 'No restaurants found.';
+    const emptyTitle = activeTab === 'dishes' ? 'No dishes found.' : 'No restaurants found.';
     const emptySubtitle =
-      resultsMetadata.emptyQueryMessage ??
-      'Try moving the map or adjusting your search.';
+      resultsMetadata.emptyQueryMessage ?? 'Try moving the map or adjusting your search.';
     return (
       <View style={styles.emptyState}>
         {onDemandNotice}
         <EmptyState title={emptyTitle} subtitle={emptySubtitle} />
       </View>
     );
-  }, [
-    activeTab,
-    onDemandNotice,
-    resultsMetadata.emptyQueryMessage,
-  ]);
+  }, [activeTab, onDemandNotice, resultsMetadata.emptyQueryMessage]);
 
   return React.useMemo(
     () => ({

@@ -59,8 +59,7 @@ const resolveUsableViewportFractions = (
     return { x: 1, y: 1 };
   }
   const { width, height } = Dimensions.get('window');
-  const usableWidth =
-    width > 0 ? (width - padding.paddingLeft - padding.paddingRight) / width : 1;
+  const usableWidth = width > 0 ? (width - padding.paddingLeft - padding.paddingRight) / width : 1;
   const usableHeight =
     height > 0 ? (height - padding.paddingTop - padding.paddingBottom) / height : 1;
   return {
@@ -101,11 +100,7 @@ const resolveMultiLocationFitCamera = ({
       x: lngToWorldX(location.longitude),
       y: latToWorldY(location.latitude),
     }))
-    .filter(
-      (point) =>
-        Number.isFinite(point.x) &&
-        Number.isFinite(point.y)
-    );
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
   if (worldPoints.length < 2) {
     return null;
   }

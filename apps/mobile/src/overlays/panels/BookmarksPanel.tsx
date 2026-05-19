@@ -78,7 +78,9 @@ type BookmarkPreviewRowProps = {
 
 const BookmarkPreviewRow = React.memo(({ item }: BookmarkPreviewRowProps) => (
   <View style={styles.previewRow}>
-    <View style={[styles.previewDot, { backgroundColor: getCraveScoreColorFromScore(item.craveScore) }]} />
+    <View
+      style={[styles.previewDot, { backgroundColor: getCraveScoreColorFromScore(item.craveScore) }]}
+    />
     <Text variant="caption" numberOfLines={1} style={styles.previewText}>
       {item.label}
       {item.subLabel ? ` • ${item.subLabel}` : ''}

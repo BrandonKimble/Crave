@@ -7,9 +7,7 @@ import {
   resolveRestaurantMapLocations as resolveRestaurantLocations,
 } from '../map/restaurant-location-selection';
 import type { SearchRootEnvironment } from './search-root-environment-contract';
-import type {
-  ProfileSelectionModel,
-} from '../profile/profile-owner-runtime-contract';
+import type { ProfileSelectionModel } from '../profile/profile-owner-runtime-contract';
 import type { SearchRootRestaurantSelectionModel } from './use-search-root-control-plane-runtime-contract';
 import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
 
@@ -99,8 +97,7 @@ export const useSearchRootProfileSelectionModelRuntime = ({
       resolveRestaurantMapLocations: selectionModel.resolveRestaurantMapLocations,
       resolveRestaurantLocationSelectionAnchor:
         selectionModel.resolveRestaurantLocationSelectionAnchor,
-      pickPreferredRestaurantMapLocation:
-        selectionModel.pickPreferredRestaurantMapLocation,
+      pickPreferredRestaurantMapLocation: selectionModel.pickPreferredRestaurantMapLocation,
     }),
     [selectionModel]
   );

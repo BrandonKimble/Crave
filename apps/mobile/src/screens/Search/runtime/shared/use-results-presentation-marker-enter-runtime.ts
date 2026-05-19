@@ -134,17 +134,14 @@ export const useResultsPresentationMarkerEnterRuntime = ({
     [canStartMarkerEnterForSurface, runtimeMachineRef]
   );
 
-  React.useEffect(
-    () => {
-      const unsubscribeSurface = getSearchSurfaceRuntime().subscribe(() => {
-        flushPendingMarkerEnterStart();
-      });
-      return () => {
-        unsubscribeSurface();
-      };
-    },
-    [flushPendingMarkerEnterStart]
-  );
+  React.useEffect(() => {
+    const unsubscribeSurface = getSearchSurfaceRuntime().subscribe(() => {
+      flushPendingMarkerEnterStart();
+    });
+    return () => {
+      unsubscribeSurface();
+    };
+  }, [flushPendingMarkerEnterStart]);
 
   const handleMarkerEnterSettled = React.useCallback(
     (payload: SearchMapMarkerEnterSettledPayload) => {

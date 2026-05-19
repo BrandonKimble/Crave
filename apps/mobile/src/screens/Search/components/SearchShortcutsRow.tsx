@@ -1,10 +1,5 @@
 import React from 'react';
-import {
-  Pressable,
-  type LayoutRectangle,
-  type StyleProp,
-  type ViewStyle,
-} from 'react-native';
+import { Pressable, type LayoutRectangle, type StyleProp, type ViewStyle } from 'react-native';
 import Reanimated from 'react-native-reanimated';
 import { HandPlatter, Store } from 'lucide-react-native';
 

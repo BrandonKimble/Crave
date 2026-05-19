@@ -734,7 +734,7 @@ to span the full palette.
 The long-term mobile utility should be renamed around the public concept:
 
 ```ts
-getCraveScoreColorFromScore(craveScore)
+getCraveScoreColorFromScore(craveScore);
 ```
 
 The old `quality` naming can remain only during migration. The final public
@@ -939,11 +939,11 @@ meaningful. `scoreInfo` powers the info modal, not the compact card chip.
 Do not include these in normal public payloads after cutover:
 
 ```ts
-contextualScore
-contextualPercentile
-restaurantContextualScore
-restaurantQualityScore
-foodQualityScore
+contextualScore;
+contextualPercentile;
+restaurantContextualScore;
+restaurantQualityScore;
+foodQualityScore;
 ```
 
 If a debug route needs raw values, expose them under an explicit debug object:

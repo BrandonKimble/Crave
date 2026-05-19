@@ -76,8 +76,8 @@ export const useResultsPresentationShellModelRuntime = ({
     query.trim().length > 0
       ? query
       : submittedQuery.trim().length > 0
-      ? submittedQuery
-      : displayQueryOverride;
+        ? submittedQuery
+        : displayQueryOverride;
 
   const lastResultsDisplayQueryRef = React.useRef('');
   if (resultsDisplayQuery.trim().length > 0) {
@@ -90,23 +90,22 @@ export const useResultsPresentationShellModelRuntime = ({
     inputMode === 'editing'
       ? backdropTarget
       : surfaceDismissOwnsHeader
-      ? 'default'
-      : backdropTarget;
+        ? 'default'
+        : backdropTarget;
 
   const shouldRetainResultsDisplayQuery =
     effectiveBackdropTarget === 'results' &&
     resultsDisplayQuery.trim().length === 0 &&
     lastResultsDisplayQueryRef.current.trim().length > 0;
-  const effectiveResultsDisplayQuery =
-    shouldRetainResultsDisplayQuery
-      ? lastResultsDisplayQueryRef.current
-      : resultsDisplayQuery;
+  const effectiveResultsDisplayQuery = shouldRetainResultsDisplayQuery
+    ? lastResultsDisplayQueryRef.current
+    : resultsDisplayQuery;
   const chromeMode: SearchHeaderChromeMode =
     inputMode === 'editing'
       ? 'editing'
       : effectiveBackdropTarget === 'results'
-      ? 'results'
-      : 'default';
+        ? 'results'
+        : 'default';
 
   const headerVisualModel = React.useMemo(
     () =>

@@ -51,9 +51,7 @@ const readRequestStringField = (payload: unknown, key: string): string | null =>
   return typeof value === 'string' && value.length > 0 ? value : null;
 };
 
-const readCoordinateField = (
-  value: unknown
-): { lat: number; lng: number } | null => {
+const readCoordinateField = (value: unknown): { lat: number; lng: number } | null => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return null;
   }

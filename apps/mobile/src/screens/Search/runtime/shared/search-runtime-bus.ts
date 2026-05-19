@@ -416,9 +416,7 @@ export class SearchRuntimeBus {
       return;
     }
     const changedKeysArray = Array.from(changedKeys);
-    const shouldCaptureStack =
-      changedKeys.has('results') ||
-      changedKeys.has('resultsRequestKey');
+    const shouldCaptureStack = changedKeys.has('results') || changedKeys.has('resultsRequestKey');
     if (shouldCaptureStack) {
       logPerfScenarioStackAttribution({
         owner: 'search_runtime_bus_writer',

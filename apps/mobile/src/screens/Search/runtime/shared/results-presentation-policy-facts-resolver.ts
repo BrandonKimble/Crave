@@ -31,7 +31,9 @@ export const resolveResultsPresentationFreezePolicyFacts = ({
   searchSurfaceRedrawCommitSpanPressureActive,
 }: ResultsPresentationFreezePolicyInputs): ResultsPresentationFreezePolicyFacts => ({
   isSearchSurfaceRedrawChromeDeferred:
-    isSearchSurfaceRedrawChromeFreezeActive || searchSurfaceRedrawCommitSpanPressureActive || isChromeDeferred,
+    isSearchSurfaceRedrawChromeFreezeActive ||
+    searchSurfaceRedrawCommitSpanPressureActive ||
+    isChromeDeferred,
   freezeClassification: resolveSearchRecoveryFreezeClassification({
     isSearchSurfaceRedrawChromeFreezeActive,
     isSearchSurfaceRedrawPreflightFreezeActive,

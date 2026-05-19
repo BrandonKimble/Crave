@@ -689,10 +689,7 @@ type SearchMapRenderFrame = {
 
 const EMPTY_STRING_ARRAY: readonly string[] = [];
 
-const areStringArraysEqual = (
-  left: readonly string[],
-  right: readonly string[]
-): boolean => {
+const areStringArraysEqual = (left: readonly string[], right: readonly string[]): boolean => {
   if (left === right) {
     return true;
   }
@@ -901,7 +898,7 @@ type NativeRenderOwnerTransportState<TFrame extends MapRenderFrameTransportQueue
 };
 
 const createNativeRenderOwnerTransportState = <
-  TFrame extends MapRenderFrameTransportQueueFrame
+  TFrame extends MapRenderFrameTransportQueueFrame,
 >(): NativeRenderOwnerTransportState<TFrame> => ({
   lastDesiredFrame: null,
   lastDesiredFrameGenerationId: null,
@@ -927,7 +924,7 @@ const createNativeRenderOwnerTransportState = <
 });
 
 const clearNativeRenderOwnerResidentSourceState = <
-  TFrame extends MapRenderFrameTransportQueueFrame
+  TFrame extends MapRenderFrameTransportQueueFrame,
 >(
   state: NativeRenderOwnerTransportState<TFrame>
 ): void => {
@@ -943,7 +940,7 @@ const clearNativeRenderOwnerResidentSourceState = <
 };
 
 const markNativeRenderOwnerVisualSourcesNotResident = <
-  TFrame extends MapRenderFrameTransportQueueFrame
+  TFrame extends MapRenderFrameTransportQueueFrame,
 >(
   state: NativeRenderOwnerTransportState<TFrame>
 ): void => {
@@ -971,7 +968,7 @@ const resetNativeRenderOwnerTransportState = <TFrame extends MapRenderFrameTrans
 };
 
 const queueLatestNativeRenderOwnerFrameForTransport = <
-  TFrame extends MapRenderFrameTransportQueueFrame
+  TFrame extends MapRenderFrameTransportQueueFrame,
 >(
   transportState: NativeRenderOwnerTransportState<TFrame>,
   nextFrame: TFrame
@@ -980,7 +977,7 @@ const queueLatestNativeRenderOwnerFrameForTransport = <
 };
 
 const takeNextNativeRenderOwnerFrameForTransport = <
-  TFrame extends MapRenderFrameTransportQueueFrame
+  TFrame extends MapRenderFrameTransportQueueFrame,
 >({
   transportState,
   ownerEpoch,
@@ -1014,7 +1011,7 @@ const takeNextNativeRenderOwnerFrameForTransport = <
 };
 
 const acknowledgeNativeRenderOwnerFrameTransportSync = <
-  TFrame extends MapRenderFrameTransportQueueFrame
+  TFrame extends MapRenderFrameTransportQueueFrame,
 >(
   transportState: NativeRenderOwnerTransportState<TFrame>,
   frameGenerationId: string
@@ -1027,7 +1024,7 @@ const acknowledgeNativeRenderOwnerFrameTransportSync = <
 };
 
 const markNativeRenderOwnerFrameTransportFailed = <
-  TFrame extends MapRenderFrameTransportQueueFrame
+  TFrame extends MapRenderFrameTransportQueueFrame,
 >(
   transportState: NativeRenderOwnerTransportState<TFrame>,
   frameGenerationId: string
@@ -1039,7 +1036,7 @@ const markNativeRenderOwnerFrameTransportFailed = <
 };
 
 const requeueDroppedNativeRenderOwnerFrameForTransport = <
-  TFrame extends MapRenderFrameTransportQueueFrame
+  TFrame extends MapRenderFrameTransportQueueFrame,
 >({
   transportState,
   droppedFrame,
@@ -1057,7 +1054,7 @@ const requeueDroppedNativeRenderOwnerFrameForTransport = <
 };
 
 const retargetNativeRenderOwnerTransportOwnerEpoch = <
-  TFrame extends MapRenderFrameTransportQueueFrame
+  TFrame extends MapRenderFrameTransportQueueFrame,
 >(
   transportState: NativeRenderOwnerTransportState<TFrame>,
   ownerEpoch: number
@@ -1210,9 +1207,9 @@ const buildSourceDelta = (
     acknowledgedSourceRevision == null
       ? nextSourceStore.buildReplaceDelta()
       : committedDeltaJournal?.baseSourceRevision === acknowledgedSourceRevision
-      ? committedDeltaJournal.delta
-      : buildReplayJournalDelta(acknowledgedSourceRevision, nextSourceStore) ??
-        nextSourceStore.buildReplaceDelta();
+        ? committedDeltaJournal.delta
+        : (buildReplayJournalDelta(acknowledgedSourceRevision, nextSourceStore) ??
+          nextSourceStore.buildReplaceDelta());
   return delta ? toRenderSourceDelta(sourceId, delta) : null;
 };
 
@@ -1276,8 +1273,8 @@ const deriveNativeDiagnosticMessageState = (message: string) => {
   const eventKind = message.startsWith('source_commit_pending')
     ? 'pending'
     : message.startsWith('source_commit_ack')
-    ? 'ack'
-    : 'other';
+      ? 'ack'
+      : 'other';
   const sourceId = sourceIdMatch?.[1]?.trim();
   return {
     eventKind,
@@ -1331,8 +1328,8 @@ const derivePresentationDiagnosticsState = (
     presentationState.snapshotKind == null
       ? null
       : presentationState.snapshotKind === 'results_exit'
-      ? 'dismiss'
-      : 'reveal',
+        ? 'dismiss'
+        : 'reveal',
   batchPhase: deriveSearchMapRenderPresentationStatusState(presentationState).batchPhase,
 });
 
@@ -1507,7 +1504,7 @@ const deriveExecutionBatchId = ({
 }): string => {
   const presentationBatchId =
     presentationSyncState.currentRequestKey != null
-      ? presentationState.executionBatch?.batchId ?? null
+      ? (presentationState.executionBatch?.batchId ?? null)
       : null;
   if (presentationBatchId != null) {
     return presentationBatchId;
@@ -1541,8 +1538,8 @@ const deriveMotionPressurePresentationTransaction = (
       presentationPhase === 'covered'
         ? ('preparing' as const)
         : presentationPhase === 'enter_requested' || presentationPhase === 'exit_preroll'
-        ? ('committing' as const)
-        : ('executing' as const),
+          ? ('committing' as const)
+          : ('executing' as const),
   };
 };
 
@@ -1810,7 +1807,7 @@ const useSearchMapNativeRenderOwnerStatus = ({
       }
       const snapshot =
         eventPinCount == null || eventDotCount == null || eventLabelCount == null
-          ? sourceFramePortRef.current?.getSnapshot() ?? null
+          ? (sourceFramePortRef.current?.getSnapshot() ?? null)
           : null;
       const pinCount =
         eventPinCount ?? queuedCounts?.pinCount ?? snapshot?.pinSourceStore.idsInOrder.length ?? 0;
@@ -2388,8 +2385,7 @@ const useSearchMapNativeRenderOwnerStatus = ({
       authoritySnapshot.resultsPresentationTransport.snapshotKind === 'results_exit';
     const sourceFrameSnapshot = sourceFramePortRef.current?.getSnapshot() ?? null;
     const isPresentationLive =
-      authoritySnapshot.resultsPresentation.contentVisibility === 'visible' &&
-      !isResultsExitActive;
+      authoritySnapshot.resultsPresentation.contentVisibility === 'visible' && !isResultsExitActive;
     const presentationExecutionStage =
       authoritySnapshot.resultsPresentationTransport.executionStage;
     const labelSourceCount = sourceFrameSnapshot?.labelSourceStore.idsInOrder.length ?? 0;
@@ -2421,10 +2417,10 @@ const useSearchMapNativeRenderOwnerStatus = ({
       ? activeLabelObservationTransactionKeyRef.current
       : null;
     const observationRequestKey = effectiveObservationEnabled
-      ? presentationTransactionId ??
+      ? (presentationTransactionId ??
         activeObservationTransactionKey ??
         sourceFrameSnapshot?.mapSearchSurfaceResultsSourcesReadyKey ??
-        labelObservationConfig.labelResetRequestKey
+        labelObservationConfig.labelResetRequestKey)
       : null;
     const effectiveLabelObservationConfig = {
       ...labelObservationConfig,
@@ -2441,13 +2437,13 @@ const useSearchMapNativeRenderOwnerStatus = ({
         event: 'native_label_observation_config_apply_contract',
         commitInteractionVisibility: effectiveCommitInteractionVisibility,
         errorMessage,
-          instanceId,
-          isAttached,
-          isNativeAvailable,
-          isResultsExitActive,
-          isPreparingEnterPlacement,
-          labelSourceCount,
-          observationEnabled: effectiveObservationEnabled,
+        instanceId,
+        isAttached,
+        isNativeAvailable,
+        isResultsExitActive,
+        isPreparingEnterPlacement,
+        labelSourceCount,
+        observationEnabled: effectiveObservationEnabled,
         observationRequestKey,
         presentationExecutionStage,
         sourceFrameVisualCycleKey,
@@ -3351,8 +3347,8 @@ const useSearchMapNativeRenderOwnerSync = ({
             nextExpectedEvent: shouldQueueNativeEnterMountAckFrame
               ? 'native_frame_flush'
               : preparedSourceFrameReadyForHiddenPreapply
-              ? 'source_apply_then_mounted_hidden_ack'
-              : 'full_source_snapshot_publish',
+                ? 'source_apply_then_mounted_hidden_ack'
+                : 'full_source_snapshot_publish',
           });
         }
         if (
@@ -3437,7 +3433,8 @@ const useSearchMapNativeRenderOwnerSync = ({
         if (
           !shouldQueueNativeEnterMountAckFrame &&
           (frameAdmissionDecision === 'suppress_redundant_hidden_covered_frame' ||
-            frameAdmissionDecision === 'suppress_same_execution_batch_viewport_presentation_frame' ||
+            frameAdmissionDecision ===
+              'suppress_same_execution_batch_viewport_presentation_frame' ||
             frameAdmissionDecision === 'suppress_transaction_presentation_only_frame')
         ) {
           if (

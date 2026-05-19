@@ -23,20 +23,15 @@ export const useSearchRootRuntimeHostVisualRuntime = ({
   }),
   overlayHostVisualRuntime: {
     statusBarFadeHeight: foregroundVisualRuntime.statusBarFadeHeight,
-    overlayBackdropDimProgress:
-      appRouteSceneChromeMotionRuntime.overlayBackdropDimProgress,
+    overlayBackdropDimProgress: appRouteSceneChromeMotionRuntime.overlayBackdropDimProgress,
     bottomNavMotionRuntime: foregroundVisualRuntime.bottomNavMotionRuntime,
-    shouldHideBottomNavForRender:
-      foregroundVisualRuntime.shouldHideBottomNavForRender,
+    shouldHideBottomNavForRender: foregroundVisualRuntime.shouldHideBottomNavForRender,
     shouldMountSearchShortcuts: foregroundVisualRuntime.shouldMountSearchShortcuts,
     shouldEnableSearchShortcutsInteraction:
       foregroundVisualRuntime.shouldEnableSearchShortcutsInteraction,
-    searchShortcutsAnimatedStyle:
-      foregroundVisualRuntime.searchShortcutsAnimatedStyle,
-    searchShortcutChipAnimatedStyle:
-      foregroundVisualRuntime.searchShortcutChipAnimatedStyle,
-    searchShortcutContentAnimatedStyle:
-      foregroundVisualRuntime.searchShortcutContentAnimatedStyle,
+    searchShortcutsAnimatedStyle: foregroundVisualRuntime.searchShortcutsAnimatedStyle,
+    searchShortcutChipAnimatedStyle: foregroundVisualRuntime.searchShortcutChipAnimatedStyle,
+    searchShortcutContentAnimatedStyle: foregroundVisualRuntime.searchShortcutContentAnimatedStyle,
   },
   overlaySceneHostVisualRuntime: useSearchRootOverlaySceneHostVisualRuntime({
     foregroundVisualRuntime,

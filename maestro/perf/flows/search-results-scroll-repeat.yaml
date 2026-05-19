@@ -10,7 +10,7 @@ appId: com.brandonkimble.cravesearch
     text: 'Close results'
     optional: true
 - tapOn:
-    point: "25%, 19%"
+    point: '25%, 19%'
     waitToSettleTimeoutMs: 0
 - extendedWaitUntil:
     visible: 'Close results'
@@ -22,12 +22,12 @@ appId: com.brandonkimble.cravesearch
     times: 6
     commands:
       - swipe:
-          start: "50%, 78%"
-          end: "50%, 36%"
+          start: '50%, 78%'
+          end: '50%, 36%'
           duration: 520
       - swipe:
-          start: "50%, 36%"
-          end: "50%, 78%"
+          start: '50%, 36%'
+          end: '50%, 78%'
           duration: 520
 - openLink: crave://perf-scenario-mark?phase=measured_repeat_loop_end
 - waitForAnimationToEnd:

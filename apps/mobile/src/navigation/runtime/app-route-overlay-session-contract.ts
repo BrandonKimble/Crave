@@ -21,9 +21,7 @@ export type AppRouteOverlaySessionSnapshot = {
 
 export type AppRouteOverlaySessionActions = {
   captureSearchSessionOrigin: () => void;
-  armSearchCloseRestore: (
-    options?: AppRouteSearchCloseRestoreOptions
-  ) => boolean;
+  armSearchCloseRestore: (options?: AppRouteSearchCloseRestoreOptions) => boolean;
   commitSearchCloseRestore: () => boolean;
   cancelSearchCloseRestore: () => void;
   prepareSearchSessionEntry: (options?: { captureOrigin?: boolean }) => void;
@@ -36,8 +34,7 @@ export type AppRouteOverlaySessionAuthority = {
   getSnapshot: () => AppRouteOverlaySessionSnapshot;
 };
 
-export type AppRouteOverlaySessionRuntime =
-  AppRouteOverlaySessionSnapshot &
+export type AppRouteOverlaySessionRuntime = AppRouteOverlaySessionSnapshot &
   AppRouteOverlaySessionActions;
 
 export type AppRouteOverlaySessionControllerSharedSnapState = {

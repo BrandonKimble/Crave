@@ -76,7 +76,11 @@ export class PublicCraveScoreService {
     fixtureRunId?: string;
     config?: Partial<PublicCraveScoreConfig>;
     recencyReferenceDate?: Date;
-  }): Promise<{ scoreRunId: string; scoredCount: number; marketStatsCount: number }> {
+  }): Promise<{
+    scoreRunId: string;
+    scoredCount: number;
+    marketStatsCount: number;
+  }> {
     const config = { ...DEFAULT_CONFIG, ...(params?.config ?? {}) };
     const recencyReferenceDate = params?.recencyReferenceDate ?? new Date();
     const scoreRunId = randomUUID();
@@ -86,7 +90,10 @@ export class PublicCraveScoreService {
 
     try {
       const candidates = await this.loadCandidates(params, config);
-      const priorScores = await this.loadPriorScores(config, recencyReferenceDate);
+      const priorScores = await this.loadPriorScores(
+        config,
+        recencyReferenceDate,
+      );
       const { scored, marketStats } = this.scoreCandidates(
         candidates,
         priorScores,
@@ -96,8 +103,10 @@ export class PublicCraveScoreService {
       await this.writeMarketStats(scoreRunId, marketStats);
       await this.writeScores(scoreRunId, scored, config, recencyReferenceDate);
       await this.completeRun(scoreRunId, {
-        restaurants: scored.filter((row) => row.subjectType === 'restaurant').length,
-        connections: scored.filter((row) => row.subjectType === 'connection').length,
+        restaurants: scored.filter((row) => row.subjectType === 'restaurant')
+          .length,
+        connections: scored.filter((row) => row.subjectType === 'connection')
+          .length,
         marketStats: marketStats.length,
       });
 
@@ -121,10 +130,16 @@ export class PublicCraveScoreService {
 
   scoreCandidates(
     candidates: CraveScoreCandidate[],
-    priorScores: Map<string, { score7d: number | null; score28d: number | null }>,
+    priorScores: Map<
+      string,
+      { score7d: number | null; score28d: number | null }
+    >,
     config: PublicCraveScoreConfig = DEFAULT_CONFIG,
   ): { scored: ScoredCraveSubject[]; marketStats: CraveScoreMarketStat[] } {
-    const bySubjectType = this.groupBy(candidates, (candidate) => candidate.subjectType);
+    const bySubjectType = this.groupBy(
+      candidates,
+      (candidate) => candidate.subjectType,
+    );
     const marketStats: CraveScoreMarketStat[] = [];
     const scored: ScoredCraveSubject[] = [];
 
@@ -151,7 +166,10 @@ export class PublicCraveScoreService {
           config.robustSpreadFloor,
         );
         const evidence = this.marketEvidence(marketCandidates, config);
-        const reliability = this.saturating(evidence, config.marketReliabilityK);
+        const reliability = this.saturating(
+          evidence,
+          config.marketReliabilityK,
+        );
         marketDistribution.set(marketKey, { ...stats, reliability, evidence });
         marketStats.push({
           subjectType,
@@ -166,11 +184,18 @@ export class PublicCraveScoreService {
           marketReliability: reliability,
           evidenceSummary: {
             effectiveMarketEvidence: this.round(evidence),
-            sourceDocumentCount: this.sum(marketCandidates, 'sourceDocumentCount'),
+            sourceDocumentCount: this.sum(
+              marketCandidates,
+              'sourceDocumentCount',
+            ),
             pollCount: this.sum(marketCandidates, 'pollCount'),
             pollVoteCount: this.sum(marketCandidates, 'pollVoteCount'),
-            distinctPollVoterCount: this.marketDistinctPollVoterCount(marketCandidates),
-            subjectDistinctPollVoterCount: this.sum(marketCandidates, 'distinctPollVoterCount'),
+            distinctPollVoterCount:
+              this.marketDistinctPollVoterCount(marketCandidates),
+            subjectDistinctPollVoterCount: this.sum(
+              marketCandidates,
+              'distinctPollVoterCount',
+            ),
           },
           factorTrace: {
             distribution: 'median_mad_iqr',
@@ -183,7 +208,10 @@ export class PublicCraveScoreService {
         const marketStatsForCandidate = candidate.scoringMarketKey
           ? marketDistribution.get(candidate.scoringMarketKey)
           : null;
-        const globalZ = this.robustZ(candidate.rawQualityScore, globalDistribution);
+        const globalZ = this.robustZ(
+          candidate.rawQualityScore,
+          globalDistribution,
+        );
         const marketZ = marketStatsForCandidate
           ? this.robustZ(candidate.rawQualityScore, marketStatsForCandidate)
           : null;
@@ -196,12 +224,17 @@ export class PublicCraveScoreService {
           entityEvidence,
           config.entityConfidenceK,
         );
-        const confidenceShrink = Math.pow(entityConfidence, config.entityConfidencePower);
+        const confidenceShrink = Math.pow(
+          entityConfidence,
+          config.entityConfidencePower,
+        );
         const posteriorSignal = confidenceShrink * normalizedSignal;
         const displayScore = this.displayScore(posteriorSignal, config);
         const prior = priorScores.get(this.subjectKey(candidate));
         const scoreDelta7d =
-          prior?.score7d != null ? this.round(displayScore - prior.score7d, 1) : null;
+          prior?.score7d != null
+            ? this.round(displayScore - prior.score7d, 1)
+            : null;
         const scoreDelta28d =
           prior?.score28d != null
             ? this.round(displayScore - prior.score28d, 1)
@@ -228,7 +261,8 @@ export class PublicCraveScoreService {
           scoreDelta28d: scoreDelta28d === 0 ? null : scoreDelta28d,
           movementState,
           factorTrace: {
-            rawQualitySource: 'source_facts_plus_poll_performance_without_pseudo',
+            rawQualitySource:
+              'source_facts_plus_poll_performance_without_pseudo',
             privateEvidence: {
               directMentionCount: candidate.directMentionCount,
               supportMentionCount: candidate.supportMentionCount,
@@ -320,9 +354,12 @@ export class PublicCraveScoreService {
     `;
   }
 
-  private async loadCandidates(params?: {
-    fixtureRunId?: string;
-  }, config: PublicCraveScoreConfig = DEFAULT_CONFIG): Promise<CraveScoreCandidate[]> {
+  private async loadCandidates(
+    params?: {
+      fixtureRunId?: string;
+    },
+    config: PublicCraveScoreConfig = DEFAULT_CONFIG,
+  ): Promise<CraveScoreCandidate[]> {
     const fixtureRunId = params?.fixtureRunId ?? null;
     const fixtureFilter = fixtureRunId
       ? Prisma.sql`AND fixture_run_id = ${fixtureRunId}`
@@ -556,7 +593,9 @@ export class PublicCraveScoreService {
       pollCount: this.toNumber(row.poll_count),
       pollVoteCount: this.toNumber(row.poll_vote_count),
       distinctPollVoterCount: this.toNumber(row.distinct_poll_voter_count),
-      marketDistinctPollVoterCount: this.toNumber(row.market_distinct_poll_voter_count),
+      marketDistinctPollVoterCount: this.toNumber(
+        row.market_distinct_poll_voter_count,
+      ),
       pollSignal: this.toNumber(row.poll_signal),
     }));
   }
@@ -592,7 +631,10 @@ export class PublicCraveScoreService {
       WHERE rn = 1
     `;
 
-    const result = new Map<string, { score7d: number | null; score28d: number | null }>();
+    const result = new Map<
+      string,
+      { score7d: number | null; score28d: number | null }
+    >();
     for (const row of rows) {
       const key = `${row.subject_type}:${row.subject_id}`;
       const current = result.get(key) ?? { score7d: null, score28d: null };
@@ -614,8 +656,9 @@ export class PublicCraveScoreService {
       return;
     }
     await this.prisma.$transaction(
-      marketStats.map((stat) =>
-        this.prisma.$executeRaw`
+      marketStats.map(
+        (stat) =>
+          this.prisma.$executeRaw`
           INSERT INTO core_crave_score_market_stats (
             score_run_id,
             subject_type,
@@ -664,8 +707,9 @@ export class PublicCraveScoreService {
     }
 
     await this.prisma.$transaction(
-      scored.map((row) =>
-        this.prisma.$executeRaw`
+      scored.map(
+        (row) =>
+          this.prisma.$executeRaw`
           INSERT INTO core_public_entity_scores (
             subject_type,
             subject_id,
@@ -731,8 +775,9 @@ export class PublicCraveScoreService {
     );
 
     await this.prisma.$transaction(
-      scored.map((row) =>
-        this.prisma.$executeRaw`
+      scored.map(
+        (row) =>
+          this.prisma.$executeRaw`
           INSERT INTO core_public_entity_score_history (
             score_run_id,
             snapshot_date,
@@ -785,7 +830,10 @@ export class PublicCraveScoreService {
     );
   }
 
-  private distributionStats(values: number[], spreadFloor: number): {
+  private distributionStats(
+    values: number[],
+    spreadFloor: number,
+  ): {
     median: number;
     mad: number;
     iqr: number;
@@ -793,7 +841,12 @@ export class PublicCraveScoreService {
   } {
     const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
     if (!sorted.length) {
-      return { median: 0, mad: spreadFloor, iqr: spreadFloor, spread: spreadFloor };
+      return {
+        median: 0,
+        mad: spreadFloor,
+        iqr: spreadFloor,
+        spread: spreadFloor,
+      };
     }
     const median = this.percentile(sorted, 0.5);
     const deviations = sorted
@@ -834,7 +887,9 @@ export class PublicCraveScoreService {
   }
 
   private displayScore(value: number, config: PublicCraveScoreConfig): number {
-    const sigmoid = 1 / (1 + Math.exp(-((value - config.displayCenter) / config.displayScale)));
+    const sigmoid =
+      1 /
+      (1 + Math.exp(-((value - config.displayCenter) / config.displayScale)));
     return this.round(
       config.displayMin + (config.displayMax - config.displayMin) * sigmoid,
       1,
@@ -860,10 +915,12 @@ export class PublicCraveScoreService {
     candidates: CraveScoreCandidate[],
     config: PublicCraveScoreConfig,
   ): number {
-    const distinctPollVoterCount = this.marketDistinctPollVoterCount(candidates);
+    const distinctPollVoterCount =
+      this.marketDistinctPollVoterCount(candidates);
     return (
       candidates.length +
-      Math.log1p(this.sum(candidates, 'directMentionCount')) * config.directMentionWeight +
+      Math.log1p(this.sum(candidates, 'directMentionCount')) *
+        config.directMentionWeight +
       Math.log1p(this.sum(candidates, 'sourceDocumentCount')) *
         config.sourceBreadthWeight +
       Math.log1p(this.sum(candidates, 'pollCount')) +
@@ -871,10 +928,15 @@ export class PublicCraveScoreService {
     );
   }
 
-  private marketDistinctPollVoterCount(candidates: CraveScoreCandidate[]): number {
+  private marketDistinctPollVoterCount(
+    candidates: CraveScoreCandidate[],
+  ): number {
     const marketCounts = candidates
       .map((candidate) => candidate.marketDistinctPollVoterCount)
-      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+      .filter(
+        (value): value is number =>
+          typeof value === 'number' && Number.isFinite(value),
+      );
     if (marketCounts.length > 0) {
       return Math.max(...marketCounts);
     }
@@ -882,10 +944,15 @@ export class PublicCraveScoreService {
   }
 
   private saturating(evidence: number, k: number): number {
-    return this.round(1 - Math.exp(-Math.max(0, evidence) / Math.max(k, 0.0001)), 5);
+    return this.round(
+      1 - Math.exp(-Math.max(0, evidence) / Math.max(k, 0.0001)),
+      5,
+    );
   }
 
-  private subjectKey(candidate: Pick<CraveScoreCandidate, 'subjectType' | 'subjectId'>): string {
+  private subjectKey(
+    candidate: Pick<CraveScoreCandidate, 'subjectType' | 'subjectId'>,
+  ): string {
     return `${candidate.subjectType}:${candidate.subjectId}`;
   }
 
@@ -901,7 +968,10 @@ export class PublicCraveScoreService {
   }
 
   private sum<T>(values: T[], key: keyof T): number {
-    return values.reduce((total, value) => total + this.toNumber(value[key] as NumericLike), 0);
+    return values.reduce(
+      (total, value) => total + this.toNumber(value[key] as NumericLike),
+      0,
+    );
   }
 
   private toNumber(value: NumericLike): number {
@@ -913,7 +983,7 @@ export class PublicCraveScoreService {
       return Number.isFinite(parsed) ? parsed : 0;
     }
     if (value && typeof value === 'object' && 'toNumber' in value) {
-      const parsed = (value as Prisma.Decimal).toNumber();
+      const parsed = value.toNumber();
       return Number.isFinite(parsed) ? parsed : 0;
     }
     return 0;

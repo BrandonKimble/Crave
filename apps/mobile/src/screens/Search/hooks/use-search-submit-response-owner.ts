@@ -687,7 +687,7 @@ const deriveSearchResponseLifecycleContext = (params: {
     params.append
   );
   const markerPipelineActiveTab =
-    (params.append ? params.pendingTabSwitchTab ?? params.activeTab : params.initialTargetTab) ??
+    (params.append ? (params.pendingTabSwitchTab ?? params.activeTab) : params.initialTargetTab) ??
     'dishes';
   const responseCommitProjection = deriveSearchResponseResultsCommitPatch({
     mergedResponse: merged,
@@ -1283,11 +1283,7 @@ export const useSearchSubmitResponseOwner = ({
           pendingTabSwitchTab: null,
         });
       });
-      if (
-        !append &&
-        committedResponse.metadata.page === 1 &&
-        !isResponseApplyStale()
-      ) {
+      if (!append && committedResponse.metadata.page === 1 && !isResponseApplyStale()) {
         onPageOneResultsCommitted?.({
           searchRequestId: committedSearchRequestId,
           requestBounds: requestBounds ?? null,
@@ -1372,8 +1368,7 @@ export const useSearchSubmitResponseOwner = ({
         });
         const rootBusResultsPatch = deriveSearchResponseRootBusResultsPatch({
           patch: responseContext.resultsPatch,
-          preserveRouteIdentity:
-            append || targetPage !== 1 || runtimeTuple.mode !== 'shortcut',
+          preserveRouteIdentity: append || targetPage !== 1 || runtimeTuple.mode !== 'shortcut',
         });
         const runtimeBusPublishStartedAtMs = getPerfScenarioWorkNow();
         searchRuntimeBus.publish(rootBusResultsPatch);

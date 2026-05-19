@@ -1,15 +1,9 @@
 import React from 'react';
 
 import type { SearchMapRenderHostConfig } from '../../components/SearchMapWithMarkerEngine';
-import {
-  createSearchRootMapEngineInputs,
-} from '../controller/search-root-map-engine-input-controller-runtime';
-import {
-  createSearchRootMapHostConfig,
-} from '../controller/search-root-map-host-config-controller-runtime';
-import {
-  createSearchRootMapPresentationProps,
-} from '../controller/search-root-map-presentation-props-controller-runtime';
+import { createSearchRootMapEngineInputs } from '../controller/search-root-map-engine-input-controller-runtime';
+import { createSearchRootMapHostConfig } from '../controller/search-root-map-host-config-controller-runtime';
+import { createSearchRootMapPresentationProps } from '../controller/search-root-map-presentation-props-controller-runtime';
 import type { useSearchRootMapPresentationRuntime } from './use-search-root-map-presentation-runtime';
 import type { SearchRootMapSurfaceStateRuntimeValue } from './use-search-root-map-surface-state-runtime';
 import type { useSearchScreenAppEntryPlaneRuntime } from './use-search-screen-app-entry-plane-runtime';
@@ -67,8 +61,7 @@ export const useSearchRootMapSurfaceViewRuntime = ({
         styleURL: mapSurfaceStateRuntime.styleURL,
         mapInteractionBridgeRuntime,
         mapPresentationRuntime,
-        presentationLifecyclePort:
-          mapSurfaceStateRuntime.presentationLifecyclePort,
+        presentationLifecyclePort: mapSurfaceStateRuntime.presentationLifecyclePort,
       }),
     [
       mapInteractionBridgeRuntime,
@@ -87,8 +80,7 @@ export const useSearchRootMapSurfaceViewRuntime = ({
       createSearchRootMapPresentationProps({
         mapSurfaceState: mapSurfaceStateRuntime.mapSurfaceState,
         mapPresentationRuntime,
-        startupLocationSnapshot:
-          appEntryPlaneRuntime.startupLocationSnapshot,
+        startupLocationSnapshot: appEntryPlaneRuntime.startupLocationSnapshot,
         userLocation: appEntryPlaneRuntime.userLocation,
       }),
     [

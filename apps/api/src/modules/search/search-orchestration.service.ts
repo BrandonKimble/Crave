@@ -276,7 +276,8 @@ export class SearchOrchestrationService {
       if (hasQueryTargets && totalResults === 0) {
         response.metadata.resultCoverageStatus = 'unresolved';
       } else {
-        response.metadata.resultCoverageStatus = totalResults > 0 ? 'full' : 'full';
+        response.metadata.resultCoverageStatus =
+          totalResults > 0 ? 'full' : 'full';
       }
     }
 

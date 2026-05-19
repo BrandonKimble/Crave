@@ -7,8 +7,9 @@ import {
 } from '../controller/search-surface-redraw-phase';
 import React from 'react';
 
-const resolveBodyAdmissionHandoffPhase = (phase: SearchSurfaceRedrawPhase): SearchSurfaceRedrawPhase =>
-  phase === 'redraw_committed' ? phase : 'markers_ready';
+const resolveBodyAdmissionHandoffPhase = (
+  phase: SearchSurfaceRedrawPhase
+): SearchSurfaceRedrawPhase => (phase === 'redraw_committed' ? phase : 'markers_ready');
 
 export const useSearchResultsPanelHydrationRuntimeState = (
   searchRuntimeBus: SearchRuntimeBus,
@@ -37,8 +38,7 @@ export const useSearchResultsPanelHydrationRuntimeState = (
       rawSearchSurfaceRedrawPhase: sampledSearchRuntimeState.searchSurfaceRedrawPhase,
       searchSurfaceRedrawCommitSpanPressureActive:
         sampledSearchRuntimeState.searchSurfaceRedrawCommitSpanPressureActive,
-      isSearchSurfaceRedrawChromeDeferred:
-        sampledPolicyFacts.isSearchSurfaceRedrawChromeDeferred,
+      isSearchSurfaceRedrawChromeDeferred: sampledPolicyFacts.isSearchSurfaceRedrawChromeDeferred,
       chromeFreezeClassification: sampledPolicyFacts.freezeClassification,
       getAllowHydrationFinalizeCommit,
       getRawSearchSurfaceRedrawPhase,

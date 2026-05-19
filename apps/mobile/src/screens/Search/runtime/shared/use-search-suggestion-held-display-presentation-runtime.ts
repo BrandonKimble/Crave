@@ -11,14 +11,16 @@ export const useSearchSuggestionHeldDisplayPresentationRuntime = ({
   shouldFreezeSuggestionDisplayForSearchSurfaceRedraw,
   currentDisplayRuntime,
 }: UseSearchSuggestionHeldDisplayPresentationRuntimeArgs): SearchSuggestionHeldDisplayRuntime => {
-  const frozenDisplayRuntimeRef =
-    React.useRef<SearchSuggestionHeldDisplayRuntime | null>(null);
+  const frozenDisplayRuntimeRef = React.useRef<SearchSuggestionHeldDisplayRuntime | null>(null);
 
-  if (!shouldFreezeSuggestionDisplayForSearchSurfaceRedraw || frozenDisplayRuntimeRef.current == null) {
+  if (
+    !shouldFreezeSuggestionDisplayForSearchSurfaceRedraw ||
+    frozenDisplayRuntimeRef.current == null
+  ) {
     frozenDisplayRuntimeRef.current = currentDisplayRuntime;
   }
 
   return shouldFreezeSuggestionDisplayForSearchSurfaceRedraw
-    ? frozenDisplayRuntimeRef.current ?? currentDisplayRuntime
+    ? (frozenDisplayRuntimeRef.current ?? currentDisplayRuntime)
     : currentDisplayRuntime;
 };

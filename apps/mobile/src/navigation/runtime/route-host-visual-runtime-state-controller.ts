@@ -36,8 +36,7 @@ const areRouteHostVisualRuntimesEqual = (
     left.navBarCutoutHidingProgress === right.navBarCutoutHidingProgress &&
     left.navBarCutoutIsHiding === right.navBarCutoutIsHiding &&
     left.navTranslateY === right.navTranslateY &&
-    left.navSilhouetteSheetBodyExclusionHeight ===
-      right.navSilhouetteSheetBodyExclusionHeight &&
+    left.navSilhouetteSheetBodyExclusionHeight === right.navSilhouetteSheetBodyExclusionHeight &&
     left.navSilhouetteSheetMaskHeight === right.navSilhouetteSheetMaskHeight &&
     left.navSilhouetteSheetExclusionModeValue === right.navSilhouetteSheetExclusionModeValue);
 
@@ -59,15 +58,8 @@ export class RouteHostVisualRuntimeStateController {
     };
   }
 
-  public syncRouteHostVisualRuntime(
-    routeHostVisualRuntime: RouteHostVisualRuntime
-  ): void {
-    if (
-      areRouteHostVisualRuntimesEqual(
-        this.routeHostVisualRuntime,
-        routeHostVisualRuntime
-      )
-    ) {
+  public syncRouteHostVisualRuntime(routeHostVisualRuntime: RouteHostVisualRuntime): void {
+    if (areRouteHostVisualRuntimesEqual(this.routeHostVisualRuntime, routeHostVisualRuntime)) {
       return;
     }
 
@@ -118,5 +110,4 @@ export class RouteHostVisualRuntimeStateController {
 }
 
 export const createRouteHostVisualRuntimeStateController =
-  (): RouteHostVisualRuntimeStateController =>
-    new RouteHostVisualRuntimeStateController();
+  (): RouteHostVisualRuntimeStateController => new RouteHostVisualRuntimeStateController();

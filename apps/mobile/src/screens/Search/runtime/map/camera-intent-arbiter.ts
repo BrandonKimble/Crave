@@ -216,22 +216,18 @@ export class CameraIntentArbiter {
   public handleProgrammaticCameraAnimationCompletion(
     payload: RawProgrammaticCameraAnimationCompletionPayload
   ): boolean {
-    return withSearchNavSwitchRuntimeAttribution(
-      'cameraIntentArbiter',
-      'handleCompletion',
-      () => {
-        const requestToken = this.pendingProgrammaticCameraRequestToken;
-        if (!this.consumeProgrammaticCameraCompletion(payload.animationCompletionId)) {
-          return false;
-        }
-        this.flushControlledCameraStateSync(payload.animationCompletionId, payload.status);
-        this.notifyProgrammaticCameraAnimationCompletion({
-          ...payload,
-          requestToken,
-        });
-        return true;
+    return withSearchNavSwitchRuntimeAttribution('cameraIntentArbiter', 'handleCompletion', () => {
+      const requestToken = this.pendingProgrammaticCameraRequestToken;
+      if (!this.consumeProgrammaticCameraCompletion(payload.animationCompletionId)) {
+        return false;
       }
-    );
+      this.flushControlledCameraStateSync(payload.animationCompletionId, payload.status);
+      this.notifyProgrammaticCameraAnimationCompletion({
+        ...payload,
+        requestToken,
+      });
+      return true;
+    });
   }
 
   public resolvePendingProgrammaticCameraAnimation(

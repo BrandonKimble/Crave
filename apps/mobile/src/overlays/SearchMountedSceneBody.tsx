@@ -198,8 +198,7 @@ const areSearchMountedSceneBodySelectionsEqual = (
 const resolveSearchMountedSceneBodySelection = (): SearchMountedSceneBodySelection => {
   const surfaceSnapshot = getSearchSurfaceRuntime().getSnapshot();
   const activeBundle = surfaceSnapshot.activeBundle;
-  const resultsBundle =
-    activeBundle.kind === 'results' ? activeBundle : surfaceSnapshot.heldBundle;
+  const resultsBundle = activeBundle.kind === 'results' ? activeBundle : surfaceSnapshot.heldBundle;
   const bodyBundle = resultsBundle?.bodyBundle ?? null;
   const hasMountedResultsData = getSearchMountedResultsDataSnapshot().results != null;
   return {
@@ -217,7 +216,9 @@ const getSearchMountedSceneBodySelectionSnapshot = (): SearchMountedSceneBodySel
 
 const publishSearchMountedSceneBodySelectionIfChanged = (): void => {
   const nextSnapshot = resolveSearchMountedSceneBodySelection();
-  if (areSearchMountedSceneBodySelectionsEqual(searchMountedSceneBodySelectionSnapshot, nextSnapshot)) {
+  if (
+    areSearchMountedSceneBodySelectionsEqual(searchMountedSceneBodySelectionSnapshot, nextSnapshot)
+  ) {
     return;
   }
   searchMountedSceneBodySelectionSnapshot = nextSnapshot;
@@ -346,10 +347,9 @@ const SearchMountedResultsListTarget = React.memo(
         sceneContentContainerStyle,
       ]
     );
-    const renderSceneScrollComponent =
-      bodyScrollRuntime.ScrollComponent as NonNullable<
-        FlashListProps<unknown>['renderScrollComponent']
-      >;
+    const renderSceneScrollComponent = bodyScrollRuntime.ScrollComponent as NonNullable<
+      FlashListProps<unknown>['renderScrollComponent']
+    >;
     const handleScrollBeginDrag = React.useCallback(
       (event: ScrollEvent) => {
         sceneBodyTransport.onScrollBeginDrag?.();
@@ -402,7 +402,7 @@ const SearchMountedResultsListTarget = React.memo(
           renderItem: activeRenderItem,
           keyExtractor: activeKeyExtractor,
           contentContainerStyle: sceneListContentContainerStyle,
-        } as FlashListProps<unknown>),
+        }) as FlashListProps<unknown>,
       [
         activeData,
         activeKeyExtractor,
@@ -432,14 +432,14 @@ const SearchMountedResultsListTarget = React.memo(
         );
         logPerfScenarioAttributionEvent('WorkSpan', scenarioConfig, {
           event: 'scenario_work_span',
-              owner: 'search_mounted_results_list_target_render_to_layout',
-              path: compactResultsListDebugKey(listDataSnapshot.debugPreparationKey),
-              durationMs: Number(durationMs.toFixed(3)),
-              activeList,
-              preparedRowsReadinessKey: listDataSnapshot.preparedRowsReadinessKey,
-              renderRowCount: listDataSnapshot.debugRenderRowCount,
-            });
-          }
+          owner: 'search_mounted_results_list_target_render_to_layout',
+          path: compactResultsListDebugKey(listDataSnapshot.debugPreparationKey),
+          durationMs: Number(durationMs.toFixed(3)),
+          activeList,
+          preparedRowsReadinessKey: listDataSnapshot.preparedRowsReadinessKey,
+          renderRowCount: listDataSnapshot.debugRenderRowCount,
+        });
+      }
     });
 
     const renderedListLayer = (
@@ -615,10 +615,7 @@ const SearchMountedResultsListDataLeaf = React.memo(
         }
         return baseRenderItem(info as never);
       },
-      [
-        baseRenderItem,
-        listDataSnapshot.debugPreparationKey,
-      ]
+      [baseRenderItem, listDataSnapshot.debugPreparationKey]
     );
     const sceneBodyContent = React.useMemo<SearchMountedListBodyContentSpec>(
       () => ({
@@ -710,10 +707,7 @@ export const SearchMountedSceneBody = React.memo(
     ) {
       return null;
     }
-    if (
-      retainedBodyRuntime == null ||
-      retainedBodyRuntime.retainedSnapshot !== retainedBundle
-    ) {
+    if (retainedBodyRuntime == null || retainedBodyRuntime.retainedSnapshot !== retainedBundle) {
       retainedBodyRuntimeRef.current = {
         retainedSnapshot: retainedBundle,
         bodyDefaults,

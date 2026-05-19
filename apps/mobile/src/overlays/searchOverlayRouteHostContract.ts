@@ -45,17 +45,9 @@ export type SearchRouteMountedSceneBodyKey =
   | 'saveList'
   | 'search';
 
-export type SearchRouteMountedSceneChromeKey =
-  | 'bookmarks'
-  | 'polls'
-  | 'profile'
-  | 'saveList';
+export type SearchRouteMountedSceneChromeKey = 'bookmarks' | 'polls' | 'profile' | 'saveList';
 
-export type SearchRouteMountedSceneChromeSurface =
-  | 'underlay'
-  | 'background'
-  | 'header'
-  | 'overlay';
+export type SearchRouteMountedSceneChromeSurface = 'underlay' | 'background' | 'header' | 'overlay';
 
 export type SearchRouteInlineSceneChromePublication = {
   surfaceKind?: 'inline';

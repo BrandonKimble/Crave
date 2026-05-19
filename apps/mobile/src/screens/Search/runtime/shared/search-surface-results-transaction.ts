@@ -160,10 +160,7 @@ export const areSearchSurfaceResultsRowsReadyForPresentation = (
   if (inputs.resultsSnapshotKey == null) {
     return false;
   }
-  if (
-    expectedResultsDataKey != null &&
-    inputs.resultsSnapshotKey !== expectedResultsDataKey
-  ) {
+  if (expectedResultsDataKey != null && inputs.resultsSnapshotKey !== expectedResultsDataKey) {
     return false;
   }
   if (
@@ -202,16 +199,11 @@ export const isSearchSurfaceResultsTransactionReadyForPresentationCommit = (
   if (!stagedTransaction?.dataReady) {
     return false;
   }
-  const expectedResultsDataKey =
-    stagedTransaction.snapshot.expectedResultsDataKey ?? null;
-  if (
-    expectedResultsDataKey != null &&
-    inputs.resultsSnapshotKey !== expectedResultsDataKey
-  ) {
+  const expectedResultsDataKey = stagedTransaction.snapshot.expectedResultsDataKey ?? null;
+  if (expectedResultsDataKey != null && inputs.resultsSnapshotKey !== expectedResultsDataKey) {
     return false;
   }
-  const expectedMapSearchSurfaceResultsSourcesReadyKey =
-    stagedTransaction.snapshot.transactionId;
+  const expectedMapSearchSurfaceResultsSourcesReadyKey = stagedTransaction.snapshot.transactionId;
   return (
     inputs.mapSearchSurfaceResultsSourcesReady &&
     expectedMapSearchSurfaceResultsSourcesReadyKey != null &&
@@ -234,11 +226,14 @@ export const createSearchSurfaceResultsTransactionCoordinator = (
   };
 
   const promoteDataReady = (inputs: SearchSurfaceResultsTransactionGateInputs) => {
-    if (stagedTransaction == null || stagedTransaction.dataReady || inputs.resultsSnapshotKey == null) {
+    if (
+      stagedTransaction == null ||
+      stagedTransaction.dataReady ||
+      inputs.resultsSnapshotKey == null
+    ) {
       return stagedTransaction;
     }
-    const expectedResultsDataKey =
-      stagedTransaction.snapshot.expectedResultsDataKey ?? null;
+    const expectedResultsDataKey = stagedTransaction.snapshot.expectedResultsDataKey ?? null;
     const hasRowsReadyForPresentation = areSearchSurfaceResultsRowsReadyForPresentation(
       inputs,
       expectedResultsDataKey
@@ -265,7 +260,11 @@ export const createSearchSurfaceResultsTransactionCoordinator = (
   const coordinator: SearchSurfaceResultsTransactionCoordinator = {
     getStagedTransaction: () => stagedTransaction,
     getSearchSurfaceResultsTransactionKey(committedSearchSurfaceResultsTransactionKey) {
-      return committedSearchSurfaceResultsTransactionKey ?? stagedTransaction?.snapshot.transactionId ?? null;
+      return (
+        committedSearchSurfaceResultsTransactionKey ??
+        stagedTransaction?.snapshot.transactionId ??
+        null
+      );
     },
     stage(snapshot, stagingResultsSnapshotKey) {
       options.applyStagingCoverState(resolveSearchSurfaceResultsTransactionCoverState(snapshot));
@@ -307,9 +306,7 @@ export const createSearchSurfaceResultsTransactionCoordinator = (
             presentationCommitted: true,
           };
           setStagedTransaction(presentationCommittedSnapshot);
-          options.commitSearchSurfaceResultsTransaction(
-            presentationCommittedSnapshot.snapshot
-          );
+          options.commitSearchSurfaceResultsTransaction(presentationCommittedSnapshot.snapshot);
         }
         return false;
       }

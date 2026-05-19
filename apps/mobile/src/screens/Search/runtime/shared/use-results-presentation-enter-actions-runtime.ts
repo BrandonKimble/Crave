@@ -14,10 +14,7 @@ import { useResultsSurfaceEnterTransactionExecutionRuntime } from './use-search-
 import { useResultsSurfaceTransactionShellApplicationRuntime } from './use-search-surface-results-transaction-shell-application-runtime';
 
 type UseResultsPresentationEnterActionsRuntimeArgs = {
-  resultsSheetRuntime: Pick<
-    AppRouteResultsSheetRuntimeOwner,
-    'prepareShortcutSheetTransition'
-  >;
+  resultsSheetRuntime: Pick<AppRouteResultsSheetRuntimeOwner, 'prepareShortcutSheetTransition'>;
   shellLocalState: ResultsPresentationShellLocalState;
   resultsRuntimeOwner: ResultsPresentationRuntimeOwner;
   cancelSearchSheetCloseTransition: (closeIntentId?: string) => void;
@@ -28,10 +25,7 @@ type UseResultsPresentationEnterActionsRuntimeArgs = {
 
 type ResultsPresentationEnterActionsRuntime = {
   requestEnterPresentationIntent: (
-    intent: Exclude<
-      SearchPresentationIntent,
-      { kind: 'focus_editing' | 'exit_editing' | 'close' }
-    >
+    intent: Exclude<SearchPresentationIntent, { kind: 'focus_editing' | 'exit_editing' | 'close' }>
   ) => string;
 };
 

@@ -227,15 +227,20 @@ export class AutocompleteService {
         return cacheLookup.response;
       }
 
-      const injectedPromise = user && entityTypes.length > 0
-        ? this.measureDbDuration(
-            () =>
-              this.fetchInjectedUserMatches(normalizedQuery, entityTypes, user),
-            (seconds) => {
-              totalDbDurationSeconds += seconds;
-            },
-          )
-        : Promise.resolve({ favorites: [], viewed: [] });
+      const injectedPromise =
+        user && entityTypes.length > 0
+          ? this.measureDbDuration(
+              () =>
+                this.fetchInjectedUserMatches(
+                  normalizedQuery,
+                  entityTypes,
+                  user,
+                ),
+              (seconds) => {
+                totalDbDurationSeconds += seconds;
+              },
+            )
+          : Promise.resolve({ favorites: [], viewed: [] });
       const querySuggestionPromise = this.measureDbDuration(
         () =>
           this.searchQuerySuggestionService.getSuggestions(
@@ -324,10 +329,10 @@ export class AutocompleteService {
 
       const injected = await injectedPromise;
 
-      const candidateMatches = this.mergeEntityMatches([...matches, ...attributeMatches], [
-        ...injected.favorites,
-        ...injected.viewed,
-      ]);
+      const candidateMatches = this.mergeEntityMatches(
+        [...matches, ...attributeMatches],
+        [...injected.favorites, ...injected.viewed],
+      );
 
       const querySuggestions = await querySuggestionPromise;
 
@@ -645,7 +650,7 @@ export class AutocompleteService {
 
     const scoredEntities = entityMatches.flatMap((match) => {
       const attributeSupportScore = this.isAttributeType(match.entityType)
-        ? attributeSupport.get(match.entityId) ?? this.emptyAttributeSupport()
+        ? (attributeSupport.get(match.entityId) ?? this.emptyAttributeSupport())
         : null;
       const popularity = globalScores.get(match.entityId) ?? 0;
       const affinity = affinityScores.get(match.entityId) ?? 0;
@@ -682,10 +687,7 @@ export class AutocompleteService {
           : this.calculateLexicalFirstEntityScore({
               confidence: match.confidence,
               boost:
-                popularityBoost +
-                affinityBoost +
-                favoriteBoost +
-                viewedBoost,
+                popularityBoost + affinityBoost + favoriteBoost + viewedBoost,
             });
 
       return [
@@ -778,10 +780,12 @@ export class AutocompleteService {
       attributeCandidates: scoredEntities
         .filter(({ match }) => this.isAttributeType(match.entityType))
         .sort((a, b) => b.score - a.score),
-      personalQueryCandidates: queryCandidates
-        .filter(({ match }) => match.querySuggestionSource === 'personal'),
-      globalQueryCandidates: queryCandidates
-        .filter(({ match }) => match.querySuggestionSource === 'global'),
+      personalQueryCandidates: queryCandidates.filter(
+        ({ match }) => match.querySuggestionSource === 'personal',
+      ),
+      globalQueryCandidates: queryCandidates.filter(
+        ({ match }) => match.querySuggestionSource === 'global',
+      ),
       limit,
     });
 
@@ -841,19 +845,25 @@ export class AutocompleteService {
         params.attributeCandidates[0],
       ]
         .filter(
-          (candidate): candidate is { match: AutocompleteMatchDto; score: number } =>
+          (
+            candidate,
+          ): candidate is { match: AutocompleteMatchDto; score: number } =>
             Boolean(candidate),
         )
         .forEach(push);
     } else {
-      params.entityCandidates.slice(0, ENTITY_LANE_RESERVED_SLOTS).forEach(push);
+      params.entityCandidates
+        .slice(0, ENTITY_LANE_RESERVED_SLOTS)
+        .forEach(push);
       params.personalQueryCandidates
         .slice(0, PERSONAL_QUERY_RESERVED_SLOTS)
         .forEach(push);
       params.globalQueryCandidates
         .slice(0, GLOBAL_QUERY_RESERVED_SLOTS)
         .forEach(push);
-      params.attributeCandidates.slice(0, ATTRIBUTE_RESERVED_SLOTS).forEach(push);
+      params.attributeCandidates
+        .slice(0, ATTRIBUTE_RESERVED_SLOTS)
+        .forEach(push);
     }
 
     const overflow = [
@@ -897,11 +907,9 @@ export class AutocompleteService {
       return support >= ATTRIBUTE_EXACT_SUPPORT_FLOOR;
     }
     return (
-      confidence >= ATTRIBUTE_SUPPORTED_CONFIDENCE &&
-      support >= ATTRIBUTE_SUPPORTED_MATCH_FLOOR
-    ) || (
-      confidence >= 0.82 &&
-      support >= ATTRIBUTE_LOOSE_MATCH_FLOOR
+      (confidence >= ATTRIBUTE_SUPPORTED_CONFIDENCE &&
+        support >= ATTRIBUTE_SUPPORTED_MATCH_FLOOR) ||
+      (confidence >= 0.82 && support >= ATTRIBUTE_LOOSE_MATCH_FLOOR)
     );
   }
 
@@ -1054,9 +1062,8 @@ export class AutocompleteService {
         connectionCount: 0,
         totalRestaurantCount: 0,
       };
-      const typedSearchSupport = this.normalizeAttributeDemandSupport(
-        typedDemand,
-      );
+      const typedSearchSupport =
+        this.normalizeAttributeDemandSupport(typedDemand);
       const autocompleteSelectionSupport =
         this.normalizeAttributeDemandSupport(selectedDemand);
       const corpusUsefulness = this.normalizeAttributeCorpusUsefulness(corpus);
@@ -1130,10 +1137,7 @@ export class AutocompleteService {
     const selectivity = clamp01(
       params.connectionCount / params.totalRestaurantCount,
     );
-    const selectivityPenalty = Math.max(
-      0.12,
-      Math.pow(1 - selectivity, 0.8),
-    );
+    const selectivityPenalty = Math.max(0.12, Math.pow(1 - selectivity, 0.8));
     return breadth * selectivityPenalty;
   }
 
@@ -1163,8 +1167,8 @@ export class AutocompleteService {
       dto.entityTypes && dto.entityTypes.length > 0
         ? dto.entityTypes
         : dto.entityType
-        ? [dto.entityType]
-        : [EntityType.food, EntityType.restaurant];
+          ? [dto.entityType]
+          : [EntityType.food, EntityType.restaurant];
     const filtered = requested.filter(
       (entityType) => !this.isAttributeType(entityType),
     );
@@ -1174,7 +1178,9 @@ export class AutocompleteService {
     return hasExplicitTypes ? [] : [EntityType.food, EntityType.restaurant];
   }
 
-  private resolveAttributeEntityTypes(dto: AutocompleteRequestDto): EntityType[] {
+  private resolveAttributeEntityTypes(
+    dto: AutocompleteRequestDto,
+  ): EntityType[] {
     if (!this.attributeLaneEnabled) {
       return [];
     }
@@ -1184,8 +1190,8 @@ export class AutocompleteService {
       dto.entityTypes && dto.entityTypes.length > 0
         ? dto.entityTypes
         : dto.entityType
-        ? [dto.entityType]
-        : [];
+          ? [dto.entityType]
+          : [];
     if (!hasExplicitTypes) {
       return [EntityType.food_attribute, EntityType.restaurant_attribute];
     }

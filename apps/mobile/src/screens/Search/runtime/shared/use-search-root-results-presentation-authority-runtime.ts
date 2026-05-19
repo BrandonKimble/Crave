@@ -98,9 +98,7 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
           transportSnapshot.snapshotKind !== 'results_enter' &&
           activeRedrawTransactionId == null
         ) {
-          deferMountedResultsCleanupUntilAfterDismiss(
-            'search_sheet_content_lane_persistent_poll'
-          );
+          deferMountedResultsCleanupUntilAfterDismiss('search_sheet_content_lane_persistent_poll');
         }
       }
       resultsSurfacePolicyController?.updatePanelInputs({
@@ -134,7 +132,8 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
     profilePresentationActiveRef:
       profileBridgeAuthorityRuntime.profileBridge.profilePresentationActiveRef,
     prepareRestaurantProfileForTerminalSearchDismissRef:
-      profileBridgeAuthorityRuntime.profileBridge.prepareRestaurantProfileForTerminalSearchDismissRef,
+      profileBridgeAuthorityRuntime.profileBridge
+        .prepareRestaurantProfileForTerminalSearchDismissRef,
     isSearchLoading: rootDataPlaneRuntime.runtimeFlags.isSearchLoading,
     isSuggestionPanelActive: rootPrimitivesRuntime.searchState.isSuggestionPanelActive,
     shouldRenderSearchOverlay: rootOverlaySessionSurfaceRuntime.shouldRenderSearchOverlay,
@@ -159,8 +158,7 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
     inputRef: rootPrimitivesRuntime.searchState.inputRef,
     searchRuntimeBus: sessionCoreLane.searchRuntimeBus,
     resultsPresentationAuthority: sessionCoreLane.resultsPresentationAuthority,
-    routeSceneSwitchAuthority:
-      rootOverlayFoundationRuntime.routeSceneRuntime.sceneSwitchAuthority,
+    routeSceneSwitchAuthority: rootOverlayFoundationRuntime.routeSceneRuntime.sceneSwitchAuthority,
     resultsPresentationSurfaceAuthority: sessionCoreLane.resultsPresentationSurfaceAuthority,
     searchMapSourceFramePort: sessionCoreLane.searchMapSourceFramePort,
     log: logControlPresentationDiag,

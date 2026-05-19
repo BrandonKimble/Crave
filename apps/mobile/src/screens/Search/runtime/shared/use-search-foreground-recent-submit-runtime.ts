@@ -163,10 +163,6 @@ export const useSearchForegroundRecentSubmitRuntime = ({
       handleRecentlyViewedRestaurantPress,
       handleRecentlyViewedFoodPress,
     }),
-    [
-      handleRecentSearchPress,
-      handleRecentlyViewedFoodPress,
-      handleRecentlyViewedRestaurantPress,
-    ]
+    [handleRecentSearchPress, handleRecentlyViewedFoodPress, handleRecentlyViewedRestaurantPress]
   );
 };

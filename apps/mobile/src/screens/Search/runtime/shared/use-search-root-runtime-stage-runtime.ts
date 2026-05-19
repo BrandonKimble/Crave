@@ -38,8 +38,7 @@ export const useSearchRootRuntimeStageRuntime = ({
       appEntryPlaneRuntime,
       searchChromeScalarSurfaceRuntime,
       searchRuntimeBus: searchRouteResultsPolicyRuntime.searchRuntimeBus,
-      resultsPresentationAuthority:
-        searchRouteResultsPolicyRuntime.resultsPresentationAuthority,
+      resultsPresentationAuthority: searchRouteResultsPolicyRuntime.resultsPresentationAuthority,
       resultsPresentationSurfaceAuthority:
         searchRouteResultsPolicyRuntime.resultsPresentationSurfaceAuthority,
       searchMapSourceFramePort: searchRouteResultsPolicyRuntime.searchMapSourceFramePort,
@@ -109,8 +108,7 @@ export const useSearchRootRuntimeStageRuntime = ({
   const { visualAssemblyRuntime } = useSearchRootRuntimeVisualStageRuntime({
     appEntryPlaneRuntime,
     searchRuntimeBus,
-    resultsPresentationAuthority:
-      searchRouteResultsPolicyRuntime.resultsPresentationAuthority,
+    resultsPresentationAuthority: searchRouteResultsPolicyRuntime.resultsPresentationAuthority,
     stateAssemblyRuntime,
     overlayFoundationAssemblyRuntime,
     controlAuthorityRuntime,
@@ -234,8 +232,7 @@ export const useSearchRootRuntimeStageRuntime = ({
 
   return {
     searchRuntimeBus,
-    resultsPresentationAuthority:
-      searchRouteResultsPolicyRuntime.resultsPresentationAuthority,
+    resultsPresentationAuthority: searchRouteResultsPolicyRuntime.resultsPresentationAuthority,
     resultsPresentationSurfaceAuthority:
       searchRouteResultsPolicyRuntime.resultsPresentationSurfaceAuthority,
     searchMapSourceFramePort: searchRouteResultsPolicyRuntime.searchMapSourceFramePort,

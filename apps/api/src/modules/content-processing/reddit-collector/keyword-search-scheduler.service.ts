@@ -608,7 +608,7 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     const resultCount =
       typeof params.resultRestaurantCount === 'number'
         ? params.resultRestaurantCount
-        : params.resultFoodCount ?? 0;
+        : (params.resultFoodCount ?? 0);
     const coverage = Math.min(
       1,
       Math.max(0, resultCount) / Math.max(1, targetCount),
@@ -715,39 +715,41 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
       const tracedRejectedCandidates = traceAllCandidates
         ? rejectedCandidates
         : rejectedCandidates.slice(0, 20);
-      const rejectedTraces = tracedRejectedCandidates.map((candidate, index) => {
-        const isDebugOnlyCandidate = traceAllCandidates && index >= 20;
-        const isAttemptUnavailable =
-          candidate.priorityScore <= 0 || candidate.attemptAvailability <= 0;
-        return {
-          consumerKind: DemandScoringConsumerKind.on_demand,
-          candidateKind: 'hot_spike_term',
-          subjectKind: DemandSubjectKind.term,
-          subjectKey: candidate.normalizedTerm,
-          normalizedText: candidate.normalizedTerm,
-          collectableMarketKey: candidate.collectableMarketKey,
-          bucket: 'hot_spike',
-          lane: candidate.trigger,
-          reason: 'on_demand_unmet',
-          finalScore: candidate.priorityScore,
-          rank: params.selected.length + index + 1,
-          selected: false,
-          decisionState: isAttemptUnavailable
-            ? DemandScoringDecisionState.gate_reject
-            : isDebugOnlyCandidate
-              ? DemandScoringDecisionState.budget_reject
-              : DemandScoringDecisionState.near_miss,
-          decisionReason: isAttemptUnavailable
-            ? 'attempt_availability_zero'
-            : isDebugOnlyCandidate
-              ? 'trace_all_not_selected'
-              : 'not_selected_this_cycle',
-          factorBreakdown: {
-            ...candidate.factorBreakdown,
-            traceScope: isDebugOnlyCandidate ? 'all_candidate' : 'near_miss',
-          },
-        };
-      });
+      const rejectedTraces = tracedRejectedCandidates.map(
+        (candidate, index) => {
+          const isDebugOnlyCandidate = traceAllCandidates && index >= 20;
+          const isAttemptUnavailable =
+            candidate.priorityScore <= 0 || candidate.attemptAvailability <= 0;
+          return {
+            consumerKind: DemandScoringConsumerKind.on_demand,
+            candidateKind: 'hot_spike_term',
+            subjectKind: DemandSubjectKind.term,
+            subjectKey: candidate.normalizedTerm,
+            normalizedText: candidate.normalizedTerm,
+            collectableMarketKey: candidate.collectableMarketKey,
+            bucket: 'hot_spike',
+            lane: candidate.trigger,
+            reason: 'on_demand_unmet',
+            finalScore: candidate.priorityScore,
+            rank: params.selected.length + index + 1,
+            selected: false,
+            decisionState: isAttemptUnavailable
+              ? DemandScoringDecisionState.gate_reject
+              : isDebugOnlyCandidate
+                ? DemandScoringDecisionState.budget_reject
+                : DemandScoringDecisionState.near_miss,
+            decisionReason: isAttemptUnavailable
+              ? 'attempt_availability_zero'
+              : isDebugOnlyCandidate
+                ? 'trace_all_not_selected'
+                : 'not_selected_this_cycle',
+            factorBreakdown: {
+              ...candidate.factorBreakdown,
+              traceScope: isDebugOnlyCandidate ? 'all_candidate' : 'near_miss',
+            },
+          };
+        },
+      );
       await this.scoringTrace.recordCandidates(runId, [
         ...selectedTraces,
         ...rejectedTraces,
@@ -897,9 +899,8 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     const subreddit = params.subreddit.trim();
 
     try {
-      const selection = await this.sliceSelection.selectTermsForSubreddit(
-        subreddit,
-      );
+      const selection =
+        await this.sliceSelection.selectTermsForSubreddit(subreddit);
 
       return {
         collectableMarketKey: selection.collectableMarketKey,

@@ -389,13 +389,8 @@ const countRestaurantRows = (rows: ResultsListItem[]): number =>
     0
   );
 
-const isMountedRestaurantCardRow = (
-  row: ResultsListItem
-): row is ResultsMountedRestaurantCardRow =>
-  row != null &&
-  typeof row === 'object' &&
-  'kind' in row &&
-  row.kind === 'mounted_restaurant_card';
+const isMountedRestaurantCardRow = (row: ResultsListItem): row is ResultsMountedRestaurantCardRow =>
+  row != null && typeof row === 'object' && 'kind' in row && row.kind === 'mounted_restaurant_card';
 
 const markSearchMountedResultsCountContract = ({
   admission,
@@ -753,10 +748,7 @@ export const commitSearchMountedResultsPreparedRowsTarget = ({
     return;
   }
   const preparedRows = getResultsPresentationSurfaceAuthority().getSnapshot().preparedRows;
-  if (
-    preparedRows.targetReadinessKey !== readinessKey ||
-    preparedRows.activeRowCount <= 0
-  ) {
+  if (preparedRows.targetReadinessKey !== readinessKey || preparedRows.activeRowCount <= 0) {
     return;
   }
   markSearchMountedResultsPreparedRowsCommitted({
@@ -765,8 +757,8 @@ export const commitSearchMountedResultsPreparedRowsTarget = ({
   });
 };
 
-export const getSearchMountedResultsListDataSnapshot =
-  (): SearchMountedResultsListDataSnapshot => mountedResultsListDataSnapshot;
+export const getSearchMountedResultsListDataSnapshot = (): SearchMountedResultsListDataSnapshot =>
+  mountedResultsListDataSnapshot;
 
 export const subscribeSearchMountedResultsListDataSnapshot = (
   listener: () => void
@@ -778,12 +770,10 @@ export const subscribeSearchMountedResultsListDataSnapshot = (
   };
 };
 
-export const syncSearchMountedResultsListDecorationsSnapshot = (
-  nextSnapshot: {
-    primaryListHeaderComponent?: SearchMountedResultsListHeaderComponent;
-    primaryListFooterComponent?: SearchMountedResultsListFooterComponent;
-  }
-): void => {
+export const syncSearchMountedResultsListDecorationsSnapshot = (nextSnapshot: {
+  primaryListHeaderComponent?: SearchMountedResultsListHeaderComponent;
+  primaryListFooterComponent?: SearchMountedResultsListFooterComponent;
+}): void => {
   if (
     mountedResultsListDecorationsSnapshot.primaryListHeaderComponent ===
       nextSnapshot.primaryListHeaderComponent &&
@@ -942,10 +932,10 @@ const createMountedResultsBodyRowsInput = (): PrepareSearchMountedResultsRowsSna
   const activeRowsHydrationKey =
     resultsDataSnapshot.results == null
       ? null
-      : resultsDataSnapshot.resultsHydrationKey ??
+      : (resultsDataSnapshot.resultsHydrationKey ??
         bodyRuntimeSnapshot.resultsHydrationKey ??
         bodyRuntimeSnapshot.hydratedResultsKey ??
-        resultsDataSnapshot.resultsRequestKey;
+        resultsDataSnapshot.resultsRequestKey);
   return {
     activeTab: bodyRuntimeSnapshot.activeTab ?? resultsDataSnapshot.activeTab ?? 'restaurants',
     headerHeight: bodyLayoutSnapshot.headerHeight,
@@ -1245,7 +1235,9 @@ export const useSearchMountedResultsBodyAuthorityOwner = ({
 }): void => {
   React.useEffect(() => {
     const publishRuntimeSnapshot = (): void => {
-      const runtimeState = searchRuntimeBus.getState() as ReturnType<SearchRuntimeBus['getState']> & {
+      const runtimeState = searchRuntimeBus.getState() as ReturnType<
+        SearchRuntimeBus['getState']
+      > & {
         hydratedResultsKey?: string | null;
         resultsHydrationKey?: string | null;
         shouldHydrateResultsForRender?: boolean;
@@ -1254,8 +1246,7 @@ export const useSearchMountedResultsBodyAuthorityOwner = ({
         activeTab: runtimeState.activeTab ?? 'restaurants',
         hydratedResultsKey: runtimeState.hydratedResultsKey ?? null,
         isResultsHydrationSettled: true,
-        searchSurfaceResultsTransactionKey:
-          bodyRuntimeSnapshot.searchSurfaceResultsTransactionKey,
+        searchSurfaceResultsTransactionKey: bodyRuntimeSnapshot.searchSurfaceResultsTransactionKey,
         resultsHydrationKey: runtimeState.resultsHydrationKey ?? null,
         searchSurfaceRedrawPhase: runtimeState.searchSurfaceRedrawPhase,
         shouldHydrateResultsForRender: runtimeState.shouldHydrateResultsForRender ?? false,
@@ -1265,10 +1256,7 @@ export const useSearchMountedResultsBodyAuthorityOwner = ({
     publishRuntimeSnapshot();
     return searchRuntimeBus.subscribe(
       publishRuntimeSnapshot,
-      [
-        'activeTab',
-        'searchSurfaceRedrawPhase',
-      ] as const,
+      ['activeTab', 'searchSurfaceRedrawPhase'] as const,
       'mounted_results_body_authority'
     );
   }, [searchRuntimeBus]);

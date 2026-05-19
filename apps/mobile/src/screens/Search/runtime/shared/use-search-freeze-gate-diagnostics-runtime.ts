@@ -15,9 +15,7 @@ type SearchFreezeGateSnapshot = {
   searchSurfaceRedrawPhase: ReturnType<SearchRuntimeBus['getState']>['searchSurfaceRedrawPhase'];
 };
 
-type UseSearchFreezeGateDiagnosticsRuntimeArgs = ReturnType<
-  typeof useSearchFreezeGateStateRuntime
->;
+type UseSearchFreezeGateDiagnosticsRuntimeArgs = ReturnType<typeof useSearchFreezeGateStateRuntime>;
 
 export const useSearchFreezeGateDiagnosticsRuntime = ({
   freezeGateState,
@@ -32,8 +30,10 @@ export const useSearchFreezeGateDiagnosticsRuntime = ({
     }
 
     const nextSnapshot: SearchFreezeGateSnapshot = {
-      isSearchSurfaceRedrawChromeFreezeActive: freezeGateState.isSearchSurfaceRedrawChromeFreezeActive,
-      isSearchSurfaceRedrawPreflightFreezeActive: freezeGateState.isSearchSurfaceRedrawPreflightFreezeActive,
+      isSearchSurfaceRedrawChromeFreezeActive:
+        freezeGateState.isSearchSurfaceRedrawChromeFreezeActive,
+      isSearchSurfaceRedrawPreflightFreezeActive:
+        freezeGateState.isSearchSurfaceRedrawPreflightFreezeActive,
       isSearchSurfaceRedrawActive: freezeGateState.isSearchSurfaceRedrawActive,
       isResponseFrameFreezeActive: freezeGateState.isResponseFrameFreezeActive,
       freezeClassification: freezeGateState.freezeClassification,
@@ -42,7 +42,8 @@ export const useSearchFreezeGateDiagnosticsRuntime = ({
     const previousSnapshot = freezeGateDiagRef.current;
     if (
       previousSnapshot &&
-      previousSnapshot.isSearchSurfaceRedrawChromeFreezeActive === nextSnapshot.isSearchSurfaceRedrawChromeFreezeActive &&
+      previousSnapshot.isSearchSurfaceRedrawChromeFreezeActive ===
+        nextSnapshot.isSearchSurfaceRedrawChromeFreezeActive &&
       previousSnapshot.isSearchSurfaceRedrawPreflightFreezeActive ===
         nextSnapshot.isSearchSurfaceRedrawPreflightFreezeActive &&
       previousSnapshot.isSearchSurfaceRedrawActive === nextSnapshot.isSearchSurfaceRedrawActive &&

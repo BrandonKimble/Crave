@@ -289,17 +289,14 @@ const RestaurantRouteSceneInputHost = ({
   const isActiveSearchRestaurant = isSearchRestaurantRouteEntry(
     restaurantSessionSnapshot.activeOverlayRoute
   );
-  const shouldPreserveSearchRestaurantForDismiss = useSearchSurfaceRuntimeSelector(
-    (snapshot) => {
-      const policy = selectSearchSurfaceVisualPolicy(snapshot);
-      return (
-        policy.phase === 'results_dismissing' &&
-        policy.outgoingSheetSceneKey === 'restaurant' &&
-        !policy.canReleasePersistentPolls
-      );
-    },
-    Object.is
-  );
+  const shouldPreserveSearchRestaurantForDismiss = useSearchSurfaceRuntimeSelector((snapshot) => {
+    const policy = selectSearchSurfaceVisualPolicy(snapshot);
+    return (
+      policy.phase === 'results_dismissing' &&
+      policy.outgoingSheetSceneKey === 'restaurant' &&
+      !policy.canReleasePersistentPolls
+    );
+  }, Object.is);
   const shouldUseSearchRestaurant =
     (shouldRenderSearchOverlay && isActiveSearchRestaurant) ||
     shouldPreserveSearchRestaurantForDismiss;
@@ -338,10 +335,7 @@ const RestaurantRouteSceneInputHost = ({
       createRestaurantSharedSceneDescriptor(
         shouldUseSearchRestaurant ? searchRestaurantContentSpecRuntime.spec : null
       ),
-    [
-      searchRestaurantContentSpecRuntime.spec,
-      shouldUseSearchRestaurant,
-    ]
+    [searchRestaurantContentSpecRuntime.spec, shouldUseSearchRestaurant]
   );
 
   const activeRestaurantSceneDescriptor =

@@ -35,7 +35,6 @@ exists in live code.
 ### Durable Source Tables
 
 - `user_search_logs`
-
   - Current durable per-entity attribution table.
   - One backend search can create multiple rows, one per attributed entity/market.
   - Requires `entity_id`; it is not a query-level event table.
@@ -43,13 +42,11 @@ exists in live code.
   - Current source enum is broad: `SearchLogSource.search | poll`.
 
 - `collection_on_demand_requests`
-
   - Durable request/queue state for unresolved or low-result collection demand.
   - Unique by term, entity type, reason, and market.
   - Owns queue/request lifecycle state and latest result counts.
 
 - `collection_on_demand_request_users`
-
   - Current distinct-user join table for on-demand requests.
   - One row per request/user.
   - Target cleanup makes this explicit with `firstSeenAt`, `lastSeenAt`, and
@@ -58,22 +55,18 @@ exists in live code.
     user rows remain queue/deduped state.
 
 - `user_restaurant_views`
-
   - Durable per-user restaurant view state.
   - Feeds autocomplete affinity and keyword collection signals today.
 
 - `user_food_views`
-
   - Durable per-user food view state.
   - Should be treated as an engagement source for derived demand where relevant.
 
 - `user_favorites`
-
   - Durable per-user favorite state.
   - Stronger preference signal than a one-off view or typed search.
 
 - `user_favorite_events`
-
   - Append-only favorite facts used by demand rebuilds.
   - `user_favorites` stays current UX state; demand reads `added` events so
     history does not disappear when the user later removes a favorite.
@@ -88,43 +81,36 @@ exists in live code.
 ### Current Readers And Consumers
 
 - Search history / server recents
-
   - Reads `user_search_logs`, dedupes by normalized query text, and uses latest rows.
   - Cache-backed repeats are currently local-first and not durable server history.
 
 - Query suggestions
-
   - Reads `user_search_logs.query_text`.
   - Current personal suggestions are prefix-matched and ordered by recency.
   - Current global suggestions are prefix-matched and ordered by request/log count.
   - Current global path is not distinct-user dominant, not market scoped, and not recency-windowed.
 
 - Autocomplete entity popularity
-
   - Reads `user_search_logs` for global popularity and user affinity.
   - Also injects favorites and recently viewed restaurants.
   - Current final merge is one global score and top-N truncation.
 
 - Poll topic planning
-
   - Uses `SearchDemandService`.
   - Current service uses raw `COUNT(*)` over `user_search_logs`.
   - Current scheduler uses blunt impression thresholds and cooldowns.
 
 - On-demand collection
-
   - Writes unresolved and low-result request state to `collection_on_demand_requests`.
   - Current 5-minute cooldown suppresses repeated queue writes and also suppresses repeated demand facts.
 
 - Keyword collection priority
-
   - Real current decision owner is `KeywordSliceSelectionService`.
   - Uses hard quotas for `unmet`, `refresh`, `demand`, and `explore`.
   - Uses capped normalized scores, so extra demand stops mattering after caps.
   - Uses on-demand request state, search logs, views, favorites, autocomplete selections, and attempt history.
 
 - Prometheus metrics
-
   - `search_requests_total` records backend search processing load.
   - It is not a database table and should not be treated as product demand.
 

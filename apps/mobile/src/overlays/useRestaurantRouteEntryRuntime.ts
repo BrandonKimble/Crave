@@ -45,10 +45,7 @@ type RetainedRestaurantRoutePanelDraft = {
 
 const createPanelDraftPayloadSignature = (
   panelDraft: RestaurantRoutePanelDraft | null
-): string | null =>
-  panelDraft == null
-    ? null
-    : JSON.stringify(panelDraft.data);
+): string | null => (panelDraft == null ? null : JSON.stringify(panelDraft.data));
 
 const useStableEvent = <TArgs extends readonly unknown[], TResult>(
   handler: (...args: TArgs) => TResult
@@ -56,10 +53,7 @@ const useStableEvent = <TArgs extends readonly unknown[], TResult>(
   const handlerRef = React.useRef(handler);
   handlerRef.current = handler;
 
-  return React.useCallback(
-    (...args: TArgs) => handlerRef.current(...args),
-    []
-  );
+  return React.useCallback((...args: TArgs) => handlerRef.current(...args), []);
 };
 
 export const useRestaurantRouteEntryRuntime = ({
@@ -71,12 +65,9 @@ export const useRestaurantRouteEntryRuntime = ({
 }: UseRestaurantRouteEntryRuntimeArgs): RestaurantRouteEntryRuntime => {
   const sourcePanelDraft = 'panelDraft' in source ? source.panelDraft : undefined;
   const sourceData = 'data' in source ? source.data : undefined;
-  const sourceToggleFavorite =
-    'onToggleFavorite' in source ? source.onToggleFavorite : undefined;
+  const sourceToggleFavorite = 'onToggleFavorite' in source ? source.onToggleFavorite : undefined;
   const stableRequestClose = useStableEvent(onRequestClose);
-  const stableToggleFavorite = useStableEvent(
-    sourceToggleFavorite ?? (() => undefined)
-  );
+  const stableToggleFavorite = useStableEvent(sourceToggleFavorite ?? (() => undefined));
   const panelDraft = React.useMemo(() => {
     if (sourcePanelDraft !== undefined) {
       return sourcePanelDraft;
@@ -87,18 +78,16 @@ export const useRestaurantRouteEntryRuntime = ({
       onToggleFavorite: stableToggleFavorite,
     });
   }, [sourceData, sourcePanelDraft, stableToggleFavorite]);
-  const retainedPanelDraftRef =
-    React.useRef<RetainedRestaurantRoutePanelDraft>({
-      panelDraft: null,
-      payloadSignature: null,
-      onToggleFavorite: null,
-    });
+  const retainedPanelDraftRef = React.useRef<RetainedRestaurantRoutePanelDraft>({
+    panelDraft: null,
+    payloadSignature: null,
+    onToggleFavorite: null,
+  });
   const nextPayloadSignature = createPanelDraftPayloadSignature(panelDraft);
   const retainedPanelDraft = retainedPanelDraftRef.current;
   const resolvedPanelDraft =
     retainedPanelDraft.payloadSignature === nextPayloadSignature &&
-    retainedPanelDraft.onToggleFavorite ===
-      (panelDraft?.onToggleFavorite ?? null)
+    retainedPanelDraft.onToggleFavorite === (panelDraft?.onToggleFavorite ?? null)
       ? retainedPanelDraft.panelDraft
       : panelDraft;
   if (retainedPanelDraft.panelDraft !== resolvedPanelDraft) {

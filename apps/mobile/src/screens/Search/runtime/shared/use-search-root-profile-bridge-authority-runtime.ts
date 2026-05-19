@@ -1,8 +1,6 @@
 import React from 'react';
 
-import type {
-  SearchRootProfileBridgeAuthorityRuntime,
-} from './search-root-control-ports-runtime-contract';
+import type { SearchRootProfileBridgeAuthorityRuntime } from './search-root-control-ports-runtime-contract';
 
 export const useSearchRootProfileBridgeAuthorityRuntime =
   (): SearchRootProfileBridgeAuthorityRuntime => {

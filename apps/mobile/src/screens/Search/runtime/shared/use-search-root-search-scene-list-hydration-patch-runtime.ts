@@ -17,9 +17,7 @@ export const useSearchRootSearchSceneListHydrationPatchRuntime = ({
   resultsReadModelSelectors,
 }: {
   hydrationKeyRuntime: ReturnType<typeof useSearchResultsPanelHydrationKeyRuntime>;
-  resultsReadModelSelectors: ReturnType<
-    typeof useSearchResultsReadModelSelectors
-  >;
+  resultsReadModelSelectors: ReturnType<typeof useSearchResultsReadModelSelectors>;
 }): SearchRootSearchSceneListHydrationPatch => ({
   ...useSearchRootSearchSceneListHydrationRenderPatchRuntime({
     hydrationKeyRuntime,

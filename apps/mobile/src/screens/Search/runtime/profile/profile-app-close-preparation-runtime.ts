@@ -31,11 +31,8 @@ export const useProfileAppClosePreparationRuntime = ({
   resultsPresentationSurfaceAuthority,
   closeExecutionArgs,
 }: UseProfileAppClosePreparationRuntimeArgs): ProfileAppClosePreparationRuntime => {
-  const {
-    pendingMarkerOpenAnimationFrameRef,
-    hydrationOperationId,
-    phaseBMaterializerRef,
-  } = closeExecutionArgs;
+  const { pendingMarkerOpenAnimationFrameRef, hydrationOperationId, phaseBMaterializerRef } =
+    closeExecutionArgs;
 
   const prepareForProfileClose = React.useCallback(() => {
     const pendingFrame = pendingMarkerOpenAnimationFrameRef.current;
@@ -60,9 +57,12 @@ export const useProfileAppClosePreparationRuntime = ({
       operationId: hydrationCommitRequest.operationId,
       nextHydrationKey: hydrationCommitRequest.nextHydrationKey,
       commitHydrationKey: (nextHydrationKey) => {
-        resultsPresentationSurfaceAuthority.publish({
-          hydratedResultsKey: nextHydrationKey,
-        }, 'profile_close_preparation');
+        resultsPresentationSurfaceAuthority.publish(
+          {
+            hydratedResultsKey: nextHydrationKey,
+          },
+          'profile_close_preparation'
+        );
       },
     });
   }, [

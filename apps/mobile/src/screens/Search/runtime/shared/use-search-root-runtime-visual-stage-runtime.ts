@@ -107,8 +107,7 @@ export const useSearchRootRuntimeVisualStageRuntime = ({
       .resultsPresentationOwner;
   const appRouteResultsSheetRuntimeOwner =
     overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.appRouteResultsSheetRuntimeOwner;
-  const routeSheetMotionState =
-    mountedRouteSheetMotionState ?? routeSheetRuntimeMotionState;
+  const routeSheetMotionState = mountedRouteSheetMotionState ?? routeSheetRuntimeMotionState;
   const searchSurfaceSheetTranslateY =
     routeSheetMotionState?.sheetYValue ?? appRouteResultsSheetRuntimeOwner.sheetTranslateY;
   const searchSurfaceSnapPoints =

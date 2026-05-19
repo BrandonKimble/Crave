@@ -65,7 +65,10 @@ type UseSearchNaturalSubmitOwnerArgs = {
     payload: NaturalSearchRequest;
     requestId: number;
     responsePhaseLabel: string;
-    startLifecycle: (response: SearchResponse, cacheStatus: SearchRequestCacheStatus | null) => boolean;
+    startLifecycle: (
+      response: SearchResponse,
+      cacheStatus: SearchRequestCacheStatus | null
+    ) => boolean;
   }) => Promise<boolean>;
   startNaturalResponseLifecycle: (options: {
     response: SearchResponse;

@@ -37,7 +37,10 @@ export type ResultsPresentationRuntimeOwner = {
   commitSearchSurfaceResultsTransaction: (snapshot: SearchSurfaceResultsTransaction) => void;
   clearStagedSearchSurfaceResultsTransaction: (transactionId?: string) => void;
   handlePageOneResultsCommitted: (payload?: {
-    surfaceTransactionMutationKind?: Extract<ResultsPresentationEnterMutationKind, 'search_this_area'>;
+    surfaceTransactionMutationKind?: Extract<
+      ResultsPresentationEnterMutationKind,
+      'search_this_area'
+    >;
     expectedResultsDataKey?: string | null;
     dataReadyFrom?: 'network' | 'cache' | 'in_flight';
     searchInputKey?: string | null;

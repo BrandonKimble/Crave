@@ -32,11 +32,7 @@ export const resolveSearchSurfaceRedrawAdvanceSnapshot = ({
   const activeOperationId = snapshot.operationId;
   const metadataOperationId = metadata?.operationId ?? null;
 
-  if (
-    metadataOperationId &&
-    activeOperationId &&
-    metadataOperationId !== activeOperationId
-  ) {
+  if (metadataOperationId && activeOperationId && metadataOperationId !== activeOperationId) {
     return { accepted: false, snapshot };
   }
 
@@ -48,10 +44,7 @@ export const resolveSearchSurfaceRedrawAdvanceSnapshot = ({
   const previousIndex = phaseIndexByName.get(previousPhase) ?? 0;
   const nextIndex = phaseIndexByName.get(phase) ?? 0;
 
-  if (
-    phase !== previousPhase &&
-    (nextIndex < previousIndex || nextIndex > previousIndex + 1)
-  ) {
+  if (phase !== previousPhase && (nextIndex < previousIndex || nextIndex > previousIndex + 1)) {
     return { accepted: false, snapshot };
   }
 
@@ -63,7 +56,7 @@ export const resolveSearchSurfaceRedrawAdvanceSnapshot = ({
   }
 
   const markerEnterSettledAtMs = metadata?.markerEnterSettled
-    ? metadata?.markerEnterSettledAtMs ?? getSearchSurfaceRedrawNowMs()
+    ? (metadata?.markerEnterSettledAtMs ?? getSearchSurfaceRedrawNowMs())
     : snapshot.markerEnterSettledAtMs;
 
   return {
@@ -91,11 +84,7 @@ export const resolveSearchSurfaceRedrawResetSnapshot = ({
   accepted: boolean;
   snapshot: SearchSurfaceRedrawSnapshot;
 } => {
-  if (
-    operationId &&
-    snapshot.operationId &&
-    operationId !== snapshot.operationId
-  ) {
+  if (operationId && snapshot.operationId && operationId !== snapshot.operationId) {
     return { accepted: false, snapshot };
   }
 

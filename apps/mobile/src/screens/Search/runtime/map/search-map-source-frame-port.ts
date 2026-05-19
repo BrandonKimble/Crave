@@ -1,7 +1,10 @@
 import React from 'react';
 import { useSyncExternalStore } from 'react';
 
-import { EMPTY_SEARCH_MAP_SOURCE_STORE, type SearchMapSourceStore } from './search-map-source-store';
+import {
+  EMPTY_SEARCH_MAP_SOURCE_STORE,
+  type SearchMapSourceStore,
+} from './search-map-source-store';
 
 export type SearchMapSourceFrameSnapshot = {
   visualCycleKey: string | null;
@@ -104,8 +107,8 @@ const areSearchMapSourceFrameSnapshotsEqual = (
   areSourceStoreFramesEqual(left.dotInteractionSourceStore, right.dotInteractionSourceStore) &&
   areSourceStoreFramesEqual(left.labelSourceStore, right.labelSourceStore) &&
   areSourceStoreFramesEqual(left.labelCollisionSourceStore, right.labelCollisionSourceStore) &&
-    left.labelDerivedSourceIdentityKey === right.labelDerivedSourceIdentityKey &&
-    left.markersRenderKey === right.markersRenderKey;
+  left.labelDerivedSourceIdentityKey === right.labelDerivedSourceIdentityKey &&
+  left.markersRenderKey === right.markersRenderKey;
 
 const SOURCE_FRAME_KEYS: readonly SearchMapSourceFrameSnapshotKey[] = [
   'visualCycleKey',
@@ -162,7 +165,10 @@ export const createSearchMapSourceFramePort = (): SearchMapSourceFramePort => {
       ) {
         changedKeys.add('visibleSortedRestaurantMarkersCount');
       }
-      if (snapshot.visibleDotRestaurantFeaturesCount !== nextSnapshot.visibleDotRestaurantFeaturesCount) {
+      if (
+        snapshot.visibleDotRestaurantFeaturesCount !==
+        nextSnapshot.visibleDotRestaurantFeaturesCount
+      ) {
         changedKeys.add('visibleDotRestaurantFeaturesCount');
       }
       if (snapshot.isShortcutCoverageLoading !== nextSnapshot.isShortcutCoverageLoading) {
@@ -181,10 +187,16 @@ export const createSearchMapSourceFramePort = (): SearchMapSourceFramePort => {
       ) {
         changedKeys.add('shortcutCoverageReadinessReason');
       }
-      if (snapshot.mapSearchSurfaceResultsSourcesReady !== nextSnapshot.mapSearchSurfaceResultsSourcesReady) {
+      if (
+        snapshot.mapSearchSurfaceResultsSourcesReady !==
+        nextSnapshot.mapSearchSurfaceResultsSourcesReady
+      ) {
         changedKeys.add('mapSearchSurfaceResultsSourcesReady');
       }
-      if (snapshot.mapSearchSurfaceResultsSourcesReadyKey !== nextSnapshot.mapSearchSurfaceResultsSourcesReadyKey) {
+      if (
+        snapshot.mapSearchSurfaceResultsSourcesReadyKey !==
+        nextSnapshot.mapSearchSurfaceResultsSourcesReadyKey
+      ) {
         changedKeys.add('mapSearchSurfaceResultsSourcesReadyKey');
       }
       if (changedKeys.size === 0) {
@@ -270,8 +282,9 @@ export const useSearchMapSourceFrameSelector = <T>(
   );
 };
 
-export const SearchMapSourceFramePortContext =
-  React.createContext<SearchMapSourceFramePort | null>(null);
+export const SearchMapSourceFramePortContext = React.createContext<SearchMapSourceFramePort | null>(
+  null
+);
 
 export const useSearchMapSourceFramePort = (): SearchMapSourceFramePort => {
   const sourceFramePort = React.useContext(SearchMapSourceFramePortContext);

@@ -16,7 +16,9 @@ type SearchFreezeGateRuntimeState = {
 };
 
 type SearchSurfaceRedrawRuntimeState = {
-  searchSurfaceRedrawOperationId: ReturnType<SearchRuntimeBus['getState']>['searchSurfaceRedrawOperationId'];
+  searchSurfaceRedrawOperationId: ReturnType<
+    SearchRuntimeBus['getState']
+  >['searchSurfaceRedrawOperationId'];
   searchSurfaceRedrawPhase: ReturnType<SearchRuntimeBus['getState']>['searchSurfaceRedrawPhase'];
 };
 
@@ -27,7 +29,8 @@ export const useSearchFreezeGateStateRuntime = (searchRuntimeBus: SearchRuntimeB
     return {
       freezeGateState: {
         isSearchSurfaceRedrawChromeFreezeActive: state.isSearchSurfaceRedrawChromeFreezeActive,
-        isSearchSurfaceRedrawPreflightFreezeActive: state.isSearchSurfaceRedrawPreflightFreezeActive,
+        isSearchSurfaceRedrawPreflightFreezeActive:
+          state.isSearchSurfaceRedrawPreflightFreezeActive,
         isSearchSurfaceRedrawActive: state.isSearchSurfaceRedrawActive,
         isResponseFrameFreezeActive: state.isResponseFrameFreezeActive,
         freezeClassification: policyFacts.freezeClassification,
@@ -43,7 +46,8 @@ export const useSearchFreezeGateStateRuntime = (searchRuntimeBus: SearchRuntimeB
     freezeGateState: sampledRuntimeState.freezeGateState,
     searchSurfaceRedrawRuntimeState: sampledRuntimeState.searchSurfaceRedrawRuntimeState,
     freezeGateRuntimeState: {
-      searchSurfaceRedrawPhase: sampledRuntimeState.searchSurfaceRedrawRuntimeState.searchSurfaceRedrawPhase,
+      searchSurfaceRedrawPhase:
+        sampledRuntimeState.searchSurfaceRedrawRuntimeState.searchSurfaceRedrawPhase,
     },
   } satisfies {
     freezeGateState: SearchFreezeGateState;

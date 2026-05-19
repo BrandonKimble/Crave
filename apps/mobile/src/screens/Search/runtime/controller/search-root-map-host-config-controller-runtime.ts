@@ -1,6 +1,4 @@
-import type {
-  SearchMapRenderHostConfig,
-} from '../../components/SearchMapWithMarkerEngine';
+import type { SearchMapRenderHostConfig } from '../../components/SearchMapWithMarkerEngine';
 import type { SearchMapPresentationLifecyclePort } from '../shared/search-map-protocol-contract';
 import type { createSearchRootMapPresentationRuntimeValue } from './search-root-map-presentation-controller-runtime';
 import type { SearchRootMapSurfaceState } from './search-root-map-surface-state-controller-runtime';
@@ -15,15 +13,12 @@ export const getSearchMapHostConfigChanges = (
   onPress: left.onPress !== right.onPress,
   onTouchStart: left.onTouchStart !== right.onTouchStart,
   onTouchEnd: left.onTouchEnd !== right.onTouchEnd,
-  onNativeViewportChanged:
-    left.onNativeViewportChanged !== right.onNativeViewportChanged,
+  onNativeViewportChanged: left.onNativeViewportChanged !== right.onNativeViewportChanged,
   onMapIdle: left.onMapIdle !== right.onMapIdle,
   onMapLoaded: left.onMapLoaded !== right.onMapLoaded,
   onMapFullyRendered: left.onMapFullyRendered !== right.onMapFullyRendered,
-  onCameraAnimationComplete:
-    left.onCameraAnimationComplete !== right.onCameraAnimationComplete,
-  presentationLifecyclePort:
-    left.presentationLifecyclePort !== right.presentationLifecyclePort,
+  onCameraAnimationComplete: left.onCameraAnimationComplete !== right.onCameraAnimationComplete,
+  presentationLifecyclePort: left.presentationLifecyclePort !== right.presentationLifecyclePort,
   searchMapProfilerRender: left.onProfilerRender !== right.onProfilerRender,
 });
 
@@ -44,9 +39,7 @@ export const createSearchRootMapHostConfig = ({
     onMapTouchEnd: NonNullable<SearchMapRenderHostConfig['onTouchEnd']>;
     onMapLoaded: SearchMapRenderHostConfig['onMapLoaded'];
   };
-  mapPresentationRuntime: ReturnType<
-    typeof createSearchRootMapPresentationRuntimeValue
-  >;
+  mapPresentationRuntime: ReturnType<typeof createSearchRootMapPresentationRuntimeValue>;
   presentationLifecyclePort: SearchMapPresentationLifecyclePort;
 }): SearchMapRenderHostConfig => ({
   mapRef: mapSurfaceState.mapRef,

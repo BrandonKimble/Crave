@@ -41,14 +41,9 @@ export const useSearchRootAutocompleteAuthorityRuntime = ({
   sessionCoreLane,
   stateFoundationLane,
 }: UseSearchRootAutocompleteAuthorityRuntimeArgs): SearchRootAutocompleteAuthorityRuntime => {
-  const {
-    rootPrimitivesRuntime,
-    rootDataPlaneRuntime,
-    rootSuggestionRuntime,
-  } = stateFoundationLane;
-  const autocompleteBounds = useStableViewportBoundsSnapshot(
-    sessionCoreLane.viewportBoundsService
-  );
+  const { rootPrimitivesRuntime, rootDataPlaneRuntime, rootSuggestionRuntime } =
+    stateFoundationLane;
+  const autocompleteBounds = useStableViewportBoundsSnapshot(sessionCoreLane.viewportBoundsService);
 
   const autocompleteRuntime = useSearchAutocompleteRuntime({
     query: rootPrimitivesRuntime.searchState.query,
@@ -68,10 +63,7 @@ export const useSearchRootAutocompleteAuthorityRuntime = ({
       allowAutocompleteResults: autocompleteRuntime.allowAutocompleteResults,
       suppressAutocompleteResults: autocompleteRuntime.suppressAutocompleteResults,
     }),
-    [
-      autocompleteRuntime.allowAutocompleteResults,
-      autocompleteRuntime.suppressAutocompleteResults,
-    ]
+    [autocompleteRuntime.allowAutocompleteResults, autocompleteRuntime.suppressAutocompleteResults]
   );
 
   return React.useMemo(

@@ -24,24 +24,21 @@ export const useSearchRootResultsSheetInteractionModelRuntime = ({
   const { rootInstrumentationRuntime } = rootOverlayFoundationRuntime;
 
   const { searchMode, isSearchLoading } = rootDataPlaneRuntime.runtimeFlags;
-  const { isLoadingMore, canLoadMore, currentPage } =
-    rootDataPlaneRuntime.resultsArrivalState;
+  const { isLoadingMore, canLoadMore, currentPage } = rootDataPlaneRuntime.resultsArrivalState;
 
   const resultsSheetLoadMoreRuntime = useSearchRootResultsSheetLoadMoreRuntime({
     submitRuntimeResult,
-    shouldLogSearchStateChanges:
-      rootInstrumentationRuntime.shouldLogSearchStateChanges,
+    shouldLogSearchStateChanges: rootInstrumentationRuntime.shouldLogSearchStateChanges,
     searchMode,
     isSearchLoading,
     isLoadingMore,
     canLoadMore,
     currentPage,
   });
-  const resultsSheetInteractionStateRuntime =
-    useSearchRootResultsSheetInteractionStateRuntime({
-      stateFoundationLane,
-      rootOverlayFoundationRuntime,
-    });
+  const resultsSheetInteractionStateRuntime = useSearchRootResultsSheetInteractionStateRuntime({
+    stateFoundationLane,
+    rootOverlayFoundationRuntime,
+  });
   const resultsSheetSnapRuntime = useSearchRootResultsSheetSnapRuntime({
     rootOverlayFoundationRuntime,
     interactionStateRuntime: resultsSheetInteractionStateRuntime,
@@ -49,22 +46,18 @@ export const useSearchRootResultsSheetInteractionModelRuntime = ({
   const resultsSheetMotionRuntime = React.useMemo(
     () =>
       createSearchRootResultsSheetMotionRuntimeValue({
-        handleResultsSheetSnapStart:
-          resultsSheetSnapRuntime.handleResultsSheetSnapStart,
+        handleResultsSheetSnapStart: resultsSheetSnapRuntime.handleResultsSheetSnapStart,
         handleResultsListScrollBegin:
           resultsSheetInteractionStateRuntime.handleResultsListScrollBegin,
-        handleResultsListScrollEnd:
-          resultsSheetInteractionStateRuntime.handleResultsListScrollEnd,
+        handleResultsListScrollEnd: resultsSheetInteractionStateRuntime.handleResultsListScrollEnd,
         handleResultsListMomentumBegin:
           resultsSheetInteractionStateRuntime.handleResultsListMomentumBegin,
         handleResultsListMomentumEnd:
           resultsSheetInteractionStateRuntime.handleResultsListMomentumEnd,
         handleResultsSheetDragStateChange:
           resultsSheetInteractionStateRuntime.handleResultsSheetDragStateChange,
-        handleResultsSheetSettlingChange:
-          resultsSheetSnapRuntime.handleResultsSheetSettlingChange,
-        handleResultsSheetSnapChange:
-          resultsSheetSnapRuntime.handleResultsSheetSnapChange,
+        handleResultsSheetSettlingChange: resultsSheetSnapRuntime.handleResultsSheetSettlingChange,
+        handleResultsSheetSnapChange: resultsSheetSnapRuntime.handleResultsSheetSnapChange,
       }),
     [
       resultsSheetInteractionStateRuntime.handleResultsListMomentumBegin,
@@ -80,30 +73,24 @@ export const useSearchRootResultsSheetInteractionModelRuntime = ({
   const resultsSheetInteractionModel = React.useMemo(
     () =>
       createSearchRootResultsSheetInteractionModel({
-        handleResultsSheetSnapStart:
-          resultsSheetMotionRuntime.handleResultsSheetSnapStart,
+        handleResultsSheetSnapStart: resultsSheetMotionRuntime.handleResultsSheetSnapStart,
         handleResultsListScrollBegin: () => {
           resultsSheetLoadMoreRuntime.markResultsListUserScrollStart();
           resultsSheetMotionRuntime.handleResultsListScrollBegin();
         },
-        handleResultsListScrollEnd:
-          resultsSheetMotionRuntime.handleResultsListScrollEnd,
+        handleResultsListScrollEnd: resultsSheetMotionRuntime.handleResultsListScrollEnd,
         handleResultsListMomentumBegin: () => {
           resultsSheetLoadMoreRuntime.markResultsListUserScrollStart();
           resultsSheetMotionRuntime.handleResultsListMomentumBegin();
         },
-        handleResultsListMomentumEnd:
-          resultsSheetMotionRuntime.handleResultsListMomentumEnd,
+        handleResultsListMomentumEnd: resultsSheetMotionRuntime.handleResultsListMomentumEnd,
         handleResultsSheetDragStateChange:
           resultsSheetMotionRuntime.handleResultsSheetDragStateChange,
         handleResultsSheetSettlingChange:
           resultsSheetMotionRuntime.handleResultsSheetSettlingChange,
-        handleResultsEndReached:
-          resultsSheetLoadMoreRuntime.handleResultsEndReached,
-        handleResultsSheetSnapChange:
-          resultsSheetMotionRuntime.handleResultsSheetSnapChange,
-        resetResultsListScrollProgress:
-          resultsSheetLoadMoreRuntime.resetResultsListScrollProgress,
+        handleResultsEndReached: resultsSheetLoadMoreRuntime.handleResultsEndReached,
+        handleResultsSheetSnapChange: resultsSheetMotionRuntime.handleResultsSheetSnapChange,
+        resetResultsListScrollProgress: resultsSheetLoadMoreRuntime.resetResultsListScrollProgress,
       }),
     [
       resultsSheetLoadMoreRuntime.handleResultsEndReached,

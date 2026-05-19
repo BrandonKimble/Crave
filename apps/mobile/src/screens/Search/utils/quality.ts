@@ -1,6 +1,4 @@
-export {
-  getCraveScoreColorFromScore,
-} from '../../../utils/quality-color';
+export { getCraveScoreColorFromScore } from '../../../utils/quality-color';
 
 export const formatCraveScore = (score?: number | null): string => {
   if (typeof score !== 'number' || !Number.isFinite(score)) {

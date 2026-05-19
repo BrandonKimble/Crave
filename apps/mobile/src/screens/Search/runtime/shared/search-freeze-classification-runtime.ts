@@ -28,5 +28,4 @@ export const resolveSearchCloseHandoffFreezeClassification = ({
   isCloseHandoffActive,
 }: {
   isCloseHandoffActive: boolean;
-}): SearchFreezeClassification =>
-  isCloseHandoffActive ? 'close-handoff' : 'none';
+}): SearchFreezeClassification => (isCloseHandoffActive ? 'close-handoff' : 'none');

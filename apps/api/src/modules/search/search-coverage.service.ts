@@ -268,7 +268,9 @@ export class SearchCoverageService {
               restaurantName: row.restaurant_name,
               craveScore: publicScore,
               scoreSubjectType: includeTopDish ? 'connection' : 'restaurant',
-              scoreSubjectId: includeTopDish ? topConnectionId : row.restaurant_id,
+              scoreSubjectId: includeTopDish
+                ? topConnectionId
+                : row.restaurant_id,
               scoreDelta7d: includeTopDish ? topFoodScoreDelta7d : scoreDelta7d,
               rank: index + 1,
               restaurantCraveScore: craveScore,

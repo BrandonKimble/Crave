@@ -144,16 +144,12 @@ export const resolvePreparedProfileRouteIntentAction = ({
       targetSceneKey: routeState.previousOverlayRoute?.key ?? 'search',
       routeAction: resolveProfileCloseRouteAction(routeState),
       settleToken: executionContext.requestToken,
-      sheetTransitionKind:
-        routeIntent.shellTarget === 'default' ? 'terminalDismiss' : 'closeChild',
-      sheetOpenerSource:
-        routeIntent.shellTarget === 'default' ? 'systemDismiss' : 'routeCommand',
+      sheetTransitionKind: routeIntent.shellTarget === 'default' ? 'terminalDismiss' : 'closeChild',
+      sheetOpenerSource: routeIntent.shellTarget === 'default' ? 'systemDismiss' : 'routeCommand',
       sheetMotion:
         routeIntent.shellTarget === 'default' ? { kind: 'hide' } : { kind: 'preserveLiveY' },
       contentHandoff:
-        routeIntent.shellTarget === 'default'
-          ? 'preserveOutgoingUntilSettle'
-          : 'swapImmediately',
+        routeIntent.shellTarget === 'default' ? 'preserveOutgoingUntilSettle' : 'swapImmediately',
       cameraIntent: resolveProfileCameraIntent(routeIntent.restoreCamera, cameraIntentOptions),
     },
     completionEvent,

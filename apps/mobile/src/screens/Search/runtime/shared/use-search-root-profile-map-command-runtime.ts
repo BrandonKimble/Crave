@@ -23,17 +23,11 @@ export const useSearchRootProfileMapCommandRuntime = ({
   profileActionsRef.current = profileActions;
   const getCurrentResultsSheetSnapRef = React.useRef(getCurrentResultsSheetSnap);
   getCurrentResultsSheetSnapRef.current = getCurrentResultsSheetSnap;
-  const mapProfileCommandPortRef =
-    React.useRef<SearchMapProfileCommandPort | null>(null);
+  const mapProfileCommandPortRef = React.useRef<SearchMapProfileCommandPort | null>(null);
 
   if (!mapProfileCommandPortRef.current) {
     mapProfileCommandPortRef.current = {
-      openProfileFromMarker: ({
-        restaurantId,
-        restaurantName,
-        restaurant,
-        pressedCoordinate,
-      }) => {
+      openProfileFromMarker: ({ restaurantId, restaurantName, restaurant, pressedCoordinate }) => {
         if (pendingMarkerOpenAnimationFrameRef.current != null) {
           if (typeof cancelAnimationFrame === 'function') {
             cancelAnimationFrame(pendingMarkerOpenAnimationFrameRef.current);
@@ -42,8 +36,9 @@ export const useSearchRootProfileMapCommandRuntime = ({
         }
 
         if (restaurant) {
-          const shouldPromoteSheetToMiddle =
-            shouldPromoteProfileOpenToMiddle(getCurrentResultsSheetSnapRef.current());
+          const shouldPromoteSheetToMiddle = shouldPromoteProfileOpenToMiddle(
+            getCurrentResultsSheetSnapRef.current()
+          );
           profileActionsRef.current.openRestaurantProfile(restaurant, {
             pressedCoordinate,
             forceMiddleSnap: shouldPromoteSheetToMiddle,
@@ -56,16 +51,12 @@ export const useSearchRootProfileMapCommandRuntime = ({
           return;
         }
 
-        profileActionsRef.current.openRestaurantProfilePreview(
-          restaurantId,
-          restaurantName,
-          {
-            pressedCoordinate: pressedCoordinate ?? null,
-            forceMiddleSnap: shouldPromoteProfileOpenToMiddle(
-              getCurrentResultsSheetSnapRef.current()
-            ),
-          }
-        );
+        profileActionsRef.current.openRestaurantProfilePreview(restaurantId, restaurantName, {
+          pressedCoordinate: pressedCoordinate ?? null,
+          forceMiddleSnap: shouldPromoteProfileOpenToMiddle(
+            getCurrentResultsSheetSnapRef.current()
+          ),
+        });
       },
     };
   }
@@ -75,10 +66,7 @@ export const useSearchRootProfileMapCommandRuntime = ({
       highlightedRestaurantId: profileViewState.highlightedRestaurantId,
       mapCameraPadding: profileViewState.mapCameraPadding,
     }),
-    [
-      profileViewState.highlightedRestaurantId,
-      profileViewState.mapCameraPadding,
-    ]
+    [profileViewState.highlightedRestaurantId, profileViewState.mapCameraPadding]
   );
 
   return React.useMemo(

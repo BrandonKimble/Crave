@@ -14,9 +14,7 @@ type UseSearchRootSearchSceneListHydrationPublicationRuntimeArgs = {
   routeSceneSwitchAuthority: RouteSceneSwitchAuthority;
   searchInteractionRef: React.MutableRefObject<SearchRuntimeInteractionState>;
   hydrationKeyRuntime: ReturnType<typeof useSearchResultsPanelHydrationKeyRuntime>;
-  resultsReadModelSelectors: ReturnType<
-    typeof useSearchResultsReadModelSelectors
-  >;
+  resultsReadModelSelectors: ReturnType<typeof useSearchResultsReadModelSelectors>;
 };
 
 export const useSearchRootSearchSceneListHydrationPublicationRuntime = ({
@@ -27,11 +25,10 @@ export const useSearchRootSearchSceneListHydrationPublicationRuntime = ({
   hydrationKeyRuntime,
   resultsReadModelSelectors,
 }: UseSearchRootSearchSceneListHydrationPublicationRuntimeArgs) => {
-  const searchSceneListHydrationPatch =
-    useSearchRootSearchSceneListHydrationPatchRuntime({
-      hydrationKeyRuntime,
-      resultsReadModelSelectors,
-    });
+  const searchSceneListHydrationPatch = useSearchRootSearchSceneListHydrationPatchRuntime({
+    hydrationKeyRuntime,
+    resultsReadModelSelectors,
+  });
 
   useResultsPresentationSurfaceHydrationPublicationRuntime({
     activeTab,

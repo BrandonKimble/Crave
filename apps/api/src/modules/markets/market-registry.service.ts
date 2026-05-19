@@ -207,7 +207,7 @@ export class MarketRegistryService {
           ) {
             markets.push(ensuredMarket);
           }
-          const selected = await this.selectViewportDisplayMarket({ markets });
+          const selected = this.selectViewportDisplayMarket({ markets });
           const selectedDisplayName =
             selected?.marketShortName ?? selected?.marketName;
 
@@ -364,7 +364,7 @@ export class MarketRegistryService {
         };
       }
 
-      const selected = await this.selectViewportDisplayMarket({ markets });
+      const selected = this.selectViewportDisplayMarket({ markets });
       const collectableMarketKeys = await this.resolveCollectableMarketKeys(
         markets.map((market) => market.marketKey),
       );
@@ -873,7 +873,8 @@ export class MarketRegistryService {
         requestId,
         triggerKind: 'viewport_coverage',
         stopReason: 'attempt_cap_reached',
-        message: 'Viewport bootstrap attempted one locality before recomputing local coverage.',
+        message:
+          'Viewport bootstrap attempted one locality before recomputing local coverage.',
       });
     }
 
@@ -949,7 +950,8 @@ export class MarketRegistryService {
         uncoveredAreaMeters: this.toPositiveNumber(anchor.overlapAreaMeters),
         uncoveredAreaShare: this.toFiniteNumber(anchor.uncoveredAreaShare),
         stopReason: 'duplicate_boundary',
-        message: 'TomTom returned a boundary already attempted in this viewport bootstrap request.',
+        message:
+          'TomTom returned a boundary already attempted in this viewport bootstrap request.',
       });
       return null;
     }
@@ -1001,11 +1003,13 @@ export class MarketRegistryService {
     );
   }
 
-  private async selectViewportDisplayMarket(params: {
+  private selectViewportDisplayMarket(params: {
     markets: ViewportCoverageMarket[];
-  }): Promise<
-    (ViewportCoverageMarket & { selectedVia: 'dominant' | 'ambiguous' }) | null
-  > {
+  }):
+    | (ViewportCoverageMarket & {
+        selectedVia: 'dominant' | 'ambiguous';
+      })
+    | null {
     const { markets } = params;
     if (markets.length === 0) {
       return null;

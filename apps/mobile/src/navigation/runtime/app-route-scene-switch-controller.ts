@@ -159,7 +159,6 @@ const SEARCH_ROUTE: OverlayRouteEntry<'search'> = {
   params: undefined,
 };
 
-
 const createRouteEntry = (
   key: OverlayKey,
   params?: RouteSceneSwitchRouteParams
@@ -167,7 +166,7 @@ const createRouteEntry = (
   ({
     key,
     params,
-  } as OverlayRouteEntry);
+  }) as OverlayRouteEntry;
 
 const createRouteStateSnapshot = ({
   activeOverlayRoute,
@@ -267,7 +266,7 @@ const updateRouteState = (
     overlayRouteStack[overlayRouteStack.length - 1] ?? currentRouteState.activeOverlayRoute;
   const previousOverlayRoute =
     overlayRouteStack.length > 1
-      ? overlayRouteStack[overlayRouteStack.length - 2] ?? null
+      ? (overlayRouteStack[overlayRouteStack.length - 2] ?? null)
       : currentRouteState.previousOverlayRoute;
   return createRouteStateSnapshot({
     activeOverlayRoute,
@@ -285,7 +284,7 @@ const closeActiveRouteState = (
   const overlayRouteStack = currentRouteState.overlayRouteStack.slice(0, -1);
   const activeOverlayRoute = overlayRouteStack[overlayRouteStack.length - 1] ?? SEARCH_ROUTE;
   const previousOverlayRoute =
-    overlayRouteStack.length > 1 ? overlayRouteStack[overlayRouteStack.length - 2] ?? null : null;
+    overlayRouteStack.length > 1 ? (overlayRouteStack[overlayRouteStack.length - 2] ?? null) : null;
   return createRouteStateSnapshot({
     activeOverlayRoute,
     previousOverlayRoute,
@@ -785,45 +784,45 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     const partial = typeof next === 'function' ? next(current) : next;
     const nextState: RouteSceneSwitchTransitionState = {
       activeSceneKey:
-        'activeSceneKey' in partial ? partial.activeSceneKey ?? null : current.activeSceneKey,
+        'activeSceneKey' in partial ? (partial.activeSceneKey ?? null) : current.activeSceneKey,
       interactiveSceneKey:
         'interactiveSceneKey' in partial
-          ? partial.interactiveSceneKey ?? null
+          ? (partial.interactiveSceneKey ?? null)
           : current.interactiveSceneKey,
       sourceSceneKey:
-        'sourceSceneKey' in partial ? partial.sourceSceneKey ?? null : current.sourceSceneKey,
+        'sourceSceneKey' in partial ? (partial.sourceSceneKey ?? null) : current.sourceSceneKey,
       handoffSceneKey:
-        'handoffSceneKey' in partial ? partial.handoffSceneKey ?? null : current.handoffSceneKey,
+        'handoffSceneKey' in partial ? (partial.handoffSceneKey ?? null) : current.handoffSceneKey,
       transitionPhase: partial.transitionPhase ?? current.transitionPhase,
       isInteractive: partial.isInteractive ?? current.isInteractive,
       isOverlaySwitchInFlight: partial.isOverlaySwitchInFlight ?? current.isOverlaySwitchInFlight,
       pendingTargetSceneKey:
         'pendingTargetSceneKey' in partial
-          ? partial.pendingTargetSceneKey ?? null
+          ? (partial.pendingTargetSceneKey ?? null)
           : current.pendingTargetSceneKey,
       activePollsParams:
         'activePollsParams' in partial
-          ? partial.activePollsParams ?? null
+          ? (partial.activePollsParams ?? null)
           : current.activePollsParams,
       pendingPollsParams:
         'pendingPollsParams' in partial
-          ? partial.pendingPollsParams ?? null
+          ? (partial.pendingPollsParams ?? null)
           : current.pendingPollsParams,
       activeDockedPollsRestoreIntent:
         'activeDockedPollsRestoreIntent' in partial
-          ? partial.activeDockedPollsRestoreIntent ?? null
+          ? (partial.activeDockedPollsRestoreIntent ?? null)
           : current.activeDockedPollsRestoreIntent,
       pendingDockedPollsRestoreIntent:
         'pendingDockedPollsRestoreIntent' in partial
-          ? partial.pendingDockedPollsRestoreIntent ?? null
+          ? (partial.pendingDockedPollsRestoreIntent ?? null)
           : current.pendingDockedPollsRestoreIntent,
       transitionToken: partial.transitionToken ?? current.transitionToken,
       transitionContract:
         'transitionContract' in partial
-          ? partial.transitionContract ?? null
+          ? (partial.transitionContract ?? null)
           : current.transitionContract,
       routeState:
-        'routeState' in partial ? partial.routeState ?? current.routeState : current.routeState,
+        'routeState' in partial ? (partial.routeState ?? current.routeState) : current.routeState,
     };
     if (areTransitionStatesEqual(current, nextState)) {
       return;

@@ -46,10 +46,7 @@ export const useSearchResultsSectionedProjectionTelemetryRuntime = ({
     const sectionedRowCount = projectionStateRuntime.activeSectionedRowCount;
     const safeResultsCount = projectionStateRuntime.activeSafeResultsCount;
 
-    mapQueryBudget.recordRuntimeAttributionDurationMs(
-      'list_read_model_build',
-      durationMs
-    );
+    mapQueryBudget.recordRuntimeAttributionDurationMs('list_read_model_build', durationMs);
     emitRuntimeWriteSpan({
       label: 'list_read_model_build',
       requestVersionKey,

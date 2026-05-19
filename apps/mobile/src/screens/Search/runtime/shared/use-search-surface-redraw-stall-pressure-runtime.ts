@@ -23,7 +23,9 @@ export const useSearchSurfaceRedrawStallPressureRuntime = ({
   searchSurfaceRedrawCoordinatorRef,
   searchSurfaceRedrawCommitSpanPressureByOperationRef,
 }: UseSearchSearchSurfaceRedrawStallPressureRuntimeArgs) => {
-  const searchSurfaceRedrawStallPressureByOperationRef = React.useRef<Map<string, number>>(new Map());
+  const searchSurfaceRedrawStallPressureByOperationRef = React.useRef<Map<string, number>>(
+    new Map()
+  );
 
   React.useEffect(() => {
     if (searchMode !== 'shortcut') {
@@ -89,7 +91,10 @@ export const useSearchSurfaceRedrawStallPressureRuntime = ({
           searchSurfaceRedrawStallPressureByOperationRef.current.get(activeOperationId) ?? 0;
         const nextMaxStallMs = Math.max(previousMaxStallMs, frameDeltaMs);
         if (nextMaxStallMs > previousMaxStallMs) {
-          searchSurfaceRedrawStallPressureByOperationRef.current.set(activeOperationId, nextMaxStallMs);
+          searchSurfaceRedrawStallPressureByOperationRef.current.set(
+            activeOperationId,
+            nextMaxStallMs
+          );
         }
         if (previousMaxStallMs <= 0) {
           searchSurfaceRedrawCoordinatorRef.current.advancePhase(handoffPhase, {
@@ -109,5 +114,10 @@ export const useSearchSurfaceRedrawStallPressureRuntime = ({
     return () => {
       cancelScheduledTick();
     };
-  }, [getPerfNow, searchSurfaceRedrawCommitSpanPressureByOperationRef, searchSurfaceRedrawCoordinatorRef, searchMode]);
+  }, [
+    getPerfNow,
+    searchSurfaceRedrawCommitSpanPressureByOperationRef,
+    searchSurfaceRedrawCoordinatorRef,
+    searchMode,
+  ]);
 };

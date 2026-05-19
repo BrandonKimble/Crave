@@ -224,8 +224,7 @@ export const useSearchRootOverlayChromeHostRuntime = ({
       appEntryPlaneRuntime.isFocused,
       shouldRenderSearchOverlay,
       stateFoundationLane.rootDataPlaneRuntime.freezeGate.isResponseFrameFreezeActive,
-      stateFoundationLane.rootDataPlaneRuntime.freezeGate
-        .isSearchSurfaceRedrawChromeFreezeActive,
+      stateFoundationLane.rootDataPlaneRuntime.freezeGate.isSearchSurfaceRedrawChromeFreezeActive,
       stateFoundationLane.rootDataPlaneRuntime.freezeGate
         .isSearchSurfaceRedrawPreflightFreezeActive,
       rootOverlayFoundationRuntime.rootInstrumentationRuntime.handleProfilerRender,
@@ -239,12 +238,7 @@ export const useSearchRootOverlayChromeHostRuntime = ({
       headerProps: chromeHeaderProps,
       suggestionSurfaceProps: chromeSuggestionSurfaceProps,
     }),
-    [
-      chromeContainerSnapshot,
-      chromeFrameSnapshot,
-      chromeHeaderProps,
-      chromeSuggestionSurfaceProps,
-    ]
+    [chromeContainerSnapshot, chromeFrameSnapshot, chromeHeaderProps, chromeSuggestionSurfaceProps]
   );
 
   return {

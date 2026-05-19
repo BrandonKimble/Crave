@@ -81,16 +81,15 @@ export const resolveEnterStartedResultsPresentationTransportAttempt = (
   const canRevealCover =
     activeExecution?.executionStage === 'enter_mounted_hidden' ||
     (activeExecution?.executionStage === 'enter_executing' && state.coverState !== 'hidden');
-  const nextState =
-    !canRevealCover
-      ? null
-      : {
-          ...state,
-          coverState: 'hidden' as const,
-          executionBatch: options.executionBatch ?? state.executionBatch,
-          executionStage: 'enter_executing' as const,
-          startToken: options.startToken,
-        };
+  const nextState = !canRevealCover
+    ? null
+    : {
+        ...state,
+        coverState: 'hidden' as const,
+        executionBatch: options.executionBatch ?? state.executionBatch,
+        executionStage: 'enter_executing' as const,
+        startToken: options.startToken,
+      };
 
   return {
     nextState,

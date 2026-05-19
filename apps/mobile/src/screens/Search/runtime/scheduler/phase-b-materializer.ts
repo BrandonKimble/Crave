@@ -85,7 +85,9 @@ export class PhaseBMaterializer {
           this.resetHydrationSyncIdentity();
           input.commitHydrationKey(null);
         } else {
-          const syncToken = `${input.operationId}:phase-b-hydration-clear:${Date.now().toString(36)}`;
+          const syncToken = `${input.operationId}:phase-b-hydration-clear:${Date.now().toString(
+            36
+          )}`;
           this.hydrationSyncOperationId = input.operationId;
           this.hydrationSyncToken = syncToken;
           this.scheduleHydrationFinalizeRowsRelease({
@@ -118,7 +120,9 @@ export class PhaseBMaterializer {
         input.onFinalizeRowsReleaseReady?.(hydrationKey);
         this.resetHydrationSyncIdentity();
       } else {
-        const syncToken = `${input.operationId}:phase-b-hydration-release:${Date.now().toString(36)}`;
+        const syncToken = `${input.operationId}:phase-b-hydration-release:${Date.now().toString(
+          36
+        )}`;
         this.hydrationSyncOperationId = input.operationId;
         this.hydrationSyncToken = syncToken;
         this.scheduleHydrationFinalizeRowsRelease({
@@ -266,14 +270,12 @@ export class PhaseBMaterializer {
               return;
             }
             if (input.canRelease && !input.canRelease()) {
-              this.hydrationFinalizeRowsReleaseAnimationFrame =
-                requestAnimationFrame(tryRelease);
+              this.hydrationFinalizeRowsReleaseAnimationFrame = requestAnimationFrame(tryRelease);
               return;
             }
             input.release();
           };
-          this.hydrationFinalizeRowsReleaseAnimationFrame =
-            requestAnimationFrame(tryRelease);
+          this.hydrationFinalizeRowsReleaseAnimationFrame = requestAnimationFrame(tryRelease);
           return;
         }
         this.hydrationFinalizeRowsReleaseTimeout = setTimeout(() => {

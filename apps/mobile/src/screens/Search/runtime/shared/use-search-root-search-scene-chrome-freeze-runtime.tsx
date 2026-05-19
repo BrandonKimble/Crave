@@ -8,18 +8,10 @@ import type { useSearchResultsPanelResultsRuntimeState } from './use-search-resu
 import type { useSearchResultsPanelRetainedResultsRuntime } from './use-search-results-panel-retained-results-runtime';
 
 type UseSearchRootSearchSceneChromeFreezeRuntimeArgs = {
-  searchResultsRuntimeState: ReturnType<
-    typeof useSearchResultsPanelResultsRuntimeState
-  >;
-  searchHydrationRuntimeState: ReturnType<
-    typeof useSearchResultsPanelHydrationRuntimeState
-  >;
-  resolvedResultsRuntime: ReturnType<
-    typeof useSearchResultsPanelRetainedResultsRuntime
-  >;
-  filtersHeaderRuntime: ReturnType<
-    typeof useSearchRootSearchSceneFiltersHeaderRuntime
-  >;
+  searchResultsRuntimeState: ReturnType<typeof useSearchResultsPanelResultsRuntimeState>;
+  searchHydrationRuntimeState: ReturnType<typeof useSearchResultsPanelHydrationRuntimeState>;
+  resolvedResultsRuntime: ReturnType<typeof useSearchResultsPanelRetainedResultsRuntime>;
+  filtersHeaderRuntime: ReturnType<typeof useSearchRootSearchSceneFiltersHeaderRuntime>;
   effectiveFiltersHeaderHeight: ReturnType<
     typeof useSearchRootSearchSceneHeaderLayoutRuntime
   >['effectiveFiltersHeaderHeight'];
@@ -36,19 +28,17 @@ export const useSearchRootSearchSceneChromeFreezeRuntime = ({
   effectiveFiltersHeaderHeight,
   effectiveResultsHeaderHeight,
 }: UseSearchRootSearchSceneChromeFreezeRuntimeArgs) => {
-  const hasResolvedResults =
-    resolvedResultsRuntime.resolvedResults != null;
+  const hasResolvedResults = resolvedResultsRuntime.resolvedResults != null;
   const shouldFreezeResultsChrome =
     searchHydrationRuntimeState.chromeFreezeClassification === 'recovery' &&
     searchHydrationRuntimeState.isSearchSurfaceRedrawChromeDeferred &&
     !hasResolvedResults;
-  const searchSceneChromeFreezeRuntimeRef = React.useRef<
-    ReturnType<typeof createSearchRootSearchSceneChromeFreezeRuntime> | null
-  >(null);
+  const searchSceneChromeFreezeRuntimeRef = React.useRef<ReturnType<
+    typeof createSearchRootSearchSceneChromeFreezeRuntime
+  > | null>(null);
 
   if (searchSceneChromeFreezeRuntimeRef.current == null) {
-    searchSceneChromeFreezeRuntimeRef.current =
-      createSearchRootSearchSceneChromeFreezeRuntime();
+    searchSceneChromeFreezeRuntimeRef.current = createSearchRootSearchSceneChromeFreezeRuntime();
   }
 
   const freezeRuntimeValue = searchSceneChromeFreezeRuntimeRef.current.resolve({
@@ -61,14 +51,11 @@ export const useSearchRootSearchSceneChromeFreezeRuntime = ({
 
   return React.useMemo(
     () => ({
-      effectiveFiltersHeaderHeightBase:
-        freezeRuntimeValue.effectiveFiltersHeaderHeightBase,
+      effectiveFiltersHeaderHeightBase: freezeRuntimeValue.effectiveFiltersHeaderHeightBase,
       effectiveResultsHeaderHeightForRender:
         freezeRuntimeValue.effectiveResultsHeaderHeightForRender,
-      filtersHeaderRuntimeForReadModel:
-        freezeRuntimeValue.filtersHeaderRuntimeForReadModel,
-      submittedQueryForReadModel:
-        freezeRuntimeValue.submittedQueryForReadModel,
+      filtersHeaderRuntimeForReadModel: freezeRuntimeValue.filtersHeaderRuntimeForReadModel,
+      submittedQueryForReadModel: freezeRuntimeValue.submittedQueryForReadModel,
     }),
     [
       freezeRuntimeValue.effectiveFiltersHeaderHeightBase,

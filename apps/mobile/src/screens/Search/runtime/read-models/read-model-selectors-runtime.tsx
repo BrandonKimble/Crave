@@ -246,8 +246,7 @@ export const useSearchResultsReadModelSelectors = (
     const interactionState = searchInteractionRef.current;
     const latestRawSearchSurfaceRedrawPhase =
       getRawSearchSurfaceRedrawPhase?.() ?? rawSearchSurfaceRedrawPhase;
-    const latestAllowHydrationFinalizeCommit =
-      getAllowHydrationFinalizeCommit?.() ?? true;
+    const latestAllowHydrationFinalizeCommit = getAllowHydrationFinalizeCommit?.() ?? true;
     const isPastVisibleAdmissionPhase = !isSearchSurfaceRedrawVisibleAdmissionPhase(
       latestRawSearchSurfaceRedrawPhase
     );

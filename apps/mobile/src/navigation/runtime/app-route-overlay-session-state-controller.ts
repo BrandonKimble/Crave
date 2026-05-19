@@ -42,7 +42,6 @@ type RootSnapshotTargetAuthority = SnapshotSource<RouteOverlayRootSnapshot> & {
   }) => () => void;
 };
 
-
 type AppRouteOverlaySessionStateControllerArgs = {
   routeOverlayIdentityAuthority: SnapshotSource<RouteOverlayIdentitySnapshot>;
   routeOverlayRootAuthority: RootSnapshotTargetAuthority;

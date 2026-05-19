@@ -1860,9 +1860,9 @@ Create a backend `DemandSignalService` used by:
 It should expose methods like:
 
 ```ts
-getEntityDemandForMarket({ marketKey, windowDays, entityTypes })
-getQueryDemand({ prefix, scope, windowDays })
-getUserRecentDemand({ userId, limit })
+getEntityDemandForMarket({ marketKey, windowDays, entityTypes });
+getQueryDemand({ prefix, scope, windowDays });
+getUserRecentDemand({ userId, limit });
 ```
 
 ### Phase 3: Add Aggregate Tables Or Materialized Views

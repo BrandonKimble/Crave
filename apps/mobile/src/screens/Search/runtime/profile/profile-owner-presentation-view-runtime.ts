@@ -50,12 +50,7 @@ export const useProfileOwnerPresentationViewRuntime = ({
         cameraLayoutModel: cameraTransitionPorts,
         getCurrentLastCameraState: getLastCameraState,
       }),
-    [
-      cameraTransitionPorts,
-      getLastCameraState,
-      preparedSnapshot,
-      profileShellState,
-    ]
+    [cameraTransitionPorts, getLastCameraState, preparedSnapshot, profileShellState]
   );
 
   const currentMapZoom =

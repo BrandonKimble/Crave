@@ -36,29 +36,26 @@ export const resolveResultsPresentationReadModel = ({
     executionStage === 'exit_requested' || executionStage === 'exit_executing'
       ? 'visible'
       : executionStage === 'enter_pending_mount' || executionStage === 'enter_mounted_hidden'
-      ? 'frozen'
-      : executionStage === 'enter_executing'
-      ? 'visible'
-      : executionStage === 'settled' && snapshotKind !== 'results_exit'
-      ? 'visible'
-      : coverState !== 'hidden'
-      ? 'frozen'
-      : 'hidden';
+        ? 'frozen'
+        : executionStage === 'enter_executing'
+          ? 'visible'
+          : executionStage === 'settled' && snapshotKind !== 'results_exit'
+            ? 'visible'
+            : coverState !== 'hidden'
+              ? 'frozen'
+              : 'hidden';
   const isSettled = isResultsPresentationExecutionStageSettled(executionStage);
   const isVisibleResultsSurface =
-    coverState === 'hidden' &&
-    snapshotKind === 'results_enter' &&
-    contentVisibility === 'visible';
+    coverState === 'hidden' && snapshotKind === 'results_enter' && contentVisibility === 'visible';
 
   return {
-    surfaceMode:
-      isVisibleResultsSurface
-        ? 'results'
-        : coverState === 'hidden'
+    surfaceMode: isVisibleResultsSurface
+      ? 'results'
+      : coverState === 'hidden'
         ? 'none'
         : coverState === 'initial_loading'
-        ? 'initial_loading'
-        : 'interaction_loading',
+          ? 'initial_loading'
+          : 'interaction_loading',
     contentVisibility,
     isAwaitingEnterMount: executionStage === 'enter_mounted_hidden',
     isEntering: executionStage === 'enter_executing',

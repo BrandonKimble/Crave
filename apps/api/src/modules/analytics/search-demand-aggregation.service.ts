@@ -496,9 +496,7 @@ export class SearchDemandAggregationService {
     if (params.entityTypes?.length) {
       filters.push(
         Prisma.sql`entity_type IN (${Prisma.join(
-          params.entityTypes.map(
-            (type) => Prisma.sql`${type}::entity_type`,
-          ),
+          params.entityTypes.map((type) => Prisma.sql`${type}::entity_type`),
         )})`,
       );
     }

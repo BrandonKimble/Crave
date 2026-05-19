@@ -127,9 +127,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
   },
 };
 
-export const resolveAppRouteSheetScenePolicy = (
-  sceneKey: OverlayKey
-): AppRouteSheetScenePolicy => {
+export const resolveAppRouteSheetScenePolicy = (sceneKey: OverlayKey): AppRouteSheetScenePolicy => {
   const {
     sheetTargetGroup,
     defaultFirstEntrySnap,

@@ -110,7 +110,8 @@ export const useSearchRootRuntimeFlagsRuntime = ({
         isSearchLoading: isSearchRequestLoadingRef.current,
         isSearchRequestLoadingRef,
         setSearchRequestLoading,
-        hydrationOperationId: searchSurfaceRedrawOperationId ?? resultsArrivalState.resultsRequestKey,
+        hydrationOperationId:
+          searchSurfaceRedrawOperationId ?? resultsArrivalState.resultsRequestKey,
       }),
     [
       isSearchSessionActive,

@@ -9,15 +9,11 @@ import type { useSearchScreenAppEntryPlaneRuntime } from './use-search-screen-ap
 type SearchRootRuntimeSessionAssembly = ReturnType<
   typeof useSearchRootRuntimeSessionAssemblyRuntime
 >;
-type SearchRootRuntimeStateAssembly = ReturnType<
-  typeof useSearchRootRuntimeStateAssemblyRuntime
->;
+type SearchRootRuntimeStateAssembly = ReturnType<typeof useSearchRootRuntimeStateAssemblyRuntime>;
 type SearchRootRuntimeOverlayFoundationAssembly = ReturnType<
   typeof useSearchRootRuntimeOverlayFoundationAssemblyRuntime
 >;
-type SearchRootControlAuthorityRuntime = ReturnType<
-  typeof useSearchRootControlAuthorityRuntime
->;
+type SearchRootControlAuthorityRuntime = ReturnType<typeof useSearchRootControlAuthorityRuntime>;
 type SearchRootControlProfileExperienceRuntime = ReturnType<
   typeof useSearchRootControlProfileExperienceRuntime
 >;
@@ -40,17 +36,12 @@ export const useSearchRootRuntimeMapHostPublicationStageRuntime = ({
     appEntryPlaneRuntime,
     sessionCoreLane: sessionAssemblyRuntime.sessionRuntime.sessionCoreLane,
     stateFoundationLane: stateAssemblyRuntime.stateFoundationLane,
-    mapViewportIntentRuntime:
-      overlayFoundationAssemblyRuntime.mapViewportIntentRuntime,
-    rootOverlayFoundationRuntime:
-      overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime,
+    mapViewportIntentRuntime: overlayFoundationAssemblyRuntime.mapViewportIntentRuntime,
+    rootOverlayFoundationRuntime: overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime,
     autocompleteControlLane: controlAuthorityRuntime.autocompleteControlLane,
-    suggestionInteractionControlLane:
-      profileControlRuntime.suggestionInteractionControlLane,
-    profilePresentationControlLane:
-      profileControlRuntime.profilePresentationControlLane,
+    suggestionInteractionControlLane: profileControlRuntime.suggestionInteractionControlLane,
+    profilePresentationControlLane: profileControlRuntime.profilePresentationControlLane,
     mapProfileControlLane: profileControlRuntime.mapProfileControlLane,
     resultsPresentationControlLane:
-      controlAuthorityRuntime.presentationAuthorityRuntime
-        .resultsPresentationControlLane,
+      controlAuthorityRuntime.presentationAuthorityRuntime.resultsPresentationControlLane,
   });

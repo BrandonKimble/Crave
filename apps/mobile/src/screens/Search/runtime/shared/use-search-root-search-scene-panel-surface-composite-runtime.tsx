@@ -73,19 +73,16 @@ export const useSearchRootSearchScenePanelSurfaceCompositeRuntime = ({
     interactionFrostAnimatedStyle,
     surfaceContentRuntime: surfaceContent,
   });
-  const overlayComponent = React.useMemo(
-    () => {
-      const overlay = React.createElement(React.Fragment, null, washOverlay, surfaceOverlay);
-      return onProfilerRender ? (
-        <React.Profiler id="SearchResultsLoadingCoverSurface" onRender={onProfilerRender}>
-          {overlay}
-        </React.Profiler>
-      ) : (
-        overlay
-      );
-    },
-    [onProfilerRender, surfaceOverlay, washOverlay]
-  );
+  const overlayComponent = React.useMemo(() => {
+    const overlay = React.createElement(React.Fragment, null, washOverlay, surfaceOverlay);
+    return onProfilerRender ? (
+      <React.Profiler id="SearchResultsLoadingCoverSurface" onRender={onProfilerRender}>
+        {overlay}
+      </React.Profiler>
+    ) : (
+      overlay
+    );
+  }, [onProfilerRender, surfaceOverlay, washOverlay]);
 
   return React.useMemo(
     () => ({

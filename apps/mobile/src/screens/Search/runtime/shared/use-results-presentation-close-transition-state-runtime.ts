@@ -54,7 +54,6 @@ type ResultsPresentationCloseTransitionStateRuntime = {
 
 const DISMISS_BOUNDARY_FINALIZE_DEFER_MS = 48;
 
-
 type ReleaseReadyCloseSnapshot = Pick<
   SearchSurfaceVisualPolicySnapshot,
   | 'canExposePersistentPolls'
@@ -345,10 +344,7 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
   );
 
   const beginCloseTransition = React.useCallback(
-    (
-      closeIntentId: string,
-      options?: { terminalDismissSource?: 'results' | 'profile' }
-    ) => {
+    (closeIntentId: string, options?: { terminalDismissSource?: 'results' | 'profile' }) => {
       collapsedBoundaryReachedAtMsRef.current = null;
       releasedCloseIntentIdRef.current = null;
       clearDeferredFinalizeTimer();

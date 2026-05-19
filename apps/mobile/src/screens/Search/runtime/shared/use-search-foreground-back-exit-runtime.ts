@@ -49,8 +49,7 @@ export const useSearchForegroundBackExitRuntime = ({
   exitPresentationRuntime,
 }: UseSearchForegroundBackExitRuntimeArgs): SearchForegroundBackExitRuntime => {
   const performImmediateSearchBack = React.useCallback(() => {
-    const shouldDeferSuggestionClear =
-      exitPresentationRuntime.requestExitEditingPresentation();
+    const shouldDeferSuggestionClear = exitPresentationRuntime.requestExitEditingPresentation();
     if (shouldTreatSearchAsResults) {
       setIsAutocompleteSuppressed(true);
       const nextQuery = searchSessionQueryRef.current.trim();

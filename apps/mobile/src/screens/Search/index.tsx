@@ -21,45 +21,43 @@ import type { SearchRootRuntimeStageRuntime } from './runtime/shared/search-root
 import { useSearchRootRuntimeStageRuntime } from './runtime/shared/use-search-root-runtime-stage-runtime';
 import { useSearchScreenAppEntryPlaneRuntime } from './runtime/shared/use-search-screen-app-entry-plane-runtime';
 
-const SearchRootCompositionHost = React.memo(
-  function SearchRootCompositionHost({
-    searchRuntimeBus,
-    resultsPresentationAuthority,
-    resultsPresentationSurfaceAuthority,
-    searchMapSourceFramePort,
-    mapRenderHostAuthority,
-    onProfilerRender,
-  }: {
-    searchRuntimeBus: SearchRuntimeBus;
-    resultsPresentationAuthority: ResultsPresentationAuthority;
-    resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
-    searchMapSourceFramePort: SearchMapSourceFramePort;
-    mapRenderHostAuthority: SearchMapRenderHostAuthority;
-    onProfilerRender: SearchRootRuntimeStageRuntime['onProfilerRender'];
-  }) {
-    const searchRootComposition = (
-      <SearchRuntimeBusContext.Provider value={searchRuntimeBus}>
-        <ResultsPresentationAuthorityContext.Provider value={resultsPresentationAuthority}>
-          <ResultsPresentationSurfaceAuthorityContext.Provider
-            value={resultsPresentationSurfaceAuthority}
-          >
-            <SearchMapSourceFramePortContext.Provider value={searchMapSourceFramePort}>
-              <SearchMapRenderSurface mapRenderHostAuthority={mapRenderHostAuthority} />
-            </SearchMapSourceFramePortContext.Provider>
-          </ResultsPresentationSurfaceAuthorityContext.Provider>
-        </ResultsPresentationAuthorityContext.Provider>
-      </SearchRuntimeBusContext.Provider>
-    );
+const SearchRootCompositionHost = React.memo(function SearchRootCompositionHost({
+  searchRuntimeBus,
+  resultsPresentationAuthority,
+  resultsPresentationSurfaceAuthority,
+  searchMapSourceFramePort,
+  mapRenderHostAuthority,
+  onProfilerRender,
+}: {
+  searchRuntimeBus: SearchRuntimeBus;
+  resultsPresentationAuthority: ResultsPresentationAuthority;
+  resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
+  searchMapSourceFramePort: SearchMapSourceFramePort;
+  mapRenderHostAuthority: SearchMapRenderHostAuthority;
+  onProfilerRender: SearchRootRuntimeStageRuntime['onProfilerRender'];
+}) {
+  const searchRootComposition = (
+    <SearchRuntimeBusContext.Provider value={searchRuntimeBus}>
+      <ResultsPresentationAuthorityContext.Provider value={resultsPresentationAuthority}>
+        <ResultsPresentationSurfaceAuthorityContext.Provider
+          value={resultsPresentationSurfaceAuthority}
+        >
+          <SearchMapSourceFramePortContext.Provider value={searchMapSourceFramePort}>
+            <SearchMapRenderSurface mapRenderHostAuthority={mapRenderHostAuthority} />
+          </SearchMapSourceFramePortContext.Provider>
+        </ResultsPresentationSurfaceAuthorityContext.Provider>
+      </ResultsPresentationAuthorityContext.Provider>
+    </SearchRuntimeBusContext.Provider>
+  );
 
-    return onProfilerRender ? (
-      <React.Profiler id="SearchRootComposition" onRender={onProfilerRender}>
-        {searchRootComposition}
-      </React.Profiler>
-    ) : (
-      searchRootComposition
-    );
-  }
-);
+  return onProfilerRender ? (
+    <React.Profiler id="SearchRootComposition" onRender={onProfilerRender}>
+      {searchRootComposition}
+    </React.Profiler>
+  ) : (
+    searchRootComposition
+  );
+});
 
 const SearchScreen: React.FC = () => {
   const appEntryPlaneRuntime = useSearchScreenAppEntryPlaneRuntime();

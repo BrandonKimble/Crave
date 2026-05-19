@@ -26,7 +26,15 @@ const DISMISS_PROOF_COLLAPSED_CLEARANCE_PX_MIN = {
   resultsDismissMid: 240,
 };
 const FRAME_ACTUAL_TIME_MAX_DELTA_SECONDS = 0.05;
-const FRAME_EXTRACTION_RETRY_OFFSETS_SECONDS = [0, 1 / 120, -1 / 120, 1 / 60, -1 / 60, 1 / 30, -1 / 30];
+const FRAME_EXTRACTION_RETRY_OFFSETS_SECONDS = [
+  0,
+  1 / 120,
+  -1 / 120,
+  1 / 60,
+  -1 / 60,
+  1 / 30,
+  -1 / 30,
+];
 
 if (process.argv.includes('--self-test')) {
   const representativeLine =
@@ -198,9 +206,7 @@ const findBoundaryRestoreEvent = () => {
     bottomHandoff
   );
 };
-const boundaryRestore = bottomHandoff
-  ? findBoundaryRestoreEvent()
-  : null;
+const boundaryRestore = bottomHandoff ? findBoundaryRestoreEvent() : null;
 
 if (!dismissPress || !bottomHandoff || !boundaryRestore) {
   fail('missing dismiss press, bottom handoff, or boundary restore telemetry');
@@ -417,16 +423,17 @@ const findCloseProof = () => {
   return (
     firstMotionEvent ??
     byEvent('nav_cutout_lockstep_contract').find(
-    (event) =>
-      event.line > dismissPress.line &&
-      event.line < bottomHandoff.line &&
-      event.payload.navMotionTarget === 'show' &&
-      event.payload.isResultsClosing === true &&
-      event.payload.searchSurfacePhase === 'results_dismissing' &&
-      event.payload.searchSurfaceBottomBandOwner === 'results_header' &&
-      event.payload.searchSurfaceCanReleasePersistentPolls === false &&
-      event.payload.sheetMotionSource === 'routeSheetMotionCommandObservedBySearchSurfaceMotionPlane' &&
-      event.payload.navReturnProgressSource === 'bottomNavTiming'
+      (event) =>
+        event.line > dismissPress.line &&
+        event.line < bottomHandoff.line &&
+        event.payload.navMotionTarget === 'show' &&
+        event.payload.isResultsClosing === true &&
+        event.payload.searchSurfacePhase === 'results_dismissing' &&
+        event.payload.searchSurfaceBottomBandOwner === 'results_header' &&
+        event.payload.searchSurfaceCanReleasePersistentPolls === false &&
+        event.payload.sheetMotionSource ===
+          'routeSheetMotionCommandObservedBySearchSurfaceMotionPlane' &&
+        event.payload.navReturnProgressSource === 'bottomNavTiming'
     )
   );
 };
@@ -443,7 +450,8 @@ const findProofStage = (stage, progressMin, progressMax) =>
       progress <= progressMax &&
       event.payload.resultSheetSlidingDown === true &&
       event.payload.boundaryReached !== true &&
-      event.payload.sheetMotionSource === 'routeSheetMotionCommandObservedBySearchSurfaceMotionPlane' &&
+      event.payload.sheetMotionSource ===
+        'routeSheetMotionCommandObservedBySearchSurfaceMotionPlane' &&
       event.payload.navReturnProgressSource === 'bottomNavTiming'
     );
   });
@@ -459,7 +467,8 @@ const findFirstSlidingProof = (progressMin, progressMax) =>
       progress <= progressMax &&
       event.payload.resultSheetSlidingDown === true &&
       event.payload.boundaryReached !== true &&
-      event.payload.sheetMotionSource === 'routeSheetMotionCommandObservedBySearchSurfaceMotionPlane' &&
+      event.payload.sheetMotionSource ===
+        'routeSheetMotionCommandObservedBySearchSurfaceMotionPlane' &&
       event.payload.navReturnProgressSource === 'bottomNavTiming'
     );
   });
@@ -604,7 +613,11 @@ const proofs = [
     'search-visual-results-close-press-up',
     projectMotionProofHostTime(findCloseProof() ?? earlyProofEvent),
   ],
-  ['resultsDismissEarly', 'search-visual-results-dismiss-early', projectMotionProofHostTime(earlyProofEvent)],
+  [
+    'resultsDismissEarly',
+    'search-visual-results-dismiss-early',
+    projectMotionProofHostTime(earlyProofEvent),
+  ],
   [
     'resultsDismissMid',
     'search-visual-results-dismiss-mid',
@@ -727,10 +740,7 @@ for (const [key, basename, event] of proofs) {
         }
         const resultToggleStripVisible =
           key === 'resultsDismissEarly' || key === 'resultsDismissMid'
-            ? hasResultToggleStrip(
-                candidatePng,
-                visualContractSheetTopPx ?? detectedSheetTopPx
-              )
+            ? hasResultToggleStrip(candidatePng, visualContractSheetTopPx ?? detectedSheetTopPx)
             : true;
         const score =
           visualDismissBounds != null
@@ -838,10 +848,7 @@ for (const [key, basename, event] of proofs) {
           const candidatePayload = extractFrame(candidateTime, candidatePath);
           const boundaryFrame = readPng(candidatePath);
           const detectedSheetTopPx = detectSheetTopPx(boundaryFrame);
-          const resultToggleStripVisible = hasResultToggleStrip(
-            boundaryFrame,
-            detectedSheetTopPx
-          );
+          const resultToggleStripVisible = hasResultToggleStrip(boundaryFrame, detectedSheetTopPx);
           if (!resultToggleStripVisible) {
             selected = {
               candidatePath,

@@ -19,9 +19,7 @@ import { useSearchRootProfileBridgeAuthorityRuntime } from './use-search-root-pr
 import { useSearchRootRecentActivityAuthorityRuntime } from './use-search-root-recent-activity-authority-runtime';
 import { useSearchRootResultsScrollAuthorityRuntime } from './use-search-root-results-scroll-authority-runtime';
 import { useSearchRootRequestExecutionAuthorityRuntime } from './use-search-root-request-execution-authority-runtime';
-import type {
-  SearchRootSessionCoreLane,
-} from './use-search-root-session-runtime-contract';
+import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
 
 type UseSearchRootControlFoundationAuthorityRuntimeArgs = {
   sessionCoreLane: SearchRootSessionCoreLane;
@@ -47,26 +45,22 @@ export const useSearchRootControlFoundationAuthorityRuntime = ({
   stateFoundationLane,
   rootOverlayFoundationRuntime,
 }: UseSearchRootControlFoundationAuthorityRuntimeArgs): SearchRootControlFoundationAuthorityRuntime => {
-  const requestExecutionAuthorityRuntime =
-    useSearchRootRequestExecutionAuthorityRuntime({
-      sessionCoreLane,
-      mapViewportIntentRuntime,
-      stateFoundationLane,
-      rootOverlayFoundationRuntime,
-    });
-  const autocompleteAuthorityRuntime =
-    useSearchRootAutocompleteAuthorityRuntime({
-      sessionCoreLane,
-      stateFoundationLane,
-    });
-  const mutationCancelAuthorityRuntime =
-    useSearchRootMutationCancelAuthorityRuntime();
+  const requestExecutionAuthorityRuntime = useSearchRootRequestExecutionAuthorityRuntime({
+    sessionCoreLane,
+    mapViewportIntentRuntime,
+    stateFoundationLane,
+    rootOverlayFoundationRuntime,
+  });
+  const autocompleteAuthorityRuntime = useSearchRootAutocompleteAuthorityRuntime({
+    sessionCoreLane,
+    stateFoundationLane,
+  });
+  const mutationCancelAuthorityRuntime = useSearchRootMutationCancelAuthorityRuntime();
   const resultsScrollAuthorityRuntime = useSearchRootResultsScrollAuthorityRuntime({
     stateFoundationLane,
     rootOverlayFoundationRuntime,
   });
-  const profileBridgeAuthorityRuntime =
-    useSearchRootProfileBridgeAuthorityRuntime();
+  const profileBridgeAuthorityRuntime = useSearchRootProfileBridgeAuthorityRuntime();
   const recentActivityAuthorityRuntime = useSearchRootRecentActivityAuthorityRuntime({
     stateFoundationLane,
   });
@@ -89,8 +83,7 @@ export const useSearchRootControlFoundationAuthorityRuntime = ({
       recentActivityAuthorityRuntime,
       resultsScrollAuthorityRuntime,
       clearRestoreAuthorityRuntime,
-      autocompleteControlPort:
-        autocompleteAuthorityRuntime.autocompleteControlPort,
+      autocompleteControlPort: autocompleteAuthorityRuntime.autocompleteControlPort,
     }),
     [
       autocompleteAuthorityRuntime,

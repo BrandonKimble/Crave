@@ -1,9 +1,6 @@
 import React from 'react';
 import { StyleSheet, useWindowDimensions } from 'react-native';
-import Reanimated, {
-  useAnimatedProps,
-  useAnimatedStyle,
-} from 'react-native-reanimated';
+import Reanimated, { useAnimatedProps, useAnimatedStyle } from 'react-native-reanimated';
 
 import {
   APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE,
@@ -201,10 +198,7 @@ export const SearchRouteSheetFrameHost = React.memo(
         navTranslateY: { value: 0 },
       };
     }, []);
-    const sheetMaskRuntime = useRouteAuthoritySelector<
-      RouteHostVisualRuntime,
-      SheetMaskRuntime
-    >({
+    const sheetMaskRuntime = useRouteAuthoritySelector<RouteHostVisualRuntime, SheetMaskRuntime>({
       subscribe: React.useCallback(
         (listener: () => void) => routeHostVisualRuntimeAuthority.subscribe(listener),
         [routeHostVisualRuntimeAuthority]

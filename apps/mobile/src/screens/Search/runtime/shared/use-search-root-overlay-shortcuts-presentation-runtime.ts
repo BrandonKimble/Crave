@@ -10,14 +10,10 @@ export const useSearchRootOverlayShortcutsPresentationRuntime = ({
   React.useMemo(
     () => ({
       shouldMountSearchShortcuts: visualRuntime.shouldMountSearchShortcuts,
-      shouldEnableSearchShortcutsInteraction:
-        visualRuntime.shouldEnableSearchShortcutsInteraction,
-      searchShortcutsAnimatedStyle:
-        visualRuntime.searchShortcutsAnimatedStyle,
-      searchShortcutChipAnimatedStyle:
-        visualRuntime.searchShortcutChipAnimatedStyle,
-      searchShortcutContentAnimatedStyle:
-        visualRuntime.searchShortcutContentAnimatedStyle,
+      shouldEnableSearchShortcutsInteraction: visualRuntime.shouldEnableSearchShortcutsInteraction,
+      searchShortcutsAnimatedStyle: visualRuntime.searchShortcutsAnimatedStyle,
+      searchShortcutChipAnimatedStyle: visualRuntime.searchShortcutChipAnimatedStyle,
+      searchShortcutContentAnimatedStyle: visualRuntime.searchShortcutContentAnimatedStyle,
     }),
     [
       visualRuntime.searchShortcutContentAnimatedStyle,

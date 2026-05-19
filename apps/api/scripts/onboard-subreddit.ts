@@ -277,7 +277,7 @@ const resolveExistingMarketKey = async (
   const resolveNumber = (
     value: Prisma.Decimal | number | null,
   ): number | null =>
-    value instanceof Prisma.Decimal ? value.toNumber() : value ?? null;
+    value instanceof Prisma.Decimal ? value.toNumber() : (value ?? null);
 
   const containingMarkets = marketCandidates
     .map((row) => {
@@ -326,22 +326,25 @@ const resolveExistingMarketKey = async (
 
   if (containingMarkets.length) {
     const epsilon = 1e-6;
-    const best = containingMarkets.reduce((winner, candidate) => {
-      if (!winner || candidate.area < winner.area - epsilon) {
-        return candidate;
-      }
-      if (Math.abs(candidate.area - winner.area) <= epsilon) {
-        const candidateDistance = computeDistanceMiles(
-          center,
-          candidate.center,
-        );
-        const winnerDistance = computeDistanceMiles(center, winner.center);
-        if (candidateDistance < winnerDistance) {
+    const best = containingMarkets.reduce(
+      (winner, candidate) => {
+        if (!winner || candidate.area < winner.area - epsilon) {
           return candidate;
         }
-      }
-      return winner;
-    }, null as (typeof containingMarkets)[number] | null);
+        if (Math.abs(candidate.area - winner.area) <= epsilon) {
+          const candidateDistance = computeDistanceMiles(
+            center,
+            candidate.center,
+          );
+          const winnerDistance = computeDistanceMiles(center, winner.center);
+          if (candidateDistance < winnerDistance) {
+            return candidate;
+          }
+        }
+        return winner;
+      },
+      null as (typeof containingMarkets)[number] | null,
+    );
 
     const rawKey = best?.marketKey?.trim() || best?.name?.trim() || null;
     return rawKey ? normalizeMarketKey(rawKey) : null;
@@ -655,7 +658,7 @@ async function onboardSubreddit() {
       const derivedCenter =
         params.centerLat !== null && params.centerLng !== null
           ? { lat: params.centerLat, lng: params.centerLng }
-          : viewportCenter ?? null;
+          : (viewportCenter ?? null);
       const marketCenter = derivedCenter;
 
       let resolvedMarketKey =

@@ -60,11 +60,5 @@ export const useResultsPresentationOwnerValueRuntime = ({
         closeTransitionActions,
         interactionModel,
       }),
-    [
-      closeTransitionActions,
-      interactionModel,
-      presentationActions,
-      resultsRuntimeOwner,
-      shellModel,
-    ]
+    [closeTransitionActions, interactionModel, presentationActions, resultsRuntimeOwner, shellModel]
   );

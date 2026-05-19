@@ -24,9 +24,7 @@ export const executePreparedProfileCommandPayload = ({
   commandExecutionRuntime: PreparedProfileCommandExecutionRuntime;
 }): void => {
   const {
-    nativeCommandExecutionModel: {
-      commitProfileCameraTargetCommand,
-    },
+    nativeCommandExecutionModel: { commitProfileCameraTargetCommand },
     setProfileCameraPadding,
     handleCommandCompletionEvent,
   } = commandExecutionRuntime;

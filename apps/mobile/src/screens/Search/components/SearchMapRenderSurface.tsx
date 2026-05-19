@@ -55,26 +55,16 @@ const areSearchMapRenderShellGateSnapshotsEqual = (
   left.disableBlur === right.disableBlur;
 
 export const SearchMapRenderSurface = React.memo(
-  ({
-    mapRenderHostAuthority,
-  }: {
-    mapRenderHostAuthority: SearchMapRenderHostAuthority;
-  }) => {
+  ({ mapRenderHostAuthority }: { mapRenderHostAuthority: SearchMapRenderHostAuthority }) => {
     const subscribeShellGate = React.useCallback(
       (
-        selector: (
-          snapshot: SearchMapRenderHostLayerRuntime
-        ) => SearchMapRenderShellGateSnapshot,
+        selector: (snapshot: SearchMapRenderHostLayerRuntime) => SearchMapRenderShellGateSnapshot,
         listener: () => void,
         isEqual = Object.is,
         attributionLabel?: string
       ) =>
-        mapRenderHostAuthority.subscribeSelector?.(
-          selector,
-          listener,
-          isEqual,
-          attributionLabel
-        ) ?? mapRenderHostAuthority.subscribe(listener),
+        mapRenderHostAuthority.subscribeSelector?.(selector, listener, isEqual, attributionLabel) ??
+        mapRenderHostAuthority.subscribe(listener),
       [mapRenderHostAuthority]
     );
 

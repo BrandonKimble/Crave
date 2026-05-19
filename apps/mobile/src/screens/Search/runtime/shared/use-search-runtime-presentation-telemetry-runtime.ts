@@ -88,9 +88,5 @@ export const useSearchRuntimePresentationTelemetryRuntime = ({
       unsubscribeRuntime();
       unsubscribePresentation();
     };
-  }, [
-    emitPresentationTelemetrySnapshot,
-    resultsPresentationAuthority,
-    searchRuntimeBus,
-  ]);
+  }, [emitPresentationTelemetrySnapshot, resultsPresentationAuthority, searchRuntimeBus]);
 };

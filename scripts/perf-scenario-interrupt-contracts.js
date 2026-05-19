@@ -48,7 +48,8 @@ const resolvedReportPath = path.resolve(reportPath);
 const report = readJson(resolvedReportPath);
 const config = readJson(visualConfigPath);
 const linePattern = /\[SearchPerf\]\[([^\]]+)\]\s+({.*})/;
-const scenarioRunIdPattern = /(?:^|[^A-Za-z0-9_])(scenario-[A-Za-z0-9_]+-\d{8}T\d{6}Z-[A-Za-z0-9]+)(?=$|[^A-Za-z0-9_])/g;
+const scenarioRunIdPattern =
+  /(?:^|[^A-Za-z0-9_])(scenario-[A-Za-z0-9_]+-\d{8}T\d{6}Z-[A-Za-z0-9]+)(?=$|[^A-Za-z0-9_])/g;
 
 const deriveScenarioRunIdFromPath = (filePath) => {
   if (typeof filePath !== 'string' || filePath.length === 0) {
@@ -128,7 +129,9 @@ const expectedRunId =
   deriveScenarioRunIdFromPath(report.logPath) ??
   null;
 const expectedScenarioName = reportScenarioName ?? deriveScenarioNameFromRunId(expectedRunId);
-const scenarioConfigs = rawScenarioEvents.filter((event) => event.event === 'scenario_config_received');
+const scenarioConfigs = rawScenarioEvents.filter(
+  (event) => event.event === 'scenario_config_received'
+);
 const matchingConfigs = expectedRunId
   ? scenarioConfigs.filter((event) => event.scenarioRunId === expectedRunId)
   : [];
@@ -154,9 +157,7 @@ const activeClear = rawScenarioEvents.find(
 const nextConfig = activeConfig
   ? scenarioConfigs.find((event) => event.line > activeConfig.line)
   : null;
-const reportEndLine = reportWindow?.endLine
-  ? { line: reportWindow.endLine }
-  : null;
+const reportEndLine = reportWindow?.endLine ? { line: reportWindow.endLine } : null;
 const activeEnd = earliestByLine([activeClear, nextConfig]) ?? reportEndLine;
 const activeEndLine = activeEnd?.line ?? Number.MAX_SAFE_INTEGER;
 const currentRunEvents = rawEvents.filter(
@@ -215,7 +216,8 @@ const isAfter = (event, floorEvent) =>
 const isBefore = (event, ceilingEvent) =>
   eventTime(event) < eventTime(ceilingEvent) ||
   (eventTime(event) === eventTime(ceilingEvent) && event.line < ceilingEvent.line);
-const between = (event, startEvent, endEvent) => isAfter(event, startEvent) && isBefore(event, endEvent);
+const between = (event, startEvent, endEvent) =>
+  isAfter(event, startEvent) && isBefore(event, endEvent);
 const withinMsAfter = (event, startEvent, toleranceMs) => {
   const deltaMs = eventTime(event) - eventTime(startEvent);
   return deltaMs >= 0 && deltaMs <= toleranceMs;
@@ -237,7 +239,11 @@ if (activeScenarioName !== 'search_submit_dismiss_interrupt') {
   );
 } else {
   pass(
-    `active interrupt run selected scenarioRunId=${activeRunId ?? '<unknown>'} measuredLines=${contractStartLine}-${contractEndLine} visualLines=${contractStartLine}-${visualEndLine} visualEvents=${visualEvents.length}`
+    `active interrupt run selected scenarioRunId=${
+      activeRunId ?? '<unknown>'
+    } measuredLines=${contractStartLine}-${contractEndLine} visualLines=${contractStartLine}-${visualEndLine} visualEvents=${
+      visualEvents.length
+    }`
   );
 }
 
@@ -280,9 +286,12 @@ const requireDismissFanout = (dismissEvent, nextBoundaryEvent, label) => {
     dismissEvent.shortcutsFadeInRequested !== true ||
     dismissEvent.pinsLabelsDotsFadeOutRequested !== true ||
     dismissEvent.pinsLabelsFadeOutRequested !== true ||
-    (dismissEvent.resultSheetBeginsSlidingDown !== true && dismissEvent.pollsSwitchImmediate !== true);
+    (dismissEvent.resultSheetBeginsSlidingDown !== true &&
+      dismissEvent.pollsSwitchImmediate !== true);
   if (badPressPayload) {
-    fail(`${label} dismiss press-up did not hold outgoing results while starting marker/sheet exit`);
+    fail(
+      `${label} dismiss press-up did not hold outgoing results while starting marker/sheet exit`
+    );
   } else {
     pass(`${label} dismiss press-up held outgoing results while starting marker/sheet exit`);
   }
@@ -332,7 +341,11 @@ const requireDismissFanout = (dismissEvent, nextBoundaryEvent, label) => {
   if (!headerHold) {
     fail(`${label} header did not hold outgoing results before boundary`);
   } else if (!withinMsAfter(headerHold, dismissEvent, 180)) {
-    fail(`${label} header hold lagged dismiss by ${Math.round(eventTime(headerHold) - eventTime(dismissEvent))}ms`);
+    fail(
+      `${label} header hold lagged dismiss by ${Math.round(
+        eventTime(headerHold) - eventTime(dismissEvent)
+      )}ms`
+    );
   } else {
     pass(`${label} header hold started with dismiss`);
   }
@@ -351,7 +364,9 @@ const requireDismissFanout = (dismissEvent, nextBoundaryEvent, label) => {
       event.bottomBandOwner !== 'results_header'
   );
   if (badHeaderRelease) {
-    fail(`${label} header released outgoing results before boundary at line ${badHeaderRelease.line}`);
+    fail(
+      `${label} header released outgoing results before boundary at line ${badHeaderRelease.line}`
+    );
   } else {
     pass(`${label} header did not release outgoing results before boundary`);
   }
@@ -366,7 +381,9 @@ const requireDismissFanout = (dismissEvent, nextBoundaryEvent, label) => {
       event.hasStableHeaderChromeForRender !== true
   );
   if (badHeaderSourceRelease) {
-    fail(`${label} dropped cards/header to strip-only before boundary at line ${badHeaderSourceRelease.line}`);
+    fail(
+      `${label} dropped cards/header to strip-only before boundary at line ${badHeaderSourceRelease.line}`
+    );
   } else {
     pass(`${label} kept cards/header source mounted before boundary`);
   }
@@ -377,11 +394,17 @@ const requireDismissFanout = (dismissEvent, nextBoundaryEvent, label) => {
     nextBoundaryEvent,
     (event) => event.requestKey == null || event.requestKey === dismissEvent.transactionId
   );
-  const anyMarkerExit = markerExit ?? firstBetween(byEvent('native_marker_exit_started'), dismissEvent, nextBoundaryEvent);
+  const anyMarkerExit =
+    markerExit ??
+    firstBetween(byEvent('native_marker_exit_started'), dismissEvent, nextBoundaryEvent);
   if (!anyMarkerExit) {
     fail(`${label} marker exit did not start before bottom handoff`);
   } else if (!withinMsAfter(anyMarkerExit, dismissEvent, 180)) {
-    fail(`${label} marker exit lagged dismiss by ${Math.round(eventTime(anyMarkerExit) - eventTime(dismissEvent))}ms`);
+    fail(
+      `${label} marker exit lagged dismiss by ${Math.round(
+        eventTime(anyMarkerExit) - eventTime(dismissEvent)
+      )}ms`
+    );
   } else {
     pass(`${label} marker exit started with dismiss`);
   }
@@ -463,11 +486,15 @@ const requireFullSubmitCycle = (submitEvent, endEvent, label) => {
   } else if (!markerStarted) {
     fail(`${label} missing native marker enter start for ${transactionId}`);
   } else if (!coverReveal) {
-    fail(`${label} missing cover/card reveal start aligned with native marker enter for ${transactionId}`);
+    fail(
+      `${label} missing cover/card reveal start aligned with native marker enter for ${transactionId}`
+    );
   } else if (!markerSettled) {
     fail(`${label} missing native marker enter settle for ${transactionId}`);
   } else {
-    pass(`${label} mounted-hidden, cover/card reveal, marker enter, and settle matched ${transactionId}`);
+    pass(
+      `${label} mounted-hidden, cover/card reveal, marker enter, and settle matched ${transactionId}`
+    );
   }
 };
 
@@ -479,7 +506,10 @@ assertNoSourceMatch(
   'routePollsSceneRuntime.sceneAuthority.subscribe delete gate',
   'routePollsSceneRuntime\\.sceneAuthority\\.subscribe'
 );
-assertNoSourceMatch('polls panel sheet control runtime delete gate', 'polls-panel-sheet-control-runtime');
+assertNoSourceMatch(
+  'polls panel sheet control runtime delete gate',
+  'polls-panel-sheet-control-runtime'
+);
 assertNoSourceMatch(
   'routeOverlayChromeModeAuthority.subscribe delete gate',
   'routeOverlayChromeModeAuthority\\.subscribe'
@@ -553,8 +583,7 @@ if (firstDismiss) {
   const firstBoundaryBeforeBottom = firstBottomBeforeResubmit
     ? firstBetween(collapsedBoundaryEvents, firstDismiss, firstBottomBeforeResubmit)
     : null;
-  const firstHandoffBoundary =
-    firstBottomBeforeResubmit ??
+  const firstHandoffBoundary = firstBottomBeforeResubmit ??
     secondSubmit ?? { line: Number.MAX_SAFE_INTEGER, emittedAtMs: Number.MAX_SAFE_INTEGER };
   requireDismissFanout(firstDismiss, firstHandoffBoundary, 'first interrupt');
   if (firstBottomBeforeResubmit && !firstBoundaryBeforeBottom) {
@@ -569,13 +598,17 @@ if (firstDismiss) {
     pass('first interrupt did not bottom-handoff before resubmit');
   }
   if (!secondSubmit) {
-    fail('first interrupt could not prove resubmit before bottom handoff because second submit is missing');
+    fail(
+      'first interrupt could not prove resubmit before bottom handoff because second submit is missing'
+    );
   } else if (firstBottomBeforeResubmit) {
     fail(
       `resubmit did not interrupt dismiss before bottom handoff: submit ${secondSubmit.transactionId} at line ${secondSubmit.line}, bottom handoff at line ${firstBottomBeforeResubmit.line}`
     );
   } else {
-    pass(`resubmit interrupted dismiss before any bottom handoff with ${secondSubmit.transactionId}`);
+    pass(
+      `resubmit interrupted dismiss before any bottom handoff with ${secondSubmit.transactionId}`
+    );
   }
   const earlyPolls = firstBetween(
     byEvent('search_header_visual_contract'),
@@ -584,14 +617,19 @@ if (firstDismiss) {
     (event) => event.searchSheetContentLaneKind === 'persistent_poll'
   );
   if (earlyPolls) {
-    fail(`first interrupt switched to persistent polls before bottom handoff at line ${earlyPolls.line}`);
+    fail(
+      `first interrupt switched to persistent polls before bottom handoff at line ${earlyPolls.line}`
+    );
   } else {
     pass('first interrupt kept results sheet content until resubmit/handoff boundary');
   }
 }
 
 if (secondSubmit) {
-  const secondEnd = finalDismiss ?? { line: Number.MAX_SAFE_INTEGER, emittedAtMs: Number.MAX_SAFE_INTEGER };
+  const secondEnd = finalDismiss ?? {
+    line: Number.MAX_SAFE_INTEGER,
+    emittedAtMs: Number.MAX_SAFE_INTEGER,
+  };
   if (
     secondSubmit.coverState !== 'initial_loading' ||
     secondSubmit.loadingStateVisible !== true ||
@@ -613,36 +651,38 @@ if (finalDismiss) {
   requireDismissFanout(finalDismiss, finalBottom, 'final dismiss');
 }
 
-const badBottomHandoff = bottomHandoffEvents.find(
-  (event) => {
-    const releaseDelayMs = numeric(event.releaseDelayAfterCollapsedBoundaryMs);
-    return (
-      event.persistentPollsSwitchAtBottomSnap !== true ||
-      event.snap !== 'collapsed' ||
-      event.boundaryTrigger !== 'collapsed_motion_plane_boundary' ||
-      event.canExposePersistentPolls !== true ||
-      event.canReleasePersistentPolls !== true ||
-      event.isPersistentPollHostReady !== true ||
-      event.releasedAtCollapsedBoundary !== true ||
-      releaseDelayMs == null ||
-      releaseDelayMs > MAX_HANDOFF_RELEASE_DELAY_MS
-    );
-  }
-);
+const badBottomHandoff = bottomHandoffEvents.find((event) => {
+  const releaseDelayMs = numeric(event.releaseDelayAfterCollapsedBoundaryMs);
+  return (
+    event.persistentPollsSwitchAtBottomSnap !== true ||
+    event.snap !== 'collapsed' ||
+    event.boundaryTrigger !== 'collapsed_motion_plane_boundary' ||
+    event.canExposePersistentPolls !== true ||
+    event.canReleasePersistentPolls !== true ||
+    event.isPersistentPollHostReady !== true ||
+    event.releasedAtCollapsedBoundary !== true ||
+    releaseDelayMs == null ||
+    releaseDelayMs > MAX_HANDOFF_RELEASE_DELAY_MS
+  );
+});
 const bottomHandoffWithoutBoundary = bottomHandoffEvents.find(
   (handoff) => !collapsedBoundaryEvents.some((boundary) => isBefore(boundary, handoff))
 );
 if (badBottomHandoff) {
   fail(`bottom handoff switched incorrectly at line ${badBottomHandoff.line}`);
 } else if (bottomHandoffWithoutBoundary) {
-  fail(`bottom handoff at line ${bottomHandoffWithoutBoundary.line} is missing a prior collapsed visual boundary`);
+  fail(
+    `bottom handoff at line ${bottomHandoffWithoutBoundary.line} is missing a prior collapsed visual boundary`
+  );
 } else if (bottomHandoffEvents.length > 0) {
   pass(`bottom handoff releases at collapsed visual boundary events=${bottomHandoffEvents.length}`);
 }
 
 const toggleStartEvent = firstSubmit ?? { line: 0, emittedAtMs: 0 };
-const toggleEndEvent =
-  finalDismiss ?? { line: Number.MAX_SAFE_INTEGER, emittedAtMs: Number.MAX_SAFE_INTEGER };
+const toggleEndEvent = finalDismiss ?? {
+  line: Number.MAX_SAFE_INTEGER,
+  emittedAtMs: Number.MAX_SAFE_INTEGER,
+};
 const toggleEvents = byEvent('search_results_toggle_bar_contract').filter((event) =>
   between(event, toggleStartEvent, toggleEndEvent)
 );
@@ -670,7 +710,7 @@ if (toggleEvents.length === 0) {
 const headerSourceEvents = byEvent('search_results_header_source_contract');
 const unstableHeader = headerSourceEvents.find(
   (event) =>
-      event.shouldShowResultsSurface === true &&
+    event.shouldShowResultsSurface === true &&
     (event.hasListHeaderForRender !== true ||
       event.hasStableHeaderChromeForRender !== true ||
       event.stableHeaderChromeLane !== 'mounted_results_list_header' ||
@@ -704,7 +744,9 @@ if (rowHeaderBoundaryEvents.length === 0) {
   });
   if (badRowBoundary) {
     fail(
-      `first result row occupied header chrome region at line ${badRowBoundary.line}: ${JSON.stringify({
+      `first result row occupied header chrome region at line ${
+        badRowBoundary.line
+      }: ${JSON.stringify({
         activeTab: badRowBoundary.activeTab,
         firstRowTopY: badRowBoundary.firstRowTopY,
         headerChromeBottomY: badRowBoundary.headerChromeBottomY,
@@ -814,12 +856,15 @@ const visualSources = byEvent('map_marker_visual_sources_contract').filter(
 const terminalEmptyCoverageEvents = byEvent('shortcut_coverage_terminal_empty_visual_contract');
 const badTerminalEmptyCoverageEvent = terminalEmptyCoverageEvents.find(
   (event) =>
-    (event.resultRestaurantCount ?? 0) > 0 &&
-    (event.pinCount ?? 0) + (event.dotCount ?? 0) === 0
+    (event.resultRestaurantCount ?? 0) > 0 && (event.pinCount ?? 0) + (event.dotCount ?? 0) === 0
 );
 if (badTerminalEmptyCoverageEvent) {
   fail(
-    `shortcut coverage terminal visual contract failed at line ${badTerminalEmptyCoverageEvent.line}: results=${badTerminalEmptyCoverageEvent.resultRestaurantCount} pins=${badTerminalEmptyCoverageEvent.pinCount ?? 0} dots=${badTerminalEmptyCoverageEvent.dotCount ?? 0}`
+    `shortcut coverage terminal visual contract failed at line ${
+      badTerminalEmptyCoverageEvent.line
+    }: results=${badTerminalEmptyCoverageEvent.resultRestaurantCount} pins=${
+      badTerminalEmptyCoverageEvent.pinCount ?? 0
+    } dots=${badTerminalEmptyCoverageEvent.dotCount ?? 0}`
   );
 } else {
   pass(`shortcut coverage terminal empty visual failures=${terminalEmptyCoverageEvents.length}`);
@@ -842,7 +887,9 @@ if (labelVisibility.length === 0) {
   const visibilityEvidence = latestLabelVisibility
     ? `latest label visibility line ${latestLabelVisibility.line}: visible=${latestLabelVisibility.visibleLabelCount} layerRendered=${latestLabelVisibility.layerRenderedFeatureCount} effective=${latestLabelVisibility.effectiveRenderedFeatureCount}`
     : 'no map_pin_label_visibility_contract event was emitted in the active measured window';
-  fail(`missing visible pin label contract in active measured window; ${sourceEvidence}; ${visibilityEvidence}`);
+  fail(
+    `missing visible pin label contract in active measured window; ${sourceEvidence}; ${visibilityEvidence}`
+  );
 } else {
   pass(`visible pin label contracts=${labelVisibility.length}`);
 }

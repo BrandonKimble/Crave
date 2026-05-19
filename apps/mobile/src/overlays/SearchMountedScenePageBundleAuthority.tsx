@@ -6,9 +6,7 @@ import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import { OVERLAY_TAB_HEADER_HEIGHT } from './overlaySheetStyles';
 import { getPerfScenarioWorkNow, logPerfScenarioWorkSpan } from '../perf/perf-scenario-work-span';
 import { useRouteAuthoritySelector } from '../navigation/runtime/use-route-authority-selector';
-import {
-  getSearchSurfaceRuntime,
-} from '../screens/Search/runtime/surface/search-surface-runtime';
+import { getSearchSurfaceRuntime } from '../screens/Search/runtime/surface/search-surface-runtime';
 import { BottomSheetSceneStackPageFrame } from './BottomSheetSceneStackPageFrame';
 import type {
   BottomSheetSceneStackBodyDefaults,
@@ -80,10 +78,7 @@ const SearchResultsPersistentBodyHost = React.memo(
   }) => {
     const onProfilerRender = useSearchOverlayProfilerRender();
     const body = (
-      <SearchMountedSceneBody
-        bodyDefaults={bodyDefaults}
-        bodyScrollRuntime={bodyScrollRuntime}
-      />
+      <SearchMountedSceneBody bodyDefaults={bodyDefaults} bodyScrollRuntime={bodyScrollRuntime} />
     );
     return onProfilerRender ? (
       <React.Profiler id="SearchResultsPersistentBodyHost" onRender={onProfilerRender}>
@@ -352,11 +347,7 @@ type SearchResultsPageBundleHostProps = {
 };
 
 export const SearchResultsPageBundleHost = React.memo(
-  ({
-    bodyDefaults,
-    bodyScrollRuntime,
-    onHeaderLayout,
-  }: SearchResultsPageBundleHostProps) => {
+  ({ bodyDefaults, bodyScrollRuntime, onHeaderLayout }: SearchResultsPageBundleHostProps) => {
     const reservedHeaderHeight = useRouteAuthoritySelector({
       subscribe: searchResultsHeaderHeightAuthority.subscribe,
       getSnapshot: searchResultsHeaderHeightAuthority.getSnapshot,

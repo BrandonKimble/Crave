@@ -41,47 +41,18 @@ type FavoriteListSummary = {
   shareEnabled: boolean;
   shareSlug?: string | null;
   updatedAt: Date;
-	  previewItems: Array<{
-	    itemId: string;
-	    label: string;
-	    subLabel?: string | null;
-	    craveScore: number;
-	  }>;
+  previewItems: Array<{
+    itemId: string;
+    label: string;
+    subLabel?: string | null;
+    craveScore: number;
+  }>;
 };
 
 type FavoritePublicScore = Pick<
   PublicEntityScore,
   'subjectId' | 'displayScore' | 'scoreDelta7d'
 >;
-
-type FavoriteListItemPreview = Prisma.FavoriteListItemGetPayload<{
-  include: {
-    restaurant: {
-      select: {
-        entityId: true;
-        name: true;
-        city: true;
-      };
-    };
-    connection: {
-      select: {
-        connectionId: true;
-        food: {
-          select: {
-            entityId: true;
-            name: true;
-          };
-        };
-        restaurant: {
-          select: {
-            entityId: true;
-            name: true;
-          };
-        };
-      };
-    };
-  };
-}>;
 
 type FavoriteListItemDetail = Prisma.FavoriteListItemGetPayload<{
   include: {
@@ -94,10 +65,6 @@ type FavoriteListItemDetail = Prisma.FavoriteListItemGetPayload<{
     };
   };
 }>;
-
-type FavoriteListWithPreviewItems = FavoriteList & {
-  items: FavoriteListItemPreview[];
-};
 
 type FavoriteListWithDetailItems = FavoriteList & {
   items: FavoriteListItemDetail[];
@@ -562,7 +529,7 @@ export class FavoriteListsService {
             itemId: item.itemId,
             label: item.restaurant.name,
             subLabel: item.restaurant.city,
-	            craveScore: this.toPublicScoreValue(
+            craveScore: this.toPublicScoreValue(
               scores.restaurantScores.get(item.restaurantId),
               CraveScoreSubjectType.restaurant,
               item.restaurantId,
@@ -578,7 +545,7 @@ export class FavoriteListsService {
             itemId: item.itemId,
             label: item.connection.food?.name ?? 'Dish',
             subLabel: item.connection.restaurant?.name ?? null,
-	            craveScore: this.toPublicScoreValue(
+            craveScore: this.toPublicScoreValue(
               scores.connectionScores.get(item.connectionId),
               CraveScoreSubjectType.connection,
               item.connectionId,
@@ -605,7 +572,7 @@ export class FavoriteListsService {
   }
 
   private async buildListDetail(list: FavoriteListWithDetailItems) {
-    const summary = await this.buildListSummary(
+    const summary = this.buildListSummary(
       list,
       await this.loadPreviewScoreMaps([list]),
     );
@@ -638,8 +605,12 @@ export class FavoriteListsService {
       });
     });
     const [restaurantScores, connectionScores] = await Promise.all([
-      this.loadPublicScores(CraveScoreSubjectType.restaurant, [...restaurantIds]),
-      this.loadPublicScores(CraveScoreSubjectType.connection, [...connectionIds]),
+      this.loadPublicScores(CraveScoreSubjectType.restaurant, [
+        ...restaurantIds,
+      ]),
+      this.loadPublicScores(CraveScoreSubjectType.connection, [
+        ...connectionIds,
+      ]),
     ]);
     return { restaurantScores, connectionScores };
   }
@@ -678,7 +649,9 @@ export class FavoriteListsService {
     return Number(score.displayScore);
   }
 
-  private toPublicScoreDelta(score: FavoritePublicScore | undefined): number | null {
+  private toPublicScoreDelta(
+    score: FavoritePublicScore | undefined,
+  ): number | null {
     return score?.scoreDelta7d == null ? null : Number(score.scoreDelta7d);
   }
 
@@ -720,7 +693,9 @@ export class FavoriteListsService {
             CraveScoreSubjectType.connection,
             food.connectionId,
           ),
-          scoreDelta7d: this.toPublicScoreDelta(topFoodScores.get(food.connectionId)),
+          scoreDelta7d: this.toPublicScoreDelta(
+            topFoodScores.get(food.connectionId),
+          ),
           activityLevel: food.activityLevel,
           totalUpvotes: food.totalUpvotes ?? 0,
         }))
@@ -732,7 +707,16 @@ export class FavoriteListsService {
           return right.totalUpvotes - left.totalUpvotes;
         })
         .slice(0, 3)
-        .map(({ totalUpvotes: _totalUpvotes, ...food }) => food);
+        .map((food) => ({
+          connectionId: food.connectionId,
+          foodId: food.foodId,
+          foodName: food.foodName,
+          scoreSubjectType: food.scoreSubjectType,
+          scoreSubjectId: food.scoreSubjectId,
+          craveScore: food.craveScore,
+          scoreDelta7d: food.scoreDelta7d,
+          activityLevel: food.activityLevel,
+        }));
 
       const primaryLocation = restaurant.primaryLocation;
       const locationResult = primaryLocation
@@ -781,7 +765,9 @@ export class FavoriteListsService {
     return results;
   }
 
-  private async mapFoodResults(items: FavoriteListItemDetail[]): Promise<FoodResult[]> {
+  private async mapFoodResults(
+    items: FavoriteListItemDetail[],
+  ): Promise<FoodResult[]> {
     const results: FoodResult[] = [];
     const connectionScores = await this.loadPublicScores(
       CraveScoreSubjectType.connection,

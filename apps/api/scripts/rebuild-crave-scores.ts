@@ -17,10 +17,7 @@ async function main(): Promise<void> {
   const prisma = new PrismaClient();
 
   try {
-    const service = new PublicCraveScoreService(
-      prisma as never,
-      noopLogger,
-    );
+    const service = new PublicCraveScoreService(prisma as never, noopLogger);
     const result = await service.rebuildAllScores();
     console.log(JSON.stringify(result, null, 2));
   } finally {

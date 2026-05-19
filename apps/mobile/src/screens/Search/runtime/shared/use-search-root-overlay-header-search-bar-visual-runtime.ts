@@ -42,20 +42,16 @@ export const useSearchRootOverlayHeaderSearchBarVisualRuntime = ({
   return React.useMemo(
     () => ({
       headerVisualModel,
-      shouldShowAutocompleteSpinnerInBar:
-        suggestionRuntime.shouldShowAutocompleteSpinnerInBar,
+      shouldShowAutocompleteSpinnerInBar: suggestionRuntime.shouldShowAutocompleteSpinnerInBar,
       searchBarInputAnimatedStyle: visualRuntime.searchBarInputAnimatedStyle,
-      searchBarContainerAnimatedStyle:
-        visualRuntime.searchBarContainerAnimatedStyle,
+      searchBarContainerAnimatedStyle: visualRuntime.searchBarContainerAnimatedStyle,
       isSuggestionScrollDismissing:
-        suggestionInteractionControlLane.suggestionInteractionRuntime
-          .isSuggestionScrollDismissing,
+        suggestionInteractionControlLane.suggestionInteractionRuntime.isSuggestionScrollDismissing,
       searchHeaderFocusProgress: suggestionRuntime.searchHeaderFocusProgress,
     }),
     [
       headerVisualModel,
-      suggestionInteractionControlLane.suggestionInteractionRuntime
-        .isSuggestionScrollDismissing,
+      suggestionInteractionControlLane.suggestionInteractionRuntime.isSuggestionScrollDismissing,
       suggestionRuntime.searchHeaderFocusProgress,
       suggestionRuntime.shouldShowAutocompleteSpinnerInBar,
       visualRuntime.searchBarContainerAnimatedStyle,

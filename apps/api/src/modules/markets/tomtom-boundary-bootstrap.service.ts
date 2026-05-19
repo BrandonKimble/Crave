@@ -621,8 +621,8 @@ export class TomTomBoundaryBootstrapService {
           ${JSON.stringify(metadata)}::jsonb AS metadata,
           ST_SetSRID(
             ST_MakePoint(${boundary.lookupPoint.lng}, ${
-      boundary.lookupPoint.lat
-    }),
+              boundary.lookupPoint.lat
+            }),
             4326
           ) AS lookup_point
       ),

@@ -28,7 +28,9 @@ export type ResultsSurfaceTransactionExecutor = (args: {
 export type ResultsSurfaceTransactionExecutionBoundary = {
   resultsRuntimeOwner: Pick<
     ResultsPresentationRuntimeOwner,
-    'cancelPresentationIntent' | 'commitSearchSurfaceResultsTransaction' | 'stageSearchSurfaceResultsTransaction'
+    | 'cancelPresentationIntent'
+    | 'commitSearchSurfaceResultsTransaction'
+    | 'stageSearchSurfaceResultsTransaction'
   >;
   getCurrentSheetSnap?: () => OverlaySheetSnap | 'hidden';
   prepareShortcutSheetTransition?: () => boolean;

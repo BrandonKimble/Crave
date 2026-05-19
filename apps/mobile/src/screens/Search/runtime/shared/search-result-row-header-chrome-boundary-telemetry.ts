@@ -56,8 +56,7 @@ const scheduleSettledBoundaryMeasurement = (measure: () => void): void => {
 
 const roundLayoutValue = (value: number): number => Math.round(value * 1000) / 1000;
 
-const isFinitePositiveLayout = (value: number): boolean =>
-  Number.isFinite(value) && value > 0;
+const isFinitePositiveLayout = (value: number): boolean => Number.isFinite(value) && value > 0;
 
 let headerChromeMeasurement: SearchResultRowHeaderChromeBoundaryMeasurement | null = null;
 let bodyViewportMeasurement: SearchResultRowHeaderChromeBoundaryMeasurement | null = null;
@@ -108,11 +107,7 @@ const tryEmitSearchResultRowHeaderChromeBoundaryContract = (): void => {
 
   const { context, firstRowTopY } = firstRowSample;
   const transactionId = context.transactionId ?? context.requestKey;
-  if (
-    transactionId == null ||
-    context.activeRowCount <= 0 ||
-    context.activeTab !== 'restaurants'
-  ) {
+  if (transactionId == null || context.activeRowCount <= 0 || context.activeTab !== 'restaurants') {
     return;
   }
 
@@ -127,10 +122,7 @@ const tryEmitSearchResultRowHeaderChromeBoundaryContract = (): void => {
     : null;
   const roundedMeasuredFirstRowTopY = roundLayoutValue(firstRowTopY);
   const roundedFirstRowTopY = roundLayoutValue(
-    Math.max(
-      firstRowTopY,
-      bodyViewportTopY ?? Number.NEGATIVE_INFINITY
-    )
+    Math.max(firstRowTopY, bodyViewportTopY ?? Number.NEGATIVE_INFINITY)
   );
   const rowHeaderOverlapPx = roundLayoutValue(
     Math.max(0, headerChromeBottomY - roundedFirstRowTopY)

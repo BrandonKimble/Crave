@@ -29,14 +29,10 @@ export const createResultsPresentationRuntimeMachineIntentRuntime = ({
     );
   },
   handlePresentationIntentAbort() {
-    ownerRuntime.applyAttempt((draft) =>
-      resolveAbortedResultsPresentationTransportAttempt(draft)
-    );
+    ownerRuntime.applyAttempt((draft) => resolveAbortedResultsPresentationTransportAttempt(draft));
   },
   commitSearchSurfaceResultsTransaction(snapshot: SearchSurfaceResultsTransaction) {
-    ownerRuntime.applyAttempt(() =>
-      resolveCommittedResultsPresentationTransportAttempt(snapshot)
-    );
+    ownerRuntime.applyAttempt(() => resolveCommittedResultsPresentationTransportAttempt(snapshot));
   },
   cancelPresentationIntent(intentId?: string) {
     ownerRuntime.applyAttempt((draft) =>

@@ -137,10 +137,6 @@ export const useSearchResultsPanelRestaurantCardMetricsRuntime = ({
       restaurantsById,
       restaurantQualityColorById,
     }),
-    [
-      canonicalRestaurantRankById,
-      restaurantsById,
-      restaurantQualityColorById,
-    ]
+    [canonicalRestaurantRankById, restaurantsById, restaurantQualityColorById]
   );
 };

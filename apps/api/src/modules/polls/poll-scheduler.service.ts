@@ -509,8 +509,8 @@ export class PollSchedulerService {
               : candidate.decisionReason
                 ? DemandScoringDecisionState.gate_reject
                 : isDebugOnlyCandidate
-                ? DemandScoringDecisionState.budget_reject
-                : DemandScoringDecisionState.near_miss,
+                  ? DemandScoringDecisionState.budget_reject
+                  : DemandScoringDecisionState.near_miss,
             decisionReason:
               (isReadyTopicCarryForward
                 ? 'ready_topic_carried_forward'
@@ -846,7 +846,7 @@ export class PollSchedulerService {
   ): Prisma.JsonObject {
     const base =
       metadata && typeof metadata === 'object' && !Array.isArray(metadata)
-        ? { ...(metadata as Prisma.JsonObject) }
+        ? { ...metadata }
         : {};
     return {
       ...base,
@@ -918,9 +918,7 @@ export class PollSchedulerService {
                 ? 'trace_all_not_published'
                 : 'not_published_this_cycle',
             traceScope:
-              traceAllCandidates && index >= 10
-                ? 'all_candidate'
-                : 'near_miss',
+              traceAllCandidates && index >= 10 ? 'all_candidate' : 'near_miss',
           }),
         ),
       ]);
@@ -951,7 +949,9 @@ export class PollSchedulerService {
       : params.topic.targetRestaurantId
         ? EntityType.restaurant
         : null;
-    const priority = this.getTopicPriority(params.topic.currentPriorityMetadata);
+    const priority = this.getTopicPriority(
+      params.topic.currentPriorityMetadata,
+    );
     const factorBreakdown =
       priority?.factors &&
       typeof priority.factors === 'object' &&

@@ -120,8 +120,7 @@ export const useBottomSheetSharedGestureRuntime = ({
   runtimeConfigValues,
 }: UseBottomSheetSharedGestureRuntimeArgs) => {
   const ownedGestureEnabledValue = useSharedValue(gestureEnabled ? 1 : 0);
-  const gestureEnabledValue =
-    runtimeConfigValues?.gestureEnabled ?? ownedGestureEnabledValue;
+  const gestureEnabledValue = runtimeConfigValues?.gestureEnabled ?? ownedGestureEnabledValue;
 
   React.useEffect(() => {
     if (runtimeConfigValues != null) {
@@ -133,10 +132,8 @@ export const useBottomSheetSharedGestureRuntime = ({
   return React.useMemo(() => {
     const resolveRuntimeSnapValues = () => {
       'worklet';
-      const runtimeExpandedSnap =
-        runtimeConfigValues?.expandedSnap.value ?? expandedSnap;
-      const runtimeCollapsedSnap =
-        runtimeConfigValues?.collapsedSnap.value ?? collapsedSnap;
+      const runtimeExpandedSnap = runtimeConfigValues?.expandedSnap.value ?? expandedSnap;
+      const runtimeCollapsedSnap = runtimeConfigValues?.collapsedSnap.value ?? collapsedSnap;
       const runtimeHiddenSnap = runtimeConfigValues
         ? runtimeConfigValues.hasHiddenSnap.value
           ? runtimeConfigValues.hiddenSnap.value
@@ -178,8 +175,7 @@ export const useBottomSheetSharedGestureRuntime = ({
       'worklet';
       const runtimeSnapValues = resolveRuntimeSnapValues();
       const shouldClampToExpanded =
-        options?.clampToExpanded ??
-        sheetY.value > runtimeSnapValues.expanded + DRAG_EPSILON;
+        options?.clampToExpanded ?? sheetY.value > runtimeSnapValues.expanded + DRAG_EPSILON;
       if (shouldClampToExpanded) {
         sheetY.value = runtimeSnapValues.expanded;
       }
@@ -216,8 +212,7 @@ export const useBottomSheetSharedGestureRuntime = ({
         expandStartSheetY.value = sheetY.value;
         expandTouchInHeader.value = touchY - sheetY.value <= headerHeight.value;
         const runtimeSnapValues = resolveRuntimeSnapValues();
-        const startedBelowExpanded =
-          sheetY.value > runtimeSnapValues.expanded + DRAG_EPSILON;
+        const startedBelowExpanded = sheetY.value > runtimeSnapValues.expanded + DRAG_EPSILON;
         expandStartedBelowExpanded.value = startedBelowExpanded;
         expandAllowTopElastic.value = !startedBelowExpanded && expandTouchInHeader.value;
         expandGestureOwner.value = GESTURE_OWNER_SHEET;
@@ -233,8 +228,7 @@ export const useBottomSheetSharedGestureRuntime = ({
           return;
         }
         const runtimeSnapValues = resolveRuntimeSnapValues();
-        const isAtExpandedNow =
-          sheetY.value <= runtimeSnapValues.expanded + DRAG_EPSILON;
+        const isAtExpandedNow = sheetY.value <= runtimeSnapValues.expanded + DRAG_EPSILON;
         if (
           (expandGestureOwner.value === GESTURE_OWNER_SCROLL || expandHandoffLocked.value) &&
           isAtExpandedNow
@@ -334,10 +328,7 @@ export const useBottomSheetSharedGestureRuntime = ({
         const allowTopElastic = expandAllowTopElastic.value && !expandHandoffLocked.value;
         const next = allowTopElastic
           ? applyElasticBounds(rawNext, runtimeSnapValues.expanded, runtimeSnapValues.upperBound)
-          : Math.max(
-              runtimeSnapValues.expanded,
-              Math.min(runtimeSnapValues.upperBound, rawNext)
-            );
+          : Math.max(runtimeSnapValues.expanded, Math.min(runtimeSnapValues.upperBound, rawNext));
         sheetY.value = next;
       })
       .onEnd((event, success) => {

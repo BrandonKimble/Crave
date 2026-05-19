@@ -268,9 +268,7 @@ export class ResultsPresentationSurfaceAuthority {
         listenerCount: this.listeners.size,
         notifiedListenerCount,
         notifiedListenerLabels:
-          notifiedListenerLabels.length === 0
-            ? undefined
-            : notifiedListenerLabels.slice(0, 16),
+          notifiedListenerLabels.length === 0 ? undefined : notifiedListenerLabels.slice(0, 16),
         resultsRequestKey: this.snapshot.resultsRequestKey,
         resultsHydrationKey: this.snapshot.resultsHydrationKey,
         hydratedResultsKey: this.snapshot.hydratedResultsKey,
@@ -299,9 +297,7 @@ export class ResultsPresentationSurfaceAuthority {
       listenerCount: this.listeners.size,
       notifiedListenerCount,
       notifiedListenerLabels:
-        notifiedListenerLabels.length === 0
-          ? undefined
-          : notifiedListenerLabels.slice(0, 16),
+        notifiedListenerLabels.length === 0 ? undefined : notifiedListenerLabels.slice(0, 16),
       version: this.version,
       resultsRequestKey: this.snapshot.resultsRequestKey,
       resultsHydrationKey: this.snapshot.resultsHydrationKey,
@@ -314,14 +310,13 @@ export class ResultsPresentationSurfaceAuthority {
   }
 }
 
-const SHARED_RESULTS_PRESENTATION_SURFACE_AUTHORITY =
-  new ResultsPresentationSurfaceAuthority();
+const SHARED_RESULTS_PRESENTATION_SURFACE_AUTHORITY = new ResultsPresentationSurfaceAuthority();
 
-export const createResultsPresentationSurfaceAuthority =
-  (): ResultsPresentationSurfaceAuthority => SHARED_RESULTS_PRESENTATION_SURFACE_AUTHORITY;
+export const createResultsPresentationSurfaceAuthority = (): ResultsPresentationSurfaceAuthority =>
+  SHARED_RESULTS_PRESENTATION_SURFACE_AUTHORITY;
 
-export const getResultsPresentationSurfaceAuthority =
-  (): ResultsPresentationSurfaceAuthority => SHARED_RESULTS_PRESENTATION_SURFACE_AUTHORITY;
+export const getResultsPresentationSurfaceAuthority = (): ResultsPresentationSurfaceAuthority =>
+  SHARED_RESULTS_PRESENTATION_SURFACE_AUTHORITY;
 
 export const useResultsPresentationSurfaceAuthoritySelector = <T>(
   authority: ResultsPresentationSurfaceAuthority,
@@ -362,13 +357,12 @@ export const useResultsPresentationSurfaceAuthoritySelector = <T>(
 export const ResultsPresentationSurfaceAuthorityContext =
   React.createContext<ResultsPresentationSurfaceAuthority | null>(null);
 
-export const useResultsPresentationSurfaceAuthority =
-  (): ResultsPresentationSurfaceAuthority => {
-    const authority = React.useContext(ResultsPresentationSurfaceAuthorityContext);
-    if (authority == null) {
-      throw new Error(
-        'useResultsPresentationSurfaceAuthority must be used within a ResultsPresentationSurfaceAuthorityContext.Provider'
-      );
-    }
-    return authority;
-  };
+export const useResultsPresentationSurfaceAuthority = (): ResultsPresentationSurfaceAuthority => {
+  const authority = React.useContext(ResultsPresentationSurfaceAuthorityContext);
+  if (authority == null) {
+    throw new Error(
+      'useResultsPresentationSurfaceAuthority must be used within a ResultsPresentationSurfaceAuthorityContext.Provider'
+    );
+  }
+  return authority;
+};

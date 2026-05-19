@@ -292,9 +292,7 @@ const resolveMeasuredTopFoodLayout = ({
     const elementCount = count + (needsMore ? 1 : 0);
     const gapWidth = Math.max(0, elementCount - 1) * itemGap;
     const totalWidth =
-      widths.reduce((sum, width) => sum + width, 0) +
-      gapWidth +
-      (needsMore ? moreWidth ?? 0 : 0);
+      widths.reduce((sum, width) => sum + width, 0) + gapWidth + (needsMore ? (moreWidth ?? 0) : 0);
     // Be a bit liberal with fit checks, but prefer conservative "+N more" widths via
     // digit-template fallback when exact measurement isn't available.
     if (totalWidth <= containerWidth + MORE_WIDTH_FIT_SLACK_PX) {

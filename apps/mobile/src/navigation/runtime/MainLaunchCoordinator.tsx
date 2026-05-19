@@ -99,7 +99,7 @@ const resolveUserLocationState = (
 const resolveSemanticUserLocation = (
   snapshot: StartupLocationSnapshot | null | undefined
 ): Coordinate | null =>
-  resolveUserLocationState(snapshot) === 'unavailable' ? null : snapshot?.coordinate ?? null;
+  resolveUserLocationState(snapshot) === 'unavailable' ? null : (snapshot?.coordinate ?? null);
 
 const getPermissionState = (
   status: Location.PermissionStatus | null | undefined
@@ -252,7 +252,7 @@ const buildCameraFromSnapshot = (
       center: [snapshot.coordinate.lng, snapshot.coordinate.lat],
       zoom:
         snapshot.source === 'city_fallback'
-          ? resolveCityViewport(selectedCity)?.zoom ?? USA_FALLBACK_ZOOM
+          ? (resolveCityViewport(selectedCity)?.zoom ?? USA_FALLBACK_ZOOM)
           : SINGLE_LOCATION_ZOOM_LEVEL,
       pitch: 0,
       heading: 0,
@@ -423,9 +423,8 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
   const [mainLaunchFailure, setMainLaunchFailure] = React.useState<Error | null>(null);
 
   const userLocationRef = React.useRef<Coordinate | null>(null);
-  const latestLocationSnapshotRef = React.useRef<StartupLocationSnapshot>(
-    defaultLocationSnapshot()
-  );
+  const latestLocationSnapshotRef =
+    React.useRef<StartupLocationSnapshot>(defaultLocationSnapshot());
   const locationWatchRef = React.useRef<Location.LocationSubscription | null>(null);
   const startupResolutionSeqRef = React.useRef(0);
   const startupPollBootstrapSeqRef = React.useRef(0);
@@ -636,8 +635,7 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
         chooseBestSnapshot(
           [currentSnapshot, cityFallbackSnapshot, lastKnownSnapshot, cachedSnapshot],
           selectedCity
-        ) ??
-        cityFallbackSnapshot;
+        ) ?? cityFallbackSnapshot;
 
       if (cancelled || seq !== startupResolutionSeqRef.current) {
         return;
@@ -735,11 +733,11 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
           launchIntentMarketKey
             ? { marketKey: launchIntentMarketKey }
             : startupPollBounds
-            ? {
-                bounds: startupPollBounds,
-                ...(startupUserLocation ? { userLocation: startupUserLocation } : {}),
-              }
-            : {}
+              ? {
+                  bounds: startupPollBounds,
+                  ...(startupUserLocation ? { userLocation: startupUserLocation } : {}),
+                }
+              : {}
         );
         if (cancelled || seq !== startupPollBootstrapSeqRef.current) {
           return;
@@ -787,8 +785,8 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
       startupPollsSnapshot.marketKey.trim().length
         ? startupPollsSnapshot.marketKey.trim().toLowerCase()
         : startupCamera?.source === 'city_fallback'
-        ? normalizePollMarketKey(selectedCity)
-        : null;
+          ? normalizePollMarketKey(selectedCity)
+          : null;
     if (launchIntent.type === 'restaurant') {
       void searchService
         .restaurantProfile(launchIntent.restaurantId, {

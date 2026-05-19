@@ -37,29 +37,19 @@ export const useSearchRootMapPresentationRuntime = ({
       mapProfileControlLane.mapProfileCommandPort,
       mapProfileControlLane.mapViewState.highlightedRestaurantId,
       mapProfileControlLane.mapViewState.mapCameraPadding,
-      mapProfileControlLane.restaurantSelectionModel
-        .pickPreferredRestaurantMapLocation,
-      mapProfileControlLane.restaurantSelectionModel
-        .resolveRestaurantLocationSelectionAnchor,
-      mapProfileControlLane.restaurantSelectionModel
-        .resolveRestaurantMapLocations,
-      resultsPresentationControlLane.resultsPresentationOwner
-        .handleExecutionBatchMountedHidden,
-      resultsPresentationControlLane.resultsPresentationOwner
-        .handleMarkerEnterSettled,
-      resultsPresentationControlLane.resultsPresentationOwner
-        .handleMarkerEnterStarted,
-      resultsPresentationControlLane.resultsPresentationOwner
-        .handleMarkerExitSettled,
-      resultsPresentationControlLane.resultsPresentationOwner
-        .handleMarkerExitStarted,
+      mapProfileControlLane.restaurantSelectionModel.pickPreferredRestaurantMapLocation,
+      mapProfileControlLane.restaurantSelectionModel.resolveRestaurantLocationSelectionAnchor,
+      mapProfileControlLane.restaurantSelectionModel.resolveRestaurantMapLocations,
+      resultsPresentationControlLane.resultsPresentationOwner.handleExecutionBatchMountedHidden,
+      resultsPresentationControlLane.resultsPresentationOwner.handleMarkerEnterSettled,
+      resultsPresentationControlLane.resultsPresentationOwner.handleMarkerEnterStarted,
+      resultsPresentationControlLane.resultsPresentationOwner.handleMarkerExitSettled,
+      resultsPresentationControlLane.resultsPresentationOwner.handleMarkerExitStarted,
       rootOverlayFoundationRuntime.rootInstrumentationRuntime.handleProfilerRender,
       rootOverlayFoundationRuntime.rootInstrumentationRuntime.logSearchCompute,
-      rootOverlayFoundationRuntime.rootInstrumentationRuntime
-        .shouldLogSearchComputes,
+      rootOverlayFoundationRuntime.rootInstrumentationRuntime.shouldLogSearchComputes,
       rootOverlayFoundationRuntime.rootResultsSheetRuntimeLane.mapGestureActiveRef,
-      rootOverlayFoundationRuntime.rootResultsSheetRuntimeLane
-        .mapMotionPressureController,
+      rootOverlayFoundationRuntime.rootResultsSheetRuntimeLane.mapMotionPressureController,
       sessionCoreLane.mapBootstrapRuntime.handleMainMapFullyRendered,
       sessionCoreLane.mapBootstrapRuntime.handleMapLoaded,
       sessionCoreLane.mapBootstrapRuntime.isMapStyleReady,

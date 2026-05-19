@@ -40,15 +40,14 @@ export const useSearchRootMapHostPublicationRuntime = ({
   mapProfileControlLane,
   resultsPresentationControlLane,
 }: UseSearchRootMapHostPublicationRuntimeArgs): SearchMapRenderHostAuthority => {
-  const mapInteractionBridgeRuntime =
-    useSearchRootMapHostPublicationInteractionRuntime({
-      sessionCoreLane,
-      stateFoundationLane,
-      rootOverlayFoundationRuntime,
-      autocompleteControlLane,
-      suggestionInteractionControlLane,
-      profilePresentationControlLane,
-    });
+  const mapInteractionBridgeRuntime = useSearchRootMapHostPublicationInteractionRuntime({
+    sessionCoreLane,
+    stateFoundationLane,
+    rootOverlayFoundationRuntime,
+    autocompleteControlLane,
+    suggestionInteractionControlLane,
+    profilePresentationControlLane,
+  });
 
   const hostLayerRuntime = useSearchRootMapHostPublicationSurfaceRuntime({
     appEntryPlaneRuntime,

@@ -3,16 +3,12 @@ import type { SearchSurfaceRedrawSnapshot } from './search-surface-redraw-coordi
 const nowMs = (): number =>
   typeof performance?.now === 'function' ? performance.now() : Date.now();
 
-const cloneMetadata = (
-  value: Record<string, unknown>
-): Readonly<Record<string, unknown>> => ({
+const cloneMetadata = (value: Record<string, unknown>): Readonly<Record<string, unknown>> => ({
   ...value,
 });
 
 export const createSearchSurfaceRedrawSessionId = (): string =>
-  `search-surface-redraw-${Date.now().toString(36)}-${Math.random()
-    .toString(36)
-    .slice(2, 8)}`;
+  `search-surface-redraw-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
 export const createSearchSurfaceRedrawIdleSnapshot = (
   sessionId = createSearchSurfaceRedrawSessionId()

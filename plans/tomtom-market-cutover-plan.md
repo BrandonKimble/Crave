@@ -501,7 +501,7 @@ The important invariant is:
   `source_boundary_id`, and `source_boundary_type`; enforce this with a
   database check constraint, not only cleanup code
 - `core_markets(source_boundary_provider, source_boundary_id,
-  source_boundary_type)` must also reference `geo_boundary_features` so active
+source_boundary_type)` must also reference `geo_boundary_features` so active
   locality identity is not just non-null, but backed by a real stored boundary
 
 ## TomTom Policy For The Prototype

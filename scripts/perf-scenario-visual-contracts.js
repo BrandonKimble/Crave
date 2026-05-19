@@ -136,7 +136,12 @@ const navCutoutProgressSourceOk = (event) =>
     'navCutoutProgressSourceOk'
   );
 const navCutoutIsHidingSourceOk = (event) =>
-  contractConstantOk(event, 'navBarCutoutIsHidingSource', 'boolean', 'navBarCutoutIsHidingSourceOk');
+  contractConstantOk(
+    event,
+    'navBarCutoutIsHidingSource',
+    'boolean',
+    'navBarCutoutIsHidingSourceOk'
+  );
 const navCutoutHidingProgressSourceOk = (event) =>
   contractConstantOk(
     event,
@@ -290,8 +295,7 @@ const assertSourceNotContains = ({ file, label, pattern }) => {
 
 const checkSearchMapSlottedPinStackSourceContract = () => {
   const searchMapFile = 'apps/mobile/src/screens/Search/components/search-map.tsx';
-  const nativeRenderControllerFile =
-    'apps/mobile/ios/cravesearch/SearchMapRenderController.swift';
+  const nativeRenderControllerFile = 'apps/mobile/ios/cravesearch/SearchMapRenderController.swift';
   const jsSlottedLayerPatterns = [
     'const\\s+STYLE_PIN_STACK_SLOTS\\s*=\\s*30\\s*;',
     'restaurant-style-pins-shadow-slot-\\$\\{slotIndex\\}',
@@ -323,7 +327,7 @@ const checkSearchMapSlottedPinStackSourceContract = () => {
     });
   }
   for (const pattern of [
-    "const\\s+PIN_INTERACTION_LAYER_ID\\s*=\\s*['\"]restaurant-pin-interaction['\"]",
+    'const\\s+PIN_INTERACTION_LAYER_ID\\s*=\\s*[\'"]restaurant-pin-interaction[\'"]',
     'id=\\{STYLE_PINS_SHADOW_LAYER_ID\\}',
     'id=\\{STYLE_PINS_BASE_LAYER_ID\\}',
     'id=\\{STYLE_PINS_FILL_LAYER_ID\\}',
@@ -364,11 +368,11 @@ const checkSearchRouteSheetMaskSourceContract = () => {
     'DispatchQueue\\.main\\.async\\s*\\{\\s*\\[weak\\s+self\\]',
     'pendingMaskPathUpdate\\s*=\\s*false[\\s\\S]{0,120}updateMaskPath\\(\\)',
     'ensureTranslatedMaskPath',
-      '@objc\\s+var\\s+navBodyBoundaryTranslateY',
-      'CATransform3DMakeTranslation',
-      'translated_static_path_shared_nav_translate_y',
-      'native_sheet_mask_transition_setup',
-    ]) {
+    '@objc\\s+var\\s+navBodyBoundaryTranslateY',
+    'CATransform3DMakeTranslation',
+    'translated_static_path_shared_nav_translate_y',
+    'native_sheet_mask_transition_setup',
+  ]) {
     assertSourceContains({
       file: nativeSheetMaskFile,
       label: 'native sheet nav exclusion mask uses a coalesced translated static path',
@@ -390,11 +394,11 @@ const checkSearchRouteSheetMaskSourceContract = () => {
     'maskPathDisplayLink',
     'CADisplayLink\\(target:\\s*self,\\s*selector:\\s*#selector\\(handleMaskPathDisplayLink\\)\\)',
     'handleMaskPathDisplayLink',
-	    'CAKeyframeAnimation\\(keyPath:\\s*"path"\\)',
-	    'CABasicAnimation\\(keyPath:\\s*"transform"\\)',
-	    'activeBoundaryAnimationTargetProgress',
-	    'boundaryAnimationTargetProgress',
-	    'CAKeyframeAnimation\\(keyPath:\\s*"transform\\.translation\\.y"\\)',
+    'CAKeyframeAnimation\\(keyPath:\\s*"path"\\)',
+    'CABasicAnimation\\(keyPath:\\s*"transform"\\)',
+    'activeBoundaryAnimationTargetProgress',
+    'boundaryAnimationTargetProgress',
+    'CAKeyframeAnimation\\(keyPath:\\s*"transform\\.translation\\.y"\\)',
     'makeBoundaryPathAnimation',
     'makeBoundaryTransformAnimation',
   ]) {
@@ -763,7 +767,9 @@ const checkLoadingCoverRuntimeContracts = () => {
       `loading cover keeps results page toggle strip mounted behind cover events=${loadingHeaderEvents.length}`
     );
   } else {
-    fail('initial_loading did not keep the results page toggle strip mounted behind the loading cover');
+    fail(
+      'initial_loading did not keep the results page toggle strip mounted behind the loading cover'
+    );
   }
 };
 
@@ -919,9 +925,7 @@ const checkNavCutoutLockstepRuntimeContracts = () => {
         event.searchSurfacePhase !== 'results_dismissing'
     );
     if (replayAfterReveal) {
-      fail(
-        `nav replayed after results reveal before dismiss at line ${replayAfterReveal.line}`
-      );
+      fail(`nav replayed after results reveal before dismiss at line ${replayAfterReveal.line}`);
     } else {
       pass('nav did not replay after cards/pins reveal before dismiss');
     }
@@ -1088,7 +1092,9 @@ const checkDismissHandoffRuntimeContracts = () => {
       `dismiss motion plane sampled an invalid sheet/nav/handoff source after line ${badDismissNavSource.dismissEvent.line}`
     );
   } else {
-    pass('dismiss motion plane kept sheet motion on the route runtime and nav return on bottom-nav timing');
+    pass(
+      'dismiss motion plane kept sheet motion on the route runtime and nav return on bottom-nav timing'
+    );
   }
   const boundaryBeforePollReady = dismissMotionPlaneEvents.find(
     (event) => event.boundaryReached === true && event.pollPageReadyForBoundary !== true
@@ -1245,8 +1251,7 @@ const checkDismissHandoffRuntimeContracts = () => {
           badBottomHandoff.releaseDelayAfterCollapsedBoundaryMs ??
           badBottomHandoff.releaseDelayAfterCollapsedBoundaryMs ??
           null,
-        releasedAtCollapsedBoundary:
-          badBottomHandoff.releasedAtCollapsedBoundary ?? null,
+        releasedAtCollapsedBoundary: badBottomHandoff.releasedAtCollapsedBoundary ?? null,
       })}`
     );
   } else {
@@ -1261,60 +1266,65 @@ const checkDismissHandoffRuntimeContracts = () => {
       return false;
     }
     const prewarmedBeforeDismissLine = dismissEvent.line - 12;
-    const hasWarmPollReadiness = pollPageReadyEvents.some(
-      (event) =>
-        event.line >= prewarmedBeforeDismissLine &&
-        event.line < boundaryEvent.line &&
-        event.accepted === true &&
-        event.activeTransactionId === dismissEvent.transactionId
-    ) || pollPageReadySummaryEvents.some(
-      (event) =>
-        event.line >= prewarmedBeforeDismissLine &&
-        event.line < boundaryEvent.line &&
-        event.accepted === true &&
-        event.activeTransactionId === dismissEvent.transactionId &&
-        event.transactionId === dismissEvent.transactionId &&
-        event.pollHeaderReady === true &&
-        event.pollBodyReady === true &&
-        event.pollHostReady === true
-    ) || retainedDismissPrewarmEvents.some(
-      (event) =>
-        event.line >= prewarmedBeforeDismissLine &&
-        event.line < boundaryEvent.line &&
-        event.accepted === true &&
-        event.activeTransactionId === dismissEvent.transactionId &&
-        event.transactionId === dismissEvent.transactionId &&
-        event.pollPageReadyBeforeMotion === true &&
-        event.pollHeaderReady === true &&
-        event.pollBodyReady === true &&
-        event.pollHostReady === true &&
-        event.outgoingResultsHeld === true &&
-        event.outgoingResultsBodyAdmitted === true
-    );
-    const hasHeldResultsHeader = headerEvents.some(
-      (event) =>
-        event.line > dismissEvent.line &&
-        event.line < boundaryEvent.line &&
-        event.searchSurfacePhase === 'results_dismissing' &&
-        event.searchSheetContentLaneKind === 'results_closing' &&
-        event.canReleasePersistentPolls === false &&
-        event.bottomBandOwner === 'results_header' &&
-        event.shouldHoldResultsHeader === true
-    ) || retainedDismissPrewarmEvents.some(
-      (event) =>
-        event.line >= prewarmedBeforeDismissLine &&
-        event.line < boundaryEvent.line &&
-        event.activeTransactionId === dismissEvent.transactionId &&
-        event.transactionId === dismissEvent.transactionId &&
-        event.outgoingResultsHeld === true &&
-        event.outgoingResultsBodyAdmitted === true &&
-        event.outgoingResultsChromeHeld === true &&
-        event.searchSurfacePhase === 'results_dismissing' &&
-        event.searchSheetContentLaneKind === 'results_closing' &&
-        event.canReleasePersistentPolls === false &&
-        event.bottomBandOwner === 'results_header' &&
-        event.shouldHoldResultsHeader === true
-    );
+    const hasWarmPollReadiness =
+      pollPageReadyEvents.some(
+        (event) =>
+          event.line >= prewarmedBeforeDismissLine &&
+          event.line < boundaryEvent.line &&
+          event.accepted === true &&
+          event.activeTransactionId === dismissEvent.transactionId
+      ) ||
+      pollPageReadySummaryEvents.some(
+        (event) =>
+          event.line >= prewarmedBeforeDismissLine &&
+          event.line < boundaryEvent.line &&
+          event.accepted === true &&
+          event.activeTransactionId === dismissEvent.transactionId &&
+          event.transactionId === dismissEvent.transactionId &&
+          event.pollHeaderReady === true &&
+          event.pollBodyReady === true &&
+          event.pollHostReady === true
+      ) ||
+      retainedDismissPrewarmEvents.some(
+        (event) =>
+          event.line >= prewarmedBeforeDismissLine &&
+          event.line < boundaryEvent.line &&
+          event.accepted === true &&
+          event.activeTransactionId === dismissEvent.transactionId &&
+          event.transactionId === dismissEvent.transactionId &&
+          event.pollPageReadyBeforeMotion === true &&
+          event.pollHeaderReady === true &&
+          event.pollBodyReady === true &&
+          event.pollHostReady === true &&
+          event.outgoingResultsHeld === true &&
+          event.outgoingResultsBodyAdmitted === true
+      );
+    const hasHeldResultsHeader =
+      headerEvents.some(
+        (event) =>
+          event.line > dismissEvent.line &&
+          event.line < boundaryEvent.line &&
+          event.searchSurfacePhase === 'results_dismissing' &&
+          event.searchSheetContentLaneKind === 'results_closing' &&
+          event.canReleasePersistentPolls === false &&
+          event.bottomBandOwner === 'results_header' &&
+          event.shouldHoldResultsHeader === true
+      ) ||
+      retainedDismissPrewarmEvents.some(
+        (event) =>
+          event.line >= prewarmedBeforeDismissLine &&
+          event.line < boundaryEvent.line &&
+          event.activeTransactionId === dismissEvent.transactionId &&
+          event.transactionId === dismissEvent.transactionId &&
+          event.outgoingResultsHeld === true &&
+          event.outgoingResultsBodyAdmitted === true &&
+          event.outgoingResultsChromeHeld === true &&
+          event.searchSurfacePhase === 'results_dismissing' &&
+          event.searchSheetContentLaneKind === 'results_closing' &&
+          event.canReleasePersistentPolls === false &&
+          event.bottomBandOwner === 'results_header' &&
+          event.shouldHoldResultsHeader === true
+      );
     return !hasWarmPollReadiness || !hasHeldResultsHeader;
   });
   if (missingPrewarmBeforeCollapsedBoundary) {
@@ -1322,7 +1332,9 @@ const checkDismissHandoffRuntimeContracts = () => {
       `dismiss handoff runtime did not prewarm persistent polls while visibly holding results after line ${missingPrewarmBeforeCollapsedBoundary.line}`
     );
   } else {
-    pass('dismiss handoff runtime prewarms polls before collapsed boundary while results stay visible');
+    pass(
+      'dismiss handoff runtime prewarms polls before collapsed boundary while results stay visible'
+    );
   }
   const isVisiblePollHostSwitchBeforeBoundary = (event) =>
     event.searchSurfacePhase === 'results_dismissing' &&
@@ -1541,17 +1553,19 @@ const checkTransitionGapRuntimeContracts = () => {
   const midDismissVideoProof = readVideoProofFrame('resultsDismissMid');
   const dismissingScreenshotLine = Number(closeVideoProof?.eventLine);
   const dismissMotionProofLine = Number(
-    midDismissVideoProof?.eventLine ?? earlyDismissVideoProof?.eventLine ?? closeVideoProof?.eventLine
+    midDismissVideoProof?.eventLine ??
+      earlyDismissVideoProof?.eventLine ??
+      closeVideoProof?.eventLine
   );
   const firstCoverReveal = byEvent('cards_pins_cover_reveal_started')[0] ?? null;
   const firstDismissPress = byEvent('results_dismiss_press_up_contract')[0] ?? null;
   const firstDismissBottom = firstDismissPress
-    ? byEvent('results_dismiss_bottom_snap_handoff_contract').find(
+    ? (byEvent('results_dismiss_bottom_snap_handoff_contract').find(
         (event) => event.line > firstDismissPress.line
-      ) ?? null
+      ) ?? null)
     : null;
   const boundaryRenderProof = firstDismissBottom
-    ? byEvent('persistent_polls_restore_settled_contract').find(
+    ? (byEvent('persistent_polls_restore_settled_contract').find(
         (event) =>
           event.line > firstDismissBottom.line &&
           event.snap === 'collapsed' &&
@@ -1577,7 +1591,7 @@ const checkTransitionGapRuntimeContracts = () => {
           event.visible === true &&
           event.restoredToCollapsed === true
       ) ??
-      firstDismissBottom
+      firstDismissBottom)
     : null;
 
   if (!transitionConfig.resultsEnteringScreenshot) {
@@ -1799,24 +1813,24 @@ const resolveRegion = (png, detection, regionConfig, defaults) => ({
 });
 
 const samplePollHeaderForegroundProof = (png, detection, proofConfig = {}) => {
-  const headerRegion = resolveRegion(
-    png,
-    detection,
-    proofConfig.headerRegion ?? {},
-    { xRatio: 0.04, yRatio: 0.8, widthRatio: 0.92, heightRatio: 0.06 }
-  );
-  const titleRegion = resolveRegion(
-    png,
-    detection,
-    proofConfig.titleRegion ?? {},
-    { xRatio: 0.06, yRatio: 0.8, widthRatio: 0.56, heightRatio: 0.06 }
-  );
-  const badgeRegion = resolveRegion(
-    png,
-    detection,
-    proofConfig.badgeRegion ?? {},
-    { xRatio: 0.62, yRatio: 0.8, widthRatio: 0.28, heightRatio: 0.06 }
-  );
+  const headerRegion = resolveRegion(png, detection, proofConfig.headerRegion ?? {}, {
+    xRatio: 0.04,
+    yRatio: 0.8,
+    widthRatio: 0.92,
+    heightRatio: 0.06,
+  });
+  const titleRegion = resolveRegion(png, detection, proofConfig.titleRegion ?? {}, {
+    xRatio: 0.06,
+    yRatio: 0.8,
+    widthRatio: 0.56,
+    heightRatio: 0.06,
+  });
+  const badgeRegion = resolveRegion(png, detection, proofConfig.badgeRegion ?? {}, {
+    xRatio: 0.62,
+    yRatio: 0.8,
+    widthRatio: 0.28,
+    heightRatio: 0.06,
+  });
   const isWhiteHeaderPixel = (r, g, b) =>
     luma(r, g, b) >= 238 && Math.max(r, g, b) - Math.min(r, g, b) <= 34;
   const isDarkGlyphPixel = (r, g, b) =>
@@ -2230,12 +2244,12 @@ const checkTransitionGapScreenshotContracts = () => {
   const firstCoverReveal = byEvent('cards_pins_cover_reveal_started')[0] ?? null;
   const firstDismissPress = byEvent('results_dismiss_press_up_contract')[0] ?? null;
   const firstDismissBottom = firstDismissPress
-    ? byEvent('results_dismiss_bottom_snap_handoff_contract').find(
+    ? (byEvent('results_dismiss_bottom_snap_handoff_contract').find(
         (event) => event.line > firstDismissPress.line
-      ) ?? null
+      ) ?? null)
     : null;
   const boundaryRenderProof = firstDismissBottom
-    ? byEvent('persistent_polls_restore_settled_contract').find(
+    ? (byEvent('persistent_polls_restore_settled_contract').find(
         (event) =>
           event.line > firstDismissBottom.line &&
           event.snap === 'collapsed' &&
@@ -2261,7 +2275,7 @@ const checkTransitionGapScreenshotContracts = () => {
           event.visible === true &&
           event.restoredToCollapsed === true
       ) ??
-      firstDismissBottom
+      firstDismissBottom)
     : null;
   const dismissMotionPlaneEvents = byEvent('search_dismiss_motion_plane_contract');
   const dismissProofSheetTops = {};
@@ -2670,9 +2684,7 @@ const checkNavUnderlayScreenshotContracts = () => {
   const hiddenRegion = underlayConfig.hiddenNavBandRegion;
   const sheetLikePixel = underlayConfig.sheetLikePixel ?? {};
   const navBodyRatioMax = Number(
-    underlayConfig.navBodySheetLikeRatioMax ??
-      underlayConfig.visibleCutoutSheetLikeRatioMax ??
-      0.45
+    underlayConfig.navBodySheetLikeRatioMax ?? underlayConfig.visibleCutoutSheetLikeRatioMax ?? 0.45
   );
   const navBodyWhiteRatioMax = Number(underlayConfig.navBodyWhiteSheetRatioMax ?? 0.18);
   const hiddenRatioMin = Number(underlayConfig.hiddenNavBandSheetLikeRatioMin ?? 0.65);
@@ -3241,7 +3253,7 @@ const checkResultsHeaderLeakScreenshotContract = ({ screenshotKey, screenshotNam
       `results header ${screenshotKey} is not sufficiently sheet-owned ratio ${round(
         stats.sheetLikeRatio
       )} < ${sheetLikeMin}`
-      );
+    );
   }
   const whiteHeaderMin = Number(leakConfig.whiteHeaderRatioMin ?? 0);
   if (stats.whiteHeaderRatio >= whiteHeaderMin) {
@@ -3330,7 +3342,7 @@ const checkPollHeaderLeakScreenshotContract = ({ screenshotKey, screenshotName }
       `poll header ${screenshotKey} is not sufficiently sheet-owned ratio ${round(
         stats.sheetLikeRatio
       )} < ${sheetLikeMin}`
-      );
+    );
   }
   const whiteHeaderMin = Number(leakConfig.whiteHeaderRatioMin ?? 0);
   if (stats.whiteHeaderRatio >= whiteHeaderMin) {

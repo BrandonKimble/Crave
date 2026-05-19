@@ -24,34 +24,26 @@ export const useSearchSuggestionLayoutStateRuntime = ({
     shouldDriveSuggestionLayout,
     shouldRenderSuggestionPanel,
   });
-  const searchSuggestionSearchLayoutRuntime =
-    useSearchSuggestionSearchLayoutRuntime({
-      startupGeometrySeed,
-      searchInteractionRef,
-    });
+  const searchSuggestionSearchLayoutRuntime = useSearchSuggestionSearchLayoutRuntime({
+    startupGeometrySeed,
+    searchInteractionRef,
+  });
 
-  const searchSuggestionShortcutLayoutRuntime =
-    useSearchSuggestionShortcutLayoutRuntime();
+  const searchSuggestionShortcutLayoutRuntime = useSearchSuggestionShortcutLayoutRuntime();
 
-  const searchSuggestionLayoutResolutionRuntime =
-    useSearchSuggestionLayoutResolutionRuntime({
-      query,
-      isSuggestionPanelActive,
-      shouldDisableSearchShortcuts,
-      shouldDriveSuggestionLayout,
-      searchContainerFrame:
-        searchSuggestionSearchLayoutRuntime.searchContainerFrame,
-      cachedSearchContainerFrame:
-        searchSuggestionSearchLayoutRuntime.cachedSearchContainerFrame,
-      searchShortcutsFrame:
-        searchSuggestionShortcutLayoutRuntime.searchShortcutsFrame,
-      cachedSearchShortcutsFrame:
-        searchSuggestionShortcutLayoutRuntime.cachedSearchShortcutsFrame,
-      searchShortcutChipFrames:
-        searchSuggestionShortcutLayoutRuntime.searchShortcutChipFrames,
-      cachedSearchShortcutChipFrames:
-        searchSuggestionShortcutLayoutRuntime.cachedSearchShortcutChipFrames,
-    });
+  const searchSuggestionLayoutResolutionRuntime = useSearchSuggestionLayoutResolutionRuntime({
+    query,
+    isSuggestionPanelActive,
+    shouldDisableSearchShortcuts,
+    shouldDriveSuggestionLayout,
+    searchContainerFrame: searchSuggestionSearchLayoutRuntime.searchContainerFrame,
+    cachedSearchContainerFrame: searchSuggestionSearchLayoutRuntime.cachedSearchContainerFrame,
+    searchShortcutsFrame: searchSuggestionShortcutLayoutRuntime.searchShortcutsFrame,
+    cachedSearchShortcutsFrame: searchSuggestionShortcutLayoutRuntime.cachedSearchShortcutsFrame,
+    searchShortcutChipFrames: searchSuggestionShortcutLayoutRuntime.searchShortcutChipFrames,
+    cachedSearchShortcutChipFrames:
+      searchSuggestionShortcutLayoutRuntime.cachedSearchShortcutChipFrames,
+  });
 
   return React.useMemo(
     () =>
@@ -61,8 +53,7 @@ export const useSearchSuggestionLayoutStateRuntime = ({
           suggestionContentHeightRuntime.handleSuggestionContentSizeChange,
         searchLayout: searchSuggestionSearchLayoutRuntime.searchLayout,
         searchBarFrame: searchSuggestionSearchLayoutRuntime.searchBarFrame,
-        handleSearchHeaderLayout:
-          searchSuggestionSearchLayoutRuntime.handleSearchHeaderLayout,
+        handleSearchHeaderLayout: searchSuggestionSearchLayoutRuntime.handleSearchHeaderLayout,
         handleSearchContainerLayout:
           searchSuggestionSearchLayoutRuntime.handleSearchContainerLayout,
         handleSearchShortcutsRowLayout:
@@ -71,8 +62,7 @@ export const useSearchSuggestionLayoutStateRuntime = ({
           searchSuggestionShortcutLayoutRuntime.handleRestaurantsShortcutLayout,
         handleDishesShortcutLayout:
           searchSuggestionShortcutLayoutRuntime.handleDishesShortcutLayout,
-        suggestionContentHeight:
-          suggestionContentHeightRuntime.suggestionContentHeight,
+        suggestionContentHeight: suggestionContentHeightRuntime.suggestionContentHeight,
         shouldFreezeSuggestionHeader:
           searchSuggestionLayoutResolutionRuntime.shouldFreezeSuggestionHeader,
         shouldIncludeShortcutHoles:

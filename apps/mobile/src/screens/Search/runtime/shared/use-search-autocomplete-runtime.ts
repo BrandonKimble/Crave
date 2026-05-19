@@ -27,9 +27,7 @@ type UseSearchAutocompleteRuntimeArgs = {
 };
 
 const bucketCoordinate = (value: number | undefined): string =>
-  typeof value === 'number' && Number.isFinite(value)
-    ? value.toFixed(2)
-    : 'none';
+  typeof value === 'number' && Number.isFinite(value) ? value.toFixed(2) : 'none';
 
 const buildAutocompleteScopeKey = (bounds: MapBounds | null): string =>
   bounds
@@ -70,8 +68,7 @@ export const useSearchAutocompleteRuntime = ({
     cancelAutocomplete,
     setSuggestions,
     setShowSuggestions,
-    clearAutocompleteSuggestions:
-      autocompleteCacheRuntime.clearAutocompleteSuggestions,
+    clearAutocompleteSuggestions: autocompleteCacheRuntime.clearAutocompleteSuggestions,
     lookupAutocompleteCache: autocompleteCacheRuntime.lookupAutocompleteCache,
     writeAutocompleteCache: autocompleteCacheRuntime.writeAutocompleteCache,
     bounds,
@@ -81,10 +78,8 @@ export const useSearchAutocompleteRuntime = ({
   return React.useMemo(
     () =>
       createSearchAutocompleteRuntimeValue({
-        showCachedSuggestionsIfFresh:
-          autocompleteCacheRuntime.showCachedSuggestionsIfFresh,
-        suppressAutocompleteResults:
-          autocompleteRequestRuntime.suppressAutocompleteResults,
+        showCachedSuggestionsIfFresh: autocompleteCacheRuntime.showCachedSuggestionsIfFresh,
+        suppressAutocompleteResults: autocompleteRequestRuntime.suppressAutocompleteResults,
         allowAutocompleteResults: autocompleteRequestRuntime.allowAutocompleteResults,
       }),
     [

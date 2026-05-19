@@ -183,10 +183,9 @@ export class SearchQueryInterpretationService {
       const viewportEligible = this.isViewportEligibleForOnDemand(
         request.bounds,
       );
-      const onDemandMarketKey =
-        resolvedMarket.marketKey
-          ? resolvedMarket.marketKey.trim().toLowerCase()
-          : '';
+      const onDemandMarketKey = resolvedMarket.marketKey
+        ? resolvedMarket.marketKey.trim().toLowerCase()
+        : '';
       const collectableMarketKeys = viewportEligible
         ? resolvedMarket.collectableMarketKeys
         : [];
@@ -205,12 +204,12 @@ export class SearchQueryInterpretationService {
       const unresolvedRequests = onDemandMarketKey
         ? unresolved.flatMap((group) =>
             group.terms.map((term) => ({
-            term,
-            entityType: group.type,
-            reason,
+              term,
+              entityType: group.type,
+              reason,
               marketKey: onDemandMarketKey,
               collectableMarketKeys,
-            metadata: { source: 'natural_query', unresolvedType: group.type },
+              metadata: { source: 'natural_query', unresolvedType: group.type },
             })),
           )
         : [];

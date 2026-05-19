@@ -3,7 +3,10 @@ import type { SearchCloseTransitionState } from './results-presentation-shell-co
 
 export const createSearchCloseTransitionState = (
   closeIntentId: string,
-  terminalDismissSource: Exclude<SearchCloseTransitionState, null>['terminalDismissSource'] = 'results'
+  terminalDismissSource: Exclude<
+    SearchCloseTransitionState,
+    null
+  >['terminalDismissSource'] = 'results'
 ): Exclude<SearchCloseTransitionState, null> => ({
   closeIntentId,
   terminalDismissSource,
@@ -14,9 +17,7 @@ export const createSearchCloseTransitionState = (
 
 export const isSearchCloseTransitionReadyToFinalize = (
   state: SearchCloseTransitionState
-): boolean =>
-  state != null &&
-  state.sheetCollapsedSettled;
+): boolean => state != null && state.sheetCollapsedSettled;
 
 export const applySearchCloseMapExitSettled = ({
   current,

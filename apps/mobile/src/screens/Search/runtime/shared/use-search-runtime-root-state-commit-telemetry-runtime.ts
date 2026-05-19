@@ -139,8 +139,5 @@ export const useSearchRuntimeRootStateCommitTelemetryRuntime = ({
     return () => {
       unsubscribePresentation();
     };
-  }, [
-    emitRootStateCommitSnapshot,
-    resultsPresentationAuthority,
-  ]);
+  }, [emitRootStateCommitSnapshot, resultsPresentationAuthority]);
 };

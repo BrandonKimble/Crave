@@ -11,9 +11,7 @@ export const useSearchRootSearchSceneShellSpecPublicationRuntime = ({
   shouldShowInteractionLoadingState,
   searchScenePanelSurfaceRenderRuntime,
 }: {
-  searchSceneSheetPlaneRuntime: ReturnType<
-    typeof useSearchRootSearchSceneSheetPlaneRuntime
-  >;
+  searchSceneSheetPlaneRuntime: ReturnType<typeof useSearchRootSearchSceneSheetPlaneRuntime>;
   shouldShowResultsSurface: boolean;
   shouldShowInteractionLoadingState: boolean;
   searchScenePanelSurfaceRenderRuntime: SearchRootSearchScenePanelSurfaceRenderRuntime;
@@ -24,13 +22,11 @@ export const useSearchRootSearchSceneShellSpecPublicationRuntime = ({
         overlayKey: 'search',
         snapPoints: searchSceneSheetPlaneRuntime.snapPoints,
         listScrollEnabled:
-          !shouldShowInteractionLoadingState &&
-          searchSceneSheetPlaneRuntime.interactionEnabled,
+          !shouldShowInteractionLoadingState && searchSceneSheetPlaneRuntime.interactionEnabled,
         runtimeModel: searchSceneSheetPlaneRuntime.runtimeModel,
         preventSwipeDismiss: true,
         onDragStateChange: searchSceneSheetPlaneRuntime.handleResultsSheetDragStateChange,
-        onSettleStateChange:
-          searchSceneSheetPlaneRuntime.handleResultsSheetSettlingChange,
+        onSettleStateChange: searchSceneSheetPlaneRuntime.handleResultsSheetSettlingChange,
         style: shouldShowResultsSurface
           ? searchScenePanelSurfaceRenderRuntime.resolvedStyle
           : undefined,

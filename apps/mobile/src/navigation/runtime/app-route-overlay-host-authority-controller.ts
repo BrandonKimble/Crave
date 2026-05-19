@@ -309,7 +309,8 @@ const createTopLevelStableCallbackNormalizer = <TSnapshot>(): SnapshotNormalizer
 
 const createChromeHeaderPropsNormalizer =
   (): SnapshotNormalizer<SearchOverlayChromeHeaderProps> => {
-    const normalizeTopLevel = createTopLevelStableCallbackNormalizer<SearchOverlayChromeHeaderProps>();
+    const normalizeTopLevel =
+      createTopLevelStableCallbackNormalizer<SearchOverlayChromeHeaderProps>();
 
     return (nextRawSnapshot, currentSnapshot, getRawSnapshot) => {
       const normalizedSnapshot = normalizeTopLevel(
@@ -389,10 +390,7 @@ const areChromeHostSnapshotsEqual = (
   areShallowSnapshotsEqual(left.frameSnapshot, right.frameSnapshot) &&
   areChromeContainerSnapshotsEqual(left.containerSnapshot, right.containerSnapshot) &&
   areShallowSnapshotsEqual(left.headerProps, right.headerProps) &&
-  areChromeSuggestionSurfacePropsEqual(
-    left.suggestionSurfaceProps,
-    right.suggestionSurfaceProps
-  );
+  areChromeSuggestionSurfacePropsEqual(left.suggestionSurfaceProps, right.suggestionSurfaceProps);
 
 const createChromeHostSnapshotNormalizer =
   (): SnapshotNormalizer<SearchOverlayChromeHostSnapshot> => {

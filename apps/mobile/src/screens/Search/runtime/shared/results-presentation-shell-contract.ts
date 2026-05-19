@@ -24,19 +24,19 @@ export type SearchPresentationIntent =
       transactionId?: string;
       query: string;
       targetTab: 'restaurants' | 'dishes';
-	      preserveSheetState?: boolean;
-	      transitionFromDockedPolls?: boolean;
-	      entrySurface: SearchSubmitEntrySurface;
+      preserveSheetState?: boolean;
+      transitionFromDockedPolls?: boolean;
+      entrySurface: SearchSubmitEntrySurface;
     }
   | {
       kind: 'manual_submit' | 'autocomplete_submit' | 'recent_submit' | 'search_this_area';
       transactionId?: string;
       query: string;
       targetTab?: 'restaurants' | 'dishes';
-	      preserveSheetState?: boolean;
-	      transitionFromDockedPolls?: boolean;
-	      entrySurface: SearchSubmitEntrySurface;
-	    }
+      preserveSheetState?: boolean;
+      transitionFromDockedPolls?: boolean;
+      entrySurface: SearchSubmitEntrySurface;
+    }
   | { kind: 'focus_editing' }
   | { kind: 'exit_editing' };
 

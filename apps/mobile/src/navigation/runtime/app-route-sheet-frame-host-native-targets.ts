@@ -43,8 +43,7 @@ const syncSheetFrameHostNativeSharedValuesOnUI = (
   values.bottomNavHiddenTranslateYValue.value = chromeVisualState.bottomNavHiddenTranslateY;
   values.navTranslateYValue.value = chromeVisualState.navTranslateY.value;
   values.navBarCutoutProgressValue.value = chromeVisualState.navBarCutoutProgress.value;
-  values.navBarCutoutHidingProgressValue.value =
-    chromeVisualState.navBarCutoutHidingProgress.value;
+  values.navBarCutoutHidingProgressValue.value = chromeVisualState.navBarCutoutHidingProgress.value;
   values.navBarCutoutIsHidingValue.value = chromeVisualState.navBarCutoutIsHiding;
   values.headerActionVisibleValue.value = overlaySheetPolicy?.overlaySheetVisible ? 1 : 0;
   values.headerActionModeValue.value =

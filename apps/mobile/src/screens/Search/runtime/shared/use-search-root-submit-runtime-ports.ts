@@ -46,8 +46,7 @@ export const useSearchRootSubmitRuntimePorts = ({
     () => ({
       ...coreRuntimePorts,
       resultsPresentationAuthority: sessionCoreLane.resultsPresentationAuthority,
-      resultsPresentationSurfaceAuthority:
-        sessionCoreLane.resultsPresentationSurfaceAuthority,
+      resultsPresentationSurfaceAuthority: sessionCoreLane.resultsPresentationSurfaceAuthority,
       ...viewportRuntimePorts,
     }),
     [

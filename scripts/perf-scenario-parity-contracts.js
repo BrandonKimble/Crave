@@ -87,7 +87,9 @@ const readSamplerEventsFromLog = (logPath) => {
   const content = fs.readFileSync(logPath, 'utf8');
   const events = [];
   content.split(/\r?\n/).forEach((line, index) => {
-    const match = line.match(/\[SearchPerf\]\[(JsFrameSampler|JsTaskLatencySampler|UiFrameSampler)\]\s+(\{.*\})/);
+    const match = line.match(
+      /\[SearchPerf\]\[(JsFrameSampler|JsTaskLatencySampler|UiFrameSampler)\]\s+(\{.*\})/
+    );
     if (!match) {
       return;
     }
@@ -247,7 +249,9 @@ const isInMeasuredRepeatLoop = (event) => {
   }
   const emittedAtMs = numeric(event.emittedAtMs);
   if (emittedAtMs != null) {
-    return emittedAtMs >= measuredRepeatLoopRange.startMs && emittedAtMs <= measuredRepeatLoopRange.endMs;
+    return (
+      emittedAtMs >= measuredRepeatLoopRange.startMs && emittedAtMs <= measuredRepeatLoopRange.endMs
+    );
   }
   return (
     typeof event.line === 'number' &&
@@ -284,13 +288,13 @@ const measuredRepeatLoopSamplerEvents = shouldScopeToMeasuredRepeatLoop
 const measuredRepeatSamplerFallbackWindows = (channel, reportKey) =>
   samplerEventsFromLog.length > 0 || !shouldScopeToMeasuredRepeatLoop
     ? []
-    : ((report.samplers?.[reportKey]?.worstWindows ?? [])
+    : (report.samplers?.[reportKey]?.worstWindows ?? [])
         .filter(isMeasuredRepeatLoopSamplerEvent)
-        .map((event) => ({ ...event, channel })));
+        .map((event) => ({ ...event, channel }));
 
 const measuredRepeatLoopSamplerWindows = [
-  ...measuredRepeatLoopSamplerEvents.filter((event) =>
-    event.event === 'window' || event.event === 'task_window'
+  ...measuredRepeatLoopSamplerEvents.filter(
+    (event) => event.event === 'window' || event.event === 'task_window'
   ),
   ...measuredRepeatSamplerFallbackWindows('JsFrameSampler', 'jsFrame'),
   ...measuredRepeatSamplerFallbackWindows('JsTaskLatencySampler', 'jsTaskLatency'),
@@ -313,22 +317,24 @@ if (scenarioName.includes('search_submit_dismiss_repeat')) {
     return floorFps != null && floorFps < MIN_MEASURED_REPEAT_FLOOR_FPS;
   });
   if (measuredSamplerStallCount > 0) {
-    const sample = measuredRepeatLoopSamplerStalls[0] ?? measuredRepeatLoopSamplerWindows.find(
-      (event) => (numeric(event.stallCount) ?? 0) > 0
-    );
+    const sample =
+      measuredRepeatLoopSamplerStalls[0] ??
+      measuredRepeatLoopSamplerWindows.find((event) => (numeric(event.stallCount) ?? 0) > 0);
     fail(
-      `measured submit/dismiss loop has JS/task/UI sampler stalls: count=${measuredSamplerStallCount}, first=${JSON.stringify({
-        channel: sample?.channel ?? null,
-        event: sample?.event ?? null,
-        line: sample?.line ?? null,
-        nowMs: sample?.nowMs ?? null,
-        emittedAtMs: sample?.emittedAtMs ?? null,
-        frameMs: sample?.frameMs ?? sample?.maxFrameMs ?? null,
-        lagMs: sample?.lagMs ?? sample?.maxLagMs ?? null,
-        stallCount: sample?.stallCount ?? null,
-        quietBuffered: sample?.quietBuffered ?? null,
-        flushReason: sample?.flushReason ?? null,
-      })}`
+      `measured submit/dismiss loop has JS/task/UI sampler stalls: count=${measuredSamplerStallCount}, first=${JSON.stringify(
+        {
+          channel: sample?.channel ?? null,
+          event: sample?.event ?? null,
+          line: sample?.line ?? null,
+          nowMs: sample?.nowMs ?? null,
+          emittedAtMs: sample?.emittedAtMs ?? null,
+          frameMs: sample?.frameMs ?? sample?.maxFrameMs ?? null,
+          lagMs: sample?.lagMs ?? sample?.maxLagMs ?? null,
+          stallCount: sample?.stallCount ?? null,
+          quietBuffered: sample?.quietBuffered ?? null,
+          flushReason: sample?.flushReason ?? null,
+        }
+      )}`
     );
   } else {
     pass('measured submit/dismiss loop has no JS/task/UI sampler stalls');
@@ -338,13 +344,13 @@ if (scenarioName.includes('search_submit_dismiss_repeat')) {
       `measured submit/dismiss loop floor FPS below target: channel=${measuredFloorFpsFailure.channel}, line=${measuredFloorFpsFailure.line}, floorFps=${measuredFloorFpsFailure.floorFps} < ${MIN_MEASURED_REPEAT_FLOOR_FPS}`
     );
   } else {
-    pass(
-      `measured submit/dismiss loop floor FPS stays >= ${MIN_MEASURED_REPEAT_FLOOR_FPS}`
-    );
+    pass(`measured submit/dismiss loop floor FPS stays >= ${MIN_MEASURED_REPEAT_FLOOR_FPS}`);
   }
   const measuredNativeMapApplySummary = report.measuredRepeatLoop?.nativeMapApplySummary ?? null;
   if ((numeric(measuredNativeMapApplySummary?.eventCount) ?? 0) <= 0) {
-    fail('measured submit/dismiss loop is missing measured_repeat_loop_end native map apply summary');
+    fail(
+      'measured submit/dismiss loop is missing measured_repeat_loop_end native map apply summary'
+    );
   } else {
     pass('measured submit/dismiss loop includes measured_repeat_loop_end native map apply summary');
     const nativePresentationBuckets = [
@@ -378,7 +384,9 @@ if (scenarioName.includes('search_submit_dismiss_repeat')) {
   );
   if (nativePresentationErrorOwner) {
     fail(
-      `measured submit/dismiss loop has native presentation error events: owner=${nativePresentationErrorOwner.key}, samplePaths=${JSON.stringify(nativePresentationErrorOwner.samplePaths ?? [])}`
+      `measured submit/dismiss loop has native presentation error events: owner=${
+        nativePresentationErrorOwner.key
+      }, samplePaths=${JSON.stringify(nativePresentationErrorOwner.samplePaths ?? [])}`
     );
   } else {
     pass('measured submit/dismiss loop has no native presentation error events');
@@ -386,25 +394,27 @@ if (scenarioName.includes('search_submit_dismiss_repeat')) {
   const surfaceAuthorityNotifyOwner = measuredWorkSpanOwners.find(
     (owner) => owner.key === 'results_presentation_surface_authority_notify'
   );
-  const surfaceAuthorityHydrationNotifyPath = (
-    surfaceAuthorityNotifyOwner?.samplePaths ?? []
-  ).find((samplePath) => String(samplePath).includes('shouldHydrateResultsForRender'));
+  const surfaceAuthorityHydrationNotifyPath = (surfaceAuthorityNotifyOwner?.samplePaths ?? []).find(
+    (samplePath) => String(samplePath).includes('shouldHydrateResultsForRender')
+  );
   if (surfaceAuthorityHydrationNotifyPath) {
     fail(
       `shouldHydrateResultsForRender still fans out through surface authority during measured repeat submit/dismiss: ${surfaceAuthorityHydrationNotifyPath}`
     );
   } else {
-    pass('measured repeat submit/dismiss has no shouldHydrateResultsForRender surface-authority fanout');
-  }
-  const routeHydrationAdmissionNotifyPath = (
-    surfaceAuthorityNotifyOwner?.samplePaths ?? []
-  ).find((samplePath) => {
-    const path = String(samplePath);
-    return (
-      path.startsWith('search_response_owner_results_commit:') &&
-      path.includes('shouldHydrateResultsForRender')
+    pass(
+      'measured repeat submit/dismiss has no shouldHydrateResultsForRender surface-authority fanout'
     );
-  });
+  }
+  const routeHydrationAdmissionNotifyPath = (surfaceAuthorityNotifyOwner?.samplePaths ?? []).find(
+    (samplePath) => {
+      const path = String(samplePath);
+      return (
+        path.startsWith('search_response_owner_results_commit:') &&
+        path.includes('shouldHydrateResultsForRender')
+      );
+    }
+  );
   if (routeHydrationAdmissionNotifyPath) {
     fail(
       `shouldHydrateResultsForRender still notifies surface authority listeners during measured repeat submit/dismiss: ${routeHydrationAdmissionNotifyPath}`
@@ -432,7 +442,9 @@ if (scenarioName.includes('search_submit_dismiss_repeat')) {
       'measured repeat submit/dismiss still records search_root_state_commit changedKeys for shouldHydrateResultsForRender'
     );
   } else {
-    pass('measured repeat submit/dismiss has no root route commit for shouldHydrateResultsForRender');
+    pass(
+      'measured repeat submit/dismiss has no root route commit for shouldHydrateResultsForRender'
+    );
   }
   const nativeSheetMaskOwner = measuredWorkSpanOwners.find(
     (owner) => owner.key === 'native_sheet_nav_exclusion_mask'
@@ -445,10 +457,14 @@ if (scenarioName.includes('search_submit_dismiss_repeat')) {
     )
   ) {
     fail(
-      `native sheet mask timing aggregate did not use transform-only path strategy: samplePaths=${JSON.stringify(nativeSheetMaskOwner.samplePaths ?? [])}`
+      `native sheet mask timing aggregate did not use transform-only path strategy: samplePaths=${JSON.stringify(
+        nativeSheetMaskOwner.samplePaths ?? []
+      )}`
     );
   } else {
-    pass('measured submit/dismiss loop includes shared-nav-translate native sheet mask timing aggregate');
+    pass(
+      'measured submit/dismiss loop includes shared-nav-translate native sheet mask timing aggregate'
+    );
   }
   const stalledDismissNavSample = byEvent('nav_cutout_lockstep_contract').find((event) => {
     if (
@@ -1836,7 +1852,9 @@ if ((report.scenarioName ?? '').includes('search_submit_dismiss_repeat')) {
     } else if (reusedSourceTransactions.size > 0 && reusedSourceRepublishEvents.length === 0) {
       fail('repeat shortcut reused computed source data but did not republish a full source frame');
     } else if (reusedSourceTransactions.size > 0 && cachedReplayNativeSourceApplies.length === 0) {
-      fail('repeat shortcut reused computed source data but did not mount a fresh hidden native source frame');
+      fail(
+        'repeat shortcut reused computed source data but did not mount a fresh hidden native source frame'
+      );
     } else {
       pass(
         `repeat source-frame recompute transactions=${recomputedSourceTransactions.size} reuse transactions=${reusedSourceTransactions.size}, full republish events=${reusedSourceRepublishEvents.length}, native applies=${cachedReplayNativeSourceApplies.length}`
@@ -1985,8 +2003,8 @@ const firstResultsLiveHeaderForToggle = byEvent('search_header_visual_contract')
 const firstResultsDismissLineForToggle =
   firstResultsLiveHeaderForToggle == null
     ? Number.POSITIVE_INFINITY
-    : dismissPressEvents.find((event) => event.line > firstResultsLiveHeaderForToggle.line)?.line ??
-      Number.POSITIVE_INFINITY;
+    : (dismissPressEvents.find((event) => event.line > firstResultsLiveHeaderForToggle.line)
+        ?.line ?? Number.POSITIVE_INFINITY);
 const resultToggleEvents =
   firstResultsLiveHeaderForToggle == null
     ? toggleEvents
@@ -3101,26 +3119,26 @@ const submitResponseOwnerSource = fs.readFileSync(
   'utf8'
 );
 if (
-	  mountedResultsStoreSource.includes('fullDetailRowCount') &&
-	  mountedResultsStoreSource.includes('debugFirstPaintFullDetailRowCount') &&
-	  mountedResultsStoreSource.includes('scheduleSearchMountedResultsFirstPaintRowsReady') &&
-	  /const\s+FIRST_PAINT_ROWS_INITIAL_ADMISSION_COUNT\s*=\s*4/.test(mountedResultsStoreSource) &&
-	  /const\s+FIRST_PAINT_ROWS_DETAIL_PROMOTION_CHUNK_SIZE\s*=\s*4/.test(
-	    mountedResultsStoreSource
-	  ) &&
-	  /currentAdmission\.admittedRowCount\s*<\s*currentAdmission\.targetRowCount[\s\S]*currentAdmission\.admittedRowCount\s*=\s*Math\.min[\s\S]*currentAdmission\.fullDetailRowCount\s*=\s*Math\.min/.test(
-	    mountedResultsStoreSource
-	  ) &&
-	  /const\s+initialAdmittedRowCount\s*=\s*Math\.min[\s\S]*admittedRowCount:\s*initialAdmittedRowCount[\s\S]*fullDetailRowCount:\s*0/.test(
-	    mountedResultsStoreSource
-	  ) &&
-	  /canMarkSearchMountedResultsFirstVisibleRowsReadyFromRowLayout[\s\S]*rowsSnapshot\.admission\.mode !== 'visual'[\s\S]*return false/.test(
-	    mountedResultsStoreSource
-	  ) &&
+  mountedResultsStoreSource.includes('fullDetailRowCount') &&
+  mountedResultsStoreSource.includes('debugFirstPaintFullDetailRowCount') &&
+  mountedResultsStoreSource.includes('scheduleSearchMountedResultsFirstPaintRowsReady') &&
+  /const\s+FIRST_PAINT_ROWS_INITIAL_ADMISSION_COUNT\s*=\s*4/.test(mountedResultsStoreSource) &&
+  /const\s+FIRST_PAINT_ROWS_DETAIL_PROMOTION_CHUNK_SIZE\s*=\s*4/.test(mountedResultsStoreSource) &&
+  /currentAdmission\.admittedRowCount\s*<\s*currentAdmission\.targetRowCount[\s\S]*currentAdmission\.admittedRowCount\s*=\s*Math\.min[\s\S]*currentAdmission\.fullDetailRowCount\s*=\s*Math\.min/.test(
+    mountedResultsStoreSource
+  ) &&
+  /const\s+initialAdmittedRowCount\s*=\s*Math\.min[\s\S]*admittedRowCount:\s*initialAdmittedRowCount[\s\S]*fullDetailRowCount:\s*0/.test(
+    mountedResultsStoreSource
+  ) &&
+  /canMarkSearchMountedResultsFirstVisibleRowsReadyFromRowLayout[\s\S]*rowsSnapshot\.admission\.mode !== 'visual'[\s\S]*return false/.test(
+    mountedResultsStoreSource
+  ) &&
   mountedSceneBodySource.includes('firstPaintRenderMode') &&
   mountedSceneBodySource.includes('debugFirstPaintFullDetailRowCount') &&
   mountedSceneBodySource.includes('SearchMountedResultsFirstPaintRow') &&
-  /previous\.firstPaintRenderMode\s*===\s*next\.firstPaintRenderMode/.test(mountedSceneBodySource) &&
+  /previous\.firstPaintRenderMode\s*===\s*next\.firstPaintRenderMode/.test(
+    mountedSceneBodySource
+  ) &&
   restaurantResultCardSource.includes("renderMode?: 'shell' | 'full'") &&
   restaurantResultCardSource.includes('shouldRenderFullDetails')
 ) {
@@ -3174,7 +3192,9 @@ if (
 ) {
   pass('first-paint rows and body retention are projected outside broad visual runtime selectors');
 } else {
-  fail('first-paint rows or mounted body retention can still fan out from broad visual runtime selectors');
+  fail(
+    'first-paint rows or mounted body retention can still fan out from broad visual runtime selectors'
+  );
 }
 
 if (
@@ -3248,7 +3268,9 @@ if (
   !searchMapSource.includes("['feature-state', 'nativePresentationOpacity']") &&
   searchMapSource.includes("['get', 'nativePresentationOpacity']")
 ) {
-  pass('native map presentation opacity uses constant-count source rewrites instead of layer/feature churn');
+  pass(
+    'native map presentation opacity uses constant-count source rewrites instead of layer/feature churn'
+  );
 } else {
   fail(
     'native map presentation opacity can regress to per-layer/per-feature churn instead of constant-count source rewrites'
@@ -3265,7 +3287,9 @@ if (
     animatePresentationOpacitySource
   )
 ) {
-  pass('native presentation opacity uses one source target update plus timed completion, not stepped source churn');
+  pass(
+    'native presentation opacity uses one source target update plus timed completion, not stepped source churn'
+  );
 } else {
   fail('native presentation opacity can regress to stepped source churn or layer/feature churn');
 }
@@ -3279,7 +3303,9 @@ if (
   !nativeMapControllerSource.includes('preferredFrameRateRange') &&
   !nativeMapControllerSource.includes('preferredFramesPerSecond')
 ) {
-  pass('native live pin LOD fades use Mapbox style transitions without CADisplayLink feature-state churn');
+  pass(
+    'native live pin LOD fades use Mapbox style transitions without CADisplayLink feature-state churn'
+  );
 } else {
   fail('native live pin LOD fades can regress to CADisplayLink per-frame feature-state churn');
 }
@@ -3357,7 +3383,9 @@ if (
   nativeBridgeSource.includes('SearchRouteSheetNavExclusionMaskViewManager') &&
   nativeBridgeSource.includes('RCT_EXPORT_VIEW_PROPERTY(navBodyBoundaryTranslateY, CGFloat)') &&
   !nativeBridgeSource.includes('RCT_EXPORT_VIEW_PROPERTY(navBodyBoundaryProgress') &&
-  !nativeBridgeSource.includes('RCT_EXPORT_VIEW_PROPERTY(navMaterialTopInset, CGFloat)\nRCT_EXPORT_VIEW_PROPERTY(cutoutHeight, CGFloat)\nRCT_EXPORT_VIEW_PROPERTY(cutoutRadius, CGFloat)\nRCT_EXPORT_VIEW_PROPERTY(onMaskPerfEvent') &&
+  !nativeBridgeSource.includes(
+    'RCT_EXPORT_VIEW_PROPERTY(navMaterialTopInset, CGFloat)\nRCT_EXPORT_VIEW_PROPERTY(cutoutHeight, CGFloat)\nRCT_EXPORT_VIEW_PROPERTY(cutoutRadius, CGFloat)\nRCT_EXPORT_VIEW_PROPERTY(onMaskPerfEvent'
+  ) &&
   !nativeSheetMaskSource.includes('@objc var navBodyBoundaryProgress') &&
   !nativeSheetMaskSource.includes('@objc var navBodyBoundaryY') &&
   !nativeSheetMaskSource.includes('@objc var navBodyBoundaryIsHiding') &&
@@ -3373,7 +3401,9 @@ if (
 ) {
   pass('native sheet mask translates one reusable path from shared nav translateY');
 } else {
-  fail('native sheet mask can regress to progress recompute, path-keyframe, delayed boolean, or JS-driven mask churn');
+  fail(
+    'native sheet mask can regress to progress recompute, path-keyframe, delayed boolean, or JS-driven mask churn'
+  );
 }
 
 if (
@@ -3392,9 +3422,13 @@ if (
   !nativeSheetMaskSource.includes('roundedRect: navBodyRect') &&
   !nativeSheetMaskSource.includes('roundedRect: visibleRect')
 ) {
-  pass('native nav material keeps the old rounded bite while sheet exclusion clips only the nav body');
+  pass(
+    'native nav material keeps the old rounded bite while sheet exclusion clips only the nav body'
+  );
 } else {
-  fail('native nav material/sheet mask shape can regress to rectangle, pill, or header-cutout masking');
+  fail(
+    'native nav material/sheet mask shape can regress to rectangle, pill, or header-cutout masking'
+  );
 }
 
 if (
@@ -3403,13 +3437,19 @@ if (
   searchForegroundBottomNavVisualSource.includes('registerSearchBottomNavMotionCommandSink') &&
   searchForegroundBottomNavVisualSource.includes('commandBottomNavMotionOnUI') &&
   searchForegroundBottomNavVisualSource.includes('runOnUI(commandBottomNavMotionOnUI)') &&
-  searchForegroundBottomNavVisualSource.includes("navBarCutoutIsHidingValue.value = target === 'hide'") &&
+  searchForegroundBottomNavVisualSource.includes(
+    "navBarCutoutIsHidingValue.value = target === 'hide'"
+  ) &&
   searchSurfaceResultsEnterExecutionSource.includes("requestSearchBottomNavMotionTarget('hide')") &&
   searchSurfaceResultsExitExecutionSource.includes("requestSearchBottomNavMotionTarget('show')") &&
   searchSurfaceResultsExitExecutionSource.indexOf("requestSearchBottomNavMotionTarget('show')") <
-    searchSurfaceResultsExitExecutionSource.indexOf('runOnUI(requestObservedRouteSheetDismissMotionOnUI)') &&
+    searchSurfaceResultsExitExecutionSource.indexOf(
+      'runOnUI(requestObservedRouteSheetDismissMotionOnUI)'
+    ) &&
   searchSurfaceResultsEnterExecutionSource.indexOf("requestSearchBottomNavMotionTarget('hide')") <
-    searchSurfaceResultsEnterExecutionSource.indexOf('runOnUI(requestObservedRouteSheetOpenMotionOnUI)')
+    searchSurfaceResultsEnterExecutionSource.indexOf(
+      'runOnUI(requestObservedRouteSheetOpenMotionOnUI)'
+    )
 ) {
   pass('bottom nav show/hide motion is commanded at submit/dismiss action boundaries');
 } else {
@@ -3426,7 +3466,9 @@ if (
 ) {
   pass('dismiss render frames bypass source snapshot applies on the close-animation hot path');
 } else {
-  fail('dismiss render frames can still apply source snapshots during the close-animation hot path');
+  fail(
+    'dismiss render frames can still apply source snapshots during the close-animation hot path'
+  );
 }
 
 const output = {

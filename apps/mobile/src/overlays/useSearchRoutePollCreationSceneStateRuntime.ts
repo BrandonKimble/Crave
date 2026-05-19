@@ -7,9 +7,7 @@ type UseSearchRoutePollCreationSceneStateRuntimeArgs = {
 };
 
 export type SearchRoutePollCreationSceneStateRuntime = {
-  pollCreationBounds:
-    | NonNullable<OverlayRouteEntry<'pollCreation'>['params']>['bounds']
-    | null;
+  pollCreationBounds: NonNullable<OverlayRouteEntry<'pollCreation'>['params']>['bounds'] | null;
   pollCreationMarketKey: string | null;
   pollCreationMarketName: string | null;
   shouldShowPollCreationPanel: boolean;

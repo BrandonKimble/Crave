@@ -1367,7 +1367,7 @@ public_restaurant_scores AS (
   WHERE subject_type = 'restaurant'
 )`;
 
-	const preview = `
+    const preview = `
 public_restaurant_scores AS (
   SELECT subject_id, display_score, score_delta_7d,
          jsonb_build_object('confidenceLabel', 'computed', 'evidenceCopy', 'Based on Crave polls and votes.', 'pollCount', 0, 'voteCount', 0) AS score_info
@@ -1403,7 +1403,7 @@ public_connection_scores AS (
   WHERE subject_type = 'connection'
 )`;
 
-	const preview = `
+    const preview = `
 public_connection_scores AS (
   SELECT subject_id, display_score, score_delta_7d,
          jsonb_build_object('confidenceLabel', 'computed', 'evidenceCopy', 'Based on Crave polls and votes.', 'pollCount', 0, 'voteCount', 0) AS score_info
@@ -1525,9 +1525,7 @@ location_aggregates AS (
     const normalized = (order || '').toLowerCase();
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
     return {
-      sql: Prisma.sql`prs.display_score ${Prisma.raw(
-        direction,
-      )},
+      sql: Prisma.sql`prs.display_score ${Prisma.raw(direction)},
       COALESCE(rvt.total_upvotes, 0) ${Prisma.raw(direction)},
       fr.entity_id ASC`,
       preview: `prs.display_score ${direction}, COALESCE(rvt.total_upvotes, 0) ${direction}, fr.entity_id ASC`,
@@ -1541,9 +1539,7 @@ location_aggregates AS (
     const normalized = (order || '').toLowerCase();
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
     return {
-      sql: Prisma.sql`sub.crave_score ${Prisma.raw(
-        direction,
-      )}`,
+      sql: Prisma.sql`sub.crave_score ${Prisma.raw(direction)}`,
       preview: `sub.crave_score ${direction}`,
     };
   }

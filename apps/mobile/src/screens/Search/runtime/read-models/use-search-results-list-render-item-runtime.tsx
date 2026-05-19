@@ -7,10 +7,7 @@ import { colors as themeColors } from '../../../../constants/theme';
 import type { FoodResult, RestaurantResult } from '../../../../types';
 import { logger } from '../../../../utils';
 import styles from '../../styles';
-import type {
-  ResultsListItem,
-  ResultsMountedRestaurantCardRow,
-} from './list-read-model-builder';
+import type { ResultsListItem, ResultsMountedRestaurantCardRow } from './list-read-model-builder';
 import type { RestaurantResultCardDescriptor } from '../../components/restaurant-result-card-descriptor';
 
 type SearchResultsListRenderItemRuntimeArgs = {

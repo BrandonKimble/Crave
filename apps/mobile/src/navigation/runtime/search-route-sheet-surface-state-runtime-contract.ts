@@ -18,9 +18,7 @@ export type SearchRouteSheetFrameHostInput = {
 };
 
 export type SearchRouteSheetMotionPersistenceInput = {
-  activeShellSpec: NonNullable<
-    SearchRouteSceneStackFrameEntry['shellSpec']
-  > | null;
+  activeShellSpec: NonNullable<SearchRouteSceneStackFrameEntry['shellSpec']> | null;
   resolvedShellIdentityKey: string;
   activeSemanticOverlayKey: SearchRouteOverlayRouteScope['activeOverlayRouteKey'];
   rootOverlayKey: SearchRouteOverlayRouteScope['rootOverlayKey'];
@@ -28,14 +26,9 @@ export type SearchRouteSheetMotionPersistenceInput = {
 };
 
 export type SearchRouteSheetMotionCallbacksInput = {
-  activeShellSpec: NonNullable<
-    SearchRouteSceneStackFrameEntry['shellSpec']
-  > | null;
+  activeShellSpec: NonNullable<SearchRouteSceneStackFrameEntry['shellSpec']> | null;
   visible: boolean;
-  resolvedRuntimeModel:
-    | BottomSheetRuntimeModel
-    | BottomSheetProgrammaticRuntimeModel
-    | null;
+  resolvedRuntimeModel: BottomSheetRuntimeModel | BottomSheetProgrammaticRuntimeModel | null;
   motionPersistenceInput: SearchRouteSheetMotionPersistenceInput;
   handleDragStateChange: ((isDragging: boolean) => void) | undefined;
   handleSettleStateChange: ((isSettling: boolean) => void) | undefined;

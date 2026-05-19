@@ -19,32 +19,22 @@ export const createSearchRootMapPresentationRuntimeValue = ({
   mapProfileControlLane: SearchRootMapProfileControlLane;
   resultsPresentationControlLane: SearchRootResultsPresentationControlLane;
 }) => {
-  const {
-    sessionPrimitivesLane,
-  } = stateFoundationLane;
-  const {
-    rootInstrumentationRuntime: instrumentationRuntime,
-    rootResultsSheetRuntimeLane,
-  } = rootOverlayFoundationRuntime;
+  const { sessionPrimitivesLane } = stateFoundationLane;
+  const { rootInstrumentationRuntime: instrumentationRuntime, rootResultsSheetRuntimeLane } =
+    rootOverlayFoundationRuntime;
 
   return {
-    highlightedRestaurantId:
-      mapProfileControlLane.mapViewState.highlightedRestaurantId,
+    highlightedRestaurantId: mapProfileControlLane.mapViewState.highlightedRestaurantId,
     viewportBoundsService: sessionCoreLane.viewportBoundsService,
     resolveRestaurantMapLocations:
-      mapProfileControlLane.restaurantSelectionModel
-        .resolveRestaurantMapLocations,
+      mapProfileControlLane.restaurantSelectionModel.resolveRestaurantMapLocations,
     resolveRestaurantLocationSelectionAnchor:
-      mapProfileControlLane.restaurantSelectionModel
-        .resolveRestaurantLocationSelectionAnchor,
+      mapProfileControlLane.restaurantSelectionModel.resolveRestaurantLocationSelectionAnchor,
     pickPreferredRestaurantMapLocation:
-      mapProfileControlLane.restaurantSelectionModel
-        .pickPreferredRestaurantMapLocation,
+      mapProfileControlLane.restaurantSelectionModel.pickPreferredRestaurantMapLocation,
     mapGestureActiveRef: rootResultsSheetRuntimeLane.mapGestureActiveRef,
-    mapMotionPressureController:
-      rootResultsSheetRuntimeLane.mapMotionPressureController,
-    shouldLogSearchComputes:
-      instrumentationRuntime.shouldLogSearchComputes,
+    mapMotionPressureController: rootResultsSheetRuntimeLane.mapMotionPressureController,
+    shouldLogSearchComputes: instrumentationRuntime.shouldLogSearchComputes,
     getPerfNow: sessionPrimitivesLane.primitives.getPerfNow,
     logSearchCompute: instrumentationRuntime.logSearchCompute,
     mapQueryBudget: sessionCoreLane.mapQueryBudget,
@@ -65,26 +55,20 @@ export const createSearchRootMapPresentationRuntimeValue = ({
     },
     cameraPadding: mapProfileControlLane.mapViewState.mapCameraPadding,
     handleMapLoaded: sessionCoreLane.mapBootstrapRuntime.handleMapLoaded,
-    handleMainMapFullyRendered:
-      sessionCoreLane.mapBootstrapRuntime.handleMainMapFullyRendered,
+    handleMainMapFullyRendered: sessionCoreLane.mapBootstrapRuntime.handleMainMapFullyRendered,
     isMapStyleReady: sessionCoreLane.mapBootstrapRuntime.isMapStyleReady,
     onProfilerRender: instrumentationRuntime.handleProfilerRender,
     presentationLifecycleHandlers: {
       handleExecutionBatchMountedHidden:
-        resultsPresentationControlLane.resultsPresentationOwner
-          .handleExecutionBatchMountedHidden,
+        resultsPresentationControlLane.resultsPresentationOwner.handleExecutionBatchMountedHidden,
       handleMarkerEnterStarted:
-        resultsPresentationControlLane.resultsPresentationOwner
-          .handleMarkerEnterStarted,
+        resultsPresentationControlLane.resultsPresentationOwner.handleMarkerEnterStarted,
       handleMarkerEnterSettled:
-        resultsPresentationControlLane.resultsPresentationOwner
-          .handleMarkerEnterSettled,
+        resultsPresentationControlLane.resultsPresentationOwner.handleMarkerEnterSettled,
       handleMarkerExitStarted:
-        resultsPresentationControlLane.resultsPresentationOwner
-          .handleMarkerExitStarted,
+        resultsPresentationControlLane.resultsPresentationOwner.handleMarkerExitStarted,
       handleMarkerExitSettled:
-        resultsPresentationControlLane.resultsPresentationOwner
-          .handleMarkerExitSettled,
+        resultsPresentationControlLane.resultsPresentationOwner.handleMarkerExitSettled,
     },
   };
 };

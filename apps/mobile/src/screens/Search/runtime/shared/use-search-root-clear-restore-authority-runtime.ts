@@ -50,10 +50,8 @@ export const useSearchRootClearRestoreAuthorityRuntime = ({
     submittedQuery: rootDataPlaneRuntime.resultsArrivalState.submittedQuery,
     armSearchCloseRestore: routeOverlaySessionActions.armSearchCloseRestore,
     commitSearchCloseRestore: routeOverlaySessionActions.commitSearchCloseRestore,
-    flushPendingSearchOriginRestore:
-      routeOverlaySessionActions.flushPendingSearchOriginRestore,
-    requestDefaultPostSearchRestore:
-      routeOverlaySessionActions.requestDefaultPostSearchRestore,
+    flushPendingSearchOriginRestore: routeOverlaySessionActions.flushPendingSearchOriginRestore,
+    requestDefaultPostSearchRestore: routeOverlaySessionActions.requestDefaultPostSearchRestore,
     cancelAutocomplete: rootDataPlaneRuntime.requestStatusRuntime.cancelAutocomplete,
     resetSubmitTransitionHold: rootSuggestionRuntime.resetSubmitTransitionHold,
     resetFilters: rootDataPlaneRuntime.filterStateRuntime.resetFilters,
@@ -63,8 +61,7 @@ export const useSearchRootClearRestoreAuthorityRuntime = ({
     setShowSuggestions: rootPrimitivesRuntime.searchState.setShowSuggestions,
     setQuery: rootPrimitivesRuntime.searchState.setQuery,
     searchRuntimeBus: sessionCoreLane.searchRuntimeBus,
-    resetShortcutCoverageState:
-      sessionPrimitivesLane.primitives.resetShortcutCoverageState,
+    resetShortcutCoverageState: sessionPrimitivesLane.primitives.resetShortcutCoverageState,
     resetMapMoveFlag: rootResultsSheetRuntimeLane.resetMapMoveFlag,
     setError: rootPrimitivesRuntime.searchState.setError,
     setSuggestions: rootPrimitivesRuntime.searchState.setSuggestions,

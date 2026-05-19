@@ -63,8 +63,7 @@ export const useResultsPresentationSurfaceHydrationPublicationRuntime = ({
       commitSearchMountedResultsHydrationRuntimeSnapshot({
         activeTab: payload.activeTab,
         hydratedResultsKey: payload.searchSceneListHydrationPatch.hydratedResultsKey,
-        isResultsHydrationSettled:
-          payload.searchSceneListHydrationPatch.isResultsHydrationSettled,
+        isResultsHydrationSettled: payload.searchSceneListHydrationPatch.isResultsHydrationSettled,
         resultsHydrationKey: payload.searchSceneListHydrationPatch.resultsHydrationKey,
         shouldHydrateResultsForRender:
           payload.searchSceneListHydrationPatch.shouldHydrateResultsForRender,

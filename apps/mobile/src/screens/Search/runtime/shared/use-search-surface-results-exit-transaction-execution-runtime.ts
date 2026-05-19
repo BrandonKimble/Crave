@@ -30,8 +30,7 @@ export const useResultsSurfaceExitTransactionExecutionRuntime = ({
           currentSheetSnap: currentSheetSnap ?? null,
           pinsLabelsDotsFadeOutRequested: true,
           pinsLabelsFadeOutRequested: true,
-          pollsSwitchImmediate:
-            currentSheetSnap === 'collapsed' || currentSheetSnap === 'hidden',
+          pollsSwitchImmediate: currentSheetSnap === 'collapsed' || currentSheetSnap === 'hidden',
           outgoingResultCardsHeldForDismissTransition: true,
           queryClearedToPlaceholder: true,
           queryHeldForDismissTransition: false,
@@ -109,15 +108,10 @@ export const useResultsSurfaceExitTransactionExecutionRuntime = ({
           pinCount: 0,
           dotCount: 0,
           labelCount: 0,
-          });
+        });
       }
       return snapshot.transactionId;
     },
-    [
-      beginCloseTransition,
-      getCurrentSheetSnap,
-      resultsRuntimeOwner,
-      routeSceneRuntime,
-    ]
+    [beginCloseTransition, getCurrentSheetSnap, resultsRuntimeOwner, routeSceneRuntime]
   );
 };

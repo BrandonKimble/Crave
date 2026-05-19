@@ -22,9 +22,7 @@ type UseSearchResultsPanelCardRenderRuntimeArgs = Pick<
   | 'openScoreInfo'
 > & {
   cardMarketRuntime: ReturnType<typeof useSearchResultsPanelCardMarketRuntime>;
-  dishCardMetricsRuntime: ReturnType<
-    typeof useSearchResultsPanelDishCardMetricsRuntime
-  >;
+  dishCardMetricsRuntime: ReturnType<typeof useSearchResultsPanelDishCardMetricsRuntime>;
   restaurantCardMetricsRuntime: ReturnType<
     typeof useSearchResultsPanelRestaurantCardMetricsRuntime
   >;
@@ -90,7 +88,10 @@ export const useSearchResultsPanelCardRenderRuntime = ({
       );
     });
     mountedResultsSnapshot.results?.dishes?.forEach((dish) => {
-      nextMetrics.dishQualityColorByConnectionId.set(dish.connectionId, getMarkerColorForDish(dish));
+      nextMetrics.dishQualityColorByConnectionId.set(
+        dish.connectionId,
+        getMarkerColorForDish(dish)
+      );
     });
     mountedMetricsRef.current = nextMetrics;
     return nextMetrics;

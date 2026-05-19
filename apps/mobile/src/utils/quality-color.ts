@@ -28,9 +28,7 @@ const getCraveScoreColorForT = (t: number): string => {
 
 export const getCraveScoreColorFromScore = (score?: number | null): string => {
   const normalizedScore =
-    typeof score === 'number' && Number.isFinite(score)
-      ? clamp01(score / 100)
-      : null;
+    typeof score === 'number' && Number.isFinite(score) ? clamp01(score / 100) : null;
   if (normalizedScore === null) {
     return getCraveScoreColorForT(0.5);
   }

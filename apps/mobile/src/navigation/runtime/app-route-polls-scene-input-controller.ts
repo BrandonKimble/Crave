@@ -264,9 +264,7 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
   }
 
   private setSheetSessionState(nextState: AppRouteSceneSheetSessionInputState): void {
-    if (
-      this.sheetSessionState.isDockedPollsDismissed === nextState.isDockedPollsDismissed
-    ) {
+    if (this.sheetSessionState.isDockedPollsDismissed === nextState.isDockedPollsDismissed) {
       return;
     }
     this.sheetSessionState = nextState;
@@ -378,8 +376,8 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
       pollsSceneStateRuntime.mode === 'docked'
         ? pollsSceneStateRuntime.snapPoints.collapsed + 1
         : pollsSceneStateRuntime.navBarTop > 0
-        ? pollsSceneStateRuntime.navBarTop
-        : undefined;
+          ? pollsSceneStateRuntime.navBarTop
+          : undefined;
     const pollsShellSpec: AppRouteSceneStackShellSpec = normalizeSearchRouteSceneStackShellSpec({
       overlayKey: 'polls',
       snapPoints: pollsSceneStateRuntime.snapPoints,

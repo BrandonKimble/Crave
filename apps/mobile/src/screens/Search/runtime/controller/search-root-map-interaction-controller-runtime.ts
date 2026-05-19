@@ -43,43 +43,34 @@ export const createSearchRootMapInteractionControllerArgs = ({
     suppressAutocompleteResults:
       autocompleteControlLane.autocompleteControlPort.suppressAutocompleteResults,
     dismissSearchKeyboard:
-      suggestionInteractionControlLane.suggestionInteractionRuntime
-        .dismissSearchKeyboard,
+      suggestionInteractionControlLane.suggestionInteractionRuntime.dismissSearchKeyboard,
     beginSuggestionCloseHold: suggestionRuntime.beginSuggestionCloseHold,
     isSearchSessionActive: dataPlaneRuntime.runtimeFlags.isSearchSessionActive,
     isProfilePresentationActive:
       profilePresentationControlLane.profileOwner.profileViewState.presentation
         .isPresentationActive,
-    setIsAutocompleteSuppressed:
-      primitivesRuntime.searchState.setIsAutocompleteSuppressed,
+    setIsAutocompleteSuppressed: primitivesRuntime.searchState.setIsAutocompleteSuppressed,
     setIsSearchFocused: primitivesRuntime.searchState.setIsSearchFocused,
-    setIsSuggestionPanelActive:
-      primitivesRuntime.searchState.setIsSuggestionPanelActive,
+    setIsSuggestionPanelActive: primitivesRuntime.searchState.setIsSuggestionPanelActive,
     setShowSuggestions: primitivesRuntime.searchState.setShowSuggestions,
     setSuggestions: primitivesRuntime.searchState.setSuggestions,
     clearMapHighlightedRestaurantId:
-      profilePresentationControlLane.profileOwner.profileActions
-        .clearMapHighlightedRestaurantId,
+      profilePresentationControlLane.profileOwner.profileActions.clearMapHighlightedRestaurantId,
     cancelAutocomplete: dataPlaneRuntime.requestStatusRuntime.cancelAutocomplete,
     shouldLogMapEventRates: instrumentationRuntime.shouldLogMapEventRates,
     mapEventLogIntervalMs: instrumentationRuntime.mapEventLogIntervalMs,
-    shouldLogSearchStateChanges:
-      instrumentationRuntime.shouldLogSearchStateChanges,
+    shouldLogSearchStateChanges: instrumentationRuntime.shouldLogSearchStateChanges,
     mapGestureActiveRef: rootResultsSheetRuntimeLane.mapGestureActiveRef,
     suppressMapMovedRef: primitivesRuntime.mapState.suppressMapMovedRef,
-    mapMotionPressureController:
-      rootResultsSheetRuntimeLane.mapMotionPressureController,
-    cancelPendingMapMovementUpdates:
-      rootResultsSheetRuntimeLane.cancelPendingMapMovementUpdates,
+    mapMotionPressureController: rootResultsSheetRuntimeLane.mapMotionPressureController,
+    cancelPendingMapMovementUpdates: rootResultsSheetRuntimeLane.cancelPendingMapMovementUpdates,
     markMapMovedIfNeeded: rootResultsSheetRuntimeLane.markMapMovedIfNeeded,
     scheduleMapIdleEnter: rootResultsSheetRuntimeLane.scheduleMapIdleEnter,
     isSearchOverlay: rootOverlayStoreRuntime.isSearchOverlay,
     shouldShowPollsSheet: routeOverlaySessionSnapshot.shouldShowPollsSheet,
-    schedulePollBoundsUpdate:
-      rootResultsSheetRuntimeLane.schedulePollBoundsUpdate,
+    schedulePollBoundsUpdate: rootResultsSheetRuntimeLane.schedulePollBoundsUpdate,
     lastCameraStateRef: sessionPrimitivesLane.primitives.lastCameraStateRef,
-    lastPersistedCameraRef:
-      sessionPrimitivesLane.primitives.lastPersistedCameraRef,
+    lastPersistedCameraRef: sessionPrimitivesLane.primitives.lastPersistedCameraRef,
     cameraIntentArbiter: sessionCoreLane.cameraIntentArbiter,
     viewportBoundsService: sessionCoreLane.viewportBoundsService,
   };

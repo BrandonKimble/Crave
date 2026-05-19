@@ -30,7 +30,10 @@ export const useResultsSurfaceEnterTransactionExecutionRuntime = ({
       shouldPrepareShortcutSheetTransition = false,
       entrySurface,
     }) => {
-      const targetSnap = resolveSearchSurfaceResultsSheetTargetSnap(snapshot.kind, preserveSheetState);
+      const targetSnap = resolveSearchSurfaceResultsSheetTargetSnap(
+        snapshot.kind,
+        preserveSheetState
+      );
       const entryMotion = resolveSearchSubmitEntryMotion({ entrySurface, preserveSheetState });
       setDisplayQueryOverride(displayQueryOverride ?? '');
       const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;

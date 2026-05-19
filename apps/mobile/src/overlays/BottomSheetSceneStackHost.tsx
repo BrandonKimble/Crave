@@ -351,8 +351,8 @@ const SceneStackBodyFrameHost = React.memo(
     | 'displayedSceneKey'
   > &
     Pick<BottomSheetSceneStackHostProps, 'onHeaderLayout'> & {
-    children: React.ReactNode;
-  }) => {
+      children: React.ReactNode;
+    }) => {
     useSearchNavSwitchCommitAttribution(`SceneStackBodyFrameHost:${sceneKey}`);
     const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
     const onProfilerRender = useSearchOverlayProfilerRender();
@@ -612,11 +612,7 @@ const SceneStackBodyLayerHost = React.memo((props: SceneStackBodyLayerHostProps)
         bodyRuntimeAuthority={props.bodyRuntimeAuthority}
       />
     ),
-    [
-      props.bodyRuntimeAuthority,
-      props.sceneKey,
-      props.sceneStackSurfaceAuthority,
-    ]
+    [props.bodyRuntimeAuthority, props.sceneKey, props.sceneStackSurfaceAuthority]
   );
 
   const bodyLayerHost = (
@@ -650,9 +646,7 @@ const SceneStackBodyLayerHost = React.memo((props: SceneStackBodyLayerHostProps)
 
 type SceneStackChromeLayerHostProps = Pick<
   BottomSheetSceneStackHostProps,
-  | 'displayedSceneKey'
-  | 'routeSceneDisplayTargetRegistry'
-  | 'sceneStackSurfaceAuthority'
+  'displayedSceneKey' | 'routeSceneDisplayTargetRegistry' | 'sceneStackSurfaceAuthority'
 > & {
   sceneKey: OverlayKey;
   surface: 'underlay' | 'background' | 'header' | 'overlay';
@@ -700,16 +694,9 @@ const SceneStackChromeLayerHost = React.memo(
 
     const chromeLayer =
       surface === 'header' ? (
-        <SceneStackHeaderLayer
-          entry={sceneChromeEntry}
-          isVisible={isVisible}
-        />
+        <SceneStackHeaderLayer entry={sceneChromeEntry} isVisible={isVisible} />
       ) : (
-        <SceneStackDecorLayer
-          entry={sceneChromeEntry}
-          kind={surface}
-          isVisible={isVisible}
-        />
+        <SceneStackDecorLayer entry={sceneChromeEntry} kind={surface} isVisible={isVisible} />
       );
 
     const profiledChromeLayer = onProfilerRender ? (

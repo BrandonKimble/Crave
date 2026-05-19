@@ -746,7 +746,7 @@ export class KeywordSliceSelectionService {
         ? this.calculateLowResultSeverity({
             restaurantCount: params.resultRestaurantCount,
             foodCount: params.resultFoodCount,
-        })
+          })
         : 1;
     const demandScore =
       typeof params.demandScore === 'number' &&
@@ -1124,7 +1124,7 @@ export class KeywordSliceSelectionService {
         ? normalizeKeywordTerm(stripped.text)
         : '';
       const unmetDistinctUsers = normalized.length
-        ? unmetByNormalizedTerm.get(normalized) ?? 0
+        ? (unmetByNormalizedTerm.get(normalized) ?? 0)
         : 0;
 
       const signalFloorMet =

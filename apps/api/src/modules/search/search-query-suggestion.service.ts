@@ -70,12 +70,12 @@ export class SearchQuerySuggestionService {
       const suggestionSourceByKey = new Map<string, QuerySuggestionSource>();
       const personalRows = userId
         ? (
-          await this.loadFreshPersonalQueryRows(
-            userId,
-            trimmed,
-            Math.max(safeLimit * 20, 100),
-          )
-        ).sort(this.comparePersonalRows)
+            await this.loadFreshPersonalQueryRows(
+              userId,
+              trimmed,
+              Math.max(safeLimit * 20, 100),
+            )
+          ).sort((left, right) => this.comparePersonalRows(left, right))
         : [];
 
       const globalLimit = Math.max(safeLimit * 20, 100);
@@ -120,7 +120,9 @@ export class SearchQuerySuggestionService {
         ];
       }
 
-      const sortedGlobalRows = globalRows.sort(this.compareGlobalRows);
+      const sortedGlobalRows = globalRows.sort((left, right) =>
+        this.compareGlobalRows(left, right),
+      );
       const selectedKeys: string[] = [];
       const selectedKeySet = new Set<string>();
       const personalReservation = userId
@@ -253,11 +255,10 @@ export class SearchQuerySuggestionService {
       );
       globalRows = [
         ...eligibleScopedRows.filter(
-          (row) =>
-            !fallbackKeys.has(row.subjectKey.trim().toLowerCase()),
+          (row) => !fallbackKeys.has(row.subjectKey.trim().toLowerCase()),
         ),
-        ...fallbackRows.filter(
-          (row) => fallbackKeys.has(row.subjectKey.trim().toLowerCase()),
+        ...fallbackRows.filter((row) =>
+          fallbackKeys.has(row.subjectKey.trim().toLowerCase()),
         ),
       ];
     }

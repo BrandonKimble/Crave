@@ -72,9 +72,5 @@ export const useSearchRootOverlayChromePresentationDiagnosticRuntime = ({
       unsubscribeBus();
       unsubscribePresentation();
     };
-  }, [
-    resultsPresentationAuthority,
-    searchRuntimeBus,
-    shouldRenderResultsSheet,
-  ]);
+  }, [resultsPresentationAuthority, searchRuntimeBus, shouldRenderResultsSheet]);
 };

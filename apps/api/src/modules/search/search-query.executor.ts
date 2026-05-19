@@ -1049,7 +1049,9 @@ export class SearchQueryExecutor {
         scoreSubjectType: 'connection',
         scoreSubjectId: connection.connection_id,
         craveScore,
-        scoreDelta7d: this.toOptionalNumber(connection.connection_score_delta_7d),
+        scoreDelta7d: this.toOptionalNumber(
+          connection.connection_score_delta_7d,
+        ),
         scoreInfo: this.parseScoreInfo(connection.connection_score_info),
         marketKey: connection.restaurant_market_key ?? undefined,
         activityLevel: connection.activity_level,
@@ -1136,7 +1138,9 @@ export class SearchQueryExecutor {
           connection.connection_crave_score,
           `connection:${connection.connection_id}`,
         ),
-        scoreDelta7d: this.toOptionalNumber(connection.connection_score_delta_7d),
+        scoreDelta7d: this.toOptionalNumber(
+          connection.connection_score_delta_7d,
+        ),
         scoreInfo: this.parseScoreInfo(connection.connection_score_info),
         activityLevel: connection.activity_level,
       };
@@ -1222,10 +1226,12 @@ export class SearchQueryExecutor {
             connection.restaurant_crave_score,
             `restaurant:${connection.restaurant_id}`,
           ),
-            restaurantScoreDelta7d: this.toOptionalNumber(
-              connection.restaurant_score_delta_7d,
-            ),
-            restaurantScoreInfo: this.parseScoreInfo(connection.restaurant_score_info),
+          restaurantScoreDelta7d: this.toOptionalNumber(
+            connection.restaurant_score_delta_7d,
+          ),
+          restaurantScoreInfo: this.parseScoreInfo(
+            connection.restaurant_score_info,
+          ),
           marketKey: connection.restaurant_market_key ?? null,
           latitude: connection.latitude,
           longitude: connection.longitude,
@@ -1404,10 +1410,10 @@ export class SearchQueryExecutor {
             displayLocation,
             locations,
             locationCount: resolvedLocationCount,
-	            topFood: snippets
-	              .sort((a, b) => {
-	                return b.craveScore - a.craveScore;
-	              })
+            topFood: snippets
+              .sort((a, b) => {
+                return b.craveScore - a.craveScore;
+              })
               .slice(0, TOP_RESTAURANT_FOOD_SNIPPETS),
             totalDishCount: count,
           };
@@ -2087,7 +2093,9 @@ export class SearchQueryExecutor {
     return parsed;
   }
 
-  private parseScoreInfo(value: Prisma.JsonValue | null | undefined): ScoreInfoSummary | undefined {
+  private parseScoreInfo(
+    value: Prisma.JsonValue | null | undefined,
+  ): ScoreInfoSummary | undefined {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       return undefined;
     }
@@ -2107,7 +2115,8 @@ export class SearchQueryExecutor {
     return {
       confidenceLabel,
       evidenceCopy:
-        typeof record.evidenceCopy === 'string' && record.evidenceCopy.trim().length
+        typeof record.evidenceCopy === 'string' &&
+        record.evidenceCopy.trim().length
           ? record.evidenceCopy
           : 'Based on Crave polls and votes.',
       pollCount,
@@ -2527,7 +2536,9 @@ export class SearchQueryExecutor {
         scoreDelta7d: this.toOptionalNumber(
           record.scoreDelta7d as Prisma.Decimal | number | string | null,
         ),
-        scoreInfo: this.parseScoreInfo(record.scoreInfo as Prisma.JsonValue | null),
+        scoreInfo: this.parseScoreInfo(
+          record.scoreInfo as Prisma.JsonValue | null,
+        ),
         activityLevel: (record.activityLevel as ActivityLevel) || 'normal',
       });
     }

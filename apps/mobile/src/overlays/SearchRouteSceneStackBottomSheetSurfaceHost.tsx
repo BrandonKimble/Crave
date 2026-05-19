@@ -127,7 +127,10 @@ const SearchRouteSceneStackBottomSheetInteractionGate = React.memo(
     const touchBlockingEnabled = touchBlockingAuthority.getSnapshot();
 
     const interactionGate = (
-      <Animated.View pointerEvents={touchBlockingEnabled ? 'none' : 'box-none'} style={sheetViewStyle}>
+      <Animated.View
+        pointerEvents={touchBlockingEnabled ? 'none' : 'box-none'}
+        style={sheetViewStyle}
+      >
         {children}
       </Animated.View>
     );

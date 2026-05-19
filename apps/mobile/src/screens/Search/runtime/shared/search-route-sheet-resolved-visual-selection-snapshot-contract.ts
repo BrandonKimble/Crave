@@ -15,13 +15,13 @@ export const FALLBACK_CHROME_VISUAL_STATE: SearchRouteSceneStackChromeVisualStat
   searchSurfacePageBundleProgress: EMPTY_SEARCH_ROUTE_VISUAL_STATE.searchSurfacePageBundleProgress,
   navBarCutoutHeight: EMPTY_SEARCH_ROUTE_VISUAL_STATE.navBarCutoutHeight,
   navBarCutoutProgress: EMPTY_SEARCH_ROUTE_VISUAL_STATE.navBarCutoutProgress,
-    navBarCutoutHidingProgress: EMPTY_SEARCH_ROUTE_VISUAL_STATE.navBarCutoutHidingProgress,
-    bottomNavHiddenTranslateY: EMPTY_SEARCH_ROUTE_VISUAL_STATE.bottomNavHiddenTranslateY,
-    navBarCutoutIsHiding: EMPTY_SEARCH_ROUTE_VISUAL_STATE.navBarCutoutIsHiding,
-    navTranslateY: EMPTY_SEARCH_ROUTE_VISUAL_STATE.navTranslateY,
-    navSilhouetteSheetExclusionModeValue:
-      EMPTY_SEARCH_ROUTE_VISUAL_STATE.navSilhouetteSheetExclusionModeValue,
-  };
+  navBarCutoutHidingProgress: EMPTY_SEARCH_ROUTE_VISUAL_STATE.navBarCutoutHidingProgress,
+  bottomNavHiddenTranslateY: EMPTY_SEARCH_ROUTE_VISUAL_STATE.bottomNavHiddenTranslateY,
+  navBarCutoutIsHiding: EMPTY_SEARCH_ROUTE_VISUAL_STATE.navBarCutoutIsHiding,
+  navTranslateY: EMPTY_SEARCH_ROUTE_VISUAL_STATE.navTranslateY,
+  navSilhouetteSheetExclusionModeValue:
+    EMPTY_SEARCH_ROUTE_VISUAL_STATE.navSilhouetteSheetExclusionModeValue,
+};
 
 export type SearchRouteSheetResolvedVisualSelectionSnapshot = {
   resolvedPresentationState: SearchRouteSceneStackPresentationState;

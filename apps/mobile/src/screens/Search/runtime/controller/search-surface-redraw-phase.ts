@@ -13,12 +13,10 @@ export const SEARCH_SURFACE_REDRAW_PHASE_ORDER: readonly SearchSurfaceRedrawPhas
   'chrome_ready',
 ];
 
-export const isSearchSurfaceRedrawDeferredChromePhase = (phase: SearchSurfaceRedrawPhase): boolean =>
-  phase === 'markers_ready' ||
-  phase === 'hydration_ready';
+export const isSearchSurfaceRedrawDeferredChromePhase = (
+  phase: SearchSurfaceRedrawPhase
+): boolean => phase === 'markers_ready' || phase === 'hydration_ready';
 
 export const isSearchSurfaceRedrawVisibleAdmissionPhase = (
   phase: SearchSurfaceRedrawPhase
-): boolean =>
-  phase === 'redraw_committed' ||
-  phase === 'markers_ready';
+): boolean => phase === 'redraw_committed' || phase === 'markers_ready';

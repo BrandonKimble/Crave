@@ -114,9 +114,7 @@ const AppOverlayRouteHost = ({
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
       <>
-        <SearchOverlayChromeHost
-          overlayChromeHostAuthority={overlayChromeHostAuthority}
-        />
+        <SearchOverlayChromeHost overlayChromeHostAuthority={overlayChromeHostAuthority} />
         <SearchOverlayShellHost overlayShellHostAuthority={overlayShellHostAuthority} />
         <RestaurantRouteSceneInputHost
           overlayGlobalRestaurantHostAuthority={overlayGlobalRestaurantHostAuthority}

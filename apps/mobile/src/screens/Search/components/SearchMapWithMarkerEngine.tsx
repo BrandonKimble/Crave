@@ -127,14 +127,18 @@ const useSearchMapLaneAdvancement = ({
       return shouldAdvanceMapPolishLane({
         mapPresentationSettled: presentationState.resultsPresentation.isSettled,
         shouldDeferMapFromPressure:
-          runtimeState.isMapActivationDeferred || runtimeState.searchSurfaceRedrawCommitSpanPressureActive,
+          runtimeState.isMapActivationDeferred ||
+          runtimeState.searchSurfaceRedrawCommitSpanPressureActive,
         nativeSyncInFlight: isMapNativeSyncInFlight(mapMotionPressureControllerRef.current),
       });
     };
 
     const releaseIdleIfReady = (operationId: string) => {
       const state = searchRuntimeBus.getState();
-      if (state.activeOperationId !== operationId || state.activeOperationLane !== 'lane_f_polish') {
+      if (
+        state.activeOperationId !== operationId ||
+        state.activeOperationLane !== 'lane_f_polish'
+      ) {
         return;
       }
       if (!canAdvanceMapPolishLane()) {

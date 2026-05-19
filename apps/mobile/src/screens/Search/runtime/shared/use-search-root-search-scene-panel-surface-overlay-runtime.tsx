@@ -1,9 +1,6 @@
 import React from 'react';
 import { View } from 'react-native';
-import Reanimated, {
-  useAnimatedStyle,
-  useSharedValue,
-} from 'react-native-reanimated';
+import Reanimated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 
 import styles from '../../styles';
 import type { useSearchRootSearchSceneInteractionFrostRuntime } from './use-search-root-search-scene-interaction-frost-runtime';
@@ -30,9 +27,7 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
   const useInteractionSurfaceValue = useSharedValue(shouldUseInteractionSurface ? 1 : 0);
   const surfaceActiveValue = useSharedValue(surfaceActive ? 1 : 0);
   const initialLoadingModeValue = useSharedValue(surfaceMode === 'initial_loading' ? 1 : 0);
-  const interactionLoadingModeValue = useSharedValue(
-    surfaceMode === 'interaction_loading' ? 1 : 0
-  );
+  const interactionLoadingModeValue = useSharedValue(surfaceMode === 'interaction_loading' ? 1 : 0);
   const emptyModeValue = useSharedValue(surfaceMode === 'empty' ? 1 : 0);
   const shouldExposeLoadingCover =
     surfaceMode === 'initial_loading' || surfaceMode === 'interaction_loading';
@@ -53,9 +48,7 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
   }, [emptyModeValue, initialLoadingModeValue, interactionLoadingModeValue, surfaceMode]);
   const normalSurfaceAnimatedStyle = useAnimatedStyle(() => ({
     opacity:
-      surfaceActiveValue.value *
-      (1 - useInteractionSurfaceValue.value) *
-      emptyModeValue.value,
+      surfaceActiveValue.value * (1 - useInteractionSurfaceValue.value) * emptyModeValue.value,
     top: headerTopValue.value,
   }));
   const loadingSurfaceAnimatedStyle = useAnimatedStyle(() => ({
@@ -85,10 +78,7 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
           pointerEvents="none"
           style={[styles.resultsSurface, normalSurfaceAnimatedStyle]}
         >
-          <Reanimated.View
-            pointerEvents="none"
-            style={emptyContentAnimatedStyle}
-          >
+          <Reanimated.View pointerEvents="none" style={emptyContentAnimatedStyle}>
             {surfaceContentRuntime.emptyContent}
           </Reanimated.View>
         </Reanimated.View>
@@ -109,10 +99,7 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
               testID="results-loading-cover"
             />
           ) : null}
-          <Reanimated.View
-            pointerEvents="none"
-            style={loadingContentAnimatedStyle}
-          >
+          <Reanimated.View pointerEvents="none" style={loadingContentAnimatedStyle}>
             {surfaceContentRuntime.loadingContent}
           </Reanimated.View>
         </Reanimated.View>

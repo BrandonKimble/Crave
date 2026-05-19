@@ -12,9 +12,6 @@ export const useSearchRootOverlayBottomNavPresentationRuntime = ({
       bottomNavMotionRuntime: visualRuntime.bottomNavMotionRuntime,
       shouldHideBottomNav: visualRuntime.shouldHideBottomNavForRender,
     }),
-    [
-      visualRuntime.bottomNavMotionRuntime,
-      visualRuntime.shouldHideBottomNavForRender,
-    ]
+    [visualRuntime.bottomNavMotionRuntime, visualRuntime.shouldHideBottomNavForRender]
   );
 };

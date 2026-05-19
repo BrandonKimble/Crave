@@ -99,7 +99,6 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
   notifySnapSettleComplete,
   runtimeConfigValues,
 }: UseBottomSheetSharedSnapExecutionRuntimeArgs): BottomSheetSharedSnapExecutionResult => {
-
   const snapCandidates = React.useMemo(() => {
     const points = [expandedSnap, middleSnap, collapsedSnap];
     if (typeof hiddenSnap === 'number' && !preventSwipeDismiss) {
@@ -169,16 +168,13 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
       const runtimeSnapValues = resolveRuntimeSnapValues();
       const upperBound = runtimeSnapValues.preventSwipeDismiss
         ? runtimeSnapValues.collapsed
-        : runtimeSnapValues.hidden ?? runtimeSnapValues.collapsed;
+        : (runtimeSnapValues.hidden ?? runtimeSnapValues.collapsed);
       const clampedValue = clampValue(value, runtimeSnapValues.expanded, upperBound);
       return resolveHeaderGatedSnapPoint({
         value: clampedValue,
         velocity,
         gestureStartValue,
-        gateDistance: Math.min(
-          headerHeight.value || SNAP_GATE_FALLBACK_PX,
-          SNAP_GATE_FALLBACK_PX
-        ),
+        gateDistance: Math.min(headerHeight.value || SNAP_GATE_FALLBACK_PX, SNAP_GATE_FALLBACK_PX),
         points: runtimeConfigValues
           ? resolveRuntimeSnapCandidates(runtimeSnapValues)
           : snapCandidates,

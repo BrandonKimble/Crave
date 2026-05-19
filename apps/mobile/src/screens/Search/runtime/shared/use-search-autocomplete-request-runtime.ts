@@ -79,9 +79,6 @@ export const useSearchAutocompleteRequestRuntime = ({
       suppressAutocompleteResults: requestStateRuntime.suppressAutocompleteResults,
       allowAutocompleteResults: requestStateRuntime.allowAutocompleteResults,
     }),
-    [
-      requestStateRuntime.allowAutocompleteResults,
-      requestStateRuntime.suppressAutocompleteResults,
-    ]
+    [requestStateRuntime.allowAutocompleteResults, requestStateRuntime.suppressAutocompleteResults]
   );
 };

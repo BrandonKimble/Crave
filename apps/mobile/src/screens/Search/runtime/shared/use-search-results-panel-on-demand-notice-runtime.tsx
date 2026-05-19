@@ -27,13 +27,11 @@ export const useSearchResultsPanelOnDemandNoticeRuntime = ({
       ? metadata.collectableMarketKeys.length
       : 0;
     const displayName =
-      typeof metadata.displayMarketName === 'string' &&
-      metadata.displayMarketName.trim()
+      typeof metadata.displayMarketName === 'string' && metadata.displayMarketName.trim()
         ? metadata.displayMarketName.trim()
         : null;
     const candidateLocalityName =
-      typeof metadata.candidateLocalityName === 'string' &&
-      metadata.candidateLocalityName.trim()
+      typeof metadata.candidateLocalityName === 'string' && metadata.candidateLocalityName.trim()
         ? metadata.candidateLocalityName.trim()
         : null;
 

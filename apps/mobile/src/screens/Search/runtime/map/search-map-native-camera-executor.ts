@@ -51,9 +51,7 @@ export type SearchMapNativeCameraExecutor = {
 const mapAnimationMode = (animationMode?: 'none' | 'easeTo'): 2 | 5 =>
   animationMode === 'none' ? 5 : 2;
 
-const buildNativeCameraStopPayload = (
-  command: SearchMapCameraCommand
-): NativeCameraStopPayload => {
+const buildNativeCameraStopPayload = (command: SearchMapCameraCommand): NativeCameraStopPayload => {
   const stop: NativeCameraStopPayload = {
     centerCoordinate: JSON.stringify({
       type: 'Point',

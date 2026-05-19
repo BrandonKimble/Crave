@@ -54,8 +54,8 @@ export type CreateProfilePresentationModelRuntimeArgs = {
     restaurantPanelSnapshot: RestaurantPanelSnapshot | null;
     mapCameraPadding: CameraSnapshot['padding'];
     mapHighlightedRestaurantId: string | null;
-	  };
-	  preparedSnapshot: PreparedProfilePresentationSnapshot | null;
+  };
+  preparedSnapshot: PreparedProfilePresentationSnapshot | null;
   cameraLayoutModel: ProfilePresentationCameraLayoutModel;
   getCurrentLastCameraState: () => { center: [number, number]; zoom: number } | null;
 };
@@ -72,8 +72,8 @@ export const createProfilePresentationModelRuntime = ({
     restaurantPanelSnapshot,
     mapCameraPadding,
     mapHighlightedRestaurantId: shellMapHighlightedRestaurantId,
-	  },
-	  preparedSnapshot,
+  },
+  preparedSnapshot,
   cameraLayoutModel: {
     resultsScrollOffset,
     snapPoints,
@@ -91,17 +91,17 @@ export const createProfilePresentationModelRuntime = ({
   },
   getCurrentLastCameraState,
 }: CreateProfilePresentationModelRuntimeArgs): ProfilePresentationModelRuntime => {
-	  const getResolvedProfileCameraPadding = (): CameraSnapshot['padding'] =>
-	    resolveProfileCameraPadding({
-	      screenHeight,
-	      searchBarTop,
-	      searchBarHeight,
-	      insetsTop,
-	      navBarTop,
-	      expandedSnapPoint: snapPoints.expanded,
-	      profilePinTargetCenterRatio,
-	      profilePinMinVisibleHeight,
-	    });
+  const getResolvedProfileCameraPadding = (): CameraSnapshot['padding'] =>
+    resolveProfileCameraPadding({
+      screenHeight,
+      searchBarTop,
+      searchBarHeight,
+      insetsTop,
+      navBarTop,
+      expandedSnapPoint: snapPoints.expanded,
+      profilePinTargetCenterRatio,
+      profilePinMinVisibleHeight,
+    });
 
   const captureProfileCameraSnapshot = (): CameraSnapshot | null =>
     resolveProfileCameraSnapshot({
@@ -113,14 +113,14 @@ export const createProfilePresentationModelRuntime = ({
       mapCameraPadding,
     });
 
-	  return {
-	    profileViewState: resolveProfileViewState({
-	      transitionStatus,
-	      restaurantPanelSnapshot,
-	      mapCameraPadding,
-	      mapHighlightedRestaurantId: shellMapHighlightedRestaurantId,
-	      preparedSnapshot,
-	    }),
+  return {
+    profileViewState: resolveProfileViewState({
+      transitionStatus,
+      restaurantPanelSnapshot,
+      mapCameraPadding,
+      mapHighlightedRestaurantId: shellMapHighlightedRestaurantId,
+      preparedSnapshot,
+    }),
     resolveProfileCameraPadding: getResolvedProfileCameraPadding,
     getProfileTransitionSnapshotCapture: () =>
       resolveProfileTransitionSnapshotCapture({

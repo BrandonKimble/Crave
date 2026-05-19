@@ -112,10 +112,7 @@ export const SceneStackBodyFrame = React.memo(
   ({ sceneKey, visibilityStyle, children }: SceneStackBodyFrameProps) => {
     const onProfilerRender = useSearchOverlayProfilerRender();
     const bodyFrame = (
-      <View
-        key={`scene-${sceneKey}`}
-        style={[styles.sceneStackBodyLayer, visibilityStyle]}
-      >
+      <View key={`scene-${sceneKey}`} style={[styles.sceneStackBodyLayer, visibilityStyle]}>
         {children}
       </View>
     );

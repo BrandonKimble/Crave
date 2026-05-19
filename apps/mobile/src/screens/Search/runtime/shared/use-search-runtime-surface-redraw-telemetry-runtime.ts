@@ -38,9 +38,5 @@ export const useSearchRuntimeSearchSurfaceRedrawTelemetryRuntime = ({
         isChromeDeferred: isSearchSurfaceRedrawDeferredChromePhase(coordinatorSnapshot.phase),
       });
     });
-  }, [
-    emitRuntimeMechanismEvent,
-    getActiveScenarioRunNumber,
-    searchSurfaceRedrawCoordinatorRef,
-  ]);
+  }, [emitRuntimeMechanismEvent, getActiveScenarioRunNumber, searchSurfaceRedrawCoordinatorRef]);
 };

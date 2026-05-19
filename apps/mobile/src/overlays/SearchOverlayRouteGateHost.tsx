@@ -70,14 +70,7 @@ export const SearchOverlayRouteGateHost = React.memo(
     profilerRenderRef.current = onProfilerRender;
     const stableProfilerRender = React.useCallback<React.ProfilerOnRenderCallback>(
       (id, phase, actualDuration, baseDuration, startTime, commitTime) => {
-        profilerRenderRef.current?.(
-          id,
-          phase,
-          actualDuration,
-          baseDuration,
-          startTime,
-          commitTime
-        );
+        profilerRenderRef.current?.(id, phase, actualDuration, baseDuration, startTime, commitTime);
       },
       []
     );

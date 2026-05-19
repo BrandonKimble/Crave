@@ -99,14 +99,14 @@ export const AppRouteSheetHostRuntimeProvider = ({
         routeSheetHostAuthorityRuntime.routeSheetSurfaceFrameAuthority,
       routeSheetRuntimeConfigAuthority:
         routeSheetHostAuthorityRuntime.routeSheetRuntimeConfigAuthority,
-	      sceneStackSurfaceAuthority: routeSceneRuntime.sceneStackSurfaceAuthority,
-	      routeSceneDisplayTargetRegistry: routeSceneRuntime.routeSceneDisplayTargetRegistry,
-	      routeHostVisualRuntimeAuthority: routeSceneRuntime.routeHostVisualRuntimeAuthority,
-	      replayPersistentPollSheetHostContract:
-	        routeSheetHostAuthorityRuntime.replayPersistentPollSheetHostContract,
-	    }),
-	    [
-	      routeSceneRuntime.routeSceneDisplayTargetRegistry,
+      sceneStackSurfaceAuthority: routeSceneRuntime.sceneStackSurfaceAuthority,
+      routeSceneDisplayTargetRegistry: routeSceneRuntime.routeSceneDisplayTargetRegistry,
+      routeHostVisualRuntimeAuthority: routeSceneRuntime.routeHostVisualRuntimeAuthority,
+      replayPersistentPollSheetHostContract:
+        routeSheetHostAuthorityRuntime.replayPersistentPollSheetHostContract,
+    }),
+    [
+      routeSceneRuntime.routeSceneDisplayTargetRegistry,
       routeSceneRuntime.routeHostVisualRuntimeAuthority,
       routeSceneRuntime.sceneStackSurfaceAuthority,
       routeSheetHostAuthorityRuntime.replayPersistentPollSheetHostContract,

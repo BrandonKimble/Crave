@@ -6,10 +6,7 @@ import {
   View,
   type LayoutChangeEvent,
 } from 'react-native';
-import Reanimated, {
-  type SharedValue,
-  useAnimatedStyle,
-} from 'react-native-reanimated';
+import Reanimated, { type SharedValue, useAnimatedStyle } from 'react-native-reanimated';
 
 import { Text } from '../../../components';
 import {
@@ -130,8 +127,7 @@ const SearchBottomNavComponent = ({
 }: SearchBottomNavProps) => {
   const { bottomInset: resolvedBottomInset, bottomNavHeight: resolvedBottomNavHeight } =
     resolveAppRouteNavSilhouetteBottomNavGeometry(bottomInset);
-  const { materialTopInset, cutoutHeight, cutoutRadius } =
-    APP_ROUTE_NAV_SILHOUETTE_BOUNDARY_SHAPE;
+  const { materialTopInset, cutoutHeight, cutoutRadius } = APP_ROUTE_NAV_SILHOUETTE_BOUNDARY_SHAPE;
   const bottomNavMotionStyle = useAnimatedStyle(
     () => ({
       opacity: bottomNavMotionRuntime.navOpacity.value,

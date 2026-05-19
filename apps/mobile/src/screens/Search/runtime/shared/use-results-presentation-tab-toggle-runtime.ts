@@ -88,7 +88,11 @@ export const useResultsPresentationTabToggleRuntime = ({
             coverState: 'interaction_loading',
           });
           resultsRuntimeOwner.commitSearchSurfaceResultsTransaction(
-            createSearchSurfaceResultsEnterTransaction(intentId, 'initial_search', 'interaction_loading')
+            createSearchSurfaceResultsEnterTransaction(
+              intentId,
+              'initial_search',
+              'interaction_loading'
+            )
           );
 
           return {

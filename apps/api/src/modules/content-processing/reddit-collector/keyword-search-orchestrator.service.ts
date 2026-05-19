@@ -494,10 +494,10 @@ export class KeywordSearchOrchestratorService
             outcome === 'success'
               ? 'success'
               : outcome === 'no_results'
-              ? 'no_results'
-              : outcome === 'error'
-              ? 'error'
-              : 'deferred';
+                ? 'no_results'
+                : outcome === 'error'
+                  ? 'error'
+                  : 'deferred';
 
           await this.keywordAttemptHistory.recordAttempt({
             collectableMarketKey,
@@ -1538,16 +1538,19 @@ export class KeywordSearchOrchestratorService
             ? schedules.reduce((sum, s) => sum + s.terms.length, 0) /
               schedules.length
             : 0,
-        schedulesBySubreddit: schedules.reduce((acc, s) => {
-          acc[s.subreddit] = {
-            status: s.status,
-            nextRun: s.nextRun,
-            lastRun: s.lastRun,
-            collectableMarketKey: s.collectableMarketKey,
-            termCount: s.terms.length,
-          };
-          return acc;
-        }, {} as Record<string, any>),
+        schedulesBySubreddit: schedules.reduce(
+          (acc, s) => {
+            acc[s.subreddit] = {
+              status: s.status,
+              nextRun: s.nextRun,
+              lastRun: s.lastRun,
+              collectableMarketKey: s.collectableMarketKey,
+              termCount: s.terms.length,
+            };
+            return acc;
+          },
+          {} as Record<string, any>,
+        ),
       };
 
       return metrics;

@@ -69,8 +69,7 @@ export const useSearchRootProfileOwnerRuntime = ({
     routeSceneRuntime: rootOverlayFoundationRuntime.routeSceneRuntime,
     searchContext: {
       searchRuntimeBus: sessionCoreLane.searchRuntimeBus,
-      resultsPresentationSurfaceAuthority:
-        sessionCoreLane.resultsPresentationSurfaceAuthority,
+      resultsPresentationSurfaceAuthority: sessionCoreLane.resultsPresentationSurfaceAuthority,
       getCurrentViewportBounds: () => sessionCoreLane.viewportBoundsService.getBounds(),
       trimmedQuery: rootPrimitivesRuntime.searchState.query.trim(),
       restaurantOnlyId: rootPrimitivesRuntime.searchState.restaurantOnlyId,
@@ -101,8 +100,7 @@ export const useSearchRootProfileOwnerRuntime = ({
         clearSearchAfterProfileDismiss:
           clearRestoreAuthorityRuntime.clearOwner.clearSearchAfterProfileDismiss,
       },
-      resultsExecutionArgs: {
-      },
+      resultsExecutionArgs: {},
     },
   });
 

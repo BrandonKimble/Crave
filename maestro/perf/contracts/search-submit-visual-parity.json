@@ -14,10 +14,7 @@
     "heightPx": 2532
   },
   "screenshots": {
-    "scenarioNames": [
-      "search_submit_visual_parity",
-      "search_submit_dismiss_repeat_dense"
-    ],
+    "scenarioNames": ["search_submit_visual_parity", "search_submit_dismiss_repeat_dense"],
     "directory": ".",
     "names": {
       "idleMapShortcuts": "search-visual-idle-map-shortcuts",
@@ -47,10 +44,7 @@
       "afterResultsClose",
       "afterPollsRestored"
     ],
-    "requiredHiddenNavScreenshots": [
-      "resultsOpenSettled",
-      "resultsCardsReady"
-    ],
+    "requiredHiddenNavScreenshots": ["resultsOpenSettled", "resultsCardsReady"],
     "navBodyRegion": {
       "x": 470,
       "y": 2340,
@@ -160,9 +154,7 @@
     }
   },
   "mapInteraction": {
-    "scenarioNames": [
-      "search_submit_visual_parity"
-    ],
+    "scenarioNames": ["search_submit_visual_parity"],
     "beforeDragScreenshot": "resultsMapBeforeDrag",
     "afterDragScreenshot": "resultsAfterMapDrag",
     "searchThisAreaVisibleScreenshot": "searchThisAreaVisible",
@@ -191,10 +183,7 @@
   },
   "resultsToggle": {
     "coveredDuringLoadingScreenshots": [],
-    "requiredScreenshots": [
-      "resultsOpenSettled",
-      "resultsCardsReady"
-    ],
+    "requiredScreenshots": ["resultsOpenSettled", "resultsCardsReady"],
     "pinkPixelMin": 1200,
     "loadingPinkPixelMax": 100,
     "region": {
@@ -281,10 +270,7 @@
     }
   },
   "resultsHeaderLeak": {
-    "requiredScreenshots": [
-      "resultsOpenSettled",
-      "resultsCardsReady"
-    ],
+    "requiredScreenshots": ["resultsOpenSettled", "resultsCardsReady"],
     "region": {
       "xRatioStart": 0.04,
       "xRatioEnd": 0.96,
@@ -303,11 +289,7 @@
     }
   },
   "pollHeaderLeak": {
-    "requiredScreenshots": [
-      "idleMapShortcuts",
-      "afterResultsClose",
-      "afterPollsRestored"
-    ],
+    "requiredScreenshots": ["idleMapShortcuts", "afterResultsClose", "afterPollsRestored"],
     "region": {
       "xRatioStart": 0.04,
       "xRatioEnd": 0.96,

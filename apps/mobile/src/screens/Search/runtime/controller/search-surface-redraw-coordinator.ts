@@ -32,7 +32,11 @@ export class SearchSurfaceRedrawCoordinator {
   private readonly ownerRuntime: SearchSurfaceRedrawOwnerRuntime =
     createSearchSurfaceRedrawOwnerRuntime();
 
-  public beginOperation(operationId: string, seq: number, page: number): SearchSurfaceRedrawSnapshot {
+  public beginOperation(
+    operationId: string,
+    seq: number,
+    page: number
+  ): SearchSurfaceRedrawSnapshot {
     const previousSnapshot = this.getSnapshot();
     const nextSnapshot = this.ownerRuntime.beginOperation(operationId, seq, page);
     if (nextSnapshot === previousSnapshot) {
@@ -42,7 +46,10 @@ export class SearchSurfaceRedrawCoordinator {
     return nextSnapshot;
   }
 
-  public advancePhase(phase: SearchSurfaceRedrawPhase, metadata?: SearchSurfaceRedrawAdvanceMetadata): boolean {
+  public advancePhase(
+    phase: SearchSurfaceRedrawPhase,
+    metadata?: SearchSurfaceRedrawAdvanceMetadata
+  ): boolean {
     if (!this.ownerRuntime.advancePhase(phase, metadata)) {
       return false;
     }

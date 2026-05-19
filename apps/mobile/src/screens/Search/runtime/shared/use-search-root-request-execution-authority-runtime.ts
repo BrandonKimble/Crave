@@ -26,10 +26,10 @@ export const useSearchRootRequestExecutionAuthorityRuntime = ({
   const lastAutoOpenKeyRef = React.useRef<string | null>(null);
 
   const handleSearchSessionShadowTransition = useSearchSessionShadowTransitionRuntime({
-    searchSurfaceRedrawCoordinatorRef: sessionCoreLane
-      .searchSurfaceRedrawCoordinatorRef as Parameters<
-      typeof useSearchSessionShadowTransitionRuntime
-    >[0]['searchSurfaceRedrawCoordinatorRef'],
+    searchSurfaceRedrawCoordinatorRef:
+      sessionCoreLane.searchSurfaceRedrawCoordinatorRef as Parameters<
+        typeof useSearchSessionShadowTransitionRuntime
+      >[0]['searchSurfaceRedrawCoordinatorRef'],
   });
 
   const searchRequestRuntimeOwner = useSearchRequestRuntimeOwner({
