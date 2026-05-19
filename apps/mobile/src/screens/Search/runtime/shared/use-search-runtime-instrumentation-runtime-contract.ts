@@ -1,21 +1,33 @@
 import type React from 'react';
 
-import type { ResultsPresentationTransportState } from './results-presentation-runtime-contract';
+import type { MapBounds } from '../../../../types';
+import type { CameraIntentArbiter } from '../map/camera-intent-arbiter';
+import type { ViewportBoundsService } from '../viewport/viewport-bounds-service';
+import type {
+  ResultsPresentationReadModel,
+  ResultsPresentationTransportState,
+} from './results-presentation-runtime-contract';
+import type { SearchSurfaceRedrawPhase } from '../controller/search-surface-redraw-phase';
+import type { ResultsPresentationAuthority } from './results-presentation-authority';
+import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
 import type { SearchRuntimeBus } from './search-runtime-bus';
-import type { useShortcutHarnessObserver } from '../telemetry/shortcut-harness-observer';
-import type { PerfNavSwitchOverlay } from '../../../../perf/harness-config';
 
-export type ShortcutHarnessObserverArgs = Parameters<typeof useShortcutHarnessObserver>[0];
-export type ShortcutHarnessObserverResult = ReturnType<typeof useShortcutHarnessObserver>;
-
-export type RunOneHandoffCoordinatorLike = {
+export type SearchSurfaceRedrawCoordinatorLike = {
   getSnapshot: () => {
     operationId: string | null;
-    phase: string;
-    seq: number;
+    phase: SearchSurfaceRedrawPhase;
+    seq: number | null;
     page: number | null;
   };
-  advancePhase: (phase: string, payload?: Record<string, unknown>) => void;
+  advancePhase: (phase: SearchSurfaceRedrawPhase, payload?: Record<string, unknown>) => void;
+  subscribe: (
+    listener: (snapshot: {
+      operationId: string | null;
+      phase: SearchSurfaceRedrawPhase;
+      seq: number | null;
+      page: number | null;
+    }) => void
+  ) => () => void;
 };
 
 export type SearchRootStateCommitSnapshot = {
@@ -29,62 +41,69 @@ export type SearchRootStateCommitSnapshot = {
   resultsRequestKey: string | null;
   resultsPage: number | null;
   shouldHydrateResultsForRender: boolean;
-  resultsPresentation: ReturnType<SearchRuntimeBus['getState']>['resultsPresentation'];
+  resultsPresentation: ResultsPresentationReadModel;
   resultsPresentationTransport: ResultsPresentationTransportState;
   isMapRevealPending: boolean;
 };
 
-export type InstrumentationMapQueryBudget = NonNullable<
-  ShortcutHarnessObserverArgs['mapQueryBudget']
-> & {
+export type InstrumentationMapQueryBudget = {
   recordRuntimeAttributionDurationMs: (label: string, durationMs: number) => void;
 };
 
-export type UseSearchRuntimeInstrumentationRuntimeArgs = Pick<
-  ShortcutHarnessObserverArgs,
-  | 'getPerfNow'
-  | 'roundPerfValue'
-  | 'searchSessionController'
-  | 'searchMode'
-  | 'isSearchLoading'
-  | 'isLoadingMore'
-  | 'isRunOneHandoffActive'
-  | 'resultsRequestKey'
-  | 'searchInteractionRef'
-  | 'isInitialCameraReady'
-  | 'runTimeoutMs'
-  | 'settleQuietPeriodMs'
-  | 'runtimeWorkSchedulerRef'
-> & {
+export type SubmitShortcutScenarioCommandInput = {
+  targetTab: 'dishes' | 'restaurants';
+  label: string;
+  preserveSheetState: boolean;
+  transitionFromDockedPolls: boolean;
+  forceFreshBounds?: boolean;
+};
+
+export type SubmitShortcutScenarioCommandRef = React.MutableRefObject<
+  (input: SubmitShortcutScenarioCommandInput) => Promise<void>
+>;
+
+export type CloseSearchScenarioCommandRef = React.MutableRefObject<() => void>;
+
+export type UseSearchRuntimeInstrumentationRuntimeArgs = {
+  getPerfNow: () => number;
+  searchMode: 'natural' | 'shortcut' | null;
+  isSearchLoading: boolean;
+  resultsRequestKey: string | null;
+  searchInteractionRef: React.MutableRefObject<{
+    isResultsSheetDragging: boolean;
+    isResultsListScrolling: boolean;
+    isResultsSheetSettling: boolean;
+  }>;
   searchRuntimeBus: SearchRuntimeBus;
+  resultsPresentationAuthority: ResultsPresentationAuthority;
+  resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
   mapQueryBudget: InstrumentationMapQueryBudget | null;
-  runOneHandoffCoordinatorRef: React.MutableRefObject<RunOneHandoffCoordinatorLike>;
-  runOneCommitSpanPressureByOperationRef: React.MutableRefObject<Map<string, number>>;
+  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinatorLike>;
+  searchSurfaceRedrawCommitSpanPressureByOperationRef: React.MutableRefObject<Map<string, number>>;
   isSearchRequestLoadingRef: React.MutableRefObject<boolean>;
   readRuntimeMemoryDiagnostics: () => unknown;
   isSearchSessionActive: boolean;
   isAutocompleteSuppressed: boolean;
   rootOverlay: string;
   activeOverlayKey: string;
+  cameraIntentArbiter: CameraIntentArbiter;
+  viewportBoundsService: ViewportBoundsService;
+  markMapMovedIfNeeded: (
+    bounds: MapBounds,
+    options?: { fallbackBaselineBounds?: MapBounds | null }
+  ) => boolean;
+  scheduleMapIdleEnter: (options?: { releaseGestureGate?: boolean }) => void;
+  schedulePollBoundsUpdate: (bounds: MapBounds) => void;
+  ensureInitialCameraReady: () => void;
   isSearchOverlay: boolean;
-  getRouteOverlayIdentitySnapshot?: () => {
-    rootOverlay: string;
-    activeOverlayKey: string;
-    isSearchOverlay: boolean;
-  };
-  getRouteActiveSceneKey?: () => string | null;
   resultsPage: number | null;
 };
 
-export type UseSearchRuntimeInstrumentationRuntimeResult = Pick<
-  ShortcutHarnessObserverResult,
-  'emitRuntimeMechanismEvent'
-> & {
-  submitShortcutSearchRef: ShortcutHarnessObserverArgs['submitShortcutSearchRef'];
-  toggleOpenNowHarnessRef: ShortcutHarnessObserverArgs['toggleOpenNowRef'];
-  closeSearchHarnessRef: React.MutableRefObject<() => void>;
-  selectOverlayHarnessRef: React.MutableRefObject<(target: PerfNavSwitchOverlay) => void>;
-  handleProfilerRender: React.ProfilerOnRenderCallback;
+export type UseSearchRuntimeInstrumentationRuntimeResult = {
+  emitRuntimeMechanismEvent: (event: string, payload?: Record<string, unknown>) => void;
+  submitShortcutScenarioCommandRef: SubmitShortcutScenarioCommandRef;
+  closeSearchScenarioCommandRef: CloseSearchScenarioCommandRef;
+  handleProfilerRender: React.ProfilerOnRenderCallback | null;
   shouldLogSearchComputes: boolean;
   logSearchCompute: (label: string, duration: number) => void;
   shouldLogSearchStateChanges: boolean;

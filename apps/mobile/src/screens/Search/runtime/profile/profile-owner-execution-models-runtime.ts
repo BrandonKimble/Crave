@@ -20,7 +20,7 @@ import type { ProfileAppExecutionArgs } from './profile-app-execution-runtime-co
 
 type UseProfileOwnerExecutionModelsRuntimeArgs = {
   routeSceneRuntime: AppRouteSceneRuntime;
-  searchRuntimeBus: ProfileSearchContext['searchRuntimeBus'];
+  resultsPresentationSurfaceAuthority: ProfileSearchContext['resultsPresentationSurfaceAuthority'];
   runtimeStateOwner: ProfileRuntimeStateOwner;
   nativeExecutionArgs: ProfileOwnerNativeExecutionArgs;
   appExecutionArgs: ProfileAppExecutionArgs;
@@ -34,7 +34,7 @@ export type ProfileOwnerExecutionModelsRuntime = {
 
 export const useProfileOwnerExecutionModelsRuntime = ({
   routeSceneRuntime,
-  searchRuntimeBus,
+  resultsPresentationSurfaceAuthority,
   runtimeStateOwner,
   nativeExecutionArgs,
   appExecutionArgs,
@@ -46,19 +46,16 @@ export const useProfileOwnerExecutionModelsRuntime = ({
   const nativeExecutionModel = useProfileNativeExecutionModelRuntime({
     preparedProfileCompletionHandlerRef,
     nativeExecutionArgs,
+    setProfileCameraPadding: runtimeStateOwner.shellRuntimeState.setProfileCameraPadding,
   });
 
   const appExecutionRuntime = useProfileAppExecutionModelRuntime({
     routeSceneRuntime,
-    searchRuntimeBus,
+    resultsPresentationSurfaceAuthority,
     appExecutionArgs,
     runtimeStateOwner,
     preparedProfileCompletionHandlerRef,
   });
-  const getIsSearchOverlay = React.useCallback(
-    () => routeSceneRuntime.routeOverlayRootAuthority.getSnapshot().isSearchOverlay,
-    [routeSceneRuntime.routeOverlayRootAuthority]
-  );
 
   const preparedPresentationRuntime = useProfilePreparedPresentationRuntime({
     preparedProfileCompletionHandlerRef,
@@ -66,7 +63,6 @@ export const useProfileOwnerExecutionModelsRuntime = ({
     nativeExecutionModel,
     runtimeStateOwner,
     appExecutionRuntime,
-    getIsSearchOverlay,
   });
 
   return React.useMemo(

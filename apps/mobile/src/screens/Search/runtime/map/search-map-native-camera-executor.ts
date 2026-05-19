@@ -1,5 +1,6 @@
 import React from 'react';
 import { NativeModules, Platform } from 'react-native';
+import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 
 const MODULE_NAME = 'PresentationCommandExecutor';
 const SEARCH_MAP_CAMERA_HOST_KEY = 'search_map_camera';
@@ -9,6 +10,11 @@ type NativeCameraStopPayload = {
   zoom: number;
   mode: 2 | 5;
   duration: number;
+  animationCompletionId?: string;
+  paddingTop?: number;
+  paddingRight?: number;
+  paddingBottom?: number;
+  paddingLeft?: number;
 };
 
 type NativeCameraCommandPayload = {
@@ -30,8 +36,11 @@ const nativeModule = (
 type SearchMapCameraCommand = {
   center: [number, number];
   zoom: number;
+  padding?: CameraSnapshot['padding'];
   animationMode?: 'none' | 'easeTo';
   animationDurationMs?: number;
+  completionId?: string | null;
+  onCommandRejected?: (completionId: string | null) => void;
 };
 
 export type SearchMapNativeCameraExecutor = {
@@ -44,18 +53,31 @@ const mapAnimationMode = (animationMode?: 'none' | 'easeTo'): 2 | 5 =>
 
 const buildNativeCameraStopPayload = (
   command: SearchMapCameraCommand
-): NativeCameraStopPayload => ({
-  centerCoordinate: JSON.stringify({
-    type: 'Point',
-    coordinates: command.center,
-  }),
-  zoom: command.zoom,
-  mode: mapAnimationMode(command.animationMode),
-  duration:
-    typeof command.animationDurationMs === 'number' && Number.isFinite(command.animationDurationMs)
-      ? Math.max(0, command.animationDurationMs)
-      : 0,
-});
+): NativeCameraStopPayload => {
+  const stop: NativeCameraStopPayload = {
+    centerCoordinate: JSON.stringify({
+      type: 'Point',
+      coordinates: command.center,
+    }),
+    zoom: command.zoom,
+    mode: mapAnimationMode(command.animationMode),
+    duration:
+      typeof command.animationDurationMs === 'number' &&
+      Number.isFinite(command.animationDurationMs)
+        ? Math.max(0, command.animationDurationMs)
+        : 0,
+  };
+  if (command.completionId) {
+    stop.animationCompletionId = command.completionId;
+  }
+  if (command.padding) {
+    stop.paddingTop = command.padding.paddingTop;
+    stop.paddingRight = command.padding.paddingRight;
+    stop.paddingBottom = command.padding.paddingBottom;
+    stop.paddingLeft = command.padding.paddingLeft;
+  }
+  return stop;
+};
 
 export const useSearchMapNativeCameraExecutor = (): SearchMapNativeCameraExecutor => {
   const cameraCommandExecutionAvailable = nativeModule?.cameraCommandExecutionAvailable === true;
@@ -65,10 +87,14 @@ export const useSearchMapNativeCameraExecutor = (): SearchMapNativeCameraExecuto
       if (!cameraCommandExecutionAvailable || !nativeModule) {
         return false;
       }
-      void nativeModule.executeCameraCommand({
-        hostKey: SEARCH_MAP_CAMERA_HOST_KEY,
-        stop: buildNativeCameraStopPayload(command),
-      });
+      nativeModule
+        .executeCameraCommand({
+          hostKey: SEARCH_MAP_CAMERA_HOST_KEY,
+          stop: buildNativeCameraStopPayload(command),
+        })
+        .catch(() => {
+          command.onCommandRejected?.(command.completionId ?? null);
+        });
       return true;
     },
     [cameraCommandExecutionAvailable]

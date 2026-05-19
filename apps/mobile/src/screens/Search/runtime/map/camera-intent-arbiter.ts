@@ -1,12 +1,15 @@
 import { withSearchNavSwitchRuntimeAttribution } from '../shared/search-nav-switch-runtime-attribution';
+import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 
 export type CameraIntent = {
   center: [number, number];
   zoom: number;
+  padding?: CameraSnapshot['padding'];
   animationMode?: 'none' | 'easeTo';
   animationDurationMs?: number;
   allowDuringGesture?: boolean;
   requestToken?: number | null;
+  deferControlledCameraStateUntilCompletion?: boolean;
 };
 
 type RawProgrammaticCameraAnimationCompletionPayload = {
@@ -20,7 +23,12 @@ export type ProgrammaticCameraAnimationCompletionPayload =
   };
 
 export type CameraIntentArbiterWriters = {
-  commandCameraViewport?: (intent: CameraIntent & { completionId: string | null }) => boolean;
+  commandCameraViewport?: (
+    intent: CameraIntent & {
+      completionId: string | null;
+      onCommandRejected: (completionId: string | null) => void;
+    }
+  ) => boolean;
   setMapCenter: (center: [number, number]) => void;
   setMapZoom: (zoom: number) => void;
   setMapCameraAnimation: (animation: {
@@ -34,12 +42,22 @@ export class CameraIntentArbiter {
   private gestureActive = false;
   private pendingProgrammaticCameraCompletionId: string | null = null;
   private pendingProgrammaticCameraRequestToken: number | null = null;
+  private pendingControlledCameraStateSync: {
+    completionId: string;
+    center: [number, number];
+    zoom: number;
+    shouldSyncPadding: boolean;
+    padding: CameraSnapshot['padding'];
+  } | null = null;
   private nextProgrammaticCameraCompletionSeq = 0;
   private readonly programmaticCameraAnimationCompletionListeners = new Set<
     (payload: ProgrammaticCameraAnimationCompletionPayload) => void
   >();
   private onProgrammaticCameraAnimationComplete:
     | ((payload: ProgrammaticCameraAnimationCompletionPayload) => void)
+    | null = null;
+  private controlledCameraPaddingSyncHandler:
+    | ((padding: CameraSnapshot['padding']) => void)
     | null = null;
 
   constructor(private readonly writers: CameraIntentArbiterWriters) {}
@@ -48,6 +66,12 @@ export class CameraIntentArbiter {
     handler: ((payload: ProgrammaticCameraAnimationCompletionPayload) => void) | null
   ): void {
     this.onProgrammaticCameraAnimationComplete = handler;
+  }
+
+  public setControlledCameraPaddingSyncHandler(
+    handler: ((padding: CameraSnapshot['padding']) => void) | null
+  ): void {
+    this.controlledCameraPaddingSyncHandler = handler;
   }
 
   public subscribeProgrammaticCameraAnimationCompletion(
@@ -80,6 +104,7 @@ export class CameraIntentArbiter {
       const cancelledRequestToken = this.pendingProgrammaticCameraRequestToken;
       this.pendingProgrammaticCameraCompletionId = null;
       this.pendingProgrammaticCameraRequestToken = null;
+      this.pendingControlledCameraStateSync = null;
       this.notifyProgrammaticCameraAnimationCompletion({
         animationCompletionId: cancelledCompletionId,
         status: 'cancelled',
@@ -94,29 +119,57 @@ export class CameraIntentArbiter {
         return false;
       }
       const animationMode = intent.animationMode ?? 'none';
-      const completionId =
-        animationMode === 'none'
-          ? null
-          : `camera-animation:${(this.nextProgrammaticCameraCompletionSeq += 1)}`;
-      this.pendingProgrammaticCameraCompletionId = completionId;
-      this.pendingProgrammaticCameraRequestToken = intent.requestToken ?? null;
-      if (
-        this.writers.commandCameraViewport?.({
-          ...intent,
-          completionId,
-        }) === true
-      ) {
-        return true;
-      }
-      this.writers.setMapCameraAnimation({
+      const animation = {
         mode: animationMode,
         durationMs:
           typeof intent.animationDurationMs === 'number' &&
           Number.isFinite(intent.animationDurationMs)
             ? Math.max(0, intent.animationDurationMs)
             : 0,
-        completionId,
-      });
+        completionId:
+          animationMode === 'none'
+            ? null
+            : `camera-animation:${(this.nextProgrammaticCameraCompletionSeq += 1)}`,
+      };
+      const completionId = animation.completionId;
+      const shouldSyncPadding = Object.prototype.hasOwnProperty.call(intent, 'padding');
+      this.pendingProgrammaticCameraCompletionId = completionId;
+      this.pendingProgrammaticCameraRequestToken = intent.requestToken ?? null;
+      this.pendingControlledCameraStateSync = null;
+      if (
+        this.writers.commandCameraViewport?.({
+          ...intent,
+          completionId,
+          onCommandRejected: (rejectedCompletionId) => {
+            this.handleProgrammaticCameraAnimationCompletion({
+              animationCompletionId: rejectedCompletionId,
+              status: 'cancelled',
+            });
+          },
+        }) === true
+      ) {
+        if (intent.deferControlledCameraStateUntilCompletion && completionId) {
+          this.pendingControlledCameraStateSync = {
+            completionId,
+            center: intent.center,
+            zoom: intent.zoom,
+            shouldSyncPadding,
+            padding: intent.padding ?? null,
+          };
+          return true;
+        }
+        this.writers.setMapCameraAnimation(animation);
+        if (shouldSyncPadding) {
+          this.controlledCameraPaddingSyncHandler?.(intent.padding ?? null);
+        }
+        this.writers.setMapCenter(intent.center);
+        this.writers.setMapZoom(intent.zoom);
+        return true;
+      }
+      this.writers.setMapCameraAnimation(animation);
+      if (shouldSyncPadding) {
+        this.controlledCameraPaddingSyncHandler?.(intent.padding ?? null);
+      }
       this.writers.setMapCenter(intent.center);
       this.writers.setMapZoom(intent.zoom);
       return true;
@@ -136,6 +189,30 @@ export class CameraIntentArbiter {
     return true;
   }
 
+  private flushControlledCameraStateSync(
+    completionId: string | null,
+    status: 'finished' | 'cancelled'
+  ): void {
+    const pendingSync = this.pendingControlledCameraStateSync;
+    if (!pendingSync || pendingSync.completionId !== completionId) {
+      return;
+    }
+    this.pendingControlledCameraStateSync = null;
+    if (status !== 'finished') {
+      return;
+    }
+    this.writers.setMapCameraAnimation({
+      mode: 'none',
+      durationMs: 0,
+      completionId: null,
+    });
+    if (pendingSync.shouldSyncPadding) {
+      this.controlledCameraPaddingSyncHandler?.(pendingSync.padding);
+    }
+    this.writers.setMapCenter(pendingSync.center);
+    this.writers.setMapZoom(pendingSync.zoom);
+  }
+
   public handleProgrammaticCameraAnimationCompletion(
     payload: RawProgrammaticCameraAnimationCompletionPayload
   ): boolean {
@@ -147,6 +224,7 @@ export class CameraIntentArbiter {
         if (!this.consumeProgrammaticCameraCompletion(payload.animationCompletionId)) {
           return false;
         }
+        this.flushControlledCameraStateSync(payload.animationCompletionId, payload.status);
         this.notifyProgrammaticCameraAnimationCompletion({
           ...payload,
           requestToken,
@@ -171,6 +249,32 @@ export class CameraIntentArbiter {
           animationCompletionId: completionId,
           status,
         });
+      }
+    );
+  }
+
+  public syncObservedCameraViewport({
+    center,
+    zoom,
+  }: {
+    center: [number, number];
+    zoom: number;
+  }): boolean {
+    return withSearchNavSwitchRuntimeAttribution(
+      'cameraIntentArbiter',
+      'syncObservedCameraViewport',
+      () => {
+        if (this.pendingProgrammaticCameraCompletionId != null) {
+          return false;
+        }
+        this.writers.setMapCameraAnimation({
+          mode: 'none',
+          durationMs: 0,
+          completionId: null,
+        });
+        this.writers.setMapCenter(center);
+        this.writers.setMapZoom(zoom);
+        return true;
       }
     );
   }

@@ -18,7 +18,7 @@ type SearchSessionShadowTransition = {
   payload: Record<string, unknown>;
 };
 
-type RunOneHandoffCoordinatorLike = {
+type SearchSurfaceRedrawCoordinatorLike = {
   getSnapshot: () => {
     operationId: string | null;
     phase: string;
@@ -37,11 +37,11 @@ const runAfterUiFrame = (callback: () => void) => {
 };
 
 type UseSearchSessionShadowTransitionRuntimeArgs = {
-  runOneHandoffCoordinatorRef: React.MutableRefObject<RunOneHandoffCoordinatorLike>;
+  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinatorLike>;
 };
 
 export const useSearchSessionShadowTransitionRuntime = ({
-  runOneHandoffCoordinatorRef,
+  searchSurfaceRedrawCoordinatorRef,
 }: UseSearchSessionShadowTransitionRuntimeArgs) =>
   React.useCallback(
     (transition: SearchSessionShadowTransition) => {
@@ -53,22 +53,33 @@ export const useSearchSessionShadowTransitionRuntime = ({
       const isAppend = payload?.append === true;
       if (transition.eventType === 'submit_intent') {
         if (isAppend || targetPage > 1) {
-          runOneHandoffCoordinatorRef.current.reset(transition.operationId);
+          searchSurfaceRedrawCoordinatorRef.current.reset(transition.operationId);
           return;
         }
-        runOneHandoffCoordinatorRef.current.beginOperation(
+        searchSurfaceRedrawCoordinatorRef.current.beginOperation(
           transition.operationId,
           transition.seq,
           targetPage
         );
         return;
       }
-      const snapshot = runOneHandoffCoordinatorRef.current.getSnapshot();
+      let snapshot = searchSurfaceRedrawCoordinatorRef.current.getSnapshot();
       if (snapshot.operationId !== transition.operationId) {
-        return;
+        if (transition.eventType !== 'phase_a_committed' || isAppend || targetPage > 1) {
+          return;
+        }
+        searchSurfaceRedrawCoordinatorRef.current.beginOperation(
+          transition.operationId,
+          transition.seq,
+          targetPage
+        );
+        snapshot = searchSurfaceRedrawCoordinatorRef.current.getSnapshot();
+        if (snapshot.operationId !== transition.operationId) {
+          return;
+        }
       }
       if (transition.eventType === 'phase_a_committed') {
-        runOneHandoffCoordinatorRef.current.advancePhase('h1_phase_a_committed', {
+        searchSurfaceRedrawCoordinatorRef.current.advancePhase('redraw_committed', {
           operationId: transition.operationId,
           targetPage,
           append: isAppend,
@@ -76,7 +87,7 @@ export const useSearchSessionShadowTransitionRuntime = ({
         return;
       }
       if (transition.eventType === 'visual_released') {
-        runOneHandoffCoordinatorRef.current.advancePhase('h2_marker_enter', {
+        searchSurfaceRedrawCoordinatorRef.current.advancePhase('markers_ready', {
           operationId: transition.operationId,
           targetPage,
           append: isAppend,
@@ -84,7 +95,7 @@ export const useSearchSessionShadowTransitionRuntime = ({
         return;
       }
       if (transition.eventType === 'phase_b_materializing') {
-        runOneHandoffCoordinatorRef.current.advancePhase('h3_hydration_ramp', {
+        searchSurfaceRedrawCoordinatorRef.current.advancePhase('hydration_ready', {
           operationId: transition.operationId,
           targetPage,
           append: isAppend,
@@ -93,20 +104,20 @@ export const useSearchSessionShadowTransitionRuntime = ({
       }
       if (transition.eventType === 'settled') {
         const advanceToResumeAndReset = () => {
-          const activeSnapshot = runOneHandoffCoordinatorRef.current.getSnapshot();
+          const activeSnapshot = searchSurfaceRedrawCoordinatorRef.current.getSnapshot();
           if (activeSnapshot.operationId !== transition.operationId) {
             return;
           }
-          runOneHandoffCoordinatorRef.current.advancePhase('h4_chrome_resume', {
+          searchSurfaceRedrawCoordinatorRef.current.advancePhase('chrome_ready', {
             operationId: transition.operationId,
           });
           const finalizeReset = () => {
-            const latestSnapshot = runOneHandoffCoordinatorRef.current.getSnapshot();
+            const latestSnapshot = searchSurfaceRedrawCoordinatorRef.current.getSnapshot();
             if (
               latestSnapshot.operationId === transition.operationId &&
-              latestSnapshot.phase === 'h4_chrome_resume'
+              latestSnapshot.phase === 'chrome_ready'
             ) {
-              runOneHandoffCoordinatorRef.current.reset(transition.operationId);
+              searchSurfaceRedrawCoordinatorRef.current.reset(transition.operationId);
             }
           };
           runAfterUiFrame(finalizeReset);
@@ -115,8 +126,8 @@ export const useSearchSessionShadowTransitionRuntime = ({
         return;
       }
       if (transition.eventType === 'error' || transition.eventType === 'cancelled') {
-        runOneHandoffCoordinatorRef.current.reset(transition.operationId);
+        searchSurfaceRedrawCoordinatorRef.current.reset(transition.operationId);
       }
     },
-    [runOneHandoffCoordinatorRef]
+    [searchSurfaceRedrawCoordinatorRef]
   );

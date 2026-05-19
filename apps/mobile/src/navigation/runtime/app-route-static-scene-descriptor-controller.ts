@@ -94,7 +94,6 @@ const createStaticTabShellSpec = ({
   normalizeSearchRouteSceneStackShellSpec({
     overlayKey: sceneKey,
     snapPoints: sceneLayout.snapPoints,
-    initialSnapPoint: 'expanded',
     style: overlaySheetStyles.container,
     onSnapChange,
     dismissThreshold: sceneLayout.navBarTop > 0 ? sceneLayout.navBarTop : undefined,
@@ -104,27 +103,21 @@ const createStaticTabShellSpec = ({
 const createSaveListShellSpec = ({
   sceneLayout,
   onHidden,
-  onSnapChange,
 }: {
   sceneLayout: SearchRouteSceneLayoutState;
   onHidden: () => void;
-  onSnapChange: (snap: OverlaySheetSnap) => void;
 }): AppRouteSceneStackShellSpec =>
   normalizeSearchRouteSceneStackShellSpec({
     overlayKey: 'saveList',
     snapPoints: sceneLayout.snapPoints,
-    initialSnapPoint: 'expanded',
     style: overlaySheetStyles.container,
     onHidden,
-    onSnapChange,
   });
 
 class AppRouteStaticSceneDescriptorController {
   private readonly unsubscribers: Array<() => void> = [];
 
   private readonly handleSaveListHidden: () => void;
-
-  private readonly handleSaveListSnapChange: (snap: OverlaySheetSnap) => void;
 
   private readonly handleBookmarksSnapChange: (snap: OverlaySheetSnap) => void;
 
@@ -148,17 +141,7 @@ class AppRouteStaticSceneDescriptorController {
     routeSheetSnapSessionActions: AppRouteSheetSnapSessionActions;
   }) {
     this.handleSaveListHidden = () => {
-      routeOverlayCommandActions.setSaveSheetState((previousState) => ({
-        ...previousState,
-        visible: false,
-        target: null,
-      }));
-    };
-    this.handleSaveListSnapChange = (snap) => {
-      routeSheetSnapSessionActions.recordRouteSceneSheetSettle({
-        sceneKey: 'saveList',
-        snap,
-      });
+      routeOverlayCommandActions.handleCloseSaveSheet();
     };
     this.handleBookmarksSnapChange = (snap) => {
       this.settleTabSnap({
@@ -242,7 +225,6 @@ class AppRouteStaticSceneDescriptorController {
       shellSpec: createSaveListShellSpec({
         sceneLayout,
         onHidden: this.handleSaveListHidden,
-        onSnapChange: this.handleSaveListSnapChange,
       }),
       sceneChrome: createMountedChrome('saveList'),
       sceneBodyContent: createMountedBody('saveList'),

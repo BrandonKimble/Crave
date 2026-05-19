@@ -43,7 +43,7 @@ type UsePollsPanelFeedRuntimeArgs = Pick<
 export type PollsPanelFeedRuntime = {
   activePoll: Poll | undefined;
   activePollType: PollTopicType;
-  candidatePlaceName: string | null;
+  candidateLocalityName: string | null;
   castVote: ReturnType<typeof usePollsVoteMutationRuntime>['castVote'];
   contentBottomPadding: number;
   createPollPrompt: string | null;
@@ -107,17 +107,16 @@ export const usePollsPanelFeedRuntime = ({
   );
   const [marketStatus, setMarketStatus] = React.useState<
     'resolved' | 'multi_market' | 'no_market' | 'error' | null
-  >(
-    () =>
-      bootstrapSnapshot?.marketStatus === 'resolved' ||
-      bootstrapSnapshot?.marketStatus === 'multi_market' ||
-      bootstrapSnapshot?.marketStatus === 'no_market' ||
-      bootstrapSnapshot?.marketStatus === 'error'
-        ? bootstrapSnapshot.marketStatus
-        : null
+  >(() =>
+    bootstrapSnapshot?.marketStatus === 'resolved' ||
+    bootstrapSnapshot?.marketStatus === 'multi_market' ||
+    bootstrapSnapshot?.marketStatus === 'no_market' ||
+    bootstrapSnapshot?.marketStatus === 'error'
+      ? bootstrapSnapshot.marketStatus
+      : null
   );
-  const [candidatePlaceName, setCandidatePlaceName] = React.useState<string | null>(
-    () => bootstrapSnapshot?.candidatePlaceName ?? null
+  const [candidateLocalityName, setCandidateLocalityName] = React.useState<string | null>(
+    () => bootstrapSnapshot?.candidateLocalityName ?? null
   );
   const [createPollPrompt, setCreatePollPrompt] = React.useState<string | null>(
     () => bootstrapSnapshot?.cta?.prompt ?? bootstrapSnapshot?.cta?.label ?? null
@@ -170,13 +169,13 @@ export const usePollsPanelFeedRuntime = ({
         marketName,
         marketKey: marketOverride ?? marketKey,
         marketStatus,
-        candidatePlaceName,
+        candidateLocalityName,
         pollCount: polls.length,
         isUpdating: shouldHoldFreshLiveContent,
         isResolvingMarket: showResolvingLocation,
       }),
     [
-      candidatePlaceName,
+      candidateLocalityName,
       marketKey,
       marketName,
       marketOverride,
@@ -199,7 +198,7 @@ export const usePollsPanelFeedRuntime = ({
     setMarketKey,
     setMarketName,
     setMarketStatus,
-    setCandidatePlaceName,
+    setCandidateLocalityName,
     setCreatePollPrompt,
     setLoading,
     setPollFeedRefreshing: setIsPollFeedRefreshing,
@@ -235,7 +234,7 @@ export const usePollsPanelFeedRuntime = ({
         ? bootstrapSnapshot.marketStatus
         : null
     );
-    setCandidatePlaceName(bootstrapSnapshot.candidatePlaceName ?? null);
+    setCandidateLocalityName(bootstrapSnapshot.candidateLocalityName ?? null);
     setCreatePollPrompt(bootstrapSnapshot.cta?.prompt ?? bootstrapSnapshot.cta?.label ?? null);
     setIsPollFeedRefreshing(bootstrapSnapshot.source !== 'network');
     setPollFeedRequiresFreshNetwork(bootstrapSnapshot.source !== 'network');
@@ -256,7 +255,7 @@ export const usePollsPanelFeedRuntime = ({
     () => ({
       activePoll,
       activePollType,
-      candidatePlaceName,
+      candidateLocalityName,
       castVote,
       contentBottomPadding,
       createPollPrompt,
@@ -287,7 +286,7 @@ export const usePollsPanelFeedRuntime = ({
     [
       activePoll,
       activePollType,
-      candidatePlaceName,
+      candidateLocalityName,
       castVote,
       contentBottomPadding,
       createPollPrompt,

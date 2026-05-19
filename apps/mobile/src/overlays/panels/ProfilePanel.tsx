@@ -14,6 +14,7 @@ import { useBottomSheetSceneStackBodyRenderActivity } from '../BottomSheetSceneS
 import { useSearchOverlayProfilerRender } from '../SearchOverlayProfilerContext';
 import type { ProfileSegment } from './profileSceneQueryOptions';
 import { useProfilePanelBodyModelRuntime } from './runtime/profile-panel-body-model-runtime';
+import { getCraveScoreColorFromScore } from '../../utils/quality-color';
 import type {
   ProfileSceneHeaderProps,
   ProfileSceneRow,
@@ -23,19 +24,6 @@ const SEGMENT_BG = '#f1f5f9';
 const SEGMENT_ACTIVE = '#ffffff';
 const SEGMENT_TEXT = themeColors.textBody;
 const SEGMENT_ACTIVE_TEXT = '#0f172a';
-
-const resolveRankColor = (score?: number | null) => {
-  if (score == null) {
-    return themeColors.textBody;
-  }
-  if (score >= 8) {
-    return '#10b981';
-  }
-  if (score >= 6) {
-    return '#f59e0b';
-  }
-  return '#fb7185';
-};
 
 const PROFILE_SEGMENTS = [
   { id: 'created', label: 'Created' },
@@ -49,7 +37,7 @@ type ProfilePreviewRowProps = {
 
 const ProfilePreviewRow = React.memo(({ item }: ProfilePreviewRowProps) => (
   <View style={styles.previewRow}>
-    <View style={[styles.previewDot, { backgroundColor: resolveRankColor(item.score) }]} />
+    <View style={[styles.previewDot, { backgroundColor: getCraveScoreColorFromScore(item.craveScore) }]} />
     <Text variant="caption" numberOfLines={1} style={styles.previewText}>
       {item.label}
       {item.subLabel ? ` • ${item.subLabel}` : ''}

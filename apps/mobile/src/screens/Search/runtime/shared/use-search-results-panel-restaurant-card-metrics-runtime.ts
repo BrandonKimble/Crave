@@ -1,8 +1,16 @@
 import React from 'react';
 
+import {
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+} from '../../../../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 import type { FoodResult, RestaurantResult } from '../../../../types';
 import { logger } from '../../../../utils';
 import { getMarkerColorForRestaurant } from '../../utils/marker-lod';
+
+const getNowMs = (): number =>
+  typeof performance?.now === 'function' ? performance.now() : Date.now();
 
 export const useSearchResultsPanelRestaurantCardMetricsRuntime = ({
   dishes,
@@ -13,9 +21,11 @@ export const useSearchResultsPanelRestaurantCardMetricsRuntime = ({
   restaurants: RestaurantResult[];
   searchRequestId: string | null;
 }) => {
+  const scenarioConfig = usePerfScenarioRuntimeStore((state) => state.activeConfig);
   const missingRestaurantRankByIdRef = React.useRef<Set<string>>(new Set());
 
   const canonicalRestaurantRankById = React.useMemo(() => {
+    const startedAtMs = getNowMs();
     const map = new Map<string, number>();
     restaurants.forEach((restaurant) => {
       if (
@@ -35,10 +45,21 @@ export const useSearchResultsPanelRestaurantCardMetricsRuntime = ({
         });
       }
     });
+    const durationMs = getNowMs() - startedAtMs;
+    if (isPerfScenarioAttributionActive(scenarioConfig)) {
+      logPerfScenarioAttributionEvent('WorkSpan', scenarioConfig, {
+        event: 'scenario_work_span',
+        owner: 'results_restaurant_rank_metrics',
+        durationMs: Number(durationMs.toFixed(3)),
+        restaurantsCount: restaurants.length,
+        searchRequestId,
+      });
+    }
     return map;
-  }, [restaurants, searchRequestId]);
+  }, [restaurants, scenarioConfig, searchRequestId]);
 
   const restaurantsById = React.useMemo(() => {
+    const startedAtMs = getNowMs();
     const map = new Map<string, RestaurantResult>();
 
     restaurants.forEach((restaurant) => {
@@ -77,16 +98,38 @@ export const useSearchResultsPanelRestaurantCardMetricsRuntime = ({
       }
     });
 
+    const durationMs = getNowMs() - startedAtMs;
+    if (isPerfScenarioAttributionActive(scenarioConfig)) {
+      logPerfScenarioAttributionEvent('WorkSpan', scenarioConfig, {
+        event: 'scenario_work_span',
+        owner: 'results_restaurants_by_id_metrics',
+        durationMs: Number(durationMs.toFixed(3)),
+        restaurantsCount: restaurants.length,
+        dishesCount: dishes.length,
+        searchRequestId,
+      });
+    }
     return map;
-  }, [dishes, restaurants]);
+  }, [dishes, restaurants, scenarioConfig, searchRequestId]);
 
   const restaurantQualityColorById = React.useMemo(() => {
+    const startedAtMs = getNowMs();
     const map = new Map<string, string>();
     restaurants.forEach((restaurant) => {
       map.set(restaurant.restaurantId, getMarkerColorForRestaurant(restaurant));
     });
+    const durationMs = getNowMs() - startedAtMs;
+    if (isPerfScenarioAttributionActive(scenarioConfig)) {
+      logPerfScenarioAttributionEvent('WorkSpan', scenarioConfig, {
+        event: 'scenario_work_span',
+        owner: 'results_restaurant_color_metrics',
+        durationMs: Number(durationMs.toFixed(3)),
+        restaurantsCount: restaurants.length,
+        searchRequestId,
+      });
+    }
     return map;
-  }, [restaurants]);
+  }, [restaurants, scenarioConfig, searchRequestId]);
 
   return React.useMemo(
     () => ({

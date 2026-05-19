@@ -33,10 +33,13 @@ export const useSearchRootSessionPrimitivesLaneRuntime = ({
       cameraIntentArbiter.commit({
         center: payload.center,
         zoom: payload.zoom,
+        padding: payload.padding,
         allowDuringGesture: options?.allowDuringGesture,
         animationMode: options?.animationMode,
         animationDurationMs: options?.animationDurationMs,
         requestToken: options?.requestToken,
+        deferControlledCameraStateUntilCompletion:
+          options?.deferControlledCameraStateUntilCompletion,
       }),
     [cameraIntentArbiter]
   );

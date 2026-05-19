@@ -12,7 +12,7 @@ import type {
 type UseSearchRootRuntimeFlagsRuntimeArgs = {
   rootSessionCoreLane: Pick<
     SearchRootSessionCoreLane,
-    'searchRuntimeBus' | 'runOneHandoffCoordinatorRef'
+    'searchRuntimeBus' | 'searchSurfaceRedrawCoordinatorRef'
   >;
   resultsArrivalState: Pick<SearchRootResultsArrivalState, 'resultsRequestKey'>;
   foregroundPolicyPublicationAuthority: SearchForegroundPolicyPublicationAuthority;
@@ -29,15 +29,15 @@ export const useSearchRootRuntimeFlagsRuntime = ({
     (state) => ({
       searchMode: state.searchMode,
       isSearchSessionActive: state.isSearchSessionActive,
-      runOneHandoffOperationId: state.runOneHandoffOperationId,
     }),
     (left, right) =>
       left.searchMode === right.searchMode &&
-      left.isSearchSessionActive === right.isSearchSessionActive &&
-      left.runOneHandoffOperationId === right.runOneHandoffOperationId,
-    ['searchMode', 'isSearchSessionActive', 'runOneHandoffOperationId'] as const
+      left.isSearchSessionActive === right.isSearchSessionActive,
+    ['searchMode', 'isSearchSessionActive'] as const,
+    'root_runtime_flags'
   );
-  const { searchMode, isSearchSessionActive, runOneHandoffOperationId } = runtimeFlagsState;
+  const { searchMode, isSearchSessionActive } = runtimeFlagsState;
+  const searchSurfaceRedrawOperationId = searchRuntimeBus.getState().searchSurfaceRedrawOperationId;
 
   const setSearchMode = React.useCallback<
     React.Dispatch<React.SetStateAction<'natural' | 'shortcut' | null>>
@@ -104,18 +104,18 @@ export const useSearchRootRuntimeFlagsRuntime = ({
       createSearchRootRuntimeFlagsValue({
         searchMode,
         isSearchSessionActive,
-        runOneHandoffOperationId,
+        searchSurfaceRedrawOperationId,
         setSearchMode,
         setIsSearchSessionActive,
         isSearchLoading: isSearchRequestLoadingRef.current,
         isSearchRequestLoadingRef,
         setSearchRequestLoading,
-        hydrationOperationId: runOneHandoffOperationId ?? resultsArrivalState.resultsRequestKey,
+        hydrationOperationId: searchSurfaceRedrawOperationId ?? resultsArrivalState.resultsRequestKey,
       }),
     [
       isSearchSessionActive,
       resultsArrivalState.resultsRequestKey,
-      runOneHandoffOperationId,
+      searchSurfaceRedrawOperationId,
       searchMode,
       setIsSearchSessionActive,
       setSearchMode,

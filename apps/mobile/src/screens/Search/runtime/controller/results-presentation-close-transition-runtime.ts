@@ -2,7 +2,10 @@ import type { ResultsCloseTransitionActions } from '../shared/results-presentati
 
 type ResultsPresentationCloseTransitionRuntimeValue = {
   closeTransitionActions: ResultsCloseTransitionActions;
-  beginCloseTransition: (closeIntentId: string) => void;
+  beginCloseTransition: (
+    closeIntentId: string,
+    options?: { terminalDismissSource?: 'results' | 'profile' }
+  ) => void;
   scheduleCloseSearchCleanup: (closeIntentId: string) => void;
   cancelCloseSearchCleanup: () => void;
   setPendingCloseIntentId: (intentId: string | null) => void;

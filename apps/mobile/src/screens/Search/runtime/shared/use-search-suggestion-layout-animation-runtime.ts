@@ -49,9 +49,7 @@ export const useSearchSuggestionLayoutAnimationRuntime = ({
   }, [isSuggestionPanelVisible, suggestionScrollOffset]);
 
   const suggestionSpacingInitializedRef = React.useRef(false);
-  const suggestionSpacingEasing = isSuggestionPanelActive
-    ? Easing.out(Easing.cubic)
-    : Easing.in(Easing.cubic);
+  const suggestionSpacingEasing = Easing.out(Easing.cubic);
   const isSuggestionClosing = isSuggestionPanelVisible && !isSuggestionPanelActive;
 
   React.useEffect(() => {

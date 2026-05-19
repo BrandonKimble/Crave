@@ -19,6 +19,8 @@ export type PhaseBHydrationSyncInput = {
   hydratedHydrationKey: string | null;
   activeOverlayKey: string;
   commitHydrationKey: (nextHydrationKey: string | null) => void;
+  canCommitHydrationKey?: () => boolean;
+  canFinalizeRowsRelease?: () => boolean;
   onFinalizeKeyCommitted?: (hydrationKey: string) => void;
   onFinalizeRowsReleaseReady?: (hydrationKey: string) => void;
 };
@@ -26,6 +28,7 @@ export type PhaseBHydrationSyncInput = {
 export type PhaseBHydrationFinalizeKeyCommitInput = {
   operationId: string;
   syncToken: string;
+  canCommit?: () => boolean;
   commit: () => void;
   onCommitted?: () => void;
 };
@@ -33,6 +36,7 @@ export type PhaseBHydrationFinalizeKeyCommitInput = {
 export type PhaseBHydrationFinalizeRowsReleaseInput = {
   operationId: string;
   syncToken: string;
+  canRelease?: () => boolean;
   release: () => void;
 };
 
@@ -74,11 +78,28 @@ export class PhaseBMaterializer {
 
   public syncHydrationCommit(input: PhaseBHydrationSyncInput): () => void {
     if (!input.pendingHydrationKey) {
-      this.resetHydrationSyncIdentity();
       this.cancelHydrationCommit();
       this.cancelHydrationFinalizeRowsRelease();
       if (input.hydratedHydrationKey !== null) {
-        input.commitHydrationKey(null);
+        if (input.activeOverlayKey !== 'search') {
+          this.resetHydrationSyncIdentity();
+          input.commitHydrationKey(null);
+        } else {
+          const syncToken = `${input.operationId}:phase-b-hydration-clear:${Date.now().toString(36)}`;
+          this.hydrationSyncOperationId = input.operationId;
+          this.hydrationSyncToken = syncToken;
+          this.scheduleHydrationFinalizeRowsRelease({
+            operationId: input.operationId,
+            syncToken,
+            canRelease: input.canFinalizeRowsRelease,
+            release: () => {
+              input.commitHydrationKey(null);
+              this.resetHydrationSyncIdentity();
+            },
+          });
+        }
+      } else {
+        this.resetHydrationSyncIdentity();
       }
       return () => {
         this.cancelHydrationCommit();
@@ -90,10 +111,26 @@ export class PhaseBMaterializer {
       // The key commit may have just completed and caused the caller effect to re-run.
       // Ensure rows-release is still signaled even if the previous async release callback
       // was cancelled during cleanup on that re-run.
-      input.onFinalizeRowsReleaseReady?.(input.pendingHydrationKey);
-      this.resetHydrationSyncIdentity();
+      const hydrationKey = input.pendingHydrationKey;
       this.cancelHydrationCommit();
       this.cancelHydrationFinalizeRowsRelease();
+      if (input.activeOverlayKey !== 'search') {
+        input.onFinalizeRowsReleaseReady?.(hydrationKey);
+        this.resetHydrationSyncIdentity();
+      } else {
+        const syncToken = `${input.operationId}:phase-b-hydration-release:${Date.now().toString(36)}`;
+        this.hydrationSyncOperationId = input.operationId;
+        this.hydrationSyncToken = syncToken;
+        this.scheduleHydrationFinalizeRowsRelease({
+          operationId: input.operationId,
+          syncToken,
+          canRelease: input.canFinalizeRowsRelease,
+          release: () => {
+            input.onFinalizeRowsReleaseReady?.(hydrationKey);
+            this.resetHydrationSyncIdentity();
+          },
+        });
+      }
       return () => {
         this.cancelHydrationCommit();
         this.cancelHydrationFinalizeRowsRelease();
@@ -123,6 +160,7 @@ export class PhaseBMaterializer {
     this.scheduleHydrationFinalizeKeyCommit({
       operationId: input.operationId,
       syncToken,
+      canCommit: input.canCommitHydrationKey,
       commit: () => {
         input.commitHydrationKey(hydrationKey);
       },
@@ -131,6 +169,7 @@ export class PhaseBMaterializer {
         this.scheduleHydrationFinalizeRowsRelease({
           operationId: input.operationId,
           syncToken,
+          canRelease: input.canFinalizeRowsRelease,
           release: () => {
             input.onFinalizeRowsReleaseReady?.(hydrationKey);
           },
@@ -180,6 +219,15 @@ export class PhaseBMaterializer {
           if (!this.isHydrationSyncActive(input.operationId, input.syncToken)) {
             return;
           }
+          if (input.canCommit?.() === false) {
+            if (typeof requestAnimationFrame === 'function') {
+              this.hydrationAnimationFrame = requestAnimationFrame(() => {
+                this.hydrationAnimationFrame = null;
+                executeCommit();
+              });
+            }
+            return;
+          }
           input.commit();
           input.onCommitted?.();
         };
@@ -212,18 +260,29 @@ export class PhaseBMaterializer {
           return;
         }
         if (typeof requestAnimationFrame === 'function') {
-          this.hydrationFinalizeRowsReleaseAnimationFrame = requestAnimationFrame(() => {
+          const tryRelease = () => {
             this.hydrationFinalizeRowsReleaseAnimationFrame = null;
             if (!this.isHydrationSyncActive(input.operationId, input.syncToken)) {
               return;
             }
+            if (input.canRelease && !input.canRelease()) {
+              this.hydrationFinalizeRowsReleaseAnimationFrame =
+                requestAnimationFrame(tryRelease);
+              return;
+            }
             input.release();
-          });
+          };
+          this.hydrationFinalizeRowsReleaseAnimationFrame =
+            requestAnimationFrame(tryRelease);
           return;
         }
         this.hydrationFinalizeRowsReleaseTimeout = setTimeout(() => {
           this.hydrationFinalizeRowsReleaseTimeout = null;
           if (!this.isHydrationSyncActive(input.operationId, input.syncToken)) {
+            return;
+          }
+          if (input.canRelease && !input.canRelease()) {
+            this.scheduleHydrationFinalizeRowsRelease(input);
             return;
           }
           input.release();

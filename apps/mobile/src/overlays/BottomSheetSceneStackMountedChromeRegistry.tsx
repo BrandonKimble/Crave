@@ -6,7 +6,6 @@ import { BookmarksMountedSceneHeader } from './panels/BookmarksPanel';
 import { PollsMountedSceneHeader } from './panels/PollsPanel';
 import { ProfileMountedSceneHeader } from './panels/ProfilePanel';
 import { SaveListMountedSceneHeader } from './panels/SaveListPanel';
-import { SearchMountedSceneChromeSurfaceHost } from './SearchMountedSceneChromeAuthority';
 
 export type BottomSheetSceneStackMountedChromeSurface =
   | 'underlay'
@@ -21,13 +20,6 @@ type BottomSheetSceneStackMountedChromeProps = {
 
 export const BottomSheetSceneStackMountedChrome = React.memo(
   ({ mountedChromeKey, surface }: BottomSheetSceneStackMountedChromeProps) => {
-    if (mountedChromeKey === 'search') {
-      if (surface === 'header') {
-        return null;
-      }
-      return <SearchMountedSceneChromeSurfaceHost surface={surface} />;
-    }
-
     if (surface === 'background') {
       return <FrostedGlassBackground />;
     }

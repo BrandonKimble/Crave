@@ -18,28 +18,10 @@ export const useSearchRootAppRouteOverlayPublicationRuntime = ({
   const overlayHostRuntimeSlice = useSearchRootOverlayHostRuntime(overlayHostRuntimeParams);
 
   React.useLayoutEffect(() => {
-    publicationLane.publishOverlayChromeFrameSnapshot(
-      overlayHostRuntimeSlice.overlayChromeFrameSnapshot
+    publicationLane.publishOverlayChromeHostSnapshot(
+      overlayHostRuntimeSlice.overlayChromeHostSnapshot
     );
-  }, [overlayHostRuntimeSlice.overlayChromeFrameSnapshot, publicationLane]);
-
-  React.useLayoutEffect(() => {
-    publicationLane.publishOverlayChromeContainerSnapshot(
-      overlayHostRuntimeSlice.overlayChromeContainerSnapshot
-    );
-  }, [overlayHostRuntimeSlice.overlayChromeContainerSnapshot, publicationLane]);
-
-  React.useLayoutEffect(() => {
-    publicationLane.publishOverlayChromeHeaderProps(
-      overlayHostRuntimeSlice.overlayChromeHeaderProps
-    );
-  }, [overlayHostRuntimeSlice.overlayChromeHeaderProps, publicationLane]);
-
-  React.useLayoutEffect(() => {
-    publicationLane.publishOverlayChromeSuggestionSurfaceProps(
-      overlayHostRuntimeSlice.overlayChromeSuggestionSurfaceProps
-    );
-  }, [overlayHostRuntimeSlice.overlayChromeSuggestionSurfaceProps, publicationLane]);
+  }, [overlayHostRuntimeSlice.overlayChromeHostSnapshot, publicationLane]);
 
   React.useLayoutEffect(() => {
     publicationLane.publishOverlayGateSnapshot(overlayHostRuntimeSlice.overlayGateSnapshot);

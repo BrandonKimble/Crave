@@ -17,7 +17,13 @@ export type SearchRoutePollCreationSceneStateRuntime = {
 
 const isPollCreationRouteEntry = (
   route: OverlayRouteEntry
-): route is OverlayRouteEntry<'pollCreation'> => route.key === 'pollCreation';
+): route is OverlayRouteEntry<'pollCreation'> => {
+  if (route.key !== 'pollCreation') {
+    return false;
+  }
+  const params = route.params as OverlayRouteEntry<'pollCreation'>['params'];
+  return params?.parentSceneKey === 'polls' && params?.ownerSceneKey === 'polls';
+};
 
 export const useSearchRoutePollCreationSceneStateRuntime = ({
   activeOverlayRoute,

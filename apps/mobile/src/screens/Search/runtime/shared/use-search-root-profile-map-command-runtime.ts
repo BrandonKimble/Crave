@@ -2,19 +2,27 @@ import React from 'react';
 
 import type { SearchMapProfileCommandPort } from './search-map-protocol-contract';
 import type { ProfileOwner } from '../profile/profile-owner-runtime-contract';
+import type { SheetPosition } from '../../../../overlays/sheetUtils';
 
 type UseSearchRootProfileMapCommandRuntimeArgs = {
   profileOwner: ProfileOwner;
   pendingMarkerOpenAnimationFrameRef: React.MutableRefObject<number | null>;
+  getCurrentResultsSheetSnap: () => SheetPosition;
 };
+
+const shouldPromoteProfileOpenToMiddle = (snap: SheetPosition): boolean =>
+  snap === 'hidden' || snap === 'collapsed';
 
 export const useSearchRootProfileMapCommandRuntime = ({
   profileOwner,
   pendingMarkerOpenAnimationFrameRef,
+  getCurrentResultsSheetSnap,
 }: UseSearchRootProfileMapCommandRuntimeArgs) => {
   const { profileViewState, profileActions } = profileOwner;
   const profileActionsRef = React.useRef(profileActions);
   profileActionsRef.current = profileActions;
+  const getCurrentResultsSheetSnapRef = React.useRef(getCurrentResultsSheetSnap);
+  getCurrentResultsSheetSnapRef.current = getCurrentResultsSheetSnap;
   const mapProfileCommandPortRef =
     React.useRef<SearchMapProfileCommandPort | null>(null);
 
@@ -34,9 +42,11 @@ export const useSearchRootProfileMapCommandRuntime = ({
         }
 
         if (restaurant) {
+          const shouldPromoteSheetToMiddle =
+            shouldPromoteProfileOpenToMiddle(getCurrentResultsSheetSnapRef.current());
           profileActionsRef.current.openRestaurantProfile(restaurant, {
             pressedCoordinate,
-            forceMiddleSnap: true,
+            forceMiddleSnap: shouldPromoteSheetToMiddle,
             source: 'results_sheet',
           });
           return;
@@ -51,7 +61,9 @@ export const useSearchRootProfileMapCommandRuntime = ({
           restaurantName,
           {
             pressedCoordinate: pressedCoordinate ?? null,
-            forceMiddleSnap: true,
+            forceMiddleSnap: shouldPromoteProfileOpenToMiddle(
+              getCurrentResultsSheetSnapRef.current()
+            ),
           }
         );
       },

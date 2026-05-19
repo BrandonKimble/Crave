@@ -3,7 +3,7 @@ import type React from 'react';
 import type { PollBootstrapSnapshot } from '../../../services/polls';
 import type { Coordinate, MapBounds } from '../../../types';
 import type { SnapPoints } from '../../bottomSheetMotionTypes';
-import type { OverlaySheetSnap, OverlaySheetSnapRequest } from '../../types';
+import type { OverlaySheetSnap } from '../../types';
 import type {
   SearchRouteSceneShellMotionContract,
   SearchRouteSceneSnapMeta,
@@ -39,7 +39,6 @@ export type UsePollsPanelSpecOptions = {
   snapPoints?: SnapPoints;
   onSnapStart?: SearchRouteSceneShellMotionContract['onSnapStart'];
   onSnapChange?: SearchRouteSceneShellMotionContract['onSnapChange'];
-  externalSheetMotionRequest?: OverlaySheetSnapRequest | null;
   onRequestPollCreationExpand?: () => void;
   onRequestReturnToSearch?: () => void;
   interactionRef?: PollsPanelInteractionRef;

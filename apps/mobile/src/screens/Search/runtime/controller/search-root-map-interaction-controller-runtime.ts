@@ -1,7 +1,6 @@
 import type {
   SearchRootAutocompleteControlLane,
   SearchRootProfilePresentationControlLane,
-  SearchRootResultsPresentationStateControlLane,
   SearchRootSuggestionInteractionControlLane,
 } from '../shared/use-search-root-control-plane-runtime-contract';
 import type { SearchRootOverlayFoundationRuntime } from '../shared/search-root-overlay-foundation-runtime-contract';
@@ -15,7 +14,6 @@ export const createSearchRootMapInteractionControllerArgs = ({
   autocompleteControlLane,
   suggestionInteractionControlLane,
   profilePresentationControlLane,
-  resultsPresentationStateControlLane,
 }: {
   sessionCoreLane: SearchRootSessionCoreLane;
   stateFoundationLane: SearchRootStateFoundationLane;
@@ -23,7 +21,6 @@ export const createSearchRootMapInteractionControllerArgs = ({
   autocompleteControlLane: SearchRootAutocompleteControlLane;
   suggestionInteractionControlLane: SearchRootSuggestionInteractionControlLane;
   profilePresentationControlLane: SearchRootProfilePresentationControlLane;
-  resultsPresentationStateControlLane: SearchRootResultsPresentationStateControlLane;
 }) => {
   const {
     rootDataPlaneRuntime: dataPlaneRuntime,
@@ -36,12 +33,10 @@ export const createSearchRootMapInteractionControllerArgs = ({
     rootOverlayStoreRuntime,
     routeOverlaySessionSnapshot,
     rootResultsSheetRuntimeLane,
-    appRouteResultsSheetRuntimeOwner,
   } = rootOverlayFoundationRuntime;
 
   return {
     searchInteractionRef: sessionPrimitivesLane.primitives.searchInteractionRef,
-    anySheetDraggingRef: sessionPrimitivesLane.primitives.anySheetDraggingRef,
     pendingMarkerOpenAnimationFrameRef:
       profilePresentationControlLane.pendingMarkerOpenAnimationFrameRef,
     allowSearchBlurExitRef: primitivesRuntime.searchState.allowSearchBlurExitRef,
@@ -72,25 +67,16 @@ export const createSearchRootMapInteractionControllerArgs = ({
       instrumentationRuntime.shouldLogSearchStateChanges,
     mapGestureActiveRef: rootResultsSheetRuntimeLane.mapGestureActiveRef,
     suppressMapMovedRef: primitivesRuntime.mapState.suppressMapMovedRef,
-    shouldRenderResultsSheetRef:
-      appRouteResultsSheetRuntimeOwner.shouldRenderResultsSheetRef,
     mapMotionPressureController:
       rootResultsSheetRuntimeLane.mapMotionPressureController,
     cancelPendingMapMovementUpdates:
       rootResultsSheetRuntimeLane.cancelPendingMapMovementUpdates,
     markMapMovedIfNeeded: rootResultsSheetRuntimeLane.markMapMovedIfNeeded,
     scheduleMapIdleEnter: rootResultsSheetRuntimeLane.scheduleMapIdleEnter,
-    sheetState: appRouteResultsSheetRuntimeOwner.sheetState,
     isSearchOverlay: rootOverlayStoreRuntime.isSearchOverlay,
-    hasResults: dataPlaneRuntime.resultsArrivalState.hasResults,
-    shouldDisableResultsSheetInteraction:
-      resultsPresentationStateControlLane.presentationState
-        .shouldDisableResultsSheetInteraction,
-    animateSheetTo: appRouteResultsSheetRuntimeOwner.animateSheetTo,
     shouldShowPollsSheet: routeOverlaySessionSnapshot.shouldShowPollsSheet,
     schedulePollBoundsUpdate:
       rootResultsSheetRuntimeLane.schedulePollBoundsUpdate,
-    commitCameraViewport: sessionPrimitivesLane.primitives.commitCameraViewport,
     lastCameraStateRef: sessionPrimitivesLane.primitives.lastCameraStateRef,
     lastPersistedCameraRef:
       sessionPrimitivesLane.primitives.lastPersistedCameraRef,

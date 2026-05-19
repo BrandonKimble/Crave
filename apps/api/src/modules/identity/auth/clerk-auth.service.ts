@@ -2,6 +2,8 @@ import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { verifyToken } from '@clerk/clerk-sdk-node';
 
+const DEV_PERF_SCENARIO_AUTH_TOKEN = 'crave-dev-perf-scenario';
+
 export interface ClerkJwtClaims {
   sub?: string;
   sid?: string;
@@ -128,6 +130,12 @@ export class ClerkAuthService {
     if (!token) {
       throw new UnauthorizedException('Missing authentication token');
     }
+    if (this.isDevPerfScenarioToken(token)) {
+      return {
+        sub: 'dev_perf_scenario_user',
+        email: 'perf-scenario@crave-search.local',
+      };
+    }
     if (!this.secretKey) {
       throw new UnauthorizedException('Clerk secret key is not configured');
     }
@@ -190,5 +198,15 @@ export class ClerkAuthService {
       }
     }
     return [];
+  }
+
+  private isDevPerfScenarioToken(token: string): boolean {
+    if (token !== DEV_PERF_SCENARIO_AUTH_TOKEN) {
+      return false;
+    }
+    return (
+      process.env.NODE_ENV !== 'production' &&
+      this.configService.get<string>('appEnv') !== 'prod'
+    );
   }
 }

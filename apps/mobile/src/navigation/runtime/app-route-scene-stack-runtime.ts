@@ -30,6 +30,7 @@ import {
   EMPTY_APP_ROUTE_SCENE_STACK_MOUNTED_SCENES_SNAPSHOT,
   EMPTY_APP_ROUTE_SCENE_STACK_SCENE_ACTIVITY_SNAPSHOT,
   EMPTY_APP_ROUTE_SCENE_STACK_SCENE_PRESENTATION_SNAPSHOT,
+  PERSISTENT_POLL_IDLE_SHEET_HEADER_RESTORATION_CONTRACT,
   type AppRouteSceneStackActiveChromeSnapshot,
   type AppRouteSceneStackBodySnapshot,
   type AppRouteSceneStackBodySurfaceAuthority,
@@ -46,13 +47,27 @@ import {
   markSearchNavSwitchRuntimeAttribution,
   withSearchNavSwitchRuntimeAttribution,
 } from '../../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
-import type { RouteSceneSwitchTransitionPhase } from './app-overlay-route-transition-contract';
+import {
+  areSearchSurfaceVisualPoliciesEqual,
+  getSearchSurfaceRuntime,
+  selectSearchSurfaceRouteGraphPolicy,
+  selectSearchSurfaceVisualPolicy,
+} from '../../screens/Search/runtime/surface/search-surface-runtime';
+import type {
+  RouteSceneSwitchSheetContentHandoff,
+  RouteSceneSwitchTransitionPhase,
+} from './app-overlay-route-transition-contract';
 import type {
   AppRouteSceneSwitchRuntime,
   RouteSceneSwitchSceneStackDispatchSnapshot,
 } from './app-route-scene-switch-controller';
 import { resolveRouteSceneSwitchSceneStackDispatchSnapshot } from './app-route-scene-switch-controller';
 import type { RouteOverlayDisplaySnapshot } from './route-overlay-display-snapshot-contract';
+import {
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+} from '../../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../../perf/perf-scenario-runtime-store';
 
 type Listener = () => void;
 
@@ -344,11 +359,6 @@ const markSceneStackFrameEntryDiffs = (
     `${prefix}:shellSpec.surfaceKind`,
     leftShellSpec?.surfaceKind ?? null,
     rightShellSpec?.surfaceKind ?? null
-  );
-  markSceneStackFieldDiff(
-    `${prefix}:shellSpec.snapPersistenceKey`,
-    leftShellSpec?.snapPersistenceKey ?? null,
-    rightShellSpec?.snapPersistenceKey ?? null
   );
   markSceneStackFieldDiff(
     `${prefix}:shellSpec.initialSnapPoint`,
@@ -721,6 +731,44 @@ const resolveSceneDataLaneAdmissionDelayMs = (
   bodyAdmissionPolicy: AppRouteSceneBodyAdmissionPolicy | null | undefined
 ): number => bodyAdmissionPolicy?.dataAdmissionDelayMs ?? SCENE_DATA_LANE_QUIET_DELAY_MS;
 
+const shouldPrewarmSearchDismissPollDataLane = ({
+  bodyAdmissionPolicy,
+  isMounted,
+  sceneKey,
+}: {
+  bodyAdmissionPolicy: AppRouteSceneBodyAdmissionPolicy | null | undefined;
+  isMounted: boolean;
+  sceneKey: OverlayKey;
+}): boolean => {
+  if (sceneKey !== 'polls' || !isMounted || !shouldRetainMountedSceneBody(bodyAdmissionPolicy)) {
+    return false;
+  }
+  const searchSurfaceSnapshot = getSearchSurfaceRuntime().getSnapshot();
+  const surfaceVisualPolicy = selectSearchSurfaceVisualPolicy(searchSurfaceSnapshot);
+  return (
+    searchSurfaceSnapshot.activeBundle.kind === 'results' &&
+    surfaceVisualPolicy.phase === 'results_dismissing' &&
+    surfaceVisualPolicy.canDisplayPersistentPollSubstrate &&
+    !surfaceVisualPolicy.canReleasePersistentPolls
+  );
+};
+
+const shouldSyncSearchDismissPollDataPrewarmScene = (
+  mountedSceneKeys: readonly OverlayKey[]
+): boolean => {
+  if (!mountedSceneKeys.includes('polls')) {
+    return false;
+  }
+  const searchSurfaceSnapshot = getSearchSurfaceRuntime().getSnapshot();
+  const surfaceVisualPolicy = selectSearchSurfaceVisualPolicy(searchSurfaceSnapshot);
+  return (
+    searchSurfaceSnapshot.activeBundle.kind === 'results' &&
+    surfaceVisualPolicy.phase === 'results_dismissing' &&
+    surfaceVisualPolicy.canDisplayPersistentPollSubstrate &&
+    !surfaceVisualPolicy.canReleasePersistentPolls
+  );
+};
+
 const shouldRetainSceneBodySnapshotDuringTransition = ({
   transitionPhase,
   previousSceneEntry,
@@ -814,6 +862,32 @@ const resolveSheetPresentationSceneKey = ({
   routeOverlayDisplaySnapshot: RouteOverlayDisplaySnapshot;
 }): OverlayKey | null =>
   routeOverlayDisplaySnapshot.isPersistentPollLane ? 'polls' : routeActiveSceneKey;
+
+const resolveTransitionSheetPresentationSceneKey = ({
+  routeActiveSceneKey,
+  routeOverlayDisplaySnapshot,
+  handoffSceneKey,
+  sheetContentHandoff,
+  transitionPhase,
+}: {
+  routeActiveSceneKey: OverlayKey | null;
+  routeOverlayDisplaySnapshot: RouteOverlayDisplaySnapshot;
+  handoffSceneKey: OverlayKey | null;
+  sheetContentHandoff: RouteSceneSwitchSheetContentHandoff;
+  transitionPhase: RouteSceneSwitchTransitionPhase;
+}): OverlayKey | null => {
+  if (
+    transitionPhase !== 'idle' &&
+    sheetContentHandoff === 'preserveOutgoingUntilSettle' &&
+    handoffSceneKey != null
+  ) {
+    return handoffSceneKey;
+  }
+  return resolveSheetPresentationSceneKey({
+    routeActiveSceneKey,
+    routeOverlayDisplaySnapshot,
+  });
+};
 
 const resolveSceneEntryByKey = ({
   mountedSceneKeys,
@@ -921,6 +995,8 @@ class AppRouteSceneStackLayerStateController {
 
   private readonly frameListeners = new Set<Listener>();
 
+  private lastPersistentPollHeaderRestorationContractKey: string | null = null;
+
   private readonly unsubscribers: Array<() => void> = [];
 
   private readonly sceneInputUnsubscribersByKey = new Map<
@@ -952,6 +1028,8 @@ class AppRouteSceneStackLayerStateController {
       },
       getScenePresentationAuthority: (sceneKey) => this.getScenePresentationAuthority(sceneKey),
       getSceneBodySurfaceAuthority: (sceneKey) => this.getSceneBodySurfaceAuthority(sceneKey),
+      replayPersistentPollHeaderRestorationContract: (source) =>
+        this.logPersistentPollHeaderRestorationContract(source, true),
     };
     this.sceneFrameAuthority = {
       subscribe: (listener) => this.subscribeFrame(listener),
@@ -1007,7 +1085,18 @@ class AppRouteSceneStackLayerStateController {
           return;
         }
         recomputeTransitionSlice('sceneChrome:pollsPrewarm');
-      })
+      }),
+      getSearchSurfaceRuntime().subscribeSelector(
+        selectSearchSurfaceRouteGraphPolicy,
+        () => {
+          recomputeTransitionSlice('searchSurfaceRuntime');
+          if (getSearchSurfaceRuntime().getSnapshot().dismissTransaction == null) {
+            return;
+          }
+          this.logPersistentPollHeaderRestorationContract('searchSurfaceRuntime');
+        },
+        areSearchSurfaceVisualPoliciesEqual
+      )
     );
   }
 
@@ -1152,6 +1241,92 @@ class AppRouteSceneStackLayerStateController {
     };
     this.scenePresentationAuthorities.set(sceneKey, authority);
     return authority;
+  }
+
+  private logPersistentPollHeaderRestorationContract(source: string, force = false): void {
+    const presentationSnapshot = this.getScenePresentationSnapshot('polls');
+    const bodySurfaceSnapshot = this.getSceneBodySurfaceSnapshot('polls');
+    const headerEntry = presentationSnapshot.chromeSurfaces.header;
+    const mountedBodyKey = this.getBodySurfaceMountedBodyKey(bodySurfaceSnapshot);
+    const expectedContract = PERSISTENT_POLL_IDLE_SHEET_HEADER_RESTORATION_CONTRACT;
+    const contentActivity = {
+      shouldAttachMountedContent: bodySurfaceSnapshot.contentActivity.shouldAttachMountedContent,
+      shouldRunDataLane: bodySurfaceSnapshot.contentActivity.shouldRunDataLane,
+      shouldSubscribeDataLane: bodySurfaceSnapshot.contentActivity.shouldSubscribeDataLane,
+    };
+    const searchSurfaceRuntime = getSearchSurfaceRuntime();
+    const dismissTransaction = searchSurfaceRuntime.getSnapshot().dismissTransaction;
+    const hasMountedPollHeader =
+      headerEntry?.surfaceKind === 'mounted' &&
+      headerEntry.mountedChromeKey === expectedContract.mountedChromeKey;
+    const hasMountedPollBody =
+      mountedBodyKey === 'polls' && contentActivity.shouldAttachMountedContent;
+    const hasPollBodyContentLane =
+      hasMountedPollBody &&
+      contentActivity.shouldRunDataLane &&
+      contentActivity.shouldSubscribeDataLane;
+    if (dismissTransaction != null) {
+      if (hasMountedPollHeader) {
+        searchSurfaceRuntime.markPollPagePartReady(
+          'header',
+          dismissTransaction.id,
+          `sceneStack:${source}:header`
+        );
+      }
+      if (hasPollBodyContentLane) {
+        searchSurfaceRuntime.markPollPagePartReady(
+          'body',
+          dismissTransaction.id,
+          `sceneStack:${source}:body`
+        );
+      }
+      if (presentationSnapshot.isMounted && hasMountedPollHeader && hasPollBodyContentLane) {
+        searchSurfaceRuntime.markPollPagePartReady(
+          'host',
+          dismissTransaction.id,
+          `sceneStack:${source}:host`
+        );
+      }
+    }
+    const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+    if (!isPerfScenarioAttributionActive(scenarioConfig)) {
+      return;
+    }
+    const payload = {
+      event: 'persistent_polls_scene_header_restoration_contract',
+      source,
+      sheetContentLaneKind: expectedContract.sheetContentLaneKind,
+      displayedSceneKey: expectedContract.displayedSceneKey,
+      sheetPresentationSceneKey: expectedContract.sheetPresentationSceneKey,
+      isMounted: presentationSnapshot.isMounted,
+      headerSurfaceKind: headerEntry?.surfaceKind ?? null,
+      mountedChromeKey: headerEntry?.mountedChromeKey ?? null,
+      mountedBodyKey,
+      pollsHeaderChromeNonNull:
+        headerEntry?.surfaceKind === 'mounted' &&
+        headerEntry.mountedChromeKey === expectedContract.mountedChromeKey,
+      pollsBodyMountedContentNonNull: mountedBodyKey === 'polls',
+      pollsBodyContentLaneActive: hasPollBodyContentLane,
+      contentActivity,
+      shouldAttachMountedContent: contentActivity.shouldAttachMountedContent,
+      shouldRunDataLane: contentActivity.shouldRunDataLane,
+      shouldSubscribeDataLane: contentActivity.shouldSubscribeDataLane,
+    };
+    const contractKey = JSON.stringify({
+      headerSurfaceKind: payload.headerSurfaceKind,
+      isMounted: payload.isMounted,
+      mountedBodyKey: payload.mountedBodyKey,
+      mountedChromeKey: payload.mountedChromeKey,
+      pollsBodyContentLaneActive: payload.pollsBodyContentLaneActive,
+      shouldAttachMountedContent: payload.shouldAttachMountedContent,
+      shouldRunDataLane: payload.shouldRunDataLane,
+      shouldSubscribeDataLane: payload.shouldSubscribeDataLane,
+    });
+    if (!force && this.lastPersistentPollHeaderRestorationContractKey === contractKey) {
+      return;
+    }
+    this.lastPersistentPollHeaderRestorationContractKey = contractKey;
+    logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, payload);
   }
 
   private createActiveSceneFrameSnapshot(
@@ -1319,6 +1494,9 @@ class AppRouteSceneStackLayerStateController {
     } else {
       this.scenePresentationSnapshots.set(sceneKey, nextSnapshot);
     }
+    if (sceneKey === 'polls') {
+      this.logPersistentPollHeaderRestorationContract('syncScenePresentationSnapshot');
+    }
     return true;
   }
 
@@ -1458,18 +1636,14 @@ class AppRouteSceneStackLayerStateController {
       return EMPTY_APP_ROUTE_SCENE_STACK_BODY_SURFACE_SNAPSHOT;
     }
     const bodySurfaceKind = bodySnapshot.contentEntry.bodyContentSpec.surfaceKind;
-    const isMountedBodySurface = bodySurfaceKind === 'mounted' || bodySurfaceKind === 'mountedList';
+    const isMountedBodySurface = bodySurfaceKind === 'mounted';
 
     return {
       contentEntry: bodySnapshot.contentEntry,
       transportEntry: bodySnapshot.transportEntry,
       contentActivity: {
         shouldRenderListBody:
-          bodySurfaceKind === 'list'
-            ? activitySnapshot.shouldRenderListBody
-            : bodySurfaceKind === 'mountedList'
-            ? activitySnapshot.shouldRenderExpandedContent
-            : false,
+          bodySurfaceKind === 'list' ? activitySnapshot.shouldRenderListBody : false,
         shouldAttachMountedContent: isMountedBodySurface
           ? activitySnapshot.shouldAttachMountedContent
           : false,
@@ -1510,9 +1684,7 @@ class AppRouteSceneStackLayerStateController {
     snapshot: AppRouteSceneStackBodySurfaceSnapshot
   ): string | null {
     const spec = snapshot.contentEntry?.bodyContentSpec;
-    return spec?.surfaceKind === 'mounted' || spec?.surfaceKind === 'mountedList'
-      ? spec.mountedBodyKey
-      : null;
+    return spec?.surfaceKind === 'mounted' ? spec.mountedBodyKey : null;
   }
 
   private markSceneBodySurfaceSnapshotDiffs(
@@ -1597,14 +1769,30 @@ class AppRouteSceneStackLayerStateController {
   ): boolean {
     const sceneKey = right.contentEntry?.sceneKey ?? left.contentEntry?.sceneKey ?? null;
     if (sceneKey === 'search' || sceneKey === 'polls') {
-      const isEqual =
+      const areEntriesEqual =
         areSearchRouteSceneStackBodyContentEntriesEqual(left.contentEntry, right.contentEntry) &&
         areSearchRouteSceneStackBodyTransportEntriesEqual(
           left.transportEntry,
           right.transportEntry
         );
+      const shouldCompareDataLane = sceneKey === 'polls';
+      const isEqual =
+        areEntriesEqual &&
+        (sceneKey === 'search' ||
+          (left.contentActivity.shouldRenderListBody ===
+            right.contentActivity.shouldRenderListBody &&
+            left.contentActivity.shouldAttachMountedContent ===
+              right.contentActivity.shouldAttachMountedContent &&
+            (!shouldCompareDataLane ||
+              left.contentActivity.shouldRunDataLane === right.contentActivity.shouldRunDataLane) &&
+            left.contentActivity.shouldSubscribeDataLane ===
+              right.contentActivity.shouldSubscribeDataLane &&
+            left.contentActivity.shouldRenderExpandedContent ===
+              right.contentActivity.shouldRenderExpandedContent &&
+            left.contentActivity.hasActivatedExpandedContent ===
+              right.contentActivity.hasActivatedExpandedContent));
       if (!isEqual) {
-        this.markSceneBodySurfaceSnapshotDiffs(left, right, false);
+        this.markSceneBodySurfaceSnapshotDiffs(left, right, shouldCompareDataLane);
       }
       return isEqual;
     }
@@ -1645,6 +1833,9 @@ class AppRouteSceneStackLayerStateController {
       this.sceneBodySurfaceSnapshots.delete(sceneKey);
     } else {
       this.sceneBodySurfaceSnapshots.set(sceneKey, nextSnapshot);
+    }
+    if (sceneKey === 'polls') {
+      this.logPersistentPollHeaderRestorationContract('syncSceneBodySurfaceSnapshot');
     }
     return true;
   }
@@ -1723,11 +1914,22 @@ class AppRouteSceneStackLayerStateController {
       isMounted &&
       transitionPhase === 'idle' &&
       isInteractive;
-    const canAdmitDataLane = canAdmitInteractiveDataLane || canPrewarmRetainedMountedBody;
+    const canPrewarmSearchDismissPollData =
+      !isActive &&
+      shouldPrewarmSearchDismissPollDataLane({
+        bodyAdmissionPolicy,
+        isMounted,
+        sceneKey,
+      });
+    const canAdmitDataLane =
+      canAdmitInteractiveDataLane ||
+      canPrewarmRetainedMountedBody ||
+      canPrewarmSearchDismissPollData;
     const isDataLaneReady = this.isSceneDataLaneReady({
       sceneKey,
       canAdmitDataLane,
-      allowInactiveDataLaneAdmission: canPrewarmRetainedMountedBody,
+      allowInactiveDataLaneAdmission:
+        canPrewarmRetainedMountedBody || canPrewarmSearchDismissPollData,
       retainMountedBody: shouldRetainMountedBody,
       delayFirstDataAdmission: shouldDelaySceneDataLane(bodyAdmissionPolicy),
       delayDataAdmissionOnActivation: shouldDelaySceneDataLaneOnActivation(bodyAdmissionPolicy),
@@ -1861,6 +2063,9 @@ class AppRouteSceneStackLayerStateController {
     appendActivitySceneKey({ sceneKeys: sceneKeysToCheck, sceneKey: interactiveSceneKey });
     appendActivitySceneKey({ sceneKeys: sceneKeysToCheck, sceneKey: previousHandoffSceneKey });
     appendActivitySceneKey({ sceneKeys: sceneKeysToCheck, sceneKey: handoffSceneKey });
+    if (shouldSyncSearchDismissPollDataPrewarmScene(mountedSceneKeys)) {
+      sceneKeysToCheck.add('polls');
+    }
     const changedSceneKeys: OverlayKey[] = [];
 
     sceneKeysToCheck.forEach((sceneKey) => {
@@ -2224,6 +2429,13 @@ class AppRouteSceneStackLayerStateController {
       routeSceneSwitchSnapshot.transitionPhase === 'idle'
         ? null
         : routeSceneSwitchSnapshot.handoffSceneKey;
+    const transitionSheetPresentationSceneKey = resolveTransitionSheetPresentationSceneKey({
+      routeActiveSceneKey: activeSceneKey,
+      routeOverlayDisplaySnapshot,
+      handoffSceneKey,
+      sheetContentHandoff: routeSceneSwitchSnapshot.sheetContentHandoff,
+      transitionPhase: routeSceneSwitchSnapshot.transitionPhase,
+    });
 
     if (
       routeSceneSwitchSnapshot.transitionPhase === 'idle' &&
@@ -2249,7 +2461,7 @@ class AppRouteSceneStackLayerStateController {
       this.hasMountedSceneEntry(activeSceneKey) &&
       this.hasMountedSceneEntry(routeSceneSwitchSnapshot.pendingSceneKey) &&
       this.hasMountedSceneEntry(handoffSceneKey) &&
-      this.hasMountedSceneEntry(sheetPresentationSceneKey)
+      this.hasMountedSceneEntry(transitionSheetPresentationSceneKey)
     );
   }
 
@@ -2273,18 +2485,21 @@ class AppRouteSceneStackLayerStateController {
     withSearchNavSwitchRuntimeAttribution('sceneStack', 'routeSwitchPresentation', () => {
       const activeSceneKey = routeSceneSwitchSnapshot.routeActiveSceneKey;
       const interactiveSceneKey = routeSceneSwitchSnapshot.interactiveSceneKey;
-      const sheetPresentationSceneKey = resolveSheetPresentationSceneKey({
+      const handoffSceneKey =
+        routeSceneSwitchSnapshot.transitionPhase === 'idle'
+          ? null
+          : routeSceneSwitchSnapshot.handoffSceneKey;
+      const sheetPresentationSceneKey = resolveTransitionSheetPresentationSceneKey({
         routeActiveSceneKey: activeSceneKey,
         routeOverlayDisplaySnapshot,
+        handoffSceneKey,
+        sheetContentHandoff: routeSceneSwitchSnapshot.sheetContentHandoff,
+        transitionPhase: routeSceneSwitchSnapshot.transitionPhase,
       });
       const activitySceneKey = sheetPresentationSceneKey ?? activeSceneKey;
       const activityInteractiveSceneKey = routeOverlayDisplaySnapshot.isPersistentPollLane
         ? sheetPresentationSceneKey
         : interactiveSceneKey;
-      const handoffSceneKey =
-        routeSceneSwitchSnapshot.transitionPhase === 'idle'
-          ? null
-          : routeSceneSwitchSnapshot.handoffSceneKey;
       const mountedSceneKeys = this.snapshot.mountedSceneKeys;
       const sceneEntryByKey = this.snapshot.sceneEntryByKey;
       const activeSceneEntry =
@@ -2418,18 +2633,21 @@ class AppRouteSceneStackLayerStateController {
         const interactiveSceneKey = resolvedRouteSceneSwitchSnapshot.interactiveSceneKey;
         const routeOverlayDisplaySnapshot = routeOverlayDisplayAuthority.getSnapshot();
         const areStaticTabScenesReady = areStaticTabSceneInputsReady(sceneInputAuthority);
-        const sheetPresentationSceneKey = resolveSheetPresentationSceneKey({
+        const handoffSceneKey =
+          resolvedRouteSceneSwitchSnapshot.transitionPhase === 'idle'
+            ? null
+            : resolvedRouteSceneSwitchSnapshot.handoffSceneKey;
+        const sheetPresentationSceneKey = resolveTransitionSheetPresentationSceneKey({
           routeActiveSceneKey: activeSceneKey,
           routeOverlayDisplaySnapshot,
+          handoffSceneKey,
+          sheetContentHandoff: resolvedRouteSceneSwitchSnapshot.sheetContentHandoff,
+          transitionPhase: resolvedRouteSceneSwitchSnapshot.transitionPhase,
         });
         const activitySceneKey = sheetPresentationSceneKey ?? activeSceneKey;
         const activityInteractiveSceneKey = routeOverlayDisplaySnapshot.isPersistentPollLane
           ? sheetPresentationSceneKey
           : interactiveSceneKey;
-        const handoffSceneKey =
-          resolvedRouteSceneSwitchSnapshot.transitionPhase === 'idle'
-            ? null
-            : resolvedRouteSceneSwitchSnapshot.handoffSceneKey;
         const previousMountedSceneKeys = this.snapshot.mountedSceneKeys;
         const { state: staticSceneMountState, snapshot: staticSceneMountSnapshot } =
           withSearchNavSwitchRuntimeAttribution(

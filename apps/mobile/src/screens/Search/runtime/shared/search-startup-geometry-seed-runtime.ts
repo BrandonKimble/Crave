@@ -1,24 +1,24 @@
 import { Dimensions, PixelRatio, type LayoutRectangle } from 'react-native';
 import { initialWindowMetrics } from 'react-native-safe-area-context';
 
-import { LINE_HEIGHTS } from '../../../../constants/typography';
 import { OVERLAY_TAB_HEADER_HEIGHT } from '../../../../overlays/overlaySheetStyles';
 import { calculateSnapPoints } from '../../../../overlays/sheetUtils';
 import type { SnapPoints } from '../../../../overlays/bottomSheetMotionTypes';
 import {
-  NAV_BOTTOM_PADDING,
-  NAV_TOP_PADDING,
   SEARCH_HEADER_HEIGHT,
   SEARCH_CONTAINER_PADDING_TOP,
   SEARCH_HORIZONTAL_PADDING,
 } from '../../constants/search';
+import {
+  resolveAppRouteBottomNavHeight,
+  resolveAppRouteBottomNavHiddenTranslateY,
+  resolveAppRouteBottomNavTop,
+  resolveAppRouteNavBottomInset,
+  resolveAppRouteNavSilhouetteBottomNavGeometry,
+  resolveAppRouteNavSilhouetteSnapTop,
+} from '../../../../navigation/runtime/app-route-nav-silhouette-authority';
 
 export const SEARCH_CONTAINER_HEIGHT = SEARCH_CONTAINER_PADDING_TOP + SEARCH_HEADER_HEIGHT;
-export const SEARCH_BOTTOM_INSET_MIN = 12;
-export const SEARCH_BOTTOM_NAV_ICON_HEIGHT = 24;
-export const SEARCH_BOTTOM_NAV_LABEL_GAP = 2;
-export const SEARCH_BOTTOM_NAV_HIDE_EXTRA = 12;
-export const SEARCH_BOTTOM_NAV_HIDE_MIN = 24;
 
 type SearchStartupGeometryArgs = {
   windowWidth: number;
@@ -36,6 +36,7 @@ export type SearchStartupGeometrySeed = {
   searchHeaderFrame: LayoutRectangle;
   searchBarTop: number;
   bottomNavHeight: number;
+  bottomNavTop: number;
   navBarTopForSnaps: number;
   navBarCutoutHeight: number;
   bottomNavHiddenTranslateY: number;
@@ -52,28 +53,16 @@ type SearchStartupViewportMetrics = {
 const roundPx = (value: number): number => PixelRatio.roundToNearestPixel(value);
 
 export const resolveSearchBottomInset = (insetsBottom: number): number =>
-  Math.max(insetsBottom, SEARCH_BOTTOM_INSET_MIN);
+  resolveAppRouteNavBottomInset(insetsBottom);
 
 export const resolveSearchBottomNavHeight = (bottomInset: number): number =>
-  roundPx(
-    NAV_TOP_PADDING +
-      SEARCH_BOTTOM_NAV_ICON_HEIGHT +
-      SEARCH_BOTTOM_NAV_LABEL_GAP +
-      LINE_HEIGHTS.body +
-      bottomInset +
-      NAV_BOTTOM_PADDING
-  );
+  resolveAppRouteBottomNavHeight(bottomInset);
 
 export const resolveSearchBottomNavHiddenTranslateY = (
   bottomNavHeight: number,
   bottomInset: number
 ): number =>
-  roundPx(
-    Math.max(
-      SEARCH_BOTTOM_NAV_HIDE_MIN,
-      bottomNavHeight + bottomInset + SEARCH_BOTTOM_NAV_HIDE_EXTRA
-    )
-  );
+  resolveAppRouteBottomNavHiddenTranslateY(bottomNavHeight, bottomInset);
 
 export const buildSearchStartupGeometrySeed = ({
   windowWidth,
@@ -81,12 +70,25 @@ export const buildSearchStartupGeometrySeed = ({
   insetsTop,
   insetsBottom,
 }: SearchStartupGeometryArgs): SearchStartupGeometrySeed => {
-  const bottomInset = resolveSearchBottomInset(insetsBottom);
-  const bottomNavHeight = resolveSearchBottomNavHeight(bottomInset);
-  const navBarTopForSnaps = roundPx(windowHeight - bottomNavHeight);
+  const {
+    bottomInset,
+    bottomNavHeight,
+    navBarCutoutHeight,
+    bottomNavHiddenTranslateY,
+    sheetBottomExclusionHeight,
+  } = resolveAppRouteNavSilhouetteBottomNavGeometry(insetsBottom);
+  const bottomNavTop = resolveAppRouteBottomNavTop({
+    windowHeight,
+    bottomNavHeight,
+  });
+  const navBarTopForSnaps = resolveAppRouteNavSilhouetteSnapTop({
+    windowHeight,
+    sheetBottomExclusionHeight,
+  });
+  const searchContainerTop = roundPx(insetsTop);
   const searchContainerFrame = {
     x: 0,
-    y: 0,
+    y: searchContainerTop,
     width: roundPx(windowWidth),
     height: roundPx(SEARCH_CONTAINER_HEIGHT),
   };
@@ -96,7 +98,7 @@ export const buildSearchStartupGeometrySeed = ({
     width: roundPx(Math.max(0, windowWidth - SEARCH_HORIZONTAL_PADDING * 2)),
     height: roundPx(SEARCH_HEADER_HEIGHT),
   };
-  const searchBarTop = roundPx(insetsTop + searchHeaderFrame.y);
+  const searchBarTop = roundPx(searchContainerFrame.y + searchHeaderFrame.y);
 
   return {
     windowWidth: roundPx(windowWidth),
@@ -107,9 +109,10 @@ export const buildSearchStartupGeometrySeed = ({
     searchHeaderFrame,
     searchBarTop,
     bottomNavHeight,
+    bottomNavTop,
     navBarTopForSnaps,
-    navBarCutoutHeight: bottomNavHeight,
-    bottomNavHiddenTranslateY: resolveSearchBottomNavHiddenTranslateY(bottomNavHeight, bottomInset),
+    navBarCutoutHeight,
+    bottomNavHiddenTranslateY,
     routeOverlaySnapPoints: calculateSnapPoints(
       windowHeight,
       searchBarTop,

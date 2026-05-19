@@ -2,6 +2,11 @@ import { StyleSheet } from 'react-native';
 
 import { logger } from '../../utils';
 import {
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+} from '../../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../../perf/perf-scenario-runtime-store';
+import {
   createSearchRoutePollsSceneStateRuntime,
   type SearchRoutePollsSceneStateRuntime,
 } from '../../overlays/useSearchRoutePollsSceneStateRuntime';
@@ -12,7 +17,7 @@ import {
   EMPTY_SEARCH_ROUTE_SCENE_LAYOUT_STATE,
   type SearchRouteSceneLayoutState,
 } from '../../overlays/searchRouteSceneLayoutContract';
-import type { OverlaySheetSnap, OverlaySheetSnapRequest } from '../../overlays/types';
+import type { OverlaySheetSnap } from '../../overlays/types';
 import { shouldLogSearchNavSwitchDiagnosticLogs } from '../../screens/Search/runtime/shared/search-nav-switch-perf-probe';
 import type { RouteOverlayPollsVisibilitySnapshot } from './route-overlay-display-snapshot-contract';
 import type {
@@ -70,17 +75,6 @@ const POLLS_MOUNTED_SCENE_BODY_ADMISSION_POLICY: AppRouteSceneBodyAdmissionPolic
   keepDataSubscribedAfterActivation: true,
 };
 
-const areOverlaySheetSnapRequestsEqual = (
-  left: OverlaySheetSnapRequest | null,
-  right: OverlaySheetSnapRequest | null
-): boolean =>
-  left === right ||
-  (left != null &&
-    right != null &&
-    left.snap === right.snap &&
-    left.token === right.token &&
-    left.settleToken === right.settleToken);
-
 const selectPollsRouteNavigationState = (
   snapshot: RouteOverlayPollsVisibilitySnapshot
 ): Pick<
@@ -102,11 +96,7 @@ const selectPollsPayloadState = (
 const selectSheetSessionInputState = (
   snapshot: AppRouteSheetSnapSessionSnapshot
 ): AppRouteSceneSheetSessionInputState => ({
-  pollsDockedSnapRequest: snapshot.pollsDockedSnapRequest,
   isDockedPollsDismissed: snapshot.isDockedPollsDismissed,
-  dockedPollsRestoreInFlight: snapshot.dockedPollsRestoreInFlight,
-  ignoreDockedPollsHiddenUntilMs: snapshot.ignoreDockedPollsHiddenUntilMs,
-  pollCreationSnapRequest: snapshot.pollCreationSnapRequest,
 });
 
 export type AppRoutePollsSceneInputController = {
@@ -129,11 +119,18 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
     });
   };
 
-  private readonly requestPollCreationExpand = (): void => {
-    this.routeSceneRuntime.routeSheetSnapSessionActions.requestRouteScenePollCreationExpand();
-  };
-
   private readonly requestReturnToSearchFromPolls = (): void => {
+    if (this.pollsRouteState.isSearchOverlay && this.pollsRouteState.isPersistentPollLane) {
+      this.routeSceneRuntime.routeSheetSnapSessionActions.setIsDockedPollsDismissed(true);
+      this.routeSceneRuntime.routeOverlayTransitionActions.requestOverlaySwitch({
+        targetSceneKey: 'search',
+        sheetTransitionKind: 'terminalDismiss',
+        sheetOpenerSource: 'systemDismiss',
+        sheetMotion: { kind: 'hide' },
+        dockedPollsRestoreSnap: null,
+      });
+      return;
+    }
     this.routeSceneRuntime.routeSearchCommandActions.returnAppSearchRouteToDockedSearch({
       snap: 'collapsed',
     });
@@ -148,10 +145,6 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
   private pollsSheetSnap: OverlaySheetSnap;
 
   private dynamicSceneInputRuntime: AppRoutePollsDynamicSceneInputRuntime;
-
-  private lastSheetMotionRequest: OverlaySheetSnapRequest | null = null;
-
-  private lastPublishedLocalSheetMotionRequest: OverlaySheetSnapRequest | null = null;
 
   private lastDiagnosticsSnapshot: string | null = null;
 
@@ -221,7 +214,6 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
     });
     this.routeSceneRuntime.sceneInputLane.clearRouteSceneInput('polls');
     this.routeSceneRuntime.routePollsSceneRuntime.sceneActions.clearSceneState();
-    this.routeSceneRuntime.routeSceneMotionRuntime.requestLocalSheetMotion('polls', null);
   }
 
   private setPollsRouteNavigationState(
@@ -273,11 +265,7 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
 
   private setSheetSessionState(nextState: AppRouteSceneSheetSessionInputState): void {
     if (
-      this.sheetSessionState.pollsDockedSnapRequest === nextState.pollsDockedSnapRequest &&
-      this.sheetSessionState.isDockedPollsDismissed === nextState.isDockedPollsDismissed &&
-      this.sheetSessionState.dockedPollsRestoreInFlight === nextState.dockedPollsRestoreInFlight &&
-      this.sheetSessionState.ignoreDockedPollsHiddenUntilMs ===
-        nextState.ignoreDockedPollsHiddenUntilMs
+      this.sheetSessionState.isDockedPollsDismissed === nextState.isDockedPollsDismissed
     ) {
       return;
     }
@@ -303,22 +291,28 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
     this.recomputeAndPublish();
   }
 
-  private preserveSheetMotionRequest(
-    nextRequest: OverlaySheetSnapRequest | null
-  ): OverlaySheetSnapRequest | null {
-    if (areOverlaySheetSnapRequestsEqual(this.lastSheetMotionRequest, nextRequest)) {
-      return this.lastSheetMotionRequest;
-    }
-    this.lastSheetMotionRequest = nextRequest;
-    return nextRequest;
-  }
-
-  private publishLocalSheetMotion(request: OverlaySheetSnapRequest | null): void {
-    if (areOverlaySheetSnapRequestsEqual(this.lastPublishedLocalSheetMotionRequest, request)) {
+  private logPersistentPollRestoreStateContract(
+    pollsSceneStateRuntime: SearchRoutePollsSceneStateRuntime
+  ): void {
+    if (
+      !pollsSceneStateRuntime.visible ||
+      !this.pollsRouteState.isPersistentPollLane ||
+      pollsSceneStateRuntime.currentSnap !== 'collapsed'
+    ) {
       return;
     }
-    this.lastPublishedLocalSheetMotionRequest = request;
-    this.routeSceneRuntime.routeSceneMotionRuntime.requestLocalSheetMotion('polls', request);
+    const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+    if (!isPerfScenarioAttributionActive(scenarioConfig)) {
+      return;
+    }
+    logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+      event: 'persistent_polls_restore_state_contract',
+      currentSnap: pollsSceneStateRuntime.currentSnap,
+      hasDockedPollsRestoreIntent: this.pollsRouteState.dockedPollsRestoreIntent != null,
+      restoreIntentSnap: this.pollsRouteState.dockedPollsRestoreIntent?.snap ?? null,
+      restoredToCollapsed: true,
+      visible: pollsSceneStateRuntime.visible,
+    });
   }
 
   private recomputeAndPublish(): void {
@@ -330,11 +324,8 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
       pollOverlayParams: this.pollsRouteState.activePollsParams ?? undefined,
       dockedPollsRestoreIntent: this.pollsRouteState.dockedPollsRestoreIntent,
       commandState: {
-        pollsDockedSnapRequest: this.sheetSessionState.pollsDockedSnapRequest,
         pollsSheetSnap: this.pollsSheetSnap,
         isDockedPollsDismissed: this.sheetSessionState.isDockedPollsDismissed,
-        dockedPollsRestoreInFlight: this.sheetSessionState.dockedPollsRestoreInFlight,
-        ignoreDockedPollsHiddenUntilMs: this.sheetSessionState.ignoreDockedPollsHiddenUntilMs,
       },
       overlayVisibilityState: {
         isSearchOverlay: this.pollsRouteState.isSearchOverlay,
@@ -345,25 +336,18 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
       userLocation: this.dynamicSceneInputRuntime.userLocation,
       interactionRef: this.dynamicSceneInputRuntime.searchInteractionRef,
     });
-    const sheetMotionRequest = this.preserveSheetMotionRequest(
-      pollsSceneStateRuntime.visible ? pollsSceneStateRuntime.sheetMotionRequest ?? null : null
-    );
-
     this.publishPollsSceneState({
       pollsSceneStateRuntime,
-      sheetMotionRequest,
     });
     this.publishPollsSceneDescriptor(pollsSceneStateRuntime);
-    this.publishLocalSheetMotion(sheetMotionRequest);
+    this.logPersistentPollRestoreStateContract(pollsSceneStateRuntime);
     this.logDiagnostics(pollsSceneStateRuntime);
   }
 
   private publishPollsSceneState({
     pollsSceneStateRuntime,
-    sheetMotionRequest,
   }: {
     pollsSceneStateRuntime: SearchRoutePollsSceneStateRuntime;
-    sheetMotionRequest: OverlaySheetSnapRequest | null;
   }): void {
     const reactSceneState: AppRoutePollsSceneState = {
       visible: pollsSceneStateRuntime.visible,
@@ -379,8 +363,7 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
       searchBarTop: pollsSceneStateRuntime.searchBarTop,
       snapPoints: pollsSceneStateRuntime.snapPoints,
       onSnapChange: this.handlePollsSnapChange,
-      externalSheetMotionRequest: sheetMotionRequest,
-      onRequestPollCreationExpand: this.requestPollCreationExpand,
+      onRequestPollCreationExpand: undefined,
       onRequestReturnToSearch: this.requestReturnToSearchFromPolls,
       interactionRef: pollsSceneStateRuntime.interactionRef,
     };
@@ -391,9 +374,6 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
   private publishPollsSceneDescriptor(
     pollsSceneStateRuntime: SearchRoutePollsSceneStateRuntime
   ): void {
-    const resolvedInitialSnapPoint =
-      pollsSceneStateRuntime.initialSnapPoint ??
-      (pollsSceneStateRuntime.mode === 'overlay' ? 'middle' : 'collapsed');
     const resolvedDismissThreshold =
       pollsSceneStateRuntime.mode === 'docked'
         ? pollsSceneStateRuntime.snapPoints.collapsed + 1
@@ -403,7 +383,6 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
     const pollsShellSpec: AppRouteSceneStackShellSpec = normalizeSearchRouteSceneStackShellSpec({
       overlayKey: 'polls',
       snapPoints: pollsSceneStateRuntime.snapPoints,
-      initialSnapPoint: resolvedInitialSnapPoint,
       style: overlaySheetStyles.container,
       onSnapChange: this.handlePollsSnapChange,
       dismissThreshold: resolvedDismissThreshold,

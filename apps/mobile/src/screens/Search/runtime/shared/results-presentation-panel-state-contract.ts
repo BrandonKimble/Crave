@@ -39,6 +39,8 @@ export const resolveResultsPresentationPanelState = ({
   const shouldShowInteractionLoadingState =
     renderPolicy.surfaceMode === 'interaction_loading' && allowsInteractionLoadingState;
   const shouldShowInitialLoadingState = renderPolicy.surfaceMode === 'initial_loading';
+  const shouldShowSettledResultsSurface =
+    renderPolicy.surfaceMode === 'results' || hasRenderableRows || shouldUsePlaceholderRows;
   const shouldFreezeCoveredResultsRender =
     freezeClassification === 'recovery' &&
     renderPolicy.surfaceMode === 'initial_loading' &&
@@ -56,6 +58,8 @@ export const resolveResultsPresentationPanelState = ({
     ? 'interaction_loading'
     : isSurfaceShowingEmptyState
     ? 'empty'
+    : shouldShowSettledResultsSurface
+    ? 'results'
     : 'none';
 
   return {
@@ -65,8 +69,7 @@ export const resolveResultsPresentationPanelState = ({
     shouldFreezeCoveredResultsRender,
     shouldShowResultsCards,
     surfaceMode,
-    shouldShowResultsSurface:
-      surfaceMode !== 'none' || hasRenderableRows || shouldUsePlaceholderRows,
+    shouldShowResultsSurface: surfaceMode !== 'none',
     surfaceActive: surfaceMode !== 'none',
     shouldUseInteractionSurface: surfaceMode === 'interaction_loading',
     shouldHideScrollHeaderForSurface: surfaceMode === 'initial_loading',

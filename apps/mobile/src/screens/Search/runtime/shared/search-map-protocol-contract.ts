@@ -1,6 +1,7 @@
 import type { Coordinate, RestaurantResult } from '../../../../types';
 import type {
   ExecutionBatchPayload,
+  MarkerEnterStartedPayload,
   MarkerEnterSettledPayload,
 } from './results-presentation-runtime-owner-contract';
 
@@ -19,24 +20,30 @@ export type SearchMapExecutionBatchMountedHiddenPayload = ExecutionBatchPayload 
   readyAtMs: number;
 };
 
-export type SearchMapMarkerEnterStartedPayload = ExecutionBatchPayload & {
-  startedAtMs: number;
-};
+export type SearchMapMarkerEnterStartedPayload = MarkerEnterStartedPayload;
+
+export type SearchMapMarkerEnterSettledPayload = MarkerEnterSettledPayload;
 
 export type SearchMapMarkerExitStartedPayload = {
   requestKey: string;
+  pinCount?: number;
+  dotCount?: number;
+  labelCount?: number;
   startedAtMs: number;
 };
 
 export type SearchMapMarkerExitSettledPayload = {
   requestKey: string;
+  pinCount?: number;
+  dotCount?: number;
+  labelCount?: number;
   settledAtMs: number;
 };
 
 export type SearchMapPresentationLifecyclePort = {
   handleExecutionBatchMountedHidden: (payload: SearchMapExecutionBatchMountedHiddenPayload) => void;
   handleMarkerEnterStarted: (payload: SearchMapMarkerEnterStartedPayload) => void;
-  handleMarkerEnterSettled: (payload: MarkerEnterSettledPayload) => void;
+  handleMarkerEnterSettled: (payload: SearchMapMarkerEnterSettledPayload) => void;
   handleMarkerExitStarted: (payload: SearchMapMarkerExitStartedPayload) => void;
   handleMarkerExitSettled: (payload: SearchMapMarkerExitSettledPayload) => void;
 };

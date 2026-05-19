@@ -1,20 +1,24 @@
 import React from 'react';
 
 import { type ResultsPresentationLog } from './results-presentation-runtime-contract';
+import type { ResultsPresentationAuthority } from './results-presentation-authority';
+import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
+import type { SearchMapSourceFramePort } from '../map/search-map-source-frame-port';
 import { type SearchRuntimeBus } from './search-runtime-bus';
 import type { ResultsPresentationRuntimeOwner } from './results-presentation-runtime-owner-contract';
 import type { ToggleInteractionLifecycleEvent } from './results-toggle-interaction-contract';
-import type { RunOneHandoffCoordinator } from '../controller/run-one-handoff-coordinator';
+import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 import { useResultsPresentationMachineCoreRuntime } from './use-results-presentation-machine-core-runtime';
 import { useResultsPresentationMarkerRuntime } from './use-results-presentation-marker-runtime';
-import { useResultsPresentationPreparedSnapshotRuntime } from './use-results-presentation-prepared-snapshot-runtime';
+import { useResultsPresentationSurfaceTransactionRuntime } from './use-results-presentation-surface-transaction-runtime';
 
 type ResultsPresentationRuntimeMachineOwner = Pick<
   ResultsPresentationRuntimeOwner,
-  | 'preparedResultsSnapshotKey'
-  | 'stagePreparedResultsSnapshot'
-  | 'commitPreparedResultsSnapshot'
-  | 'clearStagedPreparedResultsSnapshot'
+  | 'searchSurfaceResultsTransactionKey'
+  | 'beginSearchThisAreaPresentationPending'
+  | 'stageSearchSurfaceResultsTransaction'
+  | 'commitSearchSurfaceResultsTransaction'
+  | 'clearStagedSearchSurfaceResultsTransaction'
   | 'handlePageOneResultsCommitted'
   | 'cancelPresentationIntent'
   | 'handlePresentationIntentAbort'
@@ -29,8 +33,11 @@ type ResultsPresentationRuntimeMachineOwner = Pick<
 
 export type UseResultsPresentationRuntimeMachineOwnerArgs = {
   searchRuntimeBus: SearchRuntimeBus;
+  resultsPresentationAuthority: ResultsPresentationAuthority;
+  resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
+  searchMapSourceFramePort: SearchMapSourceFramePort;
   log: ResultsPresentationLog;
-  runOneHandoffCoordinatorRef: React.MutableRefObject<RunOneHandoffCoordinator>;
+  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinator>;
   emitRuntimeMechanismEvent: (event: string, payload: Record<string, unknown>) => void;
   markSearchSheetCloseMapExitSettledRef: React.MutableRefObject<(requestKey: string) => void>;
   notifyIntentCompleteRef: React.MutableRefObject<((intentId: string) => void) | null>;
@@ -38,54 +45,56 @@ export type UseResultsPresentationRuntimeMachineOwnerArgs = {
 
 export const useResultsPresentationRuntimeMachineOwner = ({
   searchRuntimeBus,
+  resultsPresentationAuthority,
+  resultsPresentationSurfaceAuthority,
+  searchMapSourceFramePort,
   log,
-  runOneHandoffCoordinatorRef,
+  searchSurfaceRedrawCoordinatorRef,
   emitRuntimeMechanismEvent,
   markSearchSheetCloseMapExitSettledRef,
   notifyIntentCompleteRef,
 }: UseResultsPresentationRuntimeMachineOwnerArgs): ResultsPresentationRuntimeMachineOwner => {
   const machineCoreRuntime = useResultsPresentationMachineCoreRuntime({
-    searchRuntimeBus,
+    resultsPresentationAuthority,
     log,
     notifyIntentCompleteRef,
   });
 
-  const preparedSnapshotRuntime = useResultsPresentationPreparedSnapshotRuntime({
+  const surfaceTransactionRuntime = useResultsPresentationSurfaceTransactionRuntime({
     searchRuntimeBus,
+    resultsPresentationAuthority,
+    resultsPresentationSurfaceAuthority,
+    searchMapSourceFramePort,
     runtimeMachineRef: machineCoreRuntime.runtimeMachineRef,
-    handleRuntimePresentationIntentAbort:
-      machineCoreRuntime.handleRuntimePresentationIntentAbort,
+    handleRuntimePresentationIntentAbort: machineCoreRuntime.handleRuntimePresentationIntentAbort,
   });
 
   const markerRuntime = useResultsPresentationMarkerRuntime({
     runtimeMachineRef: machineCoreRuntime.runtimeMachineRef,
-    runOneHandoffCoordinatorRef,
+    searchSurfaceRedrawCoordinatorRef,
     emitRuntimeMechanismEvent,
     markSearchSheetCloseMapExitSettledRef,
   });
 
   return React.useMemo(
     () => ({
-      preparedResultsSnapshotKey: preparedSnapshotRuntime.preparedResultsSnapshotKey,
-      stagePreparedResultsSnapshot: preparedSnapshotRuntime.stagePreparedResultsSnapshot,
-      clearStagedPreparedResultsSnapshot:
-        preparedSnapshotRuntime.clearStagedPreparedResultsSnapshot,
-      handlePageOneResultsCommitted:
-        preparedSnapshotRuntime.handlePageOneResultsCommitted,
-      commitPreparedResultsSnapshot:
-        machineCoreRuntime.commitPreparedResultsSnapshot,
+      searchSurfaceResultsTransactionKey: surfaceTransactionRuntime.searchSurfaceResultsTransactionKey,
+      beginSearchThisAreaPresentationPending:
+        surfaceTransactionRuntime.beginSearchThisAreaPresentationPending,
+      stageSearchSurfaceResultsTransaction: surfaceTransactionRuntime.stageSearchSurfaceResultsTransaction,
+      clearStagedSearchSurfaceResultsTransaction:
+        surfaceTransactionRuntime.clearStagedSearchSurfaceResultsTransaction,
+      handlePageOneResultsCommitted: surfaceTransactionRuntime.handlePageOneResultsCommitted,
+      commitSearchSurfaceResultsTransaction: machineCoreRuntime.commitSearchSurfaceResultsTransaction,
       cancelPresentationIntent: machineCoreRuntime.cancelPresentationIntent,
-      handleToggleInteractionLifecycle:
-        machineCoreRuntime.handleToggleInteractionLifecycle,
-      handlePresentationIntentAbort:
-        preparedSnapshotRuntime.handlePresentationIntentAbort,
-      handleExecutionBatchMountedHidden:
-        markerRuntime.handleExecutionBatchMountedHidden,
+      handleToggleInteractionLifecycle: machineCoreRuntime.handleToggleInteractionLifecycle,
+      handlePresentationIntentAbort: surfaceTransactionRuntime.handlePresentationIntentAbort,
+      handleExecutionBatchMountedHidden: markerRuntime.handleExecutionBatchMountedHidden,
       handleMarkerEnterStarted: markerRuntime.handleMarkerEnterStarted,
       handleMarkerEnterSettled: markerRuntime.handleMarkerEnterSettled,
       handleMarkerExitStarted: markerRuntime.handleMarkerExitStarted,
       handleMarkerExitSettled: markerRuntime.handleMarkerExitSettled,
     }),
-    [machineCoreRuntime, markerRuntime, preparedSnapshotRuntime]
+    [machineCoreRuntime, markerRuntime, surfaceTransactionRuntime]
   );
 };

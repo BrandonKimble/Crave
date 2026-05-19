@@ -1,9 +1,8 @@
 import type { CameraIntentArbiter } from '../map/camera-intent-arbiter';
 import type { PreparedProfilePresentationCompletionEvent } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
+import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type { ProfileNativeCommandExecutionModel } from './profile-native-command-runtime';
 import type { ProfileNativeTransitionExecutionModel } from './profile-native-transition-runtime';
-
-type OverlaySheetSnap = 'expanded' | 'middle' | 'collapsed' | 'hidden';
 
 export type ProfileNativeExecutionArgs = {
   preparedProfileCompletionHandlerRef: React.MutableRefObject<
@@ -15,7 +14,6 @@ export type ProfileNativeExecutionArgs = {
   ) => void;
   cameraIntentArbiter: CameraIntentArbiter;
   profileCameraAnimationMs: number;
-  lastVisibleSheetStateRef: React.MutableRefObject<Exclude<OverlaySheetSnap, 'hidden'> | null>;
   lastCameraStateRef: React.MutableRefObject<{
     center: [number, number];
     zoom: number;
@@ -23,12 +21,13 @@ export type ProfileNativeExecutionArgs = {
   setIsFollowingUser: (isFollowingUser: boolean) => void;
   suppressMapMoved: () => void;
   commitCameraViewport: (
-    payload: { center: [number, number]; zoom: number },
+    payload: { center: [number, number]; zoom: number; padding?: CameraSnapshot['padding'] },
     options?: {
       allowDuringGesture?: boolean;
       animationMode?: 'none' | 'easeTo';
       animationDurationMs?: number;
       requestToken?: number | null;
+      deferControlledCameraStateUntilCompletion?: boolean;
     }
   ) => boolean;
 };

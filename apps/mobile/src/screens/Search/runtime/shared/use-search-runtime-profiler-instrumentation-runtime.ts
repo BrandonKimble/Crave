@@ -1,8 +1,15 @@
 import React from 'react';
 
+import {
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+  SEARCH_SUBMIT_DISMISS_INTERRUPT_SCENARIO,
+  SEARCH_SUBMIT_DISMISS_REPEAT_SCENARIO,
+} from '../../../../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 import { getActiveSearchNavSwitchAttributionProbe } from './search-nav-switch-perf-probe';
 import { logSearchProfilerSpan } from './search-runtime-profiler-log-runtime';
-import { applyRunOneCommitSpanPressure } from './search-runtime-profiler-pressure-runtime';
+import { applySearchSurfaceRedrawCommitSpanPressure } from './search-runtime-profiler-pressure-runtime';
 import {
   normalizeProfilerContributorId,
   recordProfilerAttribution,
@@ -10,7 +17,7 @@ import {
 
 import type {
   InstrumentationMapQueryBudget,
-  RunOneHandoffCoordinatorLike,
+  SearchSurfaceRedrawCoordinatorLike,
 } from './use-search-runtime-instrumentation-runtime-contract';
 
 const JS_FLOOR_PROBE_PROFILER_ATTRIBUTION_MODE =
@@ -19,110 +26,81 @@ const JS_FLOOR_PROBE_PROFILER_ATTRIBUTION_MIN_MS = 0.25;
 const JS_FLOOR_PROBE_PROFILER_SPAN_LOG_MODE =
   process.env.EXPO_PUBLIC_PERF_SHORTCUT_PROBE_PROFILER_SPAN_LOG === '1';
 
+const isMeasuredSubmitDismissProfilerScenario = (scenario: string): boolean =>
+  scenario === SEARCH_SUBMIT_DISMISS_REPEAT_SCENARIO ||
+  scenario.startsWith(`${SEARCH_SUBMIT_DISMISS_REPEAT_SCENARIO}_`) ||
+  scenario === SEARCH_SUBMIT_DISMISS_INTERRUPT_SCENARIO ||
+  scenario.startsWith(`${SEARCH_SUBMIT_DISMISS_INTERRUPT_SCENARIO}_`);
+
+const shouldEmitScenarioProfilerSample = ({
+  actualDuration,
+  commitSpanMs,
+  id,
+  scenario,
+  stageHint,
+}: {
+  actualDuration: number;
+  commitSpanMs: number;
+  id: string;
+  scenario: string;
+  stageHint: string;
+}): boolean => {
+  if (!isMeasuredSubmitDismissProfilerScenario(scenario)) {
+    return true;
+  }
+  if (stageHint === 'results_hydration_commit' || stageHint === 'results_list_materialization') {
+    return actualDuration >= 4 || commitSpanMs >= 10 || id === 'SearchMountedResultsListTarget';
+  }
+  if (stageHint === 'post_visual' || stageHint === 'visual_sync_state') {
+    return actualDuration >= 8 || commitSpanMs >= 14;
+  }
+  return actualDuration >= 4 || commitSpanMs >= 12;
+};
+
 type UseSearchRuntimeProfilerInstrumentationRuntimeArgs = {
   getPerfNow: () => number;
-  getActiveShortcutRunNumber: () => number | null;
-  getActiveNavSwitchRunNumber: () => number | null;
-  recordProfilerSpan: (args: {
-    id: string;
-    phase: string;
-    stageHint: string;
-    actualDurationMs: number;
-    commitSpanMs: number;
-    startTimeMs: number;
-    commitTimeMs: number;
-    nowMs: number;
-    runNumber: number;
-  }) => void;
-  recordNavSwitchProfilerSpan: (args: {
-    id: string;
-    phase: string;
-    stageHint: string;
-    actualDurationMs: number;
-    commitSpanMs: number;
-    startTimeMs: number;
-    commitTimeMs: number;
-    nowMs: number;
-    runNumber: number;
-  }) => void;
-  isShortcutPerfHarnessScenario: boolean;
-  isNavSwitchPerfHarnessScenario: boolean;
+  getActiveScenarioRunNumber: () => number | null;
   mapQueryBudget: InstrumentationMapQueryBudget | null;
   resolveProfilerStageHint: () => string;
-  runOneCommitSpanPressureByOperationRef: React.MutableRefObject<Map<string, number>>;
-  runOneHandoffCoordinatorRef: React.MutableRefObject<RunOneHandoffCoordinatorLike>;
+  searchSurfaceRedrawCommitSpanPressureByOperationRef: React.MutableRefObject<Map<string, number>>;
+  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinatorLike>;
   searchMode: 'natural' | 'shortcut' | null;
-  shortcutHarnessRunId: string | null;
+  scenarioRunId: string | null;
 };
 
 export const useSearchRuntimeProfilerInstrumentationRuntime = ({
   getPerfNow,
-  getActiveShortcutRunNumber,
-  getActiveNavSwitchRunNumber,
-  recordProfilerSpan,
-  recordNavSwitchProfilerSpan,
-  isShortcutPerfHarnessScenario,
-  isNavSwitchPerfHarnessScenario,
+  getActiveScenarioRunNumber,
   mapQueryBudget,
   resolveProfilerStageHint,
-  runOneCommitSpanPressureByOperationRef,
-  runOneHandoffCoordinatorRef,
+  searchSurfaceRedrawCommitSpanPressureByOperationRef,
+  searchSurfaceRedrawCoordinatorRef,
   searchMode,
-  shortcutHarnessRunId,
-}: UseSearchRuntimeProfilerInstrumentationRuntimeArgs): React.ProfilerOnRenderCallback =>
-  React.useCallback<React.ProfilerOnRenderCallback>(
+  scenarioRunId,
+}: UseSearchRuntimeProfilerInstrumentationRuntimeArgs): React.ProfilerOnRenderCallback | null => {
+  const activeScenarioConfig = usePerfScenarioRuntimeStore((state) => state.activeConfig);
+
+  const profilerRender = React.useCallback<React.ProfilerOnRenderCallback>(
     (id, phase, actualDuration, baseDuration, startTime, commitTime) => {
       const activeNavSwitchProbe = getActiveSearchNavSwitchAttributionProbe();
       const shouldRecordProfilerAttribution =
         JS_FLOOR_PROBE_PROFILER_ATTRIBUTION_MODE && searchMode === 'shortcut';
       const shouldEmitProfilerSpanLog =
         JS_FLOOR_PROBE_PROFILER_SPAN_LOG_MODE && searchMode === 'shortcut';
-      const shouldCaptureProfilerSpanForHarness = isShortcutPerfHarnessScenario;
-      const shouldCaptureNavSwitchProfilerSpanForHarness = isNavSwitchPerfHarnessScenario;
+      const shouldEmitScenarioProfilerSpan =
+        isPerfScenarioAttributionActive(activeScenarioConfig);
       const shouldEmitNavSwitchProfilerLog = activeNavSwitchProbe != null;
       if (
         !shouldRecordProfilerAttribution &&
         !shouldEmitProfilerSpanLog &&
-        !shouldCaptureProfilerSpanForHarness &&
-        !shouldCaptureNavSwitchProfilerSpanForHarness &&
+        !shouldEmitScenarioProfilerSpan &&
         !shouldEmitNavSwitchProfilerLog
       ) {
         return;
       }
 
-      const activeShortcutRunNumber =
-        shouldRecordProfilerAttribution ||
-        shouldEmitProfilerSpanLog ||
-        shouldCaptureProfilerSpanForHarness
-          ? getActiveShortcutRunNumber()
-          : null;
-      const activeNavSwitchRunNumber = shouldCaptureNavSwitchProfilerSpanForHarness
-        ? getActiveNavSwitchRunNumber()
-        : null;
-      const shouldRecordShortcutHarnessSpan =
-        shouldCaptureProfilerSpanForHarness && activeShortcutRunNumber != null;
-      const shouldRecordNavSwitchHarnessSpan =
-        shouldCaptureNavSwitchProfilerSpanForHarness && activeNavSwitchRunNumber != null;
-      const requiresShortcutRunNumber =
-        shouldRecordProfilerAttribution ||
-        shouldEmitProfilerSpanLog ||
-        shouldCaptureProfilerSpanForHarness;
-      if (
-        requiresShortcutRunNumber &&
-        activeShortcutRunNumber == null &&
-        !shouldRecordNavSwitchHarnessSpan
-      ) {
-        return;
-      }
-      if (
-        shouldCaptureNavSwitchProfilerSpanForHarness &&
-        activeNavSwitchRunNumber == null &&
-        !requiresShortcutRunNumber &&
-        !shouldEmitNavSwitchProfilerLog
-      ) {
-        return;
-      }
-      const resolvedRunNumber = activeShortcutRunNumber ?? activeNavSwitchRunNumber ?? 0;
+      const activeScenarioRunNumber = getActiveScenarioRunNumber();
+      const resolvedRunNumber = activeScenarioRunNumber ?? 0;
 
       const contributorBase = normalizeProfilerContributorId(id);
 
@@ -140,18 +118,6 @@ export const useSearchRuntimeProfilerInstrumentationRuntime = ({
           commitTimeMs: Number(commitTime.toFixed(3)),
           nowMs: Number(nowMs.toFixed(3)),
         };
-        if (shouldRecordShortcutHarnessSpan) {
-          recordProfilerSpan({
-            ...spanPayload,
-            runNumber: activeShortcutRunNumber,
-          });
-        }
-        if (shouldRecordNavSwitchHarnessSpan) {
-          recordNavSwitchProfilerSpan({
-            ...spanPayload,
-            runNumber: activeNavSwitchRunNumber,
-          });
-        }
         recordProfilerAttribution({
           shouldRecordProfilerAttribution,
           mapQueryBudget,
@@ -160,13 +126,13 @@ export const useSearchRuntimeProfilerInstrumentationRuntime = ({
           commitSpanMs,
           minDurationMs: JS_FLOOR_PROBE_PROFILER_ATTRIBUTION_MIN_MS,
         });
-        applyRunOneCommitSpanPressure({
+        applySearchSurfaceRedrawCommitSpanPressure({
           id,
           commitSpanMs,
           resolvedRunNumber,
           getPerfNow,
-          runOneCommitSpanPressureByOperationRef,
-          runOneHandoffCoordinatorRef,
+          searchSurfaceRedrawCommitSpanPressureByOperationRef,
+          searchSurfaceRedrawCoordinatorRef,
         });
         logSearchProfilerSpan({
           id,
@@ -177,26 +143,54 @@ export const useSearchRuntimeProfilerInstrumentationRuntime = ({
           stageHint,
           nowMs,
           runNumber: resolvedRunNumber,
-          shortcutHarnessRunId,
+          scenarioRunId,
           shouldEmitProfilerSpanLog,
           shouldEmitNavSwitchProfilerLog,
           activeNavSwitchProbe,
         });
+        if (
+          shouldEmitScenarioProfilerSpan &&
+          shouldEmitScenarioProfilerSample({
+            actualDuration,
+            commitSpanMs,
+            id,
+            scenario: activeScenarioConfig.scenario,
+            stageHint,
+          })
+        ) {
+          const handoffSnapshot = searchSurfaceRedrawCoordinatorRef.current.getSnapshot();
+          logPerfScenarioAttributionEvent('Profiler', activeScenarioConfig, {
+            event: 'scenario_profiler_span',
+            id,
+            phase,
+            stageHint,
+            actualDurationMs: Number(actualDuration.toFixed(3)),
+            baseDurationMs: Number(baseDuration.toFixed(3)),
+            commitSpanMs: Number(commitSpanMs.toFixed(3)),
+            startTimeMs: Number(startTime.toFixed(3)),
+            commitTimeMs: Number(commitTime.toFixed(3)),
+            nowMs: Number(nowMs.toFixed(3)),
+            searchMode,
+            handoffOperationId: handoffSnapshot.operationId,
+            handoffPhase: handoffSnapshot.phase,
+            handoffSeq: handoffSnapshot.seq,
+            handoffPage: handoffSnapshot.page,
+          });
+        }
       }
     },
     [
-      getActiveShortcutRunNumber,
-      getActiveNavSwitchRunNumber,
+      activeScenarioConfig,
+      getActiveScenarioRunNumber,
       getPerfNow,
-      isShortcutPerfHarnessScenario,
-      isNavSwitchPerfHarnessScenario,
       mapQueryBudget,
-      recordNavSwitchProfilerSpan,
-      recordProfilerSpan,
       resolveProfilerStageHint,
-      runOneCommitSpanPressureByOperationRef,
-      runOneHandoffCoordinatorRef,
+      searchSurfaceRedrawCommitSpanPressureByOperationRef,
+      searchSurfaceRedrawCoordinatorRef,
       searchMode,
-      shortcutHarnessRunId,
+      scenarioRunId,
     ]
   );
+
+  return profilerRender;
+};

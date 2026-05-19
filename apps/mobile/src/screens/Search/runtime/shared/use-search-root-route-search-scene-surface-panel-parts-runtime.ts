@@ -10,7 +10,6 @@ import { useSearchRootSearchScenePanelSurfaceCompositeRuntime } from './use-sear
 export const useSearchRootRouteSearchSceneSurfacePanelPartsRuntime = ({
   visualAssemblyRuntime,
   routeSearchSceneDataRuntime,
-  routeSearchSceneReadModelRuntime,
   routeSearchSceneSurfaceStateRuntime,
   routeSearchSceneInteractionFrostRuntime,
 }: Pick<SearchRootRouteSearchSceneResultsSurfaceRuntimeArgs, 'visualAssemblyRuntime'> & {
@@ -25,9 +24,6 @@ export const useSearchRootRouteSearchSceneSurfacePanelPartsRuntime = ({
       resolvedResultsHeaderHeightForRender:
         routeSearchSceneDataRuntime.routeSearchSceneChromeFreezeRuntime
           .effectiveResultsHeaderHeightForRender || 64,
-      preMeasureOverlay:
-        routeSearchSceneReadModelRuntime.routeSearchSceneResultsReadModelSelectors
-          .preMeasureOverlay,
       shouldShowResultsSurface:
         routeSearchSceneSurfaceStateRuntime.routeSearchSceneSurfacePanelStateRuntime
           .shouldShowResultsSurface,
@@ -41,7 +37,6 @@ export const useSearchRootRouteSearchSceneSurfacePanelPartsRuntime = ({
         routeSearchSceneSurfaceStateRuntime.routeSearchSceneSurfacePanelStateRuntime.surfaceActive,
       surfaceMode:
         routeSearchSceneSurfaceStateRuntime.routeSearchSceneSurfacePanelStateRuntime.surfaceMode,
-      searchSceneRenderRuntime: routeSearchSceneSurfaceStateRuntime.routeSearchSceneRenderRuntime,
       interactionFrostAnimatedStyle:
         routeSearchSceneInteractionFrostRuntime.interactionFrostAnimatedStyle,
       resolvedResults:

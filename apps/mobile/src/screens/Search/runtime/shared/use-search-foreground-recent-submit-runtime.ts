@@ -9,11 +9,13 @@ import type {
   SearchForegroundInteractionSubmitHandlers,
   SearchForegroundSubmitRuntimeArgs,
 } from './use-search-foreground-interaction-runtime-contract';
+import { resolveForegroundSearchSubmitEntrySurface } from './search-submit-entry-surface-contract';
 import type { useSearchForegroundSubmitPreparationRuntime } from './use-search-foreground-submit-preparation-runtime';
 
 type UseSearchForegroundRecentSubmitRuntimeArgs = Pick<
   SearchForegroundSubmitRuntimeArgs,
   | 'submitRuntime'
+  | 'isSuggestionPanelActive'
   | 'pendingRestaurantSelectionRef'
   | 'setRestaurantOnlyIntent'
   | 'deferRecentSearchUpsert'
@@ -31,6 +33,7 @@ type SearchForegroundRecentSubmitRuntime = Pick<
 
 export const useSearchForegroundRecentSubmitRuntime = ({
   submitRuntime,
+  isSuggestionPanelActive,
   pendingRestaurantSelectionRef,
   setRestaurantOnlyIntent,
   deferRecentSearchUpsert,
@@ -38,6 +41,7 @@ export const useSearchForegroundRecentSubmitRuntime = ({
   submitPreparationRuntime,
 }: UseSearchForegroundRecentSubmitRuntimeArgs): SearchForegroundRecentSubmitRuntime => {
   const { submitSearch, runRestaurantEntitySearch } = submitRuntime;
+  const entrySurface = resolveForegroundSearchSubmitEntrySurface({ isSuggestionPanelActive });
 
   const handleRecentSearchPress = React.useCallback(
     (entry: RecentSearch) => {
@@ -63,18 +67,20 @@ export const useSearchForegroundRecentSubmitRuntime = ({
           restaurantName: trimmedValue,
           submissionSource: 'recent',
           typedPrefix: trimmedValue,
+          entrySurface,
         });
         return;
       }
       deferRecentSearchUpsert(trimmedValue);
       setRestaurantOnlyIntent(null);
-      void submitSearch({ submission: { source: 'recent' } }, trimmedValue);
+      void submitSearch({ submission: { source: 'recent' }, entrySurface }, trimmedValue);
     },
     [
       deferRecentSearchUpsert,
       openRestaurantProfilePreview,
       pendingRestaurantSelectionRef,
       runRestaurantEntitySearch,
+      entrySurface,
       setRestaurantOnlyIntent,
       submitPreparationRuntime,
       submitSearch,
@@ -102,6 +108,7 @@ export const useSearchForegroundRecentSubmitRuntime = ({
         restaurantName: trimmedValue,
         submissionSource: 'recent',
         typedPrefix: trimmedValue,
+        entrySurface,
       });
     },
     [
@@ -109,6 +116,7 @@ export const useSearchForegroundRecentSubmitRuntime = ({
       openRestaurantProfilePreview,
       pendingRestaurantSelectionRef,
       runRestaurantEntitySearch,
+      entrySurface,
       setRestaurantOnlyIntent,
       submitPreparationRuntime,
     ]
@@ -135,6 +143,7 @@ export const useSearchForegroundRecentSubmitRuntime = ({
         restaurantName: trimmedValue,
         submissionSource: 'recent',
         typedPrefix: item.foodName,
+        entrySurface,
       });
     },
     [
@@ -142,6 +151,7 @@ export const useSearchForegroundRecentSubmitRuntime = ({
       openRestaurantProfilePreview,
       pendingRestaurantSelectionRef,
       runRestaurantEntitySearch,
+      entrySurface,
       setRestaurantOnlyIntent,
       submitPreparationRuntime,
     ]

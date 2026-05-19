@@ -15,8 +15,17 @@ import styles from '../styles';
 import { SECONDARY_METRIC_ICON_SIZE, TOP_FOOD_RENDER_LIMIT } from '../constants/search';
 import { formatDistanceMiles, resolveMarketDisplayLabel } from '../utils/format';
 import { formatRankLabel, getRankFontSize } from '../utils/rank-badge';
+import { formatCraveScore, formatCraveScoreMovement } from '../utils/quality';
 import { InfoCircleIcon } from './metric-icons';
 import { renderMetaDetailLine } from './render-meta-detail-line';
+import {
+  buildRestaurantCardHighlightedTextSegments,
+  createRestaurantCardPrimaryFoodHighlight,
+  formatRestaurantCardMatchedTagLabel,
+  type RestaurantResultCardDescriptor,
+  type RestaurantResultCardMatchedTagDescriptor,
+  type RestaurantResultCardTextSegment,
+} from './restaurant-result-card-descriptor';
 
 const TOP_FOOD_INLINE_GAP = '\u2006\u2006\u2006\u2006';
 const TOP_FOOD_MEASUREMENT_ITEM_GAP_PX = 0;
@@ -55,6 +64,7 @@ type RestaurantResultCardProps = {
   index: number;
   rank: number;
   qualityColor: string;
+  preparedDescriptor?: RestaurantResultCardDescriptor | null;
   isLiked: boolean;
   primaryMarketKey?: string | null;
   showMarketLabel?: boolean;
@@ -72,6 +82,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   index,
   rank,
   qualityColor,
+  preparedDescriptor: maybePreparedDescriptor = null,
   isLiked,
   primaryMarketKey = null,
   showMarketLabel = false,
@@ -80,57 +91,69 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   openScoreInfo,
   primaryFoodTerm: _primaryFoodTerm,
 }) => {
-  const primaryFoodTerm = React.useMemo(() => {
-    if (typeof _primaryFoodTerm !== 'string') {
-      return null;
-    }
-    const trimmed = _primaryFoodTerm.trim();
-    return trimmed.length ? trimmed : null;
-  }, [_primaryFoodTerm]);
-  const primaryFoodSingleWord = React.useMemo(() => {
-    return Boolean(primaryFoodTerm && !/\s/u.test(primaryFoodTerm));
-  }, [primaryFoodTerm]);
-
-  const priceRangeLabel = getPriceRangeLabel(restaurant.priceLevel);
-  const hasStatus =
-    restaurant.operatingStatus?.isOpen === true || restaurant.operatingStatus?.isOpen === false;
-  const distanceLabel = formatDistanceMiles(restaurant.distanceMiles);
-  const showDistanceInScore = !hasStatus && distanceLabel !== null;
-  const topFoodItems = restaurant.topFood ?? [];
-  const totalDishCount = Math.max(
-    restaurant.totalDishCount ?? topFoodItems.length,
-    topFoodItems.length
-  );
-  const contextualScoreValue = React.useMemo(() => {
-    if (
-      typeof restaurant.contextualScore === 'number' &&
-      Number.isFinite(restaurant.contextualScore)
-    ) {
-      return restaurant.contextualScore;
-    }
-    return typeof restaurant.restaurantQualityScore === 'number' &&
-      Number.isFinite(restaurant.restaurantQualityScore)
-      ? restaurant.restaurantQualityScore
+  const preparedDescriptor =
+    maybePreparedDescriptor?.restaurantId === restaurant.restaurantId
+      ? maybePreparedDescriptor
       : null;
-  }, [restaurant.contextualScore, restaurant.restaurantQualityScore]);
-  const marketLabel =
-    showMarketLabel && restaurant.marketKey && restaurant.marketKey !== primaryMarketKey
-      ? resolveMarketDisplayLabel(restaurant.marketName, restaurant.marketKey ?? null)
-      : null;
-
-  const { interactionRef } = useSearchInteraction();
-  const candidateTopFoods = React.useMemo(
-    () => topFoodItems.slice(0, TOP_FOOD_RENDER_LIMIT),
-    [topFoodItems]
-  );
-  const matchedTags = React.useMemo(
+  const primaryFoodHighlight = React.useMemo(
     () =>
-      (restaurant.matchedTags ?? [])
-        .filter((tag) => typeof tag.name === 'string' && tag.name.trim().length > 0)
-        .slice(0, MAX_MATCHED_TAGS),
-    [restaurant.matchedTags]
+      preparedDescriptor?.primaryFoodHighlight ??
+      createRestaurantCardPrimaryFoodHighlight(_primaryFoodTerm),
+    [preparedDescriptor, _primaryFoodTerm]
   );
-  const dishCountLabel = totalDishCount === 1 ? '1 dish' : `${totalDishCount} dishes`;
+
+  const priceRangeLabel =
+    preparedDescriptor?.priceRangeLabel ?? getPriceRangeLabel(restaurant.priceLevel);
+  const hasStatus =
+    preparedDescriptor?.hasStatus ??
+    (restaurant.operatingStatus?.isOpen === true || restaurant.operatingStatus?.isOpen === false);
+  const distanceLabel =
+    preparedDescriptor?.distanceLabel ?? formatDistanceMiles(restaurant.distanceMiles);
+  const showDistanceInScore =
+    preparedDescriptor?.showDistanceInScore ?? (!hasStatus && distanceLabel !== null);
+  const topFoodItems = restaurant.topFood ?? [];
+  const totalDishCount =
+    preparedDescriptor?.totalDishCount ??
+    Math.max(restaurant.totalDishCount ?? topFoodItems.length, topFoodItems.length);
+  const craveScoreValue = React.useMemo(() => {
+    if (preparedDescriptor != null) {
+      return preparedDescriptor.craveScoreValue;
+    }
+    return typeof restaurant.craveScore === 'number' && Number.isFinite(restaurant.craveScore)
+      ? restaurant.craveScore
+      : null;
+  }, [preparedDescriptor, restaurant.craveScore]);
+  const scoreMovementLabel = formatCraveScoreMovement(restaurant.scoreDelta7d);
+  const marketLabel =
+    preparedDescriptor?.marketLabel ??
+    (showMarketLabel && restaurant.marketKey && restaurant.marketKey !== primaryMarketKey
+      ? resolveMarketDisplayLabel(restaurant.marketName, restaurant.marketKey ?? null)
+      : null);
+
+  const candidateTopFoods = React.useMemo(
+    () => preparedDescriptor?.candidateTopFoods ?? topFoodItems.slice(0, TOP_FOOD_RENDER_LIMIT),
+    [preparedDescriptor, topFoodItems]
+  );
+  const matchedTags = React.useMemo<RestaurantResultCardMatchedTagDescriptor[]>(
+    () => {
+      if (preparedDescriptor != null) {
+        return preparedDescriptor.matchedTags;
+      }
+      return (restaurant.matchedTags ?? [])
+        .filter((tag) => typeof tag.name === 'string' && tag.name.trim().length > 0)
+        .slice(0, MAX_MATCHED_TAGS)
+        .map((tag) => ({
+          key: `${restaurant.restaurantId}-${tag.entityId}`,
+          label: formatRestaurantCardMatchedTagLabel(tag),
+        }))
+        .filter((tag) => tag.label.length > 0);
+    },
+    [preparedDescriptor, restaurant.matchedTags, restaurant.restaurantId]
+  );
+  const dishCountLabel =
+    preparedDescriptor?.dishCountLabel ??
+    (totalDishCount === 1 ? '1 dish' : `${totalDishCount} dishes`);
+  const { interactionRef } = useSearchInteraction();
   const [topFoodLineWidth, setTopFoodLineWidth] = React.useState<number | null>(null);
   const handleTopFoodLineLayout = React.useCallback((event: LayoutChangeEvent) => {
     const nextWidth = event.nativeEvent.layout.width;
@@ -161,72 +184,33 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   });
 
   const renderHighlightedFoodName = React.useCallback(
-    (foodName: string): React.ReactNode => {
-      if (!primaryFoodSingleWord || !primaryFoodTerm) {
-        return foodName;
+    (connectionId: string, foodName: string): React.ReactNode => {
+      const segments =
+        preparedDescriptor?.topFoodNameSegmentsByConnectionId.get(connectionId) ??
+        buildRestaurantCardHighlightedTextSegments(foodName, primaryFoodHighlight);
+      if (segments.length === 1 && !segments[0]?.highlighted) {
+        return segments[0]?.text ?? foodName;
       }
-
-      if (primaryFoodTerm.length < 3) {
-        return foodName;
-      }
-
-      const termLower = primaryFoodTerm.toLowerCase();
-      const nameLower = foodName.toLowerCase();
-      const isWordChar = (char: string | undefined) => {
-        if (!char) return false;
-        return /[A-Za-z0-9]/.test(char);
-      };
-
-      const matchIndex = nameLower.indexOf(termLower);
-      if (matchIndex < 0) {
-        return foodName;
-      }
-
-      const matchStart = matchIndex;
-      const matchEnd = matchIndex + primaryFoodTerm.length;
-
-      let wordStart = matchStart;
-      let wordEnd = matchEnd;
-      while (wordStart > 0 && isWordChar(foodName[wordStart - 1])) {
-        wordStart -= 1;
-      }
-      while (wordEnd < foodName.length && isWordChar(foodName[wordEnd])) {
-        wordEnd += 1;
-      }
-
-      const isPrefixMatch = matchStart === wordStart;
-      const isSuffixMatch = matchEnd === wordEnd;
-      const word = foodName.slice(wordStart, wordEnd);
-
-      let highlightStart = matchStart;
-      let highlightEnd = matchEnd;
-      if (isPrefixMatch) {
-        const suffix = word.slice(primaryFoodTerm.length);
-        const shouldExpandPluralSuffix = suffix === 's' || suffix === 'es';
-        if (shouldExpandPluralSuffix) {
-          highlightStart = wordStart;
-          highlightEnd = wordEnd;
-        }
-      } else if (isSuffixMatch) {
-        // Keep highlight only on the matching suffix (e.g. "burger" in "cheeseburger").
-        highlightStart = matchStart;
-        highlightEnd = matchEnd;
-      }
-
-      const before = foodName.slice(0, highlightStart);
-      const match = foodName.slice(highlightStart, highlightEnd);
-      const after = foodName.slice(highlightEnd);
       return (
         <>
-          {before}
-          <Text variant="body" weight="semibold" style={styles.topFoodNameInline}>
-            {match}
-          </Text>
-          {after}
+          {segments.map((segment: RestaurantResultCardTextSegment, segmentIndex: number) =>
+            segment.highlighted ? (
+              <Text
+                key={`${connectionId}:highlight:${segmentIndex}`}
+                variant="body"
+                weight="semibold"
+                style={styles.topFoodNameInline}
+              >
+                {segment.text}
+              </Text>
+            ) : (
+              segment.text
+            )
+          )}
         </>
       );
     },
-    [primaryFoodSingleWord, primaryFoodTerm]
+    [preparedDescriptor, primaryFoodHighlight]
   );
 
   const resolveMoreLabel = React.useCallback((hiddenCount: number): string | null => {
@@ -280,7 +264,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
           style={styles.topFoodNameInline}
         >
           {' '}
-          {renderHighlightedFoodName(food.foodName)}
+          {renderHighlightedFoodName(food.connectionId, food.foodName)}
         </Text>
       );
       if (idx < visibleTopFoodsForRender.length - 1 || shouldIncludeMore) {
@@ -305,16 +289,9 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     visibleTopFoodsForRender,
   ]);
   const shouldRenderTopFoodMeasurementNodes = measuredCandidateTopFoods.length > 0 && !allCached;
-  const renderMatchedTagLabel = React.useCallback((name: string, mentionCount: number): string => {
-    const trimmedName = name.trim();
-    if (!trimmedName.length) {
-      return '';
-    }
-    if (!Number.isFinite(mentionCount) || mentionCount <= 0) {
-      return trimmedName;
-    }
-    return `${trimmedName} ${mentionCount}`;
-  }, []);
+  const rankLabel = preparedDescriptor?.rankLabel ?? formatRankLabel(rank);
+  const rankFontSize =
+    preparedDescriptor?.rankFontSize ?? getRankFontSize(FONT_SIZES.title, rank);
 
   const restaurantStatusLine = renderMetaDetailLine(
     hasStatus ? restaurant.operatingStatus : null,
@@ -338,16 +315,15 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     openScoreInfo({
       type: 'restaurant',
       title: restaurant.restaurantName,
-      score: contextualScoreValue,
-      votes: restaurant.totalUpvotes,
-      polls: restaurant.mentionCount,
+      score: craveScoreValue,
+      votes: restaurant.scoreInfo?.voteCount ?? null,
+      polls: restaurant.scoreInfo?.pollCount ?? null,
     });
   }, [
     openScoreInfo,
-    restaurant.mentionCount,
     restaurant.restaurantName,
-    restaurant.totalUpvotes,
-    contextualScoreValue,
+    restaurant.scoreInfo,
+    craveScoreValue,
   ]);
 
   const handleRestaurantPress = React.useCallback(() => {
@@ -373,10 +349,10 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                   variant="body"
                   style={[
                     styles.rankBadgeText,
-                    { fontSize: getRankFontSize(FONT_SIZES.title, rank) },
+                    { fontSize: rankFontSize },
                   ]}
                 >
-                  {formatRankLabel(rank)}
+                  {rankLabel}
                 </Text>
               </View>
               <Text
@@ -389,14 +365,19 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
               </Text>
             </View>
             <View style={[styles.resultContent, styles.resultContentStack]}>
-              {contextualScoreValue !== null && contextualScoreValue !== undefined ? (
+              {craveScoreValue !== null && craveScoreValue !== undefined ? (
                 <View style={styles.metricBlock}>
                   <View style={[styles.restaurantMetricRow, styles.metricSupportRow]}>
                     <View style={styles.restaurantMetricLeft}>
                       {STORE_ICON}
                       <Text variant="body" weight="semibold" style={styles.metricValue}>
-                        {contextualScoreValue != null ? contextualScoreValue.toFixed(1) : '—'}
+                        {formatCraveScore(craveScoreValue)}
                       </Text>
+                      {scoreMovementLabel ? (
+                        <Text variant="body" weight="semibold" style={styles.metricMovement}>
+                          {scoreMovementLabel}
+                        </Text>
+                      ) : null}
                       <Text
                         variant="body"
                         weight="regular"
@@ -499,7 +480,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                                 style={styles.topFoodNameInline}
                               >
                                 {' '}
-                                {renderHighlightedFoodName(food.foodName)}
+                                {renderHighlightedFoodName(food.connectionId, food.foodName)}
                               </Text>
                               {TOP_FOOD_INLINE_GAP}
                             </Text>
@@ -536,11 +517,11 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                   <View style={styles.matchedTagsRow}>
                     {matchedTags.map((tag) => (
                       <View
-                        key={`${restaurant.restaurantId}-${tag.entityId}`}
+                        key={tag.key}
                         style={styles.matchedTagPill}
                       >
                         <Text variant="caption" weight="semibold" style={styles.matchedTagText}>
-                          {renderMatchedTagLabel(tag.name, tag.mentionCount)}
+                          {tag.label}
                         </Text>
                       </View>
                     ))}

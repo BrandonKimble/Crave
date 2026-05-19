@@ -71,25 +71,42 @@ export class HistoryService {
       lastSearchRequestId: dto.searchRequestId ?? null,
     };
 
-    await this.prisma.restaurantView.upsert({
-      where: {
-        userId_restaurantId: {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.restaurantView.upsert({
+        where: {
+          userId_restaurantId: {
+            userId,
+            restaurantId: restaurant.entityId,
+          },
+        },
+        create: {
           userId,
           restaurantId: restaurant.entityId,
+          lastViewedAt: now,
+          viewCount: 1,
+          metadata,
         },
-      },
-      create: {
-        userId,
-        restaurantId: restaurant.entityId,
-        lastViewedAt: now,
-        viewCount: 1,
-        metadata,
-      },
-      update: {
-        lastViewedAt: now,
-        viewCount: shouldIncrement ? { increment: 1 } : undefined,
-        metadata,
-      },
+        update: {
+          lastViewedAt: now,
+          viewCount: shouldIncrement ? { increment: 1 } : undefined,
+          metadata,
+        },
+      });
+
+      if (shouldIncrement) {
+        await tx.userEntityViewEvent.create({
+          data: {
+            userId,
+            entityId: restaurant.entityId,
+            entityType: EntityType.restaurant,
+            contextRestaurantId: restaurant.entityId,
+            source: dto.source ?? null,
+            searchRequestId: dto.searchRequestId ?? null,
+            viewedAt: now,
+            metadata,
+          },
+        });
+      }
     });
 
     this.logger.debug('Recorded restaurant view', {
@@ -103,7 +120,7 @@ export class HistoryService {
   async recordFoodView(userId: string, dto: RecordFoodViewDto): Promise<void> {
     const connection = await this.prisma.connection.findUnique({
       where: { connectionId: dto.connectionId },
-      select: { connectionId: true, foodId: true },
+      select: { connectionId: true, foodId: true, restaurantId: true },
     });
 
     if (!connection) {
@@ -154,27 +171,45 @@ export class HistoryService {
       lastSearchRequestId: dto.searchRequestId ?? null,
     };
 
-    await this.prisma.foodView.upsert({
-      where: {
-        userId_connectionId: {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.foodView.upsert({
+        where: {
+          userId_connectionId: {
+            userId,
+            connectionId: connection.connectionId,
+          },
+        },
+        create: {
           userId,
           connectionId: connection.connectionId,
+          foodId: food.entityId,
+          lastViewedAt: now,
+          viewCount: 1,
+          metadata,
         },
-      },
-      create: {
-        userId,
-        connectionId: connection.connectionId,
-        foodId: food.entityId,
-        lastViewedAt: now,
-        viewCount: 1,
-        metadata,
-      },
-      update: {
-        foodId: food.entityId,
-        lastViewedAt: now,
-        viewCount: shouldIncrement ? { increment: 1 } : undefined,
-        metadata,
-      },
+        update: {
+          foodId: food.entityId,
+          lastViewedAt: now,
+          viewCount: shouldIncrement ? { increment: 1 } : undefined,
+          metadata,
+        },
+      });
+
+      if (shouldIncrement) {
+        await tx.userEntityViewEvent.create({
+          data: {
+            userId,
+            entityId: food.entityId,
+            entityType: EntityType.food,
+            contextRestaurantId: connection.restaurantId,
+            connectionId: connection.connectionId,
+            source: dto.source ?? null,
+            searchRequestId: dto.searchRequestId ?? null,
+            viewedAt: now,
+            metadata,
+          },
+        });
+      }
     });
 
     this.logger.debug('Recorded food view', {

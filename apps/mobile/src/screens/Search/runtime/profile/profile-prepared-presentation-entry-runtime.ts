@@ -3,6 +3,7 @@ import React from 'react';
 import { closePreparedProfilePresentationTransaction } from './profile-prepared-close-presentation-builder';
 import { createFocusedProfileCameraPresentationTransaction } from '../../../../navigation/runtime/app-route-profile-prepared-focus-presentation-builder';
 import { openPreparedProfilePresentationTransaction } from './profile-prepared-open-presentation-builder';
+import { promotePreparedProfileCloseSnapshotToClearDismiss } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transition-runtime';
 import type {
   ExecutePreparedProfilePresentationTransaction,
   ProfilePreparedPresentationRuntime,
@@ -45,15 +46,28 @@ export const useProfilePreparedPresentationEntryRuntime = ({
         );
       },
       closePreparedProfilePresentation: (restaurantId) => {
+        const transition = transactionExecution.getProfileTransitionState();
+        if (
+          transition.status === 'closing' ||
+          transition.preparedSnapshot?.kind === 'profile_close' ||
+          transition.completionState.dismiss.requestToken != null
+        ) {
+          if (transactionExecution.getProfileDismissBehavior() === 'clear') {
+            promotePreparedProfileCloseSnapshotToClearDismiss({
+              transition,
+              shouldClearSearchOnClose:
+                transactionExecution.getProfileShouldClearSearchOnDismiss(),
+            });
+          }
+          return;
+        }
         executePreparedProfileTransaction(
           closePreparedProfilePresentationTransaction({
-            transition: transactionExecution.getProfileTransitionState(),
+            transition,
             createTransactionId: transactionExecution.createTransactionId,
             restaurantId,
             dismissBehavior: transactionExecution.getProfileDismissBehavior(),
             shouldClearSearchOnDismiss: transactionExecution.getProfileShouldClearSearchOnDismiss(),
-            isSearchOverlay: transactionExecution.getIsSearchOverlay(),
-            lastVisibleSheetSnap: transactionExecution.getLastVisibleSheetSnap(),
           })
         );
       },

@@ -20,7 +20,13 @@ interface EntitySearchRow {
   generalPraiseUpvotes: number | null;
 }
 
-export type TextMatchEvidence = 'name' | 'alias' | 'fuzzy' | 'phonetic';
+export type TextMatchEvidence =
+  | 'exact'
+  | 'prefix'
+  | 'name'
+  | 'alias'
+  | 'fuzzy'
+  | 'phonetic';
 
 export interface TextSearchMatch {
   entityId: string;
@@ -55,7 +61,7 @@ export class EntityTextSearchService {
     term: string,
     entityTypes: EntityType[],
     limit: number,
-    options: { marketKey?: string | null } = {},
+    options: { marketKey?: string | null; allowPhonetic?: boolean } = {},
   ): Promise<TextSearchMatch[]> {
     const normalizedTerm = this.normalizeTerm(term);
     if (
@@ -76,9 +82,54 @@ export class EntityTextSearchService {
       [normalizedTerm],
       entityTypes,
       safeLimit,
-      { marketKey: normalizedMarketKey, allowPhonetic: true },
+      {
+        marketKey: normalizedMarketKey,
+        allowPhonetic:
+          options.allowPhonetic !== undefined ? options.allowPhonetic : true,
+      },
     );
     return resultsByTerm.get(normalizedTerm) ?? [];
+  }
+
+  async searchAttributeAutocompleteEntities(
+    term: string,
+    entityTypes: EntityType[],
+    limit: number,
+    options: { marketKey?: string | null } = {},
+  ): Promise<TextSearchMatch[]> {
+    const normalizedTerm = this.normalizeTerm(term);
+    if (
+      !normalizedTerm ||
+      normalizedTerm.length < this.minPrefixLength ||
+      entityTypes.length === 0
+    ) {
+      return [];
+    }
+
+    const attributeTypes = entityTypes.filter((entityType) =>
+      this.isAttributeType(entityType),
+    );
+    if (attributeTypes.length === 0) {
+      return [];
+    }
+
+    const safeLimit = Math.max(1, Math.min(limit, this.maxLimit));
+    const normalizedMarketKey =
+      typeof options.marketKey === 'string'
+        ? options.marketKey.trim().toLowerCase()
+        : null;
+    const resultsByTerm = await this.searchEntitiesForTerms(
+      [normalizedTerm],
+      attributeTypes,
+      Math.min(safeLimit * 4, this.maxLimit),
+      { marketKey: normalizedMarketKey, allowPhonetic: false },
+    );
+
+    return (resultsByTerm.get(normalizedTerm) ?? [])
+      .filter((match) =>
+        this.isAttributeAutocompleteTextMatch(normalizedTerm, match),
+      )
+      .slice(0, safeLimit);
   }
 
   async searchEntitiesForTerms(
@@ -121,6 +172,7 @@ export class EntityTextSearchService {
         term,
         entityTypes,
         marketKey: normalizedMarketKey,
+        allowPhonetic,
         limit: safePerTermLimit,
       });
       if (cached) {
@@ -243,6 +295,7 @@ export class EntityTextSearchService {
           term,
           entityTypes,
           marketKey: normalizedMarketKey,
+          allowPhonetic,
           limit: safePerTermLimit,
           results: matches,
         });
@@ -270,6 +323,40 @@ export class EntityTextSearchService {
     return 0.35;
   }
 
+  private isAttributeAutocompleteTextMatch(
+    term: string,
+    match: TextSearchMatch,
+  ): boolean {
+    if (!this.isAttributeType(match.type)) {
+      return false;
+    }
+    if (match.evidence === 'phonetic') {
+      return false;
+    }
+    if (match.evidence === 'exact') {
+      return true;
+    }
+    if (match.evidence === 'prefix') {
+      return match.similarity >= 0.9;
+    }
+    if (term.length < 4) {
+      return false;
+    }
+    return (
+      (match.evidence === 'name' ||
+        match.evidence === 'alias' ||
+        match.evidence === 'fuzzy') &&
+      match.similarity >= 0.82
+    );
+  }
+
+  private isAttributeType(entityType: EntityType): boolean {
+    return (
+      entityType === EntityType.food_attribute ||
+      entityType === EntityType.restaurant_attribute
+    );
+  }
+
   private normalizeTerm(term: string): string {
     return term.trim().toLowerCase();
   }
@@ -279,10 +366,10 @@ export class EntityTextSearchService {
     similarityThreshold: number;
   }): TextMatchEvidence {
     const { row, similarityThreshold } = options;
-    if (row.phoneticMatch === 1) return 'phonetic';
-    if ((row.exactHit ?? 0) === 1) return 'name';
-    if (row.prefixHit === 1) return 'name';
+    if ((row.exactHit ?? 0) === 1) return 'exact';
+    if (row.prefixHit === 1) return 'prefix';
     if ((row.nameFtsHit ?? 0) === 1) return 'name';
+    if (row.phoneticMatch === 1) return 'phonetic';
     const nameSimilarity = Number(row.nameSimilarity ?? 0);
     if (nameSimilarity >= similarityThreshold) return 'fuzzy';
     return 'alias';
@@ -292,19 +379,27 @@ export class EntityTextSearchService {
     term: string;
     entityTypes: EntityType[];
     marketKey?: string | null;
+    allowPhonetic: boolean;
   }): string {
     const normalizedMarketKey =
       typeof options.marketKey === 'string'
         ? options.marketKey.trim().toLowerCase()
         : '';
     const entityTypesKey = [...options.entityTypes].sort().join(',');
-    return `${normalizedMarketKey}::${entityTypesKey}::${options.term}`;
+    const phoneticKey = options.allowPhonetic ? 'phonetic:on' : 'phonetic:off';
+    return [
+      normalizedMarketKey,
+      entityTypesKey,
+      phoneticKey,
+      options.term,
+    ].join('::');
   }
 
   private getCachedTermResults(options: {
     term: string;
     entityTypes: EntityType[];
     marketKey?: string | null;
+    allowPhonetic: boolean;
     limit: number;
   }): TextSearchMatch[] | null {
     const key = this.buildCacheKey(options);
@@ -324,6 +419,7 @@ export class EntityTextSearchService {
     term: string;
     entityTypes: EntityType[];
     marketKey?: string | null;
+    allowPhonetic: boolean;
     limit: number;
     results: TextSearchMatch[];
   }): void {
@@ -387,7 +483,11 @@ export class EntityTextSearchService {
           e.name AS "name",
           e.type AS "type",
           CASE WHEN lower(e.name) = v.term THEN 1 ELSE 0 END AS "exactHit",
-          0 AS "nameSimilarity",
+          CASE
+            WHEN lower(e.name) = v.term THEN 1
+            WHEN length(v.term) <= 2 THEN 0.9
+            ELSE 0.94
+          END AS "nameSimilarity",
           0 AS "aliasSimilarity",
           0 AS "ftsRank",
           CASE WHEN lower(e.name) LIKE v.prefix_pattern THEN 1 ELSE 0 END AS "prefixHit",
@@ -473,14 +573,50 @@ export class EntityTextSearchService {
             e.entity_id AS "entityId",
             e.name AS "name",
             e.type AS "type",
-            CASE WHEN lower(e.name) = v.term THEN 1 ELSE 0 END AS "exactHit",
-            similarity(lower(e.name), v.term) AS "nameSimilarity",
-            similarity(crave_aliases_haystack_lower(e.aliases), v.term) AS "aliasSimilarity",
+            CASE
+              WHEN lower(e.name) = v.term
+                OR EXISTS (
+                  SELECT 1
+                  FROM unnest(e.aliases) AS alias_value
+                  WHERE lower(alias_value) = v.term
+                )
+                THEN 1
+              ELSE 0
+            END AS "exactHit",
+            CASE
+              WHEN lower(e.name) = v.term THEN 1
+              WHEN lower(e.name) LIKE v.prefix_pattern THEN 0.94
+              ELSE similarity(lower(e.name), v.term)
+            END AS "nameSimilarity",
+            CASE
+              WHEN EXISTS (
+                SELECT 1
+                FROM unnest(e.aliases) AS alias_value
+                WHERE lower(alias_value) = v.term
+              )
+                THEN 1
+              WHEN EXISTS (
+                SELECT 1
+                FROM unnest(e.aliases) AS alias_value
+                WHERE lower(alias_value) LIKE v.prefix_pattern
+              )
+                THEN 0.94
+              ELSE similarity(crave_aliases_haystack_lower(e.aliases), v.term)
+            END AS "aliasSimilarity",
             ts_rank_cd(
               crave_entity_search_tsv(e.name::text, e.aliases),
               websearch_to_tsquery('simple', v.term)
             ) AS "ftsRank",
-            CASE WHEN lower(e.name) LIKE v.prefix_pattern THEN 1 ELSE 0 END AS "prefixHit",
+            CASE
+              WHEN lower(e.name) LIKE v.prefix_pattern
+                OR EXISTS (
+                  SELECT 1
+                  FROM unnest(e.aliases) AS alias_value
+                  WHERE lower(alias_value) LIKE v.prefix_pattern
+                )
+                THEN 1
+              ELSE 0
+            END AS "prefixHit",
             CASE
               WHEN to_tsvector('simple', lower(e.name)) @@
                 websearch_to_tsquery('simple', v.term)
@@ -495,7 +631,13 @@ export class EntityTextSearchService {
           WHERE e.type = ANY(${entityTypeArray})
             ${marketFilter}
             AND (
-              crave_entity_search_tsv(e.name::text, e.aliases) @@
+              lower(e.name) LIKE v.prefix_pattern
+              OR EXISTS (
+                SELECT 1
+                FROM unnest(e.aliases) AS alias_value
+                WHERE lower(alias_value) LIKE v.prefix_pattern
+              )
+              OR crave_entity_search_tsv(e.name::text, e.aliases) @@
                 websearch_to_tsquery('simple', v.term)
               OR (
                 lower(e.name) % v.term

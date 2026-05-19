@@ -10,6 +10,8 @@ export const useSearchRootProfileBridgeAuthorityRuntime =
     const closeRestaurantProfileRef = React.useRef<
       (options?: { dismissBehavior?: 'restore' | 'clear'; clearSearchOnDismiss?: boolean }) => void
     >(() => {});
+    const prepareRestaurantProfileForTerminalSearchDismissRef = React.useRef<() => void>(() => {});
+    const clearRestaurantProfileForSearchDismissRef = React.useRef<() => void>(() => {});
     const resetRestaurantProfileFocusSessionRef = React.useRef<() => void>(() => {});
     const cancelToggleInteractionRef = React.useRef<() => void>(() => {});
 
@@ -17,6 +19,8 @@ export const useSearchRootProfileBridgeAuthorityRuntime =
       () => ({
         profilePresentationActiveRef,
         closeRestaurantProfileRef,
+        prepareRestaurantProfileForTerminalSearchDismissRef,
+        clearRestaurantProfileForSearchDismissRef,
         resetRestaurantProfileFocusSessionRef,
         cancelToggleInteractionRef,
       }),

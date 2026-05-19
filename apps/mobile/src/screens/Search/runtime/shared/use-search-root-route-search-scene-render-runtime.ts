@@ -4,11 +4,9 @@ import type {
   SearchRootRuntimeRouteSearchSceneDataRuntime,
   SearchRootRuntimeRouteSearchSceneReadModelRuntime,
 } from './route-search-scene-runtime-contract';
-import { createSearchRootSearchSceneCoveredRenderFreezeRuntime } from '../controller/search-root-search-scene-covered-render-freeze-runtime';
-import { useSearchRootSearchSceneSurfaceRenderHeaderScrollRuntime } from './use-search-root-search-scene-surface-render-header-scroll-runtime';
 import { useSearchRootSearchSceneSurfaceRenderHeaderSourceRuntime } from './use-search-root-search-scene-surface-render-header-source-runtime';
-import { useSearchRootSearchSceneSurfaceRenderRowsRuntime } from './use-search-root-search-scene-surface-render-rows-runtime';
 import type { useSearchRootSearchSceneSurfacePanelStateRuntime } from './use-search-root-search-scene-surface-panel-state-runtime';
+import { RESULTS_BOTTOM_PADDING } from '../../constants/search';
 
 export const useSearchRootRouteSearchSceneRenderRuntime = ({
   routeSearchSceneDataRuntime,
@@ -21,73 +19,31 @@ export const useSearchRootRouteSearchSceneRenderRuntime = ({
     typeof useSearchRootSearchSceneSurfacePanelStateRuntime
   >;
 }) => {
-  const routeSearchSceneSurfaceRenderRowsRuntime =
-    useSearchRootSearchSceneSurfaceRenderRowsRuntime({
-      activeTab:
-        routeSearchSceneDataRuntime.routeSearchSceneResultsRuntimeState
-          .activeTab,
-      resultsReadModelSelectors:
-        routeSearchSceneReadModelRuntime.routeSearchSceneResultsReadModelSelectors,
-    });
   const routeSearchSceneSurfaceRenderHeaderSourceRuntime =
     useSearchRootSearchSceneSurfaceRenderHeaderSourceRuntime({
       listHeader: routeSearchSceneReadModelRuntime.routeSearchSceneListHeader,
       effectiveFiltersHeaderHeightBase:
         routeSearchSceneDataRuntime.routeSearchSceneChromeFreezeRuntime
           .effectiveFiltersHeaderHeightBase,
-      searchSceneSurfacePanelStateRuntime:
-        routeSearchSceneSurfacePanelStateRuntime,
-      searchSceneSurfaceRenderRowsRuntime:
-        routeSearchSceneSurfaceRenderRowsRuntime,
+      searchSceneSurfacePanelStateRuntime: routeSearchSceneSurfacePanelStateRuntime,
     });
-  const routeSearchSceneScrollHeaderForRenderLive =
-    useSearchRootSearchSceneSurfaceRenderHeaderScrollRuntime({
-      searchSceneSurfacePanelStateRuntime:
-        routeSearchSceneSurfacePanelStateRuntime,
-      searchSceneSurfaceRenderHeaderSourceRuntime:
-        routeSearchSceneSurfaceRenderHeaderSourceRuntime,
-    });
-  const coveredRenderFreezeRuntimeRef = React.useRef<
-    ReturnType<typeof createSearchRootSearchSceneCoveredRenderFreezeRuntime> | null
-  >(null);
-
-  if (coveredRenderFreezeRuntimeRef.current == null) {
-    coveredRenderFreezeRuntimeRef.current =
-      createSearchRootSearchSceneCoveredRenderFreezeRuntime();
-  }
-
-  const renderRuntimeValue = coveredRenderFreezeRuntimeRef.current.resolve({
-    shouldFreezeCoveredResultsRender:
-      routeSearchSceneSurfacePanelStateRuntime.shouldFreezeCoveredResultsRender,
-    activeListLive: routeSearchSceneSurfaceRenderRowsRuntime.activeListLive,
-    primaryRowsLive: routeSearchSceneSurfaceRenderRowsRuntime.primaryRowsLive,
-    secondaryRowsLive:
-      routeSearchSceneSurfaceRenderRowsRuntime.secondaryRowsLive,
-    scrollHeaderForRenderLive: routeSearchSceneScrollHeaderForRenderLive,
-    effectiveFiltersHeaderHeightForRenderLive:
-      routeSearchSceneSurfaceRenderHeaderSourceRuntime.effectiveFiltersHeaderHeightForRenderLive,
-    renderRowCountLive:
-      routeSearchSceneSurfaceRenderRowsRuntime.renderRowCountLive,
-  });
-
   return React.useMemo(
     () => ({
-      activeList: renderRuntimeValue.activeList,
+      activeList: 'primary' as const,
       effectiveFiltersHeaderHeightForRender:
-        renderRuntimeValue.effectiveFiltersHeaderHeightForRender,
-      primaryRowsForRender: renderRuntimeValue.primaryRowsForRender,
-      resultsContentContainerStyle:
-        renderRuntimeValue.resultsContentContainerStyle,
-      scrollHeaderForRender: renderRuntimeValue.scrollHeaderForRender,
-      secondaryRowsForRender: renderRuntimeValue.secondaryRowsForRender,
+        routeSearchSceneSurfaceRenderHeaderSourceRuntime.effectiveFiltersHeaderHeightForRenderLive,
+      resultsBodyHeaderHeightForRender: 0,
+      resultsContentContainerStyle: {
+        paddingTop: 0,
+        paddingBottom: RESULTS_BOTTOM_PADDING,
+      },
+      scrollHeaderForRender: null,
+      resultsToggleStripForRender:
+        routeSearchSceneSurfaceRenderHeaderSourceRuntime.resultsToggleStripForRenderLive,
     }),
     [
-      renderRuntimeValue.activeList,
-      renderRuntimeValue.effectiveFiltersHeaderHeightForRender,
-      renderRuntimeValue.primaryRowsForRender,
-      renderRuntimeValue.resultsContentContainerStyle,
-      renderRuntimeValue.scrollHeaderForRender,
-      renderRuntimeValue.secondaryRowsForRender,
+      routeSearchSceneSurfaceRenderHeaderSourceRuntime.effectiveFiltersHeaderHeightForRenderLive,
+      routeSearchSceneSurfaceRenderHeaderSourceRuntime.resultsToggleStripForRenderLive,
     ]
   );
 };

@@ -7,13 +7,18 @@ import { colors as themeColors } from '../../../../constants/theme';
 import type { FoodResult, RestaurantResult } from '../../../../types';
 import { logger } from '../../../../utils';
 import styles from '../../styles';
-import type { ResultsListItem } from './list-read-model-builder';
+import type {
+  ResultsListItem,
+  ResultsMountedRestaurantCardRow,
+} from './list-read-model-builder';
+import type { RestaurantResultCardDescriptor } from '../../components/restaurant-result-card-descriptor';
 
 type SearchResultsListRenderItemRuntimeArgs = {
   renderDishCard: (item: FoodResult, index: number) => React.ReactElement | null;
   renderRestaurantCard: (
     item: RestaurantResult,
-    index: number
+    index: number,
+    preparedDescriptor?: RestaurantResultCardDescriptor | null
   ) => React.ReactElement | null;
   handleShowMoreExactDishes: () => void;
   handleShowMoreExactRestaurants: () => void;
@@ -33,6 +38,15 @@ export const useSearchResultsListRenderItemRuntime = ({
       }
 
       if (item && typeof item === 'object' && 'kind' in item) {
+        if (item.kind === 'mounted_restaurant_card') {
+          const mountedRestaurantRow = item as ResultsMountedRestaurantCardRow;
+          return renderRestaurantCard(
+            mountedRestaurantRow.restaurant,
+            index,
+            mountedRestaurantRow.preparedDescriptor
+          );
+        }
+
         if (item.kind === 'section') {
           return (
             <View style={[styles.resultItem, index === 0 && styles.firstResultItem]}>

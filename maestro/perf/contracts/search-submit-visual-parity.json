@@ -1,0 +1,1363 @@
+{
+  "schema": "perf-scenario-visual-contracts.config.v1",
+  "name": "search-submit-visual-parity",
+  "reference": {
+    "commit": "3f9035de",
+    "date": "2026-04-17",
+    "description": "Old-good search UX reference before the late-April frontend runtime performance refactors."
+  },
+  "viewport": {
+    "widthPt": 390,
+    "heightPt": 844,
+    "pixelRatio": 3,
+    "widthPx": 1170,
+    "heightPx": 2532
+  },
+  "screenshots": {
+    "scenarioNames": [
+      "search_submit_visual_parity",
+      "search_submit_dismiss_repeat_dense"
+    ],
+    "directory": ".",
+    "names": {
+      "idleMapShortcuts": "search-visual-idle-map-shortcuts",
+      "resultsEntering": "search-visual-results-entering",
+      "resultsOpen": "search-visual-results-open",
+      "resultsOpenSettled": "search-visual-results-open-settled",
+      "resultsCardsReady": "search-visual-results-cards-ready",
+      "resultsMapBeforeDrag": "search-visual-results-map-before-drag",
+      "resultsAfterMapDrag": "search-visual-results-after-map-drag",
+      "searchThisAreaVisible": "search-visual-search-this-area-visible",
+      "resultsClosePressUp": "search-visual-results-close-press-up",
+      "resultsDismissEarly": "search-visual-results-dismiss-early",
+      "resultsDismissMid": "search-visual-results-dismiss-mid",
+      "resultsDismissBoundary": "search-visual-results-dismiss-boundary",
+      "afterResultsClose": "search-visual-after-results-close",
+      "afterPollsRestored": "search-visual-after-polls-restored"
+    }
+  },
+  "navUnderlay": {
+    "requiredNavBodyMapOnlyScreenshots": [
+      "idleMapShortcuts",
+      "afterResultsClose",
+      "afterPollsRestored"
+    ],
+    "requiredCutoutSheetVisibleScreenshots": [
+      "idleMapShortcuts",
+      "afterResultsClose",
+      "afterPollsRestored"
+    ],
+    "requiredHiddenNavScreenshots": [
+      "resultsOpenSettled",
+      "resultsCardsReady"
+    ],
+    "navBodyRegion": {
+      "x": 470,
+      "y": 2340,
+      "width": 230,
+      "height": 50
+    },
+    "cutoutRevealRegion": {
+      "x": 470,
+      "y": 2090,
+      "width": 230,
+      "height": 90
+    },
+    "hiddenNavBandRegion": {
+      "x": 120,
+      "y": 2268,
+      "width": 930,
+      "height": 180
+    },
+    "sheetLikePixel": {
+      "lumaMin": 246,
+      "neutralChromaMax": 18
+    },
+    "allowFrostedNavWhiteBody": true,
+    "navBodySheetLikeRatioMax": 0.45,
+    "navBodyWhiteSheetRatioMax": 0.18,
+    "navBodyPollProfileTintRatioMax": 0.1,
+    "cutoutRevealSheetLikeRatioMin": 0.62,
+    "cutoutRevealWhiteSheetRatioMin": 0.12,
+    "hiddenNavBandSheetLikeRatioMin": 0.65,
+    "hiddenNavResidualRowsMax": 2,
+    "hiddenNavSheetLikeRowRatioMin": 0.65
+  },
+  "postHandoffFrameProbe": {
+    "candidateFrameGlobs": [
+      "{screenshotDirectory}/search-visual-results-dismiss-boundary.png",
+      "{screenshotDirectory}/screenshots/search-visual-after-results-close.png",
+      "{screenshotDirectory}/screenshots/search-visual-after-polls-restored.png"
+    ],
+    "collapsedSheetTopRatioMin": 0.78,
+    "collapsedSheetTopRatioMax": 0.9,
+    "navVisiblePinkRatioMin": 0.02,
+    "pollHeaderWhiteRatioMin": 0.72,
+    "pollHeaderTitleDarkRatioMin": 0.0025,
+    "pollHeaderBadgeDarkRatioMin": 0.0015,
+    "sheetDetection": {
+      "yStartRatio": 0.65,
+      "yEndRatio": 0.92
+    },
+    "navVisiblePinkRegion": {
+      "xRatio": 0.08,
+      "yRatio": 0.88,
+      "widthRatio": 0.22,
+      "heightRatio": 0.1
+    },
+    "pollHeaderProof": {
+      "headerRegion": {
+        "xRatio": 0.04,
+        "yOffsetPx": 18,
+        "widthRatio": 0.92,
+        "heightPx": 140
+      },
+      "titleRegion": {
+        "xRatio": 0.06,
+        "yOffsetPx": 42,
+        "widthRatio": 0.56,
+        "heightPx": 96
+      },
+      "badgeRegion": {
+        "xRatio": 0.62,
+        "yOffsetPx": 42,
+        "widthRatio": 0.3,
+        "heightPx": 96
+      }
+    }
+  },
+  "postClosePollPage": {
+    "afterResultsCloseScreenshot": "afterResultsClose",
+    "resultTogglePinkRatioMax": 0.02,
+    "pollHeaderWhiteRatioMin": 0.72,
+    "pollHeaderTitleDarkRatioMin": 0.0025,
+    "pollHeaderBadgeDarkRatioMin": 0.0015,
+    "resultTogglePinkRegion": {
+      "xRatio": 0.05,
+      "yRatio": 0.55,
+      "widthRatio": 0.9,
+      "heightRatio": 0.08
+    },
+    "pollHeaderProof": {
+      "headerRegion": {
+        "xRatio": 0.04,
+        "yOffsetPx": 18,
+        "widthRatio": 0.92,
+        "heightPx": 140
+      },
+      "titleRegion": {
+        "xRatio": 0.06,
+        "yOffsetPx": 42,
+        "widthRatio": 0.56,
+        "heightPx": 96
+      },
+      "badgeRegion": {
+        "xRatio": 0.62,
+        "yOffsetPx": 42,
+        "widthRatio": 0.3,
+        "heightPx": 96
+      }
+    }
+  },
+  "mapInteraction": {
+    "scenarioNames": [
+      "search_submit_visual_parity"
+    ],
+    "beforeDragScreenshot": "resultsMapBeforeDrag",
+    "afterDragScreenshot": "resultsAfterMapDrag",
+    "searchThisAreaVisibleScreenshot": "searchThisAreaVisible",
+    "region": {
+      "xRatioStart": 0.05,
+      "xRatioEnd": 0.95,
+      "yRatioStart": 0.2,
+      "yRatioEnd": 0.36,
+      "sampleStep": 3
+    },
+    "averageRgbDiffMin": 12,
+    "resultsSheetStillVisibleTargetSnap": "middle",
+    "resultsSheetBottomBandSheetLikeRatioMin": 0.65,
+    "resultsSheetBottomBandRegion": {
+      "x": 120,
+      "y": 2268,
+      "width": 930,
+      "height": 180
+    },
+    "searchThisAreaButton": {
+      "minWidth": 120,
+      "minHeight": 36,
+      "minY": 60,
+      "maxY": 900
+    }
+  },
+  "resultsToggle": {
+    "coveredDuringLoadingScreenshots": [],
+    "requiredScreenshots": [
+      "resultsOpenSettled",
+      "resultsCardsReady"
+    ],
+    "pinkPixelMin": 1200,
+    "loadingPinkPixelMax": 100,
+    "region": {
+      "xRatioStart": 0.03,
+      "xRatioEnd": 0.97,
+      "offsetY": 150,
+      "height": 140
+    }
+  },
+  "transitionGap": {
+    "resultsEnteringScreenshot": "resultsEntering",
+    "resultsClosePressUpScreenshot": "resultsClosePressUp",
+    "resultsDismissEarlyScreenshot": "resultsDismissEarly",
+    "resultsDismissMidScreenshot": "resultsDismissMid",
+    "resultsDismissBoundaryScreenshot": "resultsDismissBoundary",
+    "dismissEarlyProgressMin": 0.1,
+    "dismissEarlyProgressMax": 0.4,
+    "dismissMidProgressMin": 0.4,
+    "dismissMidProgressMax": 0.7,
+    "closeOpenDescentPxMin": 80,
+    "dismissEarlyOpenDescentPxMin": 36,
+    "dismissMidOpenDescentPxMin": 220,
+    "dismissEarlyCollapsedBoundaryClearancePxMin": 450,
+    "dismissMidCollapsedBoundaryClearancePxMin": 240,
+    "dismissProofDistinctSheetTopPxMin": 36,
+    "dismissBoundaryLineTolerance": 80,
+    "bottomBandRegion": {
+      "x": 120,
+      "y": 2268,
+      "width": 930,
+      "height": 180
+    },
+    "bottomBandRegionsByScreenshot": {
+      "resultsClosePressUp": {
+        "x": 470,
+        "y": 2190,
+        "width": 230,
+        "height": 90
+      },
+      "resultsDismissEarly": {
+        "x": 120,
+        "y": 2268,
+        "width": 930,
+        "height": 180
+      },
+      "resultsDismissMid": {
+        "x": 120,
+        "y": 2268,
+        "width": 930,
+        "height": 180
+      },
+      "resultsDismissBoundary": {
+        "x": 120,
+        "y": 2190,
+        "width": 930,
+        "height": 90
+      }
+    },
+    "bottomBandRequiredScreenshots": [
+      "resultsClosePressUp",
+      "resultsDismissEarly",
+      "resultsDismissMid",
+      "resultsDismissBoundary"
+    ],
+    "bottomBandSheetLikeRatioMin": 0.65,
+    "bottomBandNavChromePinkPixelMin": 500
+  },
+  "frosty": {
+    "blurIntensity": 45,
+    "tint": "light",
+    "overlayTint": "rgba(248, 251, 255, 0.30)",
+    "navFallback": "rgba(248, 251, 255, 0.94)",
+    "pixelContract": {
+      "sheetInteriorRegion": {
+        "x": 500,
+        "offsetY": 12,
+        "width": 170,
+        "height": 18
+      },
+      "sheetInteriorMeanLumaMin": 240,
+      "sheetInteriorWhitePixelMin": 248,
+      "sheetInteriorWhitePixelRatioMax": 0.985,
+      "sheetInteriorLumaStddevMin": 0.18
+    }
+  },
+  "resultsHeaderLeak": {
+    "requiredScreenshots": [
+      "resultsOpenSettled",
+      "resultsCardsReady"
+    ],
+    "region": {
+      "xRatioStart": 0.04,
+      "xRatioEnd": 0.96,
+      "offsetY": 18,
+      "height": 150
+    },
+    "greenMapBleedRatioMax": 0.025,
+    "transparentMapTextureRatioMax": 0.16,
+    "sheetLikeRatioMin": 0.62,
+    "whiteHeaderRatioMin": 0.55,
+    "mapGreenPixel": {
+      "greenMin": 128,
+      "greenRedDeltaMin": 22,
+      "greenBlueDeltaMin": 12,
+      "lumaMax": 225
+    }
+  },
+  "pollHeaderLeak": {
+    "requiredScreenshots": [
+      "idleMapShortcuts",
+      "afterResultsClose",
+      "afterPollsRestored"
+    ],
+    "region": {
+      "xRatioStart": 0.04,
+      "xRatioEnd": 0.96,
+      "offsetY": 18,
+      "height": 150
+    },
+    "greenMapBleedRatioMax": 0.025,
+    "transparentMapTextureRatioMax": 0.16,
+    "sheetLikeRatioMin": 0.62,
+    "whiteHeaderRatioMin": 0.55,
+    "sheetDetection": {
+      "yStartRatio": 0.65,
+      "yEndRatio": 0.92
+    },
+    "mapGreenPixel": {
+      "greenMin": 128,
+      "greenRedDeltaMin": 22,
+      "greenBlueDeltaMin": 12,
+      "lumaMax": 225
+    }
+  },
+  "navCutout": {
+    "radiusPt": 22,
+    "extraTopPt": 24,
+    "cutoutHeightPt": 46,
+    "cutoutYPt": -22,
+    "fullWidthRoundedRectMask": true
+  },
+  "sheetSnap": {
+    "snapPointsPx": {
+      "expanded": 201,
+      "middle": 1013,
+      "collapsed": 2063,
+      "hidden": 2772
+    },
+    "shortcutResultsOpenTargetSnap": "middle",
+    "tolerancePx": 18,
+    "detection": {
+      "xStartRatio": 0.08,
+      "xEndRatio": 0.92,
+      "yStartRatio": 0.25,
+      "yEndRatio": 0.92,
+      "lightLumaMin": 238,
+      "neutralChromaMax": 32,
+      "currentLightRatioMin": 0.62,
+      "nextLightRatioMin": 0.62
+    }
+  },
+  "revealTiming": {
+    "markerMustStartAfterGate": true,
+    "cardMarkerStartToleranceMs": 20,
+    "cardMarkerSettleToleranceMs": 120
+  },
+  "requiredFunctionalScenarios": [
+    {
+      "label": "Search This Area rerun",
+      "scenarioName": "search_submit_search_this_area",
+      "flow": "maestro/perf/flows/search-submit-search-this-area.yaml",
+      "requiredPatterns": [
+        "tapOn:[\\s\\S]*text:\\s*'Search this area'",
+        "extendedWaitUntil:[\\s\\S]*visible:\\s*'Search this area'",
+        "extendedWaitUntil:[\\s\\S]*visible:\\s*'Close results'"
+      ]
+    }
+  ],
+  "sourceChecks": [
+    {
+      "label": "frosty blur intensity",
+      "file": "apps/mobile/src/components/frosted-glass-style.ts",
+      "pattern": "FROSTED_GLASS_DEFAULT_INTENSITY\\s*=\\s*45"
+    },
+    {
+      "label": "frosty light tint",
+      "file": "apps/mobile/src/components/frosted-glass-style.ts",
+      "pattern": "FROSTED_GLASS_DEFAULT_TINT[^=]*=\\s*'light'"
+    },
+    {
+      "label": "frosty overlay tint",
+      "file": "apps/mobile/src/components/frosted-glass-style.ts",
+      "pattern": "rgba\\(248,\\s*251,\\s*255,\\s*0\\.30\\)"
+    },
+    {
+      "label": "page frame never underlaps body beneath header",
+      "file": "apps/mobile/src/overlays/BottomSheetSceneStackPageFrame.tsx",
+      "pattern": "^(?![\\s\\S]*(PAGE_FRAME_SEAM_OVERLAP|effectiveHeaderHeight\\s*-))[\\s\\S]*\\? \\{ top: Math\\.max\\(0, effectiveHeaderHeight\\) \\}"
+    },
+    {
+      "label": "mounted results list uses animated FlashList for Reanimated scroll handlers",
+      "file": "apps/mobile/src/overlays/SearchMountedSceneBody.tsx",
+      "pattern": "^(?![\\s\\S]*<FlashList[\\s\\S]*onScroll=\\{activeListOnScroll\\})[\\s\\S]*const AnimatedFlashList[\\s\\S]*Animated\\.createAnimatedComponent[\\s\\S]*<AnimatedFlashList[\\s\\S]*onScroll=\\{activeListOnScroll\\}"
+    },
+    {
+      "label": "nav silhouette always renders frosted material",
+      "file": "apps/mobile/src/screens/Search/components/SearchBottomNav.tsx",
+      "pattern": "^(?![\\s\\S]*(disableBlur|solidBackgroundColor|APP_ROUTE_NAV_SILHOUETTE_SOLID_BG|NavBarSilhouetteBackground|FrostedGlassBackground))[\\s\\S]*<SearchRouteNavSilhouetteHostNativeView[\\s\\S]*materialBlurAmount=\\{resolveFrostedGlassBlurAmount\\(FROSTED_GLASS_DEFAULT_INTENSITY\\)\\}[\\s\\S]*materialBlurType=\\{FROSTED_GLASS_DEFAULT_TINT\\}[\\s\\S]*materialTintColor=\\{FROSTED_GLASS_DEFAULT_TINT_COLOR\\}"
+    },
+    {
+      "label": "bottom nav owns no second frosted material layer",
+      "file": "apps/mobile/src/screens/Search/components/SearchBottomNav.tsx",
+      "pattern": "^(?![\\s\\S]*(FrostedGlassBackground|SearchBottomNavLayer|BottomNavMaterial|BottomNavControls|layer=|cutoutReveal(?:AnimatedStyle|Material|MaskElement)|NavBarSilhouetteBackground))(?![\\s\\S]*<SearchRouteNavSilhouetteHostNativeView[\\s\\S]*<SearchRouteNavSilhouetteHostNativeView)[\\s\\S]*<SearchRouteNavSilhouetteHostNativeView[\\s\\S]*pointerEvents=\"none\"[\\s\\S]*<Pressable\\s+style=\\{styles\\.navTouchShield\\}[\\s\\S]*SearchBottomNavItem"
+    },
+    {
+      "label": "bottom nav moving host consumes shared Reanimated nav runtime",
+      "file": "apps/mobile/src/screens/Search/components/SearchBottomNav.tsx",
+      "pattern": "^(?![\\s\\S]*(RNAnimated|Animated as RNAnimated|bottomNavAnimatedStyle|bottomNavMotionController|bottomNavTranslateY))(?![\\s\\S]*bottomNavMotionTarget[\\s\\S]*withTiming)[\\s\\S]*bottomNavMotionRuntime[\\s\\S]*useAnimatedStyle\\([\\s\\S]*navOpacity\\.value[\\s\\S]*navTranslateY\\.value[\\s\\S]*<Reanimated\\.View[\\s\\S]*bottomNavMotionStyle[\\s\\S]*<SearchRouteNavSilhouetteHostNativeView"
+    },
+    {
+      "label": "search suggestions hide the bottom nav through the nav silhouette runtime",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-foreground-bottom-nav-visual-runtime.ts",
+      "pattern": "shouldHideBottomNavForSuggestionSurface\\s*=\\s*isSuggestionPanelActive[\\s\\S]*shouldHideBottomNavForMotion\\s*=[\\s\\S]*shouldHideBottomNavForSearchResultsMotion \\|\\| shouldHideBottomNavForSuggestionSurface[\\s\\S]*commandBottomNavMotion\\(shouldHideBottomNavForMotion \\? 'hide' : 'show'\\)"
+    },
+    {
+      "label": "search bar fades to a cutout without shadow during suggestions",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-foreground-chrome-surface-visual-runtime.ts",
+      "pattern": "const chromeAlpha = 1 - suggestionProgress\\.value[\\s\\S]*backgroundColor:\\s*`rgba\\(255, 255, 255, \\$\\{chromeAlpha\\}\\)`[\\s\\S]*shadowOpacity:\\s*Number\\(SEARCH_BAR_SHADOW\\.shadowOpacity \\?\\? 0\\) \\* chromeAlpha[\\s\\S]*elevation:\\s*chromeAlpha > 0"
+    },
+    {
+      "label": "shortcut chips fade to cutouts from suggestion progress",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-foreground-shortcuts-visual-runtime.ts",
+      "pattern": "const suggestionCutoutAlpha = isSuggestionOverlayVisible \\? 1 - suggestionProgress\\.value : 1[\\s\\S]*const backgroundAlpha = shortcutOpacityProgress\\.value \\* suggestionCutoutAlpha[\\s\\S]*shadowOpacity:\\s*SEARCH_SHORTCUT_BASE_SHADOW_OPACITY \\* clampedAlpha"
+    },
+    {
+      "label": "bottom nav submit motion uses stable shared runtime instead of shell props",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/search-bottom-nav-visual-input-contract.ts",
+      "pattern": "^(?![\\s\\S]*(bottomNavMotionTarget|bottomNavMotionTranslateY|bottomNavMotionDurationMs|bottomNavMotionController))[\\s\\S]*bottomNavMotionRuntime"
+    },
+    {
+      "label": "route chrome scale reads the mounted sheet motion entry first",
+      "file": "apps/mobile/src/navigation/runtime/AppRouteSceneChromeMotionRuntimeProvider.tsx",
+      "pattern": "mountedRouteSheetMotionStateEntry[\\s\\S]*routeSheetSurfaceBodyAuthority[\\s\\S]*const activeRouteSheetMotionStateEntry =\\s*mountedRouteSheetMotionStateEntry \\?\\? routeSheetMotionStateEntry[\\s\\S]*sheetTranslateY:\\s*activeRouteSheetMotionStateEntry\\?\\.sheetYValue"
+    },
+    {
+      "label": "nav silhouette host memoizes action facades by command functions",
+      "file": "apps/mobile/src/overlays/NavSilhouetteHost.tsx",
+      "pattern": "areNavSilhouetteHostPropsEqual[\\s\\S]*routeSceneDisplayTargetRegistry\\.activeTabIndexValue[\\s\\S]*routeOverlayTransitionActions\\.requestOverlaySwitch[\\s\\S]*routeSheetSnapSessionActions\\.requestRouteSceneDockedPollsRestore[\\s\\S]*React\\.memo\\(function NavSilhouetteHost"
+    },
+    {
+      "label": "bottom nav item visibility is not a Reanimated SVG wrapper",
+      "file": "apps/mobile/src/screens/Search/components/SearchBottomNav.tsx",
+      "pattern": "^(?![\\s\\S]*bottomNavItemVisibilityAnimatedStyle)[\\s\\S]*bottomNavMotionRuntime[\\s\\S]*itemVisualStack"
+    },
+    {
+      "label": "bottom nav is one host above clipped sheets",
+      "file": "apps/mobile/src/overlays/AppOverlayRouteHost.tsx",
+      "pattern": "^(?![\\s\\S]*layer=\"(?:material|controls)\")(?![\\s\\S]*<NavSilhouetteHost[\\s\\S]*<NavSilhouetteHost)(?![\\s\\S]*AppRouteBottomNavHost)[\\s\\S]*GlobalRestaurantSheetLayerHost[\\s\\S]*LocalRestaurantSheetLayerHost[\\s\\S]*SearchOverlayRouteSheetSurfaceHost[\\s\\S]*<NavSilhouetteHost"
+    },
+    {
+      "label": "nav silhouette background has a single native material host",
+      "file": "apps/mobile/src/screens/Search/components/SearchBottomNav.tsx",
+      "pattern": "^(?![\\s\\S]*(<FrostedGlassBackground|<MaskedView|react-native-svg|NavBarSilhouetteBackground))(?![\\s\\S]*<SearchRouteNavSilhouetteHostNativeView[\\s\\S]*<SearchRouteNavSilhouetteHostNativeView)[\\s\\S]*<SearchRouteNavSilhouetteHostNativeView"
+    },
+    {
+      "label": "nav silhouette authority owns mask geometry",
+      "file": "apps/mobile/src/navigation/runtime/app-route-nav-silhouette-authority.ts",
+      "pattern": "^(?![\\s\\S]*(useAppRouteNavSilhouetteBackgroundGeometry|AppRouteNavSilhouetteBackgroundGeometry|cutoutRect|maskId))[\\s\\S]*APP_ROUTE_NAV_SILHOUETTE_BOUNDARY_SHAPE\\s*=\\s*\\{[\\s\\S]*materialTopInset:\\s*APP_ROUTE_NAV_SILHOUETTE_EXTRA_TOP,[\\s\\S]*cutoutHeight:\\s*APP_ROUTE_NAV_SILHOUETTE_CUTOUT_HEIGHT,[\\s\\S]*cutoutRadius:\\s*OVERLAY_CORNER_RADIUS"
+    },
+    {
+      "label": "nav render consumes authority mask props",
+      "file": "apps/mobile/src/screens/Search/components/SearchBottomNav.tsx",
+      "pattern": "^(?![\\s\\S]*cutoutReveal(?:AnimatedStyle|Material|MaskElement))(?![\\s\\S]*(<MaskedView|react-native-svg|NavBarSilhouetteBackground))[\\s\\S]*APP_ROUTE_NAV_SILHOUETTE_BOUNDARY_SHAPE[\\s\\S]*const \\{ materialTopInset, cutoutHeight, cutoutRadius \\}[\\s\\S]*<SearchRouteNavSilhouetteHostNativeView[\\s\\S]*navMaterialTopInset=\\{materialTopInset\\}[\\s\\S]*cutoutHeight=\\{cutoutHeight\\}[\\s\\S]*cutoutRadius=\\{cutoutRadius\\}"
+    },
+    {
+      "label": "nav silhouette authority separates painted height from snap exclusion",
+      "file": "apps/mobile/src/navigation/runtime/app-route-nav-silhouette-authority.ts",
+      "pattern": "APP_ROUTE_NAV_SILHOUETTE_EXTRA_TOP\\s*=\\s*OVERLAY_CORNER_RADIUS\\s*\\+\\s*2[\\s\\S]*APP_ROUTE_NAV_SILHOUETTE_CUTOUT_HEIGHT\\s*=\\s*OVERLAY_CORNER_RADIUS\\s*\\*\\s*2\\s*\\+\\s*2[\\s\\S]*paintedNavHeight\\s*=\\s*bottomNavHeight\\s*\\+\\s*APP_ROUTE_NAV_SILHOUETTE_EXTRA_TOP[\\s\\S]*sheetBottomExclusionHeight\\s*=\\s*bottomNavHeight[\\s\\S]*paintedNavHeight,[\\s\\S]*navBarCutoutHeight:\\s*paintedNavHeight[\\s\\S]*sheetBottomExclusionHeight"
+    },
+    {
+      "label": "docked polls runtime has no nav silhouette compensation offset",
+      "file": "apps/mobile/src/overlays/useSearchRoutePollsSceneStateRuntime.ts",
+      "pattern": "^(?![\\s\\S]*APP_ROUTE_NAV_SILHOUETTE_EXTRA_TOP)[\\s\\S]*navBarTop:\\s*sceneLayout\\.navBarTop[\\s\\S]*navBarHeight:\\s*sceneLayout\\.navBarHeight[\\s\\S]*snapPoints:\\s*sceneLayout\\.snapPoints"
+    },
+    {
+      "label": "docked polls sheet mask uses live nav silhouette projection",
+      "file": "apps/mobile/src/navigation/runtime/app-route-nav-silhouette-authority.ts",
+      "pattern": "^(?![\\s\\S]*if \\(mode === 'dockedPersistentPoll'\\)[\\s\\S]*expectedSheetBodyExclusionHeight:\\s*resolvedNavBarHeight)(?![\\s\\S]*if \\(mode === 'staticPersistent'\\)[\\s\\S]*expectedSheetBodyExclusionHeight:\\s*resolvedNavBarHeight)[\\s\\S]*const visiblePaintedHeight = resolveAppRouteNavSilhouetteVisiblePaintedHeight[\\s\\S]*expectedSheetBodyExclusionHeight:\\s*resolveAppRouteNavSilhouetteSheetBodyExclusionHeight\\([\\s\\S]*expectedSheetMaskHeight:\\s*visiblePaintedHeight"
+    },
+    {
+      "label": "route sheet collapsed snaps align to bottom nav body top",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/search-startup-geometry-seed-runtime.ts",
+      "pattern": "resolveAppRouteBottomNavTop[\\s\\S]*resolveAppRouteNavSilhouetteSnapTop[\\s\\S]*bottomNavTop\\s*=\\s*resolveAppRouteBottomNavTop\\([\\s\\S]*navBarTopForSnaps\\s*=\\s*resolveAppRouteNavSilhouetteSnapTop\\([\\s\\S]*sheetBottomExclusionHeight"
+    },
+    {
+      "label": "bottom nav hidden translate moves full silhouette",
+      "file": "apps/mobile/src/navigation/runtime/app-route-nav-silhouette-authority.ts",
+      "pattern": "resolveAppRouteBottomNavHiddenTranslateY[\\s\\S]*Math\\.max\\([\\s\\S]*APP_ROUTE_NAV_HIDE_MIN,[\\s\\S]*bottomNavHeight\\s*\\+\\s*APP_ROUTE_NAV_SILHOUETTE_CUTOUT_HEIGHT"
+    },
+    {
+      "label": "overlay corner radius",
+      "file": "apps/mobile/src/overlays/overlaySheetStyles.ts",
+      "pattern": "OVERLAY_CORNER_RADIUS\\s*=\\s*22"
+    },
+    {
+      "label": "sheet snap middle formula",
+      "file": "apps/mobile/src/overlays/sheetUtils.ts",
+      "pattern": "rawMiddle\\s*=\\s*screenHeight\\s*\\*\\s*0\\.4"
+    },
+    {
+      "label": "sheet target enter middle",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/results-presentation-shell-transaction-intent.ts",
+      "pattern": "preserveSheetState\\s*\\?\\s*null\\s*:\\s*'middle'"
+    },
+    {
+      "label": "results toggle cutout mask",
+      "file": "apps/mobile/src/screens/Search/components/SearchFilters.tsx",
+      "pattern": "MaskedHoleOverlay"
+    },
+    {
+      "label": "results toggle belongs to mounted results list header lane",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-root-search-scene-surface-render-header-source-runtime.tsx",
+      "pattern": "stableHeaderChromeLane:\\s*'mounted_results_list_header'[\\s\\S]*stableHeaderChromeOwner:\\s*runtime\\.resultsToggleStripForRenderLive == null \\? 'none' : 'search_mounted_results_list'"
+    },
+    {
+      "label": "results toggle is mounted as scroll list header above cards",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-route-search-scene-model-owner.ts",
+      "pattern": "ListChromeComponent:\\s*null[\\s\\S]*ListHeaderComponent:\\s*routeSearchSceneRenderRuntime\\.resultsToggleStripForRender"
+    },
+    {
+      "label": "loading cover accessibility target",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-root-search-scene-panel-surface-overlay-runtime.tsx",
+      "pattern": "accessibilityLabel=\"Results loading cover\"[\\s\\S]*testID=\"results-loading-cover\""
+    },
+    {
+      "label": "results toggle is not a separate absolute page overlay",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-root-search-scene-panel-surface-overlay-runtime.tsx",
+      "pattern": "^(?![\\s\\S]*(resultsPageToggleStripOverlay|resultsToggleStripForRender|result_page_toggle_strip))[\\s\\S]*resultsLoadingCoverSurface"
+    },
+    {
+      "label": "mounted results list receives toggle through decoration lane",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-route-search-scene-body-input-owner.ts",
+      "pattern": "stableListHeaderComponent[\\s\\S]*stableListFooterComponent[\\s\\S]*syncSearchMountedResultsListDecorationsSnapshot\\(\\{[\\s\\S]*primaryListHeaderComponent:\\s*hasListHeaderComponent[\\s\\S]*stableListHeaderComponent[\\s\\S]*primaryListFooterComponent:\\s*hasListFooterComponent[\\s\\S]*stableListFooterComponent"
+    },
+    {
+      "label": "results body admission uses staged first-paint rows before full-list release",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/search-results-body-admission-controller.ts",
+      "pattern": "mode:\\s*'full' \\| 'shell' \\| 'visual'[\\s\\S]*firstPaintAdmission[\\s\\S]*admittedRowCount[\\s\\S]*fullDetailRowCount[\\s\\S]*mode:\\s*'visual'"
+    },
+    {
+      "label": "mounted results rows promote first-paint admission by frame chunks not scroll release",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/search-mounted-results-data-store.ts",
+      "pattern": "^(?![\\s\\S]*(requestSearchMountedResultsFullBodyRowsRelease|commitFullBodyRowsRelease|canReleaseSearchMountedResultsFullBodyRowsNow|isSearchMountedResultsMotionLaneBlocked|list_scroll_begin_drag|list_end_reached))(?=[\\s\\S]*FIRST_PAINT_ROWS_INITIAL_ADMISSION_COUNT\\s*=\\s*4)(?=[\\s\\S]*FIRST_PAINT_ROWS_DETAIL_PROMOTION_CHUNK_SIZE\\s*=\\s*4)(?=[\\s\\S]*scheduleSearchMountedResultsFirstPaintRowsReady)(?=[\\s\\S]*currentAdmission\\.admittedRowCount\\s*<\\s*currentAdmission\\.targetRowCount)[\\s\\S]*$"
+    },
+    {
+      "label": "mounted results scroll handlers only notify scroll state and list callbacks",
+      "file": "apps/mobile/src/overlays/SearchMountedSceneBody.tsx",
+      "pattern": "^(?![\\s\\S]*(requestSearchMountedResultsFullBodyRowsRelease|first_paint_lane_touch|list_scroll_begin_drag|list_end_reached|SearchMountedResultsFirstPaintLane|RestaurantResultCardFirstPaint|debugAdmissionMode !== 'full'))(?=[\\s\\S]*const handleScrollBeginDrag = React\\.useCallback[\\s\\S]*sceneBodyTransport\\.onScrollBeginDrag\\?\\.\\(\\)[\\s\\S]*activeFlashListProps\\.onScrollBeginDrag\\?\\.\\(event\\))(?=[\\s\\S]*const handleEndReached = React\\.useCallback\\(\\(\\) => \\{\\s*activeOnEndReached\\?\\.\\(\\);\\s*\\})[\\s\\S]*$"
+    },
+    {
+      "label": "mounted results always use the animated FlashList host for admitted rows",
+      "file": "apps/mobile/src/overlays/SearchMountedSceneBody.tsx",
+      "pattern": "^(?![\\s\\S]*(SearchMountedResultsFirstPaintLane|RestaurantResultCardFirstPaint|listDataSnapshot\\.debugAdmissionMode !== 'full'))(?=[\\s\\S]*const AnimatedFlashList = Animated\\.createAnimatedComponent)(?=[\\s\\S]*SearchMountedResultsFirstPaintRow)(?=[\\s\\S]*firstPaintRenderMode)(?=[\\s\\S]*flashListPropsForRender[\\s\\S]*data:\\s*activeData[\\s\\S]*renderItem:\\s*activeRenderItem)(?=[\\s\\S]*<AnimatedFlashList[\\s\\S]*\\{\\.\\.\\.flashListPropsForRender\\})[\\s\\S]*$"
+    },
+    {
+      "label": "mounted results row rendering computes first boundary once per list snapshot",
+      "file": "apps/mobile/src/overlays/SearchMountedSceneBody.tsx",
+      "pattern": "^(?![\\s\\S]*const renderItem = React\\.useCallback[\\s\\S]*getSearchMountedResultsRowsSnapshot\\(\\))(?=[\\s\\S]*const activeFirstCardRowIdentity = resolveFirstSearchResultCardRowIdentity\\(activeRows\\))(?=[\\s\\S]*resolveSearchResultCardRowIdentity\\(info\\.item\\) === activeFirstCardRowIdentity)[\\s\\S]*$"
+    },
+    {
+      "label": "mounted results FlashList keeps old-good pre-render window",
+      "file": "apps/mobile/src/overlays/SearchMountedSceneBody.tsx",
+      "pattern": "DEFAULT_DRAW_DISTANCE\\s*=\\s*140[\\s\\S]*DEFAULT_INITIAL_DRAW_BATCH_SIZE\\s*=\\s*8"
+    },
+    {
+      "label": "restaurant result card supports lightweight first-paint shell without duplicate chrome path",
+      "file": "apps/mobile/src/screens/Search/components/restaurant-result-card.tsx",
+      "pattern": "^(?![\\s\\S]*(RestaurantResultCardFirstPaint|RestaurantResultCardFirstPaintProps|resolveRestaurantCardViewModel))(?=[\\s\\S]*renderMode\\?:\\s*'shell' \\| 'full')(?=[\\s\\S]*const shouldRenderFullDetails = renderMode !== 'shell')(?=[\\s\\S]*enabled:\\s*shouldRenderFullDetails)[\\s\\S]*const RestaurantResultCard: React\\.FC<RestaurantResultCardProps>"
+    },
+    {
+      "label": "mounted results decoration cleanup does not wake retained list after dismiss boundary",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/search-mounted-results-data-store.ts",
+      "pattern": "shouldNotifySearchMountedResultsListDecorations[\\s\\S]*surfaceSnapshot\\.activeBundle\\.kind === 'results'[\\s\\S]*dismissTransaction != null && !dismissTransaction\\.bottomBoundaryReached[\\s\\S]*if \\(!shouldNotifySearchMountedResultsListDecorations\\(\\)\\)[\\s\\S]*return"
+    },
+    {
+      "label": "deferred mounted results cleanup cannot clear a newly active results page",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/search-mounted-results-data-store.ts",
+      "pattern": "cleanupSnapshotVersion = snapshot.version[\\s\\S]*resultsSurfaceActive[\\s\\S]*surfaceSnapshot.activeBundle.kind === 'results'[\\s\\S]*surfaceSnapshot.heldBundle != null[\\s\\S]*surfaceSnapshot.redrawTransaction != null[\\s\\S]*snapshot.version !== cleanupSnapshotVersion[\\s\\S]*snapshot.results != null[\\s\\S]*cleanupIfStillDismissed"
+    },
+    {
+      "label": "visible results eligibility survives shortcut route-identity skip",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-root-results-arrival-runtime.ts",
+      "pattern": "hasVisibleSearchResultsSurface[\\s\\S]*resultsHydrationCandidateKey[\\s\\S]*resultsDishCount > 0[\\s\\S]*resultsRestaurantCount > 0[\\s\\S]*hasResults: hasVisibleSearchResultsSurface"
+    },
+    {
+      "label": "Search This Area geometry proof is scenario-run scoped",
+      "file": "apps/mobile/src/screens/Search/components/SearchOverlayHeaderChrome.tsx",
+      "pattern": "activeScenarioConfig\\.runId[\\s\\S]*search_this_area_visibility_geometry_contract[\\s\\S]*lastSearchThisAreaGeometryKeyRef\\.current = null"
+    },
+    {
+      "label": "settled results release map movement pressure so Search This Area can publish",
+      "file": "apps/mobile/src/screens/Search/components/hooks/use-search-map-native-render-owner.ts",
+      "pattern": "deriveMotionPressurePresentationTransaction[\\s\\S]*presentationState\\.executionStage === 'idle'[\\s\\S]*presentationState\\.executionStage === 'settled'[\\s\\S]*return null[\\s\\S]*deriveSearchMapRenderPresentationPhase"
+    },
+    {
+      "label": "fade-zero marker collision release does not claim JS presentation settled",
+      "file": "apps/mobile/src/screens/Search/components/hooks/use-search-map-native-render-owner.ts",
+      "pattern": "^(?![\\s\\S]*event\\.type === 'presentation_visual_sources_collision_released'[\\s\\S]{0,900}onMarkerExitSettled\\?\\.\\()[\\s\\S]*event\\.type === 'presentation_visual_sources_collision_released'[\\s\\S]*native_marker_exit_collision_released[\\s\\S]*event\\.type === 'presentation_exit_settled'[\\s\\S]*onMarkerExitSettled\\?\\.\\("
+    },
+    {
+      "label": "fade-zero marker collision release clears native Mapbox sources",
+      "file": "apps/mobile/ios/cravesearch/SearchMapRenderController.swift",
+      "pattern": "releaseHiddenVisualSourcesForCollision[\\s\\S]*setLabelCollisionObstacleLayersVisible\\([\\s\\S]*try clearResidentSources\\(for: state\\)[\\s\\S]*presentation\\.collision_release_clear_sources[\\s\\S]*visualSourceLifecycleState = \\.collisionReleased"
+    },
+    {
+      "label": "route sheet pass-through hit target",
+      "file": "apps/mobile/src/overlays/SearchRouteSceneStackBottomSheetSurfaceHost.tsx",
+      "pattern": "pointerEvents=\\{touchBlockingEnabled\\s*\\?\\s*'none'\\s*:\\s*'box-none'\\}[\\s\\S]*<GestureDetector gesture=\\{runtimeAssembly\\.sheetGesture\\}>[\\s\\S]*<BottomSheetSceneStackHost"
+    },
+    {
+      "label": "scene stack transparent shell passes through",
+      "file": "apps/mobile/src/overlays/BottomSheetSceneStackHost.tsx",
+      "pattern": "<View pointerEvents=\"box-none\" style=\\{shadowShellStyle\\}>[\\s\\S]*<Animated\\.View pointerEvents=\"box-none\" style=\\{\\[styles\\.sceneStackSurface, surfaceStyle\\]\\}>"
+    },
+    {
+      "label": "search route sheet uses shell runtime model with no search fallback",
+      "file": "apps/mobile/src/navigation/runtime/app-route-sheet-host-authority-controller.ts",
+      "pattern": "sheetPresentationShellSpec\\.overlayKey === 'search'[\\s\\S]*\\? sheetPresentationShellSpec\\.runtimeModel \\?\\? null[\\s\\S]*: sheetPresentationShellSpec\\.runtimeModel \\?\\? this\\.fallbackRuntimeModel"
+    },
+    {
+      "label": "search results scene never publishes collapsed as visible initial snap",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-root-search-scene-shell-spec-publication-runtime.ts",
+      "pattern": "const searchResultsInitialSnapPoint =[\\s\\S]*sheetState === 'expanded' \\? 'expanded' : 'middle'[\\s\\S]*initialSnapPoint: searchResultsInitialSnapPoint"
+    },
+    {
+      "label": "search dismiss motion plane observes route sheet with stale-start reseed",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-dismiss-motion-plane-runtime.ts",
+      "pattern": "^(?![\\s\\S]*(withSequence|withDelay|proofHold|SEARCH_DISMISS_VISUAL_PROOF_HOLD_MS|dismissMotionVisualProofHoldMs|cancelAnimation\\(sheetTranslateY\\)|withTiming\\())[\\s\\S]*seedDismissMotionSheetYOnUI[\\s\\S]*sheetTranslateY\\.value\\s*=\\s*visibleStartY[\\s\\S]*registerMotionPlaneObservationTarget\\([\\s\\S]*observeDismiss:\\s*observeDismissMotion[\\s\\S]*observeOpen:\\s*observeOpenMotion[\\s\\S]*sheetTranslateY\\.value[\\s\\S]*searchDismissMotionProgress"
+    },
+    {
+      "label": "search dismiss motion plane commits only at ready-poll collapsed boundary",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-dismiss-motion-plane-runtime.ts",
+      "pattern": "^(?![\\s\\S]*(PRE_HANDOFF|preHandoff|dismissMotionHandoffY|commitVisualHandoffBoundary|dismissMotionResumeBoundaryRequest|waitingForPollPageAtPreBoundary|proofStage:\\s*'pre_handoff'|SEARCH_DISMISS_BOUNDARY_COMMIT_LEAD_PT))[\\s\\S]*SEARCH_DISMISS_COLLAPSED_BOUNDARY_EPSILON_PT\\s*=\\s*1[\\s\\S]*resolveSearchDismissVisualBoundaryReached[\\s\\S]*dismissMotionPollPageReadyForBoundary < 0\\.5[\\s\\S]*return false[\\s\\S]*sheetY >= collapsedY - SEARCH_DISMISS_COLLAPSED_BOUNDARY_EPSILON_PT[\\s\\S]*commitDismissBoundary\\(\\)"
+    },
+    {
+      "label": "search dismiss motion plane logs one collapsed boundary owner",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-dismiss-motion-plane-runtime.ts",
+      "pattern": "boundaryCommitSource:\\s*'searchSurfaceMotionPlane'[\\s\\S]*boundaryY:\\s*sample\\.boundaryY[\\s\\S]*collapsedY:\\s*sample\\.collapsedY[\\s\\S]*navReturnProgressSource:\\s*'bottomNavTiming'[\\s\\S]*pageBundleHandoffLatched:\\s*sample\\.pageBundleHandoffLatched[\\s\\S]*sheetMotionSource:\\s*'routeSheetMotionCommandObservedBySearchSurfaceMotionPlane'[\\s\\S]*waitingForPollPageAtBoundary:\\s*sample\\.waitingForPollPageAtBoundary"
+    },
+    {
+      "label": "dismiss boundary handoff releases visible page after nav policy release",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-dismiss-motion-plane-runtime.ts",
+      "pattern": "(?=[\\s\\S]*dismissMotionPageBundleHandoffProgress)(?=[\\s\\S]*commitDismissBoundary[\\s\\S]*dismissMotionPageBundleHandoffProgress\\.value\\s*=\\s*1)(?=[\\s\\S]*dismissMotionPollPageReleasedForBoundary\\.value = isPollPageReleasedForActiveDismiss \\? 1 : 0)(?=[\\s\\S]*searchSurfacePageBundleProgress[\\s\\S]*dismissMotionPollPageReleasedForBoundary\\.value >= 0\\.5 \\? 1 : 0)[\\s\\S]*"
+    },
+    {
+      "label": "dismiss boundary has no delayed post-dismiss persistent poll restore",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-results-presentation-close-transition-state-runtime.ts",
+      "pattern": "^(?![\\s\\S]*(requestPostDismissPersistentPollRestore|restorePersistentPollHostAtBoundary|restoredPersistentPollHostIntentIdRef))(?=[\\s\\S]*markSearchSheetCloseCollapsedReached)(?=[\\s\\S]*commitDismissBoundary\\(activeCloseIntentId\\))(?=[\\s\\S]*setHoldPersistentPollLane\\(false\\))(?=[\\s\\S]*results_dismiss_bottom_snap_handoff_contract)[\\s\\S]*$"
+    },
+    {
+      "label": "route sheet host keeps moving search sheet until boundary release",
+      "file": "apps/mobile/src/navigation/runtime/app-route-sheet-host-authority-controller.ts",
+      "pattern": "^(?![\\s\\S]*isSearchDismissPollSubstratePrewarmed)(?=[\\s\\S]*getSearchSurfaceRuntime\\(\\)\\.subscribeSelector\\([\\s\\S]*selectSearchSurfaceRouteGraphPolicy[\\s\\S]*recomputeAll\\(true, 'searchSurfaceRuntime'\\)[\\s\\S]*areSearchSurfaceVisualPoliciesEqual)(?=[\\s\\S]*shouldUseSearchSheetHostForSearchSurface[\\s\\S]*!isSearchDismissPollBoundaryCommitted[\\s\\S]*surfaceVisualPolicy\\.bottomBandOwner === 'results_header')(?=[\\s\\S]*effectiveIsPersistentPollLane[\\s\\S]*isPersistentPollLane && !shouldUseSearchSheetHostForSearchSurface)(?=[\\s\\S]*sheetPresentationSceneKey\\s*=\\s*isSearchDismissPollBoundaryCommitted[\\s\\S]*\\? 'polls'[\\s\\S]*: shouldUseSearchSheetHostForSearchSurface[\\s\\S]*\\? 'search')(?=[\\s\\S]*displayedSceneKey:\\s*isSearchDismissPollBoundaryCommitted[\\s\\S]*\\? 'polls'[\\s\\S]*: shouldUseSearchSheetHostForSearchSurface[\\s\\S]*\\? 'search')[\\s\\S]*$"
+    },
+    {
+      "label": "substrate readiness does not collapse outgoing search logical snap",
+      "file": "apps/mobile/src/navigation/runtime/app-route-sheet-host-authority-controller.ts",
+      "pattern": "^(?![\\s\\S]*canDisplayPersistentPollSubstrate[\\s\\S]{0,180}return 'collapsed')(?=[\\s\\S]*surfaceVisualPolicy\\.phase === 'results_dismissing')(?=[\\s\\S]*return 'collapsed')(?=[\\s\\S]*surfaceVisualPolicy\\.bottomBandOwner === 'results_header'[\\s\\S]*return activeRenderableShellSpec\\?\\.initialSnapPoint \\?\\? 'middle')(?=[\\s\\S]*isSearchSurfaceMotionTransactionActive\\(resolvedSurfaceInput\\.surfaceVisualPolicy\\))(?=[\\s\\S]*syncSearchSurfaceLogicalSnap\\(resolvedSurfaceInput\\))(?=[\\s\\S]*this\\.currentSnap !== 'hidden')(?=[\\s\\S]*resolvedSurfaceInput\\.surfaceVisualPolicy\\.phase !== 'results_dismissing')[\\s\\S]*$"
+    },
+    {
+      "label": "dismiss moving proof frames bind to real motion-plane progress stages",
+      "file": "scripts/perf-scenario-ios.sh",
+      "pattern": "video_recording_started[\\s\\S]*\\\"proofStage\\\":\\\"early_progress\\\"[\\s\\S]*\\\"proofStage\\\":\\\"mid_progress\\\"[\\s\\S]*video_recording_stop_requested[\\s\\S]*perf-scenario-extract-video-proofs\\.js"
+    },
+    {
+      "label": "dismiss moving proof frames come from recorded video",
+      "file": "scripts/perf-scenario-extract-video-proofs.js",
+      "pattern": "(?=[\\s\\S]*duration_from_stop_requested)(?=[\\s\\S]*sheet_top_match)(?=[\\s\\S]*maxSheetTopDeltaPx)(?=[\\s\\S]*resultToggleStripVisible)(?=[\\s\\S]*search-visual-results-close-press-up)(?=[\\s\\S]*search-visual-results-dismiss-early)(?=[\\s\\S]*search-visual-results-dismiss-mid)(?=[\\s\\S]*search-visual-results-dismiss-boundary)[\\s\\S]*search-visual-video-proof-frames\\.json"
+    },
+    {
+      "label": "after-results-close screenshot waits for restored poll page",
+      "file": "maestro/perf/flows/search-submit-visual-parity.yaml",
+      "pattern": "waitForAnimationToEnd:[\\s\\S]*timeout:\\s*1000[\\s\\S]*extendedWaitUntil:[\\s\\S]*visible:\\s*'Show best restaurants here'[\\s\\S]*takeScreenshot:\\s*search-visual-after-results-close"
+    },
+    {
+      "label": "submit dismiss repeat flow waits on result sheet affordance not fixed restaurant text",
+      "file": "maestro/perf/flows/search-submit-dismiss-repeat.yaml",
+      "pattern": "^(?![\\s\\S]*Central Market Cafe)(?=[\\s\\S]*openLink:\\s*crave://perf-scenario-mark\\?phase=measured_repeat_loop_start)(?=[\\s\\S]*repeat:[\\s\\S]*times:\\s*5)(?=[\\s\\S]*extendedWaitUntil:[\\s\\S]*visible:\\s*'Close results')[\\s\\S]*$"
+    },
+    {
+      "label": "quiet measured loop applies to dense submit dismiss scenario variants",
+      "file": "apps/mobile/src/perf/perf-scenario-attribution.ts",
+      "pattern": "isPerfScenarioQuietMeasuredLoopActive[\\s\\S]*config != null[\\s\\S]*config\\.scenario\\.startsWith\\(`\\$\\{SEARCH_SUBMIT_DISMISS_REPEAT_SCENARIO\\}_`\\)[\\s\\S]*config\\.scenario\\.startsWith\\(`\\$\\{SEARCH_SUBMIT_DISMISS_INTERRUPT_SCENARIO\\}_`\\)[\\s\\S]*measuredRepeatLoopActive"
+    },
+    {
+      "label": "render attribution is suppressed during measured submit dismiss loop",
+      "file": "apps/mobile/src/perf/perf-scenario-attribution.ts",
+      "pattern": "logPerfScenarioRenderAttribution[\\s\\S]*isPerfScenarioQuietMeasuredLoopActive\\(scenarioConfig\\)[\\s\\S]*return[\\s\\S]*logPerfScenarioAttributionEvent\\('Render'"
+    },
+    {
+      "label": "all submit dismiss samplers buffer during quiet measured loop",
+      "file": "apps/mobile/src/perf/PerfScenarioCoordinator.tsx",
+      "pattern": "channel:\\s*'JsFrameSampler' \\| 'JsTaskLatencySampler' \\| 'UiFrameSampler'[\\s\\S]*emitOrBufferJsSamplerEvent\\(activeConfig, 'JsFrameSampler'[\\s\\S]*emitOrBufferJsSamplerEvent\\(activeConfig, 'JsTaskLatencySampler'[\\s\\S]*emitOrBufferJsSamplerEvent\\(activeConfig, 'UiFrameSampler'"
+    },
+    {
+      "label": "search surface motion plane observes real sheet values with bounded stale-start reseed",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-dismiss-motion-plane-runtime.ts",
+      "pattern": "^(?![\\s\\S]*(dismissMotionRequest|openMotionRequest|requestDismissMotionStart|requestSearchDismissMotionPlaneImmediateStart|registerMotionPlaneCommandTarget|requestSheetMotionSnap|withTiming\\())[\\s\\S]*seedDismissMotionSheetYOnUI[\\s\\S]*sheetTranslateY\\.value\\s*=\\s*visibleStartY[\\s\\S]*registerMotionPlaneObservationTarget\\([\\s\\S]*observeDismiss:\\s*observeDismissMotion[\\s\\S]*observeOpen:\\s*observeOpenMotion[\\s\\S]*searchDismissMotionProgress[\\s\\S]*sheetTranslateY\\.value"
+    },
+    {
+      "label": "dismiss handoff boundary releases at ready-poll collapsed sheet boundary",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-dismiss-motion-plane-runtime.ts",
+      "pattern": "SEARCH_DISMISS_COLLAPSED_BOUNDARY_EPSILON_PT\\s*=\\s*1[\\s\\S]*resolveSearchDismissVisualBoundaryReached[\\s\\S]*dismissMotionPollPageReadyForBoundary < 0\\.5[\\s\\S]*return false[\\s\\S]*sheetY >= collapsedY - SEARCH_DISMISS_COLLAPSED_BOUNDARY_EPSILON_PT[\\s\\S]*commitDismissBoundary\\(\\)"
+    },
+    {
+      "label": "exit transaction executor has no snap-state boundary handoff writer",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-surface-results-exit-transaction-execution-runtime.ts",
+      "pattern": "^(?![\\s\\S]*(markSearchSheetCloseCollapsedReached|markSearchSheetCloseSheetSettled))[\\s\\S]*beginCloseTransition\\(snapshot\\.transactionId\\)"
+    },
+    {
+      "label": "dismiss press-up arms only UI motion before boundary",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-results-presentation-close-transition-state-runtime.ts",
+      "pattern": "^(?![\\s\\S]*(beginDismissTransaction\\(closeIntentId\\)|onMotionStarted|prewarmPersistentPollLane|setHoldPersistentPollLane\\(true\\)))[\\s\\S]*beginCloseTransition = React\\.useCallback\\([\\s\\S]*boundaryCloseIntentIdRef\\.current = closeIntentId[\\s\\S]*getSearchSurfaceRuntime\\(\\)\\.armDismissMotion\\(\\{ transactionId: closeIntentId \\}\\)"
+    },
+    {
+      "label": "search surface dismiss transaction publishes only at collapsed boundary",
+      "file": "apps/mobile/src/screens/Search/runtime/surface/search-surface-runtime.ts",
+      "pattern": "^(?![\\s\\S]*(beginDismissTransaction|publishArmedDismissTransaction|onMotionStarted|motionPlaneCommandTarget))[\\s\\S]*pendingDismissMotionArm[\\s\\S]*armDismissMotion = \\(\\{ transactionId \\}[\\s\\S]*pollHeaderReady:\\s*pollBundle\\.chromeReady[\\s\\S]*pollBodyReady:\\s*pollBundle\\.bodyReady[\\s\\S]*pollHostReady:\\s*pollBundle\\.hostReady[\\s\\S]*motionPlaneObservationTarget\\?\\.observeDismiss\\(\\{[\\s\\S]*transactionId: id[\\s\\S]*commitDismissBoundary = \\(transactionId\\?: string \\| null\\): string =>[\\s\\S]*bottomBoundaryReached:\\s*true"
+    },
+    {
+      "label": "dismiss close action clears visible query and commands real sheet transport on press-up",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-results-presentation-close-actions-runtime.ts",
+      "pattern": "^(?![\\s\\S]*(handleCloseResultsUiReset\\(\\)|scheduleCloseSearchCleanup\\(closeIntentId\\)|animateSheetTo:\\s*resultsSheetRuntime\\.animateSheetTo|useSyncExternalStore))[\\s\\S]*getRouteSheetMotionState[\\s\\S]*routeSheetSurfaceBodyAuthority\\.getSnapshot\\(\\)\\.motionStateEntry[\\s\\S]*routeSheetMotionRuntimeAuthority\\.getSnapshot\\(\\)\\.stateEntry[\\s\\S]*executeSurfaceExitTransaction[\\s\\S]*getRouteSheetMotionState[\\s\\S]*beginCloseSearch[\\s\\S]*requestClosePresentationIntent\\(\\)[\\s\\S]*clearTypedQuery\\(\\)[\\s\\S]*setPendingCloseIntentId\\(closeIntentId\\)"
+    },
+    {
+      "label": "dismiss poll restore search bar switches atomically to default chrome",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-results-presentation-shell-model-runtime.ts",
+      "pattern": "^(?![\\s\\S]*shouldClearSearchBarForPollRestore\\s*\\?\\s*'results')[\\s\\S]*const shouldClearSearchBarForPollRestore[\\s\\S]*const effectiveResultsDisplayQuery[\\s\\S]*shouldClearSearchBarForPollRestore[\\s\\S]*\\? ''[\\s\\S]*const chromeMode:[\\s\\S]*shouldClearSearchBarForPollRestore[\\s\\S]*\\? 'default'"
+    },
+    {
+      "label": "mounted search body is hosted inside the real bottom sheet page frame",
+      "file": "apps/mobile/src/overlays/SearchMountedScenePageBundleAuthority.tsx",
+      "pattern": "^(?![\\s\\S]*(SearchResultsPersistentBodyPortalHost|SearchResultsPageBundleChromePortalHost|searchResultsBodyPortalRuntimeAuthority|searchResultsBodyViewportAuthority|publishRetainedPortalWarmResultsBody|hostPlacement:\\s*'overlay_root_portal'))[\\s\\S]*const SearchResultsPersistentBodyHost[\\s\\S]*<BottomSheetSceneStackPageFrame[\\s\\S]*bodyComponent=\\{[\\s\\S]*<SearchResultsPersistentBodyHost[\\s\\S]*headerComponent=\\{pageBundle\\.headerComponent\\}[\\s\\S]*overlayComponent=\\{pageBundle\\.overlayComponent\\}[\\s\\S]*"
+    },
+    {
+      "label": "search surface retains structural results body bundle for future redraws",
+      "file": "apps/mobile/src/screens/Search/runtime/surface/search-surface-runtime.ts",
+      "pattern": "latestResultsBodyBundle[\\s\\S]*bodyBundle:\\s*this\\.latestResultsBodyBundle[\\s\\S]*syncResultsPageBodyBundle = \\(bodyBundle[\\s\\S]*this\\.latestResultsBodyBundle = bodyBundle[\\s\\S]*if \\(this\\.snapshot\\.activeBundle\\.kind !== 'results'\\)"
+    },
+    {
+      "label": "active redraw transaction key survives transient null result data",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/search-mounted-results-data-store.ts",
+      "pattern": "getSearchSurfaceRuntime\\(\\)\\.getActiveOrPendingRedrawTransactionId\\(\\)[\\s\\S]*results == null[\\s\\S]*searchSurfaceResultsTransactionKey:\\s*activeRedrawTransactionId"
+    },
+    {
+      "label": "same-key cached rerun is refreshed by page-one response commit",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/search-surface-results-transaction.ts",
+      "pattern": "handlePageOneResultsCommitted\\(inputs\\)[\\s\\S]*stagingResultsSnapshotKey:\\s*null[\\s\\S]*promoteDataReady\\(inputs\\)"
+    },
+    {
+      "label": "staging a redraw transaction cannot reset already-latched marker readiness",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/search-surface-results-transaction.ts",
+      "pattern": "^(?![\\s\\S]*stage\\(snapshot[\\s\\S]*publishMapSearchSurfaceResultsSourcesReady\\(false, snapshot\\.transactionId\\))[\\s\\S]*stage\\(snapshot[\\s\\S]*setStagedTransaction\\(\\{[\\s\\S]*snapshot,[\\s\\S]*dataReady:"
+    },
+    {
+      "label": "persistent poll lane defers mounted results cleanup during active redraw",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-root-results-presentation-authority-runtime.ts",
+      "pattern": "getActiveOrPendingRedrawTransactionId\\(\\)[\\s\\S]*transportSnapshot\\.snapshotKind !== 'results_enter' &&[\\s\\S]*activeRedrawTransactionId == null[\\s\\S]*deferMountedResultsCleanupUntilAfterDismiss"
+    },
+    {
+      "label": "search surface exposes active or armed redraw transaction id",
+      "file": "apps/mobile/src/screens/Search/runtime/surface/search-surface-runtime.ts",
+      "pattern": "getActiveOrPendingRedrawTransactionId[\\s\\S]*this\\.snapshot\\.redrawTransaction\\?\\.id \\?\\? this\\.pendingRedrawMotionArm\\?\\.id \\?\\? null"
+    },
+    {
+      "label": "results reveal commits only after cards, sheet, and native marker frame are joined",
+      "file": "apps/mobile/src/screens/Search/runtime/surface/search-surface-runtime.ts",
+      "pattern": "patchActiveRedrawTransaction[\\s\\S]*nextRedrawTransaction\\.readiness\\.cardsReady &&[\\s\\S]*nextRedrawTransaction\\.readiness\\.nativeMarkerFrameReady &&[\\s\\S]*nextRedrawTransaction\\.readiness\\.sheetReady[\\s\\S]*coverState:\\s*'hidden'[\\s\\S]*cardsReady:\\s*true[\\s\\S]*nativeMarkerFrameReady:\\s*true"
+    },
+    {
+      "label": "redraw transaction reveal waits for sheet open settle",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-dismiss-motion-plane-runtime.ts",
+      "pattern": "markOpenSheetSettled[\\s\\S]*getSearchSurfaceRuntime\\(\\)\\.markRedrawSheetReady\\(activeOpenTransactionIdRef\\.current\\)[\\s\\S]*notifyOpenSheetSettled\\(\\)"
+    },
+    {
+      "label": "redraw transaction marks sheet ready immediately for in-place reruns",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-surface-results-enter-transaction-execution-runtime.ts",
+      "pattern": "const targetSnap = resolveSearchSurfaceResultsSheetTargetSnap\\([\\s\\S]*resultsRuntimeOwner\\.stageSearchSurfaceResultsTransaction\\(snapshot\\)[\\s\\S]*if \\(targetSnap == null\\) \\{[\\s\\S]*getSearchSurfaceRuntime\\(\\)\\.markRedrawSheetReady\\(snapshot\\.transactionId\\)"
+    },
+    {
+      "label": "sheet-open readiness accepts already-open sheets",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-dismiss-motion-plane-runtime.ts",
+      "pattern": "observeOpenMotion[\\s\\S]*rawStartY <= targetY \\+ 0\\.5[\\s\\S]*openMotionSettled\\.value = 1[\\s\\S]*markOpenSheetSettled\\(\\)"
+    },
+    {
+      "label": "reveal readiness lives on the runtime redraw transaction",
+      "file": "apps/mobile/src/screens/Search/runtime/surface/search-surface-runtime.ts",
+      "pattern": "SearchSurfaceRedrawTransaction[\\s\\S]*readiness:\\s*\\{[\\s\\S]*cardsReady:\\s*boolean[\\s\\S]*sheetReady:\\s*boolean[\\s\\S]*nativeMarkerFrameReady:\\s*boolean[\\s\\S]*nativeMarkerFrameBatch"
+    },
+    {
+      "label": "held results header follows page bundle owner",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-results-page-header-runtime.tsx",
+      "pattern": "surfaceSnapshot\\.activeBundle\\.kind === 'results' \\|\\| surfaceSnapshot\\.heldBundle != null"
+    },
+    {
+      "label": "visible results page header keeps own close action",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-results-page-header-runtime.tsx",
+      "pattern": "OverlayHeaderActionButton[\\s\\S]*onPress=\\{model\\.handleCloseResults\\}[\\s\\S]*OverlaySheetHeaderChrome"
+    },
+    {
+      "label": "visible sheet list keeps own hit target",
+      "file": "apps/mobile/src/overlays/BottomSheetSceneStackListBodySurface.tsx",
+      "pattern": "pointerEvents=\\{[\\s\\S]*sceneResolvedActiveList === 'primary' \\? 'auto' : 'none'"
+    },
+    {
+      "label": "sheet hitbox follows visible sheet transform",
+      "file": "apps/mobile/src/overlays/useBottomSheetSharedAnimatedSurfaceRuntime.ts",
+      "pattern": "transform:\\s*\\[[\\s\\S]*translateY:\\s*Math\\.round\\(sheetY\\.value\\s*\\*\\s*pixelRatio\\)\\s*/\\s*pixelRatio"
+    },
+    {
+      "label": "sheet gesture fails above visible sheet",
+      "file": "apps/mobile/src/overlays/useBottomSheetSharedGestureRuntime.ts",
+      "pattern": "expandGestureOwner\\.value === GESTURE_OWNER_SCROLL \\|\\| expandHandoffLocked\\.value[\\s\\S]*isAtExpandedNow[\\s\\S]*handoffExpandGestureToScroll\\(stateManager\\)[\\s\\S]*if \\(!atExpanded\\) \\{[\\s\\S]*stateManager\\.activate\\(\\)[\\s\\S]*expandPanActive\\.value = true"
+    },
+    {
+      "label": "main launch can use native map render frame readiness",
+      "file": "apps/mobile/src/screens/Search/components/search-map.tsx",
+      "pattern": "handleDidFinishRenderingFrame[\\s\\S]*hasReportedMapLoadedFromRenderFrameRef[\\s\\S]*handleMapLoaded\\(\\)"
+    },
+    {
+      "label": "covered submit pre-applies prepared map sources while hidden",
+      "file": "apps/mobile/src/screens/Search/components/hooks/use-search-map-native-render-owner.ts",
+      "pattern": "^(?![\\s\\S]*(deferredCoveredSourceFrame|EMPTY_SEARCH_MAP_RENDER_SOURCE_TRANSPORT|stage_covered_zero_source|shouldHoldPreparedSourcesBehindCover))[\\s\\S]*preparedSourceFrameReadyForHiddenPreapply[\\s\\S]*shouldSuppressIncompleteCoveredSourceApply[\\s\\S]*const sourceTransport = shouldSuppressIncompleteCoveredSourceApply[\\s\\S]*const effectiveSourceSnapshot = preparedSourceSnapshot[\\s\\S]*presentationPhase === 'covered'[\\s\\S]*native_hidden_source_preapply_contract[\\s\\S]*covered_apply_hidden_sources"
+    },
+    {
+      "label": "enter reveal mounts preapplied hidden map sources",
+      "file": "apps/mobile/src/screens/Search/components/hooks/use-search-map-native-render-owner.ts",
+      "pattern": "^(?![\\s\\S]*(first_boot_no_resident_apply|consume_enter_deferred_apply|native_source_frame_deferred_contract|enter_uses_resident_hidden_sources))[\\s\\S]*enter_preapply_hidden_sources_before_reveal[\\s\\S]*enter_queued_after_hidden_source_preapply"
+    },
+    {
+      "label": "map source publication cannot reveal native markers",
+      "file": "apps/mobile/src/screens/Search/hooks/use-direct-search-map-source-controller.ts",
+      "pattern": "^(?![\\s\\S]*markRedrawMarkersReady)[\\s\\S]*mapSearchSurfaceResultsSourcesReady"
+    },
+    {
+      "label": "native hidden batch owns marker readiness and waits for surface reveal",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-results-presentation-marker-enter-runtime.ts",
+      "pattern": "canStartMarkerEnterForSurface[\\s\\S]*policy\\.canAdmitResultsBody[\\s\\S]*markEnterBatchMountedHidden[\\s\\S]*markRedrawNativeMarkerFrameReady\\(payload\\.requestKey[\\s\\S]*frameGenerationId[\\s\\S]*executionBatchId[\\s\\S]*pendingMarkerEnterStartRef[\\s\\S]*flushPendingMarkerEnterStart[\\s\\S]*markEnterStarted"
+    },
+    {
+      "label": "results page background does not flash a solid body during initial loading",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-root-search-scene-panel-background-runtime.tsx",
+      "pattern": "^(?![\\s\\S]*(FrostedGlassBackground|resultsModeValue|tintOpacity|initialLoadingValue|surfaceMode|Math\\.max\\(disableSearchBlurValue\\.value, initialLoadingValue\\.value\\)))[\\s\\S]*opacity:\\s*showResultsSurfaceValue\\.value \\* disableSearchBlurValue\\.value[\\s\\S]*styles\\.resultsListBackground"
+    },
+    {
+      "label": "initial loading enables the results loading cover policy",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/results-presentation-panel-state-contract.ts",
+      "pattern": "(?=[\\s\\S]*shouldRenderWhiteWash:\\s*surfaceMode === 'initial_loading')[\\s\\S]*$"
+    },
+    {
+      "label": "results foreground cards and rows stay opaque white over page-owned frosted gaps",
+      "file": "apps/mobile/src/screens/Search/styles.ts",
+      "pattern": "^(?![\\s\\S]*(resultItem:\\s*\\{[\\s\\S]{0,260}backgroundColor:\\s*'rgba\\(248, 251, 255, 0\\.9\\)'|resultsCardSurface:\\s*\\{[\\s\\S]{0,160}backgroundColor:\\s*'rgba\\(248, 251, 255, 0\\.9\\)'))(?=[\\s\\S]*resultItem:\\s*\\{[\\s\\S]{0,260}backgroundColor:\\s*'#ffffff')(?=[\\s\\S]*resultsCardSurface:\\s*\\{[\\s\\S]{0,160}backgroundColor:\\s*'#ffffff')[\\s\\S]*$"
+    },
+    {
+      "label": "results wash overlay restores old-good opaque white loading wash",
+      "file": "apps/mobile/src/screens/Search/styles.ts",
+      "pattern": "resultsWashOverlay:\\s*\\{[\\s\\S]{0,160}backgroundColor:\\s*'#ffffff'"
+    },
+    {
+      "label": "results loading cover surface itself is opaque white",
+      "file": "apps/mobile/src/screens/Search/styles.ts",
+      "pattern": "resultsLoadingCoverSurface:\\s*\\{[\\s\\S]{0,220}backgroundColor:\\s*'#ffffff'"
+    },
+    {
+      "label": "results loading cover is not only a transparent shell plus child fill",
+      "file": "apps/mobile/src/screens/Search/styles.ts",
+      "pattern": "^(?![\\s\\S]*resultsLoadingCoverSurface:\\s*\\{[\\s\\S]{0,220}backgroundColor:\\s*'transparent'[\\s\\S]*resultsLoadingCoverFill:\\s*\\{[\\s\\S]{0,180}backgroundColor:\\s*'#ffffff')[\\s\\S]*resultsLoadingCoverSurface"
+    },
+    {
+      "label": "surface transaction commit does not reveal cover before joined readiness",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-results-presentation-surface-transaction-runtime.ts",
+      "pattern": "^(?![\\s\\S]*commitSearchSurfaceResultsTransaction:\\s*\\(snapshot\\)\\s*=>\\s*\\{[\\s\\S]{0,260}revealSearchSurfaceVisualRedraw\\(snapshot\\.transactionId\\))[\\s\\S]*$"
+    },
+    {
+      "label": "staged results transaction applies presentation cover state immediately",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-results-presentation-surface-transaction-runtime.ts",
+      "pattern": "applyStagingCoverState:\\s*\\(coverState\\)\\s*=>\\s*\\{\\s*runtimeMachineRef\\.current!\\.applyStagingCoverState\\(coverState\\);\\s*\\}"
+    },
+    {
+      "label": "submit press-up switches sheet to results loading before deferred staging",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-results-presentation-surface-transaction-runtime.ts",
+      "pattern": "armSearchSurfaceResultsPending[\\s\\S]*getSearchSurfaceRuntime\\(\\)\\.beginRedrawTransaction\\([\\s\\S]*runtimeMachineRef\\.current!\\.applyStagingCoverState\\(snapshot\\.coverState\\)[\\s\\S]*search_surface_results_transaction_press_up_pending[\\s\\S]*stageSearchSurfaceResultsTransaction[\\s\\S]*cancelDeferredStageRef\\.current\\?\\.\\(\\)[\\s\\S]*cancelSameKeyReuseRevealRef\\.current\\?\\.\\(\\)[\\s\\S]*armSearchSurfaceResultsPending\\(snapshot, stagingInputs\\)[\\s\\S]*scheduleDeferredStageAfterFrames\\(2\\)"
+    },
+    {
+      "label": "staged results transaction cover state is not a no-op",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-results-presentation-surface-transaction-runtime.ts",
+      "pattern": "^(?![\\s\\S]*applyStagingCoverState:\\s*\\(coverState\\)\\s*=>\\s*\\{\\s*void coverState;\\s*\\})[\\s\\S]*$"
+    },
+    {
+      "label": "row readiness marks redraw cards ready exactly through the surface transaction",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-results-presentation-surface-transaction-runtime.ts",
+      "pattern": "onRowsReadyForPresentation:\\s*\\(snapshot\\)\\s*=>\\s*\\{[\\s\\S]{0,180}getSearchSurfaceRuntime\\(\\)\\.markRedrawCardsReady\\(snapshot\\.transactionId\\)"
+    },
+    {
+      "label": "retained shortcut reruns keep the joined loading cover instead of canceling it",
+      "file": "apps/mobile/src/screens/Search/runtime/surface/search-surface-runtime.ts",
+      "pattern": "beginRetainedResultsVisualReplay[\\s\\S]*redrawTransaction:\\s*\\{[\\s\\S]*dataMode:\\s*'semantic_reuse'[\\s\\S]*coverState,[\\s\\S]*readiness:\\s*\\{[\\s\\S]*cardsReady:\\s*false[\\s\\S]*sheetReady:\\s*false[\\s\\S]*nativeMarkerFrameReady:\\s*false"
+    },
+    {
+      "label": "retained shortcut reruns do not cancel the visual cover replay",
+      "file": "apps/mobile/src/screens/Search/runtime/surface/search-surface-runtime.ts",
+      "pattern": "^(?![\\s\\S]*public beginRetainedResultsVisualReplay[\\s\\S]*(cancelSearchSurfaceVisualRedraw|revealSearchSurfaceVisualRedraw|beginSearchSurfaceVisualRedraw)[\\s\\S]*private publishArmedRedrawTransaction)[\\s\\S]*public beginRetainedResultsVisualReplay"
+    },
+    {
+      "label": "redraw commit clears the runtime transaction and hides the cover",
+      "file": "apps/mobile/src/screens/Search/runtime/surface/search-surface-runtime.ts",
+      "pattern": "commitActiveRedrawTransactionWithoutRouteFanout[\\s\\S]*this\\.publish\\(\\{[\\s\\S]*coverState:\\s*'hidden'[\\s\\S]*cardsReady:\\s*true[\\s\\S]*markersReady:\\s*true[\\s\\S]*redrawTransaction:\\s*null"
+    },
+    {
+      "label": "visual redraw readiness store does not render a duplicate loading cover host",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-root-search-scene-panel-surface-overlay-runtime.tsx",
+      "pattern": "^(?![\\s\\S]*(SearchSurfaceVisualRedrawLoadingCoverHost|useSearchSurfaceVisualRedrawSnapshot))[\\s\\S]*results-loading-cover"
+    },
+    {
+      "label": "loading spinner renders only inside the opaque loading cover surface",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-root-search-scene-panel-surface-overlay-runtime.tsx",
+      "pattern": "^(?![\\s\\S]*styles\\.resultsSurface[\\s\\S]{0,360}surfaceContentRuntime\\.loadingContent)(?![\\s\\S]*styles\\.resultsSurfaceInteraction[\\s\\S]{0,360}surfaceContentRuntime\\.loadingContent)[\\s\\S]*styles\\.resultsLoadingCoverSurface[\\s\\S]{0,760}resultsLoadingCoverFill[\\s\\S]{0,760}surfaceContentRuntime\\.loadingContent"
+    },
+    {
+      "label": "interaction loading is not classified as covered map preapply state in JS",
+      "file": "apps/mobile/src/screens/Search/runtime/map/search-map-render-controller.ts",
+      "pattern": "^(?![\\s\\S]*coverState === 'interaction_loading'[\\s\\S]*return 'covered')[\\s\\S]*coverState === 'initial_loading'[\\s\\S]*return 'covered'"
+    },
+    {
+      "label": "interaction loading is not classified as covered map preapply state in native",
+      "file": "apps/mobile/ios/cravesearch/SearchMapRenderController.swift",
+      "pattern": "^(?![\\s\\S]*coverState == \"interaction_loading\"[\\s\\S]*return \"covered\")[\\s\\S]*coverState == \"initial_loading\"[\\s\\S]*return \"covered\""
+    },
+    {
+      "label": "initial loading keeps toggle strip mounted and lets cover hide it",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-root-search-scene-surface-render-header-source-runtime.tsx",
+      "pattern": "^(?![\\s\\S]*(HIDDEN_RESULTS_TOGGLE_STRIP_STYLE|pointerEvents=\"none\"[\\s\\S]{0,120}resultsToggleStripForRenderBase|opacity:\\s*0[\\s\\S]{0,220}resultsToggleStripForRenderBase))(?=[\\s\\S]*resultsToggleStripForRenderBase)(?=[\\s\\S]*resultsToggleStripForRenderLive:\\s*resultsToggleStripForRenderBase)[\\s\\S]*$"
+    },
+    {
+      "label": "results header does not own duplicate frosted material",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-results-page-header-runtime.tsx",
+      "pattern": "^(?![\\s\\S]*(FrostedGlassBackground|backgroundElement=|cutoutFillColor|transparent=\\{model\\.shouldUseBlur\\}|transparent=\\{true\\}|FROSTED_RESULTS_HEADER|SEARCH_RESULTS_HEADER_CUTOUT_FILL))[\\s\\S]*<OverlaySheetHeaderChrome[\\s\\S]*style=\\{styles\\.resultsHeaderSurface\\}[\\s\\S]*title="
+    },
+    {
+      "label": "page-owned sheet headers keep local foreground cutout holes without nav-boundary geometry",
+      "file": "apps/mobile/src/overlays/OverlaySheetHeaderChrome.tsx",
+      "pattern": "^(?![\\s\\S]*(cutoutFillColor|backgroundElement=|FROSTED_RESULTS_HEADER|SEARCH_RESULTS_HEADER_CUTOUT_FILL|OVERLAY_CORNER_RADIUS|NavSilhouette|navBody|navBoundary|cutoutReveal|sheetMask|localCutoutChromeContainer))(?=[\\s\\S]*react-native-svg)(?=[\\s\\S]*SvgPath)(?=[\\s\\S]*const circlePath)(?=[\\s\\S]*const roundedRectPath)(?=[\\s\\S]*const DEFAULT_MASK_PADDING = 2)(?=[\\s\\S]*const HEADER_FOREGROUND_PLATE_OVERLAP_PX = 3)(?=[\\s\\S]*const maskHeight = headerHeight \\+ maskPadding \\* 2 \\+ HEADER_FOREGROUND_PLATE_OVERLAP_PX;)(?=[\\s\\S]*top: -maskPadding)(?=[\\s\\S]*const outerRect)(?=[\\s\\S]*DEFAULT_CUTOUT_FILL)(?=[\\s\\S]*fillRule=\"evenodd\")(?=[\\s\\S]*clipRule=\"evenodd\")(?=[\\s\\S]*grabHandleCutout \\? overlaySheetStyles\\.grabHandleCutout : null)(?=[\\s\\S]*handleBadgeLayout)(?=[\\s\\S]*onLayout=\\{handleBadgeLayout\\})[\\s\\S]*$"
+    },
+    {
+      "label": "sheet header white cutout plate underlaps body to prevent a hairline seam",
+      "file": "apps/mobile/src/overlays/OverlaySheetHeaderChrome.tsx",
+      "pattern": "HEADER_FOREGROUND_PLATE_OVERLAP_PX\\s*=\\s*3[\\s\\S]*maskHeight\\s*=\\s*headerHeight \\+ maskPadding \\* 2 \\+ HEADER_FOREGROUND_PLATE_OVERLAP_PX"
+    },
+    {
+      "label": "results header container stays transparent behind foreground cutout plate",
+      "file": "apps/mobile/src/screens/Search/styles.ts",
+      "pattern": "resultsHeaderSurface:\\s*\\{[\\s\\S]*backgroundColor:\\s*'transparent'"
+    },
+    {
+      "label": "polls page header does not opt into transparent chrome",
+      "file": "apps/mobile/src/overlays/panels/PollsPanel.tsx",
+      "pattern": "^(?![\\s\\S]*<OverlaySheetHeaderChrome[\\s\\S]{0,320}transparent=)[\\s\\S]*<OverlaySheetHeaderChrome[\\s\\S]*title=\\{<PollsHeaderTitleText"
+    },
+    {
+      "label": "polls page header preserves local live badge foreground cutout geometry",
+      "file": "apps/mobile/src/overlays/panels/PollsPanel.tsx",
+      "pattern": "(?=[\\s\\S]*LIVE_BADGE_HEIGHT = OVERLAY_HEADER_CLOSE_BUTTON_SIZE)(?=[\\s\\S]*badgeRadius=\\{LIVE_BADGE_HEIGHT / 2\\})(?![\\s\\S]*cutoutFillColor)[\\s\\S]*<OverlaySheetHeaderChrome[\\s\\S]*badge=\\{<PollsHeaderBadge"
+    },
+    {
+      "label": "collapsed polls do not render a separate body strip under the header",
+      "file": "apps/mobile/src/overlays/panels/PollsPanel.tsx",
+      "pattern": "^(?![\\s\\S]*resolvedSnap === 'collapsed'[\\s\\S]{0,180}\\? listHeaderComponent)(?=[\\s\\S]*const maybeListHeaderComponent = isExpandedSurface \\? listHeaderComponent : null)[\\s\\S]*$"
+    },
+    {
+      "label": "scene stack host does not own page material",
+      "file": "apps/mobile/src/overlays/BottomSheetSceneStackHost.tsx",
+      "pattern": "^(?![\\s\\S]*(physicalSheetBackground|FrostedGlassBackground|physicalSheetBackgroundWash))[\\s\\S]*<Animated\\.View pointerEvents=\"box-none\" style=\\{\\[styles\\.sceneStackSurface, surfaceStyle\\]\\}>[\\s\\S]*<View style=\\{styles\\.contentHost\\}>"
+    },
+    {
+      "label": "mounted scene page backgrounds own frosted material",
+      "file": "apps/mobile/src/overlays/BottomSheetSceneStackMountedChromeRegistry.tsx",
+      "pattern": "^(?![\\s\\S]*mountedSheetBackgroundWash)[\\s\\S]*if \\(surface === 'background'\\) \\{[\\s\\S]*return <FrostedGlassBackground />;"
+    },
+    {
+      "label": "scene stack renders non-search chrome inside owned page frames while search uses its page bundle frame",
+      "file": "apps/mobile/src/overlays/BottomSheetSceneStackHost.tsx",
+      "pattern": "^(?![\\s\\S]*(SearchResultsSheetPageSubstrate|ActiveSceneStackChromeHost|MemoizedActiveSceneStackChromeHost|fixedHeader[A-Za-z]*Component))[\\s\\S]*const SceneStackBodyFrameHost[\\s\\S]*sceneKey === 'search' \\?[\\s\\S]*children[\\s\\S]*<BottomSheetSceneStackPageFrame[\\s\\S]*surface=\"background\"[\\s\\S]*bodyComponent=\\{children\\}[\\s\\S]*surface=\"header\"[\\s\\S]*surface=\"overlay\""
+    },
+    {
+      "label": "nav return command sink uses default timing through results open and close",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-foreground-bottom-nav-visual-runtime.ts",
+      "pattern": "^(?![\\s\\S]*(shouldDriveBottomNavFromSearchSurfaceMotion|searchResultsMotionNavProgress|sheetYObservedProjection|wasDrivingBottomNavFromSearchSurfaceMotionRef))[\\s\\S]*const commandBottomNavMotionOnUI = \\([\\s\\S]*navBarCutoutIsHidingValue\\.value = target === 'hide'[\\s\\S]*bottomNavHideProgress\\.value = withTiming\\(target === 'hide' \\? 0 : 1,[\\s\\S]*duration: SEARCH_BOTTOM_NAV_MOTION_DURATION_MS[\\s\\S]*registerSearchBottomNavMotionCommandSink\\(commandBottomNavMotion\\)"
+    },
+    {
+      "label": "nav backing progress is the bottom nav timing value",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-foreground-bottom-nav-visual-runtime.ts",
+      "pattern": "^(?![\\s\\S]*(shouldDriveBottomNavFromSearchSurfaceMotion|searchResultsMotionNavProgress|sheetYObservedProjection))[\\s\\S]*const bottomNavVisualProgress = useDerivedValue\\([\\s\\S]*return bottomNavHideProgress\\.value"
+    },
+    {
+      "label": "nav progress has no motion-owner release fallback clamp",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-foreground-bottom-nav-visual-runtime.ts",
+      "pattern": "^(?![\\s\\S]*(wasDrivingBottomNavFromSearchSurfaceMotionRef|bottomNavHideProgress\\.value\\s*=\\s*targetProgress;\\s*return;))[\\s\\S]*React\\.useLayoutEffect\\(\\(\\) => \\{[\\s\\S]*commandBottomNavMotion\\(shouldHideBottomNavForMotion \\? 'hide' : 'show'\\);[\\s\\S]*\\}, \\[commandBottomNavMotion, shouldHideBottomNavForMotion\\]\\)"
+    },
+    {
+      "label": "dismiss motion plane does not compute nav progress",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-dismiss-motion-plane-runtime.ts",
+      "pattern": "^(?![\\s\\S]*(resolveCubicOutProgress|searchResultsMotionNavProgress|searchOpenMotionProgress))[\\s\\S]*const searchDismissMotionProgress = useDerivedValue\\([\\s\\S]*const searchSurfacePageBundleProgress = useDerivedValue"
+    },
+    {
+      "label": "nav return uses cubic timing",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-foreground-bottom-nav-visual-runtime.ts",
+      "pattern": "SEARCH_BOTTOM_NAV_MOTION_DURATION_MS[\\s\\S]*duration:\\s*SEARCH_BOTTOM_NAV_MOTION_DURATION_MS,[\\s\\S]*Easing\\.out\\(Easing\\.cubic\\)"
+    },
+    {
+      "label": "nav and cutout share bottom nav progress",
+      "file": "apps/mobile/src/navigation/runtime/app-route-nav-silhouette-authority.ts",
+      "pattern": "navBarCutoutProgress[\\s\\S]*const navTranslateY = useDerivedValue[\\s\\S]*resolveAppRouteNavTranslateY[\\s\\S]*return React\\.useMemo\\([\\s\\S]*navBarCutoutProgress,[\\s\\S]*navBarCutoutHidingProgress,[\\s\\S]*navTranslateY"
+    },
+    {
+      "label": "nav silhouette sheet mask has no separate hide lead",
+      "file": "apps/mobile/src/navigation/runtime/app-route-nav-silhouette-authority.ts",
+      "pattern": "^(?![\\s\\S]*APP_ROUTE_NAV_CUTOUT_HIDE_LEAD)[\\s\\S]*resolveAppRouteNavSilhouetteVisiblePaintedHeight[\\s\\S]*resolveAppRouteNavSilhouetteSheetBodyExclusionHeight[\\s\\S]*const hideLead = 1[\\s\\S]*const visiblePaintedHeight = resolveAppRouteNavSilhouetteVisiblePaintedHeight[\\s\\S]*const cutout = Math\\.max\\(0, Math\\.min\\(resolvedNavBarHeight, visiblePaintedHeight\\)\\)[\\s\\S]*expectedSheetBodyExclusionHeight:\\s*resolveAppRouteNavSilhouetteSheetBodyExclusionHeight[\\s\\S]*expectedSheetMaskHeight:\\s*visiblePaintedHeight[\\s\\S]*(?=[\\s\\S]*useAppRouteNavSilhouetteSheetBodyExclusionHeightValue[\\s\\S]*return sample\\.expectedSheetBodyExclusionHeight)(?=[\\s\\S]*useAppRouteNavSilhouetteSheetMaskHeightValue[\\s\\S]*return sample\\.expectedSheetMaskHeight)[\\s\\S]*"
+    },
+    {
+      "label": "nav cutout lockstep telemetry",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-foreground-bottom-nav-visual-runtime.ts",
+      "pattern": "^(?![\\s\\S]*(frostedNavMaterialSample[s]|sheetBehindNavSilhouetteOverla[p]|noSheetBehindNavCutou[t]|navCutoutProofBucke[t]))[\\s\\S]*event:\\s*'nav_cutout_lockstep_contract'[\\s\\S]*expectedCutoutFormula:\\s*'appRouteNavSilhouetteAuthority\\.inverseSheetMaskProjection'[\\s\\S]*expectedNavCutout:\\s*sample\\.expectedNavCutout[\\s\\S]*expectedSheetBodyExclusionHeight:\\s*sample\\.expectedSheetBodyExclusionHeight[\\s\\S]*expectedSheetMaskHeight:\\s*sample\\.expectedSheetMaskHeight[\\s\\S]*expectedVisiblePaintedHeight:\\s*sample\\.expectedVisiblePaintedHeight[\\s\\S]*navCutoutProofEdge:\\s*sample\\.navCutoutProofEdge[\\s\\S]*navCutoutProofProgress:\\s*sample\\.navCutoutProofProgress[\\s\\S]*navTranslateY:\\s*sample\\.navTranslateY[\\s\\S]*navSilhouetteMaterial:\\s*'frosted'[\\s\\S]*navSilhouetteSheetMaskUsesInversePath:\\s*true[\\s\\S]*navBodyClipSource:\\s*'navSilhouetteRuntime\\.physicalSheetBodyExclusionHeight'[\\s\\S]*navBodySamplesMapOnly:\\s*'pixel_contract_required'[\\s\\S]*cutoutSamplesSheet:\\s*'pixel_contract_required'[\\s\\S]*sheetClippedFromNavBody:\\s*true[\\s\\S]*singleNavSilhouetteHost:\\s*true[\\s\\S]*loadingResultsSettledSheetExclusionMode:[\\s\\S]*searchSurfaceBottomBandOwner:\\s*surfaceVisualPolicy\\.bottomBandOwner[\\s\\S]*searchSurfaceCanReleasePersistentPolls:[\\s\\S]*surfaceVisualPolicy\\.canReleasePersistentPolls[\\s\\S]*searchSurfacePhase:\\s*surfaceVisualPolicy\\.phase[\\s\\S]*sheetExclusionMode:\\s*sample\\.sheetExclusionMode[\\s\\S]*sheetClipUsesNavProgress:\\s*true[\\s\\S]*sheetClipUsesSilhouettePath:\\s*true"
+    },
+    {
+      "label": "nav cutout lockstep proof is edge sampled",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-foreground-bottom-nav-visual-runtime.ts",
+      "pattern": "isSubmitHideMidpoint[\\s\\S]*surfaceVisualPolicy\\.bottomBandOwner === 'results_header'[\\s\\S]*surfaceVisualPolicy\\.sheetClipMode === 'animatedSearchTransition'[\\s\\S]*isPersistentPollHandoff[\\s\\S]*navCutoutProofProgress >= 0\\.9[\\s\\S]*navCutoutProofEdge:\\s*isSubmitHideMidpoint[\\s\\S]*previous != null[\\s\\S]*next\\.navCutoutProofEdge === previous\\.navCutoutProofEdge[\\s\\S]*runOnJS\\(logNavCutoutLockstepSample\\)\\(next\\)"
+    },
+    {
+      "label": "persistent polls handoff telemetry includes transition owner and nav clip",
+      "file": "apps/mobile/src/navigation/runtime/app-route-sheet-host-authority-controller.ts",
+      "pattern": "event:\\s*'persistent_polls_sheet_host_contract'[\\s\\S]*navProjectionSheetClipMode[\\s\\S]*navSilhouetteSheetClipMode[\\s\\S]*searchSurfaceBottomBandOwner:\\s*surfaceVisualPolicy\\.bottomBandOwner[\\s\\S]*searchSurfaceCanReleasePersistentPolls:[\\s\\S]*surfaceVisualPolicy\\.canReleasePersistentPolls[\\s\\S]*searchSurfacePhase:\\s*surfaceVisualPolicy\\.phase[\\s\\S]*searchSurfaceSheetClipMode:\\s*surfaceVisualPolicy\\.sheetClipMode[\\s\\S]*isVisibleRenderablePersistentPollHost"
+    },
+    {
+      "label": "results dismiss release telemetry fires at collapsed motion boundary",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-results-presentation-close-transition-state-runtime.ts",
+      "pattern": "event:\\s*'results_dismiss_bottom_snap_handoff_contract'[\\s\\S]*canExposePersistentPolls:\\s*releaseReadyCloseSnapshot\\.canExposePersistentPolls[\\s\\S]*canReleasePersistentPolls:\\s*releaseReadyCloseSnapshot\\.canReleasePersistentPolls[\\s\\S]*boundaryTrigger:\\s*'collapsed_motion_plane_boundary'[\\s\\S]*isPersistentPollHostReady:\\s*releaseReadyCloseSnapshot\\.isPersistentPollHostReady[\\s\\S]*releaseDelayAfterCollapsedBoundaryMs[\\s\\S]*releasedAtCollapsedBoundary"
+    },
+    {
+      "label": "persistent poll page prewarm is dismiss-only",
+      "file": "apps/mobile/src/navigation/runtime/app-route-scene-stack-runtime.ts",
+      "pattern": "^(?![\\s\\S]*shouldPrewarmSearchDismissPollDataLane[\\s\\S]*surfaceVisualPolicy\\.phase !== 'results_dismissing')(?![\\s\\S]*shouldSyncSearchDismissPollDataPrewarmScene[\\s\\S]*surfaceVisualPolicy\\.phase !== 'results_dismissing')[\\s\\S]*shouldPrewarmSearchDismissPollDataLane[\\s\\S]*searchSurfaceSnapshot\\.activeBundle\\.kind === 'results'[\\s\\S]*surfaceVisualPolicy\\.phase === 'results_dismissing'[\\s\\S]*surfaceVisualPolicy\\.canDisplayPersistentPollSubstrate[\\s\\S]*!surfaceVisualPolicy\\.canReleasePersistentPolls[\\s\\S]*shouldSyncSearchDismissPollDataPrewarmScene[\\s\\S]*searchSurfaceSnapshot\\.activeBundle\\.kind === 'results'[\\s\\S]*surfaceVisualPolicy\\.phase === 'results_dismissing'[\\s\\S]*sceneKeysToCheck\\.add\\('polls'\\)"
+    },
+    {
+      "label": "results closing prewarms persistent poll lane without exposing it",
+      "file": "apps/mobile/src/navigation/runtime/route-scene-policy-controller.ts",
+      "pattern": "isPersistentPollLaneEligible\\s*=\\s*[\\s\\S]*sheetContentLaneKind\\s*===\\s*'persistent_poll'[\\s\\S]*sheetContentLaneKind\\s*===\\s*'results_closing'[\\s\\S]*foregroundState\\.isCloseTransitionActive[\\s\\S]*\\?\\s*'resultsClosing'"
+    },
+    {
+      "label": "native overlay poll lane exposes committed dismiss release only",
+      "file": "apps/mobile/src/navigation/runtime/app-route-native-overlay-target-authorities.ts",
+      "pattern": "^(?![\\s\\S]*isSurfacePersistentPollPrewarm)(?![\\s\\S]*canDisplayPersistentPollSubstrate[\\s\\S]*resolveIsPersistentPollLane)[\\s\\S]*const isSurfacePersistentPollCommitted\\s*=[\\s\\S]*surfaceVisualPolicy\\.phase\\s*===\\s*'results_dismissing'[\\s\\S]*surfaceVisualPolicy\\.canReleasePersistentPolls[\\s\\S]*routeScenePolicySnapshot\\.isPersistentPollLaneEligible &&[\\s\\S]*surfaceVisualPolicy\\.phase !== 'results_dismissing'[\\s\\S]*isSurfacePersistentPollCommitted"
+    },
+    {
+      "label": "polls scene prewarm visibility follows route poll lane authority",
+      "file": "apps/mobile/src/overlays/useSearchRoutePollsSceneStateRuntime.ts",
+      "pattern": "const hasDockedPollsRestoreDemand =[\\s\\S]*dockedPollsRestoreIntent != null[\\s\\S]*commandState\\.pollsDockedSnapRequest != null[\\s\\S]*commandState\\.dockedPollsRestoreInFlight[\\s\\S]*const isPersistentPollsVisible =[\\s\\S]*overlayVisibilityState\\.isSearchOverlay &&[\\s\\S]*overlayVisibilityState\\.isPersistentPollLane[\\s\\S]*const currentSnap:[\\s\\S]*isPersistentPollsVisible && physicalPollsSheetSnap === 'hidden'"
+    },
+    {
+      "label": "visible sheet host does not switch to poll substrate before result release",
+      "file": "apps/mobile/src/navigation/runtime/app-route-sheet-host-authority-controller.ts",
+      "pattern": "^(?![\\s\\S]*isSearchDismissPollSubstratePrewarmed)(?![\\s\\S]*shouldUseSearchSheetHostForSearchSurface[\\s\\S]*canDisplayPersistentPollSubstrate)[\\s\\S]*shouldUseSearchSheetHostForSearchSurface\\s*=[\\s\\S]*!isSearchDismissPollBoundaryCommitted[\\s\\S]*surfaceVisualPolicy\\.bottomBandOwner === 'results_header'[\\s\\S]*isPersistentPollSheetHostActive\\s*=[\\s\\S]*isSearchDismissPollBoundaryCommitted[\\s\\S]*\\|\\|[\\s\\S]*\\(isPersistentPollLane && !shouldUseSearchSheetHostForSearchSurface\\)[\\s\\S]*sheetPresentationSceneKey\\s*=\\s*isSearchDismissPollBoundaryCommitted[\\s\\S]*\\? 'polls'[\\s\\S]*: shouldUseSearchSheetHostForSearchSurface[\\s\\S]*\\? 'search'"
+    },
+    {
+      "label": "poll substrate is not a separate render layer behind held search",
+      "file": "apps/mobile/src/overlays/SearchRouteSceneStackBottomSheetSurfaceHost.tsx",
+      "pattern": "^(?![\\s\\S]*SearchDismissPollSubstrateSurface)(?![\\s\\S]*pollOnlyDisplayTargetRegistry)(?![\\s\\S]*prewarmedSceneVisibilityValue)[\\s\\S]*<SearchRouteSceneStackBottomSheetInteractionGate[\\s\\S]*<BottomSheetSceneStackHost"
+    },
+    {
+      "label": "route display does not expose a separate prewarmed poll substrate before boundary",
+      "file": "apps/mobile/src/navigation/runtime/app-route-native-overlay-target-authorities.ts",
+      "pattern": "^(?![\\s\\S]*shouldPrewarmPollSubstrateBehindSearch)(?![\\s\\S]*shouldDisplayPollSubstrateBehindHeldSearch)(?![\\s\\S]*isSurfacePersistentPollPrewarm)(?![\\s\\S]*canDisplayPersistentPollSubstrate[\\s\\S]*displayedSceneKey)[\\s\\S]*displayedSceneKey:\\s*isPersistentPollLane[\\s\\S]*\\? 'polls'[\\s\\S]*prewarmedSceneKey:\\s*null"
+    },
+    {
+      "label": "poll release display signature follows committed persistent poll lane only",
+      "file": "apps/mobile/src/navigation/runtime/app-route-native-overlay-target-authorities.ts",
+      "pattern": "resolveDisplaySignature[\\s\\S]*routeState\\.rootOverlayKey[\\s\\S]*routeSceneSwitchSnapshot\\.routeActiveSceneKey[\\s\\S]*resolveIsPersistentPollLane\\(sourceSnapshot\\)"
+    },
+    {
+      "label": "display shared values have no dismiss-only prewarmed poll substrate",
+      "file": "apps/mobile/src/navigation/runtime/route-overlay-display-shared-values.ts",
+      "pattern": "^(?![\\s\\S]*prewarmedSceneVisibilityValue\\.value = 1[\\s\\S]*results_dismissing)[\\s\\S]*syncRouteOverlayDisplaySharedValues"
+    },
+    {
+      "label": "search body and chrome do not use per-piece close handoff opacity",
+      "file": "apps/mobile/src/overlays/BottomSheetSceneStackHost.tsx",
+      "pattern": "^(?![\\s\\S]*(isSearchResultsHandoffOverlayActive|heldResultsVisibility|isSearchResultsHandoffChrome|1\\s*-\\s*searchSurfacePageBundleProgress\\.value|sceneVisibilityValue\\.value \\* \\(1 - searchSurfacePageBundleProgress\\.value\\)))[\\s\\S]*const SceneStackBodyFrameHost[\\s\\S]*const SearchSceneStackBodyDisplayTarget[\\s\\S]*const SceneStackChromeLayerHost"
+    },
+    {
+      "label": "dismiss boundary page handoff uses discrete scene visibility styles",
+      "file": "apps/mobile/src/overlays/BottomSheetSceneStackHost.tsx",
+      "pattern": "^(?![\\s\\S]*SceneStackBodyFrameHost[\\s\\S]{0,520}useAnimatedStyle\\([\\s\\S]{0,260}(opacity|zIndex|elevation))(?![\\s\\S]*sceneVisibilityProjection)[\\s\\S]*resolveSceneStackStaticVisibility[\\s\\S]*displayedSceneKey \\?\\? 'search'[\\s\\S]*const SceneStackBodyFrameHost[\\s\\S]*styles\\.sceneStackBodyLayerVisible[\\s\\S]*styles\\.sceneStackBodyLayerHidden[\\s\\S]*const SearchSceneStackBodyDisplayTarget[\\s\\S]*<SceneStackBodyFrameHost[\\s\\S]*displayedSceneKey=\\{displayedSceneKey\\}[\\s\\S]*const SceneStackChromeLayerHost[\\s\\S]*isVisible=\\{isVisible\\}"
+    },
+    {
+      "label": "dismiss page bundle projection waits for committed poll release state",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-dismiss-motion-plane-runtime.ts",
+      "pattern": "resolveSearchDismissVisualBoundaryReached[\\s\\S]*dismissMotionPollPageReadyForBoundary < 0\\.5[\\s\\S]*return false[\\s\\S]*sheetY >= collapsedY - SEARCH_DISMISS_COLLAPSED_BOUNDARY_EPSILON_PT[\\s\\S]*commitDismissBoundary[\\s\\S]*searchSurfacePageBundleProgress\\s*=\\s*useDerivedValue<number>\\(\\(\\) => \\{[\\s\\S]*return dismissMotionPollPageReleasedForBoundary\\.value >= 0\\.5 \\? 1 : 0"
+    },
+    {
+      "label": "results page body is not a detached measured placeholder",
+      "file": "apps/mobile/src/overlays/SearchMountedScenePageBundleAuthority.tsx",
+      "pattern": "^(?![\\s\\S]*(bodyComponent=\\{<View pointerEvents=\"none\" style=\\{styles\\.resultsBodyViewportProbe\\} />\\}|SearchResultsPersistentBodyPortalHost|SearchResultsPageBundleChromePortalHost))[\\s\\S]*bodyComponent=\\{[\\s\\S]*<SearchResultsPersistentBodyHost"
+    },
+    {
+      "label": "overlay root does not mount detached results body or chrome portals",
+      "file": "apps/mobile/src/overlays/AppOverlayRouteHost.tsx",
+      "pattern": "^(?![\\s\\S]*(SearchResultsPersistentBodyPortalHost|SearchResultsPageBundleChromePortalHost))[\\s\\S]*<SearchOverlayRouteGateHost[\\s\\S]*<SearchOverlayRouteSheetSurfaceHost[\\s\\S]*</SearchOverlayRouteGateHost>[\\s\\S]*<NavSilhouetteHost"
+    },
+    {
+      "label": "results header component is published in the search page bundle",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-route-search-scene-model-owner.ts",
+      "pattern": "headerComponent:[\\s\\S]*routeSearchSceneReadModelRuntime\\.routeSearchSceneResultsReadModelSelectors[\\s\\S]*\\.resultsPageHeaderComponent"
+    },
+    {
+      "label": "mounted results list header does not duplicate page header top padding",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/search-mounted-results-data-store.ts",
+      "pattern": "^(?![\\s\\S]*paddingTop:\\s*viewArgs\\.headerHeight)(?=[\\s\\S]*contentContainerStyle:\\s*\\{[\\s\\S]*paddingBottom:\\s*admission\\.renderRowCount > 0 \\? RESULTS_BOTTOM_PADDING : 0,[\\s\\S]*paddingTop:\\s*0,)[\\s\\S]*$"
+    },
+    {
+      "label": "search page frame owns the results header with body content",
+      "file": "apps/mobile/src/overlays/BottomSheetSceneStackHost.tsx",
+      "pattern": "^(?![\\s\\S]*fixedHeader[A-Za-z]*Component)[\\s\\S]*const SearchSceneStackBodyDisplayTarget[\\s\\S]*<SearchResultsPageBundleHost[\\s\\S]*onHeaderLayout=\\{onHeaderLayout\\}[\\s\\S]*<SceneStackBodyFrameHost[\\s\\S]*sceneKey=\"search\"[\\s\\S]*\\{searchResultsPageBundle\\}[\\s\\S]*</SceneStackBodyFrameHost>"
+    },
+    {
+      "label": "scene stack surface does not subscribe to search page-bundle progress for hidden scene fanout",
+      "file": "apps/mobile/src/overlays/SearchRouteSceneStackBottomSheetSurfaceHost.tsx",
+      "pattern": "^(?![\\s\\S]*(routeHostVisualRuntimeAuthority|searchSurfacePageBundleProgressSelector|searchSurfacePageBundleProgressOverride|surfaceBodySnapshot\\.searchSurfacePageBundleProgress|searchSurfacePageBundleProgress=\\{searchSurfacePageBundleProgress\\}))[\\s\\S]*routeSheetSurfaceBodyAuthority[\\s\\S]*<BottomSheetSceneStackHost"
+    },
+    {
+      "label": "hidden scene body hosts do not receive search page-bundle progress fanout",
+      "file": "apps/mobile/src/overlays/BottomSheetSceneStackHost.tsx",
+      "pattern": "^(?![\\s\\S]*searchSurfacePageBundleProgress)(?![\\s\\S]*SceneStackBodyLayerHost[\\s\\S]*routeHostVisualRuntimeAuthority)[\\s\\S]*PERSISTENT_ROUTE_SCENE_STACK_KEYS\\.map[\\s\\S]*<SceneStackBodyLayerHost[\\s\\S]*sceneKey=\\{sceneKey\\}[\\s\\S]*displayedSceneKey=\\{effectiveDisplayedSceneKey\\}"
+    },
+    {
+      "label": "results-owned sheet forces search scene visibility before poll body can render",
+      "file": "apps/mobile/src/overlays/BottomSheetSceneStackHost.tsx",
+      "pattern": "useSearchSurfaceRuntimeSelector\\([\\s\\S]*surfaceSnapshot\\.activeBundle\\.kind === 'results'[\\s\\S]*surfaceSnapshot\\.heldBundle != null[\\s\\S]*surfaceSnapshot\\.redrawTransaction != null[\\s\\S]*dismissTransaction != null && !dismissTransaction\\.bottomBoundaryReached[\\s\\S]*const effectiveDisplayedSceneKey:[\\s\\S]*searchSurfaceOwnsVisibleSheet[\\s\\S]*\\? 'search'[\\s\\S]*: displayedSceneKey[\\s\\S]*<SearchSceneStackBodyDisplayTarget[\\s\\S]*displayedSceneKey=\\{effectiveDisplayedSceneKey\\}[\\s\\S]*<SceneStackBodyLayerHost[\\s\\S]*displayedSceneKey=\\{effectiveDisplayedSceneKey\\}"
+    },
+    {
+      "label": "scene body content host is independent from displayed scene visibility fanout",
+      "file": "apps/mobile/src/overlays/BottomSheetSceneStackHost.tsx",
+      "pattern": "^(?![\\s\\S]*type SceneStackBodyContentLayerHostProps[\\s\\S]{0,260}displayedSceneKey)(?![\\s\\S]*<SceneStackBodyContentLayerHost[\\s\\S]{0,320}displayedSceneKey)(?=[\\s\\S]*type SceneStackBodyContentLayerHostProps[\\s\\S]*'sceneStackSurfaceAuthority' \\| 'bodyRuntimeAuthority' \\| 'sceneKey')(?=[\\s\\S]*<SceneStackBodyContentLayerHost[\\s\\S]*sceneKey=\\{props\\.sceneKey\\}[\\s\\S]*sceneStackSurfaceAuthority=\\{props\\.sceneStackSurfaceAuthority\\}[\\s\\S]*bodyRuntimeAuthority=\\{props\\.bodyRuntimeAuthority\\})[\\s\\S]*$"
+    },
+    {
+      "label": "search route frame host keeps persistent nav-body exclusion active on startup and transitions only",
+      "file": "apps/mobile/src/overlays/SearchRouteSheetFrameHost.tsx",
+      "pattern": "^(?![\\s\\S]*(FrostedGlassBackground|SearchRouteSheetNavExclusionMaskLayer|useSearchRouteSheetNavBodyClipBottom|bottomNavHideProgress|withTiming|sheetClipAnimatedStyle|styles\\.sheetVisibleMask|useAnimatedStyle\\([\\s\\S]*bottom:|<MaskedView|react-native-svg|createAnimatedComponent\\(Rect\\)|OVERLAY_CORNER_RADIUS|APP_ROUTE_NAV_SILHOUETTE_BOUNDARY_SHAPE|navMaterialTopInset=|cutoutHeight=|cutoutRadius=|fallbackNavTranslateY|fallbackExclusionModeValue|useSharedValue|runtime\\?\\.nav))(?![\\s\\S]*runtime\\?\\.nav[A-Za-z]+\\s*\\?\\?)(?![\\s\\S]*navBodyBoundaryY\\b)(?![\\s\\S]*navBodyBoundaryIsHiding=)(?![\\s\\S]*navBodyBoundaryAnimationDurationMs=)(?![\\s\\S]*resolveNativeSheetMaskBoundaryProgress)(?![\\s\\S]*navBodyBoundaryProgress)(?![\\s\\S]*navBarCutoutProgress)(?![\\s\\S]*\\bprogress\\b)(?![\\s\\S]*isPersistentNavBodyExclusionMode\\(modeValue\\) \\? 0 : Math\\.max\\(0, navTranslateY\\))(?=[\\s\\S]*APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE)(?=[\\s\\S]*isPersistentNavBodyExclusionMode[\\s\\S]*dockedPersistentPoll[\\s\\S]*staticPersistent)(?=[\\s\\S]*shouldEnableSheetMaskForNavSilhouette[\\s\\S]*isPersistentNavBodyExclusionMode\\(modeValue\\)[\\s\\S]*Math\\.max\\(0, navBarHeight - Math\\.max\\(0, navTranslateY\\)\\) > 0\\.25)(?=[\\s\\S]*resolveNativeSheetMaskBoundaryTranslateY[\\s\\S]*return Math\\.max\\(0, navTranslateY\\))(?=[\\s\\S]*routeHostVisualRuntimeAuthority\\.subscribe)(?=[\\s\\S]*runtime == null[\\s\\S]*\\? null[\\s\\S]*exclusionModeValue:\\s*runtime\\.navSilhouetteSheetExclusionModeValue[\\s\\S]*navBarHeight:\\s*runtime\\.navBarHeight[\\s\\S]*navBarTop:\\s*runtime\\.navBarTop[\\s\\S]*bottomNavHiddenTranslateY:\\s*runtime\\.bottomNavHiddenTranslateY[\\s\\S]*navTranslateY:\\s*runtime\\.navTranslateY)(?=[\\s\\S]*sheetMaskRuntime == null[\\s\\S]*return null)(?=[\\s\\S]*useAnimatedProps[\\s\\S]*const modeValue[\\s\\S]*const boundaryTranslateY = resolveNativeSheetMaskBoundaryTranslateY[\\s\\S]*navTranslateY: boundaryTranslateY[\\s\\S]*maskEnabled: shouldMaskSheet[\\s\\S]*navBodyBoundaryTranslateY: boundaryTranslateY)(?=[\\s\\S]*<AnimatedSearchRouteSheetNavExclusionMaskNativeView[\\s\\S]*pointerEvents=\"box-none\"[\\s\\S]*animatedProps=\\{nativeMaskAnimatedProps as never\\}[\\s\\S]*navBodyBoundaryTranslateY=\\{initialBoundaryTranslateY\\}[\\s\\S]*navBodyBoundaryVisibleY=\\{sheetMaskRuntime\\.navBarTop\\}[\\s\\S]*navBodyBoundaryHiddenY=\\{[\\s\\S]*sheetMaskRuntime\\.navBarTop \\+ Math\\.max\\(0, sheetMaskRuntime\\.bottomNavHiddenTranslateY\\)[\\s\\S]*\\}[\\s\\S]*maskOriginY=\\{0\\}[\\s\\S]*style=\\{\\[styles\\.sheetMask, \\{ width: viewportWidth, height: viewportHeight \\}\\]\\}[\\s\\S]*>\\s*\\{children\\}\\s*</AnimatedSearchRouteSheetNavExclusionMaskNativeView>)[\\s\\S]*$"
+    },
+    {
+      "label": "nav silhouette non-none modes share one inverse sheet mask geometry",
+      "file": "apps/mobile/src/navigation/runtime/app-route-nav-silhouette-authority.ts",
+      "pattern": "resolveAppRouteNavSilhouetteSheetBodyExclusionHeight[\\s\\S]*if \\(mode === 'none'\\)[\\s\\S]*return 0[\\s\\S]*return Math\\.max\\(0, Math\\.min\\(navBarHeight, navBarHeight - Math\\.max\\(0, navTranslateY\\)\\)\\)"
+    },
+    {
+      "label": "native nav material uses old rounded bite while sheet mask clips only nav body",
+      "file": "apps/mobile/ios/cravesearch/SearchRouteSheetNavExclusionMaskView.swift",
+      "pattern": "^(?![\\s\\S]*rawRevealRect)(?![\\s\\S]*revealRect)(?![\\s\\S]*roundedRect:\\s*navBodyRect)(?![\\s\\S]*roundedRect:\\s*visibleRect)(?![\\s\\S]*maskPath\\.append\\(navCutoutPath\\))(?![\\s\\S]*@objc var navBodyBoundaryY)(?![\\s\\S]*@objc var navBodyBoundaryProgress)(?![\\s\\S]*@objc var navBodyBoundaryIsHiding)(?![\\s\\S]*@objc var navBodyBoundaryAnimationDurationMs)(?![\\s\\S]*boundaryDeltaY\\(forProgress)(?![\\s\\S]*translated_static_path_shared_progress)(?![\\s\\S]*CADisplayLink)(?![\\s\\S]*CAKeyframeAnimation)(?![\\s\\S]*makeBoundaryPathAnimation)(?![\\s\\S]*makeBoundaryTransformAnimation)(?=[\\s\\S]*makeSearchRouteNavSilhouetteMaterialPath)(?=[\\s\\S]*let materialPath = UIBezierPath\\(rect: materialRect\\))(?=[\\s\\S]*makeSearchRouteNavCutoutGeometry)(?=[\\s\\S]*roundedRect: cutoutGeometry\\.rect[\\s\\S]*cornerRadius: cutoutGeometry\\.radius)(?=[\\s\\S]*effectView\\.layer\\.mask = effectMaskLayer)(?=[\\s\\S]*tintView\\.layer\\.mask = tintMaskLayer)(?=[\\s\\S]*@objc var navBodyBoundaryVisibleY)(?=[\\s\\S]*@objc var navBodyBoundaryHiddenY)(?=[\\s\\S]*@objc var navBodyBoundaryTranslateY)(?=[\\s\\S]*@objc var onMaskPerfEvent)(?=[\\s\\S]*ensureTranslatedMaskPath)(?=[\\s\\S]*let maskLayerFrame = fullRect\\.insetBy\\(dx: 0, dy: -overscanY\\))(?=[\\s\\S]*let localVisibleBoundaryY = visibleBoundaryY - maskOriginY - maskLayerFrame\\.minY)(?=[\\s\\S]*resolvedBoundaryTranslateY\\(\\))(?=[\\s\\S]*CATransform3DMakeTranslation\\(0, targetDeltaY, 0\\))(?=[\\s\\S]*CATransform3DMakeTranslation\\(0, toDeltaY, 0\\))(?=[\\s\\S]*translated_static_path_shared_nav_translate_y)(?=[\\s\\S]*native_sheet_mask_transition_setup)(?![\\s\\S]*activeBoundaryAnimationTargetProgress)(?![\\s\\S]*CABasicAnimation\\(keyPath: \"transform\"\\))(?![\\s\\S]*boundaryAnimationTargetProgress)(?=[\\s\\S]*private func makeSheetExclusionMaskPath)(?=[\\s\\S]*let navBodyRect = CGRect)(?=[\\s\\S]*maskPath\\.append\\(UIBezierPath\\(rect: navBodyRect\\)\\))[\\s\\S]*$"
+    },
+    {
+      "label": "page frame does not fake nav exclusion with background-only bottom clipping",
+      "file": "apps/mobile/src/overlays/BottomSheetSceneStackPageFrame.tsx",
+      "pattern": "^(?![\\s\\S]*(useSearchRouteSheetNavBodyClipBottom|navBodyClipBottom|backgroundLayerStyle[\\s\\S]*bottom:|SearchRouteSheetNavExclusionMaskLayer))(?=[\\s\\S]*<View pointerEvents=\"none\" style=\\{styles\\.sceneStackPageBackgroundLayer\\}>[\\s\\S]*\\{backgroundComponent\\})(?=[\\s\\S]*style=\\{bodyLayerStyle\\}[\\s\\S]*\\{bodyComponent\\})[\\s\\S]*$"
+    },
+    {
+      "label": "page frame owns one continuous background with content-only header/body lanes",
+      "file": "apps/mobile/src/overlays/BottomSheetSceneStackPageFrame.tsx",
+      "pattern": "Page-owned material is continuous; header/body/overlay lanes stay content-only[\\s\\S]*sceneStackPageBackgroundLayer[\\s\\S]*\\{backgroundComponent\\}[\\s\\S]*sceneStackPageHeaderLayer[\\s\\S]*\\{headerComponent\\}"
+    },
+    {
+      "label": "page frame keeps body viewport physically below fixed header cutout chrome",
+      "file": "apps/mobile/src/overlays/BottomSheetSceneStackPageFrame.tsx",
+      "pattern": "^(?![\\s\\S]*(PAGE_FRAME_SEAM_OVERLAP|effectiveHeaderHeight\\s*-|bodyUnderlapsHeader))[\\s\\S]*headerDividerScrollOffset\\?: SharedValue<number>[\\s\\S]*shouldReserveHeaderLane \\? \\{ top: Math\\.max\\(0, effectiveHeaderHeight\\) \\} : null[\\s\\S]*HeaderScrollDivider[\\s\\S]*scrollOffset=\\{headerDividerScrollOffset\\}"
+    },
+    {
+      "label": "results page keeps fixed header separate from list viewport without top-inset underlap",
+      "file": "apps/mobile/src/overlays/SearchMountedScenePageBundleAuthority.tsx",
+      "pattern": "^(?![\\s\\S]*(contentTopInset|bodyUnderlapsHeader))[\\s\\S]*<SearchMountedSceneBody[\\s\\S]*bodyDefaults=\\{bodyDefaults\\}[\\s\\S]*bodyScrollRuntime=\\{bodyScrollRuntime\\}[\\s\\S]*<SearchResultsPersistentBodyHost[\\s\\S]*bodyDefaults=\\{bodyDefaults\\}[\\s\\S]*bodyScrollRuntime=\\{bodyScrollRuntime\\}[\\s\\S]*reserveHeaderLane=\\{pageBundle\\.headerComponent == null\\}[\\s\\S]*reservedHeaderHeight=\\{reservedHeaderHeight\\}[\\s\\S]*headerDividerScrollOffset=\\{bodyScrollRuntime\\?\\.scrollOffset\\}"
+    },
+    {
+      "label": "mounted results list does not fake header separation with content-container top inset",
+      "file": "apps/mobile/src/overlays/SearchMountedSceneBody.tsx",
+      "pattern": "^(?![\\s\\S]*(applyContentTopInset|contentTopInset))[\\s\\S]*sceneContentContainerStyle = React\\.useMemo[\\s\\S]*sanitizeContentContainerStyle\\([\\s\\S]*activeListTransport\\?\\.contentContainerStyle[\\s\\S]*bodyDefaults\\.resolvedContentContainerStyle[\\s\\S]*<SearchMountedResultsListTarget[\\s\\S]*bodyDefaults=\\{bodyDefaults\\}[\\s\\S]*bodyScrollRuntime=\\{bodyScrollRuntime\\}"
+    },
+    {
+      "label": "sheet-to-list handoff gates native scroll until expanded then transfers same swipe",
+      "file": "apps/mobile/src/overlays/useBottomSheetSharedGestureRuntime.ts",
+      "pattern": "^(?![\\s\\S]*releaseExpandGestureToScroll)(?=[\\s\\S]*type HandoffOptions = \\{[\\s\\S]*clampToExpanded\\?: boolean;[\\s\\S]*\\})(?=[\\s\\S]*const handoffExpandGestureToScroll = \\([\\s\\S]*stateManager: GestureStateManagerLike,[\\s\\S]*options\\?: HandoffOptions[\\s\\S]*stateManager\\.fail\\(\\))(?=[\\s\\S]*if \\(atExpanded && goingUp && shouldHandoffAtTop\\) \\{[\\s\\S]*handoffExpandGestureToScroll\\(stateManager\\))(?=[\\s\\S]*Gesture\\.Native\\(\\)[\\s\\S]*\\.requireExternalGestureToFail\\(expandPanGesture\\)[\\s\\S]*\\.simultaneousWithExternalGesture\\(collapsePanGesture\\))[\\s\\S]*$"
+    },
+    {
+      "label": "sheet scroll container rebinds native gesture object like old-good implementation",
+      "file": "apps/mobile/src/overlays/useBottomSheetSharedScrollContainerRuntime.tsx",
+      "pattern": "^(?![\\s\\S]*gestureRef)(?![\\s\\S]*transparentRef)(?=[\\s\\S]*const transparent = scrollHeaderComponent != null)(?=[\\s\\S]*gesture=\\{gesturesScroll\\})(?=[\\s\\S]*transparent=\\{transparent\\})(?=[\\s\\S]*\\}, \\[gesturesScroll, transparent\\]\\))[\\s\\S]*$"
+    },
+    {
+      "label": "polls panel cannot satisfy dismiss release readiness",
+      "file": "apps/mobile/src/overlays/panels/PollsPanel.tsx",
+      "pattern": "^(?![\\s\\S]*(usePersistentPollsSearchTransitionReadiness|PollsPanel:(arePersistentPollsHeaderReady|arePersistentPollsBodyReady|isPersistentPollHostReady)|markPollPagePartReady))[\\s\\S]*PollsMountedSceneHeader[\\s\\S]*PollsMountedSceneBody"
+    },
+    {
+      "label": "collapsed poll page owns a white lower substrate for nav reveal",
+      "file": "apps/mobile/src/overlays/panels/PollsPanel.tsx",
+      "pattern": "collapsedContent:\\s*\\{[\\s\\S]*flex:\\s*1,[\\s\\S]*alignSelf:\\s*'stretch',[\\s\\S]*paddingHorizontal:\\s*OVERLAY_HORIZONTAL_PADDING,[\\s\\S]*backgroundColor:\\s*'#ffffff'"
+    },
+    {
+      "label": "poll page readiness publishes accepted part telemetry",
+      "file": "apps/mobile/src/screens/Search/runtime/surface/search-surface-runtime.ts",
+      "pattern": "event:\\s*'search_surface_poll_page_part_ready_contract'[\\s\\S]*accepted,[\\s\\S]*activeTransactionId[\\s\\S]*part,[\\s\\S]*pollBodyReady[\\s\\S]*pollHeaderReady[\\s\\S]*pollHostReady[\\s\\S]*source,[\\s\\S]*transactionId"
+    },
+    {
+      "label": "persistent poll readiness is render-proofed, not seeded by prewarm",
+      "file": "apps/mobile/src/screens/Search/runtime/surface/search-surface-runtime.ts",
+      "pattern": "^(?![\\s\\S]*markPollPagePrewarmedForDismiss)[\\s\\S]*isPollPageReleaseReadinessSource[\\s\\S]*source\\.startsWith\\('sceneStack:'\\)[\\s\\S]*source\\.endsWith\\(`:\\$\\{part\\}`\\)[\\s\\S]*markPollPagePartReady[\\s\\S]*hasValidReadinessSource[\\s\\S]*pollHeaderReady:\\s*true[\\s\\S]*pollBodyReady:\\s*true[\\s\\S]*pollHostReady:\\s*true"
+    },
+    {
+      "label": "search dismiss uses already warm poll data lane before collapsed release",
+      "file": "apps/mobile/src/navigation/runtime/app-route-scene-stack-runtime.ts",
+      "pattern": "shouldPrewarmSearchDismissPollDataLane[\\s\\S]*searchSurfaceSnapshot\\.activeBundle\\.kind === 'results'[\\s\\S]*surfaceVisualPolicy\\.phase === 'results_dismissing'[\\s\\S]*surfaceVisualPolicy\\.canDisplayPersistentPollSubstrate[\\s\\S]*!surfaceVisualPolicy\\.canReleasePersistentPolls[\\s\\S]*shouldSyncSearchDismissPollDataPrewarmScene[\\s\\S]*mountedSceneKeys\\.includes\\('polls'\\)[\\s\\S]*canPrewarmSearchDismissPollData[\\s\\S]*allowInactiveDataLaneAdmission:[\\s\\S]*canPrewarmRetainedMountedBody \\|\\| canPrewarmSearchDismissPollData"
+    },
+    {
+      "label": "search dismiss poll body readiness requires active data lane",
+      "file": "apps/mobile/src/navigation/runtime/app-route-scene-stack-runtime.ts",
+      "pattern": "hasPollBodyContentLane[\\s\\S]*hasMountedPollBody[\\s\\S]*contentActivity\\.shouldRunDataLane[\\s\\S]*contentActivity\\.shouldSubscribeDataLane[\\s\\S]*if \\(hasPollBodyContentLane\\)[\\s\\S]*markPollPagePartReady\\([\\s\\S]*'body'[\\s\\S]*if \\(presentationSnapshot\\.isMounted && hasMountedPollHeader && hasPollBodyContentLane\\)[\\s\\S]*markPollPagePartReady\\([\\s\\S]*'host'"
+    },
+    {
+      "label": "surface dismiss has one collapsed boundary release state",
+      "file": "apps/mobile/src/screens/Search/runtime/surface/search-surface-runtime.ts",
+      "pattern": "^(?![\\s\\S]*(visualHandoffReached|canVisuallyReleasePersistentPolls|canFinalizePersistentPolls|markVisualHandoffReached))[\\s\\S]*bottomBoundaryReached:\\s*boolean[\\s\\S]*canReleasePersistentPolls[\\s\\S]*canDisplayPersistentPollSubstrate && dismissTransaction\\.bottomBoundaryReached[\\s\\S]*markBottomBoundaryReached[\\s\\S]*nextDismissTransaction\\.bottomBoundaryReached"
+    },
+    {
+      "label": "search submit path opens the shared route sheet transport",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-surface-results-enter-transaction-execution-runtime.ts",
+      "pattern": "^(?![\\s\\S]*(animateSheetTo\\?\\.\\(targetSnap|requestObservedRouteSheetOpenMotionOnUI|getRouteSheetMotionState|runOnUI\\())(?=[\\s\\S]*targetSnap != null[\\s\\S]*activeSceneKey === 'search'[\\s\\S]*routeSceneMotionRuntime\\.requestLocalSheetMotion\\('searchRoute'[\\s\\S]*snap:\\s*targetSnap[\\s\\S]*resultsRuntimeOwner\\.stageSearchSurfaceResultsTransaction\\(snapshot\\))(?=[\\s\\S]*requestOverlaySwitch\\(\\{[\\s\\S]*targetSceneKey:\\s*'search'[\\s\\S]*snapTarget:\\s*targetSnap[\\s\\S]*resultsRuntimeOwner\\.stageSearchSurfaceResultsTransaction\\(snapshot\\))[\\s\\S]*$"
+    },
+    {
+      "label": "results sheet visibility controller has no instant submit sheet y writer",
+      "file": "apps/mobile/src/navigation/runtime/app-route-results-sheet-visibility-controller.ts",
+      "pattern": "^(?![\\s\\S]*(showPanelInstant|setSheetTranslateYTo\\(position\\)))[\\s\\S]*prepareShortcutSheetTransition[\\s\\S]*nextLogicalSnap[\\s\\S]*commitSnapshot\\([\\s\\S]*panelVisible:\\s*true[\\s\\S]*sheetState:\\s*nextLogicalSnap"
+    },
+    {
+      "label": "route sheet frame allows bounded adapter rebind without useSyncExternalStore frame loop",
+      "file": "apps/mobile/src/navigation/runtime/use-app-route-sheet-frame-host-authority.ts",
+      "pattern": "^(?![\\s\\S]*useSyncExternalStore)[\\s\\S]*registerSharedValues\\(nativeSharedValueTargets\\)"
+    },
+    {
+      "label": "route sheet frame authority does not own independent nav silhouette clip geometry",
+      "file": "apps/mobile/src/navigation/runtime/use-app-route-sheet-frame-host-authority.ts",
+      "pattern": "^(?![\\s\\S]*SheetClipAnimatedStyle)[\\s\\S]*sheetClipStyle:\\s*null"
+    },
+    {
+      "label": "restaurant sheet chrome does not duplicate nav cutout",
+      "file": "apps/mobile/src/overlays/useRestaurantRouteSheetChromeRuntime.tsx",
+      "pattern": "useAnimatedStyle\\(\\(\\) => \\(\\{ bottom: 0 \\}\\), \\[\\]\\)"
+    },
+    {
+      "label": "authority owns inverse sheet mask modes",
+      "file": "apps/mobile/src/navigation/runtime/app-route-nav-silhouette-authority.ts",
+      "pattern": "^(?![\\s\\S]*activeSemanticOverlayKey === 'search' \\? 'animatedSearchTransition')(?![\\s\\S]*if \\(mode === 'staticPersistent'\\))(?![\\s\\S]*if \\(mode === 'dockedPersistentPoll'\\))[\\s\\S]*AppRouteNavSilhouetteSheetExclusionMode[\\s\\S]*'dockedPersistentPoll'[\\s\\S]*'staticPersistent'[\\s\\S]*'animatedSearchTransition'[\\s\\S]*activeSemanticOverlayKey === 'search' \\|\\| activeSemanticOverlayKey === 'polls'[\\s\\S]*return 'dockedPersistentPoll'[\\s\\S]*return 'staticPersistent'[\\s\\S]*if \\(mode === 'none'\\)[\\s\\S]*expectedSheetMaskHeight:\\s*0[\\s\\S]*const visiblePaintedHeight = resolveAppRouteNavSilhouetteVisiblePaintedHeight[\\s\\S]*expectedSheetBodyExclusionHeight:\\s*resolveAppRouteNavSilhouetteSheetBodyExclusionHeight\\([\\s\\S]*expectedSheetMaskHeight:\\s*visiblePaintedHeight"
+    },
+    {
+      "label": "native sheet frame mirrors nav cutout progress",
+      "file": "apps/mobile/src/navigation/runtime/app-route-sheet-frame-host-native-targets.ts",
+      "pattern": "sheetExclusionModeValue\\.value\\s*=[\\s\\S]*chromeVisualState\\.navSilhouetteSheetExclusionModeValue\\.value[\\s\\S]*navTranslateYValue\\.value\\s*=\\s*chromeVisualState\\.navTranslateY\\.value[\\s\\S]*navBarCutoutProgressValue\\.value\\s*=\\s*chromeVisualState\\.navBarCutoutProgress\\.value[\\s\\S]*navBarCutoutIsHidingValue\\.value\\s*=\\s*chromeVisualState\\.navBarCutoutIsHiding"
+    },
+    {
+      "label": "native sheet frame has no independent nav cutout timing",
+      "file": "apps/mobile/src/navigation/runtime/app-route-sheet-frame-host-native-targets.ts",
+      "pattern": "^(?![\\s\\S]*(NAV_CUTOUT_MOTION_DURATION_MS|withTiming\\(|Easing\\.inOut\\(Easing\\.cubic\\)))[\\s\\S]*$"
+    },
+    {
+      "label": "persistent sheet applies nav cutout",
+      "file": "apps/mobile/src/navigation/runtime/app-route-native-overlay-target-authorities.ts",
+      "pattern": "overlaySheetApplyNavBarCutout:\\s*true"
+    },
+    {
+      "label": "results toggle restaurants segment",
+      "file": "apps/mobile/src/screens/Search/constants/search.ts",
+      "pattern": "Restaurants"
+    },
+    {
+      "label": "results toggle dishes segment",
+      "file": "apps/mobile/src/screens/Search/constants/search.ts",
+      "pattern": "Dishes"
+    },
+    {
+      "label": "dot placement collision enabled",
+      "file": "apps/mobile/src/screens/Search/components/search-map.tsx",
+      "pattern": "textAllowOverlap:\\s*false,[\\s\\S]*textIgnorePlacement:\\s*false"
+    },
+    {
+      "label": "pin label placement collision enabled",
+      "file": "apps/mobile/src/screens/Search/hooks/use-direct-search-map-source-controller.ts",
+      "pattern": "textAllowOverlap:\\s*false,[\\s\\S]*textOptional:\\s*false,[\\s\\S]*textIgnorePlacement:\\s*false"
+    },
+    {
+      "label": "direct map source emits old-good label candidate features per pin",
+      "file": "apps/mobile/src/screens/Search/hooks/use-direct-search-map-source-controller.ts",
+      "pattern": "LABEL_CANDIDATES_IN_ORDER[\\s\\S]*buildLabelCandidateFeatureId\\(markerKey, candidate\\)[\\s\\S]*labelCandidate:\\s*candidate[\\s\\S]*nativeLabelOpacity:\\s*1[\\s\\S]*labelBuilder\\.appendFeature"
+    },
+    {
+      "label": "search map labels use old-good candidate layer placement",
+      "file": "apps/mobile/src/screens/Search/components/search-map.tsx",
+      "pattern": "^(?![\\s\\S]*(textVariableAnchor|labelVariableRadialOffsetEm|anchor\\?:\\s*'top'|const\\s+RESTAURANT_LABEL_LAYER_ID\\b|const\\s+LABEL_INTERACTION_LAYER_ID\\b|nativeLabelPreference|feature-state'\\s*,\\s*'nativeLabelPreference))(?=[\\s\\S]*LABEL_LAYER_SPECS)(?=[\\s\\S]*labelCandidateStyles)(?=[\\s\\S]*\\['get', 'labelPreference'\\])(?=[\\s\\S]*LABEL_MUTEX_IMAGE_ID)(?=[\\s\\S]*textAnchor:\\s*'top'[\\s\\S]*textOffset:\\s*\\[0, labelRadialYEm - labelUpShiftEm\\])(?=[\\s\\S]*textAnchor:\\s*'left'[\\s\\S]*textOffset:\\s*\\[labelRadialXEm, -labelUpShiftEm\\])(?=[\\s\\S]*textAnchor:\\s*'bottom'[\\s\\S]*textOffset:\\s*\\[0, -\\(labelRadialTopEm \\+ labelUpShiftEm\\)\\])(?=[\\s\\S]*textAnchor:\\s*'right'[\\s\\S]*textOffset:\\s*\\[-labelRadialXEm, -labelUpShiftEm\\])[\\s\\S]*$"
+    },
+    {
+      "label": "marker presentation opacity stays on old-good feature-state CADisplayLink path",
+      "file": "apps/mobile/ios/cravesearch/SearchMapRenderController.swift",
+      "pattern": "^(?![\\s\\S]*(presentationOpacityFeatureCollection|sourceRewriteCount|presentation_opacity_layer_target|lastAppliedPresentationLayerOpacity|lastAppliedPresentationLayerTransitionDurationMs|dismissPresentationOpacityDurationMs))(?=[\\s\\S]*private let dismissSettleDelayMs = 300)(?=[\\s\\S]*class PresentationOpacityAnimator[\\s\\S]*CADisplayLink)(?=[\\s\\S]*func stepPresentationOpacityAnimation)(?=[\\s\\S]*mapboxMap\\.setFeatureState[\\s\\S]*nativePresentationOpacity)(?=[\\s\\S]*try clearResidentSources\\(for: state\\)[\\s\\S]*presentation_exit_settled)[\\s\\S]*$"
+    },
+    {
+      "label": "search map visual layers multiply feature-state presentation opacity without label style transition override",
+      "file": "apps/mobile/src/screens/Search/components/search-map.tsx",
+      "pattern": "^(?![\\s\\S]*textOpacityTransition:\\s*PIN_OPACITY_TRANSITION,\\s*iconImage:\\s*LABEL_MUTEX_IMAGE_ID)(?=[\\s\\S]*const nativePresentationOpacityExpression[\\s\\S]*\\['feature-state', 'nativePresentationOpacity'\\][\\s\\S]*\\['get', 'nativePresentationOpacity'\\])(?=[\\s\\S]*textOpacity:\\s*\\['\\*', nativePresentationOpacityExpression, nativeDotOpacityExpression\\])(?=[\\s\\S]*textOpacity:\\s*\\[[\\s\\S]*'\\*',[\\s\\S]*nativePresentationOpacityExpression,[\\s\\S]*nativeLabelOpacityExpression,[\\s\\S]*baseTextOpacity)(?=[\\s\\S]*STYLE_PINS_SHADOW_STYLE[\\s\\S]*nativePresentationOpacityExpression)(?=[\\s\\S]*STYLE_PINS_OUTLINE_GLYPH_STYLE[\\s\\S]*nativePresentationOpacityExpression)(?=[\\s\\S]*STYLE_PINS_FILL_GLYPH_STYLE[\\s\\S]*nativePresentationOpacityExpression)(?=[\\s\\S]*STYLE_PINS_RANK_STYLE[\\s\\S]*nativePresentationOpacityExpression)[\\s\\S]*$"
+    },
+    {
+      "label": "native map label observation preserves old-good sticky candidate path",
+      "file": "apps/mobile/ios/cravesearch/SearchMapRenderController.swift",
+      "pattern": "^(?![\\s\\S]*(featureId == \"\\\\\\(markerKey\\)::label\"|nativeLabelPreference))(?=[\\s\\S]*stickyCandidateByIdentity)(?=[\\s\\S]*RenderedPlacedLabelObservation)(?=[\\s\\S]*candidate:\\s*String)(?=[\\s\\S]*enableStickyLabelCandidates)(?=[\\s\\S]*stickyProposedCandidateByIdentity)(?=[\\s\\S]*stickyUnlockMissingStreakMoving)(?=[\\s\\S]*\"labelPreference\": Self\\.effectiveLabelPreference)(?=[\\s\\S]*parseRenderedLabelCandidateFeatureId)(?=[\\s\\S]*let delimiter = \"::label::\")(?=[\\s\\S]*buildRenderedLabelCandidateFeatureId)(?=[\\s\\S]*labelCandidateString)[\\s\\S]*$"
+    },
+    {
+      "label": "map source avoids surface authority fanout and follows mounted results",
+      "file": "apps/mobile/src/screens/Search/hooks/use-direct-search-map-source-controller.ts",
+      "pattern": "^(?![\\s\\S]*map_source_controller_surface_state)(?![\\s\\S]*resultsPresentationSurfaceAuthority\\.subscribe)[\\s\\S]*subscribeSearchMountedResultsDataSnapshot\\(\\s*publishAndFetch\\s*,\\s*\\{[\\s\\S]*?notifyMode:\\s*'deferred'[\\s\\S]*?\\}\\s*\\)[\\s\\S]*viewportBoundsService\\.subscribe\\((?:publishAndFetch|\\(\\)\\s*=>\\s*\\{[\\s\\S]*canSkipSourceRebuildForShortcutViewport[\\s\\S]*publishSourcesRef\\.current\\(\\)[\\s\\S]*maybeFetchShortcutCoverage\\(\\)[\\s\\S]*\\})\\)"
+    },
+    {
+      "label": "SearchRuntimeBus has no hydration surface transaction finalize authority fields",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/search-runtime-bus.ts",
+      "pattern": "^(?![\\s\\S]*(searchSurfaceResultsTransactionKey|resultsHydrationKey|hydratedResultsKey|shouldHydrateResultsForRender|isResultsHydrationSettled|resultsFirstPaintKey|listFirstPaintReady|allowHydrationFinalizeCommit|hydrationOperationId|deriveCommittedSearchSurfaceResultsSnapshotKey|deriveSearchSurfaceResultsTransactionKey))[\\s\\S]*$"
+    },
+    {
+      "label": "hydration finalize readiness is read live without route sheet subscription",
+      "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-results-panel-hydration-runtime-state.ts",
+      "pattern": "^(?![\\s\\S]*\\['allowHydrationFinalizeCommit', 'resultsHydrationKey'\\])(?![\\s\\S]*useResultsPresentationSurfaceAuthoritySelector)(?![\\s\\S]*results_panel_hydration_runtime_surface_state)(?=[\\s\\S]*const surfaceResultsHydrationKey\\s*=\\s*[\\s\\S]*resultsPresentationSurfaceAuthority\\.getSnapshot\\(\\)\\.resultsHydrationKey)(?=[\\s\\S]*getAllowHydrationFinalizeCommit[\\s\\S]*resultsPresentationSurfaceAuthority\\.getSnapshot\\(\\)\\.allowHydrationFinalizeCommit)[\\s\\S]*$"
+    },
+    {
+      "label": "handoff finalize policy publishes to surface authority",
+      "file": "apps/mobile/src/screens/Search/hooks/use-search-runtime-work-coordination-runtime.ts",
+      "pattern": "resultsPresentationSurfaceAuthority\\.publish\\([\\s\\S]*allowHydrationFinalizeCommit[\\s\\S]*run_one_handoff_hydration_finalize_policy"
+    },
+    {
+      "label": "pin label collision obstacle active",
+      "file": "apps/mobile/src/screens/Search/components/search-map.tsx",
+      "pattern": "iconIgnorePlacement:\\s*false"
+    },
+    {
+      "label": "overlay enter timing",
+      "file": "apps/mobile/src/overlays/sheetUtils.ts",
+      "pattern": "enterDurationMs:\\s*260"
+    },
+    {
+      "label": "overlay exit timing",
+      "file": "apps/mobile/src/overlays/sheetUtils.ts",
+      "pattern": "exitDurationMs:\\s*220"
+    }
+  ]
+}

@@ -1,7 +1,6 @@
 import React from 'react';
 
 import type { CreateProfileActionRuntimeArgs } from './profile-action-runtime-port-contract';
-import type { ProfileAppExecutionRuntime } from '../../../../navigation/runtime/app-route-profile-app-execution-runtime-contract';
 import type { ProfileRuntimeActions } from './profile-owner-runtime-contract';
 import { useProfileOwnerPresentationActionsRuntime } from './profile-owner-presentation-actions-runtime';
 import { useProfileOwnerRuntimeActionsRuntime } from './profile-owner-runtime-actions-runtime';
@@ -14,8 +13,12 @@ type UseProfileOwnerActionSurfaceRuntimeArgs = {
   actionExecutionPorts: CreateProfileActionRuntimeArgs['actionExecutionPorts'];
   refreshSelectionExecutionPorts: CreateProfileActionRuntimeArgs['refreshSelectionExecutionPorts'];
   hydrateRestaurantProfileById: ProfileRuntimeStateOwner['hydrationRuntime']['hydrateRestaurantProfileById'];
+  getRestaurantProfileRequestSeq: ProfileRuntimeStateOwner['hydrationRuntime']['getRestaurantProfileRequestSeq'];
+  setRestaurantProfileRequestSeq: ProfileRuntimeStateOwner['hydrationRuntime']['setRestaurantProfileRequestSeq'];
+  cancelActiveHydrationIntent: ProfileRuntimeStateOwner['hydrationRuntime']['cancelActiveHydrationIntent'];
   resetRestaurantProfileFocusSession: ProfileRuntimeStateOwner['focusRuntime']['resetRestaurantProfileFocusSession'];
-  appExecutionRuntime: Pick<ProfileAppExecutionRuntime, 'commandExecutionModel'>;
+  getProfileTransitionState: ProfileRuntimeStateOwner['transitionRuntimeState']['getProfileTransitionState'];
+  finalizePreparedProfileCloseState: ProfileRuntimeStateOwner['closeRuntimeState']['finalizationRuntimeState']['finalizePreparedProfileCloseState'];
 };
 
 export const useProfileOwnerActionSurfaceRuntime = ({
@@ -25,8 +28,12 @@ export const useProfileOwnerActionSurfaceRuntime = ({
   actionExecutionPorts,
   refreshSelectionExecutionPorts,
   hydrateRestaurantProfileById,
+  getRestaurantProfileRequestSeq,
+  setRestaurantProfileRequestSeq,
+  cancelActiveHydrationIntent,
   resetRestaurantProfileFocusSession,
-  appExecutionRuntime,
+  getProfileTransitionState,
+  finalizePreparedProfileCloseState,
 }: UseProfileOwnerActionSurfaceRuntimeArgs): ProfileRuntimeActions => {
   const presentationActions = useProfileOwnerPresentationActionsRuntime({
     queryState,
@@ -41,11 +48,37 @@ export const useProfileOwnerActionSurfaceRuntime = ({
     refreshSelectionExecutionPorts,
     focusRestaurantProfileCamera: presentationActions.focusRestaurantProfileCamera,
   });
+  const clearMapHighlightedRestaurantId = React.useCallback(() => {
+    actionExecutionPorts.setMapHighlightedRestaurantId(null);
+  }, [actionExecutionPorts.setMapHighlightedRestaurantId]);
+  const clearRestaurantProfileForSearchDismiss = React.useCallback(() => {
+    const nextRequestSeq = getRestaurantProfileRequestSeq() + 1;
+    cancelActiveHydrationIntent('profile_hydration_cancelled_on_overlay_dismiss', {
+      nextRequestSeq,
+      nextRestaurantId: null,
+    });
+    setRestaurantProfileRequestSeq(nextRequestSeq);
+    actionExecutionPorts.setMapHighlightedRestaurantId(null);
+    finalizePreparedProfileCloseState();
+  }, [
+    actionExecutionPorts.setMapHighlightedRestaurantId,
+    cancelActiveHydrationIntent,
+    finalizePreparedProfileCloseState,
+    getRestaurantProfileRequestSeq,
+    setRestaurantProfileRequestSeq,
+  ]);
+  const prepareRestaurantProfileForTerminalSearchDismiss = React.useCallback(() => {
+    const savedCamera = getProfileTransitionState().savedCamera;
+    if (savedCamera) {
+      actionExecutionPorts.focusPreparedProfileCamera(savedCamera);
+    }
+  }, [actionExecutionPorts, getProfileTransitionState]);
 
   return React.useMemo(
     () => ({
-      clearMapHighlightedRestaurantId:
-        appExecutionRuntime.commandExecutionModel.clearMapHighlightedRestaurantId,
+      clearMapHighlightedRestaurantId,
+      clearRestaurantProfileForSearchDismiss,
+      prepareRestaurantProfileForTerminalSearchDismiss,
       hydrateRestaurantProfileById,
       focusRestaurantProfileCamera: presentationActions.focusRestaurantProfileCamera,
       openRestaurantProfilePreview: presentationActions.openRestaurantProfilePreview,
@@ -56,9 +89,11 @@ export const useProfileOwnerActionSurfaceRuntime = ({
       closeRestaurantProfile: runtimeActions.closeRestaurantProfile,
     }),
     [
-      appExecutionRuntime.commandExecutionModel.clearMapHighlightedRestaurantId,
+      clearRestaurantProfileForSearchDismiss,
+      clearMapHighlightedRestaurantId,
       hydrateRestaurantProfileById,
       presentationActions,
+      prepareRestaurantProfileForTerminalSearchDismiss,
       resetRestaurantProfileFocusSession,
       runtimeActions,
     ]

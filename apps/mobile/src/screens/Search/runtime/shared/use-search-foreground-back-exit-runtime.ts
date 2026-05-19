@@ -88,7 +88,9 @@ export const useSearchForegroundBackExitRuntime = ({
     ignoreNextSearchBlurRef.current = true;
     performImmediateSearchBack();
     if (inputRef.current?.isFocused?.()) {
-      inputRef.current?.blur();
+      requestAnimationFrame(() => {
+        inputRef.current?.blur();
+      });
     }
   }, [
     allowSearchBlurExitRef,

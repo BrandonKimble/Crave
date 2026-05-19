@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { resolveExpandedTop } from '../../overlays/sheetUtils';
 import { SCREEN_HEIGHT } from '../../screens/Search/constants/search';
+import type { SearchRouteSheetMotionStateSnapshot } from '../../screens/Search/runtime/shared/search-route-sheet-motion-state-snapshot-contract';
 import { withSearchNavSwitchRuntimeAttribution } from '../../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
 import { getSearchStartupGeometrySeed } from '../../screens/Search/runtime/shared/search-startup-geometry';
 import type {
@@ -12,7 +13,8 @@ import type {
 } from './route-overlay-display-snapshot-contract';
 import type { AppRouteSceneChromeMotionRuntime } from './app-route-scene-chrome-motion-runtime-contract';
 import type { AppRouteSceneRuntime } from './app-route-scene-runtime';
-import { useAppRouteResultsSheetVisualBindingOwner } from './AppRouteResultsSheetRuntimeProvider';
+import { useAppRouteSheetHostOwner } from './AppRouteSheetHostRuntimeProvider';
+import type { AppRouteSheetHostSurfaceBodySnapshot } from './app-route-sheet-host-surface-runtime-contract';
 import type {
   AppRouteChromeSurfaceTarget,
   RouteScenePolicySnapshot,
@@ -26,7 +28,7 @@ import type {
 import { useAppRouteSceneChromeMotionTargetRuntime } from './use-app-route-scene-chrome-motion-target-runtime';
 import { useAppRouteSceneChromeTransitionRuntime } from './use-app-route-scene-chrome-transition-runtime';
 import { useSearchNavSwitchCommitAttribution } from '../../screens/Search/runtime/shared/use-search-nav-switch-commit-attribution';
-import type { AppRouteResultsSheetRuntimeOwner } from './app-route-results-sheet-runtime-contract';
+import { useRouteAuthoritySelector } from './use-route-authority-selector';
 
 const startupGeometrySeed = getSearchStartupGeometrySeed();
 
@@ -78,7 +80,7 @@ const resolveRouteChromeTransitionConfig = ({
   showSaveListOverlay: boolean;
   routeChromeOverlayState: RouteChromeOverlayState;
   chromeSurfaceTarget: AppRouteChromeSurfaceTarget;
-  snapPoints: AppRouteResultsSheetRuntimeOwner['snapPoints'];
+  snapPoints: RouteOverlayChromeSnapConfig;
 }): RouteOverlayChromeSnapConfig => {
   if (showSaveListOverlay) {
     return buildSaveChromeSnaps(searchBarTop, insetsTop);
@@ -100,6 +102,17 @@ const resolveRouteChromeTransitionConfig = ({
 const getSearchBarTop = (routeHostOverlayGeometry: RouteHostOverlayGeometryBinding): number =>
   routeHostOverlayGeometry?.searchBarTop ?? startupGeometrySeed.searchBarTop;
 
+const areRouteSheetMotionStateEntriesEqual = (
+  left: SearchRouteSheetMotionStateSnapshot['stateEntry'],
+  right: SearchRouteSheetMotionStateSnapshot['stateEntry']
+): boolean =>
+  left?.visible === right?.visible &&
+  left?.snapPoints === right?.snapPoints &&
+  left?.initialSnapPoint === right?.initialSnapPoint &&
+  left?.currentSnapPoint === right?.currentSnapPoint &&
+  left?.sheetYValue === right?.sheetYValue &&
+  left?.motionCommandValue === right?.motionCommandValue;
+
 export const useAppRouteSceneChromeMotionRuntimeOwner = (): AppRouteSceneChromeMotionRuntime => {
   const runtime = React.useContext(AppRouteSceneChromeMotionRuntimeContext);
   if (runtime == null) {
@@ -118,7 +131,43 @@ export const AppRouteSceneChromeMotionRuntimeProvider = ({
 }>) => {
   useSearchNavSwitchCommitAttribution('AppRouteSceneChromeMotionRuntimeProvider');
   const insets = useSafeAreaInsets();
-  const resultsSheetVisualBinding = useAppRouteResultsSheetVisualBindingOwner();
+  const routeSheetHostOwner = useAppRouteSheetHostOwner();
+  const routeSheetMotionStateEntry = useRouteAuthoritySelector<
+    SearchRouteSheetMotionStateSnapshot,
+    SearchRouteSheetMotionStateSnapshot['stateEntry']
+  >({
+    subscribe: routeSheetHostOwner.routeSheetMotionRuntimeAuthority.subscribe,
+    subscribeSelector: routeSheetHostOwner.routeSheetMotionRuntimeAuthority.subscribeSelector,
+    getSnapshot: routeSheetHostOwner.routeSheetMotionRuntimeAuthority.getSnapshot,
+    selector: React.useCallback((snapshot) => snapshot.stateEntry, []),
+    isEqual: areRouteSheetMotionStateEntriesEqual,
+    attributionOwner: 'AppRouteSceneChromeMotionRuntimeProvider',
+    attributionOperation: 'routeSheetMotionSelector',
+  });
+  const mountedRouteSheetMotionStateEntry = useRouteAuthoritySelector<
+    AppRouteSheetHostSurfaceBodySnapshot,
+    AppRouteSheetHostSurfaceBodySnapshot['motionStateEntry']
+  >({
+    subscribe: routeSheetHostOwner.routeSheetSurfaceBodyAuthority.subscribe,
+    subscribeSelector: routeSheetHostOwner.routeSheetSurfaceBodyAuthority.subscribeSelector,
+    getSnapshot: routeSheetHostOwner.routeSheetSurfaceBodyAuthority.getSnapshot,
+    selector: React.useCallback((snapshot) => snapshot.motionStateEntry, []),
+    isEqual: areRouteSheetMotionStateEntriesEqual,
+    attributionOwner: 'AppRouteSceneChromeMotionRuntimeProvider',
+    attributionOperation: 'mountedRouteSheetMotionSelector',
+  });
+  const activeRouteSheetMotionStateEntry =
+    mountedRouteSheetMotionStateEntry ?? routeSheetMotionStateEntry;
+  const routeOwnedBootstrapChromeSnaps = React.useMemo(
+    () =>
+      buildExpandedMiddleChromeSnaps(
+        getSearchBarTop(routeSceneRuntime.routeHostOverlayGeometryAuthority.getSnapshot()),
+        insets.top
+      ),
+    [insets.top, routeSceneRuntime.routeHostOverlayGeometryAuthority]
+  );
+  const activeRouteChromeSnaps =
+    activeRouteSheetMotionStateEntry?.snapPoints ?? routeOwnedBootstrapChromeSnaps;
   const initialChromeTransitionConfig = resolveRouteChromeTransitionConfig({
     searchBarTop: getSearchBarTop(
       routeSceneRuntime.routeHostOverlayGeometryAuthority.getSnapshot()
@@ -133,8 +182,9 @@ export const AppRouteSceneChromeMotionRuntimeProvider = ({
     chromeSurfaceTarget: selectRouteChromePolicyState(
       routeSceneRuntime.routeScenePolicyAuthority.getSnapshot()
     ).chromeSurfaceTarget,
-    snapPoints: resultsSheetVisualBinding.snapPoints,
+    snapPoints: activeRouteChromeSnaps,
   });
+  const routeOwnedBootstrapSheetTranslateY = useSharedValue(initialChromeTransitionConfig.middle);
   const chromeExpandedSnap = useSharedValue(initialChromeTransitionConfig.expanded);
   const chromeMiddleSnap = useSharedValue(initialChromeTransitionConfig.middle);
 
@@ -152,16 +202,27 @@ export const AppRouteSceneChromeMotionRuntimeProvider = ({
         chromeSurfaceTarget: selectRouteChromePolicyState(
           routeSceneRuntime.routeScenePolicyAuthority.getSnapshot()
         ).chromeSurfaceTarget,
-        snapPoints: resultsSheetVisualBinding.snapPoints,
+        snapPoints: activeRouteChromeSnaps,
       }),
     [
+      activeRouteChromeSnaps,
       insets.top,
-      resultsSheetVisualBinding.snapPoints,
       routeSceneRuntime.routeHostOverlayGeometryAuthority,
       routeSceneRuntime.routeOverlayCommandAuthority,
       routeSceneRuntime.routeScenePolicyAuthority,
     ]
   );
+
+  React.useLayoutEffect(() => {
+    if (activeRouteSheetMotionStateEntry != null) {
+      return;
+    }
+    routeOwnedBootstrapSheetTranslateY.value = initialChromeTransitionConfig.middle;
+  }, [
+    activeRouteSheetMotionStateEntry,
+    initialChromeTransitionConfig.middle,
+    routeOwnedBootstrapSheetTranslateY,
+  ]);
 
   React.useLayoutEffect(() => {
     const syncChromeSnapTargets = () => {
@@ -215,7 +276,8 @@ export const AppRouteSceneChromeMotionRuntimeProvider = ({
   const runtime = useAppRouteSceneChromeTransitionRuntime({
     expandedSnap: chromeExpandedSnap,
     middleSnap: chromeMiddleSnap,
-    sheetTranslateY: resultsSheetVisualBinding.sheetTranslateY,
+    sheetTranslateY:
+      activeRouteSheetMotionStateEntry?.sheetYValue ?? routeOwnedBootstrapSheetTranslateY,
   });
 
   useAppRouteSceneChromeMotionTargetRuntime({

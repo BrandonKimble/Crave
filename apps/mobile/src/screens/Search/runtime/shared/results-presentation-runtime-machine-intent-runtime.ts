@@ -1,4 +1,4 @@
-import type { PreparedResultsPresentationSnapshot } from './prepared-presentation-transaction';
+import type { SearchSurfaceResultsTransaction } from './search-surface-results-transaction';
 import { resolveNamedAppliedResultsPresentationCoverStateTransportAttempt } from './results-presentation-runtime-machine-cover-state-transport';
 import {
   resolveAbortedResultsPresentationTransportAttempt,
@@ -33,7 +33,7 @@ export const createResultsPresentationRuntimeMachineIntentRuntime = ({
       resolveAbortedResultsPresentationTransportAttempt(draft)
     );
   },
-  commitPreparedResultsSnapshot(snapshot: PreparedResultsPresentationSnapshot) {
+  commitSearchSurfaceResultsTransaction(snapshot: SearchSurfaceResultsTransaction) {
     ownerRuntime.applyAttempt(() =>
       resolveCommittedResultsPresentationTransportAttempt(snapshot)
     );

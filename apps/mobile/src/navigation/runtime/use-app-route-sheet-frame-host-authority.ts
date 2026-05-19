@@ -3,7 +3,6 @@ import {
   cancelAnimation,
   Easing,
   useAnimatedReaction,
-  useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
   withTiming,
@@ -16,6 +15,7 @@ import { clampValue } from '../../overlays/sheetUtils';
 import type { OverlayHeaderActionMode } from '../../overlays/useOverlayHeaderActionController';
 import type { SearchRouteSheetHostFrameSnapshot } from '../../screens/Search/runtime/shared/search-route-sheet-host-frame-snapshot-contract';
 import { EMPTY_SEARCH_ROUTE_SHEET_RESOLVED_VISUAL_SELECTION_SNAPSHOT } from '../../screens/Search/runtime/shared/search-route-sheet-resolved-visual-selection-snapshot-contract';
+import type { AppRouteNavSilhouetteSheetExclusionModeValue } from './app-route-nav-silhouette-authority';
 import type {
   AppRouteSheetHostNativeAdapterAuthority,
   AppRouteSheetHostNativeAdapterSnapshot,
@@ -99,9 +99,12 @@ export const useAppRouteSheetFrameHostAuthority = ({
   const initialChromeVisualState = resolveChromeVisualState(
     initialNativeAdapterSnapshotRef.current.chromeVisualState
   );
+  const [chromeVisualStateSource, setChromeVisualStateSource] = React.useState(
+    initialChromeVisualState
+  );
 
-  const applyNavBarCutoutValue = useSharedValue(
-    initialPolicy.overlaySheetApplyNavBarCutout ? 1 : 0
+  const sheetExclusionModeValue = useSharedValue<AppRouteNavSilhouetteSheetExclusionModeValue>(
+    initialChromeVisualState.navSilhouetteSheetExclusionModeValue.value
   );
   const resolvedNavBarHeightValue = useSharedValue(
     Math.max(initialChromeVisualState.navBarCutoutHeight, 0)
@@ -109,11 +112,15 @@ export const useAppRouteSheetFrameHostAuthority = ({
   const bottomNavHiddenTranslateYValue = useSharedValue(
     initialChromeVisualState.bottomNavHiddenTranslateY
   );
+  const navTranslateYValue = useSharedValue(initialChromeVisualState.navTranslateY.value);
   const navBarCutoutIsHidingValue = useSharedValue(
-    initialChromeVisualState.navBarCutoutIsHiding ? 1 : 0
+    initialChromeVisualState.navBarCutoutIsHiding
   );
   const navBarCutoutProgressValue = useSharedValue(
     initialChromeVisualState.navBarCutoutProgress.value
+  );
+  const navBarCutoutHidingProgressValue = useSharedValue(
+    initialChromeVisualState.navBarCutoutHidingProgress.value
   );
   const headerActionVisibleValue = useSharedValue(initialPolicy.overlaySheetVisible ? 1 : 0);
   const headerActionModeValue = useSharedValue<OverlayHeaderActionMode>(
@@ -124,13 +131,14 @@ export const useAppRouteSheetFrameHostAuthority = ({
   const overlayHeaderActionOverrideActiveValue = useSharedValue(false);
   const sheetY = initialFrameHostInput.sheetY ?? fallbackSheetY;
   const overlayHeaderActionProgress = initialChromeVisualState.overlayHeaderActionProgress;
-
   const nativeSharedValueTargets = React.useMemo<AppRouteSheetFrameHostNativeSharedValues>(
     () => ({
-      applyNavBarCutoutValue,
+      sheetExclusionModeValue,
       resolvedNavBarHeightValue,
       bottomNavHiddenTranslateYValue,
+      navTranslateYValue,
       navBarCutoutProgressValue,
+      navBarCutoutHidingProgressValue,
       navBarCutoutIsHidingValue,
       headerActionVisibleValue,
       headerActionModeValue,
@@ -138,37 +146,73 @@ export const useAppRouteSheetFrameHostAuthority = ({
       collapsedSnapPointValue,
     }),
     [
-      applyNavBarCutoutValue,
       bottomNavHiddenTranslateYValue,
       collapsedSnapPointValue,
       headerActionModeValue,
       headerActionVisibleValue,
       middleSnapPointValue,
+      navBarCutoutHidingProgressValue,
       navBarCutoutProgressValue,
       navBarCutoutIsHidingValue,
+      navTranslateYValue,
       resolvedNavBarHeightValue,
+      sheetExclusionModeValue,
     ]
   );
 
   React.useLayoutEffect(() => {
-    return nativeAdapterAuthority.registerSharedValues(nativeSharedValueTargets);
+    const syncChromeVisualStateSource = () => {
+      const nextChromeVisualState = resolveChromeVisualState(
+        nativeAdapterAuthority.getSnapshot().chromeVisualState
+      );
+      setChromeVisualStateSource((currentChromeVisualState) =>
+        currentChromeVisualState === nextChromeVisualState
+          ? currentChromeVisualState
+          : nextChromeVisualState
+      );
+    };
+    const unregisterSharedValues =
+      nativeAdapterAuthority.registerSharedValues(nativeSharedValueTargets);
+    const unsubscribeNativeAdapter =
+      nativeAdapterAuthority.subscribe(syncChromeVisualStateSource);
+    syncChromeVisualStateSource();
+    return () => {
+      unsubscribeNativeAdapter();
+      unregisterSharedValues();
+    };
   }, [nativeAdapterAuthority, nativeSharedValueTargets]);
 
-  const sheetClipAnimatedStyle = useAnimatedStyle(() => {
-    if (applyNavBarCutoutValue.value === 0) {
-      return { bottom: 0 };
-    }
-    const resolvedHeight = Math.max(0, resolvedNavBarHeightValue.value);
-    const progress = Math.max(0, Math.min(1, navBarCutoutProgressValue.value));
-    const navTranslateY = Math.max(
-      0,
-      (1 - progress) * Math.max(0, bottomNavHiddenTranslateYValue.value)
-    );
-    const hideLead = navBarCutoutIsHidingValue.value === 1 ? 1.18 : 1;
-    const cutout = Math.max(0, Math.min(resolvedHeight, resolvedHeight - navTranslateY * hideLead));
-    return { bottom: cutout };
-  }, []);
-
+  useAnimatedReaction(
+    () => chromeVisualStateSource.navSilhouetteSheetExclusionModeValue.value,
+    (modeValue) => {
+      sheetExclusionModeValue.value = modeValue;
+    },
+    [chromeVisualStateSource.navSilhouetteSheetExclusionModeValue, sheetExclusionModeValue]
+  );
+  useAnimatedReaction(
+    () => chromeVisualStateSource.navBarCutoutProgress.value,
+    (progress) => {
+      navBarCutoutProgressValue.value = progress;
+    },
+    [chromeVisualStateSource.navBarCutoutProgress, navBarCutoutProgressValue]
+  );
+  useAnimatedReaction(
+    () => chromeVisualStateSource.navTranslateY.value,
+    (translateY) => {
+      navTranslateYValue.value = translateY;
+    },
+    [chromeVisualStateSource.navTranslateY, navTranslateYValue]
+  );
+  useAnimatedReaction(
+    () => chromeVisualStateSource.navBarCutoutHidingProgress.value,
+    (progress) => {
+      navBarCutoutHidingProgressValue.value = progress;
+    },
+    [
+      chromeVisualStateSource.navBarCutoutHidingProgress,
+      navBarCutoutHidingProgressValue,
+    ]
+  );
   const collapseProgress = useDerivedValue(() => {
     const range = collapsedSnapPointValue.value - middleSnapPointValue.value;
     const raw = range !== 0 ? (sheetY.value - middleSnapPointValue.value) / range : 0;
@@ -231,9 +275,9 @@ export const useAppRouteSheetFrameHostAuthority = ({
     () => ({
       subscribe: () => () => {},
       getSnapshot: (): SearchRouteSheetHostFrameSnapshot => ({
-        sheetClipStyle: sheetClipAnimatedStyle,
+        sheetClipStyle: null,
       }),
     }),
-    [sheetClipAnimatedStyle]
+    []
   );
 };

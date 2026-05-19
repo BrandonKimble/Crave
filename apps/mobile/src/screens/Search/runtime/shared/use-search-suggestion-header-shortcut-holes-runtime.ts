@@ -64,10 +64,13 @@ export const useSearchSuggestionHeaderShortcutHolesRuntime = ({
     }
 
     const { restaurants, dishes } = suggestionHeaderShortcutHoleCandidates;
-    suggestionHeaderShortcutHolesRef.current = {
-      restaurants: restaurants ? cloneSuggestionMaskedHole(restaurants) : null,
-      dishes: dishes ? cloneSuggestionMaskedHole(dishes) : null,
-    };
+    if (restaurants) {
+      suggestionHeaderShortcutHolesRef.current.restaurants =
+        cloneSuggestionMaskedHole(restaurants);
+    }
+    if (dishes) {
+      suggestionHeaderShortcutHolesRef.current.dishes = cloneSuggestionMaskedHole(dishes);
+    }
   }, [shouldFreezeSuggestionHeader, suggestionHeaderShortcutHoleCandidates]);
 
   return React.useMemo(() => {

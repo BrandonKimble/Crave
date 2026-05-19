@@ -3,9 +3,14 @@ import { MarketType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { pointWithinBounds } from './market-geo.util';
+import {
+  BoundaryFeatureRecord,
+  TomTomBoundaryBootstrapService,
+} from './tomtom-boundary-bootstrap.service';
 
 type Coordinate = { lat: number; lng: number };
 type Bounds = { northEast: Coordinate; southWest: Coordinate };
+type MarketResolveMode = 'polls_read' | 'polls_create' | 'search';
 
 type MarketCandidateRow = {
   marketKey: string;
@@ -13,16 +18,6 @@ type MarketCandidateRow = {
   marketShortName: string | null;
   marketType: MarketType;
   isCollectable: boolean;
-  bboxNeLat: Prisma.Decimal | number | null;
-  bboxNeLng: Prisma.Decimal | number | null;
-  bboxSwLat: Prisma.Decimal | number | null;
-  bboxSwLng: Prisma.Decimal | number | null;
-};
-
-type PlaceCandidateRow = {
-  placeGeoId: string;
-  name: string;
-  shortName: string | null;
   bboxNeLat: Prisma.Decimal | number | null;
   bboxNeLng: Prisma.Decimal | number | null;
   bboxSwLat: Prisma.Decimal | number | null;
@@ -41,8 +36,10 @@ export type MarketResolveResult = {
   resolution: {
     anchorType: 'user_location' | 'viewport_center';
     viewportContainsUser: boolean | null;
-    candidatePlaceName: string | null;
-    candidatePlaceGeoId: string | null;
+    candidateLocalityName: string | null;
+    candidateBoundaryProvider: string | null;
+    candidateBoundaryId: string | null;
+    candidateBoundaryType: string | null;
   };
   cta: {
     kind: 'create_poll' | 'none';
@@ -57,6 +54,7 @@ export class MarketResolverService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly tomTomBoundaryBootstrap: TomTomBoundaryBootstrapService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('MarketResolverService');
@@ -65,7 +63,9 @@ export class MarketResolverService {
   async resolve(params: {
     bounds?: Bounds | null;
     userLocation?: Coordinate | null;
-    mode?: 'polls' | 'search';
+    mode?: MarketResolveMode;
+    allowBoundaryBootstrap?: boolean;
+    requestId?: string | null;
   }): Promise<MarketResolveResult> {
     const bounds = params.bounds ?? null;
     const userLocation = this.normalizePoint(params.userLocation ?? null);
@@ -83,54 +83,66 @@ export class MarketResolverService {
         resolution: {
           anchorType,
           viewportContainsUser,
-          candidatePlaceName: null,
-          candidatePlaceGeoId: null,
+          candidateLocalityName: null,
+          candidateBoundaryProvider: null,
+          candidateBoundaryId: null,
+          candidateBoundaryType: null,
         },
         cta: { kind: 'none', label: null, prompt: null },
       };
     }
 
     try {
-      const market = await this.findMarket(anchor, MarketType.cbsa_metro);
-      if (market) {
+      const regionalMarket = await this.findMarket(anchor, MarketType.regional);
+      if (regionalMarket) {
         return this.buildResolvedResult(
-          market,
+          regionalMarket,
           anchorType,
           viewportContainsUser,
         );
       }
 
-      const microMarket = await this.findMarket(anchor, MarketType.cbsa_micro);
-      if (microMarket) {
+      const localityMarket = await this.findMarket(anchor, MarketType.locality);
+      if (localityMarket) {
         return this.buildResolvedResult(
-          microMarket,
+          localityMarket,
           anchorType,
           viewportContainsUser,
         );
       }
 
-      const place = await this.findPlace(anchor);
-      if (place) {
-        const localFallbackMarket = await this.findLocalFallbackMarket(
-          place.placeGeoId,
-        );
-        if (localFallbackMarket) {
+      const boundary = params.allowBoundaryBootstrap
+        ? await this.tomTomBoundaryBootstrap.bootstrapMunicipalityForPoint(
+            anchor,
+            {
+              requestId: params.requestId ?? null,
+              triggerKind: 'point_resolution',
+            },
+          )
+        : await this.tomTomBoundaryBootstrap.findStoredMunicipalityForPoint(
+            anchor,
+          );
+      if (boundary) {
+        const localityByBoundary = await this.findLocalityMarket(boundary);
+        if (localityByBoundary) {
           return this.buildResolvedResult(
-            localFallbackMarket,
+            localityByBoundary,
             anchorType,
             viewportContainsUser,
           );
         }
 
-        const placeName = place.shortName ?? place.name;
+        const placeName = boundary.shortName ?? boundary.name;
         return {
           status: 'no_market',
           market: null,
           resolution: {
             anchorType,
             viewportContainsUser,
-            candidatePlaceName: placeName,
-            candidatePlaceGeoId: place.placeGeoId,
+            candidateLocalityName: placeName,
+            candidateBoundaryProvider: boundary.sourceProvider,
+            candidateBoundaryId: boundary.sourceBoundaryId,
+            candidateBoundaryType: boundary.sourceBoundaryType,
           },
           cta: {
             kind: 'create_poll',
@@ -146,8 +158,10 @@ export class MarketResolverService {
         resolution: {
           anchorType,
           viewportContainsUser,
-          candidatePlaceName: null,
-          candidatePlaceGeoId: null,
+          candidateLocalityName: null,
+          candidateBoundaryProvider: null,
+          candidateBoundaryId: null,
+          candidateBoundaryType: null,
         },
         cta: { kind: 'none', label: null, prompt: null },
       };
@@ -164,8 +178,10 @@ export class MarketResolverService {
         resolution: {
           anchorType,
           viewportContainsUser,
-          candidatePlaceName: null,
-          candidatePlaceGeoId: null,
+          candidateLocalityName: null,
+          candidateBoundaryProvider: null,
+          candidateBoundaryId: null,
+          candidateBoundaryType: null,
         },
         cta: { kind: 'none', label: null, prompt: null },
       };
@@ -192,11 +208,8 @@ export class MarketResolverService {
       WHERE is_active = true
         AND market_type = ${marketType}::market_type
         AND geometry IS NOT NULL
-        AND bbox_ne_latitude >= ${point.lat}
-        AND bbox_sw_latitude <= ${point.lat}
-        AND bbox_ne_longitude >= ${point.lng}
-        AND bbox_sw_longitude <= ${point.lng}
-        AND ST_Contains(geometry, ${pointSql})
+        AND geometry && ${pointSql}
+        AND ST_Covers(geometry, ${pointSql})
       ORDER BY ST_Area(geometry::geography) ASC
       LIMIT 1
     `);
@@ -204,35 +217,8 @@ export class MarketResolverService {
     return rows[0] ?? null;
   }
 
-  private async findPlace(
-    point: Coordinate,
-  ): Promise<PlaceCandidateRow | null> {
-    const pointSql = Prisma.sql`ST_SetSRID(ST_MakePoint(${point.lng}, ${point.lat}), 4326)`;
-    const rows = await this.prisma.$queryRaw<PlaceCandidateRow[]>(Prisma.sql`
-      SELECT
-        place_geoid AS "placeGeoId",
-        name,
-        short_name AS "shortName",
-        bbox_ne_latitude AS "bboxNeLat",
-        bbox_ne_longitude AS "bboxNeLng",
-        bbox_sw_latitude AS "bboxSwLat",
-        bbox_sw_longitude AS "bboxSwLng"
-      FROM geo_census_place_boundaries
-      WHERE geometry IS NOT NULL
-        AND bbox_ne_latitude >= ${point.lat}
-        AND bbox_sw_latitude <= ${point.lat}
-        AND bbox_ne_longitude >= ${point.lng}
-        AND bbox_sw_longitude <= ${point.lng}
-        AND ST_Contains(geometry, ${pointSql})
-      ORDER BY ST_Area(geometry::geography) ASC
-      LIMIT 1
-    `);
-
-    return rows[0] ?? null;
-  }
-
-  private async findLocalFallbackMarket(
-    placeGeoId: string,
+  private async findLocalityMarket(
+    boundary: BoundaryFeatureRecord,
   ): Promise<MarketCandidateRow | null> {
     const rows = await this.prisma.$queryRaw<MarketCandidateRow[]>(Prisma.sql`
       SELECT
@@ -247,8 +233,10 @@ export class MarketResolverService {
         bbox_sw_longitude AS "bboxSwLng"
       FROM core_markets
       WHERE is_active = true
-        AND market_type = ${MarketType.local_fallback}::market_type
-        AND census_place_geoid = ${placeGeoId}
+        AND market_type = ${MarketType.locality}::market_type
+        AND source_boundary_provider = ${boundary.sourceProvider}
+        AND source_boundary_id = ${boundary.sourceBoundaryId}
+        AND source_boundary_type = ${boundary.sourceBoundaryType}
       ORDER BY updated_at DESC, created_at DESC
       LIMIT 1
     `);
@@ -274,8 +262,10 @@ export class MarketResolverService {
       resolution: {
         anchorType,
         viewportContainsUser,
-        candidatePlaceName: null,
-        candidatePlaceGeoId: null,
+        candidateLocalityName: null,
+        candidateBoundaryProvider: null,
+        candidateBoundaryId: null,
+        candidateBoundaryType: null,
       },
       cta: {
         kind: 'create_poll',

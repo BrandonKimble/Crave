@@ -6,7 +6,6 @@ import {
   getPreparedProfileSnapshotFromRecord,
   getProfileTransitionStateFromRecord,
   getProfileTransitionStatusFromRecord,
-  resetPreparedProfileSavedSheetSnapOnRecord,
 } from './profile-transition-state-record';
 import type {
   ProfileTransitionSnapshotCapture,
@@ -22,7 +21,6 @@ export type ProfileTransitionRuntimeState = {
   capturePreparedProfileTransitionSnapshot: (
     snapshotCapture: ProfileTransitionSnapshotCapture
   ) => void;
-  resetPreparedProfileSavedSheetSnap: () => void;
 };
 
 type UseProfileTransitionRuntimeStateArgs = {
@@ -59,10 +57,6 @@ export const useProfileTransitionRuntimeState = ({
     [profileControllerStateRef]
   );
 
-  const resetPreparedProfileSavedSheetSnap = React.useCallback(() => {
-    resetPreparedProfileSavedSheetSnapOnRecord(profileControllerStateRef.current);
-  }, [profileControllerStateRef]);
-
   return React.useMemo<ProfileTransitionRuntimeState>(
     () => ({
       getProfileTransitionStatus,
@@ -70,14 +64,12 @@ export const useProfileTransitionRuntimeState = ({
       getProfileTransitionState,
       getPreparedProfileSnapshot,
       capturePreparedProfileTransitionSnapshot,
-      resetPreparedProfileSavedSheetSnap,
     }),
     [
       capturePreparedProfileTransitionSnapshot,
       getPreparedProfileSnapshot,
       getProfileTransitionState,
       getProfileTransitionStatus,
-      resetPreparedProfileSavedSheetSnap,
       setProfileTransitionStatus,
     ]
   );

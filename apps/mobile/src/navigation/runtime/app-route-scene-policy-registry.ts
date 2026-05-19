@@ -1,5 +1,6 @@
 import type { BottomSheetSnap } from '../../overlays/bottomSheetMotionTypes';
 import type { OverlayKey } from '../../overlays/types';
+import { resolveAppOverlayRouteHeaderActionPolicy } from './app-overlay-route-types';
 import type {
   RouteSceneSwitchChromeVisibilityTarget,
   RouteSceneSwitchHeaderActionModeTarget,
@@ -7,82 +8,144 @@ import type {
 } from './app-overlay-route-transition-contract';
 import { PRESERVE_ROUTE_SCENE_SWITCH_CHROME_TARGET } from './app-overlay-route-transition-contract';
 
-type AppRouteSceneDefaultSnapPolicy =
-  | { kind: 'fixed'; snapTarget: BottomSheetSnap }
-  | { kind: 'preserve-search-source' }
-  | { kind: 'none' };
-
 type AppRouteSceneChromePolicy = { kind: 'search-chrome-from-snap' } | { kind: 'preserve' };
 
-type AppRouteScenePolicy = {
+export type AppRouteSheetScenePolicy = {
   sheetTargetGroup: OverlayKey | null;
-  defaultSnapPolicy: AppRouteSceneDefaultSnapPolicy;
+  defaultFirstEntrySnap: BottomSheetSnap | null;
+  allowedSnaps: readonly BottomSheetSnap[];
+  requiresExpandedPresentation: boolean;
+  canSwipeDismiss: boolean;
+  snapPersistence: 'none' | 'shared' | 'scene';
+};
+
+type AppRouteScenePolicy = AppRouteSheetScenePolicy & {
   chromePolicy: AppRouteSceneChromePolicy;
 };
 
 const SEARCH_ROUTE_SHEET_TARGET_GROUP: OverlayKey = 'searchRoute';
 
-const FIXED_CLOSE_HEADER_ACTION_SCENES: ReadonlySet<OverlayKey> = new Set<OverlayKey>([
-  'search',
-  'bookmarks',
-  'profile',
-  'saveList',
-  'pollCreation',
-  'restaurant',
-  'searchRoute',
-]);
-
 const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
   search: {
     sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
-    defaultSnapPolicy: { kind: 'fixed', snapTarget: 'collapsed' },
+    defaultFirstEntrySnap: 'collapsed',
+    allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
+    requiresExpandedPresentation: false,
+    canSwipeDismiss: true,
+    snapPersistence: 'none',
     chromePolicy: { kind: 'search-chrome-from-snap' },
   },
   polls: {
     sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
-    defaultSnapPolicy: { kind: 'fixed', snapTarget: 'collapsed' },
+    defaultFirstEntrySnap: 'collapsed',
+    allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
+    requiresExpandedPresentation: false,
+    canSwipeDismiss: true,
+    snapPersistence: 'shared',
     chromePolicy: { kind: 'search-chrome-from-snap' },
   },
   bookmarks: {
     sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
-    defaultSnapPolicy: { kind: 'preserve-search-source' },
+    defaultFirstEntrySnap: 'expanded',
+    allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
+    requiresExpandedPresentation: true,
+    canSwipeDismiss: false,
+    snapPersistence: 'shared',
     chromePolicy: { kind: 'preserve' },
   },
   profile: {
     sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
-    defaultSnapPolicy: { kind: 'preserve-search-source' },
+    defaultFirstEntrySnap: 'expanded',
+    allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
+    requiresExpandedPresentation: true,
+    canSwipeDismiss: false,
+    snapPersistence: 'shared',
     chromePolicy: { kind: 'preserve' },
   },
   saveList: {
     sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
-    defaultSnapPolicy: { kind: 'preserve-search-source' },
+    defaultFirstEntrySnap: 'expanded',
+    allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
+    requiresExpandedPresentation: true,
+    canSwipeDismiss: true,
+    snapPersistence: 'none',
     chromePolicy: { kind: 'preserve' },
   },
   pollCreation: {
     sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
-    defaultSnapPolicy: { kind: 'preserve-search-source' },
+    defaultFirstEntrySnap: 'expanded',
+    allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
+    requiresExpandedPresentation: true,
+    canSwipeDismiss: false,
+    snapPersistence: 'none',
     chromePolicy: { kind: 'preserve' },
   },
   restaurant: {
-    sheetTargetGroup: 'restaurant',
-    defaultSnapPolicy: { kind: 'fixed', snapTarget: 'middle' },
+    sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
+    defaultFirstEntrySnap: 'middle',
+    allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
+    requiresExpandedPresentation: false,
+    canSwipeDismiss: false,
+    snapPersistence: 'none',
+    chromePolicy: { kind: 'preserve' },
+  },
+  favoriteListDetail: {
+    sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
+    defaultFirstEntrySnap: 'expanded',
+    allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
+    requiresExpandedPresentation: false,
+    canSwipeDismiss: false,
+    snapPersistence: 'none',
     chromePolicy: { kind: 'preserve' },
   },
   searchRoute: {
     sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
-    defaultSnapPolicy: { kind: 'none' },
+    defaultFirstEntrySnap: 'collapsed',
+    allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
+    requiresExpandedPresentation: false,
+    canSwipeDismiss: true,
+    snapPersistence: 'shared',
     chromePolicy: { kind: 'preserve' },
   },
   price: {
     sheetTargetGroup: null,
-    defaultSnapPolicy: { kind: 'none' },
+    defaultFirstEntrySnap: null,
+    allowedSnaps: [],
+    requiresExpandedPresentation: false,
+    canSwipeDismiss: true,
+    snapPersistence: 'none',
     chromePolicy: { kind: 'preserve' },
   },
   scoreInfo: {
     sheetTargetGroup: null,
-    defaultSnapPolicy: { kind: 'none' },
+    defaultFirstEntrySnap: null,
+    allowedSnaps: [],
+    requiresExpandedPresentation: false,
+    canSwipeDismiss: true,
+    snapPersistence: 'none',
     chromePolicy: { kind: 'preserve' },
   },
+};
+
+export const resolveAppRouteSheetScenePolicy = (
+  sceneKey: OverlayKey
+): AppRouteSheetScenePolicy => {
+  const {
+    sheetTargetGroup,
+    defaultFirstEntrySnap,
+    allowedSnaps,
+    requiresExpandedPresentation,
+    canSwipeDismiss,
+    snapPersistence,
+  } = APP_ROUTE_SCENE_POLICY_BY_KEY[sceneKey];
+  return {
+    sheetTargetGroup,
+    defaultFirstEntrySnap,
+    allowedSnaps,
+    requiresExpandedPresentation,
+    canSwipeDismiss,
+    snapPersistence,
+  };
 };
 
 export const appRouteSceneUsesSharedSheetTarget = ({
@@ -95,38 +158,6 @@ export const appRouteSceneUsesSharedSheetTarget = ({
 
 export const resolveAppRouteSceneSheetHostSceneKey = (sceneKey: OverlayKey): OverlayKey | null =>
   APP_ROUTE_SCENE_POLICY_BY_KEY[sceneKey]?.sheetTargetGroup ?? null;
-
-export const resolveAppRouteSceneDefaultSnapTarget = ({
-  sourceSceneKey,
-  targetSceneKey,
-  resolveCurrentSheetSnapTarget,
-}: {
-  sourceSceneKey: OverlayKey;
-  targetSceneKey: OverlayKey;
-  resolveCurrentSheetSnapTarget: (sceneKey: OverlayKey) => BottomSheetSnap | null;
-}): BottomSheetSnap | null => {
-  const policy = APP_ROUTE_SCENE_POLICY_BY_KEY[targetSceneKey].defaultSnapPolicy;
-  switch (policy.kind) {
-    case 'fixed':
-      return policy.snapTarget;
-    case 'preserve-search-source': {
-      if (sourceSceneKey !== 'search') {
-        return null;
-      }
-      const currentSnapTarget = resolveCurrentSheetSnapTarget(sourceSceneKey) ?? 'expanded';
-      if (currentSnapTarget !== 'collapsed') {
-        return currentSnapTarget;
-      }
-      const targetSnap = resolveCurrentSheetSnapTarget(targetSceneKey);
-      return targetSnap == null || targetSnap === 'hidden' || targetSnap === 'collapsed'
-        ? 'expanded'
-        : targetSnap;
-    }
-    case 'none':
-    default:
-      return null;
-  }
-};
 
 export const resolveAppRouteSceneChromeVisibilityTarget = ({
   targetSceneKey,
@@ -163,8 +194,9 @@ export const resolveAppRouteSceneHeaderActionModeTarget = (
   if (sheetHostSceneKey == null) {
     return 'preserve';
   }
-  if (targetSceneKey === 'polls') {
+  const headerActionPolicy = resolveAppOverlayRouteHeaderActionPolicy(targetSceneKey);
+  if (headerActionPolicy === 'follow-collapse') {
     return 'follow-collapse';
   }
-  return FIXED_CLOSE_HEADER_ACTION_SCENES.has(targetSceneKey) ? 'fixed-close' : 'preserve';
+  return headerActionPolicy === 'fixed-close' ? 'fixed-close' : 'preserve';
 };

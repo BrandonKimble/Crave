@@ -35,6 +35,7 @@ export const useProfileOwnerPresentationActionsRuntime = ({
       runtimeState,
       actionExecutionPorts,
       refreshSelectionExecutionPorts: {
+        setMapHighlightedRestaurantId: actionExecutionPorts.setMapHighlightedRestaurantId,
         seedRestaurantProfile: actionExecutionPorts.seedRestaurantProfile,
         focusRestaurantProfileCamera: () => {},
         hydrateRestaurantProfileById: actionExecutionPorts.hydrateRestaurantProfileById,

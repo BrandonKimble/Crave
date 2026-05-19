@@ -1,10 +1,8 @@
 import React from 'react';
-
 import { GestureDetector } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
 
 import { BottomSheetSceneStackHost } from './BottomSheetSceneStackHost';
-import { SearchResultsHeaderChromeSurfaceHost } from './SearchResultsHeaderChromeAuthority';
 import {
   type SearchRouteSceneStackBottomSheetRuntimeAssembly,
   useSearchRouteSceneStackBottomSheetRuntimeAssembly,
@@ -15,6 +13,7 @@ import type {
   AppRouteSheetHostSurfaceBodyAuthority,
   AppRouteSheetHostSurfaceBodySnapshot,
 } from '../navigation/runtime/app-route-sheet-host-surface-runtime-contract';
+import { areAppRouteSheetHostSurfaceBodySnapshotsEqual } from '../navigation/runtime/app-route-sheet-host-surface-runtime-contract';
 import type { AppRouteSceneStackSurfaceAuthority } from '../navigation/runtime/app-route-scene-stack-surface-contract';
 import { useRouteAuthoritySelector } from '../navigation/runtime/use-route-authority-selector';
 import { useSearchOverlayProfilerRender } from './SearchOverlayProfilerContext';
@@ -23,6 +22,7 @@ import {
   startSearchNavSwitchRuntimeAttributionSpan,
 } from '../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
 import { useSearchNavSwitchCommitAttribution } from '../screens/Search/runtime/shared/use-search-nav-switch-commit-attribution';
+import { logPerfScenarioStackAttribution } from '../perf/perf-scenario-attribution';
 
 type SearchRouteSceneStackBottomSheetSurfaceHostProps = {
   sceneStackSurfaceAuthority: AppRouteSceneStackSurfaceAuthority;
@@ -31,17 +31,16 @@ type SearchRouteSceneStackBottomSheetSurfaceHostProps = {
   routeSheetSurfaceBodyAuthority: AppRouteSheetHostSurfaceBodyAuthority;
 };
 
-type RenderableAppRouteSheetHostSurfaceBodySnapshot =
-  AppRouteSheetHostSurfaceBodySnapshot & {
-    chromeEntry: NonNullable<AppRouteSheetHostSurfaceBodySnapshot['chromeEntry']>;
-    scrollSharedRuntimeEntry: NonNullable<
-      AppRouteSheetHostSurfaceBodySnapshot['scrollSharedRuntimeEntry']
-    >;
-    scrollBodyDefaultsEntry: NonNullable<
-      AppRouteSheetHostSurfaceBodySnapshot['scrollBodyDefaultsEntry']
-    >;
-    motionStateEntry: NonNullable<AppRouteSheetHostSurfaceBodySnapshot['motionStateEntry']>;
-  };
+type RenderableAppRouteSheetHostSurfaceBodySnapshot = AppRouteSheetHostSurfaceBodySnapshot & {
+  chromeEntry: NonNullable<AppRouteSheetHostSurfaceBodySnapshot['chromeEntry']>;
+  scrollSharedRuntimeEntry: NonNullable<
+    AppRouteSheetHostSurfaceBodySnapshot['scrollSharedRuntimeEntry']
+  >;
+  scrollBodyDefaultsEntry: NonNullable<
+    AppRouteSheetHostSurfaceBodySnapshot['scrollBodyDefaultsEntry']
+  >;
+  motionStateEntry: NonNullable<AppRouteSheetHostSurfaceBodySnapshot['motionStateEntry']>;
+};
 
 const isRenderableSurfaceBodySnapshot = (
   snapshot: AppRouteSheetHostSurfaceBodySnapshot
@@ -60,15 +59,59 @@ const selectRenderableSurfaceBodySnapshot = (
 const areRenderableSurfaceBodySnapshotsEqual = (
   left: RenderableAppRouteSheetHostSurfaceBodySnapshot | null,
   right: RenderableAppRouteSheetHostSurfaceBodySnapshot | null
-): boolean =>
-  left === right ||
-  (left != null &&
-    right != null &&
-    left.chromeEntry === right.chromeEntry &&
-    left.scrollSharedRuntimeEntry === right.scrollSharedRuntimeEntry &&
-    left.scrollBodyDefaultsEntry === right.scrollBodyDefaultsEntry &&
-    left.motionStateEntry === right.motionStateEntry &&
-    left.motionCallbacksEntry === right.motionCallbacksEntry);
+): boolean => {
+  if (left === right) {
+    return true;
+  }
+  if (left == null || right == null) {
+    logPerfScenarioStackAttribution({
+      owner: 'sheet_surface_body_snapshot_selector_diff',
+      path: 'field:renderablePresence',
+      details: {
+        leftPresent: left != null,
+        rightPresent: right != null,
+      },
+    });
+    return false;
+  }
+
+  if (areAppRouteSheetHostSurfaceBodySnapshotsEqual(left, right)) {
+    return true;
+  }
+
+  const changedFields: string[] = [];
+  if (left.chromeEntry !== right.chromeEntry) {
+    changedFields.push('chromeEntry');
+  }
+  if (left.scrollSharedRuntimeEntry !== right.scrollSharedRuntimeEntry) {
+    changedFields.push('scrollSharedRuntimeEntry');
+  }
+  if (left.scrollBodyDefaultsEntry !== right.scrollBodyDefaultsEntry) {
+    changedFields.push('scrollBodyDefaultsEntry');
+  }
+  if (left.motionStateEntry !== right.motionStateEntry) {
+    changedFields.push('motionStateEntry');
+  }
+  if (left.motionCallbacksEntry !== right.motionCallbacksEntry) {
+    changedFields.push('motionCallbacksEntry');
+  }
+
+  if (changedFields.length === 0) {
+    return true;
+  }
+
+  logPerfScenarioStackAttribution({
+    owner: 'sheet_surface_body_snapshot_selector_diff',
+    path: `fields:${changedFields.join('|')}`,
+    details: {
+      activeSceneKey: right.activeSceneKey,
+      hasRenderableSheetSurface: right.hasRenderableSheetSurface,
+      visible: right.motionStateEntry.visible,
+      initialSnapPoint: right.motionStateEntry.initialSnapPoint,
+    },
+  });
+  return false;
+};
 
 const SearchRouteSceneStackBottomSheetInteractionGate = React.memo(
   ({
@@ -81,23 +124,10 @@ const SearchRouteSceneStackBottomSheetInteractionGate = React.memo(
   }>) => {
     useSearchNavSwitchCommitAttribution('SearchRouteSceneStackBottomSheetInteractionGate');
     const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
-    const touchBlockingEnabled = useRouteAuthoritySelector<boolean, boolean>({
-      subscribe: React.useCallback(
-        (listener: () => void) => touchBlockingAuthority.subscribe(listener),
-        [touchBlockingAuthority]
-      ),
-      getSnapshot: touchBlockingAuthority.getSnapshot,
-      selector: React.useCallback((snapshot: boolean) => snapshot, []),
-      isEqual: Object.is,
-      attributionOwner: 'SearchRouteSceneStackBottomSheetInteractionGate',
-      attributionOperation: 'touchBlockingSelector',
-    });
+    const touchBlockingEnabled = touchBlockingAuthority.getSnapshot();
 
     const interactionGate = (
-      <Animated.View
-        pointerEvents={touchBlockingEnabled ? 'none' : 'auto'}
-        style={sheetViewStyle}
-      >
+      <Animated.View pointerEvents={touchBlockingEnabled ? 'none' : 'box-none'} style={sheetViewStyle}>
         {children}
       </Animated.View>
     );
@@ -112,10 +142,12 @@ const SearchRouteSceneStackBottomSheetInteractionGate = React.memo(
   }
 );
 
-type SearchRouteSceneStackBottomSheetRuntimeSurfaceProps =
-  Omit<SearchRouteSceneStackBottomSheetSurfaceHostProps, 'routeSheetSurfaceBodyAuthority'> & {
-    surfaceBodySnapshot: RenderableAppRouteSheetHostSurfaceBodySnapshot;
-  };
+type SearchRouteSceneStackBottomSheetRuntimeSurfaceProps = Omit<
+  SearchRouteSceneStackBottomSheetSurfaceHostProps,
+  'routeSheetSurfaceBodyAuthority'
+> & {
+  surfaceBodySnapshot: RenderableAppRouteSheetHostSurfaceBodySnapshot;
+};
 
 const SearchRouteSceneStackBottomSheetRuntimeSurface = React.memo(
   ({
@@ -131,36 +163,28 @@ const SearchRouteSceneStackBottomSheetRuntimeSurface = React.memo(
       surfaceBodySnapshot,
       routeSheetRuntimeConfigAuthority,
     });
-    const fixedHeaderComponent = React.useMemo(
-      () => (
-        <SearchResultsHeaderChromeSurfaceHost
-          routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
-          onHeaderLayout={runtimeAssembly.onHeaderLayout}
-        />
-      ),
-      [routeSceneDisplayTargetRegistry, runtimeAssembly.onHeaderLayout]
-    );
 
     const sceneStackBottomSheetSurface = (
-      <GestureDetector gesture={runtimeAssembly.sheetGesture}>
-        <SearchRouteSceneStackBottomSheetInteractionGate
-          touchBlockingAuthority={runtimeAssembly.touchBlockingAuthority}
-          sheetViewStyle={runtimeAssembly.sheetViewStyle}
-        >
+      <SearchRouteSceneStackBottomSheetInteractionGate
+        touchBlockingAuthority={runtimeAssembly.touchBlockingAuthority}
+        sheetViewStyle={runtimeAssembly.sheetViewStyle}
+      >
+        <GestureDetector gesture={runtimeAssembly.sheetGesture}>
           <BottomSheetSceneStackHost
             sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
             routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
             shadowShellStyle={runtimeAssembly.shadowShellStyle}
             surfaceStyle={runtimeAssembly.surfaceStyle}
-            fixedHeaderComponent={fixedHeaderComponent}
             scrollHeaderComponent={null}
             onHeaderLayout={runtimeAssembly.onHeaderLayout}
             onScrollHeaderLayout={runtimeAssembly.onScrollHeaderLayout}
             scrollHeaderSyncStyle={runtimeAssembly.scrollHeaderSyncStyle}
+            displayedSceneKey={surfaceBodySnapshot.displayedSceneKey}
             bodyRuntimeAuthority={runtimeAssembly.bodyRuntimeAuthority}
+            sheetYValue={runtimeAssembly.sheetYValue}
           />
-        </SearchRouteSceneStackBottomSheetInteractionGate>
-      </GestureDetector>
+        </GestureDetector>
+      </SearchRouteSceneStackBottomSheetInteractionGate>
     );
 
     if (!onProfilerRender) {
@@ -201,18 +225,21 @@ export const SearchRouteSceneStackBottomSheetSurfaceHost = React.memo(
     useSearchNavSwitchCommitAttribution('SearchRouteSceneStackBottomSheetSurfaceHost');
     const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
     const onProfilerRender = useSearchOverlayProfilerRender();
-    const surfaceBodySnapshot = useRouteAuthoritySelector({
+    const surfaceBodySnapshot = useRouteAuthoritySelector<
+      AppRouteSheetHostSurfaceBodySnapshot,
+      RenderableAppRouteSheetHostSurfaceBodySnapshot | null
+    >({
       subscribe: React.useCallback(
         (listener: () => void) => routeSheetSurfaceBodyAuthority.subscribe(listener),
         [routeSheetSurfaceBodyAuthority]
       ),
+      subscribeSelector: routeSheetSurfaceBodyAuthority.subscribeSelector,
       getSnapshot: routeSheetSurfaceBodyAuthority.getSnapshot,
       selector: selectRenderableSurfaceBodySnapshot,
       isEqual: areRenderableSurfaceBodySnapshotsEqual,
       attributionOwner: 'SearchRouteSceneStackBottomSheetSurfaceHost',
       attributionOperation: 'sheetRuntimePresenceSelector',
     });
-
     if (surfaceBodySnapshot == null) {
       finishSearchNavSwitchRuntimeAttributionSpan({
         owner: 'SearchRouteSceneStackBottomSheetSurfaceHost',
@@ -221,7 +248,6 @@ export const SearchRouteSceneStackBottomSheetSurfaceHost = React.memo(
       });
       return null;
     }
-
     const sceneStackBottomSheetSurface = (
       <SearchRouteSceneStackBottomSheetRuntimeSurface
         sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
@@ -241,10 +267,7 @@ export const SearchRouteSceneStackBottomSheetSurfaceHost = React.memo(
     }
 
     const profiledSceneStackBottomSheetSurface = (
-      <React.Profiler
-        id="SearchRouteSceneStackBottomSheetSurfaceHost"
-        onRender={onProfilerRender}
-      >
+      <React.Profiler id="SearchRouteSceneStackBottomSheetSurfaceHost" onRender={onProfilerRender}>
         {sceneStackBottomSheetSurface}
       </React.Profiler>
     );

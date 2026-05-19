@@ -24,7 +24,7 @@ export type AppRouteResultsSheetVisibilityInput = {
   initialResultsSheetPosition: SheetPosition;
   initialResultsPanelVisible: boolean;
   clearSheetCommand: () => void;
-  setSheetTranslateYTo: (position: SheetPosition) => void;
+  setSheetTranslateYTo: (snap: SheetPosition) => void;
 };
 
 export type AppRouteResultsSheetVisibilityRuntime = {
@@ -32,11 +32,6 @@ export type AppRouteResultsSheetVisibilityRuntime = {
   getSnapshot: () => AppRouteResultsSheetVisibilitySnapshot;
   shouldRenderResultsSheetRef: React.MutableRefObject<boolean>;
   syncInput: (input: AppRouteResultsSheetVisibilityInput) => void;
-  animateSheetTo: (
-    position: SheetPosition,
-    velocity?: number,
-    requestToken?: number | null
-  ) => void;
   resetResultsSheetToHidden: () => void;
   prepareShortcutSheetTransition: () => boolean;
   handleSheetSnapChange: (nextSnap: SheetPosition | 'hidden') => void;
@@ -119,20 +114,23 @@ export class AppRouteResultsSheetVisibilityController
     this.syncCollapsedGeometry(previousInput?.navBarTopForSnaps ?? null);
   }
 
-  public animateSheetTo = (
+  private readonly requestVisibleSheetMotion = (
     position: SheetPosition,
-    _velocity = 0,
-    requestToken: number | null = null
+    options?: {
+      mode?: 'spring' | 'instant';
+      requestToken?: number | null;
+    }
   ): void => {
     if (position !== 'hidden') {
       this.commitSnapshot({
         panelVisible: true,
-        sheetState: this.snapshot.sheetState,
+        sheetState: position,
       });
     }
-    this.routeSceneMotionRuntime.requestLocalSheetMotion('search', {
+    this.routeSceneMotionRuntime.requestLocalSheetMotion('searchRoute', {
       snap: position,
-      token: requestToken,
+      token: options?.requestToken ?? null,
+      mode: options?.mode,
     });
   };
 
@@ -153,13 +151,13 @@ export class AppRouteResultsSheetVisibilityController
       return false;
     }
     const pollsSheetSnap = input.getPollsSheetSnap();
-    const transitionSnap: Exclude<OverlaySheetSnap, 'hidden'> =
-      pollsSheetSnap !== 'hidden'
-        ? pollsSheetSnap
-        : input.isDockedPollsDismissed
-        ? 'collapsed'
-        : 'collapsed';
-    this.showPanelInstant(transitionSnap);
+    const nextLogicalSnap: Exclude<OverlaySheetSnap, 'hidden'> =
+      pollsSheetSnap !== 'hidden' ? pollsSheetSnap : 'collapsed';
+    this.commitSnapshot({
+      panelVisible: true,
+      sheetState: nextLogicalSnap,
+    });
+    input.clearSheetCommand();
     return true;
   };
 
@@ -184,17 +182,6 @@ export class AppRouteResultsSheetVisibilityController
     });
   }
 
-  private showPanelInstant(position: SheetPosition = 'middle'): void {
-    this.commitSnapshot({
-      panelVisible: true,
-      sheetState: position,
-    });
-    this.input?.clearSheetCommand();
-    if (this.input?.isSearchOverlay) {
-      this.input.setSheetTranslateYTo(position);
-    }
-  }
-
   private syncHiddenPosition(): void {
     const input = this.input;
     if (!input?.isSearchOverlay) {
@@ -217,10 +204,15 @@ export class AppRouteResultsSheetVisibilityController
     if (!input.shouldShowDockedPollsTarget) {
       return;
     }
+    if (this.snapshot.panelVisible) {
+      return;
+    }
     if (this.snapshot.sheetState !== 'hidden') {
       return;
     }
-    this.prepareShortcutSheetTransition();
+    this.requestVisibleSheetMotion(
+      input.getPollsSheetSnap() === 'hidden' ? 'collapsed' : input.getPollsSheetSnap()
+    );
   }
 
   private syncCollapsedGeometry(previousNavBarTopForSnaps: number | null): void {
@@ -245,7 +237,11 @@ export class AppRouteResultsSheetVisibilityController
     if (Number.isFinite(previous) && Math.abs(input.navBarTopForSnaps - previous) < 1) {
       return;
     }
-    this.showPanelInstant('collapsed');
+    this.commitSnapshot({
+      panelVisible: true,
+      sheetState: 'collapsed',
+    });
+    input.clearSheetCommand();
   }
 
   private commitSnapshot({

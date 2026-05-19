@@ -1,10 +1,20 @@
 # Keyword Collection Priority Overhaul (Daily Slices + Distinct Users + Cached Aggregates)
 
+> Superseded working notes. Treat `plans/search-demand-architecture-review.md`
+> as the current decision log before implementing keyword priority changes.
+> This file contains older slice-model ideas that must not override the current
+> review decisions.
+> Stale references to `collection_entity_priority_metrics` are rejected historical
+> notes. The live cutover deletes that owner and uses keyword collection priority
+> plus `user_search_demand_daily`, scoring traces, and attempt history instead.
+
 ## Implementation Handoff (for a new agent/session)
 
-If you are picking this up in a fresh chat: treat this plan as the source of truth and implement it end-to-end.
+If you are picking this up in a fresh chat: do not treat this plan as the source
+of truth. Use `plans/search-demand-layer-cutover-plan.md` for implementation and
+this file only as background on rejected/older thinking.
 
-- Read `plans/keyword-collection-priority-overhaul.md` and `plans/observability-overhaul.md` first.
+- Read `plans/search-demand-layer-cutover-plan.md` first.
 - Follow all “Decisions (Locked)” exactly; do not re-open them unless a real blocker appears.
 - We are intentionally skipping unit/integration/smoke tests; rely on the “Minimum Observability Safety Net” + manual validation steps.
 - Data is non-production/test-only: prefer the simplest cutover (truncate/backfill) and aggressively delete legacy fields/code once replaced.
@@ -193,7 +203,10 @@ All windows should be env-configurable; `30d` is intentionally “stable enough�
 
 ### 5) Cached aggregates (table-backed) instead of real-time counters
 
-We keep `collection_entity_priority_metrics` but repurpose it as “cached aggregates and selection metadata”, refreshed from source/event tables.
+Rejected by the current cutover: do not keep or repurpose
+`collection_entity_priority_metrics`. Current keyword priority reads the shared
+demand aggregate, writes batch scoring traces, and uses keyword attempt/yield
+history instead.
 
 Why not a materialized view (for now):
 

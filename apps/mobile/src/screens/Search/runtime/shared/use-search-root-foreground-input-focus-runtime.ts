@@ -19,7 +19,6 @@ type UseSearchRootForegroundInputFocusRuntimeArgs = {
 
 type SearchRootForegroundInputFocusRuntime = {
   focusSearchInput: () => void;
-  handleSearchPressIn: () => void;
 };
 
 export const useSearchRootForegroundInputFocusRuntime = ({
@@ -66,7 +65,9 @@ export const useSearchRootForegroundInputFocusRuntime = ({
         rootDataPlaneRuntime.requestStatusRuntime.cancelAutocomplete();
       }
     }
-    rootPrimitivesRuntime.searchState.inputRef.current?.focus();
+    requestAnimationFrame(() => {
+      rootPrimitivesRuntime.searchState.inputRef.current?.focus();
+    });
   }, [
     autocompleteRuntime,
     captureSearchSessionQuery,
@@ -86,44 +87,10 @@ export const useSearchRootForegroundInputFocusRuntime = ({
     rootDataPlaneRuntime.runtimeFlags.isSearchSessionActive,
   ]);
 
-  const handleSearchPressIn = React.useCallback(() => {
-    resultsPresentationOwner.presentationActions.requestSearchPresentationIntent({
-      kind: 'focus_editing',
-    });
-    rootPrimitivesRuntime.searchState.isSearchEditingRef.current = true;
-    rootPrimitivesRuntime.searchState.allowSearchBlurExitRef.current = false;
-    captureSearchSessionQuery();
-    rootOverlayStoreRuntime.dismissTransientOverlays();
-    autocompleteRuntime.allowAutocompleteResults();
-    rootPrimitivesRuntime.searchState.setIsAutocompleteSuppressed(false);
-    rootPrimitivesRuntime.searchState.setIsSearchFocused(true);
-    rootPrimitivesRuntime.searchState.setIsSuggestionPanelActive(true);
-    if (
-      resultsPresentationOwner.shellModel.backdropTarget === 'default' &&
-      rootPrimitivesRuntime.searchState.query.length > 0
-    ) {
-      rootPrimitivesRuntime.searchState.setQuery('');
-    }
-  }, [
-    autocompleteRuntime,
-    captureSearchSessionQuery,
-    resultsPresentationOwner.presentationActions,
-    resultsPresentationOwner.shellModel.backdropTarget,
-    rootPrimitivesRuntime.searchState.allowSearchBlurExitRef,
-    rootPrimitivesRuntime.searchState.isSearchEditingRef,
-    rootPrimitivesRuntime.searchState.query.length,
-    rootPrimitivesRuntime.searchState.setIsAutocompleteSuppressed,
-    rootPrimitivesRuntime.searchState.setIsSearchFocused,
-    rootPrimitivesRuntime.searchState.setIsSuggestionPanelActive,
-    rootPrimitivesRuntime.searchState.setQuery,
-    rootOverlayStoreRuntime,
-  ]);
-
   return React.useMemo(
     () => ({
       focusSearchInput,
-      handleSearchPressIn,
     }),
-    [focusSearchInput, handleSearchPressIn]
+    [focusSearchInput]
   );
 };

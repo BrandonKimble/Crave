@@ -30,9 +30,3 @@ export const capturePreparedProfileTransitionSnapshotOnRecord = ({
     snapshotCapture,
   });
 };
-
-export const resetPreparedProfileSavedSheetSnapOnRecord = (
-  controllerState: ProfileControllerState
-): void => {
-  controllerState.runtime.transition.savedSheetSnap = null;
-};

@@ -2,10 +2,18 @@ import React from 'react';
 import { Platform, type StyleProp, type ViewProps, type ViewStyle } from 'react-native';
 
 import { BlurView } from '@react-native-community/blur';
+import {
+  FROSTED_GLASS_DEFAULT_FALLBACK_COLOR,
+  FROSTED_GLASS_DEFAULT_INTENSITY,
+  FROSTED_GLASS_DEFAULT_TINT,
+  resolveFrostedGlassBlurAmount,
+  resolveFrostedGlassBlurType,
+  type FrostedGlassTint,
+} from './frosted-glass-style';
 
 type AppBlurViewProps = {
   intensity?: number;
-  tint?: 'light' | 'dark' | 'default';
+  tint?: FrostedGlassTint;
   style?: StyleProp<ViewStyle>;
   children?: React.ReactNode;
   pointerEvents?: ViewProps['pointerEvents'];
@@ -13,25 +21,9 @@ type AppBlurViewProps = {
   enabled?: boolean;
 };
 
-const resolveBlurAmount = (intensity?: number): number => {
-  const resolved = intensity ?? 45;
-  if (resolved <= 0) {
-    return 0;
-  }
-  const normalized = Math.round(resolved / 3);
-  return Math.min(25, Math.max(1, normalized));
-};
-
-const resolveBlurType = (tint: 'light' | 'dark' | 'default'): 'light' | 'dark' => {
-  if (tint === 'dark') {
-    return 'dark';
-  }
-  return 'light';
-};
-
 const AppBlurView: React.FC<AppBlurViewProps> = ({
-  intensity,
-  tint = 'light',
+  intensity = FROSTED_GLASS_DEFAULT_INTENSITY,
+  tint = FROSTED_GLASS_DEFAULT_TINT,
   style,
   children,
   pointerEvents,
@@ -46,14 +38,14 @@ const AppBlurView: React.FC<AppBlurViewProps> = ({
     Platform.OS === 'ios'
       ? {
           reducedTransparencyFallbackColor:
-            reducedTransparencyFallbackColor ?? 'rgba(248, 251, 255, 0.85)',
+            reducedTransparencyFallbackColor ?? FROSTED_GLASS_DEFAULT_FALLBACK_COLOR,
         }
       : undefined;
 
   return (
     <BlurView
-      blurAmount={resolveBlurAmount(intensity)}
-      blurType={resolveBlurType(tint)}
+      blurAmount={resolveFrostedGlassBlurAmount(intensity)}
+      blurType={resolveFrostedGlassBlurType(tint)}
       style={style}
       pointerEvents={pointerEvents}
       {...iosFallbackProps}

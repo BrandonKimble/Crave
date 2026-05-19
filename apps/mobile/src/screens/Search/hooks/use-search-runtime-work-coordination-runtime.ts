@@ -1,28 +1,35 @@
 import React from 'react';
 
 import {
-  createRunOneHandoffCoordinator,
-  type RunOneHandoffCoordinator,
-} from '../runtime/controller/run-one-handoff-coordinator';
+  createSearchSurfaceRedrawCoordinator,
+  type SearchSurfaceRedrawCoordinator,
+} from '../runtime/controller/search-surface-redraw-coordinator';
+import {
+  isSearchSurfaceRedrawDeferredChromePhase,
+  isSearchSurfaceRedrawVisibleAdmissionPhase,
+} from '../runtime/controller/search-surface-redraw-phase';
 import { createFrameBudgetGovernor } from '../runtime/scheduler/frame-budget-governor';
 import {
   createPhaseBMaterializer,
   type PhaseBMaterializer,
 } from '../runtime/scheduler/phase-b-materializer';
 import { RuntimeWorkScheduler } from '../runtime/scheduler/runtime-work-scheduler';
+import type { ResultsPresentationSurfaceAuthority } from '../runtime/shared/results-presentation-surface-authority';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 
 type UseSearchRuntimeWorkCoordinationRuntimeArgs = {
   searchRuntimeBus: SearchRuntimeBus;
+  resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
 };
 
 export type SearchRuntimeWorkCoordinationRuntime = {
   runtimeWorkSchedulerRef: React.MutableRefObject<RuntimeWorkScheduler>;
-  runOneHandoffCoordinatorRef: React.MutableRefObject<RunOneHandoffCoordinator>;
+  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinator>;
   phaseBMaterializerRef: React.MutableRefObject<PhaseBMaterializer>;
 };
 
 export const useSearchRuntimeWorkCoordinationRuntime = ({
+  resultsPresentationSurfaceAuthority,
   searchRuntimeBus,
 }: UseSearchRuntimeWorkCoordinationRuntimeArgs): SearchRuntimeWorkCoordinationRuntime => {
   const frameBudgetGovernorRef = React.useRef<ReturnType<typeof createFrameBudgetGovernor> | null>(
@@ -37,9 +44,9 @@ export const useSearchRuntimeWorkCoordinationRuntime = ({
     runtimeWorkSchedulerRef.current = new RuntimeWorkScheduler(frameBudgetGovernorRef.current);
   }
 
-  const runOneHandoffCoordinatorRef = React.useRef<RunOneHandoffCoordinator | null>(null);
-  if (!runOneHandoffCoordinatorRef.current) {
-    runOneHandoffCoordinatorRef.current = createRunOneHandoffCoordinator();
+  const searchSurfaceRedrawCoordinatorRef = React.useRef<SearchSurfaceRedrawCoordinator | null>(null);
+  if (!searchSurfaceRedrawCoordinatorRef.current) {
+    searchSurfaceRedrawCoordinatorRef.current = createSearchSurfaceRedrawCoordinator();
   }
 
   const phaseBMaterializerRef = React.useRef<PhaseBMaterializer | null>(null);
@@ -48,7 +55,7 @@ export const useSearchRuntimeWorkCoordinationRuntime = ({
   }
 
   React.useEffect(() => {
-    const coordinator = runOneHandoffCoordinatorRef.current;
+    const coordinator = searchSurfaceRedrawCoordinatorRef.current;
     if (!coordinator) {
       return;
     }
@@ -60,34 +67,44 @@ export const useSearchRuntimeWorkCoordinationRuntime = ({
       const isOperationInFlight = operationId != null;
       const isActive = phase !== 'idle';
       const commitSpanPressure = snapshot.metadata.commitSpanPressure === true;
+      const allowHydrationFinalizeCommit = !isOperationInFlight || phase === 'chrome_ready';
+      const isLeafOnlyVisualAdmission = isSearchSurfaceRedrawVisibleAdmissionPhase(phase);
 
-      searchRuntimeBus.batch(() => {
-        searchRuntimeBus.publish({
-          runOneHandoffPhase: phase,
-          runOneHandoffOperationId: operationId,
-          isRun1HandoffActive: isActive,
-          isRunOnePreflightFreezeActive: isOperationInFlight && phase === 'idle',
-          isRunOneChromeFreezeActive: isActive && phase !== 'h4_chrome_resume',
-          isChromeDeferred: phase === 'h2_marker_enter' || phase === 'h3_hydration_ramp',
-          runOneCommitSpanPressureActive: isActive && commitSpanPressure,
-          allowHydrationFinalizeCommit: !isOperationInFlight || phase === 'h4_chrome_resume',
-          runOneSelectionFeedbackOperationId: isActive && operationId ? operationId : null,
+      // Card/pin visual admission is owned by the leaf redraw store; publishing it here
+      // wakes the route/sheet host tree on the transition-critical commit.
+      if (!isLeafOnlyVisualAdmission) {
+        searchRuntimeBus.batch(() => {
+          searchRuntimeBus.publish({
+            searchSurfaceRedrawPhase: phase,
+            searchSurfaceRedrawOperationId: operationId,
+            isSearchSurfaceRedrawActive: isActive,
+            isSearchSurfaceRedrawPreflightFreezeActive: isOperationInFlight && phase === 'idle',
+            isSearchSurfaceRedrawChromeFreezeActive: isActive && phase !== 'chrome_ready',
+            isChromeDeferred: isSearchSurfaceRedrawDeferredChromePhase(phase),
+            searchSurfaceRedrawCommitSpanPressureActive: isActive && commitSpanPressure,
+            searchSurfaceRedrawSelectionFeedbackOperationId:
+              isActive && operationId ? operationId : null,
+          });
         });
-      });
+      }
+      resultsPresentationSurfaceAuthority.publish(
+        { allowHydrationFinalizeCommit },
+        'run_one_handoff_hydration_finalize_policy'
+      );
     };
 
     publishDerivedState();
     return coordinator.subscribe(() => {
       publishDerivedState();
     });
-  }, [searchRuntimeBus]);
+  }, [resultsPresentationSurfaceAuthority, searchRuntimeBus]);
 
   React.useEffect(
     () => () => {
       phaseBMaterializerRef.current?.resetHydrationCommit();
       runtimeWorkSchedulerRef.current?.stopFrameLoop();
       runtimeWorkSchedulerRef.current?.clear();
-      runOneHandoffCoordinatorRef.current?.reset();
+      searchSurfaceRedrawCoordinatorRef.current?.reset();
     },
     []
   );
@@ -96,11 +113,11 @@ export const useSearchRuntimeWorkCoordinationRuntime = ({
     () => ({
       runtimeWorkSchedulerRef:
         runtimeWorkSchedulerRef as React.MutableRefObject<RuntimeWorkScheduler>,
-      runOneHandoffCoordinatorRef:
-        runOneHandoffCoordinatorRef as React.MutableRefObject<RunOneHandoffCoordinator>,
+      searchSurfaceRedrawCoordinatorRef:
+        searchSurfaceRedrawCoordinatorRef as React.MutableRefObject<SearchSurfaceRedrawCoordinator>,
       phaseBMaterializerRef:
         phaseBMaterializerRef as React.MutableRefObject<PhaseBMaterializer>,
     }),
-    [phaseBMaterializerRef, runOneHandoffCoordinatorRef, runtimeWorkSchedulerRef]
+    [phaseBMaterializerRef, searchSurfaceRedrawCoordinatorRef, runtimeWorkSchedulerRef]
   );
 };

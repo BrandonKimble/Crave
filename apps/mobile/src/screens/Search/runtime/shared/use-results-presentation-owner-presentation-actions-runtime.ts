@@ -17,12 +17,12 @@ type UseResultsPresentationOwnerPresentationActionsRuntimeArgs = {
   submittedQuery: string;
   isSearchSessionActive: boolean;
   hasResults: boolean;
+  profilePresentationActiveRef: React.MutableRefObject<boolean>;
+  prepareRestaurantProfileForTerminalSearchDismissRef: React.MutableRefObject<() => void>;
   ignoreNextSearchBlurRef: React.MutableRefObject<boolean>;
   isClearingSearchRef: React.MutableRefObject<boolean>;
-  handleCloseResultsUiReset: () => void;
   resultsSheetRuntime: Pick<
     AppRouteResultsSheetRuntimeOwner,
-    | 'animateSheetTo'
     | 'prepareShortcutSheetTransition'
     | 'resultsSheetRuntimeModel'
     | 'shouldRenderResultsSheetRef'
@@ -32,13 +32,12 @@ type UseResultsPresentationOwnerPresentationActionsRuntimeArgs = {
     Pick<AppRouteResultsSheetRuntimeOwner, 'snapPoints'>;
   shellLocalState: ResultsPresentationShellLocalState;
   resultsRuntimeOwner: ResultsPresentationRuntimeOwner;
-  scheduleCloseSearchCleanup: (closeIntentId: string) => void;
   cancelCloseSearchCleanup: () => void;
   setPendingCloseIntentId: (intentId: string | null) => void;
   matchesPendingCloseIntentId: (intentId: string) => boolean;
-  beginCloseTransition: (closeIntentId: string) => void;
-  markSearchSheetCloseSheetSettled: (
-    snap: Exclude<import('../../../../overlays/types').OverlaySheetSnap, 'hidden'>
+  beginCloseTransition: (
+    closeIntentId: string,
+    options?: { terminalDismissSource?: 'results' | 'profile' }
   ) => void;
   cancelSearchSheetCloseTransition: (closeIntentId?: string) => void;
   routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
@@ -49,18 +48,17 @@ export const useResultsPresentationOwnerPresentationActionsRuntime = ({
   submittedQuery,
   isSearchSessionActive,
   hasResults,
+  profilePresentationActiveRef,
+  prepareRestaurantProfileForTerminalSearchDismissRef,
   ignoreNextSearchBlurRef,
   isClearingSearchRef,
-  handleCloseResultsUiReset,
   resultsSheetRuntime,
   shellLocalState,
   resultsRuntimeOwner,
-  scheduleCloseSearchCleanup,
   cancelCloseSearchCleanup,
   setPendingCloseIntentId,
   matchesPendingCloseIntentId,
   beginCloseTransition,
-  markSearchSheetCloseSheetSettled,
   cancelSearchSheetCloseTransition,
   routeSceneVisibilityPolicyRuntime,
 }: UseResultsPresentationOwnerPresentationActionsRuntimeArgs): ResultsPresentationActions => {
@@ -69,18 +67,16 @@ export const useResultsPresentationOwnerPresentationActionsRuntime = ({
     submittedQuery,
     isSearchSessionActive,
     hasResults,
+    profilePresentationActiveRef,
+    prepareRestaurantProfileForTerminalSearchDismissRef,
     ignoreNextSearchBlurRef,
     isClearingSearchRef,
-    handleCloseResultsUiReset,
     resultsSheetRuntime,
-    shellLocalState,
     resultsRuntimeOwner,
-    scheduleCloseSearchCleanup,
     cancelCloseSearchCleanup,
     setPendingCloseIntentId,
     matchesPendingCloseIntentId,
     beginCloseTransition,
-    markSearchSheetCloseSheetSettled,
     cancelSearchSheetCloseTransition,
   });
 
@@ -94,6 +90,9 @@ export const useResultsPresentationOwnerPresentationActionsRuntime = ({
     shellLocalState,
     resultsRuntimeOwner,
     cancelSearchSheetCloseTransition,
+    cancelCloseSearchCleanup,
+    setPendingCloseIntentId,
+    routeSceneVisibilityPolicyRuntime,
   });
 
   const requestSearchPresentationIntent = React.useCallback(

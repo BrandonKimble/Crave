@@ -1,0 +1,123 @@
+import React from 'react';
+import { unstable_batchedUpdates } from 'react-native';
+
+import { useAppRouteSceneRuntime } from '../../../../navigation/runtime/AppRouteSceneRuntimeProvider';
+import {
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+} from '../../../../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
+import type {
+  ResultsSurfaceExitTransactionExecutor,
+  UseResultsSurfaceExitTransactionExecutionRuntimeArgs,
+} from './search-surface-results-transaction-execution-runtime-contract';
+import { requestSearchBottomNavMotionTarget } from './search-bottom-nav-motion-runtime';
+
+export const useResultsSurfaceExitTransactionExecutionRuntime = ({
+  getCurrentSheetSnap,
+  beginCloseTransition,
+  resultsRuntimeOwner,
+}: UseResultsSurfaceExitTransactionExecutionRuntimeArgs): ResultsSurfaceExitTransactionExecutor => {
+  const routeSceneRuntime = useAppRouteSceneRuntime();
+
+  return React.useCallback(
+    (snapshot) => {
+      const currentSheetSnap = getCurrentSheetSnap?.();
+      const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+      if (isPerfScenarioAttributionActive(scenarioConfig)) {
+        logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+          event: 'results_dismiss_press_up_contract',
+          currentSheetSnap: currentSheetSnap ?? null,
+          pinsLabelsDotsFadeOutRequested: true,
+          pinsLabelsFadeOutRequested: true,
+          pollsSwitchImmediate:
+            currentSheetSnap === 'collapsed' || currentSheetSnap === 'hidden',
+          outgoingResultCardsHeldForDismissTransition: true,
+          queryClearedToPlaceholder: true,
+          queryHeldForDismissTransition: false,
+          resultSheetBeginsSlidingDown:
+            currentSheetSnap !== 'collapsed' && currentSheetSnap !== 'hidden',
+          shortcutsFadeInRequested: true,
+          transactionId: snapshot.transactionId,
+        });
+      }
+      requestSearchBottomNavMotionTarget('show');
+      unstable_batchedUpdates(() => {
+        resultsRuntimeOwner.commitSearchSurfaceResultsTransaction(snapshot);
+        beginCloseTransition(snapshot.transactionId, {
+          terminalDismissSource: snapshot.terminalDismissSource,
+        });
+      });
+      routeSceneRuntime.routeSceneSwitchRuntime.requestOverlaySwitch({
+        ...(snapshot.terminalDismissSource === 'profile'
+          ? ({ sourceSceneKey: 'restaurant' } as const)
+          : null),
+        targetSceneKey: 'polls',
+        sheetTransitionKind: 'terminalDismiss',
+        sheetOpenerSource: 'systemDismiss',
+        sheetMotion: { kind: 'snapTo', snap: 'collapsed' },
+        contentHandoff: 'preserveOutgoingUntilSettle',
+        snapPersistence: 'sharedOnly',
+        routeAction: 'setRoot',
+        dockedPollsRestoreSnap: 'collapsed',
+      });
+      if (isPerfScenarioAttributionActive(scenarioConfig)) {
+        logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+          event: 'search_header_visual_contract',
+          backdropTarget: 'default',
+          bottomBandOwner: 'results_header',
+          canAdmitResultsBody: true,
+          canExposePersistentPolls: false,
+          canReleasePersistentPolls: false,
+          chromeMode: 'default',
+          displayQuery: '',
+          isCloseTransitionActive: true,
+          searchSheetContentLaneKind: 'results_closing',
+          searchSurfacePhase: 'results_dismissing',
+          shouldHoldResultsHeader: true,
+          shouldHoldSearchDisplayForPollRestore: false,
+          resultPageBundleFrozenUntilBoundary: true,
+          sheetClipMode: 'animatedSearchTransition',
+          shortcutsInteractive: false,
+          shortcutsVisibleTarget: true,
+          transactionId: snapshot.transactionId,
+        });
+        logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+          event: 'search_shortcuts_visibility_contract',
+          backdropTarget: 'none',
+          headerShortcutsInteractive: false,
+          headerShortcutsVisibleTarget: true,
+          isSearchOverlay: true,
+          isSuggestionOverlayVisible: false,
+          isSuggestionPanelActive: false,
+          shouldEnableSearchShortcutsInteraction: false,
+          shouldKeepMountedForResultsExit: false,
+          shouldMountSearchShortcuts: true,
+          shouldRenderSearchOverlay: true,
+          shouldShowSearchShortcutsTarget: true,
+          shortcutBackgroundOpacityTarget: 1,
+          shortcutChipContainerOpacityTarget: 1,
+          shortcutContentOpacityTarget: 1,
+          shortcutOpacityTargetsShareTransition: true,
+          shortcutOpacityTransitionDurationMs: 180,
+          transactionId: snapshot.transactionId,
+        });
+        logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+          event: 'native_marker_exit_started',
+          requestKey: snapshot.transactionId,
+          frameGenerationId: null,
+          pinCount: 0,
+          dotCount: 0,
+          labelCount: 0,
+          });
+      }
+      return snapshot.transactionId;
+    },
+    [
+      beginCloseTransition,
+      getCurrentSheetSnap,
+      resultsRuntimeOwner,
+      routeSceneRuntime,
+    ]
+  );
+};

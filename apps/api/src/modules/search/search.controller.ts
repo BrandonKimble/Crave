@@ -13,10 +13,10 @@ import type { User } from '@prisma/client';
 import { LoggerService, CurrentUser } from '../../shared';
 import {
   NaturalSearchRequestDto,
+  SearchCacheAttributionDto,
   SearchPlanResponseDto,
   SearchQueryRequestDto,
   SearchResponseDto,
-  SearchResultClickDto,
 } from './dto/search-query.dto';
 import { ShortcutCoverageRequestDto } from './dto/shortcut-coverage.dto';
 import { SearchService, type SearchHistoryEntry } from './search.service';
@@ -73,10 +73,13 @@ export class SearchController {
     return this.searchOrchestrationService.runNaturalQuery(request);
   }
 
-  @Post('events/click')
-  recordClick(@Body() dto: SearchResultClickDto): { status: string } {
-    this.searchService.recordResultClick(dto);
-    return { status: 'ok' };
+  @Post('cache-attribution')
+  @RateLimitTier('search')
+  async recordCacheAttribution(
+    @Body() request: SearchCacheAttributionDto,
+    @CurrentUser() user: User,
+  ): Promise<{ inserted: number }> {
+    return this.searchService.recordCacheAttribution(request, user.userId);
   }
 
   @Get('history')

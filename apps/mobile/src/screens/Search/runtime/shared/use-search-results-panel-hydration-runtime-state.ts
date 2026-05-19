@@ -1,41 +1,60 @@
 import type { SearchRuntimeBus } from './search-runtime-bus';
+import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
 import type { SearchResultsPanelHydrationRuntimeState } from './search-results-panel-runtime-state-contract';
-import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
+import {
+  isSearchSurfaceRedrawVisibleAdmissionPhase,
+  type SearchSurfaceRedrawPhase,
+} from '../controller/search-surface-redraw-phase';
+import React from 'react';
+
+const resolveBodyAdmissionHandoffPhase = (phase: SearchSurfaceRedrawPhase): SearchSurfaceRedrawPhase =>
+  phase === 'redraw_committed' ? phase : 'markers_ready';
 
 export const useSearchResultsPanelHydrationRuntimeState = (
-  searchRuntimeBus: SearchRuntimeBus
+  searchRuntimeBus: SearchRuntimeBus,
+  resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority
 ): SearchResultsPanelHydrationRuntimeState => {
-  return useSearchRuntimeBusSelector(
-    searchRuntimeBus,
-    (state) => {
-      const policyFacts = searchRuntimeBus.getPolicyFactsSnapshot();
+  const getRawSearchSurfaceRedrawPhase = React.useCallback(
+    () => searchRuntimeBus.getState().searchSurfaceRedrawPhase,
+    [searchRuntimeBus]
+  );
+  const getAllowHydrationFinalizeCommit = React.useCallback(
+    () => resultsPresentationSurfaceAuthority.getSnapshot().allowHydrationFinalizeCommit,
+    [resultsPresentationSurfaceAuthority]
+  );
+  const sampledSearchRuntimeState = searchRuntimeBus.getState();
+  const sampledPolicyFacts = searchRuntimeBus.getPolicyFactsSnapshot();
+  const surfaceResultsHydrationKey =
+    resultsPresentationSurfaceAuthority.getSnapshot().resultsHydrationKey;
+  const sampledSearchSurfaceRedrawPhase =
+    surfaceResultsHydrationKey == null
+      ? sampledSearchRuntimeState.searchSurfaceRedrawPhase
+      : resolveBodyAdmissionHandoffPhase(sampledSearchRuntimeState.searchSurfaceRedrawPhase);
 
-      return {
-        runOneCommitSpanPressureActive: state.runOneCommitSpanPressureActive,
-        hydrationOperationId: state.hydrationOperationId,
-        allowHydrationFinalizeCommit: state.allowHydrationFinalizeCommit,
-        runtimeHydratedResultsKey: state.hydratedResultsKey,
-        isRunOneChromeDeferred: policyFacts.isRunOneChromeDeferred,
-        chromeFreezeClassification: policyFacts.freezeClassification,
-      };
-    },
-    (left, right) =>
-      left.runOneCommitSpanPressureActive === right.runOneCommitSpanPressureActive &&
-      left.hydrationOperationId === right.hydrationOperationId &&
-      left.allowHydrationFinalizeCommit === right.allowHydrationFinalizeCommit &&
-      left.runtimeHydratedResultsKey === right.runtimeHydratedResultsKey &&
-      left.isRunOneChromeDeferred === right.isRunOneChromeDeferred &&
-      left.chromeFreezeClassification === right.chromeFreezeClassification,
+  return React.useMemo(
+    () => ({
+      searchSurfaceRedrawPhase: sampledSearchSurfaceRedrawPhase,
+      rawSearchSurfaceRedrawPhase: sampledSearchRuntimeState.searchSurfaceRedrawPhase,
+      searchSurfaceRedrawCommitSpanPressureActive:
+        sampledSearchRuntimeState.searchSurfaceRedrawCommitSpanPressureActive,
+      isSearchSurfaceRedrawChromeDeferred:
+        sampledPolicyFacts.isSearchSurfaceRedrawChromeDeferred,
+      chromeFreezeClassification: sampledPolicyFacts.freezeClassification,
+      getAllowHydrationFinalizeCommit,
+      getRawSearchSurfaceRedrawPhase,
+    }),
     [
-      'runOneCommitSpanPressureActive',
-      'hydrationOperationId',
-      'allowHydrationFinalizeCommit',
-      'hydratedResultsKey',
-      'isRunOneChromeFreezeActive',
-      'isRunOnePreflightFreezeActive',
-      'isRun1HandoffActive',
-      'isResponseFrameFreezeActive',
-      'isChromeDeferred',
-    ] as const
+      getAllowHydrationFinalizeCommit,
+      getRawSearchSurfaceRedrawPhase,
+      sampledPolicyFacts.freezeClassification,
+      sampledPolicyFacts.isSearchSurfaceRedrawChromeDeferred,
+      sampledSearchRuntimeState.searchSurfaceRedrawCommitSpanPressureActive,
+      sampledSearchRuntimeState.searchSurfaceRedrawPhase,
+      sampledSearchSurfaceRedrawPhase,
+      surfaceResultsHydrationKey,
+    ]
   );
 };
+
+export const isSearchResultsHydrationVisibleAdmissionPhase =
+  isSearchSurfaceRedrawVisibleAdmissionPhase;

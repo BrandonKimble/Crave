@@ -1,6 +1,5 @@
 import React from 'react';
 
-import { applySearchRestaurantRouteCommand } from '../../../../overlays/searchRestaurantRouteController';
 import type { AppRouteSceneRuntime } from '../../../../navigation/runtime/app-route-scene-runtime';
 import {
   PROFILE_CAMERA_ANIMATION_MODE,
@@ -29,7 +28,6 @@ export const useProfileAppRouteExecutionRuntime = ({
 }: UseProfileAppRouteExecutionRuntimeArgs): ProfileAppRouteExecutionRuntime => {
   const routeSceneSwitchActions = routeSceneRuntime.routeOverlayTransitionActions;
   const routeSceneSwitchRuntime = routeSceneRuntime.routeSceneSwitchRuntime;
-  const routeOverlayRouteCommandRuntime = routeSceneRuntime.routeOverlayRouteCommandRuntime;
 
   const emitProfileRouteCompletionEvent = React.useCallback(
     (event: PreparedProfilePresentationCompletionEvent) => {
@@ -54,18 +52,6 @@ export const useProfileAppRouteExecutionRuntime = ({
         },
       });
 
-      if (routeIntentAction.type === 'update_active_search_restaurant_route') {
-        applySearchRestaurantRouteCommand(
-          {
-            type: 'update_search_restaurant_route',
-            restaurantId: routeIntentAction.restaurantId,
-          },
-          routeOverlayRouteCommandRuntime
-        );
-        emitProfileRouteCompletionEvent(routeIntentAction.completionEvent);
-        return;
-      }
-
       if (routeIntentAction.type === 'request_overlay_switch') {
         routeSceneSwitchActions.requestOverlaySwitchWithSettleCallback(
           routeIntentAction.request,
@@ -80,7 +66,6 @@ export const useProfileAppRouteExecutionRuntime = ({
     },
     [
       emitProfileRouteCompletionEvent,
-      routeOverlayRouteCommandRuntime,
       routeSceneSwitchActions,
       routeSceneSwitchRuntime,
     ]

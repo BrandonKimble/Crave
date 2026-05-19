@@ -1,52 +1,32 @@
 import React from 'react';
 
+import type { ResultsPresentationAuthority } from './results-presentation-authority';
 import type { SearchRuntimeBus } from './search-runtime-bus';
-import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
-import { areResultsPresentationTransportLifecycleStatesEqual } from './use-search-runtime-instrumentation-runtime-contract';
 
 export const useSearchRuntimePresentationTelemetryRuntime = ({
   searchRuntimeBus,
-  getActiveShortcutRunNumber,
+  resultsPresentationAuthority,
+  getActiveScenarioRunNumber,
   emitRuntimeMechanismEvent,
 }: {
   searchRuntimeBus: SearchRuntimeBus;
-  getActiveShortcutRunNumber: () => number | null;
+  resultsPresentationAuthority: ResultsPresentationAuthority;
+  getActiveScenarioRunNumber: () => number | null;
   emitRuntimeMechanismEvent: (event: string, payload?: Record<string, unknown>) => void;
 }): void => {
-  const handoffPresentationRuntimeState = useSearchRuntimeBusSelector(
-    searchRuntimeBus,
-    (state) => ({
-      runOneHandoffOperationId: state.runOneHandoffOperationId,
-      runOneHandoffPhase: state.runOneHandoffPhase,
-    }),
-    (left, right) =>
-      left.runOneHandoffOperationId === right.runOneHandoffOperationId &&
-      left.runOneHandoffPhase === right.runOneHandoffPhase,
-    ['runOneHandoffOperationId', 'runOneHandoffPhase'] as const
-  );
-  const presentationTelemetryState = useSearchRuntimeBusSelector(
-    searchRuntimeBus,
-    (state) => ({
-      resultsPresentationTransport: state.resultsPresentationTransport,
-    }),
-    (left, right) =>
-      areResultsPresentationTransportLifecycleStatesEqual(
-        left.resultsPresentationTransport,
-        right.resultsPresentationTransport
-      ),
-    ['resultsPresentationTransport'] as const
-  );
-
   const previousPresentationTelemetryStateRef = React.useRef({
-    resultsPresentationTransport: presentationTelemetryState.resultsPresentationTransport,
+    resultsPresentationTransport:
+      resultsPresentationAuthority.getSnapshot().resultsPresentationTransport,
   });
 
-  React.useEffect(() => {
+  const emitPresentationTelemetrySnapshot = React.useCallback(() => {
     const previous = previousPresentationTelemetryStateRef.current;
+    const runtimeState = searchRuntimeBus.getState();
+    const presentationSnapshot = resultsPresentationAuthority.getSnapshot();
     const next = {
-      resultsPresentationTransport: presentationTelemetryState.resultsPresentationTransport,
+      resultsPresentationTransport: presentationSnapshot.resultsPresentationTransport,
     };
-    const activeRunNumber = getActiveShortcutRunNumber();
+    const activeRunNumber = getActiveScenarioRunNumber();
     if (activeRunNumber == null) {
       previousPresentationTelemetryStateRef.current = next;
       return;
@@ -58,8 +38,8 @@ export const useSearchRuntimePresentationTelemetryRuntime = ({
       emitRuntimeMechanismEvent('runtime_write_span', {
         domain: 'visual_sync_state',
         label: `map_execution_stage_${next.resultsPresentationTransport.executionStage}`,
-        operationId: handoffPresentationRuntimeState.runOneHandoffOperationId,
-        phase: handoffPresentationRuntimeState.runOneHandoffPhase,
+        operationId: runtimeState.searchSurfaceRedrawOperationId,
+        phase: runtimeState.searchSurfaceRedrawPhase,
         mapExecutionStage: next.resultsPresentationTransport.executionStage,
         previousMapExecutionStage: previous.resultsPresentationTransport.executionStage,
       });
@@ -76,8 +56,8 @@ export const useSearchRuntimePresentationTelemetryRuntime = ({
           next.resultsPresentationTransport.transactionId != null
             ? 'presentation_transaction_armed'
             : 'presentation_transaction_cleared',
-        operationId: handoffPresentationRuntimeState.runOneHandoffOperationId,
-        phase: handoffPresentationRuntimeState.runOneHandoffPhase,
+        operationId: runtimeState.searchSurfaceRedrawOperationId,
+        phase: runtimeState.searchSurfaceRedrawPhase,
         mapPresentationSnapshotKind: next.resultsPresentationTransport.snapshotKind,
         mapPresentationTransactionId: next.resultsPresentationTransport.transactionId,
         previousPresentationSnapshotKind: previous.resultsPresentationTransport.snapshotKind,
@@ -87,9 +67,30 @@ export const useSearchRuntimePresentationTelemetryRuntime = ({
     previousPresentationTelemetryStateRef.current = next;
   }, [
     emitRuntimeMechanismEvent,
-    getActiveShortcutRunNumber,
-    handoffPresentationRuntimeState.runOneHandoffOperationId,
-    handoffPresentationRuntimeState.runOneHandoffPhase,
-    presentationTelemetryState.resultsPresentationTransport,
+    getActiveScenarioRunNumber,
+    resultsPresentationAuthority,
+    searchRuntimeBus,
+  ]);
+
+  React.useEffect(() => {
+    const unsubscribeRuntime = searchRuntimeBus.subscribe(
+      emitPresentationTelemetrySnapshot,
+      ['searchSurfaceRedrawOperationId', 'searchSurfaceRedrawPhase'],
+      'presentation_telemetry_handoff_state'
+    );
+    const unsubscribePresentation = resultsPresentationAuthority.subscribe(
+      emitPresentationTelemetrySnapshot,
+      ['resultsPresentationTransport'],
+      'presentation_telemetry_transport_state'
+    );
+    emitPresentationTelemetrySnapshot();
+    return () => {
+      unsubscribeRuntime();
+      unsubscribePresentation();
+    };
+  }, [
+    emitPresentationTelemetrySnapshot,
+    resultsPresentationAuthority,
+    searchRuntimeBus,
   ]);
 };

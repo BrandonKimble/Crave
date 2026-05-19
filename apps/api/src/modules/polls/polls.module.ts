@@ -9,7 +9,7 @@ import { IdentityModule } from '../identity/identity.module';
 import { RestaurantEnrichmentModule } from '../restaurant-enrichment/restaurant-enrichment.module';
 import { EntityResolverModule } from '../content-processing/entity-resolver/entity-resolver.module';
 import { QualityScoreModule } from '../content-processing/quality-score/quality-score.module';
-import { RankScoreModule } from '../content-processing/rank-score/rank-score.module';
+import { PublicCraveScoreModule } from '../content-processing/public-crave-score';
 import { MarketsModule } from '../markets/markets.module';
 import { PollsService } from './polls.service';
 import { PollsController } from './polls.controller';
@@ -33,7 +33,7 @@ import { PollScoreRefreshService } from './poll-score-refresh.service';
     RestaurantEnrichmentModule,
     EntityResolverModule,
     QualityScoreModule,
-    RankScoreModule,
+    PublicCraveScoreModule,
     MarketsModule,
   ],
   controllers: [PollsController],

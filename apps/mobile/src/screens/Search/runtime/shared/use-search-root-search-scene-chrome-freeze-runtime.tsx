@@ -40,7 +40,7 @@ export const useSearchRootSearchSceneChromeFreezeRuntime = ({
     resolvedResultsRuntime.resolvedResults != null;
   const shouldFreezeResultsChrome =
     searchHydrationRuntimeState.chromeFreezeClassification === 'recovery' &&
-    searchHydrationRuntimeState.isRunOneChromeDeferred &&
+    searchHydrationRuntimeState.isSearchSurfaceRedrawChromeDeferred &&
     !hasResolvedResults;
   const searchSceneChromeFreezeRuntimeRef = React.useRef<
     ReturnType<typeof createSearchRootSearchSceneChromeFreezeRuntime> | null

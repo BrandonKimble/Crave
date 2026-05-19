@@ -70,6 +70,7 @@ export const useSearchForegroundSubmitRuntime = ({
     isSearchLoading,
     isLoadingMore,
     isSearchSessionActive,
+    isSuggestionPanelActive,
     shouldShowDockedPollsRef,
     prepareSearchSessionEntry,
     suppressAutocompleteResults,
@@ -94,6 +95,7 @@ export const useSearchForegroundSubmitRuntime = ({
 
   const recentSubmitRuntime = useSearchForegroundRecentSubmitRuntime({
     submitRuntime,
+    isSuggestionPanelActive,
     pendingRestaurantSelectionRef,
     setRestaurantOnlyIntent,
     deferRecentSearchUpsert,

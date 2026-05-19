@@ -1,4 +1,8 @@
-import type { FoodResult, RestaurantResult } from '../../types';
+import type {
+  FoodResult,
+  RestaurantResult,
+  RestaurantResultScorePreview,
+} from '../../types';
 import type { PreparedProfilePresentationSnapshot } from './app-route-profile-prepared-presentation-snapshot-contract';
 import type { PreparedProfilePresentationTransaction } from './app-route-profile-prepared-presentation-transaction-contract';
 
@@ -22,7 +26,11 @@ export type HydratedRestaurantProfile = {
   dishes: FoodResult[];
 };
 
-export type RestaurantProfileShellData = HydratedRestaurantProfile & {
+export type RestaurantProfileSeed = RestaurantResult | RestaurantResultScorePreview;
+
+export type RestaurantProfileShellData = {
+  restaurant: RestaurantProfileSeed;
+  dishes: FoodResult[];
   queryLabel: string;
   isFavorite: boolean;
   isLoading?: boolean;
@@ -37,7 +45,6 @@ export type CameraSnapshot = {
 };
 
 export type ProfileTransitionSnapshotCapture = {
-  savedSheetSnap: 'expanded' | 'middle' | 'collapsed' | null;
   savedCamera: CameraSnapshot | null;
   savedResultsScrollOffset: number | null;
 };
@@ -45,6 +52,8 @@ export type ProfileTransitionSnapshotCapture = {
 export type ProfileOpenSettleState = {
   transactionId: string | null;
   requestToken: number | null;
+  cameraRequestToken: number | null;
+  sheetRequestToken: number | null;
   cameraSettled: boolean;
   sheetSettled: boolean;
 };
@@ -64,7 +73,6 @@ export type ProfileTransitionState = {
   status: ProfileTransitionStatus;
   preparedSnapshot: PreparedProfilePresentationSnapshot | null;
   completionState: ProfilePresentationCompletionState;
-  savedSheetSnap: 'expanded' | 'middle' | 'collapsed' | null;
   savedCamera: CameraSnapshot | null;
   savedResultsScrollOffset: number | null;
 };

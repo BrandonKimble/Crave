@@ -1,7 +1,7 @@
 import React from 'react';
 
 import type { OverlaySheetSnap } from '../../../../overlays/types';
-import type { ResultsCloseTransitionActions } from './results-presentation-shell-runtime-contract';
+import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import type { useSearchRootResultsSheetInteractionStateRuntime } from './use-search-root-results-sheet-interaction-state-runtime';
 
@@ -11,7 +11,6 @@ const isVisibleResultsSheetSnap = (
 
 type UseSearchRootResultsSheetSnapRuntimeArgs = {
   rootOverlayFoundationRuntime: SearchRootOverlayFoundationRuntime;
-  closeTransitionActions: ResultsCloseTransitionActions;
   interactionStateRuntime: ReturnType<
     typeof useSearchRootResultsSheetInteractionStateRuntime
   >;
@@ -19,7 +18,6 @@ type UseSearchRootResultsSheetSnapRuntimeArgs = {
 
 export const useSearchRootResultsSheetSnapRuntime = ({
   rootOverlayFoundationRuntime,
-  closeTransitionActions,
   interactionStateRuntime,
 }: UseSearchRootResultsSheetSnapRuntimeArgs) => {
   const { appRouteResultsSheetRuntimeOwner } = rootOverlayFoundationRuntime;
@@ -36,15 +34,25 @@ export const useSearchRootResultsSheetSnapRuntime = ({
     [appRouteResultsSheetRuntimeOwner]
   );
 
+  const markSearchSurfaceSheetReadyForVisibleSnap = React.useCallback(() => {
+    const searchSurfaceRuntime = getSearchSurfaceRuntime();
+    const transactionId = searchSurfaceRuntime.getActiveOrPendingRedrawTransactionId();
+    if (transactionId == null) {
+      return;
+    }
+    searchSurfaceRuntime.markRedrawSheetReady(transactionId);
+  }, []);
+
   const handleResultsSheetSnapStart = React.useCallback(
     (snap: OverlaySheetSnap | 'hidden') => {
       if (!isVisibleResultsSheetSnap(snap)) {
         return;
       }
+      markSearchSurfaceSheetReadyForVisibleSnap();
       pendingResultsSheetSnapRef.current = null;
       applyResultsSheetSnapChange(snap);
     },
-    [applyResultsSheetSnapChange]
+    [applyResultsSheetSnapChange, markSearchSurfaceSheetReadyForVisibleSnap]
   );
 
   const handleResultsSheetSnapChange = React.useCallback(
@@ -52,16 +60,18 @@ export const useSearchRootResultsSheetSnapRuntime = ({
       if (!isVisibleResultsSheetSnap(snap)) {
         return;
       }
+      markSearchSurfaceSheetReadyForVisibleSnap();
       if (interactionStateRuntime.resultsSheetSettlingRef.current) {
         pendingResultsSheetSnapRef.current = snap;
         return;
       }
       applyResultsSheetSnapChange(snap);
-      if (snap === 'collapsed') {
-        closeTransitionActions.markSearchSheetCloseSheetSettled(snap);
-      }
     },
-    [applyResultsSheetSnapChange, closeTransitionActions, interactionStateRuntime.resultsSheetSettlingRef]
+    [
+      applyResultsSheetSnapChange,
+      interactionStateRuntime.resultsSheetSettlingRef,
+      markSearchSurfaceSheetReadyForVisibleSnap,
+    ]
   );
 
   const handleResultsSheetSettlingChange = React.useCallback(
@@ -78,14 +88,10 @@ export const useSearchRootResultsSheetSnapRuntime = ({
         applyResultsSheetSnapChange(pending);
         settledSnap = pending;
       }
-      if (settledSnap === 'collapsed') {
-        closeTransitionActions.markSearchSheetCloseSheetSettled(settledSnap);
-      }
       interactionStateRuntime.handleResultsSheetDragStateChange(false);
     },
     [
       applyResultsSheetSnapChange,
-      closeTransitionActions,
       interactionStateRuntime,
     ]
   );

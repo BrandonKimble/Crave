@@ -8,31 +8,22 @@ import type { PreparedProfilePresentationTransaction } from '../../../../navigat
 import { resolvePreparedProfilePresentationTransaction } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-resolver';
 import { applyPreparedProfileCloseSnapshot } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transition-runtime';
 
-type OverlaySheetSnap = 'expanded' | 'middle' | 'collapsed' | 'hidden';
-
 export const closePreparedProfilePresentationTransaction = ({
   transition,
   createTransactionId,
   restaurantId,
   dismissBehavior,
   shouldClearSearchOnDismiss,
-  isSearchOverlay,
-  lastVisibleSheetSnap,
 }: {
   transition: ProfileTransitionState;
   createTransactionId: () => string;
   restaurantId: string | null;
   dismissBehavior: 'restore' | 'clear';
   shouldClearSearchOnDismiss: boolean;
-  isSearchOverlay: boolean;
-  lastVisibleSheetSnap: Exclude<OverlaySheetSnap, 'hidden'> | null;
 }): PreparedProfilePresentationTransaction => {
   const closePlan: PreparedProfileCloseSnapshotPlan = resolvePreparedProfileCloseSnapshotPlan({
     dismissBehavior,
     shouldClearSearchOnDismiss,
-    isSearchOverlay,
-    savedSheetSnap: transition.savedSheetSnap,
-    lastVisibleSheetSnap,
   });
   const snapshot = createPreparedProfileCloseSnapshot(
     createTransactionId(),
@@ -47,7 +38,5 @@ export const closePreparedProfilePresentationTransaction = ({
     transition,
     snapshot,
   });
-  return resolvePreparedProfilePresentationTransaction(snapshot, {
-    shouldForceSharedMiddleSnap: false,
-  });
+  return resolvePreparedProfilePresentationTransaction(snapshot, {});
 };

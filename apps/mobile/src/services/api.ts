@@ -1,6 +1,8 @@
 import axios from 'axios';
 import Constants from 'expo-constants';
 import { NativeModules } from 'react-native';
+import { usePerfScenarioRuntimeStore } from '../perf/perf-scenario-runtime-store';
+import { withPerfScenarioMetadata } from '../perf/perf-scenario-attribution';
 import { logger } from '../utils';
 import { useSystemStatusStore } from '../store/systemStatusStore';
 
@@ -19,6 +21,20 @@ const isTailscaleIp = (hostname: string) => {
   }
 
   return a === 100 && b >= 64 && b <= 127;
+};
+
+const isPrivateLanIp = (hostname: string) => {
+  const match = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (!match) {
+    return false;
+  }
+
+  const [a, b, c, d] = match.slice(1).map((part) => Number.parseInt(part, 10));
+  if ([a, b, c, d].some((octet) => Number.isNaN(octet) || octet < 0 || octet > 255)) {
+    return false;
+  }
+
+  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
 };
 
 const isLocalhostHostname = (hostname: string) =>
@@ -162,6 +178,21 @@ const deriveApiUrl = () => {
         (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1');
 
       if (!isDeviceAndLocalhost) {
+        if (
+          typeof __DEV__ !== 'undefined' &&
+          __DEV__ &&
+          !Constants.isDevice &&
+          isPrivateLanIp(hostname)
+        ) {
+          const simulatorLocalUrl = new URL(envUrl);
+          simulatorLocalUrl.hostname = 'localhost';
+          const resolvedUrl = simulatorLocalUrl.toString();
+          logger.info(
+            'EXPO_PUBLIC_API_URL points to a private LAN host on simulator; using localhost.',
+            { envUrl, resolvedUrl }
+          );
+          return resolvedUrl;
+        }
         if (typeof __DEV__ !== 'undefined' && __DEV__ && isTailscaleIp(hostname)) {
           logger.info(
             'EXPO_PUBLIC_API_URL points to a Tailscale IP; ensure your iPhone can reach it.',
@@ -210,6 +241,7 @@ const API_URL = deriveApiUrl();
 export const API_BASE_URL = API_URL;
 const API_TIMEOUT_MS =
   Number.parseInt(process.env.EXPO_PUBLIC_API_TIMEOUT_MS || '', 10) || DEFAULT_API_TIMEOUT_MS;
+const DEV_PERF_SCENARIO_AUTH_TOKEN = 'crave-dev-perf-scenario';
 
 type TokenResolver = () => Promise<string | null>;
 
@@ -220,14 +252,19 @@ export const setAuthTokenResolver = (resolver: TokenResolver | null) => {
 };
 
 const getAuthToken = async (): Promise<string | null> => {
+  const resolvePerfScenarioToken = () =>
+    typeof __DEV__ !== 'undefined' && __DEV__ && usePerfScenarioRuntimeStore.getState().activeConfig
+      ? DEV_PERF_SCENARIO_AUTH_TOKEN
+      : null;
+
   if (!tokenResolver) {
-    return null;
+    return resolvePerfScenarioToken();
   }
   try {
-    return await tokenResolver();
+    return (await tokenResolver()) ?? resolvePerfScenarioToken();
   } catch (error) {
     logger.warn('Failed to resolve auth token', error);
-    return null;
+    return resolvePerfScenarioToken();
   }
 };
 
@@ -239,7 +276,7 @@ const api = axios.create({
   },
 });
 
-type RequestBehaviorFlags = {
+export type ApiRequestBehaviorConfig = {
   suppressSystemStatus?: boolean;
   suppressErrorLog?: boolean;
 };
@@ -267,7 +304,7 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    const requestFlags = (error?.config as RequestBehaviorFlags | undefined) ?? {};
+    const requestFlags = (error?.config as ApiRequestBehaviorConfig | undefined) ?? {};
     const systemStatus = useSystemStatusStore.getState();
     const status: number | undefined =
       typeof error?.response?.status === 'number' ? error.response.status : undefined;
@@ -299,6 +336,22 @@ api.interceptors.response.use(
     }
 
     if (!requestFlags.suppressErrorLog) {
+      const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+      if (scenarioConfig) {
+        // eslint-disable-next-line no-console
+        console.log(
+          `[SearchPerf][Scenario] ${JSON.stringify(
+            withPerfScenarioMetadata(scenarioConfig, {
+              event: 'api_request_failed_contract',
+              message: error.message,
+              baseURL: error.config?.baseURL,
+              url: error.config?.url,
+              method: error.config?.method,
+              status: error.response?.status,
+            })
+          )}`
+        );
+      }
       logger.error('API request failed', {
         message: error.message,
         baseURL: error.config?.baseURL,

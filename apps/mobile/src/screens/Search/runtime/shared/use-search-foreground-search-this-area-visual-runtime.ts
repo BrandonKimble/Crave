@@ -1,4 +1,11 @@
+import React from 'react';
 import { useAnimatedStyle, useDerivedValue, withTiming } from 'react-native-reanimated';
+
+import {
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+} from '../../../../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 
 import type {
   SearchForegroundSearchThisAreaVisualRuntime,
@@ -48,6 +55,34 @@ export const useSearchForegroundSearchThisAreaVisualRuntime = ({
     !isSearchLoading &&
     !isLoadingMore &&
     hasResults;
+  React.useEffect(() => {
+    const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+    if (!isPerfScenarioAttributionActive(scenarioConfig)) {
+      return;
+    }
+    logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+      event: 'search_this_area_visibility_inputs_contract',
+      shouldShowSearchThisArea,
+      isSearchOverlay,
+      isSuggestionPanelActive,
+      backdropTarget,
+      isSearchSessionActive,
+      mapMovedSinceSearch,
+      isSearchLoading,
+      isLoadingMore,
+      hasResults,
+    });
+  }, [
+    backdropTarget,
+    hasResults,
+    isLoadingMore,
+    isSearchLoading,
+    isSearchOverlay,
+    isSearchSessionActive,
+    isSuggestionPanelActive,
+    mapMovedSinceSearch,
+    shouldShowSearchThisArea,
+  ]);
   const shouldLockSearchChromeTransform = isSuggestionPanelActive || isSuggestionOverlayVisible;
   const searchThisAreaRevealProgress = useDerivedValue(() => {
     return withTiming(shouldShowSearchThisArea ? 1 : 0, {

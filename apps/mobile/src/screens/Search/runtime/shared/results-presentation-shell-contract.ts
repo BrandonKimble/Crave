@@ -1,4 +1,5 @@
 import type { SharedValue } from 'react-native-reanimated';
+import type { SearchSubmitEntrySurface } from './search-submit-entry-surface-contract';
 
 export type SearchBackdropTarget = 'default' | 'results';
 export type SearchInputMode = 'idle' | 'editing';
@@ -10,6 +11,7 @@ export type SearchSheetContentLane =
 
 export type SearchCloseTransitionState = {
   closeIntentId: string;
+  terminalDismissSource: 'results' | 'profile';
   mapExitSettled: boolean;
   sheetCollapsedReached: boolean;
   sheetCollapsedSettled: boolean;
@@ -22,17 +24,19 @@ export type SearchPresentationIntent =
       transactionId?: string;
       query: string;
       targetTab: 'restaurants' | 'dishes';
-      preserveSheetState?: boolean;
-      transitionFromDockedPolls?: boolean;
+	      preserveSheetState?: boolean;
+	      transitionFromDockedPolls?: boolean;
+	      entrySurface: SearchSubmitEntrySurface;
     }
   | {
       kind: 'manual_submit' | 'autocomplete_submit' | 'recent_submit' | 'search_this_area';
       transactionId?: string;
       query: string;
       targetTab?: 'restaurants' | 'dishes';
-      preserveSheetState?: boolean;
-      transitionFromDockedPolls?: boolean;
-    }
+	      preserveSheetState?: boolean;
+	      transitionFromDockedPolls?: boolean;
+	      entrySurface: SearchSubmitEntrySurface;
+	    }
   | { kind: 'focus_editing' }
   | { kind: 'exit_editing' };
 

@@ -39,8 +39,7 @@ export type AppRouteMountedSceneChromeKey =
   | 'bookmarks'
   | 'polls'
   | 'profile'
-  | 'saveList'
-  | 'search';
+  | 'saveList';
 
 export type AppRouteMountedSceneChromeSurface =
   | 'underlay'
@@ -109,15 +108,12 @@ export type AppRouteSceneBodyContentSpec =
       contentScrollMode?: 'scroll' | 'static';
     }
   | {
-      surfaceKind: 'mountedList';
-      mountedBodyKey: AppRouteMountedSceneBodyKey;
-    }
-  | {
       surfaceKind: 'list';
       data: ReadonlyArray<AppRouteSceneListItem>;
       renderItem: FlashListProps<AppRouteSceneListItem>['renderItem'];
       keyExtractor?: FlashListProps<AppRouteSceneListItem>['keyExtractor'];
       estimatedItemSize: number;
+      ListChromeComponent?: React.ReactNode;
       ListHeaderComponent?: FlashListProps<AppRouteSceneListItem>['ListHeaderComponent'];
       ListFooterComponent?: FlashListProps<AppRouteSceneListItem>['ListFooterComponent'];
       ListEmptyComponent?: FlashListProps<AppRouteSceneListItem>['ListEmptyComponent'];
@@ -167,7 +163,6 @@ export const areAppRouteSceneShellSpecsEqual = (
     previousSpec.semanticOverlayKey === nextSpec.semanticOverlayKey &&
     previousSpec.shellIdentityKey === nextSpec.shellIdentityKey &&
     previousSpec.sceneIdentityKey === nextSpec.sceneIdentityKey &&
-    previousSpec.snapPersistenceKey === nextSpec.snapPersistenceKey &&
     previousSpec.renderWrapper === nextSpec.renderWrapper &&
     previousSpec.nativeHostKey === nextSpec.nativeHostKey &&
     previousSpec.listScrollEnabled === nextSpec.listScrollEnabled &&
@@ -290,15 +285,13 @@ export const areAppRouteSceneBodyContentSpecsEqual = (
       (left.contentScrollMode ?? 'scroll') === (right.contentScrollMode ?? 'scroll')
     );
   }
-  if (left.surfaceKind === 'mountedList' && right.surfaceKind === 'mountedList') {
-    return left.mountedBodyKey === right.mountedBodyKey;
-  }
   if (left.surfaceKind === 'list' && right.surfaceKind === 'list') {
     return (
       left.data === right.data &&
       left.renderItem === right.renderItem &&
       left.keyExtractor === right.keyExtractor &&
       left.estimatedItemSize === right.estimatedItemSize &&
+      left.ListChromeComponent === right.ListChromeComponent &&
       left.ListHeaderComponent === right.ListHeaderComponent &&
       left.ListFooterComponent === right.ListFooterComponent &&
       left.ListEmptyComponent === right.ListEmptyComponent &&

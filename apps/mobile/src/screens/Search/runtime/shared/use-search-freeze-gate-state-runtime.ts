@@ -1,86 +1,53 @@
-import {
-  type ResultsPresentationReadModel,
-  areResultsPresentationReadModelsEqual,
-} from './results-presentation-runtime-contract';
 import type { SearchFreezeClassification } from './search-freeze-classification-runtime';
+import React from 'react';
+
 import type { SearchRuntimeBus } from './search-runtime-bus';
-import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
 
 type SearchFreezeGateState = {
-  isRunOneChromeFreezeActive: boolean;
-  isRunOnePreflightFreezeActive: boolean;
-  isRun1HandoffActive: boolean;
+  isSearchSurfaceRedrawChromeFreezeActive: boolean;
+  isSearchSurfaceRedrawPreflightFreezeActive: boolean;
+  isSearchSurfaceRedrawActive: boolean;
   isResponseFrameFreezeActive: boolean;
   freezeClassification: SearchFreezeClassification;
 };
 
 type SearchFreezeGateRuntimeState = {
-  runOneHandoffPhase: ReturnType<SearchRuntimeBus['getState']>['runOneHandoffPhase'];
-  resultsPresentation: ResultsPresentationReadModel;
+  searchSurfaceRedrawPhase: ReturnType<SearchRuntimeBus['getState']>['searchSurfaceRedrawPhase'];
 };
 
-type SearchRunOneHandoffRuntimeState = {
-  runOneHandoffOperationId: ReturnType<SearchRuntimeBus['getState']>['runOneHandoffOperationId'];
-  runOneHandoffPhase: ReturnType<SearchRuntimeBus['getState']>['runOneHandoffPhase'];
+type SearchSurfaceRedrawRuntimeState = {
+  searchSurfaceRedrawOperationId: ReturnType<SearchRuntimeBus['getState']>['searchSurfaceRedrawOperationId'];
+  searchSurfaceRedrawPhase: ReturnType<SearchRuntimeBus['getState']>['searchSurfaceRedrawPhase'];
 };
 
 export const useSearchFreezeGateStateRuntime = (searchRuntimeBus: SearchRuntimeBus) => {
-  const freezeGateState = useSearchRuntimeBusSelector(
-    searchRuntimeBus,
-    (state) => ({
-      isRunOneChromeFreezeActive: state.isRunOneChromeFreezeActive,
-      isRunOnePreflightFreezeActive: state.isRunOnePreflightFreezeActive,
-      isRun1HandoffActive: state.isRun1HandoffActive,
-      isResponseFrameFreezeActive: state.isResponseFrameFreezeActive,
-      freezeClassification: searchRuntimeBus.getPolicyFactsSnapshot().freezeClassification,
-    }),
-    (left, right) =>
-      left.isRunOneChromeFreezeActive === right.isRunOneChromeFreezeActive &&
-      left.isRunOnePreflightFreezeActive === right.isRunOnePreflightFreezeActive &&
-      left.isRun1HandoffActive === right.isRun1HandoffActive &&
-      left.isResponseFrameFreezeActive === right.isResponseFrameFreezeActive &&
-      left.freezeClassification === right.freezeClassification,
-    [
-      'isRunOneChromeFreezeActive',
-      'isRunOnePreflightFreezeActive',
-      'isRun1HandoffActive',
-      'isResponseFrameFreezeActive',
-      'isChromeDeferred',
-      'runOneCommitSpanPressureActive',
-    ] as const
-  );
-
-  const runOneHandoffRuntimeState = useSearchRuntimeBusSelector(
-    searchRuntimeBus,
-    (state) => ({
-      runOneHandoffOperationId: state.runOneHandoffOperationId,
-      runOneHandoffPhase: state.runOneHandoffPhase,
-    }),
-    (left, right) =>
-      left.runOneHandoffOperationId === right.runOneHandoffOperationId &&
-      left.runOneHandoffPhase === right.runOneHandoffPhase,
-    ['runOneHandoffOperationId', 'runOneHandoffPhase'] as const
-  );
-
-  const freezeGateRuntimeState = useSearchRuntimeBusSelector(
-    searchRuntimeBus,
-    (state) => ({
-      runOneHandoffPhase: state.runOneHandoffPhase,
-      resultsPresentation: state.resultsPresentation,
-    }),
-    (left, right) =>
-      left.runOneHandoffPhase === right.runOneHandoffPhase &&
-      areResultsPresentationReadModelsEqual(left.resultsPresentation, right.resultsPresentation),
-    ['runOneHandoffPhase', 'resultsPresentation'] as const
-  );
+  const sampledRuntimeState = React.useMemo(() => {
+    const state = searchRuntimeBus.getState();
+    const policyFacts = searchRuntimeBus.getPolicyFactsSnapshot();
+    return {
+      freezeGateState: {
+        isSearchSurfaceRedrawChromeFreezeActive: state.isSearchSurfaceRedrawChromeFreezeActive,
+        isSearchSurfaceRedrawPreflightFreezeActive: state.isSearchSurfaceRedrawPreflightFreezeActive,
+        isSearchSurfaceRedrawActive: state.isSearchSurfaceRedrawActive,
+        isResponseFrameFreezeActive: state.isResponseFrameFreezeActive,
+        freezeClassification: policyFacts.freezeClassification,
+      },
+      searchSurfaceRedrawRuntimeState: {
+        searchSurfaceRedrawOperationId: state.searchSurfaceRedrawOperationId,
+        searchSurfaceRedrawPhase: state.searchSurfaceRedrawPhase,
+      },
+    };
+  }, [searchRuntimeBus]);
 
   return {
-    freezeGateState,
-    runOneHandoffRuntimeState,
-    freezeGateRuntimeState,
+    freezeGateState: sampledRuntimeState.freezeGateState,
+    searchSurfaceRedrawRuntimeState: sampledRuntimeState.searchSurfaceRedrawRuntimeState,
+    freezeGateRuntimeState: {
+      searchSurfaceRedrawPhase: sampledRuntimeState.searchSurfaceRedrawRuntimeState.searchSurfaceRedrawPhase,
+    },
   } satisfies {
     freezeGateState: SearchFreezeGateState;
-    runOneHandoffRuntimeState: SearchRunOneHandoffRuntimeState;
+    searchSurfaceRedrawRuntimeState: SearchSurfaceRedrawRuntimeState;
     freezeGateRuntimeState: SearchFreezeGateRuntimeState;
   };
 };

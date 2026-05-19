@@ -6,17 +6,15 @@ export const useSearchRootOverlayBottomNavPresentationRuntime = ({
   visualRuntime,
 }: {
   visualRuntime: SearchRootOverlayHostVisualRuntime;
-}) =>
-  React.useMemo(
+}) => {
+  return React.useMemo(
     () => ({
-      bottomNavAnimatedStyle: visualRuntime.bottomNavAnimatedStyle,
+      bottomNavMotionRuntime: visualRuntime.bottomNavMotionRuntime,
       shouldHideBottomNav: visualRuntime.shouldHideBottomNavForRender,
-      bottomNavItemVisibilityAnimatedStyle:
-        visualRuntime.bottomNavItemVisibilityAnimatedStyle,
     }),
     [
-      visualRuntime.bottomNavAnimatedStyle,
-      visualRuntime.bottomNavItemVisibilityAnimatedStyle,
+      visualRuntime.bottomNavMotionRuntime,
       visualRuntime.shouldHideBottomNavForRender,
     ]
   );
+};

@@ -27,7 +27,7 @@ import { MainLaunchCoordinator } from './src/navigation/runtime/MainLaunchCoordi
 import NetworkStatusListener from './src/providers/NetworkStatusListener';
 import PollNotificationListener from './src/providers/PollNotificationListener';
 import SystemStatusBanner from './src/components/SystemStatusBanner';
-import { PerfHarnessCoordinator } from './src/perf/PerfHarnessCoordinator';
+import { PerfScenarioCoordinator } from './src/perf/PerfScenarioCoordinator';
 import { useSystemStatusStore } from './src/store/systemStatusStore';
 import { OVERLAY_CORNER_RADIUS } from './src/overlays/overlaySheetStyles';
 import { colors } from './src/constants/theme';
@@ -81,7 +81,7 @@ export default function App() {
         <View style={[styles.appRoot, isBannerVisible ? styles.appRootBannerVisible : null]}>
           <SafeAreaProvider initialMetrics={initialWindowMetrics ?? undefined}>
             <NetworkStatusListener />
-            <PerfHarnessCoordinator />
+            <PerfScenarioCoordinator />
             <AuthProvider>
               <AppRouteCoordinator>
                 <MainLaunchCoordinator>

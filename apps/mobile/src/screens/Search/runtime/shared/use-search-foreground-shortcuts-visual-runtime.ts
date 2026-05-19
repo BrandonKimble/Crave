@@ -1,6 +1,12 @@
-import { useAnimatedStyle } from 'react-native-reanimated';
+import React from 'react';
+import { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { SEARCH_SHORTCUT_SHADOW } from '../../shadows';
+import {
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+} from '../../../../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 import type {
   SearchForegroundShortcutsVisualRuntime,
   UseSearchForegroundVisualRuntimeArgs,
@@ -8,6 +14,7 @@ import type {
 
 const SEARCH_SHORTCUT_BASE_SHADOW_OPACITY = Number(SEARCH_SHORTCUT_SHADOW.shadowOpacity ?? 0);
 const SEARCH_SHORTCUT_BASE_ELEVATION = Number(SEARCH_SHORTCUT_SHADOW.elevation ?? 0);
+const SEARCH_SHORTCUT_VISIBILITY_TIMING = { duration: 180 };
 
 type UseSearchForegroundShortcutsVisualRuntimeArgs = Pick<
   UseSearchForegroundVisualRuntimeArgs,
@@ -50,34 +57,106 @@ export const useSearchForegroundShortcutsVisualRuntime = ({
     shouldShowSearchShortcutsTarget || shouldKeepSearchShortcutsMountedForResultsExit;
   const shouldEnableSearchShortcutsInteraction =
     shouldMountSearchShortcuts && shouldEnableSearchShortcutsInteractionTarget;
+  const isShortcutExitingToResults =
+    isSuggestionOverlayVisible && !isSuggestionPanelActive && backdropTarget === 'results';
+  const shortcutOpacityTarget =
+    shouldShowSearchShortcutsTarget && !isShortcutExitingToResults ? 1 : 0;
+  const shortcutOpacityProgress = useSharedValue(shortcutOpacityTarget);
+  const activeScenarioConfig = usePerfScenarioRuntimeStore((state) => state.activeConfig);
+  React.useEffect(() => {
+    shortcutOpacityProgress.value = withTiming(
+      shortcutOpacityTarget,
+      SEARCH_SHORTCUT_VISIBILITY_TIMING
+    );
+  }, [shortcutOpacityProgress, shortcutOpacityTarget]);
+  React.useEffect(() => {
+    if (!isPerfScenarioAttributionActive(activeScenarioConfig)) {
+      return;
+    }
+    logPerfScenarioAttributionEvent('VisualReadiness', activeScenarioConfig, {
+      event: 'search_shortcuts_visibility_contract',
+      backdropTarget,
+      headerShortcutsInteractive,
+      headerShortcutsVisibleTarget,
+      isSearchOverlay,
+      isSuggestionOverlayVisible,
+      isSuggestionPanelActive,
+      shouldEnableSearchShortcutsInteraction,
+      shouldKeepMountedForResultsExit: shouldKeepSearchShortcutsMountedForResultsExit,
+      shouldMountSearchShortcuts,
+      shouldRenderSearchOverlay,
+      shouldShowSearchShortcutsTarget,
+      shortcutBackgroundOpacityTarget: shortcutOpacityTarget,
+      shortcutChipContainerOpacityTarget: shortcutOpacityTarget,
+      shortcutContentOpacityTarget: shortcutOpacityTarget,
+      shortcutOpacityTargetsShareTransition: true,
+      shortcutOpacityTransitionDurationMs: SEARCH_SHORTCUT_VISIBILITY_TIMING.duration,
+    });
+  }, [
+    activeScenarioConfig,
+    backdropTarget,
+    headerShortcutsInteractive,
+    headerShortcutsVisibleTarget,
+    isSearchOverlay,
+    isSuggestionOverlayVisible,
+    isSuggestionPanelActive,
+    shouldEnableSearchShortcutsInteraction,
+    shouldKeepSearchShortcutsMountedForResultsExit,
+    shouldMountSearchShortcuts,
+    shouldRenderSearchOverlay,
+    shouldShowSearchShortcutsTarget,
+    shortcutOpacityTarget,
+  ]);
   const searchShortcutChipAnimatedStyle = useAnimatedStyle(() => {
-    const isShortcutExitingToResults =
-      isSuggestionOverlayVisible && !isSuggestionPanelActive && backdropTarget === 'results';
-    const backgroundAlpha = isSuggestionOverlayVisible
-      ? isShortcutExitingToResults
-        ? 0
-        : 1 - suggestionProgress.value
-      : 1;
+    const backgroundAlpha = isShortcutExitingToResults
+      ? 0
+      : isSuggestionOverlayVisible
+      ? 1 - suggestionProgress.value
+      : shortcutOpacityProgress.value;
     const clampedAlpha = Math.max(0, Math.min(backgroundAlpha, 1));
     return {
       backgroundColor: `rgba(255, 255, 255, ${backgroundAlpha})`,
       shadowOpacity: SEARCH_SHORTCUT_BASE_SHADOW_OPACITY * clampedAlpha,
       elevation: clampedAlpha > 0 ? SEARCH_SHORTCUT_BASE_ELEVATION : 0,
     };
-  }, [backdropTarget, isSuggestionOverlayVisible, isSuggestionPanelActive, suggestionProgress]);
+  }, [
+    isShortcutExitingToResults,
+    isSuggestionOverlayVisible,
+    shortcutOpacityProgress,
+    suggestionProgress,
+  ]);
+  const searchShortcutContentAnimatedStyle = useAnimatedStyle(
+    () => ({
+      opacity: 1,
+    }),
+    []
+  );
   const shouldLockSearchChromeTransform = isSuggestionPanelActive || isSuggestionOverlayVisible;
   const searchShortcutsAnimatedStyle = useAnimatedStyle(() => {
+    const opacity = isShortcutExitingToResults
+      ? suggestionProgress.value
+      : isSuggestionOverlayVisible
+      ? 1
+      : shortcutOpacityProgress.value;
     const chromeScale = shouldLockSearchChromeTransform ? 1 : searchChromeScale.value;
     return {
-      opacity: 1,
+      opacity,
       transform: [{ scale: chromeScale }],
     };
-  }, [searchChromeScale, shouldLockSearchChromeTransform]);
+  }, [
+    isShortcutExitingToResults,
+    isSuggestionOverlayVisible,
+    searchChromeScale,
+    shortcutOpacityProgress,
+    shouldLockSearchChromeTransform,
+    suggestionProgress,
+  ]);
 
   return {
     shouldMountSearchShortcuts,
     shouldEnableSearchShortcutsInteraction,
     searchShortcutChipAnimatedStyle,
+    searchShortcutContentAnimatedStyle,
     searchShortcutsAnimatedStyle,
   };
 };

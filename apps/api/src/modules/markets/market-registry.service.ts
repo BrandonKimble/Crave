@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { createHash, randomUUID } from 'crypto';
 import { MarketType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
@@ -7,9 +8,14 @@ import {
   MarketResolverService,
 } from './market-resolver.service';
 import { pointWithinBounds } from './market-geo.util';
+import {
+  BoundaryFeatureRecord,
+  TomTomBoundaryBootstrapService,
+} from './tomtom-boundary-bootstrap.service';
 
 type Coordinate = { lat: number; lng: number };
 type Bounds = { northEast: Coordinate; southWest: Coordinate };
+type MarketResolveMode = 'polls_read' | 'polls_create' | 'search';
 
 export type EnsuredMarketResult = {
   marketKey: string;
@@ -52,8 +58,10 @@ export type ViewportCoverageResult = {
   resolution: {
     anchorType: 'user_location' | 'viewport_center' | 'viewport_coverage';
     viewportContainsUser: boolean | null;
-    candidatePlaceName: string | null;
-    candidatePlaceGeoId: string | null;
+    candidateLocalityName: string | null;
+    candidateBoundaryProvider: string | null;
+    candidateBoundaryId: string | null;
+    candidateBoundaryType: string | null;
   };
   cta: {
     kind: 'create_poll' | 'none';
@@ -71,16 +79,17 @@ type MarketCoverageRow = {
   overlapAreaMeters: Prisma.Decimal | number | string | null;
 };
 
-type PlaceCoverageRow = {
-  placeGeoId: string;
-  name: string;
-  shortName: string | null;
+type UncoveredAnchorRow = {
+  lat: Prisma.Decimal | number | string | null;
+  lng: Prisma.Decimal | number | string | null;
   overlapAreaMeters: Prisma.Decimal | number | string | null;
+  uncoveredAreaShare: Prisma.Decimal | number | string | null;
 };
 
 const UNDISCOVERED_PLACE_MIN_OVERLAP_SHARE = 0.005;
 const UNDISCOVERED_PLACE_MIN_OVERLAP_AREA_METERS = 250_000;
 const EFFECTIVE_TIE_OVERLAP_SHARE_DELTA = 0.05;
+const UNCOVERED_BOOTSTRAP_ATTEMPT_LIMIT = 1;
 
 @Injectable()
 export class MarketRegistryService {
@@ -89,6 +98,7 @@ export class MarketRegistryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly marketResolver: MarketResolverService,
+    private readonly tomTomBoundaryBootstrap: TomTomBoundaryBootstrapService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('MarketRegistryService');
@@ -98,22 +108,37 @@ export class MarketRegistryService {
     bounds?: Bounds | null;
     userLocation?: Coordinate | null;
   }): Promise<EnsuredMarketResult | null> {
-    return this.resolveOrEnsureForLocation({
+    const coverage = await this.resolveViewportCoverage({
       bounds: params.bounds ?? null,
       userLocation: params.userLocation ?? null,
-      mode: 'polls',
+      mode: 'polls_create',
+      ensureLocalityMarkets: true,
     });
+    return coverage.market
+      ? {
+          marketKey: coverage.market.marketKey,
+          marketName: coverage.market.marketName,
+          marketShortName: coverage.market.marketShortName,
+          marketType: coverage.market.marketType,
+          isCollectable: coverage.market.isCollectable,
+          wasCreated: false,
+        }
+      : null;
   }
 
   async resolveOrEnsureForLocation(params: {
     bounds?: Bounds | null;
     userLocation?: Coordinate | null;
-    mode?: 'polls' | 'search';
+    mode?: MarketResolveMode;
+    allowBootstrap?: boolean;
   }): Promise<EnsuredMarketResult | null> {
+    const requestId = params.allowBootstrap === true ? randomUUID() : null;
     const resolved = await this.marketResolver.resolve({
       bounds: params.bounds ?? null,
       userLocation: params.userLocation ?? null,
       mode: params.mode ?? 'search',
+      allowBoundaryBootstrap: params.allowBootstrap === true,
+      requestId,
     });
 
     if (resolved.market) {
@@ -127,19 +152,34 @@ export class MarketRegistryService {
       };
     }
 
-    const placeGeoId = resolved.resolution.candidatePlaceGeoId;
-    if (!placeGeoId) {
+    const boundaryProvider = resolved.resolution.candidateBoundaryProvider;
+    const boundaryId = resolved.resolution.candidateBoundaryId;
+    const boundaryType = resolved.resolution.candidateBoundaryType;
+    if (!boundaryProvider || !boundaryId || !boundaryType) {
+      return null;
+    }
+    if (params.allowBootstrap !== true) {
       return null;
     }
 
-    return this.ensureLocalFallbackMarket(placeGeoId, resolved);
+    const boundary =
+      await this.tomTomBoundaryBootstrap.findBoundaryBySourceIdentity({
+        sourceProvider: boundaryProvider,
+        sourceBoundaryId: boundaryId,
+        sourceBoundaryType: boundaryType,
+      });
+    if (!boundary) {
+      return null;
+    }
+
+    return this.ensureLocalityMarket(boundary, resolved, requestId);
   }
 
   async resolveViewportCoverage(params: {
     bounds?: Bounds | null;
     userLocation?: Coordinate | null;
-    mode?: 'polls' | 'search';
-    ensureLocalFallbackMarkets?: boolean;
+    mode?: MarketResolveMode;
+    ensureLocalityMarkets?: boolean;
   }): Promise<ViewportCoverageResult> {
     const bounds = params.bounds ?? null;
     const userLocation = this.normalizeCoordinate(params.userLocation ?? null);
@@ -147,72 +187,66 @@ export class MarketRegistryService {
       bounds && userLocation ? pointWithinBounds(userLocation, bounds) : null;
 
     if (!bounds) {
-      if (params.ensureLocalFallbackMarkets) {
-        const ensured = await this.resolveOrEnsureForLocation({
-          userLocation,
-          mode: params.mode ?? 'search',
-        });
-
-        if (!ensured) {
-          return {
-            status: 'no_market',
-            market: null,
-            markets: [],
-            collectableMarketKeys: [],
-            resolution: {
-              anchorType: userLocation ? 'user_location' : 'viewport_center',
-              viewportContainsUser,
-              candidatePlaceName: null,
-              candidatePlaceGeoId: null,
-            },
-            cta: { kind: 'none', label: null, prompt: null },
-          };
-        }
-
-        return {
-          status: 'resolved',
-          market: {
-            marketKey: ensured.marketKey,
-            marketName: ensured.marketName,
-            marketShortName: ensured.marketShortName,
-            marketType: ensured.marketType,
-            isCollectable: ensured.isCollectable,
-          },
-          markets: [
-            {
-              marketKey: ensured.marketKey,
-              marketName: ensured.marketName,
-              marketShortName: ensured.marketShortName,
-              marketType: ensured.marketType,
-              isCollectable: ensured.isCollectable,
-              overlapAreaMeters: 0,
-            },
-          ],
-          collectableMarketKeys: ensured.isCollectable
-            ? await this.resolveCollectableMarketKeys([ensured.marketKey])
-            : [],
-          resolution: {
-            anchorType: userLocation ? 'user_location' : 'viewport_center',
-            viewportContainsUser,
-            candidatePlaceName: null,
-            candidatePlaceGeoId: null,
-          },
-          cta: {
-            kind: 'create_poll',
-            label: `Create a poll for ${
-              ensured.marketShortName ?? ensured.marketName
-            }`,
-            prompt: `Create a poll for ${
-              ensured.marketShortName ?? ensured.marketName
-            }`,
-          },
-        };
-      }
-
       const resolved = await this.marketResolver.resolve({
         userLocation,
         mode: params.mode ?? 'search',
       });
+
+      if (!resolved.market && params.ensureLocalityMarkets) {
+        const ensured = await this.resolveOrEnsureLocalityForActiveIntent({
+          bounds: null,
+          userLocation,
+        });
+        if (ensured) {
+          const markets = userLocation
+            ? await this.findContainingMarkets(userLocation)
+            : [this.toViewportCoverageMarket(ensured, 0)];
+          const ensuredMarket = this.toViewportCoverageMarket(ensured, 0);
+          if (
+            !markets.some((market) => market.marketKey === ensured.marketKey)
+          ) {
+            markets.push(ensuredMarket);
+          }
+          const selected = await this.selectViewportDisplayMarket({ markets });
+          const selectedDisplayName =
+            selected?.marketShortName ?? selected?.marketName;
+
+          return {
+            status:
+              selected?.selectedVia === 'ambiguous'
+                ? 'multi_market'
+                : 'resolved',
+            market: selected
+              ? {
+                  marketKey: selected.marketKey,
+                  marketName: selected.marketName,
+                  marketShortName: selected.marketShortName,
+                  marketType: selected.marketType,
+                  isCollectable: selected.isCollectable,
+                }
+              : this.toMarketResponse(ensured),
+            markets,
+            collectableMarketKeys: await this.resolveCollectableMarketKeys(
+              markets.map((market) => market.marketKey),
+            ),
+            resolution: {
+              anchorType: userLocation ? 'user_location' : 'viewport_center',
+              viewportContainsUser,
+              candidateLocalityName: null,
+              candidateBoundaryProvider: null,
+              candidateBoundaryId: null,
+              candidateBoundaryType: null,
+            },
+            cta: selectedDisplayName
+              ? {
+                  kind: 'create_poll',
+                  label: `Create a poll for ${selectedDisplayName}`,
+                  prompt: `Create a poll for ${selectedDisplayName}`,
+                }
+              : { kind: 'none', label: null, prompt: null },
+          };
+        }
+      }
 
       if (!resolved.market) {
         return {
@@ -223,8 +257,14 @@ export class MarketRegistryService {
           resolution: {
             anchorType: userLocation ? 'user_location' : 'viewport_center',
             viewportContainsUser,
-            candidatePlaceName: resolved.resolution.candidatePlaceName ?? null,
-            candidatePlaceGeoId: resolved.resolution.candidatePlaceGeoId ?? null,
+            candidateLocalityName:
+              resolved.resolution.candidateLocalityName ?? null,
+            candidateBoundaryProvider:
+              resolved.resolution.candidateBoundaryProvider ?? null,
+            candidateBoundaryId:
+              resolved.resolution.candidateBoundaryId ?? null,
+            candidateBoundaryType:
+              resolved.resolution.candidateBoundaryType ?? null,
           },
           cta: resolved.cta,
         };
@@ -255,8 +295,13 @@ export class MarketRegistryService {
         resolution: {
           anchorType: userLocation ? 'user_location' : 'viewport_center',
           viewportContainsUser,
-          candidatePlaceName: resolved.resolution.candidatePlaceName ?? null,
-          candidatePlaceGeoId: resolved.resolution.candidatePlaceGeoId ?? null,
+          candidateLocalityName:
+            resolved.resolution.candidateLocalityName ?? null,
+          candidateBoundaryProvider:
+            resolved.resolution.candidateBoundaryProvider ?? null,
+          candidateBoundaryId: resolved.resolution.candidateBoundaryId ?? null,
+          candidateBoundaryType:
+            resolved.resolution.candidateBoundaryType ?? null,
         },
         cta: resolved.market.marketKey
           ? {
@@ -274,30 +319,26 @@ export class MarketRegistryService {
 
     try {
       let markets = await this.findIntersectingMarkets(bounds);
-      let candidatePlace: PlaceCoverageRow | null = null;
+      let candidateBoundary: BoundaryFeatureRecord | null = null;
 
-      if (params.ensureLocalFallbackMarkets) {
-        const uncoveredPlaces = await this.findUncoveredIntersectingPlaces(bounds);
-        candidatePlace = uncoveredPlaces[0] ?? null;
-
-        for (const place of uncoveredPlaces) {
-          await this.ensureLocalFallbackMarketForPlace(
-            place.placeGeoId,
-            place.shortName ?? place.name,
-          );
-        }
-
-        if (uncoveredPlaces.length > 0) {
+      if (params.ensureLocalityMarkets) {
+        candidateBoundary = await this.bootstrapUncoveredBoundaryCandidates(
+          bounds,
+          { recordNoAnchorEvent: markets.length === 0 },
+        );
+        if (candidateBoundary) {
           markets = await this.findIntersectingMarkets(bounds);
         }
       } else if (markets.length === 0) {
-        const uncoveredPlaces = await this.findUncoveredIntersectingPlaces(bounds);
-        candidatePlace = uncoveredPlaces[0] ?? null;
+        candidateBoundary =
+          await this.findFirstStoredUncoveredBoundaryCandidate(bounds);
       }
 
       if (markets.length === 0) {
         const placeName =
-          candidatePlace?.shortName?.trim() || candidatePlace?.name?.trim() || null;
+          candidateBoundary?.shortName?.trim() ||
+          candidateBoundary?.name?.trim() ||
+          null;
         return {
           status: 'no_market',
           market: null,
@@ -306,8 +347,12 @@ export class MarketRegistryService {
           resolution: {
             anchorType: 'viewport_coverage',
             viewportContainsUser,
-            candidatePlaceName: placeName,
-            candidatePlaceGeoId: candidatePlace?.placeGeoId ?? null,
+            candidateLocalityName: placeName,
+            candidateBoundaryProvider:
+              candidateBoundary?.sourceProvider ?? null,
+            candidateBoundaryId: candidateBoundary?.sourceBoundaryId ?? null,
+            candidateBoundaryType:
+              candidateBoundary?.sourceBoundaryType ?? null,
           },
           cta: placeName
             ? {
@@ -319,16 +364,16 @@ export class MarketRegistryService {
         };
       }
 
-      const selected = await this.selectViewportDisplayMarket({
-        markets,
-      });
+      const selected = await this.selectViewportDisplayMarket({ markets });
       const collectableMarketKeys = await this.resolveCollectableMarketKeys(
         markets.map((market) => market.marketKey),
       );
-      const selectedDisplayName = selected?.marketShortName ?? selected?.marketName;
+      const selectedDisplayName =
+        selected?.marketShortName ?? selected?.marketName;
 
       return {
-        status: selected?.selectedVia === 'ambiguous' ? 'multi_market' : 'resolved',
+        status:
+          selected?.selectedVia === 'ambiguous' ? 'multi_market' : 'resolved',
         market: selected
           ? {
               marketKey: selected.marketKey,
@@ -343,8 +388,10 @@ export class MarketRegistryService {
         resolution: {
           anchorType: 'viewport_coverage',
           viewportContainsUser,
-          candidatePlaceName: null,
-          candidatePlaceGeoId: null,
+          candidateLocalityName: null,
+          candidateBoundaryProvider: null,
+          candidateBoundaryId: null,
+          candidateBoundaryType: null,
         },
         cta: selectedDisplayName
           ? {
@@ -369,8 +416,10 @@ export class MarketRegistryService {
         resolution: {
           anchorType: 'viewport_coverage',
           viewportContainsUser,
-          candidatePlaceName: null,
-          candidatePlaceGeoId: null,
+          candidateLocalityName: null,
+          candidateBoundaryProvider: null,
+          candidateBoundaryId: null,
+          candidateBoundaryType: null,
         },
         cta: { kind: 'none', label: null, prompt: null },
       };
@@ -577,6 +626,106 @@ export class MarketRegistryService {
       .filter((value): value is string => Boolean(value));
   }
 
+  private async resolveOrEnsureLocalityForActiveIntent(params: {
+    bounds?: Bounds | null;
+    userLocation?: Coordinate | null;
+  }): Promise<EnsuredMarketResult | null> {
+    const anchor =
+      this.normalizeCoordinate(params.userLocation ?? null) ??
+      this.resolveViewportCenter(params.bounds ?? null);
+    if (!anchor) {
+      return null;
+    }
+
+    const requestId = randomUUID();
+    const boundary =
+      await this.tomTomBoundaryBootstrap.bootstrapMunicipalityForPoint(anchor, {
+        requestId,
+        triggerKind: 'point_resolution',
+      });
+    if (!boundary) {
+      return null;
+    }
+
+    return this.ensureLocalityMarketForBoundary(boundary, requestId);
+  }
+
+  private async findContainingMarkets(
+    point: Coordinate,
+  ): Promise<ViewportCoverageMarket[]> {
+    const normalized = this.normalizeCoordinate(point);
+    if (!normalized) {
+      return [];
+    }
+
+    const pointSql = Prisma.sql`ST_SetSRID(ST_MakePoint(${normalized.lng}, ${normalized.lat}), 4326)`;
+    const rows = await this.prisma.$queryRaw<MarketCoverageRow[]>(Prisma.sql`
+      SELECT
+        market_key AS "marketKey",
+        market_name AS "marketName",
+        market_short_name AS "marketShortName",
+        market_type AS "marketType",
+        is_collectable AS "isCollectable",
+        0 AS "overlapAreaMeters"
+      FROM core_markets
+      WHERE is_active = true
+        AND geometry IS NOT NULL
+        AND market_type IN (
+          ${MarketType.regional}::market_type,
+          ${MarketType.locality}::market_type
+        )
+        AND geometry && ${pointSql}
+        AND ST_Covers(geometry, ${pointSql})
+      ORDER BY
+        CASE
+          WHEN market_type = ${MarketType.locality}::market_type THEN 0
+          WHEN market_type = ${MarketType.regional}::market_type THEN 1
+          ELSE 2
+        END ASC,
+        ST_Area(geometry::geography) ASC,
+        market_key ASC
+    `);
+
+    return rows.map((row) => ({
+      marketKey: row.marketKey,
+      marketName: row.marketName,
+      marketShortName: row.marketShortName,
+      marketType: row.marketType,
+      isCollectable: row.isCollectable,
+      overlapAreaMeters: this.toPositiveNumber(row.overlapAreaMeters),
+    }));
+  }
+
+  private toMarketResponse(market: EnsuredMarketResult): {
+    marketKey: string;
+    marketName: string;
+    marketShortName: string | null;
+    marketType: MarketType;
+    isCollectable: boolean;
+  } {
+    return {
+      marketKey: market.marketKey,
+      marketName: market.marketName,
+      marketShortName: market.marketShortName,
+      marketType: market.marketType,
+      isCollectable: market.isCollectable,
+    };
+  }
+
+  private toViewportCoverageMarket(
+    market: EnsuredMarketResult,
+    overlapAreaMeters: number,
+  ): ViewportCoverageMarket {
+    return {
+      marketKey: market.marketKey,
+      marketName: market.marketName,
+      marketShortName: market.marketShortName,
+      marketType: market.marketType,
+      isCollectable: market.isCollectable,
+      overlapAreaMeters,
+    };
+  }
+
   private async findIntersectingMarkets(
     bounds: Bounds,
   ): Promise<ViewportCoverageMarket[]> {
@@ -598,20 +747,15 @@ export class MarketRegistryService {
       WHERE m.is_active = true
         AND m.geometry IS NOT NULL
         AND m.market_type IN (
-          ${MarketType.cbsa_metro}::market_type,
-          ${MarketType.cbsa_micro}::market_type,
-          ${MarketType.local_fallback}::market_type
+          ${MarketType.regional}::market_type,
+          ${MarketType.locality}::market_type
         )
-        AND m.bbox_ne_latitude >= ${normalized.swLat}
-        AND m.bbox_sw_latitude <= ${normalized.neLat}
-        AND m.bbox_ne_longitude >= ${normalized.swLng}
-        AND m.bbox_sw_longitude <= ${normalized.neLng}
+        AND m.geometry && ${envelopeSql}
         AND ST_Intersects(m.geometry, ${envelopeSql})
       ORDER BY
         ST_Area(ST_Intersection(m.geometry, ${envelopeSql})::geography) DESC,
         CASE
-          WHEN m.market_type = ${MarketType.cbsa_metro}::market_type THEN 0
-          WHEN m.market_type = ${MarketType.cbsa_micro}::market_type THEN 1
+          WHEN m.market_type = ${MarketType.regional}::market_type THEN 0
           ELSE 2
         END ASC
     `);
@@ -628,16 +772,16 @@ export class MarketRegistryService {
       .filter((row) => row.overlapAreaMeters > 0);
   }
 
-  private async findUncoveredIntersectingPlaces(
+  private async findUncoveredAnchorPoints(
     bounds: Bounds,
-  ): Promise<PlaceCoverageRow[]> {
+  ): Promise<UncoveredAnchorRow[]> {
     const normalized = this.normalizeBounds(bounds);
     if (!normalized) {
       return [];
     }
 
     const envelopeSql = Prisma.sql`ST_SetSRID(ST_MakeEnvelope(${normalized.swLng}, ${normalized.swLat}, ${normalized.neLng}, ${normalized.neLat}), 4326)`;
-    const rows = await this.prisma.$queryRaw<PlaceCoverageRow[]>(Prisma.sql`
+    const rows = await this.prisma.$queryRaw<UncoveredAnchorRow[]>(Prisma.sql`
       WITH viewport AS (
         SELECT
           ${envelopeSql} AS geometry,
@@ -651,14 +795,10 @@ export class MarketRegistryService {
         WHERE m.is_active = true
           AND m.geometry IS NOT NULL
           AND m.market_type IN (
-            ${MarketType.cbsa_metro}::market_type,
-            ${MarketType.cbsa_micro}::market_type,
-            ${MarketType.local_fallback}::market_type
+            ${MarketType.regional}::market_type,
+            ${MarketType.locality}::market_type
           )
-          AND m.bbox_ne_latitude >= ${normalized.swLat}
-          AND m.bbox_sw_latitude <= ${normalized.neLat}
-          AND m.bbox_ne_longitude >= ${normalized.swLng}
-          AND m.bbox_sw_longitude <= ${normalized.neLng}
+          AND m.geometry && viewport.geometry
           AND ST_Intersects(m.geometry, viewport.geometry)
       ),
       uncovered AS (
@@ -670,27 +810,29 @@ export class MarketRegistryService {
           END AS geometry,
           viewport."viewportAreaMeters"
         FROM viewport
-        LEFT JOIN covered ON TRUE
+          LEFT JOIN covered ON TRUE
+      ),
+      uncovered_parts AS (
+        SELECT
+          (ST_Dump(uncovered.geometry)).geom AS geometry,
+          uncovered."viewportAreaMeters"
+        FROM uncovered
+        WHERE uncovered.geometry IS NOT NULL
       )
       SELECT
-        p.place_geoid AS "placeGeoId",
-        p.name,
-        p.short_name AS "shortName",
-        ST_Area(ST_Intersection(p.geometry, uncovered.geometry)::geography) AS "overlapAreaMeters"
-      FROM geo_census_place_boundaries p
-      CROSS JOIN uncovered
-      WHERE uncovered.geometry IS NOT NULL
-        AND p.geometry IS NOT NULL
-        AND p.bbox_ne_latitude >= ${normalized.swLat}
-        AND p.bbox_sw_latitude <= ${normalized.neLat}
-        AND p.bbox_ne_longitude >= ${normalized.swLng}
-        AND p.bbox_sw_longitude <= ${normalized.neLng}
-        AND ST_Intersects(p.geometry, uncovered.geometry)
-        AND ST_Area(ST_Intersection(p.geometry, uncovered.geometry)::geography) >= ${UNDISCOVERED_PLACE_MIN_OVERLAP_AREA_METERS}
+        ST_Y(ST_PointOnSurface(geometry)) AS lat,
+        ST_X(ST_PointOnSurface(geometry)) AS lng,
+        ST_Area(geometry::geography) AS "overlapAreaMeters",
+        (
+          ST_Area(geometry::geography) / NULLIF("viewportAreaMeters", 0)
+        ) AS "uncoveredAreaShare"
+      FROM uncovered_parts
+      WHERE ST_Area(geometry::geography) >= ${UNDISCOVERED_PLACE_MIN_OVERLAP_AREA_METERS}
         AND (
-          ST_Area(ST_Intersection(p.geometry, uncovered.geometry)::geography) / NULLIF(uncovered."viewportAreaMeters", 0)
+          ST_Area(geometry::geography) / NULLIF("viewportAreaMeters", 0)
         ) >= ${UNDISCOVERED_PLACE_MIN_OVERLAP_SHARE}
-      ORDER BY ST_Area(ST_Intersection(p.geometry, uncovered.geometry)::geography) DESC
+      ORDER BY ST_Area(geometry::geography) DESC
+      LIMIT 1
     `);
 
     return rows.filter(
@@ -698,26 +840,172 @@ export class MarketRegistryService {
     );
   }
 
-  private async ensureLocalFallbackMarketForPlace(
-    placeGeoId: string,
-    candidatePlaceName?: string | null,
-  ): Promise<EnsuredMarketResult | null> {
-    return this.ensureLocalFallbackMarket(placeGeoId, {
-      status: 'no_market',
-      market: null,
-      resolution: {
-        anchorType: 'viewport_center',
-        viewportContainsUser: null,
-        candidatePlaceName: candidatePlaceName ?? null,
-        candidatePlaceGeoId: placeGeoId,
-      },
-      cta: { kind: 'none', label: null, prompt: null },
+  private async bootstrapUncoveredBoundaryCandidates(
+    bounds: Bounds,
+    options?: { recordNoAnchorEvent?: boolean },
+  ): Promise<BoundaryFeatureRecord | null> {
+    let firstBoundary: BoundaryFeatureRecord | null = null;
+    const seenBoundaryKeys = new Set<string>();
+    const requestId = randomUUID();
+
+    for (
+      let attemptIndex = 0;
+      attemptIndex < UNCOVERED_BOOTSTRAP_ATTEMPT_LIMIT;
+      attemptIndex += 1
+    ) {
+      const candidate = await this.bootstrapNextUncoveredBoundaryCandidate(
+        bounds,
+        attemptIndex,
+        seenBoundaryKeys,
+        requestId,
+        options,
+      );
+      if (!candidate) {
+        break;
+      }
+      firstBoundary ??= candidate.boundary;
+      await this.ensureLocalityMarketForBoundary(candidate.boundary, requestId);
+    }
+
+    if (firstBoundary) {
+      await this.tomTomBoundaryBootstrap.recordBootstrapLifecycleEvent({
+        eventType: 'bootstrap_stopped',
+        requestId,
+        triggerKind: 'viewport_coverage',
+        stopReason: 'attempt_cap_reached',
+        message: 'Viewport bootstrap attempted one locality before recomputing local coverage.',
+      });
+    }
+
+    return firstBoundary;
+  }
+
+  private async bootstrapNextUncoveredBoundaryCandidate(
+    bounds: Bounds,
+    attemptIndex: number,
+    seenBoundaryKeys: Set<string>,
+    requestId: string,
+    options?: { recordNoAnchorEvent?: boolean },
+  ): Promise<{
+    boundary: BoundaryFeatureRecord;
+    overlapAreaMeters: number;
+    uncoveredAreaShare: number | null;
+  } | null> {
+    const anchors = await this.findUncoveredAnchorPoints(bounds);
+    const anchor = anchors[0] ?? null;
+    if (!anchor) {
+      if (options?.recordNoAnchorEvent) {
+        await this.tomTomBoundaryBootstrap.recordBootstrapLifecycleEvent({
+          eventType: 'bootstrap_skipped',
+          requestId,
+          triggerKind: 'viewport_coverage',
+          stopReason: 'no_qualifying_uncovered_area',
+          message:
+            'No local market coverage exists, but uncovered geometry did not produce a qualifying bootstrap anchor.',
+        });
+      }
+      return null;
+    }
+
+    const lat = this.toFiniteNumber(anchor.lat);
+    const lng = this.toFiniteNumber(anchor.lng);
+    if (lat === null || lng === null) {
+      await this.tomTomBoundaryBootstrap.recordBootstrapLifecycleEvent({
+        eventType: 'bootstrap_skipped',
+        requestId,
+        triggerKind: 'viewport_coverage',
+        attemptIndex,
+        uncoveredAreaMeters: this.toPositiveNumber(anchor.overlapAreaMeters),
+        uncoveredAreaShare: this.toFiniteNumber(anchor.uncoveredAreaShare),
+        stopReason: 'invalid_uncovered_anchor',
+      });
+      return null;
+    }
+
+    const boundary =
+      await this.tomTomBoundaryBootstrap.bootstrapMunicipalityForPoint(
+        {
+          lat,
+          lng,
+        },
+        {
+          requestId,
+          triggerKind: 'viewport_coverage',
+          attemptIndex,
+          uncoveredAreaMeters: this.toPositiveNumber(anchor.overlapAreaMeters),
+          uncoveredAreaShare: this.toFiniteNumber(anchor.uncoveredAreaShare),
+        },
+      );
+    if (!boundary) {
+      return null;
+    }
+    const boundaryKey = this.buildBoundaryIdentityKey(boundary);
+    if (seenBoundaryKeys.has(boundaryKey)) {
+      await this.tomTomBoundaryBootstrap.recordBootstrapLifecycleEvent({
+        eventType: 'bootstrap_stopped',
+        requestId,
+        triggerKind: 'viewport_coverage',
+        attemptIndex,
+        uncoveredAreaMeters: this.toPositiveNumber(anchor.overlapAreaMeters),
+        uncoveredAreaShare: this.toFiniteNumber(anchor.uncoveredAreaShare),
+        stopReason: 'duplicate_boundary',
+        message: 'TomTom returned a boundary already attempted in this viewport bootstrap request.',
+      });
+      return null;
+    }
+    seenBoundaryKeys.add(boundaryKey);
+    return {
+      boundary,
+      overlapAreaMeters: this.toPositiveNumber(anchor.overlapAreaMeters),
+      uncoveredAreaShare: this.toFiniteNumber(anchor.uncoveredAreaShare),
+    };
+  }
+
+  private async findFirstStoredUncoveredBoundaryCandidate(
+    bounds: Bounds,
+  ): Promise<BoundaryFeatureRecord | null> {
+    const anchors = await this.findUncoveredAnchorPoints(bounds);
+    const anchor = anchors[0] ?? null;
+    const lat = this.toFiniteNumber(anchor?.lat);
+    const lng = this.toFiniteNumber(anchor?.lng);
+    if (lat === null || lng === null) {
+      return null;
+    }
+
+    return this.tomTomBoundaryBootstrap.findStoredMunicipalityForPoint({
+      lat,
+      lng,
     });
+  }
+
+  private async ensureLocalityMarketForBoundary(
+    boundary: BoundaryFeatureRecord,
+    requestId?: string | null,
+  ): Promise<EnsuredMarketResult | null> {
+    return this.ensureLocalityMarket(
+      boundary,
+      {
+        status: 'no_market',
+        market: null,
+        resolution: {
+          anchorType: 'viewport_center',
+          viewportContainsUser: null,
+          candidateLocalityName: boundary.shortName ?? boundary.name,
+          candidateBoundaryProvider: boundary.sourceProvider,
+          candidateBoundaryId: boundary.sourceBoundaryId,
+          candidateBoundaryType: boundary.sourceBoundaryType,
+        },
+        cta: { kind: 'none', label: null, prompt: null },
+      },
+      requestId,
+    );
   }
 
   private async selectViewportDisplayMarket(params: {
     markets: ViewportCoverageMarket[];
-  }): Promise<(ViewportCoverageMarket & { selectedVia: 'dominant' | 'ambiguous' }) | null> {
+  }): Promise<
+    (ViewportCoverageMarket & { selectedVia: 'dominant' | 'ambiguous' }) | null
+  > {
     const { markets } = params;
     if (markets.length === 0) {
       return null;
@@ -759,10 +1047,13 @@ export class MarketRegistryService {
     const selectedShare =
       totalOverlap > 0 ? selected.overlapAreaMeters / totalOverlap : 1;
     const runnerUpShare =
-      runnerUp && totalOverlap > 0 ? runnerUp.overlapAreaMeters / totalOverlap : 0;
+      runnerUp && totalOverlap > 0
+        ? runnerUp.overlapAreaMeters / totalOverlap
+        : 0;
     const selectedVia =
       runnerUp &&
-      Math.abs(selectedShare - runnerUpShare) <= EFFECTIVE_TIE_OVERLAP_SHARE_DELTA
+      Math.abs(selectedShare - runnerUpShare) <=
+        EFFECTIVE_TIE_OVERLAP_SHARE_DELTA
         ? 'ambiguous'
         : 'dominant';
 
@@ -771,14 +1062,12 @@ export class MarketRegistryService {
 
   private marketTypePriority(marketType: MarketType): number {
     switch (marketType) {
-      case MarketType.cbsa_metro:
+      case MarketType.regional:
         return 0;
-      case MarketType.cbsa_micro:
+      case MarketType.locality:
         return 1;
-      case MarketType.local_fallback:
-        return 2;
       default:
-        return 3;
+        return 2;
     }
   }
 
@@ -801,6 +1090,17 @@ export class MarketRegistryService {
       neLat: Math.max(bounds.southWest.lat, bounds.northEast.lat),
       swLng: Math.min(bounds.southWest.lng, bounds.northEast.lng),
       neLng: Math.max(bounds.southWest.lng, bounds.northEast.lng),
+    };
+  }
+
+  private resolveViewportCenter(bounds?: Bounds | null): Coordinate | null {
+    const normalized = this.normalizeBounds(bounds);
+    if (!normalized) {
+      return null;
+    }
+    return {
+      lat: (normalized.swLat + normalized.neLat) / 2,
+      lng: (normalized.swLng + normalized.neLng) / 2,
     };
   }
 
@@ -834,25 +1134,45 @@ export class MarketRegistryService {
     return 0;
   }
 
-  private async ensureLocalFallbackMarket(
-    placeGeoId: string,
+  private async ensureLocalityMarket(
+    boundary: BoundaryFeatureRecord,
     resolved: MarketResolveResult,
+    requestId?: string | null,
   ): Promise<EnsuredMarketResult | null> {
-    const existing = await this.prisma.market.findFirst({
-      where: {
-        marketType: MarketType.local_fallback,
-        censusPlaceGeoId: placeGeoId,
-      },
-      select: {
-        marketKey: true,
-        marketName: true,
-        marketShortName: true,
-        marketType: true,
-        isCollectable: true,
-      },
-    });
+    const existingRows = await this.prisma.$queryRaw<
+      Array<{
+        marketKey: string;
+        marketName: string;
+        marketShortName: string | null;
+        marketType: MarketType;
+        isCollectable: boolean;
+        isActive: boolean;
+      }>
+    >(Prisma.sql`
+      SELECT
+        market_key AS "marketKey",
+        market_name AS "marketName",
+        market_short_name AS "marketShortName",
+        market_type AS "marketType",
+        is_collectable AS "isCollectable",
+        is_active AS "isActive"
+      FROM core_markets
+      WHERE market_type = ${MarketType.locality}::market_type
+        AND source_boundary_provider = ${boundary.sourceProvider}
+        AND source_boundary_id = ${boundary.sourceBoundaryId}
+        AND source_boundary_type = ${boundary.sourceBoundaryType}
+      ORDER BY is_active DESC, updated_at DESC, created_at DESC
+      LIMIT 1
+    `);
+    const existing = existingRows[0] ?? null;
 
-    if (existing) {
+    if (existing?.isActive) {
+      await this.tomTomBoundaryBootstrap.recordLocalityMarketEnsured({
+        boundary,
+        marketKey: existing.marketKey,
+        wasCreated: false,
+        requestId,
+      });
       return {
         marketKey: existing.marketKey,
         marketName: existing.marketName,
@@ -863,40 +1183,131 @@ export class MarketRegistryService {
       };
     }
 
-    const place = await this.prisma.censusPlaceBoundary.findUnique({
-      where: { placeGeoId },
-      select: {
-        placeGeoId: true,
-        name: true,
-        shortName: true,
-        stateCode: true,
-        countryCode: true,
-      },
-    });
+    const storedBoundary =
+      await this.tomTomBoundaryBootstrap.findBoundaryBySourceIdentity({
+        sourceProvider: boundary.sourceProvider,
+        sourceBoundaryId: boundary.sourceBoundaryId,
+        sourceBoundaryType: boundary.sourceBoundaryType,
+      });
 
-    if (!place) {
+    if (!storedBoundary) {
       this.logger.warn(
-        'Unable to ensure local fallback market: place missing',
+        'Unable to ensure locality market: boundary feature missing',
         {
-          placeGeoId,
+          sourceProvider: boundary.sourceProvider,
+          sourceBoundaryId: boundary.sourceBoundaryId,
+          sourceBoundaryType: boundary.sourceBoundaryType,
         },
       );
       return null;
     }
 
-    const marketKey = `us-place-${place.placeGeoId}`;
-    const marketName = (place.shortName ?? place.name).trim();
-    const marketShortName = (place.shortName ?? place.name).trim() || null;
+    const marketName = (storedBoundary.shortName ?? storedBoundary.name).trim();
+    const marketShortName =
+      (storedBoundary.shortName ?? storedBoundary.name).trim() || null;
 
-    const rows = await this.prisma.$queryRaw<
-      Array<{
-        marketKey: string;
-        marketName: string;
-        marketShortName: string | null;
-        marketType: MarketType;
-        isCollectable: boolean;
-      }>
-    >(Prisma.sql`
+    if (existing) {
+      const reactivatedRows = await this.prisma.$queryRaw<
+        Array<{
+          marketKey: string;
+          marketName: string;
+          marketShortName: string | null;
+          marketType: MarketType;
+          isCollectable: boolean;
+        }>
+      >(Prisma.sql`
+        UPDATE core_markets AS market
+        SET
+          market_name = ${marketName},
+          market_short_name = ${marketShortName},
+          country_code = boundary.country_code,
+          state_code = boundary.state_code,
+          source_boundary_provider = boundary.source_provider,
+          source_boundary_id = boundary.source_boundary_id,
+          source_boundary_type = boundary.source_boundary_type,
+          is_active = true,
+          center_latitude = boundary.center_latitude,
+          center_longitude = boundary.center_longitude,
+          bbox_ne_latitude = boundary.bbox_ne_latitude,
+          bbox_ne_longitude = boundary.bbox_ne_longitude,
+          bbox_sw_latitude = boundary.bbox_sw_latitude,
+          bbox_sw_longitude = boundary.bbox_sw_longitude,
+          geometry = boundary.geometry,
+          metadata = jsonb_build_object(
+            'source',
+            'boundary_feature',
+            'sourceProvider',
+            boundary.source_provider,
+            'sourceBoundaryId',
+            boundary.source_boundary_id,
+            'sourceBoundaryType',
+            boundary.source_boundary_type,
+            'providerType',
+            boundary.provider_type,
+            'candidateLocalityName',
+            ${resolved.resolution.candidateLocalityName},
+            'reactivatedFromInactive',
+            true
+          ),
+          updated_at = now()
+        FROM geo_boundary_features AS boundary
+        WHERE market.market_key = ${existing.marketKey}
+          AND market.market_type = ${MarketType.locality}::market_type
+          AND boundary.source_provider = ${storedBoundary.sourceProvider}
+          AND boundary.source_boundary_id = ${storedBoundary.sourceBoundaryId}
+          AND boundary.source_boundary_type = ${storedBoundary.sourceBoundaryType}
+        RETURNING
+          market.market_key AS "marketKey",
+          market.market_name AS "marketName",
+          market.market_short_name AS "marketShortName",
+          market.market_type AS "marketType",
+          market.is_collectable AS "isCollectable"
+      `);
+      const reactivated = reactivatedRows[0] ?? null;
+      if (reactivated) {
+        this.logger.info('Reactivated locality market', {
+          marketKey: reactivated.marketKey,
+          sourceBoundaryProvider: storedBoundary.sourceProvider,
+          sourceBoundaryId: storedBoundary.sourceBoundaryId,
+          sourceBoundaryType: storedBoundary.sourceBoundaryType,
+        });
+        await this.tomTomBoundaryBootstrap.recordLocalityMarketEnsured({
+          boundary: storedBoundary,
+          marketKey: reactivated.marketKey,
+          wasCreated: false,
+          requestId,
+        });
+        return {
+          marketKey: reactivated.marketKey,
+          marketName: reactivated.marketName,
+          marketShortName: reactivated.marketShortName,
+          marketType: reactivated.marketType,
+          isCollectable: reactivated.isCollectable,
+          wasCreated: false,
+        };
+      }
+    }
+
+    const marketKeys = this.resolveLocalityMarketKeyCandidates(storedBoundary);
+
+    let created: {
+      marketKey: string;
+      marketName: string;
+      marketShortName: string | null;
+      marketType: MarketType;
+      isCollectable: boolean;
+    } | null = null;
+
+    for (const marketKey of marketKeys) {
+      const rows = await this.prisma.$queryRaw<
+        Array<{
+          marketKey: string;
+          marketName: string;
+          marketShortName: string | null;
+          marketType: MarketType;
+          isCollectable: boolean;
+        }>
+      >(Prisma.sql`
       INSERT INTO core_markets (
         market_key,
         market_name,
@@ -904,7 +1315,9 @@ export class MarketRegistryService {
         market_type,
         country_code,
         state_code,
-        census_place_geoid,
+        source_boundary_provider,
+        source_boundary_id,
+        source_boundary_type,
         is_collectable,
         scheduler_enabled,
         is_active,
@@ -922,11 +1335,13 @@ export class MarketRegistryService {
         ${marketKey},
         ${marketName},
         ${marketShortName},
-        ${MarketType.local_fallback}::market_type,
-        ${place.countryCode},
-        ${place.stateCode},
-        place_geoid,
-        true,
+        ${MarketType.locality}::market_type,
+        country_code,
+        state_code,
+        source_provider,
+        source_boundary_id,
+        source_boundary_type,
+        false,
         false,
         true,
         center_latitude,
@@ -938,22 +1353,32 @@ export class MarketRegistryService {
         geometry,
         jsonb_build_object(
           'source',
-          'census_place',
-          'placeGeoId',
-          place_geoid,
-          'candidatePlaceName',
-          ${resolved.resolution.candidatePlaceName}
+          'boundary_feature',
+          'sourceProvider',
+          source_provider,
+          'sourceBoundaryId',
+          source_boundary_id,
+          'sourceBoundaryType',
+          source_boundary_type,
+          'providerType',
+          provider_type,
+          'candidateLocalityName',
+          ${resolved.resolution.candidateLocalityName}
         ),
         now()
-      FROM geo_census_place_boundaries
-      WHERE place_geoid = ${placeGeoId}
+      FROM geo_boundary_features
+      WHERE source_provider = ${storedBoundary.sourceProvider}
+        AND source_boundary_id = ${storedBoundary.sourceBoundaryId}
+        AND source_boundary_type = ${storedBoundary.sourceBoundaryType}
       ON CONFLICT (market_key) DO UPDATE SET
         market_name = EXCLUDED.market_name,
         market_short_name = EXCLUDED.market_short_name,
         state_code = EXCLUDED.state_code,
-        census_place_geoid = EXCLUDED.census_place_geoid,
-        is_collectable = EXCLUDED.is_collectable,
-        scheduler_enabled = EXCLUDED.scheduler_enabled,
+        source_boundary_provider = EXCLUDED.source_boundary_provider,
+        source_boundary_id = EXCLUDED.source_boundary_id,
+        source_boundary_type = EXCLUDED.source_boundary_type,
+        is_collectable = core_markets.is_collectable,
+        scheduler_enabled = core_markets.scheduler_enabled,
         is_active = EXCLUDED.is_active,
         center_latitude = EXCLUDED.center_latitude,
         center_longitude = EXCLUDED.center_longitude,
@@ -964,22 +1389,45 @@ export class MarketRegistryService {
         geometry = EXCLUDED.geometry,
         metadata = EXCLUDED.metadata,
         updated_at = now()
+      WHERE
+        core_markets.source_boundary_provider = EXCLUDED.source_boundary_provider
+        AND core_markets.source_boundary_id = EXCLUDED.source_boundary_id
+        AND core_markets.source_boundary_type = EXCLUDED.source_boundary_type
       RETURNING
         market_key AS "marketKey",
         market_name AS "marketName",
         market_short_name AS "marketShortName",
         market_type AS "marketType",
         is_collectable AS "isCollectable"
-    `);
+      `);
 
-    const created = rows[0] ?? null;
+      created = rows[0] ?? null;
+      if (created) {
+        break;
+      }
+    }
+
     if (!created) {
+      this.logger.warn('Unable to ensure locality market: key collision', {
+        candidateMarketKeys: marketKeys,
+        sourceProvider: storedBoundary.sourceProvider,
+        sourceBoundaryId: storedBoundary.sourceBoundaryId,
+        sourceBoundaryType: storedBoundary.sourceBoundaryType,
+      });
       return null;
     }
 
-    this.logger.info('Ensured local fallback market', {
+    this.logger.info('Ensured locality market', {
       marketKey: created.marketKey,
-      placeGeoId,
+      sourceBoundaryProvider: storedBoundary.sourceProvider,
+      sourceBoundaryId: storedBoundary.sourceBoundaryId,
+      sourceBoundaryType: storedBoundary.sourceBoundaryType,
+    });
+    await this.tomTomBoundaryBootstrap.recordLocalityMarketEnsured({
+      boundary: storedBoundary,
+      marketKey: created.marketKey,
+      wasCreated: true,
+      requestId,
     });
 
     return {
@@ -996,5 +1444,64 @@ export class MarketRegistryService {
     const normalized =
       typeof marketKey === 'string' ? marketKey.trim().toLowerCase() : '';
     return normalized.length > 0 ? normalized : null;
+  }
+
+  private resolveLocalityMarketKeyCandidates(
+    boundary: BoundaryFeatureRecord,
+  ): string[] {
+    const baseKey = this.buildBaseLocalityMarketKey(boundary);
+    return [
+      baseKey,
+      `${baseKey}-${this.shortHash(this.buildBoundaryIdentityKey(boundary))}`,
+    ];
+  }
+
+  private buildBaseLocalityMarketKey(boundary: BoundaryFeatureRecord): string {
+    const country = this.slugify(boundary.countryCode) || 'unknown';
+    const state = this.slugify(boundary.stateCode) || 'unknown';
+    const locality =
+      this.slugify(boundary.shortName ?? boundary.name) ||
+      this.shortHash(this.buildBoundaryIdentityKey(boundary));
+    return `locality-${country}-${state}-${locality}`;
+  }
+
+  private buildBoundaryIdentityKey(boundary: BoundaryFeatureRecord): string {
+    return [
+      boundary.sourceProvider.trim().toLowerCase(),
+      boundary.sourceBoundaryType.trim().toLowerCase(),
+      boundary.sourceBoundaryId.trim(),
+    ].join(':');
+  }
+
+  private slugify(value?: string | null): string {
+    const normalized =
+      typeof value === 'string' ? value.trim().toLowerCase() : '';
+    return normalized
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 64);
+  }
+
+  private shortHash(value: string): string {
+    return createHash('sha1').update(value).digest('hex').slice(0, 8);
+  }
+
+  private toFiniteNumber(
+    value: Prisma.Decimal | number | string | null | undefined,
+  ): number | null {
+    if (value instanceof Prisma.Decimal) {
+      const result = value.toNumber();
+      return Number.isFinite(result) ? result : null;
+    }
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    return null;
   }
 }

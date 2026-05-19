@@ -1,9 +1,8 @@
-import type { OverlayKey, OverlaySheetSnap } from '../../overlays/types';
+import type { OverlayKey } from '../../overlays/types';
 import type {
   RouteSceneSwitchDockedPollsRestoreIntent,
   RouteSceneSwitchPollsParams,
 } from './app-overlay-route-transition-contract';
-import type { DockedPollsSnapRequest } from './app-route-sheet-snap-session-runtime';
 import type { UsePollsPanelSpecOptions } from '../../overlays/panels/runtime/polls-panel-runtime-contract';
 
 export type AppRouteDynamicSceneInputRuntime = {
@@ -66,19 +65,11 @@ export type AppRoutePollsRouteStateRuntime = {
 };
 
 export type AppRouteSceneSheetSessionInputState = {
-  pollsDockedSnapRequest: DockedPollsSnapRequest | null;
   isDockedPollsDismissed: boolean;
-  dockedPollsRestoreInFlight: boolean;
-  ignoreDockedPollsHiddenUntilMs: number;
-  pollCreationSnapRequest: Exclude<OverlaySheetSnap, 'hidden'> | null;
 };
 
 export const areAppRouteSceneSheetSessionInputStatesEqual = (
   left: AppRouteSceneSheetSessionInputState,
   right: AppRouteSceneSheetSessionInputState
 ): boolean =>
-  left.pollsDockedSnapRequest === right.pollsDockedSnapRequest &&
-  left.isDockedPollsDismissed === right.isDockedPollsDismissed &&
-  left.dockedPollsRestoreInFlight === right.dockedPollsRestoreInFlight &&
-  left.ignoreDockedPollsHiddenUntilMs === right.ignoreDockedPollsHiddenUntilMs &&
-  left.pollCreationSnapRequest === right.pollCreationSnapRequest;
+  left.isDockedPollsDismissed === right.isDockedPollsDismissed;

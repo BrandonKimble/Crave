@@ -17,11 +17,6 @@ export type AppRouteResultsSheetRuntimeOwner = {
   shouldRenderResultsSheetRef: React.MutableRefObject<boolean>;
   headerDividerAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
   resultsContainerAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
-  animateSheetTo: (
-    position: SheetPosition,
-    velocity?: number,
-    requestToken?: number | null
-  ) => void;
   resetResultsSheetToHidden: () => void;
   prepareShortcutSheetTransition: () => boolean;
   handleSheetSnapChange: (nextSnap: SheetPosition | 'hidden') => void;
@@ -29,5 +24,11 @@ export type AppRouteResultsSheetRuntimeOwner = {
 
 export type AppRouteResultsSheetVisualBinding = Pick<
   AppRouteResultsSheetRuntimeOwner,
-  'snapPoints' | 'sheetTranslateY' | 'resultsScrollOffset' | 'resultsMomentum'
->;
+  | 'snapPoints'
+  | 'sheetTranslateY'
+  | 'resultsScrollOffset'
+  | 'resultsMomentum'
+  | 'handleSheetSnapChange'
+> & {
+  getCurrentSheetSnap: () => SheetPosition;
+};

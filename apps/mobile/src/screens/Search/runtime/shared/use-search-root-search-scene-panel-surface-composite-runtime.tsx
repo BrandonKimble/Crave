@@ -1,12 +1,12 @@
 import React from 'react';
 
+import { useSearchOverlayProfilerRender } from '../../../../overlays/SearchOverlayProfilerContext';
 import type { SearchRootSearchSceneVisualRuntime } from './search-root-visual-runtime-contract';
 import type { useSearchRootSearchSceneInteractionFrostRuntime } from './use-search-root-search-scene-interaction-frost-runtime';
 import { useSearchRootSearchScenePanelBackgroundRuntime } from './use-search-root-search-scene-panel-background-runtime';
 import { useSearchRootSearchScenePanelSurfaceContentRuntime } from './use-search-root-search-scene-panel-surface-content-runtime';
 import { useSearchRootSearchScenePanelSurfaceOverlayRuntime } from './use-search-root-search-scene-panel-surface-overlay-runtime';
 import { useSearchRootSearchScenePanelWashOverlayRuntime } from './use-search-root-search-scene-panel-wash-overlay-runtime';
-import type { useSearchRootRouteSearchSceneRenderRuntime } from './use-search-root-route-search-scene-render-runtime';
 import type { useSearchResultsPanelOnDemandNoticeRuntime } from './use-search-results-panel-on-demand-notice-runtime';
 import type { useSearchResultsPanelResultsRuntimeState } from './use-search-results-panel-results-runtime-state';
 import type { useSearchResultsPanelRetainedResultsRuntime } from './use-search-results-panel-retained-results-runtime';
@@ -14,14 +14,12 @@ import type { useSearchResultsPanelRetainedResultsRuntime } from './use-search-r
 type SearchRootSearchScenePanelSurfaceCompositeRuntimeArgs = {
   sceneVisualRuntime: SearchRootSearchSceneVisualRuntime;
   resolvedResultsHeaderHeightForRender: number;
-  preMeasureOverlay: React.ReactNode;
   shouldDisableSearchBlur?: boolean;
   shouldShowResultsSurface: boolean;
   shouldRenderWhiteWash: boolean;
   shouldUseInteractionSurface: boolean;
   surfaceActive: boolean;
-  surfaceMode: 'none' | 'initial_loading' | 'empty' | 'interaction_loading';
-  searchSceneRenderRuntime: ReturnType<typeof useSearchRootRouteSearchSceneRenderRuntime>;
+  surfaceMode: 'none' | 'initial_loading' | 'empty' | 'interaction_loading' | 'results';
   interactionFrostAnimatedStyle: ReturnType<
     typeof useSearchRootSearchSceneInteractionFrostRuntime
   >['interactionFrostAnimatedStyle'];
@@ -35,25 +33,27 @@ type SearchRootSearchScenePanelSurfaceCompositeRuntimeArgs = {
 export const useSearchRootSearchScenePanelSurfaceCompositeRuntime = ({
   sceneVisualRuntime,
   resolvedResultsHeaderHeightForRender,
-  preMeasureOverlay,
   shouldDisableSearchBlur,
   shouldShowResultsSurface,
   shouldRenderWhiteWash,
   shouldUseInteractionSurface,
   surfaceActive,
   surfaceMode,
-  searchSceneRenderRuntime,
   interactionFrostAnimatedStyle,
   activeTab,
   resolvedResults,
   onDemandNotice,
 }: SearchRootSearchScenePanelSurfaceCompositeRuntimeArgs) => {
+  const onProfilerRender = useSearchOverlayProfilerRender();
+  const shouldHoldInitialLoadingForAdmittedRows = false;
+  const effectiveSurfaceMode = shouldHoldInitialLoadingForAdmittedRows
+    ? 'initial_loading'
+    : surfaceMode;
+  const effectiveSurfaceActive = surfaceActive || shouldHoldInitialLoadingForAdmittedRows;
   const backgroundComponent = useSearchRootSearchScenePanelBackgroundRuntime({
     resolvedResultsHeaderHeightForRender,
-    preMeasureOverlay,
     shouldDisableSearchBlur,
     shouldShowResultsSurface,
-    surfaceMode,
   });
   const washOverlay = useSearchRootSearchScenePanelWashOverlayRuntime({
     sceneVisualRuntime,
@@ -64,19 +64,27 @@ export const useSearchRootSearchScenePanelSurfaceCompositeRuntime = ({
     resolvedResults,
     activeTab,
     onDemandNotice,
-    surfaceMode,
   });
   const surfaceOverlay = useSearchRootSearchScenePanelSurfaceOverlayRuntime({
     resolvedResultsHeaderHeightForRender,
-    searchSceneRenderRuntime,
     shouldUseInteractionSurface,
-    surfaceActive,
+    surfaceActive: effectiveSurfaceActive,
+    surfaceMode: effectiveSurfaceMode,
     interactionFrostAnimatedStyle,
-    surfaceContent,
+    surfaceContentRuntime: surfaceContent,
   });
   const overlayComponent = React.useMemo(
-    () => React.createElement(React.Fragment, null, washOverlay, surfaceOverlay),
-    [surfaceOverlay, washOverlay]
+    () => {
+      const overlay = React.createElement(React.Fragment, null, washOverlay, surfaceOverlay);
+      return onProfilerRender ? (
+        <React.Profiler id="SearchResultsLoadingCoverSurface" onRender={onProfilerRender}>
+          {overlay}
+        </React.Profiler>
+      ) : (
+        overlay
+      );
+    },
+    [onProfilerRender, surfaceOverlay, washOverlay]
   );
 
   return React.useMemo(

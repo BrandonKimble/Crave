@@ -16,7 +16,10 @@ export type ResultsPresentationCloseTransitionIntentRuntime = {
   setPendingCloseIntentId: (intentId: string | null) => void;
   matchesPendingCloseIntentId: (intentId: string) => boolean;
   getActiveCloseIntentId: () => string | null;
-  beginCloseTransition: (closeIntentId: string) => void;
+  beginCloseTransition: (
+    closeIntentId: string,
+    options?: { terminalDismissSource?: 'results' | 'profile' }
+  ) => void;
   resetCloseTransition: () => void;
   commitArmedSearchCloseRestore: (commitSearchCloseRestore: () => boolean) => void;
   cancelArmedSearchCloseRestore: () => void;
@@ -53,21 +56,33 @@ export const useResultsPresentationCloseTransitionIntentRuntime = ({
   }, [routeSceneVisibilityPolicyRuntime, shellLocalState]);
 
   const beginCloseTransition = React.useCallback(
-    (closeIntentId: string) => {
+    (
+      closeIntentId: string,
+      options?: { terminalDismissSource?: 'results' | 'profile' }
+    ) => {
       if (activeCloseIntentIdRef.current === closeIntentId) {
         return;
       }
 
+      const terminalDismissSource = options?.terminalDismissSource ?? 'results';
       activeCloseIntentIdRef.current = closeIntentId;
       finalizedCloseIntentIdRef.current = null;
-      hasArmedRestoreRef.current = armSearchCloseRestore({
-        allowFallback: true,
-        searchRootRestoreSnap: 'collapsed',
-      });
+      hasArmedRestoreRef.current =
+        terminalDismissSource === 'profile'
+          ? false
+          : armSearchCloseRestore({
+              allowFallback: true,
+              searchRootRestoreSnap: 'collapsed',
+            });
       hasCommittedRestoreRef.current = false;
       shellLocalState.setHoldPersistentPollLane(false);
+      shellLocalState.setBackdropTarget('default');
+      shellLocalState.setInputMode('idle');
       routeSceneVisibilityPolicyRuntime.updateCloseTransitionActive(true);
-      const nextCloseTransitionState = createSearchCloseTransitionState(closeIntentId);
+      const nextCloseTransitionState = createSearchCloseTransitionState(
+        closeIntentId,
+        terminalDismissSource
+      );
       shellLocalState.setSearchCloseTransitionState(nextCloseTransitionState);
     },
     [armSearchCloseRestore, routeSceneVisibilityPolicyRuntime, shellLocalState]

@@ -2,6 +2,8 @@ import React from 'react';
 import { Keyboard, type TextInput } from 'react-native';
 
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
+import { publishSearchMountedResultsDataSnapshot } from '../runtime/shared/search-mounted-results-data-store';
+import { getSearchSurfaceRuntime } from '../runtime/surface/search-surface-runtime';
 
 export type SearchClearOwner = {
   clearSearchAfterProfileDismiss: () => void;
@@ -13,16 +15,14 @@ export type ClearSearchStateOptions = {
   shouldRefocusInput?: boolean;
   skipSheetAnimation?: boolean;
   deferSuggestionClear?: boolean;
-  skipProfileDismissWait?: boolean;
   skipPostSearchRestore?: boolean;
   preserveForegroundEditing?: boolean;
+  skipProfileDismissClear?: boolean;
 };
 
 export type UseSearchClearOwnerArgs<Suggestion> = {
   profilePresentationActiveRef: React.MutableRefObject<boolean>;
-  closeRestaurantProfileRef: React.MutableRefObject<
-    (options?: { dismissBehavior?: 'restore' | 'clear'; clearSearchOnDismiss?: boolean }) => void
-  >;
+  clearRestaurantProfileForSearchDismissRef: React.MutableRefObject<() => void>;
   resetRestaurantProfileFocusSessionRef: React.MutableRefObject<() => void>;
   isClearingSearchRef: React.MutableRefObject<boolean>;
   isSearchSessionActive: boolean;
@@ -34,7 +34,7 @@ export type UseSearchClearOwnerArgs<Suggestion> = {
   }) => boolean;
   commitSearchCloseRestore: () => boolean;
   flushPendingSearchOriginRestore: () => boolean;
-  requestDefaultPostSearchRestore: () => void;
+  requestDefaultPostSearchRestore: (options?: { mode?: 'full' | 'chrome-only' }) => void;
   cancelActiveSearchRequest: () => void;
   cancelAutocomplete: () => void;
   handleCancelPendingMutationWork: () => void;
@@ -65,7 +65,7 @@ export type UseSearchClearOwnerArgs<Suggestion> = {
 
 export const useSearchClearOwner = <Suggestion>({
   profilePresentationActiveRef,
-  closeRestaurantProfileRef,
+  clearRestaurantProfileForSearchDismissRef,
   resetRestaurantProfileFocusSessionRef,
   isClearingSearchRef,
   isSearchSessionActive,
@@ -119,9 +119,13 @@ export const useSearchClearOwner = <Suggestion>({
     setIsAutocompleteSuppressed(true);
     setShowSuggestions(false);
     setQuery('');
+    publishSearchMountedResultsDataSnapshot(null);
     searchRuntimeBus.publish({
-      results: null,
       resultsRequestKey: null,
+      resultsHydrationCandidateKey: null,
+      resultsPage: null,
+      resultsDishCount: 0,
+      resultsRestaurantCount: 0,
       submittedQuery: '',
       currentPage: 1,
       hasMoreFood: false,
@@ -137,6 +141,7 @@ export const useSearchClearOwner = <Suggestion>({
     setIsSearchSessionActive(false);
     setSearchMode(null);
     resetSheetToHidden();
+    getSearchSurfaceRuntime().resetToPollPage();
     if (hasOriginRestorePending) {
       commitSearchCloseRestore();
       flushPendingSearchOriginRestore();
@@ -208,20 +213,10 @@ export const useSearchClearOwner = <Suggestion>({
       shouldRefocusInput = false,
       skipSheetAnimation = false,
       deferSuggestionClear = false,
-      skipProfileDismissWait = false,
       skipPostSearchRestore = false,
       preserveForegroundEditing = false,
+      skipProfileDismissClear = false,
     }: ClearSearchStateOptions = {}) => {
-      if (profilePresentationActiveRef.current && !isClearingSearchRef.current) {
-        resetSheetToHidden();
-        closeRestaurantProfileRef.current({
-          dismissBehavior: 'clear',
-          clearSearchOnDismiss: !skipProfileDismissWait,
-        });
-        if (!skipProfileDismissWait) {
-          return;
-        }
-      }
       const hasOriginRestorePending = skipPostSearchRestore
         ? false
         : armSearchCloseRestore({
@@ -246,9 +241,13 @@ export const useSearchClearOwner = <Suggestion>({
         }
         setQuery('');
       }
+      publishSearchMountedResultsDataSnapshot(null);
       searchRuntimeBus.publish({
-        results: null,
         resultsRequestKey: null,
+        resultsHydrationCandidateKey: null,
+        resultsPage: null,
+        resultsDishCount: 0,
+        resultsRestaurantCount: 0,
         submittedQuery: '',
         currentPage: 1,
         hasMoreFood: false,
@@ -273,6 +272,9 @@ export const useSearchClearOwner = <Suggestion>({
         flushPendingSearchOriginRestore();
       } else if (!skipPostSearchRestore) {
         requestDefaultPostSearchRestore();
+      }
+      if (profilePresentationActiveRef.current && !skipProfileDismissClear) {
+        clearRestaurantProfileForSearchDismissRef.current();
       }
       lastAutoOpenKeyRef.current = null;
       resetRestaurantProfileFocusSessionRef.current();
@@ -306,6 +308,7 @@ export const useSearchClearOwner = <Suggestion>({
       isSearchSessionActive,
       lastAutoOpenKeyRef,
       profilePresentationActiveRef,
+      clearRestaurantProfileForSearchDismissRef,
       requestDefaultPostSearchRestore,
       resetFilters,
       resetFocusedMapState,
@@ -329,7 +332,6 @@ export const useSearchClearOwner = <Suggestion>({
       setShowSuggestions,
       setSuggestions,
       submittedQuery,
-      closeRestaurantProfileRef,
     ]
   );
 

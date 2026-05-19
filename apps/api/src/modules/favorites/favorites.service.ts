@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { FavoriteEventKind, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { CreateFavoriteDto } from './dto/create-favorite.dto';
@@ -50,31 +51,64 @@ export class FavoritesService {
       throw new BadRequestException('Entity type mismatch for favorite');
     }
 
-    const favorite = await this.prisma.userFavorite.upsert({
-      where: {
-        userId_entityId: {
-          userId,
-          entityId: entity.entityId,
-        },
-      },
-      update: {
-        entityType: entity.type,
-      },
-      create: {
-        userId,
-        entityId: entity.entityId,
-        entityType: entity.type,
-      },
-      include: {
-        entity: {
-          select: {
-            entityId: true,
-            name: true,
-            type: true,
-            city: true,
+    const favorite = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.userFavorite.findUnique({
+        where: {
+          userId_entityId: {
+            userId,
+            entityId: entity.entityId,
           },
         },
-      },
+        select: { favoriteId: true },
+      });
+
+      if (existing) {
+        return tx.userFavorite.update({
+          where: { favoriteId: existing.favoriteId },
+          data: { entityType: entity.type },
+          include: {
+            entity: {
+              select: {
+                entityId: true,
+                name: true,
+                type: true,
+                city: true,
+              },
+            },
+          },
+        });
+      }
+
+      const created = await tx.userFavorite.create({
+        data: {
+          userId,
+          entityId: entity.entityId,
+          entityType: entity.type,
+        },
+        include: {
+          entity: {
+            select: {
+              entityId: true,
+              name: true,
+              type: true,
+              city: true,
+            },
+          },
+        },
+      });
+
+      await tx.userFavoriteEvent.create({
+        data: {
+          userId,
+          entityId: entity.entityId,
+          entityType: entity.type,
+          eventKind: FavoriteEventKind.added,
+          occurredAt: created.createdAt,
+          metadata: this.buildFavoriteEventMetadata('favorite_action'),
+        },
+      });
+
+      return created;
     });
 
     this.logger.debug('Added user favorite', {
@@ -86,11 +120,39 @@ export class FavoritesService {
   }
 
   async removeFavorite(userId: string, favoriteId: string): Promise<void> {
-    const result = await this.prisma.userFavorite.deleteMany({
-      where: { favoriteId, userId },
+    const removed = await this.prisma.$transaction(async (tx) => {
+      const favorite = await tx.userFavorite.findFirst({
+        where: { favoriteId, userId },
+        select: {
+          favoriteId: true,
+          entityId: true,
+          entityType: true,
+        },
+      });
+
+      if (!favorite) {
+        return false;
+      }
+
+      await tx.userFavorite.delete({
+        where: { favoriteId: favorite.favoriteId },
+      });
+
+      await tx.userFavoriteEvent.create({
+        data: {
+          userId,
+          entityId: favorite.entityId,
+          entityType: favorite.entityType,
+          eventKind: FavoriteEventKind.removed,
+          occurredAt: new Date(),
+          metadata: this.buildFavoriteEventMetadata('favorite_action'),
+        },
+      });
+
+      return true;
     });
 
-    if (result.count === 0) {
+    if (!removed) {
       this.logger.debug('Favorite already removed', { userId, favoriteId });
       return;
     }
@@ -105,11 +167,39 @@ export class FavoritesService {
     userId: string,
     entityId: string,
   ): Promise<void> {
-    const result = await this.prisma.userFavorite.deleteMany({
-      where: { userId, entityId },
+    const removed = await this.prisma.$transaction(async (tx) => {
+      const favorite = await tx.userFavorite.findFirst({
+        where: { userId, entityId },
+        select: {
+          favoriteId: true,
+          entityId: true,
+          entityType: true,
+        },
+      });
+
+      if (!favorite) {
+        return false;
+      }
+
+      await tx.userFavorite.delete({
+        where: { favoriteId: favorite.favoriteId },
+      });
+
+      await tx.userFavoriteEvent.create({
+        data: {
+          userId,
+          entityId: favorite.entityId,
+          entityType: favorite.entityType,
+          eventKind: FavoriteEventKind.removed,
+          occurredAt: new Date(),
+          metadata: this.buildFavoriteEventMetadata('favorite_action'),
+        },
+      });
+
+      return true;
     });
 
-    if (result.count === 0) {
+    if (!removed) {
       this.logger.debug('Favorite already removed', { userId, entityId });
       return;
     }
@@ -118,5 +208,9 @@ export class FavoritesService {
       userId,
       entityId,
     });
+  }
+
+  private buildFavoriteEventMetadata(source: string): Prisma.JsonObject {
+    return { source };
   }
 }

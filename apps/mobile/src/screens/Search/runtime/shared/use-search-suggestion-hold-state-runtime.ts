@@ -13,9 +13,6 @@ export const useSearchSuggestionHoldStateRuntime = ({
   recentSearches,
   recentlyViewedRestaurants,
   recentlyViewedFoods,
-  isRecentLoading,
-  isRecentlyViewedLoading,
-  isRecentlyViewedFoodsLoading,
 }: SearchSuggestionHoldStateRuntimeArgs): SearchSuggestionHoldStateRuntime => {
   const createEmptySuggestionTransitionHold = React.useCallback(
     (): SearchSuggestionTransitionHold => ({
@@ -25,9 +22,6 @@ export const useSearchSuggestionHoldStateRuntime = ({
       recentSearches: [],
       recentlyViewedRestaurants: [],
       recentlyViewedFoods: [],
-      isRecentLoading: false,
-      isRecentlyViewedLoading: false,
-      isRecentlyViewedFoodsLoading: false,
       holdSuggestionPanel: false,
       holdSuggestionBackground: false,
       holdAutocomplete: false,
@@ -73,9 +67,6 @@ export const useSearchSuggestionHoldStateRuntime = ({
         recentSearches,
         recentlyViewedRestaurants,
         recentlyViewedFoods,
-        isRecentLoading,
-        isRecentlyViewedLoading,
-        isRecentlyViewedFoodsLoading,
         holdSuggestionPanel: flags.holdSuggestionPanel,
         holdSuggestionBackground: flags.holdSuggestionBackground,
         holdAutocomplete: flags.holdAutocomplete,
@@ -84,9 +75,6 @@ export const useSearchSuggestionHoldStateRuntime = ({
       return true;
     },
     [
-      isRecentLoading,
-      isRecentlyViewedFoodsLoading,
-      isRecentlyViewedLoading,
       query,
       recentSearches,
       recentlyViewedFoods,

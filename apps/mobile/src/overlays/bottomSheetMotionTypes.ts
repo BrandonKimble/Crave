@@ -19,4 +19,5 @@ export type BottomSheetMotionCommand = {
   token: number;
   settleToken?: number | null;
   velocity?: number;
+  mode?: 'spring' | 'instant';
 };

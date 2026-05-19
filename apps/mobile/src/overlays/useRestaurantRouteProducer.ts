@@ -1,11 +1,18 @@
 import React from 'react';
 
 import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
+import type {
+  AppOverlayTopLevelProductRouteKey,
+  OverlayKey,
+} from '../navigation/runtime/app-overlay-route-types';
 import type { RestaurantRoutePanelDraft } from './restaurantRoutePanelContract';
 
 type OpenRestaurantRouteArgs = {
   restaurantId: string;
   panel: RestaurantRoutePanelDraft;
+  parentSceneKey?: AppOverlayTopLevelProductRouteKey | null;
+  ownerSceneKey?: AppOverlayTopLevelProductRouteKey | null;
+  openerRouteKey?: OverlayKey | null;
 };
 
 type RestaurantRouteProducer = {

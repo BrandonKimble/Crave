@@ -8,7 +8,11 @@ type UseProfileOwnerActionStatePortsRuntimeArgs = {
   nativeExecutionModel: Pick<ProfileNativeExecutionModel, 'transitionExecutionModel'>;
   runtimeStateOwner: Pick<
     ProfileRuntimeStateOwner,
-    'transitionRuntimeState' | 'closeRuntimeState' | 'hydrationRuntime' | 'focusRuntime'
+    | 'shellRuntimeState'
+    | 'transitionRuntimeState'
+    | 'closeRuntimeState'
+    | 'hydrationRuntime'
+    | 'focusRuntime'
   >;
   hydrateRestaurantProfileById: ProfileRuntimeStateOwner['hydrationRuntime']['hydrateRestaurantProfileById'];
 };
@@ -26,15 +30,13 @@ export const useProfileOwnerActionStatePortsRuntime = ({
   | 'setNextFocusSession'
   | 'setMultiLocationZoomBaseline'
   | 'setLastCameraState'
-  | 'resetPreparedProfileSavedSheetSnap'
+  | 'setMapHighlightedRestaurantId'
   | 'seedRestaurantProfile'
   | 'hydrateRestaurantProfileById'
 > => {
   const {
-    transitionRuntimeState: {
-      capturePreparedProfileTransitionSnapshot,
-      resetPreparedProfileSavedSheetSnap,
-    },
+    transitionRuntimeState: { capturePreparedProfileTransitionSnapshot },
+    shellRuntimeState: { setMapHighlightedRestaurantId },
     closeRuntimeState: {
       policyRuntimeState: {
         setProfileDismissBehavior,
@@ -60,7 +62,7 @@ export const useProfileOwnerActionStatePortsRuntime = ({
           nativeExecutionModel.transitionExecutionModel.setLastCameraState(state);
         }
       },
-      resetPreparedProfileSavedSheetSnap,
+      setMapHighlightedRestaurantId,
       seedRestaurantProfile,
       hydrateRestaurantProfileById,
     }),
@@ -69,7 +71,7 @@ export const useProfileOwnerActionStatePortsRuntime = ({
       capturePreviousForegroundUiRestoreStateIfAbsent,
       hydrateRestaurantProfileById,
       nativeExecutionModel.transitionExecutionModel,
-      resetPreparedProfileSavedSheetSnap,
+      setMapHighlightedRestaurantId,
       seedRestaurantProfile,
       setProfileDismissBehavior,
       setProfileMultiLocationZoomBaseline,

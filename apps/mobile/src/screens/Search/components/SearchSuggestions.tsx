@@ -18,6 +18,7 @@ import type {
   RecentlyViewedFood,
   RecentlyViewedRestaurant,
 } from '../../../services/search';
+import { logPerfScenarioSearchRequestLifecycle } from '../../../perf/perf-scenario-attribution';
 import { filterRecentlyViewedByRecentSearches } from '../utils/history';
 import { renderMetaDetailLine } from './render-meta-detail-line';
 
@@ -29,12 +30,6 @@ type SearchSuggestionsProps = {
   recentSearches: RecentSearch[];
   recentlyViewedRestaurants: RecentlyViewedRestaurant[];
   recentlyViewedFoods: RecentlyViewedFood[];
-  hasRecentSearches: boolean;
-  hasRecentlyViewedRestaurants: boolean;
-  hasRecentlyViewedFoods: boolean;
-  isRecentLoading: boolean;
-  isRecentlyViewedLoading: boolean;
-  isRecentlyViewedFoodsLoading: boolean;
   onSelectSuggestion: (match: AutocompleteMatch) => void;
   onSelectRecent: (term: RecentSearch) => void;
   onSelectRecentlyViewed: (restaurant: RecentlyViewedRestaurant) => void;
@@ -52,6 +47,64 @@ const NAME_LINE_HEIGHT = FONT_SIZES.subtitle + 2;
 const META_LINE_HEIGHT = FONT_SIZES.body + 2;
 const META_LINE_SPACING = 4;
 
+const summarizeRenderedAutocompleteMatches = (
+  suggestions: AutocompleteMatch[]
+): Record<string, unknown> => {
+  const byEntityType: Record<string, number> = {};
+  const byQuerySuggestionSource: Record<string, number> = {};
+  let querySuggestionCount = 0;
+  let attributeCount = 0;
+
+  suggestions.forEach((match) => {
+    const entityType = match.entityType || 'unknown';
+    byEntityType[entityType] = (byEntityType[entityType] ?? 0) + 1;
+    if (match.matchType === 'query' || match.entityType === 'query') {
+      querySuggestionCount += 1;
+      const source = match.querySuggestionSource ?? 'unknown';
+      byQuerySuggestionSource[source] = (byQuerySuggestionSource[source] ?? 0) + 1;
+    }
+    if (match.entityType === 'food_attribute' || match.entityType === 'restaurant_attribute') {
+      attributeCount += 1;
+    }
+  });
+
+  return {
+    renderedAutocompleteCount: suggestions.length,
+    renderedAutocompleteByEntityType: byEntityType,
+    renderedAutocompleteByQuerySuggestionSource: byQuerySuggestionSource,
+    renderedAutocompleteQuerySuggestionCount: querySuggestionCount,
+    renderedAutocompleteAttributeCount: attributeCount,
+    renderedAutocompleteTopMatches: suggestions.slice(0, 7).map((match) => ({
+      entityType: match.entityType,
+      matchType: match.matchType ?? null,
+      name: match.name,
+      querySuggestionSource: match.querySuggestionSource ?? null,
+    })),
+  };
+};
+
+const testIdSafeName = (name: string): string =>
+  name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48) || 'unknown';
+
+const RenderedAutocompletePerfLogger: React.FC<{ suggestions: AutocompleteMatch[] }> = ({
+  suggestions,
+}) => {
+  React.useEffect(() => {
+    logPerfScenarioSearchRequestLifecycle({
+      source: 'SearchSuggestions',
+      phase: 'autocomplete_rendered_suggestions',
+      ...summarizeRenderedAutocompleteMatches(suggestions),
+    });
+  }, [suggestions]);
+
+  return null;
+};
+
 const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   visible,
   showAutocomplete,
@@ -60,12 +113,6 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   recentSearches,
   recentlyViewedRestaurants,
   recentlyViewedFoods,
-  hasRecentSearches,
-  hasRecentlyViewedRestaurants,
-  hasRecentlyViewedFoods,
-  isRecentLoading,
-  isRecentlyViewedLoading,
-  isRecentlyViewedFoodsLoading,
   onSelectSuggestion,
   onSelectRecent,
   onSelectRecentlyViewed,
@@ -78,16 +125,9 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
     return null;
   }
 
-  const shouldRenderRecentSection =
-    showRecent &&
-    (isRecentLoading ||
-      isRecentlyViewedLoading ||
-      isRecentlyViewedFoodsLoading ||
-      hasRecentSearches ||
-      hasRecentlyViewedRestaurants ||
-      hasRecentlyViewedFoods);
   const shouldShowAutocompleteResults = showAutocomplete && suggestions.length > 0;
   const recentSearchesToRender = recentSearches.slice(0, RECENT_SEARCH_PREVIEW_LIMIT);
+  const shouldRenderRecentSearchesSection = showRecent && recentSearchesToRender.length > 0;
   const recentlyViewedDeduped = React.useMemo(
     () => filterRecentlyViewedByRecentSearches(recentlyViewedRestaurants, recentSearches),
     [recentlyViewedRestaurants, recentSearches]
@@ -112,11 +152,11 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
     return items;
   }, [recentlyViewedFoods, recentlyViewedDeduped]);
   const recentlyViewedToRender = recentlyViewedItems.slice(0, RECENTLY_VIEWED_PREVIEW_LIMIT);
-  const hasRecentlyViewedToRender = recentlyViewedItems.length > 0;
+  const shouldRenderRecentlyViewedSection = showRecent && recentlyViewedToRender.length > 0;
+  const shouldRenderRecentSection =
+    shouldRenderRecentSearchesSection || shouldRenderRecentlyViewedSection;
   const shouldShowRecentViewMore = recentSearches.length > RECENT_SEARCH_PREVIEW_LIMIT;
   const shouldShowRecentlyViewedMore =
-    !isRecentlyViewedLoading &&
-    !isRecentlyViewedFoodsLoading &&
     recentlyViewedItems.length > RECENTLY_VIEWED_PREVIEW_LIMIT;
   const containerStyles = [styles.container, style];
   const recentSectionStyles = [
@@ -149,6 +189,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
 
   return (
     <View style={containerStyles}>
+      {showAutocomplete ? <RenderedAutocompletePerfLogger suggestions={suggestions} /> : null}
       {shouldShowAutocompleteResults ? (
         <View style={styles.autocompleteSectionSurface}>
           {suggestions.map((match, index) => {
@@ -197,6 +238,11 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                 key={itemKey}
                 onPress={() => onSelectSuggestion(match)}
                 style={styles.autocompleteItemRow}
+                accessibilityRole="button"
+                accessibilityLabel={`Autocomplete suggestion ${match.name}`}
+                testID={`autocomplete-suggestion-${match.entityType}-${testIdSafeName(
+                  match.name
+                )}`}
               >
                 <View style={styles.autocompleteLeadingIcon}>{leadingIcon}</View>
                 <View
@@ -225,13 +271,11 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
 
       {shouldRenderRecentSection ? (
         <View style={recentSectionStyles}>
-          <View style={styles.recentHeaderRow}>
-            <Text style={styles.recentHeaderText}>Recent searches</Text>
-          </View>
-          {!isRecentLoading && !hasRecentSearches ? (
-            <Text style={styles.recentEmptyText}>No recent searches yet</Text>
-          ) : (
-            <>
+          {shouldRenderRecentSearchesSection ? (
+            <View>
+              <View style={styles.recentHeaderRow}>
+                <Text style={styles.recentHeaderText}>Recent searches</Text>
+              </View>
               {recentSearchesToRender.map((term, index) => {
                 const statusLine =
                   term.selectedEntityType === 'restaurant'
@@ -247,7 +291,9 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                     <View style={styles.recentIcon}>
                       <Clock size={18} color={ICON_COLOR} strokeWidth={2} />
                     </View>
-                    <View style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}>
+                    <View
+                      style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}
+                    >
                       <View style={styles.recentRowTextGroup}>
                         <Text style={styles.recentText} numberOfLines={1}>
                           {term.queryText}
@@ -270,18 +316,19 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                   </Text>
                 </TouchableOpacity>
               ) : null}
-            </>
-          )}
+            </View>
+          ) : null}
 
-          <View style={[styles.recentHeaderRow, styles.recentHeaderRowSpaced]}>
-            <Text style={styles.recentHeaderText}>Recently viewed</Text>
-          </View>
-          {!isRecentlyViewedLoading &&
-          !isRecentlyViewedFoodsLoading &&
-          !hasRecentlyViewedToRender ? (
-            <Text style={styles.recentEmptyText}>No recently viewed items yet</Text>
-          ) : (
-            <>
+          {shouldRenderRecentlyViewedSection ? (
+            <View>
+              <View
+                style={[
+                  styles.recentHeaderRow,
+                  shouldRenderRecentSearchesSection ? styles.recentHeaderRowSpaced : null,
+                ]}
+              >
+                <Text style={styles.recentHeaderText}>Recently viewed</Text>
+              </View>
               {recentlyViewedToRender.map((entry, index) => {
                 if (entry.type === 'food') {
                   const item = entry.item;
@@ -354,8 +401,8 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                   </Text>
                 </TouchableOpacity>
               ) : null}
-            </>
-          )}
+            </View>
+          ) : null}
         </View>
       ) : null}
     </View>
@@ -441,12 +488,6 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     letterSpacing: 0.4,
     textTransform: 'none',
-  },
-  recentEmptyText: {
-    paddingVertical: 6,
-    fontSize: FONT_SIZES.subtitle,
-    lineHeight: LINE_HEIGHTS.subtitle,
-    color: themeColors.textBody,
   },
   recentRow: {
     flexDirection: 'row',

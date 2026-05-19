@@ -6,10 +6,16 @@ import {
   StyleSheet,
   type NativeSyntheticEvent,
   type StyleProp,
+  type ViewProps,
   type ViewStyle,
 } from 'react-native';
 
 import type { SearchChromeTouchSurfaceRuntime } from '../shared/search-chrome-touch-surface-contract';
+import {
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+} from '../../../../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 
 export type SearchChromeNativeHitTargetId =
   | 'shortcut_restaurants'
@@ -39,7 +45,7 @@ type NativeSearchChromeNativeHitTargetPressEvent = {
   targetId: SearchChromeNativeHitTargetId;
 };
 
-type NativeSearchChromeNativeHitTargetSurfaceProps = {
+type NativeSearchChromeNativeHitTargetSurfaceProps = ViewProps & {
   hostKey: string;
   style?: StyleProp<ViewStyle>;
   onSearchChromeNativeHitTargetPress?: (
@@ -124,7 +130,7 @@ export const searchChromeNativeHitTargetRegistry = {
 type SearchChromeNativeHitTargetSurfaceProps = {
   hostKey?: string;
   style?: StyleProp<ViewStyle>;
-  onPressTarget?: (targetId: SearchChromeNativeHitTargetId) => void;
+  onPressTarget?: (targetId: SearchChromeNativeHitTargetId) => boolean;
 };
 
 export const SearchChromeNativeHitTargetSurface = React.memo(
@@ -133,16 +139,27 @@ export const SearchChromeNativeHitTargetSurface = React.memo(
     style,
     onPressTarget = searchChromeNativeHitTargetRegistry.dispatchTarget,
   }: SearchChromeNativeHitTargetSurfaceProps) {
+    const activeScenarioConfig = usePerfScenarioRuntimeStore((state) => state.activeConfig);
     const handlePress = React.useCallback(
       (event: NativeSyntheticEvent<NativeSearchChromeNativeHitTargetPressEvent>) => {
-        onPressTarget?.(event.nativeEvent.targetId);
+        const targetId = event.nativeEvent.targetId;
+        const handled = onPressTarget?.(targetId) === true;
+        if (isPerfScenarioAttributionActive(activeScenarioConfig)) {
+          logPerfScenarioAttributionEvent('VisualReadiness', activeScenarioConfig, {
+            event: 'search_shortcut_press_dispatch_contract',
+            source: 'native_hit_target',
+            target: targetId,
+            handled,
+          });
+        }
       },
-      [onPressTarget]
+      [activeScenarioConfig, onPressTarget]
     );
 
     return (
       <NativeSearchChromeNativeHitTargetSurface
         hostKey={hostKey}
+        pointerEvents="box-none"
         style={[StyleSheet.absoluteFill, style]}
         onSearchChromeNativeHitTargetPress={handlePress}
       />

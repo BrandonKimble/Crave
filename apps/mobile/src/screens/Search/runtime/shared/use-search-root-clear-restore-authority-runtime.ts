@@ -79,8 +79,8 @@ export const useSearchRootClearRestoreAuthorityRuntime = ({
     inputRef: rootPrimitivesRuntime.searchState.inputRef,
     profilePresentationActiveRef:
       profileBridgeAuthorityRuntime.profileBridge.profilePresentationActiveRef,
-    closeRestaurantProfileRef:
-      profileBridgeAuthorityRuntime.profileBridge.closeRestaurantProfileRef,
+    clearRestaurantProfileForSearchDismissRef:
+      profileBridgeAuthorityRuntime.profileBridge.clearRestaurantProfileForSearchDismissRef,
     resetRestaurantProfileFocusSessionRef:
       profileBridgeAuthorityRuntime.profileBridge.resetRestaurantProfileFocusSessionRef,
     handleCancelPendingMutationWork:

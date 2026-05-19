@@ -5,7 +5,6 @@ import {
 } from './app-route-profile-prepared-presentation-transaction-contract';
 
 export type ResolvePreparedProfilePresentationTransactionOptions = {
-  shouldForceSharedMiddleSnap: boolean;
   profileOpenStatus?: 'opening' | 'open';
 };
 
@@ -13,7 +12,7 @@ export const resolvePreparedProfilePresentationTransaction = (
   snapshot: PreparedProfilePresentationSnapshot,
   options: ResolvePreparedProfilePresentationTransactionOptions
 ): PreparedProfilePresentationTransaction => {
-  const { shouldForceSharedMiddleSnap, profileOpenStatus } = options;
+  const { profileOpenStatus } = options;
   if (snapshot.kind === 'profile_open') {
     const selectedRestaurantId = snapshot.selectedRestaurantId ?? snapshot.restaurantId;
     return createPreparedProfilePresentationTransaction({
@@ -21,22 +20,18 @@ export const resolvePreparedProfilePresentationTransaction = (
       preShellCommands: {
         ...(snapshot.targetCamera
           ? {
-              profileCameraPadding: snapshot.targetCamera?.padding ?? null,
-            }
-          : {}),
-        ...(shouldForceSharedMiddleSnap
-          ? {
-              forceSharedMiddleSnap: true,
+              targetCamera: snapshot.targetCamera,
             }
           : {}),
       },
       shellStateExecution: {
-        transitionStatus: profileOpenStatus ?? (snapshot.restoreSheetSnap ? 'opening' : 'open'),
+        transitionStatus: profileOpenStatus ?? 'open',
         routeIntent: {
           type: 'open_profile_restaurant_route',
           restaurantId: selectedRestaurantId,
           targetSheetSnap: snapshot.targetSheetSnap ?? 'middle',
-          targetCamera: snapshot.targetCamera,
+          targetCamera: null,
+          preserveSheetMotion: snapshot.preserveSheetMotionOnOpen,
         },
       },
     });
@@ -44,20 +39,13 @@ export const resolvePreparedProfilePresentationTransaction = (
 
   return createPreparedProfilePresentationTransaction({
     transactionId: snapshot.transactionId,
-    ...(snapshot.shellTarget === 'default'
-      ? {
-          preShellCommands: {
-            resultsSheetCommand: {
-              type: 'hide',
-            },
-          },
-        }
-      : {}),
     shellStateExecution: {
       transitionStatus: 'closing',
       routeIntent: {
         type: 'close_profile_restaurant_route',
         restoreCamera: snapshot.restoreCamera,
+        shellTarget: snapshot.shellTarget === 'default' ? 'default' : 'results',
+        targetSheetSnap: snapshot.targetSheetSnap === 'collapsed' ? 'collapsed' : null,
       },
     },
   });

@@ -29,6 +29,8 @@ export const useSearchSuggestionLayoutPlaneRuntime = ({
     startupGeometrySeed,
     query: rootPrimitivesRuntime.searchState.query,
     isSuggestionPanelActive: rootPrimitivesRuntime.searchState.isSuggestionPanelActive,
+    shouldDisableSearchShortcuts:
+      rootPrimitivesRuntime.searchState.shouldDisableSearchShortcutsRef.current,
     shouldDriveSuggestionLayout: suggestionVisibilityRuntime.shouldDriveSuggestionLayout,
     shouldRenderSuggestionPanel: suggestionVisibilityRuntime.shouldRenderSuggestionPanel,
   });

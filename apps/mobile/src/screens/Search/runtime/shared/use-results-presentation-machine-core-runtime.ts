@@ -5,18 +5,18 @@ import {
   createResultsPresentationRuntimeMachine,
   type ResultsPresentationRuntimeMachine,
 } from './results-presentation-runtime-machine';
-import { type SearchRuntimeBus } from './search-runtime-bus';
+import type { ResultsPresentationAuthority } from './results-presentation-authority';
 import type { ToggleInteractionLifecycleEvent } from './results-toggle-interaction-contract';
-import type { PreparedResultsPresentationSnapshot } from './prepared-presentation-transaction';
+import type { SearchSurfaceResultsTransaction } from './search-surface-results-transaction';
 
 type UseResultsPresentationMachineCoreRuntimeArgs = {
-  searchRuntimeBus: SearchRuntimeBus;
+  resultsPresentationAuthority: ResultsPresentationAuthority;
   log: ResultsPresentationLog;
   notifyIntentCompleteRef: React.MutableRefObject<((intentId: string) => void) | null>;
 };
 
 export const useResultsPresentationMachineCoreRuntime = ({
-  searchRuntimeBus,
+  resultsPresentationAuthority,
   log,
   notifyIntentCompleteRef,
 }: UseResultsPresentationMachineCoreRuntimeArgs) => {
@@ -25,7 +25,7 @@ export const useResultsPresentationMachineCoreRuntime = ({
   if (!runtimeMachineRef.current) {
     runtimeMachineRef.current = createResultsPresentationRuntimeMachine({
       publish: ({ resultsPresentation, resultsPresentationTransport }) => {
-        searchRuntimeBus.publish({
+        resultsPresentationAuthority.publishRuntimeState({
           resultsPresentation,
           resultsPresentationTransport,
         });
@@ -44,9 +44,9 @@ export const useResultsPresentationMachineCoreRuntime = ({
     []
   );
 
-  const commitPreparedResultsSnapshot = React.useCallback(
-    (snapshot: PreparedResultsPresentationSnapshot) => {
-      runtimeMachineRef.current!.commitPreparedResultsSnapshot(snapshot);
+  const commitSearchSurfaceResultsTransaction = React.useCallback(
+    (snapshot: SearchSurfaceResultsTransaction) => {
+      runtimeMachineRef.current!.commitSearchSurfaceResultsTransaction(snapshot);
     },
     []
   );
@@ -63,13 +63,13 @@ export const useResultsPresentationMachineCoreRuntime = ({
     () => ({
       runtimeMachineRef,
       handleToggleInteractionLifecycle,
-      commitPreparedResultsSnapshot,
+      commitSearchSurfaceResultsTransaction,
       cancelPresentationIntent,
       handleRuntimePresentationIntentAbort,
     }),
     [
       cancelPresentationIntent,
-      commitPreparedResultsSnapshot,
+      commitSearchSurfaceResultsTransaction,
       handleRuntimePresentationIntentAbort,
       handleToggleInteractionLifecycle,
     ]

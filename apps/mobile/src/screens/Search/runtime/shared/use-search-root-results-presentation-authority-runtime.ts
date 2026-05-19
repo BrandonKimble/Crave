@@ -1,5 +1,6 @@
 import React from 'react';
 import { logger } from '../../../../utils';
+import { shouldSuppressPerfScenarioRuntimeDiagnostics } from '../../../../perf/perf-scenario-attribution';
 
 import type {
   SearchRootClearRestoreAuthorityRuntime,
@@ -13,7 +14,9 @@ import type { SearchRootSessionCoreLane } from './use-search-root-session-runtim
 import type { SearchChromeScalarSurfaceRuntime } from '../native/search-chrome-scalar-surface-runtime';
 import type { ResultsSurfacePolicyController } from './results-surface-policy-controller';
 import type { SearchForegroundPolicyPublicationAuthority } from './search-foreground-policy-publication-authority';
+import { deferMountedResultsCleanupUntilAfterDismiss } from './search-mounted-results-data-store';
 import { useResultsPresentationOwner } from './use-results-presentation-runtime-owner';
+import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
 
 type UseSearchRootResultsPresentationAuthorityRuntimeArgs = {
   sessionCoreLane: SearchRootSessionCoreLane;
@@ -45,13 +48,15 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
   const {
     rootInstrumentationRuntime,
     routeOverlaySessionActions,
-    routeOverlayCommandActions,
     rootOverlaySessionSurfaceRuntime,
     appRouteResultsSheetRuntimeOwner,
   } = rootOverlayFoundationRuntime;
 
   const logControlPresentationDiag = React.useCallback(
     (label: string, data?: Record<string, unknown>) => {
+      if (shouldSuppressPerfScenarioRuntimeDiagnostics()) {
+        return;
+      }
       const debugLogger = logger.debug as (
         message: string,
         payload?: Record<string, unknown>
@@ -78,9 +83,26 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
         hasActiveSearchContent: change.hasActiveSearchContent,
         closeLaneState: change.closeTransitionState,
         holdPersistentPollLane: change.holdPersistentPollLane,
+        surfaceVisualPolicy: change.surfaceVisualPolicy,
       });
-      const policyFacts = sessionCoreLane.searchRuntimeBus.getPolicyFactsSnapshot();
+      const policyFacts = sessionCoreLane.resultsPresentationAuthority.readPolicyFactsSnapshot(
+        sessionCoreLane.searchRuntimeBus.getPolicyFactsSnapshot()
+      );
       const laneKind = change.searchSheetContentLane.kind;
+      if (laneKind === 'persistent_poll') {
+        const transportSnapshot =
+          sessionCoreLane.resultsPresentationAuthority.getSnapshot().resultsPresentationTransport;
+        const activeRedrawTransactionId =
+          getSearchSurfaceRuntime().getActiveOrPendingRedrawTransactionId();
+        if (
+          transportSnapshot.snapshotKind !== 'results_enter' &&
+          activeRedrawTransactionId == null
+        ) {
+          deferMountedResultsCleanupUntilAfterDismiss(
+            'search_sheet_content_lane_persistent_poll'
+          );
+        }
+      }
       resultsSurfacePolicyController?.updatePanelInputs({
         renderPolicy: policyFacts.renderPolicy,
         allowsInteractionLoadingState:
@@ -90,9 +112,12 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
         shouldUsePlaceholderRows: false,
       });
     },
-    [resultsSurfacePolicyController, sessionCoreLane.searchRuntimeBus]
+    [
+      resultsSurfacePolicyController,
+      sessionCoreLane.resultsPresentationAuthority,
+      sessionCoreLane.searchRuntimeBus,
+    ]
   );
-
   const resultsPresentationOwner = useResultsPresentationOwner({
     activeTab: rootPrimitivesRuntime.searchState.activeTab,
     setActiveTab: rootPrimitivesRuntime.searchState.setActiveTab,
@@ -106,6 +131,10 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
       rootDataPlaneRuntime.resultsArrivalState.submittedQuery.length > 0,
     isSearchSessionActive: rootDataPlaneRuntime.runtimeFlags.isSearchSessionActive,
     hasResults: rootDataPlaneRuntime.resultsArrivalState.hasResults,
+    profilePresentationActiveRef:
+      profileBridgeAuthorityRuntime.profileBridge.profilePresentationActiveRef,
+    prepareRestaurantProfileForTerminalSearchDismissRef:
+      profileBridgeAuthorityRuntime.profileBridge.prepareRestaurantProfileForTerminalSearchDismissRef,
     isSearchLoading: rootDataPlaneRuntime.runtimeFlags.isSearchLoading,
     isSuggestionPanelActive: rootPrimitivesRuntime.searchState.isSuggestionPanelActive,
     shouldRenderSearchOverlay: rootOverlaySessionSurfaceRuntime.shouldRenderSearchOverlay,
@@ -118,7 +147,6 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
     cancelSearchCloseRestore: routeOverlaySessionActions.cancelSearchCloseRestore,
     flushPendingSearchOriginRestore: routeOverlaySessionActions.flushPendingSearchOriginRestore,
     requestDefaultPostSearchRestore: routeOverlaySessionActions.requestDefaultPostSearchRestore,
-    handleCloseResultsUiReset: routeOverlayCommandActions.handleCloseResultsUiReset,
     cancelAutocomplete: rootDataPlaneRuntime.requestStatusRuntime.cancelAutocomplete,
     resetSubmitTransitionHold: rootSuggestionRuntime.resetSubmitTransitionHold,
     setIsSearchFocused: rootPrimitivesRuntime.searchState.setIsSearchFocused,
@@ -130,8 +158,13 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
     setSuggestions: rootPrimitivesRuntime.searchState.setSuggestions,
     inputRef: rootPrimitivesRuntime.searchState.inputRef,
     searchRuntimeBus: sessionCoreLane.searchRuntimeBus,
+    resultsPresentationAuthority: sessionCoreLane.resultsPresentationAuthority,
+    routeSceneSwitchAuthority:
+      rootOverlayFoundationRuntime.routeSceneRuntime.sceneSwitchAuthority,
+    resultsPresentationSurfaceAuthority: sessionCoreLane.resultsPresentationSurfaceAuthority,
+    searchMapSourceFramePort: sessionCoreLane.searchMapSourceFramePort,
     log: logControlPresentationDiag,
-    runOneHandoffCoordinatorRef: sessionCoreLane.runOneHandoffCoordinatorRef,
+    searchSurfaceRedrawCoordinatorRef: sessionCoreLane.searchSurfaceRedrawCoordinatorRef,
     emitRuntimeMechanismEvent: rootInstrumentationRuntime.emitRuntimeMechanismEvent as Parameters<
       typeof useResultsPresentationOwner
     >[0]['emitRuntimeMechanismEvent'],
@@ -148,7 +181,7 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
       searchChromeScalarSurfaceRuntime?.presentationRuntime,
   });
 
-  rootInstrumentationRuntime.closeSearchHarnessRef.current = () => {
+  rootInstrumentationRuntime.closeSearchScenarioCommandRef.current = () => {
     resultsPresentationOwner.presentationActions.beginCloseSearch();
   };
 

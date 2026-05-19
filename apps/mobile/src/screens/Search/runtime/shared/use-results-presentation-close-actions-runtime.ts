@@ -1,36 +1,39 @@
 import React from 'react';
+import { unstable_batchedUpdates } from 'react-native';
 
 import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
-import { createPreparedResultsExitSnapshot } from './prepared-presentation-transaction';
+import { createSearchSurfaceResultsExitTransaction } from './search-surface-results-transaction';
 import type { ResultsPresentationRuntimeOwner } from './results-presentation-runtime-owner-contract';
-import type { ResultsPresentationShellLocalState } from './use-results-presentation-shell-local-state';
 import type { AppRouteResultsSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-results-sheet-runtime-contract';
-import { useResultsPreparedExitSnapshotExecutionRuntime } from './use-results-prepared-exit-snapshot-execution-runtime';
+import { useAppRouteSceneRuntime } from '../../../../navigation/runtime/AppRouteSceneRuntimeProvider';
+import { useResultsSurfaceExitTransactionExecutionRuntime } from './use-search-surface-results-exit-transaction-execution-runtime';
+import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
 
 type UseResultsPresentationCloseActionsRuntimeArgs = {
   clearTypedQuery: SearchClearOwner['clearTypedQuery'];
   submittedQuery: string;
   isSearchSessionActive: boolean;
   hasResults: boolean;
+  profilePresentationActiveRef: React.MutableRefObject<boolean>;
+  prepareRestaurantProfileForTerminalSearchDismissRef: React.MutableRefObject<() => void>;
   ignoreNextSearchBlurRef: React.MutableRefObject<boolean>;
   isClearingSearchRef: React.MutableRefObject<boolean>;
-  handleCloseResultsUiReset: () => void;
-  resultsSheetRuntime: Pick<AppRouteResultsSheetRuntimeOwner, 'animateSheetTo' | 'sheetState'>;
-  shellLocalState: ResultsPresentationShellLocalState;
+  resultsSheetRuntime: Pick<AppRouteResultsSheetRuntimeOwner, 'sheetState'>;
   resultsRuntimeOwner: ResultsPresentationRuntimeOwner;
-  scheduleCloseSearchCleanup: (closeIntentId: string) => void;
   cancelCloseSearchCleanup: () => void;
   setPendingCloseIntentId: (intentId: string | null) => void;
   matchesPendingCloseIntentId: (intentId: string) => boolean;
-  beginCloseTransition: (closeIntentId: string) => void;
-  markSearchSheetCloseSheetSettled: (
-    snap: Exclude<import('../../../../overlays/types').OverlaySheetSnap, 'hidden'>
+  beginCloseTransition: (
+    closeIntentId: string,
+    options?: { terminalDismissSource?: 'results' | 'profile' }
   ) => void;
   cancelSearchSheetCloseTransition: (closeIntentId?: string) => void;
 };
 
 type ResultsPresentationCloseActionsRuntime = {
-  requestClosePresentationIntent: () => string | null;
+  requestClosePresentationIntent: (
+    terminalDismissSource?: 'results' | 'profile'
+  ) => string | null;
   beginCloseSearch: () => void;
   handleCloseResults: () => void;
   cancelCloseSearch: (intentId?: string) => void;
@@ -41,41 +44,40 @@ export const useResultsPresentationCloseActionsRuntime = ({
   submittedQuery,
   isSearchSessionActive,
   hasResults,
+  profilePresentationActiveRef,
+  prepareRestaurantProfileForTerminalSearchDismissRef,
   ignoreNextSearchBlurRef,
   isClearingSearchRef,
-  handleCloseResultsUiReset,
   resultsSheetRuntime,
-  shellLocalState,
   resultsRuntimeOwner,
-  scheduleCloseSearchCleanup,
   cancelCloseSearchCleanup,
   setPendingCloseIntentId,
   matchesPendingCloseIntentId,
   beginCloseTransition,
-  markSearchSheetCloseSheetSettled,
   cancelSearchSheetCloseTransition,
 }: UseResultsPresentationCloseActionsRuntimeArgs): ResultsPresentationCloseActionsRuntime => {
-  const preparedResultsExitTransactionSeqRef = React.useRef(0);
-  const nextPreparedResultsExitTransactionId = React.useCallback((): string => {
-    preparedResultsExitTransactionSeqRef.current += 1;
-    return `prepared-results-transaction:${preparedResultsExitTransactionSeqRef.current}`;
+  const routeSceneRuntime = useAppRouteSceneRuntime();
+  const searchSurfaceResultsExitTransactionSeqRef = React.useRef(0);
+  const nextSearchSurfaceResultsExitTransactionId = React.useCallback((): string => {
+    searchSurfaceResultsExitTransactionSeqRef.current += 1;
+    return `search-surface-results-transaction:${searchSurfaceResultsExitTransactionSeqRef.current}`;
   }, []);
 
-  const executePreparedExitSnapshot = useResultsPreparedExitSnapshotExecutionRuntime({
-    resultsRuntimeOwner,
-    animateSheetTo: resultsSheetRuntime.animateSheetTo,
+  const executeSurfaceExitTransaction = useResultsSurfaceExitTransactionExecutionRuntime({
     getCurrentSheetSnap: () => resultsSheetRuntime.sheetState,
-    setDisplayQueryOverride: shellLocalState.setDisplayQueryOverride,
     beginCloseTransition,
-    markSearchSheetCloseSheetSettled,
+    resultsRuntimeOwner,
   });
 
   const requestClosePresentationIntent = React.useCallback(
-    () =>
-      executePreparedExitSnapshot(
-        createPreparedResultsExitSnapshot(nextPreparedResultsExitTransactionId())
+    (terminalDismissSource: 'results' | 'profile' = 'results') =>
+      executeSurfaceExitTransaction(
+        createSearchSurfaceResultsExitTransaction(
+          nextSearchSurfaceResultsExitTransactionId(),
+          terminalDismissSource
+        )
       ),
-    [executePreparedExitSnapshot, nextPreparedResultsExitTransactionId]
+    [executeSurfaceExitTransaction, nextSearchSurfaceResultsExitTransactionId]
   );
 
   const cancelCloseSearch = React.useCallback(
@@ -86,7 +88,7 @@ export const useResultsPresentationCloseActionsRuntime = ({
       setPendingCloseIntentId(null);
       cancelCloseSearchCleanup();
       isClearingSearchRef.current = false;
-      resultsRuntimeOwner.clearStagedPreparedResultsSnapshot(intentId);
+      resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction(intentId);
       cancelSearchSheetCloseTransition(intentId);
       resultsRuntimeOwner.cancelPresentationIntent(intentId);
     },
@@ -101,28 +103,57 @@ export const useResultsPresentationCloseActionsRuntime = ({
   );
 
   const beginCloseSearch = React.useCallback(() => {
-    const hasSearchToClose = isSearchSessionActive || hasResults || submittedQuery.length > 0;
+    const surfaceSnapshot = getSearchSurfaceRuntime().getSnapshot();
+    const hasVisibleSearchSurface =
+      surfaceSnapshot.activeBundle.kind === 'results' ||
+      surfaceSnapshot.heldBundle != null ||
+      surfaceSnapshot.redrawTransaction != null ||
+      surfaceSnapshot.dismissTransaction != null;
+    const hasSearchToClose =
+      isSearchSessionActive ||
+      hasResults ||
+      submittedQuery.length > 0 ||
+      profilePresentationActiveRef.current ||
+      hasVisibleSearchSurface;
     if (!hasSearchToClose) {
       clearTypedQuery();
       return;
     }
 
     ignoreNextSearchBlurRef.current = true;
-    resultsRuntimeOwner.clearStagedPreparedResultsSnapshot();
-    const closeIntentId = requestClosePresentationIntent() ?? '';
-    isClearingSearchRef.current = true;
-    handleCloseResultsUiReset();
-    scheduleCloseSearchCleanup(closeIntentId);
+    unstable_batchedUpdates(() => {
+      clearTypedQuery();
+      isClearingSearchRef.current = true;
+      const terminalDismissSource =
+        profilePresentationActiveRef.current ||
+        routeSceneRuntime.routeSceneSwitchRuntime.getRouteState().activeOverlayRoute.key ===
+          'restaurant'
+          ? 'profile'
+          : 'results';
+      if (terminalDismissSource === 'profile') {
+        prepareRestaurantProfileForTerminalSearchDismissRef.current();
+      }
+      const closeIntentId = requestClosePresentationIntent(terminalDismissSource);
+      if (!closeIntentId) {
+        return;
+      }
+
+      resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
+      setPendingCloseIntentId(closeIntentId);
+    });
   }, [
     clearTypedQuery,
-    handleCloseResultsUiReset,
     hasResults,
     ignoreNextSearchBlurRef,
     isClearingSearchRef,
     isSearchSessionActive,
+    prepareRestaurantProfileForTerminalSearchDismissRef,
+    profilePresentationActiveRef,
     requestClosePresentationIntent,
+    routeSceneRuntime,
+    resultsSheetRuntime,
     resultsRuntimeOwner,
-    scheduleCloseSearchCleanup,
+    setPendingCloseIntentId,
     submittedQuery.length,
   ]);
 

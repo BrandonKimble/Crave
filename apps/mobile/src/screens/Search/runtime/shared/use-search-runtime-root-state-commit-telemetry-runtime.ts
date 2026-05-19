@@ -1,16 +1,15 @@
 import React from 'react';
 
+import type { ResultsPresentationAuthority } from './results-presentation-authority';
+import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
 import type { SearchRuntimeBus } from './search-runtime-bus';
-import { areResultsPresentationReadModelsEqual } from './results-presentation-runtime-contract';
-import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
-import {
-  areResultsPresentationTransportLifecycleStatesEqual,
-  type SearchRootStateCommitSnapshot,
-} from './use-search-runtime-instrumentation-runtime-contract';
+import type { SearchRootStateCommitSnapshot } from './use-search-runtime-instrumentation-runtime-contract';
 
 export const useSearchRuntimeRootStateCommitTelemetryRuntime = ({
   searchRuntimeBus,
-  getActiveShortcutRunNumber,
+  resultsPresentationAuthority,
+  resultsPresentationSurfaceAuthority,
+  getActiveScenarioRunNumber,
   emitRuntimeMechanismEvent,
   searchMode,
   isSearchSessionActive,
@@ -23,7 +22,9 @@ export const useSearchRuntimeRootStateCommitTelemetryRuntime = ({
   resultsPage,
 }: {
   searchRuntimeBus: SearchRuntimeBus;
-  getActiveShortcutRunNumber: () => number | null;
+  resultsPresentationAuthority: ResultsPresentationAuthority;
+  resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
+  getActiveScenarioRunNumber: () => number | null;
   emitRuntimeMechanismEvent: (event: string, payload?: Record<string, unknown>) => void;
   searchMode: 'natural' | 'shortcut' | null;
   isSearchSessionActive: boolean;
@@ -35,60 +36,54 @@ export const useSearchRuntimeRootStateCommitTelemetryRuntime = ({
   resultsRequestKey: string | null;
   resultsPage: number | null;
 }): void => {
-  const handoffPresentationRuntimeState = useSearchRuntimeBusSelector(
-    searchRuntimeBus,
-    (state) => ({
-      runOneHandoffOperationId: state.runOneHandoffOperationId,
-      runOneHandoffPhase: state.runOneHandoffPhase,
-      resultsPresentation: state.resultsPresentation,
-      resultsPresentationTransport: state.resultsPresentationTransport,
-    }),
-    (left, right) =>
-      left.runOneHandoffOperationId === right.runOneHandoffOperationId &&
-      left.runOneHandoffPhase === right.runOneHandoffPhase &&
-      areResultsPresentationReadModelsEqual(left.resultsPresentation, right.resultsPresentation) &&
-      areResultsPresentationTransportLifecycleStatesEqual(
-        left.resultsPresentationTransport,
-        right.resultsPresentationTransport
-      ),
-    [
-      'runOneHandoffOperationId',
-      'runOneHandoffPhase',
-      'resultsPresentation',
-      'resultsPresentationTransport',
-    ] as const
-  );
-  const rootStateCommitRuntimeState = useSearchRuntimeBusSelector(
-    searchRuntimeBus,
-    (state) => ({
-      shouldHydrateResultsForRender: state.shouldHydrateResultsForRender,
-    }),
-    (left, right) => left.shouldHydrateResultsForRender === right.shouldHydrateResultsForRender,
-    ['shouldHydrateResultsForRender'] as const
-  );
-
+  void resultsPresentationSurfaceAuthority;
   const rootStateCommitSnapshotRef = React.useRef<SearchRootStateCommitSnapshot | null>(null);
+  const latestRootFieldsRef = React.useRef({
+    activeOverlayKey,
+    isAutocompleteSuppressed,
+    isSearchLoading,
+    isSearchOverlay,
+    isSearchSessionActive,
+    resultsPage,
+    resultsRequestKey,
+    rootOverlay,
+    searchMode,
+  });
+  latestRootFieldsRef.current = {
+    activeOverlayKey,
+    isAutocompleteSuppressed,
+    isSearchLoading,
+    isSearchOverlay,
+    isSearchSessionActive,
+    resultsPage,
+    resultsRequestKey,
+    rootOverlay,
+    searchMode,
+  };
 
-  React.useEffect(() => {
-    const activeRunNumber = getActiveShortcutRunNumber();
+  const emitRootStateCommitSnapshot = React.useCallback(() => {
+    const activeRunNumber = getActiveScenarioRunNumber();
     if (activeRunNumber == null) {
       rootStateCommitSnapshotRef.current = null;
       return;
     }
+    const runtimeState = searchRuntimeBus.getState();
+    const presentationSnapshot = resultsPresentationAuthority.getSnapshot();
+    const latestRootFields = latestRootFieldsRef.current;
     const snapshot: SearchRootStateCommitSnapshot = {
-      searchMode,
-      isSearchSessionActive,
-      isSearchLoading,
-      isAutocompleteSuppressed,
-      rootOverlay,
-      activeOverlay: activeOverlayKey,
-      isSearchOverlay,
-      resultsRequestKey,
-      resultsPage,
-      shouldHydrateResultsForRender: rootStateCommitRuntimeState.shouldHydrateResultsForRender,
-      resultsPresentation: handoffPresentationRuntimeState.resultsPresentation,
-      resultsPresentationTransport: handoffPresentationRuntimeState.resultsPresentationTransport,
-      isMapRevealPending: handoffPresentationRuntimeState.resultsPresentation.isPending,
+      searchMode: latestRootFields.searchMode,
+      isSearchSessionActive: latestRootFields.isSearchSessionActive,
+      isSearchLoading: latestRootFields.isSearchLoading,
+      isAutocompleteSuppressed: latestRootFields.isAutocompleteSuppressed,
+      rootOverlay: latestRootFields.rootOverlay,
+      activeOverlay: latestRootFields.activeOverlayKey,
+      isSearchOverlay: latestRootFields.isSearchOverlay,
+      resultsRequestKey: latestRootFields.resultsRequestKey,
+      resultsPage: latestRootFields.resultsPage,
+      shouldHydrateResultsForRender: false,
+      resultsPresentation: presentationSnapshot.resultsPresentation,
+      resultsPresentationTransport: presentationSnapshot.resultsPresentationTransport,
+      isMapRevealPending: presentationSnapshot.resultsPresentation.isPending,
     };
     const previous = rootStateCommitSnapshotRef.current;
     rootStateCommitSnapshotRef.current = snapshot;
@@ -107,27 +102,45 @@ export const useSearchRuntimeRootStateCommitTelemetryRuntime = ({
     emitRuntimeMechanismEvent('runtime_write_span', {
       domain: 'root_state_commit',
       label: 'search_root_state_commit',
-      operationId: handoffPresentationRuntimeState.runOneHandoffOperationId,
-      phase: handoffPresentationRuntimeState.runOneHandoffPhase,
+      operationId: runtimeState.searchSurfaceRedrawOperationId,
+      phase: runtimeState.searchSurfaceRedrawPhase,
       changedKeys,
       snapshot,
     });
   }, [
     emitRuntimeMechanismEvent,
-    getActiveShortcutRunNumber,
-    handoffPresentationRuntimeState.resultsPresentation,
-    handoffPresentationRuntimeState.resultsPresentationTransport,
-    handoffPresentationRuntimeState.runOneHandoffOperationId,
-    handoffPresentationRuntimeState.runOneHandoffPhase,
-    isAutocompleteSuppressed,
+    getActiveScenarioRunNumber,
+    resultsPresentationAuthority,
+    searchRuntimeBus,
+  ]);
+
+  React.useEffect(() => {
+    emitRootStateCommitSnapshot();
+  }, [
     activeOverlayKey,
+    emitRootStateCommitSnapshot,
+    isAutocompleteSuppressed,
     isSearchLoading,
     isSearchOverlay,
     isSearchSessionActive,
     resultsPage,
     resultsRequestKey,
     rootOverlay,
-    rootStateCommitRuntimeState.shouldHydrateResultsForRender,
     searchMode,
+  ]);
+
+  React.useEffect(() => {
+    const unsubscribePresentation = resultsPresentationAuthority.subscribe(
+      emitRootStateCommitSnapshot,
+      ['resultsPresentation', 'resultsPresentationTransport'],
+      'root_state_commit_presentation_telemetry'
+    );
+    emitRootStateCommitSnapshot();
+    return () => {
+      unsubscribePresentation();
+    };
+  }, [
+    emitRootStateCommitSnapshot,
+    resultsPresentationAuthority,
   ]);
 };

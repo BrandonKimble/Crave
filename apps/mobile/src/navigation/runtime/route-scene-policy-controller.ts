@@ -146,7 +146,8 @@ export class RouteScenePolicyController {
   private computeRouteScenePolicySnapshot(): RouteScenePolicySnapshot {
     const { foregroundState } = this.searchSceneForegroundPolicyInputs;
     const { sheetContentLaneKind, shouldRenderResultsSheet } = this.searchSceneSheetPolicyInputs;
-    const isPersistentPollLaneEligible = sheetContentLaneKind === 'persistent_poll';
+    const isPersistentPollLaneEligible =
+      sheetContentLaneKind === 'persistent_poll' || sheetContentLaneKind === 'results_closing';
     const foregroundActivity = foregroundState.isCloseTransitionActive
       ? 'resultsClosing'
       : isPersistentPollLaneEligible

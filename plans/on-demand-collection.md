@@ -1,5 +1,12 @@
 # On-Demand Collection: Viewport, Location, Cooldowns, Messaging
 
+> Superseded working notes. Treat
+> `plans/search-demand-architecture-review.md` as the current decision log and
+> `plans/search-demand-layer-cutover-plan.md` as the current implementation
+> plan. This file is retained for historical context around on-demand behavior,
+> but its old queue/cooldown model must not override the current raw-ask fact
+> plus collectable-scope architecture.
+
 ## Summary
 
 We want to:

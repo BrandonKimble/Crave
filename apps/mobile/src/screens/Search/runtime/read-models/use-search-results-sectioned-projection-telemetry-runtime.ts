@@ -11,7 +11,7 @@ type SearchResultsSectionedProjectionTelemetryRuntimeArgs = {
   results: SearchResponse | null;
   resultsHydrationKey: string | null;
   shouldHydrateResultsForRender: boolean;
-  runOneCommitSpanPressureActive: boolean;
+  searchSurfaceRedrawCommitSpanPressureActive: boolean;
   mapQueryBudget: MapQueryBudget;
   emitRuntimeWriteSpan: (payload: Record<string, unknown>) => void;
   projectionStateRuntime: ReturnType<typeof useSearchResultsSectionedProjectionStateRuntime>;
@@ -24,7 +24,7 @@ export const useSearchResultsSectionedProjectionTelemetryRuntime = ({
   results,
   resultsHydrationKey,
   shouldHydrateResultsForRender,
-  runOneCommitSpanPressureActive,
+  searchSurfaceRedrawCommitSpanPressureActive,
   mapQueryBudget,
   emitRuntimeWriteSpan,
   projectionStateRuntime,
@@ -60,7 +60,7 @@ export const useSearchResultsSectionedProjectionTelemetryRuntime = ({
       sectionedRowCount,
       safeResultsCount,
       shouldHydrateResultsForRender,
-      runOneCommitSpanPressureActive,
+      searchSurfaceRedrawCommitSpanPressureActive,
     });
   }, [
     activeTab,
@@ -71,7 +71,7 @@ export const useSearchResultsSectionedProjectionTelemetryRuntime = ({
     projectionStateRuntime.buildDurationMs,
     requestVersionKey,
     resultsHydrationKey,
-    runOneCommitSpanPressureActive,
+    searchSurfaceRedrawCommitSpanPressureActive,
     searchRequestId,
     shouldHydrateResultsForRender,
   ]);

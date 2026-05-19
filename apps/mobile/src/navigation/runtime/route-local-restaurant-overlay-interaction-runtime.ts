@@ -62,8 +62,6 @@ export class RouteLocalRestaurantOverlayInteractionRuntime {
       onToggleFavorite: this.routeRestaurantOverlayInteractionPublication.onToggleFavorite,
       closeRestaurantProfile:
         this.routeRestaurantOverlayInteractionPublication.closeRestaurantProfile,
-      restaurantSheetSnapController:
-        this.routeRestaurantOverlayInteractionPublication.restaurantSheetSnapController,
     };
 
     if (areRouteLocalRestaurantOverlayInteractionSnapshotsEqual(this.snapshot, nextSnapshot)) {

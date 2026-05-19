@@ -53,6 +53,7 @@ export const AppRouteResultsSheetRuntimeProvider = ({
     [
       runtimeOwner.resultsMomentum,
       runtimeOwner.resultsScrollOffset,
+      runtimeOwner.handleSheetSnapChange,
       runtimeOwner.sheetTranslateY,
       runtimeOwner.snapPoints,
     ]

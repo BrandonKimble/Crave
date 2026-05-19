@@ -1,7 +1,7 @@
-import React from 'react';
-
-import type { SearchRootInstrumentationRuntime } from './search-root-scaffold-runtime-contract';
-import type { AppRouteSceneSwitchAuthority } from '../../../../navigation/runtime/app-route-scene-switch-authority';
+import type {
+  SearchRootInstrumentationRuntime,
+  SearchRootResultsSheetRuntimeLane,
+} from './search-root-scaffold-runtime-contract';
 import type {
   SearchRootDataPlaneRuntime,
   SearchRootSessionCoreLane,
@@ -20,57 +20,51 @@ type UseSearchRootScaffoldInstrumentationRuntimeArgs = {
   rootPrimitivesRuntime: RootPrimitivesRuntime;
   rootSessionCoreLane: SearchRootSessionCoreLane;
   rootSessionPrimitivesLane: SearchRootSessionPrimitivesLane;
+  rootResultsSheetRuntimeLane: SearchRootResultsSheetRuntimeLane;
   rootDataPlaneRuntime: SearchRootDataPlaneRuntime;
   rootOverlayStoreRuntime: Pick<
     SearchOverlayStoreRuntime,
-    'rootOverlay' | 'activeOverlayKey' | 'isSearchOverlay' | 'getIdentitySnapshot'
+    'rootOverlay' | 'activeOverlayKey' | 'isSearchOverlay'
   >;
-  routeSceneSwitchAuthority: Pick<AppRouteSceneSwitchAuthority, 'getSnapshot'>;
 };
 
 export const useSearchRootScaffoldInstrumentationRuntime = ({
   rootPrimitivesRuntime,
   rootSessionCoreLane,
   rootSessionPrimitivesLane,
+  rootResultsSheetRuntimeLane,
   rootDataPlaneRuntime,
   rootOverlayStoreRuntime,
-  routeSceneSwitchAuthority,
 }: UseSearchRootScaffoldInstrumentationRuntimeArgs): SearchRootInstrumentationRuntime => {
-  const roundPerfValue = React.useCallback(
-    (value: number): number => Math.round(value * 10) / 10,
-    []
-  );
-
   return useSearchRuntimeInstrumentationRuntime({
     getPerfNow: rootSessionPrimitivesLane.primitives.getPerfNow,
-    roundPerfValue,
-    searchSessionController: rootSessionCoreLane.searchSessionController,
     mapQueryBudget: rootSessionCoreLane.mapQueryBudget,
     searchMode: rootDataPlaneRuntime.runtimeFlags.searchMode,
     isSearchLoading: rootDataPlaneRuntime.runtimeFlags.isSearchLoading,
-    isLoadingMore: rootDataPlaneRuntime.resultsArrivalState.isLoadingMore,
-    isRunOneHandoffActive: rootDataPlaneRuntime.freezeGate.isRun1HandoffActive,
     resultsRequestKey: rootDataPlaneRuntime.resultsArrivalState.resultsRequestKey,
     searchInteractionRef: rootSessionPrimitivesLane.primitives.searchInteractionRef,
-    isInitialCameraReady: rootSessionCoreLane.mapBootstrapRuntime.isInitialCameraReady,
-    runTimeoutMs: 45000,
-    settleQuietPeriodMs: 320,
     searchRuntimeBus: rootSessionCoreLane.searchRuntimeBus,
-    runtimeWorkSchedulerRef: rootSessionCoreLane.runtimeWorkSchedulerRef,
-    runOneHandoffCoordinatorRef: rootSessionCoreLane.runOneHandoffCoordinatorRef as Parameters<
-      typeof useSearchRuntimeInstrumentationRuntime
-    >[0]['runOneHandoffCoordinatorRef'],
-    runOneCommitSpanPressureByOperationRef:
-      rootSessionPrimitivesLane.primitives.runOneCommitSpanPressureByOperationRef,
+    resultsPresentationAuthority: rootSessionCoreLane.resultsPresentationAuthority,
+    resultsPresentationSurfaceAuthority: rootSessionCoreLane.resultsPresentationSurfaceAuthority,
+    searchSurfaceRedrawCoordinatorRef:
+      rootSessionCoreLane.searchSurfaceRedrawCoordinatorRef as Parameters<
+        typeof useSearchRuntimeInstrumentationRuntime
+      >[0]['searchSurfaceRedrawCoordinatorRef'],
+    searchSurfaceRedrawCommitSpanPressureByOperationRef:
+      rootSessionPrimitivesLane.primitives.searchSurfaceRedrawCommitSpanPressureByOperationRef,
     isSearchRequestLoadingRef: rootDataPlaneRuntime.runtimeFlags.isSearchRequestLoadingRef,
     readRuntimeMemoryDiagnostics: rootSessionPrimitivesLane.primitives.readRuntimeMemoryDiagnostics,
     isSearchSessionActive: rootDataPlaneRuntime.runtimeFlags.isSearchSessionActive,
     isAutocompleteSuppressed: rootPrimitivesRuntime.searchState.isAutocompleteSuppressed,
     rootOverlay: rootOverlayStoreRuntime.rootOverlay,
     activeOverlayKey: rootOverlayStoreRuntime.activeOverlayKey,
+    cameraIntentArbiter: rootSessionCoreLane.cameraIntentArbiter,
+    viewportBoundsService: rootSessionCoreLane.viewportBoundsService,
+    markMapMovedIfNeeded: rootResultsSheetRuntimeLane.markMapMovedIfNeeded,
+    scheduleMapIdleEnter: rootResultsSheetRuntimeLane.scheduleMapIdleEnter,
+    schedulePollBoundsUpdate: rootResultsSheetRuntimeLane.schedulePollBoundsUpdate,
+    ensureInitialCameraReady: rootSessionCoreLane.mapBootstrapRuntime.ensureInitialCameraReady,
     isSearchOverlay: rootOverlayStoreRuntime.isSearchOverlay,
-    getRouteOverlayIdentitySnapshot: rootOverlayStoreRuntime.getIdentitySnapshot,
-    getRouteActiveSceneKey: () => routeSceneSwitchAuthority.getSnapshot().routeActiveSceneKey,
     resultsPage: rootDataPlaneRuntime.resultsArrivalState.resultsPage,
   });
 };

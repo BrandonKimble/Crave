@@ -1,5 +1,5 @@
 import type { Coordinate, FoodResult, MapBounds, RestaurantResult } from '../../../../types';
-import { getQualityColorFromScore } from '../../utils/quality';
+import { getCraveScoreColorFromScore } from '../../utils/quality';
 import { buildMarkerCatalogReadModel } from './map-read-model-builder';
 import type { MarkerCatalogEntry } from './map-viewport-query';
 import {
@@ -93,7 +93,7 @@ export const computeMarkerPipeline = (args: {
     locationSelectionAnchor,
     resolveRestaurantMapLocations,
     pickPreferredRestaurantMapLocation,
-    getQualityColorFromScore,
+    getCraveScoreColorFromScore,
   });
 
   return {

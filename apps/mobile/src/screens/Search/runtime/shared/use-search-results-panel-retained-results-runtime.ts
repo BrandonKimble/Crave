@@ -5,6 +5,7 @@ import type { SearchResultsPayload } from './search-results-panel-runtime-state-
 import type { SearchResultsShellModel } from './results-presentation-shell-contract';
 import type { SearchRouteResultsPolicyRetainedResultsWriterFacet } from './search-route-results-policy-domain-contract';
 import { createSearchResultsRetainedResultsController } from './results-retained-read-model-controller';
+import { logPerfScenarioStackAttribution } from '../../../../perf/perf-scenario-attribution';
 
 type UseSearchResultsPanelRetainedResultsRuntimeArgs = {
   results: SearchResultsPayload;
@@ -28,13 +29,24 @@ export const useSearchResultsPanelRetainedResultsRuntime = ({
   );
 
   React.useEffect(() => {
-    setRetainedResults(
-      retainedResultsWriter.commitRetainedResults({
-        results,
-        shouldRetainCommittedResults,
-      })
-    );
-  }, [results, retainedResultsWriter, shouldRetainCommittedResults]);
+    const nextRetainedResults = retainedResultsWriter.commitRetainedResults({
+      results,
+      shouldRetainCommittedResults,
+    });
+    if (nextRetainedResults === retainedResults) {
+      return;
+    }
+    logPerfScenarioStackAttribution({
+      owner: 'results_retained_results_effect_writer',
+      path: `results:${results?.metadata?.searchRequestId ?? 'null'}|retain:${
+        shouldRetainCommittedResults ? 'true' : 'false'
+      }`,
+      details: {
+        previousRetainedRequestId: retainedResults?.metadata?.searchRequestId ?? null,
+      },
+    });
+    setRetainedResults(nextRetainedResults);
+  }, [results, retainedResults, retainedResultsWriter, shouldRetainCommittedResults]);
 
   const retainedReadModel = React.useMemo(
     () =>

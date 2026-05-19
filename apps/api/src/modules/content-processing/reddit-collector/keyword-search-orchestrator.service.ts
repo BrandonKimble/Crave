@@ -494,10 +494,10 @@ export class KeywordSearchOrchestratorService
             outcome === 'success'
               ? 'success'
               : outcome === 'no_results'
-                ? 'no_results'
-                : outcome === 'error'
-                  ? 'error'
-                  : 'deferred';
+              ? 'no_results'
+              : outcome === 'error'
+              ? 'error'
+              : 'deferred';
 
           await this.keywordAttemptHistory.recordAttempt({
             collectableMarketKey,
@@ -1434,11 +1434,13 @@ export class KeywordSearchOrchestratorService
               term: candidate.term,
               normalizedTerm: candidate.normalizedTerm,
               slice: 'hot_spike',
-              score: candidate.distinctUsersLast24h,
+              score: candidate.priorityScore,
               origin: {
                 trigger: candidate.trigger,
                 distinctUsersLast24h: candidate.distinctUsersLast24h,
                 distinctUsersPrev24h: candidate.distinctUsersPrev24h,
+                trendBoost: candidate.trendBoost,
+                attemptAvailability: candidate.attemptAvailability,
                 lastSeenAt: candidate.lastSeenAt.toISOString(),
               },
             },
@@ -1536,19 +1538,16 @@ export class KeywordSearchOrchestratorService
             ? schedules.reduce((sum, s) => sum + s.terms.length, 0) /
               schedules.length
             : 0,
-        schedulesBySubreddit: schedules.reduce(
-          (acc, s) => {
-            acc[s.subreddit] = {
-              status: s.status,
-              nextRun: s.nextRun,
-              lastRun: s.lastRun,
-              collectableMarketKey: s.collectableMarketKey,
-              termCount: s.terms.length,
-            };
-            return acc;
-          },
-          {} as Record<string, any>,
-        ),
+        schedulesBySubreddit: schedules.reduce((acc, s) => {
+          acc[s.subreddit] = {
+            status: s.status,
+            nextRun: s.nextRun,
+            lastRun: s.lastRun,
+            collectableMarketKey: s.collectableMarketKey,
+            termCount: s.terms.length,
+          };
+          return acc;
+        }, {} as Record<string, any>),
       };
 
       return metrics;

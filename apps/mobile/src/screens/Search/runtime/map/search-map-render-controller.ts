@@ -30,7 +30,15 @@ type SearchMapRenderControllerNativeModule = {
     presentationStateJson: string;
     highlightedMarkerKey: string | null;
     interactionMode: string;
+  }) => Promise<SearchMapRenderControllerNativeSetFrameTiming | null | void>;
+  resetNativeApplyAttribution?: (payload: {
+    reason?: string;
+    runId?: string;
   }) => Promise<void>;
+  flushNativeApplyAttribution?: (payload: {
+    reason?: string;
+    reset?: boolean;
+  }) => Promise<SearchMapNativeApplyAttributionSummary>;
   notifyFrameRendered: (instanceId: string) => Promise<void>;
   configureLabelObservation: (
     payload: {
@@ -40,21 +48,6 @@ type SearchMapRenderControllerNativeModule = {
       commitInteractionVisibility: boolean;
     } & SearchMapLabelObservationConfig
   ) => Promise<void>;
-  queryRenderedDotObservation: (payload: {
-    instanceId: string;
-    layerIds: string[];
-    queryBox?: [number, number, number, number] | null;
-  }) => Promise<{
-    restaurantIds: string[];
-    renderedDots: Array<{
-      restaurantId: string;
-      coordinate: {
-        lng: number;
-        lat: number;
-      } | null;
-    }>;
-    renderedFeatureCount: number;
-  }>;
   queryRenderedPressTarget: (payload: {
     instanceId: string;
     point: {
@@ -62,14 +55,37 @@ type SearchMapRenderControllerNativeModule = {
       y: number;
     };
     pinLayerIds?: string[];
+    pinTapHitbox?: {
+      radiusPx: number;
+      centerShiftYPx: number;
+    };
     labelLayerIds?: string[];
+    labelQueryBox?: [number, number, number, number] | null;
+    labelTapHitbox?: {
+      textSize: number;
+      radialXEm: number;
+      radialYEm: number;
+      radialTopEm: number;
+      upShiftEm: number;
+      charWidthFactor: number;
+      lineHeightFactor: number;
+      paddingPx: number;
+      minWidthPx: number;
+      maxWidthPx: number;
+    };
+    dotLayerIds?: string[];
+    dotQueryBox?: [number, number, number, number] | null;
+    tapCoordinate?: {
+      lng: number;
+      lat: number;
+    } | null;
   }) => Promise<{
     restaurantId: string;
     coordinate: {
       lng: number;
       lat: number;
     } | null;
-    targetKind: 'pin' | 'label';
+    targetKind: 'pin' | 'label' | 'dot';
   } | null>;
   reset: (instanceId: string) => Promise<void>;
 };
@@ -98,7 +114,7 @@ type SearchMapLabelObservationConfig = {
   labelResetRequestKey: string | null;
 };
 
-type SearchMapRenderControllerEvent =
+export type SearchMapRenderControllerEvent =
   | {
       type: 'attached';
       instanceId: string;
@@ -142,6 +158,9 @@ type SearchMapRenderControllerEvent =
       requestKey: string;
       frameGenerationId: string | null;
       executionBatchId: string | null;
+      pinCount?: number;
+      dotCount?: number;
+      labelCount?: number;
       startedAtMs: number;
     }
   | {
@@ -150,6 +169,9 @@ type SearchMapRenderControllerEvent =
       requestKey: string;
       frameGenerationId: string | null;
       executionBatchId: string | null;
+      pinCount?: number;
+      dotCount?: number;
+      labelCount?: number;
       settledAtMs: number;
     }
   | {
@@ -157,6 +179,9 @@ type SearchMapRenderControllerEvent =
       instanceId: string;
       requestKey: string;
       frameGenerationId: string | null;
+      pinCount?: number;
+      dotCount?: number;
+      labelCount?: number;
       startedAtMs: number;
     }
   | {
@@ -164,7 +189,31 @@ type SearchMapRenderControllerEvent =
       instanceId: string;
       requestKey: string;
       frameGenerationId: string | null;
+      pinCount?: number;
+      dotCount?: number;
+      labelCount?: number;
       settledAtMs: number;
+    }
+  | {
+      type: 'presentation_visual_sources_collision_released';
+      instanceId: string;
+      requestKey: string | null;
+      frameGenerationId: string | null;
+      pinCount?: number;
+      dotCount?: number;
+      labelCount?: number;
+      releasedAtMs: number;
+    }
+  | {
+      type: 'presentation_preroll_started';
+      instanceId: string;
+      phase: SearchRuntimeMapPresentationPhase;
+      coverState: ResultsPresentationTransportState['coverState'];
+      frameGenerationId: string | null;
+      pinCount?: number;
+      dotCount?: number;
+      labelCount?: number;
+      startedAtMs: number;
     }
   | {
       type: 'render_owner_invalidated';
@@ -205,19 +254,12 @@ type SearchMapRenderControllerEvent =
       type: 'error';
       instanceId: string;
       message: string;
+    }
+  | {
+      type: 'visual_diagnostic';
+      instanceId: string;
+      message: string;
     };
-
-type SearchMapRenderedDotObservation = {
-  restaurantIds: string[];
-  renderedDots: Array<{
-    restaurantId: string;
-    coordinate: {
-      lng: number;
-      lat: number;
-    } | null;
-  }>;
-  renderedFeatureCount: number;
-};
 
 type SearchMapRenderedPressTarget = {
   restaurantId: string;
@@ -225,12 +267,61 @@ type SearchMapRenderedPressTarget = {
     lng: number;
     lat: number;
   } | null;
-  targetKind: 'pin' | 'label';
+  targetKind: 'pin' | 'label' | 'dot';
 };
 
 type SearchMapRenderSourceRevisionState = Record<SearchMapRenderSourceId, string>;
 
-type SearchMapRenderSourceId =
+export type SearchMapNativeApplyAttributionBucket = {
+  section: string;
+  phase: string;
+  source: string;
+  count: number;
+  totalMs: number;
+  maxMs: number;
+  operationCount: number;
+};
+
+export type SearchMapNativeApplyAttributionSummary = {
+  reason: string;
+  enabled: boolean;
+  startedAtMs: number | null;
+  flushedAtMs: number;
+  bucketCount: number;
+  topBuckets: SearchMapNativeApplyAttributionBucket[];
+};
+
+export type SearchMapRenderControllerSetRenderFrameResult = {
+  nativePayloadBuildDurationMs: number;
+  nativePayloadSourceDeltaMapDurationMs: number;
+  nativeModuleDurationMs: number;
+  nativePayloadTotalDurationMs: number;
+  jsPromiseObservedAtEpochMs?: number;
+  nativeModuleReceivedAtEpochMs?: number;
+  nativeMainStartedAtEpochMs?: number;
+  nativeResolveStartedAtEpochMs?: number;
+  nativeResolveToJsPromiseObservedWallClockMs?: number;
+  nativeResolveToJsPromiseObservedWallClockConfidence?: 'same_wall_clock_best_effort';
+  nativeModuleQueueWaitDurationMs?: number;
+  nativeMainExecutionDurationMs?: number;
+  nativeSetFrameActionDurationMs?: number;
+  nativeBridgeUnattributedDurationMs?: number;
+  nativeSetFramePhase?: string | null;
+  nativeDidSyncResidentFrame?: boolean;
+};
+
+type SearchMapRenderControllerNativeSetFrameTiming = {
+  nativeModuleReceivedAtEpochMs?: number;
+  nativeMainStartedAtEpochMs?: number;
+  nativeResolveStartedAtEpochMs?: number;
+  nativeModuleQueueWaitDurationMs?: number;
+  nativeMainExecutionDurationMs?: number;
+  nativeSetFrameActionDurationMs?: number;
+  nativeSetFramePhase?: string | null;
+  nativeDidSyncResidentFrame?: boolean;
+};
+
+export type SearchMapRenderSourceId =
   | 'pins'
   | 'pinInteractions'
   | 'dots'
@@ -249,6 +340,7 @@ type SearchMapRenderFrame = {
   viewport: SearchMapRenderViewportState;
   presentation: SearchMapRenderPresentationState;
   highlightedMarkerKey: string | null;
+  highlightedMarkerKeys: readonly string[];
   interactionMode: SearchMapRenderInteractionMode;
 };
 
@@ -362,6 +454,20 @@ const serializePresentationState = (presentation: SearchMapRenderPresentationSta
   return JSON.stringify(presentation);
 };
 
+const resolveRenderControllerPerfNow = (): number => {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now();
+  }
+  return Date.now();
+};
+
+const roundRenderControllerPerfMs = (value: number): number => Number(value.toFixed(1));
+
+const finiteNumberOrUndefined = (value: unknown): number | undefined => {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : undefined;
+};
+
 type SearchMapRenderSourceDelta = {
   sourceId: SearchMapRenderSourceId;
   mode: SearchMapSourceStoreDelta['mode'];
@@ -375,6 +481,28 @@ type SearchMapRenderSourceDelta = {
 
 type SearchMapRenderControllerNativeSourceDelta = Omit<SearchMapRenderSourceDelta, 'sourceId'> & {
   sourceId: string;
+};
+
+type SearchMapRenderControllerSetFramePayload = {
+  instanceId: string;
+  ownerEpoch: number;
+  frameGenerationId: string;
+  executionBatchId: string;
+  frame: SearchMapRenderFrame;
+  sourceTransport: SearchMapRenderSourceTransportPayload;
+};
+
+type SearchMapRenderControllerNativeFramePayload = {
+  instanceId: string;
+  ownerEpoch: number;
+  frameGenerationId: string;
+  executionBatchId: string;
+  sourceDeltas?: SearchMapRenderControllerNativeSourceDelta[];
+  presentationStateJson: string;
+  highlightedRestaurantId: string | null;
+  highlightedMarkerKey: string | null;
+  highlightedMarkerKeys: readonly string[];
+  interactionMode: string;
 };
 
 const toNativeSourceId = (
@@ -409,6 +537,60 @@ const toNativeRenderSourceDelta = (
   ...delta,
   sourceId: toNativeSourceId(delta.sourceId, attachedSourceIds),
 });
+
+const createNativeRenderFramePayload = (
+  payload: SearchMapRenderControllerSetFramePayload
+): {
+  nativePayload: SearchMapRenderControllerNativeFramePayload;
+  nativePayloadBuildDurationMs: number;
+  nativePayloadSourceDeltaMapDurationMs: number;
+  totalStartedAtMs: number;
+} => {
+  const totalStartedAtMs = resolveRenderControllerPerfNow();
+  const attachedSourceIds = attachedPayloadByInstanceId.get(payload.instanceId) ?? null;
+  const sourceDeltaMapStartedAtMs = resolveRenderControllerPerfNow();
+  const sourceDeltas = payload.sourceTransport.sourceDeltas?.map((delta) =>
+    toNativeRenderSourceDelta(delta, attachedSourceIds)
+  );
+  const nativePayloadSourceDeltaMapDurationMs =
+    resolveRenderControllerPerfNow() - sourceDeltaMapStartedAtMs;
+  const nativePayload = {
+    instanceId: payload.instanceId,
+    ownerEpoch: payload.ownerEpoch,
+    frameGenerationId: payload.frameGenerationId,
+    executionBatchId: payload.executionBatchId,
+    ...(sourceDeltas ? { sourceDeltas } : {}),
+    presentationStateJson: serializePresentationState(payload.frame.presentation),
+    highlightedRestaurantId: payload.frame.presentation.selectedRestaurantId,
+    highlightedMarkerKey: payload.frame.highlightedMarkerKey,
+    highlightedMarkerKeys: payload.frame.highlightedMarkerKeys,
+    interactionMode: payload.frame.interactionMode,
+  };
+  return {
+    nativePayload,
+    nativePayloadBuildDurationMs: resolveRenderControllerPerfNow() - totalStartedAtMs,
+    nativePayloadSourceDeltaMapDurationMs,
+    totalStartedAtMs,
+  };
+};
+
+const recoverNativeRenderFrameSubmissionError = async (
+  instanceId: string,
+  error: unknown
+): Promise<Error> => {
+  if (!isRecoverableNativeRenderOwnerFrameError(error)) {
+    return error instanceof Error ? error : new Error(String(error));
+  }
+  if (!nativeModule) {
+    return error instanceof Error ? error : new Error(String(error));
+  }
+  const attachedPayload = attachedPayloadByInstanceId.get(instanceId);
+  if (attachedPayload == null) {
+    return error instanceof Error ? error : new Error(String(error));
+  }
+  await nativeModule.attach(attachedPayload);
+  return new Error('stale owner epoch');
+};
 
 export const searchMapRenderController = {
   isAvailable(): boolean {
@@ -448,40 +630,96 @@ export const searchMapRenderController = {
     executionBatchId: string;
     frame: SearchMapRenderFrame;
     sourceTransport: SearchMapRenderSourceTransportPayload;
-  }): Promise<void> {
+  }): Promise<SearchMapRenderControllerSetRenderFrameResult | null> {
+    if (!nativeModule) {
+      return null;
+    }
+    const {
+      nativePayload,
+      nativePayloadBuildDurationMs,
+      nativePayloadSourceDeltaMapDurationMs,
+      totalStartedAtMs,
+    } = createNativeRenderFramePayload(payload);
+    try {
+      const nativeModuleStartedAtMs = resolveRenderControllerPerfNow();
+      const nativeTimingResult = await nativeModule.setRenderFrame(nativePayload);
+      const jsPromiseObservedAtEpochMs = Date.now();
+      const nativeTiming: SearchMapRenderControllerNativeSetFrameTiming | null =
+        nativeTimingResult && typeof nativeTimingResult === 'object' ? nativeTimingResult : null;
+      const nativeModuleDurationMs = resolveRenderControllerPerfNow() - nativeModuleStartedAtMs;
+      const nativeObservedDurationMs =
+        (nativeTiming?.nativeModuleQueueWaitDurationMs ?? 0) +
+        (nativeTiming?.nativeMainExecutionDurationMs ?? 0);
+      const nativeBridgeUnattributedDurationMs =
+        nativeObservedDurationMs > 0 ? nativeModuleDurationMs - nativeObservedDurationMs : 0;
+      const nativeResolveStartedAtEpochMs = finiteNumberOrUndefined(
+        nativeTiming?.nativeResolveStartedAtEpochMs
+      );
+      const nativeResolveToJsPromiseObservedWallClockMs =
+        nativeResolveStartedAtEpochMs == null
+          ? undefined
+          : Math.max(0, jsPromiseObservedAtEpochMs - nativeResolveStartedAtEpochMs);
+      return {
+        nativePayloadBuildDurationMs: roundRenderControllerPerfMs(nativePayloadBuildDurationMs),
+        nativePayloadSourceDeltaMapDurationMs: roundRenderControllerPerfMs(
+          nativePayloadSourceDeltaMapDurationMs
+        ),
+        nativeModuleDurationMs: roundRenderControllerPerfMs(nativeModuleDurationMs),
+        nativePayloadTotalDurationMs: roundRenderControllerPerfMs(
+          resolveRenderControllerPerfNow() - totalStartedAtMs
+        ),
+        jsPromiseObservedAtEpochMs,
+        nativeModuleReceivedAtEpochMs: finiteNumberOrUndefined(
+          nativeTiming?.nativeModuleReceivedAtEpochMs
+        ),
+        nativeMainStartedAtEpochMs: finiteNumberOrUndefined(nativeTiming?.nativeMainStartedAtEpochMs),
+        nativeResolveStartedAtEpochMs,
+        nativeResolveToJsPromiseObservedWallClockMs:
+          nativeResolveToJsPromiseObservedWallClockMs == null
+            ? undefined
+            : roundRenderControllerPerfMs(nativeResolveToJsPromiseObservedWallClockMs),
+        nativeResolveToJsPromiseObservedWallClockConfidence:
+          nativeResolveToJsPromiseObservedWallClockMs == null
+            ? undefined
+            : 'same_wall_clock_best_effort',
+        nativeModuleQueueWaitDurationMs:
+          nativeTiming?.nativeModuleQueueWaitDurationMs == null
+            ? undefined
+            : roundRenderControllerPerfMs(nativeTiming.nativeModuleQueueWaitDurationMs),
+        nativeMainExecutionDurationMs:
+          nativeTiming?.nativeMainExecutionDurationMs == null
+            ? undefined
+            : roundRenderControllerPerfMs(nativeTiming.nativeMainExecutionDurationMs),
+        nativeSetFrameActionDurationMs:
+          nativeTiming?.nativeSetFrameActionDurationMs == null
+            ? undefined
+            : roundRenderControllerPerfMs(nativeTiming.nativeSetFrameActionDurationMs),
+        nativeBridgeUnattributedDurationMs: roundRenderControllerPerfMs(
+          nativeBridgeUnattributedDurationMs
+        ),
+        nativeSetFramePhase: nativeTiming?.nativeSetFramePhase ?? null,
+        nativeDidSyncResidentFrame: nativeTiming?.nativeDidSyncResidentFrame,
+      };
+    } catch (error) {
+      throw await recoverNativeRenderFrameSubmissionError(payload.instanceId, error);
+    }
+  },
+
+  submitRenderFrameFireAndObserve(
+    payload: SearchMapRenderControllerSetFramePayload,
+    onError: (error: Error) => void
+  ): void {
     if (!nativeModule) {
       return;
     }
-    const attachedSourceIds = attachedPayloadByInstanceId.get(payload.instanceId) ?? null;
-    const nativePayload = {
-      instanceId: payload.instanceId,
-      ownerEpoch: payload.ownerEpoch,
-      frameGenerationId: payload.frameGenerationId,
-      executionBatchId: payload.executionBatchId,
-      ...(payload.sourceTransport.sourceDeltas
-        ? {
-            sourceDeltas: payload.sourceTransport.sourceDeltas.map((delta) =>
-              toNativeRenderSourceDelta(delta, attachedSourceIds)
-            ),
-          }
-        : {}),
-      presentationStateJson: serializePresentationState(payload.frame.presentation),
-      highlightedMarkerKey: payload.frame.highlightedMarkerKey,
-      interactionMode: payload.frame.interactionMode,
-    };
-    try {
-      await nativeModule.setRenderFrame(nativePayload);
-    } catch (error) {
-      if (!isRecoverableNativeRenderOwnerFrameError(error)) {
-        throw error;
-      }
-      const attachedPayload = attachedPayloadByInstanceId.get(payload.instanceId);
-      if (attachedPayload == null) {
-        throw error;
-      }
-      await nativeModule.attach(attachedPayload);
-      throw new Error('stale owner epoch');
-    }
+    const { nativePayload } = createNativeRenderFramePayload(payload);
+    void nativeModule.setRenderFrame(nativePayload).catch((error: unknown) => {
+      recoverNativeRenderFrameSubmissionError(payload.instanceId, error)
+        .then(onError)
+        .catch((recoveryError: unknown) => {
+          onError(recoveryError instanceof Error ? recoveryError : new Error(String(recoveryError)));
+        });
+    });
   },
 
   async configureLabelObservation(
@@ -498,19 +736,24 @@ export const searchMapRenderController = {
     await nativeModule.configureLabelObservation(payload);
   },
 
-  async queryRenderedDotObservation(payload: {
-    instanceId: string;
-    layerIds: string[];
-    queryBox?: [number, number, number, number] | null;
-  }): Promise<SearchMapRenderedDotObservation> {
-    if (!nativeModule) {
-      return {
-        restaurantIds: [],
-        renderedDots: [],
-        renderedFeatureCount: 0,
-      };
+  async resetNativeApplyAttribution(payload: {
+    reason?: string;
+    runId?: string;
+  } = {}): Promise<void> {
+    if (!nativeModule?.resetNativeApplyAttribution) {
+      return;
     }
-    return nativeModule.queryRenderedDotObservation(payload);
+    await nativeModule.resetNativeApplyAttribution(payload);
+  },
+
+  async flushNativeApplyAttribution(payload: {
+    reason?: string;
+    reset?: boolean;
+  } = {}): Promise<SearchMapNativeApplyAttributionSummary | null> {
+    if (!nativeModule?.flushNativeApplyAttribution) {
+      return null;
+    }
+    return nativeModule.flushNativeApplyAttribution(payload);
   },
 
   async queryRenderedPressTarget(payload: {
@@ -520,7 +763,30 @@ export const searchMapRenderController = {
       y: number;
     };
     pinLayerIds?: string[];
+    pinTapHitbox?: {
+      radiusPx: number;
+      centerShiftYPx: number;
+    };
     labelLayerIds?: string[];
+    labelQueryBox?: [number, number, number, number] | null;
+    labelTapHitbox?: {
+      textSize: number;
+      radialXEm: number;
+      radialYEm: number;
+      radialTopEm: number;
+      upShiftEm: number;
+      charWidthFactor: number;
+      lineHeightFactor: number;
+      paddingPx: number;
+      minWidthPx: number;
+      maxWidthPx: number;
+    };
+    dotLayerIds?: string[];
+    dotQueryBox?: [number, number, number, number] | null;
+    tapCoordinate?: {
+      lng: number;
+      lat: number;
+    } | null;
   }): Promise<SearchMapRenderedPressTarget | null> {
     if (!nativeModule) {
       return null;

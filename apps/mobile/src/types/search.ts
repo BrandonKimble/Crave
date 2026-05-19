@@ -17,6 +17,8 @@ export type {
   RestaurantMatchedTag,
   RestaurantProfile,
   RestaurantResult,
+  RestaurantResultScorePreview,
+  ScoreInfoSummary,
   SearchResponse,
   SearchResponseMetadata,
 } from '@crave-search/shared';

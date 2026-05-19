@@ -1,5 +1,5 @@
 import React from 'react';
-import Animated from 'react-native-reanimated';
+import { View } from 'react-native';
 
 import type {
   SceneStackBodyContentLayerProps,
@@ -45,7 +45,7 @@ const shouldSkipSceneStackBodyContentLayerUpdate = (
     ) {
       return false;
     }
-  } else if (nextProps.contentEntry.sceneKey !== 'polls') {
+  } else {
     const shouldCompareDataLane = shouldPublishSceneBodyDataActivity(
       nextProps.contentEntry.sceneKey
     );
@@ -112,12 +112,12 @@ export const SceneStackBodyFrame = React.memo(
   ({ sceneKey, visibilityStyle, children }: SceneStackBodyFrameProps) => {
     const onProfilerRender = useSearchOverlayProfilerRender();
     const bodyFrame = (
-      <Animated.View
+      <View
         key={`scene-${sceneKey}`}
         style={[styles.sceneStackBodyLayer, visibilityStyle]}
       >
         {children}
-      </Animated.View>
+      </View>
     );
 
     if (!onProfilerRender) {
@@ -144,17 +144,13 @@ export const SceneStackBodyContentLayer = React.memo(
     const onProfilerRender = useSearchOverlayProfilerRender();
     const bodySurfaceKind = contentEntry.bodyContentSpec.surfaceKind;
     const shouldRenderListBody =
-      bodySurfaceKind === 'list'
-        ? contentActivity.shouldRenderListBody
-        : bodySurfaceKind === 'mountedList'
-        ? contentActivity.shouldRenderExpandedContent
-        : false;
+      bodySurfaceKind === 'list' ? contentActivity.shouldRenderListBody : false;
     const shouldAttachMountedContent =
-      (bodySurfaceKind === 'mounted' || bodySurfaceKind === 'mountedList') &&
-      contentActivity.shouldAttachMountedContent;
+      bodySurfaceKind === 'mounted' && contentActivity.shouldAttachMountedContent;
     const bodyDataActivity = React.useMemo(
       () => ({
         sceneKey: contentEntry.sceneKey,
+        shouldAttachMountedContent,
         shouldRunDataLane: contentActivity.shouldRunDataLane,
         shouldSubscribeDataLane: contentActivity.shouldSubscribeDataLane,
         shouldRenderExpandedContent: contentActivity.shouldRenderExpandedContent,
@@ -166,11 +162,13 @@ export const SceneStackBodyContentLayer = React.memo(
         contentActivity.shouldRenderExpandedContent,
         contentActivity.shouldRunDataLane,
         contentActivity.shouldSubscribeDataLane,
+        shouldAttachMountedContent,
       ]
     );
     const bodyRenderActivity = React.useMemo(
       () => ({
         sceneKey: contentEntry.sceneKey,
+        shouldAttachMountedContent,
         shouldSubscribeDataLane: contentActivity.shouldSubscribeDataLane,
         shouldRenderExpandedContent: contentActivity.shouldRenderExpandedContent,
         hasActivatedExpandedContent: contentActivity.hasActivatedExpandedContent,
@@ -180,6 +178,7 @@ export const SceneStackBodyContentLayer = React.memo(
         contentActivity.hasActivatedExpandedContent,
         contentActivity.shouldRenderExpandedContent,
         contentActivity.shouldSubscribeDataLane,
+        shouldAttachMountedContent,
       ]
     );
     const rawBodyContent = (
@@ -202,8 +201,7 @@ export const SceneStackBodyContentLayer = React.memo(
     ) : (
       rawBodyContent
     );
-    const shouldPublishRenderActivity =
-      bodySurfaceKind === 'mounted' || bodySurfaceKind === 'mountedList';
+    const shouldPublishRenderActivity = bodySurfaceKind === 'mounted';
     const shouldPublishDataActivity =
       shouldPublishRenderActivity && shouldPublishSceneBodyDataActivity(contentEntry.sceneKey);
     const bodyContentLayer = shouldPublishDataActivity ? (

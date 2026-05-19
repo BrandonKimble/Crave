@@ -1,4 +1,5 @@
 import api from './api';
+import { logPerfScenarioSearchRequestLifecycle } from '../perf/perf-scenario-attribution';
 import type { Coordinate, MapBounds } from '../types';
 
 export type MarketResolveResponse = {
@@ -21,8 +22,10 @@ export type MarketResolveResponse = {
   resolution?: {
     anchorType?: 'user_location' | 'viewport_center' | 'viewport_coverage' | null;
     viewportContainsUser?: boolean | null;
-    candidatePlaceName?: string | null;
-    candidatePlaceGeoId?: string | null;
+    candidateLocalityName?: string | null;
+    candidateBoundaryProvider?: string | null;
+    candidateBoundaryId?: string | null;
+    candidateBoundaryType?: string | null;
   } | null;
   cta?: {
     kind?: 'create_poll' | 'none' | null;
@@ -48,7 +51,23 @@ export const resolveMarket = async (
   const response = await api.post('/markets/resolve', {
     bounds,
     ...(userLocation ? { userLocation } : {}),
-    mode: 'polls',
+    mode: 'polls_read',
   });
-  return normalizeMarketResolveResponse(response.data);
+  const normalized = normalizeMarketResolveResponse(response.data);
+  logPerfScenarioSearchRequestLifecycle({
+    source: 'markets.resolveMarket',
+    phase: 'market_resolve_response',
+    marketResolveMode: 'polls_read',
+    marketResolveStatus: normalized.status ?? null,
+    marketKey: normalized.market?.marketKey ?? null,
+    marketName: normalized.market?.marketShortName ?? normalized.market?.marketName ?? null,
+    marketType: normalized.market?.marketType ?? null,
+    marketIsCollectable: normalized.market?.isCollectable ?? null,
+    marketCount: normalized.markets?.length ?? 0,
+    candidateLocalityName: normalized.resolution?.candidateLocalityName ?? null,
+    candidateBoundaryProvider: normalized.resolution?.candidateBoundaryProvider ?? null,
+    candidateBoundaryId: normalized.resolution?.candidateBoundaryId ?? null,
+    candidateBoundaryType: normalized.resolution?.candidateBoundaryType ?? null,
+  });
+  return normalized;
 };

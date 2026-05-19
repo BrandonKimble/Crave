@@ -9,36 +9,36 @@ import {
 } from './search-freeze-classification-runtime';
 
 export type ResultsPresentationFreezePolicyInputs = {
-  isRunOneChromeFreezeActive: boolean;
-  isRunOnePreflightFreezeActive: boolean;
-  isRun1HandoffActive: boolean;
+  isSearchSurfaceRedrawChromeFreezeActive: boolean;
+  isSearchSurfaceRedrawPreflightFreezeActive: boolean;
+  isSearchSurfaceRedrawActive: boolean;
   isResponseFrameFreezeActive: boolean;
   isChromeDeferred: boolean;
-  runOneCommitSpanPressureActive: boolean;
+  searchSurfaceRedrawCommitSpanPressureActive: boolean;
 };
 
 export type ResultsPresentationFreezePolicyFacts = {
-  isRunOneChromeDeferred: boolean;
+  isSearchSurfaceRedrawChromeDeferred: boolean;
   freezeClassification: SearchFreezeClassification;
 };
 
 export const resolveResultsPresentationFreezePolicyFacts = ({
-  isRunOneChromeFreezeActive,
-  isRunOnePreflightFreezeActive,
-  isRun1HandoffActive,
+  isSearchSurfaceRedrawChromeFreezeActive,
+  isSearchSurfaceRedrawPreflightFreezeActive,
+  isSearchSurfaceRedrawActive,
   isResponseFrameFreezeActive,
   isChromeDeferred,
-  runOneCommitSpanPressureActive,
+  searchSurfaceRedrawCommitSpanPressureActive,
 }: ResultsPresentationFreezePolicyInputs): ResultsPresentationFreezePolicyFacts => ({
-  isRunOneChromeDeferred:
-    isRunOneChromeFreezeActive || runOneCommitSpanPressureActive || isChromeDeferred,
+  isSearchSurfaceRedrawChromeDeferred:
+    isSearchSurfaceRedrawChromeFreezeActive || searchSurfaceRedrawCommitSpanPressureActive || isChromeDeferred,
   freezeClassification: resolveSearchRecoveryFreezeClassification({
-    isRunOneChromeFreezeActive,
-    isRunOnePreflightFreezeActive,
-    isRun1HandoffActive,
+    isSearchSurfaceRedrawChromeFreezeActive,
+    isSearchSurfaceRedrawPreflightFreezeActive,
+    isSearchSurfaceRedrawActive,
     isResponseFrameFreezeActive,
     isChromeDeferred,
-    runOneCommitSpanPressureActive,
+    searchSurfaceRedrawCommitSpanPressureActive,
   }),
 });
 

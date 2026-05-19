@@ -53,12 +53,11 @@ export type CreateProfilePresentationModelRuntimeArgs = {
     transitionStatus: ProfileTransitionStatus;
     restaurantPanelSnapshot: RestaurantPanelSnapshot | null;
     mapCameraPadding: CameraSnapshot['padding'];
-  };
-  mapHighlightedRestaurantId: string | null;
-  preparedSnapshot: PreparedProfilePresentationSnapshot | null;
+    mapHighlightedRestaurantId: string | null;
+	  };
+	  preparedSnapshot: PreparedProfilePresentationSnapshot | null;
   cameraLayoutModel: ProfilePresentationCameraLayoutModel;
   getCurrentLastCameraState: () => { center: [number, number]; zoom: number } | null;
-  getLastVisibleSheetSnap: () => 'expanded' | 'middle' | 'collapsed' | null;
 };
 
 export type ProfilePresentationModelRuntime = {
@@ -68,14 +67,16 @@ export type ProfilePresentationModelRuntime = {
 };
 
 export const createProfilePresentationModelRuntime = ({
-  profileShellState: { transitionStatus, restaurantPanelSnapshot, mapCameraPadding },
-  mapHighlightedRestaurantId,
-  preparedSnapshot,
+  profileShellState: {
+    transitionStatus,
+    restaurantPanelSnapshot,
+    mapCameraPadding,
+    mapHighlightedRestaurantId: shellMapHighlightedRestaurantId,
+	  },
+	  preparedSnapshot,
   cameraLayoutModel: {
     resultsScrollOffset,
-    sheetTranslateY,
     snapPoints,
-    sheetState,
     mapCenter,
     mapZoom,
     searchBarTop,
@@ -89,18 +90,18 @@ export const createProfilePresentationModelRuntime = ({
     fallbackZoom,
   },
   getCurrentLastCameraState,
-  getLastVisibleSheetSnap,
 }: CreateProfilePresentationModelRuntimeArgs): ProfilePresentationModelRuntime => {
-  const getResolvedProfileCameraPadding = (): CameraSnapshot['padding'] =>
-    resolveProfileCameraPadding({
-      screenHeight,
-      searchBarTop,
-      searchBarHeight,
-      insetsTop,
-      navBarTop,
-      profilePinTargetCenterRatio,
-      profilePinMinVisibleHeight,
-    });
+	  const getResolvedProfileCameraPadding = (): CameraSnapshot['padding'] =>
+	    resolveProfileCameraPadding({
+	      screenHeight,
+	      searchBarTop,
+	      searchBarHeight,
+	      insetsTop,
+	      navBarTop,
+	      expandedSnapPoint: snapPoints.expanded,
+	      profilePinTargetCenterRatio,
+	      profilePinMinVisibleHeight,
+	    });
 
   const captureProfileCameraSnapshot = (): CameraSnapshot | null =>
     resolveProfileCameraSnapshot({
@@ -112,21 +113,17 @@ export const createProfilePresentationModelRuntime = ({
       mapCameraPadding,
     });
 
-  return {
-    profileViewState: resolveProfileViewState({
-      transitionStatus,
-      restaurantPanelSnapshot,
-      mapCameraPadding,
-      mapHighlightedRestaurantId,
-      preparedSnapshot,
-    }),
+	  return {
+	    profileViewState: resolveProfileViewState({
+	      transitionStatus,
+	      restaurantPanelSnapshot,
+	      mapCameraPadding,
+	      mapHighlightedRestaurantId: shellMapHighlightedRestaurantId,
+	      preparedSnapshot,
+	    }),
     resolveProfileCameraPadding: getResolvedProfileCameraPadding,
     getProfileTransitionSnapshotCapture: () =>
       resolveProfileTransitionSnapshotCapture({
-        sheetTranslateY: sheetTranslateY.value,
-        snapPoints,
-        sheetState,
-        lastVisibleSheetSnap: getLastVisibleSheetSnap() ?? sheetState,
         cameraSnapshot: captureProfileCameraSnapshot(),
         resultsScrollOffset: resultsScrollOffset.value,
       }),

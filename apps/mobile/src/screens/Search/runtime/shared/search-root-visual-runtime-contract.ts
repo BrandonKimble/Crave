@@ -1,24 +1,24 @@
 import type { AppRouteHostVisualRuntime } from '../../../../navigation/runtime/app-route-host-visual-runtime-contract';
 import type { AppRouteSceneChromeMotionRuntime } from '../../../../navigation/runtime/app-route-scene-chrome-motion-runtime-contract';
 import type { SearchForegroundVisualRuntime } from './use-search-foreground-visual-runtime';
-import type { useSearchCloseVisualHandoffRuntime } from './use-search-close-visual-handoff-runtime';
+import type { useSearchDismissMotionPlaneRuntime } from './use-search-dismiss-motion-plane-runtime';
 
-export type SearchRootCloseHandoffVisualRuntime = {
-  closeVisualHandoffProgress: ReturnType<
-    typeof useSearchCloseVisualHandoffRuntime
-  >['closeVisualHandoffProgress'];
+export type SearchRootSurfaceBundleVisualRuntime = {
+  searchSurfacePageBundleProgress: ReturnType<
+    typeof useSearchDismissMotionPlaneRuntime
+  >['searchSurfacePageBundleProgress'];
 };
 
 export type SearchRootOverlayHostVisualRuntime = Pick<
   SearchForegroundVisualRuntime,
   | 'statusBarFadeHeight'
-  | 'bottomNavAnimatedStyle'
+  | 'bottomNavMotionRuntime'
   | 'shouldHideBottomNavForRender'
-  | 'bottomNavItemVisibilityAnimatedStyle'
   | 'shouldMountSearchShortcuts'
   | 'shouldEnableSearchShortcutsInteraction'
   | 'searchShortcutsAnimatedStyle'
   | 'searchShortcutChipAnimatedStyle'
+  | 'searchShortcutContentAnimatedStyle'
 > &
   Pick<AppRouteSceneChromeMotionRuntime, 'overlayBackdropDimProgress'>;
 

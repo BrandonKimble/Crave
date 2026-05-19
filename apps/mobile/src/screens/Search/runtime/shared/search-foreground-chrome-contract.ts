@@ -20,6 +20,8 @@ export type SearchOverlayChromeHiddenSearchFiltersWarmupProps = HiddenSearchFilt
 export type SearchOverlayChromeFrameSnapshot = {
   isFocused: boolean;
   shouldRenderSearchOverlay: boolean;
+  shouldFreezeSuggestionSurfaceForRunOne: boolean;
+  shouldFreezeOverlayHeaderChromeForRunOne: boolean;
   onProfilerRender: React.ProfilerOnRenderCallback | null;
   hiddenSearchFiltersWarmupProps: SearchOverlayChromeHiddenSearchFiltersWarmupProps | null;
 };
@@ -28,6 +30,13 @@ export type SearchOverlayChromeContainerSnapshot = {
   overlayContainerStyle: StyleProp<ViewStyle>;
   isSuggestionOverlayVisible: boolean;
   shouldHideBottomNavForRender: boolean;
+};
+
+export type SearchOverlayChromeHostSnapshot = {
+  frameSnapshot: SearchOverlayChromeFrameSnapshot;
+  containerSnapshot: SearchOverlayChromeContainerSnapshot;
+  headerProps: SearchOverlayChromeHeaderProps;
+  suggestionSurfaceProps: SearchOverlayChromeSuggestionSurfaceProps;
 };
 
 export type SearchForegroundSuggestionLayoutInputs = Pick<
@@ -71,16 +80,6 @@ export type SearchForegroundSuggestionDataInputs = Pick<
   | 'recentlyViewedFoodsDisplay'
 >;
 
-export type SearchForegroundSuggestionStatusInputs = Pick<
-  SearchForegroundChromeSuggestionSurfaceProps,
-  | 'hasRecentSearchesDisplay'
-  | 'hasRecentlyViewedRestaurantsDisplay'
-  | 'hasRecentlyViewedFoodsDisplay'
-  | 'isRecentLoadingDisplay'
-  | 'isRecentlyViewedLoadingDisplay'
-  | 'isRecentlyViewedFoodsLoadingDisplay'
->;
-
 export type SearchForegroundSuggestionScrollInputs = Pick<
   SearchForegroundChromeSuggestionSurfaceProps,
   | 'onSuggestionScroll'
@@ -105,7 +104,6 @@ export type SearchForegroundChromeSuggestionInputs = {
   motionInputs: SearchForegroundSuggestionMotionInputs;
   panelInputs: SearchForegroundSuggestionPanelInputs;
   dataInputs: SearchForegroundSuggestionDataInputs;
-  statusInputs: SearchForegroundSuggestionStatusInputs;
   scrollInputs: SearchForegroundSuggestionScrollInputs;
   selectionInputs: SearchForegroundSuggestionSelectionInputs;
 };
@@ -120,7 +118,6 @@ export type SearchForegroundHeaderSearchBarInputs = Pick<
   | 'handleSearchBlur'
   | 'handleClear'
   | 'focusSearchInput'
-  | 'handleSearchPressIn'
   | 'handleSearchBack'
   | 'handleSearchHeaderLayout'
   | 'inputRef'
@@ -153,23 +150,24 @@ export type SearchForegroundHeaderSearchBarInteractionInputs = Pick<
   | 'handleSearchBlur'
   | 'handleClear'
   | 'focusSearchInput'
-  | 'handleSearchPressIn'
   | 'handleSearchBack'
   | 'inputRef'
 >;
 
 export type SearchForegroundHeaderShortcutsInputs = Pick<
   SearchForegroundChromeHeaderSurfaceProps,
-  | 'shouldMountSearchShortcuts'
-  | 'shouldEnableSearchShortcutsInteraction'
   | 'searchShortcutsAnimatedStyle'
   | 'searchShortcutChipAnimatedStyle'
+  | 'searchShortcutContentAnimatedStyle'
   | 'handleBestRestaurantsHere'
   | 'handleBestDishesHere'
   | 'handleSearchShortcutsRowLayout'
   | 'handleRestaurantsShortcutLayout'
   | 'handleDishesShortcutLayout'
->;
+> & {
+  shouldMountSearchShortcuts: boolean;
+  shouldEnableSearchShortcutsInteraction: boolean;
+};
 
 export type SearchForegroundHeaderShortcutsVisualInputs = Pick<
   SearchForegroundHeaderShortcutsInputs,
@@ -177,6 +175,7 @@ export type SearchForegroundHeaderShortcutsVisualInputs = Pick<
   | 'shouldEnableSearchShortcutsInteraction'
   | 'searchShortcutsAnimatedStyle'
   | 'searchShortcutChipAnimatedStyle'
+  | 'searchShortcutContentAnimatedStyle'
 >;
 
 export type SearchForegroundHeaderShortcutsInteractionInputs = Pick<

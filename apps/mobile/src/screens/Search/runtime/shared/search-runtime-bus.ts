@@ -1,20 +1,12 @@
 import React from 'react';
 
-import type { RestaurantResult, SearchResponse } from '../../../../types';
-import type { MarkerCatalogEntry } from '../map/map-viewport-query';
+import type { SearchResponse } from '../../../../types';
 import type {
   CameraSnapshot,
   ProfileTransitionStatus,
   RestaurantPanelSnapshot,
 } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
-import type { RunOneHandoffPhase } from '../controller/run-one-handoff-phase';
-import {
-  IDLE_RESULTS_PRESENTATION_READ_MODEL,
-  IDLE_RESULTS_PRESENTATION_TRANSPORT_STATE,
-  isResultsPresentationExecutionStageSettled,
-  type ResultsPresentationReadModel,
-  type ResultsPresentationTransportState,
-} from './results-presentation-runtime-contract';
+import type { SearchSurfaceRedrawPhase } from '../controller/search-surface-redraw-phase';
 import {
   IDLE_TOGGLE_INTERACTION_STATE,
   type ToggleInteractionState,
@@ -23,13 +15,14 @@ import {
   resolveResultsPresentationFreezePolicyFacts,
   type ResultsPresentationFreezePolicyFacts,
 } from './results-presentation-policy-facts-resolver';
+import { logPerfScenarioStackAttribution } from '../../../../perf/perf-scenario-attribution';
 export type SearchRuntimeActiveTab = 'dishes' | 'restaurants';
 export type SearchRuntimeSearchMode = 'natural' | 'shortcut' | null;
 export type SearchRuntimeOperationLane =
   | 'idle'
   | 'lane_a_ack'
   | 'lane_b_data_commit'
-  | 'lane_c_list_first_paint'
+  | 'lane_c_prepared_rows'
   | 'lane_d_map_dots'
   | 'lane_e_map_pins'
   | 'lane_f_polish';
@@ -51,33 +44,12 @@ export const isSearchRuntimeMapPresentationSettled = (
   phase: SearchRuntimeMapPresentationPhase
 ): boolean => !isSearchRuntimeMapPresentationPending(phase);
 
-export const deriveCommittedPreparedResultsSnapshotKey = (
-  state: Pick<
-    SearchRuntimeBusState,
-    'resultsPresentationTransport' | 'resultsHydrationKey' | 'resultsRequestKey'
-  >
-): string | null => {
-  const resultsSnapshotKey = state.resultsHydrationKey ?? state.resultsRequestKey;
-  const { executionStage, snapshotKind, transactionId } = state.resultsPresentationTransport;
-  return isResultsPresentationExecutionStageSettled(executionStage) ||
-    snapshotKind == null ||
-    transactionId == null
-    ? null
-    : resultsSnapshotKey;
-};
-
-export const derivePreparedPresentationSnapshotKey = (
-  state: Pick<
-    SearchRuntimeBusState,
-    'preparedPresentationSnapshotKey' | 'resultsHydrationKey' | 'resultsRequestKey'
-  >
-): string | null =>
-  state.preparedPresentationSnapshotKey ?? state.resultsHydrationKey ?? state.resultsRequestKey;
-
 export type SearchRuntimeBusState = {
   results: SearchResponse | null;
-  resultsHydrationKey: string | null;
-  hydratedResultsKey: string | null;
+  resultsHydrationCandidateKey: string | null;
+  resultsPage: number | null;
+  resultsDishCount: number;
+  resultsRestaurantCount: number;
   canLoadMore: boolean;
   priceButtonLabelText: string;
   priceButtonIsActive: boolean;
@@ -87,13 +59,7 @@ export type SearchRuntimeBusState = {
   toggleInteraction: ToggleInteractionState;
   shouldRetrySearchOnReconnect: boolean;
   hasSystemStatusBanner: boolean;
-  resultsFirstPaintKey: string | null;
-  listFirstPaintReady: boolean;
-  shouldHydrateResultsForRender: boolean;
-  isResultsHydrationSettled: boolean;
-  runOneCommitSpanPressureActive: boolean;
-  hydrationOperationId: string | null;
-  allowHydrationFinalizeCommit: boolean;
+  searchSurfaceRedrawCommitSpanPressureActive: boolean;
   submittedQuery: string;
   activeTab: SearchRuntimeActiveTab;
   pendingTabSwitchTab: SearchRuntimeActiveTab | null;
@@ -109,32 +75,17 @@ export type SearchRuntimeBusState = {
   hasMoreRestaurants: boolean;
   isPaginationExhausted: boolean;
   resultsRequestKey: string | null;
-  visibleSortedRestaurantMarkersCount: number;
-  visibleDotRestaurantFeaturesCount: number;
-  isShortcutCoverageLoading: boolean;
-  // Pre-computed marker pipeline (populated by response handler, read by useMapMarkerEngine)
-  precomputedMarkerCatalog: MarkerCatalogEntry[] | null;
-  precomputedMarkerPrimaryCount: number;
-  precomputedCanonicalRestaurantRankById: Map<string, number> | null;
-  precomputedRestaurantsById: Map<string, RestaurantResult> | null;
-  precomputedMarkerResultsKey: string | null;
-  precomputedMarkerActiveTab: SearchRuntimeActiveTab | null;
-  // Handoff-derived fields (bridged from RunOneHandoffCoordinator)
-  runOneHandoffPhase: RunOneHandoffPhase;
-  runOneHandoffOperationId: string | null;
-  isRun1HandoffActive: boolean;
-  isRunOnePreflightFreezeActive: boolean;
-  isRunOneChromeFreezeActive: boolean;
+  // Surface-redraw-derived fields (bridged from SearchSurfaceRedrawCoordinator)
+  searchSurfaceRedrawPhase: SearchSurfaceRedrawPhase;
+  searchSurfaceRedrawOperationId: string | null;
+  isSearchSurfaceRedrawActive: boolean;
+  isSearchSurfaceRedrawPreflightFreezeActive: boolean;
+  isSearchSurfaceRedrawChromeFreezeActive: boolean;
   isChromeDeferred: boolean;
-  runOneSelectionFeedbackOperationId: string | null;
+  searchSurfaceRedrawSelectionFeedbackOperationId: string | null;
   // Freeze gate fields (moved from useState hooks to bus for fewer re-renders)
   isResponseFrameFreezeActive: boolean;
   isSubmitChromePriming: boolean;
-  resultsPresentation: ResultsPresentationReadModel;
-  resultsPresentationTransport: ResultsPresentationTransportState;
-  // Presentation controller-driven map coordination.
-  mapPreparedLabelSourcesReady: boolean;
-  preparedPresentationSnapshotKey: string | null;
   profileShellState: SearchRuntimeProfileShellState;
 };
 
@@ -142,15 +93,43 @@ export type SearchRuntimeProfileShellState = {
   transitionStatus: ProfileTransitionStatus;
   restaurantPanelSnapshot: RestaurantPanelSnapshot | null;
   mapCameraPadding: CameraSnapshot['padding'];
+  mapHighlightedRestaurantId: string | null;
 };
 
 export type SearchRuntimeBusKey = keyof SearchRuntimeBusState;
 
 type SearchRuntimeBusListener = () => void;
 
-export type SearchRuntimeBusPolicyFactsSnapshot = ResultsPresentationFreezePolicyFacts & {
-  renderPolicy: ResultsPresentationReadModel;
+type SearchRuntimeBusListenerRecord = {
+  observedKeys: ReadonlySet<SearchRuntimeBusKey> | null;
+  debugLabel: string | null;
 };
+
+type SearchRuntimeBusDiagnosticEntry = {
+  kind: 'publish' | 'notify';
+  nowMs: number;
+  durationMs: number;
+  changedKeys: SearchRuntimeBusKey[];
+  listenerCount: number;
+  notifiedListenerCount?: number;
+  notifiedListenerLabels?: string[];
+  batchDepth: number;
+  version: number;
+  activeOperationLane: SearchRuntimeOperationLane;
+  searchSurfaceRedrawPhase: SearchSurfaceRedrawPhase;
+  resultsPresentationStage: string | null;
+  stack?: string[];
+};
+
+export type SearchRuntimeBusDiagnosticsSnapshot = {
+  version: number;
+  listenerCount: number;
+  batchDepth: number;
+  pendingChangedKeys: SearchRuntimeBusKey[];
+  recent: SearchRuntimeBusDiagnosticEntry[];
+};
+
+export type SearchRuntimeBusPolicyFactsSnapshot = ResultsPresentationFreezePolicyFacts;
 
 export type SearchRuntimeBusSearchChromeScalarPrimitiveTarget = {
   updatePrimitiveSnapshot: (patch: {
@@ -165,12 +144,15 @@ const IDLE_PROFILE_SHELL_STATE: SearchRuntimeProfileShellState = {
   transitionStatus: 'idle',
   restaurantPanelSnapshot: null,
   mapCameraPadding: null,
+  mapHighlightedRestaurantId: null,
 };
 
 const INITIAL_STATE: SearchRuntimeBusState = {
   results: null,
-  resultsHydrationKey: null,
-  hydratedResultsKey: null,
+  resultsHydrationCandidateKey: null,
+  resultsPage: null,
+  resultsDishCount: 0,
+  resultsRestaurantCount: 0,
   canLoadMore: false,
   priceButtonLabelText: '',
   priceButtonIsActive: false,
@@ -180,13 +162,7 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   toggleInteraction: IDLE_TOGGLE_INTERACTION_STATE,
   shouldRetrySearchOnReconnect: false,
   hasSystemStatusBanner: false,
-  resultsFirstPaintKey: null,
-  listFirstPaintReady: false,
-  shouldHydrateResultsForRender: false,
-  isResultsHydrationSettled: true,
-  runOneCommitSpanPressureActive: false,
-  hydrationOperationId: null,
-  allowHydrationFinalizeCommit: true,
+  searchSurfaceRedrawCommitSpanPressureActive: false,
   submittedQuery: '',
   activeTab: 'dishes',
   pendingTabSwitchTab: null,
@@ -202,28 +178,15 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   hasMoreRestaurants: false,
   isPaginationExhausted: false,
   resultsRequestKey: null,
-  visibleSortedRestaurantMarkersCount: 0,
-  visibleDotRestaurantFeaturesCount: 0,
-  isShortcutCoverageLoading: false,
-  precomputedMarkerCatalog: null,
-  precomputedMarkerPrimaryCount: 0,
-  precomputedCanonicalRestaurantRankById: null,
-  precomputedRestaurantsById: null,
-  precomputedMarkerResultsKey: null,
-  precomputedMarkerActiveTab: null,
-  runOneHandoffPhase: 'idle',
-  runOneHandoffOperationId: null,
-  isRun1HandoffActive: false,
-  isRunOnePreflightFreezeActive: false,
-  isRunOneChromeFreezeActive: false,
+  searchSurfaceRedrawPhase: 'idle',
+  searchSurfaceRedrawOperationId: null,
+  isSearchSurfaceRedrawActive: false,
+  isSearchSurfaceRedrawPreflightFreezeActive: false,
+  isSearchSurfaceRedrawChromeFreezeActive: false,
   isChromeDeferred: false,
-  runOneSelectionFeedbackOperationId: null,
+  searchSurfaceRedrawSelectionFeedbackOperationId: null,
   isResponseFrameFreezeActive: false,
   isSubmitChromePriming: false,
-  resultsPresentation: IDLE_RESULTS_PRESENTATION_READ_MODEL,
-  resultsPresentationTransport: IDLE_RESULTS_PRESENTATION_TRANSPORT_STATE,
-  mapPreparedLabelSourcesReady: false,
-  preparedPresentationSnapshotKey: null,
   profileShellState: IDLE_PROFILE_SHELL_STATE,
 };
 
@@ -231,14 +194,13 @@ const resolveSearchRuntimeBusPolicyFactsSnapshot = (
   state: SearchRuntimeBusState
 ): SearchRuntimeBusPolicyFactsSnapshot => ({
   ...resolveResultsPresentationFreezePolicyFacts({
-    isRunOneChromeFreezeActive: state.isRunOneChromeFreezeActive,
-    isRunOnePreflightFreezeActive: state.isRunOnePreflightFreezeActive,
-    isRun1HandoffActive: state.isRun1HandoffActive,
+    isSearchSurfaceRedrawChromeFreezeActive: state.isSearchSurfaceRedrawChromeFreezeActive,
+    isSearchSurfaceRedrawPreflightFreezeActive: state.isSearchSurfaceRedrawPreflightFreezeActive,
+    isSearchSurfaceRedrawActive: state.isSearchSurfaceRedrawActive,
     isResponseFrameFreezeActive: state.isResponseFrameFreezeActive,
     isChromeDeferred: state.isChromeDeferred,
-    runOneCommitSpanPressureActive: state.runOneCommitSpanPressureActive,
+    searchSurfaceRedrawCommitSpanPressureActive: state.searchSurfaceRedrawCommitSpanPressureActive,
   }),
-  renderPolicy: state.resultsPresentation,
 });
 
 export class SearchRuntimeBus {
@@ -249,10 +211,7 @@ export class SearchRuntimeBus {
 
   private version = 0;
 
-  private readonly listeners = new Map<
-    SearchRuntimeBusListener,
-    ReadonlySet<SearchRuntimeBusKey> | null
-  >();
+  private readonly listeners = new Map<SearchRuntimeBusListener, SearchRuntimeBusListenerRecord>();
 
   private batchDepth = 0;
 
@@ -262,6 +221,8 @@ export class SearchRuntimeBus {
 
   private searchChromeScalarPrimitiveTarget: SearchRuntimeBusSearchChromeScalarPrimitiveTarget | null =
     null;
+
+  private readonly diagnosticsRing: SearchRuntimeBusDiagnosticEntry[] = [];
 
   public getState(): SearchRuntimeBusState {
     return this.state;
@@ -275,13 +236,27 @@ export class SearchRuntimeBus {
     return this.policyFactsSnapshot;
   }
 
+  public readDiagnostics(): SearchRuntimeBusDiagnosticsSnapshot {
+    return {
+      version: this.version,
+      listenerCount: this.listeners.size,
+      batchDepth: this.batchDepth,
+      pendingChangedKeys: Array.from(this.pendingChangedKeys ?? []),
+      recent: this.diagnosticsRing.slice(-12),
+    };
+  }
+
   public subscribe(
     listener: SearchRuntimeBusListener,
-    observedKeys?: readonly SearchRuntimeBusKey[]
+    observedKeys?: readonly SearchRuntimeBusKey[],
+    debugLabel?: string
   ): () => void {
     const scopedKeys =
       observedKeys != null && observedKeys.length > 0 ? new Set(observedKeys) : null;
-    this.listeners.set(listener, scopedKeys);
+    this.listeners.set(listener, {
+      observedKeys: scopedKeys,
+      debugLabel: debugLabel ?? null,
+    });
     return () => {
       this.listeners.delete(listener);
     };
@@ -309,6 +284,7 @@ export class SearchRuntimeBus {
   }
 
   public publish(patch: Partial<SearchRuntimeBusState>): void {
+    const startedAt = resolveSearchRuntimeBusPerfNow();
     let hasChange = false;
     const changedKeys = new Set<SearchRuntimeBusKey>();
     const nextState: SearchRuntimeBusState = { ...this.state };
@@ -329,6 +305,7 @@ export class SearchRuntimeBus {
     this.policyFactsSnapshot = resolveSearchRuntimeBusPolicyFactsSnapshot(nextState);
     this.syncSearchChromeScalarPrimitiveTarget(changedKeys);
     this.bump(changedKeys);
+    this.recordDiagnostic('publish', changedKeys, resolveSearchRuntimeBusPerfNow() - startedAt);
   }
 
   public batch(run: () => void): void {
@@ -360,18 +337,39 @@ export class SearchRuntimeBus {
   }
 
   private notify(changedKeys: ReadonlySet<SearchRuntimeBusKey> | null): void {
-    this.listeners.forEach((observedKeys, listener) => {
+    const startedAt = resolveSearchRuntimeBusPerfNow();
+    let notifiedListenerCount = 0;
+    const notifiedListenerLabels: string[] = [];
+    this.listeners.forEach((listenerRecord, listener) => {
+      const { observedKeys, debugLabel } = listenerRecord;
       if (observedKeys == null || changedKeys == null) {
+        notifiedListenerCount += 1;
+        if (debugLabel != null) {
+          notifiedListenerLabels.push(debugLabel);
+        }
         listener();
         return;
       }
       for (const key of observedKeys) {
         if (changedKeys.has(key)) {
+          notifiedListenerCount += 1;
+          if (debugLabel != null) {
+            notifiedListenerLabels.push(debugLabel);
+          }
           listener();
           return;
         }
       }
     });
+    if (changedKeys != null && notifiedListenerCount > 0) {
+      this.recordDiagnostic(
+        'notify',
+        changedKeys,
+        resolveSearchRuntimeBusPerfNow() - startedAt,
+        notifiedListenerCount,
+        notifiedListenerLabels
+      );
+    }
   }
 
   private syncSearchChromeScalarPrimitiveTarget(
@@ -386,7 +384,11 @@ export class SearchRuntimeBus {
       !changedKeys.has('isSearchSessionActive') &&
       !changedKeys.has('isSearchLoading') &&
       !changedKeys.has('isLoadingMore') &&
-      !changedKeys.has('results')
+      !changedKeys.has('results') &&
+      !changedKeys.has('resultsRequestKey') &&
+      !changedKeys.has('resultsHydrationCandidateKey') &&
+      !changedKeys.has('resultsDishCount') &&
+      !changedKeys.has('resultsRestaurantCount')
     ) {
       return;
     }
@@ -394,12 +396,78 @@ export class SearchRuntimeBus {
       isSearchSessionActive: this.state.isSearchSessionActive,
       isSearchLoading: this.state.isSearchLoading,
       isLoadingMore: this.state.isLoadingMore,
-      hasResults: this.state.results != null,
+      hasResults:
+        this.state.results != null ||
+        this.state.resultsRequestKey != null ||
+        this.state.resultsHydrationCandidateKey != null ||
+        this.state.resultsDishCount > 0 ||
+        this.state.resultsRestaurantCount > 0,
     });
+  }
+
+  private recordDiagnostic(
+    kind: SearchRuntimeBusDiagnosticEntry['kind'],
+    changedKeys: ReadonlySet<SearchRuntimeBusKey>,
+    durationMs: number,
+    notifiedListenerCount?: number,
+    notifiedListenerLabels?: string[]
+  ): void {
+    if (durationMs < 0.25 && changedKeys.size <= 1) {
+      return;
+    }
+    const changedKeysArray = Array.from(changedKeys);
+    const shouldCaptureStack =
+      changedKeys.has('results') ||
+      changedKeys.has('resultsRequestKey');
+    if (shouldCaptureStack) {
+      logPerfScenarioStackAttribution({
+        owner: 'search_runtime_bus_writer',
+        path: `${kind}:${changedKeysArray.join('|')}`,
+        details: {
+          durationMs: Math.round(durationMs * 10) / 10,
+          listenerCount: this.listeners.size,
+          notifiedListenerCount,
+          notifiedListenerLabels:
+            notifiedListenerLabels == null || notifiedListenerLabels.length === 0
+              ? undefined
+              : notifiedListenerLabels.slice(0, 16),
+          activeOperationLane: this.state.activeOperationLane,
+          searchSurfaceRedrawPhase: this.state.searchSurfaceRedrawPhase,
+          resultsPresentationStage: null,
+        },
+      });
+    }
+    this.diagnosticsRing.push({
+      kind,
+      nowMs: resolveSearchRuntimeBusPerfNow(),
+      durationMs: Math.round(durationMs * 10) / 10,
+      changedKeys: changedKeysArray,
+      listenerCount: this.listeners.size,
+      notifiedListenerCount,
+      notifiedListenerLabels:
+        notifiedListenerLabels == null || notifiedListenerLabels.length === 0
+          ? undefined
+          : notifiedListenerLabels.slice(0, 16),
+      batchDepth: this.batchDepth,
+      version: this.version,
+      activeOperationLane: this.state.activeOperationLane,
+      searchSurfaceRedrawPhase: this.state.searchSurfaceRedrawPhase,
+      resultsPresentationStage: null,
+    });
+    if (this.diagnosticsRing.length > 32) {
+      this.diagnosticsRing.splice(0, this.diagnosticsRing.length - 32);
+    }
   }
 }
 
 export const createSearchRuntimeBus = (): SearchRuntimeBus => new SearchRuntimeBus();
+
+const resolveSearchRuntimeBusPerfNow = (): number => {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now();
+  }
+  return Date.now();
+};
 
 // ---------------------------------------------------------------------------
 // React Context — allows descendants to read bus directly without prop drilling

@@ -4,11 +4,13 @@ import { createResultsPresentationCloseTransitionRuntimeValue } from '../control
 import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
 import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
 import type { ResultsPresentationRuntimeOwner } from './results-presentation-runtime-owner-contract';
+import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { ResultsPresentationShellLocalState } from './use-results-presentation-shell-local-state';
 import { useResultsPresentationCloseSearchCleanupRuntime } from './use-results-presentation-close-search-cleanup-runtime';
 import { useResultsPresentationCloseTransitionStateRuntime } from './use-results-presentation-close-transition-state-runtime';
 
 type UseResultsPresentationCloseTransitionRuntimeArgs<Suggestion> = {
+  searchRuntimeBus: SearchRuntimeBus;
   clearSearchState: SearchClearOwner['clearSearchState'];
   armSearchCloseRestore: (
     options?: import('./results-presentation-shell-runtime-contract').ArmSearchCloseRestoreOptions
@@ -16,7 +18,7 @@ type UseResultsPresentationCloseTransitionRuntimeArgs<Suggestion> = {
   commitSearchCloseRestore: () => boolean;
   cancelSearchCloseRestore: () => void;
   flushPendingSearchOriginRestore: () => boolean;
-  requestDefaultPostSearchRestore: () => void;
+  requestDefaultPostSearchRestore: (options?: { mode?: 'full' | 'chrome-only' }) => void;
   cancelActiveSearchRequest: () => void;
   cancelAutocomplete: () => void;
   handleCancelPendingMutationWork: () => void;
@@ -39,6 +41,7 @@ type ResultsPresentationCloseTransitionRuntime = ReturnType<
 >;
 
 export const useResultsPresentationCloseTransitionRuntime = <Suggestion>({
+  searchRuntimeBus,
   clearSearchState,
   armSearchCloseRestore,
   commitSearchCloseRestore,
@@ -73,6 +76,7 @@ export const useResultsPresentationCloseTransitionRuntime = <Suggestion>({
   });
 
   const closeSearchCleanupRuntime = useResultsPresentationCloseSearchCleanupRuntime({
+    searchRuntimeBus,
     cancelActiveSearchRequest,
     cancelAutocomplete,
     handleCancelPendingMutationWork,

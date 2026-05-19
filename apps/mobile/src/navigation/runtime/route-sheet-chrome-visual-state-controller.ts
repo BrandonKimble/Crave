@@ -23,10 +23,14 @@ const areChromeVisualStatesEqual = (
   (left != null &&
     right != null &&
     left.overlayHeaderActionProgress === right.overlayHeaderActionProgress &&
+    left.searchSurfacePageBundleProgress === right.searchSurfacePageBundleProgress &&
     left.navBarCutoutHeight === right.navBarCutoutHeight &&
     left.navBarCutoutProgress === right.navBarCutoutProgress &&
+    left.navBarCutoutHidingProgress === right.navBarCutoutHidingProgress &&
     left.bottomNavHiddenTranslateY === right.bottomNavHiddenTranslateY &&
-    left.navBarCutoutIsHiding === right.navBarCutoutIsHiding);
+    left.navBarCutoutIsHiding === right.navBarCutoutIsHiding &&
+    left.navTranslateY === right.navTranslateY &&
+    left.navSilhouetteSheetExclusionModeValue === right.navSilhouetteSheetExclusionModeValue);
 
 const createChromeVisualState = ({
   routeSheetChromeGeometry,
@@ -38,13 +42,16 @@ const createChromeVisualState = ({
   routeSheetChromeGeometry == null || routeSheetChromeMotion == null
     ? null
     : {
-        overlayHeaderActionProgress:
-          routeSheetChromeMotion.overlayHeaderActionProgress,
+        overlayHeaderActionProgress: routeSheetChromeMotion.overlayHeaderActionProgress,
+        searchSurfacePageBundleProgress: routeSheetChromeMotion.searchSurfacePageBundleProgress,
         navBarCutoutHeight: routeSheetChromeGeometry.navBarCutoutHeight,
         navBarCutoutProgress: routeSheetChromeMotion.navBarCutoutProgress,
-        bottomNavHiddenTranslateY:
-          routeSheetChromeGeometry.bottomNavHiddenTranslateY,
+        navBarCutoutHidingProgress: routeSheetChromeMotion.navBarCutoutHidingProgress,
+        bottomNavHiddenTranslateY: routeSheetChromeGeometry.bottomNavHiddenTranslateY,
         navBarCutoutIsHiding: routeSheetChromeMotion.navBarCutoutIsHiding,
+        navTranslateY: routeSheetChromeMotion.navTranslateY,
+        navSilhouetteSheetExclusionModeValue:
+          routeSheetChromeMotion.navSilhouetteSheetExclusionModeValue,
       };
 
 export class RouteSheetChromeVisualStateController {
@@ -76,18 +83,12 @@ export class RouteSheetChromeVisualStateController {
       getSnapshot: () => this.snapshot,
     };
     this.recompute(false);
-    this.unsubscribeRouteSheetChromeGeometry =
-      routeSheetChromeGeometryAuthority.subscribe(() => {
-        this.setRouteSheetChromeGeometry(
-          routeSheetChromeGeometryAuthority.getSnapshot()
-        );
-      });
-    this.unsubscribeRouteSheetChromeMotion =
-      routeSheetChromeMotionAuthority.subscribe(() => {
-        this.setRouteSheetChromeMotion(
-          routeSheetChromeMotionAuthority.getSnapshot()
-        );
-      });
+    this.unsubscribeRouteSheetChromeGeometry = routeSheetChromeGeometryAuthority.subscribe(() => {
+      this.setRouteSheetChromeGeometry(routeSheetChromeGeometryAuthority.getSnapshot());
+    });
+    this.unsubscribeRouteSheetChromeMotion = routeSheetChromeMotionAuthority.subscribe(() => {
+      this.setRouteSheetChromeMotion(routeSheetChromeMotionAuthority.getSnapshot());
+    });
   }
 
   public dispose(): void {
@@ -114,9 +115,7 @@ export class RouteSheetChromeVisualStateController {
     this.recompute(true);
   }
 
-  private setRouteSheetChromeMotion(
-    routeSheetChromeMotion: RouteSheetChromeMotionSnapshot
-  ): void {
+  private setRouteSheetChromeMotion(routeSheetChromeMotion: RouteSheetChromeMotionSnapshot): void {
     if (this.routeSheetChromeMotion === routeSheetChromeMotion) {
       return;
     }
@@ -150,7 +149,9 @@ export class RouteSheetChromeVisualStateController {
 export const createRouteSheetChromeVisualStateController = ({
   routeSheetChromeGeometryAuthority,
   routeSheetChromeMotionAuthority,
-}: ConstructorParameters<typeof RouteSheetChromeVisualStateController>[0]): RouteSheetChromeVisualStateController =>
+}: ConstructorParameters<
+  typeof RouteSheetChromeVisualStateController
+>[0]): RouteSheetChromeVisualStateController =>
   new RouteSheetChromeVisualStateController({
     routeSheetChromeGeometryAuthority,
     routeSheetChromeMotionAuthority,

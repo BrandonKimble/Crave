@@ -1,6 +1,7 @@
 import React from 'react';
 
 import {
+  cancelAnimation,
   runOnJS,
   runOnUI,
   useAnimatedReaction,
@@ -22,12 +23,12 @@ import type {
   BottomSheetSnapChangeSource,
 } from './bottomSheetMotionTypes';
 import {
-  DEFAULT_DISMISS_SLOP,
   PROGRAMMATIC_SNAP_MAX_VELOCITY,
   PROGRAMMATIC_SNAP_MIN_VELOCITY,
   PROGRAMMATIC_SNAP_VELOCITY_PER_PX,
+  SNAP_GATE_FALLBACK_PX,
+  resolveHeaderGatedSnapPoint,
   resolveSnapKeyFromValues,
-  resolveSteppedSnapPoint,
 } from './bottomSheetSharedRuntimeUtils';
 import { clampValue, SHEET_SPRING_CONFIG } from './sheetUtils';
 
@@ -37,7 +38,6 @@ type RuntimeSnapValues = {
   collapsed: number;
   hidden: number | undefined;
   preventSwipeDismiss: boolean;
-  dismissThreshold: number | undefined;
 };
 
 type UseBottomSheetSharedSnapExecutionRuntimeArgs = {
@@ -45,7 +45,6 @@ type UseBottomSheetSharedSnapExecutionRuntimeArgs = {
   motionCommandValue?: SharedValue<BottomSheetMotionCommand | null>;
   preservePositionOnSnapPointsChange: boolean;
   preventSwipeDismiss: boolean;
-  dismissThreshold?: number;
   initialSnapValue: number;
   hiddenOrCollapsed: number;
   expandedSnap: number;
@@ -54,6 +53,7 @@ type UseBottomSheetSharedSnapExecutionRuntimeArgs = {
   hiddenSnap?: number;
   sheetYValue?: SharedValue<number>;
   sheetY: SharedValue<number>;
+  headerHeight: SharedValue<number>;
   currentSnapKeyRef: React.MutableRefObject<BottomSheetSnap>;
   isDragging: SharedValue<boolean>;
   isSettling: SharedValue<boolean>;
@@ -75,7 +75,6 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
   motionCommandValue,
   preservePositionOnSnapPointsChange,
   preventSwipeDismiss,
-  dismissThreshold,
   initialSnapValue,
   hiddenOrCollapsed,
   expandedSnap,
@@ -84,6 +83,7 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
   hiddenSnap,
   sheetYValue,
   sheetY,
+  headerHeight,
   currentSnapKeyRef,
   isDragging,
   isSettling,
@@ -99,6 +99,7 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
   notifySnapSettleComplete,
   runtimeConfigValues,
 }: UseBottomSheetSharedSnapExecutionRuntimeArgs): BottomSheetSharedSnapExecutionResult => {
+
   const snapCandidates = React.useMemo(() => {
     const points = [expandedSnap, middleSnap, collapsedSnap];
     if (typeof hiddenSnap === 'number' && !preventSwipeDismiss) {
@@ -116,20 +117,11 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
     return deduped;
   }, [collapsedSnap, expandedSnap, hiddenSnap, middleSnap, preventSwipeDismiss]);
 
-  const dismissThresholdValue =
-    typeof dismissThreshold === 'number'
-      ? dismissThreshold
-      : hiddenSnap !== undefined
-        ? hiddenSnap - DEFAULT_DISMISS_SLOP
-        : undefined;
-
   const resolveRuntimeSnapValues = React.useCallback(() => {
     'worklet';
-    const runtimeExpandedSnap =
-      runtimeConfigValues?.expandedSnap.value ?? expandedSnap;
+    const runtimeExpandedSnap = runtimeConfigValues?.expandedSnap.value ?? expandedSnap;
     const runtimeMiddleSnap = runtimeConfigValues?.middleSnap.value ?? middleSnap;
-    const runtimeCollapsedSnap =
-      runtimeConfigValues?.collapsedSnap.value ?? collapsedSnap;
+    const runtimeCollapsedSnap = runtimeConfigValues?.collapsedSnap.value ?? collapsedSnap;
     const runtimeHiddenSnap = runtimeConfigValues
       ? runtimeConfigValues.hasHiddenSnap.value
         ? runtimeConfigValues.hiddenSnap.value
@@ -137,24 +129,15 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
       : hiddenSnap;
     const runtimePreventSwipeDismiss =
       runtimeConfigValues?.preventSwipeDismiss.value ?? preventSwipeDismiss;
-    const runtimeDismissThreshold =
-      runtimeConfigValues != null
-        ? runtimeConfigValues.dismissThreshold.value ??
-          (runtimeHiddenSnap !== undefined
-            ? runtimeHiddenSnap - DEFAULT_DISMISS_SLOP
-            : undefined)
-        : dismissThresholdValue;
     return {
       expanded: runtimeExpandedSnap,
       middle: runtimeMiddleSnap,
       collapsed: runtimeCollapsedSnap,
       hidden: runtimeHiddenSnap,
       preventSwipeDismiss: runtimePreventSwipeDismiss,
-      dismissThreshold: runtimeDismissThreshold,
     };
   }, [
     collapsedSnap,
-    dismissThresholdValue,
     expandedSnap,
     hiddenSnap,
     middleSnap,
@@ -162,26 +145,23 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
     runtimeConfigValues,
   ]);
 
-  const resolveRuntimeSnapCandidates = React.useCallback(
-    (values: RuntimeSnapValues): number[] => {
-      'worklet';
-      const points = [values.expanded, values.middle, values.collapsed];
-      if (typeof values.hidden === 'number' && !values.preventSwipeDismiss) {
-        points.push(values.hidden);
+  const resolveRuntimeSnapCandidates = React.useCallback((values: RuntimeSnapValues): number[] => {
+    'worklet';
+    const points = [values.expanded, values.middle, values.collapsed];
+    if (typeof values.hidden === 'number' && !values.preventSwipeDismiss) {
+      points.push(values.hidden);
+    }
+    points.sort((a, b) => a - b);
+    const deduped: number[] = [];
+    for (let i = 0; i < points.length; i += 1) {
+      const candidate = points[i];
+      const previous = deduped[deduped.length - 1];
+      if (previous === undefined || Math.abs(candidate - previous) >= 0.5) {
+        deduped.push(candidate);
       }
-      points.sort((a, b) => a - b);
-      const deduped: number[] = [];
-      for (let i = 0; i < points.length; i += 1) {
-        const candidate = points[i];
-        const previous = deduped[deduped.length - 1];
-        if (previous === undefined || Math.abs(candidate - previous) >= 0.5) {
-          deduped.push(candidate);
-        }
-      }
-      return deduped;
-    },
-    []
-  );
+    }
+    return deduped;
+  }, []);
 
   const resolveDestination = React.useCallback(
     (value: number, velocity: number, gestureStartValue: number): number => {
@@ -189,30 +169,23 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
       const runtimeSnapValues = resolveRuntimeSnapValues();
       const upperBound = runtimeSnapValues.preventSwipeDismiss
         ? runtimeSnapValues.collapsed
-        : (runtimeSnapValues.hidden ?? runtimeSnapValues.collapsed);
+        : runtimeSnapValues.hidden ?? runtimeSnapValues.collapsed;
       const clampedValue = clampValue(value, runtimeSnapValues.expanded, upperBound);
-      if (
-        !runtimeSnapValues.preventSwipeDismiss &&
-        runtimeSnapValues.hidden !== undefined &&
-        runtimeSnapValues.dismissThreshold !== undefined
-      ) {
-        if (
-          runtimeSnapValues.dismissThreshold > runtimeSnapValues.collapsed &&
-          clampedValue >= runtimeSnapValues.dismissThreshold
-        ) {
-          return runtimeSnapValues.hidden;
-        }
-      }
-      return resolveSteppedSnapPoint(
-        clampedValue,
+      return resolveHeaderGatedSnapPoint({
+        value: clampedValue,
         velocity,
         gestureStartValue,
-        runtimeConfigValues
+        gateDistance: Math.min(
+          headerHeight.value || SNAP_GATE_FALLBACK_PX,
+          SNAP_GATE_FALLBACK_PX
+        ),
+        points: runtimeConfigValues
           ? resolveRuntimeSnapCandidates(runtimeSnapValues)
-          : snapCandidates
-      );
+          : snapCandidates,
+      });
     },
     [
+      headerHeight,
       resolveRuntimeSnapCandidates,
       resolveRuntimeSnapValues,
       runtimeConfigValues,
@@ -313,13 +286,7 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
       source: BottomSheetSnapChangeSource = 'programmatic',
       settleToken?: number | null
     ) => {
-      runOnUI(startSpring)(
-        target,
-        velocity,
-        shouldNotifyHidden,
-        source,
-        settleToken ?? null
-      );
+      runOnUI(startSpring)(target, velocity, shouldNotifyHidden, source, settleToken ?? null);
     },
     [startSpring]
   );
@@ -355,6 +322,12 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
       if (nextToken === previousToken) {
         return;
       }
+      const clearConsumedCommand = () => {
+        'worklet';
+        if (motionCommandValue?.value?.token === nextToken) {
+          motionCommandValue.value = null;
+        }
+      };
 
       let target: number | undefined;
       const runtimeSnapValues = resolveRuntimeSnapValues();
@@ -376,6 +349,49 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
       }
 
       if (target === undefined) {
+        clearConsumedCommand();
+        return;
+      }
+
+      const currentSnapKey = resolveSnapKeyFromValues(
+        sheetY.value,
+        runtimeSnapValues.expanded,
+        runtimeSnapValues.middle,
+        runtimeSnapValues.collapsed,
+        runtimeSnapValues.hidden
+      );
+
+      if (nextCommand.mode === 'instant') {
+        springId.value += 1;
+        cancelAnimation(sheetY);
+        sheetY.value = target;
+        springTargetY.value = target;
+        isSettling.value = false;
+        settlingToHidden.value = false;
+        isDragging.value = false;
+        const snapKey = resolveSnapKeyFromValues(
+          target,
+          runtimeSnapValues.expanded,
+          runtimeSnapValues.middle,
+          runtimeSnapValues.collapsed,
+          runtimeSnapValues.hidden
+        );
+        if (snapKey) {
+          if (snapKey !== 'hidden') {
+            runOnJS(notifySnapStart)(snapKey, 'programmatic');
+          }
+          runOnJS(dispatchSnapChange)(snapKey, 'programmatic', {
+            force: true,
+          });
+          if (snapKey === 'hidden' && !hasNotifiedHidden.value) {
+            hasNotifiedHidden.value = true;
+            runOnJS(notifyHidden)();
+          }
+        }
+        if (nextCommand.settleToken != null) {
+          runOnJS(notifySnapSettleComplete)(nextCommand.settleToken);
+        }
+        clearConsumedCommand();
         return;
       }
 
@@ -383,16 +399,14 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
         runOnJS(dispatchSnapChange)(nextCommand.snapTo, 'programmatic', {
           force: true,
         });
-        if (
-          nextCommand.snapTo === 'hidden' &&
-          !hasNotifiedHidden.value
-        ) {
+        if (nextCommand.snapTo === 'hidden' && !hasNotifiedHidden.value) {
           hasNotifiedHidden.value = true;
           runOnJS(notifyHidden)();
         }
         if (nextCommand.settleToken != null) {
           runOnJS(notifySnapSettleComplete)(nextCommand.settleToken);
         }
+        clearConsumedCommand();
         return;
       }
 
@@ -424,6 +438,7 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
         'programmatic',
         nextCommand.settleToken ?? null
       );
+      clearConsumedCommand();
     },
     [
       dispatchSnapChange,
@@ -484,6 +499,7 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
     hiddenSnap,
     initialSnapValue,
     sheetYValue,
+    sheetY,
     startSpringOnJS,
     visible,
     wasVisible,

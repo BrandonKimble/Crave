@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { performance } from 'perf_hooks';
 import { ActivityLevel, Prisma } from '@prisma/client';
-import type { OperatingStatus } from '@crave-search/shared';
+import type { OperatingStatus, ScoreInfoSummary } from '@crave-search/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import {
@@ -78,17 +78,17 @@ interface QueryResultRow {
   recent_mention_count: number;
   last_mentioned_at: Date | null;
   activity_level: ActivityLevel;
-  food_quality_score: Prisma.Decimal | number | string;
   restaurant_total_upvotes: Prisma.Decimal | number | string;
   restaurant_total_mentions: Prisma.Decimal | number | string;
   restaurant_name: string;
   restaurant_aliases: string[];
-  restaurant_quality_score?: Prisma.Decimal | number | string | null;
   restaurant_market_key?: string | null;
-  restaurant_contextual_score?: Prisma.Decimal | number | string | null;
-  restaurant_contextual_percentile?: Prisma.Decimal | number | string | null;
-  connection_contextual_score?: Prisma.Decimal | number | string | null;
-  connection_contextual_percentile?: Prisma.Decimal | number | string | null;
+  restaurant_crave_score?: Prisma.Decimal | number | string | null;
+  restaurant_score_delta_7d?: Prisma.Decimal | number | string | null;
+  restaurant_score_info?: Prisma.JsonValue | null;
+  connection_crave_score?: Prisma.Decimal | number | string | null;
+  connection_score_delta_7d?: Prisma.Decimal | number | string | null;
+  connection_score_info?: Prisma.JsonValue | null;
   restaurant_metadata?: Prisma.JsonValue | null;
   restaurant_price_level?: Prisma.Decimal | number | string | null;
   restaurant_price_level_updated_at?: Date | null;
@@ -124,13 +124,15 @@ interface RestaurantQueryRow {
   restaurant_id: string;
   restaurant_name: string;
   restaurant_aliases: string[];
-  restaurant_quality_score?: Prisma.Decimal | number | string | null;
   market_key?: string | null;
   restaurant_metadata?: Prisma.JsonValue | null;
   price_level?: Prisma.Decimal | number | string | null;
   price_level_updated_at?: Date | null;
-  contextual_score?: Prisma.Decimal | number | string | null;
-  contextual_percentile?: Prisma.Decimal | number | string | null;
+  crave_score?: Prisma.Decimal | number | string | null;
+  score_delta_7d?: Prisma.Decimal | number | string | null;
+  score_info?: Prisma.JsonValue | null;
+  score_subject_type?: string | null;
+  score_subject_id?: string | null;
   total_upvotes?: Prisma.Decimal | number | string | null;
   total_mentions?: Prisma.Decimal | number | string | null;
   location_id: string;
@@ -174,9 +176,11 @@ interface DishQueryRow {
   recent_mention_count: number;
   last_mentioned_at: Date | null;
   activity_level: ActivityLevel;
-  food_quality_score: Prisma.Decimal | number | string;
-  connection_contextual_score?: Prisma.Decimal | number | string | null;
-  connection_contextual_percentile?: Prisma.Decimal | number | string | null;
+  connection_crave_score?: Prisma.Decimal | number | string | null;
+  connection_score_delta_7d?: Prisma.Decimal | number | string | null;
+  connection_score_info?: Prisma.JsonValue | null;
+  score_subject_type?: string | null;
+  score_subject_id?: string | null;
   food_name: string;
   food_aliases: string[];
   market_key?: string | null;
@@ -184,8 +188,9 @@ interface DishQueryRow {
   restaurant_entity_id: string;
   restaurant_name: string;
   restaurant_aliases: string[];
-  restaurant_contextual_score?: Prisma.Decimal | number | string | null;
-  restaurant_contextual_percentile?: Prisma.Decimal | number | string | null;
+  restaurant_crave_score?: Prisma.Decimal | number | string | null;
+  restaurant_score_delta_7d?: Prisma.Decimal | number | string | null;
+  restaurant_score_info?: Prisma.JsonValue | null;
   restaurant_price_level?: Prisma.Decimal | number | string | null;
   restaurant_price_level_updated_at?: Date | null;
   // Location data for map pins
@@ -1028,14 +1033,10 @@ export class SearchQueryExecutor {
       const operatingStatus =
         restaurantContext?.operatingStatus ??
         this.evaluateOperatingStatus(operatingMetadata, referenceDate);
-      const contextualScore =
-        this.toOptionalNumber(connection.connection_contextual_score) ??
-        this.toNumber(connection.food_quality_score);
-      const contextualPercentile =
-        this.toOptionalNumber(connection.connection_contextual_percentile) ??
-        (typeof contextualScore === 'number' && Number.isFinite(contextualScore)
-          ? contextualScore / 100
-          : null);
+      const craveScore = this.toRequiredPublicScore(
+        connection.connection_crave_score,
+        `connection:${connection.connection_id}`,
+      );
 
       results.push({
         connectionId: connection.connection_id,
@@ -1045,9 +1046,11 @@ export class SearchQueryExecutor {
         restaurantId: connection.restaurant_id,
         restaurantName: connection.restaurant_name,
         restaurantAliases: connection.restaurant_aliases || [],
-        qualityScore: this.toNumber(connection.food_quality_score),
-        contextualScore,
-        contextualPercentile,
+        scoreSubjectType: 'connection',
+        scoreSubjectId: connection.connection_id,
+        craveScore,
+        scoreDelta7d: this.toOptionalNumber(connection.connection_score_delta_7d),
+        scoreInfo: this.parseScoreInfo(connection.connection_score_info),
         marketKey: connection.restaurant_market_key ?? undefined,
         activityLevel: connection.activity_level,
         mentionCount: connection.mention_count,
@@ -1064,6 +1067,10 @@ export class SearchQueryExecutor {
           restaurantContext?.priceSymbol ?? priceDetails.symbol ?? null,
         restaurantDistanceMiles: restaurantContext?.distanceMiles ?? null,
         restaurantOperatingStatus: operatingStatus ?? null,
+        restaurantCraveScore: this.toRequiredPublicScore(
+          connection.restaurant_crave_score,
+          `restaurant:${connection.restaurant_id}`,
+        ),
       });
     }
 
@@ -1083,9 +1090,9 @@ export class SearchQueryExecutor {
         restaurantId: string;
         name: string;
         aliases: string[];
-        restaurantQualityScore?: Prisma.Decimal | number | string | null;
-        restaurantContextualScore?: number | null;
-        restaurantContextualPercentile?: number | null;
+        restaurantCraveScore: number;
+        restaurantScoreDelta7d: number | null;
+        restaurantScoreInfo?: ScoreInfoSummary;
         marketKey?: string | null;
         latitude?: Prisma.Decimal | number | string | null;
         longitude?: Prisma.Decimal | number | string | null;
@@ -1112,7 +1119,6 @@ export class SearchQueryExecutor {
         locationsJson?: Prisma.JsonValue | null;
         locationCount?: Prisma.Decimal | number | string | null;
         snippets: RestaurantFoodSnippetDto[];
-        scoreSum: number;
         count: number;
         totalUpvotes: number;
         totalMentions: number;
@@ -1124,14 +1130,14 @@ export class SearchQueryExecutor {
         connectionId: connection.connection_id,
         foodId: connection.food_id,
         foodName: connection.food_name,
-        qualityScore: this.toNumber(connection.food_quality_score),
-        contextualScore:
-          this.toOptionalNumber(connection.connection_contextual_score) ??
-          this.toNumber(connection.food_quality_score),
-        contextualPercentile:
-          this.toOptionalNumber(connection.connection_contextual_percentile) ??
-          (this.toOptionalNumber(connection.connection_contextual_score) ??
-            this.toNumber(connection.food_quality_score)) / 100,
+        scoreSubjectType: 'connection',
+        scoreSubjectId: connection.connection_id,
+        craveScore: this.toRequiredPublicScore(
+          connection.connection_crave_score,
+          `connection:${connection.connection_id}`,
+        ),
+        scoreDelta7d: this.toOptionalNumber(connection.connection_score_delta_7d),
+        scoreInfo: this.parseScoreInfo(connection.connection_score_info),
         activityLevel: connection.activity_level,
       };
 
@@ -1144,7 +1150,6 @@ export class SearchQueryExecutor {
       const existing = grouped.get(connection.restaurant_id);
       if (existing) {
         existing.snippets.push(snippet);
-        existing.scoreSum += snippet.qualityScore;
         existing.count += 1;
         existing.totalUpvotes = restaurantTotalUpvotes;
         existing.totalMentions = restaurantTotalMentions;
@@ -1201,22 +1206,6 @@ export class SearchQueryExecutor {
         ) {
           existing.locationCount = connection.location_count;
         }
-        if (
-          existing.restaurantContextualScore === null ||
-          existing.restaurantContextualScore === undefined
-        ) {
-          existing.restaurantContextualScore = this.toOptionalNumber(
-            connection.restaurant_contextual_score,
-          );
-        }
-        if (
-          existing.restaurantContextualPercentile === null ||
-          existing.restaurantContextualPercentile === undefined
-        ) {
-          existing.restaurantContextualPercentile = this.toOptionalNumber(
-            connection.restaurant_contextual_percentile,
-          );
-        }
         if (!existing.marketKey && connection.restaurant_market_key) {
           existing.marketKey = connection.restaurant_market_key;
         }
@@ -1229,13 +1218,14 @@ export class SearchQueryExecutor {
           restaurantId: connection.restaurant_id,
           name: connection.restaurant_name,
           aliases: connection.restaurant_aliases || [],
-          restaurantQualityScore: connection.restaurant_quality_score,
-          restaurantContextualScore: this.toOptionalNumber(
-            connection.restaurant_contextual_score,
+          restaurantCraveScore: this.toRequiredPublicScore(
+            connection.restaurant_crave_score,
+            `restaurant:${connection.restaurant_id}`,
           ),
-          restaurantContextualPercentile: this.toOptionalNumber(
-            connection.restaurant_contextual_percentile,
-          ),
+            restaurantScoreDelta7d: this.toOptionalNumber(
+              connection.restaurant_score_delta_7d,
+            ),
+            restaurantScoreInfo: this.parseScoreInfo(connection.restaurant_score_info),
           marketKey: connection.restaurant_market_key ?? null,
           latitude: connection.latitude,
           longitude: connection.longitude,
@@ -1263,7 +1253,6 @@ export class SearchQueryExecutor {
           locationsJson: connection.locations_json ?? null,
           locationCount: connection.location_count ?? null,
           snippets: [snippet],
-          scoreSum: snippet.qualityScore,
           count: 1,
           totalUpvotes: restaurantTotalUpvotes,
           totalMentions: restaurantTotalMentions,
@@ -1281,9 +1270,9 @@ export class SearchQueryExecutor {
           restaurantId,
           name,
           aliases,
-          restaurantQualityScore,
-          restaurantContextualScore,
-          restaurantContextualPercentile,
+          restaurantCraveScore,
+          restaurantScoreDelta7d,
+          restaurantScoreInfo,
           marketKey,
           latitude,
           longitude,
@@ -1310,7 +1299,6 @@ export class SearchQueryExecutor {
           locationsJson,
           locationCount,
           snippets,
-          scoreSum,
           count,
           totalUpvotes,
           totalMentions,
@@ -1384,29 +1372,11 @@ export class SearchQueryExecutor {
             restaurantId,
             restaurantName: name,
             restaurantAliases: aliases || [],
-            contextualScore:
-              restaurantContextualScore ??
-              (restaurantQualityScore === null ||
-              restaurantQualityScore === undefined
-                ? count
-                  ? scoreSum / count
-                  : 0
-                : this.toNumber(restaurantQualityScore)),
-            contextualPercentile:
-              restaurantContextualPercentile ??
-              (restaurantContextualScore != null
-                ? restaurantContextualScore / 100
-                : restaurantQualityScore === null ||
-                    restaurantQualityScore === undefined
-                  ? count
-                    ? scoreSum / count / 100
-                    : 0
-                  : this.toNumber(restaurantQualityScore) / 100),
-            restaurantQualityScore:
-              restaurantQualityScore === null ||
-              restaurantQualityScore === undefined
-                ? null
-                : this.toNumber(restaurantQualityScore),
+            scoreSubjectType: 'restaurant' as const,
+            scoreSubjectId: restaurantId,
+            craveScore: restaurantCraveScore,
+            scoreDelta7d: restaurantScoreDelta7d,
+            scoreInfo: restaurantScoreInfo,
             marketKey: marketKey ?? undefined,
             mentionCount:
               totalMentions === undefined || totalMentions === null
@@ -1434,12 +1404,10 @@ export class SearchQueryExecutor {
             displayLocation,
             locations,
             locationCount: resolvedLocationCount,
-            topFood: snippets
-              .sort((a, b) => {
-                const scoreA = a.contextualScore ?? a.qualityScore;
-                const scoreB = b.contextualScore ?? b.qualityScore;
-                return scoreB - scoreA;
-              })
+	            topFood: snippets
+	              .sort((a, b) => {
+	                return b.craveScore - a.craveScore;
+	              })
               .slice(0, TOP_RESTAURANT_FOOD_SNIPPETS),
             totalDishCount: count,
           };
@@ -1455,24 +1423,10 @@ export class SearchQueryExecutor {
   ): RestaurantResultDto[] {
     const order = restaurantOrder?.toLowerCase() ?? '';
     const isAsc = order.includes('asc');
-    const sortByContextual = order.includes('contextual_food_quality');
     const direction = isAsc ? 1 : -1;
 
-    const getScore = (restaurant: RestaurantResultDto): number => {
-      if (sortByContextual) {
-        return restaurant.contextualScore ?? 0;
-      }
-      if (order.includes('quality_score')) {
-        return restaurant.restaurantQualityScore ?? 0;
-      }
-      if (restaurant.restaurantQualityScore != null) {
-        return restaurant.restaurantQualityScore;
-      }
-      return restaurant.contextualScore ?? 0;
-    };
-
     return restaurants.sort((a, b) => {
-      const scoreDiff = (getScore(a) - getScore(b)) * direction;
+      const scoreDiff = (a.craveScore - b.craveScore) * direction;
       if (scoreDiff !== 0) {
         return scoreDiff;
       }
@@ -2122,6 +2076,45 @@ export class SearchQueryExecutor {
     return null;
   }
 
+  private toRequiredPublicScore(
+    value: Prisma.Decimal | number | string | null | undefined,
+    label: string,
+  ): number {
+    const parsed = this.toOptionalNumber(value);
+    if (parsed === null) {
+      throw new Error(`Missing public Crave Score for ${label}`);
+    }
+    return parsed;
+  }
+
+  private parseScoreInfo(value: Prisma.JsonValue | null | undefined): ScoreInfoSummary | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return undefined;
+    }
+    const record = value as Record<string, unknown>;
+    const confidenceLabel =
+      record.confidenceLabel === 'strong' ||
+      record.confidenceLabel === 'solid' ||
+      record.confidenceLabel === 'early'
+        ? record.confidenceLabel
+        : 'early';
+    const pollCount = this.toOptionalNumber(
+      record.pollCount as Prisma.Decimal | number | string | null,
+    );
+    const voteCount = this.toOptionalNumber(
+      record.voteCount as Prisma.Decimal | number | string | null,
+    );
+    return {
+      confidenceLabel,
+      evidenceCopy:
+        typeof record.evidenceCopy === 'string' && record.evidenceCopy.trim().length
+          ? record.evidenceCopy
+          : 'Based on Crave polls and votes.',
+      pollCount,
+      voteCount,
+    };
+  }
+
   private describePriceLevel(level: number | null): {
     symbol: string | null;
     text: string | null;
@@ -2395,14 +2388,14 @@ export class SearchQueryExecutor {
         restaurantName: row.restaurant_name,
         restaurantAliases: row.restaurant_aliases || [],
         rank: rankStart + index,
-        contextualScore:
-          this.toOptionalNumber(row.contextual_score) ??
-          this.toOptionalNumber(row.restaurant_quality_score) ??
-          0,
-        restaurantQualityScore: this.toOptionalNumber(
-          row.restaurant_quality_score,
+        scoreSubjectType: 'restaurant',
+        scoreSubjectId: row.restaurant_id,
+        craveScore: this.toRequiredPublicScore(
+          row.crave_score,
+          `restaurant:${row.restaurant_id}`,
         ),
-        contextualPercentile: this.toOptionalNumber(row.contextual_percentile),
+        scoreDelta7d: this.toOptionalNumber(row.score_delta_7d),
+        scoreInfo: this.parseScoreInfo(row.score_info),
         marketKey: row.market_key ?? undefined,
         marketName: null,
         mentionCount: totalMentions,
@@ -2471,13 +2464,14 @@ export class SearchQueryExecutor {
         restaurantName: row.restaurant_name,
         restaurantAliases: row.restaurant_aliases || [],
         restaurantLocationId: row.location_id,
-        qualityScore: this.toNumber(row.food_quality_score),
-        contextualScore:
-          this.toOptionalNumber(row.connection_contextual_score) ??
-          this.toNumber(row.food_quality_score),
-        contextualPercentile: this.toOptionalNumber(
-          row.connection_contextual_percentile,
+        scoreSubjectType: 'connection',
+        scoreSubjectId: row.connection_id,
+        craveScore: this.toRequiredPublicScore(
+          row.connection_crave_score,
+          `connection:${row.connection_id}`,
         ),
+        scoreDelta7d: this.toOptionalNumber(row.connection_score_delta_7d),
+        scoreInfo: this.parseScoreInfo(row.connection_score_info),
         marketKey: row.market_key ?? undefined,
         marketName: null,
         activityLevel: row.activity_level,
@@ -2491,12 +2485,9 @@ export class SearchQueryExecutor {
         restaurantPriceSymbol: priceDetails.symbol ?? null,
         restaurantDistanceMiles: context?.distanceMiles ?? null,
         restaurantOperatingStatus: operatingStatus,
-        // Additional fields for map pins
-        restaurantContextualScore: this.toOptionalNumber(
-          row.restaurant_contextual_score,
-        ),
-        restaurantContextualPercentile: this.toOptionalNumber(
-          row.restaurant_contextual_percentile,
+        restaurantCraveScore: this.toRequiredPublicScore(
+          row.restaurant_crave_score,
+          `restaurant:${row.restaurant_entity_id}`,
         ),
         restaurantLatitude: latitude,
         restaurantLongitude: longitude,
@@ -2527,23 +2518,16 @@ export class SearchQueryExecutor {
         connectionId,
         foodId,
         foodName,
-        qualityScore: this.toNumber(
-          record.qualityScore as Prisma.Decimal | number | string | null,
+        scoreSubjectType: 'connection',
+        scoreSubjectId: connectionId,
+        craveScore: this.toRequiredPublicScore(
+          record.craveScore as Prisma.Decimal | number | string | null,
+          `connection:${connectionId}`,
         ),
-        contextualScore:
-          this.toOptionalNumber(
-            record.contextualScore as Prisma.Decimal | number | string | null,
-          ) ??
-          this.toNumber(
-            record.qualityScore as Prisma.Decimal | number | string | null,
-          ),
-        contextualPercentile: this.toOptionalNumber(
-          record.contextualPercentile as
-            | Prisma.Decimal
-            | number
-            | string
-            | null,
+        scoreDelta7d: this.toOptionalNumber(
+          record.scoreDelta7d as Prisma.Decimal | number | string | null,
         ),
+        scoreInfo: this.parseScoreInfo(record.scoreInfo as Prisma.JsonValue | null),
         activityLevel: (record.activityLevel as ActivityLevel) || 'normal',
       });
     }

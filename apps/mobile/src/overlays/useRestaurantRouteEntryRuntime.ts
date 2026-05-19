@@ -46,7 +46,9 @@ type RetainedRestaurantRoutePanelDraft = {
 const createPanelDraftPayloadSignature = (
   panelDraft: RestaurantRoutePanelDraft | null
 ): string | null =>
-  panelDraft == null ? null : JSON.stringify(panelDraft.snapshotPayload);
+  panelDraft == null
+    ? null
+    : JSON.stringify(panelDraft.data);
 
 const useStableEvent = <TArgs extends readonly unknown[], TResult>(
   handler: (...args: TArgs) => TResult

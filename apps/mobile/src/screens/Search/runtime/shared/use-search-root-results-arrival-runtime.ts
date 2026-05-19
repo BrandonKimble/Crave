@@ -1,6 +1,5 @@
 import React from 'react';
 
-import type { SearchResponse } from '../../../../types';
 import {
   createSearchRootResultsArrivalStateValue,
 } from '../controller/search-root-data-plane-runtime';
@@ -10,66 +9,102 @@ import type {
   SearchRootSessionCoreLane,
 } from './use-search-root-session-runtime-contract';
 
-const resolveResultsPage = (response: SearchResponse | null): number | null => {
-  if (!response) {
-    return null;
-  }
-  const page = response.metadata?.page;
-  if (typeof page === 'number' && Number.isFinite(page) && page > 0) {
-    return page;
-  }
-  return 1;
-};
-
 type UseSearchRootResultsArrivalRuntimeArgs = {
   rootSessionCoreLane: Pick<SearchRootSessionCoreLane, 'searchRuntimeBus'>;
 };
+
+const hasVisibleSearchResultsSurface = ({
+  resultsRequestKey,
+  resultsHydrationCandidateKey,
+  resultsDishCount,
+  resultsRestaurantCount,
+}: {
+  resultsRequestKey: string | null;
+  resultsHydrationCandidateKey: string | null;
+  resultsDishCount: number;
+  resultsRestaurantCount: number;
+}): boolean =>
+  resultsRequestKey != null ||
+  resultsHydrationCandidateKey != null ||
+  resultsDishCount > 0 ||
+  resultsRestaurantCount > 0;
 
 export const useSearchRootResultsArrivalRuntime = ({
   rootSessionCoreLane,
 }: UseSearchRootResultsArrivalRuntimeArgs): SearchRootResultsArrivalState => {
   const { searchRuntimeBus } = rootSessionCoreLane;
-  const resultsArrivalState = useSearchRuntimeBusSelector(
+  const resultsArrivalScalarState = useSearchRuntimeBusSelector(
     searchRuntimeBus,
-    (state) =>
-      createSearchRootResultsArrivalStateValue({
-        currentResults: state.results,
-        hasResults: state.results != null,
-        isLoadingMore: state.isLoadingMore,
-        canLoadMore: state.canLoadMore,
-        currentPage: state.currentPage,
-        isPaginationExhausted: state.isPaginationExhausted,
-        pendingTabSwitchTab: state.pendingTabSwitchTab,
-        restaurantResults: (state.results?.restaurants ?? null) as
-          | SearchResponse['restaurants']
-          | null,
-        resultsRequestKey: state.resultsRequestKey,
-        submittedQuery: state.submittedQuery,
-        resultsPage: resolveResultsPage(state.results),
-      }),
+    (state) => ({
+      isLoadingMore: state.isLoadingMore,
+      canLoadMore: state.canLoadMore,
+      currentPage: state.currentPage,
+      isPaginationExhausted: state.isPaginationExhausted,
+      pendingTabSwitchTab: state.pendingTabSwitchTab,
+      resultsRequestKey: state.resultsRequestKey,
+      resultsHydrationCandidateKey: state.resultsHydrationCandidateKey,
+      resultsDishCount: state.resultsDishCount,
+      resultsRestaurantCount: state.resultsRestaurantCount,
+      resultsPage: state.resultsPage,
+      submittedQuery: state.submittedQuery,
+    }),
     (a, b) =>
-      a.currentResults === b.currentResults &&
-      a.hasResults === b.hasResults &&
       a.isLoadingMore === b.isLoadingMore &&
       a.canLoadMore === b.canLoadMore &&
       a.currentPage === b.currentPage &&
       a.isPaginationExhausted === b.isPaginationExhausted &&
       a.pendingTabSwitchTab === b.pendingTabSwitchTab &&
-      a.restaurantResults === b.restaurantResults &&
       a.resultsRequestKey === b.resultsRequestKey &&
-      a.submittedQuery === b.submittedQuery &&
-      a.resultsPage === b.resultsPage,
+      a.resultsHydrationCandidateKey === b.resultsHydrationCandidateKey &&
+      a.resultsDishCount === b.resultsDishCount &&
+      a.resultsRestaurantCount === b.resultsRestaurantCount &&
+      a.resultsPage === b.resultsPage &&
+      a.submittedQuery === b.submittedQuery,
     [
-      'results',
       'isLoadingMore',
       'canLoadMore',
       'currentPage',
       'isPaginationExhausted',
       'pendingTabSwitchTab',
       'resultsRequestKey',
+      'resultsHydrationCandidateKey',
+      'resultsDishCount',
+      'resultsRestaurantCount',
+      'resultsPage',
       'submittedQuery',
-    ] as const
+    ] as const,
+    'root_results_arrival_runtime'
   );
-
-  return React.useMemo(() => resultsArrivalState, [resultsArrivalState]);
+  return React.useMemo(() => {
+    return createSearchRootResultsArrivalStateValue({
+      currentResults: null,
+      hasResults: hasVisibleSearchResultsSurface({
+        resultsRequestKey: resultsArrivalScalarState.resultsRequestKey,
+        resultsHydrationCandidateKey: resultsArrivalScalarState.resultsHydrationCandidateKey,
+        resultsDishCount: resultsArrivalScalarState.resultsDishCount,
+        resultsRestaurantCount: resultsArrivalScalarState.resultsRestaurantCount,
+      }),
+      isLoadingMore: resultsArrivalScalarState.isLoadingMore,
+      canLoadMore: resultsArrivalScalarState.canLoadMore,
+      currentPage: resultsArrivalScalarState.currentPage,
+      isPaginationExhausted: resultsArrivalScalarState.isPaginationExhausted,
+      pendingTabSwitchTab: resultsArrivalScalarState.pendingTabSwitchTab,
+      restaurantResults: null,
+      resultsRequestKey: resultsArrivalScalarState.resultsRequestKey,
+      submittedQuery: resultsArrivalScalarState.submittedQuery,
+      resultsPage: resultsArrivalScalarState.resultsPage,
+    });
+  }, [
+    resultsArrivalScalarState.canLoadMore,
+    resultsArrivalScalarState.currentPage,
+    resultsArrivalScalarState.isLoadingMore,
+    resultsArrivalScalarState.isPaginationExhausted,
+    resultsArrivalScalarState.pendingTabSwitchTab,
+    resultsArrivalScalarState.resultsDishCount,
+    resultsArrivalScalarState.resultsHydrationCandidateKey,
+    resultsArrivalScalarState.resultsRestaurantCount,
+    resultsArrivalScalarState.resultsPage,
+    resultsArrivalScalarState.resultsRequestKey,
+    resultsArrivalScalarState.submittedQuery,
+  ]);
 };

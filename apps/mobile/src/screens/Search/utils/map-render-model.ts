@@ -144,6 +144,30 @@ const buildStableLodSlotMap = <TProps extends MarkerLikeProperties>({
     nextLodZByMarkerKey.set(buildMarkerKey(feature), slot);
   });
 
+  const assignedSlotsByRank = nextPinnedMarkers
+    .map((feature) => ({
+      markerKey: buildMarkerKey(feature),
+      rank: feature.properties.rank,
+      lodZ: nextLodZByMarkerKey.get(buildMarkerKey(feature)) ?? 0,
+    }))
+    .sort((left, right) => {
+      const rankDiff = left.rank - right.rank;
+      if (rankDiff !== 0) {
+        return rankDiff;
+      }
+      return left.markerKey.localeCompare(right.markerKey);
+    });
+  const slotsByVisualPriority = assignedSlotsByRank
+    .map((entry) => entry.lodZ)
+    .sort((left, right) => right - left);
+  assignedSlotsByRank.forEach((entry, index) => {
+    const slot = slotsByVisualPriority[index];
+    if (slot == null) {
+      return;
+    }
+    nextLodZByMarkerKey.set(entry.markerKey, slot);
+  });
+
   return nextLodZByMarkerKey;
 };
 
@@ -193,6 +217,9 @@ export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
   const remainingBudget = Math.max(0, maxPins - selectedEntries.length);
   const desiredOthers = visibleRankedCandidates.slice(0, remainingBudget);
   const desiredOthersKeySet = new Set(desiredOthers.map((feature) => buildMarkerKey(feature)));
+  const retentionBudget = Math.max(remainingBudget, remainingBudget + visibleCandidateBuffer);
+  const retainedOthers = visibleRankedCandidates.slice(0, retentionBudget);
+  const retainedOthersKeySet = new Set(retainedOthers.map((feature) => buildMarkerKey(feature)));
 
   const currentPinned = currentPinnedMarkers.filter((feature) =>
     selectedRestaurantId ? feature.properties.restaurantId !== selectedRestaurantId : true
@@ -222,7 +249,7 @@ export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
   }
 
   for (const key of currentPinnedKeySet) {
-    if (desiredOthersKeySet.has(key)) {
+    if (retainedOthersKeySet.has(key)) {
       nextProposedDemoteSinceByMarkerKey.delete(key);
       continue;
     }

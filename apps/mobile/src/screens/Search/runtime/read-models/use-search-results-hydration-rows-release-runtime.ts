@@ -13,40 +13,50 @@ export const useSearchResultsHydrationRowsReleaseRuntime = ({
   activeOverlayKey,
   settleStateRuntime,
 }: SearchResultsHydrationRowsReleaseRuntimeArgs) => {
+  const {
+    hydrationRowsReleaseVersionToken,
+    isHydrationPending,
+    setHydrationFinalizeRowsReleaseCompletedToken,
+  } = settleStateRuntime;
+
   React.useEffect(() => {
-    settleStateRuntime.setHydrationFinalizeRowsReleaseCompletedToken(null);
-  }, [
-    resultsHydrationKey,
-    settleStateRuntime,
-  ]);
+    setHydrationFinalizeRowsReleaseCompletedToken(null);
+  }, [resultsHydrationKey, setHydrationFinalizeRowsReleaseCompletedToken]);
 
   React.useEffect(() => {
     if (!resultsHydrationKey) {
-      settleStateRuntime.setHydrationFinalizeRowsReleaseCompletedToken(null);
+      setHydrationFinalizeRowsReleaseCompletedToken(null);
       return;
     }
 
-    if (!settleStateRuntime.isHydrationPending) {
+    if (!isHydrationPending) {
       return;
     }
 
     if (activeOverlayKey !== 'search') {
-      settleStateRuntime.setHydrationFinalizeRowsReleaseCompletedToken(
-        settleStateRuntime.hydrationRowsReleaseVersionToken
-      );
+      setHydrationFinalizeRowsReleaseCompletedToken(hydrationRowsReleaseVersionToken);
     }
   }, [
     activeOverlayKey,
+    hydrationRowsReleaseVersionToken,
+    isHydrationPending,
     resultsHydrationKey,
-    settleStateRuntime,
+    setHydrationFinalizeRowsReleaseCompletedToken,
   ]);
 
   React.useEffect(() => {
-    if (!resultsHydrationKey || settleStateRuntime.isHydrationPending) {
+    if (!resultsHydrationKey || isHydrationPending) {
       return;
     }
-    settleStateRuntime.setHydrationFinalizeRowsReleaseCompletedToken(
-      settleStateRuntime.hydrationRowsReleaseVersionToken
-    );
-  }, [resultsHydrationKey, settleStateRuntime]);
+    if (activeOverlayKey === 'search') {
+      return;
+    }
+    setHydrationFinalizeRowsReleaseCompletedToken(hydrationRowsReleaseVersionToken);
+  }, [
+    activeOverlayKey,
+    hydrationRowsReleaseVersionToken,
+    isHydrationPending,
+    resultsHydrationKey,
+    setHydrationFinalizeRowsReleaseCompletedToken,
+  ]);
 };

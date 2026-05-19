@@ -7,6 +7,8 @@ import type { SegmentValue } from '../constants/search';
 import type { MapboxMapRef } from '../components/search-map';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
 import type { RuntimeWorkScheduler } from '../runtime/scheduler/runtime-work-scheduler';
+import type { ResultsPresentationAuthority } from '../runtime/shared/results-presentation-authority';
+import type { ResultsPresentationSurfaceAuthority } from '../runtime/shared/results-presentation-surface-authority';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import {
   useSearchRequestPreparationOwner,
@@ -15,6 +17,8 @@ import {
 import {
   useSearchSubmitEntryOwner,
   type SearchMode,
+  type SearchSubmitEntrySurface,
+  type SearchSubmitPresentationIntentKind,
   type SubmitSearchOptions,
 } from './use-search-submit-entry-owner';
 import { useSearchNaturalSubmitOwner } from './use-search-natural-submit-owner';
@@ -56,7 +60,12 @@ type SearchSubmitOwnerUiPorts = {
   onPageOneResultsCommitted?: (payload: {
     searchRequestId: string | null;
     requestBounds: MapBounds | null;
+    resultsHydrationKey: string | null;
+    resultsDataKey: string | null;
+    dataReadyFrom: 'network' | 'cache' | 'in_flight';
+    searchInputKey: string | null;
     replaceResultsInPlace: boolean;
+    presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
   }) => void;
   onShortcutSearchCoverageSnapshot?: (snapshot: {
     searchRequestId: string;
@@ -64,12 +73,13 @@ type SearchSubmitOwnerUiPorts = {
     entities: StructuredSearchRequest['entities'];
   }) => void;
   onPresentationIntentStart?: (params: {
-    kind: 'initial_search' | 'shortcut_rerun';
+    kind: SearchSubmitPresentationIntentKind;
     mode: SearchMode;
     preserveSheetState: boolean;
     transitionFromDockedPolls: boolean;
     targetTab: SegmentValue;
     submittedLabel?: string;
+    entrySurface: SearchSubmitEntrySurface;
   }) => void;
   onPresentationIntentAbort?: () => void;
 };
@@ -77,6 +87,8 @@ type SearchSubmitOwnerUiPorts = {
 type SearchSubmitOwnerRuntimePorts = {
   runtimeWorkSchedulerRef?: React.MutableRefObject<RuntimeWorkScheduler> | null;
   searchRuntimeBus: SearchRuntimeBus;
+  resultsPresentationAuthority: ResultsPresentationAuthority;
+  resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
   lastSearchRequestIdRef: React.MutableRefObject<string | null>;
   lastAutoOpenKeyRef: React.MutableRefObject<string | null>;
   runSearch: UseSearchRequestsResult['runSearch'];
@@ -108,16 +120,19 @@ type SearchSubmitOwner = {
     submissionSource: NaturalSearchRequest['submissionSource'];
     typedPrefix?: string;
     preserveSheetState?: boolean;
+    entrySurface: SearchSubmitEntrySurface;
   }) => Promise<void>;
   submitViewportShortcut: (
     targetTab: SegmentValue,
     submittedLabel: string,
-    options?: {
+    options: {
       preserveSheetState?: boolean;
       replaceResultsInPlace?: boolean;
       transitionFromDockedPolls?: boolean;
       filters?: StructuredSearchFilters;
       forceFreshBounds?: boolean;
+      presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+      entrySurface: SearchSubmitEntrySurface;
     }
   ) => Promise<void>;
   rerunActiveSearch: (params: {
@@ -128,6 +143,8 @@ type SearchSubmitOwner = {
     isSearchSessionActive: boolean;
     preserveSheetState?: boolean;
     replaceResultsInPlace?: boolean;
+    filters?: StructuredSearchFilters;
+    presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
   }) => Promise<void>;
   loadMoreResults: (searchMode: SearchMode) => void;
 };
@@ -173,6 +190,8 @@ const useSearchSubmitOwner = ({
   const {
     runtimeWorkSchedulerRef,
     searchRuntimeBus,
+    resultsPresentationAuthority,
+    resultsPresentationSurfaceAuthority,
     lastSearchRequestIdRef,
     lastAutoOpenKeyRef,
     runSearch,
@@ -251,6 +270,8 @@ const useSearchSubmitOwner = ({
     pendingTabSwitchTab,
     isPaginationExhausted,
     searchRuntimeBus,
+    resultsPresentationAuthority,
+    resultsPresentationSurfaceAuthority,
     latestBoundsRef,
     userLocationRef,
     lastSearchRequestIdRef,

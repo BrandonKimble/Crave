@@ -1,10 +1,11 @@
-import type { Coordinate, RestaurantResult, SearchResponse } from '../../../../types';
+import type { Coordinate, MapBounds, RestaurantResult, SearchResponse } from '../../../../types';
 import type {
   CameraSnapshot,
   ProfileForegroundUiRestoreState,
   ProfileTransitionSnapshotCapture,
   ProfileTransitionStatus,
   RestaurantFocusSession,
+  RestaurantProfileSeed,
 } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type {
   CloseRestaurantProfileOptions,
@@ -33,7 +34,7 @@ export type ProfileActionExecutionPorts = {
   setLastCameraState: (
     state: { center: [number, number]; zoom: number } | null | undefined
   ) => void;
-  resetPreparedProfileSavedSheetSnap: () => void;
+  setMapHighlightedRestaurantId: (restaurantId: string | null) => void;
   openPreparedProfilePresentation: (
     restaurantId: string,
     targetCamera: CameraSnapshot | null | undefined,
@@ -43,7 +44,7 @@ export type ProfileActionExecutionPorts = {
   closePreparedProfilePresentation: (restaurantId: string | null) => void;
   focusPreparedProfileCamera: (targetCamera: CameraSnapshot) => void;
   seedRestaurantProfile: (
-    restaurant: RestaurantResult,
+    restaurant: RestaurantProfileSeed,
     queryLabel: string,
     options?: { selectedLocationId?: string | null }
   ) => void;
@@ -54,8 +55,9 @@ export type ProfileActionExecutionPorts = {
 };
 
 export type ProfileRefreshSelectionExecutionPorts = {
+  setMapHighlightedRestaurantId: (restaurantId: string | null) => void;
   seedRestaurantProfile: (
-    restaurant: RestaurantResult,
+    restaurant: RestaurantProfileSeed,
     queryLabel: string,
     options?: { selectedLocationId?: string | null }
   ) => void;
@@ -92,7 +94,6 @@ export type CreateProfileActionRuntimeArgs = {
       restaurant: RestaurantResult,
       anchor: Coordinate | null
     ) => RestaurantProfileLocation | null;
-    profileMultiLocationZoomOutDelta: number;
     profileMultiLocationMinZoom: number;
     restaurantFocusCenterEpsilon: number;
     restaurantFocusZoomEpsilon: number;
@@ -102,7 +103,9 @@ export type CreateProfileActionRuntimeArgs = {
     getCurrentPanelRestaurantId: () => string | null;
     hasPanelSnapshot: () => boolean;
     getCurrentLastCameraState: () => { center: [number, number]; zoom: number } | null;
+    getCurrentViewportBounds: () => MapBounds | null;
     getCurrentMapZoom: () => number | null;
+    getFallbackMapZoom: () => number;
     resolveProfileCameraPadding: () => CameraSnapshot['padding'];
     getProfileTransitionSnapshotCapture: () => ProfileTransitionSnapshotCapture;
     getProfileMultiLocationZoomBaseline: () => number | null;

@@ -1,5 +1,5 @@
 import type { SearchMapRenderEngineInputs } from '../../components/SearchMapWithMarkerEngine';
-import { getQualityColorFromScore } from '../../utils/quality';
+import { getCraveScoreColorFromScore } from '../../utils/quality';
 import type { createSearchRootMapPresentationRuntimeValue } from './search-root-map-presentation-controller-runtime';
 import type { SearchRootMapSurfaceState } from './search-root-map-surface-state-controller-runtime';
 
@@ -17,7 +17,7 @@ export const getSearchMapEngineInputChanges = (
     right.resolveRestaurantLocationSelectionAnchor,
   pickPreferredRestaurantMapLocation:
     left.pickPreferredRestaurantMapLocation !== right.pickPreferredRestaurantMapLocation,
-  getQualityColorFromScore: left.getQualityColorFromScore !== right.getQualityColorFromScore,
+  getCraveScoreColorFromScore: left.getCraveScoreColorFromScore !== right.getCraveScoreColorFromScore,
   mapGestureActiveRef: left.mapGestureActiveRef !== right.mapGestureActiveRef,
   mapMotionPressureController:
     left.mapMotionPressureController !== right.mapMotionPressureController,
@@ -55,7 +55,7 @@ export const createSearchRootMapEngineInputs = ({
     mapPresentationRuntime.resolveRestaurantLocationSelectionAnchor,
   pickPreferredRestaurantMapLocation:
     mapPresentationRuntime.pickPreferredRestaurantMapLocation,
-  getQualityColorFromScore,
+  getCraveScoreColorFromScore,
   mapGestureActiveRef: mapPresentationRuntime.mapGestureActiveRef,
   mapMotionPressureController:
     mapPresentationRuntime.mapMotionPressureController,

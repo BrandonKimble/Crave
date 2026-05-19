@@ -20,7 +20,6 @@ export const useSearchForegroundVisualRuntime = ({
   navBarTopForSnaps,
   fallbackNavBarHeight,
   bottomNavHiddenTranslateY,
-  searchHeaderDefaultChromeProgress,
   shouldDisableSearchShortcuts,
   shouldRenderSearchOverlay,
   headerShortcutsVisibleTarget,
@@ -41,7 +40,6 @@ export const useSearchForegroundVisualRuntime = ({
 }: UseSearchForegroundVisualRuntimeArgs): SearchForegroundVisualRuntime => {
   const bottomNavVisualRuntime = useSearchForegroundBottomNavVisualRuntime({
     shouldDimResultsSheet,
-    isSuggestionOverlayVisible,
     suggestionProgress,
     shouldSuspendResultsSheet,
     isSearchOverlay,
@@ -50,7 +48,6 @@ export const useSearchForegroundVisualRuntime = ({
     navBarTopForSnaps,
     fallbackNavBarHeight,
     bottomNavHiddenTranslateY,
-    searchHeaderDefaultChromeProgress,
     isSuggestionPanelActive,
     backdropTarget,
   });
@@ -67,7 +64,10 @@ export const useSearchForegroundVisualRuntime = ({
     isSearchOverlay,
   });
   const chromeSurfaceVisualRuntime = useSearchForegroundChromeSurfaceVisualRuntime({
+    isSuggestionPanelActive,
+    isSuggestionOverlayVisible,
     suggestionProgress,
+    searchChromeOpacity,
     searchChromeScale,
   });
   const searchThisAreaVisualRuntime = useSearchForegroundSearchThisAreaVisualRuntime({

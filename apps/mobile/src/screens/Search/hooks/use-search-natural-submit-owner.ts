@@ -1,6 +1,12 @@
 import React from 'react';
 
+import {
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+} from '../../../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../../../perf/perf-scenario-runtime-store';
 import type { NaturalSearchRequest, SearchResponse } from '../../../types';
+import type { SearchRequestCacheStatus } from '../../../services/search';
 import { logger } from '../../../utils';
 import { createNaturalSubmitIntentPayload } from '../runtime/adapters/natural-adapter';
 import type { SegmentValue } from '../constants/search';
@@ -8,6 +14,8 @@ import type { SearchRequestRuntimeOwner } from './use-search-request-runtime-own
 import { resolveLoadMoreRequestErrorMessage } from './search-submit-runtime-utils';
 import type {
   ResolveNaturalSearchAttemptConfigResult,
+  SearchSubmitEntrySurface,
+  SearchSubmitPresentationIntentKind,
   SubmitSearchOptions,
 } from './use-search-submit-entry-owner';
 
@@ -29,6 +37,8 @@ type UseSearchNaturalSubmitOwnerArgs = {
     targetTab: SegmentValue;
     submittedLabel: string;
     replaceResultsLabel?: string;
+    presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+    entrySurface: SearchSubmitEntrySurface;
   }) => void;
   prepareNaturalSearchAttemptPayload: (options: {
     tuple: {
@@ -55,7 +65,7 @@ type UseSearchNaturalSubmitOwnerArgs = {
     payload: NaturalSearchRequest;
     requestId: number;
     responsePhaseLabel: string;
-    startLifecycle: (response: SearchResponse) => boolean;
+    startLifecycle: (response: SearchResponse, cacheStatus: SearchRequestCacheStatus | null) => boolean;
   }) => Promise<boolean>;
   startNaturalResponseLifecycle: (options: {
     response: SearchResponse;
@@ -74,6 +84,8 @@ type UseSearchNaturalSubmitOwnerArgs = {
     submissionContext?: NaturalSearchRequest['submissionContext'];
     requestBounds: import('../../../types').MapBounds | null;
     replaceResultsInPlace: boolean;
+    presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+    searchCacheStatus?: SearchRequestCacheStatus | null;
   }) => boolean;
   runManagedRequestAttempt: SearchRequestRuntimeOwner['runManagedRequestAttempt'];
   onPresentationIntentAbort?: () => void;
@@ -105,6 +117,22 @@ export const useSearchNaturalSubmitOwner = ({
       trimmedQuery: string;
       naturalAttemptConfig: ResolveNaturalSearchAttemptConfigResult;
     }) => {
+      const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+      if (isPerfScenarioAttributionActive(scenarioConfig)) {
+        logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+          event: 'natural_submit_attempt_contract',
+          append,
+          targetPage,
+          targetTab: naturalAttemptConfig.preRequestTab,
+          trimmedQueryLength: trimmedQuery.length,
+          submissionSource: naturalAttemptConfig.submissionSource,
+          submissionContext: naturalAttemptConfig.submissionContext,
+          preserveSheetState: naturalAttemptConfig.preserveSheetState,
+          transitionFromDockedPolls: naturalAttemptConfig.transitionFromDockedPolls,
+          forceFreshBounds: naturalAttemptConfig.shouldForceFreshBounds,
+          replaceResultsInPlace: naturalAttemptConfig.shouldReplaceResultsInPlace,
+        });
+      }
       if (!append) {
         prepareNaturalSearchForegroundUi({
           preserveSheetState: naturalAttemptConfig.preserveSheetState,
@@ -114,9 +142,10 @@ export const useSearchNaturalSubmitOwner = ({
           replaceResultsLabel: naturalAttemptConfig.shouldReplaceResultsInPlace
             ? trimmedQuery
             : undefined,
+          presentationIntentKind: naturalAttemptConfig.presentationIntentKind,
+          entrySurface: naturalAttemptConfig.entrySurface,
         });
       }
-
       await runManagedRequestAttempt({
         mode: 'natural',
         submitPayload: createNaturalSubmitIntentPayload({
@@ -163,7 +192,7 @@ export const useSearchNaturalSubmitOwner = ({
             payload,
             requestId,
             responsePhaseLabel: 'submitSearch:response',
-            startLifecycle: (response) =>
+            startLifecycle: (response, searchCacheStatus) =>
               startNaturalResponseLifecycle({
                 response,
                 requestId,
@@ -175,6 +204,8 @@ export const useSearchNaturalSubmitOwner = ({
                 submissionContext: naturalAttemptConfig.submissionContext,
                 requestBounds,
                 replaceResultsInPlace: naturalAttemptConfig.shouldReplaceResultsInPlace,
+                presentationIntentKind: naturalAttemptConfig.presentationIntentKind,
+                searchCacheStatus,
               }),
           });
         },

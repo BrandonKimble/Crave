@@ -1,20 +1,22 @@
 import React from 'react';
 
-import type { SearchRuntimeBus } from './search-runtime-bus';
+import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
 import type { SearchResultsPanelHydrationKeyRuntime } from './search-results-panel-hydration-runtime-contract';
-import type { SearchResultsPayload } from './search-results-panel-runtime-state-contract';
+import type { SearchResultsPanelResultsRuntimeState } from './search-results-panel-runtime-state-contract';
+import { logPerfScenarioStackAttribution } from '../../../../perf/perf-scenario-attribution';
 
 type UseSearchResultsPanelHydrationKeyRuntimeArgs = {
-  searchRuntimeBus: SearchRuntimeBus;
-  resolvedResults: SearchResultsPayload;
-  runtimeHydratedResultsKey: string | null;
+  resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
+  resultsRuntimeState: Pick<
+    SearchResultsPanelResultsRuntimeState,
+    'resultsHydrationCandidateKey' | 'resultsPage' | 'resultsRequestKey'
+  >;
   isSearchSceneRenderAdmitted: () => boolean;
 };
 
 export const useSearchResultsPanelHydrationKeyRuntime = ({
-  searchRuntimeBus,
-  resolvedResults,
-  runtimeHydratedResultsKey,
+  resultsPresentationSurfaceAuthority,
+  resultsRuntimeState,
   isSearchSceneRenderAdmitted,
 }: UseSearchResultsPanelHydrationKeyRuntimeArgs): SearchResultsPanelHydrationKeyRuntime => {
   const [hydratedResultsKey, setHydratedResultsKey] = React.useState<string | null>(null);
@@ -23,6 +25,18 @@ export const useSearchResultsPanelHydrationKeyRuntime = ({
 
   const setHydratedResultsKeySync = React.useCallback(
     (nextHydrationKey: string | null) => {
+      logPerfScenarioStackAttribution({
+        owner: 'results_hydration_key_writer',
+        path: `setHydratedResultsKeySync:${hydratedResultsKeyRef.current ?? 'null'}->${
+          nextHydrationKey ?? 'null'
+        }`,
+        details: {
+          surfaceHydratedResultsKey:
+            resultsPresentationSurfaceAuthority.getSnapshot().hydratedResultsKey,
+          surfaceResultsHydrationKey:
+            resultsPresentationSurfaceAuthority.getSnapshot().resultsHydrationKey,
+        },
+      });
       hydratedResultsKeyRef.current = nextHydrationKey;
       if (typeof React.startTransition === 'function') {
         React.startTransition(() => {
@@ -31,33 +45,20 @@ export const useSearchResultsPanelHydrationKeyRuntime = ({
       } else {
         setHydratedResultsKey(nextHydrationKey);
       }
-      searchRuntimeBus.publish({
-        hydratedResultsKey: nextHydrationKey,
-      });
+      resultsPresentationSurfaceAuthority.publish(
+        {
+          hydratedResultsKey: nextHydrationKey,
+        },
+        'results_hydration_key_writer'
+      );
     },
-    [searchRuntimeBus]
+    [resultsPresentationSurfaceAuthority]
   );
 
-  const resultsPage = resolvedResults?.metadata?.page ?? 1;
-  const ungatedDishesLength = resolvedResults?.dishes?.length ?? 0;
-  const ungatedRestaurantsLength = resolvedResults?.restaurants?.length ?? 0;
-  const resultsHydrationCandidate = React.useMemo(() => {
-    if (!resolvedResults) {
-      return null;
-    }
-    const requestKey = resolvedResults?.metadata?.searchRequestId ?? 'no-request';
-    const totalFoodResults =
-      typeof resolvedResults.metadata?.totalFoodResults === 'number'
-        ? resolvedResults.metadata.totalFoodResults
-        : 'na';
-    const totalRestaurantResults =
-      typeof resolvedResults.metadata?.totalRestaurantResults === 'number'
-        ? resolvedResults.metadata.totalRestaurantResults
-        : 'na';
-    return `${requestKey}:page:${resultsPage}:dishes:${ungatedDishesLength}:restaurants:${ungatedRestaurantsLength}:totalFood:${totalFoodResults}:totalRestaurants:${totalRestaurantResults}`;
-  }, [resolvedResults, resultsPage, ungatedDishesLength, ungatedRestaurantsLength]);
+  const resultsPage = resultsRuntimeState.resultsPage ?? 1;
+  const resultsHydrationCandidate = resultsRuntimeState.resultsHydrationCandidateKey;
   const resultsHydrationKey =
-    resolvedResults == null
+    resultsHydrationCandidate == null
       ? null
       : resultsPage === 1
         ? resultsHydrationCandidate
@@ -69,27 +70,47 @@ export const useSearchResultsPanelHydrationKeyRuntime = ({
     isHydrationPendingForRuntime && isSearchSceneRenderAdmitted();
   const requestVersionKey = React.useMemo(
     () =>
-      `${resolvedResults?.metadata?.searchRequestId ?? 'no-request'}::${
+      `${resultsRuntimeState.resultsRequestKey ?? 'no-request'}::${
         resultsHydrationKey ?? 'no-hydration'
       }`,
-    [resolvedResults?.metadata?.searchRequestId, resultsHydrationKey]
+    [resultsHydrationKey, resultsRuntimeState.resultsRequestKey]
+  );
+
+  React.useEffect(
+    () =>
+      resultsPresentationSurfaceAuthority.subscribe(
+        () => {
+          const runtimeHydratedResultsKey =
+            resultsPresentationSurfaceAuthority.getSnapshot().hydratedResultsKey;
+          if (
+            runtimeHydratedResultsKey != null &&
+            runtimeHydratedResultsKey !== hydratedResultsKeyRef.current
+          ) {
+            logPerfScenarioStackAttribution({
+              owner: 'results_hydration_key_external_sync',
+              path: `${hydratedResultsKeyRef.current ?? 'null'}->${
+                runtimeHydratedResultsKey ?? 'null'
+              }`,
+              details: {
+                surfaceResultsHydrationKey:
+                  resultsPresentationSurfaceAuthority.getSnapshot().resultsHydrationKey,
+              },
+            });
+            hydratedResultsKeyRef.current = runtimeHydratedResultsKey;
+            setHydratedResultsKey(runtimeHydratedResultsKey);
+          }
+        },
+        ['hydratedResultsKey'] as const,
+        'results_panel_hydration_key_external_sync'
+      ),
+    [resultsPresentationSurfaceAuthority]
   );
 
   React.useEffect(() => {
-    if (
-      runtimeHydratedResultsKey != null &&
-      runtimeHydratedResultsKey !== hydratedResultsKeyRef.current
-    ) {
-      hydratedResultsKeyRef.current = runtimeHydratedResultsKey;
-      setHydratedResultsKey(runtimeHydratedResultsKey);
-    }
-  }, [runtimeHydratedResultsKey]);
-
-  React.useEffect(() => {
-    if (!resolvedResults) {
+    if (resultsRuntimeState.resultsRequestKey == null) {
       setHydratedResultsKeySync(null);
     }
-  }, [resolvedResults, setHydratedResultsKeySync]);
+  }, [resultsRuntimeState.resultsRequestKey, setHydratedResultsKeySync]);
 
   return React.useMemo(
     () => ({

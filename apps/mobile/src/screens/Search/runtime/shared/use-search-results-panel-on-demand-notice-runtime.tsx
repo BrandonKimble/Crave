@@ -20,7 +20,7 @@ export const useSearchResultsPanelOnDemandNoticeRuntime = ({
       onDemandEtaMs?: number;
       marketResolutionStatus?: 'resolved' | 'multi_market' | 'no_market' | 'error';
       displayMarketName?: string | null;
-      candidatePlaceName?: string | null;
+      candidateLocalityName?: string | null;
       collectableMarketKeys?: string[];
     };
     const collectableMarketCount = Array.isArray(metadata.collectableMarketKeys)
@@ -31,10 +31,10 @@ export const useSearchResultsPanelOnDemandNoticeRuntime = ({
       metadata.displayMarketName.trim()
         ? metadata.displayMarketName.trim()
         : null;
-    const candidatePlaceName =
-      typeof metadata.candidatePlaceName === 'string' &&
-      metadata.candidatePlaceName.trim()
-        ? metadata.candidatePlaceName.trim()
+    const candidateLocalityName =
+      typeof metadata.candidateLocalityName === 'string' &&
+      metadata.candidateLocalityName.trim()
+        ? metadata.candidateLocalityName.trim()
         : null;
 
     let noticeText: string | null = null;
@@ -51,14 +51,14 @@ export const useSearchResultsPanelOnDemandNoticeRuntime = ({
           etaText = hours === 1 ? 'about 1 hour' : `about ${hours} hours`;
         }
       }
-      const areaLabel = displayName ?? candidatePlaceName ?? 'this area';
+      const areaLabel = displayName ?? candidateLocalityName ?? 'this area';
       const searchLabel = onDemandNoticeQuery ? ` for ${onDemandNoticeQuery}` : '';
       const suffix = etaText ? ` Check back in ${etaText}.` : ' Check back soon.';
       noticeText = `Your search${searchLabel} is helping us grow coverage in ${areaLabel}. More searches like this help us learn what people want here.${suffix} Create a poll to get answers faster.`;
     } else if (collectableMarketCount === 0) {
-      if (metadata.marketResolutionStatus === 'no_market' && candidatePlaceName) {
+      if (metadata.marketResolutionStatus === 'no_market' && candidateLocalityName) {
         const searchLabel = onDemandNoticeQuery ? ` for ${onDemandNoticeQuery}` : '';
-        noticeText = `Your search${searchLabel} is helping us grow coverage in ${candidatePlaceName}. More searches like this help us learn what people want here. Check back soon, or create a poll to get answers faster.`;
+        noticeText = `Your search${searchLabel} is helping us grow coverage in ${candidateLocalityName}. More searches like this help us learn what people want here. Check back soon, or create a poll to get answers faster.`;
       } else if (displayName) {
         const searchLabel = onDemandNoticeQuery ? ` for ${onDemandNoticeQuery}` : '';
         noticeText = `Your search${searchLabel} is helping us grow coverage in ${displayName}. More searches like this help us learn what people want here. Check back soon, or create a poll to get answers faster.`;

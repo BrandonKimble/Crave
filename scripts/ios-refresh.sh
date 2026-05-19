@@ -537,14 +537,14 @@ run_ios() {
     return 0
   fi
 
-  if [[ -n "$IOS_DEVICE_NAME" ]]; then
-    EXPO_PACKAGER_HOSTNAME="$PACKAGER_HOSTNAME" REACT_NATIVE_PACKAGER_HOSTNAME="$PACKAGER_HOSTNAME" \
-      EXPO_DEV_SERVER_PORT="$PORT" RCT_METRO_PORT="$PORT" \
-      npx expo run:ios --device "$IOS_DEVICE_NAME" --no-bundler
-  elif [[ -n "$IOS_DEVICE_UDID" ]]; then
+  if [[ -n "$IOS_DEVICE_UDID" ]]; then
     EXPO_PACKAGER_HOSTNAME="$PACKAGER_HOSTNAME" REACT_NATIVE_PACKAGER_HOSTNAME="$PACKAGER_HOSTNAME" \
       EXPO_DEV_SERVER_PORT="$PORT" RCT_METRO_PORT="$PORT" \
       npx expo run:ios --device "$IOS_DEVICE_UDID" --no-bundler
+  elif [[ -n "$IOS_DEVICE_NAME" ]]; then
+    EXPO_PACKAGER_HOSTNAME="$PACKAGER_HOSTNAME" REACT_NATIVE_PACKAGER_HOSTNAME="$PACKAGER_HOSTNAME" \
+      EXPO_DEV_SERVER_PORT="$PORT" RCT_METRO_PORT="$PORT" \
+      npx expo run:ios --device "$IOS_DEVICE_NAME" --no-bundler
   else
     EXPO_PACKAGER_HOSTNAME="$PACKAGER_HOSTNAME" REACT_NATIVE_PACKAGER_HOSTNAME="$PACKAGER_HOSTNAME" \
       EXPO_DEV_SERVER_PORT="$PORT" RCT_METRO_PORT="$PORT" \
@@ -595,6 +595,38 @@ if [[ -z "$IOS_DEVICE_UDID" && -z "$IOS_DEVICE_NAME" ]]; then
   if [[ -n "$IOS_SIMULATOR_UDID" || -n "$IOS_SIMULATOR_NAME" ]]; then
     IOS_DEVICE_UDID="$IOS_SIMULATOR_UDID"
     IOS_DEVICE_NAME="$IOS_SIMULATOR_NAME"
+  fi
+fi
+
+if [[ -z "$IOS_DEVICE_UDID" && -n "$IOS_DEVICE_NAME" ]]; then
+  if command -v python3 >/dev/null 2>&1; then
+    IOS_DEVICE_UDID="$(
+      python3 - <<'PY' "$IOS_DEVICE_NAME"
+import json
+import subprocess
+import sys
+
+target = sys.argv[1].strip()
+if not target:
+    print("")
+    raise SystemExit(0)
+
+try:
+    data = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "--json"]))
+except Exception:
+    print("")
+    raise SystemExit(0)
+
+matches = [
+    device
+    for devices in (data.get("devices") or {}).values()
+    for device in (devices or [])
+    if device.get("name") == target and device.get("isAvailable") and device.get("state") != "Shutting Down"
+]
+matches.sort(key=lambda device: 0 if device.get("state") == "Booted" else 1)
+print(matches[0].get("udid", "") if matches else "")
+PY
+    )"
   fi
 fi
 

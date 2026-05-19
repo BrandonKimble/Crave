@@ -107,8 +107,8 @@ export function compileQueryPlanFromConstraints(
     restaurantFilters,
     connectionFilters,
     ranking: {
-      foodOrder: 'contextual_score DESC',
-      restaurantOrder: 'contextual_score DESC',
+      foodOrder: 'crave_score DESC',
+      restaurantOrder: 'crave_score DESC',
     },
     diagnostics: {
       missingEntities: getMissingScopes(constraints.stagePresence),
@@ -146,7 +146,7 @@ function buildDiagnosticNotes(constraints: SearchConstraints): string[] {
     constraints.stagePresence.foodAttributes === 0
   ) {
     notes.push(
-      'No food entities provided; results will not include contextual restaurant rankings.',
+      'No food entities provided; restaurant results will rank by public Crave Score.',
     );
   }
 

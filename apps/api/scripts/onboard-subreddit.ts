@@ -127,13 +127,6 @@ const parseArgs = (): ParsedArgs => {
 const normalizeMarketKey = (value: string): string =>
   value.trim().toLowerCase().replace(/\s+/g, '_');
 
-const normalizeLocationToken = (value: string): string =>
-  value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-
 const resolveViewportCenter = (viewport?: {
   low?: { latitude?: number; longitude?: number };
   high?: { latitude?: number; longitude?: number };
@@ -172,48 +165,6 @@ const computeDistanceMiles = (
       Math.sin(dLng / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return 3958.8 * c;
-};
-
-const buildLocalityMarketKey = (
-  addressComponents: Array<{
-    shortText?: string;
-    longText?: string;
-    types?: string[];
-  }> = [],
-): string | null => {
-  const lookup = (type: string): string | null => {
-    const component = addressComponents.find((entry) =>
-      entry.types?.includes(type),
-    );
-    if (!component) {
-      return null;
-    }
-    return component.shortText || component.longText || null;
-  };
-
-  const locality =
-    lookup('locality') || lookup('postal_town') || lookup('sublocality');
-  if (!locality) {
-    return null;
-  }
-
-  const region = lookup('administrative_area_level_1');
-  const country = lookup('country');
-
-  const tokens = [locality, region, country]
-    .filter(Boolean)
-    .map((value) => normalizeLocationToken(value!))
-    .filter((value) => value.length > 0);
-
-  if (!tokens.length) {
-    return null;
-  }
-
-  if (!region || !country) {
-    return tokens[0] ?? null;
-  }
-
-  return tokens.join('_');
 };
 
 const resolveLocalityDisplayName = (
@@ -326,7 +277,7 @@ const resolveExistingMarketKey = async (
   const resolveNumber = (
     value: Prisma.Decimal | number | null,
   ): number | null =>
-    value instanceof Prisma.Decimal ? value.toNumber() : (value ?? null);
+    value instanceof Prisma.Decimal ? value.toNumber() : value ?? null;
 
   const containingMarkets = marketCandidates
     .map((row) => {
@@ -375,25 +326,22 @@ const resolveExistingMarketKey = async (
 
   if (containingMarkets.length) {
     const epsilon = 1e-6;
-    const best = containingMarkets.reduce(
-      (winner, candidate) => {
-        if (!winner || candidate.area < winner.area - epsilon) {
+    const best = containingMarkets.reduce((winner, candidate) => {
+      if (!winner || candidate.area < winner.area - epsilon) {
+        return candidate;
+      }
+      if (Math.abs(candidate.area - winner.area) <= epsilon) {
+        const candidateDistance = computeDistanceMiles(
+          center,
+          candidate.center,
+        );
+        const winnerDistance = computeDistanceMiles(center, winner.center);
+        if (candidateDistance < winnerDistance) {
           return candidate;
         }
-        if (Math.abs(candidate.area - winner.area) <= epsilon) {
-          const candidateDistance = computeDistanceMiles(
-            center,
-            candidate.center,
-          );
-          const winnerDistance = computeDistanceMiles(center, winner.center);
-          if (candidateDistance < winnerDistance) {
-            return candidate;
-          }
-        }
-        return winner;
-      },
-      null as (typeof containingMarkets)[number] | null,
-    );
+      }
+      return winner;
+    }, null as (typeof containingMarkets)[number] | null);
 
     const rawKey = best?.marketKey?.trim() || best?.name?.trim() || null;
     return rawKey ? normalizeMarketKey(rawKey) : null;
@@ -445,7 +393,7 @@ const syncMarketSubredditMapping = async (params: {
         ? { marketShortName: preferredShortName }
         : {}),
       ...(params.displayName?.trim() &&
-      market.marketType === 'local_fallback' &&
+      market.marketType === 'locality' &&
       market.marketName !== params.displayName.trim()
         ? { marketName: params.displayName.trim() }
         : {}),
@@ -707,7 +655,7 @@ async function onboardSubreddit() {
       const derivedCenter =
         params.centerLat !== null && params.centerLng !== null
           ? { lat: params.centerLat, lng: params.centerLng }
-          : (viewportCenter ?? null);
+          : viewportCenter ?? null;
       const marketCenter = derivedCenter;
 
       let resolvedMarketKey =
@@ -724,14 +672,10 @@ async function onboardSubreddit() {
       }
 
       if (!resolvedMarketKey) {
-        const localityKey = buildLocalityMarketKey(placeAddressComponents);
-        if (!localityKey) {
-          console.warn(
-            '   Skipping: unable to derive locality-based market key.',
-          );
-          return;
-        }
-        resolvedMarketKey = localityKey;
+        console.warn(
+          '   Skipping: no existing market contains the resolved viewport center. Seed or bootstrap the target TomTom-backed market before mapping this subreddit.',
+        );
+        return;
       }
 
       const resolvedDisplayName = resolveLocalityDisplayName(

@@ -17,20 +17,15 @@ export const useSearchRootSearchSceneShellSpecPublicationRuntime = ({
   shouldShowResultsSurface: boolean;
   shouldShowInteractionLoadingState: boolean;
   searchScenePanelSurfaceRenderRuntime: SearchRootSearchScenePanelSurfaceRenderRuntime;
-}): SearchRouteSceneStackShellSpec =>
-  React.useMemo(
+}): SearchRouteSceneStackShellSpec => {
+  return React.useMemo(
     () =>
       normalizeSearchRouteSceneStackShellSpec({
         overlayKey: 'search',
-        snapPersistenceKey: null,
         snapPoints: searchSceneSheetPlaneRuntime.snapPoints,
         listScrollEnabled:
           !shouldShowInteractionLoadingState &&
           searchSceneSheetPlaneRuntime.interactionEnabled,
-        initialSnapPoint:
-          searchSceneSheetPlaneRuntime.sheetState === 'hidden'
-            ? 'middle'
-            : searchSceneSheetPlaneRuntime.sheetState,
         runtimeModel: searchSceneSheetPlaneRuntime.runtimeModel,
         preventSwipeDismiss: true,
         onDragStateChange: searchSceneSheetPlaneRuntime.handleResultsSheetDragStateChange,
@@ -57,9 +52,9 @@ export const useSearchRootSearchSceneShellSpecPublicationRuntime = ({
       searchSceneSheetPlaneRuntime.interactionEnabled,
       searchSceneSheetPlaneRuntime.onHidden,
       searchSceneSheetPlaneRuntime.runtimeModel,
-      searchSceneSheetPlaneRuntime.sheetState,
       searchSceneSheetPlaneRuntime.snapPoints,
       shouldShowResultsSurface,
       shouldShowInteractionLoadingState,
     ]
   );
+};

@@ -43,6 +43,13 @@ function getDatabaseUrl(): string {
 function resolveAppEnv(): string {
   const raw = process.env.APP_ENV || process.env.CRAVE_ENV;
   if (raw && raw.trim()) {
+    const normalized = raw.trim().toLowerCase();
+    if (normalized === 'production') {
+      return 'prod';
+    }
+    if (normalized === 'development') {
+      return 'dev';
+    }
     return raw.trim();
   }
 
@@ -53,6 +60,11 @@ function resolveAppEnv(): string {
   return 'dev';
 }
 
+function isProductionAppEnv(appEnv: string): boolean {
+  const normalized = appEnv.toLowerCase();
+  return normalized === 'prod' || normalized === 'production';
+}
+
 function resolveScopedEnv(
   appEnv: string,
   values: {
@@ -61,8 +73,7 @@ function resolveScopedEnv(
     fallback?: string;
   },
 ): string | undefined {
-  const normalized = appEnv.toLowerCase();
-  const selected = normalized === 'prod' ? values.prod : values.dev;
+  const selected = isProductionAppEnv(appEnv) ? values.prod : values.dev;
   return selected || values.fallback || undefined;
 }
 
@@ -72,8 +83,9 @@ function resolveSecretEnv(appEnv: string, name: string): string | undefined {
     return primary.trim();
   }
 
-  const normalized = appEnv.toLowerCase();
-  const legacyName = normalized === 'prod' ? `${name}_PROD` : `${name}_DEV`;
+  const legacyName = isProductionAppEnv(appEnv)
+    ? `${name}_PROD`
+    : `${name}_DEV`;
   const legacyValue = process.env[legacyName];
   if (legacyValue && legacyValue.trim()) {
     return legacyValue.trim();
@@ -384,6 +396,20 @@ export default () => {
         process.env.GOOGLE_MODERATION_ENDPOINT ||
         'https://contentmoderation.googleapis.com/v1beta/moderations:moderateText',
     },
+    tomtom: {
+      apiKey: resolveSecretEnv(appEnv, 'TOMTOM_API_KEY'),
+      timeout: parseInt(process.env.TOMTOM_TIMEOUT || '10000', 10),
+      reverseGeocodeBaseUrl:
+        process.env.TOMTOM_REVERSE_GEOCODE_BASE_URL ||
+        'https://api.tomtom.com/search/2/reverseGeocode',
+      additionalDataUrl:
+        process.env.TOMTOM_ADDITIONAL_DATA_URL ||
+        'https://api.tomtom.com/search/2/additionalData.json',
+      geometryZoom: process.env.TOMTOM_GEOMETRY_ZOOM
+        ? parseInt(process.env.TOMTOM_GEOMETRY_ZOOM, 10)
+        : undefined,
+      apiVersion: process.env.TOMTOM_API_VERSION || undefined,
+    },
     jwt: {
       secret: process.env.JWT_SECRET,
       expiresIn: process.env.JWT_EXPIRATION || '7d',
@@ -399,28 +425,10 @@ export default () => {
         process.env.SEARCH_ON_DEMAND_ESTIMATED_JOB_MINUTES || '120',
         10,
       ),
-      maxImmediateWaiting: parseInt(
-        process.env.SEARCH_ON_DEMAND_MAX_INSTANT_WAITING ||
-          process.env.SEARCH_INTEREST_MAX_INSTANT_WAITING ||
-          '3',
-        10,
-      ),
-      maxImmediateActive: parseInt(
-        process.env.SEARCH_ON_DEMAND_MAX_INSTANT_ACTIVE ||
-          process.env.SEARCH_INTEREST_MAX_INSTANT_ACTIVE ||
-          '1',
-        10,
-      ),
       maxProcessingBacklog: parseInt(
         process.env.SEARCH_ON_DEMAND_MAX_PROCESSING_BACKLOG ||
           process.env.SEARCH_INTEREST_MAX_PROCESSING_BACKLOG ||
           '10',
-        10,
-      ),
-      instantCooldownMs: parseInt(
-        process.env.SEARCH_ON_DEMAND_INSTANT_COOLDOWN_MS ||
-          process.env.SEARCH_INTEREST_INSTANT_COOLDOWN_MS ||
-          '300000',
         10,
       ),
     },

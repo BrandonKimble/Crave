@@ -10,12 +10,29 @@ import {
   startSearchNavSwitchRuntimeAttributionSpan,
 } from '../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
 import { useSearchNavSwitchCommitAttribution } from '../screens/Search/runtime/shared/use-search-nav-switch-commit-attribution';
+import { logPerfScenarioStackAttribution } from '../perf/perf-scenario-attribution';
 
 const areRouteOverlayGateSelectionsEqual = (
   left: Pick<SearchOverlayHostGateSnapshot, 'isFocused' | 'onProfilerRender'>,
   right: Pick<SearchOverlayHostGateSnapshot, 'isFocused' | 'onProfilerRender'>
-): boolean =>
-  left.isFocused === right.isFocused && left.onProfilerRender === right.onProfilerRender;
+): boolean => {
+  if (left.isFocused === right.isFocused && left.onProfilerRender === right.onProfilerRender) {
+    return true;
+  }
+  if (left.isFocused !== right.isFocused) {
+    logPerfScenarioStackAttribution({
+      owner: 'search_overlay_route_gate_selector_diff',
+      path: 'field:isFocused',
+    });
+  }
+  if (left.onProfilerRender !== right.onProfilerRender) {
+    logPerfScenarioStackAttribution({
+      owner: 'search_overlay_route_gate_selector_diff',
+      path: 'field:onProfilerRender',
+    });
+  }
+  return false;
+};
 
 export const SearchOverlayRouteGateHost = React.memo(
   ({
@@ -35,6 +52,7 @@ export const SearchOverlayRouteGateHost = React.memo(
         (listener: () => void) => overlayGateHostAuthority.subscribe(listener),
         [overlayGateHostAuthority]
       ),
+      subscribeSelector: overlayGateHostAuthority.subscribeSelector,
       getSnapshot: overlayGateHostAuthority.getSnapshot,
       selector: React.useCallback(
         (snapshot: SearchOverlayHostGateSnapshot) => ({
@@ -48,15 +66,31 @@ export const SearchOverlayRouteGateHost = React.memo(
       attributionOperation: 'gateSelector',
     });
     const { isFocused, onProfilerRender } = routeOverlayGateRuntime;
+    const profilerRenderRef = React.useRef(onProfilerRender);
+    profilerRenderRef.current = onProfilerRender;
+    const stableProfilerRender = React.useCallback<React.ProfilerOnRenderCallback>(
+      (id, phase, actualDuration, baseDuration, startTime, commitTime) => {
+        profilerRenderRef.current?.(
+          id,
+          phase,
+          actualDuration,
+          baseDuration,
+          startTime,
+          commitTime
+        );
+      },
+      []
+    );
+    const profilerContextValue = onProfilerRender ? stableProfilerRender : null;
 
     const routeOverlayGateHost = (
       <View
         pointerEvents={isFocused ? 'box-none' : 'none'}
         style={[styles.routeOverlayHostLayer, !isFocused && styles.routeOverlayHostHidden]}
       >
-        <SearchOverlayProfilerProvider value={onProfilerRender}>
+        <SearchOverlayProfilerProvider value={profilerContextValue}>
           {onProfilerRender ? (
-            <React.Profiler id="SearchRouteOverlayHost" onRender={onProfilerRender}>
+            <React.Profiler id="SearchRouteOverlayHost" onRender={stableProfilerRender}>
               {children}
             </React.Profiler>
           ) : (
@@ -73,6 +107,24 @@ export const SearchOverlayRouteGateHost = React.memo(
     });
 
     return routeOverlayGateHost;
+  },
+  (previousProps, nextProps) => {
+    if (previousProps.overlayGateHostAuthority !== nextProps.overlayGateHostAuthority) {
+      logPerfScenarioStackAttribution({
+        owner: 'search_overlay_route_gate_host_props_diff',
+        path: 'field:overlayGateHostAuthority',
+      });
+    }
+    if (previousProps.children !== nextProps.children) {
+      logPerfScenarioStackAttribution({
+        owner: 'search_overlay_route_gate_host_props_diff',
+        path: 'field:children',
+      });
+    }
+    return (
+      previousProps.overlayGateHostAuthority === nextProps.overlayGateHostAuthority &&
+      previousProps.children === nextProps.children
+    );
   }
 );
 

@@ -5,6 +5,7 @@ import {
   TextInput,
   Text as RNText,
   View,
+  type GestureResponderEvent,
   type LayoutChangeEvent,
   type ViewStyle,
 } from 'react-native';
@@ -62,8 +63,7 @@ type SearchHeaderProps = {
   onBlur: () => void;
   onClear: () => void;
   onPress?: () => void;
-  onPressIn?: () => void;
-  onInputTouchStart?: () => void;
+  onPressUp?: () => void;
   accentColor: string;
   showBack?: boolean;
   onBackPress?: () => void;
@@ -72,6 +72,7 @@ type SearchHeaderProps = {
   inputAnimatedStyle?: AnimatedStyle;
   containerAnimatedStyle?: AnimatedStyle;
   editable?: boolean;
+  inputFocusEnabled?: boolean;
   showInactiveSearchIcon?: boolean;
   isSearchSessionActive?: boolean;
   focusProgress?: SharedValue<number>;
@@ -89,8 +90,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
   onBlur,
   onClear,
   onPress,
-  onPressIn,
-  onInputTouchStart,
+  onPressUp,
   accentColor,
   showBack = false,
   onBackPress,
@@ -99,6 +99,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
   inputAnimatedStyle,
   containerAnimatedStyle,
   editable = true,
+  inputFocusEnabled = true,
   showInactiveSearchIcon = false,
   isSearchSessionActive = false,
   focusProgress: focusProgressProp,
@@ -172,11 +173,36 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
       ? containerAnimatedStyle
       : [containerAnimatedStyle];
   }, [containerAnimatedStyle]);
+  const handleSearchPressUp = React.useCallback(
+    (event: GestureResponderEvent) => {
+      event.stopPropagation?.();
+      (onPressUp ?? onPress ?? onFocus)?.();
+    },
+    [onFocus, onPress, onPressUp]
+  );
+  const handleBackPressUp = React.useCallback(
+    (event: GestureResponderEvent) => {
+      event.stopPropagation?.();
+      if (onBackPress) {
+        onBackPress();
+        return;
+      }
+      (onPress ?? onFocus)?.();
+    },
+    [onBackPress, onFocus, onPress]
+  );
+  const stopNestedPressPropagation = React.useCallback((event: GestureResponderEvent) => {
+    event.stopPropagation?.();
+  }, []);
   return (
     <View style={styles.wrapper} pointerEvents="box-none" onLayout={onLayout}>
       <Reanimated.View style={[styles.promptCard, ...resolvedContainerStyle]}>
         <View style={styles.promptCardInner}>
-          <Pressable style={styles.promptRow} onPress={onPress ?? onFocus} onPressIn={onPressIn}>
+          <Pressable
+            style={styles.promptRow}
+            onPress={stopNestedPressPropagation}
+            onPressOut={handleSearchPressUp}
+          >
             <View style={styles.promptInner}>
               <Reanimated.View style={[styles.inputRow, inputAnimatedStyle]}>
                 {shouldRenderLeadingSlot ? (
@@ -185,14 +211,8 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                       {showBack ? (
                         <Pressable
                           style={styles.leadingButton}
-                          onPressOut={(event) => {
-                            event.stopPropagation?.();
-                            if (onBackPress) {
-                              onBackPress();
-                              return;
-                            }
-                            (onPress ?? onFocus)?.();
-                          }}
+                          onPress={stopNestedPressPropagation}
+                          onPressOut={handleBackPressUp}
                           hitSlop={12}
                           accessibilityRole="button"
                           accessibilityLabel="Exit search"
@@ -224,13 +244,16 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                     setInputWidth((prev) => (Math.abs(prev - width) < 0.5 ? prev : width));
                   }}
                 >
-                  <Reanimated.View style={[styles.textInputContainer, textInputOpacityStyle]}>
+                  <Reanimated.View
+                    pointerEvents={inputFocusEnabled ? 'auto' : 'none'}
+                    style={[styles.textInputContainer, textInputOpacityStyle]}
+                  >
                     <TextInput
                       ref={inputRef}
                       value={resolvedValue}
                       onChangeText={onChangeText}
-                      placeholder={placeholder}
-                      placeholderTextColor={themeColors.textBody}
+                      placeholder=""
+                      placeholderTextColor="transparent"
                       style={[
                         styles.promptInput,
                         { paddingLeft: textStartInset },
@@ -253,8 +276,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                         })();
                         onBlur();
                       }}
-                      onTouchStart={onInputTouchStart}
-                      editable={editable}
+                      editable={editable && inputFocusEnabled}
                       multiline={false}
                       numberOfLines={1}
                       autoCapitalize="none"
@@ -283,6 +305,28 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                       {resolvedValue}
                     </RNText>
                   </Reanimated.View>
+                  {!hasValue ? (
+                    <View
+                      pointerEvents="none"
+                      style={[
+                        styles.placeholderOverlay,
+                        {
+                          paddingLeft: textStartInset,
+                          paddingRight: shouldReserveInlineSpinnerSpace
+                            ? INLINE_LOADING_PADDING_RIGHT
+                            : 0,
+                        },
+                      ]}
+                    >
+                      <RNText
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                        style={styles.placeholderText}
+                      >
+                        {placeholder}
+                      </RNText>
+                    </View>
+                  ) : null}
                   {shouldShowInlineLoading ? (
                     <View
                       pointerEvents="none"
@@ -433,6 +477,18 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.title,
     fontWeight: '400',
     color: '#000000',
+    includeFontPadding: false,
+  },
+  placeholderOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    zIndex: 2,
+    elevation: 2,
+  },
+  placeholderText: {
+    fontSize: FONT_SIZES.title,
+    fontWeight: '400',
+    color: themeColors.textBody,
     includeFontPadding: false,
   },
   inlineLoading: {

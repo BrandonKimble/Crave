@@ -7,6 +7,4 @@ export type ProfileAppExecutionArgs = {
   resultsExecutionArgs: ProfileAppResultsExecutionArgs;
 };
 
-export type ProfileAppResultsExecutionArgs = {
-  resultsSheetExecutionModel: import('../shared/results-presentation-owner-contract').ResultsSheetExecutionModel;
-};
+export type ProfileAppResultsExecutionArgs = Record<string, never>;

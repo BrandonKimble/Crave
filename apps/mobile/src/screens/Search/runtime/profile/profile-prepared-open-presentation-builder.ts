@@ -22,6 +22,7 @@ export const openPreparedProfilePresentationTransaction = ({
   shouldForceSharedMiddleSnap: boolean;
   status: 'opening' | 'open';
 }): PreparedProfilePresentationTransaction => {
+  const shouldPreserveSheetMotion = !shouldForceSharedMiddleSnap;
   const snapshot = createPreparedProfileOpenSnapshot(
     createTransactionId(),
     restaurantId,
@@ -29,6 +30,7 @@ export const openPreparedProfilePresentationTransaction = ({
     {
       selectedRestaurantId: restaurantId,
       targetCamera,
+      preserveSheetMotionOnOpen: shouldPreserveSheetMotion,
     }
   );
   applyPreparedProfileOpenSnapshot({
@@ -37,7 +39,6 @@ export const openPreparedProfilePresentationTransaction = ({
     status,
   });
   return resolvePreparedProfilePresentationTransaction(snapshot, {
-    shouldForceSharedMiddleSnap,
     profileOpenStatus: status,
   });
 };

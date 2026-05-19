@@ -9,6 +9,7 @@ import type {
 } from '../../overlays/useBottomSheetRuntime';
 
 export type SearchRouteSheetFrameHostInput = {
+  activeSemanticOverlayKey: SearchRouteOverlayRouteScope['activeOverlayRouteKey'] | null;
   overlaySheetPolicy: SearchRouteOverlaySheetPolicy | null;
   expandedSnapPoint: number;
   middleSnapPoint: number;

@@ -6,6 +6,7 @@ import { useOnboardingStore } from '../../store/onboardingStore';
 import { useCityStore } from '../../store/cityStore';
 import { usersService } from '../../services/users';
 import { logger } from '../../utils';
+import { usePerfScenarioRuntimeStore } from '../../perf/perf-scenario-runtime-store';
 import {
   type AppRouteState,
   type LaunchIntent,
@@ -69,6 +70,9 @@ const syncCityPreference = (
 
 export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isLoaded, isSignedIn } = useAuth();
+  const isPerfScenarioNavigationBypassActive = usePerfScenarioRuntimeStore(
+    (state) => __DEV__ && state.activeConfig != null
+  );
   const sessionListState = useSessionList();
   const sessionListIsLoaded = sessionListState.isLoaded;
   const availableSessions = sessionListIsLoaded ? sessionListState.sessions : undefined;
@@ -331,8 +335,9 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
     if (!isReady) {
       return null;
     }
-    const destination =
-      effectiveOnboardingStatus === 'completed'
+    const destination = isPerfScenarioNavigationBypassActive
+      ? 'main'
+      : effectiveOnboardingStatus === 'completed'
         ? authStatus === 'signed_in'
           ? 'main'
           : 'sign_in'
@@ -344,7 +349,14 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
       launchIntent: activeMainIntent,
       deferredIntent,
     };
-  }, [activeMainIntent, authStatus, deferredIntent, effectiveOnboardingStatus, isReady]);
+  }, [
+    activeMainIntent,
+    authStatus,
+    deferredIntent,
+    effectiveOnboardingStatus,
+    isPerfScenarioNavigationBypassActive,
+    isReady,
+  ]);
 
   React.useEffect(() => {
     if (!routeState) {

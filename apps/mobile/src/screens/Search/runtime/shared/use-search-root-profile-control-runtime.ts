@@ -11,7 +11,6 @@ import type {
   SearchRootProfileBridgeAuthorityRuntime,
   SearchRootRecentActivityAuthorityRuntime,
 } from './search-root-control-ports-runtime-contract';
-import type { ResultsPresentationOwner } from './use-results-presentation-runtime-owner';
 import {
   useSearchRootMapProfileControlLane,
   useSearchRootProfilePresentationControlLane,
@@ -33,7 +32,6 @@ type UseSearchRootProfileControlRuntimeArgs = {
   profileBridgeAuthorityRuntime: SearchRootProfileBridgeAuthorityRuntime;
   recentActivityAuthorityRuntime: SearchRootRecentActivityAuthorityRuntime;
   clearRestoreAuthorityRuntime: SearchRootClearRestoreAuthorityRuntime;
-  resultsPresentationOwner: Pick<ResultsPresentationOwner, 'resultsSheetExecutionModel'>;
 };
 
 export const useSearchRootProfileControlRuntime = ({
@@ -47,7 +45,6 @@ export const useSearchRootProfileControlRuntime = ({
   profileBridgeAuthorityRuntime,
   recentActivityAuthorityRuntime,
   clearRestoreAuthorityRuntime,
-  resultsPresentationOwner,
 }: UseSearchRootProfileControlRuntimeArgs): SearchRootProfileControlRuntimeValue => {
   const profileOwnerRuntime = useSearchRootProfileOwnerRuntime({
     sessionCoreLane,
@@ -60,12 +57,16 @@ export const useSearchRootProfileControlRuntime = ({
     profileBridgeAuthorityRuntime,
     recentActivityAuthorityRuntime,
     clearRestoreAuthorityRuntime,
-    resultsPresentationOwner,
   });
+  const getCurrentResultsSheetSnap = React.useCallback(
+    () => rootOverlayFoundationRuntime.appRouteResultsSheetRuntimeOwner.sheetState,
+    [rootOverlayFoundationRuntime.appRouteResultsSheetRuntimeOwner]
+  );
   const profileMapCommandRuntime = useSearchRootProfileMapCommandRuntime({
     profileOwner: profileOwnerRuntime.profileOwner,
     pendingMarkerOpenAnimationFrameRef:
       profileOwnerRuntime.pendingMarkerOpenAnimationFrameRef,
+    getCurrentResultsSheetSnap,
   });
 
   const suggestionInteractionControlLane =

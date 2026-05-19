@@ -20,12 +20,28 @@ export const useSearchRootOverlayHeaderSearchBarVisualRuntime = ({
   visualRuntime: SearchRootOverlayHeaderSearchBarVisualRuntime;
 }): SearchForegroundHeaderSearchBarVisualInputs => {
   const suggestionRuntime = stateFoundationLane.rootSuggestionRuntime;
+  const fullHeaderVisualModel =
+    resultsPresentationControlLane.resultsPresentationOwner.shellModel.headerVisualModel;
+  const headerVisualModel = React.useMemo(
+    () => ({
+      displayQuery: fullHeaderVisualModel.displayQuery,
+      chromeMode: fullHeaderVisualModel.chromeMode,
+      leadingIconMode: fullHeaderVisualModel.leadingIconMode,
+      trailingActionMode: fullHeaderVisualModel.trailingActionMode,
+      editable: fullHeaderVisualModel.editable,
+    }),
+    [
+      fullHeaderVisualModel.chromeMode,
+      fullHeaderVisualModel.displayQuery,
+      fullHeaderVisualModel.editable,
+      fullHeaderVisualModel.leadingIconMode,
+      fullHeaderVisualModel.trailingActionMode,
+    ]
+  );
 
   return React.useMemo(
     () => ({
-      headerVisualModel:
-        resultsPresentationControlLane.resultsPresentationOwner.shellModel
-          .headerVisualModel,
+      headerVisualModel,
       shouldShowAutocompleteSpinnerInBar:
         suggestionRuntime.shouldShowAutocompleteSpinnerInBar,
       searchBarInputAnimatedStyle: visualRuntime.searchBarInputAnimatedStyle,
@@ -37,8 +53,7 @@ export const useSearchRootOverlayHeaderSearchBarVisualRuntime = ({
       searchHeaderFocusProgress: suggestionRuntime.searchHeaderFocusProgress,
     }),
     [
-      resultsPresentationControlLane.resultsPresentationOwner.shellModel
-        .headerVisualModel,
+      headerVisualModel,
       suggestionInteractionControlLane.suggestionInteractionRuntime
         .isSuggestionScrollDismissing,
       suggestionRuntime.searchHeaderFocusProgress,

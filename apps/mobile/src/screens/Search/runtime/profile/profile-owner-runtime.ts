@@ -6,7 +6,6 @@ import { useProfileOwnerActionStatePortsRuntime } from './profile-owner-action-s
 import { useProfileOwnerActionSurfaceRuntime } from './profile-owner-action-surface-runtime';
 import { useProfileOwnerAutoOpenKickoffRuntime } from './profile-owner-auto-open-kickoff-runtime';
 import { useProfileOwnerAutoOpenPortsRuntime } from './profile-owner-auto-open-ports-runtime';
-import { useProfileOwnerNativeViewRuntime } from './profile-owner-native-view-runtime';
 import { useProfileOwnerPresentationViewRuntime } from './profile-owner-presentation-view-runtime';
 import { useProfileOwnerQueryActionContextRuntime } from './profile-owner-query-action-context-runtime';
 import { useProfileOwnerRefreshSelectionPortsRuntime } from './profile-owner-refresh-selection-ports-runtime';
@@ -56,7 +55,7 @@ export const useProfileOwner = ({
   nativeExecutionArgs,
   appExecutionArgs,
 }: UseProfileOwnerArgs): ProfileOwner => {
-  const { searchRuntimeBus } = searchContext;
+  const { resultsPresentationSurfaceAuthority, searchRuntimeBus } = searchContext;
   const runtimeStateOwner = useProfileOwnerRuntimeStateOwner({
     searchRuntimeBus,
     emitRuntimeMechanismEvent: nativeExecutionArgs.emitRuntimeMechanismEvent,
@@ -67,23 +66,19 @@ export const useProfileOwner = ({
     preparedPresentationRuntime,
   } = useProfileOwnerExecutionModelsRuntime({
     routeSceneRuntime,
-    searchRuntimeBus,
+    resultsPresentationSurfaceAuthority,
     runtimeStateOwner,
     nativeExecutionArgs,
     appExecutionArgs,
   });
 
   const {
-    transitionExecutionModel: { getLastVisibleSheetSnap, getLastCameraState },
+    transitionExecutionModel: { getLastCameraState },
   } = nativeExecutionModel;
   const { currentMapZoom, presentationModelRuntime } = useProfileOwnerPresentationViewRuntime({
     cameraTransitionPorts,
     runtimeStateOwner,
-    getLastVisibleSheetSnap,
     getLastCameraState,
-  });
-  const { restaurantSheetSnapController } = useProfileOwnerNativeViewRuntime({
-    nativeExecutionModel,
   });
   const profileViewState = presentationModelRuntime.profileViewState;
 
@@ -96,11 +91,17 @@ export const useProfileOwner = ({
   const runtimeState = useProfileOwnerRuntimeStateRuntime({
     searchContext,
     currentMapZoom,
+    fallbackMapZoom: cameraTransitionPorts.fallbackZoom,
     presentationModelRuntime,
     nativeExecutionModel,
     runtimeStateOwner,
   });
   const { hydrateRestaurantProfileById } = runtimeStateOwner.hydrationRuntime;
+  const {
+    getRestaurantProfileRequestSeq,
+    setRestaurantProfileRequestSeq,
+    cancelActiveHydrationIntent,
+  } = runtimeStateOwner.hydrationRuntime;
   const { resetRestaurantProfileFocusSession } = runtimeStateOwner.focusRuntime;
 
   const actionStatePorts = useProfileOwnerActionStatePortsRuntime({
@@ -122,6 +123,7 @@ export const useProfileOwner = ({
   );
 
   const refreshSelectionExecutionPorts = useProfileOwnerRefreshSelectionPortsRuntime({
+    setMapHighlightedRestaurantId: actionStatePorts.setMapHighlightedRestaurantId,
     hydrationRuntime: runtimeStateOwner.hydrationRuntime,
     hydrateRestaurantProfileById,
   });
@@ -138,8 +140,13 @@ export const useProfileOwner = ({
     actionExecutionPorts,
     refreshSelectionExecutionPorts,
     hydrateRestaurantProfileById,
+    getRestaurantProfileRequestSeq,
+    setRestaurantProfileRequestSeq,
+    cancelActiveHydrationIntent,
     resetRestaurantProfileFocusSession,
-    appExecutionRuntime: profileAppExecutionRuntime,
+    getProfileTransitionState: runtimeStateOwner.transitionRuntimeState.getProfileTransitionState,
+    finalizePreparedProfileCloseState:
+      runtimeStateOwner.closeRuntimeState.finalizationRuntimeState.finalizePreparedProfileCloseState,
   });
 
   useProfileOwnerAutoOpenKickoffRuntime({
@@ -152,9 +159,8 @@ export const useProfileOwner = ({
   return React.useMemo(
     () => ({
       profileViewState,
-      restaurantSheetSnapController,
       profileActions,
     }),
-    [profileActions, profileViewState, restaurantSheetSnapController]
+    [profileActions, profileViewState]
   );
 };

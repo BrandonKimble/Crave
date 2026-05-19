@@ -9,13 +9,12 @@ import {
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
-import type { StackNavigationProp } from '@react-navigation/stack';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
 import { colors as themeColors } from '../../constants/theme';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
+import { useFavoriteListDetailRouteActions } from '../../navigation/runtime/use-favorite-list-detail-route-actions';
 import { useSystemStatusStore } from '../../store/systemStatusStore';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
 import {
@@ -25,11 +24,11 @@ import {
   type FavoriteListVisibility,
 } from '../../services/favorite-lists';
 import { useFavoriteLists, favoriteListKeys } from '../../hooks/use-favorite-lists';
-import type { RootStackParamList } from '../../types/navigation';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
 import { useBottomSheetSceneStackBodyRenderActivity } from '../BottomSheetSceneStackBodyActivityContext';
 import { useSearchOverlayProfilerRender } from '../SearchOverlayProfilerContext';
+import { getCraveScoreColorFromScore } from '../../utils/quality-color';
 
 const ACTIVE_TAB_COLOR = themeColors.primary;
 const GRID_GAP = 12;
@@ -38,7 +37,6 @@ const TILE_BORDER = '#e2e8f0';
 const TILE_BG = '#f8fafc';
 const TILE_TEXT = '#0f172a';
 const TILE_SUBTEXT = themeColors.textBody;
-const PREVIEW_DOT = themeColors.textBody;
 const SEGMENT_BG = '#f1f5f9';
 const SEGMENT_ACTIVE = '#ffffff';
 const SEGMENT_TEXT = themeColors.textBody;
@@ -50,21 +48,6 @@ const FORM_TOGGLE_BG = '#f1f5f9';
 const FORM_TOGGLE_ACTIVE = '#0f172a';
 const SHARE_BASE_URL = process.env.EXPO_PUBLIC_SHARE_BASE_URL || 'https://crave-search.app';
 const EMPTY_FAVORITE_LISTS: ReadonlyArray<FavoriteListSummary> = [];
-
-const resolveRankColor = (score?: number | null) => {
-  if (score == null) {
-    return PREVIEW_DOT;
-  }
-  if (score >= 8) {
-    return '#10b981';
-  }
-  if (score >= 6) {
-    return '#f59e0b';
-  }
-  return '#fb7185';
-};
-
-type Navigation = StackNavigationProp<RootStackParamList>;
 
 type ListFormState = {
   mode: 'hidden' | 'create' | 'edit';
@@ -95,7 +78,7 @@ type BookmarkPreviewRowProps = {
 
 const BookmarkPreviewRow = React.memo(({ item }: BookmarkPreviewRowProps) => (
   <View style={styles.previewRow}>
-    <View style={[styles.previewDot, { backgroundColor: resolveRankColor(item.score) }]} />
+    <View style={[styles.previewDot, { backgroundColor: getCraveScoreColorFromScore(item.craveScore) }]} />
     <Text variant="caption" numberOfLines={1} style={styles.previewText}>
       {item.label}
       {item.subLabel ? ` • ${item.subLabel}` : ''}
@@ -433,7 +416,7 @@ type BookmarksDataSurfaceProps = {
 const BookmarksDataSurface = React.memo(
   ({ shouldSubscribeDataLane, sceneReady }: BookmarksDataSurfaceProps) => {
     const onProfilerRender = useSearchOverlayProfilerRender();
-    const navigation = useNavigation<Navigation>();
+    const { openFavoriteListDetailRoute } = useFavoriteListDetailRouteActions();
     const queryClient = useQueryClient();
     const isOffline = useSystemStatusStore((state) => state.isOffline);
     const serviceIssue = useSystemStatusStore((state) => state.serviceIssue);
@@ -536,9 +519,14 @@ const BookmarksDataSurface = React.memo(
 
     const handleListPress = React.useCallback(
       (listId: string) => {
-        navigation.navigate('FavoritesListDetail', { listId });
+        openFavoriteListDetailRoute({
+          listId,
+          parentSceneKey: 'bookmarks',
+          ownerSceneKey: 'bookmarks',
+          openerRouteKey: 'bookmarks',
+        });
       },
-      [navigation]
+      [openFavoriteListDetailRoute]
     );
 
     const handleShare = React.useCallback(async (list: FavoriteListSummary) => {

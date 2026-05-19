@@ -12,7 +12,6 @@ import type {
   SearchRootRecentActivityAuthorityRuntime,
 } from './search-root-control-ports-runtime-contract';
 import { useSearchRootProfileBridgePublicationRuntime } from './use-search-root-profile-bridge-publication-runtime';
-import type { ResultsPresentationOwner } from './use-results-presentation-runtime-owner';
 import { useProfileOwner } from '../profile/profile-owner-runtime';
 import { useSearchRootProfilePresentationRuntime } from './use-search-root-profile-presentation-runtime';
 import { useSearchRootProfileSelectionRuntime } from './use-search-root-profile-selection-runtime';
@@ -30,7 +29,6 @@ type UseSearchRootProfileOwnerRuntimeArgs = {
   profileBridgeAuthorityRuntime: SearchRootProfileBridgeAuthorityRuntime;
   recentActivityAuthorityRuntime: SearchRootRecentActivityAuthorityRuntime;
   clearRestoreAuthorityRuntime: SearchRootClearRestoreAuthorityRuntime;
-  resultsPresentationOwner: Pick<ResultsPresentationOwner, 'resultsSheetExecutionModel'>;
 };
 
 export const useSearchRootProfileOwnerRuntime = ({
@@ -44,7 +42,6 @@ export const useSearchRootProfileOwnerRuntime = ({
   profileBridgeAuthorityRuntime,
   recentActivityAuthorityRuntime,
   clearRestoreAuthorityRuntime,
-  resultsPresentationOwner,
 }: UseSearchRootProfileOwnerRuntimeArgs): SearchRootProfileOwnerRuntimeValue => {
   const { rootPrimitivesRuntime, rootDataPlaneRuntime } = stateFoundationLane;
   const { selectionModelForProfileOwner, restaurantSelectionModel, analyticsModel } =
@@ -72,6 +69,9 @@ export const useSearchRootProfileOwnerRuntime = ({
     routeSceneRuntime: rootOverlayFoundationRuntime.routeSceneRuntime,
     searchContext: {
       searchRuntimeBus: sessionCoreLane.searchRuntimeBus,
+      resultsPresentationSurfaceAuthority:
+        sessionCoreLane.resultsPresentationSurfaceAuthority,
+      getCurrentViewportBounds: () => sessionCoreLane.viewportBoundsService.getBounds(),
       trimmedQuery: rootPrimitivesRuntime.searchState.query.trim(),
       restaurantOnlyId: rootPrimitivesRuntime.searchState.restaurantOnlyId,
       isProfileAutoOpenSuppressed:
@@ -96,15 +96,12 @@ export const useSearchRootProfileOwnerRuntime = ({
       },
       closeExecutionArgs: {
         pendingMarkerOpenAnimationFrameRef,
-        resultsHydrationKey: rootDataPlaneRuntime.hydrationRuntimeState.resultsHydrationKey,
-        hydratedResultsKey: rootDataPlaneRuntime.hydrationRuntimeState.hydratedResultsKey,
         hydrationOperationId: rootDataPlaneRuntime.runtimeFlags.hydrationOperationId,
         phaseBMaterializerRef: sessionCoreLane.phaseBMaterializerRef,
         clearSearchAfterProfileDismiss:
           clearRestoreAuthorityRuntime.clearOwner.clearSearchAfterProfileDismiss,
       },
       resultsExecutionArgs: {
-        resultsSheetExecutionModel: resultsPresentationOwner.resultsSheetExecutionModel,
       },
     },
   });

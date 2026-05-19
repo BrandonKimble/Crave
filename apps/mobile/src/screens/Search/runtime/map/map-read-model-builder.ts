@@ -18,7 +18,7 @@ type BuildMarkerCatalogArgs = {
     restaurant: RestaurantResult,
     anchor: Coordinate | null
   ) => ResolvedRestaurantMapLocation | null;
-  getQualityColorFromScore: (score: number | null | undefined) => string;
+  getCraveScoreColorFromScore: (score: number | null | undefined) => string;
 };
 
 const orderByEntry = (left: MarkerCatalogEntry, right: MarkerCatalogEntry): number => {
@@ -48,7 +48,7 @@ export const buildMarkerCatalogReadModel = (
     locationSelectionAnchor,
     resolveRestaurantMapLocations,
     pickPreferredRestaurantMapLocation,
-    getQualityColorFromScore,
+    getCraveScoreColorFromScore,
   } = args;
 
   const entries: MarkerCatalogEntry[] = [];
@@ -78,10 +78,8 @@ export const buildMarkerCatalogReadModel = (
     });
 
     dishesByLocation.forEach(({ dish, rank }) => {
-      const contextualScore = dish.contextualScore ?? dish.qualityScore;
-      const pinColorContextual = getQualityColorFromScore(contextualScore);
-      const pinColorGlobal = getQualityColorFromScore(dish.qualityScore);
-      const pinColor = pinColorContextual;
+      const craveScore = dish.craveScore;
+      const pinColor = getCraveScoreColorFromScore(craveScore);
       const featureId = `dish-${dish.connectionId}`;
       const feature: Feature<Point, RestaurantFeatureProperties> = {
         type: 'Feature',
@@ -93,11 +91,10 @@ export const buildMarkerCatalogReadModel = (
         properties: {
           restaurantId: dish.restaurantId,
           restaurantName: dish.restaurantName,
-          contextualScore,
+          craveScore,
+          scoreDelta7d: dish.scoreDelta7d ?? null,
           rank,
           pinColor,
-          pinColorGlobal,
-          pinColorContextual,
           isDishPin: true,
           dishName: dish.foodName,
           connectionId: dish.connectionId,
@@ -120,11 +117,8 @@ export const buildMarkerCatalogReadModel = (
         return;
       }
 
-      const pinColorGlobal = getQualityColorFromScore(restaurant.restaurantQualityScore);
-      const pinColorContextual = getQualityColorFromScore(
-        restaurant.contextualScore ?? restaurant.restaurantQualityScore
-      );
-      const pinColor = pinColorContextual;
+      const craveScore = restaurant.craveScore;
+      const pinColor = getCraveScoreColorFromScore(craveScore);
       const locations = resolveRestaurantMapLocations(restaurant);
       const shouldRenderAllLocations =
         selectedRestaurantId !== null && restaurant.restaurantId === selectedRestaurantId;
@@ -149,11 +143,10 @@ export const buildMarkerCatalogReadModel = (
           properties: {
             restaurantId: restaurant.restaurantId,
             restaurantName: restaurant.restaurantName,
-            contextualScore: restaurant.contextualScore,
+            craveScore,
+            scoreDelta7d: restaurant.scoreDelta7d ?? null,
             rank,
             pinColor,
-            pinColorGlobal,
-            pinColorContextual,
           },
         };
         entries.push({

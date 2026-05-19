@@ -46,6 +46,7 @@ export const useProfileOwnerRuntimeStateOwner = ({
   const closeRuntimeState = useProfileCloseRuntimeStateOwner({
     profileControllerStateRef,
     clearRestaurantPanelSnapshot: () => publishRestaurantPanelSnapshot(null),
+    clearMapHighlightedRestaurantId: () => shellRuntimeState.setMapHighlightedRestaurantId(null),
     resetRestaurantFocusSession: focusRuntime.resetRestaurantProfileFocusSession,
   });
 

@@ -1,18 +1,20 @@
 import type React from 'react';
 
 import type { ArmSearchCloseRestoreOptions } from './results-presentation-shell-runtime-contract';
+import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
 import type { ResultsPresentationOwnerBridgeStateRuntime } from './use-results-presentation-owner-bridge-state-runtime';
 import type { ResultsPresentationOwnerShellStateRuntime } from './use-results-presentation-owner-shell-state-runtime';
 import { useResultsPresentationOwnerCloseRuntime } from './use-results-presentation-owner-close-runtime';
 
 type UseResultsPresentationOwnerCloseStateRuntimeArgs<Suggestion> = {
+  searchRuntimeBus: SearchRuntimeBus;
   clearSearchState: () => void;
   armSearchCloseRestore: (options?: ArmSearchCloseRestoreOptions) => boolean;
   commitSearchCloseRestore: () => boolean;
   cancelSearchCloseRestore: () => void;
   flushPendingSearchOriginRestore: () => boolean;
-  requestDefaultPostSearchRestore: () => void;
+  requestDefaultPostSearchRestore: (options?: { mode?: 'full' | 'chrome-only' }) => void;
   cancelActiveSearchRequest: () => void;
   cancelAutocomplete: () => void;
   handleCancelPendingMutationWork: () => void;
@@ -35,6 +37,7 @@ export type ResultsPresentationOwnerCloseStateRuntime = ReturnType<
 >;
 
 export const useResultsPresentationOwnerCloseStateRuntime = <Suggestion>({
+  searchRuntimeBus,
   clearSearchState,
   armSearchCloseRestore,
   commitSearchCloseRestore,
@@ -58,6 +61,7 @@ export const useResultsPresentationOwnerCloseStateRuntime = <Suggestion>({
   routeSceneVisibilityPolicyRuntime,
 }: UseResultsPresentationOwnerCloseStateRuntimeArgs<Suggestion>): ResultsPresentationOwnerCloseStateRuntime => {
   return useResultsPresentationOwnerCloseRuntime({
+    searchRuntimeBus,
     clearSearchState,
     armSearchCloseRestore,
     commitSearchCloseRestore,

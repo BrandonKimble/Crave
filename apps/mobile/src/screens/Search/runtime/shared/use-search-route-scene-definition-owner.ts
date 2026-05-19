@@ -61,7 +61,6 @@ export const useSearchRouteSceneDefinitionOwner = ({
     profileControlRuntime,
     resultsControlRuntime,
     filterModalControlLane,
-    surfacePolicyController: searchRouteResultsPolicyRuntime.surfacePolicyController,
     readModelPolicyWriters: searchRouteResultsPolicyRuntime.readModelPolicyWriters,
   });
 
@@ -71,16 +70,13 @@ export const useSearchRouteSceneDefinitionOwner = ({
   });
 
   useSearchRouteSearchSceneBodyInputOwner({
-    routeSceneInputLane,
     routeSearchSceneModel,
   });
 
   useSearchRouteSearchSceneBusPublicationOwner({
     sessionAssemblyRuntime,
-    stateAssemblyRuntime,
     routeSearchSceneModel,
-    profileControlRuntime,
-    resultsControlRuntime,
+    routeSceneSwitchAuthority,
     filterModalControlLane,
     foregroundInteractionControlLane,
   });

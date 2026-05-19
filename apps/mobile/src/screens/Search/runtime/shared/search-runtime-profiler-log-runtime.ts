@@ -15,7 +15,7 @@ export const logSearchProfilerSpan = ({
   stageHint,
   nowMs,
   runNumber,
-  shortcutHarnessRunId,
+  scenarioRunId,
   shouldEmitProfilerSpanLog,
   shouldEmitNavSwitchProfilerLog,
   activeNavSwitchProbe,
@@ -28,7 +28,7 @@ export const logSearchProfilerSpan = ({
   stageHint: string;
   nowMs: number;
   runNumber: number;
-  shortcutHarnessRunId: string | null;
+  scenarioRunId: string | null;
   shouldEmitProfilerSpanLog: boolean;
   shouldEmitNavSwitchProfilerLog: boolean;
   activeNavSwitchProbe: {
@@ -60,7 +60,7 @@ export const logSearchProfilerSpan = ({
       commitSpanMs: Number(commitSpanMs.toFixed(1)),
       nowMs: Number(nowMs.toFixed(1)),
       runNumber,
-      harnessRunId: shortcutHarnessRunId,
+      scenarioRunId,
     });
   }
 

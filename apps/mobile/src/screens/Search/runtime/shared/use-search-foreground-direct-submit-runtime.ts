@@ -21,6 +21,7 @@ type UseSearchForegroundDirectSubmitRuntimeArgs = Pick<
   | 'isSearchLoading'
   | 'isLoadingMore'
   | 'isSearchSessionActive'
+  | 'isSuggestionPanelActive'
   | 'shouldShowDockedPollsRef'
   | 'prepareSearchSessionEntry'
   | 'suppressAutocompleteResults'
@@ -63,6 +64,7 @@ export const useSearchForegroundDirectSubmitRuntime = ({
   isSearchLoading,
   isLoadingMore,
   isSearchSessionActive,
+  isSuggestionPanelActive,
   shouldShowDockedPollsRef,
   prepareSearchSessionEntry,
   suppressAutocompleteResults,
@@ -87,11 +89,13 @@ export const useSearchForegroundDirectSubmitRuntime = ({
   const querySubmitRuntime = useSearchForegroundQuerySubmitRuntime({
     submitRuntime,
     query,
+    isSuggestionPanelActive,
     shouldShowDockedPollsRef,
     submitPreparationRuntime,
   });
   const viewportShortcutRuntime = useSearchForegroundViewportShortcutRuntime({
     submitRuntime,
+    isSuggestionPanelActive,
     shouldShowDockedPollsRef,
     setQuery,
     submitPreparationRuntime,

@@ -46,10 +46,10 @@ export const useResultsPresentationShellLocalState = ({
   const [holdPersistentPollLane, setHoldPersistentPollLane] = React.useState(false);
 
   React.useEffect(() => {
-    if (isSuggestionPanelActive && inputMode !== 'editing') {
+    if (isSuggestionPanelActive && backdropTarget !== 'results' && inputMode !== 'editing') {
       setInputMode('editing');
     }
-  }, [inputMode, isSuggestionPanelActive]);
+  }, [backdropTarget, inputMode, isSuggestionPanelActive]);
 
   React.useEffect(() => {
     if (searchCloseTransitionState) {

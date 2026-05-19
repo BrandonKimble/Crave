@@ -41,6 +41,7 @@ import { usePollsPanelHeaderModelPublication } from './runtime/polls-panel-heade
 import { PollsHeaderBadge, PollsHeaderTitleText } from './pollsHeaderVisuals';
 import { CONTROL_HEIGHT, CONTROL_RADIUS } from '../../screens/Search/constants/ui';
 import { useSearchNavSwitchCommitAttribution } from '../../screens/Search/runtime/shared/use-search-nav-switch-commit-attribution';
+import { logPerfScenarioSearchRequestLifecycle } from '../../perf/perf-scenario-attribution';
 
 const OPTION_COLORS = ['#f97316', '#fb7185', '#c084fc', '#38bdf8', '#facc15', '#34d399'] as const;
 const CARD_GAP = 4;
@@ -82,13 +83,14 @@ type PollsSceneBodyState = AppRoutePollsSceneBodySnapshot;
 
 type PollsSceneBodyRenderState = Pick<
   AppRoutePollsSceneBodySnapshot,
-  'bootstrapSnapshot' | 'userLocation' | 'params' | 'currentSnap' | 'interactionRef'
+  'bounds' | 'bootstrapSnapshot' | 'userLocation' | 'params' | 'currentSnap' | 'interactionRef'
 >;
 
 const arePollsSceneBodyRenderStatesEqual = (
   left: PollsSceneBodyRenderState,
   right: PollsSceneBodyRenderState
 ): boolean =>
+  left.bounds === right.bounds &&
   left.bootstrapSnapshot === right.bootstrapSnapshot &&
   left.userLocation === right.userLocation &&
   left.params === right.params &&
@@ -98,6 +100,7 @@ const arePollsSceneBodyRenderStatesEqual = (
 const selectPollsSceneBodyRenderState = (
   snapshot: AppRoutePollsSceneBodySnapshot
 ): PollsSceneBodyRenderState => ({
+  bounds: snapshot.bounds,
   bootstrapSnapshot: snapshot.bootstrapSnapshot,
   userLocation: snapshot.userLocation,
   params: snapshot.params,
@@ -166,7 +169,15 @@ const usePollsMountedSceneHeaderActionRuntime = (): PollsMountedSceneHeaderActio
     const sceneState = routeSceneRuntime.routePollsSceneRuntime.sceneAuthority.getSnapshot();
     if ((sceneState.mode ?? 'docked') === 'overlay') {
       sceneState.onRequestReturnToSearch?.();
+      return;
     }
+    routeSceneRuntime.routeSceneSwitchRuntime.requestOverlaySwitch({
+      targetSceneKey: 'polls',
+      sheetTransitionKind: 'gesture',
+      sheetOpenerSource: 'routeCommand',
+      sheetMotion: { kind: 'snapTo', snap: 'collapsed' },
+      snapPersistence: 'sharedOnly',
+    });
   }, [routeSceneRuntime]);
 
   const handleHeaderActionPress = React.useCallback(() => {
@@ -196,7 +207,7 @@ const usePollsMountedSceneHeaderActionRuntime = (): PollsMountedSceneHeaderActio
     pushRoute('pollCreation', {
       marketKey: marketOverride ?? marketKey ?? null,
       marketName:
-        headerModel?.marketName ?? params?.marketName ?? headerModel?.candidatePlaceName ?? null,
+        headerModel?.marketName ?? params?.marketName ?? headerModel?.candidateLocalityName ?? null,
       bounds: sceneState.bounds ?? null,
     });
   }, [handleClose, pushRoute, routeSceneRuntime]);
@@ -244,6 +255,31 @@ const PollsSceneHeader = React.memo(
     const badgeCount = headerModel?.badgeCount ?? '0';
     const badgeLabel = headerModel?.badgeLabel ?? 'live';
     const isBadgeMuted = headerModel?.isBadgeMuted ?? true;
+
+    React.useEffect(() => {
+      logPerfScenarioSearchRequestLifecycle({
+        source: 'polls.mountedHeader',
+        phase: 'poll_header_rendered',
+        renderedPollHeaderAction: headerModel?.headerAction ?? null,
+        renderedPollHeaderBadgeCount: badgeCount,
+        renderedPollHeaderBadgeLabel: badgeLabel,
+        renderedPollHeaderCandidateLocalityName: headerModel?.candidateLocalityName ?? null,
+        renderedPollHeaderMarketKey: headerModel?.marketKey ?? null,
+        renderedPollHeaderMarketName: headerModel?.marketName ?? null,
+        renderedPollHeaderMarketOverride: headerModel?.marketOverride ?? null,
+        renderedPollHeaderTitle: headerTitle,
+      });
+    }, [
+      badgeCount,
+      badgeLabel,
+      headerModel?.candidateLocalityName,
+      headerModel?.headerAction,
+      headerModel?.marketKey,
+      headerModel?.marketName,
+      headerModel?.marketOverride,
+      headerTitle,
+    ]);
+
     return (
       <OverlaySheetHeaderChrome
         onGrabHandlePress={handleClose}
@@ -528,12 +564,12 @@ export const PollsMountedSceneBody = React.memo(() => {
     }
     pushRoute('pollCreation', {
       marketKey: marketKey ?? null,
-      marketName: pollsPanelFeedRuntime.marketName ?? pollsPanelFeedRuntime.candidatePlaceName,
+      marketName: pollsPanelFeedRuntime.marketName ?? pollsPanelFeedRuntime.candidateLocalityName,
       bounds: bounds ?? null,
     });
   }, [
     bounds,
-    pollsPanelFeedRuntime.candidatePlaceName,
+    pollsPanelFeedRuntime.candidateLocalityName,
     pollsPanelFeedRuntime.marketKey,
     pollsPanelFeedRuntime.marketName,
     pollsPanelFeedRuntime.marketOverride,
@@ -581,13 +617,14 @@ export const PollsMountedSceneBody = React.memo(() => {
   const isExpandedSurface =
     pollsPanelFeedRuntime.resolvedSnap === 'middle' ||
     pollsPanelFeedRuntime.resolvedSnap === 'expanded';
+  const maybeListHeaderComponent = isExpandedSurface ? listHeaderComponent : null;
 
   let emptyMessage = 'No polls available yet.';
   if (
     pollsPanelFeedRuntime.marketStatus === 'no_market' &&
-    pollsPanelFeedRuntime.candidatePlaceName
+    pollsPanelFeedRuntime.candidateLocalityName
   ) {
-    emptyMessage = `Create the first poll in ${pollsPanelFeedRuntime.candidatePlaceName} and start surfacing local favorites.`;
+    emptyMessage = `Create the first poll in ${pollsPanelFeedRuntime.candidateLocalityName} and start surfacing local favorites.`;
   } else if (pollsPanelFeedRuntime.marketName) {
     emptyMessage = `Create the first poll in ${pollsPanelFeedRuntime.marketName} and start surfacing local favorites.`;
   }
@@ -615,7 +652,7 @@ export const PollsMountedSceneBody = React.memo(() => {
   if (pollsPanelFeedRuntime.shouldHoldFreshLiveContent) {
     return (
       <View style={bodyContentStyle}>
-        {listHeaderComponent}
+        {maybeListHeaderComponent}
         <View style={styles.loaderCentered}>
           {pollsPanelFeedRuntime.pollFeedFreshnessError ? null : (
             <SquircleSpinner size={22} color={ACCENT} />
@@ -632,7 +669,7 @@ export const PollsMountedSceneBody = React.memo(() => {
 
   return (
     <View style={bodyContentStyle}>
-      {listHeaderComponent}
+      {maybeListHeaderComponent}
       {shouldShowCollapsedSpinner ? (
         <View style={styles.loaderCentered}>
           <SquircleSpinner size={22} color={ACCENT} />
@@ -676,7 +713,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
   },
   collapsedContent: {
+    flex: 1,
+    alignSelf: 'stretch',
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
+    backgroundColor: 'transparent',
   },
   collapsedCards: {
     gap: CARD_GAP,

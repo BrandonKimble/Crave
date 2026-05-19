@@ -1,5 +1,10 @@
 import React from 'react';
 
+import {
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+} from '../../../../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 import { logger } from '../../../../utils';
 import type {
   ScheduleToggleCommit,
@@ -119,6 +124,16 @@ export const useResultsPresentationToggleStateRuntime = ({
         intentId,
         kind: interactionKind,
       });
+      const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+      if (isPerfScenarioAttributionActive(scenarioConfig)) {
+        logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+          event: 'results_toggle_press_up_contract',
+          intentId,
+          kind: interactionKind,
+          coverState: 'interaction_loading',
+          preserveSheetState: true,
+        });
+      }
       searchRuntimeBus.batch(() => {
         if (startPatch != null) {
           searchRuntimeBus.publish(startPatch);

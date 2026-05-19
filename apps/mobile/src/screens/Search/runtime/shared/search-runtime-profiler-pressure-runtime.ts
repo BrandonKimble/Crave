@@ -1,6 +1,6 @@
 import React from 'react';
 
-import type { RunOneHandoffCoordinatorLike } from './use-search-runtime-instrumentation-runtime-contract';
+import type { SearchSurfaceRedrawCoordinatorLike } from './use-search-runtime-instrumentation-runtime-contract';
 
 const RUN_ONE_COMMIT_SPAN_PRESSURE_THRESHOLD_MS = 45;
 const RUN_ONE_COMMIT_SPAN_PRESSURE_COMPONENT_IDS = new Set([
@@ -11,20 +11,20 @@ const RUN_ONE_COMMIT_SPAN_PRESSURE_COMPONENT_IDS = new Set([
   'BottomNav',
 ]);
 
-export const applyRunOneCommitSpanPressure = ({
+export const applySearchSurfaceRedrawCommitSpanPressure = ({
   id,
   commitSpanMs,
   resolvedRunNumber,
   getPerfNow,
-  runOneCommitSpanPressureByOperationRef,
-  runOneHandoffCoordinatorRef,
+  searchSurfaceRedrawCommitSpanPressureByOperationRef,
+  searchSurfaceRedrawCoordinatorRef,
 }: {
   id: string;
   commitSpanMs: number;
   resolvedRunNumber: number;
   getPerfNow: () => number;
-  runOneCommitSpanPressureByOperationRef: React.MutableRefObject<Map<string, number>>;
-  runOneHandoffCoordinatorRef: React.MutableRefObject<RunOneHandoffCoordinatorLike>;
+  searchSurfaceRedrawCommitSpanPressureByOperationRef: React.MutableRefObject<Map<string, number>>;
+  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinatorLike>;
 }): void => {
   if (
     resolvedRunNumber !== 1 ||
@@ -34,26 +34,26 @@ export const applyRunOneCommitSpanPressure = ({
     return;
   }
 
-  const handoffSnapshot = runOneHandoffCoordinatorRef.current.getSnapshot();
+  const handoffSnapshot = searchSurfaceRedrawCoordinatorRef.current.getSnapshot();
   const operationId = handoffSnapshot.operationId;
   if (!operationId || handoffSnapshot.phase === 'idle') {
     return;
   }
 
   const previousMaxCommitSpanMs =
-    runOneCommitSpanPressureByOperationRef.current.get(operationId) ?? 0;
+    searchSurfaceRedrawCommitSpanPressureByOperationRef.current.get(operationId) ?? 0;
   const nextMaxCommitSpanMs = Math.max(previousMaxCommitSpanMs, commitSpanMs);
   if (nextMaxCommitSpanMs > previousMaxCommitSpanMs) {
-    runOneCommitSpanPressureByOperationRef.current.set(
+    searchSurfaceRedrawCommitSpanPressureByOperationRef.current.set(
       operationId,
       nextMaxCommitSpanMs
     );
   }
   if (previousMaxCommitSpanMs <= 0) {
-    runOneHandoffCoordinatorRef.current.advancePhase(handoffSnapshot.phase, {
+    searchSurfaceRedrawCoordinatorRef.current.advancePhase(handoffSnapshot.phase, {
       operationId,
       commitSpanPressure: true,
-      maxRun1CommitSpanMs: Number(nextMaxCommitSpanMs.toFixed(1)),
+      maxSearchSurfaceRedrawCommitSpanMs: Number(nextMaxCommitSpanMs.toFixed(1)),
       commitSpanPressureComponent: id,
       commitSpanPressureDetectedAtMs: Number(getPerfNow().toFixed(1)),
     });

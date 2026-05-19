@@ -7,16 +7,16 @@ import type {
 } from 'react-native';
 import type { FlashListProps } from '@shopify/flash-list';
 
-import type { SharedValue } from 'react-native-reanimated';
-
 import type { BottomSheetWithFlashListBaseProps } from './bottomSheetWithFlashListContract';
 import type {
   SearchRouteSceneStackBodyContentEntry as SearchRouteSceneBodyContentEntry,
   SearchRouteSceneStackBodyTransportEntry as SearchRouteSceneBodyTransportEntry,
   SearchRouteSceneStackChromeEntry as SearchRouteSceneChromeEntry,
 } from './searchRouteSceneStackSheetContract';
+import type { SharedValue } from 'react-native-reanimated';
 import type { AppRouteSceneStackSurfaceAuthority } from '../navigation/runtime/app-route-scene-stack-surface-contract';
 import type { AppRouteSceneDisplayTargetRegistry } from '../navigation/runtime/app-route-scene-display-target-registry';
+import type { OverlayKey } from './types';
 
 export type BottomSheetSceneStackBodyDefaults = {
   scrollHeaderComponent: React.ReactNode;
@@ -67,10 +67,11 @@ export type BottomSheetSceneStackHostProps = {
   routeSceneDisplayTargetRegistry: AppRouteSceneDisplayTargetRegistry;
   shadowShellStyle: StyleProp<ViewStyle>;
   surfaceStyle: StyleProp<ViewStyle>;
-  fixedHeaderComponent: React.ReactNode;
   scrollHeaderComponent: React.ReactNode;
   onHeaderLayout: (event: LayoutChangeEvent) => void;
   onScrollHeaderLayout: (event: LayoutChangeEvent) => void;
   scrollHeaderSyncStyle: StyleProp<ViewStyle>;
+  displayedSceneKey: OverlayKey | null;
   bodyRuntimeAuthority: BottomSheetSceneStackBodyRuntimeAuthority;
+  sheetYValue?: SharedValue<number>;
 };

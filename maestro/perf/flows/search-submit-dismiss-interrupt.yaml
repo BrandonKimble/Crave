@@ -1,0 +1,35 @@
+appId: com.brandonkimble.cravesearch
+---
+- tapOn:
+    text: 'Search'
+    optional: true
+- tapOn:
+    text: 'Close polls'
+    optional: true
+- tapOn:
+    text: 'Close results'
+    optional: true
+- extendedWaitUntil:
+    visible: 'Show best restaurants here'
+    timeout: 15000
+- openLink: crave://perf-scenario-mark?phase=measured_repeat_loop_start
+- openLink: crave://perf-scenario-command?action=submit_close_then_submit_shortcut&delayMs=60&resubmitDelayMs=0
+- extendedWaitUntil:
+    visible: 'Close results'
+    timeout: 10000
+- extendedWaitUntil:
+    visible: 'Toggle results between restaurants and dishes'
+    timeout: 10000
+- extendedWaitUntil:
+    visible: 'Toggle open now results'
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 1000
+- tapOn:
+    text: 'Close results'
+- waitForAnimationToEnd:
+    timeout: 1000
+- extendedWaitUntil:
+    visible: 'Show best restaurants here'
+    timeout: 10000
+- openLink: crave://perf-scenario-mark?phase=measured_repeat_loop_end

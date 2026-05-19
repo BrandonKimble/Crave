@@ -3,7 +3,7 @@ import React from 'react';
 import type { ResultsCloseTransitionActions } from './results-presentation-shell-runtime-contract';
 import type { ResultsSheetInteractionModel } from './results-sheet-interaction-contract';
 import type {
-  SearchRootPreparedResultsSnapshotControlLane,
+  SearchRootSearchSurfaceResultsTransactionControlLane,
   SearchRootPresentationStateRuntime,
   SearchRootResultsPresentationStateControlLane,
   SearchRootResultsSheetControlLane,
@@ -40,12 +40,12 @@ export const useSearchRootResultsTransitionControlLane = (
     [closeTransitionActions]
   );
 
-export const useSearchRootPreparedResultsSnapshotControlLane = (
-  preparedResultsSnapshotKey: string | null
-): SearchRootPreparedResultsSnapshotControlLane =>
+export const useSearchRootSearchSurfaceResultsTransactionControlLane = (
+  searchSurfaceResultsTransactionKey: string | null
+): SearchRootSearchSurfaceResultsTransactionControlLane =>
   React.useMemo(
     () => ({
-      preparedResultsSnapshotKey,
+      searchSurfaceResultsTransactionKey,
     }),
-    [preparedResultsSnapshotKey]
+    [searchSurfaceResultsTransactionKey]
   );

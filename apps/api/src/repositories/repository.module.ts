@@ -3,7 +3,6 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { SharedModule } from '../shared/shared.module';
 import { EntityRepository } from './entity.repository';
 import { ConnectionRepository } from './connection.repository';
-import { EntityPriorityMetricsRepository } from './entity-priority-metrics.repository';
 
 /**
  * Repository module providing data access layer
@@ -12,15 +11,7 @@ import { EntityPriorityMetricsRepository } from './entity-priority-metrics.repos
  */
 @Module({
   imports: [PrismaModule, SharedModule],
-  providers: [
-    EntityRepository,
-    ConnectionRepository,
-    EntityPriorityMetricsRepository,
-  ],
-  exports: [
-    EntityRepository,
-    ConnectionRepository,
-    EntityPriorityMetricsRepository,
-  ],
+  providers: [EntityRepository, ConnectionRepository],
+  exports: [EntityRepository, ConnectionRepository],
 })
 export class RepositoryModule {}

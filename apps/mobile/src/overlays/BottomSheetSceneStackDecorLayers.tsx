@@ -1,6 +1,5 @@
 import React from 'react';
-import { StyleSheet } from 'react-native';
-import Animated, { type SharedValue, useAnimatedStyle } from 'react-native-reanimated';
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import type { BottomSheetSceneStackChromeEntry } from './bottomSheetSceneStackHostContract';
 import { BottomSheetSceneStackMountedChrome } from './BottomSheetSceneStackMountedChromeRegistry';
@@ -11,28 +10,28 @@ type SceneStackDecorLayerKind = 'underlay' | 'background' | 'overlay';
 type SceneStackDecorLayerProps = {
   entry: BottomSheetSceneStackChromeEntry;
   kind: SceneStackDecorLayerKind;
-  visibilityValue: SharedValue<number>;
+  promotedZIndex?: number;
+  isVisible: boolean;
 };
 
 type SceneStackHeaderLayerProps = {
   entry: BottomSheetSceneStackChromeEntry;
-  visibilityValue: SharedValue<number>;
+  promotedZIndex?: number;
+  isVisible: boolean;
 };
 
 export const SceneStackDecorLayer = React.memo(
-  ({ entry, kind, visibilityValue }: SceneStackDecorLayerProps) => {
+  ({ entry, kind, promotedZIndex, isVisible }: SceneStackDecorLayerProps) => {
     const { sceneKey } = entry;
-    const visibilityStyle = useAnimatedStyle(
-      () => {
-        const isVisible = visibilityValue.value > 0.5;
-        return {
-          display: isVisible ? 'flex' : 'none',
-          opacity: visibilityValue.value,
-          zIndex: isVisible ? 2 : 0,
-        };
-      },
-      [visibilityValue]
-    );
+    const visibilityStyle = React.useMemo<StyleProp<ViewStyle>>(() => {
+      const resolvedZIndex = promotedZIndex ?? (kind === 'overlay' ? 30 : 0);
+      return {
+        display: isVisible ? 'flex' : 'none',
+        opacity: isVisible ? 1 : 0,
+        zIndex: isVisible ? resolvedZIndex : 0,
+        elevation: isVisible ? resolvedZIndex : 0,
+      };
+    }, [isVisible, kind, promotedZIndex]);
     const component =
       entry.surfaceKind === 'mounted' && entry.mountedChromeKey != null ? (
         <BottomSheetSceneStackMountedChrome
@@ -53,34 +52,33 @@ export const SceneStackDecorLayer = React.memo(
     const pointerEvents = kind === 'overlay' ? 'box-none' : 'none';
 
     return (
-      <Animated.View
+      <View
         key={`${kind}-${sceneKey}`}
         pointerEvents={pointerEvents}
         style={[StyleSheet.absoluteFillObject, visibilityStyle]}
       >
         {component}
-      </Animated.View>
+      </View>
     );
   },
   (previousProps, nextProps) =>
     previousProps.entry === nextProps.entry &&
     previousProps.kind === nextProps.kind &&
-    previousProps.visibilityValue === nextProps.visibilityValue
+    previousProps.promotedZIndex === nextProps.promotedZIndex &&
+    previousProps.isVisible === nextProps.isVisible
 );
 
 export const SceneStackHeaderLayer = React.memo(
-  ({ entry, visibilityValue }: SceneStackHeaderLayerProps) => {
-    const visibilityStyle = useAnimatedStyle(
-      () => {
-        const isVisible = visibilityValue.value > 0.5;
-        return {
-          display: isVisible ? 'flex' : 'none',
-          opacity: visibilityValue.value,
-          zIndex: isVisible ? 2 : 0,
-        };
-      },
-      [visibilityValue]
-    );
+  ({ entry, promotedZIndex, isVisible }: SceneStackHeaderLayerProps) => {
+    const visibilityStyle = React.useMemo<StyleProp<ViewStyle>>(() => {
+      const resolvedZIndex = promotedZIndex ?? 40;
+      return {
+        display: isVisible ? 'flex' : 'none',
+        opacity: isVisible ? 1 : 0,
+        zIndex: isVisible ? resolvedZIndex : 0,
+        elevation: isVisible ? resolvedZIndex : 0,
+      };
+    }, [isVisible, promotedZIndex]);
     const headerComponent =
       entry.surfaceKind === 'mounted' && entry.mountedChromeKey != null ? (
         <BottomSheetSceneStackMountedChrome
@@ -95,16 +93,17 @@ export const SceneStackHeaderLayer = React.memo(
     }
 
     return (
-      <Animated.View
+      <View
         key={`header-${entry.sceneKey}`}
         pointerEvents="auto"
         style={[styles.sceneHeaderLayer, visibilityStyle]}
       >
         {headerComponent}
-      </Animated.View>
+      </View>
     );
   },
   (previousProps, nextProps) =>
     previousProps.entry === nextProps.entry &&
-    previousProps.visibilityValue === nextProps.visibilityValue
+    previousProps.promotedZIndex === nextProps.promotedZIndex &&
+    previousProps.isVisible === nextProps.isVisible
 );

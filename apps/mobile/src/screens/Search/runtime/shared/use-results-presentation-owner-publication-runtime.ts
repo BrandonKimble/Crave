@@ -13,12 +13,12 @@ type UseResultsPresentationOwnerPublicationRuntimeArgs = {
   submittedQuery: string;
   isSearchSessionActive: boolean;
   hasResults: boolean;
+  profilePresentationActiveRef: React.MutableRefObject<boolean>;
+  prepareRestaurantProfileForTerminalSearchDismissRef: React.MutableRefObject<() => void>;
   ignoreNextSearchBlurRef: React.MutableRefObject<boolean>;
   isClearingSearchRef: React.MutableRefObject<boolean>;
-  handleCloseResultsUiReset: () => void;
   resultsSheetRuntime: Pick<
     AppRouteResultsSheetRuntimeOwner,
-    | 'animateSheetTo'
     | 'prepareShortcutSheetTransition'
     | 'resultsSheetRuntimeModel'
     | 'shouldRenderResultsSheetRef'
@@ -35,9 +35,10 @@ export const useResultsPresentationOwnerPublicationRuntime = ({
   submittedQuery,
   isSearchSessionActive,
   hasResults,
+  profilePresentationActiveRef,
+  prepareRestaurantProfileForTerminalSearchDismissRef,
   ignoreNextSearchBlurRef,
   isClearingSearchRef,
-  handleCloseResultsUiReset,
   resultsSheetRuntime,
   routeSceneVisibilityPolicyRuntime,
   ownerStateRuntime,
@@ -46,7 +47,6 @@ export const useResultsPresentationOwnerPublicationRuntime = ({
     bridgeStateRuntime,
     shellStateRuntime,
     closeTransitionRuntime,
-    resultsSheetExecutionModel,
   } = ownerStateRuntime;
   const { resultsRuntimeOwner, interactionModel } = bridgeStateRuntime;
   const { shellLocalState, shellModel } = shellStateRuntime;
@@ -56,29 +56,29 @@ export const useResultsPresentationOwnerPublicationRuntime = ({
     submittedQuery,
     isSearchSessionActive,
     hasResults,
+    profilePresentationActiveRef,
+    prepareRestaurantProfileForTerminalSearchDismissRef,
     ignoreNextSearchBlurRef,
     isClearingSearchRef,
-    handleCloseResultsUiReset,
     resultsSheetRuntime,
     shellLocalState,
     resultsRuntimeOwner,
-    scheduleCloseSearchCleanup: closeTransitionRuntime.scheduleCloseSearchCleanup,
     cancelCloseSearchCleanup: closeTransitionRuntime.cancelCloseSearchCleanup,
     setPendingCloseIntentId: closeTransitionRuntime.setPendingCloseIntentId,
     matchesPendingCloseIntentId: closeTransitionRuntime.matchesPendingCloseIntentId,
     beginCloseTransition: closeTransitionRuntime.beginCloseTransition,
-    markSearchSheetCloseSheetSettled:
-      closeTransitionRuntime.closeTransitionActions.markSearchSheetCloseSheetSettled,
     cancelSearchSheetCloseTransition:
       closeTransitionRuntime.closeTransitionActions.cancelSearchSheetCloseTransition,
     routeSceneVisibilityPolicyRuntime,
   });
 
   return useResultsPresentationOwnerValueRuntime({
-    preparedResultsSnapshotKey: resultsRuntimeOwner.preparedResultsSnapshotKey,
+    searchSurfaceResultsTransactionKey: resultsRuntimeOwner.searchSurfaceResultsTransactionKey,
     pendingTogglePresentationIntentId: resultsRuntimeOwner.pendingTogglePresentationIntentId,
     scheduleToggleCommit: resultsRuntimeOwner.scheduleToggleCommit,
     cancelToggleInteraction: resultsRuntimeOwner.cancelToggleInteraction,
+    beginSearchThisAreaPresentationPending:
+      resultsRuntimeOwner.beginSearchThisAreaPresentationPending,
     handlePageOneResultsCommitted: resultsRuntimeOwner.handlePageOneResultsCommitted,
     cancelPresentationIntent: resultsRuntimeOwner.cancelPresentationIntent,
     handlePresentationIntentAbort: resultsRuntimeOwner.handlePresentationIntentAbort,
@@ -91,6 +91,5 @@ export const useResultsPresentationOwnerPublicationRuntime = ({
     presentationActions,
     closeTransitionActions: closeTransitionRuntime.closeTransitionActions,
     interactionModel,
-    resultsSheetExecutionModel,
   });
 };

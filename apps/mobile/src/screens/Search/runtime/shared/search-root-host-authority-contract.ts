@@ -9,10 +9,7 @@ import type { RouteGlobalRestaurantOverlaySnapshot } from '../../../../navigatio
 import type { RouteLocalRestaurantOverlaySessionSnapshot } from '../../../../navigation/runtime/route-local-restaurant-overlay-session-snapshot-contract';
 import type { SearchRouteSheetHostFrameSnapshot } from './search-route-sheet-host-frame-snapshot-contract';
 import type {
-  SearchOverlayChromeContainerSnapshot,
-  SearchOverlayChromeFrameSnapshot,
-  SearchOverlayChromeHeaderProps,
-  SearchOverlayChromeSuggestionSurfaceProps,
+  SearchOverlayChromeHostSnapshot,
   SearchForegroundHeaderSearchBarInteractionInputs,
   SearchForegroundHeaderSearchBarLayoutInputs,
   SearchForegroundHeaderSearchBarVisualInputs,
@@ -25,22 +22,11 @@ import type {
   SearchForegroundSuggestionPanelInputs,
   SearchForegroundSuggestionScrollInputs,
   SearchForegroundSuggestionSelectionInputs,
-  SearchForegroundSuggestionStatusInputs,
 } from './search-foreground-chrome-contract';
 import type { SearchRootOverlaySuggestionShellContainerRuntime } from './use-search-root-overlay-suggestion-shell-container-runtime';
 import type { SnapshotAuthority } from './use-snapshot-authority';
 
-export type SearchOverlayChromeFrameHostAuthority =
-  SnapshotAuthority<SearchOverlayChromeFrameSnapshot>;
-
-export type SearchOverlayChromeContainerHostAuthority =
-  SnapshotAuthority<SearchOverlayChromeContainerSnapshot>;
-
-export type SearchOverlayChromeHeaderHostAuthority =
-  SnapshotAuthority<SearchOverlayChromeHeaderProps>;
-
-export type SearchOverlayChromeSuggestionSurfaceHostAuthority =
-  SnapshotAuthority<SearchOverlayChromeSuggestionSurfaceProps>;
+export type SearchOverlayChromeHostAuthority = SnapshotAuthority<SearchOverlayChromeHostSnapshot>;
 
 export type SearchOverlayGateHostAuthority = SnapshotAuthority<SearchOverlayHostGateSnapshot>;
 
@@ -76,9 +62,6 @@ export type SearchOverlaySuggestionPanelHostAuthority =
 
 export type SearchOverlaySuggestionDataHostAuthority =
   SnapshotAuthority<SearchForegroundSuggestionDataInputs>;
-
-export type SearchOverlaySuggestionStatusHostAuthority =
-  SnapshotAuthority<SearchForegroundSuggestionStatusInputs>;
 
 export type SearchOverlaySuggestionScrollHostAuthority =
   SnapshotAuthority<SearchForegroundSuggestionScrollInputs>;

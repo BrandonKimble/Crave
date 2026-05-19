@@ -22,9 +22,9 @@ export const useSearchRootSuggestionRuntime = ({
   rootDataPlaneRuntime,
   searchChromeScalarSurfacePresentationRuntime,
 }: UseSearchRootSuggestionRuntimeArgs) => {
-  const shouldFreezeSuggestionDisplayForRunOne =
-    rootDataPlaneRuntime.freezeGate.isRunOneChromeFreezeActive ||
-    rootDataPlaneRuntime.freezeGate.isRunOnePreflightFreezeActive ||
+  const shouldFreezeSuggestionDisplayForSearchSurfaceRedraw =
+    rootDataPlaneRuntime.freezeGate.isSearchSurfaceRedrawChromeFreezeActive ||
+    rootDataPlaneRuntime.freezeGate.isSearchSurfaceRedrawPreflightFreezeActive ||
     rootDataPlaneRuntime.freezeGate.isResponseFrameFreezeActive;
   const suggestionPresentationPlaneRuntime = useSearchSuggestionPresentationPlaneRuntime({
     searchInteractionRef: rootSessionPrimitivesLane.primitives.searchInteractionRef,
@@ -33,16 +33,13 @@ export const useSearchRootSuggestionRuntime = ({
     recentSearches: rootDataPlaneRuntime.historyRuntime.recentSearches,
     recentlyViewedRestaurants: rootDataPlaneRuntime.historyRuntime.recentlyViewedRestaurants,
     recentlyViewedFoods: rootDataPlaneRuntime.historyRuntime.recentlyViewedFoods,
-    isRecentLoading: rootDataPlaneRuntime.historyRuntime.isRecentLoading,
-    isRecentlyViewedLoading: rootDataPlaneRuntime.historyRuntime.isRecentlyViewedLoading,
-    isRecentlyViewedFoodsLoading: rootDataPlaneRuntime.historyRuntime.isRecentlyViewedFoodsLoading,
     isSuggestionPanelActive: rootPrimitivesRuntime.searchState.isSuggestionPanelActive,
     isAutocompleteSuppressed: rootPrimitivesRuntime.searchState.isAutocompleteSuppressed,
     isAutocompleteLoading: rootDataPlaneRuntime.requestStatusRuntime.isAutocompleteLoading,
     setSuggestions: rootPrimitivesRuntime.searchState.setSuggestions,
     setShowSuggestions: rootPrimitivesRuntime.searchState.setShowSuggestions,
     setBeginSuggestionCloseHold: rootPrimitivesRuntime.searchState.setBeginSuggestionCloseHold,
-    shouldFreezeSuggestionDisplayForRunOne,
+    shouldFreezeSuggestionDisplayForSearchSurfaceRedraw,
     searchChromeScalarSurfacePresentationRuntime,
   });
   const suggestionLayoutPlaneRuntime = useSearchSuggestionLayoutPlaneRuntime({

@@ -3,6 +3,11 @@ import React from 'react';
 import type { SearchSessionOriginContext } from '../../overlays/searchRouteSessionTypes';
 import type { OverlayKey, OverlaySheetSnap } from '../../overlays/types';
 import type { SearchRouteSceneSnapMeta } from '../../overlays/searchRouteSceneShellMotionContract';
+import {
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+} from '../../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../../perf/perf-scenario-runtime-store';
 import type { AppRouteSceneTransitionAuthority } from './app-route-scene-switch-authority';
 import type { RouteSceneSwitchTransitionActions } from './app-route-scene-switch-controller';
 
@@ -12,17 +17,8 @@ export type RouteSheetSharedSnap = Exclude<OverlaySheetSnap, 'hidden' | 'collaps
 
 export const ROUTE_SHARED_SNAP_PERSISTENCE_KEY = 'search-route-shared-snap';
 
-export type DockedPollsSnapRequest = {
-  snap: OverlaySheetSnap;
-  token: number;
-};
-
 export type AppRouteSheetSnapSessionSnapshot = Readonly<{
-  pollsDockedSnapRequest: DockedPollsSnapRequest | null;
   isDockedPollsDismissed: boolean;
-  dockedPollsRestoreInFlight: boolean;
-  ignoreDockedPollsHiddenUntilMs: number;
-  pollCreationSnapRequest: Exclude<OverlaySheetSnap, 'hidden'> | null;
   isNavRestorePending: boolean;
   capturedOriginContext: SearchSessionOriginContext | null;
   pendingOriginRestoreContext: SearchSessionOriginContext | null;
@@ -38,27 +34,12 @@ export type AppRouteSheetSnapSessionAuthority = {
   getSnapshot: () => AppRouteSheetSnapSessionSnapshot;
 };
 
-type RequestRouteSceneDockedPollsRestoreArgs = {
-  snap?: Exclude<OverlaySheetSnap, 'hidden'>;
-  isDockedPollsDismissed?: boolean;
-  hasUserSharedSnap?: boolean;
-  sharedSnap?: RouteSheetSharedSnap;
-};
-
 export type AppRouteSheetSnapSessionActions = {
-  setPollsDockedSnapRequest: (next: React.SetStateAction<DockedPollsSnapRequest | null>) => void;
   setIsDockedPollsDismissed: (next: React.SetStateAction<boolean>) => void;
-  setDockedPollsRestoreInFlight: (next: React.SetStateAction<boolean>) => void;
-  setIgnoreDockedPollsHiddenUntilMs: (next: React.SetStateAction<number>) => void;
-  setPollCreationSnapRequest: (
-    next: React.SetStateAction<Exclude<OverlaySheetSnap, 'hidden'> | null>
-  ) => void;
   setNavRestorePending: (next: boolean) => void;
   setCapturedOriginContext: (next: SearchSessionOriginContext | null) => void;
   setPendingOriginRestoreContext: (next: SearchSessionOriginContext | null) => void;
   setIsSearchOriginRestorePending: (next: boolean) => void;
-  requestRouteSceneDockedPollsRestore: (args?: RequestRouteSceneDockedPollsRestoreArgs) => void;
-  requestRouteScenePollCreationExpand: () => void;
   recordRouteSceneSheetSettle: (args: { sceneKey: OverlayKey; snap: OverlaySheetSnap }) => void;
   settleRouteSceneTabSnap: (args: {
     sceneKey: 'bookmarks' | 'profile';
@@ -97,11 +78,7 @@ export type AppRouteSheetSnapSessionRuntime = {
 const DEFAULT_SHARED_SNAP: RouteSheetSharedSnap = 'expanded';
 
 const createInitialSnapshot = (): AppRouteSheetSnapSessionSnapshot => ({
-  pollsDockedSnapRequest: null,
   isDockedPollsDismissed: false,
-  dockedPollsRestoreInFlight: false,
-  ignoreDockedPollsHiddenUntilMs: 0,
-  pollCreationSnapRequest: null,
   isNavRestorePending: false,
   capturedOriginContext: null,
   pendingOriginRestoreContext: null,
@@ -115,11 +92,18 @@ const createInitialSnapshot = (): AppRouteSheetSnapSessionSnapshot => ({
 const resolveStateUpdate = <TValue>(current: TValue, next: React.SetStateAction<TValue>): TValue =>
   typeof next === 'function' ? (next as (value: TValue) => TValue)(current) : next;
 
-const isSharedOverlayKey = (overlayKey: OverlayKey): boolean =>
-  overlayKey === 'polls' ||
-  overlayKey === 'pollCreation' ||
-  overlayKey === 'bookmarks' ||
-  overlayKey === 'profile';
+const isSharedOverlaySnapOwner = ({
+  rootOverlay,
+  activeOverlayKey,
+}: {
+  rootOverlay: OverlayKey;
+  activeOverlayKey: OverlayKey;
+}): boolean =>
+  activeOverlayKey === 'polls' ||
+  activeOverlayKey === 'pollCreation' ||
+  activeOverlayKey === 'bookmarks' ||
+  activeOverlayKey === 'profile' ||
+  (rootOverlay === 'search' && activeOverlayKey === 'restaurant');
 
 export const useAppRouteSheetSnapSessionSelector = <TSelected>({
   authority,
@@ -149,43 +133,15 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
 
   private snapshot = createInitialSnapshot();
 
-  private nextDockedPollsSnapRequestToken = 0;
-
   public readonly authority: AppRouteSheetSnapSessionAuthority = {
     subscribe: (listener) => this.subscribe(listener),
     getSnapshot: () => this.snapshot,
   };
 
   public readonly actions: AppRouteSheetSnapSessionActions = {
-    setPollsDockedSnapRequest: (next) => {
-      this.commit({
-        pollsDockedSnapRequest: resolveStateUpdate(this.snapshot.pollsDockedSnapRequest, next),
-      });
-    },
     setIsDockedPollsDismissed: (next) => {
       this.commit({
         isDockedPollsDismissed: resolveStateUpdate(this.snapshot.isDockedPollsDismissed, next),
-      });
-    },
-    setDockedPollsRestoreInFlight: (next) => {
-      this.commit({
-        dockedPollsRestoreInFlight: resolveStateUpdate(
-          this.snapshot.dockedPollsRestoreInFlight,
-          next
-        ),
-      });
-    },
-    setIgnoreDockedPollsHiddenUntilMs: (next) => {
-      this.commit({
-        ignoreDockedPollsHiddenUntilMs: resolveStateUpdate(
-          this.snapshot.ignoreDockedPollsHiddenUntilMs,
-          next
-        ),
-      });
-    },
-    setPollCreationSnapRequest: (next) => {
-      this.commit({
-        pollCreationSnapRequest: resolveStateUpdate(this.snapshot.pollCreationSnapRequest, next),
       });
     },
     setNavRestorePending: (next) => {
@@ -199,12 +155,6 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
     },
     setIsSearchOriginRestorePending: (next) => {
       this.commit({ isSearchOriginRestorePending: next });
-    },
-    requestRouteSceneDockedPollsRestore: (args = {}) => {
-      this.requestRouteSceneDockedPollsRestore(args);
-    },
-    requestRouteScenePollCreationExpand: () => {
-      this.requestRouteScenePollCreationExpand();
     },
     recordRouteSceneSheetSettle: (args) => {
       this.recordRouteSceneSheetSettle(args);
@@ -324,6 +274,7 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
   }
 
   private recordUserSnap({
+    rootOverlay,
     activeOverlayKey,
     snap,
   }: {
@@ -331,68 +282,13 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
     activeOverlayKey: OverlayKey;
     snap: OverlaySheetSnap;
   }): void {
-    if (!isSharedOverlayKey(activeOverlayKey)) {
+    if (!isSharedOverlaySnapOwner({ rootOverlay, activeOverlayKey })) {
       return;
     }
     if (snap === 'hidden' || snap === 'collapsed') {
       return;
     }
     this.setSharedSnap(snap);
-  }
-
-  private requestRouteSceneDockedPollsRestore({
-    snap,
-    isDockedPollsDismissed,
-    hasUserSharedSnap,
-    sharedSnap,
-  }: RequestRouteSceneDockedPollsRestoreArgs): void {
-    const ignoreDockedPollsHiddenUntilMs = Date.now() + 650;
-    const currentPollsSheetSnap = this.getRouteSceneSwitchSceneSnap('polls');
-    const currentDockedDismissed = isDockedPollsDismissed ?? this.snapshot.isDockedPollsDismissed;
-    const currentHasUserSharedSnap = hasUserSharedSnap ?? this.snapshot.hasUserSharedSnap;
-    const currentSharedSnap = sharedSnap ?? this.snapshot.sharedSnap;
-    const isImplicitRecallFromHidden = snap == null && currentPollsSheetSnap === 'hidden';
-    const resolvedSnap: Exclude<OverlaySheetSnap, 'hidden'> =
-      snap ??
-      (currentPollsSheetSnap !== 'hidden'
-        ? currentPollsSheetSnap
-        : currentDockedDismissed
-        ? 'collapsed'
-        : currentHasUserSharedSnap
-        ? currentSharedSnap
-        : 'collapsed');
-    const previous = this.snapshot.pollsDockedSnapRequest;
-    let pollsDockedSnapRequest = previous;
-    if (
-      snap == null &&
-      resolvedSnap === 'collapsed' &&
-      previous &&
-      previous.snap !== 'collapsed' &&
-      !isImplicitRecallFromHidden
-    ) {
-      pollsDockedSnapRequest = previous;
-    } else {
-      this.nextDockedPollsSnapRequestToken += 1;
-      pollsDockedSnapRequest = {
-        snap: resolvedSnap,
-        token: this.nextDockedPollsSnapRequestToken,
-      };
-    }
-    this.commit({
-      ignoreDockedPollsHiddenUntilMs,
-      dockedPollsRestoreInFlight: true,
-      isDockedPollsDismissed: false,
-      pollsDockedSnapRequest,
-    });
-  }
-
-  private requestRouteScenePollCreationExpand(): void {
-    if (this.getRouteSceneSwitchSceneSnap('polls') !== 'collapsed') {
-      return;
-    }
-    this.actions.setPollCreationSnapRequest(
-      this.snapshot.hasUserSharedSnap ? this.snapshot.sharedSnap : 'expanded'
-    );
   }
 
   private settleRouteSceneTabSnap({
@@ -436,11 +332,25 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
       sceneKey: 'polls',
       snap,
     });
+    if (source === 'gesture' && snap !== 'hidden') {
+      routeSceneSwitchActions.clearDockedPollsRestoreIntent();
+      this.actions.setIsDockedPollsDismissed(false);
+    }
     if (
       activeDockedRestoreIntent &&
       (snap === activeDockedRestoreIntent.snap || source === 'gesture') &&
       snap !== 'hidden'
     ) {
+      const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+      if (isPerfScenarioAttributionActive(scenarioConfig)) {
+        logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+          event: 'persistent_polls_restore_settled_contract',
+          restoreIntentSnap: activeDockedRestoreIntent.snap,
+          snap,
+          source: source ?? 'unknown',
+          restoredToCollapsed: snap === 'collapsed',
+        });
+      }
       this.actions.setIsDockedPollsDismissed(false);
       routeSceneSwitchActions.clearDockedPollsRestoreIntent(
         activeDockedRestoreIntent.token,
@@ -448,16 +358,9 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
       );
     }
     if (snap === 'collapsed') {
-      this.actions.setDockedPollsRestoreInFlight(false);
-    }
-    const sessionState = this.snapshot;
-    if (sessionState.pollsDockedSnapRequest && sessionState.pollsDockedSnapRequest.snap === snap) {
-      this.actions.setPollsDockedSnapRequest(null);
+      this.actions.setIsDockedPollsDismissed(false);
     }
     if (snap !== 'hidden') {
-      return;
-    }
-    if (activeDockedRestoreIntent && source !== 'gesture') {
       return;
     }
     if (rootOverlayKey !== 'search') {
@@ -466,17 +369,7 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
     if (source !== 'gesture') {
       return;
     }
-    const nextSessionState = this.snapshot;
-    if (
-      nextSessionState.dockedPollsRestoreInFlight ||
-      nextSessionState.pollsDockedSnapRequest?.snap === 'collapsed' ||
-      Date.now() < nextSessionState.ignoreDockedPollsHiddenUntilMs
-    ) {
-      return;
-    }
-    this.actions.setDockedPollsRestoreInFlight(false);
-    this.actions.setPollsDockedSnapRequest(null);
-    routeSceneSwitchActions.clearDockedPollsRestoreIntent(activeDockedRestoreIntent?.token);
+    routeSceneSwitchActions.clearDockedPollsRestoreIntent();
     this.actions.setIsDockedPollsDismissed(true);
   }
 }

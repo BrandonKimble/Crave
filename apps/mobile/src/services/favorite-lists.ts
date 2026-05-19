@@ -8,7 +8,7 @@ export interface FavoriteListPreviewItem {
   itemId: string;
   label: string;
   subLabel?: string | null;
-  score?: number | null;
+  craveScore: number;
 }
 
 export interface FavoriteListSummary {

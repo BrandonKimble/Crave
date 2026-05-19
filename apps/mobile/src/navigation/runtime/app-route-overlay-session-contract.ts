@@ -8,6 +8,10 @@ export type AppRouteSearchCloseRestoreOptions = {
   searchRootRestoreSnap?: TabOverlaySnap;
 };
 
+export type AppRoutePostSearchRestoreOptions = {
+  mode?: 'full' | 'chrome-only';
+};
+
 export type AppRouteOverlaySessionSnapshot = {
   isSearchOriginRestorePending: boolean;
   shouldShowDockedPollsTarget: boolean;
@@ -24,7 +28,7 @@ export type AppRouteOverlaySessionActions = {
   cancelSearchCloseRestore: () => void;
   prepareSearchSessionEntry: (options?: { captureOrigin?: boolean }) => void;
   flushPendingSearchOriginRestore: () => boolean;
-  requestDefaultPostSearchRestore: () => void;
+  requestDefaultPostSearchRestore: (options?: AppRoutePostSearchRestoreOptions) => void;
 };
 
 export type AppRouteOverlaySessionAuthority = {

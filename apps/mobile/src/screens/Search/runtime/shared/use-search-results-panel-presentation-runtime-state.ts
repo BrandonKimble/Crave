@@ -1,20 +1,33 @@
 import { areResultsPresentationReadModelsEqual } from './results-presentation-runtime-contract';
+import {
+  type ResultsPresentationAuthority,
+  useResultsPresentationAuthoritySelector,
+} from './results-presentation-authority';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { SearchResultsPanelPresentationRuntimeState } from './search-results-panel-runtime-state-contract';
 import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
 
 export const useSearchResultsPanelPresentationRuntimeState = (
-  searchRuntimeBus: SearchRuntimeBus
+  searchRuntimeBus: SearchRuntimeBus,
+  resultsPresentationAuthority: ResultsPresentationAuthority
 ): SearchResultsPanelPresentationRuntimeState => {
-  return useSearchRuntimeBusSelector(
+  const pendingPresentationIntentId = useSearchRuntimeBusSelector(
     searchRuntimeBus,
-    (state) => ({
-      pendingPresentationIntentId: state.toggleInteraction.pendingPresentationIntentId,
-      renderPolicy: searchRuntimeBus.getPolicyFactsSnapshot().renderPolicy,
-    }),
-    (left, right) =>
-      left.pendingPresentationIntentId === right.pendingPresentationIntentId &&
-      areResultsPresentationReadModelsEqual(left.renderPolicy, right.renderPolicy),
-    ['toggleInteraction', 'resultsPresentation'] as const
+    (state) => state.toggleInteraction.pendingPresentationIntentId,
+    Object.is,
+    ['toggleInteraction'] as const,
+    'results_panel_presentation_runtime_state'
   );
+  const renderPolicy = useResultsPresentationAuthoritySelector(
+    resultsPresentationAuthority,
+    (snapshot) => snapshot.resultsPresentation,
+    areResultsPresentationReadModelsEqual,
+    ['resultsPresentation'] as const,
+    'results_panel_presentation_authority_state'
+  );
+
+  return {
+    pendingPresentationIntentId,
+    renderPolicy,
+  };
 };

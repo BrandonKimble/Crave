@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { resolveProfileCloseHydrationCommitRequest } from '../../../../navigation/runtime/app-route-profile-app-execution-normalizer';
-import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
+import type { ResultsPresentationSurfaceAuthority } from '../shared/results-presentation-surface-authority';
 
 export type PhaseBMaterializerLike = {
   commitHydrationImmediately: (input: {
@@ -13,8 +13,6 @@ export type PhaseBMaterializerLike = {
 
 export type ProfileAppCloseExecutionArgs = {
   pendingMarkerOpenAnimationFrameRef: React.MutableRefObject<number | null>;
-  resultsHydrationKey: string | null;
-  hydratedResultsKey: string | null;
   hydrationOperationId: string | null;
   phaseBMaterializerRef: React.MutableRefObject<PhaseBMaterializerLike>;
   clearSearchAfterProfileDismiss: () => void;
@@ -25,18 +23,16 @@ export type ProfileAppClosePreparationRuntime = {
 };
 
 type UseProfileAppClosePreparationRuntimeArgs = {
-  searchRuntimeBus: SearchRuntimeBus;
+  resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
   closeExecutionArgs: ProfileAppCloseExecutionArgs;
 };
 
 export const useProfileAppClosePreparationRuntime = ({
-  searchRuntimeBus,
+  resultsPresentationSurfaceAuthority,
   closeExecutionArgs,
 }: UseProfileAppClosePreparationRuntimeArgs): ProfileAppClosePreparationRuntime => {
   const {
     pendingMarkerOpenAnimationFrameRef,
-    resultsHydrationKey,
-    hydratedResultsKey,
     hydrationOperationId,
     phaseBMaterializerRef,
   } = closeExecutionArgs;
@@ -50,9 +46,10 @@ export const useProfileAppClosePreparationRuntime = ({
       pendingMarkerOpenAnimationFrameRef.current = null;
     }
 
+    const surfaceSnapshot = resultsPresentationSurfaceAuthority.getSnapshot();
     const hydrationCommitRequest = resolveProfileCloseHydrationCommitRequest({
-      resultsHydrationKey,
-      hydratedResultsKey,
+      resultsHydrationKey: surfaceSnapshot.resultsHydrationKey,
+      hydratedResultsKey: surfaceSnapshot.hydratedResultsKey,
       hydrationOperationId,
     });
     if (!hydrationCommitRequest) {
@@ -63,18 +60,16 @@ export const useProfileAppClosePreparationRuntime = ({
       operationId: hydrationCommitRequest.operationId,
       nextHydrationKey: hydrationCommitRequest.nextHydrationKey,
       commitHydrationKey: (nextHydrationKey) => {
-        searchRuntimeBus.publish({
+        resultsPresentationSurfaceAuthority.publish({
           hydratedResultsKey: nextHydrationKey,
-        });
+        }, 'profile_close_preparation');
       },
     });
   }, [
-    hydratedResultsKey,
     hydrationOperationId,
     pendingMarkerOpenAnimationFrameRef,
     phaseBMaterializerRef,
-    resultsHydrationKey,
-    searchRuntimeBus,
+    resultsPresentationSurfaceAuthority,
   ]);
 
   return React.useMemo<ProfileAppClosePreparationRuntime>(

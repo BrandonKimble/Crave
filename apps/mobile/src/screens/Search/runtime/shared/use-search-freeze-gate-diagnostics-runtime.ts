@@ -1,23 +1,18 @@
 import React from 'react';
 
 import { logger } from '../../../../utils';
-import {
-  areResultsPresentationReadModelsEqual,
-  type ResultsPresentationReadModel,
-} from './results-presentation-runtime-contract';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { SearchFreezeClassification } from './search-freeze-classification-runtime';
 import { shouldLogSearchNavSwitchDiagnosticLogs } from './search-nav-switch-perf-probe';
 import type { useSearchFreezeGateStateRuntime } from './use-search-freeze-gate-state-runtime';
 
 type SearchFreezeGateSnapshot = {
-  isRunOneChromeFreezeActive: boolean;
-  isRunOnePreflightFreezeActive: boolean;
-  isRun1HandoffActive: boolean;
+  isSearchSurfaceRedrawChromeFreezeActive: boolean;
+  isSearchSurfaceRedrawPreflightFreezeActive: boolean;
+  isSearchSurfaceRedrawActive: boolean;
   isResponseFrameFreezeActive: boolean;
   freezeClassification: SearchFreezeClassification;
-  runOneHandoffPhase: ReturnType<SearchRuntimeBus['getState']>['runOneHandoffPhase'];
-  resultsPresentation: ResultsPresentationReadModel;
+  searchSurfaceRedrawPhase: ReturnType<SearchRuntimeBus['getState']>['searchSurfaceRedrawPhase'];
 };
 
 type UseSearchFreezeGateDiagnosticsRuntimeArgs = ReturnType<
@@ -37,28 +32,23 @@ export const useSearchFreezeGateDiagnosticsRuntime = ({
     }
 
     const nextSnapshot: SearchFreezeGateSnapshot = {
-      isRunOneChromeFreezeActive: freezeGateState.isRunOneChromeFreezeActive,
-      isRunOnePreflightFreezeActive: freezeGateState.isRunOnePreflightFreezeActive,
-      isRun1HandoffActive: freezeGateState.isRun1HandoffActive,
+      isSearchSurfaceRedrawChromeFreezeActive: freezeGateState.isSearchSurfaceRedrawChromeFreezeActive,
+      isSearchSurfaceRedrawPreflightFreezeActive: freezeGateState.isSearchSurfaceRedrawPreflightFreezeActive,
+      isSearchSurfaceRedrawActive: freezeGateState.isSearchSurfaceRedrawActive,
       isResponseFrameFreezeActive: freezeGateState.isResponseFrameFreezeActive,
       freezeClassification: freezeGateState.freezeClassification,
-      runOneHandoffPhase: freezeGateRuntimeState.runOneHandoffPhase,
-      resultsPresentation: freezeGateRuntimeState.resultsPresentation,
+      searchSurfaceRedrawPhase: freezeGateRuntimeState.searchSurfaceRedrawPhase,
     };
     const previousSnapshot = freezeGateDiagRef.current;
     if (
       previousSnapshot &&
-      previousSnapshot.isRunOneChromeFreezeActive === nextSnapshot.isRunOneChromeFreezeActive &&
-      previousSnapshot.isRunOnePreflightFreezeActive ===
-        nextSnapshot.isRunOnePreflightFreezeActive &&
-      previousSnapshot.isRun1HandoffActive === nextSnapshot.isRun1HandoffActive &&
+      previousSnapshot.isSearchSurfaceRedrawChromeFreezeActive === nextSnapshot.isSearchSurfaceRedrawChromeFreezeActive &&
+      previousSnapshot.isSearchSurfaceRedrawPreflightFreezeActive ===
+        nextSnapshot.isSearchSurfaceRedrawPreflightFreezeActive &&
+      previousSnapshot.isSearchSurfaceRedrawActive === nextSnapshot.isSearchSurfaceRedrawActive &&
       previousSnapshot.isResponseFrameFreezeActive === nextSnapshot.isResponseFrameFreezeActive &&
       previousSnapshot.freezeClassification === nextSnapshot.freezeClassification &&
-      previousSnapshot.runOneHandoffPhase === nextSnapshot.runOneHandoffPhase &&
-      areResultsPresentationReadModelsEqual(
-        previousSnapshot.resultsPresentation,
-        nextSnapshot.resultsPresentation
-      )
+      previousSnapshot.searchSurfaceRedrawPhase === nextSnapshot.searchSurfaceRedrawPhase
     ) {
       return;
     }

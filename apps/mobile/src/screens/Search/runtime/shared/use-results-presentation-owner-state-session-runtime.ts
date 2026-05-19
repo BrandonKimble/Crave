@@ -1,10 +1,14 @@
 import type React from 'react';
 
 import type { ResultsPresentationLog } from './results-presentation-runtime-contract';
+import type { ResultsPresentationAuthority } from './results-presentation-authority';
+import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
+import type { SearchMapSourceFramePort } from '../map/search-map-source-frame-port';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { AppRouteResultsSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-results-sheet-runtime-contract';
 import type { SearchChromeScalarSurfacePresentationRuntime } from '../native/search-chrome-scalar-surface-presentation-runtime';
 import type { ResultsPresentationPolicyFactsLaneChange } from './results-presentation-policy-facts-controller';
+import type { RouteSceneSwitchAuthority } from './route-authority-contract';
 import {
   useResultsPresentationOwnerBridgeStateRuntime,
   type ResultsPresentationOwnerBridgeStateRuntime,
@@ -13,7 +17,7 @@ import {
   useResultsPresentationOwnerShellStateRuntime,
   type ResultsPresentationOwnerShellStateRuntime,
 } from './use-results-presentation-owner-shell-state-runtime';
-import type { RunOneHandoffCoordinator } from '../controller/run-one-handoff-coordinator';
+import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 
 export type ResultsPresentationOwnerStateSessionRuntime = {
   bridgeStateRuntime: ResultsPresentationOwnerBridgeStateRuntime;
@@ -34,8 +38,12 @@ export const useResultsPresentationOwnerStateSessionRuntime = ({
   shouldEnableShortcutInteractions,
   resultsSheetRuntime,
   searchRuntimeBus,
+  resultsPresentationAuthority,
+  routeSceneSwitchAuthority,
+  resultsPresentationSurfaceAuthority,
+  searchMapSourceFramePort,
   log,
-  runOneHandoffCoordinatorRef,
+  searchSurfaceRedrawCoordinatorRef,
   emitRuntimeMechanismEvent,
   onSearchSheetContentLaneChanged,
   searchChromeScalarSurfacePresentationRuntime,
@@ -55,15 +63,18 @@ export const useResultsPresentationOwnerStateSessionRuntime = ({
     AppRouteResultsSheetRuntimeOwner,
     | 'sheetTranslateY'
     | 'snapPoints'
-    | 'animateSheetTo'
     | 'prepareShortcutSheetTransition'
     | 'resultsSheetRuntimeModel'
     | 'shouldRenderResultsSheetRef'
     | 'resetResultsSheetToHidden'
   >;
   searchRuntimeBus: SearchRuntimeBus;
+  resultsPresentationAuthority: ResultsPresentationAuthority;
+  routeSceneSwitchAuthority: RouteSceneSwitchAuthority;
+  resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
+  searchMapSourceFramePort: SearchMapSourceFramePort;
   log: ResultsPresentationLog;
-  runOneHandoffCoordinatorRef: React.MutableRefObject<RunOneHandoffCoordinator>;
+  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinator>;
   emitRuntimeMechanismEvent: (event: string, payload: Record<string, unknown>) => void;
   onSearchSheetContentLaneChanged?: (change: ResultsPresentationPolicyFactsLaneChange) => void;
   searchChromeScalarSurfacePresentationRuntime?: SearchChromeScalarSurfacePresentationRuntime;
@@ -74,8 +85,11 @@ export const useResultsPresentationOwnerStateSessionRuntime = ({
     setActiveTabPreference,
     isSearchSessionActive,
     searchRuntimeBus,
+    resultsPresentationAuthority,
+    resultsPresentationSurfaceAuthority,
+    searchMapSourceFramePort,
     log,
-    runOneHandoffCoordinatorRef,
+    searchSurfaceRedrawCoordinatorRef,
     emitRuntimeMechanismEvent,
   });
 
@@ -89,6 +103,8 @@ export const useResultsPresentationOwnerStateSessionRuntime = ({
     shouldRenderSearchOverlay,
     shouldEnableShortcutInteractions,
     searchRuntimeBus,
+    resultsPresentationAuthority,
+    routeSceneSwitchAuthority,
     onSearchSheetContentLaneChanged,
     resultsSheetRuntime,
     searchChromeScalarSurfacePresentationRuntime,

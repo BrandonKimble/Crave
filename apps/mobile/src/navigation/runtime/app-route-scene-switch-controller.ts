@@ -9,6 +9,7 @@ import type {
   RouteSceneSwitchPollsParams,
   RouteSceneSwitchRequestInput,
   RouteSceneSwitchRouteParams,
+  RouteSceneSwitchSheetContentHandoff,
   RouteSceneSwitchTransitionContract,
   RouteSceneSwitchTransitionPhase,
 } from './app-overlay-route-transition-contract';
@@ -81,6 +82,7 @@ export type RouteSceneSwitchSceneStackDispatchSnapshot = {
   interactiveSceneKey: OverlayKey | null;
   pendingSceneKey: OverlayKey | null;
   handoffSceneKey: OverlayKey | null;
+  sheetContentHandoff: RouteSceneSwitchSheetContentHandoff;
   transitionPhase: RouteSceneSwitchTransitionPhase;
   isInteractive: boolean;
 };
@@ -156,6 +158,7 @@ const SEARCH_ROUTE: OverlayRouteEntry<'search'> = {
   key: 'search',
   params: undefined,
 };
+
 
 const createRouteEntry = (
   key: OverlayKey,
@@ -318,6 +321,12 @@ const applyTransitionPlanToRouteState = (
         transitionPlan.committedRootRouteKey,
         transitionPlan.committedRouteParams
       );
+    case 'updateActive':
+      return updateRouteState(
+        currentRouteState,
+        currentRouteState.activeOverlayRoute.key,
+        transitionPlan.committedRouteParams
+      );
     case 'closeActive':
       return closeActiveRouteState(currentRouteState);
     case 'popToRoot':
@@ -397,6 +406,8 @@ export const resolveRouteSceneSwitchSceneStackDispatchSnapshot = (
   interactiveSceneKey: state.interactiveSceneKey,
   pendingSceneKey: state.isOverlaySwitchInFlight ? state.pendingTargetSceneKey : null,
   handoffSceneKey: state.isOverlaySwitchInFlight ? state.handoffSceneKey : null,
+  sheetContentHandoff:
+    state.transitionContract?.sheetTransitionPlan.contentHandoff ?? 'swapImmediately',
   transitionPhase: state.transitionPhase,
   isInteractive: state.isInteractive,
 });
@@ -409,6 +420,7 @@ const areRouteSceneSwitchSceneStackDispatchSnapshotsEqual = (
   left.interactiveSceneKey === right.interactiveSceneKey &&
   left.pendingSceneKey === right.pendingSceneKey &&
   left.handoffSceneKey === right.handoffSceneKey &&
+  left.sheetContentHandoff === right.sheetContentHandoff &&
   left.transitionPhase === right.transitionPhase &&
   left.isInteractive === right.isInteractive;
 
@@ -461,6 +473,7 @@ const createTransitionContract = ({
   sheetSnapTarget: transitionPlan.sheetSnapTarget,
   sheetVisibilityTarget: transitionPlan.sheetVisibilityTarget,
   sheetIntent: transitionPlan.sheetIntent,
+  sheetTransitionPlan: transitionPlan.sheetTransitionPlan,
   cameraIntent: transitionPlan.cameraIntent,
   chromeVisibilityTarget: transitionPlan.chromeVisibilityTarget,
   headerActionModeTarget: transitionPlan.headerActionModeTarget,

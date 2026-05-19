@@ -7,9 +7,17 @@ import type { SegmentValue } from '../constants/search';
 import { createEntitySubmitIntentPayload } from '../runtime/adapters/entity-adapter';
 import { createShortcutSubmitIntentPayload } from '../runtime/adapters/shortcut-adapter';
 import type { SearchRuntimeBus, SearchRuntimeBusState } from '../runtime/shared/search-runtime-bus';
+import { publishSearchMountedResultsDataSnapshot } from '../runtime/shared/search-mounted-results-data-store';
+import type { SearchSubmitEntrySurface } from '../runtime/shared/search-submit-entry-surface-contract';
 import type { SearchRequestRuntimeOwner } from './use-search-request-runtime-owner';
 
+export type { SearchSubmitEntrySurface } from '../runtime/shared/search-submit-entry-surface-contract';
+
 export type SearchMode = 'natural' | 'shortcut' | null;
+export type SearchSubmitPresentationIntentKind =
+  | 'initial_search'
+  | 'shortcut_rerun'
+  | 'search_this_area';
 
 export type SubmitSearchOptions = {
   openNow?: boolean;
@@ -21,6 +29,8 @@ export type SubmitSearchOptions = {
   replaceResultsInPlace?: boolean;
   transitionFromDockedPolls?: boolean;
   forceFreshBounds?: boolean;
+  presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+  entrySurface?: SearchSubmitEntrySurface;
   submission?: {
     source: NaturalSearchRequest['submissionSource'];
     context?: NaturalSearchRequest['submissionContext'];
@@ -34,10 +44,12 @@ export type ResolveNaturalSearchAttemptConfigResult = {
   preserveSheetState: boolean;
   transitionFromDockedPolls: boolean;
   shouldReplaceResultsInPlace: boolean;
+  presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
   effectiveOpenNow: boolean;
   effectivePriceLevels: number[];
   effectiveMinimumVotes: number | null;
   shouldForceFreshBounds: boolean;
+  entrySurface: SearchSubmitEntrySurface;
 };
 
 export type StructuredInitialAttemptConfig = {
@@ -45,15 +57,17 @@ export type StructuredInitialAttemptConfig = {
     | ReturnType<typeof createEntitySubmitIntentPayload>
     | ReturnType<typeof createShortcutSubmitIntentPayload>;
   foregroundUi: {
-    kind: 'initial_search' | 'shortcut_rerun';
+    kind: SearchSubmitPresentationIntentKind;
     mode: SearchMode;
     preserveSheetState: boolean;
     transitionFromDockedPolls: boolean;
+    presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
     targetTab: SegmentValue;
     submittedLabel: string;
     shouldResetPagination: boolean;
     logLabel: string;
     replaceResultsLabel?: string;
+    entrySurface: SearchSubmitEntrySurface;
   };
   errorLogLabel: string;
   finalizeReason: string;
@@ -72,6 +86,7 @@ type PrepareNaturalSearchEntryResult = {
 };
 
 type SubmitUiLanesOptions = {
+  mode: SearchMode;
   targetTab: SegmentValue;
   shouldResetPagination: boolean;
   submittedLabel?: string;
@@ -85,6 +100,8 @@ type PrepareNaturalSearchForegroundUiOptions = {
   targetTab: SegmentValue;
   submittedLabel: string;
   replaceResultsLabel?: string;
+  presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+  entrySurface: SearchSubmitEntrySurface;
 };
 
 type UseSearchSubmitEntryOwnerArgs = {
@@ -109,12 +126,13 @@ type UseSearchSubmitEntryOwnerArgs = {
   lastAutoOpenKeyRef: React.MutableRefObject<string | null>;
   logSearchPhase?: (label: string) => void;
   onPresentationIntentStart?: (params: {
-    kind: 'initial_search' | 'shortcut_rerun';
+    kind: SearchSubmitPresentationIntentKind;
     mode: SearchMode;
     preserveSheetState: boolean;
     transitionFromDockedPolls: boolean;
     targetTab: SegmentValue;
     submittedLabel?: string;
+    entrySurface: SearchSubmitEntrySurface;
   }) => void;
 };
 
@@ -133,6 +151,28 @@ export const resolveSubmissionDefaultTab = (
     return 'dishes';
   }
   return null;
+};
+
+const resolveSearchSubmitPresentationEntrySurface = ({
+  append,
+  preserveSheetState,
+  presentationIntentKind,
+  entrySurface,
+  label,
+}: {
+  append?: boolean;
+  preserveSheetState: boolean;
+  presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+  entrySurface?: SearchSubmitEntrySurface;
+  label: string;
+}): SearchSubmitEntrySurface => {
+  if (append || preserveSheetState || presentationIntentKind === 'search_this_area') {
+    return entrySurface ?? 'results';
+  }
+  if (entrySurface == null) {
+    throw new Error(`[SEARCH-SUBMIT-INTENT] ${label} requires entrySurface.`);
+  }
+  return entrySurface;
 };
 
 export const useSearchSubmitEntryOwner = ({
@@ -181,7 +221,7 @@ export const useSearchSubmitEntryOwner = ({
   }, []);
 
   const scheduleSubmitUiLanes = React.useCallback(
-    ({ targetTab, shouldResetPagination, submittedLabel }: SubmitUiLanesOptions) => {
+    ({ mode, targetTab, shouldResetPagination, submittedLabel }: SubmitUiLanesOptions) => {
       const activeTuple = activeOperationTupleRef.current;
       searchRuntimeBus.batch(() => {
         publishRuntimeLaneState(activeTuple, 'lane_a_ack', {
@@ -197,6 +237,8 @@ export const useSearchSubmitEntryOwner = ({
         const laneAStatePatch: Partial<SearchRuntimeBusState> = {
           activeTab: targetTab,
           pendingTabSwitchTab: null,
+          searchMode: mode,
+          isSearchSessionActive: mode != null,
           isLoadingMore: false,
           submittedQuery: submittedLabel ?? submittedQuery,
         };
@@ -233,21 +275,19 @@ export const useSearchSubmitEntryOwner = ({
   const clearResultsForReplacement = React.useCallback(
     (submittedQueryOverride?: string) => {
       clearMapHighlightedRestaurantId?.();
+      publishSearchMountedResultsDataSnapshot(null);
       searchRuntimeBus.publish({
-        results: null,
         resultsRequestKey: null,
+        resultsHydrationCandidateKey: null,
+        resultsPage: null,
+        resultsDishCount: 0,
+        resultsRestaurantCount: 0,
         currentPage: 1,
         hasMoreFood: false,
         hasMoreRestaurants: false,
         isPaginationExhausted: false,
         isLoadingMore: false,
         canLoadMore: false,
-        precomputedMarkerCatalog: null,
-        precomputedMarkerPrimaryCount: 0,
-        precomputedCanonicalRestaurantRankById: null,
-        precomputedRestaurantsById: null,
-        precomputedMarkerResultsKey: null,
-        precomputedMarkerActiveTab: null,
         submittedQuery: submittedQueryOverride ?? submittedQuery,
       });
     },
@@ -265,17 +305,21 @@ export const useSearchSubmitEntryOwner = ({
       shouldResetPagination,
       logLabel,
       replaceResultsLabel,
+      presentationIntentKind,
+      entrySurface,
     }: PrepareSearchRequestForegroundUiOptions) => {
       setSearchRequestInFlight(true);
       onPresentationIntentStart?.({
-        kind,
+        kind: presentationIntentKind ?? kind,
         mode,
         preserveSheetState,
         transitionFromDockedPolls,
         targetTab,
         submittedLabel,
+        entrySurface,
       });
       scheduleSubmitUiLanes({
+        mode,
         targetTab,
         shouldResetPagination,
         submittedLabel,
@@ -283,7 +327,7 @@ export const useSearchSubmitEntryOwner = ({
       setError(null);
       Keyboard.dismiss();
       logSearchPhase(`${logLabel}:ui-lanes-scheduled`);
-      if (replaceResultsLabel) {
+      if (replaceResultsLabel && presentationIntentKind !== 'search_this_area') {
         clearResultsForReplacement(replaceResultsLabel);
       }
     },
@@ -304,23 +348,27 @@ export const useSearchSubmitEntryOwner = ({
       targetTab,
       submittedLabel,
       replaceResultsLabel,
+      presentationIntentKind,
+      entrySurface,
     }: PrepareNaturalSearchForegroundUiOptions) => {
       setSearchRequestInFlight(true);
       onPresentationIntentStart?.({
-        kind: 'initial_search',
+        kind: presentationIntentKind ?? 'initial_search',
         mode: 'natural',
         preserveSheetState,
         transitionFromDockedPolls,
         targetTab,
         submittedLabel,
+        entrySurface,
       });
       scheduleSubmitUiLanes({
+        mode: 'natural',
         targetTab,
         shouldResetPagination: false,
       });
       activeLoadingMoreTokenRef.current = null;
       logSearchPhase('submitSearch:ui-lanes-scheduled');
-      if (replaceResultsLabel) {
+      if (replaceResultsLabel && presentationIntentKind !== 'search_this_area') {
         clearResultsForReplacement(replaceResultsLabel);
       }
     },
@@ -339,10 +387,12 @@ export const useSearchSubmitEntryOwner = ({
       restaurantId,
       restaurantName,
       preserveSheetState,
+      entrySurface,
     }: {
       restaurantId: string;
       restaurantName: string;
       preserveSheetState: boolean;
+      entrySurface: SearchSubmitEntrySurface;
     }): StructuredInitialAttemptConfig => ({
       submitPayload: createEntitySubmitIntentPayload({
         restaurantId,
@@ -358,6 +408,7 @@ export const useSearchSubmitEntryOwner = ({
         submittedLabel: restaurantName,
         shouldResetPagination: true,
         logLabel: 'runRestaurantEntitySearch',
+        entrySurface,
       },
       errorLogLabel: 'Structured restaurant search failed',
       finalizeReason: 'entity_finalized_without_response_lifecycle',
@@ -372,12 +423,16 @@ export const useSearchSubmitEntryOwner = ({
       preserveSheetState,
       transitionFromDockedPolls,
       replaceResultsInPlace,
+      presentationIntentKind,
+      entrySurface,
     }: {
       targetTab: SegmentValue;
       submittedLabel: string;
       preserveSheetState: boolean;
       transitionFromDockedPolls: boolean;
       replaceResultsInPlace: boolean;
+      presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+      entrySurface: SearchSubmitEntrySurface;
     }): StructuredInitialAttemptConfig => ({
       submitPayload: createShortcutSubmitIntentPayload({
         targetTab,
@@ -391,11 +446,13 @@ export const useSearchSubmitEntryOwner = ({
         mode: 'shortcut',
         preserveSheetState,
         transitionFromDockedPolls,
+        presentationIntentKind,
         targetTab,
         submittedLabel,
         shouldResetPagination: true,
         logLabel: 'runBestHere',
         replaceResultsLabel: replaceResultsInPlace ? submittedLabel : undefined,
+        entrySurface,
       },
       errorLogLabel: 'Best here request failed',
       finalizeReason: 'shortcut_finalized_without_response_lifecycle',
@@ -448,9 +505,13 @@ export const useSearchSubmitEntryOwner = ({
       const trimmedQuery = baseQuery.trim();
       if (!trimmedQuery) {
         if (!append) {
+          publishSearchMountedResultsDataSnapshot(null);
           searchRuntimeBus.publish({
-            results: null,
             resultsRequestKey: null,
+            resultsHydrationCandidateKey: null,
+            resultsPage: null,
+            resultsDishCount: 0,
+            resultsRestaurantCount: 0,
             submittedQuery: '',
             hasMoreFood: false,
             hasMoreRestaurants: false,
@@ -481,15 +542,23 @@ export const useSearchSubmitEntryOwner = ({
       const transitionFromDockedPolls =
         !preserveSheetState && Boolean(options?.transitionFromDockedPolls);
       const shouldReplaceResultsInPlace = Boolean(options?.replaceResultsInPlace);
+      const presentationIntentKind = options?.presentationIntentKind;
+      const entrySurface = resolveSearchSubmitPresentationEntrySurface({
+        append: options?.append,
+        preserveSheetState,
+        presentationIntentKind,
+        entrySurface: options?.entrySurface,
+        label: 'submitSearch',
+      });
       const effectiveOpenNow = options?.openNow ?? openNow;
       const effectivePriceLevels =
-        options?.priceLevels !== undefined ? (options.priceLevels ?? []) : priceLevels;
+        options?.priceLevels !== undefined ? options.priceLevels ?? [] : priceLevels;
       const effectiveMinimumVotes =
         options?.minimumVotes !== undefined
           ? options.minimumVotes
           : votes100Plus
-            ? MINIMUM_VOTES_FILTER
-            : null;
+          ? MINIMUM_VOTES_FILTER
+          : null;
 
       return {
         submissionSource,
@@ -498,6 +567,8 @@ export const useSearchSubmitEntryOwner = ({
         preserveSheetState,
         transitionFromDockedPolls,
         shouldReplaceResultsInPlace,
+        presentationIntentKind,
+        entrySurface,
         effectiveOpenNow,
         effectivePriceLevels,
         effectiveMinimumVotes,

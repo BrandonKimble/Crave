@@ -1,11 +1,17 @@
 import React from 'react';
 
-import type {
-  ExecutionBatchPayload,
-  MarkerEnterSettledPayload,
-} from './results-presentation-runtime-owner-contract';
+import { logger } from '../../../../utils';
+import type { ExecutionBatchPayload } from './results-presentation-runtime-owner-contract';
 import type { ResultsPresentationRuntimeMachine } from './results-presentation-runtime-machine';
-import type { RunOneHandoffCoordinator } from '../controller/run-one-handoff-coordinator';
+import type {
+  SearchMapMarkerEnterStartedPayload,
+  SearchMapMarkerEnterSettledPayload,
+} from './search-map-protocol-contract';
+import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
+import {
+  getSearchSurfaceRuntime,
+  selectSearchSurfaceVisualPolicy,
+} from '../surface/search-surface-runtime';
 
 const toExecutionBatchRef = (payload: ExecutionBatchPayload) => {
   if (payload.executionBatchId == null || payload.frameGenerationId == null) {
@@ -18,46 +24,130 @@ const toExecutionBatchRef = (payload: ExecutionBatchPayload) => {
   };
 };
 
+type ExecutionBatchRef = NonNullable<ReturnType<typeof toExecutionBatchRef>>;
+
 export const useResultsPresentationMarkerEnterRuntime = ({
   runtimeMachineRef,
-  runOneHandoffCoordinatorRef,
+  searchSurfaceRedrawCoordinatorRef,
   flushPendingMarkerEnterSettled,
   setPendingMarkerEnterSettled,
 }: {
   runtimeMachineRef: React.MutableRefObject<ResultsPresentationRuntimeMachine | null>;
-  runOneHandoffCoordinatorRef: React.MutableRefObject<RunOneHandoffCoordinator>;
+  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinator>;
   flushPendingMarkerEnterSettled: () => boolean;
   setPendingMarkerEnterSettled: (
-    pending: { operationId: string; payload: MarkerEnterSettledPayload } | null
+    pending: { operationId: string; payload: SearchMapMarkerEnterSettledPayload } | null
   ) => void;
 }) => {
+  const pendingMarkerEnterStartRef = React.useRef<{
+    requestKey: string;
+    executionBatch: ExecutionBatchRef;
+  } | null>(null);
+
+  const canStartMarkerEnterForSurface = React.useCallback((requestKey: string): boolean => {
+    const policy = selectSearchSurfaceVisualPolicy(getSearchSurfaceRuntime().getSnapshot());
+    if (policy.phase !== 'results_redrawing' || policy.transactionId !== requestKey) {
+      return true;
+    }
+    return policy.canAdmitResultsBody;
+  }, []);
+
+  const flushPendingMarkerEnterStart = React.useCallback((): boolean => {
+    const pending = pendingMarkerEnterStartRef.current;
+    if (pending == null || pending.executionBatch == null) {
+      return false;
+    }
+    if (!canStartMarkerEnterForSurface(pending.requestKey)) {
+      return false;
+    }
+    pendingMarkerEnterStartRef.current = null;
+    return runtimeMachineRef.current!.markEnterNativeStartRequested(
+      pending.requestKey,
+      pending.executionBatch
+    );
+  }, [canStartMarkerEnterForSurface, runtimeMachineRef]);
+
   const handleExecutionBatchMountedHidden = React.useCallback(
     (payload: ExecutionBatchPayload) => {
       const executionBatch = toExecutionBatchRef(payload);
       if (executionBatch == null) {
+        logger.warn('[REVEAL-LIFECYCLE] native_mounted_hidden_ack_invalid', {
+          requestKey: payload.requestKey,
+          frameGenerationId: payload.frameGenerationId ?? null,
+          executionBatchId: payload.executionBatchId ?? null,
+          nextExpectedEvent: 'valid_native_mounted_hidden_ack',
+        });
         return;
       }
-      runtimeMachineRef.current!.markEnterBatchMountedHidden(
+      const didAcceptMountedHidden = runtimeMachineRef.current!.markEnterBatchMountedHidden(
         payload.requestKey,
         executionBatch
       );
+      logger.debug('[REVEAL-LIFECYCLE] native_mounted_hidden_ack_received', {
+        requestKey: payload.requestKey,
+        frameGenerationId: payload.frameGenerationId ?? null,
+        executionBatchId: payload.executionBatchId ?? null,
+        didAcceptMountedHidden,
+        nextExpectedEvent: didAcceptMountedHidden
+          ? 'mark_native_marker_frame_ready'
+          : 'matching_active_enter_transaction',
+      });
+      if (!didAcceptMountedHidden) {
+        return;
+      }
+      getSearchSurfaceRuntime().markRedrawNativeMarkerFrameReady(payload.requestKey, {
+        frameGenerationId: payload.frameGenerationId ?? null,
+        executionBatchId: payload.executionBatchId ?? null,
+      });
+      pendingMarkerEnterStartRef.current = {
+        requestKey: payload.requestKey,
+        executionBatch,
+      };
+      logger.debug('[REVEAL-LIFECYCLE] native_marker_frame_ready_marked', {
+        requestKey: payload.requestKey,
+        frameGenerationId: payload.frameGenerationId ?? null,
+        executionBatchId: payload.executionBatchId ?? null,
+        nextExpectedEvent: 'reveal_commit_gate',
+      });
+      flushPendingMarkerEnterStart();
     },
-    [runtimeMachineRef]
+    [flushPendingMarkerEnterStart, runtimeMachineRef]
   );
 
   const handleMarkerEnterStarted = React.useCallback(
-    (payload: ExecutionBatchPayload) => {
+    (payload: SearchMapMarkerEnterStartedPayload) => {
       const executionBatch = toExecutionBatchRef(payload);
       if (executionBatch == null) {
         return;
       }
-      runtimeMachineRef.current!.markEnterStarted(payload.requestKey, executionBatch);
+      if (!canStartMarkerEnterForSurface(payload.requestKey)) {
+        pendingMarkerEnterStartRef.current = {
+          requestKey: payload.requestKey,
+          executionBatch,
+        };
+        return;
+      }
+      if (!runtimeMachineRef.current!.markEnterStarted(payload.requestKey, executionBatch)) {
+        return;
+      }
     },
-    [runtimeMachineRef]
+    [canStartMarkerEnterForSurface, runtimeMachineRef]
+  );
+
+  React.useEffect(
+    () => {
+      const unsubscribeSurface = getSearchSurfaceRuntime().subscribe(() => {
+        flushPendingMarkerEnterStart();
+      });
+      return () => {
+        unsubscribeSurface();
+      };
+    },
+    [flushPendingMarkerEnterStart]
   );
 
   const handleMarkerEnterSettled = React.useCallback(
-    (payload: MarkerEnterSettledPayload) => {
+    (payload: SearchMapMarkerEnterSettledPayload) => {
       const executionBatch = toExecutionBatchRef(payload);
       if (executionBatch == null) {
         return;
@@ -65,7 +155,7 @@ export const useResultsPresentationMarkerEnterRuntime = ({
       if (!runtimeMachineRef.current!.markEnterBatchSettled(payload.requestKey, executionBatch)) {
         return;
       }
-      const coordinatorSnapshot = runOneHandoffCoordinatorRef.current.getSnapshot();
+      const coordinatorSnapshot = searchSurfaceRedrawCoordinatorRef.current.getSnapshot();
       const operationId = coordinatorSnapshot.operationId;
       if (!operationId || coordinatorSnapshot.phase === 'idle') {
         setPendingMarkerEnterSettled(null);
@@ -79,7 +169,7 @@ export const useResultsPresentationMarkerEnterRuntime = ({
     },
     [
       flushPendingMarkerEnterSettled,
-      runOneHandoffCoordinatorRef,
+      searchSurfaceRedrawCoordinatorRef,
       runtimeMachineRef,
       setPendingMarkerEnterSettled,
     ]

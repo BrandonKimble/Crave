@@ -25,6 +25,13 @@ export const createPreparedProfileOpenSettleState = ({
     snapshot.transactionId,
     'pre_shell'
   ),
+  cameraRequestToken: snapshot.targetCamera
+    ? resolveProfilePresentationExecutionRequestToken(snapshot.transactionId, 'pre_shell')
+    : null,
+  sheetRequestToken: resolveProfilePresentationExecutionRequestToken(
+    snapshot.transactionId,
+    'shell'
+  ),
   cameraSettled: !snapshot.targetCamera,
   sheetSettled: status === 'open',
 });
@@ -75,14 +82,6 @@ export const resolvePreparedProfileCloseFinalizationTransaction = (
         : {
             clearProfileCameraPadding: true,
           }),
-      ...(snapshot.shellTarget !== 'default' && snapshot.restoreResultsSheetSnap != null
-        ? {
-            resultsSheetCommand: {
-              type: 'request' as const,
-              snap: snapshot.restoreResultsSheetSnap,
-            },
-          }
-        : {}),
     },
     postShellStateExecution: {
       closeFinalization: {
@@ -111,4 +110,31 @@ export const applyPreparedProfileCloseSnapshot = ({
     handled: false,
   };
   transition.completionState.openSettle = createIdleProfileOpenSettleState();
+};
+
+export const promotePreparedProfileCloseSnapshotToClearDismiss = ({
+  transition,
+  shouldClearSearchOnClose,
+}: {
+  transition: ProfileTransitionState;
+  shouldClearSearchOnClose: boolean;
+}): boolean => {
+  const snapshot = transition.preparedSnapshot;
+  if (snapshot?.kind !== 'profile_close') {
+    return false;
+  }
+
+  const nextSnapshot: PreparedProfilePresentationSnapshot = {
+    ...snapshot,
+    shellTarget: 'default',
+    targetSheetSnap: 'collapsed',
+    shouldClearSearchOnClose: snapshot.shouldClearSearchOnClose || shouldClearSearchOnClose,
+  };
+
+  transition.preparedSnapshot = nextSnapshot;
+  if (transition.completionState.preparedTransaction) {
+    transition.completionState.preparedTransaction =
+      resolvePreparedProfileCloseFinalizationTransaction(nextSnapshot);
+  }
+  return true;
 };

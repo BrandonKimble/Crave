@@ -33,7 +33,9 @@ export const createAppSearchRouteCommandActions = ({
   } = {}): void => {
     routeSceneSwitchActions.requestOverlaySwitch({
       targetSceneKey: 'search',
-      snapTarget: snap,
+      sheetTransitionKind: 'topLevelSwitch',
+      sheetOpenerSource: 'routeCommand',
+      sheetMotion: { kind: 'snapTo', snap },
       dockedPollsRestoreSnap: snap,
     });
   };
@@ -59,7 +61,9 @@ export const createAppSearchRouteCommandActions = ({
     routeSceneSwitchActions.requestOverlaySwitch({
       targetSceneKey: 'polls',
       pollsParams: params ?? null,
-      snapTarget: snap,
+      sheetTransitionKind: 'topLevelSwitch',
+      sheetOpenerSource: 'navTab',
+      sheetMotion: { kind: 'snapTo', snap },
     });
   };
 
@@ -79,7 +83,9 @@ export const createAppSearchRouteCommandActions = ({
     if (activeOverlayKey !== 'search') {
       routeSceneSwitchActions.requestOverlaySwitch({
         targetSceneKey: 'search',
-        snapTarget: snap,
+        sheetTransitionKind: 'topLevelSwitch',
+        sheetOpenerSource: 'routeCommand',
+        sheetMotion: { kind: 'snapTo', snap },
         dockedPollsRestoreSnap: snap,
       });
     }

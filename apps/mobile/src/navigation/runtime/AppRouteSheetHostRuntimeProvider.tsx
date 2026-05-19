@@ -62,6 +62,7 @@ export const AppRouteSheetHostRuntimeProvider = ({
         routeOverlayNavigationAuthority: routeSceneRuntime.routeSheetHostNavigationAuthority,
         routeOverlaySheetPolicyAuthority: routeSceneRuntime.routeSheetHostSheetPolicyAuthority,
         routeSheetVisualAuthority: routeSceneRuntime.routeSheetVisualAuthority,
+        routeSceneSwitchAuthority: routeSceneRuntime.sceneSwitchAuthority,
         routeSceneInteractivityAuthority: routeSceneRuntime.sceneInteractivityAuthority,
         routeSceneMotionRuntime: routeSceneRuntime.routeSceneMotionRuntime,
         routeSheetSnapSessionAuthority: routeSceneRuntime.routeSheetSnapSessionAuthority,
@@ -73,6 +74,7 @@ export const AppRouteSheetHostRuntimeProvider = ({
       routeSceneRuntime.routeSheetHostNavigationAuthority,
       routeSceneRuntime.routeSheetHostSheetPolicyAuthority,
       routeSceneRuntime.routeSheetVisualAuthority,
+      routeSceneRuntime.sceneSwitchAuthority,
       routeSceneRuntime.sceneInteractivityAuthority,
       routeSceneRuntime.routeSceneMotionRuntime,
       routeSceneRuntime.routeSheetSnapSessionAuthority,
@@ -91,16 +93,24 @@ export const AppRouteSheetHostRuntimeProvider = ({
     () => ({
       routeSheetSurfaceAuthority: routeSheetHostAuthorityRuntime.routeSheetSurfaceAuthority,
       routeSheetSurfaceBodyAuthority: routeSheetHostAuthorityRuntime.routeSheetSurfaceBodyAuthority,
+      routeSheetMotionRuntimeAuthority:
+        routeSheetHostAuthorityRuntime.routeSheetMotionRuntimeAuthority,
       routeSheetSurfaceFrameAuthority:
         routeSheetHostAuthorityRuntime.routeSheetSurfaceFrameAuthority,
       routeSheetRuntimeConfigAuthority:
         routeSheetHostAuthorityRuntime.routeSheetRuntimeConfigAuthority,
-      sceneStackSurfaceAuthority: routeSceneRuntime.sceneStackSurfaceAuthority,
-      routeSceneDisplayTargetRegistry: routeSceneRuntime.routeSceneDisplayTargetRegistry,
-    }),
-    [
-      routeSceneRuntime.routeSceneDisplayTargetRegistry,
+	      sceneStackSurfaceAuthority: routeSceneRuntime.sceneStackSurfaceAuthority,
+	      routeSceneDisplayTargetRegistry: routeSceneRuntime.routeSceneDisplayTargetRegistry,
+	      routeHostVisualRuntimeAuthority: routeSceneRuntime.routeHostVisualRuntimeAuthority,
+	      replayPersistentPollSheetHostContract:
+	        routeSheetHostAuthorityRuntime.replayPersistentPollSheetHostContract,
+	    }),
+	    [
+	      routeSceneRuntime.routeSceneDisplayTargetRegistry,
+      routeSceneRuntime.routeHostVisualRuntimeAuthority,
       routeSceneRuntime.sceneStackSurfaceAuthority,
+      routeSheetHostAuthorityRuntime.replayPersistentPollSheetHostContract,
+      routeSheetHostAuthorityRuntime.routeSheetMotionRuntimeAuthority,
       routeSheetHostAuthorityRuntime.routeSheetSurfaceBodyAuthority,
       routeSheetHostAuthorityRuntime.routeSheetSurfaceFrameAuthority,
       routeSheetHostAuthorityRuntime.routeSheetRuntimeConfigAuthority,

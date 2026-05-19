@@ -3,7 +3,6 @@ import React from 'react';
 import type { SearchRouteSceneLayoutState } from '../../overlays/searchRouteSceneLayoutContract';
 import { useSearchRoutePollCreationPanelSpec } from '../../overlays/useSearchRoutePollCreationPanelSpec';
 import { useSearchRoutePollCreationSceneStateRuntime } from '../../overlays/useSearchRoutePollCreationSceneStateRuntime';
-import type { OverlaySheetSnap } from '../../overlays/types';
 import type { OverlayRouteEntry } from './app-overlay-route-types';
 import type { AppRouteSceneRuntime } from './app-route-scene-runtime';
 
@@ -11,12 +10,10 @@ export const useAppRoutePollCreationSceneInputWriterRuntime = ({
   routeSceneRuntime,
   activeOverlayRoute,
   sceneLayout,
-  pollCreationSnapRequest,
 }: {
   routeSceneRuntime: AppRouteSceneRuntime;
   activeOverlayRoute: OverlayRouteEntry;
   sceneLayout: SearchRouteSceneLayoutState;
-  pollCreationSnapRequest: Exclude<OverlaySheetSnap, 'hidden'> | null;
 }): void => {
   const pollCreationSceneStateRuntime = useSearchRoutePollCreationSceneStateRuntime({
     activeOverlayRoute,
@@ -28,9 +25,6 @@ export const useAppRoutePollCreationSceneInputWriterRuntime = ({
     pollCreationMarketName: pollCreationSceneStateRuntime.pollCreationMarketName,
     pollCreationBounds: pollCreationSceneStateRuntime.pollCreationBounds,
     shouldShowPollCreationPanel: pollCreationSceneStateRuntime.shouldShowPollCreationPanel,
-    pollCreationSnapRequest,
-    setPollCreationSnapRequest:
-      routeSceneRuntime.routeSheetSnapSessionActions.setPollCreationSnapRequest,
   });
 
   React.useEffect(() => {

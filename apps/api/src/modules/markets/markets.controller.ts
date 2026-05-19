@@ -12,7 +12,7 @@ export class MarketsController {
       bounds: dto.bounds ?? null,
       userLocation: dto.userLocation ?? null,
       mode: dto.mode,
-      ensureLocalFallbackMarkets: false,
+      ensureLocalityMarkets: false,
     });
   }
 }

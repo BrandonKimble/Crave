@@ -1,4 +1,5 @@
 import type {
+  BottomSheetSnap,
   BottomSheetSnapPoint,
   BottomSheetSnapPoints,
 } from '../../../../overlays/bottomSheetMotionTypes';
@@ -8,6 +9,7 @@ export type SearchRouteSheetMotionStateEntry = {
   visible: boolean;
   snapPoints: BottomSheetSnapPoints;
   initialSnapPoint: BottomSheetSnapPoint;
+  currentSnapPoint: BottomSheetSnap;
   sheetYValue: BottomSheetRuntimeModel['presentationState']['sheetY'];
   scrollOffsetValue: BottomSheetRuntimeModel['presentationState']['scrollOffset'];
   momentumFlag: BottomSheetRuntimeModel['presentationState']['momentumFlag'];

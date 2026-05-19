@@ -12,6 +12,9 @@ import { useSearchRuntimeMapServicesRuntime } from '../../hooks/use-search-runti
 import { useSearchRuntimeSessionServicesRuntime } from '../../hooks/use-search-runtime-session-services-runtime';
 import { useSearchRuntimeWorkCoordinationRuntime } from '../../hooks/use-search-runtime-work-coordination-runtime';
 import type { SearchRuntimeBus } from './search-runtime-bus';
+import type { ResultsPresentationAuthority } from './results-presentation-authority';
+import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
+import type { SearchMapSourceFramePort } from '../map/search-map-source-frame-port';
 
 type UseSearchRootSessionServicesFoundationRuntimeArgs = Pick<
   UseSearchRootSessionRuntimeArgs,
@@ -19,6 +22,9 @@ type UseSearchRootSessionServicesFoundationRuntimeArgs = Pick<
 > & {
   rootPrimitivesRuntime: SearchRootPrimitivesRuntime;
   searchRuntimeBus: SearchRuntimeBus;
+  resultsPresentationAuthority: ResultsPresentationAuthority;
+  resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
+  searchMapSourceFramePort: SearchMapSourceFramePort;
 };
 
 export const useSearchRootSessionServicesFoundationRuntime = ({
@@ -26,6 +32,9 @@ export const useSearchRootSessionServicesFoundationRuntime = ({
   rootPrimitivesRuntime,
   searchMapNativeCameraExecutor,
   searchRuntimeBus,
+  resultsPresentationAuthority,
+  resultsPresentationSurfaceAuthority,
+  searchMapSourceFramePort,
 }: UseSearchRootSessionServicesFoundationRuntimeArgs): SearchRootSessionServicesFoundationRuntime => {
   const interactionPrimitivesRuntime = useSearchRootSessionInteractionPrimitivesRuntime({
     rootPrimitivesRuntime,
@@ -42,13 +51,22 @@ export const useSearchRootSessionServicesFoundationRuntime = ({
   });
   const sessionServicesRuntime = useSearchRuntimeSessionServicesRuntime();
   const workCoordinationRuntime = useSearchRuntimeWorkCoordinationRuntime({
+    resultsPresentationSurfaceAuthority,
     searchRuntimeBus,
   });
   const busRuntime = React.useMemo(
     () => ({
       searchRuntimeBus,
+      resultsPresentationAuthority,
+      resultsPresentationSurfaceAuthority,
+      searchMapSourceFramePort,
     }),
-    [searchRuntimeBus]
+    [
+      resultsPresentationAuthority,
+      resultsPresentationSurfaceAuthority,
+      searchMapSourceFramePort,
+      searchRuntimeBus,
+    ]
   );
   const sessionControlServices = React.useMemo<SearchRootSessionControlServicesRuntime>(
     () => ({

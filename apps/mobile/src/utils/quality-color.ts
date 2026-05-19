@@ -11,7 +11,7 @@ const QUALITY_GRADIENT_STOPS = colorPalette.qualityGradientStops;
 
 const QUALITY_GRADIENT_STOPS_REVERSED = [...QUALITY_GRADIENT_STOPS].reverse();
 
-const getQualityColorForT = (t: number): string => {
+const getCraveScoreColorForT = (t: number): string => {
   const clampedT = clamp01(t);
   const next =
     QUALITY_GRADIENT_STOPS.find((stop) => stop.t >= clampedT) ??
@@ -26,32 +26,13 @@ const getQualityColorForT = (t: number): string => {
   return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`;
 };
 
-export const getQualityColorFromPercentile = (percentile?: number | null): string => {
-  const normalizedPercentile =
-    typeof percentile === 'number' && Number.isFinite(percentile) ? clamp01(percentile) : null;
-  if (normalizedPercentile === null) {
-    return getQualityColorForT(0.5);
-  }
-  return getQualityColorForT(1 - normalizedPercentile);
-};
-
-export const getQualityColorFromScore = (score?: number | null): string => {
+export const getCraveScoreColorFromScore = (score?: number | null): string => {
   const normalizedScore =
-    typeof score === 'number' && Number.isFinite(score) ? clamp01(score / 100) : null;
+    typeof score === 'number' && Number.isFinite(score)
+      ? clamp01(score / 100)
+      : null;
   if (normalizedScore === null) {
-    return getQualityColorForT(0.5);
+    return getCraveScoreColorForT(0.5);
   }
-  return getQualityColorForT(1 - normalizedScore);
-};
-
-export const getQualityColor = (
-  index: number,
-  total: number,
-  percentile?: number | null
-): string => {
-  const normalizedPercentile =
-    typeof percentile === 'number' && Number.isFinite(percentile) ? clamp01(percentile) : null;
-  const tFromPercentile = normalizedPercentile === null ? null : 1 - normalizedPercentile;
-  const t = clamp01(tFromPercentile ?? (total <= 1 ? 0 : index / Math.max(total - 1, 1)));
-  return getQualityColorForT(t);
+  return getCraveScoreColorForT(1 - normalizedScore);
 };

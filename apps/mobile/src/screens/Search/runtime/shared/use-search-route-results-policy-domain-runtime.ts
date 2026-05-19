@@ -4,6 +4,18 @@ import type { AppRouteSceneRuntime } from '../../../../navigation/runtime/app-ro
 import { createResultsSurfacePolicyController } from './results-surface-policy-controller';
 import { createResultsSurfaceReadModelPolicyController } from './results-surface-read-model-policy-controller';
 import { createSearchRuntimeBus, type SearchRuntimeBus } from './search-runtime-bus';
+import {
+  createResultsPresentationAuthority,
+  type ResultsPresentationAuthority,
+} from './results-presentation-authority';
+import {
+  createResultsPresentationSurfaceAuthority,
+  type ResultsPresentationSurfaceAuthority,
+} from './results-presentation-surface-authority';
+import {
+  createSearchMapSourceFramePort,
+  type SearchMapSourceFramePort,
+} from '../map/search-map-source-frame-port';
 import { createSearchForegroundPolicyDomainController } from './search-foreground-policy-domain-controller';
 import { createSearchForegroundPolicyPublicationAuthority } from './search-foreground-policy-publication-authority';
 import { createSearchPrimitiveUiStateController } from './search-primitive-ui-state-controller';
@@ -19,6 +31,11 @@ export const useSearchRouteResultsPolicyDomainRuntime = ({
 
   if (runtimeRef.current == null) {
     const searchRuntimeBus: SearchRuntimeBus = createSearchRuntimeBus();
+    const resultsPresentationAuthority: ResultsPresentationAuthority =
+      createResultsPresentationAuthority();
+    const resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority =
+      createResultsPresentationSurfaceAuthority();
+    const searchMapSourceFramePort: SearchMapSourceFramePort = createSearchMapSourceFramePort();
     const primitiveUiStateController = createSearchPrimitiveUiStateController();
     const suggestionPanelStateController = createSearchSuggestionPanelStateController();
     const foregroundPolicyDomain = createSearchForegroundPolicyDomainController({
@@ -33,27 +50,12 @@ export const useSearchRouteResultsPolicyDomainRuntime = ({
       suggestionPanelStateController,
     });
     const surfacePolicyController = createResultsSurfacePolicyController();
-    const readModelPolicyController = createResultsSurfaceReadModelPolicyController({
-      onSnapshotRead({ activeTab, results, rowCountByTabForSheetPolicy }) {
-        surfacePolicyController.updateReadModelFacts({
-          activeTab,
-          results,
-          rowCountByTab: rowCountByTabForSheetPolicy,
-        });
-        const policyFacts = searchRuntimeBus.getPolicyFactsSnapshot();
-        const laneKind = surfacePolicyController.getSnapshot().sheetContentLaneKind;
-        surfacePolicyController.updatePanelInputs({
-          renderPolicy: policyFacts.renderPolicy,
-          allowsInteractionLoadingState:
-            laneKind !== 'results_closing' && laneKind !== 'persistent_poll',
-          isSearchLoading: searchRuntimeBus.getState().isSearchLoading,
-          freezeClassification: policyFacts.freezeClassification,
-          shouldUsePlaceholderRows: false,
-        });
-      },
-    });
+    const readModelPolicyController = createResultsSurfaceReadModelPolicyController();
     runtimeRef.current = {
       searchRuntimeBus,
+      resultsPresentationAuthority,
+      resultsPresentationSurfaceAuthority,
+      searchMapSourceFramePort,
       sheetSink: {
         publishRouteSceneSheetPolicyInputs:
           routeSceneRuntime.sceneInputLane.publishRouteSceneSheetPolicyInputs,
@@ -78,6 +80,9 @@ export const useSearchRouteResultsPolicyDomainRuntime = ({
   React.useEffect(
     () => () => {
       runtime.searchRuntimeBus.reset();
+      runtime.resultsPresentationAuthority.reset();
+      runtime.resultsPresentationSurfaceAuthority.reset();
+      runtime.searchMapSourceFramePort.reset();
       runtime.primitiveUiStateController.reset();
       runtime.surfacePolicyController.reset();
       runtime.readModelPolicyController.reset(null);

@@ -1,5 +1,5 @@
-import type { PreparedResultsPresentationSnapshot } from './prepared-presentation-transaction';
-import { resolveCommittedPreparedResultsCoverState } from './prepared-presentation-transaction';
+import type { SearchSurfaceResultsTransaction } from './search-surface-results-transaction';
+import { resolveCommittedSearchSurfaceResultsCoverState } from './search-surface-results-transaction';
 import type { ResultsPresentationTransportState } from './results-presentation-runtime-contract';
 import type { ToggleInteractionLifecycleEvent } from './results-toggle-interaction-contract';
 import { resolveIdleResultsPresentationTransportState } from './results-presentation-runtime-machine-state';
@@ -72,7 +72,7 @@ export const resolveAbortedResultsPresentationTransportAttempt = (
 };
 
 export const resolveCommittedResultsPresentationTransportAttempt = (
-  snapshot: PreparedResultsPresentationSnapshot
+  snapshot: SearchSurfaceResultsTransaction
 ): ResultsPresentationNamedTransportAttempt => {
   const nextState: ResultsPresentationTransportState = {
     transactionId: snapshot.transactionId,
@@ -80,13 +80,13 @@ export const resolveCommittedResultsPresentationTransportAttempt = (
     executionBatch: null,
     executionStage: snapshot.kind === 'results_exit' ? 'exit_requested' : 'enter_pending_mount',
     startToken: null,
-    coverState: resolveCommittedPreparedResultsCoverState(snapshot),
+    coverState: resolveCommittedSearchSurfaceResultsCoverState(snapshot),
   };
 
   return {
     nextState,
     appliedLog: {
-      label: 'commitPreparedResultsSnapshot',
+      label: 'commitSearchSurfaceResultsTransaction',
       data: {
         transactionId: snapshot.transactionId,
         kind: snapshot.kind,

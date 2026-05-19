@@ -1,13 +1,13 @@
 import type { Coordinate, FoodResult, MapBounds, RestaurantResult } from '../../../types';
 
-import { getQualityColorFromScore } from './quality';
+import { getCraveScoreColorFromScore } from './quality';
 
 export const getMarkerColorForRestaurant = (restaurant: RestaurantResult): string => {
-  return getQualityColorFromScore(restaurant.contextualScore ?? restaurant.restaurantQualityScore);
+  return getCraveScoreColorFromScore(restaurant.craveScore);
 };
 
 export const getMarkerColorForDish = (dish: FoodResult): string => {
-  return getQualityColorFromScore(dish.contextualScore ?? dish.qualityScore);
+  return getCraveScoreColorFromScore(dish.craveScore);
 };
 
 const clamp = (value: number, min: number, max: number): number =>

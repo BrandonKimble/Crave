@@ -17,6 +17,7 @@ type UseSearchAutocompleteCacheRuntimeArgs = {
   cancelAutocomplete: () => void;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
   setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
+  cacheScopeKey: string;
 };
 
 type SearchAutocompleteCacheRuntime = {
@@ -43,8 +44,13 @@ export const useSearchAutocompleteCacheRuntime = ({
   cancelAutocomplete,
   setSuggestions,
   setShowSuggestions,
+  cacheScopeKey,
 }: UseSearchAutocompleteCacheRuntimeArgs): SearchAutocompleteCacheRuntime => {
   const autocompleteCacheRef = React.useRef<Map<string, CachedAutocompleteEntry>>(new Map());
+
+  React.useEffect(() => {
+    autocompleteCacheRef.current.clear();
+  }, [cacheScopeKey]);
 
   const clearAutocompleteSuggestions = React.useCallback(() => {
     writeAutocompleteSuggestions(setSuggestions, setShowSuggestions, []);

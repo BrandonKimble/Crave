@@ -5,8 +5,6 @@ import type {
 } from './app-route-profile-prepared-presentation-transaction-contract';
 import type { ProfileForegroundUiRestoreState } from './app-route-profile-transition-state-contract';
 
-type ProfileAppSheetSnap = 'expanded' | 'middle' | 'collapsed' | 'hidden';
-
 export type ProfileAppForegroundExecutionRuntime = {
   prepareForegroundUiForProfileOpen: (options?: {
     captureSaveSheetState?: boolean;
@@ -32,9 +30,6 @@ export type ProfileAppShellExecutionRuntime = {
 };
 
 export type ProfileAppCommandExecutionRuntime = {
-  requestResultsSheetSnap: (snap: ProfileAppSheetSnap, requestToken: number | null) => void;
-  hideResultsSheet: (requestToken: number | null) => void;
-  forceSharedMiddleSnap: () => void;
   clearMapHighlightedRestaurantId: () => void;
 };
 

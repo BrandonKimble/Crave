@@ -11,9 +11,6 @@ export const useSearchSuggestionHeldDisplayRuntime = ({
   recentSearches,
   recentlyViewedRestaurants,
   recentlyViewedFoods,
-  isRecentLoading,
-  isRecentlyViewedLoading,
-  isRecentlyViewedFoodsLoading,
   isSuggestionPanelActive,
   isSuggestionPanelVisible,
   shouldDriveSuggestionLayout,
@@ -22,7 +19,7 @@ export const useSearchSuggestionHeldDisplayRuntime = ({
   liveShouldRenderRecentSection,
   shouldShowAutocompleteSpinnerInBar,
   submitTransitionHoldRef,
-  shouldFreezeSuggestionDisplayForRunOne,
+  shouldFreezeSuggestionDisplayForSearchSurfaceRedraw,
 }: SearchSuggestionHeldDisplayRuntimeArgs): SearchSuggestionHeldDisplayRuntime => {
   const isSuggestionClosing = isSuggestionPanelVisible && !isSuggestionPanelActive;
   const submitTransitionHold = submitTransitionHoldRef.current;
@@ -40,19 +37,6 @@ export const useSearchSuggestionHeldDisplayRuntime = ({
   const recentlyViewedFoodsDisplay = isSuggestionHoldActive
     ? submitTransitionHold.recentlyViewedFoods
     : recentlyViewedFoods;
-  const isRecentLoadingDisplay = isSuggestionHoldActive
-    ? submitTransitionHold.isRecentLoading
-    : isRecentLoading;
-  const isRecentlyViewedLoadingDisplay = isSuggestionHoldActive
-    ? submitTransitionHold.isRecentlyViewedLoading
-    : isRecentlyViewedLoading;
-  const isRecentlyViewedFoodsLoadingDisplay = isSuggestionHoldActive
-    ? submitTransitionHold.isRecentlyViewedFoodsLoading
-    : isRecentlyViewedFoodsLoading;
-
-  const hasRecentSearchesDisplay = recentSearchesDisplay.length > 0;
-  const hasRecentlyViewedRestaurantsDisplay = recentlyViewedRestaurantsDisplay.length > 0;
-  const hasRecentlyViewedFoodsDisplay = recentlyViewedFoodsDisplay.length > 0;
 
   const shouldHoldAutocomplete = isSuggestionHoldActive && submitTransitionHold.holdAutocomplete;
   const shouldHoldRecent = isSuggestionHoldActive && submitTransitionHold.holdRecent;
@@ -79,16 +63,10 @@ export const useSearchSuggestionHeldDisplayRuntime = ({
     recentSearchesDisplay,
     recentlyViewedRestaurantsDisplay,
     recentlyViewedFoodsDisplay,
-    hasRecentSearchesDisplay,
-    hasRecentlyViewedRestaurantsDisplay,
-    hasRecentlyViewedFoodsDisplay,
-    isRecentLoadingDisplay,
-    isRecentlyViewedLoadingDisplay,
-    isRecentlyViewedFoodsLoadingDisplay,
   };
 
   return useSearchSuggestionHeldDisplayPresentationRuntime({
-    shouldFreezeSuggestionDisplayForRunOne,
+    shouldFreezeSuggestionDisplayForSearchSurfaceRedraw,
     currentDisplayRuntime,
   });
 };

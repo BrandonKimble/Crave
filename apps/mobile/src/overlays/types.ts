@@ -12,6 +12,7 @@ export type OverlayKey =
   | 'polls'
   | 'bookmarks'
   | 'profile'
+  | 'favoriteListDetail'
   | 'restaurant'
   | 'saveList'
   | 'price'
@@ -23,6 +24,7 @@ export type OverlaySheetSnapRequest = {
   snap: OverlaySheetSnap;
   token?: number | null;
   settleToken?: number | null;
+  mode?: 'spring' | 'instant';
 };
 
 export type SnapProfile = {
@@ -43,13 +45,6 @@ export type OverlayContentSpecBase = {
    */
   sceneIdentityKey?: string | null;
   snapPoints: SnapPoints;
-  /**
-   * Optional key used to persist and restore a sheet snap position across overlay switches.
-   * - `undefined`: resolved automatically by the overlay shell.
-   * - `null`: disables snap persistence for this overlay spec.
-   * - `string`: uses the provided key.
-   */
-  snapPersistenceKey?: string | null;
   shellSnapRequest?: OverlaySheetSnapRequest | null;
   underlayComponent?: React.ReactNode;
   renderWrapper?: (children: React.ReactNode) => React.ReactNode;
@@ -62,7 +57,9 @@ export type OverlayListContentSpec<T> = OverlaySheetFrameSpec &
   Omit<
     Extract<BottomSheetWithFlashListProps<T>, { surfaceKind: 'list' }>,
     'visible' | 'snapPoints'
-  >;
+  > & {
+    ListChromeComponent?: React.ReactNode;
+  };
 
 export type OverlayComponentContentSpec = OverlaySheetFrameSpec &
   Omit<

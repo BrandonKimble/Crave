@@ -2,21 +2,21 @@ import type { AppRouteSceneChromeMotionRuntime } from '../../../../navigation/ru
 import { useSearchRootRuntimeHostVisualRuntime } from './use-search-root-runtime-host-visual-runtime';
 import { useSearchRootRuntimeSceneVisualRuntime } from './use-search-root-runtime-scene-visual-runtime';
 import type { SearchForegroundVisualRuntime } from './use-search-foreground-visual-runtime';
-import type { SearchRootCloseHandoffVisualRuntime } from './search-root-visual-runtime-contract';
+import type { SearchRootSurfaceBundleVisualRuntime } from './search-root-visual-runtime-contract';
 
 export const useSearchRootRuntimeVisualAssemblyRuntime = ({
   foregroundVisualRuntime,
   appRouteSceneChromeMotionRuntime,
-  closeHandoffVisualRuntime,
+  surfaceBundleVisualRuntime,
 }: {
   foregroundVisualRuntime: SearchForegroundVisualRuntime;
   appRouteSceneChromeMotionRuntime: AppRouteSceneChromeMotionRuntime;
-  closeHandoffVisualRuntime: SearchRootCloseHandoffVisualRuntime;
+  surfaceBundleVisualRuntime: SearchRootSurfaceBundleVisualRuntime;
 }) => ({
   hostVisualRuntime: useSearchRootRuntimeHostVisualRuntime({
     foregroundVisualRuntime,
     appRouteSceneChromeMotionRuntime,
-    closeHandoffVisualRuntime,
+    surfaceBundleVisualRuntime,
   }),
   sceneVisualRuntime: useSearchRootRuntimeSceneVisualRuntime({
     foregroundVisualRuntime,

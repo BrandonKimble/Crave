@@ -1,61 +1,56 @@
 import { Injectable } from '@nestjs/common';
-import { EntityType, Prisma } from '@prisma/client';
-import { PrismaService } from '../../prisma/prisma.service';
+import { DemandSignalKind, DemandSourceKind, EntityType } from '@prisma/client';
 import { LoggerService } from '../../shared';
+import { SearchDemandAggregationService } from './search-demand-aggregation.service';
 
 export interface LocationDemandRecord {
   marketKey: string;
-  impressions: number;
+  signalCount: number;
+  demandScore: number;
 }
 
 export interface EntityDemandRecord {
   entityId: string;
   entityType: EntityType;
   marketKey: string;
-  impressions: number;
+  signalCount: number;
+  distinctUsers: number;
+  weightedSignalCount: number;
+  demandScore: number;
   lastSeenAt: Date;
 }
 
 @Injectable()
 export class SearchDemandService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly demandAggregation: SearchDemandAggregationService,
     private readonly logger: LoggerService,
   ) {}
 
   async listActiveLocations(params: {
     since: Date;
-    minImpressions: number;
+    minDemandScore: number;
     limit?: number;
   }): Promise<LocationDemandRecord[]> {
     try {
-      const rows = await this.prisma.$queryRaw<
-        Array<{ market_key: string | null; impressions: bigint }>
-      >(
-        Prisma.sql`
-          SELECT
-            market_key,
-            COUNT(*)::bigint AS impressions
-          FROM user_search_logs
-          WHERE logged_at >= ${params.since}
-            AND market_key IS NOT NULL
-          GROUP BY market_key
-          HAVING COUNT(*) >= ${params.minImpressions}
-          ORDER BY impressions DESC
-          ${params.limit ? Prisma.sql`LIMIT ${params.limit}` : Prisma.empty}
-        `,
-      );
+      const rows = await this.demandAggregation.listActiveMarkets({
+        since: params.since,
+        minSignalCount: 0,
+        minDemandScore: params.minDemandScore,
+        limit: params.limit,
+        sourceKinds: [DemandSourceKind.search_log],
+        signalKinds: [
+          DemandSignalKind.backend,
+          DemandSignalKind.cache,
+          DemandSignalKind.autocomplete_selection,
+        ],
+      });
 
-      return rows
-        .filter(
-          (row): row is { market_key: string; impressions: bigint } =>
-            typeof row.market_key === 'string' &&
-            row.market_key.trim().length > 0,
-        )
-        .map((row) => ({
-          marketKey: row.market_key.trim().toLowerCase(),
-          impressions: Number(row.impressions),
-        }));
+      return rows.map((row) => ({
+        marketKey: row.marketKey,
+        signalCount: row.signalCount,
+        demandScore: row.demandScore,
+      }));
     } catch (error) {
       this.logger.warn('Failed to load active search locations', {
         error:
@@ -70,9 +65,13 @@ export class SearchDemandService {
   async getTopEntitiesForLocation(params: {
     marketKey: string | null;
     since: Date;
+    until?: Date;
     entityTypes?: EntityType[];
-    minImpressions: number;
+    entityIds?: string[];
+    minDemandScore: number;
     limit: number;
+    currentCycleDays?: number;
+    halfLifeDays?: number;
   }): Promise<EntityDemandRecord[]> {
     const marketKey =
       typeof params.marketKey === 'string' ? params.marketKey.trim() : '';
@@ -80,61 +79,36 @@ export class SearchDemandService {
       return [];
     }
 
-    const filters: Prisma.Sql[] = [Prisma.sql`logged_at >= ${params.since}`];
-    filters.push(Prisma.sql`LOWER(market_key) = LOWER(${marketKey})`);
-
-    if (params.entityTypes?.length) {
-      filters.push(
-        Prisma.sql`entity_type IN (${Prisma.join(params.entityTypes)})`,
-      );
-    }
-
     try {
-      const rows = await this.prisma.$queryRaw<
-        Array<{
-          entity_id: string;
-          entity_type: EntityType;
-          market_key: string | null;
-          impressions: bigint;
-          last_logged_at: Date;
-        }>
-      >(
-        Prisma.sql`
-          SELECT
-            entity_id,
-            entity_type,
-            market_key,
-            COUNT(*)::bigint AS impressions,
-            MAX(logged_at) AS last_logged_at
-          FROM user_search_logs
-          WHERE ${Prisma.join(filters, ' AND ')}
-          GROUP BY entity_id, entity_type, market_key
-          HAVING COUNT(*) >= ${params.minImpressions}
-          ORDER BY impressions DESC
-          LIMIT ${params.limit}
-        `,
-      );
+      const rows = await this.demandAggregation.listEntityDemand({
+        since: params.since,
+        until: params.until,
+        marketKey,
+        entityTypes: params.entityTypes,
+        entityIds: params.entityIds,
+        sourceKinds: [DemandSourceKind.search_log],
+        signalKinds: [
+          DemandSignalKind.backend,
+          DemandSignalKind.cache,
+          DemandSignalKind.autocomplete_selection,
+        ],
+        currentCycleDays: params.currentCycleDays,
+        halfLifeDays: params.halfLifeDays,
+        limit: params.limit,
+      });
 
       return rows
-        .filter(
-          (
-            row,
-          ): row is {
-            entity_id: string;
-            entity_type: EntityType;
-            market_key: string;
-            impressions: bigint;
-            last_logged_at: Date;
-          } =>
-            typeof row.market_key === 'string' &&
-            row.market_key.trim().length > 0,
-        )
+        .filter((row) => row.entityId && row.entityType)
+        .filter((row) => row.demandScore >= params.minDemandScore)
         .map((row) => ({
-          entityId: row.entity_id,
-          entityType: row.entity_type,
-          marketKey: row.market_key.trim().toLowerCase(),
-          impressions: Number(row.impressions),
-          lastSeenAt: row.last_logged_at,
+          entityId: row.entityId as string,
+          entityType: row.entityType as EntityType,
+          marketKey: row.marketKey?.trim().toLowerCase() ?? marketKey,
+          signalCount: row.signalCount,
+          distinctUsers: row.distinctUsers,
+          weightedSignalCount: row.weightedSignalCount,
+          demandScore: row.demandScore,
+          lastSeenAt: row.lastSeenAt,
         }));
     } catch (error) {
       this.logger.warn('Failed to load entity demand for location', {

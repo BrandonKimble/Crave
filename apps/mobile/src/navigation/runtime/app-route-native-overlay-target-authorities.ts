@@ -38,6 +38,13 @@ import type {
   AppRouteSceneSwitchRuntime,
   RouteSceneSwitchTransitionState,
 } from './app-route-scene-switch-controller';
+import {
+  areSearchSurfaceVisualPoliciesEqual,
+  getSearchSurfaceRuntime,
+  selectSearchSurfaceRouteGraphPolicy,
+  selectSearchSurfaceVisualPolicy,
+  type SearchSurfaceVisualPolicySnapshot,
+} from '../../screens/Search/runtime/surface/search-surface-runtime';
 
 type Listener = () => void;
 
@@ -79,6 +86,7 @@ type DisplaySharedValueTarget = {
   values: RouteOverlayDisplaySharedValueTargets;
   activeTabIndex: number | null;
   displayedSceneKey: RouteOverlayDisplaySnapshot['displayedSceneKey'] | null;
+  prewarmedSceneKey: RouteOverlayDisplaySnapshot['prewarmedSceneKey'] | null;
 };
 
 type IdentityTarget = {
@@ -136,6 +144,7 @@ type RouteSceneSheetSessionSnapshot = AppRouteSheetSnapSessionSnapshot;
 
 type NativeOverlayTargetSourceSnapshot = {
   routeSceneSwitchSnapshot: RouteSceneSwitchSnapshot;
+  surfaceVisualPolicy: SearchSurfaceVisualPolicySnapshot;
   routeScenePolicySnapshot: RouteScenePolicySnapshot;
   commandSnapshot: AppRouteOverlayCommandSnapshot;
   sheetSessionSnapshot: RouteSceneSheetSessionSnapshot;
@@ -243,6 +252,7 @@ const areDisplaySnapshotsEqual = (
   left.rootOverlayKey === right.rootOverlayKey &&
   left.displayedRootOverlayKey === right.displayedRootOverlayKey &&
   left.displayedSceneKey === right.displayedSceneKey &&
+  left.prewarmedSceneKey === right.prewarmedSceneKey &&
   left.isSearchOverlay === right.isSearchOverlay &&
   left.isPersistentPollLane === right.isPersistentPollLane;
 
@@ -325,6 +335,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     transitionState = routeSceneSwitchRuntime.getTransitionState()
   ): NativeOverlayTargetSourceSnapshot => ({
     routeSceneSwitchSnapshot: resolveRouteSceneSwitchSnapshotFromTransitionState(transitionState),
+    surfaceVisualPolicy: selectSearchSurfaceVisualPolicy(getSearchSurfaceRuntime().getSnapshot()),
     routeScenePolicySnapshot: routeScenePolicyAuthority.getSnapshot(),
     commandSnapshot: routeOverlayCommandAuthority.getSnapshot(),
     sheetSessionSnapshot: routeSheetSnapSessionAuthority.getSnapshot(),
@@ -332,16 +343,34 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
 
   const resolveIsPersistentPollLane = ({
     routeSceneSwitchSnapshot,
+    surfaceVisualPolicy,
     routeScenePolicySnapshot,
     sheetSessionSnapshot,
   }: NativeOverlayTargetSourceSnapshot): boolean => {
     const routeState = routeSceneSwitchSnapshot.routeState;
+    const isSurfacePersistentPollCommitted =
+      surfaceVisualPolicy.phase === 'results_dismissing' &&
+      surfaceVisualPolicy.canReleasePersistentPolls;
+    const isPersistentPollLaneEligible =
+      (routeScenePolicySnapshot.isPersistentPollLaneEligible &&
+        surfaceVisualPolicy.phase !== 'results_dismissing') ||
+      isSurfacePersistentPollCommitted;
     return (
       routeState.rootOverlayKey === 'search' &&
-      routeScenePolicySnapshot.isPersistentPollLaneEligible &&
+      isPersistentPollLaneEligible &&
       (!sheetSessionSnapshot.isDockedPollsDismissed ||
-        routeSceneSwitchSnapshot.activeDockedPollsRestoreIntent != null)
+        routeSceneSwitchSnapshot.activeDockedPollsRestoreIntent != null ||
+        isSurfacePersistentPollCommitted)
     );
+  };
+
+  const shouldRenderSharedSheetSurfaceForRouteState = (
+    routeState: RouteSceneSwitchTransitionState['routeState']
+  ): boolean => {
+    if (routeState.rootOverlayKey === 'restaurant') {
+      return false;
+    }
+    return true;
   };
 
   const areOutputSignaturesEqual = (
@@ -404,10 +433,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     sourceSnapshot: NativeOverlayTargetSourceSnapshot
   ): NativeOverlayOutputSignature => {
     const routeState = sourceSnapshot.routeSceneSwitchSnapshot.routeState;
-    return [
-      routeState.activeOverlayRoute.key !== 'restaurant' &&
-        routeState.rootOverlayKey !== 'restaurant',
-    ];
+    return [shouldRenderSharedSheetSurfaceForRouteState(routeState)];
   };
 
   const resolveChromeModeSignature = (
@@ -418,6 +444,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
 
   const resolveSheetPolicySignature = ({
     routeSceneSwitchSnapshot,
+    surfaceVisualPolicy,
     routeScenePolicySnapshot,
     commandSnapshot,
     sheetSessionSnapshot,
@@ -432,6 +459,8 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     routeScenePolicySnapshot.foregroundActivity,
     routeScenePolicySnapshot.shouldRenderResultsSheet,
     routeScenePolicySnapshot.closeHandoffFreezeClassification,
+    surfaceVisualPolicy.canExposePersistentPolls,
+    surfaceVisualPolicy.canReleasePersistentPolls,
     commandSnapshot.searchHeaderActionResetToken,
     sheetSessionSnapshot.isDockedPollsDismissed,
   ];
@@ -439,7 +468,8 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
   const resolveVisibilitySignature = (
     sourceSnapshot: NativeOverlayTargetSourceSnapshot
   ): NativeOverlayOutputSignature => [
-    sourceSnapshot.routeSceneSwitchSnapshot.routeActiveSceneKey != null ||
+    resolveIsPersistentPollLane(sourceSnapshot) ||
+      sourceSnapshot.routeSceneSwitchSnapshot.routeActiveSceneKey != null ||
       sourceSnapshot.routeSceneSwitchSnapshot.transitionPhase !== 'idle',
   ];
 
@@ -496,6 +526,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
         : routeSceneSwitchSnapshot.transitionContract?.targetSceneKey ??
           routeSceneSwitchSnapshot.pendingSceneKey ??
           routeSceneSwitchSnapshot.routeActiveSceneKey,
+      prewarmedSceneKey: null,
       isSearchOverlay: routeState.rootOverlayKey === 'search',
       isPersistentPollLane,
     };
@@ -512,12 +543,13 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     };
   };
 
-  const resolveVisibilitySnapshot = ({
-    routeSceneSwitchSnapshot,
-  }: NativeOverlayTargetSourceSnapshot): RouteOverlayVisibilitySnapshot => ({
+  const resolveVisibilitySnapshot = (
+    sourceSnapshot: NativeOverlayTargetSourceSnapshot
+  ): RouteOverlayVisibilitySnapshot => ({
     shouldRenderSearchOverlay:
-      routeSceneSwitchSnapshot.routeActiveSceneKey != null ||
-      routeSceneSwitchSnapshot.transitionPhase !== 'idle',
+      resolveIsPersistentPollLane(sourceSnapshot) ||
+      sourceSnapshot.routeSceneSwitchSnapshot.routeActiveSceneKey != null ||
+      sourceSnapshot.routeSceneSwitchSnapshot.transitionPhase !== 'idle',
   });
 
   const resolveSheetHostSurfaceSnapshot = (
@@ -525,9 +557,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
   ): AppRouteSheetHostSurfaceSnapshot => {
     const routeState = sourceSnapshot.routeSceneSwitchSnapshot.routeState;
     return {
-      shouldRenderSceneStackSurface:
-        routeState.activeOverlayRoute.key !== 'restaurant' &&
-        routeState.rootOverlayKey !== 'restaurant',
+      shouldRenderSceneStackSurface: shouldRenderSharedSheetSurfaceForRouteState(routeState),
     };
   };
 
@@ -543,11 +573,12 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     };
   };
 
-  const shouldSuppressOverlaySheetVisibility = ({
-    routeSceneSwitchSnapshot,
-    routeScenePolicySnapshot,
-  }: NativeOverlayTargetSourceSnapshot): boolean => {
+  const shouldSuppressOverlaySheetVisibility = (
+    sourceSnapshot: NativeOverlayTargetSourceSnapshot
+  ): boolean => {
+    const { routeSceneSwitchSnapshot, routeScenePolicySnapshot } = sourceSnapshot;
     const routeActiveSceneKey = routeSceneSwitchSnapshot.routeActiveSceneKey;
+    const isPersistentPollLane = resolveIsPersistentPollLane(sourceSnapshot);
     const shouldSuppressOverlaySheetForForegroundEditing =
       routeScenePolicySnapshot.shouldSuppressSearchAndTabSheetsForForegroundEditing &&
       (routeActiveSceneKey === 'search' ||
@@ -562,7 +593,8 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     const shouldSuppressIdleSearchOverlaySheet =
       routeActiveSceneKey === 'search' &&
       routeScenePolicySnapshot.foregroundActivity === 'idle' &&
-      !routeScenePolicySnapshot.shouldRenderResultsSheet;
+      !routeScenePolicySnapshot.shouldRenderResultsSheet &&
+      !isPersistentPollLane;
 
     return (
       shouldSuppressOverlaySheetForForegroundEditing ||
@@ -618,9 +650,10 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     sourceSnapshot: NativeOverlayTargetSourceSnapshot
   ): RouteOverlaySheetPolicySnapshot => {
     const routeActiveSceneKey = sourceSnapshot.routeSceneSwitchSnapshot.routeActiveSceneKey;
+    const isPersistentPollLane = resolveIsPersistentPollLane(sourceSnapshot);
     const overlayHeaderActionMode = resolveOverlayHeaderActionMode(sourceSnapshot);
 
-    if (routeActiveSceneKey == null || overlayHeaderActionMode == null) {
+    if ((!isPersistentPollLane && routeActiveSceneKey == null) || overlayHeaderActionMode == null) {
       return EMPTY_ROUTE_OVERLAY_SHEET_POLICY_SNAPSHOT;
     }
 
@@ -700,7 +733,8 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     const targetsToSync = [...displaySharedValueTargets].filter(
       (target) =>
         target.activeTabIndex !== activeTabIndex ||
-        target.displayedSceneKey !== snapshot.displayedSceneKey
+        target.displayedSceneKey !== snapshot.displayedSceneKey ||
+        target.prewarmedSceneKey !== snapshot.prewarmedSceneKey
     );
     if (targetsToSync.length === 0) {
       return;
@@ -710,10 +744,12 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
         syncRouteOverlayDisplaySharedValues(
           target.values,
           snapshot,
-          target.displayedSceneKey ?? null
+          target.displayedSceneKey ?? null,
+          target.prewarmedSceneKey ?? null
         );
         target.activeTabIndex = activeTabIndex;
         target.displayedSceneKey = snapshot.displayedSceneKey;
+        target.prewarmedSceneKey = snapshot.prewarmedSceneKey;
       });
     });
   };
@@ -1050,6 +1086,11 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     routeSheetSnapSessionAuthority.subscribe(() =>
       recomputeLanes(SHEET_SESSION_NATIVE_OVERLAY_TARGET_LANES, 'sheetSession')
     ),
+    getSearchSurfaceRuntime().subscribeSelector(
+      selectSearchSurfaceRouteGraphPolicy,
+      () => recomputeLanes(POLICY_NATIVE_OVERLAY_TARGET_LANES, 'searchSurface'),
+      areSearchSurfaceVisualPoliciesEqual
+    ),
   ];
 
   return {
@@ -1098,6 +1139,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
           values,
           activeTabIndex: null,
           displayedSceneKey: null,
+          prewarmedSceneKey: null,
         };
         displaySharedValueTargets.add(target);
         syncDisplaySharedValueTargets(displaySnapshot, 'syncDisplaySharedValues:register');

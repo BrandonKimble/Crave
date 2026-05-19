@@ -290,26 +290,30 @@ export const usePollCreationPanelSpec = ({
     };
 
     if (selectedType === 'best_dish') {
-      payload.topicEntityId = dishField.selection?.entityId;
-      payload.topicEntityName = dishField.selection?.name ?? dishField.query.trim();
-      payload.topicEntityType = 'food';
+      payload.targetDishId = dishField.selection?.entityId;
+      payload.targetDishName = dishField.selection?.name ?? dishField.query.trim();
     } else if (selectedType === 'what_to_order') {
-      payload.topicEntityId = restaurantField.selection?.entityId;
-      payload.topicEntityName = restaurantField.selection?.name ?? restaurantField.query.trim();
-      payload.topicEntityType = 'restaurant';
+      payload.targetRestaurantId = restaurantField.selection?.entityId;
+      payload.targetRestaurantName =
+        restaurantField.selection?.name ?? restaurantField.query.trim();
     } else if (selectedType === 'best_dish_attribute') {
-      payload.topicEntityId = foodAttributeField.selection?.entityId;
-      payload.topicEntityName =
+      payload.targetFoodAttributeId = foodAttributeField.selection?.entityId;
+      payload.targetFoodAttributeName =
         foodAttributeField.selection?.name ?? foodAttributeField.query.trim();
-      payload.topicEntityType = 'food_attribute';
     } else if (selectedType === 'best_restaurant_attribute') {
-      payload.topicEntityId = restaurantAttributeField.selection?.entityId;
-      payload.topicEntityName =
+      payload.targetRestaurantAttributeId =
+        restaurantAttributeField.selection?.entityId;
+      payload.targetRestaurantAttributeName =
         restaurantAttributeField.selection?.name ?? restaurantAttributeField.query.trim();
-      payload.topicEntityType = 'restaurant_attribute';
     }
 
-    if (!payload.topicEntityName) {
+    const topicName =
+      payload.targetDishName ??
+      payload.targetRestaurantName ??
+      payload.targetFoodAttributeName ??
+      payload.targetRestaurantAttributeName ??
+      '';
+    if (!topicName.trim()) {
       Alert.alert('Add a topic', 'Pick an item from suggestions or type a value.');
       return;
     }
@@ -562,7 +566,6 @@ export const usePollCreationPanelSpec = ({
     shellSpec: normalizeSearchRouteSceneStackShellSpec({
       overlayKey: 'pollCreation',
       snapPoints,
-      initialSnapPoint: 'expanded',
       preventSwipeDismiss: true,
       style: overlaySheetStyles.container,
       onHidden: onClose,

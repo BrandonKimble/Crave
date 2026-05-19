@@ -1,7 +1,7 @@
 import type {
-  PreparedResultsPresentationSnapshot,
+  SearchSurfaceResultsTransaction,
   ResultsPresentationCoverState,
-} from './prepared-presentation-transaction';
+} from './search-surface-results-transaction';
 
 export type ResultsPresentationLog = (label: string, data?: Record<string, unknown>) => void;
 
@@ -20,7 +20,7 @@ type ResultsPresentationExecutionStage =
   | 'idle';
 
 type ResultsPresentationRenderPolicy = {
-  surfaceMode: 'none' | 'initial_loading' | 'interaction_loading';
+  surfaceMode: 'none' | 'initial_loading' | 'interaction_loading' | 'results';
   contentVisibility: 'hidden' | 'frozen' | 'visible';
   isAwaitingEnterMount: boolean;
   isEntering: boolean;
@@ -34,7 +34,7 @@ export type ResultsPresentationReadModel = ResultsPresentationRenderPolicy & {
 
 export type ResultsPresentationTransportState = {
   transactionId: string | null;
-  snapshotKind: PreparedResultsPresentationSnapshot['kind'] | null;
+  snapshotKind: SearchSurfaceResultsTransaction['kind'] | null;
   executionBatch: ResultsPresentationExecutionBatchRef | null;
   executionStage: ResultsPresentationExecutionStage;
   startToken: number | null;

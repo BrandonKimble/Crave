@@ -1,6 +1,8 @@
 import React from 'react';
 
 import type { AppRoutePollsSceneRuntime } from '../../../navigation/runtime/app-route-polls-scene-runtime';
+import { logPerfScenarioSearchRequestLifecycle } from '../../../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../../../perf/perf-scenario-runtime-store';
 import type { PollsPanelFeedRuntime } from './polls-panel-feed-runtime';
 
 type UsePollsPanelHeaderModelPublicationArgs = {
@@ -12,8 +14,12 @@ export const usePollsPanelHeaderModelPublication = ({
   pollsSceneActions,
   pollsPanelFeedRuntime,
 }: UsePollsPanelHeaderModelPublicationArgs): void => {
+  const activePerfScenarioRunId = usePerfScenarioRuntimeStore(
+    (state) => state.activeConfig?.runId ?? null
+  );
+
   React.useEffect(() => {
-    pollsSceneActions.publishHeaderModel({
+    const headerModel = {
       title: pollsPanelFeedRuntime.headerVisualModel.title,
       badgeCount: pollsPanelFeedRuntime.headerVisualModel.badgeCount,
       badgeLabel: pollsPanelFeedRuntime.headerVisualModel.badgeLabel,
@@ -21,11 +27,24 @@ export const usePollsPanelHeaderModelPublication = ({
       headerAction: pollsPanelFeedRuntime.headerAction,
       marketKey: pollsPanelFeedRuntime.marketKey,
       marketName: pollsPanelFeedRuntime.marketName,
-      candidatePlaceName: pollsPanelFeedRuntime.candidatePlaceName,
+      candidateLocalityName: pollsPanelFeedRuntime.candidateLocalityName,
       marketOverride: pollsPanelFeedRuntime.marketOverride,
+    };
+    pollsSceneActions.publishHeaderModel(headerModel);
+    logPerfScenarioSearchRequestLifecycle({
+      source: 'polls.headerModel',
+      phase: 'poll_header_model',
+      pollHeaderTitle: headerModel.title,
+      pollHeaderBadgeCount: headerModel.badgeCount,
+      pollHeaderBadgeLabel: headerModel.badgeLabel,
+      pollHeaderMarketKey: headerModel.marketKey,
+      pollHeaderMarketName: headerModel.marketName,
+      pollHeaderCandidateLocalityName: headerModel.candidateLocalityName,
+      pollHeaderMarketOverride: headerModel.marketOverride,
+      pollHeaderAction: headerModel.headerAction,
     });
   }, [
-    pollsPanelFeedRuntime.candidatePlaceName,
+    pollsPanelFeedRuntime.candidateLocalityName,
     pollsPanelFeedRuntime.headerAction,
     pollsPanelFeedRuntime.headerVisualModel.badgeCount,
     pollsPanelFeedRuntime.headerVisualModel.badgeLabel,
@@ -35,6 +54,7 @@ export const usePollsPanelHeaderModelPublication = ({
     pollsPanelFeedRuntime.marketName,
     pollsPanelFeedRuntime.marketOverride,
     pollsSceneActions,
+    activePerfScenarioRunId,
   ]);
 
   React.useEffect(

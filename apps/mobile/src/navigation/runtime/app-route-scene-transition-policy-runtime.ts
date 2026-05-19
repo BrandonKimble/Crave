@@ -9,14 +9,19 @@ import type {
   RouteSceneSwitchPollsParams,
   RouteSceneSwitchRouteAction,
   RouteSceneSwitchRouteParams,
+  RouteSceneSwitchSheetContentHandoff,
+  RouteSceneSwitchSheetMotionPlan,
+  RouteSceneSwitchSheetOpenerSource,
+  RouteSceneSwitchSheetSnapPersistence,
   RouteSceneSwitchSheetIntent,
+  RouteSceneSwitchSheetTransitionKind,
+  RouteSceneSwitchSheetTransitionPlan,
   RouteSceneSwitchSheetVisibilityTarget,
 } from './app-overlay-route-transition-contract';
 import { PRESERVE_ROUTE_SCENE_SWITCH_CAMERA_INTENT } from './app-overlay-route-transition-contract';
 import {
   resolveAppRouteSceneHeaderActionModeTarget,
   resolveAppRouteSceneChromeVisibilityTarget,
-  resolveAppRouteSceneDefaultSnapTarget,
   resolveAppRouteSceneSheetHostSceneKey,
   resolveAppRouteSceneSheetVisibilityTarget,
 } from './app-route-scene-policy-registry';
@@ -28,6 +33,11 @@ export type AppRouteSceneTransitionPolicyInput = {
   settleToken?: number | null;
   snapTarget?: BottomSheetSnap | null;
   sheetIntent?: RouteSceneSwitchSheetIntent | null;
+  sheetTransitionKind?: RouteSceneSwitchSheetTransitionKind;
+  sheetOpenerSource?: RouteSceneSwitchSheetOpenerSource;
+  sheetMotion?: RouteSceneSwitchSheetMotionPlan;
+  contentHandoff?: RouteSceneSwitchSheetContentHandoff;
+  snapPersistence?: RouteSceneSwitchSheetSnapPersistence;
   cameraIntent?: RouteSceneSwitchCameraIntent;
   chromeVisibilityTarget?: RouteSceneSwitchChromeVisibilityTarget;
   pollsParams?: RouteSceneSwitchPollsParams | null;
@@ -49,6 +59,7 @@ export type AppRouteSceneTransitionPlan = {
   sheetSnapTarget: BottomSheetSnap | null;
   sheetVisibilityTarget: RouteSceneSwitchSheetVisibilityTarget;
   sheetIntent: RouteSceneSwitchSheetIntent | null;
+  sheetTransitionPlan: RouteSceneSwitchSheetTransitionPlan;
   cameraIntent: RouteSceneSwitchCameraIntent;
   chromeVisibilityTarget: RouteSceneSwitchChromeVisibilityTarget;
   headerActionModeTarget: RouteSceneSwitchHeaderActionModeTarget;
@@ -66,22 +77,197 @@ const isPreserveChromeTarget = (
 ): boolean => chromeVisibilityTarget.searchChrome === 'preserve';
 
 const resolveRouteSceneSwitchSnapTarget = ({
-  sourceSceneKey,
-  targetSceneKey,
   snapTarget,
-  resolveCurrentSheetSnapTarget,
-}: Pick<
-  AppRouteSceneTransitionPolicyInput,
-  'sourceSceneKey' | 'targetSceneKey' | 'snapTarget' | 'resolveCurrentSheetSnapTarget'
->): BottomSheetSnap | null => {
+}: Pick<AppRouteSceneTransitionPolicyInput, 'snapTarget'>): BottomSheetSnap | null => {
   if (snapTarget !== undefined) {
     return snapTarget;
   }
-  return resolveAppRouteSceneDefaultSnapTarget({
-    sourceSceneKey,
-    targetSceneKey,
-    resolveCurrentSheetSnapTarget,
-  });
+  return null;
+};
+
+const SHARED_SHEET_HOST_SCENE_KEY: OverlayKey = 'searchRoute';
+
+const TOP_LEVEL_SHARED_SHEET_SCENES = new Set<OverlayKey>([
+  'search',
+  'polls',
+  'bookmarks',
+  'profile',
+]);
+
+const CHILD_SHARED_SHEET_SCENES = new Set<OverlayKey>([
+  'restaurant',
+  'favoriteListDetail',
+  'saveList',
+  'pollCreation',
+]);
+
+const MODAL_SCENES = new Set<OverlayKey>(['price', 'scoreInfo']);
+
+const isSharedSheetChildScene = (sceneKey: OverlayKey): boolean =>
+  CHILD_SHARED_SHEET_SCENES.has(sceneKey);
+
+const resolveInferredSheetTransitionKind = ({
+  sourceSceneKey,
+  targetSceneKey,
+  routeAction,
+  snapTarget,
+}: Pick<
+  AppRouteSceneTransitionPolicyInput,
+  'sourceSceneKey' | 'targetSceneKey' | 'routeAction' | 'snapTarget'
+>): RouteSceneSwitchSheetTransitionKind => {
+  if (MODAL_SCENES.has(targetSceneKey)) {
+    return 'modalOpen';
+  }
+  if (snapTarget === 'hidden') {
+    return 'terminalDismiss';
+  }
+  if (routeAction === 'closeActive' || routeAction === 'popToRoot') {
+    return isSharedSheetChildScene(sourceSceneKey) ? 'closeChild' : 'topLevelSwitch';
+  }
+  if (routeAction === 'push' || routeAction === 'updateActive') {
+    return isSharedSheetChildScene(targetSceneKey) ? 'openChild' : 'topLevelSwitch';
+  }
+  if (sourceSceneKey === targetSceneKey) {
+    return 'gesture';
+  }
+  if (TOP_LEVEL_SHARED_SHEET_SCENES.has(targetSceneKey)) {
+    return 'topLevelSwitch';
+  }
+  return isSharedSheetChildScene(targetSceneKey) ? 'openChild' : 'bootstrap';
+};
+
+const resolveCurrentSharedSheetSnap = (
+  resolveCurrentSheetSnapTarget: AppRouteSceneTransitionPolicyInput['resolveCurrentSheetSnapTarget']
+): BottomSheetSnap | null =>
+  resolveCurrentSheetSnapTarget(SHARED_SHEET_HOST_SCENE_KEY) ??
+  resolveCurrentSheetSnapTarget('search') ??
+  null;
+
+const resolvePromotedSnapTarget = ({
+  promoteAtLeastSnap,
+  resolveCurrentSheetSnapTarget,
+}: {
+  promoteAtLeastSnap: Exclude<BottomSheetSnap, 'hidden'>;
+  resolveCurrentSheetSnapTarget: AppRouteSceneTransitionPolicyInput['resolveCurrentSheetSnapTarget'];
+}): BottomSheetSnap | null => {
+  const currentSnap = resolveCurrentSharedSheetSnap(resolveCurrentSheetSnapTarget);
+  if (currentSnap === 'expanded') {
+    return null;
+  }
+  if (promoteAtLeastSnap === 'middle' && currentSnap === 'middle') {
+    return null;
+  }
+  return promoteAtLeastSnap;
+};
+
+const resolveDefaultSheetMotionPlan = ({
+  targetSceneKey,
+  transitionKind,
+  explicitSnapTarget,
+  resolveCurrentSheetSnapTarget,
+}: {
+  targetSceneKey: OverlayKey;
+  transitionKind: RouteSceneSwitchSheetTransitionKind;
+  explicitSnapTarget: BottomSheetSnap | null;
+  resolveCurrentSheetSnapTarget: AppRouteSceneTransitionPolicyInput['resolveCurrentSheetSnapTarget'];
+}): RouteSceneSwitchSheetMotionPlan => {
+  if (MODAL_SCENES.has(targetSceneKey)) {
+    return { kind: 'none' };
+  }
+  if (explicitSnapTarget != null) {
+    return explicitSnapTarget === 'hidden'
+      ? { kind: 'hide' }
+      : { kind: 'snapTo', snap: explicitSnapTarget };
+  }
+  switch (transitionKind) {
+    case 'terminalDismiss':
+      return { kind: 'hide' };
+    case 'openChild':
+      if (targetSceneKey === 'saveList' || targetSceneKey === 'pollCreation') {
+        return { kind: 'snapTo', snap: 'expanded' };
+      }
+      if (targetSceneKey === 'restaurant') {
+        return { kind: 'promoteAtLeast', snap: 'middle' };
+      }
+      return { kind: 'preserveLiveY' };
+    case 'closeChild':
+      return { kind: 'preserveLiveY' };
+    case 'topLevelSwitch':
+      if (targetSceneKey === 'search' || targetSceneKey === 'polls') {
+        return { kind: 'snapTo', snap: 'collapsed' };
+      }
+      if (targetSceneKey === 'bookmarks' || targetSceneKey === 'profile') {
+        const currentSnap = resolveCurrentSharedSheetSnap(resolveCurrentSheetSnapTarget);
+        return currentSnap != null && currentSnap !== 'hidden' && currentSnap !== 'collapsed'
+          ? { kind: 'preserveLiveY' }
+          : { kind: 'snapTo', snap: 'expanded' };
+      }
+      return { kind: 'preserveLiveY' };
+    case 'gesture':
+    case 'modalClose':
+    case 'bootstrap':
+    default:
+      return { kind: 'preserveLiveY' };
+  }
+};
+
+const resolveSnapTargetFromSheetMotion = ({
+  motion,
+  resolveCurrentSheetSnapTarget,
+}: {
+  motion: RouteSceneSwitchSheetMotionPlan;
+  resolveCurrentSheetSnapTarget: AppRouteSceneTransitionPolicyInput['resolveCurrentSheetSnapTarget'];
+}): BottomSheetSnap | null => {
+  switch (motion.kind) {
+    case 'snapTo':
+      return motion.snap;
+    case 'hide':
+      return 'hidden';
+    case 'promoteAtLeast':
+      return resolvePromotedSnapTarget({
+        promoteAtLeastSnap: motion.snap,
+        resolveCurrentSheetSnapTarget,
+      });
+    case 'none':
+    case 'preserveLiveY':
+    default:
+      return null;
+  }
+};
+
+const resolveContentHandoff = ({
+  transitionKind,
+  contentHandoff,
+}: {
+  transitionKind: RouteSceneSwitchSheetTransitionKind;
+  contentHandoff?: RouteSceneSwitchSheetContentHandoff;
+}): RouteSceneSwitchSheetContentHandoff => {
+  if (contentHandoff != null) {
+    return contentHandoff;
+  }
+  if (transitionKind === 'terminalDismiss') {
+    return 'preserveOutgoingUntilSettle';
+  }
+  return 'swapImmediately';
+};
+
+const resolveSnapPersistence = ({
+  transitionKind,
+  snapPersistence,
+}: {
+  transitionKind: RouteSceneSwitchSheetTransitionKind;
+  snapPersistence?: RouteSceneSwitchSheetSnapPersistence;
+}): RouteSceneSwitchSheetSnapPersistence => {
+  if (snapPersistence != null) {
+    return snapPersistence;
+  }
+  if (transitionKind === 'gesture') {
+    return 'writeSceneMemory';
+  }
+  if (transitionKind === 'topLevelSwitch') {
+    return 'readSceneMemory';
+  }
+  return 'sharedOnly';
 };
 
 const resolveMotionPlanes = ({
@@ -135,6 +321,11 @@ export const resolveAppRouteSceneTransitionPlan = ({
   settleToken,
   snapTarget,
   sheetIntent,
+  sheetTransitionKind,
+  sheetOpenerSource,
+  sheetMotion,
+  contentHandoff,
+  snapPersistence,
   cameraIntent = PRESERVE_ROUTE_SCENE_SWITCH_CAMERA_INTENT,
   chromeVisibilityTarget,
   pollsParams,
@@ -144,29 +335,63 @@ export const resolveAppRouteSceneTransitionPlan = ({
   resolveCurrentSheetSnapTarget,
 }: AppRouteSceneTransitionPolicyInput): AppRouteSceneTransitionPlan => {
   const resolvedSnapTarget = resolveRouteSceneSwitchSnapTarget({
-    sourceSceneKey,
-    targetSceneKey,
     snapTarget,
+  });
+  const resolvedTransitionKind =
+    sheetTransitionKind ??
+    resolveInferredSheetTransitionKind({
+      sourceSceneKey,
+      targetSceneKey,
+      routeAction,
+      snapTarget,
+    });
+  const resolvedSheetMotion =
+    sheetMotion ??
+    resolveDefaultSheetMotionPlan({
+      targetSceneKey,
+      transitionKind: resolvedTransitionKind,
+      explicitSnapTarget: resolvedSnapTarget,
+      resolveCurrentSheetSnapTarget,
+    });
+  const resolvedSheetSnapTarget = resolveSnapTargetFromSheetMotion({
+    motion: resolvedSheetMotion,
     resolveCurrentSheetSnapTarget,
   });
   const resolvedSheetIntent =
     sheetIntent !== undefined
       ? sheetIntent
-      : resolvedSnapTarget == null
+      : resolvedSheetSnapTarget == null
       ? null
       : {
-          sceneKey: targetSceneKey,
-          snapTarget: resolvedSnapTarget,
+          sceneKey: resolveAppRouteSceneSheetHostSceneKey(targetSceneKey) ?? targetSceneKey,
+          snapTarget: resolvedSheetSnapTarget,
           role: 'incoming' as const,
         };
   const resolvedChromeVisibilityTarget =
     chromeVisibilityTarget ??
     resolveAppRouteSceneChromeVisibilityTarget({
       targetSceneKey,
-      snapTarget: resolvedSnapTarget,
+      snapTarget: resolvedSheetSnapTarget,
     });
-  const sheetHostSceneKey = resolveAppRouteSceneSheetHostSceneKey(targetSceneKey);
-  const sheetSnapTarget = resolvedSheetIntent?.snapTarget ?? resolvedSnapTarget;
+  const sheetHostSceneKey =
+    resolvedSheetIntent?.sceneKey ?? resolveAppRouteSceneSheetHostSceneKey(targetSceneKey);
+  const sheetSnapTarget = resolvedSheetIntent?.snapTarget ?? resolvedSheetSnapTarget;
+  const resolvedSheetTransitionPlan: RouteSceneSwitchSheetTransitionPlan = {
+    transitionKind: resolvedTransitionKind,
+    sourceSceneKey,
+    targetSceneKey,
+    openerSceneKey: sourceSceneKey,
+    openerSource: sheetOpenerSource ?? 'unknown',
+    motion: resolvedSheetMotion,
+    contentHandoff: resolveContentHandoff({
+      transitionKind: resolvedTransitionKind,
+      contentHandoff,
+    }),
+    snapPersistence: resolveSnapPersistence({
+      transitionKind: resolvedTransitionKind,
+      snapPersistence,
+    }),
+  };
 
   return {
     sourceSceneKey,
@@ -175,13 +400,14 @@ export const resolveAppRouteSceneTransitionPlan = ({
     committedRootRouteKey: resolveCommittedRootRoute(targetSceneKey),
     committedRouteAction: routeAction,
     committedRouteParams: routeParams,
-    snapTarget: resolvedSnapTarget,
+    snapTarget: resolvedSheetSnapTarget,
     sheetHostSceneKey,
     sheetSnapTarget,
     sheetVisibilityTarget: resolveAppRouteSceneSheetVisibilityTarget({
       snapTarget: sheetSnapTarget,
     }),
     sheetIntent: resolvedSheetIntent,
+    sheetTransitionPlan: resolvedSheetTransitionPlan,
     cameraIntent,
     chromeVisibilityTarget: resolvedChromeVisibilityTarget,
     headerActionModeTarget: resolveAppRouteSceneHeaderActionModeTarget(targetSceneKey),
@@ -194,7 +420,7 @@ export const resolveAppRouteSceneTransitionPlan = ({
     pollsParams: targetSceneKey === 'polls' ? pollsParams ?? null : null,
     dockedPollsRestoreSnap: resolveDockedPollsRestoreSnap({
       targetSceneKey,
-      snapTarget: resolvedSnapTarget,
+      snapTarget: resolvedSheetSnapTarget,
       dockedPollsRestoreSnap,
     }),
   };

@@ -29,6 +29,7 @@ const BOOT_LOCATION_STORAGE_KEY = 'boot:lastKnownLocation';
 const STARTUP_LOCATION_MAX_WAIT_MS = 350;
 const STARTUP_POLLS_GRACE_MS = 350;
 const MAX_STORED_LOCATION_AGE_MS = 6 * 60 * 60 * 1000;
+const STALE_LOCATION_CITY_COMPATIBILITY_RADIUS_METERS = 80_000;
 const MAIN_LAUNCH_READY_TIMEOUT_MS = 10_000;
 
 export type StartupLocationSnapshot = {
@@ -269,19 +270,62 @@ const buildCameraFromSnapshot = (
   };
 };
 
+const toRadians = (value: number): number => (value * Math.PI) / 180;
+
+const distanceMetersBetween = (left: Coordinate, right: Coordinate): number => {
+  const earthRadiusMeters = 6_371_000;
+  const latitudeDelta = toRadians(right.lat - left.lat);
+  const longitudeDelta = toRadians(right.lng - left.lng);
+  const leftLatitude = toRadians(left.lat);
+  const rightLatitude = toRadians(right.lat);
+  const a =
+    Math.sin(latitudeDelta / 2) * Math.sin(latitudeDelta / 2) +
+    Math.cos(leftLatitude) *
+      Math.cos(rightLatitude) *
+      Math.sin(longitudeDelta / 2) *
+      Math.sin(longitudeDelta / 2);
+  return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const isSnapshotCompatibleWithSelectedCity = (
+  snapshot: StartupLocationSnapshot | null | undefined,
+  selectedCity: string | null
+): boolean => {
+  if (!snapshot?.coordinate) {
+    return false;
+  }
+  const cityViewport = resolveCityViewport(selectedCity);
+  if (!cityViewport) {
+    return true;
+  }
+  return (
+    distanceMetersBetween(snapshot.coordinate, {
+      lat: cityViewport.center[1],
+      lng: cityViewport.center[0],
+    }) <= STALE_LOCATION_CITY_COMPATIBILITY_RADIUS_METERS
+  );
+};
+
 const chooseBestSnapshot = (
-  candidates: Array<StartupLocationSnapshot | null | undefined>
+  candidates: Array<StartupLocationSnapshot | null | undefined>,
+  selectedCity: string | null
 ): StartupLocationSnapshot | null => {
   const priority: Record<StartupLocationSnapshot['source'], number> = {
     current: 5,
-    last_known_os: 4,
-    cached_app: 3,
-    city_fallback: 2,
+    city_fallback: 4,
+    last_known_os: 3,
+    cached_app: 2,
     none: 1,
   };
   let best: StartupLocationSnapshot | null = null;
   for (const candidate of candidates) {
     if (!candidate) {
+      continue;
+    }
+    if (
+      (candidate.source === 'last_known_os' || candidate.source === 'cached_app') &&
+      !isSnapshotCompatibleWithSelectedCity(candidate, selectedCity)
+    ) {
       continue;
     }
     if (!best || priority[candidate.source] > priority[best.source]) {
@@ -360,6 +404,7 @@ const deriveBoundsFromCamera = (camera: StartupCameraSpec | null): MapBounds | n
 
 export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isReady: isRouteReady, routeState } = useAppRouteCoordinator();
+  const routeDestination = routeState?.destination ?? null;
   const selectedCityRaw = useCityStore((state) => state.selectedCity);
   const selectedCity = normalizePersistedCity(selectedCityRaw) ?? 'Austin';
 
@@ -422,7 +467,11 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
       return;
     }
     const snapshot = latestLocationSnapshotRef.current;
-    if (snapshot.source === 'city_fallback' || snapshot.source === 'none') {
+    if (
+      snapshot.source === 'city_fallback' ||
+      snapshot.source === 'cached_app' ||
+      snapshot.source === 'none'
+    ) {
       return;
     }
     void AsyncStorage.setItem(
@@ -512,7 +561,7 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
       return;
     }
 
-    if (routeState.destination !== 'main') {
+    if (routeDestination !== 'main') {
       setIsStartupResolved(true);
       setIsStartupPollsResolved(true);
       setIsMainLaunchReady(true);
@@ -549,20 +598,30 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
       const permission = getPermissionState(permissionResponse?.status);
       const reducedAccuracy = isReducedAccuracyPermission(permissionResponse);
 
-      const cachedSnapshotPromise = AsyncStorage.getItem(BOOT_LOCATION_STORAGE_KEY)
-        .then((raw) => parseCachedAppLocation(raw, permission))
-        .catch(() => null);
+      const cachedSnapshotPromise =
+        permission === 'granted'
+          ? AsyncStorage.getItem(BOOT_LOCATION_STORAGE_KEY)
+              .then((raw) => parseCachedAppLocation(raw, permission))
+              .catch(() => null)
+          : Promise.resolve<StartupLocationSnapshot | null>(null);
       const lastKnownSnapshotPromise =
         permission === 'granted'
           ? resolveLastKnownPosition(permission, reducedAccuracy)
           : Promise.resolve<StartupLocationSnapshot | null>(null);
 
-      const [cachedSnapshot, lastKnownSnapshot] = await Promise.all([
+      const [cachedSnapshotRaw, lastKnownSnapshot] = await Promise.all([
         cachedSnapshotPromise,
         lastKnownSnapshotPromise,
       ]);
 
       const cityFallbackSnapshot = buildCityFallbackSnapshot(selectedCity, permission);
+      const cachedSnapshot =
+        cachedSnapshotRaw && isSnapshotCompatibleWithSelectedCity(cachedSnapshotRaw, selectedCity)
+          ? cachedSnapshotRaw
+          : null;
+      if (cachedSnapshotRaw && !cachedSnapshot) {
+        void AsyncStorage.removeItem(BOOT_LOCATION_STORAGE_KEY).catch(() => undefined);
+      }
       const currentPositionPromise =
         permission === 'granted'
           ? resolveCurrentPosition(permission, reducedAccuracy)
@@ -574,7 +633,10 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
       );
 
       const bestSnapshot =
-        chooseBestSnapshot([currentSnapshot, lastKnownSnapshot, cachedSnapshot]) ??
+        chooseBestSnapshot(
+          [currentSnapshot, cityFallbackSnapshot, lastKnownSnapshot, cachedSnapshot],
+          selectedCity
+        ) ??
         cityFallbackSnapshot;
 
       if (cancelled || seq !== startupResolutionSeqRef.current) {
@@ -605,7 +667,7 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     publishMainMapReadinessSignal,
     resolveCurrentPosition,
     resolveLastKnownPosition,
-    routeState,
+    routeDestination,
     selectedCity,
     startLocationWatch,
   ]);
@@ -881,18 +943,23 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
       return;
     }
     const timeout = setTimeout(() => {
-      const error = new Error('Main launch timed out before map readiness');
       logger.error('Main launch readiness timeout', {
-        destination: routeState.destination,
+        destination: routeDestination,
         isStartupResolved,
         isStartupPollsResolved,
         isMainLaunchReady,
         mainMapReadiness: mainMapReadinessAuthorityRef.current.getSnapshot(),
       });
-      setMainLaunchFailure(error);
+      setIsMainLaunchReady(true);
     }, MAIN_LAUNCH_READY_TIMEOUT_MS);
     return () => clearTimeout(timeout);
-  }, [isMainLaunchReady, isRouteReady, isStartupPollsResolved, isStartupResolved, routeState]);
+  }, [
+    isMainLaunchReady,
+    isRouteReady,
+    isStartupPollsResolved,
+    isStartupResolved,
+    routeDestination,
+  ]);
 
   React.useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
@@ -918,13 +985,13 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
   const isReadyToRender =
     isRouteReady &&
     routeState != null &&
-    (routeState.destination === 'main'
+    (routeDestination === 'main'
       ? isStartupResolved && isStartupPollsResolved && isMainLaunchReady
       : true);
   const shouldHideSplash =
     isRouteReady &&
     routeState != null &&
-    (routeState.destination === 'main' ? (isSplashStudioEnabled ? true : isReadyToRender) : true);
+    (routeDestination === 'main' ? (isSplashStudioEnabled ? true : isReadyToRender) : true);
 
   React.useEffect(() => {
     if (!shouldHideSplash || splashHiddenRef.current) {
@@ -932,14 +999,14 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     }
     splashHiddenRef.current = true;
     void SplashScreen.hideAsync().catch(() => undefined);
-  }, [routeState?.destination, shouldHideSplash]);
+  }, [routeDestination, shouldHideSplash]);
 
   React.useEffect(() => {
-    if (!isReadyToRender || routeState?.destination !== 'main') {
+    if (!isReadyToRender || routeDestination !== 'main') {
       return;
     }
     hasCompletedInitialMainLaunchRef.current = true;
-  }, [isReadyToRender, routeState?.destination]);
+  }, [isReadyToRender, routeDestination]);
 
   React.useEffect(() => {
     return () => {

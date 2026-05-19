@@ -1,0 +1,59 @@
+appId: com.brandonkimble.cravesearch
+---
+- tapOn:
+    text: 'Search'
+    optional: true
+- tapOn:
+    text: 'Close results'
+    optional: true
+- tapOn:
+    text: 'Close polls'
+    optional: true
+- extendedWaitUntil:
+    visible: 'Show best restaurants here'
+    timeout: 15000
+- takeScreenshot: search-visual-idle-map-shortcuts
+- tapOn:
+    point: '25%, 19%'
+    waitToSettleTimeoutMs: 0
+- extendedWaitUntil:
+    visible: 'Close results'
+    timeout: 10000
+- takeScreenshot: search-visual-results-open
+- waitForAnimationToEnd:
+    timeout: 1000
+- takeScreenshot: search-visual-results-open-settled
+- takeScreenshot: search-visual-results-cards-ready
+- tapOn:
+    text: 'Close results'
+- assertNotVisible: "Start Austin's first"
+- assertNotVisible: '0 live'
+- waitForAnimationToEnd:
+    timeout: 1000
+- extendedWaitUntil:
+    visible: 'Show best restaurants here'
+    timeout: 10000
+- takeScreenshot: search-visual-after-results-close
+- takeScreenshot: search-visual-after-polls-restored
+- tapOn:
+    point: '25%, 19%'
+    waitToSettleTimeoutMs: 0
+- extendedWaitUntil:
+    visible: 'Close results'
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 1000
+- takeScreenshot: search-visual-results-map-before-drag
+- swipe:
+    start: '14%, 34%'
+    end: '22%, 24%'
+    duration: 350
+- waitForAnimationToEnd:
+    timeout: 1000
+- waitForAnimationToEnd:
+    timeout: 3000
+- extendedWaitUntil:
+    visible: 'Search this area'
+    timeout: 10000
+- takeScreenshot: search-visual-search-this-area-visible
+- takeScreenshot: search-visual-results-after-map-drag

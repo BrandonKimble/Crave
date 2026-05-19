@@ -15,26 +15,18 @@ export type PreparedProfileRouteIntent =
       restaurantId: string | null;
       targetSheetSnap: Exclude<OverlaySheetSnap, 'hidden'>;
       targetCamera?: CameraSnapshot | null;
+      preserveSheetMotion?: boolean;
     }
   | {
       type: 'close_profile_restaurant_route';
       restoreCamera?: CameraSnapshot | null;
-    };
-
-export type PreparedProfileResultsSheetCommand =
-  | {
-      type: 'request';
-      snap: Exclude<OverlaySheetSnap, 'hidden'>;
-    }
-  | {
-      type: 'hide';
+      shellTarget: 'results' | 'default';
+      targetSheetSnap: 'collapsed' | null;
     };
 
 export type PreparedProfilePresentationCommandSet = {
   targetCamera?: CameraSnapshot;
   profileCameraPadding?: CameraSnapshot['padding'];
-  forceSharedMiddleSnap?: boolean;
-  resultsSheetCommand?: PreparedProfileResultsSheetCommand;
   clearProfileCameraPadding?: boolean;
 };
 

@@ -10,11 +10,11 @@ import type { ProfileAppExecutionRuntime } from '../../../../navigation/runtime/
 import { useProfileAppRouteExecutionRuntime } from './profile-app-route-runtime';
 import type { PreparedProfilePresentationCompletionEvent } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
 import type { ProfileRuntimeStateOwner } from './profile-runtime-state-contract';
-import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
+import type { ResultsPresentationSurfaceAuthority } from '../shared/results-presentation-surface-authority';
 
 type UseProfileAppExecutionModelRuntimeArgs = {
   routeSceneRuntime: AppRouteSceneRuntime;
-  searchRuntimeBus: SearchRuntimeBus;
+  resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
   appExecutionArgs: ProfileAppExecutionArgs;
   runtimeStateOwner: Pick<ProfileRuntimeStateOwner, 'closeRuntimeState'>;
   preparedProfileCompletionHandlerRef: React.MutableRefObject<
@@ -24,7 +24,7 @@ type UseProfileAppExecutionModelRuntimeArgs = {
 
 export const useProfileAppExecutionModelRuntime = ({
   routeSceneRuntime,
-  searchRuntimeBus,
+  resultsPresentationSurfaceAuthority,
   appExecutionArgs,
   runtimeStateOwner,
   preparedProfileCompletionHandlerRef,
@@ -40,9 +40,18 @@ export const useProfileAppExecutionModelRuntime = ({
     preparedProfileCompletionHandlerRef,
   });
   const { prepareForProfileClose } = useProfileAppClosePreparationRuntime({
-    searchRuntimeBus,
+    resultsPresentationSurfaceAuthority,
     closeExecutionArgs: appExecutionArgs.closeExecutionArgs,
   });
+  const clearMapHighlightedRestaurantId = React.useCallback(() => {
+    applySearchRestaurantRouteCommand(
+      {
+        type: 'update_search_restaurant_route',
+        restaurantId: null,
+      },
+      routeSceneRuntime.routeOverlayRouteCommandRuntime
+    );
+  }, [routeSceneRuntime.routeOverlayRouteCommandRuntime]);
   const { finalizePreparedProfileClose } = useProfileAppCloseFinalizationRuntime({
     routeOverlayCommandActions: routeSceneRuntime.routeOverlayCommandActions,
     getPreviousForegroundUiRestoreState:
@@ -51,6 +60,7 @@ export const useProfileAppExecutionModelRuntime = ({
     finalizePreparedProfileCloseState:
       runtimeStateOwner.closeRuntimeState.finalizationRuntimeState
         .finalizePreparedProfileCloseState,
+    clearMapHighlightedRestaurantId,
     clearSearchAfterProfileDismiss:
       appExecutionArgs.closeExecutionArgs.clearSearchAfterProfileDismiss,
   });
@@ -76,28 +86,9 @@ export const useProfileAppExecutionModelRuntime = ({
   );
   const profileAppCommandExecutionRuntime = React.useMemo(
     () => ({
-      requestResultsSheetSnap:
-        appExecutionArgs.resultsExecutionArgs.resultsSheetExecutionModel.requestResultsSheetSnap,
-      hideResultsSheet:
-        appExecutionArgs.resultsExecutionArgs.resultsSheetExecutionModel.hideResultsSheet,
-      forceSharedMiddleSnap: () => {
-        routeSceneRuntime.routeSheetSnapSessionActions.setSharedSnap('middle');
-      },
-      clearMapHighlightedRestaurantId: () => {
-        applySearchRestaurantRouteCommand(
-          {
-            type: 'update_search_restaurant_route',
-            restaurantId: null,
-          },
-          routeSceneRuntime.routeOverlayRouteCommandRuntime
-        );
-      },
+      clearMapHighlightedRestaurantId,
     }),
-    [
-      appExecutionArgs.resultsExecutionArgs.resultsSheetExecutionModel,
-      routeSceneRuntime.routeOverlayRouteCommandRuntime,
-      routeSceneRuntime.routeSheetSnapSessionActions,
-    ]
+    [clearMapHighlightedRestaurantId]
   );
 
   return React.useMemo(

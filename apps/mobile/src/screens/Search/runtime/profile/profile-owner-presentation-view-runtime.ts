@@ -1,6 +1,5 @@
 import React from 'react';
 
-import { useActiveSearchRestaurantRouteRestaurantId } from '../../../../overlays/searchRestaurantRouteController';
 import {
   createProfilePresentationModelRuntime,
   type ProfilePresentationCameraLayoutModel,
@@ -11,7 +10,6 @@ import type { ProfileRuntimeStateOwner } from './profile-runtime-state-contract'
 type UseProfileOwnerPresentationViewRuntimeArgs = {
   cameraTransitionPorts: ProfilePresentationCameraLayoutModel;
   runtimeStateOwner: Pick<ProfileRuntimeStateOwner, 'shellRuntimeState' | 'transitionRuntimeState'>;
-  getLastVisibleSheetSnap: () => 'expanded' | 'middle' | 'collapsed' | null;
   getLastCameraState: () => { center: [number, number]; zoom: number } | null;
 };
 
@@ -23,10 +21,8 @@ export type ProfileOwnerPresentationViewRuntime = {
 export const useProfileOwnerPresentationViewRuntime = ({
   cameraTransitionPorts,
   runtimeStateOwner,
-  getLastVisibleSheetSnap,
   getLastCameraState,
 }: UseProfileOwnerPresentationViewRuntimeArgs): ProfileOwnerPresentationViewRuntime => {
-  const mapHighlightedRestaurantId = useActiveSearchRestaurantRouteRestaurantId();
   const preparedSnapshot = runtimeStateOwner.transitionRuntimeState.getPreparedProfileSnapshot();
 
   const profileShellState = React.useMemo(
@@ -35,9 +31,12 @@ export const useProfileOwnerPresentationViewRuntime = ({
       restaurantPanelSnapshot:
         runtimeStateOwner.shellRuntimeState.profileShellState.restaurantPanelSnapshot,
       mapCameraPadding: runtimeStateOwner.shellRuntimeState.profileShellState.mapCameraPadding,
+      mapHighlightedRestaurantId:
+        runtimeStateOwner.shellRuntimeState.profileShellState.mapHighlightedRestaurantId,
     }),
     [
       runtimeStateOwner.shellRuntimeState.profileShellState.mapCameraPadding,
+      runtimeStateOwner.shellRuntimeState.profileShellState.mapHighlightedRestaurantId,
       runtimeStateOwner.shellRuntimeState.profileShellState.restaurantPanelSnapshot,
       runtimeStateOwner.shellRuntimeState.profileShellState.transitionStatus,
     ]
@@ -47,17 +46,13 @@ export const useProfileOwnerPresentationViewRuntime = ({
     () =>
       createProfilePresentationModelRuntime({
         profileShellState,
-        mapHighlightedRestaurantId,
         preparedSnapshot,
         cameraLayoutModel: cameraTransitionPorts,
         getCurrentLastCameraState: getLastCameraState,
-        getLastVisibleSheetSnap,
       }),
     [
       cameraTransitionPorts,
       getLastCameraState,
-      getLastVisibleSheetSnap,
-      mapHighlightedRestaurantId,
       preparedSnapshot,
       profileShellState,
     ]

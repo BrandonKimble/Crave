@@ -5,21 +5,29 @@ import {
   TouchableOpacity,
   View,
   type LayoutChangeEvent,
-  type StyleProp,
-  type ViewStyle,
 } from 'react-native';
-import Reanimated, { type SharedValue, useAnimatedStyle } from 'react-native-reanimated';
+import Reanimated, {
+  type SharedValue,
+  useAnimatedStyle,
+} from 'react-native-reanimated';
 
 import { Text } from '../../../components';
+import {
+  FROSTED_GLASS_DEFAULT_INTENSITY,
+  FROSTED_GLASS_DEFAULT_TINT,
+  FROSTED_GLASS_DEFAULT_TINT_COLOR,
+  resolveFrostedGlassBlurAmount,
+} from '../../../components/frosted-glass-style';
 import { colors as themeColors } from '../../../constants/theme';
 import type { OverlayKey } from '../../../navigation/runtime/app-overlay-route-types';
-import { ACTIVE_TAB_COLOR, NAV_BOTTOM_PADDING } from '../constants/search';
 import {
-  resolveSearchBottomInset,
-  resolveSearchBottomNavHeight,
-} from '../runtime/shared/search-startup-geometry';
+  APP_ROUTE_NAV_SILHOUETTE_BOUNDARY_SHAPE,
+  resolveAppRouteNavSilhouetteBottomNavGeometry,
+} from '../../../navigation/runtime/app-route-nav-silhouette-authority';
+import { SearchRouteNavSilhouetteHostNativeView } from '../../../overlays/SearchRouteNavSilhouetteHostNativeView';
+import { ACTIVE_TAB_COLOR, NAV_BOTTOM_PADDING } from '../constants/search';
+import type { SearchBottomNavMotionRuntime } from '../runtime/shared/search-bottom-nav-motion-runtime';
 import styles from '../styles';
-import NavBarSilhouetteBackground from './NavBarSilhouetteBackground';
 
 type NavItem = {
   key: OverlayKey;
@@ -29,11 +37,10 @@ type NavItem = {
 type NavIconRenderer = (color: string, active: boolean) => React.ReactNode;
 
 export type SearchBottomNavProps = {
-  bottomNavAnimatedStyle: StyleProp<ViewStyle>;
+  bottomNavMotionRuntime: SearchBottomNavMotionRuntime;
   shouldHideBottomNav: boolean;
   bottomInset: number;
   handleBottomNavLayout: (event: LayoutChangeEvent) => void;
-  shouldDisableSearchBlur: boolean;
   navItems: readonly NavItem[];
   activeTabIndexValue: SharedValue<number>;
   navIconRenderers: Partial<
@@ -41,7 +48,6 @@ export type SearchBottomNavProps = {
   >;
   handleProfilePress: () => void;
   handleOverlaySelect: (key: OverlayKey) => void;
-  bottomNavItemVisibilityAnimatedStyle: StyleProp<ViewStyle>;
 };
 
 const SearchBottomNavItem = React.memo(
@@ -50,7 +56,6 @@ const SearchBottomNavItem = React.memo(
     itemIndex,
     activeTabIndexValue,
     renderIcon,
-    bottomNavItemVisibilityAnimatedStyle,
     handleProfilePress,
     handleOverlaySelect,
   }: {
@@ -58,7 +63,6 @@ const SearchBottomNavItem = React.memo(
     itemIndex: number;
     activeTabIndexValue: SharedValue<number>;
     renderIcon: NavIconRenderer;
-    bottomNavItemVisibilityAnimatedStyle: StyleProp<ViewStyle>;
     handleProfilePress: () => void;
     handleOverlaySelect: (key: OverlayKey) => void;
   }) {
@@ -84,9 +88,7 @@ const SearchBottomNavItem = React.memo(
 
     return (
       <TouchableOpacity style={styles.navButton} onPress={handlePress} activeOpacity={0.85}>
-        <Reanimated.View
-          style={[localStyles.itemVisualStack, bottomNavItemVisibilityAnimatedStyle]}
-        >
+        <Reanimated.View style={localStyles.itemVisualStack}>
           <Reanimated.View style={[localStyles.itemVisual, inactiveVisualStyle]}>
             <View style={styles.navIcon}>{renderIcon(themeColors.textBody, false)}</View>
             <Text variant="body" weight="regular" style={styles.navLabel}>
@@ -111,31 +113,36 @@ const SearchBottomNavItem = React.memo(
     previousProps.itemIndex === nextProps.itemIndex &&
     previousProps.activeTabIndexValue === nextProps.activeTabIndexValue &&
     previousProps.renderIcon === nextProps.renderIcon &&
-    previousProps.bottomNavItemVisibilityAnimatedStyle ===
-      nextProps.bottomNavItemVisibilityAnimatedStyle &&
     previousProps.handleProfilePress === nextProps.handleProfilePress &&
     previousProps.handleOverlaySelect === nextProps.handleOverlaySelect
 );
 
 const SearchBottomNavComponent = ({
-  bottomNavAnimatedStyle,
+  bottomNavMotionRuntime,
   shouldHideBottomNav,
   bottomInset,
   handleBottomNavLayout,
-  shouldDisableSearchBlur,
   navItems,
   activeTabIndexValue,
   navIconRenderers,
   handleProfilePress,
   handleOverlaySelect,
-  bottomNavItemVisibilityAnimatedStyle,
 }: SearchBottomNavProps) => {
-  const resolvedBottomInset = resolveSearchBottomInset(bottomInset);
-  const resolvedBottomNavHeight = resolveSearchBottomNavHeight(resolvedBottomInset);
+  const { bottomInset: resolvedBottomInset, bottomNavHeight: resolvedBottomNavHeight } =
+    resolveAppRouteNavSilhouetteBottomNavGeometry(bottomInset);
+  const { materialTopInset, cutoutHeight, cutoutRadius } =
+    APP_ROUTE_NAV_SILHOUETTE_BOUNDARY_SHAPE;
+  const bottomNavMotionStyle = useAnimatedStyle(
+    () => ({
+      opacity: bottomNavMotionRuntime.navOpacity.value,
+      transform: [{ translateY: bottomNavMotionRuntime.navTranslateY.value }],
+    }),
+    [bottomNavMotionRuntime]
+  );
 
   return (
     <Reanimated.View
-      style={[styles.bottomNavWrapper, bottomNavAnimatedStyle]}
+      style={[styles.bottomNavWrapper, bottomNavMotionStyle]}
       pointerEvents={shouldHideBottomNav ? 'none' : 'box-none'}
     >
       <View
@@ -149,11 +156,24 @@ const SearchBottomNavComponent = ({
         ]}
         onLayout={handleBottomNavLayout}
       >
-        <Pressable style={styles.navTouchShield} onPress={() => {}} />
-        <NavBarSilhouetteBackground
-          bottomInset={resolvedBottomInset}
-          disableBlur={shouldDisableSearchBlur}
+        <SearchRouteNavSilhouetteHostNativeView
+          pointerEvents="none"
+          materialEnabled={!shouldHideBottomNav}
+          materialBlurAmount={resolveFrostedGlassBlurAmount(FROSTED_GLASS_DEFAULT_INTENSITY)}
+          materialBlurType={FROSTED_GLASS_DEFAULT_TINT}
+          materialTintColor={FROSTED_GLASS_DEFAULT_TINT_COLOR}
+          navMaterialTopInset={materialTopInset}
+          cutoutHeight={cutoutHeight}
+          cutoutRadius={cutoutRadius}
+          style={[
+            localStyles.materialHost,
+            {
+              top: -materialTopInset,
+              height: resolvedBottomNavHeight + materialTopInset,
+            },
+          ]}
         />
+        <Pressable style={styles.navTouchShield} onPress={() => {}} />
         {navItems.map((item, itemIndex) => {
           const renderIcon = navIconRenderers[item.key];
           if (typeof renderIcon !== 'function') {
@@ -166,7 +186,6 @@ const SearchBottomNavComponent = ({
               itemIndex={itemIndex}
               activeTabIndexValue={activeTabIndexValue}
               renderIcon={renderIcon}
-              bottomNavItemVisibilityAnimatedStyle={bottomNavItemVisibilityAnimatedStyle}
               handleProfilePress={handleProfilePress}
               handleOverlaySelect={handleOverlaySelect}
             />
@@ -181,13 +200,10 @@ const SearchBottomNav = React.memo(
   SearchBottomNavComponent,
   (previousProps, nextProps) =>
     previousProps.activeTabIndexValue === nextProps.activeTabIndexValue &&
+    previousProps.bottomNavMotionRuntime === nextProps.bottomNavMotionRuntime &&
     previousProps.shouldHideBottomNav === nextProps.shouldHideBottomNav &&
-    previousProps.shouldDisableSearchBlur === nextProps.shouldDisableSearchBlur &&
     previousProps.bottomInset === nextProps.bottomInset &&
     previousProps.handleBottomNavLayout === nextProps.handleBottomNavLayout &&
-    previousProps.bottomNavAnimatedStyle === nextProps.bottomNavAnimatedStyle &&
-    previousProps.bottomNavItemVisibilityAnimatedStyle ===
-      nextProps.bottomNavItemVisibilityAnimatedStyle &&
     previousProps.navItems === nextProps.navItems &&
     previousProps.navIconRenderers === nextProps.navIconRenderers &&
     previousProps.handleProfilePress === nextProps.handleProfilePress &&
@@ -197,6 +213,11 @@ const SearchBottomNav = React.memo(
 export default SearchBottomNav;
 
 const localStyles = StyleSheet.create({
+  materialHost: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+  },
   itemVisualStack: {
     alignItems: 'center',
     justifyContent: 'center',

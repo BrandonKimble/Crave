@@ -3,10 +3,6 @@ import { Prisma } from '@prisma/client';
 import { EntityScope, FilterClause, QueryPlan } from './dto/search-query.dto';
 import type { SearchExecutionDirectives } from './search-execution-directives';
 
-const CONTEXTUAL_SCORE_MAX = 100;
-const CONTEXTUAL_SCORE_NON_TOP_MAX = 99.9;
-const CONTEXTUAL_SCORE_MULTIPLIER = 10;
-
 interface BuildQueryOptions {
   plan: QueryPlan;
   pagination: { skip: number; take: number };
@@ -212,10 +208,8 @@ export class SearchQueryBuilder {
     const restaurantVoteTotalsCte = this.buildRestaurantVoteTotalsCte();
     const geographicRestaurantVoteTotalsCte =
       this.buildGeographicRestaurantVoteTotalsCte();
-    const contextualRestaurantScoresCte =
-      this.buildContextualRestaurantScoresCte();
-    const contextualConnectionScoresCte =
-      this.buildContextualConnectionScoresCte();
+    const publicRestaurantScoresCte = this.buildPublicRestaurantScoresCte();
+    const publicConnectionScoresCte = this.buildPublicConnectionScoresCte();
 
     const locationAggregatesCte =
       this.buildLocationAggregatesCte(activeMarketKey);
@@ -245,13 +239,15 @@ ranked_restaurants AS (
     fr.entity_id AS restaurant_id,
     fr.name AS restaurant_name,
     fr.aliases AS restaurant_aliases,
-    fr.restaurant_quality_score,
     ${activeMarketKey}::varchar(255) AS market_key,
     fr.restaurant_metadata,
     fr.price_level,
     fr.price_level_updated_at,
-    COALESCE(drr.rank_score_display, 0) AS contextual_score,
-    COALESCE(drr.rank_percentile, 0) AS contextual_percentile,
+    prs.display_score AS crave_score,
+    prs.score_delta_7d,
+    prs.score_info,
+    'restaurant'::text AS score_subject_type,
+    fr.entity_id AS score_subject_id,
     COALESCE(rvt.total_upvotes, 0) AS total_upvotes,
     COALESCE(rvt.total_mentions, 0) AS total_mentions,
     sl.location_id,
@@ -275,10 +271,9 @@ ranked_restaurants AS (
     la.locations_json,
     la.location_count
   FROM filtered_restaurants fr
+  JOIN public_restaurant_scores prs ON prs.subject_id = fr.entity_id
   JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
   LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
-  LEFT JOIN contextual_restaurant_scores drr
-    ON drr.subject_id = fr.entity_id
 	  LEFT JOIN location_aggregates la ON la.restaurant_id = fr.entity_id
 	  ${minimumVotesWhereSql}
 	  ORDER BY ${restaurantOrder.sql}
@@ -289,19 +284,17 @@ ranked_restaurants AS (
     const rankedRestaurantsCtePreview = `
 ranked_restaurants AS (
   SELECT fr.entity_id AS restaurant_id, fr.name AS restaurant_name, fr.aliases AS restaurant_aliases,
-         fr.restaurant_quality_score, ${
-           activeMarketKey ? `'${activeMarketKey}'` : 'NULL'
-         }::varchar(255) AS market_key, fr.restaurant_metadata,
+         ${activeMarketKey ? `'${activeMarketKey}'` : 'NULL'}::varchar(255) AS market_key, fr.restaurant_metadata,
          fr.price_level, fr.price_level_updated_at,
-         COALESCE(drr.rank_score_display, 0) AS contextual_score,
-         COALESCE(drr.rank_percentile, 0) AS contextual_percentile,
+         prs.display_score AS crave_score, prs.score_delta_7d, prs.score_info,
+         'restaurant'::text AS score_subject_type, fr.entity_id AS score_subject_id,
          COALESCE(rvt.total_upvotes, 0) AS total_upvotes, COALESCE(rvt.total_mentions, 0) AS total_mentions,
          sl.location_id, sl.google_place_id, sl.latitude, sl.longitude, sl.address, sl.city, sl.region, sl.country, sl.postal_code, sl.phone_number, sl.website_url, sl.hours, sl.utc_offset_minutes, sl.time_zone, sl.is_primary, sl.last_polled_at, sl.created_at AS location_created_at, sl.updated_at AS location_updated_at,
          la.locations_json, la.location_count
   FROM filtered_restaurants fr
+  JOIN public_restaurant_scores prs ON prs.subject_id = fr.entity_id
   JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
   LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
-	  LEFT JOIN contextual_restaurant_scores drr ON drr.subject_id = fr.entity_id
 	  LEFT JOIN location_aggregates la ON la.restaurant_id = fr.entity_id
 	  ${minimumVotesWherePreview}
 	  ORDER BY ${restaurantOrder.preview}
@@ -317,8 +310,8 @@ WITH
   ${selectedLocationsCte.sql},
   ${restaurantVoteTotalsCte.sql},
   ${geographicRestaurantVoteTotalsCte.sql},
-  ${contextualRestaurantScoresCte.sql},
-  ${contextualConnectionScoresCte.sql},
+  ${publicRestaurantScoresCte.sql},
+  ${publicConnectionScoresCte.sql},
   ${locationAggregatesCte.sql},
   ${rankedRestaurantsCte}
 `;
@@ -330,8 +323,8 @@ WITH
   ${selectedLocationsCte.preview},
   ${restaurantVoteTotalsCte.preview},
   ${geographicRestaurantVoteTotalsCte.preview},
-  ${contextualRestaurantScoresCte.preview},
-  ${contextualConnectionScoresCte.preview},
+  ${publicRestaurantScoresCte.preview},
+  ${publicConnectionScoresCte.preview},
   ${locationAggregatesCte.preview},
   ${rankedRestaurantsCtePreview}`;
 
@@ -358,9 +351,11 @@ LEFT JOIN LATERAL (
 	        'connectionId', sub.connection_id,
 	        'foodId', sub.food_id,
 	        'foodName', sub.food_name,
-	        'qualityScore', sub.food_quality_score,
-	        'contextualScore', sub.contextual_score,
-	        'contextualPercentile', sub.contextual_percentile,
+	        'craveScore', sub.crave_score,
+	        'scoreSubjectType', 'connection',
+	        'scoreSubjectId', sub.connection_id,
+	        'scoreDelta7d', sub.score_delta_7d,
+	        'scoreInfo', sub.score_info,
 	        'activityLevel', sub.activity_level
 	      )
       ORDER BY ${restaurantTopDishOrder.sql}, sub.connection_id ASC
@@ -368,20 +363,20 @@ LEFT JOIN LATERAL (
 	    COUNT(*)::int AS total_dish_count
 	  FROM (
 	    SELECT
-	      c.connection_id,
-	      c.food_id,
-	      f.name AS food_name,
-	      c.food_quality_score,
-	      c.total_upvotes,
+		      c.connection_id,
+		      c.food_id,
+		      f.name AS food_name,
+		      c.total_upvotes,
 	      c.mention_count,
-		      drc.rank_score_display AS contextual_score,
-		      drc.rank_percentile AS contextual_percentile,
+		      pcs.display_score AS crave_score,
+		      pcs.score_delta_7d,
+		      pcs.score_info,
 		      c.activity_level,
 		      ROW_NUMBER() OVER (ORDER BY ${restaurantTopDishRankOrder.sql}) AS rn
 	    FROM core_restaurant_items c
 	    JOIN core_entities f ON f.entity_id = c.food_id
-	    LEFT JOIN contextual_connection_scores drc
-	      ON drc.subject_id = c.connection_id
+	    JOIN public_connection_scores pcs
+	      ON pcs.subject_id = c.connection_id
     WHERE c.restaurant_id = rr.restaurant_id
       AND ${connectionMatchSql}
   ) sub
@@ -416,15 +411,17 @@ LEFT JOIN LATERAL (
     const countSql = Prisma.sql`
 WITH
   ${restaurantCte.sql},
-  ${geographicRestaurantsCte.sql},
-  ${filteredLocationsCte.sql},
-  ${selectedLocationsCte.sql},
-  ${restaurantVoteTotalsCte.sql}
-SELECT COUNT(DISTINCT fr.entity_id)::bigint AS total_restaurants
-FROM filtered_restaurants fr
-JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
-LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
-${minimumVotesWhereSql}`;
+	  ${geographicRestaurantsCte.sql},
+	  ${filteredLocationsCte.sql},
+	  ${selectedLocationsCte.sql},
+	  ${restaurantVoteTotalsCte.sql},
+	  ${publicRestaurantScoresCte.sql}
+	SELECT COUNT(DISTINCT fr.entity_id)::bigint AS total_restaurants
+	FROM filtered_restaurants fr
+	JOIN public_restaurant_scores prs ON prs.subject_id = fr.entity_id
+	JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
+	LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
+	${minimumVotesWhereSql}`;
 
     const preview = `
 ${withPreview}
@@ -506,7 +503,6 @@ filtered_restaurants AS (
     r.entity_id,
     r.name,
     r.aliases,
-    r.restaurant_quality_score,
     r.restaurant_attributes,
     r.restaurant_metadata,
     r.price_level,
@@ -517,7 +513,7 @@ filtered_restaurants AS (
 
     const restaurantCtePreview = `
 filtered_restaurants AS (
-  SELECT r.entity_id, r.name, r.aliases, r.restaurant_quality_score, r.restaurant_attributes, r.restaurant_metadata, r.price_level, r.price_level_updated_at
+  SELECT r.entity_id, r.name, r.aliases, r.restaurant_attributes, r.restaurant_metadata, r.price_level, r.price_level_updated_at
   FROM core_entities r
   WHERE ${restaurantWherePreview}
 )`.trim();
@@ -542,10 +538,8 @@ filtered_restaurants AS (
     const restaurantVoteTotalsCte = this.buildRestaurantVoteTotalsCte();
     const geographicRestaurantVoteTotalsCte =
       this.buildGeographicRestaurantVoteTotalsCte();
-    const contextualRestaurantScoresCte =
-      this.buildContextualRestaurantScoresCte();
-    const contextualConnectionScoresCte =
-      this.buildContextualConnectionScoresCte();
+    const publicRestaurantScoresCte = this.buildPublicRestaurantScoresCte();
+    const publicConnectionScoresCte = this.buildPublicConnectionScoresCte();
 
     // Build filtered connections CTE with restaurant data for map pins
     const filteredConnectionsCte = Prisma.sql`
@@ -561,9 +555,11 @@ filtered_connections AS (
     c.recent_mention_count,
     c.last_mentioned_at,
     c.activity_level,
-    c.food_quality_score,
-    drc.rank_score_display AS connection_contextual_score,
-    drc.rank_percentile AS connection_contextual_percentile,
+    pcs.display_score AS connection_crave_score,
+    pcs.score_delta_7d AS connection_score_delta_7d,
+    pcs.score_info AS connection_score_info,
+    'connection'::text AS score_subject_type,
+    c.connection_id AS score_subject_id,
     f.name AS food_name,
     f.aliases AS food_aliases,
     ${activeMarketKey}::varchar(255) AS market_key,
@@ -571,8 +567,9 @@ filtered_connections AS (
     fr.entity_id AS restaurant_entity_id,
     fr.name AS restaurant_name,
     fr.aliases AS restaurant_aliases,
-    drr.rank_score_display AS restaurant_contextual_score,
-    drr.rank_percentile AS restaurant_contextual_percentile,
+    prs.display_score AS restaurant_crave_score,
+    prs.score_delta_7d AS restaurant_score_delta_7d,
+    prs.score_info AS restaurant_score_info,
     fr.price_level AS restaurant_price_level,
     fr.price_level_updated_at AS restaurant_price_level_updated_at,
     -- Location data for map pins
@@ -589,31 +586,32 @@ filtered_connections AS (
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
   JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
   JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
-  LEFT JOIN contextual_restaurant_scores drr
-    ON drr.subject_id = fr.entity_id
-  LEFT JOIN contextual_connection_scores drc
-    ON drc.subject_id = c.connection_id
+  JOIN public_restaurant_scores prs
+    ON prs.subject_id = fr.entity_id
+  JOIN public_connection_scores pcs
+    ON pcs.subject_id = c.connection_id
   JOIN core_entities f ON f.entity_id = c.food_id
   WHERE ${combinedConnectionWhereSql}
 )`;
 
     const filteredConnectionsCtePreview = `
 filtered_connections AS (
-  SELECT c.connection_id, c.restaurant_id, c.food_id, c.categories, c.food_attributes, c.mention_count, c.total_upvotes, c.recent_mention_count, c.last_mentioned_at, c.activity_level, c.food_quality_score,
-         drc.rank_score_display AS connection_contextual_score, drc.rank_percentile AS connection_contextual_percentile,
+  SELECT c.connection_id, c.restaurant_id, c.food_id, c.categories, c.food_attributes, c.mention_count, c.total_upvotes, c.recent_mention_count, c.last_mentioned_at, c.activity_level,
+         pcs.display_score AS connection_crave_score, pcs.score_delta_7d AS connection_score_delta_7d, pcs.score_info AS connection_score_info,
+         'connection'::text AS score_subject_type, c.connection_id AS score_subject_id,
          f.name AS food_name, f.aliases AS food_aliases, ${
            activeMarketKey ? `'${activeMarketKey}'` : 'NULL'
          }::varchar(255) AS market_key,
          fr.entity_id AS restaurant_entity_id, fr.name AS restaurant_name, fr.aliases AS restaurant_aliases,
-         drr.rank_score_display AS restaurant_contextual_score, drr.rank_percentile AS restaurant_contextual_percentile,
+         prs.display_score AS restaurant_crave_score, prs.score_delta_7d AS restaurant_score_delta_7d, prs.score_info AS restaurant_score_info,
          fr.price_level AS restaurant_price_level, fr.price_level_updated_at AS restaurant_price_level_updated_at,
          sl.location_id, sl.google_place_id, sl.latitude, sl.longitude, sl.address, sl.city, sl.hours, sl.utc_offset_minutes, sl.time_zone
   FROM core_restaurant_items c
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
   JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
   JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
-  LEFT JOIN contextual_restaurant_scores drr ON drr.subject_id = fr.entity_id
-  LEFT JOIN contextual_connection_scores drc ON drc.subject_id = c.connection_id
+  JOIN public_restaurant_scores prs ON prs.subject_id = fr.entity_id
+  JOIN public_connection_scores pcs ON pcs.subject_id = c.connection_id
   JOIN core_entities f ON f.entity_id = c.food_id
   WHERE ${combinedConnectionWherePreview}
 )`.trim();
@@ -629,8 +627,8 @@ WITH
   ${selectedLocationsCte.sql},
   ${restaurantVoteTotalsCte.sql},
   ${geographicRestaurantVoteTotalsCte.sql},
-  ${contextualRestaurantScoresCte.sql},
-  ${contextualConnectionScoresCte.sql},
+  ${publicRestaurantScoresCte.sql},
+  ${publicConnectionScoresCte.sql},
   ${filteredConnectionsCte}
 `;
 
@@ -641,8 +639,8 @@ WITH
   ${selectedLocationsCte.preview},
   ${restaurantVoteTotalsCte.preview},
   ${geographicRestaurantVoteTotalsCte.preview},
-  ${contextualRestaurantScoresCte.preview},
-  ${contextualConnectionScoresCte.preview},
+  ${publicRestaurantScoresCte.preview},
+  ${publicConnectionScoresCte.preview},
   ${filteredConnectionsCtePreview}`;
 
     const dataSql = Prisma.sql`
@@ -834,11 +832,14 @@ LIMIT ${pagination.take};`.trim();
           WHERE m.market_key = ${activeMarketKey}
             AND m.is_active = true
             AND m.geometry IS NOT NULL
-            AND m.bbox_ne_latitude >= rl.latitude
-            AND m.bbox_sw_latitude <= rl.latitude
-            AND m.bbox_ne_longitude >= rl.longitude
-            AND m.bbox_sw_longitude <= rl.longitude
-            AND ST_Contains(
+            AND m.geometry && ST_SetSRID(
+              ST_MakePoint(
+                rl.longitude::double precision,
+                rl.latitude::double precision
+              ),
+              4326
+            )
+            AND ST_Covers(
               m.geometry,
               ST_SetSRID(
                 ST_MakePoint(
@@ -851,7 +852,7 @@ LIMIT ${pagination.take};`.trim();
         )
       `);
       conditionPreview.push(
-        `EXISTS (SELECT 1 FROM core_markets m WHERE m.market_key = '${activeMarketKey}' AND m.is_active = true AND m.geometry IS NOT NULL AND m.bbox_ne_latitude >= rl.latitude AND m.bbox_sw_latitude <= rl.latitude AND m.bbox_ne_longitude >= rl.longitude AND m.bbox_sw_longitude <= rl.longitude AND ST_Contains(m.geometry, ST_SetSRID(ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision), 4326)))`,
+        `EXISTS (SELECT 1 FROM core_markets m WHERE m.market_key = '${activeMarketKey}' AND m.is_active = true AND m.geometry IS NOT NULL AND m.geometry && ST_SetSRID(ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision), 4326) AND ST_Covers(m.geometry, ST_SetSRID(ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision), 4326)))`,
       );
     }
 
@@ -1137,7 +1138,6 @@ filtered_restaurants AS (
     r.entity_id,
     r.name,
     r.aliases,
-    r.restaurant_quality_score,
     r.restaurant_attributes,
     r.restaurant_metadata,
     r.price_level,
@@ -1148,7 +1148,7 @@ filtered_restaurants AS (
 
     const preview = `
 filtered_restaurants AS (
-  SELECT r.entity_id, r.name, r.aliases, r.restaurant_quality_score, r.restaurant_attributes, r.restaurant_metadata, r.price_level, r.price_level_updated_at
+  SELECT r.entity_id, r.name, r.aliases, r.restaurant_attributes, r.restaurant_metadata, r.price_level, r.price_level_updated_at
   FROM core_entities r
   WHERE ${wherePreview}
 )`.trim();
@@ -1209,8 +1209,7 @@ filtered_locations AS (
     const sql = Prisma.sql`
 geographic_restaurants AS (
   SELECT DISTINCT
-    r.entity_id,
-    r.restaurant_quality_score
+    r.entity_id
   FROM core_entities r
   JOIN core_restaurant_locations rl
     ON rl.restaurant_id = r.entity_id
@@ -1224,7 +1223,7 @@ geographic_restaurants AS (
 
     const preview = `
 geographic_restaurants AS (
-  SELECT DISTINCT r.entity_id, r.restaurant_quality_score
+  SELECT DISTINCT r.entity_id
   FROM core_entities r
   JOIN core_restaurant_locations rl ON rl.restaurant_id = r.entity_id
   WHERE r.type = 'restaurant'
@@ -1343,155 +1342,73 @@ geographic_restaurant_vote_totals AS (
     return { sql, preview };
   }
 
-  private buildContextualRestaurantScoresCte(): {
+  private buildPublicRestaurantScoresCte(): {
     sql: Prisma.Sql;
     preview: string;
   } {
     const sql = Prisma.sql`
-contextual_restaurant_scores AS (
-  WITH ranked AS (
-    SELECT
-      gr.entity_id AS subject_id,
-      ROW_NUMBER() OVER (
-        ORDER BY
-          COALESCE(gr.restaurant_quality_score, 0) DESC,
-          COALESCE(grvt.total_upvotes, 0) DESC,
-          COALESCE(grvt.total_mentions, 0) DESC,
-          gr.entity_id ASC
-      ) AS row_number,
-      PERCENT_RANK() OVER (
-        ORDER BY
-          COALESCE(gr.restaurant_quality_score, 0) DESC,
-          COALESCE(grvt.total_upvotes, 0) DESC,
-          COALESCE(grvt.total_mentions, 0) DESC,
-          gr.entity_id ASC
-      ) AS percent_rank
-    FROM geographic_restaurants gr
-    LEFT JOIN geographic_restaurant_vote_totals grvt
-      ON grvt.restaurant_id = gr.entity_id
-  )
+public_restaurant_scores AS (
   SELECT
     subject_id,
-    CASE
-      WHEN row_number = 1 THEN ${CONTEXTUAL_SCORE_MAX}::numeric
-      ELSE floor(
-        LEAST(
-          ${CONTEXTUAL_SCORE_NON_TOP_MAX},
-          GREATEST(0, ${CONTEXTUAL_SCORE_MAX} * (1 - percent_rank))
-        ) * ${CONTEXTUAL_SCORE_MULTIPLIER}
-      )::numeric / ${CONTEXTUAL_SCORE_MULTIPLIER}
-    END AS rank_score_display,
-    (1 - percent_rank)::numeric AS rank_percentile
-  FROM ranked
+    display_score,
+    score_delta_7d,
+    jsonb_build_object(
+      'confidenceLabel',
+        CASE
+          WHEN entity_confidence >= 0.7 THEN 'strong'
+          WHEN entity_confidence >= 0.45 THEN 'solid'
+          ELSE 'early'
+        END,
+      'evidenceCopy', 'Based on Crave polls and votes.',
+      'pollCount', COALESCE(ROUND((NULLIF(factor_trace #>> '{privateEvidence,pollCount}', ''))::numeric)::int, 0),
+      'voteCount', COALESCE(ROUND((NULLIF(factor_trace #>> '{privateEvidence,pollVoteCount}', ''))::numeric)::int, 0)
+    ) AS score_info
+  FROM core_public_entity_scores
+  WHERE subject_type = 'restaurant'
 )`;
 
-    const preview = `
-contextual_restaurant_scores AS (
-  WITH ranked AS (
-    SELECT
-      gr.entity_id AS subject_id,
-      ROW_NUMBER() OVER (
-        ORDER BY
-          COALESCE(gr.restaurant_quality_score, 0) DESC,
-          COALESCE(grvt.total_upvotes, 0) DESC,
-          COALESCE(grvt.total_mentions, 0) DESC,
-          gr.entity_id ASC
-      ) AS row_number,
-      PERCENT_RANK() OVER (
-        ORDER BY
-          COALESCE(gr.restaurant_quality_score, 0) DESC,
-          COALESCE(grvt.total_upvotes, 0) DESC,
-          COALESCE(grvt.total_mentions, 0) DESC,
-          gr.entity_id ASC
-      ) AS percent_rank
-    FROM geographic_restaurants gr
-    LEFT JOIN geographic_restaurant_vote_totals grvt
-      ON grvt.restaurant_id = gr.entity_id
-  )
-  SELECT
-    subject_id,
-    CASE
-      WHEN row_number = 1 THEN 100::numeric
-      ELSE floor(LEAST(99.9, GREATEST(0, 100 * (1 - percent_rank))) * 10)::numeric / 10
-    END AS rank_score_display,
-    (1 - percent_rank)::numeric AS rank_percentile
-  FROM ranked
+	const preview = `
+public_restaurant_scores AS (
+  SELECT subject_id, display_score, score_delta_7d,
+         jsonb_build_object('confidenceLabel', 'computed', 'evidenceCopy', 'Based on Crave polls and votes.', 'pollCount', 0, 'voteCount', 0) AS score_info
+  FROM core_public_entity_scores
+  WHERE subject_type = 'restaurant'
 )`.trim();
 
     return { sql, preview };
   }
 
-  private buildContextualConnectionScoresCte(): {
+  private buildPublicConnectionScoresCte(): {
     sql: Prisma.Sql;
     preview: string;
   } {
     const sql = Prisma.sql`
-contextual_connection_scores AS (
-  WITH ranked AS (
-    SELECT
-      c.connection_id AS subject_id,
-      ROW_NUMBER() OVER (
-        ORDER BY
-          COALESCE(c.food_quality_score, 0) DESC,
-          COALESCE(c.total_upvotes, 0) DESC,
-          COALESCE(c.mention_count, 0) DESC,
-          c.connection_id ASC
-      ) AS row_number,
-      PERCENT_RANK() OVER (
-        ORDER BY
-          COALESCE(c.food_quality_score, 0) DESC,
-          COALESCE(c.total_upvotes, 0) DESC,
-          COALESCE(c.mention_count, 0) DESC,
-          c.connection_id ASC
-      ) AS percent_rank
-    FROM core_restaurant_items c
-    JOIN geographic_restaurants gr ON gr.entity_id = c.restaurant_id
-  )
+public_connection_scores AS (
   SELECT
     subject_id,
-    CASE
-      WHEN row_number = 1 THEN ${CONTEXTUAL_SCORE_MAX}::numeric
-      ELSE floor(
-        LEAST(
-          ${CONTEXTUAL_SCORE_NON_TOP_MAX},
-          GREATEST(0, ${CONTEXTUAL_SCORE_MAX} * (1 - percent_rank))
-        ) * ${CONTEXTUAL_SCORE_MULTIPLIER}
-      )::numeric / ${CONTEXTUAL_SCORE_MULTIPLIER}
-    END AS rank_score_display,
-    (1 - percent_rank)::numeric AS rank_percentile
-  FROM ranked
+    display_score,
+    score_delta_7d,
+    jsonb_build_object(
+      'confidenceLabel',
+        CASE
+          WHEN entity_confidence >= 0.7 THEN 'strong'
+          WHEN entity_confidence >= 0.45 THEN 'solid'
+          ELSE 'early'
+        END,
+      'evidenceCopy', 'Based on Crave polls and votes.',
+      'pollCount', COALESCE(ROUND((NULLIF(factor_trace #>> '{privateEvidence,pollCount}', ''))::numeric)::int, 0),
+      'voteCount', COALESCE(ROUND((NULLIF(factor_trace #>> '{privateEvidence,pollVoteCount}', ''))::numeric)::int, 0)
+    ) AS score_info
+  FROM core_public_entity_scores
+  WHERE subject_type = 'connection'
 )`;
 
-    const preview = `
-contextual_connection_scores AS (
-  WITH ranked AS (
-    SELECT
-      c.connection_id AS subject_id,
-      ROW_NUMBER() OVER (
-        ORDER BY
-          COALESCE(c.food_quality_score, 0) DESC,
-          COALESCE(c.total_upvotes, 0) DESC,
-          COALESCE(c.mention_count, 0) DESC,
-          c.connection_id ASC
-      ) AS row_number,
-      PERCENT_RANK() OVER (
-        ORDER BY
-          COALESCE(c.food_quality_score, 0) DESC,
-          COALESCE(c.total_upvotes, 0) DESC,
-          COALESCE(c.mention_count, 0) DESC,
-          c.connection_id ASC
-      ) AS percent_rank
-    FROM core_restaurant_items c
-    JOIN geographic_restaurants gr ON gr.entity_id = c.restaurant_id
-  )
-  SELECT
-    subject_id,
-    CASE
-      WHEN row_number = 1 THEN 100::numeric
-      ELSE floor(LEAST(99.9, GREATEST(0, 100 * (1 - percent_rank))) * 10)::numeric / 10
-    END AS rank_score_display,
-    (1 - percent_rank)::numeric AS rank_percentile
-  FROM ranked
+	const preview = `
+public_connection_scores AS (
+  SELECT subject_id, display_score, score_delta_7d,
+         jsonb_build_object('confidenceLabel', 'computed', 'evidenceCopy', 'Based on Crave polls and votes.', 'pollCount', 0, 'voteCount', 0) AS score_info
+  FROM core_public_entity_scores
+  WHERE subject_type = 'connection'
 )`.trim();
 
     return { sql, preview };
@@ -1511,11 +1428,14 @@ contextual_connection_scores AS (
           AND rl.longitude IS NOT NULL
           AND rl.google_place_id IS NOT NULL
           AND rl.address IS NOT NULL
-          AND m.bbox_ne_latitude >= rl.latitude
-          AND m.bbox_sw_latitude <= rl.latitude
-          AND m.bbox_ne_longitude >= rl.longitude
-          AND m.bbox_sw_longitude <= rl.longitude
-          AND ST_Contains(
+          AND m.geometry && ST_SetSRID(
+            ST_MakePoint(
+              rl.longitude::double precision,
+              rl.latitude::double precision
+            ),
+            4326
+          )
+          AND ST_Covers(
             m.geometry,
             ST_SetSRID(
               ST_MakePoint(
@@ -1535,11 +1455,8 @@ contextual_connection_scores AS (
     const marketFilterPreview = activeMarketKey
       ? `JOIN core_markets m ON m.market_key = '${activeMarketKey}' AND m.is_active = true AND m.geometry IS NOT NULL
   WHERE rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL AND rl.google_place_id IS NOT NULL AND rl.address IS NOT NULL
-    AND m.bbox_ne_latitude >= rl.latitude
-    AND m.bbox_sw_latitude <= rl.latitude
-    AND m.bbox_ne_longitude >= rl.longitude
-    AND m.bbox_sw_longitude <= rl.longitude
-    AND ST_Contains(m.geometry, ST_SetSRID(ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision), 4326))`
+    AND m.geometry && ST_SetSRID(ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision), 4326)
+    AND ST_Covers(m.geometry, ST_SetSRID(ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision), 4326))`
       : `WHERE rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL AND rl.google_place_id IS NOT NULL AND rl.address IS NOT NULL`;
     const sql = Prisma.sql`
 location_aggregates AS (
@@ -1593,24 +1510,11 @@ location_aggregates AS (
   } {
     const normalized = (order || '').toLowerCase();
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
-    const isQualityScore = normalized.includes('quality_score');
-    const scoreSql = isQualityScore
-      ? Prisma.sql`fc.food_quality_score`
-      : Prisma.sql`COALESCE(fc.connection_contextual_percentile, fc.food_quality_score / 100)`;
-    const scorePreview = isQualityScore
-      ? 'fc.food_quality_score'
-      : 'COALESCE(fc.connection_contextual_percentile, fc.food_quality_score / 100)';
-    const tieBreakerSql = isQualityScore
-      ? Prisma.sql`, fc.total_upvotes ${Prisma.raw(
-          direction,
-        )}, fc.mention_count ${Prisma.raw(direction)}, fc.connection_id ASC`
-      : Prisma.sql`, fc.connection_id ASC`;
-    const tieBreakerPreview = isQualityScore
-      ? `, fc.total_upvotes ${direction}, fc.mention_count ${direction}, fc.connection_id ASC`
-      : ', fc.connection_id ASC';
     return {
-      sql: Prisma.sql`${scoreSql} ${Prisma.raw(direction)}${tieBreakerSql}`,
-      preview: `${scorePreview} ${direction}${tieBreakerPreview}`,
+      sql: Prisma.sql`fc.connection_crave_score ${Prisma.raw(direction)}, fc.total_upvotes ${Prisma.raw(
+        direction,
+      )}, fc.mention_count ${Prisma.raw(direction)}, fc.connection_id ASC`,
+      preview: `fc.connection_crave_score ${direction}, fc.total_upvotes ${direction}, fc.mention_count ${direction}, fc.connection_id ASC`,
     };
   }
 
@@ -1620,23 +1524,13 @@ location_aggregates AS (
   } {
     const normalized = (order || '').toLowerCase();
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
-    const isQualityScore = normalized.includes('quality_score');
-    if (isQualityScore) {
-      return {
-        sql: Prisma.sql`fr.restaurant_quality_score ${Prisma.raw(direction)},
-        COALESCE(rvt.total_upvotes, 0) ${Prisma.raw(direction)},
-        COALESCE(rvt.total_mentions, 0) ${Prisma.raw(direction)},
-        fr.entity_id ASC`,
-        preview: `fr.restaurant_quality_score ${direction}, COALESCE(rvt.total_upvotes, 0) ${direction}, COALESCE(rvt.total_mentions, 0) ${direction}, fr.entity_id ASC`,
-      };
-    }
     return {
-      sql: Prisma.sql`COALESCE(drr.rank_percentile, fr.restaurant_quality_score / 100) ${Prisma.raw(
+      sql: Prisma.sql`prs.display_score ${Prisma.raw(
         direction,
       )},
       COALESCE(rvt.total_upvotes, 0) ${Prisma.raw(direction)},
       fr.entity_id ASC`,
-      preview: `COALESCE(drr.rank_percentile, fr.restaurant_quality_score / 100) ${direction}, COALESCE(rvt.total_upvotes, 0) ${direction}, fr.entity_id ASC`,
+      preview: `prs.display_score ${direction}, COALESCE(rvt.total_upvotes, 0) ${direction}, fr.entity_id ASC`,
     };
   }
 
@@ -1646,21 +1540,11 @@ location_aggregates AS (
   } {
     const normalized = (order || '').toLowerCase();
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
-    const isQualityScore = normalized.includes('quality_score');
-    if (isQualityScore) {
-      return {
-        sql: Prisma.sql`sub.food_quality_score ${Prisma.raw(direction)},
-        sub.total_upvotes ${Prisma.raw(direction)},
-        sub.mention_count ${Prisma.raw(direction)},
-        sub.connection_id ASC`,
-        preview: `sub.food_quality_score ${direction}, sub.total_upvotes ${direction}, sub.mention_count ${direction}, sub.connection_id ASC`,
-      };
-    }
     return {
-      sql: Prisma.sql`COALESCE(sub.contextual_percentile, sub.food_quality_score / 100) ${Prisma.raw(
+      sql: Prisma.sql`sub.crave_score ${Prisma.raw(
         direction,
       )}`,
-      preview: `COALESCE(sub.contextual_percentile, sub.food_quality_score / 100) ${direction}`,
+      preview: `sub.crave_score ${direction}`,
     };
   }
 
@@ -1670,21 +1554,11 @@ location_aggregates AS (
   } {
     const normalized = (order || '').toLowerCase();
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
-    const isQualityScore = normalized.includes('quality_score');
-    if (isQualityScore) {
-      return {
-        sql: Prisma.sql`c.food_quality_score ${Prisma.raw(direction)},
-        c.total_upvotes ${Prisma.raw(direction)},
-        c.mention_count ${Prisma.raw(direction)},
-        c.connection_id ASC`,
-        preview: `c.food_quality_score ${direction}, c.total_upvotes ${direction}, c.mention_count ${direction}, c.connection_id ASC`,
-      };
-    }
     return {
-      sql: Prisma.sql`COALESCE(drc.rank_percentile, c.food_quality_score / 100) ${Prisma.raw(
+      sql: Prisma.sql`pcs.display_score ${Prisma.raw(
         direction,
       )}, c.total_upvotes ${Prisma.raw(direction)}, c.connection_id ASC`,
-      preview: `COALESCE(drc.rank_percentile, c.food_quality_score / 100) ${direction}, c.total_upvotes ${direction}, c.connection_id ASC`,
+      preview: `pcs.display_score ${direction}, c.total_upvotes ${direction}, c.connection_id ASC`,
     };
   }
 

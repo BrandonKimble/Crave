@@ -26,10 +26,15 @@ export const useSearchRootSubmitUiPresentationIntentPorts = ({
     () => ({
       onPresentationIntentStart: (params) => {
         resultsPresentationOwner.presentationActions.cancelCloseSearch();
+        if (params.kind === 'search_this_area') {
+          resultsPresentationOwner.beginSearchThisAreaPresentationPending();
+          return;
+        }
+        const presentationKind =
+          params.kind === 'shortcut_rerun' ? 'shortcut_submit' : 'manual_submit';
         resultsPresentationOwner.presentationActions.requestSearchPresentationIntent({
-          kind: params.kind === 'shortcut_rerun' ? 'shortcut_submit' : 'manual_submit',
-          transactionId:
-            resultsPresentationOwner.pendingTogglePresentationIntentId ?? undefined,
+          kind: presentationKind,
+          transactionId: resultsPresentationOwner.pendingTogglePresentationIntentId ?? undefined,
           query:
             params.submittedLabel ??
             (params.mode === 'shortcut'
@@ -38,10 +43,10 @@ export const useSearchRootSubmitUiPresentationIntentPorts = ({
           targetTab: params.targetTab,
           preserveSheetState: params.preserveSheetState,
           transitionFromDockedPolls: params.transitionFromDockedPolls,
+          entrySurface: params.entrySurface,
         });
       },
-      onPresentationIntentAbort:
-        resultsPresentationOwner.handlePresentationIntentAbort,
+      onPresentationIntentAbort: resultsPresentationOwner.handlePresentationIntentAbort,
     }),
     [
       resultsPresentationOwner,

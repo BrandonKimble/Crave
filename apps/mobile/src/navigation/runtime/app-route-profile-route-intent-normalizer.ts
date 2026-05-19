@@ -19,11 +19,6 @@ type ProfileCameraIntentOptions = {
 
 export type PreparedProfileRouteIntentAction =
   | {
-      type: 'update_active_search_restaurant_route';
-      restaurantId: string | null;
-      completionEvent: PreparedProfilePresentationCompletionEvent;
-    }
-  | {
       type: 'request_overlay_switch';
       request: RouteSceneSwitchRequestInput;
       completionEvent: PreparedProfilePresentationCompletionEvent;
@@ -62,6 +57,7 @@ export const resolveProfileCameraIntent = (
         kind: 'focus',
         center: targetCamera.center,
         zoom: targetCamera.zoom,
+        padding: targetCamera.padding,
         animationMode: options.animationMode,
         animationDurationMs: options.animationDurationMs,
       };
@@ -80,16 +76,31 @@ export const resolvePreparedProfileRouteIntentAction = ({
   const isSearchRestaurantRouteActive = isSearchRestaurantRouteEntry(routeState.activeOverlayRoute);
 
   if (routeIntent.type === 'open_profile_restaurant_route') {
+    const shouldPreserveSheetMotion = routeIntent.preserveSheetMotion === true;
     const completionEvent: PreparedProfilePresentationCompletionEvent = {
       type: 'sheet_settled',
       snap: routeIntent.targetSheetSnap,
       requestToken: executionContext.requestToken,
     };
 
-    if (isSearchRestaurantRouteActive && routeIntent.targetCamera == null) {
+    if (isSearchRestaurantRouteActive) {
       return {
-        type: 'update_active_search_restaurant_route',
-        restaurantId: routeIntent.restaurantId,
+        type: 'request_overlay_switch',
+        request: {
+          targetSceneKey: 'restaurant',
+          routeAction: 'updateActive',
+          routeParams: {
+            restaurantId: routeIntent.restaurantId,
+            source: 'search',
+          },
+          settleToken: executionContext.requestToken,
+          cameraIntent: resolveProfileCameraIntent(routeIntent.targetCamera, cameraIntentOptions),
+          sheetTransitionKind: 'openChild',
+          sheetOpenerSource: shouldPreserveSheetMotion ? 'resultCard' : 'mapTap',
+          sheetMotion: shouldPreserveSheetMotion
+            ? { kind: 'preserveLiveY' }
+            : { kind: 'promoteAtLeast', snap: routeIntent.targetSheetSnap },
+        },
         completionEvent,
       };
     }
@@ -105,11 +116,11 @@ export const resolvePreparedProfileRouteIntentAction = ({
         },
         settleToken: executionContext.requestToken,
         cameraIntent: resolveProfileCameraIntent(routeIntent.targetCamera, cameraIntentOptions),
-        sheetIntent: {
-          sceneKey: 'restaurant',
-          snapTarget: routeIntent.targetSheetSnap,
-          role: 'incoming',
-        },
+        sheetTransitionKind: 'openChild',
+        sheetOpenerSource: shouldPreserveSheetMotion ? 'resultCard' : 'mapTap',
+        sheetMotion: shouldPreserveSheetMotion
+          ? { kind: 'preserveLiveY' }
+          : { kind: 'promoteAtLeast', snap: routeIntent.targetSheetSnap },
       },
       completionEvent,
     };
@@ -133,12 +144,17 @@ export const resolvePreparedProfileRouteIntentAction = ({
       targetSceneKey: routeState.previousOverlayRoute?.key ?? 'search',
       routeAction: resolveProfileCloseRouteAction(routeState),
       settleToken: executionContext.requestToken,
+      sheetTransitionKind:
+        routeIntent.shellTarget === 'default' ? 'terminalDismiss' : 'closeChild',
+      sheetOpenerSource:
+        routeIntent.shellTarget === 'default' ? 'systemDismiss' : 'routeCommand',
+      sheetMotion:
+        routeIntent.shellTarget === 'default' ? { kind: 'hide' } : { kind: 'preserveLiveY' },
+      contentHandoff:
+        routeIntent.shellTarget === 'default'
+          ? 'preserveOutgoingUntilSettle'
+          : 'swapImmediately',
       cameraIntent: resolveProfileCameraIntent(routeIntent.restoreCamera, cameraIntentOptions),
-      sheetIntent: {
-        sceneKey: 'restaurant',
-        snapTarget: 'hidden',
-        role: 'outgoing',
-      },
     },
     completionEvent,
   };

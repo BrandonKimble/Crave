@@ -10,9 +10,6 @@ export const useSearchSuggestionDisplayRuntime = ({
   recentSearches,
   recentlyViewedRestaurants,
   recentlyViewedFoods,
-  isRecentLoading,
-  isRecentlyViewedLoading,
-  isRecentlyViewedFoodsLoading,
   isSuggestionPanelActive,
   isAutocompleteSuppressed,
   isAutocompleteLoading,
@@ -27,10 +24,7 @@ export const useSearchSuggestionDisplayRuntime = ({
     baseShouldShowRecentSection &&
     (recentSearches.length > 0 ||
       recentlyViewedRestaurants.length > 0 ||
-      recentlyViewedFoods.length > 0 ||
-      isRecentLoading ||
-      isRecentlyViewedLoading ||
-      isRecentlyViewedFoodsLoading);
+      recentlyViewedFoods.length > 0);
   const baseShouldRenderAutocompleteSection =
     shouldDriveSuggestionLayout &&
     !isAutocompleteSuppressed &&

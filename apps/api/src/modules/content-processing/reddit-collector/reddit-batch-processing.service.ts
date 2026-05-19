@@ -4,7 +4,7 @@ import { LoggerService } from '../../../shared';
 import { RedditService } from '../../external-integrations/reddit/reddit.service';
 import { filterAndTransformToLLM } from '../../external-integrations/reddit/reddit-data-filter';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { RankScoreRefreshQueueService } from '../rank-score/rank-score-refresh.service';
+import { PublicCraveScoreService } from '../public-crave-score';
 import {
   BatchJob,
   BatchProcessingResult,
@@ -38,7 +38,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
     private readonly configService: ConfigService,
     @Inject(PrismaService) private readonly prismaService: PrismaService,
     private readonly marketRegistry: MarketRegistryService,
-    private readonly rankScoreRefreshQueue: RankScoreRefreshQueueService,
+    private readonly publicCraveScoreService: PublicCraveScoreService,
     private readonly extractionPipelineService: ExtractionPipelineService,
   ) {
     this.marketKeyCacheTtlMs =
@@ -263,7 +263,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
           connectionsCreated: pipelineResult.dbResult.connectionsCreated,
         },
       );
-      await this.refreshRankScoresIfFinalBatch(job, correlationId);
+      await this.refreshPublicScoresIfFinalBatch(job, correlationId);
       return result;
     } catch (error) {
       this.logStage(
@@ -691,7 +691,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
     });
   }
 
-  private shouldRefreshRankScores(job: BatchJob): boolean {
+  private shouldRefreshPublicScores(job: BatchJob): boolean {
     if (!job.totalBatches || job.batchNumber !== job.totalBatches) {
       return false;
     }
@@ -782,32 +782,19 @@ export class RedditBatchProcessingService implements OnModuleInit {
     }
   }
 
-  private async refreshRankScoresIfFinalBatch(
+  private async refreshPublicScoresIfFinalBatch(
     job: BatchJob,
     correlationId: string,
   ): Promise<void> {
-    if (!this.shouldRefreshRankScores(job)) {
+    if (!this.shouldRefreshPublicScores(job)) {
       return;
     }
 
     const marketKey = await this.resolveMarketKeyForCommunity(job.subreddit);
-    if (!marketKey) {
-      this.logger.warn('Rank refresh skipped (missing market key)', {
-        correlationId,
-        batchId: job.batchId,
-        parentJobId: job.parentJobId,
-        collectionType: job.collectionType,
-        subreddit: job.subreddit,
-      });
-      return;
-    }
 
     try {
-      await this.rankScoreRefreshQueue.queueRefreshForMarkets([marketKey], {
-        source: 'collection',
-        force: true,
-      });
-      this.logger.info('Rank scores refreshed after collection completion', {
+      await this.publicCraveScoreService.rebuildAllScores();
+      this.logger.info('Crave Scores refreshed after collection completion', {
         correlationId,
         parentJobId: job.parentJobId,
         collectionType: job.collectionType,
@@ -815,7 +802,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
       });
     } catch (error) {
       this.logger.error(
-        'Rank score refresh failed after collection completion',
+        'Crave Score refresh failed after collection completion',
         {
           correlationId,
           parentJobId: job.parentJobId,

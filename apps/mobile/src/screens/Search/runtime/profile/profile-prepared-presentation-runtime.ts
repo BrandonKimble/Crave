@@ -32,7 +32,6 @@ export type UseProfilePreparedPresentationRuntimeArgs = {
     'shellRuntimeState' | 'transitionRuntimeState' | 'closeRuntimeState' | 'hydrationRuntime'
   >;
   appExecutionRuntime: ProfileAppExecutionRuntime;
-  getIsSearchOverlay: () => boolean;
 };
 
 export const useProfilePreparedPresentationRuntime = ({
@@ -41,14 +40,13 @@ export const useProfilePreparedPresentationRuntime = ({
   nativeExecutionModel,
   runtimeStateOwner,
   appExecutionRuntime,
-  getIsSearchOverlay,
 }: UseProfilePreparedPresentationRuntimeArgs): ProfilePreparedPresentationRuntime => {
   const preparedPresentationTransactionRuntime = useProfilePreparedPresentationTransactionRuntime({
     runBatch,
+    preparedProfileCompletionHandlerRef,
     nativeExecutionModel,
     runtimeStateOwner,
     appExecutionRuntime,
-    getIsSearchOverlay,
   });
   const preparedPresentationEntryRuntime = useProfilePreparedPresentationEntryRuntime({
     executePreparedProfileTransaction:

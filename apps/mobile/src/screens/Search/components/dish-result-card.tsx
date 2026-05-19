@@ -15,6 +15,7 @@ import { InfoCircleIcon } from './metric-icons';
 import { renderMetaDetailLine } from './render-meta-detail-line';
 import { resolveMarketDisplayLabel } from '../utils/format';
 import { formatRankLabel, getRankFontSize } from '../utils/rank-badge';
+import { formatCraveScore, formatCraveScoreMovement } from '../utils/quality';
 import { searchService } from '../../../services/search';
 import { useSearchHistoryStore } from '../../../store/searchHistoryStore';
 
@@ -94,14 +95,12 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
     true,
     true
   );
-  const contextualScoreValue = React.useMemo(() => {
-    if (typeof item.contextualScore === 'number' && Number.isFinite(item.contextualScore)) {
-      return item.contextualScore;
-    }
-    return typeof item.qualityScore === 'number' && Number.isFinite(item.qualityScore)
-      ? item.qualityScore
+  const craveScoreValue = React.useMemo(() => {
+    return typeof item.craveScore === 'number' && Number.isFinite(item.craveScore)
+      ? item.craveScore
       : null;
-  }, [item.contextualScore, item.qualityScore]);
+  }, [item.craveScore]);
+  const scoreMovementLabel = formatCraveScoreMovement(item.scoreDelta7d);
   const marketLabel =
     showMarketLabel && item.marketKey && item.marketKey !== primaryMarketKey
       ? resolveMarketDisplayLabel(item.marketName, item.marketKey ?? null)
@@ -156,11 +155,11 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
     openScoreInfo({
       type: 'dish',
       title: item.foodName,
-      score: contextualScoreValue,
-      votes: item.totalUpvotes,
-      polls: item.mentionCount,
+      score: craveScoreValue,
+      votes: item.scoreInfo?.voteCount ?? null,
+      polls: item.scoreInfo?.pollCount ?? null,
     });
-  }, [item.foodName, item.mentionCount, item.totalUpvotes, contextualScoreValue, openScoreInfo]);
+  }, [item.foodName, item.scoreInfo, craveScoreValue, openScoreInfo]);
 
   return (
     <View
@@ -202,8 +201,13 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
                 <View style={styles.metricLine}>
                   {HAND_PLATTER_ICON}
                   <Text variant="body" weight="semibold" style={styles.metricValue}>
-                    {contextualScoreValue != null ? contextualScoreValue.toFixed(1) : '—'}
+                    {formatCraveScore(craveScoreValue)}
                   </Text>
+                  {scoreMovementLabel ? (
+                    <Text variant="body" weight="semibold" style={styles.metricMovement}>
+                      {scoreMovementLabel}
+                    </Text>
+                  ) : null}
                   <Text variant="body" weight="regular" style={styles.metricLabel}>
                     Dish score
                   </Text>

@@ -10,21 +10,29 @@ export type ProfileCloseFinalizationRuntimeState = {
 type UseProfileCloseFinalizationRuntimeStateArgs = {
   profileControllerStateRef: React.RefObject<ProfileControllerState>;
   clearRestaurantPanelSnapshot: () => void;
+  clearMapHighlightedRestaurantId: () => void;
   resetRestaurantFocusSession: () => void;
 };
 
 export const useProfileCloseFinalizationRuntimeState = ({
   profileControllerStateRef,
   clearRestaurantPanelSnapshot,
+  clearMapHighlightedRestaurantId,
   resetRestaurantFocusSession,
 }: UseProfileCloseFinalizationRuntimeStateArgs): ProfileCloseFinalizationRuntimeState => {
   const finalizePreparedProfileCloseState = React.useCallback(() => {
+    clearMapHighlightedRestaurantId();
     finalizePreparedProfileCloseRecord({
       controllerState: profileControllerStateRef.current,
       clearRestaurantPanelSnapshot,
       resetRestaurantFocusSession,
     });
-  }, [clearRestaurantPanelSnapshot, profileControllerStateRef, resetRestaurantFocusSession]);
+  }, [
+    clearMapHighlightedRestaurantId,
+    clearRestaurantPanelSnapshot,
+    profileControllerStateRef,
+    resetRestaurantFocusSession,
+  ]);
 
   return React.useMemo<ProfileCloseFinalizationRuntimeState>(
     () => ({

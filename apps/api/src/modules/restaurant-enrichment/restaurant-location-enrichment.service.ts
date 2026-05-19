@@ -14,7 +14,7 @@ import {
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { LoggerService } from '../../shared';
 import { AliasManagementService } from '../content-processing/entity-resolver/alias-management.service';
-import { RankScoreRefreshQueueService } from '../content-processing/rank-score/rank-score-refresh.service';
+import { PublicCraveScoreService } from '../content-processing/public-crave-score';
 import { MarketRegistryService } from '../markets/market-registry.service';
 import { RestaurantEntityMergeService } from './restaurant-entity-merge.service';
 import { RestaurantCuisineExtractionQueueService } from './restaurant-cuisine-extraction-queue.service';
@@ -471,7 +471,7 @@ export class RestaurantLocationEnrichmentService {
     private readonly aliasManagementService: AliasManagementService,
     private readonly restaurantEntityMergeService: RestaurantEntityMergeService,
     private readonly marketRegistry: MarketRegistryService,
-    private readonly rankScoreRefreshQueue: RankScoreRefreshQueueService,
+    private readonly publicCraveScoreService: PublicCraveScoreService,
     private readonly cuisineExtractionQueue: RestaurantCuisineExtractionQueueService,
     private readonly secondaryLocationExpansionQueue: RestaurantSecondaryLocationExpansionQueueService,
     private readonly configService: ConfigService,
@@ -606,10 +606,7 @@ export class RestaurantLocationEnrichmentService {
       return;
     }
 
-    await this.enrichSecondaryLocations(
-      entity,
-      resolvedDetails.details.place,
-    );
+    await this.enrichSecondaryLocations(entity, resolvedDetails.details.place);
   }
 
   async resolvePlaceForInput(params: {
@@ -715,10 +712,8 @@ export class RestaurantLocationEnrichmentService {
       predictionsConsidered:
         matchSource === 'find_place'
           ? fallbackRanked.length
-          : this.mergeRankedCandidates([
-              ...ranked,
-              ...retryAutocompleteRanked,
-            ]).length,
+          : this.mergeRankedCandidates([...ranked, ...retryAutocompleteRanked])
+              .length,
       timestamp: new Date().toISOString(),
       source: matchSource,
     };
@@ -909,9 +904,8 @@ export class RestaurantLocationEnrichmentService {
                 fallbackAttempted: true,
                 fallbackStatus,
                 fallbackUsed: fallbackRanked.length > 0,
-                searchTextCandidates: this.serializeRankedCandidates(
-                  fallbackRanked,
-                ),
+                searchTextCandidates:
+                  this.serializeRankedCandidates(fallbackRanked),
                 candidateSelectionStrategy: selection.strategy,
                 adjudicationTrail: selection.adjudicationTrail,
               }
@@ -972,9 +966,7 @@ export class RestaurantLocationEnrichmentService {
         secondaryText: best.entry.candidate.secondaryText,
         candidateTypes: best.entry.candidate.types,
         predictionsConsidered:
-          matchSource === 'find_place'
-            ? fallbackRanked.length
-            : ranked.length,
+          matchSource === 'find_place' ? fallbackRanked.length : ranked.length,
         timestamp: new Date().toISOString(),
         source: matchSource,
       };
@@ -996,9 +988,8 @@ export class RestaurantLocationEnrichmentService {
                 fallbackAttempted: true,
                 fallbackStatus,
                 fallbackUsed: matchSource === 'find_place',
-                searchTextCandidates: this.serializeRankedCandidates(
-                  fallbackRanked,
-                ),
+                searchTextCandidates:
+                  this.serializeRankedCandidates(fallbackRanked),
                 candidateSelectionStrategy: selection.strategy,
                 adjudicationTrail: selection.adjudicationTrail,
               }
@@ -1473,8 +1464,8 @@ export class RestaurantLocationEnrichmentService {
     const targets: string[] = Array.isArray(metaTarget)
       ? (metaTarget as string[])
       : typeof metaTarget === 'string'
-        ? [metaTarget]
-        : [];
+      ? [metaTarget]
+      : [];
     const normalizedTargets = targets.map((value) => value.toLowerCase());
     return (
       normalizedTargets.includes('name') && normalizedTargets.includes('type')
@@ -1620,10 +1611,10 @@ export class RestaurantLocationEnrichmentService {
       restaurantId: updatedCanonical.entityId,
       pruneToVerifiedLocationsOnly: true,
     });
-    await this.rankScoreRefreshQueue.queueRefreshForMarkets(
-      [...previousMarketKeys, ...syncedMarketKeys],
-      { source: 'google_place_collision', force: true },
-    );
+    await this.refreshPublicScoresForMarkets([
+      ...previousMarketKeys,
+      ...syncedMarketKeys,
+    ]);
 
     this.logger.info('Merged restaurant into canonical entity', {
       duplicateId: entity.entityId,
@@ -1801,10 +1792,10 @@ export class RestaurantLocationEnrichmentService {
       restaurantId: updatedCanonical.entityId,
       pruneToVerifiedLocationsOnly: true,
     });
-    await this.rankScoreRefreshQueue.queueRefreshForMarkets(
-      [...previousMarketKeys, ...syncedMarketKeys],
-      { source: 'google_place_name_conflict', force: true },
-    );
+    await this.refreshPublicScoresForMarkets([
+      ...previousMarketKeys,
+      ...syncedMarketKeys,
+    ]);
 
     this.logger.info('Merged restaurant into existing canonical by name', {
       duplicateId: entity.entityId,
@@ -1863,9 +1854,9 @@ export class RestaurantLocationEnrichmentService {
       canonical.canonicalDomain.trim().length
         ? canonical.canonicalDomain.trim().toLowerCase()
         : typeof duplicate.canonicalDomain === 'string' &&
-            duplicate.canonicalDomain.trim().length
-          ? duplicate.canonicalDomain.trim().toLowerCase()
-          : null;
+          duplicate.canonicalDomain.trim().length
+        ? duplicate.canonicalDomain.trim().toLowerCase()
+        : null;
     if (canonicalDomain && canonicalDomain !== canonical.canonicalDomain) {
       updateData.canonicalDomain = canonicalDomain;
       updatedFields.push('canonicalDomain');
@@ -1969,13 +1960,10 @@ export class RestaurantLocationEnrichmentService {
       score: params.score,
     });
 
-    await this.rankScoreRefreshQueue.queueRefreshForMarkets(
-      [...previousMarketKeys, ...syncedMarketKeys],
-      {
-        source: 'restaurant_domain_merge',
-        force: true,
-      },
-    );
+    await this.refreshPublicScoresForMarkets([
+      ...previousMarketKeys,
+      ...syncedMarketKeys,
+    ]);
 
     return {
       mergedInto: refreshedCanonical.entityId,
@@ -2028,8 +2016,8 @@ export class RestaurantLocationEnrichmentService {
       typeof details.nationalPhoneNumber === 'string'
         ? details.nationalPhoneNumber
         : typeof details.internationalPhoneNumber === 'string'
-          ? details.internationalPhoneNumber
-          : null;
+        ? details.internationalPhoneNumber
+        : null;
     if (!raw) {
       return null;
     }
@@ -2120,10 +2108,12 @@ export class RestaurantLocationEnrichmentService {
     };
   }
 
-  private normalizeSourceMarket(sourceMarket?: {
-    city?: string | null;
-    region?: string | null;
-  } | null): {
+  private normalizeSourceMarket(
+    sourceMarket?: {
+      city?: string | null;
+      region?: string | null;
+    } | null,
+  ): {
     city?: string;
     region?: string;
   } {
@@ -2301,6 +2291,7 @@ export class RestaurantLocationEnrichmentService {
             lat: Number(location.latitude),
             lng: Number(location.longitude),
           },
+          allowBootstrap: false,
         }),
       ),
     );
@@ -2457,6 +2448,7 @@ export class RestaurantLocationEnrichmentService {
         lat: latitude as number,
         lng: longitude as number,
       },
+      allowBootstrap: false,
     });
 
     return this.normalizeMarketKey(resolved?.marketKey ?? null);
@@ -2597,10 +2589,7 @@ export class RestaurantLocationEnrichmentService {
         context: params.context,
       });
 
-      await this.rankScoreRefreshQueue.queueRefreshForMarkets(
-        [...currentMarketKeys, targetKey],
-        { source: 'enrichment' },
-      );
+      await this.refreshPublicScoresForMarkets([...currentMarketKeys, targetKey]);
 
       return {
         resolvedMarketKey: targetKey,
@@ -2623,10 +2612,7 @@ export class RestaurantLocationEnrichmentService {
       pruneToVerifiedLocationsOnly: true,
     });
 
-    await this.rankScoreRefreshQueue.queueRefreshForMarkets(
-      [...currentMarketKeys, targetKey],
-      { source: 'enrichment' },
-    );
+    await this.refreshPublicScoresForMarkets([...currentMarketKeys, targetKey]);
 
     return { resolvedMarketKey: targetKey };
   }
@@ -3262,12 +3248,15 @@ export class RestaurantLocationEnrichmentService {
       return [];
     }
 
-    const autocomplete = await this.googlePlacesService.autocompletePlace(query, {
-      language: 'en',
-      sessionToken: options.sessionToken,
-      locationBias: context?.locationBias,
-      includeRaw: false,
-    });
+    const autocomplete = await this.googlePlacesService.autocompletePlace(
+      query,
+      {
+        language: 'en',
+        sessionToken: options.sessionToken,
+        locationBias: context?.locationBias,
+        includeRaw: false,
+      },
+    );
 
     return this.rankCandidates(
       this.extractAutocompleteCandidates(autocomplete.suggestions),
@@ -3301,7 +3290,9 @@ export class RestaurantLocationEnrichmentService {
     return `${trimmedQuery} ${missingParts.join(' ')}`.trim();
   }
 
-  private mergeRankedCandidates(candidates: RankedCandidate[]): RankedCandidate[] {
+  private mergeRankedCandidates(
+    candidates: RankedCandidate[],
+  ): RankedCandidate[] {
     const mergedByPlaceId = new Map<string, RankedCandidate>();
 
     for (const entry of candidates) {
@@ -3315,9 +3306,13 @@ export class RestaurantLocationEnrichmentService {
         continue;
       }
       const existingScore =
-        typeof existing.score === 'number' ? existing.score : Number.NEGATIVE_INFINITY;
+        typeof existing.score === 'number'
+          ? existing.score
+          : Number.NEGATIVE_INFINITY;
       const nextScore =
-        typeof entry.score === 'number' ? entry.score : Number.NEGATIVE_INFINITY;
+        typeof entry.score === 'number'
+          ? entry.score
+          : Number.NEGATIVE_INFINITY;
       if (nextScore > existingScore) {
         mergedByPlaceId.set(placeId, entry);
       }
@@ -3327,7 +3322,9 @@ export class RestaurantLocationEnrichmentService {
       const leftScore =
         typeof left.score === 'number' ? left.score : Number.NEGATIVE_INFINITY;
       const rightScore =
-        typeof right.score === 'number' ? right.score : Number.NEGATIVE_INFINITY;
+        typeof right.score === 'number'
+          ? right.score
+          : Number.NEGATIVE_INFINITY;
       if (leftScore !== rightScore) {
         return rightScore - leftScore;
       }
@@ -4065,14 +4062,17 @@ export class RestaurantLocationEnrichmentService {
     const movedPlaceId =
       typeof place.movedPlaceId === 'string' ? place.movedPlaceId.trim() : '';
     if (!movedPlaceId) {
-      this.logger.debug('Rejecting permanently closed place without move target', {
-        query: params.query,
-        candidateName:
-          params.candidate.mainText ||
-          params.candidate.description?.split(',')[0] ||
-          null,
-        placeId: place.id,
-      });
+      this.logger.debug(
+        'Rejecting permanently closed place without move target',
+        {
+          query: params.query,
+          candidateName:
+            params.candidate.mainText ||
+            params.candidate.description?.split(',')[0] ||
+            null,
+          placeId: place.id,
+        },
+      );
       return {
         details: null,
         rejectionReason: 'place permanently closed',
@@ -4163,7 +4163,6 @@ export class RestaurantLocationEnrichmentService {
 
     return candidate;
   }
-
 
   private async recordNoMatchCandidates(
     entity: RestaurantEntity,
@@ -4337,10 +4336,10 @@ export class RestaurantLocationEnrichmentService {
       typeof details.timeZone === 'string'
         ? details.timeZone
         : typeof sourceRecord.timeZone === 'string'
-          ? sourceRecord.timeZone
-          : typeof sourceRecord.timezone === 'string'
-            ? sourceRecord.timezone
-            : undefined;
+        ? sourceRecord.timeZone
+        : typeof sourceRecord.timezone === 'string'
+        ? sourceRecord.timezone
+        : undefined;
 
     if (timezoneCandidate) {
       normalized.timezone = timezoneCandidate;
@@ -4714,10 +4713,10 @@ export class RestaurantLocationEnrichmentService {
       min !== null && max !== null
         ? `$${min}-${max}`
         : max !== null
-          ? `<$${max}`
-          : min !== null
-            ? `$${min}+`
-            : rawText;
+        ? `<$${max}`
+        : min !== null
+        ? `$${min}+`
+        : rawText;
 
     return {
       min,
@@ -4766,6 +4765,18 @@ export class RestaurantLocationEnrichmentService {
       }
     }
     return null;
+  }
+
+  private async refreshPublicScoresForMarkets(
+    marketKeys: string[],
+  ): Promise<void> {
+    const hasMarketContext = marketKeys.some(
+      (value) => typeof value === 'string' && value.trim().length > 0,
+    );
+    if (!hasMarketContext) {
+      return;
+    }
+    await this.publicCraveScoreService.rebuildAllScores();
   }
 
   private toNumberValue(value: unknown): number | undefined {

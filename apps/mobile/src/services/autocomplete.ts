@@ -1,5 +1,6 @@
 import api from './api';
 import type { RestaurantStatusPreview } from './search';
+import type { Coordinate, MapBounds } from '../types';
 
 export type AutocompleteMatch = {
   entityId: string;
@@ -30,6 +31,8 @@ type RequestOptions = {
   signal?: AbortSignal;
   entityType?: string;
   entityTypes?: string[];
+  bounds?: MapBounds | null;
+  userLocation?: Coordinate | null;
 };
 
 export const autocompleteService = {
@@ -44,6 +47,12 @@ export const autocompleteService = {
     }
     if (options.entityTypes && options.entityTypes.length > 0) {
       payload.entityTypes = options.entityTypes;
+    }
+    if (options.bounds) {
+      payload.bounds = options.bounds;
+    }
+    if (options.userLocation) {
+      payload.userLocation = options.userLocation;
     }
     const { data } = await api.post<AutocompleteResponse>('/autocomplete/entities', payload, {
       signal: options.signal,

@@ -1,7 +1,12 @@
 import React from 'react';
 
 import type { SegmentValue } from '../constants/search';
-import type { SearchMode, SubmitSearchOptions } from './use-search-submit-entry-owner';
+import type {
+  SearchMode,
+  SearchSubmitEntrySurface,
+  SearchSubmitPresentationIntentKind,
+  SubmitSearchOptions,
+} from './use-search-submit-entry-owner';
 import type { StructuredSearchFilters } from './use-search-request-preparation-owner';
 
 type SearchSubmitActionOwnerArgs = {
@@ -18,12 +23,14 @@ type SearchSubmitActionOwnerArgs = {
   submitViewportShortcut: (
     targetTab: SegmentValue,
     submittedLabel: string,
-    options?: {
+    options: {
       preserveSheetState?: boolean;
       replaceResultsInPlace?: boolean;
       transitionFromDockedPolls?: boolean;
       filters?: StructuredSearchFilters;
       forceFreshBounds?: boolean;
+      presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+      entrySurface: SearchSubmitEntrySurface;
     }
   ) => Promise<void>;
 };
@@ -36,6 +43,8 @@ export type SearchSubmitRerunParams = {
   isSearchSessionActive: boolean;
   preserveSheetState?: boolean;
   replaceResultsInPlace?: boolean;
+  filters?: StructuredSearchFilters;
+  presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
 };
 
 export const useSearchSubmitActionOwner = ({
@@ -100,7 +109,10 @@ export const useSearchSubmitActionOwner = ({
         await submitViewportShortcut(params.activeTab, submittedLabel, {
           preserveSheetState: params.preserveSheetState,
           replaceResultsInPlace: params.replaceResultsInPlace,
+          filters: params.filters,
           forceFreshBounds: true,
+          presentationIntentKind: params.presentationIntentKind,
+          entrySurface: 'results',
         });
         return;
       }
@@ -108,7 +120,12 @@ export const useSearchSubmitActionOwner = ({
         {
           preserveSheetState: params.preserveSheetState,
           replaceResultsInPlace: params.replaceResultsInPlace,
+          openNow: params.filters?.openNow,
+          priceLevels: params.filters?.priceLevels,
+          minimumVotes: params.filters?.minimumVotes,
           forceFreshBounds: true,
+          presentationIntentKind: params.presentationIntentKind,
+          entrySurface: 'results',
         },
         rerunQuery
       );

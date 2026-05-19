@@ -9,6 +9,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+const ONE_HUNDRED_EIGHTY_DAYS_MS = 180 * 24 * 60 * 60 * 1000;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
@@ -60,12 +61,16 @@ export class OnDemandRequestUsersCleanupService
 
   async runCleanup(): Promise<void> {
     const cutoff = new Date(Date.now() - this.retentionMs);
+    const askEventCutoff = new Date(Date.now() - ONE_HUNDRED_EIGHTY_DAYS_MS);
 
     const deleted = await this.prisma.onDemandRequestUser.deleteMany({
-      where: { createdAt: { lt: cutoff } },
+      where: { lastSeenAt: { lt: cutoff } },
+    });
+    const deletedAskEvents = await this.prisma.onDemandAskEvent.deleteMany({
+      where: { askedAt: { lt: askEventCutoff } },
     });
 
-    if (deleted.count === 0) {
+    if (deleted.count === 0 && deletedAskEvents.count === 0) {
       return;
     }
 
@@ -96,7 +101,9 @@ export class OnDemandRequestUsersCleanupService
 
     this.logger.info('Pruned on-demand request user rows', {
       deleted: deleted.count,
+      deletedAskEvents: deletedAskEvents.count,
       cutoff: cutoff.toISOString(),
+      askEventCutoff: askEventCutoff.toISOString(),
     });
   }
 }

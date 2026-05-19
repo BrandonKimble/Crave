@@ -55,7 +55,10 @@ export const useSearchForegroundCommandRuntime = ({
       return;
     }
     setShouldRetrySearchOnReconnect(false);
-    void submitRuntimeArgs.submitRuntime.submitSearch({ preserveSheetState: true }, retryQuery);
+    void submitRuntimeArgs.submitRuntime.submitSearch(
+      { preserveSheetState: true, entrySurface: 'results' },
+      retryQuery
+    );
   }, [
     isOffline,
     shouldRetrySearchOnReconnect,

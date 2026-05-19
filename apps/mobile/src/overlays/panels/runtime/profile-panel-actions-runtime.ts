@@ -1,25 +1,20 @@
 import React from 'react';
 import { Alert } from 'react-native';
 import { useAuth } from '@clerk/clerk-expo';
-import { useNavigation } from '@react-navigation/native';
-import type { StackNavigationProp } from '@react-navigation/stack';
-
 import { useAppRouteSceneRuntime } from '../../../navigation/runtime/AppRouteSceneRuntimeProvider';
+import { useFavoriteListDetailRouteActions } from '../../../navigation/runtime/use-favorite-list-detail-route-actions';
 import { notificationsService } from '../../../services/notifications';
 import type { Poll } from '../../../services/polls';
 import { useNotificationStore } from '../../../store/notificationStore';
 import { useOnboardingStore } from '../../../store/onboardingStore';
-import type { RootStackParamList } from '../../../types/navigation';
 import { logger } from '../../../utils';
 import type { ProfilePanelActionsRuntime } from './profile-panel-runtime-contract';
-
-type Navigation = StackNavigationProp<RootStackParamList>;
 
 export const useProfilePanelActionsRuntime = (): ProfilePanelActionsRuntime => {
   const resetOnboarding = useOnboardingStore((state) => state.__forceOnboarding);
   const { signOut, isSignedIn } = useAuth();
-  const navigation = useNavigation<Navigation>();
   const routeSceneRuntime = useAppRouteSceneRuntime();
+  const { openFavoriteListDetailRoute } = useFavoriteListDetailRouteActions();
   const pushToken = useNotificationStore((state) => state.pushToken);
   const setPushToken = useNotificationStore((state) => state.setPushToken);
 
@@ -98,9 +93,14 @@ export const useProfilePanelActionsRuntime = (): ProfilePanelActionsRuntime => {
 
   const handleListPress = React.useCallback(
     (listId: string) => {
-      navigation.navigate('FavoritesListDetail', { listId });
+      openFavoriteListDetailRoute({
+        listId,
+        parentSceneKey: 'profile',
+        ownerSceneKey: 'profile',
+        openerRouteKey: 'profile',
+      });
     },
-    [navigation]
+    [openFavoriteListDetailRoute]
   );
 
   return React.useMemo(

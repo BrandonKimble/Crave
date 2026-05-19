@@ -6,7 +6,6 @@ import { useSearchRootMapInteractionBridgeRuntime } from './use-search-root-map-
 import type {
   SearchRootAutocompleteControlLane,
   SearchRootProfilePresentationControlLane,
-  SearchRootResultsPresentationStateControlLane,
   SearchRootSuggestionInteractionControlLane,
 } from './use-search-root-control-plane-runtime-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
@@ -20,7 +19,6 @@ type UseSearchRootMapInteractionRuntimeArgs = {
   autocompleteControlLane: SearchRootAutocompleteControlLane;
   suggestionInteractionControlLane: SearchRootSuggestionInteractionControlLane;
   profilePresentationControlLane: SearchRootProfilePresentationControlLane;
-  resultsPresentationStateControlLane: SearchRootResultsPresentationStateControlLane;
   handleMapLoaded: () => void;
 };
 
@@ -31,7 +29,6 @@ export const useSearchRootMapInteractionRuntime = ({
   autocompleteControlLane,
   suggestionInteractionControlLane,
   profilePresentationControlLane,
-  resultsPresentationStateControlLane,
   handleMapLoaded,
 }: UseSearchRootMapInteractionRuntimeArgs) => {
   const mapInteractionArgs = React.useMemo(
@@ -43,7 +40,6 @@ export const useSearchRootMapInteractionRuntime = ({
         autocompleteControlLane,
         suggestionInteractionControlLane,
         profilePresentationControlLane,
-        resultsPresentationStateControlLane,
       }),
     [
       autocompleteControlLane.autocompleteControlPort.suppressAutocompleteResults,
@@ -51,10 +47,8 @@ export const useSearchRootMapInteractionRuntime = ({
       profilePresentationControlLane.profileOwner.profileActions.clearMapHighlightedRestaurantId,
       profilePresentationControlLane.profileOwner.profileViewState.presentation
         .isPresentationActive,
-      resultsPresentationStateControlLane.presentationState.shouldDisableResultsSheetInteraction,
       suggestionInteractionControlLane.suggestionInteractionRuntime.dismissSearchKeyboard,
       stateFoundationLane.rootDataPlaneRuntime.requestStatusRuntime.cancelAutocomplete,
-      stateFoundationLane.rootDataPlaneRuntime.resultsArrivalState.hasResults,
       stateFoundationLane.rootDataPlaneRuntime.runtimeFlags.isSearchSessionActive,
       stateFoundationLane.rootPrimitivesRuntime.mapState.suppressMapMovedRef,
       stateFoundationLane.rootPrimitivesRuntime.searchState.allowSearchBlurExitRef,
@@ -64,8 +58,6 @@ export const useSearchRootMapInteractionRuntime = ({
       stateFoundationLane.rootPrimitivesRuntime.searchState.setShowSuggestions,
       stateFoundationLane.rootPrimitivesRuntime.searchState.setSuggestions,
       stateFoundationLane.rootSuggestionRuntime.beginSuggestionCloseHold,
-      stateFoundationLane.sessionPrimitivesLane.primitives.anySheetDraggingRef,
-      stateFoundationLane.sessionPrimitivesLane.primitives.commitCameraViewport,
       stateFoundationLane.sessionPrimitivesLane.primitives.lastCameraStateRef,
       stateFoundationLane.sessionPrimitivesLane.primitives.lastPersistedCameraRef,
       stateFoundationLane.sessionPrimitivesLane.primitives.searchInteractionRef,
@@ -80,9 +72,6 @@ export const useSearchRootMapInteractionRuntime = ({
       rootOverlayFoundationRuntime.rootResultsSheetRuntimeLane.markMapMovedIfNeeded,
       rootOverlayFoundationRuntime.rootResultsSheetRuntimeLane.scheduleMapIdleEnter,
       rootOverlayFoundationRuntime.rootResultsSheetRuntimeLane.schedulePollBoundsUpdate,
-      rootOverlayFoundationRuntime.appRouteResultsSheetRuntimeOwner.animateSheetTo,
-      rootOverlayFoundationRuntime.appRouteResultsSheetRuntimeOwner.sheetState,
-      rootOverlayFoundationRuntime.appRouteResultsSheetRuntimeOwner.shouldRenderResultsSheetRef,
       sessionCoreLane.cameraIntentArbiter,
       sessionCoreLane.viewportBoundsService,
     ]

@@ -1,13 +1,13 @@
 import React from 'react';
 
-import type { RunOneHandoffCoordinator } from '../controller/run-one-handoff-coordinator';
+import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 import type { MarkerEnterSettledPayload } from './results-presentation-runtime-owner-contract';
 
 export const useResultsPresentationMarkerEnterSettleRuntime = ({
-  runOneHandoffCoordinatorRef,
+  searchSurfaceRedrawCoordinatorRef,
   emitRuntimeMechanismEvent,
 }: {
-  runOneHandoffCoordinatorRef: React.MutableRefObject<RunOneHandoffCoordinator>;
+  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinator>;
   emitRuntimeMechanismEvent: (event: string, payload: Record<string, unknown>) => void;
 }) => {
   const pendingMarkerEnterSettledRef = React.useRef<{
@@ -20,7 +20,7 @@ export const useResultsPresentationMarkerEnterSettleRuntime = ({
     if (!pending) {
       return false;
     }
-    const coordinatorSnapshot = runOneHandoffCoordinatorRef.current.getSnapshot();
+    const coordinatorSnapshot = searchSurfaceRedrawCoordinatorRef.current.getSnapshot();
     const operationId = coordinatorSnapshot.operationId;
     if (!operationId || coordinatorSnapshot.phase === 'idle') {
       pendingMarkerEnterSettledRef.current = null;
@@ -31,13 +31,13 @@ export const useResultsPresentationMarkerEnterSettleRuntime = ({
       return false;
     }
     if (
-      coordinatorSnapshot.phase !== 'h2_marker_enter' &&
-      coordinatorSnapshot.phase !== 'h3_hydration_ramp'
+      coordinatorSnapshot.phase !== 'markers_ready' &&
+      coordinatorSnapshot.phase !== 'hydration_ready'
     ) {
       return false;
     }
     pendingMarkerEnterSettledRef.current = null;
-    const accepted = runOneHandoffCoordinatorRef.current.advancePhase(
+    const accepted = searchSurfaceRedrawCoordinatorRef.current.advancePhase(
       coordinatorSnapshot.phase,
       {
         operationId,
@@ -60,13 +60,13 @@ export const useResultsPresentationMarkerEnterSettleRuntime = ({
       markerEnterCommitId: pending.payload.markerEnterCommitId,
     });
     return true;
-  }, [emitRuntimeMechanismEvent, runOneHandoffCoordinatorRef]);
+  }, [emitRuntimeMechanismEvent, searchSurfaceRedrawCoordinatorRef]);
 
   React.useEffect(() => {
-    return runOneHandoffCoordinatorRef.current.subscribe(() => {
+    return searchSurfaceRedrawCoordinatorRef.current.subscribe(() => {
       flushPendingMarkerEnterSettled();
     });
-  }, [flushPendingMarkerEnterSettled, runOneHandoffCoordinatorRef]);
+  }, [flushPendingMarkerEnterSettled, searchSurfaceRedrawCoordinatorRef]);
 
   const setPendingMarkerEnterSettled = React.useCallback(
     (pending: { operationId: string; payload: MarkerEnterSettledPayload } | null) => {

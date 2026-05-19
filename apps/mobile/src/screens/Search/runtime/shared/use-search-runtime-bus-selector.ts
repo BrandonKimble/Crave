@@ -13,7 +13,8 @@ export const useSearchRuntimeBusSelector = <T>(
   bus: SearchRuntimeBus,
   selector: (state: SearchRuntimeBusState) => T,
   isEqual: EqualityFn<T> = Object.is,
-  observedKeys?: readonly SearchRuntimeBusKey[]
+  observedKeys?: readonly SearchRuntimeBusKey[],
+  debugLabel?: string
 ): T => {
   const observedKeysSignature =
     observedKeys != null && observedKeys.length > 0 ? observedKeys.join('|') : '';
@@ -23,8 +24,8 @@ export const useSearchRuntimeBusSelector = <T>(
     selected: selector(bus.getState()),
   });
   const subscribe = React.useCallback(
-    (listener: () => void) => bus.subscribe(listener, scopedObservedKeys),
-    [bus, scopedObservedKeys]
+    (listener: () => void) => bus.subscribe(listener, scopedObservedKeys, debugLabel),
+    [bus, debugLabel, scopedObservedKeys]
   );
 
   return useSyncExternalStore(

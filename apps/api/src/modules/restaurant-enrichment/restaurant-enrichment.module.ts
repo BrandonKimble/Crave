@@ -5,7 +5,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { RepositoryModule } from '../../repositories/repository.module';
 import { ExternalIntegrationsModule } from '../external-integrations/external-integrations.module';
 import { EntityResolverModule } from '../content-processing/entity-resolver/entity-resolver.module';
-import { RankScoreModule } from '../content-processing/rank-score/rank-score.module';
+import { PublicCraveScoreModule } from '../content-processing/public-crave-score';
 import { MarketsModule } from '../markets/markets.module';
 import { RestaurantLocationEnrichmentService } from './restaurant-location-enrichment.service';
 import { RestaurantEntityMergeService } from './restaurant-entity-merge.service';
@@ -29,7 +29,7 @@ const restaurantEnrichmentWorkerProviders = isWorkerRuntime()
     ExternalIntegrationsModule,
     EntityResolverModule,
     MarketsModule,
-    RankScoreModule,
+    PublicCraveScoreModule,
     forwardRef(() => RedditCollectorModule),
     BullModule.registerQueue({
       name: 'restaurant-cuisine-extraction',

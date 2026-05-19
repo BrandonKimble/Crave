@@ -1,7 +1,7 @@
 # Poll Market Resolution Simplification Plan
 
 Last updated: 2026-04-12
-Status: in progress
+Status: superseded historical plan
 Scope:
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/polls/**`
@@ -10,10 +10,16 @@ Scope:
 - `/Users/brandonkimble/crave-search/apps/mobile/src/overlays/**`
 - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/**`
 
+> Superseded by `plans/tomtom-market-cutover-plan.md`,
+> `plans/search-demand-architecture-review.md`, and
+> `plans/search-demand-layer-cutover-plan.md`. Keep this file only as historical
+> context; its old `local_fallback` / Census Place assumptions and passive-read
+> bootstrap guidance are not current implementation authority.
+
 Related plans:
 
 - `/Users/brandonkimble/crave-search/plans/restaurant-identity-domain-rollup-plan.md`
-- `/Users/brandonkimble/crave-search/plans/contextual-score-cutover-plan.md`
+- `/Users/brandonkimble/crave-search/plans/crave-score-cutover-plan.md`
 
 ## Current assumption
 
@@ -42,7 +48,7 @@ That changes the recommendation:
 - Persisted poll/search/rank/demand columns have been renamed onto market-first names in Prisma and the local Postgres schema:
   - `Poll.marketKey`
   - `PollTopic.marketKey`
-  - `DisplayRankScore.marketKey`
+  - historical display-rank market key columns, now superseded by stable Crave Score
   - `SearchLog.marketKey`
   - `SearchLog.collectableMarketKey`
   - `SearchLog.marketStatus`
@@ -62,7 +68,7 @@ That changes the recommendation:
 - The old coverage resolver API/module has been deleted entirely.
 - Restaurant location enrichment no longer depends on the legacy coverage resolver and now uses market resolution directly for entity re-homing.
 - Mobile polls runtime state and bootstrap cache are now internally market-keyed.
-- Active API/mobile/runtime surfaces no longer use `coverageKey`, `coverageName`, `coverageStatus`, or `coverage_display`; the steady-state terminology is now `marketKey`, `marketName`, `marketStatus`, and contextual score.
+- Active API/mobile/runtime surfaces no longer use `coverageKey`, `coverageName`, `coverageStatus`, or `coverage_display`; the steady-state terminology is now `marketKey`, `marketName`, `marketStatus`, stable `craveScore`, and contextual ordinal rank.
 - Poll seed/context helpers and restaurant market re-home helpers have been renamed away from legacy coverage terminology.
 - Active scheduler and entity-resolution flows now use market-first naming internally instead of legacy `locationKey` terminology where the concept is actually market-scoped.
 - Search low-result/on-demand and demand aggregation flows no longer silently fall back to `'global'` when no local market is resolved; unresolved local requests now stay unresolved instead of being rebucketed into a fake global market.
@@ -157,7 +163,7 @@ Notes:
 Recommended first-pass schema changes:
 
 - `Entity.locationKey` -> `Entity.marketKey`
-- `DisplayRankScore.locationKey` -> `DisplayRankScore.marketKey`
+- historical display-rank location key columns -> historical display-rank market key columns
 - `PollTopic.coverageKey` -> `PollTopic.marketKey`
 - `Poll.coverageKey` -> `Poll.marketKey`
 - `SearchLog.locationKey` -> `SearchLog.marketKey`
@@ -208,7 +214,7 @@ Do not block the cutover on a brand-new monolithic stats table.
 
 The first cutover can treat these as the initial market-scoped state layer:
 
-- `DisplayRankScore` with `marketKey`
+- historical display-rank rows with market keys, now superseded by stable Crave Score
 - `SearchLog` with `marketKey`
 - `OnDemandRequest` with `marketKey`
 - poll aggregates/topics keyed by `marketKey`
@@ -803,9 +809,9 @@ It should not require other services to infer those meanings from overloaded fie
 
 ### Why market creation is not harmless today
 
-The repo currently ties `locationKey` into:
+At the time this historical plan was written, the repo tied `locationKey` into:
 
-- local display rank recomputation
+- legacy local public-score recomputation
 - restaurant scoping/identity
 - search impression logging
 - on-demand request generation
@@ -894,16 +900,16 @@ Optional later enhancement:
 
 With a resettable database, the following systems should be intentionally rebased onto `marketKey`.
 
-### 1. Display rank
+### 1. Legacy local public score
 
 Current issue:
 
-- `DisplayRankScore` is partitioned by `locationKey`
+- historical display-rank rows were partitioned by location keys
 
 Recommendation:
 
 - treat this as a direct `marketKey` migration
-- recompute all local display ranks from the new market model
+- recompute legacy local score rows from the new market model
 - do not preserve old city-scoped local-rank buckets
 
 ### 2. Search logs and on-demand demand buckets
@@ -1071,7 +1077,7 @@ Exit gate:
 
 ### Phase 3: search, ranking, and scheduler rebase
 
-- rebase local rank, display rank, search logs, on-demand requests, and demand aggregation onto one `marketKey`
+- rebase local rank, legacy public-score rows, search logs, on-demand requests, and demand aggregation onto one `marketKey`
 - keep the existing local/global product concept, but redefine local as market-local
 - remove default results-list market badges
 - rebase scheduler terminology and behavior from city wording to market wording
@@ -1142,6 +1148,7 @@ Use this as the immediate execution checklist for the first real cutover slice.
 ### Schema and Prisma
 
 - `/Users/brandonkimble/crave-search/apps/api/prisma/schema.prisma`
+
   - add `Market` model and `MarketType` enum
   - rename market-scoped columns from coverage/location language to market language
   - remove `SearchLog.collectionCoverageKey`
@@ -1157,12 +1164,14 @@ Use this as the immediate execution checklist for the first real cutover slice.
 ### Market registry and resolver
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/coverage-key/**`
+
   - replace with a market-oriented module path and names
   - implement one canonical read-only resolver
   - remove nearest-existing-market fallback
   - remove create-on-read behavior from read resolver
 
 - new or renamed DTO/controller files
+
   - add `POST /markets/resolve`
   - implement the new request/response contract
 
@@ -1177,12 +1186,14 @@ Use this as the immediate execution checklist for the first real cutover slice.
 ### Polls
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/polls/polls.service.ts`
+
   - stop using `resolveOrCreateCoverage(...)` for `queryPolls(...)`
   - switch reads to the market resolver
   - move explicit market creation to `createPoll(...)`
   - rename DTO/service fields from coverage to market
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/polls/dto/*`
+
   - rename `coverageKey` request/response fields to `marketKey`
   - add response support for no-market CTA state if needed
 
@@ -1193,19 +1204,23 @@ Use this as the immediate execution checklist for the first real cutover slice.
 ### Search, demand, and on-demand
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/search/search.service.ts`
+
   - replace dual `uiCoverageKey` / `collectionCoverageKey` flow with one `marketKey`
   - remove create-on-read fallback
   - implement viewport/user-location anchor rule
   - rename metadata fields to market language
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/search/search-query.executor.ts`
+
   - rename result metadata fields to market language
   - stop enriching labels from overloaded coverage records
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/search/search-entity-expansion.service.ts`
+
   - switch `locationKey` usage to `marketKey`
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/analytics/search-demand.service.ts`
+
   - rename and rebase aggregation on `marketKey`
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/search/on-demand-request.service.ts`
@@ -1214,10 +1229,12 @@ Use this as the immediate execution checklist for the first real cutover slice.
 ### Entity resolution and ingestion
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/content-processing/reddit-collector/unified-processing.service.ts`
+
   - replace subreddit -> coverage lookup with subreddit -> market lookup
   - write restaurant entities with `marketKey`
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/content-processing/entity-resolver/entity-resolution.service.ts`
+
   - change grouping/filtering from `locationKey` to `marketKey`
   - preserve place-aware matching priority over market-only name matching
 
@@ -1228,6 +1245,7 @@ Use this as the immediate execution checklist for the first real cutover slice.
 ### Restaurant enrichment and profile behavior
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/restaurant-enrichment/restaurant-location-enrichment.service.ts`
+
   - resolve exact market geometry first
   - derive bbox only for Google query
   - post-filter returned locations against exact market geography
@@ -1238,23 +1256,29 @@ Use this as the immediate execution checklist for the first real cutover slice.
 ### Mobile runtime
 
 - `/Users/brandonkimble/crave-search/apps/mobile/src/services/coverage.ts`
+
   - replace with market-oriented service/client
 
 - `/Users/brandonkimble/crave-search/apps/mobile/src/services/polls.ts`
+
   - rename cache shape from coverage to market
   - key poll bootstrap cache by `marketKey`
 
 - `/Users/brandonkimble/crave-search/apps/mobile/src/overlays/panels/runtime/polls-runtime-controller.ts`
+
   - switch reads to the market resolver response
   - support `no_market` state and CTA
 
 - `/Users/brandonkimble/crave-search/apps/mobile/src/overlays/panels/runtime/polls-panel-state-runtime.ts`
+
   - rename local state from coverage to market
 
 - `/Users/brandonkimble/crave-search/apps/mobile/src/overlays/panels/pollsHeaderVisuals.tsx`
+
   - update header/title logic for market copy and CTA states
 
 - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/shared/use-search-results-panel-card-metrics-runtime.ts`
+
   - remove default result-row market badge logic
 
 - `/Users/brandonkimble/crave-search/apps/mobile/src/overlays/useSearchRouteOverlayRouteState.ts`
@@ -1263,16 +1287,19 @@ Use this as the immediate execution checklist for the first real cutover slice.
 ### Verification
 
 - resolver tests
+
   - Austin metro resolves correctly
   - Burnet returns no metro/micro and yields place candidate
   - read path does not create local fallback
 
 - poll flow tests
+
   - browsing does not create market
   - explicit poll creation can create local fallback
   - header reflects market or no-market CTA state correctly
 
 - search tests
+
   - viewport inside active market returns in-market locations only
   - zoomed-out viewport containing user keeps user market
   - zoomed-out viewport away from user uses center-nearest market

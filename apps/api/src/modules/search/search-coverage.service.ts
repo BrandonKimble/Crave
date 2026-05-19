@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
@@ -10,14 +14,12 @@ type CoverageRestaurantRow = {
   restaurant_name: string;
   longitude: unknown;
   latitude: unknown;
-  contextual_score: unknown;
-  contextual_percentile: unknown;
-  restaurant_quality_score: unknown;
+  crave_score: unknown;
+  score_delta_7d: unknown;
   top_connection_id?: unknown;
   top_food_name?: unknown;
-  top_food_quality_score?: unknown;
-  top_food_contextual_score?: unknown;
-  top_food_contextual_percentile?: unknown;
+  top_food_crave_score?: unknown;
+  top_food_score_delta_7d?: unknown;
 };
 
 @Injectable()
@@ -127,31 +129,27 @@ export class SearchCoverageService {
       ? Prisma.sql`,
         td.connection_id AS top_connection_id,
         td.food_name AS top_food_name,
-        td.food_quality_score AS top_food_quality_score,
-        td.contextual_score AS top_food_contextual_score,
-        td.contextual_percentile AS top_food_contextual_percentile`
+        td.crave_score AS top_food_crave_score,
+        td.score_delta_7d AS top_food_score_delta_7d`
       : Prisma.sql``;
-    const coverageOrderSql = (() => {
-      if (includeTopDish) {
-        return Prisma.sql`COALESCE(td.contextual_score, td.food_quality_score, drs.rank_score_display, e.restaurant_quality_score, -1) DESC, e.entity_id ASC`;
-      }
-      return Prisma.sql`COALESCE(drs.rank_score_display, e.restaurant_quality_score, -1) DESC, e.entity_id ASC`;
-    })();
+    const coverageOrderSql = includeTopDish
+      ? Prisma.sql`td.crave_score DESC, e.entity_id ASC`
+      : Prisma.sql`prs.display_score DESC, e.entity_id ASC`;
     const marketLocationFilterSql = activeMarketKey
       ? Prisma.sql`
           AND EXISTS (
             SELECT 1
             FROM core_markets m
-            WHERE m.market_key = ${activeMarketKey}
-              AND m.is_active = true
-              AND m.geometry IS NOT NULL
-              AND m.bbox_ne_latitude >= rl.latitude
-              AND m.bbox_sw_latitude <= rl.latitude
-              AND m.bbox_ne_longitude >= rl.longitude
-              AND m.bbox_sw_longitude <= rl.longitude
-              AND ST_Contains(
-                m.geometry,
-                ST_SetSRID(
+              WHERE m.market_key = ${activeMarketKey}
+                AND m.is_active = true
+                AND m.geometry IS NOT NULL
+                AND m.geometry && ST_SetSRID(
+                  ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision),
+                  4326
+                )
+                AND ST_Covers(
+                  m.geometry,
+                  ST_SetSRID(
                   ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision),
                   4326
                 )
@@ -195,89 +193,28 @@ export class SearchCoverageService {
         SELECT DISTINCT restaurant_id
         FROM candidate_locations
       ),
-      restaurant_vote_totals AS (
-        SELECT
-          c.restaurant_id,
-          SUM(c.total_upvotes) AS total_upvotes,
-          SUM(c.mention_count) AS total_mentions
-        FROM core_restaurant_items c
-        JOIN geographic_restaurants gr ON gr.restaurant_id = c.restaurant_id
-        GROUP BY c.restaurant_id
+      public_restaurant_scores AS (
+        SELECT subject_id, display_score, score_delta_7d
+        FROM core_public_entity_scores
+        WHERE subject_type = 'restaurant'
       ),
-      contextual_restaurant_scores AS (
-        WITH ranked AS (
-          SELECT
-            gr.restaurant_id AS subject_id,
-            ROW_NUMBER() OVER (
-              ORDER BY
-                COALESCE(e.restaurant_quality_score, 0) DESC,
-                COALESCE(rvt.total_upvotes, 0) DESC,
-                COALESCE(rvt.total_mentions, 0) DESC,
-                gr.restaurant_id ASC
-            ) AS row_number,
-            PERCENT_RANK() OVER (
-              ORDER BY
-                COALESCE(e.restaurant_quality_score, 0) DESC,
-                COALESCE(rvt.total_upvotes, 0) DESC,
-                COALESCE(rvt.total_mentions, 0) DESC,
-                gr.restaurant_id ASC
-            ) AS percent_rank
-          FROM geographic_restaurants gr
-          JOIN core_entities e ON e.entity_id = gr.restaurant_id
-          LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = gr.restaurant_id
-        )
-        SELECT
-          subject_id,
-          CASE
-            WHEN row_number = 1 THEN 100::numeric
-            ELSE floor(LEAST(99.9, GREATEST(0, 100 * (1 - percent_rank))) * 10)::numeric / 10
-          END AS rank_score_display,
-          (1 - percent_rank)::numeric AS rank_percentile
-        FROM ranked
-      ),
-      contextual_connection_scores AS (
-        WITH ranked AS (
-          SELECT
-            c.connection_id AS subject_id,
-            ROW_NUMBER() OVER (
-              ORDER BY
-                COALESCE(c.food_quality_score, 0) DESC,
-                COALESCE(c.total_upvotes, 0) DESC,
-                COALESCE(c.mention_count, 0) DESC,
-                c.connection_id ASC
-            ) AS row_number,
-            PERCENT_RANK() OVER (
-              ORDER BY
-                COALESCE(c.food_quality_score, 0) DESC,
-                COALESCE(c.total_upvotes, 0) DESC,
-                COALESCE(c.mention_count, 0) DESC,
-                c.connection_id ASC
-            ) AS percent_rank
-          FROM core_restaurant_items c
-          JOIN geographic_restaurants gr ON gr.restaurant_id = c.restaurant_id
-        )
-        SELECT
-          subject_id,
-          CASE
-            WHEN row_number = 1 THEN 100::numeric
-            ELSE floor(LEAST(99.9, GREATEST(0, 100 * (1 - percent_rank))) * 10)::numeric / 10
-          END AS rank_score_display,
-          (1 - percent_rank)::numeric AS rank_percentile
-        FROM ranked
+      public_connection_scores AS (
+        SELECT subject_id, display_score, score_delta_7d
+        FROM core_public_entity_scores
+        WHERE subject_type = 'connection'
       )
       SELECT
         e.entity_id AS restaurant_id,
         e.name AS restaurant_name,
         pl.longitude AS longitude,
         pl.latitude AS latitude,
-        drs.rank_score_display AS contextual_score,
-        drs.rank_percentile AS contextual_percentile,
-        e.restaurant_quality_score AS restaurant_quality_score
+        prs.display_score AS crave_score,
+        prs.score_delta_7d AS score_delta_7d
         ${topDishSelectSql}
       FROM core_entities e
       JOIN selected_locations pl ON pl.restaurant_id = e.entity_id
-      LEFT JOIN contextual_restaurant_scores drs
-        ON drs.subject_id = e.entity_id
+      JOIN public_restaurant_scores prs
+        ON prs.subject_id = e.entity_id
       ${topDishJoinSql}
       WHERE ${Prisma.join(conditions, ' AND ')}
       ORDER BY ${coverageOrderSql}
@@ -298,14 +235,30 @@ export class SearchCoverageService {
           if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
             return null;
           }
-          const contextualPercentile = Number(row.contextual_percentile);
-          const contextualScore = Number(row.contextual_score);
-          const restaurantQualityScore = Number(row.restaurant_quality_score);
-          const topFoodQualityScore = Number(row.top_food_quality_score);
-          const topFoodContextualScore = Number(row.top_food_contextual_score);
-          const topFoodContextualPercentile = Number(
-            row.top_food_contextual_percentile,
+          const craveScore = this.requirePublicScore(
+            row.crave_score,
+            `restaurant:${row.restaurant_id}`,
           );
+          const scoreDelta7d = this.optionalNumber(row.score_delta_7d);
+          const topConnectionId =
+            typeof row.top_connection_id === 'string'
+              ? row.top_connection_id
+              : null;
+          const topFoodCraveScore = includeTopDish
+            ? this.requirePublicScore(
+                row.top_food_crave_score,
+                `connection:${topConnectionId ?? 'missing'}`,
+              )
+            : null;
+          const topFoodScoreDelta7d = includeTopDish
+            ? this.optionalNumber(row.top_food_score_delta_7d)
+            : null;
+          if (includeTopDish && !topConnectionId) {
+            throw new InternalServerErrorException(
+              `Missing scored top dish for restaurant:${row.restaurant_id}`,
+            );
+          }
+          const publicScore = includeTopDish ? topFoodCraveScore : craveScore;
           return {
             type: 'Feature',
             id: row.restaurant_id,
@@ -313,44 +266,20 @@ export class SearchCoverageService {
             properties: {
               restaurantId: row.restaurant_id,
               restaurantName: row.restaurant_name,
-              contextualScore: includeTopDish
-                ? Number.isFinite(topFoodContextualScore)
-                  ? topFoodContextualScore
-                  : Number.isFinite(topFoodQualityScore)
-                    ? topFoodQualityScore
-                    : 0
-                : Number.isFinite(contextualScore)
-                  ? contextualScore
-                  : Number.isFinite(restaurantQualityScore)
-                    ? restaurantQualityScore
-                    : 0,
-              contextualPercentile:
-                includeTopDish && Number.isFinite(topFoodContextualPercentile)
-                  ? topFoodContextualPercentile
-                  : Number.isFinite(contextualPercentile)
-                    ? contextualPercentile
-                    : null,
+              craveScore: publicScore,
+              scoreSubjectType: includeTopDish ? 'connection' : 'restaurant',
+              scoreSubjectId: includeTopDish ? topConnectionId : row.restaurant_id,
+              scoreDelta7d: includeTopDish ? topFoodScoreDelta7d : scoreDelta7d,
               rank: index + 1,
-              restaurantQualityScore: Number.isFinite(restaurantQualityScore)
-                ? restaurantQualityScore
-                : null,
+              restaurantCraveScore: craveScore,
               isDishPin: includeTopDish ? true : undefined,
               dishName:
                 includeTopDish && typeof row.top_food_name === 'string'
                   ? row.top_food_name
                   : undefined,
               connectionId:
-                includeTopDish && typeof row.top_connection_id === 'string'
-                  ? row.top_connection_id
-                  : undefined,
-              topDishContextualPercentile:
-                includeTopDish && Number.isFinite(topFoodContextualPercentile)
-                  ? topFoodContextualPercentile
-                  : null,
-              topDishContextualScore:
-                includeTopDish && Number.isFinite(topFoodContextualScore)
-                  ? topFoodContextualScore
-                  : null,
+                includeTopDish && topConnectionId ? topConnectionId : undefined,
+              topDishCraveScore: includeTopDish ? topFoodCraveScore : null,
             },
           };
         })
@@ -380,25 +309,49 @@ export class SearchCoverageService {
         )}]::uuid[]`,
       );
     }
-    const orderSql = Prisma.sql`COALESCE(drc.rank_score_display, c.food_quality_score, -1) DESC, c.connection_id ASC`;
+    const orderSql = Prisma.sql`COALESCE(pcs.display_score, -1) DESC, c.connection_id ASC`;
 
     return Prisma.sql`
-      LEFT JOIN LATERAL (
+      JOIN LATERAL (
         SELECT
           c.connection_id,
           f.name AS food_name,
-          c.food_quality_score,
-          drc.rank_score_display AS contextual_score,
-          drc.rank_percentile AS contextual_percentile
+          pcs.display_score AS crave_score,
+          pcs.score_delta_7d AS score_delta_7d
         FROM core_restaurant_items c
         JOIN core_entities f ON f.entity_id = c.food_id
-        LEFT JOIN contextual_connection_scores drc
-          ON drc.subject_id = c.connection_id
+        JOIN public_connection_scores pcs
+          ON pcs.subject_id = c.connection_id
         WHERE ${Prisma.join(conditions, ' AND ')}
         ORDER BY ${orderSql}
         LIMIT 1
       ) td ON true
     `;
+  }
+
+  private requirePublicScore(value: unknown, label: string): number {
+    const parsed = this.optionalNumber(value);
+    if (parsed === null) {
+      throw new InternalServerErrorException(
+        `Missing public Crave Score for ${label}`,
+      );
+    }
+    return parsed;
+  }
+
+  private optionalNumber(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    if (value && typeof value === 'object' && 'toNumber' in value) {
+      const parsed = (value as { toNumber: () => number }).toNumber();
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
   }
 
   private collectEntityIds(

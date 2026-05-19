@@ -410,9 +410,12 @@ async function testPipeline() {
               'core_entities',
               'collection_on_demand_requests',
               'collection_on_demand_request_users',
+              'collection_on_demand_ask_events',
               'collection_keyword_attempt_history',
+              'user_search_demand_daily',
               'user_search_logs',
-              'collection_entity_priority_metrics',
+              'demand_scoring_candidates',
+              'demand_scoring_runs',
               'billing_subscriptions',
               'user_events',
               'collection_processed_sources',
@@ -539,9 +542,9 @@ async function testPipeline() {
         llmPostSample,
         error: success
           ? null
-          : ((result?.error as string | undefined) ??
+          : (result?.error as string | undefined) ??
             (job?.failedReason as string | undefined) ??
-            null),
+            null,
       });
 
       if (llmPostSample) {
@@ -871,8 +874,8 @@ async function testPipeline() {
           typeof rv.mentionsExtracted === 'number'
             ? rv.mentionsExtracted
             : typeof rv.metrics?.mentionsExtracted === 'number'
-              ? rv.metrics.mentionsExtracted
-              : 0;
+            ? rv.metrics.mentionsExtracted
+            : 0;
         archiveMentions += mentions;
 
         const summaryAdded = addBatchSummary(job, rv, rv?.success !== false);
@@ -979,8 +982,8 @@ async function testPipeline() {
             typeof rv.mentionsExtracted === 'number'
               ? rv.mentionsExtracted
               : typeof rv.metrics?.mentionsExtracted === 'number'
-                ? rv.metrics.mentionsExtracted
-                : 0;
+              ? rv.metrics.mentionsExtracted
+              : 0;
           batchMentions += mentions;
 
           const summaryAdded = addBatchSummary(job, rv, rv?.success !== false);
@@ -1002,8 +1005,8 @@ async function testPipeline() {
           const jobPostIds = Array.isArray(job?.data?.postIds)
             ? job.data.postIds
             : Array.isArray(rv.postIds)
-              ? rv.postIds
-              : [];
+            ? rv.postIds
+            : [];
           collectedPostIds.push(...jobPostIds.map((id: string) => id || ''));
         }
 

@@ -5,11 +5,12 @@ import type {
 } from './results-presentation-runtime-machine-transport-primitives';
 import { resolveActiveResultsPresentationTransportState } from './results-presentation-runtime-machine-transport-primitives';
 
-export const resolveEnterStartedResultsPresentationTransportAttempt = (
+export const resolveEnterNativeStartRequestedResultsPresentationTransportAttempt = (
   state: ResultsPresentationTransportState,
   options: {
     requestKey: string;
     executionBatch: ResultsPresentationTransportState['executionBatch'];
+    startToken: number;
   }
 ): ResultsPresentationNamedTransportAttempt => {
   const activeExecution = resolveActiveResultsPresentationTransportState(state, {
@@ -18,12 +19,77 @@ export const resolveEnterStartedResultsPresentationTransportAttempt = (
   });
 
   const nextState =
-    activeExecution?.executionStage !== 'enter_executing'
+    activeExecution?.executionStage !== 'enter_mounted_hidden'
       ? null
       : {
           ...state,
           coverState: 'hidden' as const,
           executionBatch: options.executionBatch ?? state.executionBatch,
+          executionStage: 'enter_executing' as const,
+          startToken: state.startToken ?? options.startToken,
+        };
+
+  return {
+    nextState,
+    appliedLog:
+      nextState == null
+        ? null
+        : {
+            label: 'markEnterNativeStartRequested',
+            data: {
+              intentId: options.requestKey,
+              executionBatchId:
+                options.executionBatch?.batchId ?? nextState.executionBatch?.batchId ?? null,
+              generationId:
+                options.executionBatch?.generationId ??
+                nextState.executionBatch?.generationId ??
+                null,
+              coverState: nextState.coverState,
+              executionStage: nextState.executionStage,
+              enterStartToken: nextState.startToken,
+            },
+          },
+    blockedLog:
+      nextState != null
+        ? null
+        : {
+            label: 'markEnterNativeStartRequested:skip_request_mismatch',
+            data: {
+              intentId: options.requestKey,
+              executionBatchId: options.executionBatch?.batchId ?? null,
+              generationId: options.executionBatch?.generationId ?? null,
+              activeExecutionStage: activeExecution?.executionStage ?? state.executionStage,
+              coverState: state.coverState,
+            },
+          },
+  };
+};
+
+export const resolveEnterStartedResultsPresentationTransportAttempt = (
+  state: ResultsPresentationTransportState,
+  options: {
+    requestKey: string;
+    executionBatch: ResultsPresentationTransportState['executionBatch'];
+    startToken: number;
+  }
+): ResultsPresentationNamedTransportAttempt => {
+  const activeExecution = resolveActiveResultsPresentationTransportState(state, {
+    requestKey: options.requestKey,
+    direction: 'enter',
+  });
+
+  const canRevealCover =
+    activeExecution?.executionStage === 'enter_mounted_hidden' ||
+    (activeExecution?.executionStage === 'enter_executing' && state.coverState !== 'hidden');
+  const nextState =
+    !canRevealCover
+      ? null
+      : {
+          ...state,
+          coverState: 'hidden' as const,
+          executionBatch: options.executionBatch ?? state.executionBatch,
+          executionStage: 'enter_executing' as const,
+          startToken: options.startToken,
         };
 
   return {
@@ -42,6 +108,7 @@ export const resolveEnterStartedResultsPresentationTransportAttempt = (
                 nextState.executionBatch?.generationId ??
                 null,
               executionStage: nextState.executionStage,
+              enterStartToken: nextState.startToken,
             },
           },
     blockedLog:
@@ -54,6 +121,7 @@ export const resolveEnterStartedResultsPresentationTransportAttempt = (
               executionBatchId: options.executionBatch?.batchId ?? null,
               generationId: options.executionBatch?.generationId ?? null,
               activeExecutionStage: activeExecution?.executionStage ?? state.executionStage,
+              coverState: state.coverState,
             },
           },
   };

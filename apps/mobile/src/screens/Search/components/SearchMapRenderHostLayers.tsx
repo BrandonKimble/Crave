@@ -25,6 +25,23 @@ export const SearchMapRenderHostLayers = React.memo(
       }
     }, [isInitialCameraReady]);
 
+    if (!onProfilerRender) {
+      return (
+        <View style={styles.container}>
+          {!isInitialCameraReady ? (
+            <View pointerEvents="none" style={styles.mapPlaceholder} />
+          ) : (
+            <SearchMapWithMarkerEngine
+              ref={markerEngineRef}
+              {...engineInputs}
+              {...hostConfig}
+              {...presentationProps}
+            />
+          )}
+        </View>
+      );
+    }
+
     return (
       <React.Profiler id="SearchScreen" onRender={onProfilerRender}>
         <View style={styles.container}>

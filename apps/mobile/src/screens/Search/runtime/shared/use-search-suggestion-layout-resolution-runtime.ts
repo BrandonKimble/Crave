@@ -6,6 +6,7 @@ import { SEARCH_CONTAINER_PADDING_TOP } from '../../constants/search';
 type UseSearchSuggestionLayoutResolutionRuntimeArgs = {
   query: string;
   isSuggestionPanelActive: boolean;
+  shouldDisableSearchShortcuts: boolean;
   shouldDriveSuggestionLayout: boolean;
   searchContainerFrame: LayoutRectangle | null;
   cachedSearchContainerFrame: LayoutRectangle | null;
@@ -27,6 +28,7 @@ type SearchSuggestionLayoutResolutionRuntime = {
 export const useSearchSuggestionLayoutResolutionRuntime = ({
   query,
   isSuggestionPanelActive,
+  shouldDisableSearchShortcuts,
   shouldDriveSuggestionLayout,
   searchContainerFrame,
   cachedSearchContainerFrame,
@@ -38,7 +40,10 @@ export const useSearchSuggestionLayoutResolutionRuntime = ({
   const shouldFreezeSuggestionHeader =
     shouldDriveSuggestionLayout && !isSuggestionPanelActive && query.trim().length > 0;
 
-  const shouldUseSearchShortcutFrames = shouldDriveSuggestionLayout;
+  const shouldShowSearchShortcutsTarget =
+    isSuggestionPanelActive && !shouldDisableSearchShortcuts;
+  const shouldUseSearchShortcutFrames =
+    shouldDriveSuggestionLayout || shouldShowSearchShortcutsTarget;
   const resolvedSearchShortcutsFrame = React.useMemo(() => {
     if (!shouldUseSearchShortcutFrames) {
       return null;
@@ -59,7 +64,8 @@ export const useSearchSuggestionLayoutResolutionRuntime = ({
 
   const hasResolvedSearchShortcutsFrame = Boolean(resolvedSearchShortcutsFrame);
   const shouldIncludeShortcutCutout =
-    shouldDriveSuggestionLayout && hasResolvedSearchShortcutsFrame;
+    shouldDriveSuggestionLayout &&
+    (shouldShowSearchShortcutsTarget || hasResolvedSearchShortcutsFrame);
   const shouldIncludeShortcutHoles = shouldIncludeShortcutCutout;
   const shouldIncludeShortcutLayout = shouldIncludeShortcutCutout;
 

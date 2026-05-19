@@ -45,8 +45,6 @@ const createControlSelectionSnapshot = ({
     policySelectionSnapshot.shouldEnableRestaurantOverlayInteraction,
   onToggleFavorite,
   closeRestaurantProfile,
-  restaurantSheetSnapController:
-    interactionSelectionSnapshot.restaurantSheetSnapController,
 });
 
 export class SearchOverlayLocalRestaurantSheetControlSelectionStateController {

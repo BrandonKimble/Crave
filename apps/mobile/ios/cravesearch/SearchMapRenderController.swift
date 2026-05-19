@@ -68,7 +68,7 @@ private final class PresentationOpacityAnimator {
 final class SearchMapRenderController: RCTEventEmitter {
   private let overlayZAnchorSourceId = "search-overlay-z-anchor-source"
   private let eventName = "searchMapRenderControllerEvent"
-  private let enableVisualDiagnostics = true
+  private let enableVisualDiagnostics = false
   private let dismissSettleDelayMs = 300
   private let enterSettleDelayMs = 300
   private let lodVisibleDelayMs = 16
@@ -94,6 +94,14 @@ final class SearchMapRenderController: RCTEventEmitter {
     case none
     case baselineReplace
     case incrementalPatch
+  }
+
+  private enum VisualSourceLifecycleState {
+    case dismissed
+    case preparingReveal
+    case revealing
+    case visible
+    case dismissing
   }
 
   private struct SourceState {
@@ -334,14 +342,12 @@ final class SearchMapRenderController: RCTEventEmitter {
     var stickyUnlockMissingMsIdle: Double = 0
     var stickyUnlockMissingStreakMoving: Int = 1
     var configuredResetRequestKey: String? = nil
+    var hasCommittedObservationForConfiguredRequest: Bool = false
     var lastVisibleLabelFeatureIds: [String] = []
     var lastLayerRenderedFeatureCount: Int = 0
     var lastEffectiveRenderedFeatureCount: Int = 0
     var stickyRevision: Int = 0
     var stickyCandidateByIdentity: [String: String] = [:]
-    // Track loss of the committed candidate, not just visibility of any candidate for an
-    // identity. That keeps the lock asymmetrical: a committed side should stay put until that
-    // committed side is actually displaced for long enough to unlock.
     var stickyCommittedLastSeenAtMsByIdentity: [String: Double] = [:]
     var stickyCommittedMissingStreakByIdentity: [String: Int] = [:]
     var stickyProposedCandidateByIdentity: [String: String] = [:]
@@ -417,6 +423,19 @@ final class SearchMapRenderController: RCTEventEmitter {
     var orderHint: Int
   }
 
+  private struct LabelTapHitboxConfig {
+    let textSize: CGFloat
+    let radialXEm: CGFloat
+    let radialYEm: CGFloat
+    let radialTopEm: CGFloat
+    let upShiftEm: CGFloat
+    let charWidthFactor: CGFloat
+    let lineHeightFactor: CGFloat
+    let paddingPx: CGFloat
+    let minWidthPx: CGFloat
+    let maxWidthPx: CGFloat
+  }
+
   private struct ExecutionBatchRef: Equatable {
     var requestKey: String
     var batchId: String
@@ -451,10 +470,18 @@ final class SearchMapRenderController: RCTEventEmitter {
     var lastEnterSettledRequestKey: String?
     var lastDismissRequestKey: String?
     var currentPresentationRenderPhase: String
+    var visualSourceLifecycleState: VisualSourceLifecycleState
+    var labelCollisionObstacleLayersVisible: Bool
+    var labelPlacementLayersFadeOnly: Bool
+    var dotPlacementLayersFadeOnly: Bool
     var lastPresentationStateJSON: String?
     var activeFrameGenerationId: String?
     var activeExecutionBatchId: String?
+    var sourceReadyFrameGenerationId: String?
+    var sourceReadyExecutionBatchId: String?
     var highlightedMarkerKey: String?
+    var highlightedMarkerKeys: Set<String>
+    var highlightedRestaurantId: String?
     var interactionMode: String
     var ownerEpoch: Int
     var isOwnerInvalidated: Bool
@@ -475,6 +502,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     var blockedPresentationCommitFenceBySourceId: [String: Set<String>]
     var pendingSourceCommitDataIdsBySourceId: [String: Set<String>]
     var derivedFamilyStates: [String: DerivedFamilyState]
+    var residentDesiredSourceCacheBySourceId: [String: ParsedFeatureCollection]
     var isAwaitingSourceRecovery: Bool
     var isReplayingSourceRecovery: Bool
     var sourceRecoveryPausedAtMs: Double?
@@ -484,6 +512,35 @@ final class SearchMapRenderController: RCTEventEmitter {
     var streak: Int = 0
     var startedAtMs: Double = 0
     var maxDurationMs: Double = 0
+  }
+
+  private struct NativeApplyAttributionBucket {
+    let section: String
+    let phase: String
+    let source: String
+    var count: Int = 0
+    var totalMs: Double = 0
+    var maxMs: Double = 0
+    var operationCount: Int = 0
+
+    mutating func record(durationMs: Double, operationCount: Int) {
+      count += 1
+      totalMs += durationMs
+      maxMs = Swift.max(maxMs, durationMs)
+      self.operationCount += operationCount
+    }
+
+    func dictionary() -> [String: Any] {
+      [
+        "section": section,
+        "phase": phase,
+        "source": source,
+        "count": count,
+        "totalMs": SearchMapRenderController.round1(totalMs),
+        "maxMs": SearchMapRenderController.round1(maxMs),
+        "operationCount": operationCount,
+      ]
+    }
   }
 
   private struct ResolvedMapHandleResolution {
@@ -496,6 +553,7 @@ final class SearchMapRenderController: RCTEventEmitter {
   private var resolvedMapHandles: [String: ResolvedMapHandle] = [:]
   private var enterSettleWorkItems: [String: DispatchWorkItem] = [:]
   private var dismissSettleWorkItems: [String: DispatchWorkItem] = [:]
+  private var deferredDismissSourceCleanupWorkItems: [String: DispatchWorkItem] = [:]
   private var revealFrameFallbackWorkItems: [String: DispatchWorkItem] = [:]
   private var dismissFrameFallbackWorkItems: [String: DispatchWorkItem] = [:]
   private var sourceRecoveryWorkItems: [String: DispatchWorkItem] = [:]
@@ -505,15 +563,40 @@ final class SearchMapRenderController: RCTEventEmitter {
   private var livePinTransitionAnimators: [String: CADisplayLink] = [:]
   private var lastVisualDiagByInstance: [String: String] = [:]
   private var slowActionWindowsByInstanceAndScope: [String: SlowActionWindowState] = [:]
-  private var lastRenderedFeatureProbeAtMsByInstance: [String: Double] = [:]
-  private var lastRenderedFeatureProbeFrameByInstance: [String: String] = [:]
   private var lastViewCompositionProbeAtMsByInstance: [String: Double] = [:]
   private var lastViewCompositionProbeFrameByInstance: [String: String] = [:]
   private var lastHandleIdentitySignatureByMapTag: [String: String] = [:]
+  private var nativeApplyAttributionEnabled = false
+  private var nativeApplyAttributionStartedAtMs: Double?
+  private var nativeApplyAttributionBuckets: [String: NativeApplyAttributionBucket] = [:]
   private let slowActionThresholdMs = 12.0
-  private let renderedFeatureProbeThrottleMs = 120.0
+  private let viewCompositionProbeThrottleMs = 120.0
   private let frameSettleFallbackDelayMs = 96
   private let sourceRecoveryRetryDelayMs = 32
+  private let deferredDismissSourceCleanupDelayMs = 760
+  private let revealPrerollPlacementOpacity = 0.001
+  private let labelCollisionObstacleLayerIds = [
+    "restaurant-labels-pin-collision",
+    "restaurant-labels-pin-collision-side-left",
+    "restaurant-labels-pin-collision-side-right",
+  ]
+  private let labelPlacementLayerIds: [String] = {
+    let candidatePriorityByPreference: [String: [String]] = [
+      "bottom": ["bottom", "right", "top", "left"],
+      "right": ["right", "top", "left", "bottom"],
+      "top": ["top", "left", "bottom", "right"],
+      "left": ["left", "bottom", "right", "top"],
+    ]
+    let preferredCandidates = ["bottom", "right", "top", "left"]
+    return preferredCandidates.flatMap { preferredCandidate in
+      (candidatePriorityByPreference[preferredCandidate] ?? []).reversed().map { candidate in
+        "restaurant-labels-preferred-\(preferredCandidate)-candidate-\(candidate)"
+      }
+    }
+  }()
+  private let dotPlacementLayerIds = [
+    "restaurant-dot-layer",
+  ]
   // Keep native LOD enter/exit fades aligned with the shared pin fade contract in search-map.tsx.
   private let livePinTransitionDurationMs = 300.0
 
@@ -545,12 +628,124 @@ final class SearchMapRenderController: RCTEventEmitter {
       labelObservationRefreshWorkItems[instanceId]?.cancel()
       labelObservationRefreshWorkItems[instanceId] = nil
     }
+    for instanceId in Array(deferredDismissSourceCleanupWorkItems.keys) {
+      deferredDismissSourceCleanupWorkItems[instanceId]?.cancel()
+      deferredDismissSourceCleanupWorkItems[instanceId] = nil
+    }
     super.invalidate()
   }
 
   private func allocateOwnerEpoch() -> Int {
     defer { nextOwnerEpoch += 1 }
     return nextOwnerEpoch
+  }
+
+  private func nativeApplyAttributionKey(section: String, phase: String, source: String) -> String {
+    "\(section)|\(phase)|\(source)"
+  }
+
+  private func recordNativeApply(
+    section: String,
+    phase: String,
+    source: String = "all",
+    durationMs: Double,
+    operationCount: Int = 0
+  ) {
+    guard nativeApplyAttributionEnabled else {
+      return
+    }
+    let key = nativeApplyAttributionKey(section: section, phase: phase, source: source)
+    var bucket = nativeApplyAttributionBuckets[key] ?? NativeApplyAttributionBucket(
+      section: section,
+      phase: phase,
+      source: source
+    )
+    bucket.record(durationMs: durationMs, operationCount: operationCount)
+    nativeApplyAttributionBuckets[key] = bucket
+  }
+
+  private func nativeApplySourceFamily(sourceId: String, state: InstanceState) -> String {
+    if sourceId == state.pinSourceId {
+      return "pins"
+    }
+    if sourceId == state.pinInteractionSourceId {
+      return "pinInteractions"
+    }
+    if sourceId == state.dotSourceId {
+      return "dots"
+    }
+    if sourceId == state.dotInteractionSourceId {
+      return "dotInteractions"
+    }
+    if sourceId == state.labelSourceId {
+      return "labels"
+    }
+    if sourceId == state.labelInteractionSourceId {
+      return "labelInteractions"
+    }
+    if sourceId == state.labelCollisionSourceId {
+      return "labelCollisions"
+    }
+    return sourceId
+  }
+
+  private func flushNativeApplyAttributionSummary(reason: String, reset: Bool) -> [String: Any] {
+    let flushedAtMs = Self.nowMs()
+    let buckets = nativeApplyAttributionBuckets.values.sorted {
+      if $0.totalMs == $1.totalMs {
+        return $0.count > $1.count
+      }
+      return $0.totalMs > $1.totalMs
+    }
+    let summary: [String: Any] = [
+      "reason": reason,
+      "enabled": nativeApplyAttributionEnabled,
+      "startedAtMs": nativeApplyAttributionStartedAtMs as Any,
+      "flushedAtMs": Self.round1(flushedAtMs),
+      "bucketCount": buckets.count,
+      "topBuckets": buckets.prefix(120).map { $0.dictionary() },
+    ]
+    if reset {
+      nativeApplyAttributionEnabled = false
+      nativeApplyAttributionStartedAtMs = nil
+      nativeApplyAttributionBuckets.removeAll(keepingCapacity: true)
+    }
+    return summary
+  }
+
+  @objc
+  func resetNativeApplyAttribution(
+    _ payload: NSDictionary,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else {
+        reject("search_map_render_controller_unavailable", "controller deallocated", nil)
+        return
+      }
+      self.nativeApplyAttributionEnabled = true
+      self.nativeApplyAttributionStartedAtMs = Self.nowMs()
+      self.nativeApplyAttributionBuckets.removeAll(keepingCapacity: true)
+      resolve(nil)
+    }
+  }
+
+  @objc
+  func flushNativeApplyAttribution(
+    _ payload: NSDictionary,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else {
+        reject("search_map_render_controller_unavailable", "controller deallocated", nil)
+        return
+      }
+      let reason = (payload["reason"] as? String) ?? "manual"
+      let reset = (payload["reset"] as? NSNumber)?.boolValue ?? true
+      resolve(self.flushNativeApplyAttributionSummary(reason: reason, reset: reset))
+    }
   }
 
   private func invalidateRenderOwner(instanceId: String, state: inout InstanceState, reason: String) {
@@ -561,6 +756,8 @@ final class SearchMapRenderController: RCTEventEmitter {
     state.isOwnerInvalidated = true
     state.activeFrameGenerationId = nil
     state.activeExecutionBatchId = nil
+    state.sourceReadyFrameGenerationId = nil
+    state.sourceReadyExecutionBatchId = nil
     instances[instanceId] = state
     emit([
       "type": "render_owner_invalidated",
@@ -616,18 +813,26 @@ final class SearchMapRenderController: RCTEventEmitter {
         lastEnterSettledRequestKey: nil,
         lastDismissRequestKey: nil,
         currentPresentationRenderPhase: "idle",
+        visualSourceLifecycleState: .dismissed,
+        labelCollisionObstacleLayersVisible: false,
+        labelPlacementLayersFadeOnly: false,
+        dotPlacementLayersFadeOnly: false,
         lastPresentationStateJSON: nil,
         activeFrameGenerationId: nil,
         activeExecutionBatchId: nil,
+        sourceReadyFrameGenerationId: nil,
+        sourceReadyExecutionBatchId: nil,
         highlightedMarkerKey: nil,
+        highlightedMarkerKeys: [],
+        highlightedRestaurantId: nil,
         interactionMode: "enabled",
         ownerEpoch: self.allocateOwnerEpoch(),
         isOwnerInvalidated: false,
         currentViewportIsMoving: false,
-        keepSourcesHiddenUntilEnter: false,
+        keepSourcesHiddenUntilEnter: true,
         allowEmptyEnter: true,
-        currentPresentationOpacityTarget: 1,
-        currentPresentationOpacityValue: 1,
+        currentPresentationOpacityTarget: 0,
+        currentPresentationOpacityValue: 0,
         nextSourceCommitSequence: 0,
         pendingPresentationSettleRequestKey: nil,
         pendingPresentationSettleKind: nil,
@@ -648,12 +853,11 @@ final class SearchMapRenderController: RCTEventEmitter {
           labelInteractionSourceId: labelInteractionSourceId,
           labelCollisionSourceId: labelCollisionSourceId
         ),
+        residentDesiredSourceCacheBySourceId: [:],
         isAwaitingSourceRecovery: false,
         isReplayingSourceRecovery: false,
         sourceRecoveryPausedAtMs: nil
       )
-      self.lastRenderedFeatureProbeAtMsByInstance.removeValue(forKey: instanceId)
-      self.lastRenderedFeatureProbeFrameByInstance.removeValue(forKey: instanceId)
       self.lastViewCompositionProbeAtMsByInstance.removeValue(forKey: instanceId)
       self.lastViewCompositionProbeFrameByInstance.removeValue(forKey: instanceId)
       self.resolveMapHandle(for: mapTag, attemptCount: 0, startTimeMs: CACurrentMediaTime() * 1000) {
@@ -682,8 +886,6 @@ final class SearchMapRenderController: RCTEventEmitter {
           self.slowActionWindowsByInstanceAndScope = self.slowActionWindowsByInstanceAndScope.filter {
             !$0.key.hasPrefix("\(instanceId)::")
           }
-          self.lastRenderedFeatureProbeAtMsByInstance.removeValue(forKey: instanceId)
-          self.lastRenderedFeatureProbeFrameByInstance.removeValue(forKey: instanceId)
           self.lastViewCompositionProbeAtMsByInstance.removeValue(forKey: instanceId)
           self.lastViewCompositionProbeFrameByInstance.removeValue(forKey: instanceId)
           self.resolvedMapHandles.removeValue(forKey: mapTag.stringValue)
@@ -704,6 +906,8 @@ final class SearchMapRenderController: RCTEventEmitter {
       self?.enterSettleWorkItems[instanceId] = nil
       self?.dismissSettleWorkItems[instanceId]?.cancel()
       self?.dismissSettleWorkItems[instanceId] = nil
+      self?.deferredDismissSourceCleanupWorkItems[instanceId]?.cancel()
+      self?.deferredDismissSourceCleanupWorkItems[instanceId] = nil
       self?.revealFrameFallbackWorkItems[instanceId]?.cancel()
       self?.revealFrameFallbackWorkItems[instanceId] = nil
       self?.dismissFrameFallbackWorkItems[instanceId]?.cancel()
@@ -719,8 +923,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       self?.slowActionWindowsByInstanceAndScope = self?.slowActionWindowsByInstanceAndScope.filter {
         !$0.key.hasPrefix("\(instanceId)::")
       } ?? [:]
-      self?.lastRenderedFeatureProbeAtMsByInstance.removeValue(forKey: instanceId)
-      self?.lastRenderedFeatureProbeFrameByInstance.removeValue(forKey: instanceId)
       self?.lastViewCompositionProbeAtMsByInstance.removeValue(forKey: instanceId)
       self?.lastViewCompositionProbeFrameByInstance.removeValue(forKey: instanceId)
       if let mapTag {
@@ -740,7 +942,11 @@ final class SearchMapRenderController: RCTEventEmitter {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
+    let nativeModuleReceivedAtMs = CACurrentMediaTime() * 1000
+    let nativeModuleReceivedAtEpochMs = Date().timeIntervalSince1970 * 1000
     DispatchQueue.main.async { [weak self] in
+      let nativeMainStartedAtMs = CACurrentMediaTime() * 1000
+      let nativeMainStartedAtEpochMs = Date().timeIntervalSince1970 * 1000
       guard let self else {
         reject("search_map_render_controller_unavailable", "controller deallocated", nil)
         return
@@ -776,14 +982,36 @@ final class SearchMapRenderController: RCTEventEmitter {
 
       let sourceDeltas = payload["sourceDeltas"] as? [[String: Any]]
       let highlightedMarkerKey = payload["highlightedMarkerKey"] as? String
+      let highlightedMarkerKeys =
+        (payload["highlightedMarkerKeys"] as? [String]) ?? highlightedMarkerKey.map { [$0] } ?? []
+      let highlightedRestaurantId = payload["highlightedRestaurantId"] as? String
       let interactionMode = (payload["interactionMode"] as? String) ?? "enabled"
       let actionStartedAt = CACurrentMediaTime() * 1000
+      var attributionPhase = attachedState.lastPresentationBatchPhase
+      var actionDurationMs: Double = 0
+      var syncedFramePhase = attributionPhase
       do {
+        let enterRequestKey = Self.readEnterRequestKey(fromJSON: presentationStateJSON)
+        let dismissRequestKey = Self.readDismissRequestKey(fromJSON: presentationStateJSON)
+        let hasSourcePayload = !(sourceDeltas?.isEmpty ?? true)
+        let shouldBypassDismissSnapshotApply =
+          dismissRequestKey != nil
+        let hasPresentationOnlySourcePayload = !hasSourcePayload
+        let shouldBypassEnterSnapshotApply =
+          enterRequestKey != nil &&
+          hasPresentationOnlySourcePayload &&
+          Self.activeDesiredVisualSourceCount(state: attachedState) > 0
+        let shouldDropDismissedHiddenSourcePayload =
+          enterRequestKey == nil &&
+          dismissRequestKey == nil &&
+          hasSourcePayload &&
+          attachedState.visualSourceLifecycleState == .dismissed &&
+          attachedState.currentPresentationRenderPhase == "idle" &&
+          attachedState.keepSourcesHiddenUntilEnter
         let shouldBypassSnapshotApply =
-          Self.readDismissRequestKey(fromJSON: presentationStateJSON) != nil &&
-          (sourceDeltas?.isEmpty ?? true)
+          shouldBypassDismissSnapshotApply || shouldBypassEnterSnapshotApply
         let didSyncResidentFrame: Bool
-        if shouldBypassSnapshotApply {
+        if shouldDropDismissedHiddenSourcePayload {
           guard var state = self.instances[instanceId] else {
             throw NSError(
               domain: "SearchMapRenderController",
@@ -793,51 +1021,151 @@ final class SearchMapRenderController: RCTEventEmitter {
           }
           state.activeFrameGenerationId = frameGenerationId
           state.activeExecutionBatchId = executionBatchId
+          state.sourceReadyFrameGenerationId = frameGenerationId
+          state.sourceReadyExecutionBatchId = executionBatchId
           self.instances[instanceId] = state
-          self.emitVisualDiag(
-            instanceId: instanceId,
-            message:
-              "frame_snapshot_bypass reason=dismiss_presentation_only phase=\(state.lastPresentationBatchPhase)"
-          )
+          let presentationStartedAt = CACurrentMediaTime() * 1000
           try self.applyPresentationPayload(
             instanceId: instanceId,
             presentationStateJSON: presentationStateJSON
           )
+          if var currentState = self.instances[instanceId] {
+            try self.clearDismissedResidentSourceState(
+              instanceId: instanceId,
+              state: &currentState,
+              reason: "drop_hidden_dismissed_source_payload"
+            )
+            self.instances[instanceId] = currentState
+          }
+          attributionPhase = self.instances[instanceId]?.lastPresentationBatchPhase ?? attributionPhase
+          self.recordNativeApply(
+            section: "set_frame.drop_hidden_dismissed_source_payload",
+            phase: attributionPhase,
+            durationMs: CACurrentMediaTime() * 1000 - presentationStartedAt,
+            operationCount: sourceDeltas?.count ?? 0
+          )
+          didSyncResidentFrame = true
+        } else if shouldBypassSnapshotApply {
+          guard var state = self.instances[instanceId] else {
+            throw NSError(
+              domain: "SearchMapRenderController",
+              code: 1,
+              userInfo: [NSLocalizedDescriptionKey: "unknown instance"]
+            )
+          }
+          state.activeFrameGenerationId = frameGenerationId
+          state.activeExecutionBatchId = executionBatchId
+          state.sourceReadyFrameGenerationId = frameGenerationId
+          state.sourceReadyExecutionBatchId = executionBatchId
+          self.instances[instanceId] = state
+          self.emitVisualDiag(
+            instanceId: instanceId,
+            message:
+              "frame_snapshot_bypass reason=\(shouldBypassEnterSnapshotApply ? "enter_presentation_only" : "dismiss_presentation_only") phase=\(state.lastPresentationBatchPhase)"
+          )
+          let presentationStartedAt = CACurrentMediaTime() * 1000
+          try self.applyPresentationPayload(
+            instanceId: instanceId,
+            presentationStateJSON: presentationStateJSON
+          )
+          attributionPhase = self.instances[instanceId]?.lastPresentationBatchPhase ?? attributionPhase
+          self.recordNativeApply(
+            section: "set_frame.apply_presentation",
+            phase: attributionPhase,
+            durationMs: CACurrentMediaTime() * 1000 - presentationStartedAt
+          )
           didSyncResidentFrame = true
         } else {
-          if Self.readEnterRequestKey(fromJSON: presentationStateJSON) == nil {
+          if enterRequestKey == nil {
+            let presentationStartedAt = CACurrentMediaTime() * 1000
             try self.applyPresentationPayload(
               instanceId: instanceId,
               presentationStateJSON: presentationStateJSON
             )
+            attributionPhase = self.instances[instanceId]?.lastPresentationBatchPhase ?? attributionPhase
+            self.recordNativeApply(
+              section: "set_frame.apply_presentation",
+              phase: attributionPhase,
+              durationMs: CACurrentMediaTime() * 1000 - presentationStartedAt
+            )
+            let snapshotStartedAt = CACurrentMediaTime() * 1000
             didSyncResidentFrame = try self.applyRenderFrameSnapshotPayload(
               instanceId: instanceId,
               generationId: frameGenerationId,
               executionBatchId: executionBatchId,
-              sourceDeltas: sourceDeltas
+              sourceDeltas: sourceDeltas,
+              allowResidentSourceCacheRestore: false
+            )
+            attributionPhase = self.instances[instanceId]?.lastPresentationBatchPhase ?? attributionPhase
+            self.recordNativeApply(
+              section: "set_frame.apply_snapshot",
+              phase: attributionPhase,
+              durationMs: CACurrentMediaTime() * 1000 - snapshotStartedAt,
+              operationCount: sourceDeltas?.count ?? 0
             )
           } else {
+            if var state = self.instances[instanceId] {
+              state.activeFrameGenerationId = frameGenerationId
+              state.activeExecutionBatchId = executionBatchId
+              state.sourceReadyFrameGenerationId = nil
+              state.sourceReadyExecutionBatchId = nil
+              self.instances[instanceId] = state
+            }
+            let presentationStartedAt = CACurrentMediaTime() * 1000
+            try self.applyPresentationPayload(
+              instanceId: instanceId,
+              presentationStateJSON: presentationStateJSON
+            )
+            attributionPhase = self.instances[instanceId]?.lastPresentationBatchPhase ?? attributionPhase
+            self.recordNativeApply(
+              section: "set_frame.apply_presentation",
+              phase: attributionPhase,
+              durationMs: CACurrentMediaTime() * 1000 - presentationStartedAt
+            )
+            let snapshotStartedAt = CACurrentMediaTime() * 1000
             didSyncResidentFrame = try self.applyRenderFrameSnapshotPayload(
               instanceId: instanceId,
               generationId: frameGenerationId,
               executionBatchId: executionBatchId,
-              sourceDeltas: sourceDeltas
+              sourceDeltas: sourceDeltas,
+              allowResidentSourceCacheRestore: true
             )
-            try self.applyPresentationPayload(
-              instanceId: instanceId,
-              presentationStateJSON: presentationStateJSON
+            attributionPhase = self.instances[instanceId]?.lastPresentationBatchPhase ?? attributionPhase
+            self.recordNativeApply(
+              section: "set_frame.apply_snapshot",
+              phase: attributionPhase,
+              durationMs: CACurrentMediaTime() * 1000 - snapshotStartedAt,
+              operationCount: sourceDeltas?.count ?? 0
             )
           }
         }
+        let interactionStartedAt = CACurrentMediaTime() * 1000
         try self.applyInteractionModePayload(
           instanceId: instanceId,
           interactionMode: interactionMode
         )
+        attributionPhase = self.instances[instanceId]?.lastPresentationBatchPhase ?? attributionPhase
+        self.recordNativeApply(
+          section: "set_frame.apply_interaction_mode",
+          phase: attributionPhase,
+          durationMs: CACurrentMediaTime() * 1000 - interactionStartedAt
+        )
+        let highlightedStartedAt = CACurrentMediaTime() * 1000
         try self.applyHighlightedMarkerPayload(
           instanceId: instanceId,
-          markerKey: highlightedMarkerKey
+          markerKey: highlightedMarkerKey,
+          markerKeys: highlightedMarkerKeys,
+          restaurantId: highlightedRestaurantId
+        )
+        attributionPhase = self.instances[instanceId]?.lastPresentationBatchPhase ?? attributionPhase
+        self.recordNativeApply(
+          section: "set_frame.apply_highlighted_marker",
+          phase: attributionPhase,
+          durationMs: CACurrentMediaTime() * 1000 - highlightedStartedAt
         )
         if didSyncResidentFrame, var state = self.instances[instanceId] {
+          let emitStartedAt = CACurrentMediaTime() * 1000
+          let sourceRevisions = self.currentMountedSourceRevisions(state: state)
           self.emit([
             "type": "render_frame_synced",
             "instanceId": instanceId,
@@ -847,18 +1175,36 @@ final class SearchMapRenderController: RCTEventEmitter {
             "pinCount": state.lastPinCount,
             "dotCount": state.lastDotCount,
             "labelCount": state.lastLabelCount,
-            "sourceRevisions": [
-              "pins": Self.mountedSourceState(sourceId: state.pinSourceId, state: state)?.sourceRevision ?? "",
-              "pinInteractions": Self.mountedSourceState(sourceId: state.pinInteractionSourceId, state: state)?.sourceRevision ?? "",
-              "dots": Self.mountedSourceState(sourceId: state.dotSourceId, state: state)?.sourceRevision ?? "",
-              "dotInteractions": Self.mountedSourceState(sourceId: state.dotInteractionSourceId, state: state)?.sourceRevision ?? "",
-              "labels": Self.mountedSourceState(sourceId: state.labelSourceId, state: state)?.sourceRevision ?? "",
-              "labelInteractions": Self.mountedSourceState(sourceId: state.labelInteractionSourceId, state: state)?.sourceRevision ?? "",
-              "labelCollisions": Self.mountedSourceState(sourceId: state.labelCollisionSourceId, state: state)?.sourceRevision ?? "",
-            ],
+            "sourceRevisions": sourceRevisions,
           ])
+          self.recordNativeApply(
+            section: "set_frame.emit_synced",
+            phase: state.lastPresentationBatchPhase,
+            durationMs: CACurrentMediaTime() * 1000 - emitStartedAt
+          )
+          if let sourceDeltas,
+             !sourceDeltas.isEmpty,
+             state.visualSourceLifecycleState == .dismissed,
+             state.currentPresentationRenderPhase == "idle",
+             state.keepSourcesHiddenUntilEnter,
+             let dismissRequestKey = state.lastDismissRequestKey {
+            self.scheduleDeferredDismissSourceCleanup(
+              instanceId: instanceId,
+              requestKey: dismissRequestKey,
+              reason: "dismiss_hidden_source_frame"
+            )
+          }
+          self.maybeElectMountedHiddenExecutionBatch(instanceId: instanceId, state: &state)
           self.maybeEmitExecutionBatchArmed(instanceId: instanceId, state: &state)
           let totalDurationMs = CACurrentMediaTime() * 1000 - actionStartedAt
+          actionDurationMs = totalDurationMs
+          syncedFramePhase = state.lastPresentationBatchPhase
+          self.recordNativeApply(
+            section: "set_frame.total",
+            phase: state.lastPresentationBatchPhase,
+            durationMs: totalDurationMs,
+            operationCount: sourceDeltas?.count ?? 0
+          )
           self.recordSlowActionWindow(
             instanceId: instanceId,
             scope: "moving_native_set_render_frame",
@@ -884,7 +1230,19 @@ final class SearchMapRenderController: RCTEventEmitter {
             ])
           }
         }
-        resolve(nil)
+        let nativeResolveStartedAtMs = CACurrentMediaTime() * 1000
+        let nativeResolveStartedAtEpochMs = Date().timeIntervalSince1970 * 1000
+        resolve([
+          "nativeModuleQueueWaitDurationMs": Self.round1(nativeMainStartedAtMs - nativeModuleReceivedAtMs),
+          "nativeMainExecutionDurationMs": Self.round1(nativeResolveStartedAtMs - nativeMainStartedAtMs),
+          "nativeSetFrameActionDurationMs": Self.round1(actionDurationMs),
+          "nativeSetFramePhase": syncedFramePhase,
+          "nativeDidSyncResidentFrame": didSyncResidentFrame,
+          "nativeResolveStartedAtMs": Self.round1(nativeResolveStartedAtMs),
+          "nativeModuleReceivedAtEpochMs": Self.round1(nativeModuleReceivedAtEpochMs),
+          "nativeMainStartedAtEpochMs": Self.round1(nativeMainStartedAtEpochMs),
+          "nativeResolveStartedAtEpochMs": Self.round1(nativeResolveStartedAtEpochMs),
+        ])
       } catch {
         reject(
           "search_map_render_controller_frame_apply_failed",
@@ -908,7 +1266,8 @@ final class SearchMapRenderController: RCTEventEmitter {
     instanceId: String,
     generationId: String,
     executionBatchId: String,
-    sourceDeltas: [[String: Any]]?
+    sourceDeltas: [[String: Any]]?,
+    allowResidentSourceCacheRestore: Bool
   ) throws -> Bool {
     guard var state = self.instances[instanceId] else {
       throw NSError(
@@ -924,13 +1283,46 @@ final class SearchMapRenderController: RCTEventEmitter {
         "frame_begin phase=\(state.lastPresentationBatchPhase) opacity=\(state.currentPresentationOpacityTarget) revealRequest=\(state.lastEnterRequestKey ?? "nil") revealStarted=\(state.lastEnterStartedRequestKey ?? "nil") revealSettled=\(state.lastEnterSettledRequestKey ?? "nil") dismissRequest=\(state.lastDismissRequestKey ?? "nil")"
     )
     if let sourceDeltas {
-      for delta in try Self.parseSourceDeltas(sourceDeltas) {
+      let parseStartedAt = CACurrentMediaTime() * 1000
+      let parsedDeltas = try Self.parseSourceDeltas(sourceDeltas)
+      self.recordNativeApply(
+        section: "snapshot.parse_source_deltas",
+        phase: state.lastPresentationBatchPhase,
+        durationMs: CACurrentMediaTime() * 1000 - parseStartedAt,
+        operationCount: parsedDeltas.count
+      )
+      for delta in parsedDeltas {
+        let deltaStartedAt = CACurrentMediaTime() * 1000
         var familyState = Self.derivedFamilyState(sourceId: delta.sourceId, state: state)
         familyState.desiredCollection = try Self.applyParsedCollectionDelta(
           delta,
           to: familyState.desiredCollection
         )
         Self.setDerivedFamilyState(familyState, sourceId: delta.sourceId, state: &state)
+        self.recordNativeApply(
+          section: "snapshot.apply_parsed_delta",
+          phase: state.lastPresentationBatchPhase,
+          source: nativeApplySourceFamily(sourceId: delta.sourceId, state: state),
+          durationMs: CACurrentMediaTime() * 1000 - deltaStartedAt,
+          operationCount: delta.nextFeatureIdsInOrder.count
+        )
+      }
+    }
+    if allowResidentSourceCacheRestore && (sourceDeltas?.isEmpty ?? true) {
+      let restoreStartedAt = CACurrentMediaTime() * 1000
+      let didRestoreResidentSources = Self.restoreResidentDesiredSourceCacheForEnter(state: &state)
+      if didRestoreResidentSources {
+        self.recordNativeApply(
+          section: "snapshot.restore_resident_source_cache",
+          phase: state.lastPresentationBatchPhase,
+          durationMs: CACurrentMediaTime() * 1000 - restoreStartedAt,
+          operationCount: state.residentDesiredSourceCacheBySourceId.count
+        )
+        self.emitVisualDiag(
+          instanceId: instanceId,
+          message:
+            "resident_source_cache_restored frame=\(generationId) cacheSources=\(state.residentDesiredSourceCacheBySourceId.count)"
+        )
       }
     }
     state.lastPinCount =
@@ -941,9 +1333,17 @@ final class SearchMapRenderController: RCTEventEmitter {
       Self.derivedFamilyState(sourceId: state.labelSourceId, state: state).desiredCollection.idsInOrder.count
     state.activeFrameGenerationId = generationId
     state.activeExecutionBatchId = executionBatchId
+    state.sourceReadyFrameGenerationId = nil
+    state.sourceReadyExecutionBatchId = nil
     self.instances[instanceId] = state
+    let reconcileStartedAt = CACurrentMediaTime() * 1000
     try self.reconcileAndApplyCurrentFrameSnapshots(for: instanceId)
     state = self.instances[instanceId] ?? state
+    self.recordNativeApply(
+      section: "snapshot.reconcile_current_frame",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - reconcileStartedAt
+    )
     if Self.isSourceRecoveryActive(state) {
       self.emitVisualDiag(
         instanceId: instanceId,
@@ -957,14 +1357,32 @@ final class SearchMapRenderController: RCTEventEmitter {
       message:
         "frame_after_reconcile phase=\(state.lastPresentationBatchPhase) opacity=\(state.currentPresentationOpacityTarget) revealRequest=\(state.lastEnterRequestKey ?? "nil") revealStarted=\(state.lastEnterStartedRequestKey ?? "nil") revealSettled=\(state.lastEnterSettledRequestKey ?? "nil") dismissRequest=\(state.lastDismissRequestKey ?? "nil")"
     )
+    let highlightedStartedAt = CACurrentMediaTime() * 1000
     try self.applyHighlightedMarkerState(for: state, instanceId: instanceId)
+    self.recordNativeApply(
+      section: "snapshot.apply_highlighted_marker",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - highlightedStartedAt
+    )
     if self.shouldSuppressInteractions(state: state) {
+      let suppressionStartedAt = CACurrentMediaTime() * 1000
       try self.applyInteractionSuppression(for: &state, instanceId: instanceId)
+      self.recordNativeApply(
+        section: "snapshot.apply_interaction_suppression",
+        phase: state.lastPresentationBatchPhase,
+        durationMs: CACurrentMediaTime() * 1000 - suppressionStartedAt
+      )
     }
+    let opacityStartedAt = CACurrentMediaTime() * 1000
     try self.applyCurrentPresentationOpacity(
       for: &state,
       instanceId: instanceId,
       reason: "frame_apply"
+    )
+    self.recordNativeApply(
+      section: "snapshot.apply_current_presentation_opacity",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - opacityStartedAt
     )
     let presentationOpacity = state.currentPresentationOpacityValue
     self.emitVisualDiag(
@@ -985,6 +1403,12 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
     state = self.instances[instanceId] ?? state
     let totalDurationMs = CACurrentMediaTime() * 1000 - actionStartedAt
+    self.recordNativeApply(
+      section: "snapshot.total",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: totalDurationMs,
+      operationCount: sourceDeltas?.count ?? 0
+    )
     self.recordSlowActionWindow(
       instanceId: instanceId,
       scope: "moving_native_snapshot_apply",
@@ -1009,6 +1433,9 @@ final class SearchMapRenderController: RCTEventEmitter {
           "slow_action action=applyFrameSnapshot phase=\(state.lastPresentationBatchPhase) totalMs=\(Int(totalDurationMs.rounded())) pins=\(state.lastPinCount) dots=\(state.lastDotCount) labels=\(state.lastLabelCount)",
       ])
     }
+    state.sourceReadyFrameGenerationId = generationId
+    state.sourceReadyExecutionBatchId = executionBatchId
+    self.instances[instanceId] = state
     return true
   }
 
@@ -1026,6 +1453,11 @@ final class SearchMapRenderController: RCTEventEmitter {
     let actionStartedAt = CACurrentMediaTime() * 1000
     if state.lastPresentationStateJSON == presentationStateJSON {
       self.instances[instanceId] = state
+      self.recordNativeApply(
+        section: "presentation.apply_same_state",
+        phase: state.lastPresentationBatchPhase,
+        durationMs: CACurrentMediaTime() * 1000 - actionStartedAt
+      )
       return
     }
     let previousPresentationBatchPhase = state.lastPresentationBatchPhase
@@ -1054,22 +1486,31 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.blockedPresentationSettleKind = nil
       state.blockedPresentationCommitFenceStartedAtMs = nil
       if let revealRequestKey {
-        self.resetLiveMarkerEnterState(
+        self.beginRevealVisualLifecycle(
           instanceId: instanceId,
           state: &state,
           reason: "new_reveal_request"
         )
-        state.keepSourcesHiddenUntilEnter = false
-        state.currentPresentationRenderPhase = "reveal_preroll"
-        state.currentPresentationOpacityTarget = 0
         self.instances[instanceId] = state
+        let reconcileStartedAt = CACurrentMediaTime() * 1000
         try self.reconcileAndApplyCurrentFrameSnapshots(for: instanceId)
         state = self.instances[instanceId] ?? state
+        self.recordNativeApply(
+          section: "presentation.reveal_preroll_reconcile",
+          phase: state.lastPresentationBatchPhase,
+          durationMs: CACurrentMediaTime() * 1000 - reconcileStartedAt
+        )
+        let opacityStartedAt = CACurrentMediaTime() * 1000
         try self.setPresentationOpacityImmediate(
-          0,
+          self.revealPrerollPlacementOpacity,
           for: &state,
           instanceId: instanceId,
           reason: "reveal_preroll"
+        )
+        self.recordNativeApply(
+          section: "presentation.reveal_preroll_opacity",
+          phase: state.lastPresentationBatchPhase,
+          durationMs: CACurrentMediaTime() * 1000 - opacityStartedAt
         )
         let commitFence = self.capturePendingVisualSourceCommitFence(state: state)
         if self.hasPendingCommitFence(commitFence) {
@@ -1107,6 +1548,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.blockedEnterStartRequestKey == nil
     {
       do {
+        let enterStartedAt = CACurrentMediaTime() * 1000
         try self.startEnterPresentation(
           instanceId: instanceId,
           requestKey: revealRequestKey,
@@ -1115,6 +1557,11 @@ final class SearchMapRenderController: RCTEventEmitter {
           previousPresentationOpacityTarget: previousPresentationOpacityTarget
         )
         state = self.instances[instanceId] ?? state
+        self.recordNativeApply(
+          section: "presentation.start_enter",
+          phase: state.lastPresentationBatchPhase,
+          durationMs: CACurrentMediaTime() * 1000 - enterStartedAt
+        )
       } catch {
         self.emit([
           "type": "error",
@@ -1141,15 +1588,19 @@ final class SearchMapRenderController: RCTEventEmitter {
       self.dismissFrameFallbackWorkItems[instanceId] = nil
       state.lastDismissRequestKey = dismissRequestKey
       if let dismissRequestKey {
-        state.keepSourcesHiddenUntilEnter = true
-        state.currentPresentationRenderPhase = "exiting"
-        state.currentPresentationOpacityTarget = 0
+        self.beginDismissVisualLifecycle(instanceId: instanceId, state: &state)
         self.instances[instanceId] = state
+        let opacityStartedAt = CACurrentMediaTime() * 1000
         try self.animatePresentationOpacity(
           to: 0,
           for: &state,
           instanceId: instanceId,
           reason: "dismiss_start"
+        )
+        self.recordNativeApply(
+          section: "presentation.dismiss_start_opacity",
+          phase: state.lastPresentationBatchPhase,
+          durationMs: CACurrentMediaTime() * 1000 - opacityStartedAt
         )
         let startedAtMs = Self.nowMs()
         self.emit([
@@ -1157,6 +1608,9 @@ final class SearchMapRenderController: RCTEventEmitter {
           "instanceId": instanceId,
           "requestKey": dismissRequestKey,
           "frameGenerationId": state.activeFrameGenerationId as Any,
+          "pinCount": state.lastPinCount,
+          "dotCount": state.lastDotCount,
+          "labelCount": state.lastLabelCount,
           "startedAtMs": startedAtMs,
         ])
         self.emitVisualDiag(
@@ -1195,23 +1649,85 @@ final class SearchMapRenderController: RCTEventEmitter {
           deadline: .now() + .milliseconds(self.dismissSettleDelayMs),
           execute: workItem
         )
-      } else if previousDismissRequestKey != nil {
-        state.currentPresentationRenderPhase = state.lastPresentationBatchPhase == "idle" ? "live" : "idle"
-        self.instances[instanceId] = state
-        try self.reconcileAndApplyCurrentFrameSnapshots(for: instanceId)
-        state = self.instances[instanceId] ?? state
-        let restoredOpacity =
-          state.keepSourcesHiddenUntilEnter
-          ? 0.0
-          : (state.lastPresentationBatchPhase == "idle" ? 1.0 : state.currentPresentationOpacityTarget)
-        state.currentPresentationOpacityTarget = restoredOpacity
-        self.instances[instanceId] = state
-        try self.setPresentationOpacityImmediate(
-          restoredOpacity,
-          for: &state,
-          instanceId: instanceId,
-          reason: "dismiss_clear"
-        )
+      } else if let previousDismissRequestKey {
+        if state.visualSourceLifecycleState == .dismissed {
+          state.currentPresentationRenderPhase = "idle"
+          state.keepSourcesHiddenUntilEnter = true
+          state.currentPresentationOpacityTarget = 0
+          state.currentPresentationOpacityValue = 0
+          self.instances[instanceId] = state
+          self.emitVisualDiag(
+            instanceId: instanceId,
+            message: "dismiss_clear_already_dismissed request=\(previousDismissRequestKey)"
+          )
+        } else {
+          state.currentPresentationRenderPhase = state.lastPresentationBatchPhase == "idle" ? "live" : "idle"
+          state.visualSourceLifecycleState = .visible
+          self.instances[instanceId] = state
+          let reconcileStartedAt = CACurrentMediaTime() * 1000
+          try self.reconcileAndApplyCurrentFrameSnapshots(for: instanceId)
+          state = self.instances[instanceId] ?? state
+          self.recordNativeApply(
+            section: "presentation.dismiss_clear_reconcile",
+            phase: state.lastPresentationBatchPhase,
+            durationMs: CACurrentMediaTime() * 1000 - reconcileStartedAt
+          )
+          let restoredOpacity =
+            state.keepSourcesHiddenUntilEnter
+            ? 0.0
+            : (state.lastPresentationBatchPhase == "idle" ? 1.0 : state.currentPresentationOpacityTarget)
+          state.currentPresentationOpacityTarget = restoredOpacity
+          self.instances[instanceId] = state
+          let opacityStartedAt = CACurrentMediaTime() * 1000
+          try self.setPresentationOpacityImmediate(
+            restoredOpacity,
+            for: &state,
+            instanceId: instanceId,
+            reason: "dismiss_clear"
+          )
+          self.recordNativeApply(
+            section: "presentation.dismiss_clear_opacity",
+            phase: state.lastPresentationBatchPhase,
+            durationMs: CACurrentMediaTime() * 1000 - opacityStartedAt
+          )
+        }
+      }
+    }
+    if let revealRequestKey {
+      state.enterLane.requestedRequestKey = revealRequestKey
+      maybeElectMountedHiddenExecutionBatch(instanceId: instanceId, state: &state)
+      if
+        let revealStartToken,
+        revealStatus == "entering",
+        state.lastPresentationBatchPhase == "entering",
+        state.enterLane.requestedRequestKey == revealRequestKey,
+        state.enterLane.mountedHidden != nil,
+        state.lastEnterStartToken != revealStartToken,
+        state.lastEnterStartedRequestKey != revealRequestKey,
+        state.blockedEnterStartRequestKey == nil
+      {
+        do {
+          let enterStartedAt = CACurrentMediaTime() * 1000
+          try self.startEnterPresentation(
+            instanceId: instanceId,
+            requestKey: revealRequestKey,
+            revealStartToken: revealStartToken,
+            previousPresentationBatchPhase: previousPresentationBatchPhase,
+            previousPresentationOpacityTarget: previousPresentationOpacityTarget
+          )
+          state = self.instances[instanceId] ?? state
+          self.recordNativeApply(
+            section: "presentation.start_enter_after_dismiss_clear",
+            phase: state.lastPresentationBatchPhase,
+            durationMs: CACurrentMediaTime() * 1000 - enterStartedAt
+          )
+        } catch {
+          self.emit([
+            "type": "error",
+            "instanceId": instanceId,
+            "message": "reveal_start_after_dismiss_clear_failed: \(error.localizedDescription)",
+          ])
+        }
       }
     }
     if
@@ -1220,14 +1736,33 @@ final class SearchMapRenderController: RCTEventEmitter {
       Self.shouldHidePresentationWithoutActiveRequests(state.lastPresentationBatchPhase),
       state.currentPresentationOpacityTarget != 0
     {
+      let startedAtMs = Self.nowMs()
       state.currentPresentationOpacityTarget = 0
+      state.visualSourceLifecycleState = .dismissing
       self.instances[instanceId] = state
-      try self.setPresentationOpacityImmediate(
-        0,
+      let opacityStartedAt = CACurrentMediaTime() * 1000
+      try self.animatePresentationOpacity(
+        to: 0,
         for: &state,
         instanceId: instanceId,
         reason: "presentation_preroll"
       )
+      self.recordNativeApply(
+        section: "presentation.preroll_opacity",
+        phase: state.lastPresentationBatchPhase,
+        durationMs: CACurrentMediaTime() * 1000 - opacityStartedAt
+      )
+      self.emit([
+        "type": "presentation_preroll_started",
+        "instanceId": instanceId,
+        "phase": state.lastPresentationBatchPhase,
+        "coverState": Self.readCoverState(fromJSON: presentationStateJSON) as Any,
+        "frameGenerationId": state.activeFrameGenerationId as Any,
+        "pinCount": state.lastPinCount,
+        "dotCount": state.lastDotCount,
+        "labelCount": state.lastLabelCount,
+        "startedAtMs": startedAtMs,
+      ])
     }
     if previousPresentationBatchPhase != "idle", state.lastPresentationBatchPhase == "idle" {
       state.currentPresentationRenderPhase = "live"
@@ -1235,6 +1770,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       if state.currentPresentationOpacityTarget != idleOpacityTarget {
         state.currentPresentationOpacityTarget = idleOpacityTarget
         self.instances[instanceId] = state
+        let opacityStartedAt = CACurrentMediaTime() * 1000
         try? self.setPresentationOpacityImmediate(
           idleOpacityTarget,
           for: &state,
@@ -1242,10 +1778,20 @@ final class SearchMapRenderController: RCTEventEmitter {
           reason: "presentation_idle"
         )
         state = self.instances[instanceId] ?? state
+        self.recordNativeApply(
+          section: "presentation.idle_opacity",
+          phase: state.lastPresentationBatchPhase,
+          durationMs: CACurrentMediaTime() * 1000 - opacityStartedAt
+        )
       }
     }
     self.instances[instanceId] = state
     let totalDurationMs = CACurrentMediaTime() * 1000 - actionStartedAt
+    self.recordNativeApply(
+      section: "presentation.apply",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: totalDurationMs
+    )
     self.recordSlowActionWindow(
       instanceId: instanceId,
       scope: "moving_native_presentation_apply",
@@ -1272,7 +1818,9 @@ final class SearchMapRenderController: RCTEventEmitter {
 
   private func applyHighlightedMarkerPayload(
     instanceId: String,
-    markerKey: String?
+    markerKey: String?,
+    markerKeys: [String],
+    restaurantId: String?
   ) throws {
     guard var state = instances[instanceId] else {
       throw NSError(
@@ -1281,10 +1829,17 @@ final class SearchMapRenderController: RCTEventEmitter {
         userInfo: [NSLocalizedDescriptionKey: "unknown instance"]
       )
     }
-    if state.highlightedMarkerKey == markerKey {
+    let nextHighlightedMarkerKeys = Set(markerKeys)
+    let nextHighlightedRestaurantId =
+      restaurantId.flatMap { $0.isEmpty ? nil : $0 }
+    if state.highlightedMarkerKey == markerKey &&
+      state.highlightedMarkerKeys == nextHighlightedMarkerKeys &&
+      state.highlightedRestaurantId == nextHighlightedRestaurantId {
       return
     }
     state.highlightedMarkerKey = markerKey
+    state.highlightedMarkerKeys = nextHighlightedMarkerKeys
+    state.highlightedRestaurantId = nextHighlightedRestaurantId
     instances[instanceId] = state
     try applyHighlightedMarkerState(for: state, instanceId: instanceId)
   }
@@ -1302,6 +1857,11 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
     let nextMode = interactionMode == "suppressed" ? "suppressed" : "enabled"
     if state.interactionMode == nextMode {
+      if nextMode == "suppressed" {
+        var updatedState = state
+        try applyInteractionSuppression(for: &updatedState, instanceId: instanceId)
+        instances[instanceId] = updatedState
+      }
       return
     }
     state.interactionMode = nextMode
@@ -1386,107 +1946,6 @@ final class SearchMapRenderController: RCTEventEmitter {
   }
 
   @objc
-  func queryRenderedDotObservation(
-    _ payload: NSDictionary,
-    resolver resolve: @escaping RCTPromiseResolveBlock,
-    rejecter reject: @escaping RCTPromiseRejectBlock
-  ) {
-    DispatchQueue.main.async { [weak self] in
-      guard let self else {
-        reject("search_map_render_controller_unavailable", "controller deallocated", nil)
-        return
-      }
-      guard let instanceId = payload["instanceId"] as? String else {
-        reject(
-          "search_map_render_controller_query_rendered_dot_observation_invalid",
-          "missing instanceId",
-          nil
-        )
-        return
-      }
-      guard let state = self.instances[instanceId] else {
-        reject(
-          "search_map_render_controller_query_rendered_dot_observation_invalid",
-          "unknown instance",
-          nil
-        )
-        return
-      }
-      let layerIds = (payload["layerIds"] as? [String]) ??
-        ((payload["layerIds"] as? [Any])?.compactMap { $0 as? String } ?? [])
-      let queryBoxValues = ((payload["queryBox"] as? [NSNumber]) ??
-        ((payload["queryBox"] as? [Any])?.compactMap {
-          if let value = $0 as? NSNumber {
-            return value
-          }
-          if let value = $0 as? Double {
-            return NSNumber(value: value)
-          }
-          return nil
-        } ?? []))
-      do {
-        try self.withResolvedMapHandleResult(for: state.mapTag) { handle in
-          let bounds = handle.mapView.bounds
-          guard bounds.width > 0, bounds.height > 0 else {
-            resolve(Self.emptyRenderedDotObservationResult())
-            return
-          }
-          let queryRect: CGRect
-          if queryBoxValues.count == 4 {
-            let x1 = CGFloat(truncating: queryBoxValues[0])
-            let y1 = CGFloat(truncating: queryBoxValues[1])
-            let x2 = CGFloat(truncating: queryBoxValues[2])
-            let y2 = CGFloat(truncating: queryBoxValues[3])
-            queryRect = CGRect(
-              x: min(x1, x2),
-              y: min(y1, y2),
-              width: abs(x2 - x1),
-              height: abs(y2 - y1)
-            )
-          } else {
-            queryRect = bounds
-          }
-          guard queryRect.width > 0, queryRect.height > 0 else {
-            resolve(Self.emptyRenderedDotObservationResult())
-            return
-          }
-          handle.mapView.mapboxMap.queryRenderedFeatures(
-            with: queryRect,
-            options: RenderedQueryOptions(layerIds: layerIds, filter: nil)
-          ) { result in
-            DispatchQueue.main.async {
-              switch result {
-              case .failure(let error):
-                reject(
-                  "search_map_render_controller_query_rendered_dot_observation_failed",
-                  error.localizedDescription,
-                  error
-                )
-              case .success(let features):
-                let observation = Self.buildRenderedDotObservation(
-                  from: features,
-                  requiredSourceId: state.dotSourceId
-                )
-                resolve([
-                  "restaurantIds": observation.restaurantIds,
-                  "renderedDots": observation.renderedDots,
-                  "renderedFeatureCount": features.count,
-                ])
-              }
-            }
-          }
-        }
-      } catch {
-        reject(
-          "search_map_render_controller_query_rendered_dot_observation_failed",
-          error.localizedDescription,
-          error
-        )
-      }
-    }
-  }
-
-  @objc
   func queryRenderedPressTarget(
     _ payload: NSDictionary,
     resolver resolve: @escaping RCTPromiseResolveBlock,
@@ -1513,6 +1972,18 @@ final class SearchMapRenderController: RCTEventEmitter {
         )
         return
       }
+      guard state.interactionMode == "enabled",
+            state.visualSourceLifecycleState != .dismissing,
+            state.visualSourceLifecycleState != .dismissed
+      else {
+        self.emitVisualDiag(
+          instanceId: instanceId,
+          message:
+            "press_target_probe stage=query_blocked reason=interaction_or_lifecycle interactionMode=\(state.interactionMode) lifecycle=\(state.visualSourceLifecycleState)"
+        )
+        resolve(NSNull())
+        return
+      }
       guard let point = payload["point"] as? [String: Any],
             let x = (point["x"] as? NSNumber)?.doubleValue,
             let y = (point["y"] as? NSNumber)?.doubleValue
@@ -1528,16 +1999,118 @@ final class SearchMapRenderController: RCTEventEmitter {
         ((payload["pinLayerIds"] as? [Any])?.compactMap { $0 as? String } ?? [])
       let labelLayerIds = (payload["labelLayerIds"] as? [String]) ??
         ((payload["labelLayerIds"] as? [Any])?.compactMap { $0 as? String } ?? [])
+      let labelQueryBoxValues = (payload["labelQueryBox"] as? [NSNumber]) ??
+        ((payload["labelQueryBox"] as? [Any])?.compactMap { $0 as? NSNumber } ?? [])
+      let labelTapHitbox = Self.parseLabelTapHitboxConfig(payload["labelTapHitbox"])
+      let dotLayerIds = (payload["dotLayerIds"] as? [String]) ??
+        ((payload["dotLayerIds"] as? [Any])?.compactMap { $0 as? String } ?? [])
+      let dotQueryBoxValues = (payload["dotQueryBox"] as? [NSNumber]) ??
+        ((payload["dotQueryBox"] as? [Any])?.compactMap { $0 as? NSNumber } ?? [])
+      let tapCoordinatePayload = payload["tapCoordinate"] as? [String: Any]
+      let tapCoordinate: (lng: Double, lat: Double)?
+      if let lng = (tapCoordinatePayload?["lng"] as? NSNumber)?.doubleValue,
+         let lat = (tapCoordinatePayload?["lat"] as? NSNumber)?.doubleValue {
+        tapCoordinate = (lng: lng, lat: lat)
+      } else {
+        tapCoordinate = nil
+      }
       do {
         try self.withResolvedMapHandleResult(for: state.mapTag) { handle in
           let queryRect = CGRect(x: x - 0.5, y: y - 0.5, width: 1, height: 1)
-          guard !pinLayerIds.isEmpty || !labelLayerIds.isEmpty else {
-            resolve(NSNull())
-            return
+          let dotQueryRect: CGRect
+          if dotQueryBoxValues.count == 4 {
+            let x1 = CGFloat(truncating: dotQueryBoxValues[0])
+            let y1 = CGFloat(truncating: dotQueryBoxValues[1])
+            let x2 = CGFloat(truncating: dotQueryBoxValues[2])
+            let y2 = CGFloat(truncating: dotQueryBoxValues[3])
+            dotQueryRect = CGRect(
+              x: min(x1, x2),
+              y: min(y1, y2),
+              width: abs(x2 - x1),
+              height: abs(y2 - y1)
+            )
+          } else {
+            dotQueryRect = queryRect
           }
-          guard !pinLayerIds.isEmpty else {
+          let labelQueryRect: CGRect
+          if labelQueryBoxValues.count == 4 {
+            let x1 = CGFloat(truncating: labelQueryBoxValues[0])
+            let y1 = CGFloat(truncating: labelQueryBoxValues[1])
+            let x2 = CGFloat(truncating: labelQueryBoxValues[2])
+            let y2 = CGFloat(truncating: labelQueryBoxValues[3])
+            labelQueryRect = CGRect(
+              x: min(x1, x2),
+              y: min(y1, y2),
+              width: abs(x2 - x1),
+              height: abs(y2 - y1)
+            )
+          } else {
+            labelQueryRect = queryRect
+          }
+          let labelSourceIds = Set([state.labelInteractionSourceId])
+          self.emitVisualDiag(
+            instanceId: instanceId,
+            message:
+              "press_target_probe stage=query_start x=\(Self.round1(x)) y=\(Self.round1(y)) lifecycle=\(state.visualSourceLifecycleState) phase=\(state.lastPresentationBatchPhase) pinLayers=\(pinLayerIds.count) labelLayers=\(labelLayerIds.count) dotLayers=\(dotLayerIds.count) pinSource=\(Self.derivedFamilyState(sourceId: state.pinInteractionSourceId, state: state).collection.idsInOrder.count) labelSource=\(Self.derivedFamilyState(sourceId: state.labelInteractionSourceId, state: state).collection.idsInOrder.count) dotSource=\(Self.derivedFamilyState(sourceId: state.dotInteractionSourceId, state: state).collection.idsInOrder.count)"
+          )
+          let queryDotTarget = {
+            guard !dotLayerIds.isEmpty, dotQueryRect.width > 0, dotQueryRect.height > 0 else {
+              self.emitVisualDiag(
+                instanceId: instanceId,
+                message:
+                  "press_target_probe stage=dot_skipped reason=missing_layers_or_box dotLayers=\(dotLayerIds.count) boxWidth=\(Self.round1(Double(dotQueryRect.width))) boxHeight=\(Self.round1(Double(dotQueryRect.height)))"
+              )
+              resolve(NSNull())
+              return
+            }
             handle.mapView.mapboxMap.queryRenderedFeatures(
-              with: queryRect,
+              with: dotQueryRect,
+              options: RenderedQueryOptions(layerIds: dotLayerIds, filter: nil)
+            ) { dotResult in
+              DispatchQueue.main.async {
+                switch dotResult {
+                case .failure(let error):
+                  reject(
+                    "search_map_render_controller_query_rendered_press_target_failed",
+                    error.localizedDescription,
+                    error
+                  )
+                case .success(let dotFeatures):
+                  if let dotTarget = Self.buildRenderedDotPressTarget(
+                    from: dotFeatures,
+                    requiredSourceId: state.dotInteractionSourceId,
+                    tapCoordinate: tapCoordinate
+                  ) {
+                    self.emitVisualDiag(
+                      instanceId: instanceId,
+                      message:
+                        "press_target_probe stage=dot_result result=hit queried=\(dotFeatures.count) restaurantId=\((dotTarget["restaurantId"] as? String) ?? "nil")"
+                    )
+                    resolve(dotTarget)
+                  } else {
+                    self.emitVisualDiag(
+                      instanceId: instanceId,
+                      message:
+                        "press_target_probe stage=dot_result result=miss queried=\(dotFeatures.count) requiredSource=\(state.dotInteractionSourceId)"
+                    )
+                    resolve(NSNull())
+                  }
+                }
+              }
+            }
+          }
+          let queryLabelTarget = {
+            guard !labelLayerIds.isEmpty else {
+              self.emitVisualDiag(
+                instanceId: instanceId,
+                message:
+                  "press_target_probe stage=label_skipped reason=no_label_layers"
+              )
+              queryDotTarget()
+              return
+            }
+            handle.mapView.mapboxMap.queryRenderedFeatures(
+              with: labelQueryRect,
               options: RenderedQueryOptions(layerIds: labelLayerIds, filter: nil)
             ) { labelResult in
               DispatchQueue.main.async {
@@ -1551,15 +2124,43 @@ final class SearchMapRenderController: RCTEventEmitter {
                 case .success(let labelFeatures):
                   if let labelTarget = Self.buildRenderedLabelPressTarget(
                     from: labelFeatures,
-                    requiredSourceId: state.labelInteractionSourceId
+                    requiredSourceIds: labelSourceIds,
+                    tapPoint: CGPoint(x: x, y: y),
+                    mapboxMap: handle.mapView.mapboxMap,
+                    hitbox: labelTapHitbox
                   ) {
+                    self.emitVisualDiag(
+                      instanceId: instanceId,
+                      message:
+                        "press_target_probe stage=label_result result=hit queried=\(labelFeatures.count) restaurantId=\((labelTarget["restaurantId"] as? String) ?? "nil")"
+                    )
                     resolve(labelTarget)
                   } else {
-                    resolve(NSNull())
+                    self.emitVisualDiag(
+                      instanceId: instanceId,
+                      message:
+                        "press_target_probe stage=label_result result=miss queried=\(labelFeatures.count) requiredSource=\(state.labelInteractionSourceId)"
+                    )
+                    queryDotTarget()
                   }
                 }
               }
             }
+          }
+          guard !pinLayerIds.isEmpty || !labelLayerIds.isEmpty || !dotLayerIds.isEmpty else {
+            resolve(NSNull())
+            return
+          }
+          let queryLabelAfterPin = {
+            queryLabelTarget()
+          }
+          if pinLayerIds.isEmpty {
+            self.emitVisualDiag(
+              instanceId: instanceId,
+              message:
+                "press_target_probe stage=pin_skipped reason=no_pin_layers"
+            )
+            queryLabelAfterPin()
             return
           }
           handle.mapView.mapboxMap.queryRenderedFeatures(
@@ -1579,36 +2180,19 @@ final class SearchMapRenderController: RCTEventEmitter {
                   from: pinFeatures,
                   requiredSourceId: state.pinInteractionSourceId
                 ) {
+                  self.emitVisualDiag(
+                    instanceId: instanceId,
+                    message:
+                      "press_target_probe stage=pin_result result=hit queried=\(pinFeatures.count) restaurantId=\((pinTarget["restaurantId"] as? String) ?? "nil")"
+                  )
                   resolve(pinTarget)
-                  return
-                }
-                guard !labelLayerIds.isEmpty else {
-                  resolve(NSNull())
-                  return
-                }
-                handle.mapView.mapboxMap.queryRenderedFeatures(
-                  with: queryRect,
-                  options: RenderedQueryOptions(layerIds: labelLayerIds, filter: nil)
-                ) { labelResult in
-                  DispatchQueue.main.async {
-                    switch labelResult {
-                    case .failure(let error):
-                      reject(
-                        "search_map_render_controller_query_rendered_press_target_failed",
-                        error.localizedDescription,
-                        error
-                      )
-                    case .success(let labelFeatures):
-                      if let labelTarget = Self.buildRenderedLabelPressTarget(
-                        from: labelFeatures,
-                        requiredSourceId: state.labelInteractionSourceId
-                      ) {
-                        resolve(labelTarget)
-                      } else {
-                        resolve(NSNull())
-                      }
-                    }
-                  }
+                } else {
+                  self.emitVisualDiag(
+                    instanceId: instanceId,
+                    message:
+                      "press_target_probe stage=pin_result result=miss queried=\(pinFeatures.count) requiredSource=\(state.pinInteractionSourceId)"
+                  )
+                  queryLabelAfterPin()
                 }
               }
             }
@@ -1650,10 +2234,18 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.lastEnterSettledRequestKey = nil
       state.lastDismissRequestKey = nil
       state.currentPresentationRenderPhase = "idle"
+      state.visualSourceLifecycleState = .dismissed
+      state.labelCollisionObstacleLayersVisible = false
+      state.labelPlacementLayersFadeOnly = false
+      state.dotPlacementLayersFadeOnly = false
       state.lastPresentationStateJSON = nil
       state.activeFrameGenerationId = nil
       state.activeExecutionBatchId = nil
+      state.sourceReadyFrameGenerationId = nil
+      state.sourceReadyExecutionBatchId = nil
       state.highlightedMarkerKey = nil
+      state.highlightedMarkerKeys = []
+      state.highlightedRestaurantId = nil
       state.interactionMode = "enabled"
       state.currentPresentationOpacityTarget = 1
       state.currentPresentationOpacityValue = 1
@@ -1688,6 +2280,8 @@ final class SearchMapRenderController: RCTEventEmitter {
       self.labelObservationRefreshWorkItems[instanceId] = nil
       self.dismissSettleWorkItems[instanceId]?.cancel()
       self.dismissSettleWorkItems[instanceId] = nil
+      self.deferredDismissSourceCleanupWorkItems[instanceId]?.cancel()
+      self.deferredDismissSourceCleanupWorkItems[instanceId] = nil
       self.enterSettleWorkItems[instanceId]?.cancel()
       self.enterSettleWorkItems[instanceId] = nil
       self.instances[instanceId] = state
@@ -1757,21 +2351,43 @@ final class SearchMapRenderController: RCTEventEmitter {
       sourceId: state.labelCollisionSourceId,
       state: state
     )
+    let shouldAttributeLabelPrep = nativeApplyAttributionEnabled
+    let labelPrepPhase = state.lastPresentationBatchPhase
+    let orderMarkersStartedAt = shouldAttributeLabelPrep ? CACurrentMediaTime() * 1000 : 0
     let orderedMarkerStates = Self.orderedMarkerRenderStates(pinFamilyState.markerRenderStateByMarkerKey)
     let orderedMarkerKeys = orderedMarkerStates.map(\.markerKey)
-    let dirtyPinMarkerKeys = dirtyState.pinMarkerKeys
+    if shouldAttributeLabelPrep {
+      self.recordNativeApply(
+        section: "label_prep.order_markers",
+        phase: labelPrepPhase,
+        durationMs: CACurrentMediaTime() * 1000 - orderMarkersStartedAt,
+        operationCount: orderedMarkerStates.count
+      )
+    }
+    let dirtySetsStartedAt = shouldAttributeLabelPrep ? CACurrentMediaTime() * 1000 : 0
+    let dirtyPinMarkerKeys =
+      dirtyState.pinMarkerKeys
       .union(pinFamilyState.livePinTransitionsByMarkerKey.keys)
       .union(pinFamilyState.collection.groupOrder)
       .union(orderedMarkerKeys)
-    let dirtyPinInteractionMarkerKeys = dirtyState.pinInteractionMarkerKeys
-      .union(pinFamilyState.livePinTransitionsByMarkerKey.keys)
-      .union(pinInteractionFamilyState.collection.groupOrder)
-      .union(orderedMarkerKeys)
-    let dirtyLabelMarkerKeys = dirtyState.labelMarkerKeys
+    let previousPinInteractionMarkerKeys = Set(pinInteractionFamilyState.collection.groupOrder)
+    let nextPinInteractionMarkerKeys = Set(orderedMarkerKeys)
+    let hasPinInteractionMembershipChange =
+      previousPinInteractionMarkerKeys != nextPinInteractionMarkerKeys
+    let dirtyPinInteractionMarkerKeys =
+      dirtyState.pinInteractionMarkerKeys
+      .union(
+        hasPinInteractionMembershipChange
+          ? previousPinInteractionMarkerKeys.union(nextPinInteractionMarkerKeys)
+          : Set<String>()
+      )
+    let dirtyLabelMarkerKeys =
+      dirtyState.labelMarkerKeys
       .union(pinFamilyState.livePinTransitionsByMarkerKey.keys)
       .union(labelFamilyState.collection.groupOrder)
       .union(orderedMarkerKeys)
-    let dirtyLabelCollisionMarkerKeys = dirtyState.labelCollisionMarkerKeys
+    let dirtyLabelCollisionMarkerKeys =
+      dirtyState.labelCollisionMarkerKeys
       .union(pinFamilyState.livePinTransitionsByMarkerKey.keys)
       .union(labelCollisionFamilyState.collection.groupOrder)
       .union(orderedMarkerKeys)
@@ -1779,6 +2395,28 @@ final class SearchMapRenderController: RCTEventEmitter {
     let reusePinInteractions = dirtyPinInteractionMarkerKeys.isEmpty
     let reuseLabels = dirtyLabelMarkerKeys.isEmpty
     let reuseLabelCollisions = dirtyLabelCollisionMarkerKeys.isEmpty
+    if shouldAttributeLabelPrep {
+      self.recordNativeApply(
+        section: "label_prep.dirty_sets",
+        phase: labelPrepPhase,
+        durationMs: CACurrentMediaTime() * 1000 - dirtySetsStartedAt,
+        operationCount: dirtyPinMarkerKeys.count + dirtyPinInteractionMarkerKeys.count + dirtyLabelMarkerKeys.count + dirtyLabelCollisionMarkerKeys.count
+      )
+    }
+    let makeReplaceAttributionRecorder: (String) -> ((_ section: String, _ durationMs: Double, _ operationCount: Int) -> Void)? = { source in
+      guard shouldAttributeLabelPrep else {
+        return nil
+      }
+      return { section, durationMs, operationCount in
+        self.recordNativeApply(
+          section: "label_prep.\(section)",
+          phase: labelPrepPhase,
+          source: source,
+          durationMs: durationMs,
+          operationCount: operationCount
+        )
+      }
+    }
     var nextPinIdsInOrder: [String]? = reusePins ? nil : []
     var nextPinFeatureById: [String: Feature]? = reusePins ? nil : [:]
     var nextPinFeatureStateById: [String: [String: Any]]? = reusePins ? nil : [:]
@@ -1791,18 +2429,36 @@ final class SearchMapRenderController: RCTEventEmitter {
     var nextLabelFeatureById: [String: Feature]? = reuseLabels ? nil : [:]
     var nextLabelFeatureStateById: [String: [String: Any]]? = reuseLabels ? nil : [:]
     var nextLabelMarkerKeyByFeatureId: [String: String]? = reuseLabels ? nil : [:]
+    var pinNumericRewriteDurationMs = 0.0
+    var pinInteractionNumericRewriteDurationMs = 0.0
+    var labelNumericRewriteDurationMs = 0.0
+    var labelFeatureStateDurationMs = 0.0
+    var pinRewriteCount = 0
+    var pinInteractionRewriteCount = 0
+    var labelRewriteCount = 0
 
+    let markerTraversalStartedAt = shouldAttributeLabelPrep ? CACurrentMediaTime() * 1000 : 0
     for (markerKey, renderState) in orderedMarkerStates {
+      let placementPrerollOpacity = Self.sourceFeatureOpacityForPlacementPreroll(
+        renderState: renderState,
+        state: state
+      )
       if !reusePins {
         nextPinIdsInOrder!.append(markerKey)
+        let rewriteStartedAt = shouldAttributeLabelPrep ? CACurrentMediaTime() * 1000 : 0
         let renderFeature = Self.featureBySettingNumericProperties(
           renderState.pinFeature,
           numericProperties: [
-            "nativeLodOpacity": renderState.targetOpacity,
-            "nativeLodRankOpacity": renderState.targetOpacity,
+            "nativePresentationOpacity": state.currentPresentationOpacityValue,
+            "nativeLodOpacity": placementPrerollOpacity,
+            "nativeLodRankOpacity": placementPrerollOpacity,
             "nativeLodZ": Double(renderState.lodZ),
           ]
         )
+        if shouldAttributeLabelPrep {
+          pinNumericRewriteDurationMs += CACurrentMediaTime() * 1000 - rewriteStartedAt
+          pinRewriteCount += 1
+        }
         nextPinFeatureById![markerKey] = renderFeature
         nextPinMarkerKeyByFeatureId![markerKey] = markerKey
         if let featureState = pinFamilyState.transientFeatureStateById[markerKey] {
@@ -1810,29 +2466,53 @@ final class SearchMapRenderController: RCTEventEmitter {
         }
       }
 
+      // Pin interaction geometry must be queryable as soon as the desired pin exists.
+      // The reveal cover and interaction mode own tap availability; delaying this
+      // source until visual opacity settles leaves visible pins without hit targets.
       let shouldRenderPinInteraction =
-        renderState.isDesiredPresent &&
-        renderState.currentOpacity >= 0.999 &&
-        desiredPayloads.pinInteractionFeatureByMarkerKey[markerKey] != nil
-      if !reusePinInteractions, shouldRenderPinInteraction, let feature = renderState.pinInteractionFeature {
+        state.visualSourceLifecycleState != .dismissing &&
+        state.visualSourceLifecycleState != .dismissed &&
+        (renderState.isDesiredPresent || renderState.currentOpacity > 0.001)
+      if !reusePinInteractions, shouldRenderPinInteraction {
+        let feature = renderState.pinInteractionFeature ?? renderState.pinFeature
         nextPinInteractionIdsInOrder!.append(markerKey)
+        let rewriteStartedAt = shouldAttributeLabelPrep ? CACurrentMediaTime() * 1000 : 0
         nextPinInteractionFeatureById![markerKey] = Self.featureBySettingNumericProperties(
           feature,
           numericProperties: ["nativeLodZ": Double(renderState.lodZ)]
         )
+        if shouldAttributeLabelPrep {
+          pinInteractionNumericRewriteDurationMs += CACurrentMediaTime() * 1000 - rewriteStartedAt
+          pinInteractionRewriteCount += 1
+        }
         nextPinInteractionMarkerKeyByFeatureId![markerKey] = markerKey
       }
 
       if !reuseLabels {
         for labelFeature in renderState.labelFeatures {
           nextLabelIdsInOrder!.append(labelFeature.id)
-          nextLabelFeatureById![labelFeature.id] = Self.featureBySettingNumericProperties(
-            labelFeature.feature,
-            numericProperties: [
-              "nativeLabelOpacity": renderState.targetOpacity,
+          let rewriteStartedAt = shouldAttributeLabelPrep ? CACurrentMediaTime() * 1000 : 0
+          let nextLabelFeature = Self.featureBySettingNumericProperties(
+              labelFeature.feature,
+              numericProperties: [
+                "nativePresentationOpacity": state.currentPresentationOpacityValue,
+                "nativeLabelOpacity": placementPrerollOpacity,
+              ],
+            stringProperties: [
+              "labelPreference": Self.effectiveLabelPreference(
+                for: labelFeature.feature,
+                markerKey: markerKey,
+                stickyCandidateByIdentity: labelFamilyState.labelObservation.stickyCandidateByIdentity
+              ),
             ]
           )
+          nextLabelFeatureById![labelFeature.id] = nextLabelFeature
+          if shouldAttributeLabelPrep {
+            labelNumericRewriteDurationMs += CACurrentMediaTime() * 1000 - rewriteStartedAt
+            labelRewriteCount += 1
+          }
           nextLabelMarkerKeyByFeatureId![labelFeature.id] = markerKey
+          let featureStateStartedAt = shouldAttributeLabelPrep ? CACurrentMediaTime() * 1000 : 0
           var featureState = Self.retainedLabelFeatureState(
             for: labelFeature.feature,
             markerKey: markerKey,
@@ -1842,15 +2522,51 @@ final class SearchMapRenderController: RCTEventEmitter {
             featureState = Self.mergedFeatureState(featureState, with: transientFeatureState)
           }
           nextLabelFeatureStateById![labelFeature.id] = featureState
+          if shouldAttributeLabelPrep {
+            labelFeatureStateDurationMs += CACurrentMediaTime() * 1000 - featureStateStartedAt
+          }
         }
       }
+    }
+    if shouldAttributeLabelPrep {
+      self.recordNativeApply(
+        section: "label_prep.marker_traversal",
+        phase: labelPrepPhase,
+        durationMs: CACurrentMediaTime() * 1000 - markerTraversalStartedAt,
+        operationCount: orderedMarkerStates.count
+      )
+      self.recordNativeApply(
+        section: "label_prep.pin_numeric_rewrite",
+        phase: labelPrepPhase,
+        durationMs: pinNumericRewriteDurationMs,
+        operationCount: pinRewriteCount
+      )
+      self.recordNativeApply(
+        section: "label_prep.pin_interaction_numeric_rewrite",
+        phase: labelPrepPhase,
+        durationMs: pinInteractionNumericRewriteDurationMs,
+        operationCount: pinInteractionRewriteCount
+      )
+      self.recordNativeApply(
+        section: "label_prep.label_numeric_rewrite",
+        phase: labelPrepPhase,
+        durationMs: labelNumericRewriteDurationMs,
+        operationCount: labelRewriteCount
+      )
+      self.recordNativeApply(
+        section: "label_prep.label_feature_state",
+        phase: labelPrepPhase,
+        durationMs: labelFeatureStateDurationMs,
+        operationCount: labelRewriteCount
+      )
     }
     let previousPinsSourceState = pinFamilyState.sourceState
     let nextPins: ParsedFeatureCollection
     if reusePins {
       nextPins = pinFamilyState.collection
     } else {
-      let nextPinGroupIds = orderedMarkerKeys
+      let nextPinGroupIds = nextPinIdsInOrder!
+      let replaceStartedAt = shouldAttributeLabelPrep ? CACurrentMediaTime() * 1000 : 0
       try Self.replaceParsedFeatureCollection(
         &pinFamilyState.collection,
         baseSourceState: previousPinsSourceState,
@@ -1863,8 +2579,18 @@ final class SearchMapRenderController: RCTEventEmitter {
           pinFamilyState.collection.groupOrder == nextPinGroupIds
             ? dirtyPinMarkerKeys
             : Set(pinFamilyState.collection.groupOrder).union(nextPinGroupIds),
-        removedGroupIds: Set(pinFamilyState.collection.groupOrder).subtracting(nextPinGroupIds)
+        removedGroupIds: Set(pinFamilyState.collection.groupOrder).subtracting(nextPinGroupIds),
+        recordAttribution: makeReplaceAttributionRecorder("pins")
       )
+      if shouldAttributeLabelPrep {
+        self.recordNativeApply(
+          section: "label_prep.replace_collection",
+          phase: labelPrepPhase,
+          source: "pins",
+          durationMs: CACurrentMediaTime() * 1000 - replaceStartedAt,
+          operationCount: nextPinIdsInOrder!.count
+        )
+      }
       Self.setDerivedFamilyState(pinFamilyState, sourceId: state.pinSourceId, state: &state)
       nextPins = pinFamilyState.collection
     }
@@ -1876,19 +2602,27 @@ final class SearchMapRenderController: RCTEventEmitter {
       nextPinInteractions = pinInteractionFamilyState.collection
     } else {
       let nextPinInteractionGroupIds = nextPinInteractionIdsInOrder!
+      let replaceStartedAt = shouldAttributeLabelPrep ? CACurrentMediaTime() * 1000 : 0
       try Self.replaceParsedFeatureCollection(
         &pinInteractionFamilyState.collection,
         baseSourceState: previousPinInteractionsSourceState,
         idsInOrder: nextPinInteractionIdsInOrder!,
         featureById: nextPinInteractionFeatureById!,
         markerKeyByFeatureId: nextPinInteractionMarkerKeyByFeatureId!,
-        dirtyGroupIds: Set(pinInteractionFamilyState.collection.groupOrder).union(nextPinInteractionGroupIds),
-        orderChangedGroupIds:
-          pinInteractionFamilyState.collection.groupOrder == nextPinInteractionGroupIds
-            ? dirtyPinInteractionMarkerKeys
-            : Set(pinInteractionFamilyState.collection.groupOrder).union(nextPinInteractionGroupIds),
-        removedGroupIds: Set(pinInteractionFamilyState.collection.groupOrder).subtracting(nextPinInteractionGroupIds)
+        dirtyGroupIds: dirtyPinInteractionMarkerKeys,
+        orderChangedGroupIds: dirtyPinInteractionMarkerKeys,
+        removedGroupIds: Set(pinInteractionFamilyState.collection.groupOrder).subtracting(nextPinInteractionGroupIds),
+        recordAttribution: makeReplaceAttributionRecorder("pinInteractions")
       )
+      if shouldAttributeLabelPrep {
+        self.recordNativeApply(
+          section: "label_prep.replace_collection",
+          phase: labelPrepPhase,
+          source: "pinInteractions",
+          durationMs: CACurrentMediaTime() * 1000 - replaceStartedAt,
+          operationCount: nextPinInteractionIdsInOrder!.count
+        )
+      }
       Self.setDerivedFamilyState(
         pinInteractionFamilyState,
         sourceId: state.pinInteractionSourceId,
@@ -1901,9 +2635,8 @@ final class SearchMapRenderController: RCTEventEmitter {
     if reuseLabels {
       nextLabels = labelFamilyState.collection
     } else {
-      let nextLabelGroupIds = orderedMarkerStates.compactMap { markerKey, renderState in
-        renderState.labelFeatures.isEmpty ? nil : markerKey
-      }
+      let nextLabelGroupIds = nextLabelIdsInOrder!
+      let replaceStartedAt = shouldAttributeLabelPrep ? CACurrentMediaTime() * 1000 : 0
       try Self.replaceParsedFeatureCollection(
         &labelFamilyState.collection,
         baseSourceState: previousLabelsSourceState,
@@ -1916,8 +2649,18 @@ final class SearchMapRenderController: RCTEventEmitter {
           labelFamilyState.collection.groupOrder == nextLabelGroupIds
             ? dirtyLabelMarkerKeys
             : Set(labelFamilyState.collection.groupOrder).union(nextLabelGroupIds),
-        removedGroupIds: Set(labelFamilyState.collection.groupOrder).subtracting(nextLabelGroupIds)
+        removedGroupIds: Set(labelFamilyState.collection.groupOrder).subtracting(nextLabelGroupIds),
+        recordAttribution: makeReplaceAttributionRecorder("labels")
       )
+      if shouldAttributeLabelPrep {
+        self.recordNativeApply(
+          section: "label_prep.replace_collection",
+          phase: labelPrepPhase,
+          source: "labels",
+          durationMs: CACurrentMediaTime() * 1000 - replaceStartedAt,
+          operationCount: nextLabelIdsInOrder!.count
+        )
+      }
       Self.setDerivedFamilyState(labelFamilyState, sourceId: state.labelSourceId, state: &state)
       nextLabels = labelFamilyState.collection
     }
@@ -1926,18 +2669,27 @@ final class SearchMapRenderController: RCTEventEmitter {
     if reuseLabelCollisions {
       nextLabelCollisions = labelCollisionFamilyState.collection
     } else {
-      let nextLabelCollisionIdsInOrder = orderedMarkerStates.compactMap { markerKey, renderState in
-        renderState.labelCollisionFeature == nil ? nil : markerKey
-      }
+      var nextLabelCollisionIdsInOrder: [String] = []
       var nextLabelCollisionFeatureById: [String: Feature] = [:]
       var nextLabelCollisionMarkerKeyByFeatureId: [String: String] = [:]
+      let collisionBuildStartedAt = shouldAttributeLabelPrep ? CACurrentMediaTime() * 1000 : 0
       for (markerKey, renderState) in orderedMarkerStates {
         guard let feature = renderState.labelCollisionFeature else {
           continue
         }
+        nextLabelCollisionIdsInOrder.append(markerKey)
         nextLabelCollisionFeatureById[markerKey] = feature
         nextLabelCollisionMarkerKeyByFeatureId[markerKey] = markerKey
       }
+      if shouldAttributeLabelPrep {
+        self.recordNativeApply(
+          section: "label_prep.collision_build",
+          phase: labelPrepPhase,
+          durationMs: CACurrentMediaTime() * 1000 - collisionBuildStartedAt,
+          operationCount: nextLabelCollisionIdsInOrder.count
+        )
+      }
+      let replaceStartedAt = shouldAttributeLabelPrep ? CACurrentMediaTime() * 1000 : 0
       try Self.replaceParsedFeatureCollection(
         &labelCollisionFamilyState.collection,
         baseSourceState: previousLabelCollisionSourceState,
@@ -1949,8 +2701,18 @@ final class SearchMapRenderController: RCTEventEmitter {
           labelCollisionFamilyState.collection.groupOrder == nextLabelCollisionIdsInOrder
             ? dirtyLabelCollisionMarkerKeys
             : Set(labelCollisionFamilyState.collection.groupOrder).union(nextLabelCollisionIdsInOrder),
-        removedGroupIds: Set(labelCollisionFamilyState.collection.groupOrder).subtracting(nextLabelCollisionIdsInOrder)
+        removedGroupIds: Set(labelCollisionFamilyState.collection.groupOrder).subtracting(nextLabelCollisionIdsInOrder),
+        recordAttribution: makeReplaceAttributionRecorder("labelCollisions")
       )
+      if shouldAttributeLabelPrep {
+        self.recordNativeApply(
+          section: "label_prep.replace_collection",
+          phase: labelPrepPhase,
+          source: "labelCollisions",
+          durationMs: CACurrentMediaTime() * 1000 - replaceStartedAt,
+          operationCount: nextLabelCollisionIdsInOrder.count
+        )
+      }
       Self.setDerivedFamilyState(
         labelCollisionFamilyState,
         sourceId: state.labelCollisionSourceId,
@@ -2033,11 +2795,38 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
   }
 
+  private static func sourceFeatureOpacityForPlacementPreroll(
+    renderState: MarkerFamilyRenderState,
+    state: InstanceState
+  ) -> Double {
+    if state.visualSourceLifecycleState == .preparingReveal &&
+      renderState.isDesiredPresent &&
+      renderState.targetOpacity >= 0.999 &&
+      renderState.currentOpacity <= 0.001 {
+      return 1
+    }
+    return renderState.currentOpacity
+  }
+
+  private static func sourceFeatureOpacityForPlacementPreroll(
+    desiredFeatureIsPresent: Bool,
+    transition: LiveDotTransition?,
+    currentOpacity: Double,
+    state: InstanceState
+  ) -> Double {
+    if state.visualSourceLifecycleState == .preparingReveal &&
+      desiredFeatureIsPresent &&
+      transition?.targetOpacity == 1 &&
+      currentOpacity <= 0.001 {
+      return 1
+    }
+    return currentOpacity
+  }
+
   private func prepareDerivedLabelInteractionOutputPlans(
     state: inout InstanceState
   ) throws -> [ParsedCollectionApplyPlan] {
     let pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
-    let labelFamilyState = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
     let orderedMarkerStates = Self.orderedMarkerRenderStates(pinFamilyState.markerRenderStateByMarkerKey)
     let settledVisibleLabelFeatureIds =
       Self.derivedFamilyState(sourceId: state.labelSourceId, state: state).settledVisibleFeatureIds
@@ -2073,11 +2862,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       for (markerKey, renderState) in orderedMarkerStates {
         for labelFeature in renderState.labelFeatures where settledVisibleLabelFeatureIds.contains(labelFeature.id) {
           nextLabelInteractionFeatureById[labelFeature.id] = labelFeature.feature
-          nextLabelInteractionFeatureStateById[labelFeature.id] = Self.retainedLabelFeatureState(
-            for: labelFeature.feature,
-            markerKey: markerKey,
-            stickyCandidateByIdentity: labelFamilyState.labelObservation.stickyCandidateByIdentity
-          )
+          nextLabelInteractionFeatureStateById[labelFeature.id] = [:]
           nextLabelInteractionMarkerKeyByFeatureId[labelFeature.id] = markerKey
         }
       }
@@ -2123,7 +2908,18 @@ final class SearchMapRenderController: RCTEventEmitter {
     allowNewTransitions: Bool
   ) -> Bool {
     allowNewTransitions &&
-      state.lastPresentationBatchPhase == "live" &&
+      (state.visualSourceLifecycleState == .visible ||
+        state.visualSourceLifecycleState == .preparingReveal ||
+        state.visualSourceLifecycleState == .revealing) &&
+      state.lastDismissRequestKey == nil
+  }
+
+  private static func shouldAllowObservationDrivenMarkerTransitions(
+    _ state: InstanceState
+  ) -> Bool {
+    (state.visualSourceLifecycleState == .visible ||
+      state.visualSourceLifecycleState == .preparingReveal ||
+      state.visualSourceLifecycleState == .revealing) &&
       state.lastDismissRequestKey == nil
   }
 
@@ -2132,6 +2928,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     allowNewTransitions: Bool = true,
     allowDuringRecovery: Bool = false
   ) throws {
+    let attributionStartedAt = CACurrentMediaTime() * 1000
     guard var state = instances[instanceId] else {
       return
     }
@@ -2165,6 +2962,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     if previousDesiredPinSnapshot.inputRevision == desiredPinSnapshotInputRevision {
       desiredPinSnapshot = previousDesiredPinSnapshot
     } else {
+      let snapshotStartedAt = CACurrentMediaTime() * 1000
       let nextDesiredPinSnapshot = Self.makeDesiredPinSnapshotState(
         desiredPins: desiredPins,
         desiredPinInteractions: desiredPinInteractions,
@@ -2175,22 +2973,55 @@ final class SearchMapRenderController: RCTEventEmitter {
         previousSnapshot: previousDesiredPinSnapshot
       )
       desiredPinSnapshot = nextDesiredPinSnapshot
+      self.recordNativeApply(
+        section: "reconcile.make_desired_pin_snapshot",
+        phase: state.lastPresentationBatchPhase,
+        durationMs: CACurrentMediaTime() * 1000 - snapshotStartedAt,
+        operationCount: desiredPins.idsInOrder.count
+      )
     }
+    let markerPayloadStartedAt = CACurrentMediaTime() * 1000
     let desiredMarkerFamilyPayloads = Self.makeDesiredMarkerFamilyPayloads(
       desiredPins: desiredPins,
       desiredPinInteractions: desiredPinInteractions,
       desiredLabels: desiredLabels,
       desiredLabelCollisions: desiredLabelCollisions
     )
+    self.recordNativeApply(
+      section: "reconcile.make_marker_family_payloads",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - markerPayloadStartedAt,
+      operationCount: 4
+    )
+    let dirtyStartedAt = CACurrentMediaTime() * 1000
     let desiredPinDirtyState = Self.makeDesiredPinSnapshotDirtyState(
       previousSnapshot: previousDesiredPinSnapshot,
       nextSnapshot: desiredPinSnapshot
+    )
+    self.recordNativeApply(
+      section: "reconcile.make_pin_dirty_state",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - dirtyStartedAt
     )
     let nowMs = Self.nowMs()
     let shouldAnimateIncrementalTransitions = Self.allowsIncrementalMarkerTransitions(
       state,
       allowNewTransitions: allowNewTransitions
     )
+    if !shouldAnimateIncrementalTransitions &&
+      previousDesiredPinSnapshot.inputRevision != desiredPinSnapshot.inputRevision
+    {
+      let previousPinIds = Set(previousDesiredPinSnapshot.pinIdsInOrder)
+      let nextPinIds = Set(desiredPinSnapshot.pinIdsInOrder)
+      let enteringPins = nextPinIds.subtracting(previousPinIds).count
+      let exitingPins = previousPinIds.subtracting(nextPinIds).count
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "lod_transition_admission_probe admitted=false phase=\(state.lastPresentationBatchPhase) dismissRequest=\(state.lastDismissRequestKey ?? "nil") allowNewTransitions=\(allowNewTransitions) previousPins=\(previousDesiredPinSnapshot.pinIdsInOrder.count) nextPins=\(desiredPinSnapshot.pinIdsInOrder.count) enteringPins=\(enteringPins) exitingPins=\(exitingPins) livePinTransitions=\(Self.derivedFamilyState(sourceId: state.pinSourceId, state: state).livePinTransitionsByMarkerKey.count)"
+      )
+    }
+    let pinTransitionsStartedAt = CACurrentMediaTime() * 1000
     updateLivePinTransitions(
       state: &state,
       previousPinSnapshot: previousDesiredPinSnapshot,
@@ -2199,11 +3030,22 @@ final class SearchMapRenderController: RCTEventEmitter {
       nowMs: nowMs,
       allowNewTransitions: shouldAnimateIncrementalTransitions
     )
+    self.recordNativeApply(
+      section: "reconcile.update_live_pin_transitions",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - pinTransitionsStartedAt
+    )
+    let dotTransitionsStartedAt = CACurrentMediaTime() * 1000
     updateLiveDotTransitions(
       state: &state,
       desiredDots: desiredDots,
       nowMs: nowMs,
       allowNewTransitions: shouldAnimateIncrementalTransitions
+    )
+    self.recordNativeApply(
+      section: "reconcile.update_live_dot_transitions",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - dotTransitionsStartedAt
     )
     guard let mapboxMap = try readyMapboxMap(
       for: state.mapTag,
@@ -2223,6 +3065,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       instances[instanceId] = state
       return
     }
+    let pinLabelStartedAt = CACurrentMediaTime() * 1000
     let preparedPinAndLabelOutput = try prepareDerivedPinAndLabelOutput(
       desiredPinSnapshot: desiredPinSnapshot,
       dirtyState: desiredPinDirtyState,
@@ -2230,18 +3073,43 @@ final class SearchMapRenderController: RCTEventEmitter {
       nowMs: nowMs,
       state: &state
     )
+    self.recordNativeApply(
+      section: "reconcile.prepare_pin_label_output",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - pinLabelStartedAt
+    )
+    let dotOutputStartedAt = CACurrentMediaTime() * 1000
     let preparedDotOutput = try prepareDerivedDotOutput(
       desiredDots: desiredDots,
       desiredDotInteractions: desiredDotInteractions,
       nowMs: nowMs,
       state: &state
     )
+    self.recordNativeApply(
+      section: "reconcile.prepare_dot_output",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - dotOutputStartedAt
+    )
+    let labelInteractionStartedAt = CACurrentMediaTime() * 1000
     let labelInteractionPlans = try prepareDerivedLabelInteractionOutputPlans(state: &state)
+    self.recordNativeApply(
+      section: "reconcile.prepare_label_interactions",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - labelInteractionStartedAt,
+      operationCount: labelInteractionPlans.count
+    )
+    let batchStartedAt = CACurrentMediaTime() * 1000
     let mutationSummaryBySourceId = try applyParsedCollectionBatch(
       instanceId: instanceId,
       plans: preparedPinAndLabelOutput.plans + preparedDotOutput.plans + labelInteractionPlans,
       state: &state,
       mapboxMap: mapboxMap
+    )
+    self.recordNativeApply(
+      section: "reconcile.apply_parsed_batch",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - batchStartedAt,
+      operationCount: preparedPinAndLabelOutput.plans.count + preparedDotOutput.plans.count + labelInteractionPlans.count
     )
     if state.lastEnterRequestKey != nil && state.lastPresentationBatchPhase != "live" {
       let pinMutationSummary = mutationSummaryBySourceId[state.pinSourceId] ?? MutationSummary(
@@ -2271,16 +3139,28 @@ final class SearchMapRenderController: RCTEventEmitter {
           "reveal_apply_result frame=\(state.activeFrameGenerationId ?? "nil") phase=\(state.lastPresentationBatchPhase) renderPhase=\(state.currentPresentationRenderPhase) pinAdd=\(pinMutationSummary.addCount) pinUpdate=\(pinMutationSummary.updateCount) pinRemove=\(pinMutationSummary.removeCount) dotAdd=\(dotMutationSummary.addCount) dotUpdate=\(dotMutationSummary.updateCount) dotRemove=\(dotMutationSummary.removeCount) labelAdd=\(labelMutationSummary.addCount) labelUpdate=\(labelMutationSummary.updateCount) labelRemove=\(labelMutationSummary.removeCount) \(Self.phaseSummary(for: state))"
       )
     }
+    let finalizePinLabelStartedAt = CACurrentMediaTime() * 1000
     finalizePreparedPinAndLabelOutput(
       instanceId: instanceId,
       prepared: preparedPinAndLabelOutput,
       mutationSummaryBySourceId: mutationSummaryBySourceId,
       state: &state
     )
+    self.recordNativeApply(
+      section: "reconcile.finalize_pin_label_output",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - finalizePinLabelStartedAt
+    )
+    let finalizeDotStartedAt = CACurrentMediaTime() * 1000
     finalizePreparedDotOutput(
       prepared: preparedDotOutput,
       mutationSummaryBySourceId: mutationSummaryBySourceId,
       state: &state
+    )
+    self.recordNativeApply(
+      section: "reconcile.finalize_dot_output",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - finalizeDotStartedAt
     )
     guard !Self.isSourceRecoveryActive(state) else {
       cancelLivePinTransitionAnimation(instanceId: instanceId)
@@ -2295,7 +3175,18 @@ final class SearchMapRenderController: RCTEventEmitter {
     Self.setDerivedFamilyState(latestDotFamilyState, sourceId: state.dotSourceId, state: &state)
     maybeElectMountedHiddenExecutionBatch(instanceId: instanceId, state: &state)
     instances[instanceId] = state
+    let animationStartedAt = CACurrentMediaTime() * 1000
     updateLivePinTransitionAnimation(instanceId: instanceId, state: state)
+    self.recordNativeApply(
+      section: "reconcile.update_live_pin_animation",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - animationStartedAt
+    )
+    self.recordNativeApply(
+      section: "reconcile.total",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - attributionStartedAt
+    )
   }
 
   private func prepareDerivedDotOutput(
@@ -2334,6 +3225,12 @@ final class SearchMapRenderController: RCTEventEmitter {
         let desiredDotFeature = desiredDotFeatureByMarkerKey[markerKey]
         let transitionDotFeature = transition?.dotFeature
         let dotOpacity = transition.map { Self.liveDotTransitionOpacity($0, atMs: nowMs) } ?? 1
+        let placementPrerollOpacity = Self.sourceFeatureOpacityForPlacementPreroll(
+          desiredFeatureIsPresent: desiredDotFeature != nil,
+          transition: transition,
+          currentOpacity: dotOpacity,
+          state: state
+        )
         let shouldRenderDot =
           desiredDotFeature != nil ||
           (transitionDotFeature != nil && dotOpacity > 0.001)
@@ -2347,7 +3244,8 @@ final class SearchMapRenderController: RCTEventEmitter {
           let renderFeature = Self.featureBySettingNumericProperties(
             feature,
             numericProperties: [
-              "nativeDotOpacity": shouldSeedHidden ? 0 : 1,
+              "nativePresentationOpacity": state.currentPresentationOpacityValue,
+              "nativeDotOpacity": shouldSeedHidden ? placementPrerollOpacity : 1,
             ]
           )
           nextDotFeatureById[markerKey] = renderFeature
@@ -2587,11 +3485,9 @@ final class SearchMapRenderController: RCTEventEmitter {
     let pinInteractionMarkerKeys =
       Set(previousSnapshot.pinInteractionFeatureRevisionByMarkerKey.keys)
       .union(nextSnapshot.pinInteractionFeatureRevisionByMarkerKey.keys)
-      .union(dirtyState.pinMarkerKeys)
     for markerKey in pinInteractionMarkerKeys {
       if
-        previousSnapshot.pinInteractionFeatureRevisionByMarkerKey[markerKey] != nextSnapshot.pinInteractionFeatureRevisionByMarkerKey[markerKey] ||
-        previousSnapshot.pinLodZByMarkerKey[markerKey] != nextSnapshot.pinLodZByMarkerKey[markerKey]
+        previousSnapshot.pinInteractionFeatureRevisionByMarkerKey[markerKey] != nextSnapshot.pinInteractionFeatureRevisionByMarkerKey[markerKey]
       {
         dirtyState.pinInteractionMarkerKeys.insert(markerKey)
       }
@@ -2670,7 +3566,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     Self.fnv1a64Append(&hash, string: desiredLabels.sourceRevision)
     Self.fnv1a64Append(&hash, string: "labelCollisions")
     Self.fnv1a64Append(&hash, string: desiredLabelCollisions.sourceRevision)
-    Self.fnv1a64Append(&hash, string: "stickyRevision")
+    Self.fnv1a64Append(&hash, string: "labelSticky")
     Self.fnv1a64Append(&hash, string: String(stickyRevision))
     return Self.finishHashedRevision(hash: hash, count: 5)
   }
@@ -2708,7 +3604,11 @@ final class SearchMapRenderController: RCTEventEmitter {
     state.lastEnterStartToken = revealStartToken
     state.enterLane.entering = mountedHiddenExecutionBatch
     state.currentPresentationRenderPhase = "entering"
+    state.visualSourceLifecycleState = .revealing
+    restartLiveEnterTransitionsForRevealStart(instanceId: instanceId, state: &state)
     instances[instanceId] = state
+    try applyLivePinTransitionFeatureStates(for: instanceId)
+    state = instances[instanceId] ?? state
     try animatePresentationOpacity(
       to: 1,
       for: &state,
@@ -2733,8 +3633,17 @@ final class SearchMapRenderController: RCTEventEmitter {
       "requestKey": requestKey,
       "frameGenerationId": state.enterLane.entering?.generationId as Any,
       "executionBatchId": state.enterLane.entering?.batchId as Any,
+      "pinCount": state.lastPinCount,
+      "dotCount": state.lastDotCount,
+      "labelCount": state.lastLabelCount,
       "startedAtMs": Self.nowMs(),
     ])
+    if state.lastPinCount + state.lastDotCount + state.lastLabelCount == 0 {
+      // Empty reveal frames have no rendered marker work to wait on. Settle immediately
+      // before later presentation-only frame churn can replace the active generation.
+      settleEnterAfterRenderedFrame(instanceId: instanceId, requestKey: requestKey)
+      return
+    }
     let workItem = DispatchWorkItem { [weak self] in
       guard let self else { return }
       self.enterSettleWorkItems[instanceId] = nil
@@ -2792,14 +3701,18 @@ final class SearchMapRenderController: RCTEventEmitter {
       message:
         "execution_batch_mounted_hidden phase=\(state.lastPresentationBatchPhase) frame=\(state.activeFrameGenerationId ?? "nil") \(Self.phaseSummary(for: state))"
     )
-    emit([
-      "type": "presentation_execution_batch_mounted_hidden",
-      "instanceId": instanceId,
-      "requestKey": executionBatch.requestKey,
-      "frameGenerationId": executionBatch.generationId,
-      "executionBatchId": executionBatch.batchId,
-      "readyAtMs": Self.nowMs(),
-    ])
+    startAwaitingLivePinTransitions(
+      instanceId: instanceId,
+      dataId: nil,
+      reason: "mounted_hidden",
+      state: &state
+    )
+    startAwaitingLiveDotTransitions(
+      instanceId: instanceId,
+      dataId: nil,
+      reason: "mounted_hidden",
+      state: &state
+    )
     maybeEmitExecutionBatchArmed(instanceId: instanceId, state: &state)
   }
 
@@ -2834,7 +3747,26 @@ final class SearchMapRenderController: RCTEventEmitter {
     guard state.blockedEnterStartRequestKey == nil else {
       return
     }
+    guard !hasPendingCommitFence(capturePendingVisualSourceCommitFence(state: state)) else {
+      return
+    }
     guard state.activeFrameGenerationId == executionBatch.generationId else {
+      return
+    }
+    guard Self.isActiveFrameSourceReady(state: state) else {
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "enter_armed_blocked_source_not_ready phase=\(state.lastPresentationBatchPhase) frame=\(state.activeFrameGenerationId ?? "nil") sourceReadyFrame=\(state.sourceReadyFrameGenerationId ?? "nil") \(Self.phaseSummary(for: state))"
+      )
+      return
+    }
+    guard Self.isActiveFrameLabelPlacementReady(state: state) else {
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "enter_armed_blocked_label_placement phase=\(state.lastPresentationBatchPhase) frame=\(state.activeFrameGenerationId ?? "nil") \(Self.labelPlacementReadinessSummary(state: state))"
+      )
       return
     }
     state.enterLane.armed = executionBatch
@@ -2844,6 +3776,14 @@ final class SearchMapRenderController: RCTEventEmitter {
       message:
         "enter_armed phase=\(state.lastPresentationBatchPhase) frame=\(state.activeFrameGenerationId ?? "nil") \(Self.phaseSummary(for: state))"
     )
+    emit([
+      "type": "presentation_execution_batch_mounted_hidden",
+      "instanceId": instanceId,
+      "requestKey": executionBatch.requestKey,
+      "frameGenerationId": executionBatch.generationId,
+      "executionBatchId": executionBatch.batchId,
+      "readyAtMs": Self.nowMs(),
+    ])
     emit([
       "type": "presentation_enter_armed",
       "instanceId": instanceId,
@@ -2859,27 +3799,84 @@ final class SearchMapRenderController: RCTEventEmitter {
     state: inout InstanceState
   ) {
     guard let requestKey = state.enterLane.requestedRequestKey else {
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "enter_mount_not_elected reason=missing_requested_request phase=\(state.lastPresentationBatchPhase) frame=\(state.activeFrameGenerationId ?? "nil")"
+      )
       return
     }
     guard let presentationStateJSON = state.lastPresentationStateJSON else {
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "enter_mount_not_elected reason=missing_presentation_state request=\(requestKey) phase=\(state.lastPresentationBatchPhase) frame=\(state.activeFrameGenerationId ?? "nil")"
+      )
       return
     }
     guard Self.isEnterStatusArmable(Self.readEnterStatus(fromJSON: presentationStateJSON)) else {
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "enter_mount_not_elected reason=enter_status_not_armable request=\(requestKey) status=\(Self.readEnterStatus(fromJSON: presentationStateJSON) ?? "nil") phase=\(state.lastPresentationBatchPhase) frame=\(state.activeFrameGenerationId ?? "nil")"
+      )
       return
     }
     guard state.lastEnterRequestKey == requestKey else {
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "enter_mount_not_elected reason=request_mismatch requested=\(requestKey) lastEnter=\(state.lastEnterRequestKey ?? "nil") phase=\(state.lastPresentationBatchPhase) frame=\(state.activeFrameGenerationId ?? "nil")"
+      )
       return
     }
     guard state.lastDismissRequestKey == nil else {
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "enter_mount_not_elected reason=dismiss_active request=\(requestKey) dismiss=\(state.lastDismissRequestKey ?? "nil") phase=\(state.lastPresentationBatchPhase) frame=\(state.activeFrameGenerationId ?? "nil")"
+      )
       return
     }
     guard state.lastEnterStartedRequestKey != requestKey else {
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "enter_mount_not_elected reason=enter_already_started request=\(requestKey) phase=\(state.lastPresentationBatchPhase) frame=\(state.activeFrameGenerationId ?? "nil")"
+      )
       return
     }
     guard let activeExecutionBatchId = state.activeExecutionBatchId else {
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "enter_mount_not_elected reason=missing_execution_batch request=\(requestKey) phase=\(state.lastPresentationBatchPhase) frame=\(state.activeFrameGenerationId ?? "nil")"
+      )
       return
     }
     guard let activeFrameGenerationId = state.activeFrameGenerationId else {
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "enter_mount_not_elected reason=missing_frame_generation request=\(requestKey) phase=\(state.lastPresentationBatchPhase)"
+      )
+      return
+    }
+    guard Self.isActiveFrameSourceReady(state: state) else {
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "enter_mount_blocked_source_not_ready phase=\(state.lastPresentationBatchPhase) frame=\(state.activeFrameGenerationId ?? "nil") sourceReadyFrame=\(state.sourceReadyFrameGenerationId ?? "nil") \(Self.phaseSummary(for: state))"
+      )
+      return
+    }
+    guard Self.isActiveFrameLabelPlacementReady(state: state) else {
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "enter_mount_blocked_label_placement phase=\(state.lastPresentationBatchPhase) frame=\(state.activeFrameGenerationId ?? "nil") \(Self.labelPlacementReadinessSummary(state: state))"
+      )
+      retryLabelObservationRefreshIfPlacementPending(instanceId: instanceId, delayMs: 0)
       return
     }
     if !state.allowEmptyEnter, state.lastPinCount + state.lastDotCount + state.lastLabelCount == 0 {
@@ -2932,6 +3929,8 @@ final class SearchMapRenderController: RCTEventEmitter {
     state.blockedPresentationCommitFenceStartedAtMs = nil
     state.blockedPresentationCommitFenceBySourceId.removeAll()
     state.currentPresentationRenderPhase = "live"
+    state.visualSourceLifecycleState = .visible
+    state.keepSourcesHiddenUntilEnter = false
     instances[instanceId] = state
     emitVisualDiag(
       instanceId: instanceId,
@@ -2944,8 +3943,12 @@ final class SearchMapRenderController: RCTEventEmitter {
       "requestKey": requestKey,
       "frameGenerationId": state.enterLane.liveBaseline?.generationId as Any,
       "executionBatchId": state.enterLane.liveBaseline?.batchId as Any,
+      "pinCount": state.lastPinCount,
+      "dotCount": state.lastDotCount,
+      "labelCount": state.lastLabelCount,
       "settledAtMs": Self.nowMs(),
     ])
+    scheduleLabelObservationRefresh(instanceId: instanceId, delayMs: 0)
   }
 
   private func settleDismissAfterRenderedFrame(instanceId: String, requestKey: String) {
@@ -2960,36 +3963,28 @@ final class SearchMapRenderController: RCTEventEmitter {
     state.blockedPresentationSettleKind = nil
     state.blockedPresentationCommitFenceStartedAtMs = nil
     state.blockedPresentationCommitFenceBySourceId.removeAll()
-    state.currentPresentationRenderPhase = "idle"
-    state.keepSourcesHiddenUntilEnter = true
-    state.currentPresentationOpacityTarget = 0
-    state.currentPresentationOpacityValue = 0
-    do {
-      try clearResidentSources(for: state)
-    } catch {
-      emit([
-        "type": "error",
-        "instanceId": instanceId,
-        "message": "dismiss_clear_sources_failed: \(error.localizedDescription)",
-      ])
+    if state.visualSourceLifecycleState != .dismissed {
+      completeDismissVisualLifecycle(
+        instanceId: instanceId,
+        state: &state,
+        requestKey: requestKey,
+        reason: "dismiss_settled"
+      )
+    } else {
+      state.currentPresentationRenderPhase = "idle"
+      state.keepSourcesHiddenUntilEnter = true
+      state.currentPresentationOpacityTarget = 0
+      state.currentPresentationOpacityValue = 0
     }
-    state.pendingSourceCommitDataIdsBySourceId = [:]
-    state.derivedFamilyStates = Self.makeInitialDerivedFamilyStates(
-      pinSourceId: state.pinSourceId,
-      pinInteractionSourceId: state.pinInteractionSourceId,
-      dotSourceId: state.dotSourceId,
-      dotInteractionSourceId: state.dotInteractionSourceId,
-      labelSourceId: state.labelSourceId,
-      labelInteractionSourceId: state.labelInteractionSourceId,
-      labelCollisionSourceId: state.labelCollisionSourceId
-    )
-    cancelLivePinTransitionAnimation(instanceId: instanceId)
     instances[instanceId] = state
     emit([
       "type": "presentation_exit_settled",
       "instanceId": instanceId,
       "requestKey": requestKey,
       "frameGenerationId": state.activeFrameGenerationId as Any,
+      "pinCount": state.lastPinCount,
+      "dotCount": state.lastDotCount,
+      "labelCount": state.lastLabelCount,
       "settledAtMs": Self.nowMs(),
     ])
   }
@@ -3012,6 +4007,837 @@ final class SearchMapRenderController: RCTEventEmitter {
         )
       }
     }
+  }
+
+  private func clearDismissedResidentSourceState(
+    instanceId: String,
+    state: inout InstanceState,
+    reason: String
+  ) throws {
+    try clearResidentSources(for: state)
+    state.pendingSourceCommitDataIdsBySourceId.removeAll(keepingCapacity: true)
+    state.blockedEnterStartCommitFenceBySourceId.removeAll(keepingCapacity: true)
+    state.blockedPresentationCommitFenceBySourceId.removeAll(keepingCapacity: true)
+    state.derivedFamilyStates = Self.makeInitialDerivedFamilyStates(
+      pinSourceId: state.pinSourceId,
+      pinInteractionSourceId: state.pinInteractionSourceId,
+      dotSourceId: state.dotSourceId,
+      dotInteractionSourceId: state.dotInteractionSourceId,
+      labelSourceId: state.labelSourceId,
+      labelInteractionSourceId: state.labelInteractionSourceId,
+      labelCollisionSourceId: state.labelCollisionSourceId
+    )
+    emitVisualDiag(
+      instanceId: instanceId,
+      message:
+        "hidden_dismissed_source_payload_dropped reason=\(reason) request=\(state.lastDismissRequestKey ?? "nil") frame=\(state.activeFrameGenerationId ?? "nil")"
+    )
+  }
+
+  private func clearInteractionSourcesForDismissStart(
+    instanceId: String,
+    state: inout InstanceState,
+    reason: String
+  ) {
+    emitDismissVisualLifecycleProbe(
+      instanceId: instanceId,
+      state: state,
+      stage: "before_clear_interactions",
+      reason: reason
+    )
+    labelObservationRefreshWorkItems[instanceId]?.cancel()
+    labelObservationRefreshWorkItems[instanceId] = nil
+
+    var labelFamilyState = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
+    labelFamilyState.settledVisibleFeatureIds.removeAll()
+    labelFamilyState.labelObservation.lastVisibleLabelFeatureIds = []
+    labelFamilyState.labelObservation.lastLayerRenderedFeatureCount = 0
+    labelFamilyState.labelObservation.lastEffectiveRenderedFeatureCount = 0
+    labelFamilyState.labelObservation.isRefreshInFlight = false
+    labelFamilyState.labelObservation.queuedRefreshDelayMs = nil
+    Self.setDerivedFamilyState(labelFamilyState, sourceId: state.labelSourceId, state: &state)
+
+    let interactionClearStartedAt = CACurrentMediaTime() * 1000
+    do {
+      try clearMountedInteractionSources(
+        instanceId: instanceId,
+        state: &state
+      )
+      recordNativeApply(
+        section: "presentation.dismiss_start_clear_interactions",
+        phase: state.lastPresentationBatchPhase,
+        durationMs: CACurrentMediaTime() * 1000 - interactionClearStartedAt,
+        operationCount: 3
+      )
+    } catch {
+      emit([
+        "type": "error",
+        "instanceId": instanceId,
+        "message": "dismiss_clear_interactions_failed reason=\(reason): \(error.localizedDescription)",
+      ])
+    }
+    emitDismissVisualLifecycleProbe(
+      instanceId: instanceId,
+      state: state,
+      stage: "after_clear_interactions",
+      reason: reason
+    )
+  }
+
+  private func beginRevealVisualLifecycle(
+    instanceId: String,
+    state: inout InstanceState,
+    reason: String
+  ) {
+    deferredDismissSourceCleanupWorkItems[instanceId]?.cancel()
+    deferredDismissSourceCleanupWorkItems[instanceId] = nil
+    resetLiveMarkerEnterState(
+      instanceId: instanceId,
+      state: &state,
+      reason: reason
+    )
+    if state.labelPlacementLayersFadeOnly {
+      let labelPlacementStartedAt = CACurrentMediaTime() * 1000
+      setLabelPlacementLayersFadeOnly(
+        false,
+        for: state,
+        instanceId: instanceId,
+        reason: "reveal_preroll"
+      )
+      state.labelPlacementLayersFadeOnly = false
+      recordNativeApply(
+        section: "presentation.reveal_preroll_label_placement_layers",
+        phase: state.lastPresentationBatchPhase,
+        durationMs: CACurrentMediaTime() * 1000 - labelPlacementStartedAt,
+        operationCount: labelPlacementLayerIds.count
+      )
+    }
+    if state.dotPlacementLayersFadeOnly {
+      let dotPlacementStartedAt = CACurrentMediaTime() * 1000
+      setDotPlacementLayersFadeOnly(
+        false,
+        for: state,
+        instanceId: instanceId,
+        reason: "reveal_preroll"
+      )
+      state.dotPlacementLayersFadeOnly = false
+      recordNativeApply(
+        section: "presentation.reveal_preroll_dot_placement_layers",
+        phase: state.lastPresentationBatchPhase,
+        durationMs: CACurrentMediaTime() * 1000 - dotPlacementStartedAt,
+        operationCount: dotPlacementLayerIds.count
+      )
+    }
+    let collisionRestoreStartedAt = CACurrentMediaTime() * 1000
+    setLabelCollisionObstacleLayersVisible(
+      true,
+      for: state,
+      instanceId: instanceId,
+      reason: "reveal_preroll"
+    )
+    state.labelCollisionObstacleLayersVisible = true
+    recordNativeApply(
+      section: "presentation.reveal_preroll_collision_restore",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - collisionRestoreStartedAt,
+      operationCount: labelCollisionObstacleLayerIds.count
+    )
+    state.visualSourceLifecycleState = .preparingReveal
+    state.keepSourcesHiddenUntilEnter = false
+    state.currentPresentationRenderPhase = "reveal_preroll"
+    state.currentPresentationOpacityTarget = revealPrerollPlacementOpacity
+    state.currentPresentationOpacityValue = revealPrerollPlacementOpacity
+  }
+
+  private func beginDismissVisualLifecycle(
+    instanceId: String,
+    state: inout InstanceState
+  ) {
+    emitDismissVisualLifecycleProbe(
+      instanceId: instanceId,
+      state: state,
+      stage: "dismiss_start_entry",
+      reason: "dismiss_start"
+    )
+    let frozenLabelCount = freezeVisibleDismissLabelSourceForFade(
+      instanceId: instanceId,
+      state: state,
+      reason: "dismiss_start"
+    )
+    emitDismissVisualLifecycleProbe(
+      instanceId: instanceId,
+      state: state,
+      stage: "after_label_freeze",
+      reason: "dismiss_start",
+      extra: "frozenLabelCount=\(frozenLabelCount)"
+    )
+    if frozenLabelCount > 0 && !state.labelPlacementLayersFadeOnly {
+      let labelPlacementStartedAt = CACurrentMediaTime() * 1000
+      setLabelPlacementLayersFadeOnly(
+        true,
+        for: state,
+        instanceId: instanceId,
+        reason: "dismiss_start"
+      )
+      state.labelPlacementLayersFadeOnly = true
+      recordNativeApply(
+        section: "presentation.dismiss_start_label_fade_only_layers",
+        phase: state.lastPresentationBatchPhase,
+        durationMs: CACurrentMediaTime() * 1000 - labelPlacementStartedAt,
+        operationCount: labelPlacementLayerIds.count
+      )
+    }
+    let collisionLayerStartedAt = CACurrentMediaTime() * 1000
+    setLabelCollisionObstacleLayersVisible(
+      false,
+      for: state,
+      instanceId: instanceId,
+      reason: "dismiss_start"
+    )
+    state.labelCollisionObstacleLayersVisible = false
+    recordNativeApply(
+      section: "presentation.dismiss_start_collision_obstacle_layers",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - collisionLayerStartedAt,
+      operationCount: labelCollisionObstacleLayerIds.count
+    )
+    clearInteractionSourcesForDismissStart(
+      instanceId: instanceId,
+      state: &state,
+      reason: "dismiss_start"
+    )
+    if !state.dotPlacementLayersFadeOnly {
+      let dotPlacementStartedAt = CACurrentMediaTime() * 1000
+      setDotPlacementLayersFadeOnly(
+        true,
+        for: state,
+        instanceId: instanceId,
+        reason: "dismiss_start"
+      )
+      state.dotPlacementLayersFadeOnly = true
+      recordNativeApply(
+        section: "presentation.dismiss_start_dot_fade_only_layers",
+        phase: state.lastPresentationBatchPhase,
+        durationMs: CACurrentMediaTime() * 1000 - dotPlacementStartedAt,
+        operationCount: dotPlacementLayerIds.count
+      )
+    }
+    state.keepSourcesHiddenUntilEnter = true
+    state.currentPresentationRenderPhase = "exiting"
+    state.visualSourceLifecycleState = .dismissing
+    state.currentPresentationOpacityTarget = 0
+  }
+
+  private func emitDismissVisualLifecycleProbe(
+    instanceId: String,
+    state: InstanceState,
+    stage: String,
+    reason: String,
+    extra: String = ""
+  ) {
+    let pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
+    let pinInteractionFamilyState = Self.derivedFamilyState(
+      sourceId: state.pinInteractionSourceId,
+      state: state
+    )
+    let dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
+    let dotInteractionFamilyState = Self.derivedFamilyState(
+      sourceId: state.dotInteractionSourceId,
+      state: state
+    )
+    let labelFamilyState = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
+    let labelInteractionFamilyState = Self.derivedFamilyState(
+      sourceId: state.labelInteractionSourceId,
+      state: state
+    )
+    let labelCollisionFamilyState = Self.derivedFamilyState(
+      sourceId: state.labelCollisionSourceId,
+      state: state
+    )
+    let visibleDismissLabelCount = Self.visibleDismissLabelFeatureIds(labelFamilyState).count
+    emitVisualDiag(
+      instanceId: instanceId,
+      message:
+        "dismiss_visual_lifecycle_probe stage=\(stage) reason=\(reason) phase=\(state.lastPresentationBatchPhase) renderPhase=\(state.currentPresentationRenderPhase) lifecycle=\(state.visualSourceLifecycleState) opacityTarget=\(Self.round3(state.currentPresentationOpacityTarget)) opacityValue=\(Self.round3(state.currentPresentationOpacityValue)) pins=\(pinFamilyState.collection.idsInOrder.count) pinInteractions=\(pinInteractionFamilyState.collection.idsInOrder.count) dots=\(dotFamilyState.collection.idsInOrder.count) dotInteractions=\(dotInteractionFamilyState.collection.idsInOrder.count) labels=\(labelFamilyState.collection.idsInOrder.count) labelInteractions=\(labelInteractionFamilyState.collection.idsInOrder.count) labelCollisions=\(labelCollisionFamilyState.collection.idsInOrder.count) lastVisibleLabels=\(labelFamilyState.labelObservation.lastVisibleLabelFeatureIds.count) settledVisibleLabels=\(labelFamilyState.settledVisibleFeatureIds.count) visibleDismissLabels=\(visibleDismissLabelCount) labelFadeOnly=\(state.labelPlacementLayersFadeOnly) dotFadeOnly=\(state.dotPlacementLayersFadeOnly) collisionVisible=\(state.labelCollisionObstacleLayersVisible)\(extra.isEmpty ? "" : " \(extra)")"
+    )
+  }
+
+  private func completeDismissVisualLifecycle(
+    instanceId: String,
+    state: inout InstanceState,
+    requestKey: String?,
+    reason: String
+  ) {
+    labelObservationRefreshWorkItems[instanceId]?.cancel()
+    labelObservationRefreshWorkItems[instanceId] = nil
+    let residentSourceCache = Self.currentDesiredSourceCache(state: state)
+    if !residentSourceCache.isEmpty {
+      state.residentDesiredSourceCacheBySourceId = residentSourceCache
+    }
+    if state.labelCollisionObstacleLayersVisible {
+      let collisionLayerStartedAt = CACurrentMediaTime() * 1000
+      setLabelCollisionObstacleLayersVisible(
+        false,
+        for: state,
+        instanceId: instanceId,
+        reason: reason
+      )
+      state.labelCollisionObstacleLayersVisible = false
+      recordNativeApply(
+        section: "presentation.dismissed_collision_obstacle_layers",
+        phase: state.lastPresentationBatchPhase,
+        durationMs: CACurrentMediaTime() * 1000 - collisionLayerStartedAt,
+        operationCount: labelCollisionObstacleLayerIds.count
+      )
+    }
+    if state.labelPlacementLayersFadeOnly {
+      let labelPlacementStartedAt = CACurrentMediaTime() * 1000
+      setLabelPlacementLayersFadeOnly(
+        false,
+        for: state,
+        instanceId: instanceId,
+        reason: reason
+      )
+      state.labelPlacementLayersFadeOnly = false
+      recordNativeApply(
+        section: "presentation.dismissed_label_placement_layers",
+        phase: state.lastPresentationBatchPhase,
+        durationMs: CACurrentMediaTime() * 1000 - labelPlacementStartedAt,
+        operationCount: labelPlacementLayerIds.count
+      )
+    }
+    if state.dotPlacementLayersFadeOnly {
+      let dotPlacementStartedAt = CACurrentMediaTime() * 1000
+      setDotPlacementLayersFadeOnly(
+        false,
+        for: state,
+        instanceId: instanceId,
+        reason: reason
+      )
+      state.dotPlacementLayersFadeOnly = false
+      recordNativeApply(
+        section: "presentation.dismissed_dot_placement_layers",
+        phase: state.lastPresentationBatchPhase,
+        durationMs: CACurrentMediaTime() * 1000 - dotPlacementStartedAt,
+        operationCount: dotPlacementLayerIds.count
+      )
+    }
+    let sourceClearStartedAt = CACurrentMediaTime() * 1000
+    do {
+      try clearResidentSources(for: state)
+    } catch {
+      emit([
+        "type": "error",
+        "instanceId": instanceId,
+        "message": "dismiss_clear_sources_failed: \(error.localizedDescription)",
+      ])
+    }
+    recordNativeApply(
+      section: "presentation.dismissed_clear_sources",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - sourceClearStartedAt,
+      operationCount: 7
+    )
+    state.pendingSourceCommitDataIdsBySourceId = [:]
+    state.blockedEnterStartCommitFenceBySourceId.removeAll(keepingCapacity: true)
+    state.blockedPresentationCommitFenceBySourceId.removeAll(keepingCapacity: true)
+    state.derivedFamilyStates = Self.makeInitialDerivedFamilyStates(
+      pinSourceId: state.pinSourceId,
+      pinInteractionSourceId: state.pinInteractionSourceId,
+      dotSourceId: state.dotSourceId,
+      dotInteractionSourceId: state.dotInteractionSourceId,
+      labelSourceId: state.labelSourceId,
+      labelInteractionSourceId: state.labelInteractionSourceId,
+      labelCollisionSourceId: state.labelCollisionSourceId
+    )
+    state.currentPresentationRenderPhase = "idle"
+    state.visualSourceLifecycleState = .dismissed
+    state.keepSourcesHiddenUntilEnter = true
+    state.currentPresentationOpacityTarget = 0
+    state.currentPresentationOpacityValue = 0
+    cancelLivePinTransitionAnimation(instanceId: instanceId)
+    emit([
+      "type": "presentation_visual_sources_collision_released",
+      "instanceId": instanceId,
+      "requestKey": requestKey as Any,
+      "frameGenerationId": state.activeFrameGenerationId as Any,
+      "pinCount": state.lastPinCount,
+      "dotCount": state.lastDotCount,
+      "labelCount": state.lastLabelCount,
+      "releasedAtMs": Self.nowMs(),
+    ])
+    emitVisualDiag(
+      instanceId: instanceId,
+      message:
+        "visual_sources_dismissed reason=\(reason) frame=\(state.activeFrameGenerationId ?? "nil") pins=\(state.lastPinCount) dots=\(state.lastDotCount) labels=\(state.lastLabelCount)"
+    )
+  }
+
+  private func freezeVisibleDismissLabelSourceForFade(
+    instanceId: String,
+    state: InstanceState,
+    reason: String
+  ) -> Int {
+    let labelFamilyState = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
+    let visibleFeatureIds = Self.visibleDismissLabelFeatureIds(labelFamilyState)
+    guard !visibleFeatureIds.isEmpty else {
+      emitVisualDiag(
+        instanceId: instanceId,
+        message: "dismiss_label_freeze_skipped reason=\(reason) visibleLabelCount=0"
+      )
+      return 0
+    }
+
+    var frozenFeatures: [Feature] = []
+    var seenMarkerKeys = Set<String>()
+    for featureId in visibleFeatureIds {
+      guard let feature = labelFamilyState.collection.featureById[featureId] else {
+        continue
+      }
+      let markerKey = labelFamilyState.collection.markerKeyByFeatureId[featureId] ?? featureId
+      guard seenMarkerKeys.insert(markerKey).inserted else {
+        continue
+      }
+      frozenFeatures.append(feature)
+    }
+
+    guard !frozenFeatures.isEmpty else {
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "dismiss_label_freeze_skipped reason=\(reason) visibleLabelCount=\(visibleFeatureIds.count) frozenLabelCount=0"
+      )
+      return 0
+    }
+
+    let startedAt = CACurrentMediaTime() * 1000
+    do {
+      try withMapboxMap(for: state.mapTag) { mapboxMap in
+        mapboxMap.updateGeoJSONSource(
+          withId: state.labelSourceId,
+          geoJSON: .featureCollection(FeatureCollection(features: frozenFeatures))
+        )
+        let emptyCollection = FeatureCollection(features: [])
+        for sourceId in [state.labelInteractionSourceId, state.labelCollisionSourceId] {
+          mapboxMap.updateGeoJSONSource(
+            withId: sourceId,
+            geoJSON: .featureCollection(emptyCollection)
+          )
+        }
+      }
+      recordNativeApply(
+        section: "presentation.dismiss_start_freeze_visible_labels",
+        phase: state.lastPresentationBatchPhase,
+        durationMs: CACurrentMediaTime() * 1000 - startedAt,
+        operationCount: frozenFeatures.count
+      )
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "dismiss_label_freeze_applied reason=\(reason) visibleLabelCount=\(visibleFeatureIds.count) frozenLabelCount=\(frozenFeatures.count)"
+      )
+      return frozenFeatures.count
+    } catch {
+      emit([
+        "type": "error",
+        "instanceId": instanceId,
+        "message": "dismiss_label_freeze_failed reason=\(reason) error=\(error.localizedDescription)",
+      ])
+      return 0
+    }
+  }
+
+  private static func visibleDismissLabelFeatureIds(
+    _ labelFamilyState: DerivedFamilyState
+  ) -> [String] {
+    let lastVisibleFeatureIds = labelFamilyState.labelObservation.lastVisibleLabelFeatureIds
+    if !lastVisibleFeatureIds.isEmpty {
+      return lastVisibleFeatureIds.filter { labelFamilyState.collection.featureById[$0] != nil }
+    }
+    let settledVisibleFeatureIds = labelFamilyState.settledVisibleFeatureIds
+    guard !settledVisibleFeatureIds.isEmpty else {
+      return []
+    }
+    return labelFamilyState.collection.idsInOrder.filter { settledVisibleFeatureIds.contains($0) }
+  }
+
+  private func setLabelPlacementLayersFadeOnly(
+    _ isFadeOnly: Bool,
+    for state: InstanceState,
+    instanceId: String,
+    reason: String
+  ) {
+    do {
+      try withMapboxMap(for: state.mapTag) { mapboxMap in
+        for layerId in labelPlacementLayerIds {
+          for property in [
+            "icon-allow-overlap",
+            "icon-ignore-placement",
+            "text-allow-overlap",
+            "text-ignore-placement",
+          ] {
+            do {
+              try mapboxMap.setLayerProperty(
+                for: layerId,
+                property: property,
+                value: isFadeOnly
+              )
+            } catch {
+              emit([
+                "type": "error",
+                "instanceId": instanceId,
+                "message":
+                  "label_placement_layer_fade_only_failed reason=\(reason) layer=\(layerId) property=\(property) fadeOnly=\(isFadeOnly) error=\(error.localizedDescription)",
+              ])
+            }
+          }
+        }
+      }
+    } catch {
+      emit([
+        "type": "error",
+        "instanceId": instanceId,
+        "message":
+          "label_placement_layer_fade_only_map_unavailable reason=\(reason) fadeOnly=\(isFadeOnly) error=\(error.localizedDescription)",
+      ])
+    }
+  }
+
+  private func setDotPlacementLayersFadeOnly(
+    _ isFadeOnly: Bool,
+    for state: InstanceState,
+    instanceId: String,
+    reason: String
+  ) {
+    do {
+      try withMapboxMap(for: state.mapTag) { mapboxMap in
+        for layerId in dotPlacementLayerIds {
+          for property in [
+            "text-allow-overlap",
+            "text-ignore-placement",
+          ] {
+            do {
+              try mapboxMap.setLayerProperty(
+                for: layerId,
+                property: property,
+                value: isFadeOnly
+              )
+            } catch {
+              emit([
+                "type": "error",
+                "instanceId": instanceId,
+                "message":
+                  "dot_placement_layer_fade_only_failed reason=\(reason) layer=\(layerId) property=\(property) fadeOnly=\(isFadeOnly) error=\(error.localizedDescription)",
+              ])
+            }
+          }
+        }
+      }
+    } catch {
+      emit([
+        "type": "error",
+        "instanceId": instanceId,
+        "message":
+          "dot_placement_layer_fade_only_map_unavailable reason=\(reason) fadeOnly=\(isFadeOnly) error=\(error.localizedDescription)",
+      ])
+    }
+  }
+
+  private func setLabelCollisionObstacleLayersVisible(
+    _ isVisible: Bool,
+    for state: InstanceState,
+    instanceId: String,
+    reason: String
+  ) {
+    do {
+      try withMapboxMap(for: state.mapTag) { mapboxMap in
+        for layerId in labelCollisionObstacleLayerIds {
+          do {
+            try mapboxMap.setLayerProperty(
+              for: layerId,
+              property: "visibility",
+              value: isVisible ? "visible" : "none"
+            )
+          } catch {
+            emit([
+              "type": "error",
+              "instanceId": instanceId,
+              "message":
+                "label_collision_obstacle_layer_visibility_failed reason=\(reason) layer=\(layerId) visible=\(isVisible) error=\(error.localizedDescription)",
+            ])
+          }
+        }
+      }
+    } catch {
+      emit([
+        "type": "error",
+        "instanceId": instanceId,
+        "message":
+          "label_collision_obstacle_layer_visibility_failed reason=\(reason) visible=\(isVisible) error=\(error.localizedDescription)",
+      ])
+    }
+  }
+
+  private func scheduleDeferredDismissSourceCleanup(
+    instanceId: String,
+    requestKey: String,
+    reason: String
+  ) {
+    deferredDismissSourceCleanupWorkItems[instanceId]?.cancel()
+    let workItem = DispatchWorkItem { [weak self] in
+      guard let self else { return }
+      self.deferredDismissSourceCleanupWorkItems[instanceId] = nil
+      self.runDeferredDismissSourceCleanup(
+        instanceId: instanceId,
+        requestKey: requestKey,
+        reason: reason
+      )
+    }
+    deferredDismissSourceCleanupWorkItems[instanceId] = workItem
+    DispatchQueue.main.asyncAfter(
+      deadline: .now() + .milliseconds(deferredDismissSourceCleanupDelayMs),
+      execute: workItem
+    )
+  }
+
+  private func runDeferredDismissSourceCleanup(
+    instanceId: String,
+    requestKey: String,
+    reason: String
+  ) {
+    guard var state = instances[instanceId] else {
+      return
+    }
+    if let activeDismissRequestKey = state.lastDismissRequestKey,
+       activeDismissRequestKey != requestKey {
+      return
+    }
+    guard state.visualSourceLifecycleState == .dismissed,
+          state.currentPresentationRenderPhase == "idle",
+          state.keepSourcesHiddenUntilEnter,
+          state.currentPresentationOpacityTarget <= 0.001,
+          state.currentPresentationOpacityValue <= 0.001
+    else {
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "deferred_dismiss_source_cleanup_skipped reason=\(reason) request=\(requestKey) phase=\(state.currentPresentationRenderPhase) lifecycle=\(state.visualSourceLifecycleState)"
+      )
+      return
+    }
+    let residentSourceCache = Self.currentDesiredSourceCache(state: state)
+    if !residentSourceCache.isEmpty {
+      state.residentDesiredSourceCacheBySourceId = residentSourceCache
+    }
+    let cleanupStartedAt = CACurrentMediaTime() * 1000
+    do {
+      try clearResidentSources(for: state)
+    } catch {
+      emit([
+        "type": "error",
+        "instanceId": instanceId,
+        "message": "deferred_dismiss_source_cleanup_failed: \(error.localizedDescription)",
+      ])
+      return
+    }
+    state.pendingSourceCommitDataIdsBySourceId = [:]
+    state.blockedEnterStartCommitFenceBySourceId.removeAll(keepingCapacity: true)
+    state.blockedPresentationCommitFenceBySourceId.removeAll(keepingCapacity: true)
+    state.derivedFamilyStates = Self.makeInitialDerivedFamilyStates(
+      pinSourceId: state.pinSourceId,
+      pinInteractionSourceId: state.pinInteractionSourceId,
+      dotSourceId: state.dotSourceId,
+      dotInteractionSourceId: state.dotInteractionSourceId,
+      labelSourceId: state.labelSourceId,
+      labelInteractionSourceId: state.labelInteractionSourceId,
+      labelCollisionSourceId: state.labelCollisionSourceId
+    )
+    cancelLivePinTransitionAnimation(instanceId: instanceId)
+    instances[instanceId] = state
+    recordNativeApply(
+      section: "presentation.deferred_dismiss_source_cleanup",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - cleanupStartedAt,
+      operationCount: 7
+    )
+    emitVisualDiag(
+      instanceId: instanceId,
+      message:
+        "deferred_dismiss_source_cleanup_completed reason=\(reason) request=\(requestKey) frame=\(state.activeFrameGenerationId ?? "nil") cacheSources=\(state.residentDesiredSourceCacheBySourceId.count)"
+    )
+  }
+
+  private func releaseHiddenVisualSourcesForCollision(
+    instanceId: String,
+    state: inout InstanceState,
+    reason: String
+  ) throws {
+    guard state.visualSourceLifecycleState == .dismissing else {
+      return
+    }
+    guard state.currentPresentationOpacityTarget <= 0.001 &&
+      state.currentPresentationOpacityValue <= 0.001
+    else {
+      return
+    }
+    if Self.isSourceRecoveryActive(state) {
+      instances[instanceId] = state
+      return
+    }
+    completeDismissVisualLifecycle(
+      instanceId: instanceId,
+      state: &state,
+      requestKey: state.lastDismissRequestKey,
+      reason: reason
+    )
+    instances[instanceId] = state
+  }
+
+  private static func currentDesiredSourceCache(
+    state: InstanceState
+  ) -> [String: ParsedFeatureCollection] {
+    var cache: [String: ParsedFeatureCollection] = [:]
+    for sourceId in [
+      state.pinSourceId,
+      state.pinInteractionSourceId,
+      state.dotSourceId,
+      state.dotInteractionSourceId,
+      state.labelSourceId,
+      state.labelCollisionSourceId,
+    ] {
+      let desiredCollection = derivedFamilyState(sourceId: sourceId, state: state).desiredCollection
+      if !desiredCollection.idsInOrder.isEmpty {
+        cache[sourceId] = desiredCollection
+      }
+    }
+    return cache
+  }
+
+  private static func restoreResidentDesiredSourceCacheForEnter(
+    state: inout InstanceState
+  ) -> Bool {
+    guard !state.residentDesiredSourceCacheBySourceId.isEmpty else {
+      return false
+    }
+    let activeDesiredCount =
+      derivedFamilyState(sourceId: state.pinSourceId, state: state).desiredCollection.idsInOrder.count +
+      derivedFamilyState(sourceId: state.dotSourceId, state: state).desiredCollection.idsInOrder.count +
+      derivedFamilyState(sourceId: state.labelSourceId, state: state).desiredCollection.idsInOrder.count
+    guard activeDesiredCount == 0 else {
+      return false
+    }
+    for sourceId in [
+      state.pinSourceId,
+      state.pinInteractionSourceId,
+      state.dotSourceId,
+      state.dotInteractionSourceId,
+      state.labelSourceId,
+      state.labelInteractionSourceId,
+      state.labelCollisionSourceId,
+    ] {
+      guard let cachedDesiredCollection = state.residentDesiredSourceCacheBySourceId[sourceId] else {
+        continue
+      }
+      var familyState = emptyDerivedFamilyState()
+      familyState.desiredCollection = cachedDesiredCollection
+      setDerivedFamilyState(familyState, sourceId: sourceId, state: &state)
+    }
+    state.pendingSourceCommitDataIdsBySourceId.removeAll(keepingCapacity: true)
+    state.blockedEnterStartCommitFenceBySourceId.removeAll(keepingCapacity: true)
+    state.blockedPresentationCommitFenceBySourceId.removeAll(keepingCapacity: true)
+    return true
+  }
+
+  private static func activeDesiredVisualSourceCount(state: InstanceState) -> Int {
+    derivedFamilyState(sourceId: state.pinSourceId, state: state).desiredCollection.idsInOrder.count +
+      derivedFamilyState(sourceId: state.dotSourceId, state: state).desiredCollection.idsInOrder.count +
+      derivedFamilyState(sourceId: state.labelSourceId, state: state).desiredCollection.idsInOrder.count
+  }
+
+  private static func isActiveFrameSourceReady(state: InstanceState) -> Bool {
+    guard let activeFrameGenerationId = state.activeFrameGenerationId,
+      let activeExecutionBatchId = state.activeExecutionBatchId
+    else {
+      return false
+    }
+    return state.sourceReadyFrameGenerationId == activeFrameGenerationId &&
+      state.sourceReadyExecutionBatchId == activeExecutionBatchId
+  }
+
+  private static func isActiveFrameLabelPlacementReady(state: InstanceState) -> Bool {
+    let labelFamilyState = derivedFamilyState(sourceId: state.labelSourceId, state: state)
+    let labelCount = max(
+      state.lastLabelCount,
+      labelFamilyState.desiredCollection.idsInOrder.count,
+      labelFamilyState.collection.idsInOrder.count
+    )
+    guard labelCount > 0 else {
+      return true
+    }
+    let observation = labelFamilyState.labelObservation
+    return observation.observationEnabled &&
+      observation.hasCommittedObservationForConfiguredRequest &&
+      observation.lastEffectiveRenderedFeatureCount > 0
+  }
+
+  private static func labelPlacementReadinessSummary(state: InstanceState) -> String {
+    let labelFamilyState = derivedFamilyState(sourceId: state.labelSourceId, state: state)
+    let observation = labelFamilyState.labelObservation
+    let labelCount = max(
+      state.lastLabelCount,
+      labelFamilyState.desiredCollection.idsInOrder.count,
+      labelFamilyState.collection.idsInOrder.count
+    )
+    return [
+      "labels=\(labelCount)",
+      "observationEnabled=\(observation.observationEnabled)",
+      "hasCommittedObservation=\(observation.hasCommittedObservationForConfiguredRequest)",
+      "configuredResetRequest=\(observation.configuredResetRequestKey ?? "nil")",
+      "visibleLabels=\(observation.lastVisibleLabelFeatureIds.count)",
+      "settledVisibleLabels=\(labelFamilyState.settledVisibleFeatureIds.count)",
+      "layerRendered=\(observation.lastLayerRenderedFeatureCount)",
+      "effectiveRendered=\(observation.lastEffectiveRenderedFeatureCount)",
+    ].joined(separator: " ")
+  }
+
+  private func labelObservationQueryProbeSummary(
+    stage: String,
+    state: InstanceState,
+    resolvedLayerIds: [String],
+    queryRect: CGRect,
+    renderedFeatureCount: Int? = nil
+  ) -> String {
+    let labelFamilyState = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
+    let mountedLabelCount =
+      Self.mountedSourceState(sourceId: state.labelSourceId, state: state)?.diffKeyById.count ?? 0
+    let renderedSummary = renderedFeatureCount.map { " rendered=\($0)" } ?? ""
+    let layerSample = resolvedLayerIds.prefix(8).joined(separator: ",")
+    return [
+      "stage=\(stage)",
+      "phase=\(state.lastPresentationBatchPhase)",
+      "renderPhase=\(state.currentPresentationRenderPhase)",
+      "lifecycle=\(state.visualSourceLifecycleState)",
+      "frame=\(state.activeFrameGenerationId ?? "nil")",
+      "sourceReadyFrame=\(state.sourceReadyFrameGenerationId ?? "nil")",
+      "executionBatch=\(state.activeExecutionBatchId ?? "nil")",
+      "opacityTarget=\(Self.round3(state.currentPresentationOpacityTarget))",
+      "opacityValue=\(Self.round3(state.currentPresentationOpacityValue))",
+      "sourceExistsDesired=\(labelFamilyState.desiredCollection.idsInOrder.count)",
+      "sourceExistsCollection=\(labelFamilyState.collection.idsInOrder.count)",
+      "sourceStateFeatures=\(labelFamilyState.sourceState.featureIds.count)",
+      "mountedFeatures=\(mountedLabelCount)",
+      "layers=\(resolvedLayerIds.count)",
+      "layerSample=\(layerSample.isEmpty ? "none" : layerSample)",
+      "queryRect=\(Self.rectSummary(queryRect))\(renderedSummary)",
+      Self.labelPlacementReadinessSummary(state: state),
+    ].joined(separator: " ")
+  }
+
+  private func shouldEmitLabelObservationQueryProbe(state: InstanceState) -> Bool {
+    state.lastEnterRequestKey != nil &&
+      state.visualSourceLifecycleState != .dismissing &&
+      state.visualSourceLifecycleState != .dismissed &&
+      !Self.isActiveFrameLabelPlacementReady(state: state)
   }
 
   private func updateLivePinTransitions(
@@ -3383,20 +5209,32 @@ final class SearchMapRenderController: RCTEventEmitter {
     markerKeyByFeatureId: [String: String]? = nil,
     dirtyGroupIds explicitDirtyGroupIds: Set<String>,
     orderChangedGroupIds explicitOrderChangedGroupIds: Set<String>,
-    removedGroupIds explicitRemovedGroupIds: Set<String>
+    removedGroupIds explicitRemovedGroupIds: Set<String>,
+    recordAttribution: ((_ section: String, _ durationMs: Double, _ operationCount: Int) -> Void)? = nil
   ) throws {
+    let baseStartedAt = recordAttribution == nil ? 0 : CACurrentMediaTime() * 1000
     let baseCollection = baseSourceState.map(Self.parsedCollectionBase) ?? collection
+    if let recordAttribution {
+      recordAttribution("replace.base_collection", CACurrentMediaTime() * 1000 - baseStartedAt, baseSourceState == nil ? 0 : baseCollection.idsInOrder.count)
+    }
     var idsInOrder: [String] = []
     var nextFeatureById: [String: Feature] = [:]
     var diffKeyById: [String: String] = [:]
     var nextFeatureStateById: [String: [String: Any]] = [:]
     var nextMarkerKeyByFeatureId: [String: String] = [:]
     let previousFeatureById = collection.featureById
+    let uniqueStartedAt = recordAttribution == nil ? 0 : CACurrentMediaTime() * 1000
     let dedupedSourceIdsInOrder = try Self.requireUniqueOrderedFeatureIds(
       sourceIdsInOrder,
       context: "replaceParsedFeatureCollection"
     )
+    if let recordAttribution {
+      recordAttribution("replace.unique_ids", CACurrentMediaTime() * 1000 - uniqueStartedAt, dedupedSourceIdsInOrder.count)
+    }
     var matchesBaseSourceShape = baseCollection.idsInOrder.count == dedupedSourceIdsInOrder.count
+    var diffKeyDurationMs = 0.0
+    var reusedDiffKeyCount = 0
+    let loopStartedAt = recordAttribution == nil ? 0 : CACurrentMediaTime() * 1000
     for (index, id) in dedupedSourceIdsInOrder.enumerated() {
       guard let feature = featureById[id] else {
         throw NSError(
@@ -3412,16 +5250,27 @@ final class SearchMapRenderController: RCTEventEmitter {
       if matchesBaseSourceShape && baseCollection.idsInOrder[index] != id {
         matchesBaseSourceShape = false
       }
-      let reusedDiffKey =
-        previousFeatureById[id] == feature
+      let previousFeature = previousFeatureById[id]
+      let exactReusedDiffKey =
+        previousFeature == feature
           ? collection.diffKeyById[id]
           : nil
-      if let diffKey = reusedDiffKey ?? Self.makeFeatureDiffKey(feature: feature) {
+      let diffKeyStartedAt = recordAttribution == nil ? 0 : CACurrentMediaTime() * 1000
+      if let diffKey = exactReusedDiffKey ?? Self.makeFeatureDiffKey(feature: feature) {
+        if recordAttribution != nil {
+          diffKeyDurationMs += CACurrentMediaTime() * 1000 - diffKeyStartedAt
+          if exactReusedDiffKey != nil {
+            reusedDiffKeyCount += 1
+          }
+        }
         diffKeyById[id] = diffKey
         if matchesBaseSourceShape && baseCollection.diffKeyById[id] != diffKey {
           matchesBaseSourceShape = false
         }
       } else {
+        if recordAttribution != nil {
+          diffKeyDurationMs += CACurrentMediaTime() * 1000 - diffKeyStartedAt
+        }
         matchesBaseSourceShape = false
       }
       if let featureState = featureStateById[id] {
@@ -3429,6 +5278,12 @@ final class SearchMapRenderController: RCTEventEmitter {
       }
       nextMarkerKeyByFeatureId[id] = markerKeyByFeatureId?[id] ?? id
     }
+    if let recordAttribution {
+      recordAttribution("replace.loop_total", CACurrentMediaTime() * 1000 - loopStartedAt, dedupedSourceIdsInOrder.count)
+      recordAttribution("replace.diff_key", diffKeyDurationMs, dedupedSourceIdsInOrder.count - reusedDiffKeyCount)
+      recordAttribution("replace.diff_key_reuse", 0, reusedDiffKeyCount)
+    }
+    let sourceRevisionStartedAt = recordAttribution == nil ? 0 : CACurrentMediaTime() * 1000
     let sourceRevision =
       matchesBaseSourceShape
         ? baseCollection.sourceRevision
@@ -3436,10 +5291,22 @@ final class SearchMapRenderController: RCTEventEmitter {
             idsInOrder: idsInOrder,
             diffKeyById: diffKeyById
           )
+    if let recordAttribution {
+      recordAttribution("replace.source_revision", CACurrentMediaTime() * 1000 - sourceRevisionStartedAt, idsInOrder.count)
+    }
+    let featureIdsStartedAt = recordAttribution == nil ? 0 : CACurrentMediaTime() * 1000
     let featureIds = Set(idsInOrder)
+    if let recordAttribution {
+      recordAttribution("replace.feature_ids", CACurrentMediaTime() * 1000 - featureIdsStartedAt, idsInOrder.count)
+    }
+    let featureStateEntryStartedAt = recordAttribution == nil ? 0 : CACurrentMediaTime() * 1000
     let featureStateEntryRevisionById = makeFeatureStateEntryRevisionById(
       featureStateById: nextFeatureStateById
     )
+    if let recordAttribution {
+      recordAttribution("replace.feature_state_entry_revision", CACurrentMediaTime() * 1000 - featureStateEntryStartedAt, nextFeatureStateById.count)
+    }
+    let featureStateChangedStartedAt = recordAttribution == nil ? 0 : CACurrentMediaTime() * 1000
     let featureStateChangedIds =
       baseCollection.featureStateEntryRevisionById == featureStateEntryRevisionById
         ? Set<String>()
@@ -3448,12 +5315,20 @@ final class SearchMapRenderController: RCTEventEmitter {
               baseCollection.featureStateEntryRevisionById[featureId] == revision ? nil : featureId
             }
           )
+    if let recordAttribution {
+      recordAttribution("replace.feature_state_changed_ids", CACurrentMediaTime() * 1000 - featureStateChangedStartedAt, featureStateEntryRevisionById.count)
+    }
+    let featureStateRevisionStartedAt = recordAttribution == nil ? 0 : CACurrentMediaTime() * 1000
     let featureStateRevision =
       baseCollection.featureStateEntryRevisionById == featureStateEntryRevisionById
         ? baseCollection.featureStateRevision
         : buildFeatureStateRevision(
             featureStateEntryRevisionById: featureStateEntryRevisionById
           )
+    if let recordAttribution {
+      recordAttribution("replace.feature_state_revision", CACurrentMediaTime() * 1000 - featureStateRevisionStartedAt, featureStateEntryRevisionById.count)
+    }
+    let diffScansStartedAt = recordAttribution == nil ? 0 : CACurrentMediaTime() * 1000
     let addedFeatureIdsInOrder = idsInOrder.filter { !baseCollection.featureIds.contains($0) }
     let updatedFeatureIdsInOrder = idsInOrder.filter { featureId in
       guard baseCollection.featureIds.contains(featureId) else {
@@ -3463,6 +5338,10 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
     let removedFeatureIds = baseCollection.featureIds.subtracting(featureIds)
     let removedFeatureIdsInOrder = baseCollection.idsInOrder.filter { removedFeatureIds.contains($0) }
+    if let recordAttribution {
+      recordAttribution("replace.diff_scans", CACurrentMediaTime() * 1000 - diffScansStartedAt, idsInOrder.count + baseCollection.idsInOrder.count)
+    }
+    let assignmentStartedAt = recordAttribution == nil ? 0 : CACurrentMediaTime() * 1000
     collection.baseSourceRevision = baseCollection.sourceRevision
     collection.baseFeatureStateRevision = baseCollection.featureStateRevision
     collection.sourceRevision = sourceRevision
@@ -3482,6 +5361,10 @@ final class SearchMapRenderController: RCTEventEmitter {
     collection.diffKeyById = diffKeyById
     collection.featureStateById = nextFeatureStateById
     collection.markerKeyByFeatureId = nextMarkerKeyByFeatureId
+    if let recordAttribution {
+      recordAttribution("replace.assignment", CACurrentMediaTime() * 1000 - assignmentStartedAt, idsInOrder.count)
+    }
+    let mutationFeaturesStartedAt = recordAttribution == nil ? 0 : CACurrentMediaTime() * 1000
     collection.addedFeatures = Self.mutationFeatures(
       idsInOrder: addedFeatureIdsInOrder,
       featureById: nextFeatureById
@@ -3490,6 +5373,9 @@ final class SearchMapRenderController: RCTEventEmitter {
       idsInOrder: updatedFeatureIdsInOrder,
       featureById: nextFeatureById
     )
+    if let recordAttribution {
+      recordAttribution("replace.mutation_features", CACurrentMediaTime() * 1000 - mutationFeaturesStartedAt, addedFeatureIdsInOrder.count + updatedFeatureIdsInOrder.count)
+    }
   }
 
   private static func livePinTransitionOpacity(
@@ -3519,13 +5405,16 @@ final class SearchMapRenderController: RCTEventEmitter {
   }
 
   private func updateLivePinTransitionAnimation(instanceId: String, state: InstanceState) {
+    let canRunVisualTransition =
+      state.lastPresentationBatchPhase == "live" ||
+      state.lastPresentationBatchPhase == "entering"
     if
       Self.isSourceRecoveryActive(state) ||
       (
         Self.derivedFamilyState(sourceId: state.pinSourceId, state: state).livePinTransitionsByMarkerKey.isEmpty &&
         Self.derivedFamilyState(sourceId: state.dotSourceId, state: state).liveDotTransitionsByMarkerKey.isEmpty
       ) ||
-      state.lastPresentationBatchPhase != "live"
+      !canRunVisualTransition
     {
       cancelLivePinTransitionAnimation(instanceId: instanceId)
       return
@@ -3598,6 +5487,10 @@ final class SearchMapRenderController: RCTEventEmitter {
     pinFamilyState.livePinTransitionsByMarkerKey.removeAll()
     pinFamilyState.markerRenderStateByMarkerKey.removeAll()
     dotFamilyState.liveDotTransitionsByMarkerKey.removeAll()
+    labelFamilyState.labelObservation.hasCommittedObservationForConfiguredRequest = false
+    labelFamilyState.labelObservation.lastVisibleLabelFeatureIds = []
+    labelFamilyState.labelObservation.lastLayerRenderedFeatureCount = 0
+    labelFamilyState.labelObservation.lastEffectiveRenderedFeatureCount = 0
 
     Self.refreshFeatureStateRevision(&pinSourceState)
     Self.refreshFeatureStateRevision(&dotSourceState)
@@ -3647,9 +5540,25 @@ final class SearchMapRenderController: RCTEventEmitter {
     ]
   }
 
+  private static func shouldStartAwaitingTransition(
+    awaitingSourceDataId: String?,
+    sourceId: String,
+    acknowledgedDataId: String?
+  ) -> Bool {
+    guard let acknowledgedDataId else {
+      return true
+    }
+    return shouldAcknowledgePendingCommitDataId(
+      awaitingSourceDataId,
+      sourceId: sourceId,
+      acknowledgedDataId: acknowledgedDataId
+    )
+  }
+
   private func startAwaitingLivePinTransitions(
     instanceId: String,
-    dataId: String,
+    dataId: String?,
+    reason: String,
     state: inout InstanceState
   ) {
     let nowMs = Self.nowMs()
@@ -3666,8 +5575,8 @@ final class SearchMapRenderController: RCTEventEmitter {
       }
       guard var transition = pinFamilyState.livePinTransitionsByMarkerKey[markerKey],
             transition.isAwaitingSourceCommit,
-            Self.shouldAcknowledgePendingCommitDataId(
-              transition.awaitingSourceDataId,
+            Self.shouldStartAwaitingTransition(
+              awaitingSourceDataId: transition.awaitingSourceDataId,
               sourceId: state.pinSourceId,
               acknowledgedDataId: dataId
             )
@@ -3712,13 +5621,19 @@ final class SearchMapRenderController: RCTEventEmitter {
         state: &state
       )
       instances[instanceId] = state
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "live_pin_transition_started reason=\(reason) dataId=\(dataId ?? "mounted_hidden") awaiting=\(awaitingTransitionCount) started=\(startedTransitionCount)"
+      )
       updateLivePinTransitionAnimation(instanceId: instanceId, state: state)
     }
   }
 
   private func startAwaitingLiveDotTransitions(
     instanceId: String,
-    dataId: String,
+    dataId: String?,
+    reason: String,
     state: inout InstanceState
   ) {
     let nowMs = Self.nowMs()
@@ -3733,8 +5648,8 @@ final class SearchMapRenderController: RCTEventEmitter {
       }
       guard var transition = dotFamilyState.liveDotTransitionsByMarkerKey[markerKey],
             transition.isAwaitingSourceCommit,
-            Self.shouldAcknowledgePendingCommitDataId(
-              transition.awaitingSourceDataId,
+            Self.shouldStartAwaitingTransition(
+              awaitingSourceDataId: transition.awaitingSourceDataId,
               sourceId: state.dotSourceId,
               acknowledgedDataId: dataId
             )
@@ -3764,8 +5679,63 @@ final class SearchMapRenderController: RCTEventEmitter {
         state: &state
       )
       instances[instanceId] = state
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "live_dot_transition_started reason=\(reason) dataId=\(dataId ?? "mounted_hidden") awaiting=\(awaitingTransitionCount) started=\(startedTransitionCount)"
+      )
       updateLivePinTransitionAnimation(instanceId: instanceId, state: state)
     }
+  }
+
+  private func restartLiveEnterTransitionsForRevealStart(
+    instanceId: String,
+    state: inout InstanceState
+  ) {
+    let nowMs = Self.nowMs()
+    var restartedPinCount = 0
+    var restartedDotCount = 0
+    var pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
+    var dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
+
+    for markerKey in pinFamilyState.livePinTransitionsByMarkerKey.keys.sorted() {
+      guard var transition = pinFamilyState.livePinTransitionsByMarkerKey[markerKey],
+            !transition.isAwaitingSourceCommit,
+            transition.targetOpacity >= 0.999
+      else {
+        continue
+      }
+      transition.startOpacity = 0
+      transition.startedAtMs = nowMs
+      pinFamilyState.livePinTransitionsByMarkerKey[markerKey] = transition
+      restartedPinCount += 1
+    }
+
+    for markerKey in dotFamilyState.liveDotTransitionsByMarkerKey.keys.sorted() {
+      guard var transition = dotFamilyState.liveDotTransitionsByMarkerKey[markerKey],
+            !transition.isAwaitingSourceCommit,
+            transition.targetOpacity >= 0.999
+      else {
+        continue
+      }
+      transition.startOpacity = 0
+      transition.startedAtMs = nowMs
+      dotFamilyState.liveDotTransitionsByMarkerKey[markerKey] = transition
+      restartedDotCount += 1
+    }
+
+    guard restartedPinCount > 0 || restartedDotCount > 0 else {
+      return
+    }
+
+    Self.setDerivedFamilyState(pinFamilyState, sourceId: state.pinSourceId, state: &state)
+    Self.setDerivedFamilyState(dotFamilyState, sourceId: state.dotSourceId, state: &state)
+    instances[instanceId] = state
+    emitVisualDiag(
+      instanceId: instanceId,
+      message:
+        "live_enter_transition_restarted pinCount=\(restartedPinCount) dotCount=\(restartedDotCount)"
+    )
   }
 
   private func applyLivePinTransitionFeatureStates(for instanceId: String) throws {
@@ -3882,6 +5852,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       Self.refreshFeatureStateRevision(&dotSourceState)
     }
 
+    let mapboxApplyStartedAt = CACurrentMediaTime() * 1000
     if !featureStatesToApply.isEmpty {
       try withMapboxMap(for: state.mapTag) { mapboxMap in
         for entry in featureStatesToApply {
@@ -3915,6 +5886,12 @@ final class SearchMapRenderController: RCTEventEmitter {
         }
       }
     }
+    recordNativeApply(
+      section: "live_lod_transition.apply_feature_states",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - mapboxApplyStartedAt,
+      operationCount: featureStatesToApply.count + dotFeatureStatesToApply.count + labelFeatureStatesToApply.count
+    )
 
     Self.syncMountedSourceState(
       pinSourceState,
@@ -3973,7 +5950,10 @@ final class SearchMapRenderController: RCTEventEmitter {
           Self.derivedFamilyState(sourceId: state.pinSourceId, state: state).livePinTransitionsByMarkerKey.isEmpty &&
           Self.derivedFamilyState(sourceId: state.dotSourceId, state: state).liveDotTransitionsByMarkerKey.isEmpty
         ) ||
-        state.lastPresentationBatchPhase != "live"
+        (
+          state.lastPresentationBatchPhase != "live" &&
+          state.lastPresentationBatchPhase != "entering"
+        )
       {
         cancelLivePinTransitionAnimation(instanceId: instanceId)
       }
@@ -4160,17 +6140,47 @@ final class SearchMapRenderController: RCTEventEmitter {
     instanceId: String,
     allowDuringRecovery: Bool = false
   ) throws {
-    let snapshots = [
-      (state.pinInteractionSourceId, Self.emptyFeatureCollectionJSON),
-      (state.dotInteractionSourceId, Self.emptyFeatureCollectionJSON),
-      (state.labelInteractionSourceId, Self.emptyFeatureCollectionJSON),
-    ]
-    try applySnapshots(
-      instanceId: instanceId,
-      snapshots,
-      allowDuringRecovery: allowDuringRecovery,
-      state: &state
-    )
+    if Self.isSourceRecoveryActive(state) && !allowDuringRecovery {
+      cancelLivePinTransitionAnimation(instanceId: instanceId)
+      return
+    }
+    // Generic suppression only disables query resolution. The mounted interaction
+    // mirrors must stay resident through profile/camera transitions so debug and
+    // native hit geometry do not flash. Terminal dismiss owns the explicit source
+    // clear in beginDismissVisualLifecycle.
+  }
+
+  private func clearMountedInteractionSources(
+    instanceId: String,
+    state: inout InstanceState
+  ) throws {
+    let emptyParsedCollection = Self.emptyParsedFeatureCollection()
+    let emptySourceState = Self.sourceStateFromCollection(emptyParsedCollection)
+    try withMapboxMap(for: state.mapTag) { mapboxMap in
+      let emptyCollection = FeatureCollection(features: [])
+      for sourceId in [
+        state.pinInteractionSourceId,
+        state.dotInteractionSourceId,
+        state.labelInteractionSourceId,
+      ] {
+        mapboxMap.updateGeoJSONSource(
+          withId: sourceId,
+          geoJSON: .featureCollection(emptyCollection)
+        )
+      }
+    }
+    for sourceId in [
+      state.pinInteractionSourceId,
+      state.dotInteractionSourceId,
+      state.labelInteractionSourceId,
+    ] {
+      var familyState = Self.derivedFamilyState(sourceId: sourceId, state: state)
+      familyState.desiredCollection = emptyParsedCollection
+      familyState.collection = emptyParsedCollection
+      familyState.sourceState = emptySourceState
+      familyState.transientFeatureStateById.removeAll()
+      Self.setDerivedFamilyState(familyState, sourceId: sourceId, state: &state)
+    }
   }
 
   private func shouldSuppressInteractions(state: InstanceState) -> Bool {
@@ -4204,18 +6214,38 @@ final class SearchMapRenderController: RCTEventEmitter {
         guard let sourceState = Self.mountedSourceState(sourceId: sourceId, state: state) else {
           continue
         }
+        let featureById =
+          state.derivedFamilyStates[sourceId]?.collection.featureById ?? [:]
         for featureId in sourceState.featureIds {
           let markerKey = sourceState.markerKeyByFeatureId[featureId] ?? featureId
+          let featureRestaurantId =
+            featureById[featureId]
+              .flatMap(Self.restaurantId(fromFeature:))
+          let isHighlighted =
+            state.highlightedMarkerKeys.contains(markerKey) ||
+            (
+              state.highlightedRestaurantId != nil &&
+                featureRestaurantId == state.highlightedRestaurantId
+            )
           mapboxMap.setFeatureState(
             sourceId: sourceId,
             featureId: featureId,
             state: [
-              "nativeHighlighted": state.highlightedMarkerKey == markerKey ? 1 : 0,
+              "nativeHighlighted": isHighlighted ? 1 : 0,
             ]
           ) { _ in }
         }
       }
     }
+  }
+
+  private static func restaurantId(fromFeature feature: Feature) -> String? {
+    let properties = feature.properties?.turfRawValue as? [String: Any]
+    let restaurantId = properties?["restaurantId"] as? String
+    guard let restaurantId, !restaurantId.isEmpty else {
+      return nil
+    }
+    return restaurantId
   }
 
   private func cancelPresentationOpacityAnimation(instanceId: String) {
@@ -4242,7 +6272,12 @@ final class SearchMapRenderController: RCTEventEmitter {
       reason: reason,
       allowDuringRecovery: allowDuringRecovery
     )
-    emitPinOpacitySummary(instanceId: instanceId, state: state, reason: reason)
+    state = instances[instanceId] ?? state
+    try releaseHiddenVisualSourcesForCollision(
+      instanceId: instanceId,
+      state: &state,
+      reason: reason
+    )
   }
 
   private func applyCurrentPresentationOpacity(
@@ -4261,7 +6296,12 @@ final class SearchMapRenderController: RCTEventEmitter {
       reason: reason,
       allowDuringRecovery: allowDuringRecovery
     )
-    emitPinOpacitySummary(instanceId: instanceId, state: state, reason: reason)
+    state = instances[instanceId] ?? state
+    try releaseHiddenVisualSourcesForCollision(
+      instanceId: instanceId,
+      state: &state,
+      reason: reason
+    )
   }
 
   private func animatePresentationOpacity(
@@ -4269,6 +6309,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     for state: inout InstanceState,
     instanceId: String,
     reason: String,
+    durationMs: Int? = nil,
     allowDuringRecovery: Bool = false
   ) throws {
     cancelPresentationOpacityAnimation(instanceId: instanceId)
@@ -4286,14 +6327,20 @@ final class SearchMapRenderController: RCTEventEmitter {
         reason: reason,
         allowDuringRecovery: allowDuringRecovery
       )
-      emitPinOpacitySummary(instanceId: instanceId, state: state, reason: reason)
+      state = instances[instanceId] ?? state
+      try releaseHiddenVisualSourcesForCollision(
+        instanceId: instanceId,
+        state: &state,
+        reason: reason
+      )
       return
     }
 
+    let resolvedDurationMs = durationMs ?? enterSettleDelayMs
     emitVisualDiag(
       instanceId: instanceId,
       message:
-        "presentation_opacity_animation_start reason=\(reason) start=\(Self.round3(startOpacity)) target=\(Self.round3(clampedTarget)) durationMs=\(Int(enterSettleDelayMs))"
+        "presentation_opacity_animation_start reason=\(reason) start=\(Self.round3(startOpacity)) target=\(Self.round3(clampedTarget)) durationMs=\(Int(resolvedDurationMs))"
     )
 
     let animator = PresentationOpacityAnimator(
@@ -4302,7 +6349,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       reason: reason,
       startOpacity: startOpacity,
       targetOpacity: clampedTarget,
-      durationMs: Double(enterSettleDelayMs),
+      durationMs: Double(resolvedDurationMs),
       startedAtMs: Self.nowMs()
     )
     presentationOpacityAnimators[instanceId] = animator
@@ -4332,14 +6379,19 @@ final class SearchMapRenderController: RCTEventEmitter {
         reason: animator.reason,
         emitDiagnostic: rawProgress >= 1
       )
+      state = instances[instanceId] ?? state
       emitEnterFirstVisibleFrameIfNeeded(instanceId: instanceId, state: &state, opacity: opacity)
       if rawProgress >= 1 {
+        try releaseHiddenVisualSourcesForCollision(
+          instanceId: instanceId,
+          state: &state,
+          reason: animator.reason
+        )
         emitVisualDiag(
           instanceId: instanceId,
           message:
             "presentation_opacity_animation_complete reason=\(animator.reason) target=\(Self.round3(animator.targetOpacity))"
         )
-        emitPinOpacitySummary(instanceId: instanceId, state: state, reason: animator.reason)
         cancelPresentationOpacityAnimation(instanceId: instanceId)
       }
     } catch {
@@ -4371,21 +6423,12 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
   }
 
-  private func emitPinOpacitySummary(instanceId: String, state: InstanceState, reason: String) {
-    let visiblePinIds = Self.mountedSourceState(sourceId: state.pinSourceId, state: state).map {
-      Array($0.featureIds).sorted()
-    } ?? []
-    let sampleVisiblePinIds = Array(visiblePinIds.prefix(3)).joined(separator: ",")
-    emit([
-      "type": "error",
-      "instanceId": "__native_diag__",
-      "message":
-        "pin_opacity_summary reason=\(reason) presentationOpacity=\(Self.round3(state.currentPresentationOpacityValue)) target=\(Self.round3(state.currentPresentationOpacityTarget)) visible=\(visiblePinIds.count) sampleVisible=\(sampleVisiblePinIds.isEmpty ? "none" : sampleVisiblePinIds)"
-    ])
-  }
-
   private static func round3(_ value: Double) -> Double {
     (value * 1000).rounded() / 1000
+  }
+
+  private static func round1(_ value: Double) -> Double {
+    (value * 10).rounded() / 10
   }
 
   private static func clamp(_ value: Double, min: Double, max: Double) -> Double {
@@ -4451,6 +6494,13 @@ final class SearchMapRenderController: RCTEventEmitter {
         )
       }
       let durationMs = CACurrentMediaTime() * 1000 - startedAt
+      self.recordNativeApply(
+        section: "presentation_opacity.apply",
+        phase: state.lastPresentationBatchPhase,
+        source: reason,
+        durationMs: durationMs,
+        operationCount: featureCount
+      )
       if emitDiagnostic && ((featureCount > 0 && opacity > 0) || durationMs >= self.slowActionThresholdMs) {
         self.emit([
           "type": "error",
@@ -4515,10 +6565,29 @@ final class SearchMapRenderController: RCTEventEmitter {
     guard var mutableState = instances[instanceId] else {
       return Self.emptyRenderedLabelObservationResult()
     }
+    if mutableState.visualSourceLifecycleState == .dismissing ||
+      mutableState.visualSourceLifecycleState == .dismissed {
+      return Self.emptyRenderedLabelObservationResult()
+    }
     var labelFamilyState = Self.derivedFamilyState(sourceId: mutableState.labelSourceId, state: mutableState)
+    let labelInteractionFamilyState = Self.derivedFamilyState(
+      sourceId: mutableState.labelInteractionSourceId,
+      state: mutableState
+    )
     let previousVisibleLabelFeatureIds = labelFamilyState.labelObservation.lastVisibleLabelFeatureIds
-    if commitInteractionVisibility {
+    let shouldCommitInteractionVisibility =
+      commitInteractionVisibility &&
+      labelFamilyState.labelObservation.commitInteractionVisibility &&
+      labelFamilyState.labelObservation.observationEnabled
+    var didClearSettledVisibleLabelInteractions = false
+    if shouldCommitInteractionVisibility {
       labelFamilyState.settledVisibleFeatureIds = Set(observation.visibleLabelFeatureIds)
+    } else if
+      !labelFamilyState.settledVisibleFeatureIds.isEmpty ||
+      !labelInteractionFamilyState.collection.idsInOrder.isEmpty
+    {
+      labelFamilyState.settledVisibleFeatureIds.removeAll()
+      didClearSettledVisibleLabelInteractions = true
     }
     let resetIdentityKeys = Self.resetStickyLabelObservationIfNeeded(
       &labelFamilyState.labelObservation,
@@ -4539,10 +6608,19 @@ final class SearchMapRenderController: RCTEventEmitter {
     labelFamilyState.labelObservation.lastVisibleLabelFeatureIds = observation.visibleLabelFeatureIds
     labelFamilyState.labelObservation.lastLayerRenderedFeatureCount = layerRenderedFeatureCount
     labelFamilyState.labelObservation.lastEffectiveRenderedFeatureCount = effectiveRenderedFeatureCount
+    labelFamilyState.labelObservation.hasCommittedObservationForConfiguredRequest = true
     let dirtyStickyIdentityKeys = Array(resetIdentityKeys.union(changedIdentityKeys)).sorted()
     let didProduceMeaningfulChange =
       !dirtyStickyIdentityKeys.isEmpty ||
+      didClearSettledVisibleLabelInteractions ||
       previousVisibleLabelFeatureIds != observation.visibleLabelFeatureIds
+    if didProduceMeaningfulChange {
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "label_observation_commit_probe phase=\(mutableState.lastPresentationBatchPhase) lifecycle=\(mutableState.visualSourceLifecycleState) moving=\(mutableState.currentViewportIsMoving) visibleLabels=\(observation.visibleLabelFeatureIds.count) placedLabels=\(observation.placedLabels.count) previousVisibleLabels=\(previousVisibleLabelFeatureIds.count) layerRendered=\(layerRenderedFeatureCount) effectiveRendered=\(effectiveRenderedFeatureCount) commitInteractions=\(shouldCommitInteractionVisibility) clearedInteractions=\(didClearSettledVisibleLabelInteractions) stickyChanged=\(!dirtyStickyIdentityKeys.isEmpty) stickyRevision=\(labelFamilyState.labelObservation.stickyRevision)"
+      )
+    }
     if mutableState.currentViewportIsMoving {
       if didProduceMeaningfulChange {
         labelFamilyState.labelObservation.movingNoopRefreshStreak = 0
@@ -4567,6 +6645,26 @@ final class SearchMapRenderController: RCTEventEmitter {
       state: &mutableState
     )
     instances[instanceId] = mutableState
+    if !dirtyStickyIdentityKeys.isEmpty || didClearSettledVisibleLabelInteractions {
+      do {
+        try reconcileAndApplyCurrentFrameSnapshots(
+          for: instanceId,
+          allowNewTransitions: Self.shouldAllowObservationDrivenMarkerTransitions(mutableState)
+        )
+      } catch {
+        emit([
+          "type": "error",
+          "instanceId": instanceId,
+          "message": "sticky_label_candidate_reconcile_failed: \(error.localizedDescription)",
+        ])
+      }
+    }
+    if var latestState = instances[instanceId] {
+      maybeElectMountedHiddenExecutionBatch(instanceId: instanceId, state: &latestState)
+      if var armedState = instances[instanceId] {
+        maybeEmitExecutionBatchArmed(instanceId: instanceId, state: &armedState)
+      }
+    }
     return [
       "visibleLabelFeatureIds": observation.visibleLabelFeatureIds,
       "placedLabels": Self.serializeRenderedPlacedLabels(observation.placedLabels),
@@ -4611,6 +6709,10 @@ final class SearchMapRenderController: RCTEventEmitter {
       return
     }
     var labelFamilyState = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
+    let labelInteractionFamilyState = Self.derivedFamilyState(
+      sourceId: state.labelInteractionSourceId,
+      state: state
+    )
     labelFamilyState.labelObservation.observationEnabled = observationEnabled
     labelFamilyState.labelObservation.allowFallback = allowFallback
     labelFamilyState.labelObservation.commitInteractionVisibility = commitInteractionVisibility
@@ -4622,9 +6724,22 @@ final class SearchMapRenderController: RCTEventEmitter {
     labelFamilyState.labelObservation.stickyUnlockMissingMsMoving = stickyUnlockMissingMsMoving
     labelFamilyState.labelObservation.stickyUnlockMissingMsIdle = stickyUnlockMissingMsIdle
     labelFamilyState.labelObservation.stickyUnlockMissingStreakMoving = stickyUnlockMissingStreakMoving
+    if labelFamilyState.labelObservation.configuredResetRequestKey != labelResetRequestKey {
+      labelFamilyState.labelObservation.hasCommittedObservationForConfiguredRequest = false
+    }
     labelFamilyState.labelObservation.configuredResetRequestKey = labelResetRequestKey
     labelFamilyState.labelObservation.movingNoopRefreshStreak = 0
     labelFamilyState.labelObservation.movingAdaptiveRefreshMs = refreshMsMoving
+    let shouldClearLabelInteractionVisibility = !observationEnabled || !commitInteractionVisibility
+    let didClearLabelInteractionVisibility =
+      shouldClearLabelInteractionVisibility &&
+      (
+        !labelFamilyState.settledVisibleFeatureIds.isEmpty ||
+        !labelInteractionFamilyState.collection.idsInOrder.isEmpty
+      )
+    if didClearLabelInteractionVisibility {
+      labelFamilyState.settledVisibleFeatureIds.removeAll()
+    }
     if !observationEnabled {
       labelFamilyState.labelObservation.isRefreshInFlight = false
       labelFamilyState.labelObservation.queuedRefreshDelayMs = nil
@@ -4633,6 +6748,20 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
     Self.setDerivedFamilyState(labelFamilyState, sourceId: state.labelSourceId, state: &state)
     instances[instanceId] = state
+    if didClearLabelInteractionVisibility {
+      do {
+        try reconcileAndApplyCurrentFrameSnapshots(
+          for: instanceId,
+          allowNewTransitions: Self.shouldAllowObservationDrivenMarkerTransitions(state)
+        )
+      } catch {
+        emit([
+          "type": "error",
+          "instanceId": instanceId,
+          "message": "label_interaction_visibility_clear_failed: \(error.localizedDescription)",
+        ])
+      }
+    }
     if observationEnabled {
       emit(
         Self.labelObservationEventPayload(from: currentRenderedLabelObservationSnapshot(instanceId: instanceId))
@@ -4676,6 +6805,13 @@ final class SearchMapRenderController: RCTEventEmitter {
       labelObservationRefreshWorkItems[instanceId]?.cancel()
       labelObservationRefreshWorkItems[instanceId] = nil
       return
+    }
+    if shouldEmitLabelObservationQueryProbe(state: state) {
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "label_observation_refresh_probe stage=schedule delayMs=\(Self.round1(delayMs)) moving=\(state.currentViewportIsMoving) inFlight=\(labelFamilyState.labelObservation.isRefreshInFlight) phase=\(state.lastPresentationBatchPhase) lifecycle=\(state.visualSourceLifecycleState) frame=\(state.activeFrameGenerationId ?? "nil")"
+      )
     }
     let normalizedDelayMs: Double
     if state.currentViewportIsMoving && delayMs > 0 {
@@ -4721,24 +6857,81 @@ final class SearchMapRenderController: RCTEventEmitter {
     labelFamilyState.labelObservation.queuedRefreshDelayMs = nil
     Self.setDerivedFamilyState(labelFamilyState, sourceId: state.labelSourceId, state: &state)
     instances[instanceId] = state
+    if state.visualSourceLifecycleState == .dismissing ||
+      state.visualSourceLifecycleState == .dismissed {
+      labelObservationRefreshWorkItems[instanceId]?.cancel()
+      labelObservationRefreshWorkItems[instanceId] = nil
+      return
+    }
     if let nextDelayMs {
       scheduleLabelObservationRefresh(instanceId: instanceId, delayMs: nextDelayMs)
     }
+  }
+
+  private func retryLabelObservationRefreshIfPlacementPending(
+    instanceId: String,
+    delayMs: Double
+  ) {
+    guard let state = instances[instanceId] else {
+      return
+    }
+    if state.visualSourceLifecycleState == .dismissing ||
+      state.visualSourceLifecycleState == .dismissed {
+      return
+    }
+    let labelFamilyState = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
+    let labelCount = max(
+      state.lastLabelCount,
+      labelFamilyState.desiredCollection.idsInOrder.count,
+      labelFamilyState.collection.idsInOrder.count
+    )
+    guard labelCount > 0,
+      labelFamilyState.labelObservation.observationEnabled,
+      !Self.isActiveFrameLabelPlacementReady(state: state)
+    else {
+      return
+    }
+    scheduleLabelObservationRefresh(instanceId: instanceId, delayMs: delayMs)
   }
 
   private func performLabelObservationRefresh(instanceId: String) {
     guard var state = instances[instanceId] else {
       return
     }
+    if state.visualSourceLifecycleState == .dismissing ||
+      state.visualSourceLifecycleState == .dismissed {
+      labelObservationRefreshWorkItems[instanceId]?.cancel()
+      labelObservationRefreshWorkItems[instanceId] = nil
+      return
+    }
     var labelFamilyState = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
     guard labelFamilyState.labelObservation.observationEnabled else {
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "label_observation_refresh_probe stage=skip_disabled phase=\(state.lastPresentationBatchPhase) lifecycle=\(state.visualSourceLifecycleState) frame=\(state.activeFrameGenerationId ?? "nil")"
+      )
       return
     }
     guard let handle = currentResolvedMapHandle(for: state.mapTag) else {
+      if shouldEmitLabelObservationQueryProbe(state: state) {
+        emitVisualDiag(
+          instanceId: instanceId,
+          message:
+            "label_observation_refresh_probe stage=skip_missing_map_handle phase=\(state.lastPresentationBatchPhase) lifecycle=\(state.visualSourceLifecycleState) frame=\(state.activeFrameGenerationId ?? "nil") mapTag=\(state.mapTag.stringValue)"
+        )
+      }
       return
     }
     let queryRect = handle.mapView.bounds
     guard queryRect.width > 0, queryRect.height > 0 else {
+      if shouldEmitLabelObservationQueryProbe(state: state) {
+        emitVisualDiag(
+          instanceId: instanceId,
+          message:
+            "label_observation_refresh_probe stage=skip_empty_bounds phase=\(state.lastPresentationBatchPhase) lifecycle=\(state.visualSourceLifecycleState) frame=\(state.activeFrameGenerationId ?? "nil") queryRect=\(Self.rectSummary(queryRect))"
+        )
+      }
       let snapshot = commitRenderedLabelObservation(
         instanceId: instanceId,
         observation: (visibleLabelFeatureIds: [], placedLabels: []),
@@ -4753,7 +6946,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         stickyUnlockMissingStreakMoving: labelFamilyState.labelObservation.stickyUnlockMissingStreakMoving,
         labelResetRequestKey: labelFamilyState.labelObservation.configuredResetRequestKey
       )
-      reconcileStickyObservationIfNeeded(instanceId: instanceId, snapshot: snapshot)
       emit(
         Self.labelObservationEventPayload(from: snapshot)
           .merging(["type": "label_observation_updated", "instanceId": instanceId]) { _, new in new }
@@ -4769,6 +6961,12 @@ final class SearchMapRenderController: RCTEventEmitter {
         for: [state.labelSourceId],
         mapboxMap: handle.mapView.mapboxMap
       )
+      if shouldEmitLabelObservationQueryProbe(state: state) {
+        emitVisualDiag(
+          instanceId: instanceId,
+          message: "label_observation_query_probe \(labelObservationQueryProbeSummary(stage: "query_start", state: state, resolvedLayerIds: resolvedLayerIds, queryRect: queryRect))"
+        )
+      }
       guard !resolvedLayerIds.isEmpty else {
         let snapshot = currentRenderedLabelObservationSnapshot(instanceId: instanceId)
         emit(
@@ -4776,6 +6974,7 @@ final class SearchMapRenderController: RCTEventEmitter {
             .merging(["type": "label_observation_updated", "instanceId": instanceId]) { _, new in new }
         )
         completeLabelObservationRefresh(instanceId: instanceId)
+        retryLabelObservationRefreshIfPlacementPending(instanceId: instanceId, delayMs: 16)
         return
       }
       let allowFallback = labelFamilyState.labelObservation.allowFallback
@@ -4788,10 +6987,25 @@ final class SearchMapRenderController: RCTEventEmitter {
           guard let self else {
             return
           }
+          guard
+            let latestState = self.instances[instanceId],
+            latestState.visualSourceLifecycleState != .dismissing,
+            latestState.visualSourceLifecycleState != .dismissed
+          else {
+            self.completeLabelObservationRefresh(instanceId: instanceId)
+            return
+          }
           switch result {
           case .failure:
             self.completeLabelObservationRefresh(instanceId: instanceId)
+            self.retryLabelObservationRefreshIfPlacementPending(instanceId: instanceId, delayMs: 16)
           case .success(let features):
+            if features.isEmpty && self.shouldEmitLabelObservationQueryProbe(state: latestState) {
+              self.emitVisualDiag(
+                instanceId: instanceId,
+                message: "label_observation_query_probe \(self.labelObservationQueryProbeSummary(stage: "query_zero", state: latestState, resolvedLayerIds: resolvedLayerIds, queryRect: queryRect, renderedFeatureCount: features.count))"
+              )
+            }
             let primaryObservation = Self.buildRenderedLabelObservation(
               from: features,
               requiredSourceId: state.labelSourceId
@@ -4811,12 +7025,12 @@ final class SearchMapRenderController: RCTEventEmitter {
                 stickyUnlockMissingStreakMoving: labelFamilyState.labelObservation.stickyUnlockMissingStreakMoving,
                 labelResetRequestKey: labelFamilyState.labelObservation.configuredResetRequestKey
               )
-              self.reconcileStickyObservationIfNeeded(instanceId: instanceId, snapshot: snapshot)
               self.emit(
                 Self.labelObservationEventPayload(from: snapshot)
                   .merging(["type": "label_observation_updated", "instanceId": instanceId]) { _, new in new }
               )
               self.completeLabelObservationRefresh(instanceId: instanceId)
+              self.retryLabelObservationRefreshIfPlacementPending(instanceId: instanceId, delayMs: 16)
               return
             }
             handle.mapView.mapboxMap.queryRenderedFeatures(
@@ -4824,10 +7038,25 @@ final class SearchMapRenderController: RCTEventEmitter {
               options: queryOptions
             ) { fallbackResult in
               DispatchQueue.main.async {
+                guard
+                  let latestState = self.instances[instanceId],
+                  latestState.visualSourceLifecycleState != .dismissing,
+                  latestState.visualSourceLifecycleState != .dismissed
+                else {
+                  self.completeLabelObservationRefresh(instanceId: instanceId)
+                  return
+                }
                 switch fallbackResult {
                 case .failure:
                   self.completeLabelObservationRefresh(instanceId: instanceId)
+                  self.retryLabelObservationRefreshIfPlacementPending(instanceId: instanceId, delayMs: 16)
                 case .success(let fallbackFeatures):
+                  if fallbackFeatures.isEmpty && self.shouldEmitLabelObservationQueryProbe(state: latestState) {
+                    self.emitVisualDiag(
+                      instanceId: instanceId,
+                      message: "label_observation_query_probe \(self.labelObservationQueryProbeSummary(stage: "fallback_zero", state: latestState, resolvedLayerIds: resolvedLayerIds, queryRect: queryRect, renderedFeatureCount: fallbackFeatures.count))"
+                    )
+                  }
                   let fallbackObservation = Self.buildRenderedLabelObservation(
                     from: fallbackFeatures,
                     requiredSourceId: state.labelSourceId
@@ -4846,12 +7075,12 @@ final class SearchMapRenderController: RCTEventEmitter {
                     stickyUnlockMissingStreakMoving: labelFamilyState.labelObservation.stickyUnlockMissingStreakMoving,
                     labelResetRequestKey: labelFamilyState.labelObservation.configuredResetRequestKey
                   )
-                  self.reconcileStickyObservationIfNeeded(instanceId: instanceId, snapshot: snapshot)
                   self.emit(
                     Self.labelObservationEventPayload(from: snapshot)
                       .merging(["type": "label_observation_updated", "instanceId": instanceId]) { _, new in new }
                   )
                   self.completeLabelObservationRefresh(instanceId: instanceId)
+                  self.retryLabelObservationRefreshIfPlacementPending(instanceId: instanceId, delayMs: 16)
                 }
               }
             }
@@ -4860,18 +7089,17 @@ final class SearchMapRenderController: RCTEventEmitter {
       }
     } catch {
       completeLabelObservationRefresh(instanceId: instanceId)
+      retryLabelObservationRefreshIfPlacementPending(instanceId: instanceId, delayMs: 16)
     }
   }
 
-  private static func emptyRenderedLabelObservationResult(
-    stickyChanged: Bool = false
-  ) -> [String: Any] {
+  private static func emptyRenderedLabelObservationResult() -> [String: Any] {
     [
       "visibleLabelFeatureIds": [],
       "placedLabels": [],
       "layerRenderedFeatureCount": 0,
       "effectiveRenderedFeatureCount": 0,
-      "stickyChanged": stickyChanged,
+      "stickyChanged": false,
     ]
   }
 
@@ -4883,14 +7111,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       "layerRenderedFeatureCount": snapshot["layerRenderedFeatureCount"] as? Int ?? 0,
       "effectiveRenderedFeatureCount": snapshot["effectiveRenderedFeatureCount"] as? Int ?? 0,
       "stickyChanged": snapshot["stickyChanged"] as? Bool ?? false,
-    ]
-  }
-
-  private static func emptyRenderedDotObservationResult() -> [String: Any] {
-    [
-      "restaurantIds": [],
-      "renderedDots": [],
-      "renderedFeatureCount": 0,
     ]
   }
 
@@ -5036,40 +7256,62 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
 
     var changedIdentityKeys = Set<String>()
-
-    // Sticky memory is now "last successful side wins and persists until a different placed side
-    // actually wins". Temporary absence should not erase the remembered side.
-    for stickyIdentityKey in Array(labelObservation.stickyCandidateByIdentity.keys) {
-      let observedCandidate = renderedCandidateByIdentity[stickyIdentityKey]
-      if let observedCandidate {
-        if labelObservation.stickyCandidateByIdentity[stickyIdentityKey] != observedCandidate {
-          labelObservation.stickyCandidateByIdentity[stickyIdentityKey] = observedCandidate
-          changedIdentityKeys.insert(stickyIdentityKey)
-        }
-        labelObservation.stickyCommittedLastSeenAtMsByIdentity[stickyIdentityKey] = nowMs
-        labelObservation.stickyCommittedMissingStreakByIdentity[stickyIdentityKey] = 0
+    for (stickyIdentityKey, candidate) in renderedCandidateByIdentity {
+      labelObservation.stickyCommittedLastSeenAtMsByIdentity[stickyIdentityKey] = nowMs
+      labelObservation.stickyCommittedMissingStreakByIdentity[stickyIdentityKey] = 0
+      let lockedCandidate = labelObservation.stickyCandidateByIdentity[stickyIdentityKey]
+      if lockedCandidate == candidate {
         labelObservation.stickyProposedCandidateByIdentity.removeValue(forKey: stickyIdentityKey)
         labelObservation.stickyProposedSinceAtMsByIdentity.removeValue(forKey: stickyIdentityKey)
         continue
       }
 
-      let nextMissingStreak =
-        (labelObservation.stickyCommittedMissingStreakByIdentity[stickyIdentityKey] ?? 0) + 1
-      labelObservation.stickyCommittedMissingStreakByIdentity[stickyIdentityKey] = nextMissingStreak
+      if isMoving {
+        labelObservation.stickyCandidateByIdentity[stickyIdentityKey] = candidate
+        labelObservation.stickyProposedCandidateByIdentity.removeValue(forKey: stickyIdentityKey)
+        labelObservation.stickyProposedSinceAtMsByIdentity.removeValue(forKey: stickyIdentityKey)
+        changedIdentityKeys.insert(stickyIdentityKey)
+        continue
+      }
+
+      let stableMs = isMoving ? stickyLockStableMsMoving : stickyLockStableMsIdle
+      let proposedCandidate = labelObservation.stickyProposedCandidateByIdentity[stickyIdentityKey]
+      if proposedCandidate != candidate {
+        labelObservation.stickyProposedCandidateByIdentity[stickyIdentityKey] = candidate
+        labelObservation.stickyProposedSinceAtMsByIdentity[stickyIdentityKey] = nowMs
+        continue
+      }
+      let proposedSinceAt = labelObservation.stickyProposedSinceAtMsByIdentity[stickyIdentityKey] ?? nowMs
+      if nowMs - proposedSinceAt < stableMs {
+        continue
+      }
+
+      labelObservation.stickyCandidateByIdentity[stickyIdentityKey] = candidate
       labelObservation.stickyProposedCandidateByIdentity.removeValue(forKey: stickyIdentityKey)
       labelObservation.stickyProposedSinceAtMsByIdentity.removeValue(forKey: stickyIdentityKey)
+      changedIdentityKeys.insert(stickyIdentityKey)
     }
 
-    for (stickyIdentityKey, candidate) in renderedCandidateByIdentity {
-      let previousCandidate = labelObservation.stickyCandidateByIdentity[stickyIdentityKey]
-      if previousCandidate != candidate {
-        labelObservation.stickyCandidateByIdentity[stickyIdentityKey] = candidate
-        changedIdentityKeys.insert(stickyIdentityKey)
+    if !placedLabels.isEmpty {
+      let unlockMs = isMoving ? stickyUnlockMissingMsMoving : stickyUnlockMissingMsIdle
+      let requiredStreak = isMoving ? stickyUnlockMissingStreakMoving : 1
+      for stickyIdentityKey in Array(labelObservation.stickyCandidateByIdentity.keys) {
+        if renderedCandidateByIdentity[stickyIdentityKey] != nil {
+          continue
+        }
+        let nextMissingStreak =
+          (labelObservation.stickyCommittedMissingStreakByIdentity[stickyIdentityKey] ?? 0) + 1
+        labelObservation.stickyCommittedMissingStreakByIdentity[stickyIdentityKey] = nextMissingStreak
+        labelObservation.stickyProposedCandidateByIdentity.removeValue(forKey: stickyIdentityKey)
+        labelObservation.stickyProposedSinceAtMsByIdentity.removeValue(forKey: stickyIdentityKey)
+        let lastSeenAt = labelObservation.stickyCommittedLastSeenAtMsByIdentity[stickyIdentityKey] ?? 0
+        if nextMissingStreak >= requiredStreak && nowMs - lastSeenAt > unlockMs {
+          labelObservation.stickyCandidateByIdentity.removeValue(forKey: stickyIdentityKey)
+          labelObservation.stickyCommittedLastSeenAtMsByIdentity.removeValue(forKey: stickyIdentityKey)
+          labelObservation.stickyCommittedMissingStreakByIdentity.removeValue(forKey: stickyIdentityKey)
+          changedIdentityKeys.insert(stickyIdentityKey)
+        }
       }
-      labelObservation.stickyCommittedLastSeenAtMsByIdentity[stickyIdentityKey] = nowMs
-      labelObservation.stickyCommittedMissingStreakByIdentity[stickyIdentityKey] = 0
-      labelObservation.stickyProposedCandidateByIdentity.removeValue(forKey: stickyIdentityKey)
-      labelObservation.stickyProposedSinceAtMsByIdentity.removeValue(forKey: stickyIdentityKey)
     }
 
     if !changedIdentityKeys.isEmpty {
@@ -5078,46 +7320,69 @@ final class SearchMapRenderController: RCTEventEmitter {
     return changedIdentityKeys
   }
 
-  private func reconcileStickyObservationIfNeeded(
-    instanceId: String,
-    snapshot: [String: Any]
-  ) {
-    guard snapshot["stickyChanged"] as? Bool == true
-    else {
-      return
-    }
-    try? reconcileAndApplyCurrentFrameSnapshots(for: instanceId, allowNewTransitions: false)
-  }
-
-  private static func buildRenderedDotObservation(
+  private static func buildRenderedDotPressTarget(
     from features: [QueriedRenderedFeature],
-    requiredSourceId: String
-  ) -> (
-    restaurantIds: [String],
-    renderedDots: [[String: Any]]
-  ) {
-    var restaurantIds = Set<String>()
-    var renderedDots: [[String: Any]] = []
-    for feature in features {
+    requiredSourceId: String,
+    tapCoordinate: (lng: Double, lat: Double)?
+  ) -> [String: Any]? {
+    var bestTarget: (
+      restaurantId: String,
+      coordinate: [String: Any]?,
+      distance: Double,
+      featureIndex: Int
+    )?
+
+    for (featureIndex, feature) in features.enumerated() {
       guard feature.queriedFeature.source == requiredSourceId,
-            let parsed = Self.parseRenderedDotObservationFeature(feature)
+            let parsed = Self.parseRenderedDotPressFeature(feature)
       else {
         continue
       }
-      restaurantIds.insert(parsed.restaurantId)
-      renderedDots.append(parsed.renderedDot)
+      let distance: Double
+      if let tapCoordinate, let coordinate = parsed.coordinate,
+         let lng = coordinate["lng"] as? Double,
+         let lat = coordinate["lat"] as? Double {
+        let dx = tapCoordinate.lng - lng
+        let dy = tapCoordinate.lat - lat
+        distance = dx * dx + dy * dy
+      } else {
+        distance = Double(featureIndex)
+      }
+      guard let existing = bestTarget else {
+        bestTarget = (
+          restaurantId: parsed.restaurantId,
+          coordinate: parsed.coordinate,
+          distance: distance,
+          featureIndex: featureIndex
+        )
+        continue
+      }
+      if distance < existing.distance ||
+          (distance == existing.distance && featureIndex < existing.featureIndex) {
+        bestTarget = (
+          restaurantId: parsed.restaurantId,
+          coordinate: parsed.coordinate,
+          distance: distance,
+          featureIndex: featureIndex
+        )
+      }
     }
-    return (
-      restaurantIds: Array(restaurantIds).sorted(),
-      renderedDots: renderedDots
-    )
+
+    guard let bestTarget else {
+      return nil
+    }
+    return [
+      "restaurantId": bestTarget.restaurantId,
+      "coordinate": bestTarget.coordinate ?? NSNull(),
+      "targetKind": "dot",
+    ]
   }
 
-  private static func parseRenderedDotObservationFeature(
+  private static func parseRenderedDotPressFeature(
     _ feature: QueriedRenderedFeature
   ) -> (
     restaurantId: String,
-    renderedDot: [String: Any]
+    coordinate: [String: Any]?
   )? {
     let rawFeature = feature.queriedFeature.feature
     let properties = rawFeature.properties?.turfRawValue as? [String: Any]
@@ -5134,10 +7399,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
     return (
       restaurantId: restaurantId,
-      renderedDot: [
-        "restaurantId": restaurantId,
-        "coordinate": coordinatePayload ?? NSNull(),
-      ]
+      coordinate: coordinatePayload
     )
   }
 
@@ -5145,13 +7407,13 @@ final class SearchMapRenderController: RCTEventEmitter {
     from features: [QueriedRenderedFeature],
     requiredSourceId: String
   ) -> [String: Any]? {
-    var bestTarget: (
+    var candidates: [(
       restaurantId: String,
       coordinate: [String: Any]?,
       lodZ: Double,
       rank: Double,
       featureIndex: Int
-    )?
+    )] = []
 
     for (featureIndex, feature) in features.enumerated() {
       guard feature.queriedFeature.source == requiredSourceId,
@@ -5159,32 +7421,29 @@ final class SearchMapRenderController: RCTEventEmitter {
       else {
         continue
       }
-      guard let existing = bestTarget else {
-        bestTarget = (
-          restaurantId: parsed.restaurantId,
-          coordinate: parsed.coordinate,
-          lodZ: parsed.lodZ,
-          rank: parsed.rank,
-          featureIndex: featureIndex
-        )
-        continue
-      }
-      if parsed.lodZ > existing.lodZ ||
-          (parsed.lodZ == existing.lodZ && parsed.rank < existing.rank) ||
-          (parsed.lodZ == existing.lodZ && parsed.rank == existing.rank && featureIndex < existing.featureIndex) {
-        bestTarget = (
-          restaurantId: parsed.restaurantId,
-          coordinate: parsed.coordinate,
-          lodZ: parsed.lodZ,
-          rank: parsed.rank,
-          featureIndex: featureIndex
-        )
-      }
+
+      candidates.append((
+        restaurantId: parsed.restaurantId,
+        coordinate: parsed.coordinate,
+        lodZ: parsed.lodZ,
+        rank: parsed.rank,
+        featureIndex: featureIndex
+      ))
     }
 
-    guard let bestTarget else {
+    guard !candidates.isEmpty else {
       return nil
     }
+    candidates.sort { left, right in
+      if left.lodZ != right.lodZ {
+        return left.lodZ > right.lodZ
+      }
+      if left.rank != right.rank {
+        return left.rank < right.rank
+      }
+      return left.featureIndex < right.featureIndex
+    }
+    let bestTarget = candidates[0]
     return [
       "restaurantId": bestTarget.restaurantId,
       "coordinate": bestTarget.coordinate ?? NSNull(),
@@ -5228,17 +7487,149 @@ final class SearchMapRenderController: RCTEventEmitter {
 
   private static func buildRenderedLabelPressTarget(
     from features: [QueriedRenderedFeature],
-    requiredSourceId: String
+    requiredSourceIds: Set<String>,
+    tapPoint: CGPoint,
+    mapboxMap: MapboxMap,
+    hitbox: LabelTapHitboxConfig?
   ) -> [String: Any]? {
     for feature in features {
-      guard feature.queriedFeature.source == requiredSourceId,
+      guard requiredSourceIds.contains(feature.queriedFeature.source),
             let parsed = Self.parseRenderedLabelPressFeature(feature)
       else {
+        continue
+      }
+      guard Self.isRenderedLabelPressFeatureIntentional(
+        feature,
+        tapPoint: tapPoint,
+        mapboxMap: mapboxMap,
+        hitbox: hitbox
+      ) else {
         continue
       }
       return parsed
     }
     return nil
+  }
+
+  private static func parseLabelTapHitboxConfig(_ payload: Any?) -> LabelTapHitboxConfig? {
+    guard let payload = payload as? [String: Any] else {
+      return nil
+    }
+    guard
+      let textSize = (payload["textSize"] as? NSNumber)?.doubleValue,
+      let radialXEm = (payload["radialXEm"] as? NSNumber)?.doubleValue,
+      let radialYEm = (payload["radialYEm"] as? NSNumber)?.doubleValue,
+      let radialTopEm = (payload["radialTopEm"] as? NSNumber)?.doubleValue,
+      let upShiftEm = (payload["upShiftEm"] as? NSNumber)?.doubleValue,
+      let charWidthFactor = (payload["charWidthFactor"] as? NSNumber)?.doubleValue,
+      let lineHeightFactor = (payload["lineHeightFactor"] as? NSNumber)?.doubleValue,
+      let paddingPx = (payload["paddingPx"] as? NSNumber)?.doubleValue,
+      let minWidthPx = (payload["minWidthPx"] as? NSNumber)?.doubleValue,
+      let maxWidthPx = (payload["maxWidthPx"] as? NSNumber)?.doubleValue
+    else {
+      return nil
+    }
+    return LabelTapHitboxConfig(
+      textSize: CGFloat(textSize),
+      radialXEm: CGFloat(radialXEm),
+      radialYEm: CGFloat(radialYEm),
+      radialTopEm: CGFloat(radialTopEm),
+      upShiftEm: CGFloat(upShiftEm),
+      charWidthFactor: CGFloat(charWidthFactor),
+      lineHeightFactor: CGFloat(lineHeightFactor),
+      paddingPx: CGFloat(paddingPx),
+      minWidthPx: CGFloat(minWidthPx),
+      maxWidthPx: CGFloat(maxWidthPx)
+    )
+  }
+
+  private static func isRenderedLabelPressFeatureIntentional(
+    _ feature: QueriedRenderedFeature,
+    tapPoint: CGPoint,
+    mapboxMap: MapboxMap,
+    hitbox: LabelTapHitboxConfig?
+  ) -> Bool {
+    guard let hitbox else {
+      return false
+    }
+    let rawFeature = feature.queriedFeature.feature
+    guard case let .point(pointGeometry) = rawFeature.geometry else {
+      return false
+    }
+    let properties = rawFeature.properties?.turfRawValue as? [String: Any]
+    let featureId = rawFeature.identifier.flatMap(Self.featureIdentifierString)
+    let parsedFeatureId = featureId.flatMap(Self.parseRenderedLabelCandidateFeatureId)
+    let candidate =
+      Self.labelCandidateString(from: properties?["labelCandidate"]) ??
+      parsedFeatureId?.candidate
+    guard let candidate else {
+      return false
+    }
+    let labelText = properties?["restaurantName"] as? String
+    guard let labelText, !labelText.isEmpty else {
+      return false
+    }
+
+    let lines = labelText.split(separator: "\n", omittingEmptySubsequences: false)
+    let longestLineLength = lines.reduce(0) { max($0, $1.count) }
+    let estimatedWidth = min(
+      max(CGFloat(longestLineLength) * hitbox.textSize * hitbox.charWidthFactor + 10, hitbox.minWidthPx),
+      hitbox.maxWidthPx
+    )
+    let estimatedHeight =
+      max(CGFloat(lines.count), 1) * hitbox.textSize * hitbox.lineHeightFactor + 4
+
+    var offsetXPx: CGFloat = 0
+    var offsetYPx: CGFloat = 0
+    switch candidate {
+    case "bottom":
+      offsetYPx = (hitbox.radialYEm - hitbox.upShiftEm) * hitbox.textSize
+    case "right":
+      offsetXPx = hitbox.radialXEm * hitbox.textSize
+      offsetYPx = -hitbox.upShiftEm * hitbox.textSize
+    case "top":
+      offsetYPx = -(hitbox.radialTopEm + hitbox.upShiftEm) * hitbox.textSize
+    case "left":
+      offsetXPx = -hitbox.radialXEm * hitbox.textSize
+      offsetYPx = -hitbox.upShiftEm * hitbox.textSize
+    default:
+      return false
+    }
+
+    let anchorCoordinate = CLLocationCoordinate2D(
+      latitude: pointGeometry.coordinates.latitude,
+      longitude: pointGeometry.coordinates.longitude
+    )
+    let anchorPoint = mapboxMap.point(for: anchorCoordinate)
+    let anchorX = anchorPoint.x + offsetXPx
+    let anchorY = anchorPoint.y + offsetYPx
+
+    var left = anchorX - estimatedWidth / 2
+    var right = anchorX + estimatedWidth / 2
+    var top = anchorY - estimatedHeight / 2
+    var bottom = anchorY + estimatedHeight / 2
+
+    switch candidate {
+    case "bottom":
+      top = anchorY
+      bottom = anchorY + estimatedHeight
+    case "top":
+      top = anchorY - estimatedHeight
+      bottom = anchorY
+    case "left":
+      left = anchorX - estimatedWidth
+      right = anchorX
+    case "right":
+      left = anchorX
+      right = anchorX + estimatedWidth
+    default:
+      break
+    }
+
+    return tapPoint.x >= left - hitbox.paddingPx &&
+      tapPoint.x <= right + hitbox.paddingPx &&
+      tapPoint.y >= top - hitbox.paddingPx &&
+      tapPoint.y <= bottom + hitbox.paddingPx
   }
 
   private static func parseRenderedLabelPressFeature(
@@ -5912,10 +8303,20 @@ final class SearchMapRenderController: RCTEventEmitter {
         fenceBySourceId: &state.blockedPresentationCommitFenceBySourceId
       )
       if sourceId == state.pinSourceId {
-        startAwaitingLivePinTransitions(instanceId: instanceId, dataId: dataId, state: &state)
+        startAwaitingLivePinTransitions(
+          instanceId: instanceId,
+          dataId: dataId,
+          reason: "source_commit_ack",
+          state: &state
+        )
       }
       if sourceId == state.dotSourceId {
-        startAwaitingLiveDotTransitions(instanceId: instanceId, dataId: dataId, state: &state)
+        startAwaitingLiveDotTransitions(
+          instanceId: instanceId,
+          dataId: dataId,
+          reason: "source_commit_ack",
+          state: &state
+        )
       }
       if sourceId == state.labelSourceId {
         let labelObservation = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state).labelObservation
@@ -6076,12 +8477,28 @@ final class SearchMapRenderController: RCTEventEmitter {
         armNativeEnterSettle(instanceId: instanceId, requestKey: blockedPresentationSettleRequestKey)
       }
     }
+    if !hasPendingCommitFence(capturePendingVisualSourceCommitFence(state: state)) {
+      maybeEmitExecutionBatchArmed(instanceId: instanceId, state: &state)
+    }
   }
 
-  private func hasPendingVisualSourceCommits(state: InstanceState) -> Bool {
-    [state.pinSourceId, state.dotSourceId, state.labelSourceId].contains { sourceId in
-      !(state.pendingSourceCommitDataIdsBySourceId[sourceId] ?? []).isEmpty
+  private func currentMountedSourceRevisions(state: InstanceState) -> [String: String] {
+    let sourceRevision: (String) -> String = { sourceId in
+      if state.visualSourceLifecycleState == .dismissed,
+         let cachedCollection = state.residentDesiredSourceCacheBySourceId[sourceId] {
+        return cachedCollection.sourceRevision
+      }
+      return Self.mountedSourceState(sourceId: sourceId, state: state)?.sourceRevision ?? ""
     }
+    return [
+      "pins": sourceRevision(state.pinSourceId),
+      "pinInteractions": sourceRevision(state.pinInteractionSourceId),
+      "dots": sourceRevision(state.dotSourceId),
+      "dotInteractions": sourceRevision(state.dotInteractionSourceId),
+      "labels": sourceRevision(state.labelSourceId),
+      "labelInteractions": sourceRevision(state.labelInteractionSourceId),
+      "labelCollisions": sourceRevision(state.labelCollisionSourceId),
+    ]
   }
 
   private func capturePendingVisualSourceCommitFence(state: InstanceState) -> [String: Set<String>] {
@@ -6306,7 +8723,9 @@ final class SearchMapRenderController: RCTEventEmitter {
         addedFeatureIds: []
       )
     }
-    if previousSourceLifecyclePhase != .incremental {
+    if previousSourceLifecyclePhase != .incremental ||
+      isInteractionSource(sourceId: sourceId, state: state)
+    {
       try replaceSourceData(sourceId: sourceId, next: next, mapboxMap: mapboxMap)
       return MutationSummary(
         addCount: next.idsInOrder.count,
@@ -6392,7 +8811,9 @@ final class SearchMapRenderController: RCTEventEmitter {
       )
     }
 
-    if previousSourceLifecyclePhase != .incremental {
+    if previousSourceLifecyclePhase != .incremental ||
+      isInteractionSource(sourceId: sourceId, state: state)
+    {
       return ResolvedSourceMutationPlan(
         sourceId: sourceId,
         previousSourceLifecyclePhase: previousSourceLifecyclePhase,
@@ -6435,9 +8856,19 @@ final class SearchMapRenderController: RCTEventEmitter {
     )
   }
 
+  private static func isInteractionSource(
+    sourceId: String,
+    state: InstanceState
+  ) -> Bool {
+    sourceId == state.pinInteractionSourceId ||
+      sourceId == state.dotInteractionSourceId ||
+      sourceId == state.labelInteractionSourceId
+  }
+
   private static func applySourceMutationBatch(
     _ plans: [ResolvedSourceMutationPlan],
-    mapboxMap: MapboxMap
+    mapboxMap: MapboxMap,
+    recordMutationApply: ((String, String, Int, Double) -> Void)? = nil
   ) throws {
     for plan in plans {
       guard plan.mutationMode == .baselineReplace,
@@ -6445,7 +8876,14 @@ final class SearchMapRenderController: RCTEventEmitter {
       else {
         continue
       }
+      let startedAt = CACurrentMediaTime() * 1000
       try replaceSourceData(sourceId: plan.sourceId, next: plan.next, mapboxMap: mapboxMap)
+      recordMutationApply?(
+        plan.sourceId,
+        "mapbox.replace_source_data",
+        plan.next.idsInOrder.count,
+        CACurrentMediaTime() * 1000 - startedAt
+      )
     }
 
     for plan in plans {
@@ -6455,10 +8893,17 @@ final class SearchMapRenderController: RCTEventEmitter {
       else {
         continue
       }
+      let startedAt = CACurrentMediaTime() * 1000
       mapboxMap.removeGeoJSONSourceFeatures(
         forSourceId: plan.sourceId,
         featureIds: plan.next.removedFeatureIdsInOrder,
         dataId: plan.dataId
+      )
+      recordMutationApply?(
+        plan.sourceId,
+        "mapbox.remove_features",
+        plan.next.removedFeatureIdsInOrder.count,
+        CACurrentMediaTime() * 1000 - startedAt
       )
     }
 
@@ -6469,10 +8914,17 @@ final class SearchMapRenderController: RCTEventEmitter {
       else {
         continue
       }
+      let startedAt = CACurrentMediaTime() * 1000
       mapboxMap.addGeoJSONSourceFeatures(
         forSourceId: plan.sourceId,
         features: plan.next.addedFeatures,
         dataId: plan.dataId
+      )
+      recordMutationApply?(
+        plan.sourceId,
+        "mapbox.add_features",
+        plan.next.addedFeatures.count,
+        CACurrentMediaTime() * 1000 - startedAt
       )
     }
 
@@ -6483,10 +8935,17 @@ final class SearchMapRenderController: RCTEventEmitter {
       else {
         continue
       }
+      let startedAt = CACurrentMediaTime() * 1000
       mapboxMap.updateGeoJSONSourceFeatures(
         forSourceId: plan.sourceId,
         features: plan.next.updatedFeatures,
         dataId: plan.dataId
+      )
+      recordMutationApply?(
+        plan.sourceId,
+        "mapbox.update_features",
+        plan.next.updatedFeatures.count,
+        CACurrentMediaTime() * 1000 - startedAt
       )
     }
   }
@@ -6674,10 +9133,18 @@ final class SearchMapRenderController: RCTEventEmitter {
     if plans.isEmpty {
       return [:]
     }
+    let resolvePlansStartedAt = CACurrentMediaTime() * 1000
     let resolvedPlans = try plans.map(Self.resolveParsedCollectionApplyPlan)
+    self.recordNativeApply(
+      section: "source_batch.resolve_plans",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - resolvePlansStartedAt,
+      operationCount: plans.count
+    )
     var mutationSummaryBySourceId: [String: MutationSummary] = [:]
     var resolvedMutationPlans: [ResolvedSourceMutationPlan] = []
 
+    let mutationPlansStartedAt = CACurrentMediaTime() * 1000
     for plan in resolvedPlans {
       let resolvedMutationPlan = Self.resolveSourceMutationPlan(
         sourceId: plan.sourceId,
@@ -6689,8 +9156,59 @@ final class SearchMapRenderController: RCTEventEmitter {
       mutationSummaryBySourceId[plan.sourceId] = resolvedMutationPlan.mutationSummary
       resolvedMutationPlans.append(resolvedMutationPlan)
     }
+    if let pinMutationPlan = resolvedMutationPlans.first(where: { $0.sourceId == state.pinSourceId }) {
+      let summary = pinMutationPlan.mutationSummary
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "pin_source_mutation_plan mode=\(String(describing: pinMutationPlan.mutationMode)) previousLifecycle=\(String(describing: pinMutationPlan.previousSourceLifecyclePhase)) previousRevisionEmpty=\(pinMutationPlan.previousSourceRevision.isEmpty) nextCount=\(pinMutationPlan.next.idsInOrder.count) add=\(summary.addCount) update=\(summary.updateCount) remove=\(summary.removeCount) dataId=\(summary.dataId ?? "nil") activeFrame=\(state.activeFrameGenerationId ?? "nil") sourceReadyFrame=\(state.sourceReadyFrameGenerationId ?? "nil") lifecycle=\(state.visualSourceLifecycleState)"
+      )
+    }
+    if let pinInteractionMutationPlan = resolvedMutationPlans.first(where: { $0.sourceId == state.pinInteractionSourceId }) {
+      let summary = pinInteractionMutationPlan.mutationSummary
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "pin_interaction_source_mutation_plan mode=\(String(describing: pinInteractionMutationPlan.mutationMode)) previousLifecycle=\(String(describing: pinInteractionMutationPlan.previousSourceLifecyclePhase)) previousRevisionEmpty=\(pinInteractionMutationPlan.previousSourceRevision.isEmpty) nextCount=\(pinInteractionMutationPlan.next.idsInOrder.count) add=\(summary.addCount) update=\(summary.updateCount) remove=\(summary.removeCount) dataId=\(summary.dataId ?? "nil") activeFrame=\(state.activeFrameGenerationId ?? "nil") lifecycle=\(state.visualSourceLifecycleState)"
+      )
+    }
+    self.recordNativeApply(
+      section: "source_batch.resolve_mutation_plans",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - mutationPlansStartedAt,
+      operationCount: resolvedPlans.count
+    )
 
-    try Self.applySourceMutationBatch(resolvedMutationPlans, mapboxMap: mapboxMap)
+    let mutationBatchStartedAt = CACurrentMediaTime() * 1000
+    let attributionPhase = state.lastPresentationBatchPhase
+    let sourceFamilyBySourceId = [
+      state.pinSourceId: "pins",
+      state.pinInteractionSourceId: "pinInteractions",
+      state.dotSourceId: "dots",
+      state.dotInteractionSourceId: "dotInteractions",
+      state.labelSourceId: "labels",
+      state.labelInteractionSourceId: "labelInteractions",
+      state.labelCollisionSourceId: "labelCollisions",
+    ]
+    try Self.applySourceMutationBatch(
+      resolvedMutationPlans,
+      mapboxMap: mapboxMap,
+      recordMutationApply: { sourceId, section, operationCount, durationMs in
+        self.recordNativeApply(
+          section: section,
+          phase: attributionPhase,
+          source: sourceFamilyBySourceId[sourceId] ?? sourceId,
+          durationMs: durationMs,
+          operationCount: operationCount
+        )
+      }
+    )
+    self.recordNativeApply(
+      section: "source_batch.apply_mutation_batch",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - mutationBatchStartedAt,
+      operationCount: resolvedMutationPlans.count
+    )
 
     for plan in resolvedPlans {
       let mutationSummary = mutationSummaryBySourceId[plan.sourceId] ?? MutationSummary(
@@ -6700,6 +9218,7 @@ final class SearchMapRenderController: RCTEventEmitter {
         dataId: nil,
         addedFeatureIds: []
       )
+      let featureStatesStartedAt = CACurrentMediaTime() * 1000
       Self.applyFeatureStates(
         sourceId: plan.sourceId,
         previousFeatureStateRevision: plan.previousFeatureStateRevision,
@@ -6709,13 +9228,36 @@ final class SearchMapRenderController: RCTEventEmitter {
         previousFeatureStateById: plan.previousFeatureStateById,
         mapboxMap: mapboxMap
       )
+      self.recordNativeApply(
+        section: "source_batch.apply_feature_states",
+        phase: state.lastPresentationBatchPhase,
+        source: nativeApplySourceFamily(sourceId: plan.sourceId, state: state),
+        durationMs: CACurrentMediaTime() * 1000 - featureStatesStartedAt,
+        operationCount: plan.nextSourceState.featureStateChangedIds.count
+      )
+      let pendingCommitStartedAt = CACurrentMediaTime() * 1000
       self.registerPendingSourceCommit(
         instanceId: instanceId,
         sourceId: plan.sourceId,
         mutationSummary: mutationSummary,
         state: &state
       )
+      self.recordNativeApply(
+        section: "source_batch.register_pending_commit",
+        phase: state.lastPresentationBatchPhase,
+        source: nativeApplySourceFamily(sourceId: plan.sourceId, state: state),
+        durationMs: CACurrentMediaTime() * 1000 - pendingCommitStartedAt,
+        operationCount: mutationSummary.addCount + mutationSummary.updateCount + mutationSummary.removeCount
+      )
+      let syncMountedStartedAt = CACurrentMediaTime() * 1000
       Self.syncMountedSourceState(plan.nextSourceState, sourceId: plan.sourceId, state: &state)
+      self.recordNativeApply(
+        section: "source_batch.sync_mounted_state",
+        phase: state.lastPresentationBatchPhase,
+        source: nativeApplySourceFamily(sourceId: plan.sourceId, state: state),
+        durationMs: CACurrentMediaTime() * 1000 - syncMountedStartedAt,
+        operationCount: plan.nextSourceState.idsInOrder.count
+      )
     }
 
     return mutationSummaryBySourceId
@@ -7645,11 +10187,15 @@ final class SearchMapRenderController: RCTEventEmitter {
 
   private static func featureBySettingNumericProperties(
     _ feature: Feature,
-    numericProperties: [String: Double]
+    numericProperties: [String: Double],
+    stringProperties: [String: String] = [:]
   ) -> Feature {
     var nextFeature = feature
     var properties = nextFeature.properties ?? JSONObject()
     for (key, value) in numericProperties {
+      properties[key] = JSONValue(rawValue: value)
+    }
+    for (key, value) in stringProperties {
       properties[key] = JSONValue(rawValue: value)
     }
     nextFeature.properties = properties
@@ -7677,13 +10223,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     markerKey: String,
     stickyCandidateByIdentity: [String: String]
   ) -> [String: Any] {
-    [
-      "nativeLabelPreference": Self.effectiveLabelPreference(
-        for: feature,
-        markerKey: markerKey,
-        stickyCandidateByIdentity: stickyCandidateByIdentity
-      ),
-    ]
+    [:]
   }
 
   private static func extractFeatureState(from rawProperties: Any?) -> [String: Any] {
@@ -7946,7 +10486,17 @@ final class SearchMapRenderController: RCTEventEmitter {
     guard hasListeners else {
       return
     }
+    let startedAt = nativeApplyAttributionEnabled ? CACurrentMediaTime() * 1000 : 0
     sendEvent(withName: eventName, body: body)
+    if nativeApplyAttributionEnabled {
+      recordNativeApply(
+        section: "lifecycle.event_emit",
+        phase: "native",
+        source: (body["type"] as? String) ?? "unknown",
+        durationMs: CACurrentMediaTime() * 1000 - startedAt,
+        operationCount: 1
+      )
+    }
   }
 
   private func emitVisualDiag(instanceId: String, message: String) {
@@ -7958,7 +10508,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
     lastVisualDiagByInstance[instanceId] = message
     emit([
-      "type": "error",
+      "type": "visual_diagnostic",
       "instanceId": instanceId,
       "message": message,
     ])
@@ -8002,7 +10552,41 @@ final class SearchMapRenderController: RCTEventEmitter {
     let presentIds = sourceIds.filter { handle.mapView.mapboxMap.sourceExists(withId: $0) }
     let missingIds = sourceIds.filter { !presentIds.contains($0) }
     return
-      "sourcesPresent=\(presentIds.count)/\(sourceIds.count) missing=\(missingIds.isEmpty ? "none" : missingIds.joined(separator: ","))"
+      "sourcesPresent=\(presentIds.count)/\(sourceIds.count) missing=\(missingIds.isEmpty ? "none" : missingIds.joined(separator: ",")) \(managedLayerPresenceSummary(for: state, handle: handle))"
+  }
+
+  private func managedLayerPresenceSummary(
+    for state: InstanceState,
+    handle: ResolvedMapHandle
+  ) -> String {
+    let sourceIdSet = Set(managedSourceIds(for: state))
+    guard !sourceIdSet.isEmpty else {
+      return "layersPresent=0 pinLayers=0 pinShadowLayers=0"
+    }
+
+    var managedLayerIds: [String] = []
+    var pinLayerIds: [String] = []
+    do {
+      for layerInfo in handle.mapView.mapboxMap.allLayerIdentifiers {
+        let properties = try handle.mapView.mapboxMap.layerProperties(for: layerInfo.id)
+        guard let sourceId = properties["source"] as? String, sourceIdSet.contains(sourceId) else {
+          continue
+        }
+        managedLayerIds.append(layerInfo.id)
+        if sourceId == state.pinSourceId {
+          pinLayerIds.append(layerInfo.id)
+        }
+      }
+    } catch {
+      return "layersProbeError=\(error.localizedDescription)"
+    }
+
+    let pinShadowLayerIds = pinLayerIds.filter {
+      $0.hasPrefix("restaurant-style-pins-shadow-slot-")
+    }
+    let shadowSamples = pinShadowLayerIds.prefix(6).joined(separator: ",")
+    return
+      "layersPresent=\(managedLayerIds.count) pinLayers=\(pinLayerIds.count) pinShadowLayers=\(pinShadowLayerIds.count) pinShadowSamples=\(shadowSamples.isEmpty ? "none" : shadowSamples)"
   }
 
   private static func shortTypeName(_ object: AnyObject) -> String {
@@ -8102,7 +10686,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       return
     }
     if let lastProbeAtMs = lastViewCompositionProbeAtMsByInstance[instanceId],
-       nowMs - lastProbeAtMs < renderedFeatureProbeThrottleMs {
+       nowMs - lastProbeAtMs < viewCompositionProbeThrottleMs {
       return
     }
     lastViewCompositionProbeAtMsByInstance[instanceId] = nowMs
@@ -8129,120 +10713,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         instanceId: instanceId,
         message:
           "view_composition_probe_failed scope=\(scope) frame=\(frameGenerationId) phase=\(phase) error=\(error.localizedDescription)"
-      )
-    }
-  }
-
-  private func maybeProbeRenderedFeatures(
-    instanceId: String,
-    scope: String,
-    state: InstanceState
-  ) {
-    guard scope.hasPrefix("moving_native_") || scope.hasPrefix("reveal_native_") else {
-      return
-    }
-    guard let frameGenerationId = state.activeFrameGenerationId else {
-      return
-    }
-    let nowMs = Self.nowMs()
-    if lastRenderedFeatureProbeFrameByInstance[instanceId] == frameGenerationId {
-      return
-    }
-    if let lastProbeAtMs = lastRenderedFeatureProbeAtMsByInstance[instanceId],
-       nowMs - lastProbeAtMs < renderedFeatureProbeThrottleMs {
-      return
-    }
-    let sourcePinCount = Self.mountedSourceState(sourceId: state.pinSourceId, state: state)?.diffKeyById.count ?? 0
-    let sourceDotCount = Self.mountedSourceState(sourceId: state.dotSourceId, state: state)?.diffKeyById.count ?? 0
-    let sourceLabelCount = Self.mountedSourceState(sourceId: state.labelSourceId, state: state)?.diffKeyById.count ?? 0
-    guard sourcePinCount > 0 || sourceDotCount > 0 || sourceLabelCount > 0 else {
-      return
-    }
-    lastRenderedFeatureProbeAtMsByInstance[instanceId] = nowMs
-    lastRenderedFeatureProbeFrameByInstance[instanceId] = frameGenerationId
-
-    let mapTag = state.mapTag
-    let phase = state.lastPresentationBatchPhase
-    let moving = state.currentViewportIsMoving
-    let commitSummary = commitFenceWaitSummary(state: state)
-    let visualSourceIds = visualSourceIds(for: state)
-    do {
-      try withResolvedMapHandleResult(for: mapTag) { handle in
-        let queryRect = handle.mapView.bounds
-        guard queryRect.width > 0, queryRect.height > 0 else {
-          emitVisualDiag(
-            instanceId: instanceId,
-            message:
-              "rendered_feature_probe_skip scope=\(scope) frame=\(frameGenerationId) phase=\(phase) reason=empty_bounds width=\(Int(queryRect.width.rounded())) height=\(Int(queryRect.height.rounded()))"
-          )
-          return
-        }
-        let layerIds = try resolveRenderedProbeLayerIds(for: visualSourceIds, mapboxMap: handle.mapView.mapboxMap)
-        guard !layerIds.isEmpty else {
-          emitVisualDiag(
-            instanceId: instanceId,
-            message:
-              "rendered_feature_probe_skip scope=\(scope) frame=\(frameGenerationId) phase=\(phase) reason=no_visual_layers sources=\(visualSourceIds.joined(separator: ","))"
-          )
-          return
-        }
-        let queryStartedAtMs = Self.nowMs()
-        _ = handle.mapView.mapboxMap.queryRenderedFeatures(
-          with: queryRect,
-          options: RenderedQueryOptions(layerIds: layerIds, filter: nil)
-        ) { [weak self] result in
-          DispatchQueue.main.async {
-            guard let self else {
-              return
-            }
-            let queryDurationMs = Self.nowMs() - queryStartedAtMs
-            switch result {
-            case .success(let features):
-              let renderedPinCount = features.reduce(into: 0) { count, feature in
-                if feature.queriedFeature.source == state.pinSourceId {
-                  count += 1
-                }
-              }
-              let renderedDotCount = features.reduce(into: 0) { count, feature in
-                if feature.queriedFeature.source == state.dotSourceId {
-                  count += 1
-                }
-              }
-              let renderedLabelCount = features.reduce(into: 0) { count, feature in
-                if feature.queriedFeature.source == state.labelSourceId {
-                  count += 1
-                }
-              }
-              var zeroRenderedSources: [String] = []
-              if sourcePinCount > 0 && renderedPinCount == 0 {
-                zeroRenderedSources.append("pins")
-              }
-              if sourceDotCount > 0 && renderedDotCount == 0 {
-                zeroRenderedSources.append("dots")
-              }
-              if sourceLabelCount > 0 && renderedLabelCount == 0 {
-                zeroRenderedSources.append("labels")
-              }
-              self.emitVisualDiag(
-                instanceId: instanceId,
-                message:
-                  "rendered_feature_probe scope=\(scope) frame=\(frameGenerationId) phase=\(phase) moving=\(moving) sourcePins=\(sourcePinCount) sourceDots=\(sourceDotCount) sourceLabels=\(sourceLabelCount) renderedPins=\(renderedPinCount) renderedDots=\(renderedDotCount) renderedLabels=\(renderedLabelCount) layerCount=\(layerIds.count) queryMs=\(Int(queryDurationMs.rounded())) zeroRendered=\(zeroRenderedSources.isEmpty ? "none" : zeroRenderedSources.joined(separator: ",")) \(commitSummary)"
-              )
-            case .failure(let error):
-              self.emitVisualDiag(
-                instanceId: instanceId,
-                message:
-                  "rendered_feature_probe_failed scope=\(scope) frame=\(frameGenerationId) phase=\(phase) queryMs=\(Int(queryDurationMs.rounded())) error=\(error.localizedDescription)"
-              )
-            }
-          }
-        }
-      }
-    } catch {
-      emitVisualDiag(
-        instanceId: instanceId,
-        message:
-          "rendered_feature_probe_failed scope=\(scope) frame=\(frameGenerationId) phase=\(phase) error=\(error.localizedDescription)"
       )
     }
   }
@@ -8277,7 +10747,6 @@ final class SearchMapRenderController: RCTEventEmitter {
           "slow_action_window scope=\(scope) streak=\(window.streak) windowMs=\(Int((nowMs - window.startedAtMs).rounded())) durationMs=\(Int(durationMs.rounded())) maxDurationMs=\(Int(window.maxDurationMs.rounded())) phase=\(state.lastPresentationBatchPhase) moving=\(state.currentViewportIsMoving) pins=\(state.lastPinCount) dots=\(state.lastDotCount) labels=\(state.lastLabelCount) \(commitSummary)\(extra.isEmpty ? "" : " \(extra)")"
       )
       maybeProbeViewComposition(instanceId: instanceId, scope: scope, state: state)
-      maybeProbeRenderedFeatures(instanceId: instanceId, scope: scope, state: state)
       return
     }
     guard let window = slowActionWindowsByInstanceAndScope[key], window.streak > 0 else {
@@ -8334,6 +10803,16 @@ final class SearchMapRenderController: RCTEventEmitter {
       return "covered"
     }
     return "idle"
+  }
+
+  private static func readCoverState(fromJSON json: String) -> String? {
+    guard
+      let data = json.data(using: .utf8),
+      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else {
+      return nil
+    }
+    return object["coverState"] as? String
   }
 
   private static func readDismissRequestKey(fromJSON json: String) -> String? {

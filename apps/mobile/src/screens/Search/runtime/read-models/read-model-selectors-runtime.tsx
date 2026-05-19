@@ -4,11 +4,17 @@ import type { FlashListProps } from '@shopify/flash-list';
 import type { SharedValue } from 'react-native-reanimated';
 
 import type { FoodResult, RestaurantResult, SearchResponse } from '../../../../types';
+import type { RestaurantResultCardDescriptor } from '../../components/restaurant-result-card-descriptor';
+import {
+  isSearchSurfaceRedrawVisibleAdmissionPhase,
+  type SearchSurfaceRedrawPhase,
+} from '../controller/search-surface-redraw-phase';
 import type {
   SearchRouteResultsPolicyExactMatchWriterFacet,
   SearchRouteResultsPolicyReadModelProjectionFacet,
 } from '../shared/search-route-results-policy-domain-contract';
 import type { PhaseBMaterializer } from '../scheduler/phase-b-materializer';
+import { commitSearchMountedResultsPreparedRowsTarget } from '../shared/search-mounted-results-data-store';
 import type { ResultsListItem } from './list-read-model-builder';
 import type { MapQueryBudget } from '../map/map-query-budget';
 import { useSearchResultsExactMatchStateRuntime } from './use-search-results-exact-match-state-runtime';
@@ -29,7 +35,7 @@ import { useSearchResultsListPremeasureRuntime } from './use-search-results-list
 import { useSearchResultsListRenderItemRuntime } from './use-search-results-list-render-item-runtime';
 import { useSearchResultsSectionedProjectionStateRuntime } from './use-search-results-sectioned-projection-state-runtime';
 import { useSearchResultsSectionedProjectionTelemetryRuntime } from './use-search-results-sectioned-projection-telemetry-runtime';
-import { useSearchResultsHeaderChromePublicationRuntime } from '../../../../overlays/SearchResultsHeaderChromeAuthority';
+import { useSearchResultsPageHeaderRuntime } from '../shared/use-search-results-page-header-runtime';
 
 type UseSearchResultsReadModelSelectorsArgs = {
   activeTab: 'dishes' | 'restaurants';
@@ -38,8 +44,11 @@ type UseSearchResultsReadModelSelectorsArgs = {
   results: SearchResponse | null;
   isInteractionLoadingActive: boolean;
   shouldHydrateResultsForRender: boolean;
-  runOneCommitSpanPressureActive: boolean;
-  allowHydrationFinalizeCommit: boolean;
+  searchSurfaceRedrawPhase: SearchSurfaceRedrawPhase;
+  rawSearchSurfaceRedrawPhase: SearchSurfaceRedrawPhase;
+  getRawSearchSurfaceRedrawPhase?: () => SearchSurfaceRedrawPhase;
+  getAllowHydrationFinalizeCommit?: () => boolean;
+  searchSurfaceRedrawCommitSpanPressureActive: boolean;
   mapQueryBudget: MapQueryBudget;
   canLoadMore: boolean;
   isLoadingMore: boolean;
@@ -53,9 +62,17 @@ type UseSearchResultsReadModelSelectorsArgs = {
   overlayHeaderActionProgress: SharedValue<number>;
   headerDividerAnimatedStyle: StyleProp<ViewStyle>;
   shouldLogResultsViewability: boolean;
-  searchInteractionRef: React.MutableRefObject<{ isResultsListScrolling: boolean }>;
+  searchInteractionRef: React.MutableRefObject<{
+    isResultsListScrolling: boolean;
+    isResultsSheetDragging?: boolean;
+    isResultsSheetSettling?: boolean;
+  }>;
   renderDishCard: (item: FoodResult, index: number) => React.ReactElement | null;
-  renderRestaurantCard: (item: RestaurantResult, index: number) => React.ReactElement | null;
+  renderRestaurantCard: (
+    item: RestaurantResult,
+    index: number,
+    preparedDescriptor?: RestaurantResultCardDescriptor | null
+  ) => React.ReactElement | null;
   onRuntimeMechanismEvent?: (
     event: 'runtime_write_span',
     payload?: Record<string, unknown>
@@ -94,6 +111,7 @@ type SearchResultsReadModelSelectors = {
     restaurants: ResultsListItem[];
   };
   renderListItem: NonNullable<FlashListProps<ResultsListItem>['renderItem']>;
+  resultsPageHeaderComponent: React.ReactNode;
   listFooterComponent: React.ReactNode;
   preMeasureOverlay: React.ReactNode;
   flashListRuntimeProps: ResultsFlashListRuntimeProps;
@@ -109,8 +127,11 @@ export const useSearchResultsReadModelSelectors = (
     results,
     isInteractionLoadingActive,
     shouldHydrateResultsForRender,
-    runOneCommitSpanPressureActive,
-    allowHydrationFinalizeCommit,
+    searchSurfaceRedrawPhase,
+    rawSearchSurfaceRedrawPhase,
+    getRawSearchSurfaceRedrawPhase,
+    getAllowHydrationFinalizeCommit,
+    searchSurfaceRedrawCommitSpanPressureActive,
     mapQueryBudget,
     canLoadMore,
     isLoadingMore,
@@ -173,6 +194,7 @@ export const useSearchResultsReadModelSelectors = (
     results,
     shouldRetainCommittedResults: shouldRetainCommittedResultsForPolicy,
     readModelProjection,
+    searchSurfaceRedrawPhase,
   });
   useSearchResultsSectionedProjectionTelemetryRuntime({
     activeTab,
@@ -181,7 +203,7 @@ export const useSearchResultsReadModelSelectors = (
     results,
     resultsHydrationKey,
     shouldHydrateResultsForRender,
-    runOneCommitSpanPressureActive,
+    searchSurfaceRedrawCommitSpanPressureActive,
     mapQueryBudget,
     emitRuntimeWriteSpan,
     projectionStateRuntime: resultsProjectionRuntime,
@@ -200,7 +222,8 @@ export const useSearchResultsReadModelSelectors = (
   });
   const hydrationCommitPolicyRuntime = useSearchResultsHydrationCommitPolicyRuntime({
     activeOverlayKey,
-    allowHydrationFinalizeCommit,
+    getAllowHydrationFinalizeCommit,
+    resultsHydrationKey,
   });
   const applyHydrationKey = useSearchResultsHydrationKeyApplyRuntime({
     setHydratedResultsKeySync,
@@ -219,11 +242,43 @@ export const useSearchResultsReadModelSelectors = (
     },
     [applyHydrationKey, emitHydrationKeyCommit]
   );
+  const canFinalizeRowsRelease = React.useCallback(() => {
+    const interactionState = searchInteractionRef.current;
+    const latestRawSearchSurfaceRedrawPhase =
+      getRawSearchSurfaceRedrawPhase?.() ?? rawSearchSurfaceRedrawPhase;
+    const latestAllowHydrationFinalizeCommit =
+      getAllowHydrationFinalizeCommit?.() ?? true;
+    const isPastVisibleAdmissionPhase = !isSearchSurfaceRedrawVisibleAdmissionPhase(
+      latestRawSearchSurfaceRedrawPhase
+    );
+    return (
+      latestAllowHydrationFinalizeCommit &&
+      isPastVisibleAdmissionPhase &&
+      interactionState.isResultsSheetDragging !== true &&
+      interactionState.isResultsSheetSettling !== true
+    );
+  }, [
+    getAllowHydrationFinalizeCommit,
+    getRawSearchSurfaceRedrawPhase,
+    rawSearchSurfaceRedrawPhase,
+    searchInteractionRef,
+  ]);
+  const canCommitHydrationKey = React.useCallback(() => {
+    const interactionState = searchInteractionRef.current;
+    return (
+      (getAllowHydrationFinalizeCommit?.() ?? true) &&
+      interactionState.isResultsSheetDragging !== true &&
+      interactionState.isResultsSheetSettling !== true
+    );
+  }, [getAllowHydrationFinalizeCommit, searchInteractionRef]);
   const onFinalizeRowsReleaseReady = React.useCallback(() => {
+    commitSearchMountedResultsPreparedRowsTarget({
+      readinessKey: resultsHydrationKey,
+    });
     hydrationSettleStateRuntime.setHydrationFinalizeRowsReleaseCompletedToken(
       hydrationSettleStateRuntime.hydrationRowsReleaseVersionToken
     );
-  }, [hydrationSettleStateRuntime]);
+  }, [hydrationSettleStateRuntime, resultsHydrationKey]);
   useSearchResultsHydrationSyncLifecycleRuntime({
     resultsHydrationKey,
     hydratedResultsKey,
@@ -232,6 +287,8 @@ export const useSearchResultsReadModelSelectors = (
     phaseBMaterializerRef,
     resolveOperationId: resolveHydrationOperationId,
     commitHydrationKey,
+    canCommitHydrationKey,
+    canFinalizeRowsRelease,
     onFinalizeRowsReleaseReady,
   });
   const hydrationRowsReleaseEvent = useSearchResultsHydrationRowsReleaseEventRuntime({
@@ -256,16 +313,14 @@ export const useSearchResultsReadModelSelectors = (
   const listHeaderTitle = useSearchResultsListHeaderTitleRuntime({
     submittedQuery,
   });
-  useSearchResultsHeaderChromePublicationRuntime({
+  const resultsPageHeaderComponent = useSearchResultsPageHeaderRuntime({
     activeTabColor,
     handleCloseResults,
     overlayHeaderActionProgress,
     shouldDisableResultsHeader,
-    shouldUseResultsHeaderBlur,
     headerTitle: listHeaderTitle,
     handleResultsHeaderLayout,
     contentHorizontalPadding,
-    headerDividerAnimatedStyle,
   });
   const listFooterComponent = useSearchResultsListFooterRuntime({
     activeSafeResultsCount: resultsProjectionRuntime.activeSafeResultsData.length,
@@ -278,7 +333,6 @@ export const useSearchResultsReadModelSelectors = (
   const preMeasureOverlay = useSearchResultsListPremeasureRuntime({
     restaurants,
   });
-
   const flashListPolicyRuntime = useSearchResultsFlashListPolicyRuntime();
   const flashListViewabilityRuntime = useSearchResultsFlashListViewabilityRuntime({
     shouldLogResultsViewability,
@@ -298,6 +352,7 @@ export const useSearchResultsReadModelSelectors = (
     isResultsHydrationSettled: hydrationSettleStateRuntime.isResultsHydrationSettled,
     rowsByTab: resultsProjectionRuntime.rowsByTab,
     renderListItem,
+    resultsPageHeaderComponent,
     listFooterComponent,
     preMeasureOverlay,
     flashListRuntimeProps,

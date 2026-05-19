@@ -1,30 +1,24 @@
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { useWindowDimensions } from 'react-native';
+import type { FlashListProps } from '@shopify/flash-list';
 
-import type { RouteShellSceneInputLane } from '../../../../navigation/runtime/app-route-scene-runtime';
 import type {
-  AppRouteSceneBodyAdmissionPolicy,
   AppRouteSceneBodyContentSpec,
   AppRouteSceneBodyTransportSpec,
 } from '../../../../navigation/runtime/app-route-scene-descriptor-contract';
-import { syncSearchMountedSceneBodySnapshot } from '../../../../overlays/SearchMountedSceneBody';
+import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
+import {
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+  logPerfScenarioStackAttribution,
+  SEARCH_SUBMIT_DISMISS_REPEAT_SCENARIO,
+} from '../../../../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 import type { useSearchRouteSearchSceneModelOwner } from './use-search-route-search-scene-model-owner';
-
-const SEARCH_MOUNTED_LIST_BODY_ADMISSION_POLICY: AppRouteSceneBodyAdmissionPolicy = {
-  retainMountedBodyDuringTransition: false,
-};
-
-const SEARCH_MOUNTED_LIST_BODY_CONTENT: AppRouteSceneBodyContentSpec = {
-  surfaceKind: 'mountedList',
-  mountedBodyKey: 'search',
-};
-
-const SEARCH_MOUNTED_LIST_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {};
-
-type SearchMountedListSceneBodyDescriptor = {
-  sceneBodyContent: AppRouteSceneBodyContentSpec;
-  sceneBodyTransport: AppRouteSceneBodyTransportSpec;
-};
+import {
+  publishSearchMountedResultsBodyLayoutSnapshot,
+  syncSearchMountedResultsListDecorationsSnapshot,
+} from './search-mounted-results-data-store';
 
 type SearchMountedListBodyContentSpec = Extract<
   AppRouteSceneBodyContentSpec,
@@ -33,59 +27,87 @@ type SearchMountedListBodyContentSpec = Extract<
 
 type SearchMountedListBodyTransportSpec = AppRouteSceneBodyTransportSpec;
 
-const arePlainObjectsShallowEqual = (
-  left: Record<string, unknown> | null | undefined,
-  right: Record<string, unknown> | null | undefined
-): boolean => {
-  if (left === right) {
-    return true;
-  }
-  if (left == null || right == null) {
-    return left == null && right == null;
-  }
-  const leftKeys = Object.keys(left);
-  const rightKeys = Object.keys(right);
-  return (
-    leftKeys.length === rightKeys.length &&
-    leftKeys.every((key) => Object.is(left[key], right[key]))
-  );
-};
-
-const useShallowStablePlainObject = <TValue>(value: TValue): TValue => {
-  const valueRef = React.useRef(value);
-  const flatValue = StyleSheet.flatten(value as never) as Record<string, unknown> | undefined;
-  const flatValueRef = React.useRef(flatValue);
-  if (!arePlainObjectsShallowEqual(flatValueRef.current, flatValue)) {
-    valueRef.current = value;
-    flatValueRef.current = flatValue;
-  }
-  return valueRef.current;
-};
-
 const useLatestRef = <TValue>(value: TValue): React.MutableRefObject<TValue> => {
   const valueRef = React.useRef(value);
   valueRef.current = value;
   return valueRef;
 };
 
+const nowMs = (): number => globalThis.performance?.now?.() ?? Date.now();
+
+const EMPTY_SECONDARY_LIST_ROWS: ReadonlyArray<unknown> = [];
+
+const markSearchMountedBodyInputScenarioWorkSpan = ({
+  activeList,
+  durationMs,
+  handoffPhase,
+  hydratedResultsKey,
+  hydrationOperationId,
+}: {
+  activeList?: string | null;
+  durationMs: number;
+  handoffPhase: string;
+  hydratedResultsKey: string | null;
+  hydrationOperationId: string | null;
+}): void => {
+  const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+  if (!isPerfScenarioAttributionActive(scenarioConfig, SEARCH_SUBMIT_DISMISS_REPEAT_SCENARIO)) {
+    return;
+  }
+
+  logPerfScenarioAttributionEvent('WorkSpan', scenarioConfig, {
+    event: 'scenario_work_span',
+    owner: 'search_mounted_scene_body_input_sync_effect',
+    path: 'stableSceneBodyContent,stableSceneBodyTransport',
+    durationMs,
+    handoffPhase,
+    hydrationOperationId,
+    hydratedResultsKey,
+    activeList: activeList ?? null,
+  });
+};
+
 export const useSearchRouteSearchSceneBodyInputOwner = ({
-  routeSceneInputLane,
   routeSearchSceneModel,
 }: {
-  routeSceneInputLane: RouteShellSceneInputLane;
   routeSearchSceneModel: ReturnType<typeof useSearchRouteSearchSceneModelOwner>;
 }): void => {
-  const lastPublishedBodyRef = React.useRef<SearchMountedListSceneBodyDescriptor | null>(null);
+  const { height: viewportHeight } = useWindowDimensions();
   const rawSceneBodyContent = routeSearchSceneModel.routeSearchSceneListBodyContentSnapshot;
   const rawSceneBodyTransport = routeSearchSceneModel.routeSearchSceneListBodyTransportSnapshot;
+  const handoffPhase =
+    routeSearchSceneModel.routeSearchSceneDataRuntime.routeSearchSceneHydrationRuntimeState
+      .searchSurfaceRedrawPhase;
+  const hydratedResultsKey =
+    routeSearchSceneModel.routeSearchSceneDataRuntime.routeSearchSceneHydrationKeyRuntime
+      .hydratedResultsKey;
+  const targetSnapPoints =
+    routeSearchSceneModel.routeSearchSceneSheetTransportRuntime.routeSearchSceneSheetPlaneRuntime
+      .snapPoints;
+  const effectiveResultsBodyHeaderHeight =
+    routeSearchSceneModel.routeSearchSceneRenderRuntime.resultsBodyHeaderHeightForRender;
+  const handoffPhaseRef = useLatestRef(handoffPhase);
+  const hydratedResultsKeyRef = useLatestRef(hydratedResultsKey);
   const rawSceneBodyContentRef = useLatestRef(rawSceneBodyContent);
   const rawSceneBodyTransportRef = useLatestRef(rawSceneBodyTransport);
-  const stableContentContainerStyle = useShallowStablePlainObject(
-    rawSceneBodyTransport.contentContainerStyle
-  );
-  const stableScrollIndicatorInsets = useShallowStablePlainObject(
-    rawSceneBodyTransport.scrollIndicatorInsets
-  );
+  const stableListHeaderComponent = React.useCallback(() => {
+    const HeaderComponent = rawSceneBodyContentRef.current.ListHeaderComponent;
+    if (HeaderComponent == null) {
+      return null;
+    }
+    return React.isValidElement(HeaderComponent)
+      ? HeaderComponent
+      : React.createElement(HeaderComponent as React.ElementType);
+  }, [rawSceneBodyContentRef]);
+  const stableListFooterComponent = React.useCallback(() => {
+    const FooterComponent = rawSceneBodyContentRef.current.ListFooterComponent;
+    if (FooterComponent == null) {
+      return null;
+    }
+    return React.isValidElement(FooterComponent)
+      ? FooterComponent
+      : React.createElement(FooterComponent as React.ElementType);
+  }, [rawSceneBodyContentRef]);
   const stablePrimaryRenderItem = React.useCallback<
     NonNullable<SearchMountedListBodyContentSpec['renderItem']>
   >((info) => rawSceneBodyContentRef.current.renderItem?.(info) ?? null, [rawSceneBodyContentRef]);
@@ -93,6 +115,21 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
     NonNullable<SearchMountedListBodyContentSpec['keyExtractor']>
   >(
     (item, index) => rawSceneBodyContentRef.current.keyExtractor?.(item, index) ?? `${index}`,
+    [rawSceneBodyContentRef]
+  );
+  const stablePrimaryItemSeparatorComponent = React.useCallback<
+    NonNullable<SearchMountedListBodyContentSpec['ItemSeparatorComponent']>
+  >(
+    (props) => {
+      const SeparatorComponent = rawSceneBodyContentRef.current.ItemSeparatorComponent;
+      return SeparatorComponent == null ? null : React.createElement(SeparatorComponent, props);
+    },
+    [rawSceneBodyContentRef]
+  );
+  const stablePrimaryOnEndReached = React.useCallback<
+    NonNullable<SearchMountedListBodyContentSpec['onEndReached']>
+  >(
+    (...args) => rawSceneBodyContentRef.current.onEndReached?.(...args),
     [rawSceneBodyContentRef]
   );
   const stableSecondaryRenderItem = React.useCallback<
@@ -106,6 +143,29 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
   >(
     (item, index) =>
       rawSceneBodyContentRef.current.secondaryList?.keyExtractor?.(item, index) ?? `${index}`,
+    [rawSceneBodyContentRef]
+  );
+  const stableSecondaryItemSeparatorComponent = React.useCallback<
+    NonNullable<
+      NonNullable<SearchMountedListBodyContentSpec['secondaryList']>['ItemSeparatorComponent']
+    >
+  >(
+    (props) => {
+      const SeparatorComponent =
+        rawSceneBodyContentRef.current.secondaryList?.ItemSeparatorComponent ??
+        rawSceneBodyContentRef.current.ItemSeparatorComponent;
+      return SeparatorComponent == null ? null : React.createElement(SeparatorComponent, props);
+    },
+    [rawSceneBodyContentRef]
+  );
+  const stableSecondaryOnEndReached = React.useCallback<
+    NonNullable<NonNullable<SearchMountedListBodyContentSpec['secondaryList']>['onEndReached']>
+  >(
+    (...args) =>
+      (
+        rawSceneBodyContentRef.current.secondaryList?.onEndReached ??
+        rawSceneBodyContentRef.current.onEndReached
+      )?.(...args),
     [rawSceneBodyContentRef]
   );
   const stableOnScrollOffsetChange = React.useCallback<
@@ -138,34 +198,66 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
     (...args) => rawSceneBodyTransportRef.current.onMomentumEndJS?.(...args),
     [rawSceneBodyTransportRef]
   );
-  const stableSecondaryListContent = React.useMemo(
+  const stableOnViewableItemsChanged = React.useCallback<
+    NonNullable<FlashListProps<unknown>['onViewableItemsChanged']>
+  >(
+    (info) => {
+      rawSceneBodyTransportRef.current.flashListProps?.onViewableItemsChanged?.(info);
+    },
+    [rawSceneBodyTransportRef]
+  );
+  const stableOnScrollBeginDragFlashList = React.useCallback<
+    NonNullable<FlashListProps<unknown>['onScrollBeginDrag']>
+  >(
+    (event) => {
+      rawSceneBodyTransportRef.current.flashListProps?.onScrollBeginDrag?.(event);
+    },
+    [rawSceneBodyTransportRef]
+  );
+  const stableOnScrollEndDragFlashList = React.useCallback<
+    NonNullable<FlashListProps<unknown>['onScrollEndDrag']>
+  >(
+    (event) => {
+      rawSceneBodyTransportRef.current.flashListProps?.onScrollEndDrag?.(event);
+    },
+    [rawSceneBodyTransportRef]
+  );
+  const stableFlashListProps = React.useMemo<SearchMountedListBodyTransportSpec['flashListProps']>(
+    () => ({
+      onScrollBeginDrag: stableOnScrollBeginDragFlashList,
+      onScrollEndDrag: stableOnScrollEndDragFlashList,
+      onViewableItemsChanged: stableOnViewableItemsChanged,
+    }),
+    [
+      stableOnScrollBeginDragFlashList,
+      stableOnScrollEndDragFlashList,
+      stableOnViewableItemsChanged,
+    ]
+  );
+  const stableSecondaryListContent = React.useMemo<
+    SearchMountedListBodyContentSpec['secondaryList']
+  >(
     () =>
       rawSceneBodyContent.secondaryList == null
         ? rawSceneBodyContent.secondaryList
         : {
-            ...rawSceneBodyContent.secondaryList,
-            renderItem:
-              rawSceneBodyContent.secondaryList.renderItem == null
-                ? undefined
-                : stableSecondaryRenderItem,
-            keyExtractor:
-              rawSceneBodyContent.secondaryList.keyExtractor == null
-                ? undefined
-                : stableSecondaryKeyExtractor,
+            data: EMPTY_SECONDARY_LIST_ROWS,
+            estimatedItemSize:
+              rawSceneBodyContent.secondaryList.estimatedItemSize ??
+              rawSceneBodyContent.estimatedItemSize,
+            renderItem: stableSecondaryRenderItem,
+            keyExtractor: stableSecondaryKeyExtractor,
+            ItemSeparatorComponent: stableSecondaryItemSeparatorComponent,
+            listKey: rawSceneBodyContent.secondaryList.listKey ?? 'results-secondary',
+            onEndReached: stableSecondaryOnEndReached,
           },
     [
-      rawSceneBodyContent.secondaryList?.ListEmptyComponent,
-      rawSceneBodyContent.secondaryList?.ListFooterComponent,
-      rawSceneBodyContent.secondaryList?.ListHeaderComponent,
-      rawSceneBodyContent.secondaryList?.ItemSeparatorComponent,
-      rawSceneBodyContent.secondaryList?.data,
       rawSceneBodyContent.secondaryList?.estimatedItemSize,
-      rawSceneBodyContent.secondaryList?.extraData,
-      rawSceneBodyContent.secondaryList?.keyExtractor == null,
       rawSceneBodyContent.secondaryList?.listKey,
-      rawSceneBodyContent.secondaryList?.onEndReached,
-      rawSceneBodyContent.secondaryList?.renderItem == null,
+      rawSceneBodyContent.secondaryList == null,
       stableSecondaryKeyExtractor,
+      stableSecondaryItemSeparatorComponent,
+      stableSecondaryOnEndReached,
       stableSecondaryRenderItem,
     ]
   );
@@ -175,21 +267,22 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
       renderItem: stablePrimaryRenderItem,
       keyExtractor:
         rawSceneBodyContent.keyExtractor == null ? undefined : stablePrimaryKeyExtractor,
+      ListChromeComponent: null,
+      ListHeaderComponent: null,
+      ListFooterComponent: null,
+      ListEmptyComponent: null,
+      ItemSeparatorComponent: stablePrimaryItemSeparatorComponent,
+      onEndReached: stablePrimaryOnEndReached,
       secondaryList: stableSecondaryListContent,
     }),
     [
-      rawSceneBodyContent.ListEmptyComponent,
-      rawSceneBodyContent.ListFooterComponent,
-      rawSceneBodyContent.ListHeaderComponent,
-      rawSceneBodyContent.ItemSeparatorComponent,
-      rawSceneBodyContent.data,
       rawSceneBodyContent.estimatedItemSize,
-      rawSceneBodyContent.extraData,
       rawSceneBodyContent.keyExtractor == null,
       rawSceneBodyContent.listKey,
-      rawSceneBodyContent.onEndReached,
       rawSceneBodyContent.onEndReachedThreshold,
+      stablePrimaryItemSeparatorComponent,
       stablePrimaryKeyExtractor,
+      stablePrimaryOnEndReached,
       stablePrimaryRenderItem,
       stableSecondaryListContent,
     ]
@@ -197,8 +290,9 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
   const stableSceneBodyTransport = React.useMemo<SearchMountedListBodyTransportSpec>(
     () => ({
       ...rawSceneBodyTransport,
-      contentContainerStyle: stableContentContainerStyle,
-      scrollIndicatorInsets: stableScrollIndicatorInsets,
+      activeList: undefined,
+      contentContainerStyle: undefined,
+      scrollIndicatorInsets: undefined,
       onScrollOffsetChange:
         rawSceneBodyTransport.onScrollOffsetChange == null ? undefined : stableOnScrollOffsetChange,
       onScrollBeginDrag:
@@ -209,13 +303,12 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
         rawSceneBodyTransport.onMomentumBeginJS == null ? undefined : stableOnMomentumBeginJS,
       onMomentumEndJS:
         rawSceneBodyTransport.onMomentumEndJS == null ? undefined : stableOnMomentumEndJS,
+      flashListProps: stableFlashListProps,
     }),
     [
-      rawSceneBodyTransport.activeList,
       rawSceneBodyTransport.alwaysBounceVertical,
       rawSceneBodyTransport.bounces,
       rawSceneBodyTransport.contentSurfaceStyle,
-      rawSceneBodyTransport.flashListProps,
       rawSceneBodyTransport.keyboardDismissMode,
       rawSceneBodyTransport.keyboardShouldPersistTaps,
       rawSceneBodyTransport.listRef,
@@ -225,49 +318,67 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
       rawSceneBodyTransport.onScrollEndDrag == null,
       rawSceneBodyTransport.onScrollOffsetChange == null,
       rawSceneBodyTransport.overScrollMode,
-      rawSceneBodyTransport.secondaryList,
       rawSceneBodyTransport.showsVerticalScrollIndicator,
       rawSceneBodyTransport.testID,
-      stableContentContainerStyle,
+      stableFlashListProps,
       stableOnMomentumBeginJS,
       stableOnMomentumEndJS,
       stableOnScrollBeginDrag,
       stableOnScrollEndDrag,
       stableOnScrollOffsetChange,
-      stableScrollIndicatorInsets,
     ]
   );
-
-  const publishBody = React.useCallback(
-    (body: SearchMountedListSceneBodyDescriptor) => {
-      if (
-        lastPublishedBodyRef.current?.sceneBodyContent === body.sceneBodyContent &&
-        lastPublishedBodyRef.current.sceneBodyTransport === body.sceneBodyTransport
-      ) {
-        return;
-      }
-      lastPublishedBodyRef.current = body;
-      routeSceneInputLane.publishRouteSceneBody({
-        sceneKey: 'search',
-        sceneBodyContent: body.sceneBodyContent,
-        sceneBodyTransport: body.sceneBodyTransport,
-        sceneBodyAdmissionPolicy: SEARCH_MOUNTED_LIST_BODY_ADMISSION_POLICY,
-      });
-    },
-    [routeSceneInputLane]
-  );
-
+  const hasListHeaderComponent = rawSceneBodyContent.ListHeaderComponent != null;
+  const hasListFooterComponent = rawSceneBodyContent.ListFooterComponent != null;
   React.useEffect(() => {
-    publishBody({
-      sceneBodyContent: SEARCH_MOUNTED_LIST_BODY_CONTENT,
-      sceneBodyTransport: SEARCH_MOUNTED_LIST_BODY_TRANSPORT,
+    syncSearchMountedResultsListDecorationsSnapshot({
+      primaryListHeaderComponent: hasListHeaderComponent
+        ? stableListHeaderComponent
+        : null,
+      primaryListFooterComponent: hasListFooterComponent
+        ? stableListFooterComponent
+        : null,
     });
-  }, [publishBody]);
+  }, [
+    hasListFooterComponent,
+    hasListHeaderComponent,
+    stableListFooterComponent,
+    stableListHeaderComponent,
+  ]);
 
   React.useEffect(() => {
-    syncSearchMountedSceneBodySnapshot({
+    const startedAtMs = nowMs();
+    const latestHandoffPhase = handoffPhaseRef.current;
+    const latestHydratedResultsKey = hydratedResultsKeyRef.current;
+    logPerfScenarioStackAttribution({
+      owner: 'search_surface_results_body_bundle_sync',
+      path: 'structural',
+      details: {
+        activeList: stableSceneBodyTransport.activeList,
+      },
+    });
+    getSearchSurfaceRuntime().syncResultsPageBodyBundle({
       sceneBodyContent: stableSceneBodyContent,
       sceneBodyTransport: stableSceneBodyTransport,
     });
-  }, [stableSceneBodyContent, stableSceneBodyTransport]);
+    markSearchMountedBodyInputScenarioWorkSpan({
+      activeList: stableSceneBodyTransport.activeList,
+      durationMs: nowMs() - startedAtMs,
+      handoffPhase: latestHandoffPhase,
+      hydratedResultsKey: latestHydratedResultsKey,
+      hydrationOperationId: null,
+    });
+  }, [handoffPhaseRef, hydratedResultsKeyRef, stableSceneBodyContent, stableSceneBodyTransport]);
+  React.useEffect(() => {
+    const targetSnapPointMiddle =
+      targetSnapPoints == null || !Number.isFinite(targetSnapPoints.middle)
+        ? null
+        : targetSnapPoints.middle;
+    publishSearchMountedResultsBodyLayoutSnapshot({
+      headerHeight: effectiveResultsBodyHeaderHeight,
+      targetSnapPointMiddle,
+      targetSnapPoints,
+      viewportHeight,
+    });
+  }, [effectiveResultsBodyHeaderHeight, targetSnapPoints, viewportHeight]);
 };

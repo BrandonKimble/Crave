@@ -1,5 +1,5 @@
 import type { MainSearchIntent } from '../../types/navigation';
-import { isPerfHarnessUrl } from '../../perf/perf-harness-deep-link';
+import { isPerfScenarioUrl } from '../../perf/perf-scenario-deep-link';
 
 export type AppRouteDestination = 'onboarding' | 'sign_in' | 'main';
 
@@ -30,7 +30,7 @@ export const parseLaunchIntentFromUrl = (url: string | null): LaunchIntent => {
     return NO_LAUNCH_INTENT;
   }
 
-  if (isPerfHarnessUrl(url)) {
+  if (isPerfScenarioUrl(url)) {
     return NO_LAUNCH_INTENT;
   }
 

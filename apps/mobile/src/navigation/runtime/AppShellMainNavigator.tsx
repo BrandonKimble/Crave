@@ -2,7 +2,6 @@ import React from 'react';
 import { createStackNavigator, type StackNavigationOptions } from '@react-navigation/stack';
 
 import {
-  FavoritesListDetailScreen,
   ProfileScreen,
   RecentSearchesScreen,
   RecentlyViewedScreen,
@@ -42,11 +41,6 @@ const MAIN_STACK_SCENE_DEFINITIONS: MainStackSceneDefinition[] = [
   {
     routeName: 'RecentlyViewed',
     component: RecentlyViewedScreen as React.ComponentType<object>,
-  },
-  {
-    routeName: 'FavoritesListDetail',
-    component: FavoritesListDetailScreen as React.ComponentType<object>,
-    options: { presentation: 'modal', headerShown: false },
   },
 ];
 

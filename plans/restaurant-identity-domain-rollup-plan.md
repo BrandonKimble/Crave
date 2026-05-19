@@ -14,12 +14,12 @@ Scope:
 Related plans:
 
 - `/Users/brandonkimble/crave-search/plans/polls-coverage-resolution-cutover-plan.md`
-- `/Users/brandonkimble/crave-search/plans/contextual-score-cutover-plan.md`
+- `/Users/brandonkimble/crave-search/plans/crave-score-cutover-plan.md`
 - `/Users/brandonkimble/crave-search/plans/location-optional-cutover-plan.md`
 
 Scoring handoff note:
 
-- the identity/domain rollup work now assumes one canonical restaurant identity with contextual geographic scoring in search
+- the identity/domain rollup work now assumes one canonical restaurant identity with stable Crave Score and contextual ordinal rank in search
 - active UX no longer exposes the old Local / Global score toggle
 
 ## Objective

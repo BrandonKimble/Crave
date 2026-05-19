@@ -9,6 +9,8 @@ import type {
 export const createIdleProfileOpenSettleState = (): ProfileOpenSettleState => ({
   transactionId: null,
   requestToken: null,
+  cameraRequestToken: null,
+  sheetRequestToken: null,
   cameraSettled: true,
   sheetSettled: true,
 });
@@ -29,7 +31,6 @@ export const createInitialProfileTransitionState = (): ProfileTransitionState =>
   status: 'idle',
   preparedSnapshot: null,
   completionState: createInitialProfilePresentationCompletionState(),
-  savedSheetSnap: null,
   savedCamera: null,
   savedResultsScrollOffset: null,
 });
@@ -49,9 +50,6 @@ export const applyProfileTransitionSnapshotCapture = ({
   transition: ProfileTransitionState;
   snapshotCapture: ProfileTransitionSnapshotCapture;
 }): void => {
-  if (!transition.savedSheetSnap) {
-    transition.savedSheetSnap = snapshotCapture.savedSheetSnap;
-  }
   if (!transition.savedCamera && snapshotCapture.savedCamera) {
     transition.savedCamera = snapshotCapture.savedCamera;
   }

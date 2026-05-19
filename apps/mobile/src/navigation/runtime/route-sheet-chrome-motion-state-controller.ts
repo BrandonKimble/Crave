@@ -4,7 +4,13 @@ type Listener = () => void;
 
 export type RouteSheetChromeMotionSnapshot = Pick<
   NonNullable<RouteHostVisualRuntime>,
-  'overlayHeaderActionProgress' | 'navBarCutoutProgress' | 'navBarCutoutIsHiding'
+  | 'overlayHeaderActionProgress'
+  | 'searchSurfacePageBundleProgress'
+  | 'navBarCutoutProgress'
+  | 'navBarCutoutHidingProgress'
+  | 'navBarCutoutIsHiding'
+  | 'navTranslateY'
+  | 'navSilhouetteSheetExclusionModeValue'
 > | null;
 
 export type RouteSheetChromeMotionAuthority = {
@@ -20,8 +26,12 @@ const areChromeMotionSnapshotsEqual = (
   (left != null &&
     right != null &&
     left.overlayHeaderActionProgress === right.overlayHeaderActionProgress &&
+    left.searchSurfacePageBundleProgress === right.searchSurfacePageBundleProgress &&
     left.navBarCutoutProgress === right.navBarCutoutProgress &&
-    left.navBarCutoutIsHiding === right.navBarCutoutIsHiding);
+    left.navBarCutoutHidingProgress === right.navBarCutoutHidingProgress &&
+    left.navBarCutoutIsHiding === right.navBarCutoutIsHiding &&
+    left.navTranslateY === right.navTranslateY &&
+    left.navSilhouetteSheetExclusionModeValue === right.navSilhouetteSheetExclusionModeValue);
 
 const resolveChromeMotionSnapshot = (
   routeHostVisualRuntime: RouteHostVisualRuntime
@@ -29,10 +39,14 @@ const resolveChromeMotionSnapshot = (
   routeHostVisualRuntime == null
     ? null
     : {
-        overlayHeaderActionProgress:
-          routeHostVisualRuntime.overlayHeaderActionProgress,
+        overlayHeaderActionProgress: routeHostVisualRuntime.overlayHeaderActionProgress,
+        searchSurfacePageBundleProgress: routeHostVisualRuntime.searchSurfacePageBundleProgress,
         navBarCutoutProgress: routeHostVisualRuntime.navBarCutoutProgress,
+        navBarCutoutHidingProgress: routeHostVisualRuntime.navBarCutoutHidingProgress,
         navBarCutoutIsHiding: routeHostVisualRuntime.navBarCutoutIsHiding,
+        navTranslateY: routeHostVisualRuntime.navTranslateY,
+        navSilhouetteSheetExclusionModeValue:
+          routeHostVisualRuntime.navSilhouetteSheetExclusionModeValue,
       };
 
 export class RouteSheetChromeMotionStateController {
@@ -60,12 +74,9 @@ export class RouteSheetChromeMotionStateController {
       getSnapshot: () => this.snapshot,
     };
     this.recompute(false);
-    this.unsubscribeRouteHostVisualRuntime =
-      routeHostVisualRuntimeAuthority.subscribe(() => {
-        this.setRouteHostVisualRuntime(
-          routeHostVisualRuntimeAuthority.getSnapshot()
-        );
-      });
+    this.unsubscribeRouteHostVisualRuntime = routeHostVisualRuntimeAuthority.subscribe(() => {
+      this.setRouteHostVisualRuntime(routeHostVisualRuntimeAuthority.getSnapshot());
+    });
   }
 
   public dispose(): void {
@@ -80,9 +91,7 @@ export class RouteSheetChromeMotionStateController {
     };
   }
 
-  private setRouteHostVisualRuntime(
-    routeHostVisualRuntime: RouteHostVisualRuntime
-  ): void {
+  private setRouteHostVisualRuntime(routeHostVisualRuntime: RouteHostVisualRuntime): void {
     if (this.routeHostVisualRuntime === routeHostVisualRuntime) {
       return;
     }
@@ -92,9 +101,7 @@ export class RouteSheetChromeMotionStateController {
   }
 
   private recompute(notify: boolean): void {
-    const nextSnapshot = resolveChromeMotionSnapshot(
-      this.routeHostVisualRuntime
-    );
+    const nextSnapshot = resolveChromeMotionSnapshot(this.routeHostVisualRuntime);
 
     if (areChromeMotionSnapshotsEqual(this.snapshot, nextSnapshot)) {
       return;
@@ -114,7 +121,9 @@ export class RouteSheetChromeMotionStateController {
 
 export const createRouteSheetChromeMotionStateController = ({
   routeHostVisualRuntimeAuthority,
-}: ConstructorParameters<typeof RouteSheetChromeMotionStateController>[0]): RouteSheetChromeMotionStateController =>
+}: ConstructorParameters<
+  typeof RouteSheetChromeMotionStateController
+>[0]): RouteSheetChromeMotionStateController =>
   new RouteSheetChromeMotionStateController({
     routeHostVisualRuntimeAuthority,
   });

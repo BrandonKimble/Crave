@@ -3,8 +3,10 @@ import type { MapState as MapboxMapState } from '@rnmapbox/maps';
 
 import type { AutocompleteMatch } from '../../../../services/autocomplete';
 import type { MapBounds } from '../../../../types';
+import { MAP_MOVE_MIN_DISTANCE_MILES } from '../../constants/search';
 import {
   getBoundsCenter,
+  hasBoundsMovedSignificantly,
   haversineDistanceMiles,
   isLngLatTuple,
   mapStateBoundsToMapBounds,
@@ -16,6 +18,11 @@ import {
   type MotionPressureState,
   type MapMotionPressureController,
 } from './map-motion-pressure';
+import {
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+} from '../../../../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 import { withSearchNavSwitchRuntimeAttribution } from '../shared/search-nav-switch-runtime-attribution';
 import type { ViewportBoundsService } from '../viewport/viewport-bounds-service';
 
@@ -78,37 +85,6 @@ const hasMaterialUserMapGestureDelta = ({
   eventCount: number;
 }): boolean => eventCount >= 2 && (movedMiles >= 0.0015 || zoomDelta >= 0.01);
 
-const shouldAutoCollapseResultsSheetForGesture = ({
-  hasAlreadyCollapsed,
-  startedWithResultsSheetOpen,
-  sheetState,
-  isSearchOverlay,
-  hasResults,
-  isSearchSessionActive,
-  shouldDisableResultsSheetInteraction,
-}: {
-  hasAlreadyCollapsed: boolean;
-  startedWithResultsSheetOpen: boolean;
-  sheetState: 'expanded' | 'middle' | 'collapsed' | 'hidden';
-  isSearchOverlay: boolean;
-  hasResults: boolean;
-  isSearchSessionActive: boolean;
-  shouldDisableResultsSheetInteraction: boolean;
-}): boolean => {
-  return (
-    !hasAlreadyCollapsed &&
-    startedWithResultsSheetOpen &&
-    sheetState !== 'hidden' &&
-    sheetState !== 'collapsed' &&
-    isSearchOverlay &&
-    hasResults &&
-    isSearchSessionActive &&
-    !shouldDisableResultsSheetInteraction
-  );
-};
-
-type OverlaySheetSnap = 'expanded' | 'middle' | 'collapsed' | 'hidden';
-
 type SearchInteractionState = {
   isInteracting: boolean;
   isResultsSheetDragging: boolean;
@@ -120,8 +96,6 @@ type MapGestureSession = {
   startBounds: MapBounds;
   startZoom: number | null;
   eventCount: number;
-  didCollapse: boolean;
-  startedWithResultsSheetOpen: boolean;
 };
 
 type UseMapInteractionControllerArgs = {
@@ -129,10 +103,8 @@ type UseMapInteractionControllerArgs = {
   mapEventLogIntervalMs: number;
   shouldLogSearchStateChanges: boolean;
   searchInteractionRef: React.MutableRefObject<SearchInteractionState>;
-  anySheetDraggingRef: React.MutableRefObject<boolean>;
   mapGestureActiveRef: React.MutableRefObject<boolean>;
   suppressMapMovedRef: React.MutableRefObject<boolean>;
-  shouldRenderResultsSheetRef: React.MutableRefObject<boolean>;
   pendingMarkerOpenAnimationFrameRef: React.MutableRefObject<number | null>;
   allowSearchBlurExitRef: React.MutableRefObject<boolean>;
   suppressAutocompleteResults: () => void;
@@ -151,19 +123,14 @@ type UseMapInteractionControllerArgs = {
   cameraIntentArbiter: CameraIntentArbiter;
   viewportBoundsService: ViewportBoundsService;
   cancelPendingMapMovementUpdates: () => void;
-  markMapMovedIfNeeded: (bounds: MapBounds) => boolean;
-  scheduleMapIdleEnter: () => void;
-  sheetState: OverlaySheetSnap;
+  markMapMovedIfNeeded: (
+    bounds: MapBounds,
+    options?: { fallbackBaselineBounds?: MapBounds | null }
+  ) => boolean;
+  scheduleMapIdleEnter: (options?: { releaseGestureGate?: boolean }) => void;
   isSearchOverlay: boolean;
-  hasResults: boolean;
-  shouldDisableResultsSheetInteraction: boolean;
-  animateSheetTo: (state: Exclude<OverlaySheetSnap, 'hidden'>) => void;
   shouldShowPollsSheet: boolean;
   schedulePollBoundsUpdate: (bounds: MapBounds) => void;
-  commitCameraViewport: (
-    payload: { center: [number, number]; zoom: number },
-    options?: { allowDuringGesture?: boolean }
-  ) => boolean;
   lastCameraStateRef: React.MutableRefObject<{ center: [number, number]; zoom: number } | null>;
   lastPersistedCameraRef: React.MutableRefObject<string | null>;
 };
@@ -184,10 +151,8 @@ export const useMapInteractionController = (
     mapEventLogIntervalMs,
     shouldLogSearchStateChanges,
     searchInteractionRef,
-    anySheetDraggingRef,
     mapGestureActiveRef,
     suppressMapMovedRef,
-    shouldRenderResultsSheetRef,
     pendingMarkerOpenAnimationFrameRef,
     allowSearchBlurExitRef,
     suppressAutocompleteResults,
@@ -208,20 +173,14 @@ export const useMapInteractionController = (
     cancelPendingMapMovementUpdates,
     markMapMovedIfNeeded,
     scheduleMapIdleEnter,
-    sheetState,
     isSearchOverlay,
-    hasResults,
-    shouldDisableResultsSheetInteraction,
-    animateSheetTo,
     shouldShowPollsSheet,
     schedulePollBoundsUpdate,
-    commitCameraViewport,
     lastCameraStateRef,
     lastPersistedCameraRef,
   } = args;
 
   const mapTouchActiveRef = React.useRef(false);
-  const mapTouchStartedWithResultsSheetOpenRef = React.useRef(false);
   const mapGestureSessionRef = React.useRef<MapGestureSession | null>(null);
   const lastViewportMotionTokenRef = React.useRef<string | null>(null);
   const mapEventStatsRef = React.useRef({
@@ -352,6 +311,16 @@ export const useMapInteractionController = (
         return;
       }
 
+      let didStartGestureSession = false;
+      if (isUserViewportGestureActive && mapGestureSessionRef.current === null) {
+        mapGestureSessionRef.current = {
+          startBounds: bounds,
+          startZoom: zoom,
+          eventCount: 1,
+        };
+        didStartGestureSession = true;
+      }
+
       if (
         shouldDeferMapMovementWork({
           pressureState: mapMotionPressureController.getState(),
@@ -361,23 +330,14 @@ export const useMapInteractionController = (
         return;
       }
       if (isUserViewportGestureActive) {
-        if (!mapTouchActiveRef.current && mapGestureSessionRef.current === null) {
-          mapGestureSessionRef.current = null;
-          return;
-        }
         const session = mapGestureSessionRef.current;
         if (!session) {
-          mapGestureSessionRef.current = {
-            startBounds: bounds,
-            startZoom: zoom,
-            eventCount: 1,
-            didCollapse: false,
-            startedWithResultsSheetOpen: mapTouchStartedWithResultsSheetOpenRef.current,
-          };
           return;
         }
 
-        session.eventCount += 1;
+        if (!didStartGestureSession) {
+          session.eventCount += 1;
+        }
         const startCenter = getBoundsCenter(session.startBounds);
         const nextCenter = getBoundsCenter(bounds);
         const movedMiles = haversineDistanceMiles(startCenter, nextCenter);
@@ -394,30 +354,42 @@ export const useMapInteractionController = (
           return;
         }
 
-        if (
-          shouldAutoCollapseResultsSheetForGesture({
-            hasAlreadyCollapsed: session.didCollapse,
-            startedWithResultsSheetOpen: session.startedWithResultsSheetOpen,
-            sheetState,
-            isSearchOverlay,
-            hasResults,
-            isSearchSessionActive,
-            shouldDisableResultsSheetInteraction,
-          })
-        ) {
-          mapInteractionDiagnostics.logAutoCollapse({
+        const searchBaselineBounds = viewportBoundsService.getSearchBaselineBounds();
+        const searchBaselineWouldMark =
+          searchBaselineBounds != null && hasBoundsMovedSignificantly(searchBaselineBounds, bounds);
+        const gestureBaselineWouldMark = movedMiles >= MAP_MOVE_MIN_DISTANCE_MILES;
+        const didMarkMapMoved =
+          isSearchOverlay &&
+          isSearchSessionActive &&
+          markMapMovedIfNeeded(bounds, { fallbackBaselineBounds: session.startBounds });
+        const mapMoveAdmissionSource = didMarkMapMoved
+          ? searchBaselineWouldMark
+            ? 'search_baseline'
+            : gestureBaselineWouldMark
+              ? 'gesture_baseline'
+              : 'already_marked'
+          : 'blocked';
+        const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+        if (isPerfScenarioAttributionActive(scenarioConfig)) {
+          logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+            event: 'map_post_results_movement_contract',
+            source: 'map_interaction_controller',
+            materialUserGesture: true,
+            mapMovedSinceSearchRequested: didMarkMapMoved,
+            mapMoveAdmissionSource,
+            resultSheetSnapRequested: false,
+            searchThisAreaRevealScheduled: didMarkMapMoved,
+            searchBaselinePresent: searchBaselineBounds != null,
+            searchBaselineWouldMark,
+            gestureBaselineWouldMark,
             movedMiles,
             zoomDelta,
             eventCount: session.eventCount,
-            sheetState,
-            touchActive: mapTouchActiveRef.current,
-            startedOpen: session.startedWithResultsSheetOpen,
+            isSearchOverlay,
+            isSearchSessionActive,
           });
-          animateSheetTo('collapsed');
-          session.didCollapse = true;
         }
-
-        if (isSearchOverlay && isSearchSessionActive && markMapMovedIfNeeded(bounds)) {
+        if (didMarkMapMoved) {
           scheduleMapIdleEnter();
         }
         return;
@@ -433,11 +405,8 @@ export const useMapInteractionController = (
       // user-driven exploration.
     },
     [
-      animateSheetTo,
-      anySheetDraggingRef,
       cameraIntentArbiter,
       cancelPendingMapMovementUpdates,
-      hasResults,
       isSearchOverlay,
       isSearchSessionActive,
       mapInteractionDiagnostics,
@@ -446,9 +415,7 @@ export const useMapInteractionController = (
       markMapMovedIfNeeded,
       scheduleMapIdleEnter,
       searchInteractionRef,
-      sheetState,
       suppressMapMovedRef,
-      shouldDisableResultsSheetInteraction,
       shouldLogMapEventRates,
       viewportBoundsService,
     ]
@@ -459,6 +426,7 @@ export const useMapInteractionController = (
       if (shouldLogMapEventRates) {
         mapInteractionDiagnostics.recordMapIdle();
       }
+      const endingGestureSession = mapGestureSessionRef.current;
       mapGestureSessionRef.current = null;
       mapGestureActiveRef.current = false;
       cameraIntentArbiter.setGestureActive(false);
@@ -489,6 +457,61 @@ export const useMapInteractionController = (
           schedulePollBoundsUpdate(bounds);
         }
         viewportBoundsService.setBounds(bounds);
+        if (isSearchOverlay && isSearchSessionActive && endingGestureSession != null) {
+          const startCenter = getBoundsCenter(endingGestureSession.startBounds);
+          const nextCenter = getBoundsCenter(bounds);
+          const movedMiles = haversineDistanceMiles(startCenter, nextCenter);
+          const zoomDelta =
+            zoom !== null && endingGestureSession.startZoom !== null
+              ? Math.abs(zoom - endingGestureSession.startZoom)
+              : 0;
+          const searchBaselineBounds = viewportBoundsService.getSearchBaselineBounds();
+          const searchBaselineWouldMark =
+            searchBaselineBounds != null && hasBoundsMovedSignificantly(searchBaselineBounds, bounds);
+          const gestureBaselineWouldMark = movedMiles >= MAP_MOVE_MIN_DISTANCE_MILES;
+          const shouldAdmitIdleGestureMove =
+            searchBaselineWouldMark ||
+            gestureBaselineWouldMark ||
+            hasMaterialUserMapGestureDelta({
+              movedMiles,
+              zoomDelta,
+              eventCount: endingGestureSession.eventCount,
+            });
+          if (shouldAdmitIdleGestureMove) {
+            const didMarkMapMoved = markMapMovedIfNeeded(bounds, {
+              fallbackBaselineBounds: endingGestureSession.startBounds,
+            });
+            const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+            if (isPerfScenarioAttributionActive(scenarioConfig)) {
+              logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+                event: 'map_post_results_movement_contract',
+                source: 'map_interaction_controller_idle',
+                materialUserGesture: true,
+                mapMovedSinceSearchRequested: didMarkMapMoved,
+                mapMoveAdmissionSource: didMarkMapMoved
+                  ? searchBaselineWouldMark
+                    ? 'search_baseline'
+                    : gestureBaselineWouldMark
+                      ? 'gesture_baseline'
+                      : 'material_idle_gesture'
+                  : 'blocked',
+                resultSheetSnapRequested: false,
+                searchThisAreaRevealScheduled: didMarkMapMoved,
+                searchBaselinePresent: searchBaselineBounds != null,
+                searchBaselineWouldMark,
+                gestureBaselineWouldMark,
+                movedMiles,
+                zoomDelta,
+                eventCount: endingGestureSession.eventCount,
+                isSearchOverlay,
+                isSearchSessionActive,
+              });
+            }
+            if (didMarkMapMoved) {
+              scheduleMapIdleEnter();
+            }
+          }
+        }
       }
       if (isSearchOverlay && isSearchSessionActive) {
         scheduleMapIdleEnter();
@@ -511,30 +534,25 @@ export const useMapInteractionController = (
       const exactCenter: [number, number] = [nextCenter[0], nextCenter[1]];
       const exactZoom = nextZoom;
       persistSettledCameraViewport(exactCenter, exactZoom);
-      if (
-        suppressMapMovedRef.current &&
-        cameraIntentArbiter.hasPendingProgrammaticCameraCompletion()
-      ) {
-        cameraIntentArbiter.resolvePendingProgrammaticCameraAnimation('finished');
+      if (suppressMapMovedRef.current) {
         suppressMapMovedRef.current = false;
         return;
       }
-      commitCameraViewport(
-        {
-          center: exactCenter,
-          zoom: exactZoom,
-        },
-        { allowDuringGesture: true }
-      );
+      if (isProfilePresentationActive) {
+        return;
+      }
+      cameraIntentArbiter.syncObservedCameraViewport({
+        center: exactCenter,
+        zoom: exactZoom,
+      });
       suppressMapMovedRef.current = false;
     },
     [
-      anySheetDraggingRef,
       cameraIntentArbiter,
       cancelPendingMapMovementUpdates,
-      commitCameraViewport,
       isSearchOverlay,
       isSearchSessionActive,
+      isProfilePresentationActive,
       mapInteractionDiagnostics,
       mapGestureActiveRef,
       mapMotionPressureController,
@@ -550,20 +568,19 @@ export const useMapInteractionController = (
 
   const handleMapTouchStart = React.useCallback(() => {
     mapTouchActiveRef.current = true;
-    mapTouchStartedWithResultsSheetOpenRef.current = shouldRenderResultsSheetRef.current;
     mapGestureSessionRef.current = null;
     mapGestureActiveRef.current = true;
     suppressMapMovedRef.current = false;
     cameraIntentArbiter.setGestureActive(true);
-  }, [cameraIntentArbiter, mapGestureActiveRef, suppressMapMovedRef, shouldRenderResultsSheetRef]);
+  }, [cameraIntentArbiter, mapGestureActiveRef, suppressMapMovedRef]);
 
   const handleMapTouchEnd = React.useCallback(() => {
     mapTouchActiveRef.current = false;
-    mapTouchStartedWithResultsSheetOpenRef.current = false;
     const keepGestureActive = mapGestureSessionRef.current !== null;
     mapGestureActiveRef.current = keepGestureActive;
     cameraIntentArbiter.setGestureActive(keepGestureActive);
-  }, [cameraIntentArbiter, mapGestureActiveRef]);
+    scheduleMapIdleEnter({ releaseGestureGate: true });
+  }, [cameraIntentArbiter, mapGestureActiveRef, scheduleMapIdleEnter]);
 
   const attributedHandleMapPress = React.useCallback(
     () =>

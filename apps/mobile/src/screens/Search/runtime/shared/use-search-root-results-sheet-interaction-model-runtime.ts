@@ -8,23 +8,17 @@ import type { SearchRootStateFoundationLane } from './use-search-root-foundation
 import { useSearchRootResultsSheetInteractionStateRuntime } from './use-search-root-results-sheet-interaction-state-runtime';
 import { useSearchRootResultsSheetLoadMoreRuntime } from './use-search-root-results-sheet-load-more-runtime';
 import { useSearchRootResultsSheetSnapRuntime } from './use-search-root-results-sheet-snap-runtime';
-import type { ResultsPresentationOwner } from './use-results-presentation-runtime-owner';
 
 type UseSearchRootResultsSheetInteractionModelRuntimeArgs = {
   stateFoundationLane: SearchRootStateFoundationLane;
   rootOverlayFoundationRuntime: SearchRootOverlayFoundationRuntime;
   submitRuntimeResult: SubmitRuntimeResult;
-  resultsPresentationOwner: Pick<
-    ResultsPresentationOwner,
-    'closeTransitionActions'
-  >;
 };
 
 export const useSearchRootResultsSheetInteractionModelRuntime = ({
   stateFoundationLane,
   rootOverlayFoundationRuntime,
   submitRuntimeResult,
-  resultsPresentationOwner,
 }: UseSearchRootResultsSheetInteractionModelRuntimeArgs) => {
   const { rootDataPlaneRuntime } = stateFoundationLane;
   const { rootInstrumentationRuntime } = rootOverlayFoundationRuntime;
@@ -50,7 +44,6 @@ export const useSearchRootResultsSheetInteractionModelRuntime = ({
     });
   const resultsSheetSnapRuntime = useSearchRootResultsSheetSnapRuntime({
     rootOverlayFoundationRuntime,
-    closeTransitionActions: resultsPresentationOwner.closeTransitionActions,
     interactionStateRuntime: resultsSheetInteractionStateRuntime,
   });
   const resultsSheetMotionRuntime = React.useMemo(

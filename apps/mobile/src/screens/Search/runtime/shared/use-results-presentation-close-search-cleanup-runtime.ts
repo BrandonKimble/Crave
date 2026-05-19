@@ -1,7 +1,11 @@
 import React from 'react';
 import { Keyboard } from 'react-native';
 
+import type { SearchRuntimeBus } from './search-runtime-bus';
+import { getResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
+
 type UseResultsPresentationCloseSearchCleanupRuntimeArgs<Suggestion> = {
+  searchRuntimeBus: SearchRuntimeBus;
   cancelActiveSearchRequest: () => void;
   cancelAutocomplete: () => void;
   handleCancelPendingMutationWork: () => void;
@@ -27,6 +31,7 @@ type ResultsPresentationCloseSearchCleanupRuntime = {
 };
 
 export const useResultsPresentationCloseSearchCleanupRuntime = <Suggestion>({
+  searchRuntimeBus,
   cancelActiveSearchRequest,
   cancelAutocomplete,
   handleCancelPendingMutationWork,
@@ -43,14 +48,10 @@ export const useResultsPresentationCloseSearchCleanupRuntime = <Suggestion>({
   setPendingCloseIntentId,
   matchesPendingCloseIntentId,
 }: UseResultsPresentationCloseSearchCleanupRuntimeArgs<Suggestion>): ResultsPresentationCloseSearchCleanupRuntime => {
-  const pendingCloseCleanupFrameRef = React.useRef<number | null>(null);
+  const activeCleanupTokenRef = React.useRef<string | null>(null);
 
   const cancelCloseSearchCleanup = React.useCallback(() => {
-    const pendingFrame = pendingCloseCleanupFrameRef.current;
-    if (pendingFrame != null) {
-      cancelAnimationFrame(pendingFrame);
-      pendingCloseCleanupFrameRef.current = null;
-    }
+    activeCleanupTokenRef.current = null;
   }, []);
 
   React.useEffect(
@@ -62,29 +63,46 @@ export const useResultsPresentationCloseSearchCleanupRuntime = <Suggestion>({
 
   const scheduleCloseSearchCleanup = React.useCallback(
     (closeIntentId: string) => {
+      const scheduledState = searchRuntimeBus.getState();
+      const scheduledSurfaceSnapshot = getResultsPresentationSurfaceAuthority().getSnapshot();
+      const scheduledOperationId = scheduledState.activeOperationId;
+      const scheduledSurfaceResultsTransactionKey =
+        scheduledSurfaceSnapshot.searchSurfaceResultsTransactionKey;
+      const cleanupToken = [
+        closeIntentId,
+        scheduledOperationId ?? 'operation:none',
+        scheduledSurfaceResultsTransactionKey ?? 'prepared:none',
+      ].join('|');
       setPendingCloseIntentId(closeIntentId);
-      cancelCloseSearchCleanup();
-      pendingCloseCleanupFrameRef.current = requestAnimationFrame(() => {
-        pendingCloseCleanupFrameRef.current = null;
-        if (!matchesPendingCloseIntentId(closeIntentId)) {
-          return;
-        }
+      activeCleanupTokenRef.current = cleanupToken;
+      if (!matchesPendingCloseIntentId(closeIntentId)) {
+        return;
+      }
+      const currentState = searchRuntimeBus.getState();
+      const currentSurfaceSnapshot = getResultsPresentationSurfaceAuthority().getSnapshot();
+      if (
+        activeCleanupTokenRef.current !== cleanupToken ||
+        currentState.activeOperationId !== scheduledOperationId ||
+        currentSurfaceSnapshot.searchSurfaceResultsTransactionKey !== scheduledSurfaceResultsTransactionKey
+      ) {
+        setPendingCloseIntentId(null);
+        return;
+      }
 
-        cancelActiveSearchRequest();
-        cancelAutocomplete();
-        handleCancelPendingMutationWork();
-        resetSubmitTransitionHold();
-        resultsRuntimeOwner.cancelToggleInteraction();
-        setIsSearchFocused(false);
-        setIsSuggestionPanelActive(false);
-        setIsAutocompleteSuppressed(true);
-        setShowSuggestions(false);
-        setQuery('');
-        setError(null);
-        setSuggestions([]);
-        Keyboard.dismiss();
-        inputRef.current?.blur?.();
-      });
+      cancelActiveSearchRequest();
+      cancelAutocomplete();
+      handleCancelPendingMutationWork();
+      resetSubmitTransitionHold();
+      resultsRuntimeOwner.cancelToggleInteraction();
+      setIsSearchFocused(false);
+      setIsSuggestionPanelActive(false);
+      setIsAutocompleteSuppressed(true);
+      setShowSuggestions(false);
+      setQuery('');
+      setError(null);
+      setSuggestions([]);
+      Keyboard.dismiss();
+      inputRef.current?.blur?.();
     },
     [
       cancelActiveSearchRequest,
@@ -95,6 +113,7 @@ export const useResultsPresentationCloseSearchCleanupRuntime = <Suggestion>({
       matchesPendingCloseIntentId,
       resetSubmitTransitionHold,
       resultsRuntimeOwner,
+      searchRuntimeBus,
       setError,
       setIsAutocompleteSuppressed,
       setIsSearchFocused,

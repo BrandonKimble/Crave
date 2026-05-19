@@ -4,7 +4,6 @@ import { createSearchRootDataPlaneRuntimeValue } from '../controller/search-root
 import { useSearchFilterStateRuntime } from './use-search-filter-state-runtime';
 import { useSearchFreezeGateRuntime } from './use-search-freeze-gate-runtime';
 import { useSearchHistoryRuntime } from './use-search-history-runtime';
-import { useSearchRootHydrationRuntimeState } from './use-search-root-hydration-runtime-state';
 import { useSearchRootResultsArrivalRuntime } from './use-search-root-results-arrival-runtime';
 import { useSearchRootRuntimeFlagsRuntime } from './use-search-root-runtime-flags-runtime';
 import { useSearchRequestStatusRuntime } from './use-search-request-status-runtime';
@@ -19,7 +18,7 @@ type UseSearchRootDataPlaneRuntimeArgs = {
   isSignedIn: boolean;
   rootSessionCoreLane: Pick<
     SearchRootSessionCoreLane,
-    'searchRuntimeBus' | 'runOneHandoffCoordinatorRef'
+    'searchRuntimeBus' | 'searchSurfaceRedrawCoordinatorRef'
   >;
   rootSessionPrimitivesLane: Pick<SearchRootSessionPrimitivesLane, 'primitives'>;
   foregroundPolicyPublicationAuthority: SearchForegroundPolicyPublicationAuthority;
@@ -31,7 +30,7 @@ export const useSearchRootDataPlaneRuntime = ({
   rootSessionPrimitivesLane,
   foregroundPolicyPublicationAuthority,
 }: UseSearchRootDataPlaneRuntimeArgs): SearchRootDataPlaneRuntime => {
-  const { searchRuntimeBus, runOneHandoffCoordinatorRef } = rootSessionCoreLane;
+  const { searchRuntimeBus, searchSurfaceRedrawCoordinatorRef } = rootSessionCoreLane;
   const { primitives } = rootSessionPrimitivesLane;
   const resultsArrivalState = useSearchRootResultsArrivalRuntime({
     rootSessionCoreLane,
@@ -41,19 +40,15 @@ export const useSearchRootDataPlaneRuntime = ({
     resultsArrivalState,
     foregroundPolicyPublicationAuthority,
   });
-  const hydrationRuntimeState = useSearchRootHydrationRuntimeState({
-    rootSessionCoreLane,
-  });
-
   const freezeGate = useSearchFreezeGateRuntime({
     searchRuntimeBus,
     resultsRequestKey: resultsArrivalState.resultsRequestKey,
     searchMode: runtimeFlags.searchMode,
     getPerfNow: primitives.getPerfNow,
-    runOneHandoffCoordinatorRef: runOneHandoffCoordinatorRef as Parameters<
+    searchSurfaceRedrawCoordinatorRef: searchSurfaceRedrawCoordinatorRef as Parameters<
       typeof useSearchFreezeGateRuntime
-    >[0]['runOneHandoffCoordinatorRef'],
-    runOneCommitSpanPressureByOperationRef: primitives.runOneCommitSpanPressureByOperationRef,
+    >[0]['searchSurfaceRedrawCoordinatorRef'],
+    searchSurfaceRedrawCommitSpanPressureByOperationRef: primitives.searchSurfaceRedrawCommitSpanPressureByOperationRef,
   });
   const historyRuntime = useSearchHistoryRuntime({ isSignedIn });
   const filterStateRuntime = useSearchFilterStateRuntime();
@@ -64,7 +59,6 @@ export const useSearchRootDataPlaneRuntime = ({
       createSearchRootDataPlaneRuntimeValue({
         resultsArrivalState,
         runtimeFlags,
-        hydrationRuntimeState,
         freezeGate,
         historyRuntime,
         filterStateRuntime,
@@ -74,7 +68,6 @@ export const useSearchRootDataPlaneRuntime = ({
       filterStateRuntime,
       freezeGate,
       historyRuntime,
-      hydrationRuntimeState,
       requestStatusRuntime,
       resultsArrivalState,
       runtimeFlags,

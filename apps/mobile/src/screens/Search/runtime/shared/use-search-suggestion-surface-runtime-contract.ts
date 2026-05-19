@@ -41,9 +41,6 @@ export type UseSearchSuggestionSurfaceRuntimeArgs = {
   recentSearches: RecentSearch[];
   recentlyViewedRestaurants: RecentlyViewedRestaurant[];
   recentlyViewedFoods: RecentlyViewedFood[];
-  isRecentLoading: boolean;
-  isRecentlyViewedLoading: boolean;
-  isRecentlyViewedFoodsLoading: boolean;
   isSuggestionPanelActive: boolean;
   isAutocompleteSuppressed: boolean;
   isAutocompleteLoading: boolean;
@@ -74,12 +71,6 @@ export type SearchSuggestionVisibilityRuntime = {
   recentSearchesDisplay: RecentSearch[];
   recentlyViewedRestaurantsDisplay: RecentlyViewedRestaurant[];
   recentlyViewedFoodsDisplay: RecentlyViewedFood[];
-  hasRecentSearchesDisplay: boolean;
-  hasRecentlyViewedRestaurantsDisplay: boolean;
-  hasRecentlyViewedFoodsDisplay: boolean;
-  isRecentLoadingDisplay: boolean;
-  isRecentlyViewedLoadingDisplay: boolean;
-  isRecentlyViewedFoodsLoadingDisplay: boolean;
 };
 
 export type SearchSuggestionTransitionRuntimeArgs = Pick<
@@ -131,9 +122,6 @@ export type SearchSuggestionDisplayRuntimeArgs = Pick<
   | 'recentSearches'
   | 'recentlyViewedRestaurants'
   | 'recentlyViewedFoods'
-  | 'isRecentLoading'
-  | 'isRecentlyViewedLoading'
-  | 'isRecentlyViewedFoodsLoading'
   | 'isSuggestionPanelActive'
   | 'isAutocompleteSuppressed'
   | 'isAutocompleteLoading'
@@ -158,9 +146,6 @@ export type SearchSuggestionHoldRuntimeArgs = Pick<
   | 'recentSearches'
   | 'recentlyViewedRestaurants'
   | 'recentlyViewedFoods'
-  | 'isRecentLoading'
-  | 'isRecentlyViewedLoading'
-  | 'isRecentlyViewedFoodsLoading'
   | 'isSuggestionPanelActive'
   | 'setSuggestions'
   | 'setShowSuggestions'
@@ -177,7 +162,7 @@ export type SearchSuggestionHoldRuntimeArgs = Pick<
     | 'liveShouldRenderRecentSection'
     | 'shouldShowAutocompleteSpinnerInBar'
   > & {
-    shouldFreezeSuggestionDisplayForRunOne: boolean;
+    shouldFreezeSuggestionDisplayForSearchSurfaceRedraw: boolean;
   };
 
 export type SearchSuggestionTransitionHoldFlags = {
@@ -194,9 +179,6 @@ export type SearchSuggestionTransitionHold = {
   recentSearches: RecentSearch[];
   recentlyViewedRestaurants: RecentlyViewedRestaurant[];
   recentlyViewedFoods: RecentlyViewedFood[];
-  isRecentLoading: boolean;
-  isRecentlyViewedLoading: boolean;
-  isRecentlyViewedFoodsLoading: boolean;
   holdSuggestionPanel: boolean;
   holdSuggestionBackground: boolean;
   holdAutocomplete: boolean;
@@ -215,9 +197,6 @@ export type SearchSuggestionHoldStateRuntimeArgs = Pick<
   | 'recentSearches'
   | 'recentlyViewedRestaurants'
   | 'recentlyViewedFoods'
-  | 'isRecentLoading'
-  | 'isRecentlyViewedLoading'
-  | 'isRecentlyViewedFoodsLoading'
 >;
 
 export type SearchSuggestionHoldStateRuntime = {
@@ -287,9 +266,6 @@ export type SearchSuggestionHeldDisplayRuntimeArgs = Pick<
   | 'recentSearches'
   | 'recentlyViewedRestaurants'
   | 'recentlyViewedFoods'
-  | 'isRecentLoading'
-  | 'isRecentlyViewedLoading'
-  | 'isRecentlyViewedFoodsLoading'
   | 'isSuggestionPanelActive'
   | 'isSuggestionPanelVisible'
   | 'shouldDriveSuggestionLayout'
@@ -299,7 +275,7 @@ export type SearchSuggestionHeldDisplayRuntimeArgs = Pick<
   | 'shouldShowAutocompleteSpinnerInBar'
 > &
   Pick<SearchSuggestionHoldStateRuntime, 'submitTransitionHoldRef'> & {
-    shouldFreezeSuggestionDisplayForRunOne: boolean;
+    shouldFreezeSuggestionDisplayForSearchSurfaceRedraw: boolean;
   };
 
 export type SearchSuggestionHeldDisplayRuntime = Omit<
@@ -321,12 +297,6 @@ export type SearchSuggestionHoldRuntime = {
   recentSearchesDisplay: RecentSearch[];
   recentlyViewedRestaurantsDisplay: RecentlyViewedRestaurant[];
   recentlyViewedFoodsDisplay: RecentlyViewedFood[];
-  hasRecentSearchesDisplay: boolean;
-  hasRecentlyViewedRestaurantsDisplay: boolean;
-  hasRecentlyViewedFoodsDisplay: boolean;
-  isRecentLoadingDisplay: boolean;
-  isRecentlyViewedLoadingDisplay: boolean;
-  isRecentlyViewedFoodsLoadingDisplay: boolean;
 };
 
 export type SearchSuggestionLayoutStateRuntimeArgs = {
@@ -334,6 +304,7 @@ export type SearchSuggestionLayoutStateRuntimeArgs = {
   startupGeometrySeed: SearchStartupGeometrySeed;
   query: string;
   isSuggestionPanelActive: boolean;
+  shouldDisableSearchShortcuts: boolean;
   shouldDriveSuggestionLayout: boolean;
   shouldRenderSuggestionPanel: boolean;
 };

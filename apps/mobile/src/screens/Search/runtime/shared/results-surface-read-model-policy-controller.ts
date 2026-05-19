@@ -11,19 +11,12 @@ import {
   type ResultsSurfaceReadModelPolicySnapshot,
 } from './results-surface-read-model-policy-contract';
 import type {
-  ResultsSurfacePolicyRowCounts,
   ResultsSurfacePolicyResults,
   ResultsSurfacePolicyTab,
 } from './results-surface-policy-controller';
 
 export type ResultsSurfaceReadModelPolicyControllerOptions = {
   initialResults?: ResultsSurfacePolicyResults;
-  onSnapshotRead?: (event: {
-    activeTab: ResultsSurfacePolicyTab;
-    results: ResultsSurfacePolicyResults;
-    rowCountByTabForSheetPolicy: ResultsSurfacePolicyRowCounts;
-    snapshot: ResultsSurfaceReadModelPolicySnapshot;
-  }) => void;
 };
 
 export type ResultsSurfaceReadModelPolicyController = {
@@ -46,7 +39,6 @@ export type ResultsSurfaceReadModelPolicyController = {
 
 export const createResultsSurfaceReadModelPolicyController = ({
   initialResults = null,
-  onSnapshotRead,
 }: ResultsSurfaceReadModelPolicyControllerOptions = {}): ResultsSurfaceReadModelPolicyController => {
   const retainedResultsController =
     createSearchResultsRetainedResultsController<ResultsSurfacePolicyResults>(initialResults);
@@ -63,7 +55,7 @@ export const createResultsSurfaceReadModelPolicyController = ({
     getExactMatchController: () => exactMatchController,
     getRetainedResultsController: () => retainedResultsController,
     readSnapshot({ activeTab, results, shouldRetainCommittedResults }) {
-      const snapshot = createResultsSurfaceReadModelPolicySnapshot({
+      return createResultsSurfaceReadModelPolicySnapshot({
         activeTab,
         exactMatchState: exactMatchController.getProjection(),
         retainedReadModel: retainedResultsController.readRetainedReadModel({
@@ -71,13 +63,6 @@ export const createResultsSurfaceReadModelPolicyController = ({
           shouldRetainCommittedResults,
         }),
       });
-      onSnapshotRead?.({
-        activeTab,
-        results,
-        rowCountByTabForSheetPolicy: snapshot.rowCountByTabForSheetPolicy,
-        snapshot,
-      });
-      return snapshot;
     },
     reset(results) {
       retainedResultsController.reset(results);

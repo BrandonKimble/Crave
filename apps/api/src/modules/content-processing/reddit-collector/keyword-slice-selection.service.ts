@@ -1,5 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  DemandScoringConsumerKind,
+  DemandScoringDecisionState,
+  DemandSubjectKind,
   EntityType,
   KeywordAttemptOutcome,
   OnDemandReason,
@@ -10,6 +13,7 @@ import { LoggerService } from '../../../shared';
 import { normalizeKeywordTerm } from './keyword-term-normalization';
 import { stripGenericTokens } from '../../../shared/utils/generic-token-handling';
 import { MarketRegistryService } from '../../markets/market-registry.service';
+import { DemandScoringTraceService } from '../../analytics/demand-scoring-trace.service';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -22,6 +26,20 @@ const SLICE_QUOTAS = {
   explore: 2,
 } as const;
 
+const SLICE_BACKFILL_WEIGHT: Record<KeywordSlice, number> = {
+  unmet: 1.2,
+  refresh: 1.1,
+  demand: 1,
+  explore: 0.65,
+};
+
+const MIN_SELECTABLE_SCORE_BY_SLICE: Record<KeywordSlice, number> = {
+  unmet: 1,
+  refresh: 0.2,
+  demand: 1,
+  explore: 0.2,
+};
+
 const SLICE_PRIORITY: KeywordSlice[] = [
   'unmet',
   'refresh',
@@ -32,24 +50,16 @@ const SLICE_PRIORITY: KeywordSlice[] = [
 const DEFAULT_WINDOW_DAYS = 30;
 const DEFAULT_TREND_WINDOW_DAYS = 7;
 const DEFAULT_SAFE_INTERVAL_DAYS = 7;
+const KEYWORD_COLLECTION_SCORER_VERSION = 'keyword-collection-v1';
+const UNMET_CURRENT_CYCLE_DAYS = 7;
+const UNMET_HALF_LIFE_DAYS = 14;
 
-const FAVORITE_USERS_CAP = 10;
-const CARD_ENGAGEMENT_USERS_CAP = 25;
-const EXPLICIT_SELECTION_USERS_CAP = 25;
-const QUERY_USERS_PRIMARY_CAP = 50;
+const DEMAND_WEIGHT_FAVORITES = 1.5;
+const DEMAND_WEIGHT_CARD_ENGAGEMENT = 0.6;
+const DEMAND_WEIGHT_EXPLICIT_SELECTION = 1.5;
+const DEMAND_WEIGHT_QUERY_PRIMARY = 1;
 
-const DEMAND_WEIGHT_FAVORITES = 0.35;
-const DEMAND_WEIGHT_CARD_ENGAGEMENT = 0.2;
-const DEMAND_WEIGHT_EXPLICIT_SELECTION = 0.15;
-const DEMAND_WEIGHT_QUERY_PRIMARY = 0.3;
-
-const UNMET_DISTINCT_USERS_CAP = 25;
-const UNMET_REASON_SEVERITY: Record<OnDemandReason, number> = {
-  unresolved: 1,
-  low_result: 0.8,
-};
-const NO_RESULTS_SOFT_SUPPRESSION_MULTIPLIER = 0.3;
-const NO_RESULTS_SOFT_SUPPRESSION_WINDOW_DAYS = 60;
+const NO_RESULTS_RECOVERY_DAYS = 45;
 
 const REFRESH_STALENESS_SATURATION_DAYS = 90;
 
@@ -72,10 +82,11 @@ function clamp01(value: number): number {
   return value;
 }
 
-function normalizeLog(value: number, cap: number): number {
-  const safeValue = Number.isFinite(value) ? Math.max(0, value) : 0;
-  const safeCap = Number.isFinite(cap) && cap > 0 ? cap : 1;
-  return clamp01(Math.log1p(safeValue) / Math.log1p(safeCap));
+function shouldTraceAllDemandCandidates(): boolean {
+  return (
+    process.env.DEMAND_SCORING_TRACE_ALL_CANDIDATES?.trim().toLowerCase() ===
+    'true'
+  );
 }
 
 export type KeywordSlice = 'unmet' | 'refresh' | 'demand' | 'explore';
@@ -112,6 +123,18 @@ export interface KeywordSliceSelectionResult {
   stats: KeywordSliceSelectionStats;
 }
 
+interface SoftReservationSelection {
+  selected: KeywordTermCandidate[];
+  selectedBySlice: Record<KeywordSlice, KeywordTermCandidate[]>;
+  underfilledBySlice: Record<KeywordSlice, number>;
+}
+
+interface KeywordGateRejectTrace {
+  candidate: KeywordTermCandidate;
+  decisionState: DemandScoringDecisionState;
+  decisionReason: string;
+}
+
 type CommunityLookup = {
   safeIntervalDays: number | null;
 } | null;
@@ -123,6 +146,7 @@ export class KeywordSliceSelectionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly marketRegistry: MarketRegistryService,
+    private readonly scoringTrace: DemandScoringTraceService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('KeywordSliceSelectionService');
@@ -162,6 +186,7 @@ export class KeywordSliceSelectionService {
       underfilledBySlice: { unmet: 0, refresh: 0, demand: 0, explore: 0 },
       dropped: { invalid: 0, cooldown: 0, deduped: 0 },
     };
+    const gateRejects: KeywordGateRejectTrace[] = [];
 
     const candidatesBySlice: Record<KeywordSlice, KeywordTermCandidate[]> = {
       unmet: await this.loadUnmetCandidates(collectableMarketKey, since, now),
@@ -179,6 +204,7 @@ export class KeywordSliceSelectionService {
       candidatesBySlice[slice] = this.normalizeAndFilterCandidates(
         candidatesBySlice[slice],
         stats,
+        gateRejects,
       );
       candidatesBySlice[slice] = this.dedupeWithinSlice(
         candidatesBySlice[slice],
@@ -206,8 +232,20 @@ export class KeywordSliceSelectionService {
       const filtered: KeywordTermCandidate[] = [];
       for (const candidate of candidatesBySlice[slice]) {
         const history = attemptHistoryMap.get(candidate.normalizedTerm);
-        if (history?.cooldownUntil && history.cooldownUntil > now) {
+        const shouldApplySmoothNoResultsRecovery =
+          candidate.slice === 'unmet' &&
+          history?.lastOutcome === KeywordAttemptOutcome.no_results;
+        if (
+          history?.cooldownUntil &&
+          history.cooldownUntil > now &&
+          !shouldApplySmoothNoResultsRecovery
+        ) {
           stats.dropped.cooldown += 1;
+          gateRejects.push({
+            candidate,
+            decisionState: DemandScoringDecisionState.gate_reject,
+            decisionReason: 'attempt_cooldown_active',
+          });
           continue;
         }
 
@@ -232,6 +270,11 @@ export class KeywordSliceSelectionService {
       for (const candidate of candidatesBySlice[slice]) {
         if (seen.has(candidate.normalizedTerm)) {
           stats.dropped.deduped += 1;
+          gateRejects.push({
+            candidate,
+            decisionState: DemandScoringDecisionState.dedupe_reject,
+            decisionReason: 'duplicate_keyword_term',
+          });
           continue;
         }
         seen.add(candidate.normalizedTerm);
@@ -247,45 +290,19 @@ export class KeywordSliceSelectionService {
       explore: SLICE_QUOTAS.explore,
     };
 
-    const selectedBySlice: Record<KeywordSlice, KeywordTermCandidate[]> = {
-      unmet: dedupedBySlice.unmet.slice(0, quotas.unmet),
-      refresh: dedupedBySlice.refresh.slice(0, quotas.refresh),
-      demand: dedupedBySlice.demand.slice(0, quotas.demand),
-      explore: dedupedBySlice.explore.slice(0, quotas.explore),
-    };
-
-    const overflowBySlice: Record<KeywordSlice, KeywordTermCandidate[]> = {
-      unmet: dedupedBySlice.unmet.slice(quotas.unmet),
-      refresh: dedupedBySlice.refresh.slice(quotas.refresh),
-      demand: dedupedBySlice.demand.slice(quotas.demand),
-      explore: dedupedBySlice.explore.slice(quotas.explore),
-    };
-
-    const primarySelected: KeywordTermCandidate[] = [];
-    for (const slice of SLICE_PRIORITY) {
-      primarySelected.push(...selectedBySlice[slice]);
-      stats.selectedBySlice[slice] = selectedBySlice[slice].length;
-      stats.underfilledBySlice[slice] = Math.max(
-        0,
-        quotas[slice] - selectedBySlice[slice].length,
-      );
-    }
-
     const maxTerms = MAX_TERMS_PER_CYCLE;
-    let remaining = Math.max(0, maxTerms - primarySelected.length);
-    const finalSelection = [...primarySelected];
+    const softSelection = this.selectWithSoftReservationsAndBackfill({
+      candidatesBySlice: dedupedBySlice,
+      reservations: quotas,
+      maxTerms,
+    });
 
     for (const slice of SLICE_PRIORITY) {
-      if (remaining <= 0) {
-        break;
-      }
-      const overflow = overflowBySlice[slice];
-      const take = Math.min(remaining, overflow.length);
-      if (take > 0) {
-        finalSelection.push(...overflow.slice(0, take));
-        remaining -= take;
-      }
+      stats.selectedBySlice[slice] =
+        softSelection.selectedBySlice[slice].length;
+      stats.underfilledBySlice[slice] = softSelection.underfilledBySlice[slice];
     }
+    const finalSelection = softSelection.selected;
 
     this.logger.debug('Selected keyword terms for cycle', {
       subreddit: normalizedSubreddit,
@@ -299,6 +316,16 @@ export class KeywordSliceSelectionService {
         normalizedTerm: term.normalizedTerm,
         score: term.score,
       })),
+    });
+
+    await this.traceKeywordSelection({
+      collectableMarketKey,
+      cycleStartAt: since,
+      cycleEndAt: now,
+      candidatesBySlice: dedupedBySlice,
+      gateRejects,
+      selected: finalSelection,
+      maxTerms,
     });
 
     return {
@@ -316,6 +343,7 @@ export class KeywordSliceSelectionService {
   private normalizeAndFilterCandidates(
     candidates: KeywordTermCandidate[],
     stats: KeywordSliceSelectionStats,
+    gateRejects?: KeywordGateRejectTrace[],
   ): KeywordTermCandidate[] {
     const result: KeywordTermCandidate[] = [];
 
@@ -324,12 +352,34 @@ export class KeywordSliceSelectionService {
       const term = stripped.text;
       if (!term.length || stripped.isGenericOnly) {
         stats.dropped.invalid += 1;
+        gateRejects?.push({
+          candidate: {
+            ...candidate,
+            term: candidate.term,
+            normalizedTerm:
+              candidate.normalizedTerm || normalizeKeywordTerm(candidate.term),
+          },
+          decisionState: DemandScoringDecisionState.gate_reject,
+          decisionReason: stripped.isGenericOnly
+            ? 'generic_only_keyword'
+            : 'empty_keyword_term',
+        });
         continue;
       }
 
       const normalizedTerm = normalizeKeywordTerm(term);
       if (!normalizedTerm.length) {
         stats.dropped.invalid += 1;
+        gateRejects?.push({
+          candidate: {
+            ...candidate,
+            term,
+            normalizedTerm:
+              candidate.normalizedTerm || normalizeKeywordTerm(candidate.term),
+          },
+          decisionState: DemandScoringDecisionState.gate_reject,
+          decisionReason: 'invalid_normalized_keyword',
+        });
         continue;
       }
 
@@ -358,6 +408,299 @@ export class KeywordSliceSelectionService {
     return Array.from(byTerm.values());
   }
 
+  private selectWithSoftReservationsAndBackfill(params: {
+    candidatesBySlice: Record<KeywordSlice, KeywordTermCandidate[]>;
+    reservations: Record<KeywordSlice, number>;
+    maxTerms: number;
+  }): SoftReservationSelection {
+    const selectedBySlice: Record<KeywordSlice, KeywordTermCandidate[]> = {
+      unmet: [],
+      refresh: [],
+      demand: [],
+      explore: [],
+    };
+    const underfilledBySlice: Record<KeywordSlice, number> = {
+      unmet: 0,
+      refresh: 0,
+      demand: 0,
+      explore: 0,
+    };
+    const selectedTerms = new Set<string>();
+    const leftovers: Array<{
+      candidate: KeywordTermCandidate;
+      slice: KeywordSlice;
+      rankQuality: number;
+    }> = [];
+
+    for (const slice of SLICE_PRIORITY) {
+      const candidates = params.candidatesBySlice[slice];
+      const reservation = Math.max(0, params.reservations[slice] ?? 0);
+      const naturalLimit = this.naturalReservationLimit(
+        candidates,
+        reservation,
+      );
+      const reserved = candidates.slice(0, naturalLimit);
+
+      for (const candidate of reserved) {
+        if (selectedTerms.size >= params.maxTerms) {
+          break;
+        }
+        selectedBySlice[slice].push(candidate);
+        selectedTerms.add(candidate.normalizedTerm);
+      }
+
+      underfilledBySlice[slice] = Math.max(
+        0,
+        reservation - selectedBySlice[slice].length,
+      );
+
+      const topScore = candidates[0]?.score ?? 0;
+      for (let index = naturalLimit; index < candidates.length; index += 1) {
+        const candidate = candidates[index];
+        if (selectedTerms.has(candidate.normalizedTerm)) {
+          continue;
+        }
+        if (!this.isSelectableCandidate(candidate)) {
+          continue;
+        }
+        const rankQuality =
+          topScore > 0 && Number.isFinite(candidate.score)
+            ? clamp01(candidate.score / topScore)
+            : 0;
+        if (rankQuality <= 0) {
+          continue;
+        }
+        leftovers.push({ candidate, slice, rankQuality });
+      }
+    }
+
+    const selected = SLICE_PRIORITY.flatMap((slice) => selectedBySlice[slice]);
+    const remaining = Math.max(0, params.maxTerms - selected.length);
+    if (remaining > 0) {
+      leftovers.sort((a, b) => {
+        const aScore = a.rankQuality * SLICE_BACKFILL_WEIGHT[a.slice];
+        const bScore = b.rankQuality * SLICE_BACKFILL_WEIGHT[b.slice];
+        return bScore - aScore || b.candidate.score - a.candidate.score;
+      });
+
+      for (const { candidate, slice } of leftovers) {
+        if (selected.length >= params.maxTerms) {
+          break;
+        }
+        if (selectedTerms.has(candidate.normalizedTerm)) {
+          continue;
+        }
+        selected.push(candidate);
+        selectedBySlice[slice].push(candidate);
+        selectedTerms.add(candidate.normalizedTerm);
+      }
+    }
+
+    for (const slice of SLICE_PRIORITY) {
+      underfilledBySlice[slice] = Math.max(
+        0,
+        (params.reservations[slice] ?? 0) - selectedBySlice[slice].length,
+      );
+    }
+
+    return { selected, selectedBySlice, underfilledBySlice };
+  }
+
+  private async traceKeywordSelection(params: {
+    collectableMarketKey: string;
+    cycleStartAt: Date;
+    cycleEndAt: Date;
+    candidatesBySlice: Record<KeywordSlice, KeywordTermCandidate[]>;
+    gateRejects?: KeywordGateRejectTrace[];
+    selected: KeywordTermCandidate[];
+    maxTerms: number;
+  }): Promise<void> {
+    try {
+      const runId = await this.scoringTrace.createRun({
+        consumerKind: DemandScoringConsumerKind.keyword_collection,
+        collectableMarketKey: params.collectableMarketKey,
+        cycleStartAt: params.cycleStartAt,
+        cycleEndAt: params.cycleEndAt,
+        scorerVersion: KEYWORD_COLLECTION_SCORER_VERSION,
+        traceAllCandidates: shouldTraceAllDemandCandidates(),
+        metadata: {
+          maxTerms: params.maxTerms,
+          reservations: SLICE_QUOTAS,
+          backfillWeights: SLICE_BACKFILL_WEIGHT,
+        },
+      });
+
+      const selectedKeyByTerm = new Map(
+        params.selected.map((candidate, index) => [
+          candidate.normalizedTerm,
+          { candidate, rank: index + 1 },
+        ]),
+      );
+      const selectedTraces = params.selected.map((candidate, index) =>
+        this.buildKeywordTraceCandidate({
+          collectableMarketKey: params.collectableMarketKey,
+          candidate,
+          rank: index + 1,
+          selected: true,
+          decisionState: DemandScoringDecisionState.selected,
+          decisionReason: 'selected_by_soft_reservation_or_backfill',
+        }),
+      );
+
+      const traceAllCandidates = shouldTraceAllDemandCandidates();
+      const nearMisses = SLICE_PRIORITY.flatMap((slice) => {
+        const rejected = params.candidatesBySlice[slice].filter(
+          (candidate) => !selectedKeyByTerm.has(candidate.normalizedTerm),
+        );
+        const traced = traceAllCandidates ? rejected : rejected.slice(0, 5);
+        return traced.map((candidate, index) => {
+          const isDebugOnlyCandidate = traceAllCandidates && index >= 5;
+          return this.buildKeywordTraceCandidate({
+            collectableMarketKey: params.collectableMarketKey,
+            candidate,
+            selected: false,
+            decisionState: isDebugOnlyCandidate
+              ? DemandScoringDecisionState.budget_reject
+              : DemandScoringDecisionState.near_miss,
+            decisionReason: isDebugOnlyCandidate
+              ? 'trace_all_not_selected'
+              : 'strong_leftover_after_budget',
+            traceScope: isDebugOnlyCandidate ? 'all_candidate' : 'near_miss',
+          });
+        });
+      });
+
+      await this.scoringTrace.recordCandidates(runId, [
+        ...selectedTraces,
+        ...nearMisses,
+        ...(params.gateRejects ?? []).map((reject) =>
+          this.buildKeywordTraceCandidate({
+            collectableMarketKey: params.collectableMarketKey,
+            candidate: reject.candidate,
+            selected: false,
+            decisionState: reject.decisionState,
+            decisionReason: reject.decisionReason,
+          }),
+        ),
+      ]);
+      await this.scoringTrace.finishRun(runId);
+    } catch (error) {
+      this.logger.warn('Failed to trace keyword collection selection', {
+        collectableMarketKey: params.collectableMarketKey,
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : { message: String(error) },
+      });
+    }
+  }
+
+  private buildKeywordTraceCandidate(params: {
+    collectableMarketKey: string;
+    candidate: KeywordTermCandidate;
+    rank?: number;
+    selected: boolean;
+    decisionState: DemandScoringDecisionState;
+    decisionReason: string;
+    traceScope?: 'near_miss' | 'all_candidate';
+  }) {
+    const origin =
+      params.candidate.origin && typeof params.candidate.origin === 'object'
+        ? params.candidate.origin
+        : {};
+    return {
+      consumerKind: DemandScoringConsumerKind.keyword_collection,
+      candidateKind: `${params.candidate.slice}_term`,
+      subjectKind: DemandSubjectKind.term,
+      subjectKey: params.candidate.normalizedTerm,
+      collectableMarketKey: params.collectableMarketKey,
+      entityId:
+        typeof origin.entityId === 'string' ? origin.entityId : undefined,
+      entityType: params.candidate.entityType ?? null,
+      normalizedText: params.candidate.term,
+      bucket: params.candidate.slice,
+      finalScore: params.candidate.score,
+      rank: params.rank,
+      selected: params.selected,
+      decisionState: params.decisionState,
+      decisionReason: params.decisionReason,
+      factorBreakdown: {
+        score: params.candidate.score,
+        origin: this.toJsonValue(origin),
+        ...(params.traceScope ? { traceScope: params.traceScope } : {}),
+      } satisfies Prisma.InputJsonObject,
+    };
+  }
+
+  private toJsonValue(value: unknown): Prisma.InputJsonValue {
+    return JSON.parse(JSON.stringify(value ?? {})) as Prisma.InputJsonValue;
+  }
+
+  private naturalReservationLimit(
+    candidates: KeywordTermCandidate[],
+    reservation: number,
+  ): number {
+    if (!candidates.length || reservation <= 0) {
+      return 0;
+    }
+    const positiveCandidates = candidates.filter((candidate) =>
+      this.isSelectableCandidate(candidate),
+    );
+    if (!positiveCandidates.length) {
+      return 0;
+    }
+
+    const reservationCap = Math.min(reservation, positiveCandidates.length);
+    const scores = positiveCandidates.map((candidate) => candidate.score);
+    const median = this.median(scores);
+    const mad = this.median(scores.map((score) => Math.abs(score - median)));
+    const robustScale = Math.max(1.4826 * mad, Number.EPSILON);
+
+    let limit = 0;
+    for (let index = 0; index < reservationCap; index += 1) {
+      const score = scores[index];
+      const rank = index + 1;
+      const robustZ = (score - median) / robustScale;
+      const eligible = rank === 1 || robustZ >= -0.75;
+      if (!eligible) {
+        break;
+      }
+      limit = rank;
+      const nextScore = scores[index + 1];
+      if (rank >= 2 && nextScore !== undefined && score > 0) {
+        const dropRatio = nextScore / score;
+        if (dropRatio < 0.55) {
+          break;
+        }
+      }
+    }
+
+    return Math.max(1, limit);
+  }
+
+  private isSelectableCandidate(candidate: KeywordTermCandidate): boolean {
+    const score = Number.isFinite(candidate.score) ? candidate.score : 0;
+    return score >= MIN_SELECTABLE_SCORE_BY_SLICE[candidate.slice];
+  }
+
+  private median(values: number[]): number {
+    const sorted = values
+      .filter((value) => Number.isFinite(value))
+      .sort((a, b) => a - b);
+    if (!sorted.length) {
+      return 0;
+    }
+    const mid = Math.floor(sorted.length / 2);
+    if (sorted.length % 2 === 1) {
+      return sorted[mid];
+    }
+    return (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+
+  private formatDateKey(value: Date): string {
+    return value.toISOString().slice(0, 10);
+  }
+
   private resolveWindowDays(raw: string | undefined, fallback: number): number {
     if (!raw) {
       return fallback;
@@ -372,22 +715,14 @@ export class KeywordSliceSelectionService {
     explicitSelectionUsers: number;
     queryUsersPrimary: number;
   }): number {
-    const favoriteScore = normalizeLog(
-      params.favoriteUsers,
-      FAVORITE_USERS_CAP,
-    );
-    const cardEngagementScore = normalizeLog(
+    const favoriteScore = this.normalizeDemandUnit(params.favoriteUsers);
+    const cardEngagementScore = this.normalizeDemandUnit(
       params.cardEngagementUsers,
-      CARD_ENGAGEMENT_USERS_CAP,
     );
-    const explicitSelectionScore = normalizeLog(
+    const explicitSelectionScore = this.normalizeDemandUnit(
       params.explicitSelectionUsers,
-      EXPLICIT_SELECTION_USERS_CAP,
     );
-    const queryScore = normalizeLog(
-      params.queryUsersPrimary,
-      QUERY_USERS_PRIMARY_CAP,
-    );
+    const queryScore = this.normalizeDemandUnit(params.queryUsersPrimary);
 
     return (
       DEMAND_WEIGHT_FAVORITES * favoriteScore +
@@ -399,24 +734,62 @@ export class KeywordSliceSelectionService {
 
   private calculateUnmetScore(params: {
     distinctUsers: number;
+    demandScore?: number;
     reason: OnDemandReason;
+    resultRestaurantCount: number | null;
+    resultFoodCount: number | null;
     lastSeenAt: Date;
     now: Date;
   }): number {
-    const severity = UNMET_REASON_SEVERITY[params.reason] ?? 1;
-    const demandScore = normalizeLog(
-      params.distinctUsers,
-      UNMET_DISTINCT_USERS_CAP,
-    );
+    const severity =
+      params.reason === 'low_result'
+        ? this.calculateLowResultSeverity({
+            restaurantCount: params.resultRestaurantCount,
+            foodCount: params.resultFoodCount,
+        })
+        : 1;
+    const demandScore =
+      typeof params.demandScore === 'number' &&
+      Number.isFinite(params.demandScore)
+        ? Math.max(0, params.demandScore)
+        : Math.log2(1 + Math.max(0, params.distinctUsers));
     const daysSinceLastSeen =
       (params.now.getTime() - params.lastSeenAt.getTime()) / MS_PER_DAY;
     const safeDaysSinceLastSeen =
       Number.isFinite(daysSinceLastSeen) && daysSinceLastSeen > 0
         ? daysSinceLastSeen
         : 0;
-    const recencyBoost = 0.7 + 0.3 * Math.exp(-safeDaysSinceLastSeen / 7);
+    const recencyWeight =
+      safeDaysSinceLastSeen <= UNMET_CURRENT_CYCLE_DAYS
+        ? 1
+        : Math.pow(
+            2,
+            -(
+              (safeDaysSinceLastSeen - UNMET_CURRENT_CYCLE_DAYS) /
+              UNMET_HALF_LIFE_DAYS
+            ),
+          );
 
-    return severity * demandScore * recencyBoost;
+    return severity * demandScore * recencyWeight;
+  }
+
+  private calculateLowResultSeverity(params: {
+    restaurantCount: number | null;
+    foodCount: number | null;
+  }): number {
+    const rawTarget = Number(process.env.SEARCH_ON_DEMAND_MIN_RESULTS);
+    const targetCount =
+      Number.isFinite(rawTarget) && rawTarget > 0 ? rawTarget : 25;
+    const observedCount =
+      typeof params.restaurantCount === 'number'
+        ? Math.max(params.restaurantCount, 0)
+        : Math.max(params.foodCount ?? 0, 0);
+    const coverage = clamp01(observedCount / targetCount);
+    return 0.25 + 0.75 * Math.pow(1 - coverage, 1.2);
+  }
+
+  private normalizeDemandUnit(value: number): number {
+    return Number.isFinite(value) ? Math.max(0, value) : 0;
   }
 
   private applyAttemptHistoryAdjustments(
@@ -438,22 +811,20 @@ export class KeywordSliceSelectionService {
       ) {
         const daysSinceAttempt =
           (now.getTime() - history.lastAttemptAt.getTime()) / MS_PER_DAY;
-        if (
-          Number.isFinite(daysSinceAttempt) &&
-          daysSinceAttempt >= 0 &&
-          daysSinceAttempt <= NO_RESULTS_SOFT_SUPPRESSION_WINDOW_DAYS
-        ) {
+        if (Number.isFinite(daysSinceAttempt) && daysSinceAttempt >= 0) {
+          const attemptAvailability =
+            1 -
+            Math.exp(-Math.pow(daysSinceAttempt / NO_RESULTS_RECOVERY_DAYS, 2));
           const origin =
             candidate.origin && typeof candidate.origin === 'object'
               ? candidate.origin
               : {};
           return {
             ...candidate,
-            score: candidate.score * NO_RESULTS_SOFT_SUPPRESSION_MULTIPLIER,
+            score: candidate.score * attemptAvailability,
             origin: {
               ...origin,
-              softSuppressed: true,
-              suppressionMultiplier: NO_RESULTS_SOFT_SUPPRESSION_MULTIPLIER,
+              attemptAvailability,
               lastOutcome: history.lastOutcome,
               lastAttemptAt: history.lastAttemptAt.toISOString(),
             },
@@ -529,32 +900,84 @@ export class KeywordSliceSelectionService {
     since: Date,
     now: Date,
   ): Promise<KeywordTermCandidate[]> {
-    const requests = await this.prisma.onDemandRequest.findMany({
-      where: {
-        marketKey,
-        distinctUserCount: { gt: 0 },
-        lastSeenAt: { gte: since },
-        reason: { in: ['unresolved', 'low_result'] satisfies OnDemandReason[] },
-      },
-      orderBy: [{ distinctUserCount: 'desc' }, { lastSeenAt: 'desc' }],
-      take: MAX_TERMS_PER_CYCLE * 10,
-    });
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        term: string;
+        entityType: EntityType;
+        entityId: string | null;
+        reason: OnDemandReason;
+        distinctUserCount: number;
+        demandScore: number;
+        resultRestaurantCount: number | null;
+        resultFoodCount: number | null;
+        lastSeenAt: Date;
+        askCount: number;
+      }>
+    >(Prisma.sql`
+      WITH user_counts AS (
+        SELECT
+          LOWER(TRIM(term)) AS normalized_term,
+          MIN(term) AS term,
+          entity_type,
+          entity_id,
+          reason,
+          COALESCE(user_id::text, 'anonymous:' || ask_event_id::text) AS user_key,
+          COUNT(*)::float AS ask_count,
+          MIN(result_restaurant_count) AS result_restaurant_count,
+          MIN(result_food_count) AS result_food_count,
+          MAX(asked_at) AS last_seen_at
+        FROM collection_on_demand_ask_events
+        WHERE asked_at >= (${this.formatDateKey(since)}::date::timestamp AT TIME ZONE 'UTC')
+          AND collectable_market_key IS NOT NULL
+          AND LOWER(collectable_market_key) = LOWER(${marketKey})
+          AND reason IN ('unresolved'::"OnDemandReason", 'low_result'::"OnDemandReason")
+          AND NULLIF(LOWER(TRIM(term)), '') IS NOT NULL
+        GROUP BY
+          LOWER(TRIM(term)),
+          entity_type,
+          entity_id,
+          reason,
+          COALESCE(user_id::text, 'anonymous:' || ask_event_id::text)
+      )
+      SELECT
+        MIN(term) AS "term",
+        entity_type AS "entityType",
+        entity_id AS "entityId",
+        reason,
+        COUNT(*)::int AS "distinctUserCount",
+        SUM(LN(1 + ask_count) / LN(2))::float AS "demandScore",
+        MIN(result_restaurant_count)::int AS "resultRestaurantCount",
+        MIN(result_food_count)::int AS "resultFoodCount",
+        MAX(last_seen_at) AS "lastSeenAt",
+        SUM(ask_count)::int AS "askCount"
+      FROM user_counts
+      GROUP BY normalized_term, entity_type, entity_id, reason
+      ORDER BY "demandScore" DESC, "lastSeenAt" DESC
+      LIMIT ${MAX_TERMS_PER_CYCLE * 10}
+    `);
 
-    return requests.map((request) => ({
+    return rows.map((request) => ({
       term: request.term,
       normalizedTerm: '',
       slice: 'unmet',
       score: this.calculateUnmetScore({
         distinctUsers: request.distinctUserCount,
+        demandScore: request.demandScore,
         reason: request.reason,
+        resultRestaurantCount: request.resultRestaurantCount,
+        resultFoodCount: request.resultFoodCount,
         lastSeenAt: request.lastSeenAt,
         now,
       }),
       entityType: request.entityType,
       origin: {
-        requestId: request.requestId,
         reason: request.reason,
         distinctUserCount: request.distinctUserCount,
+        demandScore: request.demandScore,
+        askCount: request.askCount,
+        entityId: request.entityId,
+        resultRestaurantCount: request.resultRestaurantCount ?? 0,
+        resultFoodCount: request.resultFoodCount ?? 0,
         lastSeenAt: request.lastSeenAt.toISOString(),
       },
     }));
@@ -615,21 +1038,34 @@ export class KeywordSliceSelectionService {
       return [];
     }
 
-    const unmetRequests = await this.prisma.onDemandRequest.findMany({
-      where: {
-        marketKey: params.collectableMarketKey,
-        distinctUserCount: { gt: 0 },
-        lastSeenAt: { gte: params.since },
-        reason: { in: ['unresolved', 'low_result'] satisfies OnDemandReason[] },
-      },
-      select: {
-        term: true,
-        distinctUserCount: true,
-        lastSeenAt: true,
-      },
-      take: ENTITY_SIGNAL_CANDIDATE_LIMIT,
-      orderBy: [{ distinctUserCount: 'desc' }, { lastSeenAt: 'desc' }],
-    });
+    const unmetRequests = await this.prisma.$queryRaw<
+      Array<{ term: string; demandScore: number }>
+    >(Prisma.sql`
+      WITH user_counts AS (
+        SELECT
+          LOWER(TRIM(term)) AS normalized_term,
+          MIN(term) AS term,
+          COALESCE(user_id::text, 'anonymous:' || ask_event_id::text) AS user_key,
+          COUNT(*)::float AS ask_count,
+          MAX(asked_at) AS last_seen_at
+        FROM collection_on_demand_ask_events
+        WHERE asked_at >= (${this.formatDateKey(params.since)}::date::timestamp AT TIME ZONE 'UTC')
+          AND collectable_market_key IS NOT NULL
+          AND LOWER(collectable_market_key) = LOWER(${params.collectableMarketKey})
+          AND reason IN ('unresolved'::"OnDemandReason", 'low_result'::"OnDemandReason")
+          AND NULLIF(LOWER(TRIM(term)), '') IS NOT NULL
+        GROUP BY
+          LOWER(TRIM(term)),
+          COALESCE(user_id::text, 'anonymous:' || ask_event_id::text)
+      )
+      SELECT
+        MIN(term) AS term,
+        SUM(LN(1 + ask_count) / LN(2))::float AS "demandScore"
+      FROM user_counts
+      GROUP BY normalized_term
+      ORDER BY "demandScore" DESC, MAX(last_seen_at) DESC
+      LIMIT ${ENTITY_SIGNAL_CANDIDATE_LIMIT}
+    `);
 
     const unmetByNormalizedTerm = new Map<string, number>();
     for (const request of unmetRequests) {
@@ -645,7 +1081,7 @@ export class KeywordSliceSelectionService {
         normalized,
         Math.max(
           unmetByNormalizedTerm.get(normalized) ?? 0,
-          request.distinctUserCount,
+          request.demandScore,
         ),
       );
     }
@@ -688,7 +1124,7 @@ export class KeywordSliceSelectionService {
         ? normalizeKeywordTerm(stripped.text)
         : '';
       const unmetDistinctUsers = normalized.length
-        ? (unmetByNormalizedTerm.get(normalized) ?? 0)
+        ? unmetByNormalizedTerm.get(normalized) ?? 0
         : 0;
 
       const signalFloorMet =
@@ -759,6 +1195,7 @@ export class KeywordSliceSelectionService {
       Number.isFinite(params.limit) && params.limit > 0
         ? Math.floor(params.limit)
         : ENTITY_SIGNAL_CANDIDATE_LIMIT;
+    const sinceKey = this.formatDateKey(params.since);
 
     if (!params.collectableMarketKey.trim()) {
       return [];
@@ -777,174 +1214,94 @@ export class KeywordSliceSelectionService {
         lastViewAt: Date | null;
       }>
     >(Prisma.sql`
-      WITH market_restaurants AS (
-        SELECT DISTINCT rl.restaurant_id
-        FROM core_restaurant_locations rl
-        JOIN core_markets m
-          ON m.market_key = ${params.collectableMarketKey}
-         AND m.geometry IS NOT NULL
-         AND m.is_active = true
-        WHERE rl.latitude IS NOT NULL
-          AND rl.longitude IS NOT NULL
-          AND ST_Contains(
-            m.geometry,
-            ST_SetSRID(
-              ST_MakePoint(
-                rl.longitude::double precision,
-                rl.latitude::double precision
-              ),
-              4326
-            )
-          )
+      WITH local_query_user AS (
+        SELECT
+          entity_id,
+          entity_type,
+          user_id,
+          SUM(signal_count * CASE WHEN signal_kind = 'cache' THEN 0.35 ELSE 1.0 END)::float AS user_signal_count,
+          MAX(last_seen_at) AS last_query_at
+        FROM user_search_demand_daily
+        WHERE demand_date >= ${sinceKey}::date
+          AND subject_kind = 'entity'
+          AND source_kind = 'search_log'
+          AND signal_kind IN ('backend', 'cache')
+          AND user_id IS NOT NULL
+          AND entity_id IS NOT NULL
+          AND entity_type IS NOT NULL
+          AND market_key IS NULL
+          AND collectable_market_key IS NOT NULL
+          AND LOWER(collectable_market_key) = LOWER(${params.collectableMarketKey})
+        GROUP BY entity_id, entity_type, user_id
       ),
       local_query AS (
         SELECT
           entity_id,
           entity_type,
-          COUNT(DISTINCT user_id)::int AS query_users_primary,
-          MAX(logged_at) AS last_query_at
-        FROM user_search_logs
-        WHERE logged_at >= ${params.since}
-          AND source = 'search'
-          AND user_id IS NOT NULL
-          AND entity_id IS NOT NULL
-          AND entity_type IS NOT NULL
-          AND collectable_market_key IS NOT NULL
-          AND LOWER(collectable_market_key) = LOWER(${params.collectableMarketKey})
+          SUM(LN(1 + user_signal_count) / LN(2))::float AS query_users_primary,
+          MAX(last_query_at) AS last_query_at
+        FROM local_query_user
         GROUP BY entity_id, entity_type
         ORDER BY query_users_primary DESC, last_query_at DESC
         LIMIT ${limit}
+      ),
+      local_autocomplete_user AS (
+        SELECT
+          entity_id,
+          entity_type,
+          user_id,
+          SUM(signal_count * 1.5)::float AS user_signal_count
+        FROM user_search_demand_daily
+        WHERE demand_date >= ${sinceKey}::date
+          AND subject_kind = 'entity'
+          AND source_kind = 'search_log'
+          AND signal_kind = 'autocomplete_selection'
+          AND user_id IS NOT NULL
+          AND entity_id IS NOT NULL
+          AND entity_type IS NOT NULL
+          AND market_key IS NULL
+          AND collectable_market_key IS NOT NULL
+          AND LOWER(collectable_market_key) = LOWER(${params.collectableMarketKey})
+        GROUP BY entity_id, entity_type, user_id
       ),
       local_autocomplete AS (
         SELECT
           entity_id,
           entity_type,
-          COUNT(DISTINCT user_id)::int AS autocomplete_users
-        FROM user_search_logs
-        WHERE logged_at >= ${params.since}
-          AND source = 'search'
-          AND user_id IS NOT NULL
-          AND entity_id IS NOT NULL
-          AND entity_type IS NOT NULL
-          AND collectable_market_key IS NOT NULL
-          AND LOWER(collectable_market_key) = LOWER(${params.collectableMarketKey})
-          AND metadata->>'submissionSource' = 'autocomplete'
-          AND metadata->'submissionContext'->>'selectedEntityId' IS NOT NULL
-          AND metadata->'submissionContext'->>'selectedEntityType' IS NOT NULL
-          AND (metadata->'submissionContext'->>'selectedEntityId')::uuid = entity_id
-          AND metadata->'submissionContext'->>'selectedEntityType' = entity_type::text
+          SUM(LN(1 + user_signal_count) / LN(2))::float AS autocomplete_users
+        FROM local_autocomplete_user
         GROUP BY entity_id, entity_type
         ORDER BY autocomplete_users DESC
-        LIMIT ${limit}
-      ),
-      restaurant_views AS (
-        SELECT
-          rv.restaurant_id AS entity_id,
-          'restaurant'::entity_type AS entity_type,
-          COUNT(*)::int AS view_users,
-          MAX(rv.last_viewed_at) AS last_view_at
-        FROM user_restaurant_views rv
-        WHERE rv.last_viewed_at >= ${params.since}
-          AND rv.restaurant_id IN (
-            SELECT restaurant_id FROM market_restaurants
-          )
-        GROUP BY rv.restaurant_id
-        ORDER BY view_users DESC, last_view_at DESC
-        LIMIT ${limit}
-      ),
-	      food_views AS (
-	        SELECT
-	          fv.food_id AS entity_id,
-	          'food'::entity_type AS entity_type,
-	          COUNT(DISTINCT fv.user_id)::int AS view_users,
-	          MAX(fv.last_viewed_at) AS last_view_at
-	        FROM user_food_views fv
-	        JOIN core_restaurant_items c ON c.connection_id = fv.connection_id
-	        WHERE fv.last_viewed_at >= ${params.since}
-	          AND c.restaurant_id IN (
-	            SELECT restaurant_id FROM market_restaurants
-	          )
-	        GROUP BY fv.food_id
-	        ORDER BY view_users DESC, last_view_at DESC
-	        LIMIT ${limit}
-	      ),
-      favorite_counts AS (
-        SELECT
-          entity_id,
-          entity_type,
-          COUNT(*)::int AS favorite_users
-        FROM user_favorites
-        GROUP BY entity_id, entity_type
-      ),
-      favorite_candidates AS (
-        SELECT
-          f.entity_id,
-          f.entity_type
-        FROM favorite_counts f
-        JOIN core_entities e ON e.entity_id = f.entity_id
-        WHERE e.type IN ('restaurant', 'food', 'food_attribute', 'restaurant_attribute')
-          AND (
-            e.type <> 'restaurant'
-            OR e.entity_id IN (SELECT restaurant_id FROM market_restaurants)
-          )
-          AND f.favorite_users > 0
-        ORDER BY f.favorite_users DESC
         LIMIT ${limit}
       ),
       candidate_ids AS (
         SELECT entity_id, entity_type FROM local_query
         UNION
         SELECT entity_id, entity_type FROM local_autocomplete
-        UNION
-        SELECT entity_id, entity_type FROM restaurant_views
-        UNION
-        SELECT entity_id, entity_type FROM food_views
-        UNION
-        SELECT entity_id, entity_type FROM favorite_candidates
       )
       SELECT
         e.entity_id AS "entityId",
         e.type AS "entityType",
         e.name AS "entityName",
-        COALESCE(fc.favorite_users, 0)::int AS "favoriteUsers",
-        (COALESCE(rv.view_users, 0) + COALESCE(fv.view_users, 0))::int AS "viewUsers",
-        NULLIF(
-          GREATEST(
-            COALESCE(rv.last_view_at, 'epoch'::timestamp),
-            COALESCE(fv.last_view_at, 'epoch'::timestamp)
-          ),
-          'epoch'::timestamp
-        ) AS "lastViewAt",
-        COALESCE(la.autocomplete_users, 0)::int AS "autocompleteUsers",
-        COALESCE(lq.query_users_primary, 0)::int AS "queryUsersPrimary",
+        0::float AS "favoriteUsers",
+        0::float AS "viewUsers",
+        NULL::timestamp AS "lastViewAt",
+        COALESCE(la.autocomplete_users, 0)::float AS "autocompleteUsers",
+        COALESCE(lq.query_users_primary, 0)::float AS "queryUsersPrimary",
         lq.last_query_at AS "lastQueryAt"
       FROM candidate_ids c
       JOIN core_entities e ON e.entity_id = c.entity_id
-      LEFT JOIN favorite_counts fc
-        ON fc.entity_id = c.entity_id AND fc.entity_type = c.entity_type
-      LEFT JOIN restaurant_views rv ON rv.entity_id = c.entity_id
-      LEFT JOIN food_views fv ON fv.entity_id = c.entity_id
       LEFT JOIN local_autocomplete la
         ON la.entity_id = c.entity_id AND la.entity_type = c.entity_type
       LEFT JOIN local_query lq
         ON lq.entity_id = c.entity_id AND lq.entity_type = c.entity_type
       WHERE e.type IN ('restaurant', 'food', 'food_attribute', 'restaurant_attribute')
-        AND (
-          e.type <> 'restaurant'
-          OR e.entity_id IN (SELECT restaurant_id FROM market_restaurants)
-        )
       ORDER BY
         (
-          COALESCE(fc.favorite_users, 0) * 3
-          + (COALESCE(rv.view_users, 0) + COALESCE(fv.view_users, 0)) * 2
-          + COALESCE(la.autocomplete_users, 0) * 2
+          COALESCE(la.autocomplete_users, 0) * 2
           + COALESCE(lq.query_users_primary, 0)
         ) DESC,
-        GREATEST(
-          COALESCE(lq.last_query_at, 'epoch'::timestamp),
-          COALESCE(rv.last_view_at, 'epoch'::timestamp),
-          COALESCE(fv.last_view_at, 'epoch'::timestamp)
-        ) DESC
+        COALESCE(lq.last_query_at, 'epoch'::timestamp) DESC
       LIMIT ${limit}
     `);
   }
@@ -958,6 +1315,8 @@ export class KeywordSliceSelectionService {
     if (!params.entityIds.length) {
       return new Map();
     }
+    const sinceKey = this.formatDateKey(params.since);
+    const trendSinceKey = this.formatDateKey(params.trendSince);
 
     const rows = await this.prisma.$queryRaw<
       Array<{
@@ -966,25 +1325,38 @@ export class KeywordSliceSelectionService {
         queryUsersPrev7d: number;
       }>
     >(Prisma.sql`
+      WITH user_counts AS (
+        SELECT
+          entity_id,
+          user_id,
+          SUM(signal_count * CASE WHEN signal_kind = 'cache' THEN 0.35 ELSE 1.0 END)
+            FILTER (WHERE demand_date >= ${trendSinceKey}::date)::float AS current_signal_count,
+          SUM(signal_count * CASE WHEN signal_kind = 'cache' THEN 0.35 ELSE 1.0 END)
+            FILTER (
+              WHERE demand_date >= ${sinceKey}::date
+                AND demand_date < ${trendSinceKey}::date
+            )::float AS previous_signal_count
+        FROM user_search_demand_daily
+        WHERE demand_date >= ${sinceKey}::date
+          AND subject_kind = 'entity'
+          AND source_kind = 'search_log'
+          AND signal_kind IN ('backend', 'cache')
+          AND user_id IS NOT NULL
+          AND market_key IS NULL
+          AND collectable_market_key IS NOT NULL
+          AND LOWER(collectable_market_key) = LOWER(${
+            params.collectableMarketKey
+          })
+          AND entity_id IN (${Prisma.join(
+            params.entityIds.map((id) => Prisma.sql`${id}::uuid`),
+          )})
+        GROUP BY entity_id, user_id
+      )
       SELECT
         entity_id AS "entityId",
-        COUNT(DISTINCT user_id) FILTER (WHERE logged_at >= ${
-          params.trendSince
-        })::int AS "queryUsers7d",
-        COUNT(DISTINCT user_id) FILTER (
-          WHERE logged_at >= ${params.since} AND logged_at < ${
-            params.trendSince
-          }
-        )::int AS "queryUsersPrev7d"
-      FROM user_search_logs
-      WHERE logged_at >= ${params.since}
-        AND source = 'search'
-        AND user_id IS NOT NULL
-        AND collectable_market_key IS NOT NULL
-        AND LOWER(collectable_market_key) = LOWER(${
-          params.collectableMarketKey
-        })
-        AND entity_id IN (${Prisma.join(params.entityIds)})
+        COALESCE(SUM(LN(1 + COALESCE(current_signal_count, 0)) / LN(2)), 0)::float AS "queryUsers7d",
+        COALESCE(SUM(LN(1 + COALESCE(previous_signal_count, 0)) / LN(2)), 0)::float AS "queryUsersPrev7d"
+      FROM user_counts
       GROUP BY entity_id
     `);
 
@@ -1007,6 +1379,7 @@ export class KeywordSliceSelectionService {
     if (!params.termKeys.length || !params.entityTypes.length) {
       return new Map();
     }
+    const sinceKey = this.formatDateKey(params.since);
 
     const rows = await this.prisma.$queryRaw<
       Array<{
@@ -1015,18 +1388,33 @@ export class KeywordSliceSelectionService {
         globalQueryUsers: number;
       }>
     >(Prisma.sql`
+      WITH user_counts AS (
+        SELECT
+          e.type AS entity_type,
+          LOWER(e.name) AS term_key,
+          d.user_id,
+          SUM(d.signal_count * CASE WHEN d.signal_kind = 'cache' THEN 0.35 ELSE 1.0 END)::float AS user_signal_count
+        FROM user_search_demand_daily d
+        JOIN core_entities e ON e.entity_id = d.entity_id
+        WHERE d.demand_date >= ${sinceKey}::date
+          AND d.subject_kind = 'entity'
+          AND d.source_kind = 'search_log'
+          AND d.signal_kind IN ('backend', 'cache')
+          AND d.market_key IS NULL
+          AND d.collectable_market_key IS NULL
+          AND d.user_id IS NOT NULL
+          AND LOWER(e.name) IN (${Prisma.join(params.termKeys)})
+          AND e.type IN (${Prisma.join(
+            params.entityTypes.map((type) => Prisma.sql`${type}::entity_type`),
+          )})
+        GROUP BY e.type, LOWER(e.name), d.user_id
+      )
       SELECT
-        e.type AS "entityType",
-        LOWER(e.name) AS "termKey",
-        COUNT(DISTINCT l.user_id)::int AS "globalQueryUsers"
-      FROM user_search_logs l
-      JOIN core_entities e ON e.entity_id = l.entity_id
-      WHERE l.logged_at >= ${params.since}
-        AND l.source = 'search'
-        AND l.user_id IS NOT NULL
-        AND LOWER(e.name) IN (${Prisma.join(params.termKeys)})
-        AND e.type IN (${Prisma.join(params.entityTypes)})
-      GROUP BY e.type, LOWER(e.name)
+        entity_type AS "entityType",
+        term_key AS "termKey",
+        COALESCE(SUM(LN(1 + user_signal_count) / LN(2)), 0)::float AS "globalQueryUsers"
+      FROM user_counts
+      GROUP BY entity_type, term_key
     `);
 
     return new Map(

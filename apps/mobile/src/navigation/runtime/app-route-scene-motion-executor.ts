@@ -5,6 +5,7 @@ import {
   type RouteSceneSwitchCameraIntent,
   type RouteSceneSwitchChromeVisibilityTarget,
   type RouteSceneSwitchMotionPlane,
+  type RouteSceneSwitchSheetMotionPlan,
   type RouteSceneSwitchTransitionContract,
 } from './app-overlay-route-transition-contract';
 import type {
@@ -25,6 +26,12 @@ type AppRouteSceneSheetMotionDispatchState = {
   sceneKey: OverlayKey;
   target: AppRouteSceneSheetMotionTarget;
   request: OverlaySheetSnapRequest | null;
+};
+
+type PendingLocalSheetMotionRequest = {
+  sceneKey: OverlayKey;
+  request: OverlaySheetSnapRequest;
+  localMotionKey?: string;
 };
 
 export type AppRouteSceneCameraMotionTarget = {
@@ -81,7 +88,8 @@ const areSnapRequestsEqual = (
 ): boolean =>
   left?.snap === right?.snap &&
   (left?.token ?? null) === (right?.token ?? null) &&
-  (left?.settleToken ?? null) === (right?.settleToken ?? null);
+  (left?.settleToken ?? null) === (right?.settleToken ?? null) &&
+  (left?.mode ?? 'spring') === (right?.mode ?? 'spring');
 
 const didDispatchPlane = (
   previous: AppRouteScenePlaneDispatchState | null,
@@ -106,6 +114,21 @@ const resolveSheetMotionSceneKey = (
   transitionState.transitionContract?.sheetIntent?.sceneKey ??
   resolveTargetSceneKey(transitionState);
 
+const resolveSheetMotionMode = (
+  motion: RouteSceneSwitchSheetMotionPlan
+): OverlaySheetSnapRequest['mode'] | undefined => {
+  switch (motion.kind) {
+    case 'snapTo':
+    case 'promoteAtLeast':
+    case 'hide':
+      return motion.mode;
+    case 'preserveLiveY':
+    case 'none':
+    default:
+      return undefined;
+  }
+};
+
 type AppRouteSceneMotionExecutorInput = {
   sheetMotionTargetRegistry: AppRouteSceneSheetMotionTargetRegistry;
   cameraMotionTargetRegistry: AppRouteSceneCameraMotionTargetRegistry;
@@ -118,6 +141,11 @@ export class AppRouteSceneMotionExecutor {
 
   private lastSheetDispatchState: AppRouteSceneSheetMotionDispatchState | null = null;
 
+  private readonly pendingLocalSheetMotionByKey = new Map<
+    string,
+    PendingLocalSheetMotionRequest
+  >();
+
   private lastCameraDispatchState: AppRouteScenePlaneDispatchState | null = null;
 
   private lastChromeDispatchState: AppRouteScenePlaneDispatchState | null = null;
@@ -126,6 +154,7 @@ export class AppRouteSceneMotionExecutor {
 
   public dispose(): void {
     this.lastSheetDispatchState = null;
+    this.pendingLocalSheetMotionByKey.clear();
     this.lastCameraDispatchState = null;
     this.lastChromeDispatchState = null;
   }
@@ -137,19 +166,47 @@ export class AppRouteSceneMotionExecutor {
       localMotionKey?: string;
     }
   ): void {
-    const transitionState = this.input.routeSceneSwitchRuntime.getTransitionState();
-    if (transitionState.isOverlaySwitchInFlight) {
-      return;
+    const pendingKey = this.resolvePendingLocalSheetMotionKey(sceneKey, options?.localMotionKey);
+    if (request == null) {
+      this.pendingLocalSheetMotionByKey.delete(pendingKey);
     }
+    const transitionState = this.input.routeSceneSwitchRuntime.getTransitionState();
     const target = this.input.sheetMotionTargetRegistry.resolveTarget(
       sceneKey,
       transitionState.transitionContract,
       options?.localMotionKey
     );
     if (!target) {
+      if (request != null) {
+        this.pendingLocalSheetMotionByKey.set(pendingKey, {
+          sceneKey,
+          request,
+          localMotionKey: options?.localMotionKey,
+        });
+      }
       return;
     }
+    this.pendingLocalSheetMotionByKey.delete(pendingKey);
     this.requestSheetMotion(target, request);
+  }
+
+  public replayPendingLocalSheetMotion(): void {
+    if (this.pendingLocalSheetMotionByKey.size === 0) {
+      return;
+    }
+    const transitionState = this.input.routeSceneSwitchRuntime.getTransitionState();
+    Array.from(this.pendingLocalSheetMotionByKey.entries()).forEach(([pendingKey, pending]) => {
+      const target = this.input.sheetMotionTargetRegistry.resolveTarget(
+        pending.sceneKey,
+        transitionState.transitionContract,
+        pending.localMotionKey
+      );
+      if (!target) {
+        return;
+      }
+      this.pendingLocalSheetMotionByKey.delete(pendingKey);
+      this.requestSheetMotion(target, pending.request);
+    });
   }
 
   public requestBootstrapSheetMotion(sceneKey: OverlayKey, request: OverlaySheetSnapRequest): void {
@@ -197,6 +254,10 @@ export class AppRouteSceneMotionExecutor {
     } else {
       this.lastCameraDispatchState = null;
       this.lastChromeDispatchState = null;
+    }
+
+    if (transitionContract == null) {
+      return;
     }
 
     const sheetSceneKey = resolveSheetMotionSceneKey(transitionState);
@@ -273,13 +334,18 @@ export class AppRouteSceneMotionExecutor {
     this.sheetMotionCommandToken += 1;
     target.motionCommandValue.value = {
       snapTo: request.snap,
-      token: request.token ?? this.sheetMotionCommandToken,
+      token: this.sheetMotionCommandToken,
       settleToken: request.settleToken ?? null,
+      mode: request.mode,
     };
   }
 
   private completeMotionPlane(settleToken: number, plane: RouteSceneSwitchMotionPlane): void {
     this.input.routeSceneSwitchRuntime.completeRouteSceneSwitchMotionPlane(settleToken, plane);
+  }
+
+  private resolvePendingLocalSheetMotionKey(sceneKey: OverlayKey, localMotionKey?: string): string {
+    return `${sceneKey}:${localMotionKey ?? ''}`;
   }
 
   private dispatchCameraMotion(transitionContract: RouteSceneSwitchTransitionContract): void {
@@ -414,6 +480,7 @@ export class AppRouteSceneMotionExecutor {
         snap: transitionContract.sheetSnapTarget,
         token: transitionContract.transitionToken,
         settleToken: transitionContract.settleToken,
+        mode: resolveSheetMotionMode(transitionContract.sheetTransitionPlan.motion),
       };
     }
 

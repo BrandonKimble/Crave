@@ -38,6 +38,11 @@ export const useSearchRootRuntimeStageRuntime = ({
       appEntryPlaneRuntime,
       searchChromeScalarSurfaceRuntime,
       searchRuntimeBus: searchRouteResultsPolicyRuntime.searchRuntimeBus,
+      resultsPresentationAuthority:
+        searchRouteResultsPolicyRuntime.resultsPresentationAuthority,
+      resultsPresentationSurfaceAuthority:
+        searchRouteResultsPolicyRuntime.resultsPresentationSurfaceAuthority,
+      searchMapSourceFramePort: searchRouteResultsPolicyRuntime.searchMapSourceFramePort,
       primitiveUiStateController: searchRouteResultsPolicyRuntime.primitiveUiStateController,
       suggestionPanelStateController:
         searchRouteResultsPolicyRuntime.suggestionPanelStateController,
@@ -104,6 +109,8 @@ export const useSearchRootRuntimeStageRuntime = ({
   const { visualAssemblyRuntime } = useSearchRootRuntimeVisualStageRuntime({
     appEntryPlaneRuntime,
     searchRuntimeBus,
+    resultsPresentationAuthority:
+      searchRouteResultsPolicyRuntime.resultsPresentationAuthority,
     stateAssemblyRuntime,
     overlayFoundationAssemblyRuntime,
     controlAuthorityRuntime,
@@ -174,7 +181,6 @@ export const useSearchRootRuntimeStageRuntime = ({
     overlayFoundationAssemblyRuntime,
     controlAuthorityRuntime,
     profileControlRuntime,
-    resultsControlRuntime,
   });
   useSearchRouteSceneDefinitionOwner({
     sessionAssemblyRuntime,
@@ -228,6 +234,11 @@ export const useSearchRootRuntimeStageRuntime = ({
 
   return {
     searchRuntimeBus,
+    resultsPresentationAuthority:
+      searchRouteResultsPolicyRuntime.resultsPresentationAuthority,
+    resultsPresentationSurfaceAuthority:
+      searchRouteResultsPolicyRuntime.resultsPresentationSurfaceAuthority,
+    searchMapSourceFramePort: searchRouteResultsPolicyRuntime.searchMapSourceFramePort,
     mapRenderHostAuthority,
     onProfilerRender:
       overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.rootInstrumentationRuntime

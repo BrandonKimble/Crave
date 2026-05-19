@@ -33,6 +33,7 @@ export const useProfileControllerShellRuntimeStateOwner = ({
   });
   const {
     publishProfileShellState,
+    setMapHighlightedRestaurantId,
     setProfileCameraPadding,
     setRestaurantPanelSnapshot: publishRestaurantPanelSnapshot,
   } = useProfileShellStatePublisher({
@@ -41,20 +42,27 @@ export const useProfileControllerShellRuntimeStateOwner = ({
 
   const setProfileTransitionStatus = React.useCallback(
     (transitionStatus: typeof runtimeProfileShellState.transitionStatus) => {
+      if (
+        profileControllerStateRef.current.runtime.transition.status === transitionStatus &&
+        searchRuntimeBus.getState().profileShellState.transitionStatus === transitionStatus
+      ) {
+        return;
+      }
       setProfileTransitionStatusOnRecord(profileControllerStateRef.current, transitionStatus);
       publishProfileShellState({
         transitionStatus,
       });
     },
-    [publishProfileShellState]
+    [publishProfileShellState, searchRuntimeBus]
   );
 
   const shellRuntimeState = React.useMemo<ProfileRuntimeStateOwner['shellRuntimeState']>(
     () => ({
       profileShellState: runtimeProfileShellState,
       setProfileCameraPadding,
+      setMapHighlightedRestaurantId,
     }),
-    [runtimeProfileShellState, setProfileCameraPadding]
+    [runtimeProfileShellState, setMapHighlightedRestaurantId, setProfileCameraPadding]
   );
 
   return React.useMemo(

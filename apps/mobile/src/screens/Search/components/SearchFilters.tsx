@@ -28,6 +28,11 @@ import { SEGMENT_OPTIONS } from '../constants/search';
 import { Text } from '../../../components';
 import MaskedHoleOverlay, { type MaskedHole } from '../../../components/MaskedHoleOverlay';
 import { FrostedGlassBackground } from '../../../components/FrostedGlassBackground';
+import {
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+} from '../../../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../../../perf/perf-scenario-runtime-store';
 
 const TOGGLE_HEIGHT = CONTROL_HEIGHT;
 const TOGGLE_BORDER_RADIUS = CONTROL_RADIUS; // fixed radius as before
@@ -141,6 +146,8 @@ export type SearchFiltersProps = {
   disableBlur?: boolean;
   initialLayoutCache?: SearchFiltersLayoutCache | null;
   onLayoutCacheChange?: (cache: SearchFiltersLayoutCache) => void;
+  telemetryHostLayer?: 'SearchMountedSceneBody';
+  telemetryInSheetBody?: boolean;
 };
 
 const SearchFilters: React.FC<SearchFiltersProps> = ({
@@ -159,6 +166,8 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   disableBlur = false,
   initialLayoutCache,
   onLayoutCacheChange,
+  telemetryHostLayer = 'SearchMountedSceneBody',
+  telemetryInSheetBody = true,
 }) => {
   const [rowHeight, setRowHeight] = React.useState(
     initialLayoutCache?.rowHeight ?? TOGGLE_MIN_HEIGHT
@@ -184,6 +193,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
       initialDishesLayout?.width &&
       initialDishesLayout.width > 0
   );
+  const activeScenarioConfig = usePerfScenarioRuntimeStore((state) => state.activeConfig);
 
   const inset = contentHorizontalPadding;
   const segmentSelectionProgress = useSharedValue(activeTab === 'restaurants' ? 0 : 1);
@@ -399,6 +409,47 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     onLayoutCacheChange,
     rowHeight,
     segmentLayoutsVersion,
+    viewportWidth,
+  ]);
+
+  React.useEffect(() => {
+    if (!isPerfScenarioAttributionActive(activeScenarioConfig)) {
+      return;
+    }
+    const requiredHoleKeys = ['segment-group', 'toggle-open-now', 'toggle-price', 'toggle-votes'];
+    const hasRequiredCutouts = requiredHoleKeys.every((key) => {
+      const hole = holeMap[key];
+      return hole != null && hole.width > 0 && hole.height > 0;
+    });
+    const hasSegmentLayouts =
+      (segmentLayoutsRef.current.restaurants?.width ?? 0) > 0 &&
+      (segmentLayoutsRef.current.dishes?.width ?? 0) > 0;
+    if (!hasRequiredCutouts || !hasSegmentLayouts || rowHeight <= 0 || viewportWidth <= 0) {
+      return;
+    }
+    logPerfScenarioAttributionEvent('VisualReadiness', activeScenarioConfig, {
+      event: 'search_results_toggle_bar_contract',
+      activeTab,
+      cutoutCount: Object.keys(holeMap).length,
+      hasCutoutMask: true,
+      hasDishesSegment: true,
+      hasOpenNowToggle: true,
+      hasPriceToggle: true,
+      hasRestaurantsSegment: true,
+      hasVotesToggle: true,
+      hostLayer: telemetryHostLayer,
+      inSheetBody: telemetryInSheetBody,
+      rowHeight,
+      viewportWidth,
+    });
+  }, [
+    activeScenarioConfig,
+    activeTab,
+    holeMap,
+    rowHeight,
+    segmentLayoutsVersion,
+    telemetryHostLayer,
+    telemetryInSheetBody,
     viewportWidth,
   ]);
 

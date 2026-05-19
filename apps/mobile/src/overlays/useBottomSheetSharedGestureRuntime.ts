@@ -62,16 +62,10 @@ type UseBottomSheetSharedGestureRuntimeArgs = {
   isDragging: SharedValue<boolean>;
   isInMomentum: SharedValue<boolean>;
   isSettling: SharedValue<boolean>;
-  settlingToHidden: SharedValue<boolean>;
   hasUserDrivenSheet: SharedValue<boolean>;
   dragStartY: SharedValue<number>;
   springTargetY: SharedValue<number>;
   springId: SharedValue<number>;
-  activePrimaryList: SharedValue<boolean>;
-  primaryScrollOffset: SharedValue<number>;
-  secondaryScrollOffset: SharedValue<number>;
-  primaryScrollTopOffset: SharedValue<number>;
-  secondaryScrollTopOffset: SharedValue<number>;
   resolveDestination: (value: number, velocity: number, gestureStartValue: number) => number;
   startSpring: (
     target: number,

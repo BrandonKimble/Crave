@@ -17,5 +17,4 @@ export type RootStackParamList = {
   Profile: undefined;
   RecentSearches: { userLocation?: Coordinate | null } | undefined;
   RecentlyViewed: { userLocation?: Coordinate | null } | undefined;
-  FavoritesListDetail: { listId: string };
 };

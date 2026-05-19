@@ -44,7 +44,13 @@
     "db:migrate:reset": "npx prisma migrate reset",
     "db:migrate:status": "npx prisma migrate status",
     "db:generate": "npx prisma generate",
-    "markets:import-census": "python3 scripts/import_census_markets.py",
+    "tomtom:deploy-gate": "bash ../../scripts/tomtom-market-deploy-gate.sh",
+    "tomtom:fixtures": "ts-node scripts/validate-tomtom-market-fixtures.ts",
+    "tomtom:regional-health": "ts-node scripts/check-tomtom-regional-health.ts",
+    "crave-score:rebuild": "ts-node scripts/rebuild-crave-scores.ts",
+    "crave-score:fixtures": "ts-node scripts/validate-crave-score-fixtures.ts",
+    "search-demand:rebuild": "ts-node scripts/rebuild-search-demand-daily.ts",
+    "search-demand:fixtures": "ts-node scripts/validate-demand-scoring-fixtures.ts",
     "replay:extraction": "ts-node scripts/replay-extraction-run.ts"
   },
   "dependencies": {

@@ -1,30 +1,37 @@
 import type {
-  SearchCloseTransitionState,
   SearchHeaderChromeMode,
   SearchHeaderVisualModel,
   SearchSheetContentLane,
 } from './results-presentation-shell-contract';
+import type { SearchSurfaceVisualPolicySnapshot } from '../surface/search-surface-runtime';
 
 export const resolveSearchSheetContentLane = ({
-  hasActiveSearchContent,
-  closeTransitionState,
-  holdPersistentPollLane,
+  surfaceVisualPolicy,
 }: {
   hasActiveSearchContent: boolean;
-  closeTransitionState: SearchCloseTransitionState;
-  holdPersistentPollLane: boolean;
+  surfaceVisualPolicy: SearchSurfaceVisualPolicySnapshot;
 }): SearchSheetContentLane => {
-  if (closeTransitionState) {
+  if (surfaceVisualPolicy.phase === 'results_dismissing') {
+    if (surfaceVisualPolicy.canReleasePersistentPolls) {
+      return { kind: 'persistent_poll' };
+    }
     return {
       kind: 'results_closing',
-      closeIntentId: closeTransitionState.closeIntentId,
+      closeIntentId: surfaceVisualPolicy.transactionId ?? 'search-results-close',
       targetSnap: 'collapsed',
     };
   }
-  if (holdPersistentPollLane) {
-    return { kind: 'persistent_poll' };
+
+  const searchSurfaceOwnsResultsPage =
+    surfaceVisualPolicy.phase === 'results_redrawing' ||
+    surfaceVisualPolicy.bottomBandOwner === 'results_header' ||
+    surfaceVisualPolicy.sheetClipMode === 'animatedSearchTransition';
+
+  if (searchSurfaceOwnsResultsPage) {
+    return { kind: 'results_live' };
   }
-  return hasActiveSearchContent ? { kind: 'results_live' } : { kind: 'persistent_poll' };
+
+  return { kind: 'persistent_poll' };
 };
 
 export const resolveSearchHeaderVisualModel = ({
@@ -34,6 +41,7 @@ export const resolveSearchHeaderVisualModel = ({
   shouldRenderSearchOverlay,
   shouldEnableShortcutInteractions,
   isSuggestionPanelActive,
+  isCloseTransitionActive,
 }: {
   chromeMode: SearchHeaderChromeMode;
   query: string;
@@ -41,6 +49,7 @@ export const resolveSearchHeaderVisualModel = ({
   shouldRenderSearchOverlay: boolean;
   shouldEnableShortcutInteractions: boolean;
   isSuggestionPanelActive: boolean;
+  isCloseTransitionActive: boolean;
 }): SearchHeaderVisualModel => {
   if (chromeMode === 'editing') {
     return {
@@ -72,6 +81,9 @@ export const resolveSearchHeaderVisualModel = ({
     editable: true,
     shortcutsVisibleTarget: shouldRenderSearchOverlay,
     shortcutsInteractive:
-      shouldRenderSearchOverlay && shouldEnableShortcutInteractions && !isSuggestionPanelActive,
+      shouldRenderSearchOverlay &&
+      shouldEnableShortcutInteractions &&
+      !isSuggestionPanelActive &&
+      !isCloseTransitionActive,
   };
 };

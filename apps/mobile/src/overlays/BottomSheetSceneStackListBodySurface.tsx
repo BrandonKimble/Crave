@@ -17,12 +17,18 @@ import {
   resolveListContentContainerStyle,
   sanitizeContentContainerStyle,
 } from './bottomSheetSurfaceStyleUtils';
+import { useSearchOverlayProfilerRender } from './SearchOverlayProfilerContext';
 import {
   finishSearchNavSwitchRuntimeAttributionSpan,
   markSearchNavSwitchRuntimeAttribution,
   startSearchNavSwitchRuntimeAttributionSpan,
 } from '../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
 import { useSearchNavSwitchCommitAttribution } from '../screens/Search/runtime/shared/use-search-nav-switch-commit-attribution';
+import {
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+} from '../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../perf/perf-scenario-runtime-store';
 
 const DEFAULT_DRAW_DISTANCE = 140;
 const DEFAULT_INITIAL_DRAW_BATCH_SIZE = 8;
@@ -51,6 +57,82 @@ type ActiveBottomSheetSceneStackListBodySurfaceProps = Omit<
   'shouldRenderListBody'
 >;
 
+type BottomSheetSceneStackListStaticDataSnapshot = {
+  activeList?: BottomSheetSceneStackBodyTransportEntry['bodyTransportSpec']['activeList'];
+  contentContainerStyle?: BottomSheetSceneStackBodyTransportEntry['bodyTransportSpec']['contentContainerStyle'];
+  primaryListFooterComponent?: ListBodyContentSpec['ListFooterComponent'];
+  primaryData?: ReadonlyArray<unknown>;
+  primaryExtraData?: unknown;
+  scrollIndicatorInsets?: BottomSheetSceneStackBodyTransportEntry['bodyTransportSpec']['scrollIndicatorInsets'];
+  secondaryData?: ReadonlyArray<unknown>;
+  secondaryExtraData?: unknown;
+};
+
+const EMPTY_LIST_DATA_SNAPSHOT: BottomSheetSceneStackListStaticDataSnapshot = {};
+
+type ActiveSheetListSurfaceIdentityProbe = {
+  activeList: unknown;
+  bodyDefaults: unknown;
+  bodyScrollRuntime: unknown;
+  flashListProps: unknown;
+  listChromeComponent: unknown;
+  primaryData: unknown;
+  primaryExtraData: unknown;
+  primaryRenderItem: unknown;
+  sceneBodyContentSpec: unknown;
+  sceneBodyTransportSpec: unknown;
+  secondaryData: unknown;
+  secondaryExtraData: unknown;
+  secondaryRenderItem: unknown;
+};
+
+const markActiveSheetListSurfaceIdentityDiff = ({
+  next,
+  previous,
+  sceneKey,
+}: {
+  next: ActiveSheetListSurfaceIdentityProbe;
+  previous: ActiveSheetListSurfaceIdentityProbe | null;
+  sceneKey: string;
+}): void => {
+  if (previous == null) {
+    return;
+  }
+  const changedFields = [
+    previous.sceneBodyContentSpec !== next.sceneBodyContentSpec ? 'contentSpec' : null,
+    previous.sceneBodyTransportSpec !== next.sceneBodyTransportSpec ? 'transportSpec' : null,
+    previous.primaryData !== next.primaryData ? 'primaryData' : null,
+    previous.secondaryData !== next.secondaryData ? 'secondaryData' : null,
+    previous.primaryRenderItem !== next.primaryRenderItem ? 'primaryRenderItem' : null,
+    previous.secondaryRenderItem !== next.secondaryRenderItem ? 'secondaryRenderItem' : null,
+    previous.primaryExtraData !== next.primaryExtraData ? 'primaryExtraData' : null,
+    previous.secondaryExtraData !== next.secondaryExtraData ? 'secondaryExtraData' : null,
+    previous.activeList !== next.activeList ? 'activeList' : null,
+    previous.flashListProps !== next.flashListProps ? 'flashListProps' : null,
+    previous.listChromeComponent !== next.listChromeComponent ? 'listChromeComponent' : null,
+    previous.bodyDefaults !== next.bodyDefaults ? 'bodyDefaults' : null,
+    previous.bodyScrollRuntime !== next.bodyScrollRuntime ? 'bodyScrollRuntime' : null,
+  ].filter((field): field is string => field != null);
+  if (changedFields.length === 0) {
+    return;
+  }
+  const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+  if (!isPerfScenarioAttributionActive(scenarioConfig)) {
+    return;
+  }
+
+  logPerfScenarioAttributionEvent('WorkSpan', scenarioConfig, {
+    event: 'scenario_work_span',
+    owner: 'active_sheet_list_surface_identity_diff',
+    path: changedFields.join('|'),
+    durationMs: 0,
+    sceneKey,
+    activeList: typeof next.activeList === 'string' ? next.activeList : null,
+    primaryRowCount: Array.isArray(next.primaryData) ? next.primaryData.length : null,
+    secondaryRowCount: Array.isArray(next.secondaryData) ? next.secondaryData.length : null,
+  });
+};
+
 const ActiveBottomSheetSceneStackListBodySurface = React.memo(
   ({
     sceneKey,
@@ -60,7 +142,13 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
     sceneBodyTransportSpec,
   }: ActiveBottomSheetSceneStackListBodySurfaceProps) => {
     useSearchNavSwitchCommitAttribution(`ActiveBottomSheetSceneStackListBodySurface:${sceneKey}`);
+    const onProfilerRender = useSearchOverlayProfilerRender();
     const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
+    const listDataAuthoritySnapshot = EMPTY_LIST_DATA_SNAPSHOT;
+    const scenePrimaryData =
+      listDataAuthoritySnapshot.primaryData ?? sceneBodyContentSpec.data;
+    const scenePrimaryExtraData =
+      listDataAuthoritySnapshot.primaryExtraData ?? sceneBodyContentSpec.extraData;
     const sceneKeyboardShouldPersistTaps =
       sceneBodyTransportSpec.keyboardShouldPersistTaps ??
       bodyDefaults.resolvedKeyboardShouldPersistTaps;
@@ -72,15 +160,23 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
     const sceneOverScrollMode =
       sceneBodyTransportSpec.overScrollMode ?? bodyDefaults.resolvedOverScrollMode;
     const sceneScrollIndicatorInsets =
-      sceneBodyTransportSpec.scrollIndicatorInsets ?? bodyDefaults.resolvedScrollIndicatorInsets;
+      listDataAuthoritySnapshot.scrollIndicatorInsets ??
+      sceneBodyTransportSpec.scrollIndicatorInsets ??
+      bodyDefaults.resolvedScrollIndicatorInsets;
     const sceneFlashListProps =
       sceneBodyTransportSpec.flashListProps ?? bodyDefaults.activeFlashListProps;
     const sceneContentContainerStyle = React.useMemo(
       () =>
         sanitizeContentContainerStyle(
-          sceneBodyTransportSpec.contentContainerStyle ?? bodyDefaults.resolvedContentContainerStyle
+          listDataAuthoritySnapshot.contentContainerStyle ??
+            sceneBodyTransportSpec.contentContainerStyle ??
+            bodyDefaults.resolvedContentContainerStyle
         ),
-      [bodyDefaults.resolvedContentContainerStyle, sceneBodyTransportSpec.contentContainerStyle]
+      [
+        bodyDefaults.resolvedContentContainerStyle,
+        listDataAuthoritySnapshot.contentContainerStyle,
+        sceneBodyTransportSpec.contentContainerStyle,
+      ]
     );
     const sceneListContentContainerStyle = React.useMemo(
       () =>
@@ -95,12 +191,10 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
         sceneContentContainerStyle,
       ]
     );
-    const renderSceneScrollComponent = React.useCallback<
-      NonNullable<FlashListProps<unknown>['renderScrollComponent']>
-    >(
-      (props) => <bodyScrollRuntime.ScrollComponent {...props} />,
-      [bodyScrollRuntime.ScrollComponent]
-    );
+    const renderSceneScrollComponent =
+      bodyScrollRuntime.ScrollComponent as NonNullable<
+        FlashListProps<unknown>['renderScrollComponent']
+      >;
     const handlePrimaryScrollBeginDrag = React.useCallback(
       (event: ScrollEvent) => {
         sceneBodyTransportSpec.onScrollBeginDrag?.();
@@ -119,9 +213,15 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
 
     const sceneSecondaryList = sceneBodyContentSpec.secondaryList;
     const sceneSecondaryListTransport = sceneBodyTransportSpec.secondaryList;
+    const sceneSecondaryData =
+      listDataAuthoritySnapshot.secondaryData ?? sceneSecondaryList?.data;
+    const sceneSecondaryExtraData =
+      listDataAuthoritySnapshot.secondaryExtraData ??
+      sceneSecondaryList?.extraData ??
+      scenePrimaryExtraData;
     const sceneShouldRenderDualLists = sceneSecondaryList != null;
     const sceneResolvedActiveList = sceneShouldRenderDualLists
-      ? sceneBodyTransportSpec.activeList ?? 'primary'
+      ? listDataAuthoritySnapshot.activeList ?? sceneBodyTransportSpec.activeList ?? 'primary'
       : 'primary';
     const primaryOwnsScroll = !sceneShouldRenderDualLists || sceneResolvedActiveList === 'primary';
     const secondaryOwnsScroll =
@@ -198,12 +298,51 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
     const sceneSecondaryContentContainerStyle = resolveListContentContainerStyle({
       baseStyle: sanitizeContentContainerStyle(
         sceneSecondaryListTransport?.contentContainerStyle ??
+          listDataAuthoritySnapshot.contentContainerStyle ??
           sceneBodyTransportSpec.contentContainerStyle ??
           bodyDefaults.resolvedContentContainerStyle
       ),
       hasScrollHeaderOverlay: bodyDefaults.scrollHeaderComponent != null,
       scrollHeaderHeight: bodyDefaults.scrollHeaderHeight,
     });
+    const previousIdentityProbeRef = React.useRef<ActiveSheetListSurfaceIdentityProbe | null>(null);
+    const nextIdentityProbe = React.useMemo<ActiveSheetListSurfaceIdentityProbe>(
+      () => ({
+        activeList: sceneResolvedActiveList,
+        bodyDefaults,
+        bodyScrollRuntime,
+        flashListProps: sceneFlashListProps,
+        primaryData: scenePrimaryData,
+        primaryExtraData: scenePrimaryExtraData,
+        primaryRenderItem: sceneBodyContentSpec.renderItem,
+        listChromeComponent: sceneBodyContentSpec.ListChromeComponent,
+        sceneBodyContentSpec,
+        sceneBodyTransportSpec,
+        secondaryData: sceneSecondaryData,
+        secondaryExtraData: sceneSecondaryExtraData,
+        secondaryRenderItem: sceneSecondaryList?.renderItem ?? sceneBodyContentSpec.renderItem,
+      }),
+      [
+        bodyDefaults,
+        bodyScrollRuntime,
+        sceneBodyContentSpec,
+        sceneBodyContentSpec.renderItem,
+        sceneBodyTransportSpec,
+        sceneFlashListProps,
+        scenePrimaryData,
+        scenePrimaryExtraData,
+        sceneResolvedActiveList,
+        sceneSecondaryData,
+        sceneSecondaryExtraData,
+        sceneSecondaryList?.renderItem,
+      ]
+    );
+    markActiveSheetListSurfaceIdentityDiff({
+      next: nextIdentityProbe,
+      previous: previousIdentityProbeRef.current,
+      sceneKey,
+    });
+    previousIdentityProbeRef.current = nextIdentityProbe;
 
     React.useLayoutEffect(() => {
       finishSearchNavSwitchRuntimeAttributionSpan({
@@ -232,8 +371,8 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
       };
     }, [sceneKey]);
 
-    return (
-      <>
+    const listBodySurface = (
+      <View style={styles.listBodySurfaceHost}>
         <View
           pointerEvents={
             !sceneShouldRenderDualLists || sceneResolvedActiveList === 'primary' ? 'auto' : 'none'
@@ -251,7 +390,7 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
             {...({
               ...sceneResolvedFlashListProps,
               style: sceneFlashListSurfaceStyle,
-              data: sceneBodyContentSpec.data,
+              data: scenePrimaryData,
               renderItem: sceneBodyContentSpec.renderItem,
               keyExtractor: sceneBodyContentSpec.keyExtractor,
               contentContainerStyle: sceneListContentContainerStyle,
@@ -260,7 +399,11 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
               primaryOwnsScroll ? sceneBodyContentSpec.ListHeaderComponent : null
             }
             ListFooterComponent={
-              primaryOwnsScroll ? sceneBodyContentSpec.ListFooterComponent : null
+              primaryOwnsScroll
+                ? listDataAuthoritySnapshot.primaryListFooterComponent !== undefined
+                  ? listDataAuthoritySnapshot.primaryListFooterComponent
+                  : sceneBodyContentSpec.ListFooterComponent
+                : null
             }
             ListEmptyComponent={primaryOwnsScroll ? sceneBodyContentSpec.ListEmptyComponent : null}
             ItemSeparatorComponent={sceneBodyContentSpec.ItemSeparatorComponent}
@@ -281,7 +424,7 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
             alwaysBounceVertical={sceneAlwaysBounceVertical}
             overScrollMode={sceneOverScrollMode}
             testID={sceneBodyTransportSpec.testID ?? bodyDefaults.resolvedTestID}
-            extraData={sceneBodyContentSpec.extraData}
+            extraData={scenePrimaryExtraData}
             scrollIndicatorInsets={sceneScrollIndicatorInsets}
           />
         </View>
@@ -299,7 +442,7 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
               {...({
                 ...sceneSecondaryFlashListProps,
                 style: sceneSecondaryFlashListSurfaceStyle,
-                data: sceneSecondaryList.data,
+                data: sceneSecondaryData ?? sceneSecondaryList.data,
                 renderItem: sceneSecondaryList.renderItem ?? sceneBodyContentSpec.renderItem,
                 keyExtractor: sceneSecondaryList.keyExtractor ?? sceneBodyContentSpec.keyExtractor,
                 contentContainerStyle: sceneSecondaryContentContainerStyle,
@@ -367,14 +510,32 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
                 sceneBodyTransportSpec.testID ??
                 bodyDefaults.resolvedTestID
               }
-              extraData={sceneSecondaryList.extraData ?? sceneBodyContentSpec.extraData}
+              extraData={sceneSecondaryExtraData}
               scrollIndicatorInsets={
                 sceneSecondaryListTransport?.scrollIndicatorInsets ?? sceneScrollIndicatorInsets
               }
             />
           </View>
         ) : null}
-      </>
+        {sceneBodyContentSpec.ListChromeComponent != null ? (
+          <View pointerEvents="box-none" style={styles.listChromeOverlay}>
+            {sceneBodyContentSpec.ListChromeComponent}
+          </View>
+        ) : null}
+      </View>
+    );
+
+    if (!onProfilerRender) {
+      return listBodySurface;
+    }
+
+    return (
+      <React.Profiler
+        id={`ActiveBottomSheetSceneStackListBodySurface:${sceneKey}`}
+        onRender={onProfilerRender}
+      >
+        {listBodySurface}
+      </React.Profiler>
     );
   }
 );

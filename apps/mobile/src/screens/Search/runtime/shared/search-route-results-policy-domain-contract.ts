@@ -1,5 +1,8 @@
 import type { RouteShellSceneInputLane } from '../../../../navigation/runtime/app-route-scene-runtime';
 import type { SearchRuntimeBus } from './search-runtime-bus';
+import type { ResultsPresentationAuthority } from './results-presentation-authority';
+import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
+import type { SearchMapSourceFramePort } from '../map/search-map-source-frame-port';
 import type { ResultsSurfacePolicyController } from './results-surface-policy-controller';
 import type { ResultsSurfaceReadModelPolicyController } from './results-surface-read-model-policy-controller';
 import type { SearchResultsExactMatchOwnerController } from '../read-models/results-read-model-exact-match-state';
@@ -43,6 +46,9 @@ export type SearchRouteResultsPolicyReadModelWriterFacets = {
 
 export type SearchRouteResultsPolicyRuntime = {
   searchRuntimeBus: SearchRuntimeBus;
+  resultsPresentationAuthority: ResultsPresentationAuthority;
+  resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
+  searchMapSourceFramePort: SearchMapSourceFramePort;
   sheetSink: SearchRouteResultsPolicySheetSink;
   primitiveUiStateController: SearchPrimitiveUiStateController;
   suggestionPanelStateController: SearchSuggestionPanelStateController;

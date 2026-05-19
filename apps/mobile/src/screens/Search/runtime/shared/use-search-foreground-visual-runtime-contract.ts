@@ -1,4 +1,6 @@
-import { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
+import { useAnimatedStyle, type DerivedValue, type SharedValue } from 'react-native-reanimated';
+import type { AppRouteNavSilhouetteSheetExclusionModeValue } from '../../../../navigation/runtime/app-route-nav-silhouette-authority';
+import type { SearchBottomNavMotionRuntime } from './search-bottom-nav-motion-runtime';
 
 export type UseSearchForegroundVisualRuntimeArgs = {
   shouldDimResultsSheet: boolean;
@@ -34,19 +36,27 @@ export type UseSearchForegroundVisualRuntimeArgs = {
 export type SearchForegroundBottomNavVisualRuntime = {
   navBarTop: number;
   navBarHeight: number;
+  bottomNavHiddenTranslateY: number;
   resultsWashAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
   resultsSheetVisibilityAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
-  bottomNavItemVisibilityAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
   shouldHideBottomNavForRender: boolean;
   navBarCutoutIsHiding: boolean;
-  navBarCutoutProgress: SharedValue<number>;
-  bottomNavAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
+  navBarCutoutHidingProgress: SharedValue<number> | DerivedValue<number>;
+  navBarCutoutProgress: SharedValue<number> | DerivedValue<number>;
+  navTranslateY: SharedValue<number> | DerivedValue<number>;
+  navSilhouetteSheetBodyExclusionHeight: SharedValue<number> | DerivedValue<number>;
+  navSilhouetteSheetMaskHeight: SharedValue<number> | DerivedValue<number>;
+  navSilhouetteSheetExclusionModeValue:
+    | SharedValue<AppRouteNavSilhouetteSheetExclusionModeValue>
+    | DerivedValue<AppRouteNavSilhouetteSheetExclusionModeValue>;
+  bottomNavMotionRuntime: SearchBottomNavMotionRuntime;
 };
 
 export type SearchForegroundShortcutsVisualRuntime = {
   shouldMountSearchShortcuts: boolean;
   shouldEnableSearchShortcutsInteraction: boolean;
   searchShortcutChipAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
+  searchShortcutContentAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
   searchShortcutsAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
 };
 

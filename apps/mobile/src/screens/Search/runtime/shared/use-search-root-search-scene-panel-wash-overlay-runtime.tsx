@@ -1,5 +1,5 @@
 import React from 'react';
-import Reanimated from 'react-native-reanimated';
+import Reanimated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 
 import styles from '../../styles';
 import type { SearchRootSearchSceneVisualRuntime } from './search-root-visual-runtime-contract';
@@ -12,26 +12,33 @@ export const useSearchRootSearchScenePanelWashOverlayRuntime = ({
   sceneVisualRuntime: SearchRootSearchSceneVisualRuntime;
   resolvedResultsHeaderHeightForRender: number;
   shouldRenderWhiteWash: boolean;
-}) =>
-  React.useMemo(() => {
-    if (!shouldRenderWhiteWash) {
-      return null;
-    }
+}) => {
+  const headerTopValue = useSharedValue(resolvedResultsHeaderHeightForRender);
+  const washMountedValue = useSharedValue(shouldRenderWhiteWash ? 1 : 0);
 
-    return (
+  React.useEffect(() => {
+    headerTopValue.value = resolvedResultsHeaderHeightForRender;
+  }, [headerTopValue, resolvedResultsHeaderHeightForRender]);
+  React.useEffect(() => {
+    washMountedValue.value = shouldRenderWhiteWash ? 1 : 0;
+  }, [shouldRenderWhiteWash, washMountedValue]);
+
+  const washPlacementAnimatedStyle = useAnimatedStyle(() => ({
+    top: headerTopValue.value,
+    transform: [{ scale: washMountedValue.value === 1 ? 1 : 0.001 }],
+  }));
+
+  return React.useMemo(
+    () => (
       <Reanimated.View
         pointerEvents="none"
         style={[
           styles.resultsWashOverlay,
-          {
-            top: resolvedResultsHeaderHeightForRender,
-          },
           sceneVisualRuntime.resultsWashAnimatedStyle,
+          washPlacementAnimatedStyle,
         ]}
       />
-    );
-  }, [
-    sceneVisualRuntime.resultsWashAnimatedStyle,
-    resolvedResultsHeaderHeightForRender,
-    shouldRenderWhiteWash,
-  ]);
+    ),
+    [sceneVisualRuntime.resultsWashAnimatedStyle, washPlacementAnimatedStyle]
+  );
+};

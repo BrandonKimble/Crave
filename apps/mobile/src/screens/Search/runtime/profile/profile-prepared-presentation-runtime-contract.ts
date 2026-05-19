@@ -39,7 +39,5 @@ export type CreateProfilePreparedPresentationRuntimeArgs = {
     getProfileTransitionState: CreateProfilePreparedPresentationRuntimeArgs['completionExecution']['getProfileTransitionState'];
     getProfileDismissBehavior: () => 'restore' | 'clear';
     getProfileShouldClearSearchOnDismiss: () => boolean;
-    getIsSearchOverlay: () => boolean;
-    getLastVisibleSheetSnap: () => 'expanded' | 'middle' | 'collapsed' | null;
   };
 };

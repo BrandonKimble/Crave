@@ -84,6 +84,8 @@ type FailSearchRequestLifecycleOptions = {
   error: unknown;
   append?: boolean;
   targetPage?: number;
+  shouldAbortPresentationIntent?: boolean;
+  abortPresentationIntent?: () => void;
   idleStatePatch?: Partial<
     Pick<SearchRuntimeBusState, 'activeOperationId' | 'isMapActivationDeferred'>
   >;
@@ -480,10 +482,15 @@ export const useSearchRequestRuntimeOwner = ({
       error,
       append,
       targetPage,
+      shouldAbortPresentationIntent = false,
+      abortPresentationIntent,
       idleStatePatch,
       uiErrorMessage,
       setError,
     }: FailSearchRequestLifecycleOptions) => {
+      if (shouldAbortPresentationIntent) {
+        abortPresentationIntent?.();
+      }
       emitShadowTransitionForTuple(tuple, 'error', {
         mode,
         append,
@@ -492,6 +499,7 @@ export const useSearchRequestRuntimeOwner = ({
       });
       publishRuntimeLaneState(tuple, 'idle', {
         activeOperationId: null,
+        ...(shouldAbortPresentationIntent ? { isMapActivationDeferred: false } : {}),
         ...idleStatePatch,
       });
       clearActiveOperationTuple(tuple);
@@ -574,12 +582,21 @@ export const useSearchRequestRuntimeOwner = ({
         onError?.(error);
         if (isOperationTupleStillActive(tuple)) {
           const failure = resolveFailure(error);
+          if (append) {
+            if (loadingMoreToken != null) {
+              endLoadingMore(loadingMoreToken);
+            }
+          } else {
+            setSearchRequestInFlight(false);
+          }
           failSearchRequestLifecycle({
             tuple,
             mode,
             error,
             append,
             targetPage,
+            shouldAbortPresentationIntent,
+            abortPresentationIntent,
             idleStatePatch: failure.idleStatePatch,
             uiErrorMessage: failure.uiErrorMessage,
             setError,
@@ -604,6 +621,7 @@ export const useSearchRequestRuntimeOwner = ({
       failSearchRequestLifecycle,
       finalizeSearchRequestAttempt,
       isOperationTupleStillActive,
+      setSearchRequestInFlight,
       startSearchRequestAttempt,
     ]
   );

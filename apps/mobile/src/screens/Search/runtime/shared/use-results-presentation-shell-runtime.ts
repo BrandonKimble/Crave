@@ -9,7 +9,14 @@ import {
   type ResultsPresentationPolicyFactsLaneChange,
   type ResultsPresentationPolicyFactsController,
 } from './results-presentation-policy-facts-controller';
+import type { ResultsPresentationAuthority } from './results-presentation-authority';
 import type { SearchRuntimeBus } from './search-runtime-bus';
+import type { RouteSceneSwitchAuthority } from './route-authority-contract';
+import {
+  areSearchSurfaceVisualPoliciesEqual,
+  selectSearchSurfaceVisualPolicy,
+  useSearchSurfaceRuntimeSelector,
+} from '../surface/search-surface-runtime';
 
 type UseResultsPresentationShellRuntimeArgs = {
   query: string;
@@ -21,6 +28,8 @@ type UseResultsPresentationShellRuntimeArgs = {
   shouldRenderSearchOverlay: boolean;
   shouldEnableShortcutInteractions: boolean;
   searchRuntimeBus: SearchRuntimeBus;
+  resultsPresentationAuthority: ResultsPresentationAuthority;
+  routeSceneSwitchAuthority: RouteSceneSwitchAuthority;
   onSearchSheetContentLaneChanged?: (change: ResultsPresentationPolicyFactsLaneChange) => void;
   searchChromeScalarSurfacePresentationRuntime?: SearchChromeScalarSurfacePresentationRuntime;
   resultsSheetRuntime: Pick<AppRouteResultsSheetRuntimeOwner, 'sheetTranslateY' | 'snapPoints'>;
@@ -36,6 +45,8 @@ export const useResultsPresentationShellRuntime = ({
   shouldRenderSearchOverlay,
   shouldEnableShortcutInteractions,
   searchRuntimeBus,
+  resultsPresentationAuthority,
+  routeSceneSwitchAuthority,
   onSearchSheetContentLaneChanged,
   searchChromeScalarSurfacePresentationRuntime,
   resultsSheetRuntime,
@@ -45,8 +56,9 @@ export const useResultsPresentationShellRuntime = ({
   );
   if (policyFactsControllerRef.current == null) {
     policyFactsControllerRef.current = createResultsPresentationPolicyFactsController({
-      onSearchSheetContentLaneChanged,
-      policyFacts: searchRuntimeBus.getPolicyFactsSnapshot(),
+      policyFacts: resultsPresentationAuthority.readPolicyFactsSnapshot(
+        searchRuntimeBus.getPolicyFactsSnapshot()
+      ),
     });
   }
 
@@ -58,12 +70,28 @@ export const useResultsPresentationShellRuntime = ({
     isSearchLoading,
     isSuggestionPanelActive,
   });
+  void routeSceneSwitchAuthority;
+  const surfaceVisualPolicy = useSearchSurfaceRuntimeSelector(
+    selectSearchSurfaceVisualPolicy,
+    areSearchSurfaceVisualPoliciesEqual
+  );
   const policyFactsSnapshot = policyFactsControllerRef.current.updateShellFacts({
     hasActiveSearchContent,
     closeTransitionState: shellLocalState.searchCloseTransitionState,
     holdPersistentPollLane: shellLocalState.holdPersistentPollLane,
-    policyFacts: searchRuntimeBus.getPolicyFactsSnapshot(),
+    surfaceVisualPolicy,
+    policyFacts: resultsPresentationAuthority.readPolicyFactsSnapshot(
+      searchRuntimeBus.getPolicyFactsSnapshot()
+    ),
   });
+  React.useLayoutEffect(() => {
+    const laneChange =
+      policyFactsControllerRef.current?.consumeSearchSheetContentLaneChange() ?? null;
+    if (laneChange == null) {
+      return;
+    }
+    onSearchSheetContentLaneChanged?.(laneChange);
+  }, [onSearchSheetContentLaneChanged, policyFactsSnapshot]);
 
   const shellModel = useResultsPresentationShellModelRuntime({
     query,
@@ -77,7 +105,8 @@ export const useResultsPresentationShellRuntime = ({
     backdropTarget: shellLocalState.backdropTarget,
     inputMode: shellLocalState.inputMode,
     displayQueryOverride: shellLocalState.displayQueryOverride,
-    searchCloseTransitionState: shellLocalState.searchCloseTransitionState,
+    isCloseTransitionActive: surfaceVisualPolicy.phase === 'results_dismissing',
+    surfaceVisualPolicy,
     searchSheetContentLane: policyFactsSnapshot.searchSheetContentLane,
     searchChromeScalarSurfacePresentationRuntime,
   });

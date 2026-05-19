@@ -4,7 +4,12 @@ type Listener = () => void;
 
 export type RouteResultsSheetVisualBinding = Pick<
   AppRouteResultsSheetVisualBinding,
-  'snapPoints' | 'sheetTranslateY' | 'resultsScrollOffset' | 'resultsMomentum'
+  | 'snapPoints'
+  | 'sheetTranslateY'
+  | 'resultsScrollOffset'
+  | 'resultsMomentum'
+  | 'handleSheetSnapChange'
+  | 'getCurrentSheetSnap'
 > | null;
 
 export type RouteResultsSheetVisualAuthority = {
@@ -22,7 +27,9 @@ const areRouteResultsSheetVisualBindingsEqual = (
     left.snapPoints === right.snapPoints &&
     left.sheetTranslateY === right.sheetTranslateY &&
     left.resultsScrollOffset === right.resultsScrollOffset &&
-    left.resultsMomentum === right.resultsMomentum);
+    left.resultsMomentum === right.resultsMomentum &&
+    left.handleSheetSnapChange === right.handleSheetSnapChange &&
+    left.getCurrentSheetSnap === right.getCurrentSheetSnap);
 
 export class RouteResultsSheetVisualStateController {
   private routeResultsSheetVisualBinding: RouteResultsSheetVisualBinding = null;

@@ -10,8 +10,6 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@clerk/clerk-expo';
-import type { StackNavigationProp } from '@react-navigation/stack';
-import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { Feather } from '@expo/vector-icons';
@@ -21,6 +19,7 @@ import { Text } from '../../components';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import { colors as themeColors } from '../../constants/theme';
 import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneRuntimeProvider';
+import { useFavoriteListDetailRouteActions } from '../../navigation/runtime/use-favorite-list-detail-route-actions';
 import { useAppOverlayRouteController } from '../../overlays/useAppOverlayRouteController';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useNotificationStore } from '../../store/notificationStore';
@@ -31,9 +30,8 @@ import { usersService } from '../../services/users';
 import { fetchUserPolls, type Poll } from '../../services/polls';
 import { useFavoriteLists } from '../../hooks/use-favorite-lists';
 import type { FavoriteListSummary } from '../../services/favorite-lists';
-import type { RootStackParamList } from '../../types/navigation';
+import { getCraveScoreColorFromScore } from '../../utils/quality-color';
 
-type Navigation = StackNavigationProp<RootStackParamList>;
 type ProfileSegment = 'created' | 'contributed' | 'favorites';
 
 const NAV_BOTTOM_PADDING = 10;
@@ -52,25 +50,12 @@ const shouldRetryUserPollsQuery = (failureCount: number, error: unknown) => {
   return failureCount < 2;
 };
 
-const resolveRankColor = (score?: number | null) => {
-  if (score == null) {
-    return themeColors.textBody;
-  }
-  if (score >= 8) {
-    return '#10b981';
-  }
-  if (score >= 6) {
-    return '#f59e0b';
-  }
-  return '#fb7185';
-};
-
 const ProfileScreen: React.FC = () => {
   const resetOnboarding = useOnboardingStore((state) => state.__forceOnboarding);
   const { signOut, isSignedIn } = useAuth();
-  const navigation = useNavigation<Navigation>();
   const insets = useSafeAreaInsets();
   const routeSceneRuntime = useAppRouteSceneRuntime();
+  const { openFavoriteListDetailRoute } = useFavoriteListDetailRouteActions();
   const { setRootRoute } = useAppOverlayRouteController();
   const pushToken = useNotificationStore((state) => state.pushToken);
   const setPushToken = useNotificationStore((state) => state.setPushToken);
@@ -210,9 +195,14 @@ const ProfileScreen: React.FC = () => {
 
   const handleListPress = React.useCallback(
     (listId: string) => {
-      navigation.navigate('FavoritesListDetail', { listId });
+      openFavoriteListDetailRoute({
+        listId,
+        parentSceneKey: 'profile',
+        ownerSceneKey: 'profile',
+        openerRouteKey: 'profile',
+      });
     },
-    [navigation]
+    [openFavoriteListDetailRoute]
   );
 
   const displayName = profile?.displayName?.trim() || profile?.username || 'Crave Explorer';
@@ -271,7 +261,7 @@ const ProfileScreen: React.FC = () => {
   const renderPreviewRow = React.useCallback(
     (item: FavoriteListSummary['previewItems'][number]) => (
       <View key={item.itemId} style={styles.previewRow}>
-        <View style={[styles.previewDot, { backgroundColor: resolveRankColor(item.score) }]} />
+        <View style={[styles.previewDot, { backgroundColor: getCraveScoreColorFromScore(item.craveScore) }]} />
         <Text variant="caption" numberOfLines={1} style={styles.previewText}>
           {item.label}
           {item.subLabel ? ` • ${item.subLabel}` : ''}

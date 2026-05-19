@@ -97,7 +97,10 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
         match.entityType === 'restaurant' && match.entityId ? match.entityId : null
       );
       void submitSearch(
-        { submission: { source: 'autocomplete', context: submissionContext } },
+        {
+          entrySurface: 'search_mode',
+          submission: { source: 'autocomplete', context: submissionContext },
+        },
         nextQuery
       );
     },

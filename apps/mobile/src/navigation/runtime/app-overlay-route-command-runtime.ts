@@ -1,26 +1,22 @@
-import type { OverlayKey, OverlayRouteParamsMap } from './app-overlay-route-types';
+import {
+  createPollCreationChildRouteParams,
+  isAppOverlayRouteSceneSwitchKey,
+  type OverlayKey,
+  type OverlayRouteParamsMap,
+} from './app-overlay-route-types';
 import type { RouteSceneSwitchRequestInput } from './app-overlay-route-transition-contract';
+import type { OverlaySheetSnap } from '../../overlays/types';
 import type {
   AppRouteSceneSwitchRuntime,
   RouteSceneSwitchRouteStateSnapshot,
   RouteSceneSwitchSettleCallback,
 } from './app-route-scene-switch-controller';
 
-const APP_ROUTE_TRANSITION_SCENE_KEYS = new Set<OverlayKey>([
-  'search',
-  'polls',
-  'bookmarks',
-  'profile',
-  'saveList',
-  'pollCreation',
-  'restaurant',
-]);
-
 const shouldRouteThroughSceneSwitch = <K extends OverlayKey>(
   overlay: K,
   params?: OverlayRouteParamsMap[K]
 ): boolean =>
-  APP_ROUTE_TRANSITION_SCENE_KEYS.has(overlay) &&
+  isAppOverlayRouteSceneSwitchKey(overlay) &&
   (params == null || overlay === 'polls' || overlay === 'restaurant');
 
 const resolveRouteSwitchPollsParams = <K extends OverlayKey>(
@@ -28,9 +24,6 @@ const resolveRouteSwitchPollsParams = <K extends OverlayKey>(
   params?: OverlayRouteParamsMap[K]
 ): OverlayRouteParamsMap['polls'] | null =>
   overlay === 'polls' ? (params as OverlayRouteParamsMap['polls']) ?? null : null;
-
-const isAppRouteTransitionSceneKey = (overlay: OverlayKey): boolean =>
-  APP_ROUTE_TRANSITION_SCENE_KEYS.has(overlay);
 
 export type AppOverlayRouteCommandRuntime = {
   getRouteState: () => RouteSceneSwitchRouteStateSnapshot;
@@ -46,6 +39,7 @@ export type AppOverlayRouteCommandRuntime = {
     overlay: K,
     params?: OverlayRouteParamsMap[K]
   ) => void;
+  restoreDockedPolls: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
   closeActiveRoute: () => void;
   closeActiveRouteAfterSettle: (
     onSettle: RouteSceneSwitchSettleCallback
@@ -77,18 +71,26 @@ export const createAppOverlayRouteCommandRuntime = ({
     const previousOverlayRouteKey = routeSceneSwitchRuntime.getPreviousRouteKey();
     if (
       previousOverlayRouteKey != null &&
-      isAppRouteTransitionSceneKey(activeOverlayRoute.key)
+      isAppOverlayRouteSceneSwitchKey(activeOverlayRoute.key)
     ) {
       requestRouteSceneSwitch({
         targetSceneKey: previousOverlayRouteKey,
         routeAction: 'closeActive',
+        sheetTransitionKind: 'closeChild',
+        sheetOpenerSource: 'routeCommand',
+        sheetMotion: { kind: 'preserveLiveY' },
       }, onSettle);
       return;
     }
     if (activeOverlayRoute.key === 'restaurant') {
       requestRouteSceneSwitch({
-        targetSceneKey: 'search',
+        targetSceneKey: 'polls',
         routeAction: 'setRoot',
+        sheetTransitionKind: 'terminalDismiss',
+        sheetOpenerSource: 'systemDismiss',
+        sheetMotion: { kind: 'snapTo', snap: 'collapsed' },
+        contentHandoff: 'preserveOutgoingUntilSettle',
+        dockedPollsRestoreSnap: 'collapsed',
       }, onSettle);
       return;
     }
@@ -105,6 +107,8 @@ export const createAppOverlayRouteCommandRuntime = ({
           pollsParams: resolveRouteSwitchPollsParams(overlay, params),
           routeAction: 'setRoot',
           routeParams: params,
+          sheetTransitionKind: 'topLevelSwitch',
+          sheetOpenerSource: 'navTab',
         });
         return;
       }
@@ -113,12 +117,41 @@ export const createAppOverlayRouteCommandRuntime = ({
     updateRoute: (overlay, params) => {
       routeSceneSwitchRuntime.updateRouteState(overlay, params);
     },
+    restoreDockedPolls: ({ snap = 'collapsed' } = {}) => {
+      requestRouteSceneSwitch({
+        targetSceneKey: 'search',
+        routeAction: 'setRoot',
+        sheetTransitionKind: 'topLevelSwitch',
+        sheetOpenerSource: 'routeCommand',
+        sheetMotion: { kind: 'snapTo', snap },
+        dockedPollsRestoreSnap: snap,
+      });
+    },
     pushRoute: (overlay, params) => {
-      if (overlay === 'pollCreation' || overlay === 'restaurant') {
+      if (overlay === 'pollCreation') {
+        requestRouteSceneSwitch({
+          targetSceneKey: overlay,
+          routeAction: 'push',
+          routeParams: createPollCreationChildRouteParams(
+            params as OverlayRouteParamsMap['pollCreation']
+          ),
+          sheetTransitionKind: 'openChild',
+          sheetOpenerSource: 'pollAction',
+          sheetMotion: { kind: 'snapTo', snap: 'expanded' },
+        });
+        return;
+      }
+      if (
+        overlay === 'favoriteListDetail' ||
+        overlay === 'saveList' ||
+        overlay === 'restaurant'
+      ) {
         requestRouteSceneSwitch({
           targetSceneKey: overlay,
           routeAction: 'push',
           routeParams: params,
+          sheetTransitionKind: 'openChild',
+          sheetOpenerSource: 'routeCommand',
         });
         return;
       }
@@ -135,11 +168,14 @@ export const createAppOverlayRouteCommandRuntime = ({
       const rootOverlayRouteKey = routeSceneSwitchRuntime.getRootRouteKey();
       if (
         rootOverlayRouteKey != null &&
-        isAppRouteTransitionSceneKey(activeOverlayRoute.key)
+        isAppOverlayRouteSceneSwitchKey(activeOverlayRoute.key)
       ) {
         requestRouteSceneSwitch({
           targetSceneKey: rootOverlayRouteKey,
           routeAction: 'popToRoot',
+          sheetTransitionKind: 'closeChild',
+          sheetOpenerSource: 'routeCommand',
+          sheetMotion: { kind: 'preserveLiveY' },
         });
         return;
       }

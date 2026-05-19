@@ -11,8 +11,7 @@ export type PreparedProfilePresentationSnapshot = {
   shellTarget: 'profile' | 'results' | 'default';
   targetCamera: CameraSnapshot | null;
   targetSheetSnap: 'middle' | 'collapsed' | null;
-  restoreSheetSnap: 'expanded' | 'middle' | 'collapsed' | null;
-  restoreResultsSheetSnap: 'expanded' | 'middle' | 'collapsed' | null;
+  preserveSheetMotionOnOpen: boolean;
   restoreCamera: CameraSnapshot | null;
   restoreResultsScrollOffset: number | null;
   shouldClearSearchOnClose: boolean;
@@ -21,7 +20,6 @@ export type PreparedProfilePresentationSnapshot = {
 export type PreparedProfileCloseSnapshotPlan = {
   shellTarget: 'results' | 'default';
   targetSheetSnap: 'collapsed' | null;
-  restoreResultsSheetSnap: 'expanded' | 'middle' | 'collapsed' | null;
   shouldClearSearchOnClose: boolean;
 };
 
@@ -32,6 +30,7 @@ export const createPreparedProfileOpenSnapshot = (
   options?: {
     selectedRestaurantId?: string | null;
     targetCamera?: CameraSnapshot | null;
+    preserveSheetMotionOnOpen?: boolean;
   }
 ): PreparedProfilePresentationSnapshot => ({
   transactionId,
@@ -47,8 +46,7 @@ export const createPreparedProfileOpenSnapshot = (
       }
     : null,
   targetSheetSnap: 'middle',
-  restoreSheetSnap: transitionState.savedSheetSnap,
-  restoreResultsSheetSnap: null,
+  preserveSheetMotionOnOpen: options?.preserveSheetMotionOnOpen === true,
   restoreCamera: transitionState.savedCamera
     ? {
         center: [...transitionState.savedCamera.center],
@@ -77,8 +75,7 @@ export const createPreparedProfileCloseSnapshot = (
   shellTarget: options.shellTarget,
   targetCamera: null,
   targetSheetSnap: options.targetSheetSnap,
-  restoreSheetSnap: transitionState.savedSheetSnap,
-  restoreResultsSheetSnap: options.restoreResultsSheetSnap,
+  preserveSheetMotionOnOpen: false,
   restoreCamera: transitionState.savedCamera
     ? {
         center: [...transitionState.savedCamera.center],
@@ -95,18 +92,11 @@ export const createPreparedProfileCloseSnapshot = (
 export const resolvePreparedProfileCloseSnapshotPlan = (options: {
   dismissBehavior: 'restore' | 'clear';
   shouldClearSearchOnDismiss: boolean;
-  isSearchOverlay: boolean;
-  savedSheetSnap: 'expanded' | 'middle' | 'collapsed' | null;
-  lastVisibleSheetSnap: 'expanded' | 'middle' | 'collapsed' | null;
 }): PreparedProfileCloseSnapshotPlan => {
   const shouldClearProfileDismiss = options.dismissBehavior === 'clear';
   return {
     shellTarget: shouldClearProfileDismiss ? 'default' : 'results',
     targetSheetSnap: shouldClearProfileDismiss ? 'collapsed' : null,
-    restoreResultsSheetSnap:
-      options.isSearchOverlay && !shouldClearProfileDismiss
-        ? options.savedSheetSnap ?? options.lastVisibleSheetSnap ?? null
-        : null,
     shouldClearSearchOnClose: options.shouldClearSearchOnDismiss,
   };
 };

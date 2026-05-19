@@ -36,7 +36,7 @@ export const useSearchRootOverlaySessionSurfaceRuntime = ({
       const layout = event.nativeEvent.layout;
       assertSearchStartupGeometryValue(
         'bottomNav.top',
-        startupGeometrySeed.navBarTopForSnaps,
+        startupGeometrySeed.bottomNavTop,
         PixelRatio.roundToNearestPixel(layout.y)
       );
       assertSearchStartupGeometryValue(
@@ -45,7 +45,7 @@ export const useSearchRootOverlaySessionSurfaceRuntime = ({
         PixelRatio.roundToNearestPixel(layout.height)
       );
     },
-    [startupGeometrySeed.bottomNavHeight, startupGeometrySeed.navBarTopForSnaps]
+    [startupGeometrySeed.bottomNavHeight, startupGeometrySeed.bottomNavTop]
   );
 
   const shouldRenderSearchOverlay =

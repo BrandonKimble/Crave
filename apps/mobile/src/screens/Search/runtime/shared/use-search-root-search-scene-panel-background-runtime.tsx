@@ -1,67 +1,44 @@
 import React from 'react';
-import { View } from 'react-native';
+import Reanimated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 
-import { FrostedGlassBackground } from '../../../../components/FrostedGlassBackground';
 import styles from '../../styles';
 
 export const useSearchRootSearchScenePanelBackgroundRuntime = ({
   resolvedResultsHeaderHeightForRender,
-  preMeasureOverlay,
   shouldDisableSearchBlur = false,
   shouldShowResultsSurface,
-  surfaceMode,
 }: {
   resolvedResultsHeaderHeightForRender: number;
-  preMeasureOverlay: React.ReactNode;
   shouldDisableSearchBlur?: boolean;
   shouldShowResultsSurface: boolean;
-  surfaceMode: 'none' | 'initial_loading' | 'empty' | 'interaction_loading';
-}) =>
-  React.useMemo(() => {
-    if (!shouldShowResultsSurface) {
-      return preMeasureOverlay;
-    }
-    if (shouldDisableSearchBlur) {
-      return (
-        <>
-          <View
-            style={[
-              styles.resultsListBackground,
-              {
-                top: resolvedResultsHeaderHeightForRender,
-              },
-            ]}
-          />
-          {preMeasureOverlay}
-        </>
-      );
-    }
-    if (surfaceMode === 'initial_loading') {
-      return (
-        <>
-          <FrostedGlassBackground />
-          <View
-            style={[
-              styles.resultsListBackground,
-              {
-                top: resolvedResultsHeaderHeightForRender,
-              },
-            ]}
-          />
-          {preMeasureOverlay}
-        </>
-      );
-    }
-    return (
+}) => {
+  const headerTopValue = useSharedValue(resolvedResultsHeaderHeightForRender);
+  const showResultsSurfaceValue = useSharedValue(shouldShowResultsSurface ? 1 : 0);
+  const disableSearchBlurValue = useSharedValue(shouldDisableSearchBlur ? 1 : 0);
+
+  React.useEffect(() => {
+    headerTopValue.value = resolvedResultsHeaderHeightForRender;
+  }, [headerTopValue, resolvedResultsHeaderHeightForRender]);
+  React.useEffect(() => {
+    showResultsSurfaceValue.value = shouldShowResultsSurface ? 1 : 0;
+  }, [showResultsSurfaceValue, shouldShowResultsSurface]);
+  React.useEffect(() => {
+    disableSearchBlurValue.value = shouldDisableSearchBlur ? 1 : 0;
+  }, [disableSearchBlurValue, shouldDisableSearchBlur]);
+  const solidBackgroundAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: showResultsSurfaceValue.value * disableSearchBlurValue.value,
+    top: headerTopValue.value,
+  }));
+
+  return React.useMemo(
+    () => (
       <>
-        <FrostedGlassBackground />
-        {preMeasureOverlay}
+        <Reanimated.View
+          pointerEvents="none"
+          style={[styles.resultsListBackground, solidBackgroundAnimatedStyle]}
+        />
       </>
-    );
-  }, [
-    preMeasureOverlay,
-    resolvedResultsHeaderHeightForRender,
-    shouldDisableSearchBlur,
-    shouldShowResultsSurface,
-    surfaceMode,
-  ]);
+    ),
+    [solidBackgroundAnimatedStyle]
+  );
+};

@@ -1,0 +1,15 @@
+appId: com.brandonkimble.cravesearch
+---
+- tapOn:
+    text: 'Search'
+    optional: true
+- tapOn:
+    text: 'Close results'
+    optional: true
+- openLink: 'crave://perf-scenario-command?action=set_map_camera_and_resolve_market&lat=46.7867&lng=-92.1005&zoom=11.5&label=duluth'
+- waitForAnimationToEnd:
+    timeout: 2500
+- extendedWaitUntil:
+    visible: '.*Duluth.*'
+    timeout: 25000
+- takeScreenshot: market-demand-passive-off-region

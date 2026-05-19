@@ -44,9 +44,11 @@ export interface FoodResult {
   restaurantName: string;
   restaurantAliases: string[];
   restaurantLocationId?: string;
-  qualityScore: number;
-  contextualScore?: number | null;
-  contextualPercentile?: number | null;
+  scoreSubjectType: 'connection';
+  scoreSubjectId: string;
+  craveScore: number;
+  scoreDelta7d?: number | null;
+  scoreInfo?: ScoreInfoSummary;
   marketKey?: string;
   marketName?: string | null;
   activityLevel: ActivityLevel;
@@ -60,9 +62,7 @@ export interface FoodResult {
   restaurantPriceSymbol?: string | null;
   restaurantDistanceMiles?: number | null;
   restaurantOperatingStatus?: OperatingStatus | null;
-  // Additional fields for map pins in dishes tab
-  restaurantContextualScore?: number | null;
-  restaurantContextualPercentile?: number | null;
+  restaurantCraveScore: number;
   restaurantLatitude?: number | null;
   restaurantLongitude?: number | null;
 }
@@ -71,9 +71,11 @@ export interface RestaurantFoodSnippet {
   connectionId: string;
   foodId: string;
   foodName: string;
-  qualityScore: number;
-  contextualScore?: number | null;
-  contextualPercentile?: number | null;
+  scoreSubjectType: 'connection';
+  scoreSubjectId: string;
+  craveScore: number;
+  scoreDelta7d?: number | null;
+  scoreInfo?: ScoreInfoSummary;
   activityLevel: ActivityLevel;
 }
 
@@ -115,9 +117,11 @@ export interface RestaurantResult {
    * This should be server-assigned and stable across cards + map pins.
    */
   rank?: number;
-  contextualScore: number;
-  contextualPercentile?: number | null;
-  restaurantQualityScore?: number | null;
+  scoreSubjectType: 'restaurant';
+  scoreSubjectId: string;
+  craveScore: number;
+  scoreDelta7d?: number | null;
+  scoreInfo?: ScoreInfoSummary;
   marketKey?: string;
   marketName?: string | null;
   mentionCount?: number;
@@ -142,6 +146,19 @@ export interface RestaurantResult {
   hasMenuItems?: boolean;
 }
 
+export type RestaurantResultScorePreview = Omit<
+  RestaurantResult,
+  'craveScore' | 'scoreDelta7d' | 'scoreInfo'
+> & {
+  /**
+   * Profile-open shell only. Public search/favorite/coverage payloads must use
+   * `RestaurantResult` and carry a computed numeric Crave Score.
+   */
+  craveScore: null;
+  scoreDelta7d?: null;
+  scoreInfo?: undefined;
+};
+
 export interface RestaurantProfile {
   restaurant: RestaurantResult;
   dishes: FoodResult[];
@@ -160,8 +177,7 @@ export interface DishRestaurantData {
   restaurantId: string;
   restaurantName: string;
   restaurantAliases: string[];
-  contextualScore?: number | null;
-  contextualPercentile?: number | null;
+  restaurantCraveScore: number;
   priceLevel?: number | null;
   priceSymbol?: string | null;
   operatingStatus?: OperatingStatus | null;
@@ -173,9 +189,11 @@ export interface DishResult {
   foodId: string;
   foodName: string;
   foodAliases: string[];
-  qualityScore: number;
-  contextualScore?: number | null;
-  contextualPercentile?: number | null;
+  scoreSubjectType: 'connection';
+  scoreSubjectId: string;
+  craveScore: number;
+  scoreDelta7d?: number | null;
+  scoreInfo?: ScoreInfoSummary;
   marketKey?: string;
   marketName?: string | null;
   activityLevel: ActivityLevel;
@@ -186,6 +204,13 @@ export interface DishResult {
   categories: string[];
   foodAttributes: string[];
   restaurant: DishRestaurantData;
+}
+
+export interface ScoreInfoSummary {
+  confidenceLabel: 'early' | 'solid' | 'strong';
+  evidenceCopy: string;
+  pollCount?: number | null;
+  voteCount?: number | null;
 }
 
 export interface SearchResponseMetadata {
@@ -223,12 +248,17 @@ export interface SearchResponseMetadata {
   }>;
   sourceQuery?: string;
   searchRequestId?: string;
+  originalBackendSearchRequestId?: string;
+  dataReadyFrom?: 'backend' | 'cache' | 'in_flight';
   analysisMetadata?: Record<string, unknown>;
   primaryFoodTerm?: string;
   marketKey?: string | null;
   displayMarketName?: string | null;
   marketResolutionStatus?: 'resolved' | 'multi_market' | 'no_market' | 'error';
-  candidatePlaceName?: string | null;
+  candidateLocalityName?: string | null;
+  candidateBoundaryProvider?: string | null;
+  candidateBoundaryId?: string | null;
+  candidateBoundaryType?: string | null;
   attributionMarketKeys?: string[];
   collectableMarketKeys?: string[];
   emptyQueryMessage?: string;

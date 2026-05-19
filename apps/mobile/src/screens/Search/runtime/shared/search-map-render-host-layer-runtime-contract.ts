@@ -8,7 +8,7 @@ import type { ProfilerOnRenderCallback } from 'react';
 
 export type SearchMapRenderHostLayerRuntime = {
   isInitialCameraReady: boolean;
-  onProfilerRender: ProfilerOnRenderCallback;
+  onProfilerRender: ProfilerOnRenderCallback | null;
   markerEngineRef: SearchMapRenderEngineSnapshot['markerEngineRef'];
   engineInputs: SearchMapRenderEngineInputs;
   hostConfig: SearchMapRenderHostConfig;

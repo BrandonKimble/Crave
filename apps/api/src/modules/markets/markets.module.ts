@@ -1,14 +1,28 @@
 import { Module } from '@nestjs/common';
+import { HttpModule } from '@nestjs/axios';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { SharedModule } from '../../shared/shared.module';
+import { MetricsModule } from '../metrics/metrics.module';
 import { MarketsController } from './markets.controller';
+import { MarketBootstrapMetricsService } from './market-bootstrap-metrics.service';
 import { MarketRegistryService } from './market-registry.service';
 import { MarketResolverService } from './market-resolver.service';
+import { TomTomBoundaryBootstrapService } from './tomtom-boundary-bootstrap.service';
 
 @Module({
-  imports: [PrismaModule, SharedModule],
+  imports: [HttpModule, PrismaModule, SharedModule, MetricsModule],
   controllers: [MarketsController],
-  providers: [MarketResolverService, MarketRegistryService],
-  exports: [MarketResolverService, MarketRegistryService],
+  providers: [
+    MarketBootstrapMetricsService,
+    MarketResolverService,
+    MarketRegistryService,
+    TomTomBoundaryBootstrapService,
+  ],
+  exports: [
+    MarketResolverService,
+    MarketRegistryService,
+    MarketBootstrapMetricsService,
+    TomTomBoundaryBootstrapService,
+  ],
 })
 export class MarketsModule {}

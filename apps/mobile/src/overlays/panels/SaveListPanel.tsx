@@ -19,6 +19,7 @@ import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneR
 import { useRouteAuthoritySelector } from '../../navigation/runtime/use-route-authority-selector';
 import type { AppRouteOverlayCommandSnapshot } from '../../navigation/runtime/app-route-overlay-command-controller';
 import { useDeferredSceneDataLane } from './useDeferredSceneDataLane';
+import { getCraveScoreColorFromScore } from '../../utils/quality-color';
 
 const ACTIVE_TAB_COLOR = themeColors.primary;
 const GRID_GAP = 12;
@@ -31,19 +32,6 @@ const FORM_BORDER = '#e2e8f0';
 const FORM_PLACEHOLDER = themeColors.textBody;
 const FORM_TOGGLE_BG = '#f1f5f9';
 const FORM_TOGGLE_ACTIVE = '#0f172a';
-
-const resolveRankColor = (score?: number | null) => {
-  if (score == null) {
-    return themeColors.textBody;
-  }
-  if (score >= 8) {
-    return '#10b981';
-  }
-  if (score >= 6) {
-    return '#f59e0b';
-  }
-  return '#fb7185';
-};
 
 type ListFormState = {
   mode: 'hidden' | 'create';
@@ -64,13 +52,13 @@ export const SaveListMountedSceneHeader = React.memo(() => {
     getSnapshot: routeSceneRuntime.routeOverlayCommandAuthority.getSnapshot,
     selector: selectSaveSheetListType,
   });
-  const { setSaveSheetState } = routeSceneRuntime.routeOverlayCommandActions;
+  const { handleCloseSaveSheet } = routeSceneRuntime.routeOverlayCommandActions;
   const headerPaddingTop = 0;
   const headerActionProgress = useSharedValue(0);
 
   const onClose = React.useCallback(() => {
-    setSaveSheetState((prev) => ({ ...prev, visible: false, target: null }));
-  }, [setSaveSheetState]);
+    handleCloseSaveSheet();
+  }, [handleCloseSaveSheet]);
 
   return (
     <OverlaySheetHeaderChrome
@@ -133,7 +121,7 @@ const SaveListTile = React.memo(({ item, onPress }: SaveListTileProps) => (
               <View
                 style={[
                   styles.previewDot,
-                  { backgroundColor: resolveRankColor(previewItem.score) },
+                  { backgroundColor: getCraveScoreColorFromScore(previewItem.craveScore) },
                 ]}
               />
               <Text variant="caption" numberOfLines={1} style={styles.previewText}>
@@ -168,7 +156,7 @@ export const SaveListMountedSceneBody = React.memo(() => {
     getSnapshot: routeSceneRuntime.routeOverlayCommandAuthority.getSnapshot,
     selector: selectSaveSheetState,
   });
-  const { setSaveSheetState } = routeSceneRuntime.routeOverlayCommandActions;
+  const { handleCloseSaveSheet } = routeSceneRuntime.routeOverlayCommandActions;
   const [formState, setFormState] = React.useState<ListFormState>({
     mode: 'hidden',
     name: '',
@@ -187,8 +175,8 @@ export const SaveListMountedSceneBody = React.memo(() => {
   const listRows = React.useMemo(() => chunkFavoriteLists(lists), [lists]);
 
   const onClose = React.useCallback(() => {
-    setSaveSheetState((prev) => ({ ...prev, visible: false, target: null }));
-  }, [setSaveSheetState]);
+    handleCloseSaveSheet();
+  }, [handleCloseSaveSheet]);
 
   const resetForm = React.useCallback(() => {
     setFormState({

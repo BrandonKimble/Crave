@@ -56,6 +56,7 @@ export const useSearchRootControlFoundationAuthorityRuntime = ({
     });
   const autocompleteAuthorityRuntime =
     useSearchRootAutocompleteAuthorityRuntime({
+      sessionCoreLane,
       stateFoundationLane,
     });
   const mutationCancelAuthorityRuntime =

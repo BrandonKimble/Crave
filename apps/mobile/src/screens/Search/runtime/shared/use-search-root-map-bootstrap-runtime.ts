@@ -40,6 +40,8 @@ export const useSearchRootMapBootstrapRuntime = ({
     setIsInitialCameraReady(true);
   }, []);
   const [isMapStyleReady, setIsMapStyleReady] = React.useState(false);
+  const hasAppliedStartupCameraRef = React.useRef(false);
+  const { setMapCenter, setMapZoom, setIsFollowingUser } = mapState;
 
   React.useLayoutEffect(() => {
     if (accessToken) {
@@ -62,9 +64,10 @@ export const useSearchRootMapBootstrapRuntime = ({
   }, [markMainMapReady]);
 
   React.useEffect(() => {
-    if (!startupCamera) {
+    if (!startupCamera || hasAppliedStartupCameraRef.current) {
       return;
     }
+    hasAppliedStartupCameraRef.current = true;
     commitCameraViewport(
       {
         center: startupCamera.center,
@@ -80,16 +83,18 @@ export const useSearchRootMapBootstrapRuntime = ({
       center: startupCamera.center,
       zoom: startupCamera.zoom,
     });
-    mapState.setMapCenter((current) => current ?? startupCamera.center);
-    mapState.setMapZoom((current) => current ?? startupCamera.zoom);
-    mapState.setIsFollowingUser(false);
+    setMapCenter((current) => current ?? startupCamera.center);
+    setMapZoom((current) => current ?? startupCamera.zoom);
+    setIsFollowingUser(false);
     ensureInitialCameraReady();
   }, [
     commitCameraViewport,
     ensureInitialCameraReady,
     lastCameraStateRef,
     lastPersistedCameraRef,
-    mapState,
+    setIsFollowingUser,
+    setMapCenter,
+    setMapZoom,
     startupCamera,
   ]);
 

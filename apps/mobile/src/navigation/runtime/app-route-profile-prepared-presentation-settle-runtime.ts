@@ -24,13 +24,15 @@ export const resolvePreparedProfilePresentationSettleUpdate = ({
     transitionStatus !== 'opening' ||
     snapshot == null ||
     snapshot.kind !== 'profile_open' ||
-    settleState.transactionId !== snapshot.transactionId ||
-    settleState.requestToken !== event.requestToken
+    settleState.transactionId !== snapshot.transactionId
   ) {
     return null;
   }
 
   if (event.type === 'sheet_settled') {
+    if (settleState.sheetRequestToken !== event.requestToken) {
+      return null;
+    }
     const nextSettleState =
       event.snap === 'middle' && snapshot.targetSheetSnap === 'middle'
         ? {
@@ -41,6 +43,10 @@ export const resolvePreparedProfilePresentationSettleUpdate = ({
     return {
       nextSettleState,
     };
+  }
+
+  if (settleState.cameraRequestToken !== event.requestToken) {
+    return null;
   }
 
   return {

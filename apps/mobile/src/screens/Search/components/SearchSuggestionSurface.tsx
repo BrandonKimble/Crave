@@ -52,12 +52,6 @@ type SearchSuggestionSurfaceProps = {
   recentSearchesDisplay: RecentSearch[];
   recentlyViewedRestaurantsDisplay: RecentlyViewedRestaurant[];
   recentlyViewedFoodsDisplay: RecentlyViewedFood[];
-  hasRecentSearchesDisplay: boolean;
-  hasRecentlyViewedRestaurantsDisplay: boolean;
-  hasRecentlyViewedFoodsDisplay: boolean;
-  isRecentLoadingDisplay: boolean;
-  isRecentlyViewedLoadingDisplay: boolean;
-  isRecentlyViewedFoodsLoadingDisplay: boolean;
   onSuggestionPress: (match: AutocompleteMatch) => void;
   onRecentSearchPress: (term: RecentSearch) => void;
   onRecentlyViewedRestaurantPress: (restaurant: RecentlyViewedRestaurant) => void;
@@ -99,12 +93,6 @@ const SearchSuggestionSurface = ({
   recentSearchesDisplay,
   recentlyViewedRestaurantsDisplay,
   recentlyViewedFoodsDisplay,
-  hasRecentSearchesDisplay,
-  hasRecentlyViewedRestaurantsDisplay,
-  hasRecentlyViewedFoodsDisplay,
-  isRecentLoadingDisplay,
-  isRecentlyViewedLoadingDisplay,
-  isRecentlyViewedFoodsLoadingDisplay,
   onSuggestionPress,
   onRecentSearchPress,
   onRecentlyViewedRestaurantPress,
@@ -209,12 +197,6 @@ const SearchSuggestionSurface = ({
                 recentSearches={recentSearchesDisplay}
                 recentlyViewedRestaurants={recentlyViewedRestaurantsDisplay}
                 recentlyViewedFoods={recentlyViewedFoodsDisplay}
-                hasRecentSearches={hasRecentSearchesDisplay}
-                hasRecentlyViewedRestaurants={hasRecentlyViewedRestaurantsDisplay}
-                hasRecentlyViewedFoods={hasRecentlyViewedFoodsDisplay}
-                isRecentLoading={isRecentLoadingDisplay}
-                isRecentlyViewedLoading={isRecentlyViewedLoadingDisplay}
-                isRecentlyViewedFoodsLoading={isRecentlyViewedFoodsLoadingDisplay}
                 onSelectSuggestion={onSuggestionPress}
                 onSelectRecent={onRecentSearchPress}
                 onSelectRecentlyViewed={onRecentlyViewedRestaurantPress}

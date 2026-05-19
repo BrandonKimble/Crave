@@ -1,6 +1,6 @@
 import React from 'react';
 
-import type { RunOneHandoffCoordinator } from '../controller/run-one-handoff-coordinator';
+import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 import type { ResultsPresentationRuntimeMachine } from './results-presentation-runtime-machine';
 import { useResultsPresentationMarkerEnterRuntime } from './use-results-presentation-marker-enter-runtime';
 import { useResultsPresentationMarkerEnterSettleRuntime } from './use-results-presentation-marker-enter-settle-runtime';
@@ -8,25 +8,25 @@ import { useResultsPresentationMarkerExitRuntime } from './use-results-presentat
 
 type UseResultsPresentationMarkerRuntimeArgs = {
   runtimeMachineRef: React.MutableRefObject<ResultsPresentationRuntimeMachine | null>;
-  runOneHandoffCoordinatorRef: React.MutableRefObject<RunOneHandoffCoordinator>;
+  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinator>;
   emitRuntimeMechanismEvent: (event: string, payload: Record<string, unknown>) => void;
   markSearchSheetCloseMapExitSettledRef: React.MutableRefObject<(requestKey: string) => void>;
 };
 
 export const useResultsPresentationMarkerRuntime = ({
   runtimeMachineRef,
-  runOneHandoffCoordinatorRef,
+  searchSurfaceRedrawCoordinatorRef,
   emitRuntimeMechanismEvent,
   markSearchSheetCloseMapExitSettledRef,
 }: UseResultsPresentationMarkerRuntimeArgs) => {
   const markerEnterSettleRuntime =
     useResultsPresentationMarkerEnterSettleRuntime({
-      runOneHandoffCoordinatorRef,
+      searchSurfaceRedrawCoordinatorRef,
       emitRuntimeMechanismEvent,
     });
   const markerEnterRuntime = useResultsPresentationMarkerEnterRuntime({
     runtimeMachineRef,
-    runOneHandoffCoordinatorRef,
+    searchSurfaceRedrawCoordinatorRef,
     flushPendingMarkerEnterSettled:
       markerEnterSettleRuntime.flushPendingMarkerEnterSettled,
     setPendingMarkerEnterSettled:

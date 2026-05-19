@@ -27,16 +27,14 @@ export const executeProfilePreviewPresentationPlan = ({
   if (plan.updatedLastCameraState !== undefined) {
     ports.setLastCameraState(plan.updatedLastCameraState);
   }
-  if (plan.shouldResetSavedSheetSnap) {
-    ports.resetPreparedProfileSavedSheetSnap();
-  }
+  ports.setMapHighlightedRestaurantId(restaurantId);
+  ports.seedRestaurantProfile(plan.seededRestaurant, plan.seededRestaurant.restaurantName);
   ports.openPreparedProfilePresentation(
     restaurantId,
     plan.targetCamera,
     forceMiddleSnap,
     plan.status
   );
-  ports.seedRestaurantProfile(plan.seededRestaurant, plan.seededRestaurant.restaurantName);
   ports.hydrateRestaurantProfileById(restaurantId, plan.seededRestaurant.marketKey ?? null);
 };
 

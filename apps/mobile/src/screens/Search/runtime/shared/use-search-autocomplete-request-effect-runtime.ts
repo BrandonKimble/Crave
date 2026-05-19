@@ -1,6 +1,7 @@
 import React from 'react';
 
 import type { AutocompleteMatch } from '../../../../services/autocomplete';
+import type { Coordinate, MapBounds } from '../../../../types';
 import { useSearchAutocompleteRequestCleanupRuntime } from './use-search-autocomplete-request-cleanup-runtime';
 import { useSearchAutocompleteRequestExecutionRuntime } from './use-search-autocomplete-request-execution-runtime';
 import { useSearchAutocompleteRequestLifecycleRuntime } from './use-search-autocomplete-request-lifecycle-runtime';
@@ -19,6 +20,8 @@ export const useSearchAutocompleteRequestEffectRuntime = ({
   lookupAutocompleteCache,
   writeAutocompleteCache,
   requestStateRuntime,
+  bounds,
+  userLocation,
 }: {
   query: string;
   isSuggestionScreenActive: boolean;
@@ -26,7 +29,11 @@ export const useSearchAutocompleteRequestEffectRuntime = ({
   isAutocompleteSuppressed: boolean;
   runAutocomplete: (
     value: string,
-    options?: { debounceMs?: number }
+    options?: {
+      debounceMs?: number;
+      bounds?: MapBounds | null;
+      userLocation?: Coordinate | null;
+    }
   ) => Promise<AutocompleteMatch[]>;
   cancelAutocomplete: () => void;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
@@ -37,6 +44,8 @@ export const useSearchAutocompleteRequestEffectRuntime = ({
   ) => { matches: AutocompleteMatch[]; isExactMatch: boolean } | null;
   writeAutocompleteCache: (rawQuery: string, matches: AutocompleteMatch[]) => void;
   requestStateRuntime: ReturnType<typeof useSearchAutocompleteRequestStateRuntime>;
+  bounds: MapBounds | null;
+  userLocation: Coordinate | null;
 }): void => {
   const requestLifecycle = useSearchAutocompleteRequestLifecycleRuntime({
     query,
@@ -61,6 +70,8 @@ export const useSearchAutocompleteRequestEffectRuntime = ({
     clearAutocompleteSuggestions,
     writeAutocompleteCache,
     requestStateRuntime,
+    bounds,
+    userLocation,
   });
 
   useSearchAutocompleteRequestCleanupRuntime({

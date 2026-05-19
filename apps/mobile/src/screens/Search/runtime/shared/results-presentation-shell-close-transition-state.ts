@@ -2,13 +2,21 @@ import type { OverlaySheetSnap } from '../../../../overlays/types';
 import type { SearchCloseTransitionState } from './results-presentation-shell-contract';
 
 export const createSearchCloseTransitionState = (
-  closeIntentId: string
+  closeIntentId: string,
+  terminalDismissSource: Exclude<SearchCloseTransitionState, null>['terminalDismissSource'] = 'results'
 ): Exclude<SearchCloseTransitionState, null> => ({
   closeIntentId,
+  terminalDismissSource,
   mapExitSettled: false,
   sheetCollapsedReached: false,
   sheetCollapsedSettled: false,
 });
+
+export const isSearchCloseTransitionReadyToFinalize = (
+  state: SearchCloseTransitionState
+): boolean =>
+  state != null &&
+  state.sheetCollapsedSettled;
 
 export const applySearchCloseMapExitSettled = ({
   current,
@@ -32,7 +40,7 @@ export const applySearchCloseMapExitSettled = ({
   };
   return {
     nextState,
-    shouldFinalize: nextState.mapExitSettled,
+    shouldFinalize: isSearchCloseTransitionReadyToFinalize(nextState),
   };
 };
 
@@ -88,6 +96,6 @@ export const applySearchCloseSheetSettled = ({
   };
   return {
     nextState,
-    shouldFinalize: nextState.mapExitSettled && nextState.sheetCollapsedSettled,
+    shouldFinalize: isSearchCloseTransitionReadyToFinalize(nextState),
   };
 };

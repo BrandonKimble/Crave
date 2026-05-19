@@ -3,6 +3,7 @@ import {
   ArrayNotEmpty,
   IsArray,
   IsBoolean,
+  IsDefined,
   IsEnum,
   IsIn,
   IsLatitude,
@@ -14,6 +15,7 @@ import {
   IsString,
   IsUUID,
   Max,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -206,6 +208,37 @@ export class SearchQueryRequestDto {
   submissionContext?: SearchSubmissionContextDto;
 }
 
+export class SearchCacheAttributionDto {
+  @IsDefined()
+  @IsUUID()
+  originalBackendSearchRequestId!: string;
+
+  @IsDefined()
+  @IsUUID()
+  cacheRevealRequestId!: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  cacheAgeMs?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  resultsDataKey?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['manual', 'recent', 'autocomplete', 'shortcut'])
+  submissionSource?: 'manual' | 'recent' | 'autocomplete' | 'shortcut';
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SearchSubmissionContextDto)
+  submissionContext?: SearchSubmissionContextDto;
+}
+
 export const EntityScope = {
   RESTAURANT: 'restaurant',
   FOOD: 'food',
@@ -311,12 +344,4 @@ export class NaturalSearchRequestDto {
   @ValidateNested()
   @Type(() => SearchSubmissionContextDto)
   submissionContext?: SearchSubmissionContextDto;
-}
-
-export class SearchResultClickDto {
-  @IsUUID()
-  entityId!: string;
-
-  @IsEnum(EntityType)
-  entityType!: EntityType;
 }

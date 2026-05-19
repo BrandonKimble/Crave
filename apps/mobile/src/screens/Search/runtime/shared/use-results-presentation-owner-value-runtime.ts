@@ -11,10 +11,11 @@ import type {
 
 type UseResultsPresentationOwnerValueRuntimeArgs = Pick<
   ResultsPresentationRuntimeOwner,
-  | 'preparedResultsSnapshotKey'
+  | 'searchSurfaceResultsTransactionKey'
   | 'pendingTogglePresentationIntentId'
   | 'scheduleToggleCommit'
   | 'cancelToggleInteraction'
+  | 'beginSearchThisAreaPresentationPending'
   | 'handlePageOneResultsCommitted'
   | 'cancelPresentationIntent'
   | 'handlePresentationIntentAbort'
@@ -28,7 +29,6 @@ type UseResultsPresentationOwnerValueRuntimeArgs = Pick<
   presentationActions: ResultsPresentationActions;
   closeTransitionActions: ResultsCloseTransitionActions;
   interactionModel: ResultsPresentationOwner['interactionModel'];
-  resultsSheetExecutionModel: ResultsPresentationOwner['resultsSheetExecutionModel'];
 };
 
 export const useResultsPresentationOwnerValueRuntime = ({
@@ -36,24 +36,21 @@ export const useResultsPresentationOwnerValueRuntime = ({
   presentationActions,
   closeTransitionActions,
   interactionModel,
-  resultsSheetExecutionModel,
   ...resultsRuntimeOwner
 }: UseResultsPresentationOwnerValueRuntimeArgs): ResultsPresentationOwner =>
   React.useMemo(
     () =>
       createResultsPresentationOwnerValue({
-        preparedResultsSnapshotKey: resultsRuntimeOwner.preparedResultsSnapshotKey,
-        pendingTogglePresentationIntentId:
-          resultsRuntimeOwner.pendingTogglePresentationIntentId,
+        searchSurfaceResultsTransactionKey: resultsRuntimeOwner.searchSurfaceResultsTransactionKey,
+        pendingTogglePresentationIntentId: resultsRuntimeOwner.pendingTogglePresentationIntentId,
         scheduleToggleCommit: resultsRuntimeOwner.scheduleToggleCommit,
         cancelToggleInteraction: resultsRuntimeOwner.cancelToggleInteraction,
-        handlePageOneResultsCommitted:
-          resultsRuntimeOwner.handlePageOneResultsCommitted,
+        beginSearchThisAreaPresentationPending:
+          resultsRuntimeOwner.beginSearchThisAreaPresentationPending,
+        handlePageOneResultsCommitted: resultsRuntimeOwner.handlePageOneResultsCommitted,
         cancelPresentationIntent: resultsRuntimeOwner.cancelPresentationIntent,
-        handlePresentationIntentAbort:
-          resultsRuntimeOwner.handlePresentationIntentAbort,
-        handleExecutionBatchMountedHidden:
-          resultsRuntimeOwner.handleExecutionBatchMountedHidden,
+        handlePresentationIntentAbort: resultsRuntimeOwner.handlePresentationIntentAbort,
+        handleExecutionBatchMountedHidden: resultsRuntimeOwner.handleExecutionBatchMountedHidden,
         handleMarkerEnterStarted: resultsRuntimeOwner.handleMarkerEnterStarted,
         handleMarkerEnterSettled: resultsRuntimeOwner.handleMarkerEnterSettled,
         handleMarkerExitStarted: resultsRuntimeOwner.handleMarkerExitStarted,
@@ -62,14 +59,12 @@ export const useResultsPresentationOwnerValueRuntime = ({
         presentationActions,
         closeTransitionActions,
         interactionModel,
-        resultsSheetExecutionModel,
       }),
     [
       closeTransitionActions,
       interactionModel,
       presentationActions,
       resultsRuntimeOwner,
-      resultsSheetExecutionModel,
       shellModel,
     ]
   );

@@ -1,5 +1,6 @@
 import { logger } from '../../../../utils';
 import type { FoodResult, RestaurantResult } from '../../../../types';
+import type { RestaurantResultCardDescriptor } from '../../components/restaurant-result-card-descriptor';
 
 export type ResultsSectionRow = {
   kind: 'section';
@@ -14,9 +15,18 @@ export type ResultsShowMoreRow = {
   hiddenCount: number;
 };
 
+export type ResultsMountedRestaurantCardRow = {
+  kind: 'mounted_restaurant_card';
+  key: string;
+  restaurant: RestaurantResult;
+  restaurantId: string;
+  preparedDescriptor: RestaurantResultCardDescriptor;
+};
+
 export type ResultsListItem =
   | FoodResult
   | RestaurantResult
+  | ResultsMountedRestaurantCardRow
   | ResultsSectionRow
   | ResultsShowMoreRow;
 

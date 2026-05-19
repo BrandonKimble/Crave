@@ -1,4 +1,8 @@
 import type { OverlayKey } from '../../overlays/types';
+import {
+  APP_OVERLAY_ROUTE_SCENE_INPUT_KEYS,
+  APP_OVERLAY_STATIC_ROUTE_SCENE_INPUT_KEYS,
+} from './app-overlay-route-types';
 import type {
   AppRouteSceneBodyAdmissionPolicy,
   AppRouteSceneBodyContentSpec,
@@ -14,14 +18,9 @@ import {
   areAppRouteSceneShellSpecsEqual,
 } from './app-route-scene-descriptor-contract';
 
-export const APP_ROUTE_STATIC_SCENE_INPUT_KEYS = ['saveList', 'bookmarks', 'profile'] as const;
+export const APP_ROUTE_STATIC_SCENE_INPUT_KEYS = APP_OVERLAY_STATIC_ROUTE_SCENE_INPUT_KEYS;
 
-export const APP_ROUTE_SCENE_INPUT_KEYS = [
-  'search',
-  'polls',
-  'pollCreation',
-  ...APP_ROUTE_STATIC_SCENE_INPUT_KEYS,
-] as const;
+export const APP_ROUTE_SCENE_INPUT_KEYS = APP_OVERLAY_ROUTE_SCENE_INPUT_KEYS;
 
 export type AppRouteStaticSceneInputKey = (typeof APP_ROUTE_STATIC_SCENE_INPUT_KEYS)[number];
 

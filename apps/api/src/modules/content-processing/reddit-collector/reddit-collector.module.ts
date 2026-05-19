@@ -5,7 +5,7 @@ import { SharedModule } from '../../../shared/shared.module';
 import { ExternalIntegrationsModule } from '../../external-integrations/external-integrations.module';
 import { EntityResolverModule } from '../entity-resolver/entity-resolver.module';
 import { QualityScoreModule } from '../quality-score/quality-score.module';
-import { RankScoreModule } from '../rank-score/rank-score.module';
+import { PublicCraveScoreModule } from '../public-crave-score';
 import { RepositoryModule } from '../../../repositories/repository.module';
 import { PrismaModule } from '../../../prisma/prisma.module';
 import { ArchiveStreamProcessorService } from './archive/archive-stream-processor.service';
@@ -17,7 +17,6 @@ import { ChronologicalCollectionWorker } from './chronological/chronological-col
 import { ContentRetrievalMonitoringService } from './chronological/content-retrieval-monitoring.service';
 import { CollectionJobSchedulerService } from './chronological/collection-job-scheduler.service';
 import { KeywordSearchSchedulerService } from './keyword-search-scheduler.service';
-import { EntityPriorityMetricsRefreshService } from './entity-priority-metrics-refresh.service';
 import { KeywordSliceSelectionService } from './keyword-slice-selection.service';
 import { KeywordAttemptHistoryService } from './keyword-attempt-history.service';
 import { KeywordSearchOrchestratorService } from './keyword-search-orchestrator.service';
@@ -72,7 +71,6 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
       CollectionJobSchedulerService,
       KeywordSearchSchedulerService,
       // Keyword Entity Search components (PRD Section 5.1.2)
-      EntityPriorityMetricsRefreshService,
       KeywordSliceSelectionService,
       KeywordAttemptHistoryService,
       KeywordSearchOrchestratorService,
@@ -132,7 +130,7 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
     ExternalIntegrationsModule, // Provides LLMService for integration
     EntityResolverModule, // Provides EntityResolutionService for unified processing
     QualityScoreModule, // Provides QualityScoreService for PRD Section 5.3 compliance
-    RankScoreModule,
+    PublicCraveScoreModule,
     RepositoryModule, // Provides repository services for database access
     BullModule.registerQueue({
       name: 'chronological-collection',

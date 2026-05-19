@@ -10,7 +10,7 @@ import { BaseRepository } from './base/base.repository';
  * Provides data access for the unified Entity model that stores:
  * - Restaurants, food items, and attributes in a single table
  * - Core CRUD operations via BaseRepository inheritance
- * - Type-specific queries for entity resolution and priority selection
+ * - Type-specific queries for entity resolution and collection planning
  *
  * ARCHITECTURE DECISION: Simplified Repository Pattern
  * - Most entity creation/updates happen via EntityResolutionService
@@ -19,7 +19,7 @@ import { BaseRepository } from './base/base.repository';
  *
  * CURRENT USAGE:
  * - EntityResolutionService: Uses findById() and count() from BaseRepository
- * - EntityPrioritySelectionService: Uses findByType(), findById(), and count()
+ * - Keyword collection planning: Uses findByType(), findById(), and count()
  * - Future search/discovery features: Will use findByType() with filtering
  *
  * FUTURE PURPOSE:
@@ -51,7 +51,7 @@ export class EntityRepository extends BaseRepository<
    * Find entities by type with optional filtering
    *
    * Used by:
-   * - EntityPrioritySelectionService: Finding entities for keyword search priority
+   * - Keyword collection planning: Finding entities for collection priority
    * - Future search/discovery features: Type-specific entity queries
    *
    * @param type EntityType to filter by

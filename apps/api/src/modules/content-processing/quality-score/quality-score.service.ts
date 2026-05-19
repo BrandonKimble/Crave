@@ -945,13 +945,13 @@ export class QualityScoreService implements IQualityScoreService {
     if (categorySignal) {
       const signalWeight = this.calculateSignalWeight(categorySignal);
       if (signalWeight > 0) {
-        const contextualScore =
+        const signalQualityScore =
           restaurantScoreForSignal && restaurantScoreForSignal > 0
             ? restaurantScoreForSignal
             : this.config.defaults.categoryFallbackScore;
         relevantConnections.push({
           connectionId: 'signal:category',
-          foodQualityScore: contextualScore,
+          foodQualityScore: signalQualityScore,
           weight: signalWeight,
           isSignal: true,
         });

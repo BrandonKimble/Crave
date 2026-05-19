@@ -1,6 +1,5 @@
 import type { SharedValue } from 'react-native-reanimated';
 
-import type { RestaurantRouteHostSnapController } from '../../../../overlays/restaurantRouteHostContract';
 import type { RestaurantPanelSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 
 const NOOP = (): void => undefined;
@@ -14,7 +13,6 @@ export type RouteLocalRestaurantOverlayControlSelectionSnapshot = {
   shouldEnableRestaurantOverlayInteraction: boolean;
   onToggleFavorite: (id: string) => void;
   closeRestaurantProfile: () => void;
-  restaurantSheetSnapController: RestaurantRouteHostSnapController | null;
 };
 
 export const EMPTY_ROUTE_LOCAL_RESTAURANT_OVERLAY_CONTROL_SELECTION_SNAPSHOT: RouteLocalRestaurantOverlayControlSelectionSnapshot =
@@ -26,7 +24,6 @@ export const EMPTY_ROUTE_LOCAL_RESTAURANT_OVERLAY_CONTROL_SELECTION_SNAPSHOT: Ro
     shouldEnableRestaurantOverlayInteraction: false,
     onToggleFavorite: NOOP_TOGGLE_FAVORITE,
     closeRestaurantProfile: NOOP,
-    restaurantSheetSnapController: null,
   };
 
 export const areRouteLocalRestaurantOverlayControlSelectionSnapshotsEqual = (
@@ -40,5 +37,4 @@ export const areRouteLocalRestaurantOverlayControlSelectionSnapshotsEqual = (
   left.shouldEnableRestaurantOverlayInteraction ===
     right.shouldEnableRestaurantOverlayInteraction &&
   left.onToggleFavorite === right.onToggleFavorite &&
-  left.closeRestaurantProfile === right.closeRestaurantProfile &&
-  left.restaurantSheetSnapController === right.restaurantSheetSnapController;
+  left.closeRestaurantProfile === right.closeRestaurantProfile;

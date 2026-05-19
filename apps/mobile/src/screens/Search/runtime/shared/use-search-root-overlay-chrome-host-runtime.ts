@@ -2,6 +2,7 @@ import React from 'react';
 
 import type {
   SearchOverlayChromeFrameSnapshot,
+  SearchOverlayChromeHostSnapshot,
   SearchForegroundHeaderSearchThisAreaInputs,
   SearchOverlayChromeContainerSnapshot,
   SearchOverlayChromeHeaderProps,
@@ -25,8 +26,8 @@ import { useSearchRootOverlaySuggestionSelectionInputsRuntime } from './use-sear
 import { useSearchRootOverlaySuggestionShellContainerRuntime } from './use-search-root-overlay-suggestion-shell-container-runtime';
 import { useSearchRootOverlaySuggestionShellLayoutRuntime } from './use-search-root-overlay-suggestion-shell-layout-runtime';
 import { useSearchRootOverlaySuggestionShellMotionRuntime } from './use-search-root-overlay-suggestion-shell-motion-runtime';
-import { useSearchRootOverlaySuggestionStatusInputsRuntime } from './use-search-root-overlay-suggestion-status-inputs-runtime';
 import { useSearchChromeTouchSurfaceGeometryRuntime } from './use-search-chrome-touch-surface-geometry-runtime';
+import { searchChromeNativeHitTargetRegistry } from '../native/search-chrome-native-hit-target';
 
 export const useSearchRootOverlayChromeHostRuntime = ({
   appEntryPlaneRuntime,
@@ -92,6 +93,13 @@ export const useSearchRootOverlayChromeHostRuntime = ({
       ...searchThisAreaInteractionInputs,
     },
   });
+  React.useEffect(() => {
+    searchChromeNativeHitTargetRegistry.syncRuntime(searchChromeTouchSurfaceRuntime);
+  }, [searchChromeTouchSurfaceRuntime]);
+  const shortcutsInteractionEnabledRef = React.useRef(false);
+  shortcutsInteractionEnabledRef.current =
+    shortcutsInputs.shouldMountSearchShortcuts &&
+    shortcutsInputs.shouldEnableSearchShortcutsInteraction;
   const { hiddenSearchFiltersWarmupProps } = useSearchRootOverlayHeaderWarmupSourceRuntime({
     filterModalControlLane,
     searchState: stateFoundationLane.rootPrimitivesRuntime.searchState,
@@ -117,9 +125,6 @@ export const useSearchRootOverlayChromeHostRuntime = ({
   const suggestionDataInputs = useSearchRootOverlaySuggestionDataInputsRuntime({
     stateFoundationLane,
   });
-  const suggestionStatusInputs = useSearchRootOverlaySuggestionStatusInputsRuntime({
-    stateFoundationLane,
-  });
   const suggestionScrollInputs = useSearchRootOverlaySuggestionScrollInputsRuntime({
     stateFoundationLane,
     suggestionInteractionControlLane: profileControlRuntime.suggestionInteractionControlLane,
@@ -136,6 +141,17 @@ export const useSearchRootOverlayChromeHostRuntime = ({
     [shouldRenderSearchOverlay, suggestionShellContainerRuntime]
   );
   const chromeHeaderProps = React.useMemo<SearchOverlayChromeHeaderProps>(() => {
+    const chromeShortcutInputs = {
+      searchShortcutsAnimatedStyle: shortcutsInputs.searchShortcutsAnimatedStyle,
+      searchShortcutChipAnimatedStyle: shortcutsInputs.searchShortcutChipAnimatedStyle,
+      searchShortcutContentAnimatedStyle: shortcutsInputs.searchShortcutContentAnimatedStyle,
+      shortcutsInteractionEnabledRef,
+      handleBestRestaurantsHere: shortcutsInputs.handleBestRestaurantsHere,
+      handleBestDishesHere: shortcutsInputs.handleBestDishesHere,
+      handleSearchShortcutsRowLayout: shortcutsInputs.handleSearchShortcutsRowLayout,
+      handleRestaurantsShortcutLayout: shortcutsInputs.handleRestaurantsShortcutLayout,
+      handleDishesShortcutLayout: shortcutsInputs.handleDishesShortcutLayout,
+    };
     const searchThisAreaInputs = {
       ...searchThisAreaVisualInputs,
       ...searchThisAreaInteractionInputs,
@@ -147,7 +163,7 @@ export const useSearchRootOverlayChromeHostRuntime = ({
       ...searchBarLayoutInputs,
       ...searchBarVisualInputs,
       ...searchBarInteractionInputs,
-      ...shortcutsInputs,
+      ...chromeShortcutInputs,
       ...searchThisAreaInputs,
     };
   }, [
@@ -165,7 +181,6 @@ export const useSearchRootOverlayChromeHostRuntime = ({
       ...suggestionShellMotionRuntime,
       ...suggestionPanelInputs,
       ...suggestionDataInputs,
-      ...suggestionStatusInputs,
       ...suggestionScrollInputs,
       ...suggestionSelectionInputs,
       pointerEvents:
@@ -183,13 +198,24 @@ export const useSearchRootOverlayChromeHostRuntime = ({
       suggestionShellContainerRuntime,
       suggestionShellLayoutRuntime,
       suggestionShellMotionRuntime,
-      suggestionStatusInputs,
     ]
   );
   const chromeFrameSnapshot = React.useMemo<SearchOverlayChromeFrameSnapshot>(
     () => ({
       isFocused: appEntryPlaneRuntime.isFocused,
       shouldRenderSearchOverlay,
+      shouldFreezeSuggestionSurfaceForRunOne:
+        stateFoundationLane.rootDataPlaneRuntime.freezeGate
+          .isSearchSurfaceRedrawChromeFreezeActive ||
+        stateFoundationLane.rootDataPlaneRuntime.freezeGate
+          .isSearchSurfaceRedrawPreflightFreezeActive ||
+        stateFoundationLane.rootDataPlaneRuntime.freezeGate.isResponseFrameFreezeActive,
+      shouldFreezeOverlayHeaderChromeForRunOne:
+        stateFoundationLane.rootDataPlaneRuntime.freezeGate
+          .isSearchSurfaceRedrawChromeFreezeActive ||
+        stateFoundationLane.rootDataPlaneRuntime.freezeGate
+          .isSearchSurfaceRedrawPreflightFreezeActive ||
+        stateFoundationLane.rootDataPlaneRuntime.freezeGate.isResponseFrameFreezeActive,
       onProfilerRender:
         rootOverlayFoundationRuntime.rootInstrumentationRuntime.handleProfilerRender,
       hiddenSearchFiltersWarmupProps,
@@ -197,16 +223,32 @@ export const useSearchRootOverlayChromeHostRuntime = ({
     [
       appEntryPlaneRuntime.isFocused,
       shouldRenderSearchOverlay,
+      stateFoundationLane.rootDataPlaneRuntime.freezeGate.isResponseFrameFreezeActive,
+      stateFoundationLane.rootDataPlaneRuntime.freezeGate
+        .isSearchSurfaceRedrawChromeFreezeActive,
+      stateFoundationLane.rootDataPlaneRuntime.freezeGate
+        .isSearchSurfaceRedrawPreflightFreezeActive,
       rootOverlayFoundationRuntime.rootInstrumentationRuntime.handleProfilerRender,
       hiddenSearchFiltersWarmupProps,
     ]
   );
+  const chromeHostSnapshot = React.useMemo<SearchOverlayChromeHostSnapshot>(
+    () => ({
+      frameSnapshot: chromeFrameSnapshot,
+      containerSnapshot: chromeContainerSnapshot,
+      headerProps: chromeHeaderProps,
+      suggestionSurfaceProps: chromeSuggestionSurfaceProps,
+    }),
+    [
+      chromeContainerSnapshot,
+      chromeFrameSnapshot,
+      chromeHeaderProps,
+      chromeSuggestionSurfaceProps,
+    ]
+  );
 
   return {
-    overlayChromeFrameSnapshot: chromeFrameSnapshot,
-    overlayChromeContainerSnapshot: chromeContainerSnapshot,
-    overlayChromeHeaderProps: chromeHeaderProps,
-    overlayChromeSuggestionSurfaceProps: chromeSuggestionSurfaceProps,
+    overlayChromeHostSnapshot: chromeHostSnapshot,
     searchChromeTouchSurfaceRuntime,
   };
 };

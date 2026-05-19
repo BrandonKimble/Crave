@@ -1,6 +1,7 @@
 import type { OnboardingAnswers, UserOnboardingProfile } from '@crave-search/shared';
 import type { AxiosRequestConfig } from 'axios';
 import api from './api';
+import type { ApiRequestBehaviorConfig } from './api';
 
 export interface UserStats {
   pollsCreatedCount: number;
@@ -29,14 +30,15 @@ export interface UsernameAvailability {
   suggestions: string[];
 }
 
-type UserServiceRequestConfig = AxiosRequestConfig & {
-  suppressSystemStatus?: boolean;
-  suppressErrorLog?: boolean;
-};
+type UserServiceRequestConfig = AxiosRequestConfig & ApiRequestBehaviorConfig;
 
 export const usersService = {
   async getMe(): Promise<UserProfile> {
-    const response = await api.get<UserProfile>('/users/me');
+    const requestConfig: UserServiceRequestConfig = {
+      suppressSystemStatus: true,
+      suppressErrorLog: true,
+    };
+    const response = await api.get<UserProfile>('/users/me', requestConfig);
     return response.data;
   },
   async updateMe(payload: { displayName?: string; avatarUrl?: string }): Promise<UserProfile> {

@@ -39,6 +39,6 @@ export class MarketResolveDto {
   userLocation?: CoordinateDto;
 
   @IsOptional()
-  @IsIn(['polls', 'search'])
-  mode?: 'polls' | 'search';
+  @IsIn(['polls_read', 'search'])
+  mode?: 'polls_read' | 'search';
 }

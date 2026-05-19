@@ -15,6 +15,7 @@ export const useSearchSuggestionLayoutStateRuntime = ({
   searchInteractionRef,
   query,
   isSuggestionPanelActive,
+  shouldDisableSearchShortcuts,
   shouldDriveSuggestionLayout,
   shouldRenderSuggestionPanel,
 }: SearchSuggestionLayoutStateRuntimeArgs): SearchSuggestionLayoutStateRuntime => {
@@ -36,6 +37,7 @@ export const useSearchSuggestionLayoutStateRuntime = ({
     useSearchSuggestionLayoutResolutionRuntime({
       query,
       isSuggestionPanelActive,
+      shouldDisableSearchShortcuts,
       shouldDriveSuggestionLayout,
       searchContainerFrame:
         searchSuggestionSearchLayoutRuntime.searchContainerFrame,

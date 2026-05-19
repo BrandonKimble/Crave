@@ -3,12 +3,7 @@ import type {
   SearchRootForegroundInputControlLane,
   SearchRootForegroundInteractionControlLane,
 } from './use-search-root-control-plane-runtime-contract';
-import type {
-  SearchOverlayChromeContainerSnapshot,
-  SearchOverlayChromeFrameSnapshot,
-  SearchOverlayChromeHeaderProps,
-  SearchOverlayChromeSuggestionSurfaceProps,
-} from './search-foreground-chrome-contract';
+import type { SearchOverlayChromeHostSnapshot } from './search-foreground-chrome-contract';
 import type { SearchOverlayHostGateSnapshot } from './search-overlay-host-gate-snapshot-contract';
 import type { SearchOverlayShellHostSnapshot } from './search-overlay-shell-host-snapshot-contract';
 import type { SearchOverlayLocalRestaurantSheetHostAuthority } from './search-root-host-authority-contract';
@@ -34,10 +29,7 @@ import type { useSearchRootControlAuthorityRuntime } from './use-search-root-con
 import type { useSearchRootControlProfileExperienceRuntime } from './use-search-root-control-profile-experience-runtime';
 
 export type SearchRootOverlayHostRuntime = {
-  overlayChromeFrameSnapshot: SearchOverlayChromeFrameSnapshot;
-  overlayChromeContainerSnapshot: SearchOverlayChromeContainerSnapshot;
-  overlayChromeHeaderProps: SearchOverlayChromeHeaderProps;
-  overlayChromeSuggestionSurfaceProps: SearchOverlayChromeSuggestionSurfaceProps;
+  overlayChromeHostSnapshot: SearchOverlayChromeHostSnapshot;
   searchChromeTouchSurfaceRuntime: SearchChromeTouchSurfaceRuntime;
   overlayGateSnapshot: SearchOverlayHostGateSnapshot;
   overlayShellSnapshot: SearchOverlayShellHostSnapshot;
@@ -75,11 +67,7 @@ export type SearchRootOverlayShellHostRuntime = Pick<
 
 export type SearchRootOverlayChromeHostRuntime = Pick<
   SearchRootOverlayHostRuntime,
-  | 'overlayChromeFrameSnapshot'
-  | 'overlayChromeContainerSnapshot'
-  | 'overlayChromeHeaderProps'
-  | 'overlayChromeSuggestionSurfaceProps'
-  | 'searchChromeTouchSurfaceRuntime'
+  'overlayChromeHostSnapshot' | 'searchChromeTouchSurfaceRuntime'
 >;
 
 export type SearchRootOverlayLocalRestaurantHostRuntime = Pick<

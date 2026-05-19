@@ -32,12 +32,7 @@ const AppRouteOverlayHostRuntimeBoundary = React.memo(function AppRouteOverlayHo
 
   return (
     <AppOverlayRouteHost
-      overlayChromeFrameHostAuthority={authoritySurface.overlayChromeFrameHostAuthority}
-      overlayChromeContainerHostAuthority={authoritySurface.overlayChromeContainerHostAuthority}
-      overlayChromeHeaderHostAuthority={authoritySurface.overlayChromeHeaderHostAuthority}
-      overlayChromeSuggestionSurfaceHostAuthority={
-        authoritySurface.overlayChromeSuggestionSurfaceHostAuthority
-      }
+      overlayChromeHostAuthority={authoritySurface.overlayChromeHostAuthority}
       overlayGateHostAuthority={authoritySurface.overlayGateHostAuthority}
       overlayShellHostAuthority={authoritySurface.overlayShellHostAuthority}
       overlayGlobalRestaurantHostAuthority={routeSceneRuntime.routeGlobalRestaurantOverlayAuthority}
@@ -45,7 +40,10 @@ const AppRouteOverlayHostRuntimeBoundary = React.memo(function AppRouteOverlayHo
         authoritySurface.overlayLocalRestaurantSheetHostAuthority
       }
       routeSceneDisplayTargetRegistry={routeSceneRuntime.routeSceneDisplayTargetRegistry}
+      routeSceneInputLane={routeSceneRuntime.sceneInputLane}
       routeOverlayTransitionActions={routeSceneRuntime.routeOverlayTransitionActions}
+      routeSheetSnapSessionAuthority={routeSceneRuntime.routeSheetSnapSessionAuthority}
+      routeSheetSnapSessionActions={routeSceneRuntime.routeSheetSnapSessionActions}
       routeSheetHostRuntime={{
         ...routeSheetHostRuntimeOwner,
         searchInteractionRef,

@@ -1,6 +1,12 @@
 import React from 'react';
 
+import {
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+} from '../../../../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 import type { FoodResult, RestaurantResult, SearchResponse } from '../../../../types';
+import type { SearchSurfaceRedrawPhase } from '../controller/search-surface-redraw-phase';
 import { type ResultsListItem } from './list-read-model-builder';
 import {
   buildSearchResultsSectionedProjection,
@@ -20,6 +26,7 @@ type SearchResultsSectionedProjectionStateRuntimeArgs = {
   results: SearchResponse | null;
   shouldRetainCommittedResults: boolean;
   readModelProjection?: SearchRouteResultsPolicyReadModelProjectionFacet;
+  searchSurfaceRedrawPhase: SearchSurfaceRedrawPhase;
 };
 
 export const useSearchResultsSectionedProjectionStateRuntime = ({
@@ -30,7 +37,11 @@ export const useSearchResultsSectionedProjectionStateRuntime = ({
   results,
   shouldRetainCommittedResults,
   readModelProjection,
+  searchSurfaceRedrawPhase,
 }: SearchResultsSectionedProjectionStateRuntimeArgs) => {
+  const scenarioConfig = usePerfScenarioRuntimeStore((state) => state.activeConfig);
+  const searchSurfaceRedrawPhaseRef = React.useRef(searchSurfaceRedrawPhase);
+  searchSurfaceRedrawPhaseRef.current = searchSurfaceRedrawPhase;
   const listProjection = React.useMemo(() => {
     const buildStartedAtMs = getNowMs();
     if (readModelProjection) {
@@ -39,8 +50,21 @@ export const useSearchResultsSectionedProjectionStateRuntime = ({
         results,
         shouldRetainCommittedResults,
       });
+      const buildDurationMs = getNowMs() - buildStartedAtMs;
+      if (isPerfScenarioAttributionActive(scenarioConfig)) {
+        logPerfScenarioAttributionEvent('WorkSpan', scenarioConfig, {
+          event: 'scenario_work_span',
+          owner: 'results_read_model_projection',
+          path: 'policy_snapshot',
+          durationMs: Number(buildDurationMs.toFixed(3)),
+          handoffPhase: searchSurfaceRedrawPhaseRef.current,
+          activeTab,
+          dishesCount: policySnapshot.safeRowCountByTab.dishes,
+          restaurantsCount: policySnapshot.safeRowCountByTab.restaurants,
+        });
+      }
       return {
-        buildDurationMs: getNowMs() - buildStartedAtMs,
+        buildDurationMs,
         safeResultsDataByTab: policySnapshot.safeResultsDataByTab,
         sectionedRowsByTab: policySnapshot.rowsByTab,
         projectionCounts: {
@@ -56,8 +80,21 @@ export const useSearchResultsSectionedProjectionStateRuntime = ({
       exactMatchState: exactMatchStateRuntime,
     });
     const projectionCounts = resolveSearchResultsSectionedProjectionCounts(sectionedProjection);
+    const buildDurationMs = getNowMs() - buildStartedAtMs;
+    if (isPerfScenarioAttributionActive(scenarioConfig)) {
+      logPerfScenarioAttributionEvent('WorkSpan', scenarioConfig, {
+        event: 'scenario_work_span',
+        owner: 'results_read_model_projection',
+        path: 'local_projection',
+        durationMs: Number(buildDurationMs.toFixed(3)),
+        handoffPhase: searchSurfaceRedrawPhaseRef.current,
+        activeTab,
+        dishesCount: projectionCounts.safeRowCountByTab.dishes,
+        restaurantsCount: projectionCounts.safeRowCountByTab.restaurants,
+      });
+    }
     return {
-      buildDurationMs: getNowMs() - buildStartedAtMs,
+      buildDurationMs,
       ...sectionedProjection,
       projectionCounts,
     };
@@ -71,6 +108,7 @@ export const useSearchResultsSectionedProjectionStateRuntime = ({
     readModelProjection,
     restaurants,
     results,
+    scenarioConfig,
     shouldRetainCommittedResults,
   ]);
 

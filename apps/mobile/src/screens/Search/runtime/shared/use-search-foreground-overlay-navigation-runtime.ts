@@ -38,6 +38,8 @@ export const useSearchForegroundOverlayNavigationRuntime = ({
     (target: SearchForegroundOverlayRuntimeArgs['rootOverlay']) => {
       transitionActions.requestOverlaySwitch({
         targetSceneKey: target,
+        sheetTransitionKind: 'topLevelSwitch',
+        sheetOpenerSource: 'navTab',
       });
     },
     [transitionActions]

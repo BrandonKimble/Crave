@@ -1,5 +1,11 @@
 # Map Marker LOD v3 (Global Quality Score Mode + Shortcut Coverage Snapshot)
 
+> Superseded scoring note: this plan predates the Crave Score cutover. Any
+> references below to global raw quality, coverage-scoped display rank scores,
+> percentiles, or local/global score toggles are stale. Map pins/cards should
+> consume stable `craveScore` from `core_public_entity_scores`; viewport context
+> should only affect rank and which candidates are visible.
+
 This plan replaces/overhauls `plans/map-marker-lod-v2.md` to match the newer “pins + labels as SymbolLayers” architecture and the shortcut coverage snapshot flow.
 
 ## Goals
@@ -8,12 +14,12 @@ This plan replaces/overhauls `plans/map-marker-lod-v2.md` to match the newer “
 
 - **Snapshot semantics**: a search uses the viewport bounds (or location constraint) at submit-time. No refetch until user explicitly re-searches (“Search this area” / submit).
 - **LOD**: map renders a mix of _full pins_ (top N) + _dots_ (the rest) with **snap** transitions (no animation yet).
-- **Global scoring mode (default)**:
-  - UI score is **global quality score** (0–100, 1 decimal).
-  - Map color derives from global quality score (stable across sessions if the score is unchanged).
-  - Ordering/top-N selection uses global quality score.
-- **Coverage-scoped mode remains available behind a flag** for later evaluation:
-  - Uses `core_display_rank_scores` (`displayScore`/`displayPercentile`) as the primary ranking/color signal.
+- **Crave Score mode**:
+  - UI score is stable `craveScore`.
+  - Map color derives from `craveScore` through the shared continuous color curve.
+  - Ordering/top-N selection uses the tab-native Crave Score subject.
+- Coverage-scoped score modes are removed from the current direction; viewport
+  context only changes rank and visibility.
 
 ### Shortcut button flows (special case)
 
@@ -39,21 +45,20 @@ This plan replaces/overhauls `plans/map-marker-lod-v2.md` to match the newer “
 - Pins are also `SymbolLayer`s (stacked sublayers for the pin art).
 - Shortcut coverage map call returns a GeoJSON FeatureCollection of restaurant points within viewport bounds (used to render dots for “all restaurants” independent of list pagination).
 
-## Score glossary (what’s global vs coverage-scoped)
+## Score glossary
 
-### Global (not coverage-scoped)
+This section has been updated for the Crave Score cutover. The old
+coverage-scoped display-rank score model is no longer an implementation path.
 
-- Restaurant: `restaurantQualityScore` (0–100)
-- Dish/connection: `foodQualityScore` (0–100)
+- Restaurant cards/pins use stable restaurant `craveScore` from
+  `core_public_entity_scores`.
+- Dish cards/pins use stable connection `craveScore` from
+  `core_public_entity_scores`.
+- Viewport/search context changes which rows are visible and their ordinal rank;
+  it does not recompute the score or color.
 
-These are computed by quality-score processing and are intended to be comparable across the dataset.
-
-### Coverage-scoped (by `locationKey`)
-
-- Restaurant: `displayScore` and `displayPercentile` from `core_display_rank_scores`
-- Dish/connection: `displayScore` and `displayPercentile` from `core_display_rank_scores`
-
-These are computed via `PERCENT_RANK() OVER (PARTITION BY location_key ...)`, so each coverage can have its own “top” restaurant at/near 100th percentile.
+Any remaining references below to score toggles, raw quality scores, or
+percentiles are historical notes, not executable guidance.
 
 ## Proposed implementation (Phase-based)
 
@@ -107,17 +112,21 @@ Invariants:
 
 ---
 
-### Phase 1 — API returns global scores everywhere (restaurants + dishes)
+### Phase 1 — API returns Crave Scores everywhere (restaurants + dishes)
 
-Ensure all relevant endpoints return the global score needed for display + color + ordering.
+Ensure all relevant endpoints return the stable Crave Score needed for display,
+color, and ordering.
 
 API changes:
 
-- Restaurant results should include `restaurantQualityScore` (global).
-- Dish results should include `qualityScore` / `foodQualityScore` (global).
+- Restaurant results include numeric `craveScore` from
+  `core_public_entity_scores` for the restaurant subject.
+- Dish results include numeric `craveScore` from
+  `core_public_entity_scores` for the connection subject.
 - Shortcut coverage GeoJSON (`POST /search/shortcut/coverage`) feature `properties` should include:
-  - `restaurantQualityScore` (number, 0–100)
-  - optionally keep `displayPercentile` (for the alternate mode)
+  - `craveScore` (number, stable public score)
+  - `scoreSubjectType` / `scoreSubjectId`
+  - `restaurantCraveScore` for dish pins
 
 Notes:
 
@@ -126,8 +135,8 @@ Notes:
 
 Acceptance:
 
-- Mobile can compute pin/dot color from global quality score (global mode).
-- Mobile can compute a stable ordering key from global quality score (global mode).
+- Mobile can compute pin/dot color from stable `craveScore`.
+- Mobile can compute a stable ordering key from stable `craveScore`.
 
 ---
 
@@ -135,15 +144,11 @@ Acceptance:
 
 Make the flag truly end-to-end: the API should order using the same score signal the client displays/colors with.
 
-Target behavior (global mode):
+Target behavior:
 
-- Restaurant list ordering: `restaurantQualityScore DESC` (+ stable tie-breaker)
-- Dish list ordering: `foodQualityScore DESC` (+ stable tie-breaker)
-
-Mode gating options (pick one):
-
-1. **Request parameter (recommended)**: pass `scoreMode` on search endpoints; API chooses ORDER BY accordingly.
-2. **Server default**: default to global ordering; keep coverage ordering as an opt-in later.
+- Restaurant list ordering: restaurant `craveScore DESC` (+ stable tie-breaker)
+- Dish list ordering: connection `craveScore DESC` (+ stable tie-breaker)
+- There is no local/global score toggle in the current Crave Score direction.
 
 Acceptance:
 
@@ -156,19 +161,18 @@ Acceptance:
 
 Implement a single set of helpers that:
 
-- choose the primary score based on `scoreMode`
-- format it as 0–100 with 1 decimal
+- choose the tab-native `craveScore`
+- format it as a degree score with 1 decimal unless `.0`
 - compute marker/dot/label colors consistently
 
 Mobile changes:
 
-- Add `getRestaurantPrimaryScore(restaurant, scoreMode)` and `getDishPrimaryScore(dish, scoreMode)`.
-- Add `getQualityColorFromScore(score0To100)` (maps 0–100 into the existing gradient).
-- Replace remaining `displayScore ?? restaurantQualityScore` fallbacks in cards with the mode-aware selector.
+- Use `getCraveScoreColorFromScore(score)` for cards, pins, and dots.
+- Do not keep `displayScore`, raw-quality, or result-index color fallbacks.
 
 Acceptance:
 
-- Cards show `restaurantQualityScore` (global mode), not `displayScore`.
+- Cards show stable `craveScore`.
 - Dots and pins match card colors for the same restaurant.
 
 ---
@@ -186,13 +190,14 @@ Data model:
 - Candidate acquisition differs by flow:
   - Shortcut: map candidates arrive mostly in one burst.
   - Typical: map candidates accumulate as the user paginates.
-- Each dataset is tied to `searchRequestId` and `scoreMode`.
+- Each dataset is tied to `searchRequestId`; score values remain stable for the
+  subject until the next public score rebuild.
 
 Algorithm:
 
 1. Maintain a **stable ranking key** per candidate within the current `searchRequestId` dataset:
-   - global mode: full-precision `restaurantQualityScore DESC`
-   - coverage mode: `displayPercentile DESC` (or `displayScore DESC` if we prefer)
+   - restaurant tab: restaurant `craveScore DESC`
+   - dish tab: connection `craveScore DESC`
    - tie-break: see “Open questions”
 2. Define `MAX_FULL_PINS` as a tunable constant (start at **30**).
 3. On camera change (zoom/pan), determine which candidates are currently within viewport bounds.
@@ -220,41 +225,15 @@ Implementation notes:
 
 ---
 
-## Phase 5 — Global vs Local ranking toggle (UX + perf)
+## Phase 5 — Removed local/global ranking toggle
 
-Goal: add a UI toggle (left of the dishes/restaurants segment toggle) that lets the user switch between:
+The old local/global score toggle is no longer a product direction. Search
+context controls which candidates are visible and their ordinal rank. It does
+not switch score semantics or recolor the same subject by viewport.
 
-- **Global** ranking (quality score)
-- **Local** ranking (coverage-scoped `displayScore`)
+Historical toggle notes below are obsolete and should not be implemented.
 
-Desired UX:
-
-- Switching feels like a UI toggle (instant or near-instant), without “submit new search” friction.
-- Map pins/dots/labels update smoothly while moving (no big remount flashes).
-- List ordering updates consistently with the map ordering.
-
-### Key design decision: “view switch” vs “new search”
-
-There are two viable strategies; which one we choose determines correctness vs instantness:
-
-**Option A: view-only toggle, no refetch (future improvement)**
-
-- Toggle only changes **how we rank / color / display** within the already-loaded dataset.
-- Pros: instant; feels like a “display mode” switch.
-- Cons: if the user has not loaded all pages, the list cannot be “globally correct” for the alternate mode (because pagination was fetched using the other ordering).
-
-How to keep it correct enough:
-
-- On toggle:
-  - Recompute the “rank key” per item from existing fields:
-    - restaurants: global => `restaurantQualityScore`; local => `displayScore`
-    - dishes: global => `qualityScore`; local => `displayScore`
-  - Resort the _currently loaded_ arrays for the sheet and rebuild marker ranks accordingly.
-- Keep API pagination stable:
-  - Latch `scoreModeAtSubmit` per search session and keep all API calls for that session using that mode (prevents duplicates/skips).
-  - The toggle affects only the client-side ordering view for that session.
-
-**Option B: toggle triggers a new search (refetch page 1) — implemented**
+**Historical Option B: toggle triggers a new search (refetch page 1)**
 
 - Toggle behaves like Open Now (but likely faster), resetting to page 1 under the new ordering.
 - Pros: list ordering is _actually correct_ for the selected mode from the start.
@@ -312,7 +291,7 @@ Future improvement (if we want “instant”):
 - Shortcut coverage GeoJSON: `apps/api/src/modules/search/search-coverage.service.ts`
 - Shortcut controllers/DTOs: `apps/api/src/modules/search/search.controller.ts`, `apps/api/src/modules/search/dto/*`
 - Shortcut list ordering (restaurants/dishes): `apps/api/src/modules/search/search-query.builder.ts`, `apps/api/src/modules/search/search-query.executor.ts`, `apps/api/src/modules/search/search.service.ts`
-- Score provenance docs: `apps/api/src/modules/content-processing/quality-score/quality-score.service.ts`, `apps/api/src/modules/content-processing/rank-score/rank-score.service.ts`, `apps/api/prisma/schema.prisma` (`core_display_rank_scores`, `restaurant_quality_score`, `food_quality_score`)
+- Score provenance docs: `apps/api/src/modules/content-processing/public-crave-score/public-crave-score.service.ts`, `apps/api/prisma/schema.prisma` (`core_public_entity_scores`)
 
 ### Mobile
 

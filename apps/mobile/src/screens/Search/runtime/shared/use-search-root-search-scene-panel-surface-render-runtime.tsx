@@ -27,7 +27,10 @@ export const useSearchRootSearchScenePanelSurfaceRenderRuntime = ({
     [searchSceneSheetPlaneRuntime.style]
   );
   const resolvedSurfaceStyle = React.useMemo(
-    () => [overlaySheetStyles.surface, styles.resultsSheetSurface],
+    () => [
+      overlaySheetStyles.surface,
+      styles.resultsSheetSurface,
+    ],
     []
   );
   const underlayComponent = React.useMemo(

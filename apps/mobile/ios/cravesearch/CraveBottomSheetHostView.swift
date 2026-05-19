@@ -102,18 +102,11 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
   }
 
   private let stepSnapSmallDragPx: CGFloat = 20
-  private let stepSnapDragPx: CGFloat = 48
-  private let stepSnapSkipDragPx: CGFloat = 212
-  private let stepSnapVelocityPxPerS: CGFloat = 820
-  private let stepSnapSkipVelocityPxPerS: CGFloat = 3200
-  private let stepSnapSkipMinProgress: CGFloat = 0.5
   private let stepSnapDirectionEpsilonPx: CGFloat = 4
-  private let stepSnapDirectionVelocityEpsilonPxPerS: CGFloat = 120
-  private let stepSnapDirectionVelocityOverridePxPerS: CGFloat = 420
   private let stepSnapReversalCancelVelocityPxPerS: CGFloat = 220
   private let stepSnapReversalCancelDragPx: CGFloat = 140
-  private let stepSnapProgressForStep: CGFloat = 0.18
-  private let stepSnapProgressForSkip: CGFloat = 1.03
+  private let snapGateFallbackPx: CGFloat = 96
+  private let snapVelocityProjectionSeconds: CGFloat = 0.18
 
   @objc var visible: Bool = false {
     didSet {
@@ -137,6 +130,7 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
   }
   @objc var animateOnMount: Bool = false
   @objc var dismissThreshold: NSNumber?
+  @objc var snapStepThreshold: NSNumber?
 
   @objc var sheetCommand: NSDictionary? {
     didSet {
@@ -173,8 +167,6 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
   private var lastCommandToken: Int = -1
   private var dragStartY: CGFloat = 0
   private var currentSheetY: CGFloat = 0
-  private var lastDebugHierarchySignature: String?
-  private var lastTouchDiagnosticSignature: String?
 
   override init(frame: CGRect) {
     super.init(frame: frame)
@@ -193,8 +185,6 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
   override func layoutSubviews() {
     super.layoutSubviews()
     syncSheetPresentationViewLayout()
-    debugLogPresentationHierarchyIfNeeded(reason: "layoutSubviews")
-    emitGeometryDiagnostic(reason: "layoutSubviews")
     let nextSnapY = resolveSnapValue(currentSnapPoint) ?? bounds.height
     if !visible && currentSnapPoint == "hidden" {
       applySheetY(nextSnapY, emitEvent: false)
@@ -204,8 +194,6 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
   override func didAddSubview(_ subview: UIView) {
     super.didAddSubview(subview)
     syncSheetPresentationViewLayout()
-    debugLogPresentationHierarchyIfNeeded(reason: "didAddSubview")
-    emitGeometryDiagnostic(reason: "didAddSubview")
   }
 
   func gestureRecognizer(
@@ -259,39 +247,16 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
 
   override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
     let interactiveFrame = currentSheetInteractiveFrame()
-    let result = visible && interactiveFrame.contains(point)
-    emitTouchDiagnosticIfNeeded(
-      phase: "point_inside",
-      point: point,
-      result: result,
-      hitView: nil,
-      interactiveFrame: interactiveFrame
-    )
-    return result
+    return visible && interactiveFrame.contains(point)
   }
 
   override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
     let interactiveFrame = currentSheetInteractiveFrame()
     guard visible, interactiveFrame.contains(point) else {
-      emitTouchDiagnosticIfNeeded(
-        phase: "hit_test_rejected",
-        point: point,
-        result: false,
-        hitView: nil,
-        interactiveFrame: interactiveFrame
-      )
       return nil
     }
     let hitView = super.hitTest(point, with: event)
-    let resolvedHitView = hitView === self ? nil : hitView
-    emitTouchDiagnosticIfNeeded(
-      phase: "hit_test",
-      point: point,
-      result: resolvedHitView != nil,
-      hitView: hitView,
-      interactiveFrame: interactiveFrame
-    )
-    return resolvedHitView
+    return hitView === self ? nil : hitView
   }
 
   private func applySnapPoints(previousValue: NSDictionary?) {
@@ -456,115 +421,6 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
     )
   }
 
-  private func emitTouchDiagnosticIfNeeded(
-    phase: String,
-    point: CGPoint,
-    result: Bool,
-    hitView: UIView?,
-    interactiveFrame: CGRect
-  ) {
-    #if DEBUG
-      let hitViewClass = hitView.map { String(describing: type(of: $0)) } ?? "nil"
-      let signature =
-        "\(phase)|result=\(result)|point=\(Int(point.x.rounded()))x\(Int(point.y.rounded()))|sheetY=\(Int(sheetY.rounded()))|frame=\(NSCoder.string(for: interactiveFrame.integral))|hit=\(hitViewClass)|visible=\(visible)|interactionEnabled=\(interactionEnabled)"
-      guard signature != lastTouchDiagnosticSignature else {
-        return
-      }
-      lastTouchDiagnosticSignature = signature
-      let payload: [String: Any] = [
-        "result": result,
-        "pointX": Int(point.x.rounded()),
-        "pointY": Int(point.y.rounded()),
-        "sheetY": Int(sheetY.rounded()),
-        "interactiveFrame": NSCoder.string(for: interactiveFrame.integral),
-        "hitViewClass": hitViewClass,
-        "hitViewIsSelf": hitView === self,
-        "visible": visible,
-        "interactionEnabled": interactionEnabled,
-        "hostFrame": NSCoder.string(for: frame.integral),
-        "hostBounds": NSCoder.string(for: bounds.integral),
-        "hostTransformTy": Int(transform.ty.rounded()),
-        "sheetTransformTy": Int(resolvedSheetPresentationView()?.transform.ty.rounded() ?? 0),
-        "hierarchy": describePresentationHierarchy(),
-      ]
-      let event: [String: Any] = [
-        "eventType": "diag",
-        "phase": phase,
-        "payload": payload,
-      ]
-      onSheetHostEvent?(event)
-    #endif
-  }
-
-  private func emitGeometryDiagnostic(reason: String) {
-    #if DEBUG
-      let presentationView = resolvedSheetPresentationView()
-      let payload: [String: Any] = [
-        "sheetY": Int(sheetY.rounded()),
-        "visible": visible,
-        "interactionEnabled": interactionEnabled,
-        "hostFrame": NSCoder.string(for: frame.integral),
-        "hostBounds": NSCoder.string(for: bounds.integral),
-        "hostTransformTy": Int(transform.ty.rounded()),
-        "interactiveFrame": NSCoder.string(for: currentSheetInteractiveFrame().integral),
-        "presentationClass": presentationView.map { String(describing: type(of: $0)) } ?? "nil",
-        "presentationFrame": presentationView.map { NSCoder.string(for: $0.frame.integral) } ?? "nil",
-        "presentationBounds": presentationView.map { NSCoder.string(for: $0.bounds.integral) } ?? "nil",
-        "presentationTransformTy": Int(presentationView?.transform.ty.rounded() ?? 0),
-        "presentationVisualTop":
-          Int(((presentationView?.frame.minY ?? 0) + (presentationView?.transform.ty ?? 0)).rounded()),
-        "presentationVisualBottom":
-          Int(((presentationView?.frame.maxY ?? 0) + (presentationView?.transform.ty ?? 0)).rounded()),
-        "hierarchy": describePresentationHierarchy(),
-      ]
-      let event: [String: Any] = [
-        "eventType": "diag",
-        "phase": "geometry_\(reason)",
-        "payload": payload,
-      ]
-      onSheetHostEvent?(event)
-    #endif
-  }
-
-  private func debugLogPresentationHierarchyIfNeeded(reason: String) {
-    #if DEBUG
-      let hierarchyDescription = describePresentationHierarchy()
-      let nextSignature =
-        "\(reason)|visible=\(visible)|snap=\(currentSnapPoint)|sheetY=\(Int(sheetY.rounded()))|frame=\(NSCoder.string(for: frame.integral))|bounds=\(NSCoder.string(for: bounds.integral))|transformTy=\(Int(transform.ty.rounded()))|interactive=\(NSCoder.string(for: currentSheetInteractiveFrame().integral))|hierarchy=\(hierarchyDescription)"
-      guard nextSignature != lastDebugHierarchySignature else {
-        return
-      }
-      lastDebugHierarchySignature = nextSignature
-      print("[SHEET-HOST-DIAG] \(nextSignature)")
-    #endif
-  }
-
-  private func describePresentationHierarchy() -> String {
-    let roots = reactManagedSheetPresentationView().map { [$0] } ?? subviews
-    guard !roots.isEmpty else {
-      return "no_subviews"
-    }
-    return roots
-      .map { describeViewTree($0, depth: 0, maxDepth: 4) }
-      .joined(separator: " || ")
-  }
-
-  private func describeViewTree(_ view: UIView, depth: Int, maxDepth: Int) -> String {
-    let frame = NSCoder.string(for: view.frame.integral)
-    let bounds = NSCoder.string(for: view.bounds.integral)
-    let className = String(describing: type(of: view))
-    let alphaString = String(format: "%.2f", view.alpha)
-    let currentDescription =
-      "\(className){frame=\(frame),bounds=\(bounds),transformTy=\(Int(view.transform.ty.rounded())),interactive=\(view.isUserInteractionEnabled),hidden=\(view.isHidden),alpha=\(alphaString),subviews=\(view.subviews.count)}"
-    guard depth < maxDepth, !view.subviews.isEmpty else {
-      return currentDescription
-    }
-    let children = view.subviews
-      .map { describeViewTree($0, depth: depth + 1, maxDepth: maxDepth) }
-      .joined(separator: " > ")
-    return "\(currentDescription) -> [\(children)]"
-  }
-
   private func resolveSnapValue(_ snapPoint: String) -> CGFloat? {
     currentSnapPoints[snapPoint]
   }
@@ -587,19 +443,13 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
     let collapsed = resolveSnapValue("collapsed") ?? middle
     let hidden = resolveSnapValue("hidden") ?? collapsed
 
-    if !preventSwipeDismiss {
-      let threshold = dismissThreshold.map { CGFloat(truncating: $0) } ?? (hidden - 80)
-      if hidden > collapsed && value >= threshold {
-        return "hidden"
-      }
-    }
-
     let candidates = buildVisibleSnapCandidates(
       expanded: expanded,
       middle: middle,
-      collapsed: collapsed
+      collapsed: collapsed,
+      hidden: preventSwipeDismiss ? nil : hidden
     )
-    let targetValue = resolveSteppedSnapValue(
+    let targetValue = resolveHeaderGatedSnapValue(
       value: clampSheetY(value),
       velocityY: velocityY,
       gestureStartY: clampSheetY(gestureStartY),
@@ -611,12 +461,16 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
   private func buildVisibleSnapCandidates(
     expanded: CGFloat,
     middle: CGFloat,
-    collapsed: CGFloat
+    collapsed: CGFloat,
+    hidden: CGFloat?
   ) -> [SnapCandidate] {
     var candidates: [SnapCandidate] = []
     appendVisibleSnapCandidate(&candidates, key: "expanded", value: expanded)
     appendVisibleSnapCandidate(&candidates, key: "middle", value: middle)
     appendVisibleSnapCandidate(&candidates, key: "collapsed", value: collapsed)
+    if let hidden {
+      appendVisibleSnapCandidate(&candidates, key: "hidden", value: hidden)
+    }
     return candidates
   }
 
@@ -648,7 +502,7 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
     return closestIndex
   }
 
-  private func resolveSteppedSnapValue(
+  private func resolveHeaderGatedSnapValue(
     value: CGFloat,
     velocityY: CGFloat,
     gestureStartY: CGFloat,
@@ -660,70 +514,68 @@ final class CraveBottomSheetHostView: UIView, UIGestureRecognizerDelegate {
 
     let lastIndex = candidates.count - 1
     let startIndex = findNearestPointIndex(gestureStartY, candidates: candidates)
-    let dragDelta = value - gestureStartY
+    let startValue = candidates[startIndex].value
+    let resolvedGateDistance = max(
+      1,
+      snapStepThreshold.map { CGFloat(truncating: $0) } ?? snapGateFallbackPx
+    )
+    let projectedValue = min(
+      max(value + velocityY * snapVelocityProjectionSeconds, candidates[0].value),
+      candidates[lastIndex].value
+    )
+    let dragDelta = value - startValue
+    let projectedDelta = projectedValue - startValue
     let absDragDelta = abs(dragDelta)
+    let absProjectedDelta = abs(projectedDelta)
     let absVelocity = abs(velocityY)
 
-    if absDragDelta <= stepSnapSmallDragPx {
-      return candidates[startIndex].value
+    if absDragDelta <= stepSnapSmallDragPx && absProjectedDelta < resolvedGateDistance {
+      return startValue
     }
 
     let dragDirection =
       absDragDelta >= stepSnapDirectionEpsilonPx ? (dragDelta > 0 ? 1 : -1) : 0
-    let velocityDirection =
-      absVelocity >= stepSnapDirectionVelocityEpsilonPxPerS ? (velocityY > 0 ? 1 : -1) : 0
+    let projectedDirection =
+      absProjectedDelta >= stepSnapDirectionEpsilonPx ? (projectedDelta > 0 ? 1 : -1) : 0
 
     if
       dragDirection != 0 &&
-      velocityDirection != 0 &&
-      dragDirection != velocityDirection &&
+      projectedDirection != 0 &&
+      dragDirection != projectedDirection &&
       absVelocity >= stepSnapReversalCancelVelocityPxPerS &&
       absDragDelta <= stepSnapReversalCancelDragPx
     {
-      return candidates[startIndex].value
+      return startValue
     }
 
-    var direction = dragDirection
-    if velocityDirection != 0 &&
-      (direction == 0 || absVelocity >= stepSnapDirectionVelocityOverridePxPerS)
-    {
-      direction = velocityDirection
-    }
-
+    let direction = projectedDirection != 0 ? projectedDirection : dragDirection
     if direction == 0 {
-      return candidates[startIndex].value
+      return startValue
     }
 
-    let nextIndex = min(max(startIndex + direction, 0), lastIndex)
-    if nextIndex == startIndex {
-      return candidates[startIndex].value
+    var targetIndex = startIndex
+    if direction > 0 {
+      var index = startIndex + 1
+      while index <= lastIndex {
+        let gate = candidates[index - 1].value + resolvedGateDistance
+        if projectedValue < gate {
+          break
+        }
+        targetIndex = index
+        index += 1
+      }
+    } else {
+      var index = startIndex - 1
+      while index >= 0 {
+        let gate = candidates[index + 1].value - resolvedGateDistance
+        if projectedValue > gate {
+          break
+        }
+        targetIndex = index
+        index -= 1
+      }
     }
 
-    let distanceToNext = max(1, abs(candidates[nextIndex].value - candidates[startIndex].value))
-    let rawProgress =
-      direction > 0
-      ? (value - candidates[startIndex].value) / distanceToNext
-      : (candidates[startIndex].value - value) / distanceToNext
-    let progressTowardDirection = max(0, rawProgress)
-    let hasStepIntent =
-      progressTowardDirection >= stepSnapProgressForStep ||
-      absDragDelta >= stepSnapDragPx ||
-      absVelocity >= stepSnapVelocityPxPerS
-    if !hasStepIntent {
-      return candidates[startIndex].value
-    }
-
-    let hasSkipIntent =
-      absDragDelta >= stepSnapSkipDragPx ||
-      (progressTowardDirection >= stepSnapProgressForSkip &&
-        absDragDelta >= stepSnapSkipDragPx * 0.66) ||
-      (absVelocity >= stepSnapSkipVelocityPxPerS &&
-        progressTowardDirection >= stepSnapSkipMinProgress &&
-        absDragDelta >= stepSnapSkipDragPx * 0.55)
-    let targetIndex = min(
-      max(startIndex + direction * (hasSkipIntent ? 2 : 1), 0),
-      lastIndex
-    )
     return candidates[targetIndex].value
   }
 

@@ -2,6 +2,7 @@ import React from 'react';
 
 import type { AppRouteSceneCameraMotionTarget } from './app-route-scene-motion-controller';
 import type { RouteSceneSwitchCameraIntent } from './app-overlay-route-transition-contract';
+import type { CameraSnapshot } from './app-route-profile-transition-state-contract';
 import { useAppRouteSceneRuntime } from './AppRouteSceneRuntimeProvider';
 
 const ROUTE_CAMERA_RESTORE_ANIMATION_MODE = 'none';
@@ -10,10 +11,12 @@ type AppRouteSceneCameraIntentPort = {
   commit: (intent: {
     center: [number, number];
     zoom: number;
+    padding?: CameraSnapshot['padding'];
     allowDuringGesture?: boolean;
     animationMode?: 'none' | 'easeTo';
     animationDurationMs?: number;
     requestToken?: number | null;
+    deferControlledCameraStateUntilCompletion?: boolean;
   }) => boolean;
   hasPendingProgrammaticCameraCompletion: () => boolean;
   subscribeProgrammaticCameraAnimationCompletion: (
@@ -28,6 +31,7 @@ type AppRouteSceneCameraIntentPort = {
 export type AppRouteSceneCameraMotionTargetFocusResolution = {
   center: [number, number];
   zoom: number;
+  padding?: CameraSnapshot['padding'];
   animationMode?: 'none' | 'easeTo';
   animationDurationMs?: number;
 };
@@ -64,6 +68,7 @@ const resolveCameraMotionTargetIntent = ({
     return {
       center: cameraIntent.center,
       zoom: cameraIntent.zoom,
+      padding: cameraIntent.padding,
       animationMode: cameraIntent.animationMode,
       animationDurationMs: cameraIntent.animationDurationMs,
     };
@@ -79,6 +84,15 @@ export const useAppRouteSceneCameraMotionTargetRuntime = ({
   const routeSceneRuntime = useAppRouteSceneRuntime();
   const routeSceneMotionRuntime = routeSceneRuntime.routeSceneMotionRuntime;
   const pendingCompletionRef = React.useRef<Map<number, () => void>>(new Map());
+  const pendingCameraStateRef = React.useRef<
+    Map<
+      number,
+      {
+        center: [number, number];
+        zoom: number;
+      }
+    >
+  >(new Map());
   const target = React.useMemo<AppRouteSceneCameraMotionTarget>(
     () => ({
       executeCameraIntent: (cameraIntent, transitionContract, complete) => {
@@ -100,17 +114,22 @@ export const useAppRouteSceneCameraMotionTargetRuntime = ({
             ROUTE_CAMERA_RESTORE_ANIMATION_MODE,
           animationDurationMs: resolvedCameraIntent.animationDurationMs,
           requestToken: transitionContract.settleToken,
+          deferControlledCameraStateUntilCompletion: true,
         });
         if (!didCommit) {
           return false;
         }
-        lastCameraStateRef.current = {
-          center: resolvedCameraIntent.center,
-          zoom: resolvedCameraIntent.zoom,
-        };
         if (!cameraIntentArbiter.hasPendingProgrammaticCameraCompletion()) {
+          lastCameraStateRef.current = {
+            center: resolvedCameraIntent.center,
+            zoom: resolvedCameraIntent.zoom,
+          };
           complete();
         } else {
+          pendingCameraStateRef.current.set(transitionContract.settleToken, {
+            center: resolvedCameraIntent.center,
+            zoom: resolvedCameraIntent.zoom,
+          });
           pendingCompletionRef.current.set(transitionContract.settleToken, complete);
         }
         return true;
@@ -131,6 +150,11 @@ export const useAppRouteSceneCameraMotionTargetRuntime = ({
           if (!complete) {
             return;
           }
+          const pendingCameraState = pendingCameraStateRef.current.get(requestToken);
+          pendingCameraStateRef.current.delete(requestToken);
+          if (payload.status === 'finished' && pendingCameraState) {
+            lastCameraStateRef.current = pendingCameraState;
+          }
           pendingCompletionRef.current.delete(requestToken);
           complete();
         }
@@ -141,6 +165,7 @@ export const useAppRouteSceneCameraMotionTargetRuntime = ({
   React.useEffect(
     () => () => {
       pendingCompletionRef.current.clear();
+      pendingCameraStateRef.current.clear();
     },
     []
   );

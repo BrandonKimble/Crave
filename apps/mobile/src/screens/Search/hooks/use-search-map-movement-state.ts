@@ -1,5 +1,10 @@
 import React from 'react';
 
+import {
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+} from '../../../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../../../perf/perf-scenario-runtime-store';
 import type { MapBounds } from '../../../types';
 import type { AppRouteOverlaySessionSnapshot } from '../../../navigation/runtime/app-route-overlay-session-contract';
 import type { MapboxMapRef } from '../components/search-map';
@@ -9,7 +14,14 @@ import {
 } from '../runtime/map/map-motion-pressure';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
 import type { SearchChromeScalarSurfacePrimitiveSourceRuntime } from '../runtime/native/search-chrome-scalar-surface-primitive-source-runtime';
-import { boundsFromPairs, hasBoundsMovedSignificantly, isLngLatTuple } from '../utils/geo';
+import { MAP_MOVE_MIN_DISTANCE_MILES } from '../constants/search';
+import {
+  boundsFromPairs,
+  getBoundsCenter,
+  hasBoundsMovedSignificantly,
+  haversineDistanceMiles,
+  isLngLatTuple,
+} from '../utils/geo';
 
 type SearchInteractionState = {
   isInteracting: boolean;
@@ -36,29 +48,44 @@ type UseSearchMapMovementStateResult = {
   pollBoundsRef: React.MutableRefObject<MapBounds | null>;
   cancelPendingMapMovementUpdates: () => void;
   resetMapMoveFlag: () => void;
-  markMapMovedIfNeeded: (bounds: MapBounds) => boolean;
-  scheduleMapIdleEnter: () => void;
+  markMapMovedIfNeeded: (
+    bounds: MapBounds,
+    options?: { fallbackBaselineBounds?: MapBounds | null }
+  ) => boolean;
+  scheduleMapIdleEnter: (options?: { releaseGestureGate?: boolean }) => void;
   schedulePollBoundsUpdate: (bounds: MapBounds) => void;
   flushDeferredMapMovementState: () => void;
   resolveCurrentMapBounds: () => Promise<MapBounds | null>;
 };
 
 const shouldMarkMapMovedForBounds = ({
-  baselineBounds,
+  fallbackBaselineBounds,
   nextBounds,
+  searchBaselineBounds,
   hasMapMovedSinceSearch,
 }: {
-  baselineBounds: MapBounds | null;
+  fallbackBaselineBounds: MapBounds | null;
   nextBounds: MapBounds;
+  searchBaselineBounds: MapBounds | null;
   hasMapMovedSinceSearch: boolean;
 }): boolean => {
   if (hasMapMovedSinceSearch) {
     return true;
   }
-  if (baselineBounds == null) {
-    return false;
+  if (
+    searchBaselineBounds != null &&
+    hasBoundsMovedSignificantly(searchBaselineBounds, nextBounds)
+  ) {
+    return true;
   }
-  return hasBoundsMovedSignificantly(baselineBounds, nextBounds);
+  if (
+    fallbackBaselineBounds != null &&
+    haversineDistanceMiles(getBoundsCenter(fallbackBaselineBounds), getBoundsCenter(nextBounds)) >=
+      MAP_MOVE_MIN_DISTANCE_MILES
+  ) {
+    return true;
+  }
+  return false;
 };
 
 const shouldPublishPollBoundsUpdate = ({
@@ -178,11 +205,12 @@ export const useSearchMapMovementState = ({
   }, [lastSearchBoundsCaptureSeqRef, mapRef, viewportBoundsService, writeMapMovedScalarPrimitive]);
 
   const markMapMovedIfNeeded = React.useCallback(
-    (bounds: MapBounds) => {
+    (bounds: MapBounds, options?: { fallbackBaselineBounds?: MapBounds | null }) => {
       if (
         !shouldMarkMapMovedForBounds({
-          baselineBounds: viewportBoundsService.getSearchBaselineBounds(),
+          fallbackBaselineBounds: options?.fallbackBaselineBounds ?? null,
           nextBounds: bounds,
+          searchBaselineBounds: viewportBoundsService.getSearchBaselineBounds(),
           hasMapMovedSinceSearch: mapMovedSinceSearchRef.current,
         })
       ) {
@@ -194,17 +222,39 @@ export const useSearchMapMovementState = ({
     [viewportBoundsService]
   );
 
-  const scheduleMapIdleEnter = React.useCallback(() => {
+  const scheduleMapIdleEnter = React.useCallback((options?: { releaseGestureGate?: boolean }) => {
+    const pressureState = mapMotionPressureController.getState();
     const shouldDeferMapFromPressure = shouldDeferMapMovementWork({
-      pressureState: mapMotionPressureController.getState(),
+      pressureState,
     });
+    const isMapGestureActive =
+      options?.releaseGestureGate === true ? false : mapGestureActiveRef.current;
     const mapMovedRevealAdmission = resolveMapMovedEnterAdmission({
       hasMapMovedSinceSearch: mapMovedSinceSearchRef.current,
-      isMapGestureActive: mapGestureActiveRef.current,
+      isMapGestureActive,
       isSearchInteracting: searchInteractionRef.current.isInteracting,
       isAnySheetDragging: anySheetDraggingRef.current,
       shouldDeferMapFromPressure,
     });
+    const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+    if (isPerfScenarioAttributionActive(scenarioConfig)) {
+      logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+        event: 'map_moved_reveal_admission_contract',
+        mapMovedRevealAdmission,
+        hasMapMovedSinceSearch: mapMovedSinceSearchRef.current,
+        isMapGestureActive,
+        mapGestureSessionActive: mapGestureActiveRef.current,
+        releaseGestureGate: options?.releaseGestureGate === true,
+        isSearchInteracting: searchInteractionRef.current.isInteracting,
+        isAnySheetDragging: anySheetDraggingRef.current,
+        shouldDeferMapFromPressure,
+        pressurePhase: pressureState.phase,
+        pressureIsSearchInteracting: pressureState.isSearchInteracting,
+        pressureIsAnySheetDragging: pressureState.isAnySheetDragging,
+        pressureNativeSyncInFlight: pressureState.nativeSyncInFlight,
+        activePresentationTransactionPhase: pressureState.activePresentationTransaction?.phase ?? null,
+      });
+    }
     pendingMapMovedEnterRef.current = mapMovedRevealAdmission === 'defer_until_idle';
     if (mapMovedRevealAdmission === 'publish_now') {
       writeMapMovedScalarPrimitive(true);

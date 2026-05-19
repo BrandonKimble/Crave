@@ -170,8 +170,12 @@ export const createAppRouteSceneRuntime = (): AppRouteSceneRuntime => {
     routeSceneVisibilityPolicyRuntime,
   });
   const routeSheetSnapSessionRuntime = createAppRouteSheetSnapSessionRuntime();
+  const routeOverlayRouteCommandRuntime = createAppOverlayRouteCommandRuntime({
+    routeSceneSwitchRuntime,
+  });
   const routeOverlayCommandController = createAppRouteOverlayCommandController({
     routeSheetSnapSessionActions: routeSheetSnapSessionRuntime.actions,
+    routeOverlayRouteCommandRuntime,
   });
   const routeSceneTransitionFanoutController =
     createRouteSceneTransitionFanoutController(routeSceneSwitchRuntime);
@@ -182,9 +186,6 @@ export const createAppRouteSceneRuntime = (): AppRouteSceneRuntime => {
     sceneSwitchAuthority,
     sceneTransitionAuthority,
   } = routeSceneTransitionFanoutController.authorities;
-  const routeOverlayRouteCommandRuntime = createAppOverlayRouteCommandRuntime({
-    routeSceneSwitchRuntime,
-  });
   const routeSearchCommandActions = createAppSearchRouteCommandActions({
     routeSceneSwitchAuthority: sceneSwitchAuthority,
     routeSceneSwitchActions: routeSceneSwitchRuntime,

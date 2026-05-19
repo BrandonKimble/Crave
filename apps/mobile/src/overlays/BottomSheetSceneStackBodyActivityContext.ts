@@ -2,6 +2,7 @@ import React from 'react';
 
 export type BottomSheetSceneStackBodyDataActivity = {
   sceneKey: string;
+  shouldAttachMountedContent: boolean;
   shouldRunDataLane: boolean;
   shouldSubscribeDataLane: boolean;
   shouldRenderExpandedContent: boolean;
@@ -15,6 +16,7 @@ export type BottomSheetSceneStackBodyRenderActivity = Omit<
 
 const EMPTY_BODY_DATA_ACTIVITY: BottomSheetSceneStackBodyDataActivity = {
   sceneKey: '',
+  shouldAttachMountedContent: false,
   shouldRunDataLane: false,
   shouldSubscribeDataLane: false,
   shouldRenderExpandedContent: false,
@@ -23,6 +25,7 @@ const EMPTY_BODY_DATA_ACTIVITY: BottomSheetSceneStackBodyDataActivity = {
 
 const EMPTY_BODY_RENDER_ACTIVITY: BottomSheetSceneStackBodyRenderActivity = {
   sceneKey: '',
+  shouldAttachMountedContent: false,
   shouldSubscribeDataLane: false,
   shouldRenderExpandedContent: false,
   hasActivatedExpandedContent: false,

@@ -16,10 +16,10 @@ import type {
   SearchRouteSceneChromePublication,
 } from '../../../../overlays/searchOverlayRouteHostContract';
 import {
-  EMPTY_SEARCH_MOUNTED_SCENE_CHROME_SNAPSHOT,
-  publishSearchMountedSceneChromeSnapshot,
-  type SearchMountedSceneChromeSnapshot,
-} from '../../../../overlays/SearchMountedSceneChromeAuthority';
+  publishSearchResultsPageBundle,
+  type SearchResultsPageBundleRenderObject,
+} from '../../../../overlays/SearchMountedScenePageBundleAuthority';
+import { syncSearchResultsPreMeasureOverlay } from '../../../../overlays/SearchResultsPreMeasureHost';
 import { useSearchRootRouteSearchSceneDataRuntime } from './use-search-root-route-search-scene-data-runtime';
 import { useSearchRootRouteSearchSceneReadModelRuntime } from './use-search-root-route-search-scene-read-model-runtime';
 import { useSearchRootRouteSearchSceneRenderRuntime } from './use-search-root-route-search-scene-render-runtime';
@@ -30,7 +30,6 @@ import { useSearchRootSearchScenePanelSurfaceRenderRuntime } from './use-search-
 import { useSearchRootSearchSceneShellSpecPublicationRuntime } from './use-search-root-search-scene-shell-spec-publication-runtime';
 import { useSearchRootSearchSceneSurfacePanelStateRuntime } from './use-search-root-search-scene-surface-panel-state-runtime';
 import type { SearchRouteResultsPolicyReadModelWriterFacets } from './search-route-results-policy-domain-contract';
-import type { ResultsSurfacePolicyController } from './results-surface-policy-controller';
 
 type SearchRouteSearchSceneModelOwnerParams = {
   sessionAssemblyRuntime: ReturnType<
@@ -48,15 +47,18 @@ type SearchRouteSearchSceneModelOwnerParams = {
   profileControlRuntime: ReturnType<typeof useSearchRootControlProfileExperienceRuntime>;
   resultsControlRuntime: ReturnType<typeof useSearchRootControlResultsExperienceRuntime>;
   filterModalControlLane: SearchRootFilterModalControlLane;
-  surfacePolicyController: ResultsSurfacePolicyController;
   readModelPolicyWriters: SearchRouteResultsPolicyReadModelWriterFacets;
 };
 
-const SEARCH_MOUNTED_SCENE_CHROME_PUBLICATION: SearchRouteSceneChromePublication = {
-  surfaceKind: 'mounted',
-  mountedChromeKey: 'search',
-  excludedSurfaces: ['header'],
+const SEARCH_RESULTS_PAGE_BUNDLE_CHROME_PUBLICATION: SearchRouteSceneChromePublication = {
+  surfaceKind: 'inline',
+  underlayComponent: null,
+  backgroundComponent: null,
+  headerComponent: null,
+  overlayComponent: null,
 };
+
+const EMPTY_MOUNTED_SEARCH_ROWS: readonly unknown[] = [];
 
 export const useSearchRouteSearchSceneModelOwner = ({
   sessionAssemblyRuntime,
@@ -68,7 +70,6 @@ export const useSearchRouteSearchSceneModelOwner = ({
   profileControlRuntime,
   resultsControlRuntime,
   filterModalControlLane,
-  surfacePolicyController,
   readModelPolicyWriters,
 }: SearchRouteSearchSceneModelOwnerParams) => {
   const routeSearchSceneDataRuntime = useSearchRootRouteSearchSceneDataRuntime({
@@ -96,17 +97,12 @@ export const useSearchRouteSearchSceneModelOwner = ({
         routeSearchSceneDataRuntime.routeSearchSceneHydrationRuntimeState,
       searchResultsRuntimeState: routeSearchSceneDataRuntime.routeSearchSceneResultsRuntimeState,
       resolvedResultsRuntime: routeSearchSceneDataRuntime.routeSearchSceneResolvedResultsRuntime,
+      searchSheetContentLaneKind:
+        routeSearchSceneDataRuntime.routeSearchSceneSearchSheetContentLane.kind,
       allowsInteractionLoadingState:
         routeSearchSceneDataRuntime.routeSearchSceneAllowsInteractionLoadingState,
-      resultsReadModelSelectors:
-        routeSearchSceneReadModelRuntime.routeSearchSceneResultsReadModelSelectors,
     }
   );
-  const routeSearchSceneRenderRuntime = useSearchRootRouteSearchSceneRenderRuntime({
-    routeSearchSceneDataRuntime,
-    routeSearchSceneReadModelRuntime,
-    routeSearchSceneSurfacePanelStateRuntime,
-  });
   const routeSearchSceneSheetTransportRuntime =
     useSearchRootRouteSearchSceneSurfaceTransportRuntime({
       stateAssemblyRuntime,
@@ -116,6 +112,11 @@ export const useSearchRouteSearchSceneModelOwner = ({
       routeSearchSceneDataRuntime,
       routeSearchSceneReadModelRuntime,
     });
+  const routeSearchSceneRenderRuntime = useSearchRootRouteSearchSceneRenderRuntime({
+    routeSearchSceneDataRuntime,
+    routeSearchSceneReadModelRuntime,
+    routeSearchSceneSurfacePanelStateRuntime,
+  });
   const routeSearchSceneSurfaceStateRuntime = React.useMemo(
     () => ({
       routeSearchSceneSurfacePanelStateRuntime,
@@ -154,38 +155,69 @@ export const useSearchRouteSearchSceneModelOwner = ({
       routeSearchSceneSurfacePanelStateRuntime.shouldShowInteractionLoadingState,
     searchScenePanelSurfaceRenderRuntime: routeSearchScenePanelSurfaceRenderRuntime,
   });
-  const routeSearchSceneMountedChromeSnapshot = React.useMemo<SearchMountedSceneChromeSnapshot>(
-    () => ({
-      underlayComponent: routeSearchScenePanelSurfaceRenderRuntime.underlayComponent,
-      backgroundComponent: routeSearchScenePanelSurfaceRenderRuntime.backgroundComponent ?? null,
-      overlayComponent: routeSearchScenePanelSurfaceRenderRuntime.overlayComponent ?? null,
-    }),
+  const shouldPublishResultsPageBundle =
+    routeSearchSceneDataRuntime.routeSearchSceneSearchSheetContentLane.kind !==
+    'persistent_poll';
+  const routeSearchSceneResultsPageBundle =
+    React.useMemo<SearchResultsPageBundleRenderObject | null>(
+    () =>
+      shouldPublishResultsPageBundle
+        ? {
+            kind: 'results_page_bundle',
+            underlayComponent: routeSearchScenePanelSurfaceRenderRuntime.underlayComponent,
+            backgroundComponent:
+              routeSearchScenePanelSurfaceRenderRuntime.backgroundComponent ?? null,
+            headerComponent:
+              routeSearchSceneReadModelRuntime.routeSearchSceneResultsReadModelSelectors
+                .resultsPageHeaderComponent,
+            overlayComponent: routeSearchScenePanelSurfaceRenderRuntime.overlayComponent ?? null,
+          }
+        : null,
     [
       routeSearchScenePanelSurfaceRenderRuntime.backgroundComponent,
       routeSearchScenePanelSurfaceRenderRuntime.overlayComponent,
       routeSearchScenePanelSurfaceRenderRuntime.underlayComponent,
+      routeSearchSceneReadModelRuntime.routeSearchSceneResultsReadModelSelectors
+        .resultsPageHeaderComponent,
+      shouldPublishResultsPageBundle,
     ]
   );
   React.useLayoutEffect(() => {
-    publishSearchMountedSceneChromeSnapshot(routeSearchSceneMountedChromeSnapshot);
+    publishSearchResultsPageBundle(routeSearchSceneResultsPageBundle);
+  }, [routeSearchSceneResultsPageBundle]);
+  React.useLayoutEffect(
+    () => () => {
+      publishSearchResultsPageBundle(null);
+    },
+    []
+  );
+  const shouldRunExternalPreMeasure =
+    routeSearchSceneReadModelRuntime.routeSearchSceneResultsReadModelSelectors
+      .isResultsHydrationSettled &&
+    routeSearchSceneDataRuntime.routeSearchSceneHydrationRuntimeState.searchSurfaceRedrawPhase === 'idle';
+  const externalPreMeasureOverlay = shouldRunExternalPreMeasure
+    ? routeSearchSceneReadModelRuntime.routeSearchSceneResultsReadModelSelectors.preMeasureOverlay
+    : null;
+  React.useLayoutEffect(() => {
+    syncSearchResultsPreMeasureOverlay(externalPreMeasureOverlay);
     return () => {
-      publishSearchMountedSceneChromeSnapshot(EMPTY_SEARCH_MOUNTED_SCENE_CHROME_SNAPSHOT);
+      syncSearchResultsPreMeasureOverlay(null);
     };
-  }, [routeSearchSceneMountedChromeSnapshot]);
-  const routeSearchSceneChromePublication = SEARCH_MOUNTED_SCENE_CHROME_PUBLICATION;
+  }, [externalPreMeasureOverlay]);
+  const routeSearchSceneChromePublication = SEARCH_RESULTS_PAGE_BUNDLE_CHROME_PUBLICATION;
   const routeSearchSceneSecondaryListContent = React.useMemo(
     () => ({
-      data: routeSearchSceneRenderRuntime.secondaryRowsForRender,
+      data: EMPTY_MOUNTED_SEARCH_ROWS,
       listKey: 'results-dishes',
     }),
-    [routeSearchSceneRenderRuntime.secondaryRowsForRender]
+    []
   );
   const routeSearchSceneListBodyContentSnapshot = React.useMemo<
     Extract<SearchRouteSceneBodyContentSpec, { surfaceKind: 'list' }>
   >(
     () => ({
       surfaceKind: 'list',
-      data: routeSearchSceneRenderRuntime.primaryRowsForRender,
+      data: EMPTY_MOUNTED_SEARCH_ROWS,
       renderItem:
         routeSearchSceneSheetTransportRuntime.routeSearchSceneListItemContentRuntime
           .resultsRenderItem,
@@ -195,15 +227,15 @@ export const useSearchRouteSearchSceneModelOwner = ({
       estimatedItemSize:
         routeSearchSceneSheetTransportRuntime.routeSearchSceneListItemContentRuntime
           .estimatedItemSize,
+      ListChromeComponent: null,
       ListHeaderComponent:
-        routeSearchSceneRenderRuntime.scrollHeaderForRender as React.ReactElement | null,
+        routeSearchSceneRenderRuntime.resultsToggleStripForRender as React.ReactElement | null,
       ListFooterComponent: routeSearchSceneReadModelRuntime
         .routeSearchSceneResultsReadModelSelectors.listFooterComponent as React.ReactElement | null,
       ListEmptyComponent: null,
       ItemSeparatorComponent:
         routeSearchSceneSheetTransportRuntime.routeSearchScenePanelListTransportRuntime
           .itemSeparatorComponent,
-      extraData: undefined,
       secondaryList: routeSearchSceneSecondaryListContent,
       listKey: 'results-restaurants',
       onEndReached:
@@ -214,8 +246,7 @@ export const useSearchRouteSearchSceneModelOwner = ({
     [
       routeSearchSceneReadModelRuntime.routeSearchSceneResultsReadModelSelectors
         .listFooterComponent,
-      routeSearchSceneRenderRuntime.primaryRowsForRender,
-      routeSearchSceneRenderRuntime.scrollHeaderForRender,
+      routeSearchSceneRenderRuntime.resultsToggleStripForRender,
       routeSearchSceneSecondaryListContent,
       routeSearchSceneSheetTransportRuntime.routeSearchSceneListItemContentRuntime
         .estimatedItemSize,
@@ -231,10 +262,10 @@ export const useSearchRouteSearchSceneModelOwner = ({
   );
   const routeSearchSceneScrollIndicatorInsets = React.useMemo(
     () => ({
-      top: routeSearchSceneRenderRuntime.effectiveFiltersHeaderHeightForRender,
+      top: routeSearchSceneRenderRuntime.resultsBodyHeaderHeightForRender,
       bottom: RESULTS_BOTTOM_PADDING,
     }),
-    [routeSearchSceneRenderRuntime.effectiveFiltersHeaderHeightForRender]
+    [routeSearchSceneRenderRuntime.resultsBodyHeaderHeightForRender]
   );
   const routeSearchSceneSecondaryListTransport = React.useMemo(
     () => ({
@@ -297,8 +328,16 @@ export const useSearchRouteSearchSceneModelOwner = ({
         routeSearchSceneSheetTransportRuntime.routeSearchSceneSheetPlaneRuntime.listRef,
       ]
     );
-  const routeSearchSceneSheetPolicyInputs: AppRouteSceneSheetPolicyInputs =
-    surfacePolicyController.getSheetPolicyInputs();
+  const routeSearchSceneSheetPolicyInputs: AppRouteSceneSheetPolicyInputs = React.useMemo(
+    () => ({
+      sheetContentLaneKind: routeSearchSceneDataRuntime.routeSearchSceneSearchSheetContentLane.kind,
+      shouldRenderResultsSheet: routeSearchSceneSurfacePanelStateRuntime.shouldShowResultsSurface,
+    }),
+    [
+      routeSearchSceneDataRuntime.routeSearchSceneSearchSheetContentLane.kind,
+      routeSearchSceneSurfacePanelStateRuntime.shouldShowResultsSurface,
+    ]
+  );
 
   return {
     routeSearchSceneDataRuntime,
@@ -307,6 +346,8 @@ export const useSearchRouteSearchSceneModelOwner = ({
     routeSearchSceneChromePublication,
     routeSearchSceneListBodyContentSnapshot,
     routeSearchSceneListBodyTransportSnapshot,
+    routeSearchSceneRenderRuntime,
+    routeSearchSceneSheetTransportRuntime,
     routeSearchSceneSheetPolicyInputs,
   };
 };

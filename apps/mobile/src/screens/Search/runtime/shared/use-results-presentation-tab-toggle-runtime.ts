@@ -1,10 +1,11 @@
 import React from 'react';
 
-import { createPreparedResultsEnterSnapshot } from './prepared-presentation-transaction';
+import { createSearchSurfaceResultsEnterTransaction } from './search-surface-results-transaction';
 import type { ResultsInteractionModel } from './results-presentation-owner-contract';
 import type { ResultsPresentationRuntimeOwner } from './results-presentation-runtime-owner-contract';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { useResultsPresentationToggleLifecycleRuntime } from './use-results-presentation-toggle-lifecycle-runtime';
+import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
 
 type UseResultsPresentationTabToggleRuntimeArgs = {
   activeTab: 'dishes' | 'restaurants';
@@ -15,7 +16,7 @@ type UseResultsPresentationTabToggleRuntimeArgs = {
   toggleLifecycleRuntime: ReturnType<typeof useResultsPresentationToggleLifecycleRuntime>;
   resultsRuntimeOwner: Pick<
     ResultsPresentationRuntimeOwner,
-    'clearStagedPreparedResultsSnapshot' | 'commitPreparedResultsSnapshot'
+    'clearStagedSearchSurfaceResultsTransaction' | 'commitSearchSurfaceResultsTransaction'
   >;
 };
 
@@ -79,9 +80,15 @@ export const useResultsPresentationTabToggleRuntime = ({
             };
           }
 
-          resultsRuntimeOwner.clearStagedPreparedResultsSnapshot();
-          resultsRuntimeOwner.commitPreparedResultsSnapshot(
-            createPreparedResultsEnterSnapshot(intentId, 'initial_search', 'interaction_loading')
+          resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
+          getSearchSurfaceRuntime().beginRedrawTransaction({
+            reason: 'toggle',
+            transactionId: intentId,
+            targetTab: next,
+            coverState: 'interaction_loading',
+          });
+          resultsRuntimeOwner.commitSearchSurfaceResultsTransaction(
+            createSearchSurfaceResultsEnterTransaction(intentId, 'initial_search', 'interaction_loading')
           );
 
           return {

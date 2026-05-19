@@ -5,7 +5,6 @@ import type {
   SearchRootMapProfileControlLane,
   SearchRootProfilePresentationControlLane,
   SearchRootResultsPresentationControlLane,
-  SearchRootResultsPresentationStateControlLane,
   SearchRootSuggestionInteractionControlLane,
 } from './use-search-root-control-plane-runtime-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
@@ -26,7 +25,6 @@ type UseSearchRootMapHostPublicationRuntimeArgs = {
   suggestionInteractionControlLane: SearchRootSuggestionInteractionControlLane;
   profilePresentationControlLane: SearchRootProfilePresentationControlLane;
   mapProfileControlLane: SearchRootMapProfileControlLane;
-  resultsPresentationStateControlLane: SearchRootResultsPresentationStateControlLane;
   resultsPresentationControlLane: SearchRootResultsPresentationControlLane;
 };
 
@@ -40,7 +38,6 @@ export const useSearchRootMapHostPublicationRuntime = ({
   suggestionInteractionControlLane,
   profilePresentationControlLane,
   mapProfileControlLane,
-  resultsPresentationStateControlLane,
   resultsPresentationControlLane,
 }: UseSearchRootMapHostPublicationRuntimeArgs): SearchMapRenderHostAuthority => {
   const mapInteractionBridgeRuntime =
@@ -51,7 +48,6 @@ export const useSearchRootMapHostPublicationRuntime = ({
       autocompleteControlLane,
       suggestionInteractionControlLane,
       profilePresentationControlLane,
-      resultsPresentationStateControlLane,
     });
 
   const hostLayerRuntime = useSearchRootMapHostPublicationSurfaceRuntime({

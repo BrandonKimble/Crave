@@ -154,14 +154,20 @@ const SearchOverlayShellRankAndScoreHost = React.memo(
     });
     const rankAndScoreSheetsProps = rankAndScoreModalLayer?.rankAndScoreSheetsProps ?? null;
 
-    return isFocused && rankAndScoreSheetsProps && rankAndScoreModalLayer ? (
+    if (!isFocused || !rankAndScoreSheetsProps || !rankAndScoreModalLayer) {
+      return null;
+    }
+
+    return rankAndScoreModalLayer.onProfilerRender ? (
       <React.Profiler
         id="SearchRankAndScoreSheets"
         onRender={rankAndScoreModalLayer.onProfilerRender}
       >
         <SearchRankAndScoreSheets {...rankAndScoreSheetsProps} />
       </React.Profiler>
-    ) : null;
+    ) : (
+      <SearchRankAndScoreSheets {...rankAndScoreSheetsProps} />
+    );
   }
 );
 
@@ -193,11 +199,17 @@ const SearchOverlayShellPriceHost = React.memo(
     });
     const priceSheetProps = priceModalLayer?.priceSheetProps ?? null;
 
-    return isFocused && priceSheetProps && priceModalLayer ? (
+    if (!isFocused || !priceSheetProps || !priceModalLayer) {
+      return null;
+    }
+
+    return priceModalLayer.onProfilerRender ? (
       <React.Profiler id="SearchPriceSheet" onRender={priceModalLayer.onProfilerRender}>
         <SearchPriceSheet {...priceSheetProps} />
       </React.Profiler>
-    ) : null;
+    ) : (
+      <SearchPriceSheet {...priceSheetProps} />
+    );
   }
 );
 

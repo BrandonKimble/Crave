@@ -3,7 +3,7 @@ import { Dimensions } from 'react-native';
 import { colors } from '../constants/theme';
 import { PIN_FILL_RENDER_HEIGHT, PIN_FILL_RENDER_WIDTH } from '../screens/Search/constants/search';
 import { SPLASH_STUDIO_CONFIG } from '../splash-studio/config';
-import { getQualityColorFromScore } from '../utils/quality-color';
+import { getCraveScoreColorFromScore } from '../utils/quality-color';
 
 type BackdropDotProperties = {
   color: string;
@@ -48,7 +48,7 @@ const sampleBackdropDotColor = (random: () => number): string => {
   }
   const warmT = sampleLinearWarmT(random);
   const score = (1 - warmT) * 100;
-  return getQualityColorFromScore(score);
+  return getCraveScoreColorFromScore(score);
 };
 
 const remapAxisTowardCenter = (value: number): number => {

@@ -14,6 +14,7 @@ type UseProfileAppCloseFinalizationRuntimeArgs = {
   routeOverlayCommandActions: AppRouteOverlayCommandActions;
   getPreviousForegroundUiRestoreState: ProfileRuntimeStateOwner['closeRuntimeState']['foregroundRuntimeState']['getPreviousForegroundUiRestoreState'];
   finalizePreparedProfileCloseState: ProfileRuntimeStateOwner['closeRuntimeState']['finalizationRuntimeState']['finalizePreparedProfileCloseState'];
+  clearMapHighlightedRestaurantId: () => void;
   clearSearchAfterProfileDismiss: () => void;
 };
 
@@ -21,13 +22,14 @@ export const useProfileAppCloseFinalizationRuntime = ({
   routeOverlayCommandActions,
   getPreviousForegroundUiRestoreState,
   finalizePreparedProfileCloseState,
+  clearMapHighlightedRestaurantId,
   clearSearchAfterProfileDismiss,
 }: UseProfileAppCloseFinalizationRuntimeArgs): ProfileAppCloseFinalizationRuntime => {
   const restoreForegroundUiAfterProfileClose = React.useCallback(
     (state: ProfileForegroundUiRestoreState | null) => {
       const restoreState = resolveProfileForegroundSaveSheetRestoreState(state);
       if (restoreState) {
-        routeOverlayCommandActions.setSaveSheetState(restoreState);
+        routeOverlayCommandActions.restoreSaveSheetState(restoreState);
       }
     },
     [routeOverlayCommandActions]
@@ -35,13 +37,17 @@ export const useProfileAppCloseFinalizationRuntime = ({
 
   const finalizePreparedProfileClose = React.useCallback(
     (closeFinalization: PreparedProfileCloseFinalization) => {
-      restoreForegroundUiAfterProfileClose(getPreviousForegroundUiRestoreState());
+      clearMapHighlightedRestaurantId();
+      if (!closeFinalization.shouldClearSearch) {
+        restoreForegroundUiAfterProfileClose(getPreviousForegroundUiRestoreState());
+      }
       finalizePreparedProfileCloseState();
       if (closeFinalization.shouldClearSearch) {
         clearSearchAfterProfileDismiss();
       }
     },
     [
+      clearMapHighlightedRestaurantId,
       clearSearchAfterProfileDismiss,
       finalizePreparedProfileCloseState,
       getPreviousForegroundUiRestoreState,

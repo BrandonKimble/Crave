@@ -1,5 +1,11 @@
 import React from 'react';
 
+import {
+  getActivePerfScenarioSearchThisAreaSubmitId,
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+} from '../../../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../../../perf/perf-scenario-runtime-store';
 import type { Coordinate, MapBounds, NaturalSearchRequest } from '../../../types';
 import type { StructuredSearchRequest } from '../../../services/search';
 import { logger } from '../../../utils';
@@ -7,7 +13,7 @@ import { DEFAULT_PAGE_SIZE, MINIMUM_VOTES_FILTER } from '../constants/search';
 import type { MapboxMapRef } from '../components/search-map';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
-import { boundsFromPairs, isLngLatTuple } from '../utils/geo';
+import { boundsFromPairs, hasBoundsMovedSignificantly, isLngLatTuple } from '../utils/geo';
 import { normalizePriceFilter } from '../utils/price';
 import type { SearchSubmitActiveOperationTuple } from './use-search-submit-response-owner';
 
@@ -87,6 +93,37 @@ const getPerfNow = () => {
   return Date.now();
 };
 
+type RequestBoundsSource =
+  | 'map_visible_bounds'
+  | 'viewport_bounds_service'
+  | 'latest_bounds_ref'
+  | 'none';
+
+type RequestBoundsFallbackReason =
+  | 'get_visible_bounds_failed'
+  | 'get_visible_bounds_invalid'
+  | 'get_visible_bounds_unavailable'
+  | 'map_ref_unavailable'
+  | null;
+
+type ResolvedRequestBounds = {
+  bounds: MapBounds | null;
+  source: RequestBoundsSource;
+  freshBoundsRequested: boolean;
+  freshBoundsCaptured: boolean;
+  fallbackReason: RequestBoundsFallbackReason;
+  previousSearchBaselineBounds: MapBounds | null;
+  previousLastRequestBounds: MapBounds | null;
+  previousViewportServiceBounds: MapBounds | null;
+};
+
+const hasBoundsChanged = (previous: MapBounds | null, next: MapBounds | null): boolean | null => {
+  if (!previous || !next) {
+    return null;
+  }
+  return hasBoundsMovedSignificantly(previous, next);
+};
+
 export const useSearchRequestPreparationOwner = ({
   isLoadingMore,
   openNow,
@@ -104,64 +141,207 @@ export const useSearchRequestPreparationOwner = ({
   shouldLogSearchResponseTimings = false,
   logSearchResponseTiming = () => {},
 }: UseSearchRequestPreparationOwnerArgs): SearchRequestPreparationOwner => {
+  const lastResolvedStructuredRequestBoundsRef = React.useRef<ResolvedRequestBounds | null>(null);
+
+  const captureVisibleMapBounds = React.useCallback(
+    async (
+      logLabel: 'natural' | 'structured'
+    ): Promise<{ bounds: MapBounds | null; fallbackReason: RequestBoundsFallbackReason }> => {
+      const map = mapRef.current;
+      if (!map) {
+        return { bounds: null, fallbackReason: 'map_ref_unavailable' };
+      }
+      if (!map.getVisibleBounds) {
+        return { bounds: null, fallbackReason: 'get_visible_bounds_unavailable' };
+      }
+
+      const boundsStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
+      try {
+        const visibleBounds = await map.getVisibleBounds();
+        if (
+          Array.isArray(visibleBounds) &&
+          visibleBounds.length >= 2 &&
+          isLngLatTuple(visibleBounds[0]) &&
+          isLngLatTuple(visibleBounds[1])
+        ) {
+          return {
+            bounds: boundsFromPairs(visibleBounds[0], visibleBounds[1]),
+            fallbackReason: null,
+          };
+        }
+        return { bounds: null, fallbackReason: 'get_visible_bounds_invalid' };
+      } catch (boundsError) {
+        logger.warn(`Unable to determine map bounds before submitting ${logLabel} search`, {
+          message: boundsError instanceof Error ? boundsError.message : 'unknown error',
+        });
+        return { bounds: null, fallbackReason: 'get_visible_bounds_failed' };
+      } finally {
+        if (shouldLogSearchResponseTimings && boundsStart > 0) {
+          logSearchResponseTiming(`getVisibleBounds:${logLabel}`, getPerfNow() - boundsStart);
+        }
+      }
+    },
+    [logSearchResponseTiming, mapRef, shouldLogSearchResponseTimings]
+  );
+
   const resolveRequestBounds = React.useCallback(
     async (options: {
       shouldCaptureBounds: boolean;
       forceFreshBounds?: boolean;
       logLabel: 'natural' | 'structured';
-    }): Promise<MapBounds | null> => {
+    }): Promise<ResolvedRequestBounds> => {
+      const previousViewportServiceBounds = viewportBoundsService.getBounds();
+      const previousLastRequestBounds = latestBoundsRef.current;
+      const previousSearchBaselineBounds = viewportBoundsService.getSearchBaselineBounds();
+      const freshBoundsRequested = Boolean(options.forceFreshBounds && options.shouldCaptureBounds);
+
       if (!options.shouldCaptureBounds) {
-        return latestBoundsRef.current;
+        const latestBounds = latestBoundsRef.current;
+        return {
+          bounds: latestBounds,
+          source: latestBounds ? 'latest_bounds_ref' : 'none',
+          freshBoundsRequested: false,
+          freshBoundsCaptured: false,
+          fallbackReason: null,
+          previousSearchBaselineBounds,
+          previousLastRequestBounds,
+          previousViewportServiceBounds,
+        };
       }
 
-      const viewportBounds = viewportBoundsService.getBounds();
-      if (viewportBounds) {
-        latestBoundsRef.current = viewportBounds;
-        return viewportBounds;
+      if (freshBoundsRequested) {
+        const freshCapture = await captureVisibleMapBounds(options.logLabel);
+        if (freshCapture.bounds) {
+          latestBoundsRef.current = freshCapture.bounds;
+          viewportBoundsService.setBounds(freshCapture.bounds);
+          return {
+            bounds: freshCapture.bounds,
+            source: 'map_visible_bounds',
+            freshBoundsRequested: true,
+            freshBoundsCaptured: true,
+            fallbackReason: null,
+            previousSearchBaselineBounds,
+            previousLastRequestBounds,
+            previousViewportServiceBounds,
+          };
+        }
+        const fallbackViewportBounds = viewportBoundsService.getBounds();
+        if (fallbackViewportBounds) {
+          latestBoundsRef.current = fallbackViewportBounds;
+          return {
+            bounds: fallbackViewportBounds,
+            source: 'viewport_bounds_service',
+            freshBoundsRequested: true,
+            freshBoundsCaptured: false,
+            fallbackReason: freshCapture.fallbackReason,
+            previousSearchBaselineBounds,
+            previousLastRequestBounds,
+            previousViewportServiceBounds,
+          };
+        }
+        const latestBounds = latestBoundsRef.current;
+        return {
+          bounds: latestBounds,
+          source: latestBounds ? 'latest_bounds_ref' : 'none',
+          freshBoundsRequested: true,
+          freshBoundsCaptured: false,
+          fallbackReason: freshCapture.fallbackReason,
+          previousSearchBaselineBounds,
+          previousLastRequestBounds,
+          previousViewportServiceBounds,
+        };
       }
 
-      const shouldCaptureFromMap =
-        (options.forceFreshBounds || !latestBoundsRef.current) && mapRef.current?.getVisibleBounds;
-      if (shouldCaptureFromMap) {
-        const boundsStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
-        try {
-          const visibleBounds = await mapRef.current!.getVisibleBounds();
-          if (
-            Array.isArray(visibleBounds) &&
-            visibleBounds.length >= 2 &&
-            isLngLatTuple(visibleBounds[0]) &&
-            isLngLatTuple(visibleBounds[1])
-          ) {
-            const nextBounds = boundsFromPairs(visibleBounds[0], visibleBounds[1]);
-            latestBoundsRef.current = nextBounds;
-            return nextBounds;
-          }
-        } catch (boundsError) {
-          logger.warn(
-            `Unable to determine map bounds before submitting ${options.logLabel} search`,
-            {
-              message: boundsError instanceof Error ? boundsError.message : 'unknown error',
-            }
-          );
-        } finally {
-          if (shouldLogSearchResponseTimings && boundsStart > 0) {
-            logSearchResponseTiming(
-              `getVisibleBounds:${options.logLabel}`,
-              getPerfNow() - boundsStart
-            );
-          }
+      if (previousViewportServiceBounds) {
+        latestBoundsRef.current = previousViewportServiceBounds;
+        return {
+          bounds: previousViewportServiceBounds,
+          source: 'viewport_bounds_service',
+          freshBoundsRequested: false,
+          freshBoundsCaptured: false,
+          fallbackReason: null,
+          previousSearchBaselineBounds,
+          previousLastRequestBounds,
+          previousViewportServiceBounds,
+        };
+      }
+
+      if (!latestBoundsRef.current) {
+        const mapCapture = await captureVisibleMapBounds(options.logLabel);
+        if (mapCapture.bounds) {
+          latestBoundsRef.current = mapCapture.bounds;
+          viewportBoundsService.setBounds(mapCapture.bounds);
+          return {
+            bounds: mapCapture.bounds,
+            source: 'map_visible_bounds',
+            freshBoundsRequested: false,
+            freshBoundsCaptured: true,
+            fallbackReason: null,
+            previousSearchBaselineBounds,
+            previousLastRequestBounds,
+            previousViewportServiceBounds,
+          };
         }
       }
 
-      return latestBoundsRef.current;
+      const latestBounds = latestBoundsRef.current;
+      return {
+        bounds: latestBounds,
+        source: latestBounds ? 'latest_bounds_ref' : 'none',
+        freshBoundsRequested: false,
+        freshBoundsCaptured: false,
+        fallbackReason: null,
+        previousSearchBaselineBounds,
+        previousLastRequestBounds,
+        previousViewportServiceBounds,
+      };
     },
-    [
-      latestBoundsRef,
-      logSearchResponseTiming,
-      mapRef,
-      shouldLogSearchResponseTimings,
-      viewportBoundsService,
-    ]
+    [captureVisibleMapBounds, latestBoundsRef, viewportBoundsService]
+  );
+
+  const logForceFreshBoundsTelemetry = React.useCallback(
+    (options: {
+      tuple: SearchRequestPreparationTuple;
+      logLabel: 'natural' | 'structured';
+      page: number;
+      append: boolean;
+      resolvedRequestBounds: ResolvedRequestBounds;
+    }) => {
+      const { resolvedRequestBounds } = options;
+      if (!resolvedRequestBounds.freshBoundsRequested) {
+        return;
+      }
+      const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+      if (!isPerfScenarioAttributionActive(scenarioConfig)) {
+        return;
+      }
+      logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+        event: 'search_this_area_request_bounds_contract',
+        append: options.append,
+        fallbackReason: resolvedRequestBounds.fallbackReason,
+        forceFreshBounds: true,
+        freshMapBoundsCaptured: resolvedRequestBounds.freshBoundsCaptured,
+        logLabel: options.logLabel,
+        operationId: options.tuple.operationId,
+        page: options.page,
+        requestBoundsChangedFromLastRequestBounds: hasBoundsChanged(
+          resolvedRequestBounds.previousLastRequestBounds,
+          resolvedRequestBounds.bounds
+        ),
+        requestBoundsChangedFromPreviousSearchBaseline: hasBoundsChanged(
+          resolvedRequestBounds.previousSearchBaselineBounds,
+          resolvedRequestBounds.bounds
+        ),
+        requestBoundsChangedFromViewportService: hasBoundsChanged(
+          resolvedRequestBounds.previousViewportServiceBounds,
+          resolvedRequestBounds.bounds
+        ),
+        requestBoundsSource: resolvedRequestBounds.source,
+        requestId: options.tuple.requestId,
+        searchThisAreaSubmitId: getActivePerfScenarioSearchThisAreaSubmitId(),
+      });
+    },
+    []
   );
 
   const buildStructuredSearchPayload = React.useCallback(
@@ -187,8 +367,8 @@ export const useSearchRequestPreparationOwner = ({
         filters.minimumVotes !== undefined
           ? filters.minimumVotes
           : votes100Plus
-            ? MINIMUM_VOTES_FILTER
-            : null;
+          ? MINIMUM_VOTES_FILTER
+          : null;
 
       if (effectiveOpenNow) {
         payload.openNow = true;
@@ -202,13 +382,14 @@ export const useSearchRequestPreparationOwner = ({
         payload.minimumVotes = effectiveMinimumVotes;
       }
 
-      const bounds = await resolveRequestBounds({
+      const requestBounds = await resolveRequestBounds({
         shouldCaptureBounds: page === 1,
         forceFreshBounds: options?.forceFreshBounds,
         logLabel: 'structured',
       });
-      if (bounds) {
-        payload.bounds = bounds;
+      lastResolvedStructuredRequestBoundsRef.current = requestBounds;
+      if (requestBounds.bounds) {
+        payload.bounds = requestBounds.bounds;
       }
 
       const resolvedLocation = userLocationRef.current;
@@ -254,12 +435,22 @@ export const useSearchRequestPreparationOwner = ({
       if (!isOperationTupleStillActive(tuple)) {
         return null;
       }
+      if (forceFreshBounds && lastResolvedStructuredRequestBoundsRef.current) {
+        logForceFreshBoundsTelemetry({
+          tuple,
+          logLabel: 'structured',
+          page: 1,
+          append: false,
+          resolvedRequestBounds: lastResolvedStructuredRequestBoundsRef.current,
+        });
+      }
       return payload;
     },
     [
       buildStructuredSearchPayload,
       isLoadingMore,
       isOperationTupleStillActive,
+      logForceFreshBoundsTelemetry,
       logSearchPhase,
       searchRuntimeBus,
     ]
@@ -337,8 +528,15 @@ export const useSearchRequestPreparationOwner = ({
       if (!isOperationTupleStillActive(tuple)) {
         return null;
       }
-      if (requestBounds) {
-        payload.bounds = requestBounds;
+      logForceFreshBoundsTelemetry({
+        tuple,
+        logLabel: 'natural',
+        page: targetPage,
+        append,
+        resolvedRequestBounds: requestBounds,
+      });
+      if (requestBounds.bounds) {
+        payload.bounds = requestBounds.bounds;
       }
 
       const resolvedLocation = userLocationRef.current;
@@ -351,12 +549,13 @@ export const useSearchRequestPreparationOwner = ({
 
       return {
         payload,
-        requestBounds: append ? null : (requestBounds ?? null),
+        requestBounds: append ? null : requestBounds.bounds ?? null,
       };
     },
     [
       isOperationTupleStillActive,
       lastSearchRequestIdRef,
+      logForceFreshBoundsTelemetry,
       logSearchPhase,
       resolveRequestBounds,
       setError,

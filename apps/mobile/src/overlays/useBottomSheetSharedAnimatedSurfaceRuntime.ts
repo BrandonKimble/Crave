@@ -30,9 +30,13 @@ export const useBottomSheetSharedAnimatedSurfaceRuntime = ({
 
   const animatedSheetStyle = useAnimatedStyle(
     () => ({
-      transform: [{ translateY: Math.round(sheetY.value * pixelRatio) / pixelRatio }],
+      transform: [
+        {
+          translateY: Math.round(sheetY.value * pixelRatio) / pixelRatio,
+        },
+      ],
     }),
-    [pixelRatio]
+    [pixelRatio, sheetY]
   );
 
   const scrollHeaderSyncStyle = useAnimatedStyle(() => {

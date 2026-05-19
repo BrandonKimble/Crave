@@ -16,8 +16,11 @@ export const useSearchRootOverlayShortcutsPresentationRuntime = ({
         visualRuntime.searchShortcutsAnimatedStyle,
       searchShortcutChipAnimatedStyle:
         visualRuntime.searchShortcutChipAnimatedStyle,
+      searchShortcutContentAnimatedStyle:
+        visualRuntime.searchShortcutContentAnimatedStyle,
     }),
     [
+      visualRuntime.searchShortcutContentAnimatedStyle,
       visualRuntime.searchShortcutChipAnimatedStyle,
       visualRuntime.searchShortcutsAnimatedStyle,
       visualRuntime.shouldEnableSearchShortcutsInteraction,

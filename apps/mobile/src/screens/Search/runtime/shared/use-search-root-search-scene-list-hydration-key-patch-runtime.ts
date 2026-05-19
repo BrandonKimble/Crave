@@ -16,7 +16,5 @@ export const useSearchRootSearchSceneListHydrationKeyPatchRuntime = ({
   ...useSearchRootSearchSceneListHydrationKeysPatchRuntime({
     hydrationKeyRuntime,
   }),
-  ...useSearchRootSearchSceneListHydrationRenderGatePatchRuntime({
-    hydrationKeyRuntime,
-  }),
+  ...useSearchRootSearchSceneListHydrationRenderGatePatchRuntime(),
 });

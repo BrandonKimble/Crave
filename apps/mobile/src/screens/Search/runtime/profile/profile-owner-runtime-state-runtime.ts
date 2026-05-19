@@ -9,6 +9,7 @@ import type { ProfileRuntimeStateOwner } from './profile-runtime-state-contract'
 type UseProfileOwnerRuntimeStateRuntimeArgs = {
   searchContext: ProfileSearchContext;
   currentMapZoom: number | null;
+  fallbackMapZoom: number;
   presentationModelRuntime: Pick<
     ProfilePresentationModelRuntime,
     'resolveProfileCameraPadding' | 'getProfileTransitionSnapshotCapture'
@@ -27,6 +28,7 @@ type UseProfileOwnerRuntimeStateRuntimeArgs = {
 export const useProfileOwnerRuntimeStateRuntime = ({
   searchContext,
   currentMapZoom,
+  fallbackMapZoom,
   presentationModelRuntime,
   nativeExecutionModel,
   runtimeStateOwner,
@@ -48,7 +50,9 @@ export const useProfileOwnerRuntimeStateRuntime = ({
         profileShellState.restaurantPanelSnapshot?.restaurant.restaurantId ?? null,
       hasPanelSnapshot: () => profileShellState.restaurantPanelSnapshot != null,
       getCurrentLastCameraState: nativeExecutionModel.transitionExecutionModel.getLastCameraState,
+      getCurrentViewportBounds: searchContext.getCurrentViewportBounds,
       getCurrentMapZoom: () => (typeof currentMapZoom === 'number' ? currentMapZoom : null),
+      getFallbackMapZoom: () => fallbackMapZoom,
       getProfileMultiLocationZoomBaseline,
       getRestaurantFocusSession,
       getRestaurantOnlySearchId: searchContext.getRestaurantOnlySearchId,
@@ -65,6 +69,7 @@ export const useProfileOwnerRuntimeStateRuntime = ({
     }),
     [
       currentMapZoom,
+      fallbackMapZoom,
       getLastAutoOpenKey,
       getProfileMultiLocationZoomBaseline,
       getProfileTransitionStatus,
@@ -73,6 +78,7 @@ export const useProfileOwnerRuntimeStateRuntime = ({
       presentationModelRuntime,
       profileShellState.restaurantPanelSnapshot,
       profileShellState.transitionStatus,
+      searchContext.getCurrentViewportBounds,
       searchContext.getPendingRestaurantSelection,
       searchContext.getRestaurantOnlySearchId,
     ]

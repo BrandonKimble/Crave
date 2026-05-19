@@ -36,10 +36,12 @@ export const useSearchRootRouteSearchSceneDataStateRuntime = ({
     sessionAssemblyRuntime.sessionRuntime.sessionCoreLane.searchRuntimeBus
   );
   const routeSearchSceneHydrationRuntimeState = useSearchResultsPanelHydrationRuntimeState(
-    sessionAssemblyRuntime.sessionRuntime.sessionCoreLane.searchRuntimeBus
+    sessionAssemblyRuntime.sessionRuntime.sessionCoreLane.searchRuntimeBus,
+    sessionAssemblyRuntime.sessionRuntime.sessionCoreLane.resultsPresentationSurfaceAuthority
   );
   const routeSearchScenePresentationRuntimeState = useSearchResultsPanelPresentationRuntimeState(
-    sessionAssemblyRuntime.sessionRuntime.sessionCoreLane.searchRuntimeBus
+    sessionAssemblyRuntime.sessionRuntime.sessionCoreLane.searchRuntimeBus,
+    sessionAssemblyRuntime.sessionRuntime.sessionCoreLane.resultsPresentationAuthority
   );
   const isSearchSceneRenderAdmitted = React.useCallback(() => {
     const snapshot = routeSceneSwitchAuthority.getSnapshot();
@@ -56,9 +58,9 @@ export const useSearchRootRouteSearchSceneDataStateRuntime = ({
     retainedResultsWriter: readModelPolicyWriters.retainedResults,
   });
   const routeSearchSceneHydrationKeyRuntime = useSearchResultsPanelHydrationKeyRuntime({
-    searchRuntimeBus: sessionAssemblyRuntime.sessionRuntime.sessionCoreLane.searchRuntimeBus,
-    resolvedResults: routeSearchSceneResolvedResultsRuntime.resolvedResults,
-    runtimeHydratedResultsKey: routeSearchSceneHydrationRuntimeState.runtimeHydratedResultsKey,
+    resultsPresentationSurfaceAuthority:
+      sessionAssemblyRuntime.sessionRuntime.sessionCoreLane.resultsPresentationSurfaceAuthority,
+    resultsRuntimeState: routeSearchSceneResultsRuntimeState,
     isSearchSceneRenderAdmitted,
   });
   const routeSearchSceneOnDemandQueryRuntime = useSearchResultsPanelOnDemandQueryRuntime({

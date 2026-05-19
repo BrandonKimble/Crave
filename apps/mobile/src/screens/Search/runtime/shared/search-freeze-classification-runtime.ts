@@ -1,26 +1,26 @@
 export type SearchFreezeClassification = 'none' | 'recovery' | 'close-handoff';
 
 export const resolveSearchRecoveryFreezeClassification = ({
-  isRunOneChromeFreezeActive,
-  isRunOnePreflightFreezeActive,
-  isRun1HandoffActive,
+  isSearchSurfaceRedrawChromeFreezeActive,
+  isSearchSurfaceRedrawPreflightFreezeActive,
+  isSearchSurfaceRedrawActive,
   isResponseFrameFreezeActive,
   isChromeDeferred = false,
-  runOneCommitSpanPressureActive = false,
+  searchSurfaceRedrawCommitSpanPressureActive = false,
 }: {
-  isRunOneChromeFreezeActive?: boolean;
-  isRunOnePreflightFreezeActive?: boolean;
-  isRun1HandoffActive?: boolean;
+  isSearchSurfaceRedrawChromeFreezeActive?: boolean;
+  isSearchSurfaceRedrawPreflightFreezeActive?: boolean;
+  isSearchSurfaceRedrawActive?: boolean;
   isResponseFrameFreezeActive?: boolean;
   isChromeDeferred?: boolean;
-  runOneCommitSpanPressureActive?: boolean;
+  searchSurfaceRedrawCommitSpanPressureActive?: boolean;
 }): SearchFreezeClassification =>
-  isRunOneChromeFreezeActive ||
-  isRunOnePreflightFreezeActive ||
-  isRun1HandoffActive ||
+  isSearchSurfaceRedrawChromeFreezeActive ||
+  isSearchSurfaceRedrawPreflightFreezeActive ||
+  isSearchSurfaceRedrawActive ||
   isResponseFrameFreezeActive ||
   isChromeDeferred ||
-  runOneCommitSpanPressureActive
+  searchSurfaceRedrawCommitSpanPressureActive
     ? 'recovery'
     : 'none';
 

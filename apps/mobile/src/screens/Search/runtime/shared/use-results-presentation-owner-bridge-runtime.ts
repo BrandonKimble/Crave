@@ -2,11 +2,14 @@ import React from 'react';
 
 import { createResultsPresentationRuntimeOwnerValue } from '../controller/results-presentation-owner-runtime';
 import type { ResultsPresentationLog } from './results-presentation-runtime-contract';
+import type { ResultsPresentationAuthority } from './results-presentation-authority';
+import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
+import type { SearchMapSourceFramePort } from '../map/search-map-source-frame-port';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { ResultsPresentationRuntimeOwner } from './results-presentation-runtime-owner-contract';
 import { useResultsPresentationInteractionRuntime } from './use-results-presentation-interaction-runtime';
 import { useResultsPresentationRuntimeMachineOwner } from './use-results-presentation-runtime-machine-owner';
-import type { RunOneHandoffCoordinator } from '../controller/run-one-handoff-coordinator';
+import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 
 type UseResultsPresentationOwnerBridgeRuntimeArgs = {
   activeTab: 'dishes' | 'restaurants';
@@ -14,8 +17,11 @@ type UseResultsPresentationOwnerBridgeRuntimeArgs = {
   setActiveTabPreference: (next: 'dishes' | 'restaurants') => void;
   isSearchSessionActive: boolean;
   searchRuntimeBus: SearchRuntimeBus;
+  resultsPresentationAuthority: ResultsPresentationAuthority;
+  resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
+  searchMapSourceFramePort: SearchMapSourceFramePort;
   log: ResultsPresentationLog;
-  runOneHandoffCoordinatorRef: React.MutableRefObject<RunOneHandoffCoordinator>;
+  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinator>;
   emitRuntimeMechanismEvent: (event: string, payload: Record<string, unknown>) => void;
 };
 
@@ -31,8 +37,11 @@ export const useResultsPresentationOwnerBridgeRuntime = ({
   setActiveTabPreference,
   isSearchSessionActive,
   searchRuntimeBus,
+  resultsPresentationAuthority,
+  resultsPresentationSurfaceAuthority,
+  searchMapSourceFramePort,
   log,
-  runOneHandoffCoordinatorRef,
+  searchSurfaceRedrawCoordinatorRef,
   emitRuntimeMechanismEvent,
 }: UseResultsPresentationOwnerBridgeRuntimeArgs): ResultsPresentationOwnerBridgeRuntime => {
   const markSearchSheetCloseMapExitSettledRef = React.useRef<(requestKey: string) => void>(
@@ -43,8 +52,11 @@ export const useResultsPresentationOwnerBridgeRuntime = ({
   const { handleToggleInteractionLifecycle, ...resultsRuntimeMachineOwner } =
     useResultsPresentationRuntimeMachineOwner({
       searchRuntimeBus,
+      resultsPresentationAuthority,
+      resultsPresentationSurfaceAuthority,
+      searchMapSourceFramePort,
       log,
-      runOneHandoffCoordinatorRef,
+      searchSurfaceRedrawCoordinatorRef,
       emitRuntimeMechanismEvent,
       markSearchSheetCloseMapExitSettledRef,
       notifyIntentCompleteRef,

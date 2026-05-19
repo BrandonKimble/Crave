@@ -79,6 +79,7 @@ export const useSearchRouteSwitchPostCommitRuntime = ({
         };
 
         const isSearchRootTarget = targetSceneKey === 'search' || targetSceneKey === 'polls';
+        const isSearchProfileRouteTarget = targetSceneKey === 'restaurant';
         const cleanupSnapshot = runtime.transientCleanupActions.getSnapshot();
 
         logNavSwitchStep('settled:begin');
@@ -100,7 +101,15 @@ export const useSearchRouteSwitchPostCommitRuntime = ({
           runtime.transientCleanupActions.clearSuggestions();
           logNavSwitchStep('clearSuggestions');
         }
-        if (!isSearchRootTarget && cleanupSnapshot.profilePresentationActive) {
+        if (isSearchRootTarget && cleanupSnapshot.profilePresentationActive) {
+          runtime.transientCleanupActions.closeRestaurantProfile();
+          logNavSwitchStep('closeRestaurantProfileForSearchRoot');
+        }
+        if (
+          !isSearchRootTarget &&
+          !isSearchProfileRouteTarget &&
+          cleanupSnapshot.profilePresentationActive
+        ) {
           runtime.transientCleanupActions.closeRestaurantProfile();
           logNavSwitchStep('closeRestaurantProfile');
         }

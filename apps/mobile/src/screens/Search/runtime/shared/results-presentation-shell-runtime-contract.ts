@@ -15,7 +15,8 @@ export type ResultsPresentationActions = {
 export type ResultsCloseTransitionActions = {
   markSearchSheetCloseMapExitSettled: (requestKey: string) => void;
   markSearchSheetCloseCollapsedReached: (
-    snap: import('../../../../overlays/types').OverlaySheetSnap
+    snap: import('../../../../overlays/types').OverlaySheetSnap,
+    source?: 'motion_plane'
   ) => void;
   markSearchSheetCloseSheetSettled: (
     snap: import('../../../../overlays/types').OverlaySheetSnap

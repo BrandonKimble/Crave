@@ -1,16 +1,8 @@
-import type {
-  SearchOverlayChromeContainerSnapshot,
-  SearchOverlayChromeFrameSnapshot,
-  SearchOverlayChromeHeaderProps,
-  SearchOverlayChromeSuggestionSurfaceProps,
-} from '../../screens/Search/runtime/shared/search-foreground-chrome-contract';
+import type { SearchOverlayChromeHostSnapshot } from '../../screens/Search/runtime/shared/search-foreground-chrome-contract';
 import type { SearchOverlayHostGateSnapshot } from '../../screens/Search/runtime/shared/search-overlay-host-gate-snapshot-contract';
 import type { SearchOverlayShellHostSnapshot } from '../../screens/Search/runtime/shared/search-overlay-shell-host-snapshot-contract';
 import type {
-  SearchOverlayChromeContainerHostAuthority,
-  SearchOverlayChromeFrameHostAuthority,
-  SearchOverlayChromeHeaderHostAuthority,
-  SearchOverlayChromeSuggestionSurfaceHostAuthority,
+  SearchOverlayChromeHostAuthority,
   SearchOverlayGateHostAuthority,
   SearchOverlayLocalRestaurantSheetHostAuthority,
   SearchOverlayShellHostAuthority,
@@ -18,12 +10,7 @@ import type {
 import type { SearchRoutePanelInteractionRef } from '../../overlays/searchOverlayRouteHostContract';
 
 export type AppRouteOverlayHostPublicationLane = {
-  publishOverlayChromeFrameSnapshot: (snapshot: SearchOverlayChromeFrameSnapshot) => void;
-  publishOverlayChromeContainerSnapshot: (snapshot: SearchOverlayChromeContainerSnapshot) => void;
-  publishOverlayChromeHeaderProps: (props: SearchOverlayChromeHeaderProps) => void;
-  publishOverlayChromeSuggestionSurfaceProps: (
-    props: SearchOverlayChromeSuggestionSurfaceProps
-  ) => void;
+  publishOverlayChromeHostSnapshot: (snapshot: SearchOverlayChromeHostSnapshot) => void;
   publishOverlayGateSnapshot: (snapshot: SearchOverlayHostGateSnapshot) => void;
   publishOverlayShellSnapshot: (snapshot: SearchOverlayShellHostSnapshot) => void;
   publishOverlayRestaurantHostAuthorities: (authorities: {
@@ -34,10 +21,7 @@ export type AppRouteOverlayHostPublicationLane = {
 };
 
 export type AppRouteOverlayHostAuthoritySurface = {
-  overlayChromeFrameHostAuthority: SearchOverlayChromeFrameHostAuthority;
-  overlayChromeContainerHostAuthority: SearchOverlayChromeContainerHostAuthority;
-  overlayChromeHeaderHostAuthority: SearchOverlayChromeHeaderHostAuthority;
-  overlayChromeSuggestionSurfaceHostAuthority: SearchOverlayChromeSuggestionSurfaceHostAuthority;
+  overlayChromeHostAuthority: SearchOverlayChromeHostAuthority;
   overlayGateHostAuthority: SearchOverlayGateHostAuthority;
   overlayShellHostAuthority: SearchOverlayShellHostAuthority;
   overlayLocalRestaurantSheetHostAuthority: SearchOverlayLocalRestaurantSheetHostAuthority;

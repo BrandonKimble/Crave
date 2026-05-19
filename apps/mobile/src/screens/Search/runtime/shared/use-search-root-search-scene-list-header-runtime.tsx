@@ -23,7 +23,11 @@ export const useSearchRootSearchSceneListHeaderRuntime = ({
         style={styles.resultsListHeader}
         onLayout={handleFiltersHeaderLayout}
       >
-        <SearchFilters {...filtersHeaderRuntimeForReadModel} />
+        <SearchFilters
+          {...filtersHeaderRuntimeForReadModel}
+          telemetryHostLayer="SearchMountedSceneBody"
+          telemetryInSheetBody={true}
+        />
         <View style={styles.resultsListHeaderBottomStrip} />
       </View>
     ),

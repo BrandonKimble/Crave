@@ -107,9 +107,9 @@ export const useSearchRootOverlayFoundationRuntime = ({
     rootPrimitivesRuntime,
     rootSessionCoreLane: sessionCoreLane,
     rootSessionPrimitivesLane: sessionPrimitivesLane,
+    rootResultsSheetRuntimeLane,
     rootDataPlaneRuntime,
     rootOverlayStoreRuntime,
-    routeSceneSwitchAuthority: routeSceneRuntime.sceneSwitchAuthority,
   });
   return {
     routeSceneRuntime,

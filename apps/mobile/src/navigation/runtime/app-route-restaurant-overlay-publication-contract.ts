@@ -24,7 +24,6 @@ export type AppRouteRestaurantOverlayPolicyPublication = {
 export type AppRouteRestaurantOverlayInteractionPublication = {
   onToggleFavorite: AppOverlayRestaurantInputs['onToggleFavorite'];
   closeRestaurantProfile: AppOverlayRestaurantInputs['closeRestaurantProfile'];
-  restaurantSheetSnapController: AppOverlayRestaurantInputs['restaurantSheetSnapController'];
 };
 
 export const EMPTY_APP_ROUTE_RESTAURANT_OVERLAY_POLICY_PUBLICATION: AppRouteRestaurantOverlayPolicyPublication =
@@ -41,8 +40,6 @@ export const EMPTY_APP_ROUTE_RESTAURANT_OVERLAY_INTERACTION_PUBLICATION: AppRout
   {
     onToggleFavorite: EMPTY_APP_OVERLAY_RESTAURANT_INPUTS.onToggleFavorite,
     closeRestaurantProfile: EMPTY_APP_OVERLAY_RESTAURANT_INPUTS.closeRestaurantProfile,
-    restaurantSheetSnapController:
-      EMPTY_APP_OVERLAY_RESTAURANT_INPUTS.restaurantSheetSnapController,
   };
 
 export type AppRouteRestaurantOverlayPanelContentPublicationLane = {

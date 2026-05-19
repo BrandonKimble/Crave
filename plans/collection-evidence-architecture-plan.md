@@ -42,7 +42,7 @@ Today the system is mixed:
   - `user_food_views`
 - some things are projections / aggregates:
   - `core_restaurant_items`
-  - display rank tables
+  - public Crave Score tables
   - quality scores
 
 That means the current system can answer today’s product questions well, but it does not fully preserve the facts needed to:
@@ -357,7 +357,7 @@ These are rebuildable product tables:
 
 - `core_restaurant_items`
 - `core_restaurant_entity_signals`
-- display rank scores
+- public Crave Score projections
 - quality score projections
 
 These should be treated as outputs, not as the only durable truth.
@@ -403,11 +403,14 @@ That makes “replace subset with newer model output” possible.
 
 - simplest logic
 - heaviest runtime
+- required for public Crave Score calibration because `globalZ` must be computed
+  against the whole scored universe
 
 2. Restaurant-scoped rebuild
 
-- rebuild projections only for affected restaurants
-- probably the best long-term tradeoff
+- rebuild non-score projections only for affected restaurants
+- useful for local evidence projections, but not valid for public Crave Score
+  calibration
 
 3. Source-scoped delta replacement
 
@@ -418,7 +421,9 @@ That makes “replace subset with newer model output” possible.
 
 Recommendation:
 
-- target restaurant-scoped rebuilds
+- target restaurant-scoped rebuilds for evidence projections only
+- keep public Crave Score as a global rebuild unless a future incremental scorer
+  proves exact global-stat equivalence
 - do not implement delta subtraction first
 
 ## Replay workflow

@@ -49,8 +49,6 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
       ? sceneBodyContentSpec.contentScrollMode
       : sceneBodyContentSpec.surfaceKind === 'mounted'
       ? sceneBodyContentSpec.contentScrollMode ?? 'scroll'
-      : sceneBodyContentSpec.surfaceKind === 'mountedList'
-      ? 'static'
       : 'scroll';
   const sceneContentComponent =
     sceneBodyContentSpec.surfaceKind === 'content' ? (
@@ -58,14 +56,6 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
     ) : sceneBodyContentSpec.surfaceKind === 'mounted' ? (
       shouldAttachMountedContent ? (
         <BottomSheetSceneStackMountedBody mountedBodyKey={sceneBodyContentSpec.mountedBodyKey} />
-      ) : null
-    ) : sceneBodyContentSpec.surfaceKind === 'mountedList' ? (
-      shouldAttachMountedContent ? (
-        <BottomSheetSceneStackMountedBody
-          mountedBodyKey={sceneBodyContentSpec.mountedBodyKey}
-          bodyDefaults={bodyDefaults}
-          bodyScrollRuntime={bodyScrollRuntime}
-        />
       ) : null
     ) : null;
   const sceneContentContainerStyle = React.useMemo(
@@ -139,10 +129,6 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
   }, [bodyScrollRuntime.scrollOffset, sceneBodyTransportSpec]);
 
   const sceneBodyInner = React.useMemo(() => {
-    if (sceneBodyContentSpec.surfaceKind === 'mountedList') {
-      return sceneContentComponent;
-    }
-
     if (sceneBodyContentSpec.surfaceKind !== 'list') {
       return sceneContentScrollMode === 'static' ? (
         sceneStaticContentBody

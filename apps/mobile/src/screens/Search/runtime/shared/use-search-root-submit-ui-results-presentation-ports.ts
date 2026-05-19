@@ -30,17 +30,23 @@ export const useSearchRootSubmitUiResultsPresentationPorts = ({
     () => ({
       getIsProfilePresentationActive: () =>
         profileOwner.profileViewState.presentation.isPresentationActive,
-      clearMapHighlightedRestaurantId:
-        profileOwner.profileActions.clearMapHighlightedRestaurantId,
-      onPageOneResultsCommitted:
-        resultsPresentationOwner.handlePageOneResultsCommitted,
+      clearMapHighlightedRestaurantId: profileOwner.profileActions.clearMapHighlightedRestaurantId,
+      onPageOneResultsCommitted: (payload) => {
+        resultsPresentationOwner.handlePageOneResultsCommitted({
+          surfaceTransactionMutationKind:
+            payload.presentationIntentKind === 'search_this_area' ? 'search_this_area' : undefined,
+          expectedResultsDataKey: payload.resultsDataKey ?? payload.resultsHydrationKey,
+          dataReadyFrom: payload.dataReadyFrom,
+          searchInputKey: payload.searchInputKey,
+        });
+      },
       onShortcutSearchCoverageSnapshot:
         sessionPrimitivesLane.primitives.handleShortcutSearchCoverageSnapshot,
     }),
     [
       profileOwner.profileActions.clearMapHighlightedRestaurantId,
       profileOwner.profileViewState.presentation.isPresentationActive,
-      resultsPresentationOwner.handlePageOneResultsCommitted,
+      resultsPresentationOwner,
       sessionPrimitivesLane.primitives.handleShortcutSearchCoverageSnapshot,
     ]
   );

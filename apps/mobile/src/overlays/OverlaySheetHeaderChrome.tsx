@@ -51,6 +51,7 @@ const DEFAULT_HOLE_Y_OFFSET = 0;
 const DEFAULT_BADGE_PADDING = 0;
 const DEFAULT_BADGE_Y_OFFSET = 0;
 const DEFAULT_CUTOUT_FILL = '#ffffff';
+const HEADER_FOREGROUND_PLATE_OVERLAP_PX = 3;
 
 const circlePath = (cx: number, cy: number, radius: number) =>
   `M ${cx} ${cy} m -${radius},0 a ${radius},${radius} 0 1,0 ${
@@ -135,7 +136,7 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
   }, []);
 
   const cutoutBackground = React.useMemo(() => {
-    const maskHeight = headerHeight + maskPadding * 2;
+    const maskHeight = headerHeight + maskPadding * 2 + HEADER_FOREGROUND_PLATE_OVERLAP_PX;
     const fillColor = DEFAULT_CUTOUT_FILL;
 
     const headerRowY =

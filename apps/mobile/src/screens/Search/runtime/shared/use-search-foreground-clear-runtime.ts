@@ -42,7 +42,8 @@ export const useSearchForegroundClearRuntime = ({
 
   const handleClear = React.useCallback(() => {
     const shouldCloseSuggestions = isSuggestionPanelActive || isSuggestionPanelVisible;
-    const hasSearchToClose = isSearchSessionActive || hasResults || submittedQuery.length > 0;
+    const hasSearchToClose =
+      isSearchSessionActive || hasResults || submittedQuery.length > 0 || profilePresentationActive;
     if (isSuggestionPanelActive) {
       clearTypedQuery();
       return;
@@ -58,7 +59,6 @@ export const useSearchForegroundClearRuntime = ({
     ignoreNextSearchBlurRef.current = true;
     clearSearchState({
       shouldRefocusInput: !isSearchSessionActive && !isSearchLoading && !isLoadingMore,
-      skipProfileDismissWait: true,
     });
   }, [
     beginCloseSearch,

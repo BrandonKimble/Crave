@@ -45,8 +45,16 @@ export const useSearchRootSubmitRuntimePorts = ({
   return React.useMemo(
     () => ({
       ...coreRuntimePorts,
+      resultsPresentationAuthority: sessionCoreLane.resultsPresentationAuthority,
+      resultsPresentationSurfaceAuthority:
+        sessionCoreLane.resultsPresentationSurfaceAuthority,
       ...viewportRuntimePorts,
     }),
-    [coreRuntimePorts, viewportRuntimePorts]
+    [
+      coreRuntimePorts,
+      sessionCoreLane.resultsPresentationAuthority,
+      sessionCoreLane.resultsPresentationSurfaceAuthority,
+      viewportRuntimePorts,
+    ]
   );
 };

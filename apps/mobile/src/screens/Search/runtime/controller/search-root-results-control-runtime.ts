@@ -1,5 +1,5 @@
 import type {
-  SearchRootPreparedResultsSnapshotControlLane,
+  SearchRootSearchSurfaceResultsTransactionControlLane,
   SearchRootResultsPresentationStateControlLane,
   SearchRootResultsSheetControlLane,
   SearchRootResultsTransitionControlLane,
@@ -9,17 +9,17 @@ export type SearchRootResultsControlRuntimeValue = {
   resultsSheetControlLane: SearchRootResultsSheetControlLane;
   resultsPresentationStateControlLane: SearchRootResultsPresentationStateControlLane;
   resultsTransitionControlLane: SearchRootResultsTransitionControlLane;
-  preparedResultsSnapshotControlLane: SearchRootPreparedResultsSnapshotControlLane;
+  searchSurfaceResultsTransactionControlLane: SearchRootSearchSurfaceResultsTransactionControlLane;
 };
 
 export const createSearchRootResultsControlRuntimeValue = ({
   resultsSheetControlLane,
   resultsPresentationStateControlLane,
   resultsTransitionControlLane,
-  preparedResultsSnapshotControlLane,
+  searchSurfaceResultsTransactionControlLane,
 }: SearchRootResultsControlRuntimeValue): SearchRootResultsControlRuntimeValue => ({
   resultsSheetControlLane,
   resultsPresentationStateControlLane,
   resultsTransitionControlLane,
-  preparedResultsSnapshotControlLane,
+  searchSurfaceResultsTransactionControlLane,
 });

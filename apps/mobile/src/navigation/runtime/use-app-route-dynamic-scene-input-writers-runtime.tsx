@@ -14,48 +14,50 @@ import {
   type AppRouteSceneSheetSessionInputState,
 } from './app-route-dynamic-scene-inputs-contract';
 import { useAppRoutePollCreationSceneInputWriterRuntime } from './use-app-route-poll-creation-scene-input-writer-runtime';
+import { useAppRouteFavoriteListDetailSceneInputWriterRuntime } from './use-app-route-favorite-list-detail-scene-input-writer-runtime';
 import { useRouteAuthoritySelector } from './use-route-authority-selector';
 import { useSearchNavSwitchCommitAttribution } from '../../screens/Search/runtime/shared/use-search-nav-switch-commit-attribution';
 
-const INACTIVE_POLL_CREATION_ROUTE: OverlayRouteEntry = {
+const INACTIVE_DYNAMIC_CHILD_ROUTE: OverlayRouteEntry = {
   key: 'search',
   params: undefined,
 };
 
-type PollCreationRouteStateRuntime = {
+type DynamicChildRouteStateRuntime = {
   activeOverlayRoute: OverlayRouteEntry;
 };
 
-const useAppRoutePollsRouteStateRuntime = ({
+const useAppRouteDynamicChildRouteStateRuntime = ({
   routeSceneRuntime,
 }: {
   routeSceneRuntime: AppRouteSceneRuntime;
-}): PollCreationRouteStateRuntime => {
-  const selectPollCreationRoute = React.useCallback(
-    (snapshot: RouteOverlayNavigationSnapshot): PollCreationRouteStateRuntime => ({
-      activeOverlayRoute:
-        snapshot.activeOverlayRoute.key === 'pollCreation'
-          ? snapshot.activeOverlayRoute
-          : INACTIVE_POLL_CREATION_ROUTE,
+}): DynamicChildRouteStateRuntime => {
+  const selectDynamicChildRoute = React.useCallback(
+    (snapshot: RouteOverlayNavigationSnapshot): DynamicChildRouteStateRuntime => ({
+      activeOverlayRoute: ['favoriteListDetail', 'pollCreation'].includes(
+        snapshot.activeOverlayRoute.key
+      )
+        ? snapshot.activeOverlayRoute
+        : INACTIVE_DYNAMIC_CHILD_ROUTE,
     }),
     []
   );
   const [overlayNavigationState, setOverlayNavigationState] =
-    React.useState<PollCreationRouteStateRuntime>(() =>
-      selectPollCreationRoute(routeSceneRuntime.routeOverlayNavigationAuthority.getSnapshot())
+    React.useState<DynamicChildRouteStateRuntime>(() =>
+      selectDynamicChildRoute(routeSceneRuntime.routeOverlayNavigationAuthority.getSnapshot())
     );
 
   React.useEffect(
     () =>
       routeSceneRuntime.routeOverlayNavigationAuthority.registerTarget({
-        selector: selectPollCreationRoute,
+        selector: selectDynamicChildRoute,
         syncNavigationSnapshot: (_snapshot, selectedRouteState) => {
           setOverlayNavigationState(selectedRouteState);
         },
         isEqual: (left, right) => left.activeOverlayRoute === right.activeOverlayRoute,
-        attributionLabel: 'AppRoutePollCreationSceneInputWriterRuntime',
+        attributionLabel: 'AppRouteDynamicChildSceneInputWriterRuntime',
       }),
-    [routeSceneRuntime, selectPollCreationRoute]
+    [routeSceneRuntime, selectDynamicChildRoute]
   );
 
   return React.useMemo(() => overlayNavigationState, [overlayNavigationState]);
@@ -86,7 +88,7 @@ export const useAppRouteDynamicSceneInputWritersRuntime = ({
   routeSceneRuntime: AppRouteSceneRuntime;
 }): void => {
   useSearchNavSwitchCommitAttribution('AppRoutePollCreationSceneInputWriterRuntime');
-  const pollsRouteStateRuntime = useAppRoutePollsRouteStateRuntime({
+  const dynamicChildRouteStateRuntime = useAppRouteDynamicChildRouteStateRuntime({
     routeSceneRuntime,
   });
   const sceneLayout = useAppRouteSceneLayoutRuntime({
@@ -96,11 +98,7 @@ export const useAppRouteDynamicSceneInputWritersRuntime = ({
     authority: routeSceneRuntime.routeSheetSnapSessionAuthority,
     selector: React.useCallback(
       (snapshot): AppRouteSceneSheetSessionInputState => ({
-        pollsDockedSnapRequest: snapshot.pollsDockedSnapRequest,
         isDockedPollsDismissed: snapshot.isDockedPollsDismissed,
-        dockedPollsRestoreInFlight: snapshot.dockedPollsRestoreInFlight,
-        ignoreDockedPollsHiddenUntilMs: snapshot.ignoreDockedPollsHiddenUntilMs,
-        pollCreationSnapRequest: snapshot.pollCreationSnapRequest,
       }),
       []
     ),
@@ -109,8 +107,12 @@ export const useAppRouteDynamicSceneInputWritersRuntime = ({
 
   useAppRoutePollCreationSceneInputWriterRuntime({
     routeSceneRuntime,
-    activeOverlayRoute: pollsRouteStateRuntime.activeOverlayRoute,
+    activeOverlayRoute: dynamicChildRouteStateRuntime.activeOverlayRoute,
     sceneLayout,
-    pollCreationSnapRequest: routeSheetSnapSessionState.pollCreationSnapRequest,
+  });
+  useAppRouteFavoriteListDetailSceneInputWriterRuntime({
+    routeSceneRuntime,
+    activeOverlayRoute: dynamicChildRouteStateRuntime.activeOverlayRoute,
+    sceneLayout,
   });
 };

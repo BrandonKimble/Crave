@@ -1,13 +1,15 @@
 import React from 'react';
+import { unstable_batchedUpdates } from 'react-native';
 
 import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
 import type { ResultsPresentationShellLocalState } from './use-results-presentation-shell-local-state';
 import type { ResultsPresentationCloseTransitionIntentRuntime } from './use-results-presentation-close-transition-intent-runtime';
+import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
 
 type UseResultsPresentationCloseTransitionFinalizeRuntimeArgs = {
   clearSearchState: SearchClearOwner['clearSearchState'];
   flushPendingSearchOriginRestore: () => boolean;
-  requestDefaultPostSearchRestore: () => void;
+  requestDefaultPostSearchRestore: (options?: { mode?: 'full' | 'chrome-only' }) => void;
   cancelSearchCloseRestore: () => void;
   shellLocalState: ResultsPresentationShellLocalState;
   intentRuntime: Pick<
@@ -25,6 +27,7 @@ export type ResultsPresentationCloseTransitionFinalizeRuntime = {
   cancelSearchSheetCloseTransition: (closeIntentId?: string) => void;
 };
 
+
 export const useResultsPresentationCloseTransitionFinalizeRuntime = ({
   clearSearchState,
   flushPendingSearchOriginRestore,
@@ -34,17 +37,18 @@ export const useResultsPresentationCloseTransitionFinalizeRuntime = ({
   intentRuntime,
 }: UseResultsPresentationCloseTransitionFinalizeRuntimeArgs): ResultsPresentationCloseTransitionFinalizeRuntime => {
   const finalizeCloseSearch = React.useCallback(
-    (intentId: string) => {
+    (intentId: string, terminalDismissSource: 'results' | 'profile') => {
       if (intentRuntime.pendingCloseIntentIdRef.current !== intentId) {
-        return;
+        return false;
       }
 
       clearSearchState({
-        skipProfileDismissWait: true,
         skipPostSearchRestore: true,
         preserveForegroundEditing: shellLocalState.inputMode === 'editing',
+        skipProfileDismissClear: terminalDismissSource !== 'profile',
       });
       intentRuntime.pendingCloseIntentIdRef.current = null;
+      return true;
     },
     [clearSearchState, intentRuntime, shellLocalState.inputMode]
   );
@@ -56,18 +60,34 @@ export const useResultsPresentationCloseTransitionFinalizeRuntime = ({
       }
 
       intentRuntime.finalizedCloseIntentIdRef.current = closeIntentId;
-      finalizeCloseSearch(closeIntentId);
-      const restored = flushPendingSearchOriginRestore();
-      if (!restored) {
-        requestDefaultPostSearchRestore();
-      }
-      intentRuntime.resetCloseTransition();
+      unstable_batchedUpdates(() => {
+        const terminalDismissSource =
+          shellLocalState.searchCloseTransitionState?.closeIntentId === closeIntentId
+            ? shellLocalState.searchCloseTransitionState.terminalDismissSource
+            : 'results';
+        const didFinalizeCloseSearch = finalizeCloseSearch(closeIntentId, terminalDismissSource);
+        if (!didFinalizeCloseSearch) {
+          intentRuntime.resetCloseTransition();
+          return;
+        }
+        if (terminalDismissSource === 'profile') {
+          requestDefaultPostSearchRestore({ mode: 'chrome-only' });
+        } else {
+          const restored = flushPendingSearchOriginRestore();
+          if (!restored) {
+            requestDefaultPostSearchRestore();
+          }
+        }
+        getSearchSurfaceRuntime().resetToPollPage();
+        intentRuntime.resetCloseTransition();
+      });
     },
     [
       finalizeCloseSearch,
       flushPendingSearchOriginRestore,
       intentRuntime,
       requestDefaultPostSearchRestore,
+      shellLocalState.searchCloseTransitionState,
     ]
   );
 

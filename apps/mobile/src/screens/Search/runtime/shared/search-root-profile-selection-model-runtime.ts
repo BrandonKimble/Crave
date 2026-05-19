@@ -13,7 +13,6 @@ import type {
 import type { SearchRootRestaurantSelectionModel } from './use-search-root-control-plane-runtime-contract';
 import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
 
-const PROFILE_MULTI_LOCATION_ZOOM_OUT_DELTA = 0.55;
 const PROFILE_MULTI_LOCATION_MIN_ZOOM = 3.5;
 const RESTAURANT_FOCUS_CENTER_EPSILON = 1e-5;
 const RESTAURANT_FOCUS_ZOOM_EPSILON = 0.01;
@@ -77,12 +76,10 @@ export const useSearchRootProfileSelectionModelRuntime = ({
     () => ({
       ...(selectionModel as unknown as Omit<
         ProfileSelectionModel,
-        | 'profileMultiLocationZoomOutDelta'
         | 'profileMultiLocationMinZoom'
         | 'restaurantFocusCenterEpsilon'
         | 'restaurantFocusZoomEpsilon'
       >),
-      profileMultiLocationZoomOutDelta: PROFILE_MULTI_LOCATION_ZOOM_OUT_DELTA,
       profileMultiLocationMinZoom: PROFILE_MULTI_LOCATION_MIN_ZOOM,
       restaurantFocusCenterEpsilon: RESTAURANT_FOCUS_CENTER_EPSILON,
       restaurantFocusZoomEpsilon: RESTAURANT_FOCUS_ZOOM_EPSILON,

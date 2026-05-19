@@ -104,8 +104,8 @@ export class PollsService {
               lng: query.userLocation.lng,
             }
           : null,
-        mode: 'polls',
-        ensureLocalFallbackMarkets: false,
+        mode: 'polls_read',
+        ensureLocalityMarkets: false,
       });
       marketKey = resolvedMarket.market?.marketKey ?? null;
     } else if (!marketKey && query.userLocation) {
@@ -114,8 +114,8 @@ export class PollsService {
           lat: query.userLocation.lat,
           lng: query.userLocation.lng,
         },
-        mode: 'polls',
-        ensureLocalFallbackMarkets: false,
+        mode: 'polls_read',
+        ensureLocalityMarkets: false,
       });
       marketKey = resolvedMarket.market?.marketKey ?? null;
     }
@@ -124,10 +124,14 @@ export class PollsService {
         marketKey: null,
         marketName: null,
         marketStatus: resolvedMarket?.status ?? ('no_market' as const),
-        candidatePlaceName:
-          resolvedMarket?.resolution.candidatePlaceName ?? null,
-        candidatePlaceGeoId:
-          resolvedMarket?.resolution.candidatePlaceGeoId ?? null,
+        candidateLocalityName:
+          resolvedMarket?.resolution.candidateLocalityName ?? null,
+        candidateBoundaryProvider:
+          resolvedMarket?.resolution.candidateBoundaryProvider ?? null,
+        candidateBoundaryId:
+          resolvedMarket?.resolution.candidateBoundaryId ?? null,
+        candidateBoundaryType:
+          resolvedMarket?.resolution.candidateBoundaryType ?? null,
         cta: resolvedMarket?.cta ?? {
           kind: 'none' as const,
           label: null,
@@ -157,16 +161,17 @@ export class PollsService {
         | 'multi_market'
         | 'no_market'
         | 'error',
-      candidatePlaceName: null,
-      candidatePlaceGeoId: null,
-      cta:
-        resolvedMarket?.cta ?? {
-          kind: 'create_poll' as const,
-          label: marketName ? `Create a poll for ${marketName}` : 'Create a poll',
-          prompt: marketName
-            ? `Create a poll for ${marketName}`
-            : 'Create a poll',
-        },
+      candidateLocalityName: null,
+      candidateBoundaryProvider: null,
+      candidateBoundaryId: null,
+      candidateBoundaryType: null,
+      cta: resolvedMarket?.cta ?? {
+        kind: 'create_poll' as const,
+        label: marketName ? `Create a poll for ${marketName}` : 'Create a poll',
+        prompt: marketName
+          ? `Create a poll for ${marketName}`
+          : 'Create a poll',
+      },
       polls,
     };
   }
@@ -472,8 +477,9 @@ export class PollsService {
           })
           .trim()
       : '';
-    const moderationDecision =
-      await this.moderation.moderateText(sanitizedLabel);
+    const moderationDecision = await this.moderation.moderateText(
+      sanitizedLabel,
+    );
     if (!moderationDecision.allowed) {
       throw new BadRequestException(
         `Option rejected by moderation: ${moderationDecision.reason}`,
@@ -960,7 +966,7 @@ export class PollsService {
       const rawKey =
         poll.marketKey ?? poll.topic?.marketKey ?? fallbackMarketKey ?? null;
       const key = typeof rawKey === 'string' ? rawKey.trim().toLowerCase() : '';
-      const marketName = key ? (labelByKey.get(key) ?? null) : null;
+      const marketName = key ? labelByKey.get(key) ?? null : null;
       return {
         ...poll,
         marketName,
@@ -1063,8 +1069,7 @@ export class PollsService {
           market.marketShortName?.trim() ||
           market.marketName?.split(',')[0]?.trim() ||
           null,
-        region:
-          market.marketName?.match(/,\s*([A-Z]{2})(?:\s|$)/)?.[1] ?? null,
+        region: market.marketName?.match(/,\s*([A-Z]{2})(?:\s|$)/)?.[1] ?? null,
         countryCode: market.countryCode ?? null,
       };
     }

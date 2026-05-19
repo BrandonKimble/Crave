@@ -1,10 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { performance } from 'perf_hooks';
 import {
   EntityType,
   OnDemandReason,
   Prisma,
-  SearchLogSource,
+  SearchLogEventKind,
 } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -21,7 +21,8 @@ import {
   SearchResponseDto,
   SearchResponseMetadataDto,
   PaginationDto,
-  SearchResultClickDto,
+  SearchCacheAttributionDto,
+  SearchSubmissionContextDto,
   SearchPlanResponseDto,
   MapBoundsDto,
 } from './dto/search-query.dto';
@@ -61,13 +62,13 @@ type RestaurantDishRow = {
   recent_mention_count: number;
   last_mentioned_at: Date | null;
   activity_level: string;
-  food_quality_score: unknown;
+  crave_score: unknown;
+  score_delta_7d: unknown;
+  restaurant_crave_score: unknown;
   restaurant_name: string;
   restaurant_aliases: string[];
   market_key: string;
   restaurant_price_level: number | null;
-  connection_contextual_score: unknown;
-  connection_contextual_percentile: unknown;
   food_name: string;
   food_aliases: string[];
 };
@@ -125,9 +126,17 @@ type SearchMarketContext = {
   marketKey: string | null;
   displayMarketName: string | null;
   marketResolutionStatus: 'resolved' | 'multi_market' | 'no_market' | 'error';
-  candidatePlaceName: string | null;
+  candidateLocalityName: string | null;
+  candidateBoundaryProvider: string | null;
+  candidateBoundaryId: string | null;
+  candidateBoundaryType: string | null;
   attributionMarketKeys: string[];
   collectableMarketKeys: string[];
+};
+
+type SearchLogAttributionScope = {
+  marketKey: string | null;
+  collectableMarketKey: string | null;
 };
 
 type SearchExplainInput = {
@@ -520,26 +529,29 @@ export class SearchService {
         const totalFoodResults = strictPage.exec.totalDishCount;
         const totalResults = totalFoodResults + totalRestaurantResults;
 
-        const onDemandMarketKeys = request.bounds
-          ? resolvedMarket.collectableMarketKeys
-          : [];
         const viewportEligible = this.isViewportEligibleForOnDemand(
           request.bounds,
         );
+        const onDemandMarketContext = {
+          marketKey: resolvedMarket.marketKey,
+          collectableMarketKeys: viewportEligible
+            ? resolvedMarket.collectableMarketKeys
+            : [],
+        };
 
         const shouldTriggerOnDemand = this.shouldTriggerOnDemand(
           request,
           plan.format,
-          strictPage.exec.restaurants.length,
+          totalRestaurantResults,
         );
         const onDemandResult = shouldTriggerOnDemand
           ? await this.recordLowResultOnDemand({
               request,
               planFormat: plan.format,
-              restaurantCount: strictPage.exec.restaurants.length,
-              dishCount: strictPage.exec.dishes.length,
+              restaurantCount: totalRestaurantResults,
+              dishCount: totalFoodResults,
               viewportEligible,
-              onDemandMarketKeys,
+              onDemandMarketContext,
               expansionSignals: expansionAnalysisMetadata,
             })
           : { queued: false, etaMs: undefined };
@@ -577,7 +589,10 @@ export class SearchService {
           marketKey: resolvedMarket.marketKey,
           displayMarketName: resolvedMarket.displayMarketName,
           marketResolutionStatus: resolvedMarket.marketResolutionStatus,
-          candidatePlaceName: resolvedMarket.candidatePlaceName,
+          candidateLocalityName: resolvedMarket.candidateLocalityName,
+          candidateBoundaryProvider: resolvedMarket.candidateBoundaryProvider,
+          candidateBoundaryId: resolvedMarket.candidateBoundaryId,
+          candidateBoundaryType: resolvedMarket.candidateBoundaryType,
           attributionMarketKeys:
             resolvedMarket.attributionMarketKeys.length > 0
               ? resolvedMarket.attributionMarketKeys
@@ -626,16 +641,16 @@ export class SearchService {
           try {
             await this.recordQueryImpressions(
               request,
-            {
-              searchRequestId,
-              totalResults,
-              totalFoodResults,
-              totalRestaurantResults,
-              queryExecutionTimeMs: metadata.queryExecutionTimeMs,
-              resultCoverageStatus,
-            },
-            resolvedMarket,
-          );
+              {
+                searchRequestId,
+                totalResults,
+                totalFoodResults,
+                totalRestaurantResults,
+                queryExecutionTimeMs: metadata.queryExecutionTimeMs,
+                resultCoverageStatus,
+              },
+              resolvedMarket,
+            );
           } catch (error) {
             this.logger.warn('Failed to record search query impressions', {
               error: {
@@ -674,7 +689,7 @@ export class SearchService {
                 : undefined,
             analysisMetadataSearchExplain:
               this.debugMode === 'verbose'
-                ? (metadata.analysisMetadata?.searchExplain ?? null)
+                ? metadata.analysisMetadata?.searchExplain ?? null
                 : undefined,
           });
         }
@@ -693,7 +708,7 @@ export class SearchService {
           dishes: strictPage.exec.dishes,
           restaurants: strictPage.exec.restaurants,
           sqlPreview: includeSqlPreview
-            ? (strictPage.exec.sqlPreview ?? null)
+            ? strictPage.exec.sqlPreview ?? null
             : null,
           metadata,
         };
@@ -803,12 +818,15 @@ export class SearchService {
         : strictPage.exec.totalRestaurantCount;
       const totalResults = totalFoodResults + totalRestaurantResults;
 
-      const onDemandMarketKeys = request.bounds
-        ? resolvedMarket.collectableMarketKeys
-        : [];
       const viewportEligible = this.isViewportEligibleForOnDemand(
         request.bounds,
       );
+      const onDemandMarketContext = {
+        marketKey: resolvedMarket.marketKey,
+        collectableMarketKeys: viewportEligible
+          ? resolvedMarket.collectableMarketKeys
+          : [],
+      };
 
       const shouldTriggerOnDemand = this.shouldTriggerOnDemand(
         request,
@@ -822,7 +840,7 @@ export class SearchService {
             restaurantCount: strictRestaurantExactCount,
             dishCount: strictDishExactCount,
             viewportEligible,
-            onDemandMarketKeys,
+            onDemandMarketContext,
             expansionSignals: expansionAnalysisMetadata,
             relaxation: {
               stage: selectedStage,
@@ -887,7 +905,10 @@ export class SearchService {
         marketKey: resolvedMarket.marketKey,
         displayMarketName: resolvedMarket.displayMarketName,
         marketResolutionStatus: resolvedMarket.marketResolutionStatus,
-        candidatePlaceName: resolvedMarket.candidatePlaceName,
+        candidateLocalityName: resolvedMarket.candidateLocalityName,
+        candidateBoundaryProvider: resolvedMarket.candidateBoundaryProvider,
+        candidateBoundaryId: resolvedMarket.candidateBoundaryId,
+        candidateBoundaryType: resolvedMarket.candidateBoundaryType,
         attributionMarketKeys:
           resolvedMarket.attributionMarketKeys.length > 0
             ? resolvedMarket.attributionMarketKeys
@@ -1008,7 +1029,7 @@ export class SearchService {
               : undefined,
           analysisMetadataSearchExplain:
             this.debugMode === 'verbose'
-              ? (metadata.analysisMetadata?.searchExplain ?? null)
+              ? metadata.analysisMetadata?.searchExplain ?? null
               : undefined,
         });
       }
@@ -1026,9 +1047,7 @@ export class SearchService {
         plan,
         dishes,
         restaurants,
-        sqlPreview: includeSqlPreview
-          ? (relaxed.exec.sqlPreview ?? null)
-          : null,
+        sqlPreview: includeSqlPreview ? relaxed.exec.sqlPreview ?? null : null,
         metadata,
       };
       return this.applySearchResponseProfile(response, request);
@@ -1091,8 +1110,8 @@ export class SearchService {
       compactLocations.length > 0
         ? compactLocations
         : displayLocation
-          ? [displayLocation]
-          : [];
+        ? [displayLocation]
+        : [];
 
     return {
       ...restaurant,
@@ -1145,78 +1164,16 @@ export class SearchService {
       }
       return null;
     };
-
-    const normalizedActiveMarketKey =
-      typeof activeMarketKey === 'string' && activeMarketKey.trim().length
-        ? activeMarketKey.trim().toLowerCase()
-        : null;
+    const toRequiredPublicScore = (value: unknown, label: string): number => {
+      const parsed = toNumber(value);
+      if (parsed === null) {
+        throw new Error(`Missing public Crave Score for ${label}`);
+      }
+      return parsed;
+    };
 
     const startedAt = Date.now();
-    const contextualWithSql = normalizedActiveMarketKey
-      ? Prisma.sql`
-        WITH market_restaurants AS (
-          SELECT DISTINCT rl.restaurant_id
-          FROM core_restaurant_locations rl
-          JOIN core_markets m
-            ON m.market_key = ${normalizedActiveMarketKey}
-           AND m.geometry IS NOT NULL
-           AND m.is_active = true
-          WHERE rl.latitude IS NOT NULL
-            AND rl.longitude IS NOT NULL
-            AND ST_Contains(
-              m.geometry,
-              ST_SetSRID(
-                ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision),
-                4326
-              )
-            )
-        ),
-        contextual_connection_scores AS (
-          WITH ranked AS (
-            SELECT
-              c.connection_id AS subject_id,
-              ROW_NUMBER() OVER (
-                ORDER BY
-                  COALESCE(c.food_quality_score, 0) DESC,
-                  COALESCE(c.total_upvotes, 0) DESC,
-                  COALESCE(c.mention_count, 0) DESC,
-                  c.connection_id ASC
-              ) AS row_number,
-              PERCENT_RANK() OVER (
-                ORDER BY
-                  COALESCE(c.food_quality_score, 0) DESC,
-                  COALESCE(c.total_upvotes, 0) DESC,
-                  COALESCE(c.mention_count, 0) DESC,
-                  c.connection_id ASC
-              ) AS percent_rank
-            FROM core_restaurant_items c
-            JOIN market_restaurants mr ON mr.restaurant_id = c.restaurant_id
-          )
-          SELECT
-            subject_id,
-            CASE
-              WHEN row_number = 1 THEN 100::numeric
-              ELSE floor(LEAST(99.9, GREATEST(0, 100 * (1 - percent_rank))) * 10)::numeric / 10
-            END AS rank_score_display,
-            (1 - percent_rank)::numeric AS rank_percentile
-          FROM ranked
-        )
-      `
-      : Prisma.sql``;
-    const contextualJoinSql = normalizedActiveMarketKey
-      ? Prisma.sql`
-        LEFT JOIN contextual_connection_scores drc
-          ON drc.subject_id = c.connection_id
-      `
-      : Prisma.sql``;
-    const connectionContextualScoreSql = normalizedActiveMarketKey
-      ? Prisma.sql`drc.rank_score_display`
-      : Prisma.sql`NULL::numeric`;
-    const connectionContextualPercentileSql = normalizedActiveMarketKey
-      ? Prisma.sql`drc.rank_percentile`
-      : Prisma.sql`NULL::numeric`;
     const rows = await this.prisma.$queryRaw<RestaurantDishRow[]>(Prisma.sql`
-      ${contextualWithSql}
       SELECT
         c.connection_id AS connection_id,
         c.restaurant_id AS restaurant_id,
@@ -1228,24 +1185,29 @@ export class SearchService {
         c.recent_mention_count AS recent_mention_count,
         c.last_mentioned_at AS last_mentioned_at,
         c.activity_level AS activity_level,
-        c.food_quality_score AS food_quality_score,
-        r.name AS restaurant_name,
+	        pcs.display_score AS crave_score,
+	        pcs.score_delta_7d AS score_delta_7d,
+	        prs.display_score AS restaurant_crave_score,
+	        r.name AS restaurant_name,
         r.aliases AS restaurant_aliases,
-        ${normalizedActiveMarketKey}::varchar(255) AS market_key,
+        ${activeMarketKey ?? null}::varchar(255) AS market_key,
         r.price_level AS restaurant_price_level,
-        ${connectionContextualScoreSql} AS connection_contextual_score,
-        ${connectionContextualPercentileSql} AS connection_contextual_percentile,
         f.name AS food_name,
         f.aliases AS food_aliases
       FROM core_restaurant_items c
+	      JOIN core_public_entity_scores pcs
+	        ON pcs.subject_type = 'connection'
+	       AND pcs.subject_id = c.connection_id
+	      JOIN core_public_entity_scores prs
+	        ON prs.subject_type = 'restaurant'
+	       AND prs.subject_id = c.restaurant_id
       JOIN core_entities r
         ON r.entity_id = c.restaurant_id
       JOIN core_entities f
         ON f.entity_id = c.food_id
-      ${contextualJoinSql}
       WHERE c.restaurant_id = ${restaurantId}::uuid
       ORDER BY
-        COALESCE(${connectionContextualScoreSql}, c.food_quality_score) DESC,
+        pcs.display_score DESC,
         c.mention_count DESC,
         c.total_upvotes DESC;
     `);
@@ -1257,14 +1219,10 @@ export class SearchService {
     });
 
     return rows.map((row) => {
-      const qualityScore = toNumber(row.food_quality_score) ?? 0;
-      const contextualScore =
-        toNumber(row.connection_contextual_score) ?? qualityScore;
-      const contextualPercentile =
-        toNumber(row.connection_contextual_percentile) ??
-        (typeof contextualScore === 'number' && Number.isFinite(contextualScore)
-          ? contextualScore / 100
-          : null);
+      const craveScore = toRequiredPublicScore(
+        row.crave_score,
+        `connection:${row.connection_id}`,
+      );
       return {
         connectionId: row.connection_id,
         foodId: row.food_id,
@@ -1275,9 +1233,10 @@ export class SearchService {
         restaurantAliases: Array.isArray(row.restaurant_aliases)
           ? row.restaurant_aliases
           : [],
-        qualityScore,
-        contextualScore,
-        contextualPercentile,
+        scoreSubjectType: 'connection',
+        scoreSubjectId: row.connection_id,
+        craveScore,
+        scoreDelta7d: toNumber(row.score_delta_7d),
         marketKey: row.market_key ?? undefined,
         marketName: null,
         activityLevel:
@@ -1303,8 +1262,10 @@ export class SearchService {
         restaurantPriceSymbol: null,
         restaurantDistanceMiles: null,
         restaurantOperatingStatus: null,
-        restaurantContextualScore: null,
-        restaurantContextualPercentile: null,
+	        restaurantCraveScore: toRequiredPublicScore(
+	          row.restaurant_crave_score,
+	          `restaurant:${row.restaurant_id}`,
+	        ),
         restaurantLatitude: null,
         restaurantLongitude: null,
       };
@@ -1330,6 +1291,13 @@ export class SearchService {
         return Number.isFinite(numeric) ? numeric : null;
       }
       return null;
+    };
+    const toRequiredPublicScore = (value: unknown, label: string): number => {
+      const parsed = toOptionalNumber(value);
+      if (parsed === null) {
+        throw new Error(`Missing public Crave Score for ${label}`);
+      }
+      return parsed;
     };
     const describePriceLevel = (
       level: number | null,
@@ -1365,7 +1333,6 @@ export class SearchService {
         entityId: true,
         name: true,
         aliases: true,
-        restaurantQualityScore: true,
         latitude: true,
         longitude: true,
         address: true,
@@ -1421,14 +1388,9 @@ export class SearchService {
         ? activeMarketKey.trim().toLowerCase()
         : null;
 
-    const [displayRank, aggregate, dishes, activeMarketLocationIds] =
+    const [publicScore, aggregate, dishes, activeMarketLocationIds] =
       await Promise.all([
-        normalizedActiveMarketKey
-          ? this.getRestaurantContextualDisplayRank(
-              restaurant.entityId,
-              normalizedActiveMarketKey,
-            )
-          : Promise.resolve(null),
+        this.getPublicRestaurantScore(restaurant.entityId),
         this.prisma.connection.aggregate({
           where: {
             restaurantId: restaurant.entityId,
@@ -1545,11 +1507,10 @@ export class SearchService {
       connectionId: dish.connectionId,
       foodId: dish.foodId,
       foodName: dish.foodName,
-      qualityScore: dish.qualityScore,
-      contextualScore: dish.contextualScore ?? dish.qualityScore,
-      contextualPercentile:
-        dish.contextualPercentile ??
-        (dish.contextualScore ?? dish.qualityScore) / 100,
+      scoreSubjectType: 'connection' as const,
+      scoreSubjectId: dish.connectionId,
+      craveScore: dish.craveScore,
+      scoreDelta7d: dish.scoreDelta7d ?? null,
       activityLevel: dish.activityLevel,
     }));
     const totalDishCount =
@@ -1563,18 +1524,13 @@ export class SearchService {
         restaurantAliases: Array.isArray(restaurant.aliases)
           ? restaurant.aliases
           : [],
-        contextualScore:
-          toOptionalNumber(displayRank?.rankScoreDisplay) ??
-          toOptionalNumber(restaurant.restaurantQualityScore) ??
-          0,
-        contextualPercentile:
-          toOptionalNumber(displayRank?.rankPercentile) ??
-          (toOptionalNumber(displayRank?.rankScoreDisplay) ??
-            toOptionalNumber(restaurant.restaurantQualityScore) ??
-            0) / 100,
-        restaurantQualityScore: toOptionalNumber(
-          restaurant.restaurantQualityScore,
+        scoreSubjectType: 'restaurant',
+        scoreSubjectId: restaurant.entityId,
+        craveScore: toRequiredPublicScore(
+          publicScore?.craveScore,
+          `restaurant:${restaurant.entityId}`,
         ),
+        scoreDelta7d: publicScore?.scoreDelta7d ?? null,
         marketKey: normalizedActiveMarketKey ?? undefined,
         marketName: null,
         mentionCount: aggregate._sum.mentionCount ?? 0,
@@ -1600,8 +1556,8 @@ export class SearchService {
           allowedLocationIds !== null
             ? locationResults.length
             : typeof restaurant._count.locations === 'number'
-              ? restaurant._count.locations
-              : locationResults.length,
+            ? restaurant._count.locations
+            : locationResults.length,
       },
       dishes,
     };
@@ -1635,7 +1591,7 @@ export class SearchService {
         WHERE rl.restaurant_id = ${restaurantId}::uuid
           AND rl.latitude IS NOT NULL
           AND rl.longitude IS NOT NULL
-          AND ST_Contains(
+          AND ST_Covers(
             m.geometry,
             ST_SetSRID(
               ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision),
@@ -1653,12 +1609,11 @@ export class SearchService {
       );
   }
 
-  private async getRestaurantContextualDisplayRank(
+  private async getPublicRestaurantScore(
     restaurantId: string,
-    marketKey: string,
   ): Promise<{
-    rankScoreDisplay: number | null;
-    rankPercentile: number | null;
+    craveScore: number;
+    scoreDelta7d: number | null;
   } | null> {
     const toOptionalNumber = (value: unknown): number | null => {
       if (typeof value === 'number' && Number.isFinite(value)) {
@@ -1674,69 +1629,23 @@ export class SearchService {
       }
       return null;
     };
-    const normalizedMarketKey = marketKey.trim().toLowerCase();
-    if (!normalizedMarketKey.length) {
-      return null;
-    }
+    const toRequiredPublicScore = (value: unknown, label: string): number => {
+      const parsed = toOptionalNumber(value);
+      if (parsed === null) {
+        throw new Error(`Missing public Crave Score for ${label}`);
+      }
+      return parsed;
+    };
 
     const rows = await this.prisma.$queryRaw<
-      Array<{ rankScoreDisplay: unknown; rankPercentile: unknown }>
+      Array<{ craveScore: unknown; scoreDelta7d: unknown }>
     >(Prisma.sql`
-      WITH market_restaurants AS (
-        SELECT DISTINCT rl.restaurant_id
-        FROM core_restaurant_locations rl
-        JOIN core_markets m
-          ON m.market_key = ${normalizedMarketKey}
-         AND m.geometry IS NOT NULL
-         AND m.is_active = true
-        WHERE rl.latitude IS NOT NULL
-          AND rl.longitude IS NOT NULL
-          AND ST_Contains(
-            m.geometry,
-            ST_SetSRID(
-              ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision),
-              4326
-            )
-          )
-      ),
-      restaurant_vote_totals AS (
-        SELECT
-          c.restaurant_id,
-          SUM(c.total_upvotes) AS total_upvotes,
-          SUM(c.mention_count) AS total_mentions
-        FROM core_restaurant_items c
-        JOIN market_restaurants mr ON mr.restaurant_id = c.restaurant_id
-        GROUP BY c.restaurant_id
-      ),
-      ranked AS (
-        SELECT
-          mr.restaurant_id AS subject_id,
-          ROW_NUMBER() OVER (
-            ORDER BY
-              COALESCE(r.restaurant_quality_score, 0) DESC,
-              COALESCE(rvt.total_upvotes, 0) DESC,
-              COALESCE(rvt.total_mentions, 0) DESC,
-              mr.restaurant_id ASC
-          ) AS row_number,
-          PERCENT_RANK() OVER (
-            ORDER BY
-              COALESCE(r.restaurant_quality_score, 0) DESC,
-              COALESCE(rvt.total_upvotes, 0) DESC,
-              COALESCE(rvt.total_mentions, 0) DESC,
-              mr.restaurant_id ASC
-          ) AS percent_rank
-        FROM market_restaurants mr
-        JOIN core_entities r ON r.entity_id = mr.restaurant_id
-        LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = mr.restaurant_id
-      )
       SELECT
-        CASE
-          WHEN row_number = 1 THEN 100::numeric
-          ELSE floor(LEAST(99.9, GREATEST(0, 100 * (1 - percent_rank))) * 10)::numeric / 10
-        END AS "rankScoreDisplay",
-        (1 - percent_rank)::numeric AS "rankPercentile"
-      FROM ranked
-      WHERE subject_id = ${restaurantId}::uuid
+        display_score AS "craveScore",
+        score_delta_7d AS "scoreDelta7d"
+      FROM core_public_entity_scores
+      WHERE subject_type = 'restaurant'
+        AND subject_id = ${restaurantId}::uuid
       LIMIT 1
     `);
 
@@ -1745,11 +1654,12 @@ export class SearchService {
       return null;
     }
 
-    const rankScoreDisplay = toOptionalNumber(row.rankScoreDisplay);
-    const rankPercentile = toOptionalNumber(row.rankPercentile);
     return {
-      rankScoreDisplay,
-      rankPercentile,
+      craveScore: toRequiredPublicScore(
+        row.craveScore,
+        `restaurant:${restaurantId}`,
+      ),
+      scoreDelta7d: toOptionalNumber(row.scoreDelta7d),
     };
   }
 
@@ -2001,7 +1911,7 @@ export class SearchService {
 
     let selectedStage: RelaxationStage = canDropAllModifiers
       ? 'relaxed_modifiers'
-      : (candidateStages[0] ?? 'strict');
+      : candidateStages[0] ?? 'strict';
 
     if (candidateStages.length === 1) {
       selectedStage = candidateStages[0];
@@ -2153,7 +2063,10 @@ export class SearchService {
     restaurantCount: number;
     dishCount: number;
     viewportEligible: boolean;
-    onDemandMarketKeys: string[];
+    onDemandMarketContext: {
+      marketKey: string | null;
+      collectableMarketKeys: string[];
+    };
     expansionSignals?: Record<string, unknown> | null;
     relaxation?: {
       stage: RelaxationStage;
@@ -2164,7 +2077,7 @@ export class SearchService {
     try {
       const lowResultRequests = this.buildLowResultRequests(
         params.request,
-        params.onDemandMarketKeys,
+        params.onDemandMarketContext,
       );
       if (!lowResultRequests.length) {
         return { queued: false, etaMs: undefined };
@@ -2219,14 +2132,14 @@ export class SearchService {
           context,
         );
 
-      if (params.viewportEligible && params.onDemandMarketKeys.length > 0) {
+      if (
+        params.viewportEligible &&
+        params.onDemandMarketContext.collectableMarketKeys.length > 0
+      ) {
         const recorded = await record();
         return { queued: recorded.length > 0, etaMs: undefined };
       }
-      if (params.onDemandMarketKeys.length === 0) {
-        const recorded = await record();
-        return { queued: recorded.length > 0, etaMs: undefined };
-      }
+      await record();
 
       return { queued: false, etaMs: undefined };
     } catch (error) {
@@ -2277,7 +2190,9 @@ export class SearchService {
       return false;
     }
     return Boolean(
-      request.entities.food?.length || request.entities.foodAttributes?.length,
+      request.entities.food?.length ||
+        request.entities.foodAttributes?.length ||
+        request.entities.restaurantAttributes?.length,
     );
   }
 
@@ -2444,9 +2359,7 @@ export class SearchService {
         Array.isArray(marketKeys.attributionMarketKeys)
           ? marketKeys.attributionMarketKeys
           : [];
-      const collectableMarketKeys = new Set(
-        marketKeys?.collectableMarketKeys ?? [],
-      );
+      const collectableMarketKeys = marketKeys?.collectableMarketKeys ?? [];
       const filtersApplied = {
         openNow: Boolean(request.openNow),
         priceLevels: this.normalizePriceLevels(request.priceLevels),
@@ -2455,32 +2368,23 @@ export class SearchService {
             ? request.minimumVotes
             : null,
       };
-      const submissionContext = request.submissionContext
-        ? {
-            typedPrefix: request.submissionContext.typedPrefix ?? null,
-            matchType: request.submissionContext.matchType ?? null,
-            selectedEntityId:
-              request.submissionContext.selectedEntityId ?? null,
-            selectedEntityType:
-              request.submissionContext.selectedEntityType ?? null,
-          }
-        : null;
       const metadata = {
         filtersApplied,
         submissionSource: request.submissionSource ?? null,
-        submissionContext,
+        submissionContext: this.normalizeSearchSubmissionContext(
+          request.submissionContext,
+        ),
       };
-      const scopedMarketKeys =
-        attributedMarketKeys.length > 0 ? attributedMarketKeys : [null];
+      const attributionScopes = this.buildSearchLogAttributionScopes(
+        attributedMarketKeys,
+        collectableMarketKeys,
+      );
       const rows = targets.flatMap(({ entityId, entityType }) =>
-        scopedMarketKeys.map((marketKey) => ({
+        attributionScopes.map((scope) => ({
           entityId,
           entityType,
-          marketKey,
-          collectableMarketKey:
-            marketKey && collectableMarketKeys.has(marketKey)
-              ? marketKey
-              : null,
+          marketKey: scope.marketKey,
+          collectableMarketKey: scope.collectableMarketKey,
           queryText: request.sourceQuery ?? null,
           searchRequestId: context.searchRequestId,
           totalResults: context.totalResults,
@@ -2488,7 +2392,7 @@ export class SearchService {
           totalRestaurantResults: context.totalRestaurantResults,
           queryExecutionTimeMs: context.queryExecutionTimeMs,
           marketStatus: context.resultCoverageStatus,
-          source: SearchLogSource.search,
+          eventKind: SearchLogEventKind.backend,
           metadata: {
             ...metadata,
             primaryMarketKey,
@@ -2512,6 +2416,181 @@ export class SearchService {
     }
   }
 
+  private buildSearchLogAttributionScopes(
+    attributedMarketKeys: string[],
+    collectableMarketKeys: string[],
+  ): SearchLogAttributionScope[] {
+    const collectableMarketKeyValues = Array.from(
+      new Set(
+        collectableMarketKeys
+          .map((marketKey) => marketKey.trim().toLowerCase())
+          .filter((marketKey) => marketKey.length > 0),
+      ),
+    );
+    const collectableMarketKeySet = new Set(collectableMarketKeyValues);
+    const scopedMarketKeys = Array.from(
+      new Set(
+        attributedMarketKeys
+          .map((marketKey) => marketKey.trim().toLowerCase())
+          .filter((marketKey) => marketKey.length > 0),
+      ),
+    );
+    const marketKeys = scopedMarketKeys.length > 0 ? scopedMarketKeys : [null];
+    const scopes: SearchLogAttributionScope[] = [];
+    const seen = new Set<string>();
+
+    for (const marketKey of marketKeys) {
+      const nextScopes =
+        marketKey && collectableMarketKeySet.has(marketKey)
+          ? [{ marketKey, collectableMarketKey: marketKey }]
+          : collectableMarketKeyValues.length > 0
+            ? collectableMarketKeyValues.map((collectableMarketKey) => ({
+                marketKey,
+                collectableMarketKey,
+              }))
+            : [{ marketKey, collectableMarketKey: null }];
+
+      for (const scope of nextScopes) {
+        const key = `${scope.marketKey ?? ''}:${
+          scope.collectableMarketKey ?? ''
+        }`;
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        scopes.push(scope);
+      }
+    }
+
+    return scopes.length > 0
+      ? scopes
+      : [{ marketKey: null, collectableMarketKey: null }];
+  }
+
+  async recordCacheAttribution(
+    dto: SearchCacheAttributionDto,
+    userId?: string | null,
+  ): Promise<{ inserted: number }> {
+    const normalizedUserId = typeof userId === 'string' ? userId.trim() : '';
+    if (
+      !this.searchLogEnabled ||
+      !normalizedUserId ||
+      dto.originalBackendSearchRequestId === dto.cacheRevealRequestId
+    ) {
+      return { inserted: 0 };
+    }
+    const cacheRevealRequestId =
+      typeof dto.cacheRevealRequestId === 'string'
+        ? dto.cacheRevealRequestId.trim()
+        : '';
+    if (!cacheRevealRequestId) {
+      throw new BadRequestException('cacheRevealRequestId is required');
+    }
+
+    const originalRows = await this.prisma.searchLog.findMany({
+      where: {
+        searchRequestId: dto.originalBackendSearchRequestId,
+        userId: normalizedUserId,
+        eventKind: SearchLogEventKind.backend,
+      },
+      select: {
+        entityId: true,
+        entityType: true,
+        marketKey: true,
+        collectableMarketKey: true,
+        queryText: true,
+        totalResults: true,
+        totalFoodResults: true,
+        totalRestaurantResults: true,
+        queryExecutionTimeMs: true,
+        marketStatus: true,
+        metadata: true,
+      },
+    });
+
+    if (originalRows.length === 0) {
+      return { inserted: 0 };
+    }
+
+    const loggedAt = new Date();
+    const rows = originalRows.map((row) => {
+      const metadata = this.toJsonObject(row.metadata);
+      const originalSubmissionSource =
+        typeof metadata.submissionSource === 'string'
+          ? metadata.submissionSource
+          : null;
+      const originalSubmissionContext = metadata.submissionContext ?? null;
+      return {
+        entityId: row.entityId,
+        entityType: row.entityType,
+        userId: normalizedUserId,
+        marketKey: row.marketKey,
+        collectableMarketKey: row.collectableMarketKey,
+        queryText: row.queryText,
+        searchRequestId: cacheRevealRequestId,
+        totalResults: row.totalResults,
+        totalFoodResults: row.totalFoodResults,
+        totalRestaurantResults: row.totalRestaurantResults,
+        queryExecutionTimeMs: row.queryExecutionTimeMs,
+        marketStatus: row.marketStatus,
+        eventKind: SearchLogEventKind.cache,
+        metadata: {
+          ...metadata,
+          submissionSource: dto.submissionSource ?? null,
+          submissionContext: this.normalizeSearchSubmissionContext(
+            dto.submissionContext,
+          ),
+          cache: {
+            originalBackendSearchRequestId: dto.originalBackendSearchRequestId,
+            cacheRevealRequestId,
+            cacheAgeMs:
+              typeof dto.cacheAgeMs === 'number' &&
+              Number.isFinite(dto.cacheAgeMs)
+                ? Math.max(0, Math.floor(dto.cacheAgeMs))
+                : null,
+            resultsDataKey:
+              typeof dto.resultsDataKey === 'string'
+                ? dto.resultsDataKey.trim() || null
+                : null,
+            originalSubmissionSource,
+            originalSubmissionContext,
+          },
+        },
+        loggedAt,
+      };
+    });
+
+    const result = await this.prisma.searchLog.createMany({
+      data: rows,
+      skipDuplicates: true,
+    });
+
+    return { inserted: result.count };
+  }
+
+  private toJsonObject(
+    value: Prisma.JsonValue | null | undefined,
+  ): Prisma.JsonObject {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return {};
+    }
+    return { ...(value as Prisma.JsonObject) };
+  }
+
+  private normalizeSearchSubmissionContext(
+    context: SearchSubmissionContextDto | null | undefined,
+  ): Prisma.JsonObject | null {
+    if (!context) {
+      return null;
+    }
+    return {
+      typedPrefix: context.typedPrefix ?? null,
+      matchType: context.matchType ?? null,
+      selectedEntityId: context.selectedEntityId ?? null,
+      selectedEntityType: context.selectedEntityType ?? null,
+    };
+  }
+
   private async resolveSearchMarketContext(
     request: SearchQueryRequestDto,
   ): Promise<SearchMarketContext> {
@@ -2520,16 +2599,26 @@ export class SearchService {
         bounds: request.bounds ?? null,
         userLocation: request.userLocation ?? null,
         mode: 'search',
-        ensureLocalFallbackMarkets: true,
+        ensureLocalityMarkets: true,
       });
 
       return {
         marketKey: resolved.market?.marketKey ?? null,
         displayMarketName:
-          resolved.market?.marketShortName ?? resolved.market?.marketName ?? null,
+          resolved.market?.marketShortName ??
+          resolved.market?.marketName ??
+          null,
         marketResolutionStatus: resolved.status,
-        candidatePlaceName: resolved.resolution.candidatePlaceName ?? null,
-        attributionMarketKeys: resolved.markets.map((market) => market.marketKey),
+        candidateLocalityName:
+          resolved.resolution.candidateLocalityName ?? null,
+        candidateBoundaryProvider:
+          resolved.resolution.candidateBoundaryProvider ?? null,
+        candidateBoundaryId: resolved.resolution.candidateBoundaryId ?? null,
+        candidateBoundaryType:
+          resolved.resolution.candidateBoundaryType ?? null,
+        attributionMarketKeys: resolved.markets.map(
+          (market) => market.marketKey,
+        ),
         collectableMarketKeys: resolved.collectableMarketKeys,
       };
     } catch (error) {
@@ -2543,18 +2632,14 @@ export class SearchService {
         marketKey: null,
         displayMarketName: null,
         marketResolutionStatus: 'error',
-        candidatePlaceName: null,
+        candidateLocalityName: null,
+        candidateBoundaryProvider: null,
+        candidateBoundaryId: null,
+        candidateBoundaryType: null,
         attributionMarketKeys: [],
         collectableMarketKeys: [],
       };
     }
-  }
-
-  recordResultClick(dto: SearchResultClickDto): void {
-    this.logger.debug('Search result click recorded', {
-      entityId: dto.entityId,
-      entityType: dto.entityType,
-    });
   }
 
   async listRecentSearches(
@@ -2565,30 +2650,67 @@ export class SearchService {
       return [];
     }
     const take = Math.max(1, Math.min(limit ?? 8, 50));
-    const fetchLimit = Math.min(take * 5, 250);
-    const rows = await this.prisma.searchLog.findMany({
-      where: {
-        userId,
-        source: SearchLogSource.search,
-        queryText: { not: null },
-      },
-      orderBy: {
-        loggedAt: 'desc',
-      },
-      take: fetchLimit,
-      select: {
-        queryText: true,
-        loggedAt: true,
-        metadata: true,
-        entityId: true,
-        entityType: true,
-        entity: {
-          select: {
-            name: true,
-          },
-        },
-      },
-    });
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        queryText: string;
+        loggedAt: Date;
+        metadata: Prisma.JsonValue | null;
+        entityId: string;
+        entityType: EntityType;
+        entityName: string | null;
+      }>
+    >(Prisma.sql`
+      WITH event_rows AS (
+        SELECT
+          LOWER(TRIM(query_text)) AS query_key,
+          COALESCE(search_request_id::text, log_id::text) AS event_key,
+          (ARRAY_AGG(TRIM(query_text) ORDER BY logged_at DESC))[1] AS query_text,
+          MAX(logged_at) AS logged_at
+        FROM user_search_logs
+        WHERE user_id = ${userId}::uuid
+          AND event_kind IN (${Prisma.join(
+            [SearchLogEventKind.backend, SearchLogEventKind.cache].map(
+              (kind) => Prisma.sql`${kind}::search_log_event_kind`,
+            ),
+          )})
+          AND query_text IS NOT NULL
+          AND TRIM(query_text) <> ''
+        GROUP BY query_key, event_key
+      ),
+      latest_query_events AS (
+        SELECT DISTINCT ON (query_key)
+          query_key,
+          event_key,
+          query_text,
+          logged_at
+        FROM event_rows
+        ORDER BY query_key, logged_at DESC
+      )
+      SELECT
+        lqe.query_text AS "queryText",
+        lqe.logged_at AS "loggedAt",
+        sl.metadata AS "metadata",
+        sl.entity_id::text AS "entityId",
+        sl.entity_type AS "entityType",
+        e.name AS "entityName"
+      FROM latest_query_events lqe
+      JOIN LATERAL (
+        SELECT sl.*
+        FROM user_search_logs sl
+        WHERE COALESCE(sl.search_request_id::text, sl.log_id::text) = lqe.event_key
+          AND LOWER(TRIM(sl.query_text)) = lqe.query_key
+        ORDER BY
+          CASE
+            WHEN sl.metadata#>>'{submissionContext,selectedEntityId}' = sl.entity_id::text THEN 0
+            ELSE 1
+          END,
+          sl.logged_at DESC
+        LIMIT 1
+      ) sl ON TRUE
+      LEFT JOIN core_entities e ON e.entity_id = sl.entity_id
+      ORDER BY lqe.logged_at DESC
+      LIMIT ${take}
+    `);
 
     const fallbackTimestamp = new Date().toISOString();
     const entries: SearchHistoryEntry[] = [];
@@ -2607,7 +2729,7 @@ export class SearchService {
           queryText,
           entityId: row.entityId,
           entityType: row.entityType,
-          entityName: row.entity?.name ?? null,
+          entityName: row.entityName ?? null,
         });
 
       const existing = entriesByQuery.get(normalizedQuery);
@@ -2881,18 +3003,25 @@ export class SearchService {
 
   private buildLowResultRequests(
     request: SearchQueryRequestDto,
-    marketKeys: string[],
+    marketContext: {
+      marketKey: string | null;
+      collectableMarketKeys: string[];
+    },
   ): OnDemandRequestInput[] {
-    const resolvedMarketKeys = Array.from(
+    const marketKey =
+      typeof marketContext.marketKey === 'string'
+        ? marketContext.marketKey.trim().toLowerCase()
+        : '';
+    if (!marketKey) {
+      return [];
+    }
+    const collectableMarketKeys = Array.from(
       new Set(
-        marketKeys
+        marketContext.collectableMarketKeys
           .map((marketKey) => marketKey.trim().toLowerCase())
           .filter(Boolean),
       ),
     );
-    if (resolvedMarketKeys.length === 0) {
-      return [];
-    }
 
     const results: OnDemandRequestInput[] = [];
     const seen = new Set<string>();
@@ -2920,18 +3049,17 @@ export class SearchService {
           continue;
         }
         seen.add(dedupeKey);
-        for (const resolvedMarketKey of resolvedMarketKeys) {
-          results.push({
-            term: sanitizedTerm,
-            entityType,
-            reason,
-            entityId,
-            marketKey: resolvedMarketKey,
-            metadata: entity.originalText
-              ? { originalText: entity.originalText }
-              : undefined,
-          });
-        }
+        results.push({
+          term: sanitizedTerm,
+          entityType,
+          reason,
+          entityId,
+          marketKey,
+          collectableMarketKeys,
+          metadata: entity.originalText
+            ? { originalText: entity.originalText }
+            : undefined,
+        });
       }
     };
 

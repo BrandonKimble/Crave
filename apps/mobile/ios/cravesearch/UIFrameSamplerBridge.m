@@ -17,7 +17,13 @@ RCT_EXTERN_METHOD(detach:(NSString *)instanceId
 RCT_EXTERN_METHOD(setRenderFrame:(NSDictionary *)payload
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
-RCT_EXTERN_METHOD(queryRenderedDotObservation:(NSDictionary *)payload
+RCT_EXTERN_METHOD(resetNativeApplyAttribution:(NSDictionary *)payload
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(flushNativeApplyAttribution:(NSDictionary *)payload
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(configureLabelObservation:(NSDictionary *)payload
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(queryRenderedPressTarget:(NSDictionary *)payload
@@ -37,11 +43,6 @@ RCT_EXTERN_METHOD(executeSheetCommands:(NSDictionary *)payload
                   rejecter:(RCTPromiseRejectBlock)reject)
 @end
 
-@interface RCT_EXTERN_MODULE(CraveRestaurantPanelSnapshotViewManager, RCTViewManager)
-RCT_EXPORT_VIEW_PROPERTY(snapshot, NSDictionary)
-RCT_EXPORT_VIEW_PROPERTY(onAction, RCTDirectEventBlock)
-@end
-
 @interface RCT_EXTERN_MODULE(CraveBottomSheetHostViewManager, RCTViewManager)
 RCT_EXPORT_VIEW_PROPERTY(hostKey, NSString)
 RCT_EXPORT_VIEW_PROPERTY(visible, BOOL)
@@ -52,8 +53,27 @@ RCT_EXPORT_VIEW_PROPERTY(preventSwipeDismiss, BOOL)
 RCT_EXPORT_VIEW_PROPERTY(interactionEnabled, BOOL)
 RCT_EXPORT_VIEW_PROPERTY(animateOnMount, BOOL)
 RCT_EXPORT_VIEW_PROPERTY(dismissThreshold, NSNumber)
+RCT_EXPORT_VIEW_PROPERTY(snapStepThreshold, NSNumber)
 RCT_EXPORT_VIEW_PROPERTY(sheetCommand, NSDictionary)
 RCT_EXPORT_VIEW_PROPERTY(onSheetHostEvent, RCTDirectEventBlock)
+@end
+
+@interface RCT_EXTERN_MODULE(SearchRouteSheetNavExclusionMaskViewManager, RCTViewManager)
+RCT_EXPORT_VIEW_PROPERTY(maskEnabled, BOOL)
+RCT_EXPORT_VIEW_PROPERTY(navBodyBoundaryVisibleY, CGFloat)
+RCT_EXPORT_VIEW_PROPERTY(navBodyBoundaryHiddenY, CGFloat)
+RCT_EXPORT_VIEW_PROPERTY(navBodyBoundaryTranslateY, CGFloat)
+RCT_EXPORT_VIEW_PROPERTY(maskOriginY, CGFloat)
+@end
+
+@interface RCT_EXTERN_MODULE(SearchRouteNavSilhouetteHostViewManager, RCTViewManager)
+RCT_EXPORT_VIEW_PROPERTY(materialEnabled, BOOL)
+RCT_EXPORT_VIEW_PROPERTY(materialBlurAmount, NSNumber)
+RCT_EXPORT_VIEW_PROPERTY(materialBlurType, NSString)
+RCT_EXPORT_VIEW_PROPERTY(materialTintColor, UIColor)
+RCT_EXPORT_VIEW_PROPERTY(navMaterialTopInset, CGFloat)
+RCT_EXPORT_VIEW_PROPERTY(cutoutHeight, CGFloat)
+RCT_EXPORT_VIEW_PROPERTY(cutoutRadius, CGFloat)
 @end
 
 @interface RCT_EXTERN_MODULE(SearchChromeNativeHitTargetRegistry, NSObject)

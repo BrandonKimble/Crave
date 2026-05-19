@@ -7,7 +7,6 @@ import type {
   SearchRootProfileBridgeAuthorityRuntime,
   SearchRootRecentActivityAuthorityRuntime,
 } from './search-root-control-ports-runtime-contract';
-import type { SearchRootResultsPresentationControlLane } from './use-search-root-control-plane-runtime-contract';
 import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
 
 type UseSearchRootControlProfileExperienceRuntimeArgs = {
@@ -21,7 +20,6 @@ type UseSearchRootControlProfileExperienceRuntimeArgs = {
   profileBridgeAuthorityRuntime: SearchRootProfileBridgeAuthorityRuntime;
   recentActivityAuthorityRuntime: SearchRootRecentActivityAuthorityRuntime;
   clearRestoreAuthorityRuntime: SearchRootClearRestoreAuthorityRuntime;
-  resultsPresentationControlLane: SearchRootResultsPresentationControlLane;
 };
 
 export const useSearchRootControlProfileExperienceRuntime = ({
@@ -35,7 +33,6 @@ export const useSearchRootControlProfileExperienceRuntime = ({
   profileBridgeAuthorityRuntime,
   recentActivityAuthorityRuntime,
   clearRestoreAuthorityRuntime,
-  resultsPresentationControlLane,
 }: UseSearchRootControlProfileExperienceRuntimeArgs) =>
   useSearchRootProfileControlRuntime({
     sessionCoreLane,
@@ -48,6 +45,4 @@ export const useSearchRootControlProfileExperienceRuntime = ({
     profileBridgeAuthorityRuntime,
     recentActivityAuthorityRuntime,
     clearRestoreAuthorityRuntime,
-    resultsPresentationOwner:
-      resultsPresentationControlLane.resultsPresentationOwner,
   });

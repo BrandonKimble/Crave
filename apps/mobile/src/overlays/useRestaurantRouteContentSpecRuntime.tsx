@@ -1,13 +1,11 @@
 import React from 'react';
 
-import type { RestaurantPanelSnapshotNativePayload } from './RestaurantPanelSnapshotNativeView';
 import type { OverlayContentSpec } from './types';
+import { useRestaurantPanelSpec } from './panels/RestaurantPanel';
 import type {
   RestaurantRoutePanelContract,
   RestaurantRoutePanelHostConfig,
 } from './restaurantRoutePanelContract';
-import { useRestaurantOverlayPanelSurfaceRuntime } from './useRestaurantOverlayPanelSurfaceRuntime';
-import { useRestaurantOverlaySheetConfigRuntime } from './useRestaurantOverlaySheetConfigRuntime';
 
 type UseRestaurantRouteContentSpecRuntimeArgs = {
   panel: RestaurantRoutePanelContract | null;
@@ -17,31 +15,7 @@ type UseRestaurantRouteContentSpecRuntimeArgs = {
 };
 
 export type RestaurantRouteContentSpecRuntime = {
-  spec: OverlayContentSpec<unknown>;
-};
-
-const EMPTY_RESTAURANT_PANEL_SNAPSHOT_PAYLOAD: RestaurantPanelSnapshotNativePayload = {
-  restaurantId: null,
-  restaurantName: '',
-  primaryAddress: '',
-  shareMessage: null,
-  restaurantScore: '',
-  queryScoreLabel: '',
-  queryScoreValue: '',
-  priceLabel: '',
-  hoursSummary: '',
-  locationsLabel: '',
-  websiteUrl: null,
-  websiteSearchQuery: null,
-  phoneNumber: null,
-  phoneSearchQuery: null,
-  isLoading: true,
-  isFavorite: false,
-  favoriteEnabled: false,
-  showWebsiteAction: false,
-  showCallAction: false,
-  matchedTags: [],
-  dishes: [],
+  spec: OverlayContentSpec<unknown> | null;
 };
 
 export const useRestaurantRouteContentSpecRuntime = ({
@@ -50,41 +24,35 @@ export const useRestaurantRouteContentSpecRuntime = ({
   navBarTop = 0,
   searchBarTop = 0,
 }: UseRestaurantRouteContentSpecRuntimeArgs): RestaurantRouteContentSpecRuntime => {
-  const sheetConfig = useRestaurantOverlaySheetConfigRuntime({
-    ...(hostConfig ?? null),
-    navBarTop,
-    searchBarTop,
-  });
-  const surfaceModel = useRestaurantOverlayPanelSurfaceRuntime({
-    snapshotPayload: panel?.snapshotPayload ?? EMPTY_RESTAURANT_PANEL_SNAPSHOT_PAYLOAD,
-    shouldFreezeContent: hostConfig?.shouldFreezeContent,
+  const visibleDataRef = React.useRef(panel?.data ?? null);
+  const incomingRestaurantId = panel?.data?.restaurant.restaurantId ?? null;
+  const visibleRestaurantId = visibleDataRef.current?.restaurant.restaurantId ?? null;
+
+  if (
+    !hostConfig?.shouldFreezeContent ||
+    visibleDataRef.current == null ||
+    (incomingRestaurantId != null && incomingRestaurantId !== visibleRestaurantId)
+  ) {
+    visibleDataRef.current = panel?.data ?? null;
+  }
+
+  const restaurantData = hostConfig?.shouldFreezeContent
+    ? visibleDataRef.current ?? panel?.data ?? null
+    : panel?.data ?? null;
+  const spec = useRestaurantPanelSpec({
+    data: restaurantData,
+    onDismiss: panel?.onRequestClose ?? (() => undefined),
     onRequestClose: panel?.onRequestClose ?? (() => undefined),
     onToggleFavorite: panel?.onToggleFavorite ?? (() => undefined),
+    navBarTop,
+    searchBarTop,
+    interactionEnabled: hostConfig?.interactionEnabled,
+    containerStyle: hostConfig?.containerStyle,
   });
-
-  const spec = React.useMemo<OverlayContentSpec<unknown>>(
-    () => ({
-      overlayKey: 'restaurant' as const,
-      surfaceKind: 'content' as const,
-      snapPersistenceKey: null,
-      snapPoints: sheetConfig.snapPoints,
-      initialSnapPoint: sheetConfig.initialSnapPoint,
-      animateOnMount: sheetConfig.animateOnMount,
-      contentComponent: surfaceModel.contentComponent,
-      contentContainerStyle: surfaceModel.contentContainerStyle,
-      backgroundComponent: surfaceModel.backgroundComponent,
-      style: sheetConfig.style as never,
-      onHidden: sheetConfig.onHidden,
-      dismissThreshold: sheetConfig.dismissThreshold,
-      preventSwipeDismiss: sheetConfig.preventSwipeDismiss,
-      interactionEnabled: sheetConfig.interactionEnabled,
-    }),
-    [sheetConfig, surfaceModel]
-  );
 
   return React.useMemo(
     () => ({
-      spec,
+      spec: spec as OverlayContentSpec<unknown> | null,
     }),
     [spec]
   );

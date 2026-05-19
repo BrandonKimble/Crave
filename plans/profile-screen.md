@@ -3,6 +3,12 @@ name: profile-screen
 description: Profile screen, user activity, followers, and favorites lists
 ---
 
+> Superseded scoring note: any references below to `display_rank_scores`,
+> `restaurant_quality_score`, or dish raw quality as user-facing scores are
+> stale. Public restaurant and dish surfaces should use
+> `core_public_entity_scores.display_score` as `craveScore`; search context
+> should only change ordinal rank.
+
 # Plan
 
 Design and implement a profile screen that surfaces poll activity, favorites lists, and social signals (followers/following). Tie backend tracking to frontend UI in a scalable, Instagram/Twitter‑style layout with clear counts and segmented sections.
@@ -41,7 +47,7 @@ Segmented control with three tabs:
 - Each card is a **cutout tile** showing:
   - A heading under the tile (list name).
   - Inside the tile: 3–5 preview rows with dot + name.
-  - Dot color = rank color (derived from quality/rank score).
+  - Dot color = shared continuous Crave Score color derived from `craveScore`.
 - **Segmented toggle** at top: `Restaurants` | `Dishes`.
   - Restaurant tiles show restaurant name.
   - Dish tiles show dish name + restaurant name.
@@ -177,11 +183,12 @@ Segmented control with three tabs:
 - `GET /users/:userId/favorites/lists` (public only)
 - `GET /favorites/lists/share/:shareSlug` (public share page)
 
-## Rank color mapping (frontend)
+## Crave Score color mapping (frontend)
 
-- Restaurant lists: use `restaurant_quality_score` or `display_rank_scores` for the entity’s coverage key.
-- Dish lists: use `connection.food_quality_score` or `display_rank_scores` (subject_type = connection).
-- Map score to 3‑tier color (e.g., emerald / amber / slate).
+- Restaurant lists: use stable restaurant `craveScore` from `core_public_entity_scores`.
+- Dish lists: use stable connection `craveScore` from `core_public_entity_scores`.
+- Map score through the shared continuous Crave Score color curve; do not use
+  local rank, index, or a 3-tier threshold map for score color.
 
 ## Frontend wiring (mobile)
 

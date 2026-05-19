@@ -27,13 +27,10 @@ export const useSearchRootRouteRestaurantOverlayInteractionPublicationRuntime = 
         closeRestaurantProfile:
           profilePresentationControlLane.profileOwner.profileActions
             .closeRestaurantProfile,
-        restaurantSheetSnapController:
-          profilePresentationControlLane.profileOwner.restaurantSheetSnapController,
       }),
       [
         profilePresentationControlLane.profileOwner.profileActions
           .closeRestaurantProfile,
-        profilePresentationControlLane.profileOwner.restaurantSheetSnapController,
         rootOverlayFoundationRuntime.routeOverlayCommandActions
           .handleRestaurantSavePress,
       ]

@@ -1,10 +1,13 @@
+import type { ResultsPresentationAuthority } from './results-presentation-authority';
+import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
 import type { SearchRuntimeBus } from './search-runtime-bus';
-import { useSearchRuntimePresentationTelemetryRuntime } from './use-search-runtime-presentation-telemetry-runtime';
 import { useSearchRuntimeRootStateCommitTelemetryRuntime } from './use-search-runtime-root-state-commit-telemetry-runtime';
 
 type UseSearchRuntimeStateTelemetryRuntimeArgs = {
   searchRuntimeBus: SearchRuntimeBus;
-  getActiveShortcutRunNumber: () => number | null;
+  resultsPresentationAuthority: ResultsPresentationAuthority;
+  resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
+  getActiveScenarioRunNumber: () => number | null;
   emitRuntimeMechanismEvent: (event: string, payload?: Record<string, unknown>) => void;
   searchMode: 'natural' | 'shortcut' | null;
   isSearchSessionActive: boolean;
@@ -19,7 +22,9 @@ type UseSearchRuntimeStateTelemetryRuntimeArgs = {
 
 export const useSearchRuntimeStateTelemetryRuntime = ({
   searchRuntimeBus,
-  getActiveShortcutRunNumber,
+  resultsPresentationAuthority,
+  resultsPresentationSurfaceAuthority,
+  getActiveScenarioRunNumber,
   emitRuntimeMechanismEvent,
   searchMode,
   isSearchSessionActive,
@@ -33,7 +38,9 @@ export const useSearchRuntimeStateTelemetryRuntime = ({
 }: UseSearchRuntimeStateTelemetryRuntimeArgs): void => {
   useSearchRuntimeRootStateCommitTelemetryRuntime({
     searchRuntimeBus,
-    getActiveShortcutRunNumber,
+    resultsPresentationAuthority,
+    resultsPresentationSurfaceAuthority,
+    getActiveScenarioRunNumber,
     emitRuntimeMechanismEvent,
     searchMode,
     isSearchSessionActive,
@@ -46,9 +53,7 @@ export const useSearchRuntimeStateTelemetryRuntime = ({
     resultsPage,
   });
 
-  useSearchRuntimePresentationTelemetryRuntime({
-    searchRuntimeBus,
-    getActiveShortcutRunNumber,
-    emitRuntimeMechanismEvent,
-  });
+  void searchRuntimeBus;
+  void getActiveScenarioRunNumber;
+  void emitRuntimeMechanismEvent;
 };

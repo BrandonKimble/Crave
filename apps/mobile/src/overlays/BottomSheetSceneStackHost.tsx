@@ -1,9 +1,10 @@
 import React from 'react';
 import { View } from 'react-native';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 
 import { SceneStackBodyContentLayer, SceneStackBodyFrame } from './BottomSheetSceneStackBodyLayer';
 import { SceneStackDecorLayer, SceneStackHeaderLayer } from './BottomSheetSceneStackDecorLayers';
+import { BottomSheetSceneStackPageFrame } from './BottomSheetSceneStackPageFrame';
 import type {
   BottomSheetSceneStackBodyRuntimeSnapshot,
   BottomSheetSceneStackChromeEntry,
@@ -23,14 +24,22 @@ import type {
 import { APP_ROUTE_SCENE_INPUT_KEYS } from '../navigation/runtime/app-route-scene-input-registry';
 import { useRouteAuthoritySelector } from '../navigation/runtime/use-route-authority-selector';
 import { useSearchOverlayProfilerRender } from './SearchOverlayProfilerContext';
+import { SearchResultsPageBundleHost } from './SearchMountedScenePageBundleAuthority';
 import {
   finishSearchNavSwitchRuntimeAttributionSpan,
   markSearchNavSwitchRuntimeAttribution,
   startSearchNavSwitchRuntimeAttributionSpan,
 } from '../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
 import { useSearchNavSwitchCommitAttribution } from '../screens/Search/runtime/shared/use-search-nav-switch-commit-attribution';
+import { logPerfScenarioStackAttribution } from '../perf/perf-scenario-attribution';
+import { useSearchSurfaceRuntimeSelector } from '../screens/Search/runtime/surface/search-surface-runtime';
 
 const PERSISTENT_ROUTE_SCENE_STACK_KEYS: readonly OverlayKey[] = APP_ROUTE_SCENE_INPUT_KEYS;
+
+const resolveSceneStackStaticVisibility = (
+  sceneKey: OverlayKey,
+  displayedSceneKey: OverlayKey | null
+): boolean => sceneKey === (displayedSceneKey ?? 'search');
 
 const areChromeSurfaceEntriesEqual = (
   left: BottomSheetSceneStackChromeEntry | null,
@@ -80,13 +89,15 @@ const markSceneBodySurfaceSelectionDiff = (
     'SceneStackBodySurfaceSelectionDiff',
     `field:${sceneKey ?? 'unknown'}:${field}`
   );
+  logPerfScenarioStackAttribution({
+    owner: 'scene_stack_body_surface_selection_diff',
+    path: `field:${sceneKey ?? 'unknown'}:${field}`,
+  });
 };
 
 const getMountedBodyKey = (snapshot: AppRouteSceneStackBodySurfaceSnapshot): string | null => {
   const spec = snapshot.contentEntry?.bodyContentSpec;
-  return spec?.surfaceKind === 'mounted' || spec?.surfaceKind === 'mountedList'
-    ? spec.mountedBodyKey
-    : null;
+  return spec?.surfaceKind === 'mounted' ? spec.mountedBodyKey : null;
 };
 
 const areSceneBodySurfaceSelectionsEqual = (
@@ -135,7 +146,7 @@ const areSceneBodySurfaceSelectionsEqual = (
     return false;
   }
 
-  if (sceneKey === 'search' || sceneKey === 'polls') {
+  if (sceneKey === 'search') {
     return true;
   }
 
@@ -192,8 +203,27 @@ const areSceneBodySurfaceSelectionsEqual = (
 const areSceneBodyRuntimeSelectionsEqual = (
   left: BottomSheetSceneStackBodyRuntimeSnapshot,
   right: BottomSheetSceneStackBodyRuntimeSnapshot
-): boolean =>
-  left.bodyDefaults === right.bodyDefaults && left.bodyScrollRuntime === right.bodyScrollRuntime;
+): boolean => {
+  if (
+    left.bodyDefaults === right.bodyDefaults &&
+    left.bodyScrollRuntime === right.bodyScrollRuntime
+  ) {
+    return true;
+  }
+  if (left.bodyDefaults !== right.bodyDefaults) {
+    logPerfScenarioStackAttribution({
+      owner: 'scene_stack_body_runtime_selection_diff',
+      path: 'field:bodyDefaults',
+    });
+  }
+  if (left.bodyScrollRuntime !== right.bodyScrollRuntime) {
+    logPerfScenarioStackAttribution({
+      owner: 'scene_stack_body_runtime_selection_diff',
+      path: 'field:bodyScrollRuntime',
+    });
+  }
+  return false;
+};
 
 type SceneStackChromePresentationSelection = {
   sceneChromeEntry: BottomSheetSceneStackChromeEntry | null;
@@ -209,12 +239,13 @@ export const BottomSheetSceneStackHost = ({
   routeSceneDisplayTargetRegistry,
   shadowShellStyle,
   surfaceStyle,
-  fixedHeaderComponent,
   scrollHeaderComponent,
   onHeaderLayout,
   onScrollHeaderLayout,
   scrollHeaderSyncStyle,
+  displayedSceneKey,
   bodyRuntimeAuthority,
+  sheetYValue,
 }: BottomSheetSceneStackHostProps) => {
   useSearchNavSwitchCommitAttribution('BottomSheetSceneStackHost');
   const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
@@ -225,12 +256,13 @@ export const BottomSheetSceneStackHost = ({
       routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
       shadowShellStyle={shadowShellStyle}
       surfaceStyle={surfaceStyle}
-      fixedHeaderComponent={fixedHeaderComponent}
       scrollHeaderComponent={scrollHeaderComponent}
       onHeaderLayout={onHeaderLayout}
       onScrollHeaderLayout={onScrollHeaderLayout}
       scrollHeaderSyncStyle={scrollHeaderSyncStyle}
+      displayedSceneKey={displayedSceneKey}
       bodyRuntimeAuthority={bodyRuntimeAuthority}
+      sheetYValue={sheetYValue}
     />
   );
 
@@ -260,10 +292,20 @@ export const BottomSheetSceneStackHost = ({
 
 type SceneStackBodyLayerHostProps = Pick<
   BottomSheetSceneStackHostProps,
-  'sceneStackSurfaceAuthority' | 'routeSceneDisplayTargetRegistry' | 'bodyRuntimeAuthority'
+  | 'sceneStackSurfaceAuthority'
+  | 'routeSceneDisplayTargetRegistry'
+  | 'bodyRuntimeAuthority'
+  | 'onHeaderLayout'
+  | 'displayedSceneKey'
+  | 'sheetYValue'
 > & {
   sceneKey: OverlayKey;
 };
+
+type SceneStackBodyContentLayerHostProps = Pick<
+  SceneStackBodyLayerHostProps,
+  'sceneStackSurfaceAuthority' | 'bodyRuntimeAuthority' | 'sceneKey'
+>;
 
 const areSceneStackBodyLayerHostPropsEqual = (
   previousProps: SceneStackBodyLayerHostProps,
@@ -277,36 +319,99 @@ const areSceneStackBodyLayerHostPropsEqual = (
     return false;
   }
 
-  return previousProps.bodyRuntimeAuthority === nextProps.bodyRuntimeAuthority;
+  return (
+    previousProps.bodyRuntimeAuthority === nextProps.bodyRuntimeAuthority &&
+    previousProps.onHeaderLayout === nextProps.onHeaderLayout &&
+    previousProps.sheetYValue === nextProps.sheetYValue &&
+    previousProps.displayedSceneKey === nextProps.displayedSceneKey
+  );
 };
+
+const areSceneStackBodyContentLayerHostPropsEqual = (
+  previousProps: SceneStackBodyContentLayerHostProps,
+  nextProps: SceneStackBodyContentLayerHostProps
+): boolean =>
+  previousProps.sceneKey === nextProps.sceneKey &&
+  previousProps.sceneStackSurfaceAuthority === nextProps.sceneStackSurfaceAuthority &&
+  previousProps.bodyRuntimeAuthority === nextProps.bodyRuntimeAuthority;
 
 const SceneStackBodyFrameHost = React.memo(
   ({
     routeSceneDisplayTargetRegistry,
+    sceneStackSurfaceAuthority,
     sceneKey,
+    displayedSceneKey,
+    onHeaderLayout,
     children,
-  }: Pick<SceneStackBodyLayerHostProps, 'routeSceneDisplayTargetRegistry' | 'sceneKey'> & {
+  }: Pick<
+    SceneStackBodyLayerHostProps,
+    | 'routeSceneDisplayTargetRegistry'
+    | 'sceneStackSurfaceAuthority'
+    | 'sceneKey'
+    | 'displayedSceneKey'
+  > &
+    Pick<BottomSheetSceneStackHostProps, 'onHeaderLayout'> & {
     children: React.ReactNode;
   }) => {
     useSearchNavSwitchCommitAttribution(`SceneStackBodyFrameHost:${sceneKey}`);
     const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
     const onProfilerRender = useSearchOverlayProfilerRender();
-    const sceneVisibilityValue = routeSceneDisplayTargetRegistry.getSceneVisibilityValue(sceneKey);
-    const sceneVisibilityStyle = useAnimatedStyle(() => {
-      const isVisible = sceneVisibilityValue.value > 0.5;
-      return {
-        elevation: isVisible ? 2 : 0,
-        opacity: sceneVisibilityValue.value,
-        zIndex: isVisible ? 2 : 0,
-      };
-    }, [sceneVisibilityValue]);
+    const isVisible = resolveSceneStackStaticVisibility(sceneKey, displayedSceneKey);
+    const sceneVisibilityStyle = isVisible
+      ? styles.sceneStackBodyLayerVisible
+      : styles.sceneStackBodyLayerHidden;
+
+    const pageBody =
+      sceneKey === 'search' ? (
+        children
+      ) : (
+        <BottomSheetSceneStackPageFrame
+          underlayComponent={
+            <SceneStackChromeLayerHost
+              displayedSceneKey={displayedSceneKey}
+              routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
+              sceneKey={sceneKey}
+              sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
+              surface="underlay"
+            />
+          }
+          backgroundComponent={
+            <SceneStackChromeLayerHost
+              displayedSceneKey={displayedSceneKey}
+              routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
+              sceneKey={sceneKey}
+              sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
+              surface="background"
+            />
+          }
+          bodyComponent={children}
+          headerComponent={
+            <SceneStackChromeLayerHost
+              displayedSceneKey={displayedSceneKey}
+              routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
+              sceneKey={sceneKey}
+              sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
+              surface="header"
+            />
+          }
+          overlayComponent={
+            <SceneStackChromeLayerHost
+              displayedSceneKey={displayedSceneKey}
+              routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
+              sceneKey={sceneKey}
+              sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
+              surface="overlay"
+            />
+          }
+          onHeaderLayout={onHeaderLayout}
+        />
+      );
 
     const frameHost = (
       <SceneStackBodyFrame sceneKey={sceneKey} visibilityStyle={sceneVisibilityStyle}>
-        {children}
+        {pageBody}
       </SceneStackBodyFrame>
     );
-
     const profiledFrameHost = onProfilerRender ? (
       <React.Profiler id={`SceneStackBodyFrameHost:${sceneKey}`} onRender={onProfilerRender}>
         {frameHost}
@@ -325,7 +430,10 @@ const SceneStackBodyFrameHost = React.memo(
   },
   (previousProps, nextProps) =>
     previousProps.routeSceneDisplayTargetRegistry === nextProps.routeSceneDisplayTargetRegistry &&
+    previousProps.sceneStackSurfaceAuthority === nextProps.sceneStackSurfaceAuthority &&
     previousProps.sceneKey === nextProps.sceneKey &&
+    previousProps.displayedSceneKey === nextProps.displayedSceneKey &&
+    previousProps.onHeaderLayout === nextProps.onHeaderLayout &&
     previousProps.children === nextProps.children
 );
 
@@ -334,7 +442,7 @@ const SceneStackBodyContentLayerHost = React.memo(
     sceneStackSurfaceAuthority,
     sceneKey,
     bodyRuntimeAuthority,
-  }: SceneStackBodyLayerHostProps) => {
+  }: SceneStackBodyContentLayerHostProps) => {
     useSearchNavSwitchCommitAttribution(`SceneStackBodyContentLayerHost:${sceneKey}`);
     const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
     const onProfilerRender = useSearchOverlayProfilerRender();
@@ -408,7 +516,88 @@ const SceneStackBodyContentLayerHost = React.memo(
 
     return profiledContentLayerHost;
   },
-  areSceneStackBodyLayerHostPropsEqual
+  areSceneStackBodyContentLayerHostPropsEqual
+);
+
+const SearchSceneStackBodyDisplayTarget = React.memo(
+  ({
+    routeSceneDisplayTargetRegistry,
+    sceneStackSurfaceAuthority,
+    displayedSceneKey,
+    bodyRuntimeAuthority,
+    onHeaderLayout,
+    sheetYValue,
+  }: Pick<
+    SceneStackBodyLayerHostProps,
+    | 'routeSceneDisplayTargetRegistry'
+    | 'sceneStackSurfaceAuthority'
+    | 'displayedSceneKey'
+    | 'bodyRuntimeAuthority'
+    | 'onHeaderLayout'
+    | 'sheetYValue'
+  >) => {
+    useSearchNavSwitchCommitAttribution('SearchSceneStackBodyDisplayTarget:search');
+    const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
+    const onProfilerRender = useSearchOverlayProfilerRender();
+    const sceneBodyRuntimeAuthority = bodyRuntimeAuthority.getSceneBodyRuntimeAuthority('search');
+    const sceneBodyRuntimeSelection = useRouteAuthoritySelector({
+      subscribe: React.useCallback(
+        (listener: () => void) => sceneBodyRuntimeAuthority.subscribe(listener),
+        [sceneBodyRuntimeAuthority]
+      ),
+      getSnapshot: sceneBodyRuntimeAuthority.getSnapshot,
+      selector: React.useCallback(
+        (snapshot: BottomSheetSceneStackBodyRuntimeSnapshot) => snapshot,
+        []
+      ),
+      isEqual: areSceneBodyRuntimeSelectionsEqual,
+      attributionOwner: 'SearchSceneStackBodyDisplayTarget',
+      attributionOperation: 'bodyRuntimeSelector:search',
+    });
+
+    const searchResultsPageBundle = (
+      <SearchResultsPageBundleHost
+        bodyDefaults={sceneBodyRuntimeSelection.bodyDefaults}
+        bodyScrollRuntime={sceneBodyRuntimeSelection.bodyScrollRuntime}
+        onHeaderLayout={onHeaderLayout}
+        sheetYValue={sheetYValue}
+      />
+    );
+    const searchDisplayLayer = (
+      <SceneStackBodyFrameHost
+        sceneKey="search"
+        routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
+        sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
+        displayedSceneKey={displayedSceneKey}
+        onHeaderLayout={onHeaderLayout}
+      >
+        {searchResultsPageBundle}
+      </SceneStackBodyFrameHost>
+    );
+
+    const profiledSearchBody = onProfilerRender ? (
+      <React.Profiler id="SearchSceneStackBodyDisplayTarget:search" onRender={onProfilerRender}>
+        {searchDisplayLayer}
+      </React.Profiler>
+    ) : (
+      searchDisplayLayer
+    );
+
+    finishSearchNavSwitchRuntimeAttributionSpan({
+      owner: 'SearchSceneStackBodyDisplayTarget',
+      operation: 'render:search',
+      startedAtMs: renderStartedAtMs,
+    });
+
+    return profiledSearchBody;
+  },
+  (previousProps, nextProps) =>
+    previousProps.bodyRuntimeAuthority === nextProps.bodyRuntimeAuthority &&
+    previousProps.onHeaderLayout === nextProps.onHeaderLayout &&
+    previousProps.sheetYValue === nextProps.sheetYValue &&
+    previousProps.displayedSceneKey === nextProps.displayedSceneKey &&
+    previousProps.sceneStackSurfaceAuthority === nextProps.sceneStackSurfaceAuthority &&
+    previousProps.routeSceneDisplayTargetRegistry === nextProps.routeSceneDisplayTargetRegistry
 );
 
 const SceneStackBodyLayerHost = React.memo((props: SceneStackBodyLayerHostProps) => {
@@ -416,10 +605,15 @@ const SceneStackBodyLayerHost = React.memo((props: SceneStackBodyLayerHostProps)
   const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
   const onProfilerRender = useSearchOverlayProfilerRender();
   const contentLayer = React.useMemo(
-    () => <SceneStackBodyContentLayerHost {...props} />,
+    () => (
+      <SceneStackBodyContentLayerHost
+        sceneKey={props.sceneKey}
+        sceneStackSurfaceAuthority={props.sceneStackSurfaceAuthority}
+        bodyRuntimeAuthority={props.bodyRuntimeAuthority}
+      />
+    ),
     [
       props.bodyRuntimeAuthority,
-      props.routeSceneDisplayTargetRegistry,
       props.sceneKey,
       props.sceneStackSurfaceAuthority,
     ]
@@ -429,6 +623,9 @@ const SceneStackBodyLayerHost = React.memo((props: SceneStackBodyLayerHostProps)
     <SceneStackBodyFrameHost
       sceneKey={props.sceneKey}
       routeSceneDisplayTargetRegistry={props.routeSceneDisplayTargetRegistry}
+      sceneStackSurfaceAuthority={props.sceneStackSurfaceAuthority}
+      displayedSceneKey={props.displayedSceneKey}
+      onHeaderLayout={props.onHeaderLayout}
     >
       {contentLayer}
     </SceneStackBodyFrameHost>
@@ -453,7 +650,9 @@ const SceneStackBodyLayerHost = React.memo((props: SceneStackBodyLayerHostProps)
 
 type SceneStackChromeLayerHostProps = Pick<
   BottomSheetSceneStackHostProps,
-  'routeSceneDisplayTargetRegistry' | 'sceneStackSurfaceAuthority'
+  | 'displayedSceneKey'
+  | 'routeSceneDisplayTargetRegistry'
+  | 'sceneStackSurfaceAuthority'
 > & {
   sceneKey: OverlayKey;
   surface: 'underlay' | 'background' | 'header' | 'overlay';
@@ -461,7 +660,7 @@ type SceneStackChromeLayerHostProps = Pick<
 
 const SceneStackChromeLayerHost = React.memo(
   ({
-    routeSceneDisplayTargetRegistry,
+    displayedSceneKey,
     sceneStackSurfaceAuthority,
     sceneKey,
     surface,
@@ -471,7 +670,7 @@ const SceneStackChromeLayerHost = React.memo(
     const onProfilerRender = useSearchOverlayProfilerRender();
     const scenePresentationAuthority =
       sceneStackSurfaceAuthority.getScenePresentationAuthority(sceneKey);
-    const sceneVisibilityValue = routeSceneDisplayTargetRegistry.getSceneVisibilityValue(sceneKey);
+    const isVisible = resolveSceneStackStaticVisibility(sceneKey, displayedSceneKey);
     const chromePresentation = useRouteAuthoritySelector({
       subscribe: React.useCallback(
         (listener: () => void) => scenePresentationAuthority.subscribe(listener),
@@ -501,12 +700,15 @@ const SceneStackChromeLayerHost = React.memo(
 
     const chromeLayer =
       surface === 'header' ? (
-        <SceneStackHeaderLayer entry={sceneChromeEntry} visibilityValue={sceneVisibilityValue} />
+        <SceneStackHeaderLayer
+          entry={sceneChromeEntry}
+          isVisible={isVisible}
+        />
       ) : (
         <SceneStackDecorLayer
           entry={sceneChromeEntry}
           kind={surface}
-          visibilityValue={sceneVisibilityValue}
+          isVisible={isVisible}
         />
       );
 
@@ -530,172 +732,17 @@ const SceneStackChromeLayerHost = React.memo(
     return profiledChromeLayer;
   },
   (previousProps, nextProps) =>
+    previousProps.displayedSceneKey === nextProps.displayedSceneKey &&
     previousProps.routeSceneDisplayTargetRegistry === nextProps.routeSceneDisplayTargetRegistry &&
     previousProps.sceneStackSurfaceAuthority === nextProps.sceneStackSurfaceAuthority &&
     previousProps.sceneKey === nextProps.sceneKey &&
     previousProps.surface === nextProps.surface
 );
 
-const ActiveSceneStackChromeHost = ({
-  routeSceneDisplayTargetRegistry,
-  onHeaderLayout,
-  sceneStackSurfaceAuthority,
-  fixedHeaderComponent,
-}: Pick<
-  BottomSheetSceneStackHostProps,
-  | 'routeSceneDisplayTargetRegistry'
-  | 'sceneStackSurfaceAuthority'
-  | 'onHeaderLayout'
-  | 'fixedHeaderComponent'
->) => {
-  useSearchNavSwitchCommitAttribution('ActiveSceneStackChromeHost');
-  const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
-  const onProfilerRender = useSearchOverlayProfilerRender();
-  const chromeHost = (
-    <>
-      {PERSISTENT_ROUTE_SCENE_STACK_KEYS.map((sceneKey) => (
-        <SceneStackChromeLayerHost
-          key={`underlay-${sceneKey}`}
-          routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
-          sceneKey={sceneKey}
-          sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
-          surface="underlay"
-        />
-      ))}
-      {PERSISTENT_ROUTE_SCENE_STACK_KEYS.map((sceneKey) => (
-        <SceneStackChromeLayerHost
-          key={`background-${sceneKey}`}
-          routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
-          sceneKey={sceneKey}
-          sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
-          surface="background"
-        />
-      ))}
-      <View onLayout={onHeaderLayout} style={styles.fixedHeader}>
-        {fixedHeaderComponent}
-        {PERSISTENT_ROUTE_SCENE_STACK_KEYS.map((sceneKey) => (
-          <SceneStackChromeLayerHost
-            key={`header-${sceneKey}`}
-            routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
-            sceneKey={sceneKey}
-            sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
-            surface="header"
-          />
-        ))}
-      </View>
-      {PERSISTENT_ROUTE_SCENE_STACK_KEYS.map((sceneKey) => (
-        <SceneStackChromeLayerHost
-          key={`overlay-${sceneKey}`}
-          routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
-          sceneKey={sceneKey}
-          sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
-          surface="overlay"
-        />
-      ))}
-    </>
-  );
-
-  const profiledChromeHost = onProfilerRender ? (
-    <React.Profiler id="ActiveSceneStackChromeHost" onRender={onProfilerRender}>
-      {chromeHost}
-    </React.Profiler>
-  ) : (
-    chromeHost
-  );
-
-  finishSearchNavSwitchRuntimeAttributionSpan({
-    owner: 'ActiveSceneStackChromeHost',
-    operation: 'render',
-    startedAtMs: renderStartedAtMs,
-  });
-
-  return profiledChromeHost;
-};
-
-const areActiveSceneStackChromeHostPropsEqual = (
-  previousProps: React.ComponentProps<typeof ActiveSceneStackChromeHost>,
-  nextProps: React.ComponentProps<typeof ActiveSceneStackChromeHost>
-): boolean =>
-  previousProps.routeSceneDisplayTargetRegistry === nextProps.routeSceneDisplayTargetRegistry &&
-  previousProps.sceneStackSurfaceAuthority === nextProps.sceneStackSurfaceAuthority &&
-  previousProps.onHeaderLayout === nextProps.onHeaderLayout &&
-  previousProps.fixedHeaderComponent === nextProps.fixedHeaderComponent;
-
-const MemoizedActiveSceneStackChromeHost = React.memo(
-  ActiveSceneStackChromeHost,
-  areActiveSceneStackChromeHostPropsEqual
-);
-
-const ActiveSceneStackBodyHost = React.memo(
-  ({
-    bodyRuntimeAuthority,
-    onScrollHeaderLayout,
-    routeSceneDisplayTargetRegistry,
-    sceneStackSurfaceAuthority,
-    scrollHeaderComponent,
-    scrollHeaderSyncStyle,
-  }: Pick<
-    BottomSheetSceneStackHostProps,
-    | 'bodyRuntimeAuthority'
-    | 'onScrollHeaderLayout'
-    | 'routeSceneDisplayTargetRegistry'
-    | 'sceneStackSurfaceAuthority'
-    | 'scrollHeaderComponent'
-    | 'scrollHeaderSyncStyle'
-  >) => {
-    useSearchNavSwitchCommitAttribution('ActiveSceneStackBodyHost');
-    const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
-    const onProfilerRender = useSearchOverlayProfilerRender();
-    const bodyHost = (
-      <View style={styles.contentHost}>
-        {scrollHeaderComponent ? (
-          <Animated.View
-            onLayout={onScrollHeaderLayout}
-            style={[styles.scrollHeaderOverlay, scrollHeaderSyncStyle]}
-          >
-            {scrollHeaderComponent}
-          </Animated.View>
-        ) : null}
-        {PERSISTENT_ROUTE_SCENE_STACK_KEYS.map((sceneKey) => (
-          <SceneStackBodyLayerHost
-            key={`scene-${sceneKey}`}
-            sceneKey={sceneKey}
-            sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
-            routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
-            bodyRuntimeAuthority={bodyRuntimeAuthority}
-          />
-        ))}
-      </View>
-    );
-
-    const profiledBodyHost = onProfilerRender ? (
-      <React.Profiler id="ActiveSceneStackBodyHost" onRender={onProfilerRender}>
-        {bodyHost}
-      </React.Profiler>
-    ) : (
-      bodyHost
-    );
-
-    finishSearchNavSwitchRuntimeAttributionSpan({
-      owner: 'ActiveSceneStackBodyHost',
-      operation: 'render',
-      startedAtMs: renderStartedAtMs,
-    });
-
-    return profiledBodyHost;
-  },
-  (previousProps, nextProps) =>
-    previousProps.bodyRuntimeAuthority === nextProps.bodyRuntimeAuthority &&
-    previousProps.onScrollHeaderLayout === nextProps.onScrollHeaderLayout &&
-    previousProps.routeSceneDisplayTargetRegistry === nextProps.routeSceneDisplayTargetRegistry &&
-    previousProps.sceneStackSurfaceAuthority === nextProps.sceneStackSurfaceAuthority &&
-    previousProps.scrollHeaderComponent === nextProps.scrollHeaderComponent &&
-    previousProps.scrollHeaderSyncStyle === nextProps.scrollHeaderSyncStyle
-);
-
 const ActiveSceneStackSurfaceHost = React.memo(
   ({
     bodyRuntimeAuthority,
+    displayedSceneKey,
     onHeaderLayout,
     onScrollHeaderLayout,
     routeSceneDisplayTargetRegistry,
@@ -704,29 +751,68 @@ const ActiveSceneStackSurfaceHost = React.memo(
     scrollHeaderSyncStyle,
     shadowShellStyle,
     surfaceStyle,
-    fixedHeaderComponent,
+    sheetYValue,
   }: BottomSheetSceneStackHostProps) => {
     useSearchNavSwitchCommitAttribution('ActiveSceneStackSurfaceHost');
     const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
     const onProfilerRender = useSearchOverlayProfilerRender();
+    const searchSurfaceOwnsVisibleSheet = useSearchSurfaceRuntimeSelector(
+      React.useCallback((surfaceSnapshot) => {
+        const dismissTransaction = surfaceSnapshot.dismissTransaction;
+        return (
+          surfaceSnapshot.activeBundle.kind === 'results' ||
+          surfaceSnapshot.heldBundle != null ||
+          surfaceSnapshot.redrawTransaction != null ||
+          dismissTransaction != null
+        );
+      }, []),
+      Object.is
+    );
+    const shouldDisplaySearchSurface =
+      searchSurfaceOwnsVisibleSheet &&
+      (displayedSceneKey == null ||
+        displayedSceneKey === 'search' ||
+        displayedSceneKey === 'polls');
+    const effectiveDisplayedSceneKey: OverlayKey | null = shouldDisplaySearchSurface
+      ? 'search'
+      : displayedSceneKey;
     const surfaceHost = (
-      <View style={shadowShellStyle}>
-        <View style={[styles.sceneStackSurface, surfaceStyle]}>
-          <MemoizedActiveSceneStackChromeHost
-            routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
-            sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
-            onHeaderLayout={onHeaderLayout}
-            fixedHeaderComponent={fixedHeaderComponent}
-          />
-          <ActiveSceneStackBodyHost
-            bodyRuntimeAuthority={bodyRuntimeAuthority}
-            onScrollHeaderLayout={onScrollHeaderLayout}
-            routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
-            sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
-            scrollHeaderComponent={scrollHeaderComponent}
-            scrollHeaderSyncStyle={scrollHeaderSyncStyle}
-          />
-        </View>
+      <View pointerEvents="box-none" style={shadowShellStyle}>
+        <Animated.View pointerEvents="box-none" style={[styles.sceneStackSurface, surfaceStyle]}>
+          <View style={styles.contentHost}>
+            {scrollHeaderComponent ? (
+              <Animated.View
+                onLayout={onScrollHeaderLayout}
+                style={[styles.scrollHeaderOverlay, scrollHeaderSyncStyle]}
+              >
+                {scrollHeaderComponent}
+              </Animated.View>
+            ) : null}
+            {PERSISTENT_ROUTE_SCENE_STACK_KEYS.map((sceneKey) =>
+              sceneKey === 'search' ? (
+                <SearchSceneStackBodyDisplayTarget
+                  key="scene-search"
+                  routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
+                  sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
+                  displayedSceneKey={effectiveDisplayedSceneKey}
+                  bodyRuntimeAuthority={bodyRuntimeAuthority}
+                  onHeaderLayout={onHeaderLayout}
+                  sheetYValue={sheetYValue}
+                />
+              ) : (
+                <SceneStackBodyLayerHost
+                  key={`scene-${sceneKey}`}
+                  sceneKey={sceneKey}
+                  displayedSceneKey={effectiveDisplayedSceneKey}
+                  sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
+                  routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
+                  bodyRuntimeAuthority={bodyRuntimeAuthority}
+                  onHeaderLayout={onHeaderLayout}
+                />
+              )
+            )}
+          </View>
+        </Animated.View>
       </View>
     );
 
@@ -748,15 +834,16 @@ const ActiveSceneStackSurfaceHost = React.memo(
   },
   (previousProps, nextProps) =>
     previousProps.bodyRuntimeAuthority === nextProps.bodyRuntimeAuthority &&
+    previousProps.displayedSceneKey === nextProps.displayedSceneKey &&
     previousProps.onHeaderLayout === nextProps.onHeaderLayout &&
     previousProps.onScrollHeaderLayout === nextProps.onScrollHeaderLayout &&
+    previousProps.sheetYValue === nextProps.sheetYValue &&
     previousProps.routeSceneDisplayTargetRegistry === nextProps.routeSceneDisplayTargetRegistry &&
     previousProps.sceneStackSurfaceAuthority === nextProps.sceneStackSurfaceAuthority &&
     previousProps.scrollHeaderComponent === nextProps.scrollHeaderComponent &&
     previousProps.scrollHeaderSyncStyle === nextProps.scrollHeaderSyncStyle &&
     previousProps.shadowShellStyle === nextProps.shadowShellStyle &&
-    previousProps.surfaceStyle === nextProps.surfaceStyle &&
-    previousProps.fixedHeaderComponent === nextProps.fixedHeaderComponent
+    previousProps.surfaceStyle === nextProps.surfaceStyle
 );
 
 const ActiveSceneStackHostLayers = ({
@@ -764,12 +851,13 @@ const ActiveSceneStackHostLayers = ({
   routeSceneDisplayTargetRegistry,
   shadowShellStyle,
   surfaceStyle,
-  fixedHeaderComponent,
   scrollHeaderComponent,
   onHeaderLayout,
   onScrollHeaderLayout,
   scrollHeaderSyncStyle,
+  displayedSceneKey,
   bodyRuntimeAuthority,
+  sheetYValue,
 }: BottomSheetSceneStackHostProps) => {
   useSearchNavSwitchCommitAttribution('ActiveSceneStackHostLayers');
   const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
@@ -783,9 +871,10 @@ const ActiveSceneStackHostLayers = ({
       sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
       shadowShellStyle={shadowShellStyle}
       surfaceStyle={surfaceStyle}
-      fixedHeaderComponent={fixedHeaderComponent}
       scrollHeaderComponent={scrollHeaderComponent}
       scrollHeaderSyncStyle={scrollHeaderSyncStyle}
+      displayedSceneKey={displayedSceneKey}
+      sheetYValue={sheetYValue}
     />
   );
 

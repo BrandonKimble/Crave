@@ -33,7 +33,6 @@ export type SearchRootPresentationStateRuntime = {
   shouldFreezeRestaurantPanelContent: boolean;
   shouldDimResultsSheet: boolean;
   shouldDisableResultsSheetInteraction: boolean;
-  notifyCloseCollapsedBoundaryReached: () => void;
   shouldSuppressRestaurantOverlay: boolean;
   shouldEnableRestaurantOverlayInteraction: boolean;
 };
@@ -120,6 +119,6 @@ export type SearchRootResultsTransitionControlLane = {
   closeTransitionActions: ResultsCloseTransitionActions;
 };
 
-export type SearchRootPreparedResultsSnapshotControlLane = {
-  preparedResultsSnapshotKey: string | null;
+export type SearchRootSearchSurfaceResultsTransactionControlLane = {
+  searchSurfaceResultsTransactionKey: string | null;
 };

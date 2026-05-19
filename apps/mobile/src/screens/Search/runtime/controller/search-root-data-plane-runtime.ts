@@ -1,6 +1,5 @@
 import type {
   SearchRootDataPlaneRuntime,
-  SearchRootHydrationRuntimeState,
   SearchRootResultsArrivalState,
   SearchRootRuntimeFlagsRuntime,
 } from '../shared/use-search-root-session-runtime-contract';
@@ -8,7 +7,7 @@ import type {
 export const createSearchRootRuntimeFlagsValue = ({
   searchMode,
   isSearchSessionActive,
-  runOneHandoffOperationId,
+  searchSurfaceRedrawOperationId,
   setSearchMode,
   setIsSearchSessionActive,
   isSearchLoading,
@@ -18,7 +17,7 @@ export const createSearchRootRuntimeFlagsValue = ({
 }: SearchRootRuntimeFlagsRuntime): SearchRootRuntimeFlagsRuntime => ({
   searchMode,
   isSearchSessionActive,
-  runOneHandoffOperationId,
+  searchSurfaceRedrawOperationId,
   setSearchMode,
   setIsSearchSessionActive,
   isSearchLoading,
@@ -53,19 +52,10 @@ export const createSearchRootResultsArrivalStateValue = ({
   resultsPage,
 });
 
-export const createSearchRootHydrationRuntimeStateValue = ({
-  resultsHydrationKey,
-  hydratedResultsKey,
-}: SearchRootHydrationRuntimeState): SearchRootHydrationRuntimeState => ({
-  resultsHydrationKey,
-  hydratedResultsKey,
-});
-
 export const createSearchRootDataPlaneRuntimeValue = ({
   resultsArrivalState,
   runtimeFlags,
   freezeGate,
-  hydrationRuntimeState,
   historyRuntime,
   filterStateRuntime,
   requestStatusRuntime,
@@ -73,7 +63,6 @@ export const createSearchRootDataPlaneRuntimeValue = ({
   resultsArrivalState,
   runtimeFlags,
   freezeGate,
-  hydrationRuntimeState,
   historyRuntime,
   filterStateRuntime,
   requestStatusRuntime,

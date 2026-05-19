@@ -1,20 +1,52 @@
 import React from 'react';
 import { InteractionManager, Keyboard, unstable_batchedUpdates } from 'react-native';
 
-import type { Coordinate, MapBounds, NaturalSearchRequest, SearchResponse } from '../../../types';
-import type { RecentSearch } from '../../../services/search';
+import type {
+  Coordinate,
+  FoodResult,
+  MapBounds,
+  NaturalSearchRequest,
+  RestaurantResult,
+  SearchResponse,
+} from '../../../types';
+import type { RecentSearch, SearchRequestCacheStatus } from '../../../services/search';
 import type { RuntimeWorkScheduler } from '../runtime/scheduler/runtime-work-scheduler';
 import type {
   SearchSessionEventPayload,
   SearchSessionEventType,
 } from '../runtime/controller/search-session-events';
-import { computeMarkerPipeline } from '../runtime/map/compute-marker-pipeline';
+import {
+  computeMarkerPipeline,
+  type MarkerPipelineResult,
+} from '../runtime/map/compute-marker-pipeline';
+import type { ResultsPresentationAuthority } from '../runtime/shared/results-presentation-authority';
+import type { ResultsPresentationSurfaceAuthority } from '../runtime/shared/results-presentation-surface-authority';
 import type { SearchRuntimeBus, SearchRuntimeBusState } from '../runtime/shared/search-runtime-bus';
-import { useSearchRuntimeBusSelector } from '../runtime/shared/use-search-runtime-bus-selector';
+import { isResultsPresentationExecutionStageSettled } from '../runtime/shared/results-presentation-runtime-contract';
+import {
+  getSearchMountedResultsDataSnapshot,
+  publishSearchMountedResultsDataSnapshot,
+  type SearchMountedResultsMarkerProjection,
+} from '../runtime/shared/search-mounted-results-data-store';
 import type { SegmentValue } from '../constants/search';
-import { resolveSubmissionDefaultTab, type SearchMode } from './use-search-submit-entry-owner';
+import {
+  resolveSubmissionDefaultTab,
+  type SearchMode,
+  type SearchSubmitPresentationIntentKind,
+} from './use-search-submit-entry-owner';
 import { mergeSearchResponses } from '../utils/merge';
 import { resolveSingleRestaurantCandidate } from '../utils/response';
+import {
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+  logPerfScenarioSearchRequestLifecycle,
+} from '../../../perf/perf-scenario-attribution';
+import {
+  getPerfScenarioWorkNow,
+  logPerfScenarioWorkSpan,
+  measurePerfScenarioWorkSpan,
+} from '../../../perf/perf-scenario-work-span';
+import { usePerfScenarioRuntimeStore } from '../../../perf/perf-scenario-runtime-store';
 
 export type SearchSubmitActiveOperationTuple = {
   mode: 'natural' | 'entity' | 'shortcut';
@@ -46,20 +78,19 @@ export type SearchSubmitResponseHandlerOptions = {
   submissionContext?: NaturalSearchRequest['submissionContext'];
   requestBounds?: MapBounds | null;
   replaceResultsInPlace?: boolean;
+  presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
   responseReceivedPayload: SearchSessionEventPayload;
+  responseCacheStatus?: SearchRequestCacheStatus | null;
   runtimeShadow: SearchSubmitHandleSearchResponseRuntimeShadow;
 };
 
 type SearchResponseResultsCommitPatch = Pick<
   SearchRuntimeBusState,
-  | 'results'
   | 'resultsRequestKey'
-  | 'precomputedMarkerCatalog'
-  | 'precomputedMarkerPrimaryCount'
-  | 'precomputedCanonicalRestaurantRankById'
-  | 'precomputedRestaurantsById'
-  | 'precomputedMarkerResultsKey'
-  | 'precomputedMarkerActiveTab'
+  | 'resultsHydrationCandidateKey'
+  | 'resultsPage'
+  | 'resultsDishCount'
+  | 'resultsRestaurantCount'
 >;
 
 type SearchResponseResultsCommitProjection = {
@@ -67,8 +98,15 @@ type SearchResponseResultsCommitProjection = {
   mergedFoodCount: number;
   mergedRestaurantCount: number;
   searchRequestId: string;
+  markerProjection: SearchMountedResultsMarkerProjection;
   resultsPatch: SearchResponseResultsCommitPatch;
 };
+
+type SearchResponseRootBusResultsPatch = Pick<
+  SearchRuntimeBusState,
+  'resultsHydrationCandidateKey' | 'resultsDishCount' | 'resultsRestaurantCount'
+> &
+  Partial<Pick<SearchRuntimeBusState, 'resultsRequestKey' | 'resultsPage'>>;
 
 type SearchResponseDeferredUiProjection = {
   searchRequestId: string;
@@ -81,6 +119,112 @@ type SearchResponseHistoryProjection = {
 };
 
 type ResultsActiveTab = 'dishes' | 'restaurants';
+
+const MARKER_PIPELINE_CACHE_LIMIT = 12;
+const markerPipelineCache = new Map<string, MarkerPipelineResult>();
+
+const deriveSearchResponseRootBusResultsPatch = ({
+  patch,
+  preserveRouteIdentity,
+}: {
+  patch: SearchResponseResultsCommitPatch;
+  preserveRouteIdentity: boolean;
+}): SearchResponseRootBusResultsPatch =>
+  preserveRouteIdentity
+    ? patch
+    : {
+        resultsHydrationCandidateKey: patch.resultsHydrationCandidateKey,
+        resultsDishCount: patch.resultsDishCount,
+        resultsRestaurantCount: patch.resultsRestaurantCount,
+      };
+
+const normalizeCacheNumber = (value: unknown): string =>
+  typeof value === 'number' && Number.isFinite(value) ? value.toFixed(5) : 'null';
+
+const buildLocationCacheKey = (
+  location:
+    | {
+        latitude?: number | null;
+        longitude?: number | null;
+        lat?: number | null;
+        lng?: number | null;
+      }
+    | null
+    | undefined
+): string =>
+  location == null
+    ? 'none'
+    : `${normalizeCacheNumber(location.latitude ?? location.lat)}:${normalizeCacheNumber(
+        location.longitude ?? location.lng
+      )}`;
+
+const buildMarkerPipelineCacheKey = ({
+  activeTab,
+  bounds,
+  dishes,
+  restaurants,
+  userLocation,
+}: {
+  activeTab: ResultsActiveTab;
+  bounds: MapBounds | null;
+  dishes: FoodResult[];
+  restaurants: RestaurantResult[];
+  userLocation: Coordinate | null;
+}): string => {
+  const restaurantKey = restaurants
+    .map((restaurant) => {
+      const locationList: Array<{ latitude?: number | null; longitude?: number | null }> =
+        Array.isArray(restaurant.locations) ? restaurant.locations : [];
+      const displayLocation =
+        restaurant.displayLocation ??
+        locationList.find(
+          (location) =>
+            typeof location.latitude === 'number' && typeof location.longitude === 'number'
+        );
+      return [
+        restaurant.restaurantId,
+        restaurant.rank ?? 'na',
+        restaurant.craveScore ?? 'na',
+        buildLocationCacheKey(displayLocation),
+      ].join(':');
+    })
+    .join('|');
+  const dishKey = dishes
+    .map((dish) =>
+      [
+        dish.foodId,
+        dish.restaurantId,
+        dish.craveScore ?? 'na',
+        dish.restaurantCraveScore ?? 'na',
+        buildLocationCacheKey({
+          latitude: dish.restaurantLatitude,
+          longitude: dish.restaurantLongitude,
+        }),
+      ].join(':')
+    )
+    .join('|');
+  return [
+    `tab:${activeTab}`,
+    `bounds:${buildLocationCacheKey(bounds?.northEast)}:${buildLocationCacheKey(
+      bounds?.southWest
+    )}`,
+    `user:${buildLocationCacheKey(userLocation)}`,
+    `restaurants:${restaurants.length}:${restaurantKey}`,
+    `dishes:${dishes.length}:${dishKey}`,
+  ].join('::');
+};
+
+const retainMarkerPipelineCacheEntry = (cacheKey: string, result: MarkerPipelineResult): void => {
+  markerPipelineCache.delete(cacheKey);
+  markerPipelineCache.set(cacheKey, result);
+  while (markerPipelineCache.size > MARKER_PIPELINE_CACHE_LIMIT) {
+    const firstKey = markerPipelineCache.keys().next().value;
+    if (typeof firstKey !== 'string') {
+      break;
+    }
+    markerPipelineCache.delete(firstKey);
+  }
+};
 
 type SearchResponseSettleSequenceOptions = {
   tuple: SearchSubmitActiveOperationTuple;
@@ -105,6 +249,7 @@ type SearchResponsePostCommitUiOptions = {
   previousFoodCountSnapshot: number;
   previousRestaurantCountSnapshot: number;
   committedSearchRequestId: string;
+  dataReadyFrom: 'network' | 'cache' | 'in_flight';
   submittedLabel?: string;
   pushToHistory?: boolean;
   isResponseApplyStale: () => boolean;
@@ -117,8 +262,13 @@ type SearchResponsePhaseACommitOptions = {
   initialUiState: SearchSubmitInitialResultUiState;
   committedResponse: SearchResponse;
   committedSearchRequestId: string;
+  resultsHydrationKey: string | null;
+  resultsDataKey: string | null;
+  dataReadyFrom: 'network' | 'cache' | 'in_flight';
+  searchInputKey: string | null;
   requestBounds?: MapBounds | null;
   replaceResultsInPlace?: boolean;
+  presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
   isResponseApplyStale: () => boolean;
   emitShadowTransition: SearchSubmitHandleSearchResponseRuntimeShadow['emitShadowTransition'];
 };
@@ -131,6 +281,7 @@ type SearchResponseLifecycleContext = {
   mergedRestaurantCount: number;
   committedResponse: SearchResponse;
   committedSearchRequestId: string;
+  markerProjection: SearchMountedResultsMarkerProjection;
   resultsPatch: SearchResponseResultsCommitPatch;
 };
 
@@ -144,10 +295,12 @@ type SearchResponseLifecycleOptions = {
   submissionContext?: NaturalSearchRequest['submissionContext'];
   requestBounds?: MapBounds | null;
   replaceResultsInPlace?: boolean;
+  presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
   runtimeTuple: SearchSubmitActiveOperationTuple;
   emitShadowTransition: SearchSubmitHandleSearchResponseRuntimeShadow['emitShadowTransition'];
   handleStart: number;
   isResponseApplyStale: () => boolean;
+  responseCacheStatus?: SearchRequestCacheStatus | null;
 };
 
 type ApplySearchResponseLifecycleContextOptions = SearchResponseLifecycleOptions & {
@@ -182,6 +335,8 @@ type UseSearchSubmitResponseOwnerArgs = {
   pendingTabSwitchTab: SegmentValue | null;
   isPaginationExhausted: boolean;
   searchRuntimeBus: SearchRuntimeBus;
+  resultsPresentationAuthority: ResultsPresentationAuthority;
+  resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
   latestBoundsRef: React.MutableRefObject<MapBounds | null>;
   userLocationRef: React.MutableRefObject<import('../../../types').Coordinate | null>;
   lastSearchRequestIdRef: React.MutableRefObject<string | null>;
@@ -195,7 +350,12 @@ type UseSearchSubmitResponseOwnerArgs = {
   onPageOneResultsCommitted?: (payload: {
     searchRequestId: string | null;
     requestBounds: MapBounds | null;
+    resultsHydrationKey: string | null;
+    resultsDataKey: string | null;
+    dataReadyFrom: 'network' | 'cache' | 'in_flight';
+    searchInputKey: string | null;
     replaceResultsInPlace: boolean;
+    presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
   }) => void;
   activeOperationTupleRef: React.MutableRefObject<SearchSubmitActiveOperationTuple | null>;
   responseApplyTokenRef: React.MutableRefObject<number>;
@@ -205,7 +365,7 @@ type UseSearchSubmitResponseOwnerArgs = {
   runtimeWorkSchedulerRef?: React.MutableRefObject<RuntimeWorkScheduler> | null;
   publishRuntimeLaneState: (
     tuple: SearchSubmitActiveOperationTuple | null,
-    lane: 'lane_b_data_commit' | 'lane_c_list_first_paint' | 'lane_d_map_dots' | 'lane_e_map_pins',
+    lane: 'lane_b_data_commit' | 'lane_c_prepared_rows' | 'lane_d_map_dots' | 'lane_e_map_pins',
     patch?: Partial<SearchRuntimeBusState>
   ) => void;
   shouldLogSearchResponseTimings?: boolean;
@@ -219,6 +379,22 @@ const getPerfNow = () => {
   }
   return Date.now();
 };
+
+const logSearchResponseLifecycle = (payload: Record<string, unknown>): void => {
+  logPerfScenarioSearchRequestLifecycle({
+    source: 'useSearchSubmitResponseOwner',
+    ...payload,
+  });
+};
+
+const getSearchResponseLifecycleSummary = (
+  response: SearchResponse | null
+): Record<string, unknown> => ({
+  responseSearchRequestId: response?.metadata?.searchRequestId ?? null,
+  responsePage: response?.metadata?.page ?? null,
+  responseDishCount: response?.dishes?.length ?? 0,
+  responseRestaurantCount: response?.restaurants?.length ?? 0,
+});
 
 const resolveIntentDefaultTab = (response: SearchResponse): SegmentValue | null => {
   const filters = [
@@ -404,31 +580,91 @@ const deriveSearchResponseResultsCommitPatch = (params: {
         };
   const mergedFoodCount = committedResponse.dishes?.length ?? 0;
   const mergedRestaurantCount = committedResponse.restaurants?.length ?? 0;
-  const pipelineResult = computeMarkerPipeline({
-    restaurants: committedResponse.restaurants ?? [],
-    dishes: committedResponse.dishes ?? [],
+  const resultsPage =
+    typeof committedResponse.metadata?.page === 'number' && committedResponse.metadata.page > 0
+      ? committedResponse.metadata.page
+      : 1;
+  const totalFoodResults =
+    typeof committedResponse.metadata?.totalFoodResults === 'number'
+      ? committedResponse.metadata.totalFoodResults
+      : 'na';
+  const totalRestaurantResults =
+    typeof committedResponse.metadata?.totalRestaurantResults === 'number'
+      ? committedResponse.metadata.totalRestaurantResults
+      : 'na';
+  const resultsHydrationCandidateKey = `${searchRequestId}:page:${resultsPage}:dishes:${mergedFoodCount}:restaurants:${mergedRestaurantCount}:totalFood:${totalFoodResults}:totalRestaurants:${totalRestaurantResults}`;
+  const restaurants = committedResponse.restaurants ?? [];
+  const dishes = committedResponse.dishes ?? [];
+  const markerPipelineCacheKey = buildMarkerPipelineCacheKey({
     activeTab: markerPipelineActiveTab,
-    restaurantOnlyId: null,
-    selectedRestaurantId: null,
     bounds,
+    dishes,
+    restaurants,
     userLocation,
-    searchRequestId,
   });
+  const cachedPipelineResult = markerPipelineCache.get(markerPipelineCacheKey) ?? null;
+  const pipelineStartedAtMs = globalThis.performance?.now?.() ?? Date.now();
+  const pipelineResult =
+    cachedPipelineResult != null
+      ? {
+          ...cachedPipelineResult,
+          resultsKey: searchRequestId,
+        }
+      : computeMarkerPipeline({
+          restaurants,
+          dishes,
+          activeTab: markerPipelineActiveTab,
+          restaurantOnlyId: null,
+          selectedRestaurantId: null,
+          bounds,
+          userLocation,
+          searchRequestId,
+        });
+  if (cachedPipelineResult == null) {
+    retainMarkerPipelineCacheEntry(markerPipelineCacheKey, pipelineResult);
+  } else {
+    markerPipelineCache.delete(markerPipelineCacheKey);
+    markerPipelineCache.set(markerPipelineCacheKey, cachedPipelineResult);
+  }
+  const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+  if (isPerfScenarioAttributionActive(scenarioConfig)) {
+    logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+      event: 'results_data_reuse_contract',
+      source: 'search_response_results_commit',
+      activeTab: markerPipelineActiveTab,
+      resultsHydrationCandidateKey,
+      searchRequestId,
+      markerPipelineCacheHit: cachedPipelineResult != null,
+      markerPipelineRecomputed: cachedPipelineResult == null,
+      markerCatalogCount: pipelineResult.catalog.length,
+      markerPrimaryCount: pipelineResult.primaryCount,
+      restaurantCount: restaurants.length,
+      dishCount: dishes.length,
+      durationMs: Number(
+        ((globalThis.performance?.now?.() ?? Date.now()) - pipelineStartedAtMs).toFixed(3)
+      ),
+    });
+  }
 
   return {
     committedResponse,
     mergedFoodCount,
     mergedRestaurantCount,
     searchRequestId,
+    markerProjection: {
+      activeTab: markerPipelineActiveTab,
+      catalog: pipelineResult.catalog,
+      canonicalRestaurantRankById: pipelineResult.canonicalRestaurantRankById,
+      primaryCount: pipelineResult.primaryCount,
+      restaurantsById: pipelineResult.restaurantsById,
+      resultsKey: pipelineResult.resultsKey,
+    },
     resultsPatch: {
-      results: committedResponse,
       resultsRequestKey: searchRequestId,
-      precomputedMarkerCatalog: pipelineResult.catalog,
-      precomputedMarkerPrimaryCount: pipelineResult.primaryCount,
-      precomputedCanonicalRestaurantRankById: pipelineResult.canonicalRestaurantRankById,
-      precomputedRestaurantsById: pipelineResult.restaurantsById,
-      precomputedMarkerResultsKey: pipelineResult.resultsKey,
-      precomputedMarkerActiveTab: markerPipelineActiveTab,
+      resultsHydrationCandidateKey,
+      resultsPage,
+      resultsDishCount: mergedFoodCount,
+      resultsRestaurantCount: mergedRestaurantCount,
     },
   };
 };
@@ -451,7 +687,7 @@ const deriveSearchResponseLifecycleContext = (params: {
     params.append
   );
   const markerPipelineActiveTab =
-    (params.append ? (params.pendingTabSwitchTab ?? params.activeTab) : params.initialTargetTab) ??
+    (params.append ? params.pendingTabSwitchTab ?? params.activeTab : params.initialTargetTab) ??
     'dishes';
   const responseCommitProjection = deriveSearchResponseResultsCommitPatch({
     mergedResponse: merged,
@@ -471,6 +707,7 @@ const deriveSearchResponseLifecycleContext = (params: {
     mergedRestaurantCount: responseCommitProjection.mergedRestaurantCount,
     committedResponse: responseCommitProjection.committedResponse,
     committedSearchRequestId: responseCommitProjection.searchRequestId,
+    markerProjection: responseCommitProjection.markerProjection,
     resultsPatch: responseCommitProjection.resultsPatch,
   };
 };
@@ -554,6 +791,8 @@ export const useSearchSubmitResponseOwner = ({
   pendingTabSwitchTab,
   isPaginationExhausted,
   searchRuntimeBus,
+  resultsPresentationAuthority,
+  resultsPresentationSurfaceAuthority,
   latestBoundsRef,
   userLocationRef,
   lastSearchRequestIdRef,
@@ -576,37 +815,6 @@ export const useSearchSubmitResponseOwner = ({
   logSearchPhase = () => {},
   logSearchResponseTiming = () => {},
 }: UseSearchSubmitResponseOwnerArgs) => {
-  const submitRuntimeGateState = useSearchRuntimeBusSelector(
-    searchRuntimeBus,
-    (state) => ({
-      activeOperationId: state.activeOperationId,
-      activeOperationLane: state.activeOperationLane,
-      resultsSearchRequestId: state.results?.metadata?.searchRequestId ?? null,
-      isResultsHydrationSettled: state.isResultsHydrationSettled,
-      shouldHydrateResultsForRender: state.shouldHydrateResultsForRender,
-      resultsPresentation: state.resultsPresentation,
-    }),
-    (a, b) =>
-      a.activeOperationId === b.activeOperationId &&
-      a.activeOperationLane === b.activeOperationLane &&
-      a.resultsSearchRequestId === b.resultsSearchRequestId &&
-      a.isResultsHydrationSettled === b.isResultsHydrationSettled &&
-      a.shouldHydrateResultsForRender === b.shouldHydrateResultsForRender &&
-      a.resultsPresentation.isSettled === b.resultsPresentation.isSettled,
-    [
-      'activeOperationId',
-      'activeOperationLane',
-      'results',
-      'isResultsHydrationSettled',
-      'shouldHydrateResultsForRender',
-      'resultsPresentation',
-    ] as const
-  );
-  const submitRuntimeGateStateRef = React.useRef(submitRuntimeGateState);
-  React.useEffect(() => {
-    submitRuntimeGateStateRef.current = submitRuntimeGateState;
-  }, [submitRuntimeGateState]);
-
   const scheduleOnNextFrame = React.useCallback((run: () => void) => {
     if (typeof requestAnimationFrame === 'function') {
       requestAnimationFrame(() => {
@@ -672,7 +880,7 @@ export const useSearchSubmitResponseOwner = ({
     [isRequestStillActive, runtimeWorkSchedulerRef, scheduleOnNextFrame]
   );
 
-  const scheduleAfterResultsHydrationSettled = React.useCallback(
+  const scheduleAfterPreparedRowsReady = React.useCallback(
     ({
       requestId,
       maxWaitMs,
@@ -691,12 +899,17 @@ export const useSearchSubmitResponseOwner = ({
         if (!isRequestStillActive(requestId)) {
           return;
         }
-        const runtimeState = submitRuntimeGateStateRef.current;
-        const runtimeRequestKey = runtimeState.resultsSearchRequestId;
+        const runtimeState = resultsPresentationSurfaceAuthority.getSnapshot();
+        const runtimeRequestKey = getSearchMountedResultsDataSnapshot().resultsRequestKey ?? null;
         const hasExpectedRequest = runtimeRequestKey === expectedRequestKey;
-        const isHydrationSettled = hasExpectedRequest && runtimeState.isResultsHydrationSettled;
-        const shouldHydrateResultsForRender = runtimeState.shouldHydrateResultsForRender;
-        if (isHydrationSettled && !shouldHydrateResultsForRender) {
+        const expectedPreparedRowsKey =
+          runtimeState.resultsHydrationKey ?? runtimeState.resultsRequestKey;
+        const arePreparedRowsReady =
+          hasExpectedRequest &&
+          runtimeState.listPreparedRowsReady &&
+          expectedPreparedRowsKey != null &&
+          runtimeState.preparedRows.readyReadinessKey === expectedPreparedRowsKey;
+        if (arePreparedRowsReady) {
           onReady();
           return;
         }
@@ -710,7 +923,7 @@ export const useSearchSubmitResponseOwner = ({
 
       scheduleOnNextFrame(tick);
     },
-    [isRequestStillActive, scheduleOnNextFrame]
+    [isRequestStillActive, resultsPresentationSurfaceAuthority, scheduleOnNextFrame]
   );
 
   const scheduleAfterRuntimeSettleContract = React.useCallback(
@@ -732,13 +945,15 @@ export const useSearchSubmitResponseOwner = ({
         if (!isRequestStillActive(requestId)) {
           return;
         }
-        const runtimeState = submitRuntimeGateStateRef.current;
+        const runtimeState = searchRuntimeBus.getState();
         const runtimeOperationId = runtimeState.activeOperationId;
         if (runtimeOperationId != null && runtimeOperationId !== expectedOperationId) {
           return;
         }
         const laneIdle = runtimeState.activeOperationLane === 'idle';
-        const visualSettled = runtimeState.resultsPresentation.isSettled;
+        const visualSettled = isResultsPresentationExecutionStageSettled(
+          resultsPresentationAuthority.getSnapshot().resultsPresentationTransport.executionStage
+        );
         const schedulerQueueDepth =
           runtimeWorkSchedulerRef?.current.snapshotPressure().queueDepth ?? 0;
         const schedulerQuiet = schedulerQueueDepth <= 0;
@@ -756,7 +971,13 @@ export const useSearchSubmitResponseOwner = ({
 
       scheduleOnNextFrame(tick);
     },
-    [isRequestStillActive, runtimeWorkSchedulerRef, scheduleOnNextFrame]
+    [
+      isRequestStillActive,
+      resultsPresentationAuthority,
+      runtimeWorkSchedulerRef,
+      scheduleOnNextFrame,
+      searchRuntimeBus,
+    ]
   );
 
   const scheduleResponseShadowSettleSequence = React.useCallback(
@@ -842,9 +1063,9 @@ export const useSearchSubmitResponseOwner = ({
         beginMapLane();
         return;
       }
-      scheduleAfterResultsHydrationSettled({
+      scheduleAfterPreparedRowsReady({
         requestId: tuple.requestId,
-        maxWaitMs: 1400,
+        maxWaitMs: 520,
         expectedRequestKey: responseRequestId,
         onReady: () => {
           scheduleAfterHealthyFrames({
@@ -862,7 +1083,7 @@ export const useSearchSubmitResponseOwner = ({
       logSearchResponseTiming,
       publishRuntimeLaneState,
       scheduleAfterHealthyFrames,
-      scheduleAfterResultsHydrationSettled,
+      scheduleAfterPreparedRowsReady,
       scheduleAfterRuntimeSettleContract,
       searchRuntimeBus,
       shouldLogSearchResponseTimings,
@@ -883,6 +1104,7 @@ export const useSearchSubmitResponseOwner = ({
       previousFoodCountSnapshot,
       previousRestaurantCountSnapshot,
       committedSearchRequestId,
+      dataReadyFrom,
       submittedLabel,
       pushToHistory,
       isResponseApplyStale,
@@ -935,14 +1157,14 @@ export const useSearchSubmitResponseOwner = ({
       };
 
       if (append) {
-        publishRuntimeLaneState(tuple, 'lane_c_list_first_paint');
+        publishRuntimeLaneState(tuple, 'lane_c_prepared_rows');
         applyResponseMetaState();
       } else {
         scheduleOnNextFrame(() => {
           if (isResponseApplyStale()) {
             return;
           }
-          publishRuntimeLaneState(tuple, 'lane_c_list_first_paint');
+          publishRuntimeLaneState(tuple, 'lane_c_prepared_rows');
           applyResponseMetaState();
         });
       }
@@ -989,7 +1211,9 @@ export const useSearchSubmitResponseOwner = ({
             updateLocalRecentSearches(historyProjection.recentSearch);
           }
 
-          void loadRecentHistory({ force: true });
+          if (dataReadyFrom !== 'cache') {
+            void loadRecentHistory({ force: true });
+          }
         };
         void InteractionManager.runAfterInteractions(enqueueHistoryUpdate);
         logSearchPhase('handleSearchResponse:history-deferred');
@@ -1031,8 +1255,13 @@ export const useSearchSubmitResponseOwner = ({
       initialUiState,
       committedResponse,
       committedSearchRequestId,
+      resultsHydrationKey,
+      resultsDataKey,
+      dataReadyFrom,
+      searchInputKey,
       requestBounds,
       replaceResultsInPlace,
+      presentationIntentKind,
       isResponseApplyStale,
       emitShadowTransition,
     }: SearchResponsePhaseACommitOptions): boolean => {
@@ -1054,11 +1283,20 @@ export const useSearchSubmitResponseOwner = ({
           pendingTabSwitchTab: null,
         });
       });
-      if (!append && committedResponse.metadata.page === 1 && !isResponseApplyStale()) {
+      if (
+        !append &&
+        committedResponse.metadata.page === 1 &&
+        !isResponseApplyStale()
+      ) {
         onPageOneResultsCommitted?.({
           searchRequestId: committedSearchRequestId,
           requestBounds: requestBounds ?? null,
+          resultsHydrationKey,
+          resultsDataKey,
+          dataReadyFrom,
+          searchInputKey,
           replaceResultsInPlace: Boolean(replaceResultsInPlace),
+          presentationIntentKind,
         });
       }
       return true;
@@ -1082,14 +1320,75 @@ export const useSearchSubmitResponseOwner = ({
       submissionContext,
       requestBounds,
       replaceResultsInPlace,
+      presentationIntentKind,
       runtimeTuple,
       emitShadowTransition,
       handleStart,
       isResponseApplyStale,
+      responseCacheStatus,
       responseContext,
     }: ApplySearchResponseLifecycleContextOptions) => {
+      const dataReadyFrom = responseCacheStatus?.dataReadyFrom ?? 'network';
+      const searchInputKey = responseCacheStatus?.searchInputKey ?? null;
+      const resultsDataKey = responseContext.resultsPatch.resultsHydrationCandidateKey ?? null;
       searchRuntimeBus.batch(() => {
-        searchRuntimeBus.publish(responseContext.resultsPatch);
+        const mountedDataPublishStartedAtMs = getPerfScenarioWorkNow();
+        publishSearchMountedResultsDataSnapshot(responseContext.committedResponse, {
+          activeTab: initialUiState.targetTab,
+          markerProjection: responseContext.markerProjection,
+          resultsHydrationKey: responseContext.resultsPatch.resultsHydrationCandidateKey,
+        });
+        logPerfScenarioWorkSpan({
+          owner: 'search_response_mounted_results_data_publish',
+          path: runtimeTuple.mode,
+          startedAtMs: mountedDataPublishStartedAtMs,
+          details: {
+            resultsHydrationKey: responseContext.resultsPatch.resultsHydrationCandidateKey,
+            activeTab: initialUiState.targetTab,
+            responseDishCount: responseContext.committedResponse.dishes?.length ?? 0,
+            responseRestaurantCount: responseContext.committedResponse.restaurants?.length ?? 0,
+          },
+        });
+        const surfacePublishStartedAtMs = getPerfScenarioWorkNow();
+        resultsPresentationSurfaceAuthority.publish(
+          {
+            resultsRequestKey: responseContext.resultsPatch.resultsRequestKey ?? null,
+            resultsHydrationKey: responseContext.resultsPatch.resultsHydrationCandidateKey ?? null,
+            resultsPreparedRowsKey: null,
+            listPreparedRowsReady: false,
+            isResultsHydrationSettled:
+              responseContext.resultsPatch.resultsHydrationCandidateKey == null,
+          },
+          'search_response_owner_results_commit'
+        );
+        logPerfScenarioWorkSpan({
+          owner: 'search_response_surface_authority_publish',
+          path: runtimeTuple.mode,
+          startedAtMs: surfacePublishStartedAtMs,
+          details: {
+            resultsHydrationKey: responseContext.resultsPatch.resultsHydrationCandidateKey,
+            listenerCount: resultsPresentationSurfaceAuthority.readDiagnostics().listenerCount,
+          },
+        });
+        const rootBusResultsPatch = deriveSearchResponseRootBusResultsPatch({
+          patch: responseContext.resultsPatch,
+          preserveRouteIdentity:
+            append || targetPage !== 1 || runtimeTuple.mode !== 'shortcut',
+        });
+        const runtimeBusPublishStartedAtMs = getPerfScenarioWorkNow();
+        searchRuntimeBus.publish(rootBusResultsPatch);
+        logPerfScenarioWorkSpan({
+          owner: 'search_response_runtime_bus_results_patch_publish',
+          path: runtimeTuple.mode,
+          startedAtMs: runtimeBusPublishStartedAtMs,
+          details: {
+            resultsHydrationKey: responseContext.resultsPatch.resultsHydrationCandidateKey,
+            routeIdentityPublishSkipped:
+              rootBusResultsPatch.resultsRequestKey == null &&
+              rootBusResultsPatch.resultsPage == null,
+            listenerCount: searchRuntimeBus.readDiagnostics().listenerCount,
+          },
+        });
       });
       logSearchPhase('handleSearchResponse:results-committed');
       if (
@@ -1100,8 +1399,13 @@ export const useSearchSubmitResponseOwner = ({
           initialUiState,
           committedResponse: responseContext.committedResponse,
           committedSearchRequestId: responseContext.committedSearchRequestId,
+          resultsHydrationKey: responseContext.resultsPatch.resultsHydrationCandidateKey ?? null,
+          resultsDataKey,
+          dataReadyFrom,
+          searchInputKey,
           requestBounds,
           replaceResultsInPlace,
+          presentationIntentKind,
           isResponseApplyStale,
           emitShadowTransition,
         })
@@ -1122,6 +1426,7 @@ export const useSearchSubmitResponseOwner = ({
         previousFoodCountSnapshot: responseContext.previousFoodCountSnapshot,
         previousRestaurantCountSnapshot: responseContext.previousRestaurantCountSnapshot,
         committedSearchRequestId: responseContext.committedSearchRequestId,
+        dataReadyFrom,
         submittedLabel,
         pushToHistory,
         isResponseApplyStale,
@@ -1159,6 +1464,7 @@ export const useSearchSubmitResponseOwner = ({
       scheduleAfterHealthyFrames,
       scheduleResponsePostCommitUiSequence,
       scheduleResponseShadowSettleSequence,
+      resultsPresentationSurfaceAuthority,
       searchRuntimeBus,
     ]
   );
@@ -1174,28 +1480,42 @@ export const useSearchSubmitResponseOwner = ({
       submissionContext,
       requestBounds,
       replaceResultsInPlace,
+      presentationIntentKind,
       runtimeTuple,
       emitShadowTransition,
       handleStart,
       isResponseApplyStale,
+      responseCacheStatus,
     }: SearchResponseLifecycleOptions) => {
       logSearchPhase('handleSearchResponse:start');
       const mergeStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
-      const responseContext = deriveSearchResponseLifecycleContext({
-        baseResponse: append ? currentResults : null,
-        normalizedResponse,
-        append,
-        runtimeMode: runtimeTuple.mode,
-        requestId: runtimeTuple.requestId,
-        initialTargetTab: initialUiState.targetTab,
-        activeTab,
-        pendingTabSwitchTab,
-        bounds: latestBoundsRef.current,
-        userLocation: userLocationRef.current,
-      });
+      const responseContext = measurePerfScenarioWorkSpan(
+        'search_response_lifecycle_context_derive',
+        runtimeTuple.mode,
+        () =>
+          deriveSearchResponseLifecycleContext({
+            baseResponse: append ? getSearchMountedResultsDataSnapshot().results : null,
+            normalizedResponse,
+            append,
+            runtimeMode: runtimeTuple.mode,
+            requestId: runtimeTuple.requestId,
+            initialTargetTab: initialUiState.targetTab,
+            activeTab,
+            pendingTabSwitchTab,
+            bounds: latestBoundsRef.current,
+            userLocation: userLocationRef.current,
+          }),
+        {
+          append,
+          targetPage,
+          responseDishCount: normalizedResponse.dishes?.length ?? 0,
+          responseRestaurantCount: normalizedResponse.restaurants?.length ?? 0,
+        }
+      );
       if (shouldLogSearchResponseTimings) {
         logSearchResponseTiming('mergeSearchResponses', getPerfNow() - mergeStart);
       }
+      const applyStartedAtMs = getPerfScenarioWorkNow();
       applySearchResponseLifecycleContext({
         normalizedResponse,
         append,
@@ -1206,17 +1526,29 @@ export const useSearchSubmitResponseOwner = ({
         submissionContext,
         requestBounds,
         replaceResultsInPlace,
+        presentationIntentKind,
         runtimeTuple,
         emitShadowTransition,
         handleStart,
         isResponseApplyStale,
+        responseCacheStatus,
         responseContext,
+      });
+      logPerfScenarioWorkSpan({
+        owner: 'search_response_lifecycle_context_apply',
+        path: runtimeTuple.mode,
+        startedAtMs: applyStartedAtMs,
+        details: {
+          append,
+          targetPage,
+          operationId: runtimeTuple.operationId,
+          resultsHydrationKey: responseContext.resultsPatch.resultsHydrationCandidateKey ?? null,
+        },
       });
     },
     [
       activeTab,
       applySearchResponseLifecycleContext,
-      currentResults,
       deriveSearchResponseLifecycleContext,
       latestBoundsRef,
       logSearchPhase,
@@ -1239,20 +1571,92 @@ export const useSearchSubmitResponseOwner = ({
       const { targetPage, runtimeShadow } = options;
       const { runtimeTuple } = runtimeShadow;
       const emitShadowTransition = runtimeShadow.emitShadowTransition;
-      const normalizedResponse = normalizeSearchResponse(response, targetPage);
+      let normalizedResponse: SearchResponse;
+      try {
+        normalizedResponse = measurePerfScenarioWorkSpan(
+          'search_response_normalize',
+          runtimeTuple.mode,
+          () => normalizeSearchResponse(response, targetPage),
+          {
+            targetPage,
+            responseDishCount: response.dishes?.length ?? 0,
+            responseRestaurantCount: response.restaurants?.length ?? 0,
+          }
+        );
+      } catch (error) {
+        logSearchResponseLifecycle({
+          phase: 'response_lifecycle_skipped',
+          reason: 'normalize_response_error',
+          kind: runtimeTuple.mode,
+          requestId: runtimeTuple.requestId,
+          operationId: runtimeTuple.operationId,
+          targetPage,
+          errorMessage: error instanceof Error ? error.message : 'unknown error',
+          ...getSearchResponseLifecycleSummary(response),
+        });
+        throw error;
+      }
+      logSearchResponseLifecycle({
+        phase: 'response_lifecycle_enter',
+        kind: runtimeTuple.mode,
+        requestId: runtimeTuple.requestId,
+        operationId: runtimeTuple.operationId,
+        targetPage,
+        append: options.append,
+        ...getSearchResponseLifecycleSummary(normalizedResponse),
+      });
       const responseApplyToken = responseApplyTokenRef.current + 1;
       responseApplyTokenRef.current = responseApplyToken;
-      const isResponseApplyStale = () => {
-        if (!isMountedRef.current || responseApplyTokenRef.current !== responseApplyToken) {
-          return true;
+      let didLogStaleRejection = false;
+      const resolveResponseApplyStaleReason = (): string | null => {
+        if (!isMountedRef.current) {
+          return 'unmounted';
+        }
+        if (responseApplyTokenRef.current !== responseApplyToken) {
+          return 'response_apply_token_replaced';
         }
         if (!isRequestStillActive(runtimeTuple.requestId)) {
-          return true;
+          return 'request_not_active';
         }
         const activeTuple = activeOperationTupleRef.current;
-        return activeTuple?.operationId !== runtimeTuple.operationId;
+        if (activeTuple?.operationId !== runtimeTuple.operationId) {
+          return 'operation_not_active';
+        }
+        return null;
+      };
+      const isResponseApplyStale = () => {
+        const staleReason = resolveResponseApplyStaleReason();
+        if (staleReason == null) {
+          return false;
+        }
+        if (!didLogStaleRejection) {
+          didLogStaleRejection = true;
+          logSearchResponseLifecycle({
+            phase: 'response_lifecycle_stale_rejected',
+            reason: staleReason,
+            kind: runtimeTuple.mode,
+            requestId: runtimeTuple.requestId,
+            operationId: runtimeTuple.operationId,
+            activeOperationId: activeOperationTupleRef.current?.operationId ?? null,
+            targetPage,
+            append: options.append,
+            ...getSearchResponseLifecycleSummary(normalizedResponse),
+          });
+        }
+        return true;
       };
       if (!emitShadowTransition('response_received', options.responseReceivedPayload)) {
+        logSearchResponseLifecycle({
+          phase: 'response_lifecycle_skipped',
+          reason: 'shadow_response_received_rejected',
+          kind: runtimeTuple.mode,
+          requestId: runtimeTuple.requestId,
+          operationId: runtimeTuple.operationId,
+          activeOperationId: activeOperationTupleRef.current?.operationId ?? null,
+          targetPage,
+          append: options.append,
+          ...getSearchResponseLifecycleSummary(normalizedResponse),
+        });
         clearActiveOperationTuple(runtimeTuple);
         return null;
       }
@@ -1293,10 +1697,12 @@ export const useSearchSubmitResponseOwner = ({
         submissionContext: options.submissionContext,
         requestBounds: options.requestBounds,
         replaceResultsInPlace: options.replaceResultsInPlace,
+        presentationIntentKind: options.presentationIntentKind,
         runtimeTuple: responseEntry.runtimeTuple,
         emitShadowTransition: responseEntry.emitShadowTransition,
         handleStart: responseEntry.handleStart,
         isResponseApplyStale: responseEntry.isResponseApplyStale,
+        responseCacheStatus: options.responseCacheStatus ?? null,
       });
     },
     [executeSearchResponseLifecycle, prepareSearchResponseLifecycleEntry]

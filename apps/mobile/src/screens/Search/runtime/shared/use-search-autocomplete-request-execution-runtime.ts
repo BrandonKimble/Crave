@@ -2,6 +2,7 @@ import React from 'react';
 
 import { logger } from '../../../../utils';
 import type { AutocompleteMatch } from '../../../../services/autocomplete';
+import type { Coordinate, MapBounds } from '../../../../types';
 import {
   normalizeAutocompleteQuery,
   writeAutocompleteSuggestions,
@@ -20,12 +21,18 @@ export const useSearchAutocompleteRequestExecutionRuntime = ({
   clearAutocompleteSuggestions,
   writeAutocompleteCache,
   requestStateRuntime,
+  bounds,
+  userLocation,
 }: {
   trimmed: string;
   shouldRequest: boolean;
   runAutocomplete: (
     value: string,
-    options?: { debounceMs?: number }
+    options?: {
+      debounceMs?: number;
+      bounds?: MapBounds | null;
+      userLocation?: Coordinate | null;
+    }
   ) => Promise<AutocompleteMatch[]>;
   cancelAutocomplete: () => void;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
@@ -33,6 +40,8 @@ export const useSearchAutocompleteRequestExecutionRuntime = ({
   clearAutocompleteSuggestions: () => void;
   writeAutocompleteCache: (rawQuery: string, matches: AutocompleteMatch[]) => void;
   requestStateRuntime: ReturnType<typeof useSearchAutocompleteRequestStateRuntime>;
+  bounds: MapBounds | null;
+  userLocation: Coordinate | null;
 }) => {
   React.useEffect(() => {
     if (!shouldRequest) {
@@ -43,7 +52,11 @@ export const useSearchAutocompleteRequestExecutionRuntime = ({
       ++requestStateRuntime.autocompleteRequestSequenceRef.current;
     let isActive = true;
 
-    void runAutocomplete(trimmed, { debounceMs: AUTOCOMPLETE_DEBOUNCE_MS })
+    void runAutocomplete(trimmed, {
+      debounceMs: AUTOCOMPLETE_DEBOUNCE_MS,
+      bounds,
+      userLocation,
+    })
       .then((matches) => {
         if (
           !isActive ||
@@ -107,6 +120,8 @@ export const useSearchAutocompleteRequestExecutionRuntime = ({
     setSuggestions,
     shouldRequest,
     trimmed,
+    bounds,
+    userLocation,
     writeAutocompleteCache,
   ]);
 };

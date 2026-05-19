@@ -1,7 +1,9 @@
 import React from 'react';
 
-import type { RestaurantResult } from '../../../../types';
-import type { RestaurantPanelSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
+import type {
+  RestaurantPanelSnapshot,
+  RestaurantProfileSeed,
+} from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type { ProfileControllerState } from './profile-runtime-state-record';
 import { resetPreparedProfileDismissHandling } from '../../../../navigation/runtime/app-route-profile-transition-state-mutations';
 import type { ProfileHydrationRequestRuntime } from './profile-hydration-request-runtime';
@@ -9,7 +11,7 @@ import { createSeededRestaurantPanelSnapshot } from './profile-panel-hydration-s
 
 export type ProfilePanelSeedRuntime = {
   seedRestaurantProfile: (
-    restaurant: RestaurantResult,
+    restaurant: RestaurantProfileSeed,
     queryLabel: string,
     options?: { selectedLocationId?: string | null }
   ) => void;
@@ -35,7 +37,7 @@ export const useProfilePanelSeedRuntime = ({
 
   const seedRestaurantProfile = React.useCallback(
     (
-      restaurant: RestaurantResult,
+      restaurant: RestaurantProfileSeed,
       queryLabel: string,
       options?: { selectedLocationId?: string | null }
     ) => {

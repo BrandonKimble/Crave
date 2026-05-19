@@ -30,23 +30,26 @@ export const resolveProfileCameraSnapshot = ({
 export const resolveProfileCameraPadding = ({
   screenHeight,
   searchBarTop,
-  searchBarHeight,
-  insetsTop,
-  navBarTop,
-  profilePinTargetCenterRatio,
-  profilePinMinVisibleHeight,
-}: {
-  screenHeight: number;
-  searchBarTop: number;
-  searchBarHeight: number;
-  insetsTop: number;
-  navBarTop: number;
-  profilePinTargetCenterRatio: number;
-  profilePinMinVisibleHeight: number;
-}): CameraSnapshot['padding'] => {
-  const topInset = Math.max(insetsTop, navBarTop);
-  const topPadding = Math.max(searchBarTop + searchBarHeight, topInset);
-  const desiredCenter = screenHeight * profilePinTargetCenterRatio;
+	  searchBarHeight,
+	  insetsTop,
+	  navBarTop,
+	  expandedSnapPoint,
+	  profilePinTargetCenterRatio,
+	  profilePinMinVisibleHeight,
+	}: {
+	  screenHeight: number;
+	  searchBarTop: number;
+	  searchBarHeight: number;
+	  insetsTop: number;
+	  navBarTop: number;
+	  expandedSnapPoint: number;
+	  profilePinTargetCenterRatio: number;
+	  profilePinMinVisibleHeight: number;
+	}): CameraSnapshot['padding'] => {
+	  const topInset = Math.max(insetsTop, navBarTop);
+	  const expandedTop = Number.isFinite(expandedSnapPoint) ? expandedSnapPoint : topInset;
+	  const topPadding = Math.max(searchBarTop + searchBarHeight, expandedTop);
+	  const desiredCenter = screenHeight * profilePinTargetCenterRatio;
   const minCenter = topPadding + profilePinMinVisibleHeight / 2;
   const targetCenter = Math.max(desiredCenter, minCenter);
   const bottomPadding = Math.max(screenHeight + topPadding - 2 * targetCenter, 0);

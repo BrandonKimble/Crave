@@ -1,0 +1,35 @@
+appId: com.brandonkimble.cravesearch
+---
+- tapOn:
+    text: 'Search'
+    optional: true
+- tapOn:
+    text: 'Close results'
+    optional: true
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=30.2672&lng=-97.7431&zoom=11.5&label=austin'
+- waitForAnimationToEnd:
+    timeout: 2000
+- extendedWaitUntil:
+    visible: 'Show best restaurants here'
+    timeout: 15000
+- tapOn:
+    text: 'Show best restaurants here'
+- extendedWaitUntil:
+    visible: 'Close results'
+    timeout: 20000
+- tapOn:
+    text: 'Close results'
+- waitForAnimationToEnd:
+    timeout: 1200
+- extendedWaitUntil:
+    visible: 'Show best restaurants here'
+    timeout: 10000
+- tapOn:
+    text: 'Show best restaurants here'
+- extendedWaitUntil:
+    visible: 'Close results'
+    timeout: 15000
+- takeScreenshot: market-demand-cache-repeat-results
+- tapOn:
+    text: 'Close results'
+    optional: true

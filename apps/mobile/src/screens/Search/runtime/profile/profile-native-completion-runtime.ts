@@ -1,64 +1,47 @@
 import React from 'react';
 
 import type { CameraIntentArbiter } from '../map/camera-intent-arbiter';
+import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type { PreparedProfilePresentationCompletionEvent } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
-
-type OverlaySheetSnap = 'expanded' | 'middle' | 'collapsed' | 'hidden';
-
-export type ProfileNativeCompletionRuntime = {
-  handlePreparedProfileOverlayDismissed: (requestToken: number | null) => void;
-  handlePreparedProfileSheetSettled: (
-    snap: Exclude<OverlaySheetSnap, 'hidden'>,
-    requestToken: number | null
-  ) => void;
-};
 
 type UseProfileNativeCompletionRuntimeArgs = {
   preparedProfileCompletionHandlerRef: React.MutableRefObject<
     ((event: PreparedProfilePresentationCompletionEvent) => void) | null
   >;
   cameraIntentArbiter: CameraIntentArbiter;
+  lastCameraStateRef: React.MutableRefObject<{
+    center: [number, number];
+    zoom: number;
+  } | null>;
+  pendingProfileCameraTargetRef: React.MutableRefObject<CameraSnapshot | null>;
 };
 
 export const useProfileNativeCompletionRuntime = ({
   preparedProfileCompletionHandlerRef,
   cameraIntentArbiter,
-}: UseProfileNativeCompletionRuntimeArgs): ProfileNativeCompletionRuntime => {
-  const handlePreparedProfileOverlayDismissed = React.useCallback(
-    (requestToken: number | null) => {
-      preparedProfileCompletionHandlerRef.current?.({
-        type: 'overlay_dismissed',
-        requestToken,
-      });
-    },
-    [preparedProfileCompletionHandlerRef]
-  );
-
-  const handlePreparedProfileSheetSettled = React.useCallback(
-    (snap: Exclude<OverlaySheetSnap, 'hidden'>, requestToken: number | null) => {
-      preparedProfileCompletionHandlerRef.current?.({
-        type: 'sheet_settled',
-        snap,
-        requestToken,
-      });
-    },
-    [preparedProfileCompletionHandlerRef]
-  );
-
+  lastCameraStateRef,
+  pendingProfileCameraTargetRef,
+}: UseProfileNativeCompletionRuntimeArgs): void => {
   const handlePreparedProfileCameraCompletion = React.useCallback(
     (payload: {
       animationCompletionId: string | null;
       status: 'finished' | 'cancelled';
       requestToken: number | null;
     }) => {
-      void payload.animationCompletionId;
-      void payload.status;
+      const pendingCameraTarget = pendingProfileCameraTargetRef.current;
+      pendingProfileCameraTargetRef.current = null;
+      if (payload.status === 'finished' && pendingCameraTarget) {
+        lastCameraStateRef.current = {
+          center: pendingCameraTarget.center,
+          zoom: pendingCameraTarget.zoom,
+        };
+      }
       preparedProfileCompletionHandlerRef.current?.({
         type: 'camera_settled',
         requestToken: payload.requestToken,
       });
     },
-    [preparedProfileCompletionHandlerRef]
+    [lastCameraStateRef, pendingProfileCameraTargetRef, preparedProfileCompletionHandlerRef]
   );
 
   React.useEffect(() => {
@@ -69,12 +52,4 @@ export const useProfileNativeCompletionRuntime = ({
       cameraIntentArbiter.setProgrammaticCameraAnimationCompletionHandler(null);
     };
   }, [cameraIntentArbiter, handlePreparedProfileCameraCompletion]);
-
-  return React.useMemo(
-    () => ({
-      handlePreparedProfileOverlayDismissed,
-      handlePreparedProfileSheetSettled,
-    }),
-    [handlePreparedProfileOverlayDismissed, handlePreparedProfileSheetSettled]
-  );
 };

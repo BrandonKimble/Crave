@@ -1,0 +1,20 @@
+# perf-scenario-sim-location: 46.7867,-92.1005
+appId: com.brandonkimble.cravesearch
+---
+- tapOn:
+    text: 'Search'
+    optional: true
+- tapOn:
+    text: 'Close results'
+    optional: true
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=46.7867&lng=-92.1005&zoom=11.5&label=duluth'
+- waitForAnimationToEnd:
+    timeout: 2500
+- openLink: 'crave://perf-scenario-command?action=submit_shortcut_restaurants'
+- extendedWaitUntil:
+    visible: 'Close results'
+    timeout: 25000
+- takeScreenshot: market-demand-off-region-active-results
+- tapOn:
+    text: 'Close results'
+    optional: true

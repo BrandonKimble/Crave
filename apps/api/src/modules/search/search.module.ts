@@ -9,6 +9,8 @@ import { ExternalIntegrationsModule } from '../external-integrations/external-in
 import { RestaurantEnrichmentModule } from '../restaurant-enrichment';
 import { IdentityModule } from '../identity/identity.module';
 import { EntityTextSearchModule } from '../entity-text-search/entity-text-search.module';
+import { AnalyticsModule } from '../analytics/analytics.module';
+import { PublicCraveScoreModule } from '../content-processing/public-crave-score';
 import { SearchController } from './search.controller';
 import { SearchService } from './search.service';
 import { SearchCoverageService } from './search-coverage.service';
@@ -37,6 +39,8 @@ import { SearchEntityExpansionService } from './search-entity-expansion.service'
     RestaurantEnrichmentModule,
     IdentityModule,
     EntityTextSearchModule,
+    AnalyticsModule,
+    PublicCraveScoreModule,
   ],
   controllers: [SearchController],
   providers: [

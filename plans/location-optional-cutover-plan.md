@@ -14,7 +14,7 @@ Scope:
 
 Related plans:
 
-- `/Users/brandonkimble/crave-search/plans/contextual-score-cutover-plan.md`
+- `/Users/brandonkimble/crave-search/plans/crave-score-cutover-plan.md`
 - `/Users/brandonkimble/crave-search/plans/polls-coverage-resolution-cutover-plan.md`
 - `/Users/brandonkimble/crave-search/plans/restaurant-identity-domain-rollup-plan.md`
 
@@ -29,7 +29,7 @@ The target model is:
   - used only for distance, nearby bias, and explicitly proximity-native behavior
 - `searchContext`
   - submitted bounds / viewport
-  - used for search geography, contextual scoring cohort, and map/panel visual focus
+  - used for search geography, contextual rank, and map/panel visual focus
 - `marketContext`
   - resolved market for polls and market-scoped UI
   - derived from explicit market choice or a legitimate anchor, not a fake substitute

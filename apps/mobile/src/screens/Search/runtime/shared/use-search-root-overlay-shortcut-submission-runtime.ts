@@ -24,17 +24,24 @@ export const useSearchRootOverlayShortcutSubmissionRuntime = ({
       label,
       preserveSheetState,
       transitionFromDockedPolls,
+      forceFreshBounds,
     }: Parameters<
-      NonNullable<typeof instrumentationRuntime.submitShortcutSearchRef.current>
+      NonNullable<typeof instrumentationRuntime.submitShortcutScenarioCommandRef.current>
     >[0]) => {
       searchState.setQuery(label);
       await viewportShortcutControlLane.submitViewportShortcut(targetTab, label, {
         preserveSheetState,
         transitionFromDockedPolls,
+        entrySurface: preserveSheetState ? 'results' : 'home',
+        forceFreshBounds: forceFreshBounds ?? true,
       });
     },
-    [instrumentationRuntime.submitShortcutSearchRef, searchState, viewportShortcutControlLane]
+    [
+      instrumentationRuntime.submitShortcutScenarioCommandRef,
+      searchState,
+      viewportShortcutControlLane,
+    ]
   );
 
-  instrumentationRuntime.submitShortcutSearchRef.current = submitShortcutSearch;
+  instrumentationRuntime.submitShortcutScenarioCommandRef.current = submitShortcutSearch;
 };

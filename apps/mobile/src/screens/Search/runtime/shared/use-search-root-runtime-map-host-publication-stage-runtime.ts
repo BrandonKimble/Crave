@@ -1,7 +1,6 @@
 import { useSearchRootMapHostPublicationRuntime } from './use-search-root-map-host-publication-runtime';
 import type { useSearchRootControlAuthorityRuntime } from './use-search-root-control-authority-runtime';
 import type { useSearchRootControlProfileExperienceRuntime } from './use-search-root-control-profile-experience-runtime';
-import type { useSearchRootControlResultsExperienceRuntime } from './use-search-root-control-results-experience-runtime';
 import type { useSearchRootRuntimeOverlayFoundationAssemblyRuntime } from './use-search-root-runtime-overlay-foundation-assembly-runtime';
 import type { useSearchRootRuntimeSessionAssemblyRuntime } from './use-search-root-runtime-session-assembly-runtime';
 import type { useSearchRootRuntimeStateAssemblyRuntime } from './use-search-root-runtime-state-assembly-runtime';
@@ -22,10 +21,6 @@ type SearchRootControlAuthorityRuntime = ReturnType<
 type SearchRootControlProfileExperienceRuntime = ReturnType<
   typeof useSearchRootControlProfileExperienceRuntime
 >;
-type SearchRootControlResultsExperienceRuntime = ReturnType<
-  typeof useSearchRootControlResultsExperienceRuntime
->;
-
 export const useSearchRootRuntimeMapHostPublicationStageRuntime = ({
   appEntryPlaneRuntime,
   sessionAssemblyRuntime,
@@ -33,7 +28,6 @@ export const useSearchRootRuntimeMapHostPublicationStageRuntime = ({
   overlayFoundationAssemblyRuntime,
   controlAuthorityRuntime,
   profileControlRuntime,
-  resultsControlRuntime,
 }: {
   appEntryPlaneRuntime: ReturnType<typeof useSearchScreenAppEntryPlaneRuntime>;
   sessionAssemblyRuntime: SearchRootRuntimeSessionAssembly;
@@ -41,7 +35,6 @@ export const useSearchRootRuntimeMapHostPublicationStageRuntime = ({
   overlayFoundationAssemblyRuntime: SearchRootRuntimeOverlayFoundationAssembly;
   controlAuthorityRuntime: SearchRootControlAuthorityRuntime;
   profileControlRuntime: SearchRootControlProfileExperienceRuntime;
-  resultsControlRuntime: SearchRootControlResultsExperienceRuntime;
 }) =>
   useSearchRootMapHostPublicationRuntime({
     appEntryPlaneRuntime,
@@ -57,8 +50,6 @@ export const useSearchRootRuntimeMapHostPublicationStageRuntime = ({
     profilePresentationControlLane:
       profileControlRuntime.profilePresentationControlLane,
     mapProfileControlLane: profileControlRuntime.mapProfileControlLane,
-    resultsPresentationStateControlLane:
-      resultsControlRuntime.resultsPresentationStateControlLane,
     resultsPresentationControlLane:
       controlAuthorityRuntime.presentationAuthorityRuntime
         .resultsPresentationControlLane,

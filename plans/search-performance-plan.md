@@ -1,5 +1,11 @@
 # Search Performance Plan (Natural Queries)
 
+> Superseded scoring note: any references below to old display-rank tables,
+> contextual percentiles, or raw quality as the public score are stale. Public
+> search ordering and payloads now use stable
+> `core_public_entity_scores.display_score` as `craveScore`; viewport/search
+> context should only change rank.
+
 ## Goals
 
 - Reduce p95 latency for `POST /api/search/natural` and identify dominant phases.
@@ -101,14 +107,14 @@
 **What to inspect**
 
 - Generated SQL in `SearchQueryBuilder` (CTEs: `filtered_restaurants`, `filtered_locations`, `filtered_connections`).
-- Joins on `core_entities`, `core_connections`, `core_restaurant_locations`, `core_display_rank_scores`.
+- Joins on `core_entities`, `core_restaurant_items`, `core_restaurant_locations`, and `core_public_entity_scores`.
 
 **Likely index candidates (validate with EXPLAIN)**
 
 - `core_entities`: `(type)`, `(entity_id)` (PK), `(location_key)`, GIN on `restaurant_attributes`.
 - `core_connections`: `(restaurant_id)`, `(food_id)`, GIN on `categories`, GIN on `food_attributes`, `(total_upvotes)` if filtering by votes.
 - `core_restaurant_locations`: `(restaurant_id)`, `(latitude, longitude)` if bounding queries, partial index for `google_place_id IS NOT NULL AND address IS NOT NULL`.
-- `core_display_rank_scores`: composite `(subject_type, subject_id, location_key)`.
+- `core_public_entity_scores`: `(subject_type, display_score DESC)` and `(scoring_market_key, subject_type, display_score DESC)`.
 
 **Recommendation**
 

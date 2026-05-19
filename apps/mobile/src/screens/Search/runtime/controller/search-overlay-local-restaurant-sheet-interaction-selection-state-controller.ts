@@ -5,7 +5,7 @@ type Listener = () => void;
 
 export type SearchOverlayLocalRestaurantSheetInteractionSelectionSnapshot = Pick<
   RouteLocalRestaurantOverlayControlSelectionSnapshot,
-  'onToggleFavorite' | 'closeRestaurantProfile' | 'restaurantSheetSnapController'
+  'onToggleFavorite' | 'closeRestaurantProfile'
 >;
 
 export type SearchOverlayLocalRestaurantSheetInteractionSelectionAuthority = {
@@ -18,8 +18,7 @@ const areInteractionSelectionSnapshotsEqual = (
   right: SearchOverlayLocalRestaurantSheetInteractionSelectionSnapshot
 ): boolean =>
   left.onToggleFavorite === right.onToggleFavorite &&
-  left.closeRestaurantProfile === right.closeRestaurantProfile &&
-  left.restaurantSheetSnapController === right.restaurantSheetSnapController;
+  left.closeRestaurantProfile === right.closeRestaurantProfile;
 
 const createInteractionSelectionSnapshot = (
   restaurantInteractionSnapshot: ReturnType<
@@ -28,8 +27,6 @@ const createInteractionSelectionSnapshot = (
 ): SearchOverlayLocalRestaurantSheetInteractionSelectionSnapshot => ({
   onToggleFavorite: restaurantInteractionSnapshot.onToggleFavorite,
   closeRestaurantProfile: restaurantInteractionSnapshot.closeRestaurantProfile,
-  restaurantSheetSnapController:
-    restaurantInteractionSnapshot.restaurantSheetSnapController,
 });
 
 export class SearchOverlayLocalRestaurantSheetInteractionSelectionStateController {

@@ -54,12 +54,10 @@ export const useSearchRootForegroundInputRuntime = ({
       createSearchRootForegroundInputRuntimeValue({
         captureSearchSessionQuery: foregroundInputSessionRuntime.captureSearchSessionQuery,
         focusSearchInput: foregroundInputFocusRuntime.focusSearchInput,
-        handleSearchPressIn: foregroundInputFocusRuntime.handleSearchPressIn,
         handleQueryChange: foregroundInputSessionRuntime.handleQueryChange,
       }),
     [
       foregroundInputFocusRuntime.focusSearchInput,
-      foregroundInputFocusRuntime.handleSearchPressIn,
       foregroundInputSessionRuntime.captureSearchSessionQuery,
       foregroundInputSessionRuntime.handleQueryChange,
     ]

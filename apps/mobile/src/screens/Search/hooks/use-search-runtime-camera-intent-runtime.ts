@@ -2,6 +2,7 @@ import React from 'react';
 import MapboxGL from '@rnmapbox/maps';
 
 import { createCameraIntentArbiter, type CameraIntentArbiter } from '../runtime/map/camera-intent-arbiter';
+import type { CameraSnapshot } from '../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type { SearchMapNativeCameraExecutor } from '../runtime/map/search-map-native-camera-executor';
 
 type MapCameraAnimation = {
@@ -30,37 +31,107 @@ export const useSearchRuntimeCameraIntentRuntime = ({
   setMapCameraAnimation,
 }: UseSearchRuntimeCameraIntentRuntimeArgs): SearchRuntimeCameraIntentRuntime => {
   const cameraIntentArbiterRef = React.useRef<CameraIntentArbiter | null>(null);
+  const latestNativeCameraExecutorRef = React.useRef(searchMapNativeCameraExecutor);
+  const latestCameraRef = React.useRef(cameraRef);
+  latestNativeCameraExecutorRef.current = searchMapNativeCameraExecutor;
+  latestCameraRef.current = cameraRef;
+
+  const executeCameraRefCommand = React.useCallback(
+    ({
+      center,
+      zoom,
+      padding,
+      animationMode,
+      animationDurationMs,
+      completionId,
+    }: {
+      center: [number, number];
+      zoom: number;
+      padding?: CameraSnapshot['padding'];
+      animationMode?: 'none' | 'easeTo';
+      animationDurationMs?: number;
+      completionId: string | null;
+    }): boolean => {
+      const camera = latestCameraRef.current.current;
+      if (typeof camera?.setCamera !== 'function') {
+        return false;
+      }
+      camera.setCamera({
+        type: 'CameraStop',
+        centerCoordinate: center,
+        zoomLevel: zoom,
+        padding: padding ?? undefined,
+        animationMode,
+        animationDuration: animationDurationMs,
+        animationCompletionId: completionId,
+      });
+      return true;
+    },
+    []
+  );
+
   if (!cameraIntentArbiterRef.current) {
     cameraIntentArbiterRef.current = createCameraIntentArbiter({
       commandCameraViewport: ({
         center,
         zoom,
+        padding,
         animationMode,
         animationDurationMs,
-        completionId: _completionId,
+        completionId,
+        onCommandRejected,
       }) => {
+        const shouldPreferNativeCommand =
+          (animationMode ?? 'none') === 'none' &&
+          (animationDurationMs == null || animationDurationMs === 0);
         if (
-          searchMapNativeCameraExecutor.executeCameraCommand({
+          shouldPreferNativeCommand &&
+          latestNativeCameraExecutorRef.current.executeCameraCommand({
             center,
             zoom,
+            padding,
             animationMode,
             animationDurationMs,
+            completionId,
+            onCommandRejected,
           })
         ) {
           return true;
         }
-        const camera = cameraRef.current;
-        if (typeof camera?.setCamera !== 'function') {
-          return false;
+        if (
+          executeCameraRefCommand({
+            center,
+            zoom,
+            padding,
+            animationMode,
+            animationDurationMs,
+            completionId,
+          })
+        ) {
+          return true;
         }
-        camera.setCamera({
-          type: 'CameraStop',
-          centerCoordinate: center,
-          zoomLevel: zoom,
+        if (
+          !shouldPreferNativeCommand &&
+          latestNativeCameraExecutorRef.current.executeCameraCommand({
+            center,
+            zoom,
+            padding,
+            animationMode,
+            animationDurationMs,
+            completionId,
+            onCommandRejected,
+          })
+        ) {
+          return true;
+        }
+        return executeCameraRefCommand({
+          center,
+          zoom,
+          padding,
           animationMode,
-          animationDuration: animationDurationMs,
+          animationDurationMs,
+          completionId,
         });
-        return true;
       },
       setMapCenter: (center: [number, number]) => {
         setMapCenter((previous) =>

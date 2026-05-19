@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { EntityType, Prisma } from '@prisma/client';
+import {
+  DemandSignalKind,
+  DemandSourceKind,
+  EntityType,
+  Prisma,
+} from '@prisma/client';
 import { Counter, Histogram } from 'prom-client';
 import type { Redis } from 'ioredis';
 import { RedisService } from '@liaoliaots/nestjs-redis';
@@ -20,14 +25,51 @@ import type { User } from '@prisma/client';
 import { SearchPopularityService } from '../search/search-popularity.service';
 import { RestaurantStatusService } from '../search/restaurant-status.service';
 import { MetricsService } from '../metrics/metrics.service';
+import { MarketRegistryService } from '../markets/market-registry.service';
+import { SearchDemandAggregationService } from '../analytics/search-demand-aggregation.service';
 
 const DEFAULT_LIMIT = 8;
 const MIN_QUERY_LENGTH = 1;
+const ENTITY_LANE_RESERVED_SLOTS = 3;
+const PERSONAL_QUERY_RESERVED_SLOTS = 2;
+const GLOBAL_QUERY_RESERVED_SLOTS = 1;
+const ATTRIBUTE_RESERVED_SLOTS = 1;
+const ATTRIBUTE_STRONG_CONFIDENCE = 0.95;
+const ATTRIBUTE_SUPPORTED_CONFIDENCE = 0.88;
+const ATTRIBUTE_SUPPORT_WINDOW_DAYS = 90;
+const ATTRIBUTE_TYPED_SEARCH_WEIGHT = 0.6;
+const ATTRIBUTE_SELECTION_WEIGHT = 0.3;
+const ATTRIBUTE_CORPUS_WEIGHT = 0.1;
+const ATTRIBUTE_GLOBAL_SUPPORT_BACKSTOP_WEIGHT = 0.25;
+const ATTRIBUTE_EXACT_SUPPORT_FLOOR = 0.08;
+const ATTRIBUTE_SUPPORTED_MATCH_FLOOR = 0.22;
+const ATTRIBUTE_LOOSE_MATCH_FLOOR = 0.42;
+const ATTRIBUTE_SINGLE_CHARACTER_SUPPORT_FLOOR = 0.65;
+const ATTRIBUTE_LANE_RUNTIME_READY = true;
 const REQUEST_DURATION_BUCKETS = [0.01, 0.025, 0.05, 0.1, 0.2, 0.4, 0.8, 1.5];
 const REQUEST_DB_DURATION_BUCKETS = [
   0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.4, 0.8,
 ];
 type CacheResult = 'hit' | 'miss' | 'skipped';
+
+type AttributeSupportScore = {
+  typedSearchSupport: number;
+  autocompleteSelectionSupport: number;
+  corpusUsefulness: number;
+  rankSupport: number;
+  corpusConnectionCount: number;
+  corpusSelectivity: number;
+};
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    return 0;
+  }
+  if (value >= 1) {
+    return 1;
+  }
+  return value;
+}
 
 @Injectable()
 export class AutocompleteService {
@@ -46,6 +88,7 @@ export class AutocompleteService {
   private readonly querySuggestionPersonalBoost: number;
   private readonly querySuggestionMinGlobalCount: number;
   private readonly querySuggestionMinUserCount: number;
+  private readonly attributeLaneEnabled: boolean;
   private readonly requestDurationHistogram: Histogram<string>;
   private readonly requestDbDurationHistogram: Histogram<string>;
   private readonly cacheLookupsCounter: Counter<string>;
@@ -60,6 +103,8 @@ export class AutocompleteService {
     private readonly searchQuerySuggestionService: SearchQuerySuggestionService,
     private readonly searchPopularityService: SearchPopularityService,
     private readonly restaurantStatusService: RestaurantStatusService,
+    private readonly marketRegistry: MarketRegistryService,
+    private readonly demandAggregation: SearchDemandAggregationService,
     metricsService: MetricsService,
   ) {
     this.logger = loggerService.setContext('AutocompleteService');
@@ -70,7 +115,7 @@ export class AutocompleteService {
     );
     this.cacheRedisKeyPrefix = this.resolveEnvString(
       'AUTOCOMPLETE_CACHE_REDIS_PREFIX',
-      'autocomplete:v1',
+      'autocomplete:v2',
     );
     this.weightConfidence = this.resolveEnvNumber(
       'AUTOCOMPLETE_WEIGHT_TEXT_CONFIDENCE',
@@ -116,6 +161,9 @@ export class AutocompleteService {
       'AUTOCOMPLETE_QUERY_SUGGESTION_MIN_USER_COUNT',
       1,
     );
+    this.attributeLaneEnabled =
+      ATTRIBUTE_LANE_RUNTIME_READY &&
+      this.resolveEnvBoolean('AUTOCOMPLETE_ENABLE_ATTRIBUTE_LANE', true);
     this.requestDurationHistogram = metricsService.getHistogram({
       name: 'autocomplete_request_duration_seconds',
       help: 'Autocomplete endpoint total duration in seconds',
@@ -149,9 +197,11 @@ export class AutocompleteService {
       });
       const limit = dto.limit ?? DEFAULT_LIMIT;
       const entityTypes = this.resolveEntityTypes(dto);
+      const attributeEntityTypes = this.resolveAttributeEntityTypes(dto);
+      const cacheEntityTypes = [...entityTypes, ...attributeEntityTypes];
       const primaryEntityType = entityTypes[0] ?? EntityType.food;
-      // Contract: autocomplete is intentionally global/unscoped.
-      const marketKey: string | null = null;
+      const marketScope = await this.resolveAutocompleteMarketScope(dto);
+      const marketKey = marketScope.marketKey;
 
       if (normalizedQuery.length < MIN_QUERY_LENGTH) {
         return {
@@ -165,8 +215,10 @@ export class AutocompleteService {
 
       const cacheKey = this.buildCacheKey(
         user?.userId ?? null,
-        entityTypes,
+        cacheEntityTypes,
         normalizedQuery,
+        marketScope.cacheScopeKey,
+        this.attributeLaneEnabled,
       );
       const cacheLookup = await this.getFromCache(cacheKey);
       cacheResult = cacheLookup.result;
@@ -175,7 +227,7 @@ export class AutocompleteService {
         return cacheLookup.response;
       }
 
-      const injectedPromise = user
+      const injectedPromise = user && entityTypes.length > 0
         ? this.measureDbDuration(
             () =>
               this.fetchInjectedUserMatches(normalizedQuery, entityTypes, user),
@@ -190,24 +242,43 @@ export class AutocompleteService {
             normalizedQuery,
             Math.min(10, Math.max(this.querySuggestionMax * 2, 6)),
             user?.userId,
+            marketKey,
           ),
         (seconds) => {
           totalDbDurationSeconds += seconds;
         },
       );
 
-      const searchResults = await this.measureDbDuration(
-        () =>
-          this.entitySearchService.searchEntities(
-            normalizedQuery,
-            entityTypes,
-            Math.min(limit * entityTypes.length, limit * 3),
-            { marketKey },
-          ),
-        (seconds) => {
-          totalDbDurationSeconds += seconds;
-        },
-      );
+      const [searchResults, attributeResults] = await Promise.all([
+        entityTypes.length
+          ? this.measureDbDuration(
+              () =>
+                this.entitySearchService.searchEntities(
+                  normalizedQuery,
+                  entityTypes,
+                  Math.min(limit * entityTypes.length, limit * 3),
+                  { marketKey, allowPhonetic: false },
+                ),
+              (seconds) => {
+                totalDbDurationSeconds += seconds;
+              },
+            )
+          : Promise.resolve([]),
+        attributeEntityTypes.length
+          ? this.measureDbDuration(
+              () =>
+                this.entitySearchService.searchAttributeAutocompleteEntities(
+                  normalizedQuery,
+                  attributeEntityTypes,
+                  Math.max(limit, ATTRIBUTE_RESERVED_SLOTS * 6),
+                  { marketKey },
+                ),
+              (seconds) => {
+                totalDbDurationSeconds += seconds;
+              },
+            )
+          : Promise.resolve([]),
+      ]);
 
       let matches: AutocompleteMatchDto[] = searchResults
         .slice(0, limit)
@@ -220,7 +291,11 @@ export class AutocompleteService {
           matchType: 'entity',
         }));
 
-      if (matches.length === 0 && normalizedQuery.length >= 3) {
+      if (
+        entityTypes.length > 0 &&
+        matches.length === 0 &&
+        normalizedQuery.length >= 3
+      ) {
         matches = await this.measureDbDuration(
           () =>
             this.resolveViaEntityResolver(
@@ -236,9 +311,20 @@ export class AutocompleteService {
         );
       }
 
+      const attributeMatches: AutocompleteMatchDto[] = attributeResults.map(
+        (result) => ({
+          entityId: result.entityId,
+          entityType: result.type,
+          name: result.name,
+          confidence: Number(result.similarity.toFixed(2)),
+          aliases: [],
+          matchType: 'entity',
+        }),
+      );
+
       const injected = await injectedPromise;
 
-      const candidateMatches = this.mergeEntityMatches(matches, [
+      const candidateMatches = this.mergeEntityMatches([...matches, ...attributeMatches], [
         ...injected.favorites,
         ...injected.viewed,
       ]);
@@ -251,6 +337,8 @@ export class AutocompleteService {
             entityMatches: candidateMatches,
             querySuggestions,
             user,
+            marketKey,
+            normalizedQuery,
             limit,
           }),
         (seconds) => {
@@ -488,12 +576,15 @@ export class AutocompleteService {
     entityMatches: AutocompleteMatchDto[];
     querySuggestions: QuerySuggestion[];
     user?: User;
+    marketKey?: string | null;
+    normalizedQuery: string;
     limit: number;
   }): Promise<{
     matches: AutocompleteMatchDto[];
     querySuggestionTexts: string[];
   }> {
-    const { entityMatches, querySuggestions, user, limit } = params;
+    const { entityMatches, querySuggestions, user, limit, normalizedQuery } =
+      params;
 
     const entityIds = Array.from(
       new Set(entityMatches.map((match) => match.entityId)),
@@ -505,7 +596,10 @@ export class AutocompleteService {
 
     const [globalScores, affinityScores, favorites, views] = await Promise.all([
       entityIds.length
-        ? this.searchPopularityService.getEntityPopularityScores(entityIds)
+        ? this.searchPopularityService.getEntityPopularityScores(
+            entityIds,
+            params.marketKey ?? null,
+          )
         : Promise.resolve(new Map<string, number>()),
       user?.userId && entityIds.length
         ? this.searchPopularityService.getUserEntityAffinity(
@@ -544,7 +638,15 @@ export class AutocompleteService {
       ]),
     );
 
-    const scoredEntities = entityMatches.map((match) => {
+    const attributeSupport = await this.loadAttributeSupport(
+      entityMatches,
+      params.marketKey ?? null,
+    );
+
+    const scoredEntities = entityMatches.flatMap((match) => {
+      const attributeSupportScore = this.isAttributeType(match.entityType)
+        ? attributeSupport.get(match.entityId) ?? this.emptyAttributeSupport()
+        : null;
       const popularity = globalScores.get(match.entityId) ?? 0;
       const affinity = affinityScores.get(match.entityId) ?? 0;
       const isFavorite = favoriteSet.has(match.entityId);
@@ -553,41 +655,70 @@ export class AutocompleteService {
       const viewAffinity = view
         ? this.calculateViewAffinity(view.lastViewedAt, view.viewCount)
         : 0;
-      const score =
-        match.confidence * this.weightConfidence +
-        this.normalizePopularity(popularity) * this.weightGlobalPopularity +
-        this.normalizePopularity(affinity) * this.weightUserAffinity +
-        (isFavorite ? this.favoriteBoost : 0) +
-        (isViewed ? this.viewAffinityWeight * viewAffinity : 0);
+      const popularityBoost =
+        this.normalizePopularity(popularity) * this.weightGlobalPopularity;
+      const affinityBoost =
+        this.normalizePopularity(affinity) * this.weightUserAffinity;
+      const favoriteBoost = isFavorite ? this.favoriteBoost : 0;
+      const viewedBoost = isViewed ? this.viewAffinityWeight * viewAffinity : 0;
 
-      return {
-        match: {
-          ...match,
-          badges: {
-            ...match.badges,
-            favorite: isFavorite || match.badges?.favorite,
-            viewed: isViewed || match.badges?.viewed,
+      if (
+        this.isAttributeType(match.entityType) &&
+        !this.isStrongAttributeCandidate({
+          match,
+          normalizedQuery,
+          support: attributeSupportScore ?? this.emptyAttributeSupport(),
+        })
+      ) {
+        return [];
+      }
+
+      const score =
+        attributeSupportScore !== null
+          ? this.calculateAttributeScore({
+              confidence: match.confidence,
+              support: attributeSupportScore,
+            })
+          : this.calculateLexicalFirstEntityScore({
+              confidence: match.confidence,
+              boost:
+                popularityBoost +
+                affinityBoost +
+                favoriteBoost +
+                viewedBoost,
+            });
+
+      return [
+        {
+          match: {
+            ...match,
+            badges: {
+              ...match.badges,
+              favorite: isFavorite || match.badges?.favorite,
+              viewed: isViewed || match.badges?.viewed,
+            },
           },
+          score,
         },
-        score,
-      };
+      ];
     });
 
     const existingNames = new Set(
       scoredEntities.map(({ match }) => match.name.toLowerCase()),
     );
 
-    const queryCandidates = querySuggestions
-      .filter((suggestion) => {
+    const acceptedQueryCandidates = querySuggestions
+      .flatMap((suggestion, laneRank) => {
         const text = suggestion.text.trim();
-        if (!text) return false;
-        if (existingNames.has(text.toLowerCase())) return false;
+        if (!text) return [];
+        if (existingNames.has(text.toLowerCase())) return [];
         if (suggestion.userCount >= this.querySuggestionMinUserCount)
-          return true;
-        return suggestion.globalCount >= this.querySuggestionMinGlobalCount;
+          return [{ suggestion, laneRank, text }];
+        return suggestion.globalCount >= this.querySuggestionMinGlobalCount
+          ? [{ suggestion, laneRank, text }]
+          : [];
       })
-      .slice(0, Math.max(1, this.querySuggestionMax))
-      .map((suggestion) => {
+      .map(({ suggestion, laneRank, text }) => {
         const score =
           this.weightConfidence +
           this.normalizePopularity(suggestion.globalCount) *
@@ -598,7 +729,6 @@ export class AutocompleteService {
             ? this.querySuggestionPersonalBoost
             : 0);
 
-        const text = suggestion.text.trim();
         const match: AutocompleteMatchDto = {
           entityId: `query:${text.toLowerCase()}`,
           entityType: 'query',
@@ -613,24 +743,407 @@ export class AutocompleteService {
               : undefined,
         };
 
-        return { match, score };
+        return { match, score, laneRank };
       });
 
-    const scored = [...scoredEntities, ...queryCandidates]
-      .sort((a, b) => b.score - a.score)
-      .map(({ match }) => match);
+    const compareQueryLaneOrder = (
+      a: { score: number; laneRank: number },
+      b: { score: number; laneRank: number },
+    ) => a.laneRank - b.laneRank || b.score - a.score;
+    const personalQueryCandidates = acceptedQueryCandidates
+      .filter(({ match }) => match.querySuggestionSource === 'personal')
+      .sort(compareQueryLaneOrder);
+    const globalQueryCandidates = acceptedQueryCandidates
+      .filter(({ match }) => match.querySuggestionSource === 'global')
+      .sort(compareQueryLaneOrder);
+    const queryCandidates = [
+      ...personalQueryCandidates.slice(
+        0,
+        Math.max(1, PERSONAL_QUERY_RESERVED_SLOTS),
+      ),
+      ...globalQueryCandidates.slice(
+        0,
+        Math.max(1, GLOBAL_QUERY_RESERVED_SLOTS),
+      ),
+      ...personalQueryCandidates.slice(
+        Math.max(1, PERSONAL_QUERY_RESERVED_SLOTS),
+      ),
+      ...globalQueryCandidates.slice(Math.max(1, GLOBAL_QUERY_RESERVED_SLOTS)),
+    ].slice(0, Math.max(1, this.querySuggestionMax));
 
-    const finalMatches: AutocompleteMatchDto[] = [];
-    for (const match of scored) {
-      finalMatches.push(match);
-      if (finalMatches.length >= limit) break;
-    }
+    const finalMatches = this.mergeAutocompleteLanes({
+      entityCandidates: scoredEntities
+        .filter(({ match }) => !this.isAttributeType(match.entityType))
+        .sort((a, b) => b.score - a.score),
+      attributeCandidates: scoredEntities
+        .filter(({ match }) => this.isAttributeType(match.entityType))
+        .sort((a, b) => b.score - a.score),
+      personalQueryCandidates: queryCandidates
+        .filter(({ match }) => match.querySuggestionSource === 'personal'),
+      globalQueryCandidates: queryCandidates
+        .filter(({ match }) => match.querySuggestionSource === 'global'),
+      limit,
+    });
 
     const querySuggestionTexts = queryCandidates.map(
       (candidate) => candidate.match.name,
     );
 
     return { matches: finalMatches, querySuggestionTexts };
+  }
+
+  private mergeAutocompleteLanes(params: {
+    entityCandidates: Array<{ match: AutocompleteMatchDto; score: number }>;
+    attributeCandidates: Array<{ match: AutocompleteMatchDto; score: number }>;
+    personalQueryCandidates: Array<{
+      match: AutocompleteMatchDto;
+      score: number;
+    }>;
+    globalQueryCandidates: Array<{
+      match: AutocompleteMatchDto;
+      score: number;
+    }>;
+    limit: number;
+  }): AutocompleteMatchDto[] {
+    const finalMatches: AutocompleteMatchDto[] = [];
+    const seen = new Set<string>();
+    const push = (candidate: {
+      match: AutocompleteMatchDto;
+      score: number;
+    }) => {
+      if (finalMatches.length >= params.limit) {
+        return;
+      }
+      const key = `${candidate.match.entityType}:${candidate.match.entityId}`;
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      finalMatches.push(candidate.match);
+    };
+
+    const reserveTotal =
+      ENTITY_LANE_RESERVED_SLOTS +
+      PERSONAL_QUERY_RESERVED_SLOTS +
+      GLOBAL_QUERY_RESERVED_SLOTS +
+      ATTRIBUTE_RESERVED_SLOTS;
+    let entityOverflowStart = ENTITY_LANE_RESERVED_SLOTS;
+    let personalOverflowStart = PERSONAL_QUERY_RESERVED_SLOTS;
+    let globalOverflowStart = GLOBAL_QUERY_RESERVED_SLOTS;
+    if (params.limit < reserveTotal) {
+      entityOverflowStart = 1;
+      personalOverflowStart = 1;
+      globalOverflowStart = 1;
+      [
+        params.entityCandidates[0],
+        params.personalQueryCandidates[0],
+        params.globalQueryCandidates[0],
+        params.attributeCandidates[0],
+      ]
+        .filter(
+          (candidate): candidate is { match: AutocompleteMatchDto; score: number } =>
+            Boolean(candidate),
+        )
+        .forEach(push);
+    } else {
+      params.entityCandidates.slice(0, ENTITY_LANE_RESERVED_SLOTS).forEach(push);
+      params.personalQueryCandidates
+        .slice(0, PERSONAL_QUERY_RESERVED_SLOTS)
+        .forEach(push);
+      params.globalQueryCandidates
+        .slice(0, GLOBAL_QUERY_RESERVED_SLOTS)
+        .forEach(push);
+      params.attributeCandidates.slice(0, ATTRIBUTE_RESERVED_SLOTS).forEach(push);
+    }
+
+    const overflow = [
+      ...params.entityCandidates.slice(entityOverflowStart),
+      ...params.personalQueryCandidates.slice(personalOverflowStart),
+      ...params.globalQueryCandidates.slice(globalOverflowStart),
+    ].sort((a, b) => b.score - a.score);
+
+    overflow.forEach(push);
+    return finalMatches;
+  }
+
+  private calculateLexicalFirstEntityScore(params: {
+    confidence: number;
+    boost: number;
+  }): number {
+    const confidence = clamp01(params.confidence);
+    const boost = Number.isFinite(params.boost) ? Math.max(0, params.boost) : 0;
+    return confidence * (1 + Math.min(boost, 0.35));
+  }
+
+  private isStrongAttributeCandidate(params: {
+    match: AutocompleteMatchDto;
+    normalizedQuery: string;
+    support: AttributeSupportScore;
+  }): boolean {
+    if (!this.isAttributeType(params.match.entityType)) {
+      return true;
+    }
+    const confidence = clamp01(params.match.confidence);
+    const queryLength = params.normalizedQuery.trim().length;
+    const support = params.support.rankSupport;
+
+    if (queryLength <= 1) {
+      return (
+        confidence >= ATTRIBUTE_SUPPORTED_CONFIDENCE &&
+        support >= ATTRIBUTE_SINGLE_CHARACTER_SUPPORT_FLOOR
+      );
+    }
+    if (confidence >= ATTRIBUTE_STRONG_CONFIDENCE) {
+      return support >= ATTRIBUTE_EXACT_SUPPORT_FLOOR;
+    }
+    return (
+      confidence >= ATTRIBUTE_SUPPORTED_CONFIDENCE &&
+      support >= ATTRIBUTE_SUPPORTED_MATCH_FLOOR
+    ) || (
+      confidence >= 0.82 &&
+      support >= ATTRIBUTE_LOOSE_MATCH_FLOOR
+    );
+  }
+
+  private calculateAttributeScore(params: {
+    confidence: number;
+    support: AttributeSupportScore;
+  }): number {
+    return clamp01(params.confidence) * params.support.rankSupport * 1.35;
+  }
+
+  private emptyAttributeSupport(): AttributeSupportScore {
+    return {
+      typedSearchSupport: 0,
+      autocompleteSelectionSupport: 0,
+      corpusUsefulness: 0,
+      rankSupport: 0,
+      corpusConnectionCount: 0,
+      corpusSelectivity: 0,
+    };
+  }
+
+  private async loadAttributeSupport(
+    matches: AutocompleteMatchDto[],
+    marketKey: string | null,
+  ): Promise<Map<string, AttributeSupportScore>> {
+    const attributeIds = Array.from(
+      new Set(
+        matches
+          .filter((match) => this.isAttributeType(match.entityType))
+          .map((match) => match.entityId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+
+    if (!attributeIds.length) {
+      return new Map();
+    }
+
+    const [
+      typedScopedRows,
+      selectedScopedRows,
+      typedGlobalRows,
+      selectedGlobalRows,
+      corpusRows,
+    ] = await Promise.all([
+      this.loadAttributeDemandSupport({
+        attributeIds,
+        marketKey,
+        signalKinds: [DemandSignalKind.backend, DemandSignalKind.cache],
+      }),
+      this.loadAttributeDemandSupport({
+        attributeIds,
+        marketKey,
+        signalKinds: [DemandSignalKind.autocomplete_selection],
+      }),
+      marketKey
+        ? this.loadAttributeDemandSupport({
+            attributeIds,
+            marketKey: null,
+            signalKinds: [DemandSignalKind.backend, DemandSignalKind.cache],
+          })
+        : Promise.resolve(new Map<string, number>()),
+      marketKey
+        ? this.loadAttributeDemandSupport({
+            attributeIds,
+            marketKey: null,
+            signalKinds: [DemandSignalKind.autocomplete_selection],
+          })
+        : Promise.resolve(new Map<string, number>()),
+      this.prisma.$queryRaw<
+        Array<{
+          attributeId: string;
+          corpusConnectionCount: number;
+          totalRestaurantCount: number;
+        }>
+      >(Prisma.sql`
+      WITH scoped_restaurants AS (
+        SELECT DISTINCT r.entity_id AS restaurant_id
+        FROM core_entities r
+        WHERE r.type = 'restaurant'
+          AND (
+            ${marketKey}::text IS NULL
+            OR EXISTS (
+              SELECT 1
+              FROM core_restaurant_locations rl
+              JOIN core_markets m
+                ON LOWER(m.market_key) = LOWER(${marketKey}::text)
+               AND m.is_active = true
+               AND m.geometry IS NOT NULL
+              WHERE rl.restaurant_id = r.entity_id
+                AND rl.latitude IS NOT NULL
+                AND rl.longitude IS NOT NULL
+                AND ST_Covers(
+                  m.geometry,
+                  ST_SetSRID(
+                    ST_MakePoint(
+                      rl.longitude::double precision,
+                      rl.latitude::double precision
+                    ),
+                    4326
+                  )
+                )
+            )
+          )
+      ),
+      attribute_refs AS (
+        SELECT UNNEST(r.restaurant_attributes) AS attribute_id, r.entity_id AS restaurant_id
+        FROM core_entities r
+        JOIN scoped_restaurants sr ON sr.restaurant_id = r.entity_id
+        UNION ALL
+        SELECT UNNEST(c.food_attributes) AS attribute_id, c.restaurant_id
+        FROM core_restaurant_items c
+        JOIN scoped_restaurants sr ON sr.restaurant_id = c.restaurant_id
+      ),
+      totals AS (
+        SELECT COUNT(*)::int AS total_restaurant_count
+        FROM scoped_restaurants
+      )
+      SELECT
+        attribute_id AS "attributeId",
+        COUNT(DISTINCT restaurant_id)::int AS "corpusConnectionCount",
+        (SELECT total_restaurant_count FROM totals) AS "totalRestaurantCount"
+      FROM attribute_refs
+      WHERE attribute_id = ANY(ARRAY[${Prisma.join(attributeIds)}]::uuid[])
+      GROUP BY attribute_id
+    `),
+    ]);
+
+    const corpusById = new Map(
+      corpusRows.map((row) => [
+        row.attributeId,
+        {
+          connectionCount: Number(row.corpusConnectionCount ?? 0),
+          totalRestaurantCount: Number(row.totalRestaurantCount ?? 0),
+        },
+      ]),
+    );
+    const supportById = new Map<string, AttributeSupportScore>();
+
+    for (const attributeId of attributeIds) {
+      const typedDemand =
+        (typedScopedRows.get(attributeId) ?? 0) +
+        (typedGlobalRows.get(attributeId) ?? 0) *
+          ATTRIBUTE_GLOBAL_SUPPORT_BACKSTOP_WEIGHT;
+      const selectedDemand =
+        (selectedScopedRows.get(attributeId) ?? 0) +
+        (selectedGlobalRows.get(attributeId) ?? 0) *
+          ATTRIBUTE_GLOBAL_SUPPORT_BACKSTOP_WEIGHT;
+      const corpus = corpusById.get(attributeId) ?? {
+        connectionCount: 0,
+        totalRestaurantCount: 0,
+      };
+      const typedSearchSupport = this.normalizeAttributeDemandSupport(
+        typedDemand,
+      );
+      const autocompleteSelectionSupport =
+        this.normalizeAttributeDemandSupport(selectedDemand);
+      const corpusUsefulness = this.normalizeAttributeCorpusUsefulness(corpus);
+      const rankSupport =
+        ATTRIBUTE_TYPED_SEARCH_WEIGHT * typedSearchSupport +
+        ATTRIBUTE_SELECTION_WEIGHT * autocompleteSelectionSupport +
+        ATTRIBUTE_CORPUS_WEIGHT * corpusUsefulness;
+
+      supportById.set(attributeId, {
+        typedSearchSupport,
+        autocompleteSelectionSupport,
+        corpusUsefulness,
+        rankSupport,
+        corpusConnectionCount: corpus.connectionCount,
+        corpusSelectivity:
+          corpus.totalRestaurantCount > 0
+            ? corpus.connectionCount / corpus.totalRestaurantCount
+            : 0,
+      });
+    }
+
+    return supportById;
+  }
+
+  private async loadAttributeDemandSupport(params: {
+    attributeIds: string[];
+    marketKey: string | null;
+    signalKinds: DemandSignalKind[];
+  }): Promise<Map<string, number>> {
+    const since = new Date(
+      Date.now() - ATTRIBUTE_SUPPORT_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+    );
+    const rows = await this.demandAggregation.listEntityDemand({
+      since,
+      entityIds: params.attributeIds,
+      entityTypes: [EntityType.food_attribute, EntityType.restaurant_attribute],
+      marketKey: params.marketKey,
+      scopeMode: params.marketKey ? 'scoped' : 'global',
+      sourceKinds: [DemandSourceKind.search_log],
+      signalKinds: params.signalKinds,
+      limit: Math.max(params.attributeIds.length * 10, 100),
+    });
+    const scores = new Map<string, number>();
+    for (const row of rows) {
+      if (!row.entityId) {
+        continue;
+      }
+      scores.set(
+        row.entityId,
+        (scores.get(row.entityId) ?? 0) + row.demandScore,
+      );
+    }
+    return scores;
+  }
+
+  private normalizeAttributeDemandSupport(score: number): number {
+    if (!Number.isFinite(score) || score <= 0) {
+      return 0;
+    }
+    return clamp01(score / 4);
+  }
+
+  private normalizeAttributeCorpusUsefulness(params: {
+    connectionCount: number;
+    totalRestaurantCount: number;
+  }): number {
+    if (params.connectionCount <= 0 || params.totalRestaurantCount <= 0) {
+      return 0;
+    }
+    const breadth = clamp01(Math.log2(1 + params.connectionCount) / 6);
+    const selectivity = clamp01(
+      params.connectionCount / params.totalRestaurantCount,
+    );
+    const selectivityPenalty = Math.max(
+      0.12,
+      Math.pow(1 - selectivity, 0.8),
+    );
+    return breadth * selectivityPenalty;
+  }
+
+  private isAttributeType(
+    entityType: EntityType | 'query',
+  ): entityType is EntityType {
+    return (
+      entityType === EntityType.food_attribute ||
+      entityType === EntityType.restaurant_attribute
+    );
   }
 
   private calculateViewAffinity(lastViewedAt: Date, viewCount: number): number {
@@ -644,13 +1157,39 @@ export class AutocompleteService {
   }
 
   private resolveEntityTypes(dto: AutocompleteRequestDto): EntityType[] {
-    if (dto.entityTypes && dto.entityTypes.length > 0) {
-      return dto.entityTypes;
+    const hasExplicitTypes =
+      Boolean(dto.entityType) || Boolean(dto.entityTypes?.length);
+    const requested =
+      dto.entityTypes && dto.entityTypes.length > 0
+        ? dto.entityTypes
+        : dto.entityType
+        ? [dto.entityType]
+        : [EntityType.food, EntityType.restaurant];
+    const filtered = requested.filter(
+      (entityType) => !this.isAttributeType(entityType),
+    );
+    if (filtered.length > 0) {
+      return filtered;
     }
-    if (dto.entityType) {
-      return [dto.entityType];
+    return hasExplicitTypes ? [] : [EntityType.food, EntityType.restaurant];
+  }
+
+  private resolveAttributeEntityTypes(dto: AutocompleteRequestDto): EntityType[] {
+    if (!this.attributeLaneEnabled) {
+      return [];
     }
-    return [EntityType.food, EntityType.restaurant];
+    const hasExplicitTypes =
+      Boolean(dto.entityType) || Boolean(dto.entityTypes?.length);
+    const requested =
+      dto.entityTypes && dto.entityTypes.length > 0
+        ? dto.entityTypes
+        : dto.entityType
+        ? [dto.entityType]
+        : [];
+    if (!hasExplicitTypes) {
+      return [EntityType.food_attribute, EntityType.restaurant_attribute];
+    }
+    return requested.filter((entityType) => this.isAttributeType(entityType));
   }
 
   private async resolveViaEntityResolver(
@@ -758,16 +1297,68 @@ export class AutocompleteService {
     return normalized.length > 0 ? normalized : fallback;
   }
 
+  private resolveEnvBoolean(key: string, fallback: boolean): boolean {
+    const raw = process.env[key];
+    if (typeof raw !== 'string') {
+      return fallback;
+    }
+    const normalized = raw.trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+      return true;
+    }
+    if (['0', 'false', 'no', 'off'].includes(normalized)) {
+      return false;
+    }
+    return fallback;
+  }
+
   private buildCacheKey(
     userId: string | null,
     entityTypes: EntityType[],
     normalizedQuery: string,
+    marketScopeKey: string,
+    attributeLaneEnabled: boolean,
   ): string {
     const scopeKey = entityTypes.slice().sort().join(',');
     const queryToken = encodeURIComponent(normalizedQuery);
     return `${this.cacheRedisKeyPrefix}:${
       userId ?? 'anon'
-    }:${scopeKey}:global:${queryToken}`;
+    }:${scopeKey}:${marketScopeKey}:attrs-${
+      attributeLaneEnabled ? 'on' : 'off'
+    }:${queryToken}`;
+  }
+
+  private async resolveAutocompleteMarketScope(
+    dto: AutocompleteRequestDto,
+  ): Promise<{ marketKey: string | null; cacheScopeKey: string }> {
+    if (!dto.bounds && !dto.userLocation) {
+      return { marketKey: null, cacheScopeKey: 'global' };
+    }
+
+    try {
+      const resolved = await this.marketRegistry.resolveViewportCoverage({
+        bounds: dto.bounds ?? null,
+        userLocation: dto.userLocation ?? null,
+        mode: 'search',
+        ensureLocalityMarkets: false,
+      });
+      const marketKey =
+        typeof resolved.market?.marketKey === 'string'
+          ? resolved.market.marketKey.trim().toLowerCase()
+          : '';
+      return {
+        marketKey: marketKey || null,
+        cacheScopeKey: marketKey ? `market:${marketKey}` : 'global',
+      };
+    } catch (error) {
+      this.logger.warn('Failed to resolve autocomplete market scope', {
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : { message: String(error) },
+      });
+      return { marketKey: null, cacheScopeKey: 'global' };
+    }
   }
 
   private elapsedSeconds(start: bigint): number {

@@ -44,7 +44,10 @@ type SearchInterpretationMarketContext = {
   marketKey: string | null;
   displayMarketName: string | null;
   marketResolutionStatus: 'resolved' | 'multi_market' | 'no_market' | 'error';
-  candidatePlaceName: string | null;
+  candidateLocalityName: string | null;
+  candidateBoundaryProvider: string | null;
+  candidateBoundaryId: string | null;
+  candidateBoundaryType: string | null;
   attributionMarketKeys: string[];
   collectableMarketKeys: string[];
 };
@@ -159,6 +162,7 @@ export class SearchQueryInterpretationService {
 
     const unresolved = this.collectUnresolvedTerms(
       resolutionResults.resolutionResults,
+      request,
     );
 
     const structuredEntityCounts = this.getEntityGroupCounts(
@@ -179,7 +183,11 @@ export class SearchQueryInterpretationService {
       const viewportEligible = this.isViewportEligibleForOnDemand(
         request.bounds,
       );
-      const onDemandMarketKeys = request.bounds
+      const onDemandMarketKey =
+        resolvedMarket.marketKey
+          ? resolvedMarket.marketKey.trim().toLowerCase()
+          : '';
+      const collectableMarketKeys = viewportEligible
         ? resolvedMarket.collectableMarketKeys
         : [];
       const onDemandContext: Record<string, unknown> = {
@@ -194,26 +202,30 @@ export class SearchQueryInterpretationService {
       }
 
       const reason: OnDemandReason = 'unresolved';
-      const unresolvedRequests = unresolved.flatMap((group) =>
-        group.terms.flatMap((term) =>
-          onDemandMarketKeys.map((marketKey) => ({
+      const unresolvedRequests = onDemandMarketKey
+        ? unresolved.flatMap((group) =>
+            group.terms.map((term) => ({
             term,
             entityType: group.type,
             reason,
-            marketKey,
+              marketKey: onDemandMarketKey,
+              collectableMarketKeys,
             metadata: { source: 'natural_query', unresolvedType: group.type },
-          })),
-        ),
-      );
+            })),
+          )
+        : [];
 
-      if (viewportEligible && onDemandMarketKeys.length > 0) {
+      if (unresolvedRequests.length > 0) {
         const recordedRequests =
           await this.onDemandRequestService.recordRequests(
             unresolvedRequests,
             { userId: request.userId ?? null },
             onDemandContext,
           );
-        onDemandQueued = recordedRequests.length > 0;
+        onDemandQueued =
+          viewportEligible &&
+          collectableMarketKeys.length > 0 &&
+          recordedRequests.length > 0;
       }
       onDemandMs = performance.now() - onDemandStart;
     }
@@ -381,7 +393,12 @@ export class SearchQueryInterpretationService {
 
   private collectUnresolvedTerms(
     results: EntityResolutionResult[],
+    request: NaturalSearchRequestDto,
   ): Array<{ type: EntityType; terms: string[] }> {
+    if (this.hasSelectedAutocompleteEntity(request)) {
+      return [];
+    }
+
     const unresolvedMap = new Map<EntityType, Set<string>>();
 
     for (const result of results) {
@@ -404,6 +421,16 @@ export class SearchQueryInterpretationService {
     }));
   }
 
+  private hasSelectedAutocompleteEntity(
+    request: NaturalSearchRequestDto,
+  ): boolean {
+    return Boolean(
+      request.submissionContext?.matchType === 'entity' &&
+        request.submissionContext.selectedEntityId &&
+        request.submissionContext.selectedEntityType,
+    );
+  }
+
   private async resolveSearchMarketContext(
     request: NaturalSearchRequestDto,
   ): Promise<SearchInterpretationMarketContext> {
@@ -412,16 +439,26 @@ export class SearchQueryInterpretationService {
         bounds: request.bounds ?? null,
         userLocation: request.userLocation ?? null,
         mode: 'search',
-        ensureLocalFallbackMarkets: true,
+        ensureLocalityMarkets: true,
       });
 
       return {
         marketKey: resolved.market?.marketKey ?? null,
         displayMarketName:
-          resolved.market?.marketShortName ?? resolved.market?.marketName ?? null,
+          resolved.market?.marketShortName ??
+          resolved.market?.marketName ??
+          null,
         marketResolutionStatus: resolved.status,
-        candidatePlaceName: resolved.resolution.candidatePlaceName ?? null,
-        attributionMarketKeys: resolved.markets.map((market) => market.marketKey),
+        candidateLocalityName:
+          resolved.resolution.candidateLocalityName ?? null,
+        candidateBoundaryProvider:
+          resolved.resolution.candidateBoundaryProvider ?? null,
+        candidateBoundaryId: resolved.resolution.candidateBoundaryId ?? null,
+        candidateBoundaryType:
+          resolved.resolution.candidateBoundaryType ?? null,
+        attributionMarketKeys: resolved.markets.map(
+          (market) => market.marketKey,
+        ),
         collectableMarketKeys: resolved.collectableMarketKeys,
       };
     } catch (error) {
@@ -435,7 +472,10 @@ export class SearchQueryInterpretationService {
         marketKey: null,
         displayMarketName: null,
         marketResolutionStatus: 'error',
-        candidatePlaceName: null,
+        candidateLocalityName: null,
+        candidateBoundaryProvider: null,
+        candidateBoundaryId: null,
+        candidateBoundaryType: null,
         attributionMarketKeys: [],
         collectableMarketKeys: [],
       };
@@ -567,12 +607,12 @@ export class SearchQueryInterpretationService {
     request: NaturalSearchRequestDto,
     entities: QueryEntityGroupDto,
   ): SearchQueryRequestDto {
-    const resolvedEntities: QueryEntityGroupDto = {
+    const resolvedEntities = this.applySelectedAutocompleteEntity(request, {
       restaurants: entities.restaurants,
       food: entities.food,
       foodAttributes: entities.foodAttributes,
       restaurantAttributes: entities.restaurantAttributes,
-    };
+    });
 
     return {
       entities: resolvedEntities,
@@ -586,6 +626,48 @@ export class SearchQueryInterpretationService {
       minimumVotes: request.minimumVotes,
       sourceQuery: request.query,
     };
+  }
+
+  private applySelectedAutocompleteEntity(
+    request: NaturalSearchRequestDto,
+    entities: QueryEntityGroupDto,
+  ): QueryEntityGroupDto {
+    const selectedEntityId = request.submissionContext?.selectedEntityId;
+    const selectedEntityType = request.submissionContext?.selectedEntityType;
+    if (
+      request.submissionContext?.matchType !== 'entity' ||
+      !selectedEntityId ||
+      !selectedEntityType
+    ) {
+      return entities;
+    }
+
+    const selectedEntry: QueryEntityDto = {
+      normalizedName: request.query.trim(),
+      originalText: request.query.trim(),
+      entityIds: [selectedEntityId],
+    };
+
+    switch (selectedEntityType) {
+      case EntityType.restaurant:
+        return {
+          restaurants: [selectedEntry],
+        };
+      case EntityType.food:
+        return {
+          food: [selectedEntry],
+        };
+      case EntityType.food_attribute:
+        return {
+          foodAttributes: [selectedEntry],
+        };
+      case EntityType.restaurant_attribute:
+        return {
+          restaurantAttributes: [selectedEntry],
+        };
+      default:
+        return entities;
+    }
   }
 
   private getAnalysisEntityCounts(

@@ -7,9 +7,11 @@ import type { SearchRouteSheetScrollSharedRuntimeSnapshot } from '../../screens/
 import type { SnapshotAuthority } from '../../screens/Search/runtime/shared/use-snapshot-authority';
 import type { OverlayKey } from '../../overlays/types';
 import type { BottomSheetSharedRuntimeConfigAuthority } from '../../overlays/bottomSheetSharedRuntimeContract';
+import type { SearchRouteSceneStackChromeVisualState } from '../../overlays/searchRouteSceneStackSheetContract';
 
 export type AppRouteSheetHostSurfaceBodySnapshot = {
   activeSceneKey: OverlayKey | null;
+  displayedSceneKey: OverlayKey | null;
   hasRenderableSheetSurface: boolean;
   chromeEntry: SearchRouteSheetChromeTransportSnapshot['chromeEntry'] | null;
   scrollSharedRuntimeEntry:
@@ -18,6 +20,7 @@ export type AppRouteSheetHostSurfaceBodySnapshot = {
   scrollBodyDefaultsEntry: SearchRouteSheetScrollBodyDefaultsSnapshot['bodyDefaultsEntry'] | null;
   motionStateEntry: SearchRouteSheetMotionStateSnapshot['stateEntry'] | null;
   motionCallbacksEntry: SearchRouteSheetMotionCallbacksSnapshot['callbacksEntry'];
+  searchSurfacePageBundleProgress: SearchRouteSceneStackChromeVisualState['searchSurfacePageBundleProgress'];
 };
 
 export type AppRouteSheetHostSurfaceSnapshot = {
@@ -26,6 +29,9 @@ export type AppRouteSheetHostSurfaceSnapshot = {
 
 export type AppRouteSheetHostSurfaceFrameAuthority =
   SnapshotAuthority<SearchRouteSheetHostFrameSnapshot>;
+
+export type AppRouteSheetHostMotionRuntimeAuthority =
+  SnapshotAuthority<SearchRouteSheetMotionStateSnapshot>;
 
 export type AppRouteSheetHostSurfaceBodyAuthority =
   SnapshotAuthority<AppRouteSheetHostSurfaceBodySnapshot>;
@@ -51,12 +57,14 @@ const EMPTY_APP_ROUTE_SHEET_MOTION_CALLBACKS_SNAPSHOT: SearchRouteSheetMotionCal
 export const EMPTY_APP_ROUTE_SHEET_HOST_SURFACE_BODY_SNAPSHOT: AppRouteSheetHostSurfaceBodySnapshot =
   {
     activeSceneKey: null,
+    displayedSceneKey: null,
     hasRenderableSheetSurface: false,
     chromeEntry: null,
     scrollSharedRuntimeEntry: null,
     scrollBodyDefaultsEntry: null,
     motionStateEntry: null,
     motionCallbacksEntry: EMPTY_APP_ROUTE_SHEET_MOTION_CALLBACKS_SNAPSHOT.callbacksEntry,
+    searchSurfacePageBundleProgress: { value: 0 },
   };
 
 export const EMPTY_APP_ROUTE_SHEET_HOST_SURFACE_SNAPSHOT: AppRouteSheetHostSurfaceSnapshot = {
@@ -103,10 +111,6 @@ export const areAppRouteSheetHostSurfaceBodySnapshotsEqual = (
     left.scrollBodyDefaultsEntry?.testID === right.scrollBodyDefaultsEntry?.testID &&
     left.scrollBodyDefaultsEntry?.flashListProps ===
       right.scrollBodyDefaultsEntry?.flashListProps &&
-    left.motionStateEntry?.sheetYValue === right.motionStateEntry?.sheetYValue &&
-    left.motionStateEntry?.scrollOffsetValue === right.motionStateEntry?.scrollOffsetValue &&
-    left.motionStateEntry?.momentumFlag === right.motionStateEntry?.momentumFlag &&
-    left.motionStateEntry?.motionCommandValue === right.motionStateEntry?.motionCommandValue &&
     left.motionCallbacksEntry === right.motionCallbacksEntry
   );
 };

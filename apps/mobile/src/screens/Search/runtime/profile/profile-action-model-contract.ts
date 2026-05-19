@@ -1,4 +1,4 @@
-import type { Coordinate, RestaurantResult, SearchResponse } from '../../../../types';
+import type { Coordinate, MapBounds, RestaurantResult, SearchResponse } from '../../../../types';
 import type {
   CameraSnapshot,
   ProfileTransitionSnapshotCapture,
@@ -45,9 +45,10 @@ export type ProfileRestaurantCameraActionModel = {
   locationSelectionAnchor: Coordinate | null;
   previousFocusSession: RestaurantFocusSession;
   currentLastCameraState: { center: [number, number]; zoom: number } | null;
+  currentViewportBounds: MapBounds | null;
   currentMapZoom: number | null;
+  fallbackZoom: number;
   multiLocationZoomBaseline: number | null;
-  profileMultiLocationZoomOutDelta: number;
   profileMultiLocationMinZoom: number;
   restaurantFocusCenterEpsilon: number;
   restaurantFocusZoomEpsilon: number;
@@ -107,9 +108,10 @@ export type ProfileRestaurantCameraActionModelInputs = {
   locationSelectionAnchor: Coordinate | null;
   previousFocusSession: RestaurantFocusSession;
   currentLastCameraState: { center: [number, number]; zoom: number } | null;
+  currentViewportBounds: MapBounds | null;
   currentMapZoom: number | null;
+  fallbackZoom: number;
   multiLocationZoomBaseline: number | null;
-  profileMultiLocationZoomOutDelta: number;
   profileMultiLocationMinZoom: number;
   restaurantFocusCenterEpsilon: number;
   restaurantFocusZoomEpsilon: number;

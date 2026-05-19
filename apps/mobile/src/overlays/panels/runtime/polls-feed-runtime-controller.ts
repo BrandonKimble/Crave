@@ -38,7 +38,7 @@ type UsePollsFeedRuntimeControllerArgs = {
   setMarketStatus: React.Dispatch<
     React.SetStateAction<'resolved' | 'multi_market' | 'no_market' | 'error' | null>
   >;
-  setCandidatePlaceName: React.Dispatch<React.SetStateAction<string | null>>;
+  setCandidateLocalityName: React.Dispatch<React.SetStateAction<string | null>>;
   setCreatePollPrompt: React.Dispatch<React.SetStateAction<string | null>>;
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setPollFeedRefreshing: React.Dispatch<React.SetStateAction<boolean>>;
@@ -66,7 +66,7 @@ export const usePollsFeedRuntimeController = ({
   setMarketKey,
   setMarketName,
   setMarketStatus,
-  setCandidatePlaceName,
+  setCandidateLocalityName,
   setCreatePollPrompt,
   setLoading,
   setPollFeedRefreshing,
@@ -103,8 +103,8 @@ export const usePollsFeedRuntimeController = ({
         typeof snapshot.marketName === 'string' && snapshot.marketName.trim()
           ? snapshot.marketName.trim()
           : typeof marketNameFallback === 'string' && marketNameFallback.trim()
-            ? marketNameFallback.trim()
-            : null;
+          ? marketNameFallback.trim()
+          : null;
       if (normalizedKey) {
         lastResolvedMarketKeyRef.current = normalizedKey;
       }
@@ -118,10 +118,10 @@ export const usePollsFeedRuntimeController = ({
           snapshot.marketStatus === 'error'
           ? snapshot.marketStatus
           : nextMarketKey
-            ? 'resolved'
-            : null
+          ? 'resolved'
+          : null
       );
-      setCandidatePlaceName(snapshot.candidatePlaceName ?? null);
+      setCandidateLocalityName(snapshot.candidateLocalityName ?? null);
       setCreatePollPrompt(snapshot.cta?.prompt ?? snapshot.cta?.label ?? null);
       setPollFeedRequiresFreshNetwork(snapshot.source !== 'network');
       setPollFeedFreshnessError(false);
@@ -153,7 +153,7 @@ export const usePollsFeedRuntimeController = ({
     },
     [
       marketOverride,
-      setCandidatePlaceName,
+      setCandidateLocalityName,
       setCreatePollPrompt,
       setMarketKey,
       setMarketName,
@@ -184,11 +184,11 @@ export const usePollsFeedRuntimeController = ({
       const payload = resolvedMarketKey
         ? { marketKey: resolvedMarketKey }
         : bounds
-          ? {
-              bounds,
-              ...(userLocation ? { userLocation } : {}),
-            }
-          : null;
+        ? {
+            bounds,
+            ...(userLocation ? { userLocation } : {}),
+          }
+        : null;
 
       if (!payload) {
         if (refreshSeq === refreshSeqRef.current) {
@@ -312,8 +312,8 @@ export const usePollsFeedRuntimeController = ({
           response.market.marketShortName.trim()
             ? response.market.marketShortName.trim()
             : typeof response.market?.marketName === 'string' && response.market.marketName.trim()
-              ? response.market.marketName.trim()
-              : null;
+            ? response.market.marketName.trim()
+            : null;
         const nextStatus =
           response.status === 'resolved' ||
           response.status === 'multi_market' ||
@@ -321,24 +321,24 @@ export const usePollsFeedRuntimeController = ({
           response.status === 'error'
             ? response.status
             : null;
-        const nextCandidatePlaceName =
-          typeof response.resolution?.candidatePlaceName === 'string' &&
-          response.resolution.candidatePlaceName.trim()
-            ? response.resolution.candidatePlaceName.trim()
+        const nextCandidateLocalityName =
+          typeof response.resolution?.candidateLocalityName === 'string' &&
+          response.resolution.candidateLocalityName.trim()
+            ? response.resolution.candidateLocalityName.trim()
             : null;
         const nextPrompt =
           typeof response.cta?.prompt === 'string' && response.cta.prompt.trim()
             ? response.cta.prompt.trim()
             : typeof response.cta?.label === 'string' && response.cta.label.trim()
-              ? response.cta.label.trim()
-              : null;
+            ? response.cta.label.trim()
+            : null;
 
         if (nextKey && nextKey === activeMarketKey) {
           if (nextName) {
             setMarketName(nextName);
           }
           setMarketStatus(nextStatus);
-          setCandidatePlaceName(nextCandidatePlaceName);
+          setCandidateLocalityName(nextCandidateLocalityName);
           setCreatePollPrompt(nextPrompt);
           if (pollFeedRequiresFreshNetwork) {
             void refreshPollFeed({
@@ -353,7 +353,7 @@ export const usePollsFeedRuntimeController = ({
         setMarketKey(nextKey || null);
         setMarketName(nextName);
         setMarketStatus(nextStatus);
-        setCandidatePlaceName(nextCandidatePlaceName);
+        setCandidateLocalityName(nextCandidateLocalityName);
         setCreatePollPrompt(nextPrompt);
 
         if (nextKey) {
@@ -392,7 +392,7 @@ export const usePollsFeedRuntimeController = ({
     marketOverride,
     pollFeedRequiresFreshNetwork,
     refreshPollFeed,
-    setCandidatePlaceName,
+    setCandidateLocalityName,
     setCreatePollPrompt,
     setMarketKey,
     setMarketName,

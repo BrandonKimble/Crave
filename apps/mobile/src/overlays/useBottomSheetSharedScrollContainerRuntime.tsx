@@ -18,23 +18,20 @@ export const useBottomSheetSharedScrollContainerRuntime = ({
   gesturesScroll,
   scrollHeaderComponent,
 }: UseBottomSheetSharedScrollContainerRuntimeArgs): UseBottomSheetSharedScrollContainerRuntimeResult => {
-  const gestureRef = React.useRef(gesturesScroll);
-  const transparentRef = React.useRef(scrollHeaderComponent != null);
-  gestureRef.current = gesturesScroll;
-  transparentRef.current = scrollHeaderComponent != null;
+  const transparent = scrollHeaderComponent != null;
 
   const ScrollComponent = React.useMemo(() => {
     const Component = React.forwardRef<ScrollView, ScrollViewProps>((props, ref) => (
       <BottomSheetScrollContainer
         {...props}
         ref={ref}
-        gesture={gestureRef.current}
-        transparent={transparentRef.current}
+        gesture={gesturesScroll}
+        transparent={transparent}
       />
     ));
     Component.displayName = 'OverlaySheetScrollView';
     return Component;
-  }, []);
+  }, [gesturesScroll, transparent]);
 
   return {
     ScrollComponent,

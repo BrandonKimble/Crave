@@ -1,4 +1,4 @@
-import type { Coordinate, RestaurantResult } from '../../../../types';
+import type { Coordinate, RestaurantResultScorePreview } from '../../../../types';
 import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type { ProfilePreviewActionModel } from './profile-action-model-contract';
 import {
@@ -7,12 +7,11 @@ import {
 } from './profile-preview-camera-target-runtime';
 
 export type ProfilePreviewPresentationPlan = {
-  seededRestaurant: RestaurantResult;
+  seededRestaurant: RestaurantResultScorePreview;
   dismissBehavior: 'restore' | 'clear';
   shouldClearSearchOnDismiss: false;
   targetCamera: CameraSnapshot | null;
   updatedLastCameraState: ProfilePreviewCameraTargetResolution['updatedLastCameraState'];
-  shouldResetSavedSheetSnap: boolean;
   status: 'opening' | 'open';
 };
 
@@ -30,8 +29,7 @@ export const resolveProfilePreviewPresentationPlan = ({
   previewModel: ProfilePreviewActionModel;
 }): ProfilePreviewPresentationPlan | null => {
   const trimmedName = restaurantName.trim();
-  const { transitionStatus } = previewModel;
-  if (!restaurantId || !trimmedName || transitionStatus === 'closing') {
+  if (!restaurantId || !trimmedName) {
     return null;
   }
   const previewCameraResolution = resolveProfilePreviewCameraTarget({
@@ -43,7 +41,9 @@ export const resolveProfilePreviewPresentationPlan = ({
       restaurantId,
       restaurantName: trimmedName,
       restaurantAliases: [],
-      contextualScore: 0,
+      scoreSubjectType: 'restaurant',
+      scoreSubjectId: restaurantId,
+      craveScore: null,
       totalDishCount: 0,
       topFood: [],
     },
@@ -51,7 +51,6 @@ export const resolveProfilePreviewPresentationPlan = ({
     shouldClearSearchOnDismiss: false,
     targetCamera: previewCameraResolution.targetCamera,
     updatedLastCameraState: previewCameraResolution.updatedLastCameraState,
-    shouldResetSavedSheetSnap: !forceMiddleSnap,
     status: forceMiddleSnap ? 'opening' : 'open',
   };
 };

@@ -1,9 +1,8 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { QualityScoreService } from '../content-processing/quality-score/quality-score.service';
-import { RankScoreRefreshQueueService } from '../content-processing/rank-score/rank-score-refresh.service';
+import { PublicCraveScoreService } from '../content-processing/public-crave-score';
 
 @Injectable()
 export class PollScoreRefreshService {
@@ -12,7 +11,7 @@ export class PollScoreRefreshService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly qualityScoreService: QualityScoreService,
-    private readonly rankScoreRefreshQueue: RankScoreRefreshQueueService,
+    private readonly publicCraveScoreService: PublicCraveScoreService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('PollScoreRefreshService');
@@ -25,8 +24,7 @@ export class PollScoreRefreshService {
     }
 
     await this.qualityScoreService.updateQualityScoresForConnections(unique);
-    const marketKeys = await this.fetchMarketKeysForConnections(unique);
-    await this.refreshRankScores(marketKeys);
+    await this.refreshPublicCraveScores();
   }
 
   async refreshForRestaurants(restaurantIds: string[]): Promise<void> {
@@ -56,69 +54,10 @@ export class PollScoreRefreshService {
       }
     }
 
-    const marketKeys = await this.fetchMarketKeysForRestaurants(unique);
-    await this.refreshRankScores(marketKeys);
+    await this.refreshPublicCraveScores();
   }
 
-  async refreshRankScores(marketKeys: string[]): Promise<void> {
-    await this.rankScoreRefreshQueue.queueRefreshForMarkets(marketKeys, {
-      source: 'poll',
-    });
-  }
-
-  private async fetchMarketKeysForConnections(
-    connectionIds: string[],
-  ): Promise<string[]> {
-    const rows = await this.prisma.$queryRaw<Array<{ market_key: string }>>(
-      Prisma.sql`
-SELECT DISTINCT m.market_key
-FROM core_restaurant_items c
-JOIN core_entity_market_presence emp ON emp.entity_id = c.restaurant_id
-JOIN core_markets m
-  ON m.market_key = emp.market_key
- AND m.is_active = true
-WHERE c.connection_id = ANY(${this.buildUuidArray(connectionIds)})
-`,
-    );
-
-    return Array.from(
-      new Set(
-        rows
-          .map((row) => row.market_key)
-          .filter((value): value is string => Boolean(value))
-          .map((value) => value.trim().toLowerCase()),
-      ),
-    );
-  }
-
-  private async fetchMarketKeysForRestaurants(
-    restaurantIds: string[],
-  ): Promise<string[]> {
-    const rows = await this.prisma.$queryRaw<Array<{ market_key: string }>>(
-      Prisma.sql`
-SELECT DISTINCT m.market_key
-FROM core_entity_market_presence emp
-JOIN core_markets m
-  ON m.market_key = emp.market_key
- AND m.is_active = true
-WHERE emp.entity_id = ANY(${this.buildUuidArray(restaurantIds)})`,
-    );
-
-    return Array.from(
-      new Set(
-        rows
-          .map((row) => row.market_key)
-          .filter((value): value is string => Boolean(value))
-          .map((value) => value.trim().toLowerCase()),
-      ),
-    );
-  }
-
-  private buildUuidArray(values: string[]): Prisma.Sql {
-    const mapped = Prisma.join(
-      values.map((value) => Prisma.sql`${value}::uuid`),
-      ', ',
-    );
-    return Prisma.sql`ARRAY[${mapped}]::uuid[]`;
+  private async refreshPublicCraveScores(): Promise<void> {
+    await this.publicCraveScoreService.rebuildAllScores();
   }
 }

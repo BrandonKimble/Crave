@@ -1,4 +1,11 @@
-ry Analytics + User Interaction Signals (SearchLog-only)
+# Autocomplete Analytics + User Interaction Signals (Historical Notes)
+
+> Superseded working notes. Treat
+> `plans/search-demand-architecture-review.md` as the current decision log and
+> `plans/search-demand-layer-cutover-plan.md` as the current implementation
+> plan. This file contains older SearchLog-only and EntityPriority-era ideas
+> that must not override the current lane-aware autocomplete and demand
+> aggregate architecture.
 
 ## Summary
 
@@ -37,7 +44,7 @@ The key best-practice decision is: treat events as **signals** with clear semant
 | ------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `search_submitted`  | User submits a search (manual submit, recent tap, autocomplete tap, shortcut)                               | `user_search_logs` (existing)                                                          | Recents UI, query suggestions, autocomplete ranking, collection priority | 1 search ⇒ N `user_search_logs` rows (one per resolved target entity). We add `searchRequestId` + result totals to dedupe per-search later. |
 | `restaurant_opened` | Restaurant overlay opens **from Search UX only** (suggestion tap, results card, single-candidate auto-open) | `user_restaurant_views` (new)                                                          | “Recently viewed” UI, personal autocomplete boost, collection priority   | Do **not** record opens from Favorites/Bookmarks screens. In this UX, “click” and “open” are the same event.                                |
-| `favorite_toggled`  | User favorites/unfavorites an entity                                                                        | `user_favorites` (existing) + `collection_entity_priority_metrics.favoriteCount` (new) | Autocomplete boost, collection priority                                  | Favorites are durable preference; boost is “always on” when relevant.                                                                       |
+| `favorite_toggled`  | User favorites/unfavorites an entity                                                                        | Historical note only. Current architecture uses append-only favorite events plus `user_search_demand_daily`, not `collection_entity_priority_metrics`. | Autocomplete boost, collection priority                                  | Favorites are durable preference; boost is “always on” when relevant.                                                                       |
 
 **About “autocomplete_selected”:** we do not emit it as a separate API event. Instead, we capture it on `search_submitted` via `submissionSource='autocomplete'` and (for non-restaurant entity selections) `selectedEntityId/selectedEntityType` so collection priority can give that entity an extra, small bump.
 
@@ -145,9 +152,11 @@ Add a small controller/service pair (either a new module `history` or inside `se
   - Optional query params for typed filtering:
     - `prefix` (server-side filtering) OR client-side filtering after fetching limit N.
 
-### 3) (Optional for now) Evolve `/search/events/click`
+### 3) Rejected old idea: evolve `/search/events/click`
 
-We do not need a separate “click vs open” concept for restaurants right now (open is guaranteed), so this endpoint is optional. If we keep it, here are future click ideas worth tracking:
+Current architecture deletes this endpoint. We do not need a separate
+“click vs open” concept for restaurants right now (open is guaranteed), so
+these historical click ideas must not be implemented from this note:
 
 - Which list the tap came from (`suggestion_list` vs `results_sheet`)
 - List position and page (rank in list, pagination page)

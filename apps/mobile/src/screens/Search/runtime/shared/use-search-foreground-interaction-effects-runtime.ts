@@ -2,7 +2,6 @@ import React from 'react';
 
 import type {
   SearchForegroundEffectsRuntimeArgs,
-  SearchForegroundInteractionRuntime,
   SearchForegroundRestaurantOnlyResolutionArgs,
 } from './use-search-foreground-interaction-runtime-contract';
 
@@ -29,29 +28,18 @@ type UseSearchForegroundInteractionEffectsRuntimeArgs = {
 type UseSearchForegroundInteractionRenderRegistrationRuntimeArgs = {
   effectsRuntimeArgs: Pick<
     SearchForegroundEffectsRuntimeArgs,
-    | 'registerPendingMutationWorkCancel'
-    | 'cancelToggleInteraction'
-    | 'toggleOpenNowHarnessRef'
-    | 'toggleOpenNow'
-    | 'selectOverlayHarnessRef'
+    'registerPendingMutationWorkCancel' | 'cancelToggleInteraction'
   >;
-  foregroundInteractionRuntime: Pick<SearchForegroundInteractionRuntime, 'handleOverlaySelect'>;
 };
 
 export const useSearchForegroundInteractionRenderRegistrationRuntime = ({
   effectsRuntimeArgs,
-  foregroundInteractionRuntime,
 }: UseSearchForegroundInteractionRenderRegistrationRuntimeArgs): void => {
   const {
     registerPendingMutationWorkCancel,
     cancelToggleInteraction,
-    toggleOpenNowHarnessRef,
-    toggleOpenNow,
-    selectOverlayHarnessRef,
   } = effectsRuntimeArgs;
 
-  toggleOpenNowHarnessRef.current = toggleOpenNow;
-  selectOverlayHarnessRef.current = foregroundInteractionRuntime.handleOverlaySelect;
   registerPendingMutationWorkCancel(() => {
     cancelToggleInteraction();
   });

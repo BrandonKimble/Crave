@@ -1,20 +1,12 @@
 import React from 'react';
 
-import { useBottomSheetProgrammaticRuntimeModel } from '../../../../overlays/useBottomSheetRuntime';
-import type { BottomSheetProgrammaticRuntimeModel } from '../../../../overlays/useBottomSheetRuntime';
-import { executeAndStripNativeProfileSheetCommands } from './profile-presentation-native-sheet-transport';
 import type {
   ProfilePresentationCommandExecutionContext,
-  ProfilePresentationCommandExecutionPayload,
 } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
 import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import { PROFILE_CAMERA_ANIMATION_MODE } from './profile-camera-motion-constants';
 
 export type ProfileNativeCommandExecutionModel = {
-  restaurantSheetRuntimeModel: BottomSheetProgrammaticRuntimeModel;
-  executeAndStripNativeSheetCommands: (
-    payload: ProfilePresentationCommandExecutionPayload
-  ) => ProfilePresentationCommandExecutionPayload;
   commitProfileCameraTargetCommand: (
     targetCamera: CameraSnapshot,
     executionContext: ProfilePresentationCommandExecutionContext
@@ -22,43 +14,29 @@ export type ProfileNativeCommandExecutionModel = {
 };
 
 type UseProfileNativeCommandExecutionRuntimeArgs = {
-  onProgrammaticHidden: (requestToken: number | null) => void;
-  onProgrammaticSnapSettled: (
-    snap: 'expanded' | 'middle' | 'collapsed',
-    requestToken: number | null
-  ) => void;
   profileCameraAnimationMs: number;
-  lastCameraStateRef: React.MutableRefObject<{
-    center: [number, number];
-    zoom: number;
-  } | null>;
+  pendingProfileCameraTargetRef: React.MutableRefObject<CameraSnapshot | null>;
   setIsFollowingUser: (isFollowingUser: boolean) => void;
   suppressMapMoved: () => void;
   commitCameraViewport: (
-    payload: { center: [number, number]; zoom: number },
+    payload: { center: [number, number]; zoom: number; padding?: CameraSnapshot['padding'] },
     options?: {
       allowDuringGesture?: boolean;
       animationMode?: 'none' | 'easeTo';
       animationDurationMs?: number;
       requestToken?: number | null;
+      deferControlledCameraStateUntilCompletion?: boolean;
     }
   ) => boolean;
 };
 
 export const useProfileNativeCommandExecutionRuntime = ({
-  onProgrammaticHidden,
-  onProgrammaticSnapSettled,
   profileCameraAnimationMs,
-  lastCameraStateRef,
+  pendingProfileCameraTargetRef,
   setIsFollowingUser,
   suppressMapMoved,
   commitCameraViewport,
 }: UseProfileNativeCommandExecutionRuntimeArgs): ProfileNativeCommandExecutionModel => {
-  const restaurantSheetRuntimeModel = useBottomSheetProgrammaticRuntimeModel({
-    onProgrammaticHidden,
-    onProgrammaticSnapSettled,
-  });
-
   const commitProfileCameraTargetCommand = React.useCallback(
     (
       targetCamera: CameraSnapshot,
@@ -70,25 +48,24 @@ export const useProfileNativeCommandExecutionRuntime = ({
         {
           center: targetCamera.center,
           zoom: targetCamera.zoom,
+          padding: targetCamera.padding ?? null,
         },
         {
           allowDuringGesture: true,
           animationMode: PROFILE_CAMERA_ANIMATION_MODE,
           animationDurationMs: profileCameraAnimationMs,
           requestToken: executionContext.requestToken,
+          deferControlledCameraStateUntilCompletion: true,
         }
       );
       if (didCommit) {
-        lastCameraStateRef.current = {
-          center: targetCamera.center,
-          zoom: targetCamera.zoom,
-        };
+        pendingProfileCameraTargetRef.current = targetCamera;
       }
       return didCommit;
     },
     [
       commitCameraViewport,
-      lastCameraStateRef,
+      pendingProfileCameraTargetRef,
       profileCameraAnimationMs,
       setIsFollowingUser,
       suppressMapMoved,
@@ -97,10 +74,8 @@ export const useProfileNativeCommandExecutionRuntime = ({
 
   return React.useMemo(
     () => ({
-      restaurantSheetRuntimeModel,
-      executeAndStripNativeSheetCommands: executeAndStripNativeProfileSheetCommands,
       commitProfileCameraTargetCommand,
     }),
-    [commitProfileCameraTargetCommand, restaurantSheetRuntimeModel]
+    [commitProfileCameraTargetCommand]
   );
 };

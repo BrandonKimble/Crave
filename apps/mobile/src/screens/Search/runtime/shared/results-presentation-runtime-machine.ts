@@ -1,4 +1,4 @@
-import type { PreparedResultsPresentationSnapshot } from './prepared-presentation-transaction';
+import type { SearchSurfaceResultsTransaction } from './search-surface-results-transaction';
 import type {
   ResultsPresentationLog,
   ResultsPresentationTransportState,
@@ -28,13 +28,17 @@ export type ResultsPresentationRuntimeMachine = {
   applyStagingCoverState: (nextCoverState: 'initial_loading' | 'interaction_loading') => void;
   handleToggleInteractionLifecycle: (event: ToggleInteractionLifecycleEvent) => void;
   handlePresentationIntentAbort: () => void;
-  commitPreparedResultsSnapshot: (snapshot: PreparedResultsPresentationSnapshot) => void;
+  commitSearchSurfaceResultsTransaction: (snapshot: SearchSurfaceResultsTransaction) => void;
   cancelPresentationIntent: (intentId?: string) => void;
   markEnterBatchMountedHidden: (
     intentId: string,
     executionBatch: NonNullable<ResultsPresentationTransportState['executionBatch']>
   ) => boolean;
   markEnterStarted: (
+    intentId: string,
+    executionBatch: ResultsPresentationTransportState['executionBatch']
+  ) => boolean;
+  markEnterNativeStartRequested: (
     intentId: string,
     executionBatch: ResultsPresentationTransportState['executionBatch']
   ) => boolean;
@@ -49,6 +53,7 @@ export type ResultsPresentationRuntimeMachine = {
 export const createResultsPresentationRuntimeMachine = (
   options: ResultsPresentationRuntimeMachineOptions
 ): ResultsPresentationRuntimeMachine => {
+  const now = options.now ?? (() => globalThis.performance?.now?.() ?? Date.now());
   const ownerRuntime = createResultsPresentationRuntimeMachineOwnerRuntime({
     publish: options.publish,
     log: options.log,
@@ -59,7 +64,7 @@ export const createResultsPresentationRuntimeMachine = (
   const executionRuntime =
     createResultsPresentationRuntimeMachineExecutionRuntime({
       ownerRuntime,
-      now: options.now ?? Date.now,
+      now,
       onIntentComplete: options.onIntentComplete,
     });
 

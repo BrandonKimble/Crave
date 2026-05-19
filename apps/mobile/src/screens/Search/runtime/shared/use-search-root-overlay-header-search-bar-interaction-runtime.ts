@@ -32,8 +32,6 @@ export const useSearchRootOverlayHeaderSearchBarInteractionRuntime = ({
         foregroundInteractionControlLane.foregroundInteractionRuntime.handleClear,
       focusSearchInput:
         foregroundInputControlLane.foregroundInputRuntime.focusSearchInput,
-      handleSearchPressIn:
-        foregroundInputControlLane.foregroundInputRuntime.handleSearchPressIn,
       handleSearchBack:
         foregroundInteractionControlLane.foregroundInteractionRuntime
           .handleSearchBack,
@@ -43,7 +41,6 @@ export const useSearchRootOverlayHeaderSearchBarInteractionRuntime = ({
     [
       foregroundInputControlLane.foregroundInputRuntime.focusSearchInput,
       foregroundInputControlLane.foregroundInputRuntime.handleQueryChange,
-      foregroundInputControlLane.foregroundInputRuntime.handleSearchPressIn,
       foregroundInteractionControlLane.foregroundInteractionRuntime.handleClear,
       foregroundInteractionControlLane.foregroundInteractionRuntime
         .handleSearchBack,

@@ -15,7 +15,6 @@ export type SearchRootAutocompletePort = Pick<
 export type SearchRootForegroundInputRuntime = {
   captureSearchSessionQuery: () => void;
   focusSearchInput: () => void;
-  handleSearchPressIn: () => void;
   handleQueryChange: (value: string) => void;
 };
 
@@ -34,6 +33,8 @@ export type SearchRootProfileBridgeRuntime = {
     closeRestaurantProfileRef: React.MutableRefObject<
       (options?: { dismissBehavior?: 'restore' | 'clear'; clearSearchOnDismiss?: boolean }) => void
     >;
+    prepareRestaurantProfileForTerminalSearchDismissRef: React.MutableRefObject<() => void>;
+    clearRestaurantProfileForSearchDismissRef: React.MutableRefObject<() => void>;
     resetRestaurantProfileFocusSessionRef: React.MutableRefObject<() => void>;
     cancelToggleInteractionRef: React.MutableRefObject<() => void>;
   };

@@ -37,16 +37,17 @@ export const executeProfileOpenPresentationPlan = ({
   if (plan.updatedLastCameraState !== undefined) {
     ports.setLastCameraState(plan.updatedLastCameraState);
   }
-  ports.openPreparedProfilePresentation(
-    restaurant.restaurantId,
-    plan.targetCamera,
-    forceMiddleSnap,
-    'opening'
-  );
-  ports.capturePreviousForegroundUiRestoreStateIfAbsent(savedForegroundUiState);
+  ports.setMapHighlightedRestaurantId(restaurant.restaurantId);
   ports.seedRestaurantProfile(restaurant, queryLabel, {
     selectedLocationId: plan.selectedLocationId,
   });
+	  ports.openPreparedProfilePresentation(
+	    restaurant.restaurantId,
+	    plan.targetCamera,
+	    forceMiddleSnap,
+	    forceMiddleSnap ? 'opening' : 'open'
+	  );
+  ports.capturePreviousForegroundUiRestoreStateIfAbsent(savedForegroundUiState);
   ports.hydrateRestaurantProfileById(restaurant.restaurantId, restaurant.marketKey ?? null);
   if (plan.shouldTrackRestaurantView) {
     ports.deferRecentlyViewedTrack(restaurant.restaurantId, restaurant.restaurantName);

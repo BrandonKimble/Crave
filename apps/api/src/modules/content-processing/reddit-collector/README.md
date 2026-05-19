@@ -40,7 +40,7 @@
 
 - Reddit collection coverage is driven only by active community-to-market links in `collection_communities`.
 - A market existing in `core_markets` does not automatically make it collectible.
-- Search and polls can bootstrap local fallback markets for new areas, but those markets remain poll/search-only until a real community is linked manually.
+- Search and polls can bootstrap locality markets for new areas, but those markets remain poll/search-only until a real community is linked manually.
 - Keyword scheduling loads its targets from the linked collectable markets surfaced by `MarketRegistryService.listCommunityMarketTargets(...)`.
 
 ## Projection Notes

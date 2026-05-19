@@ -68,6 +68,7 @@ export class AppRouteSceneMotionController implements AppRouteSceneMotionRuntime
     this.unsubscribeSheetTargetRegistry = this.sheetMotionTargetRegistry.subscribe(() => {
       withSearchNavSwitchRuntimeAttribution('sceneMotion', 'dispatch:sheetTargetRegistry', () => {
         this.executor.dispatchRouteSceneMotion(this.routeSceneSwitchRuntime.getTransitionState());
+        this.executor.replayPendingLocalSheetMotion();
       });
     });
     this.unsubscribeCameraTargetRegistry = this.cameraMotionTargetRegistry.subscribe(() => {

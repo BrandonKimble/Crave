@@ -1,7 +1,6 @@
 import type {
   ResultsInteractionModel,
   ResultsPresentationOwner,
-  ResultsSheetExecutionModel,
 } from '../shared/results-presentation-owner-contract';
 import type { ResultsPresentationRuntimeOwner } from '../shared/results-presentation-runtime-owner-contract';
 import type {
@@ -13,14 +12,15 @@ import type { SearchResultsShellModel } from '../shared/results-presentation-she
 type ResultsPresentationRuntimeOwnerValue = ResultsPresentationRuntimeOwner;
 
 export const createResultsPresentationRuntimeOwnerValue = ({
-  preparedResultsSnapshotKey,
+  searchSurfaceResultsTransactionKey,
   pendingTogglePresentationIntentId,
   scheduleToggleCommit,
   notifyFrostReady,
   cancelToggleInteraction,
-  stagePreparedResultsSnapshot,
-  commitPreparedResultsSnapshot,
-  clearStagedPreparedResultsSnapshot,
+  beginSearchThisAreaPresentationPending,
+  stageSearchSurfaceResultsTransaction,
+  commitSearchSurfaceResultsTransaction,
+  clearStagedSearchSurfaceResultsTransaction,
   handlePageOneResultsCommitted,
   cancelPresentationIntent,
   handlePresentationIntentAbort,
@@ -30,14 +30,15 @@ export const createResultsPresentationRuntimeOwnerValue = ({
   handleMarkerExitStarted,
   handleMarkerExitSettled,
 }: ResultsPresentationRuntimeOwnerValue): ResultsPresentationRuntimeOwnerValue => ({
-  preparedResultsSnapshotKey,
+  searchSurfaceResultsTransactionKey,
   pendingTogglePresentationIntentId,
   scheduleToggleCommit,
   notifyFrostReady,
   cancelToggleInteraction,
-  stagePreparedResultsSnapshot,
-  commitPreparedResultsSnapshot,
-  clearStagedPreparedResultsSnapshot,
+  beginSearchThisAreaPresentationPending,
+  stageSearchSurfaceResultsTransaction,
+  commitSearchSurfaceResultsTransaction,
+  clearStagedSearchSurfaceResultsTransaction,
   handlePageOneResultsCommitted,
   cancelPresentationIntent,
   handlePresentationIntentAbort,
@@ -48,22 +49,13 @@ export const createResultsPresentationRuntimeOwnerValue = ({
   handleMarkerExitSettled,
 });
 
-type ResultsSheetExecutionModelValue = ResultsSheetExecutionModel;
-
-export const createResultsSheetExecutionModelValue = ({
-  requestResultsSheetSnap,
-  hideResultsSheet,
-}: ResultsSheetExecutionModelValue): ResultsSheetExecutionModelValue => ({
-  requestResultsSheetSnap,
-  hideResultsSheet,
-});
-
 type ResultsPresentationOwnerValue = Pick<
   ResultsPresentationOwner,
-  | 'preparedResultsSnapshotKey'
+  | 'searchSurfaceResultsTransactionKey'
   | 'pendingTogglePresentationIntentId'
   | 'scheduleToggleCommit'
   | 'cancelToggleInteraction'
+  | 'beginSearchThisAreaPresentationPending'
   | 'handlePageOneResultsCommitted'
   | 'cancelPresentationIntent'
   | 'handlePresentationIntentAbort'
@@ -77,14 +69,14 @@ type ResultsPresentationOwnerValue = Pick<
   presentationActions: ResultsPresentationActions;
   closeTransitionActions: ResultsCloseTransitionActions;
   interactionModel: ResultsInteractionModel;
-  resultsSheetExecutionModel: ResultsSheetExecutionModel;
 };
 
 export const createResultsPresentationOwnerValue = ({
-  preparedResultsSnapshotKey,
+  searchSurfaceResultsTransactionKey,
   pendingTogglePresentationIntentId,
   scheduleToggleCommit,
   cancelToggleInteraction,
+  beginSearchThisAreaPresentationPending,
   handlePageOneResultsCommitted,
   cancelPresentationIntent,
   handlePresentationIntentAbort,
@@ -97,12 +89,12 @@ export const createResultsPresentationOwnerValue = ({
   presentationActions,
   closeTransitionActions,
   interactionModel,
-  resultsSheetExecutionModel,
 }: ResultsPresentationOwnerValue): ResultsPresentationOwnerValue => ({
-  preparedResultsSnapshotKey,
+  searchSurfaceResultsTransactionKey,
   pendingTogglePresentationIntentId,
   scheduleToggleCommit,
   cancelToggleInteraction,
+  beginSearchThisAreaPresentationPending,
   handlePageOneResultsCommitted,
   cancelPresentationIntent,
   handlePresentationIntentAbort,
@@ -115,5 +107,4 @@ export const createResultsPresentationOwnerValue = ({
   presentationActions,
   closeTransitionActions,
   interactionModel,
-  resultsSheetExecutionModel,
 });

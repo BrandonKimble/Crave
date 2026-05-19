@@ -1,25 +1,29 @@
 import React from 'react';
 
 import {
-  createPreparedResultsEnterSnapshot,
-  resolvePreparedResultsEnterCoverState,
-} from './prepared-presentation-transaction';
+  createSearchSurfaceResultsEnterTransaction,
+  resolveSearchSurfaceResultsEnterCoverState,
+} from './search-surface-results-transaction';
 import type { SearchPresentationIntent } from './results-presentation-shell-contract';
-import { resolvePreparedResultsEnterMutationKind } from './results-presentation-shell-prepared-intent';
+import { resolveSearchSurfaceResultsEnterMutationKind } from './results-presentation-shell-transaction-intent';
 import type { ResultsPresentationRuntimeOwner } from './results-presentation-runtime-owner-contract';
 import type { ResultsPresentationShellLocalState } from './use-results-presentation-shell-local-state';
 import type { AppRouteResultsSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-results-sheet-runtime-contract';
-import { useResultsPreparedEnterSnapshotExecutionRuntime } from './use-results-prepared-enter-snapshot-execution-runtime';
-import { useResultsPreparedSnapshotShellApplicationRuntime } from './use-results-prepared-snapshot-shell-application-runtime';
+import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
+import { useResultsSurfaceEnterTransactionExecutionRuntime } from './use-search-surface-results-enter-transaction-execution-runtime';
+import { useResultsSurfaceTransactionShellApplicationRuntime } from './use-search-surface-results-transaction-shell-application-runtime';
 
 type UseResultsPresentationEnterActionsRuntimeArgs = {
   resultsSheetRuntime: Pick<
     AppRouteResultsSheetRuntimeOwner,
-    'animateSheetTo' | 'prepareShortcutSheetTransition'
+    'prepareShortcutSheetTransition'
   >;
   shellLocalState: ResultsPresentationShellLocalState;
   resultsRuntimeOwner: ResultsPresentationRuntimeOwner;
   cancelSearchSheetCloseTransition: (closeIntentId?: string) => void;
+  cancelCloseSearchCleanup: () => void;
+  setPendingCloseIntentId: (intentId: string | null) => void;
+  routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
 };
 
 type ResultsPresentationEnterActionsRuntime = {
@@ -36,22 +40,25 @@ export const useResultsPresentationEnterActionsRuntime = ({
   shellLocalState,
   resultsRuntimeOwner,
   cancelSearchSheetCloseTransition,
+  cancelCloseSearchCleanup,
+  setPendingCloseIntentId,
+  routeSceneVisibilityPolicyRuntime,
 }: UseResultsPresentationEnterActionsRuntimeArgs): ResultsPresentationEnterActionsRuntime => {
-  const preparedResultsTransactionSeqRef = React.useRef(0);
-  const nextPreparedResultsTransactionId = React.useCallback((): string => {
-    preparedResultsTransactionSeqRef.current += 1;
-    return `prepared-results-transaction:${preparedResultsTransactionSeqRef.current}`;
+  const searchSurfaceResultsTransactionSeqRef = React.useRef(0);
+  const nextSearchSurfaceResultsTransactionId = React.useCallback((): string => {
+    searchSurfaceResultsTransactionSeqRef.current += 1;
+    return `search-surface-results-transaction:${searchSurfaceResultsTransactionSeqRef.current}`;
   }, []);
 
-  const applyPreparedSnapshotShell = useResultsPreparedSnapshotShellApplicationRuntime({
+  const applySurfaceTransactionShell = useResultsSurfaceTransactionShellApplicationRuntime({
     cancelSearchSheetCloseTransition,
+    routeSceneVisibilityPolicyRuntime,
     setBackdropTarget: shellLocalState.setBackdropTarget,
     setInputMode: shellLocalState.setInputMode,
   });
 
-  const executePreparedEnterSnapshot = useResultsPreparedEnterSnapshotExecutionRuntime({
+  const executeSurfaceEnterTransaction = useResultsSurfaceEnterTransactionExecutionRuntime({
     resultsRuntimeOwner,
-    animateSheetTo: resultsSheetRuntime.animateSheetTo,
     prepareShortcutSheetTransition: resultsSheetRuntime.prepareShortcutSheetTransition,
     setDisplayQueryOverride: shellLocalState.setDisplayQueryOverride,
   });
@@ -63,24 +70,34 @@ export const useResultsPresentationEnterActionsRuntime = ({
         { kind: 'focus_editing' | 'exit_editing' | 'close' }
       >
     ) => {
-      const shouldPrepareShortcutSheetTransition =
-        intent.preserveSheetState !== true && intent.transitionFromDockedPolls === true;
       const preserveSheetState = intent.preserveSheetState === true;
-      const snapshot = createPreparedResultsEnterSnapshot(
-        intent.transactionId ?? nextPreparedResultsTransactionId(),
-        resolvePreparedResultsEnterMutationKind(intent.kind),
-        resolvePreparedResultsEnterCoverState(preserveSheetState)
+      const shouldPrepareShortcutSheetTransition =
+        !preserveSheetState &&
+        (intent.transitionFromDockedPolls === true || intent.kind === 'shortcut_submit');
+      const snapshot = createSearchSurfaceResultsEnterTransaction(
+        intent.transactionId ?? nextSearchSurfaceResultsTransactionId(),
+        resolveSearchSurfaceResultsEnterMutationKind(intent.kind),
+        resolveSearchSurfaceResultsEnterCoverState(preserveSheetState)
       );
 
-      applyPreparedSnapshotShell(snapshot);
-      return executePreparedEnterSnapshot({
+      cancelCloseSearchCleanup();
+      setPendingCloseIntentId(null);
+      applySurfaceTransactionShell(snapshot);
+      return executeSurfaceEnterTransaction({
         snapshot,
         displayQueryOverride: intent.query,
         preserveSheetState,
         shouldPrepareShortcutSheetTransition,
+        entrySurface: intent.entrySurface,
       });
     },
-    [applyPreparedSnapshotShell, executePreparedEnterSnapshot, nextPreparedResultsTransactionId]
+    [
+      applySurfaceTransactionShell,
+      cancelCloseSearchCleanup,
+      executeSurfaceEnterTransaction,
+      nextSearchSurfaceResultsTransactionId,
+      setPendingCloseIntentId,
+    ]
   );
 
   return React.useMemo(

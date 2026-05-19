@@ -1,5 +1,6 @@
 import React from 'react';
 import type { LayoutChangeEvent, StyleProp, ViewStyle } from 'react-native';
+import type { SharedValue } from 'react-native-reanimated';
 import { Platform } from 'react-native';
 
 import type {
@@ -25,23 +26,44 @@ export type SearchRouteSceneStackBottomSheetRuntimeAssembly = {
   shadowShellStyle: StyleProp<ViewStyle>;
   surfaceStyle: StyleProp<ViewStyle>;
   sheetViewStyle: StyleProp<ViewStyle>;
+  sheetYValue: SharedValue<number>;
   scrollHeaderSyncStyle: StyleProp<ViewStyle>;
   onHeaderLayout: (event: LayoutChangeEvent) => void;
   onScrollHeaderLayout: (event: LayoutChangeEvent) => void;
   bodyRuntimeAuthority: BottomSheetSceneStackBodyRuntimeAuthority;
+  bodyDefaults: BottomSheetSceneStackBodyDefaults;
+  bodyScrollRuntime: BottomSheetSceneStackBodyScrollRuntime;
 };
 
-type RenderableAppRouteSheetHostSurfaceBodySnapshot =
-  AppRouteSheetHostSurfaceBodySnapshot & {
-    chromeEntry: NonNullable<AppRouteSheetHostSurfaceBodySnapshot['chromeEntry']>;
-    scrollSharedRuntimeEntry: NonNullable<
-      AppRouteSheetHostSurfaceBodySnapshot['scrollSharedRuntimeEntry']
-    >;
-    scrollBodyDefaultsEntry: NonNullable<
-      AppRouteSheetHostSurfaceBodySnapshot['scrollBodyDefaultsEntry']
-    >;
-    motionStateEntry: NonNullable<AppRouteSheetHostSurfaceBodySnapshot['motionStateEntry']>;
+const composeViewStyles = (
+  ...styles: Array<StyleProp<ViewStyle> | null | undefined>
+): StyleProp<ViewStyle> => {
+  const composed: Array<Exclude<StyleProp<ViewStyle>, null | undefined | false>> = [];
+  const appendStyle = (style: StyleProp<ViewStyle> | null | undefined) => {
+    if (!style) {
+      return;
+    }
+    if (Array.isArray(style)) {
+      style.forEach((entry) => appendStyle(entry as StyleProp<ViewStyle>));
+      return;
+    }
+    composed.push(style);
   };
+
+  styles.forEach((style) => appendStyle(style));
+  return composed;
+};
+
+type RenderableAppRouteSheetHostSurfaceBodySnapshot = AppRouteSheetHostSurfaceBodySnapshot & {
+  chromeEntry: NonNullable<AppRouteSheetHostSurfaceBodySnapshot['chromeEntry']>;
+  scrollSharedRuntimeEntry: NonNullable<
+    AppRouteSheetHostSurfaceBodySnapshot['scrollSharedRuntimeEntry']
+  >;
+  scrollBodyDefaultsEntry: NonNullable<
+    AppRouteSheetHostSurfaceBodySnapshot['scrollBodyDefaultsEntry']
+  >;
+  motionStateEntry: NonNullable<AppRouteSheetHostSurfaceBodySnapshot['motionStateEntry']>;
+};
 
 const useBottomSheetSceneStackBodyRuntimeAuthority = ({
   bodyDefaults,
@@ -140,7 +162,7 @@ export const useSearchRouteSceneStackBottomSheetRuntimeAssembly = ({
     [resolvedShadowStyle]
   );
   const surfaceStyle = React.useMemo(
-    () => [overlaySheetStyles.surface, resolvedSurfaceStyle],
+    () => composeViewStyles(overlaySheetStyles.surface, resolvedSurfaceStyle),
     [resolvedSurfaceStyle]
   );
 
@@ -195,12 +217,13 @@ export const useSearchRouteSceneStackBottomSheetRuntimeAssembly = ({
 
   const resolvedContainerStyle = chromeEntry.style ?? overlaySheetStyles.container;
   const sheetViewStyle = React.useMemo(
-    () => [
-      overlaySheetStyles.container,
-      resolvedContainerStyle,
-      surfaceRuntime.sheetHeightStyle,
-      surfaceRuntime.animatedSheetStyle,
-    ],
+    () =>
+      composeViewStyles(
+        overlaySheetStyles.container,
+        resolvedContainerStyle,
+        surfaceRuntime.sheetHeightStyle,
+        surfaceRuntime.animatedSheetStyle
+      ),
     [resolvedContainerStyle, surfaceRuntime.animatedSheetStyle, surfaceRuntime.sheetHeightStyle]
   );
   const bodyRuntimeAuthority = useBottomSheetSceneStackBodyRuntimeAuthority({
@@ -214,9 +237,12 @@ export const useSearchRouteSceneStackBottomSheetRuntimeAssembly = ({
     shadowShellStyle,
     surfaceStyle,
     sheetViewStyle,
+    sheetYValue: motionStateEntry.sheetYValue,
     scrollHeaderSyncStyle: surfaceRuntime.scrollHeaderSyncStyle,
     onHeaderLayout: scrollRuntime.onHeaderLayout,
     onScrollHeaderLayout: scrollRuntime.onScrollHeaderLayout,
     bodyRuntimeAuthority,
+    bodyDefaults,
+    bodyScrollRuntime,
   };
 };

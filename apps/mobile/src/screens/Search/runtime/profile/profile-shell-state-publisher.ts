@@ -4,7 +4,10 @@ import type {
   SearchRuntimeBus,
   SearchRuntimeProfileShellState,
 } from '../shared/search-runtime-bus';
-import type { RestaurantPanelSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
+import type {
+  CameraSnapshot,
+  RestaurantPanelSnapshot,
+} from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 
 export type ProfileShellStatePublisher = {
   publishProfileShellState: (
@@ -13,6 +16,9 @@ export type ProfileShellStatePublisher = {
       | ((prev: SearchRuntimeProfileShellState) => SearchRuntimeProfileShellState)
   ) => void;
   setProfileCameraPadding: (padding: SearchRuntimeProfileShellState['mapCameraPadding']) => void;
+  setMapHighlightedRestaurantId: (
+    restaurantId: SearchRuntimeProfileShellState['mapHighlightedRestaurantId']
+  ) => void;
   setRestaurantPanelSnapshot: (
     update:
       | RestaurantPanelSnapshot
@@ -24,6 +30,27 @@ export type ProfileShellStatePublisher = {
 type UseProfileShellStatePublisherArgs = {
   searchRuntimeBus: SearchRuntimeBus;
 };
+
+const areCameraPaddingsEqual = (
+  left: CameraSnapshot['padding'],
+  right: CameraSnapshot['padding']
+): boolean =>
+  left === right ||
+  (left != null &&
+    right != null &&
+    left.paddingTop === right.paddingTop &&
+    left.paddingBottom === right.paddingBottom &&
+    left.paddingLeft === right.paddingLeft &&
+    left.paddingRight === right.paddingRight);
+
+const areProfileShellStatesEqual = (
+  left: SearchRuntimeProfileShellState,
+  right: SearchRuntimeProfileShellState
+): boolean =>
+  left.transitionStatus === right.transitionStatus &&
+  left.restaurantPanelSnapshot === right.restaurantPanelSnapshot &&
+  areCameraPaddingsEqual(left.mapCameraPadding, right.mapCameraPadding) &&
+  left.mapHighlightedRestaurantId === right.mapHighlightedRestaurantId;
 
 export const useProfileShellStatePublisher = ({
   searchRuntimeBus,
@@ -40,6 +67,9 @@ export const useProfileShellStatePublisher = ({
               ...currentProfileShellState,
               ...update,
             };
+      if (areProfileShellStatesEqual(currentProfileShellState, nextProfileShellState)) {
+        return;
+      }
       searchRuntimeBus.publish({
         profileShellState: nextProfileShellState,
       });
@@ -53,6 +83,17 @@ export const useProfileShellStatePublisher = ({
     (padding) => {
       publishProfileShellState({
         mapCameraPadding: padding,
+      });
+    },
+    [publishProfileShellState]
+  );
+
+  const setMapHighlightedRestaurantId = React.useCallback<
+    ProfileShellStatePublisher['setMapHighlightedRestaurantId']
+  >(
+    (restaurantId) => {
+      publishProfileShellState({
+        mapHighlightedRestaurantId: restaurantId,
       });
     },
     [publishProfileShellState]
@@ -75,8 +116,14 @@ export const useProfileShellStatePublisher = ({
     () => ({
       publishProfileShellState,
       setProfileCameraPadding,
+      setMapHighlightedRestaurantId,
       setRestaurantPanelSnapshot,
     }),
-    [publishProfileShellState, setProfileCameraPadding, setRestaurantPanelSnapshot]
+    [
+      publishProfileShellState,
+      setProfileCameraPadding,
+      setMapHighlightedRestaurantId,
+      setRestaurantPanelSnapshot,
+    ]
   );
 };

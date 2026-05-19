@@ -2,6 +2,9 @@ import React from 'react';
 
 import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
 import { type ResultsPresentationLog } from './results-presentation-runtime-contract';
+import { type ResultsPresentationAuthority } from './results-presentation-authority';
+import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
+import type { SearchMapSourceFramePort } from '../map/search-map-source-frame-port';
 import { type SearchRuntimeBus } from './search-runtime-bus';
 import { type ArmSearchCloseRestoreOptions } from './results-presentation-shell-runtime-contract';
 import { type ResultsPresentationOwner } from './results-presentation-owner-contract';
@@ -10,11 +13,11 @@ import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/r
 import type { SearchChromeScalarSurfacePresentationRuntime } from '../native/search-chrome-scalar-surface-presentation-runtime';
 import type { ResultsPresentationPolicyFactsLaneChange } from './results-presentation-policy-facts-controller';
 import { useResultsPresentationOwnerCompositionRuntime } from './use-results-presentation-owner-composition-runtime';
+import type { RouteSceneSwitchAuthority } from './route-authority-contract';
 export type { ArmSearchCloseRestoreOptions } from './results-presentation-shell-runtime-contract';
 export type {
   ResultsInteractionModel,
   ResultsPresentationOwner,
-  ResultsSheetExecutionModel,
 } from './results-presentation-owner-contract';
 export type {
   MarkerEnterSettledPayload,
@@ -24,7 +27,7 @@ export type {
   SearchHeaderVisualModel,
   SearchResultsShellModel,
 } from './results-presentation-shell-contract';
-import type { RunOneHandoffCoordinator } from '../controller/run-one-handoff-coordinator';
+import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 
 export type UseResultsPresentationOwnerArgs<Suggestion> = {
   activeTab: 'dishes' | 'restaurants';
@@ -37,6 +40,8 @@ export type UseResultsPresentationOwnerArgs<Suggestion> = {
   hasActiveSearchContent: boolean;
   isSearchSessionActive: boolean;
   hasResults: boolean;
+  profilePresentationActiveRef: React.MutableRefObject<boolean>;
+  prepareRestaurantProfileForTerminalSearchDismissRef: React.MutableRefObject<() => void>;
   isSearchLoading: boolean;
   isSuggestionPanelActive: boolean;
   shouldRenderSearchOverlay: boolean;
@@ -47,7 +52,6 @@ export type UseResultsPresentationOwnerArgs<Suggestion> = {
     AppRouteResultsSheetRuntimeOwner,
     | 'sheetTranslateY'
     | 'snapPoints'
-    | 'animateSheetTo'
     | 'prepareShortcutSheetTransition'
     | 'resultsSheetRuntimeModel'
     | 'shouldRenderResultsSheetRef'
@@ -58,8 +62,7 @@ export type UseResultsPresentationOwnerArgs<Suggestion> = {
   commitSearchCloseRestore: () => boolean;
   cancelSearchCloseRestore: () => void;
   flushPendingSearchOriginRestore: () => boolean;
-  requestDefaultPostSearchRestore: () => void;
-  handleCloseResultsUiReset: () => void;
+  requestDefaultPostSearchRestore: (options?: { mode?: 'full' | 'chrome-only' }) => void;
   cancelActiveSearchRequest: () => void;
   cancelAutocomplete: () => void;
   handleCancelPendingMutationWork: () => void;
@@ -73,8 +76,12 @@ export type UseResultsPresentationOwnerArgs<Suggestion> = {
   setSuggestions: React.Dispatch<React.SetStateAction<Suggestion[]>>;
   inputRef: React.RefObject<{ blur?: () => void } | null>;
   searchRuntimeBus: SearchRuntimeBus;
+  resultsPresentationAuthority: ResultsPresentationAuthority;
+  routeSceneSwitchAuthority: RouteSceneSwitchAuthority;
+  resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
+  searchMapSourceFramePort: SearchMapSourceFramePort;
   log: ResultsPresentationLog;
-  runOneHandoffCoordinatorRef: React.MutableRefObject<RunOneHandoffCoordinator>;
+  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinator>;
   emitRuntimeMechanismEvent: (event: string, payload: Record<string, unknown>) => void;
   routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
   onSearchSheetContentLaneChanged?: (change: ResultsPresentationPolicyFactsLaneChange) => void;
@@ -92,6 +99,8 @@ export const useResultsPresentationOwner = <Suggestion>({
   hasActiveSearchContent,
   isSearchSessionActive,
   hasResults,
+  profilePresentationActiveRef,
+  prepareRestaurantProfileForTerminalSearchDismissRef,
   isSearchLoading,
   isSuggestionPanelActive,
   shouldRenderSearchOverlay,
@@ -104,7 +113,6 @@ export const useResultsPresentationOwner = <Suggestion>({
   cancelSearchCloseRestore,
   flushPendingSearchOriginRestore,
   requestDefaultPostSearchRestore,
-  handleCloseResultsUiReset,
   cancelActiveSearchRequest,
   cancelAutocomplete,
   handleCancelPendingMutationWork,
@@ -118,8 +126,12 @@ export const useResultsPresentationOwner = <Suggestion>({
   setSuggestions,
   inputRef,
   searchRuntimeBus,
+  resultsPresentationAuthority,
+  routeSceneSwitchAuthority,
+  resultsPresentationSurfaceAuthority,
+  searchMapSourceFramePort,
   log,
-  runOneHandoffCoordinatorRef,
+  searchSurfaceRedrawCoordinatorRef,
   emitRuntimeMechanismEvent,
   routeSceneVisibilityPolicyRuntime,
   onSearchSheetContentLaneChanged,
@@ -136,6 +148,8 @@ export const useResultsPresentationOwner = <Suggestion>({
     hasActiveSearchContent,
     isSearchSessionActive,
     hasResults,
+    profilePresentationActiveRef,
+    prepareRestaurantProfileForTerminalSearchDismissRef,
     isSearchLoading,
     isSuggestionPanelActive,
     shouldRenderSearchOverlay,
@@ -148,7 +162,6 @@ export const useResultsPresentationOwner = <Suggestion>({
     cancelSearchCloseRestore,
     flushPendingSearchOriginRestore,
     requestDefaultPostSearchRestore,
-    handleCloseResultsUiReset,
     cancelActiveSearchRequest,
     cancelAutocomplete,
     handleCancelPendingMutationWork,
@@ -162,8 +175,12 @@ export const useResultsPresentationOwner = <Suggestion>({
     setSuggestions,
     inputRef,
     searchRuntimeBus,
+    resultsPresentationAuthority,
+    routeSceneSwitchAuthority,
+    resultsPresentationSurfaceAuthority,
+    searchMapSourceFramePort,
     log,
-    runOneHandoffCoordinatorRef,
+    searchSurfaceRedrawCoordinatorRef,
     emitRuntimeMechanismEvent,
     routeSceneVisibilityPolicyRuntime,
     onSearchSheetContentLaneChanged,

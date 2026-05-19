@@ -3,7 +3,13 @@ import { EntityType } from '@prisma/client';
 import { LoggerService } from '../../shared';
 import { EntityTextSearchService } from '../entity-text-search/entity-text-search.service';
 
-export type EntityExpansionEvidence = 'name' | 'alias' | 'fuzzy' | 'phonetic';
+export type EntityExpansionEvidence =
+  | 'exact'
+  | 'prefix'
+  | 'name'
+  | 'alias'
+  | 'fuzzy'
+  | 'phonetic';
 
 export interface ExpandedEntityMatch {
   entityId: string;

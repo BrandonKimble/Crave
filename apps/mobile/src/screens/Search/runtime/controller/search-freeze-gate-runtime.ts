@@ -1,23 +1,23 @@
 import type { SearchFreezeClassification } from '../shared/search-freeze-classification-runtime';
 
 type SearchFreezeGateRuntimeValue = {
-  isRunOneChromeFreezeActive: boolean;
-  isRunOnePreflightFreezeActive: boolean;
-  isRun1HandoffActive: boolean;
+  isSearchSurfaceRedrawChromeFreezeActive: boolean;
+  isSearchSurfaceRedrawPreflightFreezeActive: boolean;
+  isSearchSurfaceRedrawActive: boolean;
   isResponseFrameFreezeActive: boolean;
   freezeClassification: SearchFreezeClassification;
 };
 
 export const createSearchFreezeGateRuntimeValue = ({
-  isRunOneChromeFreezeActive,
-  isRunOnePreflightFreezeActive,
-  isRun1HandoffActive,
+  isSearchSurfaceRedrawChromeFreezeActive,
+  isSearchSurfaceRedrawPreflightFreezeActive,
+  isSearchSurfaceRedrawActive,
   isResponseFrameFreezeActive,
   freezeClassification,
 }: SearchFreezeGateRuntimeValue): SearchFreezeGateRuntimeValue => ({
-  isRunOneChromeFreezeActive,
-  isRunOnePreflightFreezeActive,
-  isRun1HandoffActive,
+  isSearchSurfaceRedrawChromeFreezeActive,
+  isSearchSurfaceRedrawPreflightFreezeActive,
+  isSearchSurfaceRedrawActive,
   isResponseFrameFreezeActive,
   freezeClassification,
 });

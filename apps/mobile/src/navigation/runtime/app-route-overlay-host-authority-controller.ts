@@ -1,6 +1,7 @@
 import type {
   SearchOverlayChromeContainerSnapshot,
   SearchOverlayChromeFrameSnapshot,
+  SearchOverlayChromeHostSnapshot,
   SearchOverlayChromeHeaderProps,
   SearchOverlayChromeSuggestionSurfaceProps,
 } from '../../screens/Search/runtime/shared/search-foreground-chrome-contract';
@@ -21,9 +22,15 @@ import type {
   AppRouteOverlayHostAuthoritySurface,
   AppRouteOverlayHostPublicationLane,
 } from './app-route-overlay-host-runtime-contract';
+import {
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+} from '../../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../../perf/perf-scenario-runtime-store';
 
 type Listener = () => void;
 type SnapshotEquality<TSnapshot> = (currentSnapshot: TSnapshot, nextSnapshot: TSnapshot) => boolean;
+type SelectorEquality<TSelected> = (currentSelected: TSelected, nextSelected: TSelected) => boolean;
 type SnapshotNormalizer<TSnapshot> = (
   nextRawSnapshot: TSnapshot,
   currentSnapshot: TSnapshot,
@@ -38,6 +45,8 @@ type SnapshotSlot<TSnapshot> = SnapshotAuthority<TSnapshot> & {
 const EMPTY_SEARCH_OVERLAY_CHROME_FRAME_SNAPSHOT: SearchOverlayChromeFrameSnapshot = {
   isFocused: false,
   shouldRenderSearchOverlay: false,
+  shouldFreezeSuggestionSurfaceForRunOne: false,
+  shouldFreezeOverlayHeaderChromeForRunOne: false,
   onProfilerRender: null,
   hiddenSearchFiltersWarmupProps: null,
 };
@@ -52,6 +61,13 @@ const EMPTY_SEARCH_OVERLAY_CHROME_HEADER_PROPS = {} as SearchOverlayChromeHeader
 
 const EMPTY_SEARCH_OVERLAY_CHROME_SUGGESTION_SURFACE_PROPS =
   {} as SearchOverlayChromeSuggestionSurfaceProps;
+
+const EMPTY_SEARCH_OVERLAY_CHROME_HOST_SNAPSHOT: SearchOverlayChromeHostSnapshot = {
+  frameSnapshot: EMPTY_SEARCH_OVERLAY_CHROME_FRAME_SNAPSHOT,
+  containerSnapshot: EMPTY_SEARCH_OVERLAY_CHROME_CONTAINER_SNAPSHOT,
+  headerProps: EMPTY_SEARCH_OVERLAY_CHROME_HEADER_PROPS,
+  suggestionSurfaceProps: EMPTY_SEARCH_OVERLAY_CHROME_SUGGESTION_SURFACE_PROPS,
+};
 
 const EMPTY_SEARCH_OVERLAY_GATE_SNAPSHOT: SearchOverlayHostGateSnapshot = {
   isFocused: false,
@@ -103,6 +119,51 @@ const areShallowSnapshotsEqual = <TSnapshot>(left: TSnapshot, right: TSnapshot):
   }
 
   return true;
+};
+
+const getChangedRecordKeys = <TSnapshot>(left: TSnapshot, right: TSnapshot): string[] => {
+  if (Object.is(left, right)) {
+    return [];
+  }
+  if (left == null || right == null || typeof left !== 'object' || typeof right !== 'object') {
+    return ['<value>'];
+  }
+
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  const changedKeys: string[] = [];
+  keys.forEach((key) => {
+    const leftValue = (left as Record<string, unknown>)[key];
+    const rightValue = (right as Record<string, unknown>)[key];
+    if (!Object.is(leftValue, rightValue)) {
+      changedKeys.push(key);
+    }
+  });
+  return changedKeys;
+};
+
+const logOverlayChromeSlotScenarioPublish = ({
+  slotName,
+  changedKeys,
+  listenerCount,
+}: {
+  slotName: string | null;
+  changedKeys: string[];
+  listenerCount: number;
+}): void => {
+  if (slotName == null) {
+    return;
+  }
+  const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+  if (!isPerfScenarioAttributionActive(scenarioConfig)) {
+    return;
+  }
+  logPerfScenarioAttributionEvent('WorkSpan', scenarioConfig, {
+    event: 'scenario_work_span',
+    owner: `overlay_chrome_slot_publish:${slotName}`,
+    durationMs: 0,
+    path: changedKeys.join(',') || '<unknown>',
+    listenerCount,
+  });
 };
 
 const areShallowArraysEqual = (left: readonly unknown[], right: readonly unknown[]): boolean => {
@@ -245,6 +306,142 @@ const createTopLevelStableCallbackNormalizer = <TSnapshot>(): SnapshotNormalizer
       proxies,
     });
 };
+
+const createChromeHeaderPropsNormalizer =
+  (): SnapshotNormalizer<SearchOverlayChromeHeaderProps> => {
+    const normalizeTopLevel = createTopLevelStableCallbackNormalizer<SearchOverlayChromeHeaderProps>();
+
+    return (nextRawSnapshot, currentSnapshot, getRawSnapshot) => {
+      const normalizedSnapshot = normalizeTopLevel(
+        nextRawSnapshot,
+        currentSnapshot,
+        getRawSnapshot
+      );
+      if (
+        currentSnapshot.headerVisualModel != null &&
+        normalizedSnapshot.headerVisualModel != null &&
+        currentSnapshot.headerVisualModel !== normalizedSnapshot.headerVisualModel &&
+        areShallowSnapshotsEqual(
+          currentSnapshot.headerVisualModel,
+          normalizedSnapshot.headerVisualModel
+        )
+      ) {
+        return {
+          ...normalizedSnapshot,
+          headerVisualModel: currentSnapshot.headerVisualModel,
+        };
+      }
+
+      return normalizedSnapshot;
+    };
+  };
+
+const areChromeContainerSnapshotsEqual = (
+  left: SearchOverlayChromeContainerSnapshot,
+  right: SearchOverlayChromeContainerSnapshot
+): boolean => {
+  if (left.isSuggestionOverlayVisible !== right.isSuggestionOverlayVisible) {
+    return false;
+  }
+  const leftStyle =
+    left.overlayContainerStyle != null && typeof left.overlayContainerStyle === 'object'
+      ? (left.overlayContainerStyle as Record<string, unknown>)
+      : null;
+  const rightStyle =
+    right.overlayContainerStyle != null && typeof right.overlayContainerStyle === 'object'
+      ? (right.overlayContainerStyle as Record<string, unknown>)
+      : null;
+  if (!areShallowSnapshotsEqual(leftStyle, rightStyle)) {
+    return false;
+  }
+
+  return (
+    !left.isSuggestionOverlayVisible ||
+    left.shouldHideBottomNavForRender === right.shouldHideBottomNavForRender
+  );
+};
+
+const areChromeSuggestionSurfacePropsEqual = (
+  left: SearchOverlayChromeSuggestionSurfaceProps,
+  right: SearchOverlayChromeSuggestionSurfaceProps
+): boolean => {
+  if (
+    left.shouldShowSuggestionSurface === false &&
+    right.shouldShowSuggestionSurface === false &&
+    left.pointerEvents === 'none' &&
+    right.pointerEvents === 'none'
+  ) {
+    const normalizedLeft = {
+      ...left,
+      navBarHeight: right.navBarHeight,
+      shouldHideBottomNav: right.shouldHideBottomNav,
+    };
+    return areShallowSnapshotsEqual(normalizedLeft, right);
+  }
+
+  return areShallowSnapshotsEqual(left, right);
+};
+
+const areChromeHostSnapshotsEqual = (
+  left: SearchOverlayChromeHostSnapshot,
+  right: SearchOverlayChromeHostSnapshot
+): boolean =>
+  areShallowSnapshotsEqual(left.frameSnapshot, right.frameSnapshot) &&
+  areChromeContainerSnapshotsEqual(left.containerSnapshot, right.containerSnapshot) &&
+  areShallowSnapshotsEqual(left.headerProps, right.headerProps) &&
+  areChromeSuggestionSurfacePropsEqual(
+    left.suggestionSurfaceProps,
+    right.suggestionSurfaceProps
+  );
+
+const createChromeHostSnapshotNormalizer =
+  (): SnapshotNormalizer<SearchOverlayChromeHostSnapshot> => {
+    const normalizeFrame =
+      createTopLevelStableCallbackNormalizer<SearchOverlayChromeFrameSnapshot>();
+    const normalizeHeader = createChromeHeaderPropsNormalizer();
+    const normalizeSuggestion =
+      createTopLevelStableCallbackNormalizer<SearchOverlayChromeSuggestionSurfaceProps>();
+
+    return (nextRawSnapshot, currentSnapshot, getRawSnapshot) => {
+      const frameSnapshot = normalizeFrame(
+        nextRawSnapshot.frameSnapshot,
+        currentSnapshot.frameSnapshot,
+        () => getRawSnapshot().frameSnapshot
+      );
+      const containerSnapshot = areChromeContainerSnapshotsEqual(
+        currentSnapshot.containerSnapshot,
+        nextRawSnapshot.containerSnapshot
+      )
+        ? currentSnapshot.containerSnapshot
+        : nextRawSnapshot.containerSnapshot;
+      const headerProps = normalizeHeader(
+        nextRawSnapshot.headerProps,
+        currentSnapshot.headerProps,
+        () => getRawSnapshot().headerProps
+      );
+      const suggestionSurfaceProps = normalizeSuggestion(
+        nextRawSnapshot.suggestionSurfaceProps,
+        currentSnapshot.suggestionSurfaceProps,
+        () => getRawSnapshot().suggestionSurfaceProps
+      );
+      const nextSnapshot =
+        frameSnapshot === nextRawSnapshot.frameSnapshot &&
+        containerSnapshot === nextRawSnapshot.containerSnapshot &&
+        headerProps === nextRawSnapshot.headerProps &&
+        suggestionSurfaceProps === nextRawSnapshot.suggestionSurfaceProps
+          ? nextRawSnapshot
+          : {
+              frameSnapshot,
+              containerSnapshot,
+              headerProps,
+              suggestionSurfaceProps,
+            };
+
+      return areChromeHostSnapshotsEqual(currentSnapshot, nextSnapshot)
+        ? currentSnapshot
+        : nextSnapshot;
+    };
+  };
 
 const createShellSnapshotNormalizer = (): SnapshotNormalizer<SearchOverlayShellHostSnapshot> => {
   const proxies = new Map<string, unknown>();
@@ -447,11 +644,20 @@ const areLocalRestaurantSheetHostSnapshotsEqual = (
 const createSnapshotSlot = <TSnapshot>(
   initialSnapshot: TSnapshot,
   isEqual: SnapshotEquality<TSnapshot> = areShallowSnapshotsEqual,
-  normalizeSnapshot: SnapshotNormalizer<TSnapshot> | null = null
+  normalizeSnapshot: SnapshotNormalizer<TSnapshot> | null = null,
+  slotName: string | null = null
 ): SnapshotSlot<TSnapshot> => {
   let snapshot = initialSnapshot;
   let rawSnapshot = initialSnapshot;
   const listeners = new Set<Listener>();
+  const selectorListeners = new Map<
+    Listener,
+    {
+      isEqual: SelectorEquality<unknown>;
+      selected: unknown;
+      selector: (snapshot: TSnapshot) => unknown;
+    }
+  >();
   const getRawSnapshot = () => rawSnapshot;
 
   return {
@@ -459,6 +665,16 @@ const createSnapshotSlot = <TSnapshot>(
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
+      };
+    },
+    subscribeSelector: (selector, listener, selectorIsEqual = Object.is) => {
+      selectorListeners.set(listener, {
+        isEqual: selectorIsEqual as SelectorEquality<unknown>,
+        selected: selector(snapshot),
+        selector,
+      });
+      return () => {
+        selectorListeners.delete(listener);
       };
     },
     getSnapshot: () => snapshot,
@@ -471,39 +687,38 @@ const createSnapshotSlot = <TSnapshot>(
         return false;
       }
 
+      logOverlayChromeSlotScenarioPublish({
+        slotName,
+        changedKeys: getChangedRecordKeys(snapshot, normalizedSnapshot),
+        listenerCount: listeners.size,
+      });
       snapshot = normalizedSnapshot;
       listeners.forEach((listener) => {
+        listener();
+      });
+      selectorListeners.forEach((record, listener) => {
+        const nextSelected = record.selector(snapshot);
+        if (record.isEqual(record.selected, nextSelected)) {
+          return;
+        }
+        record.selected = nextSelected;
         listener();
       });
       return true;
     },
     clearListeners: () => {
       listeners.clear();
+      selectorListeners.clear();
     },
   };
 };
 
 export class AppRouteOverlayHostAuthorityController {
-  private readonly chromeFrameSlot = createSnapshotSlot(
-    EMPTY_SEARCH_OVERLAY_CHROME_FRAME_SNAPSHOT,
-    areShallowSnapshotsEqual,
-    createTopLevelStableCallbackNormalizer()
-  );
-
-  private readonly chromeContainerSlot = createSnapshotSlot(
-    EMPTY_SEARCH_OVERLAY_CHROME_CONTAINER_SNAPSHOT
-  );
-
-  private readonly chromeHeaderSlot = createSnapshotSlot(
-    EMPTY_SEARCH_OVERLAY_CHROME_HEADER_PROPS,
-    areShallowSnapshotsEqual,
-    createTopLevelStableCallbackNormalizer()
-  );
-
-  private readonly chromeSuggestionSurfaceSlot = createSnapshotSlot(
-    EMPTY_SEARCH_OVERLAY_CHROME_SUGGESTION_SURFACE_PROPS,
-    areShallowSnapshotsEqual,
-    createTopLevelStableCallbackNormalizer()
+  private readonly chromeHostSlot = createSnapshotSlot(
+    EMPTY_SEARCH_OVERLAY_CHROME_HOST_SNAPSHOT,
+    areChromeHostSnapshotsEqual,
+    createChromeHostSnapshotNormalizer(),
+    'chromeHost'
   );
 
   private readonly gateSlot = createSnapshotSlot(
@@ -515,7 +730,8 @@ export class AppRouteOverlayHostAuthorityController {
   private readonly shellSlot = createSnapshotSlot(
     EMPTY_SEARCH_OVERLAY_SHELL_SNAPSHOT,
     areShallowSnapshotsEqual,
-    createShellSnapshotNormalizer()
+    createShellSnapshotNormalizer(),
+    'shell'
   );
 
   private readonly localRestaurantSheetSlot = createSnapshotSlot(
@@ -534,10 +750,7 @@ export class AppRouteOverlayHostAuthorityController {
     const getOverlayLocalRestaurantSheetHostAuthority = () =>
       this.overlayLocalRestaurantSheetHostAuthority;
     return {
-      overlayChromeFrameHostAuthority: this.chromeFrameSlot,
-      overlayChromeContainerHostAuthority: this.chromeContainerSlot,
-      overlayChromeHeaderHostAuthority: this.chromeHeaderSlot,
-      overlayChromeSuggestionSurfaceHostAuthority: this.chromeSuggestionSurfaceSlot,
+      overlayChromeHostAuthority: this.chromeHostSlot,
       overlayGateHostAuthority: this.gateSlot,
       overlayShellHostAuthority: this.shellSlot,
       get overlayLocalRestaurantSheetHostAuthority() {
@@ -549,12 +762,7 @@ export class AppRouteOverlayHostAuthorityController {
   })();
 
   public readonly publicationLane: AppRouteOverlayHostPublicationLane = {
-    publishOverlayChromeFrameSnapshot: (snapshot) => this.chromeFrameSlot.setSnapshot(snapshot),
-    publishOverlayChromeContainerSnapshot: (snapshot) =>
-      this.chromeContainerSlot.setSnapshot(snapshot),
-    publishOverlayChromeHeaderProps: (props) => this.chromeHeaderSlot.setSnapshot(props),
-    publishOverlayChromeSuggestionSurfaceProps: (props) =>
-      this.chromeSuggestionSurfaceSlot.setSnapshot(props),
+    publishOverlayChromeHostSnapshot: (snapshot) => this.chromeHostSlot.setSnapshot(snapshot),
     publishOverlayGateSnapshot: (snapshot) => this.gateSlot.setSnapshot(snapshot),
     publishOverlayShellSnapshot: (snapshot) => this.shellSlot.setSnapshot(snapshot),
     publishOverlayRestaurantHostAuthorities: (authorities) =>
@@ -565,10 +773,7 @@ export class AppRouteOverlayHostAuthorityController {
   };
 
   public dispose(): void {
-    this.chromeFrameSlot.clearListeners();
-    this.chromeContainerSlot.clearListeners();
-    this.chromeHeaderSlot.clearListeners();
-    this.chromeSuggestionSurfaceSlot.clearListeners();
+    this.chromeHostSlot.clearListeners();
     this.gateSlot.clearListeners();
     this.shellSlot.clearListeners();
     this.localRestaurantSheetSlot.clearListeners();
@@ -611,12 +816,7 @@ export class AppRouteOverlayHostAuthorityController {
   }
 
   private clearSearchOverlayHostPublication(): void {
-    this.chromeFrameSlot.setSnapshot(EMPTY_SEARCH_OVERLAY_CHROME_FRAME_SNAPSHOT);
-    this.chromeContainerSlot.setSnapshot(EMPTY_SEARCH_OVERLAY_CHROME_CONTAINER_SNAPSHOT);
-    this.chromeHeaderSlot.setSnapshot(EMPTY_SEARCH_OVERLAY_CHROME_HEADER_PROPS);
-    this.chromeSuggestionSurfaceSlot.setSnapshot(
-      EMPTY_SEARCH_OVERLAY_CHROME_SUGGESTION_SURFACE_PROPS
-    );
+    this.chromeHostSlot.setSnapshot(EMPTY_SEARCH_OVERLAY_CHROME_HOST_SNAPSHOT);
     this.gateSlot.setSnapshot(EMPTY_SEARCH_OVERLAY_GATE_SNAPSHOT);
     this.shellSlot.setSnapshot(EMPTY_SEARCH_OVERLAY_SHELL_SNAPSHOT);
     this.localRestaurantSheetSlot.setSnapshot(EMPTY_SEARCH_OVERLAY_LOCAL_RESTAURANT_SHEET_SNAPSHOT);

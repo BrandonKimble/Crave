@@ -83,7 +83,38 @@ export type AppRouteSceneStackSurfaceAuthority = {
     sceneKey: OverlayKey
   ) => AppRouteSceneStackScenePresentationAuthority;
   getSceneBodySurfaceAuthority: (sceneKey: OverlayKey) => AppRouteSceneStackBodySurfaceAuthority;
+  replayPersistentPollHeaderRestorationContract: (source: string) => void;
 };
+
+export type PersistentPollIdleSheetHeaderRestorationContract = {
+  sheetContentLaneKind: 'persistent_poll';
+  displayedSceneKey: 'polls';
+  overlaySheetVisible: true;
+  sheetPresentationSceneKey: 'polls';
+  mountedChromeKey: NonNullable<SearchRouteSceneStackChromeEntry['mountedChromeKey']>;
+  pollsHeaderChromeNonNull: true;
+  pollsBodyContentLaneActive: true;
+  contentActivity: Pick<
+    AppRouteSceneStackSceneActivitySnapshot,
+    'shouldAttachMountedContent' | 'shouldRunDataLane' | 'shouldSubscribeDataLane'
+  >;
+};
+
+export const PERSISTENT_POLL_IDLE_SHEET_HEADER_RESTORATION_CONTRACT: PersistentPollIdleSheetHeaderRestorationContract =
+  {
+    sheetContentLaneKind: 'persistent_poll',
+    displayedSceneKey: 'polls',
+    overlaySheetVisible: true,
+    sheetPresentationSceneKey: 'polls',
+    mountedChromeKey: 'polls',
+    pollsHeaderChromeNonNull: true,
+    pollsBodyContentLaneActive: true,
+    contentActivity: {
+      shouldAttachMountedContent: true,
+      shouldRunDataLane: true,
+      shouldSubscribeDataLane: true,
+    },
+  };
 
 export const EMPTY_APP_ROUTE_SCENE_STACK_MOUNTED_SCENES_SNAPSHOT: AppRouteSceneStackMountedScenesSnapshot =
   {

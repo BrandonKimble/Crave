@@ -26,39 +26,65 @@ export const resolveRouteOverlayBottomNavIndex = (
 const syncRouteOverlayDisplaySharedValuesOnUI = (
   activeTabIndexValue: SharedValue<number>,
   previousSceneVisibilityValue: SharedValue<number> | null,
+  previousPrewarmedSceneVisibilityValue: SharedValue<number> | null,
   displayedSceneVisibilityValue: SharedValue<number> | null,
+  prewarmedSceneVisibilityValue: SharedValue<number> | null,
   activeTabIndex: number,
-  shouldClearPreviousScene: boolean
+  shouldClearPreviousScene: boolean,
+  shouldClearPreviousPrewarmedScene: boolean
 ): void => {
   'worklet';
   activeTabIndexValue.value = activeTabIndex;
   if (shouldClearPreviousScene && previousSceneVisibilityValue != null) {
     previousSceneVisibilityValue.value = 0;
   }
+  if (shouldClearPreviousPrewarmedScene && previousPrewarmedSceneVisibilityValue != null) {
+    previousPrewarmedSceneVisibilityValue.value = 0;
+  }
   if (displayedSceneVisibilityValue != null) {
     displayedSceneVisibilityValue.value = 1;
+  }
+  if (prewarmedSceneVisibilityValue != null) {
+    prewarmedSceneVisibilityValue.value = 1;
   }
 };
 
 export const syncRouteOverlayDisplaySharedValues = (
   values: RouteOverlayDisplaySharedValueTargets,
   snapshot: RouteOverlayDisplaySnapshot,
-  previousDisplayedSceneKey: OverlayKey | null = null
+  previousDisplayedSceneKey: OverlayKey | null = null,
+  previousPrewarmedSceneKey: OverlayKey | null = null
 ): void => {
   const shouldClearPreviousScene =
-    previousDisplayedSceneKey != null && previousDisplayedSceneKey !== snapshot.displayedSceneKey;
+    previousDisplayedSceneKey != null &&
+    previousDisplayedSceneKey !== snapshot.displayedSceneKey &&
+    previousDisplayedSceneKey !== snapshot.prewarmedSceneKey;
+  const shouldClearPreviousPrewarmedScene =
+    previousPrewarmedSceneKey != null &&
+    previousPrewarmedSceneKey !== snapshot.displayedSceneKey &&
+    previousPrewarmedSceneKey !== snapshot.prewarmedSceneKey;
   const previousSceneVisibilityValue = shouldClearPreviousScene
     ? values.getSceneVisibilityValue(previousDisplayedSceneKey)
+    : undefined;
+  const previousPrewarmedSceneVisibilityValue = shouldClearPreviousPrewarmedScene
+    ? values.getSceneVisibilityValue(previousPrewarmedSceneKey)
     : undefined;
   const displayedSceneVisibilityValue =
     snapshot.displayedSceneKey != null
       ? values.getSceneVisibilityValue(snapshot.displayedSceneKey)
       : undefined;
+  const prewarmedSceneVisibilityValue =
+    snapshot.prewarmedSceneKey != null
+      ? values.getSceneVisibilityValue(snapshot.prewarmedSceneKey)
+      : undefined;
   runOnUI(syncRouteOverlayDisplaySharedValuesOnUI)(
     values.activeTabIndexValue,
     previousSceneVisibilityValue ?? null,
+    previousPrewarmedSceneVisibilityValue ?? null,
     displayedSceneVisibilityValue ?? null,
+    prewarmedSceneVisibilityValue ?? null,
     resolveRouteOverlayBottomNavIndex(snapshot.displayedRootOverlayKey),
-    shouldClearPreviousScene
+    shouldClearPreviousScene,
+    shouldClearPreviousPrewarmedScene
   );
 };

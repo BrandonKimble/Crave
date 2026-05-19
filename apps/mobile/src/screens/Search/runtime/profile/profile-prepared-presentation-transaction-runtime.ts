@@ -13,6 +13,9 @@ import type { ProfileNativeExecutionModel } from './profile-native-execution-run
 
 type UseProfilePreparedPresentationTransactionRuntimeArgs = {
   runBatch: (fn: () => void) => void;
+  preparedProfileCompletionHandlerRef: React.MutableRefObject<
+    ((event: PreparedProfilePresentationCompletionEvent) => void) | null
+  >;
   nativeExecutionModel: Pick<
     ProfileNativeExecutionModel,
     'transitionExecutionModel' | 'commandExecutionModel'
@@ -22,7 +25,6 @@ type UseProfilePreparedPresentationTransactionRuntimeArgs = {
     'shellRuntimeState' | 'transitionRuntimeState' | 'closeRuntimeState' | 'hydrationRuntime'
   >;
   appExecutionRuntime: ProfileAppExecutionRuntime;
-  getIsSearchOverlay: () => boolean;
 };
 
 export type ProfilePreparedPresentationTransactionRuntime = {
@@ -33,14 +35,13 @@ export type ProfilePreparedPresentationTransactionRuntime = {
 
 export const useProfilePreparedPresentationTransactionRuntime = ({
   runBatch,
+  preparedProfileCompletionHandlerRef,
   nativeExecutionModel,
   runtimeStateOwner,
   appExecutionRuntime,
-  getIsSearchOverlay,
 }: UseProfilePreparedPresentationTransactionRuntimeArgs): ProfilePreparedPresentationTransactionRuntime => {
   const {
-    transitionExecutionModel: { getLastVisibleSheetSnap },
-    commandExecutionModel: { executeAndStripNativeSheetCommands, commitProfileCameraTargetCommand },
+    commandExecutionModel: { commitProfileCameraTargetCommand },
   } = nativeExecutionModel;
   const {
     shellRuntimeState: { setProfileCameraPadding },
@@ -64,11 +65,13 @@ export const useProfilePreparedPresentationTransactionRuntime = ({
         runBatch,
         commandExecutionRuntime: {
           nativeCommandExecutionModel: {
-            executeAndStripNativeSheetCommands,
             commitProfileCameraTargetCommand,
           },
           appExecutionRuntime,
           setProfileCameraPadding,
+          handleCommandCompletionEvent: (event) => {
+            preparedProfileCompletionHandlerRef.current?.(event);
+          },
         },
         stateExecutionRuntime: {
           setProfileTransitionStatus,
@@ -93,21 +96,17 @@ export const useProfilePreparedPresentationTransactionRuntime = ({
           getProfileTransitionState,
           getProfileDismissBehavior,
           getProfileShouldClearSearchOnDismiss,
-          getIsSearchOverlay,
-          getLastVisibleSheetSnap,
         },
       }),
       [
         appExecutionRuntime,
         commitProfileCameraTargetCommand,
         createPreparedProfilePresentationTransactionId,
-        executeAndStripNativeSheetCommands,
-        getLastVisibleSheetSnap,
         getProfileDismissBehavior,
         getProfileShouldClearSearchOnDismiss,
         getProfileTransitionState,
-        getIsSearchOverlay,
         hydrationRuntime,
+        preparedProfileCompletionHandlerRef,
         runBatch,
         setProfileCameraPadding,
         setProfileTransitionStatus,

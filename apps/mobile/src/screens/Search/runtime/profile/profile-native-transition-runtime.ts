@@ -5,7 +5,6 @@ export type ProfileNativeTransitionExecutionModel = {
     event: 'profile_intent_cancelled',
     payload: Record<string, unknown>
   ) => void;
-  getLastVisibleSheetSnap: () => 'expanded' | 'middle' | 'collapsed' | null;
   getLastCameraState: () => {
     center: [number, number];
     zoom: number;
@@ -23,7 +22,6 @@ type UseProfileNativeTransitionExecutionRuntimeArgs = {
     event: 'profile_intent_cancelled',
     payload: Record<string, unknown>
   ) => void;
-  lastVisibleSheetStateRef: React.MutableRefObject<'expanded' | 'middle' | 'collapsed' | null>;
   lastCameraStateRef: React.MutableRefObject<{
     center: [number, number];
     zoom: number;
@@ -32,14 +30,8 @@ type UseProfileNativeTransitionExecutionRuntimeArgs = {
 
 export const useProfileNativeTransitionExecutionRuntime = ({
   emitRuntimeMechanismEvent,
-  lastVisibleSheetStateRef,
   lastCameraStateRef,
 }: UseProfileNativeTransitionExecutionRuntimeArgs): ProfileNativeTransitionExecutionModel => {
-  const getLastVisibleSheetSnap = React.useCallback(
-    () => lastVisibleSheetStateRef.current ?? null,
-    [lastVisibleSheetStateRef]
-  );
-
   const getLastCameraState = React.useCallback(
     () => lastCameraStateRef.current,
     [lastCameraStateRef]
@@ -55,10 +47,9 @@ export const useProfileNativeTransitionExecutionRuntime = ({
   return React.useMemo(
     () => ({
       emitRuntimeMechanismEvent,
-      getLastVisibleSheetSnap,
       getLastCameraState,
       setLastCameraState,
     }),
-    [emitRuntimeMechanismEvent, getLastCameraState, getLastVisibleSheetSnap, setLastCameraState]
+    [emitRuntimeMechanismEvent, getLastCameraState, setLastCameraState]
   );
 };

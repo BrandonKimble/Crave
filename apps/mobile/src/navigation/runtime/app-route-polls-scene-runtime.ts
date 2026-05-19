@@ -30,7 +30,7 @@ export type AppRoutePollsSceneHeaderModel = {
   headerAction: PollsPanelFeedRuntime['headerAction'];
   marketKey: string | null;
   marketName: string | null;
-  candidatePlaceName: string | null;
+  candidateLocalityName: string | null;
   marketOverride: string | null;
 } | null;
 
@@ -82,7 +82,6 @@ export const arePollsSceneStatesEqual = (
   left.snapPoints === right.snapPoints &&
   left.onSnapStart === right.onSnapStart &&
   left.onSnapChange === right.onSnapChange &&
-  left.externalSheetMotionRequest === right.externalSheetMotionRequest &&
   left.onRequestPollCreationExpand === right.onRequestPollCreationExpand &&
   left.onRequestReturnToSearch === right.onRequestReturnToSearch &&
   left.interactionRef === right.interactionRef;
@@ -105,7 +104,7 @@ export const arePollsSceneHeaderModelsEqual = (
     left.headerAction === right.headerAction &&
     left.marketKey === right.marketKey &&
     left.marketName === right.marketName &&
-    left.candidatePlaceName === right.candidatePlaceName &&
+    left.candidateLocalityName === right.candidateLocalityName &&
     left.marketOverride === right.marketOverride
   );
 };
@@ -127,7 +126,7 @@ const arePollsSceneHeaderContentModelsEqual = (
     left.isBadgeMuted === right.isBadgeMuted &&
     left.marketKey === right.marketKey &&
     left.marketName === right.marketName &&
-    left.candidatePlaceName === right.candidatePlaceName &&
+    left.candidateLocalityName === right.candidateLocalityName &&
     left.marketOverride === right.marketOverride
   );
 };
@@ -159,9 +158,17 @@ const arePollsSceneBodyRenderSnapshotsEqual = (
   left: AppRoutePollsSceneBodySnapshot,
   right: AppRoutePollsSceneBodySnapshot
 ): boolean =>
+  left.bounds === right.bounds &&
   left.bootstrapSnapshot === right.bootstrapSnapshot &&
   left.userLocation === right.userLocation &&
   left.params === right.params &&
+  left.initialSnapPoint === right.initialSnapPoint &&
+  left.mode === right.mode &&
+  left.currentSnap === right.currentSnap &&
+  left.navBarTop === right.navBarTop &&
+  left.navBarHeight === right.navBarHeight &&
+  left.searchBarTop === right.searchBarTop &&
+  left.snapPoints === right.snapPoints &&
   left.interactionRef === right.interactionRef;
 
 class AppRoutePollsSceneController implements AppRoutePollsSceneRuntime {
@@ -258,11 +265,6 @@ class AppRoutePollsSceneController implements AppRoutePollsSceneRuntime {
       snapshot.searchBarTop
     );
     markPollsSceneStateFieldDiff('snapPoints', this.sceneSnapshot.snapPoints, snapshot.snapPoints);
-    markPollsSceneStateFieldDiff(
-      'externalSheetMotionRequest',
-      this.sceneSnapshot.externalSheetMotionRequest,
-      snapshot.externalSheetMotionRequest
-    );
     markPollsSceneStateFieldDiff(
       'interactionRef',
       this.sceneSnapshot.interactionRef,

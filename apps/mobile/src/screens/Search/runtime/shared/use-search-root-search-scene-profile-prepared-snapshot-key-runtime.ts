@@ -1,6 +1,6 @@
 import type { SearchRootProfilePresentationControlLane } from './use-search-root-control-plane-runtime-contract';
 
-export const useSearchRootSearchSceneProfilePreparedSnapshotKeyRuntime = ({
+export const useSearchRootSearchSceneProfileSurfaceTransactionKeyRuntime = ({
   profilePresentationControlLane,
 }: {
   profilePresentationControlLane: SearchRootProfilePresentationControlLane;

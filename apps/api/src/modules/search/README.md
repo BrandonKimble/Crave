@@ -37,7 +37,7 @@
 ```json
 {
   "format": "dual_list",
-  "plan": { "format": "dual_list", "restaurantFilters": [...], "connectionFilters": [...], "ranking": {"foodOrder": "display_rank DESC", "restaurantOrder": "display_rank DESC"}, "diagnostics": {"missingEntities": [], "notes": []}},
+  "plan": { "format": "dual_list", "restaurantFilters": [...], "connectionFilters": [...], "ranking": {"foodOrder": "crave_score DESC", "restaurantOrder": "crave_score DESC"}, "diagnostics": {"missingEntities": [], "notes": []}},
   "food": [
     {
       "connectionId": "uuid-conn",
@@ -45,7 +45,10 @@
       "foodName": "Tonkotsu Ramen",
       "restaurantId": "uuid-restaurant",
       "restaurantName": "Ramen Tatsu-Ya",
-      "qualityScore": 87.5,
+      "scoreSubjectType": "connection",
+      "scoreSubjectId": "uuid-conn",
+      "craveScore": 87.5,
+      "scoreDelta7d": 0.6,
       "activityLevel": "trending",
       "mentionCount": 12,
       "totalUpvotes": 145,
@@ -59,8 +62,10 @@
     {
       "restaurantId": "uuid-restaurant",
       "restaurantName": "Ramen Tatsu-Ya",
-      "contextualScore": 85.2,
-      "restaurantQualityScore": 90.1,
+      "scoreSubjectType": "restaurant",
+      "scoreSubjectId": "uuid-restaurant",
+      "craveScore": 85.2,
+      "scoreDelta7d": -0.4,
       "matchEvidenceType": "mixed",
       "hasMenuItems": true,
       "matchedTags": [
@@ -79,7 +84,10 @@
           "connectionId": "uuid-conn",
           "foodId": "uuid-food",
           "foodName": "Tonkotsu Ramen",
-          "qualityScore": 87.5,
+          "scoreSubjectType": "connection",
+          "scoreSubjectId": "uuid-conn",
+          "craveScore": 87.5,
+          "scoreDelta7d": 0.6,
           "activityLevel": "trending"
         }
       ]
@@ -115,14 +123,6 @@ Search responses now distinguish two different coverage concepts in metadata:
 
 - `resultCoverageStatus`: whether the returned results fully satisfied the search intent (`full`, `partial`, `unresolved`)
 - `marketResolutionStatus`: whether the viewport resolved to one market, multiple overlapping markets, no market, or an error (`resolved`, `multi_market`, `no_market`, `error`)
-
-## POST /search/events/click
-
-```json
-{ "entityId": "uuid-food", "entityType": "food" }
-```
-
-Records a user selection so `collection_entity_priority_metrics` can learn from demand signals.
 
 ## POST /search/plan
 

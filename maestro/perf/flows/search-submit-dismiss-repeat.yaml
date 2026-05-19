@@ -1,0 +1,68 @@
+appId: com.brandonkimble.cravesearch
+---
+- tapOn:
+    text: 'Search'
+    optional: true
+- tapOn:
+    text: 'Close polls'
+    optional: true
+- tapOn:
+    text: 'Close results'
+    optional: true
+- tapOn:
+    point: "88%, 44%"
+    waitToSettleTimeoutMs: 0
+- waitForAnimationToEnd:
+    timeout: 1200
+- extendedWaitUntil:
+    visible: 'Show best restaurants here'
+    timeout: 15000
+- takeScreenshot: search-visual-idle-map-shortcuts
+- openLink: crave://perf-scenario-mark?phase=measured_repeat_loop_start
+- waitForAnimationToEnd:
+    timeout: 1000
+- repeat:
+    times: 5
+    commands:
+      - extendedWaitUntil:
+          visible: 'Show best restaurants here'
+          timeout: 5000
+      - tapOn:
+          point: "25%, 19%"
+          waitToSettleTimeoutMs: 0
+      - extendedWaitUntil:
+          visible: 'Close results'
+          timeout: 20000
+      - waitForAnimationToEnd:
+          timeout: 1000
+      - tapOn:
+          point: "88%, 44%"
+          waitToSettleTimeoutMs: 0
+      - waitForAnimationToEnd:
+            timeout: 1000
+- openLink: crave://perf-scenario-mark?phase=measured_repeat_loop_end
+- waitForAnimationToEnd:
+    timeout: 1000
+- takeScreenshot: search-visual-after-results-close
+- takeScreenshot: search-visual-after-polls-restored
+- tapOn:
+    point: "25%, 19%"
+    waitToSettleTimeoutMs: 0
+- takeScreenshot: search-visual-results-entering
+- extendedWaitUntil:
+    visible: 'Close results'
+    timeout: 20000
+- assertNotVisible: 'No polls available yet.'
+- waitForAnimationToEnd:
+    timeout: 1000
+- takeScreenshot: search-visual-results-open-settled
+- takeScreenshot: search-visual-results-cards-ready
+- tapOn:
+    point: "88%, 44%"
+    waitToSettleTimeoutMs: 0
+- waitForAnimationToEnd:
+    timeout: 1000
+- extendedWaitUntil:
+    visible: 'Show best restaurants here'
+    timeout: 10000
+- takeScreenshot: search-visual-after-results-close

@@ -71,7 +71,9 @@ class AppRouteSceneDisplayTargetRegistryController implements AppRouteSceneDispl
     sceneKey: OverlayKey,
     snapshot: RouteOverlayDisplaySnapshot
   ): number {
-    return snapshot.displayedSceneKey === sceneKey ? 1 : 0;
+    return snapshot.displayedSceneKey === sceneKey || snapshot.prewarmedSceneKey === sceneKey
+      ? 1
+      : 0;
   }
 }
 

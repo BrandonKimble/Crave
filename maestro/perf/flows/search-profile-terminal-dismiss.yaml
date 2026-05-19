@@ -1,0 +1,65 @@
+appId: com.brandonkimble.cravesearch
+---
+- tapOn:
+    text: 'Search'
+    optional: true
+- tapOn:
+    text: 'Close restaurant'
+    optional: true
+- tapOn:
+    text: 'Close results'
+    optional: true
+- tapOn:
+    text: 'Close polls'
+    optional: true
+- extendedWaitUntil:
+    visible: 'What are you craving?'
+    timeout: 15000
+- extendedWaitUntil:
+    visible: 'Show best restaurants here'
+    timeout: 15000
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=30.2672&lng=-97.7431&zoom=11.5&label=austin'
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: search-profile-terminal-idle
+- tapOn:
+    point: '25%, 19%'
+    waitToSettleTimeoutMs: 0
+- extendedWaitUntil:
+    visible: 'Close results'
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 1000
+- takeScreenshot: search-profile-terminal-results-open
+- tapOn:
+    point: '52%, 30%'
+    waitToSettleTimeoutMs: 0
+- extendedWaitUntil:
+    visible: 'Close restaurant'
+    timeout: 12000
+- waitForAnimationToEnd:
+    timeout: 1000
+- takeScreenshot: search-profile-terminal-profile-open
+- tapOn:
+    point: '88%, 12%'
+    waitToSettleTimeoutMs: 0
+- waitForAnimationToEnd:
+    timeout: 1200
+- extendedWaitUntil:
+    visible: 'What are you craving?'
+    timeout: 12000
+- extendedWaitUntil:
+    visible: 'Show best restaurants here'
+    timeout: 12000
+- assertNotVisible: 'Close restaurant'
+- assertNotVisible: 'Close results'
+- takeScreenshot: search-profile-terminal-after-dismiss
+- tapOn:
+    point: '25%, 19%'
+    waitToSettleTimeoutMs: 0
+- extendedWaitUntil:
+    visible: 'Close results'
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 1000
+- takeScreenshot: search-profile-terminal-repeat-search-open

@@ -1,5 +1,5 @@
-import type { RestaurantResult } from '../../../../types';
 import type { SearchRuntimeProfileShellState } from '../shared/search-runtime-bus';
+import type { RestaurantProfileSeed } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type { ProfileAutoOpenRuntimeState } from './profile-auto-open-runtime-state';
 import type { ProfileCloseFinalizationRuntimeState } from './profile-close-finalization-runtime-state';
 import type { ProfileCloseForegroundRuntimeState } from './profile-close-foreground-runtime-state';
@@ -26,7 +26,7 @@ export type ProfileHydrationRuntimeState = {
       nextRestaurantId?: string | null;
     }
   ) => void;
-  seedRestaurantProfile: (restaurant: RestaurantResult, queryLabel: string) => void;
+  seedRestaurantProfile: (restaurant: RestaurantProfileSeed, queryLabel: string) => void;
   hydrateRestaurantProfileById: (restaurantId: string, marketKey?: string | null) => void;
 };
 
@@ -34,6 +34,7 @@ export type ProfileRuntimeStateOwner = {
   shellRuntimeState: {
     profileShellState: SearchRuntimeProfileShellState;
     setProfileCameraPadding: ProfileShellStatePublisher['setProfileCameraPadding'];
+    setMapHighlightedRestaurantId: ProfileShellStatePublisher['setMapHighlightedRestaurantId'];
   };
   transitionRuntimeState: ProfileTransitionRuntimeState;
   closeRuntimeState: ProfileCloseRuntimeState;

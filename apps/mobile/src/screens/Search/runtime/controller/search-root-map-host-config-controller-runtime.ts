@@ -20,6 +20,8 @@ export const getSearchMapHostConfigChanges = (
   onMapIdle: left.onMapIdle !== right.onMapIdle,
   onMapLoaded: left.onMapLoaded !== right.onMapLoaded,
   onMapFullyRendered: left.onMapFullyRendered !== right.onMapFullyRendered,
+  onCameraAnimationComplete:
+    left.onCameraAnimationComplete !== right.onCameraAnimationComplete,
   presentationLifecyclePort:
     left.presentationLifecyclePort !== right.presentationLifecyclePort,
   searchMapProfilerRender: left.onProfilerRender !== right.onProfilerRender,
@@ -57,6 +59,7 @@ export const createSearchRootMapHostConfig = ({
   onMapIdle: mapInteractionBridgeRuntime.onMapIdle,
   onMapLoaded: mapInteractionBridgeRuntime.onMapLoaded,
   onMapFullyRendered: mapPresentationRuntime.handleMainMapFullyRendered,
+  onCameraAnimationComplete: mapPresentationRuntime.handleCameraAnimationComplete,
   presentationLifecyclePort,
   onProfilerRender: mapPresentationRuntime.onProfilerRender,
 });

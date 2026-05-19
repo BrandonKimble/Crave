@@ -72,6 +72,7 @@ export const useSearchRootMapSurfaceViewRuntime = ({
       }),
     [
       mapInteractionBridgeRuntime,
+      mapPresentationRuntime.handleCameraAnimationComplete,
       mapPresentationRuntime.handleMainMapFullyRendered,
       mapPresentationRuntime.onProfilerRender,
       mapSurfaceStateRuntime.mapSurfaceState.cameraRef,

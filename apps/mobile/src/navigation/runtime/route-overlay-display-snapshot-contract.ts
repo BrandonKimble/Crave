@@ -9,6 +9,7 @@ export type RouteOverlayDisplaySnapshot = {
   rootOverlayKey: OverlayKey;
   displayedRootOverlayKey: OverlayKey | null;
   displayedSceneKey: OverlayKey | null;
+  prewarmedSceneKey: OverlayKey | null;
   isSearchOverlay: boolean;
   isPersistentPollLane: boolean;
 };
@@ -33,6 +34,7 @@ export const EMPTY_ROUTE_OVERLAY_DISPLAY_SNAPSHOT: RouteOverlayDisplaySnapshot =
   rootOverlayKey: 'search',
   displayedRootOverlayKey: 'search',
   displayedSceneKey: 'search',
+  prewarmedSceneKey: null,
   isSearchOverlay: true,
   isPersistentPollLane: false,
 };

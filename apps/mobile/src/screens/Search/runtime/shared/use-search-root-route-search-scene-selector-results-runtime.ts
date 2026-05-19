@@ -1,3 +1,5 @@
+import React from 'react';
+
 import type { SearchResponse } from '../../../../types';
 import { useSearchResultsReadModelSelectors } from '../read-models/read-model-selectors';
 import type { SearchRouteResultsPolicyReadModelWriterFacets } from './search-route-results-policy-domain-contract';
@@ -7,6 +9,10 @@ import type {
   SearchRootRuntimeRouteSearchSceneReadModelRuntime,
   SearchRootRuntimeRouteSearchSceneSelectorResultsRuntime,
 } from './route-search-scene-runtime-contract';
+import {
+  selectSearchSurfaceVisualPolicy,
+  useSearchSurfaceRuntimeSelector,
+} from '../surface/search-surface-runtime';
 
 export const useSearchRootRouteSearchSceneSelectorResultsRuntime = ({
   visualAssemblyRuntime,
@@ -18,6 +24,13 @@ export const useSearchRootRouteSearchSceneSelectorResultsRuntime = ({
   routeSearchSceneCardRenderRuntime: SearchRootRuntimeRouteSearchSceneReadModelRuntime['routeSearchSceneCardRenderRuntime'];
   readModelPolicyWriters: SearchRouteResultsPolicyReadModelWriterFacets;
 }): SearchRootRuntimeRouteSearchSceneSelectorResultsRuntime => {
+  const shouldHoldResultsHeader = useSearchSurfaceRuntimeSelector(
+    React.useCallback(
+      (surfaceSnapshot) => selectSearchSurfaceVisualPolicy(surfaceSnapshot).shouldHoldResultsHeader,
+      []
+    ),
+    Object.is
+  );
   const routeSearchSceneResultsReadModelSelectors = useSearchResultsReadModelSelectors({
     activeTab: routeSearchSceneDataRuntime.routeSearchSceneResultsRuntimeState.activeTab,
     dishes: routeSearchSceneDataRuntime.routeSearchSceneResolvedResultsRuntime.dishes,
@@ -30,20 +43,30 @@ export const useSearchRootRouteSearchSceneSelectorResultsRuntime = ({
       routeSearchSceneDataRuntime.routeSearchSceneAllowsInteractionLoadingState,
     shouldHydrateResultsForRender:
       routeSearchSceneDataRuntime.routeSearchSceneHydrationKeyRuntime.shouldHydrateResultsForRender,
-    runOneCommitSpanPressureActive:
+    searchSurfaceRedrawPhase:
+      routeSearchSceneDataRuntime.routeSearchSceneHydrationRuntimeState.searchSurfaceRedrawPhase,
+    rawSearchSurfaceRedrawPhase:
+      routeSearchSceneDataRuntime.routeSearchSceneHydrationRuntimeState.rawSearchSurfaceRedrawPhase,
+    getRawSearchSurfaceRedrawPhase:
+      routeSearchSceneDataRuntime.routeSearchSceneHydrationRuntimeState.getRawSearchSurfaceRedrawPhase,
+    getAllowHydrationFinalizeCommit:
       routeSearchSceneDataRuntime.routeSearchSceneHydrationRuntimeState
-        .runOneCommitSpanPressureActive,
-    allowHydrationFinalizeCommit:
+        .getAllowHydrationFinalizeCommit,
+    searchSurfaceRedrawCommitSpanPressureActive:
       routeSearchSceneDataRuntime.routeSearchSceneHydrationRuntimeState
-        .allowHydrationFinalizeCommit,
+        .searchSurfaceRedrawCommitSpanPressureActive,
     mapQueryBudget: routeSearchSceneDataRuntime.routeSearchSceneMapQueryBudget,
     canLoadMore: routeSearchSceneDataRuntime.routeSearchSceneResultsRuntimeState.canLoadMore,
     isLoadingMore: routeSearchSceneDataRuntime.routeSearchSceneResultsRuntimeState.isLoadingMore,
     onDemandNotice: routeSearchSceneDataRuntime.routeSearchSceneOnDemandNotice,
     activeTabColor: routeSearchSceneDataRuntime.routeSearchSceneFiltersHeaderRuntime.accentColor,
     shouldDisableResultsHeader:
-      routeSearchSceneDataRuntime.routeSearchSceneChromeFreezeRuntime.submittedQueryForReadModel.trim()
-        .length === 0,
+      (!shouldHoldResultsHeader &&
+        routeSearchSceneDataRuntime.routeSearchSceneSearchSheetContentLane.kind ===
+          'persistent_poll') ||
+      (!shouldHoldResultsHeader &&
+        routeSearchSceneDataRuntime.routeSearchSceneChromeFreezeRuntime.submittedQueryForReadModel.trim()
+          .length === 0),
     shouldUseResultsHeaderBlur: true,
     submittedQuery:
       routeSearchSceneDataRuntime.routeSearchSceneChromeFreezeRuntime.submittedQueryForReadModel,
@@ -62,8 +85,7 @@ export const useSearchRootRouteSearchSceneSelectorResultsRuntime = ({
       routeSearchSceneDataRuntime.routeSearchSceneHydrationKeyRuntime.resultsHydrationKey,
     hydratedResultsKey:
       routeSearchSceneDataRuntime.routeSearchSceneHydrationKeyRuntime.hydratedResultsKey,
-    hydrationOperationId:
-      routeSearchSceneDataRuntime.routeSearchSceneHydrationRuntimeState.hydrationOperationId,
+    hydrationOperationId: null,
     activeOverlayKey: 'search',
     setHydratedResultsKeySync:
       routeSearchSceneDataRuntime.routeSearchSceneHydrationKeyRuntime.setHydratedResultsKeySync,
@@ -74,10 +96,12 @@ export const useSearchRootRouteSearchSceneSelectorResultsRuntime = ({
       routeSearchSceneCardRenderRuntime.renderDishCard(item, index)) as Parameters<
       typeof useSearchResultsReadModelSelectors
     >[0]['renderDishCard'],
-    renderRestaurantCard: ((item, index) =>
-      routeSearchSceneCardRenderRuntime.renderRestaurantCard(item, index)) as Parameters<
-      typeof useSearchResultsReadModelSelectors
-    >[0]['renderRestaurantCard'],
+    renderRestaurantCard: ((item, index, preparedDescriptor) =>
+      routeSearchSceneCardRenderRuntime.renderRestaurantCard(
+        item,
+        index,
+        preparedDescriptor
+      )) as Parameters<typeof useSearchResultsReadModelSelectors>[0]['renderRestaurantCard'],
     exactMatchWriter: readModelPolicyWriters.exactMatch,
     readModelProjection: readModelPolicyWriters.projection,
     shouldRetainCommittedResultsForPolicy:

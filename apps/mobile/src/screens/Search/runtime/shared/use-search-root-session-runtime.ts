@@ -1,6 +1,9 @@
 import React from 'react';
 
 import type { SearchRootPrimitivesRuntime } from './search-root-primitives-runtime-contract';
+import type { SearchMapSourceFramePort } from '../map/search-map-source-frame-port';
+import type { ResultsPresentationAuthority } from './results-presentation-authority';
+import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import { useSearchRootSessionAssemblyRuntime } from './use-search-root-session-assembly-runtime';
 import { useSearchRootSessionCoreLaneRuntime } from './use-search-root-session-core-lane-runtime';
@@ -22,6 +25,9 @@ type UseSearchRootSessionRuntimeHookArgs = Pick<
 > & {
   rootPrimitivesRuntime: SearchRootPrimitivesRuntime;
   searchRuntimeBus: SearchRuntimeBus;
+  resultsPresentationAuthority: ResultsPresentationAuthority;
+  resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
+  searchMapSourceFramePort: SearchMapSourceFramePort;
 };
 
 export const useSearchRootSessionRuntime = ({
@@ -34,6 +40,9 @@ export const useSearchRootSessionRuntime = ({
   rootPrimitivesRuntime,
   searchMapNativeCameraExecutor,
   searchRuntimeBus,
+  resultsPresentationAuthority,
+  resultsPresentationSurfaceAuthority,
+  searchMapSourceFramePort,
 }: UseSearchRootSessionRuntimeHookArgs): SearchRootSessionRuntimeLanes => {
   const { interactionPrimitivesRuntime, sessionControlServices } =
     useSearchRootSessionAssemblyRuntime({
@@ -41,6 +50,9 @@ export const useSearchRootSessionRuntime = ({
       rootPrimitivesRuntime,
       searchMapNativeCameraExecutor,
       searchRuntimeBus,
+      resultsPresentationAuthority,
+      resultsPresentationSurfaceAuthority,
+      searchMapSourceFramePort,
     });
   const sessionPrimitivesLane = useSearchRootSessionPrimitivesLaneRuntime({
     interactionPrimitivesRuntime,

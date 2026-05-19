@@ -3,9 +3,16 @@ import React from 'react';
 import { withSearchNavSwitchRuntimeAttribution } from './search-nav-switch-runtime-attribution';
 
 type SnapshotListener = () => void;
+type EqualityFn<T> = (left: T, right: T) => boolean;
 
 export type SnapshotAuthority<TSnapshot> = {
   subscribe: (listener: SnapshotListener) => () => void;
+  subscribeSelector?: <TSelected>(
+    selector: (snapshot: TSnapshot) => TSelected,
+    listener: SnapshotListener,
+    isEqual?: EqualityFn<TSelected>,
+    attributionLabel?: string
+  ) => () => void;
   getSnapshot: () => TSnapshot;
 };
 
@@ -34,6 +41,16 @@ export const useSnapshotAuthority = <TSnapshot>(
       ? undefined
       : optionsOrIsEqual.attributionOperation;
   const listenersRef = React.useRef(new Set<SnapshotListener>());
+  const selectorListenersRef = React.useRef(
+    new Map<
+      SnapshotListener,
+      {
+        selector: (snapshot: TSnapshot) => unknown;
+        isEqual: EqualityFn<unknown>;
+        selected: unknown;
+      }
+    >()
+  );
   const snapshotRef = React.useRef(snapshot);
   const didChangeRef = React.useRef(false);
 
@@ -52,6 +69,16 @@ export const useSnapshotAuthority = <TSnapshot>(
           listenersRef.current.delete(listener);
         };
       },
+      subscribeSelector: (selector, listener, selectorIsEqual = Object.is) => {
+        selectorListenersRef.current.set(listener, {
+          selector,
+          isEqual: selectorIsEqual as EqualityFn<unknown>,
+          selected: selector(snapshotRef.current),
+        });
+        return () => {
+          selectorListenersRef.current.delete(listener);
+        };
+      },
       getSnapshot: () => snapshotRef.current,
     }),
     []
@@ -67,6 +94,14 @@ export const useSnapshotAuthority = <TSnapshot>(
       operation,
       () => {
         listenersRef.current.forEach((listener) => {
+          listener();
+        });
+        selectorListenersRef.current.forEach((record, listener) => {
+          const nextSelected = record.selector(snapshotRef.current);
+          if (record.isEqual(record.selected, nextSelected)) {
+            return;
+          }
+          record.selected = nextSelected;
           listener();
         });
       }

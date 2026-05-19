@@ -16,19 +16,22 @@ export const executeProfileCloseAction = ({
   actionModel: ProfileCloseActionModel;
   ports: ProfileActionExecutionPorts;
 }): void => {
-  if (!hasPanelSnapshot && transitionStatus === 'idle') {
-    return;
-  }
+  ports.setMapHighlightedRestaurantId(null);
   if (options?.dismissBehavior) {
     ports.setDismissBehavior(options.dismissBehavior);
   }
   if (options?.clearSearchOnDismiss !== undefined) {
     ports.setShouldClearSearchOnDismiss(options.clearSearchOnDismiss);
   }
-  ports.prepareForProfileClose();
-  if (transitionStatus !== 'closing') {
+  if (transitionStatus === 'closing') {
     ports.closePreparedProfilePresentation(currentRestaurantId);
+    return;
   }
+  if (!hasPanelSnapshot && transitionStatus === 'idle') {
+    return;
+  }
+  ports.prepareForProfileClose();
+  ports.closePreparedProfilePresentation(currentRestaurantId);
 };
 
 export const executeProfileRefreshSelectionAction = ({
@@ -38,6 +41,7 @@ export const executeProfileRefreshSelectionAction = ({
   actionModel: ProfileRefreshSelectionActionModel;
   ports: ProfileRefreshSelectionExecutionPorts;
 }): void => {
+  ports.setMapHighlightedRestaurantId(restaurant.restaurantId);
   ports.seedRestaurantProfile(restaurant, queryLabel);
   ports.focusRestaurantProfileCamera(restaurant, 'autocomplete');
   ports.hydrateRestaurantProfileById(restaurant.restaurantId, restaurant.marketKey ?? null);

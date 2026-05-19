@@ -2,9 +2,7 @@ import type {
   SearchRouteSceneStackChromeVisualState,
   SearchRouteSceneStackPresentationState,
 } from '../../../../overlays/searchRouteSceneStackSheetContract';
-import {
-  EMPTY_SEARCH_ROUTE_VISUAL_STATE,
-} from '../../../../overlays/searchRouteOverlayRuntimeContract';
+import { EMPTY_SEARCH_ROUTE_VISUAL_STATE } from '../../../../overlays/searchRouteOverlayRuntimeContract';
 
 export const FALLBACK_PRESENTATION_STATE: SearchRouteSceneStackPresentationState = {
   sheetTranslateY: EMPTY_SEARCH_ROUTE_VISUAL_STATE.sheetTranslateY,
@@ -13,13 +11,17 @@ export const FALLBACK_PRESENTATION_STATE: SearchRouteSceneStackPresentationState
 };
 
 export const FALLBACK_CHROME_VISUAL_STATE: SearchRouteSceneStackChromeVisualState = {
-  overlayHeaderActionProgress:
-    EMPTY_SEARCH_ROUTE_VISUAL_STATE.overlayHeaderActionProgress,
+  overlayHeaderActionProgress: EMPTY_SEARCH_ROUTE_VISUAL_STATE.overlayHeaderActionProgress,
+  searchSurfacePageBundleProgress: EMPTY_SEARCH_ROUTE_VISUAL_STATE.searchSurfacePageBundleProgress,
   navBarCutoutHeight: EMPTY_SEARCH_ROUTE_VISUAL_STATE.navBarCutoutHeight,
   navBarCutoutProgress: EMPTY_SEARCH_ROUTE_VISUAL_STATE.navBarCutoutProgress,
-  bottomNavHiddenTranslateY: EMPTY_SEARCH_ROUTE_VISUAL_STATE.bottomNavHiddenTranslateY,
-  navBarCutoutIsHiding: EMPTY_SEARCH_ROUTE_VISUAL_STATE.navBarCutoutIsHiding,
-};
+    navBarCutoutHidingProgress: EMPTY_SEARCH_ROUTE_VISUAL_STATE.navBarCutoutHidingProgress,
+    bottomNavHiddenTranslateY: EMPTY_SEARCH_ROUTE_VISUAL_STATE.bottomNavHiddenTranslateY,
+    navBarCutoutIsHiding: EMPTY_SEARCH_ROUTE_VISUAL_STATE.navBarCutoutIsHiding,
+    navTranslateY: EMPTY_SEARCH_ROUTE_VISUAL_STATE.navTranslateY,
+    navSilhouetteSheetExclusionModeValue:
+      EMPTY_SEARCH_ROUTE_VISUAL_STATE.navSilhouetteSheetExclusionModeValue,
+  };
 
 export type SearchRouteSheetResolvedVisualSelectionSnapshot = {
   resolvedPresentationState: SearchRouteSceneStackPresentationState;

@@ -2,12 +2,6 @@ import React from 'react';
 import { Platform, View, findNodeHandle, type LayoutChangeEvent } from 'react-native';
 
 import MapboxGL, { type MapState as MapboxMapState } from '@rnmapbox/maps';
-
-type OnPressEvent = {
-  features: Array<GeoJSON.Feature>;
-  coordinates: { latitude: number; longitude: number };
-  point: { x: number; y: number };
-};
 import type { Feature, FeatureCollection, Point } from 'geojson';
 
 import pinAsset from '../../../assets/pin.png';
@@ -17,6 +11,11 @@ import { colors as themeColors } from '../../../constants/theme';
 import type { StartupLocationSnapshot } from '../../../navigation/runtime/MainLaunchCoordinator';
 import type { Coordinate, MapBounds } from '../../../types';
 import { logger } from '../../../utils';
+import {
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+} from '../../../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../../../perf/perf-scenario-runtime-store';
 import { shouldLogSearchNavSwitchDiagnosticLogs } from '../runtime/shared/search-nav-switch-perf-probe';
 import {
   LABEL_RADIAL_OFFSET_EM,
@@ -30,7 +29,7 @@ import {
 } from '../constants/search';
 
 import styles from '../styles';
-import { haversineDistanceMiles, isLngLatTuple } from '../utils/geo';
+import { isLngLatTuple } from '../utils/geo';
 import {
   FOUR_DIGIT_RANK_MIN,
   TRIPLE_DIGIT_RANK_FONT_SIZE_DELTA,
@@ -39,21 +38,21 @@ import {
 import { MARKER_VIEW_OVERSCAN_STYLE } from './marker-visibility';
 import { useSearchMapNativeRenderOwner } from './hooks/use-search-map-native-render-owner';
 import type { MapQueryBudget } from '../runtime/map/map-query-budget';
-import {
-  type SearchMapPresentationScene,
-  type MapSnapshotPresentationPolicy,
-} from '../runtime/map/map-presentation-runtime-contract';
+import type { SearchMapPresentationScene } from '../runtime/map/map-presentation-runtime-contract';
 import type { MapMotionPressureController } from '../runtime/map/map-motion-pressure';
 import {
   EMPTY_SEARCH_MAP_SOURCE_STORE,
   type SearchMapSourceStore,
 } from '../runtime/map/search-map-source-store';
 import {
-  areSearchMapRenderPresentationStatesEqual,
   searchMapRenderController,
   type SearchMapRenderInteractionMode,
-  type SearchMapRenderPresentationState,
 } from '../runtime/map/search-map-render-controller';
+import {
+  useSearchMapSourceFrameSelector,
+  type SearchMapSourceFramePort,
+} from '../runtime/map/search-map-source-frame-port';
+import type { ResultsPresentationAuthority } from '../runtime/shared/results-presentation-authority';
 import type { SearchMapPresentationLifecyclePort } from '../runtime/shared/search-map-protocol-contract';
 
 const MAP_PAN_DECELERATION_FACTOR = 0.995;
@@ -68,6 +67,35 @@ const nextSearchMapComponentInstanceId = (): string => {
 const areStringArraysEqual = (left: string[], right: string[]) =>
   left.length === right.length && left.every((value, index) => value === right[index]);
 
+type DirectSourceFrameStores = {
+  pinSourceStore: SearchMapSourceStore;
+  dotSourceStore: SearchMapSourceStore;
+  pinInteractionSourceStore: SearchMapSourceStore;
+  dotInteractionSourceStore: SearchMapSourceStore;
+  labelSourceStore: SearchMapSourceStore;
+  labelCollisionSourceStore: SearchMapSourceStore;
+};
+
+const DIRECT_SOURCE_FRAME_STORE_KEYS = [
+  'pinSourceStore',
+  'dotSourceStore',
+  'pinInteractionSourceStore',
+  'dotInteractionSourceStore',
+  'labelSourceStore',
+  'labelCollisionSourceStore',
+] as const;
+
+const areDirectSourceFrameStoresEqual = (
+  left: DirectSourceFrameStores,
+  right: DirectSourceFrameStores
+): boolean =>
+  left.pinSourceStore === right.pinSourceStore &&
+  left.dotSourceStore === right.dotSourceStore &&
+  left.pinInteractionSourceStore === right.pinInteractionSourceStore &&
+  left.dotInteractionSourceStore === right.dotInteractionSourceStore &&
+  left.labelSourceStore === right.labelSourceStore &&
+  left.labelCollisionSourceStore === right.labelCollisionSourceStore;
+
 const LABEL_STICKY_REFRESH_MS_IDLE = 140;
 const LABEL_STICKY_REFRESH_MS_MOVING = 16;
 // Sticky label tuning:
@@ -79,9 +107,6 @@ const LABEL_STICKY_LOCK_STABLE_MS_IDLE = 80;
 const LABEL_STICKY_UNLOCK_MISSING_MS_MOVING = 260;
 const LABEL_STICKY_UNLOCK_MISSING_MS_IDLE = 700;
 const LABEL_STICKY_UNLOCK_MISSING_STREAK_MOVING = 3;
-// Experimental: render restaurant pins via Mapbox style layers (instead of MarkerView).
-// This avoids view-annotation gaps during fast pans and is the foundation for truly reversible fade.
-const USE_STYLE_LAYER_PINS = true;
 const STYLE_PIN_OUTLINE_IMAGE_ID = 'restaurant-pin-outline';
 const STYLE_PIN_SHADOW_IMAGE_ID = 'restaurant-pin-shadow';
 const STYLE_PIN_FILL_IMAGE_ID = 'restaurant-pin-fill';
@@ -91,7 +116,7 @@ const PIN_INTERACTION_SOURCE_ID = 'restaurant-pin-interaction-source';
 const LABEL_INTERACTION_SOURCE_ID = 'restaurant-label-interaction-source';
 
 // Lock each restaurant to a single chosen candidate and only reconsider when that candidate
-// disappears (i.e. it can’t be placed).
+// disappears (i.e. it cannot be placed).
 const ENABLE_STICKY_LABEL_CANDIDATES = true;
 // Stabilize intra-layer ordering so placement priority doesn't vary with viewport y.
 const STABILIZE_LABEL_ORDER = true;
@@ -108,7 +133,6 @@ const PIN_COLLISION_SIDE_PAD_PX = 3;
 // Move the shared per-restaurant collision point used to enforce "one candidate label" placement.
 // This avoids the mutex being blocked by another pin's collision obstacle when pins stack.
 const LABEL_MUTEX_POINT: 'below-pin' | 'above-pin' = 'above-pin';
-
 // Approximate the MarkerView drop-shadow using the historical soft-edged sprite.
 const STYLE_PINS_SHADOW_OPACITY = 0.65;
 const STYLE_PINS_SHADOW_TRANSLATE: [number, number] = [
@@ -188,14 +212,6 @@ const withTextOpacity = ({
   } as MapboxGL.SymbolLayerStyle);
 
 type SearchMapLabelLayersProps = {
-  shouldMountLabelSource: boolean;
-  shouldMountInteractionSource: boolean;
-  shouldMountCollisionSource: boolean;
-  shouldMountLabelLayers: boolean;
-  shouldMountInteractionLayers: boolean;
-  shouldMountCollisionLayers: boolean;
-  labelSourceRevision: string;
-  collisionSourceRevision: string;
   labelLayerSpecs: ReadonlyArray<{
     preferredCandidate: LabelCandidate;
     candidate: LabelCandidate;
@@ -204,7 +220,7 @@ type SearchMapLabelLayersProps = {
   }>;
   labelCandidateStyles: Record<LabelCandidate, MapboxGL.SymbolLayerStyle>;
   labelInteractionStyles: Record<LabelCandidate, MapboxGL.SymbolLayerStyle>;
-  handleLabelPress: (event: OnPressEvent) => void;
+  handlePressTarget: (event: SearchMapPressEvent) => void;
   restaurantLabelPinCollisionLayerKey: string;
   restaurantLabelPinCollisionLayerId: string;
   restaurantLabelPinCollisionLayerIdSideLeft: string;
@@ -222,176 +238,114 @@ type LabelPlacementFilter = NonNullable<
 
 const SearchMapLabelLayers = React.memo(
   ({
-    shouldMountLabelSource,
-    shouldMountInteractionSource,
-    shouldMountCollisionSource,
-    shouldMountLabelLayers,
-    shouldMountInteractionLayers,
-    shouldMountCollisionLayers,
-    labelSourceRevision: _labelSourceRevision,
-    collisionSourceRevision: _collisionSourceRevision,
     labelLayerSpecs,
     labelCandidateStyles,
     labelInteractionStyles,
-    handleLabelPress,
+    handlePressTarget,
     restaurantLabelPinCollisionLayerKey,
     restaurantLabelPinCollisionLayerId,
     restaurantLabelPinCollisionLayerIdSideLeft,
     restaurantLabelPinCollisionLayerIdSideRight,
     restaurantLabelPinCollisionStyles,
   }: SearchMapLabelLayersProps) => {
-    const interactionOnPress = shouldMountInteractionLayers ? handleLabelPress : undefined;
     const buildLabelPlacementFilter = React.useCallback(
       (preferredCandidate: LabelCandidate, candidate: LabelCandidate): LabelPlacementFilter =>
         [
           'all',
-          [
-            '==',
-            ['coalesce', ['feature-state', 'nativeLabelPreference'], LABEL_CANDIDATES_IN_ORDER[0]],
-            preferredCandidate,
-          ],
+          ['==', ['get', 'labelPreference'], preferredCandidate],
           ['==', ['get', 'labelCandidate'], candidate],
         ] as LabelPlacementFilter,
       []
     );
+    const buildLabelInteractionFilter = React.useCallback(
+      (_preferredCandidate: LabelCandidate, candidate: LabelCandidate): LabelPlacementFilter =>
+        ['==', ['get', 'labelCandidate'], candidate] as LabelPlacementFilter,
+      []
+    );
     return (
       <React.Fragment>
-        {shouldMountLabelSource ? (
-          <MapboxGL.ShapeSource id={RESTAURANT_LABEL_SOURCE_ID} shape={EMPTY_POINT_FEATURES}>
-            {shouldMountLabelLayers
-              ? labelLayerSpecs.map(({ preferredCandidate, candidate, layerId }) => (
-                  <MapboxGL.SymbolLayer
-                    key={layerId}
-                    id={layerId}
-                    slot="top"
-                    sourceID={RESTAURANT_LABEL_SOURCE_ID}
-                    belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-                    style={labelCandidateStyles[candidate]}
-                    filter={buildLabelPlacementFilter(preferredCandidate, candidate)}
-                  />
-                ))
-              : undefined}
-          </MapboxGL.ShapeSource>
-        ) : null}
-        {shouldMountInteractionSource ? (
-          <MapboxGL.ShapeSource
-            id={LABEL_INTERACTION_SOURCE_ID}
-            shape={EMPTY_POINT_FEATURES}
-            onPress={interactionOnPress}
-          >
-            {shouldMountInteractionLayers
-              ? labelLayerSpecs.map(({ preferredCandidate, candidate, interactionLayerId }) => (
-                  <MapboxGL.SymbolLayer
-                    key={interactionLayerId}
-                    id={interactionLayerId}
-                    slot="top"
-                    sourceID={LABEL_INTERACTION_SOURCE_ID}
-                    belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-                    style={labelInteractionStyles[candidate]}
-                    filter={buildLabelPlacementFilter(preferredCandidate, candidate)}
-                  />
-                ))
-              : undefined}
-          </MapboxGL.ShapeSource>
-        ) : null}
-        {shouldMountCollisionSource ? (
-          <MapboxGL.ShapeSource
-            id={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
-            shape={EMPTY_POINT_FEATURES}
-          >
-            {shouldMountCollisionLayers ? (
-              <React.Fragment>
-                <MapboxGL.SymbolLayer
-                  key={restaurantLabelPinCollisionLayerKey}
-                  id={restaurantLabelPinCollisionLayerId}
-                  slot="top"
-                  sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
-                  belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-                  style={restaurantLabelPinCollisionStyles.center}
-                />
-                <MapboxGL.SymbolLayer
-                  key={`${restaurantLabelPinCollisionLayerKey}-left`}
-                  id={restaurantLabelPinCollisionLayerIdSideLeft}
-                  slot="top"
-                  sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
-                  belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-                  style={restaurantLabelPinCollisionStyles.left}
-                />
-                <MapboxGL.SymbolLayer
-                  key={`${restaurantLabelPinCollisionLayerKey}-right`}
-                  id={restaurantLabelPinCollisionLayerIdSideRight}
-                  slot="top"
-                  sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
-                  belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-                  style={restaurantLabelPinCollisionStyles.right}
-                />
-              </React.Fragment>
-            ) : undefined}
-          </MapboxGL.ShapeSource>
-        ) : null}
+        <MapboxGL.ShapeSource id={RESTAURANT_LABEL_SOURCE_ID} shape={EMPTY_POINT_FEATURES}>
+          {labelLayerSpecs.map(({ preferredCandidate, candidate, layerId }) => (
+            <MapboxGL.SymbolLayer
+              key={layerId}
+              id={layerId}
+              slot="top"
+              sourceID={RESTAURANT_LABEL_SOURCE_ID}
+              belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+              style={labelCandidateStyles[candidate]}
+              filter={buildLabelPlacementFilter(preferredCandidate, candidate)}
+            />
+          ))}
+        </MapboxGL.ShapeSource>
+        <MapboxGL.ShapeSource
+          id={LABEL_INTERACTION_SOURCE_ID}
+          shape={EMPTY_POINT_FEATURES}
+          onPress={handlePressTarget}
+        >
+          {labelLayerSpecs.map(({ preferredCandidate, candidate, interactionLayerId }) => (
+            <MapboxGL.SymbolLayer
+              key={interactionLayerId}
+              id={interactionLayerId}
+              slot="top"
+              sourceID={LABEL_INTERACTION_SOURCE_ID}
+              belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+              style={labelInteractionStyles[candidate]}
+              filter={buildLabelInteractionFilter(preferredCandidate, candidate)}
+            />
+          ))}
+        </MapboxGL.ShapeSource>
+        <MapboxGL.ShapeSource id={RESTAURANT_LABEL_COLLISION_SOURCE_ID} shape={EMPTY_POINT_FEATURES}>
+          <MapboxGL.SymbolLayer
+            key={restaurantLabelPinCollisionLayerKey}
+            id={restaurantLabelPinCollisionLayerId}
+            slot="top"
+            sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
+            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+            style={restaurantLabelPinCollisionStyles.center}
+          />
+          <MapboxGL.SymbolLayer
+            key={`${restaurantLabelPinCollisionLayerKey}-left`}
+            id={restaurantLabelPinCollisionLayerIdSideLeft}
+            slot="top"
+            sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
+            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+            style={restaurantLabelPinCollisionStyles.left}
+          />
+          <MapboxGL.SymbolLayer
+            key={`${restaurantLabelPinCollisionLayerKey}-right`}
+            id={restaurantLabelPinCollisionLayerIdSideRight}
+            slot="top"
+            sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
+            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+            style={restaurantLabelPinCollisionStyles.right}
+          />
+        </MapboxGL.ShapeSource>
       </React.Fragment>
     );
   },
-  (previousProps, nextProps) => {
-    if (
-      !previousProps.shouldMountLabelSource &&
-      !nextProps.shouldMountLabelSource &&
-      !previousProps.shouldMountInteractionSource &&
-      !nextProps.shouldMountInteractionSource &&
-      !previousProps.shouldMountCollisionSource &&
-      !nextProps.shouldMountCollisionSource &&
-      !previousProps.shouldMountLabelLayers &&
-      !nextProps.shouldMountLabelLayers &&
-      !previousProps.shouldMountCollisionLayers &&
-      !nextProps.shouldMountCollisionLayers
-    ) {
-      return true;
-    }
-    return (
-      previousProps.shouldMountLabelSource === nextProps.shouldMountLabelSource &&
-      previousProps.shouldMountInteractionSource === nextProps.shouldMountInteractionSource &&
-      previousProps.shouldMountCollisionSource === nextProps.shouldMountCollisionSource &&
-      previousProps.shouldMountLabelLayers === nextProps.shouldMountLabelLayers &&
-      previousProps.shouldMountInteractionLayers === nextProps.shouldMountInteractionLayers &&
-      previousProps.shouldMountCollisionLayers === nextProps.shouldMountCollisionLayers &&
-      previousProps.labelSourceRevision === nextProps.labelSourceRevision &&
-      previousProps.collisionSourceRevision === nextProps.collisionSourceRevision &&
-      previousProps.labelLayerSpecs === nextProps.labelLayerSpecs &&
-      previousProps.labelCandidateStyles === nextProps.labelCandidateStyles &&
-      previousProps.labelInteractionStyles === nextProps.labelInteractionStyles &&
-      previousProps.handleLabelPress === nextProps.handleLabelPress &&
-      previousProps.restaurantLabelPinCollisionLayerKey ===
-        nextProps.restaurantLabelPinCollisionLayerKey &&
-      previousProps.restaurantLabelPinCollisionLayerId ===
-        nextProps.restaurantLabelPinCollisionLayerId &&
-      previousProps.restaurantLabelPinCollisionLayerIdSideLeft ===
-        nextProps.restaurantLabelPinCollisionLayerIdSideLeft &&
-      previousProps.restaurantLabelPinCollisionLayerIdSideRight ===
-        nextProps.restaurantLabelPinCollisionLayerIdSideRight &&
-      previousProps.restaurantLabelPinCollisionStyles ===
-        nextProps.restaurantLabelPinCollisionStyles
-    );
-  }
+  (previousProps, nextProps) =>
+    previousProps.labelLayerSpecs === nextProps.labelLayerSpecs &&
+    previousProps.labelCandidateStyles === nextProps.labelCandidateStyles &&
+    previousProps.labelInteractionStyles === nextProps.labelInteractionStyles &&
+    previousProps.handlePressTarget === nextProps.handlePressTarget &&
+    previousProps.restaurantLabelPinCollisionLayerKey ===
+      nextProps.restaurantLabelPinCollisionLayerKey &&
+    previousProps.restaurantLabelPinCollisionLayerId ===
+      nextProps.restaurantLabelPinCollisionLayerId &&
+    previousProps.restaurantLabelPinCollisionLayerIdSideLeft ===
+      nextProps.restaurantLabelPinCollisionLayerIdSideLeft &&
+    previousProps.restaurantLabelPinCollisionLayerIdSideRight ===
+      nextProps.restaurantLabelPinCollisionLayerIdSideRight &&
+    previousProps.restaurantLabelPinCollisionStyles === nextProps.restaurantLabelPinCollisionStyles
 );
 
 type SearchMapMarkerSceneProps = {
-  shouldMountDotLayers: boolean;
-  shouldMountSearchMarkerLayers: boolean;
   dotLayerStyle: MapboxGL.SymbolLayerStyle;
-  dotInteractionFilter: unknown[];
-  handleDotPress: (event: OnPressEvent) => void;
+  dotInteractionFilter: readonly unknown[];
+  handlePressTarget: (event: SearchMapPressEvent) => void;
   stylePinLayerStack: React.ReactElement[];
-  handleStylePinPress: (event: OnPressEvent) => void;
   pinInteractionLayerStack: React.ReactElement[];
   profilerCallback: React.ProfilerOnRenderCallback;
-  shouldMountLabelSource: boolean;
-  shouldMountLabelInteractionSource: boolean;
-  shouldMountLabelCollisionSource: boolean;
-  shouldMountLabelLayers: boolean;
-  shouldMountLabelInteractionLayers: boolean;
-  shouldMountLabelCollisionLayers: boolean;
-  labelSourceRevision: string;
-  collisionSourceRevision: string;
   labelLayerSpecs: ReadonlyArray<{
     preferredCandidate: LabelCandidate;
     candidate: LabelCandidate;
@@ -400,7 +354,6 @@ type SearchMapMarkerSceneProps = {
   }>;
   labelCandidateStyles: Record<LabelCandidate, MapboxGL.SymbolLayerStyle>;
   labelInteractionStyles: Record<LabelCandidate, MapboxGL.SymbolLayerStyle>;
-  handleLabelPress: (event: OnPressEvent) => void;
   restaurantLabelPinCollisionLayerKey: string;
   restaurantLabelPinCollisionLayerId: string;
   restaurantLabelPinCollisionLayerIdSideLeft: string;
@@ -414,41 +367,21 @@ type SearchMapMarkerSceneProps = {
 
 const SearchMapMarkerScene = React.memo(
   ({
-    shouldMountDotLayers,
-    shouldMountSearchMarkerLayers,
     dotLayerStyle,
     dotInteractionFilter,
-    handleDotPress,
+    handlePressTarget,
     stylePinLayerStack,
-    handleStylePinPress,
     pinInteractionLayerStack,
     profilerCallback,
-    shouldMountLabelSource,
-    shouldMountLabelInteractionSource,
-    shouldMountLabelCollisionSource,
-    shouldMountLabelLayers,
-    shouldMountLabelInteractionLayers,
-    shouldMountLabelCollisionLayers,
-    labelSourceRevision,
-    collisionSourceRevision,
     labelLayerSpecs,
     labelCandidateStyles,
     labelInteractionStyles,
-    handleLabelPress,
     restaurantLabelPinCollisionLayerKey,
     restaurantLabelPinCollisionLayerId,
     restaurantLabelPinCollisionLayerIdSideLeft,
     restaurantLabelPinCollisionLayerIdSideRight,
     restaurantLabelPinCollisionStyles,
   }: SearchMapMarkerSceneProps) => {
-    const shouldMountAnyLabelScene =
-      shouldMountLabelSource ||
-      shouldMountLabelInteractionSource ||
-      shouldMountLabelCollisionSource ||
-      shouldMountLabelLayers ||
-      shouldMountLabelInteractionLayers ||
-      shouldMountLabelCollisionLayers;
-
     return (
       <React.Fragment>
         <React.Profiler id="SearchMapDots" onRender={profilerCallback}>
@@ -456,100 +389,69 @@ const SearchMapMarkerScene = React.memo(
             id={DOT_SOURCE_ID}
             shape={EMPTY_POINT_FEATURES as FeatureCollection<Point, RestaurantFeatureProperties>}
           >
-            {shouldMountDotLayers ? (
-              <MapboxGL.SymbolLayer
-                id={DOT_LAYER_ID}
-                slot="top"
-                belowLayerID={SEARCH_PINS_Z_ANCHOR_LAYER_ID}
-                style={dotLayerStyle}
-                sourceID={DOT_SOURCE_ID}
-              />
-            ) : undefined}
+            <MapboxGL.SymbolLayer
+              id={DOT_LAYER_ID}
+              slot="top"
+              belowLayerID={SEARCH_PINS_Z_ANCHOR_LAYER_ID}
+              style={dotLayerStyle}
+              sourceID={DOT_SOURCE_ID}
+            />
           </MapboxGL.ShapeSource>
           <MapboxGL.ShapeSource
             id={DOT_INTERACTION_SOURCE_ID}
             shape={EMPTY_POINT_FEATURES as FeatureCollection<Point, RestaurantFeatureProperties>}
-            onPress={handleDotPress}
+            onPress={handlePressTarget}
           >
-            {shouldMountDotLayers ? (
-              <MapboxGL.CircleLayer
-                id={DOT_INTERACTION_LAYER_ID}
-                slot="top"
-                belowLayerID={SEARCH_PINS_Z_ANCHOR_LAYER_ID}
-                sourceID={DOT_INTERACTION_SOURCE_ID}
-                style={DOT_INTERACTION_LAYER_STYLE}
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                filter={dotInteractionFilter as any}
-              />
-            ) : undefined}
+            <MapboxGL.CircleLayer
+              id={DOT_INTERACTION_LAYER_ID}
+              slot="top"
+              belowLayerID={SEARCH_PINS_Z_ANCHOR_LAYER_ID}
+              sourceID={DOT_INTERACTION_SOURCE_ID}
+              style={DOT_INTERACTION_LAYER_STYLE}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              filter={dotInteractionFilter as any}
+            />
           </MapboxGL.ShapeSource>
         </React.Profiler>
-        <MapboxGL.ShapeSource id={STYLE_PINS_SOURCE_ID} shape={EMPTY_POINT_FEATURES}>
-          {USE_STYLE_LAYER_PINS && shouldMountSearchMarkerLayers ? stylePinLayerStack : undefined}
+        <MapboxGL.ShapeSource
+          id={STYLE_PINS_SOURCE_ID}
+          shape={EMPTY_POINT_FEATURES}
+        >
+          {stylePinLayerStack}
         </MapboxGL.ShapeSource>
         <MapboxGL.ShapeSource
           id={PIN_INTERACTION_SOURCE_ID}
           shape={EMPTY_POINT_FEATURES}
-          onPress={handleStylePinPress}
+          onPress={handlePressTarget}
         >
-          {USE_STYLE_LAYER_PINS && shouldMountSearchMarkerLayers
-            ? pinInteractionLayerStack
-            : undefined}
+          {pinInteractionLayerStack}
         </MapboxGL.ShapeSource>
-        {shouldMountAnyLabelScene ? (
-          <React.Profiler id="SearchMapLabels" onRender={profilerCallback}>
-            <SearchMapLabelLayers
-              shouldMountLabelSource={shouldMountLabelSource}
-              shouldMountInteractionSource={shouldMountLabelInteractionSource}
-              shouldMountCollisionSource={shouldMountLabelCollisionSource}
-              shouldMountLabelLayers={shouldMountLabelLayers}
-              shouldMountInteractionLayers={shouldMountLabelInteractionLayers}
-              shouldMountCollisionLayers={shouldMountLabelCollisionLayers}
-              labelSourceRevision={labelSourceRevision}
-              collisionSourceRevision={collisionSourceRevision}
-              labelLayerSpecs={labelLayerSpecs}
-              labelCandidateStyles={labelCandidateStyles}
-              labelInteractionStyles={labelInteractionStyles}
-              handleLabelPress={handleLabelPress}
-              restaurantLabelPinCollisionLayerKey={restaurantLabelPinCollisionLayerKey}
-              restaurantLabelPinCollisionLayerId={restaurantLabelPinCollisionLayerId}
-              restaurantLabelPinCollisionLayerIdSideLeft={
-                restaurantLabelPinCollisionLayerIdSideLeft
-              }
-              restaurantLabelPinCollisionLayerIdSideRight={
-                restaurantLabelPinCollisionLayerIdSideRight
-              }
-              restaurantLabelPinCollisionStyles={restaurantLabelPinCollisionStyles}
-            />
-          </React.Profiler>
-        ) : null}
+        <React.Profiler id="SearchMapLabels" onRender={profilerCallback}>
+          <SearchMapLabelLayers
+            labelLayerSpecs={labelLayerSpecs}
+            labelCandidateStyles={labelCandidateStyles}
+            labelInteractionStyles={labelInteractionStyles}
+            handlePressTarget={handlePressTarget}
+            restaurantLabelPinCollisionLayerKey={restaurantLabelPinCollisionLayerKey}
+            restaurantLabelPinCollisionLayerId={restaurantLabelPinCollisionLayerId}
+            restaurantLabelPinCollisionLayerIdSideLeft={restaurantLabelPinCollisionLayerIdSideLeft}
+            restaurantLabelPinCollisionLayerIdSideRight={restaurantLabelPinCollisionLayerIdSideRight}
+            restaurantLabelPinCollisionStyles={restaurantLabelPinCollisionStyles}
+          />
+        </React.Profiler>
       </React.Fragment>
     );
   },
   (previousProps, nextProps) =>
-    previousProps.shouldMountDotLayers === nextProps.shouldMountDotLayers &&
-    previousProps.shouldMountSearchMarkerLayers === nextProps.shouldMountSearchMarkerLayers &&
     previousProps.dotLayerStyle === nextProps.dotLayerStyle &&
     previousProps.dotInteractionFilter === nextProps.dotInteractionFilter &&
-    previousProps.handleDotPress === nextProps.handleDotPress &&
+    previousProps.handlePressTarget === nextProps.handlePressTarget &&
     previousProps.stylePinLayerStack === nextProps.stylePinLayerStack &&
-    previousProps.handleStylePinPress === nextProps.handleStylePinPress &&
     previousProps.pinInteractionLayerStack === nextProps.pinInteractionLayerStack &&
     previousProps.profilerCallback === nextProps.profilerCallback &&
-    previousProps.shouldMountLabelSource === nextProps.shouldMountLabelSource &&
-    previousProps.shouldMountLabelInteractionSource ===
-      nextProps.shouldMountLabelInteractionSource &&
-    previousProps.shouldMountLabelCollisionSource === nextProps.shouldMountLabelCollisionSource &&
-    previousProps.shouldMountLabelLayers === nextProps.shouldMountLabelLayers &&
-    previousProps.shouldMountLabelInteractionLayers ===
-      nextProps.shouldMountLabelInteractionLayers &&
-    previousProps.shouldMountLabelCollisionLayers === nextProps.shouldMountLabelCollisionLayers &&
-    previousProps.labelSourceRevision === nextProps.labelSourceRevision &&
-    previousProps.collisionSourceRevision === nextProps.collisionSourceRevision &&
     previousProps.labelLayerSpecs === nextProps.labelLayerSpecs &&
     previousProps.labelCandidateStyles === nextProps.labelCandidateStyles &&
     previousProps.labelInteractionStyles === nextProps.labelInteractionStyles &&
-    previousProps.handleLabelPress === nextProps.handleLabelPress &&
     previousProps.restaurantLabelPinCollisionLayerKey ===
       nextProps.restaurantLabelPinCollisionLayerKey &&
     previousProps.restaurantLabelPinCollisionLayerId ===
@@ -574,7 +476,14 @@ type SearchMapViewSceneProps = {
   handleMapLoadedMap: () => void;
   handleDidFinishRenderingFrame: () => void;
   handleDidFinishRenderingFrameFully: () => void;
-  shouldRenderStyleManagedContent: boolean;
+  handleCameraAnimationComplete?: (event: {
+    nativeEvent: {
+      payload?: {
+        animationCompletionId?: string | null;
+        status?: 'finished' | 'cancelled';
+      } | null;
+    };
+  }) => void;
   mapCenter: [number, number] | null;
   mapZoom: number;
   mapCameraAnimation: {
@@ -584,7 +493,7 @@ type SearchMapViewSceneProps = {
   };
   cameraPadding: CameraPadding | null | undefined;
   isFollowingUser: boolean;
-  markerSceneProps: SearchMapMarkerSceneProps;
+  markerSceneProps: SearchMapMarkerSceneProps | null;
   userLocationLayerProps: {
     pulsingColor: string;
     pulsingRadius: 'accuracy' | number;
@@ -619,7 +528,7 @@ const SearchMapViewScene = React.memo(
     handleMapLoadedMap,
     handleDidFinishRenderingFrame,
     handleDidFinishRenderingFrameFully,
-    shouldRenderStyleManagedContent: _shouldRenderStyleManagedContent,
+    handleCameraAnimationComplete,
     mapCenter,
     mapZoom,
     mapCameraAnimation,
@@ -668,6 +577,8 @@ const SearchMapViewScene = React.memo(
           followHeading={0}
           animationMode={mapCameraAnimation.mode}
           animationDuration={mapCameraAnimation.durationMs}
+          animationCompletionId={mapCameraAnimation.completionId}
+          onCameraAnimationComplete={handleCameraAnimationComplete}
         />
         <React.Fragment>
           <MapboxGL.ShapeSource
@@ -695,7 +606,7 @@ const SearchMapViewScene = React.memo(
               belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
             />
           </MapboxGL.ShapeSource>
-          <SearchMapMarkerScene {...markerSceneProps} />
+          {markerSceneProps ? <SearchMapMarkerScene {...markerSceneProps} /> : null}
           {userLocationLayerProps ? (
             <UserLocationLayers
               pulsingColor={userLocationLayerProps.pulsingColor}
@@ -720,7 +631,7 @@ const SearchMapViewScene = React.memo(
     previousProps.handleDidFinishRenderingFrame === nextProps.handleDidFinishRenderingFrame &&
     previousProps.handleDidFinishRenderingFrameFully ===
       nextProps.handleDidFinishRenderingFrameFully &&
-    previousProps.shouldRenderStyleManagedContent === nextProps.shouldRenderStyleManagedContent &&
+    previousProps.handleCameraAnimationComplete === nextProps.handleCameraAnimationComplete &&
     areCoordinatesEqual(previousProps.mapCenter, nextProps.mapCenter) &&
     previousProps.mapZoom === nextProps.mapZoom &&
     previousProps.mapCameraAnimation.mode === nextProps.mapCameraAnimation.mode &&
@@ -735,8 +646,8 @@ const SearchMapViewScene = React.memo(
 export type RestaurantFeatureProperties = {
   restaurantId: string;
   restaurantName: string;
-  contextualScore: number;
-  contextualPercentile?: number | null;
+  craveScore: number;
+  scoreDelta7d?: number | null;
   markerKey?: string;
   nativeLodZ?: number;
   nativeLodOpacity?: number;
@@ -749,18 +660,15 @@ export type RestaurantFeatureProperties = {
   labelOrder?: number;
   // For pin SymbolLayer z-ordering: fixed slot index (0 = bottom ... 39 = top).
   lodZ?: number;
-  restaurantQualityScore?: number | null;
+  restaurantCraveScore?: number | null;
   pinColor: string;
-  pinColorGlobal?: string;
-  pinColorContextual?: string;
-  anchor?: 'top' | 'bottom' | 'left' | 'right';
   labelCandidate?: LabelCandidate;
+  labelPreference?: LabelCandidate;
   // Dish-specific fields (populated when rendering dish pins)
   isDishPin?: boolean;
   dishName?: string;
   connectionId?: string;
-  topDishContextualPercentile?: number | null;
-  topDishContextualScore?: number | null;
+  topDishCraveScore?: number | null;
 };
 
 export type MapboxMapRef = InstanceType<typeof MapboxGL.MapView> & {
@@ -789,6 +697,7 @@ const DOT_SOURCE_ID = 'restaurant-dot-source';
 const DOT_LAYER_ID = 'restaurant-dot-layer';
 const DOT_INTERACTION_SOURCE_ID = 'restaurant-dot-interaction-source';
 const DOT_INTERACTION_LAYER_ID = 'restaurant-dot-interaction-layer';
+const DOT_INTERACTION_FILTER = ['has', 'restaurantId'] as const;
 const USER_LOCATION_UNCERTAINTY_SCALE = 0.7;
 
 const resolveDisplayedUncertaintyRadiusMeters = ({
@@ -842,10 +751,8 @@ const DOT_TEXT_SIZE = 17;
 // Keep in sync with SearchScreen's MAX_FULL_PINS. These slots guarantee deterministic pin stacking
 // even as the pinned set changes during live LOD updates.
 const STYLE_PIN_STACK_SLOTS = 30;
-const PIN_INTERACTION_LAYER_IDS = Array.from(
-  { length: STYLE_PIN_STACK_SLOTS },
-  (_, slotIndex) => `restaurant-pin-interaction-slot-${slotIndex}`
-);
+const PIN_INTERACTION_LAYER_ID = 'restaurant-pin-interaction-layer';
+const PIN_INTERACTION_LAYER_IDS = [PIN_INTERACTION_LAYER_ID];
 // Use stable "anchor" layers to guarantee pins/dots/labels remain ordered correctly even if React
 // remounts layers (e.g. live LOD changes, style reloads).
 const OVERLAY_Z_ANCHOR_SOURCE_ID = 'search-overlay-z-anchor-source';
@@ -863,8 +770,7 @@ const OVERLAY_Z_ANCHOR_STYLE: MapboxGL.SymbolLayerStyle = {
 } as MapboxGL.SymbolLayerStyle;
 export const RESTAURANT_LABEL_SOURCE_ID = 'restaurant-source';
 const RESTAURANT_LABEL_COLLISION_SOURCE_ID = 'restaurant-label-collision-source';
-
-type LabelCandidate = 'bottom' | 'right' | 'top' | 'left';
+export type LabelCandidate = 'bottom' | 'right' | 'top' | 'left';
 const LABEL_CANDIDATES_IN_ORDER: ReadonlyArray<LabelCandidate> = ['bottom', 'right', 'top', 'left'];
 const LABEL_CANDIDATE_PRIORITY_BY_PREFERENCE = {
   bottom: ['bottom', 'right', 'top', 'left'],
@@ -912,130 +818,101 @@ const TRANSPARENT_PIXEL_IMAGE = {
   uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAEklEQVR42mP8z/C/HwAFAAL/GMurNwAAAABJRU5ErkJggg==',
 } as const;
 
-// Tiny transparent icon used as a per-restaurant "mutex" so only one candidate label can place.
-// This remains non-visual; the visible pin art is glyph-only.
 const LABEL_MUTEX_ICON_RENDER_SIZE_PX = 0.8;
 const LABEL_MUTEX_ICON_SIZE = LABEL_MUTEX_ICON_RENDER_SIZE_PX;
-// Move the mutex into screen pixel space so placement does not depend on asset dimensions.
 const LABEL_MUTEX_TRANSLATE_Y_PX = -(PIN_MARKER_RENDER_SIZE + 12);
 const INTERACTION_LAYER_HIDDEN_OPACITY = 0.001;
-// Temporary debug aid: visualize pressable interaction layers (pin/dot/label interactions).
-const DEBUG_PRESSABLE_INTERACTION_LAYERS = false;
-// Feature coordinates are anchored at the pin tip. Shift the interaction circle upward so
-// presses map to the visible pin body/base rather than the anchor point itself.
+const SHOW_INTERACTION_LAYER_DEBUG_COLORS = true;
+// Feature coordinates are anchored at the pin tip, while the visible pin glyph is translated
+// downward. Keep the interaction mirror centered on the historical rendered pin-body center.
 const PIN_INTERACTION_CENTER_SHIFT_Y_PX = PIN_MARKER_RENDER_SIZE * 0.38 + 4.25;
-const PIN_TAP_INTENT_RADIUS_PX = Math.max(10, PIN_MARKER_RENDER_SIZE * 0.46) + 1;
+const PIN_TAP_INTENT_RADIUS_PX = PIN_MARKER_RENDER_SIZE / 2;
 // Dot glyphs render notably smaller than `DOT_TEXT_SIZE` due to font metrics/line-height.
 // Keep the interaction target tight so it feels intentionally dot-sized (about ~2x visible dot).
 const DOT_TAP_INTENT_RADIUS_PX = Math.max(7, DOT_TEXT_SIZE * 0.42);
+const LABEL_TAP_CHAR_WIDTH_FACTOR = 0.56;
+const LABEL_TAP_LINE_HEIGHT_FACTOR = 1.18;
+const LABEL_TAP_PADDING_PX = 4;
+const LABEL_TAP_MIN_WIDTH_PX = 34;
+const LABEL_TAP_MAX_WIDTH_PX = 220;
 const PIN_INTERACTION_LAYER_STYLE: MapboxGL.CircleLayerStyle = {
   circleRadius: PIN_TAP_INTENT_RADIUS_PX,
-  circleColor: DEBUG_PRESSABLE_INTERACTION_LAYERS ? '#FF6A3D' : '#000000',
-  circleOpacity: DEBUG_PRESSABLE_INTERACTION_LAYERS ? 0.2 : INTERACTION_LAYER_HIDDEN_OPACITY,
-  circleStrokeColor: DEBUG_PRESSABLE_INTERACTION_LAYERS ? '#FFD9CC' : '#000000',
-  circleStrokeWidth: DEBUG_PRESSABLE_INTERACTION_LAYERS ? 1 : 0,
-  circleStrokeOpacity: DEBUG_PRESSABLE_INTERACTION_LAYERS ? 0.65 : 0,
+  circleColor: SHOW_INTERACTION_LAYER_DEBUG_COLORS ? '#ff6a3d' : '#000000',
+  circleOpacity: SHOW_INTERACTION_LAYER_DEBUG_COLORS ? 0.34 : INTERACTION_LAYER_HIDDEN_OPACITY,
+  circleStrokeColor: '#000000',
+  circleStrokeWidth: 0,
+  circleStrokeOpacity: 0,
+  circleSortKey: ['coalesce', ['get', 'nativeLodZ'], -1],
   circleTranslate: [0, -PIN_INTERACTION_CENTER_SHIFT_Y_PX],
   circleTranslateAnchor: 'viewport',
 } as MapboxGL.CircleLayerStyle;
 const DOT_INTERACTION_LAYER_STYLE: MapboxGL.CircleLayerStyle = {
   circleRadius: DOT_TAP_INTENT_RADIUS_PX,
-  circleColor: DEBUG_PRESSABLE_INTERACTION_LAYERS ? '#24D4FF' : '#000000',
-  circleOpacity: DEBUG_PRESSABLE_INTERACTION_LAYERS ? 0.22 : INTERACTION_LAYER_HIDDEN_OPACITY,
-  circleStrokeColor: DEBUG_PRESSABLE_INTERACTION_LAYERS ? '#B8F3FF' : '#000000',
-  circleStrokeWidth: DEBUG_PRESSABLE_INTERACTION_LAYERS ? 1 : 0,
-  circleStrokeOpacity: DEBUG_PRESSABLE_INTERACTION_LAYERS ? 0.65 : 0,
+  circleColor: SHOW_INTERACTION_LAYER_DEBUG_COLORS ? '#24d4ff' : '#000000',
+  circleOpacity: SHOW_INTERACTION_LAYER_DEBUG_COLORS ? 0.22 : INTERACTION_LAYER_HIDDEN_OPACITY,
+  circleStrokeColor: SHOW_INTERACTION_LAYER_DEBUG_COLORS ? '#b8f3ff' : '#000000',
+  circleStrokeWidth: SHOW_INTERACTION_LAYER_DEBUG_COLORS ? 1 : 0,
+  circleStrokeOpacity: SHOW_INTERACTION_LAYER_DEBUG_COLORS ? 0.7 : 0,
 } as MapboxGL.CircleLayerStyle;
 
 export const buildLabelCandidateFeatureId = (markerKey: string, candidate: LabelCandidate) =>
   `${markerKey}::label::${candidate}`;
 
-const getRestaurantIdFromPressFeature = (feature: unknown): string | null => {
-  if (!feature || typeof feature !== 'object' || Array.isArray(feature)) {
-    return null;
-  }
-  const record = feature as Record<string, unknown>;
-  const props =
-    record.properties && typeof record.properties === 'object' && !Array.isArray(record.properties)
-      ? (record.properties as Record<string, unknown>)
-      : null;
-  const restaurantId = props?.restaurantId;
-  if (typeof restaurantId !== 'string' || restaurantId.length === 0) {
-    return null;
-  }
-  return restaurantId;
-};
-
-const getCoordinateFromPressEvent = (event: OnPressEvent): Coordinate | null => {
-  const coords = event?.coordinates as unknown;
-  if (coords && typeof coords === 'object' && !Array.isArray(coords)) {
-    const record = coords as Record<string, unknown>;
-    const lng = record.longitude;
-    const lat = record.latitude;
-    if (
-      typeof lng === 'number' &&
-      Number.isFinite(lng) &&
-      typeof lat === 'number' &&
-      Number.isFinite(lat)
-    ) {
-      return { lng, lat };
+const getLabelCandidateFromFeatureId = (featureId: string): LabelCandidate | null => {
+  for (const candidate of LABEL_CANDIDATES_IN_ORDER) {
+    if (featureId.endsWith(`::label::${candidate}`)) {
+      return candidate;
     }
   }
-
-  // Defensive fallback (some Mapbox APIs use `[lng, lat]` arrays)
-  if (isLngLatTuple(coords)) {
-    return { lng: coords[0], lat: coords[1] };
-  }
-
   return null;
 };
 
-const getPointFromPressEvent = (event: OnPressEvent): { x: number; y: number } | null => {
-  const rawPoint = (event as unknown as { point?: unknown }).point;
-  if (!rawPoint || typeof rawPoint !== 'object' || Array.isArray(rawPoint)) {
+type SearchMapPressEvent = {
+  type?: GeoJSON.Feature['type'];
+  geometry?: GeoJSON.Feature['geometry'] | null;
+  properties?: GeoJSON.Feature['properties'] | null;
+  features?: GeoJSON.Feature[] | null;
+  coordinates?:
+    | { latitude?: unknown; longitude?: unknown }
+    | { lat?: unknown; lng?: unknown }
+    | [unknown, unknown]
+    | null;
+  point?: { x?: unknown; y?: unknown } | null;
+};
+
+const getPointFromMapPressFeature = (
+  feature: SearchMapPressEvent
+): { x: number; y: number } | null => {
+  const topLevelPoint = feature.point;
+  if (topLevelPoint && typeof topLevelPoint === 'object') {
+    const x = topLevelPoint.x;
+    const y = topLevelPoint.y;
+    if (
+      typeof x === 'number' &&
+      Number.isFinite(x) &&
+      typeof y === 'number' &&
+      Number.isFinite(y)
+    ) {
+      return { x, y };
+    }
+  }
+
+  const properties = feature.properties;
+  if (!properties || typeof properties !== 'object' || Array.isArray(properties)) {
     return null;
   }
-  const point = rawPoint as Record<string, unknown>;
-  const x = typeof point.x === 'number' && Number.isFinite(point.x) ? point.x : null;
-  const y = typeof point.y === 'number' && Number.isFinite(point.y) ? point.y : null;
+  const x =
+    typeof properties.screenPointX === 'number' && Number.isFinite(properties.screenPointX)
+      ? properties.screenPointX
+      : null;
+  const y =
+    typeof properties.screenPointY === 'number' && Number.isFinite(properties.screenPointY)
+      ? properties.screenPointY
+      : null;
   if (x == null || y == null) {
     return null;
   }
   return { x, y };
-};
-
-const pressEventTargetsMarkerFeature = (event: OnPressEvent): boolean => {
-  const features: unknown[] = event?.features ?? [];
-  if (features.length === 0) {
-    return false;
-  }
-  return features.some((feature) => Boolean(getRestaurantIdFromPressFeature(feature)));
-};
-
-const isTapInsideDotInteractionGeometry = ({
-  mapInstance,
-  tapPoint,
-  coordinate,
-}: {
-  mapInstance: MapboxMapRef | null;
-  tapPoint: { x: number; y: number };
-  coordinate: Coordinate | null;
-}): Promise<boolean> => {
-  if (!coordinate || !mapInstance?.getPointInView) {
-    return Promise.resolve(false);
-  }
-
-  return mapInstance
-    .getPointInView([coordinate.lng, coordinate.lat])
-    .then((pointInView) => {
-      if (!pointInView || pointInView.length < 2) {
-        return false;
-      }
-      const dx = tapPoint.x - pointInView[0];
-      const dy = tapPoint.y - pointInView[1];
-      return dx * dx + dy * dy <= DOT_TAP_INTENT_RADIUS_PX * DOT_TAP_INTENT_RADIUS_PX;
-    })
-    .catch(() => false);
 };
 
 const STYLE_PINS_OUTLINE_GLYPH_STYLE: MapboxGL.SymbolLayerStyle = {
@@ -1187,13 +1064,6 @@ type MapPresentedMarkerScene = {
 };
 
 type MapPresentedLabelScene = {
-  shouldMountLabelSource: boolean;
-  shouldMountLabelInteractionSource: boolean;
-  shouldMountLabelCollisionSource: boolean;
-  shouldMountLabelLayers: boolean;
-  shouldMountLabelInteractionLayers: boolean;
-  shouldMountLabelCollisionLayers: boolean;
-  nativeDesiredLabelInteractionFeatures: SearchMapSourceStore;
   mountedSourceCounts: {
     pinCount: number;
     dotCount: number;
@@ -1201,466 +1071,242 @@ type MapPresentedLabelScene = {
   };
 };
 
-type MapPreparedVisualSceneGate = {
-  shouldAllowVisualScene: boolean;
-  shouldAllowLabelInteractionScene: boolean;
-  isVisualScenePrepared: boolean;
-};
-
 type SearchMapRenderedPressTarget = {
   restaurantId: string;
   coordinate: Coordinate | null;
-  targetKind: 'pin' | 'label';
+  targetKind: 'pin' | 'label' | 'dot';
+};
+
+const getCoordinateFromFeature = (feature: GeoJSON.Feature): Coordinate | null => {
+  const geometry = feature.geometry;
+  if (geometry?.type !== 'Point') {
+    return null;
+  }
+  const coordinates = geometry.coordinates;
+  if (!isLngLatTuple(coordinates)) {
+    return null;
+  }
+  return { lng: coordinates[0], lat: coordinates[1] };
+};
+
+const getCoordinateFromMapPressEvent = (event: SearchMapPressEvent): Coordinate | null => {
+  if (event.geometry?.type === 'Point' && isLngLatTuple(event.geometry.coordinates)) {
+    return { lng: event.geometry.coordinates[0], lat: event.geometry.coordinates[1] };
+  }
+  const coordinates = event.coordinates;
+  if (isLngLatTuple(coordinates)) {
+    return { lng: coordinates[0], lat: coordinates[1] };
+  }
+  if (coordinates && typeof coordinates === 'object' && !Array.isArray(coordinates)) {
+    const record = coordinates as Record<string, unknown>;
+    const lng = record.longitude ?? record.lng;
+    const lat = record.latitude ?? record.lat;
+    if (
+      typeof lng === 'number' &&
+      Number.isFinite(lng) &&
+      typeof lat === 'number' &&
+      Number.isFinite(lat)
+    ) {
+      return { lng, lat };
+    }
+  }
+  return null;
+};
+
+const commitSearchMapRestaurantPressTarget = ({
+  pressTarget,
+  pressCoordinate,
+  onMarkerPress,
+}: {
+  pressTarget: SearchMapRenderedPressTarget;
+  pressCoordinate: Coordinate | null;
+  onMarkerPress?: (restaurantId: string, pressedCoordinate?: Coordinate | null) => void;
+}): void => {
+  if (!onMarkerPress) {
+    return;
+  }
+  onMarkerPress(pressTarget.restaurantId, pressTarget.coordinate ?? pressCoordinate);
 };
 
 type SearchMapInteractionRuntime = {
-  dotInteractionFilter: unknown[];
-  handleStylePinPress: (event: OnPressEvent) => void;
-  handleLabelPress: (event: OnPressEvent) => void;
-  handleDotPress: (event: OnPressEvent) => void;
-  refreshVisibleDotRestaurantIds: () => void;
-};
-
-const areMapSnapshotPresentationPoliciesEqual = (
-  left: MapSnapshotPresentationPolicy,
-  right: MapSnapshotPresentationPolicy
-): boolean =>
-  left.batchPhase === right.batchPhase &&
-  left.visualReadyRequestKey === right.visualReadyRequestKey &&
-  left.visualSceneKey === right.visualSceneKey &&
-  left.shouldFreezePreparedScene === right.shouldFreezePreparedScene &&
-  left.shouldCapturePreparedScene === right.shouldCapturePreparedScene &&
-  left.shouldAllowVisualScene === right.shouldAllowVisualScene &&
-  left.shouldAllowLabelInteractionScene === right.shouldAllowLabelInteractionScene &&
-  left.shouldProjectSearchMarkerFamilies === right.shouldProjectSearchMarkerFamilies &&
-  left.shouldAllowLiveLabelUpdates === right.shouldAllowLiveLabelUpdates &&
-  left.shouldPublishVisibleLabelFeatureIds === right.shouldPublishVisibleLabelFeatureIds &&
-  left.shouldResetPreparedVisualScene === right.shouldResetPreparedVisualScene &&
-  left.shouldResetEnterLabelsUnavailableSignature ===
-    right.shouldResetEnterLabelsUnavailableSignature &&
-  left.enterLaneActive === right.enterLaneActive &&
-  left.isPresentationPending === right.isPresentationPending;
-
-const shouldDeferPreSourceRevealRender = ({
-  previousPresentationState,
-  previousBatchPhase,
-  nextPresentationState,
-  nextBatchPhase,
-  nextPinSourceStore,
-  nextDotSourceStore,
-}: {
-  previousPresentationState: SearchMapRenderPresentationState;
-  previousBatchPhase: MapSnapshotPresentationPolicy['batchPhase'];
-  nextPresentationState: SearchMapRenderPresentationState;
-  nextBatchPhase: MapSnapshotPresentationPolicy['batchPhase'];
-  nextPinSourceStore: SearchMapSourceStore;
-  nextDotSourceStore: SearchMapSourceStore | null | undefined;
-}): boolean => {
-  const hasPreparedMarkerSourceData =
-    nextPinSourceStore.idsInOrder.length > 0 || (nextDotSourceStore?.idsInOrder.length ?? 0) > 0;
-  if (hasPreparedMarkerSourceData) {
-    return false;
-  }
-
-  const previousPreRevealPhase =
-    previousBatchPhase === 'covered' || previousBatchPhase === 'enter_requested';
-  const nextPreRevealPhase = nextBatchPhase === 'enter_requested' || nextBatchPhase === 'entering';
-  if (!previousPreRevealPhase || !nextPreRevealPhase) {
-    return false;
-  }
-
-  return (
-    previousPresentationState.coverState === nextPresentationState.coverState &&
-    previousPresentationState.selectedRestaurantId === nextPresentationState.selectedRestaurantId &&
-    previousPresentationState.allowEmptyEnter === nextPresentationState.allowEmptyEnter
-  );
+  dotInteractionFilter: readonly unknown[];
+  handleMapPress: (feature: SearchMapPressEvent) => void;
 };
 
 const resolveMapPresentedMarkerScene = ({
-  phasePolicy,
   pinSourceStore,
   pinInteractionSourceStore,
   dotSourceStore,
   dotInteractionSourceStore,
 }: {
-  phasePolicy: MapSnapshotPresentationPolicy;
   pinSourceStore: SearchMapSourceStore;
   pinInteractionSourceStore: SearchMapSourceStore;
   dotSourceStore: SearchMapSourceStore | null | undefined;
   dotInteractionSourceStore: SearchMapSourceStore;
 }): MapPresentedMarkerScene => ({
-  shouldProjectSearchMarkerFamilies: phasePolicy.shouldProjectSearchMarkerFamilies,
-  presentedPinSourceStore: phasePolicy.shouldProjectSearchMarkerFamilies
-    ? pinSourceStore
-    : EMPTY_SEARCH_MAP_SOURCE_STORE,
-  presentedPinInteractionSourceStore: phasePolicy.shouldProjectSearchMarkerFamilies
-    ? pinInteractionSourceStore
-    : EMPTY_SEARCH_MAP_SOURCE_STORE,
-  presentedDotSourceStore: phasePolicy.shouldProjectSearchMarkerFamilies
-    ? dotSourceStore ?? EMPTY_SEARCH_MAP_SOURCE_STORE
-    : EMPTY_SEARCH_MAP_SOURCE_STORE,
-  presentedDotInteractionSourceStore: phasePolicy.shouldProjectSearchMarkerFamilies
-    ? dotInteractionSourceStore
-    : EMPTY_SEARCH_MAP_SOURCE_STORE,
+  shouldProjectSearchMarkerFamilies: true,
+  presentedPinSourceStore: pinSourceStore,
+  presentedPinInteractionSourceStore: pinInteractionSourceStore,
+  presentedDotSourceStore: dotSourceStore ?? EMPTY_SEARCH_MAP_SOURCE_STORE,
+  presentedDotInteractionSourceStore: dotInteractionSourceStore,
 });
 
-const resolvePreparedLabelSourcesReady = ({
-  shouldProjectSearchMarkerFamilies,
-  isNativeOwnedMarkerRuntimeReady,
-  allowEmptyEnter,
-  shouldRenderLabels,
-  presentedPinSourceStore,
-  presentedDotSourceStore,
-  visualSceneKey,
-  labelDerivedSourceIdentityKey,
-  labelSourceStore,
-  labelCollisionSourceStore,
-}: {
-  shouldProjectSearchMarkerFamilies: boolean;
-  isNativeOwnedMarkerRuntimeReady: boolean;
-  allowEmptyEnter: boolean;
-  shouldRenderLabels: boolean;
-  presentedPinSourceStore: SearchMapSourceStore;
-  presentedDotSourceStore: SearchMapSourceStore;
-  visualSceneKey: string | null;
-  labelDerivedSourceIdentityKey: string;
-  labelSourceStore: SearchMapSourceStore;
-  labelCollisionSourceStore: SearchMapSourceStore;
-}): boolean => {
-  const shouldWaitForPreparedNativeOwnerReady = shouldProjectSearchMarkerFamilies;
-  const hasPreparedVisualSources =
-    presentedPinSourceStore.idsInOrder.length > 0 ||
-    presentedDotSourceStore.idsInOrder.length > 0 ||
-    labelSourceStore.idsInOrder.length > 0;
-  if (shouldProjectSearchMarkerFamilies && !allowEmptyEnter && !hasPreparedVisualSources) {
-    return false;
-  }
-  const expectedLabelIdentityKey =
-    visualSceneKey == null
-      ? presentedPinSourceStore.sourceRevision
-      : `${visualSceneKey}|${presentedPinSourceStore.sourceRevision}`;
-  const sourceRevisionSuffix =
-    presentedPinSourceStore.sourceRevision.length > 0
-      ? `|${presentedPinSourceStore.sourceRevision}`
-      : null;
-  const labelIdentityMatchesPresentedPins =
-    labelDerivedSourceIdentityKey === presentedPinSourceStore.sourceRevision ||
-    labelDerivedSourceIdentityKey === expectedLabelIdentityKey ||
-    (sourceRevisionSuffix != null && labelDerivedSourceIdentityKey.endsWith(sourceRevisionSuffix));
-  return (
-    (!shouldWaitForPreparedNativeOwnerReady || isNativeOwnedMarkerRuntimeReady) &&
-    (!shouldRenderLabels ||
-      (labelIdentityMatchesPresentedPins &&
-        ((presentedPinSourceStore.idsInOrder.length === 0 &&
-          labelSourceStore.idsInOrder.length === 0 &&
-          labelCollisionSourceStore.idsInOrder.length === 0) ||
-          (labelCollisionSourceStore.idsInOrder.length ===
-            presentedPinSourceStore.idsInOrder.length &&
-            labelSourceStore.idsInOrder.length > 0))))
-  );
-};
-
 const resolveMapLabelObservationPolicy = ({
-  phasePolicy,
+  isPresentationLive,
 }: {
-  phasePolicy: MapSnapshotPresentationPolicy;
+  isPresentationLive: boolean;
 }): {
   allowLiveLabelUpdates: boolean;
   publishVisibleLabelFeatureIds: boolean;
 } => ({
-  allowLiveLabelUpdates: phasePolicy.shouldAllowLiveLabelUpdates,
-  publishVisibleLabelFeatureIds: phasePolicy.shouldPublishVisibleLabelFeatureIds,
+  allowLiveLabelUpdates: isPresentationLive,
+  publishVisibleLabelFeatureIds: isPresentationLive,
 });
 
 const resolveMapPresentedLabelScene = ({
   shouldMountSearchMarkerLayers,
-  shouldProjectSearchMarkerFamilies,
-  shouldAllowVisualScene,
-  shouldAllowLabelInteractionScene,
-  isVisualScenePrepared,
+  shouldProjectSearchMarkerFamilies: _shouldProjectSearchMarkerFamilies,
   presentedPinSourceStore,
   presentedDotSourceStore,
   labelSourceStore,
-  labelCollisionSourceStore,
-  settledVisibleLabelCount,
-  shouldUsePinCollisionObstacle,
+  labelCollisionSourceStore: _labelCollisionSourceStore,
 }: {
   shouldMountSearchMarkerLayers: boolean;
   shouldProjectSearchMarkerFamilies: boolean;
-  shouldAllowVisualScene: boolean;
-  shouldAllowLabelInteractionScene: boolean;
-  isVisualScenePrepared: boolean;
   presentedPinSourceStore: SearchMapSourceStore;
   presentedDotSourceStore: SearchMapSourceStore;
   labelSourceStore: SearchMapSourceStore;
   labelCollisionSourceStore: SearchMapSourceStore;
-  settledVisibleLabelCount: number;
-  shouldUsePinCollisionObstacle: boolean;
 }): MapPresentedLabelScene => {
-  const shouldMountLabelSource =
-    shouldMountSearchMarkerLayers &&
-    shouldProjectSearchMarkerFamilies &&
-    labelSourceStore.idsInOrder.length > 0;
-  const shouldMountLabelLayers =
-    shouldMountLabelSource && shouldAllowVisualScene && isVisualScenePrepared;
-  const shouldMountLabelInteractionSource =
-    shouldMountLabelSource && shouldAllowVisualScene && isVisualScenePrepared;
-  const shouldMountLabelInteractionLayers =
-    shouldMountLabelInteractionSource &&
-    shouldAllowLabelInteractionScene &&
-    settledVisibleLabelCount > 0;
-  const shouldMountLabelCollisionSource =
-    shouldMountSearchMarkerLayers &&
-    shouldProjectSearchMarkerFamilies &&
-    labelCollisionSourceStore.idsInOrder.length > 0 &&
-    shouldUsePinCollisionObstacle;
-  const shouldMountLabelCollisionLayers =
-    shouldMountLabelCollisionSource && shouldAllowVisualScene && isVisualScenePrepared;
-
   return {
-    shouldMountLabelSource,
-    shouldMountLabelInteractionSource,
-    shouldMountLabelCollisionSource,
-    shouldMountLabelLayers,
-    shouldMountLabelInteractionLayers,
-    shouldMountLabelCollisionLayers,
-    nativeDesiredLabelInteractionFeatures: EMPTY_SEARCH_MAP_SOURCE_STORE,
     mountedSourceCounts: {
       pinCount: shouldMountSearchMarkerLayers ? presentedPinSourceStore.idsInOrder.length : 0,
       dotCount: shouldMountSearchMarkerLayers ? presentedDotSourceStore.idsInOrder.length : 0,
-      labelCount: shouldMountLabelSource ? labelSourceStore.idsInOrder.length : 0,
+      labelCount: shouldMountSearchMarkerLayers ? labelSourceStore.idsInOrder.length : 0,
     },
   };
 };
 
-const findPresentedFeatureForRestaurantId = ({
+const collectPresentedMarkerKeysForRestaurantId = ({
   sourceStore,
   restaurantId,
+  buildMarkerKey,
 }: {
   sourceStore: SearchMapPresentationScene['pinSourceStore'];
   restaurantId: string;
-}): Feature<Point, RestaurantFeatureProperties> | null => {
+  buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
+}): string[] => {
+  const markerKeys: string[] = [];
+  const seenMarkerKeys = new Set<string>();
   for (const featureId of sourceStore.idsInOrder) {
     const feature = sourceStore.featureById.get(featureId);
     if (feature?.properties.restaurantId === restaurantId) {
-      return feature;
+      const markerKey =
+        typeof feature.id === 'string' && feature.id.length > 0
+          ? feature.id
+          : buildMarkerKey(feature);
+      if (!seenMarkerKeys.has(markerKey)) {
+        seenMarkerKeys.add(markerKey);
+        markerKeys.push(markerKey);
+      }
     }
   }
 
-  return null;
-};
-
-const useMapPreparedVisualSceneGate = ({
-  phasePolicy,
-  sceneSnapshotKey,
-  canPrepareScene,
-}: {
-  phasePolicy: MapSnapshotPresentationPolicy;
-  sceneSnapshotKey: string | null;
-  canPrepareScene: boolean;
-}): MapPreparedVisualSceneGate => {
-  const [preparedVisualSceneKey, setPreparedVisualSceneKey] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (phasePolicy.shouldResetPreparedVisualScene) {
-      setPreparedVisualSceneKey(null);
-      return;
-    }
-    setPreparedVisualSceneKey((current) => {
-      if (current == null || current === sceneSnapshotKey) {
-        return current;
-      }
-      return null;
-    });
-  }, [phasePolicy.shouldResetPreparedVisualScene, sceneSnapshotKey]);
-
-  React.useEffect(() => {
-    if (!phasePolicy.shouldAllowVisualScene || !canPrepareScene || sceneSnapshotKey == null) {
-      return;
-    }
-    setPreparedVisualSceneKey((current) =>
-      current === sceneSnapshotKey ? current : sceneSnapshotKey
-    );
-  }, [canPrepareScene, phasePolicy.shouldAllowVisualScene, sceneSnapshotKey]);
-
-  return {
-    shouldAllowVisualScene: phasePolicy.shouldAllowVisualScene,
-    shouldAllowLabelInteractionScene: phasePolicy.shouldAllowLabelInteractionScene,
-    isVisualScenePrepared: sceneSnapshotKey != null && preparedVisualSceneKey === sceneSnapshotKey,
-  };
+  return markerKeys;
 };
 
 const useSearchMapInteractionRuntime = ({
-  mapRef,
   nativeRenderOwnerInstanceId,
   onMarkerPress,
-  shouldRenderDots,
+  onBlankMapPress,
   dotLayerId,
   pinInteractionLayerIds,
   labelInteractionLayerIds,
-  markersRenderKey,
-  styleURL,
+  labelTapHitbox,
   dotTapIntentRadiusPx,
-  setOptimisticSelectedRestaurantId,
-  getPointFromPressEvent,
-  getCoordinateFromPressEvent,
-  areStringArraysEqual,
-  isTapInsideDotInteractionGeometry,
 }: {
-  mapRef: React.RefObject<MapboxMapRef | null>;
   nativeRenderOwnerInstanceId: string;
   onMarkerPress?: (restaurantId: string, pressedCoordinate?: Coordinate | null) => void;
-  shouldRenderDots: boolean;
+  onBlankMapPress: () => void;
   dotLayerId: string;
   pinInteractionLayerIds: string[];
   labelInteractionLayerIds: string[];
-  markersRenderKey: string;
-  styleURL: string;
+  labelTapHitbox: {
+    textSize: number;
+    radialXEm: number;
+    radialYEm: number;
+    radialTopEm: number;
+    upShiftEm: number;
+    charWidthFactor: number;
+    lineHeightFactor: number;
+    paddingPx: number;
+    minWidthPx: number;
+    maxWidthPx: number;
+  };
   dotTapIntentRadiusPx: number;
-  setOptimisticSelectedRestaurantId: React.Dispatch<React.SetStateAction<string | null>>;
-  getPointFromPressEvent: (event: OnPressEvent) => { x: number; y: number } | null;
-  getCoordinateFromPressEvent: (event: OnPressEvent) => Coordinate | null;
-  areStringArraysEqual: (left: string[], right: string[]) => boolean;
-  isTapInsideDotInteractionGeometry: (args: {
-    mapInstance: MapboxMapRef | null;
-    tapPoint: { x: number; y: number };
-    coordinate: Coordinate | null;
-  }) => Promise<boolean>;
 }): SearchMapInteractionRuntime => {
   const resolveNativePressTarget = React.useCallback(
     async ({
       point,
-      includeLabels,
+      dotQueryBox,
+      tapCoordinate,
     }: {
       point: { x: number; y: number };
-      includeLabels: boolean;
+      dotQueryBox?: [number, number, number, number] | null;
+      tapCoordinate?: Coordinate | null;
     }): Promise<SearchMapRenderedPressTarget | null> =>
       searchMapRenderController.queryRenderedPressTarget({
         instanceId: nativeRenderOwnerInstanceId,
         point,
         pinLayerIds: pinInteractionLayerIds,
-        ...(includeLabels ? { labelLayerIds: labelInteractionLayerIds } : {}),
+        labelLayerIds: labelInteractionLayerIds,
+        labelTapHitbox,
+        ...(dotQueryBox ? { dotLayerIds: [dotLayerId], dotQueryBox } : {}),
+        ...(tapCoordinate ? { tapCoordinate } : {}),
       }),
-    [labelInteractionLayerIds, nativeRenderOwnerInstanceId, pinInteractionLayerIds]
+    [
+      dotLayerId,
+      labelInteractionLayerIds,
+      labelTapHitbox,
+      nativeRenderOwnerInstanceId,
+      pinInteractionLayerIds,
+    ]
   );
 
-  const [visibleDotRestaurantIdList, setVisibleDotRestaurantIdList] = React.useState<string[]>([]);
   const pinPressResolutionSeqRef = React.useRef(0);
   const onMarkerPressRef = React.useRef(onMarkerPress);
-  const shouldRenderDotsRef = React.useRef(shouldRenderDots);
-  const getPointFromPressEventRef = React.useRef(getPointFromPressEvent);
-  const getCoordinateFromPressEventRef = React.useRef(getCoordinateFromPressEvent);
+  const onBlankMapPressRef = React.useRef(onBlankMapPress);
   const resolveNativePressTargetRef = React.useRef(resolveNativePressTarget);
-  const isTapInsideDotInteractionGeometryRef = React.useRef(isTapInsideDotInteractionGeometry);
 
   React.useEffect(() => {
     onMarkerPressRef.current = onMarkerPress;
   }, [onMarkerPress]);
 
   React.useEffect(() => {
-    shouldRenderDotsRef.current = shouldRenderDots;
-  }, [shouldRenderDots]);
-
-  React.useEffect(() => {
-    getPointFromPressEventRef.current = getPointFromPressEvent;
-  }, [getPointFromPressEvent]);
-
-  React.useEffect(() => {
-    getCoordinateFromPressEventRef.current = getCoordinateFromPressEvent;
-  }, [getCoordinateFromPressEvent]);
+    onBlankMapPressRef.current = onBlankMapPress;
+  }, [onBlankMapPress]);
 
   React.useEffect(() => {
     resolveNativePressTargetRef.current = resolveNativePressTarget;
   }, [resolveNativePressTarget]);
 
-  React.useEffect(() => {
-    isTapInsideDotInteractionGeometryRef.current = isTapInsideDotInteractionGeometry;
-  }, [isTapInsideDotInteractionGeometry]);
-
-  const refreshVisibleDotRestaurantIds = React.useCallback(() => {
-    if (!shouldRenderDots) {
-      setVisibleDotRestaurantIdList((previous) => (previous.length === 0 ? previous : []));
-      return;
-    }
-    void searchMapRenderController
-      .queryRenderedDotObservation({
-        instanceId: nativeRenderOwnerInstanceId,
-        layerIds: [dotLayerId],
-      })
-      .then((observation) => {
-        const next = [...observation.restaurantIds].sort();
-        setVisibleDotRestaurantIdList((previous) =>
-          areStringArraysEqual(previous, next) ? previous : next
-        );
-      })
-      .catch(() => undefined);
-  }, [areStringArraysEqual, dotLayerId, nativeRenderOwnerInstanceId, shouldRenderDots]);
-
-  React.useEffect(() => {
-    refreshVisibleDotRestaurantIds();
-  }, [markersRenderKey, refreshVisibleDotRestaurantIds, shouldRenderDots, styleURL]);
-
-  const handleStylePinPress = React.useCallback(
-    (event: OnPressEvent) => {
-      const onMarkerPressCurrent = onMarkerPressRef.current;
-      if (!onMarkerPressCurrent) {
-        return;
-      }
-      const point = getPointFromPressEventRef.current(event);
-      if (!point) {
-        return;
-      }
-      const pressSeq = ++pinPressResolutionSeqRef.current;
-      void resolveNativePressTargetRef
-        .current({ point, includeLabels: false })
-        .then((pressTarget) => {
-          if (pressSeq !== pinPressResolutionSeqRef.current || !pressTarget) {
-            return;
-          }
-          setOptimisticSelectedRestaurantId(pressTarget.restaurantId);
-          onMarkerPressCurrent(
-            pressTarget.restaurantId,
-            pressTarget.coordinate ?? getCoordinateFromPressEventRef.current(event) ?? null
-          );
-        })
-        .catch(() => undefined);
+  const commitRestaurantPressTarget = React.useCallback(
+    (pressTarget: SearchMapRenderedPressTarget, pressCoordinate: Coordinate | null) => {
+      commitSearchMapRestaurantPressTarget({
+        pressTarget,
+        pressCoordinate,
+        onMarkerPress: onMarkerPressRef.current,
+      });
     },
-    [setOptimisticSelectedRestaurantId]
+    []
   );
 
-  const handleLabelPress = React.useCallback(
-    (event: OnPressEvent) => {
-      const onMarkerPressCurrent = onMarkerPressRef.current;
-      if (!onMarkerPressCurrent) {
-        return;
-      }
-      const point = getPointFromPressEventRef.current(event);
+  const handleMapPress = React.useCallback(
+    (feature: SearchMapPressEvent) => {
+      const point = getPointFromMapPressFeature(feature);
+      const tapCoordinate = getCoordinateFromMapPressEvent(feature);
       if (!point) {
-        return;
-      }
-      const pressSeq = ++pinPressResolutionSeqRef.current;
-      void resolveNativePressTargetRef
-        .current({ point, includeLabels: true })
-        .then((pressTarget) => {
-          if (pressSeq !== pinPressResolutionSeqRef.current || !pressTarget) {
-            return;
-          }
-          setOptimisticSelectedRestaurantId(pressTarget.restaurantId);
-          onMarkerPressCurrent(
-            pressTarget.restaurantId,
-            pressTarget.coordinate ?? getCoordinateFromPressEventRef.current(event) ?? null
-          );
-        })
-        .catch(() => undefined);
-    },
-    [setOptimisticSelectedRestaurantId]
-  );
-
-  const handleDotPress = React.useCallback(
-    (event: OnPressEvent) => {
-      const point = getPointFromPressEventRef.current(event);
-      const mapInstance = mapRef.current;
-      if (!point) {
+        onBlankMapPressRef.current();
         return;
       }
       const queryBox = [
@@ -1669,89 +1315,77 @@ const useSearchMapInteractionRuntime = ({
         point.x + dotTapIntentRadiusPx,
         point.y + dotTapIntentRadiusPx,
       ] as [number, number, number, number];
-
-      void searchMapRenderController
-        .queryRenderedDotObservation({
-          instanceId: nativeRenderOwnerInstanceId,
-          layerIds: [dotLayerId],
-          queryBox,
+      const pressSeq = ++pinPressResolutionSeqRef.current;
+      if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+        logger.debug('[PRESS-TARGET-DIAG] map_press_query_start', {
+          pressSeq,
+          point,
+          tapCoordinate,
+          dotQueryBox: queryBox,
+          pinInteractionLayerIds,
+          labelInteractionLayerIds,
+          labelTapHitbox,
+        });
+      }
+      void resolveNativePressTargetRef
+        .current({
+          point,
+          dotQueryBox: queryBox,
+          tapCoordinate,
         })
-        .then((observation) => {
-          const renderedDots = observation.renderedDots;
-          if (renderedDots.length === 0) {
-            return;
-          }
-          const target =
-            getCoordinateFromPressEventRef.current(event) ?? renderedDots[0]?.coordinate ?? null;
-          if (!target) {
-            return;
-          }
-          let pressMatch: {
-            restaurantId: string;
-            coordinate: Coordinate | null;
-          } | null = null;
-          let closestDistanceSq = Number.POSITIVE_INFINITY;
-          for (const renderedDot of renderedDots) {
-            const coordinate = renderedDot.coordinate;
-            if (!coordinate) {
-              continue;
+        .then((pressTarget) => {
+          if (pressSeq !== pinPressResolutionSeqRef.current) {
+            if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+              logger.debug('[PRESS-TARGET-DIAG] map_press_query_stale', {
+                pressSeq,
+                activePressSeq: pinPressResolutionSeqRef.current,
+                point,
+                targetKind: pressTarget?.targetKind ?? null,
+                restaurantId: pressTarget?.restaurantId ?? null,
+              });
             }
-            const distance = haversineDistanceMiles(target, coordinate);
-            if (distance >= closestDistanceSq) {
-              continue;
-            }
-            closestDistanceSq = distance;
-            pressMatch = {
-              restaurantId: renderedDot.restaurantId,
-              coordinate,
-            };
-          }
-          const restaurantId = pressMatch?.restaurantId ?? renderedDots[0]?.restaurantId ?? null;
-          if (!restaurantId) {
             return;
           }
-
-          const coordinate = pressMatch?.coordinate ?? target;
-          void isTapInsideDotInteractionGeometryRef
-            .current({
-              mapInstance,
-              tapPoint: point,
-              coordinate,
-            })
-            .then((isIntentional) => {
-              if (!isIntentional) {
-                return;
-              }
-              setOptimisticSelectedRestaurantId(restaurantId);
-              onMarkerPressRef.current?.(restaurantId, coordinate);
+          if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+            logger.debug('[PRESS-TARGET-DIAG] map_press_query_result', {
+              pressSeq,
+              point,
+              tapCoordinate,
+              targetKind: pressTarget?.targetKind ?? null,
+              restaurantId: pressTarget?.restaurantId ?? null,
+              targetCoordinate: pressTarget?.coordinate ?? null,
             });
+          }
+          if (!pressTarget) {
+            onBlankMapPressRef.current();
+            return;
+          }
+          commitRestaurantPressTarget(pressTarget, tapCoordinate);
         })
-        .catch(() => undefined);
+        .catch((error: unknown) => {
+          if (shouldLogSearchNavSwitchDiagnosticLogs()) {
+            logger.warn('[PRESS-TARGET-DIAG] map_press_query_error', {
+              pressSeq,
+              point,
+              tapCoordinate,
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+          // Native exact hit testing is authoritative for map press resolution.
+        });
     },
     [
-      dotLayerId,
       dotTapIntentRadiusPx,
-      mapRef,
-      nativeRenderOwnerInstanceId,
-      setOptimisticSelectedRestaurantId,
+      commitRestaurantPressTarget,
+      labelInteractionLayerIds,
+      labelTapHitbox,
+      pinInteractionLayerIds,
     ]
   );
 
-  const dotInteractionFilter = React.useMemo(
-    () =>
-      [
-        'all',
-        ['in', ['get', 'restaurantId'], ['literal', visibleDotRestaurantIdList]],
-      ] as unknown[],
-    [visibleDotRestaurantIdList]
-  );
-
   return {
-    dotInteractionFilter,
-    handleStylePinPress,
-    handleLabelPress,
-    handleDotPress,
-    refreshVisibleDotRestaurantIds,
+    dotInteractionFilter: DOT_INTERACTION_FILTER,
+    handleMapPress,
   };
 };
 
@@ -1775,7 +1409,14 @@ type SearchMapProps = {
   onMapIdle: (state: MapboxMapState) => void;
   onMapLoaded: () => void;
   onMapFullyRendered?: () => void;
-  onPreparedLabelSourcesReadyChange?: (ready: boolean) => void;
+  onCameraAnimationComplete?: (event: {
+    nativeEvent: {
+      payload?: {
+        animationCompletionId?: string | null;
+        status?: 'finished' | 'cancelled';
+      } | null;
+    };
+  }) => void;
   presentationLifecyclePort?: SearchMapPresentationLifecyclePort;
   onMarkerPress?: (restaurantId: string, pressedCoordinate?: Coordinate | null) => void;
   onNativeMountedSourceCountsChanged?: (counts: {
@@ -1783,7 +1424,9 @@ type SearchMapProps = {
     dotCount: number;
     labelCount: number;
   }) => void;
-  mapSceneSnapshot: SearchMapPresentationScene;
+  sourceFramePort?: SearchMapSourceFramePort | null;
+  resultsPresentationAuthority: ResultsPresentationAuthority;
+  fallbackMapSceneSnapshot: SearchMapPresentationScene;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
   restaurantLabelStyle: MapboxGL.SymbolLayerStyle;
   isMapStyleReady: boolean;
@@ -1791,15 +1434,13 @@ type SearchMapProps = {
   userLocationSnapshot: StartupLocationSnapshot | null;
   disableMarkers?: boolean;
   disableBlur?: boolean;
-  onProfilerRender?: React.ProfilerOnRenderCallback;
+  onProfilerRender?: React.ProfilerOnRenderCallback | null;
   mapQueryBudget?: MapQueryBudget | null;
   nativeViewportState: {
     bounds: MapBounds | null;
     isGestureActive: boolean;
     isMoving: boolean;
   };
-  nativePresentationState: SearchMapRenderPresentationState;
-  mapSnapshotPresentationPolicy: MapSnapshotPresentationPolicy;
   nativeInteractionMode: SearchMapRenderInteractionMode;
   mapMotionPressureController: MapMotionPressureController;
   maxFullPins: number;
@@ -1826,22 +1467,22 @@ const SearchMap: React.FC<SearchMapProps> = ({
   onMapIdle,
   onMapLoaded,
   onMapFullyRendered,
-  onPreparedLabelSourcesReadyChange,
+  onCameraAnimationComplete,
   presentationLifecyclePort,
   onMarkerPress,
   onNativeMountedSourceCountsChanged,
-  mapSceneSnapshot,
+  sourceFramePort = null,
+  resultsPresentationAuthority,
+  fallbackMapSceneSnapshot,
   buildMarkerKey,
   restaurantLabelStyle,
-  isMapStyleReady,
+  isMapStyleReady: _hostMapStyleReady,
   userLocation,
   userLocationSnapshot,
   disableMarkers = false,
   onProfilerRender,
   mapQueryBudget = null,
   nativeViewportState,
-  nativePresentationState,
-  mapSnapshotPresentationPolicy,
   nativeInteractionMode,
   mapMotionPressureController,
   maxFullPins: _maxFullPins,
@@ -1873,9 +1514,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
     };
   }, [searchMapComponentInstanceId, styleURL]);
   const shouldDisableMarkers = disableMarkers === true;
-  const phasePolicy = mapSnapshotPresentationPolicy;
-  const presentationTelemetryPhase = phasePolicy.batchPhase;
-  const visualReadyRequestKey = phasePolicy.visualReadyRequestKey;
+  const presentationAuthoritySnapshot = resultsPresentationAuthority.getSnapshot();
+  const presentationTelemetryPhase =
+    presentationAuthoritySnapshot.resultsPresentationTransport.executionStage;
+  const visualReadyRequestKey =
+    presentationAuthoritySnapshot.resultsPresentationTransport.transactionId;
   const {
     selectedRestaurantId,
     pinSourceStore,
@@ -1884,9 +1527,40 @@ const SearchMap: React.FC<SearchMapProps> = ({
     dotInteractionSourceStore,
     labelSourceStore,
     labelCollisionSourceStore,
-    labelDerivedSourceIdentityKey,
-    markersRenderKey,
-  } = mapSceneSnapshot;
+  } = fallbackMapSceneSnapshot;
+  const directSourceFrameStores = useSearchMapSourceFrameSelector(
+    sourceFramePort,
+    (snapshot): DirectSourceFrameStores => ({
+      pinSourceStore: snapshot.pinSourceStore,
+      dotSourceStore: snapshot.dotSourceStore,
+      pinInteractionSourceStore: snapshot.pinInteractionSourceStore,
+      dotInteractionSourceStore: snapshot.dotInteractionSourceStore,
+      labelSourceStore: snapshot.labelSourceStore,
+      labelCollisionSourceStore: snapshot.labelCollisionSourceStore,
+    }),
+    areDirectSourceFrameStoresEqual,
+    DIRECT_SOURCE_FRAME_STORE_KEYS,
+    'search_map_render_source_frame_stores'
+  );
+  const sourceFrameIsAuthoritative = sourceFramePort != null;
+  const activePinSourceStore = sourceFrameIsAuthoritative
+    ? directSourceFrameStores.pinSourceStore
+    : pinSourceStore;
+  const activeDotSourceStore = sourceFrameIsAuthoritative
+    ? directSourceFrameStores.dotSourceStore
+    : dotSourceStore;
+  const activePinInteractionSourceStore = sourceFrameIsAuthoritative
+    ? directSourceFrameStores.pinInteractionSourceStore
+    : pinInteractionSourceStore;
+  const activeDotInteractionSourceStore = sourceFrameIsAuthoritative
+    ? directSourceFrameStores.dotInteractionSourceStore
+    : dotInteractionSourceStore;
+  const activeLabelSourceStore = sourceFrameIsAuthoritative
+    ? directSourceFrameStores.labelSourceStore
+    : labelSourceStore;
+  const activeLabelCollisionSourceStore = sourceFrameIsAuthoritative
+    ? directSourceFrameStores.labelCollisionSourceStore
+    : labelCollisionSourceStore;
   const {
     shouldProjectSearchMarkerFamilies,
     presentedPinSourceStore,
@@ -1894,17 +1568,32 @@ const SearchMap: React.FC<SearchMapProps> = ({
     presentedDotSourceStore,
     presentedDotInteractionSourceStore,
   } = resolveMapPresentedMarkerScene({
-    phasePolicy,
-    pinSourceStore,
-    pinInteractionSourceStore,
-    dotSourceStore,
-    dotInteractionSourceStore,
+    pinSourceStore: activePinSourceStore,
+    pinInteractionSourceStore: activePinInteractionSourceStore,
+    dotSourceStore: activeDotSourceStore,
+    dotInteractionSourceStore: activeDotInteractionSourceStore,
   });
+  const [isLocalMapStyleReady, setIsLocalMapStyleReady] = React.useState(false);
   const [isStyleManagedContentReady, setIsStyleManagedContentReady] = React.useState(false);
+  const hasReportedMapLoadedFromRenderFrameRef = React.useRef(false);
+  const isLocalMapStyleReadyRef = React.useRef(false);
+  const isStyleManagedContentReadyRef = React.useRef(false);
+  const onMapFullyRenderedRef = React.useRef(onMapFullyRendered);
   React.useEffect(() => {
+    hasReportedMapLoadedFromRenderFrameRef.current = false;
+    isLocalMapStyleReadyRef.current = false;
+    isStyleManagedContentReadyRef.current = false;
+    setIsLocalMapStyleReady(false);
     setIsStyleManagedContentReady(false);
   }, [styleURL]);
-  const effectiveMapStyleReady = isMapStyleReady && isStyleManagedContentReady;
+  React.useEffect(() => {
+    isLocalMapStyleReadyRef.current = isLocalMapStyleReady;
+    isStyleManagedContentReadyRef.current = isStyleManagedContentReady;
+  }, [isLocalMapStyleReady, isStyleManagedContentReady]);
+  React.useEffect(() => {
+    onMapFullyRenderedRef.current = onMapFullyRendered;
+  }, [onMapFullyRendered]);
+  const effectiveMapStyleReady = isLocalMapStyleReady && isStyleManagedContentReady;
   const mapStyleGateDiagnosticRef = React.useRef<string | null>(null);
   React.useEffect(() => {
     if (!shouldLogSearchNavSwitchDiagnosticLogs()) {
@@ -1913,7 +1602,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     }
 
     const nextDiagnostic = JSON.stringify({
-      isMapStyleReady,
+      isMapStyleReady: isLocalMapStyleReady,
       isStyleManagedContentReady,
       effectiveMapStyleReady,
     });
@@ -1921,22 +1610,28 @@ const SearchMap: React.FC<SearchMapProps> = ({
       return;
     }
     logger.debug('[MAP-STYLE-GATE-DIAG] styleManagedContent', {
-      isMapStyleReady,
+      isMapStyleReady: isLocalMapStyleReady,
       isStyleManagedContentReady,
       effectiveMapStyleReady,
     });
     mapStyleGateDiagnosticRef.current = nextDiagnostic;
-  }, [effectiveMapStyleReady, isMapStyleReady, isStyleManagedContentReady]);
-  const shouldMountSearchMarkerLayers = !shouldDisableMarkers && isMapStyleReady;
+  }, [effectiveMapStyleReady, isLocalMapStyleReady, isStyleManagedContentReady]);
+  const shouldMountSearchMarkerLayers = !shouldDisableMarkers;
+  const directPinSourceCount = directSourceFrameStores.pinSourceStore.idsInOrder.length;
+  const directDotSourceCount = directSourceFrameStores.dotSourceStore.idsInOrder.length;
+  const directLabelSourceCount = directSourceFrameStores.labelSourceStore.idsInOrder.length;
   const shouldPrepareLabelLayers =
-    shouldProjectSearchMarkerFamilies && presentedPinSourceStore.idsInOrder.length > 0;
+    shouldProjectSearchMarkerFamilies &&
+    (presentedPinSourceStore.idsInOrder.length > 0 || directPinSourceCount > 0) &&
+    (activeLabelSourceStore.idsInOrder.length > 0 || directLabelSourceCount > 0);
   const shouldRenderLabels = shouldPrepareLabelLayers;
-  const shouldRenderDots =
-    shouldProjectSearchMarkerFamilies && presentedDotSourceStore.idsInOrder.length > 0;
-  const shouldMountDotLayers = shouldMountSearchMarkerLayers;
+  const isResultsExitActive =
+    presentationAuthoritySnapshot.resultsPresentationTransport.snapshotKind === 'results_exit';
   const { allowLiveLabelUpdates, publishVisibleLabelFeatureIds } = resolveMapLabelObservationPolicy(
     {
-      phasePolicy,
+      isPresentationLive:
+        presentationAuthoritySnapshot.resultsPresentation.contentVisibility === 'visible' &&
+        !isResultsExitActive,
     }
   );
   const labelObservationConfig = React.useMemo(
@@ -1957,11 +1652,43 @@ const SearchMap: React.FC<SearchMapProps> = ({
     searchMapRenderController.platform === 'ios' ||
     searchMapRenderController.platform === 'android';
   const requestedNativeLabelObservationEnabled =
-    nativeManagedLabelObservation &&
-    allowLiveLabelUpdates &&
-    presentationTelemetryPhase === 'live' &&
-    shouldRenderLabels &&
-    !shouldDisableMarkers;
+    nativeManagedLabelObservation && !shouldDisableMarkers;
+  React.useEffect(() => {
+    const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+    if (!isPerfScenarioAttributionActive(scenarioConfig)) {
+      return;
+    }
+    logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+      event: 'map_pin_label_observation_config_contract',
+      allowLiveLabelUpdates,
+      directLabelSourceCount,
+      directPinSourceCount,
+      directDotSourceCount,
+      isResultsExitActive,
+      isNativeManaged: nativeManagedLabelObservation,
+      labelSourceCount: activeLabelSourceStore.idsInOrder.length,
+      pinSourceCount: presentedPinSourceStore.idsInOrder.length,
+      presentationTelemetryPhase,
+      publishVisibleLabelFeatureIds,
+      requestedNativeLabelObservationEnabled,
+      shouldDisableMarkers,
+      shouldRenderLabels,
+    });
+  }, [
+    allowLiveLabelUpdates,
+    directDotSourceCount,
+    directLabelSourceCount,
+    directPinSourceCount,
+    isResultsExitActive,
+    activeLabelSourceStore.idsInOrder.length,
+    nativeManagedLabelObservation,
+    presentedPinSourceStore.idsInOrder.length,
+    presentationTelemetryPhase,
+    publishVisibleLabelFeatureIds,
+    requestedNativeLabelObservationEnabled,
+    shouldDisableMarkers,
+    shouldRenderLabels,
+  ]);
   const userLocationPuckProps = React.useMemo<{
     pulsingColor: string;
     pulsingRadius: 'accuracy' | number;
@@ -1987,9 +1714,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
               reducedAccuracy,
               isStale,
             }),
-      shouldAnimatePulse: effectiveMapStyleReady && !isStale,
+      shouldAnimatePulse: !isStale,
     };
-  }, [effectiveMapStyleReady, userLocation, userLocationSnapshot]);
+  }, [userLocation, userLocationSnapshot]);
 
   const recordRuntimeAttribution = React.useCallback(
     (contributor: string, durationMs: number) => {
@@ -2037,59 +1764,72 @@ const SearchMap: React.FC<SearchMapProps> = ({
     []
   );
   const [resolvedMapTag, setResolvedMapTag] = React.useState<number | null>(null);
-  const nativeRefSnapshot =
-    Platform.OS === 'ios'
-      ? mapHostViewRef.current
-      : (mapRef.current as { _nativeRef?: unknown } | null)?._nativeRef ?? mapRef.current;
-  const resolvedMapTagForRender = (() => {
+  const resolveCurrentNativeMapTag = React.useCallback(() => {
+    const nativeRefSnapshot =
+      Platform.OS === 'ios'
+        ? mapHostViewRef.current
+        : (mapRef.current as { _nativeRef?: unknown } | null)?._nativeRef ?? mapRef.current;
     if (nativeRefSnapshot == null) {
       return null;
     }
     const tag = findNodeHandle(nativeRefSnapshot as never);
     return typeof tag === 'number' && tag > 0 ? tag : null;
-  })();
-  React.useEffect(() => {
-    setResolvedMapTag((previous) =>
-      previous === resolvedMapTagForRender ? previous : resolvedMapTagForRender
-    );
-  }, [resolvedMapTagForRender]);
+  }, [mapRef]);
+  const publishResolvedMapTag = React.useCallback(() => {
+    const nextTag = resolveCurrentNativeMapTag();
+    setResolvedMapTag((previous) => (previous === nextTag ? previous : nextTag));
+  }, [resolveCurrentNativeMapTag]);
   const nativeDesiredPinFeatures = presentedPinSourceStore;
   const nativeDesiredPinInteractionFeatures = presentedPinInteractionSourceStore;
   const nativeDesiredDotFeatures = presentedDotSourceStore;
   const nativeDesiredDotInteractionFeatures = presentedDotInteractionSourceStore;
   const nativeDesiredLabelInteractionFeatures = EMPTY_SEARCH_MAP_SOURCE_STORE;
-  const [optimisticSelectedRestaurantId, setOptimisticSelectedRestaurantId] = React.useState<
-    string | null
-  >(null);
-  const effectiveSelectedRestaurantId = optimisticSelectedRestaurantId ?? selectedRestaurantId;
-  React.useEffect(() => {
-    setOptimisticSelectedRestaurantId(null);
-  }, [selectedRestaurantId]);
-  const highlightedMarkerKey = React.useMemo(() => {
+  const authoritativeSelectedRestaurantId = selectedRestaurantId;
+  const effectiveSelectedRestaurantId = authoritativeSelectedRestaurantId;
+  const highlightedMarkerKeys = React.useMemo(() => {
     if (!effectiveSelectedRestaurantId) {
-      return null;
+      return [];
     }
-    const highlightedFeature =
-      findPresentedFeatureForRestaurantId({
+    const orderedMarkerKeys = [
+      ...collectPresentedMarkerKeysForRestaurantId({
+        sourceStore: directSourceFrameStores.pinSourceStore,
+        restaurantId: effectiveSelectedRestaurantId,
+        buildMarkerKey,
+      }),
+      ...collectPresentedMarkerKeysForRestaurantId({
+        sourceStore: directSourceFrameStores.dotSourceStore,
+        restaurantId: effectiveSelectedRestaurantId,
+        buildMarkerKey,
+      }),
+      ...collectPresentedMarkerKeysForRestaurantId({
         sourceStore: presentedPinSourceStore,
         restaurantId: effectiveSelectedRestaurantId,
-      }) ??
-      findPresentedFeatureForRestaurantId({
+        buildMarkerKey,
+      }),
+      ...collectPresentedMarkerKeysForRestaurantId({
         sourceStore: presentedDotSourceStore,
         restaurantId: effectiveSelectedRestaurantId,
-      });
-    if (!highlightedFeature) {
-      return null;
+        buildMarkerKey,
+      }),
+    ];
+    const seenMarkerKeys = new Set<string>();
+    const markerKeys: string[] = [];
+    for (const markerKey of orderedMarkerKeys) {
+      if (seenMarkerKeys.has(markerKey)) {
+        continue;
+      }
+      seenMarkerKeys.add(markerKey);
+      markerKeys.push(markerKey);
     }
-    return typeof highlightedFeature.id === 'string' && highlightedFeature.id.length > 0
-      ? highlightedFeature.id
-      : buildMarkerKey(highlightedFeature as Feature<Point, RestaurantFeatureProperties>);
+    return markerKeys;
   }, [
     buildMarkerKey,
+    directSourceFrameStores,
     effectiveSelectedRestaurantId,
     presentedDotSourceStore,
     presentedPinSourceStore,
   ]);
+  const highlightedMarkerKey = highlightedMarkerKeys[0] ?? null;
   const {
     instanceId: resolvedNativeRenderOwnerInstanceId,
     isNativeAvailable: resolvedIsNativeRenderOwnerAvailable,
@@ -2099,13 +1839,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
   } = useSearchMapNativeRenderOwner({
     mapComponentInstanceId: searchMapComponentInstanceId,
     resolvedMapTag,
-    isMapStyleReady,
-    isRenderFrameSyncReady: isMapStyleReady,
+    isMapStyleReady: isLocalMapStyleReady,
+    isRenderFrameSyncReady: isLocalMapStyleReady,
     mapMotionPressureController,
-    presentationState: {
-      ...nativePresentationState,
-      selectedRestaurantId: effectiveSelectedRestaurantId ?? null,
-    },
+    resultsPresentationAuthority,
+    selectedRestaurantId: effectiveSelectedRestaurantId ?? null,
     pinSourceId: STYLE_PINS_SOURCE_ID,
     pinInteractionSourceId: PIN_INTERACTION_SOURCE_ID,
     dotSourceId: DOT_SOURCE_ID,
@@ -2115,20 +1853,22 @@ const SearchMap: React.FC<SearchMapProps> = ({
     labelCollisionSourceId: RESTAURANT_LABEL_COLLISION_SOURCE_ID,
     labelObservationEnabled: requestedNativeLabelObservationEnabled,
     labelObservationConfig,
-    commitVisibleLabelInteractionVisibility: publishVisibleLabelFeatureIds,
+    commitVisibleLabelInteractionVisibility: allowLiveLabelUpdates,
     pins: nativeDesiredPinFeatures,
     pinInteractions: nativeDesiredPinInteractionFeatures,
     dots: nativeDesiredDotFeatures,
     dotInteractions: nativeDesiredDotInteractionFeatures,
-    labels: labelSourceStore,
+    labels: activeLabelSourceStore,
     labelInteractions: nativeDesiredLabelInteractionFeatures,
-    labelCollisions: labelCollisionSourceStore,
+    labelCollisions: activeLabelCollisionSourceStore,
+    sourceFramePort,
     viewportState: {
       bounds: nativeViewportState.bounds,
       isGestureActive: nativeViewportState.isGestureActive,
       isMoving: nativeViewportState.isMoving,
     },
     highlightedMarkerKey,
+    highlightedMarkerKeys,
     interactionMode: nativeInteractionMode,
     onExecutionBatchMountedHidden: presentationLifecyclePort?.handleExecutionBatchMountedHidden,
     onMarkerEnterStarted: presentationLifecyclePort?.handleMarkerEnterStarted,
@@ -2138,25 +1878,62 @@ const SearchMap: React.FC<SearchMapProps> = ({
         frameGenerationId: payload.frameGenerationId,
         executionBatchId: payload.executionBatchId,
         markerEnterCommitId: null,
+        pinCount: payload.pinCount,
+        dotCount: payload.dotCount,
+        labelCount: payload.labelCount,
         settledAtMs: payload.settledAtMs,
       });
     },
     onMarkerExitStarted: presentationLifecyclePort?.handleMarkerExitStarted,
     onMarkerExitSettled: presentationLifecyclePort?.handleMarkerExitSettled,
     onViewportChanged: handleNativeViewportChangedFromOwner,
-    onLabelObservationUpdated: ({ visibleLabelFeatureIds }) => {
+    onLabelObservationUpdated: ({
+      visibleLabelFeatureIds,
+      layerRenderedFeatureCount,
+      effectiveRenderedFeatureCount,
+    }) => {
       const nextVisibleLabelFeatureIds = [...visibleLabelFeatureIds].sort();
       const previousVisibleLabelFeatureIds = visibleLabelFeatureIdListRef.current;
-      if (areStringArraysEqual(previousVisibleLabelFeatureIds, nextVisibleLabelFeatureIds)) {
+      const shouldLogFirstContract = !didLogLabelVisibilityContractRef.current;
+      if (
+        !shouldLogFirstContract &&
+        areStringArraysEqual(previousVisibleLabelFeatureIds, nextVisibleLabelFeatureIds)
+      ) {
         return;
       }
       visibleLabelFeatureIdListRef.current = nextVisibleLabelFeatureIds;
-      if (publishVisibleLabelFeatureIds) {
-        setSettledVisibleLabelCount((previous) =>
-          previous === nextVisibleLabelFeatureIds.length
-            ? previous
-            : nextVisibleLabelFeatureIds.length
+      const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+      if (isPerfScenarioAttributionActive(scenarioConfig)) {
+        const sourceFrameSnapshot = sourceFramePort?.getSnapshot() ?? null;
+        const visibleLabelCandidateCounts = nextVisibleLabelFeatureIds.reduce<
+          Record<LabelCandidate, number>
+        >(
+          (counts, featureId) => {
+            const candidate = getLabelCandidateFromFeatureId(featureId);
+            if (candidate != null) {
+              counts[candidate] += 1;
+            }
+            return counts;
+          },
+          { bottom: 0, right: 0, top: 0, left: 0 }
         );
+        didLogLabelVisibilityContractRef.current = true;
+        logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+          event: 'map_pin_label_visibility_contract',
+          visibleLabelCount: nextVisibleLabelFeatureIds.length,
+          visibleLabelCandidateCounts,
+          layerRenderedFeatureCount,
+          effectiveRenderedFeatureCount,
+          expectedPinLabelSourceCount:
+            activeLabelSourceStore.idsInOrder.length ||
+            sourceFrameSnapshot?.labelSourceStore.idsInOrder.length ||
+            0,
+          expectedPinCount:
+            presentedPinSourceStore.idsInOrder.length ||
+            sourceFrameSnapshot?.pinSourceStore.idsInOrder.length ||
+            0,
+          hasVisiblePinLabels: nextVisibleLabelFeatureIds.length > 0,
+        });
       }
     },
   });
@@ -2174,10 +1951,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const nativeRenderOwnerAttachState = resolvedNativeRenderOwnerAttachState;
   const isNativeRenderOwnerReady = resolvedIsNativeRenderOwnerReady;
   const nativeFatalErrorMessage = resolvedNativeFatalErrorMessage;
-  if (isMapStyleReady && !isNativeRenderOwnerAvailable) {
+  if (isLocalMapStyleReady && !isNativeRenderOwnerAvailable) {
     throw new Error('SearchMap native render owner is required for the full cutover');
   }
-  if (isMapStyleReady && nativeRenderOwnerAttachState === 'failed') {
+  if (isLocalMapStyleReady && nativeRenderOwnerAttachState === 'failed') {
     throw new Error(
       nativeFatalErrorMessage ?? 'SearchMap native render owner attach failed during full cutover'
     );
@@ -2185,14 +1962,14 @@ const SearchMap: React.FC<SearchMapProps> = ({
   if (nativeFatalErrorMessage != null) {
     throw new Error(nativeFatalErrorMessage);
   }
-  const isNativeOwnedMarkerRuntimeReady = isMapStyleReady && isNativeRenderOwnerReady;
-  const handleDidFinishRenderingFrame = React.useCallback(() => {}, []);
+  const isNativeOwnedMarkerRuntimeReady = isLocalMapStyleReady && isNativeRenderOwnerReady;
   const hasReportedFirstFullyRenderedFrameRef = React.useRef(false);
   const handleDidFinishRenderingFrameFully = React.useCallback(() => {
-    if (!isMapStyleReady) {
+    if (!isLocalMapStyleReadyRef.current) {
       return;
     }
-    if (!isStyleManagedContentReady) {
+    if (!isStyleManagedContentReadyRef.current) {
+      isStyleManagedContentReadyRef.current = true;
       setIsStyleManagedContentReady(true);
       return;
     }
@@ -2200,8 +1977,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
       return;
     }
     hasReportedFirstFullyRenderedFrameRef.current = true;
-    onMapFullyRendered?.();
-  }, [isMapStyleReady, isStyleManagedContentReady, onMapFullyRendered]);
+    onMapFullyRenderedRef.current?.();
+  }, []);
   const nativePresentationOpacityExpression = React.useMemo(
     () =>
       [
@@ -2268,9 +2045,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
         'case',
         nativeHighlightedExpression,
         PRIMARY_COLOR,
-        ['coalesce', ['get', 'pinColor'], ['get', 'pinColorContextual'], ['get', 'pinColorGlobal']],
+        ['get', 'pinColor'],
       ],
-    } as MapboxGL.SymbolLayerStyle;
+    } as unknown as MapboxGL.SymbolLayerStyle;
   }, [
     nativeHighlightedExpression,
     nativeDotOpacityExpression,
@@ -2278,75 +2055,22 @@ const SearchMap: React.FC<SearchMapProps> = ({
   ]);
   const labelObservationEnabled =
     requestedNativeLabelObservationEnabled && isNativeOwnedMarkerRuntimeReady;
-  const [settledVisibleLabelCount, setSettledVisibleLabelCount] = React.useState(0);
   const visibleLabelFeatureIdListRef = React.useRef<string[]>([]);
+  const didLogLabelVisibilityContractRef = React.useRef(false);
   const clearLabelObservationSnapshotRefs = React.useCallback(() => {
     visibleLabelFeatureIdListRef.current = [];
+    didLogLabelVisibilityContractRef.current = false;
   }, []);
   React.useEffect(() => {
     if (labelObservationEnabled) {
       return;
     }
     clearLabelObservationSnapshotRefs();
-    setSettledVisibleLabelCount((previous) => (previous === 0 ? previous : 0));
   }, [clearLabelObservationSnapshotRefs, labelObservationEnabled]);
   React.useEffect(
     () => () => clearLabelObservationSnapshotRefs(),
     [clearLabelObservationSnapshotRefs]
   );
-  const preparedLabelSourcesReady = resolvePreparedLabelSourcesReady({
-    shouldProjectSearchMarkerFamilies,
-    isNativeOwnedMarkerRuntimeReady,
-    allowEmptyEnter: nativePresentationState.allowEmptyEnter,
-    shouldRenderLabels,
-    presentedPinSourceStore,
-    presentedDotSourceStore,
-    visualSceneKey: phasePolicy.visualSceneKey,
-    labelDerivedSourceIdentityKey,
-    labelSourceStore,
-    labelCollisionSourceStore,
-  });
-  React.useEffect(() => {
-    // The coordinator force-resets the bus readiness flag to false for each staged cycle.
-    // Re-assert readiness when the map enters a new presentation batch phase even if the derived
-    // readiness boolean stayed true across cycles, and when a new results snapshot lands
-    // inside the same covered phase.
-    if (shouldLogSearchNavSwitchDiagnosticLogs()) {
-      logger.debug('[MAP-VIS-DIAG] preparedLabelSourcesReady', {
-        ready: preparedLabelSourcesReady,
-        batchPhase: phasePolicy.batchPhase,
-        visualSceneKey: phasePolicy.visualSceneKey,
-        shouldProjectSearchMarkerFamilies,
-        isNativeOwnedMarkerRuntimeReady,
-        shouldRenderLabels,
-        allowEmptyEnter: nativePresentationState.allowEmptyEnter,
-        pinCount: presentedPinSourceStore.idsInOrder.length,
-        dotCount: presentedDotSourceStore.idsInOrder.length,
-        labelCount: labelSourceStore.idsInOrder.length,
-        labelCollisionCount: labelCollisionSourceStore.idsInOrder.length,
-        labelDerivedSourceIdentityKey,
-        pinSourceRevision: presentedPinSourceStore.sourceRevision,
-        labelSourceRevision: labelSourceStore.sourceRevision,
-        labelCollisionSourceRevision: labelCollisionSourceStore.sourceRevision,
-      });
-    }
-    onPreparedLabelSourcesReadyChange?.(preparedLabelSourcesReady);
-  }, [
-    isNativeOwnedMarkerRuntimeReady,
-    labelCollisionSourceStore.sourceRevision,
-    labelDerivedSourceIdentityKey,
-    labelSourceStore.sourceRevision,
-    onPreparedLabelSourcesReadyChange,
-    phasePolicy.batchPhase,
-    phasePolicy.visualSceneKey,
-    preparedLabelSourcesReady,
-    nativePresentationState.allowEmptyEnter,
-    presentedPinSourceStore.sourceRevision,
-    presentedDotSourceStore.sourceRevision,
-    shouldProjectSearchMarkerFamilies,
-    shouldRenderLabels,
-    visualReadyRequestKey,
-  ]);
   const restaurantLabelStyleWithStableOrder = React.useMemo(() => {
     if (!STABILIZE_LABEL_ORDER) {
       return restaurantLabelStyle;
@@ -2360,7 +2084,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       // symbolSortKey caused per-frame re-sort during camera movement which,
       // combined with the large collision obstacles (1.1x), produced sub-pixel
       // placement wobble.
-    } as MapboxGL.SymbolLayerStyle;
+    } as unknown as MapboxGL.SymbolLayerStyle;
   }, [restaurantLabelStyle]);
 
   const labelTextSize = React.useMemo(() => {
@@ -2376,11 +2100,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     // We want candidate label placements centered on the pin fill centerline instead.
     return PIN_MARKER_RENDER_SIZE - PIN_FILL_CENTER_Y;
   }, []);
-
-  const labelUpShiftEm = React.useMemo(
-    () => labelPinTipToFillCenterPx / labelTextSize,
-    [labelPinTipToFillCenterPx, labelTextSize]
-  );
 
   const labelRadialXEm = React.useMemo(() => {
     const baselineRadialPx = LABEL_RADIAL_OFFSET_EM * labelTextSize;
@@ -2410,6 +2129,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
     return radialPx / labelTextSize;
   }, [labelPinTipToFillCenterPx, labelTextSize]);
 
+  const labelUpShiftEm = React.useMemo(
+    () => labelPinTipToFillCenterPx / labelTextSize,
+    [labelPinTipToFillCenterPx, labelTextSize]
+  );
+
   const labelCandidateStyles = React.useMemo(() => {
     const baseTextOpacity = restaurantLabelStyleWithStableOrder.textOpacity ?? 1;
     const base: MapboxGL.SymbolLayerStyle = {
@@ -2420,8 +2144,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
         nativeLabelOpacityExpression,
         baseTextOpacity,
       ],
-      // Tiny "mutex" icon at the feature point: prevents multiple candidate labels for the same
-      // restaurant from being placed simultaneously, without reintroducing sprite-backed pin art.
       iconImage: LABEL_MUTEX_IMAGE_ID,
       iconSize: LABEL_MUTEX_ICON_SIZE,
       iconAnchor: 'bottom',
@@ -2492,7 +2214,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       'case',
       nativeHighlightedExpression,
       PRIMARY_COLOR,
-      ['coalesce', ['get', 'pinColor'], ['get', 'pinColorContextual'], ['get', 'pinColorGlobal']],
+      ['get', 'pinColor'],
     ] as const;
   }, [nativeHighlightedExpression]);
 
@@ -2593,20 +2315,16 @@ const SearchMap: React.FC<SearchMapProps> = ({
   ]);
 
   const pinInteractionLayerStack = React.useMemo(
-    () =>
-      Array.from({ length: STYLE_PIN_STACK_SLOTS }, (_, slotIndex) => {
-        const lodSlotFilter = ['==', ['coalesce', ['get', 'nativeLodZ'], -1], slotIndex] as const;
-        return (
-          <MapboxGL.CircleLayer
-            key={`pin-interaction-slot-${slotIndex}`}
-            id={`restaurant-pin-interaction-slot-${slotIndex}`}
-            slot="top"
-            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-            style={PIN_INTERACTION_LAYER_STYLE}
-            filter={lodSlotFilter}
-          />
-        );
-      }),
+    () => [
+      <MapboxGL.CircleLayer
+        key={PIN_INTERACTION_LAYER_ID}
+        id={PIN_INTERACTION_LAYER_ID}
+        slot="top"
+        belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+        sourceID={PIN_INTERACTION_SOURCE_ID}
+        style={PIN_INTERACTION_LAYER_STYLE}
+      />,
+    ],
     []
   );
 
@@ -2621,10 +2339,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
         iconAllowOverlap: true,
         iconIgnorePlacement: true,
         iconPadding: 0,
-        textOpacity: DEBUG_PRESSABLE_INTERACTION_LAYERS ? 0.38 : INTERACTION_LAYER_HIDDEN_OPACITY,
-        textColor: DEBUG_PRESSABLE_INTERACTION_LAYERS ? '#00E5FF' : style.textColor,
-        textHaloColor: DEBUG_PRESSABLE_INTERACTION_LAYERS ? '#003B46' : style.textHaloColor,
-        textHaloWidth: DEBUG_PRESSABLE_INTERACTION_LAYERS ? 1 : style.textHaloWidth,
+        textColor: SHOW_INTERACTION_LAYER_DEBUG_COLORS ? '#00e5ff' : style.textColor,
+        textHaloColor: SHOW_INTERACTION_LAYER_DEBUG_COLORS ? '#003b46' : style.textHaloColor,
+        textHaloWidth: SHOW_INTERACTION_LAYER_DEBUG_COLORS ? 2.5 : style.textHaloWidth,
+        textOpacity: SHOW_INTERACTION_LAYER_DEBUG_COLORS ? 0.85 : INTERACTION_LAYER_HIDDEN_OPACITY,
         textAllowOverlap: true,
         textIgnorePlacement: true,
         textPadding: 0,
@@ -2639,71 +2357,73 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }, [labelCandidateStyles]);
 
   const labelLayerSpecs = React.useMemo(() => LABEL_LAYER_SPECS, []);
-  const {
-    shouldAllowVisualScene: shouldAllowVisibleLabelScene,
-    shouldAllowLabelInteractionScene,
-    isVisualScenePrepared: isVisibleLabelScenePrepared,
-  } = useMapPreparedVisualSceneGate({
-    phasePolicy,
-    sceneSnapshotKey: phasePolicy.visualSceneKey,
-    canPrepareScene:
-      shouldProjectSearchMarkerFamilies &&
-      shouldMountSearchMarkerLayers &&
-      presentedPinSourceStore.idsInOrder.length > 0 &&
-      labelSourceStore.idsInOrder.length > 0 &&
-      isNativeOwnedMarkerRuntimeReady,
-  });
-  const {
-    shouldMountLabelSource,
-    shouldMountLabelInteractionSource,
-    shouldMountLabelCollisionSource,
-    shouldMountLabelLayers,
-    shouldMountLabelInteractionLayers,
-    shouldMountLabelCollisionLayers,
-    nativeDesiredLabelInteractionFeatures: _nativeDesiredLabelInteractionFeatures,
-    mountedSourceCounts,
-  } = resolveMapPresentedLabelScene({
+  const { mountedSourceCounts } = resolveMapPresentedLabelScene({
     shouldMountSearchMarkerLayers,
     shouldProjectSearchMarkerFamilies,
-    shouldAllowVisualScene: shouldAllowVisibleLabelScene,
-    shouldAllowLabelInteractionScene,
-    isVisualScenePrepared: isVisibleLabelScenePrepared,
     presentedPinSourceStore,
     presentedDotSourceStore,
-    labelSourceStore,
-    labelCollisionSourceStore,
-    settledVisibleLabelCount,
-    shouldUsePinCollisionObstacle:
-      USE_STYLE_LAYER_PINS && PIN_COLLISION_OBSTACLE_GEOMETRY !== 'off',
+    labelSourceStore: activeLabelSourceStore,
+    labelCollisionSourceStore: activeLabelCollisionSourceStore,
   });
 
   React.useEffect(() => {
-    onNativeMountedSourceCountsChanged?.(mountedSourceCounts);
-  }, [mountedSourceCounts, onNativeMountedSourceCountsChanged]);
+    const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+    if (!isPerfScenarioAttributionActive(scenarioConfig)) {
+      return;
+    }
+    logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+      event: 'map_pin_label_layer_mount_contract',
+      directDotSourceCount,
+      directLabelSourceCount,
+      directPinSourceCount,
+      isNativeOwnedMarkerRuntimeReady,
+      labelSourceCount: activeLabelSourceStore.idsInOrder.length,
+      shouldProjectSearchMarkerFamilies,
+      markerLayerShellMounted: shouldMountSearchMarkerLayers,
+    });
+  }, [
+    directDotSourceCount,
+    directLabelSourceCount,
+    directPinSourceCount,
+    isNativeOwnedMarkerRuntimeReady,
+    activeLabelSourceStore.idsInOrder.length,
+    shouldProjectSearchMarkerFamilies,
+    shouldMountSearchMarkerLayers,
+  ]);
 
-  const {
-    dotInteractionFilter,
-    handleStylePinPress,
-    handleLabelPress,
-    handleDotPress,
-    refreshVisibleDotRestaurantIds,
-  } = useSearchMapInteractionRuntime({
-    mapRef,
-    nativeRenderOwnerInstanceId,
-    onMarkerPress,
-    shouldRenderDots,
-    dotLayerId: DOT_LAYER_ID,
-    pinInteractionLayerIds: PIN_INTERACTION_LAYER_IDS,
-    labelInteractionLayerIds: LABEL_INTERACTION_LAYER_IDS,
-    markersRenderKey,
-    styleURL,
-    dotTapIntentRadiusPx: DOT_TAP_INTENT_RADIUS_PX,
-    setOptimisticSelectedRestaurantId,
-    getPointFromPressEvent,
-    getCoordinateFromPressEvent,
-    areStringArraysEqual,
-    isTapInsideDotInteractionGeometry,
-  });
+  React.useEffect(() => {
+    if (sourceFramePort != null) {
+      return;
+    }
+    onNativeMountedSourceCountsChanged?.(mountedSourceCounts);
+  }, [mountedSourceCounts, onNativeMountedSourceCountsChanged, sourceFramePort]);
+
+  const labelTapHitbox = React.useMemo(
+    () => ({
+      textSize: labelTextSize,
+      radialXEm: labelRadialXEm,
+      radialYEm: labelRadialYEm,
+      radialTopEm: labelRadialTopEm,
+      upShiftEm: labelUpShiftEm,
+      charWidthFactor: LABEL_TAP_CHAR_WIDTH_FACTOR,
+      lineHeightFactor: LABEL_TAP_LINE_HEIGHT_FACTOR,
+      paddingPx: LABEL_TAP_PADDING_PX,
+      minWidthPx: LABEL_TAP_MIN_WIDTH_PX,
+      maxWidthPx: LABEL_TAP_MAX_WIDTH_PX,
+    }),
+    [labelRadialTopEm, labelRadialXEm, labelRadialYEm, labelTextSize, labelUpShiftEm]
+  );
+  const { dotInteractionFilter, handleMapPress } =
+    useSearchMapInteractionRuntime({
+      nativeRenderOwnerInstanceId,
+      onMarkerPress,
+      onBlankMapPress: onPress,
+      dotLayerId: DOT_INTERACTION_LAYER_ID,
+      pinInteractionLayerIds: PIN_INTERACTION_LAYER_IDS,
+      labelInteractionLayerIds: LABEL_INTERACTION_LAYER_IDS,
+      labelTapHitbox,
+      dotTapIntentRadiusPx: DOT_TAP_INTENT_RADIUS_PX,
+    });
   const onProfilerRenderRef = React.useRef(onProfilerRender);
   React.useEffect(() => {
     onProfilerRenderRef.current = onProfilerRender;
@@ -2725,6 +2445,22 @@ const SearchMap: React.FC<SearchMapProps> = ({
     [onNativeViewportChanged, recordTimedRuntimeAttribution]
   );
   nativeViewportChangedHandlerRef.current = (payload) => {
+    const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+    if (
+      payload.isGestureActive &&
+      isPerfScenarioAttributionActive(scenarioConfig)
+    ) {
+      logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+        event: 'map_post_results_gesture_contract',
+        source: 'native_camera',
+        touchReachedMap: true,
+        centerLat: payload.center[1],
+        centerLng: payload.center[0],
+        zoom: payload.zoom,
+        isGestureActive: payload.isGestureActive,
+        isMoving: payload.isMoving,
+      });
+    }
     recordTimedRuntimeAttribution('map_js_owner_viewport_dispatch', () => {
       const northEast: [number, number] = [
         payload.bounds.northEast.lng,
@@ -2761,10 +2497,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
     (state: MapboxMapState) => {
       recordTimedRuntimeAttribution('map_js_map_idle_handler', () => {
         onMapIdle(state);
-        refreshVisibleDotRestaurantIds();
       });
     },
-    [onMapIdle, recordTimedRuntimeAttribution, refreshVisibleDotRestaurantIds]
+    [onMapIdle, recordTimedRuntimeAttribution]
   );
   // ---------------------------------------------------------------------------
   // Event-driven reveal signals: React effects that fire based on readiness
@@ -2773,21 +2508,46 @@ const SearchMap: React.FC<SearchMapProps> = ({
   // ---------------------------------------------------------------------------
 
   const handleMapLoaded = React.useCallback(() => {
+    publishResolvedMapTag();
+    hasReportedMapLoadedFromRenderFrameRef.current = true;
     recordTimedRuntimeAttribution('map_js_map_loaded_handler', () => {
       onMapLoaded();
     });
-  }, [onMapLoaded, recordTimedRuntimeAttribution]);
+  }, [onMapLoaded, publishResolvedMapTag, recordTimedRuntimeAttribution]);
+
+  const handleDidFinishRenderingFrame = React.useCallback(() => {
+    if (!isLocalMapStyleReadyRef.current) {
+      return;
+    }
+    if (hasReportedMapLoadedFromRenderFrameRef.current) {
+      return;
+    }
+    handleMapLoaded();
+  }, [handleMapLoaded]);
 
   const handleMapLoadedStyle = React.useCallback(() => {
+    isLocalMapStyleReadyRef.current = true;
+    isStyleManagedContentReadyRef.current = false;
+    setIsLocalMapStyleReady(true);
     setIsStyleManagedContentReady(false);
     handleMapLoaded();
   }, [handleMapLoaded]);
 
   const handleMapLoadedMap = React.useCallback(() => {
+    isLocalMapStyleReadyRef.current = true;
+    setIsLocalMapStyleReady(true);
     handleMapLoaded();
   }, [handleMapLoaded]);
 
   const handleTouchStart = React.useCallback(() => {
+    const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+    if (isPerfScenarioAttributionActive(scenarioConfig)) {
+      logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+        event: 'map_post_results_gesture_contract',
+        source: 'map_touch_start',
+        touchReachedMap: true,
+      });
+    }
     onTouchStart?.();
   }, [onTouchStart]);
 
@@ -2795,78 +2555,42 @@ const SearchMap: React.FC<SearchMapProps> = ({
     onTouchEnd?.();
   }, [onTouchEnd]);
 
-  const handleMapViewPress = React.useCallback(
-    (feature: GeoJSON.Feature) => {
-      // Mapbox MapView onPress is typed as a single feature; wrap it into the
-      // marker-guard event shape consumed by the shared press classifier.
-      const syntheticEvent: OnPressEvent = {
-        features: [feature],
-        coordinates: { latitude: 0, longitude: 0 },
-        point: { x: 0, y: 0 },
-      };
-      if (pressEventTargetsMarkerFeature(syntheticEvent)) {
-        return;
-      }
-      setOptimisticSelectedRestaurantId(null);
-      onPress();
-    },
-    [onPress]
-  );
+  const handleMapViewPress = handleMapPress;
 
-  const markerSceneProps = React.useMemo<SearchMapMarkerSceneProps>(
-    () => ({
-      shouldMountDotLayers,
-      shouldMountSearchMarkerLayers,
-      dotLayerStyle,
-      dotInteractionFilter,
-      handleDotPress,
-      stylePinLayerStack,
-      handleStylePinPress,
-      pinInteractionLayerStack,
-      profilerCallback,
-      shouldMountLabelSource,
-      shouldMountLabelInteractionSource,
-      shouldMountLabelCollisionSource,
-      shouldMountLabelLayers,
-      shouldMountLabelInteractionLayers,
-      shouldMountLabelCollisionLayers,
-      labelSourceRevision: labelSourceStore.sourceRevision,
-      collisionSourceRevision: labelCollisionSourceStore.sourceRevision,
-      labelLayerSpecs,
-      labelCandidateStyles,
-      labelInteractionStyles,
-      handleLabelPress,
-      restaurantLabelPinCollisionLayerKey,
-      restaurantLabelPinCollisionLayerId,
-      restaurantLabelPinCollisionLayerIdSideLeft,
-      restaurantLabelPinCollisionLayerIdSideRight,
-      restaurantLabelPinCollisionStyles,
-    }),
+  const markerSceneProps = React.useMemo<SearchMapMarkerSceneProps | null>(
+    () =>
+      shouldMountSearchMarkerLayers
+        ? {
+            dotLayerStyle,
+            dotInteractionFilter,
+            handlePressTarget: handleMapPress,
+            stylePinLayerStack,
+            pinInteractionLayerStack,
+            profilerCallback,
+            labelLayerSpecs,
+            labelCandidateStyles,
+            labelInteractionStyles,
+            restaurantLabelPinCollisionLayerKey,
+            restaurantLabelPinCollisionLayerId,
+            restaurantLabelPinCollisionLayerIdSideLeft,
+            restaurantLabelPinCollisionLayerIdSideRight,
+            restaurantLabelPinCollisionStyles,
+          }
+        : null,
     [
-      labelCollisionSourceStore.sourceRevision,
       dotInteractionFilter,
       dotLayerStyle,
-      handleDotPress,
-      handleLabelPress,
-      handleStylePinPress,
+      handleMapPress,
       labelCandidateStyles,
       labelInteractionStyles,
       labelLayerSpecs,
-      labelSourceStore.sourceRevision,
       pinInteractionLayerStack,
       profilerCallback,
-      shouldMountLabelCollisionSource,
       restaurantLabelPinCollisionLayerId,
       restaurantLabelPinCollisionLayerIdSideLeft,
       restaurantLabelPinCollisionLayerIdSideRight,
       restaurantLabelPinCollisionLayerKey,
       restaurantLabelPinCollisionStyles,
-      shouldMountDotLayers,
-      shouldMountLabelInteractionSource,
-      shouldMountLabelInteractionLayers,
-      shouldMountLabelCollisionLayers,
-      shouldMountLabelLayers,
-      shouldMountLabelSource,
       shouldMountSearchMarkerLayers,
       stylePinLayerStack,
     ]
@@ -2875,6 +2599,12 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const userLocationLayerProps = React.useMemo(
     () => userLocationPuckProps,
     [userLocationPuckProps]
+  );
+  const handleMapLayout = React.useCallback(
+    (_event: LayoutChangeEvent) => {
+      publishResolvedMapTag();
+    },
+    [publishResolvedMapTag]
   );
   return (
     <SearchMapViewScene
@@ -2889,8 +2619,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
       handleMapLoadedMap={handleMapLoadedMap}
       handleDidFinishRenderingFrame={handleDidFinishRenderingFrame}
       handleDidFinishRenderingFrameFully={handleDidFinishRenderingFrameFully}
-      onLayout={() => {}}
-      shouldRenderStyleManagedContent={effectiveMapStyleReady}
+      handleCameraAnimationComplete={onCameraAnimationComplete}
+      onLayout={handleMapLayout}
       mapCenter={mapCenter}
       mapZoom={mapZoom}
       mapCameraAnimation={mapCameraAnimation}
@@ -2962,9 +2692,6 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
   if (prev.styleURL !== next.styleURL) {
     return false;
   }
-  if (prev.isMapStyleReady !== next.isMapStyleReady) {
-    return false;
-  }
   if (prev.mapZoom !== next.mapZoom) {
     return false;
   }
@@ -2984,7 +2711,13 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
   if (prev.isFollowingUser !== next.isFollowingUser) {
     return false;
   }
-  if (prev.mapSceneSnapshot !== next.mapSceneSnapshot) {
+  if (prev.fallbackMapSceneSnapshot !== next.fallbackMapSceneSnapshot) {
+    return false;
+  }
+  if (prev.sourceFramePort !== next.sourceFramePort) {
+    return false;
+  }
+  if (prev.resultsPresentationAuthority !== next.resultsPresentationAuthority) {
     return false;
   }
   if (prev.disableMarkers !== next.disableMarkers) {
@@ -3026,39 +2759,13 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
   if (prev.onMapFullyRendered !== next.onMapFullyRendered) {
     return false;
   }
-  if (prev.onPreparedLabelSourcesReadyChange !== next.onPreparedLabelSourcesReadyChange) {
+  if (prev.onCameraAnimationComplete !== next.onCameraAnimationComplete) {
     return false;
   }
   if (prev.presentationLifecyclePort !== next.presentationLifecyclePort) {
     return false;
   }
   if (prev.onMarkerPress !== next.onMarkerPress) {
-    return false;
-  }
-  const shouldDeferPresentationDelta = shouldDeferPreSourceRevealRender({
-    previousPresentationState: prev.nativePresentationState,
-    previousBatchPhase: prev.mapSnapshotPresentationPolicy.batchPhase,
-    nextPresentationState: next.nativePresentationState,
-    nextBatchPhase: next.mapSnapshotPresentationPolicy.batchPhase,
-    nextPinSourceStore: next.mapSceneSnapshot.pinSourceStore,
-    nextDotSourceStore: next.mapSceneSnapshot.dotSourceStore,
-  });
-  if (
-    !areSearchMapRenderPresentationStatesEqual(
-      prev.nativePresentationState,
-      next.nativePresentationState
-    ) &&
-    !shouldDeferPresentationDelta
-  ) {
-    return false;
-  }
-  if (
-    !areMapSnapshotPresentationPoliciesEqual(
-      prev.mapSnapshotPresentationPolicy,
-      next.mapSnapshotPresentationPolicy
-    ) &&
-    !shouldDeferPresentationDelta
-  ) {
     return false;
   }
   if (prev.nativeInteractionMode !== next.nativeInteractionMode) {

@@ -5,7 +5,7 @@ export const useSearchResultsFlashListPolicyRuntime = () =>
     () => ({
       drawDistance: 160,
       overrideProps: {
-        initialDrawBatchSize: 5,
+        initialDrawBatchSize: 3,
       },
     }),
     []

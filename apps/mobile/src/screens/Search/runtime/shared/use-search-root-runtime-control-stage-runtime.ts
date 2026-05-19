@@ -2,7 +2,7 @@ import React from 'react';
 
 import { useSearchForegroundLaunchIntentRuntime } from './use-search-foreground-launch-intent-runtime';
 import { useSearchForegroundInteractionRenderRegistrationRuntime } from './use-search-foreground-interaction-effects-runtime';
-import { useSearchRootForegroundEffectsHarnessArgs } from './use-search-root-foreground-effects-harness-args';
+import { useSearchRootForegroundEffectsRegistrationArgs } from './use-search-root-foreground-effects-registration-args';
 import {
   useSearchRootFilterModalControlLane,
   useSearchRootForegroundInputControlLane,
@@ -81,8 +81,6 @@ export const useSearchRootRuntimeControlStageRuntime = ({
       controlAuthorityRuntime.foundationAuthorityRuntime.recentActivityAuthorityRuntime,
     clearRestoreAuthorityRuntime:
       controlAuthorityRuntime.foundationAuthorityRuntime.clearRestoreAuthorityRuntime,
-    resultsPresentationControlLane:
-      controlAuthorityRuntime.presentationAuthorityRuntime.resultsPresentationControlLane,
   });
   const submitRuntimeResult = useSearchRootSubmitControlRuntime({
     sessionCoreLane: sessionAssemblyRuntime.sessionRuntime.sessionCoreLane,
@@ -201,18 +199,15 @@ export const useSearchRootRuntimeControlStageRuntime = ({
     controlAuthorityRuntime.presentationAuthorityRuntime.foregroundInputRuntime
   );
 
-  const foregroundEffectsHarnessArgs = useSearchRootForegroundEffectsHarnessArgs({
-    rootOverlayFoundationRuntime: overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime,
+  const foregroundEffectsRegistrationArgs = useSearchRootForegroundEffectsRegistrationArgs({
     mutationCancelAuthorityRuntime:
       controlAuthorityRuntime.foundationAuthorityRuntime.mutationCancelAuthorityRuntime,
     resultsPresentationOwner:
       controlAuthorityRuntime.presentationAuthorityRuntime.resultsPresentationControlLane
         .resultsPresentationOwner,
-    filterModalRuntime,
   });
   useSearchForegroundInteractionRenderRegistrationRuntime({
-    effectsRuntimeArgs: foregroundEffectsHarnessArgs,
-    foregroundInteractionRuntime,
+    effectsRuntimeArgs: foregroundEffectsRegistrationArgs,
   });
 
   const currentMarketKey =

@@ -1,6 +1,5 @@
 import React from 'react';
 
-import type { useSearchResultsReadModelSelectors } from '../read-models/read-model-selectors';
 import { resolveResultsPresentationPanelPolicyFacts } from './results-presentation-policy-facts-resolver';
 import type { useSearchResultsPanelHydrationRuntimeState } from './use-search-results-panel-hydration-runtime-state';
 import type { useSearchResultsPanelPresentationRuntimeState } from './use-search-results-panel-presentation-runtime-state';
@@ -12,8 +11,8 @@ type UseSearchRootSearchSceneSurfacePanelStateRuntimeArgs = {
   searchHydrationRuntimeState: ReturnType<typeof useSearchResultsPanelHydrationRuntimeState>;
   searchResultsRuntimeState: ReturnType<typeof useSearchResultsPanelResultsRuntimeState>;
   resolvedResultsRuntime: ReturnType<typeof useSearchResultsPanelRetainedResultsRuntime>;
+  searchSheetContentLaneKind: 'results_live' | 'results_closing' | 'persistent_poll';
   allowsInteractionLoadingState: boolean;
-  resultsReadModelSelectors: ReturnType<typeof useSearchResultsReadModelSelectors>;
 };
 
 export const useSearchRootSearchSceneSurfacePanelStateRuntime = ({
@@ -21,30 +20,66 @@ export const useSearchRootSearchSceneSurfacePanelStateRuntime = ({
   searchHydrationRuntimeState,
   searchResultsRuntimeState,
   resolvedResultsRuntime,
+  searchSheetContentLaneKind,
   allowsInteractionLoadingState,
-  resultsReadModelSelectors,
 }: UseSearchRootSearchSceneSurfacePanelStateRuntimeArgs) => {
-  const hasResolvedResults = resolvedResultsRuntime.resolvedResults != null;
+  const shouldSuppressResultsSurface = searchSheetContentLaneKind === 'persistent_poll';
+  const hasResolvedResults =
+    !shouldSuppressResultsSurface &&
+    (resolvedResultsRuntime.resolvedResults != null ||
+      searchResultsRuntimeState.resultsRequestKey != null ||
+      searchResultsRuntimeState.resultsHydrationCandidateKey != null ||
+      searchResultsRuntimeState.resultsDishCount > 0 ||
+      searchResultsRuntimeState.resultsRestaurantCount > 0);
+  const activeTabRenderableRowCount =
+    shouldSuppressResultsSurface
+      ? 0
+      : searchResultsRuntimeState.activeTab === 'restaurants'
+      ? searchResultsRuntimeState.resultsRestaurantCount
+      : searchResultsRuntimeState.resultsDishCount;
 
   return React.useMemo(
-    () =>
-      resolveResultsPresentationPanelPolicyFacts({
+    () => {
+      const panelState = resolveResultsPresentationPanelPolicyFacts({
         renderPolicy: searchPresentationRuntimeState.renderPolicy,
-        allowsInteractionLoadingState,
-        hasRenderableRows:
-          resultsReadModelSelectors.rowsByTab[searchResultsRuntimeState.activeTab].length > 0,
+        allowsInteractionLoadingState: shouldSuppressResultsSurface
+          ? false
+          : allowsInteractionLoadingState,
+        hasRenderableRows: activeTabRenderableRowCount > 0,
         hasResolvedResults,
         isSearchLoading: searchResultsRuntimeState.isSearchLoading,
         shouldUsePlaceholderRows: false,
         freezeClassification: searchHydrationRuntimeState.chromeFreezeClassification,
-      }),
+      });
+      if (!shouldSuppressResultsSurface) {
+        return panelState;
+      }
+      return {
+        ...panelState,
+        shouldShowInteractionLoadingState: false,
+        shouldShowInitialLoadingState: false,
+        shouldShowLoadingState: false,
+        shouldFreezeCoveredResultsRender: false,
+        shouldShowResultsCards: false,
+        surfaceMode: 'none' as const,
+        shouldShowResultsSurface: false,
+        surfaceActive: false,
+        shouldUseInteractionSurface: false,
+        shouldHideScrollHeaderForSurface: false,
+        shouldRenderWhiteWash: false,
+      };
+    },
     [
       allowsInteractionLoadingState,
+      activeTabRenderableRowCount,
       hasResolvedResults,
-      resultsReadModelSelectors.rowsByTab,
+      shouldSuppressResultsSurface,
       searchHydrationRuntimeState.chromeFreezeClassification,
       searchPresentationRuntimeState.renderPolicy,
       searchResultsRuntimeState.activeTab,
+      searchResultsRuntimeState.resultsDishCount,
+      searchResultsRuntimeState.resultsHydrationCandidateKey,
+      searchResultsRuntimeState.resultsRestaurantCount,
       searchResultsRuntimeState.isSearchLoading,
     ]
   );

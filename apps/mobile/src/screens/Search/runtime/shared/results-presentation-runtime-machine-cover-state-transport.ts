@@ -1,4 +1,4 @@
-import type { ResultsPresentationCoverState } from './prepared-presentation-transaction';
+import type { ResultsPresentationCoverState } from './search-surface-results-transaction';
 import type { ResultsPresentationTransportState } from './results-presentation-runtime-contract';
 import { resolveIdleResultsPresentationTransportState } from './results-presentation-runtime-machine-state';
 import type { ResultsPresentationNamedTransportAttempt } from './results-presentation-runtime-machine-transport-primitives';

@@ -20,6 +20,13 @@ export type ResultsPresentationRuntimeMachineOwnerRuntime = {
   applyResolvedAttempt: (
     attempt: AppliedResultsPresentationRuntimeAttempt
   ) => AppliedResultsPresentationRuntimeAttempt | null;
+  applyTransaction: (
+    resolveAttempts: Array<
+      (
+        draft: ResultsPresentationTransportState
+      ) => ResultsPresentationNamedTransportAttempt
+    >
+  ) => AppliedResultsPresentationRuntimeAttempt[] | null;
   applyAttempt: (
     resolveAttempt: (
       draft: ResultsPresentationTransportState
@@ -57,11 +64,56 @@ export const createResultsPresentationRuntimeMachineOwnerRuntime = ({
     return attempt;
   };
 
+  const applyResolvedTransaction = (
+    attempts: AppliedResultsPresentationRuntimeAttempt[]
+  ): AppliedResultsPresentationRuntimeAttempt[] | null => {
+    attempts.forEach((attempt) => {
+      if (attempt.blockedLog != null) {
+        log(attempt.blockedLog.label, attempt.blockedLog.data);
+      }
+    });
+
+    const appliedAttempts = attempts.filter((attempt) => attempt.didApply);
+    if (appliedAttempts.length === 0) {
+      return null;
+    }
+
+    const finalAppliedAttempt = appliedAttempts[appliedAttempts.length - 1];
+    if (finalAppliedAttempt.nextState != null) {
+      state = finalAppliedAttempt.nextState;
+      publish(resolveResultsPresentationRuntimeState(state));
+    }
+
+    appliedAttempts.forEach((attempt) => {
+      if (attempt.appliedLog != null) {
+        log(attempt.appliedLog.label, attempt.appliedLog.data);
+      }
+    });
+
+    return appliedAttempts;
+  };
+
   publish(resolveResultsPresentationRuntimeState(state));
 
   return {
     getState: () => state,
     applyResolvedAttempt,
+    applyTransaction: (resolveAttempts) => {
+      const attempts: AppliedResultsPresentationRuntimeAttempt[] = [];
+      let transactionState = state;
+      for (const resolveAttempt of resolveAttempts) {
+        const attempt = applyResultsPresentationNamedTransportAttempt({
+          state: transactionState,
+          resolveAttempt,
+        });
+        attempts.push(attempt);
+        if (!attempt.didApply || attempt.nextState == null) {
+          break;
+        }
+        transactionState = attempt.nextState;
+      }
+      return applyResolvedTransaction(attempts);
+    },
     applyAttempt: (resolveAttempt) =>
       applyResolvedAttempt(
         applyResultsPresentationNamedTransportAttempt({

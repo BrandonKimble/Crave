@@ -75,9 +75,46 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
   private static final long FNV1A64_PRIME = 0x100000001b3L;
   private static final String MODULE_NAME = "SearchMapRenderController";
   private static final String EVENT_NAME = "searchMapRenderControllerEvent";
-  private static final boolean ENABLE_VISUAL_DIAGNOSTICS = true;
+  private static final boolean ENABLE_VISUAL_DIAGNOSTICS = false;
   private static final long REVEAL_SETTLE_DELAY_MS = 300L;
   private static final long DISMISS_SETTLE_DELAY_MS = 300L;
+
+  private static final class LabelTapHitboxConfig {
+    final double textSize;
+    final double radialXEm;
+    final double radialYEm;
+    final double radialTopEm;
+    final double upShiftEm;
+    final double charWidthFactor;
+    final double lineHeightFactor;
+    final double paddingPx;
+    final double minWidthPx;
+    final double maxWidthPx;
+
+    LabelTapHitboxConfig(
+      double textSize,
+      double radialXEm,
+      double radialYEm,
+      double radialTopEm,
+      double upShiftEm,
+      double charWidthFactor,
+      double lineHeightFactor,
+      double paddingPx,
+      double minWidthPx,
+      double maxWidthPx
+    ) {
+      this.textSize = textSize;
+      this.radialXEm = radialXEm;
+      this.radialYEm = radialYEm;
+      this.radialTopEm = radialTopEm;
+      this.upShiftEm = upShiftEm;
+      this.charWidthFactor = charWidthFactor;
+      this.lineHeightFactor = lineHeightFactor;
+      this.paddingPx = paddingPx;
+      this.minWidthPx = minWidthPx;
+      this.maxWidthPx = maxWidthPx;
+    }
+  }
   private static final long FRAME_SETTLE_FALLBACK_DELAY_MS = 96L;
   private static final long SOURCE_RECOVERY_RETRY_DELAY_MS = 32L;
   private static final long LIVE_PIN_TRANSITION_DURATION_MS = 180L;
@@ -517,11 +554,6 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
   private static final class LabelObservationResult {
     final ArrayList<String> visibleLabelFeatureIds = new ArrayList<>();
     final ArrayList<RenderedPlacedLabelObservation> placedLabels = new ArrayList<>();
-  }
-
-  private static final class DotObservationResult {
-    final ArrayList<String> restaurantIds = new ArrayList<>();
-    final ArrayList<WritableMap> renderedDots = new ArrayList<>();
   }
 
   private interface StyleOperation {
@@ -1348,112 +1380,6 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
   }
 
   @ReactMethod
-  public void queryRenderedDotObservation(ReadableMap payload, Promise promise) {
-    String instanceId = payload.hasKey("instanceId") ? payload.getString("instanceId") : null;
-    if (instanceId == null) {
-      promise.reject(
-        "search_map_render_controller_query_rendered_dot_observation_invalid",
-        "missing instanceId"
-      );
-      return;
-    }
-    InstanceState state = instances.get(instanceId);
-    if (state == null) {
-      promise.reject(
-        "search_map_render_controller_query_rendered_dot_observation_invalid",
-        "unknown instance"
-      );
-      return;
-    }
-    ArrayList<String> layerIds = new ArrayList<>();
-    if (payload.hasKey("layerIds") && !payload.isNull("layerIds")) {
-      com.facebook.react.bridge.ReadableArray readableLayerIds = payload.getArray("layerIds");
-      if (readableLayerIds != null) {
-        for (int index = 0; index < readableLayerIds.size(); index += 1) {
-          if (!readableLayerIds.isNull(index)) {
-            String layerId = readableLayerIds.getString(index);
-            if (layerId != null && !layerId.isEmpty()) {
-              layerIds.add(layerId);
-            }
-          }
-        }
-      }
-    }
-
-    mainHandler.post(() -> {
-      try {
-        RNMBXMapView mapView = resolveMapView(state.mapTag);
-        if (mapView == null) {
-          throw new IllegalStateException("Map view not found for react tag " + state.mapTag);
-        }
-        int width = mapView.getWidth();
-        int height = mapView.getHeight();
-        if (width <= 0 || height <= 0) {
-          promise.resolve(emptyRenderedDotObservationResult());
-          return;
-        }
-        ScreenBox queryBox;
-        if (payload.hasKey("queryBox") && !payload.isNull("queryBox")) {
-          com.facebook.react.bridge.ReadableArray readableQueryBox = payload.getArray("queryBox");
-          if (readableQueryBox != null && readableQueryBox.size() == 4) {
-            double x1 = readableQueryBox.getDouble(0);
-            double y1 = readableQueryBox.getDouble(1);
-            double x2 = readableQueryBox.getDouble(2);
-            double y2 = readableQueryBox.getDouble(3);
-            queryBox =
-              new ScreenBox(
-                new ScreenCoordinate(Math.min(x1, x2), Math.min(y1, y2)),
-                new ScreenCoordinate(Math.max(x1, x2), Math.max(y1, y2))
-              );
-          } else {
-            queryBox =
-              new ScreenBox(
-                new ScreenCoordinate(0d, 0d),
-                new ScreenCoordinate((double) width, (double) height)
-              );
-          }
-        } else {
-          queryBox =
-            new ScreenBox(
-              new ScreenCoordinate(0d, 0d),
-              new ScreenCoordinate((double) width, (double) height)
-            );
-        }
-        RenderedQueryGeometry queryGeometry = new RenderedQueryGeometry(queryBox);
-        RenderedQueryOptions queryOptions = new RenderedQueryOptions(layerIds, null);
-        mapView.getMapboxMap().queryRenderedFeatures(
-          queryGeometry,
-          queryOptions,
-          queryResult -> mainHandler.post(() -> {
-            if (queryResult.isError()) {
-              promise.reject(
-                "search_map_render_controller_query_rendered_dot_observation_failed",
-                queryResult.getError()
-              );
-              return;
-            }
-            List<QueriedRenderedFeature> queriedFeatures = queryResult.getValue();
-            DotObservationResult observation = buildRenderedDotObservation(
-              queriedFeatures,
-              state.dotSourceId
-            );
-            WritableMap result = emptyRenderedDotObservationResult();
-            result.putArray("restaurantIds", Arguments.fromList(observation.restaurantIds));
-            result.putArray("renderedDots", toWritableMapArray(observation.renderedDots));
-            result.putInt("renderedFeatureCount", queriedFeatures.size());
-            promise.resolve(result);
-          })
-        );
-      } catch (Exception error) {
-        promise.reject(
-          "search_map_render_controller_query_rendered_dot_observation_failed",
-          error
-        );
-      }
-    });
-  }
-
-  @ReactMethod
   public void queryRenderedPressTarget(ReadableMap payload, Promise promise) {
     String instanceId = payload.hasKey("instanceId") ? payload.getString("instanceId") : null;
     if (instanceId == null) {
@@ -1509,6 +1435,54 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         }
       }
     }
+    LabelTapHitboxConfig labelTapHitbox = null;
+    if (payload.hasKey("labelTapHitbox") && !payload.isNull("labelTapHitbox")) {
+      labelTapHitbox = parseLabelTapHitboxConfig(payload.getMap("labelTapHitbox"));
+    }
+    ArrayList<String> dotLayerIds = new ArrayList<>();
+    if (payload.hasKey("dotLayerIds") && !payload.isNull("dotLayerIds")) {
+      ReadableArray readableDotLayerIds = payload.getArray("dotLayerIds");
+      if (readableDotLayerIds != null) {
+        for (int index = 0; index < readableDotLayerIds.size(); index += 1) {
+          if (!readableDotLayerIds.isNull(index)) {
+            String layerId = readableDotLayerIds.getString(index);
+            if (layerId != null && !layerId.isEmpty()) {
+              dotLayerIds.add(layerId);
+            }
+          }
+        }
+      }
+    }
+    double[] dotQueryBox = null;
+    if (payload.hasKey("dotQueryBox") && !payload.isNull("dotQueryBox")) {
+      ReadableArray readableDotQueryBox = payload.getArray("dotQueryBox");
+      if (readableDotQueryBox != null && readableDotQueryBox.size() == 4) {
+        dotQueryBox =
+          new double[] {
+            readableDotQueryBox.getDouble(0),
+            readableDotQueryBox.getDouble(1),
+            readableDotQueryBox.getDouble(2),
+            readableDotQueryBox.getDouble(3),
+          };
+      }
+    }
+    Double tapLng = null;
+    Double tapLat = null;
+    if (payload.hasKey("tapCoordinate") && !payload.isNull("tapCoordinate")) {
+      ReadableMap tapCoordinate = payload.getMap("tapCoordinate");
+      if (
+        tapCoordinate != null &&
+        tapCoordinate.hasKey("lng") &&
+        tapCoordinate.hasKey("lat")
+      ) {
+        tapLng = tapCoordinate.getDouble("lng");
+        tapLat = tapCoordinate.getDouble("lat");
+      }
+    }
+    final double[] resolvedDotQueryBox = dotQueryBox;
+    final Double resolvedTapLng = tapLng;
+    final Double resolvedTapLat = tapLat;
+    final LabelTapHitboxConfig resolvedLabelTapHitbox = labelTapHitbox;
 
     mainHandler.post(() -> {
       try {
@@ -1516,7 +1490,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         if (mapView == null) {
           throw new IllegalStateException("Map view not found for react tag " + state.mapTag);
         }
-        if (pinLayerIds.isEmpty() && labelLayerIds.isEmpty()) {
+        if (pinLayerIds.isEmpty() && labelLayerIds.isEmpty() && dotLayerIds.isEmpty()) {
           promise.resolve(null);
           return;
         }
@@ -1528,6 +1502,20 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
             )
           );
         if (pinLayerIds.isEmpty()) {
+          if (labelLayerIds.isEmpty()) {
+            queryRenderedDotPressTarget(
+              mapView,
+              state,
+              dotLayerIds,
+              x,
+              y,
+              resolvedDotQueryBox,
+              resolvedTapLng,
+              resolvedTapLat,
+              promise
+            );
+            return;
+          }
           RenderedQueryOptions labelQueryOptions = new RenderedQueryOptions(labelLayerIds, null);
           mapView.getMapboxMap().queryRenderedFeatures(
             queryGeometry,
@@ -1542,9 +1530,27 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
               }
               WritableMap labelTarget = buildRenderedLabelPressTarget(
                 labelQueryResult.getValue(),
-                state.labelInteractionSourceId
+                state.labelInteractionSourceId,
+                mapView,
+                x,
+                y,
+                resolvedLabelTapHitbox
               );
-              promise.resolve(labelTarget);
+              if (labelTarget != null) {
+                promise.resolve(labelTarget);
+              } else {
+                queryRenderedDotPressTarget(
+                  mapView,
+                  state,
+                  dotLayerIds,
+                  x,
+                  y,
+                  resolvedDotQueryBox,
+                  resolvedTapLng,
+                  resolvedTapLat,
+                  promise
+                );
+              }
             })
           );
           return;
@@ -1563,14 +1569,24 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
             }
             WritableMap pinTarget = buildRenderedPinPressTarget(
               pinQueryResult.getValue(),
-              state.pinInteractionSourceId
+              state.pinSourceId
             );
             if (pinTarget != null) {
               promise.resolve(pinTarget);
               return;
             }
             if (labelLayerIds.isEmpty()) {
-              promise.resolve(null);
+              queryRenderedDotPressTarget(
+                mapView,
+                state,
+                dotLayerIds,
+                x,
+                y,
+                resolvedDotQueryBox,
+                resolvedTapLng,
+                resolvedTapLat,
+                promise
+              );
               return;
             }
             RenderedQueryOptions labelQueryOptions = new RenderedQueryOptions(labelLayerIds, null);
@@ -1587,9 +1603,27 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
                 }
                 WritableMap labelTarget = buildRenderedLabelPressTarget(
                   labelQueryResult.getValue(),
-                  state.labelInteractionSourceId
+                  state.labelInteractionSourceId,
+                  mapView,
+                  x,
+                  y,
+                  resolvedLabelTapHitbox
                 );
-                promise.resolve(labelTarget);
+                if (labelTarget != null) {
+                  promise.resolve(labelTarget);
+                } else {
+                  queryRenderedDotPressTarget(
+                    mapView,
+                    state,
+                    dotLayerIds,
+                    x,
+                    y,
+                    resolvedDotQueryBox,
+                    resolvedTapLng,
+                    resolvedTapLat,
+                    promise
+                  );
+                }
               })
             );
           })
@@ -1601,6 +1635,63 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         );
       }
     });
+  }
+
+  private void queryRenderedDotPressTarget(
+    RNMBXMapView mapView,
+    InstanceState state,
+    List<String> dotLayerIds,
+    double x,
+    double y,
+    double[] dotQueryBox,
+    Double tapLng,
+    Double tapLat,
+    Promise promise
+  ) {
+    if (dotLayerIds == null || dotLayerIds.isEmpty()) {
+      promise.resolve(null);
+      return;
+    }
+    ScreenBox queryBox;
+    if (dotQueryBox != null && dotQueryBox.length == 4) {
+      double x1 = dotQueryBox[0];
+      double y1 = dotQueryBox[1];
+      double x2 = dotQueryBox[2];
+      double y2 = dotQueryBox[3];
+      queryBox =
+        new ScreenBox(
+          new ScreenCoordinate(Math.min(x1, x2), Math.min(y1, y2)),
+          new ScreenCoordinate(Math.max(x1, x2), Math.max(y1, y2))
+        );
+    } else {
+      queryBox =
+        new ScreenBox(
+          new ScreenCoordinate(x - 0.5d, y - 0.5d),
+          new ScreenCoordinate(x + 0.5d, y + 0.5d)
+        );
+    }
+    RenderedQueryGeometry queryGeometry = new RenderedQueryGeometry(queryBox);
+    RenderedQueryOptions dotQueryOptions = new RenderedQueryOptions(dotLayerIds, null);
+    mapView.getMapboxMap().queryRenderedFeatures(
+      queryGeometry,
+      dotQueryOptions,
+      dotQueryResult -> mainHandler.post(() -> {
+        if (dotQueryResult.isError()) {
+          promise.reject(
+            "search_map_render_controller_query_rendered_press_target_failed",
+            dotQueryResult.getError()
+          );
+          return;
+        }
+        WritableMap dotTarget = buildRenderedDotPressTarget(
+          dotQueryResult.getValue(),
+          state.dotInteractionSourceId,
+          tapLng,
+          tapLat
+        );
+        promise.resolve(dotTarget);
+      })
+    );
   }
 
   @ReactMethod
@@ -1829,9 +1920,11 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
           }
         }
 
+        // Pin interaction geometry must be queryable as soon as the desired pin exists.
+        // The reveal cover and interaction mode own tap availability; delaying this
+        // source until visual transitions settle leaves visible pins without hit targets.
         boolean shouldRenderPinInteraction =
           desiredPresent &&
-          (transition == null || transition.targetOpacity != 1d) &&
           desiredPinSnapshot.pinInteractionFeatureByMarkerKey.containsKey(markerKey);
         if (!reusePinInteractions && shouldRenderPinInteraction) {
           Feature pinInteractionFeature = desiredPinSnapshot.pinInteractionFeatureByMarkerKey.get(markerKey);
@@ -4344,14 +4437,6 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     return maps;
   }
 
-  private static WritableMap emptyRenderedDotObservationResult() {
-    WritableMap result = Arguments.createMap();
-    result.putArray("restaurantIds", Arguments.createArray());
-    result.putArray("renderedDots", Arguments.createArray());
-    result.putInt("renderedFeatureCount", 0);
-    return result;
-  }
-
   private static com.facebook.react.bridge.WritableArray toWritableMapArray(
     List<WritableMap> maps
   ) {
@@ -4549,11 +4634,24 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       return emptyRenderedLabelObservationResult();
     }
     DerivedFamilyState labelFamilyState = derivedFamilyState(mutableState, mutableState.labelSourceId);
+    DerivedFamilyState labelInteractionFamilyState =
+      derivedFamilyState(mutableState, mutableState.labelInteractionSourceId);
     ArrayList<String> previousVisibleLabelFeatureIds =
       new ArrayList<>(labelFamilyState.labelObservation.lastVisibleLabelFeatureIds);
-    if (commitInteractionVisibility) {
+    boolean shouldCommitInteractionVisibility =
+      commitInteractionVisibility &&
+      labelFamilyState.labelObservation.commitInteractionVisibility &&
+      labelFamilyState.labelObservation.observationEnabled;
+    boolean didClearSettledVisibleLabelInteractions = false;
+    if (shouldCommitInteractionVisibility) {
       labelFamilyState.settledVisibleFeatureIds.clear();
       labelFamilyState.settledVisibleFeatureIds.addAll(observation.visibleLabelFeatureIds);
+    } else if (
+      !labelFamilyState.settledVisibleFeatureIds.isEmpty() ||
+      !labelInteractionFamilyState.collection.idsInOrder.isEmpty()
+    ) {
+      labelFamilyState.settledVisibleFeatureIds.clear();
+      didClearSettledVisibleLabelInteractions = true;
     }
     Set<String> resetIdentityKeys =
       resetStickyLabelObservationIfNeeded(labelFamilyState.labelObservation, labelResetRequestKey);
@@ -4586,6 +4684,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     Collections.sort(dirtyStickyIdentityKeys);
     boolean didProduceMeaningfulChange =
       !dirtyStickyIdentityKeys.isEmpty() ||
+      didClearSettledVisibleLabelInteractions ||
       !previousVisibleLabelFeatureIds.equals(observation.visibleLabelFeatureIds);
     if (mutableState.currentViewportIsMoving) {
       if (didProduceMeaningfulChange) {
@@ -4612,6 +4711,12 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     result.putInt("layerRenderedFeatureCount", layerRenderedFeatureCount);
     result.putInt("effectiveRenderedFeatureCount", effectiveRenderedFeatureCount);
     result.putBoolean("stickyChanged", !dirtyStickyIdentityKeys.isEmpty());
+    if (didClearSettledVisibleLabelInteractions) {
+      try {
+        applyDesiredFrameSnapshots(instanceId, false);
+      } catch (Exception ignored) {
+      }
+    }
     return result;
   }
 
@@ -4655,8 +4760,10 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     if (state == null) {
       return;
     }
-    LabelFamilyObservationState labelObservation =
-      derivedFamilyState(state, state.labelSourceId).labelObservation;
+    DerivedFamilyState labelFamilyState = derivedFamilyState(state, state.labelSourceId);
+    DerivedFamilyState labelInteractionFamilyState =
+      derivedFamilyState(state, state.labelInteractionSourceId);
+    LabelFamilyObservationState labelObservation = labelFamilyState.labelObservation;
     labelObservation.observationEnabled = observationEnabled;
     labelObservation.allowFallback = allowFallback;
     labelObservation.commitInteractionVisibility = commitInteractionVisibility;
@@ -4671,6 +4778,17 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     labelObservation.configuredResetRequestKey = labelResetRequestKey;
     labelObservation.movingNoopRefreshStreak = 0;
     labelObservation.movingAdaptiveRefreshMs = refreshMsMoving;
+    boolean shouldClearLabelInteractionVisibility =
+      !observationEnabled || !commitInteractionVisibility;
+    boolean didClearLabelInteractionVisibility =
+      shouldClearLabelInteractionVisibility &&
+      (
+        !labelObservation.settledVisibleFeatureIds.isEmpty() ||
+        !labelInteractionFamilyState.collection.idsInOrder.isEmpty()
+      );
+    if (didClearLabelInteractionVisibility) {
+      labelObservation.settledVisibleFeatureIds.clear();
+    }
     if (!observationEnabled) {
       labelObservation.isRefreshInFlight = false;
       labelObservation.queuedRefreshDelayMs = null;
@@ -4680,6 +4798,12 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       }
     }
     instances.put(instanceId, state);
+    if (didClearLabelInteractionVisibility) {
+      try {
+        applyDesiredFrameSnapshots(instanceId, false);
+      } catch (Exception ignored) {
+      }
+    }
     if (observationEnabled) {
       emitLabelObservationUpdated(instanceId, currentRenderedLabelObservationSnapshot(instanceId));
       scheduleLabelObservationRefresh(instanceId, 0d);
@@ -4953,55 +5077,6 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       );
   }
 
-  private static DotObservationResult buildRenderedDotObservation(
-    List<QueriedRenderedFeature> features,
-    String requiredSourceId
-  ) {
-    DotObservationResult result = new DotObservationResult();
-    java.util.HashSet<String> seenRestaurantIds = new java.util.HashSet<>();
-    for (QueriedRenderedFeature queriedRenderedFeature : features) {
-      if (queriedRenderedFeature == null || queriedRenderedFeature.getQueriedFeature() == null) {
-        continue;
-      }
-      if (!stringEquals(queriedRenderedFeature.getQueriedFeature().getSource(), requiredSourceId)) {
-        continue;
-      }
-      Feature feature = queriedRenderedFeature.getQueriedFeature().getFeature();
-      if (feature == null) {
-        continue;
-      }
-      com.google.gson.JsonObject properties = feature.properties();
-      if (
-        properties == null ||
-        !properties.has("restaurantId") ||
-        !properties.get("restaurantId").isJsonPrimitive()
-      ) {
-        continue;
-      }
-      String restaurantId = properties.get("restaurantId").getAsString();
-      if (restaurantId == null || restaurantId.isEmpty()) {
-        continue;
-      }
-      if (seenRestaurantIds.add(restaurantId)) {
-        result.restaurantIds.add(restaurantId);
-      }
-      WritableMap renderedDot = Arguments.createMap();
-      renderedDot.putString("restaurantId", restaurantId);
-      if (feature.geometry() instanceof Point) {
-        Point point = (Point) feature.geometry();
-        WritableMap coordinate = Arguments.createMap();
-        coordinate.putDouble("lng", point.longitude());
-        coordinate.putDouble("lat", point.latitude());
-        renderedDot.putMap("coordinate", coordinate);
-      } else {
-        renderedDot.putNull("coordinate");
-      }
-      result.renderedDots.add(renderedDot);
-    }
-    java.util.Collections.sort(result.restaurantIds);
-    return result;
-  }
-
   private static WritableMap buildRenderedPinPressTarget(
     List<QueriedRenderedFeature> features,
     String requiredSourceId
@@ -5075,9 +5150,214 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     return bestTarget;
   }
 
+  private static WritableMap buildRenderedDotPressTarget(
+    List<QueriedRenderedFeature> features,
+    String requiredSourceId,
+    Double tapLng,
+    Double tapLat
+  ) {
+    WritableMap bestTarget = null;
+    double bestDistance = Double.POSITIVE_INFINITY;
+    int bestFeatureIndex = Integer.MAX_VALUE;
+    for (int featureIndex = 0; featureIndex < features.size(); featureIndex += 1) {
+      QueriedRenderedFeature queriedRenderedFeature = features.get(featureIndex);
+      if (
+        queriedRenderedFeature == null ||
+        queriedRenderedFeature.getQueriedFeature() == null ||
+        !stringEquals(requiredSourceId, queriedRenderedFeature.getQueriedFeature().getSource())
+      ) {
+        continue;
+      }
+      Feature feature = queriedRenderedFeature.getQueriedFeature().getFeature();
+      if (feature == null) {
+        continue;
+      }
+      JsonObject properties = feature.properties();
+      if (
+        properties == null ||
+        !properties.has("restaurantId") ||
+        !properties.get("restaurantId").isJsonPrimitive()
+      ) {
+        continue;
+      }
+      String restaurantId = properties.get("restaurantId").getAsString();
+      if (restaurantId == null || restaurantId.isEmpty()) {
+        continue;
+      }
+
+      double distance = (double) featureIndex;
+      WritableMap coordinate = null;
+      if (feature.geometry() instanceof Point) {
+        Point point = (Point) feature.geometry();
+        coordinate = Arguments.createMap();
+        coordinate.putDouble("lng", point.longitude());
+        coordinate.putDouble("lat", point.latitude());
+        if (tapLng != null && tapLat != null) {
+          double dx = tapLng.doubleValue() - point.longitude();
+          double dy = tapLat.doubleValue() - point.latitude();
+          distance = dx * dx + dy * dy;
+        }
+      }
+      if (
+        bestTarget != null &&
+        (distance > bestDistance || (distance == bestDistance && featureIndex > bestFeatureIndex))
+      ) {
+        continue;
+      }
+      WritableMap target = Arguments.createMap();
+      target.putString("restaurantId", restaurantId);
+      if (coordinate != null) {
+        target.putMap("coordinate", coordinate);
+      } else {
+        target.putNull("coordinate");
+      }
+      target.putString("targetKind", "dot");
+      bestTarget = target;
+      bestDistance = distance;
+      bestFeatureIndex = featureIndex;
+    }
+    return bestTarget;
+  }
+
+  private static LabelTapHitboxConfig parseLabelTapHitboxConfig(ReadableMap payload) {
+    if (payload == null) {
+      return null;
+    }
+    String[] requiredKeys = new String[] {
+      "textSize",
+      "radialXEm",
+      "radialYEm",
+      "radialTopEm",
+      "upShiftEm",
+      "charWidthFactor",
+      "lineHeightFactor",
+      "paddingPx",
+      "minWidthPx",
+      "maxWidthPx",
+    };
+    for (String key : requiredKeys) {
+      if (!payload.hasKey(key) || payload.isNull(key)) {
+        return null;
+      }
+    }
+    return new LabelTapHitboxConfig(
+      payload.getDouble("textSize"),
+      payload.getDouble("radialXEm"),
+      payload.getDouble("radialYEm"),
+      payload.getDouble("radialTopEm"),
+      payload.getDouble("upShiftEm"),
+      payload.getDouble("charWidthFactor"),
+      payload.getDouble("lineHeightFactor"),
+      payload.getDouble("paddingPx"),
+      payload.getDouble("minWidthPx"),
+      payload.getDouble("maxWidthPx")
+    );
+  }
+
+  private static boolean isRenderedLabelPressFeatureIntentional(
+    Feature feature,
+    RNMBXMapView mapView,
+    double tapX,
+    double tapY,
+    LabelTapHitboxConfig hitbox
+  ) {
+    if (hitbox == null) {
+      return false;
+    }
+    if (!(feature.geometry() instanceof Point)) {
+      return false;
+    }
+    JsonObject properties = feature.properties();
+    if (properties == null) {
+      return false;
+    }
+    String candidate = null;
+    if (
+      properties.has("labelCandidate") &&
+      properties.get("labelCandidate").isJsonPrimitive()
+    ) {
+      candidate = properties.get("labelCandidate").getAsString();
+    }
+    if (candidate == null || candidate.isEmpty()) {
+      return false;
+    }
+    String labelText = null;
+    if (
+      properties.has("restaurantName") &&
+      properties.get("restaurantName").isJsonPrimitive()
+    ) {
+      labelText = properties.get("restaurantName").getAsString();
+    }
+    if (labelText == null || labelText.isEmpty()) {
+      return false;
+    }
+
+    String[] lines = labelText.split("\\n", -1);
+    int longestLineLength = 0;
+    for (String line : lines) {
+      longestLineLength = Math.max(longestLineLength, line.length());
+    }
+    double estimatedWidth = Math.min(
+      Math.max(longestLineLength * hitbox.textSize * hitbox.charWidthFactor + 10d, hitbox.minWidthPx),
+      hitbox.maxWidthPx
+    );
+    double estimatedHeight = Math.max(lines.length, 1) * hitbox.textSize * hitbox.lineHeightFactor + 4d;
+
+    double offsetXPx = 0d;
+    double offsetYPx = 0d;
+    if ("bottom".equals(candidate)) {
+      offsetYPx = (hitbox.radialYEm - hitbox.upShiftEm) * hitbox.textSize;
+    } else if ("right".equals(candidate)) {
+      offsetXPx = hitbox.radialXEm * hitbox.textSize;
+      offsetYPx = -hitbox.upShiftEm * hitbox.textSize;
+    } else if ("top".equals(candidate)) {
+      offsetYPx = -(hitbox.radialTopEm + hitbox.upShiftEm) * hitbox.textSize;
+    } else if ("left".equals(candidate)) {
+      offsetXPx = -hitbox.radialXEm * hitbox.textSize;
+      offsetYPx = -hitbox.upShiftEm * hitbox.textSize;
+    } else {
+      return false;
+    }
+
+    Point point = (Point) feature.geometry();
+    ScreenCoordinate anchorPoint = mapView
+      .getMapboxMap()
+      .pixelForCoordinate(Point.fromLngLat(point.longitude(), point.latitude()));
+    double anchorX = anchorPoint.getX() + offsetXPx;
+    double anchorY = anchorPoint.getY() + offsetYPx;
+
+    double left = anchorX - estimatedWidth / 2d;
+    double right = anchorX + estimatedWidth / 2d;
+    double top = anchorY - estimatedHeight / 2d;
+    double bottom = anchorY + estimatedHeight / 2d;
+
+    if ("bottom".equals(candidate)) {
+      top = anchorY;
+      bottom = anchorY + estimatedHeight;
+    } else if ("top".equals(candidate)) {
+      top = anchorY - estimatedHeight;
+      bottom = anchorY;
+    } else if ("left".equals(candidate)) {
+      left = anchorX - estimatedWidth;
+      right = anchorX;
+    } else if ("right".equals(candidate)) {
+      left = anchorX;
+      right = anchorX + estimatedWidth;
+    }
+
+    return tapX >= left - hitbox.paddingPx &&
+      tapX <= right + hitbox.paddingPx &&
+      tapY >= top - hitbox.paddingPx &&
+      tapY <= bottom + hitbox.paddingPx;
+  }
+
   private static WritableMap buildRenderedLabelPressTarget(
     List<QueriedRenderedFeature> features,
-    String requiredSourceId
+    String requiredSourceId,
+    RNMBXMapView mapView,
+    double tapX,
+    double tapY,
+    LabelTapHitboxConfig labelTapHitbox
   ) {
     for (QueriedRenderedFeature queriedRenderedFeature : features) {
       if (
@@ -5101,6 +5381,17 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       }
       String restaurantId = properties.get("restaurantId").getAsString();
       if (restaurantId == null || restaurantId.isEmpty()) {
+        continue;
+      }
+      if (
+        !isRenderedLabelPressFeatureIntentional(
+          feature,
+          mapView,
+          tapX,
+          tapY,
+          labelTapHitbox
+        )
+      ) {
         continue;
       }
       WritableMap target = Arguments.createMap();

@@ -1,12 +1,14 @@
 import React from 'react';
 
 import type { NaturalSearchRequest, SearchResponse } from '../../../types';
-import type { StructuredSearchRequest } from '../../../services/search';
+import type { SearchRequestCacheStatus, StructuredSearchRequest } from '../../../services/search';
 import { logger } from '../../../utils';
 import type { SegmentValue } from '../constants/search';
 import type { SearchRequestRuntimeOwner } from './use-search-request-runtime-owner';
 import { resolveLoadMoreRequestErrorMessage } from './search-submit-runtime-utils';
 import type {
+  SearchSubmitEntrySurface,
+  SearchSubmitPresentationIntentKind,
   StructuredAppendAttemptConfig,
   StructuredInitialAttemptConfig,
 } from './use-search-submit-entry-owner';
@@ -20,6 +22,7 @@ type RunRestaurantEntitySearchParams = {
   submissionSource: NaturalSearchRequest['submissionSource'];
   typedPrefix?: string;
   preserveSheetState?: boolean;
+  entrySurface: SearchSubmitEntrySurface;
 };
 
 type RunBestHereOptions = {
@@ -28,6 +31,8 @@ type RunBestHereOptions = {
   transitionFromDockedPolls?: boolean;
   filters?: StructuredSearchFilters;
   forceFreshBounds?: boolean;
+  presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+  entrySurface: SearchSubmitEntrySurface;
 };
 
 type UseSearchStructuredSubmitOwnerArgs = {
@@ -48,6 +53,7 @@ type UseSearchStructuredSubmitOwnerArgs = {
     restaurantId: string;
     restaurantName: string;
     preserveSheetState: boolean;
+    entrySurface: SearchSubmitEntrySurface;
   }) => StructuredInitialAttemptConfig;
   createShortcutStructuredInitialAttemptConfig: (params: {
     targetTab: SegmentValue;
@@ -55,6 +61,8 @@ type UseSearchStructuredSubmitOwnerArgs = {
     preserveSheetState: boolean;
     transitionFromDockedPolls: boolean;
     replaceResultsInPlace: boolean;
+    presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+    entrySurface: SearchSubmitEntrySurface;
   }) => StructuredInitialAttemptConfig;
   createShortcutStructuredAppendAttemptConfig: (params: {
     targetTab: SegmentValue;
@@ -89,13 +97,13 @@ type UseSearchStructuredSubmitOwnerArgs = {
   executeEntityStructuredSearchAttempt: (params: {
     payload: StructuredSearchRequest;
     requestId: number;
-    startLifecycle: (response: SearchResponse) => boolean;
+    startLifecycle: (response: SearchResponse, cacheStatus: SearchRequestCacheStatus | null) => boolean;
   }) => Promise<boolean>;
   executeShortcutStructuredSearchAttempt: (params: {
     payload: StructuredSearchRequest;
     requestId: number;
     append: boolean;
-    startLifecycle: (response: SearchResponse) => boolean;
+    startLifecycle: (response: SearchResponse, cacheStatus: SearchRequestCacheStatus | null) => boolean;
   }) => Promise<boolean>;
   startEntityStructuredResponseLifecycle: (params: {
     response: SearchResponse;
@@ -113,7 +121,9 @@ type UseSearchStructuredSubmitOwnerArgs = {
     submittedLabel: string;
     requestBounds: import('../../../types').MapBounds | null;
     replaceResultsInPlace: boolean;
+    presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
     coverageSnapshot?: ShortcutCoverageSnapshot;
+    searchCacheStatus?: SearchRequestCacheStatus | null;
   }) => boolean;
   startShortcutAppendResponseLifecycle: (params: {
     response: SearchResponse;
@@ -193,7 +203,7 @@ export const useSearchStructuredSubmitOwner = ({
       return executeEntityStructuredSearchAttempt({
         payload,
         requestId,
-        startLifecycle: (response) =>
+        startLifecycle: (response, searchCacheStatus) =>
           startEntityStructuredResponseLifecycle({
             response,
             requestId,
@@ -222,6 +232,7 @@ export const useSearchStructuredSubmitOwner = ({
       filters,
       forceFreshBounds,
       replaceResultsInPlace,
+      presentationIntentKind,
     }: {
       requestId: number;
       tuple: SearchSubmitActiveOperationTuple;
@@ -230,6 +241,7 @@ export const useSearchStructuredSubmitOwner = ({
       filters?: StructuredSearchFilters;
       forceFreshBounds: boolean;
       replaceResultsInPlace: boolean;
+      presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
     }) => {
       const payload = await prepareStructuredInitialRequestPayload({
         tuple,
@@ -247,7 +259,7 @@ export const useSearchStructuredSubmitOwner = ({
         payload,
         requestId,
         append: false,
-        startLifecycle: (response) =>
+        startLifecycle: (response, searchCacheStatus) =>
           startShortcutInitialResponseLifecycle({
             response,
             requestId,
@@ -256,7 +268,9 @@ export const useSearchStructuredSubmitOwner = ({
             submittedLabel,
             requestBounds: payload.bounds ?? null,
             replaceResultsInPlace,
+            presentationIntentKind,
             coverageSnapshot: shortcutCoverageSnapshot,
+            searchCacheStatus,
           }),
       });
     },
@@ -295,7 +309,7 @@ export const useSearchStructuredSubmitOwner = ({
         payload,
         requestId,
         append: true,
-        startLifecycle: (response) =>
+        startLifecycle: (response, searchCacheStatus) =>
           startShortcutAppendResponseLifecycle({
             response,
             requestId,
@@ -326,9 +340,9 @@ export const useSearchStructuredSubmitOwner = ({
         restaurantId: params.restaurantId,
         restaurantName: trimmedName,
         preserveSheetState,
+        entrySurface: params.entrySurface,
       });
       resetMapMoveFlag();
-      prepareSearchRequestForegroundUi(initialAttemptConfig.foregroundUi);
       await runManagedRequestAttempt({
         mode: 'entity',
         submitPayload: initialAttemptConfig.submitPayload,
@@ -347,15 +361,17 @@ export const useSearchStructuredSubmitOwner = ({
           },
           uiErrorMessage: null,
         }),
-        executeAttempt: async ({ requestId, tuple }) =>
-          executeRestaurantEntityInitialAttempt({
+        executeAttempt: async ({ requestId, tuple }) => {
+          prepareSearchRequestForegroundUi(initialAttemptConfig.foregroundUi);
+          return executeRestaurantEntityInitialAttempt({
             requestId,
             tuple,
             restaurantId: params.restaurantId,
             restaurantName: trimmedName,
             submissionSource: params.submissionSource,
             typedPrefix: params.typedPrefix,
-          }),
+          });
+        },
       });
     },
     [
@@ -371,23 +387,28 @@ export const useSearchStructuredSubmitOwner = ({
   );
 
   const submitViewportShortcut = React.useCallback(
-    async (targetTab: SegmentValue, submittedLabel: string, options?: RunBestHereOptions) => {
+    async (targetTab: SegmentValue, submittedLabel: string, options: RunBestHereOptions) => {
       logSearchPhase('runBestHere:start', { reset: true });
       const preserveSheetState = Boolean(options?.preserveSheetState);
       const transitionFromDockedPolls =
         !preserveSheetState && Boolean(options?.transitionFromDockedPolls);
       const shouldForceFreshBounds = Boolean(options?.forceFreshBounds);
       const shouldReplaceResultsInPlace = Boolean(options?.replaceResultsInPlace);
+      const presentationIntentKind = options?.presentationIntentKind;
+      const entrySurface = options.entrySurface;
       const initialAttemptConfig = createShortcutStructuredInitialAttemptConfig({
         targetTab,
         submittedLabel,
         preserveSheetState,
         transitionFromDockedPolls,
         replaceResultsInPlace: shouldReplaceResultsInPlace,
+        presentationIntentKind,
+        entrySurface,
       });
 
-      resetMapMoveFlag();
-      prepareSearchRequestForegroundUi(initialAttemptConfig.foregroundUi);
+      if (presentationIntentKind !== 'search_this_area') {
+        resetMapMoveFlag();
+      }
       await runManagedRequestAttempt({
         mode: 'shortcut',
         submitPayload: initialAttemptConfig.submitPayload,
@@ -406,8 +427,9 @@ export const useSearchStructuredSubmitOwner = ({
           },
           uiErrorMessage: null,
         }),
-        executeAttempt: async ({ requestId, tuple }) =>
-          executeShortcutInitialAttempt({
+        executeAttempt: async ({ requestId, tuple }) => {
+          prepareSearchRequestForegroundUi(initialAttemptConfig.foregroundUi);
+          return executeShortcutInitialAttempt({
             requestId,
             tuple,
             targetTab,
@@ -415,7 +437,9 @@ export const useSearchStructuredSubmitOwner = ({
             filters: options?.filters,
             forceFreshBounds: shouldForceFreshBounds,
             replaceResultsInPlace: shouldReplaceResultsInPlace,
-          }),
+            presentationIntentKind,
+          });
+        },
       });
     },
     [

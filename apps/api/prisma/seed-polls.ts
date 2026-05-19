@@ -11,7 +11,7 @@ import {
 const prisma = new PrismaClient();
 
 const SEED_TAG = 'test-poll-seed';
-const DEFAULT_MARKET_KEY = 'us-cbsa-12420';
+const DEFAULT_MARKET_KEY = 'region-us-tx-austin';
 
 const parsePositiveInt = (
   value: string | undefined,

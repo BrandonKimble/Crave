@@ -1,5 +1,6 @@
 import { useAnimatedStyle } from 'react-native-reanimated';
 
+import { SEARCH_BAR_SHADOW } from '../../shadows';
 import type {
   SearchForegroundChromeSurfaceVisualRuntime,
   UseSearchForegroundVisualRuntimeArgs,
@@ -7,11 +8,18 @@ import type {
 
 type UseSearchForegroundChromeSurfaceVisualRuntimeArgs = Pick<
   UseSearchForegroundVisualRuntimeArgs,
-  'suggestionProgress' | 'searchChromeScale'
+  | 'isSuggestionPanelActive'
+  | 'isSuggestionOverlayVisible'
+  | 'suggestionProgress'
+  | 'searchChromeOpacity'
+  | 'searchChromeScale'
 >;
 
 export const useSearchForegroundChromeSurfaceVisualRuntime = ({
+  isSuggestionPanelActive,
+  isSuggestionOverlayVisible,
   suggestionProgress,
+  searchChromeOpacity,
   searchChromeScale,
 }: UseSearchForegroundChromeSurfaceVisualRuntimeArgs): SearchForegroundChromeSurfaceVisualRuntime => {
   const searchSurfaceAnimatedStyle = useAnimatedStyle(() => ({
@@ -21,11 +29,23 @@ export const useSearchForegroundChromeSurfaceVisualRuntime = ({
     elevation: 0,
   }));
   const searchBarContainerAnimatedStyle = useAnimatedStyle(() => {
+    const chromeAlpha = 1 - suggestionProgress.value;
+    const chromeScale =
+      isSuggestionPanelActive || isSuggestionOverlayVisible ? 1 : searchChromeScale.value;
     return {
-      opacity: 1,
-      transform: [{ scale: searchChromeScale.value }],
+      opacity: searchChromeOpacity.value,
+      backgroundColor: `rgba(255, 255, 255, ${chromeAlpha})`,
+      shadowOpacity: Number(SEARCH_BAR_SHADOW.shadowOpacity ?? 0) * chromeAlpha,
+      elevation: chromeAlpha > 0 ? Number(SEARCH_BAR_SHADOW.elevation ?? 0) : 0,
+      transform: [{ scale: chromeScale }],
     };
-  });
+  }, [
+    isSuggestionOverlayVisible,
+    isSuggestionPanelActive,
+    searchChromeOpacity,
+    searchChromeScale,
+    suggestionProgress,
+  ]);
   const suggestionPanelAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: 0 }],
   }));

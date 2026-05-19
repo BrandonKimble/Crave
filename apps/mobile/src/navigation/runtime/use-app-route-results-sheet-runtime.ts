@@ -317,7 +317,6 @@ export const useAppRouteResultsSheetRuntime = ({
       shouldRenderResultsSheetRef: resultsSheetVisibilityRuntime.shouldRenderResultsSheetRef,
       headerDividerAnimatedStyle,
       resultsContainerAnimatedStyle,
-      animateSheetTo: resultsSheetVisibilityRuntime.animateSheetTo,
       resetResultsSheetToHidden: resultsSheetVisibilityRuntime.resetResultsSheetToHidden,
       prepareShortcutSheetTransition: resultsSheetVisibilityRuntime.prepareShortcutSheetTransition,
       handleSheetSnapChange: resultsSheetVisibilityRuntime.handleSheetSnapChange,
@@ -339,4 +338,6 @@ export const getAppRouteResultsSheetVisualBinding = (
   sheetTranslateY: owner.sheetTranslateY,
   resultsScrollOffset: owner.resultsScrollOffset,
   resultsMomentum: owner.resultsMomentum,
+  handleSheetSnapChange: owner.handleSheetSnapChange,
+  getCurrentSheetSnap: () => owner.sheetState,
 });

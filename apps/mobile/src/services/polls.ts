@@ -49,8 +49,10 @@ export type PollQueryResponse = {
   marketKey?: string | null;
   marketName?: string | null;
   marketStatus?: 'resolved' | 'multi_market' | 'no_market' | 'error' | null;
-  candidatePlaceName?: string | null;
-  candidatePlaceGeoId?: string | null;
+  candidateLocalityName?: string | null;
+  candidateBoundaryProvider?: string | null;
+  candidateBoundaryId?: string | null;
+  candidateBoundaryType?: string | null;
   cta?: {
     kind?: 'create_poll' | 'none' | null;
     label?: string | null;
@@ -72,8 +74,10 @@ export type PollBootstrapSnapshot = {
   marketKey: string | null;
   marketName: string | null;
   marketStatus?: 'resolved' | 'multi_market' | 'no_market' | 'error' | null;
-  candidatePlaceName?: string | null;
-  candidatePlaceGeoId?: string | null;
+  candidateLocalityName?: string | null;
+  candidateBoundaryProvider?: string | null;
+  candidateBoundaryId?: string | null;
+  candidateBoundaryType?: string | null;
   cta?: {
     kind?: 'create_poll' | 'none' | null;
     label?: string | null;
@@ -110,9 +114,6 @@ export type CreatePollPayload = {
   targetRestaurantName?: string;
   targetFoodAttributeName?: string;
   targetRestaurantAttributeName?: string;
-  topicEntityId?: string;
-  topicEntityName?: string;
-  topicEntityType?: string;
   sessionToken?: string;
 };
 
@@ -158,11 +159,21 @@ const normalizePollQueryResponse = (payload: unknown): PollQueryResponse => {
           anyPayload.marketStatus === 'error'
             ? anyPayload.marketStatus
             : null,
-        candidatePlaceName:
-          typeof anyPayload.candidatePlaceName === 'string' ? anyPayload.candidatePlaceName : null,
-        candidatePlaceGeoId:
-          typeof anyPayload.candidatePlaceGeoId === 'string'
-            ? anyPayload.candidatePlaceGeoId
+        candidateLocalityName:
+          typeof anyPayload.candidateLocalityName === 'string'
+            ? anyPayload.candidateLocalityName
+            : null,
+        candidateBoundaryProvider:
+          typeof anyPayload.candidateBoundaryProvider === 'string'
+            ? anyPayload.candidateBoundaryProvider
+            : null,
+        candidateBoundaryId:
+          typeof anyPayload.candidateBoundaryId === 'string'
+            ? anyPayload.candidateBoundaryId
+            : null,
+        candidateBoundaryType:
+          typeof anyPayload.candidateBoundaryType === 'string'
+            ? anyPayload.candidateBoundaryType
             : null,
         cta:
           anyPayload.cta && typeof anyPayload.cta === 'object'
@@ -177,8 +188,10 @@ const normalizePollQueryResponse = (payload: unknown): PollQueryResponse => {
     marketKey: null,
     marketName: null,
     marketStatus: null,
-    candidatePlaceName: null,
-    candidatePlaceGeoId: null,
+    candidateLocalityName: null,
+    candidateBoundaryProvider: null,
+    candidateBoundaryId: null,
+    candidateBoundaryType: null,
     cta: null,
     polls: normalizePollList(payload),
   };
@@ -223,13 +236,22 @@ export const createNetworkPollBootstrapSnapshot = (
       ? response.marketName.trim()
       : null,
   marketStatus: typeof response.marketStatus === 'string' ? response.marketStatus : null,
-  candidatePlaceName:
-    typeof response.candidatePlaceName === 'string' && response.candidatePlaceName.trim()
-      ? response.candidatePlaceName.trim()
+  candidateLocalityName:
+    typeof response.candidateLocalityName === 'string' && response.candidateLocalityName.trim()
+      ? response.candidateLocalityName.trim()
       : null,
-  candidatePlaceGeoId:
-    typeof response.candidatePlaceGeoId === 'string' && response.candidatePlaceGeoId.trim()
-      ? response.candidatePlaceGeoId.trim()
+  candidateBoundaryProvider:
+    typeof response.candidateBoundaryProvider === 'string' &&
+    response.candidateBoundaryProvider.trim()
+      ? response.candidateBoundaryProvider.trim()
+      : null,
+  candidateBoundaryId:
+    typeof response.candidateBoundaryId === 'string' && response.candidateBoundaryId.trim()
+      ? response.candidateBoundaryId.trim()
+      : null,
+  candidateBoundaryType:
+    typeof response.candidateBoundaryType === 'string' && response.candidateBoundaryType.trim()
+      ? response.candidateBoundaryType.trim()
       : null,
   cta: response.cta ?? null,
   polls: response.polls ?? [],
@@ -246,8 +268,10 @@ const buildPollBootstrapSnapshot = (entry: {
   marketKey: normalizePollMarketKey(entry.marketKey),
   marketName: entry.marketName ?? null,
   marketStatus: 'resolved',
-  candidatePlaceName: null,
-  candidatePlaceGeoId: null,
+  candidateLocalityName: null,
+  candidateBoundaryProvider: null,
+  candidateBoundaryId: null,
+  candidateBoundaryType: null,
   cta: null,
   polls: entry.polls,
   resolvedAtMs: entry.resolvedAtMs,

@@ -7,10 +7,12 @@ import type {
   ProfileNativeExecutionModel,
 } from './profile-native-execution-runtime-contract';
 import { useProfileNativeTransitionExecutionRuntime } from './profile-native-transition-runtime';
+import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 
 type UseProfileNativeExecutionModelRuntimeArgs = {
   preparedProfileCompletionHandlerRef: ProfileNativeExecutionArgs['preparedProfileCompletionHandlerRef'];
   nativeExecutionArgs: Omit<ProfileNativeExecutionArgs, 'preparedProfileCompletionHandlerRef'>;
+  setProfileCameraPadding: (padding: CameraSnapshot['padding']) => void;
 };
 
 export const useProfileNativeExecutionModelRuntime = ({
@@ -19,28 +21,35 @@ export const useProfileNativeExecutionModelRuntime = ({
     emitRuntimeMechanismEvent,
     cameraIntentArbiter,
     profileCameraAnimationMs,
-    lastVisibleSheetStateRef,
     lastCameraStateRef,
     setIsFollowingUser,
     suppressMapMoved,
     commitCameraViewport,
   },
+  setProfileCameraPadding,
 }: UseProfileNativeExecutionModelRuntimeArgs): ProfileNativeExecutionModel => {
-  const { handlePreparedProfileOverlayDismissed, handlePreparedProfileSheetSettled } =
-    useProfileNativeCompletionRuntime({
-      preparedProfileCompletionHandlerRef,
-      cameraIntentArbiter,
-    });
+  const pendingProfileCameraTargetRef = React.useRef<CameraSnapshot | null>(null);
+
+  React.useEffect(() => {
+    cameraIntentArbiter.setControlledCameraPaddingSyncHandler(setProfileCameraPadding);
+    return () => {
+      cameraIntentArbiter.setControlledCameraPaddingSyncHandler(null);
+    };
+  }, [cameraIntentArbiter, setProfileCameraPadding]);
+
+  useProfileNativeCompletionRuntime({
+    preparedProfileCompletionHandlerRef,
+    cameraIntentArbiter,
+    lastCameraStateRef,
+    pendingProfileCameraTargetRef,
+  });
   const transitionExecutionModel = useProfileNativeTransitionExecutionRuntime({
     emitRuntimeMechanismEvent,
-    lastVisibleSheetStateRef,
     lastCameraStateRef,
   });
   const commandExecutionModel = useProfileNativeCommandExecutionRuntime({
-    onProgrammaticHidden: handlePreparedProfileOverlayDismissed,
-    onProgrammaticSnapSettled: handlePreparedProfileSheetSettled,
     profileCameraAnimationMs,
-    lastCameraStateRef,
+    pendingProfileCameraTargetRef,
     setIsFollowingUser,
     suppressMapMoved,
     commitCameraViewport,

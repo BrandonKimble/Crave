@@ -1,7 +1,7 @@
-import type { BottomSheetProgrammaticRuntimeModel } from '../../../../overlays/useBottomSheetRuntime';
 import type { AppRouteSceneRuntime } from '../../../../navigation/runtime/app-route-scene-runtime';
-import type { Coordinate, RestaurantResult } from '../../../../types';
+import type { Coordinate, MapBounds, RestaurantResult } from '../../../../types';
 import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
+import type { ResultsPresentationSurfaceAuthority } from '../shared/results-presentation-surface-authority';
 import type { ProfileAppExecutionArgs } from './profile-app-execution-runtime-contract';
 import type {
   CloseRestaurantProfileOptions,
@@ -43,12 +43,16 @@ export type ProfileRuntimeActions = {
     source?: 'results_sheet' | 'auto_open_single_candidate' | 'dish_card'
   ) => void;
   refreshOpenRestaurantProfileSelection: (restaurant: RestaurantResult, queryLabel: string) => void;
+  prepareRestaurantProfileForTerminalSearchDismiss: () => void;
   resetRestaurantProfileFocusSession: () => void;
+  clearRestaurantProfileForSearchDismiss: () => void;
   closeRestaurantProfile: (options?: CloseRestaurantProfileOptions) => void;
 };
 
 export type ProfileSearchContext = {
   searchRuntimeBus: SearchRuntimeBus;
+  resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
+  getCurrentViewportBounds: () => MapBounds | null;
   trimmedQuery: string;
   restaurantOnlyId: string | null;
   isProfileAutoOpenSuppressed: boolean;
@@ -68,7 +72,6 @@ export type ProfileSelectionModel = {
     restaurant: RestaurantResult,
     anchor: { lng: number; lat: number } | null
   ) => RestaurantProfileLocation | null;
-  profileMultiLocationZoomOutDelta: number;
   profileMultiLocationMinZoom: number;
   restaurantFocusCenterEpsilon: number;
   restaurantFocusZoomEpsilon: number;
@@ -91,6 +94,5 @@ export type UseProfileOwnerArgs = {
 
 export type ProfileOwner = {
   profileViewState: ProfileViewState;
-  restaurantSheetSnapController: BottomSheetProgrammaticRuntimeModel['snapController'];
   profileActions: ProfileRuntimeActions;
 };

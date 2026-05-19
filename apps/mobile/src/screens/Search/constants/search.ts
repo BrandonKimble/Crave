@@ -83,8 +83,8 @@ export const PIN_FILL_CENTER_Y = PIN_FILL_TOP_OFFSET + PIN_FILL_RENDER_HEIGHT / 
 
 // Label placement:
 // - Center left/right labels on the pin fill (not the full base).
-// - Use Mapbox-native placement (`textVariableAnchor` + `textRadialOffset`) so collision decisions
-//   reflect what’s rendered on screen.
+// - Keep labels on the old-good candidate-layer model: four explicit candidate features/layers
+//   with native sticky feedback, never Mapbox variable anchors.
 export const LABEL_RADIAL_OFFSET_EM = LABEL_RADIAL_OFFSET_EM_BASELINE;
 
 // Rank text sizing - use pin fill dimensions for container

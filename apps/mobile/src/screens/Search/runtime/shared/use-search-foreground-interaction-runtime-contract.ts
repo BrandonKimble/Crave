@@ -12,7 +12,6 @@ import type { SearchResponse } from '../../../../types';
 import type { RootStackParamList, MainSearchIntent } from '../../../../types/navigation';
 import type { LaunchIntent } from '../../../../navigation/runtime/app-route-types';
 import type { OverlayKey, OverlaySheetSnap } from '../../../../overlays/types';
-import type { PerfNavSwitchOverlay } from '../../../../perf/harness-config';
 import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
 import type useSearchHistory from '../../hooks/use-search-history';
 import type useSearchSubmitOwner from '../../hooks/use-search-submit-owner';
@@ -171,9 +170,6 @@ export type SearchForegroundOverlayRuntimeArgs = {
 export type SearchForegroundEffectsRuntimeArgs = {
   registerPendingMutationWorkCancel: (handler: () => void) => void;
   cancelToggleInteraction: () => void;
-  toggleOpenNowHarnessRef: React.MutableRefObject<() => void>;
-  toggleOpenNow: () => void;
-  selectOverlayHarnessRef: React.MutableRefObject<(target: PerfNavSwitchOverlay) => void>;
   isSearchOverlay: boolean;
   saveSheetVisibleRef: React.MutableRefObject<{
     saveSheetState: { visible: boolean };

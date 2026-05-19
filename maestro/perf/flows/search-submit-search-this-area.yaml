@@ -1,0 +1,35 @@
+appId: com.brandonkimble.cravesearch
+---
+- tapOn:
+    text: 'Search'
+    optional: true
+- tapOn:
+    text: 'Close results'
+    optional: true
+- tapOn:
+    text: 'Close polls'
+    optional: true
+- extendedWaitUntil:
+    visible: 'Show best restaurants here'
+    timeout: 15000
+- tapOn:
+    text: 'Show best restaurants here'
+- extendedWaitUntil:
+    visible: 'Close results'
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 1000
+- swipe:
+    start: "14%, 34%"
+    end: "22%, 24%"
+    duration: 350
+- extendedWaitUntil:
+    visible: 'Search this area'
+    timeout: 10000
+- tapOn:
+    text: 'Search this area'
+- extendedWaitUntil:
+    visible: 'Close results'
+    timeout: 15000
+- waitForAnimationToEnd:
+    timeout: 1000

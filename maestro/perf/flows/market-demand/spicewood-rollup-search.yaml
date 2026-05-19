@@ -1,0 +1,19 @@
+appId: com.brandonkimble.cravesearch
+---
+- tapOn:
+    text: 'Search'
+    optional: true
+- tapOn:
+    text: 'Close results'
+    optional: true
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=30.4755&lng=-98.1564&zoom=12.0&label=spicewood'
+- waitForAnimationToEnd:
+    timeout: 2500
+- openLink: 'crave://perf-scenario-command?action=submit_shortcut_restaurants'
+- extendedWaitUntil:
+    visible: 'Close results'
+    timeout: 25000
+- takeScreenshot: market-demand-spicewood-rollup-results
+- tapOn:
+    text: 'Close results'
+    optional: true

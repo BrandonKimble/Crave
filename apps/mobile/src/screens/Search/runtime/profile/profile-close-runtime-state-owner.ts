@@ -9,12 +9,14 @@ import type { ProfileCloseRuntimeState } from './profile-runtime-state-contract'
 type UseProfileCloseRuntimeStateOwnerArgs = {
   profileControllerStateRef: React.RefObject<ProfileControllerState>;
   clearRestaurantPanelSnapshot: () => void;
+  clearMapHighlightedRestaurantId: () => void;
   resetRestaurantFocusSession: () => void;
 };
 
 export const useProfileCloseRuntimeStateOwner = ({
   profileControllerStateRef,
   clearRestaurantPanelSnapshot,
+  clearMapHighlightedRestaurantId,
   resetRestaurantFocusSession,
 }: UseProfileCloseRuntimeStateOwnerArgs): ProfileCloseRuntimeState => {
   const closePolicyRuntimeState = useProfileClosePolicyRuntimeState({
@@ -26,6 +28,7 @@ export const useProfileCloseRuntimeStateOwner = ({
   const closeFinalizationRuntimeState = useProfileCloseFinalizationRuntimeState({
     profileControllerStateRef,
     clearRestaurantPanelSnapshot,
+    clearMapHighlightedRestaurantId,
     resetRestaurantFocusSession,
   });
 

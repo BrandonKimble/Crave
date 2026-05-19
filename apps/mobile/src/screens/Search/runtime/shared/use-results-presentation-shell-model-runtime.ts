@@ -3,13 +3,18 @@ import React from 'react';
 import { type SharedValue, useDerivedValue } from 'react-native-reanimated';
 
 import {
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+} from '../../../../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
+import {
   type SearchBackdropTarget,
-  type SearchCloseTransitionState,
   type SearchHeaderChromeMode,
   type SearchInputMode,
   type SearchResultsShellModel,
   type SearchSheetContentLane,
 } from './results-presentation-shell-contract';
+import type { SearchSurfaceVisualPolicySnapshot } from '../surface/search-surface-runtime';
 import type { SearchChromeScalarSurfacePresentationRuntime } from '../native/search-chrome-scalar-surface-presentation-runtime';
 import { resolveSearchHeaderVisualModel } from './results-presentation-shell-visual-runtime';
 
@@ -30,7 +35,8 @@ type UseResultsPresentationShellModelRuntimeArgs = {
   backdropTarget: SearchBackdropTarget;
   inputMode: SearchInputMode;
   displayQueryOverride: string;
-  searchCloseTransitionState: SearchCloseTransitionState;
+  isCloseTransitionActive: boolean;
+  surfaceVisualPolicy: SearchSurfaceVisualPolicySnapshot;
   searchSheetContentLane: SearchSheetContentLane;
   searchChromeScalarSurfacePresentationRuntime?: SearchChromeScalarSurfacePresentationRuntime;
 };
@@ -47,7 +53,8 @@ export const useResultsPresentationShellModelRuntime = ({
   backdropTarget,
   inputMode,
   displayQueryOverride,
-  searchCloseTransitionState,
+  isCloseTransitionActive,
+  surfaceVisualPolicy,
   searchSheetContentLane,
   searchChromeScalarSurfacePresentationRuntime,
 }: UseResultsPresentationShellModelRuntimeArgs): SearchResultsShellModel => {
@@ -72,51 +79,127 @@ export const useResultsPresentationShellModelRuntime = ({
       ? submittedQuery
       : displayQueryOverride;
 
+  const lastResultsDisplayQueryRef = React.useRef('');
+  if (resultsDisplayQuery.trim().length > 0) {
+    lastResultsDisplayQueryRef.current = resultsDisplayQuery;
+  }
+  const surfaceDismissOwnsHeader =
+    surfaceVisualPolicy.phase === 'results_dismissing' ||
+    searchSheetContentLane.kind === 'results_closing';
+  const effectiveBackdropTarget: SearchBackdropTarget =
+    inputMode === 'editing'
+      ? backdropTarget
+      : surfaceDismissOwnsHeader
+      ? 'default'
+      : backdropTarget;
+
+  const shouldRetainResultsDisplayQuery =
+    effectiveBackdropTarget === 'results' &&
+    resultsDisplayQuery.trim().length === 0 &&
+    lastResultsDisplayQueryRef.current.trim().length > 0;
+  const effectiveResultsDisplayQuery =
+    shouldRetainResultsDisplayQuery
+      ? lastResultsDisplayQueryRef.current
+      : resultsDisplayQuery;
   const chromeMode: SearchHeaderChromeMode =
-    inputMode === 'editing' ? 'editing' : backdropTarget === 'results' ? 'results' : 'default';
+    inputMode === 'editing'
+      ? 'editing'
+      : effectiveBackdropTarget === 'results'
+      ? 'results'
+      : 'default';
 
   const headerVisualModel = React.useMemo(
     () =>
       resolveSearchHeaderVisualModel({
         chromeMode,
         query,
-        resultsDisplayQuery,
+        resultsDisplayQuery: effectiveResultsDisplayQuery,
         shouldRenderSearchOverlay,
         shouldEnableShortcutInteractions,
         isSuggestionPanelActive,
+        isCloseTransitionActive,
       }),
     [
       chromeMode,
+      effectiveResultsDisplayQuery,
       isSuggestionPanelActive,
+      isCloseTransitionActive,
       query,
-      resultsDisplayQuery,
       shouldEnableShortcutInteractions,
       shouldRenderSearchOverlay,
     ]
   );
+  const activeScenarioConfig = usePerfScenarioRuntimeStore((state) => state.activeConfig);
+  React.useEffect(() => {
+    if (!isPerfScenarioAttributionActive(activeScenarioConfig)) {
+      return;
+    }
+    logPerfScenarioAttributionEvent('VisualReadiness', activeScenarioConfig, {
+      event: 'search_header_visual_contract',
+      backdropTarget: effectiveBackdropTarget,
+      bottomBandOwner: surfaceVisualPolicy.bottomBandOwner,
+      canAdmitResultsBody: surfaceVisualPolicy.canAdmitResultsBody,
+      canExposePersistentPolls: surfaceVisualPolicy.canExposePersistentPolls,
+      canReleasePersistentPolls: surfaceVisualPolicy.canReleasePersistentPolls,
+      chromeMode,
+      displayQuery: headerVisualModel.displayQuery,
+      isCloseTransitionActive,
+      searchSheetContentLaneKind: searchSheetContentLane.kind,
+      searchSurfacePhase: surfaceVisualPolicy.phase,
+      shouldHoldResultsHeader: surfaceVisualPolicy.shouldHoldResultsHeader,
+      shouldRetainResultsDisplayQuery,
+      rawBackdropTarget: backdropTarget,
+      shouldHoldSearchDisplayForPollRestore:
+        surfaceVisualPolicy.shouldHoldSearchDisplayForPollRestore,
+      sheetClipMode: surfaceVisualPolicy.sheetClipMode,
+      shortcutsInteractive: headerVisualModel.shortcutsInteractive,
+      shortcutsVisibleTarget: headerVisualModel.shortcutsVisibleTarget,
+      transactionId: surfaceVisualPolicy.transactionId,
+    });
+  }, [
+    activeScenarioConfig,
+    backdropTarget,
+    chromeMode,
+    effectiveBackdropTarget,
+    headerVisualModel.displayQuery,
+    headerVisualModel.shortcutsInteractive,
+    headerVisualModel.shortcutsVisibleTarget,
+    isCloseTransitionActive,
+    searchSheetContentLane.kind,
+    shouldRetainResultsDisplayQuery,
+    surfaceVisualPolicy.bottomBandOwner,
+    surfaceVisualPolicy.canAdmitResultsBody,
+    surfaceVisualPolicy.canExposePersistentPolls,
+    surfaceVisualPolicy.canReleasePersistentPolls,
+    surfaceVisualPolicy.phase,
+    surfaceVisualPolicy.shouldHoldResultsHeader,
+    surfaceVisualPolicy.shouldHoldSearchDisplayForPollRestore,
+    surfaceVisualPolicy.sheetClipMode,
+    surfaceVisualPolicy.transactionId,
+  ]);
 
   searchChromeScalarSurfacePresentationRuntime?.syncShellPresentationScalars({
     shouldRenderSearchOverlay,
     headerShortcutsVisibleTarget: headerVisualModel.shortcutsVisibleTarget,
     headerShortcutsInteractive: headerVisualModel.shortcutsInteractive,
-    backdropTarget,
+    backdropTarget: effectiveBackdropTarget,
   });
 
   return React.useMemo(
     () => ({
-      backdropTarget,
+      backdropTarget: effectiveBackdropTarget,
       inputMode,
       defaultChromeProgress,
       headerVisualModel,
       searchSheetContentLane,
-      isCloseTransitionActive: searchCloseTransitionState != null,
+      isCloseTransitionActive,
     }),
     [
-      backdropTarget,
       defaultChromeProgress,
+      effectiveBackdropTarget,
       headerVisualModel,
       inputMode,
-      searchCloseTransitionState,
+      isCloseTransitionActive,
       searchSheetContentLane,
     ]
   );

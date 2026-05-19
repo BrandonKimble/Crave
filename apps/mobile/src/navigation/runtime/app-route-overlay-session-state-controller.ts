@@ -9,6 +9,7 @@ import {
   type AppRouteOverlaySessionAuthority,
   type AppRouteOverlaySessionControllerSharedSnapState,
   type AppRouteOverlaySessionSnapshot,
+  type AppRoutePostSearchRestoreOptions,
   type AppRouteSearchCloseRestoreOptions,
 } from './app-route-overlay-session-contract';
 import type {
@@ -40,6 +41,7 @@ type RootSnapshotTargetAuthority = SnapshotSource<RouteOverlayRootSnapshot> & {
     attributionLabel: string;
   }) => () => void;
 };
+
 
 type AppRouteOverlaySessionStateControllerArgs = {
   routeOverlayIdentityAuthority: SnapshotSource<RouteOverlayIdentitySnapshot>;
@@ -271,9 +273,13 @@ export class AppRouteOverlaySessionStateController {
     tabSnap: Exclude<SearchOverlaySheetSnap, 'hidden'>
   ): void {
     const resolvedRootOverlay = rootOverlayKey === 'polls' ? 'search' : rootOverlayKey;
+    const shouldRestoreDockedPolls = resolvedRootOverlay === 'search';
     this.routeSceneSwitchActions.requestOverlaySwitch({
       targetSceneKey: resolvedRootOverlay,
-      snapTarget: tabSnap,
+      sheetTransitionKind: 'topLevelSwitch',
+      sheetOpenerSource: 'routeCommand',
+      sheetMotion: { kind: 'snapTo', snap: tabSnap },
+      dockedPollsRestoreSnap: shouldRestoreDockedPolls ? tabSnap : null,
     });
   }
 
@@ -290,16 +296,37 @@ export class AppRouteOverlaySessionStateController {
     return true;
   }
 
-  private requestDefaultPostSearchRestore(): void {
+  private requestDefaultPostSearchRestore(options?: AppRoutePostSearchRestoreOptions): void {
     const sessionSnapshot = this.routeSheetSnapSessionAuthority.getSnapshot();
     this.routeSheetSnapSessionActions.setNavRestorePending(false);
     if (sessionSnapshot.pendingOriginRestoreContext) {
       this.routeSheetSnapSessionActions.setIsSearchOriginRestorePending(false);
       return;
     }
+    this.routeSheetSnapSessionActions.recordRouteSceneSheetSettle({
+      sceneKey: 'polls',
+      snap: 'collapsed',
+    });
+    if (options?.mode === 'chrome-only') {
+      this.routeSceneSwitchActions.requestOverlaySwitch({
+        targetSceneKey: 'search',
+        sheetTransitionKind: 'topLevelSwitch',
+        sheetOpenerSource: 'systemDismiss',
+        sheetMotion: { kind: 'none' },
+        contentHandoff: 'swapImmediately',
+        chromeVisibilityTarget: { searchChrome: 'visible' },
+        dockedPollsRestoreSnap: 'collapsed',
+        routeAction: 'setRoot',
+      });
+      this.routeSheetSnapSessionActions.setIsSearchOriginRestorePending(false);
+      return;
+    }
     this.routeSceneSwitchActions.requestOverlaySwitch({
       targetSceneKey: 'search',
-      snapTarget: 'collapsed',
+      sheetTransitionKind: 'topLevelSwitch',
+      sheetOpenerSource: 'systemDismiss',
+      sheetMotion: { kind: 'snapTo', snap: 'collapsed' },
+      dockedPollsRestoreSnap: 'collapsed',
     });
     this.routeSheetSnapSessionActions.setIsSearchOriginRestorePending(false);
   }

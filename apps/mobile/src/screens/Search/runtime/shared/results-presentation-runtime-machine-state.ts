@@ -1,7 +1,7 @@
 import type {
-  PreparedResultsPresentationSnapshot,
+  SearchSurfaceResultsTransaction,
   ResultsPresentationCoverState,
-} from './prepared-presentation-transaction';
+} from './search-surface-results-transaction';
 import type {
   ResultsPresentationReadModel,
   ResultsPresentationTransportState,
@@ -30,7 +30,7 @@ export const resolveResultsPresentationReadModel = ({
 }: {
   coverState: ResultsPresentationCoverState;
   executionStage: ResultsPresentationTransportState['executionStage'];
-  snapshotKind: PreparedResultsPresentationSnapshot['kind'] | null;
+  snapshotKind: SearchSurfaceResultsTransaction['kind'] | null;
 }): ResultsPresentationReadModel => {
   const contentVisibility =
     executionStage === 'exit_requested' || executionStage === 'exit_executing'
@@ -45,10 +45,16 @@ export const resolveResultsPresentationReadModel = ({
       ? 'frozen'
       : 'hidden';
   const isSettled = isResultsPresentationExecutionStageSettled(executionStage);
+  const isVisibleResultsSurface =
+    coverState === 'hidden' &&
+    snapshotKind === 'results_enter' &&
+    contentVisibility === 'visible';
 
   return {
     surfaceMode:
-      coverState === 'hidden'
+      isVisibleResultsSurface
+        ? 'results'
+        : coverState === 'hidden'
         ? 'none'
         : coverState === 'initial_loading'
         ? 'initial_loading'

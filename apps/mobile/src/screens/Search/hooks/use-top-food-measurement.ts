@@ -16,6 +16,35 @@ const MORE_WIDTH_TEMPLATE_DIGIT = '8';
 const MORE_WIDTH_TEMPLATE_MAX_DIGITS = 4;
 // Keep this small; avoid rendering tokens that end up ellipsizing/clipping.
 const MORE_WIDTH_FIT_SLACK_PX = 8;
+const TOP_FOOD_INLINE_AVAILABLE_WIDTH_TOLERANCE_PX = 1;
+
+export const RESTAURANT_CARD_TOP_FOOD_MEASUREMENT_ITEM_GAP_PX = 0;
+
+let topFoodMeasurementCacheVersion = 0;
+let cachedTopFoodInlineAvailableWidth: number | null = null;
+
+const bumpTopFoodMeasurementCacheVersion = (): void => {
+  topFoodMeasurementCacheVersion += 1;
+};
+
+export const getTopFoodMeasurementCacheVersion = (): number => topFoodMeasurementCacheVersion;
+
+export const getCachedTopFoodInlineAvailableWidth = (): number | null =>
+  cachedTopFoodInlineAvailableWidth;
+
+export const setCachedTopFoodInlineAvailableWidth = (width: number): void => {
+  if (!Number.isFinite(width) || width <= 0) {
+    return;
+  }
+  if (
+    cachedTopFoodInlineAvailableWidth == null ||
+    Math.abs(cachedTopFoodInlineAvailableWidth - width) >=
+      TOP_FOOD_INLINE_AVAILABLE_WIDTH_TOLERANCE_PX
+  ) {
+    cachedTopFoodInlineAvailableWidth = width;
+    bumpTopFoodMeasurementCacheVersion();
+  }
+};
 
 const getMoreWidthTemplateCount = (hiddenCount: number): number => {
   const digits = Math.max(1, hiddenCount.toString().length);
@@ -46,6 +75,7 @@ class LruWidthCache<TKey> {
       this.map.delete(key);
     }
     this.map.set(key, value);
+    bumpTopFoodMeasurementCacheVersion();
     if (this.map.size > this.maxSize) {
       const oldestKey = this.map.keys().next().value as TKey | undefined;
       if (oldestKey !== undefined) {
@@ -61,6 +91,12 @@ const topFoodMoreWidthCache = new LruWidthCache<number>(250);
 type TopFoodItem = {
   connectionId: string;
   foodName: string;
+};
+
+type CachedTopFoodLayout = {
+  availableWidth: number;
+  hiddenTopFoodCount: number;
+  visibleTopFoods: readonly TopFoodItem[];
 };
 
 type TopFoodMeasurementOptions = {
@@ -161,6 +197,229 @@ type TopFoodMeasurementResult = {
   allCached: boolean;
 };
 
+const computeTopFoodMoreCounts = ({
+  candidateTopFoodsLength,
+  resolvedTotalTopFoodCount,
+}: {
+  candidateTopFoodsLength: number;
+  resolvedTotalTopFoodCount: number;
+}): number[] => {
+  if (candidateTopFoodsLength === 0) return [];
+  // Measure the actual "+N more" strings we might render. With `maxToRender` this is small,
+  // and it produces a more liberal (but still safe) fit than digit-template widths.
+  const counts = new Set<number>();
+  for (let count = 0; count <= candidateTopFoodsLength; count++) {
+    const hiddenCount = resolvedTotalTopFoodCount - count;
+    if (hiddenCount > 0) {
+      counts.add(hiddenCount);
+    }
+  }
+  return Array.from(counts);
+};
+
+const resolveMeasuredTopFoodLayout = ({
+  availableWidth,
+  candidateTopFoods,
+  getItemWidth,
+  getMoreWidth,
+  itemGap,
+  resolvedTotalTopFoodCount,
+}: {
+  availableWidth: number | undefined;
+  candidateTopFoods: readonly TopFoodItem[];
+  getItemWidth: (connectionId: string) => number | undefined;
+  getMoreWidth: (hiddenCount: number) => number | undefined;
+  itemGap: number;
+  resolvedTotalTopFoodCount: number;
+}): {
+  hiddenTopFoodCount: number;
+  visibleTopFoods: readonly TopFoodItem[];
+} => {
+  const containerWidth = availableWidth ?? 0;
+
+  if (candidateTopFoods.length === 0) {
+    return { visibleTopFoods: [] as readonly TopFoodItem[], hiddenTopFoodCount: 0 };
+  }
+  if (!containerWidth) {
+    return {
+      visibleTopFoods: candidateTopFoods,
+      hiddenTopFoodCount: 0,
+    };
+  }
+
+  const measuredWidths = candidateTopFoods.map((food) => getItemWidth(food.connectionId));
+  const resolvedMeasuredWidths = measuredWidths.filter(
+    (width): width is number => typeof width === 'number'
+  );
+  const computeTokensOnlyCount = (): number => {
+    if (!containerWidth) return 0;
+    let totalWidth = 0;
+    let count = 0;
+    for (let idx = 0; idx < resolvedMeasuredWidths.length; idx++) {
+      const width = resolvedMeasuredWidths[idx];
+      const nextTotal = totalWidth + width + (count > 0 ? itemGap : 0);
+      if (nextTotal <= containerWidth + MORE_WIDTH_FIT_SLACK_PX) {
+        totalWidth = nextTotal;
+        count += 1;
+        continue;
+      }
+      break;
+    }
+    return count;
+  };
+
+  // If we don't yet have all item widths, still show the prefix that we *can* prove fits.
+  if (resolvedMeasuredWidths.length !== measuredWidths.length) {
+    const tokensOnlyCount = computeTokensOnlyCount();
+    return {
+      visibleTopFoods: candidateTopFoods.slice(0, tokensOnlyCount),
+      hiddenTopFoodCount: Math.max(0, resolvedTotalTopFoodCount - tokensOnlyCount),
+    };
+  }
+
+  let hasMeasurements = false;
+  let bestCount: number | null = null;
+
+  for (let count = candidateTopFoods.length; count >= 0; count--) {
+    const hiddenCount = resolvedTotalTopFoodCount - count;
+    const needsMore = hiddenCount > 0;
+    const moreWidth = needsMore ? getMoreWidth(hiddenCount) : 0;
+    if (needsMore && typeof moreWidth !== 'number') {
+      continue;
+    }
+    hasMeasurements = true;
+    const widths = measuredWidths.slice(0, count) as number[];
+    const elementCount = count + (needsMore ? 1 : 0);
+    const gapWidth = Math.max(0, elementCount - 1) * itemGap;
+    const totalWidth =
+      widths.reduce((sum, width) => sum + width, 0) +
+      gapWidth +
+      (needsMore ? moreWidth ?? 0 : 0);
+    // Be a bit liberal with fit checks, but prefer conservative "+N more" widths via
+    // digit-template fallback when exact measurement isn't available.
+    if (totalWidth <= containerWidth + MORE_WIDTH_FIT_SLACK_PX) {
+      bestCount = count;
+      break;
+    }
+  }
+
+  if (!hasMeasurements) {
+    const tokensOnlyCount = computeTokensOnlyCount();
+    return {
+      visibleTopFoods: candidateTopFoods.slice(0, tokensOnlyCount),
+      hiddenTopFoodCount: Math.max(0, resolvedTotalTopFoodCount - tokensOnlyCount),
+    };
+  }
+
+  const resolvedBestCount = bestCount ?? 0;
+  // If "+N more" fits but zero tokens fit alongside it, prefer showing at least the
+  // first token (if it fits on its own) over showing only "+N more".
+  if (
+    resolvedBestCount === 0 &&
+    candidateTopFoods.length > 0 &&
+    typeof resolvedMeasuredWidths[0] === 'number' &&
+    resolvedMeasuredWidths[0] <= containerWidth + MORE_WIDTH_FIT_SLACK_PX
+  ) {
+    return {
+      visibleTopFoods: candidateTopFoods.slice(0, 1),
+      hiddenTopFoodCount: 0,
+    };
+  }
+
+  const hiddenCount = Math.max(0, resolvedTotalTopFoodCount - resolvedBestCount);
+  return {
+    visibleTopFoods: candidateTopFoods.slice(0, resolvedBestCount),
+    hiddenTopFoodCount: hiddenCount,
+  };
+};
+
+const getCachedMoreWidth = (hiddenCount: number): number | undefined => {
+  const direct = topFoodMoreWidthCache.get(hiddenCount);
+  if (typeof direct === 'number') return direct;
+  const templateCount = getMoreWidthTemplateCount(hiddenCount);
+  return topFoodMoreWidthCache.get(templateCount);
+};
+
+export const resolveCachedTopFoodLayout = ({
+  availableWidth,
+  itemGap,
+  maxToRender,
+  topFoodItems,
+  totalTopFoodCount,
+}: {
+  availableWidth: number | null | undefined;
+  itemGap: number;
+  maxToRender: number;
+  topFoodItems: readonly TopFoodItem[];
+  totalTopFoodCount?: number;
+}): CachedTopFoodLayout | null => {
+  if (!availableWidth || !Number.isFinite(availableWidth) || topFoodItems.length === 0) {
+    return null;
+  }
+  const candidateTopFoods = topFoodItems.slice(0, maxToRender);
+  if (candidateTopFoods.length === 0) {
+    return null;
+  }
+  const resolvedTotalTopFoodCount = Math.max(
+    totalTopFoodCount ?? topFoodItems.length,
+    topFoodItems.length
+  );
+  const topFoodMoreCounts = computeTopFoodMoreCounts({
+    candidateTopFoodsLength: candidateTopFoods.length,
+    resolvedTotalTopFoodCount,
+  });
+  const hasCachedItems = candidateTopFoods.every(
+    (food) => typeof topFoodItemWidthCache.get(food.connectionId) === 'number'
+  );
+  if (!hasCachedItems) {
+    return null;
+  }
+  const hasCachedMoreCounts = topFoodMoreCounts.every(
+    (count) => typeof topFoodMoreWidthCache.get(count) === 'number'
+  );
+  if (!hasCachedMoreCounts) {
+    return null;
+  }
+  const resolvedLayout = resolveMeasuredTopFoodLayout({
+    availableWidth,
+    candidateTopFoods,
+    getItemWidth: (connectionId) => topFoodItemWidthCache.get(connectionId),
+    getMoreWidth: getCachedMoreWidth,
+    itemGap,
+    resolvedTotalTopFoodCount,
+  });
+  return {
+    availableWidth,
+    hiddenTopFoodCount: resolvedLayout.hiddenTopFoodCount,
+    visibleTopFoods: resolvedLayout.visibleTopFoods,
+  };
+};
+
+export const resolveEstimatedTopFoodLayout = ({
+  topFoodItems,
+  totalTopFoodCount,
+  maxToRender,
+}: {
+  topFoodItems: readonly TopFoodItem[];
+  totalTopFoodCount?: number;
+  maxToRender: number;
+}): CachedTopFoodLayout | null => {
+  const candidateTopFoods = topFoodItems.slice(0, maxToRender);
+  if (candidateTopFoods.length === 0) {
+    return null;
+  }
+  const resolvedTotalTopFoodCount = Math.max(
+    totalTopFoodCount ?? topFoodItems.length,
+    topFoodItems.length
+  );
+  const visibleCount = Math.min(1, candidateTopFoods.length);
+  return {
+    availableWidth: cachedTopFoodInlineAvailableWidth ?? 0,
+    visibleTopFoods: candidateTopFoods.slice(0, visibleCount),
+    hiddenTopFoodCount: Math.max(0, resolvedTotalTopFoodCount - visibleCount),
+  };
+};
+
 /**
  * A hook that manages the complex layout measurement logic for dynamic
  * top food truncation in RestaurantResultCard.
@@ -236,19 +495,14 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
   );
 
   // Possible "more" counts we need to measure
-  const topFoodMoreCounts = React.useMemo(() => {
-    if (candidateTopFoods.length === 0) return [];
-    // Measure the actual "+N more" strings we might render. With `maxToRender` this is small,
-    // and it produces a more liberal (but still safe) fit than digit-template widths.
-    const counts = new Set<number>();
-    for (let count = 0; count <= candidateTopFoods.length; count++) {
-      const hiddenCount = resolvedTotalTopFoodCount - count;
-      if (hiddenCount > 0) {
-        counts.add(hiddenCount);
-      }
-    }
-    return Array.from(counts);
-  }, [candidateTopFoods.length, resolvedTotalTopFoodCount]);
+  const topFoodMoreCounts = React.useMemo(
+    () =>
+      computeTopFoodMoreCounts({
+        candidateTopFoodsLength: candidateTopFoods.length,
+        resolvedTotalTopFoodCount,
+      }),
+    [candidateTopFoods.length, resolvedTotalTopFoodCount]
+  );
 
   // Apply pending updates with debouncing
   const flushPendingUpdates = React.useCallback(() => {
@@ -447,111 +701,20 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
       };
     } else {
       const { itemWidths, moreWidths } = measurements;
-      const containerWidth = availableWidth ?? 0;
-
-      if (candidateTopFoods.length === 0) {
-        result = { visibleTopFoods: [] as readonly TopFoodItem[], hiddenTopFoodCount: 0 };
-      } else if (!containerWidth) {
-        result = {
-          visibleTopFoods: candidateTopFoods,
-          hiddenTopFoodCount: 0,
-        };
-      } else {
-        const measuredWidths = candidateTopFoods.map(
-          (food) =>
-            itemWidths.get(food.connectionId) ?? topFoodItemWidthCache.get(food.connectionId)
-        );
-        const resolvedMeasuredWidths = measuredWidths.filter(
-          (width): width is number => typeof width === 'number'
-        );
-        const computeTokensOnlyCount = (): number => {
-          if (!containerWidth) return 0;
-          let totalWidth = 0;
-          let count = 0;
-          for (let idx = 0; idx < resolvedMeasuredWidths.length; idx++) {
-            const width = resolvedMeasuredWidths[idx];
-            const nextTotal = totalWidth + width + (count > 0 ? itemGap : 0);
-            if (nextTotal <= containerWidth + MORE_WIDTH_FIT_SLACK_PX) {
-              totalWidth = nextTotal;
-              count += 1;
-              continue;
-            }
-            break;
-          }
-          return count;
-        };
-
-        // If we don't yet have all item widths, still show the prefix that we *can* prove fits.
-        if (resolvedMeasuredWidths.length !== measuredWidths.length) {
-          const tokensOnlyCount = computeTokensOnlyCount();
-          result = {
-            visibleTopFoods: candidateTopFoods.slice(0, tokensOnlyCount),
-            hiddenTopFoodCount: Math.max(0, resolvedTotalTopFoodCount - tokensOnlyCount),
-          };
-        } else {
-          const getMoreWidth = (hiddenCount: number): number | undefined => {
-            const direct = moreWidths.get(hiddenCount) ?? topFoodMoreWidthCache.get(hiddenCount);
-            if (typeof direct === 'number') return direct;
-            const templateCount = getMoreWidthTemplateCount(hiddenCount);
-            return moreWidths.get(templateCount) ?? topFoodMoreWidthCache.get(templateCount);
-          };
-
-          let hasMeasurements = false;
-          let bestCount: number | null = null;
-
-          for (let count = candidateTopFoods.length; count >= 0; count--) {
-            const hiddenCount = resolvedTotalTopFoodCount - count;
-            const needsMore = hiddenCount > 0;
-            const moreWidth = needsMore ? getMoreWidth(hiddenCount) : 0;
-            if (needsMore && typeof moreWidth !== 'number') {
-              continue;
-            }
-            hasMeasurements = true;
-            const widths = measuredWidths.slice(0, count) as number[];
-            const elementCount = count + (needsMore ? 1 : 0);
-            const gapWidth = Math.max(0, elementCount - 1) * itemGap;
-            const totalWidth =
-              widths.reduce((sum, width) => sum + width, 0) +
-              gapWidth +
-              (needsMore ? moreWidth ?? 0 : 0);
-            // Be a bit liberal with fit checks, but prefer conservative "+N more" widths via
-            // digit-template fallback when exact measurement isn't available.
-            if (totalWidth <= containerWidth + MORE_WIDTH_FIT_SLACK_PX) {
-              bestCount = count;
-              break;
-            }
-          }
-
-          if (!hasMeasurements) {
-            const tokensOnlyCount = computeTokensOnlyCount();
-            result = {
-              visibleTopFoods: candidateTopFoods.slice(0, tokensOnlyCount),
-              hiddenTopFoodCount: Math.max(0, resolvedTotalTopFoodCount - tokensOnlyCount),
-            };
-          } else {
-            const resolvedBestCount = bestCount ?? 0;
-            // If "+N more" fits but zero tokens fit alongside it, prefer showing at least the
-            // first token (if it fits on its own) over showing only "+N more".
-            if (
-              resolvedBestCount === 0 &&
-              candidateTopFoods.length > 0 &&
-              typeof resolvedMeasuredWidths[0] === 'number' &&
-              resolvedMeasuredWidths[0] <= containerWidth + MORE_WIDTH_FIT_SLACK_PX
-            ) {
-              result = {
-                visibleTopFoods: candidateTopFoods.slice(0, 1),
-                hiddenTopFoodCount: 0,
-              };
-            } else {
-              const hiddenCount = Math.max(0, resolvedTotalTopFoodCount - resolvedBestCount);
-              result = {
-                visibleTopFoods: candidateTopFoods.slice(0, resolvedBestCount),
-                hiddenTopFoodCount: hiddenCount,
-              };
-            }
-          }
-        }
-      }
+      result = resolveMeasuredTopFoodLayout({
+        availableWidth,
+        candidateTopFoods,
+        getItemWidth: (connectionId) =>
+          itemWidths.get(connectionId) ?? topFoodItemWidthCache.get(connectionId),
+        getMoreWidth: (hiddenCount) => {
+          const direct = moreWidths.get(hiddenCount) ?? topFoodMoreWidthCache.get(hiddenCount);
+          if (typeof direct === 'number') return direct;
+          const templateCount = getMoreWidthTemplateCount(hiddenCount);
+          return moreWidths.get(templateCount) ?? topFoodMoreWidthCache.get(templateCount);
+        },
+        itemGap,
+        resolvedTotalTopFoodCount,
+      });
     }
 
     if (shouldLogTopFoodMeasurement) {
@@ -648,6 +811,7 @@ export {
   computeTopFoodPreMeasureKeys,
   topFoodItemWidthCache,
   topFoodMoreWidthCache,
+  type CachedTopFoodLayout,
   type TopFoodItem,
   type TopFoodMeasurementOptions,
   type TopFoodMeasurementResult,

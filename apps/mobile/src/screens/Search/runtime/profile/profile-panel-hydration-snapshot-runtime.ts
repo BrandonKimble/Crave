@@ -1,16 +1,18 @@
-import type { RestaurantResult } from '../../../../types';
 import type {
   HydratedRestaurantProfile,
   RestaurantPanelSnapshot,
+  RestaurantProfileSeed,
 } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
+
+type RestaurantProfileLocation = NonNullable<NonNullable<RestaurantProfileSeed['locations']>[number]>;
 
 const resolveRestaurantDisplayLocation = ({
   restaurant,
   preferredLocationId,
 }: {
-  restaurant: RestaurantResult;
+  restaurant: RestaurantProfileSeed;
   preferredLocationId?: string | null;
-}) => {
+}): RestaurantProfileLocation | null => {
   const locations = Array.isArray(restaurant.locations) ? restaurant.locations : [];
   if (preferredLocationId) {
     const matched =
@@ -26,9 +28,9 @@ const withPreferredDisplayLocation = ({
   restaurant,
   preferredLocationId,
 }: {
-  restaurant: RestaurantResult;
+  restaurant: RestaurantProfileSeed;
   preferredLocationId?: string | null;
-}): RestaurantResult => ({
+}): RestaurantProfileSeed => ({
   ...restaurant,
   displayLocation: resolveRestaurantDisplayLocation({
     restaurant,
@@ -36,17 +38,16 @@ const withPreferredDisplayLocation = ({
   }),
 });
 
-const resolveHydratedContextualScore = ({
+const resolveHydratedCraveScore = ({
   currentSnapshot,
   hydratedProfile,
 }: {
   currentSnapshot: RestaurantPanelSnapshot;
   hydratedProfile: HydratedRestaurantProfile;
 }): number =>
-  typeof currentSnapshot.restaurant.contextualScore === 'number' &&
-  currentSnapshot.restaurant.contextualScore > 0
-    ? currentSnapshot.restaurant.contextualScore
-    : hydratedProfile.restaurant.contextualScore;
+  typeof currentSnapshot.restaurant.craveScore === 'number' && currentSnapshot.restaurant.craveScore > 0
+    ? currentSnapshot.restaurant.craveScore
+    : hydratedProfile.restaurant.craveScore;
 
 export const createSeededRestaurantPanelSnapshot = ({
   currentSnapshot,
@@ -56,7 +57,7 @@ export const createSeededRestaurantPanelSnapshot = ({
   selectedLocationId,
 }: {
   currentSnapshot: RestaurantPanelSnapshot | null;
-  restaurant: RestaurantResult;
+  restaurant: RestaurantProfileSeed;
   queryLabel: string;
   cachedProfile: HydratedRestaurantProfile | undefined;
   selectedLocationId?: string | null;
@@ -71,7 +72,10 @@ export const createSeededRestaurantPanelSnapshot = ({
     ? withPreferredDisplayLocation({
         restaurant: {
           ...cachedProfile.restaurant,
-          contextualScore: restaurant.contextualScore,
+          craveScore:
+            typeof restaurant.craveScore === 'number' && Number.isFinite(restaurant.craveScore)
+              ? restaurant.craveScore
+              : cachedProfile.restaurant.craveScore,
         },
         preferredLocationId,
       })
@@ -110,7 +114,7 @@ export const applyHydratedRestaurantProfileToPanelSnapshot = ({
     restaurant: withPreferredDisplayLocation({
       restaurant: {
         ...hydratedProfile.restaurant,
-        contextualScore: resolveHydratedContextualScore({
+        craveScore: resolveHydratedCraveScore({
           currentSnapshot,
           hydratedProfile,
         }),

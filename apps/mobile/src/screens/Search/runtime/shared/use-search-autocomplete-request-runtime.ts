@@ -1,6 +1,7 @@
 import React from 'react';
 
 import type { AutocompleteMatch } from '../../../../services/autocomplete';
+import type { Coordinate, MapBounds } from '../../../../types';
 import { useSearchAutocompleteRequestEffectRuntime } from './use-search-autocomplete-request-effect-runtime';
 import { useSearchAutocompleteRequestStateRuntime } from './use-search-autocomplete-request-state-runtime';
 
@@ -11,7 +12,11 @@ type UseSearchAutocompleteRequestRuntimeArgs = {
   isAutocompleteSuppressed: boolean;
   runAutocomplete: (
     value: string,
-    options?: { debounceMs?: number }
+    options?: {
+      debounceMs?: number;
+      bounds?: MapBounds | null;
+      userLocation?: Coordinate | null;
+    }
   ) => Promise<AutocompleteMatch[]>;
   cancelAutocomplete: () => void;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
@@ -21,6 +26,8 @@ type UseSearchAutocompleteRequestRuntimeArgs = {
     rawQuery: string
   ) => { matches: AutocompleteMatch[]; isExactMatch: boolean } | null;
   writeAutocompleteCache: (rawQuery: string, matches: AutocompleteMatch[]) => void;
+  bounds: MapBounds | null;
+  userLocation: Coordinate | null;
 };
 
 type SearchAutocompleteRequestRuntime = {
@@ -40,6 +47,8 @@ export const useSearchAutocompleteRequestRuntime = ({
   clearAutocompleteSuggestions,
   lookupAutocompleteCache,
   writeAutocompleteCache,
+  bounds,
+  userLocation,
 }: UseSearchAutocompleteRequestRuntimeArgs): SearchAutocompleteRequestRuntime => {
   const requestStateRuntime = useSearchAutocompleteRequestStateRuntime({
     query,
@@ -61,6 +70,8 @@ export const useSearchAutocompleteRequestRuntime = ({
     lookupAutocompleteCache,
     writeAutocompleteCache,
     requestStateRuntime,
+    bounds,
+    userLocation,
   });
 
   return React.useMemo(

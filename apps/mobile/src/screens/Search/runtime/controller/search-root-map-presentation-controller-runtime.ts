@@ -49,6 +49,20 @@ export const createSearchRootMapPresentationRuntimeValue = ({
     logSearchCompute: instrumentationRuntime.logSearchCompute,
     mapQueryBudget: sessionCoreLane.mapQueryBudget,
     profileCommandPort: mapProfileControlLane.mapProfileCommandPort,
+    handleCameraAnimationComplete: (event: {
+      nativeEvent: {
+        payload?: {
+          animationCompletionId?: string | null;
+          status?: 'finished' | 'cancelled';
+        } | null;
+      };
+    }) => {
+      const payload = event.nativeEvent.payload;
+      sessionCoreLane.cameraIntentArbiter.handleProgrammaticCameraAnimationCompletion({
+        animationCompletionId: payload?.animationCompletionId ?? null,
+        status: payload?.status ?? 'finished',
+      });
+    },
     cameraPadding: mapProfileControlLane.mapViewState.mapCameraPadding,
     handleMapLoaded: sessionCoreLane.mapBootstrapRuntime.handleMapLoaded,
     handleMainMapFullyRendered:

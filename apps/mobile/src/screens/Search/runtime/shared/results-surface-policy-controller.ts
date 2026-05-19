@@ -20,6 +20,10 @@ import {
   resolveSearchResultsRetainedReadModel,
   type SearchResultsRetainedReadModel,
 } from './results-retained-read-model-controller';
+import {
+  EMPTY_SEARCH_SURFACE_VISUAL_POLICY,
+  type SearchSurfaceVisualPolicySnapshot,
+} from '../surface/search-surface-runtime';
 
 export type ResultsSurfacePolicyTab = 'dishes' | 'restaurants';
 
@@ -46,6 +50,7 @@ export type ResultsSurfacePolicySnapshot = {
   sheetContentLaneKind: SearchSheetContentLane['kind'];
   closeLaneState: SearchCloseTransitionState;
   holdPersistentPollLane: boolean;
+  surfaceVisualPolicy: SearchSurfaceVisualPolicySnapshot;
   retainedResults: ResultsSurfacePolicyResults;
   retainedReadModel: ResultsSurfacePolicyRetainedReadModel;
   hasRetainedResults: boolean;
@@ -77,6 +82,7 @@ export type ResultsSurfacePolicyController = {
     hasActiveSearchContent: boolean;
     closeLaneState: SearchCloseTransitionState;
     holdPersistentPollLane: boolean;
+    surfaceVisualPolicy: SearchSurfaceVisualPolicySnapshot;
   }) => void;
   updatePanelInputs: (panelInputs: ResultsSurfacePolicyPanelInputs) => void;
   updateReadModelFacts: (facts: {
@@ -139,6 +145,7 @@ const createSnapshot = ({
   closeLaneState,
   hasActiveSearchContent,
   holdPersistentPollLane,
+  surfaceVisualPolicy,
   panelInputs,
   rowCountByTab,
   retainedResults,
@@ -147,14 +154,14 @@ const createSnapshot = ({
   closeLaneState: SearchCloseTransitionState;
   hasActiveSearchContent: boolean;
   holdPersistentPollLane: boolean;
+  surfaceVisualPolicy: SearchSurfaceVisualPolicySnapshot;
   panelInputs: ResultsSurfacePolicyPanelInputs;
   rowCountByTab: ResultsSurfacePolicyRowCounts | null;
   retainedResults: ResultsSurfacePolicyResults;
 }): ResultsSurfacePolicySnapshot => {
   const searchSheetContentLane = resolveSearchSheetContentLane({
     hasActiveSearchContent,
-    closeTransitionState: closeLaneState,
-    holdPersistentPollLane,
+    surfaceVisualPolicy,
   });
   const retainedReadModel = resolveRetainedReadModel(retainedResults);
   const safeRowCountByTab = resolveSafeRowCounts(retainedReadModel);
@@ -180,6 +187,7 @@ const createSnapshot = ({
     sheetContentLaneKind: searchSheetContentLane.kind,
     closeLaneState,
     holdPersistentPollLane,
+    surfaceVisualPolicy,
     retainedResults,
     retainedReadModel,
     hasRetainedResults: retainedResults != null,
@@ -203,6 +211,7 @@ export const createResultsSurfacePolicyController = (): ResultsSurfacePolicyCont
   let closeLaneState: SearchCloseTransitionState = null;
   let hasActiveSearchContent = false;
   let holdPersistentPollLane = false;
+  let surfaceVisualPolicy = EMPTY_SEARCH_SURFACE_VISUAL_POLICY;
   let panelInputs: ResultsSurfacePolicyPanelInputs = EMPTY_PANEL_INPUTS;
   let rowCountByTab: ResultsSurfacePolicyRowCounts | null = null;
   let retainedResults: ResultsSurfacePolicyResults = null;
@@ -212,6 +221,7 @@ export const createResultsSurfacePolicyController = (): ResultsSurfacePolicyCont
     closeLaneState,
     hasActiveSearchContent,
     holdPersistentPollLane,
+    surfaceVisualPolicy,
     panelInputs,
     rowCountByTab,
     retainedResults,
@@ -220,8 +230,7 @@ export const createResultsSurfacePolicyController = (): ResultsSurfacePolicyCont
   const recompute = (): void => {
     const nextLane = resolveSearchSheetContentLane({
       hasActiveSearchContent,
-      closeTransitionState: closeLaneState,
-      holdPersistentPollLane,
+      surfaceVisualPolicy,
     });
     retainedResults = resolveCommittedRetainedResults({
       currentRetainedResults: retainedResults,
@@ -233,6 +242,7 @@ export const createResultsSurfacePolicyController = (): ResultsSurfacePolicyCont
       closeLaneState,
       hasActiveSearchContent,
       holdPersistentPollLane,
+      surfaceVisualPolicy,
       panelInputs,
       rowCountByTab,
       retainedResults,
@@ -269,10 +279,12 @@ export const createResultsSurfacePolicyController = (): ResultsSurfacePolicyCont
       hasActiveSearchContent: nextHasActiveSearchContent,
       closeLaneState: nextCloseLaneState,
       holdPersistentPollLane: nextHoldPersistentPollLane,
+      surfaceVisualPolicy: nextSurfaceVisualPolicy,
     }) {
       hasActiveSearchContent = nextHasActiveSearchContent;
       closeLaneState = nextCloseLaneState;
       holdPersistentPollLane = nextHoldPersistentPollLane;
+      surfaceVisualPolicy = nextSurfaceVisualPolicy;
       recompute();
     },
     updatePanelInputs(nextPanelInputs) {
@@ -302,6 +314,7 @@ export const createResultsSurfacePolicyController = (): ResultsSurfacePolicyCont
       closeLaneState = null;
       hasActiveSearchContent = false;
       holdPersistentPollLane = false;
+      surfaceVisualPolicy = EMPTY_SEARCH_SURFACE_VISUAL_POLICY;
       panelInputs = EMPTY_PANEL_INPUTS;
       rowCountByTab = null;
       retainedResults = null;
@@ -311,6 +324,7 @@ export const createResultsSurfacePolicyController = (): ResultsSurfacePolicyCont
         closeLaneState,
         hasActiveSearchContent,
         holdPersistentPollLane,
+        surfaceVisualPolicy,
         panelInputs,
         rowCountByTab,
         retainedResults,

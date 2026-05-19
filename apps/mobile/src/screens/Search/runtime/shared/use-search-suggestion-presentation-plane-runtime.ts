@@ -14,7 +14,7 @@ import type {
 } from './use-search-suggestion-surface-runtime-contract';
 
 type UseSearchSuggestionPresentationPlaneRuntimeArgs = UseSearchSuggestionSurfaceRuntimeArgs & {
-  shouldFreezeSuggestionDisplayForRunOne: boolean;
+  shouldFreezeSuggestionDisplayForSearchSurfaceRedraw: boolean;
 };
 
 export const useSearchSuggestionPresentationPlaneRuntime = ({
@@ -31,9 +31,6 @@ export const useSearchSuggestionPresentationPlaneRuntime = ({
     recentSearches: args.recentSearches,
     recentlyViewedRestaurants: args.recentlyViewedRestaurants,
     recentlyViewedFoods: args.recentlyViewedFoods,
-    isRecentLoading: args.isRecentLoading,
-    isRecentlyViewedLoading: args.isRecentlyViewedLoading,
-    isRecentlyViewedFoodsLoading: args.isRecentlyViewedFoodsLoading,
     isSuggestionPanelActive: args.isSuggestionPanelActive,
     isAutocompleteSuppressed: args.isAutocompleteSuppressed,
     isAutocompleteLoading: args.isAutocompleteLoading,
@@ -46,9 +43,6 @@ export const useSearchSuggestionPresentationPlaneRuntime = ({
     recentSearches: args.recentSearches,
     recentlyViewedRestaurants: args.recentlyViewedRestaurants,
     recentlyViewedFoods: args.recentlyViewedFoods,
-    isRecentLoading: args.isRecentLoading,
-    isRecentlyViewedLoading: args.isRecentlyViewedLoading,
-    isRecentlyViewedFoodsLoading: args.isRecentlyViewedFoodsLoading,
   });
   const holdEffectsRuntime: SearchSuggestionHoldEffectsRuntime =
     useSearchSuggestionHoldEffectsRuntime({
@@ -74,9 +68,6 @@ export const useSearchSuggestionPresentationPlaneRuntime = ({
       recentSearches: args.recentSearches,
       recentlyViewedRestaurants: args.recentlyViewedRestaurants,
       recentlyViewedFoods: args.recentlyViewedFoods,
-      isRecentLoading: args.isRecentLoading,
-      isRecentlyViewedLoading: args.isRecentlyViewedLoading,
-      isRecentlyViewedFoodsLoading: args.isRecentlyViewedFoodsLoading,
       isSuggestionPanelActive: args.isSuggestionPanelActive,
       isSuggestionPanelVisible: transitionRuntime.isSuggestionPanelVisible,
       shouldDriveSuggestionLayout: transitionRuntime.shouldDriveSuggestionLayout,
@@ -87,8 +78,8 @@ export const useSearchSuggestionPresentationPlaneRuntime = ({
       shouldShowAutocompleteSpinnerInBar:
         displayRuntime.shouldShowAutocompleteSpinnerInBar,
       submitTransitionHoldRef: holdStateRuntime.submitTransitionHoldRef,
-      shouldFreezeSuggestionDisplayForRunOne:
-        args.shouldFreezeSuggestionDisplayForRunOne,
+      shouldFreezeSuggestionDisplayForSearchSurfaceRedraw:
+        args.shouldFreezeSuggestionDisplayForSearchSurfaceRedraw,
     });
 
   return {
@@ -115,15 +106,5 @@ export const useSearchSuggestionPresentationPlaneRuntime = ({
     recentlyViewedRestaurantsDisplay:
       heldDisplayRuntime.recentlyViewedRestaurantsDisplay,
     recentlyViewedFoodsDisplay: heldDisplayRuntime.recentlyViewedFoodsDisplay,
-    hasRecentSearchesDisplay: heldDisplayRuntime.hasRecentSearchesDisplay,
-    hasRecentlyViewedRestaurantsDisplay:
-      heldDisplayRuntime.hasRecentlyViewedRestaurantsDisplay,
-    hasRecentlyViewedFoodsDisplay:
-      heldDisplayRuntime.hasRecentlyViewedFoodsDisplay,
-    isRecentLoadingDisplay: heldDisplayRuntime.isRecentLoadingDisplay,
-    isRecentlyViewedLoadingDisplay:
-      heldDisplayRuntime.isRecentlyViewedLoadingDisplay,
-    isRecentlyViewedFoodsLoadingDisplay:
-      heldDisplayRuntime.isRecentlyViewedFoodsLoadingDisplay,
   };
 };

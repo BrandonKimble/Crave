@@ -5,7 +5,7 @@ import type { ProfileOwner } from '../profile/profile-owner-runtime-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import type { SearchRootResultsInteractionPorts } from './search-root-control-ports-runtime-contract';
 import type {
-  SearchRootPreparedResultsSnapshotControlLane,
+  SearchRootSearchSurfaceResultsTransactionControlLane,
   SearchRootResultsPresentationStateControlLane,
   SearchRootResultsSheetControlLane,
   SearchRootResultsTransitionControlLane,
@@ -13,7 +13,7 @@ import type {
 } from './use-search-root-control-plane-runtime-contract';
 import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
 import {
-  useSearchRootPreparedResultsSnapshotControlLane,
+  useSearchRootSearchSurfaceResultsTransactionControlLane,
   useSearchRootResultsPresentationStateControlLane,
   useSearchRootResultsSheetControlLane,
   useSearchRootResultsTransitionControlLane,
@@ -43,24 +43,20 @@ export const useSearchRootResultsControlRuntime = ({
   resultsSheetControlLane: SearchRootResultsSheetControlLane;
   resultsPresentationStateControlLane: SearchRootResultsPresentationStateControlLane;
   resultsTransitionControlLane: SearchRootResultsTransitionControlLane;
-  preparedResultsSnapshotControlLane: SearchRootPreparedResultsSnapshotControlLane;
+  searchSurfaceResultsTransactionControlLane: SearchRootSearchSurfaceResultsTransactionControlLane;
 } => {
-  const { closeTransitionActions, preparedResultsSnapshotKey } =
+  const { closeTransitionActions, searchSurfaceResultsTransactionKey } =
     resultsPresentationOwner;
   const resultsSheetInteractionModel =
     useSearchRootResultsSheetInteractionModelRuntime({
       stateFoundationLane,
       rootOverlayFoundationRuntime,
       submitRuntimeResult,
-      resultsPresentationOwner: {
-        closeTransitionActions,
-      },
     });
   const presentationState = useSearchRootResultsPresentationStateRuntime({
     stateFoundationLane,
     rootOverlayFoundationRuntime,
     profileOwner,
-    closeTransitionActions,
   });
 
   const resultsSheetControlLane =
@@ -69,8 +65,8 @@ export const useSearchRootResultsControlRuntime = ({
     useSearchRootResultsPresentationStateControlLane(presentationState);
   const resultsTransitionControlLane =
     useSearchRootResultsTransitionControlLane(closeTransitionActions);
-  const preparedResultsSnapshotControlLane =
-    useSearchRootPreparedResultsSnapshotControlLane(preparedResultsSnapshotKey);
+  const searchSurfaceResultsTransactionControlLane =
+    useSearchRootSearchSurfaceResultsTransactionControlLane(searchSurfaceResultsTransactionKey);
 
   useSearchRootResultsInteractionPortPublicationRuntime({
     resultsInteractionPorts,
@@ -83,10 +79,10 @@ export const useSearchRootResultsControlRuntime = ({
         resultsSheetControlLane,
         resultsPresentationStateControlLane,
         resultsTransitionControlLane,
-        preparedResultsSnapshotControlLane,
+        searchSurfaceResultsTransactionControlLane,
       }),
     [
-      preparedResultsSnapshotControlLane,
+      searchSurfaceResultsTransactionControlLane,
       resultsPresentationStateControlLane,
       resultsSheetControlLane,
       resultsTransitionControlLane,

@@ -68,8 +68,9 @@ export class AppRouteSceneSheetMotionTargetRegistry {
         ? this.getSceneTargets(SEARCH_ROUTE_SHEET_TARGET_KEY)
         : []),
     ];
+    const orderedCandidates = [...candidates].reverse();
     if (localMotionKey != null) {
-      const matchingLocalTarget = candidates.find(
+      const matchingLocalTarget = orderedCandidates.find(
         (target) => target.localMotionKey === localMotionKey
       );
       if (matchingLocalTarget != null) {
@@ -77,9 +78,9 @@ export class AppRouteSceneSheetMotionTargetRegistry {
       }
     }
     if (!transitionContract) {
-      return candidates[0];
+      return orderedCandidates[0];
     }
-    const matchingTarget = candidates.find(
+    const matchingTarget = orderedCandidates.find(
       (target) => target.matchesTransitionContract?.(transitionContract) ?? true
     );
     if (matchingTarget != null) {
@@ -91,7 +92,7 @@ export class AppRouteSceneSheetMotionTargetRegistry {
     ) {
       return undefined;
     }
-    return candidates[0];
+    return orderedCandidates[0];
   }
 
   public resolveTransitionTarget(

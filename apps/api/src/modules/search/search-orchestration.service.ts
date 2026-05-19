@@ -2,6 +2,9 @@ import { Inject, Injectable } from '@nestjs/common';
 import { SearchService } from './search.service';
 import {
   NaturalSearchRequestDto,
+  QueryEntityDto,
+  QueryEntityGroupDto,
+  SearchQueryRequestDto,
   SearchResponseDto,
 } from './dto/search-query.dto';
 import { SearchQueryInterpretationService } from './search-query-interpretation.service';
@@ -51,6 +54,28 @@ export class SearchOrchestrationService {
         submissionContext: request.submissionContext ?? null,
         verbose: this.debugMode === 'verbose',
       });
+    }
+
+    const selectedEntityRequest =
+      this.buildSelectedEntitySearchRequest(request);
+    if (selectedEntityRequest) {
+      const response = await this.searchService.runQuery(selectedEntityRequest);
+
+      response.metadata.sourceQuery = originalQuery;
+      this.logPhaseTimings(response, originalQuery);
+
+      if (this.debugMode !== 'off') {
+        this.logger.info('Search debug: selected entity response', {
+          searchRequestId: response.metadata.searchRequestId,
+          resultCoverageStatus: response.metadata.resultCoverageStatus,
+          totalRestaurantResults: response.metadata.totalRestaurantResults,
+          totalFoodResults: response.metadata.totalFoodResults,
+          queryExecutionTimeMs: response.metadata.queryExecutionTimeMs,
+          onDemandQueued: response.metadata.onDemandQueued ?? false,
+        });
+      }
+
+      return response;
     }
 
     if (normalizedQuery.isGenericOnly) {
@@ -104,12 +129,9 @@ export class SearchOrchestrationService {
     };
     interpretation.structuredRequest.userId = request.userId;
 
-    const hasInterpretationTargets =
-      interpretation.analysis.restaurants.length +
-        interpretation.analysis.foods.length +
-        interpretation.analysis.foodAttributes.length +
-        interpretation.analysis.restaurantAttributes.length >
-      0;
+    const hasInterpretationTargets = this.hasStructuredSearchTargets(
+      interpretation.structuredRequest.entities,
+    );
     if (!hasInterpretationTargets) {
       const response = this.searchService.buildEmptyResponse(
         interpretation.structuredRequest,
@@ -276,6 +298,70 @@ export class SearchOrchestrationService {
       query,
       phaseTimings,
     });
+  }
+
+  private hasStructuredSearchTargets(entities: QueryEntityGroupDto): boolean {
+    return (
+      (entities.restaurants?.length ?? 0) +
+        (entities.food?.length ?? 0) +
+        (entities.foodAttributes?.length ?? 0) +
+        (entities.restaurantAttributes?.length ?? 0) >
+      0
+    );
+  }
+
+  private buildSelectedEntitySearchRequest(
+    request: NaturalSearchRequestDto,
+  ): SearchQueryRequestDto | null {
+    const selectedEntityId = request.submissionContext?.selectedEntityId;
+    const selectedEntityType = request.submissionContext?.selectedEntityType;
+    if (
+      request.submissionContext?.matchType !== 'entity' ||
+      !selectedEntityId ||
+      !selectedEntityType
+    ) {
+      return null;
+    }
+
+    const selectedEntry: QueryEntityDto = {
+      normalizedName: request.query.trim(),
+      originalText: request.query.trim(),
+      entityIds: [selectedEntityId],
+    };
+    const entities: QueryEntityGroupDto = {};
+    switch (selectedEntityType) {
+      case 'restaurant':
+        entities.restaurants = [selectedEntry];
+        break;
+      case 'food':
+        entities.food = [selectedEntry];
+        break;
+      case 'food_attribute':
+        entities.foodAttributes = [selectedEntry];
+        break;
+      case 'restaurant_attribute':
+        entities.restaurantAttributes = [selectedEntry];
+        break;
+      default:
+        return null;
+    }
+
+    return {
+      entities,
+      bounds: request.bounds,
+      userLocation: request.userLocation,
+      openNow: request.openNow,
+      pagination: request.pagination,
+      includeSqlPreview: request.includeSqlPreview,
+      compactResponse: request.compactResponse,
+      priceLevels: request.priceLevels,
+      minimumVotes: request.minimumVotes,
+      userId: request.userId,
+      searchRequestId: request.searchRequestId,
+      submissionSource: request.submissionSource ?? 'manual',
+      submissionContext: request.submissionContext,
+      sourceQuery: request.query,
+    };
   }
 
   private mergeAnalysisMetadata(

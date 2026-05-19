@@ -4,7 +4,11 @@ import type {
   GlobalRestaurantRouteDraft,
   RestaurantRoutePanelDraft,
 } from '../../overlays/restaurantRoutePanelContract';
-import type { OverlayRouteEntry } from './app-overlay-route-types';
+import type {
+  AppOverlayTopLevelProductRouteKey,
+  OverlayKey,
+  OverlayRouteEntry,
+} from './app-overlay-route-types';
 import type { AppOverlayRouteCommandRuntime } from './app-overlay-route-command-runtime';
 import type { RouteSceneSwitchRouteStateSnapshot } from './app-route-scene-switch-controller';
 import {
@@ -33,6 +37,9 @@ export type AppRouteGlobalRestaurantRouteAuthority = {
 export type OpenGlobalRestaurantRouteArgs = {
   restaurantId: string;
   panel: RestaurantRoutePanelDraft;
+  parentSceneKey?: AppOverlayTopLevelProductRouteKey | null;
+  ownerSceneKey?: AppOverlayTopLevelProductRouteKey | null;
+  openerRouteKey?: OverlayKey | null;
 };
 
 export type AppRouteGlobalRestaurantRouteActions = {
@@ -48,13 +55,45 @@ export type AppRouteGlobalRestaurantRouteController = {
   dispose: () => void;
 };
 
-const isGlobalRestaurantRouteEntry = (
+const APP_ROUTE_TOP_LEVEL_PRODUCT_SCENE_KEYS: ReadonlySet<OverlayKey> = new Set<OverlayKey>([
+  'search',
+  'polls',
+  'bookmarks',
+  'profile',
+]);
+
+const isTopLevelProductSceneKey = (
+  sceneKey: OverlayKey | null | undefined
+): sceneKey is AppOverlayTopLevelProductRouteKey =>
+  sceneKey != null && APP_ROUTE_TOP_LEVEL_PRODUCT_SCENE_KEYS.has(sceneKey);
+
+const getRouteOwnerSceneKey = (
   route: OverlayRouteEntry
-): route is OverlayRouteEntry<'restaurant'> =>
-  route.key === 'restaurant' &&
-  route.params != null &&
-  'source' in route.params &&
-  route.params.source === 'global';
+): AppOverlayTopLevelProductRouteKey | null => {
+  const params = route.params as
+    | {
+        ownerSceneKey?: AppOverlayTopLevelProductRouteKey | null;
+        parentSceneKey?: AppOverlayTopLevelProductRouteKey | null;
+      }
+    | undefined;
+  const ownerSceneKey = params?.ownerSceneKey ?? params?.parentSceneKey ?? null;
+  return isTopLevelProductSceneKey(ownerSceneKey) ? ownerSceneKey : null;
+};
+
+const isParentScopedRestaurantRouteEntry = (
+  route: OverlayRouteEntry
+): route is OverlayRouteEntry<'restaurant'> => {
+  if (route.key !== 'restaurant') {
+    return false;
+  }
+  const params = route.params as OverlayRouteEntry<'restaurant'>['params'] | undefined;
+  return (
+    params != null &&
+    params.source !== 'search' &&
+    params.ownerSceneKey != null &&
+    params.parentSceneKey != null
+  );
+};
 
 const areRouteGlobalRestaurantOverlaySnapshotsEqual = (
   left: RouteGlobalRestaurantOverlaySnapshot,
@@ -84,7 +123,7 @@ const selectGlobalRestaurantNavigation = (
   snapshot: RouteOverlayNavigationSnapshot
 ): GlobalRestaurantNavigationSelection => {
   const activeOverlayRoute = snapshot.activeOverlayRoute;
-  if (!isGlobalRestaurantRouteEntry(activeOverlayRoute)) {
+  if (!isParentScopedRestaurantRouteEntry(activeOverlayRoute)) {
     return EMPTY_GLOBAL_RESTAURANT_NAVIGATION_SELECTION;
   }
   return {
@@ -123,8 +162,19 @@ class AppRouteGlobalRestaurantRouteRuntimeController
   };
 
   public readonly actions: AppRouteGlobalRestaurantRouteActions = {
-    openRestaurantRoute: ({ restaurantId, panel }) => {
+    openRestaurantRoute: ({
+      restaurantId,
+      panel,
+      parentSceneKey,
+      ownerSceneKey,
+      openerRouteKey,
+    }) => {
       const sessionToken = this.createRestaurantRouteSessionToken();
+      const currentOwner = this.resolveCurrentRestaurantOwner();
+      const resolvedOwnerSceneKey = ownerSceneKey ?? currentOwner.ownerSceneKey;
+      const resolvedParentSceneKey = parentSceneKey ?? currentOwner.parentSceneKey;
+      const resolvedOpenerRouteKey = openerRouteKey ?? currentOwner.openerRouteKey;
+      const routeInstanceId = `restaurant-${sessionToken}`;
       unstable_batchedUpdates(() => {
         this.publishDraft({
           sessionToken,
@@ -132,7 +182,10 @@ class AppRouteGlobalRestaurantRouteRuntimeController
         });
         this.routeOverlayRouteCommandRuntime.pushRoute('restaurant', {
           restaurantId,
-          source: 'global',
+          parentSceneKey: resolvedParentSceneKey,
+          ownerSceneKey: resolvedOwnerSceneKey,
+          openerRouteKey: resolvedOpenerRouteKey,
+          routeInstanceId,
           sessionToken,
         });
       });
@@ -191,6 +244,25 @@ class AppRouteGlobalRestaurantRouteRuntimeController
     return this.presentationDraft?.sessionToken ?? null;
   }
 
+  private resolveCurrentRestaurantOwner(): {
+    ownerSceneKey: AppOverlayTopLevelProductRouteKey;
+    parentSceneKey: AppOverlayTopLevelProductRouteKey;
+    openerRouteKey: OverlayKey;
+  } {
+    const routeState = this.routeOverlayRouteCommandRuntime.getRouteState();
+    const activeRoute = routeState.activeOverlayRoute;
+    const routeOwnerSceneKey = getRouteOwnerSceneKey(activeRoute);
+    const rootOwnerSceneKey = isTopLevelProductSceneKey(routeState.rootOverlayKey)
+      ? routeState.rootOverlayKey
+      : null;
+    const ownerSceneKey = routeOwnerSceneKey ?? rootOwnerSceneKey ?? 'search';
+    return {
+      ownerSceneKey,
+      parentSceneKey: ownerSceneKey,
+      openerRouteKey: activeRoute.key,
+    };
+  }
+
   private publishDraft(presentationDraft: GlobalRestaurantRouteDraft | null): void {
     if (Object.is(this.presentationDraft, presentationDraft)) {
       return;
@@ -206,7 +278,7 @@ class AppRouteGlobalRestaurantRouteRuntimeController
     if (sessionToken == null) {
       return false;
     }
-    if (!isGlobalRestaurantRouteEntry(routeState.activeOverlayRoute)) {
+    if (!isParentScopedRestaurantRouteEntry(routeState.activeOverlayRoute)) {
       return false;
     }
     if (routeState.activeOverlayRoute.params?.sessionToken !== sessionToken) {
@@ -222,7 +294,7 @@ class AppRouteGlobalRestaurantRouteRuntimeController
 
     const { activeOverlayRoute } = this.routeOverlayRouteCommandRuntime.getRouteState();
     if (
-      isGlobalRestaurantRouteEntry(activeOverlayRoute) &&
+      isParentScopedRestaurantRouteEntry(activeOverlayRoute) &&
       activeOverlayRoute.params?.sessionToken === sessionToken
     ) {
       return;
@@ -257,13 +329,14 @@ class AppRouteGlobalRestaurantRouteRuntimeController
   private recompute(notify: boolean): void {
     const overlayState = this.routeOverlayNavigationAuthority.getSnapshot();
     const activeOverlayRoute = overlayState.activeOverlayRoute;
-    const isGlobalRestaurantRouteActive = isGlobalRestaurantRouteEntry(activeOverlayRoute);
+    const isParentScopedRestaurantRouteActive =
+      isParentScopedRestaurantRouteEntry(activeOverlayRoute);
     const nextSnapshot: RouteGlobalRestaurantOverlaySnapshot =
-      this.presentationDraft == null && !isGlobalRestaurantRouteActive
+      this.presentationDraft == null && !isParentScopedRestaurantRouteActive
         ? EMPTY_ROUTE_GLOBAL_RESTAURANT_OVERLAY_SNAPSHOT
         : {
             presentationDraft: this.presentationDraft,
-            activeSessionToken: isGlobalRestaurantRouteActive
+            activeSessionToken: isParentScopedRestaurantRouteActive
               ? activeOverlayRoute.params?.sessionToken ?? null
               : null,
             activeOverlayRouteKey: activeOverlayRoute.key,
