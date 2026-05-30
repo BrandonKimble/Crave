@@ -8,13 +8,13 @@ import type { SearchPresentationIntent } from './results-presentation-shell-cont
 import { resolveSearchSurfaceResultsEnterMutationKind } from './results-presentation-shell-transaction-intent';
 import type { ResultsPresentationRuntimeOwner } from './results-presentation-runtime-owner-contract';
 import type { ResultsPresentationShellLocalState } from './use-results-presentation-shell-local-state';
-import type { AppRouteResultsSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-results-sheet-runtime-contract';
+import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
 import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
 import { useResultsSurfaceEnterTransactionExecutionRuntime } from './use-search-surface-results-enter-transaction-execution-runtime';
 import { useResultsSurfaceTransactionShellApplicationRuntime } from './use-search-surface-results-transaction-shell-application-runtime';
 
 type UseResultsPresentationEnterActionsRuntimeArgs = {
-  resultsSheetRuntime: Pick<AppRouteResultsSheetRuntimeOwner, 'prepareShortcutSheetTransition'>;
+  resultsSheetRuntime: Pick<AppRouteSharedSheetRuntimeOwner, 'prepareSharedSheetForSearchPresentation'>;
   shellLocalState: ResultsPresentationShellLocalState;
   resultsRuntimeOwner: ResultsPresentationRuntimeOwner;
   cancelSearchSheetCloseTransition: (closeIntentId?: string) => void;
@@ -53,7 +53,7 @@ export const useResultsPresentationEnterActionsRuntime = ({
 
   const executeSurfaceEnterTransaction = useResultsSurfaceEnterTransactionExecutionRuntime({
     resultsRuntimeOwner,
-    prepareShortcutSheetTransition: resultsSheetRuntime.prepareShortcutSheetTransition,
+    prepareSharedSheetForSearchPresentation: resultsSheetRuntime.prepareSharedSheetForSearchPresentation,
     setDisplayQueryOverride: shellLocalState.setDisplayQueryOverride,
   });
 

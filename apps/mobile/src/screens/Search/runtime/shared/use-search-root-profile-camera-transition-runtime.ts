@@ -28,22 +28,22 @@ export const useSearchRootProfileCameraTransitionRuntime = ({
   } = stateFoundationLane;
   const {
     rootOverlaySessionSurfaceRuntime,
-    appRouteResultsSheetRuntimeOwner,
+    appRouteSharedSheetRuntimeOwner,
   } = rootOverlayFoundationRuntime;
 
   return React.useMemo<ProfilePresentationCameraLayoutModel>(
     () => ({
-      resultsScrollOffset: appRouteResultsSheetRuntimeOwner.resultsScrollOffset,
-      sheetTranslateY: appRouteResultsSheetRuntimeOwner.sheetTranslateY,
+      sheetScrollOffset: appRouteSharedSheetRuntimeOwner.sheetScrollOffset,
+      sheetTranslateY: appRouteSharedSheetRuntimeOwner.sheetTranslateY,
       snapPoints: {
-        expanded: appRouteResultsSheetRuntimeOwner.snapPoints.expanded,
-        middle: appRouteResultsSheetRuntimeOwner.snapPoints.middle,
-        collapsed: appRouteResultsSheetRuntimeOwner.snapPoints.collapsed,
+        expanded: appRouteSharedSheetRuntimeOwner.snapPoints.expanded,
+        middle: appRouteSharedSheetRuntimeOwner.snapPoints.middle,
+        collapsed: appRouteSharedSheetRuntimeOwner.snapPoints.collapsed,
       },
       sheetState:
-        appRouteResultsSheetRuntimeOwner.sheetState === 'hidden'
+        appRouteSharedSheetRuntimeOwner.sheetState === 'hidden'
           ? 'collapsed'
-          : appRouteResultsSheetRuntimeOwner.sheetState,
+          : appRouteSharedSheetRuntimeOwner.sheetState,
       mapCenter: rootPrimitivesRuntime.mapState.mapCenter,
       mapZoom: rootPrimitivesRuntime.mapState.mapZoom,
       searchBarTop: rootOverlaySessionSurfaceRuntime.searchBarTop,
@@ -62,12 +62,12 @@ export const useSearchRootProfileCameraTransitionRuntime = ({
       rootOverlaySessionSurfaceRuntime.searchBarTop,
       rootPrimitivesRuntime.mapState.mapCenter,
       rootPrimitivesRuntime.mapState.mapZoom,
-      appRouteResultsSheetRuntimeOwner.resultsScrollOffset,
-      appRouteResultsSheetRuntimeOwner.sheetState,
-      appRouteResultsSheetRuntimeOwner.sheetTranslateY,
-      appRouteResultsSheetRuntimeOwner.snapPoints.collapsed,
-      appRouteResultsSheetRuntimeOwner.snapPoints.expanded,
-      appRouteResultsSheetRuntimeOwner.snapPoints.middle,
+      appRouteSharedSheetRuntimeOwner.sheetScrollOffset,
+      appRouteSharedSheetRuntimeOwner.sheetState,
+      appRouteSharedSheetRuntimeOwner.sheetTranslateY,
+      appRouteSharedSheetRuntimeOwner.snapPoints.collapsed,
+      appRouteSharedSheetRuntimeOwner.snapPoints.expanded,
+      appRouteSharedSheetRuntimeOwner.snapPoints.middle,
       rootSuggestionRuntime.searchBarFrame?.height,
     ]
   );

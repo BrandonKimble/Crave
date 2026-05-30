@@ -39,8 +39,8 @@ export const useSearchRootClearRestoreAuthorityRuntime = ({
   } = stateFoundationLane;
   const {
     routeOverlaySessionActions,
-    rootResultsSheetRuntimeLane,
-    appRouteResultsSheetRuntimeOwner,
+    rootSharedSheetRuntimeLane,
+    appRouteSharedSheetRuntimeOwner,
   } = rootOverlayFoundationRuntime;
 
   const clearOwner = useSearchClearOwner({
@@ -62,12 +62,12 @@ export const useSearchRootClearRestoreAuthorityRuntime = ({
     setQuery: rootPrimitivesRuntime.searchState.setQuery,
     searchRuntimeBus: sessionCoreLane.searchRuntimeBus,
     resetShortcutCoverageState: sessionPrimitivesLane.primitives.resetShortcutCoverageState,
-    resetMapMoveFlag: rootResultsSheetRuntimeLane.resetMapMoveFlag,
+    resetMapMoveFlag: rootSharedSheetRuntimeLane.resetMapMoveFlag,
     setError: rootPrimitivesRuntime.searchState.setError,
     setSuggestions: rootPrimitivesRuntime.searchState.setSuggestions,
     setIsSearchSessionActive: rootDataPlaneRuntime.runtimeFlags.setIsSearchSessionActive,
     setSearchMode: rootDataPlaneRuntime.runtimeFlags.setSearchMode,
-    resetSheetToHidden: appRouteResultsSheetRuntimeOwner.resetResultsSheetToHidden,
+    resetSheetToHidden: appRouteSharedSheetRuntimeOwner.markSharedSheetHidden,
     lastAutoOpenKeyRef: requestExecutionAuthorityRuntime.lastAutoOpenKeyRef,
     resetFocusedMapState: rootPrimitivesRuntime.searchState.resetFocusedMapState,
     setRestaurantOnlyIntent: rootPrimitivesRuntime.searchState.setRestaurantOnlyIntent,

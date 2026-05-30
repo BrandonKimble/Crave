@@ -42,23 +42,14 @@ export const useResultsSurfaceExitTransactionExecutionRuntime = ({
       }
       requestSearchBottomNavMotionTarget('show');
       unstable_batchedUpdates(() => {
-        resultsRuntimeOwner.commitSearchSurfaceResultsTransaction(snapshot);
+        resultsRuntimeOwner.commitSearchSurfaceResultsExitTransaction(snapshot);
         beginCloseTransition(snapshot.transactionId, {
           terminalDismissSource: snapshot.terminalDismissSource,
+          outgoingSheetSceneKey: snapshot.outgoingSheetSceneKey,
         });
       });
-      routeSceneRuntime.routeSceneSwitchRuntime.requestOverlaySwitch({
-        ...(snapshot.terminalDismissSource === 'profile'
-          ? ({ sourceSceneKey: 'restaurant' } as const)
-          : null),
-        targetSceneKey: 'polls',
-        sheetTransitionKind: 'terminalDismiss',
-        sheetOpenerSource: 'systemDismiss',
-        sheetMotion: { kind: 'snapTo', snap: 'collapsed' },
-        contentHandoff: 'preserveOutgoingUntilSettle',
-        snapPersistence: 'sharedOnly',
-        routeAction: 'setRoot',
-        dockedPollsRestoreSnap: 'collapsed',
+      routeSceneRuntime.routeSearchCommandActions.dismissAppSearchRouteResultsToPolls({
+        sourceSceneKey: snapshot.outgoingSheetSceneKey ?? undefined,
       });
       if (isPerfScenarioAttributionActive(scenarioConfig)) {
         logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
@@ -112,6 +103,11 @@ export const useResultsSurfaceExitTransactionExecutionRuntime = ({
       }
       return snapshot.transactionId;
     },
-    [beginCloseTransition, getCurrentSheetSnap, resultsRuntimeOwner, routeSceneRuntime]
+    [
+      beginCloseTransition,
+      getCurrentSheetSnap,
+      resultsRuntimeOwner,
+      routeSceneRuntime.routeSearchCommandActions,
+    ]
   );
 };

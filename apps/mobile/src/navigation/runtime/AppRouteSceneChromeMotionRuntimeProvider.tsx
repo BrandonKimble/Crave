@@ -281,8 +281,7 @@ export const AppRouteSceneChromeMotionRuntimeProvider = ({
   });
 
   useAppRouteSceneChromeMotionTargetRuntime({
-    overlayChromeTransitionProgress: runtime.overlayChromeTransitionProgress,
-    overlayBackdropDimProgress: runtime.overlayBackdropDimProgress,
+    overlayChromeVisibilityProgress: runtime.overlayChromeVisibilityProgress,
     routeChromeMotionProgress: runtime.routeChromeMotionProgress,
   });
 

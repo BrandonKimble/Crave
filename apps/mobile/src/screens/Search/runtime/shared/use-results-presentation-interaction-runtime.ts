@@ -28,7 +28,7 @@ type UseResultsPresentationInteractionRuntimeArgs = {
   notifyIntentCompleteRef: React.MutableRefObject<((intentId: string) => void) | null>;
   resultsRuntimeOwner: Pick<
     ResultsPresentationRuntimeOwner,
-    'clearStagedSearchSurfaceResultsTransaction' | 'commitSearchSurfaceResultsTransaction'
+    'clearStagedSearchSurfaceResultsTransaction' | 'stageSearchSurfaceResultsTransaction'
   >;
 };
 

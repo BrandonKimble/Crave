@@ -18,20 +18,20 @@ export const useSearchRootSubmitUiSurfacePorts = ({
   rootOverlayFoundationRuntime,
   resultsScrollAuthorityRuntime,
 }: UseSearchRootSubmitUiSurfacePortsArgs): SearchRootSubmitUiSurfacePorts => {
-  const { rootResultsSheetRuntimeLane, appRouteResultsSheetRuntimeOwner } =
+  const { rootSharedSheetRuntimeLane, appRouteSharedSheetRuntimeOwner } =
     rootOverlayFoundationRuntime;
   const { resultsScrollPort } = resultsScrollAuthorityRuntime;
 
   return React.useMemo(
     () => ({
-      resetSheetToHidden: appRouteResultsSheetRuntimeOwner.resetResultsSheetToHidden,
+      resetSheetToHidden: appRouteSharedSheetRuntimeOwner.markSharedSheetHidden,
       scrollResultsToTop: resultsScrollPort.scrollResultsToTop,
-      resetMapMoveFlag: rootResultsSheetRuntimeLane.resetMapMoveFlag,
+      resetMapMoveFlag: rootSharedSheetRuntimeLane.resetMapMoveFlag,
     }),
     [
       resultsScrollPort.scrollResultsToTop,
-      rootResultsSheetRuntimeLane.resetMapMoveFlag,
-      appRouteResultsSheetRuntimeOwner.resetResultsSheetToHidden,
+      rootSharedSheetRuntimeLane.resetMapMoveFlag,
+      appRouteSharedSheetRuntimeOwner.markSharedSheetHidden,
     ]
   );
 };

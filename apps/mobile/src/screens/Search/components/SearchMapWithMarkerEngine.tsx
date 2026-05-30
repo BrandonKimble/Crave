@@ -3,8 +3,6 @@ import type { MapState as MapboxMapState } from '@rnmapbox/maps';
 
 import type { StartupLocationSnapshot } from '../../../navigation/runtime/MainLaunchCoordinator';
 import type { Coordinate, MapBounds, RestaurantResult } from '../../../types';
-import { logger } from '../../../utils';
-import { shouldLogSearchNavSwitchDiagnosticLogs } from '../runtime/shared/search-nav-switch-perf-probe';
 import { withSearchNavSwitchRuntimeAttribution } from '../runtime/shared/search-nav-switch-runtime-attribution';
 import { useDirectSearchMapSourceController } from '../hooks/use-direct-search-map-source-controller';
 import type { MapQueryBudget } from '../runtime/map/map-query-budget';
@@ -242,11 +240,6 @@ export type SearchMapWithMarkerEngineProps = {
   getPerfNow: () => number;
   logSearchCompute: (label: string, duration: number) => void;
   maxFullPins: number;
-  lodVisibleCandidateBuffer: number;
-  lodPinPromoteStableMsMoving: number;
-  lodPinDemoteStableMsMoving: number;
-  lodPinToggleStableMsIdle: number;
-  lodPinOffscreenToggleStableMsMoving: number;
   mapQueryBudget: MapQueryBudget;
 
   // --- Marker interaction inputs ---
@@ -258,6 +251,8 @@ export type SearchMapWithMarkerEngineProps = {
   styleURL: string;
   mapCenter: [number, number] | null;
   mapZoom: number;
+  mapBearing: number | null;
+  mapPitch: number | null;
   mapCameraAnimation: {
     mode: 'none' | 'easeTo';
     durationMs: number;
@@ -308,11 +303,6 @@ type SearchMapRenderEngineInputKey =
   | 'getPerfNow'
   | 'logSearchCompute'
   | 'maxFullPins'
-  | 'lodVisibleCandidateBuffer'
-  | 'lodPinPromoteStableMsMoving'
-  | 'lodPinDemoteStableMsMoving'
-  | 'lodPinToggleStableMsIdle'
-  | 'lodPinOffscreenToggleStableMsMoving'
   | 'mapQueryBudget'
   | 'profileCommandPort';
 
@@ -334,6 +324,8 @@ type SearchMapRenderHostConfigKey =
 type SearchMapRenderPresentationPropKey =
   | 'mapCenter'
   | 'mapZoom'
+  | 'mapBearing'
+  | 'mapPitch'
   | 'mapCameraAnimation'
   | 'cameraPadding'
   | 'isFollowingUser'
@@ -381,11 +373,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     getPerfNow,
     logSearchCompute,
     maxFullPins,
-    lodVisibleCandidateBuffer,
-    lodPinPromoteStableMsMoving,
-    lodPinDemoteStableMsMoving,
-    lodPinToggleStableMsIdle,
-    lodPinOffscreenToggleStableMsMoving,
     mapQueryBudget,
 
     // Marker interaction inputs
@@ -397,6 +384,8 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     styleURL,
     mapCenter,
     mapZoom,
+    mapBearing,
+    mapPitch,
     mapCameraAnimation,
     cameraPadding,
     isFollowingUser,
@@ -441,22 +430,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
   const resultsPresentationAuthority = useResultsPresentationAuthority();
   const resultsPresentationSurfaceAuthority = useResultsPresentationSurfaceAuthority();
 
-  React.useEffect(() => {
-    if (shouldLogSearchNavSwitchDiagnosticLogs()) {
-      logger.debug('[MAP-MOUNT-DIAG] SearchMapWithMarkerEngine:mount', {
-        engineInstanceId,
-        styleURL,
-      });
-    }
-    return () => {
-      if (shouldLogSearchNavSwitchDiagnosticLogs()) {
-        logger.debug('[MAP-MOUNT-DIAG] SearchMapWithMarkerEngine:unmount', {
-          engineInstanceId,
-        });
-      }
-    };
-  }, [engineInstanceId, styleURL]);
-
   // -------------------------------------------------------------------------
   // Handoff-derived state — read from the bus, published by the Search root handoff bridge.
   // -------------------------------------------------------------------------
@@ -497,11 +470,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     getPerfNow,
     logSearchCompute,
     maxFullPins,
-    lodVisibleCandidateBuffer,
-    lodPinPromoteStableMsMoving,
-    lodPinDemoteStableMsMoving,
-    lodPinToggleStableMsIdle,
-    lodPinOffscreenToggleStableMsMoving,
     isMapMoving: nativeViewportState.isMoving,
     externalMapQueryBudget: mapQueryBudget,
     profileCommandPort,
@@ -511,6 +479,9 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     () =>
       viewportBoundsService.subscribe((bounds) => {
         setNativeViewportState((previous) => {
+          if (previous.isMoving || previous.isGestureActive) {
+            return previous;
+          }
           const boundsUnchanged =
             previous.bounds?.northEast.lat === bounds?.northEast.lat &&
             previous.bounds?.northEast.lng === bounds?.northEast.lng &&
@@ -564,20 +535,11 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
         const nextIsGestureActive = Boolean(state?.gestures?.isGestureActive);
         const nextBounds = mapStateBoundsToMapBounds(state);
         setNativeViewportState((previous) => {
-          const boundsUnchanged =
-            previous.bounds?.northEast.lat === nextBounds?.northEast.lat &&
-            previous.bounds?.northEast.lng === nextBounds?.northEast.lng &&
-            previous.bounds?.southWest.lat === nextBounds?.southWest.lat &&
-            previous.bounds?.southWest.lng === nextBounds?.southWest.lng;
-          if (
-            boundsUnchanged &&
-            previous.isGestureActive === nextIsGestureActive &&
-            previous.isMoving
-          ) {
+          if (previous.isGestureActive === nextIsGestureActive && previous.isMoving) {
             return previous;
           }
           return {
-            bounds: nextBounds,
+            bounds: previous.bounds ?? nextBounds,
             isGestureActive: nextIsGestureActive,
             isMoving: true,
           };
@@ -642,13 +604,12 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
   // Map tree props
   // -------------------------------------------------------------------------
 
-  const fallbackMapSceneSnapshot = React.useMemo<SearchMapPresentationScene>(
+  const emptyMapSceneSnapshot = React.useMemo<SearchMapPresentationScene>(
     () => ({
       selectedRestaurantId: highlightedRestaurantId,
       pinSourceStore: EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT.pinSourceStore,
       dotSourceStore: EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT.dotSourceStore,
       pinInteractionSourceStore: EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT.pinInteractionSourceStore,
-      dotInteractionSourceStore: EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT.dotInteractionSourceStore,
       markersRenderKey: EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT.markersRenderKey,
       labelSourceStore: EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT.labelSourceStore,
       labelCollisionSourceStore: EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT.labelCollisionSourceStore,
@@ -682,6 +643,8 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
       styleURL={styleURL}
       mapCenter={mapCenter}
       mapZoom={mapZoom}
+      mapBearing={mapBearing}
+      mapPitch={mapPitch}
       mapCameraAnimation={mapCameraAnimation}
       cameraPadding={cameraPadding}
       isFollowingUser={isFollowingUser}
@@ -697,7 +660,7 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
       presentationLifecyclePort={presentationLifecyclePort}
       sourceFramePort={sourceFramePort}
       resultsPresentationAuthority={resultsPresentationAuthority}
-      fallbackMapSceneSnapshot={fallbackMapSceneSnapshot}
+      emptyMapSceneSnapshot={emptyMapSceneSnapshot}
       buildMarkerKey={buildMarkerKey}
       restaurantLabelStyle={restaurantLabelStyle}
       isMapStyleReady={isMapStyleReady}
@@ -711,11 +674,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
       nativeInteractionMode={nativeInteractionMode}
       mapMotionPressureController={mapMotionPressureController}
       maxFullPins={maxFullPins}
-      lodVisibleCandidateBuffer={lodVisibleCandidateBuffer}
-      lodPinPromoteStableMsMoving={lodPinPromoteStableMsMoving}
-      lodPinDemoteStableMsMoving={lodPinDemoteStableMsMoving}
-      lodPinToggleStableMsIdle={lodPinToggleStableMsIdle}
-      lodPinOffscreenToggleStableMsMoving={lodPinOffscreenToggleStableMsMoving}
     />
   );
 };

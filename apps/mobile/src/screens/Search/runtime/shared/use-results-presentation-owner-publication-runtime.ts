@@ -2,7 +2,7 @@ import type React from 'react';
 
 import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
 import type { ResultsPresentationOwner } from './results-presentation-owner-contract';
-import type { AppRouteResultsSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-results-sheet-runtime-contract';
+import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
 import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
 import { useResultsPresentationOwnerPresentationActionsRuntime } from './use-results-presentation-owner-presentation-actions-runtime';
 import { useResultsPresentationOwnerValueRuntime } from './use-results-presentation-owner-value-runtime';
@@ -18,11 +18,11 @@ type UseResultsPresentationOwnerPublicationRuntimeArgs = {
   ignoreNextSearchBlurRef: React.MutableRefObject<boolean>;
   isClearingSearchRef: React.MutableRefObject<boolean>;
   resultsSheetRuntime: Pick<
-    AppRouteResultsSheetRuntimeOwner,
-    | 'prepareShortcutSheetTransition'
-    | 'resultsSheetRuntimeModel'
-    | 'shouldRenderResultsSheetRef'
-    | 'resetResultsSheetToHidden'
+    AppRouteSharedSheetRuntimeOwner,
+    | 'prepareSharedSheetForSearchPresentation'
+    | 'sharedSheetRuntimeModel'
+    | 'shouldRenderMountedSharedSheetRef'
+    | 'markSharedSheetHidden'
     | 'sheetState'
     | 'snapPoints'
   >;

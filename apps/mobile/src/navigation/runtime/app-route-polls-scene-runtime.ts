@@ -80,8 +80,6 @@ export const arePollsSceneStatesEqual = (
   left.navBarHeight === right.navBarHeight &&
   left.searchBarTop === right.searchBarTop &&
   left.snapPoints === right.snapPoints &&
-  left.onSnapStart === right.onSnapStart &&
-  left.onSnapChange === right.onSnapChange &&
   left.onRequestPollCreationExpand === right.onRequestPollCreationExpand &&
   left.onRequestReturnToSearch === right.onRequestReturnToSearch &&
   left.interactionRef === right.interactionRef;

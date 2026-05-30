@@ -4,6 +4,7 @@ import type { useAnimatedStyle } from 'react-native-reanimated';
 export type AppRouteSceneChromeMotionRuntime = {
   overlayHeaderActionProgress: SharedValue<number>;
   overlayChromeTransitionProgress: SharedValue<number>;
+  overlayChromeVisibilityProgress: SharedValue<number>;
   overlayBackdropDimProgress: SharedValue<number>;
   routeChromeMotionProgress: SharedValue<number>;
   searchBarInputAnimatedStyle: ReturnType<typeof useAnimatedStyle>;

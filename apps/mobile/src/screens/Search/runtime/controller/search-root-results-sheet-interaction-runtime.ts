@@ -1,7 +1,6 @@
 import type { ResultsSheetInteractionModel } from '../shared/results-sheet-interaction-contract';
 
 export const createSearchRootResultsSheetInteractionModel = ({
-  handleResultsSheetSnapStart,
   handleResultsListScrollBegin,
   handleResultsListScrollEnd,
   handleResultsListMomentumBegin,
@@ -9,10 +8,8 @@ export const createSearchRootResultsSheetInteractionModel = ({
   handleResultsSheetDragStateChange,
   handleResultsSheetSettlingChange,
   handleResultsEndReached,
-  handleResultsSheetSnapChange,
   resetResultsListScrollProgress,
 }: ResultsSheetInteractionModel): ResultsSheetInteractionModel => ({
-  handleResultsSheetSnapStart,
   handleResultsListScrollBegin,
   handleResultsListScrollEnd,
   handleResultsListMomentumBegin,
@@ -20,6 +17,5 @@ export const createSearchRootResultsSheetInteractionModel = ({
   handleResultsSheetDragStateChange,
   handleResultsSheetSettlingChange,
   handleResultsEndReached,
-  handleResultsSheetSnapChange,
   resetResultsListScrollProgress,
 });

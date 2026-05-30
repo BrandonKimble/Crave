@@ -5,13 +5,13 @@ import type {
 
 export const resolveProfileTransitionSnapshotCapture = ({
   cameraSnapshot,
-  resultsScrollOffset,
+  sheetScrollOffset,
 }: {
   cameraSnapshot: CameraSnapshot | null;
-  resultsScrollOffset: number;
+  sheetScrollOffset: number;
 }): ProfileTransitionSnapshotCapture => {
   return {
     savedCamera: cameraSnapshot,
-    savedResultsScrollOffset: resultsScrollOffset,
+    savedResultsScrollOffset: sheetScrollOffset,
   };
 };

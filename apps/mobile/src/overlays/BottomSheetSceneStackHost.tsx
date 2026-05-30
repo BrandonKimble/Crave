@@ -360,7 +360,6 @@ const SceneStackBodyFrameHost = React.memo(
     const sceneVisibilityStyle = isVisible
       ? styles.sceneStackBodyLayerVisible
       : styles.sceneStackBodyLayerHidden;
-
     const pageBody =
       sceneKey === 'search' ? (
         children

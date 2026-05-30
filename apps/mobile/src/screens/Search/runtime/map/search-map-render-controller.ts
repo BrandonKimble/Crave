@@ -15,10 +15,11 @@ type SearchMapRenderControllerNativeModule = {
     pinSourceId: string;
     pinInteractionSourceId: string;
     dotSourceId: string;
-    dotInteractionSourceId: string;
     labelSourceId: string;
-    labelInteractionSourceId: string;
     labelCollisionSourceId: string;
+    pinSlotSourceIds: string[];
+    labelLayerIds: string[];
+    labelCollisionLayerIds: string[];
   }) => Promise<void>;
   detach: (instanceId: string) => Promise<void>;
   setRenderFrame: (payload: {
@@ -26,9 +27,13 @@ type SearchMapRenderControllerNativeModule = {
     ownerEpoch: number;
     frameGenerationId: string;
     executionBatchId: string;
+    visualFrameTransaction: SearchMapVisualFrameTransaction;
     sourceDeltas?: SearchMapRenderControllerNativeSourceDelta[];
+    markerRoleFrame?: SearchMapMarkerRoleFrame;
     presentationStateJson: string;
+    highlightedRestaurantId: string | null;
     highlightedMarkerKey: string | null;
+    highlightedMarkerKeys: readonly string[];
     interactionMode: string;
   }) => Promise<SearchMapRenderControllerNativeSetFrameTiming | null | void>;
   resetNativeApplyAttribution?: (payload: { reason?: string; runId?: string }) => Promise<void>;
@@ -41,10 +46,35 @@ type SearchMapRenderControllerNativeModule = {
     payload: {
       instanceId: string;
       observationEnabled: boolean;
-      allowFallback: boolean;
-      commitInteractionVisibility: boolean;
+    commitVisibleLabelHits: boolean;
     } & SearchMapLabelObservationConfig
   ) => Promise<void>;
+  configureNativeLayerGroups: (payload: {
+    instanceId: string;
+    pinSlotSourceIds: string[];
+    labelLayerIds: string[];
+    labelCollisionLayerIds: string[];
+  }) => Promise<void>;
+  configureNativePressTargeting: (payload: {
+    instanceId: string;
+    enabled: boolean;
+    pinLayerIds?: string[];
+    labelLayerIds?: string[];
+    labelTapHitbox?: {
+      textSize: number;
+      radialXEm: number;
+      radialYEm: number;
+      radialTopEm: number;
+      upShiftEm: number;
+      charWidthFactor: number;
+      lineHeightFactor: number;
+      paddingPx: number;
+      minWidthPx: number;
+      maxWidthPx: number;
+    };
+    dotLayerIds?: string[];
+    dotTapIntentRadiusPx?: number;
+  }) => Promise<void>;
   queryRenderedPressTarget: (payload: {
     instanceId: string;
     point: {
@@ -52,10 +82,6 @@ type SearchMapRenderControllerNativeModule = {
       y: number;
     };
     pinLayerIds?: string[];
-    pinTapHitbox?: {
-      radiusPx: number;
-      centerShiftYPx: number;
-    };
     labelLayerIds?: string[];
     labelQueryBox?: [number, number, number, number] | null;
     labelTapHitbox?: {
@@ -93,21 +119,16 @@ type SearchMapRenderControllerAttachPayload = {
   pinSourceId: string;
   pinInteractionSourceId: string;
   dotSourceId: string;
-  dotInteractionSourceId: string;
   labelSourceId: string;
-  labelInteractionSourceId: string;
   labelCollisionSourceId: string;
+  pinSlotSourceIds: string[];
+  labelLayerIds: string[];
+  labelCollisionLayerIds: string[];
 };
 
 type SearchMapLabelObservationConfig = {
   refreshMsIdle: number;
   refreshMsMoving: number;
-  enableStickyLabelCandidates: boolean;
-  stickyLockStableMsMoving: number;
-  stickyLockStableMsIdle: number;
-  stickyUnlockMissingMsMoving: number;
-  stickyUnlockMissingMsIdle: number;
-  stickyUnlockMissingStreakMoving: number;
   labelResetRequestKey: string | null;
 };
 
@@ -131,6 +152,9 @@ export type SearchMapRenderControllerEvent =
       pinCount: number;
       dotCount: number;
       labelCount: number;
+      sourceAdmissionOutcome: SearchMapVisualFrameSourceAdmissionOutcome;
+      sourceFrameKey: string | null;
+      sourceDataKey: string | null;
       sourceRevisions: Record<SearchMapRenderSourceId, string>;
     }
   | {
@@ -232,6 +256,8 @@ export type SearchMapRenderControllerEvent =
       centerLat: number;
       centerLng: number;
       zoom: number;
+      bearing: number;
+      pitch: number;
       northEastLat: number;
       northEastLng: number;
       southWestLat: number;
@@ -245,7 +271,87 @@ export type SearchMapRenderControllerEvent =
       visibleLabelFeatureIds: string[];
       layerRenderedFeatureCount: number;
       effectiveRenderedFeatureCount: number;
-      stickyChanged: boolean;
+      nativeVisibleLabelsWithoutPromotedPinCount?: number;
+      nativeVisibleLabelsForDemotedMarkerCount?: number;
+      nativeMultipleVisibleLabelCandidateMarkerCount?: number;
+      nativeVisibleLabelsWithoutPromotedPinMarkerKeys?: string[];
+      nativeVisibleLabelsForDemotedMarkerKeys?: string[];
+      nativeExpectedPromotedPinCount?: number;
+      nativeExpectedDemotedDotCount?: number;
+      nativePromotedPinCollisionObstacleCount?: number;
+      nativePromotedPinCollisionObstacleCountMatchesPins?: boolean;
+    }
+	  | {
+	      type: 'live_lod_transition_contract';
+	      instanceId: string;
+      pinTransitionCount: number;
+      pinEnterTransitionCount: number;
+      pinExitTransitionCount: number;
+      dotTransitionCount: number;
+      dotEnterTransitionCount: number;
+      dotExitTransitionCount: number;
+      pinFeatureStateApplyCount: number;
+      labelFeatureStateApplyCount: number;
+      dotFeatureStateApplyCount: number;
+      pinLabelFadeSynchronized: boolean;
+      transitionDurationMs: number;
+      usesStyleTransition: boolean;
+      usesNativeFrameStepper?: boolean;
+      hasIntermediateOpacity?: boolean;
+      pinIntermediateOpacityCount?: number;
+      labelIntermediateOpacityCount?: number;
+	      dotIntermediateOpacityCount?: number;
+	      emittedAtMs: number;
+	    }
+	  | {
+	      type: 'pin_visual_order_contract';
+	      instanceId: string;
+	      reason: string;
+	      pinCount: number;
+	      selectedPinCount: number;
+	      movedGroupCount: number;
+	      previousGroupCount: number;
+	      screenYOrderViolationCount: number;
+	      screenYVisualOrder?: Array<{
+	        slotIndex: number;
+	        screenY: number;
+	      }>;
+	      stableSlotOwnership: boolean;
+	      appliesScreenYOrdering: boolean;
+	      usesLayerMoves: boolean;
+	      sourceMutationCount: number;
+	      isMoving: boolean;
+	      cameraZoom?: number;
+	      cameraBearing?: number;
+	      visualOrderSignature: string;
+	      previousVisualOrderSignature: string;
+	      emittedAtMs: number;
+	    }
+    | {
+        type: 'native_scoped_promoted_slot_contract';
+        instanceId: string;
+        affectedMarkerCount: number;
+        orderedAffectedMarkerCount: number;
+        pinSourceOpacityMissingCount: number;
+        exitingPinSourceOpacityRiskCount: number;
+        sourceOpacityBacksScopedPins: boolean;
+        emittedAtMs: number;
+      }
+	  | {
+	      type: 'native_press_target_resolved';
+      instanceId: string;
+      sequence: number;
+      target: SearchMapRenderedPressTarget | null;
+      point: {
+        x: number;
+        y: number;
+      };
+      pressCoordinate: {
+        lng: number;
+        lat: number;
+      } | null;
+      durationMs: number;
+      resolvedAtMs: number;
     }
   | {
       type: 'error';
@@ -267,7 +373,40 @@ type SearchMapRenderedPressTarget = {
   targetKind: 'pin' | 'label' | 'dot';
 };
 
-type SearchMapRenderSourceRevisionState = Record<SearchMapRenderSourceId, string>;
+export type SearchMapRenderSourceRevisionState = Record<SearchMapRenderSourceId, string>;
+
+export type SearchMapVisualFrameSourceAdmissionOutcome =
+  | 'source_pending'
+  | 'sources_applied_hidden'
+  | 'sources_applied_visible'
+  | 'sources_reused_resident'
+  | 'source_apply_blocked_dismissing'
+  | 'sources_cleared_hidden'
+  | 'presentation_only_dismiss'
+  | 'presentation_only_clear_hidden';
+
+export type SearchMapVisualFrameTransactionKind =
+  | 'bootstrap'
+  | 'hidden_preload'
+  | 'enter'
+  | 'live_update'
+  | 'dismiss'
+  | 'clear_hidden';
+
+export type SearchMapVisualFrameSourceSnapshotKind = 'pending' | 'ready' | 'empty';
+
+export type SearchMapVisualFrameTransaction = {
+  kind: SearchMapVisualFrameTransactionKind;
+  presentationPhase: SearchRuntimeMapPresentationPhase;
+  requestKey: string | null;
+  visualCycleKey: string | null;
+  readinessKey: string | null;
+  shortcutCoverageRequestKey: string | null;
+  markersRenderKey: string | null;
+  sourceFrameKey: string;
+  sourceDataKey: string;
+  sourceSnapshotKind: SearchMapVisualFrameSourceSnapshotKind;
+};
 
 export type SearchMapNativeApplyAttributionBucket = {
   section: string;
@@ -279,6 +418,18 @@ export type SearchMapNativeApplyAttributionBucket = {
   operationCount: number;
 };
 
+export type SearchMapNativeApplyContextAttributionBucket =
+  SearchMapNativeApplyAttributionBucket & {
+    transactionKind: string;
+    sourceSnapshotKind: string;
+    sourcePayloadDisposition: string;
+    rawSourceDeltaCount: number;
+    appliedSourceDeltaCount: number;
+    sourceFamilySignature: string;
+    sourceModeSignature: string;
+    sourceOperationSignature: string;
+  };
+
 export type SearchMapNativeApplyAttributionSummary = {
   reason: string;
   enabled: boolean;
@@ -286,6 +437,8 @@ export type SearchMapNativeApplyAttributionSummary = {
   flushedAtMs: number;
   bucketCount: number;
   topBuckets: SearchMapNativeApplyAttributionBucket[];
+  contextBucketCount?: number;
+  topContextBuckets?: SearchMapNativeApplyContextAttributionBucket[];
 };
 
 export type SearchMapRenderControllerSetRenderFrameResult = {
@@ -322,14 +475,36 @@ export type SearchMapRenderSourceId =
   | 'pins'
   | 'pinInteractions'
   | 'dots'
-  | 'dotInteractions'
   | 'labels'
-  | 'labelInteractions'
   | 'labelCollisions';
 
 type SearchMapRenderSourceTransportPayload = {
   effectiveChangedSourceIds: SearchMapRenderSourceId[];
   sourceDeltas?: SearchMapRenderSourceDelta[];
+  markerRoleFrame?: SearchMapMarkerRoleFrame;
+};
+
+export type SearchMapMarkerRoleKind = 'pin' | 'dot';
+
+export type SearchMapMarkerRoleRow = {
+  markerKey: string;
+  role: SearchMapMarkerRoleKind;
+  slotIndex: number | null;
+  pinFeature?: SearchMapSourceTransportFeature;
+  pinInteractionFeature?: SearchMapSourceTransportFeature;
+  dotFeature?: SearchMapSourceTransportFeature;
+  labelFeatures?: SearchMapSourceTransportFeature[];
+  labelCollisionFeature?: SearchMapSourceTransportFeature;
+};
+
+export type SearchMapMarkerRoleFrame = {
+  mode: 'patch' | 'replace';
+  nextPinnedMarkerKeysInOrder: string[];
+  nextDotMarkerKeysInOrder: string[];
+  residentDotMarkerKeysInOrder: string[];
+  dirtyMarkerKeys: string[];
+  removedMarkerKeys: string[];
+  upsertRoles: SearchMapMarkerRoleRow[];
 };
 
 type SearchMapRenderFrame = {
@@ -440,6 +615,7 @@ const attachedPayloadByInstanceId = new Map<string, SearchMapRenderControllerAtt
 const isRecoverableNativeRenderOwnerFrameError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error);
   return (
+    message.includes('unknown instance') ||
     message.includes('unknown instance or frame') ||
     message.includes('invalid render frame payload') ||
     message.includes('Source delta missing feature') ||
@@ -486,6 +662,7 @@ type SearchMapRenderControllerSetFramePayload = {
   frameGenerationId: string;
   executionBatchId: string;
   frame: SearchMapRenderFrame;
+  visualFrameTransaction: SearchMapVisualFrameTransaction;
   sourceTransport: SearchMapRenderSourceTransportPayload;
 };
 
@@ -494,7 +671,10 @@ type SearchMapRenderControllerNativeFramePayload = {
   ownerEpoch: number;
   frameGenerationId: string;
   executionBatchId: string;
+  sourceRevisions: SearchMapRenderSourceRevisionState;
+  visualFrameTransaction: SearchMapVisualFrameTransaction;
   sourceDeltas?: SearchMapRenderControllerNativeSourceDelta[];
+  markerRoleFrame?: SearchMapMarkerRoleFrame;
   presentationStateJson: string;
   highlightedRestaurantId: string | null;
   highlightedMarkerKey: string | null;
@@ -516,12 +696,8 @@ const toNativeSourceId = (
       return attachedSourceIds.pinInteractionSourceId;
     case 'dots':
       return attachedSourceIds.dotSourceId;
-    case 'dotInteractions':
-      return attachedSourceIds.dotInteractionSourceId;
     case 'labels':
       return attachedSourceIds.labelSourceId;
-    case 'labelInteractions':
-      return attachedSourceIds.labelInteractionSourceId;
     case 'labelCollisions':
       return attachedSourceIds.labelCollisionSourceId;
   }
@@ -556,7 +732,12 @@ const createNativeRenderFramePayload = (
     ownerEpoch: payload.ownerEpoch,
     frameGenerationId: payload.frameGenerationId,
     executionBatchId: payload.executionBatchId,
+    sourceRevisions: payload.frame.sourceRevisions,
+    visualFrameTransaction: payload.visualFrameTransaction,
     ...(sourceDeltas ? { sourceDeltas } : {}),
+    ...(payload.sourceTransport.markerRoleFrame
+      ? { markerRoleFrame: payload.sourceTransport.markerRoleFrame }
+      : {}),
     presentationStateJson: serializePresentationState(payload.frame.presentation),
     highlightedRestaurantId: payload.frame.presentation.selectedRestaurantId,
     highlightedMarkerKey: payload.frame.highlightedMarkerKey,
@@ -600,16 +781,39 @@ export const searchMapRenderController = {
     pinSourceId: string;
     pinInteractionSourceId: string;
     dotSourceId: string;
-    dotInteractionSourceId: string;
     labelSourceId: string;
-    labelInteractionSourceId: string;
     labelCollisionSourceId: string;
+    pinSlotSourceIds: string[];
+    labelLayerIds: string[];
+    labelCollisionLayerIds: string[];
   }): Promise<void> {
     if (!nativeModule) {
       return;
     }
     attachedPayloadByInstanceId.set(payload.instanceId, payload);
     await nativeModule.attach(payload);
+  },
+
+  async configureNativeLayerGroups(payload: {
+    instanceId: string;
+    pinSlotSourceIds: string[];
+    labelLayerIds: string[];
+    labelCollisionLayerIds: string[];
+  }): Promise<void> {
+    if (!nativeModule?.configureNativeLayerGroups) {
+      throw new Error(
+        `SearchMapRenderController.configureNativeLayerGroups is required on ${Platform.OS}. Rebuild the native app so promoted slot layer ownership is available.`
+      );
+    }
+    try {
+      await nativeModule.configureNativeLayerGroups(payload);
+    } catch (error) {
+      const recoveredError = await recoverNativeRenderFrameSubmissionError(payload.instanceId, error);
+      if (recoveredError.message !== 'stale owner epoch') {
+        throw recoveredError;
+      }
+      await nativeModule.configureNativeLayerGroups(payload);
+    }
   },
 
   async detach(instanceId: string): Promise<void> {
@@ -626,6 +830,7 @@ export const searchMapRenderController = {
     frameGenerationId: string;
     executionBatchId: string;
     frame: SearchMapRenderFrame;
+    visualFrameTransaction: SearchMapVisualFrameTransaction;
     sourceTransport: SearchMapRenderSourceTransportPayload;
   }): Promise<SearchMapRenderControllerSetRenderFrameResult | null> {
     if (!nativeModule) {
@@ -706,35 +911,41 @@ export const searchMapRenderController = {
 
   submitRenderFrameFireAndObserve(
     payload: SearchMapRenderControllerSetFramePayload,
-    onError: (error: Error) => void
+    onError: (error: Error) => void,
+    onApplied?: (result: SearchMapRenderControllerSetRenderFrameResult | null) => void
   ): void {
     if (!nativeModule) {
       return;
     }
-    const { nativePayload } = createNativeRenderFramePayload(payload);
-    void nativeModule.setRenderFrame(nativePayload).catch((error: unknown) => {
-      recoverNativeRenderFrameSubmissionError(payload.instanceId, error)
-        .then(onError)
-        .catch((recoveryError: unknown) => {
-          onError(
-            recoveryError instanceof Error ? recoveryError : new Error(String(recoveryError))
-          );
-        });
-    });
+    void searchMapRenderController
+      .setRenderFrame(payload)
+      .then((result) => {
+        onApplied?.(result);
+      })
+      .catch((error: unknown) => {
+        onError(error instanceof Error ? error : new Error(String(error)));
+      });
   },
 
   async configureLabelObservation(
     payload: {
       instanceId: string;
       observationEnabled: boolean;
-      allowFallback: boolean;
-      commitInteractionVisibility: boolean;
+      commitVisibleLabelHits: boolean;
     } & SearchMapLabelObservationConfig
   ): Promise<void> {
     if (!nativeModule) {
       return;
     }
-    await nativeModule.configureLabelObservation(payload);
+    try {
+      await nativeModule.configureLabelObservation(payload);
+    } catch (error) {
+      const recoveredError = await recoverNativeRenderFrameSubmissionError(payload.instanceId, error);
+      if (recoveredError.message !== 'stale owner epoch') {
+        throw recoveredError;
+      }
+      await nativeModule.configureLabelObservation(payload);
+    }
   },
 
   async resetNativeApplyAttribution(
@@ -768,10 +979,6 @@ export const searchMapRenderController = {
       y: number;
     };
     pinLayerIds?: string[];
-    pinTapHitbox?: {
-      radiusPx: number;
-      centerShiftYPx: number;
-    };
     labelLayerIds?: string[];
     labelQueryBox?: [number, number, number, number] | null;
     labelTapHitbox?: {
@@ -796,7 +1003,51 @@ export const searchMapRenderController = {
     if (!nativeModule) {
       return null;
     }
-    return nativeModule.queryRenderedPressTarget(payload);
+    try {
+      return await nativeModule.queryRenderedPressTarget(payload);
+    } catch (error) {
+      const recoveredError = await recoverNativeRenderFrameSubmissionError(payload.instanceId, error);
+      if (recoveredError.message !== 'stale owner epoch') {
+        throw recoveredError;
+      }
+      return null;
+    }
+  },
+
+  async configureNativePressTargeting(payload: {
+    instanceId: string;
+    enabled: boolean;
+    pinLayerIds?: string[];
+    labelLayerIds?: string[];
+    labelTapHitbox?: {
+      textSize: number;
+      radialXEm: number;
+      radialYEm: number;
+      radialTopEm: number;
+      upShiftEm: number;
+      charWidthFactor: number;
+      lineHeightFactor: number;
+      paddingPx: number;
+      minWidthPx: number;
+      maxWidthPx: number;
+    };
+    dotLayerIds?: string[];
+    dotTapIntentRadiusPx?: number;
+  }): Promise<void> {
+    if (!nativeModule?.configureNativePressTargeting) {
+      throw new Error(
+        `SearchMapRenderController.configureNativePressTargeting is required on ${Platform.OS}. Rebuild the native app so native-first map press ownership is available.`
+      );
+    }
+    try {
+      await nativeModule.configureNativePressTargeting(payload);
+    } catch (error) {
+      const recoveredError = await recoverNativeRenderFrameSubmissionError(payload.instanceId, error);
+      if (recoveredError.message !== 'stale owner epoch') {
+        throw recoveredError;
+      }
+      await nativeModule.configureNativePressTargeting(payload);
+    }
   },
 
   async reset(instanceId: string): Promise<void> {

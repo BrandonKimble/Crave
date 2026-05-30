@@ -19,6 +19,8 @@ type UseSearchRuntimeCameraIntentRuntimeArgs = {
   searchMapNativeCameraExecutor: SearchMapNativeCameraExecutor;
   setMapCenter: React.Dispatch<React.SetStateAction<[number, number] | null>>;
   setMapZoom: React.Dispatch<React.SetStateAction<number | null>>;
+  setMapBearing: React.Dispatch<React.SetStateAction<number | null>>;
+  setMapPitch: React.Dispatch<React.SetStateAction<number | null>>;
   setMapCameraAnimation: React.Dispatch<React.SetStateAction<MapCameraAnimation>>;
 };
 
@@ -31,6 +33,8 @@ export const useSearchRuntimeCameraIntentRuntime = ({
   searchMapNativeCameraExecutor,
   setMapCenter,
   setMapZoom,
+  setMapBearing,
+  setMapPitch,
   setMapCameraAnimation,
 }: UseSearchRuntimeCameraIntentRuntimeArgs): SearchRuntimeCameraIntentRuntime => {
   const cameraIntentArbiterRef = React.useRef<CameraIntentArbiter | null>(null);
@@ -43,6 +47,8 @@ export const useSearchRuntimeCameraIntentRuntime = ({
     ({
       center,
       zoom,
+      bearing,
+      pitch,
       padding,
       animationMode,
       animationDurationMs,
@@ -50,6 +56,8 @@ export const useSearchRuntimeCameraIntentRuntime = ({
     }: {
       center: [number, number];
       zoom: number;
+      bearing?: number | null;
+      pitch?: number | null;
       padding?: CameraSnapshot['padding'];
       animationMode?: 'none' | 'easeTo';
       animationDurationMs?: number;
@@ -63,6 +71,8 @@ export const useSearchRuntimeCameraIntentRuntime = ({
         type: 'CameraStop',
         centerCoordinate: center,
         zoomLevel: zoom,
+        heading: bearing ?? undefined,
+        pitch: pitch ?? undefined,
         padding: padding ?? undefined,
         animationMode,
         animationDuration: animationDurationMs,
@@ -78,6 +88,8 @@ export const useSearchRuntimeCameraIntentRuntime = ({
       commandCameraViewport: ({
         center,
         zoom,
+        bearing,
+        pitch,
         padding,
         animationMode,
         animationDurationMs,
@@ -92,6 +104,8 @@ export const useSearchRuntimeCameraIntentRuntime = ({
           latestNativeCameraExecutorRef.current.executeCameraCommand({
             center,
             zoom,
+            bearing,
+            pitch,
             padding,
             animationMode,
             animationDurationMs,
@@ -105,6 +119,8 @@ export const useSearchRuntimeCameraIntentRuntime = ({
           executeCameraRefCommand({
             center,
             zoom,
+            bearing,
+            pitch,
             padding,
             animationMode,
             animationDurationMs,
@@ -118,6 +134,8 @@ export const useSearchRuntimeCameraIntentRuntime = ({
           latestNativeCameraExecutorRef.current.executeCameraCommand({
             center,
             zoom,
+            bearing,
+            pitch,
             padding,
             animationMode,
             animationDurationMs,
@@ -130,6 +148,8 @@ export const useSearchRuntimeCameraIntentRuntime = ({
         return executeCameraRefCommand({
           center,
           zoom,
+          bearing,
+          pitch,
           padding,
           animationMode,
           animationDurationMs,
@@ -143,6 +163,12 @@ export const useSearchRuntimeCameraIntentRuntime = ({
       },
       setMapZoom: (zoom: number) => {
         setMapZoom((previous) => (previous === zoom ? previous : zoom));
+      },
+      setMapBearing: (bearing: number | null) => {
+        setMapBearing((previous) => (previous === bearing ? previous : bearing));
+      },
+      setMapPitch: (pitch: number | null) => {
+        setMapPitch((previous) => (previous === pitch ? previous : pitch));
       },
       setMapCameraAnimation: (animation: MapCameraAnimation) => {
         setMapCameraAnimation((previous) =>

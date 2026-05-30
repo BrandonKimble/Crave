@@ -12,7 +12,6 @@ export type SearchMapSourceFrameSnapshot = {
   pinSourceStore: SearchMapSourceStore;
   dotSourceStore: SearchMapSourceStore;
   pinInteractionSourceStore: SearchMapSourceStore;
-  dotInteractionSourceStore: SearchMapSourceStore;
   labelSourceStore: SearchMapSourceStore;
   labelCollisionSourceStore: SearchMapSourceStore;
   labelDerivedSourceIdentityKey: string;
@@ -67,7 +66,6 @@ export const EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT: SearchMapSourceFrameSnapsho
   pinSourceStore: EMPTY_SEARCH_MAP_SOURCE_STORE,
   dotSourceStore: EMPTY_SEARCH_MAP_SOURCE_STORE,
   pinInteractionSourceStore: EMPTY_SEARCH_MAP_SOURCE_STORE,
-  dotInteractionSourceStore: EMPTY_SEARCH_MAP_SOURCE_STORE,
   labelSourceStore: EMPTY_SEARCH_MAP_SOURCE_STORE,
   labelCollisionSourceStore: EMPTY_SEARCH_MAP_SOURCE_STORE,
   labelDerivedSourceIdentityKey: '',
@@ -104,7 +102,6 @@ const areSearchMapSourceFrameSnapshotsEqual = (
   areSourceStoreFramesEqual(left.pinSourceStore, right.pinSourceStore) &&
   areSourceStoreFramesEqual(left.dotSourceStore, right.dotSourceStore) &&
   areSourceStoreFramesEqual(left.pinInteractionSourceStore, right.pinInteractionSourceStore) &&
-  areSourceStoreFramesEqual(left.dotInteractionSourceStore, right.dotInteractionSourceStore) &&
   areSourceStoreFramesEqual(left.labelSourceStore, right.labelSourceStore) &&
   areSourceStoreFramesEqual(left.labelCollisionSourceStore, right.labelCollisionSourceStore) &&
   left.labelDerivedSourceIdentityKey === right.labelDerivedSourceIdentityKey &&
@@ -116,7 +113,6 @@ const SOURCE_FRAME_KEYS: readonly SearchMapSourceFrameSnapshotKey[] = [
   'pinSourceStore',
   'dotSourceStore',
   'pinInteractionSourceStore',
-  'dotInteractionSourceStore',
   'labelSourceStore',
   'labelCollisionSourceStore',
   'labelDerivedSourceIdentityKey',

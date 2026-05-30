@@ -73,8 +73,8 @@ export class RouteSceneLayoutAssemblyRuntime {
     });
     this.routeSceneLayoutSnapPointsRuntime =
       createRouteSceneLayoutSnapPointsStateController({
-        routeResultsSheetVisualAuthority:
-          routeHostFoundationRuntime.routeResultsSheetVisualAuthority,
+        routeSharedSheetVisualAuthority:
+          routeHostFoundationRuntime.routeSharedSheetVisualAuthority,
       });
     this.routeSceneLayoutSheetRuntime = createRouteSceneLayoutSheetStateController({
       routeSceneLayoutSnapPointsAuthority:

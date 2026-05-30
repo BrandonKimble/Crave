@@ -7,8 +7,7 @@ import { useAppRouteSceneRuntime } from './AppRouteSceneRuntimeProvider';
 const ROUTE_CHROME_MOTION_MS = 180;
 
 export type UseAppRouteSceneChromeMotionTargetRuntimeArgs = {
-  overlayChromeTransitionProgress: SharedValue<number>;
-  overlayBackdropDimProgress: SharedValue<number>;
+  overlayChromeVisibilityProgress: SharedValue<number>;
   routeChromeMotionProgress: SharedValue<number>;
 };
 
@@ -29,8 +28,7 @@ const isChromeProgressSettled = (currentProgress: number, targetProgress: number
   Math.abs(currentProgress - targetProgress) < 0.001;
 
 export const useAppRouteSceneChromeMotionTargetRuntime = ({
-  overlayChromeTransitionProgress,
-  overlayBackdropDimProgress,
+  overlayChromeVisibilityProgress,
   routeChromeMotionProgress,
 }: UseAppRouteSceneChromeMotionTargetRuntimeArgs): void => {
   const routeSceneRuntime = useAppRouteSceneRuntime();
@@ -40,24 +38,19 @@ export const useAppRouteSceneChromeMotionTargetRuntime = ({
       isChromeVisibilityTargetSettled: (chromeVisibilityTarget) => {
         const nextChromeProgress = resolveChromeProgressTarget(
           chromeVisibilityTarget.searchChrome,
-          overlayChromeTransitionProgress.value
+          overlayChromeVisibilityProgress.value
         );
-        return isChromeProgressSettled(overlayChromeTransitionProgress.value, nextChromeProgress);
+        return isChromeProgressSettled(overlayChromeVisibilityProgress.value, nextChromeProgress);
       },
       executeChromeVisibilityTarget: (chromeVisibilityTarget, contract, complete) => {
         const nextChromeProgress = resolveChromeProgressTarget(
           chromeVisibilityTarget.searchChrome,
-          overlayChromeTransitionProgress.value
+          overlayChromeVisibilityProgress.value
         );
-        const nextBackdropProgress = 1 - nextChromeProgress;
         const activeRouteChromeMotionToken = contract.transitionToken;
 
         routeChromeMotionProgress.value = activeRouteChromeMotionToken;
-        overlayBackdropDimProgress.value = withTiming(nextBackdropProgress, {
-          duration: ROUTE_CHROME_MOTION_MS,
-          easing: Easing.out(Easing.cubic),
-        });
-        overlayChromeTransitionProgress.value = withTiming(
+        overlayChromeVisibilityProgress.value = withTiming(
           nextChromeProgress,
           {
             duration: ROUTE_CHROME_MOTION_MS,
@@ -73,7 +66,7 @@ export const useAppRouteSceneChromeMotionTargetRuntime = ({
         return true;
       },
     }),
-    [overlayBackdropDimProgress, overlayChromeTransitionProgress, routeChromeMotionProgress]
+    [overlayChromeVisibilityProgress, routeChromeMotionProgress]
   );
 
   React.useEffect(

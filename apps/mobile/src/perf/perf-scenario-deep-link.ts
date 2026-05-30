@@ -12,9 +12,12 @@ type PerfScenarioDeepLinkEvent =
   | {
       type: 'command';
       action: string;
+      bearing: number | null;
+      cameraDurationMs: number | null;
       delayMs: number;
       lat: number | null;
       lng: number | null;
+      pitch: number | null;
       resubmitDelayMs: number;
       scenarioRunId: string | null;
       label: string | null;
@@ -42,6 +45,17 @@ const parseInteger = (value: string | null, fallback: number, min: number, max: 
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) {
     return fallback;
+  }
+  return Math.min(max, Math.max(min, parsed));
+};
+
+const parseOptionalInteger = (value: string | null, min: number, max: number): number | null => {
+  if (value == null || value.trim().length === 0) {
+    return null;
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) {
+    return null;
   }
   return Math.min(max, Math.max(min, parsed));
 };
@@ -160,9 +174,16 @@ export const parsePerfScenarioDeepLinkEvent = (
       return {
         type: 'command',
         action: normalizeScenarioName(parsed.searchParams.get('action')),
+        bearing: parseNumber(parsed.searchParams.get('bearing'), -360, 360),
+        cameraDurationMs: parseOptionalInteger(
+          parsed.searchParams.get('cameraDurationMs'),
+          0,
+          10000
+        ),
         delayMs: parseInteger(parsed.searchParams.get('delayMs'), 100, 0, 5000),
         lat: parseNumber(parsed.searchParams.get('lat'), -90, 90),
         lng: parseNumber(parsed.searchParams.get('lng'), -180, 180),
+        pitch: parseNumber(parsed.searchParams.get('pitch'), 0, 85),
         resubmitDelayMs: parseInteger(parsed.searchParams.get('resubmitDelayMs'), 140, 0, 5000),
         scenarioRunId: parsed.searchParams.get('scenarioRunId')?.trim() || null,
         label: parsed.searchParams.get('label')?.trim() || null,

@@ -12,7 +12,7 @@ import type { PhaseBMaterializer } from '../scheduler/phase-b-materializer';
 import type { UsePollsPanelSpecOptions } from '../../../../overlays/panels/runtime/polls-panel-runtime-contract';
 import type { ResultsPresentationOwner } from './results-presentation-owner-contract';
 import type { ResultsSheetInteractionModel } from './results-sheet-interaction-contract';
-import type { AppRouteResultsSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-results-sheet-runtime-contract';
+import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 
 export type RuntimeMechanismEmitter = (
@@ -28,14 +28,14 @@ export type ResultsPanelVisualRuntimeModel = {
 };
 
 export type ResultsPanelSheetRuntimeModel = Pick<
-  AppRouteResultsSheetRuntimeOwner,
+  AppRouteSharedSheetRuntimeOwner,
   | 'headerDividerAnimatedStyle'
-  | 'resultsContainerAnimatedStyle'
-  | 'shouldRenderResultsSheet'
+  | 'sharedSheetContainerAnimatedStyle'
+  | 'shouldRenderMountedSharedSheet'
   | 'snapPoints'
   | 'sheetState'
-  | 'resultsSheetRuntimeModel'
-  | 'resetResultsSheetToHidden'
+  | 'sharedSheetRuntimeModel'
+  | 'markSharedSheetHidden'
 >;
 
 export type SearchResultsPanelEnvironment = {
@@ -67,6 +67,7 @@ export type SearchResultsPanelEnvironment = {
     type: 'dish' | 'restaurant';
     title: string;
     score: number | null | undefined;
+    scoreDelta7d: number | null | undefined;
     votes: number | null | undefined;
     polls: number | null | undefined;
   }) => void;

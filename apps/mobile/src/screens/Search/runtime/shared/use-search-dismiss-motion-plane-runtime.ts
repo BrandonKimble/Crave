@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   runOnJS,
-  runOnUI,
   useAnimatedReaction,
   useDerivedValue,
   useSharedValue,
@@ -72,14 +71,6 @@ const resolveSearchDismissVisualBoundaryReached = (
     return false;
   }
   return sheetY >= collapsedY - SEARCH_DISMISS_COLLAPSED_BOUNDARY_EPSILON_PT;
-};
-
-const seedDismissMotionSheetYOnUI = (
-  sheetTranslateY: SharedValue<number>,
-  visibleStartY: number
-): void => {
-  'worklet';
-  sheetTranslateY.value = visibleStartY;
 };
 
 type SearchSurfaceMotionPlaneSample = {
@@ -383,9 +374,6 @@ export const useSearchDismissMotionPlaneRuntime = ({
           : hasCachedVisibleStart
             ? cachedVisibleStartY
             : rawStartY;
-      if (Math.abs(startY - rawStartY) >= 0.5) {
-        runOnUI(seedDismissMotionSheetYOnUI)(sheetTranslateY, startY);
-      }
       dismissMotionStartY.value = startY;
       dismissMotionRawStartY.value = rawStartY;
       dismissMotionStartSource.value = startY === rawStartY ? 0 : startY === currentSnapY ? 1 : 2;
@@ -395,7 +383,14 @@ export const useSearchDismissMotionPlaneRuntime = ({
       dismissMotionPageBundleHandoffProgress.value = 0;
       dismissMotionEarlyProofEmitted.value = 0;
       dismissMotionMidProofEmitted.value = 0;
-      dismissMotionPollPageReadyForBoundary.value = 1;
+      const activeDismissTransaction = getSearchSurfaceRuntime().getSnapshot().dismissTransaction;
+      const pollPageReadyForBoundary =
+        activeDismissTransaction != null &&
+        activeDismissTransaction.id === transactionId &&
+        activeDismissTransaction.pollHeaderReady &&
+        activeDismissTransaction.pollBodyReady &&
+        activeDismissTransaction.pollHostReady;
+      dismissMotionPollPageReadyForBoundary.value = pollPageReadyForBoundary ? 1 : 0;
       dismissMotionWaitingForPollPageAtBoundary.value = 0;
       dismissMotionActive.value = 1;
       const startRequiresObservedDismissMotion =

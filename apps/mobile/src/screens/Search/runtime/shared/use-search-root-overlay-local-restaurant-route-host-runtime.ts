@@ -9,7 +9,7 @@ import type { SearchRootOverlayLocalRestaurantRouteHostRuntimeParams } from './s
 
 export const useSearchRootOverlayLocalRestaurantRouteHostRuntime = ({
   routeHostOverlayGeometryAuthority,
-  routeResultsSheetVisualAuthority,
+  routeSharedSheetVisualAuthority,
   routeHostVisualRuntimeAuthority,
 }: SearchRootOverlayLocalRestaurantRouteHostRuntimeParams): SearchRootOverlayLocalRestaurantRouteHostRuntime => {
   const localRestaurantRouteGeometryFrameControllerRef = React.useRef(
@@ -44,7 +44,7 @@ export const useSearchRootOverlayLocalRestaurantRouteHostRuntime = ({
   if (localRestaurantRouteSheetControllerRef.current == null) {
     localRestaurantRouteSheetControllerRef.current =
       createSearchOverlayLocalRestaurantRouteSheetStateController({
-        routeResultsSheetVisualAuthority,
+        routeSharedSheetVisualAuthority,
       });
   }
   if (localRestaurantRouteVisualControllerRef.current == null) {

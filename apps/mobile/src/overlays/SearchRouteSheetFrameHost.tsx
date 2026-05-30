@@ -262,6 +262,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
     zIndex: OVERLAY_STACK_ZINDEX,
+    elevation: OVERLAY_STACK_ZINDEX,
   },
   persistentSheetHardClip: {
     position: 'relative',

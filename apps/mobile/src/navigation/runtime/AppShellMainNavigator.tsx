@@ -9,7 +9,7 @@ import {
 } from '../../screens';
 import type { RootStackParamList } from '../../types/navigation';
 import { AppRouteOverlayHostRuntimeProvider } from './AppRouteOverlayHostRuntimeProvider';
-import { AppRouteResultsSheetRuntimeProvider } from './AppRouteResultsSheetRuntimeProvider';
+import { AppRouteSharedSheetRuntimeProvider } from './AppRouteSharedSheetRuntimeProvider';
 import { AppRouteSceneChromeMotionRuntimeProvider } from './AppRouteSceneChromeMotionRuntimeProvider';
 import { AppRouteSheetHostRuntimeProvider } from './AppRouteSheetHostRuntimeProvider';
 import { useAppRouteSceneRuntime } from './AppRouteSceneRuntimeProvider';
@@ -75,13 +75,13 @@ const AppShellRouteRuntimeProviders = React.memo(function AppShellRouteRuntimePr
   routeSceneRuntime: AppRouteSceneRuntime;
 }>) {
   return (
-    <AppRouteResultsSheetRuntimeProvider routeSceneRuntime={routeSceneRuntime}>
+    <AppRouteSharedSheetRuntimeProvider routeSceneRuntime={routeSceneRuntime}>
       <AppRouteSheetHostRuntimeProvider routeSceneRuntime={routeSceneRuntime}>
         <AppRouteSceneChromeMotionRuntimeProvider routeSceneRuntime={routeSceneRuntime}>
           <AppRouteOverlayHostRuntimeProvider>{children}</AppRouteOverlayHostRuntimeProvider>
         </AppRouteSceneChromeMotionRuntimeProvider>
       </AppRouteSheetHostRuntimeProvider>
-    </AppRouteResultsSheetRuntimeProvider>
+    </AppRouteSharedSheetRuntimeProvider>
   );
 });
 

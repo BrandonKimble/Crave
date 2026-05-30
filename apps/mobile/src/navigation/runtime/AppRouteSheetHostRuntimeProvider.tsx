@@ -1,9 +1,9 @@
 import React from 'react';
 
 import { createAppRouteSheetHostAuthorityController } from './app-route-sheet-host-authority-controller';
-import { useBottomSheetRuntimeModel } from '../../overlays/useBottomSheetRuntime';
 import type { AppRouteSheetHostRuntimeOwner } from './app-route-sheet-host-runtime-contract';
 import type { AppRouteSceneRuntime } from './app-route-scene-runtime';
+import { useAppRouteSharedSheetRuntimeOwner } from './AppRouteSharedSheetRuntimeProvider';
 import { useAppRouteSheetFrameHostAuthority } from './use-app-route-sheet-frame-host-authority';
 
 const AppRouteSheetHostRuntimeContext = React.createContext<AppRouteSheetHostRuntimeOwner | null>(
@@ -26,23 +26,19 @@ const AppRouteSheetHostNativeRuntimeBinder = React.memo(
   }: {
     routeSheetHostAuthorityRuntime: ReturnType<typeof createAppRouteSheetHostAuthorityController>;
   }) {
-    const initialNativeAdapterSnapshotRef = React.useRef(
-      routeSheetHostAuthorityRuntime.nativeAdapterAuthority.getSnapshot()
-    );
-    const fallbackSheetRuntimeModel = useBottomSheetRuntimeModel({
-      initialSheetY: initialNativeAdapterSnapshotRef.current.initialSheetY,
-    });
+    const sharedSheetRuntimeOwner = useAppRouteSharedSheetRuntimeOwner();
+    const sharedSheetRuntimeModel = sharedSheetRuntimeOwner.sharedSheetRuntimeModel;
     const routeSheetFrameHostAuthority = useAppRouteSheetFrameHostAuthority({
-      fallbackSheetY: fallbackSheetRuntimeModel.presentationState.sheetY,
+      sharedSheetY: sharedSheetRuntimeModel.presentationState.sheetY,
       nativeAdapterAuthority: routeSheetHostAuthorityRuntime.nativeAdapterAuthority,
     });
 
     React.useLayoutEffect(() => {
       routeSheetHostAuthorityRuntime.setNativeRuntime({
-        fallbackRuntimeModel: fallbackSheetRuntimeModel,
+        sharedRuntimeModel: sharedSheetRuntimeModel,
         routeSheetFrameHostAuthority,
       });
-    }, [fallbackSheetRuntimeModel, routeSheetFrameHostAuthority, routeSheetHostAuthorityRuntime]);
+    }, [sharedSheetRuntimeModel, routeSheetFrameHostAuthority, routeSheetHostAuthorityRuntime]);
 
     return null;
   }
@@ -64,7 +60,10 @@ export const AppRouteSheetHostRuntimeProvider = ({
         routeSheetVisualAuthority: routeSceneRuntime.routeSheetVisualAuthority,
         routeSceneSwitchAuthority: routeSceneRuntime.sceneSwitchAuthority,
         routeSceneInteractivityAuthority: routeSceneRuntime.sceneInteractivityAuthority,
+        routeSceneTransitionAuthority: routeSceneRuntime.sceneTransitionAuthority,
         routeSceneMotionRuntime: routeSceneRuntime.routeSceneMotionRuntime,
+        routeSceneSwitchActions: routeSceneRuntime.routeOverlayTransitionActions,
+        routeSharedSheetPresentationRuntime: routeSceneRuntime.routeSharedSheetPresentationRuntime,
         routeSheetSnapSessionAuthority: routeSceneRuntime.routeSheetSnapSessionAuthority,
         routeSheetSnapSessionActions: routeSceneRuntime.routeSheetSnapSessionActions,
       }),
@@ -76,7 +75,10 @@ export const AppRouteSheetHostRuntimeProvider = ({
       routeSceneRuntime.routeSheetVisualAuthority,
       routeSceneRuntime.sceneSwitchAuthority,
       routeSceneRuntime.sceneInteractivityAuthority,
+      routeSceneRuntime.sceneTransitionAuthority,
       routeSceneRuntime.routeSceneMotionRuntime,
+      routeSceneRuntime.routeOverlayTransitionActions,
+      routeSceneRuntime.routeSharedSheetPresentationRuntime,
       routeSceneRuntime.routeSheetSnapSessionAuthority,
       routeSceneRuntime.routeSheetSnapSessionActions,
     ]
@@ -102,14 +104,11 @@ export const AppRouteSheetHostRuntimeProvider = ({
       sceneStackSurfaceAuthority: routeSceneRuntime.sceneStackSurfaceAuthority,
       routeSceneDisplayTargetRegistry: routeSceneRuntime.routeSceneDisplayTargetRegistry,
       routeHostVisualRuntimeAuthority: routeSceneRuntime.routeHostVisualRuntimeAuthority,
-      replayPersistentPollSheetHostContract:
-        routeSheetHostAuthorityRuntime.replayPersistentPollSheetHostContract,
     }),
     [
       routeSceneRuntime.routeSceneDisplayTargetRegistry,
       routeSceneRuntime.routeHostVisualRuntimeAuthority,
       routeSceneRuntime.sceneStackSurfaceAuthority,
-      routeSheetHostAuthorityRuntime.replayPersistentPollSheetHostContract,
       routeSheetHostAuthorityRuntime.routeSheetMotionRuntimeAuthority,
       routeSheetHostAuthorityRuntime.routeSheetSurfaceBodyAuthority,
       routeSheetHostAuthorityRuntime.routeSheetSurfaceFrameAuthority,

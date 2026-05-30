@@ -4,9 +4,11 @@ import { SEARCH_SHORTCUT_SHADOW, SEARCH_THIS_AREA_SHADOW } from './shadows';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
 import { colors as themeColors } from '../../constants/theme';
 import {
+  OVERLAY_CHROME_ZINDEX,
   OVERLAY_CORNER_RADIUS,
   OVERLAY_HEADER_CLOSE_BUTTON_SIZE,
   OVERLAY_HORIZONTAL_PADDING,
+  OVERLAY_NAV_SILHOUETTE_ZINDEX,
 } from '../../overlays/overlaySheetStyles';
 import {
   ACTIVE_TAB_COLOR,
@@ -140,7 +142,8 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'flex-start',
     paddingBottom: 24,
-    zIndex: 10,
+    zIndex: OVERLAY_CHROME_ZINDEX,
+    elevation: OVERLAY_CHROME_ZINDEX,
   },
   searchChromeHidden: {
     opacity: 0,
@@ -409,7 +412,8 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'flex-end',
     alignItems: 'stretch',
-    zIndex: 120,
+    zIndex: OVERLAY_NAV_SILHOUETTE_ZINDEX,
+    elevation: OVERLAY_NAV_SILHOUETTE_ZINDEX,
   },
   bottomNav: {
     flexDirection: 'row',
@@ -501,7 +505,9 @@ const styles = StyleSheet.create({
   scoreInfoMetricsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 16,
+    rowGap: 8,
   },
   scoreInfoMetricItem: {
     flexDirection: 'row',
@@ -1056,11 +1062,6 @@ const styles = StyleSheet.create({
     lineHeight: LINE_HEIGHTS.body,
     marginHorizontal: SPACING_SM,
   },
-  metricLabel: {
-    color: themeColors.textBody,
-    letterSpacing: 0.2,
-    textTransform: 'none',
-  },
   metricValueRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1068,11 +1069,6 @@ const styles = StyleSheet.create({
   },
   metricValue: {
     color: themeColors.textPrimary,
-  },
-  metricMovement: {
-    color: themeColors.textBody,
-    fontSize: FONT_SIZES.caption,
-    lineHeight: LINE_HEIGHTS.caption,
   },
   metricCountersInline: {
     flexDirection: 'row',
@@ -1105,10 +1101,6 @@ const styles = StyleSheet.create({
     minWidth: 0,
     columnGap: 4,
   },
-  restaurantMetricLabel: {
-    flexShrink: 1,
-    minWidth: 0,
-  },
   restaurantMetricRight: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1116,10 +1108,6 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     minWidth: 0,
     columnGap: SPACING_XS,
-  },
-  metricSupportLabel: {
-    color: themeColors.textBody,
-    letterSpacing: 0.1,
   },
   resultMetaLineRight: {
     marginTop: 0,

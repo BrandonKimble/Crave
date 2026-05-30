@@ -27,7 +27,7 @@ export class RouteVisualRuntime {
 
   public readonly routeHostOverlayGeometryAuthority: RouteHostFoundationRuntime['routeHostOverlayGeometryAuthority'];
 
-  public readonly routeResultsSheetVisualAuthority: RouteHostFoundationRuntime['routeResultsSheetVisualAuthority'];
+  public readonly routeSharedSheetVisualAuthority: RouteHostFoundationRuntime['routeSharedSheetVisualAuthority'];
 
   public readonly routeHostVisualRuntimeAuthority: RouteHostFoundationRuntime['routeHostVisualRuntimeAuthority'];
 
@@ -35,7 +35,7 @@ export class RouteVisualRuntime {
 
   public readonly syncRouteHostOverlayGeometryRuntime: RouteHostFoundationRuntime['routeHostSyncLane']['syncRouteHostOverlayGeometryRuntime'];
 
-  public readonly publishRouteResultsSheetVisualBinding: RouteHostFoundationRuntime['routeHostSyncLane']['publishRouteResultsSheetVisualBinding'];
+  public readonly publishRouteSharedSheetVisualBinding: RouteHostFoundationRuntime['routeHostSyncLane']['publishRouteSharedSheetVisualBinding'];
 
   public readonly syncRouteHostVisualRuntime: RouteHostFoundationRuntime['routeHostSyncLane']['syncRouteHostVisualRuntime'];
 
@@ -58,8 +58,8 @@ export class RouteVisualRuntime {
       this.routeSceneLayoutAssemblyRuntime.routeSceneLayoutAuthority;
     this.routeHostOverlayGeometryAuthority =
       this.routeHostFoundationRuntime.routeHostOverlayGeometryAuthority;
-    this.routeResultsSheetVisualAuthority =
-      this.routeHostFoundationRuntime.routeResultsSheetVisualAuthority;
+    this.routeSharedSheetVisualAuthority =
+      this.routeHostFoundationRuntime.routeSharedSheetVisualAuthority;
     this.routeHostVisualRuntimeAuthority =
       this.routeHostFoundationRuntime.routeHostVisualRuntimeAuthority;
     this.routeSheetVisualAuthority =
@@ -67,9 +67,9 @@ export class RouteVisualRuntime {
     this.syncRouteHostOverlayGeometryRuntime =
       this.routeHostFoundationRuntime.routeHostSyncLane
         .syncRouteHostOverlayGeometryRuntime;
-    this.publishRouteResultsSheetVisualBinding =
+    this.publishRouteSharedSheetVisualBinding =
       this.routeHostFoundationRuntime.routeHostSyncLane
-        .publishRouteResultsSheetVisualBinding;
+        .publishRouteSharedSheetVisualBinding;
     this.syncRouteHostVisualRuntime =
       this.routeHostFoundationRuntime.routeHostSyncLane.syncRouteHostVisualRuntime;
   }

@@ -2,10 +2,8 @@ export type MapQueryBudgetSnapshot = {
   fullCatalogScanCount: number;
   indexQueryDurationP95: number;
   readModelBuildSliceP95: number;
-  mapDiffApplySliceP95: number;
   indexQuerySampleCount: number;
   readModelBuildSampleCount: number;
-  mapDiffApplySampleCount: number;
   runtimeAttributionTotalsMs: Record<string, number>;
   runtimeAttributionSampleCountByContributor: Record<string, number>;
   runtimeAttributionTopContributors: Array<{
@@ -55,7 +53,6 @@ export class MapQueryBudget {
   private fullCatalogScanCount = 0;
   private indexQueryDurationsMs: number[] = [];
   private readModelBuildSliceDurationsMs: number[] = [];
-  private mapDiffApplySliceDurationsMs: number[] = [];
   private runtimeAttributionTotalsMs = new Map<string, number>();
   private runtimeAttributionSampleCountByContributor = new Map<string, number>();
   private runtimeCounters = new Map<string, number>();
@@ -64,7 +61,6 @@ export class MapQueryBudget {
     this.fullCatalogScanCount = 0;
     this.indexQueryDurationsMs = [];
     this.readModelBuildSliceDurationsMs = [];
-    this.mapDiffApplySliceDurationsMs = [];
     this.runtimeAttributionTotalsMs.clear();
     this.runtimeAttributionSampleCountByContributor.clear();
     this.runtimeCounters.clear();
@@ -88,14 +84,6 @@ export class MapQueryBudget {
       return;
     }
     this.readModelBuildSliceDurationsMs.push(value);
-  }
-
-  public recordMapDiffApplySliceDurationMs(durationMs: number): void {
-    const value = sanitizeDuration(durationMs);
-    if (value == null) {
-      return;
-    }
-    this.mapDiffApplySliceDurationsMs.push(value);
   }
 
   public recordRuntimeAttributionDurationMs(
@@ -167,10 +155,8 @@ export class MapQueryBudget {
       fullCatalogScanCount: this.fullCatalogScanCount,
       indexQueryDurationP95: percentile(this.indexQueryDurationsMs, 95),
       readModelBuildSliceP95: percentile(this.readModelBuildSliceDurationsMs, 95),
-      mapDiffApplySliceP95: percentile(this.mapDiffApplySliceDurationsMs, 95),
       indexQuerySampleCount: this.indexQueryDurationsMs.length,
       readModelBuildSampleCount: this.readModelBuildSliceDurationsMs.length,
-      mapDiffApplySampleCount: this.mapDiffApplySliceDurationsMs.length,
       runtimeAttributionTotalsMs,
       runtimeAttributionSampleCountByContributor,
       runtimeAttributionTopContributors,

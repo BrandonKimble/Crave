@@ -39,8 +39,8 @@ export class RouteSheetVisualAssemblyRuntime {
     routeHostFoundationRuntime: RouteHostFoundationRuntime;
   }) {
     this.routeSheetPresentationRuntime = createRouteSheetPresentationStateController({
-      routeResultsSheetVisualAuthority:
-        routeHostFoundationRuntime.routeResultsSheetVisualAuthority,
+      routeSharedSheetVisualAuthority:
+        routeHostFoundationRuntime.routeSharedSheetVisualAuthority,
     });
     this.routeSheetChromeGeometryRuntime =
       createRouteSheetChromeGeometryStateController({

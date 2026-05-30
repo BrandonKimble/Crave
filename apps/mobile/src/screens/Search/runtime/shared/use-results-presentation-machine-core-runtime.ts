@@ -7,7 +7,7 @@ import {
 } from './results-presentation-runtime-machine';
 import type { ResultsPresentationAuthority } from './results-presentation-authority';
 import type { ToggleInteractionLifecycleEvent } from './results-toggle-interaction-contract';
-import type { SearchSurfaceResultsTransaction } from './search-surface-results-transaction';
+import type { SearchSurfaceResultsExitTransaction } from './search-surface-results-transaction';
 
 type UseResultsPresentationMachineCoreRuntimeArgs = {
   resultsPresentationAuthority: ResultsPresentationAuthority;
@@ -44,9 +44,9 @@ export const useResultsPresentationMachineCoreRuntime = ({
     []
   );
 
-  const commitSearchSurfaceResultsTransaction = React.useCallback(
-    (snapshot: SearchSurfaceResultsTransaction) => {
-      runtimeMachineRef.current!.commitSearchSurfaceResultsTransaction(snapshot);
+  const commitSearchSurfaceResultsExitTransaction = React.useCallback(
+    (snapshot: SearchSurfaceResultsExitTransaction) => {
+      runtimeMachineRef.current!.commitSearchSurfaceResultsExitTransaction(snapshot);
     },
     []
   );
@@ -63,13 +63,13 @@ export const useResultsPresentationMachineCoreRuntime = ({
     () => ({
       runtimeMachineRef,
       handleToggleInteractionLifecycle,
-      commitSearchSurfaceResultsTransaction,
+      commitSearchSurfaceResultsExitTransaction,
       cancelPresentationIntent,
       handleRuntimePresentationIntentAbort,
     }),
     [
       cancelPresentationIntent,
-      commitSearchSurfaceResultsTransaction,
+      commitSearchSurfaceResultsExitTransaction,
       handleRuntimePresentationIntentAbort,
       handleToggleInteractionLifecycle,
     ]

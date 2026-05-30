@@ -1,5 +1,5 @@
 import type { SearchRouteSceneStackPresentationState } from '../../overlays/searchRouteSceneStackSheetContract';
-import type { RouteResultsSheetVisualBinding } from './route-results-sheet-visual-state-controller';
+import type { RouteSharedSheetVisualBinding } from './route-shared-sheet-visual-state-controller';
 
 type Listener = () => void;
 
@@ -16,55 +16,55 @@ const arePresentationStatesEqual = (
   (left != null &&
     right != null &&
     left.sheetTranslateY === right.sheetTranslateY &&
-    left.resultsScrollOffset === right.resultsScrollOffset &&
-    left.resultsMomentum === right.resultsMomentum);
+    left.sheetScrollOffset === right.sheetScrollOffset &&
+    left.sheetMomentum === right.sheetMomentum);
 
 const createPresentationState = (
-  routeResultsSheetVisual: RouteResultsSheetVisualBinding
+  routeSharedSheetVisual: RouteSharedSheetVisualBinding
 ): SearchRouteSceneStackPresentationState | null =>
-  routeResultsSheetVisual == null
+  routeSharedSheetVisual == null
     ? null
     : {
-        sheetTranslateY: routeResultsSheetVisual.sheetTranslateY,
-        resultsScrollOffset: routeResultsSheetVisual.resultsScrollOffset,
-        resultsMomentum: routeResultsSheetVisual.resultsMomentum,
+        sheetTranslateY: routeSharedSheetVisual.sheetTranslateY,
+        sheetScrollOffset: routeSharedSheetVisual.sheetScrollOffset,
+        sheetMomentum: routeSharedSheetVisual.sheetMomentum,
       };
 
 export class RouteSheetPresentationStateController {
-  private routeResultsSheetVisual: RouteResultsSheetVisualBinding;
+  private routeSharedSheetVisual: RouteSharedSheetVisualBinding;
 
   private snapshot: SearchRouteSceneStackPresentationState | null = null;
 
   private readonly listeners = new Set<Listener>();
 
-  private readonly unsubscribeRouteResultsSheetVisual: () => void;
+  private readonly unsubscribeRouteSharedSheetVisual: () => void;
 
   public readonly routeSheetPresentationAuthority: RouteSheetPresentationAuthority;
 
   constructor({
-    routeResultsSheetVisualAuthority,
+    routeSharedSheetVisualAuthority,
   }: {
-    routeResultsSheetVisualAuthority: {
+    routeSharedSheetVisualAuthority: {
       subscribe: (listener: Listener) => () => void;
-      getSnapshot: () => RouteResultsSheetVisualBinding;
+      getSnapshot: () => RouteSharedSheetVisualBinding;
     };
   }) {
-    this.routeResultsSheetVisual = routeResultsSheetVisualAuthority.getSnapshot();
+    this.routeSharedSheetVisual = routeSharedSheetVisualAuthority.getSnapshot();
     this.routeSheetPresentationAuthority = {
       subscribe: (listener) => this.subscribe(listener),
       getSnapshot: () => this.snapshot,
     };
     this.recompute(false);
-    this.unsubscribeRouteResultsSheetVisual =
-      routeResultsSheetVisualAuthority.subscribe(() => {
-        this.setRouteResultsSheetVisual(
-          routeResultsSheetVisualAuthority.getSnapshot()
+    this.unsubscribeRouteSharedSheetVisual =
+      routeSharedSheetVisualAuthority.subscribe(() => {
+        this.setRouteSharedSheetVisual(
+          routeSharedSheetVisualAuthority.getSnapshot()
         );
       });
   }
 
   public dispose(): void {
-    this.unsubscribeRouteResultsSheetVisual();
+    this.unsubscribeRouteSharedSheetVisual();
     this.listeners.clear();
   }
 
@@ -75,19 +75,19 @@ export class RouteSheetPresentationStateController {
     };
   }
 
-  private setRouteResultsSheetVisual(
-    routeResultsSheetVisual: RouteResultsSheetVisualBinding
+  private setRouteSharedSheetVisual(
+    routeSharedSheetVisual: RouteSharedSheetVisualBinding
   ): void {
-    if (this.routeResultsSheetVisual === routeResultsSheetVisual) {
+    if (this.routeSharedSheetVisual === routeSharedSheetVisual) {
       return;
     }
 
-    this.routeResultsSheetVisual = routeResultsSheetVisual;
+    this.routeSharedSheetVisual = routeSharedSheetVisual;
     this.recompute(true);
   }
 
   private recompute(notify: boolean): void {
-    const nextSnapshot = createPresentationState(this.routeResultsSheetVisual);
+    const nextSnapshot = createPresentationState(this.routeSharedSheetVisual);
 
     if (arePresentationStatesEqual(this.snapshot, nextSnapshot)) {
       return;
@@ -106,8 +106,8 @@ export class RouteSheetPresentationStateController {
 }
 
 export const createRouteSheetPresentationStateController = ({
-  routeResultsSheetVisualAuthority,
+  routeSharedSheetVisualAuthority,
 }: ConstructorParameters<typeof RouteSheetPresentationStateController>[0]): RouteSheetPresentationStateController =>
   new RouteSheetPresentationStateController({
-    routeResultsSheetVisualAuthority,
+    routeSharedSheetVisualAuthority,
   });

@@ -68,6 +68,7 @@ type UseBottomSheetSharedSnapExecutionRuntimeArgs = {
   notifySnapStart: BottomSheetSharedNotifySnapStart;
   notifySnapSettleComplete: BottomSheetSharedNotifySnapSettleComplete;
   runtimeConfigValues?: BottomSheetSharedRuntimeConfigSharedValues;
+  isSearchResultsSheet: boolean;
 };
 
 export const useBottomSheetSharedSnapExecutionRuntime = ({
@@ -98,7 +99,10 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
   notifySnapStart,
   notifySnapSettleComplete,
   runtimeConfigValues,
+  isSearchResultsSheet,
 }: UseBottomSheetSharedSnapExecutionRuntimeArgs): BottomSheetSharedSnapExecutionResult => {
+  void isSearchResultsSheet;
+
   const snapCandidates = React.useMemo(() => {
     const points = [expandedSnap, middleSnap, collapsedSnap];
     if (typeof hiddenSnap === 'number' && !preventSwipeDismiss) {
@@ -349,14 +353,6 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
         return;
       }
 
-      const currentSnapKey = resolveSnapKeyFromValues(
-        sheetY.value,
-        runtimeSnapValues.expanded,
-        runtimeSnapValues.middle,
-        runtimeSnapValues.collapsed,
-        runtimeSnapValues.hidden
-      );
-
       if (nextCommand.mode === 'instant') {
         springId.value += 1;
         cancelAnimation(sheetY);
@@ -495,7 +491,6 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
     hiddenSnap,
     initialSnapValue,
     sheetYValue,
-    sheetY,
     startSpringOnJS,
     visible,
     wasVisible,

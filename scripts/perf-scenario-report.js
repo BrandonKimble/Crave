@@ -954,6 +954,15 @@ const summarizeNativeMapApplySummaries = (events) => {
         }))
       : []
   );
+  const contextBuckets = summaries.flatMap((event) =>
+    Array.isArray(event.summary?.topContextBuckets)
+      ? event.summary.topContextBuckets.map((bucket) => ({
+          line: event.line,
+          reason: event.reason,
+          ...bucket,
+        }))
+      : []
+  );
   return {
     eventCount: summaries.length,
     events: summaries.slice(-WORST_LIMIT),
@@ -961,6 +970,12 @@ const summarizeNativeMapApplySummaries = (events) => {
       .sort((left, right) => Number(right.totalMs ?? 0) - Number(left.totalMs ?? 0))
       .slice(0, WORST_LIMIT),
     topBucketsByMaxMs: [...buckets]
+      .sort((left, right) => Number(right.maxMs ?? 0) - Number(left.maxMs ?? 0))
+      .slice(0, WORST_LIMIT),
+    topContextBucketsByTotalMs: [...contextBuckets]
+      .sort((left, right) => Number(right.totalMs ?? 0) - Number(left.totalMs ?? 0))
+      .slice(0, WORST_LIMIT),
+    topContextBucketsByMaxMs: [...contextBuckets]
       .sort((left, right) => Number(right.maxMs ?? 0) - Number(left.maxMs ?? 0))
       .slice(0, WORST_LIMIT),
   };
@@ -1214,10 +1229,40 @@ const nativeRenderFrameBridgeSliceSummary = (slice) => {
     nativeResolveStartedAtEpochMs: slice.nativeResolveStartedAtEpochMs ?? null,
     effectiveChangedSourceIds: slice.effectiveChangedSourceIds ?? [],
     sourceDeltaCount: slice.sourceDeltaCount ?? null,
+    markerRoleFrameMode: slice.markerRoleFrameMode ?? null,
+    markerRoleDirtyCount: slice.markerRoleDirtyCount ?? null,
+    markerRoleRemovedCount: slice.markerRoleRemovedCount ?? null,
+    markerRoleUpsertCount: slice.markerRoleUpsertCount ?? null,
+    markerRolePinnedCount: slice.markerRolePinnedCount ?? null,
+    markerRoleNormalPinnedCount: slice.markerRoleNormalPinnedCount ?? null,
+    markerRoleSelectedPinnedCount: slice.markerRoleSelectedPinnedCount ?? null,
+    markerRoleDotCount: slice.markerRoleDotCount ?? null,
     upsertFeatureCount: slice.upsertFeatureCount ?? null,
     removeFeatureCount: slice.removeFeatureCount ?? null,
     nextFeatureCount: slice.nextFeatureCount ?? null,
     residentSourceReuse: slice.residentSourceReuse ?? null,
+    dirtyGroupCount: slice.dirtyGroupCount ?? null,
+    orderChangedGroupCount: slice.orderChangedGroupCount ?? null,
+    removedGroupCount: slice.removedGroupCount ?? null,
+    visualFrameTransactionKind: slice.visualFrameTransactionKind ?? null,
+    visualFrameSourceSnapshotKind: slice.visualFrameSourceSnapshotKind ?? null,
+    frameAdmissionDecision: slice.frameAdmissionDecision ?? null,
+    normalWorkEffect: slice.normalWorkEffect ?? null,
+    sourceBaselineKind: slice.sourceBaselineKind ?? null,
+    snapshotChanged: slice.snapshotChanged ?? null,
+    viewportBoundsChanged: slice.viewportBoundsChanged ?? null,
+    gestureStateChanged: slice.gestureStateChanged ?? null,
+    movingStateChanged: slice.movingStateChanged ?? null,
+    presentationChanged: slice.presentationChanged ?? null,
+    controlStateChanged: slice.controlStateChanged ?? null,
+    isMoving: slice.isMoving ?? null,
+    isGestureActive: slice.isGestureActive ?? null,
+    shouldQueueNativeEnterMountAckFrame: slice.shouldQueueNativeEnterMountAckFrame ?? null,
+    nominalChangedSourceIds: slice.nominalChangedSourceIds ?? [],
+    sourceModeSignature: slice.sourceModeSignature ?? null,
+    sourceOperationSignature: slice.sourceOperationSignature ?? null,
+    sourceDeltaShapeSignature: slice.sourceDeltaShapeSignature ?? null,
+    sourceDeltaSummaries: slice.sourceDeltaSummaries ?? [],
     sourceTransportBuildDurationMs: timing.sourceTransportBuildDurationMs,
     nativePayloadBuildDurationMs: timing.nativePayloadBuildDurationMs,
     nativePayloadSourceDeltaMapDurationMs: slice.nativePayloadSourceDeltaMapDurationMs ?? null,
@@ -1293,6 +1338,9 @@ const summarizeNativeRenderFrameBridgeSlices = (sourceEvents) => {
     const key = [
       slice.status ?? '<status>',
       slice.batchPhase ?? '<phase>',
+      slice.frameAdmissionDecision ?? '<admission>',
+      slice.sourceModeSignature ?? '<mode>',
+      slice.sourceOperationSignature ?? '<operations>',
       Array.isArray(slice.effectiveChangedSourceIds)
         ? slice.effectiveChangedSourceIds.join(',')
         : '<sources>',
@@ -1301,6 +1349,11 @@ const summarizeNativeRenderFrameBridgeSlices = (sourceEvents) => {
       key,
       status: slice.status ?? null,
       batchPhase: slice.batchPhase ?? null,
+      frameAdmissionDecision: slice.frameAdmissionDecision ?? null,
+      normalWorkEffect: slice.normalWorkEffect ?? null,
+      sourceBaselineKind: slice.sourceBaselineKind ?? null,
+      sourceModeSignature: slice.sourceModeSignature ?? null,
+      sourceOperationSignature: slice.sourceOperationSignature ?? null,
       effectiveChangedSourceIds: Array.isArray(slice.effectiveChangedSourceIds)
         ? slice.effectiveChangedSourceIds
         : [],
@@ -1312,10 +1365,19 @@ const summarizeNativeRenderFrameBridgeSlices = (sourceEvents) => {
       totalPromiseSettleGapMs: 0,
       maxPromiseSettleGapMs: 0,
       totalSourceDeltaCount: 0,
+      totalMarkerRoleDirtyCount: 0,
+      totalMarkerRoleUpsertCount: 0,
+      markerRoleModeCounts: {},
       totalUpsertFeatureCount: 0,
       totalRemoveFeatureCount: 0,
       totalNextFeatureCount: 0,
       residentSourceReuseCount: 0,
+      totalDirtyGroupCount: 0,
+      totalOrderChangedGroupCount: 0,
+      totalRemovedGroupCount: 0,
+      transactionKindCounts: {},
+      sourceSnapshotKindCounts: {},
+      changeReasonCounts: {},
       maxSourceTransportBuildDurationMs: 0,
       maxNativePayloadBuildDurationMs: 0,
       maxNativeAckDurationMs: 0,
@@ -1347,10 +1409,36 @@ const summarizeNativeRenderFrameBridgeSlices = (sourceEvents) => {
       timing.promiseSettleGapMs
     );
     current.totalSourceDeltaCount += Number(slice.sourceDeltaCount ?? 0);
+    current.totalMarkerRoleDirtyCount += Number(slice.markerRoleDirtyCount ?? 0);
+    current.totalMarkerRoleUpsertCount += Number(slice.markerRoleUpsertCount ?? 0);
+    const markerRoleMode = slice.markerRoleFrameMode ?? 'none';
+    current.markerRoleModeCounts[markerRoleMode] =
+      (current.markerRoleModeCounts[markerRoleMode] ?? 0) + 1;
     current.totalUpsertFeatureCount += Number(slice.upsertFeatureCount ?? 0);
     current.totalRemoveFeatureCount += Number(slice.removeFeatureCount ?? 0);
     current.totalNextFeatureCount += Number(slice.nextFeatureCount ?? 0);
     current.residentSourceReuseCount += slice.residentSourceReuse === true ? 1 : 0;
+    current.totalDirtyGroupCount += Number(slice.dirtyGroupCount ?? 0);
+    current.totalOrderChangedGroupCount += Number(slice.orderChangedGroupCount ?? 0);
+    current.totalRemovedGroupCount += Number(slice.removedGroupCount ?? 0);
+    const transactionKind = slice.visualFrameTransactionKind ?? 'unknown';
+    current.transactionKindCounts[transactionKind] =
+      (current.transactionKindCounts[transactionKind] ?? 0) + 1;
+    const sourceSnapshotKind = slice.visualFrameSourceSnapshotKind ?? 'unknown';
+    current.sourceSnapshotKindCounts[sourceSnapshotKind] =
+      (current.sourceSnapshotKindCounts[sourceSnapshotKind] ?? 0) + 1;
+    [
+      slice.snapshotChanged ? 'snapshot' : null,
+      slice.viewportBoundsChanged ? 'viewport_bounds' : null,
+      slice.gestureStateChanged ? 'gesture' : null,
+      slice.movingStateChanged ? 'moving' : null,
+      slice.presentationChanged ? 'presentation' : null,
+      slice.controlStateChanged ? 'control' : null,
+    ]
+      .filter(Boolean)
+      .forEach((reason) => {
+        current.changeReasonCounts[reason] = (current.changeReasonCounts[reason] ?? 0) + 1;
+      });
     current.maxSourceTransportBuildDurationMs = Math.max(
       current.maxSourceTransportBuildDurationMs,
       timing.sourceTransportBuildDurationMs

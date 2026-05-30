@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAnimatedStyle, useDerivedValue, withTiming } from 'react-native-reanimated';
 
+import { SEARCH_CHROME_SCALE_TRANSFORM_ORIGIN } from '../../constants/search';
 import {
   isPerfScenarioAttributionActive,
   logPerfScenarioAttributionEvent,
@@ -94,6 +95,7 @@ export const useSearchForegroundSearchThisAreaVisualRuntime = ({
     const chromeScale = shouldLockSearchChromeTransform ? 1 : searchChromeScale.value;
     return {
       opacity,
+      transformOrigin: SEARCH_CHROME_SCALE_TRANSFORM_ORIGIN,
       transform: [{ scale: chromeScale }],
       display: opacity < 0.02 ? 'none' : 'flex',
     };

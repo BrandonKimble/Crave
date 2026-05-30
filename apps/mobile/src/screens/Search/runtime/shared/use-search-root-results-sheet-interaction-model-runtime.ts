@@ -40,13 +40,11 @@ export const useSearchRootResultsSheetInteractionModelRuntime = ({
     rootOverlayFoundationRuntime,
   });
   const resultsSheetSnapRuntime = useSearchRootResultsSheetSnapRuntime({
-    rootOverlayFoundationRuntime,
     interactionStateRuntime: resultsSheetInteractionStateRuntime,
   });
   const resultsSheetMotionRuntime = React.useMemo(
     () =>
       createSearchRootResultsSheetMotionRuntimeValue({
-        handleResultsSheetSnapStart: resultsSheetSnapRuntime.handleResultsSheetSnapStart,
         handleResultsListScrollBegin:
           resultsSheetInteractionStateRuntime.handleResultsListScrollBegin,
         handleResultsListScrollEnd: resultsSheetInteractionStateRuntime.handleResultsListScrollEnd,
@@ -57,7 +55,6 @@ export const useSearchRootResultsSheetInteractionModelRuntime = ({
         handleResultsSheetDragStateChange:
           resultsSheetInteractionStateRuntime.handleResultsSheetDragStateChange,
         handleResultsSheetSettlingChange: resultsSheetSnapRuntime.handleResultsSheetSettlingChange,
-        handleResultsSheetSnapChange: resultsSheetSnapRuntime.handleResultsSheetSnapChange,
       }),
     [
       resultsSheetInteractionStateRuntime.handleResultsListMomentumBegin,
@@ -66,14 +63,11 @@ export const useSearchRootResultsSheetInteractionModelRuntime = ({
       resultsSheetInteractionStateRuntime.handleResultsListScrollEnd,
       resultsSheetInteractionStateRuntime.handleResultsSheetDragStateChange,
       resultsSheetSnapRuntime.handleResultsSheetSettlingChange,
-      resultsSheetSnapRuntime.handleResultsSheetSnapChange,
-      resultsSheetSnapRuntime.handleResultsSheetSnapStart,
     ]
   );
   const resultsSheetInteractionModel = React.useMemo(
     () =>
       createSearchRootResultsSheetInteractionModel({
-        handleResultsSheetSnapStart: resultsSheetMotionRuntime.handleResultsSheetSnapStart,
         handleResultsListScrollBegin: () => {
           resultsSheetLoadMoreRuntime.markResultsListUserScrollStart();
           resultsSheetMotionRuntime.handleResultsListScrollBegin();
@@ -89,7 +83,6 @@ export const useSearchRootResultsSheetInteractionModelRuntime = ({
         handleResultsSheetSettlingChange:
           resultsSheetMotionRuntime.handleResultsSheetSettlingChange,
         handleResultsEndReached: resultsSheetLoadMoreRuntime.handleResultsEndReached,
-        handleResultsSheetSnapChange: resultsSheetMotionRuntime.handleResultsSheetSnapChange,
         resetResultsListScrollProgress: resultsSheetLoadMoreRuntime.resetResultsListScrollProgress,
       }),
     [
@@ -102,8 +95,6 @@ export const useSearchRootResultsSheetInteractionModelRuntime = ({
       resultsSheetMotionRuntime.handleResultsListScrollEnd,
       resultsSheetMotionRuntime.handleResultsSheetDragStateChange,
       resultsSheetMotionRuntime.handleResultsSheetSettlingChange,
-      resultsSheetMotionRuntime.handleResultsSheetSnapChange,
-      resultsSheetMotionRuntime.handleResultsSheetSnapStart,
     ]
   );
 

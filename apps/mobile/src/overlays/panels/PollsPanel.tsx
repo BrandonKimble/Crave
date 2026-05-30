@@ -159,7 +159,7 @@ const resolvePollsHeaderAction = ({
 
 const usePollsMountedSceneHeaderActionRuntime = (): PollsMountedSceneHeaderActionRuntime => {
   const routeSceneRuntime = useAppRouteSceneRuntime();
-  const { pushRoute } = useAppOverlayRouteController();
+  const { collapseActiveSheet, pushRoute } = useAppOverlayRouteController();
   const fallbackHeaderActionProgress = useSharedValue(0);
   const headerActionProgress =
     routeSceneRuntime.routeSheetVisualAuthority.getSnapshot().chromeVisualState
@@ -171,14 +171,8 @@ const usePollsMountedSceneHeaderActionRuntime = (): PollsMountedSceneHeaderActio
       sceneState.onRequestReturnToSearch?.();
       return;
     }
-    routeSceneRuntime.routeSceneSwitchRuntime.requestOverlaySwitch({
-      targetSceneKey: 'polls',
-      sheetTransitionKind: 'gesture',
-      sheetOpenerSource: 'routeCommand',
-      sheetMotion: { kind: 'snapTo', snap: 'collapsed' },
-      snapPersistence: 'sharedOnly',
-    });
-  }, [routeSceneRuntime]);
+    collapseActiveSheet();
+  }, [collapseActiveSheet, routeSceneRuntime]);
 
   const handleHeaderActionPress = React.useCallback(() => {
     const sceneState = routeSceneRuntime.routePollsSceneRuntime.sceneAuthority.getSnapshot();

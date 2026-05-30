@@ -64,7 +64,7 @@ export type ResultsSurfacePolicySnapshot = {
   hasResolvedResults: boolean;
   panelState: ResultsPresentationPanelState;
   shouldShowResultsSurface: boolean;
-  shouldRenderResultsSheet: boolean;
+  shouldRenderRouteSheetSurface: boolean;
   sheetPolicyInputs: AppRouteSceneSheetPolicyInputs;
 };
 
@@ -179,7 +179,7 @@ const createSnapshot = ({
   });
   const sheetPolicyInputs: AppRouteSceneSheetPolicyInputs = {
     sheetContentLaneKind: searchSheetContentLane.kind,
-    shouldRenderResultsSheet: panelState.shouldShowResultsSurface,
+    shouldRenderRouteSheetSurface: panelState.shouldShowResultsSurface,
   };
 
   return {
@@ -201,7 +201,7 @@ const createSnapshot = ({
     hasResolvedResults,
     panelState,
     shouldShowResultsSurface: panelState.shouldShowResultsSurface,
-    shouldRenderResultsSheet: panelState.shouldShowResultsSurface,
+    shouldRenderRouteSheetSurface: panelState.shouldShowResultsSurface,
     sheetPolicyInputs,
   };
 };

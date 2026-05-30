@@ -1,4 +1,5 @@
 import type { OverlayKey, OverlaySheetSnapRequest } from '../../overlays/types';
+import { PRESERVE_ROUTE_SCENE_SWITCH_CHROME_TARGET } from './app-overlay-route-transition-contract';
 import {
   AppRouteSceneMotionExecutor,
   type AppRouteSceneCameraMotionTarget,
@@ -24,14 +25,7 @@ export type AppRouteSceneMotionRuntime = {
   registerSheetMotionTarget: (target: AppRouteSceneSheetMotionTarget) => () => void;
   registerCameraMotionTarget: (target: AppRouteSceneCameraMotionTarget) => () => void;
   registerChromeMotionTarget: (target: AppRouteSceneChromeMotionTarget) => () => void;
-  requestLocalSheetMotion: (
-    sceneKey: OverlayKey,
-    request: OverlaySheetSnapRequest | null,
-    options?: {
-      localMotionKey?: string;
-    }
-  ) => void;
-  requestBootstrapSheetMotion: (sceneKey: OverlayKey, request: OverlaySheetSnapRequest) => void;
+  requestBootstrapSharedSheetTransition: (request: OverlaySheetSnapRequest) => void;
   completeFromSheetSettle: (settleToken: number) => void;
   dispose: () => void;
 };
@@ -68,7 +62,6 @@ export class AppRouteSceneMotionController implements AppRouteSceneMotionRuntime
     this.unsubscribeSheetTargetRegistry = this.sheetMotionTargetRegistry.subscribe(() => {
       withSearchNavSwitchRuntimeAttribution('sceneMotion', 'dispatch:sheetTargetRegistry', () => {
         this.executor.dispatchRouteSceneMotion(this.routeSceneSwitchRuntime.getTransitionState());
-        this.executor.replayPendingLocalSheetMotion();
       });
     });
     this.unsubscribeCameraTargetRegistry = this.cameraMotionTargetRegistry.subscribe(() => {
@@ -106,21 +99,29 @@ export class AppRouteSceneMotionController implements AppRouteSceneMotionRuntime
     return this.chromeMotionTargetRegistry.registerTarget(target);
   }
 
-  public requestLocalSheetMotion(
-    sceneKey: OverlayKey,
-    request: OverlaySheetSnapRequest | null,
-    options?: {
-      localMotionKey?: string;
-    }
-  ): void {
-    withSearchNavSwitchRuntimeAttribution('sceneMotion', 'requestLocalSheetMotion', () => {
-      this.executor.requestLocalSheetMotion(sceneKey, request, options);
-    });
-  }
-
-  public requestBootstrapSheetMotion(sceneKey: OverlayKey, request: OverlaySheetSnapRequest): void {
-    withSearchNavSwitchRuntimeAttribution('sceneMotion', 'requestBootstrapSheetMotion', () => {
-      this.executor.requestBootstrapSheetMotion(sceneKey, request);
+  public requestBootstrapSharedSheetTransition(request: OverlaySheetSnapRequest): void {
+    withSearchNavSwitchRuntimeAttribution('sceneMotion', 'requestBootstrapSharedSheetTransition', () => {
+      const transitionState = this.routeSceneSwitchRuntime.getTransitionState();
+      if (transitionState.isOverlaySwitchInFlight) {
+        return;
+      }
+      const targetSceneKey =
+        transitionState.activeSceneKey ?? transitionState.routeState.activeOverlayRoute.key;
+      this.routeSceneSwitchRuntime.requestOverlaySwitch({
+        sourceSceneKey: targetSceneKey,
+        targetSceneKey,
+        settleToken: request.settleToken ?? null,
+        sheetTransitionKind: 'bootstrap',
+        sheetOpenerSource: 'routeCommand',
+        sheetMotion:
+          request.snap === 'hidden'
+            ? { kind: 'hide', mode: request.mode }
+            : { kind: 'snapTo', snap: request.snap, mode: request.mode },
+        contentHandoff: 'swapImmediately',
+        snapPersistence: 'sharedOnly',
+        chromeVisibilityTarget: PRESERVE_ROUTE_SCENE_SWITCH_CHROME_TARGET,
+        routeAction: 'preserve',
+      });
     });
   }
 

@@ -201,9 +201,7 @@ export const selectSearchSurfaceVisualPolicy = (
       dismissTransaction.pollBodyReady &&
       dismissTransaction.pollHostReady;
     const canReleasePersistentPolls =
-      canDisplayPersistentPollSubstrate &&
-      dismissTransaction.bottomBoundaryReached &&
-      dismissTransaction.bottomNavReturnReady;
+      canDisplayPersistentPollSubstrate && dismissTransaction.bottomBoundaryReached;
     return {
       transactionId: dismissTransaction.id,
       phase: 'results_dismissing',
@@ -443,7 +441,6 @@ const areSearchSurfaceRuntimeSnapshotsEqual = (
   left: SearchSurfaceRuntimeSnapshot,
   right: SearchSurfaceRuntimeSnapshot
 ): boolean =>
-  left.version === right.version &&
   arePageBundlesEqual(left.activeBundle, right.activeBundle) &&
   arePollBundlesEqual(left.pollBundle, right.pollBundle) &&
   areResultsBundlesEqual(left.heldBundle, right.heldBundle) &&
@@ -671,9 +668,10 @@ export class SearchSurfaceRuntime {
         id,
         frozenResultsBundle,
         outgoingSheetSceneKey,
-        pollHeaderReady: pollBundle.chromeReady,
-        pollBodyReady: pollBundle.bodyReady,
-        pollHostReady: pollBundle.hostReady,
+        // Prewarm prepares the poll bundle; release readiness must come from scene-stack evidence.
+        pollHeaderReady: false,
+        pollBodyReady: false,
+        pollHostReady: false,
         bottomBoundaryReached: false,
         bottomNavReturnReady: false,
         startedAtMs: nowMs(),
@@ -799,15 +797,30 @@ export class SearchSurfaceRuntime {
     });
   };
 
-  public resetToPollPage = (): void => {
-    const activeBundle = createPollBundle(`poll:reset:${++this.transactionSeq}`);
+  public completeDismissHandoff = (transactionId?: string | null): void => {
+    const dismissTransaction = this.snapshot.dismissTransaction;
+    if (
+      dismissTransaction == null ||
+      !this.matchesTransaction(dismissTransaction.id, transactionId)
+    ) {
+      return;
+    }
+    const canCompleteDismissHandoff =
+      dismissTransaction.pollHeaderReady &&
+      dismissTransaction.pollBodyReady &&
+      dismissTransaction.pollHostReady &&
+      dismissTransaction.bottomBoundaryReached &&
+      dismissTransaction.committedAtMs != null;
+    if (!canCompleteDismissHandoff) {
+      return;
+    }
+    const activeBundle = createPollBundle(`poll:${dismissTransaction.id}`, true);
     this.publish({
       ...this.snapshot,
       activeBundle,
       pollBundle: activeBundle,
       heldBundle: null,
       redrawTransaction: null,
-      completedRedrawTransaction: null,
       dismissTransaction: null,
     });
   };
@@ -865,20 +878,6 @@ export class SearchSurfaceRuntime {
           }
         : null;
     void structuralRevealJoinProof;
-    logger.debug('[PRESENTATION-DIAG] surface redraw readiness patched', {
-      transactionId: redrawTransaction.id,
-      readyPart,
-      cardsReady: nextRedrawTransaction.readiness.cardsReady,
-      nativeMarkerFrameReady: nextRedrawTransaction.readiness.nativeMarkerFrameReady,
-      nativeMarkerFrameBatch: nextRedrawTransaction.readiness.nativeMarkerFrameBatch,
-      sheetReady: nextRedrawTransaction.readiness.sheetReady,
-      willCommitReveal: structuralRevealJoinProof != null,
-      activeBundleKind: this.snapshot.activeBundle.kind,
-      activeResultsCoverState:
-        this.snapshot.activeBundle.kind === 'results'
-          ? this.snapshot.activeBundle.coverState
-          : null,
-    });
     if (
       nextRedrawTransaction.readiness.cardsReady &&
       nextRedrawTransaction.readiness.nativeMarkerFrameReady &&
@@ -912,17 +911,6 @@ export class SearchSurfaceRuntime {
     redrawTransaction: SearchSurfaceRedrawTransaction
   ): void {
     const activeBundle = this.snapshot.activeBundle;
-    logger.debug('[PRESENTATION-DIAG] surface redraw committed', {
-      transactionId: redrawTransaction.id,
-      cardsReady: redrawTransaction.readiness.cardsReady,
-      nativeMarkerFrameReady: redrawTransaction.readiness.nativeMarkerFrameReady,
-      nativeMarkerFrameBatch: redrawTransaction.readiness.nativeMarkerFrameBatch,
-      sheetReady: redrawTransaction.readiness.sheetReady,
-      activeBundleKind: activeBundle.kind,
-      activeResultsTransactionId:
-        activeBundle.kind === 'results' ? activeBundle.transactionId : null,
-      activeResultsCoverState: activeBundle.kind === 'results' ? activeBundle.coverState : null,
-    });
     this.publish({
       ...this.snapshot,
       activeBundle:
@@ -962,27 +950,22 @@ export class SearchSurfaceRuntime {
     nextDismissTransaction: SearchSurfaceDismissTransaction,
     pollBundle = this.snapshot.pollBundle
   ): void {
-    if (
+    const isReadyToReleasePersistentPolls =
       nextDismissTransaction.pollHeaderReady &&
       nextDismissTransaction.pollBodyReady &&
       nextDismissTransaction.pollHostReady &&
-      nextDismissTransaction.bottomBoundaryReached
-    ) {
-      const activeBundle = createPollBundle(`poll:${nextDismissTransaction.id}`, true);
-      this.publish({
-        ...this.snapshot,
-        activeBundle,
-        pollBundle: activeBundle,
-        heldBundle: null,
-        redrawTransaction: null,
-        dismissTransaction: null,
-      });
-      return;
-    }
+      nextDismissTransaction.bottomBoundaryReached;
+    const publishedDismissTransaction =
+      isReadyToReleasePersistentPolls && nextDismissTransaction.committedAtMs == null
+        ? {
+            ...nextDismissTransaction,
+            committedAtMs: nowMs(),
+          }
+        : nextDismissTransaction;
     this.publish({
       ...this.snapshot,
       pollBundle,
-      dismissTransaction: nextDismissTransaction,
+      dismissTransaction: publishedDismissTransaction,
     });
   }
 

@@ -3,13 +3,6 @@ import React from 'react';
 import type { SearchSessionOriginContext } from '../../overlays/searchRouteSessionTypes';
 import type { OverlayKey, OverlaySheetSnap } from '../../overlays/types';
 import type { SearchRouteSceneSnapMeta } from '../../overlays/searchRouteSceneShellMotionContract';
-import {
-  isPerfScenarioAttributionActive,
-  logPerfScenarioAttributionEvent,
-} from '../../perf/perf-scenario-attribution';
-import { usePerfScenarioRuntimeStore } from '../../perf/perf-scenario-runtime-store';
-import type { AppRouteSceneTransitionAuthority } from './app-route-scene-switch-authority';
-import type { RouteSceneSwitchTransitionActions } from './app-route-scene-switch-controller';
 
 type Listener = () => void;
 
@@ -36,6 +29,7 @@ export type AppRouteSheetSnapSessionAuthority = {
 
 export type AppRouteSheetSnapSessionActions = {
   setIsDockedPollsDismissed: (next: React.SetStateAction<boolean>) => void;
+  dismissDockedPolls: () => void;
   setNavRestorePending: (next: boolean) => void;
   setCapturedOriginContext: (next: SearchSessionOriginContext | null) => void;
   setPendingOriginRestoreContext: (next: SearchSessionOriginContext | null) => void;
@@ -44,19 +38,11 @@ export type AppRouteSheetSnapSessionActions = {
   settleRouteSceneTabSnap: (args: {
     sceneKey: 'bookmarks' | 'profile';
     snap: OverlaySheetSnap;
-    rootOverlayKey: OverlayKey;
-    isOverlaySwitchInFlight: boolean;
-    returnToDockedSearch: () => void;
   }) => void;
   settleRouteScenePollsSnap: (args: {
     rootOverlayKey: OverlayKey;
     snap: OverlaySheetSnap;
     source?: SearchRouteSceneSnapMeta['source'];
-    routeSceneTransitionAuthority: Pick<AppRouteSceneTransitionAuthority, 'getSnapshot'>;
-    routeSceneSwitchActions: Pick<
-      RouteSceneSwitchTransitionActions,
-      'clearDockedPollsRestoreIntent'
-    >;
   }) => void;
   getRouteSceneSwitchSceneSnap: (sceneKey: OverlayKey) => OverlaySheetSnap;
   getPersistentSnap: (key: string) => OverlaySheetSnap | null;
@@ -83,7 +69,9 @@ const createInitialSnapshot = (): AppRouteSheetSnapSessionSnapshot => ({
   capturedOriginContext: null,
   pendingOriginRestoreContext: null,
   isSearchOriginRestorePending: false,
-  sceneSheetSnaps: {},
+  sceneSheetSnaps: {
+    polls: 'collapsed',
+  },
   hasUserSharedSnap: false,
   sharedSnap: DEFAULT_SHARED_SNAP,
   persistentSnaps: {},
@@ -143,6 +131,9 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
       this.commit({
         isDockedPollsDismissed: resolveStateUpdate(this.snapshot.isDockedPollsDismissed, next),
       });
+    },
+    dismissDockedPolls: () => {
+      this.dismissDockedPolls();
     },
     setNavRestorePending: (next) => {
       this.commit({ isNavRestorePending: next });
@@ -231,6 +222,19 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
     });
   }
 
+  private dismissDockedPolls(): void {
+    this.commit({
+      isDockedPollsDismissed: true,
+      sceneSheetSnaps:
+        this.snapshot.sceneSheetSnaps.polls === 'hidden'
+          ? this.snapshot.sceneSheetSnaps
+          : {
+              ...this.snapshot.sceneSheetSnaps,
+              polls: 'hidden',
+            },
+    });
+  }
+
   private recordPersistentSnap({ key, snap }: { key: string; snap: OverlaySheetSnap }): void {
     if (snap === 'hidden') {
       return;
@@ -294,68 +298,28 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
   private settleRouteSceneTabSnap({
     sceneKey,
     snap,
-    rootOverlayKey,
-    isOverlaySwitchInFlight,
-    returnToDockedSearch,
   }: {
     sceneKey: 'bookmarks' | 'profile';
     snap: OverlaySheetSnap;
-    rootOverlayKey: OverlayKey;
-    isOverlaySwitchInFlight: boolean;
-    returnToDockedSearch: () => void;
   }): void {
     this.recordRouteSceneSheetSettle({ sceneKey, snap });
-    if (snap === 'hidden' && rootOverlayKey === sceneKey && !isOverlaySwitchInFlight) {
-      returnToDockedSearch();
-    }
   }
 
   private settleRouteScenePollsSnap({
     rootOverlayKey,
     snap,
     source,
-    routeSceneTransitionAuthority,
-    routeSceneSwitchActions,
   }: {
     rootOverlayKey: OverlayKey;
     snap: OverlaySheetSnap;
     source?: SearchRouteSceneSnapMeta['source'];
-    routeSceneTransitionAuthority: Pick<AppRouteSceneTransitionAuthority, 'getSnapshot'>;
-    routeSceneSwitchActions: Pick<
-      RouteSceneSwitchTransitionActions,
-      'clearDockedPollsRestoreIntent'
-    >;
   }): void {
-    const routeTransitionState = routeSceneTransitionAuthority.getSnapshot();
-    const activeDockedRestoreIntent = routeTransitionState.activeDockedPollsRestoreIntent;
     this.recordRouteSceneSheetSettle({
       sceneKey: 'polls',
       snap,
     });
     if (source === 'gesture' && snap !== 'hidden') {
-      routeSceneSwitchActions.clearDockedPollsRestoreIntent();
       this.actions.setIsDockedPollsDismissed(false);
-    }
-    if (
-      activeDockedRestoreIntent &&
-      (snap === activeDockedRestoreIntent.snap || source === 'gesture') &&
-      snap !== 'hidden'
-    ) {
-      const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
-      if (isPerfScenarioAttributionActive(scenarioConfig)) {
-        logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
-          event: 'persistent_polls_restore_settled_contract',
-          restoreIntentSnap: activeDockedRestoreIntent.snap,
-          snap,
-          source: source ?? 'unknown',
-          restoredToCollapsed: snap === 'collapsed',
-        });
-      }
-      this.actions.setIsDockedPollsDismissed(false);
-      routeSceneSwitchActions.clearDockedPollsRestoreIntent(
-        activeDockedRestoreIntent.token,
-        activeDockedRestoreIntent.snap
-      );
     }
     if (snap === 'collapsed') {
       this.actions.setIsDockedPollsDismissed(false);
@@ -369,8 +333,7 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
     if (source !== 'gesture') {
       return;
     }
-    routeSceneSwitchActions.clearDockedPollsRestoreIntent();
-    this.actions.setIsDockedPollsDismissed(true);
+    this.dismissDockedPolls();
   }
 }
 

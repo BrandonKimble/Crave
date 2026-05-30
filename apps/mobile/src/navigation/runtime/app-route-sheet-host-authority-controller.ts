@@ -11,6 +11,7 @@ import {
   ROUTE_SHARED_SNAP_PERSISTENCE_KEY,
   type AppRouteSheetSnapSessionAuthority,
   type AppRouteSheetSnapSessionActions,
+  type AppRouteSheetSnapSessionSnapshot,
 } from './app-route-sheet-snap-session-runtime';
 import type { OverlayKey, OverlaySheetSnap } from '../../overlays/types';
 import {
@@ -31,24 +32,21 @@ import { EMPTY_SEARCH_ROUTE_SHEET_RESOLVED_VISUAL_SELECTION_SNAPSHOT } from '../
 import { EMPTY_SEARCH_ROUTE_SHEET_SCROLL_BODY_DEFAULTS_SNAPSHOT } from '../../screens/Search/runtime/shared/search-route-sheet-scroll-body-defaults-snapshot-contract';
 import { EMPTY_SEARCH_ROUTE_SHEET_SCROLL_SHARED_RUNTIME_SNAPSHOT } from '../../screens/Search/runtime/shared/search-route-sheet-scroll-shared-runtime-snapshot-contract';
 import type { SearchRouteSheetHostFrameSnapshot } from '../../screens/Search/runtime/shared/search-route-sheet-host-frame-snapshot-contract';
-import {
-  isPerfScenarioAttributionActive,
-  logPerfScenarioAttributionEvent,
-} from '../../perf/perf-scenario-attribution';
-import { usePerfScenarioRuntimeStore } from '../../perf/perf-scenario-runtime-store';
-import {
-  markSearchNavSwitchRuntimeAttribution,
-  withSearchNavSwitchRuntimeAttribution,
-} from '../../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
+import { withSearchNavSwitchRuntimeAttribution } from '../../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
 import type {
   RouteOverlayNavigationAuthority,
   RouteOverlaySheetPolicyAuthority,
   RouteSceneFrameAuthority,
   RouteSheetVisualAuthority,
 } from '../../screens/Search/runtime/shared/route-authority-contract';
-import type { AppRouteSceneInteractivityAuthority } from './app-route-scene-switch-authority';
-import type { AppRouteSceneSwitchAuthority } from './app-route-scene-switch-authority';
+import type {
+  AppRouteSceneInteractivityAuthority,
+  AppRouteSceneSwitchAuthority,
+  AppRouteSceneTransitionAuthority,
+} from './app-route-scene-switch-authority';
 import type { AppRouteSceneMotionRuntime } from './app-route-scene-motion-controller';
+import type { RouteSceneSwitchTransitionActions } from './app-route-scene-switch-controller';
+import type { AppRouteSharedSheetPresentationRuntime } from './app-route-shared-sheet-presentation-controller';
 import {
   EMPTY_APP_ROUTE_SHEET_HOST_FRAME_SNAPSHOT,
   EMPTY_APP_ROUTE_SHEET_HOST_SURFACE_SNAPSHOT,
@@ -71,7 +69,6 @@ import {
   syncSheetFrameHostNativeSharedValues,
   type AppRouteSheetFrameHostNativeSharedValues,
 } from './app-route-sheet-frame-host-native-targets';
-import { resolveAppRouteNavSilhouetteSheetExclusionMode } from './app-route-nav-silhouette-authority';
 import { resolveAppRouteSheetScenePolicy } from './app-route-scene-policy-registry';
 import {
   areSearchSurfaceVisualPoliciesEqual,
@@ -106,7 +103,7 @@ export type AppRouteSheetHostNativeAdapterAuthority = {
 };
 
 type AppRouteSheetHostNativeRuntimeInput = {
-  fallbackRuntimeModel: BottomSheetRuntimeModel;
+  sharedRuntimeModel: BottomSheetRuntimeModel;
   routeSheetFrameHostAuthority: AppRouteSheetHostSurfaceFrameAuthority;
 };
 
@@ -146,7 +143,10 @@ type AppRouteSheetHostAuthorityControllerInput = {
   routeSheetVisualAuthority: RouteSheetVisualAuthority;
   routeSceneSwitchAuthority: AppRouteSceneSwitchAuthority;
   routeSceneInteractivityAuthority: AppRouteSceneInteractivityAuthority;
+  routeSceneTransitionAuthority: AppRouteSceneTransitionAuthority;
   routeSceneMotionRuntime: AppRouteSceneMotionRuntime;
+  routeSceneSwitchActions: RouteSceneSwitchTransitionActions;
+  routeSharedSheetPresentationRuntime: AppRouteSharedSheetPresentationRuntime;
   routeSheetSnapSessionAuthority: AppRouteSheetSnapSessionAuthority;
   routeSheetSnapSessionActions: AppRouteSheetSnapSessionActions;
 };
@@ -174,6 +174,11 @@ type AppRouteSheetHostResolvedSurfaceInput = {
   visible: boolean;
 };
 
+type AppRouteSheetHostInteractionPolicy = {
+  dismissThreshold?: number;
+  preventSwipeDismiss: boolean;
+};
+
 const resolvePreservedOutgoingSheetSceneKey = (
   snapshot: ReturnType<AppRouteSceneSwitchAuthority['getSnapshot']>
 ): OverlayKey | null => {
@@ -194,7 +199,6 @@ export type AppRouteSheetHostAuthorityControllerRuntime = {
   routeSheetSurfaceBodyAuthority: AppRouteSheetHostSurfaceBodyAuthority;
   routeSheetSurfaceFrameAuthority: AppRouteSheetHostSurfaceFrameAuthority;
   routeSheetSurfaceAuthority: AppRouteSheetHostSurfaceAuthority;
-  replayPersistentPollSheetHostContract: (source: string) => void;
   setNativeRuntime: (input: AppRouteSheetHostNativeRuntimeInput) => void;
   dispose: () => void;
 };
@@ -206,7 +210,6 @@ const EMPTY_ROUTE_SHEET_SHELL_SPEC: NonNullable<SearchRouteSceneStackFrameEntry[
   sceneIdentityKey: null,
   surfaceKind: 'scene-stack',
   snapPoints: EMPTY_SEARCH_ROUTE_VISUAL_STATE.snapPoints,
-  initialSnapPoint: 'middle',
 };
 
 const EMPTY_ACTIVE_SCENE_FRAME_ENTRY: SearchRouteSceneStackFrameEntry = {
@@ -216,8 +219,8 @@ const EMPTY_ACTIVE_SCENE_FRAME_ENTRY: SearchRouteSceneStackFrameEntry = {
 
 const EMPTY_PRESENTATION_STATE: SearchRouteSceneStackPresentationState = {
   sheetTranslateY: EMPTY_SEARCH_ROUTE_VISUAL_STATE.sheetTranslateY,
-  resultsScrollOffset: EMPTY_SEARCH_ROUTE_VISUAL_STATE.resultsScrollOffset,
-  resultsMomentum: EMPTY_SEARCH_ROUTE_VISUAL_STATE.resultsMomentum,
+  sheetScrollOffset: EMPTY_SEARCH_ROUTE_VISUAL_STATE.sheetScrollOffset,
+  sheetMomentum: EMPTY_SEARCH_ROUTE_VISUAL_STATE.sheetMomentum,
 };
 
 const EMPTY_RUNTIME_CONFIG_SNAPSHOT: BottomSheetSharedRuntimeConfigSnapshot = {
@@ -293,6 +296,18 @@ const isDockedPollsSearchSurface = ({
   rootOverlayKey === 'search' &&
   overlayRouteScope.overlayRouteStackLength <= 1;
 
+const isExplicitlyDismissedDockedPollsRoot = (
+  resolvedSurfaceInput: Pick<
+    AppRouteSheetHostResolvedSurfaceInput,
+    'rootOverlayKey' | 'overlayRouteScope'
+  >,
+  sheetSnapSessionSnapshot: AppRouteSheetSnapSessionSnapshot
+): boolean =>
+  resolvedSurfaceInput.rootOverlayKey === 'search' &&
+  resolvedSurfaceInput.overlayRouteScope.overlayRouteStackLength <= 1 &&
+  sheetSnapSessionSnapshot.isDockedPollsDismissed &&
+  sheetSnapSessionSnapshot.sceneSheetSnaps.polls === 'hidden';
+
 const normalizePolicyInitialSnap = (
   snap: OverlaySheetSnap | null | undefined
 ): Exclude<OverlaySheetSnap, 'hidden'> => (snap != null && snap !== 'hidden' ? snap : 'middle');
@@ -303,6 +318,35 @@ const resolvePolicyInitialSnap = (
   normalizePolicyInitialSnap(
     resolveAppRouteSheetScenePolicy(sceneKey ?? 'searchRoute').defaultFirstEntrySnap
   );
+
+const resolveSharedSheetInteractionPolicy = ({
+  activeSemanticOverlayKey,
+  activeShellSpec,
+  overlayRouteScope,
+  rootOverlayKey,
+}: Pick<
+  AppRouteSheetHostResolvedSurfaceInput,
+  'activeSemanticOverlayKey' | 'activeShellSpec' | 'overlayRouteScope' | 'rootOverlayKey'
+>): AppRouteSheetHostInteractionPolicy => {
+  if (
+    isDockedPollsSearchSurface({
+      activeSemanticOverlayKey,
+      rootOverlayKey,
+      overlayRouteScope,
+    })
+  ) {
+    return {
+      dismissThreshold: activeShellSpec.snapPoints.collapsed + 1,
+      preventSwipeDismiss: false,
+    };
+  }
+
+  const scenePolicy = resolveAppRouteSheetScenePolicy(activeSemanticOverlayKey);
+  return {
+    dismissThreshold: undefined,
+    preventSwipeDismiss: !scenePolicy.canSwipeDismiss,
+  };
+};
 
 const areNativeAdapterSnapshotsEqual = (
   left: AppRouteSheetHostNativeAdapterSnapshot,
@@ -421,10 +465,6 @@ const areSheetHostSearchSurfaceRuntimeReseedSnapshotsEqual = (
   left.visualPhase === right.visualPhase &&
   left.visualTransactionId === right.visualTransactionId;
 
-const markSheetHostDiff = (operation: string): void => {
-  markSearchNavSwitchRuntimeAttribution('sheetHostDiff', operation);
-};
-
 const syncRuntimeConfigSharedValuesOnUI = (
   values: BottomSheetSharedRuntimeConfigSharedValues,
   snapshot: BottomSheetSharedRuntimeConfigSnapshot
@@ -462,358 +502,6 @@ const seedSheetYOnUI = (sheetY: SharedValue<number>, value: number): void => {
   sheetY.value = value;
 };
 
-const markSheetHostFieldDiff = (field: string, left: unknown, right: unknown): void => {
-  if (!Object.is(left, right)) {
-    markSheetHostDiff(`field:${field}`);
-  }
-};
-
-const markSheetHostResolvedSurfaceInputDiffs = (
-  left: AppRouteSheetHostResolvedSurfaceInput | null,
-  right: AppRouteSheetHostResolvedSurfaceInput,
-  source: string
-): void => {
-  markSheetHostDiff(`source:${source}`);
-  if (left == null) {
-    return;
-  }
-
-  markSheetHostFieldDiff('resolved.activeSceneKey', left.activeSceneKey, right.activeSceneKey);
-  markSheetHostFieldDiff(
-    'resolved.activeShellSpecRef',
-    left.activeShellSpec,
-    right.activeShellSpec
-  );
-  markSheetHostFieldDiff(
-    'resolved.activeRenderableShellSpecRef',
-    left.activeRenderableShellSpec,
-    right.activeRenderableShellSpec
-  );
-  markSheetHostFieldDiff(
-    'resolved.activeSemanticOverlayKey',
-    left.activeSemanticOverlayKey,
-    right.activeSemanticOverlayKey
-  );
-  markSheetHostFieldDiff(
-    'resolved.canRenderSurface',
-    left.canRenderSurface,
-    right.canRenderSurface
-  );
-  markSheetHostFieldDiff(
-    'resolved.chromeVisualState',
-    left.chromeVisualState,
-    right.chromeVisualState
-  );
-  markSheetHostFieldDiff('resolved.initialSheetY', left.initialSheetY, right.initialSheetY);
-  markSheetHostFieldDiff('resolved.isRenderable', left.isRenderable, right.isRenderable);
-  markSheetHostFieldDiff(
-    'resolved.overlayRouteScope.activeOverlayRouteKey',
-    left.overlayRouteScope.activeOverlayRouteKey,
-    right.overlayRouteScope.activeOverlayRouteKey
-  );
-  markSheetHostFieldDiff(
-    'resolved.overlayRouteScope.rootOverlayKey',
-    left.overlayRouteScope.rootOverlayKey,
-    right.overlayRouteScope.rootOverlayKey
-  );
-  markSheetHostFieldDiff(
-    'resolved.overlayRouteScope.overlayRouteStackLength',
-    left.overlayRouteScope.overlayRouteStackLength,
-    right.overlayRouteScope.overlayRouteStackLength
-  );
-  markSheetHostFieldDiff(
-    'resolved.overlaySheetPolicy',
-    left.overlaySheetPolicy,
-    right.overlaySheetPolicy
-  );
-  markSheetHostFieldDiff(
-    'resolved.presentationState',
-    left.presentationState,
-    right.presentationState
-  );
-  markSheetHostFieldDiff(
-    'resolved.resolvedRuntimeModel',
-    left.resolvedRuntimeModel,
-    right.resolvedRuntimeModel
-  );
-  markSheetHostFieldDiff(
-    'resolved.resolvedShellIdentityKey',
-    left.resolvedShellIdentityKey,
-    right.resolvedShellIdentityKey
-  );
-  markSheetHostFieldDiff('resolved.rootOverlayKey', left.rootOverlayKey, right.rootOverlayKey);
-  markSheetHostFieldDiff('resolved.visible', left.visible, right.visible);
-
-  const leftShellSpec = left.activeShellSpec;
-  const rightShellSpec = right.activeShellSpec;
-  markSheetHostFieldDiff(
-    'resolved.shellSpec.overlayKey',
-    leftShellSpec.overlayKey,
-    rightShellSpec.overlayKey
-  );
-  markSheetHostFieldDiff(
-    'resolved.shellSpec.semanticOverlayKey',
-    leftShellSpec.semanticOverlayKey,
-    rightShellSpec.semanticOverlayKey
-  );
-  markSheetHostFieldDiff(
-    'resolved.shellSpec.shellIdentityKey',
-    leftShellSpec.shellIdentityKey,
-    rightShellSpec.shellIdentityKey
-  );
-  markSheetHostFieldDiff(
-    'resolved.shellSpec.sceneIdentityKey',
-    leftShellSpec.sceneIdentityKey,
-    rightShellSpec.sceneIdentityKey
-  );
-  markSheetHostFieldDiff(
-    'resolved.shellSpec.surfaceKind',
-    leftShellSpec.surfaceKind,
-    rightShellSpec.surfaceKind
-  );
-  markSheetHostFieldDiff(
-    'resolved.shellSpec.initialSnapPoint',
-    leftShellSpec.initialSnapPoint,
-    rightShellSpec.initialSnapPoint
-  );
-  markSheetHostFieldDiff(
-    'resolved.shellSpec.snapPoints.expanded',
-    leftShellSpec.snapPoints.expanded,
-    rightShellSpec.snapPoints.expanded
-  );
-  markSheetHostFieldDiff(
-    'resolved.shellSpec.snapPoints.middle',
-    leftShellSpec.snapPoints.middle,
-    rightShellSpec.snapPoints.middle
-  );
-  markSheetHostFieldDiff(
-    'resolved.shellSpec.snapPoints.collapsed',
-    leftShellSpec.snapPoints.collapsed,
-    rightShellSpec.snapPoints.collapsed
-  );
-  markSheetHostFieldDiff(
-    'resolved.shellSpec.snapPoints.hidden',
-    leftShellSpec.snapPoints.hidden,
-    rightShellSpec.snapPoints.hidden
-  );
-  markSheetHostFieldDiff(
-    'resolved.shellSpec.headerComponent',
-    leftShellSpec.headerComponent,
-    rightShellSpec.headerComponent
-  );
-  markSheetHostFieldDiff(
-    'resolved.shellSpec.backgroundComponent',
-    leftShellSpec.backgroundComponent,
-    rightShellSpec.backgroundComponent
-  );
-  markSheetHostFieldDiff(
-    'resolved.shellSpec.overlayComponent',
-    leftShellSpec.overlayComponent,
-    rightShellSpec.overlayComponent
-  );
-  markSheetHostFieldDiff(
-    'resolved.shellSpec.flashListProps',
-    leftShellSpec.flashListProps,
-    rightShellSpec.flashListProps
-  );
-  markSheetHostFieldDiff('resolved.shellSpec.style', leftShellSpec.style, rightShellSpec.style);
-  markSheetHostFieldDiff(
-    'resolved.shellSpec.contentContainerStyle',
-    leftShellSpec.contentContainerStyle,
-    rightShellSpec.contentContainerStyle
-  );
-  markSheetHostFieldDiff(
-    'resolved.shellSpec.runtimeModel',
-    leftShellSpec.runtimeModel,
-    rightShellSpec.runtimeModel
-  );
-  markSheetHostFieldDiff(
-    'resolved.shellSpec.listScrollEnabled',
-    leftShellSpec.listScrollEnabled,
-    rightShellSpec.listScrollEnabled
-  );
-  markSheetHostFieldDiff(
-    'resolved.shellSpec.interactionEnabled',
-    leftShellSpec.interactionEnabled,
-    rightShellSpec.interactionEnabled
-  );
-  markSheetHostFieldDiff('resolved.shellSpec.testID', leftShellSpec.testID, rightShellSpec.testID);
-};
-
-const markSheetHostNativeAdapterDiffs = (
-  left: AppRouteSheetHostNativeAdapterSnapshot,
-  right: AppRouteSheetHostNativeAdapterSnapshot
-): void => {
-  markSheetHostFieldDiff(
-    'native.presentationStateOverride.sheetY',
-    left.presentationStateOverride.sheetY,
-    right.presentationStateOverride.sheetY
-  );
-  markSheetHostFieldDiff(
-    'native.presentationStateOverride.scrollOffset',
-    left.presentationStateOverride.scrollOffset,
-    right.presentationStateOverride.scrollOffset
-  );
-  markSheetHostFieldDiff(
-    'native.presentationStateOverride.momentumFlag',
-    left.presentationStateOverride.momentumFlag,
-    right.presentationStateOverride.momentumFlag
-  );
-  markSheetHostFieldDiff('native.initialSheetY', left.initialSheetY, right.initialSheetY);
-  markSheetHostFieldDiff(
-    'native.frameHostInput.activeSemanticOverlayKey',
-    left.frameHostInput.activeSemanticOverlayKey,
-    right.frameHostInput.activeSemanticOverlayKey
-  );
-  markSheetHostFieldDiff(
-    'native.frameHostInput.overlaySheetPolicy',
-    left.frameHostInput.overlaySheetPolicy,
-    right.frameHostInput.overlaySheetPolicy
-  );
-  markSheetHostFieldDiff(
-    'native.frameHostInput.expandedSnapPoint',
-    left.frameHostInput.expandedSnapPoint,
-    right.frameHostInput.expandedSnapPoint
-  );
-  markSheetHostFieldDiff(
-    'native.frameHostInput.middleSnapPoint',
-    left.frameHostInput.middleSnapPoint,
-    right.frameHostInput.middleSnapPoint
-  );
-  markSheetHostFieldDiff(
-    'native.frameHostInput.collapsedSnapPoint',
-    left.frameHostInput.collapsedSnapPoint,
-    right.frameHostInput.collapsedSnapPoint
-  );
-  markSheetHostFieldDiff(
-    'native.frameHostInput.sheetY',
-    left.frameHostInput.sheetY,
-    right.frameHostInput.sheetY
-  );
-  markSheetHostFieldDiff(
-    'native.chromeVisualState',
-    left.chromeVisualState,
-    right.chromeVisualState
-  );
-};
-
-const markSheetHostBodySnapshotDiffs = (
-  left: AppRouteSheetHostSurfaceBodySnapshot,
-  right: AppRouteSheetHostSurfaceBodySnapshot
-): void => {
-  markSheetHostFieldDiff('body.activeSceneKey', left.activeSceneKey, right.activeSceneKey);
-  markSheetHostFieldDiff(
-    'body.hasRenderableSheetSurface',
-    left.hasRenderableSheetSurface,
-    right.hasRenderableSheetSurface
-  );
-  markSheetHostFieldDiff(
-    'body.chromeEntry.headerComponent',
-    left.chromeEntry?.headerComponent ?? null,
-    right.chromeEntry?.headerComponent ?? null
-  );
-  markSheetHostFieldDiff(
-    'body.chromeEntry.backgroundComponent',
-    left.chromeEntry?.backgroundComponent ?? null,
-    right.chromeEntry?.backgroundComponent ?? null
-  );
-  markSheetHostFieldDiff(
-    'body.chromeEntry.overlayComponent',
-    left.chromeEntry?.overlayComponent ?? null,
-    right.chromeEntry?.overlayComponent ?? null
-  );
-  markSheetHostFieldDiff(
-    'body.chromeEntry.shadowStyle',
-    left.chromeEntry?.shadowStyle ?? null,
-    right.chromeEntry?.shadowStyle ?? null
-  );
-  markSheetHostFieldDiff(
-    'body.chromeEntry.surfaceStyle',
-    left.chromeEntry?.surfaceStyle ?? null,
-    right.chromeEntry?.surfaceStyle ?? null
-  );
-  markSheetHostFieldDiff(
-    'body.chromeEntry.style',
-    left.chromeEntry?.style ?? null,
-    right.chromeEntry?.style ?? null
-  );
-  markSheetHostFieldDiff(
-    'body.scrollSharedRuntimeEntry.listScrollEnabled',
-    left.scrollSharedRuntimeEntry?.listScrollEnabled ?? null,
-    right.scrollSharedRuntimeEntry?.listScrollEnabled ?? null
-  );
-  markSheetHostFieldDiff(
-    'body.scrollSharedRuntimeEntry.interactionEnabled',
-    left.scrollSharedRuntimeEntry?.interactionEnabled ?? null,
-    right.scrollSharedRuntimeEntry?.interactionEnabled ?? null
-  );
-  markSheetHostFieldDiff(
-    'body.scrollSharedRuntimeEntry.testID',
-    left.scrollSharedRuntimeEntry?.testID ?? null,
-    right.scrollSharedRuntimeEntry?.testID ?? null
-  );
-  markSheetHostFieldDiff(
-    'body.scrollBodyDefaultsEntry.contentContainerStyle',
-    left.scrollBodyDefaultsEntry?.contentContainerStyle ?? null,
-    right.scrollBodyDefaultsEntry?.contentContainerStyle ?? null
-  );
-  markSheetHostFieldDiff(
-    'body.scrollBodyDefaultsEntry.flashListProps',
-    left.scrollBodyDefaultsEntry?.flashListProps ?? null,
-    right.scrollBodyDefaultsEntry?.flashListProps ?? null
-  );
-  markSheetHostFieldDiff(
-    'body.motionStateEntry.visible',
-    left.motionStateEntry?.visible ?? null,
-    right.motionStateEntry?.visible ?? null
-  );
-  markSheetHostFieldDiff(
-    'body.motionStateEntry.snapPoints.expanded',
-    left.motionStateEntry?.snapPoints.expanded ?? null,
-    right.motionStateEntry?.snapPoints.expanded ?? null
-  );
-  markSheetHostFieldDiff(
-    'body.motionStateEntry.snapPoints.middle',
-    left.motionStateEntry?.snapPoints.middle ?? null,
-    right.motionStateEntry?.snapPoints.middle ?? null
-  );
-  markSheetHostFieldDiff(
-    'body.motionStateEntry.snapPoints.collapsed',
-    left.motionStateEntry?.snapPoints.collapsed ?? null,
-    right.motionStateEntry?.snapPoints.collapsed ?? null
-  );
-  markSheetHostFieldDiff(
-    'body.motionStateEntry.snapPoints.hidden',
-    left.motionStateEntry?.snapPoints.hidden ?? null,
-    right.motionStateEntry?.snapPoints.hidden ?? null
-  );
-  markSheetHostFieldDiff(
-    'body.motionStateEntry.initialSnapPoint',
-    left.motionStateEntry?.initialSnapPoint ?? null,
-    right.motionStateEntry?.initialSnapPoint ?? null
-  );
-  markSheetHostFieldDiff(
-    'body.motionStateEntry.currentSnapPoint',
-    left.motionStateEntry?.currentSnapPoint ?? null,
-    right.motionStateEntry?.currentSnapPoint ?? null
-  );
-  markSheetHostFieldDiff(
-    'body.motionStateEntry.sheetYValue',
-    left.motionStateEntry?.sheetYValue ?? null,
-    right.motionStateEntry?.sheetYValue ?? null
-  );
-  markSheetHostFieldDiff(
-    'body.motionStateEntry.scrollOffsetValue',
-    left.motionStateEntry?.scrollOffsetValue ?? null,
-    right.motionStateEntry?.scrollOffsetValue ?? null
-  );
-  markSheetHostFieldDiff(
-    'body.motionStateEntry.motionCommandValue',
-    left.motionStateEntry?.motionCommandValue ?? null,
-    right.motionStateEntry?.motionCommandValue ?? null
-  );
-};
-
 class AppRouteSheetHostAuthorityController {
   private nativeAdapterSnapshot: AppRouteSheetHostNativeAdapterSnapshot;
 
@@ -832,7 +520,7 @@ class AppRouteSheetHostAuthorityController {
   private surfaceSnapshot: AppRouteSheetHostSurfaceSnapshot =
     EMPTY_APP_ROUTE_SHEET_HOST_SURFACE_SNAPSHOT;
 
-  private fallbackRuntimeModel: BottomSheetRuntimeModel | null = null;
+  private sharedRuntimeModel: BottomSheetRuntimeModel | null = null;
 
   private nativeRouteSheetFrameHostAuthority: AppRouteSheetHostSurfaceFrameAuthority | null = null;
 
@@ -850,10 +538,7 @@ class AppRouteSheetHostAuthorityController {
 
   private initialVisibleSnapDispatchKey: string | null = null;
 
-  private previousResolvedSurfaceInputForAttribution: AppRouteSheetHostResolvedSurfaceInput | null =
-    null;
-
-  private lastPersistentPollSheetHostContractKey: string | null = null;
+  private pendingInitialVisibleSnapDispatchKey: string | null = null;
 
   private readonly nativeAdapterListeners = new Set<Listener>();
 
@@ -861,6 +546,13 @@ class AppRouteSheetHostAuthorityController {
 
   private readonly runtimeConfigSharedValueTargets =
     new Set<BottomSheetSharedRuntimeConfigSharedValues>();
+  private pendingRuntimeConfigSharedValuesSnapshot: BottomSheetSharedRuntimeConfigSnapshot | null =
+    null;
+  private runtimeConfigSharedValuesSyncScheduled = false;
+  private isRecomputingRuntimeConfig = false;
+  private pendingRuntimeConfigRecompute = false;
+  private pendingRuntimeConfigRecomputeNotify = false;
+  private runtimeConfigRecomputeScheduled = false;
 
   private readonly motionRuntimeListeners = new Set<Listener>();
   private readonly motionRuntimeSelectorListeners = new Map<
@@ -908,7 +600,7 @@ class AppRouteSheetHostAuthorityController {
   constructor(private readonly input: AppRouteSheetHostAuthorityControllerInput) {
     this.motionCallbacksEntry = {
       onSnapStart: this.handleSheetSnapStart,
-      onSnapChange: this.handleSheetSnapChange,
+      onSnapChange: this.recordSharedSheetSnap,
       onDragStateChange: this.handleDragStateChange,
       onSettleStateChange: this.handleSettleStateChange,
       onSnapSettleComplete: this.handleSnapSettleComplete,
@@ -976,7 +668,6 @@ class AppRouteSheetHostAuthorityController {
     this.motionRuntimeSnapshot = this.createMotionRuntimeSnapshot();
     this.bodySnapshot = this.createBodySnapshot();
     this.surfaceSnapshot = this.createSurfaceSnapshot();
-    this.previousResolvedSurfaceInputForAttribution = this.getResolvedSurfaceInput();
     this.unsubscribers.push(
       input.routeSceneFrameAuthority.subscribe(() => {
         this.recomputeAll(true, 'routeSceneFrameAuthority');
@@ -1027,11 +718,11 @@ class AppRouteSheetHostAuthorityController {
   }
 
   public setNativeRuntime({
-    fallbackRuntimeModel,
+    sharedRuntimeModel,
     routeSheetFrameHostAuthority,
   }: AppRouteSheetHostNativeRuntimeInput): void {
     withSearchNavSwitchRuntimeAttribution('sheetHost', 'setNativeRuntime', () => {
-      this.fallbackRuntimeModel = fallbackRuntimeModel;
+      this.sharedRuntimeModel = sharedRuntimeModel;
       if (this.nativeRouteSheetFrameHostAuthority !== routeSheetFrameHostAuthority) {
         this.unsubscribeRouteSheetFrameHost?.();
         this.nativeRouteSheetFrameHostAuthority = routeSheetFrameHostAuthority;
@@ -1046,7 +737,6 @@ class AppRouteSheetHostAuthorityController {
       const bodyChanged = this.recomputeBody(false, resolvedSurfaceInput, false, false);
       this.syncSheetMotionTarget(resolvedSurfaceInput);
       this.syncInitialVisibleSnap(resolvedSurfaceInput);
-      this.logPersistentPollSheetHostContract(resolvedSurfaceInput, 'setNativeRuntime');
       this.recomputeSurface(true);
       this.notifyBatchedSurfaceLaneListeners({
         bodyChanged,
@@ -1078,6 +768,13 @@ class AppRouteSheetHostAuthorityController {
     this.frameSelectorListeners.clear();
     this.surfaceListeners.clear();
     this.surfaceSelectorListeners.clear();
+    this.pendingInitialVisibleSnapDispatchKey = null;
+    this.pendingRuntimeConfigSharedValuesSnapshot = null;
+    this.runtimeConfigSharedValuesSyncScheduled = false;
+    this.isRecomputingRuntimeConfig = false;
+    this.pendingRuntimeConfigRecompute = false;
+    this.pendingRuntimeConfigRecomputeNotify = false;
+    this.runtimeConfigRecomputeScheduled = false;
   }
 
   private subscribeNativeAdapter(listener: Listener): () => void {
@@ -1131,6 +828,29 @@ class AppRouteSheetHostAuthorityController {
     return () => {
       this.runtimeConfigSharedValueTargets.delete(values);
     };
+  }
+
+  private scheduleRuntimeConfigSharedValuesSync(
+    snapshot: BottomSheetSharedRuntimeConfigSnapshot
+  ): void {
+    this.pendingRuntimeConfigSharedValuesSnapshot = snapshot;
+    if (this.runtimeConfigSharedValuesSyncScheduled) {
+      return;
+    }
+    this.runtimeConfigSharedValuesSyncScheduled = true;
+    Promise.resolve().then(() => {
+      this.runtimeConfigSharedValuesSyncScheduled = false;
+      const pendingSnapshot = this.pendingRuntimeConfigSharedValuesSnapshot;
+      this.pendingRuntimeConfigSharedValuesSnapshot = null;
+      if (pendingSnapshot == null || this.runtimeConfigSharedValueTargets.size === 0) {
+        return;
+      }
+      withSearchNavSwitchRuntimeAttribution('sheetHost', 'syncRuntimeConfigSharedValues', () => {
+        this.runtimeConfigSharedValueTargets.forEach((values) => {
+          syncRuntimeConfigSharedValues(values, pendingSnapshot);
+        });
+      });
+    });
   }
 
   private subscribeBody(listener: Listener): () => void {
@@ -1277,11 +997,6 @@ class AppRouteSheetHostAuthorityController {
       sheetPresentationShellSpec.shellIdentityKey ??
       sheetPresentationShellSpec.overlayKey ??
       activeOverlayRouteKey;
-    const searchRouteRuntimeModel =
-      rootOverlayKey === 'search'
-        ? (this.input.routeSceneFrameAuthority.getSceneFrameEntry('search')?.shellSpec
-            ?.runtimeModel ?? null)
-        : null;
     const initialSnapPoint = resolvePolicyInitialSnap(activeSemanticOverlayKey);
     const hiddenOrCollapsed =
       sheetPresentationShellSpec.snapPoints.hidden ??
@@ -1297,12 +1012,16 @@ class AppRouteSheetHostAuthorityController {
       overlayComponent: sheetPresentationShellSpec.overlayComponent,
       flashListProps: sheetPresentationShellSpec.flashListProps,
     });
-    const resolvedRuntimeModel = canRenderSurface
-      ? (searchRouteRuntimeModel ??
-        sheetPresentationShellSpec.runtimeModel ??
-        this.fallbackRuntimeModel)
-      : null;
-
+    const resolvedRuntimeModel = canRenderSurface ? this.sharedRuntimeModel : null;
+    const displayedSceneKey =
+      preservedOutgoingFrameSceneKey ??
+      (isSearchDismissPollBoundaryCommitted
+        ? 'polls'
+        : shouldUseSearchSheetHostForSearchSurface
+          ? 'search'
+          : isPersistentPollSheetHostActive
+            ? 'polls'
+            : activeSceneFrameEntry.sceneKey);
     return {
       activeSceneKey: sheetPresentationFrameEntry.sceneKey,
       activeShellSpec: sheetPresentationShellSpec,
@@ -1311,14 +1030,7 @@ class AppRouteSheetHostAuthorityController {
       canRenderSurface,
       chromeVisualState,
       displayedSceneKey:
-        preservedOutgoingFrameSceneKey ??
-        (isSearchDismissPollBoundaryCommitted
-          ? 'polls'
-          : shouldUseSearchSheetHostForSearchSurface
-            ? 'search'
-            : isPersistentPollSheetHostActive
-              ? 'polls'
-              : activeSceneFrameEntry.sceneKey),
+        displayedSceneKey,
       initialSheetY,
       isPersistentPollLane: effectiveIsPersistentPollLane,
       isRenderable,
@@ -1351,8 +1063,8 @@ class AppRouteSheetHostAuthorityController {
       presentationStateOverride: {
         sheetY: presentationState.sheetTranslateY ?? EMPTY_PRESENTATION_STATE.sheetTranslateY,
         scrollOffset:
-          presentationState.resultsScrollOffset ?? EMPTY_PRESENTATION_STATE.resultsScrollOffset,
-        momentumFlag: presentationState.resultsMomentum ?? EMPTY_PRESENTATION_STATE.resultsMomentum,
+          presentationState.sheetScrollOffset ?? EMPTY_PRESENTATION_STATE.sheetScrollOffset,
+        momentumFlag: presentationState.sheetMomentum ?? EMPTY_PRESENTATION_STATE.sheetMomentum,
       },
       initialSheetY,
       frameHostInput: {
@@ -1398,6 +1110,7 @@ class AppRouteSheetHostAuthorityController {
       chromeVisualState,
       displayedSceneKey,
     } = resolvedSurfaceInput;
+    const interactionPolicy = resolveSharedSheetInteractionPolicy(resolvedSurfaceInput);
 
     const chromeSnapshot = canRenderSurface
       ? {
@@ -1421,8 +1134,8 @@ class AppRouteSheetHostAuthorityController {
             onMomentumEndJS: this.handleMomentumEnd,
             showsVerticalScrollIndicator: activeShellSpec.showsVerticalScrollIndicator,
             testID: activeShellSpec.testID,
-            dismissThreshold: activeShellSpec.dismissThreshold,
-            preventSwipeDismiss: activeShellSpec.preventSwipeDismiss,
+            dismissThreshold: interactionPolicy.dismissThreshold,
+            preventSwipeDismiss: interactionPolicy.preventSwipeDismiss,
             interactionEnabled: activeShellSpec.interactionEnabled,
             animateOnMount: activeShellSpec.animateOnMount,
           },
@@ -1489,14 +1202,15 @@ class AppRouteSheetHostAuthorityController {
     if (!canRenderSurface) {
       return EMPTY_RUNTIME_CONFIG_SNAPSHOT;
     }
+    const interactionPolicy = resolveSharedSheetInteractionPolicy(resolvedSurfaceInput);
     const initialSnapPoint = this.resolveSheetRuntimeInitialSnap(resolvedSurfaceInput);
     return {
       visible,
       listScrollEnabled: activeShellSpec.listScrollEnabled ?? true,
       snapPoints: activeShellSpec.snapPoints,
       initialSnapPoint,
-      dismissThreshold: activeShellSpec.dismissThreshold,
-      preventSwipeDismiss: activeShellSpec.preventSwipeDismiss ?? false,
+      dismissThreshold: interactionPolicy.dismissThreshold,
+      preventSwipeDismiss: interactionPolicy.preventSwipeDismiss,
       interactionEnabled: activeShellSpec.interactionEnabled ?? true,
     };
   }
@@ -1511,12 +1225,6 @@ class AppRouteSheetHostAuthorityController {
       notify ? 'recomputeAll:notify' : 'recomputeAll:silent',
       () => {
         const resolvedSurfaceInput = this.getResolvedSurfaceInput();
-        markSheetHostResolvedSurfaceInputDiffs(
-          this.previousResolvedSurfaceInputForAttribution,
-          resolvedSurfaceInput,
-          source
-        );
-        this.previousResolvedSurfaceInputForAttribution = resolvedSurfaceInput;
         this.recomputeNativeAdapter(notify, resolvedSurfaceInput);
         const frameChanged = this.recomputeFrame(false, false, false);
         const runtimeConfigChanged = this.recomputeRuntimeConfig(false, resolvedSurfaceInput);
@@ -1524,7 +1232,6 @@ class AppRouteSheetHostAuthorityController {
         const bodyChanged = this.recomputeBody(false, resolvedSurfaceInput, false, false);
         this.syncSheetMotionTarget(resolvedSurfaceInput);
         this.syncInitialVisibleSnap(resolvedSurfaceInput);
-        this.logPersistentPollSheetHostContract(resolvedSurfaceInput, source);
         this.recomputeSurface(notify);
         this.notifyBatchedSurfaceLaneListeners({
           bodyChanged,
@@ -1543,18 +1250,11 @@ class AppRouteSheetHostAuthorityController {
       notify ? 'recomputeRuntimeReseed:notify' : 'recomputeRuntimeReseed:silent',
       () => {
         const resolvedSurfaceInput = this.getResolvedSurfaceInput();
-        markSheetHostResolvedSurfaceInputDiffs(
-          this.previousResolvedSurfaceInputForAttribution,
-          resolvedSurfaceInput,
-          source
-        );
-        this.previousResolvedSurfaceInputForAttribution = resolvedSurfaceInput;
         this.recomputeNativeAdapter(false, resolvedSurfaceInput);
         const runtimeConfigChanged = this.recomputeRuntimeConfig(false, resolvedSurfaceInput);
         this.recomputeMotionRuntime(false, resolvedSurfaceInput);
         this.syncSheetMotionTarget(resolvedSurfaceInput);
         this.syncInitialVisibleSnap(resolvedSurfaceInput);
-        this.logPersistentPollSheetHostContract(resolvedSurfaceInput, source);
         this.notifyBatchedSurfaceLaneListeners({
           bodyChanged: false,
           frameChanged: false,
@@ -1575,22 +1275,12 @@ class AppRouteSheetHostAuthorityController {
   private recomputeSheetPolicy(notify: boolean): void {
     withSearchNavSwitchRuntimeAttribution('sheetHost', 'recomputeSheetPolicy', () => {
       const resolvedSurfaceInput = this.getResolvedSurfaceInput();
-      markSheetHostResolvedSurfaceInputDiffs(
-        this.previousResolvedSurfaceInputForAttribution,
-        resolvedSurfaceInput,
-        'routeOverlaySheetPolicyAuthority'
-      );
-      this.previousResolvedSurfaceInputForAttribution = resolvedSurfaceInput;
       this.recomputeNativeAdapter(notify, resolvedSurfaceInput);
       const runtimeConfigChanged = this.recomputeRuntimeConfig(false, resolvedSurfaceInput);
       const motionRuntimeChanged = this.recomputeMotionRuntime(false, resolvedSurfaceInput);
       const bodyChanged = this.recomputeBody(false, resolvedSurfaceInput, false, false);
       this.syncSheetMotionTarget(resolvedSurfaceInput);
       this.syncInitialVisibleSnap(resolvedSurfaceInput);
-      this.logPersistentPollSheetHostContract(
-        resolvedSurfaceInput,
-        'routeOverlaySheetPolicyAuthority'
-      );
       this.notifyBatchedSurfaceLaneListeners({
         bodyChanged,
         frameChanged: false,
@@ -1624,7 +1314,6 @@ class AppRouteSheetHostAuthorityController {
         this.nativeAdapterSnapshot,
         nextSnapshot
       );
-      markSheetHostNativeAdapterDiffs(this.nativeAdapterSnapshot, nextSnapshot);
       this.nativeAdapterSnapshot = nextSnapshot;
       if (shouldSyncSharedValues && this.nativeAdapterSharedValueTargets.size > 0) {
         withSearchNavSwitchRuntimeAttribution('sheetHost', 'syncNativeAdapterSharedValues', () => {
@@ -1647,27 +1336,52 @@ class AppRouteSheetHostAuthorityController {
     notify: boolean,
     resolvedSurfaceInput = this.getResolvedSurfaceInput()
   ): boolean {
+    if (this.isRecomputingRuntimeConfig) {
+      this.pendingRuntimeConfigRecompute = true;
+      this.pendingRuntimeConfigRecomputeNotify =
+        this.pendingRuntimeConfigRecomputeNotify || notify;
+      this.schedulePendingRuntimeConfigRecompute();
+      return false;
+    }
+    this.isRecomputingRuntimeConfig = true;
     return withSearchNavSwitchRuntimeAttribution('sheetHost', 'recomputeRuntimeConfig', () => {
-      const nextSnapshot = this.createRuntimeConfigSnapshot(resolvedSurfaceInput);
-      if (areRuntimeConfigSnapshotsEqual(this.runtimeConfigSnapshot, nextSnapshot)) {
-        return false;
-      }
-      this.runtimeConfigSnapshot = nextSnapshot;
-      if (this.runtimeConfigSharedValueTargets.size > 0) {
-        withSearchNavSwitchRuntimeAttribution('sheetHost', 'syncRuntimeConfigSharedValues', () => {
-          this.runtimeConfigSharedValueTargets.forEach((values) => {
-            syncRuntimeConfigSharedValues(values, nextSnapshot);
+      try {
+        const nextSnapshot = this.createRuntimeConfigSnapshot(resolvedSurfaceInput);
+        if (areRuntimeConfigSnapshotsEqual(this.runtimeConfigSnapshot, nextSnapshot)) {
+          return false;
+        }
+        this.runtimeConfigSnapshot = nextSnapshot;
+        if (this.runtimeConfigSharedValueTargets.size > 0) {
+          this.scheduleRuntimeConfigSharedValuesSync(nextSnapshot);
+        }
+        if (notify && this.runtimeConfigListeners.size > 0) {
+          withSearchNavSwitchRuntimeAttribution('sheetHost', 'notify:runtimeConfig', () => {
+            this.runtimeConfigListeners.forEach((listener) => {
+              listener();
+            });
           });
-        });
+        }
+        return true;
+      } finally {
+        this.isRecomputingRuntimeConfig = false;
       }
-      if (notify && this.runtimeConfigListeners.size > 0) {
-        withSearchNavSwitchRuntimeAttribution('sheetHost', 'notify:runtimeConfig', () => {
-          this.runtimeConfigListeners.forEach((listener) => {
-            listener();
-          });
-        });
+    });
+  }
+
+  private schedulePendingRuntimeConfigRecompute(): void {
+    if (this.runtimeConfigRecomputeScheduled) {
+      return;
+    }
+    this.runtimeConfigRecomputeScheduled = true;
+    Promise.resolve().then(() => {
+      this.runtimeConfigRecomputeScheduled = false;
+      if (!this.pendingRuntimeConfigRecompute) {
+        return;
       }
-      return true;
+      const notify = this.pendingRuntimeConfigRecomputeNotify;
+      this.pendingRuntimeConfigRecompute = false;
+      this.pendingRuntimeConfigRecomputeNotify = false;
+      this.recomputeRuntimeConfig(notify);
     });
   }
 
@@ -1720,7 +1434,6 @@ class AppRouteSheetHostAuthorityController {
         nextSheetYValue.value = inheritedSheetY;
         runOnUI(seedSheetYOnUI)(nextSheetYValue, inheritedSheetY);
       }
-      markSheetHostBodySnapshotDiffs(this.bodySnapshot, nextSnapshot);
       this.bodySnapshot = nextSnapshot;
       if (notify && notifyBody) {
         withSearchNavSwitchRuntimeAttribution('sheetHost', 'notify:body', () => {
@@ -1749,11 +1462,6 @@ class AppRouteSheetHostAuthorityController {
       if (this.frameSnapshot.sheetClipStyle === nextSnapshot.sheetClipStyle) {
         return false;
       }
-      markSheetHostFieldDiff(
-        'frame.sheetClipStyle',
-        this.frameSnapshot.sheetClipStyle,
-        nextSnapshot.sheetClipStyle
-      );
       this.frameSnapshot = nextSnapshot;
       if (notify && notifyFrame) {
         withSearchNavSwitchRuntimeAttribution('sheetHost', 'notify:frame', () => {
@@ -1828,11 +1536,6 @@ class AppRouteSheetHostAuthorityController {
       if (areAppRouteSheetHostSurfaceSnapshotsEqual(this.surfaceSnapshot, nextSnapshot)) {
         return;
       }
-      markSheetHostFieldDiff(
-        'surface.shouldRenderSceneStackSurface',
-        this.surfaceSnapshot.shouldRenderSceneStackSurface,
-        nextSnapshot.shouldRenderSceneStackSurface
-      );
       this.surfaceSnapshot = nextSnapshot;
       if (!notify) {
         return;
@@ -1844,123 +1547,6 @@ class AppRouteSheetHostAuthorityController {
         this.notifySelectorListeners(this.surfaceSelectorListeners, this.surfaceSnapshot);
       });
     });
-  }
-
-  public replayPersistentPollSheetHostContract = (source: string): void => {
-    this.logPersistentPollSheetHostContract(this.getResolvedSurfaceInput(), source, true);
-  };
-
-  private logPersistentPollSheetHostContract(
-    resolvedSurfaceInput: AppRouteSheetHostResolvedSurfaceInput,
-    source: string,
-    force = false
-  ): void {
-    if (
-      !resolvedSurfaceInput.isPersistentPollLane &&
-      resolvedSurfaceInput.activeSemanticOverlayKey !== 'polls'
-    ) {
-      return;
-    }
-
-    const {
-      activeSemanticOverlayKey,
-      activeShellSpec,
-      overlayRouteScope,
-      overlaySheetPolicy,
-      surfaceVisualPolicy,
-    } = resolvedSurfaceInput;
-    const navProjectionSheetClipMode =
-      getSearchSurfaceRuntime().getSnapshot().navSilhouette.sheetClipMode;
-    const navSilhouetteSheetClipMode = resolveAppRouteNavSilhouetteSheetExclusionMode({
-      activeSemanticOverlayKey,
-      overlaySheetPolicy,
-      projectedSheetExclusionMode: navProjectionSheetClipMode,
-    });
-    const effectiveCurrentSnap =
-      this.currentSnap === 'hidden'
-        ? resolvePolicyInitialSnap(activeSemanticOverlayKey)
-        : this.currentSnap;
-    const payload = {
-      event: 'persistent_polls_sheet_host_contract',
-      source,
-      activeSemanticOverlayKey,
-      canRenderSurface: resolvedSurfaceInput.canRenderSurface,
-      collapsedSnapPoint: activeShellSpec.snapPoints.collapsed ?? null,
-      currentSnap: effectiveCurrentSnap,
-      displayedSceneKey: resolvedSurfaceInput.displayedSceneKey,
-      navProjectionSheetClipMode,
-      hasBackgroundComponent: activeShellSpec.backgroundComponent != null,
-      hasFlashListProps: activeShellSpec.flashListProps != null,
-      hasHeaderComponent: activeShellSpec.headerComponent != null,
-      hasOverlayComponent: activeShellSpec.overlayComponent != null,
-      initialSheetY: resolvedSurfaceInput.initialSheetY,
-      initialSnapPoint: resolvePolicyInitialSnap(activeSemanticOverlayKey),
-      interactionEnabled: activeShellSpec.interactionEnabled ?? true,
-      isPersistentPollLane: resolvedSurfaceInput.isPersistentPollLane,
-      isRenderable: resolvedSurfaceInput.isRenderable,
-      listScrollEnabled: activeShellSpec.listScrollEnabled ?? true,
-      navSilhouetteSheetClipMode,
-      overlayRouteStackLength: overlayRouteScope.overlayRouteStackLength,
-      overlaySheetVisible: overlaySheetPolicy?.overlaySheetVisible ?? false,
-      rootOverlayKey: resolvedSurfaceInput.rootOverlayKey,
-      runtimeConfigVisible: this.runtimeConfigSnapshot.visible,
-      searchSurfaceBottomBandOwner: surfaceVisualPolicy.bottomBandOwner,
-      searchSurfaceCanReleasePersistentPolls: surfaceVisualPolicy.canReleasePersistentPolls,
-      searchSurfacePhase: surfaceVisualPolicy.phase,
-      searchSurfaceSheetClipMode: surfaceVisualPolicy.sheetClipMode,
-      searchSurfaceTransactionId: surfaceVisualPolicy.transactionId,
-      sheetPresentationSceneKey: resolvedSurfaceInput.activeSceneKey,
-      visible: resolvedSurfaceInput.visible,
-    };
-    const isVisibleRenderablePersistentPollHost =
-      payload.isPersistentPollLane === true &&
-      payload.displayedSceneKey === 'polls' &&
-      payload.sheetPresentationSceneKey === 'polls' &&
-      payload.activeSemanticOverlayKey === 'polls' &&
-      payload.overlaySheetVisible === true &&
-      payload.runtimeConfigVisible === true &&
-      payload.canRenderSurface === true &&
-      payload.isRenderable === true &&
-      payload.visible === true;
-    const telemetryPayload = {
-      ...payload,
-      isVisibleRenderablePersistentPollHost,
-    };
-    const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
-    const contractKey = [
-      telemetryPayload.activeSemanticOverlayKey,
-      telemetryPayload.canRenderSurface,
-      telemetryPayload.currentSnap,
-      telemetryPayload.displayedSceneKey,
-      telemetryPayload.navProjectionSheetClipMode,
-      telemetryPayload.hasBackgroundComponent,
-      telemetryPayload.hasFlashListProps,
-      telemetryPayload.hasHeaderComponent,
-      telemetryPayload.hasOverlayComponent,
-      telemetryPayload.initialSheetY,
-      telemetryPayload.initialSnapPoint,
-      telemetryPayload.isPersistentPollLane,
-      telemetryPayload.isRenderable,
-      telemetryPayload.isVisibleRenderablePersistentPollHost,
-      telemetryPayload.navSilhouetteSheetClipMode,
-      telemetryPayload.overlaySheetVisible,
-      telemetryPayload.rootOverlayKey,
-      telemetryPayload.runtimeConfigVisible,
-      telemetryPayload.searchSurfaceBottomBandOwner,
-      telemetryPayload.searchSurfaceCanReleasePersistentPolls,
-      telemetryPayload.searchSurfacePhase,
-      telemetryPayload.searchSurfaceSheetClipMode,
-      telemetryPayload.searchSurfaceTransactionId,
-      telemetryPayload.sheetPresentationSceneKey,
-      telemetryPayload.visible,
-    ].join('|');
-    if (
-      isPerfScenarioAttributionActive(scenarioConfig) &&
-      (force || this.lastPersistentPollSheetHostContractKey !== contractKey)
-    ) {
-      this.lastPersistentPollSheetHostContractKey = contractKey;
-      logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, telemetryPayload);
-    }
   }
 
   private syncSheetMotionTarget(resolvedSurfaceInput = this.getResolvedSurfaceInput()): void {
@@ -1992,6 +1578,48 @@ class AppRouteSheetHostAuthorityController {
       if (typeof initialSheetY === 'number' && mountedSheetYValue != null) {
         runOnUI(seedSheetYOnUI)(mountedSheetYValue, initialSheetY);
       }
+    });
+  }
+
+  private scheduleInitialVisibleSnapBootstrap({
+    dispatchKey,
+    persistenceKey,
+    persistedSnap,
+    snap,
+  }: {
+    dispatchKey: string;
+    persistenceKey: string | null;
+    persistedSnap: OverlaySheetSnap | null;
+    snap: Exclude<OverlaySheetSnap, 'hidden'>;
+  }): void {
+    if (this.pendingInitialVisibleSnapDispatchKey === dispatchKey) {
+      return;
+    }
+    this.pendingInitialVisibleSnapDispatchKey = dispatchKey;
+    Promise.resolve().then(() => {
+      if (this.pendingInitialVisibleSnapDispatchKey !== dispatchKey) {
+        return;
+      }
+      this.pendingInitialVisibleSnapDispatchKey = null;
+      if (this.initialVisibleSnapDispatchKey !== dispatchKey || this.currentSnap !== 'hidden') {
+        return;
+      }
+      const latestSurfaceInput = this.getResolvedSurfaceInput();
+      const latestSnapSessionSnapshot = this.input.routeSheetSnapSessionAuthority.getSnapshot();
+      if (isExplicitlyDismissedDockedPollsRoot(latestSurfaceInput, latestSnapSessionSnapshot)) {
+        this.initialVisibleSnapDispatchKey = null;
+        return;
+      }
+      if (persistenceKey != null && persistedSnap == null) {
+        this.input.routeSheetSnapSessionActions.recordPersistentSnap({
+          key: persistenceKey,
+          snap,
+        });
+      }
+      this.input.routeSceneMotionRuntime.requestBootstrapSharedSheetTransition({
+        snap,
+        token: null,
+      });
     });
   }
 
@@ -2028,7 +1656,7 @@ class AppRouteSheetHostAuthorityController {
     if (surfaceVisualPolicy.phase === 'results_redrawing') {
       return policyInitialSnap;
     }
-    return this.currentSnap === 'hidden' ? policyInitialSnap : this.currentSnap;
+    return policyInitialSnap;
   }
 
   private syncInitialVisibleSnap(resolvedSurfaceInput = this.getResolvedSurfaceInput()): void {
@@ -2043,6 +1671,11 @@ class AppRouteSheetHostAuthorityController {
       } = resolvedSurfaceInput;
       const routeSceneSwitchSnapshot = this.input.routeSceneInteractivityAuthority.getSnapshot();
       if (routeSceneSwitchSnapshot.transitionPhase !== 'idle') {
+        return;
+      }
+      const sheetSnapSessionSnapshot = this.input.routeSheetSnapSessionAuthority.getSnapshot();
+      if (isExplicitlyDismissedDockedPollsRoot(resolvedSurfaceInput, sheetSnapSessionSnapshot)) {
+        this.initialVisibleSnapDispatchKey = null;
         return;
       }
       if (
@@ -2061,10 +1694,11 @@ class AppRouteSheetHostAuthorityController {
         this.initialVisibleSnapDispatchKey = null;
         return;
       }
-      const persistedSnap =
+      const rawPersistedSnap =
         resolvedSnapPersistenceKey != null
           ? this.input.routeSheetSnapSessionActions.getPersistentSnap(resolvedSnapPersistenceKey)
           : null;
+      const persistedSnap = rawPersistedSnap !== 'hidden' ? rawPersistedSnap : null;
       const desiredSnap =
         persistedSnap ?? resolvePolicyInitialSnap(resolvedSurfaceInput.activeSemanticOverlayKey);
       const initialVisibleSnapDispatchKey = [
@@ -2084,28 +1718,21 @@ class AppRouteSheetHostAuthorityController {
         runOnUI(seedSheetYOnUI)(mountedSheetYValue, desiredSheetY);
       }
 
-      if (resolvedSnapPersistenceKey != null && persistedSnap == null) {
-        this.input.routeSheetSnapSessionActions.recordPersistentSnap({
-          key: resolvedSnapPersistenceKey,
-          snap: desiredSnap,
-        });
-      }
-      this.input.routeSceneMotionRuntime.requestBootstrapSheetMotion('searchRoute', {
+      this.scheduleInitialVisibleSnapBootstrap({
+        dispatchKey: initialVisibleSnapDispatchKey,
+        persistenceKey: resolvedSnapPersistenceKey,
+        persistedSnap,
         snap: desiredSnap,
-        token: null,
       });
     });
   }
 
   private readonly resolveCurrentSnapTarget = (): OverlaySheetSnap => {
-    const resolvedSurfaceInput = this.getResolvedSurfaceInput();
-    if (isDockedPollsSearchSurface(resolvedSurfaceInput)) {
-      return resolvePolicyInitialSnap(resolvedSurfaceInput.activeSemanticOverlayKey);
+    const sharedSheetState = this.input.routeSharedSheetPresentationRuntime.getSnapshot().sheetState;
+    if (sharedSheetState !== 'hidden') {
+      return sharedSheetState;
     }
-    const routeSheetSnapSessionSnapshot = this.input.routeSheetSnapSessionAuthority.getSnapshot();
-    return routeSheetSnapSessionSnapshot.hasUserSharedSnap
-      ? routeSheetSnapSessionSnapshot.sharedSnap
-      : 'expanded';
+    return this.currentSnap;
   };
 
   private shouldUseMountedSheetRuntimeReseedLane(
@@ -2157,9 +1784,7 @@ class AppRouteSheetHostAuthorityController {
   };
 
   private readonly handleHidden = (): void => {
-    const resolvedSurfaceInput = this.getResolvedSurfaceInput();
-    resolvedSurfaceInput.activeRenderableShellSpec?.onHidden?.();
-    this.getParentSearchShellSpecForSearchOriginRestaurant(resolvedSurfaceInput)?.onHidden?.();
+    this.input.routeSharedSheetPresentationRuntime.markSharedSheetHidden();
   };
 
   private readonly handleScrollOffsetChange = (offsetY: number): void => {
@@ -2191,14 +1816,13 @@ class AppRouteSheetHostAuthorityController {
     meta?: { source: 'gesture' | 'programmatic' }
   ): void => {
     const resolvedSurfaceInput = this.getResolvedSurfaceInput();
-    resolvedSurfaceInput.activeRenderableShellSpec?.onSnapStart?.(snap, meta);
-    this.getParentSearchShellSpecForSearchOriginRestaurant(resolvedSurfaceInput)?.onSnapStart?.(
-      snap,
-      meta
-    );
+    if (snap !== 'hidden') {
+      this.markSearchSurfaceSheetReadyForVisibleSnap(resolvedSurfaceInput);
+      this.input.routeSharedSheetPresentationRuntime.recordSharedSheetSnap(snap);
+    }
   };
 
-  private readonly handleSheetSnapChange = (
+  private readonly recordSharedSheetSnap = (
     snap: OverlaySheetSnap,
     meta?: { source: 'gesture' | 'programmatic' }
   ): void => {
@@ -2208,11 +1832,14 @@ class AppRouteSheetHostAuthorityController {
     }
     const resolvedSurfaceInput = this.getResolvedSurfaceInput();
     const {
-      activeRenderableShellSpec,
       activeSemanticOverlayKey,
       resolvedRuntimeModel,
       rootOverlayKey,
     } = resolvedSurfaceInput;
+    this.input.routeSharedSheetPresentationRuntime.recordSharedSheetSnap(snap);
+    if (snap !== 'hidden') {
+      this.markSearchSurfaceSheetReadyForVisibleSnap(resolvedSurfaceInput);
+    }
     if (
       snap === 'collapsed' &&
       resolvedSurfaceInput.surfaceVisualPolicy.phase === 'results_dismissing' &&
@@ -2231,7 +1858,7 @@ class AppRouteSheetHostAuthorityController {
         meta?.source ?? 'gesture'
       );
     }
-    activeRenderableShellSpec?.onSnapChange?.(snap, meta);
+    this.recordRouteSceneSnapFact(resolvedSurfaceInput, snap, meta);
 
     const motionPersistenceInput = this.createMotionPersistenceInput(resolvedSurfaceInput);
     const resolvedSnapPersistenceKey = resolveSnapPersistenceKey(motionPersistenceInput);
@@ -2248,11 +1875,67 @@ class AppRouteSheetHostAuthorityController {
         snap,
       });
     }
-    this.getParentSearchShellSpecForSearchOriginRestaurant(resolvedSurfaceInput)?.onSnapChange?.(
-      snap,
-      meta
-    );
   };
+
+  private markSearchSurfaceSheetReadyForVisibleSnap(
+    resolvedSurfaceInput: AppRouteSheetHostResolvedSurfaceInput
+  ): void {
+    if (
+      resolvedSurfaceInput.rootOverlayKey !== 'search' ||
+      (resolvedSurfaceInput.activeSemanticOverlayKey !== 'search' &&
+        resolvedSurfaceInput.activeSemanticOverlayKey !== 'restaurant')
+    ) {
+      return;
+    }
+    const searchSurfaceRuntime = getSearchSurfaceRuntime();
+    const transactionId = searchSurfaceRuntime.getActiveOrPendingRedrawTransactionId();
+    if (transactionId == null) {
+      return;
+    }
+    searchSurfaceRuntime.markRedrawSheetReady(transactionId);
+  }
+
+  private recordRouteSceneSnapFact(
+    resolvedSurfaceInput: AppRouteSheetHostResolvedSurfaceInput,
+    snap: OverlaySheetSnap,
+    meta?: { source: 'gesture' | 'programmatic' }
+  ): void {
+    const { activeSemanticOverlayKey, rootOverlayKey } = resolvedSurfaceInput;
+    if (activeSemanticOverlayKey === 'polls') {
+      const transitionSnapshot = this.input.routeSceneTransitionAuthority.getSnapshot();
+      const activeDockedRestoreIntent = transitionSnapshot.activeDockedPollsRestoreIntent;
+      this.input.routeSheetSnapSessionActions.settleRouteScenePollsSnap({
+        rootOverlayKey,
+        snap,
+        source: meta?.source,
+      });
+      if (meta?.source === 'gesture' && snap !== 'hidden') {
+        this.input.routeSceneSwitchActions.clearDockedPollsRestoreIntent();
+      }
+      if (
+        activeDockedRestoreIntent != null &&
+        (snap === activeDockedRestoreIntent.snap || meta?.source === 'gesture') &&
+        snap !== 'hidden'
+      ) {
+        this.input.routeSceneSwitchActions.clearDockedPollsRestoreIntent(
+          activeDockedRestoreIntent.token,
+          activeDockedRestoreIntent.snap
+        );
+      }
+      return;
+    }
+    if (activeSemanticOverlayKey === 'bookmarks' || activeSemanticOverlayKey === 'profile') {
+      this.input.routeSheetSnapSessionActions.settleRouteSceneTabSnap({
+        sceneKey: activeSemanticOverlayKey,
+        snap,
+      });
+      return;
+    }
+    this.input.routeSheetSnapSessionActions.recordRouteSceneSheetSettle({
+      sceneKey: activeSemanticOverlayKey,
+      snap,
+    });
+  }
 
   private getParentSearchShellSpecForSearchOriginRestaurant(
     resolvedSurfaceInput: AppRouteSheetHostResolvedSurfaceInput

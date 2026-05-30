@@ -32,7 +32,7 @@ import { getPriceRangeLabel } from '../../constants/pricing';
 import { calculateSnapPoints } from '../sheetUtils';
 import type { OverlayContentSpec } from '../types';
 import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
-import { formatCraveScore } from '../../screens/Search/utils/quality';
+import CraveScoreText from '../../screens/Search/components/CraveScoreText';
 
 export type RestaurantOverlayData = {
   restaurant: RestaurantProfileSeed;
@@ -319,8 +319,11 @@ export const useRestaurantPanelSpec = ({
       <View>
         <View style={styles.metricsRow}>
           <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>Crave score</Text>
-            <Text style={styles.metricValue}>{formatCraveScore(restaurant.craveScore)}</Text>
+            <Text style={styles.metricLabel}>Crave rating</Text>
+            <CraveScoreText
+              score={restaurant.craveScore}
+              style={styles.metricValue}
+            />
           </View>
         </View>
         <View style={styles.detailRow}>
@@ -428,7 +431,7 @@ export const useRestaurantPanelSpec = ({
         ) : null}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Menu highlights</Text>
-          <Text style={styles.sectionSubtitle}>Ranked by dish score</Text>
+          <Text style={styles.sectionSubtitle}>Ranked by dish rating</Text>
         </View>
       </View>
     );
@@ -462,7 +465,13 @@ export const useRestaurantPanelSpec = ({
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.dishName}>{item.foodName}</Text>
-            <Text style={styles.dishMeta}>Dish score: {formatCraveScore(item.craveScore)}</Text>
+            <Text style={styles.dishMeta}>
+              Dish rating:{' '}
+              <CraveScoreText
+                score={item.craveScore}
+                style={styles.dishMetaScoreValue}
+              />
+            </Text>
           </View>
           <Text style={styles.dishActivity}>{item.activityLevel}</Text>
         </View>
@@ -783,6 +792,12 @@ const styles = StyleSheet.create({
   dishMeta: {
     fontSize: FONT_SIZES.body,
     lineHeight: LINE_HEIGHTS.body,
+    color: themeColors.textBody,
+  },
+  dishMetaScoreValue: {
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
+    fontWeight: '600',
     color: themeColors.textBody,
   },
   dishActivity: {

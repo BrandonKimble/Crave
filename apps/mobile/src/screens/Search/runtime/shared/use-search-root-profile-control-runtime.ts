@@ -59,8 +59,8 @@ export const useSearchRootProfileControlRuntime = ({
     clearRestoreAuthorityRuntime,
   });
   const getCurrentResultsSheetSnap = React.useCallback(
-    () => rootOverlayFoundationRuntime.appRouteResultsSheetRuntimeOwner.sheetState,
-    [rootOverlayFoundationRuntime.appRouteResultsSheetRuntimeOwner]
+    () => rootOverlayFoundationRuntime.appRouteSharedSheetRuntimeOwner.sheetState,
+    [rootOverlayFoundationRuntime.appRouteSharedSheetRuntimeOwner]
   );
   const profileMapCommandRuntime = useSearchRootProfileMapCommandRuntime({
     profileOwner: profileOwnerRuntime.profileOwner,

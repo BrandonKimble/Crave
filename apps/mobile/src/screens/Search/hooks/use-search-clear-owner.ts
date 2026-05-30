@@ -3,7 +3,6 @@ import { Keyboard, type TextInput } from 'react-native';
 
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import { publishSearchMountedResultsDataSnapshot } from '../runtime/shared/search-mounted-results-data-store';
-import { getSearchSurfaceRuntime } from '../runtime/surface/search-surface-runtime';
 
 export type SearchClearOwner = {
   clearSearchAfterProfileDismiss: () => void;
@@ -140,8 +139,6 @@ export const useSearchClearOwner = <Suggestion>({
     setSuggestions([]);
     setIsSearchSessionActive(false);
     setSearchMode(null);
-    resetSheetToHidden();
-    getSearchSurfaceRuntime().resetToPollPage();
     if (hasOriginRestorePending) {
       commitSearchCloseRestore();
       flushPendingSearchOriginRestore();
@@ -174,7 +171,6 @@ export const useSearchClearOwner = <Suggestion>({
     resetFilters,
     resetFocusedMapState,
     resetMapMoveFlag,
-    resetSheetToHidden,
     resetShortcutCoverageState,
     resetSubmitTransitionHold,
     scrollResultsToTop,

@@ -20,7 +20,6 @@ export type AppRouteSheetHostRuntimeBase = {
   sceneStackSurfaceAuthority: AppRouteSceneStackSurfaceAuthority;
   routeSceneDisplayTargetRegistry: AppRouteSceneDisplayTargetRegistry;
   routeHostVisualRuntimeAuthority: RouteHostVisualRuntimeAuthority;
-  replayPersistentPollSheetHostContract: (source: string) => void;
 };
 
 export type AppRouteSheetHostRuntime = AppRouteSheetHostRuntimeBase;

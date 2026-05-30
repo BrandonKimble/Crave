@@ -6,6 +6,8 @@ export const SEARCH_SUBMIT_DISMISS_INTERRUPT_SCENARIO = 'search_submit_dismiss_i
 export const SEARCH_SUBMIT_VISUAL_PARITY_SCENARIO = 'search_submit_visual_parity';
 export const SEARCH_SUBMIT_NATURAL_SCENARIO = 'search_submit_natural';
 export const SEARCH_SUBMIT_SEARCH_THIS_AREA_SCENARIO = 'search_submit_search_this_area';
+export const SEARCH_PIN_SELECTION_PROFILE_OPEN_SCENARIO = 'search_pin_selection_profile_open';
+export const SEARCH_MAP_LOD_SCENARIO_PREFIX = 'search_map_lod_';
 export const MARKET_DEMAND_SCENARIO_PREFIX = 'market_demand_';
 
 const DEFAULT_SEARCH_PERF_ATTRIBUTION_SCENARIOS = new Set([
@@ -14,6 +16,7 @@ const DEFAULT_SEARCH_PERF_ATTRIBUTION_SCENARIOS = new Set([
   SEARCH_SUBMIT_VISUAL_PARITY_SCENARIO,
   SEARCH_SUBMIT_NATURAL_SCENARIO,
   SEARCH_SUBMIT_SEARCH_THIS_AREA_SCENARIO,
+  SEARCH_PIN_SELECTION_PROFILE_OPEN_SCENARIO,
 ]);
 
 export const isPerfScenarioAttributionActive = (
@@ -23,6 +26,7 @@ export const isPerfScenarioAttributionActive = (
   config != null &&
   (scenarioName == null
     ? DEFAULT_SEARCH_PERF_ATTRIBUTION_SCENARIOS.has(config.scenario) ||
+      config.scenario.startsWith(SEARCH_MAP_LOD_SCENARIO_PREFIX) ||
       config.scenario.startsWith(MARKET_DEMAND_SCENARIO_PREFIX) ||
       config.scenario.startsWith(`${SEARCH_SUBMIT_DISMISS_REPEAT_SCENARIO}_`) ||
       config.scenario.startsWith(`${SEARCH_SUBMIT_DISMISS_INTERRUPT_SCENARIO}_`)
@@ -42,7 +46,10 @@ export const isPerfScenarioQuietMeasuredLoopActive = (
   (config.scenario === SEARCH_SUBMIT_DISMISS_REPEAT_SCENARIO ||
     config.scenario.startsWith(`${SEARCH_SUBMIT_DISMISS_REPEAT_SCENARIO}_`) ||
     config.scenario === SEARCH_SUBMIT_DISMISS_INTERRUPT_SCENARIO ||
-    config.scenario.startsWith(`${SEARCH_SUBMIT_DISMISS_INTERRUPT_SCENARIO}_`)) &&
+    config.scenario.startsWith(`${SEARCH_SUBMIT_DISMISS_INTERRUPT_SCENARIO}_`) ||
+    config.scenario === SEARCH_PIN_SELECTION_PROFILE_OPEN_SCENARIO ||
+    config.scenario.startsWith(`${SEARCH_PIN_SELECTION_PROFILE_OPEN_SCENARIO}_`) ||
+    config.scenario.startsWith(SEARCH_MAP_LOD_SCENARIO_PREFIX)) &&
   usePerfScenarioRuntimeStore.getState().measuredRepeatLoopActive;
 
 export const shouldSuppressPerfScenarioMeasuredLoopDiagnostics = (): boolean =>
@@ -124,7 +131,7 @@ const resolveQuietAggregateKey = (
       event,
       payload.status,
       payload.observationEnabled,
-      payload.commitInteractionVisibility,
+      payload.commitVisibleLabelHits,
       payload.labelSourceCount,
       payload.isAttached,
       payload.isNativeAvailable,
@@ -134,13 +141,23 @@ const resolveQuietAggregateKey = (
     return [
       channel,
       event,
-      payload.status,
-      payload.batchPhase,
-      payload.laneKind,
-      payload.residentSourceReuse,
-      payload.sourceDeltaCount,
-      payload.upsertFeatureCount,
-    ].join('|');
+        payload.status,
+        payload.batchPhase,
+        payload.laneKind,
+        payload.visualFrameTransactionKind,
+        payload.visualFrameSourceSnapshotKind,
+        payload.frameAdmissionDecision,
+        payload.normalWorkEffect,
+        payload.sourceBaselineKind,
+        payload.sourceModeSignature,
+        payload.sourceOperationSignature,
+        payload.markerRoleFrameMode,
+        payload.sourceDeltaCount,
+        payload.markerRoleDirtyCount,
+        payload.markerRoleNormalPinnedCount,
+        payload.markerRoleSelectedPinnedCount,
+        payload.upsertFeatureCount,
+      ].join('|');
   }
   if (channel === 'Profiler' && event === 'scenario_profiler_span') {
     return [
@@ -204,7 +221,7 @@ const compactQuietAttributionSample = (
       event,
       status: payload.status,
       observationEnabled: payload.observationEnabled,
-      commitInteractionVisibility: payload.commitInteractionVisibility,
+      commitVisibleLabelHits: payload.commitVisibleLabelHits,
       labelSourceCount: payload.labelSourceCount,
       isAttached: payload.isAttached,
       isNativeAvailable: payload.isNativeAvailable,
@@ -238,9 +255,43 @@ const compactQuietAttributionSample = (
       nativeMainExecutionDurationMs: payload.nativeMainExecutionDurationMs,
       nativeSetFrameActionDurationMs: payload.nativeSetFrameActionDurationMs,
       nativeBridgeUnattributedDurationMs: payload.nativeBridgeUnattributedDurationMs,
-      residentSourceReuse: payload.residentSourceReuse,
+      visualFrameTransactionKind: payload.visualFrameTransactionKind,
+      visualFrameSourceSnapshotKind: payload.visualFrameSourceSnapshotKind,
+      frameAdmissionDecision: payload.frameAdmissionDecision,
+      normalWorkEffect: payload.normalWorkEffect,
+      sourceBaselineKind: payload.sourceBaselineKind,
+      snapshotChanged: payload.snapshotChanged,
+      viewportBoundsChanged: payload.viewportBoundsChanged,
+      gestureStateChanged: payload.gestureStateChanged,
+      movingStateChanged: payload.movingStateChanged,
+      presentationChanged: payload.presentationChanged,
+      controlStateChanged: payload.controlStateChanged,
+      isMoving: payload.isMoving,
+      isGestureActive: payload.isGestureActive,
+      shouldQueueNativeEnterMountAckFrame: payload.shouldQueueNativeEnterMountAckFrame,
+      nominalChangedSourceIds: payload.nominalChangedSourceIds,
+      selectedRestaurantId: payload.selectedRestaurantId,
       sourceDeltaCount: payload.sourceDeltaCount,
+      markerRoleFrameMode: payload.markerRoleFrameMode,
+      markerRoleDirtyCount: payload.markerRoleDirtyCount,
+      markerRoleRemovedCount: payload.markerRoleRemovedCount,
+      markerRoleUpsertCount: payload.markerRoleUpsertCount,
+      markerRolePinnedCount: payload.markerRolePinnedCount,
+      markerRoleNormalPinnedCount: payload.markerRoleNormalPinnedCount,
+      markerRoleSelectedPinnedCount: payload.markerRoleSelectedPinnedCount,
+      markerRoleDotCount: payload.markerRoleDotCount,
+      replaceSourceCount: payload.replaceSourceCount,
+      patchSourceCount: payload.patchSourceCount,
+      removeFeatureCount: payload.removeFeatureCount,
       upsertFeatureCount: payload.upsertFeatureCount,
+      nextFeatureCount: payload.nextFeatureCount,
+      dirtyGroupCount: payload.dirtyGroupCount,
+      orderChangedGroupCount: payload.orderChangedGroupCount,
+      removedGroupCount: payload.removedGroupCount,
+      sourceModeSignature: payload.sourceModeSignature,
+      sourceOperationSignature: payload.sourceOperationSignature,
+      sourceDeltaShapeSignature: payload.sourceDeltaShapeSignature,
+      sourceDeltaSummaries: payload.sourceDeltaSummaries,
       effectiveChangedSourceIds: payload.effectiveChangedSourceIds,
       pinCount: payload.pinCount,
       dotCount: payload.dotCount,
@@ -339,18 +390,30 @@ const QUIET_VISUAL_CONTRACT_FIELD_ALLOWLIST = new Map<string, string[]>([
       'searchMode',
       'activeTab',
       'readinessKey',
+      'isViewportLodPublish',
+      'isMapMoving',
       'candidateRestaurantCount',
       'classifiedRestaurantCount',
       'dotRestaurantCount',
       'fullPinBudget',
       'pinRestaurantCount',
+      'pinVisualIdentityCount',
+      'dotVisualIdentityCount',
+      'classifiedVisualIdentityCount',
+      'expectedNormalPinCount',
+      'actualNormalPinCount',
+      'normalPinRankMismatchCount',
+      'expectedNormalPinFingerprint',
+      'actualNormalPinFingerprint',
       'promotedRestaurantsRenderAsPins',
       'nonPromotedRestaurantsRenderAsDots',
+      'allEligibleVisualIdentitiesClassified',
       'unclassifiedCandidateRestaurantIdCount',
+      'unclassifiedCandidateVisualIdentityCount',
     ],
   ],
   [
-    'lod_source_overlap_probe',
+    'lod_source_overlap_contract',
     [
       'event',
       'emittedAtMs',
@@ -374,8 +437,19 @@ const QUIET_VISUAL_CONTRACT_FIELD_ALLOWLIST = new Map<string, string[]>([
       'readinessKey',
       'pinCount',
       'dotCount',
+      'normalPinCount',
+      'selectedPinCount',
+      'pinInteractionCount',
       'labelCount',
       'labelCollisionCount',
+      'projectedVisualFeatureCount',
+      'eligibleCoverageFeatureCount',
+      'projectedVisualFeatureCountMatchesCoverage',
+      'pinDotMarkerKeyOverlapCount',
+      'pinDotVisualIdentityOverlapCount',
+      'promotedRoleFamiliesAreComplete',
+      'demotedRoleFamiliesAreDotOnly',
+      'promotedPinInteractionCountMatchesPinCount',
       'labelPerPinCandidateCount',
       'hasPins',
       'hasDots',
@@ -429,6 +503,91 @@ const QUIET_VISUAL_CONTRACT_FIELD_ALLOWLIST = new Map<string, string[]>([
       'expectedPinLabelSourceCount',
       'expectedPinCount',
       'hasVisiblePinLabels',
+    ],
+  ],
+  [
+    'map_rendered_label_collision_contract',
+    [
+      'event',
+      'emittedAtMs',
+      'visibleLabelCount',
+      'visibleLabelMarkerCount',
+      'multipleVisibleLabelCandidateMarkerCount',
+      'visibleLabelsWithoutPromotedPinCount',
+      'visibleLabelsForDemotedMarkerCount',
+      'visibleLabelsWithoutPromotedPinMarkerKeys',
+      'visibleLabelsForDemotedMarkerKeys',
+      'expectedPromotedPinCount',
+      'expectedDemotedDotCount',
+      'promotedPinCollisionObstacleCount',
+      'promotedPinCollisionObstacleCountMatchesPins',
+      'labelCollisionConfigured',
+      'contractUsesNativeRoleTable',
+    ],
+  ],
+  [
+    'native_live_lod_transition_contract',
+    [
+      'event',
+      'emittedAtMs',
+      'pinTransitionCount',
+      'pinEnterTransitionCount',
+      'pinExitTransitionCount',
+      'dotTransitionCount',
+      'dotEnterTransitionCount',
+      'dotExitTransitionCount',
+      'pinFeatureStateApplyCount',
+      'labelFeatureStateApplyCount',
+      'dotFeatureStateApplyCount',
+      'pinLabelFadeSynchronized',
+      'transitionDurationMs',
+      'usesStyleTransition',
+      'usesNativeFrameStepper',
+      'hasIntermediateOpacity',
+      'pinIntermediateOpacityCount',
+      'labelIntermediateOpacityCount',
+      'dotIntermediateOpacityCount',
+      'nativeEmittedAtMs',
+    ],
+  ],
+  [
+    'native_pin_visual_order_contract',
+    [
+      'event',
+      'emittedAtMs',
+      'reason',
+      'pinCount',
+      'selectedPinCount',
+      'movedGroupCount',
+      'previousGroupCount',
+      'screenYOrderViolationCount',
+      'screenYVisualOrder',
+      'stableSlotOwnership',
+      'appliesScreenYOrdering',
+      'usesLayerMoves',
+      'sourceMutationCount',
+      'isMoving',
+      'visualOrderSignature',
+      'previousVisualOrderSignature',
+      'nativeEmittedAtMs',
+    ],
+  ],
+  [
+    'profile_pin_selection_camera_contract',
+    [
+      'event',
+      'emittedAtMs',
+      'restaurantId',
+      'source',
+      'hasPressedCoordinate',
+      'selectedLocationId',
+      'hasTargetCamera',
+      'targetZoom',
+      'paddingTop',
+      'paddingBottom',
+      'pressedTargetDistanceMeters',
+      'targetMatchesPressedPin',
+      'centersAboveSheet',
     ],
   ],
   [

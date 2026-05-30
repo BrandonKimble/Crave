@@ -9,6 +9,7 @@ import {
   logPerfScenarioWorkSpan,
 } from '../../../../perf/perf-scenario-work-span';
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
+import type { OverlayKey } from '../../../../overlays/types';
 import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
 import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
 import type { SearchCloseTransitionState } from './results-presentation-shell-contract';
@@ -20,7 +21,6 @@ import {
   applySearchCloseCollapsedReached,
   applySearchCloseMapExitSettled,
   applySearchCloseSheetSettled,
-  isSearchCloseTransitionReadyToFinalize,
 } from './results-presentation-shell-close-transition-state';
 import {
   getSearchSurfaceRuntime,
@@ -46,13 +46,14 @@ type ResultsPresentationCloseTransitionStateRuntime = {
   closeTransitionActions: ResultsCloseTransitionActions;
   beginCloseTransition: (
     closeIntentId: string,
-    options?: { terminalDismissSource?: 'results' | 'profile' }
+    options?: {
+      terminalDismissSource?: 'results' | 'profile';
+      outgoingSheetSceneKey?: OverlayKey | null;
+    }
   ) => void;
   setPendingCloseIntentId: (intentId: string | null) => void;
   matchesPendingCloseIntentId: (intentId: string) => boolean;
 };
-
-const DISMISS_BOUNDARY_FINALIZE_DEFER_MS = 48;
 
 type ReleaseReadyCloseSnapshot = Pick<
   SearchSurfaceVisualPolicySnapshot,
@@ -140,34 +141,16 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
   const boundaryCloseIntentIdRef = React.useRef<string | null>(null);
   const collapsedBoundaryReachedAtMsRef = React.useRef<number | null>(null);
   const releasedCloseIntentIdRef = React.useRef<string | null>(null);
-  const deferredFinalizeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clearDeferredFinalizeTimer = React.useCallback(() => {
-    if (deferredFinalizeTimerRef.current == null) {
-      return;
-    }
-    clearTimeout(deferredFinalizeTimerRef.current);
-    deferredFinalizeTimerRef.current = null;
-  }, []);
-  const scheduleFinalizeCloseTransition = React.useCallback(
+  const finalizeReleaseReadyCloseTransition = React.useCallback(
     (closeIntentId: string) => {
-      clearDeferredFinalizeTimer();
-      deferredFinalizeTimerRef.current = setTimeout(() => {
-        deferredFinalizeTimerRef.current = null;
-        if (intentRuntime.getActiveCloseIntentId() !== closeIntentId) {
-          return;
-        }
-        finalizeRuntime.finalizeCloseTransition(closeIntentId);
-      }, DISMISS_BOUNDARY_FINALIZE_DEFER_MS);
+      if (intentRuntime.getActiveCloseIntentId() !== closeIntentId) {
+        return;
+      }
+      finalizeRuntime.finalizeCloseTransition(closeIntentId);
     },
-    [
-      clearDeferredFinalizeTimer,
-      finalizeRuntime,
-      intentRuntime,
-      shellLocalState.searchCloseTransitionState,
-    ]
+    [finalizeRuntime, intentRuntime]
   );
 
-  React.useEffect(() => clearDeferredFinalizeTimer, [clearDeferredFinalizeTimer]);
   const emitReleaseReadyBottomHandoffTelemetry = React.useCallback(
     (
       releaseReadyCloseSnapshot: ReleaseReadyCloseSnapshot,
@@ -242,20 +225,15 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
 
   const markSearchSheetCloseMapExitSettled = React.useCallback(
     (closeIntentId: string) => {
-      let shouldFinalize = false;
       shellLocalState.setSearchCloseTransitionState((current) => {
         const update = applySearchCloseMapExitSettled({
           current,
           closeIntentId,
         });
-        shouldFinalize = update.shouldFinalize;
         return update.nextState;
       });
-      if (shouldFinalize) {
-        scheduleFinalizeCloseTransition(closeIntentId);
-      }
     },
-    [intentRuntime, scheduleFinalizeCloseTransition, shellLocalState]
+    [shellLocalState]
   );
 
   const markSearchSheetCloseCollapsedReached = React.useCallback(
@@ -304,17 +282,15 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
         emitReleaseReadyBottomHandoffTelemetry(releaseReadyCloseSnapshot, {
           releasedAtCollapsedBoundary: true,
         });
-      }
-      if (isSearchCloseTransitionReadyToFinalize(nextCloseTransitionState)) {
-        scheduleFinalizeCloseTransition(activeCloseIntentId);
+        finalizeReleaseReadyCloseTransition(activeCloseIntentId);
       }
     },
     [
       boundaryCloseIntentIdRef,
       commitSearchCloseRestore,
       emitReleaseReadyBottomHandoffTelemetry,
+      finalizeReleaseReadyCloseTransition,
       intentRuntime,
-      scheduleFinalizeCloseTransition,
       shellLocalState,
     ]
   );
@@ -326,36 +302,38 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
         return;
       }
       intentRuntime.commitArmedSearchCloseRestore(commitSearchCloseRestore);
-      let shouldFinalize = false;
       shellLocalState.setSearchCloseTransitionState((current) => {
         const update = applySearchCloseSheetSettled({
           current,
           closeIntentId: activeCloseIntentId,
           snap,
         });
-        shouldFinalize = update.shouldFinalize;
         return update.nextState;
       });
-      if (shouldFinalize) {
-        scheduleFinalizeCloseTransition(activeCloseIntentId);
-      }
     },
-    [commitSearchCloseRestore, intentRuntime, scheduleFinalizeCloseTransition, shellLocalState]
+    [commitSearchCloseRestore, intentRuntime, shellLocalState]
   );
 
   const beginCloseTransition = React.useCallback(
-    (closeIntentId: string, options?: { terminalDismissSource?: 'results' | 'profile' }) => {
+    (
+      closeIntentId: string,
+      options?: {
+        terminalDismissSource?: 'results' | 'profile';
+        outgoingSheetSceneKey?: OverlayKey | null;
+      }
+    ) => {
       collapsedBoundaryReachedAtMsRef.current = null;
       releasedCloseIntentIdRef.current = null;
-      clearDeferredFinalizeTimer();
       boundaryCloseIntentIdRef.current = closeIntentId;
       getSearchSurfaceRuntime().armDismissMotion({
         transactionId: closeIntentId,
-        outgoingSheetSceneKey: options?.terminalDismissSource === 'profile' ? 'restaurant' : null,
+        outgoingSheetSceneKey:
+          options?.outgoingSheetSceneKey ??
+          (options?.terminalDismissSource === 'profile' ? 'restaurant' : 'search'),
       });
       intentRuntime.beginCloseTransition(closeIntentId, options);
     },
-    [clearDeferredFinalizeTimer, intentRuntime, shellLocalState.searchCloseTransitionState]
+    [intentRuntime, shellLocalState.searchCloseTransitionState]
   );
 
   const releaseReadyCloseSnapshot = useSearchSurfaceRuntimeSelector(
@@ -377,20 +355,19 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
     }
     emitReleaseReadyBottomHandoffTelemetry(releaseReadyCloseSnapshot);
     if (releaseReadyCloseSnapshot.isResultsExitCollapsedSettled) {
-      scheduleFinalizeCloseTransition(releaseReadyCloseIntentId);
+      finalizeReleaseReadyCloseTransition(releaseReadyCloseIntentId);
     }
   }, [
     emitReleaseReadyBottomHandoffTelemetry,
+    finalizeReleaseReadyCloseTransition,
     releaseReadyCloseSnapshot,
-    scheduleFinalizeCloseTransition,
   ]);
 
   const cancelSearchSheetCloseTransition = React.useCallback(
     (closeIntentId?: string) => {
-      clearDeferredFinalizeTimer();
       finalizeRuntime.cancelSearchSheetCloseTransition(closeIntentId);
     },
-    [clearDeferredFinalizeTimer, finalizeRuntime]
+    [finalizeRuntime]
   );
 
   const closeTransitionActions = React.useMemo(

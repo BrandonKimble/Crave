@@ -1,6 +1,5 @@
 import React from 'react';
 
-import { logger } from '../../../../utils';
 import type { ExecutionBatchPayload } from './results-presentation-runtime-owner-contract';
 import type { ResultsPresentationRuntimeMachine } from './results-presentation-runtime-machine';
 import type {
@@ -71,27 +70,12 @@ export const useResultsPresentationMarkerEnterRuntime = ({
     (payload: ExecutionBatchPayload) => {
       const executionBatch = toExecutionBatchRef(payload);
       if (executionBatch == null) {
-        logger.warn('[REVEAL-LIFECYCLE] native_mounted_hidden_ack_invalid', {
-          requestKey: payload.requestKey,
-          frameGenerationId: payload.frameGenerationId ?? null,
-          executionBatchId: payload.executionBatchId ?? null,
-          nextExpectedEvent: 'valid_native_mounted_hidden_ack',
-        });
         return;
       }
       const didAcceptMountedHidden = runtimeMachineRef.current!.markEnterBatchMountedHidden(
         payload.requestKey,
         executionBatch
       );
-      logger.debug('[REVEAL-LIFECYCLE] native_mounted_hidden_ack_received', {
-        requestKey: payload.requestKey,
-        frameGenerationId: payload.frameGenerationId ?? null,
-        executionBatchId: payload.executionBatchId ?? null,
-        didAcceptMountedHidden,
-        nextExpectedEvent: didAcceptMountedHidden
-          ? 'mark_native_marker_frame_ready'
-          : 'matching_active_enter_transaction',
-      });
       if (!didAcceptMountedHidden) {
         return;
       }
@@ -103,12 +87,6 @@ export const useResultsPresentationMarkerEnterRuntime = ({
         requestKey: payload.requestKey,
         executionBatch,
       };
-      logger.debug('[REVEAL-LIFECYCLE] native_marker_frame_ready_marked', {
-        requestKey: payload.requestKey,
-        frameGenerationId: payload.frameGenerationId ?? null,
-        executionBatchId: payload.executionBatchId ?? null,
-        nextExpectedEvent: 'reveal_commit_gate',
-      });
       flushPendingMarkerEnterStart();
     },
     [flushPendingMarkerEnterStart, runtimeMachineRef]

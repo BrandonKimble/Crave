@@ -1,3 +1,5 @@
+import type { OverlayKey } from '../../../../overlays/types';
+
 export type ResultsPresentationEnterMutationKind =
   | 'initial_search'
   | 'search_this_area'
@@ -22,6 +24,7 @@ export type SearchSurfaceResultsExitTransaction = {
   transactionId: string;
   kind: 'results_exit';
   terminalDismissSource: 'results' | 'profile';
+  outgoingSheetSceneKey: OverlayKey | null;
 };
 
 export type SearchSurfaceResultsTransaction =
@@ -60,7 +63,7 @@ export type SearchSurfaceResultsTransactionCoordinatorOptions = {
   publishSearchSurfaceResultsTransactionKey: (key: string | null) => void;
   publishMapSearchSurfaceResultsSourcesReady: (value: boolean, key: string | null) => void;
   onRowsReadyForPresentation?: (snapshot: SearchSurfaceResultsEnterTransaction) => void;
-  commitSearchSurfaceResultsTransaction: (snapshot: SearchSurfaceResultsEnterTransaction) => void;
+  commitSearchSurfaceResultsEnterPresentation: (snapshot: SearchSurfaceResultsEnterTransaction) => void;
   clearCommittedSearchSurfaceResultsTransactionKey: () => void;
   onStagedTransactionChanged?: () => void;
 };
@@ -105,11 +108,15 @@ export const createSearchSurfaceResultsEnterTransaction = (
 
 export const createSearchSurfaceResultsExitTransaction = (
   transactionId: string,
-  terminalDismissSource: SearchSurfaceResultsExitTransaction['terminalDismissSource'] = 'results'
+  terminalDismissSource: SearchSurfaceResultsExitTransaction['terminalDismissSource'] = 'results',
+  outgoingSheetSceneKey: OverlayKey | null = terminalDismissSource === 'profile'
+    ? 'restaurant'
+    : 'search'
 ): SearchSurfaceResultsExitTransaction => ({
   transactionId,
   kind: 'results_exit',
   terminalDismissSource,
+  outgoingSheetSceneKey,
 });
 
 export const resolveSearchSurfaceResultsEnterCoverState = (
@@ -306,7 +313,7 @@ export const createSearchSurfaceResultsTransactionCoordinator = (
             presentationCommitted: true,
           };
           setStagedTransaction(presentationCommittedSnapshot);
-          options.commitSearchSurfaceResultsTransaction(presentationCommittedSnapshot.snapshot);
+          options.commitSearchSurfaceResultsEnterPresentation(presentationCommittedSnapshot.snapshot);
         }
         return false;
       }

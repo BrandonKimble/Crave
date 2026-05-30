@@ -19,7 +19,7 @@ export const useSearchRootForegroundEffectsUiArgs = ({
     stateFoundationLane;
   const {
     rootOverlayStoreRuntime,
-    rootResultsSheetRuntimeLane,
+    rootSharedSheetRuntimeLane,
     routeOverlayCommandSnapshotRef,
     routeOverlayCommandActions,
   } = rootOverlayFoundationRuntime;
@@ -36,7 +36,7 @@ export const useSearchRootForegroundEffectsUiArgs = ({
       isSuggestionScreenActive: rootSuggestionRuntime.isSuggestionScreenActive,
       dismissTransientOverlays: rootOverlayStoreRuntime.dismissTransientOverlays,
       hasResults: rootDataPlaneRuntime.resultsArrivalState.hasResults,
-      resetMapMoveFlag: rootResultsSheetRuntimeLane.resetMapMoveFlag,
+      resetMapMoveFlag: rootSharedSheetRuntimeLane.resetMapMoveFlag,
     }),
     [
       rootDataPlaneRuntime.resultsArrivalState.hasResults,
@@ -48,7 +48,7 @@ export const useSearchRootForegroundEffectsUiArgs = ({
       rootPrimitivesRuntime.searchState.isSuggestionPanelActive,
       rootPrimitivesRuntime.searchState.setIsSearchFocused,
       rootPrimitivesRuntime.searchState.setIsSuggestionPanelActive,
-      rootResultsSheetRuntimeLane.resetMapMoveFlag,
+      rootSharedSheetRuntimeLane.resetMapMoveFlag,
       rootSuggestionRuntime.isSuggestionScreenActive,
     ]
   );

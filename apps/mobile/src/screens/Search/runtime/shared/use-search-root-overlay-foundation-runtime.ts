@@ -5,7 +5,7 @@ import type {
   RouteOverlayVisibilityAuthority,
 } from './route-authority-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
-import { useAppRouteResultsSheetRuntimeOwner } from '../../../../navigation/runtime/AppRouteResultsSheetRuntimeProvider';
+import { useAppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/AppRouteSharedSheetRuntimeProvider';
 import type { AppRouteOverlaySessionSnapshot } from '../../../../navigation/runtime/app-route-overlay-session-contract';
 import type { AppRouteOverlayCommandSnapshot } from '../../../../navigation/runtime/app-route-overlay-command-controller';
 import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
@@ -90,7 +90,7 @@ export const useSearchRootOverlayFoundationRuntime = ({
     insetsBottom: insets.bottom,
     routeOverlayVisibilityAuthority,
   });
-  const rootResultsSheetRuntimeLane = useSearchRootMapRuntimeLane({
+  const rootSharedSheetRuntimeLane = useSearchRootMapRuntimeLane({
     startupPollBounds,
     rootPrimitivesRuntime,
     rootSessionCoreLane: sessionCoreLane,
@@ -99,7 +99,7 @@ export const useSearchRootOverlayFoundationRuntime = ({
     searchChromeScalarSurfacePrimitiveSourceRuntime:
       searchChromeScalarSurfaceRuntime?.primitiveSourceRuntime,
   });
-  const appRouteResultsSheetRuntimeOwner = useAppRouteResultsSheetRuntimeOwner();
+  const appRouteSharedSheetRuntimeOwner = useAppRouteSharedSheetRuntimeOwner();
   const rootOverlayStoreRuntime = useSearchRootOverlayStoreRuntime({
     routeOverlayIdentityAuthority,
   });
@@ -107,7 +107,7 @@ export const useSearchRootOverlayFoundationRuntime = ({
     rootPrimitivesRuntime,
     rootSessionCoreLane: sessionCoreLane,
     rootSessionPrimitivesLane: sessionPrimitivesLane,
-    rootResultsSheetRuntimeLane,
+    rootSharedSheetRuntimeLane,
     rootDataPlaneRuntime,
     rootOverlayStoreRuntime,
   });
@@ -123,8 +123,8 @@ export const useSearchRootOverlayFoundationRuntime = ({
     routeSheetSnapSessionActions: routeSceneRuntime.routeSheetSnapSessionActions,
     routeSearchCommandActions: routeSceneRuntime.routeSearchCommandActions,
     rootOverlaySessionSurfaceRuntime,
-    rootResultsSheetRuntimeLane,
-    appRouteResultsSheetRuntimeOwner,
+    rootSharedSheetRuntimeLane,
+    appRouteSharedSheetRuntimeOwner,
     rootInstrumentationRuntime,
     rootOverlayStoreRuntime,
   };

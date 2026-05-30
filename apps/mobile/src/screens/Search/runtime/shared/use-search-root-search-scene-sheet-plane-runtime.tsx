@@ -28,16 +28,14 @@ export const useSearchRootSearchSceneSheetPlaneRuntime = ({
   sceneVisualRuntime,
 }: UseSearchRootSearchSceneSheetPlaneRuntimeArgs) => {
   const { searchState } = stateFoundationLane.rootPrimitivesRuntime;
-  const appRouteResultsSheetRuntimeOwner =
-    rootOverlayFoundationRuntime.appRouteResultsSheetRuntimeOwner;
+  const appRouteSharedSheetRuntimeOwner =
+    rootOverlayFoundationRuntime.appRouteSharedSheetRuntimeOwner;
   const {
     snapPoints,
     sheetState,
-    resultsSheetRuntimeModel,
-    resetResultsSheetToHidden,
-  } = appRouteResultsSheetRuntimeOwner;
+    sharedSheetRuntimeModel,
+  } = appRouteSharedSheetRuntimeOwner;
   const {
-    handleResultsSheetSnapStart,
     handleResultsListScrollBegin,
     handleResultsListScrollEnd,
     handleResultsListMomentumBegin,
@@ -45,7 +43,6 @@ export const useSearchRootSearchSceneSheetPlaneRuntime = ({
     handleResultsSheetDragStateChange,
     handleResultsSheetSettlingChange,
     handleResultsEndReached,
-    handleResultsSheetSnapChange,
   } = resultsSheetControlLane.resultsSheetInteractionModel;
   const isResultsClosing = searchSheetContentLaneKind === 'results_closing';
   const shouldDisableResultsSheetInteractionForRender =
@@ -60,11 +57,11 @@ export const useSearchRootSearchSceneSheetPlaneRuntime = ({
   );
   const resultsSheetContainerAnimatedStyle = React.useMemo(
     () => [
-      appRouteResultsSheetRuntimeOwner.resultsContainerAnimatedStyle,
+      appRouteSharedSheetRuntimeOwner.sharedSheetContainerAnimatedStyle,
       sceneVisualRuntime.resultsSheetVisibilityAnimatedStyle,
     ],
     [
-      appRouteResultsSheetRuntimeOwner.resultsContainerAnimatedStyle,
+      appRouteSharedSheetRuntimeOwner.sharedSheetContainerAnimatedStyle,
       sceneVisualRuntime.resultsSheetVisibilityAnimatedStyle,
     ]
   );
@@ -82,14 +79,11 @@ export const useSearchRootSearchSceneSheetPlaneRuntime = ({
       handleResultsListScrollEnd,
       handleResultsSheetDragStateChange,
       handleResultsSheetSettlingChange,
-      handleResultsSheetSnapChange,
-      handleResultsSheetSnapStart,
       interactionEnabled: !shouldDisableResultsSheetInteractionForRender,
       listRef: searchState.resultsScrollRef,
-      onHidden: resetResultsSheetToHidden,
-      resultsContainerAnimatedStyle:
+      sharedSheetContainerAnimatedStyle:
         resultsSheetContainerAnimatedStyle as StyleProp<ViewStyle>,
-      runtimeModel: resultsSheetRuntimeModel,
+      runtimeModel: sharedSheetRuntimeModel,
       sheetState,
       snapPoints,
       style: resultsSheetContainerStyle as StyleProp<ViewStyle>,
@@ -102,12 +96,9 @@ export const useSearchRootSearchSceneSheetPlaneRuntime = ({
       handleResultsListScrollEnd,
       handleResultsSheetDragStateChange,
       handleResultsSheetSettlingChange,
-      handleResultsSheetSnapChange,
-      handleResultsSheetSnapStart,
-      resetResultsSheetToHidden,
       resultsSheetContainerAnimatedStyle,
       resultsSheetContainerStyle,
-      resultsSheetRuntimeModel,
+      sharedSheetRuntimeModel,
       searchState.resultsScrollRef,
       sheetState,
       shouldDisableResultsSheetInteractionForRender,

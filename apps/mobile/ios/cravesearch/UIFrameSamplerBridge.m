@@ -26,6 +26,12 @@ RCT_EXTERN_METHOD(flushNativeApplyAttribution:(NSDictionary *)payload
 RCT_EXTERN_METHOD(configureLabelObservation:(NSDictionary *)payload
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(configureNativeLayerGroups:(NSDictionary *)payload
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(configureNativePressTargeting:(NSDictionary *)payload
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(queryRenderedPressTarget:(NSDictionary *)payload
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)

@@ -80,6 +80,11 @@ public class BottomSheetHostViewManager extends SimpleViewManager<BottomSheetHos
     view.setDismissThreshold(value);
   }
 
+  @ReactProp(name = "snapStepThreshold")
+  public void setSnapStepThreshold(BottomSheetHostView view, @Nullable Float value) {
+    view.setSnapStepThreshold(value);
+  }
+
   @ReactProp(name = "sheetCommand")
   public void setSheetCommand(BottomSheetHostView view, @Nullable ReadableMap command) {
     view.setSheetCommand(command);

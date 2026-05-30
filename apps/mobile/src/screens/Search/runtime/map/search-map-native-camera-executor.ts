@@ -8,6 +8,8 @@ const SEARCH_MAP_CAMERA_HOST_KEY = 'search_map_camera';
 type NativeCameraStopPayload = {
   centerCoordinate: string;
   zoom: number;
+  heading?: number;
+  pitch?: number;
   mode: 2 | 5;
   duration: number;
   animationCompletionId?: string;
@@ -36,6 +38,8 @@ const nativeModule = (
 type SearchMapCameraCommand = {
   center: [number, number];
   zoom: number;
+  bearing?: number | null;
+  pitch?: number | null;
   padding?: CameraSnapshot['padding'];
   animationMode?: 'none' | 'easeTo';
   animationDurationMs?: number;
@@ -65,6 +69,12 @@ const buildNativeCameraStopPayload = (command: SearchMapCameraCommand): NativeCa
         ? Math.max(0, command.animationDurationMs)
         : 0,
   };
+  if (typeof command.bearing === 'number' && Number.isFinite(command.bearing)) {
+    stop.heading = command.bearing;
+  }
+  if (typeof command.pitch === 'number' && Number.isFinite(command.pitch)) {
+    stop.pitch = command.pitch;
+  }
   if (command.completionId) {
     stop.animationCompletionId = command.completionId;
   }

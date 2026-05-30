@@ -38,7 +38,7 @@ export const useSearchRootForegroundCommandRuntime = ({
   const {
     routeOverlaySessionActions,
     routeOverlaySessionSnapshotRef,
-    rootResultsSheetRuntimeLane,
+    rootSharedSheetRuntimeLane,
   } = rootOverlayFoundationRuntime;
   const { autocompleteRuntime } = autocompleteAuthorityRuntime;
   const { recentActivityRuntime } = recentActivityAuthorityRuntime;
@@ -69,7 +69,7 @@ export const useSearchRootForegroundCommandRuntime = ({
         dismissSearchKeyboard: suggestionInteractionRuntime.dismissSearchKeyboard,
         beginSubmitTransition: rootSuggestionRuntime.beginSubmitTransition,
         resetFocusedMapState: rootPrimitivesRuntime.searchState.resetFocusedMapState,
-        resetMapMoveFlag: rootResultsSheetRuntimeLane.resetMapMoveFlag,
+        resetMapMoveFlag: rootSharedSheetRuntimeLane.resetMapMoveFlag,
         setIsSearchFocused: rootPrimitivesRuntime.searchState.setIsSearchFocused,
         setIsSuggestionPanelActive: rootPrimitivesRuntime.searchState.setIsSuggestionPanelActive,
         setShowSuggestions: rootPrimitivesRuntime.searchState.setShowSuggestions,
@@ -114,7 +114,7 @@ export const useSearchRootForegroundCommandRuntime = ({
       rootPrimitivesRuntime.searchState.setRestaurantOnlyIntent,
       rootPrimitivesRuntime.searchState.setShowSuggestions,
       rootPrimitivesRuntime.searchState.setSuggestions,
-      rootResultsSheetRuntimeLane.resetMapMoveFlag,
+      rootSharedSheetRuntimeLane.resetMapMoveFlag,
       rootSuggestionRuntime.beginSubmitTransition,
       submitRuntimeResult.rerunActiveSearch,
       submitRuntimeResult.runRestaurantEntitySearch,

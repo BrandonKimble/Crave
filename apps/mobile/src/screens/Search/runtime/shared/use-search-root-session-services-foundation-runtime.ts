@@ -47,6 +47,8 @@ export const useSearchRootSessionServicesFoundationRuntime = ({
     searchMapNativeCameraExecutor,
     setMapCenter: rootPrimitivesRuntime.mapState.setMapCenter,
     setMapZoom: rootPrimitivesRuntime.mapState.setMapZoom,
+    setMapBearing: rootPrimitivesRuntime.mapState.setMapBearing,
+    setMapPitch: rootPrimitivesRuntime.mapState.setMapPitch,
     setMapCameraAnimation: rootPrimitivesRuntime.mapState.setMapCameraAnimation,
   });
   const sessionServicesRuntime = useSearchRuntimeSessionServicesRuntime();

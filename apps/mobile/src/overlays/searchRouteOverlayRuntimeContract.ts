@@ -8,8 +8,8 @@ const searchStartupGeometrySeed = getSearchStartupGeometrySeed();
 
 export const EMPTY_SEARCH_ROUTE_VISUAL_STATE = {
   sheetTranslateY: { value: 0 },
-  resultsScrollOffset: { value: 0 },
-  resultsMomentum: { value: false },
+  sheetScrollOffset: { value: 0 },
+  sheetMomentum: { value: false },
   overlayHeaderActionProgress: { value: 0 },
   navBarHeight: searchStartupGeometrySeed.bottomNavHeight,
   navBarTopForSnaps: searchStartupGeometrySeed.navBarTopForSnaps,

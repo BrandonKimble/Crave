@@ -364,7 +364,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     );
   };
 
-  const shouldRenderSharedSheetSurfaceForRouteState = (
+  const shouldRenderRouteSheetSurfaceForRouteState = (
     routeState: RouteSceneSwitchTransitionState['routeState']
   ): boolean => {
     if (routeState.rootOverlayKey === 'restaurant') {
@@ -433,7 +433,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     sourceSnapshot: NativeOverlayTargetSourceSnapshot
   ): NativeOverlayOutputSignature => {
     const routeState = sourceSnapshot.routeSceneSwitchSnapshot.routeState;
-    return [shouldRenderSharedSheetSurfaceForRouteState(routeState)];
+    return [shouldRenderRouteSheetSurfaceForRouteState(routeState)];
   };
 
   const resolveChromeModeSignature = (
@@ -457,7 +457,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     routeScenePolicySnapshot.shouldSuppressSearchAndTabSheetsForForegroundEditing,
     routeScenePolicySnapshot.shouldSuppressTabSheetsForSuggestions,
     routeScenePolicySnapshot.foregroundActivity,
-    routeScenePolicySnapshot.shouldRenderResultsSheet,
+    routeScenePolicySnapshot.shouldRenderRouteSheetSurface,
     routeScenePolicySnapshot.closeHandoffFreezeClassification,
     surfaceVisualPolicy.canExposePersistentPolls,
     surfaceVisualPolicy.canReleasePersistentPolls,
@@ -557,7 +557,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
   ): AppRouteSheetHostSurfaceSnapshot => {
     const routeState = sourceSnapshot.routeSceneSwitchSnapshot.routeState;
     return {
-      shouldRenderSceneStackSurface: shouldRenderSharedSheetSurfaceForRouteState(routeState),
+      shouldRenderSceneStackSurface: shouldRenderRouteSheetSurfaceForRouteState(routeState),
     };
   };
 
@@ -593,7 +593,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     const shouldSuppressIdleSearchOverlaySheet =
       routeActiveSceneKey === 'search' &&
       routeScenePolicySnapshot.foregroundActivity === 'idle' &&
-      !routeScenePolicySnapshot.shouldRenderResultsSheet &&
+      !routeScenePolicySnapshot.shouldRenderRouteSheetSurface &&
       !isPersistentPollLane;
 
     return (

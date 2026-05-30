@@ -29,7 +29,7 @@ export const EMPTY_APP_ROUTE_SCENE_FOREGROUND_STATE: AppRouteSceneForegroundStat
 
 export type AppRouteSceneSheetPolicyInputs = {
   sheetContentLaneKind: string;
-  shouldRenderResultsSheet: boolean;
+  shouldRenderRouteSheetSurface: boolean;
 };
 
 export type AppRouteSceneForegroundPolicyInputs = {
@@ -38,7 +38,7 @@ export type AppRouteSceneForegroundPolicyInputs = {
 
 export const EMPTY_APP_ROUTE_SCENE_SHEET_POLICY_INPUTS: AppRouteSceneSheetPolicyInputs = {
   sheetContentLaneKind: 'hidden',
-  shouldRenderResultsSheet: false,
+  shouldRenderRouteSheetSurface: false,
 };
 
 export const EMPTY_APP_ROUTE_SCENE_FOREGROUND_POLICY_INPUTS: AppRouteSceneForegroundPolicyInputs = {
@@ -81,7 +81,7 @@ export const areAppRouteSceneSheetPolicyInputsEqual = (
   right: AppRouteSceneSheetPolicyInputs
 ): boolean =>
   left.sheetContentLaneKind === right.sheetContentLaneKind &&
-  left.shouldRenderResultsSheet === right.shouldRenderResultsSheet;
+  left.shouldRenderRouteSheetSurface === right.shouldRenderRouteSheetSurface;
 
 export const areAppRouteSceneForegroundPolicyInputsEqual = (
   left: AppRouteSceneForegroundPolicyInputs,
@@ -93,7 +93,7 @@ export const areRouteScenePolicySnapshotsEqual = (
   right: RouteScenePolicySnapshot
 ): boolean =>
   left.sheetContentLaneKind === right.sheetContentLaneKind &&
-  left.shouldRenderResultsSheet === right.shouldRenderResultsSheet &&
+  left.shouldRenderRouteSheetSurface === right.shouldRenderRouteSheetSurface &&
   left.foregroundActivity === right.foregroundActivity &&
   left.chromeSurfaceTarget === right.chromeSurfaceTarget &&
   left.isPersistentPollLaneEligible === right.isPersistentPollLaneEligible &&

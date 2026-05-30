@@ -1,6 +1,4 @@
 import React from 'react';
-import { logger } from '../../../../utils';
-import { shouldSuppressPerfScenarioRuntimeDiagnostics } from '../../../../perf/perf-scenario-attribution';
 
 import type {
   SearchRootClearRestoreAuthorityRuntime,
@@ -49,25 +47,10 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
     rootInstrumentationRuntime,
     routeOverlaySessionActions,
     rootOverlaySessionSurfaceRuntime,
-    appRouteResultsSheetRuntimeOwner,
+    appRouteSharedSheetRuntimeOwner,
   } = rootOverlayFoundationRuntime;
 
-  const logControlPresentationDiag = React.useCallback(
-    (label: string, data?: Record<string, unknown>) => {
-      if (shouldSuppressPerfScenarioRuntimeDiagnostics()) {
-        return;
-      }
-      const debugLogger = logger.debug as (
-        message: string,
-        payload?: Record<string, unknown>
-      ) => void;
-      debugLogger('[PRESENTATION-DIAG] controller', {
-        label,
-        ...(data ?? {}),
-      });
-    },
-    []
-  );
+  const logControlPresentationDiag = React.useCallback(() => {}, []);
   const handleCancelPendingMutationWork = React.useCallback(() => {
     mutationCancelAuthorityRuntime.mutationCancelPort.cancelPendingMutationWork();
   }, [mutationCancelAuthorityRuntime.mutationCancelPort]);
@@ -166,7 +149,7 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
     emitRuntimeMechanismEvent: rootInstrumentationRuntime.emitRuntimeMechanismEvent as Parameters<
       typeof useResultsPresentationOwner
     >[0]['emitRuntimeMechanismEvent'],
-    resultsSheetRuntime: appRouteResultsSheetRuntimeOwner,
+    resultsSheetRuntime: appRouteSharedSheetRuntimeOwner,
     handleCancelPendingMutationWork,
     clearTypedQuery: clearRestoreAuthorityRuntime.clearOwner.clearTypedQuery,
     clearSearchState: clearRestoreAuthorityRuntime.clearOwner.clearSearchState,

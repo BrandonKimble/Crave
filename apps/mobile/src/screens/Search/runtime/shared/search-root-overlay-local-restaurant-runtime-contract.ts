@@ -24,7 +24,7 @@ export type SearchRootOverlayLocalRestaurantRouteHostRuntime = {
 export type SearchRootOverlayLocalRestaurantRouteHostRuntimeParams = Pick<
   SearchRootOverlayRouteAuthorityParams,
   | 'routeHostOverlayGeometryAuthority'
-  | 'routeResultsSheetVisualAuthority'
+  | 'routeSharedSheetVisualAuthority'
   | 'routeHostVisualRuntimeAuthority'
 >;
 

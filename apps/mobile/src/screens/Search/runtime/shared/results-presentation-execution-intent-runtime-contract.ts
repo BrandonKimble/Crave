@@ -1,6 +1,6 @@
 import type React from 'react';
 
-import type { OverlaySheetSnap } from '../../../../overlays/types';
+import type { OverlayKey, OverlaySheetSnap } from '../../../../overlays/types';
 import type { SearchSurfaceResultsTransaction } from './search-surface-results-transaction';
 import type { ResultsPresentationRuntimeOwner } from './results-presentation-runtime-owner-contract';
 import type {
@@ -29,17 +29,20 @@ export type ResultsSurfaceTransactionExecutionBoundary = {
   resultsRuntimeOwner: Pick<
     ResultsPresentationRuntimeOwner,
     | 'cancelPresentationIntent'
-    | 'commitSearchSurfaceResultsTransaction'
+    | 'commitSearchSurfaceResultsExitTransaction'
     | 'stageSearchSurfaceResultsTransaction'
   >;
   getCurrentSheetSnap?: () => OverlaySheetSnap | 'hidden';
-  prepareShortcutSheetTransition?: () => boolean;
+  prepareSharedSheetForSearchPresentation?: () => boolean;
   setBackdropTarget: React.Dispatch<React.SetStateAction<SearchBackdropTarget>>;
   setInputMode: React.Dispatch<React.SetStateAction<SearchInputMode>>;
   setDisplayQueryOverride: React.Dispatch<React.SetStateAction<string>>;
   beginCloseTransition: (
     closeIntentId: string,
-    options?: { terminalDismissSource?: 'results' | 'profile' }
+    options?: {
+      terminalDismissSource?: 'results' | 'profile';
+      outgoingSheetSceneKey?: OverlayKey | null;
+    }
   ) => void;
   markSearchSheetCloseCollapsedReached?: (
     snap: Exclude<OverlaySheetSnap, 'hidden'>,

@@ -1,7 +1,25 @@
 type PerfScenarioCommandRegistrySnapshot = {
   closeResults: (() => void) | null;
   setMapCamera:
-    | ((input: { lat: number; lng: number; zoom: number; label?: string | null }) => boolean)
+    | ((input: {
+        lat: number;
+        lng: number;
+        zoom: number;
+        bearing?: number | null;
+        pitch?: number | null;
+        label?: string | null;
+      }) => boolean)
+    | null;
+  animateMapCamera:
+    | ((input: {
+        lat: number;
+        lng: number;
+        zoom: number;
+        bearing?: number | null;
+        pitch?: number | null;
+        cameraDurationMs: number;
+        label?: string | null;
+      }) => boolean)
     | null;
   moveMapForSearchThisArea:
     | ((input: { lat: number; lng: number; zoom: number; label?: string | null }) => boolean)
@@ -12,6 +30,7 @@ type PerfScenarioCommandRegistrySnapshot = {
 const commandRegistry: PerfScenarioCommandRegistrySnapshot = {
   closeResults: null,
   setMapCamera: null,
+  animateMapCamera: null,
   moveMapForSearchThisArea: null,
   submitShortcutRestaurants: null,
 };
@@ -22,6 +41,17 @@ export type PerfScenarioCommandRegistration = {
     lat: number;
     lng: number;
     zoom: number;
+    bearing?: number | null;
+    pitch?: number | null;
+    label?: string | null;
+  }) => boolean;
+  animateMapCamera?: (input: {
+    lat: number;
+    lng: number;
+    zoom: number;
+    bearing?: number | null;
+    pitch?: number | null;
+    cameraDurationMs: number;
     label?: string | null;
   }) => boolean;
   moveMapForSearchThisArea?: (input: {
@@ -36,6 +66,7 @@ export type PerfScenarioCommandRegistration = {
 export const registerPerfScenarioCommands = ({
   closeResults,
   setMapCamera,
+  animateMapCamera,
   moveMapForSearchThisArea,
   submitShortcutRestaurants,
 }: PerfScenarioCommandRegistration): (() => void) => {
@@ -44,6 +75,9 @@ export const registerPerfScenarioCommands = ({
   }
   if (setMapCamera) {
     commandRegistry.setMapCamera = setMapCamera;
+  }
+  if (animateMapCamera) {
+    commandRegistry.animateMapCamera = animateMapCamera;
   }
   if (moveMapForSearchThisArea) {
     commandRegistry.moveMapForSearchThisArea = moveMapForSearchThisArea;
@@ -58,6 +92,9 @@ export const registerPerfScenarioCommands = ({
     }
     if (setMapCamera && commandRegistry.setMapCamera === setMapCamera) {
       commandRegistry.setMapCamera = null;
+    }
+    if (animateMapCamera && commandRegistry.animateMapCamera === animateMapCamera) {
+      commandRegistry.animateMapCamera = null;
     }
     if (
       moveMapForSearchThisArea &&
@@ -77,6 +114,7 @@ export const registerPerfScenarioCommands = ({
 export const readPerfScenarioCommandRegistry = (): PerfScenarioCommandRegistrySnapshot => ({
   closeResults: commandRegistry.closeResults,
   setMapCamera: commandRegistry.setMapCamera,
+  animateMapCamera: commandRegistry.animateMapCamera,
   moveMapForSearchThisArea: commandRegistry.moveMapForSearchThisArea,
   submitShortcutRestaurants: commandRegistry.submitShortcutRestaurants,
 });

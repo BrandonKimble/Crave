@@ -31,7 +31,6 @@ import type { SnapPoints } from '../bottomSheetMotionTypes';
 import type { MapBounds } from '../../types';
 import type { SearchRoutePublishedSceneParts } from '../searchOverlayRouteHostContract';
 import { normalizeSearchRouteSceneStackShellSpec } from '../searchOverlayRouteHostContract';
-import type { SearchRouteSceneShellMotionContract } from '../searchRouteSceneShellMotionContract';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -48,7 +47,7 @@ type UsePollCreationPanelSpecOptions = {
   snapPoints?: SnapPoints;
   onClose: () => void;
   onCreated: (poll: Poll) => void;
-} & Pick<SearchRouteSceneShellMotionContract, 'onSnapChange'>;
+};
 
 type TemplateOption = {
   type: PollTopicType;
@@ -184,7 +183,6 @@ export const usePollCreationPanelSpec = ({
   snapPoints: snapPointsOverride,
   onClose,
   onCreated,
-  onSnapChange,
 }: UsePollCreationPanelSpecOptions): SearchRoutePublishedSceneParts => {
   const insets = useSafeAreaInsets();
   const [selectedType, setSelectedType] = useState<PollTopicType | null>(null);
@@ -565,10 +563,7 @@ export const usePollCreationPanelSpec = ({
     shellSpec: normalizeSearchRouteSceneStackShellSpec({
       overlayKey: 'pollCreation',
       snapPoints,
-      preventSwipeDismiss: true,
       style: overlaySheetStyles.container,
-      onHidden: onClose,
-      onSnapChange: (snap) => onSnapChange?.(snap),
     }),
     sceneChrome: {
       underlayComponent: null,

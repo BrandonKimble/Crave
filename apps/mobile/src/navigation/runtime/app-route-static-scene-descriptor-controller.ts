@@ -6,7 +6,6 @@ import {
 } from '../../overlays/searchRouteSceneLayoutContract';
 import { normalizeSearchRouteSceneStackShellSpec } from '../../overlays/searchOverlayRouteHostContract';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../../overlays/overlaySheetStyles';
-import type { OverlaySheetSnap } from '../../overlays/types';
 import type { RouteSceneLayoutSnapshot } from '../../screens/Search/runtime/shared/route-scene-layout-snapshot-contract';
 import type {
   AppRouteSceneBodyAdmissionPolicy,
@@ -16,13 +15,8 @@ import type {
   AppRouteSceneStackShellSpec,
 } from './app-route-scene-descriptor-contract';
 import type {
-  RouteShellOverlayNavigationAuthority,
   RouteShellSceneInputLane,
-  RouteShellSceneSwitchAuthority,
 } from './app-route-scene-foundation-runtime';
-import type { AppRouteOverlayCommandActions } from './app-route-overlay-command-controller';
-import type { AppSearchRouteCommandActions } from './app-search-route-command-runtime';
-import type { AppRouteSheetSnapSessionActions } from './app-route-sheet-snap-session-runtime';
 
 type RouteSceneLayoutAuthority = {
   subscribe: (listener: () => void) => () => void;
@@ -85,85 +79,37 @@ const createMountedBody = (mountedBodyKey: StaticSceneKey): AppRouteSceneBodyCon
 const createStaticTabShellSpec = ({
   sceneKey,
   sceneLayout,
-  onSnapChange,
 }: {
   sceneKey: StaticTabSceneKey;
   sceneLayout: SearchRouteSceneLayoutState;
-  onSnapChange: (snap: OverlaySheetSnap) => void;
 }): AppRouteSceneStackShellSpec =>
   normalizeSearchRouteSceneStackShellSpec({
     overlayKey: sceneKey,
     snapPoints: sceneLayout.snapPoints,
     style: overlaySheetStyles.container,
-    onSnapChange,
-    dismissThreshold: sceneLayout.navBarTop > 0 ? sceneLayout.navBarTop : undefined,
-    preventSwipeDismiss: true,
   });
 
 const createSaveListShellSpec = ({
   sceneLayout,
-  onHidden,
 }: {
   sceneLayout: SearchRouteSceneLayoutState;
-  onHidden: () => void;
 }): AppRouteSceneStackShellSpec =>
   normalizeSearchRouteSceneStackShellSpec({
     overlayKey: 'saveList',
     snapPoints: sceneLayout.snapPoints,
     style: overlaySheetStyles.container,
-    onHidden,
   });
 
 class AppRouteStaticSceneDescriptorController {
   private readonly unsubscribers: Array<() => void> = [];
 
-  private readonly handleSaveListHidden: () => void;
-
-  private readonly handleBookmarksSnapChange: (snap: OverlaySheetSnap) => void;
-
-  private readonly handleProfileSnapChange: (snap: OverlaySheetSnap) => void;
-
   constructor({
     sceneInputLane,
     routeSceneLayoutAuthority,
-    routeOverlayNavigationAuthority,
-    sceneSwitchAuthority,
-    routeOverlayCommandActions,
-    routeSearchCommandActions,
-    routeSheetSnapSessionActions,
   }: {
     sceneInputLane: RouteShellSceneInputLane;
     routeSceneLayoutAuthority: RouteSceneLayoutAuthority;
-    routeOverlayNavigationAuthority: RouteShellOverlayNavigationAuthority;
-    sceneSwitchAuthority: RouteShellSceneSwitchAuthority;
-    routeOverlayCommandActions: AppRouteOverlayCommandActions;
-    routeSearchCommandActions: AppSearchRouteCommandActions;
-    routeSheetSnapSessionActions: AppRouteSheetSnapSessionActions;
   }) {
-    this.handleSaveListHidden = () => {
-      routeOverlayCommandActions.handleCloseSaveSheet();
-    };
-    this.handleBookmarksSnapChange = (snap) => {
-      this.settleTabSnap({
-        sceneKey: 'bookmarks',
-        snap,
-        routeOverlayNavigationAuthority,
-        sceneSwitchAuthority,
-        routeSearchCommandActions,
-        routeSheetSnapSessionActions,
-      });
-    };
-    this.handleProfileSnapChange = (snap) => {
-      this.settleTabSnap({
-        sceneKey: 'profile',
-        snap,
-        routeOverlayNavigationAuthority,
-        sceneSwitchAuthority,
-        routeSearchCommandActions,
-        routeSheetSnapSessionActions,
-      });
-    };
-
     const publishDescriptors = () => {
       this.publishDescriptors({
         sceneInputLane,
@@ -184,35 +130,6 @@ class AppRouteStaticSceneDescriptorController {
     this.unsubscribers.length = 0;
   }
 
-  private settleTabSnap({
-    sceneKey,
-    snap,
-    routeOverlayNavigationAuthority,
-    sceneSwitchAuthority,
-    routeSearchCommandActions,
-    routeSheetSnapSessionActions,
-  }: {
-    sceneKey: StaticTabSceneKey;
-    snap: OverlaySheetSnap;
-    routeOverlayNavigationAuthority: RouteShellOverlayNavigationAuthority;
-    sceneSwitchAuthority: RouteShellSceneSwitchAuthority;
-    routeSearchCommandActions: AppSearchRouteCommandActions;
-    routeSheetSnapSessionActions: AppRouteSheetSnapSessionActions;
-  }): void {
-    const rootOverlayKey = routeOverlayNavigationAuthority.getSnapshot().rootOverlayKey;
-    routeSheetSnapSessionActions.settleRouteSceneTabSnap({
-      sceneKey,
-      snap,
-      rootOverlayKey,
-      isOverlaySwitchInFlight: sceneSwitchAuthority.getSnapshot().transitionPhase !== 'idle',
-      returnToDockedSearch: () => {
-        routeSearchCommandActions.returnAppSearchRouteToDockedSearch({
-          snap: 'collapsed',
-        });
-      },
-    });
-  }
-
   private publishDescriptors({
     sceneInputLane,
     sceneLayout,
@@ -224,7 +141,6 @@ class AppRouteStaticSceneDescriptorController {
       sceneKey: 'saveList',
       shellSpec: createSaveListShellSpec({
         sceneLayout,
-        onHidden: this.handleSaveListHidden,
       }),
       sceneChrome: createMountedChrome('saveList'),
       sceneBodyContent: createMountedBody('saveList'),
@@ -235,7 +151,6 @@ class AppRouteStaticSceneDescriptorController {
       shellSpec: createStaticTabShellSpec({
         sceneKey: 'bookmarks',
         sceneLayout,
-        onSnapChange: this.handleBookmarksSnapChange,
       }),
       sceneChrome: createMountedChrome('bookmarks'),
       sceneBodyContent: createMountedBody('bookmarks'),
@@ -247,7 +162,6 @@ class AppRouteStaticSceneDescriptorController {
       shellSpec: createStaticTabShellSpec({
         sceneKey: 'profile',
         sceneLayout,
-        onSnapChange: this.handleProfileSnapChange,
       }),
       sceneChrome: createMountedChrome('profile'),
       sceneBodyContent: createMountedBody('profile'),
@@ -260,28 +174,13 @@ class AppRouteStaticSceneDescriptorController {
 export const createAppRouteStaticSceneDescriptorRuntime = ({
   sceneInputLane,
   routeSceneLayoutAuthority,
-  routeOverlayNavigationAuthority,
-  sceneSwitchAuthority,
-  routeOverlayCommandActions,
-  routeSearchCommandActions,
-  routeSheetSnapSessionActions,
 }: {
   sceneInputLane: RouteShellSceneInputLane;
   routeSceneLayoutAuthority: RouteSceneLayoutAuthority;
-  routeOverlayNavigationAuthority: RouteShellOverlayNavigationAuthority;
-  sceneSwitchAuthority: RouteShellSceneSwitchAuthority;
-  routeOverlayCommandActions: AppRouteOverlayCommandActions;
-  routeSearchCommandActions: AppSearchRouteCommandActions;
-  routeSheetSnapSessionActions: AppRouteSheetSnapSessionActions;
 }): AppRouteStaticSceneDescriptorRuntime => {
   const controller = new AppRouteStaticSceneDescriptorController({
     sceneInputLane,
     routeSceneLayoutAuthority,
-    routeOverlayNavigationAuthority,
-    sceneSwitchAuthority,
-    routeOverlayCommandActions,
-    routeSearchCommandActions,
-    routeSheetSnapSessionActions,
   });
 
   return {

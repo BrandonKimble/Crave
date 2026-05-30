@@ -18,7 +18,7 @@ export type RouteSceneTransitionVisibilitySnapshot = {
 export type RouteSceneSheetPolicyVisibilitySnapshot = {
   shouldSuppressSearchAndTabSheetsForForegroundEditing: boolean;
   shouldSuppressTabSheetsForSuggestions: boolean;
-  shouldRenderResultsSheet: boolean;
+  shouldRenderRouteSheetSurface: boolean;
 };
 
 export type RouteSceneChromeSurfaceVisibilitySnapshot = {
@@ -68,7 +68,7 @@ export const EMPTY_ROUTE_SCENE_SHEET_POLICY_VISIBILITY_SNAPSHOT: RouteSceneSheet
   {
     shouldSuppressSearchAndTabSheetsForForegroundEditing: false,
     shouldSuppressTabSheetsForSuggestions: false,
-    shouldRenderResultsSheet: false,
+    shouldRenderRouteSheetSurface: false,
   };
 
 export const EMPTY_ROUTE_SCENE_CHROME_SURFACE_VISIBILITY_SNAPSHOT: RouteSceneChromeSurfaceVisibilitySnapshot =
@@ -100,7 +100,7 @@ export const areRouteSceneSheetPolicyVisibilitySnapshotsEqual = (
   left.shouldSuppressSearchAndTabSheetsForForegroundEditing ===
     right.shouldSuppressSearchAndTabSheetsForForegroundEditing &&
   left.shouldSuppressTabSheetsForSuggestions === right.shouldSuppressTabSheetsForSuggestions &&
-  left.shouldRenderResultsSheet === right.shouldRenderResultsSheet;
+  left.shouldRenderRouteSheetSurface === right.shouldRenderRouteSheetSurface;
 
 export const areRouteSceneChromeSurfaceVisibilitySnapshotsEqual = (
   left: RouteSceneChromeSurfaceVisibilitySnapshot,
@@ -122,7 +122,7 @@ export const createRouteSceneVisibilityPolicySnapshotFromRouteScenePolicy = (
     shouldSuppressSearchAndTabSheetsForForegroundEditing:
       snapshot.shouldSuppressSearchAndTabSheetsForForegroundEditing,
     shouldSuppressTabSheetsForSuggestions: snapshot.shouldSuppressTabSheetsForSuggestions,
-    shouldRenderResultsSheet: snapshot.shouldRenderResultsSheet,
+    shouldRenderRouteSheetSurface: snapshot.shouldRenderRouteSheetSurface,
   },
   chromeSurfaceVisibility: {
     chromeSurfaceTarget: snapshot.chromeSurfaceTarget,

@@ -27,9 +27,7 @@ const shouldAlwaysIssueCameraCommandForProfileSource = (source: SearchProfileSou
   source === 'results_sheet';
 
 const shouldUseMultiLocationZoomForSource = (source: SearchProfileSource): boolean =>
-  source === 'results_sheet' ||
-  source === 'auto_open_single_candidate' ||
-  source === 'autocomplete';
+  source === 'auto_open_single_candidate' || source === 'autocomplete';
 
 const MAX_MERCATOR_LAT = 85.05112878;
 const MIN_WORLD_SPAN = 1e-7;

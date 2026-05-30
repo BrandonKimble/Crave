@@ -31,7 +31,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     defaultFirstEntrySnap: 'collapsed',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: false,
-    canSwipeDismiss: true,
+    canSwipeDismiss: false,
     snapPersistence: 'none',
     chromePolicy: { kind: 'search-chrome-from-snap' },
   },
@@ -67,7 +67,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     defaultFirstEntrySnap: 'expanded',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
-    canSwipeDismiss: true,
+    canSwipeDismiss: false,
     snapPersistence: 'none',
     chromePolicy: { kind: 'preserve' },
   },
@@ -103,7 +103,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     defaultFirstEntrySnap: 'collapsed',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: false,
-    canSwipeDismiss: true,
+    canSwipeDismiss: false,
     snapPersistence: 'shared',
     chromePolicy: { kind: 'preserve' },
   },
@@ -170,7 +170,7 @@ export const resolveAppRouteSceneChromeVisibilityTarget = ({
   }
 
   return {
-    searchChrome: snapTarget === 'collapsed' || snapTarget === 'middle' ? 'visible' : 'hidden',
+    searchChrome: snapTarget === 'hidden' ? 'hidden' : 'visible',
   };
 };
 

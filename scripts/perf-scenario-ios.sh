@@ -331,12 +331,22 @@ open_simulator_url() {
 tap_dev_client_server_if_visible() {
   local server_url="http://localhost:${EXPO_METRO_PORT}"
   local flow
-  flow="$(mktemp "${TMPDIR:-/tmp}/perf-dev-client-server-XXXX.yaml")"
+  flow="$(mktemp "${TMPDIR:-/tmp}/perf-dev-client-server-XXXXXXXX.yaml")"
   cat >"$flow" <<YAML
 appId: com.brandonkimble.cravesearch
 ---
 - tapOn:
     text: '${server_url}'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 1500
+- tapOn:
+    text: '${server_url}'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 1500
+- tapOn:
+    text: 'localhost:${EXPO_METRO_PORT}'
     optional: true
 - waitForAnimationToEnd:
     timeout: 3000

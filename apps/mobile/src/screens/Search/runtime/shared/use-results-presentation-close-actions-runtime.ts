@@ -4,10 +4,11 @@ import { unstable_batchedUpdates } from 'react-native';
 import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
 import { createSearchSurfaceResultsExitTransaction } from './search-surface-results-transaction';
 import type { ResultsPresentationRuntimeOwner } from './results-presentation-runtime-owner-contract';
-import type { AppRouteResultsSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-results-sheet-runtime-contract';
+import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
 import { useAppRouteSceneRuntime } from '../../../../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { useResultsSurfaceExitTransactionExecutionRuntime } from './use-search-surface-results-exit-transaction-execution-runtime';
 import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
+import type { OverlayKey } from '../../../../overlays/types';
 
 type UseResultsPresentationCloseActionsRuntimeArgs = {
   clearTypedQuery: SearchClearOwner['clearTypedQuery'];
@@ -18,20 +19,26 @@ type UseResultsPresentationCloseActionsRuntimeArgs = {
   prepareRestaurantProfileForTerminalSearchDismissRef: React.MutableRefObject<() => void>;
   ignoreNextSearchBlurRef: React.MutableRefObject<boolean>;
   isClearingSearchRef: React.MutableRefObject<boolean>;
-  resultsSheetRuntime: Pick<AppRouteResultsSheetRuntimeOwner, 'sheetState'>;
+  resultsSheetRuntime: Pick<AppRouteSharedSheetRuntimeOwner, 'sheetState'>;
   resultsRuntimeOwner: ResultsPresentationRuntimeOwner;
   cancelCloseSearchCleanup: () => void;
   setPendingCloseIntentId: (intentId: string | null) => void;
   matchesPendingCloseIntentId: (intentId: string) => boolean;
   beginCloseTransition: (
     closeIntentId: string,
-    options?: { terminalDismissSource?: 'results' | 'profile' }
+    options?: {
+      terminalDismissSource?: 'results' | 'profile';
+      outgoingSheetSceneKey?: OverlayKey | null;
+    }
   ) => void;
   cancelSearchSheetCloseTransition: (closeIntentId?: string) => void;
 };
 
 type ResultsPresentationCloseActionsRuntime = {
-  requestClosePresentationIntent: (terminalDismissSource?: 'results' | 'profile') => string | null;
+  requestClosePresentationIntent: (options?: {
+    terminalDismissSource?: 'results' | 'profile';
+    outgoingSheetSceneKey?: OverlayKey | null;
+  }) => string | null;
   beginCloseSearch: () => void;
   handleCloseResults: () => void;
   cancelCloseSearch: (intentId?: string) => void;
@@ -68,11 +75,18 @@ export const useResultsPresentationCloseActionsRuntime = ({
   });
 
   const requestClosePresentationIntent = React.useCallback(
-    (terminalDismissSource: 'results' | 'profile' = 'results') =>
+    ({
+      terminalDismissSource = 'results',
+      outgoingSheetSceneKey = terminalDismissSource === 'profile' ? 'restaurant' : 'search',
+    }: {
+      terminalDismissSource?: 'results' | 'profile';
+      outgoingSheetSceneKey?: OverlayKey | null;
+    } = {}) =>
       executeSurfaceExitTransaction(
         createSearchSurfaceResultsExitTransaction(
           nextSearchSurfaceResultsExitTransactionId(),
-          terminalDismissSource
+          terminalDismissSource,
+          outgoingSheetSceneKey
         )
       ),
     [executeSurfaceExitTransaction, nextSearchSurfaceResultsExitTransactionId]
@@ -122,16 +136,21 @@ export const useResultsPresentationCloseActionsRuntime = ({
     unstable_batchedUpdates(() => {
       clearTypedQuery();
       isClearingSearchRef.current = true;
-      const terminalDismissSource =
+      const activeRouteKey = routeSceneRuntime.routeSceneSwitchRuntime.getRouteState()
+        .activeOverlayRoute.key;
+      const outgoingSheetSceneKey: OverlayKey =
         profilePresentationActiveRef.current ||
-        routeSceneRuntime.routeSceneSwitchRuntime.getRouteState().activeOverlayRoute.key ===
-          'restaurant'
-          ? 'profile'
-          : 'results';
+        activeRouteKey === 'restaurant'
+          ? 'restaurant'
+          : 'search';
+      const terminalDismissSource = outgoingSheetSceneKey === 'restaurant' ? 'profile' : 'results';
       if (terminalDismissSource === 'profile') {
         prepareRestaurantProfileForTerminalSearchDismissRef.current();
       }
-      const closeIntentId = requestClosePresentationIntent(terminalDismissSource);
+      const closeIntentId = requestClosePresentationIntent({
+        terminalDismissSource,
+        outgoingSheetSceneKey,
+      });
       if (!closeIntentId) {
         return;
       }

@@ -18,7 +18,7 @@ import { useAppRouteSceneRuntime } from '../../../../navigation/runtime/AppRoute
 
 export const useResultsSurfaceEnterTransactionExecutionRuntime = ({
   resultsRuntimeOwner,
-  prepareShortcutSheetTransition,
+  prepareSharedSheetForSearchPresentation,
   setDisplayQueryOverride,
 }: UseResultsSurfaceEnterTransactionExecutionRuntimeArgs): ResultsSurfaceEnterTransactionExecutor => {
   const routeSceneRuntime = useAppRouteSceneRuntime();
@@ -72,32 +72,23 @@ export const useResultsSurfaceEnterTransactionExecutionRuntime = ({
       }
       if (targetSnap != null) {
         requestSearchBottomNavMotionTarget('hide');
-        prepareShortcutSheetTransition?.();
+        prepareSharedSheetForSearchPresentation?.();
       }
       resultsRuntimeOwner.cancelPresentationIntent();
       if (targetSnap != null) {
-        routeSceneRuntime.routeSceneSwitchRuntime.requestOverlaySwitch({
-          targetSceneKey: 'search',
-          sheetTransitionKind: 'topLevelSwitch',
-          sheetOpenerSource: 'routeCommand',
-          sheetMotion: {
-            kind: 'snapTo',
-            snap: targetSnap,
-            mode: entryMotion === 'instant_behind_search_mode' ? 'instant' : undefined,
-          },
-          snapPersistence: 'sharedOnly',
+        routeSceneRuntime.routeSearchCommandActions.openAppSearchRouteResults({
+          snap: targetSnap,
+          mode: entryMotion === 'instant_behind_search_mode' ? 'instant' : undefined,
         });
       }
       resultsRuntimeOwner.stageSearchSurfaceResultsTransaction(snapshot);
-      if (targetSnap == null) {
-        getSearchSurfaceRuntime().markRedrawSheetReady(snapshot.transactionId);
-      }
+      getSearchSurfaceRuntime().markRedrawSheetReady(snapshot.transactionId);
       return snapshot.transactionId;
     },
     [
-      prepareShortcutSheetTransition,
+      prepareSharedSheetForSearchPresentation,
       resultsRuntimeOwner,
-      routeSceneRuntime.routeSceneSwitchRuntime,
+      routeSceneRuntime.routeSearchCommandActions,
       setDisplayQueryOverride,
     ]
   );

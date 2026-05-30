@@ -11,7 +11,7 @@ import type {
   RouteOverlayVisibilityAuthority,
   RouteSceneLayoutAuthority,
   RouteSceneSwitchAuthority,
-  RouteResultsSheetVisualAuthority,
+  RouteSharedSheetVisualAuthority,
 } from './route-authority-contract';
 import type {
   SearchRootRouteRestaurantOverlayInteractionPublicationLane,
@@ -32,7 +32,7 @@ export type {
   RouteLocalRestaurantOverlayPolicyAuthority,
   RouteLocalRestaurantOverlayInteractionAuthority,
   RouteHostOverlayGeometryAuthority,
-  RouteResultsSheetVisualAuthority,
+  RouteSharedSheetVisualAuthority,
   RouteHostVisualRuntimeAuthority,
   RouteSceneSwitchAuthority,
   RouteOverlayIdentityAuthority,

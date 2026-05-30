@@ -16,7 +16,7 @@ import type {
   RouteLocalRestaurantOverlayPolicyAuthority,
   RouteLocalRestaurantOverlaySessionAuthority,
   RouteOverlayVisibilityAuthority,
-  RouteResultsSheetVisualAuthority,
+  RouteSharedSheetVisualAuthority,
 } from './search-root-route-runtime-contract';
 import type { useSearchScreenAppEntryPlaneRuntime } from './use-search-screen-app-entry-plane-runtime';
 import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
@@ -43,7 +43,7 @@ export type SearchRootOverlayRouteAuthorityParams = {
   routeLocalRestaurantOverlayPolicyAuthority: RouteLocalRestaurantOverlayPolicyAuthority;
   routeLocalRestaurantOverlayInteractionAuthority: RouteLocalRestaurantOverlayInteractionAuthority;
   routeHostOverlayGeometryAuthority: RouteHostOverlayGeometryAuthority;
-  routeResultsSheetVisualAuthority: RouteResultsSheetVisualAuthority;
+  routeSharedSheetVisualAuthority: RouteSharedSheetVisualAuthority;
   routeHostVisualRuntimeAuthority: RouteHostVisualRuntimeAuthority;
 };
 

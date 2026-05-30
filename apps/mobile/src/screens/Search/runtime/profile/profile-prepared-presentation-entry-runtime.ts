@@ -47,15 +47,18 @@ export const useProfilePreparedPresentationEntryRuntime = ({
       },
       closePreparedProfilePresentation: (restaurantId) => {
         const transition = transactionExecution.getProfileTransitionState();
+        const dismissBehavior = transactionExecution.getProfileDismissBehavior();
+        const shouldClearSearchOnDismiss =
+          transactionExecution.getProfileShouldClearSearchOnDismiss();
         if (
           transition.status === 'closing' ||
           transition.preparedSnapshot?.kind === 'profile_close' ||
           transition.completionState.dismiss.requestToken != null
         ) {
-          if (transactionExecution.getProfileDismissBehavior() === 'clear') {
+          if (dismissBehavior === 'clear') {
             promotePreparedProfileCloseSnapshotToClearDismiss({
               transition,
-              shouldClearSearchOnClose: transactionExecution.getProfileShouldClearSearchOnDismiss(),
+              shouldClearSearchOnClose: shouldClearSearchOnDismiss,
             });
           }
           return;
@@ -65,8 +68,8 @@ export const useProfilePreparedPresentationEntryRuntime = ({
             transition,
             createTransactionId: transactionExecution.createTransactionId,
             restaurantId,
-            dismissBehavior: transactionExecution.getProfileDismissBehavior(),
-            shouldClearSearchOnDismiss: transactionExecution.getProfileShouldClearSearchOnDismiss(),
+            dismissBehavior,
+            shouldClearSearchOnDismiss,
           })
         );
       },

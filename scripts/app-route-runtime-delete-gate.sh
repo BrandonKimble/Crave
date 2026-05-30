@@ -23,6 +23,11 @@ for root_native_project_path in "${ROOT_NATIVE_PROJECT_PATHS[@]}"; do
   fi
 done
 
+if [[ -e "$TARGET_PATH/screens/Search/runtime/map/map-diff-applier.ts" ]]; then
+  echo "[app-route-runtime-delete-gate] FAIL search_map_legacy_diff_applier_path: LOD is role-table owned; the old JS map diff applier must not return." >&2
+  exit 1
+fi
+
 declare -a CONTENT_CHECKS=(
   "polls_scene_authority_subscribe::routePollsSceneRuntime\\.sceneAuthority\\.subscribe::Polls scene authority must remain snapshot/target-owned, not subscribed from mounted chrome/body."
   "chrome_mode_authority_subscribe::routeOverlayChromeModeAuthority\\.(subscribe|subscribeSelector)::Chrome mode authority is snapshot/shared-value target only."
@@ -82,6 +87,8 @@ declare -a CONTENT_CHECKS=(
   "search_results_semantic_visual_reuse_names::semanticResultsVisualReuse|semantic_visual_reuse|semantic-reuse|semantic_reuse|retainedResultsVisualReuse|retained_results_visual_reuse|retained_submit_promoted|responseLifecycleSkipped|requestPayloadSkipped::Search reveals must not revive the old semantic/retained mounted-visual reuse lane."
   "search_surface_legacy_marker_ready_api::markRedrawMarkersReady\\(::Reveal readiness must use markRedrawNativeMarkerFrameReady from native mounted-hidden acknowledgement."
   "search_surface_legacy_visual_redraw_store_refs::search-surface-visual-redraw-store|SearchSurfaceVisualRedraw|beginSearchSurfaceVisualRedraw|markSearchSurfaceVisualRedrawReady|revealSearchSurfaceVisualRedraw|cancelSearchSurfaceVisualRedraw::Results reveal readiness is owned by SearchSurfaceRuntime.redrawTransaction, not a parallel visual redraw store."
+  "search_results_enter_conditional_sheet_ready::if \\(targetSnap == null\\) \\{\\s*getSearchSurfaceRuntime\\(\\)\\.markRedrawSheetReady\\(snapshot\\.transactionId\\)::Results enter must mark the sheet gate ready when the shared sheet transition is accepted, not only when no snap target exists."
+  "route_sheet_runtime_config_initial_snap_current_snap::return this\\.currentSnap === 'hidden' \\? policyInitialSnap : this\\.currentSnap::Runtime config initial snap must stay policy/bootstrap only; live snap belongs to motion state."
   "search_surface_persistent_poll_clear_without_redraw_guard::transportSnapshot\\.snapshotKind !== 'results_enter'\\) \\{[[:space:]]*publishSearchMountedResultsDataSnapshot\\(null\\)::Persistent-poll lane cleanup must not clear mounted results while a redraw transaction is active or armed."
   "search_results_settled_surface_none::coverState === 'hidden'[\\s\\S]{0,120}\\? 'none'[\\s\\S]{0,120}coverState === 'initial_loading'::Settled visible results must remain an active results surface after the loading cover hides."
   "search_transition_visual_side_request_api::requestSearchTransitionVisualState::Search transition visual state side requests must not return."
@@ -139,7 +146,7 @@ declare -a CONTENT_CHECKS=(
   "search_route_sheet_policy_clip_mode_owner::resolveAppRouteNavSilhouetteModeValueFromPolicy[\\s\\S]{0,220}sheetClipMode::Nav silhouette policy resolution must not accept a sheet-side clip-mode override."
   "search_route_policy_search_route_as_animated_transition::activeSemanticOverlayKey === 'search' \\? 'animatedSearchTransition'::Fresh search-home must initialize as a docked persistent nav exclusion, not as an animated search transition."
   "nav_silhouette_docked_poll_zero_mask::mode === 'dockedPersistentPoll'[\\s\\S]{0,260}expectedSheetMaskHeight:\\s*0::Docked poll sheet mask is nav-silhouette-owned; it must not collapse to a sheet-side zero mask."
-  "search_submit_instant_sheet_writer::\\bshowPanelInstant\\b|setSheetTranslateYTo\\(position\\)::Search submit/open must not instant-write visible sheet Y from the results sheet visibility controller."
+  "search_submit_instant_sheet_writer::\\bshowPanelInstant\\b|setSheetTranslateYTo\\(position\\)::Search submit/open must not instant-write visible sheet Y from the shared sheet presentation controller."
   "search_submit_legacy_entry_origin::\\b(entryOrigin|SearchSubmitEntryOrigin)\\b::Search submit intents must use required entrySurface, not the old optional entryOrigin."
   "search_submit_home_surface_default::entrySurface\\s*=\\s*'home'|entrySurface\\s*\\?\\?\\s*'home'::Search submit entrySurface must be declared by the foreground caller, not silently defaulted to home."
   "search_close_visual_handoff_progress_prop::\\bcloseVisualHandoffProgress\\b::Search close must not carry the old split visual-handoff progress prop through route chrome/body hosts."
@@ -154,9 +161,14 @@ declare -a CONTENT_CHECKS=(
   "scene_stack_inline_header_before_body::SceneStackBodyFrame[\\s\\S]{0,360}surface=\"header\"[\\s\\S]{0,220}\\{children\\}::Mounted sheet page header must be layered by the page frame above a clipped body lane, not rendered inline before body children."
   "search_dismiss_old_visual_handoff_telemetry::\\b(boundaryHandoffSource|handoffY|releaseDelayAfterVisualHandoffBoundaryMs|releasedAtVisualHandoffBoundary|collapsed_visual_boundary|visual_boundary)\\b::Search dismiss telemetry/contracts must use collapsed motion-plane boundary ownership, not old visual-handoff naming."
   "search_dismiss_delayed_post_restore_path::\\b(requestPostDismissPersistentPollRestore|restorePersistentPollHostAtBoundary|restoredPersistentPollHostIntentIdRef)\\b|resultsDismissBottomHandoff[\\s\\S]{0,240}restoreDockedPolls::Search dismiss boundary must synchronously publish the poll page through SearchSurfaceRuntime, not a delayed post-dismiss restore path."
+  "search_dismiss_poll_release_nav_gate::const canReleasePersistentPolls =[\\s\\S]{0,180}bottomNavReturnReady|const canCompleteDismissHandoff =[\\s\\S]{0,260}bottomNavReturnReady|const isReadyToReleasePersistentPolls =[\\s\\S]{0,220}bottomNavReturnReady::Persistent-poll content handoff must release at the collapsed sheet boundary once poll header/body/host are ready; bottom-nav return is a separate visual fact, not a content-swap gate."
+  "persistent_poll_prewarm_search_only_gate::activeSceneKey === 'search'[\\s\\S]{0,180}pollsPrewarmed|pollsPrewarmed[\\s\\S]{0,180}activeSceneKey === 'search'::Persistent poll prewarm must be substrate-owned from any idle scene once the polls input is ready, not limited to idle search."
   "search_dismiss_polls_panel_release_readiness::\\b(usePersistentPollsSearchTransitionReadiness|PollsPanel:(arePersistentPollsHeaderReady|arePersistentPollsBodyReady|isPersistentPollHostReady))\\b::Mounted PollsPanel effects must not satisfy Search dismiss release readiness; release must come from route scene-stack mounted header/body/host evidence."
   "search_dismiss_sheet_host_release_readiness::\\bsheetHost:\\$\\{source\\}|markPollPagePartReady\\([\\s\\S]{0,120}sheetHost::Sheet-host generic renderability must not satisfy Search dismiss poll release readiness."
   "search_dismiss_attach_only_poll_body_readiness::if \\(hasMountedPollBody\\)[\\s\\S]{0,220}markPollPagePartReady\\([\\s\\S]{0,120}'body'::Mounted poll body attachment alone must not satisfy Search dismiss body readiness; release requires an active poll data/content lane."
+  "search_dismiss_synthetic_poll_release_readiness::pollHeaderReady:\\s*pollBundle\\.chromeReady|pollBodyReady:\\s*pollBundle\\.bodyReady|pollHostReady:\\s*pollBundle\\.hostReady::Search dismiss prewarm must not satisfy persistent-poll release readiness; only sceneStack header/body/host evidence may release."
+  "search_dismiss_poll_data_prewarm_requires_display_ready::shouldPrewarmSearchDismissPollDataLane[\\s\\S]{0,420}canDisplayPersistentPollSubstrate|shouldSyncSearchDismissPollDataPrewarmScene[\\s\\S]{0,420}canDisplayPersistentPollSubstrate::Persistent-poll data prewarm must depend on the active dismiss transaction, not on display/release readiness that the data lane itself must prove."
+  "search_dismiss_publish_release_clears_transaction::private publishDismissTransaction\\([\\s\\S]{0,760}dismissTransaction:\\s*null::Dismiss release-ready must be observable; publishDismissTransaction may mark release-ready, but only completeDismissHandoff may clear the dismiss transaction."
   "search_dismiss_main_host_preboundary_poll_substrate::\\bisSearchDismissPollSubstratePrewarmed\\b|shouldKeepSearchSheetHostForPollRestore[\\s\\S]{0,220}\\bcanDisplayPersistentPollSubstrate\\b::The moving Search sheet host must not switch to polls before the collapsed boundary; poll substrate renders as a separate layer behind it."
   "search_dismiss_substrate_ready_logical_snap::canDisplayPersistentPollSubstrate[\\s\\S]{0,180}return 'collapsed'::Poll substrate readiness must not collapse the outgoing Search sheet host logical snap before boundary release."
   "search_surface_motion_plane_request_shared_values::\\b(dismissMotionRequest|openMotionRequest|requestDismissMotionStart|openRequestSeqRef|requestSearchDismissMotionPlaneImmediateStart)\\b::Search submit/dismiss motion must start from SearchSurfaceRuntime command target, not React/subscription request shared values."
@@ -164,7 +176,10 @@ declare -a CONTENT_CHECKS=(
   "search_dismiss_press_up_full_snapshot_before_motion_arm::beginDismissTransaction\\(closeIntentId\\)|beginCloseTransition[\\s\\S]{0,260}getSearchSurfaceRuntime\\(\\)\\.beginDismissTransaction::Search dismiss press-up must arm the UI motion plane first; full SearchSurfaceRuntime publish/fanout belongs at the collapsed boundary."
   "search_surface_dismiss_full_publish_start_method::\\bbeginDismissTransaction\\b|\\bpublishArmedDismissTransaction\\b::Search dismiss start must use armDismissMotion plus commitDismissBoundary, not a during-motion full-publish path."
   "search_dismiss_motion_started_js_fanout::onMotionStarted|prewarmPersistentPollLane|markPollPagePrewarmedForDismiss::Search dismiss must not publish route/surface/poll prewarm work from a motion-start callback during the visible movie."
-  "search_dismiss_press_up_presentation_commit::useResultsSurfaceExitTransactionExecutionRuntime[\\s\\S]*commitSearchSurfaceResultsTransaction\\(snapshot\\)::Search dismiss press-up must not run the heavy results presentation commit; SearchSurfaceRuntime freezes the outgoing bundle."
+  "search_results_ambiguous_commit_api::commitSearchSurfaceResultsTransaction::Search results presentation must distinguish enter presentation commits from exit commits; the old ambiguous commit API must not return."
+  "search_enter_public_commit_writer::resultsRuntimeOwner\\.commitSearchSurfaceResultsEnterPresentation::Enter presentation commits must only come from the surface transaction coordinator, not public runtime-owner callers."
+  "search_dismiss_press_up_enter_presentation_commit::useResultsSurfaceExitTransactionExecutionRuntime[\\s\\S]*commitSearchSurfaceResultsEnterPresentation\\(snapshot\\)::Search dismiss press-up must not run the enter presentation commit; exit uses its dedicated transaction commit."
+  "search_pending_page_one_after_stage_patch::pending_page_one_commit_applied_after_stage|runDeferredStage[\\s\\S]{0,520}handlePageOneResultsCommitted\\(::Pending page-one results for a deferred stage must merge into the effective staged snapshot before publication, not patch the staged transaction afterward."
   "search_dismiss_press_up_immediate_ui_reset::handleCloseResultsUiReset\\(\\)|scheduleCloseSearchCleanup\\(closeIntentId\\)::Search dismiss press-up must not clear/reset the results UI before the motion-plane boundary."
   "search_dismiss_poll_restore_blank_results_chrome::shouldClearSearchBarForPollRestore[\\s\\S]{0,360}\\? 'results'::Dismiss poll restore must switch directly to default search chrome, not an empty results chrome frame."
   "search_dismiss_page_bundle_transform_writer::resultPageBundleDismissAnimatedStyle::Search dismiss must not add a second page-bundle transform writer; SearchDismissMotionPlaneRuntime owns sheetTranslateY."
@@ -176,11 +191,11 @@ declare -a CONTENT_CHECKS=(
   "perf_legacy_harness_observer_imports::use(Shortcut|NavSwitch)HarnessObserver::Old self-driving perf observers must not return."
   "persistent_polls_restore_command_current_snap_compare::(dockedPollsRestoreIntent|pollsDockedSnapRequest)[\\s\\S]{0,160}!== currentSnap::Persistent polls restore commands must compare against physicalPollsSheetSnap, not synthetic currentSnap."
   "persistent_polls_initial_snap_live_bypass::currentSnap !== 'hidden' && !isDockedPollsSearchSurfaceActive::Initial visible snap bootstrap must not special-case docked polls; once the shared sheet has a live snap, policy defaults cannot issue another bootstrap command."
-  "persistent_polls_restore_shortcut_without_motion::syncDockedPollsTarget[\\s\\S]{0,320}prepareShortcutSheetTransition\\(::Docked polls restore from hidden must issue an animated sheet command, not promote hidden-to-visible through the shortcut path."
+  "persistent_polls_restore_shortcut_without_motion::syncDockedPollsTarget[\\s\\S]{0,320}prepareSharedSheetForSearchPresentation\\(::Docked polls restore from hidden must issue an animated sheet command, not promote hidden-to-visible through the shortcut path."
   "bottom_sheet_special_hidden_dismiss_resolver::SWIPE_DISMISS_INTENT|shouldResolveSwipeDismiss::Bottom-sheet dismiss must use the unified header-gated snap resolver, not a hidden-specific threshold path."
   "bottom_sheet_legacy_step_snap_resolver_owner::resolveDestination[\\s\\S]{0,420}resolveSteppedSnapPoint::Gesture release must use the unified header-gated snap resolver, not the old step/skip resolver."
   "search_marker_collision_release_settles_js_presentation::event\\.type === 'presentation_visual_sources_collision_released'[\\s\\S]{0,900}onMarkerExitSettled\\?\\.\\(::Fade-zero collision/source release must not be treated as full JS presentation settled."
-  "search_marker_old_native_visual_lifecycle_states::\\.(fadingOut|collisionReleased)\\b::Native search map visuals must use explicit dismissed/preparingReveal/revealing/visible/dismissing states, not the old ambiguous lifecycle states."
+  "search_marker_old_native_visual_lifecycle_states::\\.(fadingOut|collisionReleased)\\b::Native search map visuals must use explicit hidden/preparingReveal/revealing/visible/dismissing states, not the ambiguous lifecycle states."
   "profile_active_route_camera_push_gate::isSearchRestaurantRouteActive && routeIntent\\.targetCamera == null::Active search restaurant route opens must update in place even when the profile transaction has a camera target."
   "profile_open_route_camera_owner_gate::type: 'open_profile_restaurant_route'[\\s\\S]{0,180}targetCamera: snapshot\\.targetCamera::Profile open camera motion must be owned by the prepared transaction pre-shell command, not route intent feedback."
   "profile_open_split_camera_padding_gate::targetCamera: snapshot\\.targetCamera,[\\s\\S]{0,120}profileCameraPadding::Profile open camera padding must travel with the target camera command, not as a duplicate side command."
@@ -195,6 +210,9 @@ declare -a CONTENT_CHECKS=(
   "profile_open_pressed_coordinate_same_panel_gate::currentPanelRestaurantId === restaurantId::Map-origin restaurant opens must trust the rendered tapped coordinate on first open, not only when the same profile is already active."
   "profile_results_sheet_snap_restore_gate::\\b(savedSheetSnap|restoreSheetSnap|restoreResultsSheetSnap|getLastVisibleSheetSnap|lastVisibleSheetSnap|captureCurrentResultsSheetSnap)\\b::Profile/results content swaps must preserve the live shared sheet position, not restore a saved results snap."
   "search_map_render_source_frame_peek_highlight_gate::directSourceFrameSnapshotForHighlight|directSourceFrameSnapshotForLabels::SearchMap must subscribe to source-frame stores instead of peeking during render."
+  "search_map_label_solver_layer_gate::\\b(labelSolver|solverLayer|placementSolver|dotPlacementSolver|labelPlacementSolver)\\b::Search map labels use native rendered-candidate observation; solver-layer experiments must not return."
+  "search_map_old_label_interaction_commit_gate::\\bcommitInteractionVisibility\\b::Visible label hits are committed from rendered label observation; the old label interaction visibility naming/path must not return."
+  "search_map_shortcut_viewport_lod_skip_gate::canSkipSourceRebuildForShortcutViewport::Shortcut viewport changes must publish local LOD projection; only shortcut coverage fetch work may be skipped or coalesced."
   "profile_close_clear_after_closing_guard::executeProfileCloseAction[\\s\\S]{0,220}if \\(transitionStatus === 'closing'\\)[\\s\\S]{0,120}ports\\.setMapHighlightedRestaurantId\\(null\\)::Profile close press-up must clear map highlight before any closing/idempotency guard."
   "profile_close_closing_guard_bare_return::if \\(transitionStatus === 'closing'\\) \\{[[:space:]]*return;::Profile close while already closing must re-enter prepared close so clear dismiss can upgrade the pending finalization."
   "profile_optimistic_highlight_timeout::setTimeout\\([\\s\\S]{0,180}setOptimisticSelectedRestaurantId::Map optimistic highlight must be transaction/authority-scoped, not timeout-cleared."
@@ -349,11 +367,10 @@ else
 fi
 
 if [[ -e "$sheet_host_authority_file" ]] && {
-  ! rg -q --fixed-strings "const searchRouteRuntimeModel =" "$sheet_host_authority_file" ||
-  ! rg -q --fixed-strings "rootOverlayKey === 'search'" "$sheet_host_authority_file" ||
-  ! rg -q --fixed-strings "searchRouteRuntimeModel ??" "$sheet_host_authority_file"
+  ! rg -q --fixed-strings "private sharedRuntimeModel:" "$sheet_host_authority_file" ||
+  ! rg -q --fixed-strings "const resolvedRuntimeModel = canRenderSurface ? this.sharedRuntimeModel : null" "$sheet_host_authority_file"
 }; then
-  echo "[app-route-runtime-delete-gate] FAIL profile_search_origin_shared_sheet_runtime_gate: Search-root surfaces must resolve through the shared search route runtime model before page-local runtime models; otherwise child/profile content can split from the visible sheet command owner." >&2
+  echo "[app-route-runtime-delete-gate] FAIL profile_search_origin_shared_sheet_runtime_gate: Search-root surfaces must use the single shared sheet runtime model directly; page-local runtime models must not split from the visible sheet command owner." >&2
   failures=$((failures + 1))
 else
   echo "[app-route-runtime-delete-gate] PASS profile_search_origin_shared_sheet_runtime_gate"
@@ -553,10 +570,10 @@ search_map_render_controller_native_file="$REPO_ROOT/apps/mobile/ios/cravesearch
 search_map_render_controller_android_file="$REPO_ROOT/apps/mobile/android/app/src/main/java/com/crave/SearchMapRenderControllerModule.java"
 search_map_render_controller_ios_bridge_file="$REPO_ROOT/apps/mobile/ios/cravesearch/UIFrameSamplerBridge.m"
 if [[ -e "$search_map_render_controller_native_file" ]] && {
-  ! rg -q --fixed-strings "didClearSettledVisibleLabelInteractions" "$search_map_render_controller_native_file" ||
-  ! rg -q --fixed-strings "didClearLabelInteractionVisibility" "$search_map_render_controller_native_file" ||
+  ! rg -q --fixed-strings "didClearSettledVisibleLabelHits" "$search_map_render_controller_native_file" ||
+  ! rg -q --fixed-strings "didClearVisibleLabelHits" "$search_map_render_controller_native_file" ||
   ! rg -q --fixed-strings "labelFamilyState.labelObservation.observationEnabled" "$search_map_render_controller_native_file" ||
-  ! rg -q --fixed-strings "label_interaction_visibility_clear_failed" "$search_map_render_controller_native_file"
+  ! rg -q --fixed-strings "visible_label_hit_clear_failed" "$search_map_render_controller_native_file"
 }; then
   echo "[app-route-runtime-delete-gate] FAIL search_map_ios_label_interaction_terminal_clear_gate: iOS label interaction visibility must snap empty on close/dismiss and reject stale in-flight observation commits." >&2
   failures=$((failures + 1))
@@ -565,8 +582,8 @@ else
 fi
 
 if [[ -e "$search_map_render_controller_android_file" ]] && {
-  ! rg -q --fixed-strings "didClearSettledVisibleLabelInteractions" "$search_map_render_controller_android_file" ||
-  ! rg -q --fixed-strings "didClearLabelInteractionVisibility" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "didClearSettledVisibleLabelHits" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "didClearVisibleLabelHits" "$search_map_render_controller_android_file" ||
   ! rg -q --fixed-strings "labelFamilyState.labelObservation.observationEnabled" "$search_map_render_controller_android_file" ||
   ! rg -q --fixed-strings "labelObservation.settledVisibleFeatureIds.clear()" "$search_map_render_controller_android_file"
 }; then
@@ -577,12 +594,12 @@ else
 fi
 
 if [[ -e "$search_map_component_file" ]] && {
-  rg -q --fixed-strings "commitVisibleLabelInteractionVisibility: true" "$search_map_component_file" ||
+  rg -q --fixed-strings "commitVisibleLabelHits" "$search_map_component_file" ||
+  rg -q --fixed-strings "allowLiveLabelUpdates" "$search_map_component_file" ||
   rg -q --fixed-strings "publishVisibleLabelFeatureIds: isPresentationLive && !isMapMoving" "$search_map_component_file" ||
-  ! rg -q --fixed-strings "commitVisibleLabelInteractionVisibility: allowLiveLabelUpdates" "$search_map_component_file" ||
   ! rg -q --fixed-strings "publishVisibleLabelFeatureIds: isPresentationLive" "$search_map_component_file"
 }; then
-  echo "[app-route-runtime-delete-gate] FAIL search_map_label_interaction_live_policy_gate: Label interaction geometry should stay live with visible labels while presentation is live; do not pause it during map movement." >&2
+  echo "[app-route-runtime-delete-gate] FAIL search_map_label_interaction_live_policy_gate: Visible label observation should stay live while presentation is live, without a separate label interaction mirror." >&2
   failures=$((failures + 1))
 else
   echo "[app-route-runtime-delete-gate] PASS search_map_label_interaction_live_policy_gate"
@@ -598,6 +615,33 @@ else
   echo "[app-route-runtime-delete-gate] PASS search_map_pin_interaction_live_policy_gate"
 fi
 
+if [[ -e "$search_map_render_controller_native_file" ]] && {
+  rg -q --fixed-strings '"nativeLodOpacity": placementPrerollOpacity' "$search_map_render_controller_native_file" ||
+  rg -q --fixed-strings '"nativeLodRankOpacity": placementPrerollOpacity' "$search_map_render_controller_native_file" ||
+  rg -q --fixed-strings '"nativeLodOpacity": renderState.currentOpacity' "$search_map_render_controller_native_file" ||
+  rg -q --fixed-strings '"nativeLodRankOpacity": renderState.currentOpacity' "$search_map_render_controller_native_file" ||
+  rg -q --fixed-strings '"nativePresentationOpacity": state.currentPresentationOpacityValue' "$search_map_render_controller_native_file"
+}; then
+  echo "[app-route-runtime-delete-gate] FAIL search_map_pin_visual_opacity_preroll_gate: Pin/source visual opacity fallbacks must store settled visible values; transient presentation or LOD opacity belongs to feature-state animation, and placement preroll is only for label/collision readiness." >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS search_map_pin_visual_opacity_preroll_gate"
+fi
+
+if { [[ -e "$search_map_render_controller_native_file" ]] && {
+    rg -q --fixed-strings "featureStateById: plan.next.featureStateById" "$search_map_render_controller_native_file" ||
+    rg -q --fixed-strings "nextFeatureStateRevision: plan.next.featureStateRevision" "$search_map_render_controller_native_file";
+  }; } ||
+  { [[ -e "$search_map_render_controller_android_file" ]] && {
+    ! rg -q --fixed-strings "plan.nextSourceState.featureStateRevision" "$search_map_render_controller_android_file" ||
+    ! rg -q --fixed-strings "plan.nextSourceState.featureStateById" "$search_map_render_controller_android_file";
+  }; }; then
+  echo "[app-route-runtime-delete-gate] FAIL search_map_native_feature_state_merge_apply_gate: Native source mutation must apply the merged mounted feature-state, not the raw parsed collection state, so dismiss opacity cannot be cleared and fall back to visible source properties." >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS search_map_native_feature_state_merge_apply_gate"
+fi
+
 if [[ -e "$search_map_component_file" ]] && {
   ! rg -q --fixed-strings "const PIN_TAP_INTENT_RADIUS_PX = PIN_MARKER_RENDER_SIZE / 2;" "$search_map_component_file" ||
   ! rg -q --fixed-strings "circleStrokeWidth: 0" "$search_map_component_file"
@@ -610,9 +654,9 @@ fi
 
 if [[ -e "$search_map_render_controller_native_file" ]] && {
   rg -q --fixed-strings "distanceSq" "$search_map_render_controller_native_file" ||
-  ! rg -q --fixed-strings "return left.lodZ > right.lodZ" "$search_map_render_controller_native_file"
+  ! rg -q --fixed-strings "return left.featureIndex < right.featureIndex" "$search_map_render_controller_native_file"
 }; then
-  echo "[app-route-runtime-delete-gate] FAIL search_map_pin_interaction_topmost_hit_gate: Pin taps must resolve topmost visual hit geometry, not nearest overlapping source feature." >&2
+  echo "[app-route-runtime-delete-gate] FAIL search_map_pin_interaction_topmost_hit_gate: Pin taps must trust rendered feature order, not stable slot distance or stale slot z." >&2
   failures=$((failures + 1))
 else
   echo "[app-route-runtime-delete-gate] PASS search_map_pin_interaction_topmost_hit_gate"
@@ -621,14 +665,39 @@ fi
 search_map_native_render_owner_file="$TARGET_PATH/screens/Search/components/hooks/use-search-map-native-render-owner.ts"
 if [[ -e "$search_map_native_render_owner_file" ]] && {
   rg -q --fixed-strings "labelObservationEnabled && isPresentationLive && isPresentationSettled" "$search_map_native_render_owner_file" ||
-  rg -q --fixed-strings "commitVisibleLabelInteractionVisibility && isPresentationLive && isPresentationSettled" "$search_map_native_render_owner_file" ||
   ! rg -q --fixed-strings "labelObservationEnabled && isPresentationLive && labelSourceCount > 0" "$search_map_native_render_owner_file" ||
-  ! rg -q --fixed-strings "commitVisibleLabelInteractionVisibility && isPresentationLive" "$search_map_native_render_owner_file"
+  ! rg -q --fixed-strings "const effectiveCommitVisibleLabelHits = isPresentationLive" "$search_map_native_render_owner_file"
 }; then
-  echo "[app-route-runtime-delete-gate] FAIL search_map_label_interaction_live_before_settle_gate: Label interaction observation should start when presentation is live, not wait for results enter to settle." >&2
+  echo "[app-route-runtime-delete-gate] FAIL search_map_label_interaction_live_before_settle_gate: Visible label observation should start when presentation is live, not wait for results enter to settle." >&2
   failures=$((failures + 1))
 else
   echo "[app-route-runtime-delete-gate] PASS search_map_label_interaction_live_before_settle_gate"
+fi
+
+if [[ -e "$search_map_component_file" ]] &&
+  [[ -e "$search_map_render_controller_file" ]] &&
+  [[ -e "$search_map_render_controller_native_file" ]] &&
+  [[ -e "$search_map_render_controller_android_file" ]] &&
+  [[ -e "$search_map_render_controller_ios_bridge_file" ]] && {
+    ! rg -q --fixed-strings "searchMapRenderController.platform === 'ios' ||" "$search_map_component_file" ||
+    ! rg -q --fixed-strings "searchMapRenderController.platform === 'android'" "$search_map_component_file" ||
+    ! rg -q --fixed-strings "handleMapViewPress = nativePressOwnerEnabled ? undefined : handleMapPress" "$search_map_component_file" ||
+    ! rg -q --fixed-strings "handleMarkerScenePressTarget = nativePressOwnerEnabled ? undefined : handleMapPress" "$search_map_component_file" ||
+    ! rg -q --fixed-strings ".configureNativePressTargeting({" "$search_map_component_file" ||
+    ! rg -q --fixed-strings "type: 'native_press_target_resolved'" "$search_map_render_controller_file" ||
+    ! rg -q --fixed-strings "configureNativePressTargeting is required on \${Platform.OS}" "$search_map_render_controller_file" ||
+    rg -q --fixed-strings "pinTapHitbox" "$search_map_render_controller_file" ||
+    ! rg -q --fixed-strings "private final class NativePressLifecycleGestureRecognizer" "$search_map_render_controller_native_file" ||
+    ! rg -q --fixed-strings "\"type\": \"native_press_target_resolved\"" "$search_map_render_controller_native_file" ||
+    ! rg -q --fixed-strings "public void configureNativePressTargeting(ReadableMap payload, Promise promise)" "$search_map_render_controller_android_file" ||
+    ! rg -q --fixed-strings "handleNativePressTouch(state.mapTag, motionEvent)" "$search_map_render_controller_android_file" ||
+    ! rg -q --fixed-strings "native_press_target_resolved" "$search_map_render_controller_android_file" ||
+    ! rg -q --fixed-strings "RCT_EXTERN_METHOD(configureNativePressTargeting:(NSDictionary *)payload" "$search_map_render_controller_ios_bridge_file"
+  }; then
+  echo "[app-route-runtime-delete-gate] FAIL search_map_native_first_press_owner_gate: Map press ownership must stay native-first on iOS and Android, with RNMBX press handlers disabled and no stale generic pin hitbox path." >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS search_map_native_first_press_owner_gate"
 fi
 
 if [[ -e "$search_map_component_file" ]] && [[ -e "$search_map_render_controller_file" ]] && {
@@ -637,15 +706,28 @@ if [[ -e "$search_map_component_file" ]] && [[ -e "$search_map_render_controller
   ! rg -q --fixed-strings "handleMapPress" "$search_map_component_file" ||
   ! rg -q --fixed-strings "onBlankMapPress" "$search_map_component_file" ||
   ! rg -q --fixed-strings "pinLayerIds: pinInteractionLayerIds" "$search_map_component_file" ||
-  ! rg -q --fixed-strings "labelLayerIds: labelInteractionLayerIds" "$search_map_component_file" ||
-  ! rg -q --fixed-strings "dotLayerIds: [dotLayerId]" "$search_map_component_file" ||
+  ! rg -q --fixed-strings "labelLayerIds: labelVisualLayerIds" "$search_map_component_file" ||
+  ! rg -q --fixed-strings "dotLayerIds: [visibleDotLayerId]" "$search_map_component_file" ||
   rg -q --fixed-strings "pressKind: SearchMapPressResolutionKind" "$search_map_component_file" ||
   rg -q --fixed-strings "source_press" "$search_map_component_file" ||
   rg -q --fixed-strings "includeLabels" "$search_map_component_file" ||
   rg -q --fixed-strings "LABEL_VISUAL_LAYER_IDS" "$search_map_component_file" ||
+  rg -q --fixed-strings "LABEL_INTERACTION_SOURCE_ID" "$search_map_component_file" ||
+  rg -q --fixed-strings "labelInteractionSourceId" "$search_map_component_file" ||
+  rg -q --fixed-strings "labelInteractions" "$search_map_component_file" ||
+  rg -q --fixed-strings "labelInteractionSourceId" "$search_map_render_controller_file" ||
+  rg -q --fixed-strings "labelInteractions" "$search_map_render_controller_file" ||
   rg -q --fixed-strings "labelLayerIds: [...labelInteractionLayerIds, ...labelVisualLayerIds]" "$search_map_component_file" ||
-  rg -q --fixed-strings "dotLayerId: DOT_LAYER_ID" "$search_map_component_file" ||
-  ! rg -q --fixed-strings "dotLayerId: DOT_INTERACTION_LAYER_ID" "$search_map_component_file" ||
+  ! rg -q --fixed-strings "visibleDotLayerId: DOT_LAYER_ID" "$search_map_component_file" ||
+  rg -q --fixed-strings "DOT_INTERACTION_LAYER_ID" "$search_map_component_file" ||
+  rg -q --fixed-strings "DOT_INTERACTION_LAYER_STYLE" "$search_map_component_file" ||
+  rg -q --fixed-strings "DOT_INTERACTION_SOURCE_ID" "$search_map_component_file" ||
+  rg -q --fixed-strings "dotInteractionSourceId" "$search_map_component_file" ||
+  rg -q --fixed-strings "dotInteractions" "$search_map_component_file" ||
+  rg -q --fixed-strings "dotInteractionSourceId" "$search_map_render_controller_file" ||
+  rg -q --fixed-strings "dotInteractions" "$search_map_render_controller_file" ||
+  rg -q --fixed-strings "dotLayerId: DOT_INTERACTION_LAYER_ID" "$search_map_component_file" ||
+  ! rg -q --fixed-strings "requiredSourceId: state.dotSourceId" "$search_map_render_controller_native_file" ||
   rg -q --fixed-strings "getPressEventFeatureFallbackTarget" "$search_map_component_file" ||
   rg -q --fixed-strings "getLabelRestaurantPressTargetFromFeature" "$search_map_component_file" ||
   rg -q --fixed-strings "pressEventTargetsMarkerFeature" "$search_map_component_file" ||
@@ -666,24 +748,32 @@ if [[ -e "$search_map_component_file" ]] && [[ -e "$search_map_render_controller
 	  rg -q --fixed-strings "resolveInteractionPressTargetFromEvent" "$search_map_component_file" ||
 	  rg -q --fixed-strings "eventPressTarget" "$search_map_component_file" ||
 	  rg -q --pcre2 'event\\.features[\\s\\S]{0,320}commitRestaurantPressTarget' "$search_map_component_file" ||
-	  ! rg -q --fixed-strings "id={STYLE_PINS_SOURCE_ID}" "$search_map_component_file" ||
-	  ! rg -q --fixed-strings "stylePinLayerStack.concat(pinInteractionLayerStack)" "$search_map_component_file" ||
-	  ! rg -q --fixed-strings "sourceID={STYLE_PINS_SOURCE_ID}" "$search_map_component_file" ||
-	  ! rg -q --fixed-strings "id={PIN_INTERACTION_SOURCE_ID}" "$search_map_component_file" ||
-	  rg -q --fixed-strings "onPress={handleStylePinPress}" "$search_map_component_file" ||
-	  rg -q --fixed-strings "onPress={handleLabelPress}" "$search_map_component_file" ||
-	  rg -q --fixed-strings "onPress={handleDotPress}" "$search_map_component_file" ||
-	  rg -q --fixed-strings "pinInteractionEventLayerStack" "$search_map_component_file" ||
-	  ! rg -q --fixed-strings "requiredSourceId: state.pinSourceId" "$search_map_render_controller_native_file" ||
-	  [[ -e "$search_map_render_controller_android_file" ]] &&
-	    ! rg -q --fixed-strings "state.pinSourceId" "$search_map_render_controller_android_file" ||
-	  ! rg -q --fixed-strings "targetKind: 'pin' | 'label' | 'dot'" "$search_map_render_controller_file" ||
-  rg -q --fixed-strings "Set([state.labelInteractionSourceId, state.labelSourceId])" "$search_map_render_controller_native_file" ||
+	  rg -q --fixed-strings "id={STYLE_PINS_SOURCE_ID}" "$search_map_component_file" ||
+		  rg -q --fixed-strings "id={PIN_INTERACTION_SOURCE_ID}" "$search_map_component_file" ||
+		  ! rg -q --fixed-strings "id={pinSlotSourceIds[slotIndex]}" "$search_map_component_file" ||
+		  ! rg -q --fixed-strings "sourceID={pinSlotSourceIds[slotIndex]}" "$search_map_component_file" ||
+		  rg -q --fixed-strings "pinInteractionSlotSourceIds" "$search_map_component_file" ||
+		  rg -q --fixed-strings "onPress={handleStylePinPress}" "$search_map_component_file" ||
+		  rg -q --fixed-strings "onPress={handleLabelPress}" "$search_map_component_file" ||
+		  rg -q --fixed-strings "onPress={handleDotPress}" "$search_map_component_file" ||
+		  rg -q --fixed-strings "pinInteractionEventLayerStack" "$search_map_component_file" ||
+		  rg -q --fixed-strings "requiredSourceId: state.pinInteractionSourceId" "$search_map_render_controller_native_file" ||
+		  rg -q --fixed-strings "pinInteractionSlotSourceIds" "$search_map_render_controller_native_file" ||
+		  [[ -e "$search_map_render_controller_android_file" ]] &&
+		    rg -q --fixed-strings "pinInteractionSlotSourceIds" "$search_map_render_controller_android_file" ||
+		  ! rg -q --fixed-strings "targetKind: 'pin' | 'label' | 'dot'" "$search_map_render_controller_file" ||
+  rg -q --fixed-strings "labelInteractionSourceId" "$search_map_render_controller_native_file" ||
+  rg -q --fixed-strings "labelInteractions" "$search_map_render_controller_native_file" ||
   rg -q --pcre2 'guard let hitbox else \{\s*return true\s*\}' "$search_map_render_controller_native_file" ||
   [[ -e "$search_map_render_controller_android_file" ]] &&
     rg -q --pcre2 'if \(hitbox == null\) \{\s*return true;' "$search_map_render_controller_android_file" ||
-  ! rg -q --fixed-strings "let labelSourceIds = Set([state.labelInteractionSourceId])" "$search_map_render_controller_native_file" ||
-  ! rg -q --fixed-strings "requiredSourceIds: Set<String>" "$search_map_render_controller_native_file"
+  [[ -e "$search_map_render_controller_android_file" ]] &&
+    rg -q --fixed-strings "labelInteractionSourceId" "$search_map_render_controller_android_file" ||
+  [[ -e "$search_map_render_controller_android_file" ]] &&
+    rg -q --fixed-strings "labelInteractions" "$search_map_render_controller_android_file" ||
+  rg -q --fixed-strings "let labelSourceIds = Set([state.labelSourceId])" "$search_map_render_controller_native_file" ||
+	  rg -q --fixed-strings "labelSlotSourceIds" "$search_map_render_controller_native_file" ||
+	  ! rg -q --fixed-strings "requiredSourceIds: Set<String>" "$search_map_render_controller_native_file"
 }; then
   echo "[app-route-runtime-delete-gate] FAIL search_map_restaurant_press_target_gate: Map presses must resolve once through native rendered-layer pin, label, and dot targets without ShapeSource feature fallbacks." >&2
   failures=$((failures + 1))
@@ -695,13 +785,85 @@ if [[ -e "$search_map_render_controller_android_file" ]] && {
   ! rg -q --fixed-strings "ArrayList<String> dotLayerIds" "$search_map_render_controller_android_file" ||
   ! rg -q --fixed-strings "queryRenderedDotPressTarget(" "$search_map_render_controller_android_file" ||
   ! rg -q --fixed-strings "buildRenderedDotPressTarget(" "$search_map_render_controller_android_file" ||
-  ! rg -q --fixed-strings "state.dotInteractionSourceId" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "state.dotSourceId" "$search_map_render_controller_android_file" ||
   rg -q --fixed-strings "pinLayerIds.isEmpty() && labelLayerIds.isEmpty())" "$search_map_render_controller_android_file"
 }; then
-  echo "[app-route-runtime-delete-gate] FAIL search_map_android_press_target_parity_gate: Android press target resolution must support dot interaction layers and avoid the old pin/label-only resolver." >&2
+  echo "[app-route-runtime-delete-gate] FAIL search_map_android_press_target_parity_gate: Android press target resolution must support visible glyph dot layers and avoid the old pin/label-only resolver." >&2
   failures=$((failures + 1))
 else
   echo "[app-route-runtime-delete-gate] PASS search_map_android_press_target_parity_gate"
+fi
+
+if [[ -e "$search_map_component_file" ]] &&
+  [[ -e "$search_map_render_controller_file" ]] &&
+  [[ -e "$search_map_render_controller_native_file" ]] &&
+  [[ -e "$search_map_render_controller_android_file" ]] && {
+	    ! rg -q --fixed-strings "const buildLabelVisualLayerId" "$search_map_component_file" ||
+	    ! rg -q --fixed-strings "pinStackSlotCount: number;" "$search_map_component_file" ||
+	    ! rg -q --fixed-strings "filter={buildLabelPlacementFilter(preferredCandidate, candidate)}" "$search_map_component_file" ||
+	    ! rg -q --fixed-strings "pinSlotSourceIds" "$search_map_component_file" ||
+	    rg -q --fixed-strings "pinInteractionSlotSourceIds" "$search_map_component_file" ||
+	    rg -q --fixed-strings "labelSlotSourceIds" "$search_map_component_file" ||
+	    rg -q --fixed-strings "labelCollisionSlotSourceIds" "$search_map_component_file" ||
+	    ! rg -q --fixed-strings "labelLayerIds: labelVisualLayerIds" "$search_map_component_file" ||
+    ! rg -q --fixed-strings "labelCollisionLayerIds" "$search_map_component_file" ||
+    ! rg -q --fixed-strings "id={RESTAURANT_LABEL_COLLISION_SOURCE_ID}" "$search_map_component_file" ||
+    ! rg -q --fixed-strings "configureNativeLayerGroups" "$search_map_render_controller_file" ||
+    ! rg -q --fixed-strings "visibleDotLayerId: DOT_LAYER_ID" "$search_map_component_file" ||
+    ! rg -q --fixed-strings "labelPreference: 'bottom'" "$TARGET_PATH/screens/Search/hooks/use-direct-search-map-source-controller.ts" ||
+    ! rg -q --fixed-strings "state.labelLayerIds" "$search_map_render_controller_native_file" ||
+    ! rg -q --fixed-strings "state.labelCollisionLayerIds" "$search_map_render_controller_native_file" ||
+    ! rg -q --fixed-strings "state.labelLayerIds" "$search_map_render_controller_android_file" ||
+    ! rg -q --fixed-strings "state.labelCollisionLayerIds" "$search_map_render_controller_android_file" ||
+    rg -q --fixed-strings "resolveRenderedProbeLayerIds" "$search_map_render_controller_native_file" ||
+    rg -q --fixed-strings "resolveLayerIdsForSource" "$search_map_render_controller_android_file" ||
+    rg -q --fixed-strings "LABEL_PLACEMENT_LAYER_IDS" "$search_map_render_controller_android_file" ||
+    rg -q --fixed-strings "LABEL_COLLISION_OBSTACLE_LAYER_IDS" "$search_map_render_controller_android_file" ||
+    rg -q --fixed-strings "DOT_PLACEMENT_LAYER_IDS" "$search_map_render_controller_android_file" ||
+    rg -q --fixed-strings "PlacementLayersFadeOnly" "$search_map_render_controller_native_file" ||
+    rg -q --fixed-strings "PlacementLayersFadeOnly" "$search_map_render_controller_android_file" ||
+    rg -q --fixed-strings "placement_layer_fade_only" "$search_map_render_controller_native_file" ||
+    rg -q --fixed-strings "placement_layer_fade_only" "$search_map_render_controller_android_file" ||
+    rg -q --fixed-strings "allowFallback" "$search_map_component_file" ||
+    rg -q --fixed-strings "allowFallback" "$search_map_render_controller_file" ||
+    rg -q --fixed-strings "allowFallback" "$search_map_render_controller_native_file" ||
+    rg -q --fixed-strings "allowFallback" "$search_map_render_controller_android_file" ||
+    rg -q --fixed-strings "enableStickyLabelCandidates" "$search_map_component_file" ||
+    rg -q --fixed-strings "sticky" "$search_map_render_controller_file" ||
+    rg -q --fixed-strings "sticky" "$search_map_render_controller_native_file" ||
+    rg -q --fixed-strings "sticky" "$search_map_render_controller_android_file" ||
+    rg -q --fixed-strings "placedLabels" "$search_map_render_controller_file" ||
+    rg -q --fixed-strings "placedLabels" "$search_map_render_controller_native_file" ||
+    rg -q --fixed-strings "placedLabels" "$search_map_render_controller_android_file" ||
+    rg -q --fixed-strings "nativeLabelPreference" "$search_map_render_controller_android_file" ||
+    rg -q --fixed-strings "DOT_LAYER_IDS" "$search_map_render_controller_file" ||
+    rg -q --fixed-strings "DOT_LAYER_IDS" "$search_map_component_file" ||
+    rg -q --fixed-strings "slot_layer_order" "$search_map_render_controller_native_file" ||
+    rg -q --fixed-strings "native_pin_slot_layer_order" "$search_map_render_controller_native_file" ||
+    rg -q --fixed-strings "applyNativePinSlotLayerOrderIfNeeded" "$search_map_render_controller_native_file" ||
+    rg -q --fixed-strings "lastPinSlotLayerOrderSignature" "$search_map_render_controller_native_file" ||
+    rg -q --fixed-strings "searchPinsZAnchorLayerId" "$search_map_render_controller_native_file" ||
+    rg -q --fixed-strings "buildViewportYSlotMap" "$TARGET_PATH/screens/Search/utils/map-render-model.ts" ||
+    ! rg -q --fixed-strings "buildStableSlotMap" "$TARGET_PATH/screens/Search/utils/map-render-model.ts" ||
+    ! rg -q --fixed-strings "pin_visual_order.apply_diff" "$search_map_render_controller_native_file"
+  }; then
+  echo "[app-route-runtime-delete-gate] FAIL search_map_per_pin_group_owner_gate: Per-slot promoted groups must own pin/label layers, shared collision obstacles must stay above all labels, visible glyph dots must own dot press, stable slots must be separate from native visual-order diff, and sticky/fallback/broad layer-order writers must stay deleted." >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS search_map_per_pin_group_owner_gate"
+fi
+
+if [[ -e "$search_map_render_controller_android_file" ]] && {
+  ! rg -q --fixed-strings "final Set<String> highlightedMarkerKeys = new LinkedHashSet<>()" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "String highlightedRestaurantId;" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "parseStringSet(payload, \"highlightedMarkerKeys\")" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "restaurantIdFromFeature(feature)" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "Generic suppression disables native press resolution through interactionMode" "$search_map_render_controller_android_file"
+}; then
+  echo "[app-route-runtime-delete-gate] FAIL search_map_android_highlight_group_parity_gate: Android map render owner must honor iOS selected-location groups and must not clear mounted interaction sources for non-terminal suppression." >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS search_map_android_highlight_group_parity_gate"
 fi
 
 profile_command_executor_file="$TARGET_PATH/screens/Search/runtime/profile/profile-prepared-presentation-command-executor.ts"
@@ -1030,6 +1192,12 @@ nav_silhouette_host_file="$TARGET_PATH/overlays/NavSilhouetteHost.tsx"
 search_bottom_nav_file="$TARGET_PATH/screens/Search/components/SearchBottomNav.tsx"
 nav_silhouette_host_native_file="$TARGET_PATH/overlays/SearchRouteNavSilhouetteHostNativeView.tsx"
 native_nav_silhouette_file="$REPO_ROOT/apps/mobile/ios/cravesearch/SearchRouteSheetNavExclusionMaskView.swift"
+android_package_file="$REPO_ROOT/apps/mobile/android/app/src/main/java/com/crave/SearchMapRenderControllerPackage.java"
+android_sheet_mask_view_file="$REPO_ROOT/apps/mobile/android/app/src/main/java/com/crave/SearchRouteSheetNavExclusionMaskView.java"
+android_nav_silhouette_view_file="$REPO_ROOT/apps/mobile/android/app/src/main/java/com/crave/SearchRouteNavSilhouetteHostView.java"
+android_bottom_sheet_host_file="$REPO_ROOT/apps/mobile/android/app/src/main/java/com/crave/BottomSheetHostView.java"
+android_bottom_sheet_host_manager_file="$REPO_ROOT/apps/mobile/android/app/src/main/java/com/crave/BottomSheetHostViewManager.java"
+android_native_root="$REPO_ROOT/apps/mobile/android/app/src/main/java/com/crave"
 if [[ -e "$nav_silhouette_authority_file" ]] && {
   ! rg -q --fixed-strings "const isPersistentAppRouteNavSilhouetteMode =" "$nav_silhouette_authority_file" ||
   ! rg -q --fixed-strings "return isPersistentAppRouteNavSilhouetteMode(mode) ? 0 : Math.max(0, navTranslateY);" "$nav_silhouette_authority_file"
@@ -1094,6 +1262,102 @@ else
   echo "[app-route-runtime-delete-gate] PASS native_nav_material_mask_sync_gate"
 fi
 
+if [[ -e "$android_package_file" ]] && {
+  ! rg -q --fixed-strings "managers.add(new SearchRouteSheetNavExclusionMaskViewManager())" "$android_package_file" ||
+  ! rg -q --fixed-strings "managers.add(new SearchRouteNavSilhouetteHostViewManager())" "$android_package_file" ||
+  ! rg -q --fixed-strings "modules.add(new UIFrameSamplerModule(reactContext))" "$android_package_file" ||
+  ! rg -q --fixed-strings "canvas.clipOutRect" "$android_sheet_mask_view_file" ||
+  ! rg -q --fixed-strings "Path.FillType.EVEN_ODD" "$android_nav_silhouette_view_file"
+}; then
+  echo "[app-route-runtime-delete-gate] FAIL android_native_nav_silhouette_parity_gate: Android must register the same nav mask/material host contracts that JS renders for iOS." >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS android_native_nav_silhouette_parity_gate"
+fi
+
+if [[ -d "$android_native_root" ]] && rg -q --fixed-strings "RestaurantPanelSnapshot" "$android_native_root"; then
+  echo "[app-route-runtime-delete-gate] FAIL android_stale_restaurant_snapshot_view_deleted_gate: Android must not carry the old platform-only restaurant snapshot native view with no shared JS/iOS contract." >&2
+  rg -n --fixed-strings "RestaurantPanelSnapshot" "$android_native_root" >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS android_stale_restaurant_snapshot_view_deleted_gate"
+fi
+
+if [[ -e "$android_bottom_sheet_host_file" && -e "$android_bottom_sheet_host_manager_file" ]] && {
+  rg -q --pcre2 'lastCommandToken\s*=\s*token;[\s\S]{0,160}dispatchProgrammaticCommand\(snapTo, token\);' "$android_bottom_sheet_host_file" ||
+  rg -q --fixed-strings "hiddenSnap - 80f" "$android_bottom_sheet_host_file" ||
+  rg -q --fixed-strings "float dragDelta = value - gestureStartY;" "$android_bottom_sheet_host_file" ||
+  ! rg -q --fixed-strings "resolveHeaderGatedSnapValue(" "$android_bottom_sheet_host_file" ||
+  ! rg -q --fixed-strings "SNAP_VELOCITY_PROJECTION_SECONDS" "$android_bottom_sheet_host_file" ||
+  ! rg -q --fixed-strings "hasAppliedSnapPoints" "$android_bottom_sheet_host_file" ||
+  ! rg -q --fixed-strings "isKnownSnapPoint(snapTo)" "$android_bottom_sheet_host_file" ||
+  ! rg -q --fixed-strings "public void onAnimationCancel(android.animation.Animator animation)" "$android_bottom_sheet_host_file" ||
+  ! rg -q --fixed-strings "@ReactProp(name = \"snapStepThreshold\")" "$android_bottom_sheet_host_manager_file"
+}; then
+  echo "[app-route-runtime-delete-gate] FAIL android_bottom_sheet_host_ios_parity_gate: Android bottom sheet commands and gesture snap resolution must match the iOS shared-sheet host contract." >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS android_bottom_sheet_host_ios_parity_gate"
+fi
+
+if [[ -e "$search_map_render_controller_android_file" ]] && {
+  ! rg -q --fixed-strings "private boolean isVisualSourceInactiveOrDismissing(InstanceState state)" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "VISUAL_SOURCE_HIDDEN.equals(state.visualSourceLifecycleState)" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "state.visualSourceLifecycleState = VISUAL_SOURCE_DISMISSING;" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "frame_snapshot_bypass reason=dismiss_in_progress" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "isNativePressSuppressed(state)" "$search_map_render_controller_android_file"
+}; then
+  echo "[app-route-runtime-delete-gate] FAIL search_map_android_exit_visual_freeze_parity_gate: Android must freeze visual source/highlight mutation during dismiss like iOS." >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS search_map_android_exit_visual_freeze_parity_gate"
+fi
+
+if [[ -e "$search_map_render_controller_android_file" ]] && {
+  ! rg -q --fixed-strings "String visualSourceLifecycleState;" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "labelCollisionObstacleLayersVisible" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "sourceReadyFrameGenerationId" "$search_map_render_controller_android_file" ||
+	  ! rg -q --fixed-strings "keepSourcesHiddenUntilEnter" "$search_map_render_controller_android_file" ||
+	  ! rg -q --fixed-strings "beginRevealVisualLifecycle(" "$search_map_render_controller_android_file" ||
+	  ! rg -q --fixed-strings "beginDismissVisualLifecycle(" "$search_map_render_controller_android_file" ||
+	  rg -q --fixed-strings "freezeVisibleDismissLabelSourceForFade(" "$search_map_render_controller_android_file" ||
+	  ! rg -q --fixed-strings "clearResidentSourcesAndTransientFeatureStates(" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "restoreResidentDesiredSourceCacheForEnter(" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "restartLiveEnterTransitionsForRevealStart(" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "isLivePinTransitionPhase(" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "LIVE_PIN_TRANSITION_DURATION_MS = 300L" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "startAwaitingLivePinTransitions(instanceId, null, null, state);" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "startAwaitingLiveDotTransitions(instanceId, null, state);" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "private boolean shouldStartAwaitingTransition(" "$search_map_render_controller_android_file" ||
+  ! rg -q -U --pcre2 'shouldStartAwaitingTransition[\s\S]{0,180}acknowledgedDataId == null[\s\S]{0,80}return true' "$search_map_render_controller_android_file" ||
+	  ! rg -q --fixed-strings "hasPendingCommitFence(capturePendingVisualSourceCommitFence(state))" "$search_map_render_controller_android_file" ||
+	  rg -q --fixed-strings "hasPendingVisualSourceCommits(" "$search_map_render_controller_android_file" ||
+	  rg -q -U --pcre2 'capturePendingVisualSourceCommitFence[\s\S]{0,420}state\.labelCollisionSlotSourceIds' "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "isActiveFrameSourceReady(" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "isActiveFrameLabelPlacementReady(" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "state.labelCollisionLayerIds" "$search_map_render_controller_android_file" ||
+  ! rg -q --fixed-strings "state.labelLayerIds" "$search_map_render_controller_android_file"
+}; then
+  echo "[app-route-runtime-delete-gate] FAIL search_map_android_visual_lifecycle_ios_parity_gate: Android must port the iOS visual-source lifecycle authority, not rely on loose render phase strings." >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS search_map_android_visual_lifecycle_ios_parity_gate"
+fi
+
+if [[ -e "$android_native_root/UIFrameSamplerModule.java" ]] && {
+  ! rg -q --fixed-strings "new Handler(Looper.getMainLooper())" "$android_native_root/UIFrameSamplerModule.java" ||
+  ! rg -q --fixed-strings "mainHandler.post(() -> startOnMain" "$android_native_root/UIFrameSamplerModule.java" ||
+  ! rg -q --fixed-strings "mainHandler.post(this::stopOnMain)" "$android_native_root/UIFrameSamplerModule.java" ||
+  ! rg -q --fixed-strings "DEFAULT_WINDOW_MS = 500d" "$android_native_root/UIFrameSamplerModule.java" ||
+  ! rg -q --fixed-strings "DEFAULT_STALL_FRAME_MS = 80d" "$android_native_root/UIFrameSamplerModule.java" ||
+  ! rg -q --fixed-strings "DEFAULT_LOG_ONLY_BELOW_FPS = 58d" "$android_native_root/UIFrameSamplerModule.java"
+}; then
+  echo "[app-route-runtime-delete-gate] FAIL android_ui_frame_sampler_ios_parity_gate: Android UIFrameSampler must sample on the UI thread with the same defaults/listener semantics as iOS." >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS android_ui_frame_sampler_ios_parity_gate"
+fi
+
 if [[ -e "$search_route_sheet_frame_host_file" || -e "$search_bottom_nav_file" || -e "$nav_silhouette_host_native_file" || -e "$native_nav_silhouette_file" ]] && {
   rg -q --fixed-strings "onMaskPerfEvent" "$search_route_sheet_frame_host_file" "$nav_silhouette_host_native_file" "$native_nav_silhouette_file" 2>/dev/null ||
   rg -q --fixed-strings "onMaterialPerfEvent" "$search_bottom_nav_file" "$nav_silhouette_host_native_file" "$native_nav_silhouette_file" 2>/dev/null ||
@@ -1143,10 +1407,10 @@ else
 fi
 
 if rg -q --fixed-strings "snapPersistenceKey" "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" 2>/dev/null ||
-   rg -q -U --pcre2 "normalizeSearchRouteSceneStackShellSpec\\(\\{[\\s\\S]{0,700}initialSnapPoint" "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" 2>/dev/null; then
-  echo "[app-route-runtime-delete-gate] FAIL shared_sheet_page_owned_motion_fields_deleted_gate: Scene descriptors must not publish snap persistence or initial snap; SheetScenePolicy and SheetTransitionPlan own those fields." >&2
+   rg -q -U --pcre2 "normalizeSearchRouteSceneStackShellSpec\\(\\{[\\s\\S]{0,700}\\b(initialSnapPoint|dismissThreshold|onHidden|onSnapStart|onSnapChange|preventSwipeDismiss|runtimeModel|shellSnapRequest)\\b" "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" 2>/dev/null; then
+  echo "[app-route-runtime-delete-gate] FAIL shared_sheet_page_owned_motion_fields_deleted_gate: Scene descriptors must not publish snap persistence, initial snap, swipe-dismiss config, sheet callbacks, runtime model, or direct sheet commands; SheetScenePolicy and SheetTransitionPlan own those fields." >&2
   rg -n --fixed-strings "snapPersistenceKey" "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" >&2 || true
-  rg -n -U --pcre2 "normalizeSearchRouteSceneStackShellSpec\\(\\{[\\s\\S]{0,700}initialSnapPoint" "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" >&2 || true
+  rg -n -U --pcre2 "normalizeSearchRouteSceneStackShellSpec\\(\\{[\\s\\S]{0,700}\\b(initialSnapPoint|dismissThreshold|onHidden|onSnapStart|onSnapChange|preventSwipeDismiss|runtimeModel|shellSnapRequest)\\b" "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" >&2 || true
   failures=$((failures + 1))
 else
   echo "[app-route-runtime-delete-gate] PASS shared_sheet_page_owned_motion_fields_deleted_gate"
@@ -1171,12 +1435,115 @@ else
   echo "[app-route-runtime-delete-gate] PASS profile_native_sheet_command_lane_deleted_gate"
 fi
 
-if rg -q --pcre2 "requestLocalSheetMotion\\(\\s*['\"](polls|pollCreation|restaurant|bookmarks|profile|favoriteListDetail|saveList)['\"]" "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" 2>/dev/null; then
-  echo "[app-route-runtime-delete-gate] FAIL page_local_motion_writer_deleted_gate: Pages and child scenes must open through SheetTransitionPlan, not local sheet-motion writers." >&2
-  rg -n --pcre2 "requestLocalSheetMotion\\(\\s*['\"](polls|pollCreation|restaurant|bookmarks|profile|favoriteListDetail|saveList)['\"]" "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" >&2
+if rg -q --pcre2 "\\brequestLocalSheetMotion\\b|\\bpendingLocalSheetMotion\\b|\\breplayPendingLocalSheetMotion\\b|\\brequestBootstrapSheetMotion\\b" "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" 2>/dev/null; then
+  echo "[app-route-runtime-delete-gate] FAIL page_local_motion_writer_deleted_gate: Sheet motion must be SheetTransitionPlan-owned; page/local and direct bootstrap sheet-motion writers must not return." >&2
+  rg -n --pcre2 "\\brequestLocalSheetMotion\\b|\\bpendingLocalSheetMotion\\b|\\breplayPendingLocalSheetMotion\\b|\\brequestBootstrapSheetMotion\\b" "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" >&2
   failures=$((failures + 1))
 else
   echo "[app-route-runtime-delete-gate] PASS page_local_motion_writer_deleted_gate"
+fi
+
+if rg -q --pcre2 "\\bsetSheetTranslateYTo\\b|\\bsheetTranslateY\\.value\\s*=" "$TARGET_PATH/navigation/runtime" "$TARGET_PATH/screens/Search/runtime/shared" 2>/dev/null; then
+  echo "[app-route-runtime-delete-gate] FAIL route_sheet_direct_y_writer_gate: Shared sheet Y must be written by the sheet host/bottom-sheet transport, not page or visibility runtimes." >&2
+  rg -n --pcre2 "\\bsetSheetTranslateYTo\\b|\\bsheetTranslateY\\.value\\s*=" "$TARGET_PATH/navigation/runtime" "$TARGET_PATH/screens/Search/runtime/shared" >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS route_sheet_direct_y_writer_gate"
+fi
+
+if rg -q --pcre2 "\\b(AppRouteResultsSheet|appRouteResultsSheet|RouteResultsSheet|routeResultsSheet)\\b|app-route-results-sheet|route-results-sheet|\\b(resultsSheetRuntimeModel|resultsContainerAnimatedStyle|resultsScrollOffset|resultsMomentum|shouldRenderResultsSheetRef|resetResultsSheetToHidden|prepareShortcutSheetTransition|handleSheetSnapChange)\\b" "$TARGET_PATH/navigation/runtime" "$TARGET_PATH/screens/Search/runtime/shared" 2>/dev/null; then
+  echo "[app-route-runtime-delete-gate] FAIL shared_sheet_legacy_results_name_gate: Route-owned shared sheet runtime must not use legacy results-sheet ownership names." >&2
+  rg -n --pcre2 "\\b(AppRouteResultsSheet|appRouteResultsSheet|RouteResultsSheet|routeResultsSheet)\\b|app-route-results-sheet|route-results-sheet|\\b(resultsSheetRuntimeModel|resultsContainerAnimatedStyle|resultsScrollOffset|resultsMomentum|shouldRenderResultsSheetRef|resetResultsSheetToHidden|prepareShortcutSheetTransition|handleSheetSnapChange)\\b" "$TARGET_PATH/navigation/runtime" "$TARGET_PATH/screens/Search/runtime/shared" >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS shared_sheet_legacy_results_name_gate"
+fi
+
+if rg -q --pcre2 "\\b(fallbackRuntimeModel|fallbackSheetY|fallbackSheetRuntimeModel|baseRuntimeModel|baseSheetY|FALLBACK_PRESENTATION_STATE|FALLBACK_CHROME_VISUAL_STATE)\\b" "$TARGET_PATH/navigation/runtime/AppRouteSheetHostRuntimeProvider.tsx" "$TARGET_PATH/navigation/runtime/use-app-route-sheet-frame-host-authority.ts" "$TARGET_PATH/navigation/runtime/app-route-sheet-frame-host-native-targets.ts" "$TARGET_PATH/navigation/runtime/app-route-sheet-host-authority-controller.ts" "$TARGET_PATH/screens/Search/runtime/shared/search-route-sheet-resolved-visual-selection-snapshot-contract.ts" 2>/dev/null; then
+  echo "[app-route-runtime-delete-gate] FAIL sheet_host_base_transport_fallback_name_gate: The sheet host must use the shared sheet runtime directly, with no compatibility fallback/base transport naming." >&2
+  rg -n --pcre2 "\\b(fallbackRuntimeModel|fallbackSheetY|fallbackSheetRuntimeModel|baseRuntimeModel|baseSheetY|FALLBACK_PRESENTATION_STATE|FALLBACK_CHROME_VISUAL_STATE)\\b" "$TARGET_PATH/navigation/runtime/AppRouteSheetHostRuntimeProvider.tsx" "$TARGET_PATH/navigation/runtime/use-app-route-sheet-frame-host-authority.ts" "$TARGET_PATH/navigation/runtime/app-route-sheet-frame-host-native-targets.ts" "$TARGET_PATH/navigation/runtime/app-route-sheet-host-authority-controller.ts" "$TARGET_PATH/screens/Search/runtime/shared/search-route-sheet-resolved-visual-selection-snapshot-contract.ts" >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS sheet_host_base_transport_fallback_name_gate"
+fi
+
+if rg -q --pcre2 "\\bmotionCallbacksEntry\\.onSnapChange\\b|\\brecordSharedSheetSnap\\b" "$TARGET_PATH/screens/Search/runtime/shared" 2>/dev/null; then
+  echo "[app-route-runtime-delete-gate] FAIL search_runtime_sheet_snap_commit_gate: Search may observe dismiss boundaries, but shared sheet snap state must be published by the sheet host/transport." >&2
+  rg -n --pcre2 "\\bmotionCallbacksEntry\\.onSnapChange\\b|\\brecordSharedSheetSnap\\b" "$TARGET_PATH/screens/Search/runtime/shared" >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS search_runtime_sheet_snap_commit_gate"
+fi
+
+if rg -q --fixed-strings "completeRouteSceneSwitchFromSettle" "$TARGET_PATH/navigation/runtime" 2>/dev/null; then
+  echo "[app-route-runtime-delete-gate] FAIL route_scene_raw_settle_finalize_gate: Raw settle callbacks must only mark transition planes ready; they must not directly finalize route switches." >&2
+  rg -n --fixed-strings "completeRouteSceneSwitchFromSettle" "$TARGET_PATH/navigation/runtime" >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS route_scene_raw_settle_finalize_gate"
+fi
+
+close_transition_finalize_file="$TARGET_PATH/screens/Search/runtime/shared/use-results-presentation-close-transition-finalize-runtime.ts"
+complete_dismiss_handoff_extra_callers="$(
+  rg -n --pcre2 "\\bcompleteDismissHandoff\\(" "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" 2>/dev/null |
+    grep -v "screens/Search/runtime/surface/search-surface-runtime.ts" |
+    grep -v "screens/Search/runtime/shared/use-results-presentation-close-transition-finalize-runtime.ts" || true
+)"
+if [[ -n "$complete_dismiss_handoff_extra_callers" ]] ||
+   [[ ! -e "$close_transition_finalize_file" ]] ||
+   ! rg -q --fixed-strings "getSearchSurfaceRuntime().completeDismissHandoff(closeIntentId)" "$close_transition_finalize_file"; then
+  echo "[app-route-runtime-delete-gate] FAIL search_dismiss_handoff_completion_single_owner_gate: Search dismiss handoff completion must be owned only by close-transition finalization, not raw settle/page callbacks." >&2
+  [[ -n "$complete_dismiss_handoff_extra_callers" ]] && echo "$complete_dismiss_handoff_extra_callers" >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS search_dismiss_handoff_completion_single_owner_gate"
+fi
+
+sheet_host_authority_file="$TARGET_PATH/navigation/runtime/app-route-sheet-host-authority-controller.ts"
+if [[ -e "$sheet_host_authority_file" ]] && {
+  ! rg -q --fixed-strings "routeSharedSheetPresentationRuntime.getSnapshot().sheetState" "$sheet_host_authority_file" ||
+  rg -q --pcre2 "resolveCurrentSnapTarget[\\s\\S]{0,520}\\b(hasUserSharedSnap|sharedSnap|resolvePolicyInitialSnap|getPersistentSnap)\\b" "$sheet_host_authority_file"
+}; then
+  echo "[app-route-runtime-delete-gate] FAIL route_sheet_transition_planner_live_snap_gate: SheetTransitionPlan current-snap resolution must read the live shared sheet state, not policy defaults or persisted snap memory." >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS route_sheet_transition_planner_live_snap_gate"
+fi
+
+sheet_snap_session_file="$TARGET_PATH/navigation/runtime/app-route-sheet-snap-session-runtime.ts"
+if [[ -e "$sheet_snap_session_file" ]] &&
+   rg -q --pcre2 "\\b(routeSceneSwitchActions|routeSceneTransitionAuthority|returnToDockedSearch|requestOverlaySwitch|clearDockedPollsRestoreIntent)\\b" "$sheet_snap_session_file" 2>/dev/null; then
+  echo "[app-route-runtime-delete-gate] FAIL route_sheet_snap_session_fact_only_gate: Sheet snap session may record snap facts and atomic snap-session state, but must not issue route/transition commands." >&2
+  rg -n --pcre2 "\\b(routeSceneSwitchActions|routeSceneTransitionAuthority|returnToDockedSearch|requestOverlaySwitch|clearDockedPollsRestoreIntent)\\b" "$sheet_snap_session_file" >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS route_sheet_snap_session_fact_only_gate"
+fi
+
+if [[ -e "$sheet_host_authority_file" ]] &&
+   rg -q --pcre2 "recordRouteSceneSnapFact[\\s\\S]{0,1400}\\b(requestOverlaySwitch|handleCloseSaveSheet|returnAppSearchRouteToDockedSearch)\\b" "$sheet_host_authority_file" 2>/dev/null; then
+  echo "[app-route-runtime-delete-gate] FAIL route_sheet_host_snap_fact_command_gate: Host snap facts may update snap-session facts/readiness, but must not directly issue route commands from the raw snap callback." >&2
+  rg -n --pcre2 "recordRouteSceneSnapFact|requestOverlaySwitch|handleCloseSaveSheet|returnAppSearchRouteToDockedSearch" "$sheet_host_authority_file" >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS route_sheet_host_snap_fact_command_gate"
+fi
+
+if [[ -d "$TARGET_PATH/overlays/panels" ]] &&
+   rg -q --pcre2 "\\brouteSceneSwitchRuntime\\.requestOverlaySwitch\\b|\\brouteOverlayTransitionActions\\.requestOverlaySwitch\\b" "$TARGET_PATH/overlays/panels" 2>/dev/null; then
+  echo "[app-route-runtime-delete-gate] FAIL panel_direct_sheet_transition_gate: Panel content must use route command actions, not direct SheetTransitionPlan dispatch." >&2
+  rg -n --pcre2 "\\brouteSceneSwitchRuntime\\.requestOverlaySwitch\\b|\\brouteOverlayTransitionActions\\.requestOverlaySwitch\\b" "$TARGET_PATH/overlays/panels" >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS panel_direct_sheet_transition_gate"
+fi
+
+if rg -q --pcre2 "requestOverlaySwitch\\(\\{[\\s\\S]{0,520}\\bsheetMotion\\b" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" 2>/dev/null; then
+  echo "[app-route-runtime-delete-gate] FAIL page_direct_sheet_transition_plan_gate: Page/runtime code must use route command actions for transitions that move the shared sheet." >&2
+  rg -n --pcre2 "requestOverlaySwitch\\(\\{[\\s\\S]{0,520}\\bsheetMotion\\b" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS page_direct_sheet_transition_plan_gate"
 fi
 
 transition_contract_file="$TARGET_PATH/navigation/runtime/app-overlay-route-transition-contract.ts"
@@ -1205,13 +1572,44 @@ fi
 if [[ -e "$native_render_owner_file" ]] && {
   ! rg -q --fixed-strings "const shouldQueueNativeEnterMountAckFrame =" "$native_render_owner_file" ||
   ! rg -q --fixed-strings "nextPresentationState.executionStage === 'enter_pending_mount'" "$native_render_owner_file" ||
-  ! rg -q --fixed-strings "preparedSourceFrameReadyForHiddenPreapply" "$native_render_owner_file" ||
+  ! rg -q --fixed-strings "sourceSnapshotKind !== 'pending'" "$native_render_owner_file" ||
   ! rg -q --fixed-strings "presentationRequestKey != null" "$native_render_owner_file"
 }; then
   echo "[app-route-runtime-delete-gate] FAIL search_native_enter_ack_queues_presentation_only_frame: Enter-pending-mount transactions with ready source data must be able to queue a native mounted-hidden ack frame." >&2
   failures=$((failures + 1))
 else
   echo "[app-route-runtime-delete-gate] PASS search_native_enter_ack_queues_presentation_only_frame"
+fi
+
+if [[ -e "$native_render_owner_file" && -e "$search_map_render_controller_native_file" && -e "$search_map_render_controller_android_file" ]] && {
+  ! rg -q --fixed-strings "type SearchMapVisualFrameTransaction" "$TARGET_PATH/screens/Search/runtime/map/search-map-render-controller.ts" ||
+  ! rg -q --fixed-strings "visualFrameTransaction" "$native_render_owner_file" ||
+  ! rg -q --fixed-strings "parseVisualFrameTransaction" "$search_map_render_controller_native_file" ||
+  ! rg -q --fixed-strings "parseVisualFrameTransaction" "$search_map_render_controller_android_file" ||
+  rg -q --fixed-strings "shouldSuppressIncompleteCoveredSourceApply" "$native_render_owner_file" ||
+  rg -q --fixed-strings "shouldSplitEnterSourcePreapply" "$native_render_owner_file" ||
+	  rg -q --fixed-strings "sourceSnapshotSyncMode" "$native_render_owner_file" ||
+	  rg -q --fixed-strings "residentSourceReuse" "$native_render_owner_file" ||
+	  rg -q --fixed-strings "shouldBuildSourceTransport" "$native_render_owner_file" ||
+	  rg -q --fixed-strings "lastAppliedFrame" "$native_render_owner_file" ||
+	  rg -q --fixed-strings "acknowledgedSourceRevisions" "$native_render_owner_file" ||
+	  rg -q --fixed-strings "NativeRenderOwnerResidentSourceState" "$native_render_owner_file" ||
+	  rg -q --fixed-strings "sourceReadiness" "$native_render_owner_file" ||
+	  rg -q --fixed-strings "sourceReadiness" "$TARGET_PATH/screens/Search/runtime/map/search-map-render-controller.ts" ||
+	  rg -q --fixed-strings "shouldDropHiddenSourcePayload" "$search_map_render_controller_native_file" ||
+	  rg -q --fixed-strings "shouldDropHiddenSourcePayload" "$search_map_render_controller_android_file" ||
+  rg -q --fixed-strings "shouldBypassEnterSnapshotApply" "$search_map_render_controller_native_file" ||
+  rg -q --fixed-strings "shouldBypassEnterSnapshotApply" "$search_map_render_controller_android_file" ||
+	  rg -q --fixed-strings "drop_hidden_source_payload" "$search_map_render_controller_native_file" ||
+	  rg -q --fixed-strings "drop_hidden_source_payload" "$search_map_render_controller_android_file" ||
+	  ! rg -q --fixed-strings "sourceAdmissionOutcome" "$TARGET_PATH/screens/Search/runtime/map/search-map-render-controller.ts" ||
+	  ! rg -q --fixed-strings "sourceAdmissionOutcome" "$search_map_render_controller_native_file" ||
+	  ! rg -q --fixed-strings "sourceAdmissionOutcome" "$search_map_render_controller_android_file"
+	}; then
+  echo "[app-route-runtime-delete-gate] FAIL search_map_visual_frame_transaction_admission_gate: JS must publish one VisualFrameTransaction and native must own hidden/enter/dismiss source admission." >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS search_map_visual_frame_transaction_admission_gate"
 fi
 
 direct_map_source_controller_file="$TARGET_PATH/screens/Search/hooks/use-direct-search-map-source-controller.ts"
@@ -1222,9 +1620,53 @@ else
   echo "[app-route-runtime-delete-gate] PASS search_map_source_preserves_resident_enter_frame"
 fi
 
+source_frame_publish_count=0
+if [[ -e "$direct_map_source_controller_file" ]]; then
+  source_frame_publish_count="$(rg -c --fixed-strings "sourceFramePort.publishSnapshot(" "$direct_map_source_controller_file" || true)"
+fi
+if [[ -e "$direct_map_source_controller_file" ]] && {
+  [[ "$source_frame_publish_count" != "1" ]] ||
+  ! rg -q --fixed-strings "const commitResidentSourceFrameSnapshot =" "$direct_map_source_controller_file" ||
+  ! rg -q --fixed-strings "adoptResidentSourceFrameSnapshot(snapshot);" "$direct_map_source_controller_file" ||
+  rg -q --fixed-strings "lodProposalPolicy" "$direct_map_source_controller_file" ||
+  rg -q --fixed-strings "proposedPromoteSinceByMarkerKey" "$direct_map_source_controller_file" ||
+  rg -q --fixed-strings "proposedDemoteSinceByMarkerKey" "$direct_map_source_controller_file" ||
+  rg -q --fixed-strings "assignInitialShortcutLodSlots" "$direct_map_source_controller_file" ||
+  rg -q --fixed-strings "shouldSeedInitialRankedShortcutFrame" "$direct_map_source_controller_file" ||
+  rg -q --fixed-strings "initialRankedShortcut" "$direct_map_source_controller_file" ||
+  rg -q --fixed-strings "previousPinSourceStoreRef.current = pinSourceStore" "$direct_map_source_controller_file" ||
+  rg -q --fixed-strings "previousDotSourceStoreRef.current = dotSourceStore" "$direct_map_source_controller_file" ||
+  rg -q --fixed-strings "previousPinInteractionSourceStoreRef.current = pinInteractionSourceStore" "$direct_map_source_controller_file" ||
+  rg -q --fixed-strings "previousDotInteractionSourceStoreRef.current = dotInteractionSourceStore" "$direct_map_source_controller_file" ||
+  rg -q --fixed-strings "dotInteractionSourceStore" "$direct_map_source_controller_file" ||
+  rg -q --fixed-strings "dotInteractions" "$search_map_native_render_owner_file" ||
+  rg -q --fixed-strings "previousLabelSourceStoreRef.current = labelSourceStore" "$direct_map_source_controller_file" ||
+  rg -q --fixed-strings "previousLabelCollisionSourceStoreRef.current = labelCollisionSourceStore" "$direct_map_source_controller_file" ||
+  rg -q --fixed-strings "lodPinnedMarkersRef.current = nextModel.nextPinnedMarkers" "$direct_map_source_controller_file" ||
+  rg -q --fixed-strings "lodPinnedVisualKeyRef.current = nextPinnedVisualKey" "$direct_map_source_controller_file"
+}; then
+  echo "[app-route-runtime-delete-gate] FAIL search_map_source_frame_resident_commit_gate: Source frames must publish through one resident commit helper so cached replay, empty clear, and recompute cannot desync visual state from LOD memory." >&2
+  rg -n --fixed-strings "publishSnapshot(" "$direct_map_source_controller_file" >&2 || true
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS search_map_source_frame_resident_commit_gate"
+fi
+
+if [[ -e "$search_map_native_render_owner_file" ]] && {
+  ! rg -q --fixed-strings "const markerRoleFrameBaselineSnapshot =" "$search_map_native_render_owner_file" ||
+  ! rg -q --fixed-strings "transportState.queueState.inFlightFrame?.snapshot ??" "$search_map_native_render_owner_file" ||
+  ! rg -q --fixed-strings "markerRoleFrameBaselineSnapshot" "$search_map_native_render_owner_file"
+}; then
+  echo "[app-route-runtime-delete-gate] FAIL search_map_live_role_frame_inflight_baseline_gate: Queued live LOD role patches must diff from the in-flight native snapshot when a native frame is still applying." >&2
+  failures=$((failures + 1))
+else
+  echo "[app-route-runtime-delete-gate] PASS search_map_live_role_frame_inflight_baseline_gate"
+fi
+
 if [[ -e "$direct_map_source_controller_file" ]] && {
   ! rg -q --fixed-strings "const projectSearchMapVisualFrame =" "$direct_map_source_controller_file" ||
-  ! rg -q --fixed-strings "const buildVisualIdentityKey =" "$direct_map_source_controller_file" ||
+  ! rg -q --fixed-strings "buildSearchMapVisualIdentityKey" "$direct_map_source_controller_file" ||
+  ! rg -q --fixed-strings "normalizeSearchMapVisualFeatureIdentity" "$direct_map_source_controller_file" ||
   ! rg -q --fixed-strings "const assertProjectedVisualFrameInvariants =" "$direct_map_source_controller_file" ||
   ! rg -q --fixed-strings "visualProjector:" "$direct_map_source_controller_file" ||
   rg -q --pcre2 '\[\s*\.\.\.shortcutResultFeatures,\s*\.\.\.shortcutCoverageFeatures' "$direct_map_source_controller_file" ||
@@ -1286,7 +1728,7 @@ elif [[ -e "$native_render_owner_file" ]] && {
   echo "[app-route-runtime-delete-gate] FAIL search_surface_retained_results_data_only: Native presentation diagnostics must describe preapplied hidden sources, not retained mounted-source replay." >&2
   failures=$((failures + 1))
 elif [[ -e "$direct_map_source_controller_file" ]] && {
-  ! rg -q --fixed-strings "sourceFramePort.publishSnapshot(nextCachedSnapshot)" "$direct_map_source_controller_file" ||
+  ! rg -q --fixed-strings "commitResidentSourceFrameSnapshot(nextCachedSnapshot" "$direct_map_source_controller_file" ||
   ! rg -q --fixed-strings "labelCollisionSourceStore" "$direct_map_source_controller_file" ||
   ! rg -q --fixed-strings "cachedPreparedSourceFrameReplay" "$direct_map_source_controller_file"
 }; then

@@ -31,7 +31,7 @@ export type ProfileViewState = {
 };
 
 export type ProfilePresentationCameraLayoutModel = {
-  resultsScrollOffset: { value: number };
+  sheetScrollOffset: { value: number };
   sheetTranslateY: { value: number };
   snapPoints: { expanded: number; middle: number; collapsed: number };
   sheetState: Exclude<OverlaySheetSnap, 'hidden'>;
@@ -75,7 +75,7 @@ export const createProfilePresentationModelRuntime = ({
   },
   preparedSnapshot,
   cameraLayoutModel: {
-    resultsScrollOffset,
+    sheetScrollOffset,
     snapPoints,
     mapCenter,
     mapZoom,
@@ -125,7 +125,7 @@ export const createProfilePresentationModelRuntime = ({
     getProfileTransitionSnapshotCapture: () =>
       resolveProfileTransitionSnapshotCapture({
         cameraSnapshot: captureProfileCameraSnapshot(),
-        resultsScrollOffset: resultsScrollOffset.value,
+        sheetScrollOffset: sheetScrollOffset.value,
       }),
   };
 };

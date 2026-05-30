@@ -6,7 +6,8 @@ import type { ResultsPresentationActions } from './results-presentation-shell-ru
 import type { SearchPresentationIntent } from './results-presentation-shell-contract';
 import type { ResultsPresentationRuntimeOwner } from './results-presentation-runtime-owner-contract';
 import type { ResultsPresentationShellLocalState } from './use-results-presentation-shell-local-state';
-import type { AppRouteResultsSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-results-sheet-runtime-contract';
+import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
+import type { OverlayKey } from '../../../../overlays/types';
 import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
 import { useResultsPresentationCloseActionsRuntime } from './use-results-presentation-close-actions-runtime';
 import { useResultsPresentationEditingActionsRuntime } from './use-results-presentation-editing-actions-runtime';
@@ -22,14 +23,14 @@ type UseResultsPresentationOwnerPresentationActionsRuntimeArgs = {
   ignoreNextSearchBlurRef: React.MutableRefObject<boolean>;
   isClearingSearchRef: React.MutableRefObject<boolean>;
   resultsSheetRuntime: Pick<
-    AppRouteResultsSheetRuntimeOwner,
-    | 'prepareShortcutSheetTransition'
-    | 'resultsSheetRuntimeModel'
-    | 'shouldRenderResultsSheetRef'
-    | 'resetResultsSheetToHidden'
+    AppRouteSharedSheetRuntimeOwner,
+    | 'prepareSharedSheetForSearchPresentation'
+    | 'sharedSheetRuntimeModel'
+    | 'shouldRenderMountedSharedSheetRef'
+    | 'markSharedSheetHidden'
     | 'sheetState'
   > &
-    Pick<AppRouteResultsSheetRuntimeOwner, 'snapPoints'>;
+    Pick<AppRouteSharedSheetRuntimeOwner, 'snapPoints'>;
   shellLocalState: ResultsPresentationShellLocalState;
   resultsRuntimeOwner: ResultsPresentationRuntimeOwner;
   cancelCloseSearchCleanup: () => void;
@@ -37,7 +38,10 @@ type UseResultsPresentationOwnerPresentationActionsRuntimeArgs = {
   matchesPendingCloseIntentId: (intentId: string) => boolean;
   beginCloseTransition: (
     closeIntentId: string,
-    options?: { terminalDismissSource?: 'results' | 'profile' }
+    options?: {
+      terminalDismissSource?: 'results' | 'profile';
+      outgoingSheetSceneKey?: OverlayKey | null;
+    }
   ) => void;
   cancelSearchSheetCloseTransition: (closeIntentId?: string) => void;
   routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;

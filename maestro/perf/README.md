@@ -101,6 +101,32 @@ yarn perf:scenario:contracts /tmp/perf-scenario-<run_id>.json
 The parity checker expects `search_this_area_submit_press_up_contract` plus the
 shared rows/pins/labels/native-enter/cover-release contracts after the tap.
 
+### Map LOD Pan/Zoom
+
+```sh
+yarn perf:scenario:ios maestro/perf/flows/search-map-lod-pan-zoom.yaml search_map_lod_pan_zoom
+```
+
+The map LOD flow opens shortcut results, leaves the result sheet mounted, and
+uses the perf command lane to run animated Mapbox camera moves behind the sheet:
+east/west, north/south, zoom in, and zoom out. This avoids measuring Maestro
+swipe delivery or sheet repositioning while still exercising viewport changes,
+LOD pressure, marker promotion/demotion, native map apply work, JS frames, UI
+frames, JS task latency, and runtime/profiler attribution in the generated
+scenario report.
+The most useful report sections are `measuredRepeatLoop.samplers`,
+`measuredRepeatLoop.profiler`, `nativeMapApplySummary`, and the
+`RuntimeMechanism` events for each animated camera commit.
+
+The command lane supports the animated camera action directly:
+
+```sh
+crave://perf-scenario-command?action=animate_map_camera&lat=<lat>&lng=<lng>&zoom=<zoom>&cameraDurationMs=<ms>&label=<step>
+```
+
+Use this flow for map performance profiling. Use the Search This Area flow when
+the thing being validated is the real touch gesture and Search This Area UI.
+
 ### Interrupt/Reversibility
 
 ```sh

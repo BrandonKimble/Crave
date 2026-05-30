@@ -138,16 +138,21 @@ export const resolvePreparedProfileRouteIntentAction = ({
     };
   }
 
+  const routeAction = resolveProfileCloseRouteAction(routeState);
+  const targetSceneKey = routeState.previousOverlayRoute?.key ?? 'search';
+  const sheetTransitionKind =
+    routeIntent.shellTarget === 'default' ? 'terminalDismiss' : 'closeChild';
+  const sheetMotion =
+    routeIntent.shellTarget === 'default' ? { kind: 'hide' as const } : { kind: 'preserveLiveY' as const };
   return {
     type: 'request_overlay_switch',
     request: {
-      targetSceneKey: routeState.previousOverlayRoute?.key ?? 'search',
-      routeAction: resolveProfileCloseRouteAction(routeState),
+      targetSceneKey,
+      routeAction,
       settleToken: executionContext.requestToken,
-      sheetTransitionKind: routeIntent.shellTarget === 'default' ? 'terminalDismiss' : 'closeChild',
+      sheetTransitionKind,
       sheetOpenerSource: routeIntent.shellTarget === 'default' ? 'systemDismiss' : 'routeCommand',
-      sheetMotion:
-        routeIntent.shellTarget === 'default' ? { kind: 'hide' } : { kind: 'preserveLiveY' },
+      sheetMotion,
       contentHandoff:
         routeIntent.shellTarget === 'default' ? 'preserveOutgoingUntilSettle' : 'swapImmediately',
       cameraIntent: resolveProfileCameraIntent(routeIntent.restoreCamera, cameraIntentOptions),

@@ -4,7 +4,10 @@ import {
   type OverlayKey,
   type OverlayRouteParamsMap,
 } from './app-overlay-route-types';
-import type { RouteSceneSwitchRequestInput } from './app-overlay-route-transition-contract';
+import type {
+  RouteSceneSwitchRequestInput,
+  RouteSceneSwitchRouteParams,
+} from './app-overlay-route-transition-contract';
 import type { OverlaySheetSnap } from '../../overlays/types';
 import type {
   AppRouteSceneSwitchRuntime,
@@ -31,6 +34,7 @@ export type AppOverlayRouteCommandRuntime = {
   updateRoute: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
   pushRoute: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
   restoreDockedPolls: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
+  collapseActiveSheet: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
   closeActiveRoute: () => void;
   closeActiveRouteAfterSettle: (onSettle: RouteSceneSwitchSettleCallback) => void;
   popToRootRoute: () => void;
@@ -115,6 +119,21 @@ export const createAppOverlayRouteCommandRuntime = ({
         sheetOpenerSource: 'routeCommand',
         sheetMotion: { kind: 'snapTo', snap },
         dockedPollsRestoreSnap: snap,
+      });
+    },
+    collapseActiveSheet: ({ snap = 'collapsed' } = {}) => {
+      const { activeOverlayRoute } = routeSceneSwitchRuntime.getRouteState();
+      if (!isAppOverlayRouteSceneSwitchKey(activeOverlayRoute.key)) {
+        return;
+      }
+      requestRouteSceneSwitch({
+        targetSceneKey: activeOverlayRoute.key,
+        routeAction: 'updateActive',
+        routeParams: activeOverlayRoute.params as RouteSceneSwitchRouteParams,
+        sheetTransitionKind: 'gesture',
+        sheetOpenerSource: 'routeCommand',
+        sheetMotion: { kind: 'snapTo', snap },
+        snapPersistence: 'sharedOnly',
       });
     },
     pushRoute: (overlay, params) => {

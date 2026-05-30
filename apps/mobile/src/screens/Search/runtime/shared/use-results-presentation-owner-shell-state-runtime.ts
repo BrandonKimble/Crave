@@ -1,4 +1,4 @@
-import type { AppRouteResultsSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-results-sheet-runtime-contract';
+import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
 import type { SearchChromeScalarSurfacePresentationRuntime } from '../native/search-chrome-scalar-surface-presentation-runtime';
 import type { ResultsPresentationPolicyFactsLaneChange } from './results-presentation-policy-facts-controller';
 import type { ResultsPresentationAuthority } from './results-presentation-authority';
@@ -21,13 +21,13 @@ type UseResultsPresentationOwnerShellStateRuntimeArgs = {
   onSearchSheetContentLaneChanged?: (change: ResultsPresentationPolicyFactsLaneChange) => void;
   searchChromeScalarSurfacePresentationRuntime?: SearchChromeScalarSurfacePresentationRuntime;
   resultsSheetRuntime: Pick<
-    AppRouteResultsSheetRuntimeOwner,
+    AppRouteSharedSheetRuntimeOwner,
     | 'sheetTranslateY'
     | 'snapPoints'
-    | 'prepareShortcutSheetTransition'
-    | 'resultsSheetRuntimeModel'
-    | 'shouldRenderResultsSheetRef'
-    | 'resetResultsSheetToHidden'
+    | 'prepareSharedSheetForSearchPresentation'
+    | 'sharedSheetRuntimeModel'
+    | 'shouldRenderMountedSharedSheetRef'
+    | 'markSharedSheetHidden'
   >;
 };
 

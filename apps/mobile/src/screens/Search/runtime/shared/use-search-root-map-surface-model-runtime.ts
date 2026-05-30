@@ -3,7 +3,6 @@ import React from 'react';
 import type { useSearchScreenAppEntryPlaneRuntime } from './use-search-screen-app-entry-plane-runtime';
 import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
 import type { SearchRootMapViewportIntentRuntime } from './search-root-map-viewport-intent-runtime-contract';
-import { useSearchRootMapSurfaceAttributionRuntime } from './use-search-root-map-surface-attribution-runtime';
 import { useSearchRootMapSurfaceStateRuntime } from './use-search-root-map-surface-state-runtime';
 import { useSearchRootMapSurfaceViewRuntime } from './use-search-root-map-surface-view-runtime';
 import type { SearchMapRenderHostConfig } from '../../components/SearchMapWithMarkerEngine';
@@ -45,12 +44,6 @@ export const useSearchRootMapSurfaceModelRuntime = ({
     mapPresentationRuntime,
     mapInteractionBridgeRuntime,
     mapSurfaceStateRuntime,
-  });
-
-  useSearchRootMapSurfaceAttributionRuntime({
-    engineInputs: mapSurfaceViewRuntime.engineInputs,
-    hostConfig: mapSurfaceViewRuntime.hostConfig,
-    presentationProps: mapSurfaceViewRuntime.presentationProps,
   });
 
   return mapSurfaceViewRuntime;

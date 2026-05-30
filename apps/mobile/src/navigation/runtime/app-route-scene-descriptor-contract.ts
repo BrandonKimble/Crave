@@ -7,7 +7,20 @@ import type { OverlaySheetFrameSpec } from '../../overlays/types';
 
 type AppRouteSceneListItem = unknown;
 
-export type AppRouteSceneStackShellSpec = OverlaySheetFrameSpec & {
+type AppRouteSceneSheetHostOwnedField =
+  | 'initialSnapPoint'
+  | 'dismissThreshold'
+  | 'onHidden'
+  | 'onSnapStart'
+  | 'onSnapChange'
+  | 'preventSwipeDismiss'
+  | 'runtimeModel'
+  | 'shellSnapRequest';
+
+export type AppRouteSceneStackShellSpec = Omit<
+  OverlaySheetFrameSpec,
+  AppRouteSceneSheetHostOwnedField
+> & {
   surfaceKind: 'scene-stack';
 };
 
@@ -158,17 +171,10 @@ export const areAppRouteSceneShellSpecsEqual = (
     previousSpec.renderWrapper === nextSpec.renderWrapper &&
     previousSpec.nativeHostKey === nextSpec.nativeHostKey &&
     previousSpec.listScrollEnabled === nextSpec.listScrollEnabled &&
-    previousSpec.initialSnapPoint === nextSpec.initialSnapPoint &&
     previousSpec.preservePositionOnSnapPointsChange ===
       nextSpec.preservePositionOnSnapPointsChange &&
-    previousSpec.onHidden === nextSpec.onHidden &&
-    previousSpec.onSnapStart === nextSpec.onSnapStart &&
-    previousSpec.onSnapChange === nextSpec.onSnapChange &&
     previousSpec.onDragStateChange === nextSpec.onDragStateChange &&
     previousSpec.onSettleStateChange === nextSpec.onSettleStateChange &&
-    previousSpec.runtimeModel === nextSpec.runtimeModel &&
-    previousSpec.dismissThreshold === nextSpec.dismissThreshold &&
-    previousSpec.preventSwipeDismiss === nextSpec.preventSwipeDismiss &&
     previousSpec.interactionEnabled === nextSpec.interactionEnabled &&
     previousSpec.animateOnMount === nextSpec.animateOnMount &&
     previousSpec.style === nextSpec.style &&

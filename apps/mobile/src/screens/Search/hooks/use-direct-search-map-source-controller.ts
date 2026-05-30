@@ -11,7 +11,13 @@ import {
   type RestaurantFeatureProperties,
 } from '../components/search-map';
 import { ACTIVE_TAB_COLOR_DARK, LABEL_TEXT_SIZE } from '../constants/search';
-import { buildMarkerRenderModel } from '../utils/map-render-model';
+import { buildMarkerRenderModel, MARKER_RETENTION_BOUNDS_PAD_RATIO } from '../utils/map-render-model';
+import { padMapBounds } from '../utils/marker-lod';
+import {
+  buildSearchMapVisualIdentityKey,
+  normalizeSearchMapVisualFeatureIdentity,
+  type SearchMapVisualIdentityKey,
+} from '../utils/search-map-visual-identity';
 import { createMapQueryBudget, type MapQueryBudget } from '../runtime/map/map-query-budget';
 import {
   buildAnchoredShortcutCoverage,
@@ -84,37 +90,93 @@ const arePinInteractionSourcesComplete = ({
 }: Pick<SearchMapSourceFrameSnapshot, 'pinSourceStore' | 'pinInteractionSourceStore'>): boolean =>
   pinSourceStore.idsInOrder.length === pinInteractionSourceStore.idsInOrder.length;
 
-const logPinInteractionSourceMismatch = ({
-  source,
-  preparedVisualCycleKey,
-  readinessKey,
-  markersRenderKey,
-  pinSourceStore,
-  pinInteractionSourceStore,
-}: Pick<SearchMapSourceFrameSnapshot, 'pinSourceStore' | 'pinInteractionSourceStore'> & {
-  source: 'recomputed' | 'prepared_frame_cache';
-  preparedVisualCycleKey: string | null;
-  readinessKey: string | null;
-  markersRenderKey: string | null;
-}): void => {
-  if (arePinInteractionSourcesComplete({ pinSourceStore, pinInteractionSourceStore })) {
-    return;
-  }
-  logger.warn('[PIN-STACK-DIAG] pin_interaction_source_mismatch', {
-    source,
-    preparedVisualCycleKey,
-    readinessKey,
-    markersRenderKey,
-    pinCount: pinSourceStore.idsInOrder.length,
-    pinInteractionCount: pinInteractionSourceStore.idsInOrder.length,
-    missingInteractionMarkerKeys: pinSourceStore.idsInOrder
-      .filter((markerKey) => !pinInteractionSourceStore.featureById.has(markerKey))
-      .slice(0, 8),
-  });
+const SHORTCUT_COVERAGE_BOUNDS_BUCKET_DEGREES = 0.01;
+const SEARCH_MAP_VISUAL_PROJECTOR_VERSION = 'single-writer-stable-label-source-v4';
+const SHORTCUT_VIEWPORT_LOD_MIN_INTERVAL_MS = 90;
+const VIEWPORT_PROJECTION_MIN_SPAN = 1e-6;
+const VIEWPORT_PROJECTION_MIN_CELL_SIZE = 0.0001;
+const VIEWPORT_PROJECTION_CELL_DIVISOR = 10;
+const VIEWPORT_PROJECTION_SCALE_BUCKET_GRANULARITY = 4;
+
+type ShortcutViewportLodCadence = {
+  tokenIdentity: string | null;
+  lastRunAtMs: number;
 };
 
-const SHORTCUT_COVERAGE_BOUNDS_BUCKET_DEGREES = 0.01;
-const SEARCH_MAP_VISUAL_PROJECTOR_VERSION = 'single-writer-restaurant-location-v3';
+type SearchMapSourcePublishReason = 'full' | 'viewport_lod';
+
+type PublishSearchMapSourcesOptions = {
+  reason?: SearchMapSourcePublishReason;
+};
+
+const buildLodPinnedVisualKey = (
+  meta: ReadonlyArray<{ markerKey: string; lodZ: number }>
+): string =>
+  buildStableKeyFingerprint(meta.map(({ markerKey, lodZ }) => `${markerKey}:${lodZ}`));
+
+const normalizeViewportProjectionSpan = (value: number): number =>
+  Math.max(Math.abs(value), VIEWPORT_PROJECTION_MIN_SPAN);
+
+const buildShortcutViewportProjectionToken = (bounds: MapBounds | null): string | null => {
+  if (!bounds) {
+    return null;
+  }
+  const latSpan = normalizeViewportProjectionSpan(bounds.northEast.lat - bounds.southWest.lat);
+  const lngSpan = normalizeViewportProjectionSpan(bounds.northEast.lng - bounds.southWest.lng);
+  const centerLat = (bounds.northEast.lat + bounds.southWest.lat) / 2;
+  const centerLng = (bounds.northEast.lng + bounds.southWest.lng) / 2;
+  const latCellSize = Math.max(
+    latSpan / VIEWPORT_PROJECTION_CELL_DIVISOR,
+    VIEWPORT_PROJECTION_MIN_CELL_SIZE
+  );
+  const lngCellSize = Math.max(
+    lngSpan / VIEWPORT_PROJECTION_CELL_DIVISOR,
+    VIEWPORT_PROJECTION_MIN_CELL_SIZE
+  );
+  const scaleBucket = Math.round(
+    -Math.log2(Math.max(latSpan, lngSpan)) * VIEWPORT_PROJECTION_SCALE_BUCKET_GRANULARITY
+  );
+  const latCell = Math.round(centerLat / latCellSize);
+  const lngCell = Math.round(centerLng / lngCellSize);
+
+  return `${scaleBucket}:${latCell}:${lngCell}`;
+};
+
+const shouldEvaluateShortcutViewportLod = ({
+  bounds,
+  isMapMoving,
+  nowMs,
+  cadence,
+}: {
+  bounds: MapBounds | null;
+  isMapMoving: boolean;
+  nowMs: number;
+  cadence: ShortcutViewportLodCadence;
+}): boolean => {
+  const tokenIdentity = buildShortcutViewportProjectionToken(bounds);
+  if (!isMapMoving || !tokenIdentity) {
+    cadence.tokenIdentity = tokenIdentity;
+    cadence.lastRunAtMs = nowMs;
+    return true;
+  }
+  if (cadence.tokenIdentity !== tokenIdentity) {
+    cadence.tokenIdentity = tokenIdentity;
+    cadence.lastRunAtMs = nowMs;
+    return true;
+  }
+  if (nowMs - cadence.lastRunAtMs >= SHORTCUT_VIEWPORT_LOD_MIN_INTERVAL_MS) {
+    cadence.lastRunAtMs = nowMs;
+    return true;
+  }
+  return false;
+};
+
+const isMapMotionPressureMoving = (
+  mapMotionPressureController: MapMotionPressureController
+): boolean => {
+  const phase = mapMotionPressureController.getState().phase;
+  return phase === 'gesture' || phase === 'inertia';
+};
 
 type ShortcutCoverageRequestStatus =
   | 'idle'
@@ -281,8 +343,6 @@ type SearchMapVisualSourceKind =
   | 'selected'
   | 'restaurant_only';
 
-type SearchMapVisualIdentityKey = string;
-
 type SearchMapVisualCandidate = {
   feature: Feature<Point, RestaurantFeatureProperties>;
   markerKey: string;
@@ -309,17 +369,6 @@ const VISUAL_SOURCE_PRIORITY: Record<SearchMapVisualSourceKind, number> = {
   shortcut_coverage: 300,
   viewport: 200,
   main_results: 100,
-};
-
-const buildVisualIdentityKey = (
-  feature: Feature<Point, RestaurantFeatureProperties>
-): SearchMapVisualIdentityKey => {
-  const [lng, lat] = feature.geometry.coordinates;
-  return [
-    feature.properties.restaurantId,
-    Number.isFinite(lng) ? lng.toFixed(6) : String(lng),
-    Number.isFinite(lat) ? lat.toFixed(6) : String(lat),
-  ].join(':');
 };
 
 const resolveEffectiveVisualSourceKind = ({
@@ -377,14 +426,15 @@ const collectSearchMapVisualCandidates = ({
 
   sources.forEach((source) => {
     source.features.forEach((feature) => {
-      const markerKey = buildMarkerKey(feature);
-      const visualIdentityKey = buildVisualIdentityKey(feature);
+      const visualIdentityKey = buildSearchMapVisualIdentityKey(feature);
+      const visualFeature = normalizeSearchMapVisualFeatureIdentity(feature, visualIdentityKey);
+      const markerKey = buildMarkerKey(visualFeature);
       const candidate = {
-        feature,
+        feature: visualFeature,
         markerKey,
         visualIdentityKey,
         sourceKind: resolveEffectiveVisualSourceKind({
-          feature,
+          feature: visualFeature,
           requestedSourceKind: source.sourceKind,
           selectedRestaurantId,
           restaurantOnlyId,
@@ -436,14 +486,14 @@ const projectSearchMapVisualFrame = ({
     buildMarkerKey,
   });
   const pinnedVisualIdentityKeys = new Set(
-    pinnedFeatures.map((feature) => buildVisualIdentityKey(feature))
+    pinnedFeatures.map((feature) => buildSearchMapVisualIdentityKey(feature))
   );
   const dotCandidates = collectSearchMapVisualCandidates({
     sources: dotSources,
     selectedRestaurantId,
     restaurantOnlyId,
     buildMarkerKey,
-  }).filter((candidate) => !pinnedVisualIdentityKeys.has(candidate.visualIdentityKey));
+  });
   const selectedRestaurantCandidates =
     selectedRestaurantId != null
       ? collectSearchMapVisualCandidates({
@@ -476,10 +526,212 @@ const collectSourceStoreVisualIdentityKeys = (sourceStore: SearchMapSourceStore)
   sourceStore.idsInOrder.forEach((featureId) => {
     const feature = sourceStore.featureById.get(featureId);
     if (feature) {
-      visualIdentityKeys.add(buildVisualIdentityKey(feature));
+      visualIdentityKeys.add(buildSearchMapVisualIdentityKey(feature));
     }
   });
   return visualIdentityKeys;
+};
+
+const isFeatureVisibleInBounds = (
+  feature: Feature<Point, RestaurantFeatureProperties>,
+  bounds: MapBounds
+): boolean => {
+  const [lng, lat] = feature.geometry.coordinates;
+  return (
+    lat >= bounds.southWest.lat &&
+    lat <= bounds.northEast.lat &&
+    lng >= bounds.southWest.lng &&
+    lng <= bounds.northEast.lng
+  );
+};
+
+const summarizeMarkerRank = (
+  feature: Feature<Point, RestaurantFeatureProperties>,
+  buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string
+): string => {
+  const nativeLodZ = feature.properties.nativeLodZ;
+  const lodZ = feature.properties.lodZ;
+  const resolvedLodZ =
+    typeof nativeLodZ === 'number' && Number.isFinite(nativeLodZ)
+      ? nativeLodZ
+      : typeof lodZ === 'number' && Number.isFinite(lodZ)
+        ? lodZ
+        : null;
+  return `${buildMarkerKey(feature)}#r${feature.properties.rank}#z${resolvedLodZ ?? 'na'}`;
+};
+
+const summarizeSourceStoreRank = (
+  sourceStore: SearchMapSourceStore,
+  buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string,
+  options?: { excludeRestaurantId?: string | null; limit?: number }
+): string[] => {
+  const limit = options?.limit ?? 40;
+  const signature: string[] = [];
+  for (const featureId of sourceStore.idsInOrder) {
+    const feature = sourceStore.featureById.get(featureId);
+    if (!feature) {
+      continue;
+    }
+    if (
+      options?.excludeRestaurantId != null &&
+      feature.properties.restaurantId === options.excludeRestaurantId
+    ) {
+      continue;
+    }
+    signature.push(summarizeMarkerRank(feature, buildMarkerKey));
+    if (signature.length >= limit) {
+      break;
+    }
+  }
+  return signature;
+};
+
+const buildViewportNormalPinRankContract = ({
+  bounds,
+  rankedCandidates,
+  pinSourceStore,
+  selectedRestaurantId,
+  buildMarkerKey,
+  maxPins,
+}: {
+  bounds: MapBounds | null;
+  rankedCandidates: Array<Feature<Point, RestaurantFeatureProperties>>;
+  pinSourceStore: SearchMapSourceStore;
+  selectedRestaurantId: string | null;
+  buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
+  maxPins: number;
+}) => {
+  // Under the stable-membership policy the promoted set is NOT the instantaneous
+  // top-N in the raw viewport: in-view markers take slot priority (top by rank),
+  // and retained off-view pins fill any leftover slots so they do not flicker
+  // out. The correctness invariant: among the IN-VIEW universe (viewport
+  // candidates plus currently-promoted pins, clipped to the padded bounds the
+  // policy uses), the top `maxPins` by rank must all be promoted. Retained
+  // pins outside the padded bounds are excluded from the universe and are
+  // allowed to keep their slots. Including the actual promoted pins in the
+  // universe makes this robust to padding-ring effects.
+  const retentionBounds = bounds != null ? padMapBounds(bounds, MARKER_RETENTION_BOUNDS_PAD_RATIO) : null;
+  const actualNormalPins: Array<Feature<Point, RestaurantFeatureProperties>> = [];
+  for (const featureId of pinSourceStore.idsInOrder) {
+    const feature = pinSourceStore.featureById.get(featureId);
+    if (!feature) {
+      continue;
+    }
+    if (selectedRestaurantId != null && feature.properties.restaurantId === selectedRestaurantId) {
+      continue;
+    }
+    actualNormalPins.push(feature);
+  }
+  const actualMarkerKeys = actualNormalPins.map((feature) => buildMarkerKey(feature));
+  const actualMarkerKeySet = new Set(actualMarkerKeys);
+
+  const inViewRankByMarkerKey = new Map<string, number>();
+  const addToInViewUniverse = (
+    feature: Feature<Point, RestaurantFeatureProperties>
+  ): void => {
+    if (selectedRestaurantId != null && feature.properties.restaurantId === selectedRestaurantId) {
+      return;
+    }
+    if (retentionBounds == null || !isFeatureVisibleInBounds(feature, retentionBounds)) {
+      return;
+    }
+    const markerKey = buildMarkerKey(feature);
+    if (inViewRankByMarkerKey.has(markerKey)) {
+      return;
+    }
+    const rank = feature.properties.rank;
+    inViewRankByMarkerKey.set(
+      markerKey,
+      typeof rank === 'number' ? rank : Number.POSITIVE_INFINITY
+    );
+  };
+  for (const candidate of rankedCandidates) {
+    addToInViewUniverse(candidate);
+  }
+  for (const feature of actualNormalPins) {
+    addToInViewUniverse(feature);
+  }
+  const expectedMarkerKeys = Array.from(inViewRankByMarkerKey.entries())
+    .sort((left, right) => {
+      const rankDiff = left[1] - right[1];
+      if (rankDiff !== 0) {
+        return rankDiff;
+      }
+      return left[0].localeCompare(right[0]);
+    })
+    .slice(0, maxPins)
+    .map(([markerKey]) => markerKey);
+  let mismatchCount = 0;
+  for (const expectedKey of expectedMarkerKeys) {
+    if (!actualMarkerKeySet.has(expectedKey)) {
+      mismatchCount += 1;
+    }
+  }
+
+  return {
+    expectedNormalPinCount: expectedMarkerKeys.length,
+    actualNormalPinCount: actualNormalPins.length,
+    normalPinRankMismatchCount: mismatchCount,
+    expectedNormalPinFingerprint: buildStableKeyFingerprint(expectedMarkerKeys),
+    actualNormalPinFingerprint: buildStableKeyFingerprint(actualMarkerKeys),
+    expectedNormalPinRankSignature: expectedMarkerKeys
+      .slice(0, 40)
+      .map((markerKey) => `${markerKey}#r${inViewRankByMarkerKey.get(markerKey) ?? 'na'}`),
+    actualNormalPinRankSignature: actualNormalPins
+      .slice(0, 40)
+      .map((feature) => summarizeMarkerRank(feature, buildMarkerKey)),
+  };
+};
+
+const countRestaurantVisualIdentityKeysInSourceStore = (
+  sourceStore: SearchMapSourceStore,
+  restaurantId: string | null
+): number => {
+  if (restaurantId == null) {
+    return 0;
+  }
+  const visualIdentityKeys = new Set<string>();
+  sourceStore.idsInOrder.forEach((featureId) => {
+    const feature = sourceStore.featureById.get(featureId);
+    if (feature?.properties.restaurantId === restaurantId) {
+      visualIdentityKeys.add(buildSearchMapVisualIdentityKey(feature));
+    }
+  });
+  return visualIdentityKeys.size;
+};
+
+type ResidentPinnedSourceStoreState = {
+  pinnedMarkers: Array<Feature<Point, RestaurantFeatureProperties>>;
+  pinnedVisualKey: string;
+};
+
+const collectResidentPinnedSourceStoreState = (
+  sourceStore: SearchMapSourceStore
+): ResidentPinnedSourceStoreState => {
+  const pinnedMarkers: Array<Feature<Point, RestaurantFeatureProperties>> = [];
+  const meta: Array<{ markerKey: string; lodZ: number }> = [];
+  sourceStore.idsInOrder.forEach((markerKey) => {
+    const feature = sourceStore.featureById.get(markerKey);
+    if (!feature) {
+      return;
+    }
+    const nativeLodZ = feature?.properties.nativeLodZ;
+    const lodZ = feature?.properties.lodZ;
+    pinnedMarkers.push(feature);
+    meta.push({
+      markerKey,
+      lodZ:
+        typeof nativeLodZ === 'number' && Number.isFinite(nativeLodZ)
+          ? nativeLodZ
+          : typeof lodZ === 'number' && Number.isFinite(lodZ)
+            ? lodZ
+            : 0,
+    });
+  });
+  return {
+    pinnedMarkers,
+    pinnedVisualKey: buildLodPinnedVisualKey(meta),
+  };
 };
 
 const collectDuplicateSourceStoreVisualIdentityKeys = (
@@ -492,7 +744,7 @@ const collectDuplicateSourceStoreVisualIdentityKeys = (
     if (!feature) {
       return;
     }
-    const visualIdentityKey = buildVisualIdentityKey(feature);
+    const visualIdentityKey = buildSearchMapVisualIdentityKey(feature);
     if (seen.has(visualIdentityKey)) {
       duplicates.add(visualIdentityKey);
       return;
@@ -526,18 +778,17 @@ const assertProjectedVisualFrameInvariants = ({
 
   if (
     duplicatePinVisualIdentityKeys.length === 0 &&
-    pinDotVisualIdentityOverlap.length === 0 &&
     labelSourceStore.idsInOrder.length === expectedLabelCount &&
     labelCollisionSourceStore.idsInOrder.length === expectedCollisionCount
   ) {
     return;
   }
 
-  logger.error('[PIN-STACK-DIAG] projected visual frame invariant failed', {
+  logger.error('[SearchMap] projected visual frame invariant failed', {
     duplicatePinVisualIdentityKeyCount: duplicatePinVisualIdentityKeys.length,
     duplicatePinVisualIdentityKeySamples: duplicatePinVisualIdentityKeys.slice(0, 8),
-    pinDotVisualIdentityOverlapCount: pinDotVisualIdentityOverlap.length,
-    pinDotVisualIdentityOverlapSamples: pinDotVisualIdentityOverlap.slice(0, 8),
+    residentDotPromotedVisualIdentityOverlapCount: pinDotVisualIdentityOverlap.length,
+    residentDotPromotedVisualIdentityOverlapSamples: pinDotVisualIdentityOverlap.slice(0, 8),
     pinCount: pinSourceStore.idsInOrder.length,
     dotCount: dotSourceStore.idsInOrder.length,
     labelCount: labelSourceStore.idsInOrder.length,
@@ -558,113 +809,6 @@ const countMissingKeys = (
     }
   });
   return missingCount;
-};
-
-type PinStackDiagnosticGroup = {
-  key: string;
-  count: number;
-  featureIds: string[];
-  restaurantIds: string[];
-  ranks: number[];
-  nativeLodZ: Array<number | null>;
-};
-
-const summarizeDuplicatePinGroups = (
-  groups: Map<string, PinStackDiagnosticGroup>,
-  sampleLimit = 8
-): {
-  duplicateGroupCount: number;
-  duplicateFeatureCount: number;
-  samples: PinStackDiagnosticGroup[];
-} => {
-  const duplicateGroups = Array.from(groups.values())
-    .filter((group) => group.count > 1)
-    .sort((left, right) => right.count - left.count || left.key.localeCompare(right.key));
-
-  return {
-    duplicateGroupCount: duplicateGroups.length,
-    duplicateFeatureCount: duplicateGroups.reduce((total, group) => total + group.count, 0),
-    samples: duplicateGroups.slice(0, sampleLimit),
-  };
-};
-
-const addPinStackDiagnosticFeature = (
-  groups: Map<string, PinStackDiagnosticGroup>,
-  key: string,
-  featureId: string,
-  feature: Feature<Point, RestaurantFeatureProperties>
-) => {
-  const group =
-    groups.get(key) ??
-    ({
-      key,
-      count: 0,
-      featureIds: [],
-      restaurantIds: [],
-      ranks: [],
-      nativeLodZ: [],
-    } satisfies PinStackDiagnosticGroup);
-
-  group.count += 1;
-  group.featureIds.push(featureId);
-  group.restaurantIds.push(feature.properties.restaurantId);
-  group.ranks.push(feature.properties.rank);
-  group.nativeLodZ.push(
-    typeof feature.properties.nativeLodZ === 'number' ? feature.properties.nativeLodZ : null
-  );
-  groups.set(key, group);
-};
-
-const buildPinStackDiagnostics = (pinSourceStore: SearchMapSourceStore) => {
-  const exactCoordinateGroups = new Map<string, PinStackDiagnosticGroup>();
-  const roundedCoordinateGroups = new Map<string, PinStackDiagnosticGroup>();
-  const restaurantGroups = new Map<string, PinStackDiagnosticGroup>();
-
-  pinSourceStore.idsInOrder.forEach((featureId) => {
-    const feature = pinSourceStore.featureById.get(featureId);
-    if (!feature) {
-      return;
-    }
-    const [lng, lat] = feature.geometry.coordinates;
-    addPinStackDiagnosticFeature(
-      exactCoordinateGroups,
-      `${String(lng)},${String(lat)}`,
-      featureId,
-      feature
-    );
-    addPinStackDiagnosticFeature(
-      roundedCoordinateGroups,
-      `${lng.toFixed(6)},${lat.toFixed(6)}`,
-      featureId,
-      feature
-    );
-    addPinStackDiagnosticFeature(
-      restaurantGroups,
-      feature.properties.restaurantId,
-      featureId,
-      feature
-    );
-  });
-
-  const exactCoordinateDuplicates = summarizeDuplicatePinGroups(exactCoordinateGroups);
-  const roundedCoordinateDuplicates = summarizeDuplicatePinGroups(roundedCoordinateGroups);
-  const restaurantDuplicates = summarizeDuplicatePinGroups(restaurantGroups);
-
-  return {
-    pinCount: pinSourceStore.idsInOrder.length,
-    exactCoordinateDuplicateGroupCount: exactCoordinateDuplicates.duplicateGroupCount,
-    exactCoordinateDuplicateFeatureCount: exactCoordinateDuplicates.duplicateFeatureCount,
-    exactCoordinateDuplicateSamples: exactCoordinateDuplicates.samples,
-    roundedCoordinateDuplicateGroupCount: roundedCoordinateDuplicates.duplicateGroupCount,
-    roundedCoordinateDuplicateFeatureCount: roundedCoordinateDuplicates.duplicateFeatureCount,
-    roundedCoordinateDuplicateSamples: roundedCoordinateDuplicates.samples,
-    restaurantDuplicateGroupCount: restaurantDuplicates.duplicateGroupCount,
-    restaurantDuplicateFeatureCount: restaurantDuplicates.duplicateFeatureCount,
-    restaurantDuplicateSamples: restaurantDuplicates.samples,
-    hasStackingSignal:
-      exactCoordinateDuplicates.duplicateGroupCount > 0 ||
-      roundedCoordinateDuplicates.duplicateGroupCount > 0,
-  };
 };
 
 const resolveMapSurfaceResultsLabelSourcesReadyKey = (
@@ -749,7 +893,7 @@ const buildInteractionSemanticRevision = ({
   restaurantId: string | null | undefined;
   lng: number;
   lat: number;
-  family: 'pinInteraction' | 'dotInteraction';
+  family: 'pinInteraction';
 }): string =>
   `${family}|marker:${markerKey}|restaurant:${restaurantId ?? ''}|lng:${lng}|lat:${lat}`;
 
@@ -773,11 +917,6 @@ type DirectMapSourceControllerBaseArgs = {
   getPerfNow: () => number;
   logSearchCompute: (label: string, duration: number) => void;
   maxFullPins: number;
-  lodVisibleCandidateBuffer: number;
-  lodPinPromoteStableMsMoving: number;
-  lodPinDemoteStableMsMoving: number;
-  lodPinToggleStableMsIdle: number;
-  lodPinOffscreenToggleStableMsMoving: number;
   isMapMoving: boolean;
   externalMapQueryBudget?: MapQueryBudget;
 };
@@ -786,6 +925,11 @@ type ShortcutCoverageSnapshot = {
   searchRequestId: string;
   bounds: MapBounds | null;
   entities: StructuredSearchRequest['entities'];
+};
+
+type LastMarkerPressTarget = {
+  restaurantId: string;
+  coordinate: Coordinate | null;
 };
 
 type DirectMapSourceControllerArgs = DirectMapSourceControllerBaseArgs & {
@@ -811,23 +955,20 @@ type DirectMapSourceControllerResult = {
 const LABEL_CANDIDATES_IN_ORDER: readonly LabelCandidate[] = ['bottom', 'right', 'top', 'left'];
 
 const buildLabelSourceFeatureDiffKey = (
-  feature: Feature<Point, RestaurantFeatureProperties>,
-  extraKey: string
-): string => `${extraKey}:${getSearchMapSourceTransportFeature(feature).diffKey}`;
+  feature: Feature<Point, RestaurantFeatureProperties>
+): string => getSearchMapSourceTransportFeature(feature).diffKey;
 
 const buildStableLabelBaseFeature = (
   feature: Feature<Point, RestaurantFeatureProperties>,
   markerKey: string
 ): Feature<Point, RestaurantFeatureProperties> => {
   const stableProperties = { ...feature.properties };
-  delete stableProperties.nativeLodZ;
   delete stableProperties.nativeLodOpacity;
   delete stableProperties.nativeLodRankOpacity;
   delete stableProperties.nativeLabelOpacity;
   delete stableProperties.nativeDotOpacity;
   delete stableProperties.nativePresentationOpacity;
   delete stableProperties.labelOrder;
-  delete stableProperties.lodZ;
   return {
     type: 'Feature',
     id: markerKey,
@@ -850,6 +991,8 @@ const buildStableCollisionFeature = (
     properties: {
       markerKey,
       restaurantId: feature.properties.restaurantId,
+      nativeLodZ: feature.properties.nativeLodZ,
+      lodZ: feature.properties.lodZ,
     } as RestaurantFeatureProperties,
   }) satisfies Feature<Point, RestaurantFeatureProperties>;
 
@@ -866,28 +1009,18 @@ const buildDirectLabelStores = ({
   labelCollisionSourceStore: SearchMapSourceStore;
   labelDerivedSourceIdentityKey: string;
 } => {
-  if (pinSourceStore.idsInOrder.length === 0) {
-    return {
-      labelSourceStore:
-        previousLabelSourceStore.idsInOrder.length > 0
-          ? createSearchMapSourceStoreBuilder(previousLabelSourceStore).finish()
-          : previousLabelSourceStore,
-      labelCollisionSourceStore:
-        previousLabelCollisionSourceStore.idsInOrder.length > 0
-          ? createSearchMapSourceStoreBuilder(previousLabelCollisionSourceStore).finish()
-          : previousLabelCollisionSourceStore,
-      labelDerivedSourceIdentityKey: '',
-    };
-  }
-
   const labelBuilder = createSearchMapSourceStoreBuilder(previousLabelSourceStore);
   const collisionBuilder = createSearchMapSourceStoreBuilder(previousLabelCollisionSourceStore);
+  const labelIdentityParts: string[] = [];
   pinSourceStore.idsInOrder.forEach((markerKey) => {
     const feature = pinSourceStore.featureById.get(markerKey);
     if (!feature) {
       return;
     }
     const stableBaseFeature = buildStableLabelBaseFeature(feature, markerKey);
+    labelIdentityParts.push(
+      `${markerKey}:${getSearchMapSourceTransportFeature(stableBaseFeature).diffKey}`
+    );
     LABEL_CANDIDATES_IN_ORDER.forEach((candidate) => {
       const featureId = buildLabelCandidateFeatureId(markerKey, candidate);
       const labelFeature = {
@@ -897,14 +1030,12 @@ const buildDirectLabelStores = ({
           ...stableBaseFeature.properties,
           markerKey,
           labelCandidate: candidate,
+          labelPreference: 'bottom',
           nativeLabelOpacity: 1,
           nativePresentationOpacity: 1,
         },
       } satisfies Feature<Point, RestaurantFeatureProperties>;
-      const semanticRevision = buildLabelSourceFeatureDiffKey(
-        stableBaseFeature,
-        `${pinSourceStore.sourceRevision}:candidate:${candidate}`
-      );
+      const semanticRevision = buildLabelSourceFeatureDiffKey(labelFeature);
       labelBuilder.appendFeature(labelFeature, {
         featureId,
         semanticRevision,
@@ -915,10 +1046,7 @@ const buildDirectLabelStores = ({
       });
     });
     const collisionFeature = buildStableCollisionFeature(feature, markerKey);
-    const collisionRevision = buildLabelSourceFeatureDiffKey(
-      collisionFeature,
-      `${pinSourceStore.sourceRevision}:collision`
-    );
+    const collisionRevision = buildLabelSourceFeatureDiffKey(collisionFeature);
     collisionBuilder.appendFeature(collisionFeature, {
       featureId: markerKey,
       semanticRevision: collisionRevision,
@@ -934,7 +1062,7 @@ const buildDirectLabelStores = ({
   return {
     labelSourceStore,
     labelCollisionSourceStore,
-    labelDerivedSourceIdentityKey: pinSourceStore.sourceRevision,
+    labelDerivedSourceIdentityKey: buildStableKeyFingerprint(labelIdentityParts),
   };
 };
 
@@ -951,16 +1079,11 @@ export const useDirectSearchMapSourceController = ({
   pickPreferredRestaurantMapLocation,
   getCraveScoreColorFromScore,
   mapGestureActiveRef: _mapGestureActiveRef,
-  mapMotionPressureController: _mapMotionPressureController,
+  mapMotionPressureController,
   shouldLogSearchComputes,
   getPerfNow,
   logSearchCompute,
   maxFullPins,
-  lodVisibleCandidateBuffer,
-  lodPinPromoteStableMsMoving,
-  lodPinDemoteStableMsMoving,
-  lodPinToggleStableMsIdle,
-  lodPinOffscreenToggleStableMsMoving,
   isMapMoving,
   externalMapQueryBudget,
   profileCommandPort,
@@ -974,15 +1097,11 @@ export const useDirectSearchMapSourceController = ({
     resolveRestaurantLocationSelectionAnchor,
     pickPreferredRestaurantMapLocation,
     getCraveScoreColorFromScore,
+    mapMotionPressureController,
     shouldLogSearchComputes,
     getPerfNow,
     logSearchCompute,
     maxFullPins,
-    lodVisibleCandidateBuffer,
-    lodPinPromoteStableMsMoving,
-    lodPinDemoteStableMsMoving,
-    lodPinToggleStableMsIdle,
-    lodPinOffscreenToggleStableMsMoving,
     isMapMoving,
     profileCommandPort,
   });
@@ -996,15 +1115,11 @@ export const useDirectSearchMapSourceController = ({
       resolveRestaurantLocationSelectionAnchor,
       pickPreferredRestaurantMapLocation,
       getCraveScoreColorFromScore,
+      mapMotionPressureController,
       shouldLogSearchComputes,
       getPerfNow,
       logSearchCompute,
       maxFullPins,
-      lodVisibleCandidateBuffer,
-      lodPinPromoteStableMsMoving,
-      lodPinDemoteStableMsMoving,
-      lodPinToggleStableMsIdle,
-      lodPinOffscreenToggleStableMsMoving,
       isMapMoving,
       profileCommandPort,
     };
@@ -1012,14 +1127,10 @@ export const useDirectSearchMapSourceController = ({
     getPerfNow,
     getCraveScoreColorFromScore,
     highlightedRestaurantId,
+    mapMotionPressureController,
     resultsPresentationAuthority,
     resultsPresentationSurfaceAuthority,
     isMapMoving,
-    lodPinDemoteStableMsMoving,
-    lodPinOffscreenToggleStableMsMoving,
-    lodPinPromoteStableMsMoving,
-    lodPinToggleStableMsIdle,
-    lodVisibleCandidateBuffer,
     logSearchCompute,
     maxFullPins,
     pickPreferredRestaurantMapLocation,
@@ -1046,21 +1157,26 @@ export const useDirectSearchMapSourceController = ({
   const previousPinInteractionSourceStoreRef = React.useRef<SearchMapSourceStore>(
     EMPTY_SEARCH_MAP_SOURCE_STORE
   );
-  const previousDotInteractionSourceStoreRef = React.useRef<SearchMapSourceStore>(
-    EMPTY_SEARCH_MAP_SOURCE_STORE
-  );
   const previousLabelSourceStoreRef = React.useRef<SearchMapSourceStore>(
     EMPTY_SEARCH_MAP_SOURCE_STORE
   );
   const previousLabelCollisionSourceStoreRef = React.useRef<SearchMapSourceStore>(
     EMPTY_SEARCH_MAP_SOURCE_STORE
   );
+  const lastMarkerPressTargetRef = React.useRef<LastMarkerPressTarget | null>(null);
+  React.useEffect(() => {
+    if (highlightedRestaurantId == null) {
+      lastMarkerPressTargetRef.current = null;
+    }
+  }, [highlightedRestaurantId]);
   const markerCandidatesRef = React.useRef<Array<Feature<Point, RestaurantFeatureProperties>>>([]);
   const lodPinnedMarkersRef = React.useRef<Array<Feature<Point, RestaurantFeatureProperties>>>([]);
-  const lodPinnedKeyRef = React.useRef('');
-  const lodPinProposedPromoteSinceByMarkerKeyRef = React.useRef<Map<string, number>>(new Map());
-  const lodPinProposedDemoteSinceByMarkerKeyRef = React.useRef<Map<string, number>>(new Map());
+  const lodPinnedVisualKeyRef = React.useRef('');
   const lodPinnedResetKeyRef = React.useRef('');
+  const shortcutViewportLodCadenceRef = React.useRef<ShortcutViewportLodCadence>({
+    tokenIdentity: null,
+    lastRunAtMs: 0,
+  });
   const shortcutCoverageSnapshotByRequestIdRef = React.useRef<
     Map<string, { bounds: MapBounds; entities: StructuredSearchRequest['entities'] }>
   >(new Map());
@@ -1123,13 +1239,48 @@ export const useDirectSearchMapSourceController = ({
     [sourceFramePort]
   );
 
-  const publishSourcesRef = React.useRef<() => void>(() => {});
-  publishSourcesRef.current = () => {
+  const adoptResidentSourceFrameSnapshot = React.useCallback(
+    (snapshot: SearchMapSourceFrameSnapshot) => {
+      previousPinSourceStoreRef.current = snapshot.pinSourceStore;
+      previousDotSourceStoreRef.current = snapshot.dotSourceStore;
+      previousPinInteractionSourceStoreRef.current = snapshot.pinInteractionSourceStore;
+      previousLabelSourceStoreRef.current = snapshot.labelSourceStore;
+      previousLabelCollisionSourceStoreRef.current = snapshot.labelCollisionSourceStore;
+
+      const pinnedState = collectResidentPinnedSourceStoreState(snapshot.pinSourceStore);
+      lodPinnedMarkersRef.current = pinnedState.pinnedMarkers;
+      lodPinnedVisualKeyRef.current = pinnedState.pinnedVisualKey;
+    },
+    []
+  );
+
+  const commitResidentSourceFrameSnapshot = React.useCallback(
+    (snapshot: SearchMapSourceFrameSnapshot) => {
+      adoptResidentSourceFrameSnapshot(snapshot);
+      const didPublishSourceFrame = sourceFramePort.publishSnapshot(snapshot);
+      return didPublishSourceFrame;
+    },
+    [adoptResidentSourceFrameSnapshot, sourceFramePort]
+  );
+
+  const publishSourcesRef = React.useRef<(options?: PublishSearchMapSourcesOptions) => void>(
+    () => {}
+  );
+  publishSourcesRef.current = (options = {}) => {
+    const publishReason = options.reason ?? 'full';
+    const isViewportLodPublish = publishReason === 'viewport_lod';
     const state = searchRuntimeBus.getState();
     const args = latestArgsRef.current;
+    const projectionIsMapMoving =
+      args.isMapMoving || isMapMotionPressureMoving(args.mapMotionPressureController);
     const mountedResultsSnapshot = getSearchMountedResultsDataSnapshot();
     const committedMapSourceFrameKey = resolveCommittedMapSourceFrameKey(state);
     const selectedRestaurantId = args.highlightedRestaurantId;
+    const selectedPriorityCoordinate =
+      selectedRestaurantId != null &&
+      lastMarkerPressTargetRef.current?.restaurantId === selectedRestaurantId
+        ? lastMarkerPressTargetRef.current.coordinate
+        : null;
     const hasCommittedResultState =
       state.searchMode != null && mountedResultsSnapshot.resultsRequestKey != null;
     const shouldProjectResultSources =
@@ -1159,10 +1310,12 @@ export const useDirectSearchMapSourceController = ({
     const resetKey = `${searchMode ?? 'none'}::${activeTab}`;
     if (lodPinnedResetKeyRef.current !== resetKey) {
       lodPinnedResetKeyRef.current = resetKey;
-      lodPinnedKeyRef.current = '';
+      lodPinnedVisualKeyRef.current = '';
       lodPinnedMarkersRef.current = [];
-      lodPinProposedPromoteSinceByMarkerKeyRef.current.clear();
-      lodPinProposedDemoteSinceByMarkerKeyRef.current.clear();
+      shortcutViewportLodCadenceRef.current = {
+        tokenIdentity: null,
+        lastRunAtMs: 0,
+      };
     }
     const currentBounds = viewportBoundsService.getBounds();
     const preparedVisualCycleKey = resolvePreparedPresentationVisualCycleKey(
@@ -1184,18 +1337,12 @@ export const useDirectSearchMapSourceController = ({
         effectiveRestaurantOnlyId != null ||
         selectedRestaurantId != null);
     if (!isSearchVisualProjectionLive) {
-      previousPinSourceStoreRef.current = EMPTY_SEARCH_MAP_SOURCE_STORE;
-      previousDotSourceStoreRef.current = EMPTY_SEARCH_MAP_SOURCE_STORE;
-      previousPinInteractionSourceStoreRef.current = EMPTY_SEARCH_MAP_SOURCE_STORE;
-      previousDotInteractionSourceStoreRef.current = EMPTY_SEARCH_MAP_SOURCE_STORE;
-      previousLabelSourceStoreRef.current = EMPTY_SEARCH_MAP_SOURCE_STORE;
-      previousLabelCollisionSourceStoreRef.current = EMPTY_SEARCH_MAP_SOURCE_STORE;
       markerCandidatesRef.current = [];
-      lodPinnedMarkersRef.current = [];
-      lodPinnedKeyRef.current = '';
-      lodPinProposedPromoteSinceByMarkerKeyRef.current.clear();
-      lodPinProposedDemoteSinceByMarkerKeyRef.current.clear();
-      sourceFramePort.publishSnapshot(EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT);
+      shortcutViewportLodCadenceRef.current = {
+        tokenIdentity: null,
+        lastRunAtMs: 0,
+      };
+      commitResidentSourceFrameSnapshot(EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT);
       publishTelemetry(0, 0);
       return;
     }
@@ -1258,20 +1405,6 @@ export const useDirectSearchMapSourceController = ({
       selectedRestaurantId == null &&
       searchRequestId == null
     ) {
-      logger.warn('[REVEAL-LIFECYCLE] source_waiting_missing_search_request', {
-        preparedVisualCycleKey,
-        readinessKey,
-        searchMode,
-        activeTab,
-        submittedQuery: state.submittedQuery ?? null,
-        resultsRequestKey: mountedResultsSnapshot.resultsRequestKey,
-        resultsHydrationKey: mountedResultsSnapshot.resultsHydrationKey,
-        hasCommittedResultState,
-        previousVisualCycleKey: previousSourceFrameSnapshot.visualCycleKey,
-        previousPinCount: previousSourceFrameSnapshot.pinSourceStore.idsInOrder.length,
-        previousDotCount: previousSourceFrameSnapshot.dotSourceStore.idsInOrder.length,
-        previousLabelCount: previousSourceFrameSnapshot.labelSourceStore.idsInOrder.length,
-      });
       sourceFramePort.publishVisualState({
         visibleSortedRestaurantMarkersCount:
           previousSourceFrameSnapshot.pinSourceStore.idsInOrder.length,
@@ -1296,19 +1429,6 @@ export const useDirectSearchMapSourceController = ({
       hasShortcutCoverageInput &&
       !shortcutCoverageReadyForPreparedEnter
     ) {
-      logger.warn('[REVEAL-LIFECYCLE] source_waiting_shortcut_coverage', {
-        preparedVisualCycleKey,
-        readinessKey,
-        searchRequestId,
-        currentShortcutCoverageRequestKey,
-        coverageRequestKey: coverageResource?.requestKey ?? null,
-        coverageSearchRequestId: coverageResource?.searchRequestId ?? null,
-        coverageStatus: coverageResource?.status ?? 'idle',
-        coverageReason: coverageResource?.terminalReason ?? null,
-        shortcutCoverageLoading: shortcutCoverageLoadingRef.current,
-        pendingCoverageForRequest: shortcutCoveragePendingForCurrentRequest != null,
-        completedCoverageForRequest: shortcutCoverageSnapshotForCurrentRequest != null,
-      });
       sourceFramePort.publishVisualState({
         visibleSortedRestaurantMarkersCount:
           previousSourceFrameSnapshot.pinSourceStore.idsInOrder.length,
@@ -1409,62 +1529,7 @@ export const useDirectSearchMapSourceController = ({
         mapSearchSurfaceResultsSourcesReady: pinInteractionSourcesComplete,
         mapSearchSurfaceResultsSourcesReadyKey: readinessKey,
       };
-      const didPublishSourceFrame = sourceFramePort.publishSnapshot(nextCachedSnapshot);
-      logPinInteractionSourceMismatch({
-        source: 'prepared_frame_cache',
-        preparedVisualCycleKey,
-        readinessKey,
-        markersRenderKey: nextCachedSnapshot.markersRenderKey,
-        pinSourceStore: nextCachedSnapshot.pinSourceStore,
-        pinInteractionSourceStore: nextCachedSnapshot.pinInteractionSourceStore,
-      });
-      const pinStackDiagnostics = buildPinStackDiagnostics(nextCachedSnapshot.pinSourceStore);
-      logger[pinStackDiagnostics.hasStackingSignal ? 'warn' : 'debug'](
-        '[PIN-STACK-DIAG] source_pin_stack_probe',
-        {
-          source: 'prepared_frame_cache',
-          preparedVisualCycleKey,
-          readinessKey,
-          didPublishSourceFrame,
-          markersRenderKey: nextCachedSnapshot.markersRenderKey,
-          ...pinStackDiagnostics,
-        }
-      );
-      logger.debug('[REVEAL-LIFECYCLE] full_source_snapshot_published', {
-        source: 'prepared_frame_cache',
-        preparedVisualCycleKey,
-        readinessKey,
-        didPublishSourceFrame,
-        markersRenderKey: nextCachedSnapshot.markersRenderKey,
-        pinCount: nextCachedSnapshot.pinSourceStore.idsInOrder.length,
-        pinInteractionCount: nextCachedSnapshot.pinInteractionSourceStore.idsInOrder.length,
-        dotCount: nextCachedSnapshot.dotSourceStore.idsInOrder.length,
-        dotInteractionCount: nextCachedSnapshot.dotInteractionSourceStore.idsInOrder.length,
-        labelCount: nextCachedSnapshot.labelSourceStore.idsInOrder.length,
-        labelCollisionCount: nextCachedSnapshot.labelCollisionSourceStore.idsInOrder.length,
-        coverageRequestKey: nextCachedSnapshot.shortcutCoverageRequestKey,
-        coverageStatus: nextCachedSnapshot.shortcutCoverageReadinessStatus,
-        nextExpectedEvent: pinInteractionSourcesComplete
-          ? 'native_mounted_hidden_ack'
-          : 'pin_interactions_ready',
-      });
-      if (nextCachedSnapshot.labelSourceStore.idsInOrder.length > 0) {
-        logger.debug('[LABEL-PLACEMENT-DIAG] source_frame_label_candidates_published', {
-          source: 'prepared_frame_cache',
-          preparedVisualCycleKey,
-          readinessKey,
-          didPublishSourceFrame,
-          pinCount: nextCachedSnapshot.pinSourceStore.idsInOrder.length,
-          labelCandidateCount: nextCachedSnapshot.labelSourceStore.idsInOrder.length,
-          labelCollisionCount: nextCachedSnapshot.labelCollisionSourceStore.idsInOrder.length,
-          labelCandidatesPerPin:
-            nextCachedSnapshot.pinSourceStore.idsInOrder.length > 0
-              ? nextCachedSnapshot.labelSourceStore.idsInOrder.length /
-                nextCachedSnapshot.pinSourceStore.idsInOrder.length
-              : null,
-          mapSearchSurfaceResultsSourcesReady: pinInteractionSourcesComplete,
-        });
-      }
+      const didPublishSourceFrame = commitResidentSourceFrameSnapshot(nextCachedSnapshot);
       if (isPerfScenarioAttributionActive(scenarioConfig)) {
         logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
           event: 'map_source_frame_data_reuse_contract',
@@ -1562,80 +1627,39 @@ export const useDirectSearchMapSourceController = ({
     });
     const rankedCandidates = projectedInitialCandidates.rankedCandidates;
     const selectedRestaurantCandidates = projectedInitialCandidates.selectedRestaurantCandidates;
-    const canUseRankedShortcutFrame =
-      searchMode === 'shortcut' &&
-      selectedRestaurantId == null &&
-      effectiveRestaurantOnlyId == null;
-    const shouldSeedInitialRankedShortcutFrame =
-      canUseRankedShortcutFrame && lodPinnedMarkersRef.current.length === 0;
-    const nextModel = shouldSeedInitialRankedShortcutFrame
-      ? {
-          nextPinnedKey: buildStableKeyFingerprint(
-            rankedCandidates.slice(0, args.maxFullPins).map((feature) => buildMarkerKey(feature))
-          ),
-          nextPinnedMarkers: rankedCandidates.slice(0, args.maxFullPins),
-          nextPinnedMeta: rankedCandidates.slice(0, args.maxFullPins).map((feature, index) => ({
-            markerKey: buildMarkerKey(feature),
-            lodZ: Math.max(0, args.maxFullPins - 1 - index),
-          })),
-          nextProposedPromoteSinceByMarkerKey: lodPinProposedPromoteSinceByMarkerKeyRef.current,
-          nextProposedDemoteSinceByMarkerKey: lodPinProposedDemoteSinceByMarkerKeyRef.current,
-        }
-      : currentBounds
-        ? buildMarkerRenderModel({
-            bounds: currentBounds,
-            rankedCandidates,
-            selectedRestaurantCandidates,
-            currentPinnedMarkers: lodPinnedMarkersRef.current,
-            selectedRestaurantId,
-            buildMarkerKey,
-            maxPins: args.maxFullPins,
-            visibleCandidateBuffer: args.lodVisibleCandidateBuffer,
-            promoteStableMs: args.isMapMoving
-              ? args.lodPinPromoteStableMsMoving
-              : args.lodPinToggleStableMsIdle,
-            demoteStableMs: args.isMapMoving
-              ? args.lodPinDemoteStableMsMoving
-              : args.lodPinToggleStableMsIdle,
-            offscreenDemoteStableMs: args.isMapMoving
-              ? args.lodPinOffscreenToggleStableMsMoving
-              : 0,
-            nowMs: Date.now(),
-            proposedPromoteSinceByMarkerKey: lodPinProposedPromoteSinceByMarkerKeyRef.current,
-            proposedDemoteSinceByMarkerKey: lodPinProposedDemoteSinceByMarkerKeyRef.current,
-          })
-        : {
-            nextPinnedKey: '',
-            nextPinnedMarkers: [],
-            nextPinnedMeta: [],
-            nextProposedPromoteSinceByMarkerKey: new Map<string, number>(),
-            nextProposedDemoteSinceByMarkerKey: new Map<string, number>(),
-          };
-    lodPinnedKeyRef.current = nextModel.nextPinnedKey;
-    lodPinnedMarkersRef.current = nextModel.nextPinnedMarkers;
-    lodPinProposedPromoteSinceByMarkerKeyRef.current =
-      nextModel.nextProposedPromoteSinceByMarkerKey;
-    lodPinProposedDemoteSinceByMarkerKeyRef.current = nextModel.nextProposedDemoteSinceByMarkerKey;
+    const nextModel = currentBounds
+      ? buildMarkerRenderModel({
+          bounds: currentBounds,
+          rankedCandidates,
+          selectedRestaurantCandidates,
+          currentPinnedMarkers: lodPinnedMarkersRef.current,
+          selectedRestaurantId,
+          selectedPriorityCoordinate,
+          buildMarkerKey,
+          buildVisualIdentityKey: buildSearchMapVisualIdentityKey,
+          maxPins: args.maxFullPins,
+        })
+      : {
+          nextPinnedMarkers: [],
+          nextPinnedMeta: [],
+        };
+    const nextPinnedVisualKey = buildLodPinnedVisualKey(nextModel.nextPinnedMeta);
+    if (
+      isViewportLodPublish &&
+      projectionIsMapMoving &&
+      nextPinnedVisualKey === lodPinnedVisualKeyRef.current
+    ) {
+      return;
+    }
     const visibleSortedRestaurantMarkers =
-      nextModel.nextPinnedMarkers.length > 0
-        ? nextModel.nextPinnedMarkers.map((feature, index) => ({
+      nextModel.nextPinnedMarkers.map((feature, index) => ({
             ...feature,
             properties: {
               ...feature.properties,
               nativeLodZ: nextModel.nextPinnedMeta[index]?.lodZ ?? feature.properties.nativeLodZ,
               lodZ: nextModel.nextPinnedMeta[index]?.lodZ ?? feature.properties.lodZ,
             },
-          }))
-        : shouldSeedInitialRankedShortcutFrame
-          ? rankedCandidates.slice(0, args.maxFullPins).map((feature, index) => ({
-              ...feature,
-              properties: {
-                ...feature.properties,
-                lodZ: Math.max(0, args.maxFullPins - 1 - index),
-                nativeLodZ: Math.max(0, args.maxFullPins - 1 - index),
-              },
-            }))
-          : [];
+          }));
     const projectedVisualFrame = projectSearchMapVisualFrame({
       rankedSources: rankedCandidateSources,
       dotSources: dotCandidateSources,
@@ -1680,13 +1704,18 @@ export const useDirectSearchMapSourceController = ({
       });
     });
     const pinSourceStore = pinBuilder.finish();
-    previousPinSourceStoreRef.current = pinSourceStore;
+    const promotedVisualIdentityKeysForDots = new Set(
+      visibleSortedRestaurantMarkers.map((feature) => buildSearchMapVisualIdentityKey(feature))
+    );
 
     const dotBuilder = createSearchMapSourceStoreBuilder(
       previousDotSourceStoreRef.current ?? EMPTY_SEARCH_MAP_SOURCE_STORE
     );
     visibleDotRestaurantMarkerFeatures.forEach((feature) => {
       const markerKey = buildMarkerKey(feature);
+      const isPromotedAsPin = promotedVisualIdentityKeysForDots.has(
+        buildSearchMapVisualIdentityKey(feature)
+      );
       const semanticRevision = buildDotSemanticRevision({
         baseDiffKey: getSearchMapSourceTransportFeature(feature).diffKey,
         markerKey,
@@ -1697,7 +1726,7 @@ export const useDirectSearchMapSourceController = ({
         properties: {
           ...feature.properties,
           markerKey,
-          nativeDotOpacity: 1,
+          nativeDotOpacity: isPromotedAsPin ? 0 : 1,
           nativePresentationOpacity: 1,
         },
       } satisfies Feature<Point, RestaurantFeatureProperties>;
@@ -1710,9 +1739,24 @@ export const useDirectSearchMapSourceController = ({
       });
     });
     const dotSourceStore = dotBuilder.finish();
-    previousDotSourceStoreRef.current = dotSourceStore;
     const pinVisualIdentityKeys = collectSourceStoreVisualIdentityKeys(pinSourceStore);
     const dotVisualIdentityKeys = collectSourceStoreVisualIdentityKeys(dotSourceStore);
+    const visibleDemotedDotVisualIdentityKeys = new Set<SearchMapVisualIdentityKey>();
+    dotSourceStore.idsInOrder.forEach((markerKey) => {
+      const feature = dotSourceStore.featureById.get(markerKey);
+      if (!feature || feature.properties.nativeDotOpacity === 0) {
+        return;
+      }
+      visibleDemotedDotVisualIdentityKeys.add(buildSearchMapVisualIdentityKey(feature));
+    });
+    const selectedPinVisualIdentityCount = countRestaurantVisualIdentityKeysInSourceStore(
+      pinSourceStore,
+      selectedRestaurantId
+    );
+    const normalPinVisualIdentityCount = Math.max(
+      0,
+      pinVisualIdentityKeys.size - selectedPinVisualIdentityCount
+    );
     const lodOverlapMarkerKeys = intersectStringSets(
       new Set(pinSourceStore.idsInOrder),
       new Set(dotSourceStore.idsInOrder)
@@ -1729,6 +1773,14 @@ export const useDirectSearchMapSourceController = ({
       projectedVisualFrame.candidateVisualIdentityKeys,
       lodClassifiedVisualIdentityKeys
     );
+    const viewportNormalPinRankContract = buildViewportNormalPinRankContract({
+      bounds: currentBounds,
+      rankedCandidates,
+      pinSourceStore,
+      selectedRestaurantId,
+      buildMarkerKey,
+      maxPins: args.maxFullPins,
+    });
 
     const pinInteractionBuilder = createSearchMapSourceStoreBuilder(
       previousPinInteractionSourceStoreRef.current
@@ -1767,43 +1819,6 @@ export const useDirectSearchMapSourceController = ({
       });
     });
     const pinInteractionSourceStore = pinInteractionBuilder.finish();
-    previousPinInteractionSourceStoreRef.current = pinInteractionSourceStore;
-
-    const dotInteractionBuilder = createSearchMapSourceStoreBuilder(
-      previousDotInteractionSourceStoreRef.current
-    );
-    dotSourceStore.idsInOrder.forEach((markerKey) => {
-      const feature = dotSourceStore.featureById.get(markerKey);
-      if (!feature) {
-        return;
-      }
-      const [lng, lat] = feature.geometry.coordinates;
-      const nextFeature = {
-        type: 'Feature',
-        id: markerKey,
-        geometry: feature.geometry,
-        properties: {
-          markerKey,
-          restaurantId: feature.properties.restaurantId,
-        } as RestaurantFeatureProperties,
-      } satisfies Feature<Point, RestaurantFeatureProperties>;
-      const semanticRevision = buildInteractionSemanticRevision({
-        family: 'dotInteraction',
-        markerKey,
-        restaurantId: feature.properties.restaurantId,
-        lng,
-        lat,
-      });
-      dotInteractionBuilder.appendFeature(nextFeature, {
-        semanticRevision,
-        transportFeature: createSearchMapSourceTransportFeature({
-          feature: nextFeature,
-          diffKey: semanticRevision,
-        }),
-      });
-    });
-    const dotInteractionSourceStore = dotInteractionBuilder.finish();
-    previousDotInteractionSourceStoreRef.current = dotInteractionSourceStore;
 
     const { labelSourceStore, labelCollisionSourceStore, labelDerivedSourceIdentityKey } =
       buildDirectLabelStores({
@@ -1811,8 +1826,6 @@ export const useDirectSearchMapSourceController = ({
         previousLabelSourceStore: previousLabelSourceStoreRef.current,
         previousLabelCollisionSourceStore: previousLabelCollisionSourceStoreRef.current,
       });
-    previousLabelSourceStoreRef.current = labelSourceStore;
-    previousLabelCollisionSourceStoreRef.current = labelCollisionSourceStore;
     assertProjectedVisualFrameInvariants({
       pinSourceStore,
       dotSourceStore,
@@ -1858,7 +1871,6 @@ export const useDirectSearchMapSourceController = ({
       pinSourceStore,
       dotSourceStore,
       pinInteractionSourceStore,
-      dotInteractionSourceStore,
       labelSourceStore,
       labelCollisionSourceStore,
       labelDerivedSourceIdentityKey,
@@ -1874,38 +1886,11 @@ export const useDirectSearchMapSourceController = ({
     };
     const activePresentationTransport =
       args.resultsPresentationAuthority.getSnapshot().resultsPresentationTransport;
-    const isResultsEnterInFlight =
-      activePresentationTransport.transactionId != null &&
-      activePresentationTransport.snapshotKind != null &&
-      activePresentationTransport.snapshotKind !== 'results_exit' &&
-      activePresentationTransport.executionStage !== 'settled';
     const shouldPreserveResidentEnterSourceFrame =
       preparedVisualCycleKey != null &&
       previousSourceFrameSnapshot.visualCycleKey === preparedVisualCycleKey &&
       hasNonEmptySearchMapSourceFrame(previousSourceFrameSnapshot) &&
       !hasNonEmptySearchMapSourceFrame(sourceFrameSnapshot);
-    if (isResultsEnterInFlight && !hasNonEmptySearchMapSourceFrame(sourceFrameSnapshot)) {
-      logger.warn('[REVEAL-LIFECYCLE] source_empty_frame_during_enter', {
-        transactionId: activePresentationTransport.transactionId,
-        preparedVisualCycleKey,
-        readinessKey,
-        transportExecutionStage: activePresentationTransport.executionStage,
-        shouldPreserveResidentEnterSourceFrame,
-        previousVisualCycleKey: previousSourceFrameSnapshot.visualCycleKey,
-        previousMarkersRenderKey: previousSourceFrameSnapshot.markersRenderKey,
-        previousPinCount: previousSourceFrameSnapshot.pinSourceStore.idsInOrder.length,
-        previousDotCount: previousSourceFrameSnapshot.dotSourceStore.idsInOrder.length,
-        previousLabelCount: previousSourceFrameSnapshot.labelSourceStore.idsInOrder.length,
-        nextMarkersRenderKey: sourceFrameSnapshot.markersRenderKey,
-        hasCommittedResultState,
-        shouldProjectResultSources,
-        restaurantCount: restaurants.length,
-        dishCount: dishes.length,
-        markerCatalogCount: markerCatalogEntries.length,
-        shortcutCoverageReadyForPreparedEnter,
-        mapSearchSurfaceResultsSourcesReady,
-      });
-    }
     if (shouldPreserveResidentEnterSourceFrame) {
       if (isPerfScenarioAttributionActive(scenarioConfig)) {
         logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
@@ -1931,64 +1916,7 @@ export const useDirectSearchMapSourceController = ({
         preparedSourceFrameByFingerprintRef.current.delete(oldestKey);
       }
     }
-    const didPublishSourceFrame = sourceFramePort.publishSnapshot(sourceFrameSnapshot);
-    logPinInteractionSourceMismatch({
-      source: 'recomputed',
-      preparedVisualCycleKey,
-      readinessKey,
-      markersRenderKey: sourceFrameSnapshot.markersRenderKey,
-      pinSourceStore: sourceFrameSnapshot.pinSourceStore,
-      pinInteractionSourceStore: sourceFrameSnapshot.pinInteractionSourceStore,
-    });
-    const pinStackDiagnostics = buildPinStackDiagnostics(sourceFrameSnapshot.pinSourceStore);
-    logger[pinStackDiagnostics.hasStackingSignal ? 'warn' : 'debug'](
-      '[PIN-STACK-DIAG] source_pin_stack_probe',
-      {
-        source: 'recomputed',
-        preparedVisualCycleKey,
-        readinessKey,
-        didPublishSourceFrame,
-        markersRenderKey: sourceFrameSnapshot.markersRenderKey,
-        ...pinStackDiagnostics,
-      }
-    );
-    logger.debug('[REVEAL-LIFECYCLE] full_source_snapshot_published', {
-      source: 'recomputed',
-      preparedVisualCycleKey,
-      readinessKey,
-      didPublishSourceFrame,
-      mapSearchSurfaceResultsSourcesReady,
-      markersRenderKey: sourceFrameSnapshot.markersRenderKey,
-      pinCount: sourceFrameSnapshot.pinSourceStore.idsInOrder.length,
-      pinInteractionCount: sourceFrameSnapshot.pinInteractionSourceStore.idsInOrder.length,
-      dotCount: sourceFrameSnapshot.dotSourceStore.idsInOrder.length,
-      dotInteractionCount: sourceFrameSnapshot.dotInteractionSourceStore.idsInOrder.length,
-      labelCount: sourceFrameSnapshot.labelSourceStore.idsInOrder.length,
-      labelCollisionCount: sourceFrameSnapshot.labelCollisionSourceStore.idsInOrder.length,
-      shortcutCoverageRequestKey: sourceFrameSnapshot.shortcutCoverageRequestKey,
-      shortcutCoverageStatus: sourceFrameSnapshot.shortcutCoverageReadinessStatus,
-      shortcutCoverageReason: sourceFrameSnapshot.shortcutCoverageReadinessReason,
-      nextExpectedEvent: mapSearchSurfaceResultsSourcesReady
-        ? 'native_mounted_hidden_ack'
-        : 'source_readiness_true',
-    });
-    if (sourceFrameSnapshot.labelSourceStore.idsInOrder.length > 0) {
-      logger.debug('[LABEL-PLACEMENT-DIAG] source_frame_label_candidates_published', {
-        source: 'recomputed',
-        preparedVisualCycleKey,
-        readinessKey,
-        didPublishSourceFrame,
-        pinCount: sourceFrameSnapshot.pinSourceStore.idsInOrder.length,
-        labelCandidateCount: sourceFrameSnapshot.labelSourceStore.idsInOrder.length,
-        labelCollisionCount: sourceFrameSnapshot.labelCollisionSourceStore.idsInOrder.length,
-        labelCandidatesPerPin:
-          sourceFrameSnapshot.pinSourceStore.idsInOrder.length > 0
-            ? sourceFrameSnapshot.labelSourceStore.idsInOrder.length /
-              sourceFrameSnapshot.pinSourceStore.idsInOrder.length
-            : null,
-        mapSearchSurfaceResultsSourcesReady,
-      });
-    }
+    const didPublishSourceFrame = commitResidentSourceFrameSnapshot(sourceFrameSnapshot);
     if (isPerfScenarioAttributionActive(scenarioConfig)) {
       const quietMeasuredLoopActive = isPerfScenarioQuietMeasuredLoopActive(scenarioConfig);
       const shouldEmitSourceFrameDiagnostics = !quietMeasuredLoopActive || didPublishSourceFrame;
@@ -2117,7 +2045,7 @@ export const useDirectSearchMapSourceController = ({
           });
         }
         logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
-          event: 'lod_source_overlap_probe',
+          event: 'lod_source_overlap_contract',
           searchMode,
           activeTab,
           readinessKey,
@@ -2138,17 +2066,53 @@ export const useDirectSearchMapSourceController = ({
           searchMode,
           activeTab,
           readinessKey,
+          isViewportLodPublish,
+          isMapMoving: projectionIsMapMoving,
           candidateVisualIdentityCount: projectedVisualFrame.candidateVisualIdentityKeys.size,
           classifiedVisualIdentityCount: lodClassifiedVisualIdentityKeys.size,
-          dotVisualIdentityCount: dotVisualIdentityKeys.size,
+          dotVisualIdentityCount: visibleDemotedDotVisualIdentityKeys.size,
+          residentDotVisualIdentityCount: dotVisualIdentityKeys.size,
           fullPinBudget: args.maxFullPins,
           pinVisualIdentityCount: pinVisualIdentityKeys.size,
+          normalPinVisualIdentityCount,
+          selectedPinVisualIdentityCount,
+          selectedRestaurantId,
+          ...viewportNormalPinRankContract,
           promotedRestaurantsRenderAsPins:
             visibleSortedRestaurantMarkers.length === pinSourceStore.idsInOrder.length,
           nonPromotedRestaurantsRenderAsDots:
             visibleDotRestaurantMarkerFeatures.length === dotSourceStore.idsInOrder.length,
+          allEligibleVisualIdentitiesClassified:
+            lodClassifiedVisualIdentityKeys.size ===
+            projectedVisualFrame.candidateVisualIdentityKeys.size,
           unclassifiedCandidateVisualIdentityCount,
         });
+        const promotedRoleFamiliesAreComplete =
+          pinInteractionSourceStore.idsInOrder.length === pinSourceStore.idsInOrder.length &&
+          labelSourceStore.idsInOrder.length ===
+            pinSourceStore.idsInOrder.length * LABEL_CANDIDATES_IN_ORDER.length &&
+          labelCollisionSourceStore.idsInOrder.length === pinSourceStore.idsInOrder.length;
+        const promotedDotFeaturesAreResident =
+          pinSourceStore.idsInOrder.every((markerKey) => dotSourceStore.featureById.has(markerKey));
+        const promotedResidentDotsStartHidden =
+          pinSourceStore.idsInOrder.every((markerKey) => {
+            const dotFeature = dotSourceStore.featureById.get(markerKey);
+            return dotFeature?.properties?.nativeDotOpacity === 0;
+          });
+        const demotedRoleFamiliesAreDotOnly =
+          dotSourceStore.idsInOrder.every((markerKey) => {
+            const isPromoted = pinSourceStore.featureById.has(markerKey);
+            const dotFeature = dotSourceStore.featureById.get(markerKey);
+            return isPromoted || dotFeature?.properties.nativeDotOpacity !== 0;
+          });
+        const eligibleCoverageFeatureCount =
+          searchMode === 'shortcut' && coverageResource?.status === 'completed'
+            ? coverageResource.acceptedFeatureCount
+            : null;
+        const projectedVisualFeatureCount = new Set([
+          ...Array.from(pinVisualIdentityKeys),
+          ...Array.from(dotVisualIdentityKeys),
+        ]).size;
         logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
           event: 'map_marker_visual_sources_contract',
           searchMode,
@@ -2156,8 +2120,30 @@ export const useDirectSearchMapSourceController = ({
           readinessKey,
           pinCount: pinSourceStore.idsInOrder.length,
           dotCount: dotSourceStore.idsInOrder.length,
+          visibleDemotedDotCount: visibleDemotedDotVisualIdentityKeys.size,
+          normalPinCount: normalPinVisualIdentityCount,
+          selectedPinCount: selectedPinVisualIdentityCount,
+          selectedRestaurantId,
+          pinInteractionCount: pinInteractionSourceStore.idsInOrder.length,
           labelCount: labelSourceStore.idsInOrder.length,
           labelCollisionCount: labelCollisionSourceStore.idsInOrder.length,
+          pinSourceMarkerKeyFingerprint: buildStableKeyFingerprint(pinSourceStore.idsInOrder),
+          dotSourceMarkerKeyFingerprint: buildStableKeyFingerprint(dotSourceStore.idsInOrder),
+          pinRankSignature: summarizeSourceStoreRank(pinSourceStore, buildMarkerKey),
+          dotRankSignature: summarizeSourceStoreRank(dotSourceStore, buildMarkerKey),
+          projectedVisualFeatureCount,
+          eligibleCoverageFeatureCount,
+          projectedVisualFeatureCountMatchesCoverage:
+            eligibleCoverageFeatureCount == null ||
+            eligibleCoverageFeatureCount === projectedVisualFeatureCount,
+          pinDotMarkerKeyOverlapCount: lodOverlapMarkerKeys.length,
+          pinDotVisualIdentityOverlapCount: lodOverlapVisualIdentityKeys.length,
+          promotedDotFeaturesAreResident,
+          promotedResidentDotsStartHidden,
+          promotedRoleFamiliesAreComplete,
+          demotedRoleFamiliesAreDotOnly,
+          promotedPinInteractionCountMatchesPinCount:
+            pinInteractionSourceStore.idsInOrder.length === pinSourceStore.idsInOrder.length,
           labelPerPinCandidateCount:
             pinSourceStore.idsInOrder.length > 0
               ? labelSourceStore.idsInOrder.length / pinSourceStore.idsInOrder.length
@@ -2658,15 +2644,29 @@ export const useDirectSearchMapSourceController = ({
       (snapshot) => snapshot.redrawTransaction?.id ?? null,
       publishAndFetch
     );
-    const unsubscribeViewport = viewportBoundsService.subscribe(() => {
+    const unsubscribeViewport = viewportBoundsService.subscribe((bounds) => {
       const state = searchRuntimeBus.getState();
       const args = latestArgsRef.current;
-      const canSkipSourceRebuildForShortcutViewport =
+      const isPlainShortcutViewportProjection =
         state.searchMode === 'shortcut' &&
         args.restaurantOnlyId == null &&
         args.highlightedRestaurantId == null;
-      if (!canSkipSourceRebuildForShortcutViewport) {
-        publishSourcesRef.current();
+      if (!isPlainShortcutViewportProjection) {
+        shortcutViewportLodCadenceRef.current = {
+          tokenIdentity: null,
+          lastRunAtMs: 0,
+        };
+        publishSourcesRef.current({ reason: 'viewport_lod' });
+      } else if (
+        shouldEvaluateShortcutViewportLod({
+          bounds,
+          isMapMoving:
+            args.isMapMoving || isMapMotionPressureMoving(args.mapMotionPressureController),
+          nowMs: Date.now(),
+          cadence: shortcutViewportLodCadenceRef.current,
+        })
+      ) {
+        publishSourcesRef.current({ reason: 'viewport_lod' });
       }
       maybeFetchShortcutCoverage();
     });
@@ -2726,6 +2726,10 @@ export const useDirectSearchMapSourceController = ({
 
   const handleMarkerPress = React.useCallback(
     (restaurantId: string, pressedCoordinate?: Coordinate | null) => {
+      lastMarkerPressTargetRef.current = {
+        restaurantId,
+        coordinate: pressedCoordinate ?? null,
+      };
       latestArgsRef.current.profileCommandPort.openProfileFromMarker({
         restaurantId,
         restaurantName: shortcutCoverageDotFeaturesRef.current?.features.find(

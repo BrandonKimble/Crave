@@ -617,7 +617,7 @@ const areLocalRestaurantVisualSnapshotsEqual = (
   (left != null &&
     right != null &&
     left.overlayGeometryRuntime === right.overlayGeometryRuntime &&
-    left.resultsSheetRuntimeOwner === right.resultsSheetRuntimeOwner &&
+    left.sharedSheetRuntimeOwner === right.sharedSheetRuntimeOwner &&
     left.visualRuntime === right.visualRuntime);
 
 const areLocalRestaurantSheetHostSnapshotsEqual = (

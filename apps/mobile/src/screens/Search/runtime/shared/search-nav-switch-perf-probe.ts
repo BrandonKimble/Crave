@@ -1,5 +1,3 @@
-import { shouldSuppressPerfScenarioRuntimeDiagnostics } from '../../../../perf/perf-scenario-attribution';
-
 type SearchNavSwitchPerfProbe = {
   seq: number;
   from: string;
@@ -10,8 +8,6 @@ type SearchNavSwitchPerfProbe = {
 
 const SEARCH_NAV_SWITCH_ATTRIBUTION_ENABLED =
   process.env.EXPO_PUBLIC_PERF_NAV_SWITCH_ATTRIBUTION === '1';
-const SEARCH_NAV_SWITCH_DIAGNOSTIC_LOGS_ENABLED =
-  process.env.EXPO_PUBLIC_PERF_NAV_SWITCH_DIAGNOSTIC_LOGS === '1';
 const SEARCH_NAV_SWITCH_PROFILER_SPAN_LOGS_ENABLED =
   process.env.EXPO_PUBLIC_PERF_NAV_SWITCH_PROFILER_SPAN_LOGS === '1';
 const SEARCH_NAV_SWITCH_RUNTIME_ATTRIBUTION_ENABLED =
@@ -58,9 +54,6 @@ export const getActiveSearchNavSwitchPerfProbe = (): SearchNavSwitchPerfProbe | 
 
 export const shouldLogSearchNavSwitchAttribution = (): boolean =>
   SEARCH_NAV_SWITCH_ATTRIBUTION_ENABLED;
-
-export const shouldLogSearchNavSwitchDiagnosticLogs = (): boolean =>
-  SEARCH_NAV_SWITCH_DIAGNOSTIC_LOGS_ENABLED && !shouldSuppressPerfScenarioRuntimeDiagnostics();
 
 export const shouldLogSearchNavSwitchProfilerSpanLogs = (): boolean =>
   SEARCH_NAV_SWITCH_PROFILER_SPAN_LOGS_ENABLED;

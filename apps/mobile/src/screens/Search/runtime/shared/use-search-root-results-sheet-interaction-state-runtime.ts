@@ -14,8 +14,8 @@ export const useSearchRootResultsSheetInteractionStateRuntime = ({
 }: UseSearchRootResultsSheetInteractionStateRuntimeArgs) => {
   const { sessionPrimitivesLane } = stateFoundationLane;
   const {
-    rootResultsSheetRuntimeLane,
-    appRouteResultsSheetRuntimeOwner,
+    rootSharedSheetRuntimeLane,
+    appRouteSharedSheetRuntimeOwner,
   } = rootOverlayFoundationRuntime;
 
   const resultsSheetDraggingRef = React.useRef(false);
@@ -38,14 +38,14 @@ export const useSearchRootResultsSheetInteractionStateRuntime = ({
         merged.isResultsListScrolling ||
         merged.isResultsSheetSettling;
       sessionPrimitivesLane.primitives.searchInteractionRef.current = merged;
-      rootResultsSheetRuntimeLane.mapMotionPressureController.updateInteractionState({
+      rootSharedSheetRuntimeLane.mapMotionPressureController.updateInteractionState({
         isSearchInteracting: merged.isInteracting,
         isAnySheetDragging:
           sessionPrimitivesLane.primitives.anySheetDraggingRef.current,
       });
     },
     [
-      rootResultsSheetRuntimeLane.mapMotionPressureController,
+      rootSharedSheetRuntimeLane.mapMotionPressureController,
       sessionPrimitivesLane.primitives.anySheetDraggingRef,
       sessionPrimitivesLane.primitives.searchInteractionRef,
     ]
@@ -64,13 +64,13 @@ export const useSearchRootResultsSheetInteractionStateRuntime = ({
       sessionPrimitivesLane.primitives.anySheetDraggingRef.current = isDragging;
       updateSearchInteractionRef({ isResultsSheetDragging: isDragging });
       if (isDragging) {
-        rootResultsSheetRuntimeLane.cancelPendingMapMovementUpdates();
+        rootSharedSheetRuntimeLane.cancelPendingMapMovementUpdates();
         return;
       }
-      rootResultsSheetRuntimeLane.flushDeferredMapMovementState();
+      rootSharedSheetRuntimeLane.flushDeferredMapMovementState();
     },
     [
-      rootResultsSheetRuntimeLane,
+      rootSharedSheetRuntimeLane,
       sessionPrimitivesLane.primitives.anySheetDraggingRef,
       updateSearchInteractionRef,
     ]
@@ -85,10 +85,10 @@ export const useSearchRootResultsSheetInteractionStateRuntime = ({
       resultsListScrollingRef.current = isScrolling;
       updateSearchInteractionRef({ isResultsListScrolling: isScrolling });
       if (!isScrolling) {
-        rootResultsSheetRuntimeLane.flushDeferredMapMovementState();
+        rootSharedSheetRuntimeLane.flushDeferredMapMovementState();
       }
     },
-    [rootResultsSheetRuntimeLane, updateSearchInteractionRef]
+    [rootSharedSheetRuntimeLane, updateSearchInteractionRef]
   );
 
   const setResultsSheetSettlingState = React.useCallback(
@@ -100,17 +100,17 @@ export const useSearchRootResultsSheetInteractionStateRuntime = ({
       resultsSheetSettlingRef.current = isSettling;
       updateSearchInteractionRef({ isResultsSheetSettling: isSettling });
       if (isSettling) {
-        rootResultsSheetRuntimeLane.cancelPendingMapMovementUpdates();
+        rootSharedSheetRuntimeLane.cancelPendingMapMovementUpdates();
         return;
       }
       if (resultsSheetDraggingRef.current) {
         handleResultsSheetDragStateChange(false);
       }
-      rootResultsSheetRuntimeLane.flushDeferredMapMovementState();
+      rootSharedSheetRuntimeLane.flushDeferredMapMovementState();
     },
     [
       handleResultsSheetDragStateChange,
-      rootResultsSheetRuntimeLane,
+      rootSharedSheetRuntimeLane,
       updateSearchInteractionRef,
     ]
   );
@@ -120,11 +120,11 @@ export const useSearchRootResultsSheetInteractionStateRuntime = ({
   }, [setResultsListScrolling]);
 
   const handleResultsListScrollEnd = React.useCallback(() => {
-    if (appRouteResultsSheetRuntimeOwner.resultsMomentum.value) {
+    if (appRouteSharedSheetRuntimeOwner.sheetMomentum.value) {
       return;
     }
     setResultsListScrolling(false);
-  }, [appRouteResultsSheetRuntimeOwner.resultsMomentum, setResultsListScrolling]);
+  }, [appRouteSharedSheetRuntimeOwner.sheetMomentum, setResultsListScrolling]);
 
   const handleResultsListMomentumBegin = React.useCallback(() => {
     setResultsListScrolling(true);

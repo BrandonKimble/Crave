@@ -40,9 +40,9 @@ import {
   type AppRouteSceneMotionRuntime,
 } from './app-route-scene-motion-controller';
 import {
-  createAppRouteResultsSheetVisibilityRuntime,
-  type AppRouteResultsSheetVisibilityRuntime,
-} from './app-route-results-sheet-visibility-controller';
+  createAppRouteSharedSheetPresentationRuntime,
+  type AppRouteSharedSheetPresentationRuntime,
+} from './app-route-shared-sheet-presentation-controller';
 import {
   createAppRouteSceneSwitchRuntime,
   type AppRouteSceneSwitchRuntime,
@@ -141,7 +141,7 @@ export type AppRouteSceneRuntime = {
   routeSceneSwitchRuntime: AppRouteSceneSwitchRuntime;
   routeSceneDisplayTargetRegistry: AppRouteSceneDisplayTargetRegistry;
   routeSceneMotionRuntime: AppRouteSceneMotionRuntime;
-  routeResultsSheetVisibilityRuntime: AppRouteResultsSheetVisibilityRuntime;
+  routeSharedSheetPresentationRuntime: AppRouteSharedSheetPresentationRuntime;
   routePollsSceneRuntime: AppRoutePollsSceneRuntime;
   routeDynamicSceneInputAuthority: AppRouteDynamicSceneInputRuntimeAuthority;
   routeDynamicSceneInputActions: AppRouteDynamicSceneInputRuntimeActions;
@@ -150,11 +150,11 @@ export type AppRouteSceneRuntime = {
   routeOverlaySessionActions: AppRouteOverlaySessionActions;
   routeSceneLayoutAuthority: RouteVisualRuntime['routeSceneLayoutAuthority'];
   routeHostOverlayGeometryAuthority: RouteVisualRuntime['routeHostOverlayGeometryAuthority'];
-  routeResultsSheetVisualAuthority: RouteVisualRuntime['routeResultsSheetVisualAuthority'];
+  routeSharedSheetVisualAuthority: RouteVisualRuntime['routeSharedSheetVisualAuthority'];
   routeHostVisualRuntimeAuthority: RouteVisualRuntime['routeHostVisualRuntimeAuthority'];
   routeSheetVisualAuthority: RouteVisualRuntime['routeSheetVisualAuthority'];
   syncRouteHostOverlayGeometryRuntime: RouteVisualRuntime['syncRouteHostOverlayGeometryRuntime'];
-  publishRouteResultsSheetVisualBinding: RouteVisualRuntime['publishRouteResultsSheetVisualBinding'];
+  publishRouteSharedSheetVisualBinding: RouteVisualRuntime['publishRouteSharedSheetVisualBinding'];
   syncRouteHostVisualRuntime: RouteVisualRuntime['syncRouteHostVisualRuntime'];
   sceneFrameAuthority: AppRouteSceneStackLayerFrameAuthority;
   sceneStackSurfaceAuthority: AppRouteSceneStackSurfaceAuthority;
@@ -189,14 +189,13 @@ export const createAppRouteSceneRuntime = (): AppRouteSceneRuntime => {
   const routeSearchCommandActions = createAppSearchRouteCommandActions({
     routeSceneSwitchAuthority: sceneSwitchAuthority,
     routeSceneSwitchActions: routeSceneSwitchRuntime,
+    routeSheetSnapSessionActions: routeSheetSnapSessionRuntime.actions,
   });
   const routeSceneMotionRuntime = createAppRouteSceneMotionRuntime({
     sheetMotionTargetRegistry: routeSceneSheetMotionTargetRegistry,
     routeSceneSwitchRuntime,
   });
-  const routeResultsSheetVisibilityRuntime = createAppRouteResultsSheetVisibilityRuntime({
-    routeSceneMotionRuntime,
-  });
+  const routeSharedSheetPresentationRuntime = createAppRouteSharedSheetPresentationRuntime();
   const routeSceneFoundationRuntime = createAppRouteSceneFoundationRuntime({
     sceneActivityAuthority,
     sceneInteractivityAuthority,
@@ -228,11 +227,6 @@ export const createAppRouteSceneRuntime = (): AppRouteSceneRuntime => {
   const routeStaticSceneDescriptorRuntime = createAppRouteStaticSceneDescriptorRuntime({
     sceneInputLane: routeSceneFoundationRuntime.sceneInputLane,
     routeSceneLayoutAuthority: routeVisualRuntime.routeSceneLayoutAuthority,
-    routeOverlayNavigationAuthority: routeSceneFoundationRuntime.routeOverlayNavigationAuthority,
-    sceneSwitchAuthority: routeSceneFoundationRuntime.sceneSwitchAuthority,
-    routeOverlayCommandActions: routeOverlayCommandController.actions,
-    routeSearchCommandActions,
-    routeSheetSnapSessionActions: routeSheetSnapSessionRuntime.actions,
   });
   const routeOverlaySessionController = createAppRouteOverlaySessionStateController({
     routeOverlayIdentityAuthority: routeSceneFoundationRuntime.routeOverlayIdentityAuthority,
@@ -281,7 +275,7 @@ export const createAppRouteSceneRuntime = (): AppRouteSceneRuntime => {
     routeSceneSwitchRuntime,
     routeSceneDisplayTargetRegistry,
     routeSceneMotionRuntime,
-    routeResultsSheetVisibilityRuntime,
+    routeSharedSheetPresentationRuntime,
     routePollsSceneRuntime,
     routeDynamicSceneInputAuthority: routeDynamicSceneInputRuntime.authority,
     routeDynamicSceneInputActions: routeDynamicSceneInputRuntime.actions,
@@ -290,17 +284,17 @@ export const createAppRouteSceneRuntime = (): AppRouteSceneRuntime => {
     routeOverlaySessionActions: routeOverlaySessionController.actions,
     routeSceneLayoutAuthority: routeVisualRuntime.routeSceneLayoutAuthority,
     routeHostOverlayGeometryAuthority: routeVisualRuntime.routeHostOverlayGeometryAuthority,
-    routeResultsSheetVisualAuthority: routeVisualRuntime.routeResultsSheetVisualAuthority,
+    routeSharedSheetVisualAuthority: routeVisualRuntime.routeSharedSheetVisualAuthority,
     routeHostVisualRuntimeAuthority: routeVisualRuntime.routeHostVisualRuntimeAuthority,
     routeSheetVisualAuthority: routeVisualRuntime.routeSheetVisualAuthority,
     syncRouteHostOverlayGeometryRuntime: routeVisualRuntime.syncRouteHostOverlayGeometryRuntime,
-    publishRouteResultsSheetVisualBinding: routeVisualRuntime.publishRouteResultsSheetVisualBinding,
+    publishRouteSharedSheetVisualBinding: routeVisualRuntime.publishRouteSharedSheetVisualBinding,
     syncRouteHostVisualRuntime: routeVisualRuntime.syncRouteHostVisualRuntime,
     sceneFrameAuthority: routeSceneStackRuntime.sceneFrameAuthority,
     sceneStackSurfaceAuthority: routeSceneStackRuntime.sceneStackSurfaceAuthority,
     sceneInputLane: routeSceneFoundationRuntime.sceneInputLane,
     dispose: () => {
-      routeResultsSheetVisibilityRuntime.dispose();
+      routeSharedSheetPresentationRuntime.dispose();
       routeSceneDisplayTargetRegistry.dispose();
       routeSceneMotionRuntime.dispose();
       routeSceneTransitionFanoutController.dispose();

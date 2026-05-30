@@ -20,9 +20,9 @@ export type {
 } from '../../../../navigation/runtime/route-host-overlay-geometry-state-controller';
 
 export type {
-  RouteResultsSheetVisualBinding,
-  RouteResultsSheetVisualAuthority,
-} from '../../../../navigation/runtime/route-results-sheet-visual-state-controller';
+  RouteSharedSheetVisualBinding,
+  RouteSharedSheetVisualAuthority,
+} from '../../../../navigation/runtime/route-shared-sheet-visual-state-controller';
 
 export type { RouteSheetVisualAuthority } from '../../../../navigation/runtime/route-sheet-visual-state-controller';
 

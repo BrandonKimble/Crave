@@ -128,11 +128,26 @@ export const useSearchRuntimeInstrumentationRuntime = ({
     []
   );
   const setMapCameraPerfCommand = React.useCallback(
-    ({ lat, lng, zoom }: { lat: number; lng: number; zoom: number; label?: string | null }) => {
+    ({
+      lat,
+      lng,
+      zoom,
+      bearing,
+      pitch,
+    }: {
+      lat: number;
+      lng: number;
+      zoom: number;
+      bearing?: number | null;
+      pitch?: number | null;
+      label?: string | null;
+    }) => {
       ensureInitialCameraReady();
       const accepted = cameraIntentArbiter.commit({
         center: [lng, lat],
         zoom,
+        bearing,
+        pitch,
         animationMode: 'none',
         animationDurationMs: 0,
         allowDuringGesture: true,
@@ -142,6 +157,8 @@ export const useSearchRuntimeInstrumentationRuntime = ({
         viewportBoundsService.setBounds(bounds);
         schedulePollBoundsUpdate(bounds);
         emitRuntimeMechanismEvent('perf_scenario_camera_bounds_seeded', {
+          bearing: bearing ?? null,
+          pitch: pitch ?? null,
           ...summarizeBounds(bounds),
           zoom,
         });
@@ -155,6 +172,50 @@ export const useSearchRuntimeInstrumentationRuntime = ({
       schedulePollBoundsUpdate,
       viewportBoundsService,
     ]
+  );
+  const animateMapCameraPerfCommand = React.useCallback(
+    ({
+      lat,
+      lng,
+      zoom,
+      bearing,
+      pitch,
+      cameraDurationMs,
+      label,
+    }: {
+      lat: number;
+      lng: number;
+      zoom: number;
+      bearing?: number | null;
+      pitch?: number | null;
+      cameraDurationMs: number;
+      label?: string | null;
+    }) => {
+      ensureInitialCameraReady();
+      const accepted = cameraIntentArbiter.commit({
+        center: [lng, lat],
+        zoom,
+        bearing,
+        pitch,
+        animationMode: 'easeTo',
+        animationDurationMs: cameraDurationMs,
+        allowDuringGesture: true,
+      });
+      if (accepted) {
+        const targetBounds = buildScenarioCameraBounds({ lat, lng, zoom });
+        emitRuntimeMechanismEvent('perf_scenario_animated_camera_committed', {
+          animationMode: 'easeTo',
+          bearing: bearing ?? null,
+          cameraDurationMs,
+          label: label ?? null,
+          pitch: pitch ?? null,
+          ...summarizeBounds(targetBounds),
+          zoom,
+        });
+      }
+      return accepted;
+    },
+    [cameraIntentArbiter, emitRuntimeMechanismEvent, ensureInitialCameraReady]
   );
   const moveMapForSearchThisAreaPerfCommand = React.useCallback(
     ({ lat, lng, zoom }: { lat: number; lng: number; zoom: number; label?: string | null }) => {
@@ -219,10 +280,12 @@ export const useSearchRuntimeInstrumentationRuntime = ({
       registerPerfScenarioCommands({
         closeResults: closeResultsPerfCommand,
         setMapCamera: setMapCameraPerfCommand,
+        animateMapCamera: animateMapCameraPerfCommand,
         moveMapForSearchThisArea: moveMapForSearchThisAreaPerfCommand,
         submitShortcutRestaurants: submitShortcutRestaurantsPerfCommand,
       }),
     [
+      animateMapCameraPerfCommand,
       closeResultsPerfCommand,
       moveMapForSearchThisAreaPerfCommand,
       setMapCameraPerfCommand,

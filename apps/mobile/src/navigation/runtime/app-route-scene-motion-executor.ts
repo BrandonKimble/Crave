@@ -28,12 +28,6 @@ type AppRouteSceneSheetMotionDispatchState = {
   request: OverlaySheetSnapRequest | null;
 };
 
-type PendingLocalSheetMotionRequest = {
-  sceneKey: OverlayKey;
-  request: OverlaySheetSnapRequest;
-  localMotionKey?: string;
-};
-
 export type AppRouteSceneCameraMotionTarget = {
   executeCameraIntent: (
     cameraIntent: RouteSceneSwitchCameraIntent,
@@ -141,8 +135,6 @@ export class AppRouteSceneMotionExecutor {
 
   private lastSheetDispatchState: AppRouteSceneSheetMotionDispatchState | null = null;
 
-  private readonly pendingLocalSheetMotionByKey = new Map<string, PendingLocalSheetMotionRequest>();
-
   private lastCameraDispatchState: AppRouteScenePlaneDispatchState | null = null;
 
   private lastChromeDispatchState: AppRouteScenePlaneDispatchState | null = null;
@@ -151,74 +143,8 @@ export class AppRouteSceneMotionExecutor {
 
   public dispose(): void {
     this.lastSheetDispatchState = null;
-    this.pendingLocalSheetMotionByKey.clear();
     this.lastCameraDispatchState = null;
     this.lastChromeDispatchState = null;
-  }
-
-  public requestLocalSheetMotion(
-    sceneKey: OverlayKey,
-    request: OverlaySheetSnapRequest | null,
-    options?: {
-      localMotionKey?: string;
-    }
-  ): void {
-    const pendingKey = this.resolvePendingLocalSheetMotionKey(sceneKey, options?.localMotionKey);
-    if (request == null) {
-      this.pendingLocalSheetMotionByKey.delete(pendingKey);
-    }
-    const transitionState = this.input.routeSceneSwitchRuntime.getTransitionState();
-    const target = this.input.sheetMotionTargetRegistry.resolveTarget(
-      sceneKey,
-      transitionState.transitionContract,
-      options?.localMotionKey
-    );
-    if (!target) {
-      if (request != null) {
-        this.pendingLocalSheetMotionByKey.set(pendingKey, {
-          sceneKey,
-          request,
-          localMotionKey: options?.localMotionKey,
-        });
-      }
-      return;
-    }
-    this.pendingLocalSheetMotionByKey.delete(pendingKey);
-    this.requestSheetMotion(target, request);
-  }
-
-  public replayPendingLocalSheetMotion(): void {
-    if (this.pendingLocalSheetMotionByKey.size === 0) {
-      return;
-    }
-    const transitionState = this.input.routeSceneSwitchRuntime.getTransitionState();
-    Array.from(this.pendingLocalSheetMotionByKey.entries()).forEach(([pendingKey, pending]) => {
-      const target = this.input.sheetMotionTargetRegistry.resolveTarget(
-        pending.sceneKey,
-        transitionState.transitionContract,
-        pending.localMotionKey
-      );
-      if (!target) {
-        return;
-      }
-      this.pendingLocalSheetMotionByKey.delete(pendingKey);
-      this.requestSheetMotion(target, pending.request);
-    });
-  }
-
-  public requestBootstrapSheetMotion(sceneKey: OverlayKey, request: OverlaySheetSnapRequest): void {
-    const transitionState = this.input.routeSceneSwitchRuntime.getTransitionState();
-    if (transitionState.isOverlaySwitchInFlight) {
-      return;
-    }
-    const target = this.input.sheetMotionTargetRegistry.resolveTarget(
-      sceneKey,
-      transitionState.transitionContract
-    );
-    if (!target) {
-      return;
-    }
-    this.requestSheetMotion(target, request);
   }
 
   public completeFromSheetSettle(settleToken: number): void {
@@ -300,9 +226,10 @@ export class AppRouteSceneMotionExecutor {
       'sceneMotionExecutor',
       `requestTransitionSheetMotion:${sheetSceneKey}`,
       () => {
+        const request = this.resolveTransitionSheetRequest(transitionState, sheetSceneKey, target);
         this.requestSheetMotion(
           target,
-          this.resolveTransitionSheetRequest(transitionState, sheetSceneKey, target)
+          request
         );
       }
     );
@@ -339,10 +266,6 @@ export class AppRouteSceneMotionExecutor {
 
   private completeMotionPlane(settleToken: number, plane: RouteSceneSwitchMotionPlane): void {
     this.input.routeSceneSwitchRuntime.completeRouteSceneSwitchMotionPlane(settleToken, plane);
-  }
-
-  private resolvePendingLocalSheetMotionKey(sceneKey: OverlayKey, localMotionKey?: string): string {
-    return `${sceneKey}:${localMotionKey ?? ''}`;
   }
 
   private dispatchCameraMotion(transitionContract: RouteSceneSwitchTransitionContract): void {

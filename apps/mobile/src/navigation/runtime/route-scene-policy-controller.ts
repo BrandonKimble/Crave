@@ -145,7 +145,7 @@ export class RouteScenePolicyController {
 
   private computeRouteScenePolicySnapshot(): RouteScenePolicySnapshot {
     const { foregroundState } = this.searchSceneForegroundPolicyInputs;
-    const { sheetContentLaneKind, shouldRenderResultsSheet } = this.searchSceneSheetPolicyInputs;
+    const { sheetContentLaneKind, shouldRenderRouteSheetSurface } = this.searchSceneSheetPolicyInputs;
     const isPersistentPollLaneEligible =
       sheetContentLaneKind === 'persistent_poll' || sheetContentLaneKind === 'results_closing';
     const foregroundActivity = foregroundState.isCloseTransitionActive
@@ -158,14 +158,14 @@ export class RouteScenePolicyController {
       ? 'suggestions'
       : foregroundState.isSearchLoading
       ? 'loading'
-      : foregroundState.isSearchSessionActive || shouldRenderResultsSheet
+      : foregroundState.isSearchSessionActive || shouldRenderRouteSheetSurface
       ? 'results'
       : 'idle';
     const shouldSuppressSearchAndTabSheetsForForegroundEditing =
       foregroundState.inputMode === 'editing';
     const shouldSuppressTabSheetsForSuggestions =
       foregroundState.isSuggestionPanelActive &&
-      (sheetContentLaneKind !== 'persistent_poll' ? shouldRenderResultsSheet : true);
+      (sheetContentLaneKind !== 'persistent_poll' ? shouldRenderRouteSheetSurface : true);
     const chromeSurfaceTarget =
       foregroundActivity === 'idle' || foregroundActivity === 'persistentPoll'
         ? 'polls'

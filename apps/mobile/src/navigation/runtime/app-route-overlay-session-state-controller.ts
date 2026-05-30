@@ -306,6 +306,7 @@ export class AppRouteOverlaySessionStateController {
       sceneKey: 'polls',
       snap: 'collapsed',
     });
+    this.routeSheetSnapSessionActions.setIsDockedPollsDismissed(false);
     if (options?.mode === 'chrome-only') {
       this.routeSceneSwitchActions.requestOverlaySwitch({
         targetSceneKey: 'search',

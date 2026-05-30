@@ -1,4 +1,7 @@
-import type { SearchSurfaceResultsTransaction } from './search-surface-results-transaction';
+import type {
+  SearchSurfaceResultsEnterTransaction,
+  SearchSurfaceResultsExitTransaction,
+} from './search-surface-results-transaction';
 import type {
   ResultsPresentationLog,
   ResultsPresentationTransportState,
@@ -20,7 +23,10 @@ export type ResultsPresentationRuntimeMachine = {
   applyStagingCoverState: (nextCoverState: 'initial_loading' | 'interaction_loading') => void;
   handleToggleInteractionLifecycle: (event: ToggleInteractionLifecycleEvent) => void;
   handlePresentationIntentAbort: () => void;
-  commitSearchSurfaceResultsTransaction: (snapshot: SearchSurfaceResultsTransaction) => void;
+  commitSearchSurfaceResultsEnterPresentation: (
+    snapshot: SearchSurfaceResultsEnterTransaction
+  ) => void;
+  commitSearchSurfaceResultsExitTransaction: (snapshot: SearchSurfaceResultsExitTransaction) => void;
   cancelPresentationIntent: (intentId?: string) => void;
   markEnterBatchMountedHidden: (
     intentId: string,

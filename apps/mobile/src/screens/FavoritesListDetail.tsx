@@ -85,7 +85,6 @@ const createFavoriteListDetailShellSpec = ({
     overlayKey: 'favoriteListDetail',
     snapPoints: sceneLayout.snapPoints,
     style: overlaySheetStyles.container,
-    preventSwipeDismiss: true,
   });
 
 type FavoriteListDetailHeaderProps = {

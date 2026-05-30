@@ -25,7 +25,7 @@ import type { AppRouteSheetHostSurfaceFrameAuthority } from './app-route-sheet-h
 import type { SearchRouteSheetFrameHostInput } from './search-route-sheet-surface-state-runtime-contract';
 
 type UseAppRouteSheetFrameHostAuthorityArgs = {
-  fallbackSheetY: SharedValue<number>;
+  sharedSheetY: SharedValue<number>;
   nativeAdapterAuthority: AppRouteSheetHostNativeAdapterAuthority;
 };
 
@@ -41,7 +41,7 @@ const HIDDEN_OVERLAY_SHEET_POLICY: SearchRouteOverlaySheetPolicy = {
   overlayHeaderActionMode: 'follow-collapse',
 };
 
-const FALLBACK_CHROME_VISUAL_STATE =
+const DEFAULT_CHROME_VISUAL_STATE =
   EMPTY_SEARCH_ROUTE_SHEET_RESOLVED_VISUAL_SELECTION_SNAPSHOT.resolvedChromeVisualState;
 
 const clamp01 = (value: number): number => {
@@ -64,13 +64,13 @@ const resolveTargetProgress = (mode: OverlayHeaderActionMode, collapseProgress: 
 
 const resolveFrameHostInput = ({
   nativeAdapterSnapshot,
-  fallbackSheetY,
+  sharedSheetY,
 }: {
   nativeAdapterSnapshot: AppRouteSheetHostNativeAdapterSnapshot;
-  fallbackSheetY: SharedValue<number>;
+  sharedSheetY: SharedValue<number>;
 }): SearchRouteSheetFrameHostInput => ({
   ...nativeAdapterSnapshot.frameHostInput,
-  sheetY: nativeAdapterSnapshot.frameHostInput.sheetY ?? fallbackSheetY,
+  sheetY: nativeAdapterSnapshot.frameHostInput.sheetY ?? sharedSheetY,
 });
 
 const resolvePolicy = (
@@ -80,10 +80,10 @@ const resolvePolicy = (
 
 const resolveChromeVisualState = (
   chromeVisualState: SearchRouteSceneStackChromeVisualState | null
-): SearchRouteSceneStackChromeVisualState => chromeVisualState ?? FALLBACK_CHROME_VISUAL_STATE;
+): SearchRouteSceneStackChromeVisualState => chromeVisualState ?? DEFAULT_CHROME_VISUAL_STATE;
 
 export const useAppRouteSheetFrameHostAuthority = ({
-  fallbackSheetY,
+  sharedSheetY,
   nativeAdapterAuthority,
 }: UseAppRouteSheetFrameHostAuthorityArgs): AppRouteSheetHostSurfaceFrameAuthority => {
   const initialNativeAdapterSnapshotRef =
@@ -93,7 +93,7 @@ export const useAppRouteSheetFrameHostAuthority = ({
   }
   const initialFrameHostInput = resolveFrameHostInput({
     nativeAdapterSnapshot: initialNativeAdapterSnapshotRef.current,
-    fallbackSheetY,
+    sharedSheetY,
   });
   const initialPolicy = resolvePolicy(initialFrameHostInput);
   const initialChromeVisualState = resolveChromeVisualState(
@@ -126,7 +126,7 @@ export const useAppRouteSheetFrameHostAuthority = ({
   const middleSnapPointValue = useSharedValue(initialFrameHostInput.middleSnapPoint);
   const collapsedSnapPointValue = useSharedValue(initialFrameHostInput.collapsedSnapPoint);
   const overlayHeaderActionOverrideActiveValue = useSharedValue(false);
-  const sheetY = initialFrameHostInput.sheetY ?? fallbackSheetY;
+  const sheetY = initialFrameHostInput.sheetY ?? sharedSheetY;
   const overlayHeaderActionProgress = initialChromeVisualState.overlayHeaderActionProgress;
   const nativeSharedValueTargets = React.useMemo<AppRouteSheetFrameHostNativeSharedValues>(
     () => ({

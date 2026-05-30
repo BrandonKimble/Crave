@@ -2,9 +2,9 @@ import React from 'react';
 import { unstable_batchedUpdates } from 'react-native';
 
 import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
+import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
 import type { ResultsPresentationShellLocalState } from './use-results-presentation-shell-local-state';
 import type { ResultsPresentationCloseTransitionIntentRuntime } from './use-results-presentation-close-transition-intent-runtime';
-import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
 
 type UseResultsPresentationCloseTransitionFinalizeRuntimeArgs = {
   clearSearchState: SearchClearOwner['clearSearchState'];
@@ -69,15 +69,13 @@ export const useResultsPresentationCloseTransitionFinalizeRuntime = ({
           intentRuntime.resetCloseTransition();
           return;
         }
-        if (terminalDismissSource === 'profile') {
-          requestDefaultPostSearchRestore({ mode: 'chrome-only' });
-        } else {
+        getSearchSurfaceRuntime().completeDismissHandoff(closeIntentId);
+        if (terminalDismissSource !== 'profile') {
           const restored = flushPendingSearchOriginRestore();
           if (!restored) {
             requestDefaultPostSearchRestore();
           }
         }
-        getSearchSurfaceRuntime().resetToPollPage();
         intentRuntime.resetCloseTransition();
       });
     },

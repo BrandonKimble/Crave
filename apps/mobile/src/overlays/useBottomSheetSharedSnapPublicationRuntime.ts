@@ -2,7 +2,6 @@ import React from 'react';
 
 import { runOnJS, useAnimatedReaction } from 'react-native-reanimated';
 
-import type { SheetDiagSnapshot } from './bottomSheetSharedRuntimeContract';
 import type {
   BottomSheetSharedDispatchSnapChange,
   BottomSheetSharedNotifyHidden,
@@ -13,25 +12,10 @@ import type {
   BottomSheetSharedSnapPublicationResult,
 } from './bottomSheetSharedSnapRuntimeContract';
 import type { BottomSheetSnap, BottomSheetSnapChangeSource } from './bottomSheetMotionTypes';
-import { shouldLogSearchNavSwitchDiagnosticLogs } from '../screens/Search/runtime/shared/search-nav-switch-perf-probe';
 import { withSearchNavSwitchRuntimeAttribution } from '../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
-import { logger } from '../utils';
 
 export const useBottomSheetSharedSnapPublicationRuntime = ({
-  visible,
-  listScrollEnabled,
-  interactionEnabled,
-  shouldEnableScroll,
-  gestureEnabled,
-  activeList,
   screenHeight,
-  testID,
-  listKey,
-  dataCount,
-  secondaryDataCount,
-  scrollHeaderHeight,
-  touchBlockingEnabled,
-  isSearchResultsSheet,
   sheetYObserver,
   onHidden,
   onSnapStart,
@@ -99,15 +83,9 @@ export const useBottomSheetSharedSnapPublicationRuntime = ({
 
   const notifyHidden = React.useCallback<BottomSheetSharedNotifyHidden>(() => {
     withSearchNavSwitchRuntimeAttribution('bottomSheetSharedSnap', 'notifyHidden', () => {
-      if (isSearchResultsSheet && shouldLogSearchNavSwitchDiagnosticLogs()) {
-        logger.info('[BOTTOM-SHEET-DIAG] hidden', {
-          testID,
-          listKey,
-        });
-      }
       onHiddenRef.current?.();
     });
-  }, [isSearchResultsSheet, listKey, testID]);
+  }, []);
 
   const notifySnapChange = React.useCallback(
     (
@@ -122,21 +100,12 @@ export const useBottomSheetSharedSnapPublicationRuntime = ({
           if (!options?.force && currentSnapKeyRef.current === snapKey) {
             return;
           }
-          if (isSearchResultsSheet && shouldLogSearchNavSwitchDiagnosticLogs()) {
-            logger.info('[BOTTOM-SHEET-DIAG] snapChange', {
-              testID,
-              listKey,
-              snapKey,
-              source,
-              force: Boolean(options?.force),
-            });
-          }
           currentSnapKeyRef.current = snapKey;
           onSnapChangeRef.current?.(snapKey, { source });
         }
       );
     },
-    [currentSnapKeyRef, isSearchResultsSheet, listKey, testID]
+    [currentSnapKeyRef]
   );
 
   const dispatchSnapChange = React.useCallback<BottomSheetSharedDispatchSnapChange>(
@@ -154,19 +123,11 @@ export const useBottomSheetSharedSnapPublicationRuntime = ({
         'bottomSheetSharedSnap',
         `notifySnapStart:${source}:${snapKey}`,
         () => {
-          if (isSearchResultsSheet && shouldLogSearchNavSwitchDiagnosticLogs()) {
-            logger.info('[BOTTOM-SHEET-DIAG] snapStart', {
-              testID,
-              listKey,
-              snapKey,
-              source,
-            });
-          }
           onSnapStartRef.current?.(snapKey, { source });
         }
       );
     },
-    [isSearchResultsSheet, listKey, testID]
+    []
   );
 
   const notifySnapSettleComplete = React.useCallback<BottomSheetSharedNotifySnapSettleComplete>(
@@ -182,25 +143,31 @@ export const useBottomSheetSharedSnapPublicationRuntime = ({
     []
   );
 
-  const notifyDragStateChange = React.useCallback((value: boolean) => {
-    withSearchNavSwitchRuntimeAttribution(
-      'bottomSheetSharedSnap',
-      `notifyDragStateChange:${value ? 'dragging' : 'idle'}`,
-      () => {
-        onDragStateChangeRef.current?.(value);
-      }
-    );
-  }, []);
+  const notifyDragStateChange = React.useCallback(
+    (value: boolean) => {
+      withSearchNavSwitchRuntimeAttribution(
+        'bottomSheetSharedSnap',
+        `notifyDragStateChange:${value ? 'dragging' : 'idle'}`,
+        () => {
+          onDragStateChangeRef.current?.(value);
+        }
+      );
+    },
+    []
+  );
 
-  const notifySettleStateChange = React.useCallback((value: boolean) => {
-    withSearchNavSwitchRuntimeAttribution(
-      'bottomSheetSharedSnap',
-      `notifySettleStateChange:${value ? 'settling' : 'idle'}`,
-      () => {
-        onSettleStateChangeRef.current?.(value);
-      }
-    );
-  }, []);
+  const notifySettleStateChange = React.useCallback(
+    (value: boolean) => {
+      withSearchNavSwitchRuntimeAttribution(
+        'bottomSheetSharedSnap',
+        `notifySettleStateChange:${value ? 'settling' : 'idle'}`,
+        () => {
+          onSettleStateChangeRef.current?.(value);
+        }
+      );
+    },
+    []
+  );
 
   useAnimatedReaction(
     () => isDragging.value,
@@ -223,64 +190,6 @@ export const useBottomSheetSharedSnapPublicationRuntime = ({
     },
     [notifySettleStateChange]
   );
-
-  const sheetDiagRef = React.useRef<SheetDiagSnapshot | null>(null);
-  React.useEffect(() => {
-    if (!isSearchResultsSheet || !shouldLogSearchNavSwitchDiagnosticLogs()) {
-      return;
-    }
-    const nextSnapshot: SheetDiagSnapshot = {
-      visible,
-      listScrollEnabled,
-      interactionEnabled,
-      shouldEnableScroll,
-      gestureEnabled,
-      activeList,
-      currentSnapKey: currentSnapKeyRef.current,
-      dataCount,
-      secondaryDataCount,
-      touchBlockingEnabled,
-      scrollHeaderHeight,
-    };
-    const previousSnapshot = sheetDiagRef.current;
-    if (
-      previousSnapshot &&
-      previousSnapshot.visible === nextSnapshot.visible &&
-      previousSnapshot.listScrollEnabled === nextSnapshot.listScrollEnabled &&
-      previousSnapshot.interactionEnabled === nextSnapshot.interactionEnabled &&
-      previousSnapshot.shouldEnableScroll === nextSnapshot.shouldEnableScroll &&
-      previousSnapshot.gestureEnabled === nextSnapshot.gestureEnabled &&
-      previousSnapshot.activeList === nextSnapshot.activeList &&
-      previousSnapshot.currentSnapKey === nextSnapshot.currentSnapKey &&
-      previousSnapshot.dataCount === nextSnapshot.dataCount &&
-      previousSnapshot.secondaryDataCount === nextSnapshot.secondaryDataCount &&
-      previousSnapshot.touchBlockingEnabled === nextSnapshot.touchBlockingEnabled &&
-      previousSnapshot.scrollHeaderHeight === nextSnapshot.scrollHeaderHeight
-    ) {
-      return;
-    }
-    logger.info('[BOTTOM-SHEET-DIAG] props', {
-      testID,
-      listKey,
-      ...nextSnapshot,
-    });
-    sheetDiagRef.current = nextSnapshot;
-  }, [
-    activeList,
-    currentSnapKeyRef,
-    dataCount,
-    gestureEnabled,
-    interactionEnabled,
-    isSearchResultsSheet,
-    listKey,
-    listScrollEnabled,
-    scrollHeaderHeight,
-    secondaryDataCount,
-    shouldEnableScroll,
-    testID,
-    touchBlockingEnabled,
-    visible,
-  ]);
 
   return {
     notifyHidden,

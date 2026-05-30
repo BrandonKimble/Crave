@@ -34,7 +34,9 @@ export type ResultsPresentationRuntimeOwner = {
   cancelToggleInteraction: () => void;
   beginSearchThisAreaPresentationPending: () => void;
   stageSearchSurfaceResultsTransaction: (snapshot: SearchSurfaceResultsEnterTransaction) => void;
-  commitSearchSurfaceResultsTransaction: (snapshot: SearchSurfaceResultsTransaction) => void;
+  commitSearchSurfaceResultsExitTransaction: (
+    snapshot: Extract<SearchSurfaceResultsTransaction, { kind: 'results_exit' }>
+  ) => void;
   clearStagedSearchSurfaceResultsTransaction: (transactionId?: string) => void;
   handlePageOneResultsCommitted: (payload?: {
     surfaceTransactionMutationKind?: Extract<

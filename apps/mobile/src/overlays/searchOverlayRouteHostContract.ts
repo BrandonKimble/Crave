@@ -11,7 +11,20 @@ import type { SearchInteractionSnapshot } from '../screens/Search/context/Search
 export type { SearchRouteHostVisualState } from './searchRouteHostVisualState';
 
 export type SearchRoutePanelInteractionRef = React.MutableRefObject<SearchInteractionSnapshot>;
-export type SearchRouteSceneShellSpec = OverlaySheetFrameSpec;
+type SearchRouteSceneSheetHostOwnedField =
+  | 'initialSnapPoint'
+  | 'dismissThreshold'
+  | 'onHidden'
+  | 'onSnapStart'
+  | 'onSnapChange'
+  | 'preventSwipeDismiss'
+  | 'runtimeModel'
+  | 'shellSnapRequest';
+
+export type SearchRouteSceneShellSpec = Omit<
+  OverlaySheetFrameSpec,
+  SearchRouteSceneSheetHostOwnedField
+>;
 export type SearchRouteSceneStackShellSpec = SearchRouteSceneShellSpec & {
   surfaceKind: 'scene-stack';
 };

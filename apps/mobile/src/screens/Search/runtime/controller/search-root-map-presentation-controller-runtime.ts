@@ -20,7 +20,7 @@ export const createSearchRootMapPresentationRuntimeValue = ({
   resultsPresentationControlLane: SearchRootResultsPresentationControlLane;
 }) => {
   const { sessionPrimitivesLane } = stateFoundationLane;
-  const { rootInstrumentationRuntime: instrumentationRuntime, rootResultsSheetRuntimeLane } =
+  const { rootInstrumentationRuntime: instrumentationRuntime, rootSharedSheetRuntimeLane } =
     rootOverlayFoundationRuntime;
 
   return {
@@ -32,8 +32,8 @@ export const createSearchRootMapPresentationRuntimeValue = ({
       mapProfileControlLane.restaurantSelectionModel.resolveRestaurantLocationSelectionAnchor,
     pickPreferredRestaurantMapLocation:
       mapProfileControlLane.restaurantSelectionModel.pickPreferredRestaurantMapLocation,
-    mapGestureActiveRef: rootResultsSheetRuntimeLane.mapGestureActiveRef,
-    mapMotionPressureController: rootResultsSheetRuntimeLane.mapMotionPressureController,
+    mapGestureActiveRef: rootSharedSheetRuntimeLane.mapGestureActiveRef,
+    mapMotionPressureController: rootSharedSheetRuntimeLane.mapMotionPressureController,
     shouldLogSearchComputes: instrumentationRuntime.shouldLogSearchComputes,
     getPerfNow: sessionPrimitivesLane.primitives.getPerfNow,
     logSearchCompute: instrumentationRuntime.logSearchCompute,

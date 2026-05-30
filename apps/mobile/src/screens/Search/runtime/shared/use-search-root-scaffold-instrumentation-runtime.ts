@@ -20,7 +20,7 @@ type UseSearchRootScaffoldInstrumentationRuntimeArgs = {
   rootPrimitivesRuntime: RootPrimitivesRuntime;
   rootSessionCoreLane: SearchRootSessionCoreLane;
   rootSessionPrimitivesLane: SearchRootSessionPrimitivesLane;
-  rootResultsSheetRuntimeLane: SearchRootResultsSheetRuntimeLane;
+  rootSharedSheetRuntimeLane: SearchRootResultsSheetRuntimeLane;
   rootDataPlaneRuntime: SearchRootDataPlaneRuntime;
   rootOverlayStoreRuntime: Pick<
     SearchOverlayStoreRuntime,
@@ -32,7 +32,7 @@ export const useSearchRootScaffoldInstrumentationRuntime = ({
   rootPrimitivesRuntime,
   rootSessionCoreLane,
   rootSessionPrimitivesLane,
-  rootResultsSheetRuntimeLane,
+  rootSharedSheetRuntimeLane,
   rootDataPlaneRuntime,
   rootOverlayStoreRuntime,
 }: UseSearchRootScaffoldInstrumentationRuntimeArgs): SearchRootInstrumentationRuntime => {
@@ -60,9 +60,9 @@ export const useSearchRootScaffoldInstrumentationRuntime = ({
     activeOverlayKey: rootOverlayStoreRuntime.activeOverlayKey,
     cameraIntentArbiter: rootSessionCoreLane.cameraIntentArbiter,
     viewportBoundsService: rootSessionCoreLane.viewportBoundsService,
-    markMapMovedIfNeeded: rootResultsSheetRuntimeLane.markMapMovedIfNeeded,
-    scheduleMapIdleEnter: rootResultsSheetRuntimeLane.scheduleMapIdleEnter,
-    schedulePollBoundsUpdate: rootResultsSheetRuntimeLane.schedulePollBoundsUpdate,
+    markMapMovedIfNeeded: rootSharedSheetRuntimeLane.markMapMovedIfNeeded,
+    scheduleMapIdleEnter: rootSharedSheetRuntimeLane.scheduleMapIdleEnter,
+    schedulePollBoundsUpdate: rootSharedSheetRuntimeLane.schedulePollBoundsUpdate,
     ensureInitialCameraReady: rootSessionCoreLane.mapBootstrapRuntime.ensureInitialCameraReady,
     isSearchOverlay: rootOverlayStoreRuntime.isSearchOverlay,
     resultsPage: rootDataPlaneRuntime.resultsArrivalState.resultsPage,

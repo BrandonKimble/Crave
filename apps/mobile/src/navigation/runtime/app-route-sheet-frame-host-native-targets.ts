@@ -20,14 +20,14 @@ export type AppRouteSheetFrameHostNativeSharedValues = {
   collapsedSnapPointValue: SharedValue<number>;
 };
 
-const FALLBACK_CHROME_VISUAL_STATE =
+const DEFAULT_CHROME_VISUAL_STATE =
   EMPTY_SEARCH_ROUTE_SHEET_RESOLVED_VISUAL_SELECTION_SNAPSHOT.resolvedChromeVisualState;
 
 const resolveChromeVisualState = (
   chromeVisualState: SearchRouteSceneStackChromeVisualState | null
 ): SearchRouteSceneStackChromeVisualState => {
   'worklet';
-  return chromeVisualState ?? FALLBACK_CHROME_VISUAL_STATE;
+  return chromeVisualState ?? DEFAULT_CHROME_VISUAL_STATE;
 };
 
 const syncSheetFrameHostNativeSharedValuesOnUI = (

@@ -2,7 +2,7 @@ import React from 'react';
 
 import { useResultsPresentationShellLocalState } from './use-results-presentation-shell-local-state';
 import { useResultsPresentationShellModelRuntime } from './use-results-presentation-shell-model-runtime';
-import type { AppRouteResultsSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-results-sheet-runtime-contract';
+import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
 import type { SearchChromeScalarSurfacePresentationRuntime } from '../native/search-chrome-scalar-surface-presentation-runtime';
 import {
   createResultsPresentationPolicyFactsController,
@@ -32,7 +32,7 @@ type UseResultsPresentationShellRuntimeArgs = {
   routeSceneSwitchAuthority: RouteSceneSwitchAuthority;
   onSearchSheetContentLaneChanged?: (change: ResultsPresentationPolicyFactsLaneChange) => void;
   searchChromeScalarSurfacePresentationRuntime?: SearchChromeScalarSurfacePresentationRuntime;
-  resultsSheetRuntime: Pick<AppRouteResultsSheetRuntimeOwner, 'sheetTranslateY' | 'snapPoints'>;
+  resultsSheetRuntime: Pick<AppRouteSharedSheetRuntimeOwner, 'sheetTranslateY' | 'snapPoints'>;
 };
 
 export const useResultsPresentationShellRuntime = ({

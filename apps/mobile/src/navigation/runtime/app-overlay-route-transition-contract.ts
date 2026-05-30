@@ -93,6 +93,7 @@ export type RouteSceneSwitchSheetTransitionPlan = {
 };
 
 export type RouteSceneSwitchRouteAction =
+  | 'preserve'
   | 'setRoot'
   | 'push'
   | 'updateActive'

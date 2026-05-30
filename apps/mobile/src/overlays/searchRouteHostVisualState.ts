@@ -6,8 +6,8 @@ type AnimatedNumberLike = { value: number };
 
 export type SearchRouteHostVisualState = {
   sheetTranslateY: SharedValue<number>;
-  resultsScrollOffset: SharedValue<number>;
-  resultsMomentum: SharedValue<boolean>;
+  sheetScrollOffset: SharedValue<number>;
+  sheetMomentum: SharedValue<boolean>;
   overlayHeaderActionProgress: SharedValue<number>;
   navBarHeight: number;
   navBarTopForSnaps: number;

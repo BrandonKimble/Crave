@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
+import { SEARCH_CHROME_SCALE_TRANSFORM_ORIGIN } from '../../constants/search';
 import { SEARCH_SHORTCUT_SHADOW } from '../../shadows';
 import {
   isPerfScenarioAttributionActive,
@@ -141,6 +142,7 @@ export const useSearchForegroundShortcutsVisualRuntime = ({
     const chromeScale = shouldLockSearchChromeTransform ? 1 : searchChromeScale.value;
     return {
       opacity,
+      transformOrigin: SEARCH_CHROME_SCALE_TRANSFORM_ORIGIN,
       transform: [{ scale: chromeScale }],
     };
   }, [

@@ -9,13 +9,14 @@ import {
   type SharedValue,
 } from 'react-native-reanimated';
 
-import { SEARCH_CHROME_FADE_ZONE_PX } from '../../screens/Search/constants/search';
+import { SEARCH_CHROME_SHEET_RESPONSE_ZONE_PX } from '../../screens/Search/constants/search';
 
 type UseAppRouteSceneChromeTransitionRuntimeArgs = {
   expandedSnap: number | SharedValue<number>;
   middleSnap: number | SharedValue<number>;
   sheetTranslateY: SharedValue<number>;
   transitionProgressOverride?: SharedValue<number>;
+  visibilityProgressOverride?: SharedValue<number>;
 };
 
 const useChromeSnapSharedValue = (snap: number | SharedValue<number>): SharedValue<number> => {
@@ -35,6 +36,7 @@ const useAppRouteSceneChromeSheetProgressRuntime = ({
   middleSnap,
   sheetTranslateY,
   transitionProgressOverride,
+  visibilityProgressOverride,
 }: UseAppRouteSceneChromeTransitionRuntimeArgs) => {
   const chromeTransitionExpandedSnap = useChromeSnapSharedValue(expandedSnap);
   const chromeTransitionMiddleSnap = useChromeSnapSharedValue(middleSnap);
@@ -42,23 +44,24 @@ const useAppRouteSceneChromeSheetProgressRuntime = ({
   const derivedSearchChromeTransitionProgress = useDerivedValue(() => {
     const expandedY = chromeTransitionExpandedSnap.value;
     const middleY = chromeTransitionMiddleSnap.value;
-    const fadeEndY = Math.min(middleY, expandedY + SEARCH_CHROME_FADE_ZONE_PX);
-    if (fadeEndY <= expandedY) {
+    const responseEndY = Math.min(middleY, expandedY + SEARCH_CHROME_SHEET_RESPONSE_ZONE_PX);
+    if (responseEndY <= expandedY) {
       return middleY <= expandedY ? 1 : 0;
     }
-    return interpolate(sheetTranslateY.value, [expandedY, fadeEndY], [0, 1], Extrapolation.CLAMP);
+    return interpolate(
+      sheetTranslateY.value,
+      [expandedY, responseEndY],
+      [0, 1],
+      Extrapolation.CLAMP
+    );
   }, [chromeTransitionExpandedSnap, chromeTransitionMiddleSnap, sheetTranslateY]);
 
   const searchChromeTransitionProgress =
     transitionProgressOverride ?? derivedSearchChromeTransitionProgress;
+  const searchChromeVisibilityProgress = visibilityProgressOverride;
 
   const searchChromeOpacity = useDerivedValue(() =>
-    interpolate(
-      searchChromeTransitionProgress.value,
-      [0, 0.45, 0.62, 0.8, 1],
-      [0, 0, 0.15, 0.9, 1],
-      Extrapolation.CLAMP
-    )
+    searchChromeVisibilityProgress ? searchChromeVisibilityProgress.value : 1
   );
 
   const searchChromeScale = useDerivedValue(() =>
@@ -66,7 +69,7 @@ const useAppRouteSceneChromeSheetProgressRuntime = ({
   );
 
   const searchBarInputAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: searchChromeTransitionProgress.value,
+    opacity: searchChromeVisibilityProgress ? searchChromeVisibilityProgress.value : 1,
   }));
 
   return React.useMemo(
@@ -74,6 +77,7 @@ const useAppRouteSceneChromeSheetProgressRuntime = ({
       searchChromeOpacity,
       searchChromeScale,
       searchChromeTransitionProgress,
+      searchChromeVisibilityProgress,
       searchBarInputAnimatedStyle,
     }),
     [
@@ -81,6 +85,7 @@ const useAppRouteSceneChromeSheetProgressRuntime = ({
       searchChromeOpacity,
       searchChromeScale,
       searchChromeTransitionProgress,
+      searchChromeVisibilityProgress,
     ]
   );
 };
@@ -92,6 +97,7 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
 }: Omit<UseAppRouteSceneChromeTransitionRuntimeArgs, 'transitionProgressOverride'>) => {
   const overlayHeaderActionProgress = useSharedValue(0);
   const overlayChromeTransitionProgress = useSharedValue(1);
+  const overlayChromeVisibilityProgress = useSharedValue(1);
   const overlayBackdropDimProgress = useSharedValue(0);
   const routeChromeMotionProgress = useSharedValue(0);
   const { searchChromeTransitionProgress: baseSearchChromeTransitionProgress } =
@@ -104,23 +110,17 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
   useAnimatedReaction(
     () => baseSearchChromeTransitionProgress.value,
     (next) => {
-      if (routeChromeMotionProgress.value > 0) {
-        return;
-      }
       overlayChromeTransitionProgress.value = next;
     },
-    [baseSearchChromeTransitionProgress, overlayChromeTransitionProgress, routeChromeMotionProgress]
+    [baseSearchChromeTransitionProgress, overlayChromeTransitionProgress]
   );
 
   useAnimatedReaction(
     () => baseSearchChromeTransitionProgress.value,
     (next) => {
-      if (routeChromeMotionProgress.value > 0) {
-        return;
-      }
       overlayBackdropDimProgress.value = 1 - next;
     },
-    [overlayBackdropDimProgress, baseSearchChromeTransitionProgress, routeChromeMotionProgress]
+    [overlayBackdropDimProgress, baseSearchChromeTransitionProgress]
   );
 
   const { searchChromeOpacity, searchChromeScale, searchBarInputAnimatedStyle } =
@@ -129,12 +129,14 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
       middleSnap,
       sheetTranslateY,
       transitionProgressOverride: overlayChromeTransitionProgress,
+      visibilityProgressOverride: overlayChromeVisibilityProgress,
     });
 
   return React.useMemo(
     () => ({
       overlayHeaderActionProgress,
       overlayChromeTransitionProgress,
+      overlayChromeVisibilityProgress,
       overlayBackdropDimProgress,
       routeChromeMotionProgress,
       searchChromeOpacity,
@@ -144,6 +146,7 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
     [
       overlayBackdropDimProgress,
       overlayChromeTransitionProgress,
+      overlayChromeVisibilityProgress,
       overlayHeaderActionProgress,
       routeChromeMotionProgress,
       searchBarInputAnimatedStyle,

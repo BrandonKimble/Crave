@@ -107,7 +107,6 @@ export type RouteSceneSwitchTransitionActions = {
     input: RouteSceneSwitchRequestInput,
     onSettle: RouteSceneSwitchSettleCallback
   ) => number;
-  completeRouteSceneSwitchFromSettle: (settleToken: number) => void;
   completeRouteSceneSwitchMotionPlane: (
     settleToken: number,
     plane: RouteSceneSwitchMotionPlane
@@ -314,6 +313,8 @@ const applyTransitionPlanToRouteState = (
   transitionPlan: AppRouteSceneTransitionPlan
 ): RouteSceneSwitchRouteStateSnapshot => {
   switch (transitionPlan.committedRouteAction) {
+    case 'preserve':
+      return currentRouteState;
     case 'push':
       return pushRouteState(
         currentRouteState,
@@ -714,27 +715,17 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     );
   }
 
-  public completeRouteSceneSwitchFromSettle(settleToken: number): void {
-    const state = this.transitionState;
-    const activeSettleToken = state.transitionContract?.settleToken ?? state.transitionToken;
-    if (!state.isOverlaySwitchInFlight || activeSettleToken !== settleToken) {
-      return;
-    }
-    this.completeRouteSceneSwitchTransition(state.transitionToken);
-  }
-
   public completeRouteSceneSwitchMotionPlane(
     settleToken: number,
     plane: RouteSceneSwitchMotionPlane
   ): void {
     const state = this.transitionState;
     const activeSettleToken = state.transitionContract?.settleToken ?? state.transitionToken;
+    const settleState = this.activeSettlePlanesByToken.get(settleToken);
     if (!state.isOverlaySwitchInFlight || activeSettleToken !== settleToken) {
       return;
     }
-    const settleState = this.activeSettlePlanesByToken.get(settleToken);
     if (!settleState || settleState.transitionToken !== state.transitionToken) {
-      this.completeRouteSceneSwitchTransition(state.transitionToken);
       return;
     }
     settleState.pendingPlanes.delete(plane);
@@ -1009,6 +1000,7 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
       () =>
         resolveAppRouteSceneTransitionPlan({
           ...input,
+          currentRootRouteKey: this.transitionState.routeState.rootOverlayKey,
           resolveCurrentSheetSnapTarget: (sceneKey: OverlayKey) =>
             this.sheetMotionTargetRegistry.resolveCurrentSnapTarget(sceneKey),
         })
@@ -1179,7 +1171,7 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
             pendingTargetSceneKey: null,
             activePollsParams: state.pendingPollsParams,
             pendingPollsParams: null,
-            activeDockedPollsRestoreIntent: state.pendingDockedPollsRestoreIntent,
+            activeDockedPollsRestoreIntent: null,
             pendingDockedPollsRestoreIntent: null,
             transitionContract: null,
           },

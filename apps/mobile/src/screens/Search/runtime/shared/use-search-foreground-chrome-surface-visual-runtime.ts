@@ -1,5 +1,6 @@
 import { useAnimatedStyle } from 'react-native-reanimated';
 
+import { SEARCH_CHROME_SCALE_TRANSFORM_ORIGIN } from '../../constants/search';
 import { SEARCH_BAR_SHADOW } from '../../shadows';
 import type {
   SearchForegroundChromeSurfaceVisualRuntime,
@@ -37,6 +38,7 @@ export const useSearchForegroundChromeSurfaceVisualRuntime = ({
       backgroundColor: `rgba(255, 255, 255, ${chromeAlpha})`,
       shadowOpacity: Number(SEARCH_BAR_SHADOW.shadowOpacity ?? 0) * chromeAlpha,
       elevation: chromeAlpha > 0 ? Number(SEARCH_BAR_SHADOW.elevation ?? 0) : 0,
+      transformOrigin: SEARCH_CHROME_SCALE_TRANSFORM_ORIGIN,
       transform: [{ scale: chromeScale }],
     };
   }, [

@@ -8,6 +8,7 @@ import SearchStatusBarFade from '../screens/Search/components/SearchStatusBarFad
 import type { SearchOverlayShellHostSnapshot } from '../screens/Search/runtime/shared/search-overlay-shell-host-snapshot-contract';
 import type { SearchOverlayShellHostAuthority } from '../screens/Search/runtime/shared/search-root-host-authority-contract';
 import { useRouteAuthoritySelector } from '../navigation/runtime/use-route-authority-selector';
+import { OVERLAY_BACKDROP_SCRIM_ZINDEX } from './overlaySheetStyles';
 
 type SearchOverlayShellStatusSnapshot = Pick<
   SearchOverlayShellHostSnapshot,
@@ -234,6 +235,7 @@ const styles = StyleSheet.create({
   rootBackdropScrim: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#000000',
-    zIndex: 60,
+    zIndex: OVERLAY_BACKDROP_SCRIM_ZINDEX,
+    elevation: OVERLAY_BACKDROP_SCRIM_ZINDEX,
   },
 });

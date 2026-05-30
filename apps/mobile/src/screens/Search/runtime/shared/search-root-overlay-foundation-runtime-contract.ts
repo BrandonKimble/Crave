@@ -1,6 +1,6 @@
 import type React from 'react';
 
-import type { AppRouteResultsSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-results-sheet-runtime-contract';
+import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
 import type {
   AppRouteOverlaySessionActions,
   AppRouteOverlaySessionSnapshot,
@@ -29,8 +29,8 @@ export type SearchRootOverlayFoundationRuntime = {
   routeSheetSnapSessionActions: AppRouteSceneRuntime['routeSheetSnapSessionActions'];
   routeSearchCommandActions: AppRouteSceneRuntime['routeSearchCommandActions'];
   rootOverlaySessionSurfaceRuntime: SearchRootOverlaySessionSurfaceRuntime;
-  rootResultsSheetRuntimeLane: SearchRootResultsSheetRuntimeLane;
-  appRouteResultsSheetRuntimeOwner: AppRouteResultsSheetRuntimeOwner;
+  rootSharedSheetRuntimeLane: SearchRootResultsSheetRuntimeLane;
+  appRouteSharedSheetRuntimeOwner: AppRouteSharedSheetRuntimeOwner;
   rootInstrumentationRuntime: SearchRootInstrumentationRuntime;
   rootOverlayStoreRuntime: SearchOverlayStoreRuntime;
 };

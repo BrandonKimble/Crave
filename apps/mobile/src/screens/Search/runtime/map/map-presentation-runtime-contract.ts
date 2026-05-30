@@ -6,7 +6,6 @@ export type SearchMapPresentationScene = {
   pinSourceStore: SearchMapSourceStore;
   dotSourceStore: SearchMapSourceStore | null;
   pinInteractionSourceStore: SearchMapSourceStore;
-  dotInteractionSourceStore: SearchMapSourceStore;
   markersRenderKey: string;
   labelSourceStore: SearchMapSourceStore;
   labelCollisionSourceStore: SearchMapSourceStore;
@@ -20,7 +19,7 @@ export type MapSnapshotPresentationPolicy = {
   shouldFreezePreparedScene: boolean;
   shouldCapturePreparedScene: boolean;
   shouldAllowVisualScene: boolean;
-  shouldAllowLabelInteractionScene: boolean;
+  shouldAllowVisibleLabelHits: boolean;
   shouldProjectSearchMarkerFamilies: boolean;
   shouldAllowLiveLabelUpdates: boolean;
   shouldPublishVisibleLabelFeatureIds: boolean;

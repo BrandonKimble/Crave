@@ -23,8 +23,6 @@ export const useSearchRootSearchSceneShellSpecPublicationRuntime = ({
         snapPoints: searchSceneSheetPlaneRuntime.snapPoints,
         listScrollEnabled:
           !shouldShowInteractionLoadingState && searchSceneSheetPlaneRuntime.interactionEnabled,
-        runtimeModel: searchSceneSheetPlaneRuntime.runtimeModel,
-        preventSwipeDismiss: true,
         onDragStateChange: searchSceneSheetPlaneRuntime.handleResultsSheetDragStateChange,
         onSettleStateChange: searchSceneSheetPlaneRuntime.handleResultsSheetSettlingChange,
         style: shouldShowResultsSurface
@@ -33,9 +31,6 @@ export const useSearchRootSearchSceneShellSpecPublicationRuntime = ({
         surfaceStyle: shouldShowResultsSurface
           ? searchScenePanelSurfaceRenderRuntime.resolvedSurfaceStyle
           : undefined,
-        onHidden: searchSceneSheetPlaneRuntime.onHidden,
-        onSnapStart: searchSceneSheetPlaneRuntime.handleResultsSheetSnapStart,
-        onSnapChange: searchSceneSheetPlaneRuntime.handleResultsSheetSnapChange,
         interactionEnabled: searchSceneSheetPlaneRuntime.interactionEnabled,
       }),
     [
@@ -43,11 +38,7 @@ export const useSearchRootSearchSceneShellSpecPublicationRuntime = ({
       searchScenePanelSurfaceRenderRuntime.resolvedSurfaceStyle,
       searchSceneSheetPlaneRuntime.handleResultsSheetDragStateChange,
       searchSceneSheetPlaneRuntime.handleResultsSheetSettlingChange,
-      searchSceneSheetPlaneRuntime.handleResultsSheetSnapChange,
-      searchSceneSheetPlaneRuntime.handleResultsSheetSnapStart,
       searchSceneSheetPlaneRuntime.interactionEnabled,
-      searchSceneSheetPlaneRuntime.onHidden,
-      searchSceneSheetPlaneRuntime.runtimeModel,
       searchSceneSheetPlaneRuntime.snapPoints,
       shouldShowResultsSurface,
       shouldShowInteractionLoadingState,

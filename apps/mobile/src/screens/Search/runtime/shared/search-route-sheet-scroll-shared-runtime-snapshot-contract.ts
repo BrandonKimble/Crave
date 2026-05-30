@@ -3,17 +3,18 @@ import type { SearchRouteSheetShellProps } from './search-route-sheet-shell-prop
 export type SearchRouteSheetScrollSharedRuntimeEntry = Pick<
   SearchRouteSheetShellProps,
   | 'listScrollEnabled'
-  | 'onHidden'
   | 'onScrollOffsetChange'
   | 'onMomentumBeginJS'
   | 'onMomentumEndJS'
   | 'showsVerticalScrollIndicator'
   | 'testID'
-  | 'dismissThreshold'
-  | 'preventSwipeDismiss'
   | 'interactionEnabled'
   | 'animateOnMount'
->;
+> & {
+  dismissThreshold?: number;
+  onHidden?: () => void;
+  preventSwipeDismiss?: boolean;
+};
 
 export type SearchRouteSheetScrollSharedRuntimeSnapshot = {
   sharedRuntimeEntry: SearchRouteSheetScrollSharedRuntimeEntry | null;

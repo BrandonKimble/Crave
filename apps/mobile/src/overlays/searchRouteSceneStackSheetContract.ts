@@ -54,8 +54,8 @@ export type SearchRouteSceneStackSheetSceneProps = {
 
 export type SearchRouteSceneStackPresentationState = {
   sheetTranslateY: SharedValue<number>;
-  resultsScrollOffset: SharedValue<number>;
-  resultsMomentum: SharedValue<boolean>;
+  sheetScrollOffset: SharedValue<number>;
+  sheetMomentum: SharedValue<boolean>;
 };
 
 export type SearchRouteSceneStackChromeVisualState = {

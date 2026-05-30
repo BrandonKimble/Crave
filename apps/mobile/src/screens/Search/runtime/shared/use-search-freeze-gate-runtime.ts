@@ -2,7 +2,6 @@ import React from 'react';
 
 import { createSearchFreezeGateRuntimeValue } from '../controller/search-freeze-gate-runtime';
 import type { SearchRuntimeBus } from './search-runtime-bus';
-import { useSearchFreezeGateDiagnosticsRuntime } from './use-search-freeze-gate-diagnostics-runtime';
 import { useSearchFreezeGateStateRuntime } from './use-search-freeze-gate-state-runtime';
 import { useSearchResponseFrameFreezeRuntime } from './use-search-response-frame-freeze-runtime';
 import { useSearchSurfaceRedrawStallPressureRuntime } from './use-search-surface-redraw-stall-pressure-runtime';
@@ -47,8 +46,6 @@ export const useSearchFreezeGateRuntime = ({
   });
 
   const freezeGateStateRuntime = useSearchFreezeGateStateRuntime(searchRuntimeBus);
-
-  useSearchFreezeGateDiagnosticsRuntime(freezeGateStateRuntime);
 
   useSearchSurfaceRedrawStallPressureRuntime({
     searchMode,

@@ -12,8 +12,9 @@ export const CONTENT_HORIZONTAL_PADDING = OVERLAY_HORIZONTAL_PADDING;
 export const SEARCH_HORIZONTAL_PADDING = CONTENT_HORIZONTAL_PADDING;
 export const SEARCH_CONTAINER_PADDING_TOP = 8;
 export const SEARCH_HEADER_HEIGHT = 50;
-// Keep search chrome fully opaque until the sheet enters this near-expanded zone.
-export const SEARCH_CHROME_FADE_ZONE_PX = 220;
+// Near-expanded zone where visible search chrome scales down and the map scrim strengthens.
+export const SEARCH_CHROME_SHEET_RESPONSE_ZONE_PX = 220;
+export const SEARCH_CHROME_SCALE_TRANSFORM_ORIGIN = 'center bottom';
 export const CARD_GAP = 6;
 export const SHARED_SECTION_GAP = CARD_GAP;
 export const FIRST_RESULT_TOP_PADDING_EXTRA = 8;
@@ -84,7 +85,7 @@ export const PIN_FILL_CENTER_Y = PIN_FILL_TOP_OFFSET + PIN_FILL_RENDER_HEIGHT / 
 // Label placement:
 // - Center left/right labels on the pin fill (not the full base).
 // - Keep labels on the old-good candidate-layer model: four explicit candidate features/layers
-//   with native sticky feedback, never Mapbox variable anchors.
+//   with native rendered-label observation, never Mapbox variable anchors.
 export const LABEL_RADIAL_OFFSET_EM = LABEL_RADIAL_OFFSET_EM_BASELINE;
 
 // Rank text sizing - use pin fill dimensions for container

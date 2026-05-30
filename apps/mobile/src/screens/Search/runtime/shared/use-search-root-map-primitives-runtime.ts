@@ -21,6 +21,8 @@ export const useSearchRootMapPrimitivesRuntime = ({
     () => startupCamera?.center ?? null
   );
   const [mapZoom, setMapZoom] = React.useState<number | null>(() => startupCamera?.zoom ?? null);
+  const [mapBearing, setMapBearing] = React.useState<number | null>(0);
+  const [mapPitch, setMapPitch] = React.useState<number | null>(0);
   const [mapCameraAnimation, setMapCameraAnimation] = React.useState<{
     mode: 'none' | 'easeTo';
     durationMs: number;
@@ -45,6 +47,10 @@ export const useSearchRootMapPrimitivesRuntime = ({
       setMapCenter,
       mapZoom,
       setMapZoom,
+      mapBearing,
+      setMapBearing,
+      mapPitch,
+      setMapPitch,
       mapCameraAnimation,
       setMapCameraAnimation,
       isFollowingUser,
@@ -55,10 +61,14 @@ export const useSearchRootMapPrimitivesRuntime = ({
     [
       isFollowingUser,
       mapCameraAnimation,
+      mapBearing,
       mapCenter,
+      mapPitch,
       mapZoom,
+      setMapBearing,
       setMapCameraAnimation,
       setMapCenter,
+      setMapPitch,
       setMapZoom,
       suppressMapMoved,
     ]

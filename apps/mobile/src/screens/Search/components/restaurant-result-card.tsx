@@ -15,7 +15,7 @@ import styles from '../styles';
 import { SECONDARY_METRIC_ICON_SIZE, TOP_FOOD_RENDER_LIMIT } from '../constants/search';
 import { formatDistanceMiles, resolveMarketDisplayLabel } from '../utils/format';
 import { formatRankLabel, getRankFontSize } from '../utils/rank-badge';
-import { formatCraveScore, formatCraveScoreMovement } from '../utils/quality';
+import CraveScoreText from './CraveScoreText';
 import { InfoCircleIcon } from './metric-icons';
 import { renderMetaDetailLine } from './render-meta-detail-line';
 import {
@@ -55,6 +55,7 @@ type ScoreInfoPayload = {
   type: 'dish' | 'restaurant';
   title: string;
   score: number | null | undefined;
+  scoreDelta7d: number | null | undefined;
   votes: number | null | undefined;
   polls: number | null | undefined;
 };
@@ -123,7 +124,6 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
       ? restaurant.craveScore
       : null;
   }, [preparedDescriptor, restaurant.craveScore]);
-  const scoreMovementLabel = formatCraveScoreMovement(restaurant.scoreDelta7d);
   const marketLabel =
     preparedDescriptor?.marketLabel ??
     (showMarketLabel && restaurant.marketKey && restaurant.marketKey !== primaryMarketKey
@@ -312,10 +312,17 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
       type: 'restaurant',
       title: restaurant.restaurantName,
       score: craveScoreValue,
+      scoreDelta7d: restaurant.scoreDelta7d ?? null,
       votes: restaurant.scoreInfo?.voteCount ?? null,
       polls: restaurant.scoreInfo?.pollCount ?? null,
     });
-  }, [openScoreInfo, restaurant.restaurantName, restaurant.scoreInfo, craveScoreValue]);
+  }, [
+    craveScoreValue,
+    openScoreInfo,
+    restaurant.restaurantName,
+    restaurant.scoreDelta7d,
+    restaurant.scoreInfo,
+  ]);
 
   const handleRestaurantPress = React.useCallback(() => {
     openRestaurantProfile(restaurant);
@@ -355,28 +362,18 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                   <View style={[styles.restaurantMetricRow, styles.metricSupportRow]}>
                     <View style={styles.restaurantMetricLeft}>
                       {STORE_ICON}
-                      <Text variant="body" weight="semibold" style={styles.metricValue}>
-                        {formatCraveScore(craveScoreValue)}
-                      </Text>
-                      {scoreMovementLabel ? (
-                        <Text variant="body" weight="semibold" style={styles.metricMovement}>
-                          {scoreMovementLabel}
-                        </Text>
-                      ) : null}
-                      <Text
+                      <CraveScoreText
+                        score={craveScoreValue}
                         variant="body"
-                        weight="regular"
-                        style={[styles.metricSupportLabel, styles.restaurantMetricLabel]}
-                        numberOfLines={1}
-                      >
-                        Restaurant score
-                      </Text>
+                        weight="semibold"
+                        style={styles.metricValue}
+                      />
                       <TouchableOpacity
                         onPress={handleRestaurantInfoPress}
                         style={styles.scoreInfoIconButton}
                         hitSlop={8}
                         accessibilityRole="button"
-                        accessibilityLabel="How restaurant scores are calculated"
+                        accessibilityLabel="How restaurant ratings are calculated"
                       >
                         {INFO_CIRCLE_ICON_RESTAURANT}
                       </TouchableOpacity>

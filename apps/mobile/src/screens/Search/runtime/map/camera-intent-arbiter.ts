@@ -4,6 +4,8 @@ import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-pr
 export type CameraIntent = {
   center: [number, number];
   zoom: number;
+  bearing?: number | null;
+  pitch?: number | null;
   padding?: CameraSnapshot['padding'];
   animationMode?: 'none' | 'easeTo';
   animationDurationMs?: number;
@@ -31,6 +33,8 @@ export type CameraIntentArbiterWriters = {
   ) => boolean;
   setMapCenter: (center: [number, number]) => void;
   setMapZoom: (zoom: number) => void;
+  setMapBearing: (bearing: number | null) => void;
+  setMapPitch: (pitch: number | null) => void;
   setMapCameraAnimation: (animation: {
     mode: 'none' | 'easeTo';
     durationMs: number;
@@ -46,6 +50,8 @@ export class CameraIntentArbiter {
     completionId: string;
     center: [number, number];
     zoom: number;
+    bearing?: number | null;
+    pitch?: number | null;
     shouldSyncPadding: boolean;
     padding: CameraSnapshot['padding'];
   } | null = null;
@@ -153,6 +159,8 @@ export class CameraIntentArbiter {
             completionId,
             center: intent.center,
             zoom: intent.zoom,
+            bearing: intent.bearing ?? null,
+            pitch: intent.pitch ?? null,
             shouldSyncPadding,
             padding: intent.padding ?? null,
           };
@@ -164,6 +172,12 @@ export class CameraIntentArbiter {
         }
         this.writers.setMapCenter(intent.center);
         this.writers.setMapZoom(intent.zoom);
+        if (Object.prototype.hasOwnProperty.call(intent, 'bearing')) {
+          this.writers.setMapBearing(intent.bearing ?? null);
+        }
+        if (Object.prototype.hasOwnProperty.call(intent, 'pitch')) {
+          this.writers.setMapPitch(intent.pitch ?? null);
+        }
         return true;
       }
       this.writers.setMapCameraAnimation(animation);
@@ -172,6 +186,12 @@ export class CameraIntentArbiter {
       }
       this.writers.setMapCenter(intent.center);
       this.writers.setMapZoom(intent.zoom);
+      if (Object.prototype.hasOwnProperty.call(intent, 'bearing')) {
+        this.writers.setMapBearing(intent.bearing ?? null);
+      }
+      if (Object.prototype.hasOwnProperty.call(intent, 'pitch')) {
+        this.writers.setMapPitch(intent.pitch ?? null);
+      }
       return true;
     });
   }
@@ -211,6 +231,12 @@ export class CameraIntentArbiter {
     }
     this.writers.setMapCenter(pendingSync.center);
     this.writers.setMapZoom(pendingSync.zoom);
+    if (Object.prototype.hasOwnProperty.call(pendingSync, 'bearing')) {
+      this.writers.setMapBearing(pendingSync.bearing ?? null);
+    }
+    if (Object.prototype.hasOwnProperty.call(pendingSync, 'pitch')) {
+      this.writers.setMapPitch(pendingSync.pitch ?? null);
+    }
   }
 
   public handleProgrammaticCameraAnimationCompletion(

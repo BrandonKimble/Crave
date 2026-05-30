@@ -8,14 +8,14 @@ import { SCREEN_HEIGHT } from '../../screens/Search/constants/search';
 import { getSearchStartupGeometrySeed } from '../../screens/Search/runtime/shared/search-startup-geometry';
 import { withSearchNavSwitchRuntimeAttribution } from '../../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
 import type {
-  AppRouteResultsSheetRuntimeOwner,
-  AppRouteResultsSheetVisualBinding,
-} from './app-route-results-sheet-runtime-contract';
+  AppRouteSharedSheetRuntimeOwner,
+  AppRouteSharedSheetVisualBinding,
+} from './app-route-shared-sheet-runtime-contract';
 import type { AppRouteSceneRuntime } from './app-route-scene-runtime';
 import type { AppRouteOverlaySessionSnapshot } from './app-route-overlay-session-contract';
 import type { RouteOverlayRootSnapshot } from './route-overlay-display-snapshot-contract';
 import type { RouteHostOverlayGeometryBinding } from './route-host-overlay-geometry-state-controller';
-import { useAppRouteResultsSheetSharedValuesRuntime } from './use-app-route-results-sheet-shared-values-runtime';
+import { useAppRouteSharedSheetValuesRuntime } from './use-app-route-shared-sheet-values-runtime';
 import { useSearchNavSwitchCommitAttribution } from '../../screens/Search/runtime/shared/use-search-nav-switch-commit-attribution';
 import type { SheetPosition } from '../../overlays/sheetUtils';
 
@@ -30,22 +30,13 @@ const areRouteOverlayMotionStatesEqual = (
   right: ReturnType<typeof selectRouteOverlayMotionState>
 ): boolean => left.isSearchOverlay === right.isSearchOverlay;
 
-const selectRouteResultsSheetSessionState = (snapshot: { isDockedPollsDismissed: boolean }) => ({
-  isDockedPollsDismissed: snapshot.isDockedPollsDismissed,
-});
-
-const areRouteResultsSheetSessionStatesEqual = (
-  left: ReturnType<typeof selectRouteResultsSheetSessionState>,
-  right: ReturnType<typeof selectRouteResultsSheetSessionState>
-): boolean => left.isDockedPollsDismissed === right.isDockedPollsDismissed;
-
-const selectRouteResultsSheetOverlaySessionState = (snapshot: AppRouteOverlaySessionSnapshot) => ({
+const selectRouteSharedSheetOverlaySessionState = (snapshot: AppRouteOverlaySessionSnapshot) => ({
   shouldShowDockedPollsTarget: snapshot.shouldShowDockedPollsTarget,
 });
 
-const areRouteResultsSheetOverlaySessionStatesEqual = (
-  left: ReturnType<typeof selectRouteResultsSheetOverlaySessionState>,
-  right: ReturnType<typeof selectRouteResultsSheetOverlaySessionState>
+const areRouteSharedSheetOverlaySessionStatesEqual = (
+  left: ReturnType<typeof selectRouteSharedSheetOverlaySessionState>,
+  right: ReturnType<typeof selectRouteSharedSheetOverlaySessionState>
 ): boolean => left.shouldShowDockedPollsTarget === right.shouldShowDockedPollsTarget;
 
 const getRouteHostOverlayGeometryInput = (
@@ -58,7 +49,7 @@ const getRouteHostOverlayGeometryInput = (
   navBarTopForSnaps: snapshot?.navBarTopForSnaps ?? startupGeometrySeed.navBarTopForSnaps,
 });
 
-const resolveInitialResultsSheetPosition = ({
+const resolveInitialSharedSheetPosition = ({
   shouldShowDockedPollsTarget,
   currentPollsSheetSnap,
   hasUserSharedSnap,
@@ -78,21 +69,21 @@ const resolveInitialResultsSheetPosition = ({
   return hasUserSharedSnap ? sharedSnap : 'collapsed';
 };
 
-export const useAppRouteResultsSheetRuntime = ({
+export const useAppRouteSharedSheetRuntime = ({
   insetsTop,
   routeSceneRuntime,
 }: {
   insetsTop: number;
   routeSceneRuntime: AppRouteSceneRuntime;
-}): AppRouteResultsSheetRuntimeOwner => {
-  useSearchNavSwitchCommitAttribution('AppRouteResultsSheetRuntime');
+}): AppRouteSharedSheetRuntimeOwner => {
+  useSearchNavSwitchCommitAttribution('AppRouteSharedSheetRuntime');
   const initialRouteOverlayMotionState = React.useMemo(
     () => selectRouteOverlayMotionState(routeSceneRuntime.routeOverlayRootAuthority.getSnapshot()),
     [routeSceneRuntime.routeOverlayRootAuthority]
   );
-  const initialRouteResultsSheetOverlaySessionState = React.useMemo(
+  const initialRouteSharedSheetOverlaySessionState = React.useMemo(
     () =>
-      selectRouteResultsSheetOverlaySessionState(
+      selectRouteSharedSheetOverlaySessionState(
         routeSceneRuntime.routeOverlaySessionAuthority.getSnapshot()
       ),
     [routeSceneRuntime.routeOverlaySessionAuthority]
@@ -106,63 +97,60 @@ export const useAppRouteResultsSheetRuntime = ({
   );
   const initialSheetSnapSessionSnapshot =
     routeSceneRuntime.routeSheetSnapSessionAuthority.getSnapshot();
-  const initialResultsSheetPosition = resolveInitialResultsSheetPosition({
+  const initialSharedSheetPosition = resolveInitialSharedSheetPosition({
     shouldShowDockedPollsTarget:
-      initialRouteResultsSheetOverlaySessionState.shouldShowDockedPollsTarget,
+      initialRouteSharedSheetOverlaySessionState.shouldShowDockedPollsTarget,
     currentPollsSheetSnap:
       routeSceneRuntime.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap('polls'),
     hasUserSharedSnap: initialSheetSnapSessionSnapshot.hasUserSharedSnap,
     sharedSnap: initialSheetSnapSessionSnapshot.sharedSnap,
   });
-  const initialResultsPanelVisible = initialResultsSheetPosition !== 'hidden';
+  const initialSharedSheetVisible = initialSharedSheetPosition !== 'hidden';
 
-  const resultsSheetSharedValuesRuntime = useAppRouteResultsSheetSharedValuesRuntime({
+  const sharedSheetValuesRuntime = useAppRouteSharedSheetValuesRuntime({
     screenHeight: SCREEN_HEIGHT,
     searchBarTop: initialRouteHostOverlayGeometry.searchBarTop,
     insetsTop,
     navBarTopForSnaps: initialRouteHostOverlayGeometry.navBarTopForSnaps,
     overlayTabHeaderHeight: OVERLAY_TAB_HEADER_HEIGHT,
-    initialResultsSheetPosition,
-    initialResultsPanelVisible,
+    initialSharedSheetPosition,
+    initialSharedSheetVisible,
   });
-  const resultsSheetRuntimeModel = useBottomSheetRuntimeModel({
+  const sharedSheetRuntimeModel = useBottomSheetRuntimeModel({
     presentationStateOverride: {
-      sheetY: resultsSheetSharedValuesRuntime.sheetTranslateY,
-      scrollOffset: resultsSheetSharedValuesRuntime.resultsScrollOffset,
-      momentumFlag: resultsSheetSharedValuesRuntime.resultsMomentum,
+      sheetY: sharedSheetValuesRuntime.sheetTranslateY,
+      scrollOffset: sharedSheetValuesRuntime.sheetScrollOffset,
+      momentumFlag: sharedSheetValuesRuntime.sheetMomentum,
     },
   });
   const headerDividerAnimatedStyle = useAnimatedStyle(
     () => ({
       opacity: interpolate(
-        resultsSheetSharedValuesRuntime.resultsScrollOffset.value,
+        sharedSheetValuesRuntime.sheetScrollOffset.value,
         [0, 24],
         [0, 1],
         Extrapolation.CLAMP
       ),
     }),
-    [resultsSheetSharedValuesRuntime.resultsScrollOffset]
+    [sharedSheetValuesRuntime.sheetScrollOffset]
   );
-  const resultsContainerAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: resultsSheetSharedValuesRuntime.sheetTranslateY.value }],
+  const sharedSheetContainerAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: sharedSheetValuesRuntime.sheetTranslateY.value }],
   }));
   const getPollsSheetSnap = React.useCallback(
     () => routeSceneRuntime.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap('polls'),
     [routeSceneRuntime.routeSheetSnapSessionActions]
   );
-  const resultsSheetVisibilityRuntime = routeSceneRuntime.routeResultsSheetVisibilityRuntime;
+  const sharedSheetPresentationRuntime = routeSceneRuntime.routeSharedSheetPresentationRuntime;
 
   React.useLayoutEffect(() => {
     let lastRouteOverlayMotionState = initialRouteOverlayMotionState;
-    let lastRouteResultsSheetOverlaySessionState = initialRouteResultsSheetOverlaySessionState;
-    let lastRouteResultsSheetSessionState = selectRouteResultsSheetSessionState(
-      routeSceneRuntime.routeSheetSnapSessionAuthority.getSnapshot()
-    );
+    let lastRouteSharedSheetOverlaySessionState = initialRouteSharedSheetOverlaySessionState;
 
-    const syncResultsSheetInput = () => {
+    const syncSharedSheetInput = () => {
       withSearchNavSwitchRuntimeAttribution(
-        'AppRouteResultsSheetRuntime',
-        'syncVisibilityInput',
+        'AppRouteSharedSheetRuntime',
+        'syncPresentationInput',
         () => {
           const routeOverlayMotionState = selectRouteOverlayMotionState(
             routeSceneRuntime.routeOverlayRootAuthority.getSnapshot()
@@ -173,34 +161,22 @@ export const useAppRouteResultsSheetRuntime = ({
             lastRouteOverlayMotionState = routeOverlayMotionState;
           }
 
-          const routeResultsSheetOverlaySessionState = selectRouteResultsSheetOverlaySessionState(
+          const routeSharedSheetOverlaySessionState = selectRouteSharedSheetOverlaySessionState(
             routeSceneRuntime.routeOverlaySessionAuthority.getSnapshot()
           );
           if (
-            !areRouteResultsSheetOverlaySessionStatesEqual(
-              lastRouteResultsSheetOverlaySessionState,
-              routeResultsSheetOverlaySessionState
+            !areRouteSharedSheetOverlaySessionStatesEqual(
+              lastRouteSharedSheetOverlaySessionState,
+              routeSharedSheetOverlaySessionState
             )
           ) {
-            lastRouteResultsSheetOverlaySessionState = routeResultsSheetOverlaySessionState;
-          }
-
-          const routeResultsSheetSessionState = selectRouteResultsSheetSessionState(
-            routeSceneRuntime.routeSheetSnapSessionAuthority.getSnapshot()
-          );
-          if (
-            !areRouteResultsSheetSessionStatesEqual(
-              lastRouteResultsSheetSessionState,
-              routeResultsSheetSessionState
-            )
-          ) {
-            lastRouteResultsSheetSessionState = routeResultsSheetSessionState;
+            lastRouteSharedSheetOverlaySessionState = routeSharedSheetOverlaySessionState;
           }
 
           const routeHostOverlayGeometry = getRouteHostOverlayGeometryInput(
             routeSceneRuntime.routeHostOverlayGeometryAuthority.getSnapshot()
           );
-          resultsSheetSharedValuesRuntime.syncSnapPoints({
+          sharedSheetValuesRuntime.syncSnapPoints({
             screenHeight: SCREEN_HEIGHT,
             searchBarTop: routeHostOverlayGeometry.searchBarTop,
             insetsTop,
@@ -210,37 +186,33 @@ export const useAppRouteResultsSheetRuntime = ({
 
           const overlaySheetPositionState =
             routeSceneRuntime.routeSheetSnapSessionAuthority.getSnapshot();
-          const nextInitialResultsSheetPosition = resolveInitialResultsSheetPosition({
+          const nextInitialSharedSheetPosition = resolveInitialSharedSheetPosition({
             shouldShowDockedPollsTarget:
-              routeResultsSheetOverlaySessionState.shouldShowDockedPollsTarget,
+              routeSharedSheetOverlaySessionState.shouldShowDockedPollsTarget,
             currentPollsSheetSnap:
               routeSceneRuntime.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap('polls'),
             hasUserSharedSnap: overlaySheetPositionState.hasUserSharedSnap,
             sharedSnap: overlaySheetPositionState.sharedSnap,
           });
 
-          resultsSheetVisibilityRuntime.syncInput({
+          sharedSheetPresentationRuntime.syncInput({
             isSearchOverlay: routeOverlayMotionState.isSearchOverlay,
             shouldShowDockedPollsTarget:
-              routeResultsSheetOverlaySessionState.shouldShowDockedPollsTarget,
+              routeSharedSheetOverlaySessionState.shouldShowDockedPollsTarget,
             getPollsSheetSnap,
-            isDockedPollsDismissed: routeResultsSheetSessionState.isDockedPollsDismissed,
-            hasUserSharedSnap: overlaySheetPositionState.hasUserSharedSnap,
-            sharedSnap: overlaySheetPositionState.sharedSnap,
             navBarTopForSnaps: routeHostOverlayGeometry.navBarTopForSnaps,
-            initialResultsSheetPosition: nextInitialResultsSheetPosition,
-            initialResultsPanelVisible: nextInitialResultsSheetPosition !== 'hidden',
-            clearSheetCommand: resultsSheetRuntimeModel.snapController.clearCommand,
-            setSheetTranslateYTo: resultsSheetSharedValuesRuntime.setSheetTranslateYTo,
+            initialSharedSheetPosition: nextInitialSharedSheetPosition,
+            initialSharedSheetVisible: nextInitialSharedSheetPosition !== 'hidden',
+            clearSheetCommand: sharedSheetRuntimeModel.snapController.clearCommand,
           });
         }
       );
     };
 
-    syncResultsSheetInput();
+    syncSharedSheetInput();
     const unregisterRouteOverlayRootTarget =
       routeSceneRuntime.routeOverlayRootAuthority.registerTarget({
-        attributionLabel: 'resultsSheetInput',
+        attributionLabel: 'sharedSheetInput',
         syncRootSnapshot: (snapshot) => {
           const routeOverlayMotionState = selectRouteOverlayMotionState(snapshot);
           if (
@@ -248,29 +220,29 @@ export const useAppRouteResultsSheetRuntime = ({
           ) {
             return;
           }
-          syncResultsSheetInput();
+          syncSharedSheetInput();
         },
       });
     const unsubscribeRouteOverlaySession = routeSceneRuntime.routeOverlaySessionAuthority.subscribe(
       () => {
-        const routeResultsSheetOverlaySessionState = selectRouteResultsSheetOverlaySessionState(
+        const routeSharedSheetOverlaySessionState = selectRouteSharedSheetOverlaySessionState(
           routeSceneRuntime.routeOverlaySessionAuthority.getSnapshot()
         );
         if (
-          areRouteResultsSheetOverlaySessionStatesEqual(
-            lastRouteResultsSheetOverlaySessionState,
-            routeResultsSheetOverlaySessionState
+          areRouteSharedSheetOverlaySessionStatesEqual(
+            lastRouteSharedSheetOverlaySessionState,
+            routeSharedSheetOverlaySessionState
           )
         ) {
           return;
         }
-        syncResultsSheetInput();
+        syncSharedSheetInput();
       }
     );
     const unsubscribeRouteHostOverlayGeometry =
-      routeSceneRuntime.routeHostOverlayGeometryAuthority.subscribe(syncResultsSheetInput);
+      routeSceneRuntime.routeHostOverlayGeometryAuthority.subscribe(syncSharedSheetInput);
     const unsubscribeRouteSheetSnapSession =
-      routeSceneRuntime.routeSheetSnapSessionAuthority.subscribe(syncResultsSheetInput);
+      routeSceneRuntime.routeSheetSnapSessionAuthority.subscribe(syncSharedSheetInput);
 
     return () => {
       unregisterRouteOverlayRootTarget();
@@ -281,14 +253,13 @@ export const useAppRouteResultsSheetRuntime = ({
   }, [
     getPollsSheetSnap,
     initialRouteOverlayMotionState,
-    initialRouteResultsSheetOverlaySessionState,
-    initialResultsPanelVisible,
-    initialResultsSheetPosition,
+    initialRouteSharedSheetOverlaySessionState,
+    initialSharedSheetVisible,
+    initialSharedSheetPosition,
     insetsTop,
-    resultsSheetRuntimeModel.snapController.clearCommand,
-    resultsSheetSharedValuesRuntime.setSheetTranslateYTo,
-    resultsSheetSharedValuesRuntime.syncSnapPoints,
-    resultsSheetVisibilityRuntime,
+    sharedSheetRuntimeModel.snapController.clearCommand,
+    sharedSheetValuesRuntime.syncSnapPoints,
+    sharedSheetPresentationRuntime,
     routeSceneRuntime.routeHostOverlayGeometryAuthority,
     routeSceneRuntime.routeOverlayRootAuthority,
     routeSceneRuntime.routeOverlaySessionAuthority,
@@ -299,45 +270,44 @@ export const useAppRouteResultsSheetRuntime = ({
   return React.useMemo(
     () => ({
       get snapPoints() {
-        return resultsSheetSharedValuesRuntime.snapPoints;
+        return sharedSheetValuesRuntime.snapPoints;
       },
       get panelVisible() {
-        return resultsSheetVisibilityRuntime.getSnapshot().panelVisible;
+        return sharedSheetPresentationRuntime.getSnapshot().panelVisible;
       },
       get sheetState() {
-        return resultsSheetVisibilityRuntime.getSnapshot().sheetState;
+        return sharedSheetPresentationRuntime.getSnapshot().sheetState;
       },
-      sheetTranslateY: resultsSheetSharedValuesRuntime.sheetTranslateY,
-      resultsScrollOffset: resultsSheetSharedValuesRuntime.resultsScrollOffset,
-      resultsMomentum: resultsSheetSharedValuesRuntime.resultsMomentum,
-      resultsSheetRuntimeModel,
-      get shouldRenderResultsSheet() {
-        return resultsSheetVisibilityRuntime.getSnapshot().shouldRenderResultsSheet;
+      sheetTranslateY: sharedSheetValuesRuntime.sheetTranslateY,
+      sheetScrollOffset: sharedSheetValuesRuntime.sheetScrollOffset,
+      sheetMomentum: sharedSheetValuesRuntime.sheetMomentum,
+      sharedSheetRuntimeModel,
+      get shouldRenderMountedSharedSheet() {
+        return sharedSheetPresentationRuntime.getSnapshot().shouldRenderMountedSharedSheet;
       },
-      shouldRenderResultsSheetRef: resultsSheetVisibilityRuntime.shouldRenderResultsSheetRef,
+      shouldRenderMountedSharedSheetRef: sharedSheetPresentationRuntime.shouldRenderMountedSharedSheetRef,
       headerDividerAnimatedStyle,
-      resultsContainerAnimatedStyle,
-      resetResultsSheetToHidden: resultsSheetVisibilityRuntime.resetResultsSheetToHidden,
-      prepareShortcutSheetTransition: resultsSheetVisibilityRuntime.prepareShortcutSheetTransition,
-      handleSheetSnapChange: resultsSheetVisibilityRuntime.handleSheetSnapChange,
+      sharedSheetContainerAnimatedStyle,
+      markSharedSheetHidden: sharedSheetPresentationRuntime.markSharedSheetHidden,
+      prepareSharedSheetForSearchPresentation:
+        sharedSheetPresentationRuntime.prepareSharedSheetForSearchPresentation,
     }),
     [
       headerDividerAnimatedStyle,
-      resultsContainerAnimatedStyle,
-      resultsSheetRuntimeModel,
-      resultsSheetSharedValuesRuntime,
-      resultsSheetVisibilityRuntime,
+      sharedSheetContainerAnimatedStyle,
+      sharedSheetRuntimeModel,
+      sharedSheetValuesRuntime,
+      sharedSheetPresentationRuntime,
     ]
   );
 };
 
-export const getAppRouteResultsSheetVisualBinding = (
-  owner: AppRouteResultsSheetRuntimeOwner
-): AppRouteResultsSheetVisualBinding => ({
+export const getAppRouteSharedSheetVisualBinding = (
+  owner: AppRouteSharedSheetRuntimeOwner
+): AppRouteSharedSheetVisualBinding => ({
   snapPoints: owner.snapPoints,
   sheetTranslateY: owner.sheetTranslateY,
-  resultsScrollOffset: owner.resultsScrollOffset,
-  resultsMomentum: owner.resultsMomentum,
-  handleSheetSnapChange: owner.handleSheetSnapChange,
+  sheetScrollOffset: owner.sheetScrollOffset,
+  sheetMomentum: owner.sheetMomentum,
   getCurrentSheetSnap: () => owner.sheetState,
 });

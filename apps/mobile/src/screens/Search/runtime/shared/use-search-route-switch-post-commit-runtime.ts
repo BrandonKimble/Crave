@@ -3,18 +3,15 @@ import React from 'react';
 import { useAppRouteSceneRuntime } from '../../../../navigation/runtime/AppRouteSceneRuntimeProvider';
 import type { OverlayKey } from '../../../../overlays/types';
 import type { RouteSceneSwitchTransitionState } from '../../../../navigation/runtime/app-route-scene-switch-controller';
-import { logger } from '../../../../utils';
 import type { SearchForegroundOverlayRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
 import {
   beginSearchNavSwitchPerfProbe,
   getActiveSearchNavSwitchPerfProbe,
-  shouldLogSearchNavSwitchDiagnosticLogs,
 } from './search-nav-switch-perf-probe';
 import { withSearchNavSwitchRuntimeAttribution } from './search-nav-switch-runtime-attribution';
 
 type SearchRouteSwitchPostCommitPerfState = {
   probe: ReturnType<typeof beginSearchNavSwitchPerfProbe>;
-  startedAtMs: number;
 };
 
 type SearchRouteSwitchSettledCleanup = SearchRouteSwitchPostCommitPerfState & {
@@ -40,11 +37,6 @@ export const useSearchRouteSwitchPostCommitRuntime = ({
   const cleanupRuntimeRef = React.useRef<SearchRouteSwitchCleanupRuntime>({
     transientCleanupActions,
   });
-  const getNowMs = React.useCallback(() => {
-    const perfNow = globalThis.performance?.now?.();
-    return typeof perfNow === 'number' && Number.isFinite(perfNow) ? perfNow : Date.now();
-  }, []);
-
   const clearQuietCleanupTimer = React.useCallback(() => {
     const timer = quietCleanupTimerRef.current;
     if (timer == null) {
@@ -65,45 +57,26 @@ export const useSearchRouteSwitchPostCommitRuntime = ({
       withSearchNavSwitchRuntimeAttribution('routeSwitchPostCommit', 'flushSettledCleanup', () => {
         const runtime = cleanupRuntimeRef.current;
         const { targetSceneKey } = cleanup;
-        const logNavSwitchStep = (step: string) => {
-          if (!shouldLogSearchNavSwitchDiagnosticLogs()) {
-            return;
-          }
-          logger.debug('[NAV-SWITCH-PERF] postCommitStep', {
-            seq: cleanup.probe.seq,
-            from: cleanup.probe.from,
-            to: cleanup.probe.to,
-            step,
-            elapsedMs: Number((getNowMs() - cleanup.startedAtMs).toFixed(1)),
-          });
-        };
 
         const isSearchRootTarget = targetSceneKey === 'search' || targetSceneKey === 'polls';
         const isSearchProfileRouteTarget = targetSceneKey === 'restaurant';
         const cleanupSnapshot = runtime.transientCleanupActions.getSnapshot();
 
-        logNavSwitchStep('settled:begin');
         runtime.transientCleanupActions.dismissTransientOverlays();
-        logNavSwitchStep('dismissTransientOverlays');
         const shouldDeferSuggestionClear = cleanupSnapshot.isSuggestionPanelActive
           ? runtime.transientCleanupActions.beginSuggestionCloseHold()
           : false;
         if (cleanupSnapshot.isSuggestionPanelActive) {
-          logNavSwitchStep('beginSuggestionCloseHold');
           runtime.transientCleanupActions.resetSuggestionPanelActive();
-          logNavSwitchStep('setIsSuggestionPanelActive:false');
         }
         if (isSearchRootTarget) {
           runtime.transientCleanupActions.setSearchFlagsForSearchRoot();
-          logNavSwitchStep('setSearchFlagsForSearchRoot');
         }
         if (!shouldDeferSuggestionClear && isSearchRootTarget) {
           runtime.transientCleanupActions.clearSuggestions();
-          logNavSwitchStep('clearSuggestions');
         }
         if (isSearchRootTarget && cleanupSnapshot.profilePresentationActive) {
           runtime.transientCleanupActions.closeRestaurantProfile();
-          logNavSwitchStep('closeRestaurantProfileForSearchRoot');
         }
         if (
           !isSearchRootTarget &&
@@ -111,13 +84,11 @@ export const useSearchRouteSwitchPostCommitRuntime = ({
           cleanupSnapshot.profilePresentationActive
         ) {
           runtime.transientCleanupActions.closeRestaurantProfile();
-          logNavSwitchStep('closeRestaurantProfile');
         }
         runtime.transientCleanupActions.blurInput();
-        logNavSwitchStep('blurInput');
       });
     },
-    [getNowMs]
+    []
   );
 
   const scheduleQuietSettledCleanup = React.useCallback(
@@ -181,7 +152,6 @@ export const useSearchRouteSwitchPostCommitRuntime = ({
             from: sourceSceneKey ?? 'none',
             to: targetSceneKey ?? 'none',
           }),
-        startedAtMs: getNowMs(),
       };
     };
 
@@ -202,7 +172,7 @@ export const useSearchRouteSwitchPostCommitRuntime = ({
       }
       previousTransitionState = nextTransitionState;
     }, 'searchRouteSwitchPostCommit');
-  }, [getNowMs, routeSceneSwitchRuntime, scheduleQuietSettledCleanup]);
+  }, [routeSceneSwitchRuntime, scheduleQuietSettledCleanup]);
 
   React.useEffect(() => clearQuietCleanupTimer, [clearQuietCleanupTimer]);
 };

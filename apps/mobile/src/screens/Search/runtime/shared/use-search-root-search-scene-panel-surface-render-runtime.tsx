@@ -28,10 +28,10 @@ export const useSearchRootSearchScenePanelSurfaceRenderRuntime = ({
     () => (
       <Reanimated.View
         pointerEvents="none"
-        style={[styles.resultsShadow, searchSceneSheetPlaneRuntime.resultsContainerAnimatedStyle]}
+        style={[styles.resultsShadow, searchSceneSheetPlaneRuntime.sharedSheetContainerAnimatedStyle]}
       />
     ),
-    [searchSceneSheetPlaneRuntime.resultsContainerAnimatedStyle]
+    [searchSceneSheetPlaneRuntime.sharedSheetContainerAnimatedStyle]
   );
 
   return React.useMemo(

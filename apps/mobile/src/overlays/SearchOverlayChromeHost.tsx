@@ -284,24 +284,26 @@ export const SearchOverlayChromeHost = React.memo(
       shouldFreezeOverlayHeaderChromeForRunOne,
     } = frameSnapshot;
     const shouldRenderChromeHost = isFocused && shouldRenderSearchOverlay;
+    const chromeHost = (
+      <SearchOverlayChromeContainerHost
+        containerSnapshot={containerSnapshot}
+        suggestionSurfaceProps={suggestionSurfaceProps}
+        headerProps={headerProps}
+        shouldRenderChromeHost={shouldRenderChromeHost}
+        hiddenSearchFiltersWarmupProps={hiddenSearchFiltersWarmupProps}
+        shouldFreezeSuggestionSurfaceForRunOne={shouldFreezeSuggestionSurfaceForRunOne}
+        shouldFreezeOverlayHeaderChromeForRunOne={shouldFreezeOverlayHeaderChromeForRunOne}
+      />
+    );
+
     if (!onProfilerRender) {
-      return null;
+      return chromeHost;
     }
 
     return (
-      <>
-        <React.Profiler id="SearchOverlayChrome" onRender={onProfilerRender}>
-          <SearchOverlayChromeContainerHost
-            containerSnapshot={containerSnapshot}
-            suggestionSurfaceProps={suggestionSurfaceProps}
-            headerProps={headerProps}
-            shouldRenderChromeHost={shouldRenderChromeHost}
-            hiddenSearchFiltersWarmupProps={hiddenSearchFiltersWarmupProps}
-            shouldFreezeSuggestionSurfaceForRunOne={shouldFreezeSuggestionSurfaceForRunOne}
-            shouldFreezeOverlayHeaderChromeForRunOne={shouldFreezeOverlayHeaderChromeForRunOne}
-          />
-        </React.Profiler>
-      </>
+      <React.Profiler id="SearchOverlayChrome" onRender={onProfilerRender}>
+        {chromeHost}
+      </React.Profiler>
     );
   }
 );

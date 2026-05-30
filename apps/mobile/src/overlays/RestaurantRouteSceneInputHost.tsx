@@ -88,8 +88,6 @@ const createRestaurantSharedSceneDescriptor = (
     overlayKey: 'restaurant',
     semanticOverlayKey: 'restaurant',
     sceneIdentityKey: spec.sceneIdentityKey ?? 'restaurant',
-    runtimeModel: undefined,
-    shellSnapRequest: null,
     underlayComponent: undefined,
     backgroundComponent: undefined,
     headerComponent: undefined,

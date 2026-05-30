@@ -32,7 +32,7 @@ export const useSearchRootFilterModalRuntime = ({
   const {
     rootInstrumentationRuntime,
     rootOverlayStoreRuntime,
-    appRouteResultsSheetRuntimeOwner,
+    appRouteSharedSheetRuntimeOwner,
   } = rootOverlayFoundationRuntime;
 
   const filterModalOwner = useSearchFilterModalOwner({
@@ -45,7 +45,7 @@ export const useSearchRootFilterModalRuntime = ({
     openNow: rootDataPlaneRuntime.filterStateRuntime.openNow,
     votesFilterActive: rootDataPlaneRuntime.filterStateRuntime.votes100Plus,
     priceLevels: rootDataPlaneRuntime.filterStateRuntime.priceLevels,
-    panelVisible: appRouteResultsSheetRuntimeOwner.panelVisible,
+    panelVisible: appRouteSharedSheetRuntimeOwner.panelVisible,
     setVotes100Plus: rootDataPlaneRuntime.filterStateRuntime.setVotes100Plus,
     setOpenNow: rootDataPlaneRuntime.filterStateRuntime.setOpenNow,
     setPriceLevels: rootDataPlaneRuntime.filterStateRuntime.setPriceLevels,

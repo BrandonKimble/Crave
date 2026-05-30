@@ -107,8 +107,6 @@ export const useSearchRootRuntimeStageRuntime = ({
   } = controlStageRuntime;
   const { visualAssemblyRuntime } = useSearchRootRuntimeVisualStageRuntime({
     appEntryPlaneRuntime,
-    searchRuntimeBus,
-    resultsPresentationAuthority: searchRouteResultsPolicyRuntime.resultsPresentationAuthority,
     stateAssemblyRuntime,
     overlayFoundationAssemblyRuntime,
     controlAuthorityRuntime,
@@ -140,7 +138,7 @@ export const useSearchRootRuntimeStageRuntime = ({
     routeLocalRestaurantOverlayPolicyAuthority,
     routeLocalRestaurantOverlayInteractionAuthority,
     routeHostOverlayGeometryAuthority,
-    routeResultsSheetVisualAuthority,
+    routeSharedSheetVisualAuthority,
     routeHostVisualRuntimeAuthority,
   } = routeSurfaceHostRuntime;
   const {
@@ -159,7 +157,7 @@ export const useSearchRootRuntimeStageRuntime = ({
     routeLocalRestaurantOverlayPolicyAuthority,
     routeLocalRestaurantOverlayInteractionAuthority,
     routeHostOverlayGeometryAuthority,
-    routeResultsSheetVisualAuthority,
+    routeSharedSheetVisualAuthority,
     routeHostVisualRuntimeAuthority,
     overlayHostVisualRuntime: visualAssemblyRuntime.hostVisualRuntime.overlayHostVisualRuntime,
     overlaySceneHostVisualRuntime:
@@ -210,7 +208,7 @@ export const useSearchRootRuntimeStageRuntime = ({
   const routeDynamicSceneInputRuntime = React.useMemo(
     () => ({
       pollBounds:
-        overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.rootResultsSheetRuntimeLane
+        overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.rootSharedSheetRuntimeLane
           .pollBounds,
       startupPollsSnapshot: appEntryPlaneRuntime.startupPollsSnapshot,
       userLocation: appEntryPlaneRuntime.userLocation,
@@ -220,7 +218,7 @@ export const useSearchRootRuntimeStageRuntime = ({
     [
       appEntryPlaneRuntime.startupPollsSnapshot,
       appEntryPlaneRuntime.userLocation,
-      overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.rootResultsSheetRuntimeLane
+      overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.rootSharedSheetRuntimeLane
         .pollBounds,
       sessionAssemblyRuntime.sessionRuntime.sessionPrimitivesLane.primitives.searchInteractionRef,
     ]

@@ -380,6 +380,17 @@ wait_for_metro() {
   fi
 }
 
+wait_for_metro_or_exit() {
+  if wait_for_metro; then
+    return 0
+  fi
+  if [[ "$IOS_REQUIRE_OPEN" == "1" ]]; then
+    echo "Metro is not reachable; refusing to open a dev-client URL that would load a blank Expo shell." >&2
+    exit 1
+  fi
+  return 0
+}
+
 urlencode() {
   if command -v python3 >/dev/null 2>&1; then
     python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.stdin.read().strip(), safe=""))'
@@ -457,7 +468,7 @@ open_dev_client() {
           echo "Note: Failed to open dev client URL in simulator. Open it manually:"
           echo "  ${url}"
         else
-          launch_succeeded=0
+          return 0
         fi
       elif [[ -n "$IOS_BUNDLE_ID" ]]; then
         local launch_error=""
@@ -469,11 +480,13 @@ open_dev_client() {
               --terminate-existing --activate --payload-url "$url" "$IOS_BUNDLE_ID" 2>&1
           )"; then
             launch_ok=0
-            launch_succeeded=0
             break
           fi
           sleep 2
         done
+        if [[ "$launch_ok" == "0" ]]; then
+          return 0
+        fi
         if [[ "$launch_ok" != "0" ]]; then
           echo "Note: Failed to deep-link dev client on device. Open it manually:"
           echo "  ${url}"
@@ -483,15 +496,32 @@ open_dev_client() {
             printf '%s\n' "$launch_error" | awk '
               NF &&
               $0 !~ /^nvm is not compatible with the "PREFIX" environment variable:/ &&
-              $0 !~ /^nvm is not compatible with the "npm_config_prefix" environment variable:/ {print; exit}
+              $0 !~ /^nvm is not compatible with the "npm_config_prefix" environment variable:/ &&
+              $0 ~ /ERROR:|BSErrorCodeDescription|NSLocalizedFailureReason|NSLocalizedRecoverySuggestion/ {print; exit}
             '
           )"
+          if [[ -z "$reason" ]]; then
+            reason="$(
+              printf '%s\n' "$launch_error" | awk '
+                NF &&
+                $0 !~ /^nvm is not compatible with the "PREFIX" environment variable:/ &&
+                $0 !~ /^nvm is not compatible with the "npm_config_prefix" environment variable:/ &&
+                $0 !~ /^[0-9: ]+ Acquired / &&
+                $0 !~ /^[0-9: ]+ Enabling / {print; exit}
+              '
+            )"
+          fi
           if [[ -n "$reason" ]]; then
             echo "devicectl reason: ${reason}"
           fi
-          if printf '%s\n' "$launch_error" | rg -q 'Unable to launch .*unlocked|BSErrorCodeDescription = Locked|reason: Locked'; then
+          if printf '%s\n' "$launch_error" | grep -Eq 'Unable to launch .*unlocked|BSErrorCodeDescription = Locked|reason: Locked'; then
             echo "Device launch was denied because the iPhone is locked."
             echo "Unlock the phone, keep it awake, and run the command again."
+            hard_failure=1
+          fi
+          if printf '%s\n' "$launch_error" | grep -Eq 'invalid code signature|profile has not been explicitly trusted|BSErrorCodeDescription = Security|RequestDenied'; then
+            echo "Device launch was denied because the installed app is not trusted or has an invalid signing profile."
+            echo "On the iPhone, trust the developer profile in Settings > General > VPN & Device Management, then rerun the command."
             hard_failure=1
           fi
           if is_offline_ios_device_udid "$IOS_DEVICE_UDID"; then
@@ -501,6 +531,9 @@ open_dev_client() {
             --terminate-existing "$IOS_BUNDLE_ID" >/dev/null 2>&1; then
             echo "Opened iOS app without deep-link payload."
             launched_without_deeplink=1
+          fi
+          if [[ "$hard_failure" == "1" ]]; then
+            break
           fi
         fi
       fi
@@ -634,8 +667,8 @@ if [[ -z "$IOS_DEVICE_UDID" && -z "$IOS_DEVICE_NAME" ]]; then
   if [[ "$IOS_PREFER_DEVICE" == "1" ]]; then
     device_line="$(detect_physical_ios_device || true)"
     if [[ -n "$device_line" ]]; then
-      IOS_DEVICE_UDID="$(echo "$device_line" | sed -E 's/.*\\(([0-9A-Fa-f-]+)\\)\\s*$/\\1/')"
-      IOS_DEVICE_NAME="$(echo "$device_line" | sed -E 's/ \\([0-9.]+\\) \\([0-9A-Fa-f-]+\\)\\s*$//')"
+      IOS_DEVICE_UDID="$(echo "$device_line" | sed -E 's/.*\(([0-9A-Fa-f-]+)\)\s*$/\1/')"
+      IOS_DEVICE_NAME="$(echo "$device_line" | sed -E 's/ \([0-9.]+\) \([0-9A-Fa-f-]+\)\s*$//')"
       echo "Using iOS device: ${IOS_DEVICE_NAME} (${IOS_DEVICE_UDID})"
     fi
   fi
@@ -745,7 +778,7 @@ fi
 
 if [[ -t 1 && "$FOLLOW_METRO_LOGS" != "0" ]]; then
   if [[ "$METRO_ALREADY_RUNNING" == "1" && "$EXPO_FORCE_START" != "1" ]]; then
-    wait_for_metro || true
+    wait_for_metro_or_exit
     run_ios
     if [[ -f "$METRO_LOG" ]]; then
       echo "Tailing Metro logs from ${METRO_LOG} (Ctrl+C to stop)."
@@ -754,7 +787,7 @@ if [[ -t 1 && "$FOLLOW_METRO_LOGS" != "0" ]]; then
     exit 0
   fi
   (
-    wait_for_metro || true
+    wait_for_metro_or_exit
     run_ios
   ) &
   start_cmd=(npx expo start --dev-client)
@@ -775,7 +808,7 @@ if [[ -t 1 && "$FOLLOW_METRO_LOGS" != "0" ]]; then
 fi
 
 if [[ "$METRO_ALREADY_RUNNING" == "1" ]]; then
-  wait_for_metro || true
+  wait_for_metro_or_exit
   run_ios
   if [[ "$FOLLOW_METRO_LOGS" != "0" && -f "$METRO_LOG" ]]; then
     echo "Tailing Metro logs from ${METRO_LOG} (Ctrl+C to stop)."
@@ -800,7 +833,7 @@ EXPO_PACKAGER_HOSTNAME="$PACKAGER_HOSTNAME" REACT_NATIVE_PACKAGER_HOSTNAME="$PAC
   EXPO_DEV_SERVER_PORT="$PORT" RCT_METRO_PORT="$PORT" \
   nohup "${start_cmd[@]}" >"$METRO_LOG" 2>&1 &
 
-wait_for_metro || true
+wait_for_metro_or_exit
 run_ios
 
 if [[ "$FOLLOW_METRO_LOGS" != "0" ]]; then

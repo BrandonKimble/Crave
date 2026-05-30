@@ -17,7 +17,7 @@ type ResultsPresentationRuntimeMachineOwner = Pick<
   | 'searchSurfaceResultsTransactionKey'
   | 'beginSearchThisAreaPresentationPending'
   | 'stageSearchSurfaceResultsTransaction'
-  | 'commitSearchSurfaceResultsTransaction'
+  | 'commitSearchSurfaceResultsExitTransaction'
   | 'clearStagedSearchSurfaceResultsTransaction'
   | 'handlePageOneResultsCommitted'
   | 'cancelPresentationIntent'
@@ -87,8 +87,8 @@ export const useResultsPresentationRuntimeMachineOwner = ({
       clearStagedSearchSurfaceResultsTransaction:
         surfaceTransactionRuntime.clearStagedSearchSurfaceResultsTransaction,
       handlePageOneResultsCommitted: surfaceTransactionRuntime.handlePageOneResultsCommitted,
-      commitSearchSurfaceResultsTransaction:
-        machineCoreRuntime.commitSearchSurfaceResultsTransaction,
+      commitSearchSurfaceResultsExitTransaction:
+        machineCoreRuntime.commitSearchSurfaceResultsExitTransaction,
       cancelPresentationIntent: machineCoreRuntime.cancelPresentationIntent,
       handleToggleInteractionLifecycle: machineCoreRuntime.handleToggleInteractionLifecycle,
       handlePresentationIntentAbort: surfaceTransactionRuntime.handlePresentationIntentAbort,

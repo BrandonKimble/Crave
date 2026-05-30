@@ -14,43 +14,30 @@ appId: com.brandonkimble.cravesearch
     optional: true
 - extendedWaitUntil:
     visible: 'What are you craving?'
-    timeout: 15000
+    timeout: 45000
 - extendedWaitUntil:
     visible: 'Show best restaurants here'
-    timeout: 15000
+    timeout: 45000
 - openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=30.2672&lng=-97.7431&zoom=11.5&label=austin'
 - waitForAnimationToEnd:
     timeout: 2000
-- tapOn:
-    point: '25%, 19%'
-    waitToSettleTimeoutMs: 0
+- openLink: 'crave://perf-scenario-command?action=submit_shortcut_restaurants'
 - extendedWaitUntil:
     visible: 'Close results'
     timeout: 20000
 - waitForAnimationToEnd:
     timeout: 1000
+- takeScreenshot: search-pin-selection-results-open
+- openLink: 'crave://perf-scenario-mark?phase=measured_repeat_loop_start&label=pin_selection_profile_open'
 - tapOn:
-    point: '52%, 30%'
+    point: '53%, 34%'
     waitToSettleTimeoutMs: 0
 - extendedWaitUntil:
     visible: 'Close restaurant'
     timeout: 12000
 - waitForAnimationToEnd:
     timeout: 1000
-- takeScreenshot: search-profile-preserve-profile-middle
-- swipe:
-    start: '50%, 88%'
-    end: '50%, 48%'
-    duration: 450
+- openLink: 'crave://perf-scenario-mark?phase=measured_repeat_loop_end&label=pin_selection_profile_open'
 - waitForAnimationToEnd:
     timeout: 1000
-- takeScreenshot: search-profile-preserve-profile-after-drag
-- tapOn:
-    text: 'Close restaurant'
-    waitToSettleTimeoutMs: 0
-- extendedWaitUntil:
-    visible: 'Close results'
-    timeout: 12000
-- waitForAnimationToEnd:
-    timeout: 1200
-- takeScreenshot: search-profile-preserve-back-to-results
+- takeScreenshot: search-pin-selection-profile-open

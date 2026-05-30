@@ -13,13 +13,17 @@ export const useSearchRootMapViewportIntentRuntime = (
       restaurantOnlyId: rootPrimitivesRuntime.searchState.restaurantOnlyId,
       mapCenter: rootPrimitivesRuntime.mapState.mapCenter,
       mapZoom: rootPrimitivesRuntime.mapState.mapZoom,
+      mapBearing: rootPrimitivesRuntime.mapState.mapBearing,
+      mapPitch: rootPrimitivesRuntime.mapState.mapPitch,
       mapCameraAnimation: rootPrimitivesRuntime.mapState.mapCameraAnimation,
       isFollowingUser: rootPrimitivesRuntime.mapState.isFollowingUser,
     }),
     [
       rootPrimitivesRuntime.mapState.isFollowingUser,
+      rootPrimitivesRuntime.mapState.mapBearing,
       rootPrimitivesRuntime.mapState.mapCameraAnimation,
       rootPrimitivesRuntime.mapState.mapCenter,
+      rootPrimitivesRuntime.mapState.mapPitch,
       rootPrimitivesRuntime.mapState.mapZoom,
       rootPrimitivesRuntime.searchState.restaurantOnlyId,
     ]

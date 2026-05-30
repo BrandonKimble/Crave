@@ -30,8 +30,8 @@ const areRouteHostVisualSnapshotsEqual = (
     right.routeHostVisualSnapshot != null &&
     left.routeHostVisualSnapshot.overlayGeometryRuntime ===
       right.routeHostVisualSnapshot.overlayGeometryRuntime &&
-    left.routeHostVisualSnapshot.resultsSheetRuntimeOwner ===
-      right.routeHostVisualSnapshot.resultsSheetRuntimeOwner &&
+    left.routeHostVisualSnapshot.sharedSheetRuntimeOwner ===
+      right.routeHostVisualSnapshot.sharedSheetRuntimeOwner &&
     left.routeHostVisualSnapshot.visualRuntime ===
       right.routeHostVisualSnapshot.visualRuntime);
 

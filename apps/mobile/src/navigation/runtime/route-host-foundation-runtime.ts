@@ -7,34 +7,34 @@ import {
   type RouteHostVisualRuntimeStateController,
 } from './route-host-visual-runtime-state-controller';
 import {
-  createRouteResultsSheetVisualStateController,
-  type RouteResultsSheetVisualStateController,
-} from './route-results-sheet-visual-state-controller';
+  createRouteSharedSheetVisualStateController,
+  type RouteSharedSheetVisualStateController,
+} from './route-shared-sheet-visual-state-controller';
 
 export class RouteHostFoundationRuntime {
   private readonly routeHostOverlayGeometryRuntime: RouteHostOverlayGeometryStateController;
 
-  private readonly routeResultsSheetVisualRuntime: RouteResultsSheetVisualStateController;
+  private readonly routeSharedSheetVisualRuntime: RouteSharedSheetVisualStateController;
 
   private readonly routeHostVisualRuntime: RouteHostVisualRuntimeStateController;
 
   public readonly routeHostSyncLane: {
     syncRouteHostOverlayGeometryRuntime: RouteHostOverlayGeometryStateController['syncRouteHostOverlayGeometryRuntime'];
-    publishRouteResultsSheetVisualBinding: RouteResultsSheetVisualStateController['publishRouteResultsSheetVisualBinding'];
+    publishRouteSharedSheetVisualBinding: RouteSharedSheetVisualStateController['publishRouteSharedSheetVisualBinding'];
     syncRouteHostVisualRuntime: RouteHostVisualRuntimeStateController['syncRouteHostVisualRuntime'];
   };
 
   public readonly routeHostOverlayGeometryAuthority: RouteHostOverlayGeometryStateController['routeHostOverlayGeometryAuthority'];
 
-  public readonly routeResultsSheetVisualAuthority: RouteResultsSheetVisualStateController['routeResultsSheetVisualAuthority'];
+  public readonly routeSharedSheetVisualAuthority: RouteSharedSheetVisualStateController['routeSharedSheetVisualAuthority'];
 
   public readonly routeHostVisualRuntimeAuthority: RouteHostVisualRuntimeStateController['routeHostVisualRuntimeAuthority'];
 
   constructor() {
     this.routeHostOverlayGeometryRuntime =
       createRouteHostOverlayGeometryStateController();
-    this.routeResultsSheetVisualRuntime =
-      createRouteResultsSheetVisualStateController();
+    this.routeSharedSheetVisualRuntime =
+      createRouteSharedSheetVisualStateController();
     this.routeHostVisualRuntime = createRouteHostVisualRuntimeStateController();
     this.routeHostSyncLane = {
       syncRouteHostOverlayGeometryRuntime: (routeHostOverlayGeometryRuntime) => {
@@ -42,9 +42,9 @@ export class RouteHostFoundationRuntime {
           routeHostOverlayGeometryRuntime
         );
       },
-      publishRouteResultsSheetVisualBinding: (routeResultsSheetVisualBinding) => {
-        this.routeResultsSheetVisualRuntime.publishRouteResultsSheetVisualBinding(
-          routeResultsSheetVisualBinding
+      publishRouteSharedSheetVisualBinding: (routeSharedSheetVisualBinding) => {
+        this.routeSharedSheetVisualRuntime.publishRouteSharedSheetVisualBinding(
+          routeSharedSheetVisualBinding
         );
       },
       syncRouteHostVisualRuntime: (routeHostVisualRuntime) => {
@@ -55,15 +55,15 @@ export class RouteHostFoundationRuntime {
     };
     this.routeHostOverlayGeometryAuthority =
       this.routeHostOverlayGeometryRuntime.routeHostOverlayGeometryAuthority;
-    this.routeResultsSheetVisualAuthority =
-      this.routeResultsSheetVisualRuntime.routeResultsSheetVisualAuthority;
+    this.routeSharedSheetVisualAuthority =
+      this.routeSharedSheetVisualRuntime.routeSharedSheetVisualAuthority;
     this.routeHostVisualRuntimeAuthority =
       this.routeHostVisualRuntime.routeHostVisualRuntimeAuthority;
   }
 
   public dispose(): void {
     this.routeHostVisualRuntime.dispose();
-    this.routeResultsSheetVisualRuntime.dispose();
+    this.routeSharedSheetVisualRuntime.dispose();
     this.routeHostOverlayGeometryRuntime.dispose();
   }
 }

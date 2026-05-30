@@ -1,6 +1,5 @@
 import { StyleSheet } from 'react-native';
 
-import { logger } from '../../utils';
 import {
   isPerfScenarioAttributionActive,
   logPerfScenarioAttributionEvent,
@@ -12,13 +11,11 @@ import {
 } from '../../overlays/useSearchRoutePollsSceneStateRuntime';
 import { overlaySheetStyles } from '../../overlays/overlaySheetStyles';
 import { normalizeSearchRouteSceneStackShellSpec } from '../../overlays/searchOverlayRouteHostContract';
-import type { SearchRouteSceneSnapMeta } from '../../overlays/searchRouteSceneShellMotionContract';
 import {
   EMPTY_SEARCH_ROUTE_SCENE_LAYOUT_STATE,
   type SearchRouteSceneLayoutState,
 } from '../../overlays/searchRouteSceneLayoutContract';
 import type { OverlaySheetSnap } from '../../overlays/types';
-import { shouldLogSearchNavSwitchDiagnosticLogs } from '../../screens/Search/runtime/shared/search-nav-switch-perf-probe';
 import type { RouteOverlayPollsVisibilitySnapshot } from './route-overlay-display-snapshot-contract';
 import type {
   AppRouteSceneBodyAdmissionPolicy,
@@ -106,22 +103,9 @@ export type AppRoutePollsSceneInputController = {
 class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInputController {
   private readonly disposers: ListenerDisposer[] = [];
 
-  private readonly handlePollsSnapChange = (
-    snap: OverlaySheetSnap,
-    meta?: SearchRouteSceneSnapMeta
-  ): void => {
-    this.routeSceneRuntime.routeSheetSnapSessionActions.settleRouteScenePollsSnap({
-      rootOverlayKey: this.pollsRouteState.rootOverlayKey ?? 'search',
-      snap,
-      source: meta?.source,
-      routeSceneTransitionAuthority: this.routeSceneRuntime.sceneTransitionAuthority,
-      routeSceneSwitchActions: this.routeSceneRuntime.routeOverlayTransitionActions,
-    });
-  };
-
   private readonly requestReturnToSearchFromPolls = (): void => {
     if (this.pollsRouteState.isSearchOverlay && this.pollsRouteState.isPersistentPollLane) {
-      this.routeSceneRuntime.routeSheetSnapSessionActions.setIsDockedPollsDismissed(true);
+      this.routeSceneRuntime.routeSheetSnapSessionActions.dismissDockedPolls();
       this.routeSceneRuntime.routeOverlayTransitionActions.requestOverlaySwitch({
         targetSceneKey: 'search',
         sheetTransitionKind: 'terminalDismiss',
@@ -145,8 +129,6 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
   private pollsSheetSnap: OverlaySheetSnap;
 
   private dynamicSceneInputRuntime: AppRoutePollsDynamicSceneInputRuntime;
-
-  private lastDiagnosticsSnapshot: string | null = null;
 
   private isDisposed = false;
 
@@ -339,7 +321,6 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
     });
     this.publishPollsSceneDescriptor(pollsSceneStateRuntime);
     this.logPersistentPollRestoreStateContract(pollsSceneStateRuntime);
-    this.logDiagnostics(pollsSceneStateRuntime);
   }
 
   private publishPollsSceneState({
@@ -360,7 +341,6 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
       navBarHeight: pollsSceneStateRuntime.navBarHeight,
       searchBarTop: pollsSceneStateRuntime.searchBarTop,
       snapPoints: pollsSceneStateRuntime.snapPoints,
-      onSnapChange: this.handlePollsSnapChange,
       onRequestPollCreationExpand: undefined,
       onRequestReturnToSearch: this.requestReturnToSearchFromPolls,
       interactionRef: pollsSceneStateRuntime.interactionRef,
@@ -372,19 +352,10 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
   private publishPollsSceneDescriptor(
     pollsSceneStateRuntime: SearchRoutePollsSceneStateRuntime
   ): void {
-    const resolvedDismissThreshold =
-      pollsSceneStateRuntime.mode === 'docked'
-        ? pollsSceneStateRuntime.snapPoints.collapsed + 1
-        : pollsSceneStateRuntime.navBarTop > 0
-          ? pollsSceneStateRuntime.navBarTop
-          : undefined;
     const pollsShellSpec: AppRouteSceneStackShellSpec = normalizeSearchRouteSceneStackShellSpec({
       overlayKey: 'polls',
       snapPoints: pollsSceneStateRuntime.snapPoints,
       style: overlaySheetStyles.container,
-      onSnapChange: this.handlePollsSnapChange,
-      dismissThreshold: resolvedDismissThreshold,
-      preventSwipeDismiss: pollsSceneStateRuntime.mode === 'overlay',
     });
 
     this.routeSceneRuntime.sceneInputLane.publishRouteSceneDescriptor({
@@ -397,28 +368,6 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
     });
   }
 
-  private logDiagnostics(pollsSceneStateRuntime: SearchRoutePollsSceneStateRuntime): void {
-    if (!shouldLogSearchNavSwitchDiagnosticLogs()) {
-      this.lastDiagnosticsSnapshot = null;
-      return;
-    }
-    const nextSnapshot = JSON.stringify({
-      visible: pollsSceneStateRuntime.visible,
-      mode: pollsSceneStateRuntime.mode,
-      initialSnapPoint: pollsSceneStateRuntime.initialSnapPoint,
-      currentSnap: pollsSceneStateRuntime.currentSnap,
-      navBarTop: pollsSceneStateRuntime.navBarTop,
-      navBarHeight: pollsSceneStateRuntime.navBarHeight,
-      searchBarTop: pollsSceneStateRuntime.searchBarTop,
-      snapPoints: pollsSceneStateRuntime.snapPoints,
-    });
-
-    if (this.lastDiagnosticsSnapshot === nextSnapshot) {
-      return;
-    }
-    this.lastDiagnosticsSnapshot = nextSnapshot;
-    logger.debug('[SEARCH-ROUTE-POLLS-GEOMETRY-DIAG]', JSON.parse(nextSnapshot));
-  }
 }
 
 export const createAppRoutePollsSceneInputController = ({

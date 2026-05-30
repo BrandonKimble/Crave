@@ -13,6 +13,8 @@ export const getSearchMapPresentationPropChanges = (
   cameraPadding: left.cameraPadding !== right.cameraPadding,
   mapCenter: left.mapCenter !== right.mapCenter,
   mapZoom: left.mapZoom !== right.mapZoom,
+  mapBearing: left.mapBearing !== right.mapBearing,
+  mapPitch: left.mapPitch !== right.mapPitch,
   mapCameraAnimation: left.mapCameraAnimation !== right.mapCameraAnimation,
   isFollowingUser: left.isFollowingUser !== right.isFollowingUser,
   isMapStyleReady: left.isMapStyleReady !== right.isMapStyleReady,
@@ -37,6 +39,8 @@ export const createSearchRootMapPresentationProps = ({
 }): SearchMapRenderPresentationProps => ({
   mapCenter: mapSurfaceState.mapCenter,
   mapZoom: mapSurfaceState.mapZoom ?? USA_FALLBACK_ZOOM,
+  mapBearing: mapSurfaceState.mapBearing,
+  mapPitch: mapSurfaceState.mapPitch,
   mapCameraAnimation: mapSurfaceState.mapCameraAnimation,
   cameraPadding: mapPresentationRuntime.cameraPadding,
   isFollowingUser: mapSurfaceState.isFollowingUser,

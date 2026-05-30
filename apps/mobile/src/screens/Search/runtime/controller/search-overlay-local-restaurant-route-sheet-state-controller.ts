@@ -1,9 +1,9 @@
-import type { RouteResultsSheetVisualBinding } from '../../../../navigation/runtime/route-results-sheet-visual-state-controller';
+import type { RouteSharedSheetVisualBinding } from '../../../../navigation/runtime/route-shared-sheet-visual-state-controller';
 
 type Listener = () => void;
 
 export type SearchOverlayLocalRestaurantRouteSheetSnapshot = {
-  resultsSheetRuntimeOwner: NonNullable<RouteResultsSheetVisualBinding>;
+  sharedSheetRuntimeOwner: NonNullable<RouteSharedSheetVisualBinding>;
 } | null;
 
 export type SearchOverlayLocalRestaurantRouteSheetAuthority = {
@@ -12,12 +12,12 @@ export type SearchOverlayLocalRestaurantRouteSheetAuthority = {
 };
 
 const resolveLocalRestaurantRouteSheetSnapshot = (
-  routeResultsSheetVisual: RouteResultsSheetVisualBinding
+  routeSharedSheetVisual: RouteSharedSheetVisualBinding
 ): SearchOverlayLocalRestaurantRouteSheetSnapshot =>
-  routeResultsSheetVisual == null
+  routeSharedSheetVisual == null
     ? null
     : {
-        resultsSheetRuntimeOwner: routeResultsSheetVisual,
+        sharedSheetRuntimeOwner: routeSharedSheetVisual,
       };
 
 const areLocalRestaurantRouteSheetSnapshotsEqual = (
@@ -27,45 +27,45 @@ const areLocalRestaurantRouteSheetSnapshotsEqual = (
   left === right ||
   (left != null &&
     right != null &&
-    left.resultsSheetRuntimeOwner === right.resultsSheetRuntimeOwner);
+    left.sharedSheetRuntimeOwner === right.sharedSheetRuntimeOwner);
 
 export class SearchOverlayLocalRestaurantRouteSheetStateController {
-  private routeResultsSheetVisual: RouteResultsSheetVisualBinding;
+  private routeSharedSheetVisual: RouteSharedSheetVisualBinding;
 
   private snapshot: SearchOverlayLocalRestaurantRouteSheetSnapshot;
 
   private readonly listeners = new Set<Listener>();
 
-  private readonly unsubscribeRouteResultsSheetVisual: () => void;
+  private readonly unsubscribeRouteSharedSheetVisual: () => void;
 
   public readonly outputAuthority: SearchOverlayLocalRestaurantRouteSheetAuthority;
 
   constructor({
-    routeResultsSheetVisualAuthority,
+    routeSharedSheetVisualAuthority,
   }: {
-    routeResultsSheetVisualAuthority: {
+    routeSharedSheetVisualAuthority: {
       subscribe: (listener: Listener) => () => void;
-      getSnapshot: () => RouteResultsSheetVisualBinding;
+      getSnapshot: () => RouteSharedSheetVisualBinding;
     };
   }) {
-    this.routeResultsSheetVisual = routeResultsSheetVisualAuthority.getSnapshot();
+    this.routeSharedSheetVisual = routeSharedSheetVisualAuthority.getSnapshot();
     this.snapshot = resolveLocalRestaurantRouteSheetSnapshot(
-      this.routeResultsSheetVisual
+      this.routeSharedSheetVisual
     );
     this.outputAuthority = {
       subscribe: (listener) => this.subscribe(listener),
       getSnapshot: () => this.snapshot,
     };
-    this.unsubscribeRouteResultsSheetVisual =
-      routeResultsSheetVisualAuthority.subscribe(() => {
-        this.setRouteResultsSheetVisual(
-          routeResultsSheetVisualAuthority.getSnapshot()
+    this.unsubscribeRouteSharedSheetVisual =
+      routeSharedSheetVisualAuthority.subscribe(() => {
+        this.setRouteSharedSheetVisual(
+          routeSharedSheetVisualAuthority.getSnapshot()
         );
       });
   }
 
   public dispose(): void {
-    this.unsubscribeRouteResultsSheetVisual();
+    this.unsubscribeRouteSharedSheetVisual();
     this.listeners.clear();
   }
 
@@ -76,19 +76,19 @@ export class SearchOverlayLocalRestaurantRouteSheetStateController {
     };
   }
 
-  private setRouteResultsSheetVisual(
-    routeResultsSheetVisual: RouteResultsSheetVisualBinding
+  private setRouteSharedSheetVisual(
+    routeSharedSheetVisual: RouteSharedSheetVisualBinding
   ): void {
-    if (this.routeResultsSheetVisual === routeResultsSheetVisual) {
+    if (this.routeSharedSheetVisual === routeSharedSheetVisual) {
       return;
     }
-    this.routeResultsSheetVisual = routeResultsSheetVisual;
+    this.routeSharedSheetVisual = routeSharedSheetVisual;
     this.recompute();
   }
 
   private recompute(): void {
     const nextSnapshot = resolveLocalRestaurantRouteSheetSnapshot(
-      this.routeResultsSheetVisual
+      this.routeSharedSheetVisual
     );
 
     if (areLocalRestaurantRouteSheetSnapshotsEqual(this.snapshot, nextSnapshot)) {
@@ -103,10 +103,10 @@ export class SearchOverlayLocalRestaurantRouteSheetStateController {
 }
 
 export const createSearchOverlayLocalRestaurantRouteSheetStateController = ({
-  routeResultsSheetVisualAuthority,
+  routeSharedSheetVisualAuthority,
 }: ConstructorParameters<
   typeof SearchOverlayLocalRestaurantRouteSheetStateController
 >[0]): SearchOverlayLocalRestaurantRouteSheetStateController =>
   new SearchOverlayLocalRestaurantRouteSheetStateController({
-    routeResultsSheetVisualAuthority,
+    routeSharedSheetVisualAuthority,
   });

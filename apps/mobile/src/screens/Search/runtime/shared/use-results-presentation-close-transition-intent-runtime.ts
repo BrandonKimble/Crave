@@ -1,6 +1,7 @@
 import React from 'react';
 
 import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
+import type { OverlayKey } from '../../../../overlays/types';
 import type { ResultsPresentationShellLocalState } from './use-results-presentation-shell-local-state';
 import { createSearchCloseTransitionState } from './results-presentation-shell-close-transition-state';
 
@@ -18,7 +19,10 @@ export type ResultsPresentationCloseTransitionIntentRuntime = {
   getActiveCloseIntentId: () => string | null;
   beginCloseTransition: (
     closeIntentId: string,
-    options?: { terminalDismissSource?: 'results' | 'profile' }
+    options?: {
+      terminalDismissSource?: 'results' | 'profile';
+      outgoingSheetSceneKey?: OverlayKey | null;
+    }
   ) => void;
   resetCloseTransition: () => void;
   commitArmedSearchCloseRestore: (commitSearchCloseRestore: () => boolean) => void;
@@ -56,7 +60,13 @@ export const useResultsPresentationCloseTransitionIntentRuntime = ({
   }, [routeSceneVisibilityPolicyRuntime, shellLocalState]);
 
   const beginCloseTransition = React.useCallback(
-    (closeIntentId: string, options?: { terminalDismissSource?: 'results' | 'profile' }) => {
+    (
+      closeIntentId: string,
+      options?: {
+        terminalDismissSource?: 'results' | 'profile';
+        outgoingSheetSceneKey?: OverlayKey | null;
+      }
+    ) => {
       if (activeCloseIntentIdRef.current === closeIntentId) {
         return;
       }

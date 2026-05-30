@@ -44,6 +44,7 @@ export type AppRouteSceneTransitionPolicyInput = {
   dockedPollsRestoreSnap?: RouteSceneSwitchDockedPollsRestoreIntent['snap'] | null;
   routeAction?: RouteSceneSwitchRouteAction;
   routeParams?: RouteSceneSwitchRouteParams;
+  currentRootRouteKey: OverlayKey;
   resolveCurrentSheetSnapTarget: (sceneKey: OverlayKey) => BottomSheetSnap | null;
 };
 
@@ -291,8 +292,20 @@ const resolveMotionPlanes = ({
   return motionPlanes;
 };
 
-const resolveCommittedRootRoute = (targetSceneKey: OverlayKey): OverlayKey =>
-  targetSceneKey === 'polls' ? 'search' : targetSceneKey;
+const resolveCommittedRootRoute = ({
+  currentRootRouteKey,
+  routeAction,
+  targetSceneKey,
+}: {
+  currentRootRouteKey: OverlayKey;
+  routeAction: RouteSceneSwitchRouteAction;
+  targetSceneKey: OverlayKey;
+}): OverlayKey => {
+  if (routeAction === 'preserve') {
+    return currentRootRouteKey;
+  }
+  return targetSceneKey === 'polls' ? 'search' : targetSceneKey;
+};
 
 const resolveDockedPollsRestoreSnap = ({
   targetSceneKey,
@@ -332,6 +345,7 @@ export const resolveAppRouteSceneTransitionPlan = ({
   dockedPollsRestoreSnap,
   routeAction = 'setRoot',
   routeParams,
+  currentRootRouteKey,
   resolveCurrentSheetSnapTarget,
 }: AppRouteSceneTransitionPolicyInput): AppRouteSceneTransitionPlan => {
   const resolvedSnapTarget = resolveRouteSceneSwitchSnapTarget({
@@ -397,7 +411,11 @@ export const resolveAppRouteSceneTransitionPlan = ({
     sourceSceneKey,
     targetSceneKey,
     settleToken: settleToken ?? null,
-    committedRootRouteKey: resolveCommittedRootRoute(targetSceneKey),
+    committedRootRouteKey: resolveCommittedRootRoute({
+      currentRootRouteKey,
+      routeAction,
+      targetSceneKey,
+    }),
     committedRouteAction: routeAction,
     committedRouteParams: routeParams,
     snapTarget: resolvedSheetSnapTarget,

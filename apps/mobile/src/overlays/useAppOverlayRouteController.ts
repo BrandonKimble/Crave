@@ -32,6 +32,10 @@ export const useAppOverlayRouteController = () => {
     appOverlayRouteController.closeActiveRoute();
   }, [appOverlayRouteController]);
 
+  const collapseActiveSheet = React.useCallback(() => {
+    appOverlayRouteController.collapseActiveSheet();
+  }, [appOverlayRouteController]);
+
   const popToRootRoute = React.useCallback(() => {
     appOverlayRouteController.popToRootRoute();
   }, [appOverlayRouteController]);
@@ -41,9 +45,10 @@ export const useAppOverlayRouteController = () => {
       setRootRoute,
       updateRoute,
       pushRoute,
+      collapseActiveSheet,
       closeActiveRoute,
       popToRootRoute,
     }),
-    [closeActiveRoute, popToRootRoute, pushRoute, setRootRoute, updateRoute]
+    [collapseActiveSheet, closeActiveRoute, popToRootRoute, pushRoute, setRootRoute, updateRoute]
   );
 };

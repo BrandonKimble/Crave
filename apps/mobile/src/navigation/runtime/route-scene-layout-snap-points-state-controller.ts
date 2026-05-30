@@ -1,5 +1,5 @@
 import type { SearchRouteSceneLayoutState } from '../../overlays/searchRouteSceneLayoutContract';
-import type { RouteResultsSheetVisualBinding } from './route-results-sheet-visual-state-controller';
+import type { RouteSharedSheetVisualBinding } from './route-shared-sheet-visual-state-controller';
 
 type Listener = () => void;
 
@@ -24,45 +24,45 @@ const areRouteSceneLayoutSnapPointsEqual = (
     left.hidden === right.hidden);
 
 const resolveRouteSceneLayoutSnapPointsSnapshot = (
-  routeResultsSheetVisual: RouteResultsSheetVisualBinding
+  routeSharedSheetVisual: RouteSharedSheetVisualBinding
 ): RouteSceneLayoutSnapPointsSnapshot =>
-  routeResultsSheetVisual == null ? null : routeResultsSheetVisual.snapPoints;
+  routeSharedSheetVisual == null ? null : routeSharedSheetVisual.snapPoints;
 
 export class RouteSceneLayoutSnapPointsStateController {
-  private routeResultsSheetVisual: RouteResultsSheetVisualBinding;
+  private routeSharedSheetVisual: RouteSharedSheetVisualBinding;
 
   private snapshot: RouteSceneLayoutSnapPointsSnapshot = null;
 
   private readonly listeners = new Set<Listener>();
 
-  private readonly unsubscribeRouteResultsSheetVisual: () => void;
+  private readonly unsubscribeRouteSharedSheetVisual: () => void;
 
   public readonly routeSceneLayoutSnapPointsAuthority: RouteSceneLayoutSnapPointsAuthority;
 
   constructor({
-    routeResultsSheetVisualAuthority,
+    routeSharedSheetVisualAuthority,
   }: {
-    routeResultsSheetVisualAuthority: {
+    routeSharedSheetVisualAuthority: {
       subscribe: (listener: Listener) => () => void;
-      getSnapshot: () => RouteResultsSheetVisualBinding;
+      getSnapshot: () => RouteSharedSheetVisualBinding;
     };
   }) {
-    this.routeResultsSheetVisual = routeResultsSheetVisualAuthority.getSnapshot();
+    this.routeSharedSheetVisual = routeSharedSheetVisualAuthority.getSnapshot();
     this.routeSceneLayoutSnapPointsAuthority = {
       subscribe: (listener) => this.subscribe(listener),
       getSnapshot: () => this.snapshot,
     };
     this.recompute(false);
-    this.unsubscribeRouteResultsSheetVisual =
-      routeResultsSheetVisualAuthority.subscribe(() => {
-        this.setRouteResultsSheetVisual(
-          routeResultsSheetVisualAuthority.getSnapshot()
+    this.unsubscribeRouteSharedSheetVisual =
+      routeSharedSheetVisualAuthority.subscribe(() => {
+        this.setRouteSharedSheetVisual(
+          routeSharedSheetVisualAuthority.getSnapshot()
         );
       });
   }
 
   public dispose(): void {
-    this.unsubscribeRouteResultsSheetVisual();
+    this.unsubscribeRouteSharedSheetVisual();
     this.listeners.clear();
   }
 
@@ -73,20 +73,20 @@ export class RouteSceneLayoutSnapPointsStateController {
     };
   }
 
-  private setRouteResultsSheetVisual(
-    routeResultsSheetVisual: RouteResultsSheetVisualBinding
+  private setRouteSharedSheetVisual(
+    routeSharedSheetVisual: RouteSharedSheetVisualBinding
   ): void {
-    if (this.routeResultsSheetVisual === routeResultsSheetVisual) {
+    if (this.routeSharedSheetVisual === routeSharedSheetVisual) {
       return;
     }
 
-    this.routeResultsSheetVisual = routeResultsSheetVisual;
+    this.routeSharedSheetVisual = routeSharedSheetVisual;
     this.recompute(true);
   }
 
   private recompute(notify: boolean): void {
     const nextSnapshot = resolveRouteSceneLayoutSnapPointsSnapshot(
-      this.routeResultsSheetVisual
+      this.routeSharedSheetVisual
     );
 
     if (areRouteSceneLayoutSnapPointsEqual(this.snapshot, nextSnapshot)) {
@@ -106,8 +106,8 @@ export class RouteSceneLayoutSnapPointsStateController {
 }
 
 export const createRouteSceneLayoutSnapPointsStateController = ({
-  routeResultsSheetVisualAuthority,
+  routeSharedSheetVisualAuthority,
 }: ConstructorParameters<typeof RouteSceneLayoutSnapPointsStateController>[0]): RouteSceneLayoutSnapPointsStateController =>
   new RouteSceneLayoutSnapPointsStateController({
-    routeResultsSheetVisualAuthority,
+    routeSharedSheetVisualAuthority,
   });

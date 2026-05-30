@@ -3,6 +3,7 @@ package com.crave;
 import androidx.annotation.NonNull;
 
 import android.graphics.RectF;
+import android.view.MotionEvent;
 import android.view.View;
 import android.os.Handler;
 import android.os.Looper;
@@ -18,6 +19,7 @@ import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReadableMapKeySetIterator;
 import com.facebook.react.bridge.ReadableType;
 import com.facebook.react.bridge.UIManager;
+import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 import com.facebook.react.uimanager.UIManagerHelper;
@@ -40,6 +42,7 @@ import com.mapbox.maps.RenderedQueryGeometry;
 import com.mapbox.maps.RenderedQueryOptions;
 import com.mapbox.maps.ScreenBox;
 import com.mapbox.maps.ScreenCoordinate;
+import com.mapbox.maps.MapboxMap;
 import com.mapbox.maps.plugin.delegates.listeners.OnMapIdleListener;
 import com.rnmapbox.rnmbx.components.mapview.RNMBXMapView;
 import com.google.gson.JsonArray;
@@ -78,6 +81,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
   private static final boolean ENABLE_VISUAL_DIAGNOSTICS = false;
   private static final long REVEAL_SETTLE_DELAY_MS = 300L;
   private static final long DISMISS_SETTLE_DELAY_MS = 300L;
+  private static final double NATIVE_PRESS_CANCEL_MOVEMENT_THRESHOLD_PX = 10d;
 
   private static final class LabelTapHitboxConfig {
     final double textSize;
@@ -115,11 +119,68 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       this.maxWidthPx = maxWidthPx;
     }
   }
+
+  private static final class NativePressTargetConfig {
+    boolean enabled = false;
+    ArrayList<String> pinLayerIds = new ArrayList<>();
+    ArrayList<String> labelLayerIds = new ArrayList<>();
+    LabelTapHitboxConfig labelTapHitbox = null;
+    ArrayList<String> dotLayerIds = new ArrayList<>();
+    double dotTapIntentRadiusPx = 0d;
+  }
+
+  private static final class NativePressContext {
+    final String instanceId;
+    final InstanceState state;
+    final NativePressTargetConfig config;
+
+    NativePressContext(String instanceId, InstanceState state, NativePressTargetConfig config) {
+      this.instanceId = instanceId;
+      this.state = state;
+      this.config = config;
+    }
+  }
+
+  private static final class NativePressSession {
+    final int sequence;
+    final String instanceId;
+    final double startedAtMs;
+    final double startX;
+    final double startY;
+    double latestX;
+    double latestY;
+    WritableMap resolvedTarget;
+    boolean didResolve = false;
+    boolean didRelease = false;
+    boolean didCancel = false;
+
+    NativePressSession(int sequence, String instanceId, double startedAtMs, double startX, double startY) {
+      this.sequence = sequence;
+      this.instanceId = instanceId;
+      this.startedAtMs = startedAtMs;
+      this.startX = startX;
+      this.startY = startY;
+      this.latestX = startX;
+      this.latestY = startY;
+    }
+  }
+
+  private interface PressTargetResolutionCallback {
+    void resolve(WritableMap target);
+    void reject(String code, String message, Throwable error);
+  }
   private static final long FRAME_SETTLE_FALLBACK_DELAY_MS = 96L;
   private static final long SOURCE_RECOVERY_RETRY_DELAY_MS = 32L;
-  private static final long LIVE_PIN_TRANSITION_DURATION_MS = 180L;
+  private static final long LIVE_PIN_TRANSITION_DURATION_MS = 300L;
+  private static final long DEFERRED_DISMISS_SOURCE_CLEANUP_DELAY_MS = 760L;
+  private static final double REVEAL_PREROLL_PLACEMENT_OPACITY = 0.001d;
   private static final double SLOW_ACTION_THRESHOLD_MS = 40d;
   private static final double NATIVE_VIEWPORT_EVENT_THROTTLE_MS = 16d;
+  private static final String VISUAL_SOURCE_HIDDEN = "hidden";
+  private static final String VISUAL_SOURCE_PREPARING_REVEAL = "preparingReveal";
+  private static final String VISUAL_SOURCE_REVEALING = "revealing";
+  private static final String VISUAL_SOURCE_VISIBLE = "visible";
+  private static final String VISUAL_SOURCE_DISMISSING = "dismissing";
   private static final Set<String> TRANSIENT_VISUAL_PROPERTY_KEYS = Collections.unmodifiableSet(
     new HashSet<>(
       Arrays.asList(
@@ -196,6 +257,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     final SourceState previousSourceState;
     final Map<String, HashMap<String, Value>> previousFeatureStateById;
     final String previousFeatureStateRevision;
+    final boolean forceReplaceSourceData;
 
     ParsedCollectionApplyPlan(
       String sourceId,
@@ -204,11 +266,23 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       Map<String, HashMap<String, Value>> previousFeatureStateById,
       String previousFeatureStateRevision
     ) {
+      this(sourceId, next, previousSourceState, previousFeatureStateById, previousFeatureStateRevision, false);
+    }
+
+    ParsedCollectionApplyPlan(
+      String sourceId,
+      ParsedFeatureCollection next,
+      SourceState previousSourceState,
+      Map<String, HashMap<String, Value>> previousFeatureStateById,
+      String previousFeatureStateRevision,
+      boolean forceReplaceSourceData
+    ) {
       this.sourceId = sourceId;
       this.next = next;
       this.previousSourceState = previousSourceState;
       this.previousFeatureStateById = previousFeatureStateById;
       this.previousFeatureStateRevision = previousFeatureStateRevision;
+      this.forceReplaceSourceData = forceReplaceSourceData;
     }
   }
 
@@ -220,6 +294,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     final Map<String, HashMap<String, Value>> previousFeatureStateById;
     final String previousFeatureStateRevision;
     final SourceState nextSourceState;
+    final boolean forceReplaceSourceData;
 
     ResolvedParsedCollectionApplyPlan(
       String sourceId,
@@ -228,7 +303,8 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       String previousSourceRevision,
       Map<String, HashMap<String, Value>> previousFeatureStateById,
       String previousFeatureStateRevision,
-      SourceState nextSourceState
+      SourceState nextSourceState,
+      boolean forceReplaceSourceData
     ) {
       this.sourceId = sourceId;
       this.next = next;
@@ -237,6 +313,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       this.previousFeatureStateById = previousFeatureStateById;
       this.previousFeatureStateRevision = previousFeatureStateRevision;
       this.nextSourceState = nextSourceState;
+      this.forceReplaceSourceData = forceReplaceSourceData;
     }
   }
 
@@ -270,17 +347,29 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
 
   private static final class PreparedDerivedPinAndLabelOutput {
     final List<ParsedCollectionApplyPlan> plans;
-    final String pinSourceId;
+    final List<String> pinSourceIds;
     final long pinStartedAtNs;
 
     PreparedDerivedPinAndLabelOutput(
       List<ParsedCollectionApplyPlan> plans,
-      String pinSourceId,
+      List<String> pinSourceIds,
       long pinStartedAtNs
     ) {
       this.plans = plans;
-      this.pinSourceId = pinSourceId;
+      this.pinSourceIds = pinSourceIds;
       this.pinStartedAtNs = pinStartedAtNs;
+    }
+  }
+
+  private static final class FeatureStateApply {
+    final String sourceId;
+    final String featureId;
+    final HashMap<String, Value> state;
+
+    FeatureStateApply(String sourceId, String featureId, HashMap<String, Value> state) {
+      this.sourceId = sourceId;
+      this.featureId = featureId;
+      this.state = state;
     }
   }
 
@@ -322,46 +411,19 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
   private static final class LabelFamilyObservationState {
     final Set<String> settledVisibleFeatureIds = new LinkedHashSet<>();
     boolean observationEnabled = false;
-    boolean allowFallback = false;
-    boolean commitInteractionVisibility = false;
+    boolean commitVisibleLabelHits = false;
     double refreshMsIdle = 0d;
     double refreshMsMoving = 0d;
-    boolean stickyEnabled = false;
-    double stickyLockStableMsMoving = 0d;
-    double stickyLockStableMsIdle = 0d;
-    double stickyUnlockMissingMsMoving = 0d;
-    double stickyUnlockMissingMsIdle = 0d;
-    int stickyUnlockMissingStreakMoving = 1;
     String configuredResetRequestKey = null;
     final ArrayList<String> lastVisibleLabelFeatureIds = new ArrayList<>();
     int lastLayerRenderedFeatureCount = 0;
     int lastEffectiveRenderedFeatureCount = 0;
-    int stickyRevision = 0;
-    final Map<String, String> stickyCandidateByIdentity = new HashMap<>();
-    // Track loss of the committed candidate, not just visibility of any candidate for an
-    // identity. That keeps the lock asymmetrical: a committed side should stay put until that
-    // committed side is actually displaced for long enough to unlock.
-    final Map<String, Double> stickyCommittedLastSeenAtMsByIdentity = new HashMap<>();
-    final Map<String, Integer> stickyCommittedMissingStreakByIdentity = new HashMap<>();
-    final Map<String, String> stickyProposedCandidateByIdentity = new HashMap<>();
-    final Map<String, Double> stickyProposedSinceAtMsByIdentity = new HashMap<>();
+    boolean hasCommittedObservationForConfiguredRequest = false;
     String lastResetRequestKey = null;
     boolean isRefreshInFlight = false;
     Double queuedRefreshDelayMs = null;
     int movingNoopRefreshStreak = 0;
     double movingAdaptiveRefreshMs = 0d;
-  }
-
-  private static final class RenderedPlacedLabelObservation {
-    final String markerKey;
-    final String candidate;
-    final String restaurantId;
-
-    RenderedPlacedLabelObservation(String markerKey, String candidate, String restaurantId) {
-      this.markerKey = markerKey;
-      this.candidate = candidate;
-      this.restaurantId = restaurantId;
-    }
   }
 
   private static final class ExecutionBatchRef {
@@ -389,10 +451,11 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     String pinSourceId;
     String pinInteractionSourceId;
     String dotSourceId;
-    String dotInteractionSourceId;
     String labelSourceId;
-    String labelInteractionSourceId;
     String labelCollisionSourceId;
+    ArrayList<String> pinSlotSourceIds = new ArrayList<>();
+    ArrayList<String> labelLayerIds = new ArrayList<>();
+    ArrayList<String> labelCollisionLayerIds = new ArrayList<>();
     int lastPinCount;
     int lastDotCount;
     int lastLabelCount;
@@ -404,15 +467,26 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     String lastEnterSettledRequestKey;
     String lastDismissRequestKey;
     String currentPresentationRenderPhase;
+    String visualSourceLifecycleState;
+    boolean labelCollisionObstacleLayersVisible;
     String lastPresentationStateJson;
     String activeFrameGenerationId;
     String activeExecutionBatchId;
+    String sourceReadyFrameGenerationId;
+    String sourceReadyExecutionBatchId;
+    String residentSourceFrameKey;
+    String residentSourceDataKey;
     String highlightedMarkerKey;
+    final Set<String> highlightedMarkerKeys = new LinkedHashSet<>();
+    String highlightedRestaurantId;
     String interactionMode;
+    NativePressTargetConfig nativePressTargetConfig = new NativePressTargetConfig();
     int ownerEpoch;
     boolean isOwnerInvalidated;
     boolean allowEmptyEnter = true;
+    boolean keepSourcesHiddenUntilEnter = true;
     double currentPresentationOpacityTarget;
+    double currentPresentationOpacityValue;
     long nextSourceCommitSequence;
     String pendingPresentationSettleRequestKey;
     String pendingPresentationSettleKind;
@@ -423,9 +497,34 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     final Map<String, Set<String>> blockedPresentationCommitFenceDataIdsBySourceId = new HashMap<>();
     final Map<String, Set<String>> pendingSourceCommitDataIdsBySourceId = new HashMap<>();
     final Map<String, DerivedFamilyState> derivedFamilyStates = new HashMap<>();
+    final Map<String, ParsedFeatureCollection> residentDesiredSourceCacheBySourceId = new HashMap<>();
     boolean currentViewportIsMoving = false;
     boolean isAwaitingSourceRecovery;
+    boolean isReplayingSourceRecovery;
     Double sourceRecoveryPausedAtMs;
+  }
+
+  private static final class VisualFrameTransaction {
+    String kind;
+    String presentationPhase;
+    String requestKey;
+    String visualCycleKey;
+    String readinessKey;
+    String shortcutCoverageRequestKey;
+    String markersRenderKey;
+    String sourceFrameKey;
+    String sourceDataKey;
+    String sourceSnapshotKind;
+  }
+
+  private static final class VisualFrameSnapshotApplyResult {
+    boolean didSyncResidentFrame;
+    String sourceAdmissionOutcome;
+
+    VisualFrameSnapshotApplyResult(boolean didSyncResidentFrame, String sourceAdmissionOutcome) {
+      this.didSyncResidentFrame = didSyncResidentFrame;
+      this.sourceAdmissionOutcome = sourceAdmissionOutcome;
+    }
   }
 
   private static boolean sameExecutionBatch(ExecutionBatchRef left, ExecutionBatchRef right) {
@@ -553,7 +652,6 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
 
   private static final class LabelObservationResult {
     final ArrayList<String> visibleLabelFeatureIds = new ArrayList<>();
-    final ArrayList<RenderedPlacedLabelObservation> placedLabels = new ArrayList<>();
   }
 
   private interface StyleOperation {
@@ -628,6 +726,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
   private final Map<String, Runnable> dismissSettleRunnables = new ConcurrentHashMap<>();
   private final Map<String, Runnable> revealFrameFallbackRunnables = new ConcurrentHashMap<>();
   private final Map<String, Runnable> dismissFrameFallbackRunnables = new ConcurrentHashMap<>();
+  private final Map<String, Runnable> deferredDismissSourceCleanupRunnables = new ConcurrentHashMap<>();
   private final Map<String, Runnable> sourceRecoveryRunnables = new ConcurrentHashMap<>();
   private final Map<String, Runnable> livePinTransitionRunnables = new ConcurrentHashMap<>();
   private final Map<String, Runnable> labelObservationRefreshRunnables = new ConcurrentHashMap<>();
@@ -635,6 +734,9 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
   private final Map<String, Cancelable> styleLoadedSubscriptions = new ConcurrentHashMap<>();
   private final Map<String, Cancelable> cameraChangedSubscriptions = new ConcurrentHashMap<>();
   private final Map<String, OnMapIdleListener> mapIdleListeners = new ConcurrentHashMap<>();
+  private final Map<String, View.OnTouchListener> nativePressTouchListeners = new ConcurrentHashMap<>();
+  private final Map<String, NativePressSession> nativePressSessions = new ConcurrentHashMap<>();
+  private final Map<String, Integer> nativePressSequences = new ConcurrentHashMap<>();
   private final Map<String, String> lastNativeCameraDiagSignatureByMapKey = new ConcurrentHashMap<>();
   private int nextOwnerEpoch = 1;
   private final Map<String, Double> lastNativeCameraDiagAtMsByMapKey = new ConcurrentHashMap<>();
@@ -662,6 +764,10 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     state.isOwnerInvalidated = true;
     state.activeFrameGenerationId = null;
     state.activeExecutionBatchId = null;
+    state.sourceReadyFrameGenerationId = null;
+    state.sourceReadyExecutionBatchId = null;
+    state.residentSourceFrameKey = null;
+    state.residentSourceDataKey = null;
     instances.put(instanceId, state);
     WritableMap event = Arguments.createMap();
     event.putString("type", "render_owner_invalidated");
@@ -679,30 +785,38 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       promise.reject("search_map_render_controller_attach_invalid", "missing instanceId");
       return;
     }
+    if (
+      !payload.hasKey("mapTag") ||
+      !payload.hasKey("pinSourceId") ||
+      !payload.hasKey("pinInteractionSourceId") ||
+      !payload.hasKey("dotSourceId") ||
+      !payload.hasKey("labelSourceId") ||
+      !payload.hasKey("labelCollisionSourceId")
+    ) {
+      promise.reject("search_map_render_controller_attach_invalid", "missing source ids");
+      return;
+    }
+    ArrayList<String> pinSlotSourceIds = parseStringArray(payload, "pinSlotSourceIds");
+    ArrayList<String> labelLayerIds = parseStringArray(payload, "labelLayerIds");
+    ArrayList<String> labelCollisionLayerIds = parseStringArray(payload, "labelCollisionLayerIds");
+    if (
+      pinSlotSourceIds.isEmpty() ||
+      labelLayerIds.isEmpty() ||
+      labelCollisionLayerIds.isEmpty()
+    ) {
+      promise.reject("search_map_render_controller_attach_invalid", "missing promoted slot layer ids");
+      return;
+    }
     InstanceState state = new InstanceState();
-    state.mapTag = payload.hasKey("mapTag") ? payload.getInt("mapTag") : 0;
-    state.pinSourceId =
-      payload.hasKey("pinSourceId") ? payload.getString("pinSourceId") : "restaurant-style-pins-source";
-    state.pinInteractionSourceId =
-      payload.hasKey("pinInteractionSourceId")
-        ? payload.getString("pinInteractionSourceId")
-        : "restaurant-pin-interaction-source";
-    state.dotSourceId =
-      payload.hasKey("dotSourceId") ? payload.getString("dotSourceId") : "restaurant-dot-source";
-    state.dotInteractionSourceId =
-      payload.hasKey("dotInteractionSourceId")
-        ? payload.getString("dotInteractionSourceId")
-        : "restaurant-dot-interaction-source";
-    state.labelSourceId =
-      payload.hasKey("labelSourceId") ? payload.getString("labelSourceId") : "restaurant-source";
-    state.labelInteractionSourceId =
-      payload.hasKey("labelInteractionSourceId")
-        ? payload.getString("labelInteractionSourceId")
-        : "restaurant-label-interaction-source";
-    state.labelCollisionSourceId =
-      payload.hasKey("labelCollisionSourceId")
-        ? payload.getString("labelCollisionSourceId")
-        : "restaurant-label-collision-source";
+    state.mapTag = payload.getInt("mapTag");
+    state.pinSourceId = payload.getString("pinSourceId");
+    state.pinInteractionSourceId = payload.getString("pinInteractionSourceId");
+    state.dotSourceId = payload.getString("dotSourceId");
+    state.labelSourceId = payload.getString("labelSourceId");
+    state.labelCollisionSourceId = payload.getString("labelCollisionSourceId");
+    state.pinSlotSourceIds = pinSlotSourceIds;
+    state.labelLayerIds = labelLayerIds;
+    state.labelCollisionLayerIds = labelCollisionLayerIds;
     initializeDerivedFamilyStates(state);
     state.lastPinCount = 0;
     state.lastDotCount = 0;
@@ -715,14 +829,22 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     state.lastEnterSettledRequestKey = null;
     state.lastDismissRequestKey = null;
     state.currentPresentationRenderPhase = "idle";
+    state.visualSourceLifecycleState = VISUAL_SOURCE_HIDDEN;
+    state.labelCollisionObstacleLayersVisible = false;
     state.lastPresentationStateJson = null;
     state.activeFrameGenerationId = null;
     state.activeExecutionBatchId = null;
+    state.sourceReadyFrameGenerationId = null;
+    state.sourceReadyExecutionBatchId = null;
+    state.residentSourceFrameKey = null;
+    state.residentSourceDataKey = null;
     state.highlightedMarkerKey = null;
     state.interactionMode = "enabled";
     state.ownerEpoch = allocateOwnerEpoch();
     state.isOwnerInvalidated = false;
+    state.keepSourcesHiddenUntilEnter = true;
     state.currentPresentationOpacityTarget = 1;
+    state.currentPresentationOpacityValue = 0;
     state.nextSourceCommitSequence = 0L;
     state.pendingPresentationSettleRequestKey = null;
     state.pendingPresentationSettleKind = null;
@@ -769,6 +891,10 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     Runnable dismissFrameFallback = dismissFrameFallbackRunnables.remove(instanceId);
     if (dismissFrameFallback != null) {
       mainHandler.removeCallbacks(dismissFrameFallback);
+    }
+    Runnable deferredDismissSourceCleanup = deferredDismissSourceCleanupRunnables.remove(instanceId);
+    if (deferredDismissSourceCleanup != null) {
+      mainHandler.removeCallbacks(deferredDismissSourceCleanup);
     }
     Runnable sourceRecoveryRunnable = sourceRecoveryRunnables.remove(instanceId);
     if (sourceRecoveryRunnable != null) {
@@ -819,37 +945,120 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         payload.hasKey("sourceDeltas") && !payload.isNull("sourceDeltas")
           ? payload.getArray("sourceDeltas")
           : null;
-      String presentationStateJson =
-        payload.hasKey("presentationStateJson") ? payload.getString("presentationStateJson") : null;
-      boolean shouldBypassSnapshotApply =
-        presentationStateJson != null &&
-        readDismissRequestKey(presentationStateJson) != null &&
-        (sourceDeltas == null || sourceDeltas.size() == 0);
-      boolean didSyncResidentFrame;
-      if (shouldBypassSnapshotApply) {
-        InstanceState state = instances.get(instanceId);
-        if (state == null) {
-          throw new IllegalStateException("unknown instance");
+      ReadableMap markerRoleFrame =
+        payload.hasKey("markerRoleFrame") && !payload.isNull("markerRoleFrame")
+          ? payload.getMap("markerRoleFrame")
+          : null;
+        String presentationStateJson =
+          payload.hasKey("presentationStateJson") ? payload.getString("presentationStateJson") : null;
+        VisualFrameTransaction visualFrameTransaction = parseVisualFrameTransaction(payload);
+        boolean hasSourcePayload =
+          (sourceDeltas != null && sourceDeltas.size() > 0) || markerRoleFrame != null;
+        boolean sourceFrameIsReady =
+          "ready".equals(visualFrameTransaction.sourceSnapshotKind) ||
+          "empty".equals(visualFrameTransaction.sourceSnapshotKind);
+        boolean shouldApplySourcePayload =
+          hasSourcePayload &&
+          sourceFrameIsReady &&
+          !"dismiss".equals(visualFrameTransaction.kind) &&
+          !"clear_hidden".equals(visualFrameTransaction.kind);
+        boolean didSyncResidentFrame;
+        String sourceAdmissionOutcome;
+        if ("dismiss".equals(visualFrameTransaction.kind)) {
+          markFrameSourceAdmission(
+            instanceId,
+            frameGenerationId,
+            executionBatchId,
+            visualFrameTransaction,
+            true
+          );
+          applyPresentationPayload(instanceId, presentationStateJson);
+          didSyncResidentFrame = true;
+          sourceAdmissionOutcome = hasSourcePayload
+            ? "source_apply_blocked_dismissing"
+            : "presentation_only_dismiss";
+        } else if ("clear_hidden".equals(visualFrameTransaction.kind)) {
+          markFrameSourceAdmission(
+            instanceId,
+            frameGenerationId,
+            executionBatchId,
+            visualFrameTransaction,
+            true
+          );
+          applyPresentationPayload(instanceId, presentationStateJson);
+          InstanceState state = instances.get(instanceId);
+          if (
+            state != null &&
+            VISUAL_SOURCE_HIDDEN.equals(state.visualSourceLifecycleState) &&
+            "idle".equals(state.currentPresentationRenderPhase) &&
+            state.keepSourcesHiddenUntilEnter
+          ) {
+            clearHiddenResidentSourceState(instanceId, state, "clear_hidden_transaction");
+          }
+          didSyncResidentFrame = true;
+          sourceAdmissionOutcome = hasSourcePayload
+            ? "sources_cleared_hidden"
+            : "presentation_only_clear_hidden";
+        } else if ("enter".equals(visualFrameTransaction.kind)) {
+          markFrameSourceAdmission(
+            instanceId,
+            frameGenerationId,
+            executionBatchId,
+            visualFrameTransaction,
+            false
+          );
+          applyPresentationPayload(instanceId, presentationStateJson);
+          if (sourceFrameIsReady) {
+            VisualFrameSnapshotApplyResult result = applyRenderFrameSnapshotPayload(
+                instanceId,
+                frameGenerationId,
+                executionBatchId,
+                visualFrameTransaction,
+                shouldApplySourcePayload ? sourceDeltas : null,
+                shouldApplySourcePayload ? markerRoleFrame : null,
+                !shouldApplySourcePayload
+              );
+            didSyncResidentFrame = result.didSyncResidentFrame;
+            sourceAdmissionOutcome = result.sourceAdmissionOutcome;
+          } else {
+            didSyncResidentFrame = true;
+            sourceAdmissionOutcome = "source_pending";
+          }
+        } else if (
+          "hidden_preload".equals(visualFrameTransaction.kind) ||
+          "bootstrap".equals(visualFrameTransaction.kind) ||
+          "live_update".equals(visualFrameTransaction.kind)
+        ) {
+          if (sourceFrameIsReady) {
+            applyPresentationPayload(instanceId, presentationStateJson);
+            VisualFrameSnapshotApplyResult result = applyRenderFrameSnapshotPayload(
+              instanceId,
+              frameGenerationId,
+              executionBatchId,
+              visualFrameTransaction,
+              shouldApplySourcePayload ? sourceDeltas : null,
+              shouldApplySourcePayload ? markerRoleFrame : null,
+              false
+            );
+            didSyncResidentFrame = result.didSyncResidentFrame;
+            sourceAdmissionOutcome = result.sourceAdmissionOutcome;
+          } else {
+            markFrameSourceAdmission(
+              instanceId,
+              frameGenerationId,
+              executionBatchId,
+              visualFrameTransaction,
+              false
+            );
+            applyPresentationPayload(instanceId, presentationStateJson);
+            didSyncResidentFrame = true;
+            sourceAdmissionOutcome = "source_pending";
+          }
+        } else {
+          throw new IllegalArgumentException(
+            "unsupported visual frame transaction kind: " + visualFrameTransaction.kind
+          );
         }
-        state.activeFrameGenerationId = frameGenerationId;
-        state.activeExecutionBatchId = executionBatchId;
-        instances.put(instanceId, state);
-        emitVisualDiag(
-          instanceId,
-          "frame_snapshot_bypass reason=dismiss_presentation_only phase=" +
-          state.lastPresentationBatchPhase
-        );
-        applyPresentationPayload(instanceId, presentationStateJson);
-        didSyncResidentFrame = true;
-      } else {
-        didSyncResidentFrame = applyRenderFrameSnapshotPayload(
-          instanceId,
-          frameGenerationId,
-          executionBatchId,
-          sourceDeltas
-        );
-        applyPresentationPayload(instanceId, presentationStateJson);
-      }
       applyInteractionModePayload(
         instanceId,
         payload.hasKey("interactionMode") ? payload.getString("interactionMode") : "enabled"
@@ -858,6 +1067,10 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         instanceId,
         payload.hasKey("highlightedMarkerKey") && !payload.isNull("highlightedMarkerKey")
           ? payload.getString("highlightedMarkerKey")
+          : null,
+        parseStringSet(payload, "highlightedMarkerKeys"),
+        payload.hasKey("highlightedRestaurantId") && !payload.isNull("highlightedRestaurantId")
+          ? payload.getString("highlightedRestaurantId")
           : null
       );
       InstanceState state = instances.get(instanceId);
@@ -871,52 +1084,36 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         event.putInt("pinCount", state.lastPinCount);
         event.putInt("dotCount", state.lastDotCount);
         event.putInt("labelCount", state.lastLabelCount);
+        event.putString("sourceAdmissionOutcome", sourceAdmissionOutcome);
+        event.putString("sourceFrameKey", visualFrameTransaction.sourceFrameKey);
+        event.putString("sourceDataKey", visualFrameTransaction.sourceDataKey);
         WritableMap sourceRevisions = Arguments.createMap();
-        sourceRevisions.putString(
-          "pins",
-          mountedSourceState(state, state.pinSourceId) != null
-            ? mountedSourceState(state, state.pinSourceId).sourceRevision
-            : ""
-        );
-        sourceRevisions.putString(
-          "pinInteractions",
-          mountedSourceState(state, state.pinInteractionSourceId) != null
-            ? mountedSourceState(state, state.pinInteractionSourceId).sourceRevision
-            : ""
-        );
-        sourceRevisions.putString(
-          "dots",
-          mountedSourceState(state, state.dotSourceId) != null
-            ? mountedSourceState(state, state.dotSourceId).sourceRevision
-            : ""
-        );
-        sourceRevisions.putString(
-          "dotInteractions",
-          mountedSourceState(state, state.dotInteractionSourceId) != null
-            ? mountedSourceState(state, state.dotInteractionSourceId).sourceRevision
-            : ""
-        );
-        sourceRevisions.putString(
-          "labels",
-          mountedSourceState(state, state.labelSourceId) != null
-            ? mountedSourceState(state, state.labelSourceId).sourceRevision
-            : ""
-        );
-        sourceRevisions.putString(
-          "labelInteractions",
-          mountedSourceState(state, state.labelInteractionSourceId) != null
-            ? mountedSourceState(state, state.labelInteractionSourceId).sourceRevision
-            : ""
-        );
-        sourceRevisions.putString(
-          "labelCollisions",
-          mountedSourceState(state, state.labelCollisionSourceId) != null
-            ? mountedSourceState(state, state.labelCollisionSourceId).sourceRevision
-            : ""
-        );
+        sourceRevisions.putString("pins", sourceRevisionForSyncedFrame(state, state.pinSourceId));
+        sourceRevisions.putString("pinInteractions", sourceRevisionForSyncedFrame(state, state.pinInteractionSourceId));
+        sourceRevisions.putString("dots", sourceRevisionForSyncedFrame(state, state.dotSourceId));
+        sourceRevisions.putString("labels", sourceRevisionForSyncedFrame(state, state.labelSourceId));
+        sourceRevisions.putString("labelCollisions", sourceRevisionForSyncedFrame(state, state.labelCollisionSourceId));
         event.putMap("sourceRevisions", sourceRevisions);
         emit(event);
+        if (
+          hasSourcePayload &&
+          VISUAL_SOURCE_HIDDEN.equals(state.visualSourceLifecycleState) &&
+          "idle".equals(state.currentPresentationRenderPhase) &&
+          state.keepSourcesHiddenUntilEnter &&
+          state.lastDismissRequestKey != null
+        ) {
+          scheduleDeferredDismissSourceCleanup(
+            instanceId,
+            state.lastDismissRequestKey,
+            "dismiss_hidden_source_frame"
+          );
+        }
+        maybeElectMountedHiddenExecutionBatch(instanceId, state);
         maybeEmitExecutionBatchArmed(instanceId, state);
+        InstanceState readyState = instances.get(instanceId);
+        if (readyState != null) {
+          startEnterPresentationIfReady(instanceId, readyState, null, null);
+        }
         double totalDurationMs = (System.nanoTime() - actionStartedAt) / 1_000_000.0;
         if (totalDurationMs >= SLOW_ACTION_THRESHOLD_MS) {
           emitError(
@@ -949,15 +1146,311 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     promise.resolve(null);
   }
 
-  private boolean applyRenderFrameSnapshotPayload(
+  private void markFrameSourceAdmission(
     String instanceId,
     String generationId,
     String executionBatchId,
-    ReadableArray sourceDeltas
+    VisualFrameTransaction visualFrameTransaction,
+    boolean sourceReady
+  ) {
+    InstanceState state = instances.get(instanceId);
+    if (state == null) {
+      return;
+    }
+    state.activeFrameGenerationId = generationId;
+    state.activeExecutionBatchId = executionBatchId;
+    if (sourceReady) {
+      state.sourceReadyFrameGenerationId = generationId;
+      state.sourceReadyExecutionBatchId = executionBatchId;
+      state.residentSourceFrameKey = visualFrameTransaction.sourceFrameKey;
+      state.residentSourceDataKey = visualFrameTransaction.sourceDataKey;
+    } else {
+      state.sourceReadyFrameGenerationId = null;
+      state.sourceReadyExecutionBatchId = null;
+    }
+    instances.put(instanceId, state);
+  }
+
+  private static String transportFeatureId(ReadableMap rawFeature) {
+    if (rawFeature == null || !rawFeature.hasKey("id") || rawFeature.isNull("id")) {
+      return null;
+    }
+    String id = rawFeature.getString("id");
+    return id != null && !id.isEmpty() ? id : null;
+  }
+
+  private static ArrayList<ReadableMap> roleFrameFeatureRecords(ReadableMap row, String key) {
+    ArrayList<ReadableMap> records = new ArrayList<>();
+    if (row == null || !row.hasKey(key) || row.isNull(key)) {
+      return records;
+    }
+    if (row.getType(key) == ReadableType.Map) {
+      ReadableMap feature = row.getMap(key);
+      if (feature != null) {
+        records.add(feature);
+      }
+      return records;
+    }
+    if (row.getType(key) == ReadableType.Array) {
+      ReadableArray features = row.getArray(key);
+      if (features == null) {
+        return records;
+      }
+      for (int index = 0; index < features.size(); index += 1) {
+        if (features.isNull(index)) {
+          continue;
+        }
+        ReadableMap feature = features.getMap(index);
+        if (feature != null) {
+          records.add(feature);
+        }
+      }
+    }
+    return records;
+  }
+
+  private static WritableArray writableFeatureArray(List<ReadableMap> records) {
+    WritableArray array = Arguments.createArray();
+    for (ReadableMap record : records) {
+      array.pushMap(record);
+    }
+    return array;
+  }
+
+  private static ArrayList<String> existingFeatureIdsForMarker(
+    InstanceState state,
+    String sourceId,
+    String markerKey
+  ) {
+    DerivedFamilyState familyState = derivedFamilyState(state, sourceId);
+    ArrayList<String> desiredIds = familyState.desiredCollection.groupedFeatureIdsByGroup.get(markerKey);
+    if (desiredIds != null) {
+      return new ArrayList<>(desiredIds);
+    }
+    ArrayList<String> collectionIds = familyState.collection.groupedFeatureIdsByGroup.get(markerKey);
+    return collectionIds != null ? new ArrayList<>(collectionIds) : new ArrayList<>();
+  }
+
+  private static void applyMarkerRoleFamilyDelta(
+    InstanceState state,
+    String sourceId,
+    ArrayList<String> nextFeatureIdsInOrder,
+    Set<String> dirtyGroupIds,
+    Set<String> removedGroupIds,
+    List<ReadableMap> rawUpsertFeatures
+  ) throws Exception {
+    DerivedFamilyState familyState = derivedFamilyState(state, sourceId);
+    ParsedFeatureCollection upsertCollection =
+      rawUpsertFeatures.isEmpty() ? null : parseTransportFeatures(writableFeatureArray(rawUpsertFeatures));
+    Set<String> orderChangedGroupIds = new LinkedHashSet<>(dirtyGroupIds);
+    orderChangedGroupIds.addAll(removedGroupIds);
+    ParsedFeatureCollectionDelta delta = new ParsedFeatureCollectionDelta(
+      sourceId,
+      "patch",
+      nextFeatureIdsInOrder,
+      Collections.emptySet(),
+      dirtyGroupIds,
+      orderChangedGroupIds,
+      removedGroupIds,
+      upsertCollection
+    );
+    copyParsedFeatureCollection(
+      applyParsedCollectionDelta(delta, parsedCollectionBase(familyState.sourceState)),
+      familyState.desiredCollection
+    );
+  }
+
+  private void applyMarkerRoleFrame(ReadableMap payload, InstanceState state) throws Exception {
+    ArrayList<String> nextPinnedMarkerKeys = assertUniqueOrderedFeatureIds(
+      parseStringArray(payload, "nextPinnedMarkerKeysInOrder"),
+      "marker role frame nextPinnedMarkerKeysInOrder"
+    );
+    ArrayList<String> nextDotMarkerKeys = assertUniqueOrderedFeatureIds(
+      parseStringArray(payload, "nextDotMarkerKeysInOrder"),
+      "marker role frame nextDotMarkerKeysInOrder"
+    );
+    Set<String> dirtyMarkerKeys = assertUniqueStringSet(
+      parseStringArray(payload, "dirtyMarkerKeys"),
+      "marker role frame dirtyMarkerKeys"
+    );
+    Set<String> removedMarkerKeys = assertUniqueStringSet(
+      parseStringArray(payload, "removedMarkerKeys"),
+      "marker role frame removedMarkerKeys"
+    );
+    Set<String> nextPinnedMarkerKeySet = new LinkedHashSet<>(nextPinnedMarkerKeys);
+    Set<String> nextDotMarkerKeySet = new LinkedHashSet<>(nextDotMarkerKeys);
+    Set<String> overlap = new LinkedHashSet<>(nextPinnedMarkerKeySet);
+    overlap.retainAll(nextDotMarkerKeySet);
+    if (!overlap.isEmpty()) {
+      throw new Exception("Marker role frame has settled dot/pin overlap");
+    }
+
+    HashMap<String, ReadableMap> rowsByMarkerKey = new HashMap<>();
+    ReadableArray rawRows =
+      payload.hasKey("upsertRoles") && !payload.isNull("upsertRoles")
+        ? payload.getArray("upsertRoles")
+        : null;
+    if (rawRows != null) {
+      for (int index = 0; index < rawRows.size(); index += 1) {
+        ReadableMap row = rawRows.isNull(index) ? null : rawRows.getMap(index);
+        if (row == null || !row.hasKey("markerKey") || row.isNull("markerKey")) {
+          throw new Exception("Marker role row missing markerKey");
+        }
+        String markerKey = row.getString("markerKey");
+        if (markerKey == null || markerKey.isEmpty()) {
+          throw new Exception("Marker role row missing markerKey");
+        }
+        if (rowsByMarkerKey.put(markerKey, row) != null) {
+          throw new Exception("Duplicate marker role row " + markerKey);
+        }
+      }
+    }
+
+    ArrayList<ReadableMap> pinUpserts = new ArrayList<>();
+    ArrayList<ReadableMap> pinInteractionUpserts = new ArrayList<>();
+    ArrayList<ReadableMap> labelUpserts = new ArrayList<>();
+    ArrayList<ReadableMap> labelCollisionUpserts = new ArrayList<>();
+    ArrayList<ReadableMap> dotUpserts = new ArrayList<>();
+
+    for (String markerKey : dirtyMarkerKeys) {
+      ReadableMap row = rowsByMarkerKey.get(markerKey);
+      if (row == null) {
+        if (removedMarkerKeys.contains(markerKey)) {
+          continue;
+        }
+        throw new Exception("Dirty marker role " + markerKey + " missing row");
+      }
+      String role = row.hasKey("role") && !row.isNull("role") ? row.getString("role") : null;
+      if ("pin".equals(role)) {
+        ArrayList<ReadableMap> pinFeatures = roleFrameFeatureRecords(row, "pinFeature");
+        ArrayList<ReadableMap> pinInteractionFeatures =
+          roleFrameFeatureRecords(row, "pinInteractionFeature");
+        ArrayList<ReadableMap> labelFeatures = roleFrameFeatureRecords(row, "labelFeatures");
+        ArrayList<ReadableMap> labelCollisionFeatures =
+          roleFrameFeatureRecords(row, "labelCollisionFeature");
+        if (
+          !nextPinnedMarkerKeySet.contains(markerKey) ||
+          pinFeatures.size() != 1 ||
+          pinInteractionFeatures.size() != 1 ||
+          labelFeatures.size() != 4 ||
+          labelCollisionFeatures.size() != 1
+        ) {
+          throw new Exception("Promoted marker " + markerKey + " missing pin/interaction/label/collision role payload");
+        }
+        pinUpserts.addAll(pinFeatures);
+        pinInteractionUpserts.addAll(pinInteractionFeatures);
+        labelUpserts.addAll(labelFeatures);
+        labelCollisionUpserts.addAll(labelCollisionFeatures);
+      } else if ("dot".equals(role)) {
+        ArrayList<ReadableMap> dotFeatures = roleFrameFeatureRecords(row, "dotFeature");
+        if (!nextDotMarkerKeySet.contains(markerKey) || dotFeatures.size() != 1) {
+          throw new Exception("Demoted marker " + markerKey + " missing dot role payload");
+        }
+        dotUpserts.addAll(dotFeatures);
+      } else {
+        throw new Exception("Marker " + markerKey + " has unsupported role " + role);
+      }
+    }
+
+    ArrayList<String> nextLabelFeatureIdsInOrder = new ArrayList<>();
+    ArrayList<String> nextLabelCollisionFeatureIdsInOrder = new ArrayList<>();
+    for (String markerKey : nextPinnedMarkerKeys) {
+      ReadableMap row = rowsByMarkerKey.get(markerKey);
+      ArrayList<String> labelIds = new ArrayList<>();
+      if (row != null) {
+        for (ReadableMap rawFeature : roleFrameFeatureRecords(row, "labelFeatures")) {
+          String id = transportFeatureId(rawFeature);
+          if (id != null) {
+            labelIds.add(id);
+          }
+        }
+      }
+      if (labelIds.isEmpty()) {
+        labelIds = existingFeatureIdsForMarker(state, state.labelSourceId, markerKey);
+      }
+      nextLabelFeatureIdsInOrder.addAll(labelIds);
+      String collisionId = markerKey;
+      if (row != null) {
+        ArrayList<ReadableMap> collisionFeatures = roleFrameFeatureRecords(row, "labelCollisionFeature");
+        if (!collisionFeatures.isEmpty()) {
+          String id = transportFeatureId(collisionFeatures.get(0));
+          if (id != null) {
+            collisionId = id;
+          }
+        }
+      }
+      nextLabelCollisionFeatureIdsInOrder.add(collisionId);
+    }
+
+    Set<String> dirtyAndRemovedMarkerKeys = new LinkedHashSet<>(dirtyMarkerKeys);
+    dirtyAndRemovedMarkerKeys.addAll(removedMarkerKeys);
+    applyMarkerRoleFamilyDelta(
+      state,
+      state.pinSourceId,
+      nextPinnedMarkerKeys,
+      dirtyAndRemovedMarkerKeys,
+      removedMarkerKeys,
+      pinUpserts
+    );
+    applyMarkerRoleFamilyDelta(
+      state,
+      state.pinInteractionSourceId,
+      nextPinnedMarkerKeys,
+      dirtyAndRemovedMarkerKeys,
+      removedMarkerKeys,
+      pinInteractionUpserts
+    );
+    applyMarkerRoleFamilyDelta(
+      state,
+      state.dotSourceId,
+      nextDotMarkerKeys,
+      dirtyAndRemovedMarkerKeys,
+      removedMarkerKeys,
+      dotUpserts
+    );
+    applyMarkerRoleFamilyDelta(
+      state,
+      state.labelSourceId,
+      nextLabelFeatureIdsInOrder,
+      dirtyAndRemovedMarkerKeys,
+      removedMarkerKeys,
+      labelUpserts
+    );
+    applyMarkerRoleFamilyDelta(
+      state,
+      state.labelCollisionSourceId,
+      nextLabelCollisionFeatureIdsInOrder,
+      dirtyAndRemovedMarkerKeys,
+      removedMarkerKeys,
+      labelCollisionUpserts
+    );
+  }
+
+  private VisualFrameSnapshotApplyResult applyRenderFrameSnapshotPayload(
+    String instanceId,
+    String generationId,
+    String executionBatchId,
+    VisualFrameTransaction visualFrameTransaction,
+    ReadableArray sourceDeltas,
+    ReadableMap markerRoleFrame,
+    boolean allowResidentSourceCacheRestore
   ) throws Exception {
     InstanceState state = instances.get(instanceId);
     if (state == null) {
       throw new IllegalStateException("unknown instance");
+    }
+    if (isVisualSourceDismissing(state)) {
+      state.activeFrameGenerationId = generationId;
+      state.activeExecutionBatchId = executionBatchId;
+      state.sourceReadyFrameGenerationId = generationId;
+      state.sourceReadyExecutionBatchId = executionBatchId;
+      instances.put(instanceId, state);
+      emitVisualDiag(
+        instanceId,
+        "frame_snapshot_bypass reason=dismiss_in_progress phase=" +
+        state.lastPresentationBatchPhase
+      );
+      return new VisualFrameSnapshotApplyResult(true, "source_apply_blocked_dismissing");
     }
     emitVisualDiag(
       instanceId,
@@ -974,14 +1467,46 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       " dismissRequest=" +
       (state.lastDismissRequestKey != null ? state.lastDismissRequestKey : "nil")
     );
+    boolean isLiveMarkerRoleOnlyFrame =
+      markerRoleFrame != null &&
+      (sourceDeltas == null || sourceDeltas.size() == 0) &&
+      "live_update".equals(visualFrameTransaction.kind) &&
+      "live".equals(visualFrameTransaction.presentationPhase);
     if (sourceDeltas != null) {
       for (ParsedFeatureCollectionDelta delta : parseSourceDeltas(sourceDeltas)) {
         DerivedFamilyState familyState = derivedFamilyState(state, delta.sourceId);
         copyParsedFeatureCollection(
-          applyParsedCollectionDelta(delta, familyState.desiredCollection),
+          applyParsedCollectionDelta(delta, parsedCollectionBase(familyState.sourceState)),
           familyState.desiredCollection
         );
       }
+    }
+    if (markerRoleFrame != null) {
+      applyMarkerRoleFrame(markerRoleFrame, state);
+    }
+    String sourceAdmissionOutcome;
+    if (
+      allowResidentSourceCacheRestore &&
+      markerRoleFrame == null &&
+      (sourceDeltas == null || sourceDeltas.size() == 0)
+    ) {
+      boolean didRestoreResidentSources = restoreResidentDesiredSourceCacheForEnter(state);
+      if (didRestoreResidentSources) {
+        emitVisualDiag(
+          instanceId,
+          "resident_source_cache_restored frame=" +
+          generationId +
+          " cacheSources=" +
+          state.residentDesiredSourceCacheBySourceId.size()
+        );
+      }
+      sourceAdmissionOutcome = "sources_reused_resident";
+    } else if ((sourceDeltas != null && sourceDeltas.size() > 0) || markerRoleFrame != null) {
+      sourceAdmissionOutcome = "hidden_preload".equals(visualFrameTransaction.kind)
+        ? "sources_applied_hidden"
+        : "sources_applied_visible";
+    } else {
+      sourceAdmissionOutcome = "sources_reused_resident";
     }
     ParsedFeatureCollection retainedPins = derivedFamilyState(state, state.pinSourceId).desiredCollection;
     ParsedFeatureCollection retainedDots = derivedFamilyState(state, state.dotSourceId).desiredCollection;
@@ -991,6 +1516,10 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     state.lastLabelCount = retainedLabels != null ? retainedLabels.idsInOrder.size() : 0;
     state.activeFrameGenerationId = generationId;
     state.activeExecutionBatchId = executionBatchId;
+    state.sourceReadyFrameGenerationId = null;
+    state.sourceReadyExecutionBatchId = null;
+    state.residentSourceFrameKey = visualFrameTransaction.sourceFrameKey;
+    state.residentSourceDataKey = visualFrameTransaction.sourceDataKey;
     instances.put(instanceId, state);
     applyDesiredFrameSnapshots(instanceId);
     state = instances.get(instanceId);
@@ -1000,7 +1529,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         "frame_apply_deferred reason=source_recovery phase=" + state.lastPresentationBatchPhase
       );
       instances.put(instanceId, state);
-      return false;
+      return new VisualFrameSnapshotApplyResult(false, "source_pending");
     }
     emitVisualDiag(
       instanceId,
@@ -1017,11 +1546,22 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       " dismissRequest=" +
       (state.lastDismissRequestKey != null ? state.lastDismissRequestKey : "nil")
     );
-    applyHighlightedMarkerState(state);
+    if (
+      !isLiveMarkerRoleOnlyFrame ||
+      !state.highlightedMarkerKeys.isEmpty() ||
+      state.highlightedRestaurantId != null
+    ) {
+      applyHighlightedMarkerState(state);
+    }
     if (shouldSuppressInteractions(state)) {
       applyInteractionSuppression(state);
     }
-    applyPresentationOpacity(state, state.currentPresentationOpacityTarget);
+    if (!isLiveMarkerRoleOnlyFrame) {
+      applyPresentationOpacity(state, state.currentPresentationOpacityTarget);
+    }
+    state.sourceReadyFrameGenerationId = generationId;
+    state.sourceReadyExecutionBatchId = executionBatchId;
+    instances.put(instanceId, state);
     InstanceState latestState = instances.get(instanceId);
     if (
       latestState != null &&
@@ -1052,7 +1592,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         (latestState.lastEnterSettledRequestKey != null ? latestState.lastEnterSettledRequestKey : "nil")
       );
     }
-    return true;
+    return new VisualFrameSnapshotApplyResult(true, sourceAdmissionOutcome);
   }
 
   private void applyPresentationPayload(String instanceId, String presentationStateJson) throws Exception {
@@ -1066,12 +1606,29 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     }
     String previousPresentationBatchPhase = state.lastPresentationBatchPhase;
     double previousPresentationOpacityTarget = state.currentPresentationOpacityTarget;
-    state.lastPresentationStateJson = presentationStateJson;
-    state.lastPresentationBatchPhase = readPresentationBatchPhase(presentationStateJson);
+    String nextPresentationBatchPhase = readPresentationBatchPhase(presentationStateJson);
     String revealRequestKey = readEnterRequestKey(presentationStateJson);
+    String dismissRequestKey = readDismissRequestKey(presentationStateJson);
+    boolean shouldSupersedeDismissWithReveal =
+      VISUAL_SOURCE_DISMISSING.equals(state.visualSourceLifecycleState) &&
+      revealRequestKey != null &&
+      dismissRequestKey == null;
+    if (
+      VISUAL_SOURCE_DISMISSING.equals(state.visualSourceLifecycleState) &&
+      !shouldSupersedeDismissWithReveal &&
+      dismissRequestKey == null
+    ) {
+      instances.put(instanceId, state);
+      return;
+    }
+    state.lastPresentationStateJson = presentationStateJson;
+    state.lastPresentationBatchPhase = nextPresentationBatchPhase;
     String revealStatus = readEnterStatus(presentationStateJson);
     Double revealStartToken = readEnterStartToken(presentationStateJson);
     state.allowEmptyEnter = readAllowEmptyEnter(presentationStateJson);
+    if (shouldSupersedeDismissWithReveal && state.lastDismissRequestKey != null) {
+      clearDismissLifecycleRequestForEnter(instanceId, state);
+    }
     if (!stringEquals(state.lastEnterRequestKey, revealRequestKey)) {
       Runnable pendingRevealRunnable = enterSettleRunnables.remove(instanceId);
       if (pendingRevealRunnable != null) {
@@ -1084,19 +1641,19 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       state.lastEnterSettledRequestKey = null;
       state.pendingPresentationSettleRequestKey = null;
       state.pendingPresentationSettleKind = null;
+      state.sourceReadyFrameGenerationId = null;
+      state.sourceReadyExecutionBatchId = null;
       state.blockedEnterStartRequestKey = null;
       state.blockedEnterStartCommitFenceDataIdsBySourceId.clear();
       state.blockedPresentationSettleRequestKey = null;
       state.blockedPresentationSettleKind = null;
       state.blockedPresentationCommitFenceDataIdsBySourceId.clear();
       if (revealRequestKey != null) {
-        resetLiveMarkerEnterState(instanceId, state, "new_reveal_request");
-        state.currentPresentationRenderPhase = "reveal_preroll";
-        state.currentPresentationOpacityTarget = 0;
+        beginRevealVisualLifecycle(instanceId, state, "new_reveal_request");
         instances.put(instanceId, state);
         applyDesiredFrameSnapshots(instanceId);
         state = instances.get(instanceId);
-        applyPresentationOpacity(state, 0);
+        applyPresentationOpacity(state, REVEAL_PREROLL_PLACEMENT_OPACITY);
         Map<String, Set<String>> commitFence = capturePendingVisualSourceCommitFence(state);
         if (hasPendingCommitFence(commitFence)) {
           state.blockedEnterStartRequestKey = revealRequestKey;
@@ -1142,7 +1699,6 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       state = instances.get(instanceId);
     }
     String previousDismissRequestKey = state.lastDismissRequestKey;
-    String dismissRequestKey = readDismissRequestKey(presentationStateJson);
     if (!stringEquals(state.lastDismissRequestKey, dismissRequestKey)) {
       Runnable pendingRevealRunnable = enterSettleRunnables.remove(instanceId);
       if (pendingRevealRunnable != null) {
@@ -1167,8 +1723,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       }
       state.lastDismissRequestKey = dismissRequestKey;
       if (dismissRequestKey != null) {
-        state.currentPresentationRenderPhase = "exiting";
-        state.currentPresentationOpacityTarget = 0;
+        beginDismissVisualLifecycle(instanceId, state);
         applyPresentationOpacity(state, state.currentPresentationOpacityTarget);
 
         WritableMap startedEvent = Arguments.createMap();
@@ -1225,12 +1780,29 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         dismissSettleRunnables.put(instanceId, settledRunnable);
         mainHandler.postDelayed(settledRunnable, DISMISS_SETTLE_DELAY_MS);
       } else if (previousDismissRequestKey != null) {
-        state.currentPresentationRenderPhase = "idle".equals(state.lastPresentationBatchPhase) ? "live" : "idle";
-        instances.put(instanceId, state);
-        applyDesiredFrameSnapshots(instanceId);
-        state = instances.get(instanceId);
-        state.currentPresentationOpacityTarget = "idle".equals(state.lastPresentationBatchPhase) ? 1 : state.currentPresentationOpacityTarget;
-        applyPresentationOpacity(state, state.currentPresentationOpacityTarget);
+        if (VISUAL_SOURCE_HIDDEN.equals(state.visualSourceLifecycleState)) {
+          state.currentPresentationRenderPhase = "idle";
+          state.keepSourcesHiddenUntilEnter = true;
+          state.currentPresentationOpacityTarget = 0;
+          state.currentPresentationOpacityValue = 0;
+          instances.put(instanceId, state);
+          emitVisualDiag(
+            instanceId,
+            "dismiss_clear_already_hidden request=" + previousDismissRequestKey
+          );
+        } else {
+          state.currentPresentationRenderPhase = "idle".equals(state.lastPresentationBatchPhase) ? "live" : "idle";
+          state.visualSourceLifecycleState = VISUAL_SOURCE_VISIBLE;
+          instances.put(instanceId, state);
+          applyDesiredFrameSnapshots(instanceId);
+          state = instances.get(instanceId);
+          double restoredOpacity = state.keepSourcesHiddenUntilEnter
+            ? 0
+            : ("idle".equals(state.lastPresentationBatchPhase) ? 1 : state.currentPresentationOpacityTarget);
+          state.currentPresentationOpacityTarget = restoredOpacity;
+          instances.put(instanceId, state);
+          applyPresentationOpacity(state, restoredOpacity);
+        }
       }
     }
     if (
@@ -1240,10 +1812,18 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       state.currentPresentationOpacityTarget != 0
     ) {
       state.currentPresentationOpacityTarget = 0;
+      state.visualSourceLifecycleState = VISUAL_SOURCE_DISMISSING;
+      instances.put(instanceId, state);
       applyPresentationOpacity(state, state.currentPresentationOpacityTarget);
     }
-    if (!"idle".equals(previousPresentationBatchPhase) && "idle".equals(state.lastPresentationBatchPhase)) {
+    if (
+      state.lastDismissRequestKey == null &&
+      !"idle".equals(previousPresentationBatchPhase) &&
+      "idle".equals(state.lastPresentationBatchPhase)
+    ) {
       state.currentPresentationRenderPhase = "live";
+      state.visualSourceLifecycleState = VISUAL_SOURCE_VISIBLE;
+      state.keepSourcesHiddenUntilEnter = false;
       if (state.currentPresentationOpacityTarget != 1) {
         state.currentPresentationOpacityTarget = 1;
         applyPresentationOpacity(state, state.currentPresentationOpacityTarget);
@@ -1253,15 +1833,35 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
 
   }
 
-  private void applyHighlightedMarkerPayload(String instanceId, String markerKey) throws Exception {
+  private void applyHighlightedMarkerPayload(
+    String instanceId,
+    String markerKey,
+    Set<String> markerKeys,
+    String restaurantId
+  ) throws Exception {
     InstanceState state = instances.get(instanceId);
     if (state == null) {
       throw new IllegalStateException("unknown instance");
     }
-    if (stringEquals(state.highlightedMarkerKey, markerKey)) {
+    if (isVisualSourceInactiveOrDismissing(state)) {
+      return;
+    }
+    Set<String> nextMarkerKeys = new LinkedHashSet<>(markerKeys);
+    if (nextMarkerKeys.isEmpty() && markerKey != null && !markerKey.isEmpty()) {
+      nextMarkerKeys.add(markerKey);
+    }
+    String nextRestaurantId = restaurantId != null && !restaurantId.isEmpty() ? restaurantId : null;
+    if (
+      stringEquals(state.highlightedMarkerKey, markerKey) &&
+      state.highlightedMarkerKeys.equals(nextMarkerKeys) &&
+      stringEquals(state.highlightedRestaurantId, nextRestaurantId)
+    ) {
       return;
     }
     state.highlightedMarkerKey = markerKey;
+    state.highlightedMarkerKeys.clear();
+    state.highlightedMarkerKeys.addAll(nextMarkerKeys);
+    state.highlightedRestaurantId = nextRestaurantId;
     instances.put(instanceId, state);
     applyHighlightedMarkerState(state);
   }
@@ -1270,6 +1870,9 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     InstanceState state = instances.get(instanceId);
     if (state == null) {
       throw new IllegalStateException("unknown instance");
+    }
+    if (isVisualSourceInactiveOrDismissing(state)) {
+      return;
     }
     String nextMode = "suppressed".equals(mode) ? "suppressed" : "enabled";
     if (stringEquals(state.interactionMode, nextMode)) {
@@ -1309,9 +1912,8 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     }
     boolean observationEnabled =
       payload.hasKey("observationEnabled") && payload.getBoolean("observationEnabled");
-    boolean allowFallback = payload.hasKey("allowFallback") && payload.getBoolean("allowFallback");
-    boolean commitInteractionVisibility =
-      payload.hasKey("commitInteractionVisibility") && payload.getBoolean("commitInteractionVisibility");
+    boolean commitVisibleLabelHits =
+      payload.hasKey("commitVisibleLabelHits") && payload.getBoolean("commitVisibleLabelHits");
     double refreshMsIdle =
       payload.hasKey("refreshMsIdle") && !payload.isNull("refreshMsIdle")
         ? payload.getDouble("refreshMsIdle")
@@ -1320,30 +1922,6 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       payload.hasKey("refreshMsMoving") && !payload.isNull("refreshMsMoving")
         ? payload.getDouble("refreshMsMoving")
         : 0d;
-    boolean enableStickyLabelCandidates =
-      payload.hasKey("enableStickyLabelCandidates") &&
-      payload.getBoolean("enableStickyLabelCandidates");
-    double stickyLockStableMsMoving =
-      payload.hasKey("stickyLockStableMsMoving") && !payload.isNull("stickyLockStableMsMoving")
-        ? payload.getDouble("stickyLockStableMsMoving")
-        : 0d;
-    double stickyLockStableMsIdle =
-      payload.hasKey("stickyLockStableMsIdle") && !payload.isNull("stickyLockStableMsIdle")
-        ? payload.getDouble("stickyLockStableMsIdle")
-        : 0d;
-    double stickyUnlockMissingMsMoving =
-      payload.hasKey("stickyUnlockMissingMsMoving") && !payload.isNull("stickyUnlockMissingMsMoving")
-        ? payload.getDouble("stickyUnlockMissingMsMoving")
-        : 0d;
-    double stickyUnlockMissingMsIdle =
-      payload.hasKey("stickyUnlockMissingMsIdle") && !payload.isNull("stickyUnlockMissingMsIdle")
-        ? payload.getDouble("stickyUnlockMissingMsIdle")
-        : 0d;
-    int stickyUnlockMissingStreakMoving =
-      payload.hasKey("stickyUnlockMissingStreakMoving") &&
-      !payload.isNull("stickyUnlockMissingStreakMoving")
-        ? payload.getInt("stickyUnlockMissingStreakMoving")
-        : 1;
     String labelResetRequestKey =
       payload.hasKey("labelResetRequestKey") && !payload.isNull("labelResetRequestKey")
         ? payload.getString("labelResetRequestKey")
@@ -1354,16 +1932,9 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         configureLabelObservation(
           instanceId,
           observationEnabled,
-          allowFallback,
-          commitInteractionVisibility,
-          enableStickyLabelCandidates,
+          commitVisibleLabelHits,
           refreshMsIdle,
           refreshMsMoving,
-          stickyLockStableMsMoving,
-          stickyLockStableMsIdle,
-          stickyUnlockMissingMsMoving,
-          stickyUnlockMissingMsIdle,
-          stickyUnlockMissingStreakMoving,
           labelResetRequestKey
         );
         if (observationEnabled) {
@@ -1380,20 +1951,104 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
   }
 
   @ReactMethod
+  public void configureNativeLayerGroups(ReadableMap payload, Promise promise) {
+    String instanceId = payload.hasKey("instanceId") ? payload.getString("instanceId") : null;
+    if (instanceId == null) {
+      promise.reject(
+        "search_map_render_controller_configure_native_layer_groups_invalid",
+        "missing instanceId"
+      );
+      return;
+    }
+    ArrayList<String> pinSlotSourceIds = parseStringArray(payload, "pinSlotSourceIds");
+    ArrayList<String> labelLayerIds = parseStringArray(payload, "labelLayerIds");
+    ArrayList<String> labelCollisionLayerIds = parseStringArray(payload, "labelCollisionLayerIds");
+    if (
+      pinSlotSourceIds.isEmpty() ||
+      labelLayerIds.isEmpty() ||
+      labelCollisionLayerIds.isEmpty()
+    ) {
+      promise.reject(
+        "search_map_render_controller_configure_native_layer_groups_invalid",
+        "missing promoted slot source/layer ids"
+      );
+      return;
+    }
+    mainHandler.post(() -> {
+      InstanceState state = instances.get(instanceId);
+      if (state == null) {
+        promise.reject(
+          "search_map_render_controller_configure_native_layer_groups_invalid",
+          "unknown instance"
+        );
+        return;
+      }
+      state.pinSlotSourceIds = pinSlotSourceIds;
+      state.labelLayerIds = labelLayerIds;
+      state.labelCollisionLayerIds = labelCollisionLayerIds;
+      instances.put(instanceId, state);
+      promise.resolve(null);
+    });
+  }
+
+  @ReactMethod
+  public void configureNativePressTargeting(ReadableMap payload, Promise promise) {
+    String instanceId = payload.hasKey("instanceId") ? payload.getString("instanceId") : null;
+    if (instanceId == null) {
+      promise.reject(
+        "search_map_render_controller_configure_native_press_targeting_invalid",
+        "missing instanceId"
+      );
+      return;
+    }
+    mainHandler.post(() -> {
+      InstanceState state = instances.get(instanceId);
+      if (state == null) {
+        promise.reject(
+          "search_map_render_controller_configure_native_press_targeting_invalid",
+          "unknown instance"
+        );
+        return;
+      }
+      NativePressTargetConfig config = new NativePressTargetConfig();
+      config.enabled = payload.hasKey("enabled") && !payload.isNull("enabled") && payload.getBoolean("enabled");
+      config.pinLayerIds = parseStringArray(payload, "pinLayerIds");
+      config.labelLayerIds = parseStringArray(payload, "labelLayerIds");
+      config.labelTapHitbox =
+        payload.hasKey("labelTapHitbox") && !payload.isNull("labelTapHitbox")
+          ? parseLabelTapHitboxConfig(payload.getMap("labelTapHitbox"))
+          : null;
+      config.dotLayerIds = parseStringArray(payload, "dotLayerIds");
+      config.dotTapIntentRadiusPx =
+        payload.hasKey("dotTapIntentRadiusPx") && !payload.isNull("dotTapIntentRadiusPx")
+          ? payload.getDouble("dotTapIntentRadiusPx")
+          : 0d;
+      if (config.enabled) {
+        ArrayList<String> instanceIds = new ArrayList<>(instances.keySet());
+        for (String candidateId : instanceIds) {
+          if (candidateId.equals(instanceId)) {
+            continue;
+          }
+          InstanceState candidateState = instances.get(candidateId);
+          if (candidateState != null && candidateState.mapTag == state.mapTag) {
+            candidateState.nativePressTargetConfig.enabled = false;
+            instances.put(candidateId, candidateState);
+          }
+        }
+      }
+      state.nativePressTargetConfig = config;
+      instances.put(instanceId, state);
+      promise.resolve(null);
+    });
+  }
+
+  @ReactMethod
   public void queryRenderedPressTarget(ReadableMap payload, Promise promise) {
     String instanceId = payload.hasKey("instanceId") ? payload.getString("instanceId") : null;
     if (instanceId == null) {
       promise.reject(
         "search_map_render_controller_query_rendered_press_target_invalid",
         "missing instanceId"
-      );
-      return;
-    }
-    InstanceState state = instances.get(instanceId);
-    if (state == null) {
-      promise.reject(
-        "search_map_render_controller_query_rendered_press_target_invalid",
-        "unknown instance"
       );
       return;
     }
@@ -1407,52 +2062,13 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     }
     double x = point.getDouble("x");
     double y = point.getDouble("y");
-    ArrayList<String> pinLayerIds = new ArrayList<>();
-    if (payload.hasKey("pinLayerIds") && !payload.isNull("pinLayerIds")) {
-      ReadableArray readablePinLayerIds = payload.getArray("pinLayerIds");
-      if (readablePinLayerIds != null) {
-        for (int index = 0; index < readablePinLayerIds.size(); index += 1) {
-          if (!readablePinLayerIds.isNull(index)) {
-            String layerId = readablePinLayerIds.getString(index);
-            if (layerId != null && !layerId.isEmpty()) {
-              pinLayerIds.add(layerId);
-            }
-          }
-        }
-      }
-    }
-    ArrayList<String> labelLayerIds = new ArrayList<>();
-    if (payload.hasKey("labelLayerIds") && !payload.isNull("labelLayerIds")) {
-      ReadableArray readableLabelLayerIds = payload.getArray("labelLayerIds");
-      if (readableLabelLayerIds != null) {
-        for (int index = 0; index < readableLabelLayerIds.size(); index += 1) {
-          if (!readableLabelLayerIds.isNull(index)) {
-            String layerId = readableLabelLayerIds.getString(index);
-            if (layerId != null && !layerId.isEmpty()) {
-              labelLayerIds.add(layerId);
-            }
-          }
-        }
-      }
-    }
+    ArrayList<String> pinLayerIds = parseStringArray(payload, "pinLayerIds");
+    ArrayList<String> labelLayerIds = parseStringArray(payload, "labelLayerIds");
     LabelTapHitboxConfig labelTapHitbox = null;
     if (payload.hasKey("labelTapHitbox") && !payload.isNull("labelTapHitbox")) {
       labelTapHitbox = parseLabelTapHitboxConfig(payload.getMap("labelTapHitbox"));
     }
-    ArrayList<String> dotLayerIds = new ArrayList<>();
-    if (payload.hasKey("dotLayerIds") && !payload.isNull("dotLayerIds")) {
-      ReadableArray readableDotLayerIds = payload.getArray("dotLayerIds");
-      if (readableDotLayerIds != null) {
-        for (int index = 0; index < readableDotLayerIds.size(); index += 1) {
-          if (!readableDotLayerIds.isNull(index)) {
-            String layerId = readableDotLayerIds.getString(index);
-            if (layerId != null && !layerId.isEmpty()) {
-              dotLayerIds.add(layerId);
-            }
-          }
-        }
-      }
-    }
+    ArrayList<String> dotLayerIds = parseStringArray(payload, "dotLayerIds");
     double[] dotQueryBox = null;
     if (payload.hasKey("dotQueryBox") && !payload.isNull("dotQueryBox")) {
       ReadableArray readableDotQueryBox = payload.getArray("dotQueryBox");
@@ -1486,147 +2102,52 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
 
     mainHandler.post(() -> {
       try {
+        InstanceState state = instances.get(instanceId);
+        if (state == null) {
+          promise.reject(
+            "search_map_render_controller_query_rendered_press_target_invalid",
+            "unknown instance"
+          );
+          return;
+        }
+        if (
+          !"enabled".equals(state.interactionMode) ||
+          isNativePressSuppressed(state)
+        ) {
+          promise.resolve(null);
+          return;
+        }
         RNMBXMapView mapView = resolveMapView(state.mapTag);
         if (mapView == null) {
           throw new IllegalStateException("Map view not found for react tag " + state.mapTag);
         }
-        if (pinLayerIds.isEmpty() && labelLayerIds.isEmpty() && dotLayerIds.isEmpty()) {
-          promise.resolve(null);
-          return;
-        }
-        RenderedQueryGeometry queryGeometry =
-          new RenderedQueryGeometry(
-            new ScreenBox(
-              new ScreenCoordinate(x - 0.5d, y - 0.5d),
-              new ScreenCoordinate(x + 0.5d, y + 0.5d)
-            )
-          );
-        if (pinLayerIds.isEmpty()) {
-          if (labelLayerIds.isEmpty()) {
-            queryRenderedDotPressTarget(
-              mapView,
-              state,
-              dotLayerIds,
-              x,
-              y,
-              resolvedDotQueryBox,
-              resolvedTapLng,
-              resolvedTapLat,
-              promise
-            );
-            return;
-          }
-          RenderedQueryOptions labelQueryOptions = new RenderedQueryOptions(labelLayerIds, null);
-          mapView.getMapboxMap().queryRenderedFeatures(
-            queryGeometry,
-            labelQueryOptions,
-            labelQueryResult -> mainHandler.post(() -> {
-              if (labelQueryResult.isError()) {
-                promise.reject(
-                  "search_map_render_controller_query_rendered_press_target_failed",
-                  labelQueryResult.getError()
-                );
-                return;
-              }
-              WritableMap labelTarget = buildRenderedLabelPressTarget(
-                labelQueryResult.getValue(),
-                state.labelInteractionSourceId,
-                mapView,
-                x,
-                y,
-                resolvedLabelTapHitbox
-              );
-              if (labelTarget != null) {
-                promise.resolve(labelTarget);
+        resolveRenderedPressTarget(
+          mapView,
+          state,
+          pinLayerIds,
+          labelLayerIds,
+          dotLayerIds,
+          x,
+          y,
+          resolvedDotQueryBox,
+          resolvedTapLng,
+          resolvedTapLat,
+          resolvedLabelTapHitbox,
+          new PressTargetResolutionCallback() {
+            @Override
+            public void resolve(WritableMap target) {
+              promise.resolve(target);
+            }
+
+            @Override
+            public void reject(String code, String message, Throwable error) {
+              if (error != null) {
+                promise.reject(code, message, error);
               } else {
-                queryRenderedDotPressTarget(
-                  mapView,
-                  state,
-                  dotLayerIds,
-                  x,
-                  y,
-                  resolvedDotQueryBox,
-                  resolvedTapLng,
-                  resolvedTapLat,
-                  promise
-                );
+                promise.reject(code, message);
               }
-            })
-          );
-          return;
-        }
-        RenderedQueryOptions pinQueryOptions = new RenderedQueryOptions(pinLayerIds, null);
-        mapView.getMapboxMap().queryRenderedFeatures(
-          queryGeometry,
-          pinQueryOptions,
-          pinQueryResult -> mainHandler.post(() -> {
-            if (pinQueryResult.isError()) {
-              promise.reject(
-                "search_map_render_controller_query_rendered_press_target_failed",
-                pinQueryResult.getError()
-              );
-              return;
             }
-            WritableMap pinTarget = buildRenderedPinPressTarget(
-              pinQueryResult.getValue(),
-              state.pinSourceId
-            );
-            if (pinTarget != null) {
-              promise.resolve(pinTarget);
-              return;
-            }
-            if (labelLayerIds.isEmpty()) {
-              queryRenderedDotPressTarget(
-                mapView,
-                state,
-                dotLayerIds,
-                x,
-                y,
-                resolvedDotQueryBox,
-                resolvedTapLng,
-                resolvedTapLat,
-                promise
-              );
-              return;
-            }
-            RenderedQueryOptions labelQueryOptions = new RenderedQueryOptions(labelLayerIds, null);
-            mapView.getMapboxMap().queryRenderedFeatures(
-              queryGeometry,
-              labelQueryOptions,
-              labelQueryResult -> mainHandler.post(() -> {
-                if (labelQueryResult.isError()) {
-                  promise.reject(
-                    "search_map_render_controller_query_rendered_press_target_failed",
-                    labelQueryResult.getError()
-                  );
-                  return;
-                }
-                WritableMap labelTarget = buildRenderedLabelPressTarget(
-                  labelQueryResult.getValue(),
-                  state.labelInteractionSourceId,
-                  mapView,
-                  x,
-                  y,
-                  resolvedLabelTapHitbox
-                );
-                if (labelTarget != null) {
-                  promise.resolve(labelTarget);
-                } else {
-                  queryRenderedDotPressTarget(
-                    mapView,
-                    state,
-                    dotLayerIds,
-                    x,
-                    y,
-                    resolvedDotQueryBox,
-                    resolvedTapLng,
-                    resolvedTapLat,
-                    promise
-                  );
-                }
-              })
-            );
-          })
+          }
         );
       } catch (Exception error) {
         promise.reject(
@@ -1635,6 +2156,121 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         );
       }
     });
+  }
+
+  private void resolveRenderedPressTarget(
+    RNMBXMapView mapView,
+    InstanceState state,
+    List<String> pinLayerIds,
+    List<String> labelLayerIds,
+    List<String> dotLayerIds,
+    double x,
+    double y,
+    double[] dotQueryBox,
+    Double tapLng,
+    Double tapLat,
+    LabelTapHitboxConfig labelTapHitbox,
+    PressTargetResolutionCallback callback
+  ) {
+    if (
+      (pinLayerIds == null || pinLayerIds.isEmpty()) &&
+      (labelLayerIds == null || labelLayerIds.isEmpty()) &&
+      (dotLayerIds == null || dotLayerIds.isEmpty())
+    ) {
+      callback.resolve(null);
+      return;
+    }
+
+    Runnable queryDotTarget = () -> queryRenderedDotPressTarget(
+      mapView,
+      state,
+      dotLayerIds,
+      x,
+      y,
+      dotQueryBox,
+      tapLng,
+      tapLat,
+      callback
+    );
+
+    Runnable queryLabelTarget = () -> {
+      if (labelLayerIds == null || labelLayerIds.isEmpty()) {
+        queryDotTarget.run();
+        return;
+      }
+      RenderedQueryGeometry queryGeometry =
+        new RenderedQueryGeometry(
+          new ScreenBox(
+            new ScreenCoordinate(x - 0.5d, y - 0.5d),
+            new ScreenCoordinate(x + 0.5d, y + 0.5d)
+          )
+        );
+      RenderedQueryOptions labelQueryOptions = new RenderedQueryOptions(labelLayerIds, null);
+      mapView.getMapboxMap().queryRenderedFeatures(
+        queryGeometry,
+        labelQueryOptions,
+        labelQueryResult -> mainHandler.post(() -> {
+          if (labelQueryResult.isError()) {
+            callback.reject(
+              "search_map_render_controller_query_rendered_press_target_failed",
+              labelQueryResult.getError(),
+              null
+            );
+            return;
+          }
+          WritableMap labelTarget = buildRenderedLabelPressTarget(
+            labelQueryResult.getValue(),
+            new LinkedHashSet<>(state.pinSlotSourceIds),
+            mapView,
+            x,
+            y,
+            labelTapHitbox
+          );
+          if (labelTarget != null) {
+            callback.resolve(labelTarget);
+          } else {
+            queryDotTarget.run();
+          }
+        })
+      );
+    };
+
+    if (pinLayerIds == null || pinLayerIds.isEmpty()) {
+      queryLabelTarget.run();
+      return;
+    }
+
+    RenderedQueryGeometry queryGeometry =
+      new RenderedQueryGeometry(
+        new ScreenBox(
+          new ScreenCoordinate(x - 0.5d, y - 0.5d),
+          new ScreenCoordinate(x + 0.5d, y + 0.5d)
+        )
+      );
+    RenderedQueryOptions pinQueryOptions = new RenderedQueryOptions(pinLayerIds, null);
+    mapView.getMapboxMap().queryRenderedFeatures(
+      queryGeometry,
+      pinQueryOptions,
+      pinQueryResult -> mainHandler.post(() -> {
+        if (pinQueryResult.isError()) {
+          callback.reject(
+            "search_map_render_controller_query_rendered_press_target_failed",
+            pinQueryResult.getError(),
+            null
+          );
+          return;
+        }
+        WritableMap pinTarget = buildRenderedPinPressTarget(
+          pinQueryResult.getValue(),
+          new LinkedHashSet<>(state.pinSlotSourceIds)
+        );
+        if (pinTarget != null) {
+          callback.resolve(pinTarget);
+          return;
+        }
+        queryLabelTarget.run();
+      })
+    );
   }
 
   private void queryRenderedDotPressTarget(
@@ -1646,10 +2282,10 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     double[] dotQueryBox,
     Double tapLng,
     Double tapLat,
-    Promise promise
+    PressTargetResolutionCallback callback
   ) {
     if (dotLayerIds == null || dotLayerIds.isEmpty()) {
-      promise.resolve(null);
+      callback.resolve(null);
       return;
     }
     ScreenBox queryBox;
@@ -1677,19 +2313,20 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       dotQueryOptions,
       dotQueryResult -> mainHandler.post(() -> {
         if (dotQueryResult.isError()) {
-          promise.reject(
+          callback.reject(
             "search_map_render_controller_query_rendered_press_target_failed",
-            dotQueryResult.getError()
+            dotQueryResult.getError(),
+            null
           );
           return;
         }
         WritableMap dotTarget = buildRenderedDotPressTarget(
           dotQueryResult.getValue(),
-          state.dotInteractionSourceId,
+          state.dotSourceId,
           tapLng,
           tapLat
         );
-        promise.resolve(dotTarget);
+        callback.resolve(dotTarget);
       })
     );
   }
@@ -1709,11 +2346,22 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       state.lastEnterSettledRequestKey = null;
       state.lastDismissRequestKey = null;
       state.currentPresentationRenderPhase = "idle";
+      state.visualSourceLifecycleState = VISUAL_SOURCE_HIDDEN;
+      state.labelCollisionObstacleLayersVisible = false;
       state.lastPresentationStateJson = null;
       state.activeFrameGenerationId = null;
+      state.activeExecutionBatchId = null;
+      state.sourceReadyFrameGenerationId = null;
+      state.sourceReadyExecutionBatchId = null;
+      state.residentSourceFrameKey = null;
+      state.residentSourceDataKey = null;
       state.highlightedMarkerKey = null;
+      state.highlightedMarkerKeys.clear();
+      state.highlightedRestaurantId = null;
       state.interactionMode = "enabled";
+      state.keepSourcesHiddenUntilEnter = true;
       state.currentPresentationOpacityTarget = 1;
+      state.currentPresentationOpacityValue = 0;
       state.nextSourceCommitSequence = 0L;
       state.pendingPresentationSettleRequestKey = null;
       state.pendingPresentationSettleKind = null;
@@ -1723,7 +2371,11 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       state.blockedEnterStartCommitFenceDataIdsBySourceId.clear();
       state.blockedPresentationCommitFenceDataIdsBySourceId.clear();
       state.pendingSourceCommitDataIdsBySourceId.clear();
+      state.residentDesiredSourceCacheBySourceId.clear();
       state.currentViewportIsMoving = false;
+      state.isAwaitingSourceRecovery = false;
+      state.isReplayingSourceRecovery = false;
+      state.sourceRecoveryPausedAtMs = null;
       initializeDerivedFamilyStates(state);
     }
     cancelLivePinTransitionAnimation(instanceId);
@@ -1803,11 +2455,9 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         orderedMarkerKeys.add(entry.getKey());
       }
       Set<String> dirtyPinMarkerKeys = new LinkedHashSet<>(desiredPinSnapshot.dirtyPinMarkerKeys);
-      dirtyPinMarkerKeys.addAll(pinFamilyState.livePinTransitionsByMarkerKey.keySet());
       Set<String> dirtyPinInteractionMarkerKeys = new LinkedHashSet<>(desiredPinSnapshot.dirtyPinInteractionMarkerKeys);
       dirtyPinInteractionMarkerKeys.addAll(dirtyPinMarkerKeys);
       Set<String> dirtyLabelMarkerKeys = new LinkedHashSet<>(desiredPinSnapshot.dirtyLabelMarkerKeys);
-      dirtyLabelMarkerKeys.addAll(pinFamilyState.livePinTransitionsByMarkerKey.keySet());
       Set<String> dirtyLabelCollisionMarkerKeys = new LinkedHashSet<>(desiredPinSnapshot.dirtyLabelCollisionMarkerKeys);
       boolean reusePins = dirtyPinMarkerKeys.isEmpty();
       boolean reusePinInteractions = dirtyPinInteractionMarkerKeys.isEmpty();
@@ -1816,7 +2466,6 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       DerivedFamilyState pinInteractionFamilyState = derivedFamilyState(state, state.pinInteractionSourceId);
       DerivedFamilyState labelFamilyState = derivedFamilyState(state, state.labelSourceId);
       DerivedFamilyState labelCollisionFamilyState = derivedFamilyState(state, state.labelCollisionSourceId);
-      Map<String, String> stickyCandidateByIdentity = labelFamilyState.labelObservation.stickyCandidateByIdentity;
       Set<String> orderedMarkerKeySet = new LinkedHashSet<>(orderedMarkerKeys);
       ArrayList<String> nextPinIdsInOrder = reusePins ? null : new ArrayList<>();
       Map<String, Feature> nextPinFeatureById =
@@ -1960,16 +2609,16 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
             boolean shouldSeedLabelHidden = desiredPresent && transition != null && transition.targetOpacity == 1d;
             ArrayList<String> nextMarkerLabelIds = new ArrayList<>();
             for (FeatureRecord labelFeature : markerLabelFeatures) {
+              HashMap<String, Double> labelNumericProperties = new HashMap<>();
+              labelNumericProperties.put("nativeLabelOpacity", shouldSeedLabelHidden ? 0d : 1d);
+              labelNumericProperties.put("nativeLodZ", (double) lodZ);
               Feature renderFeature =
-                featureWithNumericProperties(
-                  labelFeature.feature,
-                  Collections.singletonMap("nativeLabelOpacity", shouldSeedLabelHidden ? 0d : 1d)
-                );
+                featureWithNumericProperties(labelFeature.feature, labelNumericProperties);
               nextMarkerLabelIds.add(labelFeature.id);
               nextLabelFeatureById.put(labelFeature.id, renderFeature);
               nextLabelMarkerKeyByFeatureId.put(labelFeature.id, markerKey);
               HashMap<String, Value> featureState =
-                retainedLabelFeatureState(labelFeature.feature, markerKey, stickyCandidateByIdentity);
+                retainedLabelFeatureState(labelFeature.feature, markerKey);
               if (labelFamilyState.transientFeatureStateById.containsKey(labelFeature.id)) {
                 featureState.putAll(labelFamilyState.transientFeatureStateById.get(labelFeature.id));
               }
@@ -2015,6 +2664,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
           removedPinGroupIds
         );
         nextPins = pinFamilyState.collection;
+        markLogicalFamilyCollectionResident(pinFamilyState);
       }
       long pinStartedAt = System.nanoTime();
 
@@ -2049,6 +2699,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
           removedPinInteractionGroupIds
         );
         nextPinInteractions = pinInteractionFamilyState.collection;
+        markLogicalFamilyCollectionResident(pinInteractionFamilyState);
       }
       SourceState previousLabelSourceState = labelFamilyState.sourceState;
       ParsedFeatureCollection nextLabels;
@@ -2084,6 +2735,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
           removedLabelGroupIds
         );
         nextLabels = labelFamilyState.collection;
+        markLogicalFamilyCollectionResident(labelFamilyState);
       }
       SourceState previousLabelCollisionSourceState = labelCollisionFamilyState.sourceState;
       ParsedFeatureCollection nextLabelCollisions;
@@ -2099,7 +2751,17 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         for (String markerKey : dirtyLabelCollisionMarkerKeys) {
           Feature feature = desiredPinSnapshot.labelCollisionFeatureByMarkerKey.get(markerKey);
           if (feature != null) {
-            nextLabelCollisionFeatureById.put(markerKey, feature);
+            int lodZ =
+              desiredPinSnapshot.pinLodZByMarkerKey.containsKey(markerKey)
+                ? desiredPinSnapshot.pinLodZByMarkerKey.get(markerKey)
+                : 0;
+            nextLabelCollisionFeatureById.put(
+              markerKey,
+              featureWithNumericProperties(
+                feature,
+                Collections.singletonMap("nativeLodZ", (double) lodZ)
+              )
+            );
             nextLabelCollisionMarkerKeyByFeatureId.put(markerKey, markerKey);
           } else {
             nextLabelCollisionFeatureById.remove(markerKey);
@@ -2125,54 +2787,61 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         );
         nextLabelCollisions = labelCollisionFamilyState.collection;
       }
-      return new PreparedDerivedPinAndLabelOutput(
-        Arrays.asList(
-          new ParsedCollectionApplyPlan(
-            state.pinSourceId,
-            nextPins,
-            previousPinSourceState,
-            previousPinSourceState != null
-              ? previousPinSourceState.featureStateById
-              : Collections.emptyMap(),
-            previousPinSourceState != null
-              ? previousPinSourceState.featureStateRevision
-              : ""
-          ),
-          new ParsedCollectionApplyPlan(
-            state.pinInteractionSourceId,
-            nextPinInteractions,
-            previousPinInteractionSourceState,
-            previousPinInteractionSourceState != null
-              ? previousPinInteractionSourceState.featureStateById
-              : Collections.emptyMap(),
-            previousPinInteractionSourceState != null
-              ? previousPinInteractionSourceState.featureStateRevision
-              : ""
-          ),
-          new ParsedCollectionApplyPlan(
-            state.labelSourceId,
-            nextLabels,
-            previousLabelSourceState,
-            previousLabelSourceState != null
-              ? previousLabelSourceState.featureStateById
-              : Collections.emptyMap(),
-            previousLabelSourceState != null
-              ? previousLabelSourceState.featureStateRevision
-              : ""
-          ),
+      ParsedFeatureCollection promotedSlotCollection =
+        makePromotedSlotCollection(
+          orderedMarkerKeys,
+          nextPins,
+          nextPinInteractions,
+          nextLabels
+        );
+      LinkedHashSet<String> previousPromotedGroupIds = new LinkedHashSet<>();
+      for (String sourceId : state.pinSlotSourceIds) {
+        previousPromotedGroupIds.addAll(derivedFamilyState(state, sourceId).collection.groupOrder);
+      }
+      LinkedHashSet<String> promotedDirtyGroupIds = new LinkedHashSet<>();
+      promotedDirtyGroupIds.addAll(dirtyPinMarkerKeys);
+      promotedDirtyGroupIds.addAll(dirtyPinInteractionMarkerKeys);
+      promotedDirtyGroupIds.addAll(dirtyLabelMarkerKeys);
+      promotedDirtyGroupIds.addAll(dirtyLabelCollisionMarkerKeys);
+      LinkedHashSet<String> nextPromotedGroupIds = new LinkedHashSet<>(orderedMarkerKeys);
+      for (String previousGroupId : previousPromotedGroupIds) {
+        if (!nextPromotedGroupIds.contains(previousGroupId)) {
+          promotedDirtyGroupIds.add(previousGroupId);
+          promotedSlotCollection.removedGroupIds.add(previousGroupId);
+        }
+      }
+      for (String nextGroupId : nextPromotedGroupIds) {
+        if (!previousPromotedGroupIds.contains(nextGroupId)) {
+          promotedDirtyGroupIds.add(nextGroupId);
+        }
+      }
+      promotedSlotCollection.dirtyGroupIds.addAll(promotedDirtyGroupIds);
+      promotedSlotCollection.orderChangedGroupIds.addAll(promotedDirtyGroupIds);
+      ArrayList<ParsedCollectionApplyPlan> plans = new ArrayList<>();
+      if (
+        !Objects.equals(
+          previousLabelCollisionSourceState.sourceRevision,
+          labelCollisionFamilyState.collection.sourceRevision
+        ) ||
+        !Objects.equals(
+          previousLabelCollisionSourceState.featureStateRevision,
+          labelCollisionFamilyState.collection.featureStateRevision
+        )
+      ) {
+        plans.add(
           new ParsedCollectionApplyPlan(
             state.labelCollisionSourceId,
             nextLabelCollisions,
             previousLabelCollisionSourceState,
-            previousLabelCollisionSourceState != null
-              ? previousLabelCollisionSourceState.featureStateById
-              : Collections.emptyMap(),
-            previousLabelCollisionSourceState != null
-              ? previousLabelCollisionSourceState.featureStateRevision
-              : ""
+            previousLabelCollisionSourceState.featureStateById,
+            previousLabelCollisionSourceState.featureStateRevision
           )
-        ),
-        state.pinSourceId,
+        );
+      }
+      plans.addAll(buildSlotApplyPlans(state, state.pinSlotSourceIds, promotedSlotCollection));
+      return new PreparedDerivedPinAndLabelOutput(
+        plans,
+        state.pinSlotSourceIds,
         pinStartedAt
       );
   }
@@ -2183,13 +2852,24 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     PreparedDerivedPinAndLabelOutput prepared,
     Map<String, MutationSummary> mutationSummaryBySourceId
   ) {
-    MutationSummary pinMutationSummary =
-      mutationSummaryBySourceId.getOrDefault(
-        prepared.pinSourceId,
-        new MutationSummary(0, 0, 0, null, Collections.emptyList())
-      );
-    if (pinMutationSummary.dataId != null && !pinMutationSummary.addedFeatureIds.isEmpty()) {
-      DerivedFamilyState pinFamilyState = derivedFamilyState(state, state.pinSourceId);
+    int addCount = 0;
+    int updateCount = 0;
+    int removeCount = 0;
+    boolean hasMutations = false;
+    DerivedFamilyState pinFamilyState = derivedFamilyState(state, state.pinSourceId);
+    for (String pinSourceId : prepared.pinSourceIds) {
+      MutationSummary pinMutationSummary =
+        mutationSummaryBySourceId.getOrDefault(
+          pinSourceId,
+          new MutationSummary(0, 0, 0, null, Collections.emptyList())
+        );
+      addCount += pinMutationSummary.addCount;
+      updateCount += pinMutationSummary.updateCount;
+      removeCount += pinMutationSummary.removeCount;
+      hasMutations = hasMutations || pinMutationSummary.hasMutations();
+      if (pinMutationSummary.dataId == null || pinMutationSummary.addedFeatureIds.isEmpty()) {
+        continue;
+      }
       for (String featureId : pinMutationSummary.addedFeatureIds) {
         LivePinTransition transition = pinFamilyState.livePinTransitionsByMarkerKey.get(featureId);
         if (transition == null || !transition.isAwaitingSourceCommit) {
@@ -2198,7 +2878,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         transition.awaitingSourceDataId = pinMutationSummary.dataId;
       }
     }
-    if (pinMutationSummary.hasMutations()) {
+    if (hasMutations) {
       double durationMs = (System.nanoTime() - prepared.pinStartedAtNs) / 1_000_000d;
       emitVisualDiag(
         instanceId,
@@ -2211,187 +2891,15 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         " pins=" +
         state.lastPinCount +
         " add=" +
-        pinMutationSummary.addCount +
+        addCount +
         " update=" +
-        pinMutationSummary.updateCount +
+        updateCount +
         " remove=" +
-        pinMutationSummary.removeCount +
+        removeCount +
         " durationMs=" +
         Math.round(durationMs)
       );
     }
-  }
-
-  private List<ParsedCollectionApplyPlan> prepareDerivedLabelInteractionOutputPlans(
-    InstanceState state,
-    DesiredPinSnapshotState desiredPinSnapshot
-  ) {
-      DerivedFamilyState labelInteractionFamilyState =
-        derivedFamilyState(state, state.labelInteractionSourceId);
-      DerivedFamilyState labelFamilyState = derivedFamilyState(state, state.labelSourceId);
-      DerivedFamilyState pinFamilyState = derivedFamilyState(state, state.pinSourceId);
-      Map<String, String> stickyCandidateByIdentity =
-        labelFamilyState.labelObservation.stickyCandidateByIdentity;
-      SourceState previousLabelInteractionSourceState = labelInteractionFamilyState.sourceState;
-      Set<String> previousVisibleLabelFeatureIds = new LinkedHashSet<>(labelInteractionFamilyState.collection.idsInOrder);
-      Set<String> visibilityDirtyFeatureIds = new LinkedHashSet<>(previousVisibleLabelFeatureIds);
-      visibilityDirtyFeatureIds.addAll(labelFamilyState.settledVisibleFeatureIds);
-      visibilityDirtyFeatureIds.removeIf(featureId ->
-        previousVisibleLabelFeatureIds.contains(featureId) && labelFamilyState.settledVisibleFeatureIds.contains(featureId)
-      );
-      Set<String> dirtyLabelInteractionMarkerKeys = new LinkedHashSet<>(desiredPinSnapshot.dirtyLabelMarkerKeys);
-      for (String featureId : visibilityDirtyFeatureIds) {
-        String markerKey =
-          desiredPinSnapshot.labelMarkerKeyByFeatureId.containsKey(featureId)
-            ? desiredPinSnapshot.labelMarkerKeyByFeatureId.get(featureId)
-            : labelInteractionFamilyState.collection.markerKeyByFeatureId.get(featureId);
-        if (markerKey != null && !markerKey.isEmpty()) {
-          dirtyLabelInteractionMarkerKeys.add(markerKey);
-        }
-      }
-      boolean markerOrderChanged =
-        !pinFamilyState.lastDesiredPinSnapshot.pinIdsInOrder.equals(desiredPinSnapshot.pinIdsInOrder);
-      ParsedFeatureCollection next;
-      if (dirtyLabelInteractionMarkerKeys.isEmpty() && !markerOrderChanged) {
-        next = labelInteractionFamilyState.collection;
-      } else {
-        Map<String, ArrayList<String>> previousLabelInteractionIdsByMarkerKey = new HashMap<>();
-        for (Map.Entry<String, ArrayList<String>> entry : labelInteractionFamilyState.collection.groupedFeatureIdsByGroup.entrySet()) {
-          previousLabelInteractionIdsByMarkerKey.put(entry.getKey(), new ArrayList<>(entry.getValue()));
-        }
-        ArrayList<String> previousLabelInteractionMarkerOrder =
-          new ArrayList<>(labelInteractionFamilyState.collection.groupOrder);
-        Map<String, ArrayList<String>> nextLabelInteractionIdsByMarkerKey =
-          new HashMap<>(previousLabelInteractionIdsByMarkerKey);
-        Map<String, Feature> nextLabelInteractionFeatureById = new HashMap<>(labelInteractionFamilyState.collection.featureById);
-        Map<String, HashMap<String, Value>> nextLabelInteractionFeatureStateById =
-          new HashMap<>(labelInteractionFamilyState.collection.featureStateById);
-        Map<String, String> nextLabelInteractionMarkerKeyByFeatureId = new HashMap<>(labelInteractionFamilyState.collection.markerKeyByFeatureId);
-        Set<String> removedLabelInteractionGroupIds = new LinkedHashSet<>();
-        for (String markerKey : dirtyLabelInteractionMarkerKeys) {
-          ArrayList<String> previousFeatureIds =
-            previousLabelInteractionIdsByMarkerKey.containsKey(markerKey)
-              ? previousLabelInteractionIdsByMarkerKey.get(markerKey)
-              : new ArrayList<>();
-          for (String featureId : previousFeatureIds) {
-            nextLabelInteractionFeatureById.remove(featureId);
-            nextLabelInteractionFeatureStateById.remove(featureId);
-            nextLabelInteractionMarkerKeyByFeatureId.remove(featureId);
-          }
-          List<FeatureRecord> markerLabelFeatures = desiredPinSnapshot.labelFeaturesByMarkerKey.get(markerKey);
-          ArrayList<String> nextFeatureIds = new ArrayList<>();
-          if (markerLabelFeatures != null) {
-            for (FeatureRecord labelFeature : markerLabelFeatures) {
-              if (!labelFamilyState.settledVisibleFeatureIds.contains(labelFeature.id)) {
-                continue;
-              }
-              nextFeatureIds.add(labelFeature.id);
-              nextLabelInteractionFeatureById.put(labelFeature.id, labelFeature.feature);
-              nextLabelInteractionFeatureStateById.put(
-                labelFeature.id,
-                retainedLabelFeatureState(labelFeature.feature, markerKey, stickyCandidateByIdentity)
-              );
-              nextLabelInteractionMarkerKeyByFeatureId.put(labelFeature.id, markerKey);
-            }
-          }
-          if (nextFeatureIds.isEmpty()) {
-            nextLabelInteractionIdsByMarkerKey.remove(markerKey);
-            if (!previousFeatureIds.isEmpty()) {
-              removedLabelInteractionGroupIds.add(markerKey);
-            }
-            continue;
-          }
-          nextLabelInteractionIdsByMarkerKey.put(markerKey, nextFeatureIds);
-        }
-        Set<String> visibleMarkerKeys = new LinkedHashSet<>();
-        for (Map.Entry<String, ArrayList<String>> entry : nextLabelInteractionIdsByMarkerKey.entrySet()) {
-          if (!entry.getValue().isEmpty()) {
-            visibleMarkerKeys.add(entry.getKey());
-          }
-        }
-        ArrayList<String> nextLabelInteractionMarkerOrder = new ArrayList<>();
-        Set<String> seenMarkerKeys = new LinkedHashSet<>();
-        for (String markerKey : desiredPinSnapshot.pinIdsInOrder) {
-          if (visibleMarkerKeys.contains(markerKey) && seenMarkerKeys.add(markerKey)) {
-            nextLabelInteractionMarkerOrder.add(markerKey);
-          }
-        }
-        for (String markerKey : previousLabelInteractionMarkerOrder) {
-          if (visibleMarkerKeys.contains(markerKey) && seenMarkerKeys.add(markerKey)) {
-            nextLabelInteractionMarkerOrder.add(markerKey);
-          }
-        }
-        ArrayList<String> remainingMarkerKeys = new ArrayList<>(visibleMarkerKeys);
-        Collections.sort(remainingMarkerKeys);
-        for (String markerKey : remainingMarkerKeys) {
-          if (seenMarkerKeys.add(markerKey)) {
-            nextLabelInteractionMarkerOrder.add(markerKey);
-          }
-        }
-        Set<String> orderChangedGroupIds =
-          previousLabelInteractionMarkerOrder.equals(nextLabelInteractionMarkerOrder)
-            ? new LinkedHashSet<>()
-            : new LinkedHashSet<>();
-        if (!previousLabelInteractionMarkerOrder.equals(nextLabelInteractionMarkerOrder)) {
-          orderChangedGroupIds.addAll(previousLabelInteractionMarkerOrder);
-          orderChangedGroupIds.addAll(nextLabelInteractionMarkerOrder);
-        }
-        ArrayList<String> nextLabelInteractionIdsInOrder = new ArrayList<>();
-        if (orderChangedGroupIds.isEmpty()) {
-          Set<String> emittedDirtyMarkerKeys = new LinkedHashSet<>();
-          for (String featureId : labelInteractionFamilyState.collection.idsInOrder) {
-            String markerKey =
-              labelInteractionFamilyState.collection.markerKeyByFeatureId.containsKey(featureId)
-                ? labelInteractionFamilyState.collection.markerKeyByFeatureId.get(featureId)
-                : featureId;
-            if (!dirtyLabelInteractionMarkerKeys.contains(markerKey)) {
-              nextLabelInteractionIdsInOrder.add(featureId);
-              continue;
-            }
-            if (emittedDirtyMarkerKeys.add(markerKey) && nextLabelInteractionIdsByMarkerKey.containsKey(markerKey)) {
-              nextLabelInteractionIdsInOrder.addAll(nextLabelInteractionIdsByMarkerKey.get(markerKey));
-            }
-          }
-        } else {
-          for (String markerKey : nextLabelInteractionMarkerOrder) {
-            ArrayList<String> featureIds = nextLabelInteractionIdsByMarkerKey.get(markerKey);
-            if (featureIds != null && !featureIds.isEmpty()) {
-              nextLabelInteractionIdsInOrder.addAll(featureIds);
-            }
-          }
-        }
-        labelInteractionFamilyState.collection.groupedFeatureIdsByGroup.clear();
-        labelInteractionFamilyState.collection.groupedFeatureIdsByGroup.putAll(nextLabelInteractionIdsByMarkerKey);
-        labelInteractionFamilyState.collection.groupOrder.clear();
-        labelInteractionFamilyState.collection.groupOrder.addAll(nextLabelInteractionMarkerOrder);
-        Set<String> nextLabelInteractionDirtyGroupIds = new LinkedHashSet<>(dirtyLabelInteractionMarkerKeys);
-        nextLabelInteractionDirtyGroupIds.addAll(orderChangedGroupIds);
-        replaceParsedFeatureCollection(
-          labelInteractionFamilyState.collection,
-          previousLabelInteractionSourceState,
-          nextLabelInteractionIdsInOrder,
-          nextLabelInteractionFeatureById,
-          nextLabelInteractionFeatureStateById,
-          nextLabelInteractionMarkerKeyByFeatureId,
-          nextLabelInteractionDirtyGroupIds,
-          orderChangedGroupIds,
-          removedLabelInteractionGroupIds
-        );
-        next = labelInteractionFamilyState.collection;
-      }
-      return Collections.singletonList(
-        new ParsedCollectionApplyPlan(
-          state.labelInteractionSourceId,
-          next,
-          previousLabelInteractionSourceState,
-          previousLabelInteractionSourceState != null
-            ? previousLabelInteractionSourceState.featureStateById
-            : Collections.emptyMap(),
-          previousLabelInteractionSourceState != null
-            ? previousLabelInteractionSourceState.featureStateRevision
-            : ""
-        )
-      );
   }
 
   private static boolean usesFrozenPresentationSnapshot(InstanceState state) {
@@ -2413,12 +2921,14 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     if (
       requestedRevealRequestKey == null ||
       !stringEquals(requestedRevealRequestKey, requestKey) ||
-      mountedHiddenExecutionBatch == null ||
-      !stringEquals(state.activeFrameGenerationId, mountedHiddenExecutionBatch.generationId)
+      mountedHiddenExecutionBatch == null
     ) {
       return;
     }
     if (!stringEquals(state.lastEnterRequestKey, requestKey)) {
+      return;
+    }
+    if (!isActiveFrameSourceReady(state) || !isActiveFrameLabelPlacementReady(state)) {
       return;
     }
     if (stringEquals(state.lastEnterStartedRequestKey, requestKey)) {
@@ -2432,8 +2942,16 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     state.lastEnterStartToken = revealStartToken;
     state.enterLane.entering = mountedHiddenExecutionBatch;
     state.currentPresentationRenderPhase = "entering";
+    state.visualSourceLifecycleState = VISUAL_SOURCE_REVEALING;
+    state.keepSourcesHiddenUntilEnter = false;
     state.currentPresentationOpacityTarget = 1;
     instances.put(instanceId, state);
+    restartLiveEnterTransitionsForRevealStart(instanceId, state);
+    applyLivePinTransitionFeatureStates(instanceId);
+    state = instances.get(instanceId);
+    if (state == null) {
+      return;
+    }
     applyPresentationOpacity(state, state.currentPresentationOpacityTarget);
     state.lastEnterStartedRequestKey = requestKey;
     emitVisualDiag(
@@ -2521,6 +3039,36 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     mainHandler.postDelayed(settledRunnable, REVEAL_SETTLE_DELAY_MS);
   }
 
+  private void startEnterPresentationIfReady(
+    String instanceId,
+    InstanceState state,
+    String previousPresentationBatchPhase,
+    Double previousPresentationOpacityTarget
+  ) throws Exception {
+    String revealRequestKey = state.lastEnterRequestKey;
+    Double revealStartToken = readEnterStartToken(state.lastPresentationStateJson);
+    if (
+      revealRequestKey == null ||
+      revealStartToken == null ||
+      !"entering".equals(readEnterStatus(state.lastPresentationStateJson)) ||
+      !"entering".equals(state.lastPresentationBatchPhase) ||
+      !stringEquals(state.enterLane.requestedRequestKey, revealRequestKey) ||
+      state.enterLane.mountedHidden == null ||
+      doubleEquals(state.lastEnterStartToken, revealStartToken) ||
+      stringEquals(state.lastEnterStartedRequestKey, revealRequestKey) ||
+      state.blockedEnterStartRequestKey != null
+    ) {
+      return;
+    }
+    startEnterPresentation(
+      instanceId,
+      revealRequestKey,
+      revealStartToken.doubleValue(),
+      previousPresentationBatchPhase,
+      previousPresentationOpacityTarget
+    );
+  }
+
   private void emitExecutionBatchMountedHidden(
     String instanceId,
     ExecutionBatchRef executionBatch,
@@ -2546,14 +3094,12 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       " " +
       phaseSummary(state)
     );
-    WritableMap readyEvent = Arguments.createMap();
-    readyEvent.putString("type", "presentation_execution_batch_mounted_hidden");
-    readyEvent.putString("instanceId", instanceId);
-    readyEvent.putString("requestKey", executionBatch.requestKey);
-    readyEvent.putString("frameGenerationId", executionBatch.generationId);
-    readyEvent.putString("executionBatchId", executionBatch.batchId);
-    readyEvent.putDouble("readyAtMs", nowMs());
-    emit(readyEvent);
+    startAwaitingLivePinTransitions(instanceId, null, null, state);
+    startAwaitingLiveDotTransitions(instanceId, null, state);
+    state = instances.get(instanceId);
+    if (state == null) {
+      return;
+    }
     maybeEmitExecutionBatchArmed(instanceId, state);
   }
 
@@ -2583,7 +3129,36 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     if (state.blockedEnterStartRequestKey != null) {
       return;
     }
+    if (hasPendingCommitFence(capturePendingVisualSourceCommitFence(state))) {
+      return;
+    }
     if (!stringEquals(state.activeFrameGenerationId, executionBatch.generationId)) {
+      return;
+    }
+    if (!isActiveFrameSourceReady(state)) {
+      emitVisualDiag(
+        instanceId,
+        "enter_armed_blocked_source_not_ready phase=" +
+        state.lastPresentationBatchPhase +
+        " frame=" +
+        (state.activeFrameGenerationId != null ? state.activeFrameGenerationId : "nil") +
+        " sourceReadyFrame=" +
+        (state.sourceReadyFrameGenerationId != null ? state.sourceReadyFrameGenerationId : "nil") +
+        " " +
+        phaseSummary(state)
+      );
+      return;
+    }
+    if (!isActiveFrameLabelPlacementReady(state)) {
+      emitVisualDiag(
+        instanceId,
+        "enter_armed_blocked_label_placement phase=" +
+        state.lastPresentationBatchPhase +
+        " frame=" +
+        (state.activeFrameGenerationId != null ? state.activeFrameGenerationId : "nil") +
+        " " +
+        labelPlacementReadinessSummary(state)
+      );
       return;
     }
     state.enterLane.armed = executionBatch;
@@ -2597,6 +3172,14 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       " " +
       phaseSummary(state)
     );
+    WritableMap readyEvent = Arguments.createMap();
+    readyEvent.putString("type", "presentation_execution_batch_mounted_hidden");
+    readyEvent.putString("instanceId", instanceId);
+    readyEvent.putString("requestKey", executionBatch.requestKey);
+    readyEvent.putString("frameGenerationId", executionBatch.generationId);
+    readyEvent.putString("executionBatchId", executionBatch.batchId);
+    readyEvent.putDouble("readyAtMs", nowMs());
+    emit(readyEvent);
     WritableMap armedEvent = Arguments.createMap();
     armedEvent.putString("type", "presentation_enter_armed");
     armedEvent.putString("instanceId", instanceId);
@@ -2627,6 +3210,33 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     if (state.activeExecutionBatchId == null || state.activeFrameGenerationId == null) {
       return;
     }
+    if (!isActiveFrameSourceReady(state)) {
+      emitVisualDiag(
+        instanceId,
+        "enter_mount_blocked_source_not_ready phase=" +
+        state.lastPresentationBatchPhase +
+        " frame=" +
+        (state.activeFrameGenerationId != null ? state.activeFrameGenerationId : "nil") +
+        " sourceReadyFrame=" +
+        (state.sourceReadyFrameGenerationId != null ? state.sourceReadyFrameGenerationId : "nil") +
+        " " +
+        phaseSummary(state)
+      );
+      return;
+    }
+    if (!isActiveFrameLabelPlacementReady(state)) {
+      emitVisualDiag(
+        instanceId,
+        "enter_mount_blocked_label_placement phase=" +
+        state.lastPresentationBatchPhase +
+        " frame=" +
+        (state.activeFrameGenerationId != null ? state.activeFrameGenerationId : "nil") +
+        " " +
+        labelPlacementReadinessSummary(state)
+      );
+      retryLabelObservationRefreshIfPlacementPending(instanceId, 0d);
+      return;
+    }
     if (!state.allowEmptyEnter && state.lastPinCount + state.lastDotCount + state.lastLabelCount == 0) {
       return;
     }
@@ -2651,20 +3261,16 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     ParsedFeatureCollection desiredPinInteractions =
       derivedFamilyState(state, state.pinInteractionSourceId).desiredCollection;
     ParsedFeatureCollection desiredDots = derivedFamilyState(state, state.dotSourceId).desiredCollection;
-    ParsedFeatureCollection desiredDotInteractions =
-      derivedFamilyState(state, state.dotInteractionSourceId).desiredCollection;
     ParsedFeatureCollection desiredLabels =
       derivedFamilyState(state, state.labelSourceId).desiredCollection;
     ParsedFeatureCollection desiredLabelCollisions =
       derivedFamilyState(state, state.labelCollisionSourceId).desiredCollection;
-    DerivedFamilyState labelFamilyState = derivedFamilyState(state, state.labelSourceId);
     String desiredPinSnapshotInputRevision =
       desiredPinSnapshotInputRevision(
         desiredPins,
         desiredPinInteractions,
         desiredLabels,
-        desiredLabelCollisions,
-        labelFamilyState.labelObservation.stickyRevision
+        desiredLabelCollisions
       );
     DerivedFamilyState pinFamilyState = derivedFamilyState(state, state.pinSourceId);
     DerivedFamilyState dotFamilyState = derivedFamilyState(state, state.dotSourceId);
@@ -2681,9 +3287,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         desiredPins,
         desiredPinInteractions,
         desiredLabels,
-        desiredLabelCollisions,
-        labelFamilyState.labelObservation.stickyCandidateByIdentity,
-        labelFamilyState.labelObservation.stickyRevision
+        desiredLabelCollisions
       );
     }
     double nowMs = nowMs();
@@ -2701,15 +3305,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       !ensureSourcesReady(
         state,
         instanceId,
-        Arrays.asList(
-          state.pinSourceId,
-          state.pinInteractionSourceId,
-          state.dotSourceId,
-          state.dotInteractionSourceId,
-          state.labelSourceId,
-          state.labelInteractionSourceId,
-          state.labelCollisionSourceId
-        ),
+        visualAndInteractionSourceIds(state),
         "reconcile_outputs",
         true
       )
@@ -2722,13 +3318,10 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       PreparedDerivedPinAndLabelOutput preparedPinAndLabelOutput =
         prepareDerivedPinAndLabelOutput(state, finalDesiredPinSnapshot, nowMs);
       PreparedDerivedDotOutput preparedDotOutput =
-        prepareDerivedDotOutput(state, desiredDots, desiredDotInteractions, nowMs);
-      List<ParsedCollectionApplyPlan> labelInteractionPlans =
-        prepareDerivedLabelInteractionOutputPlans(state, finalDesiredPinSnapshot);
+        prepareDerivedDotOutput(state, desiredDots, nowMs);
       ArrayList<ParsedCollectionApplyPlan> plans = new ArrayList<>();
       plans.addAll(preparedPinAndLabelOutput.plans);
       plans.addAll(preparedDotOutput.plans);
-      plans.addAll(labelInteractionPlans);
       Map<String, MutationSummary> mutationSummaryBySourceId =
         applyParsedCollectionBatch(style, state, instanceId, plans);
       finalizePreparedPinAndLabelOutput(
@@ -2759,12 +3352,9 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
   private PreparedDerivedDotOutput prepareDerivedDotOutput(
     InstanceState state,
     ParsedFeatureCollection desiredDots,
-    ParsedFeatureCollection desiredDotInteractions,
     double nowMs
   ) {
       DerivedFamilyState dotFamilyState = derivedFamilyState(state, state.dotSourceId);
-      DerivedFamilyState dotInteractionFamilyState =
-        derivedFamilyState(state, state.dotInteractionSourceId);
       Map<String, Feature> desiredDotFeatureByMarkerKey = desiredDots.featureById;
       Set<String> dotMarkerKeys = new TreeSet<>(desiredDotFeatureByMarkerKey.keySet());
       dotMarkerKeys.addAll(dotFamilyState.liveDotTransitionsByMarkerKey.keySet());
@@ -2848,60 +3438,6 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         );
         nextDots = dotFamilyState.collection;
       }
-      SourceState previousDotInteractionSourceState = dotInteractionFamilyState.sourceState;
-      ParsedFeatureCollection nextDotInteractions;
-      Set<String> dirtyDotInteractionIds = new LinkedHashSet<>(desiredDotInteractions.dirtyGroupIds);
-      dirtyDotInteractionIds.addAll(desiredDotInteractions.orderChangedGroupIds);
-      dirtyDotInteractionIds.addAll(desiredDotInteractions.removedGroupIds);
-      dirtyDotInteractionIds.addAll(dirtyDotMarkerKeys);
-      if (dirtyDotInteractionIds.isEmpty()) {
-        nextDotInteractions = dotInteractionFamilyState.collection;
-      } else {
-        ArrayList<String> nextDotInteractionIdsInOrder = new ArrayList<>();
-        Map<String, Feature> nextDotInteractionFeatureById = new HashMap<>(dotInteractionFamilyState.collection.featureById);
-        Map<String, String> nextDotInteractionMarkerKeyByFeatureId = new HashMap<>(dotInteractionFamilyState.collection.markerKeyByFeatureId);
-        Set<String> nextDotInteractionIdSet = new LinkedHashSet<>();
-        for (String featureId : desiredDotInteractions.idsInOrder) {
-          Feature feature = desiredDotInteractions.featureById.get(featureId);
-          if (feature == null || !desiredDotFeatureByMarkerKey.containsKey(featureId)) {
-            continue;
-          }
-          nextDotInteractionIdsInOrder.add(featureId);
-          nextDotInteractionIdSet.add(featureId);
-          if (dirtyDotInteractionIds.contains(featureId)) {
-            nextDotInteractionFeatureById.put(featureId, feature);
-            nextDotInteractionMarkerKeyByFeatureId.put(
-              featureId,
-              desiredDotInteractions.markerKeyByFeatureId.getOrDefault(featureId, featureId)
-            );
-          }
-        }
-        for (String retainedDotInteractionId : dirtyDotInteractionIds) {
-          if (nextDotInteractionIdSet.contains(retainedDotInteractionId)) {
-            continue;
-          }
-          nextDotInteractionFeatureById.remove(retainedDotInteractionId);
-          nextDotInteractionMarkerKeyByFeatureId.remove(retainedDotInteractionId);
-        }
-        Set<String> removedDotInteractionGroupIds = new LinkedHashSet<>();
-        for (String featureId : dirtyDotInteractionIds) {
-          if (!nextDotInteractionIdSet.contains(featureId)) {
-            removedDotInteractionGroupIds.add(featureId);
-          }
-        }
-        replaceParsedFeatureCollection(
-          dotInteractionFamilyState.collection,
-          previousDotInteractionSourceState,
-          nextDotInteractionIdsInOrder,
-          nextDotInteractionFeatureById,
-          new HashMap<>(),
-          nextDotInteractionMarkerKeyByFeatureId,
-          dirtyDotInteractionIds,
-          dirtyDotInteractionIds,
-          removedDotInteractionGroupIds
-        );
-        nextDotInteractions = dotInteractionFamilyState.collection;
-      }
       return new PreparedDerivedDotOutput(
         Arrays.asList(
           new ParsedCollectionApplyPlan(
@@ -2913,17 +3449,6 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
               : Collections.emptyMap(),
             previousDotSourceState != null
               ? previousDotSourceState.featureStateRevision
-              : ""
-          ),
-          new ParsedCollectionApplyPlan(
-            state.dotInteractionSourceId,
-            nextDotInteractions,
-            previousDotInteractionSourceState,
-            previousDotInteractionSourceState != null
-              ? previousDotInteractionSourceState.featureStateById
-              : Collections.emptyMap(),
-            previousDotInteractionSourceState != null
-              ? previousDotInteractionSourceState.featureStateRevision
               : ""
           )
         ),
@@ -2962,9 +3487,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     ParsedFeatureCollection desiredPins,
     ParsedFeatureCollection desiredPinInteractions,
     ParsedFeatureCollection desiredLabels,
-    ParsedFeatureCollection desiredLabelCollisions,
-    Map<String, String> stickyCandidateByIdentity,
-    int stickyRevision
+    ParsedFeatureCollection desiredLabelCollisions
   ) {
     Map<String, String> previousPinFeatureRevisionByMarkerKey = new HashMap<>(snapshot.pinFeatureRevisionByMarkerKey);
     Map<String, String> previousPinInteractionFeatureRevisionByMarkerKey = new HashMap<>(snapshot.pinInteractionFeatureRevisionByMarkerKey);
@@ -2977,8 +3500,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         desiredPins,
         desiredPinInteractions,
         desiredLabels,
-        desiredLabelCollisions,
-        stickyRevision
+        desiredLabelCollisions
       );
     snapshot.dirtyPinMarkerKeys.clear();
     snapshot.dirtyPinInteractionMarkerKeys.clear();
@@ -3091,11 +3613,6 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
               hash,
               desiredLabels.diffKeyById.containsKey(record.id) ? desiredLabels.diffKeyById.get(record.id) : ""
             );
-          hash =
-            fnv1a64Append(
-              hash,
-              effectiveLabelPreference(record.feature, markerKey, stickyCandidateByIdentity)
-            );
         }
       }
       String revision = finishHashedRevision(hash, labelFeatures != null ? labelFeatures.size() : 0);
@@ -3151,8 +3668,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     ParsedFeatureCollection desiredPins,
     ParsedFeatureCollection desiredPinInteractions,
     ParsedFeatureCollection desiredLabels,
-    ParsedFeatureCollection desiredLabelCollisions,
-    int stickyRevision
+    ParsedFeatureCollection desiredLabelCollisions
   ) {
     long hash = FNV1A64_OFFSET_BASIS;
     hash = fnv1a64Append(hash, "pins");
@@ -3163,9 +3679,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     hash = fnv1a64Append(hash, desiredLabels.sourceRevision);
     hash = fnv1a64Append(hash, "labelCollisions");
     hash = fnv1a64Append(hash, desiredLabelCollisions.sourceRevision);
-    hash = fnv1a64Append(hash, "stickyRevision");
-    hash = fnv1a64Append(hash, Integer.toString(stickyRevision));
-    return finishHashedRevision(hash, 5);
+    return finishHashedRevision(hash, 4);
   }
 
   private static double valueToDouble(Value value, double fallback) {
@@ -3425,10 +3939,11 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
 
   private void updateLivePinTransitionAnimation(String instanceId, InstanceState state) {
     if (
-      state.isAwaitingSourceRecovery ||
+      isVisualSourceInactiveOrDismissing(state) ||
+      isSourceRecoveryActive(state) ||
       (derivedFamilyState(state, state.pinSourceId).livePinTransitionsByMarkerKey.isEmpty() &&
         derivedFamilyState(state, state.dotSourceId).liveDotTransitionsByMarkerKey.isEmpty()) ||
-      !"live".equals(state.lastPresentationBatchPhase)
+      !isLivePinTransitionPhase(state)
     ) {
       cancelLivePinTransitionAnimation(instanceId);
       return;
@@ -3444,9 +3959,11 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
           InstanceState latestState = instances.get(instanceId);
           if (
             latestState == null ||
+            isVisualSourceInactiveOrDismissing(latestState) ||
+            isSourceRecoveryActive(latestState) ||
             (derivedFamilyState(latestState, latestState.pinSourceId).livePinTransitionsByMarkerKey.isEmpty() &&
               derivedFamilyState(latestState, latestState.dotSourceId).liveDotTransitionsByMarkerKey.isEmpty()) ||
-            !"live".equals(latestState.lastPresentationBatchPhase)
+            !isLivePinTransitionPhase(latestState)
           ) {
             cancelLivePinTransitionAnimation(instanceId);
             return;
@@ -3525,6 +4042,58 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     );
   }
 
+  private void restartLiveEnterTransitionsForRevealStart(String instanceId, InstanceState state) {
+    double nowMs = nowMs();
+    int restartedPinCount = 0;
+    int restartedDotCount = 0;
+    DerivedFamilyState pinFamilyState = derivedFamilyState(state, state.pinSourceId);
+    DerivedFamilyState dotFamilyState = derivedFamilyState(state, state.dotSourceId);
+
+    ArrayList<String> pinMarkerKeys = new ArrayList<>(pinFamilyState.livePinTransitionsByMarkerKey.keySet());
+    Collections.sort(pinMarkerKeys);
+    for (String markerKey : pinMarkerKeys) {
+      LivePinTransition transition = pinFamilyState.livePinTransitionsByMarkerKey.get(markerKey);
+      if (
+        transition == null ||
+        transition.isAwaitingSourceCommit ||
+        transition.targetOpacity < 0.999d
+      ) {
+        continue;
+      }
+      transition.startOpacity = 0d;
+      transition.startedAtMs = nowMs;
+      restartedPinCount += 1;
+    }
+
+    ArrayList<String> dotMarkerKeys = new ArrayList<>(dotFamilyState.liveDotTransitionsByMarkerKey.keySet());
+    Collections.sort(dotMarkerKeys);
+    for (String markerKey : dotMarkerKeys) {
+      LiveDotTransition transition = dotFamilyState.liveDotTransitionsByMarkerKey.get(markerKey);
+      if (
+        transition == null ||
+        transition.isAwaitingSourceCommit ||
+        transition.targetOpacity < 0.999d
+      ) {
+        continue;
+      }
+      transition.startOpacity = 0d;
+      transition.startedAtMs = nowMs;
+      restartedDotCount += 1;
+    }
+
+    if (restartedPinCount == 0 && restartedDotCount == 0) {
+      return;
+    }
+    instances.put(instanceId, state);
+    emitVisualDiag(
+      instanceId,
+      "live_enter_transition_restarted pinCount=" +
+      restartedPinCount +
+      " dotCount=" +
+      restartedDotCount
+    );
+  }
+
   private static HashMap<String, Value> livePinFeatureState(double opacity) {
     HashMap<String, Value> state = new HashMap<>();
     state.put("nativeLodOpacity", Value.valueOf(opacity));
@@ -3550,11 +4119,12 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       state.pinSourceId,
       state.pinInteractionSourceId,
       state.dotSourceId,
-      state.dotInteractionSourceId,
       state.labelSourceId,
-      state.labelInteractionSourceId,
       state.labelCollisionSourceId
     )) {
+      state.derivedFamilyStates.put(sourceId, new DerivedFamilyState());
+    }
+    for (String sourceId : state.pinSlotSourceIds) {
       state.derivedFamilyStates.put(sourceId, new DerivedFamilyState());
     }
   }
@@ -3612,6 +4182,240 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     }
   }
 
+  private static void markLogicalFamilyCollectionResident(DerivedFamilyState familyState) {
+    SourceState sourceState = sourceStateFromCollection(familyState.collection);
+    familyState.sourceState = sourceState;
+    syncCollectionMetadataFromMountedSourceState(familyState.desiredCollection, sourceState);
+    syncCollectionMetadataFromMountedSourceState(familyState.collection, sourceState);
+  }
+
+  private static Integer slotIndexFromFeature(Feature feature) {
+    if (feature == null) {
+      return null;
+    }
+    try {
+      Number nativeLodZ = feature.getNumberProperty("nativeLodZ");
+      if (nativeLodZ != null) {
+        return nativeLodZ.intValue();
+      }
+    } catch (Exception ignored) {
+    }
+    try {
+      Number lodZ = feature.getNumberProperty("lodZ");
+      if (lodZ != null) {
+        return lodZ.intValue();
+      }
+    } catch (Exception ignored) {
+    }
+    return null;
+  }
+
+  private static String slotSourceId(List<String> sourceIds, int slotIndex) {
+    if (slotIndex < 0 || slotIndex >= sourceIds.size()) {
+      return null;
+    }
+    return sourceIds.get(slotIndex);
+  }
+
+  private static ArrayList<ParsedCollectionApplyPlan> buildSlotApplyPlans(
+    InstanceState state,
+    List<String> sourceIds,
+    ParsedFeatureCollection nextCollection
+  ) {
+    ArrayList<ParsedCollectionApplyPlan> plans = new ArrayList<>();
+    if (sourceIds.isEmpty()) {
+      return plans;
+    }
+    LinkedHashSet<String> changedGroupIds = new LinkedHashSet<>(nextCollection.dirtyGroupIds);
+    changedGroupIds.addAll(nextCollection.removedGroupIds);
+    if (changedGroupIds.isEmpty()) {
+      return plans;
+    }
+
+    ArrayList<LinkedHashSet<String>> nextGroupIdsBySlot = new ArrayList<>();
+    ArrayList<Map<String, ArrayList<String>>> desiredFeatureIdsByGroupBySlot = new ArrayList<>();
+    ArrayList<Map<String, Feature>> dirtyFeatureByIdBySlot = new ArrayList<>();
+    ArrayList<Map<String, HashMap<String, Value>>> dirtyFeatureStateByIdBySlot = new ArrayList<>();
+    ArrayList<Map<String, String>> dirtyMarkerKeyByFeatureIdBySlot = new ArrayList<>();
+    for (int slotIndex = 0; slotIndex < sourceIds.size(); slotIndex += 1) {
+      nextGroupIdsBySlot.add(new LinkedHashSet<>());
+      desiredFeatureIdsByGroupBySlot.add(new HashMap<>());
+      dirtyFeatureByIdBySlot.add(new HashMap<>());
+      dirtyFeatureStateByIdBySlot.add(new HashMap<>());
+      dirtyMarkerKeyByFeatureIdBySlot.add(new HashMap<>());
+    }
+
+    TreeSet<Integer> affectedSlotIndexes = new TreeSet<>();
+    for (String groupId : changedGroupIds) {
+      for (int slotIndex = 0; slotIndex < sourceIds.size(); slotIndex += 1) {
+        DerivedFamilyState familyState = derivedFamilyState(state, sourceIds.get(slotIndex));
+        if (familyState.collection.groupedFeatureIdsByGroup.containsKey(groupId)) {
+          affectedSlotIndexes.add(slotIndex);
+        }
+      }
+
+      ArrayList<String> groupFeatureIds = nextCollection.groupedFeatureIdsByGroup.get(groupId);
+      if (groupFeatureIds == null || groupFeatureIds.isEmpty()) {
+        continue;
+      }
+      Integer nextSlotIndex = null;
+      for (String featureId : groupFeatureIds) {
+        Feature feature = nextCollection.featureById.get(featureId);
+        Integer slotIndex = slotIndexFromFeature(feature);
+        if (slotIndex == null || slotIndex < 0 || slotIndex >= sourceIds.size()) {
+          continue;
+        }
+        nextSlotIndex = slotIndex;
+        break;
+      }
+      if (nextSlotIndex == null) {
+        continue;
+      }
+      affectedSlotIndexes.add(nextSlotIndex);
+      nextGroupIdsBySlot.get(nextSlotIndex).add(groupId);
+      desiredFeatureIdsByGroupBySlot.get(nextSlotIndex).put(groupId, new ArrayList<>(groupFeatureIds));
+      for (String featureId : groupFeatureIds) {
+        Feature feature = nextCollection.featureById.get(featureId);
+        if (feature == null) {
+          continue;
+        }
+        dirtyFeatureByIdBySlot.get(nextSlotIndex).put(featureId, feature);
+        HashMap<String, Value> featureState = nextCollection.featureStateById.get(featureId);
+        if (featureState != null && !featureState.isEmpty()) {
+          dirtyFeatureStateByIdBySlot.get(nextSlotIndex).put(featureId, featureState);
+        }
+        String markerKey = nextCollection.markerKeyByFeatureId.containsKey(featureId)
+          ? nextCollection.markerKeyByFeatureId.get(featureId)
+          : groupId;
+        dirtyMarkerKeyByFeatureIdBySlot.get(nextSlotIndex).put(featureId, markerKey);
+      }
+    }
+
+    ArrayList<String> orderedChangedGroupIds = new ArrayList<>();
+    for (String groupId : nextCollection.groupOrder) {
+      if (changedGroupIds.contains(groupId)) {
+        orderedChangedGroupIds.add(groupId);
+      }
+    }
+
+    for (int slotIndex : affectedSlotIndexes) {
+      String sourceId = sourceIds.get(slotIndex);
+      DerivedFamilyState familyState = derivedFamilyState(state, sourceId);
+      SourceState previousSourceState = familyState.sourceState;
+      ArrayList<String> idsInOrder = new ArrayList<>();
+      Map<String, Feature> featureById = new HashMap<>(familyState.collection.featureById);
+      Map<String, HashMap<String, Value>> featureStateById =
+        new HashMap<>(familyState.collection.featureStateById);
+      Map<String, String> markerKeyByFeatureId =
+        new HashMap<>(familyState.collection.markerKeyByFeatureId);
+      ArrayList<String> desiredGroupOrder = new ArrayList<>();
+      for (String existingGroupId : familyState.collection.groupOrder) {
+        if (!changedGroupIds.contains(existingGroupId)) {
+          desiredGroupOrder.add(existingGroupId);
+        }
+      }
+      for (String groupId : orderedChangedGroupIds) {
+        if (nextGroupIdsBySlot.get(slotIndex).contains(groupId) && !desiredGroupOrder.contains(groupId)) {
+          desiredGroupOrder.add(groupId);
+        }
+      }
+
+      LinkedHashSet<String> previousGroupIds = new LinkedHashSet<>(familyState.collection.groupOrder);
+      LinkedHashSet<String> nextGroupIds = new LinkedHashSet<>(desiredGroupOrder);
+      LinkedHashSet<String> removedGroupIds = new LinkedHashSet<>(previousGroupIds);
+      removedGroupIds.removeAll(nextGroupIds);
+      LinkedHashSet<String> addedGroupIds = new LinkedHashSet<>(nextGroupIds);
+      addedGroupIds.removeAll(previousGroupIds);
+      for (String groupId : removedGroupIds) {
+        ArrayList<String> previousFeatureIds = familyState.collection.groupedFeatureIdsByGroup.get(groupId);
+        if (previousFeatureIds == null) {
+          continue;
+        }
+        for (String featureId : previousFeatureIds) {
+          featureById.remove(featureId);
+          featureStateById.remove(featureId);
+          markerKeyByFeatureId.remove(featureId);
+        }
+      }
+      for (String groupId : nextGroupIdsBySlot.get(slotIndex)) {
+        ArrayList<String> nextFeatureIds = desiredFeatureIdsByGroupBySlot.get(slotIndex).get(groupId);
+        if (nextFeatureIds == null) {
+          continue;
+        }
+        ArrayList<String> previousFeatureIds = familyState.collection.groupedFeatureIdsByGroup.get(groupId);
+        if (previousFeatureIds != null) {
+          for (String featureId : previousFeatureIds) {
+            if (nextFeatureIds.contains(featureId)) {
+              continue;
+            }
+            featureById.remove(featureId);
+            featureStateById.remove(featureId);
+            markerKeyByFeatureId.remove(featureId);
+          }
+        }
+        featureById.putAll(dirtyFeatureByIdBySlot.get(slotIndex));
+        featureStateById.putAll(dirtyFeatureStateByIdBySlot.get(slotIndex));
+        markerKeyByFeatureId.putAll(dirtyMarkerKeyByFeatureIdBySlot.get(slotIndex));
+      }
+      for (String groupId : desiredGroupOrder) {
+        ArrayList<String> featureIds =
+          desiredFeatureIdsByGroupBySlot.get(slotIndex).containsKey(groupId)
+            ? desiredFeatureIdsByGroupBySlot.get(slotIndex).get(groupId)
+            : familyState.collection.groupedFeatureIdsByGroup.get(groupId);
+        if (featureIds != null) {
+          idsInOrder.addAll(featureIds);
+        }
+      }
+      LinkedHashSet<String> dirtyGroupIds = new LinkedHashSet<>(nextGroupIdsBySlot.get(slotIndex));
+      dirtyGroupIds.addAll(removedGroupIds);
+      dirtyGroupIds.addAll(addedGroupIds);
+      LinkedHashSet<String> orderChangedGroupIds = new LinkedHashSet<>(dirtyGroupIds);
+
+      if (
+        familyState.collection.groupOrder.equals(desiredGroupOrder) &&
+        dirtyGroupIds.isEmpty() &&
+        orderChangedGroupIds.isEmpty() &&
+        removedGroupIds.isEmpty()
+      ) {
+        continue;
+      }
+
+      replaceParsedFeatureCollection(
+        familyState.collection,
+        previousSourceState,
+        idsInOrder,
+        featureById,
+        featureStateById,
+        markerKeyByFeatureId,
+        dirtyGroupIds,
+        orderChangedGroupIds,
+        removedGroupIds
+      );
+      if (
+        previousSourceState != null &&
+        Objects.equals(previousSourceState.sourceRevision, familyState.collection.sourceRevision) &&
+        Objects.equals(previousSourceState.featureStateRevision, familyState.collection.featureStateRevision)
+      ) {
+        continue;
+      }
+      plans.add(
+        new ParsedCollectionApplyPlan(
+          sourceId,
+          familyState.collection,
+          previousSourceState,
+          previousSourceState != null
+            ? previousSourceState.featureStateById
+            : Collections.emptyMap(),
+          previousSourceState != null
+            ? previousSourceState.featureStateRevision
+            : "",
+          true
+        )
+      );
+    }
+    return plans;
+  }
+
   private static void applyTransientFeatureState(
     SourceState sourceState,
     DerivedFamilyState familyState,
@@ -3627,6 +4431,26 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     );
     if (!mergedState.equals(previousState)) {
       applyList.add(new AbstractMap.SimpleImmutableEntry<>(featureId, mergedState));
+    }
+    familyState.transientFeatureStateById.put(featureId, transientState);
+  }
+
+  private static void applyTransientFeatureState(
+    SourceState sourceState,
+    DerivedFamilyState familyState,
+    String sourceId,
+    String featureId,
+    HashMap<String, Value> transientState,
+    ArrayList<FeatureStateApply> applyList
+  ) {
+    HashMap<String, Value> previousState = sourceState.featureStateById.get(featureId);
+    HashMap<String, Value> mergedState = applyRetainedFeatureStatePatch(
+      sourceState,
+      featureId,
+      transientState
+    );
+    if (!mergedState.equals(previousState)) {
+      applyList.add(new FeatureStateApply(sourceId, featureId, mergedState));
     }
     familyState.transientFeatureStateById.put(featureId, transientState);
   }
@@ -3700,7 +4524,15 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     );
   }
 
-  private void startAwaitingLivePinTransitions(String instanceId, String dataId, InstanceState state) {
+  private void startAwaitingLivePinTransitions(
+    String instanceId,
+    String sourceId,
+    String dataId,
+    InstanceState state
+  ) {
+    if (isVisualSourceInactiveOrDismissing(state)) {
+      return;
+    }
     double nowMs = nowMs();
     boolean didStart = false;
     DerivedFamilyState pinFamilyState = derivedFamilyState(state, state.pinSourceId);
@@ -3710,7 +4542,10 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     for (Map.Entry<String, LivePinTransition> entry : pinFamilyState.livePinTransitionsByMarkerKey.entrySet()) {
       if (
         !entry.getValue().isAwaitingSourceCommit ||
-        !shouldAcknowledgePendingCommitDataId(entry.getValue().awaitingSourceDataId, state.pinSourceId, dataId)
+        (
+          sourceId != null &&
+          !shouldStartAwaitingTransition(entry.getValue().awaitingSourceDataId, sourceId, dataId)
+        )
       ) {
         continue;
       }
@@ -3745,6 +4580,9 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
   }
 
   private void startAwaitingLiveDotTransitions(String instanceId, String dataId, InstanceState state) {
+    if (isVisualSourceInactiveOrDismissing(state)) {
+      return;
+    }
     double nowMs = nowMs();
     boolean didStart = false;
     DerivedFamilyState dotFamilyState = derivedFamilyState(state, state.dotSourceId);
@@ -3752,7 +4590,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     for (Map.Entry<String, LiveDotTransition> entry : dotFamilyState.liveDotTransitionsByMarkerKey.entrySet()) {
       if (
         !entry.getValue().isAwaitingSourceCommit ||
-        !shouldAcknowledgePendingCommitDataId(entry.getValue().awaitingSourceDataId, state.dotSourceId, dataId)
+        !shouldStartAwaitingTransition(entry.getValue().awaitingSourceDataId, state.dotSourceId, dataId)
       ) {
         continue;
       }
@@ -3781,7 +4619,12 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     if (state == null) {
       return;
     }
-    if (state.isAwaitingSourceRecovery) {
+    if (isVisualSourceInactiveOrDismissing(state)) {
+      instances.put(instanceId, state);
+      cancelLivePinTransitionAnimation(instanceId);
+      return;
+    }
+    if (isSourceRecoveryActive(state)) {
       instances.put(instanceId, state);
       cancelLivePinTransitionAnimation(instanceId);
       return;
@@ -3790,7 +4633,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       !ensureSourcesReady(
         state,
         instanceId,
-        Arrays.asList(state.pinSourceId, state.dotSourceId, state.labelSourceId),
+        visualSourceIds(state),
         "live_pin_transition_feature_states",
         false
       )
@@ -3817,9 +4660,9 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     ArrayList<String> completedExitMarkerKeys = new ArrayList<>();
     ArrayList<String> completedDotEnterMarkerKeys = new ArrayList<>();
     ArrayList<String> completedDotExitMarkerKeys = new ArrayList<>();
-    ArrayList<Map.Entry<String, HashMap<String, Value>>> featureStatesToApply = new ArrayList<>();
+    ArrayList<FeatureStateApply> featureStatesToApply = new ArrayList<>();
     ArrayList<Map.Entry<String, HashMap<String, Value>>> dotFeatureStatesToApply = new ArrayList<>();
-    ArrayList<Map.Entry<String, HashMap<String, Value>>> labelFeatureStatesToApply = new ArrayList<>();
+    ArrayList<FeatureStateApply> labelFeatureStatesToApply = new ArrayList<>();
     boolean pinSourceFeatureStateChanged = false;
     boolean dotSourceFeatureStateChanged = false;
     boolean labelSourceFeatureStateChanged = false;
@@ -3831,10 +4674,23 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         continue;
       }
       double opacity = livePinTransitionOpacity(transition, nowMs);
+      String pinPhysicalSourceId = slotSourceId(state.pinSlotSourceIds, transition.lodZ);
+      String labelPhysicalSourceId = slotSourceId(state.pinSlotSourceIds, transition.lodZ);
+      if (pinPhysicalSourceId == null || labelPhysicalSourceId == null) {
+        emitError(
+          instanceId,
+          "live_pin_transition_invalid_slot markerKey=" +
+          markerKey +
+          " lodZ=" +
+          transition.lodZ
+        );
+        continue;
+      }
       int previousPinApplyCount = featureStatesToApply.size();
       applyTransientFeatureState(
         pinSourceState,
         pinFamilyState,
+        pinPhysicalSourceId,
         markerKey,
         livePinFeatureState(opacity),
         featureStatesToApply
@@ -3847,6 +4703,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         applyTransientFeatureState(
           labelSourceState,
           labelFamilyState,
+          labelPhysicalSourceId,
           labelFeature.id,
           liveLabelFeatureState(opacity),
           labelFeatureStatesToApply
@@ -3906,10 +4763,16 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       if (mapView == null) {
         throw new IllegalStateException("Map view not found for react tag " + state.mapTag);
       }
-      for (Map.Entry<String, HashMap<String, Value>> featureStateEntry : featureStatesToApply) {
+      for (FeatureStateApply featureStateEntry : featureStatesToApply) {
         mapView
           .getMapboxMap()
-          .setFeatureState(state.pinSourceId, null, featureStateEntry.getKey(), Value.valueOf(featureStateEntry.getValue()), result -> { });
+          .setFeatureState(
+            featureStateEntry.sourceId,
+            null,
+            featureStateEntry.featureId,
+            Value.valueOf(featureStateEntry.state),
+            result -> { }
+          );
       }
     }
     if (!dotFeatureStatesToApply.isEmpty()) {
@@ -3928,10 +4791,16 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       if (mapView == null) {
         throw new IllegalStateException("Map view not found for react tag " + state.mapTag);
       }
-      for (Map.Entry<String, HashMap<String, Value>> featureStateEntry : labelFeatureStatesToApply) {
+      for (FeatureStateApply featureStateEntry : labelFeatureStatesToApply) {
         mapView
           .getMapboxMap()
-          .setFeatureState(state.labelSourceId, null, featureStateEntry.getKey(), Value.valueOf(featureStateEntry.getValue()), result -> { });
+          .setFeatureState(
+            featureStateEntry.sourceId,
+            null,
+            featureStateEntry.featureId,
+            Value.valueOf(featureStateEntry.state),
+            result -> { }
+          );
       }
     }
 
@@ -4220,52 +5089,589 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     return updatedFeature;
   }
 
-  private static String effectiveLabelPreference(
+  private static Feature featureWithStringProperties(
     Feature feature,
-    String markerKey,
-    Map<String, String> stickyCandidateByIdentity
+    String id,
+    Map<String, String> stringProperties
   ) {
-    JsonObject properties = feature.properties();
-    String restaurantId =
-      properties != null && properties.has("restaurantId") && properties.get("restaurantId").isJsonPrimitive()
-        ? properties.get("restaurantId").getAsString()
-        : null;
-    String stickyIdentityKey = buildLabelStickyIdentityKey(restaurantId, markerKey);
-    if (stickyIdentityKey != null) {
-      String stickyCandidate = normalizeRenderedLabelCandidate(stickyCandidateByIdentity.get(stickyIdentityKey));
-      if (stickyCandidate != null) {
-        return stickyCandidate;
+    JsonObject properties = feature.properties() != null ? feature.properties().deepCopy() : new JsonObject();
+    Feature updatedFeature = Feature.fromGeometry(feature.geometry(), properties, id, feature.bbox());
+    for (Map.Entry<String, String> entry : stringProperties.entrySet()) {
+      updatedFeature.addStringProperty(entry.getKey(), entry.getValue());
+    }
+    return updatedFeature;
+  }
+
+  private static String promotedPinInteractionFeatureId(String markerKey) {
+    return markerKey + "::pinInteraction";
+  }
+
+  private static void appendPromotedSlotFeature(
+    ArrayList<String> idsInOrder,
+    Map<String, Feature> featureById,
+    Map<String, HashMap<String, Value>> featureStateById,
+    Map<String, String> markerKeyByFeatureId,
+    ParsedFeatureCollection sourceCollection,
+    String sourceFeatureId,
+    String targetFeatureId,
+    String markerKey,
+    String kind
+  ) {
+    Feature sourceFeature = sourceCollection.featureById.get(sourceFeatureId);
+    if (sourceFeature == null) {
+      return;
+    }
+    idsInOrder.add(targetFeatureId);
+    featureById.put(
+      targetFeatureId,
+      featureWithStringProperties(
+        sourceFeature,
+        targetFeatureId,
+        Collections.singletonMap("nativeSlotFeatureKind", kind)
+      )
+    );
+    if (sourceCollection.featureStateById.containsKey(sourceFeatureId)) {
+      featureStateById.put(
+        targetFeatureId,
+        new HashMap<>(sourceCollection.featureStateById.get(sourceFeatureId))
+      );
+    }
+    markerKeyByFeatureId.put(targetFeatureId, markerKey);
+  }
+
+  private static ParsedFeatureCollection makePromotedSlotCollection(
+    List<String> orderedMarkerKeys,
+    ParsedFeatureCollection pins,
+    ParsedFeatureCollection pinInteractions,
+    ParsedFeatureCollection labels
+  ) {
+    ArrayList<String> idsInOrder = new ArrayList<>();
+    Map<String, Feature> featureById = new HashMap<>();
+    Map<String, HashMap<String, Value>> featureStateById = new HashMap<>();
+    Map<String, String> markerKeyByFeatureId = new HashMap<>();
+    Map<String, ArrayList<String>> labelIdsByMarkerKey = new HashMap<>();
+    for (String labelFeatureId : labels.idsInOrder) {
+      String markerKey =
+        labels.markerKeyByFeatureId.containsKey(labelFeatureId)
+          ? labels.markerKeyByFeatureId.get(labelFeatureId)
+          : labelFeatureId;
+      labelIdsByMarkerKey.computeIfAbsent(markerKey, ignored -> new ArrayList<>()).add(labelFeatureId);
+    }
+    for (String markerKey : orderedMarkerKeys) {
+      appendPromotedSlotFeature(
+        idsInOrder,
+        featureById,
+        featureStateById,
+        markerKeyByFeatureId,
+        pins,
+        markerKey,
+        markerKey,
+        markerKey,
+        "pin"
+      );
+      appendPromotedSlotFeature(
+        idsInOrder,
+        featureById,
+        featureStateById,
+        markerKeyByFeatureId,
+        pinInteractions,
+        markerKey,
+        promotedPinInteractionFeatureId(markerKey),
+        markerKey,
+        "pinInteraction"
+      );
+      ArrayList<String> labelFeatureIds = labelIdsByMarkerKey.get(markerKey);
+      if (labelFeatureIds != null) {
+        for (String labelFeatureId : labelFeatureIds) {
+          appendPromotedSlotFeature(
+            idsInOrder,
+            featureById,
+            featureStateById,
+            markerKeyByFeatureId,
+            labels,
+            labelFeatureId,
+            labelFeatureId,
+            markerKey,
+            "label"
+          );
+        }
       }
     }
-    return "bottom";
+    ParsedFeatureCollection promotedSlotCollection = new ParsedFeatureCollection();
+    replaceParsedFeatureCollection(
+      promotedSlotCollection,
+      null,
+      idsInOrder,
+      featureById,
+      featureStateById,
+      markerKeyByFeatureId,
+      new LinkedHashSet<>(),
+      new LinkedHashSet<>(),
+      new LinkedHashSet<>()
+    );
+    return promotedSlotCollection;
   }
 
   private static HashMap<String, Value> retainedLabelFeatureState(
     Feature feature,
-    String markerKey,
-    Map<String, String> stickyCandidateByIdentity
+    String markerKey
   ) {
-    HashMap<String, Value> state = new HashMap<>();
-    state.put(
-      "nativeLabelPreference",
-      Value.valueOf(effectiveLabelPreference(feature, markerKey, stickyCandidateByIdentity))
-    );
-    return state;
+    return new HashMap<>();
   }
 
   private void applyInteractionSuppression(InstanceState state) throws Exception {
-    applySnapshots(
-      state,
-      new String[][] {
-        { state.pinInteractionSourceId, EMPTY_FEATURE_COLLECTION_JSON },
-        { state.dotInteractionSourceId, EMPTY_FEATURE_COLLECTION_JSON },
-        { state.labelInteractionSourceId, EMPTY_FEATURE_COLLECTION_JSON },
+    // Generic suppression disables native press resolution through interactionMode. Like iOS,
+    // the mounted interaction geometry stays resident through profile/camera transitions so
+    // debug hit mirrors do not flash or republish. Terminal dismiss owns explicit source clear.
+  }
+
+  private void clearDismissLifecycleRequestForEnter(String instanceId, InstanceState state) {
+    Runnable dismissRunnable = dismissSettleRunnables.remove(instanceId);
+    if (dismissRunnable != null) {
+      mainHandler.removeCallbacks(dismissRunnable);
+    }
+    Runnable dismissFrameFallback = dismissFrameFallbackRunnables.remove(instanceId);
+    if (dismissFrameFallback != null) {
+      mainHandler.removeCallbacks(dismissFrameFallback);
+    }
+    Runnable deferredDismissCleanup = deferredDismissSourceCleanupRunnables.remove(instanceId);
+    if (deferredDismissCleanup != null) {
+      mainHandler.removeCallbacks(deferredDismissCleanup);
+    }
+    state.lastDismissRequestKey = null;
+    state.pendingPresentationSettleRequestKey = null;
+    state.pendingPresentationSettleKind = null;
+    state.blockedPresentationSettleRequestKey = null;
+    state.blockedPresentationSettleKind = null;
+    state.blockedPresentationCommitFenceDataIdsBySourceId.clear();
+  }
+
+  private void beginRevealVisualLifecycle(
+    String instanceId,
+    InstanceState state,
+    String reason
+  ) throws Exception {
+    Runnable deferredDismissCleanup = deferredDismissSourceCleanupRunnables.remove(instanceId);
+    if (deferredDismissCleanup != null) {
+      mainHandler.removeCallbacks(deferredDismissCleanup);
+    }
+    resetLiveMarkerEnterState(instanceId, state, reason);
+    setLabelCollisionObstacleLayersVisible(true, state, instanceId, "reveal_preroll");
+    state.labelCollisionObstacleLayersVisible = true;
+    state.visualSourceLifecycleState = VISUAL_SOURCE_PREPARING_REVEAL;
+    state.keepSourcesHiddenUntilEnter = false;
+    state.currentPresentationRenderPhase = "reveal_preroll";
+    state.currentPresentationOpacityTarget = REVEAL_PREROLL_PLACEMENT_OPACITY;
+    state.currentPresentationOpacityValue = REVEAL_PREROLL_PLACEMENT_OPACITY;
+  }
+
+  private void beginDismissVisualLifecycle(String instanceId, InstanceState state) throws Exception {
+    setLabelCollisionObstacleLayersVisible(false, state, instanceId, "dismiss_start");
+    state.labelCollisionObstacleLayersVisible = false;
+    state.keepSourcesHiddenUntilEnter = true;
+    state.currentPresentationRenderPhase = "exiting";
+    state.visualSourceLifecycleState = VISUAL_SOURCE_DISMISSING;
+    state.currentPresentationOpacityTarget = 0;
+  }
+
+  private void completeDismissVisualLifecycle(
+    String instanceId,
+    InstanceState state,
+    String requestKey,
+    String reason
+  ) {
+    Runnable labelObservationRefreshRunnable = labelObservationRefreshRunnables.remove(instanceId);
+    if (labelObservationRefreshRunnable != null) {
+      mainHandler.removeCallbacks(labelObservationRefreshRunnable);
+    }
+    Map<String, ParsedFeatureCollection> residentSourceCache = currentDesiredSourceCache(state);
+    if (!residentSourceCache.isEmpty()) {
+      state.residentDesiredSourceCacheBySourceId.clear();
+      state.residentDesiredSourceCacheBySourceId.putAll(residentSourceCache);
+    }
+    if (state.labelCollisionObstacleLayersVisible) {
+      setLabelCollisionObstacleLayersVisible(false, state, instanceId, reason);
+      state.labelCollisionObstacleLayersVisible = false;
+    }
+    try {
+      clearResidentSourcesAndTransientFeatureStates(state);
+      clearDismissedHighlightState(state);
+    } catch (Exception error) {
+      emitError(
+        instanceId,
+        "dismiss_clear_sources_failed: " +
+        (error.getMessage() != null ? error.getMessage() : "unknown")
+      );
+    }
+    state.pendingSourceCommitDataIdsBySourceId.clear();
+    state.blockedEnterStartCommitFenceDataIdsBySourceId.clear();
+    state.blockedPresentationCommitFenceDataIdsBySourceId.clear();
+    state.residentSourceFrameKey = null;
+    state.residentSourceDataKey = null;
+    initializeDerivedFamilyStates(state);
+    state.currentPresentationRenderPhase = "idle";
+    state.visualSourceLifecycleState = VISUAL_SOURCE_HIDDEN;
+    state.keepSourcesHiddenUntilEnter = true;
+    state.currentPresentationOpacityTarget = 0;
+    state.currentPresentationOpacityValue = 0;
+    state.sourceReadyFrameGenerationId = null;
+    state.sourceReadyExecutionBatchId = null;
+    state.residentSourceFrameKey = null;
+    state.residentSourceDataKey = null;
+    cancelLivePinTransitionAnimation(instanceId);
+    instances.put(instanceId, state);
+    WritableMap releasedEvent = Arguments.createMap();
+    releasedEvent.putString("type", "presentation_visual_sources_collision_released");
+    releasedEvent.putString("instanceId", instanceId);
+    releasedEvent.putString("requestKey", requestKey);
+    releasedEvent.putString("frameGenerationId", state.activeFrameGenerationId);
+    releasedEvent.putInt("pinCount", state.lastPinCount);
+    releasedEvent.putInt("dotCount", state.lastDotCount);
+    releasedEvent.putInt("labelCount", state.lastLabelCount);
+    releasedEvent.putDouble("releasedAtMs", nowMs());
+    emit(releasedEvent);
+  }
+
+  private void clearResidentSourcesAndTransientFeatureStates(InstanceState state) throws Exception {
+    List<String> sourceIds = managedSourceIds(state);
+    RNMBXMapView mapView = resolveMapView(state.mapTag);
+    if (mapView == null) {
+      throw new IllegalStateException("Map view not found for react tag " + state.mapTag);
+    }
+    withStyle(state.mapTag, style -> {
+      ParsedFeatureCollection emptyCollection = new ParsedFeatureCollection();
+      for (String sourceId : sourceIds) {
+        replaceSourceData(style, sourceId, emptyCollection);
       }
+    });
+    clearKnownFeatureStates(sourceIds, state, mapView);
+  }
+
+  private void clearKnownFeatureStates(
+    List<String> sourceIds,
+    InstanceState state,
+    RNMBXMapView mapView
+  ) {
+    for (String sourceId : sourceIds) {
+      DerivedFamilyState familyState = derivedFamilyState(state, sourceId);
+      Set<String> featureIds = new LinkedHashSet<>();
+      featureIds.addAll(familyState.sourceState.featureIds);
+      featureIds.addAll(familyState.collection.featureIds);
+      featureIds.addAll(familyState.desiredCollection.featureIds);
+      featureIds.addAll(familyState.transientFeatureStateById.keySet());
+      featureIds.addAll(familyState.sourceState.featureStateById.keySet());
+      for (String featureId : featureIds) {
+        removeFeatureStateKey(mapView.getMapboxMap(), sourceId, featureId, null);
+      }
+    }
+  }
+
+  private static void clearDismissedHighlightState(InstanceState state) {
+    state.highlightedMarkerKey = null;
+    state.highlightedMarkerKeys.clear();
+    state.highlightedRestaurantId = null;
+  }
+
+  private void clearHiddenResidentSourceState(
+    String instanceId,
+    InstanceState state,
+    String reason
+  ) throws Exception {
+    clearResidentSourcesAndTransientFeatureStates(state);
+    clearDismissedHighlightState(state);
+    state.pendingSourceCommitDataIdsBySourceId.clear();
+    state.blockedEnterStartCommitFenceDataIdsBySourceId.clear();
+    state.blockedPresentationCommitFenceDataIdsBySourceId.clear();
+    initializeDerivedFamilyStates(state);
+    instances.put(instanceId, state);
+    emitVisualDiag(instanceId, "hidden_resident_source_state_cleared reason=" + reason);
+  }
+
+  private static Map<String, ParsedFeatureCollection> currentDesiredSourceCache(InstanceState state) {
+    Map<String, ParsedFeatureCollection> cache = new HashMap<>();
+    for (String sourceId : Arrays.asList(
+      state.pinSourceId,
+      state.pinInteractionSourceId,
+      state.dotSourceId,
+      state.labelSourceId,
+      state.labelCollisionSourceId
+    )) {
+      ParsedFeatureCollection desiredCollection = derivedFamilyState(state, sourceId).desiredCollection;
+      if (desiredCollection.idsInOrder.isEmpty()) {
+        continue;
+      }
+      cache.put(sourceId, collectionByClearingTransientFeatureState(desiredCollection));
+    }
+    return cache;
+  }
+
+  private static ParsedFeatureCollection collectionByClearingTransientFeatureState(
+    ParsedFeatureCollection collection
+  ) {
+    ParsedFeatureCollection nextCollection = new ParsedFeatureCollection();
+    copyParsedFeatureCollection(collection, nextCollection);
+    String emptyFeatureStateRevision = buildFeatureStateRevisionFromEntries(new HashMap<>());
+    nextCollection.baseFeatureStateRevision = emptyFeatureStateRevision;
+    nextCollection.featureStateRevision = emptyFeatureStateRevision;
+    nextCollection.featureStateEntryRevisionById.clear();
+    nextCollection.featureStateChangedIds.clear();
+    nextCollection.featureStateById.clear();
+    return nextCollection;
+  }
+
+  private static boolean restoreResidentDesiredSourceCacheForEnter(InstanceState state) {
+    if (state.residentDesiredSourceCacheBySourceId.isEmpty()) {
+      return false;
+    }
+    if (activeDesiredVisualSourceCount(state) > 0) {
+      return false;
+    }
+    for (String sourceId : Arrays.asList(
+      state.pinSourceId,
+      state.pinInteractionSourceId,
+      state.dotSourceId,
+      state.labelSourceId,
+      state.labelCollisionSourceId
+    )) {
+      ParsedFeatureCollection cachedDesiredCollection = state.residentDesiredSourceCacheBySourceId.get(sourceId);
+      if (cachedDesiredCollection == null) {
+        continue;
+      }
+      DerivedFamilyState familyState = new DerivedFamilyState();
+      copyParsedFeatureCollection(cachedDesiredCollection, familyState.desiredCollection);
+      state.derivedFamilyStates.put(sourceId, familyState);
+    }
+    state.pendingSourceCommitDataIdsBySourceId.clear();
+    state.blockedEnterStartCommitFenceDataIdsBySourceId.clear();
+    state.blockedPresentationCommitFenceDataIdsBySourceId.clear();
+    return true;
+  }
+
+  private static int activeDesiredVisualSourceCount(InstanceState state) {
+    return
+      derivedFamilyState(state, state.pinSourceId).desiredCollection.idsInOrder.size() +
+      derivedFamilyState(state, state.dotSourceId).desiredCollection.idsInOrder.size() +
+      derivedFamilyState(state, state.labelSourceId).desiredCollection.idsInOrder.size();
+  }
+
+  private static boolean isActiveFrameSourceReady(InstanceState state) {
+    return
+      state.activeFrameGenerationId != null &&
+      state.activeExecutionBatchId != null &&
+      stringEquals(state.sourceReadyFrameGenerationId, state.activeFrameGenerationId) &&
+      stringEquals(state.sourceReadyExecutionBatchId, state.activeExecutionBatchId);
+  }
+
+  private static boolean isActiveFrameLabelPlacementReady(InstanceState state) {
+    DerivedFamilyState labelFamilyState = derivedFamilyState(state, state.labelSourceId);
+    int labelCount = Math.max(
+      state.lastLabelCount,
+      Math.max(
+        labelFamilyState.desiredCollection.idsInOrder.size(),
+        labelFamilyState.collection.idsInOrder.size()
+      )
     );
+    if (labelCount <= 0) {
+      return true;
+    }
+    LabelFamilyObservationState observation = labelFamilyState.labelObservation;
+    return
+      observation.observationEnabled &&
+      observation.hasCommittedObservationForConfiguredRequest &&
+      observation.lastEffectiveRenderedFeatureCount > 0;
+  }
+
+  private static String labelPlacementReadinessSummary(InstanceState state) {
+    DerivedFamilyState labelFamilyState = derivedFamilyState(state, state.labelSourceId);
+    LabelFamilyObservationState observation = labelFamilyState.labelObservation;
+    int labelCount = Math.max(
+      state.lastLabelCount,
+      Math.max(
+        labelFamilyState.desiredCollection.idsInOrder.size(),
+        labelFamilyState.collection.idsInOrder.size()
+      )
+    );
+    return
+      "labels=" +
+      labelCount +
+      " observationEnabled=" +
+      observation.observationEnabled +
+      " hasCommittedObservation=" +
+      observation.hasCommittedObservationForConfiguredRequest +
+      " configuredResetRequest=" +
+      (observation.configuredResetRequestKey != null ? observation.configuredResetRequestKey : "nil") +
+      " visibleLabels=" +
+      observation.lastVisibleLabelFeatureIds.size() +
+      " settledVisibleLabels=" +
+      labelFamilyState.settledVisibleFeatureIds.size() +
+      " layerRendered=" +
+      observation.lastLayerRenderedFeatureCount +
+      " effectiveRendered=" +
+      observation.lastEffectiveRenderedFeatureCount;
+  }
+
+  private void retryLabelObservationRefreshIfPlacementPending(String instanceId, double delayMs) {
+    InstanceState state = instances.get(instanceId);
+    if (state == null) {
+      return;
+    }
+    if (isActiveFrameLabelPlacementReady(state)) {
+      return;
+    }
+    LabelFamilyObservationState labelObservation =
+      derivedFamilyState(state, state.labelSourceId).labelObservation;
+    if (!labelObservation.observationEnabled) {
+      return;
+    }
+    scheduleLabelObservationRefresh(instanceId, delayMs);
+  }
+
+  private void setLabelCollisionObstacleLayersVisible(
+    boolean isVisible,
+    InstanceState state,
+    String instanceId,
+    String reason
+  ) {
+    setLayerProperties(
+      state,
+      instanceId,
+      reason,
+      state.labelCollisionLayerIds,
+      Collections.singletonList("visibility"),
+      Value.valueOf(isVisible ? "visible" : "none"),
+      "label_collision_obstacle_layer_visibility"
+    );
+  }
+
+  private void setLayerProperties(
+    InstanceState state,
+    String instanceId,
+    String reason,
+    List<String> layerIds,
+    List<String> properties,
+    Value value,
+    String errorPrefix
+  ) {
+    try {
+      withStyle(state.mapTag, style -> {
+        for (String layerId : layerIds) {
+          for (String property : properties) {
+            try {
+              invokeSetStyleLayerProperty(style, layerId, property, value);
+            } catch (Exception error) {
+              emitError(
+                instanceId,
+                errorPrefix +
+                "_failed reason=" +
+                reason +
+                " layer=" +
+                layerId +
+                " property=" +
+                property +
+                " error=" +
+                (error.getMessage() != null ? error.getMessage() : "unknown")
+              );
+            }
+          }
+        }
+      });
+    } catch (Exception error) {
+      emitError(
+        instanceId,
+        errorPrefix +
+        "_map_unavailable reason=" +
+        reason +
+        " error=" +
+        (error.getMessage() != null ? error.getMessage() : "unknown")
+      );
+    }
+  }
+
+  private void scheduleDeferredDismissSourceCleanup(
+    String instanceId,
+    String requestKey,
+    String reason
+  ) {
+    Runnable pending = deferredDismissSourceCleanupRunnables.remove(instanceId);
+    if (pending != null) {
+      mainHandler.removeCallbacks(pending);
+    }
+    Runnable runnable = () -> {
+      deferredDismissSourceCleanupRunnables.remove(instanceId);
+      runDeferredDismissSourceCleanup(instanceId, requestKey, reason);
+    };
+    deferredDismissSourceCleanupRunnables.put(instanceId, runnable);
+    mainHandler.postDelayed(runnable, DEFERRED_DISMISS_SOURCE_CLEANUP_DELAY_MS);
+  }
+
+  private void runDeferredDismissSourceCleanup(
+    String instanceId,
+    String requestKey,
+    String reason
+  ) {
+    InstanceState state = instances.get(instanceId);
+    if (state == null) {
+      return;
+    }
+    if (state.lastDismissRequestKey != null && !stringEquals(state.lastDismissRequestKey, requestKey)) {
+      return;
+    }
+    if (
+      !VISUAL_SOURCE_HIDDEN.equals(state.visualSourceLifecycleState) ||
+      !"idle".equals(state.currentPresentationRenderPhase) ||
+      !state.keepSourcesHiddenUntilEnter ||
+      state.currentPresentationOpacityTarget > 0.001d ||
+      state.currentPresentationOpacityValue > 0.001d
+    ) {
+      emitVisualDiag(
+        instanceId,
+        "deferred_dismiss_source_cleanup_skipped reason=" +
+        reason +
+        " request=" +
+        requestKey +
+        " phase=" +
+        state.currentPresentationRenderPhase +
+        " lifecycle=" +
+        state.visualSourceLifecycleState
+      );
+      return;
+    }
+    try {
+      clearHiddenResidentSourceState(instanceId, state, reason);
+    } catch (Exception error) {
+      emitError(
+        instanceId,
+        "deferred_dismiss_source_cleanup_failed: " +
+        (error.getMessage() != null ? error.getMessage() : "unknown")
+      );
+    }
   }
 
   private boolean shouldSuppressInteractions(InstanceState state) {
     return !"enabled".equals(state.interactionMode);
+  }
+
+  private boolean isVisualSourceInactiveOrDismissing(InstanceState state) {
+    return
+      state != null &&
+      (
+        VISUAL_SOURCE_DISMISSING.equals(state.visualSourceLifecycleState) ||
+        VISUAL_SOURCE_HIDDEN.equals(state.visualSourceLifecycleState)
+      );
+  }
+
+  private boolean isVisualSourceDismissing(InstanceState state) {
+    return state != null && VISUAL_SOURCE_DISMISSING.equals(state.visualSourceLifecycleState);
+  }
+
+  private static boolean isSourceRecoveryActive(InstanceState state) {
+    return state != null && (state.isAwaitingSourceRecovery || state.isReplayingSourceRecovery);
+  }
+
+  private static boolean isLivePinTransitionPhase(InstanceState state) {
+    return
+      state != null &&
+      ("live".equals(state.lastPresentationBatchPhase) || "entering".equals(state.lastPresentationBatchPhase));
   }
 
   private void applyHighlightedMarkerState(InstanceState state) throws Exception {
@@ -4288,20 +5694,23 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     if (mapView == null) {
       throw new IllegalStateException("Map view not found for react tag " + state.mapTag);
     }
-    for (String sourceId : new String[] { state.pinSourceId, state.dotSourceId, state.labelSourceId }) {
+    for (String sourceId : visualSourceIds(state)) {
       SourceState sourceState = mountedSourceState(state, sourceId);
       if (sourceState == null) {
         continue;
       }
       for (String featureId : sourceState.diffKeyById.keySet()) {
         String markerKey = sourceState.markerKeyByFeatureId.getOrDefault(featureId, featureId);
+        Feature feature = derivedFamilyState(state, sourceId).collection.featureById.get(featureId);
+        String featureRestaurantId = restaurantIdFromFeature(feature);
+        boolean isHighlighted =
+          state.highlightedMarkerKeys.contains(markerKey) ||
+          (
+            state.highlightedRestaurantId != null &&
+            state.highlightedRestaurantId.equals(featureRestaurantId)
+          );
         HashMap<String, Value> featureState = new HashMap<>();
-        featureState.put(
-          "nativeHighlighted",
-          Value.valueOf(
-            state.highlightedMarkerKey != null && state.highlightedMarkerKey.equals(markerKey) ? 1 : 0
-          )
-        );
+        featureState.put("nativeHighlighted", Value.valueOf(isHighlighted ? 1 : 0));
         mapView
           .getMapboxMap()
           .setFeatureState(sourceId, null, featureId, Value.valueOf(featureState), result -> { });
@@ -4311,6 +5720,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
 
   private void applyPresentationOpacity(InstanceState state, double opacity) throws Exception {
     String instanceId = findInstanceIdForState(state);
+    state.currentPresentationOpacityValue = opacity;
     if (
       !ensureSourcesReady(
         state,
@@ -4333,7 +5743,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     HashMap<String, Value> featureState = new HashMap<>();
     featureState.put("nativePresentationOpacity", Value.valueOf(opacity));
     Value encodedState = Value.valueOf(featureState);
-    for (String sourceId : new String[] { state.pinSourceId, state.dotSourceId, state.labelSourceId }) {
+    for (String sourceId : visualSourceIds(state)) {
       DerivedFamilyState familyState = derivedFamilyState(state, sourceId);
       SourceState sourceState = familyState.sourceState;
       if (sourceState.featureIds.isEmpty()) {
@@ -4367,7 +5777,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     if (previousFeatureStateRevision.equals(nextFeatureStateRevision)) {
       return;
     }
-    if (featureStateById.isEmpty() || changedFeatureStateIds.isEmpty()) {
+    if (changedFeatureStateIds.isEmpty()) {
       return;
     }
     RNMBXMapView mapView = resolveMapView(state.mapTag);
@@ -4376,6 +5786,15 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     }
     for (String featureId : changedFeatureStateIds) {
       HashMap<String, Value> featureState = featureStateById.get(featureId);
+      HashMap<String, Value> previousFeatureState = previousFeatureStateById.get(featureId);
+      if (previousFeatureState != null && !previousFeatureState.isEmpty()) {
+        for (String removedKey : previousFeatureState.keySet()) {
+          if (featureState != null && featureState.containsKey(removedKey)) {
+            continue;
+          }
+          removeFeatureStateKey(mapView.getMapboxMap(), sourceId, featureId, removedKey);
+        }
+      }
       if (featureState == null || featureState.isEmpty()) {
         continue;
       }
@@ -4398,16 +5817,24 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
   }
 
   private List<String> visualSourceIds(InstanceState state) {
-    return Arrays.asList(state.pinSourceId, state.dotSourceId, state.labelSourceId);
+    ArrayList<String> sourceIds = new ArrayList<>();
+    sourceIds.addAll(state.pinSlotSourceIds);
+    sourceIds.add(state.dotSourceId);
+    return sourceIds;
+  }
+
+  private List<String> visualAndInteractionSourceIds(InstanceState state) {
+    ArrayList<String> sourceIds = new ArrayList<>();
+    sourceIds.addAll(state.pinSlotSourceIds);
+    sourceIds.add(state.dotSourceId);
+    return sourceIds;
   }
 
   private static WritableMap emptyRenderedLabelObservationResult() {
     WritableMap result = Arguments.createMap();
     result.putArray("visibleLabelFeatureIds", Arguments.createArray());
-    result.putArray("placedLabels", Arguments.createArray());
     result.putInt("layerRenderedFeatureCount", 0);
     result.putInt("effectiveRenderedFeatureCount", 0);
-    result.putBoolean("stickyChanged", false);
     return result;
   }
 
@@ -4419,37 +5846,9 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     return array;
   }
 
-  private static List<WritableMap> serializeRenderedPlacedLabels(
-    List<RenderedPlacedLabelObservation> placedLabels
-  ) {
-    ArrayList<WritableMap> maps = new ArrayList<>();
-    for (RenderedPlacedLabelObservation placedLabel : placedLabels) {
-      WritableMap map = Arguments.createMap();
-      map.putString("markerKey", placedLabel.markerKey);
-      map.putString("candidate", placedLabel.candidate);
-      if (placedLabel.restaurantId != null) {
-        map.putString("restaurantId", placedLabel.restaurantId);
-      } else {
-        map.putNull("restaurantId");
-      }
-      maps.add(map);
-    }
-    return maps;
-  }
-
-  private static com.facebook.react.bridge.WritableArray toWritableMapArray(
-    List<WritableMap> maps
-  ) {
-    com.facebook.react.bridge.WritableArray array = Arguments.createArray();
-    for (WritableMap map : maps) {
-      array.pushMap(map);
-    }
-    return array;
-  }
-
   private static LabelObservationResult buildRenderedLabelObservation(
     List<QueriedRenderedFeature> features,
-    String requiredSourceId
+    Set<String> requiredSourceIds
   ) {
     LabelObservationResult result = new LabelObservationResult();
     LinkedHashSet<String> visibleLabelFeatureIds = new LinkedHashSet<>();
@@ -4457,7 +5856,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       if (
         queriedRenderedFeature == null ||
         queriedRenderedFeature.getQueriedFeature() == null ||
-        !stringEquals(requiredSourceId, queriedRenderedFeature.getQueriedFeature().getSource())
+        !requiredSourceIds.contains(queriedRenderedFeature.getQueriedFeature().getSource())
       ) {
         continue;
       }
@@ -4483,13 +5882,6 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
           ? featureId
           : buildRenderedLabelCandidateFeatureId(markerKey, candidate);
       visibleLabelFeatureIds.add(resolvedFeatureId);
-      String restaurantId =
-        properties != null &&
-        properties.has("restaurantId") &&
-        properties.get("restaurantId").isJsonPrimitive()
-          ? properties.get("restaurantId").getAsString()
-          : null;
-      result.placedLabels.add(new RenderedPlacedLabelObservation(markerKey, candidate, restaurantId));
     }
     ArrayList<String> sortedVisibleLabelFeatureIds = new ArrayList<>(visibleLabelFeatureIds);
     Collections.sort(sortedVisibleLabelFeatureIds);
@@ -4497,194 +5889,60 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     return result;
   }
 
-  private static String buildLabelStickyIdentityKey(String restaurantId, String markerKey) {
-    if (restaurantId != null && !restaurantId.isEmpty()) {
-      return "restaurant:" + restaurantId;
-    }
-    if (markerKey != null && !markerKey.isEmpty()) {
-      return "marker:" + markerKey;
-    }
-    return null;
-  }
-
-  private static Set<String> resetStickyLabelObservationIfNeeded(
-    LabelFamilyObservationState labelObservation,
-    String labelResetRequestKey
-  ) {
-    if (labelResetRequestKey == null || labelResetRequestKey.isEmpty()) {
-      return new LinkedHashSet<>();
-    }
-    if (Objects.equals(labelObservation.lastResetRequestKey, labelResetRequestKey)) {
-      return new LinkedHashSet<>();
-    }
-    labelObservation.lastResetRequestKey = labelResetRequestKey;
-    LinkedHashSet<String> previousIdentityKeys =
-      new LinkedHashSet<>(labelObservation.stickyCandidateByIdentity.keySet());
-    labelObservation.stickyCandidateByIdentity.clear();
-    labelObservation.stickyCommittedLastSeenAtMsByIdentity.clear();
-    labelObservation.stickyCommittedMissingStreakByIdentity.clear();
-    labelObservation.stickyProposedCandidateByIdentity.clear();
-    labelObservation.stickyProposedSinceAtMsByIdentity.clear();
-    if (!previousIdentityKeys.isEmpty()) {
-      labelObservation.stickyRevision += 1;
-    }
-    return previousIdentityKeys;
-  }
-
-  private static Set<String> updateStickyLabelObservation(
-    LabelFamilyObservationState labelObservation,
-    List<RenderedPlacedLabelObservation> placedLabels,
-    boolean isMoving,
-    boolean enableStickyLabelCandidates,
-    double stickyLockStableMsMoving,
-    double stickyLockStableMsIdle,
-    double stickyUnlockMissingMsMoving,
-    double stickyUnlockMissingMsIdle,
-    int stickyUnlockMissingStreakMoving,
-    double nowMs
-  ) {
-    if (!enableStickyLabelCandidates) {
-      LinkedHashSet<String> previousIdentityKeys =
-        new LinkedHashSet<>(labelObservation.stickyCandidateByIdentity.keySet());
-      labelObservation.stickyCandidateByIdentity.clear();
-      labelObservation.stickyCommittedLastSeenAtMsByIdentity.clear();
-      labelObservation.stickyCommittedMissingStreakByIdentity.clear();
-      labelObservation.stickyProposedCandidateByIdentity.clear();
-      labelObservation.stickyProposedSinceAtMsByIdentity.clear();
-      if (!previousIdentityKeys.isEmpty()) {
-        labelObservation.stickyRevision += 1;
-      }
-      return previousIdentityKeys;
-    }
-
-    HashMap<String, String> renderedCandidateByIdentity = new HashMap<>();
-    for (RenderedPlacedLabelObservation placedLabel : placedLabels) {
-      String stickyIdentityKey =
-        buildLabelStickyIdentityKey(placedLabel.restaurantId, placedLabel.markerKey);
-      if (stickyIdentityKey == null || renderedCandidateByIdentity.containsKey(stickyIdentityKey)) {
-        continue;
-      }
-      renderedCandidateByIdentity.put(stickyIdentityKey, placedLabel.candidate);
-    }
-
-    LinkedHashSet<String> changedIdentityKeys = new LinkedHashSet<>();
-
-    // Sticky memory is "last successful side wins and persists until a different placed side
-    // actually wins". Temporary absence should not erase the remembered side.
-    ArrayList<String> stickyIdentityKeys =
-      new ArrayList<>(labelObservation.stickyCandidateByIdentity.keySet());
-    for (String stickyIdentityKey : stickyIdentityKeys) {
-      String observedCandidate = renderedCandidateByIdentity.get(stickyIdentityKey);
-      if (observedCandidate != null) {
-        if (!Objects.equals(labelObservation.stickyCandidateByIdentity.get(stickyIdentityKey), observedCandidate)) {
-          labelObservation.stickyCandidateByIdentity.put(stickyIdentityKey, observedCandidate);
-          changedIdentityKeys.add(stickyIdentityKey);
-        }
-        labelObservation.stickyCommittedLastSeenAtMsByIdentity.put(stickyIdentityKey, nowMs);
-        labelObservation.stickyCommittedMissingStreakByIdentity.put(stickyIdentityKey, 0);
-        labelObservation.stickyProposedCandidateByIdentity.remove(stickyIdentityKey);
-        labelObservation.stickyProposedSinceAtMsByIdentity.remove(stickyIdentityKey);
-        continue;
-      }
-
-      int nextMissingStreak =
-        labelObservation.stickyCommittedMissingStreakByIdentity.containsKey(stickyIdentityKey)
-          ? labelObservation.stickyCommittedMissingStreakByIdentity.get(stickyIdentityKey) + 1
-          : 1;
-      labelObservation.stickyCommittedMissingStreakByIdentity.put(stickyIdentityKey, nextMissingStreak);
-      labelObservation.stickyProposedCandidateByIdentity.remove(stickyIdentityKey);
-      labelObservation.stickyProposedSinceAtMsByIdentity.remove(stickyIdentityKey);
-    }
-
-    for (Map.Entry<String, String> entry : renderedCandidateByIdentity.entrySet()) {
-      String stickyIdentityKey = entry.getKey();
-      String candidate = entry.getValue();
-      if (!Objects.equals(labelObservation.stickyCandidateByIdentity.get(stickyIdentityKey), candidate)) {
-        labelObservation.stickyCandidateByIdentity.put(stickyIdentityKey, candidate);
-        changedIdentityKeys.add(stickyIdentityKey);
-      }
-      labelObservation.stickyCommittedLastSeenAtMsByIdentity.put(stickyIdentityKey, nowMs);
-      labelObservation.stickyCommittedMissingStreakByIdentity.put(stickyIdentityKey, 0);
-      labelObservation.stickyProposedCandidateByIdentity.remove(stickyIdentityKey);
-      labelObservation.stickyProposedSinceAtMsByIdentity.remove(stickyIdentityKey);
-    }
-
-    if (!changedIdentityKeys.isEmpty()) {
-      labelObservation.stickyRevision += 1;
-    }
-    return changedIdentityKeys;
-  }
-
   private WritableMap commitRenderedLabelObservation(
     String instanceId,
     LabelObservationResult observation,
     int layerRenderedFeatureCount,
     int effectiveRenderedFeatureCount,
-    boolean commitInteractionVisibility,
-    boolean enableStickyLabelCandidates,
-    double stickyLockStableMsMoving,
-    double stickyLockStableMsIdle,
-    double stickyUnlockMissingMsMoving,
-    double stickyUnlockMissingMsIdle,
-    int stickyUnlockMissingStreakMoving,
+    boolean commitVisibleLabelHits,
     String labelResetRequestKey
   ) {
     InstanceState mutableState = instances.get(instanceId);
     if (mutableState == null) {
       return emptyRenderedLabelObservationResult();
     }
+    if (
+      VISUAL_SOURCE_DISMISSING.equals(mutableState.visualSourceLifecycleState) ||
+      VISUAL_SOURCE_HIDDEN.equals(mutableState.visualSourceLifecycleState)
+    ) {
+      return emptyRenderedLabelObservationResult();
+    }
     DerivedFamilyState labelFamilyState = derivedFamilyState(mutableState, mutableState.labelSourceId);
-    DerivedFamilyState labelInteractionFamilyState =
-      derivedFamilyState(mutableState, mutableState.labelInteractionSourceId);
     ArrayList<String> previousVisibleLabelFeatureIds =
       new ArrayList<>(labelFamilyState.labelObservation.lastVisibleLabelFeatureIds);
-    boolean shouldCommitInteractionVisibility =
-      commitInteractionVisibility &&
-      labelFamilyState.labelObservation.commitInteractionVisibility &&
+    if (!stringEquals(labelFamilyState.labelObservation.configuredResetRequestKey, labelResetRequestKey)) {
+      return currentRenderedLabelObservationSnapshot(instanceId);
+    }
+    boolean shouldCommitVisibleLabelHits =
+      commitVisibleLabelHits &&
+      labelFamilyState.labelObservation.commitVisibleLabelHits &&
       labelFamilyState.labelObservation.observationEnabled;
-    boolean didClearSettledVisibleLabelInteractions = false;
-    if (shouldCommitInteractionVisibility) {
+    boolean didClearSettledVisibleLabelHits = false;
+    if (shouldCommitVisibleLabelHits) {
       labelFamilyState.settledVisibleFeatureIds.clear();
       labelFamilyState.settledVisibleFeatureIds.addAll(observation.visibleLabelFeatureIds);
-    } else if (
-      !labelFamilyState.settledVisibleFeatureIds.isEmpty() ||
-      !labelInteractionFamilyState.collection.idsInOrder.isEmpty()
-    ) {
+    } else if (!labelFamilyState.settledVisibleFeatureIds.isEmpty()) {
       labelFamilyState.settledVisibleFeatureIds.clear();
-      didClearSettledVisibleLabelInteractions = true;
+      didClearSettledVisibleLabelHits = true;
     }
-    Set<String> resetIdentityKeys =
-      resetStickyLabelObservationIfNeeded(labelFamilyState.labelObservation, labelResetRequestKey);
-    Set<String> changedIdentityKeys =
-      updateStickyLabelObservation(
-        labelFamilyState.labelObservation,
-        observation.placedLabels,
-        mutableState.currentViewportIsMoving,
-        enableStickyLabelCandidates,
-        stickyLockStableMsMoving,
-        stickyLockStableMsIdle,
-        stickyUnlockMissingMsMoving,
-        stickyUnlockMissingMsIdle,
-        stickyUnlockMissingStreakMoving,
-        nowMs()
-      );
     labelFamilyState.labelObservation.lastVisibleLabelFeatureIds.clear();
     labelFamilyState.labelObservation.lastVisibleLabelFeatureIds.addAll(observation.visibleLabelFeatureIds);
     labelFamilyState.labelObservation.lastLayerRenderedFeatureCount = layerRenderedFeatureCount;
-    labelFamilyState.labelObservation.lastEffectiveRenderedFeatureCount = effectiveRenderedFeatureCount;
+    labelFamilyState.labelObservation.lastEffectiveRenderedFeatureCount =
+      Math.max(effectiveRenderedFeatureCount, observation.visibleLabelFeatureIds.size());
+    labelFamilyState.labelObservation.hasCommittedObservationForConfiguredRequest = true;
     instances.put(instanceId, mutableState);
-
-    ArrayList<String> dirtyStickyIdentityKeys = new ArrayList<>();
-    dirtyStickyIdentityKeys.addAll(resetIdentityKeys);
-    for (String identityKey : changedIdentityKeys) {
-      if (!dirtyStickyIdentityKeys.contains(identityKey)) {
-        dirtyStickyIdentityKeys.add(identityKey);
+    try {
+      maybeElectMountedHiddenExecutionBatch(instanceId, mutableState);
+      InstanceState readyState = instances.get(instanceId);
+      if (readyState != null) {
+        startEnterPresentationIfReady(instanceId, readyState, null, null);
       }
+    } catch (Exception ignored) {
     }
-    Collections.sort(dirtyStickyIdentityKeys);
+
     boolean didProduceMeaningfulChange =
-      !dirtyStickyIdentityKeys.isEmpty() ||
-      didClearSettledVisibleLabelInteractions ||
+      didClearSettledVisibleLabelHits ||
       !previousVisibleLabelFeatureIds.equals(observation.visibleLabelFeatureIds);
     if (mutableState.currentViewportIsMoving) {
       if (didProduceMeaningfulChange) {
@@ -4707,16 +5965,8 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
 
     WritableMap result = emptyRenderedLabelObservationResult();
     result.putArray("visibleLabelFeatureIds", toWritableStringArray(observation.visibleLabelFeatureIds));
-    result.putArray("placedLabels", toWritableMapArray(serializeRenderedPlacedLabels(observation.placedLabels)));
     result.putInt("layerRenderedFeatureCount", layerRenderedFeatureCount);
     result.putInt("effectiveRenderedFeatureCount", effectiveRenderedFeatureCount);
-    result.putBoolean("stickyChanged", !dirtyStickyIdentityKeys.isEmpty());
-    if (didClearSettledVisibleLabelInteractions) {
-      try {
-        applyDesiredFrameSnapshots(instanceId, false);
-      } catch (Exception ignored) {
-      }
-    }
     return result;
   }
 
@@ -4737,23 +5987,15 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       "effectiveRenderedFeatureCount",
       labelObservation.lastEffectiveRenderedFeatureCount
     );
-    result.putBoolean("stickyChanged", false);
     return result;
   }
 
   private void configureLabelObservation(
     String instanceId,
     boolean observationEnabled,
-    boolean allowFallback,
-    boolean commitInteractionVisibility,
-    boolean enableStickyLabelCandidates,
+    boolean commitVisibleLabelHits,
     double refreshMsIdle,
     double refreshMsMoving,
-    double stickyLockStableMsMoving,
-    double stickyLockStableMsIdle,
-    double stickyUnlockMissingMsMoving,
-    double stickyUnlockMissingMsIdle,
-    int stickyUnlockMissingStreakMoving,
     String labelResetRequestKey
   ) {
     InstanceState state = instances.get(instanceId);
@@ -4761,32 +6003,23 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       return;
     }
     DerivedFamilyState labelFamilyState = derivedFamilyState(state, state.labelSourceId);
-    DerivedFamilyState labelInteractionFamilyState =
-      derivedFamilyState(state, state.labelInteractionSourceId);
     LabelFamilyObservationState labelObservation = labelFamilyState.labelObservation;
     labelObservation.observationEnabled = observationEnabled;
-    labelObservation.allowFallback = allowFallback;
-    labelObservation.commitInteractionVisibility = commitInteractionVisibility;
+    labelObservation.commitVisibleLabelHits = commitVisibleLabelHits;
     labelObservation.refreshMsIdle = refreshMsIdle;
     labelObservation.refreshMsMoving = refreshMsMoving;
-    labelObservation.stickyEnabled = enableStickyLabelCandidates;
-    labelObservation.stickyLockStableMsMoving = stickyLockStableMsMoving;
-    labelObservation.stickyLockStableMsIdle = stickyLockStableMsIdle;
-    labelObservation.stickyUnlockMissingMsMoving = stickyUnlockMissingMsMoving;
-    labelObservation.stickyUnlockMissingMsIdle = stickyUnlockMissingMsIdle;
-    labelObservation.stickyUnlockMissingStreakMoving = stickyUnlockMissingStreakMoving;
+    if (!stringEquals(labelObservation.configuredResetRequestKey, labelResetRequestKey)) {
+      labelObservation.hasCommittedObservationForConfiguredRequest = false;
+    }
     labelObservation.configuredResetRequestKey = labelResetRequestKey;
     labelObservation.movingNoopRefreshStreak = 0;
     labelObservation.movingAdaptiveRefreshMs = refreshMsMoving;
-    boolean shouldClearLabelInteractionVisibility =
-      !observationEnabled || !commitInteractionVisibility;
-    boolean didClearLabelInteractionVisibility =
-      shouldClearLabelInteractionVisibility &&
-      (
-        !labelObservation.settledVisibleFeatureIds.isEmpty() ||
-        !labelInteractionFamilyState.collection.idsInOrder.isEmpty()
-      );
-    if (didClearLabelInteractionVisibility) {
+    boolean shouldClearVisibleLabelHits =
+      !observationEnabled || !commitVisibleLabelHits;
+    boolean didClearVisibleLabelHits =
+      shouldClearVisibleLabelHits &&
+      !labelObservation.settledVisibleFeatureIds.isEmpty();
+    if (didClearVisibleLabelHits) {
       labelObservation.settledVisibleFeatureIds.clear();
     }
     if (!observationEnabled) {
@@ -4798,7 +6031,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       }
     }
     instances.put(instanceId, state);
-    if (didClearLabelInteractionVisibility) {
+    if (didClearVisibleLabelHits) {
       try {
         applyDesiredFrameSnapshots(instanceId, false);
       } catch (Exception ignored) {
@@ -4916,21 +6149,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         ? snapshot.getInt("effectiveRenderedFeatureCount")
         : 0
     );
-    event.putBoolean(
-      "stickyChanged",
-      snapshot != null && snapshot.hasKey("stickyChanged") && snapshot.getBoolean("stickyChanged")
-    );
     return event;
-  }
-
-  private void reconcileStickyObservationIfNeeded(String instanceId, WritableMap snapshot) {
-    if (snapshot == null || !snapshot.hasKey("stickyChanged") || !snapshot.getBoolean("stickyChanged")) {
-      return;
-    }
-    try {
-      applyDesiredFrameSnapshots(instanceId, false);
-    } catch (Exception ignored) {
-    }
   }
 
   private void performLabelObservationRefresh(String instanceId) {
@@ -4957,16 +6176,9 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
           emptyObservation,
           0,
           0,
-          labelObservation.commitInteractionVisibility,
-          labelObservation.stickyEnabled,
-          labelObservation.stickyLockStableMsMoving,
-          labelObservation.stickyLockStableMsIdle,
-          labelObservation.stickyUnlockMissingMsMoving,
-          labelObservation.stickyUnlockMissingMsIdle,
-          labelObservation.stickyUnlockMissingStreakMoving,
+          labelObservation.commitVisibleLabelHits,
           labelObservation.configuredResetRequestKey
         );
-      reconcileStickyObservationIfNeeded(instanceId, snapshot);
       emitLabelObservationUpdated(instanceId, snapshot);
       completeLabelObservationRefresh(instanceId);
       return;
@@ -5006,80 +6218,25 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
           }
           List<QueriedRenderedFeature> primaryFeatures = primaryResult.getValue();
           LabelObservationResult primaryObservation =
-            buildRenderedLabelObservation(primaryFeatures, latestState.labelSourceId);
-          if (primaryFeatures.size() > 0 || !latestLabelObservation.allowFallback) {
-            WritableMap snapshot =
-              commitRenderedLabelObservation(
-                instanceId,
-                primaryObservation,
-                primaryFeatures.size(),
-                primaryFeatures.size(),
-                latestLabelObservation.commitInteractionVisibility,
-                latestLabelObservation.stickyEnabled,
-                latestLabelObservation.stickyLockStableMsMoving,
-                latestLabelObservation.stickyLockStableMsIdle,
-                latestLabelObservation.stickyUnlockMissingMsMoving,
-                latestLabelObservation.stickyUnlockMissingMsIdle,
-                latestLabelObservation.stickyUnlockMissingStreakMoving,
-                latestLabelObservation.configuredResetRequestKey
-              );
-            reconcileStickyObservationIfNeeded(instanceId, snapshot);
-            emitLabelObservationUpdated(instanceId, snapshot);
-            completeLabelObservationRefresh(instanceId);
-            return;
-          }
-
-          ArrayList<String> fallbackLayerIds = resolveRenderedQueryLayerIdsForSource(latestState);
-          RenderedQueryOptions fallbackOptions = new RenderedQueryOptions(
-            fallbackLayerIds.isEmpty() ? resolvedLayerIds : fallbackLayerIds,
-            null
-          );
-          mapView
-            .getMapboxMap()
-            .queryRenderedFeatures(
-              queryGeometry,
-              fallbackOptions,
-              fallbackResult -> mainHandler.post(() -> {
-                InstanceState fallbackState = instances.get(instanceId);
-                if (fallbackState == null) {
-                  return;
-                }
-                LabelFamilyObservationState fallbackLabelObservation =
-                  derivedFamilyState(fallbackState, fallbackState.labelSourceId).labelObservation;
-                if (fallbackResult.isError()) {
-                  completeLabelObservationRefresh(instanceId);
-                  return;
-                }
-                List<QueriedRenderedFeature> fallbackFeatures = fallbackResult.getValue();
-                LabelObservationResult fallbackObservation =
-                  buildRenderedLabelObservation(fallbackFeatures, fallbackState.labelSourceId);
-                WritableMap snapshot =
-                  commitRenderedLabelObservation(
-                    instanceId,
-                    fallbackObservation,
-                    primaryFeatures.size(),
-                    fallbackFeatures.size(),
-                    fallbackLabelObservation.commitInteractionVisibility,
-                    fallbackLabelObservation.stickyEnabled,
-                    fallbackLabelObservation.stickyLockStableMsMoving,
-                    fallbackLabelObservation.stickyLockStableMsIdle,
-                    fallbackLabelObservation.stickyUnlockMissingMsMoving,
-                    fallbackLabelObservation.stickyUnlockMissingMsIdle,
-                    fallbackLabelObservation.stickyUnlockMissingStreakMoving,
-                    fallbackLabelObservation.configuredResetRequestKey
-                  );
-                reconcileStickyObservationIfNeeded(instanceId, snapshot);
-                emitLabelObservationUpdated(instanceId, snapshot);
-                completeLabelObservationRefresh(instanceId);
-              })
+            buildRenderedLabelObservation(primaryFeatures, new LinkedHashSet<>(latestState.pinSlotSourceIds));
+          WritableMap snapshot =
+            commitRenderedLabelObservation(
+              instanceId,
+              primaryObservation,
+              primaryFeatures.size(),
+              primaryFeatures.size(),
+              latestLabelObservation.commitVisibleLabelHits,
+              latestLabelObservation.configuredResetRequestKey
             );
+          emitLabelObservationUpdated(instanceId, snapshot);
+          completeLabelObservationRefresh(instanceId);
         })
       );
   }
 
   private static WritableMap buildRenderedPinPressTarget(
     List<QueriedRenderedFeature> features,
-    String requiredSourceId
+    Set<String> requiredSourceIds
   ) {
     WritableMap bestTarget = null;
     double bestLodZ = -Double.MAX_VALUE;
@@ -5090,7 +6247,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       if (
         queriedRenderedFeature == null ||
         queriedRenderedFeature.getQueriedFeature() == null ||
-        !stringEquals(requiredSourceId, queriedRenderedFeature.getQueriedFeature().getSource())
+        !requiredSourceIds.contains(queriedRenderedFeature.getQueriedFeature().getSource())
       ) {
         continue;
       }
@@ -5254,6 +6411,47 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     );
   }
 
+  private static ArrayList<String> parseStringArray(ReadableMap payload, String key) {
+    ArrayList<String> values = new ArrayList<>();
+    if (payload == null || !payload.hasKey(key) || payload.isNull(key)) {
+      return values;
+    }
+    ReadableArray readableArray = payload.getArray(key);
+    if (readableArray == null) {
+      return values;
+    }
+    for (int index = 0; index < readableArray.size(); index += 1) {
+      if (readableArray.isNull(index)) {
+        continue;
+      }
+      String value = readableArray.getString(index);
+      if (value != null && !value.isEmpty()) {
+        values.add(value);
+      }
+    }
+    return values;
+  }
+
+  private static Set<String> parseStringSet(ReadableMap payload, String key) {
+    return new LinkedHashSet<>(parseStringArray(payload, key));
+  }
+
+  private static String restaurantIdFromFeature(Feature feature) {
+    if (feature == null) {
+      return null;
+    }
+    JsonObject properties = feature.properties();
+    if (properties == null || !properties.has("restaurantId")) {
+      return null;
+    }
+    JsonElement value = properties.get("restaurantId");
+    if (value == null || !value.isJsonPrimitive()) {
+      return null;
+    }
+    String restaurantId = value.getAsString();
+    return restaurantId != null && !restaurantId.isEmpty() ? restaurantId : null;
+  }
+
   private static boolean isRenderedLabelPressFeatureIntentional(
     Feature feature,
     RNMBXMapView mapView,
@@ -5353,7 +6551,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
 
   private static WritableMap buildRenderedLabelPressTarget(
     List<QueriedRenderedFeature> features,
-    String requiredSourceId,
+    Set<String> requiredSourceIds,
     RNMBXMapView mapView,
     double tapX,
     double tapY,
@@ -5363,7 +6561,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       if (
         queriedRenderedFeature == null ||
         queriedRenderedFeature.getQueriedFeature() == null ||
-        !stringEquals(requiredSourceId, queriedRenderedFeature.getQueriedFeature().getSource())
+        !requiredSourceIds.contains(queriedRenderedFeature.getQueriedFeature().getSource())
       ) {
         continue;
       }
@@ -5412,30 +6610,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
   }
 
   private ArrayList<String> resolveRenderedQueryLayerIdsForSource(InstanceState state) {
-    ArrayList<String> layerIds = new ArrayList<>();
-    try {
-      withStyle(state.mapTag, style -> {
-        JSONObject styleJson = new JSONObject(style.getStyleJSON());
-        JSONArray layers = styleJson.optJSONArray("layers");
-        if (layers == null) {
-          return;
-        }
-        for (int index = 0; index < layers.length(); index += 1) {
-          JSONObject layer = layers.optJSONObject(index);
-          if (layer == null) {
-            continue;
-          }
-          String sourceId = layer.optString("source", "");
-          String layerId = layer.optString("id", "");
-          if (stringEquals(sourceId, state.labelSourceId) && !layerId.isEmpty()) {
-            layerIds.add(layerId);
-          }
-        }
-      });
-    } catch (Exception error) {
-      return new ArrayList<>();
-    }
-    return layerIds;
+    return new ArrayList<>(state.labelLayerIds);
   }
 
   private static String normalizeRenderedLabelCandidate(String value) {
@@ -5477,15 +6652,18 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
   }
 
   private List<String> managedSourceIds(InstanceState state) {
-    return Arrays.asList(
-      state.pinSourceId,
-      state.pinInteractionSourceId,
-      state.dotSourceId,
-      state.dotInteractionSourceId,
-      state.labelSourceId,
-      state.labelInteractionSourceId,
-      state.labelCollisionSourceId
-    );
+    return visualAndInteractionSourceIds(state);
+  }
+
+  private static String sourceRevisionForSyncedFrame(InstanceState state, String sourceId) {
+    if (
+      VISUAL_SOURCE_HIDDEN.equals(state.visualSourceLifecycleState) &&
+      state.residentDesiredSourceCacheBySourceId.containsKey(sourceId)
+    ) {
+      return state.residentDesiredSourceCacheBySourceId.get(sourceId).sourceRevision;
+    }
+    SourceState sourceState = mountedSourceState(state, sourceId);
+    return sourceState != null ? sourceState.sourceRevision : "";
   }
 
   private List<String> sourceIdsFromSnapshots(String[][] snapshots) {
@@ -5741,6 +6919,14 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       mapView.getMapboxMap().addOnMapIdleListener(listener);
       mapIdleListeners.put(mapKey, listener);
     }
+    if (!nativePressTouchListeners.containsKey(mapKey)) {
+      View.OnTouchListener listener = (view, motionEvent) -> {
+        handleNativePressTouch(state.mapTag, motionEvent);
+        return false;
+      };
+      mapView.setOnTouchListener(listener);
+      nativePressTouchListeners.put(mapKey, listener);
+    }
   }
 
   private void cleanupMapSubscriptionsIfUnused(int mapTag) {
@@ -5763,12 +6949,18 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       cameraCancelable.cancel();
     }
     OnMapIdleListener mapIdleListener = mapIdleListeners.remove(mapKey);
+    View.OnTouchListener nativePressTouchListener = nativePressTouchListeners.remove(mapKey);
     RNMBXMapView mapView = resolveMapView(mapTag);
     if (mapView != null) {
       if (mapIdleListener != null) {
         mapView.getMapboxMap().removeOnMapIdleListener(mapIdleListener);
       }
+      if (nativePressTouchListener != null) {
+        mapView.setOnTouchListener(null);
+      }
     }
+    nativePressSessions.remove(mapKey);
+    nativePressSequences.remove(mapKey);
     lastNativeCameraDiagSignatureByMapKey.remove(mapKey);
     lastNativeCameraDiagAtMsByMapKey.remove(mapKey);
   }
@@ -5787,6 +6979,245 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       }
     }
     return false;
+  }
+
+  private void handleNativePressTouch(int mapTag, MotionEvent event) {
+    if (event == null) {
+      return;
+    }
+    String mapKey = Integer.toString(mapTag);
+    int action = event.getActionMasked();
+    if (action == MotionEvent.ACTION_DOWN) {
+      handleNativePressBegan(mapTag, event.getX(), event.getY());
+      return;
+    }
+    if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_CANCEL) {
+      nativePressSessions.remove(mapKey);
+      return;
+    }
+    if (action == MotionEvent.ACTION_MOVE) {
+      handleNativePressMoved(mapTag, event.getX(), event.getY());
+      return;
+    }
+    if (action == MotionEvent.ACTION_UP) {
+      handleNativePressEnded(mapTag, event.getX(), event.getY());
+    }
+  }
+
+  private void handleNativePressBegan(int mapTag, double x, double y) {
+    String mapKey = Integer.toString(mapTag);
+    NativePressContext context = activeNativePressContext(mapTag);
+    if (context == null) {
+      nativePressSessions.remove(mapKey);
+      return;
+    }
+    int sequence = nativePressSequences.containsKey(mapKey) ? nativePressSequences.get(mapKey) + 1 : 1;
+    nativePressSequences.put(mapKey, sequence);
+    NativePressSession session = new NativePressSession(
+      sequence,
+      context.instanceId,
+      nowMs(),
+      x,
+      y
+    );
+    nativePressSessions.put(mapKey, session);
+
+    RNMBXMapView mapView = resolveMapView(mapTag);
+    if (mapView == null) {
+      nativePressSessions.remove(mapKey);
+      return;
+    }
+    Point tapCoordinate = null;
+    try {
+      tapCoordinate = mapView.getMapboxMap().coordinateForPixel(new ScreenCoordinate(x, y));
+    } catch (Exception ignored) {
+      tapCoordinate = null;
+    }
+    double dotRadius = Math.max(0d, context.config.dotTapIntentRadiusPx);
+    double[] dotQueryBox =
+      dotRadius > 0d
+        ? new double[] { x - dotRadius, y - dotRadius, x + dotRadius, y + dotRadius }
+        : null;
+    Double tapLng = tapCoordinate != null ? tapCoordinate.longitude() : null;
+    Double tapLat = tapCoordinate != null ? tapCoordinate.latitude() : null;
+
+    resolveRenderedPressTarget(
+      mapView,
+      context.state,
+      context.config.pinLayerIds,
+      context.config.labelLayerIds,
+      context.config.dotLayerIds,
+      x,
+      y,
+      dotQueryBox,
+      tapLng,
+      tapLat,
+      context.config.labelTapHitbox,
+      new PressTargetResolutionCallback() {
+        @Override
+        public void resolve(WritableMap target) {
+          NativePressSession latestSession = nativePressSessions.get(mapKey);
+          InstanceState latestState = instances.get(context.instanceId);
+          if (
+            latestSession == null ||
+            latestSession.sequence != sequence ||
+            latestSession.didCancel ||
+            latestState == null ||
+            isNativePressSuppressed(latestState)
+          ) {
+            return;
+          }
+          latestSession.resolvedTarget = target;
+          latestSession.didResolve = true;
+          nativePressSessions.put(mapKey, latestSession);
+          if (latestSession.didRelease) {
+            emitNativePressResolution(mapTag, latestSession);
+          }
+        }
+
+        @Override
+        public void reject(String code, String message, Throwable error) {
+          emitError(
+            context.instanceId,
+            "native_press_target_resolution_failed: " + (message != null ? message : code)
+          );
+          nativePressSessions.remove(mapKey);
+        }
+      }
+    );
+  }
+
+  private void handleNativePressMoved(int mapTag, double x, double y) {
+    String mapKey = Integer.toString(mapTag);
+    NativePressSession session = nativePressSessions.get(mapKey);
+    if (session == null) {
+      return;
+    }
+    InstanceState state = instances.get(session.instanceId);
+    if (state == null || isNativePressSuppressed(state)) {
+      nativePressSessions.remove(mapKey);
+      return;
+    }
+    session.latestX = x;
+    session.latestY = y;
+    double dx = x - session.startX;
+    double dy = y - session.startY;
+    if (Math.hypot(dx, dy) > NATIVE_PRESS_CANCEL_MOVEMENT_THRESHOLD_PX) {
+      session.didCancel = true;
+      nativePressSessions.remove(mapKey);
+      return;
+    }
+    nativePressSessions.put(mapKey, session);
+  }
+
+  private void handleNativePressEnded(int mapTag, double x, double y) {
+    String mapKey = Integer.toString(mapTag);
+    NativePressSession session = nativePressSessions.get(mapKey);
+    if (session == null) {
+      return;
+    }
+    InstanceState state = instances.get(session.instanceId);
+    if (state == null || isNativePressSuppressed(state)) {
+      nativePressSessions.remove(mapKey);
+      return;
+    }
+    session.latestX = x;
+    session.latestY = y;
+    double dx = x - session.startX;
+    double dy = y - session.startY;
+    if (Math.hypot(dx, dy) > NATIVE_PRESS_CANCEL_MOVEMENT_THRESHOLD_PX) {
+      nativePressSessions.remove(mapKey);
+      return;
+    }
+    session.didRelease = true;
+    nativePressSessions.put(mapKey, session);
+    if (session.didResolve) {
+      emitNativePressResolution(mapTag, session);
+    }
+  }
+
+  private NativePressContext activeNativePressContext(int mapTag) {
+    ArrayList<String> instanceIds = new ArrayList<>(instances.keySet());
+    Collections.sort(instanceIds);
+    for (String instanceId : instanceIds) {
+      InstanceState state = instances.get(instanceId);
+      if (
+        state == null ||
+        state.mapTag != mapTag ||
+        state.nativePressTargetConfig == null ||
+        !state.nativePressTargetConfig.enabled ||
+        !"enabled".equals(state.interactionMode) ||
+        isNativePressSuppressed(state)
+      ) {
+        continue;
+      }
+      return new NativePressContext(instanceId, state, state.nativePressTargetConfig);
+    }
+    return null;
+  }
+
+  private boolean isNativePressSuppressed(InstanceState state) {
+    return
+      state == null ||
+      VISUAL_SOURCE_DISMISSING.equals(state.visualSourceLifecycleState) ||
+      VISUAL_SOURCE_HIDDEN.equals(state.visualSourceLifecycleState);
+  }
+
+  private void emitNativePressResolution(int mapTag, NativePressSession session) {
+    String mapKey = Integer.toString(mapTag);
+    NativePressSession activeSession = nativePressSessions.get(mapKey);
+    if (activeSession == null || activeSession.sequence != session.sequence) {
+      return;
+    }
+    nativePressSessions.remove(mapKey);
+    InstanceState state = instances.get(session.instanceId);
+    if (
+      state == null ||
+      state.mapTag != mapTag ||
+      state.nativePressTargetConfig == null ||
+      !state.nativePressTargetConfig.enabled ||
+      !"enabled".equals(state.interactionMode) ||
+      isNativePressSuppressed(state)
+    ) {
+      return;
+    }
+    WritableMap point = Arguments.createMap();
+    point.putDouble("x", session.startX);
+    point.putDouble("y", session.startY);
+
+    WritableMap pressCoordinateMap = null;
+    RNMBXMapView mapView = resolveMapView(mapTag);
+    if (mapView != null) {
+      try {
+        Point pressCoordinate = mapView
+          .getMapboxMap()
+          .coordinateForPixel(new ScreenCoordinate(session.startX, session.startY));
+        pressCoordinateMap = Arguments.createMap();
+        pressCoordinateMap.putDouble("lng", pressCoordinate.longitude());
+        pressCoordinateMap.putDouble("lat", pressCoordinate.latitude());
+      } catch (Exception ignored) {
+        pressCoordinateMap = null;
+      }
+    }
+
+    WritableMap event = Arguments.createMap();
+    event.putString("type", "native_press_target_resolved");
+    event.putString("instanceId", session.instanceId);
+    event.putInt("sequence", session.sequence);
+    if (session.resolvedTarget != null) {
+      event.putMap("target", session.resolvedTarget);
+    } else {
+      event.putNull("target");
+    }
+    event.putMap("point", point);
+    if (pressCoordinateMap != null) {
+      event.putMap("pressCoordinate", pressCoordinateMap);
+    } else {
+      event.putNull("pressCoordinate");
+    }
+    event.putDouble("durationMs", Math.max(0d, nowMs() - session.startedAtMs));
+    event.putDouble("resolvedAtMs", nowMs());
+    emit(event);
   }
 
   private void handleSourceDataLoaded(int mapTag, SourceDataLoaded event) {
@@ -5813,13 +7244,13 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       }
       removeCommittedPendingDataIds(state.blockedEnterStartCommitFenceDataIdsBySourceId, sourceId, dataId);
       removeCommittedPendingDataIds(state.blockedPresentationCommitFenceDataIdsBySourceId, sourceId, dataId);
-      if (sourceId.equals(state.pinSourceId)) {
-        startAwaitingLivePinTransitions(entry.getKey(), dataId, state);
+      if (state.pinSlotSourceIds.contains(sourceId)) {
+        startAwaitingLivePinTransitions(entry.getKey(), sourceId, dataId, state);
       }
       if (sourceId.equals(state.dotSourceId)) {
         startAwaitingLiveDotTransitions(entry.getKey(), dataId, state);
       }
-      if (sourceId.equals(state.labelSourceId)) {
+      if (state.pinSlotSourceIds.contains(sourceId)) {
         LabelFamilyObservationState labelObservation =
           derivedFamilyState(state, state.labelSourceId).labelObservation;
         if (labelObservation.observationEnabled) {
@@ -6041,19 +7472,11 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       dotFamilyState.liveDotTransitionsByMarkerKey.size();
   }
 
-  private boolean hasPendingVisualSourceCommits(InstanceState state) {
-    for (String sourceId : new String[] { state.pinSourceId, state.dotSourceId, state.labelSourceId }) {
-      Set<String> pending = state.pendingSourceCommitDataIdsBySourceId.get(sourceId);
-      if (pending != null && !pending.isEmpty()) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   private Map<String, Set<String>> capturePendingVisualSourceCommitFence(InstanceState state) {
     Map<String, Set<String>> fence = new HashMap<>();
-    for (String sourceId : new String[] { state.pinSourceId, state.dotSourceId, state.labelSourceId }) {
+    ArrayList<String> sourceIds = new ArrayList<>();
+    sourceIds.addAll(visualSourceIds(state));
+    for (String sourceId : sourceIds) {
       Set<String> pending = state.pendingSourceCommitDataIdsBySourceId.get(sourceId);
       if (pending != null && !pending.isEmpty()) {
         fence.put(sourceId, new HashSet<>(pending));
@@ -6099,6 +7522,17 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       return false;
     }
     return pendingSequence <= acknowledgedSequence;
+  }
+
+  private boolean shouldStartAwaitingTransition(
+    String awaitingSourceDataId,
+    String sourceId,
+    String acknowledgedDataId
+  ) {
+    if (acknowledgedDataId == null) {
+      return true;
+    }
+    return shouldAcknowledgePendingCommitDataId(awaitingSourceDataId, sourceId, acknowledgedDataId);
   }
 
   private boolean removeCommittedPendingDataIds(
@@ -6254,7 +7688,8 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     String sourceId,
     SourceLifecyclePhase previousSourceLifecyclePhase,
     String previousSourceRevision,
-    ParsedFeatureCollection next
+    ParsedFeatureCollection next,
+    boolean forceReplaceSourceData
   ) {
     if (previousSourceRevision.equals(next.sourceRevision)) {
       return new ResolvedSourceMutationPlan(
@@ -6268,7 +7703,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       );
     }
 
-    if (previousSourceLifecyclePhase != SourceLifecyclePhase.INCREMENTAL) {
+    if (forceReplaceSourceData || previousSourceLifecyclePhase != SourceLifecyclePhase.INCREMENTAL) {
       return new ResolvedSourceMutationPlan(
         sourceId,
         previousSourceLifecyclePhase,
@@ -6378,6 +7813,25 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
   ) throws Exception {
     Method method = style.getClass().getMethod(methodName, String.class, String.class, List.class);
     method.invoke(style, sourceId, dataId, entries);
+  }
+
+  private void invokeSetStyleLayerProperty(
+    Style style,
+    String layerId,
+    String property,
+    Value value
+  ) throws Exception {
+    Method method = style.getClass().getMethod("setStyleLayerProperty", String.class, String.class, Value.class);
+    method.invoke(style, layerId, property, value);
+  }
+
+  private void removeFeatureStateKey(
+    MapboxMap mapboxMap,
+    String sourceId,
+    String featureId,
+    String stateKey
+  ) {
+    mapboxMap.removeFeatureState(sourceId, null, featureId, stateKey, result -> { });
   }
 
   private static SourceState sourceStateFromCollection(ParsedFeatureCollection collection) {
@@ -6575,7 +8029,8 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       plan.previousSourceState != null ? plan.previousSourceState.sourceRevision : "",
       plan.previousFeatureStateById,
       plan.previousFeatureStateRevision,
-      nextSourceState
+      nextSourceState,
+      plan.forceReplaceSourceData
     );
   }
 
@@ -6601,7 +8056,8 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
           plan.sourceId,
           plan.previousSourceLifecyclePhase,
           plan.previousSourceRevision,
-          plan.next
+          plan.next,
+          plan.forceReplaceSourceData
         );
       mutationSummaryBySourceId.put(
         plan.sourceId,
@@ -6619,9 +8075,9 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         state,
         plan.sourceId,
         plan.previousFeatureStateRevision,
-        plan.next.featureStateRevision,
+        plan.nextSourceState.featureStateRevision,
         plan.nextSourceState.featureStateChangedIds,
-        plan.next.featureStateById,
+        plan.nextSourceState.featureStateById,
         plan.previousFeatureStateById
       );
       registerPendingSourceCommit(state, plan.sourceId, mutationSummary);
@@ -7391,6 +8847,10 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     state.blockedPresentationSettleKind = null;
     state.blockedPresentationCommitFenceDataIdsBySourceId.clear();
     state.currentPresentationRenderPhase = "live";
+    state.visualSourceLifecycleState = VISUAL_SOURCE_VISIBLE;
+    state.keepSourcesHiddenUntilEnter = false;
+    state.currentPresentationOpacityTarget = 1;
+    state.currentPresentationOpacityValue = 1;
     instances.put(instanceId, state);
     WritableMap settledEvent = Arguments.createMap();
     settledEvent.putString("type", "presentation_enter_settled");
@@ -7413,6 +8873,10 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     if (dismissFrameFallback != null) {
       mainHandler.removeCallbacks(dismissFrameFallback);
     }
+    Runnable deferredDismissSourceCleanup = deferredDismissSourceCleanupRunnables.remove(instanceId);
+    if (deferredDismissSourceCleanup != null) {
+      mainHandler.removeCallbacks(deferredDismissSourceCleanup);
+    }
     InstanceState state = instances.get(instanceId);
     if (state == null) {
       return;
@@ -7420,16 +8884,11 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     if (!stringEquals(state.lastDismissRequestKey, requestKey)) {
       return;
     }
-    state.pendingPresentationSettleRequestKey = null;
-    state.pendingPresentationSettleKind = null;
-    state.blockedPresentationSettleRequestKey = null;
-    state.blockedPresentationSettleKind = null;
-    state.blockedPresentationCommitFenceDataIdsBySourceId.clear();
-    state.currentPresentationRenderPhase = "idle";
-    state.pendingSourceCommitDataIdsBySourceId.clear();
-    initializeDerivedFamilyStates(state);
-    cancelLivePinTransitionAnimation(instanceId);
-    instances.put(instanceId, state);
+    completeDismissVisualLifecycle(instanceId, state, requestKey, "exit_settled");
+    state = instances.get(instanceId);
+    if (state == null) {
+      return;
+    }
     WritableMap settledEvent = Arguments.createMap();
     settledEvent.putString("type", "presentation_exit_settled");
     settledEvent.putString("instanceId", instanceId);
@@ -7653,6 +9112,12 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
         featureId,
         markerKeyByFeatureId.containsKey(featureId) ? markerKeyByFeatureId.get(featureId) : featureId
       );
+      String groupId = collection.markerKeyByFeatureId.get(featureId);
+      if (!collection.groupedFeatureIdsByGroup.containsKey(groupId)) {
+        collection.groupOrder.add(groupId);
+        collection.groupedFeatureIdsByGroup.put(groupId, new ArrayList<>());
+      }
+      collection.groupedFeatureIdsByGroup.get(groupId).add(featureId);
     }
     collection.featureIds.addAll(collection.idsInOrder);
     for (String featureId : collection.featureStateEntryRevisionById.keySet()) {
@@ -7737,6 +9202,81 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     } catch (Exception error) {
       return 0;
     }
+  }
+
+  private static VisualFrameTransaction parseVisualFrameTransaction(ReadableMap payload) {
+    if (!payload.hasKey("visualFrameTransaction") || payload.isNull("visualFrameTransaction")) {
+      throw new IllegalArgumentException("invalid render frame payload: missing visualFrameTransaction");
+    }
+    ReadableMap rawTransaction = payload.getMap("visualFrameTransaction");
+    if (
+      rawTransaction == null ||
+      !rawTransaction.hasKey("kind") ||
+      rawTransaction.isNull("kind") ||
+      !rawTransaction.hasKey("presentationPhase") ||
+      rawTransaction.isNull("presentationPhase") ||
+      !rawTransaction.hasKey("sourceFrameKey") ||
+      rawTransaction.isNull("sourceFrameKey") ||
+      !rawTransaction.hasKey("sourceDataKey") ||
+      rawTransaction.isNull("sourceDataKey") ||
+      !rawTransaction.hasKey("sourceSnapshotKind") ||
+      rawTransaction.isNull("sourceSnapshotKind")
+    ) {
+      throw new IllegalArgumentException("invalid render frame payload: incomplete visualFrameTransaction");
+    }
+    String kind = rawTransaction.getString("kind");
+    String presentationPhase = rawTransaction.getString("presentationPhase");
+    String sourceSnapshotKind = rawTransaction.getString("sourceSnapshotKind");
+    if (
+      !(
+        "bootstrap".equals(kind) ||
+        "hidden_preload".equals(kind) ||
+        "enter".equals(kind) ||
+        "live_update".equals(kind) ||
+        "dismiss".equals(kind) ||
+        "clear_hidden".equals(kind)
+      ) ||
+      !(
+        "idle".equals(presentationPhase) ||
+        "covered".equals(presentationPhase) ||
+        "enter_requested".equals(presentationPhase) ||
+        "entering".equals(presentationPhase) ||
+        "live".equals(presentationPhase) ||
+        "exit_preroll".equals(presentationPhase) ||
+        "exiting".equals(presentationPhase)
+      ) ||
+      !("pending".equals(sourceSnapshotKind) || "ready".equals(sourceSnapshotKind) || "empty".equals(sourceSnapshotKind))
+    ) {
+      throw new IllegalArgumentException("invalid render frame payload: unsupported visualFrameTransaction");
+    }
+    VisualFrameTransaction transaction = new VisualFrameTransaction();
+    transaction.kind = kind;
+    transaction.presentationPhase = presentationPhase;
+    transaction.requestKey =
+      rawTransaction.hasKey("requestKey") && !rawTransaction.isNull("requestKey")
+        ? rawTransaction.getString("requestKey")
+        : null;
+    transaction.visualCycleKey =
+      rawTransaction.hasKey("visualCycleKey") && !rawTransaction.isNull("visualCycleKey")
+        ? rawTransaction.getString("visualCycleKey")
+        : null;
+    transaction.readinessKey =
+      rawTransaction.hasKey("readinessKey") && !rawTransaction.isNull("readinessKey")
+        ? rawTransaction.getString("readinessKey")
+        : null;
+    transaction.shortcutCoverageRequestKey =
+      rawTransaction.hasKey("shortcutCoverageRequestKey") &&
+      !rawTransaction.isNull("shortcutCoverageRequestKey")
+        ? rawTransaction.getString("shortcutCoverageRequestKey")
+        : null;
+    transaction.markersRenderKey =
+      rawTransaction.hasKey("markersRenderKey") && !rawTransaction.isNull("markersRenderKey")
+        ? rawTransaction.getString("markersRenderKey")
+        : null;
+    transaction.sourceFrameKey = rawTransaction.getString("sourceFrameKey");
+    transaction.sourceDataKey = rawTransaction.getString("sourceDataKey");
+    transaction.sourceSnapshotKind = sourceSnapshotKind;
+    return transaction;
   }
 
   private static String readPresentationBatchPhase(String json) {

@@ -28,7 +28,7 @@ const resolveLocalRestaurantRouteVisualSnapshot = ({
     ? null
     : {
         overlayGeometryRuntime: routeFrameSnapshot.overlayGeometryRuntime,
-        resultsSheetRuntimeOwner: routeSheetSnapshot.resultsSheetRuntimeOwner,
+        sharedSheetRuntimeOwner: routeSheetSnapshot.sharedSheetRuntimeOwner,
         visualRuntime: routeFrameSnapshot.visualRuntime,
       };
 
@@ -40,7 +40,7 @@ const areLocalRestaurantRouteVisualSnapshotsEqual = (
   (left != null &&
     right != null &&
     left.overlayGeometryRuntime === right.overlayGeometryRuntime &&
-    left.resultsSheetRuntimeOwner === right.resultsSheetRuntimeOwner &&
+    left.sharedSheetRuntimeOwner === right.sharedSheetRuntimeOwner &&
     left.visualRuntime === right.visualRuntime);
 
 export type SearchOverlayLocalRestaurantRouteVisualAuthority = {

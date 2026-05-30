@@ -390,6 +390,7 @@ export const useBottomSheetSharedRuntime = ({
     notifySnapStart: snapPublicationRuntime.notifySnapStart,
     notifySnapSettleComplete: snapPublicationRuntime.notifySnapSettleComplete,
     runtimeConfigValues,
+    isSearchResultsSheet,
   });
 
   const gestures = useBottomSheetSharedGestureRuntime({

@@ -72,7 +72,8 @@ export const resolveAbortedResultsPresentationTransportAttempt = (
 };
 
 export const resolveCommittedResultsPresentationTransportAttempt = (
-  snapshot: SearchSurfaceResultsTransaction
+  snapshot: SearchSurfaceResultsTransaction,
+  label: string
 ): ResultsPresentationNamedTransportAttempt => {
   const nextState: ResultsPresentationTransportState = {
     transactionId: snapshot.transactionId,
@@ -86,7 +87,7 @@ export const resolveCommittedResultsPresentationTransportAttempt = (
   return {
     nextState,
     appliedLog: {
-      label: 'commitSearchSurfaceResultsTransaction',
+      label,
       data: {
         transactionId: snapshot.transactionId,
         kind: snapshot.kind,

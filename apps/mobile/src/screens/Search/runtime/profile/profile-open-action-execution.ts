@@ -1,4 +1,9 @@
 import type { Coordinate, RestaurantResult } from '../../../../types';
+import {
+  isPerfScenarioAttributionActive,
+  logPerfScenarioAttributionEvent,
+} from '../../../../perf/perf-scenario-attribution';
+import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 import type { ProfileOpenActionModel, SearchProfileSource } from './profile-action-model-contract';
 import type { ProfileActionExecutionPorts } from './profile-action-runtime-port-contract';
 import type { ProfileTransitionSnapshotCapture } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
@@ -6,6 +11,20 @@ import {
   resolveProfileOpenPresentationPlan,
   type ProfileOpenPresentationPlan,
 } from './profile-open-presentation-plan-runtime';
+
+const APPROX_METERS_PER_LAT_DEGREE = 111_320;
+const SELECTED_PIN_CAMERA_TARGET_TOLERANCE_METERS = 8;
+
+const approximateCoordinateDistanceMeters = (
+  first: Coordinate,
+  second: Coordinate
+): number => {
+  const averageLatRadians = (((first.lat + second.lat) / 2) * Math.PI) / 180;
+  const metersPerLngDegree = APPROX_METERS_PER_LAT_DEGREE * Math.cos(averageLatRadians);
+  const dx = (first.lng - second.lng) * metersPerLngDegree;
+  const dy = (first.lat - second.lat) * APPROX_METERS_PER_LAT_DEGREE;
+  return Math.sqrt(dx * dx + dy * dy);
+};
 
 export const executeProfileOpenPresentationPlan = ({
   plan,
@@ -78,6 +97,44 @@ export const executeProfileOpenAction = ({
   });
   if (!plan) {
     return;
+  }
+  const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+  if (isPerfScenarioAttributionActive(scenarioConfig)) {
+    const targetPadding = plan.targetCamera?.padding ?? null;
+    const targetCenter = plan.targetCamera?.center ?? null;
+    const pressedTargetDistanceMeters =
+      pressedCoordinate != null && targetCenter != null
+        ? approximateCoordinateDistanceMeters(pressedCoordinate, {
+            lng: targetCenter[0],
+            lat: targetCenter[1],
+          })
+        : null;
+    const targetMatchesPressedPin =
+      pressedTargetDistanceMeters != null &&
+      pressedTargetDistanceMeters <= SELECTED_PIN_CAMERA_TARGET_TOLERANCE_METERS;
+    logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+      event: 'profile_pin_selection_camera_contract',
+      restaurantId: restaurant.restaurantId,
+      source,
+      hasPressedCoordinate: pressedCoordinate != null,
+      pressedLng: pressedCoordinate?.lng ?? null,
+      pressedLat: pressedCoordinate?.lat ?? null,
+      selectedLocationId: plan.selectedLocationId,
+      hasTargetCamera: plan.targetCamera != null,
+      targetLng: targetCenter?.[0] ?? null,
+      targetLat: targetCenter?.[1] ?? null,
+      targetZoom: plan.targetCamera?.zoom ?? null,
+      paddingTop: targetPadding?.paddingTop ?? null,
+      paddingBottom: targetPadding?.paddingBottom ?? null,
+      paddingLeft: targetPadding?.paddingLeft ?? null,
+      paddingRight: targetPadding?.paddingRight ?? null,
+      pressedTargetDistanceMeters,
+      targetMatchesPressedPin,
+      centersAboveSheet:
+        targetPadding != null &&
+        typeof targetPadding.paddingBottom === 'number' &&
+        targetPadding.paddingBottom > targetPadding.paddingTop,
+    });
   }
   executeProfileOpenPresentationPlan({
     plan,

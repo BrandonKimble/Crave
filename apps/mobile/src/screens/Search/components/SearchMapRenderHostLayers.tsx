@@ -1,9 +1,7 @@
 import React from 'react';
 import { View } from 'react-native';
 
-import { logger } from '../../../utils';
 import type { SearchMapRenderHostLayerRuntime } from '../runtime/shared/search-map-render-host-layer-runtime-contract';
-import { shouldLogSearchNavSwitchDiagnosticLogs } from '../runtime/shared/search-nav-switch-perf-probe';
 import styles from '../styles';
 import SearchMapWithMarkerEngine from './SearchMapWithMarkerEngine';
 export const SearchMapRenderHostLayers = React.memo(
@@ -16,14 +14,6 @@ export const SearchMapRenderHostLayers = React.memo(
       hostConfig,
       presentationProps,
     } = hostLayerRuntime;
-
-    React.useEffect(() => {
-      if (shouldLogSearchNavSwitchDiagnosticLogs()) {
-        logger.debug('[MAP-MOUNT-DIAG] SearchMapRenderSurface:cameraGate', {
-          isInitialCameraReady,
-        });
-      }
-    }, [isInitialCameraReady]);
 
     if (!onProfilerRender) {
       return (

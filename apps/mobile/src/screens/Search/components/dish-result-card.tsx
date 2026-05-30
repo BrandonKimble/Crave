@@ -15,7 +15,7 @@ import { InfoCircleIcon } from './metric-icons';
 import { renderMetaDetailLine } from './render-meta-detail-line';
 import { resolveMarketDisplayLabel } from '../utils/format';
 import { formatRankLabel, getRankFontSize } from '../utils/rank-badge';
-import { formatCraveScore, formatCraveScoreMovement } from '../utils/quality';
+import CraveScoreText from './CraveScoreText';
 import { searchService } from '../../../services/search';
 import { useSearchHistoryStore } from '../../../store/searchHistoryStore';
 
@@ -42,6 +42,7 @@ type ScoreInfoPayload = {
   type: 'dish' | 'restaurant';
   title: string;
   score: number | null | undefined;
+  scoreDelta7d: number | null | undefined;
   votes: number | null | undefined;
   polls: number | null | undefined;
 };
@@ -100,7 +101,6 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
       ? item.craveScore
       : null;
   }, [item.craveScore]);
-  const scoreMovementLabel = formatCraveScoreMovement(item.scoreDelta7d);
   const marketLabel =
     showMarketLabel && item.marketKey && item.marketKey !== primaryMarketKey
       ? resolveMarketDisplayLabel(item.marketName, item.marketKey ?? null)
@@ -156,10 +156,11 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
       type: 'dish',
       title: item.foodName,
       score: craveScoreValue,
+      scoreDelta7d: item.scoreDelta7d ?? null,
       votes: item.scoreInfo?.voteCount ?? null,
       polls: item.scoreInfo?.pollCount ?? null,
     });
-  }, [item.foodName, item.scoreInfo, craveScoreValue, openScoreInfo]);
+  }, [craveScoreValue, item.foodName, item.scoreDelta7d, item.scoreInfo, openScoreInfo]);
 
   return (
     <View
@@ -200,23 +201,18 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
               <View style={styles.metricBlock}>
                 <View style={styles.metricLine}>
                   {HAND_PLATTER_ICON}
-                  <Text variant="body" weight="semibold" style={styles.metricValue}>
-                    {formatCraveScore(craveScoreValue)}
-                  </Text>
-                  {scoreMovementLabel ? (
-                    <Text variant="body" weight="semibold" style={styles.metricMovement}>
-                      {scoreMovementLabel}
-                    </Text>
-                  ) : null}
-                  <Text variant="body" weight="regular" style={styles.metricLabel}>
-                    Dish score
-                  </Text>
+                  <CraveScoreText
+                    score={craveScoreValue}
+                    variant="body"
+                    weight="semibold"
+                    style={styles.metricValue}
+                  />
                   <TouchableOpacity
                     onPress={handleDishInfoPress}
                     style={styles.scoreInfoIconButton}
                     hitSlop={8}
                     accessibilityRole="button"
-                    accessibilityLabel="How dish scores are calculated"
+                    accessibilityLabel="How dish ratings are calculated"
                   >
                     {INFO_CIRCLE_ICON_DISH}
                   </TouchableOpacity>

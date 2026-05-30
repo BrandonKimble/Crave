@@ -6,7 +6,7 @@ import type {
   RouteLocalRestaurantOverlayPolicyAuthority,
   RouteLocalRestaurantOverlaySessionAuthority,
   RouteOverlayVisibilityAuthority,
-  RouteResultsSheetVisualAuthority,
+  RouteSharedSheetVisualAuthority,
 } from './search-root-route-runtime-contract';
 import type { useSearchRootRouteControlRuntime } from './use-search-root-route-control-runtime';
 
@@ -23,7 +23,7 @@ export const useSearchRootRouteSurfaceHostRuntime = ({
   routeLocalRestaurantOverlayPolicyAuthority: RouteLocalRestaurantOverlayPolicyAuthority;
   routeLocalRestaurantOverlayInteractionAuthority: RouteLocalRestaurantOverlayInteractionAuthority;
   routeHostOverlayGeometryAuthority: RouteHostOverlayGeometryAuthority;
-  routeResultsSheetVisualAuthority: RouteResultsSheetVisualAuthority;
+  routeSharedSheetVisualAuthority: RouteSharedSheetVisualAuthority;
   routeHostVisualRuntimeAuthority: RouteHostVisualRuntimeAuthority;
 } => {
   return {
@@ -37,7 +37,7 @@ export const useSearchRootRouteSurfaceHostRuntime = ({
     routeLocalRestaurantOverlayInteractionAuthority:
       routeRestaurantOverlayRuntime.routeLocalRestaurantOverlayInteractionAuthority,
     routeHostOverlayGeometryAuthority: routeSceneRuntime.routeHostOverlayGeometryAuthority,
-    routeResultsSheetVisualAuthority: routeSceneRuntime.routeResultsSheetVisualAuthority,
+    routeSharedSheetVisualAuthority: routeSceneRuntime.routeSharedSheetVisualAuthority,
     routeHostVisualRuntimeAuthority: routeSceneRuntime.routeHostVisualRuntimeAuthority,
   };
 };

@@ -19,7 +19,7 @@ export type UseResultsSurfaceTransactionShellApplicationRuntimeArgs = Pick<
 
 export type UseResultsSurfaceEnterTransactionExecutionRuntimeArgs = Pick<
   UseResultsSurfaceTransactionExecutionRuntimeArgs,
-  'resultsRuntimeOwner' | 'prepareShortcutSheetTransition' | 'setDisplayQueryOverride'
+  'resultsRuntimeOwner' | 'prepareSharedSheetForSearchPresentation' | 'setDisplayQueryOverride'
 >;
 
 export type UseResultsSurfaceExitTransactionExecutionRuntimeArgs = Pick<

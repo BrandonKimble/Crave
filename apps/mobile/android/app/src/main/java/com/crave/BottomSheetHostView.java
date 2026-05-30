@@ -8,7 +8,7 @@ import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.View;
 import android.view.ViewConfiguration;
-import android.view.animation.OvershootInterpolator;
+import android.view.animation.PathInterpolator;
 import android.widget.FrameLayout;
 
 import androidx.annotation.Nullable;
@@ -32,18 +32,11 @@ public class BottomSheetHostView extends FrameLayout {
   private static final ConcurrentHashMap<String, PendingCommand> PENDING_COMMANDS_BY_KEY =
     new ConcurrentHashMap<>();
   private static final float STEP_SNAP_SMALL_DRAG_PX = 20f;
-  private static final float STEP_SNAP_DRAG_PX = 48f;
-  private static final float STEP_SNAP_SKIP_DRAG_PX = 212f;
-  private static final float STEP_SNAP_VELOCITY_PX_PER_S = 820f;
-  private static final float STEP_SNAP_SKIP_VELOCITY_PX_PER_S = 3200f;
-  private static final float STEP_SNAP_SKIP_MIN_PROGRESS = 0.5f;
   private static final float STEP_SNAP_DIRECTION_EPSILON_PX = 4f;
-  private static final float STEP_SNAP_DIRECTION_VELOCITY_EPS_PX_PER_S = 120f;
-  private static final float STEP_SNAP_DIRECTION_VELOCITY_OVERRIDE_PX_PER_S = 420f;
   private static final float STEP_SNAP_REVERSAL_CANCEL_VELOCITY_PX_PER_S = 220f;
   private static final float STEP_SNAP_REVERSAL_CANCEL_DRAG_PX = 140f;
-  private static final float STEP_SNAP_PROGRESS_FOR_STEP = 0.18f;
-  private static final float STEP_SNAP_PROGRESS_FOR_SKIP = 1.03f;
+  private static final float SNAP_GATE_FALLBACK_PX = 96f;
+  private static final float SNAP_VELOCITY_PROJECTION_SECONDS = 0.18f;
 
   private final ThemedReactContext reactContext;
   private final int touchSlop;
@@ -59,7 +52,9 @@ public class BottomSheetHostView extends FrameLayout {
   private boolean preventSwipeDismiss = false;
   private boolean interactionEnabled = true;
   private boolean animateOnMount = false;
+  private boolean hasAppliedSnapPoints = false;
   @Nullable private Float dismissThreshold = null;
+  @Nullable private Float snapStepThreshold = null;
   @Nullable private String hostKey = null;
   private int lastCommandToken = -1;
 
@@ -100,7 +95,7 @@ public class BottomSheetHostView extends FrameLayout {
   public void setVisible(boolean nextVisible) {
     if (visible == nextVisible && !animateOnMount) {
       visible = nextVisible;
-      applySnap(nextVisible ? currentVisibleSnapPoint() : "hidden", false);
+      applySnap(nextVisible ? currentVisibleSnapPoint() : "hidden", true);
       return;
     }
     visible = nextVisible;
@@ -136,7 +131,9 @@ public class BottomSheetHostView extends FrameLayout {
     if (map.hasKey("hidden")) {
       hiddenSnap = (float) map.getDouble("hidden");
     }
-    if (preservePositionOnSnapPointsChange) {
+    boolean hadAppliedSnapPoints = hasAppliedSnapPoints;
+    hasAppliedSnapPoints = true;
+    if (preservePositionOnSnapPointsChange && hadAppliedSnapPoints) {
       return;
     }
     applySnap(visible ? currentVisibleSnapPoint() : "hidden", true);
@@ -168,6 +165,10 @@ public class BottomSheetHostView extends FrameLayout {
     dismissThreshold = value;
   }
 
+  public void setSnapStepThreshold(@Nullable Float value) {
+    snapStepThreshold = value;
+  }
+
   public void setSheetCommand(@Nullable ReadableMap command) {
     if (command == null || !command.hasKey("token") || !command.hasKey("snapTo")) {
       return;
@@ -176,16 +177,15 @@ public class BottomSheetHostView extends FrameLayout {
     if (token == lastCommandToken) {
       return;
     }
-    lastCommandToken = token;
     String snapTo = command.getString("snapTo");
-    if (snapTo == null) {
+    if (snapTo == null || !isKnownSnapPoint(snapTo)) {
       return;
     }
     dispatchProgrammaticCommand(snapTo, token);
   }
 
   public void dispatchProgrammaticCommand(@NonNull String snapTo, int token) {
-    if (token == lastCommandToken) {
+    if (token == lastCommandToken || !isKnownSnapPoint(snapTo)) {
       return;
     }
     lastCommandToken = token;
@@ -375,30 +375,34 @@ public class BottomSheetHostView extends FrameLayout {
     return hiddenSnap;
   }
 
+  private boolean isKnownSnapPoint(String snapPoint) {
+    return
+      "expanded".equals(snapPoint) ||
+      "middle".equals(snapPoint) ||
+      "collapsed".equals(snapPoint) ||
+      "hidden".equals(snapPoint);
+  }
+
   private float clampSheetY(float value) {
     float lowerBound = preventSwipeDismiss ? collapsedSnap : hiddenSnap;
     return Math.max(expandedSnap, Math.min(value, lowerBound));
   }
 
   private String resolveSnapPoint(float value, float velocityY, float gestureStartY) {
-    if (!preventSwipeDismiss) {
-      float threshold = dismissThreshold != null ? dismissThreshold : hiddenSnap - 80f;
-      if (hiddenSnap > collapsedSnap && value >= threshold) {
-        return "hidden";
-      }
-    }
-
-    ArrayList<SnapCandidate> candidates = buildVisibleSnapCandidates();
+    ArrayList<SnapCandidate> candidates = buildSnapCandidates(!preventSwipeDismiss);
     float targetValue =
-      resolveSteppedSnapValue(clampSheetY(value), velocityY, clampSheetY(gestureStartY), candidates);
+      resolveHeaderGatedSnapValue(clampSheetY(value), velocityY, clampSheetY(gestureStartY), candidates);
     return candidates.get(findNearestPointIndex(targetValue, candidates)).key;
   }
 
-  private ArrayList<SnapCandidate> buildVisibleSnapCandidates() {
-    ArrayList<SnapCandidate> candidates = new ArrayList<>(3);
+  private ArrayList<SnapCandidate> buildSnapCandidates(boolean includeHidden) {
+    ArrayList<SnapCandidate> candidates = new ArrayList<>(includeHidden ? 4 : 3);
     appendVisibleSnapCandidate(candidates, "expanded", expandedSnap);
     appendVisibleSnapCandidate(candidates, "middle", middleSnap);
     appendVisibleSnapCandidate(candidates, "collapsed", collapsedSnap);
+    if (includeHidden) {
+      appendVisibleSnapCandidate(candidates, "hidden", hiddenSnap);
+    }
     return candidates;
   }
 
@@ -431,7 +435,7 @@ public class BottomSheetHostView extends FrameLayout {
     return closestIndex;
   }
 
-  private float resolveSteppedSnapValue(
+  private float resolveHeaderGatedSnapValue(
     float value,
     float velocityY,
     float gestureStartY,
@@ -443,72 +447,60 @@ public class BottomSheetHostView extends FrameLayout {
 
     int lastIndex = candidates.size() - 1;
     int startIndex = findNearestPointIndex(gestureStartY, candidates);
-    float dragDelta = value - gestureStartY;
+    float startValue = candidates.get(startIndex).value;
+    float gateDistance = Math.max(1f, snapStepThreshold != null ? snapStepThreshold : SNAP_GATE_FALLBACK_PX);
+    float projectedValue = Math.max(
+      candidates.get(0).value,
+      Math.min(value + velocityY * SNAP_VELOCITY_PROJECTION_SECONDS, candidates.get(lastIndex).value)
+    );
+    float dragDelta = value - startValue;
+    float projectedDelta = projectedValue - startValue;
     float absDragDelta = Math.abs(dragDelta);
+    float absProjectedDelta = Math.abs(projectedDelta);
     float absVelocity = Math.abs(velocityY);
 
-    if (absDragDelta <= STEP_SNAP_SMALL_DRAG_PX) {
-      return candidates.get(startIndex).value;
+    if (absDragDelta <= STEP_SNAP_SMALL_DRAG_PX && absProjectedDelta < gateDistance) {
+      return startValue;
     }
 
     int dragDirection =
       absDragDelta >= STEP_SNAP_DIRECTION_EPSILON_PX ? (dragDelta > 0f ? 1 : -1) : 0;
-    int velocityDirection =
-      absVelocity >= STEP_SNAP_DIRECTION_VELOCITY_EPS_PX_PER_S ? (velocityY > 0f ? 1 : -1) : 0;
+    int projectedDirection =
+      absProjectedDelta >= STEP_SNAP_DIRECTION_EPSILON_PX ? (projectedDelta > 0f ? 1 : -1) : 0;
 
     if (
       dragDirection != 0 &&
-      velocityDirection != 0 &&
-      dragDirection != velocityDirection &&
+      projectedDirection != 0 &&
+      dragDirection != projectedDirection &&
       absVelocity >= STEP_SNAP_REVERSAL_CANCEL_VELOCITY_PX_PER_S &&
       absDragDelta <= STEP_SNAP_REVERSAL_CANCEL_DRAG_PX
     ) {
-      return candidates.get(startIndex).value;
+      return startValue;
     }
 
-    int direction = dragDirection;
-    if (
-      velocityDirection != 0 &&
-      (direction == 0 || absVelocity >= STEP_SNAP_DIRECTION_VELOCITY_OVERRIDE_PX_PER_S)
-    ) {
-      direction = velocityDirection;
-    }
-
+    int direction = projectedDirection != 0 ? projectedDirection : dragDirection;
     if (direction == 0) {
-      return candidates.get(startIndex).value;
+      return startValue;
     }
 
-    int nextIndex = Math.min(Math.max(startIndex + direction, 0), lastIndex);
-    if (nextIndex == startIndex) {
-      return candidates.get(startIndex).value;
+    int targetIndex = startIndex;
+    if (direction > 0) {
+      for (int index = startIndex + 1; index <= lastIndex; index += 1) {
+        float gate = candidates.get(index - 1).value + gateDistance;
+        if (projectedValue < gate) {
+          break;
+        }
+        targetIndex = index;
+      }
+    } else {
+      for (int index = startIndex - 1; index >= 0; index -= 1) {
+        float gate = candidates.get(index + 1).value - gateDistance;
+        if (projectedValue > gate) {
+          break;
+        }
+        targetIndex = index;
+      }
     }
-
-    float distanceToNext = Math.max(
-      1f,
-      Math.abs(candidates.get(nextIndex).value - candidates.get(startIndex).value)
-    );
-    float rawProgress =
-      direction > 0
-        ? (value - candidates.get(startIndex).value) / distanceToNext
-        : (candidates.get(startIndex).value - value) / distanceToNext;
-    float progressTowardDirection = Math.max(0f, rawProgress);
-    boolean hasStepIntent =
-      progressTowardDirection >= STEP_SNAP_PROGRESS_FOR_STEP ||
-      absDragDelta >= STEP_SNAP_DRAG_PX ||
-      absVelocity >= STEP_SNAP_VELOCITY_PX_PER_S;
-    if (!hasStepIntent) {
-      return candidates.get(startIndex).value;
-    }
-
-    boolean hasSkipIntent =
-      absDragDelta >= STEP_SNAP_SKIP_DRAG_PX ||
-      (progressTowardDirection >= STEP_SNAP_PROGRESS_FOR_SKIP &&
-        absDragDelta >= STEP_SNAP_SKIP_DRAG_PX * 0.66f) ||
-      (absVelocity >= STEP_SNAP_SKIP_VELOCITY_PX_PER_S &&
-        progressTowardDirection >= STEP_SNAP_SKIP_MIN_PROGRESS &&
-        absDragDelta >= STEP_SNAP_SKIP_DRAG_PX * 0.55f);
-    int targetIndex = Math.min(Math.max(startIndex + direction * (hasSkipIntent ? 2 : 1), 0), lastIndex);
-
     return candidates.get(targetIndex).value;
   }
 
@@ -526,19 +518,28 @@ public class BottomSheetHostView extends FrameLayout {
     stopAnimation();
     animator = ValueAnimator.ofFloat(getTranslationY(), targetY);
     animator.setDuration(340L);
-    animator.setInterpolator(new OvershootInterpolator(0.7f));
+    animator.setInterpolator(new PathInterpolator(0.22f, 1f, 0.36f, 1f));
     animator.addUpdateListener((valueAnimator) -> {
       float nextY = (float) valueAnimator.getAnimatedValue();
       setTranslationY(nextY);
     });
     animator.addListener(new android.animation.AnimatorListenerAdapter() {
+      private boolean cancelled = false;
+
+      @Override
+      public void onAnimationCancel(android.animation.Animator animation) {
+        cancelled = true;
+      }
+
       @Override
       public void onAnimationEnd(android.animation.Animator animation) {
         animator = null;
         setTranslationY(targetY);
         emitSheetY(targetY);
         emitActiveEvent("settle_state", false);
-        emitSnapChange(snapPoint, source);
+        if (!cancelled) {
+          emitSnapChange(snapPoint, source);
+        }
       }
     });
     animator.start();

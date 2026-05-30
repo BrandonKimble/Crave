@@ -69,6 +69,10 @@ export type SearchRootMapStateRuntime = {
   setMapCenter: React.Dispatch<React.SetStateAction<[number, number] | null>>;
   mapZoom: number | null;
   setMapZoom: React.Dispatch<React.SetStateAction<number | null>>;
+  mapBearing: number | null;
+  setMapBearing: React.Dispatch<React.SetStateAction<number | null>>;
+  mapPitch: number | null;
+  setMapPitch: React.Dispatch<React.SetStateAction<number | null>>;
   mapCameraAnimation: {
     mode: 'none' | 'easeTo';
     durationMs: number;

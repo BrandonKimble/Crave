@@ -6,7 +6,6 @@ import type { AppRouteSheetHostSurfaceBodySnapshot } from '../../../../navigatio
 import { useRouteAuthoritySelector } from '../../../../navigation/runtime/use-route-authority-selector';
 import { useSearchForegroundVisualRuntime } from './use-search-foreground-visual-runtime';
 import { useSearchDismissMotionPlaneRuntime } from './use-search-dismiss-motion-plane-runtime';
-import { useSearchRootOverlayChromePresentationDiagnosticRuntime } from './use-search-root-overlay-chrome-presentation-diagnostic-runtime';
 import { useSearchRootOverlayForegroundVisualPresentationSourceRuntime } from './use-search-root-overlay-foreground-visual-presentation-source-runtime';
 import { useSearchRootOverlayForegroundVisualSessionSourceRuntime } from './use-search-root-overlay-foreground-visual-session-source-runtime';
 import { useSearchRootOverlayShortcutSubmissionRuntime } from './use-search-root-overlay-shortcut-submission-runtime';
@@ -16,8 +15,6 @@ import type { SearchChromeScalarSurfaceRuntime } from '../native/search-chrome-s
 import type { useSearchRootControlAuthorityRuntime } from './use-search-root-control-authority-runtime';
 import type { useSearchRootControlResultsExperienceRuntime } from './use-search-root-control-results-experience-runtime';
 import type { useSearchScreenAppEntryPlaneRuntime } from './use-search-screen-app-entry-plane-runtime';
-import type { SearchRuntimeBus } from './search-runtime-bus';
-import type { ResultsPresentationAuthority } from './results-presentation-authority';
 import type { SearchRootViewportShortcutControlLane } from './use-search-root-control-plane-runtime-contract';
 import type { useSearchRootRuntimeFoundationStageRuntime } from './use-search-root-runtime-foundation-stage-runtime';
 import type { useSearchRootRuntimeOverlayFoundationAssemblyRuntime } from './use-search-root-runtime-overlay-foundation-assembly-runtime';
@@ -25,8 +22,6 @@ import type { SearchRouteSheetMotionStateSnapshot } from './search-route-sheet-m
 
 export const useSearchRootRuntimeVisualStageRuntime = ({
   appEntryPlaneRuntime,
-  searchRuntimeBus,
-  resultsPresentationAuthority,
   stateAssemblyRuntime,
   overlayFoundationAssemblyRuntime,
   controlAuthorityRuntime,
@@ -35,8 +30,6 @@ export const useSearchRootRuntimeVisualStageRuntime = ({
   searchChromeScalarSurfaceRuntime,
 }: {
   appEntryPlaneRuntime: ReturnType<typeof useSearchScreenAppEntryPlaneRuntime>;
-  searchRuntimeBus: SearchRuntimeBus;
-  resultsPresentationAuthority: ResultsPresentationAuthority;
   stateAssemblyRuntime: ReturnType<
     typeof useSearchRootRuntimeFoundationStageRuntime
   >['stateAssemblyRuntime'];
@@ -105,21 +98,15 @@ export const useSearchRootRuntimeVisualStageRuntime = ({
   const resultsPresentationOwner =
     controlAuthorityRuntime.presentationAuthorityRuntime.resultsPresentationControlLane
       .resultsPresentationOwner;
-  const appRouteResultsSheetRuntimeOwner =
-    overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.appRouteResultsSheetRuntimeOwner;
+  const appRouteSharedSheetRuntimeOwner =
+    overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.appRouteSharedSheetRuntimeOwner;
   const routeSheetMotionState = mountedRouteSheetMotionState ?? routeSheetRuntimeMotionState;
   const searchSurfaceSheetTranslateY =
-    routeSheetMotionState?.sheetYValue ?? appRouteResultsSheetRuntimeOwner.sheetTranslateY;
+    routeSheetMotionState?.sheetYValue ?? appRouteSharedSheetRuntimeOwner.sheetTranslateY;
   const searchSurfaceSnapPoints =
-    routeSheetMotionState?.snapPoints ?? appRouteResultsSheetRuntimeOwner.snapPoints;
+    routeSheetMotionState?.snapPoints ?? appRouteSharedSheetRuntimeOwner.snapPoints;
   const searchSurfaceCurrentSnap =
-    routeSheetMotionState?.currentSnapPoint ?? appRouteResultsSheetRuntimeOwner.sheetState;
-  const commitSearchDismissCollapsedSnap = React.useCallback(() => {
-    appRouteSheetHostRuntimeOwner.routeSheetSurfaceBodyAuthority
-      .getSnapshot()
-      .motionCallbacksEntry.onSnapChange?.('collapsed', { source: 'programmatic' });
-    appRouteResultsSheetRuntimeOwner.handleSheetSnapChange('collapsed');
-  }, [appRouteResultsSheetRuntimeOwner, appRouteSheetHostRuntimeOwner]);
+    routeSheetMotionState?.currentSnapPoint ?? appRouteSharedSheetRuntimeOwner.sheetState;
   const dismissMotionPlaneRuntime = useSearchDismissMotionPlaneRuntime({
     isCloseTransitionActive: resultsPresentationOwner.shellModel.isCloseTransitionActive,
     sheetTranslateY: searchSurfaceSheetTranslateY,
@@ -127,14 +114,12 @@ export const useSearchRootRuntimeVisualStageRuntime = ({
     snapPoints: searchSurfaceSnapPoints,
     collapsedSnap: searchSurfaceSnapPoints.collapsed,
     notifyCloseCollapsedBoundaryReached: () => {
-      commitSearchDismissCollapsedSnap();
       resultsControlRuntime.resultsTransitionControlLane.closeTransitionActions.markSearchSheetCloseCollapsedReached(
         'collapsed',
         'motion_plane'
       );
     },
     notifyCloseSheetSettled: () => {
-      commitSearchDismissCollapsedSnap();
       resultsControlRuntime.resultsTransitionControlLane.closeTransitionActions.markSearchSheetCloseSheetSettled(
         'collapsed'
       );
@@ -158,7 +143,7 @@ export const useSearchRootRuntimeVisualStageRuntime = ({
         overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime
           .rootOverlaySessionSurfaceRuntime,
       resultsSheetRuntimeLane:
-        overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.rootResultsSheetRuntimeLane,
+        overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.rootSharedSheetRuntimeLane,
       suggestionRuntime: stateAssemblyRuntime.stateFoundationLane.rootSuggestionRuntime,
       dataPlaneRuntime: stateAssemblyRuntime.stateFoundationLane.rootDataPlaneRuntime,
       isSuggestionPanelActive:
@@ -201,14 +186,6 @@ export const useSearchRootRuntimeVisualStageRuntime = ({
       setQuery: stateAssemblyRuntime.stateFoundationLane.rootPrimitivesRuntime.searchState.setQuery,
     },
   });
-  useSearchRootOverlayChromePresentationDiagnosticRuntime({
-    searchRuntimeBus,
-    resultsPresentationAuthority,
-    shouldRenderResultsSheet:
-      overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.appRouteResultsSheetRuntimeOwner
-        .shouldRenderResultsSheet,
-  });
-
   return {
     visualAssemblyRuntime,
   };

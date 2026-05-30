@@ -7,7 +7,7 @@ import type { ResultsPresentationSurfaceAuthority } from './results-presentation
 import type { SearchMapSourceFramePort } from '../map/search-map-source-frame-port';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { ResultsPresentationOwner } from './results-presentation-owner-contract';
-import type { AppRouteResultsSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-results-sheet-runtime-contract';
+import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
 import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
 import type { ArmSearchCloseRestoreOptions } from './results-presentation-shell-runtime-contract';
 import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
@@ -37,13 +37,13 @@ export type UseResultsPresentationOwnerCompositionRuntimeArgs<Suggestion> = {
   ignoreNextSearchBlurRef: React.MutableRefObject<boolean>;
   isClearingSearchRef: React.MutableRefObject<boolean>;
   resultsSheetRuntime: Pick<
-    AppRouteResultsSheetRuntimeOwner,
+    AppRouteSharedSheetRuntimeOwner,
     | 'sheetTranslateY'
     | 'snapPoints'
-    | 'prepareShortcutSheetTransition'
-    | 'resultsSheetRuntimeModel'
-    | 'shouldRenderResultsSheetRef'
-    | 'resetResultsSheetToHidden'
+    | 'prepareSharedSheetForSearchPresentation'
+    | 'sharedSheetRuntimeModel'
+    | 'shouldRenderMountedSharedSheetRef'
+    | 'markSharedSheetHidden'
     | 'sheetState'
   >;
   armSearchCloseRestore: (options?: ArmSearchCloseRestoreOptions) => boolean;

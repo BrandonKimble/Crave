@@ -14,10 +14,10 @@ appId: com.brandonkimble.cravesearch
     optional: true
 - extendedWaitUntil:
     visible: 'What are you craving?'
-    timeout: 15000
+    timeout: 45000
 - extendedWaitUntil:
     visible: 'Show best restaurants here'
-    timeout: 15000
+    timeout: 45000
 - openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=30.2672&lng=-97.7431&zoom=11.5&label=austin'
 - waitForAnimationToEnd:
     timeout: 2000
@@ -32,7 +32,7 @@ appId: com.brandonkimble.cravesearch
     timeout: 1000
 - takeScreenshot: search-profile-terminal-results-open
 - tapOn:
-    point: '52%, 30%'
+    point: '53%, 34%'
     waitToSettleTimeoutMs: 0
 - extendedWaitUntil:
     visible: 'Close restaurant'

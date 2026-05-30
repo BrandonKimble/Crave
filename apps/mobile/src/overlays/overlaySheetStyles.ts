@@ -5,7 +5,11 @@ import { OVERLAY_SHEET_SHADOW_SHELL } from '../constants/shadows';
 export const OVERLAY_HORIZONTAL_PADDING = 20;
 export const OVERLAY_CORNER_RADIUS = 22;
 export const OVERLAY_HEADER_CLOSE_BUTTON_SIZE = CONTROL_HEIGHT;
-export const OVERLAY_STACK_ZINDEX = 10;
+// Route overlay layer order: search chrome < dim scrim < sheet < bottom nav.
+export const OVERLAY_CHROME_ZINDEX = 10;
+export const OVERLAY_BACKDROP_SCRIM_ZINDEX = 80;
+export const OVERLAY_STACK_ZINDEX = 90;
+export const OVERLAY_NAV_SILHOUETTE_ZINDEX = 120;
 export const OVERLAY_GRAB_HANDLE_WIDTH = 40;
 export const OVERLAY_GRAB_HANDLE_HEIGHT = 3.25;
 export const OVERLAY_GRAB_HANDLE_RADIUS = 2;
@@ -30,6 +34,7 @@ export const overlaySheetStyles = StyleSheet.create({
     right: 0,
     top: 0,
     zIndex: OVERLAY_STACK_ZINDEX,
+    elevation: OVERLAY_STACK_ZINDEX,
     backgroundColor: 'transparent',
   },
   surface: {

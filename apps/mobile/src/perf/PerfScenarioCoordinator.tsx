@@ -7,6 +7,9 @@ import { parsePerfScenarioDeepLinkEvent } from './perf-scenario-deep-link';
 import {
   flushPerfScenarioAttributionEventBuffer,
   flushPerfScenarioStackAttributionAggregates,
+  SEARCH_MAP_LOD_SCENARIO_PREFIX,
+  SEARCH_SUBMIT_DISMISS_INTERRUPT_SCENARIO,
+  SEARCH_SUBMIT_DISMISS_REPEAT_SCENARIO,
 } from './perf-scenario-attribution';
 import { readPerfScenarioCommandRegistry } from './perf-scenario-command-registry';
 import {
@@ -22,8 +25,6 @@ import { startUiFrameSampler } from './ui-frame-sampler';
 import { resolveMarket } from '../services/markets';
 import type { MapBounds } from '../types';
 
-const SEARCH_SUBMIT_DISMISS_REPEAT_SCENARIO = 'search_submit_dismiss_repeat';
-const SEARCH_SUBMIT_DISMISS_INTERRUPT_SCENARIO = 'search_submit_dismiss_interrupt';
 const flushedNativeMapApplyRunIds = new Set<string>();
 
 const resolvePerfNow = (): number => {
@@ -90,13 +91,16 @@ const isSubmitDismissMeasuredLoopScenario = (scenario: string): boolean =>
   scenario === SEARCH_SUBMIT_DISMISS_INTERRUPT_SCENARIO ||
   scenario.startsWith(`${SEARCH_SUBMIT_DISMISS_INTERRUPT_SCENARIO}_`);
 
+const isMapLodScenario = (scenario: string): boolean =>
+  scenario.startsWith(SEARCH_MAP_LOD_SCENARIO_PREFIX);
+
 const shouldCollectNativeMapApplySummary = (config: RuntimePerfScenarioConfig): boolean =>
-  isSubmitDismissMeasuredLoopScenario(config.scenario) &&
+  (isSubmitDismissMeasuredLoopScenario(config.scenario) || isMapLodScenario(config.scenario)) &&
   searchMapRenderController.platform === 'ios' &&
   searchMapRenderController.isAvailable();
 
 const shouldUseQuietMeasuredLoop = (config: RuntimePerfScenarioConfig): boolean =>
-  isSubmitDismissMeasuredLoopScenario(config.scenario);
+  isSubmitDismissMeasuredLoopScenario(config.scenario) || isMapLodScenario(config.scenario);
 
 type BufferedSamplerEvent = {
   channel: 'JsFrameSampler' | 'JsTaskLatencySampler' | 'UiFrameSampler';
@@ -268,9 +272,12 @@ export const PerfScenarioCoordinator: React.FC = () => {
     logPayload({
       event: 'perf_scenario_command_received',
       action: event.action,
+      bearing: event.bearing,
+      cameraDurationMs: event.cameraDurationMs,
       delayMs: event.delayMs,
       lat: event.lat,
       lng: event.lng,
+      pitch: event.pitch,
       resubmitDelayMs: event.resubmitDelayMs,
       label: event.label,
       zoom: event.zoom,
@@ -296,6 +303,8 @@ export const PerfScenarioCoordinator: React.FC = () => {
       const accepted = registry.setMapCamera({
         lat: event.lat,
         lng: event.lng,
+        bearing: event.bearing,
+        pitch: event.pitch,
         zoom: event.zoom,
         label: event.label,
       });
@@ -306,7 +315,58 @@ export const PerfScenarioCoordinator: React.FC = () => {
         reason: accepted ? null : 'camera_commit_rejected',
         lat: event.lat,
         lng: event.lng,
+        bearing: event.bearing,
+        pitch: event.pitch,
         zoom: event.zoom,
+        label: event.label,
+      });
+      return;
+    }
+
+    if (event.action === 'animate_map_camera') {
+      const cameraDurationMs = event.cameraDurationMs ?? 650;
+      if (
+        !registry.animateMapCamera ||
+        event.lat == null ||
+        event.lng == null ||
+        event.zoom == null
+      ) {
+        logPayload({
+          event: 'perf_scenario_command_failed',
+          action: event.action,
+          reason: registry.animateMapCamera
+            ? 'missing_camera_parameters'
+            : 'animated_camera_command_not_registered',
+          hasAnimateMapCamera: registry.animateMapCamera != null,
+        cameraDurationMs,
+        lat: event.lat,
+        lng: event.lng,
+        bearing: event.bearing,
+        pitch: event.pitch,
+        zoom: event.zoom,
+      });
+        return;
+      }
+      const accepted = registry.animateMapCamera({
+        lat: event.lat,
+        lng: event.lng,
+        bearing: event.bearing,
+        pitch: event.pitch,
+        zoom: event.zoom,
+        cameraDurationMs,
+        label: event.label,
+      });
+      logPayload({
+        event: accepted ? 'perf_scenario_command_executed' : 'perf_scenario_command_failed',
+        action: event.action,
+        step: 'animate_map_camera',
+        reason: accepted ? null : 'camera_commit_rejected',
+        cameraDurationMs,
+        lat: event.lat,
+        lng: event.lng,
+        bearing: event.bearing,
+        zoom: event.zoom,
+        pitch: event.pitch,
         label: event.label,
       });
       return;

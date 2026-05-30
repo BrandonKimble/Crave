@@ -26,13 +26,6 @@ export const getSearchMapEngineInputChanges = (
   getPerfNow: left.getPerfNow !== right.getPerfNow,
   logSearchCompute: left.logSearchCompute !== right.logSearchCompute,
   maxFullPins: left.maxFullPins !== right.maxFullPins,
-  lodVisibleCandidateBuffer: left.lodVisibleCandidateBuffer !== right.lodVisibleCandidateBuffer,
-  lodPinPromoteStableMsMoving:
-    left.lodPinPromoteStableMsMoving !== right.lodPinPromoteStableMsMoving,
-  lodPinDemoteStableMsMoving: left.lodPinDemoteStableMsMoving !== right.lodPinDemoteStableMsMoving,
-  lodPinToggleStableMsIdle: left.lodPinToggleStableMsIdle !== right.lodPinToggleStableMsIdle,
-  lodPinOffscreenToggleStableMsMoving:
-    left.lodPinOffscreenToggleStableMsMoving !== right.lodPinOffscreenToggleStableMsMoving,
   mapQueryBudget: left.mapQueryBudget !== right.mapQueryBudget,
   profileCommandPort: left.profileCommandPort !== right.profileCommandPort,
 });
@@ -58,11 +51,6 @@ export const createSearchRootMapEngineInputs = ({
   getPerfNow: mapPresentationRuntime.getPerfNow,
   logSearchCompute: mapPresentationRuntime.logSearchCompute,
   maxFullPins: 30,
-  lodVisibleCandidateBuffer: 16,
-  lodPinPromoteStableMsMoving: 48,
-  lodPinDemoteStableMsMoving: 190,
-  lodPinToggleStableMsIdle: 0,
-  lodPinOffscreenToggleStableMsMoving: 120,
   mapQueryBudget: mapPresentationRuntime.mapQueryBudget,
   profileCommandPort: mapPresentationRuntime.profileCommandPort,
 });

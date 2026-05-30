@@ -106,8 +106,32 @@ const readSamplerEventsFromLog = (logPath) => {
   return events;
 };
 
+const readWorkSpanEventsFromLog = (logPath) => {
+  if (!logPath || !fs.existsSync(logPath)) {
+    return [];
+  }
+  const content = fs.readFileSync(logPath, 'utf8');
+  const events = [];
+  content.split(/\r?\n/).forEach((line, index) => {
+    const match = line.match(/\[SearchPerf\]\[WorkSpan\]\s+(\{.*\})/);
+    if (!match) {
+      return;
+    }
+    try {
+      events.push({
+        line: index + 1,
+        ...JSON.parse(match[1]),
+      });
+    } catch {
+      // Ignore malformed partial console lines from simulator logging.
+    }
+  });
+  return events;
+};
+
 const visualEventsFromLog = readVisualReadinessEventsFromLog(report.logPath);
 const samplerEventsFromLog = readSamplerEventsFromLog(report.logPath);
+const workSpanEventsFromLog = readWorkSpanEventsFromLog(report.logPath);
 const scenarioEvents = Array.isArray(report.scenarioEvents) ? report.scenarioEvents : [];
 const shouldScopeToMeasuredRepeatLoop =
   (report.scenarioName ?? '').includes('search_submit_dismiss_repeat') &&
@@ -131,6 +155,9 @@ const visualEvents = shouldScopeToMeasuredRepeatLoop
 const failures = [];
 const evidence = [];
 const scenarioName = report.scenarioName ?? '';
+const scenarioIsMapRuntimeOnly =
+  scenarioName.includes('search_map_lod_pan_zoom') ||
+  scenarioName.includes('search_pin_selection_profile_open');
 const scenarioExpectsResultsDismiss =
   scenarioName.includes('search_submit_visual_parity') ||
   scenarioName.includes('search_submit_dismiss');
@@ -143,7 +170,26 @@ const pass = (message) => {
   evidence.push(message);
 };
 
+const expandQuietAggregateSamples = (events) =>
+  events.flatMap((event) => {
+    if (
+      event.event !== 'quiet_measured_loop_attribution_aggregate' ||
+      !Array.isArray(event.samples)
+    ) {
+      return [event];
+    }
+    return event.samples.map((sample) => ({
+      ...sample,
+      line: sample.line ?? event.line,
+      aggregateLine: event.line,
+      quietAggregateSourceEvent: event.sourceEvent ?? null,
+    }));
+  });
+
+const expandedVisualEvents = expandQuietAggregateSamples(visualEvents);
 const byEvent = (eventName) => visualEvents.filter((event) => event.event === eventName);
+const byExpandedEvent = (eventName) =>
+  expandedVisualEvents.filter((event) => event.event === eventName);
 const byScenarioEvent = (eventName) => scenarioEvents.filter((event) => event.event === eventName);
 const isLineBetween = (event, startLine, endLine) => event.line > startLine && event.line < endLine;
 const retainedSubmitReplayEvents = byEvent('retained_submit_replay_contract');
@@ -152,6 +198,219 @@ const numeric = (value) => {
   const next = Number(value);
   return Number.isFinite(next) ? next : null;
 };
+const isNondecreasingScreenYVisualOrder = (visualOrder) => {
+  if (!Array.isArray(visualOrder) || visualOrder.length <= 1) {
+    return true;
+  }
+  let previousY = null;
+  for (const entry of visualOrder) {
+    const screenY = numeric(entry?.screenY);
+    if (screenY == null) {
+      return false;
+    }
+    if (previousY != null && screenY + Number.EPSILON < previousY) {
+      return false;
+    }
+    previousY = screenY;
+  }
+  return true;
+};
+const sourceOperationMetric = (signature, key) => {
+  if (typeof signature !== 'string' || signature.length === 0) {
+    return null;
+  }
+  const part = signature.split('|').find((entry) => entry.startsWith(`${key}:`));
+  if (!part) {
+    return null;
+  }
+  return numeric(part.slice(key.length + 1));
+};
+const nativeMapApplyContextBuckets = () => {
+  const summaries = report.nativeMapApplySummary?.events ?? [];
+  return summaries.flatMap((event) =>
+    Array.isArray(event.summary?.topContextBuckets)
+      ? event.summary.topContextBuckets.map((bucket) => ({
+          line: event.line,
+          reason: event.reason,
+          ...bucket,
+        }))
+      : []
+  );
+};
+const nativeMapApplyBucketsFromSummary = (summary) => {
+  const flattened = [
+    ...(summary?.topBucketsByTotalMs ?? []),
+    ...(summary?.topBucketsByMaxMs ?? []),
+    ...(summary?.events ?? []).flatMap((event) =>
+      Array.isArray(event.summary?.topBuckets)
+        ? event.summary.topBuckets.map((bucket) => ({
+            line: event.line,
+            reason: event.reason,
+            ...bucket,
+          }))
+        : []
+    ),
+  ];
+  const seen = new Set();
+  return flattened.filter((bucket) => {
+    const key = JSON.stringify([
+      bucket.line ?? null,
+      bucket.reason ?? null,
+      bucket.phase ?? null,
+      bucket.section ?? null,
+      bucket.source ?? null,
+      bucket.totalMs ?? null,
+      bucket.count ?? null,
+      bucket.operationCount ?? null,
+      bucket.maxMs ?? null,
+    ]);
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+};
+const nativeMapApplyContextBucketsFromSummary = (summary) => {
+  const flattened = [
+    ...(summary?.topContextBucketsByTotalMs ?? []),
+    ...(summary?.topContextBucketsByMaxMs ?? []),
+    ...(summary?.events ?? []).flatMap((event) =>
+      Array.isArray(event.summary?.topContextBuckets)
+        ? event.summary.topContextBuckets.map((bucket) => ({
+            line: event.line,
+            reason: event.reason,
+            ...bucket,
+          }))
+        : []
+    ),
+  ];
+  const seen = new Set();
+  return flattened.filter((bucket) => {
+    const key = JSON.stringify([
+      bucket.line ?? null,
+      bucket.reason ?? null,
+      bucket.phase ?? null,
+      bucket.transactionKind ?? null,
+      bucket.sourceFamilySignature ?? null,
+      bucket.sourceOperationSignature ?? null,
+      bucket.totalMs ?? null,
+      bucket.count ?? null,
+      bucket.maxMs ?? null,
+    ]);
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+};
+const candidateLabelCountMatchesPins = (event) => {
+  const pinCount = numeric(event.pinCount) ?? 0;
+  const labelCount = numeric(event.labelCount) ?? 0;
+  if (pinCount <= 0) {
+    return labelCount === 0;
+  }
+  const perPin = numeric(event.labelPerPinCandidateCount);
+  return perPin === 4 || labelCount === pinCount * 4 || labelCount >= pinCount * 4;
+};
+const pinCountFromClassification = (event) =>
+  numeric(event.pinRestaurantCount) ?? numeric(event.pinVisualIdentityCount) ?? 0;
+const dotCountFromClassification = (event) =>
+  numeric(event.dotRestaurantCount) ?? numeric(event.dotVisualIdentityCount) ?? 0;
+const pinBudgetFromClassification = (event) => numeric(event.fullPinBudget) ?? 30;
+const selectedPinCountFromClassification = (event) =>
+  numeric(event.selectedPinVisualIdentityCount) ?? numeric(event.selectedPinCount) ?? 0;
+const normalPinCountFromClassification = (event) =>
+  numeric(event.normalPinVisualIdentityCount) ??
+  numeric(event.normalPinCount) ??
+  Math.max(0, pinCountFromClassification(event) - selectedPinCountFromClassification(event));
+const normalPinRankMismatchFromClassification = (event) => {
+  const explicitMismatchCount = numeric(event.normalPinRankMismatchCount);
+  if (explicitMismatchCount != null) {
+    return explicitMismatchCount;
+  }
+  if (
+    typeof event.expectedNormalPinFingerprint === 'string' &&
+    typeof event.actualNormalPinFingerprint === 'string' &&
+    event.expectedNormalPinFingerprint !== event.actualNormalPinFingerprint
+  ) {
+    return 1;
+  }
+  return 0;
+};
+const parseRankSignatureSlotMap = (signature) => {
+  const entries = Array.isArray(signature) ? signature : [];
+  const map = new Map();
+  for (const entry of entries) {
+    const text = String(entry);
+    const slotMatch = text.match(/#z([^#]+)$/);
+    if (!slotMatch) {
+      continue;
+    }
+    const markerKey = text.split('#r')[0];
+    const slot = Number(slotMatch[1]);
+    if (!markerKey || !Number.isFinite(slot)) {
+      continue;
+    }
+    map.set(markerKey, slot);
+  }
+  return map;
+};
+const findStableSlotOwnershipRegression = (events) => {
+  let previous = null;
+  for (const event of events) {
+    const current = parseRankSignatureSlotMap(event.actualNormalPinRankSignature);
+    if (current.size === 0) {
+      continue;
+    }
+    if (previous != null) {
+      for (const [markerKey, previousSlot] of previous.map.entries()) {
+        if (!current.has(markerKey)) {
+          continue;
+        }
+        const currentSlot = current.get(markerKey);
+        if (currentSlot !== previousSlot) {
+          return {
+            line: event.line,
+            markerKey,
+            previousSlot,
+            currentSlot,
+            previousLine: previous.line,
+          };
+        }
+      }
+    }
+    previous = {
+      line: event.line,
+      map: current,
+    };
+  }
+  return null;
+};
+const selectedPinAllowanceFromBridgeSlice = (event) =>
+  numeric(event.markerRoleSelectedPinnedCount) ?? 0;
+const normalPinCountFromBridgeSlice = (event) =>
+  numeric(event.markerRoleNormalPinnedCount) ??
+  Math.max(0, (numeric(event.markerRolePinnedCount) ?? 0) - selectedPinAllowanceFromBridgeSlice(event));
+const unclassifiedCountFromClassification = (event) =>
+  numeric(event.unclassifiedCandidateRestaurantIdCount) ??
+  numeric(event.unclassifiedCandidateVisualIdentityCount) ??
+  0;
+const slotTopologyEvents = byEvent('search_map_slot_topology_contract');
+const badSlotTopologyEvent = slotTopologyEvents.find((event) => {
+  const pinStackSlotCount = numeric(event.pinStackSlotCount);
+  if (pinStackSlotCount == null) {
+    return true;
+  }
+  return (
+    numeric(event.normalSlotCount) !== 30 ||
+    numeric(event.pinSlotSourceIdCount) !== pinStackSlotCount ||
+    numeric(event.pinInteractionLayerIdCount) !== pinStackSlotCount ||
+    numeric(event.labelVisualLayerIdCount) !== pinStackSlotCount * 16 ||
+    numeric(event.labelCollisionLayerIdCount) !== 3
+  );
+});
 const MAX_HANDOFF_RELEASE_DELAY_MS = 20;
 const MAX_MEASURED_REPEAT_VISUAL_READINESS_EVENTS = 240;
 const MAX_MEASURED_REPEAT_NAV_LOCKSTEP_EVENTS = 18;
@@ -636,7 +895,9 @@ const firstPaintAdmissionReadyEvents = byEvent('mounted_results_first_paint_admi
 const resultCardsReadyEvents = byEvent('result_cards_ready');
 const resultCardsRevealStartEvents = byEvent('result_cards_reveal_started');
 const gateEvents = preparedGateEvents;
-if (preparedGateEvents.length === 0) {
+if (scenarioIsMapRuntimeOnly) {
+  pass(`surface transaction gate readiness skipped for map runtime scenario ${scenarioName}`);
+} else if (preparedGateEvents.length === 0) {
   fail('missing cards_pins_transaction_commit_gate event');
 } else {
   const badGate = preparedGateEvents.find(
@@ -707,7 +968,9 @@ if (initialLoadingVisiblePreroll) {
   pass('native map source preroll stays empty while submit loading cover owns reveal');
 }
 
-if (coverRevealStartEvents.length === 0) {
+if (scenarioIsMapRuntimeOnly) {
+  pass(`search submit reveal/sheet gates skipped for map runtime scenario ${scenarioName}`);
+} else if (coverRevealStartEvents.length === 0) {
   fail('missing cards_pins_cover_reveal_started event');
 } else {
   const nativeMountedHiddenEvents = byEvent('native_execution_batch_mounted_hidden_ready');
@@ -774,7 +1037,9 @@ if (coverRevealStartEvents.length === 0) {
 }
 
 const layerEvents = byEvent('mounted_sheet_layer_contract');
-if (layerEvents.length === 0) {
+if (scenarioIsMapRuntimeOnly) {
+  pass(`mounted sheet layer gate skipped for map runtime scenario ${scenarioName}`);
+} else if (layerEvents.length === 0) {
   fail('missing mounted_sheet_layer_contract event');
 } else {
   const badLayer = layerEvents.find(
@@ -817,19 +1082,21 @@ if (
   }
 }
 
-const overlapEvents = byEvent('lod_source_overlap_probe');
+const overlapEvents = byEvent('lod_source_overlap_contract');
 if (overlapEvents.length === 0) {
-  fail('missing lod_source_overlap_probe events');
+  fail('missing lod_source_overlap_contract events');
 } else {
   const badOverlap = overlapEvents.find(
-    (event) => (event.markerKeyOverlapCount ?? 0) > 0 || (event.restaurantIdOverlapCount ?? 0) > 0
+    (event) =>
+      (numeric(event.pinCount) ?? 0) > 0 &&
+      (numeric(event.markerKeyOverlapCount) ?? 0) < (numeric(event.pinCount) ?? 0)
   );
   if (badOverlap) {
     fail(
-      `same-key LOD overlap at line ${badOverlap.line}: marker=${badOverlap.markerKeyOverlapCount} restaurant=${badOverlap.restaurantIdOverlapCount}`
+      `resident dot source did not include all promoted pins at line ${badOverlap.line}: pins=${badOverlap.pinCount} overlap=${badOverlap.markerKeyOverlapCount}`
     );
   } else {
-    pass(`zero same-key LOD overlap probes=${overlapEvents.length}`);
+    pass(`resident dot/pin overlap contracts=${overlapEvents.length}`);
   }
 }
 
@@ -841,19 +1108,116 @@ if (classificationEvents.length === 0) {
     (event) =>
       event.promotedRestaurantsRenderAsPins !== true ||
       event.nonPromotedRestaurantsRenderAsDots !== true ||
-      (event.unclassifiedCandidateRestaurantIdCount ?? 0) > 0
+	      event.allEligibleVisualIdentitiesClassified !== true ||
+	      unclassifiedCountFromClassification(event) > 0 ||
+	      normalPinRankMismatchFromClassification(event) > 0 ||
+	      normalPinCountFromClassification(event) > pinBudgetFromClassification(event) ||
+	      pinCountFromClassification(event) >
+	        pinBudgetFromClassification(event) + selectedPinCountFromClassification(event) ||
+      (numeric(event.classifiedVisualIdentityCount) != null &&
+        pinCountFromClassification(event) + dotCountFromClassification(event) !==
+          numeric(event.classifiedVisualIdentityCount))
   );
   if (badClassification) {
     fail(`LOD classification contract failed at line ${badClassification.line}`);
   } else {
     const mixedLodEvent = classificationEvents.find(
-      (event) => (event.pinRestaurantCount ?? 0) > 0 && (event.dotRestaurantCount ?? 0) > 0
+      (event) => pinCountFromClassification(event) > 0 && dotCountFromClassification(event) > 0
     );
     if (!mixedLodEvent) {
       fail('LOD classification never observed both pins and dots in the same scenario');
     } else {
       pass(
-        `LOD classification pins=${mixedLodEvent.pinRestaurantCount} dots=${mixedLodEvent.dotRestaurantCount}`
+        `LOD classification pins=${pinCountFromClassification(
+          mixedLodEvent
+        )} dots=${dotCountFromClassification(mixedLodEvent)}`
+      );
+    }
+  }
+}
+
+if (
+  (report.scenarioName ?? '').includes('search_map_lod_pan_zoom') ||
+  (report.scenarioName ?? '').includes('search_pin_selection_profile_open')
+) {
+  if (slotTopologyEvents.length === 0) {
+    fail('missing search_map_slot_topology_contract events');
+  } else if (badSlotTopologyEvent) {
+    fail(
+      `search map slot topology contract failed at line ${badSlotTopologyEvent.line}: ${JSON.stringify({
+        pinStackSlotCount: badSlotTopologyEvent.pinStackSlotCount,
+        normalSlotCount: badSlotTopologyEvent.normalSlotCount,
+        pinSlotSourceIdCount: badSlotTopologyEvent.pinSlotSourceIdCount,
+        pinInteractionLayerIdCount: badSlotTopologyEvent.pinInteractionLayerIdCount,
+        labelVisualLayerIdCount: badSlotTopologyEvent.labelVisualLayerIdCount,
+        labelCollisionLayerIdCount: badSlotTopologyEvent.labelCollisionLayerIdCount,
+      })}`
+    );
+  } else {
+    const topologyKeys = new Set(
+      slotTopologyEvents.map((event) => event.slotTopologyKey).filter(Boolean)
+    );
+    pass(
+      `search map slot topology valid events=${slotTopologyEvents.length} topologies=${[
+        ...topologyKeys,
+      ].join(',')}`
+    );
+  }
+
+  // Promotion stability: while the map moves, the promoted pin count must not
+  // mass-demote and rebound. A stable selection holds the set near its peak
+  // (only small legitimate displacement as markers cross the viewport edge).
+  // The LOD demotion bug instead collapses the set from ~30 down to a handful
+  // and then bounces back to ~30 repeatedly as the camera moves. We detect that
+  // collapse-and-recover oscillation, which is unambiguous instability:
+  // legitimate zoom-out demotion is monotonic and never recovers to the peak
+  // mid-movement, so this does not false-fail on real zoom changes. This
+  // asserts cross-frame stability, which the per-frame lod_classification_contract
+  // cannot catch (it reports the intended set, not what natively rendered).
+  const COLLAPSE_DROP_TOLERANCE = 12; // drop from running peak that counts as a collapse
+  const RECOVERY_MARGIN = 6; // rise back toward peak that counts as a rebound
+  const MIN_PEAK_TO_ASSERT = 15; // ignore tiny scenarios with no real promoted set
+  const movingPinOrderEvents = byEvent('native_pin_visual_order_contract')
+    .filter((event) => event.isMoving === true && numeric(event.pinCount) != null)
+    .sort(
+      (left, right) =>
+        (numeric(left.nativeEmittedAtMs) ?? left.line) -
+        (numeric(right.nativeEmittedAtMs) ?? right.line)
+    );
+  if (movingPinOrderEvents.length === 0) {
+    fail('missing moving native_pin_visual_order_contract events — cannot verify promotion stability');
+  } else {
+    let runningPeak = 0;
+    let collapseFloor = null; // deepest pinCount while in an active collapse below the peak
+    let oscillationCount = 0;
+    let worst = null; // { drop, peak, floor, line }
+    for (const event of movingPinOrderEvents) {
+      const pinCount = numeric(event.pinCount);
+      runningPeak = Math.max(runningPeak, pinCount);
+      if (runningPeak < MIN_PEAK_TO_ASSERT) {
+        continue;
+      }
+      if (runningPeak - pinCount >= COLLAPSE_DROP_TOLERANCE) {
+        // Still collapsed well below the peak — track the deepest floor.
+        collapseFloor = collapseFloor == null ? pinCount : Math.min(collapseFloor, pinCount);
+      } else if (collapseFloor != null && pinCount - collapseFloor >= RECOVERY_MARGIN) {
+        // Climbed back to within tolerance of the peak after a deep collapse:
+        // one collapse-and-recover thrash cycle.
+        oscillationCount += 1;
+        const drop = runningPeak - collapseFloor;
+        if (!worst || drop > worst.drop) {
+          worst = { drop, peak: runningPeak, floor: collapseFloor, line: event.line };
+        }
+        collapseFloor = null;
+      }
+    }
+    if (oscillationCount > 0) {
+      fail(
+        `promoted pin count collapsed and recovered ${oscillationCount} time(s) during movement (LOD thrash); worst near line ${worst.line}: dropped from peak ${worst.peak} to ${worst.floor} then rebounded`
+      );
+    } else {
+      pass(
+        `promotion stability during movement: no collapse-and-recover oscillation (events=${movingPinOrderEvents.length})`
       );
     }
   }
@@ -911,12 +1275,20 @@ if (visualSourceEvents.length === 0) {
   fail('missing shortcut map_marker_visual_sources_contract events before dismiss');
 } else {
   const completeVisualSourceEvent = visualSourceEvents.find(
-    (event) =>
-      (event.pinCount ?? 0) > 0 &&
-      (event.dotCount ?? 0) > 0 &&
-      (event.labelCount ?? 0) === (event.pinCount ?? Number.POSITIVE_INFINITY) &&
-      event.hasLabelCollisionSource === true &&
-      event.nativeMapLabelCollisionPreserved === true
+      (event) =>
+        (event.pinCount ?? 0) > 0 &&
+        (event.dotCount ?? 0) > 0 &&
+        candidateLabelCountMatchesPins(event) &&
+        event.promotedPinInteractionCountMatchesPinCount !== false &&
+        event.promotedRoleFamiliesAreComplete === true &&
+        event.demotedRoleFamiliesAreDotOnly === true &&
+        event.promotedDotFeaturesAreResident === true &&
+        event.promotedResidentDotsStartHidden === true &&
+        event.projectedVisualFeatureCountMatchesCoverage !== false &&
+        (numeric(event.pinDotMarkerKeyOverlapCount) ?? 0) >= (numeric(event.pinCount) ?? 0) &&
+        (numeric(event.pinDotVisualIdentityOverlapCount) ?? 0) >= (numeric(event.pinCount) ?? 0) &&
+        event.hasLabelCollisionSource === true &&
+        event.nativeMapLabelCollisionPreserved === true
   );
   if (!completeVisualSourceEvent) {
     const latest = visualSourceEvents[visualSourceEvents.length - 1];
@@ -932,28 +1304,88 @@ if (visualSourceEvents.length === 0) {
       })}`
     );
   } else {
+    const pinCount = numeric(completeVisualSourceEvent.pinCount) ?? 0;
+    const labelCount = numeric(completeVisualSourceEvent.labelCount) ?? 0;
+    const pinInteractionCount = numeric(completeVisualSourceEvent.pinInteractionCount) ?? 0;
+    const labelCollisionCount = numeric(completeVisualSourceEvent.labelCollisionCount) ?? 0;
+    if (
+      labelCount !== pinCount * 4 ||
+      pinInteractionCount !== pinCount ||
+      labelCollisionCount !== pinCount
+    ) {
+      fail(
+        `shortcut map visual source families are not atomically slot-aligned at line ${
+          completeVisualSourceEvent.line
+        }: ${JSON.stringify({
+          pinCount,
+          pinInteractionCount,
+          labelCount,
+          labelCollisionCount,
+          promotedRoleFamiliesAreComplete:
+            completeVisualSourceEvent.promotedRoleFamiliesAreComplete,
+          demotedRoleFamiliesAreDotOnly: completeVisualSourceEvent.demotedRoleFamiliesAreDotOnly,
+          promotedDotFeaturesAreResident: completeVisualSourceEvent.promotedDotFeaturesAreResident,
+          promotedResidentDotsStartHidden: completeVisualSourceEvent.promotedResidentDotsStartHidden,
+        })}`
+      );
+    } else {
+      pass(
+        `shortcut map promoted slot families aligned pins=${pinCount} interactions=${pinInteractionCount} labels=${labelCount} collisions=${labelCollisionCount}`
+      );
+    }
     pass(
       `shortcut map visual sources pins=${completeVisualSourceEvent.pinCount} dots=${completeVisualSourceEvent.dotCount} labels=${completeVisualSourceEvent.labelCount}`
     );
   }
 }
 
+if (scenarioIsMapRuntimeOnly) {
+  const completedCoverageEvents = workSpanEventsFromLog.filter(
+    (event) =>
+      event.owner === 'map_source_frame_publish' &&
+      event.searchMode === 'shortcut' &&
+      event.shortcutCoverageStatus === 'completed' &&
+      numeric(event.shortcutCoverageAcceptedFeatureCount) != null
+  );
+  const latestCoverageEvent = completedCoverageEvents[completedCoverageEvents.length - 1] ?? null;
+  const latestVisualSourceEvent = visualSourceEvents[visualSourceEvents.length - 1] ?? null;
+  if (!latestCoverageEvent || !latestVisualSourceEvent) {
+    fail('map runtime did not expose both shortcut coverage and visual source counts');
+  } else {
+    const acceptedFeatureCount =
+      numeric(latestCoverageEvent.shortcutCoverageAcceptedFeatureCount) ?? 0;
+    const visibleFeatureCount =
+      numeric(latestVisualSourceEvent.projectedVisualFeatureCount) ??
+      (numeric(latestVisualSourceEvent.pinCount) ?? 0) +
+        (numeric(latestVisualSourceEvent.visibleDemotedDotCount) ?? 0);
+    if (visibleFeatureCount !== acceptedFeatureCount) {
+      fail(
+        `map resident coverage count mismatch: coverage accepted=${acceptedFeatureCount} visual pins+dots=${visibleFeatureCount}`
+      );
+    } else {
+      pass(
+        `map resident coverage preserved accepted=${acceptedFeatureCount} pins=${latestVisualSourceEvent.pinCount} dots=${latestVisualSourceEvent.dotCount}`
+      );
+    }
+  }
+}
+
 const nativeEnterStarts = byEvent('native_marker_enter_started');
 const nativeEnterSettles = byEvent('native_marker_enter_settled');
-const badNativeEnterStart = nativeEnterStarts.find(
-  (event) =>
-    (event.pinCount ?? 0) <= 0 ||
-    (event.dotCount ?? 0) <= 0 ||
-    (event.labelCount ?? 0) !== (event.pinCount ?? Number.POSITIVE_INFINITY) ||
-    event.pinsLabelsDotsFadeTogether !== true
-);
-const badNativeEnterSettle = nativeEnterSettles.find(
-  (event) =>
-    (event.pinCount ?? 0) <= 0 ||
-    (event.dotCount ?? 0) <= 0 ||
-    (event.labelCount ?? 0) !== (event.pinCount ?? Number.POSITIVE_INFINITY) ||
-    event.pinsLabelsDotsFadeTogether !== true
-);
+  const badNativeEnterStart = nativeEnterStarts.find(
+    (event) =>
+      (event.pinCount ?? 0) <= 0 ||
+      (event.dotCount ?? 0) <= 0 ||
+      !candidateLabelCountMatchesPins(event) ||
+      event.pinsLabelsDotsFadeTogether !== true
+  );
+  const badNativeEnterSettle = nativeEnterSettles.find(
+    (event) =>
+      (event.pinCount ?? 0) <= 0 ||
+      (event.dotCount ?? 0) <= 0 ||
+      !candidateLabelCountMatchesPins(event) ||
+      event.pinsLabelsDotsFadeTogether !== true
+  );
 if (nativeEnterStarts.length === 0 || nativeEnterSettles.length === 0) {
   fail('missing native marker enter start/settle events with visual source counts');
 } else if (badNativeEnterStart || badNativeEnterSettle) {
@@ -985,6 +1417,577 @@ if (labelVisibilityEvents.length === 0) {
     );
   } else {
     pass(`pin label visibility observed labels=${visibleLabelEvent.visibleLabelCount}`);
+  }
+}
+
+const renderedLabelCollisionEvents = byEvent('map_rendered_label_collision_contract').filter(
+  (event) => event.line < firstDismissLine
+);
+if (renderedLabelCollisionEvents.length === 0) {
+  fail('missing map_rendered_label_collision_contract events before dismiss');
+} else {
+  const nativeLiveLodTransitionEventsForLabels = byEvent('native_live_lod_transition_contract');
+  const isCoveredBySynchronizedPinExitFade = (event) => {
+    const detachedLabelCount = numeric(event.visibleLabelsWithoutPromotedPinCount) ?? 0;
+    const demotedLabelCount = numeric(event.visibleLabelsForDemotedMarkerCount) ?? 0;
+    if (detachedLabelCount === 0 && demotedLabelCount === 0) {
+      return true;
+    }
+    if (detachedLabelCount !== demotedLabelCount || demotedLabelCount <= 0) {
+      return false;
+    }
+    const emittedAtMs = numeric(event.emittedAtMs);
+    if (emittedAtMs == null) {
+      return false;
+    }
+    let activeSynchronizedPinExitCount = 0;
+    for (const transitionEvent of nativeLiveLodTransitionEventsForLabels) {
+      const transitionAtMs = numeric(transitionEvent.emittedAtMs);
+      const durationMs = numeric(transitionEvent.transitionDurationMs) ?? 0;
+      if (transitionAtMs == null || durationMs <= 0) {
+        continue;
+      }
+      const elapsedMs = emittedAtMs - transitionAtMs;
+      if (
+        elapsedMs >= 0 &&
+        elapsedMs <= durationMs + 34 &&
+        transitionEvent.pinLabelFadeSynchronized === true
+      ) {
+        activeSynchronizedPinExitCount += numeric(transitionEvent.pinExitTransitionCount) ?? 0;
+      }
+    }
+    return activeSynchronizedPinExitCount >= demotedLabelCount;
+  };
+  const badRenderedLabelCollisionEvent = renderedLabelCollisionEvents.find(
+    (event) =>
+      (numeric(event.visibleLabelCount) ?? 0) > 0 &&
+      ((numeric(event.multipleVisibleLabelCandidateMarkerCount) ?? 0) > 0 ||
+        !isCoveredBySynchronizedPinExitFade(event) ||
+        event.promotedPinCollisionObstacleCountMatchesPins !== true ||
+        event.labelCollisionConfigured !== true)
+  );
+  if (badRenderedLabelCollisionEvent) {
+    fail(
+      `rendered labels are not locked to promoted pin collision at line ${
+        badRenderedLabelCollisionEvent.line
+      }: ${JSON.stringify({
+        visibleLabelCount: badRenderedLabelCollisionEvent.visibleLabelCount,
+        multipleVisibleLabelCandidateMarkerCount:
+          badRenderedLabelCollisionEvent.multipleVisibleLabelCandidateMarkerCount,
+        visibleLabelsWithoutPromotedPinCount:
+          badRenderedLabelCollisionEvent.visibleLabelsWithoutPromotedPinCount,
+        visibleLabelsForDemotedMarkerCount:
+          badRenderedLabelCollisionEvent.visibleLabelsForDemotedMarkerCount,
+        visibleLabelsWithoutPromotedPinMarkerKeys:
+          badRenderedLabelCollisionEvent.visibleLabelsWithoutPromotedPinMarkerKeys,
+        visibleLabelsForDemotedMarkerKeys:
+          badRenderedLabelCollisionEvent.visibleLabelsForDemotedMarkerKeys,
+        promotedPinCollisionObstacleCount:
+          badRenderedLabelCollisionEvent.promotedPinCollisionObstacleCount,
+        expectedPromotedPinCount: badRenderedLabelCollisionEvent.expectedPromotedPinCount,
+      })}`
+    );
+  } else {
+    const renderedLabelCollisionEvent =
+      renderedLabelCollisionEvents.find((event) => (numeric(event.visibleLabelCount) ?? 0) > 0) ??
+      renderedLabelCollisionEvents[renderedLabelCollisionEvents.length - 1];
+    const synchronizedFadeLabelEvents = renderedLabelCollisionEvents.filter(
+      (event) =>
+        ((numeric(event.visibleLabelsWithoutPromotedPinCount) ?? 0) > 0 ||
+          (numeric(event.visibleLabelsForDemotedMarkerCount) ?? 0) > 0) &&
+        isCoveredBySynchronizedPinExitFade(event)
+    );
+    pass(
+      `rendered labels collision-locked labels=${renderedLabelCollisionEvent.visibleLabelCount} promotedPins=${renderedLabelCollisionEvent.expectedPromotedPinCount}`
+    );
+    if (synchronizedFadeLabelEvents.length > 0) {
+      pass(
+        `demoting labels only remain visible inside synchronized pin fade-out windows events=${synchronizedFadeLabelEvents.length}`
+      );
+    }
+  }
+}
+
+const nativeSetFrameBridgeSlices = byExpandedEvent('native_set_render_frame_bridge_slice');
+const liveMovingBridgeSlices = nativeSetFrameBridgeSlices.filter(
+  (event) =>
+    event.visualFrameTransactionKind === 'live_update' &&
+    (event.isMoving === true || event.isGestureActive === true)
+);
+if ((report.scenarioName ?? '').includes('search_map_lod_pan_zoom')) {
+  const liveVisualLodEvents = visualSourceEvents.filter(
+    (event) => (numeric(event.pinCount) ?? 0) > 0 || (numeric(event.dotCount) ?? 0) > 0
+  );
+  const visualLodPinCounts = new Set(
+    liveVisualLodEvents.map((event) => numeric(event.pinCount)).filter((value) => value != null)
+  );
+  const nativeLiveRoleBuckets = nativeMapApplyContextBuckets().filter(
+    (bucket) =>
+      bucket.phase === 'live' &&
+      bucket.transactionKind === 'live_update' &&
+      bucket.sourceFamilySignature === 'markerRoles:1' &&
+      bucket.sourceModeSignature === 'patch:1'
+  );
+  const liveRoleSourceDeltaBucket = nativeLiveRoleBuckets.find(
+    (bucket) =>
+      (numeric(bucket.rawSourceDeltaCount) ?? 0) > 0 ||
+      (numeric(bucket.appliedSourceDeltaCount) ?? 0) > 0
+  );
+  const nativeDirtyRoleBucket = nativeLiveRoleBuckets.find(
+    (bucket) =>
+      (sourceOperationMetric(bucket.sourceOperationSignature, 'dirty') ?? 0) > 0 &&
+      (numeric(bucket.rawSourceDeltaCount) ?? 0) === 0 &&
+      (numeric(bucket.appliedSourceDeltaCount) ?? 0) === 0
+  );
+  const liveSourceDeltaSlice = liveMovingBridgeSlices.find(
+    (event) =>
+      (numeric(event.sourceDeltaCount) ?? 0) > 0 || (numeric(event.replaceSourceCount) ?? 0) > 0
+  );
+  const liveSourceFamilyBucket = nativeMapApplyContextBuckets().find(
+    (bucket) =>
+      bucket.phase === 'live' &&
+      bucket.transactionKind === 'live_update' &&
+      bucket.sourceFamilySignature !== 'markerRoles:1' &&
+      ((numeric(bucket.rawSourceDeltaCount) ?? 0) > 0 ||
+        (numeric(bucket.appliedSourceDeltaCount) ?? 0) > 0 ||
+        (sourceOperationMetric(bucket.sourceOperationSignature, 'upsert') ?? 0) > 0 ||
+        (sourceOperationMetric(bucket.sourceOperationSignature, 'remove') ?? 0) > 0)
+  );
+  const liveRoleOverBudgetEvent = liveVisualLodEvents.find((event) => {
+    const pinCount = numeric(event.pinCount) ?? pinCountFromClassification(event);
+    const selectedPinCount =
+      numeric(event.selectedPinCount) ?? selectedPinCountFromClassification(event);
+    const normalPinCount =
+      numeric(event.normalPinCount) ?? Math.max(0, pinCount - selectedPinCount);
+    return normalPinCount > 30 || pinCount > 30 + selectedPinCount;
+  });
+  const liveRoleOverBudgetSlice = liveMovingBridgeSlices.find(
+    (event) =>
+      event.markerRoleFrameMode === 'patch' &&
+      (normalPinCountFromBridgeSlice(event) > 30 ||
+        (numeric(event.markerRolePinnedCount) ?? 0) >
+          30 + selectedPinAllowanceFromBridgeSlice(event))
+  );
+  const liveRankMismatchEvent = classificationEvents.find(
+    (event) => normalPinRankMismatchFromClassification(event) > 0
+  );
+  const stableSlotOwnershipRegression = findStableSlotOwnershipRegression(classificationEvents);
+  const nativePinVisualOrderEvents = byEvent('native_pin_visual_order_contract');
+  const twistCameraCommandEvents = byScenarioEvent('perf_scenario_command_executed').filter(
+    (event) => event.step === 'animate_map_camera' && Math.abs(numeric(event.bearing) ?? 0) > 0
+  );
+  const twistCameraCommandEvent = twistCameraCommandEvents[0] ?? null;
+  const nativeMovingPinVisualOrderEvent = nativePinVisualOrderEvents.find(
+    (event) => event.isMoving === true && (numeric(event.pinCount) ?? 0) > 0
+  );
+  const nativeTwistPinVisualOrderEvent = nativePinVisualOrderEvents.find((event) => {
+    const eventTime = numeric(event.emittedAtMs);
+    if (eventTime == null || event.isMoving !== true || (numeric(event.pinCount) ?? 0) <= 0) {
+      return false;
+    }
+    return twistCameraCommandEvents.some((commandEvent) => {
+      const commandTime = numeric(commandEvent.emittedAtMs);
+      if (commandTime == null) {
+        return false;
+      }
+      return eventTime >= commandTime - 200 && eventTime <= commandTime + 1600;
+    });
+  });
+  const badNativePinVisualOrderEvent = nativePinVisualOrderEvents.find(
+    (event) =>
+      event.stableSlotOwnership !== true ||
+      event.appliesScreenYOrdering !== true ||
+      event.usesLayerMoves !== true ||
+      (numeric(event.sourceMutationCount) ?? 0) !== 0 ||
+      (numeric(event.screenYOrderViolationCount) ?? 0) !== 0 ||
+      !isNondecreasingScreenYVisualOrder(event.screenYVisualOrder) ||
+      (numeric(event.pinCount) ?? 0) > 30 + (numeric(event.selectedPinCount) ?? 0)
+  );
+  const liveRoleDetachedLabelEvent = liveVisualLodEvents.find(
+    (event) => !candidateLabelCountMatchesPins(event)
+  );
+  const measuredNativeMapBuckets = nativeMapApplyBucketsFromSummary(
+    report.measuredRepeatLoop?.nativeMapApplySummary
+  );
+  const measuredNativeMapContextBuckets = nativeMapApplyContextBucketsFromSummary(
+    report.measuredRepeatLoop?.nativeMapApplySummary
+  );
+  const liveSourceReplaceBucket = measuredNativeMapBuckets.find(
+    (bucket) =>
+      bucket.phase === 'live' &&
+      bucket.section === 'mapbox.replace_source_data'
+  );
+  const liveSharedDotMutationBucket = measuredNativeMapBuckets.find(
+    (bucket) =>
+      bucket.phase === 'live' &&
+      bucket.source === 'dots' &&
+      /^mapbox\.(add_features|remove_features|update_features|replace_source_data)$/.test(bucket.section)
+  );
+  const liveSharedCollisionMutationBucket = measuredNativeMapBuckets.find(
+    (bucket) =>
+      bucket.phase === 'live' &&
+      bucket.source === 'labelCollisions' &&
+      /^mapbox\.(add_features|remove_features|update_features)$/.test(bucket.section)
+  );
+  const livePromotedSlotStructuralMutationBucket = measuredNativeMapBuckets.find(
+    (bucket) =>
+      bucket.phase === 'live' &&
+      bucket.source === 'promotedSlots' &&
+      /^mapbox\.(add_features|remove_features|update_features)$/.test(bucket.section)
+  );
+  const livePromotedSplitFamilyBucket = measuredNativeMapContextBuckets.find(
+    (bucket) =>
+      bucket.phase === 'live' &&
+      bucket.transactionKind === 'live_update' &&
+      typeof bucket.sourceFamilySignature === 'string' &&
+      /pinInteractionSlots|labelSlots|labelCollisionSlots/.test(bucket.sourceFamilySignature) &&
+      ((sourceOperationMetric(bucket.sourceOperationSignature, 'dirty') ?? 0) > 0 ||
+        (sourceOperationMetric(bucket.sourceOperationSignature, 'upsert') ?? 0) > 0 ||
+        (sourceOperationMetric(bucket.sourceOperationSignature, 'remove') ?? 0) > 0)
+  );
+  const livePromotedSlotBucket = measuredNativeMapBuckets.find(
+    (bucket) =>
+      bucket.phase === 'live' &&
+      bucket.source === 'promotedSlots' &&
+      (bucket.section === 'source_batch.register_pending_commit' ||
+        bucket.section === 'source_batch.apply_feature_states')
+  );
+  const livePromotedSlotFeatureStateBucket = measuredNativeMapBuckets.find(
+    (bucket) =>
+      bucket.phase === 'live' &&
+      bucket.source === 'promotedSlots' &&
+      bucket.section === 'source_batch.apply_feature_states'
+  );
+  const nativeLiveLodTransitionEvents = byEvent('native_live_lod_transition_contract');
+  const nativeScopedPromotedSlotEvents = byEvent('native_scoped_promoted_slot_contract');
+  const nativeScopedPromotedSlotDirtyEvent = nativeScopedPromotedSlotEvents.find(
+    (event) => (numeric(event.affectedMarkerCount) ?? 0) > 0
+  );
+  const badNativeScopedPromotedSlotEvent = nativeScopedPromotedSlotEvents.find(
+    (event) =>
+      event.sourceOpacityBacksScopedPins !== true ||
+      (numeric(event.pinSourceOpacityMissingCount) ?? 0) !== 0 ||
+      (numeric(event.exitingPinSourceOpacityRiskCount) ?? 0) !== 0
+  );
+  const nativeLiveLodTransitionWithPins = nativeLiveLodTransitionEvents.find(
+    (event) => (numeric(event.pinTransitionCount) ?? 0) > 0
+  );
+  const nativeLiveLodTransitionWithDots = nativeLiveLodTransitionEvents.find(
+    (event) => (numeric(event.dotTransitionCount) ?? 0) > 0
+  );
+  const nativeLiveLodIntermediatePinEvent = nativeLiveLodTransitionEvents.find(
+    (event) =>
+      (numeric(event.pinTransitionCount) ?? 0) > 0 &&
+      event.hasIntermediateOpacity === true &&
+      (numeric(event.pinIntermediateOpacityCount) ?? 0) > 0
+  );
+  const nativeLiveLodIntermediateDotEvent = nativeLiveLodTransitionEvents.find(
+    (event) =>
+      (numeric(event.dotTransitionCount) ?? 0) > 0 &&
+      event.hasIntermediateOpacity === true &&
+      (numeric(event.dotIntermediateOpacityCount) ?? 0) > 0
+  );
+  const badNativeLiveLodTransition = nativeLiveLodTransitionEvents.find(
+    (event) =>
+      event.pinLabelFadeSynchronized !== true ||
+      event.usesNativeFrameStepper !== true ||
+      event.usesStyleTransition !== false ||
+      (numeric(event.transitionDurationMs) ?? 0) <= 0 ||
+      ((numeric(event.pinTransitionCount) ?? 0) > 0 &&
+        (numeric(event.labelFeatureStateApplyCount) ?? 0) <
+          (numeric(event.pinTransitionCount) ?? 0) * 4)
+  );
+  if (liveSourceDeltaSlice) {
+    fail(
+      `live LOD used source deltas instead of marker role frames at line ${liveSourceDeltaSlice.line}: sourceDeltaCount=${liveSourceDeltaSlice.sourceDeltaCount} replaceSourceCount=${liveSourceDeltaSlice.replaceSourceCount}`
+    );
+  } else if (liveSourceFamilyBucket) {
+    fail(
+      `native live LOD mutated structural source family ${liveSourceFamilyBucket.sourceFamilySignature} during movement at line ${liveSourceFamilyBucket.line}: ${liveSourceFamilyBucket.sourceOperationSignature}`
+    );
+  } else if (liveRoleOverBudgetEvent) {
+    fail(
+      `live LOD promoted more than the viewport pin budget at line ${liveRoleOverBudgetEvent.line}: pinCount=${liveRoleOverBudgetEvent.pinCount}`
+    );
+  } else if (liveRoleOverBudgetSlice) {
+    fail(
+      `native live LOD marker role frame exceeded the viewport pin budget at line ${liveRoleOverBudgetSlice.line}: markerRolePinnedCount=${liveRoleOverBudgetSlice.markerRolePinnedCount}`
+    );
+  } else if (liveRankMismatchEvent) {
+    fail(
+      `live LOD promoted pins did not match top viewport ranks at line ${liveRankMismatchEvent.line}: expected=${liveRankMismatchEvent.expectedNormalPinFingerprint} actual=${liveRankMismatchEvent.actualNormalPinFingerprint}`
+    );
+  } else if (stableSlotOwnershipRegression) {
+    fail(
+      `live LOD changed a stable pin slot for an unchanged promoted marker at line ${stableSlotOwnershipRegression.line}: marker=${stableSlotOwnershipRegression.markerKey} previousSlot=${stableSlotOwnershipRegression.previousSlot} currentSlot=${stableSlotOwnershipRegression.currentSlot} previousLine=${stableSlotOwnershipRegression.previousLine}`
+    );
+  } else if (!twistCameraCommandEvent) {
+    fail('map LOD pan/zoom scenario did not execute a nonzero bearing twist command');
+  } else if (nativePinVisualOrderEvents.length === 0) {
+    fail('native pin visual order lane did not emit screen-y ordering contracts');
+  } else if (!nativeMovingPinVisualOrderEvent) {
+    fail('native pin visual order lane did not run during live map movement');
+  } else if (!nativeTwistPinVisualOrderEvent) {
+    fail('native pin visual order lane did not recompute during nonzero bearing twist movement');
+  } else if (badNativePinVisualOrderEvent) {
+    fail(
+      `native pin visual order contract failed at line ${badNativePinVisualOrderEvent.line}: ${JSON.stringify({
+        pinCount: badNativePinVisualOrderEvent.pinCount,
+        selectedPinCount: badNativePinVisualOrderEvent.selectedPinCount,
+        screenYOrderViolationCount: badNativePinVisualOrderEvent.screenYOrderViolationCount,
+        sourceMutationCount: badNativePinVisualOrderEvent.sourceMutationCount,
+        stableSlotOwnership: badNativePinVisualOrderEvent.stableSlotOwnership,
+        appliesScreenYOrdering: badNativePinVisualOrderEvent.appliesScreenYOrdering,
+        usesLayerMoves: badNativePinVisualOrderEvent.usesLayerMoves,
+      })}`
+    );
+  } else if (liveRoleDetachedLabelEvent) {
+    fail(
+      `live LOD detached label candidates from promoted pins at line ${liveRoleDetachedLabelEvent.line}: pins=${liveRoleDetachedLabelEvent.pinCount} labels=${liveRoleDetachedLabelEvent.labelCount}`
+    );
+  } else if (liveRoleSourceDeltaBucket) {
+    fail(
+      `native live role lane carried source deltas at line ${liveRoleSourceDeltaBucket.line}: rawSourceDeltaCount=${liveRoleSourceDeltaBucket.rawSourceDeltaCount} appliedSourceDeltaCount=${liveRoleSourceDeltaBucket.appliedSourceDeltaCount}`
+    );
+  } else if (!nativeDirtyRoleBucket && !nativeScopedPromotedSlotDirtyEvent) {
+    fail('live LOD never proved a scoped dirty role/slot update with sourceDeltaCount=0');
+  } else if (liveSourceReplaceBucket) {
+    fail(
+      `live LOD replaced Mapbox source data during movement: source=${liveSourceReplaceBucket.source} totalMs=${liveSourceReplaceBucket.totalMs} count=${liveSourceReplaceBucket.count}`
+    );
+  } else if (liveSharedDotMutationBucket) {
+    fail(
+      `live LOD mutated the resident dot source instead of feature-state only: section=${liveSharedDotMutationBucket.section} totalMs=${liveSharedDotMutationBucket.totalMs} count=${liveSharedDotMutationBucket.count}`
+    );
+  } else if (livePromotedSplitFamilyBucket) {
+    fail(
+      `live LOD still writes split promoted slot families instead of one physical promoted slot source at line ${livePromotedSplitFamilyBucket.line}: ${livePromotedSplitFamilyBucket.sourceFamilySignature}`
+    );
+  } else if (!livePromotedSlotBucket && !nativeScopedPromotedSlotDirtyEvent) {
+    fail('live LOD did not prove promoted output is applied through the promotedSlots physical source family');
+  } else if (
+    !livePromotedSlotFeatureStateBucket &&
+    !nativeLiveLodTransitionWithPins &&
+    !nativeLiveLodTransitionWithDots
+  ) {
+    fail('live LOD did not prove promoted output is applied through feature-state updates');
+  } else if (nativeScopedPromotedSlotEvents.length === 0) {
+    fail('live LOD did not emit scoped promoted slot source-opacity contracts');
+  } else if (badNativeScopedPromotedSlotEvent) {
+    fail(
+      `scoped promoted slot output can fall back to full pin opacity at line ${
+        badNativeScopedPromotedSlotEvent.line
+      }: ${JSON.stringify({
+        pinSourceOpacityMissingCount:
+          badNativeScopedPromotedSlotEvent.pinSourceOpacityMissingCount,
+        exitingPinSourceOpacityRiskCount:
+          badNativeScopedPromotedSlotEvent.exitingPinSourceOpacityRiskCount,
+      })}`
+    );
+  } else if (nativeLiveLodTransitionEvents.length === 0) {
+    fail('live LOD did not emit native fade synchronization contracts');
+  } else if (!nativeLiveLodTransitionWithPins || !nativeLiveLodTransitionWithDots) {
+    fail(
+      `live LOD did not prove both pin/label and dot fade transitions: pinEvents=${
+        nativeLiveLodTransitionWithPins ? 1 : 0
+      } dotEvents=${nativeLiveLodTransitionWithDots ? 1 : 0}`
+    );
+  } else if (!nativeLiveLodIntermediatePinEvent || !nativeLiveLodIntermediateDotEvent) {
+    fail(
+      `live LOD did not prove real intermediate opacity for pins and dots: pinIntermediate=${
+        nativeLiveLodIntermediatePinEvent ? 1 : 0
+      } dotIntermediate=${nativeLiveLodIntermediateDotEvent ? 1 : 0}`
+    );
+  } else if (badNativeLiveLodTransition) {
+    fail(
+      `live LOD pin/label fade contract failed at line ${
+        badNativeLiveLodTransition.line
+      }: ${JSON.stringify({
+        pinTransitionCount: badNativeLiveLodTransition.pinTransitionCount,
+        labelFeatureStateApplyCount: badNativeLiveLodTransition.labelFeatureStateApplyCount,
+        pinLabelFadeSynchronized: badNativeLiveLodTransition.pinLabelFadeSynchronized,
+        transitionDurationMs: badNativeLiveLodTransition.transitionDurationMs,
+        usesStyleTransition: badNativeLiveLodTransition.usesStyleTransition,
+        usesNativeFrameStepper: badNativeLiveLodTransition.usesNativeFrameStepper,
+        hasIntermediateOpacity: badNativeLiveLodTransition.hasIntermediateOpacity,
+      })}`
+    );
+  } else {
+    pass(
+      nativeDirtyRoleBucket
+        ? `live LOD marker role patch stayed source-clean line=${nativeDirtyRoleBucket.line}`
+        : `live LOD scoped promoted-slot updates stayed source-clean affected=${nativeScopedPromotedSlotDirtyEvent.affectedMarkerCount}`
+    );
+    pass(
+      livePromotedSlotBucket
+        ? `live LOD promoted output uses promotedSlots source family section=${livePromotedSlotBucket.section} totalMs=${livePromotedSlotBucket.totalMs}`
+        : 'live LOD promoted output uses scoped native promoted-slot contracts'
+    );
+    if (livePromotedSlotStructuralMutationBucket) {
+      pass(
+        `live LOD promoted slot source mutations are confined to channel leases section=${livePromotedSlotStructuralMutationBucket.section} totalMs=${livePromotedSlotStructuralMutationBucket.totalMs} count=${livePromotedSlotStructuralMutationBucket.count}`
+      );
+    }
+    if (liveSharedCollisionMutationBucket) {
+      pass(
+        `live LOD label collision source mutations are confined to obstacle membership section=${liveSharedCollisionMutationBucket.section} totalMs=${liveSharedCollisionMutationBucket.totalMs} count=${liveSharedCollisionMutationBucket.count}`
+      );
+    }
+    pass(
+      livePromotedSlotFeatureStateBucket
+        ? `live LOD promoted output uses feature-state totalMs=${livePromotedSlotFeatureStateBucket.totalMs}`
+        : `live LOD promoted output uses native frame-stepper feature-state events=${nativeLiveLodTransitionEvents.length}`
+    );
+	    pass(
+	      nativeDirtyRoleBucket
+	        ? `live LOD native role patches=${nativeLiveRoleBuckets.length} sampleDirty=${sourceOperationMetric(
+	            nativeDirtyRoleBucket.sourceOperationSignature,
+	            'dirty'
+	          )} visualPinCounts=${[...visualLodPinCounts].join(',')}`
+	        : `live LOD native scoped patches=${nativeScopedPromotedSlotEvents.length} visualPinCounts=${[...visualLodPinCounts].join(',')}`
+	    );
+	    pass(
+	      `native pin visual order uses layer moves events=${nativePinVisualOrderEvents.length} sampleMoved=${nativeMovingPinVisualOrderEvent.movedGroupCount}`
+	    );
+	    pass(
+	      `live LOD fades are synchronized pinTransitions=${nativeLiveLodTransitionWithPins.pinTransitionCount} dotTransitions=${nativeLiveLodTransitionWithDots.dotTransitionCount}`
+	    );
+  }
+}
+
+if ((report.scenarioName ?? '').includes('search_pin_selection_profile_open')) {
+  const measuredBridgeSlices = nativeSetFrameBridgeSlices.filter(isInMeasuredRepeatLoop);
+  const measuredWorkSpans = workSpanEventsFromLog.filter(isInMeasuredRepeatLoop);
+  const measuredOwnerLifecycleEvents = measuredWorkSpans.filter(
+    (event) =>
+      event.owner === 'search_map_native_presentation_event_inner' &&
+      (event.path === 'detached:status_handler' || event.path === 'attached:status_handler')
+  );
+  const measuredReplaceFrame = measuredBridgeSlices.find(
+    (event) =>
+      event.sourceBaselineKind === 'replace_all' ||
+      (numeric(event.replaceSourceCount) ?? 0) > 0 ||
+      (numeric(event.sourceDeltaCount) ?? 0) > 0
+  );
+  const measuredSelectedFrames = measuredBridgeSlices.filter(
+    (event) =>
+      event.visualFrameTransactionKind === 'live_update' &&
+      event.selectedRestaurantId != null &&
+      (numeric(event.markerRoleSelectedPinnedCount) ?? 0) > 0
+  );
+  const measuredPinVisualOrderEvents = byEvent('native_pin_visual_order_contract').filter(
+    isInMeasuredRepeatLoop
+  );
+  const broadSelectedRenderFrameOrderEvent = measuredPinVisualOrderEvents.find((event) => {
+    if (event.reason !== 'set_render_frame' || (numeric(event.selectedPinCount) ?? 0) <= 0) {
+      return false;
+    }
+    const selectedPinCount = numeric(event.selectedPinCount) ?? 0;
+    const movedGroupCount = numeric(event.movedGroupCount) ?? 0;
+    return movedGroupCount > Math.max(6, selectedPinCount + 4);
+  });
+  const selectedFrameWithoutAckBaseline = measuredSelectedFrames.find(
+    (event) => event.sourceBaselineKind !== 'ack_delta'
+  );
+  const selectedFrameWithoutRolePatch = measuredSelectedFrames.find(
+    (event) =>
+      event.markerRoleFrameMode !== 'patch' &&
+      !(
+        event.sourceBaselineKind === 'ack_delta' &&
+        (numeric(event.replaceSourceCount) ?? 0) === 0 &&
+        (numeric(event.sourceDeltaCount) ?? 0) === 0
+      )
+  );
+  const selectedOverBudgetFrame = measuredSelectedFrames.find(
+    (event) =>
+      normalPinCountFromBridgeSlice(event) > 30 ||
+      (numeric(event.pinCount) ?? 0) > 30 + selectedPinAllowanceFromBridgeSlice(event)
+  );
+  const profileCameraEvents = byEvent('profile_pin_selection_camera_contract');
+  const measuredProfileCameraEvents = profileCameraEvents.filter(isInMeasuredRepeatLoop);
+  const profileCameraEvent =
+    measuredProfileCameraEvents.find((event) => event.source === 'results_sheet') ??
+    profileCameraEvents.find((event) => event.source === 'results_sheet');
+  const badProfileCameraEvent =
+    profileCameraEvent != null &&
+    (profileCameraEvent.hasPressedCoordinate !== true ||
+      profileCameraEvent.hasTargetCamera !== true ||
+      profileCameraEvent.targetMatchesPressedPin !== true ||
+      profileCameraEvent.centersAboveSheet !== true ||
+      (numeric(profileCameraEvent.paddingBottom) ?? 0) <=
+        (numeric(profileCameraEvent.paddingTop) ?? Number.POSITIVE_INFINITY));
+  const ownerEpochs = new Set(
+    measuredBridgeSlices
+      .map((event) => numeric(event.ownerEpoch))
+      .filter((value) => value != null)
+  );
+
+  if (measuredBridgeSlices.length === 0) {
+    fail('pin selection measured loop did not publish native render frame bridge slices');
+  } else if (measuredOwnerLifecycleEvents.length > 0) {
+    fail(
+      `pin selection/profile open detached or attached the native map owner during measured loop at lines=${measuredOwnerLifecycleEvents
+        .map((event) => event.line)
+        .join(',')}`
+    );
+  } else if (ownerEpochs.size > 1) {
+    fail(`pin selection/profile open changed native owner epoch during measured loop: ${[...ownerEpochs].join(',')}`);
+  } else if (measuredReplaceFrame) {
+    fail(
+      `pin selection/profile open used a structural source frame at line ${
+        measuredReplaceFrame.line
+      }: baseline=${measuredReplaceFrame.sourceBaselineKind} replace=${
+        measuredReplaceFrame.replaceSourceCount
+      } sourceDelta=${measuredReplaceFrame.sourceDeltaCount}`
+    );
+  } else if (measuredSelectedFrames.length === 0) {
+    fail('pin selection/profile open did not prove a selected promoted frame');
+  } else if (selectedFrameWithoutAckBaseline) {
+    fail(
+      `pin selection selected frame did not preserve ACK baseline at line ${selectedFrameWithoutAckBaseline.line}: baseline=${selectedFrameWithoutAckBaseline.sourceBaselineKind}`
+    );
+  } else if (selectedFrameWithoutRolePatch) {
+    fail(
+      `pin selection selected frame did not stay in source-clean role/presentation lane at line ${selectedFrameWithoutRolePatch.line}`
+    );
+  } else if (selectedOverBudgetFrame) {
+    fail(
+      `pin selection selected frame violated normal pin budget at line ${selectedOverBudgetFrame.line}: normal=${normalPinCountFromBridgeSlice(
+        selectedOverBudgetFrame
+      )} selected=${selectedPinAllowanceFromBridgeSlice(selectedOverBudgetFrame)} total=${
+        selectedOverBudgetFrame.pinCount
+      }`
+    );
+  } else if (broadSelectedRenderFrameOrderEvent) {
+    fail(
+      `pin selection/profile open moved too many pin visual groups for a selected render frame at line ${broadSelectedRenderFrameOrderEvent.line}: moved=${broadSelectedRenderFrameOrderEvent.movedGroupCount} selected=${broadSelectedRenderFrameOrderEvent.selectedPinCount}`
+    );
+  } else if (!profileCameraEvent) {
+    fail('pin selection/profile open did not emit profile_pin_selection_camera_contract');
+  } else if (badProfileCameraEvent) {
+    fail(
+      `pin selection camera did not center the pressed pin above the sheet at line ${
+        profileCameraEvent.line
+      }: ${JSON.stringify({
+        hasPressedCoordinate: profileCameraEvent.hasPressedCoordinate,
+        hasTargetCamera: profileCameraEvent.hasTargetCamera,
+        targetMatchesPressedPin: profileCameraEvent.targetMatchesPressedPin,
+        pressedTargetDistanceMeters: profileCameraEvent.pressedTargetDistanceMeters,
+        centersAboveSheet: profileCameraEvent.centersAboveSheet,
+        paddingTop: profileCameraEvent.paddingTop,
+        paddingBottom: profileCameraEvent.paddingBottom,
+      })}`
+    );
+  } else {
+    pass(
+      `pin selection stayed source-clean selectedFrames=${measuredSelectedFrames.length} ownerEpoch=${[...ownerEpochs].join(',')}`
+    );
+    pass(
+      `pin selection visual-order diff stayed bounded events=${measuredPinVisualOrderEvents.length}`
+    );
+    pass(
+      `pin selection camera centers pressed pin with paddingTop=${profileCameraEvent.paddingTop} paddingBottom=${profileCameraEvent.paddingBottom}`
+    );
   }
 }
 
@@ -1206,6 +2209,7 @@ if (submitPressEvents.length > 0) {
         (event.pinCount ?? 0) > 0 &&
         (event.dotCount ?? 0) > 0 &&
         (event.labelCount ?? 0) > 0 &&
+        candidateLabelCountMatchesPins(event) &&
         event.hasLabelCollisionSource === true &&
         event.nativeMapLabelCollisionPreserved === true
     );
@@ -1281,7 +2285,9 @@ if (submitPressEvents.length > 0) {
       !matchingLoadingSurface
     );
   });
-  if (badSubmitCycle) {
+  if (scenarioIsMapRuntimeOnly) {
+    pass(`shortcut submit cycle sheet/card gate skipped for map runtime scenario ${scenarioName}`);
+  } else if (badSubmitCycle) {
     fail(
       `shortcut submit cycle missing gated loading/cards/map reveal before dismiss at line ${badSubmitCycle.line}`
     );
@@ -1775,10 +2781,27 @@ if (apiRequestFailureLogLines.length > 0 && apiFailureEvents.length === 0) {
   pass('no API request failures observed during perf scenario');
 }
 
+const mapboxSourceErrorLogLines = readLogLines()
+  .map((line, index) => ({ line: index + 1, text: line }))
+  .filter(
+    (line) =>
+      line.text.includes('Mapbox [error] MapLoad error') &&
+      /duplicate feature|non-exist feature|Failed to (add|remove|update)/.test(line.text)
+  );
+if (mapboxSourceErrorLogLines.length > 0) {
+  fail(
+    `Mapbox source mutation errors observed count=${mapboxSourceErrorLogLines.length}; first line=${
+      mapboxSourceErrorLogLines[0].line
+    } ${mapboxSourceErrorLogLines[0].text.slice(0, 220)}`
+  );
+} else {
+  pass('no Mapbox source mutation errors observed');
+}
+
 if ((report.scenarioName ?? '').includes('search_submit_dismiss_repeat')) {
   const resultsDataReuseEvents = byEvent('results_data_reuse_contract');
   const sourceFrameDataReuseEvents = byEvent('map_source_frame_data_reuse_contract');
-  const nativeHiddenSourcePreapplyEvents = byEvent('native_hidden_source_preapply_contract');
+  const nativeFrameBridgeEvents = byEvent('native_set_render_frame_bridge_slice');
   if (resultsDataReuseEvents.length === 0) {
     fail('missing results_data_reuse_contract events for repeat submit data reuse');
   } else {
@@ -1832,10 +2855,11 @@ if ((report.scenarioName ?? '').includes('search_submit_dismiss_repeat')) {
     const reusedSourceRepublishEvents = sourceFrameDataReuseEvents.filter(
       (event) => event.sourceFrameDataReused === true && event.didPublishSourceFrame === true
     );
-    const cachedReplayNativeSourceApplies = nativeHiddenSourcePreapplyEvents.filter(
+    const cachedReplayNativeSourceApplies = nativeFrameBridgeEvents.filter(
       (event) =>
-        (event.action === 'covered_apply_hidden_sources' ||
-          event.action === 'enter_preapply_hidden_sources_before_reveal') &&
+        (event.visualFrameTransactionKind === 'hidden_preload' ||
+          event.visualFrameTransactionKind === 'enter') &&
+        event.visualFrameSourceSnapshotKind === 'ready' &&
         Array.isArray(event.effectiveChangedSourceIds) &&
         event.effectiveChangedSourceIds.length >= 7 &&
         event.requestKey != null &&
@@ -1913,7 +2937,9 @@ if (countEvents.length === 0) {
       (event.admittedRestaurantCardRowCount ?? 0) <
         (event.backendRestaurantCountOnPage ?? Number.POSITIVE_INFINITY)
   );
-  if (partialPageEvent) {
+  if (scenarioIsMapRuntimeOnly) {
+    pass(`mounted results staged visual admission gate skipped for map runtime scenario ${scenarioName}`);
+  } else if (partialPageEvent) {
     fail(
       `mounted result cards rendered partial first page at line ${
         partialPageEvent.line
@@ -1944,7 +2970,9 @@ if (countEvents.length === 0) {
 }
 
 const rowHeaderBoundaryEvents = byEvent('result_row_header_chrome_boundary_contract');
-if (countEvents.length > 0) {
+if (scenarioIsMapRuntimeOnly) {
+  pass(`result row header chrome boundary gate skipped for map runtime scenario ${scenarioName}`);
+} else if (countEvents.length > 0) {
   if (rowHeaderBoundaryEvents.length === 0) {
     fail(
       'missing result_row_header_chrome_boundary_contract; runtime must emit firstRowTopY, headerChromeBottomY, rowHeaderOverlapPx, overlapsHeaderChrome, activeTab, surfaceMode, and transactionId when first result rows mount'
@@ -2096,7 +3124,9 @@ if (firstResultsLiveHeader) {
       (event.stableHeaderChromeLane !== 'mounted_results_list_header' ||
         event.stableHeaderChromeOwner !== 'search_mounted_results_list')
   );
-  if (wrongChromeLane) {
+  if (scenarioIsMapRuntimeOnly) {
+    pass(`results toggle/header chrome lane gate skipped for map runtime scenario ${scenarioName}`);
+  } else if (wrongChromeLane) {
     fail(
       `results toggle/header source mounted outside the mounted results list header lane at line ${wrongChromeLane.line}: ${wrongChromeLane.stableHeaderChromeLane}/${wrongChromeLane.stableHeaderChromeOwner}`
     );
@@ -2958,7 +3988,9 @@ const mapSourceControllerSource = fs.readFileSync(
   ),
   'utf8'
 );
-if (
+if (scenarioIsMapRuntimeOnly) {
+  pass(`map source controller route/sheet fanout gate skipped for map runtime scenario ${scenarioName}`);
+} else if (
   !mapSourceControllerSource.includes('map_source_controller_surface_state') &&
   !/resultsPresentationSurfaceAuthority\.subscribe\([\s\S]*publishAndFetch/.test(
     mapSourceControllerSource
@@ -3026,6 +4058,7 @@ if (
   fail('hydration/surface-transaction/finalize gate still reads or writes SearchRuntimeBus');
 }
 
+if (!scenarioIsMapRuntimeOnly) {
 const hydrationRuntimeStateSource = fs.readFileSync(
   path.join(
     repoRoot,
@@ -3209,13 +4242,52 @@ if (
 } else {
   fail('first-paint rows can still be prepared inside a visual handoff route/sheet commit');
 }
+} else {
+  pass(`route/sheet first-paint source gates skipped for map runtime scenario ${scenarioName}`);
+}
 
 const nativeMapControllerSource = fs.readFileSync(
   path.join(repoRoot, 'apps/mobile/ios/cravesearch/SearchMapRenderController.swift'),
   'utf8'
 );
+const androidMapControllerSource = fs.readFileSync(
+  path.join(
+    repoRoot,
+    'apps/mobile/android/app/src/main/java/com/crave/SearchMapRenderControllerModule.java'
+  ),
+  'utf8'
+);
 const searchMapSource = fs.readFileSync(
   path.join(repoRoot, 'apps/mobile/src/screens/Search/components/search-map.tsx'),
+  'utf8'
+);
+const searchMapWithMarkerEngineSource = fs.readFileSync(
+  path.join(repoRoot, 'apps/mobile/src/screens/Search/components/SearchMapWithMarkerEngine.tsx'),
+  'utf8'
+);
+const searchMapNativeRenderOwnerSource = fs.readFileSync(
+  path.join(
+    repoRoot,
+    'apps/mobile/src/screens/Search/components/hooks/use-search-map-native-render-owner.ts'
+  ),
+  'utf8'
+);
+const directMapSourceControllerSource = fs.readFileSync(
+  path.join(
+    repoRoot,
+    'apps/mobile/src/screens/Search/hooks/use-direct-search-map-source-controller.ts'
+  ),
+  'utf8'
+);
+const mapRenderModelSource = fs.readFileSync(
+  path.join(repoRoot, 'apps/mobile/src/screens/Search/utils/map-render-model.ts'),
+  'utf8'
+);
+const searchRootMapEngineInputsSource = fs.readFileSync(
+  path.join(
+    repoRoot,
+    'apps/mobile/src/screens/Search/runtime/controller/search-root-map-engine-input-controller-runtime.ts'
+  ),
   'utf8'
 );
 const searchRouteSheetFrameHostSource = fs.readFileSync(
@@ -3259,55 +4331,154 @@ const animatePresentationOpacitySource =
     /private func animatePresentationOpacity\([\s\S]*?\n  private func emitEnterFirstVisibleFrameIfNeeded/
   )?.[0] ?? '';
 if (
-  nativeMapControllerSource.includes('presentationOpacityFeatureCollection') &&
-  applyPresentationOpacitySource.includes('mapboxMap.updateGeoJSONSource') &&
+  !nativeMapControllerSource.includes('presentationOpacityFeatureCollection') &&
+  !applyPresentationOpacitySource.includes('mapboxMap.updateGeoJSONSource') &&
+  applyPresentationOpacitySource.includes('mapboxMap.setFeatureState') &&
   applyPresentationOpacitySource.includes('operationCount: targets.count') &&
-  !nativeMapControllerSource.includes('presentationFeatureState') &&
-  !applyPresentationOpacitySource.includes('mapboxMap.setFeatureState') &&
   !applyPresentationOpacitySource.includes('mapboxMap.setLayerProperty') &&
-  !searchMapSource.includes("['feature-state', 'nativePresentationOpacity']") &&
+  searchMapSource.includes("['feature-state', 'nativePresentationOpacity']") &&
   searchMapSource.includes("['get', 'nativePresentationOpacity']")
 ) {
   pass(
-    'native map presentation opacity uses constant-count source rewrites instead of layer/feature churn'
+    'native map presentation opacity uses frame-stepped feature-state updates without source rewrites'
   );
 } else {
   fail(
-    'native map presentation opacity can regress to per-layer/per-feature churn instead of constant-count source rewrites'
+    'native map presentation opacity can regress to source rewrites, layer churn, or missing feature-state targets'
   );
 }
 
 if (
-  animatePresentationOpacitySource.includes('applyPresentationOpacity(') &&
-  animatePresentationOpacitySource.includes('presentationOpacityCompletionWorkItems') &&
-  animatePresentationOpacitySource.includes('transitionDurationMs: resolvedDurationMs') &&
-  !animatePresentationOpacitySource.includes('scheduleOpacityStep') &&
-  !animatePresentationOpacitySource.includes('nextOpacity') &&
-  !/for\s+.*in\s+targets|targets\.forEach|mapboxMap\.setFeatureState|mapboxMap\.setLayerProperty/.test(
+  nativeMapControllerSource.includes('PresentationOpacityAnimator') &&
+  nativeMapControllerSource.includes('stepPresentationOpacityAnimation') &&
+  animatePresentationOpacitySource.includes('PresentationOpacityAnimator(') &&
+  animatePresentationOpacitySource.includes('animator.start()') &&
+  !/mapboxMap\.updateGeoJSONSource|mapboxMap\.setLayerProperty/.test(
     animatePresentationOpacitySource
   )
 ) {
   pass(
-    'native presentation opacity uses one source target update plus timed completion, not stepped source churn'
+    'native presentation opacity uses a native frame-stepper with feature-state only, not source or layer churn'
   );
 } else {
-  fail('native presentation opacity can regress to stepped source churn or layer/feature churn');
+  fail('native presentation opacity can regress to source rewrites, layer churn, or missing native frame-stepper fade');
 }
 
 if (
-  nativeMapControllerSource.includes('livePinTransitionTargetWorkItems') &&
-  nativeMapControllerSource.includes('livePinTransitionCompletionWorkItems') &&
+  nativeMapControllerSource.includes('livePinTransitionAnimators') &&
   nativeMapControllerSource.includes('live_lod_transition.apply_feature_states') &&
-  !nativeMapControllerSource.includes('CADisplayLink') &&
-  !nativeMapControllerSource.includes('handleLivePinTransitionFrame') &&
-  !nativeMapControllerSource.includes('preferredFrameRateRange') &&
-  !nativeMapControllerSource.includes('preferredFramesPerSecond')
+  nativeMapControllerSource.includes('CADisplayLink') &&
+  nativeMapControllerSource.includes('handleLivePinTransitionFrame') &&
+  nativeMapControllerSource.includes('usesNativeFrameStepper') &&
+  nativeMapControllerSource.includes('hasIntermediateOpacity')
 ) {
   pass(
-    'native live pin LOD fades use Mapbox style transitions without CADisplayLink feature-state churn'
+    'native live pin LOD fades use scoped CADisplayLink feature-state stepping with intermediate-opacity proof'
   );
 } else {
-  fail('native live pin LOD fades can regress to CADisplayLink per-frame feature-state churn');
+  fail('native live pin LOD fades can regress to one-shot opacity snaps or unproved intermediate opacity');
+}
+
+const lodTimerSources = [
+  searchMapWithMarkerEngineSource,
+  directMapSourceControllerSource,
+  mapRenderModelSource,
+  searchRootMapEngineInputsSource,
+].join('\n');
+if (
+  !/lodPin(?:Promote|Demote|Toggle|Offscreen)|promoteStableMs|demoteStableMs|offscreenDemoteStableMs|proposedPromoteSinceByMarkerKey|proposedDemoteSinceByMarkerKey/.test(
+    lodTimerSources
+  )
+) {
+  pass('LOD role selection is immediate and has no timer/proposal staging path');
+} else {
+  fail('LOD role selection can still batch promotion/demotion through timer/proposal staging');
+}
+
+if (
+  !/assignInitialShortcutLodSlots|shouldSeedInitialRankedShortcutFrame|initialRankedShortcut/.test(
+    directMapSourceControllerSource
+  )
+) {
+  pass('shortcut searches use the same viewport LOD rule as live movement, not a separate seed path');
+} else {
+  fail('shortcut searches can still seed a separate ranked pin frame outside the live viewport LOD rule');
+}
+
+if (
+  !/DOT_INTERACTION_LAYER_ID|DOT_INTERACTION_LAYER_STYLE|DOT_INTERACTION_SOURCE_ID|dotInteractionSourceStore|dotInteractions|restaurant-dot-interaction/.test(
+    searchMapSource
+  ) &&
+  searchMapSource.includes('dotLayerIds: [visibleDotLayerId]')
+) {
+  pass('dot hit testing is tied to the rendered glyph dot layer with no dot interaction source family');
+} else {
+  fail('dots can still expose a separate dot interaction source/layer instead of rendered-glyph hit testing');
+}
+
+if (
+  !/\bsolver\b|LABEL_SOLVER|labelCollisionSlotSourceIds|LABEL_PLACEMENT_LAYER_IDS|LABEL_COLLISION_OBSTACLE_LAYER_IDS|DOT_PLACEMENT_LAYER_IDS|PlacementLayersFadeOnly|placement_layer_fade_only/i.test(
+    [searchMapSource, nativeMapControllerSource, androidMapControllerSource].join('\n')
+  )
+) {
+  pass('search map has no solver-layer or placement-fade-only plumbing');
+} else {
+  fail('search map can still route through solver-layer or placement-fade-only plumbing');
+}
+
+const markerSceneSource =
+  searchMapSource.match(/const SearchMapMarkerScene = React\.memo\([\s\S]*?\n\);/)?.[0] ?? '';
+const slotSourcesIndex = markerSceneSource.indexOf(
+  '{Array.from({ length: pinStackSlotCount }'
+);
+const sharedCollisionSourceIndex = markerSceneSource.indexOf(
+  'id={RESTAURANT_LABEL_COLLISION_SOURCE_ID}'
+);
+const iOSPromotedSlotBuilderSource =
+  nativeMapControllerSource.match(
+    /private static func makePromotedSlotRecordsByMarkerKey[\s\S]*?return recordsByMarkerKey[\s\S]*?\n  }/
+  )?.[0] ?? '';
+const androidPromotedSlotBuilderSource =
+  androidMapControllerSource.match(
+    /private static ParsedFeatureCollection makePromotedSlotCollection[\s\S]*?return promotedSlotCollection;[\s\S]*?\n  }/
+  )?.[0] ?? '';
+if (
+  slotSourcesIndex >= 0 &&
+  sharedCollisionSourceIndex > slotSourcesIndex &&
+  !/restaurantLabelPinCollisionLayerId\}-slot|nativeSlotFeatureKind'\],\s*'labelCollision'/.test(
+    markerSceneSource
+  ) &&
+  !/labelCollisionRecordsByMarkerKey|kind:\s*"labelCollision"/.test(iOSPromotedSlotBuilderSource) &&
+  !/labelCollisions|\"labelCollision\"/.test(androidPromotedSlotBuilderSource)
+) {
+  pass('promoted pin collision obstacles use one shared source above all per-slot label layers');
+} else {
+  fail('promoted pin collision obstacles can still be interleaved inside per-slot label sources');
+}
+
+if (
+  searchMapNativeRenderOwnerSource.includes('const markerRoleFrameBaselineSnapshot =') &&
+  searchMapNativeRenderOwnerSource.includes(
+    'transportState.queueState.inFlightFrame?.snapshot ??'
+  ) &&
+  searchMapNativeRenderOwnerSource.includes('markerRoleFrameBaselineSnapshot')
+) {
+  pass('queued live LOD role frames diff from the in-flight native snapshot, not stale ACK state');
+} else {
+  fail('queued live LOD role frames can still diff from stale ACK state while a native frame is in flight');
+}
+
+if (
+  !nativeMapControllerSource.includes('isInteractionSource') &&
+  !androidMapControllerSource.includes('isInteractionSource') &&
+  !/previousSourceLifecyclePhase\s*!=\s*\.incremental\s*\|\|/.test(nativeMapControllerSource) &&
+  !/previousSourceLifecyclePhase\s*!=\s*SourceLifecyclePhase\.INCREMENTAL\s*\|\|/.test(
+    androidMapControllerSource
+  )
+) {
+  pass('native interaction sources use the same incremental mutation path as other resident slots');
+} else {
+  fail('native interaction sources can still force whole-source replacement during live LOD');
 }
 
 const sheetMaskAnimatedPropsSource =
@@ -3371,7 +4542,9 @@ const nativeBridgeSource = fs.readFileSync(
   path.join(repoRoot, 'apps/mobile/ios/cravesearch/UIFrameSamplerBridge.m'),
   'utf8'
 );
-if (
+if (scenarioIsMapRuntimeOnly) {
+  pass(`native sheet mask path gate skipped for map runtime scenario ${scenarioName}`);
+} else if (
   nativeSheetMaskSource.includes('CATransform3DMakeTranslation') &&
   nativeSheetMaskSource.includes('ensureTranslatedMaskPath') &&
   nativeSheetMaskSource.includes('@objc var navBodyBoundaryTranslateY') &&
@@ -3431,7 +4604,9 @@ if (
   );
 }
 
-if (
+if (scenarioIsMapRuntimeOnly) {
+  pass(`bottom nav submit/dismiss motion gate skipped for map runtime scenario ${scenarioName}`);
+} else if (
   searchBottomNavMotionRuntimeSource.includes('registerSearchBottomNavMotionCommandSink') &&
   searchBottomNavMotionRuntimeSource.includes('requestSearchBottomNavMotionTarget') &&
   searchForegroundBottomNavVisualSource.includes('registerSearchBottomNavMotionCommandSink') &&
@@ -3456,7 +4631,9 @@ if (
   fail('bottom nav motion can still be owned only by React visual policy commits');
 }
 
-if (
+if (scenarioIsMapRuntimeOnly) {
+  pass(`dismiss source-snapshot bypass gate skipped for map runtime scenario ${scenarioName}`);
+} else if (
   /let\s+shouldBypassDismissSnapshotApply\s*=\s*Self\.readDismissRequestKey\(fromJSON:\s*presentationStateJSON\)\s*!=\s*nil/.test(
     nativeMapControllerSource
   ) &&

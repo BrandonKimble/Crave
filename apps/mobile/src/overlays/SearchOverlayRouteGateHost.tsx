@@ -125,6 +125,7 @@ const styles = StyleSheet.create({
   routeOverlayHostLayer: {
     ...StyleSheet.absoluteFillObject,
     zIndex: OVERLAY_STACK_ZINDEX,
+    elevation: OVERLAY_STACK_ZINDEX,
   },
   routeOverlayHostHidden: {
     opacity: 0,

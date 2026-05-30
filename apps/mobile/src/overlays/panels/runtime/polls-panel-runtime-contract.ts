@@ -4,10 +4,7 @@ import type { PollBootstrapSnapshot } from '../../../services/polls';
 import type { Coordinate, MapBounds } from '../../../types';
 import type { SnapPoints } from '../../bottomSheetMotionTypes';
 import type { OverlaySheetSnap } from '../../types';
-import type {
-  SearchRouteSceneShellMotionContract,
-  SearchRouteSceneSnapMeta,
-} from '../../searchRouteSceneShellMotionContract';
+import type { SearchRouteSceneSnapMeta } from '../../searchRouteSceneShellMotionContract';
 
 export type PollsPanelParams = {
   marketKey?: string | null;
@@ -37,8 +34,6 @@ export type UsePollsPanelSpecOptions = {
   navBarHeight?: number;
   searchBarTop?: number;
   snapPoints?: SnapPoints;
-  onSnapStart?: SearchRouteSceneShellMotionContract['onSnapStart'];
-  onSnapChange?: SearchRouteSceneShellMotionContract['onSnapChange'];
   onRequestPollCreationExpand?: () => void;
   onRequestReturnToSearch?: () => void;
   interactionRef?: PollsPanelInteractionRef;

@@ -14,7 +14,7 @@ export const useSearchRootResultsScrollAuthorityRuntime = ({
   rootOverlayFoundationRuntime,
 }: UseSearchRootResultsScrollAuthorityRuntimeArgs): SearchRootResultsScrollAuthorityRuntime => {
   const { rootPrimitivesRuntime } = stateFoundationLane;
-  const { appRouteResultsSheetRuntimeOwner } = rootOverlayFoundationRuntime;
+  const { appRouteSharedSheetRuntimeOwner } = rootOverlayFoundationRuntime;
 
   const resultsScrollPort = React.useMemo(
     () => ({
@@ -25,7 +25,7 @@ export const useSearchRootResultsScrollAuthorityRuntime = ({
         }
 
         listRef.clearLayoutCacheOnUpdate?.();
-        appRouteResultsSheetRuntimeOwner.resultsScrollOffset.value = 0;
+        appRouteSharedSheetRuntimeOwner.sheetScrollOffset.value = 0;
         requestAnimationFrame(() => {
           listRef.scrollToOffset?.({ offset: 0, animated: false });
         });
@@ -33,7 +33,7 @@ export const useSearchRootResultsScrollAuthorityRuntime = ({
     }),
     [
       rootPrimitivesRuntime.searchState.resultsScrollRef,
-      appRouteResultsSheetRuntimeOwner.resultsScrollOffset,
+      appRouteSharedSheetRuntimeOwner.sheetScrollOffset,
     ]
   );
 

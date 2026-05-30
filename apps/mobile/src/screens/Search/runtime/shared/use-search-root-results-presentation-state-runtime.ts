@@ -17,7 +17,7 @@ export const useSearchRootResultsPresentationStateRuntime = ({
   profileOwner,
 }: UseSearchRootResultsPresentationStateRuntimeArgs): SearchRootPresentationStateRuntime => {
   const { rootPrimitivesRuntime, rootSuggestionRuntime } = stateFoundationLane;
-  const { appRouteResultsSheetRuntimeOwner } = rootOverlayFoundationRuntime;
+  const { appRouteSharedSheetRuntimeOwner } = rootOverlayFoundationRuntime;
 
   return React.useMemo(() => {
     const isSuggestionPanelActive = rootPrimitivesRuntime.searchState.isSuggestionPanelActive;
@@ -26,13 +26,13 @@ export const useSearchRootResultsPresentationStateRuntime = ({
       profileOwner.profileViewState.presentation.isTransitionAnimating;
     const shouldDimResultsSheet =
       (isSuggestionPanelActive || rootSuggestionRuntime.isSuggestionPanelVisible) &&
-      (appRouteResultsSheetRuntimeOwner.panelVisible ||
-        appRouteResultsSheetRuntimeOwner.sheetState !== 'hidden');
+      (appRouteSharedSheetRuntimeOwner.panelVisible ||
+        appRouteSharedSheetRuntimeOwner.sheetState !== 'hidden');
     const shouldDisableResultsSheetInteraction =
       shouldSuspendResultsSheet ||
       (isSuggestionPanelActive &&
-        (appRouteResultsSheetRuntimeOwner.panelVisible ||
-          appRouteResultsSheetRuntimeOwner.sheetState !== 'hidden'));
+        (appRouteSharedSheetRuntimeOwner.panelVisible ||
+          appRouteSharedSheetRuntimeOwner.sheetState !== 'hidden'));
     const shouldSuppressRestaurantOverlay =
       profileOwner.profileViewState.presentation.isOverlayVisible && isSuggestionPanelActive;
 
@@ -48,8 +48,8 @@ export const useSearchRootResultsPresentationStateRuntime = ({
     profileOwner.profileViewState.presentation.isOverlayVisible,
     profileOwner.profileViewState.presentation.isTransitionAnimating,
     rootPrimitivesRuntime.searchState.isSuggestionPanelActive,
-    appRouteResultsSheetRuntimeOwner.panelVisible,
-    appRouteResultsSheetRuntimeOwner.sheetState,
+    appRouteSharedSheetRuntimeOwner.panelVisible,
+    appRouteSharedSheetRuntimeOwner.sheetState,
     rootSuggestionRuntime.isSuggestionPanelVisible,
   ]);
 };

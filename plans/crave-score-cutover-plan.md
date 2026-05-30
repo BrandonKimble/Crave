@@ -60,14 +60,22 @@ map or narrows a viewport.
 - Public display range should be `60.0` to `99.9` for normal scoring. `100.0`
   should not be emitted by a rank rule. If it ever exists, it should be an
   exceptional calibrated outcome, not a guaranteed top slot.
-- Always show computed restaurant and dish scores in v1. Do not add score
+- Always show computed restaurant and dish ratings in v1. Do not add score
   eligibility hiding, null-score UI, or `NEW` score states yet.
 - Use tab-native scores: the restaurant tab shows/ranks/colors restaurant Crave
   Scores, and the dish tab shows/ranks/colors dish connection Crave Scores.
-- Store daily score history from the start, but show movement only when a real,
-  non-zero movement value is available.
+- Store daily score history from the start, but keep compact cards focused on
+  the rating number. Movement can be shown in the score/rating info modal.
 - Keep confidence out of compact cards. Use it only in the score info modal with
   simple user-facing copy.
+- Present public scores as compact ratings in the UI. Keep backend scores stored
+  as numeric 0-100-style `display_score` values for sorting, calibration, color,
+  history, and fixture validation.
+- Compact cards use one decimal, for example `9.4`. The score/rating info modal
+  can show fuller converted precision, for example `9.42`.
+- Compact card rows should not include `/10`, `Restaurant score`, `Dish score`,
+  or score movement text. The compact row is icon, rating, info circle, then
+  secondary metadata.
 - Use the existing market roll-up semantics for `scoring_market_key`; do not
   create strict tiny-locality scoring cohorts by default.
 - Public evidence language is polls, votes, and Crave Score. Backend evidence
@@ -659,21 +667,23 @@ display text in the database.
 Public UI formatting:
 
 ```text
-96.8 -> 96.8°
-96.0 -> 96°
-88.4 -> 88.4°
+96.8 -> 9.7 on compact cards
+96.8 -> 9.68 in the score info modal
+90.0 -> 9 on compact cards
 ```
 
-Use the compact degree treatment for both restaurant scores and dish/connection
-scores. Rank stays separate and should not use the degree symbol:
+Use the compact rating treatment for both restaurant scores and dish/connection
+scores. Rank stays separate and should not be encoded into the rating:
 
 ```text
 #3
-96.8°
+9.7
 ```
 
 The formatter should suppress `.0` only at presentation time. The stored score
-can still be `96.0` so sorting, deltas, and history stay numeric.
+can still be `90.0` so sorting, deltas, color, and history stay numeric.
+Compact cards should render only the numeric rating. The metric name belongs in
+the score/rating info modal, not inline on every result card.
 
 ### Step 7: Map score to color
 
@@ -800,14 +810,14 @@ rank by connection.craveScore
 Nested restaurant snippets can include the restaurant Crave Score, but the dish
 score is the primary score for dish results.
 
-### Shortcut map coverage
+### Map coverage
 
-Preserve the separate shortcut coverage contract.
+Preserve the separate map coverage contract.
 
-A shortcut search has two different payload needs:
+Shortcut and natural searches have two different payload needs:
 
 - page-one sheet data for cards, pagination, hydration, and profile entry
-- broad map coverage for pins/dots/labels in the submitted viewport
+- broad map coverage for pins/dots/labels in the submitted market or viewport
 
 The API should continue to satisfy those separately.
 
@@ -824,17 +834,19 @@ all eligible restaurants or dish matches in the submitted viewport, capped only
 by an operational safety limit
 ```
 
-This means a shortcut search over Austin can show a filled-out map even when the
-result sheet only renders page one. Do not collapse map dots to page-one results.
+This means a shortcut or natural search over Austin can show a filled-out map
+even when the result sheet only renders page one. Do not collapse map dots to
+page-one results.
 
 Current implementation evidence:
 
-- `POST /search/shortcut/coverage` already exists as a separate coverage path.
+- `POST /search/map/coverage` exists as the single broad coverage path.
 - `SearchCoverageService` builds a GeoJSON `FeatureCollection` and currently
   caps at `50000`, not the page size.
-- mobile shortcut submission publishes a coverage snapshot after the page-one
-  response, then the map source controller fetches coverage and merges coverage
-  features with page-one result features.
+- mobile shortcut submission primes a map coverage snapshot from its structured
+  request, while natural submission publishes server-resolved
+  `mapCoverageEntities` after the page-one response. Both paths then use the same
+  map source controller coverage lane.
 - the projector dedupes by restaurant plus coordinate identity, so coverage and
   page-one features should not create duplicate pins for the same visual place.
 
@@ -851,7 +863,7 @@ at least one dish/item connection
 valid map location
 valid Google place id
 valid address
-inside submitted bounds
+inside submitted bounds when no marketKey is supplied
 inside active market geometry when marketKey is supplied
 ```
 
@@ -897,7 +909,7 @@ rankScoreDisplay
 Replace public search/profile fields with explicit score names.
 
 `craveScore` is a numeric API field. The mobile app formats it with the compact
-degree treatment.
+rating treatment.
 
 Restaurant result:
 
@@ -974,25 +986,19 @@ a real reason.
 
 Persist daily snapshots immediately so movement history exists when the product
 is ready to show it. Do not show `NEW`, `Stable`, or any null-score placeholder
-in v1. Compact cards always show the score itself.
+in v1. Compact cards always show the rating itself.
 
-The compact score chip can show:
+The compact card rating row should stay minimal:
 
 ```text
-85.4° ↑2.1°
+restaurant/dish icon  8.5  info circle  metadata
 ```
 
-Only show this when the value is available and non-zero. If there is no usable
-prior-week snapshot, or the movement is zero, show only the score:
+The score/rating info sheet can label the fuller value and movement:
 
 ```text
-85.4°
-```
-
-The score info sheet must label the movement:
-
-```text
-Crave Score increased 1.2 points this week.
+Current rating: 8.54
+This week: up 0.06 points
 ```
 
 Do not show a bare single digit like:
@@ -1011,13 +1017,14 @@ Rank movement is allowed only in named chart contexts:
 
 Recommended display rules:
 
-- Show score movement only when `scoreDelta7d` is available and non-zero.
-- If movement is unavailable, show only the score.
+- Do not show score movement in compact result cards.
+- In the score/rating info modal, show the fuller converted rating and weekly movement
+  when a non-zero `scoreDelta7d` exists.
 - Do not hide or replace the score based on confidence in v1.
 - Do not show `NEW` or `Stable` score states in v1.
 - Use `rising` for positive score movement.
-- Use `cooling` for negative score movement, but keep it subdued in compact
-  cards.
+- Use `cooling` for negative score movement, but explain it only in detail
+  surfaces for now.
 - Explain confidence only inside the info modal, using simple user-facing copy.
 - Do not show rank movement on arbitrary viewport search results.
 - Keep chart rank movement separate and always include the word `rank` or
@@ -1026,9 +1033,9 @@ Recommended display rules:
 Example compact states:
 
 ```text
-85.4° ↑2.1°
+8.5
 
-91.1°
+9.1
 
 #3 in Austin burgers
 up 2 ranks this week
@@ -1274,7 +1281,8 @@ scores. Ordering and invariants matter more than hitting a specific decimal.
 - Seed score snapshots for today and seven days earlier.
 - Expected behavior: `scoreDelta7d` is emitted only when a non-zero prior-week
   comparison exists; unavailable or zero movement is omitted/null in compact
-  payloads.
+  payloads. Mobile compact cards do not render score movement; emitted deltas
+  are reserved for the score/rating info modal.
 
 `public_score_info_language`
 
@@ -1433,10 +1441,10 @@ Exit gate:
 - Restaurant-tab rows sort by restaurant Crave Score.
 - Dish-tab rows sort by connection Crave Score.
 - Keep `rank` as the only contextual output.
-- Preserve `POST /search/shortcut/coverage` as a separate full-coverage map
+- Preserve `POST /search/map/coverage` as the separate full-coverage map
   endpoint. It should return coverage features independent of page-one result
   pagination.
-- Update shortcut coverage features to emit `craveScore` and rank by the
+- Update map coverage features to emit `craveScore` and rank by the
   tab-native Crave Score.
 - Delete `buildContextualRestaurantScoresCte`.
 - Delete `buildContextualConnectionScoresCte`.
@@ -1445,10 +1453,10 @@ Exit gate:
 Exit gate:
 
 - No active search response includes `contextualScore`.
-- No active shortcut coverage response includes `contextualScore`.
+- No active map coverage response includes `contextualScore`.
 - Top result in a one-item result set does not become `100`.
 - Rank changes with query/viewport; Crave Score does not.
-- A shortcut search with page size 20 can still publish more than 20 map
+- A shortcut or natural search with page size 20 can still publish more than 20 map
   features when the viewport has more than 20 coverage-eligible restaurants.
 - DB integration fixtures prove search rank is contextual while `craveScore` is
   stable.
@@ -1460,10 +1468,11 @@ Exit gate:
 - Update map pins, cards, profile panels, and score sheets to read `craveScore`.
 - Replace contextual-score explanatory copy.
 - Use score color from tab-native row `craveScore`.
-- Update score info modal copy to simple polls/votes/Crave Score language, with
+- Update rating info modal copy to simple polls/votes/Crave rating language, with
   confidence explained there only.
-- Show movement next to the compact score only when `scoreDelta7d` is available
-  and non-zero.
+- Do not show `Restaurant score`, `Dish score`, `/10`, or score movement in the
+  compact result-card metric row. Compact cards show icon, rating, info circle,
+  then secondary metadata.
 - Do not show `NEW`, `Stable`, or compact-card confidence labels.
 - Rename or wrap the old quality-color utility as
   `getCraveScoreColorFromScore`.
@@ -1478,8 +1487,8 @@ Exit gate:
 - No mobile color path falls back to raw quality, viewport percentile, result
   index, or rank.
 - The score chip and rank badge are visually and semantically separate.
-- Computed restaurant and dish scores always render in v1.
-- Confidence appears only in score info surfaces, not compact result cards.
+- Computed restaurant and dish ratings always render in v1.
+- Confidence appears only in rating info surfaces, not compact result cards.
 
 ### Phase 6: Delete old rank-score ownership
 
@@ -1500,8 +1509,8 @@ Exit gate:
 - Persist one public score snapshot per subject per day.
 - Compute score movement from the latest score versus the nearest available
   snapshot around seven days earlier.
-- Expose weekly score movement only when it is available and non-zero; otherwise
-  omit or null movement fields.
+- Expose weekly score movement when it is available and non-zero for detail
+  surfaces. Compact cards do not render score movement.
 - Do not expose `NEW` or `Stable` as compact score states in v1.
 - Do not compute or expose rank movement for arbitrary viewport search results.
 - Compute chart/rank movement only when a concrete, named, stable scope exists:
@@ -1557,13 +1566,14 @@ The calibration suite above is the source of truth. At minimum it must cover:
 - demand/cache replay changes demand/poll planning, not public quality
 - mobile score copy contains no contextual-score language
 - computed scores always render in v1; no `NEW`, null, or hidden score states
-- movement renders next to score only when non-zero weekly delta is available
+- compact cards render icon, rating, info circle, then metadata with no `/10`,
+  inline score label, or movement copy
 - confidence appears only in score info modal copy, not compact cards
 - user-facing score info copy uses polls/votes/Crave Score language and does not
   expose Reddit/source-document terminology
-- shortcut coverage returns all score-eligible map features for the submitted
-  viewport, not only page-one card results
-- shortcut coverage count is explained by eligibility/data inventory when it is
+- map coverage returns all score-eligible map features for the submitted
+  market or viewport, not only page-one card results
+- map coverage count is explained by eligibility/data inventory when it is
   low
 - score color is continuous across adjacent Crave Score values, not stair-stepped
 - the same subject keeps the same color across viewport changes when its
@@ -1577,22 +1587,22 @@ The ideal user-facing result is:
 
 ```text
 #3
-96.8°
+9.7
 ```
 
-When meaningful score movement is available, the compact score may become:
+When meaningful score movement is available, keep it in the rating info modal:
 
 ```text
-#3
-96.8° ↑1.2°
+Current rating: 9.68
+This week: up 0.12 points
 ```
 
 Where:
 
 - `#3` is contextual to the current search/list/map.
-- `96.8°` is the stable Crave Score.
+- `9.7` is the stable Crave rating presentation.
 - color comes from the stable Crave Score.
-- weekly movement is a separate signal.
+- weekly movement is a separate detail signal.
 - confidence is explained only in the score info modal.
 - no hidden viewport percentile creates the number.
 
@@ -1625,7 +1635,7 @@ Where:
   score. Real public result, favorite, and coverage contracts require numeric
   `craveScore`; preview shells use a dedicated preview type that can carry
   `craveScore: null` until hydrated.
-- Shortcut coverage is fail-closed. Restaurant coverage requires a restaurant
+- Map coverage is fail-closed. Restaurant coverage requires a restaurant
   public score. Dish coverage requires a scored connection row and must not
   borrow the restaurant score for a dish pin.
 - Favorite-list previews are public score surfaces. Their preview item contract
@@ -1640,7 +1650,7 @@ Where:
   integration layer that verifies latest score coverage, no forced `100`, market
   stats, and same-day score history.
 - The fixture suite also seeds real DB fixture entities, connections, poll
-  options/votes, locations, favorite lists, public scores, shortcut coverage
+  options/votes, locations, favorite lists, public scores, map coverage
   reads, SearchQueryExecutor dual-list reads, and favorite preview reads. It
   verifies poll-performance influence, distinct poll counts, one-result viewport
   score stability, page-one-independent coverage above 20 map features,

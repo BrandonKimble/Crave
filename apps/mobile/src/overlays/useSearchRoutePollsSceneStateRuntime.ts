@@ -58,13 +58,15 @@ export const createSearchRoutePollsSceneStateRuntime = ({
   const initialSnapPoint: PollsPanelInitialSnapPoint = 'collapsed';
   const physicalPollsSheetSnap = commandState.pollsSheetSnap;
   const hasDockedPollsRestoreDemand = dockedPollsRestoreIntent != null;
+  const isPersistentPollLane =
+    overlayVisibilityState.isSearchOverlay && overlayVisibilityState.isPersistentPollLane;
   const isPersistentPollsVisible =
-    overlayVisibilityState.isSearchOverlay &&
-    overlayVisibilityState.isPersistentPollLane &&
-    (!commandState.isDockedPollsDismissed || hasDockedPollsRestoreDemand);
+    isPersistentPollLane &&
+    (hasDockedPollsRestoreDemand ||
+      (!commandState.isDockedPollsDismissed && physicalPollsSheetSnap !== 'hidden'));
   const currentSnap: OverlaySheetSnap =
-    isPersistentPollsVisible && physicalPollsSheetSnap === 'hidden'
-      ? dockedPollsRestoreIntent?.snap ?? initialSnapPoint
+    hasDockedPollsRestoreDemand && physicalPollsSheetSnap === 'hidden'
+      ? dockedPollsRestoreIntent.snap
       : physicalPollsSheetSnap;
 
   return {

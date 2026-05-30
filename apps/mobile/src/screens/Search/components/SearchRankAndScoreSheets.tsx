@@ -7,13 +7,15 @@ import OverlayModalSheet from '../../../overlays/OverlayModalSheet';
 import { colors as themeColors } from '../../../constants/theme';
 import { CONTENT_HORIZONTAL_PADDING, SECONDARY_METRIC_ICON_SIZE } from '../constants/search';
 import { PollIcon, VoteIcon } from './metric-icons';
-import { formatCraveScore } from '../utils/quality';
+import { formatCraveScoreMovementDetail } from '../utils/quality';
+import CraveScoreText from './CraveScoreText';
 import styles from '../styles';
 
 export type ScoreInfoPayload = {
   type: 'dish' | 'restaurant';
   title: string;
   score: number | null | undefined;
+  scoreDelta7d: number | null | undefined;
   votes: number | null | undefined;
   polls: number | null | undefined;
 };
@@ -42,6 +44,9 @@ const SearchRankAndScoreSheets = ({
   formatCompactCount,
   onProfilerRender,
 }: SearchRankAndScoreSheetsProps) => {
+  const scoreMovementDetail = scoreInfo
+    ? formatCraveScoreMovementDetail(scoreInfo.scoreDelta7d)
+    : null;
   const sheet = (
     <MemoOverlayModalSheet
       visible={Boolean(isScoreInfoVisible && scoreInfo)}
@@ -69,18 +74,22 @@ const SearchRankAndScoreSheets = ({
                 />
               )}
               <Text variant="body" weight="semibold" style={styles.scoreInfoTitle}>
-                {scoreInfo.type === 'dish' ? 'Dish score' : 'Restaurant score'}
+                {scoreInfo.type === 'dish' ? 'Dish rating' : 'Restaurant rating'}
               </Text>
-              <Text variant="body" weight="semibold" style={styles.scoreInfoValue}>
-                {formatCraveScore(scoreInfo.score)}
-              </Text>
+              <CraveScoreText
+                score={scoreInfo.score}
+                detail
+                variant="body"
+                weight="semibold"
+                style={styles.scoreInfoValue}
+              />
             </View>
             <TouchableOpacity
               onPress={closeScoreInfo}
               style={styles.scoreInfoClose}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel="Close score details"
+              accessibilityLabel="Close rating details"
             >
               <LucideX size={18} color={themeColors.textBody} strokeWidth={2} />
             </TouchableOpacity>
@@ -107,12 +116,22 @@ const SearchRankAndScoreSheets = ({
                 Polls
               </Text>
             </View>
+            {scoreMovementDetail ? (
+              <View style={styles.scoreInfoMetricItem}>
+                <Text variant="body" weight="medium" style={styles.scoreInfoMetricText}>
+                  {scoreMovementDetail}
+                </Text>
+                <Text variant="body" style={styles.scoreInfoMetricLabel}>
+                  This week
+                </Text>
+              </View>
+            ) : null}
           </View>
           <View style={styles.scoreInfoDivider} />
           <Text variant="body" style={styles.scoreInfoDescription}>
             {scoreInfo.type === 'dish'
-              ? 'Dish score is Crave’s stable 60–99.9 signal from polls and votes. Your current search only changes the rank.'
-              : 'Restaurant score is Crave’s stable 60–99.9 signal from polls and votes. Your current search only changes the rank.'}
+              ? 'Dish rating is Crave’s stable signal, calculated from polls and votes. Your current search only changes the rank.'
+              : 'Restaurant rating is Crave’s stable signal, calculated from polls and votes. Your current search only changes the rank.'}
           </Text>
         </View>
       ) : null}

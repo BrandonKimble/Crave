@@ -15,7 +15,7 @@ export const useSearchRootOverlayLocalRestaurantHostRuntime = ({
   routeLocalRestaurantOverlayInteractionAuthority,
   routeOverlayVisibilityAuthority,
   routeHostOverlayGeometryAuthority,
-  routeResultsSheetVisualAuthority,
+  routeSharedSheetVisualAuthority,
   routeHostVisualRuntimeAuthority,
   overlayGateSnapshot,
 }: Pick<
@@ -26,14 +26,14 @@ export const useSearchRootOverlayLocalRestaurantHostRuntime = ({
   | 'routeLocalRestaurantOverlayInteractionAuthority'
   | 'routeOverlayVisibilityAuthority'
   | 'routeHostOverlayGeometryAuthority'
-  | 'routeResultsSheetVisualAuthority'
+  | 'routeSharedSheetVisualAuthority'
   | 'routeHostVisualRuntimeAuthority'
 > & {
   overlayGateSnapshot: SearchOverlayHostGateSnapshot;
 }): SearchRootOverlayLocalRestaurantHostRuntime => {
   const localRestaurantRouteHostRuntime = useSearchRootOverlayLocalRestaurantRouteHostRuntime({
     routeHostOverlayGeometryAuthority,
-    routeResultsSheetVisualAuthority,
+    routeSharedSheetVisualAuthority,
     routeHostVisualRuntimeAuthority,
   });
   const localRestaurantSheetHostRuntime = useSearchRootOverlayLocalRestaurantSheetHostRuntime({

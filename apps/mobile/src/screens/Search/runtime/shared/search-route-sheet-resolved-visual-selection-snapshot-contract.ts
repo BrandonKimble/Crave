@@ -4,13 +4,13 @@ import type {
 } from '../../../../overlays/searchRouteSceneStackSheetContract';
 import { EMPTY_SEARCH_ROUTE_VISUAL_STATE } from '../../../../overlays/searchRouteOverlayRuntimeContract';
 
-export const FALLBACK_PRESENTATION_STATE: SearchRouteSceneStackPresentationState = {
+export const DEFAULT_PRESENTATION_STATE: SearchRouteSceneStackPresentationState = {
   sheetTranslateY: EMPTY_SEARCH_ROUTE_VISUAL_STATE.sheetTranslateY,
-  resultsScrollOffset: EMPTY_SEARCH_ROUTE_VISUAL_STATE.resultsScrollOffset,
-  resultsMomentum: EMPTY_SEARCH_ROUTE_VISUAL_STATE.resultsMomentum,
+  sheetScrollOffset: EMPTY_SEARCH_ROUTE_VISUAL_STATE.sheetScrollOffset,
+  sheetMomentum: EMPTY_SEARCH_ROUTE_VISUAL_STATE.sheetMomentum,
 };
 
-export const FALLBACK_CHROME_VISUAL_STATE: SearchRouteSceneStackChromeVisualState = {
+export const DEFAULT_CHROME_VISUAL_STATE: SearchRouteSceneStackChromeVisualState = {
   overlayHeaderActionProgress: EMPTY_SEARCH_ROUTE_VISUAL_STATE.overlayHeaderActionProgress,
   searchSurfacePageBundleProgress: EMPTY_SEARCH_ROUTE_VISUAL_STATE.searchSurfacePageBundleProgress,
   navBarCutoutHeight: EMPTY_SEARCH_ROUTE_VISUAL_STATE.navBarCutoutHeight,
@@ -30,6 +30,6 @@ export type SearchRouteSheetResolvedVisualSelectionSnapshot = {
 
 export const EMPTY_SEARCH_ROUTE_SHEET_RESOLVED_VISUAL_SELECTION_SNAPSHOT: SearchRouteSheetResolvedVisualSelectionSnapshot =
   {
-    resolvedPresentationState: FALLBACK_PRESENTATION_STATE,
-    resolvedChromeVisualState: FALLBACK_CHROME_VISUAL_STATE,
+    resolvedPresentationState: DEFAULT_PRESENTATION_STATE,
+    resolvedChromeVisualState: DEFAULT_CHROME_VISUAL_STATE,
   };

@@ -189,7 +189,6 @@ const resolveAppRouteStaticSceneMount = ({
 
   if (
     !nextState.pollsPrewarmed &&
-    activeSceneKey === 'search' &&
     isPollsSceneReady &&
     transitionPhase === 'idle'
   ) {
@@ -361,11 +360,6 @@ const markSceneStackFrameEntryDiffs = (
     rightShellSpec?.surfaceKind ?? null
   );
   markSceneStackFieldDiff(
-    `${prefix}:shellSpec.initialSnapPoint`,
-    leftShellSpec?.initialSnapPoint ?? null,
-    rightShellSpec?.initialSnapPoint ?? null
-  );
-  markSceneStackFieldDiff(
     `${prefix}:shellSpec.snapPoints.expanded`,
     leftShellSpec?.snapPoints.expanded ?? null,
     rightShellSpec?.snapPoints.expanded ?? null
@@ -414,11 +408,6 @@ const markSceneStackFrameEntryDiffs = (
     `${prefix}:shellSpec.contentContainerStyle`,
     leftShellSpec?.contentContainerStyle ?? null,
     rightShellSpec?.contentContainerStyle ?? null
-  );
-  markSceneStackFieldDiff(
-    `${prefix}:shellSpec.runtimeModel`,
-    leftShellSpec?.runtimeModel ?? null,
-    rightShellSpec?.runtimeModel ?? null
   );
   markSceneStackFieldDiff(
     `${prefix}:shellSpec.listScrollEnabled`,
@@ -747,8 +736,8 @@ const shouldPrewarmSearchDismissPollDataLane = ({
   const surfaceVisualPolicy = selectSearchSurfaceVisualPolicy(searchSurfaceSnapshot);
   return (
     searchSurfaceSnapshot.activeBundle.kind === 'results' &&
+    searchSurfaceSnapshot.dismissTransaction != null &&
     surfaceVisualPolicy.phase === 'results_dismissing' &&
-    surfaceVisualPolicy.canDisplayPersistentPollSubstrate &&
     !surfaceVisualPolicy.canReleasePersistentPolls
   );
 };
@@ -763,8 +752,8 @@ const shouldSyncSearchDismissPollDataPrewarmScene = (
   const surfaceVisualPolicy = selectSearchSurfaceVisualPolicy(searchSurfaceSnapshot);
   return (
     searchSurfaceSnapshot.activeBundle.kind === 'results' &&
+    searchSurfaceSnapshot.dismissTransaction != null &&
     surfaceVisualPolicy.phase === 'results_dismissing' &&
-    surfaceVisualPolicy.canDisplayPersistentPollSubstrate &&
     !surfaceVisualPolicy.canReleasePersistentPolls
   );
 };

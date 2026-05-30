@@ -16,7 +16,7 @@ type UseResultsPresentationTabToggleRuntimeArgs = {
   toggleLifecycleRuntime: ReturnType<typeof useResultsPresentationToggleLifecycleRuntime>;
   resultsRuntimeOwner: Pick<
     ResultsPresentationRuntimeOwner,
-    'clearStagedSearchSurfaceResultsTransaction' | 'commitSearchSurfaceResultsTransaction'
+    'clearStagedSearchSurfaceResultsTransaction' | 'stageSearchSurfaceResultsTransaction'
   >;
 };
 
@@ -87,11 +87,13 @@ export const useResultsPresentationTabToggleRuntime = ({
             targetTab: next,
             coverState: 'interaction_loading',
           });
-          resultsRuntimeOwner.commitSearchSurfaceResultsTransaction(
+          resultsRuntimeOwner.stageSearchSurfaceResultsTransaction(
             createSearchSurfaceResultsEnterTransaction(
               intentId,
               'initial_search',
-              'interaction_loading'
+              'interaction_loading',
+              null,
+              'cache'
             )
           );
 

@@ -5,7 +5,7 @@ import type { ResultsPresentationAuthority } from './results-presentation-author
 import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
 import type { SearchMapSourceFramePort } from '../map/search-map-source-frame-port';
 import type { SearchRuntimeBus } from './search-runtime-bus';
-import type { AppRouteResultsSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-results-sheet-runtime-contract';
+import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
 import type { SearchChromeScalarSurfacePresentationRuntime } from '../native/search-chrome-scalar-surface-presentation-runtime';
 import type { ResultsPresentationPolicyFactsLaneChange } from './results-presentation-policy-facts-controller';
 import type { RouteSceneSwitchAuthority } from './route-authority-contract';
@@ -60,13 +60,13 @@ export const useResultsPresentationOwnerStateSessionRuntime = ({
   shouldRenderSearchOverlay: boolean;
   shouldEnableShortcutInteractions: boolean;
   resultsSheetRuntime: Pick<
-    AppRouteResultsSheetRuntimeOwner,
+    AppRouteSharedSheetRuntimeOwner,
     | 'sheetTranslateY'
     | 'snapPoints'
-    | 'prepareShortcutSheetTransition'
-    | 'resultsSheetRuntimeModel'
-    | 'shouldRenderResultsSheetRef'
-    | 'resetResultsSheetToHidden'
+    | 'prepareSharedSheetForSearchPresentation'
+    | 'sharedSheetRuntimeModel'
+    | 'shouldRenderMountedSharedSheetRef'
+    | 'markSharedSheetHidden'
   >;
   searchRuntimeBus: SearchRuntimeBus;
   resultsPresentationAuthority: ResultsPresentationAuthority;
