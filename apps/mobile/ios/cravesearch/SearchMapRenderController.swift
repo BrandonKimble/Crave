@@ -8744,12 +8744,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     return nil
   }
 
-  private static func slotSourceId(_ sourceIds: [String], slotIndex: Int) -> String? {
-    guard slotIndex >= 0, slotIndex < sourceIds.count else {
-      return nil
-    }
-    return sourceIds[slotIndex]
-  }
 
   private func commitRenderedLabelObservation(
     instanceId: String,
@@ -9179,7 +9173,7 @@ final class SearchMapRenderController: RCTEventEmitter {
         case .success(let features):
           let primaryObservation = Self.buildRenderedLabelObservation(
             from: features,
-            allowedSourceIds: Set(latestState.pinSlotSourceIds)
+            allowedSourceIds: [latestState.pinBundleSourceId]
           )
           let snapshot = self.commitRenderedLabelObservation(
             instanceId: instanceId,
