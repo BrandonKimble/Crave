@@ -272,6 +272,7 @@ export const useMapInteractionController = (
       // "user is moving the map" semantics, and use the native flag as advisory.
       const isUserViewportGestureActive =
         nativeGestureActive || mapTouchActiveRef.current || mapGestureSessionRef.current !== null;
+      const previousUserViewportGestureActive = mapGestureActiveRef.current;
       mapGestureActiveRef.current = isUserViewportGestureActive;
       cameraIntentArbiter.setGestureActive(isUserViewportGestureActive);
 
@@ -282,6 +283,27 @@ export const useMapInteractionController = (
       const zoomCandidate = state?.properties?.zoom as unknown;
       const zoom =
         typeof zoomCandidate === 'number' && Number.isFinite(zoomCandidate) ? zoomCandidate : null;
+
+      // Keep the controlled <Camera> mirror in step with where the USER is so it
+      // cannot snap back to the stale programmatic camera when the gesture ends.
+      // Mirror while a gesture is active and once more as it settles.
+      if ((isUserViewportGestureActive || previousUserViewportGestureActive) && zoom != null) {
+        const centerCandidate = state?.properties?.center as unknown;
+        const headingCandidate = state?.properties?.heading as unknown;
+        const pitchCandidate = state?.properties?.pitch as unknown;
+        if (
+          Array.isArray(centerCandidate) &&
+          typeof centerCandidate[0] === 'number' &&
+          typeof centerCandidate[1] === 'number'
+        ) {
+          cameraIntentArbiter.syncControlledCameraToUserGesture({
+            center: [centerCandidate[0], centerCandidate[1]],
+            zoom,
+            bearing: typeof headingCandidate === 'number' ? headingCandidate : null,
+            pitch: typeof pitchCandidate === 'number' ? pitchCandidate : null,
+          });
+        }
+      }
       const viewportMotionToken = buildMapViewportMotionToken({
         bounds,
         zoom,
