@@ -7675,6 +7675,14 @@ final class SearchMapRenderController: RCTEventEmitter {
     var pinIntermediateOpacityCount = 0
     var labelIntermediateOpacityCount = 0
     var dotIntermediateOpacityCount = 0
+    // #2/#3 detectors. flashReversalCount: a pin transition whose startOpacity is
+    // mid-range began from a mid-fade — i.e. the marker reversed promote/demote
+    // mid-animation (the "fade out -> flash full -> out"). pinExitMidFade /
+    // dotEnter let us flag a demotion with no synchronized dot fade-in (the
+    // crossfade gap: dot snaps in late instead of fading with the pin).
+    var flashReversalCount = 0
+    var pinExitMidFadeMarkerKeys = Set<String>()
+    var dotEnterMarkerKeys = Set<String>()
     var completedEnterMarkerKeys: [String] = []
     var completedExitMarkerKeys: [String] = []
     var completedDotEnterMarkerKeys: [String] = []
@@ -7690,10 +7698,16 @@ final class SearchMapRenderController: RCTEventEmitter {
       if opacity > 0.001 && opacity < 0.999 {
         pinIntermediateOpacityCount += 1
       }
+      if transition.startOpacity > 0.05 && transition.startOpacity < 0.95 {
+        flashReversalCount += 1
+      }
       if transition.targetOpacity >= 0.999 {
         pinEnterTransitionCount += 1
       } else {
         pinExitTransitionCount += 1
+        if opacity > 0.05 && opacity < 0.95 {
+          pinExitMidFadeMarkerKeys.insert(markerKey)
+        }
       }
       let renderState = pinFamilyState.markerRenderStateByMarkerKey[markerKey]
       // Single bundle source: pin art and label features for a marker both live
@@ -7751,6 +7765,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       }
       if transition.targetOpacity >= 0.999 {
         dotEnterTransitionCount += 1
+        dotEnterMarkerKeys.insert(markerKey)
       } else {
         dotExitTransitionCount += 1
       }
@@ -7822,10 +7837,16 @@ final class SearchMapRenderController: RCTEventEmitter {
     )
     let pinTransitionCount = pinEnterTransitionCount + pinExitTransitionCount
     let dotTransitionCount = dotEnterTransitionCount + dotExitTransitionCount
+    // Crossfade gap: a marker whose pin is fading OUT mid-transition with no dot
+    // fading IN — the demotion is not crossfading with its dot.
+    let crossfadeGapCount = pinExitMidFadeMarkerKeys.subtracting(dotEnterMarkerKeys).count
     if pinTransitionCount > 0 || dotTransitionCount > 0 {
       emit([
         "type": "live_lod_transition_contract",
         "instanceId": instanceId,
+        "flashReversalCount": flashReversalCount,
+        "crossfadeGapCount": crossfadeGapCount,
+        "pinExitMidFadeCount": pinExitMidFadeMarkerKeys.count,
         "pinTransitionCount": pinTransitionCount,
         "pinEnterTransitionCount": pinEnterTransitionCount,
         "pinExitTransitionCount": pinExitTransitionCount,

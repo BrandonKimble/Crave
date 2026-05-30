@@ -284,6 +284,9 @@ export type SearchMapRenderControllerEvent =
 	  | {
 	      type: 'live_lod_transition_contract';
 	      instanceId: string;
+      flashReversalCount?: number;
+      crossfadeGapCount?: number;
+      pinExitMidFadeCount?: number;
       pinTransitionCount: number;
       pinEnterTransitionCount: number;
       pinExitTransitionCount: number;

@@ -1,0 +1,25 @@
+appId: com.brandonkimble.cravesearch
+---
+- tapOn: { text: 'Close restaurant', optional: true }
+- tapOn: { text: 'Close results', optional: true }
+- tapOn: { text: 'Close polls', optional: true }
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 45000 }
+- extendedWaitUntil: { visible: 'Show best restaurants here', timeout: 45000 }
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=30.2672&lng=-97.7431&zoom=11.5&label=austin'
+- waitForAnimationToEnd: { timeout: 1800 }
+- openLink: 'crave://perf-scenario-command?action=submit_shortcut_restaurants'
+- extendedWaitUntil: { visible: 'Close results', timeout: 20000 }
+- waitForAnimationToEnd: { timeout: 1500 }
+- repeat:
+    times: 4
+    commands:
+      - tapOn: { point: '53%, 34%', waitToSettleTimeoutMs: 0 }
+      - extendedWaitUntil: { visible: 'Close restaurant', timeout: 12000 }
+      - waitForAnimationToEnd: { timeout: 1200 }
+      - tapOn: { text: 'Close restaurant' }
+      - waitForAnimationToEnd: { timeout: 1200 }
+      - tapOn: { point: '40%, 30%', waitToSettleTimeoutMs: 0 }
+      - extendedWaitUntil: { visible: 'Close restaurant', timeout: 12000 }
+      - waitForAnimationToEnd: { timeout: 1200 }
+      - tapOn: { text: 'Close restaurant' }
+      - waitForAnimationToEnd: { timeout: 1200 }

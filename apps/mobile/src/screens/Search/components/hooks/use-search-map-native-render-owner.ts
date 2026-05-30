@@ -2197,6 +2197,9 @@ const useSearchMapNativeRenderOwnerStatus = ({
 	              if (isPerfScenarioAttributionActive(scenarioConfig)) {
                 logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
                   event: 'native_live_lod_transition_contract',
+                  flashReversalCount: event.flashReversalCount,
+                  crossfadeGapCount: event.crossfadeGapCount,
+                  pinExitMidFadeCount: event.pinExitMidFadeCount,
                   pinTransitionCount: event.pinTransitionCount,
                   pinEnterTransitionCount: event.pinEnterTransitionCount,
                   pinExitTransitionCount: event.pinExitTransitionCount,

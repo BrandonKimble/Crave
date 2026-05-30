@@ -1221,6 +1221,37 @@ if (
       );
     }
   }
+
+  // LOD crossfade quality: promote/demote must be a clean opacity crossfade.
+  // flashReversalCount > 0 means a pin reversed mid-fade (the "fade out -> flash
+  // full -> out"); crossfadeGapCount > 0 means a pin faded out with no dot fading
+  // in (dot snaps in late). Both must be 0 across the scenario.
+  const lodTransitionEvents = byEvent('native_live_lod_transition_contract');
+  if (lodTransitionEvents.length === 0) {
+    fail('missing native_live_lod_transition_contract events — cannot verify crossfade quality');
+  } else {
+    const totalFlashReversals = lodTransitionEvents.reduce(
+      (sum, event) => sum + (numeric(event.flashReversalCount) ?? 0),
+      0
+    );
+    const totalCrossfadeGaps = lodTransitionEvents.reduce(
+      (sum, event) => sum + (numeric(event.crossfadeGapCount) ?? 0),
+      0
+    );
+    const worstFlash = lodTransitionEvents.find((event) => (numeric(event.flashReversalCount) ?? 0) > 0);
+    const worstGap = lodTransitionEvents.find((event) => (numeric(event.crossfadeGapCount) ?? 0) > 0);
+    if (totalFlashReversals > 0 || totalCrossfadeGaps > 0) {
+      fail(
+        `LOD crossfade not clean: flashReversals=${totalFlashReversals} (mid-fade promote/demote reversal), crossfadeGaps=${totalCrossfadeGaps} (pin faded out with no dot fade-in); first flash near line ${
+          worstFlash?.line ?? 'n/a'
+        }, first gap near line ${worstGap?.line ?? 'n/a'}`
+      );
+    } else {
+      pass(
+        `LOD crossfade clean: 0 flash reversals, 0 crossfade gaps across ${lodTransitionEvents.length} transition frames`
+      );
+    }
+  }
 }
 
 const dismissPressEvents = byEvent('results_dismiss_press_up_contract');
