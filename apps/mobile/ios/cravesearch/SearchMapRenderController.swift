@@ -556,6 +556,12 @@ final class SearchMapRenderController: RCTEventEmitter {
   }
 
   private struct InstanceState {
+    // The single RENDERED bundle source id (pin art + interaction + labels for
+    // every promoted marker, slot-scoped by `nativeLodZ` in the layer filters).
+    // Distinct from `pinSourceId`, which stays the in-memory pin STAGING family
+    // (marker render state / transitions) and is never applied to Mapbox. Must
+    // match the JS render tree: `"\(pinSourceId)-bundle"`.
+    var pinBundleSourceId: String { "\(pinSourceId)-bundle" }
     var mapTag: NSNumber
     var pinSourceId: String
     var pinInteractionSourceId: String
@@ -3024,8 +3030,8 @@ final class SearchMapRenderController: RCTEventEmitter {
     tapCoordinate: (lng: Double, lat: Double)?,
     completion: @escaping (Result<[String: Any]?, Error>) -> Void
   ) {
-    let labelSourceIds = Set(state.pinSlotSourceIds)
-    let pinInteractionSourceIds = Set(state.pinSlotSourceIds)
+    let labelSourceIds: Set<String> = [state.pinBundleSourceId]
+    let pinInteractionSourceIds: Set<String> = [state.pinBundleSourceId]
     let queryDotTarget = {
       guard !dotLayerIds.isEmpty, dotQueryRect.width > 0, dotQueryRect.height > 0 else {
         completion(.success(nil))
@@ -3702,7 +3708,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     var promotedSlotFamilyState = Self.emptyDerivedFamilyState()
     promotedSlotFamilyState.collection = promotedSlotCollection
     let previousPromotedGroupIds = Set(
-      state.pinSlotSourceIds.flatMap { Self.derivedFamilyState(sourceId: $0, state: state).collection.groupOrder }
+      Self.derivedFamilyState(sourceId: state.pinBundleSourceId, state: state).collection.groupOrder
     )
     promotedSlotFamilyState.collection.dirtyGroupIds =
       dirtyPinMarkerKeys
@@ -3722,7 +3728,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       plans.append(labelCollisionPlan)
     }
     let promotedSlotPlans = try Self.buildSlotApplyPlans(
-      sourceIds: state.pinSlotSourceIds,
+      sourceId: state.pinBundleSourceId,
       nextCollection: promotedSlotFamilyState.collection,
       state: &state,
       recordAttribution: makeReplaceAttributionRecorder("promotedSlots")
@@ -3730,7 +3736,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     plans.append(contentsOf: promotedSlotPlans)
     return PreparedDerivedPinAndLabelOutput(
       plans: plans,
-      pinSourceIds: state.pinSlotSourceIds,
+      pinSourceIds: [state.pinBundleSourceId],
       pinStartedAtMs: pinStartedAt
     )
   }
@@ -3826,44 +3832,32 @@ final class SearchMapRenderController: RCTEventEmitter {
   }
 
   private static func buildDirectSlotApplyPlans(
-    sourceIds: [String],
+    sourceId: String,
     orderedAffectedMarkerKeys: [String],
     recordsByMarkerKey: [String: [ParsedTransportFeatureRecord]],
     affectedMarkerKeys: Set<String>,
     state: inout InstanceState,
     recordAttribution: ((_ section: String, _ durationMs: Double, _ operationCount: Int) -> Void)? = nil
   ) throws -> [ParsedCollectionApplyPlan] {
-    guard !sourceIds.isEmpty, !affectedMarkerKeys.isEmpty else {
+    guard !affectedMarkerKeys.isEmpty else {
       return []
     }
 
-    let loadStartedAt = recordAttribution == nil ? 0 : CACurrentMediaTime() * 1000
-    let familyStates = sourceIds.map { derivedFamilyState(sourceId: $0, state: state) }
-    if let recordAttribution {
-      recordAttribution("direct.load_slot_states", CACurrentMediaTime() * 1000 - loadStartedAt, sourceIds.count)
-    }
+    // Resident single bundle source: every promoted marker's pin/interaction/
+    // label features live in ONE source, grouped by markerKey. The slot is the
+    // feature's `nativeLodZ`, used only by the per-slot LAYER filters for
+    // z-order — it does not select a source. No per-slot source fan-out.
+    var familyState = derivedFamilyState(sourceId: sourceId, state: state)
+    let previousSourceState = familyState.sourceState
 
-    var affectedSlotIndexes = Set<Int>()
-    var desiredGroupsBySlot: [[String]] = Array(repeating: [], count: sourceIds.count)
-    var desiredFeatureIdsByGroupBySlot: [[String: [String]]] =
-      Array(repeating: [:], count: sourceIds.count)
-    var featureByIdBySlot: [[String: Feature]] = Array(repeating: [:], count: sourceIds.count)
-    var diffKeyByIdBySlot: [[String: String]] = Array(repeating: [:], count: sourceIds.count)
-    var featureStateByIdBySlot: [[String: [String: Any]]] =
-      Array(repeating: [:], count: sourceIds.count)
-    var markerKeyByFeatureIdBySlot: [[String: String]] =
-      Array(repeating: [:], count: sourceIds.count)
-
-    let previousMembershipStartedAt = recordAttribution == nil ? 0 : CACurrentMediaTime() * 1000
-    for (slotIndex, familyState) in familyStates.enumerated() {
-      let existingGroups = Set(familyState.collection.groupOrder)
-      if !existingGroups.isDisjoint(with: affectedMarkerKeys) {
-        affectedSlotIndexes.insert(slotIndex)
-      }
+    var desiredGroupOrder = familyState.collection.groupOrder.filter {
+      !affectedMarkerKeys.contains($0)
     }
-    if let recordAttribution {
-      recordAttribution("direct.previous_membership", CACurrentMediaTime() * 1000 - previousMembershipStartedAt, affectedMarkerKeys.count)
-    }
+    var desiredFeatureIdsByGroup: [String: [String]] = [:]
+    var featureById: [String: Feature] = [:]
+    var diffKeyById: [String: String] = [:]
+    var featureStateById: [String: [String: Any]] = [:]
+    var markerKeyByFeatureId: [String: String] = [:]
 
     let desiredStartedAt = recordAttribution == nil ? 0 : CACurrentMediaTime() * 1000
     for markerKey in orderedAffectedMarkerKeys {
@@ -3873,99 +3867,71 @@ final class SearchMapRenderController: RCTEventEmitter {
       else {
         continue
       }
-      var nextSlotIndex: Int?
-      for record in records {
-        guard let slotIndex = Self.slotIndex(from: record.feature),
-              slotIndex >= 0,
-              slotIndex < sourceIds.count
-        else {
-          continue
-        }
-        nextSlotIndex = slotIndex
-        break
+      if !desiredGroupOrder.contains(markerKey) {
+        desiredGroupOrder.append(markerKey)
       }
-      guard let slotIndex = nextSlotIndex else {
-        continue
-      }
-      affectedSlotIndexes.insert(slotIndex)
-      desiredGroupsBySlot[slotIndex].append(markerKey)
-      desiredFeatureIdsByGroupBySlot[slotIndex][markerKey] = records.map(\.id)
+      desiredFeatureIdsByGroup[markerKey] = records.map(\.id)
       for record in records {
-        featureByIdBySlot[slotIndex][record.id] = record.feature
-        diffKeyByIdBySlot[slotIndex][record.id] = record.diffKey
+        featureById[record.id] = record.feature
+        diffKeyById[record.id] = record.diffKey
         if !record.featureState.isEmpty {
-          featureStateByIdBySlot[slotIndex][record.id] = record.featureState
+          featureStateById[record.id] = record.featureState
         }
-        markerKeyByFeatureIdBySlot[slotIndex][record.id] = record.markerKey
+        markerKeyByFeatureId[record.id] = record.markerKey
       }
     }
     if let recordAttribution {
       recordAttribution("direct.desired_records", CACurrentMediaTime() * 1000 - desiredStartedAt, recordsByMarkerKey.count)
     }
 
-    var plans: [ParsedCollectionApplyPlan] = []
-    plans.reserveCapacity(affectedSlotIndexes.count)
-    for slotIndex in affectedSlotIndexes.sorted() {
-      let sourceId = sourceIds[slotIndex]
-      var familyState = familyStates[slotIndex]
-      let previousSourceState = familyState.sourceState
-      var desiredGroupOrder = familyState.collection.groupOrder.filter {
-        !affectedMarkerKeys.contains($0)
-      }
-      for groupId in desiredGroupsBySlot[slotIndex] {
-        if !desiredGroupOrder.contains(groupId) {
-          desiredGroupOrder.append(groupId)
-        }
-      }
-      let previousGroupIds = Set(familyState.collection.groupOrder)
-      let nextGroupIds = Set(desiredGroupOrder)
-      let removedGroupIds = previousGroupIds.subtracting(nextGroupIds).intersection(affectedMarkerKeys)
-      let addedGroupIds = nextGroupIds.subtracting(previousGroupIds).intersection(affectedMarkerKeys)
-      let dirtyGroupIds = affectedMarkerKeys.intersection(
-        previousGroupIds.union(nextGroupIds)
-      )
-      guard !dirtyGroupIds.isEmpty ||
-        !removedGroupIds.isEmpty ||
-        familyState.collection.groupOrder != desiredGroupOrder
-      else {
-        continue
-      }
-      let orderChangedGroupIds =
-        familyState.collection.groupOrder == desiredGroupOrder
-          ? dirtyGroupIds
-          : dirtyGroupIds.union(addedGroupIds).union(removedGroupIds)
+    let previousGroupIds = Set(familyState.collection.groupOrder)
+    let nextGroupIds = Set(desiredGroupOrder)
+    let removedGroupIds = previousGroupIds.subtracting(nextGroupIds).intersection(affectedMarkerKeys)
+    let addedGroupIds = nextGroupIds.subtracting(previousGroupIds).intersection(affectedMarkerKeys)
+    let dirtyGroupIds = affectedMarkerKeys.intersection(
+      previousGroupIds.union(nextGroupIds)
+    )
+    guard !dirtyGroupIds.isEmpty ||
+      !removedGroupIds.isEmpty ||
+      familyState.collection.groupOrder != desiredGroupOrder
+    else {
+      return []
+    }
+    let orderChangedGroupIds =
+      familyState.collection.groupOrder == desiredGroupOrder
+        ? dirtyGroupIds
+        : dirtyGroupIds.union(addedGroupIds).union(removedGroupIds)
 
-      try patchParsedFeatureCollection(
-        &familyState.collection,
-        baseSourceState: previousSourceState,
-        desiredGroupOrder: desiredGroupOrder,
-        desiredFeatureIdsByGroup: desiredFeatureIdsByGroupBySlot[slotIndex],
-        featureById: featureByIdBySlot[slotIndex],
-        diffKeyById: diffKeyByIdBySlot[slotIndex],
-        featureStateById: featureStateByIdBySlot[slotIndex],
-        markerKeyByFeatureId: markerKeyByFeatureIdBySlot[slotIndex],
-        dirtyGroupIds: dirtyGroupIds,
-        orderChangedGroupIds: orderChangedGroupIds,
-        removedGroupIds: removedGroupIds,
-        useCurrentCollectionBase: true,
-        recordAttribution: recordAttribution
-      )
-      setDerivedFamilyState(familyState, sourceId: sourceId, state: &state)
-      if previousSourceState.sourceRevision == familyState.collection.sourceRevision &&
-        previousSourceState.featureStateRevision == familyState.collection.featureStateRevision
-      {
-        continue
-      }
-      let plan = ParsedCollectionApplyPlan(
+    try patchParsedFeatureCollection(
+      &familyState.collection,
+      baseSourceState: previousSourceState,
+      desiredGroupOrder: desiredGroupOrder,
+      desiredFeatureIdsByGroup: desiredFeatureIdsByGroup,
+      featureById: featureById,
+      diffKeyById: diffKeyById,
+      featureStateById: featureStateById,
+      markerKeyByFeatureId: markerKeyByFeatureId,
+      dirtyGroupIds: dirtyGroupIds,
+      orderChangedGroupIds: orderChangedGroupIds,
+      removedGroupIds: removedGroupIds,
+      useCurrentCollectionBase: true,
+      recordAttribution: recordAttribution
+    )
+    setDerivedFamilyState(familyState, sourceId: sourceId, state: &state)
+    if previousSourceState.sourceRevision == familyState.collection.sourceRevision &&
+      previousSourceState.featureStateRevision == familyState.collection.featureStateRevision
+    {
+      return []
+    }
+    return [
+      ParsedCollectionApplyPlan(
         sourceId: sourceId,
         next: familyState.collection,
         previousSourceState: previousSourceState,
         previousFeatureStateById: previousSourceState.featureStateById,
         previousFeatureStateRevision: previousSourceState.featureStateRevision
       )
-      plans.append(plan)
-    }
-    return plans
+    ]
   }
 
   private static func buildDirectFamilyApplyPlan(
@@ -4080,7 +4046,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     guard !affectedMarkerKeys.isEmpty else {
       return PreparedDerivedPinAndLabelOutput(
         plans: [],
-        pinSourceIds: state.pinSlotSourceIds,
+        pinSourceIds: [state.pinBundleSourceId],
         pinStartedAtMs: CACurrentMediaTime() * 1000
       )
     }
@@ -4237,7 +4203,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       labelRecordsByMarkerKey: directLabelRecordsByMarkerKey
     )
     let promotedSlotPlans = try Self.buildDirectSlotApplyPlans(
-      sourceIds: state.pinSlotSourceIds,
+      sourceId: state.pinBundleSourceId,
       orderedAffectedMarkerKeys: directOrderedAffectedMarkerKeys,
       recordsByMarkerKey: promotedSlotRecordsByMarkerKey,
       affectedMarkerKeys: affectedMarkerKeys,
@@ -4269,7 +4235,7 @@ final class SearchMapRenderController: RCTEventEmitter {
 
     return PreparedDerivedPinAndLabelOutput(
       plans: plans,
-      pinSourceIds: state.pinSlotSourceIds,
+      pinSourceIds: [state.pinBundleSourceId],
       pinStartedAtMs: CACurrentMediaTime() * 1000
     )
 
@@ -7195,146 +7161,95 @@ final class SearchMapRenderController: RCTEventEmitter {
   }
 
   private static func buildSlotApplyPlans(
-    sourceIds: [String],
+    sourceId: String,
     nextCollection: ParsedFeatureCollection,
     state: inout InstanceState,
     recordAttribution: ((_ section: String, _ durationMs: Double, _ operationCount: Int) -> Void)? = nil
   ) throws -> [ParsedCollectionApplyPlan] {
-    guard !sourceIds.isEmpty else {
-      return []
-    }
     let changedGroupIds = nextCollection.dirtyGroupIds.union(nextCollection.removedGroupIds)
     guard !changedGroupIds.isEmpty else {
       return []
     }
-    var affectedSlotIndexes = Set<Int>()
-    var desiredFeatureIdsByGroupBySlot: [[String: [String]]] =
-      Array(repeating: [:], count: sourceIds.count)
-    var featureByIdBySlot: [[String: Feature]] = Array(repeating: [:], count: sourceIds.count)
-    var diffKeyByIdBySlot: [[String: String]] = Array(repeating: [:], count: sourceIds.count)
-    var featureStateByIdBySlot: [[String: [String: Any]]] =
-      Array(repeating: [:], count: sourceIds.count)
-    var markerKeyByFeatureIdBySlot: [[String: String]] =
-      Array(repeating: [:], count: sourceIds.count)
-    var nextGroupIdsBySlot: [Set<String>] = Array(repeating: [], count: sourceIds.count)
+    var familyState = derivedFamilyState(sourceId: sourceId, state: state)
+    let previousSourceState = familyState.sourceState
 
-    for groupId in changedGroupIds {
-      for (slotIndex, sourceId) in sourceIds.enumerated() {
-        let familyState = derivedFamilyState(sourceId: sourceId, state: state)
-        if familyState.collection.groupedFeatureIdsByGroup[groupId] != nil {
-          affectedSlotIndexes.insert(slotIndex)
-        }
-      }
+    var desiredGroupOrder = familyState.collection.groupOrder.filter {
+      !changedGroupIds.contains($0)
+    }
+    var desiredFeatureIdsByGroup: [String: [String]] = [:]
+    var featureById: [String: Feature] = [:]
+    var diffKeyById: [String: String] = [:]
+    var featureStateById: [String: [String: Any]] = [:]
+    var markerKeyByFeatureId: [String: String] = [:]
 
+    let orderedChangedGroupIds = nextCollection.groupOrder.filter { changedGroupIds.contains($0) }
+    for groupId in orderedChangedGroupIds {
       let groupFeatureIds = nextCollection.groupedFeatureIdsByGroup[groupId] ?? []
       guard !groupFeatureIds.isEmpty else {
         continue
       }
-      var nextSlotIndex: Int?
-      for featureId in groupFeatureIds {
-        guard let feature = nextCollection.featureById[featureId],
-              let slotIndex = Self.slotIndex(from: feature),
-              slotIndex >= 0,
-              slotIndex < sourceIds.count
-        else {
-          continue
-        }
-        nextSlotIndex = slotIndex
-        break
+      if !desiredGroupOrder.contains(groupId) {
+        desiredGroupOrder.append(groupId)
       }
-      guard let slotIndex = nextSlotIndex else {
-        continue
-      }
-      affectedSlotIndexes.insert(slotIndex)
-      nextGroupIdsBySlot[slotIndex].insert(groupId)
-      desiredFeatureIdsByGroupBySlot[slotIndex][groupId] = groupFeatureIds
+      desiredFeatureIdsByGroup[groupId] = groupFeatureIds
       for featureId in groupFeatureIds {
         guard let feature = nextCollection.featureById[featureId] else {
           continue
         }
-        featureByIdBySlot[slotIndex][featureId] = feature
+        featureById[featureId] = feature
         if let diffKey = nextCollection.diffKeyById[featureId] {
-          diffKeyByIdBySlot[slotIndex][featureId] = diffKey
+          diffKeyById[featureId] = diffKey
         }
         if let featureState = nextCollection.featureStateById[featureId], !featureState.isEmpty {
-          featureStateByIdBySlot[slotIndex][featureId] = featureState
+          featureStateById[featureId] = featureState
         }
-        markerKeyByFeatureIdBySlot[slotIndex][featureId] =
-          nextCollection.markerKeyByFeatureId[featureId] ?? groupId
+        markerKeyByFeatureId[featureId] = nextCollection.markerKeyByFeatureId[featureId] ?? groupId
       }
     }
 
-    var plans: [ParsedCollectionApplyPlan] = []
-    plans.reserveCapacity(affectedSlotIndexes.count)
-    let orderedChangedGroupIds = nextCollection.groupOrder.filter { changedGroupIds.contains($0) }
-    for slotIndex in affectedSlotIndexes.sorted() {
-      let sourceId = sourceIds[slotIndex]
-      var familyState = derivedFamilyState(sourceId: sourceId, state: state)
-      let previousSourceState = familyState.sourceState
-      var desiredGroupOrder = familyState.collection.groupOrder.filter {
-        !changedGroupIds.contains($0)
-      }
-      for groupId in orderedChangedGroupIds {
-        guard nextGroupIdsBySlot[slotIndex].contains(groupId) else {
-          continue
-        }
-        if !desiredGroupOrder.contains(groupId) {
-          desiredGroupOrder.append(groupId)
-        }
-      }
-      let desiredFeatureIdsByGroup = desiredFeatureIdsByGroupBySlot[slotIndex]
-      let featureById = featureByIdBySlot[slotIndex]
-      let diffKeyById = diffKeyByIdBySlot[slotIndex]
-      let featureStateById = featureStateByIdBySlot[slotIndex]
-      let markerKeyByFeatureId = markerKeyByFeatureIdBySlot[slotIndex]
-      let previousGroupIds = Set(familyState.collection.groupOrder)
-      let nextGroupIds = Set(desiredGroupOrder)
-      let removedGroupIds = previousGroupIds.subtracting(nextGroupIds)
-      let addedGroupIds = nextGroupIds.subtracting(previousGroupIds)
-      let dirtyGroupIds = nextGroupIdsBySlot[slotIndex]
-        .union(addedGroupIds)
-        .union(removedGroupIds)
-      let orderChangedGroupIds =
-        familyState.collection.groupOrder == desiredGroupOrder ? dirtyGroupIds : dirtyGroupIds.union(addedGroupIds).union(removedGroupIds)
-      if familyState.collection.groupOrder == desiredGroupOrder &&
-        dirtyGroupIds.isEmpty &&
-        orderChangedGroupIds.isEmpty &&
-        removedGroupIds.isEmpty
-      {
-        continue
-      }
-      try patchParsedFeatureCollection(
-        &familyState.collection,
-        baseSourceState: previousSourceState,
-        desiredGroupOrder: desiredGroupOrder,
-        desiredFeatureIdsByGroup: desiredFeatureIdsByGroup,
-        featureById: featureById,
-        diffKeyById: diffKeyById,
-        featureStateById: featureStateById,
-        markerKeyByFeatureId: markerKeyByFeatureId,
-        dirtyGroupIds: dirtyGroupIds,
-        orderChangedGroupIds: orderChangedGroupIds,
-        removedGroupIds: removedGroupIds,
-        useCurrentCollectionBase: true,
-        recordAttribution: recordAttribution
-      )
-      setDerivedFamilyState(familyState, sourceId: sourceId, state: &state)
-      if previousSourceState.sourceRevision == familyState.collection.sourceRevision &&
-        previousSourceState.featureStateRevision == familyState.collection.featureStateRevision
-      {
-        continue
-      }
-      plans.append(
-        ParsedCollectionApplyPlan(
-          sourceId: sourceId,
-          next: familyState.collection,
-          previousSourceState: previousSourceState,
-          previousFeatureStateById: previousSourceState.featureStateById,
-          previousFeatureStateRevision: previousSourceState.featureStateRevision
-        )
-      )
+    let previousGroupIds = Set(familyState.collection.groupOrder)
+    let nextGroupIds = Set(desiredGroupOrder)
+    let removedGroupIds = previousGroupIds.subtracting(nextGroupIds)
+    let addedGroupIds = nextGroupIds.subtracting(previousGroupIds)
+    let dirtyGroupIds = changedGroupIds.union(addedGroupIds).union(removedGroupIds)
+    let orderChangedGroupIds =
+      familyState.collection.groupOrder == desiredGroupOrder ? dirtyGroupIds : dirtyGroupIds.union(addedGroupIds).union(removedGroupIds)
+    if familyState.collection.groupOrder == desiredGroupOrder &&
+      dirtyGroupIds.isEmpty &&
+      removedGroupIds.isEmpty
+    {
+      return []
     }
-    return plans
+    try patchParsedFeatureCollection(
+      &familyState.collection,
+      baseSourceState: previousSourceState,
+      desiredGroupOrder: desiredGroupOrder,
+      desiredFeatureIdsByGroup: desiredFeatureIdsByGroup,
+      featureById: featureById,
+      diffKeyById: diffKeyById,
+      featureStateById: featureStateById,
+      markerKeyByFeatureId: markerKeyByFeatureId,
+      dirtyGroupIds: dirtyGroupIds,
+      orderChangedGroupIds: orderChangedGroupIds,
+      removedGroupIds: removedGroupIds,
+      useCurrentCollectionBase: true,
+      recordAttribution: recordAttribution
+    )
+    setDerivedFamilyState(familyState, sourceId: sourceId, state: &state)
+    if previousSourceState.sourceRevision == familyState.collection.sourceRevision &&
+      previousSourceState.featureStateRevision == familyState.collection.featureStateRevision
+    {
+      return []
+    }
+    return [
+      ParsedCollectionApplyPlan(
+        sourceId: sourceId,
+        next: familyState.collection,
+        previousSourceState: previousSourceState,
+        previousFeatureStateById: previousSourceState.featureStateById,
+        previousFeatureStateRevision: previousSourceState.featureStateRevision
+      )
+    ]
   }
 
   private static func livePinTransitionOpacity(
@@ -7543,9 +7458,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       else {
         continue
       }
-      let transitionSourceId =
-        Self.slotSourceId(state.pinSlotSourceIds, slotIndex: transition.lodZ) ??
-        state.pinSourceId
+      let transitionSourceId = state.pinBundleSourceId
       guard Self.shouldStartAwaitingTransition(
         awaitingSourceDataId: transition.awaitingSourceDataId,
         sourceId: transitionSourceId,
@@ -7783,12 +7696,11 @@ final class SearchMapRenderController: RCTEventEmitter {
         pinExitTransitionCount += 1
       }
       let renderState = pinFamilyState.markerRenderStateByMarkerKey[markerKey]
-      let pinPhysicalSourceId =
-        renderState.flatMap { Self.slotSourceId(state.pinSlotSourceIds, slotIndex: $0.lodZ) } ??
-        state.pinSourceId
-      let labelPhysicalSourceId =
-        renderState.flatMap { Self.slotSourceId(state.pinSlotSourceIds, slotIndex: $0.lodZ) } ??
-        state.labelSourceId
+      // Single bundle source: pin art and label features for a marker both live
+      // in state.pinSourceId; the slot only selects the LAYER (via nativeLodZ).
+      _ = renderState
+      let pinPhysicalSourceId = state.pinBundleSourceId
+      let labelPhysicalSourceId = state.pinBundleSourceId
       var localPinFeatureStatesToApply: [(featureId: String, state: [String: Any])] = []
       Self.applyTransientFeatureState(
         sourceState: &pinSourceState,
@@ -8560,11 +8472,11 @@ final class SearchMapRenderController: RCTEventEmitter {
   }
 
   private func visualSourceIds(for state: InstanceState) -> [String] {
-    Self.uniqueSourceIds(state.pinSlotSourceIds + [state.dotSourceId])
+    Self.uniqueSourceIds([state.pinBundleSourceId, state.dotSourceId, state.labelCollisionSourceId])
   }
 
   private func visualAndInteractionSourceIds(for state: InstanceState) -> [String] {
-    Self.uniqueSourceIds(state.pinSlotSourceIds + [state.dotSourceId])
+    Self.uniqueSourceIds([state.pinBundleSourceId, state.dotSourceId, state.labelCollisionSourceId])
   }
 
   private static func pinVisualStackLayerIds(slotIndex: Int) -> [String] {
@@ -9805,7 +9717,7 @@ final class SearchMapRenderController: RCTEventEmitter {
   }
 
   private func managedSourceIds(for state: InstanceState) -> [String] {
-    Self.uniqueSourceIds(state.pinSlotSourceIds + [state.dotSourceId])
+    Self.uniqueSourceIds([state.pinBundleSourceId, state.dotSourceId, state.labelCollisionSourceId])
   }
 
   private func requiredSourceIds(for state: InstanceState) -> [String] {
@@ -10390,7 +10302,7 @@ final class SearchMapRenderController: RCTEventEmitter {
         acknowledgedDataId: dataId,
         fenceBySourceId: &state.blockedPresentationCommitFenceBySourceId
       )
-      if sourceId == state.pinSourceId || state.pinSlotSourceIds.contains(sourceId) {
+      if sourceId == state.pinSourceId || sourceId == state.pinBundleSourceId {
         startAwaitingLivePinTransitions(
           instanceId: instanceId,
           dataId: dataId,

@@ -1,0 +1,45 @@
+appId: com.brandonkimble.cravesearch
+# Autonomous visual-validation flow. Run via perf-scenario-ios.sh so the perf
+# command lane is active (camera control + structured contracts), then Read the
+# /tmp/validate-*.png screenshots and grep the run log + device syslog for
+# Mapbox errors. Captures the LOD states that single-frame inspection can verify:
+# enter (pins+labels render), constant-zoom twist (no collapse), zoom-in
+# (dots promote to pins), zoom-out (pins demote to dots).
+---
+- tapOn:
+    text: 'Close results'
+    optional: true
+- tapOn:
+    text: 'Close polls'
+    optional: true
+- extendedWaitUntil:
+    visible: 'What are you craving?'
+    timeout: 45000
+- extendedWaitUntil:
+    visible: 'Show best restaurants here'
+    timeout: 45000
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=30.2672&lng=-97.7431&zoom=11.6&label=validate_seed'
+- waitForAnimationToEnd:
+    timeout: 1600
+- openLink: 'crave://perf-scenario-command?action=submit_shortcut_restaurants'
+- extendedWaitUntil:
+    visible: 'Close results'
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 2500
+- takeScreenshot: /tmp/validate-enter
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7431&zoom=11.6&bearing=80&cameraDurationMs=600&label=validate_twist'
+- waitForAnimationToEnd:
+    timeout: 1000
+- takeScreenshot: /tmp/validate-twist
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7431&zoom=11.6&bearing=0&cameraDurationMs=500&label=validate_twist_reset'
+- waitForAnimationToEnd:
+    timeout: 800
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7431&zoom=13.4&cameraDurationMs=900&label=validate_zoom_in'
+- waitForAnimationToEnd:
+    timeout: 1300
+- takeScreenshot: /tmp/validate-zoomin
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7431&zoom=10.6&cameraDurationMs=900&label=validate_zoom_out'
+- waitForAnimationToEnd:
+    timeout: 1300
+- takeScreenshot: /tmp/validate-zoomout

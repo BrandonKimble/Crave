@@ -99,6 +99,13 @@ const STYLE_PIN_SHADOW_IMAGE_ID = 'restaurant-pin-shadow';
 const STYLE_PIN_FILL_IMAGE_ID = 'restaurant-pin-fill';
 const LABEL_MUTEX_IMAGE_ID = 'restaurant-label-mutex';
 const STYLE_PINS_SOURCE_ID = 'restaurant-style-pins-source';
+// The single RENDERED bundle source: holds every promoted marker's pin art,
+// interaction, and label features (distinguished by `nativeSlotFeatureKind`),
+// z-ordered into slot layer-groups by the feature's `nativeLodZ`. Kept distinct
+// from STYLE_PINS_SOURCE_ID, which native uses as the in-memory pin *staging*
+// family (marker render state / transitions) and never renders. Derivation must
+// match native: `"\(pinSourceId)-bundle"`.
+const RESTAURANT_PIN_BUNDLE_SOURCE_ID = `${STYLE_PINS_SOURCE_ID}-bundle`;
 const PIN_INTERACTION_SOURCE_ID = 'restaurant-pin-interaction-source';
 const buildPinSlotSourceId = (slotIndex: number): string =>
   `${STYLE_PINS_SOURCE_ID}-slot-${slotIndex}`;
@@ -233,6 +240,20 @@ const buildLabelPlacementFilter = (
     ['==', ['get', 'labelCandidate'], candidate],
   ] as LabelPlacementFilter;
 
+// Resident single-source model: every promoted marker's bundle (pin art,
+// interaction, labels) lives in ONE source. A slot is a z-ordered layer group
+// bound to its assigned marker by the marker's `nativeLodZ` (slot index)
+// property — no per-slot source. This scopes a base kind filter to one slot.
+const buildSlotScopedFilter = (
+  slotIndex: number,
+  baseFilter: LabelPlacementFilter
+): LabelPlacementFilter =>
+  [
+    'all',
+    ['==', ['get', 'nativeLodZ'], slotIndex],
+    baseFilter,
+  ] as unknown as LabelPlacementFilter;
+
 const renderSearchMapSlotLabelLayers = ({
   slotIndex,
   sourceId,
@@ -250,7 +271,10 @@ const renderSearchMapSlotLabelLayers = ({
           sourceID={sourceId}
           belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
           style={labelCandidateStyles[candidate]}
-          filter={buildLabelPlacementFilter(preferredCandidate, candidate)}
+          filter={buildSlotScopedFilter(
+            slotIndex,
+            buildLabelPlacementFilter(preferredCandidate, candidate)
+          )}
         />
       );
     })}
@@ -315,25 +339,24 @@ const SearchMapMarkerScene = React.memo(
             />
           </MapboxGL.ShapeSource>
         </React.Profiler>
-        {Array.from({ length: pinStackSlotCount }, (_, slotIndex) => (
-          <MapboxGL.ShapeSource
-            key={pinSlotSourceIds[slotIndex]}
-            id={pinSlotSourceIds[slotIndex]}
-            shape={EMPTY_POINT_FEATURES}
-            {...(handlePressTarget ? { onPress: handlePressTarget } : {})}
-          >
-            <React.Fragment>
+        <MapboxGL.ShapeSource
+          id={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
+          shape={EMPTY_POINT_FEATURES}
+          {...(handlePressTarget ? { onPress: handlePressTarget } : {})}
+        >
+          {Array.from({ length: pinStackSlotCount }, (_, slotIndex) => (
+            <React.Fragment key={`pin-slot-group-${slotIndex}`}>
               {stylePinLayerStackBySlot[slotIndex]}
               {pinInteractionLayerBySlot[slotIndex]}
               {renderSearchMapSlotLabelLayers({
                 slotIndex,
-                sourceId: pinSlotSourceIds[slotIndex],
+                sourceId: RESTAURANT_PIN_BUNDLE_SOURCE_ID,
                 labelLayerSpecs,
                 labelCandidateStyles,
               })}
             </React.Fragment>
-          </MapboxGL.ShapeSource>
-        ))}
+          ))}
+        </MapboxGL.ShapeSource>
         <MapboxGL.ShapeSource
           id={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
           shape={EMPTY_POINT_FEATURES}
@@ -2332,8 +2355,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
           slot="top"
           belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
           style={stylePinsShadowSteadyStyle}
-          sourceID={pinSlotSourceIds[slotIndex]}
-          filter={promotedPinFeatureFilter}
+          sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
+          filter={buildSlotScopedFilter(slotIndex, promotedPinFeatureFilter)}
         />,
         <MapboxGL.SymbolLayer
           key={`base-slot-${slotIndex}`}
@@ -2341,8 +2364,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
           slot="top"
           belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
           style={stylePinsOutlineSteadyStyle}
-          sourceID={pinSlotSourceIds[slotIndex]}
-          filter={promotedPinFeatureFilter}
+          sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
+          filter={buildSlotScopedFilter(slotIndex, promotedPinFeatureFilter)}
         />,
         <MapboxGL.SymbolLayer
           key={`fill-slot-${slotIndex}`}
@@ -2350,8 +2373,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
           slot="top"
           belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
           style={stylePinsFillSteadyStyle}
-          sourceID={pinSlotSourceIds[slotIndex]}
-          filter={promotedPinFeatureFilter}
+          sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
+          filter={buildSlotScopedFilter(slotIndex, promotedPinFeatureFilter)}
         />,
         <MapboxGL.SymbolLayer
           key={`rank-slot-${slotIndex}`}
@@ -2359,8 +2382,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
           slot="top"
           belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
           style={stylePinsRankStyle}
-          sourceID={pinSlotSourceIds[slotIndex]}
-          filter={promotedPinFeatureFilter}
+          sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
+          filter={buildSlotScopedFilter(slotIndex, promotedPinFeatureFilter)}
         />,
       ];
     });
@@ -2383,9 +2406,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
             id={layerId}
             slot="top"
             belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-            sourceID={pinSlotSourceIds[slotIndex]}
+            sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
             style={PIN_INTERACTION_LAYER_STYLE}
-            filter={promotedPinInteractionFeatureFilter}
+            filter={buildSlotScopedFilter(slotIndex, promotedPinInteractionFeatureFilter)}
           />
         );
       }),
