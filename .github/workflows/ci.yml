@@ -272,3 +272,17 @@ jobs:
 
       - name: 'Static guard: enforce no-bypass-search-runtime'
         run: scripts/no-bypass-search-runtime.sh
+
+  native-tests:
+    # Pure native LOD logic (MapLodKit): screen-space visibility decision, tested
+    # via `swift test` — deterministic, fast, no simulator / Mapbox / React.
+    # Needs macOS because the module uses CoreGraphics/CoreLocation. The heavier
+    # sim-dependent layers (perf-scenario trace contracts, visual regression)
+    # stay local/opt-in gates by design — too slow/flaky for per-push CI.
+    name: native-tests (MapLodKit swift test)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Swift unit tests (pure native LOD logic)
+        run: swift test --package-path apps/mobile/ios/MapLodKit

@@ -42,6 +42,9 @@
     "perf:scenario:interrupt-contracts": "node ./scripts/perf-scenario-interrupt-contracts.js",
     "perf:scenario:market-demand-contracts": "node ./scripts/perf-scenario-market-demand-contracts.js",
     "perf:scenario:visual-contracts": "node ./scripts/perf-scenario-visual-contracts.js",
+    "test:native": "swift test --package-path apps/mobile/ios/MapLodKit",
+    "visual:regression": "node ./scripts/visual-regression.js",
+    "visual:regression:map": "mkdir -p /tmp/vr-map && cp /tmp/validate-*.png /tmp/vr-map/ && node ./scripts/visual-regression.js --captured /tmp/vr-map --baseline visual-baselines --pixel-threshold 0.3 --max-mismatch 0.03 --diff-out /tmp/vr-diffs",
     "ios:device:install": "EXPO_FORCE_START=1 IOS_PREFER_DEVICE=1 IOS_REQUIRE_DEVICE=1 IOS_RUN=1 IOS_REQUIRE_OPEN=1 bash ./scripts/ios-refresh.sh",
     "ios:device:reset": "IOS_PREFER_DEVICE=1 IOS_REQUIRE_DEVICE=1 IOS_RUN=0 EXPO_RESET_CACHE=1 bash ./scripts/ios-refresh.sh",
     "ios:device:tunnel": "IOS_PREFER_DEVICE=1 IOS_REQUIRE_DEVICE=1 IOS_RUN=0 EXPO_START_HOST=tunnel bash ./scripts/ios-refresh.sh",
@@ -57,6 +60,7 @@
     "knip": "^6.1.0",
     "lefthook": "^1.11.2",
     "lint-staged": "^13.2.2",
+    "pixelmatch": "5.3.0",
     "prettier": "^3.4.2",
     "turbo": "^1.10.0",
     "typescript": "^5.1.0"

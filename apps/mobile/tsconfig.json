@@ -10,5 +10,6 @@
     "skipLibCheck": true,
     "composite": true,
     "noEmit": false
-  }
+  },
+  "exclude": ["node_modules", "**/*.spec.ts"]
 }

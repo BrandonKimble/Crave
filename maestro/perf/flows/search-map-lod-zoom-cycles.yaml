@@ -1,0 +1,58 @@
+appId: com.brandonkimble.cravesearch
+---
+# Repeated zoom in/out cycles around a fixed center to reproduce the
+# "first crossfade works, every cycle after breaks" demotion-flash / crossfade
+# desync. Each cycle: zoom IN (promote dots->pins, crossfade), settle, zoom OUT
+# (demote pins->dots, crossfade), settle. The lodTransitionTrace + flashReversalCount
+# + crossfadeGapCount detectors capture the per-marker opacity trajectory each cycle.
+- tapOn:
+    text: 'Search'
+    optional: true
+- tapOn:
+    text: 'Close results'
+    optional: true
+- tapOn:
+    text: 'Close polls'
+    optional: true
+- extendedWaitUntil:
+    visible: 'What are you craving?'
+    timeout: 45000
+- extendedWaitUntil:
+    visible: 'Show best restaurants here'
+    timeout: 45000
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=30.2672&lng=-97.7431&zoom=11.6&label=zoomcycle_seed_austin'
+- waitForAnimationToEnd:
+    timeout: 1600
+- openLink: 'crave://perf-scenario-command?action=submit_shortcut_restaurants'
+- extendedWaitUntil:
+    visible: 'Close results'
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 1200
+- openLink: 'crave://perf-scenario-mark?phase=measured_repeat_loop_start&label=map_lod_zoom_cycles'
+- repeat:
+    times: 4
+    commands:
+      # Zoom IN: boundary markers promote dot -> pin (expect crossfade).
+      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7431&zoom=13.6&cameraDurationMs=700&label=zoom_in_promote'
+      - waitForAnimationToEnd:
+          timeout: 1600
+      # Let the promote crossfade + native fade-steppers fully settle.
+      - extendedWaitUntil:
+          visible: 'Close results'
+          timeout: 1500
+      - waitForAnimationToEnd:
+          timeout: 1500
+      # Zoom OUT: boundary markers demote pin -> dot (expect crossfade; this is
+      # where the flash + delayed/snapped dot reportedly happens on cycle 2+).
+      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7431&zoom=11.6&cameraDurationMs=700&label=zoom_out_demote'
+      - waitForAnimationToEnd:
+          timeout: 1600
+      - extendedWaitUntil:
+          visible: 'Close results'
+          timeout: 1500
+      - waitForAnimationToEnd:
+          timeout: 1500
+- openLink: 'crave://perf-scenario-mark?phase=measured_repeat_loop_end&label=map_lod_zoom_cycles'
+- waitForAnimationToEnd:
+    timeout: 1500
