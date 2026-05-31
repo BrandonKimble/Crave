@@ -1252,6 +1252,45 @@ if (
       );
     }
   }
+
+  // Rendered-dot accounting: of the markers that SHOULD be visible dots (demoted
+  // set), how many actually painted vs were collision-culled. Reports the
+  // numbers (diagnostic); fails only on gross under-render (expected dots but
+  // ~none rendered across the run = likely over-culling/a bug, not normal
+  // collision).
+  const dotRenderEvents = byEvent('map_rendered_dot_contract').filter(
+    (event) => (numeric(event.expectedDemotedDotCount) ?? 0) > 0
+  );
+  if (dotRenderEvents.length === 0) {
+    fail('missing map_rendered_dot_contract events with expected dots — cannot verify dot rendering');
+  } else {
+    let peakExpected = 0;
+    let peakRendered = 0;
+    let worstCulledRatioEvent = null;
+    for (const event of dotRenderEvents) {
+      const expected = numeric(event.expectedDemotedDotCount) ?? 0;
+      const rendered = numeric(event.renderedDemotedDotCount) ?? 0;
+      peakExpected = Math.max(peakExpected, expected);
+      peakRendered = Math.max(peakRendered, rendered);
+      const culledRatio = expected > 0 ? (expected - rendered) / expected : 0;
+      if (!worstCulledRatioEvent || culledRatio > worstCulledRatioEvent.ratio) {
+        worstCulledRatioEvent = { ratio: culledRatio, expected, rendered, line: event.line };
+      }
+    }
+    // Gross under-render: a substantial demoted set, but the best frame painted
+    // (almost) none of them.
+    if (peakExpected >= 3 && peakRendered <= 1) {
+      fail(
+        `dots grossly under-rendering: across the run the most demoted dots painted in any frame was ${peakRendered} despite up to ${peakExpected} expected — likely over-culling against pins/labels`
+      );
+    } else {
+      pass(
+        `rendered dots accounted: peak expected demoted=${peakExpected}, peak rendered=${peakRendered}; worst frame rendered ${
+          worstCulledRatioEvent.rendered
+        }/${worstCulledRatioEvent.expected} (rest collision-culled)`
+      );
+    }
+  }
 }
 
 const dismissPressEvents = byEvent('results_dismiss_press_up_contract');

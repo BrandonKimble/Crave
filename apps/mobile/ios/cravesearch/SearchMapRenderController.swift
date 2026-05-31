@@ -9149,6 +9149,37 @@ final class SearchMapRenderController: RCTEventEmitter {
       retryLabelObservationRefreshIfPlacementPending(instanceId: instanceId, delayMs: 16)
       return
     }
+    // Rendered-dot observation (parallel to the label observation): how many of
+    // the demoted markers' dots actually painted vs how many should be visible.
+    let dotLayerIds = state.nativePressTargetConfig.dotLayerIds
+    if !dotLayerIds.isEmpty {
+      let dotSourceId = state.dotSourceId
+      let demotedMarkerKeys = Set(state.markerRoleTable.dotMarkerKeysInOrder)
+      handle.mapView.mapboxMap.queryRenderedFeatures(
+        with: queryRect,
+        options: RenderedQueryOptions(layerIds: dotLayerIds, filter: nil)
+      ) { [weak self] dotResult in
+        DispatchQueue.main.async {
+          guard let self, case .success(let dotFeatures) = dotResult else {
+            return
+          }
+          let renderedDemoted = Self.renderedDemotedDotMarkerKeys(
+            from: dotFeatures,
+            dotSourceId: dotSourceId,
+            demotedMarkerKeys: demotedMarkerKeys
+          )
+          self.emit([
+            "type": "map_rendered_dot_observation",
+            "instanceId": instanceId,
+            "expectedDemotedDotCount": demotedMarkerKeys.count,
+            "renderedDemotedDotCount": renderedDemoted.count,
+            "culledDemotedDotCount": max(0, demotedMarkerKeys.count - renderedDemoted.count),
+            "renderedDotFeatureCount": dotFeatures.count,
+            "emittedAtMs": Self.nowMs(),
+          ])
+        }
+      }
+    }
     let queryOptions = RenderedQueryOptions(layerIds: resolvedLayerIds, filter: nil)
     handle.mapView.mapboxMap.queryRenderedFeatures(
       with: queryRect,
@@ -9308,6 +9339,30 @@ final class SearchMapRenderController: RCTEventEmitter {
       visibleLabelFeatureIds.insert(featureId)
     }
     return Array(visibleLabelFeatureIds).sorted()
+  }
+
+  // Rendered-dot observation: of the markers that SHOULD show as visible dots
+  // (the demoted set), how many actually painted (survived Mapbox collision)?
+  // The dot source also holds resident opacity-0 dots for promoted markers, so
+  // we intersect rendered dot feature markerKeys with the demoted set to count
+  // only the dots that are supposed to be visible.
+  private static func renderedDemotedDotMarkerKeys(
+    from features: [QueriedRenderedFeature],
+    dotSourceId: String,
+    demotedMarkerKeys: Set<String>
+  ) -> Set<String> {
+    var rendered = Set<String>()
+    for feature in features where feature.queriedFeature.source == dotSourceId {
+      let rawFeature = feature.queriedFeature.feature
+      let properties = rawFeature.properties?.turfRawValue as? [String: Any]
+      let markerKey = (properties?["markerKey"] as? String)
+        ?? rawFeature.identifier.flatMap(Self.featureIdentifierString)
+      guard let markerKey, demotedMarkerKeys.contains(markerKey) else {
+        continue
+      }
+      rendered.insert(markerKey)
+    }
+    return rendered
   }
 
   private static func parseRenderedLabelObservationFeature(

@@ -281,6 +281,15 @@ export type SearchMapRenderControllerEvent =
       nativePromotedPinCollisionObstacleCount?: number;
       nativePromotedPinCollisionObstacleCountMatchesPins?: boolean;
     }
+  | {
+      type: 'map_rendered_dot_observation';
+      instanceId: string;
+      expectedDemotedDotCount: number;
+      renderedDemotedDotCount: number;
+      culledDemotedDotCount: number;
+      renderedDotFeatureCount: number;
+      emittedAtMs: number;
+    }
 	  | {
 	      type: 'live_lod_transition_contract';
 	      instanceId: string;

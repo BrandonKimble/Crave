@@ -2192,6 +2192,22 @@ const useSearchMapNativeRenderOwnerStatus = ({
               });
               return;
             }
+            if (event.type === 'map_rendered_dot_observation') {
+              const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+              if (isPerfScenarioAttributionActive(scenarioConfig)) {
+                logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+                  event: 'map_rendered_dot_contract',
+                  expectedDemotedDotCount: event.expectedDemotedDotCount,
+                  renderedDemotedDotCount: event.renderedDemotedDotCount,
+                  culledDemotedDotCount: event.culledDemotedDotCount,
+                  renderedDotFeatureCount: event.renderedDotFeatureCount,
+                  allDemotedDotsRendered:
+                    event.expectedDemotedDotCount === event.renderedDemotedDotCount,
+                  nativeEmittedAtMs: event.emittedAtMs,
+                });
+              }
+              return;
+            }
 	            if (event.type === 'live_lod_transition_contract') {
 	              const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
 	              if (isPerfScenarioAttributionActive(scenarioConfig)) {
