@@ -272,7 +272,6 @@ export const useMapInteractionController = (
       // "user is moving the map" semantics, and use the native flag as advisory.
       const isUserViewportGestureActive =
         nativeGestureActive || mapTouchActiveRef.current || mapGestureSessionRef.current !== null;
-      const previousUserViewportGestureActive = mapGestureActiveRef.current;
       mapGestureActiveRef.current = isUserViewportGestureActive;
       cameraIntentArbiter.setGestureActive(isUserViewportGestureActive);
 
@@ -284,26 +283,10 @@ export const useMapInteractionController = (
       const zoom =
         typeof zoomCandidate === 'number' && Number.isFinite(zoomCandidate) ? zoomCandidate : null;
 
-      // Keep the controlled <Camera> mirror in step with where the USER is so it
-      // cannot snap back to the stale programmatic camera when the gesture ends.
-      // Mirror while a gesture is active and once more as it settles.
-      if ((isUserViewportGestureActive || previousUserViewportGestureActive) && zoom != null) {
-        const centerCandidate = state?.properties?.center as unknown;
-        const headingCandidate = state?.properties?.heading as unknown;
-        const pitchCandidate = state?.properties?.pitch as unknown;
-        if (
-          Array.isArray(centerCandidate) &&
-          typeof centerCandidate[0] === 'number' &&
-          typeof centerCandidate[1] === 'number'
-        ) {
-          cameraIntentArbiter.syncControlledCameraToUserGesture({
-            center: [centerCandidate[0], centerCandidate[1]],
-            zoom,
-            bearing: typeof headingCandidate === 'number' ? headingCandidate : null,
-            pitch: typeof pitchCandidate === 'number' ? pitchCandidate : null,
-          });
-        }
-      }
+      // NOTE: the camera is uncontrolled for center/zoom (see <Camera> in
+      // search-map.tsx). User gestures own the live camera directly, so there is
+      // nothing to mirror per-tick here — doing so previously re-applied a
+      // JS-lagged center every frame and fought the gesture (the "bounce").
       const viewportMotionToken = buildMapViewportMotionToken({
         bounds,
         zoom,

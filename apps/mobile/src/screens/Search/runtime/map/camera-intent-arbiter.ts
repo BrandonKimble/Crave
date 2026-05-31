@@ -119,30 +119,6 @@ export class CameraIntentArbiter {
     });
   }
 
-  // Sync the controlled camera state (mapCenter/mapZoom/bearing/pitch) to the
-  // live camera the USER moved to. The `<Camera>` is controlled by those values;
-  // if they are not kept in step with user gestures they hold the last
-  // programmatic (search/initial) camera and the map snaps back to it the
-  // instant a gesture ends. This bypasses `commit`'s gesture-rejection on
-  // purpose — it is a passive mirror of where the user already is, not a
-  // programmatic move (no animation, no completion).
-  public syncControlledCameraToUserGesture(camera: {
-    center: [number, number];
-    zoom: number;
-    bearing: number | null;
-    pitch: number | null;
-  }): void {
-    this.writers.setMapCameraAnimation({ mode: 'none', durationMs: 0, completionId: null });
-    this.writers.setMapCenter(camera.center);
-    this.writers.setMapZoom(camera.zoom);
-    if (camera.bearing != null) {
-      this.writers.setMapBearing(camera.bearing);
-    }
-    if (camera.pitch != null) {
-      this.writers.setMapPitch(camera.pitch);
-    }
-  }
-
   public commit(intent: CameraIntent): boolean {
     return withSearchNavSwitchRuntimeAttribution('cameraIntentArbiter', 'commit', () => {
       if (this.gestureActive && intent.allowDuringGesture !== true) {

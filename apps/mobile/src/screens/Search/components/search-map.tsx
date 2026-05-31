@@ -24,6 +24,7 @@ import {
   PIN_MARKER_RENDER_SIZE,
   PIN_RANK_FONT_SIZE,
   USA_FALLBACK_CENTER,
+  USA_FALLBACK_ZOOM,
 } from '../constants/search';
 
 import styles from '../styles';
@@ -248,11 +249,7 @@ const buildSlotScopedFilter = (
   slotIndex: number,
   baseFilter: LabelPlacementFilter
 ): LabelPlacementFilter =>
-  [
-    'all',
-    ['==', ['get', 'nativeLodZ'], slotIndex],
-    baseFilter,
-  ] as unknown as LabelPlacementFilter;
+  ['all', ['==', ['get', 'nativeLodZ'], slotIndex], baseFilter] as unknown as LabelPlacementFilter;
 
 const renderSearchMapSlotLabelLayers = ({
   slotIndex,
@@ -480,8 +477,6 @@ const SearchMapViewScene = React.memo(
     handleCameraAnimationComplete,
     mapCenter,
     mapZoom,
-    mapBearing,
-    mapPitch,
     mapCameraAnimation,
     cameraPadding,
     isFollowingUser,
@@ -516,13 +511,27 @@ const SearchMapViewScene = React.memo(
             [LABEL_MUTEX_IMAGE_ID]: TRANSPARENT_PIXEL_IMAGE,
           }}
         />
+        {/*
+          The camera is UNCONTROLLED for center/zoom/heading/pitch. Those used to
+          be controlled props (centerCoordinate/zoomLevel/...), which made rnmapbox
+          rebuild and re-apply a CameraStop carrying the LAST programmatic center
+          whenever any sibling prop (padding/animation) changed — snapping the map
+          back to the initial viewport the instant a gesture settled. `defaultSettings`
+          positions the first frame only (applied once in native `_setInitialCamera`,
+          never re-applied), and every programmatic move flows through the imperative
+          path (CameraIntentArbiter -> native executor / cameraRef.setCamera), which
+          also carries the animationCompletionId that drives onCameraAnimationComplete.
+          User gestures own the camera and it stays where the user leaves it.
+          `padding` stays controlled — a padding-only stop never carries a center, so
+          it cannot snap the viewport.
+        */}
         <MapboxGL.Camera
           ref={cameraRef}
           nativeHostKey="search_map_camera"
-          centerCoordinate={mapCenter ?? USA_FALLBACK_CENTER}
-          zoomLevel={mapZoom}
-          heading={mapBearing ?? undefined}
-          pitch={mapPitch ?? undefined}
+          defaultSettings={{
+            centerCoordinate: mapCenter ?? USA_FALLBACK_CENTER,
+            zoomLevel: mapZoom ?? USA_FALLBACK_ZOOM,
+          }}
           padding={cameraPadding ?? ZERO_CAMERA_PADDING}
           followUserLocation={isFollowingUser}
           followZoomLevel={13}
@@ -1327,9 +1336,7 @@ const useSearchMapInteractionRuntime = ({
         if (!isCurrentConfig) {
           return;
         }
-        setNativePressTargetingErrorMessage(
-          error instanceof Error ? error.message : String(error)
-        );
+        setNativePressTargetingErrorMessage(error instanceof Error ? error.message : String(error));
       });
 
     return () => {
@@ -1830,7 +1837,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
     []
   );
   const pinSlotSourceIds = React.useMemo(
-    () => Array.from({ length: pinStackSlotCount }, (_, slotIndex) => buildPinSlotSourceId(slotIndex)),
+    () =>
+      Array.from({ length: pinStackSlotCount }, (_, slotIndex) => buildPinSlotSourceId(slotIndex)),
     [pinStackSlotCount]
   );
   const {
@@ -1928,8 +1936,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
           },
           { bottom: 0, right: 0, top: 0, left: 0 }
         );
-        const expectedPinSourceStore = sourceFrameSnapshot?.pinSourceStore ?? presentedPinSourceStore;
-        const expectedDotSourceStore = sourceFrameSnapshot?.dotSourceStore ?? presentedDotSourceStore;
+        const expectedPinSourceStore =
+          sourceFrameSnapshot?.pinSourceStore ?? presentedPinSourceStore;
+        const expectedDotSourceStore =
+          sourceFrameSnapshot?.dotSourceStore ?? presentedDotSourceStore;
         const expectedLabelCollisionSourceStore =
           sourceFrameSnapshot?.labelCollisionSourceStore ?? activeLabelCollisionSourceStore;
         const expectedPromotedMarkerKeys = new Set(expectedPinSourceStore.idsInOrder);
@@ -2001,10 +2011,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
           visibleLabelMarkerCount: visibleLabelCountsByMarkerKey.size,
           multipleVisibleLabelCandidateMarkerCount:
             contractMultipleVisibleLabelCandidateMarkerCount,
-          visibleLabelsWithoutPromotedPinCount:
-            contractVisibleLabelsWithoutPromotedPinCount,
-          visibleLabelsForDemotedMarkerCount:
-            contractVisibleLabelsForDemotedMarkerCount,
+          visibleLabelsWithoutPromotedPinCount: contractVisibleLabelsWithoutPromotedPinCount,
+          visibleLabelsForDemotedMarkerCount: contractVisibleLabelsForDemotedMarkerCount,
           visibleLabelsWithoutPromotedPinMarkerKeys: [
             ...new Set(
               nativeVisibleLabelsWithoutPromotedPinMarkerKeys ??
@@ -2115,8 +2123,17 @@ const SearchMap: React.FC<SearchMapProps> = ({
       textField: '●',
       textAnchor: 'center',
       textFont: ['Arial Unicode MS Regular', 'Open Sans Semibold'],
-      textAllowOverlap: false,
-      textIgnorePlacement: false,
+      // Dots are the base "every showable result is visible" layer; a pin is an
+      // enhancement layered on top of a promoted result (whose dot is driven to
+      // opacity 0). The invisible LABEL_PIN_COLLISION_STYLE proxies reserve space
+      // around every pin to protect LABELS, and they are collision obstacles for
+      // every lower-priority symbol — which previously erased the demoted dots
+      // (queryRenderedFeatures showed 0–3 of 6 painting). Allowing overlap +
+      // ignoring placement makes every demoted result always paint as a dot, and
+      // keeps dots from acting as obstacles against labels. Promoted markers carry
+      // an opacity-0 dot, so they stay invisible and contribute no clutter.
+      textAllowOverlap: true,
+      textIgnorePlacement: true,
       // Reduce collision buffer so dots can pack tighter before culling.
       textPadding: 0,
       // Keep the collision box closer to the actual glyph bounds.
@@ -2415,7 +2432,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
     [pinSlotSourceIds, pinStackSlotCount]
   );
   const pinInteractionLayerIds = React.useMemo(
-    () => Array.from({ length: pinStackSlotCount }, (_, slotIndex) => buildPinInteractionLayerId(slotIndex)),
+    () =>
+      Array.from({ length: pinStackSlotCount }, (_, slotIndex) =>
+        buildPinInteractionLayerId(slotIndex)
+      ),
     [pinStackSlotCount]
   );
   React.useEffect(() => {
@@ -2549,10 +2569,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
         touchReachedMap: true,
         centerLat: payload.center[1],
         centerLng: payload.center[0],
-                  zoom: payload.zoom,
-                  bearing: payload.bearing,
-                  pitch: payload.pitch,
-                  isGestureActive: payload.isGestureActive,
+        zoom: payload.zoom,
+        bearing: payload.bearing,
+        pitch: payload.pitch,
+        isGestureActive: payload.isGestureActive,
         isMoving: payload.isMoving,
       });
     }

@@ -19,6 +19,11 @@ target 'cravesearch' do
   use_expo_modules!
   config = use_native_modules!
 
+  # Pure native LOD logic (screen-space visibility decision), unit-tested via
+  # `swift test` in MapLodKit/. Local pod so the controller consumes the SAME
+  # source the tests cover — no drift, no parallel copy.
+  pod 'MapLodKit', :path => 'MapLodKit'
+
   use_frameworks! :linkage => podfile_properties['ios.useFrameworks'].to_sym if podfile_properties['ios.useFrameworks']
   use_frameworks! :linkage => ENV['USE_FRAMEWORKS'].to_sym if ENV['USE_FRAMEWORKS']
 

@@ -426,12 +426,7 @@ const searchMapNativeRenderOwnerEventDispatcher = (() => {
   };
 })();
 
-type SearchMapRenderSourceId =
-  | 'pins'
-  | 'pinInteractions'
-  | 'dots'
-  | 'labels'
-  | 'labelCollisions';
+type SearchMapRenderSourceId = 'pins' | 'pinInteractions' | 'dots' | 'labels' | 'labelCollisions';
 
 type SearchMapRenderSnapshot = {
   pins: SearchMapSourceStore;
@@ -1410,10 +1405,7 @@ const markerRoleRowSignature = (row: SearchMapMarkerRoleRow | null | undefined):
       row.labelCollisionFeature?.diffKey ?? '',
     ].join('|');
   }
-  return [
-    'dot',
-    row.dotFeature?.diffKey ?? '',
-  ].join('|');
+  return ['dot', row.dotFeature?.diffKey ?? ''].join('|');
 };
 
 const buildSearchMapMarkerRoleFrame = ({
@@ -1439,8 +1431,9 @@ const buildSearchMapMarkerRoleFrame = ({
   );
   const previousPinnedMarkerKeys = new Set(previousSnapshot?.pins.idsInOrder ?? []);
   const previousVisibleDotMarkerKeysInOrder =
-    previousSnapshot?.dots.idsInOrder.filter((markerKey) => !previousPinnedMarkerKeys.has(markerKey)) ??
-    [];
+    previousSnapshot?.dots.idsInOrder.filter(
+      (markerKey) => !previousPinnedMarkerKeys.has(markerKey)
+    ) ?? [];
   const roleOrderChanged =
     previousSnapshot != null &&
     (!areStringArraysEqual(previousSnapshot.pins.idsInOrder, nextSnapshot.pins.idsInOrder) ||
@@ -1506,9 +1499,7 @@ const buildSearchMapMarkerRoleFrame = ({
   };
 };
 
-const derivePresentationLaneState = (
-  presentationState: SearchMapRenderPresentationState
-) => ({
+const derivePresentationLaneState = (presentationState: SearchMapRenderPresentationState) => ({
   laneKind:
     presentationState.snapshotKind == null
       ? null
@@ -1555,12 +1546,13 @@ const summarizeSourceTransportForBridgeSlice = (
     orderChangedGroupCount += delta.orderChangedGroupIds?.length ?? 0;
     removedGroupCount += delta.removedGroupIds?.length ?? 0;
   });
-  const sourceModeSignature = [
-    replaceSourceCount > 0 ? `replace:${replaceSourceCount}` : null,
-    patchSourceCount > 0 ? `patch:${patchSourceCount}` : null,
-  ]
-    .filter((value): value is string => value != null)
-    .join(',') || 'none';
+  const sourceModeSignature =
+    [
+      replaceSourceCount > 0 ? `replace:${replaceSourceCount}` : null,
+      patchSourceCount > 0 ? `patch:${patchSourceCount}` : null,
+    ]
+      .filter((value): value is string => value != null)
+      .join(',') || 'none';
   const sourceOperationSignature = [
     `remove:${removeFeatureCount}`,
     `upsert:${upsertFeatureCount}`,
@@ -1597,9 +1589,7 @@ const summarizeSourceTransportForBridgeSlice = (
               delta.upsertFeatures?.length ?? 0
             }:n${delta.nextFeatureIdsInOrder.length}:d${
               delta.dirtyGroupIds?.length ?? 0
-            }:o${delta.orderChangedGroupIds?.length ?? 0}:g${
-              delta.removedGroupIds?.length ?? 0
-            }`
+            }:o${delta.orderChangedGroupIds?.length ?? 0}:g${delta.removedGroupIds?.length ?? 0}`
         )
         .join(',') || 'none',
     sourceDeltaSummaries:
@@ -2166,6 +2156,31 @@ const useSearchMapNativeRenderOwnerStatus = ({
               });
               return;
             }
+            if (event.type === 'map_native_visible_markers') {
+              // Stage B (B2): native projected the candidate catalog to screen
+              // space and reported the on-screen marker set under the live camera.
+              // Stash it for the JS selection policy (B3) and emit a contract so we
+              // can prove the projection produces sane, camera-accurate counts
+              // (e.g. shrinks under zoom-in, changes under twist/pitch — which a
+              // lat/lng AABB cannot capture).
+              sourceFramePortRef.current?.publishNativeVisibleMarkerKeys({
+                markerKeys: event.markerKeys,
+                catalogCount: event.catalogCount,
+              });
+              const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+              if (isPerfScenarioAttributionActive(scenarioConfig)) {
+                logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+                  event: 'map_native_screenspace_visibility_contract',
+                  nativeVisibleMarkerCount: event.markerCount,
+                  catalogCount: event.catalogCount,
+                  zoom: event.zoom,
+                  bearing: event.bearing,
+                  pitch: event.pitch,
+                  isMoving: event.isMoving,
+                });
+              }
+              return;
+            }
             if (event.type === 'label_observation_updated') {
               withNativePresentationEventInnerSpan(event, 'label_observation_callback', () => {
                 onLabelObservationUpdated?.({
@@ -2208,9 +2223,9 @@ const useSearchMapNativeRenderOwnerStatus = ({
               }
               return;
             }
-	            if (event.type === 'live_lod_transition_contract') {
-	              const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
-	              if (isPerfScenarioAttributionActive(scenarioConfig)) {
+            if (event.type === 'live_lod_transition_contract') {
+              const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+              if (isPerfScenarioAttributionActive(scenarioConfig)) {
                 logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
                   event: 'native_live_lod_transition_contract',
                   flashReversalCount: event.flashReversalCount,
@@ -2233,37 +2248,38 @@ const useSearchMapNativeRenderOwnerStatus = ({
                   pinIntermediateOpacityCount: event.pinIntermediateOpacityCount,
                   labelIntermediateOpacityCount: event.labelIntermediateOpacityCount,
                   dotIntermediateOpacityCount: event.dotIntermediateOpacityCount,
+                  lodTransitionTrace: event.lodTransitionTrace,
                   nativeEmittedAtMs: event.emittedAtMs,
                 });
-	              }
-	              return;
-	            }
-	            if (event.type === 'pin_visual_order_contract') {
-	              const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
-	              if (isPerfScenarioAttributionActive(scenarioConfig)) {
-	                logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
-	                  event: 'native_pin_visual_order_contract',
-	                  reason: event.reason,
-	                  pinCount: event.pinCount,
-	                  selectedPinCount: event.selectedPinCount,
-	                  movedGroupCount: event.movedGroupCount,
-	                  previousGroupCount: event.previousGroupCount,
-	                  screenYOrderViolationCount: event.screenYOrderViolationCount,
-	                  screenYVisualOrder: event.screenYVisualOrder,
-	                  stableSlotOwnership: event.stableSlotOwnership,
-	                  appliesScreenYOrdering: event.appliesScreenYOrdering,
-	                  usesLayerMoves: event.usesLayerMoves,
-	                  sourceMutationCount: event.sourceMutationCount,
-	                  isMoving: event.isMoving,
-	                  cameraZoom: event.cameraZoom,
-	                  cameraBearing: event.cameraBearing,
-	                  visualOrderSignature: event.visualOrderSignature,
-	                  previousVisualOrderSignature: event.previousVisualOrderSignature,
-	                  nativeEmittedAtMs: event.emittedAtMs,
-	                });
-	              }
-	              return;
-	            }
+              }
+              return;
+            }
+            if (event.type === 'pin_visual_order_contract') {
+              const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+              if (isPerfScenarioAttributionActive(scenarioConfig)) {
+                logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+                  event: 'native_pin_visual_order_contract',
+                  reason: event.reason,
+                  pinCount: event.pinCount,
+                  selectedPinCount: event.selectedPinCount,
+                  movedGroupCount: event.movedGroupCount,
+                  previousGroupCount: event.previousGroupCount,
+                  screenYOrderViolationCount: event.screenYOrderViolationCount,
+                  screenYVisualOrder: event.screenYVisualOrder,
+                  stableSlotOwnership: event.stableSlotOwnership,
+                  appliesScreenYOrdering: event.appliesScreenYOrdering,
+                  usesLayerMoves: event.usesLayerMoves,
+                  sourceMutationCount: event.sourceMutationCount,
+                  isMoving: event.isMoving,
+                  cameraZoom: event.cameraZoom,
+                  cameraBearing: event.cameraBearing,
+                  visualOrderSignature: event.visualOrderSignature,
+                  previousVisualOrderSignature: event.previousVisualOrderSignature,
+                  nativeEmittedAtMs: event.emittedAtMs,
+                });
+              }
+              return;
+            }
             if (event.type === 'native_scoped_promoted_slot_contract') {
               const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
               if (isPerfScenarioAttributionActive(scenarioConfig)) {
@@ -2279,7 +2295,7 @@ const useSearchMapNativeRenderOwnerStatus = ({
               }
               return;
             }
-	            if (event.type === 'attached') {
+            if (event.type === 'attached') {
               const shouldPreserveReadyState = deriveOwnerReadyStatePreservation({
                 eventType: 'attached',
                 wasAttached: isAttachedStateRef.current,
@@ -2789,6 +2805,9 @@ const useSearchMapNativeRenderOwnerSync = ({
   const sourceFramePortRef = React.useRef(sourceFramePort);
   const resultsPresentationAuthorityRef = React.useRef(resultsPresentationAuthority);
   const selectedRestaurantIdRef = React.useRef(selectedRestaurantId);
+  // Stage B (B1): last candidate-catalog key forwarded to native. The catalog is
+  // pushed only when the full candidate set changes (results change), not per frame.
+  const lastPushedCandidateCatalogKeyRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     sourceFramePortRef.current = sourceFramePort;
@@ -2858,10 +2877,10 @@ const useSearchMapNativeRenderOwnerSync = ({
   const ownerEpochRef = React.useRef<number | null>(ownerEpoch);
   const shouldIgnoreNativeSyncErrorsRef = React.useRef(!isAttached);
   const onSyncErrorRef = React.useRef(onSyncError);
-    const getSourceSyncBaselineRevisions =
-      React.useCallback((): SearchMapRenderSourceRevisionState | null => {
-        return transportStateRef.current.lastNativeAck?.sourceRevisions ?? null;
-      }, []);
+  const getSourceSyncBaselineRevisions =
+    React.useCallback((): SearchMapRenderSourceRevisionState | null => {
+      return transportStateRef.current.lastNativeAck?.sourceRevisions ?? null;
+    }, []);
 
   React.useEffect(() => {
     onSyncErrorRef.current = onSyncError;
@@ -3003,16 +3022,32 @@ const useSearchMapNativeRenderOwnerSync = ({
       });
     };
     logNativeRenderFrameBridgeSlice('queued');
+    // Stage B (B1): forward the full ranked candidate catalog to native whenever
+    // it changes (results change), so native can project it to screen space each
+    // camera tick for LOD selection. Fire-and-forget; decoupled from the frame.
+    {
+      const candidateCatalog = sourceFramePortRef.current?.getCandidateCatalog() ?? null;
+      if (
+        candidateCatalog != null &&
+        candidateCatalog.key !== lastPushedCandidateCatalogKeyRef.current
+      ) {
+        lastPushedCandidateCatalogKeyRef.current = candidateCatalog.key;
+        void searchMapRenderController.setCandidateCatalog({
+          instanceId,
+          entries: candidateCatalog.entries,
+        });
+      }
+    }
     searchMapRenderController.submitRenderFrameFireAndObserve(
       {
         instanceId,
         ownerEpoch: effectiveDesiredFrame.ownerEpoch,
-          frameGenerationId: effectiveDesiredFrame.frameGenerationId,
-          executionBatchId: effectiveDesiredFrame.executionBatchId,
-          frame: effectiveDesiredFrame.frame,
-          visualFrameTransaction: effectiveDesiredFrame.visualFrameTransaction,
-          sourceTransport: effectiveDesiredFrame.sourceTransport,
-        },
+        frameGenerationId: effectiveDesiredFrame.frameGenerationId,
+        executionBatchId: effectiveDesiredFrame.executionBatchId,
+        frame: effectiveDesiredFrame.frame,
+        visualFrameTransaction: effectiveDesiredFrame.visualFrameTransaction,
+        sourceTransport: effectiveDesiredFrame.sourceTransport,
+      },
       (error: Error) => {
         const promiseCallbackStartedAtMs = resolveNativeRenderOwnerPerfNow();
         let callbackStatus: 'dropped' | 'failed' = 'failed';
@@ -3143,8 +3178,10 @@ const useSearchMapNativeRenderOwnerSync = ({
               );
               return;
             }
-            const matchedFrame =
-              findNativeRenderOwnerFrameTransportMatch(transportState, event.frameGenerationId);
+            const matchedFrame = findNativeRenderOwnerFrameTransportMatch(
+              transportState,
+              event.frameGenerationId
+            );
             const didPublishResidentSnapshot =
               doesNativeSourceAdmissionOutcomePublishResidentSnapshot(event.sourceAdmissionOutcome);
             const nativeAck: NativeRenderOwnerSourceAck = {
@@ -3159,16 +3196,14 @@ const useSearchMapNativeRenderOwnerSync = ({
               transportState.lastNativeAck = nativeAck;
             }
             if (matchedFrame != null) {
-              const didNativeEchoMatchedSourceSnapshot = areSearchMapRenderSourceRevisionStatesEqual(
-                event.sourceRevisions,
-                matchedFrame.frame.sourceRevisions
-              );
+              const didNativeEchoMatchedSourceSnapshot =
+                areSearchMapRenderSourceRevisionStatesEqual(
+                  event.sourceRevisions,
+                  matchedFrame.frame.sourceRevisions
+                );
               const shouldAcknowledgeMatchedSnapshot =
                 didPublishResidentSnapshot && didNativeEchoMatchedSourceSnapshot;
-              if (
-                didPublishResidentSnapshot &&
-                !didNativeEchoMatchedSourceSnapshot
-              ) {
+              if (didPublishResidentSnapshot && !didNativeEchoMatchedSourceSnapshot) {
                 logNativePresentationReadinessEvent({
                   event: 'native_render_frame_source_revision_echo_mismatch',
                   instanceId,
@@ -3238,11 +3273,11 @@ const useSearchMapNativeRenderOwnerSync = ({
         const sourceFrameMatchState = buildSearchMapNativeSourceFrameMatchState({
           requestKey: presentationRequestKey,
           sourceFrameSnapshot,
-          });
-          const sourceFrameKey = serializeSearchMapNativeSourceFrameMatchState(sourceFrameMatchState);
-          const sourceDataKey = serializeSearchMapNativeSourceDataKey(sourceFrameMatchState);
-          const isInitialNativeFrame =
-            transportState.lastNativeAck == null &&
+        });
+        const sourceFrameKey = serializeSearchMapNativeSourceFrameMatchState(sourceFrameMatchState);
+        const sourceDataKey = serializeSearchMapNativeSourceDataKey(sourceFrameMatchState);
+        const isInitialNativeFrame =
+          transportState.lastNativeAck == null &&
           transportState.queueState.inFlightFrame == null &&
           transportState.queueState.pendingFrame == null;
         const isInitialEmptyFrame =
@@ -3264,13 +3299,13 @@ const useSearchMapNativeRenderOwnerSync = ({
           previousFrame: lastDesiredFrame,
           nextFrame: preparedFrame,
         });
-          const presentationSyncState = derivePresentationSyncState({
-            presentationState: nextPresentationState,
-            previousPresentationState: lastDesiredPresentation,
-          });
-          const sourceSyncBaselineRevisions = presentationSyncState.shouldForceReplaceForNewRequest
-            ? null
-            : getSourceSyncBaselineRevisions();
+        const presentationSyncState = derivePresentationSyncState({
+          presentationState: nextPresentationState,
+          previousPresentationState: lastDesiredPresentation,
+        });
+        const sourceSyncBaselineRevisions = presentationSyncState.shouldForceReplaceForNewRequest
+          ? null
+          : getSourceSyncBaselineRevisions();
         const nominalChangedSources = [
           sourceSyncBaselineRevisions?.pins !== preparedSourceSnapshot.pins.sourceRevision
             ? 'pins'
@@ -3290,73 +3325,72 @@ const useSearchMapNativeRenderOwnerSync = ({
             ? 'labelCollisions'
             : null,
         ].filter((value): value is SearchMapRenderSourceId => value != null);
-          const sourceSnapshotKind = deriveSearchMapVisualFrameSourceSnapshotKind({
-            sourceFrameSnapshot,
-            preparedSourceSnapshot,
-          });
-          const visualFrameTransactionKind = deriveSearchMapVisualFrameTransactionKind({
-            presentationPhase,
-            presentationState: nextPresentationState,
-            isInitialNativeFrame,
-          });
-          const visualFrameTransaction = buildSearchMapVisualFrameTransaction({
-            kind: visualFrameTransactionKind,
-            presentationPhase,
-            sourceFrameMatchState,
-            sourceFrameKey,
-            sourceDataKey,
-            sourceSnapshotKind,
-          });
-          const sourceTransportBuildStartedAtMs = resolveNativeRenderOwnerPerfNow();
-          const hasSerializableSourceSnapshot = sourceSnapshotKind !== 'pending';
-          const structuralSourceTransport = hasSerializableSourceSnapshot
-            ? buildSearchMapRenderSourceTransport({
-                previousSourceRevisions: sourceSyncBaselineRevisions,
-                nextSnapshot: preparedSourceSnapshot,
-                changedSourceIds:
-                  sourceSyncBaselineRevisions == null
-                    ? SEARCH_MAP_RENDER_SOURCE_IDS
-                    : nominalChangedSources,
-              })
-            : PRESENTATION_ONLY_SEARCH_MAP_RENDER_SOURCE_TRANSPORT;
-          const markerRoleFrameBaselineSnapshot =
-            transportState.queueState.inFlightFrame?.snapshot ??
-            transportState.lastNativeAckSnapshot ??
-            (visualFrameTransactionKind === 'live_update'
-              ? transportState.lastDesiredSnapshot
-              : null);
-          const shouldUseNativeRoleFrame =
-            hasSerializableSourceSnapshot &&
-            visualFrameTransactionKind === 'live_update' &&
-            markerRoleFrameBaselineSnapshot != null &&
-            structuralSourceTransport.effectiveChangedSourceIds.length > 0;
-          const markerRoleFrame = shouldUseNativeRoleFrame
-            ? buildSearchMapMarkerRoleFrame({
-                mode: 'patch',
-                nextSnapshot: preparedSourceSnapshot,
-                previousSnapshot: markerRoleFrameBaselineSnapshot,
-                sourceTransport: structuralSourceTransport,
-              })
-            : null;
-          const sourceTransport =
-            shouldUseNativeRoleFrame
-              ? markerRoleFrame != null
-                ? {
-                    effectiveChangedSourceIds: structuralSourceTransport.effectiveChangedSourceIds,
-                    markerRoleFrame,
-                  }
-                : PRESENTATION_ONLY_SEARCH_MAP_RENDER_SOURCE_TRANSPORT
-              : structuralSourceTransport;
-          const effectiveSourceSnapshot = preparedSourceSnapshot;
-          const effectiveFrame = preparedFrame;
-          const sourceTransportBuildDurationMs =
-            resolveNativeRenderOwnerPerfNow() - sourceTransportBuildStartedAtMs;
-          const snapshotChanged = sourceTransport.effectiveChangedSourceIds.length > 0;
-          const shouldQueueNativeEnterMountAckFrame =
-            nextPresentationState.executionStage === 'enter_pending_mount' &&
-            sourceSnapshotKind !== 'pending' &&
-            sourceTransport.effectiveChangedSourceIds.length === 0 &&
-            presentationRequestKey != null;
+        const sourceSnapshotKind = deriveSearchMapVisualFrameSourceSnapshotKind({
+          sourceFrameSnapshot,
+          preparedSourceSnapshot,
+        });
+        const visualFrameTransactionKind = deriveSearchMapVisualFrameTransactionKind({
+          presentationPhase,
+          presentationState: nextPresentationState,
+          isInitialNativeFrame,
+        });
+        const visualFrameTransaction = buildSearchMapVisualFrameTransaction({
+          kind: visualFrameTransactionKind,
+          presentationPhase,
+          sourceFrameMatchState,
+          sourceFrameKey,
+          sourceDataKey,
+          sourceSnapshotKind,
+        });
+        const sourceTransportBuildStartedAtMs = resolveNativeRenderOwnerPerfNow();
+        const hasSerializableSourceSnapshot = sourceSnapshotKind !== 'pending';
+        const structuralSourceTransport = hasSerializableSourceSnapshot
+          ? buildSearchMapRenderSourceTransport({
+              previousSourceRevisions: sourceSyncBaselineRevisions,
+              nextSnapshot: preparedSourceSnapshot,
+              changedSourceIds:
+                sourceSyncBaselineRevisions == null
+                  ? SEARCH_MAP_RENDER_SOURCE_IDS
+                  : nominalChangedSources,
+            })
+          : PRESENTATION_ONLY_SEARCH_MAP_RENDER_SOURCE_TRANSPORT;
+        const markerRoleFrameBaselineSnapshot =
+          transportState.queueState.inFlightFrame?.snapshot ??
+          transportState.lastNativeAckSnapshot ??
+          (visualFrameTransactionKind === 'live_update'
+            ? transportState.lastDesiredSnapshot
+            : null);
+        const shouldUseNativeRoleFrame =
+          hasSerializableSourceSnapshot &&
+          visualFrameTransactionKind === 'live_update' &&
+          markerRoleFrameBaselineSnapshot != null &&
+          structuralSourceTransport.effectiveChangedSourceIds.length > 0;
+        const markerRoleFrame = shouldUseNativeRoleFrame
+          ? buildSearchMapMarkerRoleFrame({
+              mode: 'patch',
+              nextSnapshot: preparedSourceSnapshot,
+              previousSnapshot: markerRoleFrameBaselineSnapshot,
+              sourceTransport: structuralSourceTransport,
+            })
+          : null;
+        const sourceTransport = shouldUseNativeRoleFrame
+          ? markerRoleFrame != null
+            ? {
+                effectiveChangedSourceIds: structuralSourceTransport.effectiveChangedSourceIds,
+                markerRoleFrame,
+              }
+            : PRESENTATION_ONLY_SEARCH_MAP_RENDER_SOURCE_TRANSPORT
+          : structuralSourceTransport;
+        const effectiveSourceSnapshot = preparedSourceSnapshot;
+        const effectiveFrame = preparedFrame;
+        const sourceTransportBuildDurationMs =
+          resolveNativeRenderOwnerPerfNow() - sourceTransportBuildStartedAtMs;
+        const snapshotChanged = sourceTransport.effectiveChangedSourceIds.length > 0;
+        const shouldQueueNativeEnterMountAckFrame =
+          nextPresentationState.executionStage === 'enter_pending_mount' &&
+          sourceSnapshotKind !== 'pending' &&
+          sourceTransport.effectiveChangedSourceIds.length === 0 &&
+          presentationRequestKey != null;
         if (
           lastDesiredFrame &&
           !shouldQueueNativeEnterMountAckFrame &&
@@ -3422,8 +3456,8 @@ const useSearchMapNativeRenderOwnerSync = ({
           transportState.lastDesiredSnapshot = effectiveSourceSnapshot;
           return;
         }
-          transportState.frameGenerationSeq += 1;
-          const frameGenerationId = `frame:${transportState.frameGenerationSeq}`;
+        transportState.frameGenerationSeq += 1;
+        const frameGenerationId = `frame:${transportState.frameGenerationSeq}`;
         rememberSearchMapNativeFrameVisualSourceCounts({
           instanceId,
           frameGenerationId,
@@ -3440,32 +3474,32 @@ const useSearchMapNativeRenderOwnerSync = ({
         transportState.lastDesiredFrameGenerationId = frameGenerationId;
         queueLatestNativeRenderOwnerFrameForTransport(transportState, {
           ownerEpoch,
-            frameGenerationId,
-            executionBatchId,
-            frame: effectiveFrame,
-            snapshot: effectiveSourceSnapshot,
-            visualFrameTransaction,
-            sourceTransport,
-            sourceFrameKey,
-            sourceDataKey,
-            sourceFrameMatchState,
-            sourceTransportBuildDurationMs,
-            attribution: {
-              frameAdmissionDecision,
-              normalWorkEffect: frameAdmission.normalWorkEffect,
-              sourceBaselineKind: sourceSyncBaselineRevisions == null ? 'replace_all' : 'ack_delta',
-              snapshotChanged,
-              viewportBoundsChanged,
-              gestureStateChanged,
-              movingStateChanged,
-              presentationChanged,
-              controlStateChanged,
-              isMoving: viewportState.isMoving,
-              isGestureActive: viewportState.isGestureActive,
-              shouldQueueNativeEnterMountAckFrame,
-              nominalChangedSourceIds: nominalChangedSources,
-            },
-          });
+          frameGenerationId,
+          executionBatchId,
+          frame: effectiveFrame,
+          snapshot: effectiveSourceSnapshot,
+          visualFrameTransaction,
+          sourceTransport,
+          sourceFrameKey,
+          sourceDataKey,
+          sourceFrameMatchState,
+          sourceTransportBuildDurationMs,
+          attribution: {
+            frameAdmissionDecision,
+            normalWorkEffect: frameAdmission.normalWorkEffect,
+            sourceBaselineKind: sourceSyncBaselineRevisions == null ? 'replace_all' : 'ack_delta',
+            snapshotChanged,
+            viewportBoundsChanged,
+            gestureStateChanged,
+            movingStateChanged,
+            presentationChanged,
+            controlStateChanged,
+            isMoving: viewportState.isMoving,
+            isGestureActive: viewportState.isGestureActive,
+            shouldQueueNativeEnterMountAckFrame,
+            nominalChangedSourceIds: nominalChangedSources,
+          },
+        });
         flushLatestDesiredFrame();
       }
     );
@@ -3526,12 +3560,12 @@ const useSearchMapNativeRenderOwnerSync = ({
         'dotSourceStore',
         'pinInteractionSourceStore',
         'labelSourceStore',
-          'labelCollisionSourceStore',
-          'labelDerivedSourceIdentityKey',
-          'markersRenderKey',
-          'mapSearchSurfaceResultsSourcesReady',
-          'mapSearchSurfaceResultsSourcesReadyKey',
-        ] as const,
+        'labelCollisionSourceStore',
+        'labelDerivedSourceIdentityKey',
+        'markersRenderKey',
+        'mapSearchSurfaceResultsSourcesReady',
+        'mapSearchSurfaceResultsSourcesReadyKey',
+      ] as const,
       'search_map_native_render_owner_source_frame'
     );
   }, [sourceFramePort]);

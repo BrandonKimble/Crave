@@ -38,6 +38,12 @@ type BuildMarkerRenderModelArgs<TProps extends MarkerLikeProperties> = {
   buildMarkerKey: (feature: MarkerFeature<TProps>) => string;
   buildVisualIdentityKey: (feature: MarkerFeature<TProps>) => string;
   maxPins: number;
+  // Stage B (B3): the native screen-space projector's on-screen marker-key set
+  // for the live camera. When present it replaces the padded lat/lng AABB
+  // visibility test — it is accurate under twist/pitch, which an axis-aligned
+  // box cannot be. Null/absent only before the first native projection arrives
+  // (initial frame / pre-attach), where the padded-AABB fallback positions the set.
+  nativeVisibleMarkerKeys?: ReadonlySet<string> | null;
 };
 
 type BuildMarkerRenderModelResult<TProps extends MarkerLikeProperties> = {
@@ -219,6 +225,7 @@ export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
     buildMarkerKey,
     buildVisualIdentityKey,
     maxPins,
+    nativeVisibleMarkerKeys,
   } = args;
   const selectedEntries = collectSelectedEntries(
     selectedRestaurantCandidates,
@@ -242,6 +249,13 @@ export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
   // results are unchanged — the defect was recomputing membership from scratch
   // each frame against an instantaneous query with no retention.
   const retentionBounds = padMapBounds(bounds, MARKER_RETENTION_BOUNDS_PAD_RATIO);
+  // Screen-space visibility (native projection) is authoritative when available;
+  // it is the only test that is correct under twist/pitch. The padded lat/lng box
+  // is the bootstrap fallback for the first frame before the projector reports.
+  const isVisible = (feature: MarkerFeature<TProps>): boolean =>
+    nativeVisibleMarkerKeys != null
+      ? nativeVisibleMarkerKeys.has(buildMarkerKey(feature))
+      : isVisibleInBounds(feature, retentionBounds);
   const byRank = (left: MarkerFeature<TProps>, right: MarkerFeature<TProps>): number => {
     const rankDiff =
       (left.properties.rank ?? Number.POSITIVE_INFINITY) -
@@ -262,11 +276,14 @@ export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
   const retainedOffView: Array<MarkerFeature<TProps>> = [];
   for (const feature of currentPinnedMarkers) {
     const visualIdentityKey = buildVisualIdentityKey(feature);
-    if (selectedVisualIdentityKeySet.has(visualIdentityKey) || seenVisualIdentityKeys.has(visualIdentityKey)) {
+    if (
+      selectedVisualIdentityKeySet.has(visualIdentityKey) ||
+      seenVisualIdentityKeys.has(visualIdentityKey)
+    ) {
       continue;
     }
     seenVisualIdentityKeys.add(visualIdentityKey);
-    if (isVisibleInBounds(feature, retentionBounds)) {
+    if (isVisible(feature)) {
       retainedInView.push(feature);
     } else {
       retainedOffView.push(feature);
@@ -278,7 +295,7 @@ export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
     if (
       selectedVisualIdentityKeySet.has(visualIdentityKey) ||
       seenVisualIdentityKeys.has(visualIdentityKey) ||
-      !isVisibleInBounds(feature, retentionBounds)
+      !isVisible(feature)
     ) {
       continue;
     }

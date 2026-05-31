@@ -11,8 +11,7 @@ import {
   type RestaurantFeatureProperties,
 } from '../components/search-map';
 import { ACTIVE_TAB_COLOR_DARK, LABEL_TEXT_SIZE } from '../constants/search';
-import { buildMarkerRenderModel, MARKER_RETENTION_BOUNDS_PAD_RATIO } from '../utils/map-render-model';
-import { padMapBounds } from '../utils/marker-lod';
+import { buildMarkerRenderModel } from '../utils/map-render-model';
 import {
   buildSearchMapVisualIdentityKey,
   normalizeSearchMapVisualFeatureIdentity,
@@ -45,6 +44,7 @@ import {
 import type { ResolvedRestaurantMapLocation } from '../runtime/map/restaurant-location-selection';
 import {
   EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT,
+  type SearchMapCandidateCatalogEntry,
   type SearchMapSourceFramePort,
   type SearchMapSourceFrameSnapshot,
 } from '../runtime/map/search-map-source-frame-port';
@@ -93,6 +93,12 @@ const arePinInteractionSourcesComplete = ({
 const SHORTCUT_COVERAGE_BOUNDS_BUCKET_DEGREES = 0.01;
 const SEARCH_MAP_VISUAL_PROJECTOR_VERSION = 'single-writer-stable-label-source-v4';
 const SHORTCUT_VIEWPORT_LOD_MIN_INTERVAL_MS = 90;
+// How long a marker stays treated as "in view" after it drops out of the native
+// screen-space visible set. Long enough to ride out edge flicker during a pan
+// (which otherwise oscillates the marker's LOD role -> demotion flash + broken
+// crossfade), short enough that a marker the user genuinely panned away from
+// settles to a dot promptly.
+const MARKER_VISIBILITY_DWELL_MS = 700;
 const VIEWPORT_PROJECTION_MIN_SPAN = 1e-6;
 const VIEWPORT_PROJECTION_MIN_CELL_SIZE = 0.0001;
 const VIEWPORT_PROJECTION_CELL_DIVISOR = 10;
@@ -111,8 +117,7 @@ type PublishSearchMapSourcesOptions = {
 
 const buildLodPinnedVisualKey = (
   meta: ReadonlyArray<{ markerKey: string; lodZ: number }>
-): string =>
-  buildStableKeyFingerprint(meta.map(({ markerKey, lodZ }) => `${markerKey}:${lodZ}`));
+): string => buildStableKeyFingerprint(meta.map(({ markerKey, lodZ }) => `${markerKey}:${lodZ}`));
 
 const normalizeViewportProjectionSpan = (value: number): number =>
   Math.max(Math.abs(value), VIEWPORT_PROJECTION_MIN_SPAN);
@@ -532,19 +537,6 @@ const collectSourceStoreVisualIdentityKeys = (sourceStore: SearchMapSourceStore)
   return visualIdentityKeys;
 };
 
-const isFeatureVisibleInBounds = (
-  feature: Feature<Point, RestaurantFeatureProperties>,
-  bounds: MapBounds
-): boolean => {
-  const [lng, lat] = feature.geometry.coordinates;
-  return (
-    lat >= bounds.southWest.lat &&
-    lat <= bounds.northEast.lat &&
-    lng >= bounds.southWest.lng &&
-    lng <= bounds.northEast.lng
-  );
-};
-
 const summarizeMarkerRank = (
   feature: Feature<Point, RestaurantFeatureProperties>,
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string
@@ -584,103 +576,6 @@ const summarizeSourceStoreRank = (
     }
   }
   return signature;
-};
-
-const buildViewportNormalPinRankContract = ({
-  bounds,
-  rankedCandidates,
-  pinSourceStore,
-  selectedRestaurantId,
-  buildMarkerKey,
-  maxPins,
-}: {
-  bounds: MapBounds | null;
-  rankedCandidates: Array<Feature<Point, RestaurantFeatureProperties>>;
-  pinSourceStore: SearchMapSourceStore;
-  selectedRestaurantId: string | null;
-  buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
-  maxPins: number;
-}) => {
-  // Under the stable-membership policy the promoted set is NOT the instantaneous
-  // top-N in the raw viewport: in-view markers take slot priority (top by rank),
-  // and retained off-view pins fill any leftover slots so they do not flicker
-  // out. The correctness invariant: among the IN-VIEW universe (viewport
-  // candidates plus currently-promoted pins, clipped to the padded bounds the
-  // policy uses), the top `maxPins` by rank must all be promoted. Retained
-  // pins outside the padded bounds are excluded from the universe and are
-  // allowed to keep their slots. Including the actual promoted pins in the
-  // universe makes this robust to padding-ring effects.
-  const retentionBounds = bounds != null ? padMapBounds(bounds, MARKER_RETENTION_BOUNDS_PAD_RATIO) : null;
-  const actualNormalPins: Array<Feature<Point, RestaurantFeatureProperties>> = [];
-  for (const featureId of pinSourceStore.idsInOrder) {
-    const feature = pinSourceStore.featureById.get(featureId);
-    if (!feature) {
-      continue;
-    }
-    if (selectedRestaurantId != null && feature.properties.restaurantId === selectedRestaurantId) {
-      continue;
-    }
-    actualNormalPins.push(feature);
-  }
-  const actualMarkerKeys = actualNormalPins.map((feature) => buildMarkerKey(feature));
-  const actualMarkerKeySet = new Set(actualMarkerKeys);
-
-  const inViewRankByMarkerKey = new Map<string, number>();
-  const addToInViewUniverse = (
-    feature: Feature<Point, RestaurantFeatureProperties>
-  ): void => {
-    if (selectedRestaurantId != null && feature.properties.restaurantId === selectedRestaurantId) {
-      return;
-    }
-    if (retentionBounds == null || !isFeatureVisibleInBounds(feature, retentionBounds)) {
-      return;
-    }
-    const markerKey = buildMarkerKey(feature);
-    if (inViewRankByMarkerKey.has(markerKey)) {
-      return;
-    }
-    const rank = feature.properties.rank;
-    inViewRankByMarkerKey.set(
-      markerKey,
-      typeof rank === 'number' ? rank : Number.POSITIVE_INFINITY
-    );
-  };
-  for (const candidate of rankedCandidates) {
-    addToInViewUniverse(candidate);
-  }
-  for (const feature of actualNormalPins) {
-    addToInViewUniverse(feature);
-  }
-  const expectedMarkerKeys = Array.from(inViewRankByMarkerKey.entries())
-    .sort((left, right) => {
-      const rankDiff = left[1] - right[1];
-      if (rankDiff !== 0) {
-        return rankDiff;
-      }
-      return left[0].localeCompare(right[0]);
-    })
-    .slice(0, maxPins)
-    .map(([markerKey]) => markerKey);
-  let mismatchCount = 0;
-  for (const expectedKey of expectedMarkerKeys) {
-    if (!actualMarkerKeySet.has(expectedKey)) {
-      mismatchCount += 1;
-    }
-  }
-
-  return {
-    expectedNormalPinCount: expectedMarkerKeys.length,
-    actualNormalPinCount: actualNormalPins.length,
-    normalPinRankMismatchCount: mismatchCount,
-    expectedNormalPinFingerprint: buildStableKeyFingerprint(expectedMarkerKeys),
-    actualNormalPinFingerprint: buildStableKeyFingerprint(actualMarkerKeys),
-    expectedNormalPinRankSignature: expectedMarkerKeys
-      .slice(0, 40)
-      .map((markerKey) => `${markerKey}#r${inViewRankByMarkerKey.get(markerKey) ?? 'na'}`),
-    actualNormalPinRankSignature: actualNormalPins
-      .slice(0, 40)
-      .map((feature) => summarizeMarkerRank(feature, buildMarkerKey)),
-  };
 };
 
 const countRestaurantVisualIdentityKeysInSourceStore = (
@@ -1164,6 +1059,15 @@ export const useDirectSearchMapSourceController = ({
     EMPTY_SEARCH_MAP_SOURCE_STORE
   );
   const lastMarkerPressTargetRef = React.useRef<LastMarkerPressTarget | null>(null);
+  // Visibility hysteresis (fixes boundary promote/demote OSCILLATION = demotion
+  // flash + broken crossfade). A marker that crosses the viewport edge flickers
+  // in/out of the native screen-space visible set frame-to-frame; because in-view
+  // markers take slot priority, that flicker repeatedly demotes then re-promotes
+  // the marker, which retargets its pin/dot opacity transitions mid-fade (flash)
+  // and desyncs the crossfade. We keep a marker "in view" for a short dwell after
+  // it drops out of the native set, so transient edge flicker can no longer flip
+  // its LOD role — the role only changes once the marker is sustainedly gone.
+  const markerLastVisibleAtMsRef = React.useRef<Map<string, number>>(new Map());
   React.useEffect(() => {
     if (highlightedRestaurantId == null) {
       lastMarkerPressTargetRef.current = null;
@@ -1173,6 +1077,10 @@ export const useDirectSearchMapSourceController = ({
   const lodPinnedMarkersRef = React.useRef<Array<Feature<Point, RestaurantFeatureProperties>>>([]);
   const lodPinnedVisualKeyRef = React.useRef('');
   const lodPinnedResetKeyRef = React.useRef('');
+  // Stage B (B1): last candidate-catalog fingerprint pushed to the source frame
+  // port. Rebuilt + republished only when the full ranked candidate set changes
+  // (results change), NOT on every viewport tick.
+  const lastPublishedCandidateCatalogKeyRef = React.useRef<string | null>(null);
   const shortcutViewportLodCadenceRef = React.useRef<ShortcutViewportLodCadence>({
     tokenIdentity: null,
     lastRunAtMs: 0,
@@ -1627,6 +1535,67 @@ export const useDirectSearchMapSourceController = ({
     });
     const rankedCandidates = projectedInitialCandidates.rankedCandidates;
     const selectedRestaurantCandidates = projectedInitialCandidates.selectedRestaurantCandidates;
+    // Stage B (B1): publish the full ranked candidate catalog (every showable
+    // marker, NOT viewport-filtered) to the source frame port so native can
+    // project it to screen space each camera tick and decide on-screen membership.
+    // rankedCandidates is already rank-ordered, so the array index IS the rank.
+    {
+      const candidateCatalogKey = buildStableKeyFingerprint(
+        rankedCandidates.map((feature) => buildMarkerKey(feature))
+      );
+      if (candidateCatalogKey !== lastPublishedCandidateCatalogKeyRef.current) {
+        const catalogEntries: SearchMapCandidateCatalogEntry[] = [];
+        rankedCandidates.forEach((feature, index) => {
+          const coordinates = feature.geometry?.coordinates;
+          if (
+            !Array.isArray(coordinates) ||
+            typeof coordinates[0] !== 'number' ||
+            typeof coordinates[1] !== 'number'
+          ) {
+            return;
+          }
+          catalogEntries.push({
+            markerKey: buildMarkerKey(feature),
+            lng: coordinates[0],
+            lat: coordinates[1],
+            rank: feature.properties.rank ?? index,
+          });
+        });
+        sourceFramePort.publishCandidateCatalog({
+          key: candidateCatalogKey,
+          entries: catalogEntries,
+        });
+        lastPublishedCandidateCatalogKeyRef.current = candidateCatalogKey;
+      }
+    }
+    // Stage B (B3): consume the native screen-space on-screen marker set as the
+    // visibility test (accurate under twist/pitch). Null until the projector first
+    // reports (initial frame), where buildMarkerRenderModel falls back to the
+    // padded AABB. A momentarily stale set cannot collapse the promoted set —
+    // stable-membership retains currently-pinned markers regardless.
+    const nativeVisible = sourceFramePort.getNativeVisibleMarkerKeys();
+    let nativeVisibleMarkerKeys: Set<string> | null = null;
+    if (nativeVisible != null) {
+      // Visibility hysteresis: stamp currently-visible markers as seen now, then
+      // treat any marker seen within the dwell window as still in view. This keeps
+      // a marker that briefly flickers across the viewport edge from oscillating
+      // its LOD role frame-to-frame (the confirmed root cause of the demotion
+      // flash + broken pin/dot crossfade).
+      const nowMs = Date.now();
+      const lastVisibleAtMs = markerLastVisibleAtMsRef.current;
+      for (const markerKey of nativeVisible.markerKeys) {
+        lastVisibleAtMs.set(markerKey, nowMs);
+      }
+      const effectiveVisible = new Set<string>();
+      for (const [markerKey, atMs] of lastVisibleAtMs) {
+        if (nowMs - atMs <= MARKER_VISIBILITY_DWELL_MS) {
+          effectiveVisible.add(markerKey);
+        } else {
+          lastVisibleAtMs.delete(markerKey);
+        }
+      }
+      nativeVisibleMarkerKeys = effectiveVisible;
+    }
     const nextModel = currentBounds
       ? buildMarkerRenderModel({
           bounds: currentBounds,
@@ -1638,6 +1607,7 @@ export const useDirectSearchMapSourceController = ({
           buildMarkerKey,
           buildVisualIdentityKey: buildSearchMapVisualIdentityKey,
           maxPins: args.maxFullPins,
+          nativeVisibleMarkerKeys,
         })
       : {
           nextPinnedMarkers: [],
@@ -1651,15 +1621,14 @@ export const useDirectSearchMapSourceController = ({
     ) {
       return;
     }
-    const visibleSortedRestaurantMarkers =
-      nextModel.nextPinnedMarkers.map((feature, index) => ({
-            ...feature,
-            properties: {
-              ...feature.properties,
-              nativeLodZ: nextModel.nextPinnedMeta[index]?.lodZ ?? feature.properties.nativeLodZ,
-              lodZ: nextModel.nextPinnedMeta[index]?.lodZ ?? feature.properties.lodZ,
-            },
-          }));
+    const visibleSortedRestaurantMarkers = nextModel.nextPinnedMarkers.map((feature, index) => ({
+      ...feature,
+      properties: {
+        ...feature.properties,
+        nativeLodZ: nextModel.nextPinnedMeta[index]?.lodZ ?? feature.properties.nativeLodZ,
+        lodZ: nextModel.nextPinnedMeta[index]?.lodZ ?? feature.properties.lodZ,
+      },
+    }));
     const projectedVisualFrame = projectSearchMapVisualFrame({
       rankedSources: rankedCandidateSources,
       dotSources: dotCandidateSources,
@@ -1773,15 +1742,6 @@ export const useDirectSearchMapSourceController = ({
       projectedVisualFrame.candidateVisualIdentityKeys,
       lodClassifiedVisualIdentityKeys
     );
-    const viewportNormalPinRankContract = buildViewportNormalPinRankContract({
-      bounds: currentBounds,
-      rankedCandidates,
-      pinSourceStore,
-      selectedRestaurantId,
-      buildMarkerKey,
-      maxPins: args.maxFullPins,
-    });
-
     const pinInteractionBuilder = createSearchMapSourceStoreBuilder(
       previousPinInteractionSourceStoreRef.current
     );
@@ -2077,7 +2037,6 @@ export const useDirectSearchMapSourceController = ({
           normalPinVisualIdentityCount,
           selectedPinVisualIdentityCount,
           selectedRestaurantId,
-          ...viewportNormalPinRankContract,
           promotedRestaurantsRenderAsPins:
             visibleSortedRestaurantMarkers.length === pinSourceStore.idsInOrder.length,
           nonPromotedRestaurantsRenderAsDots:
@@ -2092,19 +2051,18 @@ export const useDirectSearchMapSourceController = ({
           labelSourceStore.idsInOrder.length ===
             pinSourceStore.idsInOrder.length * LABEL_CANDIDATES_IN_ORDER.length &&
           labelCollisionSourceStore.idsInOrder.length === pinSourceStore.idsInOrder.length;
-        const promotedDotFeaturesAreResident =
-          pinSourceStore.idsInOrder.every((markerKey) => dotSourceStore.featureById.has(markerKey));
-        const promotedResidentDotsStartHidden =
-          pinSourceStore.idsInOrder.every((markerKey) => {
-            const dotFeature = dotSourceStore.featureById.get(markerKey);
-            return dotFeature?.properties?.nativeDotOpacity === 0;
-          });
-        const demotedRoleFamiliesAreDotOnly =
-          dotSourceStore.idsInOrder.every((markerKey) => {
-            const isPromoted = pinSourceStore.featureById.has(markerKey);
-            const dotFeature = dotSourceStore.featureById.get(markerKey);
-            return isPromoted || dotFeature?.properties.nativeDotOpacity !== 0;
-          });
+        const promotedDotFeaturesAreResident = pinSourceStore.idsInOrder.every((markerKey) =>
+          dotSourceStore.featureById.has(markerKey)
+        );
+        const promotedResidentDotsStartHidden = pinSourceStore.idsInOrder.every((markerKey) => {
+          const dotFeature = dotSourceStore.featureById.get(markerKey);
+          return dotFeature?.properties?.nativeDotOpacity === 0;
+        });
+        const demotedRoleFamiliesAreDotOnly = dotSourceStore.idsInOrder.every((markerKey) => {
+          const isPromoted = pinSourceStore.featureById.has(markerKey);
+          const dotFeature = dotSourceStore.featureById.get(markerKey);
+          return isPromoted || dotFeature?.properties.nativeDotOpacity !== 0;
+        });
         const eligibleCoverageFeatureCount =
           searchMode === 'shortcut' && coverageResource?.status === 'completed'
             ? coverageResource.acceptedFeatureCount

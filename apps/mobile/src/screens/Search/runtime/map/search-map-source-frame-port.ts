@@ -48,10 +48,39 @@ export type SearchMapSourceFrameVisualStatePatch = Pick<
   | 'mapSearchSurfaceResultsSourcesReadyKey'
 >;
 
+// Stage B: the full ranked candidate catalog (every showable marker's key +
+// coordinate + rank), published once per results change. Kept OFF the per-frame
+// snapshot (which churns every viewport tick) so it is pushed to native only when
+// the candidate set actually changes. The owner reads it during frame submit and
+// forwards it to the native screen-space projector via setCandidateCatalog.
+export type SearchMapCandidateCatalogEntry = {
+  markerKey: string;
+  lng: number;
+  lat: number;
+  rank: number;
+};
+
+export type SearchMapCandidateCatalog = {
+  key: string;
+  entries: ReadonlyArray<SearchMapCandidateCatalogEntry>;
+};
+
+// Stage B (B2/B3): the native screen-space projector's latest on-screen marker
+// set, written by the render owner from the `map_native_visible_markers` event and
+// read by the JS selection policy to replace the padded lat/lng AABB visibility test.
+export type SearchMapNativeVisibleMarkers = {
+  markerKeys: ReadonlyArray<string>;
+  catalogCount: number;
+};
+
 export type SearchMapSourceFramePort = {
   getSnapshot: () => SearchMapSourceFrameSnapshot;
   publishSnapshot: (snapshot: SearchMapSourceFrameSnapshot) => boolean;
   publishVisualState: (patch: Partial<SearchMapSourceFrameVisualStatePatch>) => boolean;
+  publishCandidateCatalog: (catalog: SearchMapCandidateCatalog) => void;
+  getCandidateCatalog: () => SearchMapCandidateCatalog | null;
+  publishNativeVisibleMarkerKeys: (visible: SearchMapNativeVisibleMarkers) => void;
+  getNativeVisibleMarkerKeys: () => SearchMapNativeVisibleMarkers | null;
   reset: () => void;
   subscribe: (
     listener: () => void,
@@ -126,6 +155,8 @@ type SearchMapSourceFrameListenerRecord = {
 
 export const createSearchMapSourceFramePort = (): SearchMapSourceFramePort => {
   let snapshot = EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT;
+  let candidateCatalog: SearchMapCandidateCatalog | null = null;
+  let nativeVisibleMarkers: SearchMapNativeVisibleMarkers | null = null;
   const listeners = new Map<() => void, SearchMapSourceFrameListenerRecord>();
 
   const notify = (changedKeys: ReadonlySet<SearchMapSourceFrameSnapshotKey>) => {
@@ -223,8 +254,18 @@ export const createSearchMapSourceFramePort = (): SearchMapSourceFramePort => {
       notify(changedKeys);
       return true;
     },
+    publishCandidateCatalog: (catalog) => {
+      candidateCatalog = catalog;
+    },
+    getCandidateCatalog: () => candidateCatalog,
+    publishNativeVisibleMarkerKeys: (visible) => {
+      nativeVisibleMarkers = visible;
+    },
+    getNativeVisibleMarkerKeys: () => nativeVisibleMarkers,
     reset: () => {
       snapshot = EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT;
+      candidateCatalog = null;
+      nativeVisibleMarkers = null;
       notify(new Set(Object.keys(snapshot) as SearchMapSourceFrameSnapshotKey[]));
     },
     subscribe: (listener, observedKeys, debugLabel) => {

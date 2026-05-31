@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import MapLodKit
 import MapboxMaps
 import QuartzCore
 import React
@@ -65,6 +66,11 @@ final class SearchMapRenderController: RCTEventEmitter {
   private let lodVisibleDelayMs = 16
   private let mapResolveTimeoutMs = 10_000.0
   private let nativeViewportEventThrottleMs = 16.0
+  // Stage B: screen-space visibility pad. A marker whose projected screen point
+  // is within the view rect expanded by this many px counts as "on-screen" — the
+  // pad keeps markers just past the edge promotable so they don't pop in/out at
+  // the boundary (mirrors the JS padded-AABB intent, but in true screen space).
+  private let nativeScreenSpaceVisibilityPadPx: CGFloat = 64
   private let nativePressCancelMovementThresholdPx: CGFloat = 10
   private let settledVisibleLabelMissingGraceStreak = 2
   private static let transientVisualPropertyKeys: Set<String> = [
@@ -555,6 +561,16 @@ final class SearchMapRenderController: RCTEventEmitter {
     var liveBaseline: ExecutionBatchRef? = nil
   }
 
+  // Stage B: the full ranked candidate catalog JS pushes once per results change.
+  // Native projects these to screen space each camera tick to decide which markers
+  // are actually on-screen under the live camera (pitch/twist-accurate), which JS
+  // then uses for promotion/demotion instead of a padded lat/lng AABB.
+  private struct CandidateCatalogEntry {
+    let markerKey: String
+    let coordinate: CLLocationCoordinate2D
+    let rank: Int
+  }
+
   private struct InstanceState {
     // The single RENDERED bundle source id (pin art + interaction + labels for
     // every promoted marker, slot-scoped by `nativeLodZ` in the layer filters).
@@ -622,6 +638,12 @@ final class SearchMapRenderController: RCTEventEmitter {
     var isAwaitingSourceRecovery: Bool
     var isReplayingSourceRecovery: Bool
     var sourceRecoveryPausedAtMs: Double?
+    // Stage B: ranked candidate catalog (markerKey + coordinate + rank), pushed by
+    // JS once per results change; projected per camera tick for screen-space LOD.
+    var candidateCatalog: [CandidateCatalogEntry]
+    // Throttle signature so the native-visible-marker emit only fires when the
+    // on-screen set actually changes (avoids redundant per-tick bridge traffic).
+    var lastVisibleMarkerSetSignature: String?
   }
 
   private struct SlowActionWindowState {
@@ -1161,7 +1183,9 @@ final class SearchMapRenderController: RCTEventEmitter {
         residentDesiredSourceCacheBySourceId: [:],
         isAwaitingSourceRecovery: false,
         isReplayingSourceRecovery: false,
-        sourceRecoveryPausedAtMs: nil
+        sourceRecoveryPausedAtMs: nil,
+        candidateCatalog: [],
+        lastVisibleMarkerSetSignature: nil
       )
       self.resolveMapHandle(for: mapTag, attemptCount: 0, startTimeMs: CACurrentMediaTime() * 1000) {
         [weak self] result in
@@ -1232,6 +1256,55 @@ final class SearchMapRenderController: RCTEventEmitter {
         "instanceId": instanceId,
       ])
       resolve(nil)
+    }
+  }
+
+  // Stage B (B1): JS pushes the full ranked candidate catalog once per results
+  // change. Native stores it and projects it to screen space on each camera tick
+  // (see handleNativeCameraChanged) to compute the on-screen marker set. Benign
+  // data — no owner-epoch fence needed; a stale catalog just gets replaced.
+  @objc
+  func setCandidateCatalog(
+    _ payload: NSDictionary,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else {
+        reject("search_map_render_controller_unavailable", "controller deallocated", nil)
+        return
+      }
+      guard let instanceId = payload["instanceId"] as? String else {
+        reject("search_map_render_controller_catalog_invalid", "missing instanceId", nil)
+        return
+      }
+      guard var state = self.instances[instanceId] else {
+        reject("search_map_render_controller_catalog_invalid", "unknown instance", nil)
+        return
+      }
+      let rawEntries = (payload["entries"] as? [NSDictionary]) ?? []
+      var catalog: [CandidateCatalogEntry] = []
+      catalog.reserveCapacity(rawEntries.count)
+      for raw in rawEntries {
+        guard let markerKey = raw["markerKey"] as? String,
+              let lng = (raw["lng"] as? NSNumber)?.doubleValue,
+              let lat = (raw["lat"] as? NSNumber)?.doubleValue,
+              lng.isFinite, lat.isFinite
+        else {
+          continue
+        }
+        let rank = (raw["rank"] as? NSNumber)?.intValue ?? Int.max
+        catalog.append(CandidateCatalogEntry(
+          markerKey: markerKey,
+          coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng),
+          rank: rank
+        ))
+      }
+      state.candidateCatalog = catalog
+      // Force the next camera tick to re-emit the on-screen set against the new catalog.
+      state.lastVisibleMarkerSetSignature = nil
+      self.instances[instanceId] = state
+      resolve(["catalogCount": catalog.count])
     }
   }
 
@@ -6468,6 +6541,17 @@ final class SearchMapRenderController: RCTEventEmitter {
     allowNewTransitions: Bool
   ) {
     var dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
+    // The pin transition is the crossfade PARTNER for each marker. A marker that is
+    // promoting (pin entering) must fade its dot OUT; a marker that is demoting (pin
+    // exiting) must fade its dot IN — in lockstep. We couple to the pin transitions
+    // so the dot transition is ALWAYS created paired with the pin (even when the dot
+    // desired-collection diff or the movement gate would otherwise skip it), and so
+    // a promote's dot-exit AWAITS THE SAME pin source commit the pin-enter waits on
+    // (held visible until the pin is ready), eliminating the "dot snaps out before
+    // the pin shows" gap. A demote's dot-enter is immediate (the dot source is
+    // resident, so the feature is already present).
+    let pinTransitionsByMarkerKey =
+      Self.derivedFamilyState(sourceId: state.pinSourceId, state: state).livePinTransitionsByMarkerKey
     let previousDotsByMarkerKey = dotFamilyState.lastDesiredCollection.featureById
     let nextDotsByMarkerKey = desiredDots.featureById
     let previousDotIds = Set(previousDotsByMarkerKey.keys)
@@ -6479,7 +6563,10 @@ final class SearchMapRenderController: RCTEventEmitter {
     let nextOrderByMarkerKey = Dictionary(
       uniqueKeysWithValues: desiredDots.idsInOrder.enumerated().map { ($1, $0) }
     )
-    let markerKeys = previousDotIds.union(nextDotIds).union(nextTransitions.keys)
+    let markerKeys = previousDotIds
+      .union(nextDotIds)
+      .union(nextTransitions.keys)
+      .union(pinTransitionsByMarkerKey.keys)
 
     for markerKey in markerKeys {
       let existing = nextTransitions[markerKey]
@@ -6493,7 +6580,18 @@ final class SearchMapRenderController: RCTEventEmitter {
       let currentOpacity =
         existing.map { Self.liveDotTransitionOpacity($0, atMs: nowMs) } ??
         settledDotOpacity
-      let targetOpacity = nextVisible ? 1.0 : 0.0
+      // Crossfade coupling: complementary to the pin transition when one exists.
+      let pinTransition = pinTransitionsByMarkerKey[markerKey]
+      let pinIsDemoting = pinTransition.map { $0.targetOpacity < 0.001 } ?? false
+      let pinIsPromoting = pinTransition.map { $0.targetOpacity >= 0.999 } ?? false
+      let pinPromotingAwaitingCommit =
+        pinIsPromoting && (pinTransition?.isAwaitingSourceCommit ?? false)
+      let targetOpacity: Double =
+        pinIsDemoting ? 1.0 : (pinIsPromoting ? 0.0 : (nextVisible ? 1.0 : 0.0))
+      // A promote's dot-exit holds the dot visible until the pin's source commit
+      // lands — it is un-awaited together with the pin-enter in
+      // startAwaitingLivePinTransitions. A demote's dot-enter is immediate.
+      let dotAwaitsCommit = targetOpacity < 0.001 && pinPromotingAwaitingCommit
       let dotFeature =
         nextDotsByMarkerKey[markerKey] ??
         previousDotsByMarkerKey[markerKey] ??
@@ -6508,7 +6606,9 @@ final class SearchMapRenderController: RCTEventEmitter {
         existing?.orderHint ??
         .max
 
-      guard allowNewTransitions || existing != nil else {
+      // A paired crossfade (pinTransition != nil) is always created, bypassing the
+      // movement gate and the visibility-delta gate that would otherwise drop it.
+      guard allowNewTransitions || existing != nil || pinTransition != nil else {
         continue
       }
 
@@ -6520,15 +6620,13 @@ final class SearchMapRenderController: RCTEventEmitter {
           continue
         }
         if existing.targetOpacity != targetOpacity {
-          let shouldAwaitSourceCommit =
-            targetOpacity == 1 && !previousPresent && currentOpacity <= 0.001
           nextTransitions[markerKey] = LiveDotTransition(
             startOpacity: currentOpacity,
             targetOpacity: targetOpacity,
             startedAtMs: nowMs,
             durationMs: livePinTransitionDurationMs,
-            isAwaitingSourceCommit: shouldAwaitSourceCommit,
-            awaitingSourceDataId: shouldAwaitSourceCommit ? existing.awaitingSourceDataId : nil,
+            isAwaitingSourceCommit: dotAwaitsCommit,
+            awaitingSourceDataId: nil,
             hasAppliedTargetState: false,
             dotFeature: dotFeature,
             orderHint: orderHint
@@ -6542,7 +6640,10 @@ final class SearchMapRenderController: RCTEventEmitter {
         continue
       }
 
-      guard previousVisible != nextVisible, abs(currentOpacity - targetOpacity) >= 0.001 else {
+      guard
+        abs(currentOpacity - targetOpacity) >= 0.001,
+        pinTransition != nil || previousVisible != nextVisible
+      else {
         continue
       }
       nextTransitions[markerKey] = LiveDotTransition(
@@ -6550,7 +6651,7 @@ final class SearchMapRenderController: RCTEventEmitter {
         targetOpacity: targetOpacity,
         startedAtMs: nowMs,
         durationMs: livePinTransitionDurationMs,
-        isAwaitingSourceCommit: targetOpacity == 1,
+        isAwaitingSourceCommit: dotAwaitsCommit,
         awaitingSourceDataId: nil,
         hasAppliedTargetState: false,
         dotFeature: dotFeature,
@@ -7447,8 +7548,12 @@ final class SearchMapRenderController: RCTEventEmitter {
     var startedTransitionCount = 0
     var pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
     var labelFamilyState = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
+    var dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
     var pinSourceState = pinFamilyState.sourceState
     var labelSourceState = labelFamilyState.sourceState
+    // Markers whose pin-enter we start on this commit — used to un-await their
+    // coupled dot-exit so the dot fades out exactly as the pin fades in.
+    var startedPinEnterMarkerKeys = Set<String>()
     for markerKey in pinFamilyState.livePinTransitionsByMarkerKey.keys.sorted() {
       if pinFamilyState.livePinTransitionsByMarkerKey[markerKey]?.isAwaitingSourceCommit == true {
         awaitingTransitionCount += 1
@@ -7488,7 +7593,26 @@ final class SearchMapRenderController: RCTEventEmitter {
         )
       }
       didStartTransition = true
+      startedPinEnterMarkerKeys.insert(markerKey)
     }
+    // Coupled dot-exit: each marker whose pin just started fading in had its dot held
+    // visible (awaiting). Un-await those dot-exits now so the dot fades out in lockstep
+    // with the pin fading in — no "dot snaps out before the pin shows" gap.
+    for markerKey in startedPinEnterMarkerKeys {
+      guard var dotTransition = dotFamilyState.liveDotTransitionsByMarkerKey[markerKey],
+            dotTransition.isAwaitingSourceCommit
+      else {
+        continue
+      }
+      dotTransition.isAwaitingSourceCommit = false
+      dotTransition.awaitingSourceDataId = nil
+      dotTransition.startedAtMs = nowMs
+      dotTransition.hasAppliedTargetState = false
+      dotFamilyState.liveDotTransitionsByMarkerKey[markerKey] = dotTransition
+      didStartTransition = true
+    }
+    // Persist the coupled dot-exit un-awaits (transition-map change only).
+    Self.setDerivedFamilyState(dotFamilyState, sourceId: state.dotSourceId, state: &state)
     if didStartTransition {
       Self.refreshFeatureStateRevision(&pinSourceState)
       Self.refreshFeatureStateRevision(&labelSourceState)
@@ -7687,6 +7811,15 @@ final class SearchMapRenderController: RCTEventEmitter {
     var completedExitMarkerKeys: [String] = []
     var completedDotEnterMarkerKeys: [String] = []
     var completedDotExitMarkerKeys: [String] = []
+    // Per-marker trajectory trace (diagnostic): start/target/current opacity per
+    // transitioning pin & dot, so we can see flash reversals (start mid-range) and
+    // crossfade desync (pin exiting with no matching dot enter for the same key)
+    // frame by frame across multiple promote/demote cycles.
+    var lodTransitionTrace: [[String: Any]] = []
+    let pinTransitionTargetByKey = pinFamilyState.livePinTransitionsByMarkerKey
+      .mapValues { $0.targetOpacity }
+    let dotTransitionTargetByKey = dotFamilyState.liveDotTransitionsByMarkerKey
+      .mapValues { $0.targetOpacity }
 
     for markerKey in pinFamilyState.livePinTransitionsByMarkerKey.keys.sorted() {
       guard let transition = pinFamilyState.livePinTransitionsByMarkerKey[markerKey],
@@ -7708,6 +7841,20 @@ final class SearchMapRenderController: RCTEventEmitter {
         if opacity > 0.05 && opacity < 0.95 {
           pinExitMidFadeMarkerKeys.insert(markerKey)
         }
+      }
+      if lodTransitionTrace.count < 24 {
+        lodTransitionTrace.append([
+          "k": markerKey,
+          "f": "pin",
+          "s": Self.roundTo3(transition.startOpacity),
+          "t": Self.roundTo3(transition.targetOpacity),
+          "c": Self.roundTo3(opacity),
+          // Does this marker have a matching dot transition heading the opposite
+          // way (the synchronized crossfade partner)? If a pin is exiting and there
+          // is no dot entering for the same key, the crossfade is broken.
+          "dotTarget": dotTransitionTargetByKey[markerKey].map { Self.roundTo3($0) } ?? -1,
+          "awaitingCommit": transition.isAwaitingSourceCommit,
+        ])
       }
       let renderState = pinFamilyState.markerRenderStateByMarkerKey[markerKey]
       // Single bundle source: pin art and label features for a marker both live
@@ -7768,6 +7915,17 @@ final class SearchMapRenderController: RCTEventEmitter {
         dotEnterMarkerKeys.insert(markerKey)
       } else {
         dotExitTransitionCount += 1
+      }
+      if lodTransitionTrace.count < 48 {
+        lodTransitionTrace.append([
+          "k": markerKey,
+          "f": "dot",
+          "s": Self.roundTo3(transition.startOpacity),
+          "t": Self.roundTo3(transition.targetOpacity),
+          "c": Self.roundTo3(opacity),
+          "pinTarget": pinTransitionTargetByKey[markerKey].map { Self.roundTo3($0) } ?? -1,
+          "awaitingCommit": transition.isAwaitingSourceCommit,
+        ])
       }
       Self.applyTransientFeatureState(
         sourceState: &dotSourceState,
@@ -7837,9 +7995,16 @@ final class SearchMapRenderController: RCTEventEmitter {
     )
     let pinTransitionCount = pinEnterTransitionCount + pinExitTransitionCount
     let dotTransitionCount = dotEnterTransitionCount + dotExitTransitionCount
-    // Crossfade gap: a marker whose pin is fading OUT mid-transition with no dot
-    // fading IN — the demotion is not crossfading with its dot.
-    let crossfadeGapCount = pinExitMidFadeMarkerKeys.subtracting(dotEnterMarkerKeys).count
+    // Crossfade gap: a marker DEMOTING IN PLACE (pin fading out, and the role
+    // table says it should now be a visible in-view dot) whose dot is NOT fading
+    // in alongside it. We intersect with the dot role set so that a pin fading out
+    // because the marker PANNED OFF the viewport (not in the dot role set — no dot
+    // should appear off-screen) is NOT miscounted as a broken crossfade.
+    let visibleDotRoleMarkerKeys = Set(state.markerRoleTable.dotMarkerKeysInOrder)
+    let crossfadeGapCount = pinExitMidFadeMarkerKeys
+      .intersection(visibleDotRoleMarkerKeys)
+      .subtracting(dotEnterMarkerKeys)
+      .count
     if pinTransitionCount > 0 || dotTransitionCount > 0 {
       emit([
         "type": "live_lod_transition_contract",
@@ -7864,6 +8029,7 @@ final class SearchMapRenderController: RCTEventEmitter {
         "pinIntermediateOpacityCount": pinIntermediateOpacityCount,
         "labelIntermediateOpacityCount": labelIntermediateOpacityCount,
         "dotIntermediateOpacityCount": dotIntermediateOpacityCount,
+        "lodTransitionTrace": lodTransitionTrace,
         "emittedAtMs": Self.nowMs(),
       ])
     }
@@ -10601,6 +10767,30 @@ final class SearchMapRenderController: RCTEventEmitter {
     ])
   }
 
+  // Stage B (B2): project the ranked candidate catalog to screen space under the
+  // LIVE camera and return the markerKeys whose projected point lands inside the
+  // view rect (+pad). This is pitch/twist-accurate, unlike a lat/lng AABB. The
+  // coordinate round-trip rejects coords behind the camera / over the horizon,
+  // which `point(for:)` would otherwise project to bogus on-screen points.
+  private func computeOnScreenMarkerKeys(
+    catalog: [CandidateCatalogEntry],
+    handle: ResolvedMapHandle
+  ) -> [String] {
+    // The decision (rect/pad containment, finiteness, behind-camera round-trip
+    // guard, loop) lives in MapLodKit.ScreenSpaceVisibility — the single,
+    // unit-tested source of truth (see MapLodKit/Tests). Only the raw Mapbox
+    // projection stays here, injected as closures.
+    return ScreenSpaceVisibility.onScreenMarkerKeys(
+      catalog: catalog.map {
+        ScreenSpaceVisibility.CatalogEntry(markerKey: $0.markerKey, coordinate: $0.coordinate)
+      },
+      viewBounds: handle.mapView.bounds,
+      padPx: nativeScreenSpaceVisibilityPadPx,
+      project: { handle.mapView.mapboxMap.point(for: $0) },
+      unproject: { handle.mapView.mapboxMap.coordinate(for: $0) }
+    )
+  }
+
   private func handleNativeCameraChanged(
     mapTag: NSNumber,
     handle: ResolvedMapHandle,
@@ -10639,6 +10829,31 @@ final class SearchMapRenderController: RCTEventEmitter {
         handle: handle,
         reason: isMoving ? "camera_moving" : "camera_idle"
       )
+      // Stage B (B2): emit the screen-space on-screen marker set whenever it
+      // changes, so JS can drive promotion/demotion off true projected visibility
+      // instead of a padded lat/lng AABB. Throttled to set-change to bound bridge
+      // traffic during gestures.
+      if !nextState.candidateCatalog.isEmpty {
+        let onScreenKeys = computeOnScreenMarkerKeys(
+          catalog: nextState.candidateCatalog,
+          handle: handle
+        )
+        let visibleSignature = onScreenKeys.sorted().joined(separator: "|")
+        if visibleSignature != nextState.lastVisibleMarkerSetSignature {
+          nextState.lastVisibleMarkerSetSignature = visibleSignature
+          emit([
+            "type": "map_native_visible_markers",
+            "instanceId": instanceId,
+            "markerKeys": onScreenKeys,
+            "markerCount": onScreenKeys.count,
+            "catalogCount": nextState.candidateCatalog.count,
+            "zoom": cameraState.zoom,
+            "bearing": cameraState.bearing,
+            "pitch": cameraState.pitch,
+            "isMoving": isMoving,
+          ])
+        }
+      }
       instances[instanceId] = nextState
       let labelObservation = Self.derivedFamilyState(sourceId: nextState.labelSourceId, state: nextState).labelObservation
       if labelObservation.observationEnabled {
@@ -13103,6 +13318,10 @@ final class SearchMapRenderController: RCTEventEmitter {
 
   private static func nowMs() -> Double {
     CACurrentMediaTime() * 1000
+  }
+
+  private static func roundTo3(_ value: Double) -> Double {
+    (value * 1000).rounded() / 1000
   }
 
   private static let emptyFeatureCollectionJSON = #"{"type":"FeatureCollection","features":[]}"#

@@ -36,6 +36,10 @@ type SearchMapRenderControllerNativeModule = {
     highlightedMarkerKeys: readonly string[];
     interactionMode: string;
   }) => Promise<SearchMapRenderControllerNativeSetFrameTiming | null | void>;
+  setCandidateCatalog: (payload: {
+    instanceId: string;
+    entries: ReadonlyArray<{ markerKey: string; lng: number; lat: number; rank: number }>;
+  }) => Promise<{ catalogCount: number } | null | void>;
   resetNativeApplyAttribution?: (payload: { reason?: string; runId?: string }) => Promise<void>;
   flushNativeApplyAttribution?: (payload: {
     reason?: string;
@@ -46,7 +50,7 @@ type SearchMapRenderControllerNativeModule = {
     payload: {
       instanceId: string;
       observationEnabled: boolean;
-    commitVisibleLabelHits: boolean;
+      commitVisibleLabelHits: boolean;
     } & SearchMapLabelObservationConfig
   ) => Promise<void>;
   configureNativeLayerGroups: (payload: {
@@ -266,6 +270,17 @@ export type SearchMapRenderControllerEvent =
       isMoving: boolean;
     }
   | {
+      type: 'map_native_visible_markers';
+      instanceId: string;
+      markerKeys: string[];
+      markerCount: number;
+      catalogCount: number;
+      zoom: number;
+      bearing: number;
+      pitch: number;
+      isMoving: boolean;
+    }
+  | {
       type: 'label_observation_updated';
       instanceId: string;
       visibleLabelFeatureIds: string[];
@@ -290,9 +305,9 @@ export type SearchMapRenderControllerEvent =
       renderedDotFeatureCount: number;
       emittedAtMs: number;
     }
-	  | {
-	      type: 'live_lod_transition_contract';
-	      instanceId: string;
+  | {
+      type: 'live_lod_transition_contract';
+      instanceId: string;
       flashReversalCount?: number;
       crossfadeGapCount?: number;
       pinExitMidFadeCount?: number;
@@ -312,45 +327,46 @@ export type SearchMapRenderControllerEvent =
       hasIntermediateOpacity?: boolean;
       pinIntermediateOpacityCount?: number;
       labelIntermediateOpacityCount?: number;
-	      dotIntermediateOpacityCount?: number;
-	      emittedAtMs: number;
-	    }
-	  | {
-	      type: 'pin_visual_order_contract';
-	      instanceId: string;
-	      reason: string;
-	      pinCount: number;
-	      selectedPinCount: number;
-	      movedGroupCount: number;
-	      previousGroupCount: number;
-	      screenYOrderViolationCount: number;
-	      screenYVisualOrder?: Array<{
-	        slotIndex: number;
-	        screenY: number;
-	      }>;
-	      stableSlotOwnership: boolean;
-	      appliesScreenYOrdering: boolean;
-	      usesLayerMoves: boolean;
-	      sourceMutationCount: number;
-	      isMoving: boolean;
-	      cameraZoom?: number;
-	      cameraBearing?: number;
-	      visualOrderSignature: string;
-	      previousVisualOrderSignature: string;
-	      emittedAtMs: number;
-	    }
-    | {
-        type: 'native_scoped_promoted_slot_contract';
-        instanceId: string;
-        affectedMarkerCount: number;
-        orderedAffectedMarkerCount: number;
-        pinSourceOpacityMissingCount: number;
-        exitingPinSourceOpacityRiskCount: number;
-        sourceOpacityBacksScopedPins: boolean;
-        emittedAtMs: number;
-      }
-	  | {
-	      type: 'native_press_target_resolved';
+      dotIntermediateOpacityCount?: number;
+      lodTransitionTrace?: Array<Record<string, number | string | boolean>>;
+      emittedAtMs: number;
+    }
+  | {
+      type: 'pin_visual_order_contract';
+      instanceId: string;
+      reason: string;
+      pinCount: number;
+      selectedPinCount: number;
+      movedGroupCount: number;
+      previousGroupCount: number;
+      screenYOrderViolationCount: number;
+      screenYVisualOrder?: Array<{
+        slotIndex: number;
+        screenY: number;
+      }>;
+      stableSlotOwnership: boolean;
+      appliesScreenYOrdering: boolean;
+      usesLayerMoves: boolean;
+      sourceMutationCount: number;
+      isMoving: boolean;
+      cameraZoom?: number;
+      cameraBearing?: number;
+      visualOrderSignature: string;
+      previousVisualOrderSignature: string;
+      emittedAtMs: number;
+    }
+  | {
+      type: 'native_scoped_promoted_slot_contract';
+      instanceId: string;
+      affectedMarkerCount: number;
+      orderedAffectedMarkerCount: number;
+      pinSourceOpacityMissingCount: number;
+      exitingPinSourceOpacityRiskCount: number;
+      sourceOpacityBacksScopedPins: boolean;
+      emittedAtMs: number;
+    }
+  | {
+      type: 'native_press_target_resolved';
       instanceId: string;
       sequence: number;
       target: SearchMapRenderedPressTarget | null;
@@ -430,17 +446,16 @@ export type SearchMapNativeApplyAttributionBucket = {
   operationCount: number;
 };
 
-export type SearchMapNativeApplyContextAttributionBucket =
-  SearchMapNativeApplyAttributionBucket & {
-    transactionKind: string;
-    sourceSnapshotKind: string;
-    sourcePayloadDisposition: string;
-    rawSourceDeltaCount: number;
-    appliedSourceDeltaCount: number;
-    sourceFamilySignature: string;
-    sourceModeSignature: string;
-    sourceOperationSignature: string;
-  };
+export type SearchMapNativeApplyContextAttributionBucket = SearchMapNativeApplyAttributionBucket & {
+  transactionKind: string;
+  sourceSnapshotKind: string;
+  sourcePayloadDisposition: string;
+  rawSourceDeltaCount: number;
+  appliedSourceDeltaCount: number;
+  sourceFamilySignature: string;
+  sourceModeSignature: string;
+  sourceOperationSignature: string;
+};
 
 export type SearchMapNativeApplyAttributionSummary = {
   reason: string;
@@ -820,7 +835,10 @@ export const searchMapRenderController = {
     try {
       await nativeModule.configureNativeLayerGroups(payload);
     } catch (error) {
-      const recoveredError = await recoverNativeRenderFrameSubmissionError(payload.instanceId, error);
+      const recoveredError = await recoverNativeRenderFrameSubmissionError(
+        payload.instanceId,
+        error
+      );
       if (recoveredError.message !== 'stale owner epoch') {
         throw recoveredError;
       }
@@ -834,6 +852,20 @@ export const searchMapRenderController = {
     }
     attachedPayloadByInstanceId.delete(instanceId);
     await nativeModule.detach(instanceId);
+  },
+
+  // Stage B (B1): push the full ranked candidate catalog (markerKey + coordinate
+  // + rank) once per results change. Native projects it per camera tick for
+  // screen-space LOD selection. Fire-and-forget: a failed push just leaves the
+  // previous catalog in place until the next results change.
+  async setCandidateCatalog(payload: {
+    instanceId: string;
+    entries: ReadonlyArray<{ markerKey: string; lng: number; lat: number; rank: number }>;
+  }): Promise<void> {
+    if (!nativeModule?.setCandidateCatalog) {
+      return;
+    }
+    await nativeModule.setCandidateCatalog(payload);
   },
 
   async setRenderFrame(payload: {
@@ -952,7 +984,10 @@ export const searchMapRenderController = {
     try {
       await nativeModule.configureLabelObservation(payload);
     } catch (error) {
-      const recoveredError = await recoverNativeRenderFrameSubmissionError(payload.instanceId, error);
+      const recoveredError = await recoverNativeRenderFrameSubmissionError(
+        payload.instanceId,
+        error
+      );
       if (recoveredError.message !== 'stale owner epoch') {
         throw recoveredError;
       }
@@ -1018,7 +1053,10 @@ export const searchMapRenderController = {
     try {
       return await nativeModule.queryRenderedPressTarget(payload);
     } catch (error) {
-      const recoveredError = await recoverNativeRenderFrameSubmissionError(payload.instanceId, error);
+      const recoveredError = await recoverNativeRenderFrameSubmissionError(
+        payload.instanceId,
+        error
+      );
       if (recoveredError.message !== 'stale owner epoch') {
         throw recoveredError;
       }
@@ -1054,7 +1092,10 @@ export const searchMapRenderController = {
     try {
       await nativeModule.configureNativePressTargeting(payload);
     } catch (error) {
-      const recoveredError = await recoverNativeRenderFrameSubmissionError(payload.instanceId, error);
+      const recoveredError = await recoverNativeRenderFrameSubmissionError(
+        payload.instanceId,
+        error
+      );
       if (recoveredError.message !== 'stale owner epoch') {
         throw recoveredError;
       }
