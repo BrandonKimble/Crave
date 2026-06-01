@@ -62,7 +62,6 @@ if (process.cwd() !== apiRootDir) {
   try {
     process.chdir(apiRootDir);
   } catch (error) {
-    // eslint-disable-next-line no-console
     console.warn(
       'Failed to change working directory for log output scoping',
       error,
@@ -94,7 +93,7 @@ const EXECUTION_MODE = (
   'bull'
 ).toLowerCase();
 const SUPPORTED_MODES = new Set(['bull', 'observe']);
-let TEST_MODE = (
+const TEST_MODE = (
   SUPPORTED_MODES.has(EXECUTION_MODE) ? EXECUTION_MODE : 'bull'
 ) as 'bull' | 'observe';
 
@@ -163,22 +162,22 @@ const assertPrismaClientMatchesDatabase = async (
   }
 
   const expectedRegclass = `public.${entityTable}`;
-  const regclassRows = (await prisma.$queryRaw`
+  const regclassRows = await prisma.$queryRaw`
     SELECT to_regclass(${expectedRegclass})::text AS regclass
-  `) as Array<{ regclass: string | null }>;
+  `;
   const exists = Boolean(regclassRows?.[0]?.regclass);
   if (exists) {
     return;
   }
 
-  const entityLikeRows = (await prisma.$queryRaw`
+  const entityLikeRows = await prisma.$queryRaw`
     SELECT tablename
     FROM pg_tables
     WHERE schemaname = 'public'
       AND tablename ILIKE '%entities%'
     ORDER BY tablename
     LIMIT 20
-  `) as Array<{ tablename: string }>;
+  `;
 
   const availableEntityLikeTables = entityLikeRows.map((row) => row.tablename);
   const suffix = availableEntityLikeTables.length
@@ -406,14 +405,14 @@ async function testPipeline() {
               'core_restaurant_entity_signals',
               'core_restaurant_entity_events',
               'core_restaurant_events',
-              'core_display_rank_scores',
               'core_entities',
               'collection_on_demand_requests',
               'collection_on_demand_request_users',
               'collection_on_demand_ask_events',
               'collection_keyword_attempt_history',
               'user_search_demand_daily',
-              'user_search_logs',
+              'search_events',
+              'search_event_entities',
               'demand_scoring_candidates',
               'demand_scoring_runs',
               'billing_subscriptions',
@@ -478,7 +477,7 @@ async function testPipeline() {
     const seenBatchIds = new Set<string>();
     const batchSummaries: any[] = [];
     let latestCollectionResult: any = null;
-    let aggregatedRawMentions: any[] = [];
+    const aggregatedRawMentions: any[] = [];
     const aggregatedLlmPostSamples: any[] = [];
     let batchesProcessed = 0;
     let collectedPostIds: string[] = [];
@@ -542,9 +541,9 @@ async function testPipeline() {
         llmPostSample,
         error: success
           ? null
-          : (result?.error as string | undefined) ??
+          : ((result?.error as string | undefined) ??
             (job?.failedReason as string | undefined) ??
-            null,
+            null),
       });
 
       if (llmPostSample) {
@@ -874,8 +873,8 @@ async function testPipeline() {
           typeof rv.mentionsExtracted === 'number'
             ? rv.mentionsExtracted
             : typeof rv.metrics?.mentionsExtracted === 'number'
-            ? rv.metrics.mentionsExtracted
-            : 0;
+              ? rv.metrics.mentionsExtracted
+              : 0;
         archiveMentions += mentions;
 
         const summaryAdded = addBatchSummary(job, rv, rv?.success !== false);
@@ -982,8 +981,8 @@ async function testPipeline() {
             typeof rv.mentionsExtracted === 'number'
               ? rv.mentionsExtracted
               : typeof rv.metrics?.mentionsExtracted === 'number'
-              ? rv.metrics.mentionsExtracted
-              : 0;
+                ? rv.metrics.mentionsExtracted
+                : 0;
           batchMentions += mentions;
 
           const summaryAdded = addBatchSummary(job, rv, rv?.success !== false);
@@ -1005,8 +1004,8 @@ async function testPipeline() {
           const jobPostIds = Array.isArray(job?.data?.postIds)
             ? job.data.postIds
             : Array.isArray(rv.postIds)
-            ? rv.postIds
-            : [];
+              ? rv.postIds
+              : [];
           collectedPostIds.push(...jobPostIds.map((id: string) => id || ''));
         }
 
@@ -1160,7 +1159,7 @@ async function testPipeline() {
         `- TPM(input) utilization: ${
           rateLimitMetrics.tpm.utilizationPercent
         }% (used ${rateLimitMetrics.tpm.current.toLocaleString()}, reserved ${
-          (rateLimitMetrics.tpm as any).reserved?.toLocaleString?.() || 0
+          rateLimitMetrics.tpm.reserved?.toLocaleString?.() || 0
         })`,
       );
       console.log(`- Bottleneck: ${bottleneck}`);
@@ -1211,7 +1210,9 @@ async function testPipeline() {
         console.log(
           `- Missing usageMetadata count: ${diag.noUsageMetadataCount}`,
         );
-    } catch {}
+    } catch {
+      // Best-effort token diagnostics; ignore if unavailable.
+    }
 
     // ========================================
     // GENERATE STRUCTURED JSON RESULTS FILE
@@ -1279,8 +1280,8 @@ async function testPipeline() {
               },
               tpmInput: {
                 used: rateLimitMetrics.tpm?.current,
-                reserved: (rateLimitMetrics.tpm as any)?.reserved || 0,
-                windowTokens: (rateLimitMetrics.tpm as any)?.windowTokens || 0,
+                reserved: rateLimitMetrics.tpm?.reserved || 0,
+                windowTokens: rateLimitMetrics.tpm?.windowTokens || 0,
                 utilizationPercent: rateLimitMetrics.tpm?.utilizationPercent,
                 avgTokensPerRequest:
                   rateLimitMetrics.tpm?.avgTokensPerRequest || 0,
