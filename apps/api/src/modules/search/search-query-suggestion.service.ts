@@ -3,7 +3,7 @@ import {
   DemandSignalKind,
   DemandSourceKind,
   Prisma,
-  SearchLogEventKind,
+  SearchEventKind,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
@@ -350,14 +350,14 @@ export class SearchQuerySuggestionService {
       WITH event_rows AS (
         SELECT
           LOWER(TRIM(query_text)) AS query_key,
-          COALESCE(search_request_id::text, log_id::text) AS event_key,
+          event_id::text AS event_key,
           (ARRAY_AGG(TRIM(query_text) ORDER BY logged_at DESC))[1] AS query_text,
           MAX(logged_at) AS logged_at
-        FROM user_search_logs
+        FROM search_events
         WHERE user_id = ${userId}::uuid
           AND event_kind IN (${Prisma.join(
-            [SearchLogEventKind.backend, SearchLogEventKind.cache].map(
-              (kind) => Prisma.sql`${kind}::search_log_event_kind`,
+            [SearchEventKind.backend, SearchEventKind.cache].map(
+              (kind) => Prisma.sql`${kind}::search_event_kind`,
             ),
           )})
           AND logged_at >= ${sinceKey}::timestamp
@@ -414,12 +414,12 @@ export class SearchQuerySuggestionService {
       WITH event_rows AS (
         SELECT
           LOWER(TRIM(query_text)) AS query_key,
-          COALESCE(search_request_id::text, log_id::text) AS event_key
-        FROM user_search_logs
+          event_id::text AS event_key
+        FROM search_events
         WHERE user_id = ${userId}::uuid
           AND event_kind IN (${Prisma.join(
-            [SearchLogEventKind.backend, SearchLogEventKind.cache].map(
-              (kind) => Prisma.sql`${kind}::search_log_event_kind`,
+            [SearchEventKind.backend, SearchEventKind.cache].map(
+              (kind) => Prisma.sql`${kind}::search_event_kind`,
             ),
           )})
           AND logged_at >= ${sinceKey}::timestamp

@@ -13,7 +13,7 @@ import {
   OnDemandReason,
   Prisma,
   PrismaClient,
-  SearchLogEventKind,
+  SearchEventKind,
 } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
@@ -326,24 +326,42 @@ async function insertSearchLog(params: {
   marketKey?: string | null;
   collectableMarketKey?: string | null;
   searchRequestId?: string | null;
-  eventKind?: SearchLogEventKind;
+  eventKind?: SearchEventKind;
   metadata?: Prisma.InputJsonValue;
 }): Promise<void> {
-  await prisma.searchLog.create({
-    data: {
+  const resolvedMarketKey = params.marketKey ?? marketKey;
+  const resolvedCollectableMarketKey =
+    params.collectableMarketKey === undefined
+      ? collectableMarketKey
+      : params.collectableMarketKey;
+  const eventKind = params.eventKind ?? SearchEventKind.backend;
+  // A logical search is one SearchEvent (unique on searchRequestId) with one
+  // attribution row per entity. Calls sharing a searchRequestId append entities
+  // to the same event; otherwise each call is its own event.
+  const searchRequestId = params.searchRequestId ?? randomUUID();
+  const attribution = {
+    entityId: params.entity.entityId,
+    entityType: params.entity.type,
+    userId: params.userId,
+    marketKey: resolvedMarketKey,
+    collectableMarketKey: resolvedCollectableMarketKey,
+    eventKind,
+    loggedAt: params.loggedAt,
+  };
+  await prisma.searchEvent.upsert({
+    where: { searchRequestId },
+    create: {
+      searchRequestId,
       userId: params.userId,
-      entityId: params.entity.entityId,
-      entityType: params.entity.type,
-      marketKey: params.marketKey ?? marketKey,
-      collectableMarketKey:
-        params.collectableMarketKey === undefined
-          ? collectableMarketKey
-          : params.collectableMarketKey,
       queryText: params.queryText,
-      searchRequestId: params.searchRequestId ?? undefined,
-      eventKind: params.eventKind ?? SearchLogEventKind.backend,
+      eventKind,
+      primaryMarketKey: resolvedMarketKey,
       loggedAt: params.loggedAt,
       metadata: params.metadata ?? fixtureMarker,
+      entities: { create: attribution },
+    },
+    update: {
+      entities: { create: attribution },
     },
   });
 }
@@ -458,7 +476,7 @@ async function runCacheAttributionIdempotencyFixture(params: {
     marketKey: fixtureUiMarketA,
     collectableMarketKey,
     searchRequestId: originalBackendSearchRequestId,
-    eventKind: SearchLogEventKind.backend,
+    eventKind: SearchEventKind.backend,
   });
   await insertSearchLog({
     userId: params.users[0].userId,
@@ -468,7 +486,7 @@ async function runCacheAttributionIdempotencyFixture(params: {
     marketKey: fixtureUiMarketB,
     collectableMarketKey,
     searchRequestId: originalBackendSearchRequestId,
-    eventKind: SearchLogEventKind.backend,
+    eventKind: SearchEventKind.backend,
   });
   await insertSearchLog({
     userId: params.users[0].userId,
@@ -478,7 +496,7 @@ async function runCacheAttributionIdempotencyFixture(params: {
     marketKey,
     collectableMarketKey: null,
     searchRequestId: originalBackendSearchRequestId,
-    eventKind: SearchLogEventKind.backend,
+    eventKind: SearchEventKind.backend,
   });
 
   const searchServiceHarness = Object.create(SearchService.prototype) as {
@@ -521,21 +539,25 @@ async function runCacheAttributionIdempotencyFixture(params: {
       error.message.includes('cacheRevealRequestId is required');
   }
 
-  const cacheRows = await prisma.searchLog.findMany({
-    where: {
-      searchRequestId: cacheRevealRequestId,
-      userId: params.users[0].userId,
-      eventKind: SearchLogEventKind.cache,
-    },
-    select: {
-      logId: true,
-      searchRequestId: true,
-      marketKey: true,
-      collectableMarketKey: true,
-      metadata: true,
-    },
-    orderBy: [{ marketKey: 'asc' }, { collectableMarketKey: 'asc' }],
-  });
+  const cacheRows = (
+    await prisma.searchEventEntity.findMany({
+      where: {
+        userId: params.users[0].userId,
+        eventKind: SearchEventKind.cache,
+        event: { searchRequestId: cacheRevealRequestId },
+      },
+      select: {
+        marketKey: true,
+        collectableMarketKey: true,
+        event: { select: { metadata: true } },
+      },
+      orderBy: [{ marketKey: 'asc' }, { collectableMarketKey: 'asc' }],
+    })
+  ).map((row) => ({
+    marketKey: row.marketKey,
+    collectableMarketKey: row.collectableMarketKey,
+    metadata: row.event.metadata,
+  }));
   const observed = {
     firstInserted: first.inserted,
     retryInserted: retry.inserted,
@@ -629,7 +651,7 @@ async function runCacheAttributionAggregationFixture(params: {
       marketKey: uiMarketKey,
       collectableMarketKey,
       searchRequestId: originalBackendSearchRequestId,
-      eventKind: SearchLogEventKind.backend,
+      eventKind: SearchEventKind.backend,
     });
   }
 
@@ -650,14 +672,20 @@ async function runCacheAttributionAggregationFixture(params: {
     },
     params.users[1].userId,
   );
-  await prisma.searchLog.updateMany({
-    where: {
-      searchRequestId: cacheRevealRequestId,
-      userId: params.users[1].userId,
-      eventKind: SearchLogEventKind.cache,
-    },
-    data: { loggedAt: fixtureDate },
+  const cacheEvent = await prisma.searchEvent.findUnique({
+    where: { searchRequestId: cacheRevealRequestId },
+    select: { eventId: true },
   });
+  if (cacheEvent) {
+    await prisma.searchEvent.update({
+      where: { eventId: cacheEvent.eventId },
+      data: { loggedAt: fixtureDate },
+    });
+    await prisma.searchEventEntity.updateMany({
+      where: { eventId: cacheEvent.eventId },
+      data: { loggedAt: fixtureDate },
+    });
+  }
 
   await params.aggregation.rebuildDateRange({
     startDate: fixtureDay,
@@ -773,7 +801,7 @@ async function runAutocompleteSelectionAggregationFixture(params: {
     marketKey: fixtureUiMarketA,
     collectableMarketKey,
     searchRequestId: '99999999-9999-4999-8999-999999999991',
-    eventKind: SearchLogEventKind.backend,
+    eventKind: SearchEventKind.backend,
     metadata: autocompleteMetadata,
   });
   await insertSearchLog({
@@ -784,7 +812,7 @@ async function runAutocompleteSelectionAggregationFixture(params: {
     marketKey: fixtureUiMarketA,
     collectableMarketKey,
     searchRequestId: '99999999-9999-4999-8999-999999999992',
-    eventKind: SearchLogEventKind.cache,
+    eventKind: SearchEventKind.cache,
     metadata: autocompleteMetadata,
   });
 
@@ -1169,7 +1197,7 @@ async function runFreshPopularityOverlayFixture(params: {
       searchRequestId,
       marketKey: fixtureUiMarketA,
       collectableMarketKey,
-      eventKind: SearchLogEventKind.backend,
+      eventKind: SearchEventKind.backend,
     });
     await insertSearchLog({
       userId: user.userId,
@@ -1179,7 +1207,7 @@ async function runFreshPopularityOverlayFixture(params: {
       searchRequestId,
       marketKey: fixtureUiMarketB,
       collectableMarketKey,
-      eventKind: SearchLogEventKind.backend,
+      eventKind: SearchEventKind.backend,
     });
   }
   for (let index = 0; index < 12; index += 1) {
@@ -1191,7 +1219,7 @@ async function runFreshPopularityOverlayFixture(params: {
       searchRequestId: `66666666-6666-4666-8666-${String(index).padStart(12, '0')}`,
       marketKey,
       collectableMarketKey,
-      eventKind: SearchLogEventKind.backend,
+      eventKind: SearchEventKind.backend,
     });
   }
   await insertSearchLog({
@@ -1202,7 +1230,7 @@ async function runFreshPopularityOverlayFixture(params: {
     searchRequestId: '12121212-1212-4212-8212-121212121212',
     marketKey,
     collectableMarketKey,
-    eventKind: SearchLogEventKind.backend,
+    eventKind: SearchEventKind.backend,
   });
   await insertSearchLog({
     userId: params.users[7].userId,
@@ -1212,7 +1240,7 @@ async function runFreshPopularityOverlayFixture(params: {
     searchRequestId: '13131313-1313-4313-8313-131313131313',
     marketKey,
     collectableMarketKey,
-    eventKind: SearchLogEventKind.backend,
+    eventKind: SearchEventKind.backend,
     metadata: {
       ...fixtureMarker,
       submissionSource: 'autocomplete',
@@ -3081,7 +3109,7 @@ async function runQuerySuggestionAggregationFixture(params: {
       marketKey: suggestionAdversarialMarketKey,
       collectableMarketKey,
       searchRequestId: `99999999-9999-4999-8999-${String(index).padStart(12, '0')}`,
-      eventKind: SearchLogEventKind.backend,
+      eventKind: SearchEventKind.backend,
     });
   }
   for (const [index, user] of params.users.slice(6, 17).entries()) {
@@ -3093,7 +3121,7 @@ async function runQuerySuggestionAggregationFixture(params: {
       marketKey: suggestionAdversarialMarketKey,
       collectableMarketKey,
       searchRequestId: `aaaaaaaa-aaaa-4aaa-8aaa-${String(index).padStart(12, '0')}`,
-      eventKind: SearchLogEventKind.cache,
+      eventKind: SearchEventKind.cache,
     });
   }
   for (let index = 0; index < 10; index += 1) {
@@ -3105,7 +3133,7 @@ async function runQuerySuggestionAggregationFixture(params: {
       marketKey: suggestionAdversarialMarketKey,
       collectableMarketKey,
       searchRequestId: `bbbbbbbb-bbbb-4bbb-8bbb-${String(index).padStart(12, '0')}`,
-      eventKind: SearchLogEventKind.backend,
+      eventKind: SearchEventKind.backend,
     });
   }
 
@@ -3188,7 +3216,7 @@ async function runQuerySuggestionAdversarialFixture(params: {
       marketKey: suggestionAdversarialMarketKey,
       searchRequestId: `22222222-2222-4222-8222-${String(index).padStart(12, '0')}`,
       eventKind:
-        index % 2 === 0 ? SearchLogEventKind.backend : SearchLogEventKind.cache,
+        index % 2 === 0 ? SearchEventKind.backend : SearchEventKind.cache,
     });
   }
   for (const user of users.slice(1, 21)) {
@@ -3362,7 +3390,7 @@ async function runServerRecentSearchesFixture(params: {
     loggedAt: daysAgo(0.6),
     marketKey: fixtureUiMarketA,
     searchRequestId: sushiBackendRequestId,
-    eventKind: SearchLogEventKind.backend,
+    eventKind: SearchEventKind.backend,
   });
   await insertSearchLog({
     userId: user.userId,
@@ -3371,7 +3399,7 @@ async function runServerRecentSearchesFixture(params: {
     loggedAt: daysAgo(0.6),
     marketKey: fixtureUiMarketB,
     searchRequestId: sushiBackendRequestId,
-    eventKind: SearchLogEventKind.backend,
+    eventKind: SearchEventKind.backend,
   });
   await insertSearchLog({
     userId: user.userId,
@@ -3380,7 +3408,7 @@ async function runServerRecentSearchesFixture(params: {
     loggedAt: daysAgo(0.4),
     marketKey: fixtureUiMarketA,
     searchRequestId: tacosBackendRequestId,
-    eventKind: SearchLogEventKind.backend,
+    eventKind: SearchEventKind.backend,
   });
   await insertSearchLog({
     userId: user.userId,
@@ -3389,7 +3417,7 @@ async function runServerRecentSearchesFixture(params: {
     loggedAt: daysAgo(0.2),
     marketKey: fixtureUiMarketA,
     searchRequestId: sushiCacheRequestId,
-    eventKind: SearchLogEventKind.cache,
+    eventKind: SearchEventKind.cache,
   });
   await insertSearchLog({
     userId: user.userId,
@@ -3398,7 +3426,7 @@ async function runServerRecentSearchesFixture(params: {
     loggedAt: daysAgo(0.2),
     marketKey: fixtureUiMarketB,
     searchRequestId: sushiCacheRequestId,
-    eventKind: SearchLogEventKind.cache,
+    eventKind: SearchEventKind.cache,
   });
 
   const searchServiceHarness = Object.create(SearchService.prototype) as {
@@ -4185,7 +4213,8 @@ async function cleanup(params: {
       ],
     },
   });
-  await prisma.searchLog.deleteMany({
+  // Deleting the event cascades to its attribution rows (onDelete: Cascade).
+  await prisma.searchEvent.deleteMany({
     where: { metadata: { path: ['fixtureRunId'], equals: fixtureRunId } },
   });
   for (const entity of params.touchedEntities) {

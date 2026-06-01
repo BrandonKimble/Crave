@@ -193,83 +193,14 @@ export class RestaurantEntityMergeService {
     canonicalId: string,
     duplicateId: string,
   ): Promise<void> {
-    const duplicateLogs = await tx.searchLog.findMany({
+    // Per-entity attribution rows carry only the entity reference; query-level
+    // totals live on the parent SearchEvent. There is no (event, entity) unique
+    // constraint, so rekeying is a plain reassignment — any duplicate (event,
+    // canonical) rows are deduped downstream via COUNT(DISTINCT event_id).
+    await tx.searchEventEntity.updateMany({
       where: { entityId: duplicateId },
-      select: {
-        logId: true,
-        searchRequestId: true,
-        marketKey: true,
-        collectableMarketKey: true,
-        loggedAt: true,
-        totalResults: true,
-        totalFoodResults: true,
-        totalRestaurantResults: true,
-        queryExecutionTimeMs: true,
-        marketStatus: true,
-        metadata: true,
-      },
+      data: { entityId: canonicalId },
     });
-
-    for (const log of duplicateLogs) {
-      const conflicting = log.searchRequestId
-        ? await tx.searchLog.findFirst({
-            where: {
-              searchRequestId: log.searchRequestId,
-              entityId: canonicalId,
-              marketKey: log.marketKey,
-              collectableMarketKey: log.collectableMarketKey,
-              logId: { not: log.logId },
-            },
-            select: {
-              logId: true,
-              loggedAt: true,
-              totalResults: true,
-              totalFoodResults: true,
-              totalRestaurantResults: true,
-              queryExecutionTimeMs: true,
-              marketStatus: true,
-            },
-          })
-        : null;
-
-      if (!conflicting) {
-        await tx.searchLog.update({
-          where: { logId: log.logId },
-          data: { entityId: canonicalId },
-        });
-        continue;
-      }
-
-      await tx.searchLog.update({
-        where: { logId: conflicting.logId },
-        data: {
-          loggedAt:
-            this.maxDate(conflicting.loggedAt, log.loggedAt) ??
-            conflicting.loggedAt,
-          totalResults: Math.max(
-            conflicting.totalResults ?? 0,
-            log.totalResults ?? 0,
-          ),
-          totalFoodResults: Math.max(
-            conflicting.totalFoodResults ?? 0,
-            log.totalFoodResults ?? 0,
-          ),
-          totalRestaurantResults: Math.max(
-            conflicting.totalRestaurantResults ?? 0,
-            log.totalRestaurantResults ?? 0,
-          ),
-          queryExecutionTimeMs: this.minNumber(
-            conflicting.queryExecutionTimeMs,
-            log.queryExecutionTimeMs,
-          ),
-          marketStatus: conflicting.marketStatus ?? log.marketStatus,
-        },
-      });
-
-      await tx.searchLog.delete({
-        where: { logId: log.logId },
-      });
-    }
   }
 
   private async rehomeRestaurantViews(

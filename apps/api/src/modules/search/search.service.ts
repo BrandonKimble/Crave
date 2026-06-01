@@ -4,7 +4,7 @@ import {
   EntityType,
   OnDemandReason,
   Prisma,
-  SearchLogEventKind,
+  SearchEventKind,
 } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -2379,32 +2379,39 @@ export class SearchService {
         attributedMarketKeys,
         collectableMarketKeys,
       );
-      const rows = targets.flatMap(({ entityId, entityType }) =>
+      const entityRows = targets.flatMap(({ entityId, entityType }) =>
         attributionScopes.map((scope) => ({
           entityId,
           entityType,
+          userId: userId ?? null,
           marketKey: scope.marketKey,
           collectableMarketKey: scope.collectableMarketKey,
-          queryText: request.sourceQuery ?? null,
+          eventKind: SearchEventKind.backend,
+          loggedAt,
+        })),
+      );
+
+      // One event row per search (idempotent on searchRequestId for retries),
+      // with one attribution row per (entity x market scope).
+      await this.prisma.searchEvent.upsert({
+        where: { searchRequestId: context.searchRequestId },
+        update: {},
+        create: {
           searchRequestId: context.searchRequestId,
+          userId: userId ?? null,
+          queryText: request.sourceQuery ?? null,
+          eventKind: SearchEventKind.backend,
+          primaryMarketKey,
           totalResults: context.totalResults,
           totalFoodResults: context.totalFoodResults,
           totalRestaurantResults: context.totalRestaurantResults,
           queryExecutionTimeMs: context.queryExecutionTimeMs,
           marketStatus: context.resultCoverageStatus,
-          eventKind: SearchLogEventKind.backend,
-          metadata: {
-            ...metadata,
-            primaryMarketKey,
-          },
+          submissionSource: request.submissionSource ?? null,
+          metadata,
           loggedAt,
-          userId: userId ?? null,
-        })),
-      );
-
-      await this.prisma.searchLog.createMany({
-        data: rows,
-        skipDuplicates: true,
+          entities: { createMany: { data: entityRows } },
+        },
       });
     } catch (error) {
       this.logger.warn('Failed to log search impressions', {
@@ -2487,55 +2494,56 @@ export class SearchService {
       throw new BadRequestException('cacheRevealRequestId is required');
     }
 
-    const originalRows = await this.prisma.searchLog.findMany({
+    // Clone the server-owned backend event (and its attribution rows) into a
+    // fresh cache-reveal event. Never trust client-supplied attribution.
+    // Idempotent on retry: if this reveal id was already cloned, do nothing.
+    const alreadyRevealed = await this.prisma.searchEvent.findUnique({
+      where: { searchRequestId: cacheRevealRequestId },
+      select: { eventId: true },
+    });
+    if (alreadyRevealed) {
+      return { inserted: 0 };
+    }
+
+    const original = await this.prisma.searchEvent.findFirst({
       where: {
         searchRequestId: dto.originalBackendSearchRequestId,
         userId: normalizedUserId,
-        eventKind: SearchLogEventKind.backend,
+        eventKind: SearchEventKind.backend,
       },
-      select: {
-        entityId: true,
-        entityType: true,
-        marketKey: true,
-        collectableMarketKey: true,
-        queryText: true,
-        totalResults: true,
-        totalFoodResults: true,
-        totalRestaurantResults: true,
-        queryExecutionTimeMs: true,
-        marketStatus: true,
-        metadata: true,
-      },
+      include: { entities: true },
     });
 
-    if (originalRows.length === 0) {
+    if (!original || original.entities.length === 0) {
       return { inserted: 0 };
     }
 
     const loggedAt = new Date();
-    const rows = originalRows.map((row) => {
-      const metadata = this.toJsonObject(row.metadata);
-      const originalSubmissionSource =
-        typeof metadata.submissionSource === 'string'
-          ? metadata.submissionSource
-          : null;
-      const originalSubmissionContext = metadata.submissionContext ?? null;
-      return {
-        entityId: row.entityId,
-        entityType: row.entityType,
-        userId: normalizedUserId,
-        marketKey: row.marketKey,
-        collectableMarketKey: row.collectableMarketKey,
-        queryText: row.queryText,
+    const originalMetadata = this.toJsonObject(original.metadata);
+    const originalSubmissionSource =
+      typeof originalMetadata.submissionSource === 'string'
+        ? originalMetadata.submissionSource
+        : null;
+    const originalSubmissionContext =
+      originalMetadata.submissionContext ?? null;
+
+    await this.prisma.searchEvent.upsert({
+      where: { searchRequestId: cacheRevealRequestId },
+      update: {},
+      create: {
         searchRequestId: cacheRevealRequestId,
-        totalResults: row.totalResults,
-        totalFoodResults: row.totalFoodResults,
-        totalRestaurantResults: row.totalRestaurantResults,
-        queryExecutionTimeMs: row.queryExecutionTimeMs,
-        marketStatus: row.marketStatus,
-        eventKind: SearchLogEventKind.cache,
+        userId: normalizedUserId,
+        queryText: original.queryText,
+        eventKind: SearchEventKind.cache,
+        primaryMarketKey: original.primaryMarketKey,
+        totalResults: original.totalResults,
+        totalFoodResults: original.totalFoodResults,
+        totalRestaurantResults: original.totalRestaurantResults,
+        queryExecutionTimeMs: original.queryExecutionTimeMs,
+        marketStatus: original.marketStatus,
+        submissionSource: dto.submissionSource ?? null,
         metadata: {
-          ...metadata,
+          ...originalMetadata,
           submissionSource: dto.submissionSource ?? null,
           submissionContext: this.normalizeSearchSubmissionContext(
             dto.submissionContext,
@@ -2557,15 +2565,23 @@ export class SearchService {
           },
         },
         loggedAt,
-      };
+        entities: {
+          createMany: {
+            data: original.entities.map((row) => ({
+              entityId: row.entityId,
+              entityType: row.entityType,
+              userId: normalizedUserId,
+              marketKey: row.marketKey,
+              collectableMarketKey: row.collectableMarketKey,
+              eventKind: SearchEventKind.cache,
+              loggedAt,
+            })),
+          },
+        },
+      },
     });
 
-    const result = await this.prisma.searchLog.createMany({
-      data: rows,
-      skipDuplicates: true,
-    });
-
-    return { inserted: result.count };
+    return { inserted: original.entities.length };
   }
 
   private toJsonObject(
@@ -2660,54 +2676,44 @@ export class SearchService {
         entityName: string | null;
       }>
     >(Prisma.sql`
-      WITH event_rows AS (
-        SELECT
-          LOWER(TRIM(query_text)) AS query_key,
-          COALESCE(search_request_id::text, log_id::text) AS event_key,
-          (ARRAY_AGG(TRIM(query_text) ORDER BY logged_at DESC))[1] AS query_text,
-          MAX(logged_at) AS logged_at
-        FROM user_search_logs
+      WITH latest_query_events AS (
+        SELECT DISTINCT ON (LOWER(TRIM(query_text)))
+          event_id,
+          TRIM(query_text) AS query_text,
+          logged_at,
+          metadata
+        FROM search_events
         WHERE user_id = ${userId}::uuid
           AND event_kind IN (${Prisma.join(
-            [SearchLogEventKind.backend, SearchLogEventKind.cache].map(
-              (kind) => Prisma.sql`${kind}::search_log_event_kind`,
+            [SearchEventKind.backend, SearchEventKind.cache].map(
+              (kind) => Prisma.sql`${kind}::search_event_kind`,
             ),
           )})
           AND query_text IS NOT NULL
           AND TRIM(query_text) <> ''
-        GROUP BY query_key, event_key
-      ),
-      latest_query_events AS (
-        SELECT DISTINCT ON (query_key)
-          query_key,
-          event_key,
-          query_text,
-          logged_at
-        FROM event_rows
-        ORDER BY query_key, logged_at DESC
+        ORDER BY LOWER(TRIM(query_text)), logged_at DESC
       )
       SELECT
         lqe.query_text AS "queryText",
         lqe.logged_at AS "loggedAt",
-        sl.metadata AS "metadata",
-        sl.entity_id::text AS "entityId",
-        sl.entity_type AS "entityType",
+        lqe.metadata AS "metadata",
+        see.entity_id::text AS "entityId",
+        see.entity_type AS "entityType",
         e.name AS "entityName"
       FROM latest_query_events lqe
       JOIN LATERAL (
-        SELECT sl.*
-        FROM user_search_logs sl
-        WHERE COALESCE(sl.search_request_id::text, sl.log_id::text) = lqe.event_key
-          AND LOWER(TRIM(sl.query_text)) = lqe.query_key
+        SELECT see.*
+        FROM search_event_entities see
+        WHERE see.event_id = lqe.event_id
         ORDER BY
           CASE
-            WHEN sl.metadata#>>'{submissionContext,selectedEntityId}' = sl.entity_id::text THEN 0
+            WHEN lqe.metadata#>>'{submissionContext,selectedEntityId}' = see.entity_id::text THEN 0
             ELSE 1
           END,
-          sl.logged_at DESC
+          see.logged_at DESC
         LIMIT 1
-      ) sl ON TRUE
-      LEFT JOIN core_entities e ON e.entity_id = sl.entity_id
+      ) see ON TRUE
+      LEFT JOIN core_entities e ON e.entity_id = see.entity_id
       ORDER BY lqe.logged_at DESC
       LIMIT ${take}
     `);

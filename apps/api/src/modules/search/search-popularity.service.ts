@@ -3,7 +3,7 @@ import {
   DemandSignalKind,
   DemandSourceKind,
   Prisma,
-  SearchLogEventKind,
+  SearchEventKind,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
@@ -99,23 +99,23 @@ export class SearchPopularityService {
         : 0.35;
     const todayKey = this.formatDateKey(this.startOfUtcDay(new Date()));
     const filters: Prisma.Sql[] = [
-      Prisma.sql`entity_id IN (${Prisma.join(
+      Prisma.sql`see.entity_id IN (${Prisma.join(
         entityIds.map((id) => Prisma.sql`${id}::uuid`),
       )})`,
-      Prisma.sql`event_kind IN (${Prisma.join(
-        [SearchLogEventKind.backend, SearchLogEventKind.cache].map(
-          (kind) => Prisma.sql`${kind}::search_log_event_kind`,
+      Prisma.sql`see.event_kind IN (${Prisma.join(
+        [SearchEventKind.backend, SearchEventKind.cache].map(
+          (kind) => Prisma.sql`${kind}::search_event_kind`,
         ),
       )})`,
-      Prisma.sql`logged_at >= ${todayKey}::date`,
+      Prisma.sql`see.logged_at >= ${todayKey}::date`,
     ];
 
     if (userId) {
-      filters.push(Prisma.sql`user_id = ${userId}::uuid`);
+      filters.push(Prisma.sql`see.user_id = ${userId}::uuid`);
     }
 
     if (normalizedMarketKey) {
-      filters.push(Prisma.sql`LOWER(market_key) = ${normalizedMarketKey}`);
+      filters.push(Prisma.sql`LOWER(see.market_key) = ${normalizedMarketKey}`);
     }
 
     const rows = await this.prisma.$queryRaw<
@@ -123,17 +123,18 @@ export class SearchPopularityService {
     >(Prisma.sql`
       WITH event_rows AS (
         SELECT DISTINCT
-          entity_id::text AS "entityId",
-          user_id::text AS "userId",
-          COALESCE(search_request_id::text, log_id::text) AS "eventKey",
-          event_kind AS "eventKind",
+          see.entity_id::text AS "entityId",
+          see.user_id::text AS "userId",
+          see.event_id::text AS "eventKey",
+          see.event_kind AS "eventKind",
           (
-            metadata->>'submissionSource' = 'autocomplete'
-            AND metadata#>>'{submissionContext,matchType}' = 'entity'
-            AND metadata#>>'{submissionContext,selectedEntityId}' = entity_id::text
-            AND metadata#>>'{submissionContext,selectedEntityType}' = entity_type::text
+            ev.metadata->>'submissionSource' = 'autocomplete'
+            AND ev.metadata#>>'{submissionContext,matchType}' = 'entity'
+            AND ev.metadata#>>'{submissionContext,selectedEntityId}' = see.entity_id::text
+            AND ev.metadata#>>'{submissionContext,selectedEntityType}' = see.entity_type::text
           ) AS "isAutocompleteSelection"
-        FROM user_search_logs
+        FROM search_event_entities see
+        JOIN search_events ev ON ev.event_id = see.event_id
         WHERE ${Prisma.join(filters, ' AND ')}
       ),
       weighted_by_user AS (
@@ -143,7 +144,7 @@ export class SearchPopularityService {
           SUM(
             CASE
               WHEN "isAutocompleteSelection" THEN 1.5
-              WHEN "eventKind" = 'cache'::search_log_event_kind THEN ${cacheWeight}
+              WHEN "eventKind" = 'cache'::search_event_kind THEN ${cacheWeight}
               ELSE 1.0
             END
           )::double precision AS "weightedEventCount"

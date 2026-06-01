@@ -679,33 +679,34 @@ export class SearchDemandAggregationService {
         metadata
       )
       SELECT
-        logged_at::date AS demand_date,
-        user_id,
+        see.logged_at::date AS demand_date,
+        see.user_id,
         NULL,
-        collectable_market_key,
+        see.collectable_market_key,
         'entity'::demand_subject_kind,
-        entity_id::text,
-        entity_id,
-        entity_type,
-        MIN(NULLIF(LOWER(TRIM(query_text)), '')),
+        see.entity_id::text,
+        see.entity_id,
+        see.entity_type,
+        MIN(NULLIF(LOWER(TRIM(ev.query_text)), '')),
         'search_log'::demand_source_kind,
-        event_kind::text::demand_signal_kind,
+        see.event_kind::text::demand_signal_kind,
         NULL,
-        COUNT(DISTINCT COALESCE(search_request_id::text, log_id::text))::int,
-        MIN(logged_at),
-        MAX(logged_at),
-        jsonb_build_object('rawSource', 'user_search_logs', 'scope', 'collectable_market')
-      FROM user_search_logs
-      WHERE logged_at >= ${startDateKey}::date
-        AND logged_at < ${endDateExclusiveKey}::date
-        AND collectable_market_key IS NOT NULL
+        COUNT(DISTINCT see.event_id::text)::int,
+        MIN(see.logged_at),
+        MAX(see.logged_at),
+        jsonb_build_object('rawSource', 'search_events', 'scope', 'collectable_market')
+      FROM search_event_entities see
+      JOIN search_events ev ON ev.event_id = see.event_id
+      WHERE see.logged_at >= ${startDateKey}::date
+        AND see.logged_at < ${endDateExclusiveKey}::date
+        AND see.collectable_market_key IS NOT NULL
       GROUP BY
-        logged_at::date,
-        user_id,
-        collectable_market_key,
-        entity_id,
-        entity_type,
-        event_kind
+        see.logged_at::date,
+        see.user_id,
+        see.collectable_market_key,
+        see.entity_id,
+        see.entity_type,
+        see.event_kind
     `;
   }
 
@@ -734,31 +735,32 @@ export class SearchDemandAggregationService {
         metadata
       )
       SELECT
-        logged_at::date AS demand_date,
-        user_id,
+        see.logged_at::date AS demand_date,
+        see.user_id,
         NULL,
         NULL,
         'entity'::demand_subject_kind,
-        entity_id::text,
-        entity_id,
-        entity_type,
-        MIN(NULLIF(LOWER(TRIM(query_text)), '')),
+        see.entity_id::text,
+        see.entity_id,
+        see.entity_type,
+        MIN(NULLIF(LOWER(TRIM(ev.query_text)), '')),
         'search_log'::demand_source_kind,
-        event_kind::text::demand_signal_kind,
+        see.event_kind::text::demand_signal_kind,
         NULL,
-        COUNT(DISTINCT COALESCE(search_request_id::text, log_id::text))::int,
-        MIN(logged_at),
-        MAX(logged_at),
-        jsonb_build_object('rawSource', 'user_search_logs', 'scope', 'global')
-      FROM user_search_logs
-      WHERE logged_at >= ${startDateKey}::date
-        AND logged_at < ${endDateExclusiveKey}::date
+        COUNT(DISTINCT see.event_id::text)::int,
+        MIN(see.logged_at),
+        MAX(see.logged_at),
+        jsonb_build_object('rawSource', 'search_events', 'scope', 'global')
+      FROM search_event_entities see
+      JOIN search_events ev ON ev.event_id = see.event_id
+      WHERE see.logged_at >= ${startDateKey}::date
+        AND see.logged_at < ${endDateExclusiveKey}::date
       GROUP BY
-        logged_at::date,
-        user_id,
-        entity_id,
-        entity_type,
-        event_kind
+        see.logged_at::date,
+        see.user_id,
+        see.entity_id,
+        see.entity_type,
+        see.event_kind
     `;
   }
 
@@ -787,33 +789,34 @@ export class SearchDemandAggregationService {
         metadata
       )
       SELECT
-        logged_at::date AS demand_date,
-        user_id,
-        market_key,
+        see.logged_at::date AS demand_date,
+        see.user_id,
+        see.market_key,
         NULL,
         'entity'::demand_subject_kind,
-        entity_id::text,
-        entity_id,
-        entity_type,
-        MIN(NULLIF(LOWER(TRIM(query_text)), '')),
+        see.entity_id::text,
+        see.entity_id,
+        see.entity_type,
+        MIN(NULLIF(LOWER(TRIM(ev.query_text)), '')),
         'search_log'::demand_source_kind,
-        event_kind::text::demand_signal_kind,
+        see.event_kind::text::demand_signal_kind,
         NULL,
-        COUNT(DISTINCT COALESCE(search_request_id::text, log_id::text))::int,
-        MIN(logged_at),
-        MAX(logged_at),
-        jsonb_build_object('rawSource', 'user_search_logs', 'scope', 'ui_market')
-      FROM user_search_logs
-      WHERE logged_at >= ${startDateKey}::date
-        AND logged_at < ${endDateExclusiveKey}::date
-        AND market_key IS NOT NULL
+        COUNT(DISTINCT see.event_id::text)::int,
+        MIN(see.logged_at),
+        MAX(see.logged_at),
+        jsonb_build_object('rawSource', 'search_events', 'scope', 'ui_market')
+      FROM search_event_entities see
+      JOIN search_events ev ON ev.event_id = see.event_id
+      WHERE see.logged_at >= ${startDateKey}::date
+        AND see.logged_at < ${endDateExclusiveKey}::date
+        AND see.market_key IS NOT NULL
       GROUP BY
-        logged_at::date,
-        user_id,
-        market_key,
-        entity_id,
-        entity_type,
-        event_kind
+        see.logged_at::date,
+        see.user_id,
+        see.market_key,
+        see.entity_id,
+        see.entity_type,
+        see.event_kind
     `;
   }
 
@@ -843,19 +846,20 @@ export class SearchDemandAggregationService {
       )
       WITH query_events AS (
         SELECT DISTINCT
-          logged_at::date AS demand_date,
-          user_id,
-          collectable_market_key,
-          NULLIF(LOWER(TRIM(query_text)), '') AS normalized_text,
-          event_kind,
-          COALESCE(search_request_id::text, log_id::text) AS event_key,
-          logged_at
-        FROM user_search_logs
-        WHERE logged_at >= ${startDateKey}::date
-          AND logged_at < ${endDateExclusiveKey}::date
-          AND collectable_market_key IS NOT NULL
-          AND query_text IS NOT NULL
-          AND NULLIF(LOWER(TRIM(query_text)), '') IS NOT NULL
+          see.logged_at::date AS demand_date,
+          see.user_id,
+          see.collectable_market_key,
+          NULLIF(LOWER(TRIM(ev.query_text)), '') AS normalized_text,
+          see.event_kind,
+          see.event_id::text AS event_key,
+          see.logged_at
+        FROM search_event_entities see
+        JOIN search_events ev ON ev.event_id = see.event_id
+        WHERE see.logged_at >= ${startDateKey}::date
+          AND see.logged_at < ${endDateExclusiveKey}::date
+          AND see.collectable_market_key IS NOT NULL
+          AND ev.query_text IS NOT NULL
+          AND NULLIF(LOWER(TRIM(ev.query_text)), '') IS NOT NULL
       )
       SELECT
         demand_date,
@@ -873,7 +877,7 @@ export class SearchDemandAggregationService {
         COUNT(DISTINCT event_key)::int,
         MIN(logged_at),
         MAX(logged_at),
-        jsonb_build_object('rawSource', 'user_search_logs', 'scope', 'collectable_market')
+        jsonb_build_object('rawSource', 'search_events', 'scope', 'collectable_market')
       FROM query_events
       GROUP BY
         demand_date,
@@ -910,19 +914,20 @@ export class SearchDemandAggregationService {
       )
       WITH query_events AS (
         SELECT DISTINCT
-          logged_at::date AS demand_date,
-          user_id,
-          market_key,
-          NULLIF(LOWER(TRIM(query_text)), '') AS normalized_text,
-          event_kind,
-          COALESCE(search_request_id::text, log_id::text) AS event_key,
-          logged_at
-        FROM user_search_logs
-        WHERE logged_at >= ${startDateKey}::date
-          AND logged_at < ${endDateExclusiveKey}::date
-          AND market_key IS NOT NULL
-          AND query_text IS NOT NULL
-          AND NULLIF(LOWER(TRIM(query_text)), '') IS NOT NULL
+          see.logged_at::date AS demand_date,
+          see.user_id,
+          see.market_key,
+          NULLIF(LOWER(TRIM(ev.query_text)), '') AS normalized_text,
+          see.event_kind,
+          see.event_id::text AS event_key,
+          see.logged_at
+        FROM search_event_entities see
+        JOIN search_events ev ON ev.event_id = see.event_id
+        WHERE see.logged_at >= ${startDateKey}::date
+          AND see.logged_at < ${endDateExclusiveKey}::date
+          AND see.market_key IS NOT NULL
+          AND ev.query_text IS NOT NULL
+          AND NULLIF(LOWER(TRIM(ev.query_text)), '') IS NOT NULL
       )
       SELECT
         demand_date,
@@ -940,7 +945,7 @@ export class SearchDemandAggregationService {
         COUNT(DISTINCT event_key)::int,
         MIN(logged_at),
         MAX(logged_at),
-        jsonb_build_object('rawSource', 'user_search_logs', 'scope', 'ui_market')
+        jsonb_build_object('rawSource', 'search_events', 'scope', 'ui_market')
       FROM query_events
       GROUP BY
         demand_date,
@@ -977,17 +982,18 @@ export class SearchDemandAggregationService {
       )
       WITH query_events AS (
         SELECT DISTINCT
-          logged_at::date AS demand_date,
-          user_id,
-          NULLIF(LOWER(TRIM(query_text)), '') AS normalized_text,
-          event_kind,
-          COALESCE(search_request_id::text, log_id::text) AS event_key,
-          logged_at
-        FROM user_search_logs
-        WHERE logged_at >= ${startDateKey}::date
-          AND logged_at < ${endDateExclusiveKey}::date
-          AND query_text IS NOT NULL
-          AND NULLIF(LOWER(TRIM(query_text)), '') IS NOT NULL
+          see.logged_at::date AS demand_date,
+          see.user_id,
+          NULLIF(LOWER(TRIM(ev.query_text)), '') AS normalized_text,
+          see.event_kind,
+          see.event_id::text AS event_key,
+          see.logged_at
+        FROM search_event_entities see
+        JOIN search_events ev ON ev.event_id = see.event_id
+        WHERE see.logged_at >= ${startDateKey}::date
+          AND see.logged_at < ${endDateExclusiveKey}::date
+          AND ev.query_text IS NOT NULL
+          AND NULLIF(LOWER(TRIM(ev.query_text)), '') IS NOT NULL
       )
       SELECT
         demand_date,
@@ -1005,7 +1011,7 @@ export class SearchDemandAggregationService {
         COUNT(DISTINCT event_key)::int,
         MIN(logged_at),
         MAX(logged_at),
-        jsonb_build_object('rawSource', 'user_search_logs', 'scope', 'global')
+        jsonb_build_object('rawSource', 'search_events', 'scope', 'global')
       FROM query_events
       GROUP BY
         demand_date,
@@ -1040,24 +1046,24 @@ export class SearchDemandAggregationService {
         metadata
       )
       SELECT
-        logged_at::date AS demand_date,
-        user_id,
+        see.logged_at::date AS demand_date,
+        see.user_id,
         NULL,
-        collectable_market_key,
+        see.collectable_market_key,
         'entity'::demand_subject_kind,
-        entity_id::text,
-        entity_id,
-        entity_type,
-        MIN(NULLIF(LOWER(TRIM(query_text)), '')),
+        see.entity_id::text,
+        see.entity_id,
+        see.entity_type,
+        MIN(NULLIF(LOWER(TRIM(ev.query_text)), '')),
         'search_log'::demand_source_kind,
         'autocomplete_selection'::demand_signal_kind,
         NULL,
-        COUNT(DISTINCT COALESCE(search_request_id::text, log_id::text))::int,
-        MIN(logged_at),
-        MAX(logged_at),
+        COUNT(DISTINCT see.event_id::text)::int,
+        MIN(see.logged_at),
+        MAX(see.logged_at),
         jsonb_build_object(
           'rawSource',
-          'user_search_logs',
+          'search_events',
           'submissionSource',
           'autocomplete',
           'scope',
@@ -1068,31 +1074,32 @@ export class SearchDemandAggregationService {
           jsonb_build_object(
             'backend',
             COUNT(DISTINCT CASE
-              WHEN event_kind = 'backend'
-                THEN COALESCE(search_request_id::text, log_id::text)
+              WHEN see.event_kind = 'backend'
+                THEN see.event_id::text
               END),
             'cache',
             COUNT(DISTINCT CASE
-              WHEN event_kind = 'cache'
-                THEN COALESCE(search_request_id::text, log_id::text)
+              WHEN see.event_kind = 'cache'
+                THEN see.event_id::text
               END)
           )
         )
-      FROM user_search_logs
-      WHERE logged_at >= ${startDateKey}::date
-        AND logged_at < ${endDateExclusiveKey}::date
-        AND collectable_market_key IS NOT NULL
-        AND event_kind IN ('backend', 'cache')
-        AND metadata->>'submissionSource' = 'autocomplete'
-        AND metadata#>>'{submissionContext,matchType}' = 'entity'
-        AND metadata#>>'{submissionContext,selectedEntityId}' = entity_id::text
-        AND metadata#>>'{submissionContext,selectedEntityType}' = entity_type::text
+      FROM search_event_entities see
+      JOIN search_events ev ON ev.event_id = see.event_id
+      WHERE see.logged_at >= ${startDateKey}::date
+        AND see.logged_at < ${endDateExclusiveKey}::date
+        AND see.collectable_market_key IS NOT NULL
+        AND see.event_kind IN ('backend', 'cache')
+        AND ev.metadata->>'submissionSource' = 'autocomplete'
+        AND ev.metadata#>>'{submissionContext,matchType}' = 'entity'
+        AND ev.metadata#>>'{submissionContext,selectedEntityId}' = see.entity_id::text
+        AND ev.metadata#>>'{submissionContext,selectedEntityType}' = see.entity_type::text
       GROUP BY
-        logged_at::date,
-        user_id,
-        collectable_market_key,
-        entity_id,
-        entity_type
+        see.logged_at::date,
+        see.user_id,
+        see.collectable_market_key,
+        see.entity_id,
+        see.entity_type
     `;
   }
 
@@ -1121,24 +1128,24 @@ export class SearchDemandAggregationService {
         metadata
       )
       SELECT
-        logged_at::date AS demand_date,
-        user_id,
-        market_key,
+        see.logged_at::date AS demand_date,
+        see.user_id,
+        see.market_key,
         NULL,
         'entity'::demand_subject_kind,
-        entity_id::text,
-        entity_id,
-        entity_type,
-        MIN(NULLIF(LOWER(TRIM(query_text)), '')),
+        see.entity_id::text,
+        see.entity_id,
+        see.entity_type,
+        MIN(NULLIF(LOWER(TRIM(ev.query_text)), '')),
         'search_log'::demand_source_kind,
         'autocomplete_selection'::demand_signal_kind,
         NULL,
-        COUNT(DISTINCT COALESCE(search_request_id::text, log_id::text))::int,
-        MIN(logged_at),
-        MAX(logged_at),
+        COUNT(DISTINCT see.event_id::text)::int,
+        MIN(see.logged_at),
+        MAX(see.logged_at),
         jsonb_build_object(
           'rawSource',
-          'user_search_logs',
+          'search_events',
           'submissionSource',
           'autocomplete',
           'scope',
@@ -1149,31 +1156,32 @@ export class SearchDemandAggregationService {
           jsonb_build_object(
             'backend',
             COUNT(DISTINCT CASE
-              WHEN event_kind = 'backend'
-                THEN COALESCE(search_request_id::text, log_id::text)
+              WHEN see.event_kind = 'backend'
+                THEN see.event_id::text
               END),
             'cache',
             COUNT(DISTINCT CASE
-              WHEN event_kind = 'cache'
-                THEN COALESCE(search_request_id::text, log_id::text)
+              WHEN see.event_kind = 'cache'
+                THEN see.event_id::text
               END)
           )
         )
-      FROM user_search_logs
-      WHERE logged_at >= ${startDateKey}::date
-        AND logged_at < ${endDateExclusiveKey}::date
-        AND market_key IS NOT NULL
-        AND event_kind IN ('backend', 'cache')
-        AND metadata->>'submissionSource' = 'autocomplete'
-        AND metadata#>>'{submissionContext,matchType}' = 'entity'
-        AND metadata#>>'{submissionContext,selectedEntityId}' = entity_id::text
-        AND metadata#>>'{submissionContext,selectedEntityType}' = entity_type::text
+      FROM search_event_entities see
+      JOIN search_events ev ON ev.event_id = see.event_id
+      WHERE see.logged_at >= ${startDateKey}::date
+        AND see.logged_at < ${endDateExclusiveKey}::date
+        AND see.market_key IS NOT NULL
+        AND see.event_kind IN ('backend', 'cache')
+        AND ev.metadata->>'submissionSource' = 'autocomplete'
+        AND ev.metadata#>>'{submissionContext,matchType}' = 'entity'
+        AND ev.metadata#>>'{submissionContext,selectedEntityId}' = see.entity_id::text
+        AND ev.metadata#>>'{submissionContext,selectedEntityType}' = see.entity_type::text
       GROUP BY
-        logged_at::date,
-        user_id,
-        market_key,
-        entity_id,
-        entity_type
+        see.logged_at::date,
+        see.user_id,
+        see.market_key,
+        see.entity_id,
+        see.entity_type
     `;
   }
 
@@ -1202,24 +1210,24 @@ export class SearchDemandAggregationService {
         metadata
       )
       SELECT
-        logged_at::date AS demand_date,
-        user_id,
+        see.logged_at::date AS demand_date,
+        see.user_id,
         NULL,
         NULL,
         'entity'::demand_subject_kind,
-        entity_id::text,
-        entity_id,
-        entity_type,
-        MIN(NULLIF(LOWER(TRIM(query_text)), '')),
+        see.entity_id::text,
+        see.entity_id,
+        see.entity_type,
+        MIN(NULLIF(LOWER(TRIM(ev.query_text)), '')),
         'search_log'::demand_source_kind,
         'autocomplete_selection'::demand_signal_kind,
         NULL,
-        COUNT(DISTINCT COALESCE(search_request_id::text, log_id::text))::int,
-        MIN(logged_at),
-        MAX(logged_at),
+        COUNT(DISTINCT see.event_id::text)::int,
+        MIN(see.logged_at),
+        MAX(see.logged_at),
         jsonb_build_object(
           'rawSource',
-          'user_search_logs',
+          'search_events',
           'submissionSource',
           'autocomplete',
           'scope',
@@ -1230,29 +1238,30 @@ export class SearchDemandAggregationService {
           jsonb_build_object(
             'backend',
             COUNT(DISTINCT CASE
-              WHEN event_kind = 'backend'
-                THEN COALESCE(search_request_id::text, log_id::text)
+              WHEN see.event_kind = 'backend'
+                THEN see.event_id::text
               END),
             'cache',
             COUNT(DISTINCT CASE
-              WHEN event_kind = 'cache'
-                THEN COALESCE(search_request_id::text, log_id::text)
+              WHEN see.event_kind = 'cache'
+                THEN see.event_id::text
               END)
           )
         )
-      FROM user_search_logs
-      WHERE logged_at >= ${startDateKey}::date
-        AND logged_at < ${endDateExclusiveKey}::date
-        AND event_kind IN ('backend', 'cache')
-        AND metadata->>'submissionSource' = 'autocomplete'
-        AND metadata#>>'{submissionContext,matchType}' = 'entity'
-        AND metadata#>>'{submissionContext,selectedEntityId}' = entity_id::text
-        AND metadata#>>'{submissionContext,selectedEntityType}' = entity_type::text
+      FROM search_event_entities see
+      JOIN search_events ev ON ev.event_id = see.event_id
+      WHERE see.logged_at >= ${startDateKey}::date
+        AND see.logged_at < ${endDateExclusiveKey}::date
+        AND see.event_kind IN ('backend', 'cache')
+        AND ev.metadata->>'submissionSource' = 'autocomplete'
+        AND ev.metadata#>>'{submissionContext,matchType}' = 'entity'
+        AND ev.metadata#>>'{submissionContext,selectedEntityId}' = see.entity_id::text
+        AND ev.metadata#>>'{submissionContext,selectedEntityType}' = see.entity_type::text
       GROUP BY
-        logged_at::date,
-        user_id,
-        entity_id,
-        entity_type
+        see.logged_at::date,
+        see.user_id,
+        see.entity_id,
+        see.entity_type
     `;
   }
 

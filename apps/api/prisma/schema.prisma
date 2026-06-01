@@ -45,7 +45,7 @@ model Entity {
   pollTopicRestaurantTargets          PollTopic[]              @relation("PollTopicTargetRestaurant")
   pollTopicFoodAttributeTargets       PollTopic[]              @relation("PollTopicTargetFoodAttribute")
   pollTopicRestaurantAttributeTargets PollTopic[]              @relation("PollTopicTargetRestaurantAttribute")
-  searchLogs                          SearchLog[]
+  searchEventEntities                 SearchEventEntity[]
   userFavorites                       UserFavorite[]
   favoriteListItems                   FavoriteListItem[]
   restaurantViews                     RestaurantView[]
@@ -643,41 +643,62 @@ model Notification {
 /// A DB-level unique index named uq_search_log_request_entity_market enforces
 /// idempotency on searchRequestId + entityId + marketKey + collectableMarketKey
 /// because Prisma cannot model the COALESCE expression used for null scope.
-model SearchLog {
-  logId                  String             @id @default(dbgenerated("gen_random_uuid()")) @map("log_id") @db.Uuid
-  entityId               String             @map("entity_id") @db.Uuid
-  entityType             EntityType         @map("entity_type")
-  userId                 String?            @map("user_id") @db.Uuid
-  marketKey              String?            @map("market_key") @db.VarChar(255)
-  collectableMarketKey   String?            @map("collectable_market_key") @db.VarChar(255)
-  queryText              String?            @map("query_text") @db.VarChar(500)
-  searchRequestId        String?            @map("search_request_id") @db.Uuid
-  totalResults           Int?               @map("total_results")
-  totalFoodResults       Int?               @map("total_food_results")
-  totalRestaurantResults Int?               @map("total_restaurant_results")
-  queryExecutionTimeMs   Int?               @map("query_execution_time_ms")
-  marketStatus           String?            @map("market_status") @db.VarChar(32)
-  eventKind              SearchLogEventKind @default(backend) @map("event_kind")
-  metadata               Json?              @default("{}")
-  loggedAt               DateTime           @default(now()) @map("logged_at")
-  entity                 Entity             @relation(fields: [entityId], references: [entityId], onDelete: Cascade)
-  user                   User?              @relation(fields: [userId], references: [userId], onDelete: SetNull)
+/// One row per submitted search (query-level facts). History, recents, and query
+/// suggestions read this table directly — no per-entity dedup, because a search is
+/// already exactly one row. Per-attribution facts live in SearchEventEntity.
+model SearchEvent {
+  eventId                String              @id @default(dbgenerated("gen_random_uuid()")) @map("event_id") @db.Uuid
+  searchRequestId        String              @map("search_request_id") @db.Uuid
+  userId                 String?             @map("user_id") @db.Uuid
+  queryText              String?             @map("query_text") @db.VarChar(500)
+  eventKind              SearchEventKind     @default(backend) @map("event_kind")
+  primaryMarketKey       String?             @map("primary_market_key") @db.VarChar(255)
+  totalResults           Int?                @map("total_results")
+  totalFoodResults       Int?                @map("total_food_results")
+  totalRestaurantResults Int?                @map("total_restaurant_results")
+  queryExecutionTimeMs   Int?                @map("query_execution_time_ms")
+  marketStatus           String?             @map("market_status") @db.VarChar(32)
+  submissionSource       String?             @map("submission_source") @db.VarChar(32)
+  metadata               Json?               @default("{}")
+  loggedAt               DateTime            @default(now()) @map("logged_at")
+  user                   User?               @relation(fields: [userId], references: [userId], onDelete: SetNull)
+  entities               SearchEventEntity[]
 
-  @@index([entityId], map: "idx_search_log_entity")
-  @@index([marketKey], map: "idx_search_log_market")
-  @@index([collectableMarketKey], map: "idx_search_log_collectable_market")
-  @@index([eventKind, loggedAt(sort: Desc)], map: "idx_search_log_event_logged_at")
-  @@index([loggedAt(sort: Desc)], map: "idx_search_log_logged_at")
-  @@index([entityId, marketKey, loggedAt], map: "idx_search_log_entity_market_time")
-  @@index([entityId, collectableMarketKey, loggedAt], map: "idx_search_log_entity_collectable_market_time")
-  @@index([userId], map: "idx_search_log_user_id")
-  @@index([userId, searchRequestId], map: "idx_search_log_user_request")
-  @@index([userId, queryText], map: "idx_search_log_user_query")
-  @@index([userId, eventKind, queryText, loggedAt(sort: Desc)], map: "idx_search_log_user_event_query_time")
-  @@index([marketKey, eventKind, loggedAt(sort: Desc)], map: "idx_search_log_market_event_time")
-  @@index([collectableMarketKey, eventKind, loggedAt(sort: Desc)], map: "idx_search_log_collectable_event_time")
-  @@index([queryText], map: "idx_search_log_query_text")
-  @@map("user_search_logs")
+  @@unique([searchRequestId], map: "uq_search_events_request")
+  @@index([userId, queryText], map: "idx_search_events_user_query")
+  @@index([userId, eventKind, loggedAt(sort: Desc)], map: "idx_search_events_user_kind_time")
+  @@index([queryText], map: "idx_search_events_query_text")
+  @@index([eventKind, loggedAt(sort: Desc)], map: "idx_search_events_kind_time")
+  @@index([primaryMarketKey, eventKind, loggedAt(sort: Desc)], map: "idx_search_events_market_kind_time")
+  @@map("search_events")
+}
+
+/// One row per (attributed entity x market scope) for a search event. Demand
+/// aggregation and autocomplete popularity read this per-entity table. eventKind
+/// and loggedAt are denormalized from the parent event so per-entity scans stay
+/// single-table and index-only (the same access shape the old user_search_logs had).
+model SearchEventEntity {
+  attributionId        String          @id @default(dbgenerated("gen_random_uuid()")) @map("attribution_id") @db.Uuid
+  eventId              String          @map("event_id") @db.Uuid
+  entityId             String          @map("entity_id") @db.Uuid
+  entityType           EntityType      @map("entity_type")
+  userId               String?         @map("user_id") @db.Uuid
+  marketKey            String?         @map("market_key") @db.VarChar(255)
+  collectableMarketKey String?         @map("collectable_market_key") @db.VarChar(255)
+  rank                 Int?            @map("rank")
+  eventKind            SearchEventKind @map("event_kind")
+  loggedAt             DateTime        @map("logged_at")
+  event                SearchEvent     @relation(fields: [eventId], references: [eventId], onDelete: Cascade)
+  entity               Entity          @relation(fields: [entityId], references: [entityId], onDelete: Cascade)
+
+  @@index([eventId], map: "idx_search_event_entities_event")
+  @@index([entityId, userId], map: "idx_search_event_entities_entity_user")
+  @@index([entityId, marketKey, loggedAt], map: "idx_search_event_entities_entity_market_time")
+  @@index([entityId, collectableMarketKey, loggedAt], map: "idx_search_event_entities_entity_collectable_time")
+  @@index([entityId, eventKind, loggedAt(sort: Desc)], map: "idx_search_event_entities_entity_kind_time")
+  @@index([marketKey, eventKind, loggedAt(sort: Desc)], map: "idx_search_event_entities_market_kind_time")
+  @@index([collectableMarketKey, eventKind, loggedAt(sort: Desc)], map: "idx_search_event_entities_collectable_kind_time")
+  @@map("search_event_entities")
 }
 
 /// Rebuildable daily demand facts. A DB-level unique index named
@@ -702,7 +723,7 @@ model UserSearchDemandDaily {
   lastSeenAt           DateTime          @map("last_seen_at")
   metadata             Json?             @default("{}")
   createdAt            DateTime          @default(now()) @map("created_at")
-  updatedAt            DateTime          @updatedAt @map("updated_at")
+  updatedAt            DateTime          @default(now()) @updatedAt @map("updated_at")
   entity               Entity?           @relation(fields: [entityId], references: [entityId], onDelete: Cascade)
   user                 User?             @relation(fields: [userId], references: [userId], onDelete: SetNull)
 
@@ -898,7 +919,7 @@ model User {
   favoriteEvents         UserFavoriteEvent[]
   favoriteLists          FavoriteList[]
   favoriteListItems      FavoriteListItem[]
-  searchLogs             SearchLog[]
+  searchEvents           SearchEvent[]
   searchDemandDailyRows  UserSearchDemandDaily[]
   restaurantViews        RestaurantView[]
   foodViews              FoodView[]
@@ -1589,11 +1610,11 @@ enum MentionSource {
   @@map("mention_source")
 }
 
-enum SearchLogEventKind {
+enum SearchEventKind {
   backend
   cache
 
-  @@map("search_log_event_kind")
+  @@map("search_event_kind")
 }
 
 enum FavoriteEventKind {
