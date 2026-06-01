@@ -16,6 +16,7 @@ import { LoggerService } from '../../shared';
 import { NotificationsService } from '../notifications/notifications.service';
 import { SearchDemandService } from '../analytics/search-demand.service';
 import { DemandScoringTraceService } from '../analytics/demand-scoring-trace.service';
+import * as curves from '../analytics/demand-scoring/curves';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const POLL_TOPIC_SCORER_VERSION = 'poll-topic-v1';
@@ -340,10 +341,14 @@ export class PollSchedulerService {
         );
         const surgeRatio =
           baselineScore > 0 ? currentCycleScore / baselineScore : 0;
-        const surgeUnits = Math.max(0, Math.log2(Math.max(surgeRatio, 0)) - 1);
+        const surgeUnits = curves.surgeUnits(
+          currentCycleScore,
+          baselineScore,
+          1,
+        );
         const resurgenceCreditDays =
           POLL_RESURGENCE_CREDIT_DAYS *
-          (1 - Math.exp(-POLL_RESURGENCE_CREDIT_RATE * surgeUnits));
+          curves.saturating(surgeUnits, POLL_RESURGENCE_CREDIT_RATE);
         const daysSinceLastPoll = entity.lastPolledAt
           ? Math.max(
               0,
@@ -357,17 +362,14 @@ export class PollSchedulerService {
         const pollCooldownAvailability =
           effectiveDaysSinceLastPoll === null
             ? 1
-            : 1 -
-              Math.exp(
-                -Math.pow(
-                  effectiveDaysSinceLastPoll / POLL_COOLDOWN_CURVE_DAYS,
-                  2,
-                ),
+            : curves.gaussianRamp(
+                effectiveDaysSinceLastPoll,
+                POLL_COOLDOWN_CURVE_DAYS,
               );
         const pollResurgenceBoost =
           1 +
           POLL_RESURGENCE_BOOST_MAX_DELTA *
-            (1 - Math.exp(-POLL_RESURGENCE_BOOST_RATE * surgeUnits));
+            curves.saturating(surgeUnits, POLL_RESURGENCE_BOOST_RATE);
         const finalScore =
           candidate.demandScore *
           pollCooldownAvailability *

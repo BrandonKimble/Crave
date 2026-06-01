@@ -14,6 +14,7 @@ import { normalizeKeywordTerm } from './keyword-term-normalization';
 import { stripGenericTokens } from '../../../shared/utils/generic-token-handling';
 import { MarketRegistryService } from '../../markets/market-registry.service';
 import { DemandScoringTraceService } from '../../analytics/demand-scoring-trace.service';
+import * as curves from '../../analytics/demand-scoring/curves';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -654,7 +655,7 @@ export class KeywordSliceSelectionService {
     const scores = positiveCandidates.map((candidate) => candidate.score);
     const median = this.median(scores);
     const mad = this.median(scores.map((score) => Math.abs(score - median)));
-    const robustScale = Math.max(1.4826 * mad, Number.EPSILON);
+    const robustScale = curves.robustScale(mad);
 
     let limit = 0;
     for (let index = 0; index < reservationCap; index += 1) {
@@ -752,7 +753,7 @@ export class KeywordSliceSelectionService {
       typeof params.demandScore === 'number' &&
       Number.isFinite(params.demandScore)
         ? Math.max(0, params.demandScore)
-        : Math.log2(1 + Math.max(0, params.distinctUsers));
+        : curves.logGrowth(params.distinctUsers);
     const daysSinceLastSeen =
       (params.now.getTime() - params.lastSeenAt.getTime()) / MS_PER_DAY;
     const safeDaysSinceLastSeen =
@@ -785,7 +786,7 @@ export class KeywordSliceSelectionService {
         ? Math.max(params.restaurantCount, 0)
         : Math.max(params.foodCount ?? 0, 0);
     const coverage = clamp01(observedCount / targetCount);
-    return 0.25 + 0.75 * Math.pow(1 - coverage, 1.2);
+    return curves.inverseCoverage(coverage, 1.2);
   }
 
   private normalizeDemandUnit(value: number): number {
@@ -812,9 +813,10 @@ export class KeywordSliceSelectionService {
         const daysSinceAttempt =
           (now.getTime() - history.lastAttemptAt.getTime()) / MS_PER_DAY;
         if (Number.isFinite(daysSinceAttempt) && daysSinceAttempt >= 0) {
-          const attemptAvailability =
-            1 -
-            Math.exp(-Math.pow(daysSinceAttempt / NO_RESULTS_RECOVERY_DAYS, 2));
+          const attemptAvailability = curves.gaussianRamp(
+            daysSinceAttempt,
+            NO_RESULTS_RECOVERY_DAYS,
+          );
           const origin =
             candidate.origin && typeof candidate.origin === 'object'
               ? candidate.origin
