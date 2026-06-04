@@ -1,10 +1,14 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Ip, Post } from '@nestjs/common';
 import { MarketResolveDto } from './dto/market-resolve.dto';
 import { MarketRegistryService } from './market-registry.service';
+import { IpLocationService } from './ip-location.service';
 
 @Controller('markets')
 export class MarketsController {
-  constructor(private readonly marketRegistry: MarketRegistryService) {}
+  constructor(
+    private readonly marketRegistry: MarketRegistryService,
+    private readonly ipLocation: IpLocationService,
+  ) {}
 
   @Post('resolve')
   resolve(@Body() dto: MarketResolveDto) {
@@ -14,5 +18,18 @@ export class MarketsController {
       mode: dto.mode,
       ensureLocalityMarkets: false,
     });
+  }
+
+  // Coarse IP→metro for the startup map fallback when the device has no location
+  // (permission denied). Returns a city-level coordinate + the containing market,
+  // or { resolved: false } so the client uses a neutral national default — never a
+  // hardcoded city. Behaves like Google's bottom geolocation rung.
+  @Get('resolve-ip')
+  async resolveIp(@Ip() ip: string) {
+    const result = await this.ipLocation.resolveForIp(ip);
+    if (!result) {
+      return { resolved: false as const };
+    }
+    return { resolved: true as const, ...result };
   }
 }

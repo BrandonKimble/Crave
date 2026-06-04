@@ -7,6 +7,17 @@ import type { Feature, FeatureCollection, Point } from 'geojson';
 import pinAsset from '../../../assets/pin.png';
 import pinFillAsset from '../../../assets/pin-fill.png';
 import pinShadowAsset from '../../../assets/pin-shadow.png';
+// Single-symbol pin model: one pre-composited sprite per score bucket (full pin
+// body + tinted fill baked at the live geometry). Replaces the multi-layer slot
+// stack. 8 buckets in 5-pt increments (b0=60-64 … b7=95+); Metro resolves @2x/@3x.
+import pinBucketB0 from '../../../assets/pins/pin-b0.png';
+import pinBucketB1 from '../../../assets/pins/pin-b1.png';
+import pinBucketB2 from '../../../assets/pins/pin-b2.png';
+import pinBucketB3 from '../../../assets/pins/pin-b3.png';
+import pinBucketB4 from '../../../assets/pins/pin-b4.png';
+import pinBucketB5 from '../../../assets/pins/pin-b5.png';
+import pinBucketB6 from '../../../assets/pins/pin-b6.png';
+import pinBucketB7 from '../../../assets/pins/pin-b7.png';
 import { colors as themeColors } from '../../../constants/theme';
 import type { StartupLocationSnapshot } from '../../../navigation/runtime/MainLaunchCoordinator';
 import type { Coordinate, MapBounds } from '../../../types';
@@ -99,6 +110,24 @@ const STYLE_PIN_OUTLINE_IMAGE_ID = 'restaurant-pin-outline';
 const STYLE_PIN_SHADOW_IMAGE_ID = 'restaurant-pin-shadow';
 const STYLE_PIN_FILL_IMAGE_ID = 'restaurant-pin-fill';
 const LABEL_MUTEX_IMAGE_ID = 'restaurant-label-mutex';
+// Single-symbol pin: one pre-baked sprite per score bucket. The pin body
+// (border + tinted fill) is the icon; the rank number stays a live text-field on
+// the same symbol. `scoreBucket` is a feature property (0..7) set in the source
+// builder; the icon-image expression maps it to the sprite id. 8 buckets, 5-pt
+// increments (b0=60-64 … b7=95+), green→orange-red.
+const PIN_BUCKET_IMAGE_BY_INDEX = [
+  'restaurant-pin-bucket-b0',
+  'restaurant-pin-bucket-b1',
+  'restaurant-pin-bucket-b2',
+  'restaurant-pin-bucket-b3',
+  'restaurant-pin-bucket-b4',
+  'restaurant-pin-bucket-b5',
+  'restaurant-pin-bucket-b6',
+  'restaurant-pin-bucket-b7',
+] as const;
+// Bucket sprites are generated at 3x density (84px) as single plain-named files;
+// registered with this scale so Mapbox renders them at the intended ~28pt.
+const PIN_BUCKET_SPRITE_SCALE = 3;
 const STYLE_PINS_SOURCE_ID = 'restaurant-style-pins-source';
 // The single RENDERED bundle source: holds every promoted marker's pin art,
 // interaction, and label features (distinguished by `nativeSlotFeatureKind`),
@@ -144,12 +173,6 @@ const STYLE_PINS_FILL_OFFSET_RENDER_PX = -(
 const STYLE_PINS_FILL_OFFSET_IMAGE_PX =
   STYLE_PINS_FILL_OFFSET_RENDER_PX / STYLE_PINS_FILL_ICON_SIZE;
 const STYLE_PINS_RANK_TRANSLATE_Y = PIN_FILL_CENTER_Y - PIN_MARKER_RENDER_SIZE;
-const PIN_GLYPH_FONT_STACK = ['icomoon Regular'];
-const PIN_GLYPH_OUTLINE = '\ue900';
-const PIN_GLYPH_FILL = '\ue901';
-const PIN_GLYPH_TRANSLATE_Y_PX = Math.round(PIN_MARKER_RENDER_SIZE * 0.3);
-const PIN_GLYPH_FILL_RELATIVE_TRANSLATE_Y_PX = -2;
-const PIN_GLYPH_FILL_RELATIVE_TRANSLATE_X_PX = -0.3;
 
 // Collision tuning: shift the pin obstacle upward so other restaurants' labels collide with the pin
 // body sooner (reducing overlap at the top) while allowing a bit more overlap near the tip.
@@ -189,32 +212,6 @@ const withIconOpacity = (
     iconOpacity,
   }) as MapboxGL.SymbolLayerStyle;
 
-const withTextOpacity = ({
-  baseStyle,
-  textOpacity,
-  textColor,
-}: {
-  baseStyle: MapboxGL.SymbolLayerStyle;
-  textOpacity: unknown;
-  textColor?: unknown;
-}): MapboxGL.SymbolLayerStyle =>
-  ({
-    ...baseStyle,
-    ...(textColor === undefined ? {} : { textColor }),
-    textOpacity,
-  }) as MapboxGL.SymbolLayerStyle;
-
-type SearchMapSlotLabelLayersArgs = {
-  slotIndex: number;
-  sourceId: string;
-  labelLayerSpecs: ReadonlyArray<{
-    preferredCandidate: LabelCandidate;
-    candidate: LabelCandidate;
-    layerId: string;
-  }>;
-  labelCandidateStyles: Record<LabelCandidate, MapboxGL.SymbolLayerStyle>;
-};
-
 type LabelPlacementFilter = NonNullable<
   React.ComponentProps<typeof MapboxGL.SymbolLayer>['filter']
 >;
@@ -241,50 +238,47 @@ const buildLabelPlacementFilter = (
     ['==', ['get', 'labelCandidate'], candidate],
   ] as LabelPlacementFilter;
 
-// Resident single-source model: every promoted marker's bundle (pin art,
-// interaction, labels) lives in ONE source. A slot is a z-ordered layer group
-// bound to its assigned marker by the marker's `nativeLodZ` (slot index)
-// property — no per-slot source. This scopes a base kind filter to one slot.
-const buildSlotScopedFilter = (
-  slotIndex: number,
-  baseFilter: LabelPlacementFilter
-): LabelPlacementFilter =>
-  ['all', ['==', ['get', 'nativeLodZ'], slotIndex], baseFilter] as unknown as LabelPlacementFilter;
-
-const renderSearchMapSlotLabelLayers = ({
-  slotIndex,
+// RESIDENT label layers (slot-elimination): ONE layer per (preferredCandidate ×
+// candidate) combo — 16 total — reading the single resident label source, instead
+// of 16 × 30 slot layers. Placement priority stays in SOURCE ORDER (the source is
+// emitted rank-ordered; symbolZOrder:'source' in the candidate style), which is
+// exactly what the slot model relied on — NOT symbolSortKey (that caused camera
+// wobble). The slot identity (nativeLodZ) is gone from the filter; each layer
+// matches by feature kind + labelPreference + labelCandidate only.
+const renderSearchMapLabelLayers = ({
   sourceId,
   labelLayerSpecs,
   labelCandidateStyles,
-}: SearchMapSlotLabelLayersArgs) => (
-  <React.Fragment key={`slot-label-family-${slotIndex}`}>
-    {labelLayerSpecs.map(({ preferredCandidate, candidate, layerId }) => {
-      const slotLayerId = buildLabelVisualLayerId(layerId, slotIndex);
-      return (
-        <MapboxGL.SymbolLayer
-          key={slotLayerId}
-          id={slotLayerId}
-          slot="top"
-          sourceID={sourceId}
-          belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-          style={labelCandidateStyles[candidate]}
-          filter={buildSlotScopedFilter(
-            slotIndex,
-            buildLabelPlacementFilter(preferredCandidate, candidate)
-          )}
-        />
-      );
-    })}
+}: {
+  sourceId: string;
+  labelLayerSpecs: ReadonlyArray<{
+    preferredCandidate: LabelCandidate;
+    candidate: LabelCandidate;
+    layerId: string;
+  }>;
+  labelCandidateStyles: Record<LabelCandidate, MapboxGL.SymbolLayerStyle>;
+}) => (
+  <React.Fragment key="resident-label-family">
+    {labelLayerSpecs.map(({ preferredCandidate, candidate, layerId }) => (
+      <MapboxGL.SymbolLayer
+        key={layerId}
+        id={layerId}
+        slot="top"
+        sourceID={sourceId}
+        belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+        style={labelCandidateStyles[candidate]}
+        filter={buildLabelPlacementFilter(preferredCandidate, candidate)}
+      />
+    ))}
   </React.Fragment>
 );
 
 type SearchMapMarkerSceneProps = {
-  pinStackSlotCount: number;
-  pinSlotSourceIds: readonly string[];
   dotLayerStyle: MapboxGL.SymbolLayerStyle;
   handlePressTarget?: (event: SearchMapPressEvent) => void;
-  stylePinLayerStackBySlot: ReadonlyArray<React.ReactElement[]>;
-  pinInteractionLayerBySlot: ReadonlyArray<React.ReactElement>;
+  stylePinSingleSymbolStyle: MapboxGL.SymbolLayerStyle;
+  stylePinSharedShadowStyle: MapboxGL.SymbolLayerStyle;
+  pinInteractionLayer: React.ReactElement;
   profilerCallback: React.ProfilerOnRenderCallback;
   labelLayerSpecs: ReadonlyArray<{
     preferredCandidate: LabelCandidate;
@@ -305,12 +299,11 @@ type SearchMapMarkerSceneProps = {
 
 const SearchMapMarkerScene = React.memo(
   ({
-    pinStackSlotCount,
-    pinSlotSourceIds,
     dotLayerStyle,
     handlePressTarget,
-    stylePinLayerStackBySlot,
-    pinInteractionLayerBySlot,
+    stylePinSingleSymbolStyle,
+    stylePinSharedShadowStyle,
+    pinInteractionLayer,
     profilerCallback,
     labelLayerSpecs,
     labelCandidateStyles,
@@ -341,18 +334,45 @@ const SearchMapMarkerScene = React.memo(
           shape={EMPTY_POINT_FEATURES}
           {...(handlePressTarget ? { onPress: handlePressTarget } : {})}
         >
-          {Array.from({ length: pinStackSlotCount }, (_, slotIndex) => (
-            <React.Fragment key={`pin-slot-group-${slotIndex}`}>
-              {stylePinLayerStackBySlot[slotIndex]}
-              {pinInteractionLayerBySlot[slotIndex]}
-              {renderSearchMapSlotLabelLayers({
-                slotIndex,
-                sourceId: RESTAURANT_PIN_BUNDLE_SOURCE_ID,
-                labelLayerSpecs,
-                labelCandidateStyles,
-              })}
-            </React.Fragment>
-          ))}
+          <React.Fragment>
+            {/*
+              Shared shadow layer: ONE layer (not per-pin) beneath the pin layer,
+              reusing the existing custom soft-shadow sprite + translate/opacity.
+              Preserves the exact custom shadow shape at one-layer cost.
+            */}
+            <MapboxGL.SymbolLayer
+              key="restaurant-pin-shadow-shared"
+              id={PIN_SHARED_SHADOW_LAYER_ID}
+              slot="top"
+              belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
+              style={stylePinSharedShadowStyle}
+              sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
+              filter={promotedPinFeatureFilter}
+            />
+            {/*
+              Single-symbol pin: ONE layer for all pin art (icon body + rank glyph),
+              stacked natively by symbol-z-order:'viewport-y'. Replaces the per-slot
+              4-layer stack + native moveLayer pass. Interaction + 4-candidate labels
+              remain slot-scoped (separate families) for now.
+            */}
+            <MapboxGL.SymbolLayer
+              key="restaurant-pin-single-symbol"
+              id={PIN_SINGLE_SYMBOL_LAYER_ID}
+              slot="top"
+              belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
+              style={stylePinSingleSymbolStyle}
+              sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
+              filter={promotedPinFeatureFilter}
+            />
+            {/* Resident interaction (1 layer) + resident labels (16 layers) —
+                no per-slot fan-out, no nativeLodZ scoping. */}
+            {pinInteractionLayer}
+            {renderSearchMapLabelLayers({
+              sourceId: RESTAURANT_PIN_BUNDLE_SOURCE_ID,
+              labelLayerSpecs,
+              labelCandidateStyles,
+            })}
+          </React.Fragment>
         </MapboxGL.ShapeSource>
         <MapboxGL.ShapeSource
           id={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
@@ -387,12 +407,11 @@ const SearchMapMarkerScene = React.memo(
     );
   },
   (previousProps, nextProps) =>
-    previousProps.pinStackSlotCount === nextProps.pinStackSlotCount &&
-    previousProps.pinSlotSourceIds === nextProps.pinSlotSourceIds &&
     previousProps.dotLayerStyle === nextProps.dotLayerStyle &&
     previousProps.handlePressTarget === nextProps.handlePressTarget &&
-    previousProps.stylePinLayerStackBySlot === nextProps.stylePinLayerStackBySlot &&
-    previousProps.pinInteractionLayerBySlot === nextProps.pinInteractionLayerBySlot &&
+    previousProps.stylePinSingleSymbolStyle === nextProps.stylePinSingleSymbolStyle &&
+    previousProps.stylePinSharedShadowStyle === nextProps.stylePinSharedShadowStyle &&
+    previousProps.pinInteractionLayer === nextProps.pinInteractionLayer &&
     previousProps.profilerCallback === nextProps.profilerCallback &&
     previousProps.labelLayerSpecs === nextProps.labelLayerSpecs &&
     previousProps.labelCandidateStyles === nextProps.labelCandidateStyles &&
@@ -509,6 +528,17 @@ const SearchMapViewScene = React.memo(
             [STYLE_PIN_SHADOW_IMAGE_ID]: pinShadowAsset,
             [STYLE_PIN_FILL_IMAGE_ID]: { image: pinFillAsset, sdf: true },
             [LABEL_MUTEX_IMAGE_ID]: TRANSPARENT_PIXEL_IMAGE,
+            // Bucket sprites are single 84px (3x-density) files; scale:3 tells
+            // Mapbox they're high-DPI so they render at the intended ~28pt with
+            // icon-size:1. One file per bucket — no 1x/2x variants to misalign.
+            [PIN_BUCKET_IMAGE_BY_INDEX[0]]: { image: pinBucketB0, scale: PIN_BUCKET_SPRITE_SCALE },
+            [PIN_BUCKET_IMAGE_BY_INDEX[1]]: { image: pinBucketB1, scale: PIN_BUCKET_SPRITE_SCALE },
+            [PIN_BUCKET_IMAGE_BY_INDEX[2]]: { image: pinBucketB2, scale: PIN_BUCKET_SPRITE_SCALE },
+            [PIN_BUCKET_IMAGE_BY_INDEX[3]]: { image: pinBucketB3, scale: PIN_BUCKET_SPRITE_SCALE },
+            [PIN_BUCKET_IMAGE_BY_INDEX[4]]: { image: pinBucketB4, scale: PIN_BUCKET_SPRITE_SCALE },
+            [PIN_BUCKET_IMAGE_BY_INDEX[5]]: { image: pinBucketB5, scale: PIN_BUCKET_SPRITE_SCALE },
+            [PIN_BUCKET_IMAGE_BY_INDEX[6]]: { image: pinBucketB6, scale: PIN_BUCKET_SPRITE_SCALE },
+            [PIN_BUCKET_IMAGE_BY_INDEX[7]]: { image: pinBucketB7, scale: PIN_BUCKET_SPRITE_SCALE },
           }}
         />
         {/*
@@ -659,6 +689,8 @@ const PRIMARY_COLOR = '#ff3368';
 const ZERO_CAMERA_PADDING = { paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 };
 const DOT_SOURCE_ID = 'restaurant-dot-source';
 const DOT_LAYER_ID = 'restaurant-dot-layer';
+const PIN_SINGLE_SYMBOL_LAYER_ID = 'restaurant-pin-single-symbol-layer';
+const PIN_SHARED_SHADOW_LAYER_ID = 'restaurant-pin-shared-shadow-layer';
 const USER_LOCATION_UNCERTAINTY_SCALE = 0.7;
 
 const resolveDisplayedUncertaintyRadiusMeters = ({
@@ -712,8 +744,9 @@ const DOT_TEXT_SIZE = 17;
 // Keep the base count in sync with SearchScreen's MAX_FULL_PINS. Selected locations use
 // preallocated overflow slots so profile open can stay in the source-clean role lane.
 const STYLE_PIN_STACK_SLOTS = 30;
-const buildPinInteractionLayerId = (slotIndex: number): string =>
-  `restaurant-pin-interaction-slot-${slotIndex}`;
+// Single resident interaction layer id (slot-elimination): one tap-target layer
+// for all promoted pins (was 30 per-slot `restaurant-pin-interaction-slot-N`).
+const PIN_INTERACTION_LAYER_ID = 'restaurant-pin-interaction';
 // Use stable "anchor" layers to guarantee pins/dots/labels remain ordered correctly even if React
 // remounts layers (e.g. live LOD changes, style reloads).
 const OVERLAY_Z_ANCHOR_SOURCE_ID = 'search-overlay-z-anchor-source';
@@ -763,8 +796,6 @@ const LABEL_LAYER_SPECS: ReadonlyArray<LabelLayerSpec> = buildLabelLayerSpecs({
   preferredCandidates: LABEL_CANDIDATES_IN_ORDER,
 });
 
-const buildLabelVisualLayerId = (layerId: string, slotIndex: number): string =>
-  `${layerId}-slot-${slotIndex}`;
 const RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID = 'restaurant-labels-pin-collision';
 const RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID_SIDE_LEFT =
   'restaurant-labels-pin-collision-side-left';
@@ -923,19 +954,6 @@ const getPointFromMapPressFeature = (
   return { x, y };
 };
 
-const STYLE_PINS_OUTLINE_GLYPH_STYLE: MapboxGL.SymbolLayerStyle = {
-  textField: PIN_GLYPH_OUTLINE,
-  textFont: PIN_GLYPH_FONT_STACK,
-  textSize: PIN_MARKER_RENDER_SIZE,
-  textColor: '#ffffff',
-  textAnchor: 'bottom',
-  textTranslate: [0, PIN_GLYPH_TRANSLATE_Y_PX],
-  textTranslateAnchor: 'viewport',
-  symbolZOrder: 'source',
-  textAllowOverlap: true,
-  textIgnorePlacement: true,
-} as MapboxGL.SymbolLayerStyle;
-
 const STYLE_PINS_SHADOW_STYLE: MapboxGL.SymbolLayerStyle = {
   iconImage: STYLE_PIN_SHADOW_IMAGE_ID,
   iconSize: STYLE_PINS_SHADOW_ICON_SIZE,
@@ -947,24 +965,6 @@ const STYLE_PINS_SHADOW_STYLE: MapboxGL.SymbolLayerStyle = {
   iconOpacity: STYLE_PINS_SHADOW_OPACITY,
   iconTranslate: STYLE_PINS_SHADOW_TRANSLATE,
   iconTranslateAnchor: 'viewport',
-} as MapboxGL.SymbolLayerStyle;
-
-const STYLE_PINS_FILL_GLYPH_STYLE: MapboxGL.SymbolLayerStyle = {
-  textField: PIN_GLYPH_FILL,
-  textFont: PIN_GLYPH_FONT_STACK,
-  textSize: PIN_FILL_RENDER_HEIGHT,
-  textColor: '#ffffff',
-  textAnchor: 'bottom',
-  textTranslate: [
-    PIN_GLYPH_FILL_RELATIVE_TRANSLATE_X_PX,
-    STYLE_PINS_FILL_OFFSET_RENDER_PX +
-      PIN_GLYPH_TRANSLATE_Y_PX +
-      PIN_GLYPH_FILL_RELATIVE_TRANSLATE_Y_PX,
-  ],
-  textTranslateAnchor: 'viewport',
-  symbolZOrder: 'source',
-  textAllowOverlap: true,
-  textIgnorePlacement: true,
 } as MapboxGL.SymbolLayerStyle;
 
 const STYLE_PINS_RANK_STYLE: MapboxGL.SymbolLayerStyle = {
@@ -1821,12 +1821,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
     [activeDotSourceStore, activePinSourceStore]
   );
   const labelLayerSpecs = React.useMemo(() => LABEL_LAYER_SPECS, []);
+  // Resident model: the 16 collapsed label layer ids (one per preferred×candidate),
+  // not the old per-slot ids. Native press-targeting / label-observation query these.
   const labelVisualLayerIds = React.useMemo(
-    () =>
-      Array.from({ length: pinStackSlotCount }, (_, slotIndex) =>
-        labelLayerSpecs.map(({ layerId }) => buildLabelVisualLayerId(layerId, slotIndex))
-      ).flat(),
-    [labelLayerSpecs, pinStackSlotCount]
+    () => labelLayerSpecs.map(({ layerId }) => layerId),
+    [labelLayerSpecs]
   );
   const labelCollisionLayerIds = React.useMemo(
     () => [
@@ -2123,17 +2122,13 @@ const SearchMap: React.FC<SearchMapProps> = ({
       textField: '●',
       textAnchor: 'center',
       textFont: ['Arial Unicode MS Regular', 'Open Sans Semibold'],
-      // Dots are the base "every showable result is visible" layer; a pin is an
-      // enhancement layered on top of a promoted result (whose dot is driven to
-      // opacity 0). The invisible LABEL_PIN_COLLISION_STYLE proxies reserve space
-      // around every pin to protect LABELS, and they are collision obstacles for
-      // every lower-priority symbol — which previously erased the demoted dots
-      // (queryRenderedFeatures showed 0–3 of 6 painting). Allowing overlap +
-      // ignoring placement makes every demoted result always paint as a dot, and
-      // keeps dots from acting as obstacles against labels. Promoted markers carry
-      // an opacity-0 dot, so they stay invisible and contribute no clutter.
-      textAllowOverlap: true,
-      textIgnorePlacement: true,
+      // Dots participate in collision: they YIELD to labels (our restaurant labels
+      // AND native basemap labels like parks/streets) and to each other, so a dot
+      // never overprints a label. allowOverlap:false + ignorePlacement:false makes
+      // the dot a collision victim. Promoted markers carry an opacity-0 dot so they
+      // contribute nothing. (Pins remain allow-overlap obstacles above dots.)
+      textAllowOverlap: false,
+      textIgnorePlacement: false,
       // Reduce collision buffer so dots can pack tighter before culling.
       textPadding: 0,
       // Keep the collision box closer to the actual glyph bounds.
@@ -2308,11 +2303,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
     []
   );
 
-  const pinFillColorExpression = React.useMemo(() => {
-    return ['case', nativeHighlightedExpression, PRIMARY_COLOR, ['get', 'pinColor']] as const;
-  }, [nativeHighlightedExpression]);
-
-  const stylePinsShadowSteadyStyle = React.useMemo(
+  // Shared shadow layer style: reuses the custom soft-shadow sprite, opacity
+  // crossfading via the same feature-state as the pin. One layer for all pins.
+  const stylePinSharedShadowStyle = React.useMemo(
     () =>
       ({
         ...withIconOpacity(STYLE_PINS_SHADOW_STYLE, [
@@ -2321,123 +2314,91 @@ const SearchMap: React.FC<SearchMapProps> = ({
           nativeLodOpacityExpression,
           STYLE_PINS_SHADOW_OPACITY,
         ]),
+        symbolZOrder: 'viewport-y',
         iconOpacityTransition: PIN_OPACITY_TRANSITION,
       }) as MapboxGL.SymbolLayerStyle,
     [nativeLodOpacityExpression, nativePresentationOpacityExpression]
   );
 
-  const stylePinsOutlineSteadyStyle = React.useMemo(
+  // Single-symbol pin: ONE layer carries the whole pin. `icon-image` selects the
+  // pre-baked bucket sprite (body + border + tinted fill, geometry already baked)
+  // by score decade; `text-field` draws the rank glyph centered on the fill of the
+  // SAME symbol so icon + rank move/stack as a unit. symbol-z-order:'viewport-y'
+  // gives native lower-on-screen = on-top stacking (replaces the per-slot moveLayer
+  // pass). Opacity is feature-state nativeLodOpacity → pure crossfade, no source
+  // mutation on promote/demote.
+  const stylePinSingleSymbolStyle = React.useMemo(
     () =>
       ({
-        ...withTextOpacity({
-          baseStyle: STYLE_PINS_OUTLINE_GLYPH_STYLE,
-          textOpacity: ['*', nativePresentationOpacityExpression, nativeLodOpacityExpression],
-        }),
-        textOpacityTransition: PIN_OPACITY_TRANSITION,
-      }) as MapboxGL.SymbolLayerStyle,
-    [nativeLodOpacityExpression, nativePresentationOpacityExpression]
-  );
-
-  const stylePinsFillSteadyStyle = React.useMemo(
-    () =>
-      ({
-        ...withTextOpacity({
-          baseStyle: STYLE_PINS_FILL_GLYPH_STYLE,
-          textOpacity: ['*', nativePresentationOpacityExpression, nativeLodOpacityExpression],
-          textColor: pinFillColorExpression,
-        }),
-        textOpacityTransition: PIN_OPACITY_TRANSITION,
-      }) as MapboxGL.SymbolLayerStyle,
-    [nativeLodOpacityExpression, nativePresentationOpacityExpression, pinFillColorExpression]
-  );
-
-  const stylePinsRankStyle = React.useMemo(
-    () =>
-      ({
-        ...withTextOpacity({
-          baseStyle: STYLE_PINS_RANK_STYLE,
-          textOpacity: ['*', nativePresentationOpacityExpression, nativeLodRankOpacityExpression],
-        }),
+        symbolZOrder: 'viewport-y',
+        // 8 buckets, 5-pt increments — thresholds MUST match scoreToBucket()
+        // in quality-color.ts so the pin sprite matches the rank pill + dot.
+        iconImage: [
+          'step',
+          ['coalesce', ['get', 'craveScore'], 60],
+          PIN_BUCKET_IMAGE_BY_INDEX[0],
+          65,
+          PIN_BUCKET_IMAGE_BY_INDEX[1],
+          70,
+          PIN_BUCKET_IMAGE_BY_INDEX[2],
+          75,
+          PIN_BUCKET_IMAGE_BY_INDEX[3],
+          80,
+          PIN_BUCKET_IMAGE_BY_INDEX[4],
+          85,
+          PIN_BUCKET_IMAGE_BY_INDEX[5],
+          90,
+          PIN_BUCKET_IMAGE_BY_INDEX[6],
+          95,
+          PIN_BUCKET_IMAGE_BY_INDEX[7],
+        ],
+        iconSize: 1,
+        iconAnchor: 'bottom',
+        iconAllowOverlap: true,
+        iconIgnorePlacement: true,
+        iconOpacity: ['*', nativePresentationOpacityExpression, nativeLodOpacityExpression],
+        iconOpacityTransition: PIN_OPACITY_TRANSITION,
+        // Rank glyph on the same symbol, centered on the pin fill region. The
+        // symbol anchor is the pin TIP (iconAnchor:'bottom' = tip on the geo
+        // coordinate); the rank is centered (textAnchor:'center') and translated
+        // UP from the tip to the fill centerline, matching the old rank layer.
+        textField: STYLE_PINS_RANK_STYLE.textField,
+        textSize: STYLE_PINS_RANK_STYLE.textSize,
+        textFont: STYLE_PINS_RANK_STYLE.textFont,
+        textColor: '#ffffff',
+        textAnchor: 'center',
+        textTranslate: [0, STYLE_PINS_RANK_TRANSLATE_Y],
+        textTranslateAnchor: 'viewport',
+        textAllowOverlap: true,
+        textIgnorePlacement: true,
+        textOpacity: ['*', nativePresentationOpacityExpression, nativeLodRankOpacityExpression],
         textOpacityTransition: PIN_RANK_OPACITY_TRANSITION,
-      }) as MapboxGL.SymbolLayerStyle,
-    [nativeLodRankOpacityExpression, nativePresentationOpacityExpression]
+      }) as unknown as MapboxGL.SymbolLayerStyle,
+    [
+      nativeLodOpacityExpression,
+      nativeLodRankOpacityExpression,
+      nativePresentationOpacityExpression,
+    ]
   );
 
-  const stylePinLayerStackBySlot = React.useMemo(() => {
-    return Array.from({ length: pinStackSlotCount }, (_, slotIndex) => {
-      return [
-        <MapboxGL.SymbolLayer
-          key={`shadow-slot-${slotIndex}`}
-          id={`restaurant-style-pins-shadow-slot-${slotIndex}`}
-          slot="top"
-          belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
-          style={stylePinsShadowSteadyStyle}
-          sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
-          filter={buildSlotScopedFilter(slotIndex, promotedPinFeatureFilter)}
-        />,
-        <MapboxGL.SymbolLayer
-          key={`base-slot-${slotIndex}`}
-          id={`restaurant-style-pins-base-slot-${slotIndex}`}
-          slot="top"
-          belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
-          style={stylePinsOutlineSteadyStyle}
-          sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
-          filter={buildSlotScopedFilter(slotIndex, promotedPinFeatureFilter)}
-        />,
-        <MapboxGL.SymbolLayer
-          key={`fill-slot-${slotIndex}`}
-          id={`restaurant-style-pins-fill-slot-${slotIndex}`}
-          slot="top"
-          belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
-          style={stylePinsFillSteadyStyle}
-          sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
-          filter={buildSlotScopedFilter(slotIndex, promotedPinFeatureFilter)}
-        />,
-        <MapboxGL.SymbolLayer
-          key={`rank-slot-${slotIndex}`}
-          id={`restaurant-style-pins-rank-slot-${slotIndex}`}
-          slot="top"
-          belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
-          style={stylePinsRankStyle}
-          sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
-          filter={buildSlotScopedFilter(slotIndex, promotedPinFeatureFilter)}
-        />,
-      ];
-    });
-  }, [
-    pinSlotSourceIds,
-    pinStackSlotCount,
-    stylePinsFillSteadyStyle,
-    stylePinsOutlineSteadyStyle,
-    stylePinsRankStyle,
-    stylePinsShadowSteadyStyle,
-  ]);
-
-  const pinInteractionLayerBySlot = React.useMemo(
-    () =>
-      Array.from({ length: pinStackSlotCount }, (_, slotIndex) => {
-        const layerId = buildPinInteractionLayerId(slotIndex);
-        return (
-          <MapboxGL.CircleLayer
-            key={layerId}
-            id={layerId}
-            slot="top"
-            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-            sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
-            style={PIN_INTERACTION_LAYER_STYLE}
-            filter={buildSlotScopedFilter(slotIndex, promotedPinInteractionFeatureFilter)}
-          />
-        );
-      }),
-    [pinSlotSourceIds, pinStackSlotCount]
+  // RESIDENT interaction layer (slot-elimination): ONE circle layer for all pin
+  // tap targets, reading the resident bundle source filtered by feature kind —
+  // replaces the 30 per-slot interaction layers. No nativeLodZ scoping.
+  const pinInteractionLayer = React.useMemo(
+    () => (
+      <MapboxGL.CircleLayer
+        key={PIN_INTERACTION_LAYER_ID}
+        id={PIN_INTERACTION_LAYER_ID}
+        slot="top"
+        belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+        sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
+        style={PIN_INTERACTION_LAYER_STYLE}
+        filter={promotedPinInteractionFeatureFilter}
+      />
+    ),
+    []
   );
-  const pinInteractionLayerIds = React.useMemo(
-    () =>
-      Array.from({ length: pinStackSlotCount }, (_, slotIndex) =>
-        buildPinInteractionLayerId(slotIndex)
-      ),
-    [pinStackSlotCount]
-  );
+  const pinInteractionLayerIds = React.useMemo(() => [PIN_INTERACTION_LAYER_ID], []);
   React.useEffect(() => {
     const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
     if (!isPerfScenarioAttributionActive(scenarioConfig)) {
@@ -2677,12 +2638,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
     () =>
       shouldMountSearchMarkerLayers
         ? {
-            pinStackSlotCount,
-            pinSlotSourceIds,
             dotLayerStyle,
             handlePressTarget: handleMarkerScenePressTarget,
-            stylePinLayerStackBySlot,
-            pinInteractionLayerBySlot,
+            stylePinSingleSymbolStyle,
+            stylePinSharedShadowStyle,
+            pinInteractionLayer,
             profilerCallback,
             labelLayerSpecs,
             labelCandidateStyles,
@@ -2698,9 +2658,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       handleMarkerScenePressTarget,
       labelCandidateStyles,
       labelLayerSpecs,
-      pinInteractionLayerBySlot,
-      pinStackSlotCount,
-      pinSlotSourceIds,
+      pinInteractionLayer,
       profilerCallback,
       restaurantLabelPinCollisionLayerId,
       restaurantLabelPinCollisionLayerIdSideLeft,
@@ -2708,7 +2666,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
       restaurantLabelPinCollisionLayerKey,
       restaurantLabelPinCollisionStyles,
       shouldMountSearchMarkerLayers,
-      stylePinLayerStackBySlot,
+      stylePinSingleSymbolStyle,
+      stylePinSharedShadowStyle,
     ]
   );
 

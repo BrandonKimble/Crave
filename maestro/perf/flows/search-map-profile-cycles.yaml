@@ -5,7 +5,7 @@ appId: com.brandonkimble.cravesearch
 - tapOn: { text: 'Close polls', optional: true }
 - extendedWaitUntil: { visible: 'What are you craving?', timeout: 45000 }
 - extendedWaitUntil: { visible: 'Show best restaurants here', timeout: 45000 }
-- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=30.2672&lng=-97.7431&zoom=11.5&label=austin'
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=40.7550&lng=-73.9800&zoom=11.5&label=austin'
 - waitForAnimationToEnd: { timeout: 1800 }
 - openLink: 'crave://perf-scenario-command?action=submit_shortcut_restaurants'
 - extendedWaitUntil: { visible: 'Close results', timeout: 20000 }

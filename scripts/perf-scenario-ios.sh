@@ -77,8 +77,10 @@ except OSError:
     pass
 PY
 )"
-default_sim_location_lat="30.2672"
-default_sim_location_lng="-97.7431"
+# Default test market = Manhattan (matches the active local DB dataset). Override
+# via PERF_SCENARIO_SIM_LOCATION_LAT/LNG (or EXPO_PUBLIC_STARTUP_LAT/LNG) per run.
+default_sim_location_lat="40.7550"
+default_sim_location_lng="-73.9800"
 if [[ -n "$flow_sim_location" && -z "${PERF_SCENARIO_SIM_LOCATION_LAT:-}" && -z "${PERF_SCENARIO_SIM_LOCATION_LNG:-}" ]]; then
   IFS=, read -r default_sim_location_lat default_sim_location_lng <<<"$flow_sim_location"
 fi
@@ -148,6 +150,13 @@ export PERF_SCENARIO_RECORD_VIDEO="${PERF_SCENARIO_RECORD_VIDEO:-0}"
 export PERF_SCENARIO_VIDEO_FILE="${PERF_SCENARIO_VIDEO_FILE:-$SCENARIO_VIDEO_DEFAULT}"
 export PERF_SCENARIO_SIM_LOCATION_LAT="${PERF_SCENARIO_SIM_LOCATION_LAT:-$default_sim_location_lat}"
 export PERF_SCENARIO_SIM_LOCATION_LNG="${PERF_SCENARIO_SIM_LOCATION_LNG:-$default_sim_location_lng}"
+# Deterministic startup-map origin for tests: MainLaunchCoordinator short-circuits
+# all GPS/last-known resolution to this coordinate (EXPO_PUBLIC_STARTUP_*), so flows
+# land on the same viewport every run regardless of simulator-GPS timing. Defaults
+# to the scenario sim location; override via env to test a specific market.
+export EXPO_PUBLIC_STARTUP_LAT="${EXPO_PUBLIC_STARTUP_LAT:-$PERF_SCENARIO_SIM_LOCATION_LAT}"
+export EXPO_PUBLIC_STARTUP_LNG="${EXPO_PUBLIC_STARTUP_LNG:-$PERF_SCENARIO_SIM_LOCATION_LNG}"
+export EXPO_PUBLIC_STARTUP_ZOOM="${EXPO_PUBLIC_STARTUP_ZOOM:-12.4}"
 
 mkdir -p "$(dirname "$EXPO_METRO_LOG_PATH")" "$(dirname "$PERF_SCENARIO_LOG_FILE")" "$(dirname "$PERF_SCENARIO_REPORT_FILE")" "$(dirname "$PERF_SCENARIO_VIDEO_FILE")" "$PERF_SCENARIO_SCREENSHOT_DIR"
 : > "$PERF_SCENARIO_LOG_FILE"

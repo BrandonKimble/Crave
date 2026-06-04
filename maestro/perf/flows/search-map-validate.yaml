@@ -18,7 +18,7 @@ appId: com.brandonkimble.cravesearch
 - extendedWaitUntil:
     visible: 'Show best restaurants here'
     timeout: 45000
-- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=30.2672&lng=-97.7431&zoom=11.6&label=validate_seed'
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=40.7550&lng=-73.9800&zoom=11.6&label=validate_seed'
 - waitForAnimationToEnd:
     timeout: 1600
 - openLink: 'crave://perf-scenario-command?action=submit_shortcut_restaurants'
@@ -28,18 +28,18 @@ appId: com.brandonkimble.cravesearch
 - waitForAnimationToEnd:
     timeout: 2500
 - takeScreenshot: /tmp/validate-enter
-- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7431&zoom=11.6&bearing=80&cameraDurationMs=600&label=validate_twist'
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=11.6&bearing=80&cameraDurationMs=600&label=validate_twist'
 - waitForAnimationToEnd:
     timeout: 1000
 - takeScreenshot: /tmp/validate-twist
-- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7431&zoom=11.6&bearing=0&cameraDurationMs=500&label=validate_twist_reset'
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=11.6&bearing=0&cameraDurationMs=500&label=validate_twist_reset'
 - waitForAnimationToEnd:
     timeout: 800
-- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7431&zoom=13.4&cameraDurationMs=900&label=validate_zoom_in'
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=13.4&cameraDurationMs=900&label=validate_zoom_in'
 - waitForAnimationToEnd:
     timeout: 1300
 - takeScreenshot: /tmp/validate-zoomin
-- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7431&zoom=10.6&cameraDurationMs=900&label=validate_zoom_out'
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=10.6&cameraDurationMs=900&label=validate_zoom_out'
 - waitForAnimationToEnd:
     timeout: 1300
 - takeScreenshot: /tmp/validate-zoomout

@@ -6552,6 +6552,11 @@ final class SearchMapRenderController: RCTEventEmitter {
     // resident, so the feature is already present).
     let pinTransitionsByMarkerKey =
       Self.derivedFamilyState(sourceId: state.pinSourceId, state: state).livePinTransitionsByMarkerKey
+    // A marker that is currently PINNED (promoted) must keep its dot hidden — the
+    // pin IS its visual. Without this, a promoted marker whose dot remained in the
+    // visible role set (no active transition) painted its dot under the pin (the
+    // "all pins show their dots simultaneously" bug).
+    let pinnedMarkerKeys = Set(state.markerRoleTable.pinnedMarkerKeysInOrder)
     let previousDotsByMarkerKey = dotFamilyState.lastDesiredCollection.featureById
     let nextDotsByMarkerKey = desiredDots.featureById
     let previousDotIds = Set(previousDotsByMarkerKey.keys)
@@ -6586,8 +6591,13 @@ final class SearchMapRenderController: RCTEventEmitter {
       let pinIsPromoting = pinTransition.map { $0.targetOpacity >= 0.999 } ?? false
       let pinPromotingAwaitingCommit =
         pinIsPromoting && (pinTransition?.isAwaitingSourceCommit ?? false)
+      // Pinned (and not actively demoting) → dot stays hidden. Demoting → dot fades
+      // in. Promoting → dot fades out. Otherwise follow the visible role set.
+      let isPinnedNow = pinnedMarkerKeys.contains(markerKey) && !pinIsDemoting
       let targetOpacity: Double =
-        pinIsDemoting ? 1.0 : (pinIsPromoting ? 0.0 : (nextVisible ? 1.0 : 0.0))
+        pinIsDemoting
+          ? 1.0
+          : (pinIsPromoting || isPinnedNow ? 0.0 : (nextVisible ? 1.0 : 0.0))
       // A promote's dot-exit holds the dot visible until the pin's source commit
       // lands — it is un-awaited together with the pin-enter in
       // startAwaitingLivePinTransitions. A demote's dot-enter is immediate.

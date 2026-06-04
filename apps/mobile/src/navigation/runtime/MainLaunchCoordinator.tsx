@@ -4,7 +4,6 @@ import * as SplashScreen from 'expo-splash-screen';
 import * as Location from 'expo-location';
 import { AppState, Dimensions } from 'react-native';
 import type { Coordinate, MapBounds } from '../../types';
-import { useCityStore } from '../../store/cityStore';
 import {
   createNetworkPollBootstrapSnapshot,
   fetchPolls,
@@ -14,33 +13,63 @@ import {
   type PollBootstrapSnapshot,
 } from '../../services/polls';
 import { searchService } from '../../services/search';
+import { resolveIpLocation } from '../../services/markets';
 import { logger } from '../../utils';
 import {
   SINGLE_LOCATION_ZOOM_LEVEL,
   USA_FALLBACK_CENTER,
   USA_FALLBACK_ZOOM,
 } from '../../screens/Search/constants/search';
-import { normalizePersistedCity, resolveCityViewport } from './city-viewports';
 import { useAppRouteCoordinator } from './AppRouteCoordinator';
 import { isSplashStudioEnabled } from '../../splash-studio/config';
 import { createMainMapReadinessAuthority } from './main-map-readiness-authority';
 
 const BOOT_LOCATION_STORAGE_KEY = 'boot:lastKnownLocation';
-const STARTUP_LOCATION_MAX_WAIT_MS = 350;
+// Cold GPS fixes routinely take 1-3s; only block startup briefly, then paint the
+// best immediate source (last-known/cached) and EASE to the fresh fix when it lands.
+const STARTUP_LOCATION_MAX_WAIT_MS = 1_500;
 const STARTUP_POLLS_GRACE_MS = 350;
 const MAX_STORED_LOCATION_AGE_MS = 6 * 60 * 60 * 1000;
-const STALE_LOCATION_CITY_COMPATIBILITY_RADIUS_METERS = 80_000;
 const MAIN_LAUNCH_READY_TIMEOUT_MS = 10_000;
 
 export type StartupLocationSnapshot = {
   coordinate: Coordinate | null;
-  source: 'current' | 'last_known_os' | 'cached_app' | 'city_fallback' | 'none';
+  source:
+    | 'override'
+    | 'current'
+    | 'last_known_os'
+    | 'cached_app'
+    | 'ip_fallback'
+    | 'city_fallback'
+    | 'none';
   acquiredAtMs: number | null;
   accuracyMeters: number | null;
   permission: 'granted' | 'denied' | 'undetermined';
   reducedAccuracy: boolean;
   isStale: boolean;
+  ipMarketKey?: string | null;
 };
+
+// Deterministic startup-location override for tests/dev. When EXPO_PUBLIC_STARTUP_LAT
+// and EXPO_PUBLIC_STARTUP_LNG are set, startup short-circuits all GPS/last-known
+// resolution and centers exactly there — giving Maestro flows a predictable map
+// origin without fighting simulator-GPS timing. Optional EXPO_PUBLIC_STARTUP_ZOOM.
+const parseFiniteEnv = (raw: string | undefined): number | null => {
+  if (raw == null || raw.trim() === '') {
+    return null;
+  }
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
+};
+
+const STARTUP_LOCATION_OVERRIDE: { coordinate: Coordinate; zoom: number | null } | null = (() => {
+  const lat = parseFiniteEnv(process.env.EXPO_PUBLIC_STARTUP_LAT);
+  const lng = parseFiniteEnv(process.env.EXPO_PUBLIC_STARTUP_LNG);
+  if (lat == null || lng == null) {
+    return null;
+  }
+  return { coordinate: { lat, lng }, zoom: parseFiniteEnv(process.env.EXPO_PUBLIC_STARTUP_ZOOM) };
+})();
 
 export type StartupCameraSpec = {
   center: [number, number];
@@ -221,111 +250,85 @@ const parseCachedAppLocation = (
   }
 };
 
-const buildCityFallbackSnapshot = (
-  selectedCity: string | null,
-  permission: StartupLocationSnapshot['permission']
-): StartupLocationSnapshot => {
-  const cityViewport = resolveCityViewport(selectedCity);
-  if (cityViewport) {
-    return buildLocationSnapshot({
-      coordinate: {
-        lat: cityViewport.center[1],
-        lng: cityViewport.center[0],
-      },
-      source: 'city_fallback',
-      acquiredAtMs: null,
-      accuracyMeters: null,
-      permission,
-      reducedAccuracy: false,
-      isStale: true,
-    });
-  }
-  return defaultLocationSnapshot(permission);
-};
+// IP→metro snapshot: coarse city-level coordinate from the server (Google's
+// no-device-signal rung). NOT the user's true position, so it reads as
+// 'unavailable' for the user-location dot. Carries the resolved market key so
+// polls/coverage bootstrap for the right metro.
+const buildIpFallbackSnapshot = (
+  coordinate: Coordinate,
+  permission: StartupLocationSnapshot['permission'],
+  ipMarketKey: string | null
+): StartupLocationSnapshot => ({
+  ...buildLocationSnapshot({
+    coordinate,
+    source: 'ip_fallback',
+    acquiredAtMs: null,
+    accuracyMeters: null,
+    permission,
+    reducedAccuracy: false,
+    isStale: true,
+  }),
+  ipMarketKey,
+});
 
-const buildCameraFromSnapshot = (
-  snapshot: StartupLocationSnapshot,
-  selectedCity: string | null
-): StartupCameraSpec => {
+// Absolute last resort when there is NO device location and IP→metro also fails:
+// a neutral national view (NOT a hardcoded city). Adapts to nothing because we
+// have nothing — but never pretends the user is in a specific city.
+const buildNationalFallbackSnapshot = (
+  permission: StartupLocationSnapshot['permission']
+): StartupLocationSnapshot =>
+  buildLocationSnapshot({
+    coordinate: { lat: USA_FALLBACK_CENTER[1], lng: USA_FALLBACK_CENTER[0] },
+    source: 'city_fallback',
+    acquiredAtMs: null,
+    accuracyMeters: null,
+    permission,
+    reducedAccuracy: false,
+    isStale: true,
+  });
+
+const buildCameraFromSnapshot = (snapshot: StartupLocationSnapshot): StartupCameraSpec => {
   if (snapshot.coordinate) {
     return {
       center: [snapshot.coordinate.lng, snapshot.coordinate.lat],
-      zoom:
-        snapshot.source === 'city_fallback'
-          ? (resolveCityViewport(selectedCity)?.zoom ?? USA_FALLBACK_ZOOM)
-          : SINGLE_LOCATION_ZOOM_LEVEL,
+      // Device + IP fixes frame a single locale; the neutral national fallback
+      // (city_fallback at USA center) zooms way out. No per-city zoom anymore.
+      zoom: snapshot.source === 'city_fallback' ? USA_FALLBACK_ZOOM : SINGLE_LOCATION_ZOOM_LEVEL,
       pitch: 0,
       heading: 0,
       source: snapshot.source,
     };
   }
 
-  const fallbackViewport = resolveCityViewport(selectedCity);
   return {
-    center: fallbackViewport?.center ?? USA_FALLBACK_CENTER,
-    zoom: fallbackViewport?.zoom ?? USA_FALLBACK_ZOOM,
+    center: USA_FALLBACK_CENTER,
+    zoom: USA_FALLBACK_ZOOM,
     pitch: 0,
     heading: 0,
-    source: fallbackViewport ? 'city_fallback' : 'none',
+    source: 'none',
   };
 };
 
-const toRadians = (value: number): number => (value * Math.PI) / 180;
-
-const distanceMetersBetween = (left: Coordinate, right: Coordinate): number => {
-  const earthRadiusMeters = 6_371_000;
-  const latitudeDelta = toRadians(right.lat - left.lat);
-  const longitudeDelta = toRadians(right.lng - left.lng);
-  const leftLatitude = toRadians(left.lat);
-  const rightLatitude = toRadians(right.lat);
-  const a =
-    Math.sin(latitudeDelta / 2) * Math.sin(latitudeDelta / 2) +
-    Math.cos(leftLatitude) *
-      Math.cos(rightLatitude) *
-      Math.sin(longitudeDelta / 2) *
-      Math.sin(longitudeDelta / 2);
-  return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-};
-
-const isSnapshotCompatibleWithSelectedCity = (
-  snapshot: StartupLocationSnapshot | null | undefined,
-  selectedCity: string | null
-): boolean => {
-  if (!snapshot?.coordinate) {
-    return false;
-  }
-  const cityViewport = resolveCityViewport(selectedCity);
-  if (!cityViewport) {
-    return true;
-  }
-  return (
-    distanceMetersBetween(snapshot.coordinate, {
-      lat: cityViewport.center[1],
-      lng: cityViewport.center[0],
-    }) <= STALE_LOCATION_CITY_COMPATIBILITY_RADIUS_METERS
-  );
-};
-
 const chooseBestSnapshot = (
-  candidates: Array<StartupLocationSnapshot | null | undefined>,
-  selectedCity: string | null
+  candidates: Array<StartupLocationSnapshot | null | undefined>
 ): StartupLocationSnapshot | null => {
+  // Device reality always beats coarser sources. Google-style ladder: current GPS,
+  // then last-known, then a cached app fix, then IP→metro (the no-device-signal
+  // rung), and only as an absolute last resort a neutral national default. The
+  // override (test/dev) trumps everything. We do NOT reject device locations for
+  // being far from any city — where the device says you are wins.
   const priority: Record<StartupLocationSnapshot['source'], number> = {
-    current: 5,
-    city_fallback: 4,
-    last_known_os: 3,
-    cached_app: 2,
+    override: 7,
+    current: 6,
+    last_known_os: 5,
+    cached_app: 4,
+    ip_fallback: 3,
+    city_fallback: 2,
     none: 1,
   };
   let best: StartupLocationSnapshot | null = null;
   for (const candidate of candidates) {
     if (!candidate) {
-      continue;
-    }
-    if (
-      (candidate.source === 'last_known_os' || candidate.source === 'cached_app') &&
-      !isSnapshotCompatibleWithSelectedCity(candidate, selectedCity)
-    ) {
       continue;
     }
     if (!best || priority[candidate.source] > priority[best.source]) {
@@ -405,8 +408,6 @@ const deriveBoundsFromCamera = (camera: StartupCameraSpec | null): MapBounds | n
 export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isReady: isRouteReady, routeState } = useAppRouteCoordinator();
   const routeDestination = routeState?.destination ?? null;
-  const selectedCityRaw = useCityStore((state) => state.selectedCity);
-  const selectedCity = normalizePersistedCity(selectedCityRaw) ?? 'Austin';
 
   const [isMainLaunchReady, setIsMainLaunchReady] = React.useState(false);
   const [isStartupResolved, setIsStartupResolved] = React.useState(false);
@@ -593,6 +594,28 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
 
     void (async () => {
       const startedAtMs = Date.now();
+
+      // Test/dev override: short-circuit all GPS resolution and center exactly at
+      // the configured coordinate. Deterministic startup origin for Maestro flows.
+      if (STARTUP_LOCATION_OVERRIDE) {
+        const overrideSnapshot = buildLocationSnapshot({
+          coordinate: STARTUP_LOCATION_OVERRIDE.coordinate,
+          source: 'override',
+          acquiredAtMs: Date.now(),
+          accuracyMeters: null,
+          permission: 'granted',
+          reducedAccuracy: false,
+          isStale: false,
+        });
+        if (cancelled || seq !== startupResolutionSeqRef.current) {
+          return;
+        }
+        applyLocationSnapshot(overrideSnapshot);
+        setStartupCamera(buildCameraFromSnapshot(overrideSnapshot));
+        setIsStartupResolved(true);
+        return;
+      }
+
       const permissionResponse = await Location.getForegroundPermissionsAsync().catch(() => null);
       const permission = getPermissionState(permissionResponse?.status);
       const reducedAccuracy = isReducedAccuracyPermission(permissionResponse);
@@ -613,36 +636,50 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
         lastKnownSnapshotPromise,
       ]);
 
-      const cityFallbackSnapshot = buildCityFallbackSnapshot(selectedCity, permission);
-      const cachedSnapshot =
-        cachedSnapshotRaw && isSnapshotCompatibleWithSelectedCity(cachedSnapshotRaw, selectedCity)
-          ? cachedSnapshotRaw
-          : null;
-      if (cachedSnapshotRaw && !cachedSnapshot) {
-        void AsyncStorage.removeItem(BOOT_LOCATION_STORAGE_KEY).catch(() => undefined);
-      }
+      // A cached/last-known device fix is honored as-is — device reality wins.
+      const cachedSnapshot = cachedSnapshotRaw;
       const currentPositionPromise =
         permission === 'granted'
           ? resolveCurrentPosition(permission, reducedAccuracy)
           : Promise.resolve<StartupLocationSnapshot | null>(null);
 
-      const currentSnapshot = await raceWithTimeout(
-        currentPositionPromise,
-        Math.max(0, STARTUP_LOCATION_MAX_WAIT_MS - (Date.now() - startedAtMs))
-      );
+      // Paint-then-upgrade: if we already have an immediate device fix
+      // (last-known/cached, both in the user's real area), don't hold the splash on
+      // a cold GPS acquire — paint immediately and let the live watch refine the
+      // location dot. Only block briefly for a fresh fix when we have NOTHING
+      // device-side, so a first-ever launch still centers on the user.
+      const hasImmediateDeviceFix =
+        lastKnownSnapshot?.coordinate != null || cachedSnapshot?.coordinate != null;
+      const currentWaitMs = hasImmediateDeviceFix
+        ? 0
+        : Math.max(0, STARTUP_LOCATION_MAX_WAIT_MS - (Date.now() - startedAtMs));
+      const currentSnapshot = await raceWithTimeout(currentPositionPromise, currentWaitMs);
 
-      const bestSnapshot =
-        chooseBestSnapshot(
-          [currentSnapshot, cityFallbackSnapshot, lastKnownSnapshot, cachedSnapshot],
-          selectedCity
-        ) ?? cityFallbackSnapshot;
+      const deviceSnapshot = chooseBestSnapshot([
+        currentSnapshot,
+        lastKnownSnapshot,
+        cachedSnapshot,
+      ]);
+
+      // No device location (denied permission / no signal): Google's bottom rung —
+      // coarse IP→metro from the server. If that fails too, a neutral national view.
+      // Never a hardcoded city.
+      let bestSnapshot = deviceSnapshot;
+      if (!bestSnapshot?.coordinate) {
+        const ip = await resolveIpLocation();
+        if (ip?.resolved && ip.coordinate) {
+          bestSnapshot = buildIpFallbackSnapshot(ip.coordinate, permission, ip.marketKey ?? null);
+        } else {
+          bestSnapshot = buildNationalFallbackSnapshot(permission);
+        }
+      }
 
       if (cancelled || seq !== startupResolutionSeqRef.current) {
         return;
       }
 
       applyLocationSnapshot(bestSnapshot);
-      setStartupCamera(buildCameraFromSnapshot(bestSnapshot, selectedCity));
+      setStartupCamera(buildCameraFromSnapshot(bestSnapshot));
       setIsStartupResolved(true);
 
       if (permission === 'granted') {
@@ -666,7 +703,6 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     resolveCurrentPosition,
     resolveLastKnownPosition,
     routeDestination,
-    selectedCity,
     startLocationWatch,
   ]);
 
@@ -687,7 +723,9 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
         : null;
     const startupCacheMarketKey =
       launchIntentMarketKey ??
-      (startupCamera.source === 'city_fallback' ? normalizePollMarketKey(selectedCity) : null);
+      (startupLocationSnapshot?.ipMarketKey
+        ? normalizePollMarketKey(startupLocationSnapshot.ipMarketKey)
+        : null);
     const bootstrapKey = JSON.stringify({
       launchIntentMarketKey,
       center: startupCamera.center.map((value) => Math.round(value * 1e5) / 1e5),
@@ -768,7 +806,6 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     isStartupResolved,
     routeState?.launchIntent,
     routeState?.destination,
-    selectedCity,
     startupCamera,
     startupPollBounds,
   ]);
@@ -784,8 +821,8 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
       typeof startupPollsSnapshot?.marketKey === 'string' &&
       startupPollsSnapshot.marketKey.trim().length
         ? startupPollsSnapshot.marketKey.trim().toLowerCase()
-        : startupCamera?.source === 'city_fallback'
-          ? normalizePollMarketKey(selectedCity)
+        : startupLocationSnapshot?.ipMarketKey
+          ? normalizePollMarketKey(startupLocationSnapshot.ipMarketKey)
           : null;
     if (launchIntent.type === 'restaurant') {
       void searchService
@@ -884,7 +921,6 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     isStartupResolved,
     routeState?.destination,
     routeState?.launchIntent,
-    selectedCity,
     startupCamera?.source,
     startupLocationSnapshot?.coordinate,
     startupPollsSnapshot?.marketKey,

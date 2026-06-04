@@ -387,6 +387,11 @@ const unclassifiedCountFromClassification = (event) =>
   numeric(event.unclassifiedCandidateVisualIdentityCount) ??
   0;
 const slotTopologyEvents = byEvent('search_map_slot_topology_contract');
+// Resident-layer topology (slot-elimination): pin art is a single viewport-y
+// symbol; interaction is ONE resident layer; labels are 16 resident layers (one
+// per preferred×candidate combo), NOT per-slot. So these counts are now FIXED and
+// independent of pinStackSlotCount (which still exists only as the in-memory
+// staging family + the moot native moveLayer pass, pending native cleanup).
 const badSlotTopologyEvent = slotTopologyEvents.find((event) => {
   const pinStackSlotCount = numeric(event.pinStackSlotCount);
   if (pinStackSlotCount == null) {
@@ -394,9 +399,8 @@ const badSlotTopologyEvent = slotTopologyEvents.find((event) => {
   }
   return (
     numeric(event.normalSlotCount) !== 30 ||
-    numeric(event.pinSlotSourceIdCount) !== pinStackSlotCount ||
-    numeric(event.pinInteractionLayerIdCount) !== pinStackSlotCount ||
-    numeric(event.labelVisualLayerIdCount) !== pinStackSlotCount * 16 ||
+    numeric(event.pinInteractionLayerIdCount) !== 1 ||
+    numeric(event.labelVisualLayerIdCount) !== 16 ||
     numeric(event.labelCollisionLayerIdCount) !== 3
   );
 });
@@ -4636,9 +4640,16 @@ if (
 
 const markerSceneSource =
   searchMapSource.match(/const SearchMapMarkerScene = React\.memo\([\s\S]*?\n\);/)?.[0] ?? '';
-const slotSourcesIndex = markerSceneSource.indexOf('{Array.from({ length: pinStackSlotCount }');
-const sharedCollisionSourceIndex = markerSceneSource.indexOf(
+// Resident-layer model (slot-elimination): there are NO per-slot label sources/
+// layers any more — labels are 16 resident layers + ONE shared collision source.
+// So the invariant "collision is one shared source, not interleaved per-slot" is
+// satisfied by construction: the per-slot loop is gone, and the collision source
+// is still its own RESTAURANT_LABEL_COLLISION_SOURCE_ID ShapeSource.
+const hasSharedCollisionSource = markerSceneSource.includes(
   'id={RESTAURANT_LABEL_COLLISION_SOURCE_ID}'
+);
+const hasNoPerSlotLabelLoop = !markerSceneSource.includes(
+  '{Array.from({ length: pinStackSlotCount }'
 );
 const iOSPromotedSlotBuilderSource =
   nativeMapControllerSource.match(
@@ -4649,15 +4660,12 @@ const androidPromotedSlotBuilderSource =
     /private static ParsedFeatureCollection makePromotedSlotCollection[\s\S]*?return promotedSlotCollection;[\s\S]*?\n  }/
   )?.[0] ?? '';
 if (
-  slotSourcesIndex >= 0 &&
-  sharedCollisionSourceIndex > slotSourcesIndex &&
-  !/restaurantLabelPinCollisionLayerId\}-slot|nativeSlotFeatureKind'\],\s*'labelCollision'/.test(
-    markerSceneSource
-  ) &&
+  hasSharedCollisionSource &&
+  hasNoPerSlotLabelLoop &&
   !/labelCollisionRecordsByMarkerKey|kind:\s*"labelCollision"/.test(iOSPromotedSlotBuilderSource) &&
   !/labelCollisions|\"labelCollision\"/.test(androidPromotedSlotBuilderSource)
 ) {
-  pass('promoted pin collision obstacles use one shared source above all per-slot label layers');
+  pass('promoted pin collision obstacles use one shared source; no per-slot label sources remain');
 } else {
   fail('promoted pin collision obstacles can still be interleaved inside per-slot label sources');
 }

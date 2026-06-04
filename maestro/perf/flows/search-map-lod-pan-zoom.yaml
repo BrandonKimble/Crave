@@ -15,7 +15,7 @@ appId: com.brandonkimble.cravesearch
 - extendedWaitUntil:
     visible: 'Show best restaurants here'
     timeout: 45000
-- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=30.2672&lng=-97.7431&zoom=11.6&label=lod_seed_austin'
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=40.7550&lng=-73.9800&zoom=11.6&label=lod_seed_austin'
 - waitForAnimationToEnd:
     timeout: 1600
 - openLink: 'crave://perf-scenario-command?action=submit_shortcut_restaurants'
@@ -28,46 +28,46 @@ appId: com.brandonkimble.cravesearch
 - repeat:
     times: 2
     commands:
-      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7238&zoom=11.6&cameraDurationMs=650&label=pan_east'
+      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9607&zoom=11.6&cameraDurationMs=650&label=pan_east'
       - waitForAnimationToEnd:
           timeout: 900
-      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7624&zoom=11.6&cameraDurationMs=650&label=pan_west'
+      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9993&zoom=11.6&cameraDurationMs=650&label=pan_west'
       - waitForAnimationToEnd:
           timeout: 900
-      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2842&lng=-97.7431&zoom=11.6&cameraDurationMs=650&label=pan_north'
+      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7720&lng=-73.9800&zoom=11.6&cameraDurationMs=650&label=pan_north'
       - waitForAnimationToEnd:
           timeout: 900
-      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2502&lng=-97.7431&zoom=11.6&cameraDurationMs=650&label=pan_south'
+      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7380&lng=-73.9800&zoom=11.6&cameraDurationMs=650&label=pan_south'
       - waitForAnimationToEnd:
           timeout: 900
       # Aggressive twist at the SEED zoom (11.6) with no prior zoom-in, to
       # recreate the aggressive twisting repro: large bearing swings (and a
       # combined pan+twist) that must NOT mass-demote pins while zoom is fixed.
-      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7431&zoom=11.6&bearing=75&cameraDurationMs=500&label=seed_twist_cw_aggressive'
+      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=11.6&bearing=75&cameraDurationMs=500&label=seed_twist_cw_aggressive'
       - waitForAnimationToEnd:
           timeout: 700
-      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7431&zoom=11.6&bearing=-75&cameraDurationMs=500&label=seed_twist_ccw_aggressive'
+      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=11.6&bearing=-75&cameraDurationMs=500&label=seed_twist_ccw_aggressive'
       - waitForAnimationToEnd:
           timeout: 700
-      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7238&zoom=11.6&bearing=110&cameraDurationMs=550&label=seed_pan_twist_combo'
+      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9607&zoom=11.6&bearing=110&cameraDurationMs=550&label=seed_pan_twist_combo'
       - waitForAnimationToEnd:
           timeout: 750
-      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7431&zoom=11.6&bearing=0&cameraDurationMs=500&label=seed_twist_reset'
+      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=11.6&bearing=0&cameraDurationMs=500&label=seed_twist_reset'
       - waitForAnimationToEnd:
           timeout: 700
-      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7431&zoom=13.15&cameraDurationMs=750&label=zoom_in'
+      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=13.15&cameraDurationMs=750&label=zoom_in'
       - waitForAnimationToEnd:
           timeout: 1000
-      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7431&zoom=13.15&bearing=32&cameraDurationMs=750&label=twist_clockwise'
+      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=13.15&bearing=32&cameraDurationMs=750&label=twist_clockwise'
       - waitForAnimationToEnd:
           timeout: 1000
-      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7431&zoom=13.15&bearing=-32&cameraDurationMs=750&label=twist_counterclockwise'
+      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=13.15&bearing=-32&cameraDurationMs=750&label=twist_counterclockwise'
       - waitForAnimationToEnd:
           timeout: 1000
-      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7431&zoom=13.15&bearing=0&cameraDurationMs=650&label=twist_reset'
+      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=13.15&bearing=0&cameraDurationMs=650&label=twist_reset'
       - waitForAnimationToEnd:
           timeout: 900
-      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7431&zoom=10.9&cameraDurationMs=750&label=zoom_out'
+      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=10.9&cameraDurationMs=750&label=zoom_out'
       - waitForAnimationToEnd:
           timeout: 1000
 - openLink: 'crave://perf-scenario-mark?phase=measured_repeat_loop_end&label=map_lod_pan_zoom'

@@ -1,5 +1,7 @@
 import type { SearchMapRenderEngineInputs } from '../../components/SearchMapWithMarkerEngine';
-import { getCraveScoreColorFromScore } from '../../utils/quality';
+// Dots/markers use the discrete score-bucket color so they match the bucketed
+// pins + rank pills exactly (single source of truth in quality-color).
+import { getScoreBucketColor } from '../../utils/quality';
 import type { createSearchRootMapPresentationRuntimeValue } from './search-root-map-presentation-controller-runtime';
 import type { SearchRootMapSurfaceState } from './search-root-map-surface-state-controller-runtime';
 
@@ -44,7 +46,8 @@ export const createSearchRootMapEngineInputs = ({
   resolveRestaurantLocationSelectionAnchor:
     mapPresentationRuntime.resolveRestaurantLocationSelectionAnchor,
   pickPreferredRestaurantMapLocation: mapPresentationRuntime.pickPreferredRestaurantMapLocation,
-  getCraveScoreColorFromScore,
+  // Marker color = discrete score bucket (matches bucketed pins + rank pills).
+  getCraveScoreColorFromScore: getScoreBucketColor,
   mapGestureActiveRef: mapPresentationRuntime.mapGestureActiveRef,
   mapMotionPressureController: mapPresentationRuntime.mapMotionPressureController,
   shouldLogSearchComputes: mapPresentationRuntime.shouldLogSearchComputes,

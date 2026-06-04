@@ -1,13 +1,17 @@
 import type { Coordinate, FoodResult, MapBounds, RestaurantResult } from '../../../types';
 
-import { getCraveScoreColorFromScore } from './quality';
+import { getScoreBucketColor } from './quality';
 
+// Marker + rank-pill color comes from the SAME discrete score-bucket function the
+// map pins are baked from (4 decade buckets), so a result's rank pill matches its
+// pin's color exactly. (Was the continuous getCraveScoreColorFromScore, which only
+// rendered the green→yellow third of the palette and never matched a bucketed pin.)
 export const getMarkerColorForRestaurant = (restaurant: RestaurantResult): string => {
-  return getCraveScoreColorFromScore(restaurant.craveScore);
+  return getScoreBucketColor(restaurant.craveScore);
 };
 
 export const getMarkerColorForDish = (dish: FoodResult): string => {
-  return getCraveScoreColorFromScore(dish.craveScore);
+  return getScoreBucketColor(dish.craveScore);
 };
 
 const clamp = (value: number, min: number, max: number): number =>

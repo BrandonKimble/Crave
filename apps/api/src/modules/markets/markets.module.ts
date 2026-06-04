@@ -8,6 +8,7 @@ import { MarketBootstrapMetricsService } from './market-bootstrap-metrics.servic
 import { MarketRegistryService } from './market-registry.service';
 import { MarketResolverService } from './market-resolver.service';
 import { TomTomBoundaryBootstrapService } from './tomtom-boundary-bootstrap.service';
+import { IpLocationService } from './ip-location.service';
 
 @Module({
   imports: [HttpModule, PrismaModule, SharedModule, MetricsModule],
@@ -17,6 +18,7 @@ import { TomTomBoundaryBootstrapService } from './tomtom-boundary-bootstrap.serv
     MarketResolverService,
     MarketRegistryService,
     TomTomBoundaryBootstrapService,
+    IpLocationService,
   ],
   exports: [
     MarketResolverService,

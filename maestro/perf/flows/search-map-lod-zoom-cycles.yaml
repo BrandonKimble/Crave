@@ -20,7 +20,7 @@ appId: com.brandonkimble.cravesearch
 - extendedWaitUntil:
     visible: 'Show best restaurants here'
     timeout: 45000
-- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=30.2672&lng=-97.7431&zoom=11.6&label=zoomcycle_seed_austin'
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=40.7550&lng=-73.9800&zoom=11.6&label=zoomcycle_seed_austin'
 - waitForAnimationToEnd:
     timeout: 1600
 - openLink: 'crave://perf-scenario-command?action=submit_shortcut_restaurants'
@@ -34,7 +34,7 @@ appId: com.brandonkimble.cravesearch
     times: 4
     commands:
       # Zoom IN: boundary markers promote dot -> pin (expect crossfade).
-      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7431&zoom=13.6&cameraDurationMs=700&label=zoom_in_promote'
+      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=13.6&cameraDurationMs=700&label=zoom_in_promote'
       - waitForAnimationToEnd:
           timeout: 1600
       # Let the promote crossfade + native fade-steppers fully settle.
@@ -45,7 +45,7 @@ appId: com.brandonkimble.cravesearch
           timeout: 1500
       # Zoom OUT: boundary markers demote pin -> dot (expect crossfade; this is
       # where the flash + delayed/snapped dot reportedly happens on cycle 2+).
-      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=30.2672&lng=-97.7431&zoom=11.6&cameraDurationMs=700&label=zoom_out_demote'
+      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=11.6&cameraDurationMs=700&label=zoom_out_demote'
       - waitForAnimationToEnd:
           timeout: 1600
       - extendedWaitUntil:

@@ -1,4 +1,11 @@
-export { getCraveScoreColorFromScore } from '../../../utils/quality-color';
+export {
+  getCraveScoreColorFromScore,
+  getScoreBucketColor,
+  scoreToBucket,
+  SCORE_BUCKET_COLORS,
+  SCORE_BUCKET_COLOR_TUPLES,
+  type ScoreBucket,
+} from '../../../utils/quality-color';
 
 const CRAVE_RATING_SCALE = 10;
 const COMPACT_SCORE_FRACTION_DIGITS = 1;
@@ -11,11 +18,7 @@ const roundTo = (value: number, fractionDigits: number): number => {
 
 const toRatingValue = (score: number): number => score / CRAVE_RATING_SCALE;
 
-const capNonPerfectRating = (
-  rating: number,
-  score: number,
-  fractionDigits: number
-): number => {
+const capNonPerfectRating = (rating: number, score: number, fractionDigits: number): number => {
   if (score >= 100) {
     return Math.min(rating, CRAVE_RATING_SCALE);
   }
@@ -53,14 +56,10 @@ const formatCraveScorePartsForPrecision = (
   };
 };
 
-export const formatCraveScoreParts = (
-  score?: number | null
-): FormattedCraveScoreParts =>
+export const formatCraveScoreParts = (score?: number | null): FormattedCraveScoreParts =>
   formatCraveScorePartsForPrecision(score, COMPACT_SCORE_FRACTION_DIGITS, true);
 
-export const formatCraveScoreDetailParts = (
-  score?: number | null
-): FormattedCraveScoreParts =>
+export const formatCraveScoreDetailParts = (score?: number | null): FormattedCraveScoreParts =>
   formatCraveScorePartsForPrecision(score, DETAIL_SCORE_FRACTION_DIGITS, false);
 
 export const formatCraveScore = (score?: number | null): string => {
@@ -81,7 +80,5 @@ export const formatCraveScoreMovementDetail = (delta?: number | null): string | 
   if (rounded === 0) {
     return null;
   }
-  return `${rounded > 0 ? '↑' : '↓'}${Math.abs(rounded).toFixed(
-    DETAIL_SCORE_FRACTION_DIGITS
-  )} pts`;
+  return `${rounded > 0 ? '↑' : '↓'}${Math.abs(rounded).toFixed(DETAIL_SCORE_FRACTION_DIGITS)} pts`;
 };
