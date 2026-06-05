@@ -7,17 +7,14 @@ import type { Feature, FeatureCollection, Point } from 'geojson';
 import pinAsset from '../../../assets/pin.png';
 import pinFillAsset from '../../../assets/pin-fill.png';
 import pinShadowAsset from '../../../assets/pin-shadow.png';
-// Single-symbol pin model: one pre-composited sprite per score bucket (full pin
-// body + tinted fill baked at the live geometry). Replaces the multi-layer slot
-// stack. 8 buckets in 5-pt increments (b0=60-64 … b7=95+); Metro resolves @2x/@3x.
-import pinBucketB0 from '../../../assets/pins/pin-b0.png';
-import pinBucketB1 from '../../../assets/pins/pin-b1.png';
-import pinBucketB2 from '../../../assets/pins/pin-b2.png';
-import pinBucketB3 from '../../../assets/pins/pin-b3.png';
-import pinBucketB4 from '../../../assets/pins/pin-b4.png';
-import pinBucketB5 from '../../../assets/pins/pin-b5.png';
-import pinBucketB6 from '../../../assets/pins/pin-b6.png';
-import pinBucketB7 from '../../../assets/pins/pin-b7.png';
+// Single-symbol pin model: one pre-composited sprite per (bucket × badge) — the
+// pin body + tinted fill + the baked NUMBER (rank or score). The number is part of
+// the icon, so symbol-z-order:'viewport-y' stacks pin+number as one unit (no text
+// bleed). All 369 sprites are registered from the generated map below.
+import {
+  PIN_BADGE_IMAGES,
+  PIN_BADGE_SPRITE_SCALE,
+} from '../../../generated/pin-badge-images';
 import { colors as themeColors } from '../../../constants/theme';
 import type { StartupLocationSnapshot } from '../../../navigation/runtime/MainLaunchCoordinator';
 import type { Coordinate, MapBounds } from '../../../types';
@@ -33,18 +30,12 @@ import {
   PIN_FILL_RENDER_HEIGHT,
   PIN_FILL_TOP_OFFSET,
   PIN_MARKER_RENDER_SIZE,
-  PIN_RANK_FONT_SIZE,
   USA_FALLBACK_CENTER,
   USA_FALLBACK_ZOOM,
 } from '../constants/search';
 
 import styles from '../styles';
 import { isLngLatTuple } from '../utils/geo';
-import {
-  FOUR_DIGIT_RANK_MIN,
-  TRIPLE_DIGIT_RANK_FONT_SIZE_DELTA,
-  TRIPLE_DIGIT_RANK_MIN,
-} from '../utils/rank-badge';
 import { buildSearchMapVisualIdentityKey } from '../utils/search-map-visual-identity';
 import { MARKER_VIEW_OVERSCAN_STYLE } from './marker-visibility';
 import { useSearchMapNativeRenderOwner } from './hooks/use-search-map-native-render-owner';
@@ -110,24 +101,20 @@ const STYLE_PIN_OUTLINE_IMAGE_ID = 'restaurant-pin-outline';
 const STYLE_PIN_SHADOW_IMAGE_ID = 'restaurant-pin-shadow';
 const STYLE_PIN_FILL_IMAGE_ID = 'restaurant-pin-fill';
 const LABEL_MUTEX_IMAGE_ID = 'restaurant-label-mutex';
-// Single-symbol pin: one pre-baked sprite per score bucket. The pin body
-// (border + tinted fill) is the icon; the rank number stays a live text-field on
-// the same symbol. `scoreBucket` is a feature property (0..7) set in the source
-// builder; the icon-image expression maps it to the sprite id. 8 buckets, 5-pt
-// increments (b0=60-64 … b7=95+), green→orange-red.
-const PIN_BUCKET_IMAGE_BY_INDEX = [
-  'restaurant-pin-bucket-b0',
-  'restaurant-pin-bucket-b1',
-  'restaurant-pin-bucket-b2',
-  'restaurant-pin-bucket-b3',
-  'restaurant-pin-bucket-b4',
-  'restaurant-pin-bucket-b5',
-  'restaurant-pin-bucket-b6',
-  'restaurant-pin-bucket-b7',
-] as const;
-// Bucket sprites are generated at 3x density (84px) as single plain-named files;
-// registered with this scale so Mapbox renders them at the intended ~28pt.
-const PIN_BUCKET_SPRITE_SCALE = 3;
+// Single-symbol pin: one pre-baked sprite per (bucket × badge). The whole pin —
+// body, tinted fill, AND the baked number (rank in-viewport / score out) — is the
+// icon. `icon-image` is data-driven on the feature's `badgeImageId` property (set
+// in the source builder), so the number rides the pin's z-order natively.
+// PIN_BADGE_IMAGES maps imageId → bundled source; register each at the sprite scale.
+const PIN_BADGE_IMAGE_ENTRIES: Record<string, { image: unknown; scale: number }> =
+  Object.fromEntries(
+    Object.entries(PIN_BADGE_IMAGES).map(([id, image]) => [
+      id,
+      { image, scale: PIN_BADGE_SPRITE_SCALE },
+    ])
+  );
+// Fallback image id when a feature has no badge (plain bucket pin, no number).
+const plainBucketImageId = (bucketIndex: number): string => `pin-b${bucketIndex}`;
 const STYLE_PINS_SOURCE_ID = 'restaurant-style-pins-source';
 // The single RENDERED bundle source: holds every promoted marker's pin art,
 // interaction, and label features (distinguished by `nativeSlotFeatureKind`),
@@ -172,7 +159,6 @@ const STYLE_PINS_FILL_OFFSET_RENDER_PX = -(
 );
 const STYLE_PINS_FILL_OFFSET_IMAGE_PX =
   STYLE_PINS_FILL_OFFSET_RENDER_PX / STYLE_PINS_FILL_ICON_SIZE;
-const STYLE_PINS_RANK_TRANSLATE_Y = PIN_FILL_CENTER_Y - PIN_MARKER_RENDER_SIZE;
 
 // Collision tuning: shift the pin obstacle upward so other restaurants' labels collide with the pin
 // body sooner (reducing overlap at the top) while allowing a bit more overlap near the tip.
@@ -198,10 +184,6 @@ const PIN_FADE_CONFIG = {
 // Native Mapbox transition configs for batch fade animations (60fps GPU-driven).
 // The JS thread only sets target values (0 or 1) — Mapbox handles all interpolation.
 const PIN_OPACITY_TRANSITION = { duration: PIN_FADE_CONFIG.durationMs, delay: 0 };
-const PIN_RANK_OPACITY_TRANSITION = {
-  duration: PIN_FADE_CONFIG.durationMs * (1 - PIN_FADE_CONFIG.rankDelayFraction),
-  delay: PIN_FADE_CONFIG.durationMs * PIN_FADE_CONFIG.rankDelayFraction,
-};
 
 const withIconOpacity = (
   baseStyle: MapboxGL.SymbolLayerStyle,
@@ -528,17 +510,9 @@ const SearchMapViewScene = React.memo(
             [STYLE_PIN_SHADOW_IMAGE_ID]: pinShadowAsset,
             [STYLE_PIN_FILL_IMAGE_ID]: { image: pinFillAsset, sdf: true },
             [LABEL_MUTEX_IMAGE_ID]: TRANSPARENT_PIXEL_IMAGE,
-            // Bucket sprites are single 84px (3x-density) files; scale:3 tells
-            // Mapbox they're high-DPI so they render at the intended ~28pt with
-            // icon-size:1. One file per bucket — no 1x/2x variants to misalign.
-            [PIN_BUCKET_IMAGE_BY_INDEX[0]]: { image: pinBucketB0, scale: PIN_BUCKET_SPRITE_SCALE },
-            [PIN_BUCKET_IMAGE_BY_INDEX[1]]: { image: pinBucketB1, scale: PIN_BUCKET_SPRITE_SCALE },
-            [PIN_BUCKET_IMAGE_BY_INDEX[2]]: { image: pinBucketB2, scale: PIN_BUCKET_SPRITE_SCALE },
-            [PIN_BUCKET_IMAGE_BY_INDEX[3]]: { image: pinBucketB3, scale: PIN_BUCKET_SPRITE_SCALE },
-            [PIN_BUCKET_IMAGE_BY_INDEX[4]]: { image: pinBucketB4, scale: PIN_BUCKET_SPRITE_SCALE },
-            [PIN_BUCKET_IMAGE_BY_INDEX[5]]: { image: pinBucketB5, scale: PIN_BUCKET_SPRITE_SCALE },
-            [PIN_BUCKET_IMAGE_BY_INDEX[6]]: { image: pinBucketB6, scale: PIN_BUCKET_SPRITE_SCALE },
-            [PIN_BUCKET_IMAGE_BY_INDEX[7]]: { image: pinBucketB7, scale: PIN_BUCKET_SPRITE_SCALE },
+            // All 369 pre-baked pin badge sprites (bucket × rank|score), each a
+            // single 84px (3x) file → scale:3 renders at ~28pt with icon-size:1.
+            ...PIN_BADGE_IMAGE_ENTRIES,
           }}
         />
         {/*
@@ -650,6 +624,9 @@ export type RestaurantFeatureProperties = {
   nativeDotOpacity?: number;
   nativePresentationOpacity?: number;
   rank: number;
+  // Pre-baked pin badge sprite id (rank in-viewport / score out-of-viewport),
+  // chosen in the source builder and consumed by the pin layer's icon-image.
+  badgeImageId?: string;
   // Stable per-frame ordering key for label placement tie-breaks.
   labelOrder?: number;
   // For pin SymbolLayer z-ordering: fixed slot index (0 = bottom ... 39 = top).
@@ -965,35 +942,6 @@ const STYLE_PINS_SHADOW_STYLE: MapboxGL.SymbolLayerStyle = {
   iconOpacity: STYLE_PINS_SHADOW_OPACITY,
   iconTranslate: STYLE_PINS_SHADOW_TRANSLATE,
   iconTranslateAnchor: 'viewport',
-} as MapboxGL.SymbolLayerStyle;
-
-const STYLE_PINS_RANK_STYLE: MapboxGL.SymbolLayerStyle = {
-  symbolZOrder: 'source',
-  textField: [
-    'case',
-    ['>=', ['coalesce', ['get', 'rank'], 0], FOUR_DIGIT_RANK_MIN],
-    [
-      'concat',
-      ['to-string', ['floor', ['/', ['coalesce', ['get', 'rank'], 0], FOUR_DIGIT_RANK_MIN]]],
-      'k+',
-    ],
-    ['to-string', ['get', 'rank']],
-  ],
-  // Match `styles.pinRank` (white, bold-ish).
-  textSize: [
-    'case',
-    ['>=', ['coalesce', ['get', 'rank'], 0], TRIPLE_DIGIT_RANK_MIN],
-    PIN_RANK_FONT_SIZE - TRIPLE_DIGIT_RANK_FONT_SIZE_DELTA,
-    PIN_RANK_FONT_SIZE,
-  ],
-  textColor: '#ffffff',
-  textFont: ['DIN Offc Pro Bold', 'DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
-  textAllowOverlap: true,
-  textIgnorePlacement: true,
-  textAnchor: 'center',
-  // Match `styles.pinRankWrapper` layout (centered on the pin fill region).
-  textTranslate: [0, STYLE_PINS_RANK_TRANSLATE_Y],
-  textTranslateAnchor: 'viewport',
 } as MapboxGL.SymbolLayerStyle;
 
 // Invisible collision obstacle used to make label placement respect pin bases.
@@ -2086,16 +2034,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
       ['coalesce', ['feature-state', 'nativeLodOpacity'], ['get', 'nativeLodOpacity'], 1] as const,
     []
   );
-  const nativeLodRankOpacityExpression = React.useMemo(
-    () =>
-      [
-        'coalesce',
-        ['feature-state', 'nativeLodRankOpacity'],
-        ['get', 'nativeLodRankOpacity'],
-        1,
-      ] as const,
-    []
-  );
   const nativeLabelOpacityExpression = React.useMemo(
     () =>
       [
@@ -2320,37 +2258,42 @@ const SearchMap: React.FC<SearchMapProps> = ({
     [nativeLodOpacityExpression, nativePresentationOpacityExpression]
   );
 
-  // Single-symbol pin: ONE layer carries the whole pin. `icon-image` selects the
-  // pre-baked bucket sprite (body + border + tinted fill, geometry already baked)
-  // by score decade; `text-field` draws the rank glyph centered on the fill of the
-  // SAME symbol so icon + rank move/stack as a unit. symbol-z-order:'viewport-y'
-  // gives native lower-on-screen = on-top stacking (replaces the per-slot moveLayer
-  // pass). Opacity is feature-state nativeLodOpacity → pure crossfade, no source
-  // mutation on promote/demote.
+  // Single-symbol pin: ONE layer carries the whole pin — body, tinted fill, AND the
+  // baked number — as a pre-composited icon. `icon-image` is data-driven on the
+  // feature's `badgeImageId` (rank in-viewport / score out, chosen in the source
+  // builder), with a plain-bucket fallback by score if absent. Because the number
+  // is part of the icon, symbol-z-order:'viewport-y' stacks pin+number as ONE unit
+  // (lower-on-screen draws on top) with NO cross-pass text bleed. Opacity is
+  // feature-state nativeLodOpacity → pure crossfade, no source mutation.
   const stylePinSingleSymbolStyle = React.useMemo(
     () =>
       ({
         symbolZOrder: 'viewport-y',
-        // 8 buckets, 5-pt increments — thresholds MUST match scoreToBucket()
-        // in quality-color.ts so the pin sprite matches the rank pill + dot.
+        // Data-driven icon by the feature's badgeImageId string. The source builder
+        // always sets badgeImageId, but coalesce to a plain-bucket pin by score as a
+        // safety net (thresholds match scoreToBucket()).
         iconImage: [
-          'step',
-          ['coalesce', ['get', 'craveScore'], 60],
-          PIN_BUCKET_IMAGE_BY_INDEX[0],
-          65,
-          PIN_BUCKET_IMAGE_BY_INDEX[1],
-          70,
-          PIN_BUCKET_IMAGE_BY_INDEX[2],
-          75,
-          PIN_BUCKET_IMAGE_BY_INDEX[3],
-          80,
-          PIN_BUCKET_IMAGE_BY_INDEX[4],
-          85,
-          PIN_BUCKET_IMAGE_BY_INDEX[5],
-          90,
-          PIN_BUCKET_IMAGE_BY_INDEX[6],
-          95,
-          PIN_BUCKET_IMAGE_BY_INDEX[7],
+          'coalesce',
+          ['get', 'badgeImageId'],
+          [
+            'step',
+            ['coalesce', ['get', 'craveScore'], 60],
+            plainBucketImageId(0),
+            65,
+            plainBucketImageId(1),
+            70,
+            plainBucketImageId(2),
+            75,
+            plainBucketImageId(3),
+            80,
+            plainBucketImageId(4),
+            85,
+            plainBucketImageId(5),
+            90,
+            plainBucketImageId(6),
+            95,
+            plainBucketImageId(7),
+          ],
         ],
         iconSize: 1,
         iconAnchor: 'bottom',
@@ -2358,27 +2301,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
         iconIgnorePlacement: true,
         iconOpacity: ['*', nativePresentationOpacityExpression, nativeLodOpacityExpression],
         iconOpacityTransition: PIN_OPACITY_TRANSITION,
-        // Rank glyph on the same symbol, centered on the pin fill region. The
-        // symbol anchor is the pin TIP (iconAnchor:'bottom' = tip on the geo
-        // coordinate); the rank is centered (textAnchor:'center') and translated
-        // UP from the tip to the fill centerline, matching the old rank layer.
-        textField: STYLE_PINS_RANK_STYLE.textField,
-        textSize: STYLE_PINS_RANK_STYLE.textSize,
-        textFont: STYLE_PINS_RANK_STYLE.textFont,
-        textColor: '#ffffff',
-        textAnchor: 'center',
-        textTranslate: [0, STYLE_PINS_RANK_TRANSLATE_Y],
-        textTranslateAnchor: 'viewport',
-        textAllowOverlap: true,
-        textIgnorePlacement: true,
-        textOpacity: ['*', nativePresentationOpacityExpression, nativeLodRankOpacityExpression],
-        textOpacityTransition: PIN_RANK_OPACITY_TRANSITION,
       }) as unknown as MapboxGL.SymbolLayerStyle,
-    [
-      nativeLodOpacityExpression,
-      nativeLodRankOpacityExpression,
-      nativePresentationOpacityExpression,
-    ]
+    [nativeLodOpacityExpression, nativePresentationOpacityExpression]
   );
 
   // RESIDENT interaction layer (slot-elimination): ONE circle layer for all pin

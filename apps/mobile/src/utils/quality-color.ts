@@ -94,3 +94,35 @@ export const SCORE_BUCKET_COLORS: Record<ScoreBucket, string> = {
 // Convenience: the bucket color for a score, as a CSS string (for rank pills/dots).
 export const getScoreBucketColor = (score?: number | null): string =>
   SCORE_BUCKET_COLORS[scoreToBucket(score)];
+
+// ---------------------------------------------------------------------------
+// PIN BADGE IMAGE IDS — single source of truth for which pre-baked sprite a pin
+// shows. The number is baked INTO the pin icon (see generate-pin-bucket-sprites.js)
+// so symbol-z-order:'viewport-y' orders pin+number as one unit (no text bleed).
+//
+// In the user's submitted-search viewport → show RANK (frozen, contextual to the
+// search). Outside it → show SCORE (intrinsic, stable as you pan away). Ranks are
+// bounded because only the promoted top-N get pins (MAX_PIN_RANK). These ids MUST
+// match the filenames the generator writes: pin-rank-<bucket>-<rank>.png and
+// pin-score-<bucket>-<score>.png.
+// ---------------------------------------------------------------------------
+export const MAX_PIN_RANK_BADGE = 40;
+
+const bucketName = (bucket: ScoreBucket): string => `b${bucket}`;
+
+// In-viewport rank badge id, clamped to the baked range.
+export const rankBadgeImageId = (score: number | null | undefined, rank: number): string => {
+  const r = Math.max(1, Math.min(MAX_PIN_RANK_BADGE, Math.round(rank)));
+  return `pin-rank-${bucketName(scoreToBucket(score))}-${r}`;
+};
+
+// Out-of-viewport score badge id (score is the 0–100 display score; baked per
+// bucket within that bucket's own range, so this always resolves to a real file).
+export const scoreBadgeImageId = (score: number | null | undefined): string => {
+  const bucket = scoreToBucket(score);
+  const s =
+    typeof score === 'number' && Number.isFinite(score)
+      ? Math.max(SCORE_BUCKET_DISPLAY_MIN, Math.min(SCORE_BUCKET_DISPLAY_MAX, Math.round(score)))
+      : SCORE_BUCKET_DISPLAY_MIN;
+  return `pin-score-${bucketName(bucket)}-${s}`;
+};

@@ -33,6 +33,7 @@ import {
   type SearchMapSourceStore,
 } from '../runtime/map/search-map-source-store';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
+import { rankBadgeImageId, scoreBadgeImageId } from '../../../utils/quality-color';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import type { ResultsPresentationAuthority } from '../runtime/shared/results-presentation-authority';
 import type { ResultsPresentationSurfaceAuthority } from '../runtime/shared/results-presentation-surface-authority';
@@ -1639,6 +1640,25 @@ export const useDirectSearchMapSourceController = ({
     });
     const visibleDotRestaurantMarkerFeatures = projectedVisualFrame.dotCandidates;
 
+    // Pin badge: RANK inside the user's submitted-search viewport (frozen,
+    // contextual), SCORE outside it (intrinsic, stable as you pan away). The chosen
+    // value is baked into the pin sprite (badgeImageId → pre-baked image), so the
+    // number rides the same z-order as the pin (symbol-z-order:'viewport-y'),
+    // eliminating the cross-pass text bleed onto stacked pins.
+    const submittedSearchBounds = viewportBoundsService.getSearchBaselineBounds();
+    const isWithinSubmittedSearch = (coord: [number, number]): boolean => {
+      if (!submittedSearchBounds) {
+        return true; // no baseline yet → treat as in-search (show rank)
+      }
+      const [lng, lat] = coord;
+      return (
+        lat >= submittedSearchBounds.southWest.lat &&
+        lat <= submittedSearchBounds.northEast.lat &&
+        lng >= submittedSearchBounds.southWest.lng &&
+        lng <= submittedSearchBounds.northEast.lng
+      );
+    };
+
     const pinBuilder = createSearchMapSourceStoreBuilder(previousPinSourceStoreRef.current);
     visibleSortedRestaurantMarkers.forEach((feature, index) => {
       const markerKey = buildMarkerKey(feature);
@@ -1646,6 +1666,16 @@ export const useDirectSearchMapSourceController = ({
         typeof feature.properties.nativeLodZ === 'number'
           ? feature.properties.nativeLodZ
           : feature.properties.lodZ;
+      const craveScore =
+        typeof feature.properties.craveScore === 'number'
+          ? feature.properties.craveScore
+          : null;
+      const rank =
+        typeof feature.properties.rank === 'number' ? feature.properties.rank : index + 1;
+      const coord = feature.geometry.coordinates as [number, number];
+      const badgeImageId = isWithinSubmittedSearch(coord)
+        ? rankBadgeImageId(craveScore, rank)
+        : scoreBadgeImageId(craveScore);
       const semanticRevision = buildPinSemanticRevision({
         baseDiffKey: getSearchMapSourceTransportFeature(feature).diffKey,
         markerKey,
@@ -1658,6 +1688,7 @@ export const useDirectSearchMapSourceController = ({
           ...feature.properties,
           markerKey,
           labelOrder: index + 1,
+          badgeImageId,
           nativeLodZ,
           nativeLodOpacity: 1,
           nativeLodRankOpacity: 1,
