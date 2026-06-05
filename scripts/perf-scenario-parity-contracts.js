@@ -1689,14 +1689,16 @@ if ((report.scenarioName ?? '').includes('search_map_lod_pan_zoom')) {
       return eventTime >= commandTime - 200 && eventTime <= commandTime + 1600;
     });
   });
+  // Pin z-order is now Mapbox-native (single-symbol pin layer, symbol-z-order
+  // 'viewport-y') — the per-slot moveLayer pass is gone. So we no longer assert
+  // moveLayer mechanics (usesLayerMoves / screenY ordering / slot ownership);
+  // viewport-y orders by screen-Y for us. We still assert no source mutation and
+  // the pin budget, and the promotion-stability detector below still runs on these
+  // lightweight events.
   const badNativePinVisualOrderEvent = nativePinVisualOrderEvents.find(
     (event) =>
-      event.stableSlotOwnership !== true ||
-      event.appliesScreenYOrdering !== true ||
-      event.usesLayerMoves !== true ||
+      event.usesViewportYZOrder !== true ||
       (numeric(event.sourceMutationCount) ?? 0) !== 0 ||
-      (numeric(event.screenYOrderViolationCount) ?? 0) !== 0 ||
-      !isNondecreasingScreenYVisualOrder(event.screenYVisualOrder) ||
       (numeric(event.pinCount) ?? 0) > 30 + (numeric(event.selectedPinCount) ?? 0)
   );
   const liveRoleDetachedLabelEvent = liveVisualLodEvents.find(
@@ -1813,14 +1815,8 @@ if ((report.scenarioName ?? '').includes('search_map_lod_pan_zoom')) {
     fail(
       `live LOD changed a stable pin slot for an unchanged promoted marker at line ${stableSlotOwnershipRegression.line}: marker=${stableSlotOwnershipRegression.markerKey} previousSlot=${stableSlotOwnershipRegression.previousSlot} currentSlot=${stableSlotOwnershipRegression.currentSlot} previousLine=${stableSlotOwnershipRegression.previousLine}`
     );
-  } else if (!twistCameraCommandEvent) {
-    fail('map LOD pan/zoom scenario did not execute a nonzero bearing twist command');
   } else if (nativePinVisualOrderEvents.length === 0) {
-    fail('native pin visual order lane did not emit screen-y ordering contracts');
-  } else if (!nativeMovingPinVisualOrderEvent) {
-    fail('native pin visual order lane did not run during live map movement');
-  } else if (observedNonzeroBearing && !nativeTwistPinVisualOrderEvent) {
-    fail('native pin visual order lane did not recompute during nonzero bearing twist movement');
+    fail('native pin visual order lane did not emit z-order contracts');
   } else if (badNativePinVisualOrderEvent) {
     fail(
       `native pin visual order contract failed at line ${badNativePinVisualOrderEvent.line}: ${JSON.stringify(

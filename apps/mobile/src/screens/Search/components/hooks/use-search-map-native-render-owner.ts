@@ -2269,6 +2269,7 @@ const useSearchMapNativeRenderOwnerStatus = ({
                   stableSlotOwnership: event.stableSlotOwnership,
                   appliesScreenYOrdering: event.appliesScreenYOrdering,
                   usesLayerMoves: event.usesLayerMoves,
+                  usesViewportYZOrder: event.usesViewportYZOrder,
                   sourceMutationCount: event.sourceMutationCount,
                   isMoving: event.isMoving,
                   cameraZoom: event.cameraZoom,

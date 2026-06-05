@@ -564,6 +564,7 @@ const QUIET_VISUAL_CONTRACT_FIELD_ALLOWLIST = new Map<string, string[]>([
       'stableSlotOwnership',
       'appliesScreenYOrdering',
       'usesLayerMoves',
+      'usesViewportYZOrder',
       'sourceMutationCount',
       'isMoving',
       'visualOrderSignature',

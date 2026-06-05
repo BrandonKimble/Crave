@@ -347,6 +347,7 @@ export type SearchMapRenderControllerEvent =
       stableSlotOwnership: boolean;
       appliesScreenYOrdering: boolean;
       usesLayerMoves: boolean;
+      usesViewportYZOrder?: boolean;
       sourceMutationCount: number;
       isMoving: boolean;
       cameraZoom?: number;

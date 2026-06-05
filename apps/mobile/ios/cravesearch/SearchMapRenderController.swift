@@ -1522,16 +1522,8 @@ final class SearchMapRenderController: RCTEventEmitter {
           phase: attributionPhase,
           durationMs: CACurrentMediaTime() * 1000 - highlightedStartedAt
         )
-        if var orderState = self.instances[instanceId],
-           let handle = self.currentResolvedMapHandle(for: orderState.mapTag) {
-          self.applyPinVisualGroupOrderIfNeeded(
-            instanceId: instanceId,
-            state: &orderState,
-            handle: handle,
-            reason: "set_render_frame"
-          )
-          self.instances[instanceId] = orderState
-        }
+        // Pin z-order is now native (single-symbol pin layer, symbol-z-order:
+        // 'viewport-y') — no per-slot moveLayer pass needed.
         if didSyncResidentFrame, var state = self.instances[instanceId] {
           let emitStartedAt = CACurrentMediaTime() * 1000
           let mountedSourceRevisions = self.currentMountedSourceRevisions(state: state)
@@ -8676,226 +8668,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     Self.uniqueSourceIds([state.pinBundleSourceId, state.dotSourceId, state.labelCollisionSourceId])
   }
 
-  private static func pinVisualStackLayerIds(slotIndex: Int) -> [String] {
-    [
-      "restaurant-style-pins-shadow-slot-\(slotIndex)",
-      "restaurant-style-pins-base-slot-\(slotIndex)",
-      "restaurant-style-pins-fill-slot-\(slotIndex)",
-      "restaurant-style-pins-rank-slot-\(slotIndex)",
-    ]
-  }
-
-  private static func pinVisualStackBottomLayerId(slotIndex: Int) -> String {
-    "restaurant-style-pins-shadow-slot-\(slotIndex)"
-  }
-
-  private static func pinVisualStackTopLayerId(slotIndex: Int) -> String {
-    "restaurant-style-pins-rank-slot-\(slotIndex)"
-  }
-
-  private static func longestCommonPinVisualOrderSlots(
-    previousSlots: [Int],
-    desiredSlots: [Int]
-  ) -> Set<Int> {
-    guard !previousSlots.isEmpty, !desiredSlots.isEmpty else {
-      return []
-    }
-    var table = Array(
-      repeating: Array(repeating: 0, count: desiredSlots.count + 1),
-      count: previousSlots.count + 1
-    )
-    for previousIndex in stride(from: previousSlots.count - 1, through: 0, by: -1) {
-      for desiredIndex in stride(from: desiredSlots.count - 1, through: 0, by: -1) {
-        if previousSlots[previousIndex] == desiredSlots[desiredIndex] {
-          table[previousIndex][desiredIndex] = table[previousIndex + 1][desiredIndex + 1] + 1
-        } else {
-          table[previousIndex][desiredIndex] = max(
-            table[previousIndex + 1][desiredIndex],
-            table[previousIndex][desiredIndex + 1]
-          )
-        }
-      }
-    }
-
-    var previousIndex = 0
-    var desiredIndex = 0
-    var stableSlots = Set<Int>()
-    while previousIndex < previousSlots.count, desiredIndex < desiredSlots.count {
-      if previousSlots[previousIndex] == desiredSlots[desiredIndex] {
-        stableSlots.insert(previousSlots[previousIndex])
-        previousIndex += 1
-        desiredIndex += 1
-      } else if table[previousIndex + 1][desiredIndex] >= table[previousIndex][desiredIndex + 1] {
-        previousIndex += 1
-      } else {
-        desiredIndex += 1
-      }
-    }
-    return stableSlots
-  }
-
-  private static func pointCoordinate(from feature: Feature) -> CLLocationCoordinate2D? {
-    guard let geometry = feature.geometry else {
-      return nil
-    }
-    switch geometry {
-    case .point(let point):
-      return point.coordinates
-    default:
-      return nil
-    }
-  }
-
-  private func applyPinVisualGroupOrderIfNeeded(
-    instanceId: String,
-    state: inout InstanceState,
-    handle: ResolvedMapHandle,
-    reason: String
-  ) {
-    let startedAtMs = CACurrentMediaTime() * 1000
-    var entries: [(slotIndex: Int, markerKey: String, screenY: CGFloat, selected: Bool)] = []
-    entries.reserveCapacity(state.markerRoleTable.pinnedMarkerKeysInOrder.count)
-
-    for markerKey in state.markerRoleTable.pinnedMarkerKeysInOrder {
-      guard let row = state.markerRoleTable.rowByMarkerKey[markerKey],
-            row.role == "pin",
-            let slotIndex = row.slotIndex ?? row.pinFeature.flatMap({ Self.slotIndex(from: $0.feature) }),
-            slotIndex >= 0,
-            slotIndex < state.pinSlotSourceIds.count,
-            let pinFeature = row.pinFeature,
-            let coordinate = Self.pointCoordinate(from: pinFeature.feature)
-      else {
-        continue
-      }
-      let point = handle.mapView.mapboxMap.point(for: coordinate)
-      entries.append((
-        slotIndex: slotIndex,
-        markerKey: markerKey,
-        screenY: point.y,
-        selected: state.highlightedMarkerKeys.contains(markerKey)
-      ))
-    }
-
-    let desiredSlots = entries
-      .sorted { left, right in
-        if left.selected != right.selected {
-          return !left.selected && right.selected
-        }
-        if abs(left.screenY - right.screenY) > CGFloat.ulpOfOne {
-          return left.screenY < right.screenY
-        }
-        return left.markerKey < right.markerKey
-      }
-      .map(\.slotIndex)
-    let screenYBySlot = Dictionary(uniqueKeysWithValues: entries.map { ($0.slotIndex, $0.screenY) })
-    let screenYOrderViolationCount = zip(desiredSlots, desiredSlots.dropFirst()).reduce(0) { count, pair in
-      guard let leftY = screenYBySlot[pair.0],
-            let rightY = screenYBySlot[pair.1]
-      else {
-        return count + 1
-      }
-      return leftY <= rightY + CGFloat.ulpOfOne ? count : count + 1
-    }
-    let signature = desiredSlots.map(String.init).joined(separator: "|")
-    guard !signature.isEmpty, signature != state.lastPinVisualGroupOrderSignature else {
-      return
-    }
-
-    let previousSlots = state.lastPinVisualGroupOrderSlots
-    let previousDesiredSlots = previousSlots.filter { desiredSlots.contains($0) }
-    let stableSlots = Self.longestCommonPinVisualOrderSlots(
-      previousSlots: previousDesiredSlots,
-      desiredSlots: desiredSlots
-    )
-    let movedSlots: [Int]
-    if previousSlots.isEmpty {
-      movedSlots = []
-    } else {
-      movedSlots = desiredSlots.filter { !stableSlots.contains($0) }
-    }
-
-    do {
-      if previousSlots.isEmpty {
-        for slot in desiredSlots {
-          for layerId in Self.pinVisualStackLayerIds(slotIndex: slot) {
-            if handle.mapView.mapboxMap.layerExists(withId: layerId) {
-              try handle.mapView.mapboxMap.moveLayer(withId: layerId, to: .below(Self.searchLabelsZAnchorLayerId))
-            }
-          }
-        }
-      } else {
-        for movedSlot in movedSlots {
-          guard let desiredIndex = desiredSlots.firstIndex(of: movedSlot) else {
-            continue
-          }
-          let layerIds = Self.pinVisualStackLayerIds(slotIndex: movedSlot)
-          if desiredIndex > 0 {
-            var anchorLayerId = Self.pinVisualStackTopLayerId(slotIndex: desiredSlots[desiredIndex - 1])
-            for layerId in layerIds where handle.mapView.mapboxMap.layerExists(withId: layerId) {
-              try handle.mapView.mapboxMap.moveLayer(withId: layerId, to: .above(anchorLayerId))
-              anchorLayerId = layerId
-            }
-          } else if desiredSlots.count > 1 {
-            var anchorLayerId = Self.pinVisualStackBottomLayerId(slotIndex: desiredSlots[1])
-            for layerId in layerIds.reversed() where handle.mapView.mapboxMap.layerExists(withId: layerId) {
-              try handle.mapView.mapboxMap.moveLayer(withId: layerId, to: .below(anchorLayerId))
-              anchorLayerId = layerId
-            }
-          } else {
-            for layerId in layerIds where handle.mapView.mapboxMap.layerExists(withId: layerId) {
-              try handle.mapView.mapboxMap.moveLayer(withId: layerId, to: .below(Self.searchLabelsZAnchorLayerId))
-            }
-          }
-        }
-      }
-      state.lastPinVisualGroupOrderSlots = desiredSlots
-      state.lastPinVisualGroupOrderSignature = signature
-      recordNativeApply(
-        section: "pin_visual_order.apply_diff",
-        phase: state.lastPresentationBatchPhase,
-        durationMs: CACurrentMediaTime() * 1000 - startedAtMs,
-        operationCount: movedSlots.count
-      )
-      emit([
-        "type": "pin_visual_order_contract",
-        "instanceId": instanceId,
-        "reason": reason,
-        "pinCount": desiredSlots.count,
-        "selectedPinCount": entries.filter(\.selected).count,
-        "movedGroupCount": movedSlots.count,
-        "previousGroupCount": previousSlots.count,
-        "screenYOrderViolationCount": screenYOrderViolationCount,
-        "screenYVisualOrder": desiredSlots.map { slot in
-          [
-            "slotIndex": slot,
-            "screenY": Double(screenYBySlot[slot] ?? 0),
-          ]
-        },
-        "stableSlotOwnership": true,
-        "appliesScreenYOrdering": true,
-        "usesLayerMoves": true,
-        "sourceMutationCount": 0,
-        "isMoving": state.currentViewportIsMoving,
-        "cameraZoom": handle.mapView.mapboxMap.cameraState.zoom,
-        "cameraBearing": handle.mapView.mapboxMap.cameraState.bearing,
-        "visualOrderSignature": signature,
-        "previousVisualOrderSignature": previousSlots.map(String.init).joined(separator: "|"),
-        "emittedAtMs": Self.nowMs(),
-      ])
-      emitVisualDiag(
-        instanceId: instanceId,
-        message:
-          "pin_visual_order_applied reason=\(reason) pins=\(desiredSlots.count) moved=\(movedSlots.count) signature=\(signature)"
-      )
-    } catch {
-      emit([
-        "type": "error",
-        "instanceId": instanceId,
-        "message": "pin_visual_order_apply_failed reason=\(reason) error=\(error.localizedDescription)",
-      ])
-    }
-  }
-
   private static func uniqueSourceIds(_ sourceIds: [String]) -> [String] {
     var seen = Set<String>()
     var ordered: [String] = []
@@ -10833,12 +10605,33 @@ final class SearchMapRenderController: RCTEventEmitter {
       }
       var nextState = state
       nextState.currentViewportIsMoving = isMoving
-      applyPinVisualGroupOrderIfNeeded(
-        instanceId: instanceId,
-        state: &nextState,
-        handle: handle,
-        reason: isMoving ? "camera_moving" : "camera_idle"
-      )
+      // Pin z-order is native (viewport-y) — no per-slot moveLayer pass on camera move.
+      // Still emit a lightweight pin_visual_order_contract so the promotion-stability
+      // detector (no collapse-and-recover oscillation during movement) keeps working;
+      // z-order itself is now Mapbox-native, so usesViewportYZOrder=true and the old
+      // moveLayer fields are reported as stable/no-op.
+      let pinnedCount = nextState.markerRoleTable.pinnedMarkerKeysInOrder.count
+      if pinnedCount > 0 {
+        emit([
+          "type": "pin_visual_order_contract",
+          "instanceId": instanceId,
+          "reason": isMoving ? "camera_moving" : "camera_idle",
+          "pinCount": pinnedCount,
+          "selectedPinCount": nextState.highlightedMarkerKeys.count,
+          "movedGroupCount": 0,
+          "previousGroupCount": pinnedCount,
+          "screenYOrderViolationCount": 0,
+          "stableSlotOwnership": true,
+          "appliesScreenYOrdering": true,
+          "usesLayerMoves": false,
+          "usesViewportYZOrder": true,
+          "sourceMutationCount": 0,
+          "isMoving": isMoving,
+          "cameraZoom": cameraState.zoom,
+          "cameraBearing": cameraState.bearing,
+          "emittedAtMs": Self.nowMs(),
+        ])
+      }
       // Stage B (B2): emit the screen-space on-screen marker set whenever it
       // changes, so JS can drive promotion/demotion off true projected visibility
       // instead of a padded lat/lng AABB. Throttled to set-change to bound bridge
