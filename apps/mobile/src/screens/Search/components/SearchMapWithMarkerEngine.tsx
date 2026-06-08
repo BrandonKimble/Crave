@@ -460,6 +460,7 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     restaurantOnlyId,
     highlightedRestaurantId,
     viewportBoundsService,
+    userLocation,
     resolveRestaurantMapLocations,
     resolveRestaurantLocationSelectionAnchor,
     pickPreferredRestaurantMapLocation,

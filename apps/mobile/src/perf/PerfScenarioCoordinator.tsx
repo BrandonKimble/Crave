@@ -274,6 +274,7 @@ export const PerfScenarioCoordinator: React.FC = () => {
       action: event.action,
       bearing: event.bearing,
       cameraDurationMs: event.cameraDurationMs,
+      count: event.count,
       delayMs: event.delayMs,
       lat: event.lat,
       lng: event.lng,
@@ -367,6 +368,44 @@ export const PerfScenarioCoordinator: React.FC = () => {
         bearing: event.bearing,
         zoom: event.zoom,
         pitch: event.pitch,
+        label: event.label,
+      });
+      return;
+    }
+
+    if (event.action === 'set_scale_probe_markers') {
+      if (!registry.setScaleProbeMarkers || event.lat == null || event.lng == null) {
+        logPayload({
+          event: 'perf_scenario_command_failed',
+          action: event.action,
+          reason: registry.setScaleProbeMarkers
+            ? 'missing_scale_probe_parameters'
+            : 'scale_probe_command_not_registered',
+          hasSetScaleProbeMarkers: registry.setScaleProbeMarkers != null,
+          count: event.count,
+          lat: event.lat,
+          lng: event.lng,
+        });
+        return;
+      }
+      const accepted = registry.setScaleProbeMarkers({
+        count: event.count ?? 0,
+        lat: event.lat,
+        lng: event.lng,
+        collide: event.collide,
+        spreadDeg: event.spreadDeg,
+        label: event.label,
+      });
+      logPayload({
+        event: accepted ? 'perf_scenario_command_executed' : 'perf_scenario_command_failed',
+        action: event.action,
+        step: 'set_scale_probe_markers',
+        reason: accepted ? null : 'scale_probe_rejected',
+        count: event.count,
+        collide: event.collide,
+        spreadDeg: event.spreadDeg,
+        lat: event.lat,
+        lng: event.lng,
         label: event.label,
       });
       return;

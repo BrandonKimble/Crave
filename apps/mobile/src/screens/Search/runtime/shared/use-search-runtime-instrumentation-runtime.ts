@@ -1,11 +1,18 @@
 import React from 'react';
+import { Dimensions } from 'react-native';
 
 import {
   isPerfScenarioAttributionActive,
   logPerfScenarioAttributionEvent,
 } from '../../../../perf/perf-scenario-attribution';
+import { registerOverlapAutoZoomHandler } from '../map/overlap-auto-zoom-bridge';
+import { zoomToFitRadiusMiles } from '../../utils/overlap-region';
 import { registerPerfScenarioCommands } from '../../../../perf/perf-scenario-command-registry';
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
+import {
+  SCALE_PROBE_MAX_MARKERS,
+  usePerfScaleProbeStore,
+} from '../../../../perf/perf-scale-probe-store';
 import {
   type SubmitShortcutScenarioCommandInput,
   type UseSearchRuntimeInstrumentationRuntimeArgs,
@@ -275,6 +282,46 @@ export const useSearchRuntimeInstrumentationRuntime = ({
     ]
   );
 
+  const setScaleProbeMarkersPerfCommand = React.useCallback(
+    ({
+      count,
+      lat,
+      lng,
+      collide,
+      spreadDeg,
+    }: {
+      count: number;
+      lat: number;
+      lng: number;
+      collide?: boolean;
+      spreadDeg?: number | null;
+      label?: string | null;
+    }) => {
+      const clampedCount = Math.max(0, Math.min(SCALE_PROBE_MAX_MARKERS, Math.round(count)));
+      if (clampedCount <= 0) {
+        usePerfScaleProbeStore.getState().clearProbe();
+      } else {
+        usePerfScaleProbeStore.getState().setProbe({
+          count: clampedCount,
+          lng,
+          lat,
+          collide: collide === true,
+          spreadDeg: spreadDeg ?? undefined,
+        });
+      }
+      emitRuntimeMechanismEvent('map_scale_probe_marker_count_applied', {
+        requestedCount: count,
+        markerCount: clampedCount,
+        collide: collide === true,
+        spreadDeg: spreadDeg ?? null,
+        centerLat: lat,
+        centerLng: lng,
+      });
+      return true;
+    },
+    [emitRuntimeMechanismEvent]
+  );
+
   React.useEffect(
     () =>
       registerPerfScenarioCommands({
@@ -283,6 +330,7 @@ export const useSearchRuntimeInstrumentationRuntime = ({
         animateMapCamera: animateMapCameraPerfCommand,
         moveMapForSearchThisArea: moveMapForSearchThisAreaPerfCommand,
         submitShortcutRestaurants: submitShortcutRestaurantsPerfCommand,
+        setScaleProbeMarkers: setScaleProbeMarkersPerfCommand,
       }),
     [
       animateMapCameraPerfCommand,
@@ -290,7 +338,29 @@ export const useSearchRuntimeInstrumentationRuntime = ({
       moveMapForSearchThisAreaPerfCommand,
       setMapCameraPerfCommand,
       submitShortcutRestaurantsPerfCommand,
+      setScaleProbeMarkersPerfCommand,
     ]
+  );
+
+  // Auto-zoom for far-out shortcut searches: the source builder posts the resolved
+  // overlap radius (center + miles around the user); animate the camera to fit it so
+  // the user lands in their vicinity. easeTo + allowDuringGesture:false so it never
+  // fights a live gesture; programmatic, so it doesn't trip "map moved since search".
+  React.useEffect(
+    () =>
+      registerOverlapAutoZoomHandler(({ center, radiusMiles }) => {
+        ensureInitialCameraReady();
+        const viewportWidthPx = Dimensions.get('window').width;
+        const zoom = zoomToFitRadiusMiles(center.lat, radiusMiles, viewportWidthPx);
+        cameraIntentArbiter.commit({
+          center: [center.lng, center.lat],
+          zoom,
+          animationMode: 'easeTo',
+          animationDurationMs: 700,
+          allowDuringGesture: false,
+        });
+      }),
+    [cameraIntentArbiter, ensureInitialCameraReady]
   );
 
   const { resolveProfilerStageHint } = useSearchRuntimeProfilerStageHintRuntime({

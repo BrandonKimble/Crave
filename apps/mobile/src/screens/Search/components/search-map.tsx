@@ -24,6 +24,10 @@ import {
 } from '../../../perf/perf-scenario-attribution';
 import { usePerfScenarioRuntimeStore } from '../../../perf/perf-scenario-runtime-store';
 import {
+  generateScaleProbeFeatures,
+  usePerfScaleProbeStore,
+} from '../../../perf/perf-scale-probe-store';
+import {
   LABEL_RADIAL_OFFSET_EM,
   LABEL_TEXT_SIZE,
   PIN_FILL_CENTER_Y,
@@ -115,6 +119,11 @@ const PIN_BADGE_IMAGE_ENTRIES: Record<string, { image: unknown; scale: number }>
   );
 // Fallback image id when a feature has no badge (plain bucket pin, no number).
 const plainBucketImageId = (bucketIndex: number): string => `pin-b${bucketIndex}`;
+// Feature-count degradation harness (#21): a dedicated resident source+layer that
+// mounts N synthetic pins (allow-overlap + ignore-placement → no collision culling,
+// so every feature is drawn) to isolate the pure feature-count cost in one layer.
+const SCALE_PROBE_SOURCE_ID = 'perf-scale-probe-source';
+const SCALE_PROBE_LAYER_ID = 'perf-scale-probe-layer';
 const STYLE_PINS_SOURCE_ID = 'restaurant-style-pins-source';
 // The single RENDERED bundle source: holds every promoted marker's pin art,
 // interaction, and label features (distinguished by `nativeSlotFeatureKind`),
@@ -203,6 +212,20 @@ const promotedPinFeatureFilter = [
   ['get', 'nativeSlotFeatureKind'],
   'pin',
 ] as LabelPlacementFilter;
+// Overlap-region split: in-region pins overlap freely (allowOverlap:true, ranked);
+// out-of-region pins collision-cull (allowOverlap:false, scored). allowOverlap is a
+// layout prop (not data-driven), so the two regimes need two layers, filtered on the
+// `inOverlapRegion` feature flag set by the source builder.
+const promotedInRegionPinFilter = [
+  'all',
+  promotedPinFeatureFilter,
+  ['==', ['get', 'inOverlapRegion'], true],
+] as LabelPlacementFilter;
+const promotedOutRegionPinFilter = [
+  'all',
+  promotedPinFeatureFilter,
+  ['!=', ['get', 'inOverlapRegion'], true],
+] as LabelPlacementFilter;
 const promotedPinInteractionFeatureFilter = [
   '==',
   ['get', 'nativeSlotFeatureKind'],
@@ -259,6 +282,7 @@ type SearchMapMarkerSceneProps = {
   dotLayerStyle: MapboxGL.SymbolLayerStyle;
   handlePressTarget?: (event: SearchMapPressEvent) => void;
   stylePinSingleSymbolStyle: MapboxGL.SymbolLayerStyle;
+  stylePinOutRegionStyle: MapboxGL.SymbolLayerStyle;
   stylePinSharedShadowStyle: MapboxGL.SymbolLayerStyle;
   pinInteractionLayer: React.ReactElement;
   profilerCallback: React.ProfilerOnRenderCallback;
@@ -284,6 +308,7 @@ const SearchMapMarkerScene = React.memo(
     dotLayerStyle,
     handlePressTarget,
     stylePinSingleSymbolStyle,
+    stylePinOutRegionStyle,
     stylePinSharedShadowStyle,
     pinInteractionLayer,
     profilerCallback,
@@ -318,9 +343,9 @@ const SearchMapMarkerScene = React.memo(
         >
           <React.Fragment>
             {/*
-              Shared shadow layer: ONE layer (not per-pin) beneath the pin layer,
-              reusing the existing custom soft-shadow sprite + translate/opacity.
-              Preserves the exact custom shadow shape at one-layer cost.
+              Shared shadow layer: ONE layer beneath the pins. Only in-overlap-region
+              pins get a shadow — out-of-region pins collision-cull, so an always-drawn
+              shadow would orphan beneath a culled pin. (Same in/out filter as the pin.)
             */}
             <MapboxGL.SymbolLayer
               key="restaurant-pin-shadow-shared"
@@ -329,13 +354,11 @@ const SearchMapMarkerScene = React.memo(
               belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
               style={stylePinSharedShadowStyle}
               sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
-              filter={promotedPinFeatureFilter}
+              filter={promotedInRegionPinFilter}
             />
             {/*
-              Single-symbol pin: ONE layer for all pin art (icon body + rank glyph),
-              stacked natively by symbol-z-order:'viewport-y'. Replaces the per-slot
-              4-layer stack + native moveLayer pass. Interaction + 4-candidate labels
-              remain slot-scoped (separate families) for now.
+              In-overlap-region pins: ONE layer, allowOverlap:true (all shown, RANKED),
+              stacked by symbol-z-order:'viewport-y'.
             */}
             <MapboxGL.SymbolLayer
               key="restaurant-pin-single-symbol"
@@ -344,7 +367,21 @@ const SearchMapMarkerScene = React.memo(
               belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
               style={stylePinSingleSymbolStyle}
               sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
-              filter={promotedPinFeatureFilter}
+              filter={promotedInRegionPinFilter}
+            />
+            {/*
+              Out-of-overlap-region pins: ONE layer, allowOverlap:false (collision-
+              culled, SCORED) so the world-wide shortcut tail collapses to a sparse
+              non-overlapping subset that fades in/out as you pan/zoom (the wave).
+            */}
+            <MapboxGL.SymbolLayer
+              key="restaurant-pin-single-symbol-out"
+              id={PIN_SINGLE_SYMBOL_OUT_LAYER_ID}
+              slot="top"
+              belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
+              style={stylePinOutRegionStyle}
+              sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
+              filter={promotedOutRegionPinFilter}
             />
             {/* Resident interaction (1 layer) + resident labels (16 layers) —
                 no per-slot fan-out, no nativeLodZ scoping. */}
@@ -392,6 +429,7 @@ const SearchMapMarkerScene = React.memo(
     previousProps.dotLayerStyle === nextProps.dotLayerStyle &&
     previousProps.handlePressTarget === nextProps.handlePressTarget &&
     previousProps.stylePinSingleSymbolStyle === nextProps.stylePinSingleSymbolStyle &&
+    previousProps.stylePinOutRegionStyle === nextProps.stylePinOutRegionStyle &&
     previousProps.stylePinSharedShadowStyle === nextProps.stylePinSharedShadowStyle &&
     previousProps.pinInteractionLayer === nextProps.pinInteractionLayer &&
     previousProps.profilerCallback === nextProps.profilerCallback &&
@@ -459,6 +497,99 @@ const areCoordinatesEqual = (
     return false;
   }
   return left[0] === right[0] && left[1] === right[1];
+};
+
+// Resident synthetic-marker layer for the feature-count degradation harness (#21).
+// Subscribes to the scale-probe store; when markerCount>0 it mounts that many pins
+// into ONE symbol layer with the cheapest worst-case topology (allow-overlap +
+// ignore-placement so nothing is collision-culled, viewport-y for native stacking).
+// Renders nothing when idle, so it is inert outside perf runs.
+const SCALE_PROBE_LAYER_STYLE: MapboxGL.SymbolLayerStyle = {
+  iconImage: ['get', 'badgeImageId'] as unknown as string,
+  iconSize: 1,
+  iconAllowOverlap: true,
+  iconIgnorePlacement: true,
+  iconAnchor: 'bottom',
+  symbolZOrder: 'viewport-y',
+} as unknown as MapboxGL.SymbolLayerStyle;
+
+// Collision-ON variant: allowOverlap:false + ignorePlacement:false → symbols block
+// each other and overlapping ones are draw-culled. Measures the "load many, show only
+// the non-colliding subset" approach (everything loaded, most hidden at any view).
+const SCALE_PROBE_LAYER_STYLE_COLLIDE: MapboxGL.SymbolLayerStyle = {
+  iconImage: ['get', 'badgeImageId'] as unknown as string,
+  iconSize: 1,
+  iconAllowOverlap: false,
+  iconIgnorePlacement: false,
+  iconAnchor: 'bottom',
+  symbolZOrder: 'viewport-y',
+} as unknown as MapboxGL.SymbolLayerStyle;
+
+// Faithful per-pin shadow: real promoted pins draw a SECOND symbol (shared shadow
+// sprite) in a separate layer beneath the pin. Mirror it here so the probe measures
+// the true per-pin cost (pin symbol + shadow symbol), not a single-symbol lower bound.
+const SCALE_PROBE_SHADOW_STYLE: MapboxGL.SymbolLayerStyle = {
+  iconImage: STYLE_PIN_SHADOW_IMAGE_ID,
+  iconSize: STYLE_PINS_SHADOW_ICON_SIZE,
+  iconAnchor: 'bottom',
+  iconAllowOverlap: true,
+  iconIgnorePlacement: true,
+  iconOpacity: STYLE_PINS_SHADOW_OPACITY,
+  symbolZOrder: 'viewport-y',
+} as unknown as MapboxGL.SymbolLayerStyle;
+const SCALE_PROBE_SHADOW_LAYER_ID = 'perf-scale-probe-shadow-layer';
+
+const ScaleProbeLayer: React.FC = () => {
+  const markerCount = usePerfScaleProbeStore((state) => state.markerCount);
+  const centerLng = usePerfScaleProbeStore((state) => state.centerLng);
+  const centerLat = usePerfScaleProbeStore((state) => state.centerLat);
+  const spreadDeg = usePerfScaleProbeStore((state) => state.spreadDeg);
+  const collide = usePerfScaleProbeStore((state) => state.collide);
+  const generation = usePerfScaleProbeStore((state) => state.generation);
+
+  const shape = React.useMemo(
+    // `generation` bumps on every setProbe so identical params still re-emit.
+    () => generateScaleProbeFeatures(markerCount, centerLng, centerLat, spreadDeg),
+    [markerCount, centerLng, centerLat, spreadDeg, generation]
+  );
+
+  if (markerCount <= 0) {
+    return null;
+  }
+
+  // collision OFF (in-view-pin case): shadow + pin, every symbol drawn, faithful
+  // per-pin topology. collision ON: pin only — a second independent-collision shadow
+  // layer would double placement cost and disagree on what to cull.
+  const layers: React.ReactElement[] = [];
+  if (!collide) {
+    layers.push(
+      <MapboxGL.SymbolLayer
+        key="scale-probe-shadow"
+        id={SCALE_PROBE_SHADOW_LAYER_ID}
+        slot="top"
+        sourceID={SCALE_PROBE_SOURCE_ID}
+        style={SCALE_PROBE_SHADOW_STYLE}
+      />
+    );
+  }
+  layers.push(
+    <MapboxGL.SymbolLayer
+      key="scale-probe-pin"
+      id={SCALE_PROBE_LAYER_ID}
+      slot="top"
+      sourceID={SCALE_PROBE_SOURCE_ID}
+      style={collide ? SCALE_PROBE_LAYER_STYLE_COLLIDE : SCALE_PROBE_LAYER_STYLE}
+    />
+  );
+
+  return (
+    <MapboxGL.ShapeSource
+      id={SCALE_PROBE_SOURCE_ID}
+      shape={shape as unknown as FeatureCollection<Point, RestaurantFeatureProperties>}
+    >
+      {layers}
+    </MapboxGL.ShapeSource>
+  );
 };
 
 const SearchMapViewScene = React.memo(
@@ -573,6 +704,7 @@ const SearchMapViewScene = React.memo(
             />
           </MapboxGL.ShapeSource>
           {markerSceneProps ? <SearchMapMarkerScene {...markerSceneProps} /> : null}
+          <ScaleProbeLayer />
           {userLocationLayerProps ? (
             <UserLocationLayers
               pulsingColor={userLocationLayerProps.pulsingColor}
@@ -627,6 +759,10 @@ export type RestaurantFeatureProperties = {
   // Pre-baked pin badge sprite id (rank in-viewport / score out-of-viewport),
   // chosen in the source builder and consumed by the pin layer's icon-image.
   badgeImageId?: string;
+  // True when the pin is inside the frozen overlap-allowed region. Drives the pin
+  // layer split: in-region pins overlap freely (allowOverlap:true, ranked); out-of-
+  // region pins collision-cull (allowOverlap:false, scored). Set in the source builder.
+  inOverlapRegion?: boolean;
   // Stable per-frame ordering key for label placement tie-breaks.
   labelOrder?: number;
   // For pin SymbolLayer z-ordering: fixed slot index (0 = bottom ... 39 = top).
@@ -667,6 +803,7 @@ const ZERO_CAMERA_PADDING = { paddingTop: 0, paddingBottom: 0, paddingLeft: 0, p
 const DOT_SOURCE_ID = 'restaurant-dot-source';
 const DOT_LAYER_ID = 'restaurant-dot-layer';
 const PIN_SINGLE_SYMBOL_LAYER_ID = 'restaurant-pin-single-symbol-layer';
+const PIN_SINGLE_SYMBOL_OUT_LAYER_ID = 'restaurant-pin-single-symbol-out-layer';
 const PIN_SHARED_SHADOW_LAYER_ID = 'restaurant-pin-shared-shadow-layer';
 const USER_LOCATION_UNCERTAINTY_SCALE = 0.7;
 
@@ -2305,6 +2442,20 @@ const SearchMap: React.FC<SearchMapProps> = ({
     [nativeLodOpacityExpression, nativePresentationOpacityExpression]
   );
 
+  // Out-of-overlap-region pin style: same icon, but collision ON (allowOverlap:false +
+  // ignorePlacement:false) so the world-wide shortcut tail collapses to a sparse,
+  // non-overlapping subset that fades in/out as you pan/zoom (the Google-style "wave").
+  // Same opacity transition drives that fade.
+  const stylePinOutRegionStyle = React.useMemo(
+    () =>
+      ({
+        ...stylePinSingleSymbolStyle,
+        iconAllowOverlap: false,
+        iconIgnorePlacement: false,
+      }) as unknown as MapboxGL.SymbolLayerStyle,
+    [stylePinSingleSymbolStyle]
+  );
+
   // RESIDENT interaction layer (slot-elimination): ONE circle layer for all pin
   // tap targets, reading the resident bundle source filtered by feature kind —
   // replaces the 30 per-slot interaction layers. No nativeLodZ scoping.
@@ -2565,6 +2716,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
             dotLayerStyle,
             handlePressTarget: handleMarkerScenePressTarget,
             stylePinSingleSymbolStyle,
+            stylePinOutRegionStyle,
             stylePinSharedShadowStyle,
             pinInteractionLayer,
             profilerCallback,
@@ -2591,6 +2743,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       restaurantLabelPinCollisionStyles,
       shouldMountSearchMarkerLayers,
       stylePinSingleSymbolStyle,
+      stylePinOutRegionStyle,
       stylePinSharedShadowStyle,
     ]
   );

@@ -14,6 +14,9 @@ type PerfScenarioDeepLinkEvent =
       action: string;
       bearing: number | null;
       cameraDurationMs: number | null;
+      count: number | null;
+      collide: boolean;
+      spreadDeg: number | null;
       delayMs: number;
       lat: number | null;
       lng: number | null;
@@ -180,6 +183,9 @@ export const parsePerfScenarioDeepLinkEvent = (
           0,
           10000
         ),
+        count: parseOptionalInteger(parsed.searchParams.get('markerCount'), 0, 120000),
+        collide: parseBoolean(parsed.searchParams.get('collide'), false),
+        spreadDeg: parseNumber(parsed.searchParams.get('spreadDeg'), 0.0001, 360),
         delayMs: parseInteger(parsed.searchParams.get('delayMs'), 100, 0, 5000),
         lat: parseNumber(parsed.searchParams.get('lat'), -90, 90),
         lng: parseNumber(parsed.searchParams.get('lng'), -180, 180),

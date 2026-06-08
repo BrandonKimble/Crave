@@ -25,6 +25,16 @@ type PerfScenarioCommandRegistrySnapshot = {
     | ((input: { lat: number; lng: number; zoom: number; label?: string | null }) => boolean)
     | null;
   submitShortcutRestaurants: (() => Promise<void>) | null;
+  setScaleProbeMarkers:
+    | ((input: {
+        count: number;
+        lat: number;
+        lng: number;
+        collide?: boolean;
+        spreadDeg?: number | null;
+        label?: string | null;
+      }) => boolean)
+    | null;
 };
 
 const commandRegistry: PerfScenarioCommandRegistrySnapshot = {
@@ -33,6 +43,7 @@ const commandRegistry: PerfScenarioCommandRegistrySnapshot = {
   animateMapCamera: null,
   moveMapForSearchThisArea: null,
   submitShortcutRestaurants: null,
+  setScaleProbeMarkers: null,
 };
 
 export type PerfScenarioCommandRegistration = {
@@ -61,6 +72,12 @@ export type PerfScenarioCommandRegistration = {
     label?: string | null;
   }) => boolean;
   submitShortcutRestaurants?: () => Promise<void>;
+  setScaleProbeMarkers?: (input: {
+    count: number;
+    lat: number;
+    lng: number;
+    label?: string | null;
+  }) => boolean;
 };
 
 export const registerPerfScenarioCommands = ({
@@ -69,6 +86,7 @@ export const registerPerfScenarioCommands = ({
   animateMapCamera,
   moveMapForSearchThisArea,
   submitShortcutRestaurants,
+  setScaleProbeMarkers,
 }: PerfScenarioCommandRegistration): (() => void) => {
   if (closeResults) {
     commandRegistry.closeResults = closeResults;
@@ -84,6 +102,9 @@ export const registerPerfScenarioCommands = ({
   }
   if (submitShortcutRestaurants) {
     commandRegistry.submitShortcutRestaurants = submitShortcutRestaurants;
+  }
+  if (setScaleProbeMarkers) {
+    commandRegistry.setScaleProbeMarkers = setScaleProbeMarkers;
   }
 
   return () => {
@@ -108,6 +129,12 @@ export const registerPerfScenarioCommands = ({
     ) {
       commandRegistry.submitShortcutRestaurants = null;
     }
+    if (
+      setScaleProbeMarkers &&
+      commandRegistry.setScaleProbeMarkers === setScaleProbeMarkers
+    ) {
+      commandRegistry.setScaleProbeMarkers = null;
+    }
   };
 };
 
@@ -117,4 +144,5 @@ export const readPerfScenarioCommandRegistry = (): PerfScenarioCommandRegistrySn
   animateMapCamera: commandRegistry.animateMapCamera,
   moveMapForSearchThisArea: commandRegistry.moveMapForSearchThisArea,
   submitShortcutRestaurants: commandRegistry.submitShortcutRestaurants,
+  setScaleProbeMarkers: commandRegistry.setScaleProbeMarkers,
 });

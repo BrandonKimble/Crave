@@ -33,6 +33,8 @@ import {
   type SearchMapSourceStore,
 } from '../runtime/map/search-map-source-store';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
+import { isWithinOverlapRegion, resolveOverlapRegion } from '../utils/overlap-region';
+import { requestOverlapAutoZoom } from '../runtime/map/overlap-auto-zoom-bridge';
 import { rankBadgeImageId, scoreBadgeImageId } from '../../../utils/quality-color';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import type { ResultsPresentationAuthority } from '../runtime/shared/results-presentation-authority';
@@ -800,6 +802,8 @@ type DirectMapSourceControllerBaseArgs = {
   restaurantOnlyId: string | null;
   highlightedRestaurantId: string | null;
   viewportBoundsService: ViewportBoundsService;
+  // Live user location — anchors the overlap region's radius for far-out shortcut runs.
+  userLocation: Coordinate | null;
   resolveRestaurantMapLocations: (restaurant: RestaurantResult) => ResolvedRestaurantMapLocation[];
   resolveRestaurantLocationSelectionAnchor: () => Coordinate | null;
   pickPreferredRestaurantMapLocation: (
@@ -962,6 +966,12 @@ const buildDirectLabelStores = ({
   };
 };
 
+// Separate full-pin budget for OUT-OF-OVERLAP-REGION results (world-wide top-rated),
+// independent of the in-region (maxFullPins) budget. ~maxFullPins in + this out = the
+// total full-pin ceiling at any time (~60). Keeps the far tail digestible (only the
+// best show as pins) while collision-culling handles any local overlap.
+const OUT_REGION_MAX_FULL_PINS = 30;
+
 export const useDirectSearchMapSourceController = ({
   searchRuntimeBus,
   resultsPresentationAuthority,
@@ -970,6 +980,7 @@ export const useDirectSearchMapSourceController = ({
   restaurantOnlyId,
   highlightedRestaurantId,
   viewportBoundsService,
+  userLocation,
   resolveRestaurantMapLocations,
   resolveRestaurantLocationSelectionAnchor,
   pickPreferredRestaurantMapLocation,
@@ -984,6 +995,13 @@ export const useDirectSearchMapSourceController = ({
   externalMapQueryBudget,
   profileCommandPort,
 }: DirectMapSourceControllerArgs): DirectMapSourceControllerResult => {
+  // Live user location read by the per-frame pin builder (overlap-region radius
+  // anchor). Held in a ref so location updates don't churn the builder's deps.
+  const userLocationRef = React.useRef<Coordinate | null>(userLocation);
+  userLocationRef.current = userLocation;
+  // Auto-zoom is one-shot per search: track the last search key we focused so a far-out
+  // shortcut zooms to the user's vicinity exactly once (not every frame).
+  const lastAutoZoomedSearchKeyRef = React.useRef<string | null>(null);
   const latestArgsRef = React.useRef({
     resultsPresentationAuthority,
     resultsPresentationSurfaceAuthority,
@@ -1597,23 +1615,99 @@ export const useDirectSearchMapSourceController = ({
       }
       nativeVisibleMarkerKeys = effectiveVisible;
     }
-    const nextModel = currentBounds
+    // Resolve the frozen OVERLAP REGION (submitted viewport when small; metro radius
+    // around the user for a far-out shortcut) — drives the dual LOD budget + the in/out
+    // pin split + the badge (rank in-region / score out). Polygon = pitch/twist truth.
+    const submittedSearchBounds = viewportBoundsService.getSearchBaselineBounds();
+    const submittedSearchPolygon = viewportBoundsService.getSubmittedPolygon();
+    // SHORTCUT searches show world-wide results, so a far-out shortcut resolves to a
+    // metro radius around the user (+ auto-zoom). NATURAL searches are strictly bounded
+    // to the submitted viewport (backend filters BETWEEN the bounds, no margin), so
+    // their region is ALWAYS that viewport — never a radius, never an auto-zoom — even
+    // when the user searched while zoomed out.
+    const isShortcutSearch = searchMode === 'shortcut';
+    const overlapRegion =
+      viewportBoundsService.getOverlapRegion() ??
+      (isShortcutSearch
+        ? resolveOverlapRegion({
+            submittedBounds: submittedSearchBounds,
+            submittedPolygon: submittedSearchPolygon,
+            userLocation: userLocationRef.current,
+          })
+        : submittedSearchBounds
+          ? ({ kind: 'viewport', bounds: submittedSearchBounds, polygon: submittedSearchPolygon } as const)
+          : null);
+
+    // Far-out shortcut → auto-zoom onto the radius once per search (programmatic, so it
+    // doesn't trip "map moved"; the region stays a radius off the frozen baseline).
+    if (overlapRegion?.kind === 'radius' && submittedSearchBounds) {
+      const autoZoomKey = `${submittedSearchBounds.northEast.lat.toFixed(4)}:${submittedSearchBounds.northEast.lng.toFixed(4)}:${submittedSearchBounds.southWest.lat.toFixed(4)}:${submittedSearchBounds.southWest.lng.toFixed(4)}`;
+      if (lastAutoZoomedSearchKeyRef.current !== autoZoomKey) {
+        lastAutoZoomedSearchKeyRef.current = autoZoomKey;
+        requestOverlapAutoZoom({
+          center: overlapRegion.center,
+          radiusMiles: overlapRegion.radiusMiles,
+        });
+      }
+    }
+
+    // DUAL LOD BUDGET. In-region results keep the existing viewport-gated, ranked LOD
+    // (top `maxFullPins`). Out-of-region results get a SEPARATE top-`OUT_REGION_MAX_FULL_PINS`
+    // budget, NOT viewport-gated, so the world-wide top-rated places exist as pins
+    // (tile-culled off-screen, appearing as you pan) while the rest fall to dots. Both
+    // reuse the stable-membership machinery. Natural search has no out-of-region
+    // candidates, so the out pass is empty and behavior is identical to before.
+    // The selected (tapped) restaurant is always treated as IN-REGION so it is
+    // force-promoted, rendered in the in-region layer (ranked, overlap, crossfade), and
+    // excluded from the out-region pass (no double-promotion) — wherever it sits
+    // geographically. This makes tapping any pin/dot promote it like the in-view ones.
+    const selectedMarkerKeys = new Set(
+      selectedRestaurantCandidates.map((feature) => buildMarkerKey(feature))
+    );
+    const isInRegionFeature = (
+      feature: Feature<Point, RestaurantFeatureProperties>
+    ): boolean =>
+      selectedMarkerKeys.has(buildMarkerKey(feature)) ||
+      isWithinOverlapRegion(overlapRegion, feature.geometry.coordinates as [number, number]);
+    const currentPinned = lodPinnedMarkersRef.current;
+    const emptyModel = { nextPinnedMarkers: [], nextPinnedMeta: [] };
+    const inRegionModel = currentBounds
       ? buildMarkerRenderModel({
           bounds: currentBounds,
-          rankedCandidates,
+          rankedCandidates: rankedCandidates.filter(isInRegionFeature),
           selectedRestaurantCandidates,
-          currentPinnedMarkers: lodPinnedMarkersRef.current,
+          currentPinnedMarkers: currentPinned.filter(isInRegionFeature),
           selectedRestaurantId,
           selectedPriorityCoordinate,
           buildMarkerKey,
           buildVisualIdentityKey: buildSearchMapVisualIdentityKey,
           maxPins: args.maxFullPins,
           nativeVisibleMarkerKeys,
+          requireVisibility: true,
         })
-      : {
-          nextPinnedMarkers: [],
-          nextPinnedMeta: [],
-        };
+      : emptyModel;
+    const outRegionModel = currentBounds
+      ? buildMarkerRenderModel({
+          bounds: currentBounds,
+          rankedCandidates: rankedCandidates.filter((feature) => !isInRegionFeature(feature)),
+          selectedRestaurantCandidates: [],
+          currentPinnedMarkers: currentPinned.filter((feature) => !isInRegionFeature(feature)),
+          selectedRestaurantId: null,
+          selectedPriorityCoordinate: null,
+          buildMarkerKey,
+          buildVisualIdentityKey: buildSearchMapVisualIdentityKey,
+          maxPins: OUT_REGION_MAX_FULL_PINS,
+          nativeVisibleMarkerKeys: null,
+          requireVisibility: false,
+        })
+      : emptyModel;
+    const nextModel = {
+      nextPinnedMarkers: [
+        ...inRegionModel.nextPinnedMarkers,
+        ...outRegionModel.nextPinnedMarkers,
+      ],
+      nextPinnedMeta: [...inRegionModel.nextPinnedMeta, ...outRegionModel.nextPinnedMeta],
+    };
     const nextPinnedVisualKey = buildLodPinnedVisualKey(nextModel.nextPinnedMeta);
     if (
       isViewportLodPublish &&
@@ -1640,25 +1734,8 @@ export const useDirectSearchMapSourceController = ({
     });
     const visibleDotRestaurantMarkerFeatures = projectedVisualFrame.dotCandidates;
 
-    // Pin badge: RANK inside the user's submitted-search viewport (frozen,
-    // contextual), SCORE outside it (intrinsic, stable as you pan away). The chosen
-    // value is baked into the pin sprite (badgeImageId → pre-baked image), so the
-    // number rides the same z-order as the pin (symbol-z-order:'viewport-y'),
-    // eliminating the cross-pass text bleed onto stacked pins.
-    const submittedSearchBounds = viewportBoundsService.getSearchBaselineBounds();
-    const isWithinSubmittedSearch = (coord: [number, number]): boolean => {
-      if (!submittedSearchBounds) {
-        return true; // no baseline yet → treat as in-search (show rank)
-      }
-      const [lng, lat] = coord;
-      return (
-        lat >= submittedSearchBounds.southWest.lat &&
-        lat <= submittedSearchBounds.northEast.lat &&
-        lng >= submittedSearchBounds.southWest.lng &&
-        lng <= submittedSearchBounds.northEast.lng
-      );
-    };
-
+    // Pin badge keyed off the frozen overlap region (resolved above): in-region → RANK,
+    // out-of-region → SCORE. Baked into the sprite so the number rides the pin z-order.
     const pinBuilder = createSearchMapSourceStoreBuilder(previousPinSourceStoreRef.current);
     visibleSortedRestaurantMarkers.forEach((feature, index) => {
       const markerKey = buildMarkerKey(feature);
@@ -1672,8 +1749,8 @@ export const useDirectSearchMapSourceController = ({
           : null;
       const rank =
         typeof feature.properties.rank === 'number' ? feature.properties.rank : index + 1;
-      const coord = feature.geometry.coordinates as [number, number];
-      const badgeImageId = isWithinSubmittedSearch(coord)
+      const inOverlapRegion = isInRegionFeature(feature);
+      const badgeImageId = inOverlapRegion
         ? rankBadgeImageId(craveScore, rank)
         : scoreBadgeImageId(craveScore);
       const semanticRevision = buildPinSemanticRevision({
@@ -1689,6 +1766,7 @@ export const useDirectSearchMapSourceController = ({
           markerKey,
           labelOrder: index + 1,
           badgeImageId,
+          inOverlapRegion,
           nativeLodZ,
           nativeLodOpacity: 1,
           nativeLodRankOpacity: 1,

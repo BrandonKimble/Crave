@@ -595,8 +595,11 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     void (async () => {
       const startedAtMs = Date.now();
 
-      // Test/dev override: short-circuit all GPS resolution and center exactly at
-      // the configured coordinate. Deterministic startup origin for Maestro flows.
+      // Test/dev override: fix the STARTUP CAMERA origin at the configured coordinate
+      // (deterministic launch viewport for Maestro flows). It must NOT suppress the
+      // live current-location puck — we still resolve permission and start the GPS
+      // watch so the marker reflects the real device location. The watch updates
+      // userLocation without re-centering the camera, so the override origin holds.
       if (STARTUP_LOCATION_OVERRIDE) {
         const overrideSnapshot = buildLocationSnapshot({
           coordinate: STARTUP_LOCATION_OVERRIDE.coordinate,
@@ -613,6 +616,27 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
         applyLocationSnapshot(overrideSnapshot);
         setStartupCamera(buildCameraFromSnapshot(overrideSnapshot));
         setIsStartupResolved(true);
+
+        const overridePermissionResponse = await Location.getForegroundPermissionsAsync().catch(
+          () => null
+        );
+        const overridePermission = getPermissionState(overridePermissionResponse?.status);
+        const overrideReducedAccuracy = isReducedAccuracyPermission(overridePermissionResponse);
+        if (
+          overridePermission === 'granted' &&
+          !cancelled &&
+          seq === startupResolutionSeqRef.current
+        ) {
+          await startLocationWatch(overridePermission, overrideReducedAccuracy);
+          void resolveCurrentPosition(overridePermission, overrideReducedAccuracy).then(
+            (snapshot) => {
+              if (!snapshot || cancelled || seq !== startupResolutionSeqRef.current) {
+                return;
+              }
+              applyLocationSnapshot(snapshot);
+            }
+          );
+        }
         return;
       }
 

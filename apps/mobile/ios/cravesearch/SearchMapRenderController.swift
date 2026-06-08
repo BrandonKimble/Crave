@@ -3411,8 +3411,17 @@ final class SearchMapRenderController: RCTEventEmitter {
     let reusePinInteractions =
       dirtyPinInteractionMarkerKeys.isEmpty && orderChangedPinInteractionMarkerKeys.isEmpty
     let reuseLabels = dirtyLabelMarkerKeys.isEmpty && orderChangedLabelMarkerKeys.isEmpty
-    let reuseLabelCollisions =
-      dirtyLabelCollisionMarkerKeys.isEmpty && orderChangedLabelCollisionMarkerKeys.isEmpty
+    // SINGLE-OWNER FIX (#7 — "Parsed collection base mismatch for restaurant-label-collision-source"
+    // redbox on profile exit). The collision source is authored and transported by JS
+    // (renderState.labelCollisionFeature carries JS-owned geometry; the JS delta transport is its
+    // writer). Label-prep must NOT also patch/apply it: doing so advanced native's
+    // transport-validated sourceRevision as a SECOND writer, independent of JS's acknowledged base,
+    // so the next JS patch frame failed native's base check on the profile open/close placement
+    // re-run. Forcing reuse makes label-prep read the JS-owned collision source for placement
+    // (obstacle layers) without ever rewriting it — its apply-plan below stays a no-op and JS
+    // remains the sole revision owner, so the base can never desync. (The now-bypassed patch
+    // block is left in place pending validation; remove once confirmed.)
+    let reuseLabelCollisions = true
     if shouldAttributeLabelPrep {
       self.recordNativeApply(
         section: "label_prep.dirty_sets",

@@ -106,14 +106,22 @@ export const getScoreBucketColor = (score?: number | null): string =>
 // match the filenames the generator writes: pin-rank-<bucket>-<rank>.png and
 // pin-score-<bucket>-<score>.png.
 // ---------------------------------------------------------------------------
-export const MAX_PIN_RANK_BADGE = 40;
+// Ranks 1..99 are baked per bucket; anything beyond shows the shared "99+" overflow
+// sprite (id suffix must match generate-pin-bucket-sprites.js RANK_OVERFLOW_SUFFIX).
+export const MAX_PIN_RANK_BADGE = 99;
+const RANK_OVERFLOW_SUFFIX = 'overflow';
 
 const bucketName = (bucket: ScoreBucket): string => `b${bucket}`;
 
-// In-viewport rank badge id, clamped to the baked range.
+// In-viewport rank badge id. Ranks 1..99 resolve to their numbered sprite; rank 100+
+// (large search areas) folds to the bucket's shared "99+" overflow sprite.
 export const rankBadgeImageId = (score: number | null | undefined, rank: number): string => {
-  const r = Math.max(1, Math.min(MAX_PIN_RANK_BADGE, Math.round(rank)));
-  return `pin-rank-${bucketName(scoreToBucket(score))}-${r}`;
+  const bucket = bucketName(scoreToBucket(score));
+  const r = Math.round(rank);
+  if (r > MAX_PIN_RANK_BADGE) {
+    return `pin-rank-${bucket}-${RANK_OVERFLOW_SUFFIX}`;
+  }
+  return `pin-rank-${bucket}-${Math.max(1, r)}`;
 };
 
 // Out-of-viewport score badge id (score is the 0–100 display score; baked per

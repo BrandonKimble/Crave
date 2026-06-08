@@ -1,4 +1,5 @@
 import React from 'react';
+import { Dimensions } from 'react-native';
 
 import {
   isPerfScenarioAttributionActive,
@@ -16,12 +17,14 @@ import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-
 import type { SearchChromeScalarSurfacePrimitiveSourceRuntime } from '../runtime/native/search-chrome-scalar-surface-primitive-source-runtime';
 import { MAP_MOVE_MIN_DISTANCE_MILES } from '../constants/search';
 import {
+  boundsFromCoordinates,
   boundsFromPairs,
   getBoundsCenter,
   hasBoundsMovedSignificantly,
   haversineDistanceMiles,
   isLngLatTuple,
 } from '../utils/geo';
+import type { LngLat } from '../utils/overlap-region';
 
 type SearchInteractionState = {
   isInteracting: boolean;
@@ -172,12 +175,60 @@ export const useSearchMapMovementState = ({
     setPollBounds(startupPollBounds);
   }, [latestBoundsRef, startupPollBounds, viewportBoundsService]);
 
+  // Refine the just-captured AABB baseline with the SCREEN-ACCURATE visible polygon:
+  // project the 4 view corners to lng/lat (pitch/twist-aware) and re-capture, with the
+  // polygon as the single source of truth and its bbox as the derived AABB. Async +
+  // sequence-guarded so a superseding capture wins. The map is full-bleed, so the
+  // window corners are the map's visible corners.
+  const refineSubmittedPolygon = React.useCallback(
+    (captureSeq: number) => {
+      const map = mapRef.current;
+      if (!map?.getCoordinateFromView) {
+        return;
+      }
+      const { width, height } = Dimensions.get('window');
+      if (!(width > 0) || !(height > 0)) {
+        return;
+      }
+      const cornerPoints: Array<[number, number]> = [
+        [0, 0],
+        [width, 0],
+        [width, height],
+        [0, height],
+      ];
+      void Promise.all(
+        cornerPoints.map((point) =>
+          map.getCoordinateFromView!(point).catch(() => null)
+        )
+      ).then((positions) => {
+        if (lastSearchBoundsCaptureSeqRef.current !== captureSeq) {
+          return;
+        }
+        const polygon = positions
+          .filter((p): p is [number, number] => isLngLatTuple(p))
+          .map(([lng, lat]) => [lng, lat] as LngLat);
+        if (polygon.length < 3) {
+          return;
+        }
+        const polygonBounds = boundsFromCoordinates(polygon);
+        if (!polygonBounds) {
+          return;
+        }
+        viewportBoundsService.captureSearchBaseline(polygonBounds, polygon);
+      });
+    },
+    [lastSearchBoundsCaptureSeqRef, mapRef, viewportBoundsService]
+  );
+
   const resetMapMoveFlag = React.useCallback(() => {
     pendingMapMovedEnterRef.current = false;
     const captureSeq = ++lastSearchBoundsCaptureSeqRef.current;
     const boundsSnapshot = viewportBoundsService.getBounds();
     if (boundsSnapshot) {
+      // Sync AABB first (no regression for move-detection, which fires right after
+      // submit), then refine with the screen-accurate polygon a tick later.
       viewportBoundsService.captureSearchBaseline(boundsSnapshot);
+      refineSubmittedPolygon(captureSeq);
     } else {
       const boundsCandidate = mapRef.current?.getVisibleBounds?.();
       if (boundsCandidate) {
@@ -196,13 +247,20 @@ export const useSearchMapMovementState = ({
           const bounds = boundsFromPairs(visibleBounds[0], visibleBounds[1]);
           viewportBoundsService.setBounds(bounds);
           viewportBoundsService.captureSearchBaseline(bounds);
+          refineSubmittedPolygon(captureSeq);
         });
       }
     }
     mapMovedSinceSearchRef.current = false;
     writeMapMovedScalarPrimitive(false);
     setMapMovedSinceSearch(false);
-  }, [lastSearchBoundsCaptureSeqRef, mapRef, viewportBoundsService, writeMapMovedScalarPrimitive]);
+  }, [
+    lastSearchBoundsCaptureSeqRef,
+    mapRef,
+    refineSubmittedPolygon,
+    viewportBoundsService,
+    writeMapMovedScalarPrimitive,
+  ]);
 
   const markMapMovedIfNeeded = React.useCallback(
     (bounds: MapBounds, options?: { fallbackBaselineBounds?: MapBounds | null }) => {

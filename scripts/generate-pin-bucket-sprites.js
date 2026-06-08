@@ -151,9 +151,12 @@ async function composeBadge(bucket, text, density) {
     .toBuffer();
 }
 
-// Max rank a PROMOTED pin can show. Pins are the stable top-N (maxFullPins=30) plus
-// a little selected-restaurant overflow, so rank is bounded. 40 gives headroom.
-const MAX_PIN_RANK = 40;
+// Max numbered rank a pin shows. Over a large search area hundreds–thousands of
+// pins can be in view, so ranks 1..99 are baked and anything beyond shows a single
+// shared "99+" overflow sprite per bucket (keeps the digit width legible at pin size).
+const MAX_PIN_RANK = 99;
+const RANK_OVERFLOW_TEXT = '99+';
+const RANK_OVERFLOW_SUFFIX = 'overflow';
 
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
@@ -183,6 +186,13 @@ async function main() {
       fs.writeFileSync(path.join(OUT, `pin-${id}.png`), buf);
       manifest.rankBadges.push(id);
     }
+    // Shared "99+" overflow badge for ranks beyond MAX_PIN_RANK.
+    {
+      const buf = await composeBadge(bucket, RANK_OVERFLOW_TEXT, SCALE);
+      const id = `rank-${bucket.name}-${RANK_OVERFLOW_SUFFIX}`;
+      fs.writeFileSync(path.join(OUT, `pin-${id}.png`), buf);
+      manifest.rankBadges.push(id);
+    }
 
     // SCORE badges (out-of-viewport pins): a bucket only ever shows scores WITHIN
     // its own display range, so we only bake those (e.g. b7 = 9.5..10.0). Score is
@@ -194,7 +204,9 @@ async function main() {
       fs.writeFileSync(path.join(OUT, `pin-${id}.png`), buf);
       manifest.scoreBadges.push(id);
     }
-    console.log(`bucket ${bucket.name}: rank 1-${MAX_PIN_RANK} + score ${bucket.lo}-${bucket.hi}`);
+    console.log(
+      `bucket ${bucket.name}: rank 1-${MAX_PIN_RANK} + "${RANK_OVERFLOW_TEXT}" + score ${bucket.lo}-${bucket.hi}`
+    );
   }
 
   fs.writeFileSync(path.join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2));

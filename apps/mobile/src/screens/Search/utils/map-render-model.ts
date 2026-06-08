@@ -44,6 +44,12 @@ type BuildMarkerRenderModelArgs<TProps extends MarkerLikeProperties> = {
   // box cannot be. Null/absent only before the first native projection arrives
   // (initial frame / pre-attach), where the padded-AABB fallback positions the set.
   nativeVisibleMarkerKeys?: ReadonlySet<string> | null;
+  // When false, the on-screen visibility gate is skipped entirely: the top `maxPins`
+  // candidates by rank are promoted regardless of whether they're in the current
+  // viewport. Used for the OUT-OF-OVERLAP-REGION pin budget — world-wide top-rated
+  // pins should exist (tile-culled off-screen, appearing as you pan) rather than only
+  // when on screen. Defaults to true (the in-region / viewport-gated behavior).
+  requireVisibility?: boolean;
 };
 
 type BuildMarkerRenderModelResult<TProps extends MarkerLikeProperties> = {
@@ -226,6 +232,7 @@ export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
     buildVisualIdentityKey,
     maxPins,
     nativeVisibleMarkerKeys,
+    requireVisibility = true,
   } = args;
   const selectedEntries = collectSelectedEntries(
     selectedRestaurantCandidates,
@@ -252,10 +259,14 @@ export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
   // Screen-space visibility (native projection) is authoritative when available;
   // it is the only test that is correct under twist/pitch. The padded lat/lng box
   // is the bootstrap fallback for the first frame before the projector reports.
-  const isVisible = (feature: MarkerFeature<TProps>): boolean =>
-    nativeVisibleMarkerKeys != null
+  const isVisible = (feature: MarkerFeature<TProps>): boolean => {
+    if (!requireVisibility) {
+      return true; // out-of-region budget: promote top-N by rank regardless of viewport.
+    }
+    return nativeVisibleMarkerKeys != null
       ? nativeVisibleMarkerKeys.has(buildMarkerKey(feature))
       : isVisibleInBounds(feature, retentionBounds);
+  };
   const byRank = (left: MarkerFeature<TProps>, right: MarkerFeature<TProps>): number => {
     const rankDiff =
       (left.properties.rank ?? Number.POSITIVE_INFINITY) -

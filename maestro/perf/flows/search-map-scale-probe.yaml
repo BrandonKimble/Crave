@@ -1,0 +1,166 @@
+appId: com.brandonkimble.cravesearch
+# perf-scenario-sim-location: 40.7550,-73.9800
+---
+# FEATURE-COUNT DEGRADATION HARNESS (#21)
+#
+# Question: can the map go uncapped / everything-resident (Google-style) instead
+# of the LOD top-30 cap? Slot-elimination already proved layer-COUNT is the killer;
+# this isolates the FEATURE-count axis — N synthetic pins in ONE resident symbol
+# layer (allow-overlap + ignore-placement, viewport-y), stepped up while the JS/UI
+# frame samplers record. The report (perf-scenario-scale-probe-report.js) charts
+# fps vs N by bucketing sampler windows between consecutive marker-count-applied
+# events.
+#
+# The per-step pan/zoom workout is inlined (NOT runFlow) because the harness shell
+# rewrites this flow into a temp file in TMPDIR, which would break relative subflow
+# paths. Counts: 0 (baseline) -> 500 -> 2k -> 5k -> 10k -> 25k -> 50k.
+- tapOn:
+    text: 'Search'
+    optional: true
+- tapOn:
+    text: 'Close results'
+    optional: true
+- tapOn:
+    text: 'Close polls'
+    optional: true
+- extendedWaitUntil:
+    visible: 'What are you craving?'
+    timeout: 45000
+- extendedWaitUntil:
+    visible: 'Show best restaurants here'
+    timeout: 45000
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=40.7550&lng=-73.9800&zoom=11.6&label=scale_probe_seed'
+- waitForAnimationToEnd:
+    timeout: 1600
+- openLink: 'crave://perf-scenario-command?action=submit_shortcut_restaurants'
+- extendedWaitUntil:
+    visible: 'Close results'
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 1200
+- openLink: 'crave://perf-scenario-mark?phase=scale_probe_run&label=map_scale_probe_start'
+
+# === baseline: 0 synthetic markers (real scene only) ===
+- openLink: 'crave://perf-scenario-command?action=set_scale_probe_markers&markerCount=0&lat=40.7550&lng=-73.9800&label=probe_0'
+- waitForAnimationToEnd:
+    timeout: 700
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9607&zoom=11.6&cameraDurationMs=650&label=p0_pan_east'
+- waitForAnimationToEnd:
+    timeout: 850
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7720&lng=-73.9993&zoom=11.6&cameraDurationMs=650&label=p0_pan_nw'
+- waitForAnimationToEnd:
+    timeout: 850
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=13.0&cameraDurationMs=700&label=p0_zoom_in'
+- waitForAnimationToEnd:
+    timeout: 950
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=11.6&cameraDurationMs=700&label=p0_zoom_out'
+- waitForAnimationToEnd:
+    timeout: 950
+
+# === 500 ===
+- openLink: 'crave://perf-scenario-command?action=set_scale_probe_markers&markerCount=500&lat=40.7550&lng=-73.9800&label=probe_500'
+- waitForAnimationToEnd:
+    timeout: 800
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9607&zoom=11.6&cameraDurationMs=650&label=p500_pan_east'
+- waitForAnimationToEnd:
+    timeout: 850
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7720&lng=-73.9993&zoom=11.6&cameraDurationMs=650&label=p500_pan_nw'
+- waitForAnimationToEnd:
+    timeout: 850
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=13.0&cameraDurationMs=700&label=p500_zoom_in'
+- waitForAnimationToEnd:
+    timeout: 950
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=11.6&cameraDurationMs=700&label=p500_zoom_out'
+- waitForAnimationToEnd:
+    timeout: 950
+
+# === 2000 ===
+- openLink: 'crave://perf-scenario-command?action=set_scale_probe_markers&markerCount=2000&lat=40.7550&lng=-73.9800&label=probe_2000'
+- waitForAnimationToEnd:
+    timeout: 900
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9607&zoom=11.6&cameraDurationMs=650&label=p2000_pan_east'
+- waitForAnimationToEnd:
+    timeout: 850
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7720&lng=-73.9993&zoom=11.6&cameraDurationMs=650&label=p2000_pan_nw'
+- waitForAnimationToEnd:
+    timeout: 850
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=13.0&cameraDurationMs=700&label=p2000_zoom_in'
+- waitForAnimationToEnd:
+    timeout: 950
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=11.6&cameraDurationMs=700&label=p2000_zoom_out'
+- waitForAnimationToEnd:
+    timeout: 950
+
+# === 5000 ===
+- openLink: 'crave://perf-scenario-command?action=set_scale_probe_markers&markerCount=5000&lat=40.7550&lng=-73.9800&label=probe_5000'
+- waitForAnimationToEnd:
+    timeout: 1000
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9607&zoom=11.6&cameraDurationMs=650&label=p5000_pan_east'
+- waitForAnimationToEnd:
+    timeout: 850
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7720&lng=-73.9993&zoom=11.6&cameraDurationMs=650&label=p5000_pan_nw'
+- waitForAnimationToEnd:
+    timeout: 850
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=13.0&cameraDurationMs=700&label=p5000_zoom_in'
+- waitForAnimationToEnd:
+    timeout: 950
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=11.6&cameraDurationMs=700&label=p5000_zoom_out'
+- waitForAnimationToEnd:
+    timeout: 950
+
+# === 10000 ===
+- openLink: 'crave://perf-scenario-command?action=set_scale_probe_markers&markerCount=10000&lat=40.7550&lng=-73.9800&label=probe_10000'
+- waitForAnimationToEnd:
+    timeout: 1200
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9607&zoom=11.6&cameraDurationMs=650&label=p10000_pan_east'
+- waitForAnimationToEnd:
+    timeout: 850
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7720&lng=-73.9993&zoom=11.6&cameraDurationMs=650&label=p10000_pan_nw'
+- waitForAnimationToEnd:
+    timeout: 850
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=13.0&cameraDurationMs=700&label=p10000_zoom_in'
+- waitForAnimationToEnd:
+    timeout: 950
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=11.6&cameraDurationMs=700&label=p10000_zoom_out'
+- waitForAnimationToEnd:
+    timeout: 950
+
+# === 25000 ===
+- openLink: 'crave://perf-scenario-command?action=set_scale_probe_markers&markerCount=25000&lat=40.7550&lng=-73.9800&label=probe_25000'
+- waitForAnimationToEnd:
+    timeout: 1600
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9607&zoom=11.6&cameraDurationMs=650&label=p25000_pan_east'
+- waitForAnimationToEnd:
+    timeout: 850
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7720&lng=-73.9993&zoom=11.6&cameraDurationMs=650&label=p25000_pan_nw'
+- waitForAnimationToEnd:
+    timeout: 850
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=13.0&cameraDurationMs=700&label=p25000_zoom_in'
+- waitForAnimationToEnd:
+    timeout: 950
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=11.6&cameraDurationMs=700&label=p25000_zoom_out'
+- waitForAnimationToEnd:
+    timeout: 950
+
+# === 50000 ===
+- openLink: 'crave://perf-scenario-command?action=set_scale_probe_markers&markerCount=50000&lat=40.7550&lng=-73.9800&label=probe_50000'
+- waitForAnimationToEnd:
+    timeout: 2200
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9607&zoom=11.6&cameraDurationMs=650&label=p50000_pan_east'
+- waitForAnimationToEnd:
+    timeout: 850
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7720&lng=-73.9993&zoom=11.6&cameraDurationMs=650&label=p50000_pan_nw'
+- waitForAnimationToEnd:
+    timeout: 850
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=13.0&cameraDurationMs=700&label=p50000_zoom_in'
+- waitForAnimationToEnd:
+    timeout: 950
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=11.6&cameraDurationMs=700&label=p50000_zoom_out'
+- waitForAnimationToEnd:
+    timeout: 950
+
+# === teardown ===
+- openLink: 'crave://perf-scenario-command?action=set_scale_probe_markers&markerCount=0&lat=40.7550&lng=-73.9800&label=probe_teardown'
+- openLink: 'crave://perf-scenario-mark?phase=scale_probe_run&label=map_scale_probe_end'
+- waitForAnimationToEnd:
+    timeout: 1000

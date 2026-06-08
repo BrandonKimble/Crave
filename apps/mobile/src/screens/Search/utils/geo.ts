@@ -26,6 +26,28 @@ export const boundsFromPairs = (first: [number, number], second: [number, number
   };
 };
 
+// Axis-aligned bounding box of a set of [lng, lat] coordinates (e.g. the projected
+// visible-polygon corners). Returns null for an empty set.
+export const boundsFromCoordinates = (coords: Array<[number, number]>): MapBounds | null => {
+  if (coords.length === 0) {
+    return null;
+  }
+  let minLng = Infinity;
+  let minLat = Infinity;
+  let maxLng = -Infinity;
+  let maxLat = -Infinity;
+  for (const [lng, lat] of coords) {
+    if (lng < minLng) minLng = lng;
+    if (lng > maxLng) maxLng = lng;
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+  }
+  return {
+    northEast: { lat: maxLat, lng: maxLng },
+    southWest: { lat: minLat, lng: minLng },
+  };
+};
+
 const toRadians = (degrees: number): number => (degrees * Math.PI) / 180;
 
 export const haversineDistanceMiles = (a: Coordinate, b: Coordinate): number => {
