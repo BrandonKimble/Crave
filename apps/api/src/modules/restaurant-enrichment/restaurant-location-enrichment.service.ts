@@ -102,6 +102,7 @@ const GOOGLE_DAY_NAMES = [
 const DEFAULT_ENRICHMENT_TX_TIMEOUT_MS = 15 * 60 * 1000;
 const DEFAULT_ENRICHMENT_TX_MAX_WAIT_MS = 30 * 1000;
 const GENERIC_WEBSITE_DOMAIN_DENYLIST = new Set([
+  // Ordering / reservation aggregators
   'doordash.com',
   'ubereats.com',
   'grubhub.com',
@@ -111,6 +112,22 @@ const GENERIC_WEBSITE_DOMAIN_DENYLIST = new Set([
   'square.site',
   'menufy.com',
   'opentable.com',
+  'chownow.com',
+  'clover.com',
+  // Social / link-aggregator hosts (NOT brand-unique — caused unrelated restaurants to
+  // fuse into one fake "chain" when listed as a Google website, e.g. facebook.com,
+  // instagram.com). The name-agreement gate below is the real defense; this is a cheap
+  // pre-filter so generic domains never even become a chain key.
+  'facebook.com',
+  'instagram.com',
+  'linktr.ee',
+  'linktree.com',
+  'beacons.ai',
+  'linkin.bio',
+  'tiktok.com',
+  'twitter.com',
+  'x.com',
+  'yelp.com',
 ]);
 
 type GoogleDayName = (typeof GOOGLE_DAY_NAMES)[number];
@@ -1360,6 +1377,31 @@ export class RestaurantLocationEnrichmentService {
     return trimmed.length ? trimmed.toLowerCase() : null;
   }
 
+  /** Normalize a restaurant name to its comparable brand form (lowercase, punctuation
+   * stripped, leading "the" dropped) for the canonical-domain merge name gate. */
+  private normalizeBrandName(value?: string | null): string | null {
+    if (!value) return null;
+    const normalized = value
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/^the\s+/, '')
+      .trim();
+    return normalized.length ? normalized : null;
+  }
+
+  /** Two restaurants are the same brand iff their names match, or one is a word-boundary
+   * brand prefix of the other (chain branches, e.g. "joe's pizza" / "joe's pizza midtown").
+   * Used to gate the canonical-domain chain merge so unrelated restaurants that merely share
+   * a generic website (facebook.com, etc.) are NOT fused. */
+  private restaurantNamesAgree(a?: string | null, b?: string | null): boolean {
+    const na = this.normalizeBrandName(a);
+    const nb = this.normalizeBrandName(b);
+    if (!na || !nb) return false;
+    if (na === nb) return true;
+    return na.startsWith(`${nb} `) || nb.startsWith(`${na} `);
+  }
+
   private ensureAliasPresence(
     aliases: string[],
     value: string,
@@ -1868,7 +1910,7 @@ export class RestaurantLocationEnrichmentService {
       return null;
     }
 
-    const canonical = await this.prisma.entity.findFirst({
+    const candidates = await this.prisma.entity.findMany({
       where: {
         type: EntityType.restaurant,
         canonicalDomain,
@@ -1876,9 +1918,31 @@ export class RestaurantLocationEnrichmentService {
       },
       include: { primaryLocation: true, locations: true },
       orderBy: [{ createdAt: 'asc' }, { entityId: 'asc' }],
+      take: 50,
     });
 
+    // NAME-AGREEMENT GATE: only merge into a same-domain entity whose brand name actually
+    // agrees. Real chains share both a domain AND a name; unrelated restaurants that merely
+    // share a generic website (e.g. facebook.com) do not — so they stay separate.
+    const incomingName =
+      this.getPlaceDisplayName(params.placeDetails) ?? params.entity.name;
+    const canonical =
+      candidates.find((candidate) =>
+        this.restaurantNamesAgree(incomingName, candidate.name),
+      ) ?? null;
+
     if (!canonical) {
+      if (candidates.length > 0) {
+        this.logger.info(
+          'Skipping canonical-domain merge: no same-domain entity name agrees',
+          {
+            canonicalDomain,
+            incomingName,
+            incomingEntityId: params.entity.entityId,
+            sameDomainCandidates: candidates.length,
+          },
+        );
+      }
       return null;
     }
 
