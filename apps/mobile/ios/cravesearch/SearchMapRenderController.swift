@@ -3420,25 +3420,15 @@ final class SearchMapRenderController: RCTEventEmitter {
     let dirtyLabelCollisionMarkerKeys =
       dirtyState.labelCollisionMarkerKeys
       .union(previousLabelCollisionGroupIds.symmetricDifference(nextLabelCollisionGroupIds))
-    let orderChangedLabelCollisionMarkerKeys =
-      labelCollisionFamilyState.collection.groupOrder == nextLabelCollisionGroupOrder
-        ? dirtyLabelCollisionMarkerKeys
-        : previousLabelCollisionGroupIds.union(nextLabelCollisionGroupIds)
     let reusePins = dirtyPinMarkerKeys.isEmpty && orderChangedPinMarkerKeys.isEmpty
     let reusePinInteractions =
       dirtyPinInteractionMarkerKeys.isEmpty && orderChangedPinInteractionMarkerKeys.isEmpty
     let reuseLabels = dirtyLabelMarkerKeys.isEmpty && orderChangedLabelMarkerKeys.isEmpty
-    // SINGLE-OWNER FIX (#7 — "Parsed collection base mismatch for restaurant-label-collision-source"
-    // redbox on profile exit). The collision source is authored and transported by JS
-    // (renderState.labelCollisionFeature carries JS-owned geometry; the JS delta transport is its
-    // writer). Label-prep must NOT also patch/apply it: doing so advanced native's
-    // transport-validated sourceRevision as a SECOND writer, independent of JS's acknowledged base,
-    // so the next JS patch frame failed native's base check on the profile open/close placement
-    // re-run. Forcing reuse makes label-prep read the JS-owned collision source for placement
-    // (obstacle layers) without ever rewriting it — its apply-plan below stays a no-op and JS
-    // remains the sole revision owner, so the base can never desync. (The now-bypassed patch
-    // block is left in place pending validation; remove once confirmed.)
-    let reuseLabelCollisions = true
+    // SINGLE-OWNER (#7, validated): the collision source is authored + transported by JS;
+    // label-prep reads it for placement (obstacle layers) but NEVER rewrites it. Writing it
+    // here advanced native's transport-validated sourceRevision as a second writer,
+    // desyncing JS's base → "Parsed collection base mismatch" redbox on profile exit. The
+    // former patch path is removed; the JS delta transport is the sole writer.
     if shouldAttributeLabelPrep {
       self.recordNativeApply(
         section: "label_prep.dirty_sets",
@@ -3475,10 +3465,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     var nextLabelDiffKeyById: [String: String] = [:]
     var nextLabelFeatureStateById: [String: [String: Any]] = [:]
     var nextLabelMarkerKeyByFeatureId: [String: String] = [:]
-    var nextLabelCollisionFeatureIdsByGroup: [String: [String]] = [:]
-    var nextLabelCollisionFeatureById: [String: Feature] = [:]
-    var nextLabelCollisionDiffKeyById: [String: String] = [:]
-    var nextLabelCollisionMarkerKeyByFeatureId: [String: String] = [:]
     var pinNumericRewriteDurationMs = 0.0
     var pinInteractionNumericRewriteDurationMs = 0.0
     var labelNumericRewriteDurationMs = 0.0
@@ -3590,15 +3576,6 @@ final class SearchMapRenderController: RCTEventEmitter {
           if shouldAttributeLabelPrep {
             labelFeatureStateDurationMs += CACurrentMediaTime() * 1000 - featureStateStartedAt
           }
-        }
-      }
-      if let labelCollisionFeature = renderState.labelCollisionFeature {
-        nextLabelCollisionFeatureIdsByGroup[markerKey] = [markerKey]
-        if dirtyLabelCollisionMarkerKeys.contains(markerKey) {
-          nextLabelCollisionFeatureById[markerKey] = labelCollisionFeature
-          nextLabelCollisionDiffKeyById[markerKey] =
-            renderState.labelCollisionFeatureDiffKey ?? markerKey
-          nextLabelCollisionMarkerKeyByFeatureId[markerKey] = markerKey
         }
       }
     }
@@ -3746,47 +3723,8 @@ final class SearchMapRenderController: RCTEventEmitter {
       Self.setDerivedFamilyState(labelFamilyState, sourceId: state.labelSourceId, state: &state)
       nextLabels = labelFamilyState.collection
     }
-    let previousLabelCollisionSourceState = labelCollisionFamilyState.sourceState
-    if !reuseLabelCollisions {
-      let collisionBuildStartedAt = shouldAttributeLabelPrep ? CACurrentMediaTime() * 1000 : 0
-      if shouldAttributeLabelPrep {
-        self.recordNativeApply(
-          section: "label_prep.collision_build",
-          phase: labelPrepPhase,
-          durationMs: CACurrentMediaTime() * 1000 - collisionBuildStartedAt,
-          operationCount: nextLabelCollisionFeatureById.count
-        )
-      }
-      let replaceStartedAt = shouldAttributeLabelPrep ? CACurrentMediaTime() * 1000 : 0
-      try Self.patchParsedFeatureCollection(
-        &labelCollisionFamilyState.collection,
-        baseSourceState: previousLabelCollisionSourceState,
-        desiredGroupOrder: nextLabelCollisionGroupOrder,
-        desiredFeatureIdsByGroup: nextLabelCollisionFeatureIdsByGroup,
-        featureById: nextLabelCollisionFeatureById,
-        diffKeyById: nextLabelCollisionDiffKeyById,
-        markerKeyByFeatureId: nextLabelCollisionMarkerKeyByFeatureId,
-        dirtyGroupIds: dirtyLabelCollisionMarkerKeys,
-        orderChangedGroupIds: orderChangedLabelCollisionMarkerKeys,
-        removedGroupIds: previousLabelCollisionGroupIds.subtracting(nextLabelCollisionGroupIds),
-        useCurrentCollectionBase: true,
-        recordAttribution: makeReplaceAttributionRecorder("labelCollisions")
-      )
-      if shouldAttributeLabelPrep {
-        self.recordNativeApply(
-          section: "label_prep.replace_collection",
-          phase: labelPrepPhase,
-          source: "labelCollisions",
-          durationMs: CACurrentMediaTime() * 1000 - replaceStartedAt,
-          operationCount: nextLabelCollisionFeatureById.count
-        )
-      }
-      Self.setDerivedFamilyState(
-        labelCollisionFamilyState,
-        sourceId: state.labelCollisionSourceId,
-        state: &state
-      )
-    }
+    // SINGLE-OWNER (#7): label-prep does NOT write the JS-owned collision source — the JS
+    // delta transport is its sole writer. The former collision patch block here is removed.
     let promotedSlotRecordsByMarkerKey = Self.makePromotedSlotRecordsByMarkerKey(
       orderedMarkerKeys: orderedMarkerKeys,
       pinRecordsByMarkerKey: Self.recordsByMarkerKey(from: nextPins),
