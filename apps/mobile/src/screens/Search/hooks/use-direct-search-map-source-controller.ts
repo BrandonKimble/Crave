@@ -613,6 +613,15 @@ const collectResidentPinnedSourceStoreState = (
     if (!feature) {
       return;
     }
+    // RESIDENT LOD: the pin source now holds EVERY candidate (demoted ones resident at
+    // opacity 0). Only PROMOTED pins (nativeLodOpacity > 0) count as "pinned" for the
+    // next-frame stable-membership retention input — otherwise the selection thinks all
+    // ~500 are pinned, breaks retention/contention, and the promoted set oscillates
+    // (the aggressive-twist flash). Demoted resident pins are skipped here.
+    const opacity = feature.properties.nativeLodOpacity;
+    if (typeof opacity === 'number' && opacity <= 0.001) {
+      return;
+    }
     const nativeLodZ = feature?.properties.nativeLodZ;
     const lodZ = feature?.properties.lodZ;
     pinnedMarkers.push(feature);
