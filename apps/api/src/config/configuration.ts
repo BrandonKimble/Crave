@@ -265,8 +265,6 @@ export default () => {
       topK: parseInt(process.env.LLM_TOP_K || '30', 10),
       candidateCount: parseInt(process.env.LLM_CANDIDATE_COUNT || '1', 10),
       thinking: {
-        enabled: process.env.LLM_THINKING_ENABLED === 'true',
-        budget: parseInt(process.env.LLM_THINKING_BUDGET || '0', 10),
         level: process.env.LLM_THINKING_LEVEL || undefined,
         queryLevel: process.env.LLM_QUERY_THINKING_LEVEL || undefined,
         includeThoughts: process.env.LLM_THINKING_INCLUDE_THOUGHTS === 'true',

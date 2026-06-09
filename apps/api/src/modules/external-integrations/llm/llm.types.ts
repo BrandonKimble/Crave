@@ -20,8 +20,6 @@ export interface LLMConfig {
   topK?: number;
   candidateCount?: number;
   thinking?: {
-    enabled: boolean;
-    budget?: number;
     level?: string;
     queryLevel?: string;
     includeThoughts?: boolean;

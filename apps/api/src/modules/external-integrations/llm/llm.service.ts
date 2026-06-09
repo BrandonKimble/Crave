@@ -198,9 +198,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       topK: this.configService.get<number>('llm.topK') || 40,
       candidateCount: this.configService.get<number>('llm.candidateCount') || 1,
       thinking: {
-        enabled:
-          this.configService.get<boolean>('llm.thinking.enabled') === true,
-        budget: this.configService.get<number>('llm.thinking.budget') || 0,
         level:
           this.configService.get<string>('llm.thinking.level') || undefined,
         queryLevel:
@@ -338,9 +335,8 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         ? this.llmConfig.apiKey.substring(0, 8) + '...'
         : 'none',
       maxTokens: this.llmConfig.maxTokens,
-      thinkingEnabled: this.llmConfig.thinking?.enabled,
-      thinkingBudget: this.llmConfig.thinking?.budget,
       thinkingLevel: this.llmConfig.thinking?.level,
+      queryThinkingLevel: this.llmConfig.thinking?.queryLevel,
       thinkingQueryLevel: this.llmConfig.thinking?.queryLevel,
       thinkingIncludeThoughts: this.llmConfig.thinking?.includeThoughts,
       thoughtDebug: this.llmConfig.thoughtDebug,
@@ -1069,6 +1065,8 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     });
 
     const prompt = this.buildCuisineExtractionPrompt(trimmedSummary);
+    // Cuisine extraction is a simple per-restaurant classify → cheap Lite tier.
+    const model = 'gemini-3.1-flash-lite-preview';
     const generationConfig: GeminiGenerationConfig = {
       temperature: Math.min(this.llmConfig.temperature ?? 0.1, 0.2),
       topP: this.llmConfig.topP,
@@ -1078,7 +1076,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       responseMimeType: 'application/json',
       responseJsonSchema: CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA,
     };
-    const thinkingConfig = this.getThinkingConfig(this.queryModel, 'query');
+    const thinkingConfig = this.getThinkingConfig(model, 'query');
     if (thinkingConfig) {
       generationConfig.thinkingConfig = thinkingConfig;
     }
@@ -1086,7 +1084,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     const response = await this.callLLMApi(prompt, {
       generationConfig,
       systemInstruction: this.cuisinePrompt,
-      model: this.queryModel,
+      model,
       timeoutMs:
         typeof this.llmConfig.queryTimeout === 'number' &&
         Number.isFinite(this.llmConfig.queryTimeout) &&
@@ -2912,94 +2910,42 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     },
   ):
     | {
-        thinkingBudget?: number;
         thinkingLevel?: string;
         includeThoughts?: boolean;
       }
     | undefined {
-    const enabled = this.llmConfig.thinking?.enabled === true;
-    if (!enabled) {
-      return undefined;
-    }
-
     const includeThoughts =
       overrides?.includeThoughts ??
       this.llmConfig.thinking?.includeThoughts === true;
-    const maxTokens = this.llmConfig.maxTokens || 65536;
 
+    // Gemini 3+ uses thinkingLevel. ALWAYS send one so we never silently default
+    // to HIGH (Gemini 3's default when no level is specified). Defaults: query →
+    // MINIMAL (cheap classify/parse), content → LOW.
     if (this.isGemini3Model(model)) {
       const configuredLevel =
         context === 'query'
-          ? this.llmConfig.thinking?.queryLevel ||
-            this.llmConfig.thinking?.level
+          ? (this.llmConfig.thinking?.queryLevel ??
+            this.llmConfig.thinking?.level)
           : this.llmConfig.thinking?.level;
-      const normalizedLevel = this.normalizeThinkingLevel(configuredLevel);
-
-      if (!normalizedLevel) {
-        if (configuredLevel) {
-          this.logger.warn('Invalid Gemini thinking level; defaulting', {
-            correlationId: CorrelationUtils.getCorrelationId(),
-            operation: 'thinking_config',
-            model,
-            context,
-            configuredLevel,
-            fallbackLevel: 'MINIMAL',
-          });
-        }
-        if (
-          typeof this.llmConfig.thinking?.budget === 'number' &&
-          this.llmConfig.thinking?.budget > 0
-        ) {
-          this.logger.warn(
-            'Ignoring thinking budget for Gemini 3 model; use thinking level instead',
-            {
-              correlationId: CorrelationUtils.getCorrelationId(),
-              operation: 'thinking_config',
-              model,
-              context,
-              configuredBudget: this.llmConfig.thinking?.budget,
-            },
-          );
-        }
-        return {
-          thinkingLevel: 'MINIMAL',
-          ...(includeThoughts ? { includeThoughts } : {}),
-        };
-      }
-
-      return {
-        thinkingLevel: normalizedLevel,
-        ...(includeThoughts ? { includeThoughts } : {}),
-      };
-    }
-
-    if (this.llmConfig.thinking?.level) {
-      this.logger.warn(
-        'Ignoring thinking level for non-Gemini 3 model; use thinking budget instead',
-        {
+      const normalized = this.normalizeThinkingLevel(configuredLevel);
+      if (configuredLevel && !normalized) {
+        this.logger.warn('Invalid Gemini thinking level; using default', {
           correlationId: CorrelationUtils.getCorrelationId(),
           operation: 'thinking_config',
           model,
           context,
-          configuredLevel: this.llmConfig.thinking?.level,
-        },
-      );
+          configuredLevel,
+        });
+      }
+      const level = normalized ?? (context === 'query' ? 'MINIMAL' : 'LOW');
+      return {
+        thinkingLevel: level,
+        ...(includeThoughts ? { includeThoughts } : {}),
+      };
     }
 
-    const configuredBudget = this.llmConfig.thinking?.budget ?? 0;
-    if (!Number.isFinite(configuredBudget) || configuredBudget <= 0) {
-      return includeThoughts ? { includeThoughts } : undefined;
-    }
-
-    const safeBudget = Math.min(configuredBudget, maxTokens);
-    if (safeBudget <= 0) {
-      return includeThoughts ? { includeThoughts } : undefined;
-    }
-
-    return {
-      thinkingBudget: safeBudget,
-      ...(includeThoughts ? { includeThoughts } : {}),
-    };
+    // Non-Gemini-3 models are not used in this codebase; no thinking control.
+    return includeThoughts ? { includeThoughts } : undefined;
   }
 
   private getThoughtDebugMaxEntries(scope: 'query' | 'content'): number {
