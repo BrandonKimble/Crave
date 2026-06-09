@@ -521,6 +521,20 @@ const QUIET_VISUAL_CONTRACT_FIELD_ALLOWLIST = new Map<string, string[]>([
     ],
   ],
   [
+    'native_lod_snap_contract',
+    [
+      'event',
+      'nativeEmittedAtMs',
+      'reason',
+      'roleFlipCount',
+      'silentPinFlipCount',
+      'silentDotFlipCount',
+      'pinTransitionCreatedCount',
+      'dotTransitionCreatedCount',
+      'allowNewTransitions',
+    ],
+  ],
+  [
     'native_live_lod_transition_contract',
     [
       'event',

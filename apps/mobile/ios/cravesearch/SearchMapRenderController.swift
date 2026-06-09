@@ -584,7 +584,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     var dotSourceId: String
     var labelSourceId: String
     var labelCollisionSourceId: String
-    var pinSlotSourceIds: [String]
     var labelLayerIds: [String]
     var labelCollisionLayerIds: [String]
     var lastPinVisualGroupOrderSlots: [Int]
@@ -891,7 +890,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     if sourceId == state.pinSourceId {
       return "pins"
     }
-    if state.pinSlotSourceIds.contains(sourceId) {
+    if sourceId == state.pinBundleSourceId {
       return "promotedSlots"
     }
     if sourceId == state.pinInteractionSourceId {
@@ -1101,17 +1100,15 @@ final class SearchMapRenderController: RCTEventEmitter {
         reject("search_map_render_controller_attach_invalid", "invalid attach payload", nil)
         return
       }
-      let pinSlotSourceIds = Self.parseStringArray(payload["pinSlotSourceIds"])
       let labelLayerIds = Self.parseStringArray(payload["labelLayerIds"])
       let labelCollisionLayerIds = Self.parseStringArray(payload["labelCollisionLayerIds"])
       guard
-        !pinSlotSourceIds.isEmpty,
         !labelLayerIds.isEmpty,
         !labelCollisionLayerIds.isEmpty
       else {
         reject(
           "search_map_render_controller_attach_invalid",
-          "missing promoted slot source/layer ids",
+          "missing label source/layer ids",
           nil
         )
         return
@@ -1123,7 +1120,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         dotSourceId: dotSourceId,
         labelSourceId: labelSourceId,
         labelCollisionSourceId: labelCollisionSourceId,
-        pinSlotSourceIds: pinSlotSourceIds,
         labelLayerIds: labelLayerIds,
         labelCollisionLayerIds: labelCollisionLayerIds,
         lastPinVisualGroupOrderSlots: [],
@@ -1176,8 +1172,7 @@ final class SearchMapRenderController: RCTEventEmitter {
           pinInteractionSourceId: pinInteractionSourceId,
           dotSourceId: dotSourceId,
           labelSourceId: labelSourceId,
-          labelCollisionSourceId: labelCollisionSourceId,
-          slotSourceIds: pinSlotSourceIds
+          labelCollisionSourceId: labelCollisionSourceId
         ),
         markerRoleTable: MarkerRoleTable(),
         residentDesiredSourceCacheBySourceId: [:],
@@ -2922,22 +2917,19 @@ final class SearchMapRenderController: RCTEventEmitter {
         )
         return
       }
-      let pinSlotSourceIds = Self.parseStringArray(payload["pinSlotSourceIds"])
       let labelLayerIds = Self.parseStringArray(payload["labelLayerIds"])
       let labelCollisionLayerIds = Self.parseStringArray(payload["labelCollisionLayerIds"])
       guard
-        !pinSlotSourceIds.isEmpty,
         !labelLayerIds.isEmpty,
         !labelCollisionLayerIds.isEmpty
       else {
         reject(
           "search_map_render_controller_configure_native_layer_groups_invalid",
-          "missing promoted slot source/layer ids",
+          "missing label source/layer ids",
           nil
         )
         return
       }
-      state.pinSlotSourceIds = pinSlotSourceIds
       state.labelLayerIds = labelLayerIds
       state.labelCollisionLayerIds = labelCollisionLayerIds
       state.lastPinVisualGroupOrderSlots = []
@@ -3258,8 +3250,7 @@ final class SearchMapRenderController: RCTEventEmitter {
         pinInteractionSourceId: state.pinInteractionSourceId,
         dotSourceId: state.dotSourceId,
         labelSourceId: state.labelSourceId,
-        labelCollisionSourceId: state.labelCollisionSourceId,
-        slotSourceIds: state.pinSlotSourceIds
+        labelCollisionSourceId: state.labelCollisionSourceId
       )
       state.isAwaitingSourceRecovery = false
       state.isReplayingSourceRecovery = false
@@ -4953,6 +4944,35 @@ final class SearchMapRenderController: RCTEventEmitter {
     let scopedPinKeys = affectedMarkerKeys.union(activePinTransitionKeys.intersection(affectedMarkerKeys))
     let scopedDotKeys = affectedMarkerKeys.union(activeDotTransitionKeys.intersection(affectedMarkerKeys))
 
+    // SNAP DETECTOR (lod_snap_contract): catches the demotion flash that the
+    // transition-only contract (live_lod_transition_contract) is blind to. A marker
+    // whose promoted/demoted role FLIPPED this reconcile but for which NO live
+    // transition exists afterward changed its opacity with no crossfade — it snapped.
+    // Fires regardless of transition count (the transition contract only emits when
+    // transitions exist, so it reads 0 precisely when the bug is worst). After the
+    // fix every role flip yields a transition → silent*FlipCount == 0.
+    let previousPromotedKeys = Set(previousDesiredPinSnapshot.pinIdsInOrder)
+    let nextPromotedKeys = Set(desiredPinSnapshot.pinIdsInOrder)
+    let roleFlipKeys = previousPromotedKeys
+      .symmetricDifference(nextPromotedKeys)
+      .intersection(affectedMarkerKeys)
+    if !roleFlipKeys.isEmpty {
+      let silentPinFlipKeys = roleFlipKeys.subtracting(activePinTransitionKeys)
+      let silentDotFlipKeys = roleFlipKeys.subtracting(activeDotTransitionKeys)
+      emit([
+        "type": "lod_snap_contract",
+        "instanceId": instanceId,
+        "reason": reason,
+        "roleFlipCount": roleFlipKeys.count,
+        "silentPinFlipCount": silentPinFlipKeys.count,
+        "silentDotFlipCount": silentDotFlipKeys.count,
+        "pinTransitionCreatedCount": roleFlipKeys.intersection(activePinTransitionKeys).count,
+        "dotTransitionCreatedCount": roleFlipKeys.intersection(activeDotTransitionKeys).count,
+        "allowNewTransitions": shouldAnimateIncrementalTransitions,
+        "emittedAtMs": Self.nowMs(),
+      ])
+    }
+
     let pinOutputStartedAt = CACurrentMediaTime() * 1000
     let preparedPinAndLabelOutput = try prepareScopedPinAndLabelOutput(
       instanceId: instanceId,
@@ -5900,8 +5920,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       pinInteractionSourceId: state.pinInteractionSourceId,
       dotSourceId: state.dotSourceId,
       labelSourceId: state.labelSourceId,
-      labelCollisionSourceId: state.labelCollisionSourceId,
-      slotSourceIds: state.pinSlotSourceIds
+      labelCollisionSourceId: state.labelCollisionSourceId
     )
     emitVisualDiag(
       instanceId: instanceId,
@@ -6044,8 +6063,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       pinInteractionSourceId: state.pinInteractionSourceId,
       dotSourceId: state.dotSourceId,
       labelSourceId: state.labelSourceId,
-      labelCollisionSourceId: state.labelCollisionSourceId,
-      slotSourceIds: state.pinSlotSourceIds
+      labelCollisionSourceId: state.labelCollisionSourceId
     )
     state.currentPresentationRenderPhase = "idle"
     state.visualSourceLifecycleState = .hidden
@@ -6190,8 +6208,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       pinInteractionSourceId: state.pinInteractionSourceId,
       dotSourceId: state.dotSourceId,
       labelSourceId: state.labelSourceId,
-      labelCollisionSourceId: state.labelCollisionSourceId,
-      slotSourceIds: state.pinSlotSourceIds
+      labelCollisionSourceId: state.labelCollisionSourceId
     )
     cancelLivePinTransitionAnimation(instanceId: instanceId)
     instances[instanceId] = state
@@ -10312,7 +10329,7 @@ final class SearchMapRenderController: RCTEventEmitter {
           state: &state
         )
       }
-      if sourceId == state.labelSourceId || state.pinSlotSourceIds.contains(sourceId) {
+      if sourceId == state.labelSourceId {
         let labelObservation = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state).labelObservation
         let refreshDelayMs = state.currentViewportIsMoving
           ? labelObservation.refreshMsMoving
@@ -11448,7 +11465,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.labelSourceId: "labels",
       state.labelCollisionSourceId: "labelCollisions",
     ]
-    state.pinSlotSourceIds.forEach { sourceFamilyBySourceId[$0] = "promotedSlots" }
     try Self.applySourceMutationBatch(
       resolvedMutationPlans,
       mapboxMap: mapboxMap,
@@ -11605,20 +11621,15 @@ final class SearchMapRenderController: RCTEventEmitter {
     pinInteractionSourceId: String,
     dotSourceId: String,
     labelSourceId: String,
-    labelCollisionSourceId: String,
-    slotSourceIds: [String] = []
+    labelCollisionSourceId: String
   ) -> [String: DerivedFamilyState] {
-    var states = [
+    return [
       pinSourceId: emptyDerivedFamilyState(),
       pinInteractionSourceId: emptyDerivedFamilyState(),
       dotSourceId: emptyDerivedFamilyState(),
       labelSourceId: emptyDerivedFamilyState(),
       labelCollisionSourceId: emptyDerivedFamilyState(),
     ]
-    for sourceId in slotSourceIds {
-      states[sourceId] = emptyDerivedFamilyState()
-    }
-    return states
   }
 
   private static func derivedFamilyState(

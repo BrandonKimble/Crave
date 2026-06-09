@@ -50,7 +50,6 @@ type SearchMapNativeRenderOwnerStatusArgs = {
   dotSourceId: string;
   labelSourceId: string;
   labelCollisionSourceId: string;
-  pinSlotSourceIds: string[];
   labelLayerIds: string[];
   labelCollisionLayerIds: string[];
   sourceFramePort?: SearchMapSourceFramePort | null;
@@ -143,7 +142,6 @@ type SearchMapNativeRenderOwnerStatusResult = {
 };
 
 type SearchMapNativeLayerGroupConfig = {
-  pinSlotSourceIds: string[];
   labelLayerIds: string[];
   labelCollisionLayerIds: string[];
 };
@@ -1452,7 +1450,8 @@ const buildSearchMapMarkerRoleFrame = ({
   );
   const previousPinnedMarkerKeys = new Set(
     previousSnapshot?.pins.idsInOrder.filter(
-      (markerKey) => markerTargetOpacity(previousSnapshot.pins, markerKey, 'nativeLodOpacity') > 0.001
+      (markerKey) =>
+        markerTargetOpacity(previousSnapshot.pins, markerKey, 'nativeLodOpacity') > 0.001
     ) ?? []
   );
   const previousVisibleDotMarkerKeysInOrder =
@@ -1830,7 +1829,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
   dotSourceId,
   labelSourceId,
   labelCollisionSourceId,
-  pinSlotSourceIds,
   labelLayerIds,
   labelCollisionLayerIds,
   sourceFramePort = null,
@@ -1877,18 +1875,16 @@ const useSearchMapNativeRenderOwnerStatus = ({
   const instanceId = instanceIdRef.current;
   const isNativeAvailable = searchMapRenderController.isAvailable();
   const nativeLayerGroupConfigRef = React.useRef<SearchMapNativeLayerGroupConfig>({
-    pinSlotSourceIds,
     labelLayerIds,
     labelCollisionLayerIds,
   });
 
   React.useEffect(() => {
     nativeLayerGroupConfigRef.current = {
-      pinSlotSourceIds,
       labelLayerIds,
       labelCollisionLayerIds,
     };
-  }, [labelCollisionLayerIds, labelLayerIds, pinSlotSourceIds]);
+  }, [labelCollisionLayerIds, labelLayerIds]);
 
   React.useEffect(() => {
     setAttachRetryNonce(0);
@@ -2053,7 +2049,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
           dotSourceId,
           labelSourceId,
           labelCollisionSourceId,
-          pinSlotSourceIds: nativeLayerGroupConfig.pinSlotSourceIds,
           labelLayerIds: nativeLayerGroupConfig.labelLayerIds,
           labelCollisionLayerIds: nativeLayerGroupConfig.labelCollisionLayerIds,
         })
@@ -2120,7 +2115,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
     void searchMapRenderController
       .configureNativeLayerGroups({
         instanceId,
-        pinSlotSourceIds,
         labelLayerIds,
         labelCollisionLayerIds,
       })
@@ -2135,14 +2129,7 @@ const useSearchMapNativeRenderOwnerStatus = ({
     return () => {
       isActive = false;
     };
-  }, [
-    instanceId,
-    isAttached,
-    isNativeAvailable,
-    labelCollisionLayerIds,
-    labelLayerIds,
-    pinSlotSourceIds,
-  ]);
+  }, [instanceId, isAttached, isNativeAvailable, labelCollisionLayerIds, labelLayerIds]);
 
   React.useEffect(() => {
     if (!isNativeAvailable) {
@@ -2244,6 +2231,23 @@ const useSearchMapNativeRenderOwnerStatus = ({
                   renderedDotFeatureCount: event.renderedDotFeatureCount,
                   allDemotedDotsRendered:
                     event.expectedDemotedDotCount === event.renderedDemotedDotCount,
+                  nativeEmittedAtMs: event.emittedAtMs,
+                });
+              }
+              return;
+            }
+            if (event.type === 'lod_snap_contract') {
+              const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+              if (isPerfScenarioAttributionActive(scenarioConfig)) {
+                logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+                  event: 'native_lod_snap_contract',
+                  reason: event.reason,
+                  roleFlipCount: event.roleFlipCount,
+                  silentPinFlipCount: event.silentPinFlipCount,
+                  silentDotFlipCount: event.silentDotFlipCount,
+                  pinTransitionCreatedCount: event.pinTransitionCreatedCount,
+                  dotTransitionCreatedCount: event.dotTransitionCreatedCount,
+                  allowNewTransitions: event.allowNewTransitions,
                   nativeEmittedAtMs: event.emittedAtMs,
                 });
               }

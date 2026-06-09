@@ -17,7 +17,6 @@ type SearchMapRenderControllerNativeModule = {
     dotSourceId: string;
     labelSourceId: string;
     labelCollisionSourceId: string;
-    pinSlotSourceIds: string[];
     labelLayerIds: string[];
     labelCollisionLayerIds: string[];
   }) => Promise<void>;
@@ -55,7 +54,6 @@ type SearchMapRenderControllerNativeModule = {
   ) => Promise<void>;
   configureNativeLayerGroups: (payload: {
     instanceId: string;
-    pinSlotSourceIds: string[];
     labelLayerIds: string[];
     labelCollisionLayerIds: string[];
   }) => Promise<void>;
@@ -125,7 +123,6 @@ type SearchMapRenderControllerAttachPayload = {
   dotSourceId: string;
   labelSourceId: string;
   labelCollisionSourceId: string;
-  pinSlotSourceIds: string[];
   labelLayerIds: string[];
   labelCollisionLayerIds: string[];
 };
@@ -303,6 +300,18 @@ export type SearchMapRenderControllerEvent =
       renderedDemotedDotCount: number;
       culledDemotedDotCount: number;
       renderedDotFeatureCount: number;
+      emittedAtMs: number;
+    }
+  | {
+      type: 'lod_snap_contract';
+      instanceId: string;
+      reason?: string;
+      roleFlipCount?: number;
+      silentPinFlipCount?: number;
+      silentDotFlipCount?: number;
+      pinTransitionCreatedCount?: number;
+      dotTransitionCreatedCount?: number;
+      allowNewTransitions?: boolean;
       emittedAtMs: number;
     }
   | {
@@ -811,7 +820,6 @@ export const searchMapRenderController = {
     dotSourceId: string;
     labelSourceId: string;
     labelCollisionSourceId: string;
-    pinSlotSourceIds: string[];
     labelLayerIds: string[];
     labelCollisionLayerIds: string[];
   }): Promise<void> {
@@ -824,7 +832,6 @@ export const searchMapRenderController = {
 
   async configureNativeLayerGroups(payload: {
     instanceId: string;
-    pinSlotSourceIds: string[];
     labelLayerIds: string[];
     labelCollisionLayerIds: string[];
   }): Promise<void> {

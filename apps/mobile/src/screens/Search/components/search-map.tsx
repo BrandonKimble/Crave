@@ -11,10 +11,7 @@ import pinShadowAsset from '../../../assets/pin-shadow.png';
 // pin body + tinted fill + the baked NUMBER (rank or score). The number is part of
 // the icon, so symbol-z-order:'viewport-y' stacks pin+number as one unit (no text
 // bleed). All 369 sprites are registered from the generated map below.
-import {
-  PIN_BADGE_IMAGES,
-  PIN_BADGE_SPRITE_SCALE,
-} from '../../../generated/pin-badge-images';
+import { PIN_BADGE_IMAGES, PIN_BADGE_SPRITE_SCALE } from '../../../generated/pin-badge-images';
 import { colors as themeColors } from '../../../constants/theme';
 import type { StartupLocationSnapshot } from '../../../navigation/runtime/MainLaunchCoordinator';
 import type { Coordinate, MapBounds } from '../../../types';
@@ -40,7 +37,6 @@ import {
 
 import styles from '../styles';
 import { isLngLatTuple } from '../utils/geo';
-import { buildSearchMapVisualIdentityKey } from '../utils/search-map-visual-identity';
 import { MARKER_VIEW_OVERSCAN_STYLE } from './marker-visibility';
 import { useSearchMapNativeRenderOwner } from './hooks/use-search-map-native-render-owner';
 import type { MapQueryBudget } from '../runtime/map/map-query-budget';
@@ -133,8 +129,6 @@ const STYLE_PINS_SOURCE_ID = 'restaurant-style-pins-source';
 // match native: `"\(pinSourceId)-bundle"`.
 const RESTAURANT_PIN_BUNDLE_SOURCE_ID = `${STYLE_PINS_SOURCE_ID}-bundle`;
 const PIN_INTERACTION_SOURCE_ID = 'restaurant-pin-interaction-source';
-const buildPinSlotSourceId = (slotIndex: number): string =>
-  `${STYLE_PINS_SOURCE_ID}-slot-${slotIndex}`;
 
 // Stabilize intra-layer ordering so placement priority doesn't vary with viewport y.
 const STABILIZE_LABEL_ORDER = true;
@@ -855,9 +849,6 @@ const UserLocationLayers = React.memo(
     prev.shouldAnimatePulse === next.shouldAnimatePulse
 );
 const DOT_TEXT_SIZE = 17;
-// Keep the base count in sync with SearchScreen's MAX_FULL_PINS. Selected locations use
-// preallocated overflow slots so profile open can stay in the source-clean role lane.
-const STYLE_PIN_STACK_SLOTS = 30;
 // Single resident interaction layer id (slot-elimination): one tap-target layer
 // for all promoted pins (was 30 per-slot `restaurant-pin-interaction-slot-N`).
 const PIN_INTERACTION_LAYER_ID = 'restaurant-pin-interaction';
@@ -955,50 +946,6 @@ const PIN_INTERACTION_LAYER_STYLE: MapboxGL.CircleLayerStyle = {
   circleTranslate: [0, -PIN_INTERACTION_CENTER_SHIFT_Y_PX],
   circleTranslateAnchor: 'viewport',
 } as MapboxGL.CircleLayerStyle;
-
-const collectMaxRestaurantVisualIdentityCount = (
-  sourceStores: readonly (SearchMapSourceStore | null | undefined)[]
-): number => {
-  const visualIdentityKeysByRestaurantId = new Map<string, Set<string>>();
-  sourceStores.forEach((sourceStore) => {
-    if (!sourceStore) {
-      return;
-    }
-    sourceStore.idsInOrder.forEach((featureId) => {
-      const feature = sourceStore.featureById.get(featureId);
-      const restaurantId = feature?.properties.restaurantId;
-      if (!feature || !restaurantId) {
-        return;
-      }
-      let visualIdentityKeys = visualIdentityKeysByRestaurantId.get(restaurantId);
-      if (!visualIdentityKeys) {
-        visualIdentityKeys = new Set<string>();
-        visualIdentityKeysByRestaurantId.set(restaurantId, visualIdentityKeys);
-      }
-      visualIdentityKeys.add(buildSearchMapVisualIdentityKey(feature));
-    });
-  });
-
-  let maxVisualIdentityCount = 0;
-  visualIdentityKeysByRestaurantId.forEach((visualIdentityKeys) => {
-    maxVisualIdentityCount = Math.max(maxVisualIdentityCount, visualIdentityKeys.size);
-  });
-  return maxVisualIdentityCount;
-};
-
-const resolvePinStackSlotCount = ({
-  pinSourceStore,
-  dotSourceStore,
-}: {
-  pinSourceStore: SearchMapSourceStore;
-  dotSourceStore: SearchMapSourceStore | null | undefined;
-}): number => {
-  const selectedOverflowSlotCount = collectMaxRestaurantVisualIdentityCount([
-    pinSourceStore,
-    dotSourceStore,
-  ]);
-  return STYLE_PIN_STACK_SLOTS + selectedOverflowSlotCount;
-};
 
 export const buildLabelCandidateFeatureId = (markerKey: string, candidate: LabelCandidate) =>
   `${markerKey}::label::${candidate}`;
@@ -1897,14 +1844,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     presentedPinSourceStore,
   ]);
   const highlightedMarkerKey = highlightedMarkerKeys[0] ?? null;
-  const pinStackSlotCount = React.useMemo(
-    () =>
-      resolvePinStackSlotCount({
-        pinSourceStore: activePinSourceStore,
-        dotSourceStore: activeDotSourceStore,
-      }),
-    [activeDotSourceStore, activePinSourceStore]
-  );
   const labelLayerSpecs = React.useMemo(() => LABEL_LAYER_SPECS, []);
   // Resident model: the 16 collapsed label layer ids (one per preferred×candidate),
   // not the old per-slot ids. Native press-targeting / label-observation query these.
@@ -1919,11 +1858,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
       RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID_SIDE_RIGHT,
     ],
     []
-  );
-  const pinSlotSourceIds = React.useMemo(
-    () =>
-      Array.from({ length: pinStackSlotCount }, (_, slotIndex) => buildPinSlotSourceId(slotIndex)),
-    [pinStackSlotCount]
   );
   const {
     instanceId: resolvedNativeRenderOwnerInstanceId,
@@ -1944,7 +1878,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     dotSourceId: DOT_SOURCE_ID,
     labelSourceId: RESTAURANT_LABEL_SOURCE_ID,
     labelCollisionSourceId: RESTAURANT_LABEL_COLLISION_SOURCE_ID,
-    pinSlotSourceIds,
     labelLayerIds: labelVisualLayerIds,
     labelCollisionLayerIds,
     labelObservationEnabled: requestedNativeLabelObservationEnabled,
@@ -2474,40 +2407,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     []
   );
   const pinInteractionLayerIds = React.useMemo(() => [PIN_INTERACTION_LAYER_ID], []);
-  React.useEffect(() => {
-    const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
-    if (!isPerfScenarioAttributionActive(scenarioConfig)) {
-      return;
-    }
-    const firstPinSlotSourceId = pinSlotSourceIds[0] ?? null;
-    const lastPinSlotSourceId = pinSlotSourceIds[pinSlotSourceIds.length - 1] ?? null;
-    logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
-      event: 'search_map_slot_topology_contract',
-      pinStackSlotCount,
-      normalSlotCount: STYLE_PIN_STACK_SLOTS,
-      selectedOverflowSlotCount: Math.max(0, pinStackSlotCount - STYLE_PIN_STACK_SLOTS),
-      pinSlotSourceIdCount: pinSlotSourceIds.length,
-      pinInteractionLayerIdCount: pinInteractionLayerIds.length,
-      labelVisualLayerIdCount: labelVisualLayerIds.length,
-      labelCollisionLayerIdCount: labelCollisionLayerIds.length,
-      dotLayerId: DOT_LAYER_ID,
-      firstPinSlotSourceId,
-      lastPinSlotSourceId,
-      slotTopologyKey: `${pinStackSlotCount}:${firstPinSlotSourceId ?? 'none'}:${
-        lastPinSlotSourceId ?? 'none'
-      }`,
-      shouldMountSearchMarkerLayers,
-      sourceFramePortAvailable: sourceFramePort != null,
-    });
-  }, [
-    labelCollisionLayerIds.length,
-    labelVisualLayerIds.length,
-    pinInteractionLayerIds.length,
-    pinSlotSourceIds,
-    pinStackSlotCount,
-    shouldMountSearchMarkerLayers,
-    sourceFramePort,
-  ]);
 
   const { mountedSourceCounts } = resolveMapPresentedLabelScene({
     shouldMountSearchMarkerLayers,
