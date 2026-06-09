@@ -390,12 +390,6 @@ export default () => {
         ),
       },
     },
-    moderation: {
-      apiKey: resolveSecretEnv(appEnv, 'GOOGLE_MODERATION_API_KEY'),
-      endpoint:
-        process.env.GOOGLE_MODERATION_ENDPOINT ||
-        'https://contentmoderation.googleapis.com/v1beta/moderations:moderateText',
-    },
     tomtom: {
       apiKey: resolveSecretEnv(appEnv, 'TOMTOM_API_KEY'),
       timeout: parseInt(process.env.TOMTOM_TIMEOUT || '10000', 10),

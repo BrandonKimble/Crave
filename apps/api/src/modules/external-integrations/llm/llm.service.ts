@@ -25,6 +25,7 @@ import {
   LLMPerformanceMetrics,
   LLMSearchQueryAnalysis,
   LLMCuisineExtractionResult,
+  LLMModerationResult,
   LLMRestaurantPlaceChooserCandidate,
   LLMRestaurantPlaceChooserDecision,
   LLMRestaurantPlaceChooserInput,
@@ -43,6 +44,7 @@ import { buildRestaurantPlaceChooserPrompt } from './prompts/restaurant-place-ch
 import {
   COLLECTION_RESPONSE_JSON_SCHEMA,
   CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA,
+  MODERATION_RESPONSE_JSON_SCHEMA,
   RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA,
   SEARCH_QUERY_RESPONSE_JSON_SCHEMA,
 } from './prompts/llm-response-schemas';
@@ -149,6 +151,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   private queryCacheLookupCounter?: Counter<string>;
   private queryPrompt!: string;
   private cuisinePrompt!: string;
+  private moderationPrompt!: string;
   private queryInstructionCache: GeminiCacheEntry | null = null;
   private queryModel!: string;
   private thoughtDebugEntries: {
@@ -320,6 +323,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     this.systemPrompt = this.loadSystemPrompt();
     this.queryPrompt = this.loadQueryPrompt();
     this.cuisinePrompt = this.loadCuisinePrompt();
+    this.moderationPrompt = this.loadModerationPrompt();
     this.validateConfig();
 
     this.logger.info('Gemini LLM service initialized with @google/genai', {
@@ -776,6 +780,13 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  private loadModerationPrompt(): string {
+    return this.loadRequiredPromptFile(
+      'moderation-prompt.md',
+      'load_moderation_prompt',
+    );
+  }
+
   private loadRequiredPromptFile(filename: string, operation: string): string {
     const promptPath = join(
       process.cwd(),
@@ -1109,6 +1120,81 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     return parsed;
   }
 
+  /**
+   * Food-aware content moderation via a cheap LLM pass (Lite model, MINIMAL thinking).
+   * Replaces the legacy Google content-moderation classifier, which mis-flagged culinary
+   * hyperbole ("killer fries", "drunken noodles") and could not be tuned around it.
+   */
+  async moderateText(text: string): Promise<LLMModerationResult> {
+    const trimmed = text?.trim() ?? '';
+    if (!trimmed) {
+      return { allowed: true, reason: 'empty' };
+    }
+
+    const model = 'gemini-3.1-flash-lite-preview';
+    const generationConfig: GeminiGenerationConfig = {
+      temperature: 0,
+      topP: this.llmConfig.topP,
+      topK: this.llmConfig.topK,
+      candidateCount: 1,
+      maxOutputTokens: 256,
+      responseMimeType: 'application/json',
+      responseJsonSchema: MODERATION_RESPONSE_JSON_SCHEMA,
+    };
+    const thinkingConfig = this.getThinkingConfig(model, 'query');
+    if (thinkingConfig) {
+      generationConfig.thinkingConfig = thinkingConfig;
+    }
+
+    const response = await this.callLLMApi(JSON.stringify({ text: trimmed }), {
+      generationConfig,
+      systemInstruction: this.moderationPrompt,
+      model,
+      timeoutMs:
+        typeof this.llmConfig.queryTimeout === 'number' &&
+        Number.isFinite(this.llmConfig.queryTimeout) &&
+        this.llmConfig.queryTimeout > 0
+          ? this.llmConfig.queryTimeout
+          : undefined,
+      maxRetries: 0,
+      thinkingContext: 'query',
+    });
+    const content = this.extractTextContent(response, 'moderate_text');
+    return this.parseModerationResponse(content);
+  }
+
+  private parseModerationResponse(content: string): LLMModerationResult {
+    try {
+      const start = content.indexOf('{');
+      const json = start >= 0 ? content.slice(start) : content;
+      const parsed = JSON.parse(json) as {
+        allowed?: unknown;
+        reason?: unknown;
+      };
+      return {
+        // Default-allow on ambiguity (conservative blocking; this is food discussion).
+        allowed: parsed.allowed !== false,
+        reason:
+          typeof parsed.reason === 'string' && parsed.reason.trim()
+            ? parsed.reason.trim()
+            : 'safe',
+      };
+    } catch (error) {
+      this.logger.warn(
+        'Failed to parse moderation response; allowing by default',
+        {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'moderate_text',
+          error:
+            error instanceof Error
+              ? { message: error.message, stack: error.stack, name: error.name }
+              : { message: String(error) },
+        },
+      );
+      return { allowed: true, reason: 'parse_error' };
+    }
+  }
+
   async chooseRestaurantPlaceCandidate(
     input: LLMRestaurantPlaceChooserInput,
   ): Promise<LLMRestaurantPlaceChooserDecision> {
@@ -1167,7 +1253,8 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       ) as Partial<LLMRestaurantPlaceChooserDecision>;
       const decision = parsed.decision === 'select' ? 'select' : 'reject';
       const candidateId =
-        typeof parsed.candidateId === 'string' && parsed.candidateId.trim().length
+        typeof parsed.candidateId === 'string' &&
+        parsed.candidateId.trim().length
           ? parsed.candidateId.trim()
           : null;
 

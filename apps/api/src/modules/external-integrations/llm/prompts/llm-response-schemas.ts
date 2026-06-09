@@ -20,8 +20,7 @@ export const SEARCH_QUERY_RESPONSE_JSON_SCHEMA = {
     restaurantAttributes: {
       type: 'array',
       items: { type: 'string' },
-      description:
-        'Restaurant-level attributes such as ambiance or amenities',
+      description: 'Restaurant-level attributes such as ambiance or amenities',
     },
   },
   required: ['restaurants', 'foods', 'foodAttributes', 'restaurantAttributes'],
@@ -52,10 +51,30 @@ export const RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA = {
     },
     candidateId: {
       anyOf: [{ type: 'string' }, { type: 'null' }],
-      description: 'Selected candidate ID when decision is select, otherwise null.',
+      description:
+        'Selected candidate ID when decision is select, otherwise null.',
     },
   },
   required: ['decision', 'candidateId'],
+  additionalProperties: false,
+} as const;
+
+export const MODERATION_RESPONSE_JSON_SCHEMA = {
+  type: 'object',
+  description: 'Content-safety decision for a piece of user text',
+  properties: {
+    allowed: {
+      type: 'boolean',
+      description:
+        'true if the text is safe to publish, false if it must be blocked',
+    },
+    reason: {
+      type: 'string',
+      description:
+        'Short label for the decision (e.g. "safe", "violent threat", "sexual content", "harassment", "hate")',
+    },
+  },
+  required: ['allowed', 'reason'],
   additionalProperties: false,
 } as const;
 
@@ -80,14 +99,16 @@ function withDescription<T extends Record<string, unknown>>(
 
 export const COLLECTION_RESPONSE_JSON_SCHEMA = {
   type: 'object',
-  description: 'Restaurant and food mentions extracted from food community content',
+  description:
+    'Restaurant and food mentions extracted from food community content',
   properties: {
     mentions: {
       type: 'array',
       description: 'Array of restaurant/food mentions with entity details',
       items: {
         type: 'object',
-        description: 'Single mention of restaurant or food with complete metadata',
+        description:
+          'Single mention of restaurant or food with complete metadata',
         properties: {
           temp_id: withDescription(
             { type: 'string' },

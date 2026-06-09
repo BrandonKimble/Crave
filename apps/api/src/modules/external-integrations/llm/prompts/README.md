@@ -15,5 +15,6 @@ Current layout:
 - `collection-prompt.md` — content processing system prompt
 - `query-prompt.md` — search query interpretation system prompt
 - `cuisine-prompt.md` — cuisine extraction system prompt
+- `moderation-prompt.md` — food-aware content-safety classifier system prompt
 - `restaurant-place-chooser.prompt.ts` — dynamic place chooser prompt builder
-- `llm-response-schemas.ts` — shared response JSON schema definitions for query, cuisine, and chooser flows
+- `llm-response-schemas.ts` — shared response JSON schema definitions for query, cuisine, moderation, and chooser flows

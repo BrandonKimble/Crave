@@ -141,7 +141,7 @@ interface LLMMentionBase {
  * Flat mention structure with ALL properties preserved
  * Optimized structure for better LLM parsing performance and compound term support
  */
-export interface LLMMention extends LLMMentionBase {}
+export type LLMMention = LLMMentionBase;
 
 /**
  * Enriched mention shape used after the collector hydrates model output
@@ -287,6 +287,11 @@ export interface LLMSearchQueryAnalysis {
 
 export interface LLMCuisineExtractionResult {
   cuisines: string[];
+}
+
+export interface LLMModerationResult {
+  allowed: boolean;
+  reason: string;
 }
 
 export interface LLMRestaurantPlaceChooserCandidate {
