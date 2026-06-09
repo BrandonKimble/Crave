@@ -2242,6 +2242,9 @@ const useSearchMapNativeRenderOwnerStatus = ({
                 logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
                   event: 'native_lod_snap_contract',
                   reason: event.reason,
+                  snapshotReused: event.snapshotReused,
+                  desiredPinCount: event.desiredPinCount,
+                  promotedPinCount: event.promotedPinCount,
                   roleFlipCount: event.roleFlipCount,
                   silentPinFlipCount: event.silentPinFlipCount,
                   silentDotFlipCount: event.silentDotFlipCount,

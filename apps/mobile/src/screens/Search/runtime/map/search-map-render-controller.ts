@@ -306,6 +306,9 @@ export type SearchMapRenderControllerEvent =
       type: 'lod_snap_contract';
       instanceId: string;
       reason?: string;
+      snapshotReused?: boolean;
+      desiredPinCount?: number;
+      promotedPinCount?: number;
       roleFlipCount?: number;
       silentPinFlipCount?: number;
       silentDotFlipCount?: number;

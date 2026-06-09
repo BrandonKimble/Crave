@@ -4517,6 +4517,34 @@ final class SearchMapRenderController: RCTEventEmitter {
       phase: state.lastPresentationBatchPhase,
       durationMs: CACurrentMediaTime() * 1000 - dotTransitionsStartedAt
     )
+    // SNAP DETECTOR (full-frame path). viewport_lod LOD changes land here, not the
+    // role path. Emits the diagnostic needed to pin the suppression: did the snapshot
+    // get reused (opacity flip with unchanged sourceRevision), did any promoted-set
+    // flip happen, and did flips produce transitions or snap.
+    let cfActivePinTransitionKeys =
+      Set(Self.derivedFamilyState(sourceId: state.pinSourceId, state: state).livePinTransitionsByMarkerKey.keys)
+    let cfActiveDotTransitionKeys =
+      Set(Self.derivedFamilyState(sourceId: state.dotSourceId, state: state).liveDotTransitionsByMarkerKey.keys)
+    let cfPreviousPromoted = Set(previousDesiredPinSnapshot.pinIdsInOrder)
+    let cfNextPromoted = Set(desiredPinSnapshot.pinIdsInOrder)
+    let cfFlipKeys = cfPreviousPromoted.symmetricDifference(cfNextPromoted)
+    if !cfFlipKeys.isEmpty {
+      emit([
+        "type": "lod_snap_contract",
+        "instanceId": instanceId,
+        "reason": "current_frame",
+        "snapshotReused": previousDesiredPinSnapshot.inputRevision == desiredPinSnapshotInputRevision,
+        "desiredPinCount": desiredPins.idsInOrder.count,
+        "promotedPinCount": cfNextPromoted.count,
+        "roleFlipCount": cfFlipKeys.count,
+        "silentPinFlipCount": cfFlipKeys.subtracting(cfActivePinTransitionKeys).count,
+        "silentDotFlipCount": cfFlipKeys.subtracting(cfActiveDotTransitionKeys).count,
+        "pinTransitionCreatedCount": cfActivePinTransitionKeys.count,
+        "dotTransitionCreatedCount": cfActiveDotTransitionKeys.count,
+        "allowNewTransitions": shouldAnimateIncrementalTransitions,
+        "emittedAtMs": Self.nowMs(),
+      ])
+    }
     guard let mapboxMap = try readyMapboxMap(
       for: state.mapTag,
       instanceId: instanceId,
