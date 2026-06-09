@@ -1734,10 +1734,38 @@ export const useDirectSearchMapSourceController = ({
     });
     const visibleDotRestaurantMarkerFeatures = projectedVisualFrame.dotCandidates;
 
+    // RESIDENT LOD: build the union of promoted + rendered-dot candidates ONCE. Every
+    // candidate is emitted into BOTH the pin and dot sources, resident at all times,
+    // with role carried purely by opacity feature-state (promoted → pin 1 / dot 0;
+    // demoted → pin 0 / dot 1). A promote/demote flips opacity only — no source
+    // membership churn → no commit/await → crossfade is clean by construction.
+    // Membership changes only when a marker enters/leaves the rendered set (pan/zoom).
+    const renderedLodCandidates: Array<{
+      feature: Feature<Point, RestaurantFeatureProperties>;
+      isPromoted: boolean;
+    }> = [];
+    const seenRenderedLodKeys = new Set<string>();
+    visibleSortedRestaurantMarkers.forEach((feature) => {
+      const key = buildMarkerKey(feature);
+      if (seenRenderedLodKeys.has(key)) {
+        return;
+      }
+      seenRenderedLodKeys.add(key);
+      renderedLodCandidates.push({ feature, isPromoted: true });
+    });
+    visibleDotRestaurantMarkerFeatures.forEach((feature) => {
+      const key = buildMarkerKey(feature);
+      if (seenRenderedLodKeys.has(key)) {
+        return;
+      }
+      seenRenderedLodKeys.add(key);
+      renderedLodCandidates.push({ feature, isPromoted: false });
+    });
+
     // Pin badge keyed off the frozen overlap region (resolved above): in-region → RANK,
     // out-of-region → SCORE. Baked into the sprite so the number rides the pin z-order.
     const pinBuilder = createSearchMapSourceStoreBuilder(previousPinSourceStoreRef.current);
-    visibleSortedRestaurantMarkers.forEach((feature, index) => {
+    renderedLodCandidates.forEach(({ feature, isPromoted }, index) => {
       const markerKey = buildMarkerKey(feature);
       const nativeLodZ =
         typeof feature.properties.nativeLodZ === 'number'
@@ -1768,7 +1796,8 @@ export const useDirectSearchMapSourceController = ({
           badgeImageId,
           inOverlapRegion,
           nativeLodZ,
-          nativeLodOpacity: 1,
+          // RESIDENT role: promoted pin visible (1), demoted pin resident-invisible (0).
+          nativeLodOpacity: isPromoted ? 1 : 0,
           nativeLodRankOpacity: 1,
           nativePresentationOpacity: 1,
         },
@@ -1782,18 +1811,14 @@ export const useDirectSearchMapSourceController = ({
       });
     });
     const pinSourceStore = pinBuilder.finish();
-    const promotedVisualIdentityKeysForDots = new Set(
-      visibleSortedRestaurantMarkers.map((feature) => buildSearchMapVisualIdentityKey(feature))
-    );
 
+    // Resident dot for EVERY candidate (same union as pins): promoted → dot hidden (0),
+    // demoted → dot visible (1). Role flip = opacity only, no membership churn.
     const dotBuilder = createSearchMapSourceStoreBuilder(
       previousDotSourceStoreRef.current ?? EMPTY_SEARCH_MAP_SOURCE_STORE
     );
-    visibleDotRestaurantMarkerFeatures.forEach((feature) => {
+    renderedLodCandidates.forEach(({ feature, isPromoted }) => {
       const markerKey = buildMarkerKey(feature);
-      const isPromotedAsPin = promotedVisualIdentityKeysForDots.has(
-        buildSearchMapVisualIdentityKey(feature)
-      );
       const semanticRevision = buildDotSemanticRevision({
         baseDiffKey: getSearchMapSourceTransportFeature(feature).diffKey,
         markerKey,
@@ -1804,7 +1829,7 @@ export const useDirectSearchMapSourceController = ({
         properties: {
           ...feature.properties,
           markerKey,
-          nativeDotOpacity: isPromotedAsPin ? 0 : 1,
+          nativeDotOpacity: isPromoted ? 0 : 1,
           nativePresentationOpacity: 1,
         },
       } satisfies Feature<Point, RestaurantFeatureProperties>;

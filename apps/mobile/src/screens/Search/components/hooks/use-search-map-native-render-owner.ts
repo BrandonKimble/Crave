@@ -1341,19 +1341,24 @@ const buildMarkerRoleRow = (
   nextSnapshot: SearchMapRenderSnapshot
 ): SearchMapMarkerRoleRow | null => {
   const pinFeature = nextSnapshot.pins.transportFeatureById.get(markerKey);
-  if (pinFeature) {
+  const dotFeature = nextSnapshot.dots.transportFeatureById.get(markerKey);
+  // RESIDENT LOD: role is OPACITY-driven, not pin-presence. A pin resident at opacity 0
+  // (demoted) is a "dot" row; only a promoted pin (nativeLodOpacity > 0) is a "pin" row.
+  const pinOpacity = pinFeature?.properties?.nativeLodOpacity;
+  const isPromotedPin =
+    pinFeature != null && (typeof pinOpacity === 'number' ? pinOpacity : 1) > 0.001;
+  if (isPromotedPin) {
     return {
       markerKey,
       role: 'pin',
       slotIndex: finiteSlotIndexFromFeature(pinFeature),
       pinFeature,
       pinInteractionFeature: nextSnapshot.pinInteractions.transportFeatureById.get(markerKey),
-      dotFeature: nextSnapshot.dots.transportFeatureById.get(markerKey),
+      dotFeature,
       labelFeatures: collectTransportFeaturesForMarker(nextSnapshot.labels, markerKey),
       labelCollisionFeature: nextSnapshot.labelCollisions.transportFeatureById.get(markerKey),
     };
   }
-  const dotFeature = nextSnapshot.dots.transportFeatureById.get(markerKey);
   if (dotFeature) {
     return {
       markerKey,
@@ -1425,14 +1430,35 @@ const buildSearchMapMarkerRoleFrame = ({
   const nextRoleRowsByMarkerKey = buildMarkerRoleRowMap(nextSnapshot);
   const previousRoleRowsByMarkerKey =
     previousSnapshot == null ? null : buildMarkerRoleRowMap(previousSnapshot);
-  const pinnedMarkerKeys = new Set(nextSnapshot.pins.idsInOrder);
-  const nextVisibleDotMarkerKeysInOrder = nextSnapshot.dots.idsInOrder.filter(
-    (markerKey) => !pinnedMarkerKeys.has(markerKey)
+  // RESIDENT LOD: pins+dots are resident for every candidate, so PINNED and VISIBLE-DOT
+  // roles are derived from the JS TARGET opacity (0/1, mutually exclusive), NOT raw source
+  // membership. A pin with nativeLodOpacity>0 is promoted; a dot with nativeDotOpacity>0 is
+  // a visible (demoted) dot. (Targets are always 0 or 1 here — native animates between them
+  // — so pinned ∩ visible-dot stays disjoint, satisfying the native role-frame contract.)
+  const markerTargetOpacity = (
+    store: SearchMapRenderSnapshot['pins'],
+    markerKey: string,
+    prop: 'nativeLodOpacity' | 'nativeDotOpacity'
+  ): number => {
+    const value = store.transportFeatureById.get(markerKey)?.properties?.[prop];
+    return typeof value === 'number' ? value : 1;
+  };
+  const nextPinnedMarkerKeysInOrder = nextSnapshot.pins.idsInOrder.filter(
+    (markerKey) => markerTargetOpacity(nextSnapshot.pins, markerKey, 'nativeLodOpacity') > 0.001
   );
-  const previousPinnedMarkerKeys = new Set(previousSnapshot?.pins.idsInOrder ?? []);
+  const pinnedMarkerKeys = new Set(nextPinnedMarkerKeysInOrder);
+  const nextVisibleDotMarkerKeysInOrder = nextSnapshot.dots.idsInOrder.filter(
+    (markerKey) => markerTargetOpacity(nextSnapshot.dots, markerKey, 'nativeDotOpacity') > 0.001
+  );
+  const previousPinnedMarkerKeys = new Set(
+    previousSnapshot?.pins.idsInOrder.filter(
+      (markerKey) => markerTargetOpacity(previousSnapshot.pins, markerKey, 'nativeLodOpacity') > 0.001
+    ) ?? []
+  );
   const previousVisibleDotMarkerKeysInOrder =
     previousSnapshot?.dots.idsInOrder.filter(
-      (markerKey) => !previousPinnedMarkerKeys.has(markerKey)
+      (markerKey) =>
+        markerTargetOpacity(previousSnapshot.dots, markerKey, 'nativeDotOpacity') > 0.001
     ) ?? [];
   const roleOrderChanged =
     previousSnapshot != null &&
@@ -1490,7 +1516,7 @@ const buildSearchMapMarkerRoleFrame = ({
 
   return {
     mode,
-    nextPinnedMarkerKeysInOrder: [...nextSnapshot.pins.idsInOrder],
+    nextPinnedMarkerKeysInOrder,
     nextDotMarkerKeysInOrder: nextVisibleDotMarkerKeysInOrder,
     residentDotMarkerKeysInOrder: [...nextSnapshot.dots.idsInOrder],
     dirtyMarkerKeys: [...dirtyMarkerKeys],

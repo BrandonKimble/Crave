@@ -1759,12 +1759,29 @@ final class SearchMapRenderController: RCTEventEmitter {
         )
       return (explicitOpacity ?? 1) > 0.001
     }
+    // RESIDENT LOD: pins are now resident for every candidate (demoted at opacity 0), so
+    // the PINNED role is opacity-driven (mirrors the dot filter above) — NOT raw pin-source
+    // membership. A pin with nativeLodOpacity > 0 is promoted; 0 is a resident-invisible pin
+    // ready to fade in. residentPinMarkerKeys (all pin-source members) is the membership.
+    let promotedPinMarkerKeys = pins.idsInOrder.filter { markerKey in
+      let explicitOpacity =
+        Self.numberValue(from: pins.featureStateById[markerKey]?["nativeLodOpacity"]) ??
+        Self.numberValue(
+          from: (pins.featureById[markerKey]?.properties?.turfRawValue as? [String: Any])?["nativeLodOpacity"]
+        )
+      return (explicitOpacity ?? 1) > 0.001
+    }
     var table = MarkerRoleTable(
-      pinnedMarkerKeysInOrder: pins.idsInOrder,
+      pinnedMarkerKeysInOrder: promotedPinMarkerKeys,
       dotMarkerKeysInOrder: visibleDotMarkerKeys,
       residentDotMarkerKeysInOrder: dots.idsInOrder,
       rowByMarkerKey: [:]
     )
+    // RESIDENT LOD: every marker is in BOTH sources, so a row carries BOTH its pin and dot
+    // feature; the `role` is OPACITY-driven (promoted → "pin", demoted → "dot"), NOT
+    // "pin-wins-if-present". The dots loop attaches dotFeature to whatever row the pins loop
+    // built (any role), so resident markers keep both features.
+    let promotedPinMarkerKeySet = Set(promotedPinMarkerKeys)
     for markerKey in pins.idsInOrder {
       guard let pinFeature = markerRoleFeatureRecord(collection: pins, featureId: markerKey) else {
         continue
@@ -1775,7 +1792,7 @@ final class SearchMapRenderController: RCTEventEmitter {
         markerRoleFeatureRecord(collection: labelCollisions, featureId: markerKey)
       table.rowByMarkerKey[markerKey] = ParsedMarkerRoleRow(
         markerKey: markerKey,
-        role: "pin",
+        role: promotedPinMarkerKeySet.contains(markerKey) ? "pin" : "dot",
         slotIndex: Self.slotIndex(from: pinFeature.feature),
         pinFeature: pinFeature,
         pinInteractionFeature: pinInteractionFeature,
@@ -1788,7 +1805,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       guard let dotFeature = markerRoleFeatureRecord(collection: dots, featureId: markerKey) else {
         continue
       }
-      if var existingRow = table.rowByMarkerKey[markerKey], existingRow.role == "pin" {
+      if var existingRow = table.rowByMarkerKey[markerKey] {
         existingRow.dotFeature = dotFeature
         table.rowByMarkerKey[markerKey] = existingRow
         continue
@@ -5089,8 +5106,20 @@ final class SearchMapRenderController: RCTEventEmitter {
       desiredLabels: desiredLabels,
       desiredLabelCollisions: desiredLabelCollisions
     )
-    snapshot.pinIdsInOrder = desiredPins.idsInOrder
-    let nextPinMarkerKeys = Set(desiredPins.idsInOrder)
+    // RESIDENT LOD: "present" pins (which drive targetOpacity → visible) are the PROMOTED
+    // ones (nativeLodOpacity > 0), NOT all resident pin members. Demoted resident pins
+    // (opacity 0) stay in the source for the crossfade but must read as absent so they fade
+    // to / stay at 0 rather than rendering at full.
+    let promotedPinIdsInOrder = desiredPins.idsInOrder.filter { markerKey in
+      let opacity =
+        Self.numberValue(from: desiredPins.featureStateById[markerKey]?["nativeLodOpacity"]) ??
+        Self.numberValue(
+          from: (desiredPins.featureById[markerKey]?.properties?.turfRawValue as? [String: Any])?["nativeLodOpacity"]
+        )
+      return (opacity ?? 1) > 0.001
+    }
+    snapshot.pinIdsInOrder = promotedPinIdsInOrder
+    let nextPinMarkerKeys = Set(promotedPinIdsInOrder)
     for markerKey in nextPinMarkerKeys {
       let revision = desiredPins.diffKeyById[markerKey] ?? ""
       snapshot.pinFeatureRevisionByMarkerKey[markerKey] = revision
