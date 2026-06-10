@@ -96,25 +96,10 @@ export const useSearchRuntimeCameraIntentRuntime = ({
         completionId,
         onCommandRejected,
       }) => {
-        const shouldPreferNativeCommand =
-          (animationMode ?? 'none') === 'none' &&
-          (animationDurationMs == null || animationDurationMs === 0);
-        if (
-          shouldPreferNativeCommand &&
-          latestNativeCameraExecutorRef.current.executeCameraCommand({
-            center,
-            zoom,
-            bearing,
-            pitch,
-            padding,
-            animationMode,
-            animationDurationMs,
-            completionId,
-            onCommandRejected,
-          })
-        ) {
-          return true;
-        }
+        // cameraRef.setCamera is the proven path for BOTH modes. The native
+        // host-registry executor silently no-ops for plain camera stops (it
+        // resolves without moving the map), so it is only a fallback for when
+        // the ref isn't mounted yet.
         if (
           executeCameraRefCommand({
             center,
@@ -129,23 +114,7 @@ export const useSearchRuntimeCameraIntentRuntime = ({
         ) {
           return true;
         }
-        if (
-          !shouldPreferNativeCommand &&
-          latestNativeCameraExecutorRef.current.executeCameraCommand({
-            center,
-            zoom,
-            bearing,
-            pitch,
-            padding,
-            animationMode,
-            animationDurationMs,
-            completionId,
-            onCommandRejected,
-          })
-        ) {
-          return true;
-        }
-        return executeCameraRefCommand({
+        return latestNativeCameraExecutorRef.current.executeCameraCommand({
           center,
           zoom,
           bearing,
@@ -154,6 +123,7 @@ export const useSearchRuntimeCameraIntentRuntime = ({
           animationMode,
           animationDurationMs,
           completionId,
+          onCommandRejected,
         });
       },
       setMapCenter: (center: [number, number]) => {

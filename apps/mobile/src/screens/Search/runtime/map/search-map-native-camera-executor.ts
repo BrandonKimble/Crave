@@ -57,9 +57,12 @@ const mapAnimationMode = (animationMode?: 'none' | 'easeTo'): 2 | 5 =>
 
 const buildNativeCameraStopPayload = (command: SearchMapCameraCommand): NativeCameraStopPayload => {
   const stop: NativeCameraStopPayload = {
+    // Native (RNMBXCamera.toUpdateItem) decodes this as a Turf.Feature — a bare
+    // Point geometry fails the decode and the whole stop is silently dropped.
     centerCoordinate: JSON.stringify({
-      type: 'Point',
-      coordinates: command.center,
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: command.center },
+      properties: {},
     }),
     zoom: command.zoom,
     mode: mapAnimationMode(command.animationMode),

@@ -465,11 +465,6 @@ type SearchMapViewSceneProps = {
   mapZoom: number;
   mapBearing: number | null;
   mapPitch: number | null;
-  mapCameraAnimation: {
-    mode: 'none' | 'easeTo';
-    durationMs: number;
-    completionId: string | null;
-  };
   cameraPadding: CameraPadding | null | undefined;
   isFollowingUser: boolean;
   markerSceneProps: SearchMapMarkerSceneProps | null;
@@ -603,7 +598,6 @@ const SearchMapViewScene = React.memo(
     handleCameraAnimationComplete,
     mapCenter,
     mapZoom,
-    mapCameraAnimation,
     cameraPadding,
     isFollowingUser,
     markerSceneProps,
@@ -652,7 +646,13 @@ const SearchMapViewScene = React.memo(
           also carries the animationCompletionId that drives onCameraAnimationComplete.
           User gestures own the camera and it stays where the user leaves it.
           `padding` stays controlled — a padding-only stop never carries a center, so
-          it cannot snap the viewport.
+          it cannot snap the viewport. The animation props are PINNED to none/0:
+          binding them to arbiter state made every commit recompute the declarative
+          stop (new completionId), and that padding-only stop re-applied ~1 React
+          commit after the imperative setCamera — CANCELLING the in-flight easeTo
+          (camera froze ~150ms into every programmatic move, and stops pushed
+          mid-gesture fought the user's pinch). Completion ids ride the imperative
+          stops; onCameraAnimationComplete still receives them.
         */}
         <MapboxGL.Camera
           ref={cameraRef}
@@ -666,9 +666,8 @@ const SearchMapViewScene = React.memo(
           followZoomLevel={13}
           followPitch={0}
           followHeading={0}
-          animationMode={mapCameraAnimation.mode}
-          animationDuration={mapCameraAnimation.durationMs}
-          animationCompletionId={mapCameraAnimation.completionId}
+          animationMode="none"
+          animationDuration={0}
           onCameraAnimationComplete={handleCameraAnimationComplete}
         />
         <React.Fragment>
@@ -728,9 +727,6 @@ const SearchMapViewScene = React.memo(
     previousProps.mapZoom === nextProps.mapZoom &&
     previousProps.mapBearing === nextProps.mapBearing &&
     previousProps.mapPitch === nextProps.mapPitch &&
-    previousProps.mapCameraAnimation.mode === nextProps.mapCameraAnimation.mode &&
-    previousProps.mapCameraAnimation.durationMs === nextProps.mapCameraAnimation.durationMs &&
-    previousProps.mapCameraAnimation.completionId === nextProps.mapCameraAnimation.completionId &&
     areCameraPaddingEqual(previousProps.cameraPadding, nextProps.cameraPadding) &&
     previousProps.isFollowingUser === nextProps.isFollowingUser &&
     previousProps.markerSceneProps === nextProps.markerSceneProps &&
@@ -1528,7 +1524,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
   mapZoom,
   mapBearing,
   mapPitch,
-  mapCameraAnimation,
   cameraPadding,
   isFollowingUser,
   onPress,
@@ -2676,7 +2671,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
       mapZoom={mapZoom}
       mapBearing={mapBearing}
       mapPitch={mapPitch}
-      mapCameraAnimation={mapCameraAnimation}
       cameraPadding={cameraPadding}
       isFollowingUser={isFollowingUser}
       markerSceneProps={markerSceneProps}
@@ -2749,13 +2743,6 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
     return false;
   }
   if (prev.mapBearing !== next.mapBearing || prev.mapPitch !== next.mapPitch) {
-    return false;
-  }
-  if (
-    prev.mapCameraAnimation.mode !== next.mapCameraAnimation.mode ||
-    prev.mapCameraAnimation.durationMs !== next.mapCameraAnimation.durationMs ||
-    prev.mapCameraAnimation.completionId !== next.mapCameraAnimation.completionId
-  ) {
     return false;
   }
   if (!areCentersEqual(prev.mapCenter, next.mapCenter)) {
