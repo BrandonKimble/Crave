@@ -1644,7 +1644,11 @@ export const useDirectSearchMapSourceController = ({
             userLocation: userLocationRef.current,
           })
         : submittedSearchBounds
-          ? ({ kind: 'viewport', bounds: submittedSearchBounds, polygon: submittedSearchPolygon } as const)
+          ? ({
+              kind: 'viewport',
+              bounds: submittedSearchBounds,
+              polygon: submittedSearchPolygon,
+            } as const)
           : null);
 
     // Far-out shortcut → auto-zoom onto the radius once per search (programmatic, so it
@@ -1673,9 +1677,7 @@ export const useDirectSearchMapSourceController = ({
     const selectedMarkerKeys = new Set(
       selectedRestaurantCandidates.map((feature) => buildMarkerKey(feature))
     );
-    const isInRegionFeature = (
-      feature: Feature<Point, RestaurantFeatureProperties>
-    ): boolean =>
+    const isInRegionFeature = (feature: Feature<Point, RestaurantFeatureProperties>): boolean =>
       selectedMarkerKeys.has(buildMarkerKey(feature)) ||
       isWithinOverlapRegion(overlapRegion, feature.geometry.coordinates as [number, number]);
     const currentPinned = lodPinnedMarkersRef.current;
@@ -1711,10 +1713,7 @@ export const useDirectSearchMapSourceController = ({
         })
       : emptyModel;
     const nextModel = {
-      nextPinnedMarkers: [
-        ...inRegionModel.nextPinnedMarkers,
-        ...outRegionModel.nextPinnedMarkers,
-      ],
+      nextPinnedMarkers: [...inRegionModel.nextPinnedMarkers, ...outRegionModel.nextPinnedMarkers],
       nextPinnedMeta: [...inRegionModel.nextPinnedMeta, ...outRegionModel.nextPinnedMeta],
     };
     const nextPinnedVisualKey = buildLodPinnedVisualKey(nextModel.nextPinnedMeta);
@@ -1781,9 +1780,7 @@ export const useDirectSearchMapSourceController = ({
           ? feature.properties.nativeLodZ
           : feature.properties.lodZ;
       const craveScore =
-        typeof feature.properties.craveScore === 'number'
-          ? feature.properties.craveScore
-          : null;
+        typeof feature.properties.craveScore === 'number' ? feature.properties.craveScore : null;
       const rank =
         typeof feature.properties.rank === 'number' ? feature.properties.rank : index + 1;
       const inOverlapRegion = isInRegionFeature(feature);
@@ -1851,6 +1848,53 @@ export const useDirectSearchMapSourceController = ({
       });
     });
     const dotSourceStore = dotBuilder.finish();
+    // LOD MEMBERSHIP CHURN contract. Fires on every actual publish (NOT gated by
+    // the measured-loop quiet flag, unlike lod_classification) right where the new
+    // pin/dot source stores are finalized vs the previous publish. This is the
+    // instrument that exposes "markers disappear at low zoom without collisions":
+    // a marker removed from BOTH stores (pinRemoved ∩ dotRemoved, no collision
+    // involved) vanished because JS dropped it from the source (removeIds), not a
+    // crossfade. churnReason carries publish reason + whether the camera was moving,
+    // so we can see whether membership is churning mid-gesture (the flash) vs only
+    // on settle. In an ideal resident model, viewport pan/zoom should produce ZERO
+    // removals (markers stay resident, tile-culled by Mapbox / faded by opacity).
+    if (isPerfScenarioAttributionActive(scenarioConfig)) {
+      const prevPinIds = new Set(previousPinSourceStoreRef.current?.idsInOrder ?? []);
+      const prevDotIds = new Set(previousDotSourceStoreRef.current?.idsInOrder ?? []);
+      const nextPinIds = pinSourceStore.idsInOrder;
+      const nextDotIds = dotSourceStore.idsInOrder;
+      const nextPinIdSet = new Set(nextPinIds);
+      const nextDotIdSet = new Set(nextDotIds);
+      const pinAdded = nextPinIds.filter((id) => !prevPinIds.has(id));
+      const pinRemoved = [...prevPinIds].filter((id) => !nextPinIdSet.has(id));
+      const dotAdded = nextDotIds.filter((id) => !prevDotIds.has(id));
+      const dotRemoved = [...prevDotIds].filter((id) => !nextDotIdSet.has(id));
+      // A marker gone from BOTH families = a true vanish (no pin, no dot) — the
+      // disappearance the user sees. A marker only in dotRemoved but still a pin
+      // (or vice-versa) is an in-place role flip, not a vanish.
+      const vanished = pinRemoved.filter(
+        (id) => !nextDotIdSet.has(id) && !nextPinIdSet.has(id)
+      ).length;
+      if (
+        pinAdded.length > 0 ||
+        pinRemoved.length > 0 ||
+        dotAdded.length > 0 ||
+        dotRemoved.length > 0
+      ) {
+        logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+          event: 'lod_membership_churn_contract',
+          churnReason: publishReason,
+          isMapMoving: projectionIsMapMoving,
+          pinCount: nextPinIds.length,
+          dotCount: nextDotIds.length,
+          pinAdded: pinAdded.length,
+          pinRemoved: pinRemoved.length,
+          dotAdded: dotAdded.length,
+          dotRemoved: dotRemoved.length,
+          vanishedFromBothFamilies: vanished,
+        });
+      }
+    }
     const pinVisualIdentityKeys = collectSourceStoreVisualIdentityKeys(pinSourceStore);
     const dotVisualIdentityKeys = collectSourceStoreVisualIdentityKeys(dotSourceStore);
     const visibleDemotedDotVisualIdentityKeys = new Set<SearchMapVisualIdentityKey>();
