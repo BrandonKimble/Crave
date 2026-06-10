@@ -292,6 +292,28 @@ export interface LLMModerationResult {
   reason: string;
 }
 
+export interface LLMAttributeOntologyInput {
+  /** Already-canonical attribute names. Stable: never renamed or rejected. */
+  existing: string[];
+  /** New candidate terms awaiting a canonicalization decision. */
+  incoming: string[];
+}
+
+export interface LLMAttributeOntologyGroup {
+  canonical: string;
+  members: string[];
+}
+
+export interface LLMAttributeOntologyRejection {
+  term: string;
+  reason: string;
+}
+
+export interface LLMAttributeOntologyResult {
+  groups: LLMAttributeOntologyGroup[];
+  rejected: LLMAttributeOntologyRejection[];
+}
+
 export interface LLMRestaurantPlaceChooserCandidate {
   candidateId: string;
   name: string;

@@ -78,6 +78,59 @@ export const MODERATION_RESPONSE_JSON_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+export const ATTRIBUTE_ONTOLOGY_RESPONSE_JSON_SCHEMA = {
+  type: 'object',
+  description:
+    'Canonicalization plan: synonym groups plus rejected junk terms for a set of attribute terms',
+  properties: {
+    groups: {
+      type: 'array',
+      description:
+        'Synonym clusters. Each group collapses to one canonical attribute; every member is a synonym of it.',
+      items: {
+        type: 'object',
+        properties: {
+          canonical: {
+            type: 'string',
+            description:
+              'The surviving canonical name for this group. Prefer an existing canonical when the group contains one.',
+          },
+          members: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'All terms that belong to this group, copied verbatim from the input (including the canonical itself).',
+          },
+        },
+        required: ['canonical', 'members'],
+        additionalProperties: false,
+      },
+    },
+    rejected: {
+      type: 'array',
+      description:
+        'Terms that are not valid attributes (junk, noise, non-descriptive, or wrong-category).',
+      items: {
+        type: 'object',
+        properties: {
+          term: {
+            type: 'string',
+            description: 'The rejected term, copied verbatim from the input.',
+          },
+          reason: {
+            type: 'string',
+            description: 'Short justification for rejecting the term.',
+          },
+        },
+        required: ['term', 'reason'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['groups', 'rejected'],
+  additionalProperties: false,
+} as const;
+
 const NULLABLE_STRING_SCHEMA = {
   anyOf: [{ type: 'string' }, { type: 'null' }],
 } as const;

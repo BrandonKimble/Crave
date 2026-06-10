@@ -26,6 +26,8 @@ import {
   LLMSearchQueryAnalysis,
   LLMCuisineExtractionResult,
   LLMModerationResult,
+  LLMAttributeOntologyInput,
+  LLMAttributeOntologyResult,
   LLMRestaurantPlaceChooserCandidate,
   LLMRestaurantPlaceChooserDecision,
   LLMRestaurantPlaceChooserInput,
@@ -42,6 +44,7 @@ import {
 } from './llm.exceptions';
 import { buildRestaurantPlaceChooserPrompt } from './prompts/restaurant-place-chooser.prompt';
 import {
+  ATTRIBUTE_ONTOLOGY_RESPONSE_JSON_SCHEMA,
   COLLECTION_RESPONSE_JSON_SCHEMA,
   CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA,
   MODERATION_RESPONSE_JSON_SCHEMA,
@@ -152,6 +155,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   private queryPrompt!: string;
   private cuisinePrompt!: string;
   private moderationPrompt!: string;
+  private attributeOntologyPrompt!: string;
   private queryInstructionCache: GeminiCacheEntry | null = null;
   private queryModel!: string;
   private thoughtDebugEntries: {
@@ -321,6 +325,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     this.queryPrompt = this.loadQueryPrompt();
     this.cuisinePrompt = this.loadCuisinePrompt();
     this.moderationPrompt = this.loadModerationPrompt();
+    this.attributeOntologyPrompt = this.loadAttributeOntologyPrompt();
     this.validateConfig();
 
     this.logger.info('Gemini LLM service initialized with @google/genai', {
@@ -783,6 +788,13 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  private loadAttributeOntologyPrompt(): string {
+    return this.loadRequiredPromptFile(
+      'attribute-ontology-prompt.md',
+      'load_attribute_ontology_prompt',
+    );
+  }
+
   private loadRequiredPromptFile(filename: string, operation: string): string {
     const promptPath = join(
       process.cwd(),
@@ -1190,6 +1202,116 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         },
       );
       return { allowed: true, reason: 'parse_error' };
+    }
+  }
+
+  /**
+   * Canonicalize a set of attribute terms into synonym groups + rejections.
+   * Stateless: callers pass the stable `existing` canonicals as context and the
+   * `incoming` candidates to place. Returns the LLM's plan verbatim — the caller
+   * is responsible for applying it (promote / merge / reject) against the DB.
+   */
+  async adjudicateAttributes(
+    input: LLMAttributeOntologyInput,
+  ): Promise<LLMAttributeOntologyResult> {
+    const existing = (input.existing ?? [])
+      .map((t) => t?.trim())
+      .filter((t): t is string => Boolean(t));
+    const incoming = (input.incoming ?? [])
+      .map((t) => t?.trim())
+      .filter((t): t is string => Boolean(t));
+
+    if (incoming.length === 0) {
+      return { groups: [], rejected: [] };
+    }
+
+    const model = 'gemini-3-flash-preview';
+    const generationConfig: GeminiGenerationConfig = {
+      temperature: 0,
+      topP: this.llmConfig.topP,
+      topK: this.llmConfig.topK,
+      candidateCount: 1,
+      // Generous ceiling: the response echoes every term back into a group/rejection.
+      maxOutputTokens: 16384,
+      responseMimeType: 'application/json',
+      responseJsonSchema: ATTRIBUTE_ONTOLOGY_RESPONSE_JSON_SCHEMA,
+    };
+    const thinkingConfig = this.getThinkingConfig(model, 'content');
+    if (thinkingConfig) {
+      generationConfig.thinkingConfig = thinkingConfig;
+    }
+
+    const response = await this.callLLMApi(
+      JSON.stringify({ existing, incoming }),
+      {
+        generationConfig,
+        systemInstruction: this.attributeOntologyPrompt,
+        model,
+        maxRetries: 1,
+        thinkingContext: 'content',
+      },
+    );
+    const content = this.extractTextContent(response, 'adjudicate_attributes');
+    return this.parseAttributeOntologyResponse(content);
+  }
+
+  private parseAttributeOntologyResponse(
+    content: string,
+  ): LLMAttributeOntologyResult {
+    try {
+      const start = content.indexOf('{');
+      const json = start >= 0 ? content.slice(start) : content;
+      const parsed = JSON.parse(json) as {
+        groups?: unknown;
+        rejected?: unknown;
+      };
+
+      const groups = Array.isArray(parsed.groups)
+        ? parsed.groups
+            .map((g) => {
+              const group = g as { canonical?: unknown; members?: unknown };
+              const canonical =
+                typeof group.canonical === 'string'
+                  ? group.canonical.trim()
+                  : '';
+              const members = Array.isArray(group.members)
+                ? group.members
+                    .filter((m): m is string => typeof m === 'string')
+                    .map((m) => m.trim())
+                    .filter(Boolean)
+                : [];
+              return { canonical, members };
+            })
+            .filter((g) => g.canonical && g.members.length > 0)
+        : [];
+
+      const rejected = Array.isArray(parsed.rejected)
+        ? parsed.rejected
+            .map((r) => {
+              const rejection = r as { term?: unknown; reason?: unknown };
+              const term =
+                typeof rejection.term === 'string' ? rejection.term.trim() : '';
+              const reason =
+                typeof rejection.reason === 'string'
+                  ? rejection.reason.trim()
+                  : 'rejected';
+              return { term, reason };
+            })
+            .filter((r) => r.term)
+        : [];
+
+      return { groups, rejected };
+    } catch (error) {
+      this.logger.error('Failed to parse attribute ontology response', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'adjudicate_attributes',
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack, name: error.name }
+            : { message: String(error) },
+      });
+      // Fail closed: an unparseable plan must not mutate the ontology.
+      return { groups: [], rejected: [] };
     }
   }
 

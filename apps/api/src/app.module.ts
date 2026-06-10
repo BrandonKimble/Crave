@@ -19,6 +19,7 @@ import { BillingModule } from './modules/billing/billing.module';
 import { AutocompleteModule } from './modules/autocomplete/autocomplete.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ModerationModule } from './modules/moderation/moderation.module';
+import { AttributeOntologyModule } from './modules/attribute-ontology/attribute-ontology.module';
 import { PollsModule } from './modules/polls/polls.module';
 import { FavoritesModule } from './modules/favorites/favorites.module';
 import { HistoryModule } from './modules/history/history.module';
@@ -81,6 +82,7 @@ const runtimeWithSchedulers = isSchedulerRuntime();
     AutocompleteModule,
     NotificationsModule,
     ModerationModule,
+    AttributeOntologyModule,
     PollsModule,
     FavoritesModule,
     HistoryModule,
