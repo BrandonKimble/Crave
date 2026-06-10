@@ -101,35 +101,6 @@ const GOOGLE_DAY_NAMES = [
 ] as const;
 const DEFAULT_ENRICHMENT_TX_TIMEOUT_MS = 15 * 60 * 1000;
 const DEFAULT_ENRICHMENT_TX_MAX_WAIT_MS = 30 * 1000;
-const GENERIC_WEBSITE_DOMAIN_DENYLIST = new Set([
-  // Ordering / reservation aggregators
-  'doordash.com',
-  'ubereats.com',
-  'grubhub.com',
-  'seamless.com',
-  'toasttab.com',
-  'toast.site',
-  'square.site',
-  'menufy.com',
-  'opentable.com',
-  'chownow.com',
-  'clover.com',
-  // Social / link-aggregator hosts (NOT brand-unique — caused unrelated restaurants to
-  // fuse into one fake "chain" when listed as a Google website, e.g. facebook.com,
-  // instagram.com). The name-agreement gate below is the real defense; this is a cheap
-  // pre-filter so generic domains never even become a chain key.
-  'facebook.com',
-  'instagram.com',
-  'linktr.ee',
-  'linktree.com',
-  'beacons.ai',
-  'linkin.bio',
-  'tiktok.com',
-  'twitter.com',
-  'x.com',
-  'yelp.com',
-]);
-
 type GoogleDayName = (typeof GOOGLE_DAY_NAMES)[number];
 
 type GoogleRestaurantAttributeDefinition = {
@@ -797,7 +768,7 @@ export class RestaurantLocationEnrichmentService {
       name: displayName,
       type: EntityType.restaurant,
       canonicalDomain:
-        this.resolveTrustedWebsiteDomain(params.place.websiteUri) ?? undefined,
+        this.normalizeWebsiteDomain(params.place.websiteUri) ?? undefined,
       aliases: alias,
       marketPresences: {
         create: [
@@ -1181,9 +1152,9 @@ export class RestaurantLocationEnrichmentService {
         };
       }
       const trustedCanonicalDomain =
-        this.resolveTrustedWebsiteDomain(placeDetails.websiteUri) ??
-        this.resolveTrustedWebsiteDomain(combinedUpdateData.canonicalDomain) ??
-        this.resolveTrustedWebsiteDomain(entity.canonicalDomain);
+        this.normalizeWebsiteDomain(placeDetails.websiteUri) ??
+        this.normalizeWebsiteDomain(combinedUpdateData.canonicalDomain) ??
+        this.normalizeWebsiteDomain(entity.canonicalDomain);
       const entityForSecondary: RestaurantEntity = {
         ...entity,
         canonicalDomain: trustedCanonicalDomain ?? entity.canonicalDomain,
@@ -1694,8 +1665,8 @@ export class RestaurantLocationEnrichmentService {
 
     const placeDetails = details.place;
     const trustedCanonicalDomain =
-      this.resolveTrustedWebsiteDomain(placeDetails.websiteUri) ??
-      this.resolveTrustedWebsiteDomain(entity.canonicalDomain);
+      this.normalizeWebsiteDomain(placeDetails.websiteUri) ??
+      this.normalizeWebsiteDomain(entity.canonicalDomain);
     const marketKey = await this.resolveMarketKeyFromPlace(placeDetails);
     const canonical: RestaurantEntityWithLocations | null =
       trustedCanonicalDomain
@@ -1904,8 +1875,8 @@ export class RestaurantLocationEnrichmentService {
     updatedFields: string[];
   } | null> {
     const canonicalDomain =
-      this.resolveTrustedWebsiteDomain(params.placeDetails.websiteUri) ??
-      this.resolveTrustedWebsiteDomain(params.entity.canonicalDomain);
+      this.normalizeWebsiteDomain(params.placeDetails.websiteUri) ??
+      this.normalizeWebsiteDomain(params.entity.canonicalDomain);
     if (!canonicalDomain) {
       return null;
     }
@@ -1921,30 +1892,47 @@ export class RestaurantLocationEnrichmentService {
       take: 50,
     });
 
-    // NAME-AGREEMENT GATE: only merge into a same-domain entity whose brand name actually
-    // agrees. Real chains share both a domain AND a name; unrelated restaurants that merely
-    // share a generic website (e.g. facebook.com) do not — so they stay separate.
-    const incomingName =
-      this.getPlaceDisplayName(params.placeDetails) ?? params.entity.name;
-    const canonical =
-      candidates.find((candidate) =>
-        this.restaurantNamesAgree(incomingName, candidate.name),
-      ) ?? null;
-
-    if (!canonical) {
-      if (candidates.length > 0) {
-        this.logger.info(
-          'Skipping canonical-domain merge: no same-domain entity name agrees',
-          {
-            canonicalDomain,
-            incomingName,
-            incomingEntityId: params.entity.entityId,
-            sameDomainCandidates: candidates.length,
-          },
-        );
-      }
+    if (!candidates.length) {
       return null;
     }
+
+    // BRAND-PURITY GATE (list-free): a domain is trusted as a chain key only when ALL
+    // restaurants sharing it — including the incoming one — form a single brand cluster.
+    // Real chains are brand-pure (every "7-Eleven" is named 7-Eleven, branches may add
+    // suffixes); generic hosts (facebook.com, doordash.com, ...) accumulate many distinct
+    // brands and therefore self-evidently carry no ownership signal — so they never merge,
+    // even when two names coincide. Purity = every member agrees with the cluster's brand
+    // root (the shortest brand name, so branch suffixes don't break a real chain).
+    const incomingName =
+      this.getPlaceDisplayName(params.placeDetails) ?? params.entity.name;
+    const memberNames = [incomingName, ...candidates.map((c) => c.name)];
+    const brandRoot = memberNames.reduce<string | null>((shortest, name) => {
+      const normalized = this.normalizeBrandName(name);
+      if (!normalized) return shortest;
+      const shortestNormalized = this.normalizeBrandName(shortest);
+      return !shortestNormalized ||
+        normalized.length < shortestNormalized.length
+        ? name
+        : shortest;
+    }, null);
+    const brandPure =
+      brandRoot !== null &&
+      memberNames.every((name) => this.restaurantNamesAgree(brandRoot, name));
+
+    if (!brandPure) {
+      this.logger.info(
+        'Skipping canonical-domain merge: domain is not brand-pure',
+        {
+          canonicalDomain,
+          incomingName,
+          incomingEntityId: params.entity.entityId,
+          sameDomainCandidates: candidates.length,
+        },
+      );
+      return null;
+    }
+
+    const canonical = candidates[0];
 
     const canonicalUpdate = this.buildEntityUpdate(
       canonical,
@@ -2117,27 +2105,6 @@ export class RestaurantLocationEnrichmentService {
     return domain.startsWith('www.') ? domain.slice(4) : domain;
   }
 
-  private resolveTrustedWebsiteDomain(value: unknown): string | null {
-    const domain = this.normalizeWebsiteDomain(value);
-    if (!domain) {
-      return null;
-    }
-    return this.isTrustedWebsiteDomain(domain) ? domain : null;
-  }
-
-  private isTrustedWebsiteDomain(domain: string | null | undefined): boolean {
-    if (!domain) {
-      return false;
-    }
-
-    const normalized = domain.trim().toLowerCase();
-    if (!normalized.length) {
-      return false;
-    }
-
-    return !GENERIC_WEBSITE_DOMAIN_DENYLIST.has(normalized);
-  }
-
   private buildSearchContext(
     entity: RestaurantEntity,
     options: RestaurantEnrichmentOptions,
@@ -2187,10 +2154,8 @@ export class RestaurantLocationEnrichmentService {
   ): Promise<void> {
     try {
       const canonicalDomain =
-        this.resolveTrustedWebsiteDomain(placeDetails.websiteUri) ??
-        (this.isTrustedWebsiteDomain(entity.canonicalDomain)
-          ? entity.canonicalDomain!.trim().toLowerCase()
-          : null);
+        this.normalizeWebsiteDomain(placeDetails.websiteUri) ??
+        this.normalizeWebsiteDomain(entity.canonicalDomain);
       if (!canonicalDomain) {
         return;
       }
@@ -2245,10 +2210,20 @@ export class RestaurantLocationEnrichmentService {
           if (!place?.id || seenPlaceIds.has(place.id)) {
             continue;
           }
-          const candidateDomain = this.resolveTrustedWebsiteDomain(
-            place.websiteUri,
-          );
+          const candidateDomain = this.normalizeWebsiteDomain(place.websiteUri);
           if (!candidateDomain || candidateDomain !== canonicalDomain) {
+            continue;
+          }
+          // Domain match alone is NOT brand identity (generic hosts like facebook.com are
+          // shared by unrelated restaurants). A secondary location must also carry the brand
+          // name — otherwise any same-domain place drifting into the name search would be
+          // absorbed as a fake "branch".
+          if (
+            !this.restaurantNamesAgree(
+              canonicalName,
+              this.getPlaceDisplayName(place),
+            )
+          ) {
             continue;
           }
           if (
@@ -3490,7 +3465,7 @@ export class RestaurantLocationEnrichmentService {
       details,
       matchMetadata,
     );
-    const trustedWebsiteDomain = this.resolveTrustedWebsiteDomain(
+    const trustedWebsiteDomain = this.normalizeWebsiteDomain(
       details.websiteUri,
     );
     const metadata = this.mergeRestaurantMetadata(
