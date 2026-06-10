@@ -145,25 +145,33 @@ DENYLIST` ~L104), a cleanup migration/script.
 active, indexed (type,status)); collection creates new attributes `pending`; read surfaces gate
 on `status='active'` (`EntityTextSearchService` + `connection_entity_names` view); resolution
 still matches pending (dedup). DB-verified. Makes mid-cadence dirty reads structurally impossible.
-**⬜ Increment 2 — adjudication worker (NEXT, the meaty part):**
+**✅ Increment 2a — canonicalization brain, plan-only (commit 2c0b7250):** `attribute-ontology-prompt.md`
+(principles-first, list-free, conservative) + `ATTRIBUTE_ONTOLOGY_RESPONSE_JSON_SCHEMA` +
+`LLMService.adjudicateAttributes` ({existing,incoming}→{groups,rejected}, gemini-3-flash,
+fail-closed parse) + `AttributeOntologyService.buildPlan(type, scope)` (chunked adjudication,
+accumulates confirmed canonicals as context, resolves every echoed term back to a concrete entity
+row → fully-resolved promote/merge/reject/unresolved plan, mutates nothing) + dry-run CLI
+`scripts/canonicalize-attributes.ts`. **No separate ontology table** — the canonical vocabulary IS
+the active attribute entities, synonyms in `aliases`. **Validated** (food_attribute, all 469):
+0 unresolved, 121 sensible merges (huge/massive/enormous→giant), 188 sharp rejections.
 
-1. Ontology prompt `.md` (principles-first, conservative — the validated v2) + `ONTOLOGY_
-ADJUDICATION` JSON schema in `llm-response-schemas.ts` + `LLMService.adjudicateAttributes`
-   (Lite, MINIMAL thinking). Input: pending attrs + existing active canonicals (context);
-   output per pending: `{action: merge|promote|reject, canonicalName?, reason?}`.
-2. `AttributeOntologyService.adjudicatePending(type, limit)`: fetch pending + active canonicals
-   → LLM → apply: **promote** (status=active +aliases), **merge** (add as alias to target +
-   `array_replace` the pending id → target id in `core_restaurant_items.{food_attributes,
-categories}` and `core_entities.restaurant_attributes`, then delete pending), **reject**
-   (delete — quarantined so no reads affected). ⚠️ the array_replace reference re-pointing is
-   the data-surgery risk — write + dry-run carefully.
-3. Trigger: event off unified-processing batch completion (debounced) + low-freq cron backstop.
-4. **One-time bulk canonicalization** of the existing 738+469 active attrs (same logic, human-
-   reviewed) — also validates increment 2 against real fragmentation (outdoor patio/seating/
-   garden/space → one; reject junk).
-   **NOTE (interim state):** until increment 2 lands, newly collection-created attributes stay
-   pending (invisible). Fine in dev (no users; existing active attrs unaffected) — but increment 2
-   is required to complete P1.3.
+**⬜ Increment 2b — apply path + trigger + bulk (NEXT, the destructive half):**
+
+1. `applyPlan(plan, {apply})` — transactional: **promote** (status→active), **merge** (fold
+   name+aliases onto canonical, `array_replace`+dedupe the merged id→canonical id in
+   `core_restaurant_items.food_attributes` / `core_entities.restaurant_attributes`, delete merged),
+   **reject** (`array_remove` from those columns, delete). Plan-integrity guard (no entity in two
+   roles) before any write. Verify mechanics via **rollback** before any real commit — the
+   array_replace re-pointing is the data-surgery risk.
+2. Trigger: event off unified-processing batch completion (debounced) running scope='pending' +
+   apply; gated behind a config flag (inert in dev until collection runs).
+3. **One-time bulk canonicalization** of the existing 738+469 active attrs — DECISION POINT:
+   applying the dry-run plan deletes ~309 food entities (merge+reject) and re-points refs on
+   preserved test data; non-deterministic LLM run, hard to un-merge. Gate on human review of the
+   plan, or prefer reset-and-recollect.
+
+**NOTE (interim state):** until 2b lands, newly collection-created attributes stay pending
+(invisible). Fine in dev (no users; existing active attrs unaffected) — 2b completes P1.3.
 
 ---
 
