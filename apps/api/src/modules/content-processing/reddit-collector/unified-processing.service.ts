@@ -15,7 +15,7 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
-import { Prisma, $Enums } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { EntityResolutionService } from '../entity-resolver/entity-resolution.service';
@@ -55,11 +55,6 @@ type SourceBreakdown = {
   reddit_api_keyword_search: number;
   reddit_api_on_demand: number;
 };
-
-type MarketKeyRecord = {
-  marketKey: string | null;
-  name: string;
-} | null;
 
 type RestaurantEnrichmentDispatchContext = {
   sourceMarket?: {
@@ -1291,13 +1286,6 @@ export class UnifiedProcessingService implements OnModuleInit {
             originalText?: string;
             canonicalName?: string;
           }[] = [];
-          const normalizedSubreddit = sourceMetadata.subreddit
-            ? sourceMetadata.subreddit.trim().toLowerCase()
-            : null;
-          const subredditLocation = await this.resolveSubredditLocation(
-            tx,
-            normalizedSubreddit,
-          );
           for (const resolution of resolutionResult.resolutionResults) {
             if (!resolution.isNewEntity) {
               continue;
@@ -1467,6 +1455,10 @@ export class UnifiedProcessingService implements OnModuleInit {
                         .replace(/\s+/g, ' '),
                     ];
 
+              const isAttributeType =
+                entityType === 'food_attribute' ||
+                entityType === 'restaurant_attribute';
+
               const entityData: Prisma.EntityCreateInput = {
                 name: this.normalizeEntityName(
                   resolution.normalizedName ||
@@ -1475,6 +1467,10 @@ export class UnifiedProcessingService implements OnModuleInit {
                   entityType,
                 ),
                 type: entityType,
+                // Collection-coined attributes are quarantined (excluded from all read
+                // surfaces) until the ontology worker adjudicates them: merge into an
+                // existing canonical, promote to a new canonical, or reject as junk.
+                status: isAttributeType ? 'pending' : 'active',
                 aliases: Array.from(new Set(aliasSet.filter(Boolean))),
                 createdAt: new Date(),
                 lastUpdated: new Date(),
@@ -2295,7 +2291,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       existingRecords.map((record) => record.sourceId),
     );
     const newRecordsBySourceId = new Map<string, SourceLedgerRecord>();
-    let skippedCount = existingSet.size;
+    const skippedCount = existingSet.size;
 
     for (const mention of mentions) {
       const rawSourceId = mention.source_id.trim();

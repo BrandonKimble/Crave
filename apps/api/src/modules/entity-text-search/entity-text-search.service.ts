@@ -498,6 +498,7 @@ export class EntityTextSearchService {
           e.general_praise_upvotes AS "generalPraiseUpvotes"
         FROM core_entities e
         WHERE e.type = ANY(${entityTypeArray})
+          AND e.status = 'active'::entity_status
           ${marketFilter}
           AND lower(e.name) LIKE v.prefix_pattern
         ORDER BY
@@ -629,6 +630,7 @@ export class EntityTextSearchService {
             e.general_praise_upvotes AS "generalPraiseUpvotes"
           FROM core_entities e
           WHERE e.type = ANY(${entityTypeArray})
+            AND e.status = 'active'::entity_status
             ${marketFilter}
             AND (
               lower(e.name) LIKE v.prefix_pattern
@@ -731,6 +733,7 @@ export class EntityTextSearchService {
           e.general_praise_upvotes AS "generalPraiseUpvotes"
         FROM core_entities e
         WHERE e.type = ANY(${entityTypeArray})
+          AND e.status = 'active'::entity_status
           ${marketFilter}
           AND (array_length(v.excluded_ids, 1) IS NULL OR e.entity_id <> ALL(v.excluded_ids))
           AND dmetaphone(regexp_replace(lower(e.name), '[^a-z0-9 ]', '', 'g')) =

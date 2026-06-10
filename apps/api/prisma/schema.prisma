@@ -14,6 +14,7 @@ model Entity {
   entityId                            String                   @id @default(dbgenerated("gen_random_uuid()")) @map("entity_id") @db.Uuid
   name                                String                   @db.VarChar(255)
   type                                EntityType
+  status                              EntityStatus             @default(active)
   canonicalDomain                     String?                  @map("canonical_domain") @db.VarChar(255)
   aliases                             String[]                 @default([])
   restaurantAttributes                String[]                 @default([]) @map("restaurant_attributes") @db.Uuid
@@ -65,6 +66,7 @@ model Entity {
   onDemandAskEvents                   OnDemandAskEvent[]
 
   @@index([type], map: "idx_entities_type")
+  @@index([type, status], map: "idx_entities_type_status")
   @@index([type, restaurantQualityScore(sort: Desc)], map: "idx_entities_type_score")
   @@index([name], map: "idx_entities_name")
   @@index([canonicalDomain], map: "idx_entities_canonical_domain")
@@ -1404,6 +1406,17 @@ enum EntityType {
   restaurant_attribute
 
   @@map("entity_type")
+}
+
+/// Canonicalization lifecycle for entities. `pending` = quarantined (collection coined a
+/// new attribute that the ontology hasn't adjudicated yet): excluded from all read
+/// surfaces (autocomplete, search, display) but still matchable by resolution so repeat
+/// mentions dedupe onto it. The ontology worker promotes (active), merges, or rejects.
+enum EntityStatus {
+  active
+  pending
+
+  @@map("entity_status")
 }
 
 enum CraveScoreSubjectType {
