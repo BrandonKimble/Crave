@@ -179,14 +179,6 @@ const PIN_COLLISION_FILL_SIDE_PAD_IMAGE_PX =
   PIN_COLLISION_SIDE_PAD_PX / (STYLE_PINS_FILL_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE);
 // Single source of truth for ALL pin fade animations (batch reveal/dismiss + LOD promote/demote).
 // Changing these values affects every pin fade globally.
-const PIN_FADE_CONFIG = {
-  durationMs: 300,
-  rankDelayFraction: 0.5,
-} as const;
-
-// Native Mapbox transition configs for batch fade animations (60fps GPU-driven).
-// The JS thread only sets target values (0 or 1) — Mapbox handles all interpolation.
-const PIN_OPACITY_TRANSITION = { duration: PIN_FADE_CONFIG.durationMs, delay: 0 };
 
 const withIconOpacity = (
   baseStyle: MapboxGL.SymbolLayerStyle,
@@ -2137,7 +2129,12 @@ const SearchMap: React.FC<SearchMapProps> = ({
       // Keep the collision box closer to the actual glyph bounds.
       textLineHeight: 0.5,
       textOpacity: ['*', nativePresentationOpacityExpression, nativeDotOpacityExpression],
-      textOpacityTransition: PIN_OPACITY_TRANSITION,
+      // No paint opacity transition: the native frame-stepper (LOD crossfade +
+      // presentation reveal) owns nativeDotOpacity / nativePresentationOpacity and
+      // ramps the feature-state every frame. A Mapbox *OpacityTransition would
+      // ease EACH per-frame set over its own duration — a fade-on-a-fade that
+      // smears the stepper's frame-accurate crossfade (the "not a true crossfade"
+      // feel). Collision fade is Mapbox's separate built-in fadeDuration, untouched.
       // Keep dots a constant screen size (like pins). The symbol can still cull/collide based on
       // Mapbox placement, but it won't scale with zoom.
       textSize: DOT_TEXT_SIZE,
@@ -2318,7 +2315,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
           STYLE_PINS_SHADOW_OPACITY,
         ]),
         symbolZOrder: 'viewport-y',
-        iconOpacityTransition: PIN_OPACITY_TRANSITION,
+        // Native stepper owns the opacity (see dot layer note); no paint transition.
       }) as MapboxGL.SymbolLayerStyle,
     [nativeLodOpacityExpression, nativePresentationOpacityExpression]
   );
@@ -2365,7 +2362,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         iconAllowOverlap: true,
         iconIgnorePlacement: true,
         iconOpacity: ['*', nativePresentationOpacityExpression, nativeLodOpacityExpression],
-        iconOpacityTransition: PIN_OPACITY_TRANSITION,
+        // Native stepper owns the opacity (see dot layer note); no paint transition.
       }) as unknown as MapboxGL.SymbolLayerStyle,
     [nativeLodOpacityExpression, nativePresentationOpacityExpression]
   );
