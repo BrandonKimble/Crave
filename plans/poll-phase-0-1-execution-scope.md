@@ -155,23 +155,25 @@ row → fully-resolved promote/merge/reject/unresolved plan, mutates nothing) + 
 the active attribute entities, synonyms in `aliases`. **Validated** (food_attribute, all 469):
 0 unresolved, 121 sensible merges (huge/massive/enormous→giant), 188 sharp rejections.
 
-**⬜ Increment 2b — apply path + trigger + bulk (NEXT, the destructive half):**
+**✅ Increment 2b — apply path + bulk (commit pending):** `applyPlan(plan, {apply})` — ONE
+transaction: **promote** (status→active), **merge** (fold name+aliases onto canonical,
+`array_replace`+dedupe the merged id→canonical id in `core_restaurant_items.food_attributes` /
+`core_entities.restaurant_attributes`, delete merged), **reject** (`array_remove` + delete).
+`assertPlanConsistent` backstop + plan-level `claimed` guard. Default mode runs every statement
+then ROLLS BACK (verify); `--apply` persists. Also fixed the canonicalization contract (existing =
+context/merge-targets only, never a member or rejection; output covers incoming only) — this
+removed the chunked-'all' self-conflict.
+  **Bulk applied in place** (user-chosen; `/tmp/crave-attrs-backup-121436.sql` safety dump first):
+  food 469→**220** (154 merged, 95 rejected), restaurant 738→**126** (281 merged, 331 rejected) —
+  **1,207→346, 0 dangling refs**, 829 refs re-pointed + 3,990 stripped. Surviving vocab is clean
+  (outdoor seating+18 aliases, good for groups, allows dogs, fine dining, white-glove service).
 
-1. `applyPlan(plan, {apply})` — transactional: **promote** (status→active), **merge** (fold
-   name+aliases onto canonical, `array_replace`+dedupe the merged id→canonical id in
-   `core_restaurant_items.food_attributes` / `core_entities.restaurant_attributes`, delete merged),
-   **reject** (`array_remove` from those columns, delete). Plan-integrity guard (no entity in two
-   roles) before any write. Verify mechanics via **rollback** before any real commit — the
-   array_replace re-pointing is the data-surgery risk.
-2. Trigger: event off unified-processing batch completion (debounced) running scope='pending' +
-   apply; gated behind a config flag (inert in dev until collection runs).
-3. **One-time bulk canonicalization** of the existing 738+469 active attrs — DECISION POINT:
-   applying the dry-run plan deletes ~309 food entities (merge+reject) and re-points refs on
-   preserved test data; non-deterministic LLM run, hard to un-merge. Gate on human review of the
-   plan, or prefer reset-and-recollect.
-
-**NOTE (interim state):** until 2b lands, newly collection-created attributes stay pending
-(invisible). Fine in dev (no users; existing active attrs unaffected) — 2b completes P1.3.
+**⬜ Increment 2c — steady-state trigger (LAST P1.3 piece):** event off unified-processing batch
+completion (debounced) → `buildPlan(type,'pending')` + `applyPlan(apply:true)`, gated behind a
+config flag (default OFF → inert in dev). The 'pending'-scope path (existing actives as context,
+pending as incoming) is built but not yet runtime-verified — best verified alongside the next
+collection run, when pending attributes actually exist. Until then, collection-coined attributes
+remain pending (quarantined/invisible), which is safe.
 
 ---
 
