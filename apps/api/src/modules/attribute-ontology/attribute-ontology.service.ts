@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EntityType } from '@prisma/client';
+import { EntityType, Prisma } from '@prisma/client';
 import { LoggerService } from '../../shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LLMService } from '../external-integrations/llm/llm.service';
@@ -57,7 +57,22 @@ export interface CanonicalizationPlan {
   unresolved: UnresolvedTerm[];
 }
 
+export interface ApplyResult {
+  /** false when the plan was executed then rolled back (verify mode). */
+  applied: boolean;
+  promotions: number;
+  merges: number;
+  rejections: number;
+  /** Connection/entity rows whose attribute arrays were re-pointed (merge). */
+  refsRepointed: number;
+  /** Connection/entity rows an id was stripped from (reject). */
+  refsRemoved: number;
+}
+
 const DEFAULT_CHUNK_SIZE = 120;
+
+/** Thrown to abort the apply transaction in verify (dry) mode. */
+class PlanRollback extends Error {}
 
 /**
  * Builds (and, later, applies) the canonical attribute ontology.
@@ -140,7 +155,13 @@ export class AttributeOntologyService {
     );
 
     const incomingNames = incomingRows.map((r) => r.name);
+    // Only these entities may be merged away or rejected; existing actives in
+    // 'pending' scope are context and must never be retired by the LLM.
+    const incomingIds = new Set(incomingRows.map((r) => r.entityId));
     const chunks = this.chunk(incomingNames, chunkSize);
+    // Entity ids already given a role (survivor / merged / rejected / promoted)
+    // across ALL chunks — prevents any entity playing two roles between chunks.
+    const claimed = new Set<string>();
 
     for (const [chunkIndex, incoming] of chunks.entries()) {
       const result = await this.llmService.adjudicateAttributes({
@@ -148,7 +169,14 @@ export class AttributeOntologyService {
         incoming,
       });
 
-      this.foldResultIntoPlan(result, byName, existingNames, plan);
+      this.foldResultIntoPlan(
+        result,
+        byName,
+        existingNames,
+        incomingIds,
+        claimed,
+        plan,
+      );
 
       this.logger.info('Canonicalization chunk adjudicated', {
         type,
@@ -171,66 +199,91 @@ export class AttributeOntologyService {
     },
     byName: Map<string, AttributeRow>,
     existingNames: Set<string>,
+    incomingIds: Set<string>,
+    claimed: Set<string>,
     plan: CanonicalizationPlan,
   ): void {
-    const seen = new Set<string>(); // entityIds already accounted for this run
-
     for (const group of result.groups) {
+      // Members must be unclaimed incoming candidates. An existing-context term
+      // that slips into members is dropped here — it can only be a merge target.
       const memberRows = this.resolveRows(
         group.members,
         byName,
         plan,
         'group_member',
-      );
+      ).filter((r) => incomingIds.has(r.entityId) && !claimed.has(r.entityId));
       if (memberRows.length === 0) continue;
 
-      // Pick the surviving entity: an entity matching the canonical name wins;
-      // otherwise an already-active member; otherwise the first member.
-      const canonNorm = this.normalize(group.canonical);
-      const target =
-        memberRows.find((r) => this.normalize(r.name) === canonNorm) ??
-        memberRows.find((r) => r.status === 'active') ??
-        memberRows[0];
+      // The canonical is either an existing attribute outside the member set
+      // (a merge target) or one of the members. If it resolves to neither, the
+      // LLM coined a name we can't map — keep the first member as the survivor.
+      const canonRow = byName.get(this.normalize(group.canonical));
+      const canonIsMember =
+        canonRow !== undefined &&
+        memberRows.some((m) => m.entityId === canonRow.entityId);
+      let target: AttributeRow;
+      if (canonRow && !canonIsMember) {
+        target = canonRow; // existing canonical → members merge into it
+      } else if (canonRow) {
+        target = canonRow; // canonical is one of the members
+      } else {
+        target = memberRows[0];
+        plan.unresolved.push({
+          name: group.canonical,
+          context: 'group_canonical',
+        });
+      }
 
-      const aliasNames = memberRows
-        .filter((r) => r.entityId !== target.entityId)
-        .map((r) => r.name);
-
-      // A pending target with no active anchor in its group is a NEW canonical.
-      if (target.status === 'pending' && !seen.has(target.entityId)) {
+      // Promote only when the survivor is itself an incoming candidate (a member)
+      // that is still pending — i.e. a brand-new canonical entering the ontology.
+      const targetIsMember = memberRows.some(
+        (m) => m.entityId === target.entityId,
+      );
+      if (
+        targetIsMember &&
+        target.status === 'pending' &&
+        !claimed.has(target.entityId)
+      ) {
         plan.promotions.push({
           entityId: target.entityId,
           name: target.name,
-          aliases: aliasNames,
+          aliases: memberRows
+            .filter((r) => r.entityId !== target.entityId)
+            .map((r) => r.name),
         });
-        seen.add(target.entityId);
       }
+      claimed.add(target.entityId);
 
       for (const member of memberRows) {
         if (member.entityId === target.entityId) continue;
-        if (seen.has(member.entityId)) continue;
+        if (claimed.has(member.entityId)) continue;
         plan.merges.push({
           canonicalEntityId: target.entityId,
           canonicalName: target.name,
           mergedEntityId: member.entityId,
           mergedName: member.name,
         });
-        seen.add(member.entityId);
+        claimed.add(member.entityId);
       }
 
-      // The surviving canonical name is now available as context for later chunks.
+      // The surviving canonical name is now context for later chunks.
       existingNames.add(target.name);
     }
 
     for (const rejection of result.rejected) {
       const row = this.resolveRow(rejection.term, byName, plan, 'rejected');
-      if (!row || seen.has(row.entityId)) continue;
+      // Reject only unclaimed incoming candidates. Existing-context actives
+      // (in 'pending' scope) are stable and are never retired by the LLM; in
+      // 'all' scope every active IS a candidate, so this gate permits cleanup.
+      if (!row || claimed.has(row.entityId) || !incomingIds.has(row.entityId)) {
+        continue;
+      }
       plan.rejections.push({
         entityId: row.entityId,
         name: row.name,
         reason: rejection.reason,
       });
-      seen.add(row.entityId);
+      claimed.add(row.entityId);
     }
   }
 
@@ -288,6 +341,188 @@ export class AttributeOntologyService {
       rejections: plan.rejections.length,
       unresolved: plan.unresolved.length,
     });
+  }
+
+  /**
+   * Execute a canonicalization plan. The whole plan runs in ONE transaction:
+   * promotions flip status, merges fold synonyms + re-point references + delete
+   * the merged entity, rejections strip references + delete. With `apply: false`
+   * (the default) the transaction is rolled back after running — verifying the
+   * mechanics (and affected-row counts) against real data without persisting.
+   *
+   * The merged/rejected attribute ids live in `core_restaurant_items.food_attributes`
+   * (food) or `core_entities.restaurant_attributes` (restaurant) — those are the
+   * only array columns that hold an attribute id, so re-pointing is type-scoped.
+   */
+  async applyPlan(
+    plan: CanonicalizationPlan,
+    options: { apply: boolean } = { apply: false },
+  ): Promise<ApplyResult> {
+    this.assertPlanConsistent(plan);
+
+    const counts: ApplyResult = {
+      applied: false,
+      promotions: 0,
+      merges: 0,
+      rejections: 0,
+      refsRepointed: 0,
+      refsRemoved: 0,
+    };
+
+    try {
+      await this.prisma.$transaction(
+        async (tx) => {
+          for (const promotion of plan.promotions) {
+            counts.promotions += await tx.$executeRawUnsafe(
+              `UPDATE core_entities SET status = 'active'
+               WHERE entity_id = $1::uuid AND status = 'pending'`,
+              promotion.entityId,
+            );
+          }
+
+          for (const merge of plan.merges) {
+            // Fold the merged entity's name + aliases onto the canonical.
+            await tx.$executeRawUnsafe(
+              `UPDATE core_entities y
+               SET aliases = (
+                 SELECT array_agg(DISTINCT a)
+                 FROM unnest(y.aliases || ARRAY[x.name] || x.aliases) a
+               )
+               FROM core_entities x
+               WHERE y.entity_id = $1::uuid AND x.entity_id = $2::uuid`,
+              merge.canonicalEntityId,
+              merge.mergedEntityId,
+            );
+            counts.refsRepointed += await this.repointMergeRefs(
+              tx,
+              plan.type,
+              merge.mergedEntityId,
+              merge.canonicalEntityId,
+            );
+            counts.merges += await tx.$executeRawUnsafe(
+              `DELETE FROM core_entities WHERE entity_id = $1::uuid`,
+              merge.mergedEntityId,
+            );
+          }
+
+          for (const rejection of plan.rejections) {
+            counts.refsRemoved += await this.removeRejectRefs(
+              tx,
+              plan.type,
+              rejection.entityId,
+            );
+            counts.rejections += await tx.$executeRawUnsafe(
+              `DELETE FROM core_entities WHERE entity_id = $1::uuid`,
+              rejection.entityId,
+            );
+          }
+
+          if (!options.apply) {
+            throw new PlanRollback('verify');
+          }
+        },
+        { timeout: 120_000, maxWait: 15_000 },
+      );
+      counts.applied = true;
+    } catch (error) {
+      if (!(error instanceof PlanRollback)) throw error;
+    }
+
+    this.logger.info(
+      counts.applied
+        ? 'Canonicalization plan APPLIED'
+        : 'Canonicalization plan verified (rolled back — no mutations)',
+      {
+        type: plan.type,
+        scope: plan.scope,
+        ...counts,
+      },
+    );
+    return counts;
+  }
+
+  /**
+   * Reject any plan where one entity would play two conflicting roles (e.g. a
+   * canonical target that is also merged away, or merged-and-rejected). A
+   * promoted entity doubling as a canonical is fine — that is the expected case.
+   */
+  private assertPlanConsistent(plan: CanonicalizationPlan): void {
+    const merged = new Set(plan.merges.map((m) => m.mergedEntityId));
+    const rejected = new Set(plan.rejections.map((r) => r.entityId));
+    const canonicals = new Set(plan.merges.map((m) => m.canonicalEntityId));
+    const promoted = new Set(plan.promotions.map((p) => p.entityId));
+
+    const conflicts: string[] = [];
+    for (const id of merged) {
+      if (rejected.has(id)) conflicts.push(`${id}: merged and rejected`);
+      if (canonicals.has(id)) conflicts.push(`${id}: merged and a canonical`);
+    }
+    for (const id of promoted) {
+      if (merged.has(id)) conflicts.push(`${id}: promoted and merged`);
+      if (rejected.has(id)) conflicts.push(`${id}: promoted and rejected`);
+    }
+    for (const id of canonicals) {
+      if (rejected.has(id)) conflicts.push(`${id}: canonical and rejected`);
+    }
+
+    if (conflicts.length > 0) {
+      throw new Error(
+        `Inconsistent canonicalization plan — refusing to apply:\n${conflicts.join('\n')}`,
+      );
+    }
+  }
+
+  /** Re-point a merged attribute id to its canonical in the type's array column. */
+  private repointMergeRefs(
+    tx: Prisma.TransactionClient,
+    type: AttributeEntityType,
+    mergedId: string,
+    canonicalId: string,
+  ): Promise<number> {
+    if (type === 'food_attribute') {
+      return tx.$executeRawUnsafe(
+        `UPDATE core_restaurant_items
+         SET food_attributes = (
+           SELECT array_agg(DISTINCT e)
+           FROM unnest(array_replace(food_attributes, $1::uuid, $2::uuid)) e
+         )
+         WHERE $1::uuid = ANY(food_attributes)`,
+        mergedId,
+        canonicalId,
+      );
+    }
+    return tx.$executeRawUnsafe(
+      `UPDATE core_entities
+       SET restaurant_attributes = (
+         SELECT array_agg(DISTINCT e)
+         FROM unnest(array_replace(restaurant_attributes, $1::uuid, $2::uuid)) e
+       )
+       WHERE $1::uuid = ANY(restaurant_attributes)`,
+      mergedId,
+      canonicalId,
+    );
+  }
+
+  /** Strip a rejected attribute id from the type's array column. */
+  private removeRejectRefs(
+    tx: Prisma.TransactionClient,
+    type: AttributeEntityType,
+    id: string,
+  ): Promise<number> {
+    if (type === 'food_attribute') {
+      return tx.$executeRawUnsafe(
+        `UPDATE core_restaurant_items
+         SET food_attributes = array_remove(food_attributes, $1::uuid)
+         WHERE $1::uuid = ANY(food_attributes)`,
+        id,
+      );
+    }
+    return tx.$executeRawUnsafe(
+      `UPDATE core_entities
+       SET restaurant_attributes = array_remove(restaurant_attributes, $1::uuid)
+       WHERE $1::uuid = ANY(restaurant_attributes)`,
+      id,
+    );
   }
 
   private normalize(value: string): string {

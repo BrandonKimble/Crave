@@ -16,15 +16,19 @@ per request:
 
 You are given two lists of raw terms that other systems have coined:
 
-- `existing` — terms already promoted as canonical. These are STABLE. Do not rename or
-  reject them. Prefer them as the `canonical` of any group they fall into.
-- `incoming` — new candidate terms awaiting a decision.
+- `existing` — terms already promoted as canonical. These are STABLE **context only**.
+  Never list an existing term as a member, and never reject one. Their sole use: when an
+  `incoming` term is a synonym of an existing canonical, set that existing term as the
+  group's `canonical` so the incoming term merges into it.
+- `incoming` — the new candidate terms you must place. Your output is ONLY about these.
 
-Produce a canonicalization plan. For the union of terms, output:
+Produce a canonicalization plan that places every `incoming` term exactly once:
 
-1. `groups` — synonym clusters. Every term that is a real attribute goes into exactly
-   one group. A group collapses to a single `canonical` name; the other `members` become
-   its synonyms. A term with no synonyms is a group of one.
+1. `groups` — synonym clusters. Each group has one `canonical` and `members` drawn ONLY
+   from `incoming`. The `canonical` is either (a) an `existing` term — meaning the members
+   merge into that already-canonical attribute — or (b) one of the group's own incoming
+   members, which becomes the new canonical. A lone incoming term with no synonym is a
+   group of one (canonical = that term).
 2. `rejected` — incoming terms that are not valid attributes at all.
 
 ## Principles (apply these — do not rely on any fixed list)
@@ -91,10 +95,11 @@ Return JSON only, matching the provided schema:
 
 Hard requirements:
 
-- Copy every term **verbatim** from the input (same characters) into either a group's
-  `members` or `rejected`. Do not invent, translate, or re-spell members.
-- The `canonical` of a group MAY be a cleaned-up form, but it must equal one of the
-  group's members OR a clearly conventional rendering of them.
-- Every `incoming` term appears exactly once across all `members` and `rejected`.
-- Every `existing` term appears in exactly one group's `members` (never in `rejected`).
-- No term appears in two groups.
+- Copy every term **verbatim** from the input (same characters). Do not invent, translate,
+  or re-spell members.
+- Members contain ONLY `incoming` terms. Never put an `existing` term in `members` or in
+  `rejected`.
+- Each group's `canonical` is EITHER an exact `existing` term (merge target) OR one of that
+  group's own incoming members.
+- Every `incoming` term appears exactly once — in exactly one group's `members` or in
+  `rejected`. No incoming term appears twice or in two groups.

@@ -13,6 +13,7 @@ interface CliOptions {
   scope: CanonicalizationScope;
   chunkSize: number;
   showSamples: number;
+  apply: boolean;
 }
 
 function parseArgs(argv: string[]): CliOptions {
@@ -21,6 +22,7 @@ function parseArgs(argv: string[]): CliOptions {
     scope: 'all',
     chunkSize: 120,
     showSamples: 40,
+    apply: false,
   };
 
   for (const arg of argv) {
@@ -32,6 +34,8 @@ function parseArgs(argv: string[]): CliOptions {
       options.scope = 'pending';
     } else if (arg === '--all') {
       options.scope = 'all';
+    } else if (arg === '--apply') {
+      options.apply = true;
     } else if (arg.startsWith('--chunk=')) {
       const value = Number(arg.split('=')[1]);
       if (Number.isFinite(value) && value > 0) {
@@ -49,12 +53,16 @@ function parseArgs(argv: string[]): CliOptions {
 }
 
 /**
- * Dry-run the attribute canonicalizer and print the resulting plan. This NEVER
- * mutates the database — it builds and prints the promote/merge/reject plan so a
- * human can sanity-check it against real data before the apply path lands.
+ * Build (and optionally apply) the attribute canonicalization plan.
  *
+ * Default is a DRY RUN: the plan is printed and then executed inside a
+ * transaction that is rolled back, so the apply mechanics + affected-row counts
+ * are verified against real data without persisting. Pass `--apply` to commit.
+ *
+ *   # dry run + rollback-verify (no mutations)
  *   yarn workspace api ts-node scripts/canonicalize-attributes.ts --restaurant --all
- *   yarn workspace api ts-node scripts/canonicalize-attributes.ts --food --pending
+ *   # actually apply
+ *   yarn workspace api ts-node scripts/canonicalize-attributes.ts --food --all --apply
  */
 async function bootstrap(): Promise<void> {
   const cli = parseArgs(process.argv.slice(2));
@@ -115,6 +123,20 @@ async function bootstrap(): Promise<void> {
         out(`  "${u.name}"  [${u.context}]`);
       }
     }
+
+    out('');
+    out(
+      cli.apply
+        ? '==== APPLYING PLAN (committing) ===='
+        : '==== VERIFYING PLAN (transaction will roll back) ====',
+    );
+    const result = await service.applyPlan(plan, { apply: cli.apply });
+    out(`  applied        ${result.applied}`);
+    out(`  promotions     ${result.promotions}`);
+    out(`  merges         ${result.merges}`);
+    out(`  rejections     ${result.rejections}`);
+    out(`  refsRepointed  ${result.refsRepointed}`);
+    out(`  refsRemoved    ${result.refsRemoved}`);
   } finally {
     await app.close();
   }
