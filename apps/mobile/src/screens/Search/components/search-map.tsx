@@ -2125,15 +2125,15 @@ const SearchMap: React.FC<SearchMapProps> = ({
       textField: '●',
       textAnchor: 'center',
       textFont: ['Arial Unicode MS Regular', 'Open Sans Semibold'],
-      // Dots participate in collision: they YIELD to labels (our restaurant labels
-      // AND native basemap labels like parks/streets) and to each other, so a dot
-      // never overprints a label. allowOverlap:false + ignorePlacement:false makes
-      // the dot a collision victim. Promoted markers carry an opacity-0 dot so they
-      // contribute nothing. (Pins remain allow-overlap obstacles above dots.)
-      textAllowOverlap: false,
-      textIgnorePlacement: false,
-      // Reduce collision buffer so dots can pack tighter before culling.
-      textPadding: 0,
+      // Dots ALWAYS draw — no collision culling. Letting Mapbox collision-cull the
+      // dot family caused the "markers flash/disappear at low zoom" defect: it
+      // re-resolves placement every frame during camera motion (per-frame flicker)
+      // and hides more dots as zoom-out packs them denser. Density is instead bounded
+      // deterministically by the dot budget in the source builder (top-N by score),
+      // so a fixed, stable set of dots always renders. Matches the in-region pin
+      // policy (allowOverlap:true / ignorePlacement:true).
+      textAllowOverlap: true,
+      textIgnorePlacement: true,
       // Keep the collision box closer to the actual glyph bounds.
       textLineHeight: 0.5,
       textOpacity: ['*', nativePresentationOpacityExpression, nativeDotOpacityExpression],
@@ -2374,15 +2374,14 @@ const SearchMap: React.FC<SearchMapProps> = ({
   // ignorePlacement:false) so the world-wide shortcut tail collapses to a sparse,
   // non-overlapping subset that fades in/out as you pan/zoom (the Google-style "wave").
   // Same opacity transition drives that fade.
-  const stylePinOutRegionStyle = React.useMemo(
-    () =>
-      ({
-        ...stylePinSingleSymbolStyle,
-        iconAllowOverlap: false,
-        iconIgnorePlacement: false,
-      }) as unknown as MapboxGL.SymbolLayerStyle,
-    [stylePinSingleSymbolStyle]
-  );
+  // Out-of-region pins now render IDENTICALLY to in-region pins: always-draw, no
+  // collision culling. Previously they were collision victims (allowOverlap:false),
+  // which made them flash/jitter out during camera motion — an inconsistency with
+  // in-region pins and a source of the "disappearing" defect. Both regions are
+  // already capped (in: maxFullPins, out: OUT_REGION_MAX_FULL_PINS), so a fixed set
+  // of always-drawn pins is bounded by the budget, not by Mapbox collision. The
+  // separate layer is retained only for the inOverlapRegion filter / badge split.
+  const stylePinOutRegionStyle = stylePinSingleSymbolStyle;
 
   // RESIDENT interaction layer (slot-elimination): ONE circle layer for all pin
   // tap targets, reading the resident bundle source filtered by feature kind —

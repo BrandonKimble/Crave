@@ -1664,12 +1664,14 @@ export const useDirectSearchMapSourceController = ({
       }
     }
 
-    // DUAL LOD BUDGET. In-region results keep the existing viewport-gated, ranked LOD
-    // (top `maxFullPins`). Out-of-region results get a SEPARATE top-`OUT_REGION_MAX_FULL_PINS`
-    // budget, NOT viewport-gated, so the world-wide top-rated places exist as pins
-    // (tile-culled off-screen, appearing as you pan) while the rest fall to dots. Both
-    // reuse the stable-membership machinery. Natural search has no out-of-region
-    // candidates, so the out pass is empty and behavior is identical to before.
+    // DUAL LOD BUDGET — both groups play by the SAME live, viewport-driven rules; the
+    // ONLY difference is the budget number and the badge (rank in-region / crave-score
+    // out). In-region results get a top-`maxFullPins` budget; out-of-region results get
+    // a SEPARATE top-`OUT_REGION_MAX_FULL_PINS` budget. BOTH are viewport-gated against
+    // the native screen-space set (requireVisibility:true), so each group's pins are the
+    // top-N WITHIN the current screen (pitch/twist-accurate) and promote/demote live as
+    // markers enter/leave the viewport. Both reuse the stable-membership machinery.
+    // Natural search has no out-of-region candidates, so the out pass is empty.
     // The selected (tapped) restaurant is always treated as IN-REGION so it is
     // force-promoted, rendered in the in-region layer (ranked, overlap, crossfade), and
     // excluded from the out-region pass (no double-promotion) — wherever it sits
@@ -1708,8 +1710,8 @@ export const useDirectSearchMapSourceController = ({
           buildMarkerKey,
           buildVisualIdentityKey: buildSearchMapVisualIdentityKey,
           maxPins: OUT_REGION_MAX_FULL_PINS,
-          nativeVisibleMarkerKeys: null,
-          requireVisibility: false,
+          nativeVisibleMarkerKeys,
+          requireVisibility: true,
         })
       : emptyModel;
     const nextModel = {
@@ -1740,6 +1742,11 @@ export const useDirectSearchMapSourceController = ({
       pinnedFeatures: visibleSortedRestaurantMarkers,
       buildMarkerKey,
     });
+    // Dots = every demoted marker. They render always-draw (allowOverlap:true), so no
+    // JS cap is needed: Mapbox only draws the ones inside the current viewport (the
+    // off-screen rest are tile-culled, not collision-culled), and on-screen dots all
+    // paint with no per-frame flicker. The promoted top-N (both budgets) are carried
+    // here too at opacity 0 (resident), flipped to visible only when promoted.
     const visibleDotRestaurantMarkerFeatures = projectedVisualFrame.dotCandidates;
 
     // RESIDENT LOD: build the union of promoted + rendered-dot candidates ONCE. Every
