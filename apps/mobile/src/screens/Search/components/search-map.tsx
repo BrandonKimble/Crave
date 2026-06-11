@@ -2125,15 +2125,15 @@ const SearchMap: React.FC<SearchMapProps> = ({
       textField: '●',
       textAnchor: 'center',
       textFont: ['Arial Unicode MS Regular', 'Open Sans Semibold'],
-      // Dots ALWAYS draw — no collision culling. Letting Mapbox collision-cull the
-      // dot family caused the "markers flash/disappear at low zoom" defect: it
-      // re-resolves placement every frame during camera motion (per-frame flicker)
-      // and hides more dots as zoom-out packs them denser. Density is instead bounded
-      // deterministically by the dot budget in the source builder (top-N by score),
-      // so a fixed, stable set of dots always renders. Matches the in-region pin
-      // policy (allowOverlap:true / ignorePlacement:true).
-      textAllowOverlap: true,
-      textIgnorePlacement: true,
+      // Dots participate in collision: they YIELD to labels (our restaurant labels
+      // AND native basemap labels), to the pin collision obstacles, and to each other,
+      // so a dot never overprints a pin or label and dots thin out where they crowd.
+      // allowOverlap:false + ignorePlacement:false makes the dot a collision victim.
+      // Promoted markers carry an opacity-0 dot so they contribute nothing.
+      textAllowOverlap: false,
+      textIgnorePlacement: false,
+      // Reduce collision buffer so dots can pack tighter before culling.
+      textPadding: 0,
       // Keep the collision box closer to the actual glyph bounds.
       textLineHeight: 0.5,
       textOpacity: ['*', nativePresentationOpacityExpression, nativeDotOpacityExpression],
