@@ -50,6 +50,16 @@ type BuildMarkerRenderModelArgs<TProps extends MarkerLikeProperties> = {
   // pins should exist (tile-culled off-screen, appearing as you pan) rather than only
   // when on screen. Defaults to true (the in-region / viewport-gated behavior).
   requireVisibility?: boolean;
+  // When false, NO fresh promotions happen this pass: already-promoted markers are
+  // retained (and may demote as they leave the screen), but markers not currently
+  // promoted are NOT promoted, even if they're now in the top-N. Set false while the
+  // camera is actively moving. Re-evaluating the top-N every tick during a zoom churns
+  // the borderline (rank just past the budget) markers in/out of the set, restarting
+  // their crossfades mid-fade — the batch opacity flash ("they jump to full then snap
+  // out"). Deferring fresh promotions to camera-settle keeps demotes live (markers
+  // leaving still fade out) while eliminating the transient promote→demote flash.
+  // Defaults to true.
+  allowFreshPromotions?: boolean;
 };
 
 type BuildMarkerRenderModelResult<TProps extends MarkerLikeProperties> = {
@@ -233,6 +243,7 @@ export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
     maxPins,
     nativeVisibleMarkerKeys,
     requireVisibility = true,
+    allowFreshPromotions = true,
   } = args;
   const selectedEntries = collectSelectedEntries(
     selectedRestaurantCandidates,
@@ -301,17 +312,22 @@ export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
     }
   }
   const freshInView: Array<MarkerFeature<TProps>> = [];
-  for (const feature of rankedCandidates) {
-    const visualIdentityKey = buildVisualIdentityKey(feature);
-    if (
-      selectedVisualIdentityKeySet.has(visualIdentityKey) ||
-      seenVisualIdentityKeys.has(visualIdentityKey) ||
-      !isVisible(feature)
-    ) {
-      continue;
+  // Skip fresh promotions while the camera is moving (allowFreshPromotions=false):
+  // only retained markers hold slots, so the promoted set can shrink (demote) but not
+  // grow mid-motion — preventing the borderline-marker promote→demote flash on zoom.
+  if (allowFreshPromotions) {
+    for (const feature of rankedCandidates) {
+      const visualIdentityKey = buildVisualIdentityKey(feature);
+      if (
+        selectedVisualIdentityKeySet.has(visualIdentityKey) ||
+        seenVisualIdentityKeys.has(visualIdentityKey) ||
+        !isVisible(feature)
+      ) {
+        continue;
+      }
+      seenVisualIdentityKeys.add(visualIdentityKey);
+      freshInView.push(feature);
     }
-    seenVisualIdentityKeys.add(visualIdentityKey);
-    freshInView.push(feature);
   }
   const inViewByRank = [...retainedInView, ...freshInView].sort(byRank);
   const offViewByRank = retainedOffView.sort(byRank);

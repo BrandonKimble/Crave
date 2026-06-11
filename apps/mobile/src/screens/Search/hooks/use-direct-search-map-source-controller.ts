@@ -1697,6 +1697,7 @@ export const useDirectSearchMapSourceController = ({
           maxPins: args.maxFullPins,
           nativeVisibleMarkerKeys,
           requireVisibility: true,
+          allowFreshPromotions: !projectionIsMapMoving,
         })
       : emptyModel;
     const outRegionModel = currentBounds
@@ -1712,6 +1713,7 @@ export const useDirectSearchMapSourceController = ({
           maxPins: OUT_REGION_MAX_FULL_PINS,
           nativeVisibleMarkerKeys,
           requireVisibility: true,
+          allowFreshPromotions: !projectionIsMapMoving,
         })
       : emptyModel;
     const nextModel = {
