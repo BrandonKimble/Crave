@@ -26,8 +26,8 @@ import {
   LLMSearchQueryAnalysis,
   LLMCuisineExtractionResult,
   LLMModerationResult,
-  LLMAttributeOntologyInput,
-  LLMAttributeOntologyResult,
+  LLMAttributePlacementInput,
+  LLMAttributePlacementResult,
   LLMRestaurantPlaceChooserCandidate,
   LLMRestaurantPlaceChooserDecision,
   LLMRestaurantPlaceChooserInput,
@@ -44,7 +44,7 @@ import {
 } from './llm.exceptions';
 import { buildRestaurantPlaceChooserPrompt } from './prompts/restaurant-place-chooser.prompt';
 import {
-  ATTRIBUTE_ONTOLOGY_RESPONSE_JSON_SCHEMA,
+  ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA,
   COLLECTION_RESPONSE_JSON_SCHEMA,
   CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA,
   MODERATION_RESPONSE_JSON_SCHEMA,
@@ -155,7 +155,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   private queryPrompt!: string;
   private cuisinePrompt!: string;
   private moderationPrompt!: string;
-  private attributeOntologyPrompt!: string;
+  private attributePlacementPrompt!: string;
   private queryInstructionCache: GeminiCacheEntry | null = null;
   private queryModel!: string;
   private thoughtDebugEntries: {
@@ -325,7 +325,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     this.queryPrompt = this.loadQueryPrompt();
     this.cuisinePrompt = this.loadCuisinePrompt();
     this.moderationPrompt = this.loadModerationPrompt();
-    this.attributeOntologyPrompt = this.loadAttributeOntologyPrompt();
+    this.attributePlacementPrompt = this.loadAttributePlacementPrompt();
     this.validateConfig();
 
     this.logger.info('Gemini LLM service initialized with @google/genai', {
@@ -788,10 +788,10 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  private loadAttributeOntologyPrompt(): string {
+  private loadAttributePlacementPrompt(): string {
     return this.loadRequiredPromptFile(
-      'attribute-ontology-prompt.md',
-      'load_attribute_ontology_prompt',
+      'attribute-placement-prompt.md',
+      'load_attribute_placement_prompt',
     );
   }
 
@@ -1206,23 +1206,19 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Canonicalize a set of attribute terms into synonym groups + rejections.
-   * Stateless: callers pass the stable `existing` canonicals as context and the
-   * `incoming` candidates to place. Returns the LLM's plan verbatim — the caller
-   * is responsible for applying it (promote / merge / reject) against the DB.
+   * Place ONE candidate attribute term against a shortlist of existing canonicals
+   * (the term's embedding-nearest neighbours). Returns match / new / reject. The
+   * narrow shortlist + single-term focus is what keeps the decision reliable and
+   * lets the model separate same-axis-opposite-value pairs (thick vs thin).
+   * Fail-closed: an unparseable response is treated as `new` (never a destructive
+   * merge or reject).
    */
-  async adjudicateAttributes(
-    input: LLMAttributeOntologyInput,
-  ): Promise<LLMAttributeOntologyResult> {
-    const existing = (input.existing ?? [])
-      .map((t) => t?.trim())
-      .filter((t): t is string => Boolean(t));
-    const incoming = (input.incoming ?? [])
-      .map((t) => t?.trim())
-      .filter((t): t is string => Boolean(t));
-
-    if (incoming.length === 0) {
-      return { groups: [], rejected: [] };
+  async placeAttribute(
+    input: LLMAttributePlacementInput,
+  ): Promise<LLMAttributePlacementResult> {
+    const term = input.term?.trim() ?? '';
+    if (!term) {
+      return { decision: 'reject', candidateId: null, reason: 'empty term' };
     }
 
     const model = 'gemini-3-flash-preview';
@@ -1231,87 +1227,84 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: 1,
-      // Generous ceiling: the response echoes every term back into a group/rejection.
-      maxOutputTokens: 16384,
+      maxOutputTokens: 512,
       responseMimeType: 'application/json',
-      responseJsonSchema: ATTRIBUTE_ONTOLOGY_RESPONSE_JSON_SCHEMA,
+      responseJsonSchema: ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA,
     };
     const thinkingConfig = this.getThinkingConfig(model, 'content');
     if (thinkingConfig) {
       generationConfig.thinkingConfig = thinkingConfig;
     }
 
-    const response = await this.callLLMApi(
-      JSON.stringify({ existing, incoming }),
-      {
-        generationConfig,
-        systemInstruction: this.attributeOntologyPrompt,
-        model,
-        maxRetries: 1,
-        thinkingContext: 'content',
-      },
-    );
-    const content = this.extractTextContent(response, 'adjudicate_attributes');
-    return this.parseAttributeOntologyResponse(content);
+    const payload = JSON.stringify({
+      term,
+      kind: input.kind,
+      candidates: input.candidates.map((c) => ({ id: c.id, name: c.name })),
+    });
+    const response = await this.callLLMApi(payload, {
+      generationConfig,
+      systemInstruction: this.attributePlacementPrompt,
+      model,
+      maxRetries: 1,
+      thinkingContext: 'content',
+    });
+    const content = this.extractTextContent(response, 'place_attribute');
+    return this.parseAttributePlacementResponse(content, input);
   }
 
-  private parseAttributeOntologyResponse(
+  private parseAttributePlacementResponse(
     content: string,
-  ): LLMAttributeOntologyResult {
+    input: LLMAttributePlacementInput,
+  ): LLMAttributePlacementResult {
     try {
       const start = content.indexOf('{');
       const json = start >= 0 ? content.slice(start) : content;
       const parsed = JSON.parse(json) as {
-        groups?: unknown;
-        rejected?: unknown;
+        decision?: unknown;
+        candidate_id?: unknown;
+        reason?: unknown;
       };
 
-      const groups = Array.isArray(parsed.groups)
-        ? parsed.groups
-            .map((g) => {
-              const group = g as { canonical?: unknown; members?: unknown };
-              const canonical =
-                typeof group.canonical === 'string'
-                  ? group.canonical.trim()
-                  : '';
-              const members = Array.isArray(group.members)
-                ? group.members
-                    .filter((m): m is string => typeof m === 'string')
-                    .map((m) => m.trim())
-                    .filter(Boolean)
-                : [];
-              return { canonical, members };
-            })
-            .filter((g) => g.canonical && g.members.length > 0)
-        : [];
+      const decision =
+        parsed.decision === 'match' || parsed.decision === 'reject'
+          ? parsed.decision
+          : 'new';
+      const reason =
+        typeof parsed.reason === 'string' && parsed.reason.trim()
+          ? parsed.reason.trim()
+          : decision;
 
-      const rejected = Array.isArray(parsed.rejected)
-        ? parsed.rejected
-            .map((r) => {
-              const rejection = r as { term?: unknown; reason?: unknown };
-              const term =
-                typeof rejection.term === 'string' ? rejection.term.trim() : '';
-              const reason =
-                typeof rejection.reason === 'string'
-                  ? rejection.reason.trim()
-                  : 'rejected';
-              return { term, reason };
-            })
-            .filter((r) => r.term)
-        : [];
+      // Only honour a match that names a real candidate id from the shortlist.
+      const candidateId =
+        typeof parsed.candidate_id === 'number' ? parsed.candidate_id : null;
+      const validIds = new Set(input.candidates.map((c) => c.id));
+      if (
+        decision === 'match' &&
+        (candidateId === null || !validIds.has(candidateId))
+      ) {
+        return {
+          decision: 'new',
+          candidateId: null,
+          reason: 'match_id_invalid',
+        };
+      }
 
-      return { groups, rejected };
+      return {
+        decision,
+        candidateId: decision === 'match' ? candidateId : null,
+        reason,
+      };
     } catch (error) {
-      this.logger.error('Failed to parse attribute ontology response', {
+      this.logger.error('Failed to parse attribute placement response', {
         correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'adjudicate_attributes',
+        operation: 'place_attribute',
         error:
           error instanceof Error
             ? { message: error.message, stack: error.stack, name: error.name }
             : { message: String(error) },
       });
-      // Fail closed: an unparseable plan must not mutate the ontology.
-      return { groups: [], rejected: [] };
+      // Fail closed: default to a non-destructive `new`.
+      return { decision: 'new', candidateId: null, reason: 'parse_error' };
     }
   }
 

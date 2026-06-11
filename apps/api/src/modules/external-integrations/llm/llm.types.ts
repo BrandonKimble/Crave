@@ -292,26 +292,21 @@ export interface LLMModerationResult {
   reason: string;
 }
 
-export interface LLMAttributeOntologyInput {
-  /** Already-canonical attribute names. Stable: never renamed or rejected. */
-  existing: string[];
-  /** New candidate terms awaiting a canonicalization decision. */
-  incoming: string[];
+export interface LLMAttributePlacementCandidate {
+  id: number;
+  name: string;
 }
 
-export interface LLMAttributeOntologyGroup {
-  canonical: string;
-  members: string[];
-}
-
-export interface LLMAttributeOntologyRejection {
+export interface LLMAttributePlacementInput {
   term: string;
-  reason: string;
+  kind: 'food_attribute' | 'restaurant_attribute';
+  candidates: LLMAttributePlacementCandidate[];
 }
 
-export interface LLMAttributeOntologyResult {
-  groups: LLMAttributeOntologyGroup[];
-  rejected: LLMAttributeOntologyRejection[];
+export interface LLMAttributePlacementResult {
+  decision: 'match' | 'new' | 'reject';
+  candidateId: number | null;
+  reason: string;
 }
 
 export interface LLMRestaurantPlaceChooserCandidate {

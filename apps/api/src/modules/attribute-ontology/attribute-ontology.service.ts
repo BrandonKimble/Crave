@@ -3,6 +3,7 @@ import { EntityType, Prisma } from '@prisma/client';
 import { LoggerService } from '../../shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LLMService } from '../external-integrations/llm/llm.service';
+import { EmbeddingService } from '../external-integrations/llm/embedding.service';
 
 /** Attribute entity types this service canonicalizes. */
 export type AttributeEntityType = 'food_attribute' | 'restaurant_attribute';
@@ -15,7 +16,6 @@ interface AttributeRow {
   entityId: string;
   name: string;
   status: string;
-  aliases: string[];
 }
 
 /** A pending entity confirmed as a brand-new canonical (status -> active). */
@@ -41,12 +41,6 @@ export interface PlannedRejection {
   reason: string;
 }
 
-/** A name the LLM returned that did not match any fetched entity — never acted on. */
-export interface UnresolvedTerm {
-  name: string;
-  context: 'group_member' | 'group_canonical' | 'rejected';
-}
-
 export interface CanonicalizationPlan {
   type: AttributeEntityType;
   scope: CanonicalizationScope;
@@ -54,7 +48,15 @@ export interface CanonicalizationPlan {
   promotions: PlannedPromotion[];
   merges: PlannedMerge[];
   rejections: PlannedRejection[];
-  unresolved: UnresolvedTerm[];
+}
+
+export interface BuildPlanOptions {
+  /** How many embedding-nearest canonicals to offer the LLM per decision. */
+  shortlistK?: number;
+  /** Terms placed concurrently against a frozen canonical snapshot per batch. */
+  batchSize?: number;
+  /** Max in-flight placement calls. */
+  concurrency?: number;
 }
 
 export interface ApplyResult {
@@ -69,25 +71,35 @@ export interface ApplyResult {
   refsRemoved: number;
 }
 
-const DEFAULT_CHUNK_SIZE = 120;
+/** A canonical anchor: an active (or newly-promoted) attribute + its embedding. */
+interface Canonical {
+  entityId: string;
+  name: string;
+  vector: number[];
+}
+
+const DEFAULT_SHORTLIST_K = 10;
+const DEFAULT_BATCH_SIZE = 24;
+const DEFAULT_CONCURRENCY = 12;
 
 /** Thrown to abort the apply transaction in verify (dry) mode. */
 class PlanRollback extends Error {}
 
 /**
- * Builds (and, later, applies) the canonical attribute ontology.
+ * Builds (and applies) the canonical attribute ontology via entity resolution.
  *
  * The ontology has no separate table: the canonical vocabulary IS the set of
  * `core_entities` rows of the given attribute type with `status = 'active'`,
- * each carrying its synonyms in `aliases`. Collection coins new attributes as
- * `pending` (quarantined from reads); this service adjudicates them — promoting
- * genuinely new canonicals, merging synonyms into existing canonicals, and
- * rejecting junk.
+ * each carrying its synonyms in `aliases`.
  *
- * Increment 2a (this file): planning only. `buildPlan` fetches, calls the LLM
- * adjudicator (chunked), resolves the returned names back to concrete entity
- * rows, and returns a fully-resolved, non-destructive plan. Applying the plan
- * (transactional promote / merge-with-reference-repoint / reject) lands next.
+ * Method: embeddings for **recall** (a term's semantically-nearest canonicals,
+ * even when spelled differently — "al fresco" ≈ "outdoor seating"), then a narrow
+ * LLM **precision** decision placing each term against that shortlist — match an
+ * existing canonical / become a new one / reject as junk. This separates same-axis
+ * opposite-value pairs ("thick" vs "thin") that pure embedding distance cannot, and
+ * is order-stable (no list-clustering). The same routine serves both regimes:
+ * bootstrap (`scope: 'all'`, no seed canonicals) and steady-state (`scope:
+ * 'pending'`, placing new pending terms against the live active ontology).
  */
 @Injectable()
 export class AttributeOntologyService {
@@ -96,6 +108,7 @@ export class AttributeOntologyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly llmService: LLMService,
+    private readonly embeddingService: EmbeddingService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('AttributeOntologyService');
@@ -104,27 +117,24 @@ export class AttributeOntologyService {
   /**
    * Compute a canonicalization plan without mutating anything.
    *
+   * Embeds every candidate (and the seed canonicals), then places each candidate
+   * against its embedding-nearest canonicals via a narrow LLM decision. Candidates
+   * are processed in batches against a frozen canonical snapshot so a batch runs
+   * concurrently; a confirmed `new` canonical is visible to subsequent batches.
+   *
    * @param type   which attribute vocabulary to canonicalize
-   * @param scope  'pending' (steady state) or 'all' (one-time bulk re-cluster)
+   * @param scope  'pending' (steady state) or 'all' (one-time bootstrap)
    */
   async buildPlan(
     type: AttributeEntityType,
     scope: CanonicalizationScope = 'pending',
-    chunkSize: number = DEFAULT_CHUNK_SIZE,
+    options: BuildPlanOptions = {},
   ): Promise<CanonicalizationPlan> {
+    const shortlistK = options.shortlistK ?? DEFAULT_SHORTLIST_K;
+    const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
+    const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
+
     const rows = await this.fetchAttributeRows(type);
-
-    // Index every entity by normalized name and alias so we can resolve the
-    // LLM's verbatim term echoes back to concrete rows. First writer wins on a
-    // collision so a stable canonical isn't shadowed by a later duplicate.
-    const byName = new Map<string, AttributeRow>();
-    for (const row of rows) {
-      for (const key of [row.name, ...row.aliases]) {
-        const norm = this.normalize(key);
-        if (norm && !byName.has(norm)) byName.set(norm, row);
-      }
-    }
-
     const activeRows = rows.filter((r) => r.status === 'active');
     const incomingRows =
       scope === 'all' ? rows : rows.filter((r) => r.status === 'pending');
@@ -136,7 +146,6 @@ export class AttributeOntologyService {
       promotions: [],
       merges: [],
       rejections: [],
-      unresolved: [],
     };
 
     if (incomingRows.length === 0) {
@@ -147,173 +156,128 @@ export class AttributeOntologyService {
       return plan;
     }
 
-    // Seed the "existing canonical" context. In 'all' scope there is no frozen
-    // anchor, so canonicals emerge from the data; chunks accumulate confirmed
-    // canonicals so later chunks can merge into earlier ones.
-    const existingNames = new Set<string>(
-      scope === 'all' ? [] : activeRows.map((r) => r.name),
+    // Embed every name we will reason over: the candidates plus (in 'pending'
+    // scope) the live active canonicals they are placed against.
+    const seedRows = scope === 'all' ? [] : activeRows;
+    const namesToEmbed = Array.from(
+      new Set([
+        ...incomingRows.map((r) => r.name),
+        ...seedRows.map((r) => r.name),
+      ]),
     );
+    const vectorList = await this.embeddingService.embed(namesToEmbed);
+    const vectorByName = new Map<string, number[]>();
+    namesToEmbed.forEach((name, i) => vectorByName.set(name, vectorList[i]));
 
-    const incomingNames = incomingRows.map((r) => r.name);
-    // Only these entities may be merged away or rejected; existing actives in
-    // 'pending' scope are context and must never be retired by the LLM.
-    const incomingIds = new Set(incomingRows.map((r) => r.entityId));
-    const chunks = this.chunk(incomingNames, chunkSize);
-    // Entity ids already given a role (survivor / merged / rejected / promoted)
-    // across ALL chunks — prevents any entity playing two roles between chunks.
-    const claimed = new Set<string>();
+    // The growing set of canonical anchors. In 'all' scope it starts empty and
+    // canonicals emerge; in 'pending' scope it starts as the live ontology.
+    const canonicals: Canonical[] = seedRows.map((r) => ({
+      entityId: r.entityId,
+      name: r.name,
+      vector: vectorByName.get(r.name) ?? [],
+    }));
 
-    for (const [chunkIndex, incoming] of chunks.entries()) {
-      const result = await this.llmService.adjudicateAttributes({
-        existing: Array.from(existingNames),
-        incoming,
+    const batches = this.chunk(incomingRows, batchSize);
+    let processed = 0;
+    for (const batch of batches) {
+      // Freeze the candidate pool for the batch so its placements are independent.
+      const snapshot = canonicals.slice();
+      const decisions = await this.mapLimit(batch, concurrency, async (row) => {
+        const shortlist = this.nearest(
+          vectorByName.get(row.name) ?? [],
+          snapshot,
+          shortlistK,
+        );
+        const result = await this.llmService.placeAttribute({
+          term: row.name,
+          kind: type,
+          candidates: shortlist.map((c, i) => ({ id: i, name: c.name })),
+        });
+        return { row, result, shortlist };
       });
 
-      this.foldResultIntoPlan(
-        result,
-        byName,
-        existingNames,
-        incomingIds,
-        claimed,
-        plan,
-      );
+      for (const { row, result, shortlist } of decisions) {
+        if (result.decision === 'reject') {
+          plan.rejections.push({
+            entityId: row.entityId,
+            name: row.name,
+            reason: result.reason,
+          });
+        } else if (
+          result.decision === 'match' &&
+          result.candidateId !== null &&
+          shortlist[result.candidateId]
+        ) {
+          const target = shortlist[result.candidateId];
+          plan.merges.push({
+            canonicalEntityId: target.entityId,
+            canonicalName: target.name,
+            mergedEntityId: row.entityId,
+            mergedName: row.name,
+          });
+        } else {
+          // new canonical: promote if it was pending; always becomes an anchor.
+          if (row.status === 'pending') {
+            plan.promotions.push({
+              entityId: row.entityId,
+              name: row.name,
+              aliases: [],
+            });
+          }
+          canonicals.push({
+            entityId: row.entityId,
+            name: row.name,
+            vector: vectorByName.get(row.name) ?? [],
+          });
+        }
+      }
 
-      this.logger.info('Canonicalization chunk adjudicated', {
+      processed += batch.length;
+      this.logger.info('Canonicalization batch placed', {
         type,
         scope,
-        chunk: `${chunkIndex + 1}/${chunks.length}`,
-        chunkSize: incoming.length,
-        groups: result.groups.length,
-        rejected: result.rejected.length,
+        processed: `${processed}/${incomingRows.length}`,
+        canonicals: canonicals.length,
       });
     }
 
-    this.logPlanSummary(plan);
+    this.logPlanSummary(plan, canonicals.length);
     return plan;
   }
 
-  private foldResultIntoPlan(
-    result: {
-      groups: { canonical: string; members: string[] }[];
-      rejected: { term: string; reason: string }[];
-    },
-    byName: Map<string, AttributeRow>,
-    existingNames: Set<string>,
-    incomingIds: Set<string>,
-    claimed: Set<string>,
-    plan: CanonicalizationPlan,
-  ): void {
-    for (const group of result.groups) {
-      // Members must be unclaimed incoming candidates. An existing-context term
-      // that slips into members is dropped here — it can only be a merge target.
-      const memberRows = this.resolveRows(
-        group.members,
-        byName,
-        plan,
-        'group_member',
-      ).filter((r) => incomingIds.has(r.entityId) && !claimed.has(r.entityId));
-      if (memberRows.length === 0) continue;
-
-      // The canonical is either an existing attribute outside the member set
-      // (a merge target) or one of the members. If it resolves to neither, the
-      // LLM coined a name we can't map — keep the first member as the survivor.
-      const canonRow = byName.get(this.normalize(group.canonical));
-      const canonIsMember =
-        canonRow !== undefined &&
-        memberRows.some((m) => m.entityId === canonRow.entityId);
-      let target: AttributeRow;
-      if (canonRow && !canonIsMember) {
-        target = canonRow; // existing canonical → members merge into it
-      } else if (canonRow) {
-        target = canonRow; // canonical is one of the members
-      } else {
-        target = memberRows[0];
-        plan.unresolved.push({
-          name: group.canonical,
-          context: 'group_canonical',
-        });
-      }
-
-      // Promote only when the survivor is itself an incoming candidate (a member)
-      // that is still pending — i.e. a brand-new canonical entering the ontology.
-      const targetIsMember = memberRows.some(
-        (m) => m.entityId === target.entityId,
-      );
-      if (
-        targetIsMember &&
-        target.status === 'pending' &&
-        !claimed.has(target.entityId)
-      ) {
-        plan.promotions.push({
-          entityId: target.entityId,
-          name: target.name,
-          aliases: memberRows
-            .filter((r) => r.entityId !== target.entityId)
-            .map((r) => r.name),
-        });
-      }
-      claimed.add(target.entityId);
-
-      for (const member of memberRows) {
-        if (member.entityId === target.entityId) continue;
-        if (claimed.has(member.entityId)) continue;
-        plan.merges.push({
-          canonicalEntityId: target.entityId,
-          canonicalName: target.name,
-          mergedEntityId: member.entityId,
-          mergedName: member.name,
-        });
-        claimed.add(member.entityId);
-      }
-
-      // The surviving canonical name is now context for later chunks.
-      existingNames.add(target.name);
-    }
-
-    for (const rejection of result.rejected) {
-      const row = this.resolveRow(rejection.term, byName, plan, 'rejected');
-      // Reject only unclaimed incoming candidates. Existing-context actives
-      // (in 'pending' scope) are stable and are never retired by the LLM; in
-      // 'all' scope every active IS a candidate, so this gate permits cleanup.
-      if (!row || claimed.has(row.entityId) || !incomingIds.has(row.entityId)) {
-        continue;
-      }
-      plan.rejections.push({
-        entityId: row.entityId,
-        name: row.name,
-        reason: rejection.reason,
-      });
-      claimed.add(row.entityId);
-    }
+  /** Top-K canonicals by cosine similarity to a query vector. */
+  private nearest(
+    query: number[],
+    canonicals: Canonical[],
+    k: number,
+  ): Canonical[] {
+    if (query.length === 0 || canonicals.length === 0) return [];
+    return canonicals
+      .map((c) => ({ c, score: EmbeddingService.cosine(query, c.vector) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, k)
+      .map((x) => x.c);
   }
 
-  private resolveRows(
-    names: string[],
-    byName: Map<string, AttributeRow>,
-    plan: CanonicalizationPlan,
-    context: UnresolvedTerm['context'],
-  ): AttributeRow[] {
-    const rows: AttributeRow[] = [];
-    const seen = new Set<string>();
-    for (const name of names) {
-      const row = this.resolveRow(name, byName, plan, context);
-      if (row && !seen.has(row.entityId)) {
-        rows.push(row);
-        seen.add(row.entityId);
-      }
-    }
-    return rows;
-  }
-
-  private resolveRow(
-    name: string,
-    byName: Map<string, AttributeRow>,
-    plan: CanonicalizationPlan,
-    context: UnresolvedTerm['context'],
-  ): AttributeRow | undefined {
-    const row = byName.get(this.normalize(name));
-    if (!row) plan.unresolved.push({ name, context });
-    return row;
+  /** Run an async mapper over items with bounded concurrency, preserving order. */
+  private async mapLimit<T, R>(
+    items: T[],
+    limit: number,
+    mapper: (item: T) => Promise<R>,
+  ): Promise<R[]> {
+    const results = new Array<R>(items.length);
+    let cursor = 0;
+    const workers = Array.from(
+      { length: Math.min(limit, items.length) },
+      async () => {
+        while (cursor < items.length) {
+          const index = cursor++;
+          results[index] = await mapper(items[index]);
+        }
+      },
+    );
+    await Promise.all(workers);
+    return results;
   }
 
   private async fetchAttributeRows(
@@ -321,17 +285,19 @@ export class AttributeOntologyService {
   ): Promise<AttributeRow[]> {
     const rows = await this.prisma.entity.findMany({
       where: { type: type as EntityType },
-      select: { entityId: true, name: true, status: true, aliases: true },
+      select: { entityId: true, name: true, status: true },
     });
     return rows.map((r) => ({
       entityId: r.entityId,
       name: r.name,
       status: String(r.status),
-      aliases: r.aliases ?? [],
     }));
   }
 
-  private logPlanSummary(plan: CanonicalizationPlan): void {
+  private logPlanSummary(
+    plan: CanonicalizationPlan,
+    canonicalCount: number,
+  ): void {
     this.logger.info('Canonicalization plan built (dry run — no mutations)', {
       type: plan.type,
       scope: plan.scope,
@@ -339,7 +305,7 @@ export class AttributeOntologyService {
       promotions: plan.promotions.length,
       merges: plan.merges.length,
       rejections: plan.rejections.length,
-      unresolved: plan.unresolved.length,
+      canonicals: canonicalCount,
     });
   }
 
@@ -523,14 +489,6 @@ export class AttributeOntologyService {
        WHERE $1::uuid = ANY(restaurant_attributes)`,
       id,
     );
-  }
-
-  private normalize(value: string): string {
-    return value
-      .toLowerCase()
-      .normalize('NFKD')
-      .replace(/[^a-z0-9]+/g, ' ')
-      .trim();
   }
 
   private chunk<T>(items: T[], size: number): T[][] {

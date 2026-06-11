@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
 import { LLMService } from './llm.service';
+import { EmbeddingService } from './embedding.service';
 import { LLMChunkingService } from './llm-chunking.service';
 import { LLMConcurrentProcessingService } from './llm-concurrent-processing.service';
 import { SmartLLMProcessor } from './rate-limiting/smart-llm-processor.service';
@@ -20,6 +21,7 @@ import { SharedModule } from '../../../shared/shared.module';
   ],
   providers: [
     LLMService,
+    EmbeddingService,
     LLMChunkingService,
     LLMConcurrentProcessingService,
     CentralizedRateLimiter,
@@ -28,6 +30,7 @@ import { SharedModule } from '../../../shared/shared.module';
   ],
   exports: [
     LLMService,
+    EmbeddingService,
     LLMChunkingService,
     LLMConcurrentProcessingService,
     CentralizedRateLimiter,
