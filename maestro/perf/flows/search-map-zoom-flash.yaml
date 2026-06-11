@@ -1,0 +1,30 @@
+appId: com.brandonkimble.cravesearch
+---
+# Dedicated zoom-in/zoom-out LOD flash probe. Submits, then repeatedly zooms all
+# the way out and back in at a FIXED center. The live_lod_transition_contract's
+# flashReversalCount is the signal: it counts pins whose opacity crossfade reversed
+# mid-fade (the "rank > budget pins all jump to full opacity then snap out together"
+# batch flash). flashReversalCount must stay 0; any nonzero = a batch reversed.
+# The per-marker lodTransitionTrace (s=start / t=target / c=current opacity) shows
+# exactly which markers jumped and where. Run with a search_map_lod_ scenario name
+# so VisualReadiness attribution is active (else the contracts are gated off).
+- tapOn: { text: 'Close restaurant', optional: true }
+- tapOn: { text: 'Close results', optional: true }
+- tapOn: { text: 'Close polls', optional: true }
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 45000 }
+- extendedWaitUntil: { visible: 'Show best restaurants here', timeout: 45000 }
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=40.7550&lng=-73.9800&zoom=13.2&label=seed'
+- waitForAnimationToEnd: { timeout: 1600 }
+- openLink: 'crave://perf-scenario-command?action=submit_shortcut_restaurants'
+- extendedWaitUntil: { visible: 'Close results', timeout: 20000 }
+- waitForAnimationToEnd: { timeout: 3500 }
+- openLink: 'crave://perf-scenario-mark?phase=measured_repeat_loop_start&label=search_map_lod_zoom_flash'
+- repeat:
+    times: 3
+    commands:
+      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=9.5&cameraDurationMs=1100&label=zoomout'
+      - waitForAnimationToEnd: { timeout: 1800 }
+      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=13.2&cameraDurationMs=1100&label=zoomin'
+      - waitForAnimationToEnd: { timeout: 1800 }
+- openLink: 'crave://perf-scenario-mark?phase=measured_repeat_loop_end&label=search_map_lod_zoom_flash'
+- waitForAnimationToEnd: { timeout: 1200 }
