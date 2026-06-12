@@ -31,10 +31,15 @@ a search** — same property, same direction. Concretely, they must share BOTH:
 
 Sharing only the axis is NOT a match. This is the trap to avoid:
 
-- `thick` vs `thin`, `mini` vs `giant`, `cheap` vs `expensive`, `mild` vs `spicy`,
-  `lunch` vs `dinner` — same axis, **opposite value** → these are DIFFERENT filters.
-  Never match them. A diner filtering for "thin crust" does not want "thick crust".
-- `quiet` vs `lively`, `casual` vs `upscale`, `quick` vs `leisurely` — likewise distinct.
+- **Opposite values** — `thick` vs `thin`, `mini` vs `giant`, `cheap` vs `expensive`,
+  `mild` vs `spicy`, `lunch` vs `dinner`. A diner filtering for "thin crust" does not want
+  "thick crust". Never match these.
+- **Different degrees of the same axis** — `warm` vs `hot` vs `scalding`, `damp` vs `wet`,
+  `spicy` vs `extra spicy`. Adjacent is still distinct: warm is not hot. Keep separate unless
+  truly interchangeable.
+- **A shared word spanning two axes** — `hot` means temperature on one axis and spice on
+  another; do not match `spicy` to a temperature `hot`, or a temperature `warm` to a spice
+  term. Judge by meaning, not the surface word.
 
 A real match is same axis **and** same value, regardless of spelling:
 
@@ -43,10 +48,10 @@ A real match is same axis **and** same value, regardless of spelling:
 - `all you can eat` = `acye` = `bottomless` (same offer).
 - `gluten free` = `gluten-free` = `no gluten` (spelling variants).
 
-Granularity and intensity: a more specific term matches a broader candidate only when the
-diner would not distinguish them (`patio seating` → `outdoor seating`: yes). If the
-specific term is a genuinely separate, useful filter, prefer `new` (`rooftop` is not just
-`outdoor seating`; `extra spicy` may be a real step beyond `spicy`).
+Granularity: a more specific term matches a broader candidate only when the diner would not
+distinguish them (`patio seating` → `outdoor seating`: yes). If the specific term is a
+genuinely separate, useful filter, prefer `new` (`rooftop` is not just `outdoor seating`).
+Watch negation degree too: `not too sweet` (mildly sweet) is not `not sweet` (unsweet).
 
 ## When to choose `new` vs `match`
 

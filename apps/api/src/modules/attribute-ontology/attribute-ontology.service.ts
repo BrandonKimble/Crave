@@ -4,6 +4,7 @@ import { LoggerService } from '../../shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { EmbeddingService } from '../external-integrations/llm/embedding.service';
+import { LLMAttributePlacementResult } from '../external-integrations/llm/llm.types';
 
 /** Attribute entity types this service canonicalizes. */
 export type AttributeEntityType = 'food_attribute' | 'restaurant_attribute';
@@ -76,6 +77,8 @@ interface Canonical {
   entityId: string;
   name: string;
   vector: number[];
+  /** A pre-existing active canonical (stable); false for ones created this run. */
+  isSeed: boolean;
 }
 
 const DEFAULT_SHORTLIST_K = 10;
@@ -175,26 +178,18 @@ export class AttributeOntologyService {
       entityId: r.entityId,
       name: r.name,
       vector: vectorByName.get(r.name) ?? [],
+      isSeed: true,
     }));
 
+    // PASS 1 — place each candidate against its nearest canonicals.
     const batches = this.chunk(incomingRows, batchSize);
     let processed = 0;
     for (const batch of batches) {
       // Freeze the candidate pool for the batch so its placements are independent.
       const snapshot = canonicals.slice();
-      const decisions = await this.mapLimit(batch, concurrency, async (row) => {
-        const shortlist = this.nearest(
-          vectorByName.get(row.name) ?? [],
-          snapshot,
-          shortlistK,
-        );
-        const result = await this.llmService.placeAttribute({
-          term: row.name,
-          kind: type,
-          candidates: shortlist.map((c, i) => ({ id: i, name: c.name })),
-        });
-        return { row, result, shortlist };
-      });
+      const decisions = await this.mapLimit(batch, concurrency, (row) =>
+        this.place(row, type, vectorByName, snapshot, shortlistK),
+      );
 
       for (const { row, result, shortlist } of decisions) {
         if (result.decision === 'reject') {
@@ -228,6 +223,7 @@ export class AttributeOntologyService {
             entityId: row.entityId,
             name: row.name,
             vector: vectorByName.get(row.name) ?? [],
+            isSeed: false,
           });
         }
       }
@@ -241,8 +237,112 @@ export class AttributeOntologyService {
       });
     }
 
-    this.logPlanSummary(plan, canonicals.length);
+    // PASS 2 — dedupe canonicals created this run against the rest. Batching in
+    // pass 1 lets two synonyms in different batches both become canonicals; here
+    // each new canonical is re-placed against the others, and a match folds it in
+    // (re-pointing pass-1 merges + dropping its promotion). Seeds are stable.
+    const survivors = await this.dedupeNewCanonicals(
+      canonicals,
+      type,
+      shortlistK,
+      plan,
+    );
+
+    this.logPlanSummary(plan, survivors);
     return plan;
+  }
+
+  /** Place one row against a frozen canonical snapshot (pass-1 unit of work). */
+  private async place(
+    row: AttributeRow,
+    type: AttributeEntityType,
+    vectorByName: Map<string, number[]>,
+    snapshot: Canonical[],
+    shortlistK: number,
+  ): Promise<{
+    row: AttributeRow;
+    result: LLMAttributePlacementResult;
+    shortlist: Canonical[];
+  }> {
+    const shortlist = this.nearest(
+      vectorByName.get(row.name) ?? [],
+      snapshot,
+      shortlistK,
+    );
+    const result = await this.llmService.placeAttribute({
+      term: row.name,
+      kind: type,
+      candidates: shortlist.map((c, i) => ({ id: i, name: c.name })),
+    });
+    return { row, result, shortlist };
+  }
+
+  /**
+   * Fold near-duplicate canonicals created this run into earlier survivors.
+   * Processes new canonicals sequentially against the surviving pool (seeds +
+   * already-kept new ones); a `match` re-points that canonical's pass-1 merges to
+   * the target, drops its promotion, and records it as a merge. Returns the final
+   * surviving-canonical count.
+   */
+  private async dedupeNewCanonicals(
+    canonicals: Canonical[],
+    type: AttributeEntityType,
+    shortlistK: number,
+    plan: CanonicalizationPlan,
+  ): Promise<number> {
+    const survivors = canonicals.filter((c) => c.isSeed);
+    const fresh = canonicals.filter((c) => !c.isSeed);
+    let folded = 0;
+
+    for (const canonical of fresh) {
+      const shortlist = this.nearest(canonical.vector, survivors, shortlistK);
+      if (shortlist.length === 0) {
+        survivors.push(canonical);
+        continue;
+      }
+      const result = await this.llmService.placeAttribute({
+        term: canonical.name,
+        kind: type,
+        candidates: shortlist.map((c, i) => ({ id: i, name: c.name })),
+      });
+
+      if (
+        result.decision === 'match' &&
+        result.candidateId !== null &&
+        shortlist[result.candidateId]
+      ) {
+        const target = shortlist[result.candidateId];
+        // Re-point every pass-1 merge that pointed at this canonical to target.
+        for (const merge of plan.merges) {
+          if (merge.canonicalEntityId === canonical.entityId) {
+            merge.canonicalEntityId = target.entityId;
+            merge.canonicalName = target.name;
+          }
+        }
+        // A new canonical is never a real promotion if it folds away.
+        plan.promotions = plan.promotions.filter(
+          (p) => p.entityId !== canonical.entityId,
+        );
+        plan.merges.push({
+          canonicalEntityId: target.entityId,
+          canonicalName: target.name,
+          mergedEntityId: canonical.entityId,
+          mergedName: canonical.name,
+        });
+        folded++;
+      } else {
+        survivors.push(canonical);
+      }
+    }
+
+    if (folded > 0) {
+      this.logger.info('Canonical dedupe folded near-duplicates', {
+        type,
+        folded,
+        survivors: survivors.length,
+      });
+    }
+    return survivors.length;
   }
 
   /** Top-K canonicals by cosine similarity to a query vector. */

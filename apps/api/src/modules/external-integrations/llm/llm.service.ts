@@ -1227,7 +1227,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: 1,
-      maxOutputTokens: 512,
+      // gemini-3 thinking tokens count against this ceiling, so a tiny JSON reply
+      // still needs headroom (512 truncated mid-thought → fail-closed to `new`).
+      maxOutputTokens: 2048,
       responseMimeType: 'application/json',
       responseJsonSchema: ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA,
     };
