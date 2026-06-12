@@ -37,6 +37,7 @@ import { ReplayService } from './replay.service';
 import { RestaurantEnrichmentModule } from '../../restaurant-enrichment/restaurant-enrichment.module';
 import { AnalyticsModule } from '../../analytics/analytics.module';
 import { MarketsModule } from '../../markets/markets.module';
+import { AttributeOntologyModule } from '../../attribute-ontology/attribute-ontology.module';
 import { BullQueueMetricsService } from './bull-queue-metrics.service';
 import { isWorkerRuntime } from '../../../shared/utils/process-role';
 
@@ -130,6 +131,7 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
     ExternalIntegrationsModule, // Provides LLMService for integration
     EntityResolverModule, // Provides EntityResolutionService for unified processing
     QualityScoreModule, // Provides QualityScoreService for PRD Section 5.3 compliance
+    AttributeOntologyModule, // Adjudicates pending attributes after collection batches
     PublicCraveScoreModule,
     RepositoryModule, // Provides repository services for database access
     BullModule.registerQueue({

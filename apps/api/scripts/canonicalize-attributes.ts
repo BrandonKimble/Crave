@@ -97,6 +97,14 @@ async function bootstrap(): Promise<void> {
     out(`  promotions   ${plan.promotions.length}`);
     out(`  merges       ${plan.merges.length}`);
     out(`  rejections   ${plan.rejections.length}`);
+    out(`  renames      ${plan.renames.length}`);
+
+    if (plan.renames.length > 0) {
+      out('---- renames (display label) ----');
+      for (const r of sample(plan.renames)) {
+        out(`  "${r.from}"  =>  "${r.to}"`);
+      }
+    }
 
     if (plan.merges.length > 0) {
       out('---- merges (merged -> canonical) ----');
@@ -123,6 +131,7 @@ async function bootstrap(): Promise<void> {
     out(`  promotions     ${result.promotions}`);
     out(`  merges         ${result.merges}`);
     out(`  rejections     ${result.rejections}`);
+    out(`  renames        ${result.renames}`);
     out(`  refsRepointed  ${result.refsRepointed}`);
     out(`  refsRemoved    ${result.refsRemoved}`);
   } finally {

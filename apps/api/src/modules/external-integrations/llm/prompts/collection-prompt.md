@@ -281,36 +281,29 @@ Before handing tokens to composition, peel away modifiers that are attributes ra
 - `food_attribute`: dietary, preparation, sensory, or contextual terms that apply to food items (connection-scoped).
 - `restaurant_attribute`: descriptive terms that apply to restaurants (restaurant-scoped).
 
-### 3.4 Context-Driven Attribute Classification
+### 3.4 What Qualifies as an Attribute (the bar)
 
-Use local context to decide whether a term is a category (food) or an attribute (food/restaurant). Lists highlight patterns; rely on context, not keyword matching.
+An attribute is a **filterable property**: a reusable axis-plus-value a diner could search or filter by (diet, preparation, texture, flavor, temperature, portion, setting, amenity, service style, timing, price level). Before emitting any term into an attribute array, apply this test: _would a diner type this to narrow a search, and could many different dishes/restaurants share it?_
 
-- Only food types can be categories: nouns representing food items (e.g., pizza, taco, burger, sandwich, soup, salad, pasta, ramen, sushi, noodles, dessert).
-- Primarily food-scoped attributes (examples):
-  - Preparation methods (e.g., grilled, fried, smoked, steamed, baked, roasted, house-made, raw)
-  - Texture/consistency (e.g., tender, juicy, flaky, smooth, chunky, crisp/crunchy, creamy)
-  - Flavor profiles (e.g., sweet, savory, tangy, rich, mild, spicy, umami, tart, bitter)
-  - Portion context (e.g., generous portions, shareable, bite-sized)
-- Primarily restaurant-scoped attributes (examples):
-  - Physical features (e.g., patio, rooftop, outdoor, bar seating, view, fireplace, drive-through)
-  - Ambiance (e.g., romantic, quiet, lively, cozy, intimate, upscale, casual)
-  - Service model (e.g., counter service, full service, fast casual, fine dining, quick service)
-  - Operational (e.g., BYOB, reservations required, walk-ins only, takeout friendly, delivery available)
-  - Group dynamics (e.g., family-friendly, date night spot, business lunch venue, large groups, communal seating)
+- **Praise and sentiment are never attributes.** "amazing", "awesome", "solid", "top notch", "delicious", "favorite", "best", "high quality", "well crafted" express how good something is, not what it is. Sentiment's job in this pipeline is the eligibility/intent check (Step 1) and `general_praise` (Step 6) — never the attribute arrays. Drop bare praise entirely.
+- **Ingredients are not attributes.** "mayo", "coconut", "basil" belong in food composition (`food`/`food_categories`, Step 4), not attribute arrays. Dietary and sourcing _claims_ ARE attributes ("vegan", "gluten free", "organic", "grass-fed") because diners filter by them.
+- **Specific named components are not attributes.** "vodka sauce", "fresh mozzarella", "with ice cream" describe a particular dish's makeup → composition, not filters.
+- Only food types can be categories: nouns representing food items (e.g., pizza, taco, burger, sandwich, soup, salad). Cuisines, meal periods, and service styles are never categories.
 
 ### 3.5 Scope Determination Principle
 
-Determine scope by usage:
+Scope follows **what the property describes**, not where the word sits in the sentence:
 
-- "Italian pasta" -> `food_attribute`; "Italian restaurant" -> `restaurant_attribute`.
-- "house-made" or "spicy" about a dish -> `food_attribute`; "great service", "cozy" -> `restaurant_attribute`.
+- **Dish property → `food_attribute`**: anything that could appear in a menu-item description — preparation ("grilled", "house-made"), texture ("crispy", "creamy"), flavor ("spicy", "smoky"), temperature, portion ("generous portions", "shareable"), dietary ("vegan", "gluten free").
+- **Place property → `restaurant_attribute`**: anything that would stay true if the menu changed — setting/physical ("patio", "rooftop", "view"), ambiance ("romantic", "cozy", "lively"), service model ("counter service", "fine dining"), operational ("BYOB", "reservations required", "takeout friendly"), group fit ("family-friendly", "date night spot"), **price/value ("cheap", "good value", "expensive", "mid-tier")**, and **accessibility**. Price talk about a specific dish is still a place-level signal — scope it to the restaurant.
+- Usage decides for cuisine-like modifiers: "Italian pasta" → `food_attribute`; "Italian restaurant" → `restaurant_attribute`.
+- **Meal periods and serving contexts are dual-scope by usage** ("breakfast", "brunch", "lunch", "dinner", "late-night", "happy hour", "tasting"): tied to a dish ("breakfast burrito", "happy hour oysters", "lunch prix fixe") → `food_attribute`, so time-of-day variants collapse onto one dish (`food: "prix fixe"`, `food_attributes: ["lunch"]`); describing the place ("great happy hour", "open late") → `restaurant_attribute`.
 
-### 3.6 Food Attribute Guidance
+### 3.6 Attribute Emission Guidance
 
-- Capture both preference-oriented signals (dietary/cuisine/filter words like "vegan", "gluten free", "breakfast") and descriptive language ("crispy", "rich", "smoky") in the single `food_attributes` array.
-- Explicitly treat meal-period terms ("breakfast", "brunch", "lunch", "dinner", "late-night", "happy hour", "tasting", etc.) as food attributes so time-of-day variants collapse onto a single dish (e.g., `food: "prix fixe"`, `food_attributes: ["lunch"]`).
-- Keep modifiers that truly define the dish (e.g., "fish sauce wings") with the food tokens; only peel off adjectives/adverbs that describe qualities, techniques, context, or filters.
+- Keep modifiers that truly define the dish (e.g., "fish sauce wings") with the food tokens; only peel off modifiers that pass the 3.4 filterable bar.
 - When multiple attributes apply, include each one separately so downstream systems can match on any of them.
+- When a candidate modifier fails the 3.4 bar (praise, ingredient, vague evaluation), drop it — do not emit it on either side.
 
 ### 3.7 Normalization & Outputs
 

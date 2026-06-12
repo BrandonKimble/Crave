@@ -42,6 +42,13 @@ export interface PlannedRejection {
   reason: string;
 }
 
+/** A surviving canonical relabeled to its group's clearest display name. */
+export interface PlannedRename {
+  entityId: string;
+  from: string;
+  to: string;
+}
+
 export interface CanonicalizationPlan {
   type: AttributeEntityType;
   scope: CanonicalizationScope;
@@ -49,6 +56,7 @@ export interface CanonicalizationPlan {
   promotions: PlannedPromotion[];
   merges: PlannedMerge[];
   rejections: PlannedRejection[];
+  renames: PlannedRename[];
 }
 
 export interface BuildPlanOptions {
@@ -66,6 +74,7 @@ export interface ApplyResult {
   promotions: number;
   merges: number;
   rejections: number;
+  renames: number;
   /** Connection/entity rows whose attribute arrays were re-pointed (merge). */
   refsRepointed: number;
   /** Connection/entity rows an id was stripped from (reject). */
@@ -149,6 +158,7 @@ export class AttributeOntologyService {
       promotions: [],
       merges: [],
       rejections: [],
+      renames: [],
     };
 
     if (incomingRows.length === 0) {
@@ -248,8 +258,47 @@ export class AttributeOntologyService {
       plan,
     );
 
-    this.logPlanSummary(plan, survivors);
+    // PASS 3 — name the new groups. Pass 1 makes whichever synonym arrived first
+    // the label ("huge" beating "generous portion"); once the full group is known,
+    // let the LLM pick the clearest consumer-facing display name. Display-only:
+    // matching weighs name and aliases equally, but autocomplete and tag chips
+    // render the name. Seeds keep their live labels.
+    await this.nameNewCanonicals(survivors, type, plan);
+
+    this.logPlanSummary(plan, survivors.length);
     return plan;
+  }
+
+  /** Choose display names for non-seed canonicals that absorbed synonyms. */
+  private async nameNewCanonicals(
+    survivors: Canonical[],
+    type: AttributeEntityType,
+    plan: CanonicalizationPlan,
+  ): Promise<void> {
+    const mergedNamesByCanonical = new Map<string, string[]>();
+    for (const merge of plan.merges) {
+      const list = mergedNamesByCanonical.get(merge.canonicalEntityId) ?? [];
+      list.push(merge.mergedName);
+      mergedNamesByCanonical.set(merge.canonicalEntityId, list);
+    }
+
+    for (const canonical of survivors) {
+      if (canonical.isSeed) continue;
+      const groupNames = mergedNamesByCanonical.get(canonical.entityId);
+      if (!groupNames || groupNames.length === 0) continue;
+
+      const chosen = await this.llmService.chooseAttributeName({
+        kind: type,
+        names: [canonical.name, ...groupNames],
+      });
+      if (chosen && chosen !== canonical.name) {
+        plan.renames.push({
+          entityId: canonical.entityId,
+          from: canonical.name,
+          to: chosen,
+        });
+      }
+    }
   }
 
   /** Place one row against a frozen canonical snapshot (pass-1 unit of work). */
@@ -281,15 +330,15 @@ export class AttributeOntologyService {
    * Fold near-duplicate canonicals created this run into earlier survivors.
    * Processes new canonicals sequentially against the surviving pool (seeds +
    * already-kept new ones); a `match` re-points that canonical's pass-1 merges to
-   * the target, drops its promotion, and records it as a merge. Returns the final
-   * surviving-canonical count.
+   * the target, drops its promotion, and records it as a merge. Returns the
+   * surviving canonicals.
    */
   private async dedupeNewCanonicals(
     canonicals: Canonical[],
     type: AttributeEntityType,
     shortlistK: number,
     plan: CanonicalizationPlan,
-  ): Promise<number> {
+  ): Promise<Canonical[]> {
     const survivors = canonicals.filter((c) => c.isSeed);
     const fresh = canonicals.filter((c) => !c.isSeed);
     let folded = 0;
@@ -342,7 +391,7 @@ export class AttributeOntologyService {
         survivors: survivors.length,
       });
     }
-    return survivors.length;
+    return survivors;
   }
 
   /** Top-K canonicals by cosine similarity to a query vector. */
@@ -405,6 +454,7 @@ export class AttributeOntologyService {
       promotions: plan.promotions.length,
       merges: plan.merges.length,
       rejections: plan.rejections.length,
+      renames: plan.renames.length,
       canonicals: canonicalCount,
     });
   }
@@ -431,6 +481,7 @@ export class AttributeOntologyService {
       promotions: 0,
       merges: 0,
       rejections: 0,
+      renames: 0,
       refsRepointed: 0,
       refsRemoved: 0,
     };
@@ -480,6 +531,23 @@ export class AttributeOntologyService {
             counts.rejections += await tx.$executeRawUnsafe(
               `DELETE FROM core_entities WHERE entity_id = $1::uuid`,
               rejection.entityId,
+            );
+          }
+
+          // After merges so the group's aliases are already folded in: relabel,
+          // keep the old name as an alias, drop the new name from the aliases.
+          for (const rename of plan.renames) {
+            counts.renames += await tx.$executeRawUnsafe(
+              `UPDATE core_entities
+               SET name = $2,
+                   aliases = (
+                     SELECT array_agg(DISTINCT a)
+                     FROM unnest(array_remove(aliases || ARRAY[$3]::varchar[], $2)) a
+                   )
+               WHERE entity_id = $1::uuid`,
+              rename.entityId,
+              rename.to,
+              rename.from,
             );
           }
 

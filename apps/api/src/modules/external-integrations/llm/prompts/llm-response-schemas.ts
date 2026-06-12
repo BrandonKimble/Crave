@@ -78,6 +78,20 @@ export const MODERATION_RESPONSE_JSON_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+export const ATTRIBUTE_NAME_RESPONSE_JSON_SCHEMA = {
+  type: 'object',
+  description: 'Best display name for a group of synonymous attribute terms',
+  properties: {
+    name: {
+      type: 'string',
+      description:
+        'The clearest consumer-facing label for the group, copied verbatim from the provided synonyms',
+    },
+  },
+  required: ['name'],
+  additionalProperties: false,
+} as const;
+
 export const ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA = {
   type: 'object',
   description:

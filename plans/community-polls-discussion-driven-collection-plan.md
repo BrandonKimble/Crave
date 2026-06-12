@@ -345,6 +345,14 @@ for marginal savings. **Cut.**
   at source by the ontology (§6.6), not by a separate gate.
 - **Convergence preconditions:** (1) add calibrated-confidence (incl. selectivity) to the core;
   (2) junk-entity cleanup. Without them, naive convergence regresses.
+- **Post-convergence experiment — embedding recall (user-approved to test):** the attribute
+  ontology (§6.6) proved embeddings catch different-word synonyms lexical recall can't
+  (`al fresco`≈`outdoor seating` 0.93 cosine, `acye`≈`all you can eat`). The same recall gap
+  exists in the matcher for **dishes** ("BEC"↔"bacon egg and cheese", "bao"↔"pork bun");
+  restaurant proper nouns benefit less (trigram/phonetic already handle typos/short forms).
+  After the converged matcher lands, A/B autocomplete + resolution **with vs. without an
+  embedding recall lane** (`EmbeddingService` already exists) and compare candidate quality.
+  Embeddings stay recall-only — the calibrated decision layer keeps all precision.
 
 ### 6.6 Entity vocabulary & alias model (prerequisite for clean matching + ranking)
 

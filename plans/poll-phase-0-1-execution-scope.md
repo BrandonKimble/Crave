@@ -163,17 +163,35 @@ transaction: **promote** (status→active), **merge** (fold name+aliases onto ca
 then ROLLS BACK (verify); `--apply` persists. Also fixed the canonicalization contract (existing =
 context/merge-targets only, never a member or rejection; output covers incoming only) — this
 removed the chunked-'all' self-conflict.
-  **Bulk applied in place** (user-chosen; `/tmp/crave-attrs-backup-121436.sql` safety dump first):
-  food 469→**220** (154 merged, 95 rejected), restaurant 738→**126** (281 merged, 331 rejected) —
-  **1,207→346, 0 dangling refs**, 829 refs re-pointed + 3,990 stripped. Surviving vocab is clean
-  (outdoor seating+18 aliases, good for groups, allows dogs, fine dining, white-glove service).
+**Bulk applied in place** (user-chosen; `/tmp/crave-attrs-backup-121436.sql` safety dump first):
+food 469→**220** (154 merged, 95 rejected), restaurant 738→**126** (281 merged, 331 rejected) —
+**1,207→346, 0 dangling refs**, 829 refs re-pointed + 3,990 stripped. Surviving vocab is clean
+(outdoor seating+18 aliases, good for groups, allows dogs, fine dining, white-glove service).
 
-**⬜ Increment 2c — steady-state trigger (LAST P1.3 piece):** event off unified-processing batch
-completion (debounced) → `buildPlan(type,'pending')` + `applyPlan(apply:true)`, gated behind a
-config flag (default OFF → inert in dev). The 'pending'-scope path (existing actives as context,
-pending as incoming) is built but not yet runtime-verified — best verified alongside the next
-collection run, when pending attributes actually exist. Until then, collection-coined attributes
-remain pending (quarantined/invisible), which is safe.
+**✅ Increment 2c — steady-state trigger + root-cause fixes (commit pending):**
+
+- **Trigger (ON by default, NO config flag — user decision):** `unified-processing`
+  `processSingleBatch` → `AttributeOntologyQueueService.queueAdjudication()` when new entities
+  were created → Bull queue `attribute-ontology-adjudication`, time-bucketed jobId debounce
+  (60s window; triggers during an active run land in the next bucket, never stranded) →
+  `AttributeOntologyWorker` runs `buildPlan(type,'pending')` + `applyPlan({apply:true})`.
+  Rationale for no flag: quarantine = a missed/failed run only delays visibility; placement is
+  per-term, order-stable, fail-closed to `new`; reject only touches quarantined rows.
+- **Extraction prompt root-cause fix:** collection-prompt §3.4–3.6 rewritten as one principled
+  unit — attribute = filterable property (axis+value); praise/sentiment NEVER an attribute;
+  ingredients→composition; price/value + accessibility→restaurant scope; meal-periods/serving
+  contexts explicitly dual-scope by usage. (Old §3.4 was example lists; price was on neither
+  list → `good value` leaked into food. Old §3.6 "capture descriptive language" invited junk.)
+- **Placement prompt dual-scope carve-out:** meal-period terms never rejected for scope (the
+  extraction design deliberately puts dish-tied ones in food; place-tied ones in restaurant).
+- **Pass 3 naming:** new canonicals that absorbed synonyms get an LLM-chosen consumer-facing
+  display label (Lite, one call per group) via `plan.renames` (old name → alias). Display-only:
+  matching weighs name+aliases equally; autocomplete/tag chips render `name`.
+- **Validated (food, all 469, rollback):** 63 merges, 219 rejections, 22 renames
+  (veg→vegetarian, endless→all you can eat, made on-premises→homemade), ZERO meal-period
+  rejections, renames executed+rolled back cleanly.
+- **Remaining for P1.3 close-out:** re-run the live bulk apply (food + restaurant) with the
+  corrected prompts; runtime-verify the worker end-to-end on a real collection batch.
 
 ---
 

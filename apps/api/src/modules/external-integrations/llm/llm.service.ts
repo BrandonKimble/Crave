@@ -28,6 +28,7 @@ import {
   LLMModerationResult,
   LLMAttributePlacementInput,
   LLMAttributePlacementResult,
+  LLMAttributeNameInput,
   LLMRestaurantPlaceChooserCandidate,
   LLMRestaurantPlaceChooserDecision,
   LLMRestaurantPlaceChooserInput,
@@ -44,6 +45,7 @@ import {
 } from './llm.exceptions';
 import { buildRestaurantPlaceChooserPrompt } from './prompts/restaurant-place-chooser.prompt';
 import {
+  ATTRIBUTE_NAME_RESPONSE_JSON_SCHEMA,
   ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA,
   COLLECTION_RESPONSE_JSON_SCHEMA,
   CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA,
@@ -1307,6 +1309,70 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       });
       // Fail closed: default to a non-destructive `new`.
       return { decision: 'new', candidateId: null, reason: 'parse_error' };
+    }
+  }
+
+  /**
+   * Pick the best consumer-facing display name for a synonym group of attribute
+   * terms. Returns one of the provided names verbatim; on any failure falls back
+   * to the first name (the current canonical) so naming can never corrupt.
+   */
+  async chooseAttributeName(input: LLMAttributeNameInput): Promise<string> {
+    const names = (input.names ?? [])
+      .map((n) => n?.trim())
+      .filter((n): n is string => Boolean(n));
+    if (names.length <= 1) {
+      return names[0] ?? '';
+    }
+
+    const model = 'gemini-3.1-flash-lite-preview';
+    const generationConfig: GeminiGenerationConfig = {
+      temperature: 0,
+      topP: this.llmConfig.topP,
+      topK: this.llmConfig.topK,
+      candidateCount: 1,
+      maxOutputTokens: 256,
+      responseMimeType: 'application/json',
+      responseJsonSchema: ATTRIBUTE_NAME_RESPONSE_JSON_SCHEMA,
+    };
+    const thinkingConfig = this.getThinkingConfig(model, 'query');
+    if (thinkingConfig) {
+      generationConfig.thinkingConfig = thinkingConfig;
+    }
+
+    const systemInstruction = `These terms are synonyms for one ${
+      input.kind === 'food_attribute' ? 'dish' : 'restaurant'
+    } attribute in a food-discovery app. Pick the single clearest consumer-facing label a diner would expect to see as a filter — conventional phrasing over slang, clear over clever, concise over verbose. Return JSON {"name": <one of the terms, copied verbatim>}.`;
+
+    try {
+      const response = await this.callLLMApi(JSON.stringify({ terms: names }), {
+        generationConfig,
+        systemInstruction,
+        model,
+        maxRetries: 0,
+        thinkingContext: 'query',
+      });
+      const content = this.extractTextContent(response, 'choose_attr_name');
+      const start = content.indexOf('{');
+      const parsed = JSON.parse(
+        start >= 0 ? content.slice(start) : content,
+      ) as {
+        name?: unknown;
+      };
+      const chosen = typeof parsed.name === 'string' ? parsed.name.trim() : '';
+      // Only honour a verbatim member of the group.
+      return (
+        names.find((n) => n.toLowerCase() === chosen.toLowerCase()) ?? names[0]
+      );
+    } catch (error) {
+      this.logger.warn('Attribute naming failed; keeping current canonical', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'choose_attr_name',
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      return names[0];
     }
   }
 

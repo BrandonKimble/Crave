@@ -66,7 +66,11 @@ duplicates can be merged later. Only `match` when you are confident they are one
 - Not an attribute at all: a dish, a restaurant, a cuisine, an ingredient, a place, a person
   (`carbonara`, `Shake Shack`, `Thai`, `basil`, `Brooklyn`).
 - Wrong vocabulary for `kind`: a food property sent as a `restaurant_attribute`, or vice
-  versa (`huge portions` is about the dish, not the room).
+  versa (`huge portions` is about the dish, not the room; `good value` / `cheap` /
+  `accessible` are about the place, not the dish). EXCEPTION — meal periods and serving
+  contexts (`breakfast`, `brunch`, `late-night`, `happy hour`, `tasting`) are legitimately
+  **dual-scope**: a place has happy hour AND a dish can be a happy-hour item. Never reject
+  these for scope; judge them within the requested `kind`.
 - Pure noise: filler or bare sentiment with no filterable meaning (`good`, `really`, `the
 best`, `solid`, `vibe`), a fragment, or an extraction artifact.
 

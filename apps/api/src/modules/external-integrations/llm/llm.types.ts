@@ -309,6 +309,12 @@ export interface LLMAttributePlacementResult {
   reason: string;
 }
 
+export interface LLMAttributeNameInput {
+  kind: 'food_attribute' | 'restaurant_attribute';
+  /** The synonym group (canonical + aliases) to pick a display name from. */
+  names: string[];
+}
+
 export interface LLMRestaurantPlaceChooserCandidate {
   candidateId: string;
   name: string;

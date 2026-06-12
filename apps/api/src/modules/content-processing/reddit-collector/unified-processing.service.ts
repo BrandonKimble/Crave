@@ -37,6 +37,7 @@ import {
 import { UnifiedProcessingExceptionFactory } from './unified-processing.exceptions';
 import { RestaurantLocationEnrichmentService } from '../../restaurant-enrichment';
 import { MarketRegistryService } from '../../markets/market-registry.service';
+import { AttributeOntologyQueueService } from '../../attribute-ontology/attribute-ontology-queue.service';
 import type { ExtractionTraceContext } from './collection-evidence.service';
 import { ProjectionRebuildService } from './projection-rebuild.service';
 
@@ -167,6 +168,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     private readonly configService: ConfigService,
     private readonly restaurantLocationEnrichmentService: RestaurantLocationEnrichmentService,
     private readonly marketRegistry: MarketRegistryService,
+    private readonly attributeOntologyQueue: AttributeOntologyQueueService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {
     this.defaultBatchSize = this.getNumericConfig(
@@ -724,6 +726,13 @@ export class UnifiedProcessingService implements OnModuleInit {
         databaseResult.affectedConnectionIds,
         databaseResult.affectedRestaurantIds,
       );
+    }
+
+    // New entities may include pending (quarantined) attributes — schedule the
+    // debounced adjudicator to canonicalize them. Fire-and-forget: quarantine
+    // means a missed run only delays visibility, never correctness.
+    if (resolutionResult.newEntitiesCreated > 0) {
+      await this.attributeOntologyQueue.queueAdjudication();
     }
 
     const processingTime = Date.now() - startTime;
