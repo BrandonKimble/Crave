@@ -19,12 +19,19 @@ appId: com.brandonkimble.cravesearch
 - extendedWaitUntil: { visible: 'Close results', timeout: 20000 }
 - waitForAnimationToEnd: { timeout: 3500 }
 - openLink: 'crave://perf-scenario-mark?phase=measured_repeat_loop_start&label=search_map_lod_zoom_flash'
+# Zoom IN first from the submitted position, THEN out (user-reported repro order:
+# promoting at high zoom seeds role divergence from the first-publish baked values;
+# the long zoom-out leg then carries the demote wave where the user-visible
+# fade-out -> flash-in-at-full -> flash-out shows). lod_render_snap_contract is the
+# new signal for that exact signature (fs removals / jumps on stepper-owned keys).
 - repeat:
     times: 3
     commands:
-      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=9.5&cameraDurationMs=1100&label=zoomout'
+      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=15.8&cameraDurationMs=1100&label=zoomin'
       - waitForAnimationToEnd: { timeout: 1800 }
-      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=13.2&cameraDurationMs=1100&label=zoomin'
+      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=9.5&cameraDurationMs=1600&label=zoomout'
+      - waitForAnimationToEnd: { timeout: 2400 }
+      - openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.7550&lng=-73.9800&zoom=13.2&cameraDurationMs=1100&label=return'
       - waitForAnimationToEnd: { timeout: 1800 }
 - openLink: 'crave://perf-scenario-mark?phase=measured_repeat_loop_end&label=search_map_lod_zoom_flash'
 - waitForAnimationToEnd: { timeout: 1200 }

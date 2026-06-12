@@ -171,4 +171,42 @@ final class ScreenSpaceVisibilityTests: XCTestCase {
     )
     XCTAssertEqual(visible, ["m0", "m1", "m2", "m3", "m4"])
   }
+
+  // MARK: spatial enter/exit hysteresis
+
+  func testHysteresisKeepsPreviouslyVisibleEdgeMarkerAndRejectsFreshOne() {
+    // Both markers project to the SAME point in the gap between the enter ring
+    // (pad=64) and the exit ring (128): just past enter, inside exit. The marker
+    // that was visible last frame must STAY visible (exit ring applies); the
+    // fresh marker must NOT enter (enter ring applies). This is the dead-band
+    // that stops an edge marker from oscillating its LOD role frame-to-frame.
+    let gapPoint = CGPoint(x: -96, y: 400) // 96px past the left edge
+    let held = CLLocationCoordinate2D(latitude: 30.30, longitude: -97.74)
+    let fresh = CLLocationCoordinate2D(latitude: 30.31, longitude: -97.74)
+    let catalog = [
+      ScreenSpaceVisibility.CatalogEntry(markerKey: "held", coordinate: held),
+      ScreenSpaceVisibility.CatalogEntry(markerKey: "fresh", coordinate: fresh),
+    ]
+    let visible = ScreenSpaceVisibility.onScreenMarkerKeys(
+      catalog: catalog, viewBounds: viewBounds, padPx: pad, exitPadPx: 128,
+      previouslyVisible: ["held"],
+      project: { _ in gapPoint },
+      unproject: { _ in held } // exact round-trip for "held"; "fresh" never reaches it
+    )
+    XCTAssertEqual(visible, ["held"])
+  }
+
+  func testHysteresisReleasesMarkerPastExitRing() {
+    // Past BOTH rings: even a previously-visible marker is released.
+    let farPoint = CGPoint(x: -200, y: 400)
+    let marker = CLLocationCoordinate2D(latitude: 30.30, longitude: -97.74)
+    let visible = ScreenSpaceVisibility.onScreenMarkerKeys(
+      catalog: [ScreenSpaceVisibility.CatalogEntry(markerKey: "held", coordinate: marker)],
+      viewBounds: viewBounds, padPx: pad, exitPadPx: 128,
+      previouslyVisible: ["held"],
+      project: { _ in farPoint },
+      unproject: { _ in marker }
+    )
+    XCTAssertEqual(visible, [])
+  }
 }

@@ -318,6 +318,15 @@ export type SearchMapRenderControllerEvent =
       emittedAtMs: number;
     }
   | {
+      type: 'lod_render_snap_contract';
+      instanceId: string;
+      sourceId: string;
+      fsRemovalFlashCount: number;
+      fsJumpCount: number;
+      samples?: Array<Record<string, number | string | boolean>>;
+      emittedAtMs: number;
+    }
+  | {
       type: 'live_lod_transition_contract';
       instanceId: string;
       flashReversalCount?: number;

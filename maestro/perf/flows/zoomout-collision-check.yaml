@@ -1,0 +1,18 @@
+appId: com.brandonkimble.cravesearch
+# perf-scenario-sim-location: 40.7550,-73.9800
+---
+- tapOn: { text: 'Close restaurant', optional: true }
+- tapOn: { text: 'Close results', optional: true }
+- tapOn: { text: 'Close polls', optional: true }
+- extendedWaitUntil: { visible: 'Show best restaurants here', timeout: 45000 }
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=40.7550&lng=-73.9800&zoom=11.6&label=seed'
+- waitForAnimationToEnd: { timeout: 1500 }
+- openLink: 'crave://perf-scenario-command?action=submit_shortcut_restaurants'
+- extendedWaitUntil: { visible: 'Close results', timeout: 20000 }
+- waitForAnimationToEnd: { timeout: 1500 }
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.5&lng=-74.2&zoom=8.5&cameraDurationMs=800&label=zoomout_metro'
+- waitForAnimationToEnd: { timeout: 1500 }
+- takeScreenshot: /tmp/zc-z8
+- openLink: 'crave://perf-scenario-command?action=animate_map_camera&lat=40.0&lng=-75.0&zoom=6&cameraDurationMs=900&label=zoomout_region'
+- waitForAnimationToEnd: { timeout: 1800 }
+- takeScreenshot: /tmp/zc-z6

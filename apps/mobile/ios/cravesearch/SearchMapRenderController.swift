@@ -71,6 +71,11 @@ final class SearchMapRenderController: RCTEventEmitter {
   // pad keeps markers just past the edge promotable so they don't pop in/out at
   // the boundary (mirrors the JS padded-AABB intent, but in true screen space).
   private let nativeScreenSpaceVisibilityPadPx: CGFloat = 64
+  // Exit ring for the spatial visibility hysteresis: a marker already on-screen
+  // stays "visible" until its projection crosses this looser pad. The 64px gap vs
+  // the enter pad absorbs per-frame projection noise at the screen edge so an edge
+  // marker cannot oscillate in/out of the visible set (and flip its LOD role).
+  private let nativeScreenSpaceVisibilityExitPadPx: CGFloat = 128
   private let nativePressCancelMovementThresholdPx: CGFloat = 10
   private let settledVisibleLabelMissingGraceStreak = 2
   private static let transientVisualPropertyKeys: Set<String> = [
@@ -6503,6 +6508,23 @@ final class SearchMapRenderController: RCTEventEmitter {
           continue
         }
         if existing.targetOpacity != targetOpacity {
+          // CROSSFADE COMMIT INVARIANT: a fade in flight runs to its committed target
+          // before honoring a reversed target. The LOD promote/demote decision reshuffles
+          // every ~90ms eval (still-visible in-region markers displaced from the top-N as
+          // the on-screen set grows during a zoom); without this guard each flip restarts
+          // the 300ms crossfade from the current mid-opacity with a fresh clock, so opacity
+          // never reaches 0 or 1 and the marker is stuck shimmering mid-range (the flash).
+          // Deferring the reversal until the current fade completes makes a started fade
+          // "impossible to snap back in": opacity settles at an endpoint, and only a
+          // genuinely-settled opposite decision then starts a clean fade from that endpoint.
+          let existingFadeComplete = abs(currentOpacity - existing.targetOpacity) < 0.001
+          if !existingFadeComplete {
+            var updated = existing
+            updated.lodZ = lodZ
+            updated.orderHint = orderHint
+            nextTransitions[markerKey] = updated
+            continue
+          }
           let shouldAwaitSourceCommit =
             targetOpacity == 1 && !previousPresent && currentOpacity <= 0.001
           nextTransitions[markerKey] = LivePinTransition(
@@ -10577,18 +10599,22 @@ final class SearchMapRenderController: RCTEventEmitter {
   // which `point(for:)` would otherwise project to bogus on-screen points.
   private func computeOnScreenMarkerKeys(
     catalog: [CandidateCatalogEntry],
-    handle: ResolvedMapHandle
+    handle: ResolvedMapHandle,
+    previouslyVisible: Set<String>
   ) -> [String] {
     // The decision (rect/pad containment, finiteness, behind-camera round-trip
     // guard, loop) lives in MapLodKit.ScreenSpaceVisibility — the single,
     // unit-tested source of truth (see MapLodKit/Tests). Only the raw Mapbox
-    // projection stays here, injected as closures.
+    // projection stays here, injected as closures. Enter/exit pads differ
+    // (spatial hysteresis) so an edge marker cannot oscillate its LOD role.
     return ScreenSpaceVisibility.onScreenMarkerKeys(
       catalog: catalog.map {
         ScreenSpaceVisibility.CatalogEntry(markerKey: $0.markerKey, coordinate: $0.coordinate)
       },
       viewBounds: handle.mapView.bounds,
       padPx: nativeScreenSpaceVisibilityPadPx,
+      exitPadPx: nativeScreenSpaceVisibilityExitPadPx,
+      previouslyVisible: previouslyVisible,
       project: { handle.mapView.mapboxMap.point(for: $0) },
       unproject: { handle.mapView.mapboxMap.coordinate(for: $0) }
     )
@@ -10658,9 +10684,17 @@ final class SearchMapRenderController: RCTEventEmitter {
       // instead of a padded lat/lng AABB. Throttled to set-change to bound bridge
       // traffic during gestures.
       if !nextState.candidateCatalog.isEmpty {
+        // Previous visible set recovered from the stored signature (sorted keys
+        // joined with "|"; marker keys never contain "|") — feeds the spatial
+        // enter/exit hysteresis.
+        let previousSignature = nextState.lastVisibleMarkerSetSignature ?? ""
+        let previouslyVisible = previousSignature.isEmpty
+          ? Set<String>()
+          : Set(previousSignature.components(separatedBy: "|"))
         let onScreenKeys = computeOnScreenMarkerKeys(
           catalog: nextState.candidateCatalog,
-          handle: handle
+          handle: handle,
+          previouslyVisible: previouslyVisible
         )
         let visibleSignature = onScreenKeys.sorted().joined(separator: "|")
         if visibleSignature != nextState.lastVisibleMarkerSetSignature {
@@ -11521,6 +11555,76 @@ final class SearchMapRenderController: RCTEventEmitter {
         dataId: nil,
         addedFeatureIds: []
       )
+      // LOD RENDER-SNAP detector (the user-visible "fade out → flash IN at full →
+      // flash out"). The stepper only interpolates, so an INSTANT opacity jump can
+      // only come from this publish path: (a) REMOVING a stepper-owned feature-state
+      // key while it was holding the marker at a different opacity than the baked
+      // ['get'] fallback — render snaps to baked (stale 1 for a marker that demoted
+      // since its last property rewrite, and the corrected source data lands frames
+      // later → flash in, then flash out); (b) SETTING a stepper-owned key far from
+      // its previous value (instant jump bypassing the crossfade). Emits per batch
+      // with per-marker samples so the flash is attributable, not inferred.
+      // NOTE: this measures what the publish pipeline PRODUCES. Since
+      // applyFeatureStates filters stepperOwnedRenderFeatureStateKeys, none of these
+      // reach Mapbox — events here are upstream-staleness diagnostics, not rendered
+      // snaps (blockedByStepperOwnership: true in the payload).
+      if plan.previousFeatureStateRevision != plan.nextSourceState.featureStateRevision {
+        var fsRemovalFlashCount = 0
+        var fsJumpCount = 0
+        var snapSamples: [[String: Any]] = []
+        for featureId in plan.nextSourceState.featureStateChangedIds {
+          let previousState = plan.previousFeatureStateById[featureId] ?? [:]
+          let nextState = plan.nextSourceState.featureStateById[featureId] ?? [:]
+          for key in ["nativeLodOpacity", "nativeLodRankOpacity", "nativeDotOpacity", "nativeLabelOpacity"] {
+            guard let prevValue = Self.numberValue(from: previousState[key]) else {
+              continue
+            }
+            if nextState[key] == nil {
+              // ANY removal of a stepper-owned key is a defect: the diffKey excludes
+              // role-opacity properties, so the baked ['get'] fallback in MAPBOX still
+              // holds the marker's FIRST-publish role (1 for anything ever promoted) —
+              // the JS-side recomputed property never reaches the style. Removal ≙
+              // instant revert to the original role (the flash), regardless of what
+              // plan.next thinks the baked value is.
+              let bakedNext = Self.numberValue(
+                from: (plan.next.featureById[featureId]?.properties?.turfRawValue as? [String: Any])?[key]
+              )
+              let rewrittenThisBatch =
+                plan.nextSourceState.updatedFeatureIdsInOrder.contains(featureId) ||
+                plan.nextSourceState.addedFeatureIdsInOrder.contains(featureId)
+              fsRemovalFlashCount += 1
+              if snapSamples.count < 8 {
+                snapSamples.append([
+                  "k": featureId, "key": key, "kind": "remove",
+                  "prevFs": prevValue, "bakedNext": bakedNext ?? -1,
+                  "rewritten": rewrittenThisBatch,
+                ])
+              }
+            } else if let nextValue = Self.numberValue(from: nextState[key]),
+                      abs(nextValue - prevValue) > 0.5 {
+              fsJumpCount += 1
+              if snapSamples.count < 8 {
+                snapSamples.append([
+                  "k": featureId, "key": key, "kind": "set",
+                  "prevFs": prevValue, "nextFs": nextValue,
+                ])
+              }
+            }
+          }
+        }
+        if fsRemovalFlashCount > 0 || fsJumpCount > 0 {
+          emit([
+            "type": "lod_render_snap_contract",
+            "instanceId": instanceId,
+            "sourceId": plan.sourceId,
+            "fsRemovalFlashCount": fsRemovalFlashCount,
+            "fsJumpCount": fsJumpCount,
+            "blockedByStepperOwnership": true,
+            "samples": snapSamples,
+            "emittedAtMs": Self.nowMs(),
+          ])
+        }
+      }
       let featureStatesStartedAt = CACurrentMediaTime() * 1000
       Self.applyFeatureStates(
         sourceId: plan.sourceId,
@@ -12577,6 +12681,22 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
   }
 
+  // LOD render-opacity keys owned EXCLUSIVELY by the live crossfade steppers (the
+  // CADisplayLink writers in applyLivePinTransitionFeatureStates). The publish path
+  // must neither SET nor REMOVE these in Mapbox: measured on the zoom-flash flow,
+  // publish batches issued 930 removals (render falls back to the permanently-stale
+  // baked role — diffKey excludes these properties, so Mapbox's stored value is the
+  // marker's FIRST-publish role forever) and 928 instant jumps (stale mid-fade
+  // snapshots like 0 → 0.773 landing after the fade settled) — the user-visible
+  // "fade out → flash in at full → flash out". The in-memory featureStateById
+  // bookkeeping is untouched; only the Mapbox writes are stepper-exclusive.
+  private static let stepperOwnedRenderFeatureStateKeys: Set<String> = [
+    "nativeLodOpacity",
+    "nativeLodRankOpacity",
+    "nativeLabelOpacity",
+    "nativeDotOpacity",
+  ]
+
   private static func applyFeatureStates(
     sourceId: String,
     previousFeatureStateRevision: String,
@@ -12593,8 +12713,10 @@ final class SearchMapRenderController: RCTEventEmitter {
       return
     }
     for featureId in changedFeatureStateIds {
-      let previousState = previousFeatureStateById[featureId] ?? [:]
-      let nextState = featureStateById[featureId] ?? [:]
+      let previousState = (previousFeatureStateById[featureId] ?? [:])
+        .filter { !Self.stepperOwnedRenderFeatureStateKeys.contains($0.key) }
+      let nextState = (featureStateById[featureId] ?? [:])
+        .filter { !Self.stepperOwnedRenderFeatureStateKeys.contains($0.key) }
       for removedKey in previousState.keys where nextState[removedKey] == nil {
         mapboxMap.removeFeatureState(
           sourceId: sourceId,
@@ -12605,7 +12727,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       guard !nextState.isEmpty else {
         continue
       }
-      if Self.featureStatesEqual(previousFeatureStateById[featureId], nextState) {
+      if Self.featureStatesEqual(previousState, nextState) {
         continue
       }
       mapboxMap.setFeatureState(sourceId: sourceId, featureId: featureId, state: nextState) { _ in }

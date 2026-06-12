@@ -2256,6 +2256,20 @@ const useSearchMapNativeRenderOwnerStatus = ({
               }
               return;
             }
+            if (event.type === 'lod_render_snap_contract') {
+              const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+              if (isPerfScenarioAttributionActive(scenarioConfig)) {
+                logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+                  event: 'native_lod_render_snap_contract',
+                  sourceId: event.sourceId,
+                  fsRemovalFlashCount: event.fsRemovalFlashCount,
+                  fsJumpCount: event.fsJumpCount,
+                  samples: event.samples,
+                  nativeEmittedAtMs: event.emittedAtMs,
+                });
+              }
+              return;
+            }
             if (event.type === 'live_lod_transition_contract') {
               const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
               if (isPerfScenarioAttributionActive(scenarioConfig)) {

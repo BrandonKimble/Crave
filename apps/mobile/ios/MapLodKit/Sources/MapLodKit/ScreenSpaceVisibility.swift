@@ -67,10 +67,19 @@ public enum ScreenSpaceVisibility {
   /// The on-screen marker-key set for a catalog under the current camera. The
   /// projection functions are injected so this whole loop is testable without a
   /// live map. Result order follows catalog order.
+  ///
+  /// Spatial hysteresis: a marker NOT in `previouslyVisible` must land inside the
+  /// tighter `padPx` ring to enter; a marker already visible stays visible until it
+  /// crosses the looser `exitPadPx` ring. The gap absorbs per-frame projection noise
+  /// at the screen edge so a marker cannot oscillate in/out (and thus flip its LOD
+  /// role) while sitting at the boundary. Pass `exitPadPx == padPx` (the default)
+  /// for the plain single-ring test.
   public static func onScreenMarkerKeys(
     catalog: [CatalogEntry],
     viewBounds: CGRect,
     padPx: CGFloat,
+    exitPadPx: CGFloat? = nil,
+    previouslyVisible: Set<String> = [],
     project: (CLLocationCoordinate2D) -> CGPoint,
     unproject: (CGPoint) -> CLLocationCoordinate2D,
     coordinateTolerance: Double = defaultCoordinateTolerance
@@ -78,13 +87,15 @@ public enum ScreenSpaceVisibility {
     guard !catalog.isEmpty else {
       return []
     }
+    let resolvedExitPadPx = max(exitPadPx ?? padPx, padPx)
     var visible: [String] = []
     visible.reserveCapacity(catalog.count)
     for entry in catalog {
+      let effectivePadPx = previouslyVisible.contains(entry.markerKey) ? resolvedExitPadPx : padPx
       let point = project(entry.coordinate)
       // Cheap finiteness/containment check before paying for the unproject.
       guard point.x.isFinite, point.y.isFinite,
-            viewBounds.insetBy(dx: -padPx, dy: -padPx).contains(point) else {
+            viewBounds.insetBy(dx: -effectivePadPx, dy: -effectivePadPx).contains(point) else {
         continue
       }
       if isProjectionOnScreen(
@@ -92,7 +103,7 @@ public enum ScreenSpaceVisibility {
         roundTrip: unproject(point),
         original: entry.coordinate,
         viewBounds: viewBounds,
-        padPx: padPx,
+        padPx: effectivePadPx,
         coordinateTolerance: coordinateTolerance
       ) {
         visible.append(entry.markerKey)

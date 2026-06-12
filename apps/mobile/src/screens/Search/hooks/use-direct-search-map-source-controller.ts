@@ -96,12 +96,6 @@ const arePinInteractionSourcesComplete = ({
 const SHORTCUT_COVERAGE_BOUNDS_BUCKET_DEGREES = 0.01;
 const SEARCH_MAP_VISUAL_PROJECTOR_VERSION = 'single-writer-stable-label-source-v4';
 const SHORTCUT_VIEWPORT_LOD_MIN_INTERVAL_MS = 90;
-// How long a marker stays treated as "in view" after it drops out of the native
-// screen-space visible set. Long enough to ride out edge flicker during a pan
-// (which otherwise oscillates the marker's LOD role -> demotion flash + broken
-// crossfade), short enough that a marker the user genuinely panned away from
-// settles to a dot promptly.
-const MARKER_VISIBILITY_DWELL_MS = 700;
 const VIEWPORT_PROJECTION_MIN_SPAN = 1e-6;
 const VIEWPORT_PROJECTION_MIN_CELL_SIZE = 0.0001;
 const VIEWPORT_PROJECTION_CELL_DIVISOR = 10;
@@ -1095,7 +1089,7 @@ export const useDirectSearchMapSourceController = ({
   // and desyncs the crossfade. We keep a marker "in view" for a short dwell after
   // it drops out of the native set, so transient edge flicker can no longer flip
   // its LOD role — the role only changes once the marker is sustainedly gone.
-  const markerLastVisibleAtMsRef = React.useRef<Map<string, number>>(new Map());
+  const previousRawVisibleKeysRef = React.useRef<ReadonlySet<string> | null>(null);
   React.useEffect(() => {
     if (highlightedRestaurantId == null) {
       lastMarkerPressTargetRef.current = null;
@@ -1603,26 +1597,48 @@ export const useDirectSearchMapSourceController = ({
     // stable-membership retains currently-pinned markers regardless.
     const nativeVisible = sourceFramePort.getNativeVisibleMarkerKeys();
     let nativeVisibleMarkerKeys: Set<string> | null = null;
+    // RAW visible-set monotonicity probe (attribution): selection inputs other than
+    // visibility are frozen during a gesture, so promoted-set flip-flops can only come
+    // from the visible set oscillating. rawRemoved > 0 during a monotone zoom-out means
+    // the native projection itself is ejecting on-screen markers (edge oscillation);
+    // rawRemoved == 0 while flips still happen indicts the dwell/baseline layers instead.
+    let rawVisibleAdded = 0;
+    let rawVisibleRemoved = 0;
+    let rawVisibleCount = -1;
     if (nativeVisible != null) {
-      // Visibility hysteresis: stamp currently-visible markers as seen now, then
-      // treat any marker seen within the dwell window as still in view. This keeps
-      // a marker that briefly flickers across the viewport edge from oscillating
-      // its LOD role frame-to-frame (the confirmed root cause of the demotion
-      // flash + broken pin/dot crossfade).
-      const nowMs = Date.now();
-      const lastVisibleAtMs = markerLastVisibleAtMsRef.current;
-      for (const markerKey of nativeVisible.markerKeys) {
-        lastVisibleAtMs.set(markerKey, nowMs);
-      }
-      const effectiveVisible = new Set<string>();
-      for (const [markerKey, atMs] of lastVisibleAtMs) {
-        if (nowMs - atMs <= MARKER_VISIBILITY_DWELL_MS) {
-          effectiveVisible.add(markerKey);
-        } else {
-          lastVisibleAtMs.delete(markerKey);
+      const rawKeys = new Set(nativeVisible.markerKeys);
+      rawVisibleCount = rawKeys.size;
+      const previousRaw = previousRawVisibleKeysRef.current;
+      if (previousRaw != null) {
+        for (const key of rawKeys) {
+          if (!previousRaw.has(key)) {
+            rawVisibleAdded += 1;
+          }
+        }
+        for (const key of previousRaw) {
+          if (!rawKeys.has(key)) {
+            rawVisibleRemoved += 1;
+          }
         }
       }
-      nativeVisibleMarkerKeys = effectiveVisible;
+      previousRawVisibleKeysRef.current = rawKeys;
+      if (rawVisibleRemoved > 0 && isPerfScenarioAttributionActive(scenarioConfig)) {
+        logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+          event: 'raw_visible_set_shrink_contract',
+          rawVisibleCount,
+          rawVisibleAdded,
+          rawVisibleRemoved,
+          isMapMoving: isMapMotionPressureMoving(mapMotionPressureController) || args.isMapMoving,
+        });
+      }
+      // The raw projection is the visibility truth, per-marker and immediate (v4:
+      // promote/demote stair-step as markers enter/leave, no group behavior). Edge
+      // anti-flicker is spatial hysteresis in the native projector (a marker enters
+      // inside the tighter pad and exits past the looser one), NOT a time dwell —
+      // the old 700ms dwell expired gesture-stamped markers in batches, producing
+      // the synchronized after-gesture demote waves (measured: 20-21 markers per
+      // batch with zero raw-set removals).
+      nativeVisibleMarkerKeys = rawKeys;
     }
     // Resolve the frozen OVERLAP REGION (submitted viewport when small; metro radius
     // around the user for a far-out shortcut) — drives the dual LOD budget + the in/out
@@ -1697,7 +1713,6 @@ export const useDirectSearchMapSourceController = ({
           maxPins: args.maxFullPins,
           nativeVisibleMarkerKeys,
           requireVisibility: true,
-          allowFreshPromotions: !projectionIsMapMoving,
         })
       : emptyModel;
     const outRegionModel = currentBounds
@@ -1713,7 +1728,6 @@ export const useDirectSearchMapSourceController = ({
           maxPins: OUT_REGION_MAX_FULL_PINS,
           nativeVisibleMarkerKeys,
           requireVisibility: true,
-          allowFreshPromotions: !projectionIsMapMoving,
         })
       : emptyModel;
     const nextModel = {
@@ -1727,6 +1741,74 @@ export const useDirectSearchMapSourceController = ({
       nextPinnedVisualKey === lodPinnedVisualKeyRef.current
     ) {
       return;
+    }
+    // LOD TARGET-CHANGE attribution contract. Past this point the promoted-set visual
+    // key CHANGED vs the previous publish, so at least one marker flipped promote/demote
+    // — i.e. its crossfade target reversed. The lodTransitionTrace proved these flips are
+    // what restart the crossfade mid-fade (s≈c, alternating targets) = the flash. This
+    // contract attributes WHY each flip happened, so we know which lever to pull:
+    //   - lostVisibility: the marker left the native on-screen projection (visibility
+    //     hysteresis insufficient) — would be visibility-edge churn.
+    //   - visibleDisplaced(In/Out)Region: marker is STILL on-screen but dropped from the
+    //     promoted set — pure rank/budget/region reshuffle (selection instability), split
+    //     by region to test the in/out-region-boundary hypothesis.
+    // In the ideal resident model a stably-visible marker should not flip target every
+    // eval, so visibleDisplaced* counts > 0 during a smooth zoom localize the bug.
+    if (isPerfScenarioAttributionActive(scenarioConfig)) {
+      const prevPromotedKeys = new Set(currentPinned.map((feature) => buildMarkerKey(feature)));
+      const nextPromotedKeys = new Set(
+        nextModel.nextPinnedMarkers.map((feature) => buildMarkerKey(feature))
+      );
+      const isVisibleForChurn = (key: string): boolean =>
+        nativeVisibleMarkerKeys == null ? true : nativeVisibleMarkerKeys.has(key);
+      let demoteLostVisibility = 0;
+      let demoteVisibleInRegion = 0;
+      let demoteVisibleOutRegion = 0;
+      for (const feature of currentPinned) {
+        const key = buildMarkerKey(feature);
+        if (nextPromotedKeys.has(key)) {
+          continue;
+        }
+        if (!isVisibleForChurn(key)) {
+          demoteLostVisibility += 1;
+        } else if (isInRegionFeature(feature)) {
+          demoteVisibleInRegion += 1;
+        } else {
+          demoteVisibleOutRegion += 1;
+        }
+      }
+      let promoteFresh = 0;
+      let promoteVisible = 0;
+      for (const feature of nextModel.nextPinnedMarkers) {
+        const key = buildMarkerKey(feature);
+        if (prevPromotedKeys.has(key)) {
+          continue;
+        }
+        promoteFresh += 1;
+        if (isVisibleForChurn(key)) {
+          promoteVisible += 1;
+        }
+      }
+      const demoteTotal = demoteLostVisibility + demoteVisibleInRegion + demoteVisibleOutRegion;
+      if (demoteTotal > 0 || promoteFresh > 0) {
+        logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+          event: 'lod_target_change_contract',
+          publishReason,
+          isMapMoving: projectionIsMapMoving,
+          prevPromoted: prevPromotedKeys.size,
+          nextPromoted: nextPromotedKeys.size,
+          demoteTotal,
+          demoteLostVisibility,
+          demoteVisibleInRegion,
+          demoteVisibleOutRegion,
+          promoteFresh,
+          promoteVisible,
+          nativeVisibleCount: nativeVisibleMarkerKeys == null ? -1 : nativeVisibleMarkerKeys.size,
+          rawVisibleCount,
+          rawVisibleAdded,
+          rawVisibleRemoved,
+        });
+      }
     }
     const visibleSortedRestaurantMarkers = nextModel.nextPinnedMarkers.map((feature, index) => ({
       ...feature,
