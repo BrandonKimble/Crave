@@ -91,7 +91,26 @@ config + `GOOGLE_MODERATION_*` env; new `moderation-prompt.md` (principles-first
 
 ## Phase 1 — Entity vocabulary + matcher foundation (sequence early)
 
-### P1.1 — Collection-prompt holistic fix (ingredient/coconut bug)
+### P1.1 — Collection-prompt holistic fix (ingredient/coconut bug) ✅ GOAL MET (without the structural rewrite)
+
+**Resolved by the P1.3-era extraction work, NOT the proposed Step 3+4 merge.** The stated goal —
+"stop ingredients landing in `food_attributes`" — is achieved: §3.2 now says peel only the
+generic ingredient-free property and leave the ingredient with the dish tokens; §3.4 routes
+ingredients + ingredient-bound phrases to composition; and the attribute adjudicator rejects any
+residual ingredient that still leaks. **Evidence (27-run regen + targeted replay):** 0 ingredients
+in `food_attributes` (no coconut/garlic/mayo/butter/sauce/broth…); `garlic`/`coconut` exist as
+`food` entities and are referenced in dish `food_categories` (chicken in 81 dishes, coconut 2) —
+correct composition.
+
+**The structural "merge Steps 3+4" rewrite is DEFERRED as unjustified.** It was the _proposed fix_,
+not an independent goal; the goal is met and the Step-3 peeling rule resolves the local circularity
+without merging the staged contracts. A 685-line rewrite of working, validated staged contracts for
+marginal gain is over-engineering — revisit only if composition evidence later shows a concrete
+remaining problem.
+
+---
+
+### P1.1 — original scope (for reference)
 
 **Goal:** stop ingredients (coconut milk, garlic) landing in `food_attributes`.
 
