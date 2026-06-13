@@ -7,6 +7,7 @@ import {
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 import type { MapBounds } from '../../../../types';
 import { withSearchNavSwitchRuntimeAttribution } from '../../runtime/shared/search-nav-switch-runtime-attribution';
+import { resolvePresentationLanePolicy } from '../../runtime/shared/presentation-lane-policy';
 import {
   areSearchMapRenderPresentationStatesEqual,
   deriveSearchMapRenderPresentationPhase,
@@ -2627,8 +2628,18 @@ const useSearchMapNativeRenderOwnerStatus = ({
       (presentationExecutionStage === 'enter_pending_mount' ||
         presentationExecutionStage === 'enter_mounted_hidden') &&
       authoritySnapshot.resultsPresentationTransport.transactionId != null;
+    // Gate A (observation lane): rendered-label observation runs only when the policy
+    // allows it — i.e. SETTLED (live), NOT during the visible reveal `enter_executing`
+    // (where isPresentationLive is also true). Observation during the reveal window was a
+    // lane leak: queryRenderedFeatures + sticky refresh stealing time from the animation.
+    // It resumes the instant the reveal settles. (preparing-enter placement under cover is
+    // kept as a separate documented exception until Cluster 5.)
+    const lanePolicy = resolvePresentationLanePolicy(presentationExecutionStage);
     const shouldObserveLiveLabels =
-      labelObservationEnabled && isPresentationLive && labelSourceCount > 0;
+      labelObservationEnabled &&
+      isPresentationLive &&
+      lanePolicy.allowObservation &&
+      labelSourceCount > 0;
     const shouldObservePreparingEnterLabels =
       labelObservationEnabled && isPreparingEnterPlacement && labelSourceCount > 0;
     const effectiveObservationEnabled =
