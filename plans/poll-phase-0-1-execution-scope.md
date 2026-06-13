@@ -187,13 +187,23 @@ food 469→**220** (154 merged, 95 rejected), restaurant 738→**126** (281 merg
 - **Pass 3 naming:** new canonicals that absorbed synonyms get an LLM-chosen consumer-facing
   display label (Lite, one call per group) via `plan.renames` (old name → alias). Display-only:
   matching weighs name+aliases equally; autocomplete/tag chips render `name`.
-- **Validated (food, all 469, rollback):** 63 merges, 219 rejections, 22 renames
-  (veg→vegetarian, endless→all you can eat, made on-premises→homemade), ZERO meal-period
-  rejections, renames executed+rolled back cleanly.
-- **Remaining for P1.3 close-out:** re-run the live bulk apply (food + restaurant) with the
-  corrected prompts; runtime-verify the worker end-to-end on a real collection batch.
+- **Pass 4 — extraction sharpen (commit c0c552c0):** §3.4 reframed around _describes vs judges_
+  (a real attribute states a property the food HAS; praise judges HOW GOOD — only descriptions
+  qualify; discriminator "could it describe a BAD dish?"). Replay-verified the LLM extraction
+  re-runs with this prompt (fingerprint-confirmed live): praise leakage 12+ terms → 1 straggler.
 
----
+**✅ P1.3 COMPLETE — bulk applied + end-to-end verified in the live app.**
+
+- **Bulk applied in place** (corrected prompts): food 469→185, restaurant 738→126→238;
+  **1,207 → 423 clean canonicals**, 0 dangling refs, antonyms separated (casual|cozy|lively|
+  quiet|upscale coexist), meal-periods kept on food side, naming applied (large anchors the
+  size cluster). Safety dump at `/tmp/crave-attrs-backup-121436.sql`.
+- **Steady-state loop verified END-TO-END in the running dev server** (not a CLI): replay →
+  new extraction prompt coined pending → `unified-processing` trigger enqueued → the live
+  server's Bull worker drained them (60s debounce) → adjudicated → 0 pending. Decisions correct:
+  sentiment junk (best/delicious/high quality) rejected, different-word synonym `old school`
+  merged into `traditional`, genuine novel attrs promoted. Quarantine held — junk never visible
+  pre-adjudication. Ran twice (both prompts), both clean.
 
 ### P1.3 — Attribute ontology + quarantine + queue worker (§6.6) — original scope (for reference)
 
