@@ -94,6 +94,26 @@ const DEFAULT_SHORTLIST_K = 10;
 const DEFAULT_BATCH_SIZE = 24;
 const DEFAULT_CONCURRENCY = 12;
 
+/** Tokens too generic to be a useful shared-token recall signal. */
+const SHORTLIST_STOPWORDS = new Set([
+  'the',
+  'a',
+  'an',
+  'of',
+  'for',
+  'with',
+  'and',
+  'or',
+  'to',
+  'in',
+  'on',
+  'at',
+  'is',
+  'it',
+  'no',
+  'not',
+]);
+
 /** Thrown to abort the apply transaction in verify (dry) mode. */
 class PlanRollback extends Error {}
 
@@ -313,7 +333,8 @@ export class AttributeOntologyService {
     result: LLMAttributePlacementResult;
     shortlist: Canonical[];
   }> {
-    const shortlist = this.nearest(
+    const shortlist = this.buildShortlist(
+      row.name,
       vectorByName.get(row.name) ?? [],
       snapshot,
       shortlistK,
@@ -344,7 +365,12 @@ export class AttributeOntologyService {
     let folded = 0;
 
     for (const canonical of fresh) {
-      const shortlist = this.nearest(canonical.vector, survivors, shortlistK);
+      const shortlist = this.buildShortlist(
+        canonical.name,
+        canonical.vector,
+        survivors,
+        shortlistK,
+      );
       if (shortlist.length === 0) {
         survivors.push(canonical);
         continue;
@@ -394,18 +420,78 @@ export class AttributeOntologyService {
     return survivors;
   }
 
-  /** Top-K canonicals by cosine similarity to a query vector. */
-  private nearest(
-    query: number[],
+  /**
+   * Candidate shortlist for a term: the union of three recall signals, so a true
+   * synonym is surfaced whether it is semantically close, shares a token, or is
+   * lexically near. Embedding alone (a narrow 0.78–0.96 cosine band for short
+   * phrases) misses token-overlap pairs (`live jazz`/`live music`) and lexical
+   * near-dups (`walk-ins`/`walk-ins only`) — the LLM can only merge what it sees.
+   */
+  private buildShortlist(
+    name: string,
+    vector: number[],
     canonicals: Canonical[],
     k: number,
   ): Canonical[] {
-    if (query.length === 0 || canonicals.length === 0) return [];
-    return canonicals
-      .map((c) => ({ c, score: EmbeddingService.cosine(query, c.vector) }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, k)
-      .map((x) => x.c);
+    if (canonicals.length === 0) return [];
+    const scored = canonicals.map((c) => ({
+      c,
+      cos:
+        vector.length && c.vector.length
+          ? EmbeddingService.cosine(vector, c.vector)
+          : 0,
+    }));
+
+    // Embedding top-K (semantic recall).
+    const picked = new Map<string, Canonical>();
+    for (const s of [...scored].sort((a, b) => b.cos - a.cos).slice(0, k)) {
+      picked.set(s.c.entityId, s.c);
+    }
+    // Lexical recall: any canonical that shares a significant token or is
+    // trigram-near — catches token-overlap and near-identical spellings that the
+    // embedding neighbourhood buries.
+    for (const c of canonicals) {
+      if (picked.has(c.entityId)) continue;
+      if (
+        this.sharesToken(name, c.name) ||
+        this.trigramSim(name, c.name) >= 0.4
+      ) {
+        picked.set(c.entityId, c);
+      }
+    }
+    return Array.from(picked.values());
+  }
+
+  /** True if the two names share a significant (length ≥ 3) non-stopword token. */
+  private sharesToken(a: string, b: string): boolean {
+    const tokens = new Set(this.tokenize(a));
+    return this.tokenize(b).some((t) => t.length >= 3 && tokens.has(t));
+  }
+
+  private tokenize(name: string): string[] {
+    return name
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((t) => t && !SHORTLIST_STOPWORDS.has(t));
+  }
+
+  /** Jaccard similarity over character trigrams (lexical near-duplicate signal). */
+  private trigramSim(a: string, b: string): number {
+    const grams = (s: string): Set<string> => {
+      const x = `  ${s
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim()}  `;
+      const set = new Set<string>();
+      for (let i = 0; i < x.length - 2; i++) set.add(x.slice(i, i + 3));
+      return set;
+    };
+    const A = grams(a);
+    const B = grams(b);
+    if (A.size === 0 || B.size === 0) return 0;
+    let inter = 0;
+    for (const t of A) if (B.has(t)) inter++;
+    return inter / (A.size + B.size - inter);
   }
 
   /** Run an async mapper over items with bounded concurrency, preserving order. */
