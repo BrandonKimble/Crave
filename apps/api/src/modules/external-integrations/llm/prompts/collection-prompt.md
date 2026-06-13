@@ -283,12 +283,20 @@ Before handing tokens to composition, peel away modifiers that are attributes ra
 
 ### 3.4 What Qualifies as an Attribute (the bar)
 
-An attribute is a **filterable property**: a reusable axis-plus-value a diner could search or filter by (diet, preparation, texture, flavor, temperature, portion, setting, amenity, service style, timing, price level). Before emitting any term into an attribute array, apply this test: _would a diner type this to narrow a search, and could many different dishes/restaurants share it?_
+An attribute is a **filterable property**: a reusable axis-plus-value a diner could search or filter by (diet, preparation, texture, flavor, temperature, portion, setting, amenity, service style, timing, price level).
 
-- **Praise and sentiment are never attributes.** "amazing", "awesome", "solid", "top notch", "delicious", "favorite", "best", "high quality", "well crafted" express how good something is, not what it is. Sentiment's job in this pipeline is the eligibility/intent check (Step 1) and `general_praise` (Step 6) — never the attribute arrays. Drop bare praise entirely.
-- **Ingredients are not attributes.** "mayo", "coconut", "basil" belong in food composition (`food`/`food_categories`, Step 4), not attribute arrays. Dietary and sourcing _claims_ ARE attributes ("vegan", "gluten free", "organic", "grass-fed") because diners filter by them.
-- **Specific named components are not attributes.** "vodka sauce", "fresh mozzarella", "with ice cream" describe a particular dish's makeup → composition, not filters.
-- Only food types can be categories: nouns representing food items (e.g., pizza, taco, burger, sandwich, soup, salad). Cuisines, meal periods, and service styles are never categories.
+**The decisive test — describes vs. judges.** A real attribute states a property the food or place objectively **HAS** (what it _is_). Praise states **HOW GOOD** it is (a judgment of quality or enjoyment). Only descriptions are attributes; judgments are never attributes, no matter how food-flavored they sound.
+
+- `spicy`, `crispy`, `smoky`, `grilled`, `vegan`, `cozy`, `outdoor seating` → describe properties → attributes.
+- `delicious`, `tasty`, `amazing`, `incredible`, `insane`, `bonkers good`, `solid`, `best`, `elite`, `top notch`, `quality`, `high quality`, `specialty`, `favorite`, `well crafted`, `standout` → judge how good → **NOT attributes. Drop them.**
+- Watch for this: the very praise that made this comment eligible in Step 1 ("the brisket is _delicious_") is what feeds `general_praise` (Step 6) — it must NOT also become a food_attribute. Extract the description ("smoky", "tender"), never the verdict ("delicious", "the best").
+- When in doubt, ask: could the same word describe a _bad_ dish? "spicy" yes (a dish can be badly spicy) → attribute. "delicious"/"amazing" no (they only mean good) → praise, drop.
+
+Other non-attributes:
+
+- **Ingredients** ("mayo", "coconut", "basil") belong in food composition (`food`/`food_categories`, Step 4). But dietary/sourcing _claims_ ARE attributes ("vegan", "gluten free", "organic", "grass-fed") — diners filter by them.
+- **Specific named components** ("vodka sauce", "fresh mozzarella", "with ice cream") describe one dish's makeup → composition, not filters.
+- **Cuisines** ("thai", "turkish", "afro-caribbean") and **dish/format types** ("dim sum", "hot pot", "kbbq") are not attributes and not categories — they are handled elsewhere; do not emit them into attribute arrays.
 
 ### 3.5 Scope Determination Principle
 
@@ -299,11 +307,18 @@ Scope follows **what the property describes**, not where the word sits in the se
 - Usage decides for cuisine-like modifiers: "Italian pasta" → `food_attribute`; "Italian restaurant" → `restaurant_attribute`.
 - **Meal periods and serving contexts are dual-scope by usage** ("breakfast", "brunch", "lunch", "dinner", "late-night", "happy hour", "tasting"): tied to a dish ("breakfast burrito", "happy hour oysters", "lunch prix fixe") → `food_attribute`, so time-of-day variants collapse onto one dish (`food: "prix fixe"`, `food_attributes: ["lunch"]`); describing the place ("great happy hour", "open late") → `restaurant_attribute`.
 
-### 3.6 Attribute Emission Guidance
+### 3.6 Attribute Emission Gate
 
-- Keep modifiers that truly define the dish (e.g., "fish sauce wings") with the food tokens; only peel off modifiers that pass the 3.4 filterable bar.
-- When multiple attributes apply, include each one separately so downstream systems can match on any of them.
-- When a candidate modifier fails the 3.4 bar (praise, ingredient, vague evaluation), drop it — do not emit it on either side.
+Before placing ANY term in `food_attributes` or `restaurant_attributes`, run the 3.4
+describes-vs-judges test on it one more time. If the term judges how good something is
+(praise/evaluation), or is an ingredient, cuisine, dish type, or vague filler, **drop it** —
+do not emit it on either side. This gate overrides harvesting: it is correct to emit an empty
+attribute array for a glowing comment whose only modifiers were praise.
+
+- Keep modifiers that truly define the dish (e.g., "fish sauce wings") with the food tokens;
+  only peel off modifiers that pass the 3.4 bar.
+- When multiple real attributes apply, include each one separately so downstream systems can
+  match on any of them.
 
 ### 3.7 Normalization & Outputs
 
