@@ -173,8 +173,18 @@ export class SearchCoverageService {
           AND rl.latitude IS NOT NULL
           AND rl.google_place_id IS NOT NULL
           AND rl.address IS NOT NULL
-          AND rl.longitude BETWEEN ${minLng} AND ${maxLng}
-          AND rl.latitude BETWEEN ${minLat} AND ${maxLat}
+          ${
+            activeMarketKey
+              ? // Coverage paints the WHOLE market: it exists to supply the scored
+                // out-of-region pins/dots beyond the submitted viewport. The
+                // submitted bounds only anchor the per-restaurant location pick
+                // (selected_locations orders by distance to the search center);
+                // filtering candidates to the bounds makes coverage a subset of
+                // the overlap region, structurally emptying the out-region group.
+                Prisma.sql``
+              : Prisma.sql`AND rl.longitude BETWEEN ${minLng} AND ${maxLng}
+          AND rl.latitude BETWEEN ${minLat} AND ${maxLat}`
+          }
           ${marketLocationFilterSql}
       ),
       selected_locations AS (

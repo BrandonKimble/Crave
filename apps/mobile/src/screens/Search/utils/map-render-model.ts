@@ -277,28 +277,25 @@ export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
     return buildMarkerKey(left).localeCompare(buildMarkerKey(right));
   };
   const seenVisualIdentityKeys = new Set<string>();
-  // A currently-promoted pin is retained regardless of the bounds test: we do
-  // NOT demote a pin merely because the (axis-aligned, gesture-lagged) viewport
-  // query failed to return it. In-view markers take slot priority; off-view
-  // retained pins fill leftover slots, so a pin only demotes when an in-view
-  // marker genuinely needs its slot (real contention). This is what stops the
-  // promoted set from collapsing on pan/twist when the results are unchanged.
+  // v4: promotion is strictly visibility-gated — a pin that leaves the projected
+  // visible set demotes immediately (stair-step; its slot goes to whoever enters),
+  // and it crossfades back in if it returns. Edge stability comes from the native
+  // projector's spatial enter/exit hysteresis, NOT from retaining off-view pins:
+  // the old off-view retention let stale pins hold budget slots indefinitely
+  // (measured: 30/30 out-region slots held by off-screen markers, starving every
+  // visible candidate).
   const retainedInView: Array<MarkerFeature<TProps>> = [];
-  const retainedOffView: Array<MarkerFeature<TProps>> = [];
   for (const feature of currentPinnedMarkers) {
     const visualIdentityKey = buildVisualIdentityKey(feature);
     if (
       selectedVisualIdentityKeySet.has(visualIdentityKey) ||
-      seenVisualIdentityKeys.has(visualIdentityKey)
+      seenVisualIdentityKeys.has(visualIdentityKey) ||
+      !isVisible(feature)
     ) {
       continue;
     }
     seenVisualIdentityKeys.add(visualIdentityKey);
-    if (isVisible(feature)) {
-      retainedInView.push(feature);
-    } else {
-      retainedOffView.push(feature);
-    }
+    retainedInView.push(feature);
   }
   const freshInView: Array<MarkerFeature<TProps>> = [];
   for (const feature of rankedCandidates) {
@@ -314,8 +311,7 @@ export const buildMarkerRenderModel = <TProps extends MarkerLikeProperties>(
     freshInView.push(feature);
   }
   const inViewByRank = [...retainedInView, ...freshInView].sort(byRank);
-  const offViewByRank = retainedOffView.sort(byRank);
-  const desiredOthers = [...inViewByRank, ...offViewByRank].slice(0, remainingBudget);
+  const desiredOthers = inViewByRank.slice(0, remainingBudget);
 
   const nextPinnedMarkers: Array<MarkerFeature<TProps>> = [];
   const usedVisualIdentityKeys = new Set<string>();

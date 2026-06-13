@@ -1,0 +1,33 @@
+appId: com.brandonkimble.cravesearch
+---
+# Jitter repro with REAL gestures: submits, then small finger swipes (pan with
+# inertia) — the user-reported repro ("moving the map or zooming it a little
+# bit" makes groups of pins shift diagonally in different directions). Run with
+# a search_map_lod_ scenario name; pair with `xcrun simctl io recordVideo` and
+# frame-by-frame inspection to attribute the movement (pins vs basemap).
+- tapOn: { text: 'Close restaurant', optional: true }
+- tapOn: { text: 'Close results', optional: true }
+- tapOn: { text: 'Close polls', optional: true }
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 45000 }
+- extendedWaitUntil: { visible: 'Show best restaurants here', timeout: 45000 }
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=40.7550&lng=-73.9800&zoom=13.2&label=seed'
+- waitForAnimationToEnd: { timeout: 1600 }
+- openLink: 'crave://perf-scenario-command?action=submit_shortcut_restaurants'
+- extendedWaitUntil: { visible: 'Close results', timeout: 20000 }
+- waitForAnimationToEnd: { timeout: 3500 }
+- openLink: 'crave://perf-scenario-mark?phase=measured_repeat_loop_start&label=search_map_lod_jitter_swipe'
+- repeat:
+    times: 6
+    commands:
+      - swipe:
+          start: 50%, 40%
+          end: 56%, 46%
+          duration: 350
+      - waitForAnimationToEnd: { timeout: 700 }
+      - swipe:
+          start: 56%, 46%
+          end: 50%, 40%
+          duration: 350
+      - waitForAnimationToEnd: { timeout: 700 }
+- openLink: 'crave://perf-scenario-mark?phase=measured_repeat_loop_end&label=search_map_lod_jitter_swipe'
+- waitForAnimationToEnd: { timeout: 1200 }

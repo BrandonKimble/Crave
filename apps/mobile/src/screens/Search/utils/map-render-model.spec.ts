@@ -160,9 +160,16 @@ describe('buildMarkerRenderModel — single-frame invariants', () => {
   });
 });
 
-describe('buildMarkerRenderModel — stable membership (the mass-demotion / jitter invariants)', () => {
-  // A scenario where the promoted set starts as the top-`maxPins` of the pool
-  // (everything visible), then visibility changes. These are the twist/pan frames.
+describe('buildMarkerRenderModel — v4 visibility-gated promotion (no off-view retention)', () => {
+  // v4 invariant (plans/map-lod-ideal-model-v4.md): promotion is STRICTLY
+  // visibility-gated. A pin that leaves the projected visible set demotes
+  // immediately — its slot frees for whoever is on screen. Edge stability is the
+  // native projector's spatial enter/exit hysteresis (it keeps a marker in the
+  // visible SET until it is genuinely off-screen), NOT decision-layer off-view
+  // retention. So the promoted set is always a subset of the visible set, and the
+  // old "a scrolled-off pin stays promoted" behavior is intentionally gone — it was
+  // what let stale off-screen pins hold every budget slot and starve visible
+  // candidates (the out-region score-pin starvation).
   const arbStableStart = fc
     .record({
       poolSize: fc.integer({ min: 1, max: 60 }),
@@ -170,63 +177,52 @@ describe('buildMarkerRenderModel — stable membership (the mass-demotion / jitt
     })
     .map(({ poolSize, maxPins }) => {
       const pool = Array.from({ length: poolSize }, (_unused, index) => makeMarker(index));
-      const allVisible = new Set(keysOf(pool));
-      const initial = select({
-        rankedCandidates: pool,
-        currentPinnedMarkers: [],
-        visibleKeys: allVisible,
-        maxPins,
-      });
-      return { pool, maxPins, initialPinned: initial.nextPinnedMarkers };
+      return { pool, maxPins };
     });
 
-  it('pure off-screen scroll (no new marker enters) never demotes a pin — the twist bug', () => {
+  it('never promotes a marker that is not visible', () => {
     fc.assert(
       fc.property(
-        arbStableStart,
-        fc.array(fc.boolean(), { minLength: 0, maxLength: 60 }),
-        ({ maxPins, initialPinned }, visibleSeed) => {
-          // Model a twist/pan where markers leave the screen but NONE new enter:
-          // the visible set is a subset of the currently-promoted pins. The
-          // universe (current pins ∪ fresh-in-view) is then just the pins, which
-          // fits the budget, so retention must keep every one. The pre-fix code
-          // recomputed membership against the shrunken visible set and collapsed
-          // the whole promoted set here — the mass-demotion bug.
-          const visibleKeys = new Set(
-            initialPinned.filter((_f, index) => visibleSeed[index] ?? false).map(buildMarkerKey)
-          );
-          const next = select({
-            rankedCandidates: initialPinned, // no markers beyond the current pins enter view
-            currentPinnedMarkers: initialPinned,
+        arbScenario,
+        fc.array(fc.boolean(), { minLength: 0, maxLength: 80 }),
+        ({ pool, maxPins, visibleKeys }, pinnedSeed) => {
+          // Arbitrary starting pins (some may be off-screen) + arbitrary visible set.
+          // No off-screen pin may survive into the next promoted set.
+          const currentPinnedMarkers = pool
+            .filter((_f, index) => pinnedSeed[index] ?? false)
+            .slice(0, maxPins);
+          const result = select({
+            rankedCandidates: pool,
+            currentPinnedMarkers,
             visibleKeys,
             maxPins,
           });
-          const nextSet = new Set(keysOf(next.nextPinnedMarkers));
-          for (const key of keysOf(initialPinned)) {
-            expect(nextSet.has(key)).toBe(true);
+          for (const key of keysOf(result.nextPinnedMarkers)) {
+            expect(visibleKeys.has(key)).toBe(true);
           }
         }
       )
     );
   });
 
-  it('no demotion whenever there is room: |current pins ∪ fresh-in-view| ≤ maxPins', () => {
+  it('a still-visible pin is never demoted when there is room (no contention)', () => {
     fc.assert(
       fc.property(
         arbScenario,
         fc.array(fc.boolean(), { minLength: 0, maxLength: 80 }),
         ({ pool, maxPins, visibleKeys }, pinnedSeed) => {
-          // Arbitrary starting pins (≤ maxPins) + arbitrary visible set.
           const currentPinnedMarkers = pool
             .filter((_f, index) => pinnedSeed[index] ?? false)
             .slice(0, maxPins);
-          const pinnedKeys = new Set(keysOf(currentPinnedMarkers));
-          const freshInView = pool.filter(
-            (f) => visibleKeys.has(buildMarkerKey(f)) && !pinnedKeys.has(buildMarkerKey(f))
+          // Only the VISIBLE current pins are eligible to stay (v4: off-view demotes).
+          const visibleCurrentKeys = new Set(
+            keysOf(currentPinnedMarkers).filter((key) => visibleKeys.has(key))
           );
-          const universeSize = pinnedKeys.size + freshInView.length;
-          // Only assert when there is genuinely room (no contention for slots).
-          fc.pre(universeSize <= maxPins);
+          const freshVisible = pool.filter(
+            (f) => visibleKeys.has(buildMarkerKey(f)) && !visibleCurrentKeys.has(buildMarkerKey(f))
+          );
+          // Room for everyone visible → no contention → every visible pin retained.
+          fc.pre(visibleCurrentKeys.size + freshVisible.length <= maxPins);
           const result = select({
             rankedCandidates: pool,
             currentPinnedMarkers,
@@ -234,7 +230,7 @@ describe('buildMarkerRenderModel — stable membership (the mass-demotion / jitt
             maxPins,
           });
           const nextSet = new Set(keysOf(result.nextPinnedMarkers));
-          for (const key of pinnedKeys) {
+          for (const key of visibleCurrentKeys) {
             expect(nextSet.has(key)).toBe(true);
           }
         }
@@ -242,7 +238,7 @@ describe('buildMarkerRenderModel — stable membership (the mass-demotion / jitt
     );
   });
 
-  it('over a SEQUENCE of pure scroll frames, the promoted set stays invariant (no collapse/oscillation)', () => {
+  it('over a SEQUENCE of scroll frames, the promoted set is exactly the top-N visible (resident candidates, no collapse, no off-view hold)', () => {
     fc.assert(
       fc.property(
         arbStableStart,
@@ -250,28 +246,34 @@ describe('buildMarkerRenderModel — stable membership (the mass-demotion / jitt
           minLength: 1,
           maxLength: 12,
         }),
-        ({ maxPins, initialPinned }, frames) => {
-          const initialSet = new Set(keysOf(initialPinned));
-          let currentPinnedMarkers = initialPinned;
+        ({ pool, maxPins }, frames) => {
+          // Resident model: ALL candidates always exist; only visibility changes per
+          // frame. The promoted set each frame must be exactly the top-min(|visible|,
+          // maxPins) by rank, contain nothing off-screen, and a marker that left and
+          // returns must re-promote — driven purely by the per-frame visible set, with
+          // no dependence on what was promoted last frame (no oscillation, no hold).
+          let currentPinnedMarkers: Array<MarkerFeature<Props>> = [];
           for (const visibleSeed of frames) {
-            // Each frame: only currently-promoted markers move in/out of view, no
-            // new markers enter. The promoted set must stay exactly the initial
-            // set across the whole gesture — any drop-then-recover is flicker.
             const visibleKeys = new Set(
-              currentPinnedMarkers
-                .filter((_f, index) => visibleSeed[index] ?? false)
-                .map(buildMarkerKey)
+              pool.filter((_f, index) => visibleSeed[index] ?? false).map(buildMarkerKey)
             );
             const result = select({
-              rankedCandidates: currentPinnedMarkers,
+              rankedCandidates: pool,
               currentPinnedMarkers,
               visibleKeys,
               maxPins,
             });
             const set = new Set(keysOf(result.nextPinnedMarkers));
-            expect(set.size).toBe(initialSet.size);
-            for (const key of initialSet) {
-              expect(set.has(key)).toBe(true);
+            // pool is rank-ordered, so filter(visible).slice(0,maxPins) == top-N visible.
+            const expectedTopVisible = pool
+              .filter((f) => visibleKeys.has(buildMarkerKey(f)))
+              .slice(0, maxPins);
+            expect(set.size).toBe(expectedTopVisible.length);
+            for (const feature of expectedTopVisible) {
+              expect(set.has(buildMarkerKey(feature))).toBe(true);
+            }
+            for (const key of set) {
+              expect(visibleKeys.has(key)).toBe(true);
             }
             currentPinnedMarkers = result.nextPinnedMarkers;
           }
@@ -282,9 +284,10 @@ describe('buildMarkerRenderModel — stable membership (the mass-demotion / jitt
 });
 
 describe('buildMarkerRenderModel — in-view priority is the intended contract', () => {
-  // Locks the design decision (confirmed): when slots are full, an on-screen
-  // marker takes priority over an off-screen pin EVEN IF the off-screen pin is
-  // higher-ranked. Off-screen pins keep only otherwise-empty slots.
+  // Locks the v4 decision: promotion is visibility-gated. An on-screen marker takes
+  // a slot over an off-screen pin EVEN IF the off-screen pin is higher-ranked,
+  // because the off-screen pin is demoted outright (it keeps NO slot) — only
+  // on-screen markers compete for the budget.
   it('a fresh on-screen marker claims a full slot from a higher-ranked off-screen pin', () => {
     fc.assert(
       fc.property(fc.integer({ min: 1, max: 20 }), (maxPins) => {

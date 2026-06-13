@@ -471,14 +471,12 @@ const projectSearchMapVisualFrame = ({
   dotSources,
   selectedRestaurantId,
   restaurantOnlyId,
-  pinnedFeatures,
   buildMarkerKey,
 }: {
   rankedSources: readonly SearchMapVisualCandidateSource[];
   dotSources: readonly SearchMapVisualCandidateSource[];
   selectedRestaurantId: string | null;
   restaurantOnlyId: string | null;
-  pinnedFeatures: readonly Feature<Point, RestaurantFeatureProperties>[];
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
 }): ProjectedSearchMapVisualFrame => {
   const rankedCandidates = collectSearchMapVisualCandidates({
@@ -487,15 +485,19 @@ const projectSearchMapVisualFrame = ({
     restaurantOnlyId,
     buildMarkerKey,
   });
-  const pinnedVisualIdentityKeys = new Set(
-    pinnedFeatures.map((feature) => buildSearchMapVisualIdentityKey(feature))
-  );
   const dotCandidates = collectSearchMapVisualCandidates({
     sources: dotSources,
     selectedRestaurantId,
     restaurantOnlyId,
     buildMarkerKey,
   });
+  // No selection → NO selected candidates. The old fallback (all rankedCandidates)
+  // poisoned the in/out-region classifier downstream: selectedMarkerKeys contained
+  // every key, the "selected is always in-region" short-circuit classified the whole
+  // candidate set in-region, and the out-region (crave-score badge) group was
+  // structurally empty (measured: 531/531 short-circuited, 376 geometrically out).
+  // collectSelectedEntries already returns [] for a null selectedRestaurantId, so
+  // nothing else consumed the fallback.
   const selectedRestaurantCandidates =
     selectedRestaurantId != null
       ? collectSearchMapVisualCandidates({
@@ -506,7 +508,7 @@ const projectSearchMapVisualFrame = ({
         })
           .filter((candidate) => candidate.feature.properties.restaurantId === selectedRestaurantId)
           .map((candidate) => candidate.feature)
-      : rankedCandidates.map((candidate) => candidate.feature);
+      : [];
   const candidateVisualIdentityKeys = new Set<SearchMapVisualIdentityKey>();
   rankedCandidates.forEach((candidate) =>
     candidateVisualIdentityKeys.add(candidate.visualIdentityKey)
@@ -1552,7 +1554,6 @@ export const useDirectSearchMapSourceController = ({
       dotSources: dotCandidateSources,
       selectedRestaurantId,
       restaurantOnlyId: effectiveRestaurantOnlyId,
-      pinnedFeatures: [],
       buildMarkerKey,
     });
     const rankedCandidates = projectedInitialCandidates.rankedCandidates;
@@ -1823,7 +1824,6 @@ export const useDirectSearchMapSourceController = ({
       dotSources: dotCandidateSources,
       selectedRestaurantId,
       restaurantOnlyId: effectiveRestaurantOnlyId,
-      pinnedFeatures: visibleSortedRestaurantMarkers,
       buildMarkerKey,
     });
     // Dots = every demoted marker. They render always-draw (allowOverlap:true), so no
@@ -1985,6 +1985,82 @@ export const useDirectSearchMapSourceController = ({
           vanishedFromBothFamilies: vanished,
         });
       }
+      // PIN PUBLISH STABILITY contract. The pin is a single pre-baked sprite (number
+      // baked in) anchored at its coordinate, so the only publish-side inputs that can
+      // MOVE a rendered pin are (a) its badgeImageId swapping to a different-sized
+      // sprite or (b) its coordinate changing (a multi-location re-pick: same
+      // restaurantId reappears under a new lng:lat markerKey). Both must stay 0 during
+      // camera motion — nonzero indicts the publish path for the pin jitter. The
+      // in/out-region promotion split + the out-region visibility funnel keep the
+      // out-region (crave-score) group honest: promotedOutRegion==0 with
+      // outRegionVisible>0 is a render-model starve; with outRegionVisible==0 the
+      // projection/region classification is starving it upstream.
+      const previousPinStore = previousPinSourceStoreRef.current;
+      let badgeChangedCount = 0;
+      let coordinateSwapCount = 0;
+      let promotedInRegionCount = 0;
+      let promotedOutRegionCount = 0;
+      const prevKeyByRestaurantId = new Map<string, string>();
+      if (previousPinStore) {
+        for (const prevKey of previousPinStore.idsInOrder) {
+          const restaurantId = previousPinStore.featureById.get(prevKey)?.properties.restaurantId;
+          if (typeof restaurantId === 'string') {
+            prevKeyByRestaurantId.set(restaurantId, prevKey);
+          }
+        }
+      }
+      for (const markerKey of pinSourceStore.idsInOrder) {
+        const feature = pinSourceStore.featureById.get(markerKey);
+        if (!feature) {
+          continue;
+        }
+        if (feature.properties.nativeLodOpacity === 1) {
+          if (feature.properties.inOverlapRegion === true) {
+            promotedInRegionCount += 1;
+          } else {
+            promotedOutRegionCount += 1;
+          }
+        }
+        const prevFeature = previousPinStore?.featureById.get(markerKey);
+        if (prevFeature) {
+          if (prevFeature.properties.badgeImageId !== feature.properties.badgeImageId) {
+            badgeChangedCount += 1;
+          }
+        } else {
+          const restaurantId = feature.properties.restaurantId;
+          const prevKeyForRestaurant =
+            typeof restaurantId === 'string' ? prevKeyByRestaurantId.get(restaurantId) : undefined;
+          if (prevKeyForRestaurant != null && prevKeyForRestaurant !== markerKey) {
+            coordinateSwapCount += 1;
+          }
+        }
+      }
+      let outRegionCandidateCount = 0;
+      let outRegionVisibleCount = 0;
+      for (const candidate of rankedCandidates) {
+        if (isInRegionFeature(candidate)) {
+          continue;
+        }
+        outRegionCandidateCount += 1;
+        if (
+          nativeVisibleMarkerKeys == null ||
+          nativeVisibleMarkerKeys.has(buildMarkerKey(candidate))
+        ) {
+          outRegionVisibleCount += 1;
+        }
+      }
+      logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+        event: 'pin_publish_stability_contract',
+        publishReason,
+        isMapMoving: projectionIsMapMoving,
+        badgeChangedCount,
+        coordinateSwapCount,
+        promotedInRegionCount,
+        promotedOutRegionCount,
+        outRegionCandidateCount,
+        outRegionVisibleCount,
+        rankedCandidateCount: rankedCandidates.length,
+      });
     }
     const pinVisualIdentityKeys = collectSourceStoreVisualIdentityKeys(pinSourceStore);
     const dotVisualIdentityKeys = collectSourceStoreVisualIdentityKeys(dotSourceStore);
