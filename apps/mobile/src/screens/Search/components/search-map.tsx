@@ -2317,7 +2317,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
           nativeLodOpacityExpression,
           STYLE_PINS_SHADOW_OPACITY,
         ]),
-        symbolZOrder: 'viewport-y',
+        // 'source', NOT 'viewport-y' (matches the pin layer): no per-frame screen-Y
+        // re-sort during camera motion, the documented "sub-pixel placement wobble"
+        // source. Shadow stacking is invisible anyway.
+        symbolZOrder: 'source',
         iconOpacityTransition: PIN_OPACITY_TRANSITION,
       }) as MapboxGL.SymbolLayerStyle,
     [nativeLodOpacityExpression, nativePresentationOpacityExpression]
@@ -2333,7 +2336,15 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const stylePinSingleSymbolStyle = React.useMemo(
     () =>
       ({
-        symbolZOrder: 'viewport-y',
+        // 'source', NOT 'viewport-y'. The number is baked INTO the icon, so pin+number
+        // already stack as one unit regardless of z-order (no cross-pass text bleed).
+        // viewport-y re-sorts symbols by screen-Y EVERY frame during camera motion; the
+        // team documented that per-frame re-sort as a "sub-pixel placement wobble" source
+        // (see the symbolSortKey note below) — exactly the class of motion-time pin
+        // jitter we're chasing. Static 'source' order removes the per-frame re-sort, and
+        // matches the dots/labels layers. Pins are budget-capped and rarely overlap, so
+        // losing screen-Y stacking is cosmetically moot.
+        symbolZOrder: 'source',
         // Data-driven icon by the feature's badgeImageId string. The source builder
         // always sets badgeImageId, but coalesce to a plain-bucket pin by score as a
         // safety net (thresholds match scoreToBucket()).
