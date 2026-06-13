@@ -23,58 +23,63 @@ Return one decision:
 
 ## What "same filter" means
 
-Two terms are the same filter only when a diner would treat them as **interchangeable in
-a search** — same property, same direction. Concretely, they must share BOTH:
+Two terms are the same filter when a diner would be happy to get **both** results from one
+search — interchangeable for filtering. Decide each pair by what a searcher actually wants.
 
-1. **The same axis** — the dimension being described (size, price, spice, warmth, setting…).
-2. **The same value on that axis** — the same end of it.
+**Match** when one term is just another way of saying the other, or a same-direction degree
+of one quality a searcher would not distinguish:
 
-Sharing only the axis is NOT a match. This is the trap to avoid:
+- Spelling/phrasing variants: `gluten free` = `gluten-free` = `no gluten`; `allows dogs` =
+  `dog friendly`.
+- Different words, same meaning: `outdoor seating` = `al fresco` = `patio dining`;
+  `all you can eat` = `acye` = `bottomless`.
+- **Same-direction intensity of one quality** → merge: `good value` = `great value` =
+  `s-tier value`; `big` = `huge` = `massive`; `upscale` = `mid-upscale`; `michelin` =
+  `3 michelin stars`. A diner searching "good value" wants the "great value" places too.
 
-- **Opposite values** — `thick` vs `thin`, `mini` vs `giant`, `cheap` vs `expensive`,
-  `mild` vs `spicy`, `lunch` vs `dinner`. A diner filtering for "thin crust" does not want
-  "thick crust". Never match these.
-- **Different degrees of the same axis** — `warm` vs `hot` vs `scalding`, `damp` vs `wet`,
-  `spicy` vs `extra spicy`. Adjacent is still distinct: warm is not hot. Keep separate unless
-  truly interchangeable.
-- **A shared word spanning two axes** — `hot` means temperature on one axis and spice on
-  another; do not match `spicy` to a temperature `hot`, or a temperature `warm` to a spice
-  term. Judge by meaning, not the surface word.
+**Keep separate** (`new`) when the difference is one a diner would deliberately choose
+between:
 
-A real match is same axis **and** same value, regardless of spelling:
+- **Opposite values** on an axis: `thick` vs `thin`, `cheap` vs `expensive`, `mild` vs
+  `spicy`, `lunch` vs `dinner`, `quiet` vs `lively`. Never merge opposites — someone
+  filtering "thin crust" does not want "thick".
+- **A meaningful step a searcher picks**: `spicy` vs `extra spicy` (someone avoiding heat
+  cares); `not too sweet` (mildly sweet) vs `not sweet` (unsweet).
+- **A shared word spanning two axes**: temperature `hot` ≠ spice `hot`. Judge by meaning,
+  not the surface word.
+- **A genuinely narrower filter**: `rooftop` is not just `outdoor seating`.
 
-- `outdoor seating` = `al fresco` = `patio dining` (same setting).
-- `allows dogs` = `dog friendly` = `pets welcome`.
-- `all you can eat` = `acye` = `bottomless` (same offer).
-- `gluten free` = `gluten-free` = `no gluten` (spelling variants).
-
-Granularity: a more specific term matches a broader candidate only when the diner would not
-distinguish them (`patio seating` → `outdoor seating`: yes). If the specific term is a
-genuinely separate, useful filter, prefer `new` (`rooftop` is not just `outdoor seating`).
-Watch negation degree too: `not too sweet` (mildly sweet) is not `not sweet` (unsweet).
-
-## When to choose `new` vs `match`
-
-Bias toward **`new` when unsure.** Over-matching collapses a real distinction and is hard
-to undo; choosing `new` is cheap — a later term can still match this one, or two near-
-duplicates can be merged later. Only `match` when you are confident they are one filter.
+The deciding question for any degree/intensity pair: _would a search for the milder term be
+worse off for including the stronger one?_ No → same filter, **match**. Yes → **new**. This
+cuts both ways: do not collapse opposites, and do not split true synonyms over intensity.
 
 ## When to `reject`
 
 `term` is not a usable attribute:
 
-- Not an attribute at all: a dish, a restaurant, a cuisine, an ingredient, a place, a person
+- **Not an attribute at all**: a dish, restaurant, cuisine, ingredient, place, or person
   (`carbonara`, `Shake Shack`, `Thai`, `basil`, `Brooklyn`).
-- Wrong vocabulary for `kind`: a food property sent as a `restaurant_attribute`, or vice
-  versa (`huge portions` is about the dish, not the room; `good value` / `cheap` /
-  `accessible` are about the place, not the dish). EXCEPTION — meal periods and serving
-  contexts (`breakfast`, `brunch`, `late-night`, `happy hour`, `tasting`) are legitimately
-  **dual-scope**: a place has happy hour AND a dish can be a happy-hour item. Never reject
-  these for scope; judge them within the requested `kind`.
-- Pure noise: filler or bare sentiment with no filterable meaning (`good`, `really`, `the
-best`, `solid`, `vibe`), a fragment, or an extraction artifact.
+- **Bound to a specific ingredient or component** → that is a dish's makeup, not a reusable
+  filter: `rich broth`, `toasted garlic`, `brown butter`, `vodka sauce`, `thick layers`. The
+  generic property alone (`rich`, `toasted`) can be an attribute; the ingredient-bound phrase
+  is composition — reject it.
+- **A complaint or negative-quality judgment** → the app recommends; diners filter FOR
+  things, not against: `grumpy staff`, `overpriced`, `terrible acoustics`, `rushed`,
+  `inefficient`, `loud`. Reject. (Neutral negatives that name a desirable state are fine:
+  `not crowded`, `no wait`, `cash only`.)
+- **Too specific to reuse** → if only one place or dish could ever have it, it is not a
+  filter: `korean-french tasting menu`, `63rd floor roof bar`, `cocktails in early evening`,
+  `relaxed edomae`. The reusable core (`tasting menu`, `rooftop bar`) is the attribute; the
+  over-specific compound is not.
+- **Wrong vocabulary for `kind`**: a food property sent as `restaurant_attribute` or vice
+  versa (`huge portions` is the dish, not the room; `good value` / `cheap` / `accessible` are
+  the place, not the dish). EXCEPTION — meal periods and serving contexts (`breakfast`,
+  `brunch`, `late-night`, `happy hour`, `tasting`) are **dual-scope**: never reject these for
+  scope; judge them within the requested `kind`.
+- **Pure noise or sentiment**: bare praise or filler with no filterable meaning (`good`,
+  `really`, `the best`, `solid`, `vibe`), a fragment, or an extraction artifact.
 
-Be conservative here too: a plausible attribute is `new`, not `reject`.
+A plausible, reusable attribute is `new`, not `reject` — but apply the bar above firmly.
 
 ## Output
 

@@ -266,12 +266,13 @@ Outputs
 Before handing tokens to composition, peel away modifiers that are attributes rather than core food substance terms.
 
 - Remove preparation styles, cuisines-as-adjectives, dietary labels, serving periods, texture descriptors, and other modifiers that would better live in attribute arrays.
-- Exclude multi-word modifiers as a unit when they behave as a single attribute (e.g., "house-made", "very spicy", "gluten free").
+- Keep a multi-word modifier together ONLY when the whole phrase is a generic, ingredient-free property ("house-made", "very spicy", "gluten free"). When a modifier is tied to a specific ingredient or component ("brown butter sauce", "rich broth", "toasted garlic"), peel off only the generic property word if any ("rich", "toasted") and leave the ingredient/component with the dish tokens — never emit the ingredient-bound phrase as an attribute.
 - Keep anchor words that define the food identity (e.g., protein, dish type) with the food tokens.
 - Examples (non-exhaustive):
   - "spicy ramen" -> attribute "spicy"; food tokens keep "ramen".
   - "breakfast burrito" -> attribute "breakfast"; food tokens keep "burrito".
   - "house-made carnitas taco" -> attribute "house-made"; food tokens keep "carnitas taco".
+  - "rich broth ramen" -> NO "rich broth" attribute; "broth" stays with the dish; emit "rich" only if the text frames it as a quality.
 - Treat generic filler nouns ("food", "foods", "meal", "dish", "the food", "restaurant", "place", "spot", etc.) as noise—drop them instead of emitting them as foods, food categories, or attributes.
 
 ### 3.3 Entity types
@@ -294,9 +295,10 @@ An attribute is a **filterable property**: a reusable axis-plus-value a diner co
 
 Other non-attributes:
 
-- **Ingredients** ("mayo", "coconut", "basil") belong in food composition (`food`/`food_categories`, Step 4). But dietary/sourcing _claims_ ARE attributes ("vegan", "gluten free", "organic", "grass-fed") — diners filter by them.
-- **Specific named components** ("vodka sauce", "fresh mozzarella", "with ice cream") describe one dish's makeup → composition, not filters.
-- **Cuisines** ("thai", "turkish", "afro-caribbean") and **dish/format types** ("dim sum", "hot pot", "kbbq") are not attributes and not categories — they are handled elsewhere; do not emit them into attribute arrays.
+- **Ingredients and ingredient-bound phrases.** A bare ingredient ("mayo", "coconut", "basil") OR a property welded to a specific ingredient/component ("rich broth", "toasted garlic", "brown butter", "vodka sauce", "thick layers", "tempered chocolate") describes _this dish's makeup_ → it belongs in food composition (Step 4), not an attribute. Extract only the generic, ingredient-free property if one applies ("rich", "toasted") and send the ingredient/component to the dish; otherwise drop. Dietary/sourcing _claims_ remain attributes ("vegan", "gluten free", "organic", "grass-fed") — diners filter by them.
+- **Complaints / negative-quality.** The app recommends, so attributes are things a diner filters FOR. Drop criticism ("grumpy staff", "overpriced", "terrible acoustics", "rushed", "inefficient", "too loud"). Keep neutral states even when phrased as a negation ("not crowded", "no wait", "cash only").
+- **Over-specific, single-use phrases.** An attribute must be reusable across many dishes or places. If only one dish/restaurant could ever have it ("korean-french tasting menu", "63rd floor roof bar", "basted in herby butter", "cocktails in early evening"), strip it to the reusable core ("tasting menu", "rooftop") or drop it.
+- **Cuisines** ("thai", "turkish", "afro-caribbean") and **dish/format types** ("dim sum", "hot pot", "kbbq") are handled elsewhere — do not emit them into attribute arrays.
 
 ### 3.5 Scope Determination Principle
 
