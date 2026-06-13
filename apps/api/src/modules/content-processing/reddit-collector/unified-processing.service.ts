@@ -2551,6 +2551,20 @@ export class UnifiedProcessingService implements OnModuleInit {
       return;
     }
 
+    // Escape hatch for cheap extraction replays: skip the Google Places lookups
+    // (the most expensive part of collection) so prompt iteration on extraction /
+    // attribute classification can be tested without per-restaurant API cost.
+    if (
+      String(
+        this.configService.get('DISABLE_RESTAURANT_ENRICHMENT') ?? '',
+      ).toLowerCase() === 'true'
+    ) {
+      this.logger.info('Restaurant enrichment skipped (disabled by config)', {
+        restaurantCandidates: summaries.length,
+      });
+      return;
+    }
+
     const restaurantIds = Array.from(
       new Set(
         summaries

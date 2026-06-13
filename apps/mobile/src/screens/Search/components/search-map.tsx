@@ -177,16 +177,10 @@ const PIN_COLLISION_OUTLINE_SIDE_PAD_IMAGE_PX =
   PIN_COLLISION_SIDE_PAD_PX / (STYLE_PINS_OUTLINE_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE);
 const PIN_COLLISION_FILL_SIDE_PAD_IMAGE_PX =
   PIN_COLLISION_SIDE_PAD_PX / (STYLE_PINS_FILL_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE);
-// Single source of truth for ALL pin fade animations (batch reveal/dismiss + LOD promote/demote).
-// Changing these values affects every pin fade globally.
-const PIN_FADE_CONFIG = {
-  durationMs: 300,
-  rankDelayFraction: 0.5,
-} as const;
-
-// Native Mapbox transition configs for batch fade animations (60fps GPU-driven).
-// The JS thread only sets target values (0 or 1) — Mapbox handles all interpolation.
-const PIN_OPACITY_TRANSITION = { duration: PIN_FADE_CONFIG.durationMs, delay: 0 };
+// Pin fade timing lives natively now: the CADisplayLink steppers own ALL pin opacity
+// animation (LOD promote/demote + presentation reveal/dismiss). There is no JS/Mapbox
+// style transition for pin opacity — the stepper writes the feature-state per frame, so
+// it is the sole animator (this is what removed the per-frame placement-pass pin jitter).
 
 const withIconOpacity = (
   baseStyle: MapboxGL.SymbolLayerStyle,
@@ -2137,7 +2131,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
       // Keep the collision box closer to the actual glyph bounds.
       textLineHeight: 0.5,
       textOpacity: ['*', nativePresentationOpacityExpression, nativeDotOpacityExpression],
-      textOpacityTransition: PIN_OPACITY_TRANSITION,
+      // No *OpacityTransition — the native stepper is the SOLE opacity animator (see the
+      // pin layer note). A Mapbox style transition is the redundant second writer.
       // Keep dots a constant screen size (like pins). The symbol can still cull/collide based on
       // Mapbox placement, but it won't scale with zoom.
       textSize: DOT_TEXT_SIZE,
@@ -2322,7 +2317,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
         // did NOT reduce the sub-pixel motion wobble, so viewport-y is not the jitter
         // cause; keep the stacking.)
         symbolZOrder: 'viewport-y',
-        iconOpacityTransition: PIN_OPACITY_TRANSITION,
+        // No iconOpacityTransition — shadow opacity tracks its pin and is animated by the
+        // native stepper feature-state writes (see the pin layer note). The Mapbox
+        // transition was the redundant second writer.
       }) as MapboxGL.SymbolLayerStyle,
     [nativeLodOpacityExpression, nativePresentationOpacityExpression]
   );
@@ -2375,7 +2372,14 @@ const SearchMap: React.FC<SearchMapProps> = ({
         iconAllowOverlap: true,
         iconIgnorePlacement: true,
         iconOpacity: ['*', nativePresentationOpacityExpression, nativeLodOpacityExpression],
-        iconOpacityTransition: PIN_OPACITY_TRANSITION,
+        // No iconOpacityTransition. The native CADisplayLink steppers already write BOTH
+        // opacity inputs per-frame: the LOD crossfade stepper writes nativeLodOpacity
+        // (updateLivePinTransitions) and the presentation stepper writes
+        // nativePresentationOpacity (stepPresentationOpacityAnimation, eased,
+        // transitionDurationMs:0). A Mapbox style transition is therefore a REDUNDANT
+        // second opacity writer — and its 300ms smoothing of every per-frame feature-state
+        // write forced these ignorePlacement pins back through the placement/pixel-snap
+        // pass each frame, which is the pin jitter. The stepper is now the sole animator.
       }) as unknown as MapboxGL.SymbolLayerStyle,
     [nativeLodOpacityExpression, nativePresentationOpacityExpression]
   );

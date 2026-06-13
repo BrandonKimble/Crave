@@ -23,35 +23,39 @@ Return one decision:
 
 ## What "same filter" means
 
-Two terms are the same filter when a diner would be happy to get **both** results from one
-search — interchangeable for filtering. Decide each pair by what a searcher actually wants.
+Two terms are the same filter when a diner searching **either** one would be happy to get
+the **other's** results — interchangeable in BOTH directions. Apply that test, both ways, to
+every pair.
 
-**Match** when one term is just another way of saying the other, or a same-direction degree
-of one quality a searcher would not distinguish:
+**Match** when they are interchangeable both ways:
 
 - Spelling/phrasing variants: `gluten free` = `gluten-free` = `no gluten`; `allows dogs` =
   `dog friendly`.
 - Different words, same meaning: `outdoor seating` = `al fresco` = `patio dining`;
   `all you can eat` = `acye` = `bottomless`.
-- **Same-direction intensity of one quality** → merge: `good value` = `great value` =
-  `s-tier value`; `big` = `huge` = `massive`; `upscale` = `mid-upscale`; `michelin` =
-  `3 michelin stars`. A diner searching "good value" wants the "great value" places too.
+- **Same-direction intensity of one quality**: `good value` = `great value` = `s-tier value`;
+  `big` = `huge` = `massive`; `upscale` = `mid-upscale`; `michelin` = `3 michelin stars`. A
+  "good value" searcher wants the "great value" places, and vice versa.
+- **A subtype that is just a variant of a broader filter**, with no distinct pull of its own:
+  `backyard` / `garden` / `patio` → `outdoor seating`; `live jazz` → `live music`. Someone
+  searching the broad term wants these, and someone searching the variant is satisfied by the
+  broad set — interchangeable both ways → merge.
 
-**Keep separate** (`new`) when the difference is one a diner would deliberately choose
-between:
+**Keep separate** (`new`) when interchangeability fails in **either** direction:
 
-- **Opposite values** on an axis: `thick` vs `thin`, `cheap` vs `expensive`, `mild` vs
-  `spicy`, `lunch` vs `dinner`, `quiet` vs `lively`. Never merge opposites — someone
-  filtering "thin crust" does not want "thick".
+- **Opposite values** (fails both ways): `thick` vs `thin`, `cheap` vs `expensive`, `mild` vs
+  `spicy`, `lunch` vs `dinner`, `quiet` vs `lively`. Someone filtering "thin crust" does not
+  want "thick".
+- **A narrower filter people seek on purpose** (fails one way): `rooftop` is a specific want —
+  a "rooftop" searcher is NOT satisfied by generic `outdoor seating`, even though every
+  rooftop is outdoor. Keep it separate.
 - **A meaningful step a searcher picks**: `spicy` vs `extra spicy` (someone avoiding heat
   cares); `not too sweet` (mildly sweet) vs `not sweet` (unsweet).
-- **A shared word spanning two axes**: temperature `hot` ≠ spice `hot`. Judge by meaning,
-  not the surface word.
-- **A genuinely narrower filter**: `rooftop` is not just `outdoor seating`.
+- **A shared word spanning two axes**: temperature `hot` ≠ spice `hot`. Judge by meaning, not
+  the surface word.
 
-The deciding question for any degree/intensity pair: _would a search for the milder term be
-worse off for including the stronger one?_ No → same filter, **match**. Yes → **new**. This
-cuts both ways: do not collapse opposites, and do not split true synonyms over intensity.
+The test cuts both ways: do not collapse opposites or distinct wants, and do not split true
+synonyms, intensity variants, or plain subtypes.
 
 ## When to `reject`
 
@@ -71,13 +75,22 @@ cuts both ways: do not collapse opposites, and do not split true synonyms over i
   filter: `korean-french tasting menu`, `63rd floor roof bar`, `cocktails in early evening`,
   `relaxed edomae`. The reusable core (`tasting menu`, `rooftop bar`) is the attribute; the
   over-specific compound is not.
+- **A dish role or course, not a property** → `side`, `palette cleanser`, `appetizer`, `main`,
+  `dessert`-as-course describe where a dish sits on a menu, not a filterable quality of it.
+- **An ambiguous, context-stripped fragment** → a term that asserts no clear property on its
+  own because it lost the words that gave it meaning: `medium` (medium what?), `sat only`,
+  `sunset`, `weekdays`, `classic service`. If you cannot state what property it filters by
+  without guessing the missing context, reject it.
 - **Wrong vocabulary for `kind`**: a food property sent as `restaurant_attribute` or vice
   versa (`huge portions` is the dish, not the room; `good value` / `cheap` / `accessible` are
   the place, not the dish). EXCEPTION — meal periods and serving contexts (`breakfast`,
   `brunch`, `late-night`, `happy hour`, `tasting`) are **dual-scope**: never reject these for
   scope; judge them within the requested `kind`.
-- **Pure noise or sentiment**: bare praise or filler with no filterable meaning (`good`,
-  `really`, `the best`, `solid`, `vibe`), a fragment, or an extraction artifact.
+- **Praise, accolades, or recommendation language** — anything judging how good or
+  worth-visiting something is, not what it is: bare praise (`good`, `the best`, `solid`), and
+  accolades that read like features but aren't (`award winning`, `worth the trip`, `must-try`,
+  `hidden gem`, `iconic`, `top-notch`). Drop them, plus filler (`really`, `vibe`) and
+  extraction artifacts.
 
 A plausible, reusable attribute is `new`, not `reject` — but apply the bar above firmly.
 

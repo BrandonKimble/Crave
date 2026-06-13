@@ -77,9 +77,13 @@ settled role for pre-stepper initial paint.
 - `MARKER_VISIBILITY_DWELL_MS` + `markerLastVisibleAtMsRef` (JS time-dwell) → replaced
   by native spatial hysteresis.
 - Dual opacity animation: Mapbox `iconOpacityTransition` AND the native stepper both
-  smooth the same value. The Mapbox transition is currently load-bearing for
-  reveal-settle (`visual_released`); a later slice should make the stepper own reveal
-  too, then delete the style transitions. Do not delete before re-staging reveal.
+  smooth the same value. RESOLVED 2026-06-13: the style transitions are deleted; the
+  native stepper is the sole opacity animator. The earlier "load-bearing for
+  reveal-settle" concern did not hold — `visual_released` is emitted off the
+  prepared-rows + healthy-frames path (use-search-submit-response-owner.ts:1066), not
+  off the Mapbox transition, and the presentation reveal opacity
+  (`nativePresentationOpacity`) is already owned by the native stepper
+  (`stepPresentationOpacityAnimation`, `transitionDurationMs:0`).
 - `lodPinnedVisualKey` early-return must never let decision-layer baselines
   (`lodPinnedMarkersRef`) drift from the inputs the next eval will use.
 - NM4 leftovers per search-native-marker-family-cutover-plan.md (split-owner label
@@ -137,12 +141,13 @@ isPreparingEnterPlacement` (use-search-map-native-render-owner.ts:~2630) — the
    - Touches: use-search-map-native-render-owner.ts (3668 lines), SearchMapRenderController.swift,
      the Android module, results-presentation-\* runtime, search-results-sheet.tsx.
 
-2. **THEN delete the dual animation** (task: stepper owns reveal):
-   - Make the native stepper own `nativePresentationOpacity` (the reveal fade), not just
-     `nativeLodOpacity`.
-   - Delete `iconOpacityTransition` / `textOpacityTransition` from search-map.tsx
-     (pin ~2378, shadow ~2325, dot ~2140). Stepper-interpolated feature-state is the only
-     opacity animation.
+2. **THEN delete the dual animation** (task: stepper owns reveal) — DONE 2026-06-13:
+   - The native stepper already owned `nativePresentationOpacity` (the reveal fade) via
+     `stepPresentationOpacityAnimation` (`transitionDurationMs:0`), alongside
+     `nativeLodOpacity`. Precondition met without extra native work.
+   - Deleted `iconOpacityTransition` (pin + shadow) and `textOpacityTransition` (dot)
+     from search-map.tsx, plus the now-dead `PIN_OPACITY_TRANSITION` / `PIN_FADE_CONFIG`
+     constants. Stepper-interpolated feature-state is the only opacity animation.
    - Expected result: steady (non-transitioning) pins receive ZERO per-frame writes →
      pure GPU reprojection → **jitter resolves**. Re-verify on device.
 

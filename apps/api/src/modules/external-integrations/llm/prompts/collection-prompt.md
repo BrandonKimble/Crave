@@ -290,12 +290,15 @@ An attribute is a **filterable property**: a reusable axis-plus-value a diner co
 
 - `spicy`, `crispy`, `smoky`, `grilled`, `vegan`, `cozy`, `outdoor seating` → describe properties → attributes.
 - `delicious`, `tasty`, `amazing`, `incredible`, `insane`, `bonkers good`, `solid`, `best`, `elite`, `top notch`, `quality`, `high quality`, `specialty`, `favorite`, `well crafted`, `standout` → judge how good → **NOT attributes. Drop them.**
+- Accolades and recommendation language judge worth, not properties — also drop: "award winning", "worth the trip", "must-try", "hidden gem", "iconic", "famous", "world class".
 - Watch for this: the very praise that made this comment eligible in Step 1 ("the brisket is _delicious_") is what feeds `general_praise` (Step 6) — it must NOT also become a food_attribute. Extract the description ("smoky", "tender"), never the verdict ("delicious", "the best").
 - When in doubt, ask: could the same word describe a _bad_ dish? "spicy" yes (a dish can be badly spicy) → attribute. "delicious"/"amazing" no (they only mean good) → praise, drop.
 
 Other non-attributes:
 
 - **Ingredients and ingredient-bound phrases.** A bare ingredient ("mayo", "coconut", "basil") OR a property welded to a specific ingredient/component ("rich broth", "toasted garlic", "brown butter", "vodka sauce", "thick layers", "tempered chocolate") describes _this dish's makeup_ → it belongs in food composition (Step 4), not an attribute. Extract only the generic, ingredient-free property if one applies ("rich", "toasted") and send the ingredient/component to the dish; otherwise drop. Dietary/sourcing _claims_ remain attributes ("vegan", "gluten free", "organic", "grass-fed") — diners filter by them.
+- **Dish roles / courses.** "side", "main", "appetizer", "palette cleanser", "dessert"-as-course name where a dish sits on the menu, not a property of it — do not emit as attributes.
+- **Ambiguous, context-stripped fragments.** A word that asserts no clear property on its own once removed from its sentence ("medium", "regular", "classic service", "sat only") — if you cannot say what it filters by without guessing, drop it rather than emit a fragment.
 - **Complaints / negative-quality.** The app recommends, so attributes are things a diner filters FOR. Drop criticism ("grumpy staff", "overpriced", "terrible acoustics", "rushed", "inefficient", "too loud"). Keep neutral states even when phrased as a negation ("not crowded", "no wait", "cash only").
 - **Over-specific, single-use phrases.** An attribute must be reusable across many dishes or places. If only one dish/restaurant could ever have it ("korean-french tasting menu", "63rd floor roof bar", "basted in herby butter", "cocktails in early evening"), strip it to the reusable core ("tasting menu", "rooftop") or drop it.
 - **Cuisines** ("thai", "turkish", "afro-caribbean") and **dish/format types** ("dim sum", "hot pot", "kbbq") are handled elsewhere — do not emit them into attribute arrays.
