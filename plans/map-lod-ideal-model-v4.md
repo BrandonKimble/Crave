@@ -103,3 +103,52 @@ settled role for pre-stepper initial paint.
 - `raw_visible_set_shrink_contract`: rawVisibleRemoved == 0 during monotone zoom-out.
 - `lod_membership_churn_contract`: zero source add/remove during camera motion.
 - On-device: no flash, no jitter, stair-step promote/demote during continuous pinch.
+
+## Execution sequencing — the SINGLE-OWNER opacity cutover (the remaining work)
+
+The biggest remaining "not clean" is **two writers of pin opacity**: the native
+CADisplayLink stepper writes `setFeatureState(nativeLodOpacity)` on pins every frame
+during transitions, AND a Mapbox `iconOpacityTransition` animates the same value in
+parallel. The end state is **the native stepper is the SOLE writer of render opacity**.
+The pin JITTER is almost certainly a symptom of this: an `ignorePlacement` pin is
+normally placed once and GPU-reprojected smoothly, but per-frame feature-state writes +
+an active style transition can force it back through the placement/pixel-snap pass each
+frame (which is why plain past symbols never jittered). Fixing it = finishing this
+cutover. Sequence (chosen by user 2026-06-13):
+
+1. **Reveal/dismiss lane separation FIRST**
+   (plans/search-map-reveal-dismiss-smooth-cutover-plan.md, Gates A–E). This must come
+   first because the Mapbox `iconOpacityTransition` is currently load-bearing for the
+   reveal fade (`nativePresentationOpacity`); deleting it before the stepper owns the
+   reveal deadlocks the presentation phase machine (`visual_released` never fires).
+   - Phase machine (JS): `executionStage` in
+     results-presentation-runtime-machine-state.ts —
+     `enter_pending_mount`/`enter_mounted_hidden` (covered mount) → `enter_executing`
+     (visible reveal) → `settled` (live) → `exit_requested`/`exit_executing` (dismiss).
+   - Observation lane is already partly gated to `isPresentationLive ||
+isPreparingEnterPlacement` (use-search-map-native-render-owner.ts:~2630) — the job
+     is tightening leaks (no `queryRenderedFeatures` / sticky reapply / structural apply
+     during `enter_executing` or `exit_executing`) and staging structural publish under
+     cover (`enter_mounted_hidden`) and dismiss cleanup AFTER settle.
+   - Cluster 1 (do first, low-risk, unblocks the rest): an explicit "allowed work by
+     phase" policy module (`{allowStructuralApply, allowObservation, allowSheetSnap}` per
+     executionStage) + Gate-E lane diagnostics (per reveal/dismiss window: structural
+     apply count/ms, observation count/ms, sheet-snap overlap, first-visible-frame ms).
+   - Touches: use-search-map-native-render-owner.ts (3668 lines), SearchMapRenderController.swift,
+     the Android module, results-presentation-\* runtime, search-results-sheet.tsx.
+
+2. **THEN delete the dual animation** (task: stepper owns reveal):
+   - Make the native stepper own `nativePresentationOpacity` (the reveal fade), not just
+     `nativeLodOpacity`.
+   - Delete `iconOpacityTransition` / `textOpacityTransition` from search-map.tsx
+     (pin ~2378, shadow ~2325, dot ~2140). Stepper-interpolated feature-state is the only
+     opacity animation.
+   - Expected result: steady (non-transitioning) pins receive ZERO per-frame writes →
+     pure GPU reprojection → **jitter resolves**. Re-verify on device.
+
+3. **Remaining seams** (cleanup, after the above): lodPinnedVisualKey baseline-drift
+   (instant set_map_camera collapse), stale-producer (publish still emits stepper-key
+   values native now blocks), NM4 split-owner label-interaction diagnostics.
+
+Validation: run the reveal/dismiss + zoom-flash flows, confirm flashReversal 0 / no
+new crossfadeGap, reveal reaches hydration_ready, and on-device jitter gone.
