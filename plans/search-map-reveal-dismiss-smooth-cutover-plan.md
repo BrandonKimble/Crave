@@ -106,6 +106,53 @@ Panning the empty map after the first search must be frame-drop free. Achieved b
 Optional micro-opt: bail at the top of the viewport subscription when not live, to skip the
 minor pre-gate state reads.
 
+### Implementation clusters (mapped to code 2026-06-15)
+
+Native paths (apps/mobile/ios/cravesearch/SearchMapRenderController.swift):
+
+- Dismiss-settle today: `completeDismissVisualLifecycle` (6046) caches source
+  (`residentDesiredSourceCacheBySourceId` 6056) → `clearResidentSourcesAndTransientFeatureStates`
+  (6076) clears Mapbox sources → resets `derivedFamilyStates` (6094) → sets `.hidden` (6102).
+- Enter today: `restoreResidentDesiredSourceCacheForEnter` (2253 / def 6319) restores the
+  cached data back into the Mapbox sources; `startEnterPresentation` (5483) /
+  `beginRevealVisualLifecycle` (5984) / `settleEnterAfterRenderedFrame` (5815).
+- The proven dormancy mechanism to mirror: `setLabelCollisionObstacleLayersVisible` (6138)
+  → `setLayerProperty(... "visibility", "none"/"visible")`. Marker layer ids are on state:
+  `pinLayerIds` / `dotLayerIds` / `labelLayerIds`.
+
+Cluster I (native) — marker-layer dormancy:
+
+- Add `setMarkerLayersVisible(_:for:instanceId:reason:)` mirroring the collision helper,
+  over `pinLayerIds + dotLayerIds + labelLayerIds`.
+- In `completeDismissVisualLifecycle`: replace the source-clear (6074-6090) with
+  `setMarkerLayersVisible(false)`; KEEP sources populated; do NOT reset `derivedFamilyStates`
+  / `residentSourceFrameKey` / `residentSourceDataKey`. Keep the `.hidden` + opacity-0
+  transitions (so all existing hidden-gating stays active).
+- On the enter path, BEFORE the opacity dimmer (with opacity feature-state still 0 to avoid
+  a flash): `setMarkerLayersVisible(true)`. The cache restore (2253) becomes a no-op when
+  sources are already populated — gate/remove once verified.
+
+Cluster II (JS) — stop publishing the empty frame on dismiss:
+
+- use-direct-search-map-source-controller.ts ~1271-1280: when `!isSearchVisualProjectionLive`
+  AND the phase forbids structural apply (visible dismiss), keep the resident frame instead
+  of `commitResidentSourceFrameSnapshot(EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT)`.
+
+Cluster III (native) — interruptible dimmer:
+
+- Ensure `stepPresentationOpacityAnimation` retargets from the CURRENT opacity value when the
+  target flips mid-flight (reveal↔dismiss interrupt), rather than restarting/snap. Distinct
+  from the LOD stepper's run-to-completion commit invariant.
+
+Cluster IV — new-data-while-hidden: a new search while hidden/dismissing must update the
+resident (still-populated) sources normally and flip layers visible; verify the existing
+data path works when sources are already populated rather than empty.
+
+Cluster V — validation: reveal/dismiss flow shows zero `isStructuralApplyLaneLeak` (Gate B/C),
+idle pan of the empty between-searches map stays 60fps (visibility:none), and interrupt
+cases (reveal interrupted by close; dismiss interrupted by submit; dismiss interrupted by a
+DIFFERENT submit) are smooth + crossfade with no flash.
+
 ## Product Contract
 
 Keep:
