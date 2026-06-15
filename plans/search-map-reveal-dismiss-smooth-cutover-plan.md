@@ -254,6 +254,41 @@ Rules:
 
 - the visible dismiss window remains presentation-only
 
+## Measured state (2026-06-15, scenario search_map_lod_reveal_dismiss, 5+ cycles)
+
+Gate E is implemented: `native_set_render_frame_bridge_slice` now carries
+`liveExecutionStage` + `lanePolicyAllowsStructuralApply` + `isStructuralApplyLaneLeak`
+(use-search-map-native-render-owner.ts), and the observation contract already carries its
+own enablement. Measured against the gates:
+
+- **Gate A (reveal observation-free): PASS** — zero observation enabled during
+  `enter_executing` (closed by Cluster 1 lane policy).
+- **Gate D (observation staged): PASS** — observation never enabled while
+  `isResultsExitActive` (no observation in dismiss/covered-forbidden windows).
+- **Gate E (lane-attributable diagnostics): PASS.**
+- **Gate C (reveal structural-staged): FAIL — 2 leaks** during `enter_executing`. Both are
+  `sourceDeltaCount:0` / `snapshotChanged:false` (presentation-only + control-state-only),
+  but each still drives a full native resident-frame re-sync (`nativeDidSyncResidentFrame:true`,
+  35ms and 114ms). Class 1.
+- **Gate B (dismiss presentation-only): FAIL — 4 leaks** during `exit_requested`/`exit_executing`:
+  - 2 of them Class 1 (presentation/control-only, `sourceDeltaCount:0`, 69ms + 12ms).
+  - 2 of them Class 2: real source clearing (`replaceSourceCount:5`, empty snapshot,
+    `pinCount:0`), 86ms + 30ms — exactly the "structural source clearing during visible
+    dismiss" Gate B forbids.
+
+### The two fix-classes (the remaining real work)
+
+- **Class 1 — non-structural change routed through the structural apply path.** A
+  presentation-only or control-state-only frame (no source delta) still calls
+  `flushLatestDesiredFrame` → native `setRenderFrame`, paying 12–114ms of resident-frame
+  re-sync inside the hot window. Fix = Cluster 2: route presentation/control-only changes
+  through a cheap presentation-only apply (or suppress the structural flush when
+  `sourceDeltaCount===0` during a forbidden phase). Now that the native stepper owns reveal
+  opacity, many of these presentation frames may be fully redundant.
+- **Class 2 — real source clearing during visible dismiss.** The empty-snapshot replace
+  that clears pins/dots/labels fires in `exit_executing`. Fix = Cluster 4: defer source
+  clearing to post-dismiss settle (`idle`), keeping the visible dismiss source-stable.
+
 ## Current Misalignment
 
 The current implementation is still misaligned in these ways:

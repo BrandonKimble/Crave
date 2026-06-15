@@ -2986,6 +2986,14 @@ const useSearchMapNativeRenderOwnerSync = ({
     const bridgePresentationLaneState = derivePresentationLaneState(
       effectiveDesiredFrame.frame.presentation
     );
+    // Gate C/E (structural lane attribution): `batchPhase` above describes the FRAME's own
+    // lane; this captures the LIVE presentation phase at apply time and whether the lane
+    // policy permits structural work there. A structural apply that lands inside a visible
+    // reveal/dismiss window (allowStructuralApply === false) is a Gate C leak — this is the
+    // direct, grep-able signal for whether reveal/dismiss are source-stable windows.
+    const liveStructuralExecutionStage =
+      resultsPresentationAuthority.getSnapshot().resultsPresentationTransport.executionStage;
+    const liveStructuralLanePolicy = resolvePresentationLanePolicy(liveStructuralExecutionStage);
     const bridgeSourceSummary = summarizeSourceTransportForBridgeSlice(
       effectiveDesiredFrame.sourceTransport
     );
@@ -3012,6 +3020,14 @@ const useSearchMapNativeRenderOwnerSync = ({
         ),
         laneKind: bridgePresentationLaneState.laneKind,
         batchPhase: bridgePresentationLaneState.batchPhase,
+        liveExecutionStage: liveStructuralExecutionStage,
+        lanePolicyAllowsStructuralApply: liveStructuralLanePolicy.allowStructuralApply,
+        isStructuralApplyLaneLeak:
+          status === 'applied' &&
+          !liveStructuralLanePolicy.allowStructuralApply &&
+          (liveStructuralExecutionStage === 'enter_executing' ||
+            liveStructuralExecutionStage === 'exit_requested' ||
+            liveStructuralExecutionStage === 'exit_executing'),
         isNativeAvailable,
         startTimeMs: roundNativeRenderOwnerPerfMs(bridgeStartedAtMs),
         endTimeMs: roundNativeRenderOwnerPerfMs(bridgeSettledAtMs),
