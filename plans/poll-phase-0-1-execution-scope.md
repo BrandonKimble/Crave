@@ -242,58 +242,66 @@ food 469→**220** (154 merged, 95 rejected), restaurant 738→**126** (281 merg
 - **Dep:** P0.1, P0.2. **Accept:** "outdoor patio/seating/garden/space" → one canonical; "meat
   market" ≠ "seafood market" (conservative); junk rejected; pending attrs invisible until adjudicated.
 
-### P1.4 — Shared matcher core (§6.5) 🔶 IN PROGRESS — reframed (no calibrated-confidence subsystem)
+### P1.4 — Shared matcher core (§6.5) 🔶 IN PROGRESS — GROUND-UP REDESIGN (retrieve → rerank)
 
-**Goal:** ONE excellent shared retrieval core — Google-level suggestions — consumed by autocomplete
+**Goal:** ONE industry-standard matcher — separate **recall** (shared) from **ranking** (per-consumer)
+— serving autocomplete + gazetteer + collection-resolution. Not a reconciliation of the two existing
+matchers; a from-scratch rebuild. Validated against the retrieval literature + a red-team of the
+current stack (both 2026-06-15).
 
-- collection resolution + the gazetteer, so all three answer "which known entity is this string?"
-  the same good way instead of three diverging paths.
+**Why the current approach is thrown out (red-team + literature agree).** The lexical+embedding
+**weighted-score merge is a textbook anti-pattern** — you can't add a pg_trgm score to a cosine on
+different scales; any global α is wrong for many queries. Its constants (`K=10`, `wType=0.3`,
+`exactBoost=1`) are arbitrary compensation. Deeper rot: resolution uses Sørensen–Dice while search
+uses pg_trgm (same strings score differently per service); the fuzzy tier is O(n·m) JS; restaurant
+token heuristics false-merge ("Blue Collar Tavern" = "Blue Collar BBQ"); 8-criterion `ORDER BY` and
+tier-fixed confidences (0.95 alias) are uncalibrated. **Deleted, not patched.**
 
-**Reframed (decision 2026-06-13).** The original design centered on a calibrated-confidence / IDF /
-selectivity subsystem to make "abstain" principled (don't link common-word entities like
-`downtown`/`good`). **Dropped — P1.3 removed that problem at the source** (those were junk `*_attribute`
-rows; they're no longer created). The residual case (a real entity named a common word) is rare and
-**we will add NO abstain policy, no selectivity, no overlinking guard** — ship the matcher bare,
-observe real behaviour, and optimize ONLY if data later shows it over-links. Don't pre-build a guard
-for a problem we may not have. So P1.4 is now about **retrieval quality + convergence**, not scoring.
+**The architecture — retrieve → rerank.** The fix is to stop ranking _during_ candidate-gathering:
 
-**Audited divergence (why they disagree today).**
+1. **Shared recall core (blocking).** Each entity → a rich embedding doc (`type | name | aliases |
+short context`, asymmetric `RETRIEVAL_DOCUMENT`, 768d) in pgvector, plus `pg_trgm` on name/aliases.
+   `retrieveCandidates(query)` runs **dense (pgvector ANN) + sparse (trigram/prefix/exact) in
+   parallel** and fuses by **Reciprocal Rank Fusion (k=60)** → one shortlist. RRF is rank-based →
+   scale-immune by construction → **zero weights, zero tuning** (this is what kills the merge knobs).
+   Recall is generous and dumb; it does not decide order — so weak lexical hits ("mac and cheese" for
+   "bacon egg and cheese") simply rank low, and the Shake-Shack semantic neighbours are correct recall,
+   not noise to suppress. The shortlist carries each lane's signals as features for Stage 2.
+2. **Consumer-specific Stage-2 heads** (do NOT share one ranking policy):
+   - **Autocomplete** → fast **feature reranker** over the shortlist (exact/prefix flag, cosine,
+     trigram, popularity). Latency-bound (<100ms) → no per-keystroke LLM. Hand-set weights now;
+     learned (LambdaMART/GBDT) once click data exists.
+   - **Gazetteer** → per-mention recall → **LLM-as-matcher** (reuse the attribute-adjudicator pattern)
+     → link. Batch, precision-critical.
+   - **Resolution** → recall = blocking → **LLM-as-matcher** → decision with two thresholds + an
+     **abstain** band (merge / create-new / hold). Batch, high-stakes (wrong merge corrupts the graph).
+     The LLM-matcher is the same prompt shape as P1.3's placement adjudicator (query/mention + candidate
+     shortlist → which one / none) — high quality where latency is tolerable.
 
-- `EntityResolutionService` (collection): 3 tiers — exact (1.0) → alias (`aliases.hasSome`, 0.95) →
-  fuzzy (`findBestFuzzyMatch`, **Sørensen–Dice** JS pkg + Levenshtein + restaurant-token heuristics,
-  0.75). Its own crude matcher, separate from autocomplete's.
-- `EntityTextSearchService` (autocomplete): the richer SQL stack — prefix ∪ FTS(`ts_rank_cd`) ∪
-  trigram(`pg_trgm`, length-aware 0.7→0.35) ∪ phonetic(`dmetaphone`). **This is the keeper** — make it
-  the shared retrieval core.
-
-**The ideal we're chasing = this core + semantic recall.** Lexical lanes nail typos/short-forms
-(restaurant proper nouns). Embeddings add the meaning lane that catches different-word synonyms
-(`BEC`=`bacon egg and cheese`, `bao`=`pork bun`) — the dish/attribute gap. `EmbeddingService` exists
-and is proven (P1.3). The open question is whether the quality gain justifies the latency (a per-query
-embedding call) — so it starts as an **A/B experiment**, not a production wire-in.
+**Honest tensions (acknowledged).** (a) The fully-ideal autocomplete reranker is _learned_ but needs
+click data we lack → ship principled feature weights now, learn later (literature endorses this). (b)
+The embedding lane costs one query-embed call → fine for the batch heads; autocomplete needs query-
+embed caching/debounce — the "make embeddings fast" work, done AFTER the core is ideal. **No abstain
+for autocomplete/gazetteer beyond the resolution decision band; ship bare, observe, optimize on data.**
 
 **Increment sequence:**
 
-- **4.1 (start here) — embedding-recall A/B harness.** Embed the entity corpus (in-memory kNN, no new
-  infra), and for representative queries show lexical-only (current `EntityTextSearch`) vs
-  lexical+embedding candidates side by side. Answers "do embeddings get us to Google-level, and where"
-  before committing to a lane. Non-disruptive (experiment).
-- **4.2 — converge collection resolution onto the shared retrieval:** replace its Sørensen–Dice fuzzy
-  tier with `EntityTextSearch` candidate generation (keep exact/alias fast paths). Replay-gated: no
-  resolution regression. This is the core "one matcher" win.
-- **4.3 — containment / longest-match query mode** on `EntityTextSearchService` (the gazetteer needs
-  it; FTS path ~90% there) → returns entity spans in free text. Link the best candidate, no abstain.
-- **4.4 — fold P1.2 brand helpers** (`restaurantNamesAgree`/`normalizeBrandName`) into the shared core
-  for restaurant chain-branch safety (a correctness gate, NOT selectivity); drop the private copies in
-  `restaurant-location-enrichment`.
-- **(later, only if observed)** — overlinking guard for common-word real-entity names, if data shows
-  it; and the production path for embedding-query latency if 4.1 proves the lane worth shipping.
+- **4.A (start) — shared recall core.** Rich entity docs (`buildEntityDoc`, re-embed corpus) +
+  `retrieveCandidates` (RRF-fused dense+sparse, k=60) returning candidates with per-lane features.
+  Validate via the harness: RRF recall beats either lane, no tuning knobs.
+- **4.B — autocomplete head:** feature reranker over `retrieveCandidates`; wire `autocomplete.service`
+  to it; autocomplete regression check. Query-embed latency handling (cache/debounce).
+- **4.C — resolution head:** replace the entire Sørensen–Dice 3-tier with recall(blocking) →
+  LLM-matcher → merge/create/abstain. Replay-gated; delete the token heuristics + JS fuzzy.
+- **4.D — gazetteer head:** mention detection → recall → LLM-matcher → link (spans in free text).
+- **4.E — cleanup:** fold/retire P1.2 brand helpers; remove dead lexical-scorer divergence.
 
-- **Files:** `entity-text-search.service.ts`, `entity-resolution.service.ts`,
-  `restaurant-location-enrichment.service.ts`; new experiment script.
-- **Dep:** P1.3 (clean vocab). **Accept:** autocomplete + resolution + gazetteer share one retrieval
-  core; suggestions feel Google-level; gazetteer returns spans. **Risk:** cross-cutting (live
-  collection + autocomplete) → replay + autocomplete regression mandatory.
+- **Files:** new recall-core method + reranker; `entity-text-search.service.ts`,
+  `entity-resolution.service.ts` (gutted), `autocomplete.service.ts`, gazetteer; backfill (rich docs).
+- **Dep:** P1.3. **Accept:** one shared recall core (RRF hybrid, no weights); three heads on their own
+  terms; autocomplete Google-level; resolution/gazetteer use the LLM-matcher with an abstain band.
+- **Risk:** the most cross-cutting work in the plan — live autocomplete + collection resolution →
+  replay + autocomplete regression mandatory; build behind the existing paths until each head is proven.
 
 ---
 
