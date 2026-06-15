@@ -28,6 +28,84 @@ The target is not a small tuning pass. The target is a large ownership cut:
 
 This should preserve current UX semantics while making startup reveal and close feel intentionally smooth instead of coincidentally acceptable.
 
+## End-state model (authoritative — added 2026-06-15)
+
+The target is the **resident-data + dormant-layers** model. It is the same single
+principle the whole map is converging on (one owner; data stays put; only
+opacity/visibility moves), now extended to cover reveal/dismiss/interrupt.
+
+### The two-level residency
+
+Mapbox has two distinct "off" switches and the design needs BOTH:
+
+- **Opacity → 0**: invisible, but the symbol is still laid out / collided every camera
+  frame (NOT free).
+- **Layer `visibility: none`**: the layer is dropped from the layout/placement pipeline
+  entirely (truly free). The collision layers ALREADY use this
+  (SearchMapRenderController.swift `setLabelCollisionObstacleLayersVisible` ~6151) — the
+  mechanism is proven in-house; the marker (pin/dot/label) layers must adopt it.
+
+So:
+
+- **Source DATA is resident** from the first search onward — pins/dots/labels stay in the
+  Mapbox sources (and the JS source frame). This gives instant re-reveal (no republish /
+  rebuild), crossfade-from-old-data, and trivial interruption.
+- **Layers go dormant** (`visibility: none`) the moment a dismiss SETTLES → zero per-frame
+  layout/placement/GPU cost while panning the empty (between-searches) map.
+
+### Current code this REPLACES
+
+Today, dismiss-settle calls `clearResidentSourcesAndTransientFeatureStates()`
+(SearchMapRenderController.swift ~6076) — it DELETES the marker features, and the JS
+controller commits `EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT`
+(use-direct-search-map-source-controller.ts ~1277). That delete is how the map gets zero
+idle cost today — but it is also why dismiss is structural (Gate B leak), why re-reveal
+rebuilds, and why interrupting a close is messy. The cutover swaps "delete on dismiss" for
+"resident data + `visibility:none` on dismiss-settle".
+
+### What STAYS (already correct — verified 2026-06-15)
+
+All decision work is already gated off when hidden and must remain so:
+
+- Native camera projection / `computeOnScreenMarkerKeys` early-returns via
+  `isVisualSourceInactiveOrDismissing` (~10648).
+- Both CADisplayLink steppers (`updateLivePinTransitions`, `stepPresentationOpacityAnimation`)
+  idle / invalidate their display link when hidden (~7443, ~8561).
+- Label observation (schedule + commit) gated off when hidden (~8750, ~8998) and in JS by
+  lane policy (`isPresentationLive`).
+- JS LOD candidate selection / promoted-set (`buildMarkerRenderModel`) is short-circuited
+  before it runs by the `isSearchVisualProjectionLive` gate (~1271).
+
+These gates key off the hidden lifecycle state, so they keep working as long as
+dismiss-settle still transitions to `.hidden` (we keep that; only the source-clearing
+ACTION becomes a layer-visibility flip).
+
+### Lifecycle (the single dimmer)
+
+1. **Reveal**: marker layers → `visible`, then presentation opacity dimmer 0→1 (native
+   stepper). Source publish happens under cover / on data-change, never as a reveal step.
+2. **Live**: normal.
+3. **Dismiss**: opacity dimmer 1→0. Sources resident, layers stay `visible` during the
+   fade → NO structural work in the visible window (Gate B by construction).
+4. **Dismiss settled** (already invisible): flip marker layers → `visibility: none`. Cheap,
+   unseen, zero idle cost afterward.
+5. **Interrupt (reversible/interruptible)**: reveal can be interrupted by close, dismiss by
+   submit, etc. An interrupt is JUST a new dimmer target; the stepper fades from the CURRENT
+   value toward it. Layers only go dormant at a SETTLED dismiss, so an interrupted close
+   never reaches dormancy. (Requires the presentation stepper to retarget-from-current — the
+   opposite of the LOD stepper's run-to-completion commit invariant, because a user interrupt
+   is a legitimate reversal, not a stale automated flip.)
+6. **New different search**: the source data delta-swaps (the ONE legitimate structural
+   moment — only a real results change ever touches sources), decoupled from the dimmer; the
+   old resident data is the backdrop so the transition crossfades instead of flashing.
+
+### Idle-cost requirement (between searches, no results)
+
+Panning the empty map after the first search must be frame-drop free. Achieved by: layers
+`visibility:none` (zero placement), and all decision work already gated off when hidden.
+Optional micro-opt: bail at the top of the viewport subscription when not live, to skip the
+minor pre-gate state reads.
+
 ## Product Contract
 
 Keep:
