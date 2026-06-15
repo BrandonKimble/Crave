@@ -151,21 +151,50 @@ export class EntityTextSearchService {
       marketKey?: string | null;
       poolSize?: number;
       allowPhonetic?: boolean;
+      /**
+       * 'always' (default) — run the dense lane every time (batch heads: resolution,
+       * gazetteer). 'fallback' — run dense only when the lexical lane under-recalls
+       * (< `denseFallbackBelow` hits), so latency-critical autocomplete pays the
+       * per-query embedding cost ONLY for the semantic-gap queries that need it.
+       */
+      denseMode?: 'always' | 'fallback';
+      denseFallbackBelow?: number;
     } = {},
   ): Promise<RecallCandidate[]> {
     const normalizedTerm = term?.trim();
     if (!normalizedTerm || entityTypes.length === 0) return [];
 
     const pool = Math.max(limit, options.poolSize ?? 50);
-    const [sparse, dense] = await Promise.all([
-      this.searchEntities(normalizedTerm, entityTypes, pool, {
-        marketKey: options.marketKey,
-        allowPhonetic: options.allowPhonetic ?? true,
-      }),
-      this.searchByEmbedding(normalizedTerm, entityTypes, pool, {
-        marketKey: options.marketKey,
-      }),
-    ]);
+    const sparseOpts = {
+      marketKey: options.marketKey,
+      allowPhonetic: options.allowPhonetic ?? true,
+    };
+    const denseOpts = { marketKey: options.marketKey };
+
+    let sparse: TextSearchMatch[];
+    let dense: TextSearchMatch[];
+    if ((options.denseMode ?? 'always') === 'fallback') {
+      sparse = await this.searchEntities(
+        normalizedTerm,
+        entityTypes,
+        pool,
+        sparseOpts,
+      );
+      const enough = sparse.length >= (options.denseFallbackBelow ?? limit);
+      dense = enough
+        ? []
+        : await this.searchByEmbedding(
+            normalizedTerm,
+            entityTypes,
+            pool,
+            denseOpts,
+          );
+    } else {
+      [sparse, dense] = await Promise.all([
+        this.searchEntities(normalizedTerm, entityTypes, pool, sparseOpts),
+        this.searchByEmbedding(normalizedTerm, entityTypes, pool, denseOpts),
+      ]);
+    }
 
     const K = 60;
     const byId = new Map<string, RecallCandidate>();

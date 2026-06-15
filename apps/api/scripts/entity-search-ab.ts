@@ -73,8 +73,18 @@ async function main(): Promise<void> {
       const popularity = await popularityFor(recall.map((c) => c.entityId));
       const ranked = rerankForAutocomplete(recall, popularity);
 
+      // Fallback-mode probe: did the dense (embedding) lane run, or did lexical
+      // recall suffice? (autocomplete latency optimization.)
+      const fb = await search.retrieveCandidates(q, types, LIMIT, {
+        poolSize: 50,
+        denseMode: 'fallback',
+      });
+      const denseRan = fb.some((c) => c.denseRank != null);
+
       out('');
-      out(`════ "${q}" ════`);
+      out(
+        `════ "${q}"  [fallback: dense lane ${denseRan ? 'RAN' : 'SKIPPED'}] ════`,
+      );
       out(
         '  LEXICAL                          │  EMBEDDING                       │  AUTOCOMPLETE (reranked)',
       );
