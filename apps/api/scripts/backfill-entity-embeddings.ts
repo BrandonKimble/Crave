@@ -65,7 +65,7 @@ async function main(): Promise<void> {
     for (let i = 0; i < rows.length; i += BATCH) {
       const batch = rows.slice(i, i + BATCH);
       const vectors = await embedWithRetry(
-        batch.map((r) => buildEntityDoc(r.name, r.aliases, r.type)),
+        batch.map((r) => buildEntityDoc(r.name, r.aliases)),
       );
       await prisma.$transaction(
         batch.map((r, j) =>
