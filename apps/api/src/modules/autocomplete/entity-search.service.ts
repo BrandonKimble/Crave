@@ -36,6 +36,39 @@ export class EntitySearchService {
     }));
   }
 
+  /**
+   * Hybrid recall for autocomplete: the shared recall core (lexical + dense
+   * pgvector) with the dense lane gated to FALLBACK — it runs only when the
+   * lexical lane under-recalls, so the per-query embedding cost is paid only for
+   * semantic-gap queries ("bacon egg and cheese" → breakfast sandwiches), keeping
+   * the common type-ahead path fast. Returns the same shape as `searchEntities`
+   * (similarity = best lane evidence) so the caller's scoring pipeline is unchanged.
+   */
+  async searchEntitiesHybrid(
+    term: string,
+    entityTypes: EntityType[],
+    limit: number,
+    options: { marketKey?: string | null; allowPhonetic?: boolean } = {},
+  ): Promise<EntitySearchResult[]> {
+    const candidates = await this.textSearch.retrieveCandidates(
+      term,
+      entityTypes,
+      limit,
+      {
+        marketKey: options.marketKey,
+        allowPhonetic: options.allowPhonetic,
+        denseMode: 'fallback',
+      },
+    );
+    return candidates.map((c) => ({
+      entityId: c.entityId,
+      name: c.name,
+      type: c.type,
+      similarity: Math.max(c.denseCosine ?? 0, c.sparseSimilarity ?? 0),
+      evidence: c.sparseEvidence ?? 'embedding',
+    }));
+  }
+
   async searchAttributeAutocompleteEntities(
     term: string,
     entityTypes: EntityType[],

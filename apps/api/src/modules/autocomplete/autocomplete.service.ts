@@ -89,6 +89,7 @@ export class AutocompleteService {
   private readonly querySuggestionMinGlobalCount: number;
   private readonly querySuggestionMinUserCount: number;
   private readonly attributeLaneEnabled: boolean;
+  private readonly hybridRecallEnabled: boolean;
   private readonly requestDurationHistogram: Histogram<string>;
   private readonly requestDbDurationHistogram: Histogram<string>;
   private readonly cacheLookupsCounter: Counter<string>;
@@ -164,6 +165,13 @@ export class AutocompleteService {
     this.attributeLaneEnabled =
       ATTRIBUTE_LANE_RUNTIME_READY &&
       this.resolveEnvBoolean('AUTOCOMPLETE_ENABLE_ATTRIBUTE_LANE', true);
+    // P1.4: hybrid recall (lexical + dense-fallback) for the entity lane. Default
+    // OFF — flip after live A/B vs the lexical-only path; the scoring pipeline is
+    // unchanged so this only widens recall (adds semantic matches).
+    this.hybridRecallEnabled = this.resolveEnvBoolean(
+      'AUTOCOMPLETE_ENABLE_HYBRID_RECALL',
+      false,
+    );
     this.requestDurationHistogram = metricsService.getHistogram({
       name: 'autocomplete_request_duration_seconds',
       help: 'Autocomplete endpoint total duration in seconds',
@@ -257,13 +265,26 @@ export class AutocompleteService {
       const [searchResults, attributeResults] = await Promise.all([
         entityTypes.length
           ? this.measureDbDuration(
-              () =>
-                this.entitySearchService.searchEntities(
-                  normalizedQuery,
-                  entityTypes,
-                  Math.min(limit * entityTypes.length, limit * 3),
-                  { marketKey, allowPhonetic: false },
-                ),
+              () => {
+                const recallLimit = Math.min(
+                  limit * entityTypes.length,
+                  limit * 3,
+                );
+                const recallOpts = { marketKey, allowPhonetic: false };
+                return this.hybridRecallEnabled
+                  ? this.entitySearchService.searchEntitiesHybrid(
+                      normalizedQuery,
+                      entityTypes,
+                      recallLimit,
+                      recallOpts,
+                    )
+                  : this.entitySearchService.searchEntities(
+                      normalizedQuery,
+                      entityTypes,
+                      recallLimit,
+                      recallOpts,
+                    );
+              },
               (seconds) => {
                 totalDbDurationSeconds += seconds;
               },
