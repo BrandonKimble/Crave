@@ -3,17 +3,20 @@ process.env.PROCESS_ROLE ||= 'api';
 
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
+import { EntityType } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { EmbeddingService } from '../src/modules/external-integrations/llm/embedding.service';
+import { buildEntityDoc } from '../src/modules/entity-text-search/entity-doc';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 /**
  * Backfill `core_entities.name_embedding` (pgvector) for the semantic recall lane.
- * Embeds every searchable entity (restaurant / food / *_attribute) whose embedding
- * is NULL — so it is both the one-time backfill and the catch-up for new entities
- * until an embed-on-create hook lands. Idempotent; re-runnable.
+ * Embeds the rich entity doc (name + aliases + type) for every searchable entity
+ * (restaurant / food / *_attribute). By default only fills NULLs (catch-up for new
+ * entities); pass `--reembed` to re-embed ALL (e.g. after the doc format changes).
+ * Idempotent; re-runnable.
  *
- *   yarn workspace api ts-node scripts/backfill-entity-embeddings.ts
+ *   yarn workspace api ts-node scripts/backfill-entity-embeddings.ts [--reembed]
  */
 const BATCH = 100;
 
@@ -22,6 +25,7 @@ function toVectorLiteral(v: number[]): string {
 }
 
 async function main(): Promise<void> {
+  const reembed = process.argv.includes('--reembed');
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
@@ -32,15 +36,15 @@ async function main(): Promise<void> {
     const embeddings = app.get(EmbeddingService);
 
     const rows = await prisma.$queryRawUnsafe<
-      { entity_id: string; name: string }[]
+      { entity_id: string; name: string; type: EntityType; aliases: string[] }[]
     >(
-      `SELECT entity_id, name FROM core_entities
-       WHERE name_embedding IS NULL
-         AND type IN ('restaurant','food','food_attribute','restaurant_attribute')
+      `SELECT entity_id, name, type, aliases FROM core_entities
+       WHERE type IN ('restaurant','food','food_attribute','restaurant_attribute')
          AND status = 'active'
+         ${reembed ? '' : 'AND name_embedding IS NULL'}
        ORDER BY entity_id`,
     );
-    out(`Backfilling ${rows.length} entity embeddings…`);
+    out(`Backfilling ${rows.length} entity embeddings (reembed=${reembed})…`);
 
     const embedWithRetry = async (names: string[]): Promise<number[][]> => {
       for (let attempt = 1; ; attempt++) {
@@ -60,7 +64,9 @@ async function main(): Promise<void> {
     let done = 0;
     for (let i = 0; i < rows.length; i += BATCH) {
       const batch = rows.slice(i, i + BATCH);
-      const vectors = await embedWithRetry(batch.map((r) => r.name));
+      const vectors = await embedWithRetry(
+        batch.map((r) => buildEntityDoc(r.name, r.aliases, r.type)),
+      );
       await prisma.$transaction(
         batch.map((r, j) =>
           prisma.$executeRawUnsafe(

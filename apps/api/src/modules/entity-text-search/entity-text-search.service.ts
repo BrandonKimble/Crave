@@ -38,6 +38,23 @@ export interface TextSearchMatch {
   evidence: TextMatchEvidence;
 }
 
+/**
+ * A candidate from the shared recall core, carrying both lanes' raw signals as
+ * features for a consumer-specific Stage-2 reranker. `rrf` is the fusion score
+ * used only to order the recall shortlist — NOT a relevance score.
+ */
+export interface RecallCandidate {
+  entityId: string;
+  name: string;
+  type: EntityType;
+  rrf: number;
+  sparseRank: number | null;
+  sparseSimilarity: number | null;
+  sparseEvidence: TextMatchEvidence | null;
+  denseRank: number | null;
+  denseCosine: number | null;
+}
+
 @Injectable()
 export class EntityTextSearchService {
   private readonly logger: LoggerService;
@@ -115,6 +132,79 @@ export class EntityTextSearchService {
       similarity: Number(r.cosine),
       evidence: 'embedding' as const,
     }));
+  }
+
+  /**
+   * Shared recall core (Stage 1). Runs the sparse (lexical) and dense (embedding)
+   * lanes in parallel and fuses them by Reciprocal Rank Fusion — `Σ 1/(k+rank)`,
+   * k=60. RRF is rank-based, so it is immune to the lexical-score vs cosine scale
+   * mismatch and needs NO weights or tuning. This is recall only: it gathers a
+   * generous shortlist and orders it roughly; a consumer-specific Stage-2 reranker
+   * (autocomplete feature model / resolution + gazetteer LLM-matcher) decides the
+   * final order/decision using the per-lane features carried on each candidate.
+   */
+  async retrieveCandidates(
+    term: string,
+    entityTypes: EntityType[],
+    limit: number,
+    options: {
+      marketKey?: string | null;
+      poolSize?: number;
+      allowPhonetic?: boolean;
+    } = {},
+  ): Promise<RecallCandidate[]> {
+    const normalizedTerm = term?.trim();
+    if (!normalizedTerm || entityTypes.length === 0) return [];
+
+    const pool = Math.max(limit, options.poolSize ?? 50);
+    const [sparse, dense] = await Promise.all([
+      this.searchEntities(normalizedTerm, entityTypes, pool, {
+        marketKey: options.marketKey,
+        allowPhonetic: options.allowPhonetic ?? true,
+      }),
+      this.searchByEmbedding(normalizedTerm, entityTypes, pool, {
+        marketKey: options.marketKey,
+      }),
+    ]);
+
+    const K = 60;
+    const byId = new Map<string, RecallCandidate>();
+    const ensure = (m: TextSearchMatch): RecallCandidate => {
+      let c = byId.get(m.entityId);
+      if (!c) {
+        c = {
+          entityId: m.entityId,
+          name: m.name,
+          type: m.type,
+          rrf: 0,
+          sparseRank: null,
+          sparseSimilarity: null,
+          sparseEvidence: null,
+          denseRank: null,
+          denseCosine: null,
+        };
+        byId.set(m.entityId, c);
+      }
+      return c;
+    };
+
+    sparse.forEach((m, rank) => {
+      const c = ensure(m);
+      c.sparseRank = rank;
+      c.sparseSimilarity = m.similarity;
+      c.sparseEvidence = m.evidence;
+      c.rrf += 1 / (K + rank);
+    });
+    dense.forEach((m, rank) => {
+      const c = ensure(m);
+      c.denseRank = rank;
+      c.denseCosine = m.similarity;
+      c.rrf += 1 / (K + rank);
+    });
+
+    return Array.from(byId.values())
+      .sort((a, b) => b.rrf - a.rrf)
+      .slice(0, limit);
   }
 
   async searchEntities(
