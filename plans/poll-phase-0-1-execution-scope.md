@@ -242,22 +242,64 @@ food 469→**220** (154 merged, 95 rejected), restaurant 738→**126** (281 merg
 - **Dep:** P0.1, P0.2. **Accept:** "outdoor patio/seating/garden/space" → one canonical; "meat
   market" ≠ "seafood market" (conservative); junk rejected; pending attrs invisible until adjudicated.
 
-### P1.4 — Shared matcher core + calibrated confidence + containment mode (§6.5)
+### P1.4 — Shared matcher core + calibrated confidence + containment mode (§6.5) 🔶 PLANNED (design below)
 
 **Goal:** converge the two matchers; add principled abstain; enable the gazetteer.
 
-- Make `EntityTextSearchService` the shared retrieval/candidate core; reduce `EntityResolutionService`
-  to a thin decision layer (pick-best + create-new) on top.
-- Add **calibrated confidence** (evidence tier + similarity + term selectivity/IDF + entity quality)
-  so abstain is principled (kills common-word false links like "downtown"/"good" — mostly already
-  removed by P1.3 at the source).
-- Add **containment / longest-match** query mode to `EntityTextSearchService` (gazetteer needs it;
-  its FTS path is ~90% there).
-- **Files:** `entity-text-search.service.ts`, `entity-resolution.service.ts`.
-- **Dep:** P1.3 (clean vocab improves calibration). **Accept:** resolution + autocomplete + gazetteer
-  share one matcher; abstain works on common-word names; containment mode returns entity spans in text.
-- **Risk:** the most foundational/cross-cutting — touches collection resolution + autocomplete; needs
-  the test-pipeline + autocomplete regression checks.
+**Audited divergence (why they disagree).**
+
+- `EntityResolutionService` (collection, `entity-resolver/`): 3 tiers — exact (conf 1.0) → alias
+  (`aliases.hasSome`, conf **fixed 0.95**) → fuzzy (`findBestFuzzyMatch`, **Sørensen–Dice** via the JS
+  `string-similarity` pkg + Levenshtein + restaurant-token heuristics, threshold **0.75**). Confidence
+  is **tier-fixed, not data-driven**; match-vs-create is binary; it loads the whole type to fuzzy-scan.
+- `EntityTextSearchService` (autocomplete): richer SQL stack — prefix(LIKE) ∪ FTS(`ts_rank_cd` /
+  `websearch_to_tsquery` over `crave_entity_search_tsv`) ∪ trigram(`pg_trgm similarity`, length-aware
+  threshold 0.7→0.35) ∪ phonetic(`dmetaphone`, conditional). Final score = `max(nameSim, aliasSim)`;
+  **quality/upvotes are ORDER-BY only, never in the score**; **no selectivity/IDF** → "downtown"
+  exact-matches at 1.0.
+- **The selectivity machinery already EXISTS** — `autocomplete.service` computes `corpusSelectivity`
+  for _attributes_ (`corpusConnectionCount/totalRestaurantCount`, `penalty = max(0.12,(1−sel)^0.8)`).
+  P1.4 generalizes it from attributes to **entity-name tokens** (token document-frequency = IDF).
+
+**Calibrated confidence (the crux).** `c = s · w(σ) · qadj · g` ∈ [0,1] = P(candidate is intended):
+
+- `s` — match strength from the shared retrieval lane (exact=1; else trigram `max(name,alias)`, FTS
+  rank secondary). Already produced by `EntityTextSearchService`.
+- `w(σ)` — **selectivity/IDF weight**: rare-token name (Nixta, Suerte) → σ→1 → w≈1; common-word name
+  (downtown, good, the spot) → σ→0 → w small. From precomputed per-token corpus DF over the entity
+  vocabulary. **This is what makes abstain principled** — a common-word exact match (s=1, low σ) lands
+  below the link threshold, so the gazetteer never links "good"/"downtown". (No separate gate.)
+- `qadj` — mild entity-quality/attestation multiplier (normalized `restaurantQualityScore` / mention
+  count); tiebreak + slight boost, never dominant.
+- `g` — restaurant **name-agreement gate**: fold P1.2's `restaurantNamesAgree`/`normalizeBrandName`
+  in; brand-disagreeing restaurant candidates get a hard penalty (chain-branch safe).
+
+Decision layer (thin): link iff `c ≥ τ_link` else **abstain** — collection abstain → create-new;
+autocomplete → rank by `c`; gazetteer → don't link.
+
+**Increment sequence (each independently validated, P1.3-style):**
+
+- **4.1** — `MatchConfidenceService` (pure calibrated scorer over candidate rows): generalize
+  selectivity to name tokens (+ a precomputed/refreshed token-DF source), quality normalization,
+  brand-agreement gate. Unit-eval on known cases (Nixta→high link; "downtown"/"good"→abstain). New
+  service, **no consumer change yet** — non-disruptive.
+- **4.2** — replace collection resolution's Sørensen–Dice fuzzy tier with `EntityTextSearch` candidate
+  generation + `MatchConfidenceService`. Keep exact/alias fast paths. **Replay-gate**: no resolution
+  regression; common-word abstain works.
+- **4.3** — containment / longest-match query mode on `EntityTextSearchService` (gazetteer; FTS path
+  ~90% there) → returns entity spans in free text, link-if-confident.
+- **4.4** — make the P1.2 brand helpers public, consumed by the restaurant decision (remove the
+  duplicate private copies in `restaurant-location-enrichment`).
+- **4.5 (deferred)** — embedding-recall lane A/B (`EmbeddingService` exists, proven in P1.3): add a
+  semantic lane to the retrieval core for dishes/attributes, A/B autocomplete with vs without.
+
+- **Files:** new `match-confidence.service.ts`; `entity-text-search.service.ts`,
+  `entity-resolution.service.ts`, `restaurant-location-enrichment.service.ts`.
+- **Dep:** P1.3 (clean vocab). **Accept:** resolution + autocomplete + gazetteer share one matcher;
+  abstain works on common-word names; containment mode returns spans.
+- **Risk:** most cross-cutting — touches live collection + autocomplete; token-DF needs a refresh
+  path; `τ_link` needs eval-tuning against real data (gate like P1.3). test-pipeline + autocomplete
+  regression mandatory.
 
 ---
 
