@@ -36,7 +36,11 @@ export class EmbeddingService implements OnModuleInit {
    */
   async embed(
     texts: string[],
-    taskType: 'SEMANTIC_SIMILARITY' | 'CLUSTERING' = 'SEMANTIC_SIMILARITY',
+    taskType:
+      | 'SEMANTIC_SIMILARITY'
+      | 'CLUSTERING'
+      | 'RETRIEVAL_DOCUMENT'
+      | 'RETRIEVAL_QUERY' = 'SEMANTIC_SIMILARITY',
   ): Promise<number[][]> {
     const out: number[][] = [];
     for (let i = 0; i < texts.length; i += this.batchSize) {
