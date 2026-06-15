@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import { EmbeddingService } from '../external-integrations/llm/embedding.service';
 
 interface EntitySearchRow {
   term?: string;
@@ -26,7 +27,8 @@ export type TextMatchEvidence =
   | 'name'
   | 'alias'
   | 'fuzzy'
-  | 'phonetic';
+  | 'phonetic'
+  | 'embedding';
 
 export interface TextSearchMatch {
   entityId: string;
@@ -52,9 +54,67 @@ export class EntityTextSearchService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly embeddingService: EmbeddingService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('EntityTextSearchService');
+  }
+
+  /**
+   * Semantic recall lane: embed the query and ANN-search `name_embedding`
+   * (pgvector, HNSW cosine). Catches different-words-same-meaning that the lexical
+   * lanes miss ("bacon egg and cheese" → breakfast sandwiches). Costs one embedding
+   * call per query, so callers gate it to batch/latency-tolerant paths (collection
+   * resolution, gazetteer) rather than keystroke autocomplete. Returns matches with
+   * `evidence: 'embedding'` and `similarity` = cosine (1 − distance).
+   */
+  async searchByEmbedding(
+    term: string,
+    entityTypes: EntityType[],
+    limit: number,
+    options: { marketKey?: string | null } = {},
+  ): Promise<TextSearchMatch[]> {
+    const normalizedTerm = term?.trim();
+    if (!normalizedTerm || entityTypes.length === 0) return [];
+
+    const [queryVec] = await this.embeddingService.embed(
+      [normalizedTerm],
+      'RETRIEVAL_QUERY',
+    );
+    if (!queryVec?.length) return [];
+
+    const safeLimit = Math.max(1, Math.min(limit, this.maxLimit));
+    const literal = `[${queryVec.join(',')}]`;
+    const typeArray = Prisma.sql`ARRAY[${Prisma.join(
+      entityTypes.map((t) => Prisma.sql`${t}::entity_type`),
+    )}]`;
+    const marketKey =
+      typeof options.marketKey === 'string'
+        ? options.marketKey.trim().toLowerCase()
+        : null;
+    const marketFilter = this.buildRestaurantMarketFilter('e', marketKey);
+
+    const rows = await this.prisma.$queryRaw<
+      { entityId: string; name: string; type: EntityType; cosine: number }[]
+    >(Prisma.sql`
+      SELECT e.entity_id AS "entityId", e.name, e.type,
+             1 - (e.name_embedding <=> ${literal}::vector) AS cosine
+      FROM core_entities e
+      WHERE e.type = ANY(${typeArray})
+        AND e.status = 'active'::entity_status
+        AND e.name_embedding IS NOT NULL
+        ${marketFilter}
+      ORDER BY e.name_embedding <=> ${literal}::vector
+      LIMIT ${safeLimit}
+    `);
+
+    return rows.map((r) => ({
+      entityId: r.entityId,
+      name: r.name,
+      type: r.type,
+      similarity: Number(r.cosine),
+      evidence: 'embedding' as const,
+    }));
   }
 
   async searchEntities(

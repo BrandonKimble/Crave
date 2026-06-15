@@ -6,8 +6,6 @@ import { Logger } from '@nestjs/common';
 import { EntityType } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { EntityTextSearchService } from '../src/modules/entity-text-search/entity-text-search.service';
-import { EmbeddingService } from '../src/modules/external-integrations/llm/embedding.service';
-import { PrismaService } from '../src/prisma/prisma.service';
 
 /**
  * P1.4 increment 4.1 — embedding-recall A/B for entity search.
@@ -33,12 +31,6 @@ const DEFAULT_QUERIES = [
 ];
 
 const LIMIT = 6;
-
-function cosine(a: number[], b: number[]): number {
-  let s = 0;
-  for (let i = 0; i < a.length; i++) s += a[i] * b[i];
-  return s;
-}
 
 interface Cand {
   entityId: string;
@@ -95,27 +87,15 @@ async function main(): Promise<void> {
   const out = (m = '') => process.stdout.write(`${m}\n`);
 
   try {
-    const prisma = app.get(PrismaService);
     const search = app.get(EntityTextSearchService);
-    const embeddings = app.get(EmbeddingService);
-
-    // Load + embed the searchable corpus (restaurants + foods) once, in-memory.
-    const rows = await prisma.entity.findMany({
-      where: { type: { in: ['restaurant', 'food'] }, status: 'active' },
-      select: { entityId: true, name: true, type: true },
-    });
-    out(`Embedding ${rows.length} entities (RETRIEVAL_DOCUMENT)…`);
-    const docVecs = await embeddings.embed(
-      rows.map((r) => r.name),
-      'RETRIEVAL_DOCUMENT',
-    );
-
     const types: EntityType[] = ['restaurant', 'food'] as EntityType[];
 
     for (const q of queries) {
-      const [lexical, [qVec]] = await Promise.all([
+      // Both lanes now from the live service: lexical (FTS/trigram/phonetic) and
+      // the persistent pgvector semantic lane (searchByEmbedding).
+      const [lexical, semantic] = await Promise.all([
         search.searchEntities(q, types, LIMIT, { allowPhonetic: true }),
-        embeddings.embed([q], 'RETRIEVAL_QUERY'),
+        search.searchByEmbedding(q, types, 20),
       ]);
       const lexCands: Cand[] = lexical.map((l) => ({
         entityId: l.entityId,
@@ -124,16 +104,12 @@ async function main(): Promise<void> {
         lexSim: l.similarity,
         lexEvidence: l.evidence,
       }));
-      const semCands: Cand[] = rows
-        .map((r, i) => ({ r, score: cosine(qVec, docVecs[i]) }))
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 20)
-        .map(({ r, score }) => ({
-          entityId: r.entityId,
-          name: r.name,
-          type: r.type,
-          embScore: score,
-        }));
+      const semCands: Cand[] = semantic.map((s) => ({
+        entityId: s.entityId,
+        name: s.name,
+        type: s.type,
+        embScore: s.similarity,
+      }));
       const merged = merge(lexCands, semCands, LIMIT);
 
       const col = (c?: Cand, side?: 'lex' | 'emb') => {

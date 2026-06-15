@@ -7,7 +7,7 @@ generator client {
 datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
-  extensions = [btree_gin, pg_trgm, postgis]
+  extensions = [btree_gin, pg_trgm, postgis, vector]
 }
 
 model Entity {
@@ -17,6 +17,7 @@ model Entity {
   status                              EntityStatus             @default(active)
   canonicalDomain                     String?                  @map("canonical_domain") @db.VarChar(255)
   aliases                             String[]                 @default([])
+  nameEmbedding                       Unsupported("vector(768)")? @map("name_embedding")
   restaurantAttributes                String[]                 @default([]) @map("restaurant_attributes") @db.Uuid
   restaurantQualityScore              Decimal?                 @default(0) @map("restaurant_quality_score") @db.Decimal(10, 4)
   latitude                            Decimal?                 @db.Decimal(10, 8)

@@ -3797,6 +3797,7 @@ async function runAutocompleteExecutionContractFixture(
 ): Promise<FixtureCheck> {
   const textSearch = new EntityTextSearchService(
     prisma as never,
+    { embed: async () => [] } as never,
     noopLogger as never,
   );
   let capturedPhoneticOption: unknown = null;

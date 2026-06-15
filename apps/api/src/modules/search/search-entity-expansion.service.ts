@@ -9,7 +9,8 @@ export type EntityExpansionEvidence =
   | 'name'
   | 'alias'
   | 'fuzzy'
-  | 'phonetic';
+  | 'phonetic'
+  | 'embedding';
 
 export interface ExpandedEntityMatch {
   entityId: string;
