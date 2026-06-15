@@ -6,6 +6,8 @@ import { Logger } from '@nestjs/common';
 import { EntityType } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { EntityTextSearchService } from '../src/modules/entity-text-search/entity-text-search.service';
+import { rerankForAutocomplete } from '../src/modules/entity-text-search/autocomplete-rerank';
+import { PrismaService } from '../src/prisma/prisma.service';
 
 /**
  * P1.4 4.A — shared recall core inspection.
@@ -43,7 +45,24 @@ async function main(): Promise<void> {
 
   try {
     const search = app.get(EntityTextSearchService);
+    const prisma = app.get(PrismaService);
     const types: EntityType[] = ['restaurant', 'food'] as EntityType[];
+
+    const popularityFor = async (
+      ids: string[],
+    ): Promise<Map<string, number>> => {
+      if (ids.length === 0) return new Map();
+      const rows = await prisma.$queryRawUnsafe<
+        { entity_id: string; pop: bigint }[]
+      >(
+        `SELECT e.entity_id,
+                COALESCE((SELECT SUM(c.mention_count) FROM core_restaurant_items c
+                          WHERE c.restaurant_id = e.entity_id OR c.food_id = e.entity_id), 0) AS pop
+         FROM core_entities e WHERE e.entity_id = ANY($1::uuid[])`,
+        ids,
+      );
+      return new Map(rows.map((r) => [r.entity_id, Number(r.pop)]));
+    };
 
     for (const q of queries) {
       const [lexical, semantic, recall] = await Promise.all([
@@ -51,30 +70,35 @@ async function main(): Promise<void> {
         search.searchByEmbedding(q, types, LIMIT),
         search.retrieveCandidates(q, types, LIMIT, { poolSize: 50 }),
       ]);
+      const popularity = await popularityFor(recall.map((c) => c.entityId));
+      const ranked = rerankForAutocomplete(recall, popularity);
 
       out('');
       out(`════ "${q}" ════`);
       out(
-        '  LEXICAL                          │  EMBEDDING                       │  RRF RECALL (core)',
+        '  LEXICAL                          │  EMBEDDING                       │  AUTOCOMPLETE (reranked)',
       );
       for (let i = 0; i < LIMIT; i++) {
         const l = lexical[i];
         const s = semantic[i];
-        const r = recall[i];
+        const a = ranked[i];
         const lStr = l
           ? `${l.name} [${l.type[0]}] ${l.similarity.toFixed(2)} ${l.evidence}`
           : '—';
         const sStr = s
           ? `${s.name} [${s.type[0]}] ${s.similarity.toFixed(3)}`
           : '—';
-        const src = r
-          ? `${r.sparseRank != null ? 'L' : ''}${r.denseRank != null ? 'E' : ''}`
-          : '';
-        const rStr = r
-          ? `${r.name} [${r.type[0]}] (${src}) rrf=${r.rrf.toFixed(4)}`
+        const tier =
+          a?.sparseEvidence === 'exact'
+            ? 'exact'
+            : a?.sparseEvidence === 'prefix'
+              ? 'prefix'
+              : 'rel';
+        const aStr = a
+          ? `${a.name} [${a.type[0]}] ${tier} pop=${a.popularity}`
           : '—';
         out(
-          `  ${lStr.padEnd(32).slice(0, 32)} │  ${sStr.padEnd(32).slice(0, 32)} │  ${rStr}`,
+          `  ${lStr.padEnd(32).slice(0, 32)} │  ${sStr.padEnd(32).slice(0, 32)} │  ${aStr}`,
         );
       }
     }
