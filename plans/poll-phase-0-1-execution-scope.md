@@ -242,7 +242,7 @@ food 469→**220** (154 merged, 95 rejected), restaurant 738→**126** (281 merg
 - **Dep:** P0.1, P0.2. **Accept:** "outdoor patio/seating/garden/space" → one canonical; "meat
   market" ≠ "seafood market" (conservative); junk rejected; pending attrs invisible until adjudicated.
 
-### P1.4 — Shared matcher core (§6.5) 🔶 IN PROGRESS — GROUND-UP REDESIGN (retrieve → rerank)
+### P1.4 — Shared matcher core (§6.5) 🔶 4.A–4.D DONE (flag-gated, validated) · 4.E GATED on operator validation — GROUND-UP REDESIGN (retrieve → rerank)
 
 **Goal:** ONE industry-standard matcher — separate **recall** (shared) from **ranking** (per-consumer)
 — serving autocomplete + gazetteer + collection-resolution. Not a reconciliation of the two existing
@@ -286,15 +286,42 @@ for autocomplete/gazetteer beyond the resolution decision band; ship bare, obser
 
 **Increment sequence:**
 
-- **4.A (start) — shared recall core.** Rich entity docs (`buildEntityDoc`, re-embed corpus) +
+- **4.A ✅ DONE — shared recall core.** Rich entity docs (`buildEntityDoc`, re-embed corpus, 3654/3654) +
   `retrieveCandidates` (RRF-fused dense+sparse, k=60) returning candidates with per-lane features.
-  Validate via the harness: RRF recall beats either lane, no tuning knobs.
-- **4.B — autocomplete head:** feature reranker over `retrieveCandidates`; wire `autocomplete.service`
-  to it; autocomplete regression check. Query-embed latency handling (cache/debounce).
-- **4.C — resolution head:** replace the entire Sørensen–Dice 3-tier with recall(blocking) →
-  LLM-matcher → merge/create/abstain. Replay-gated; delete the token heuristics + JS fuzzy.
-- **4.D — gazetteer head:** mention detection → recall → LLM-matcher → link (spans in free text).
-- **4.E — cleanup:** fold/retire P1.2 brand helpers; remove dead lexical-scorer divergence.
+  Validated via the harness: RRF recall beats either lane, no tuning knobs. A/B showed the _bare_
+  entity doc (name + plain aliases) beats the rich template (which added noise); type label dropped.
+- **4.B ✅ DONE — autocomplete head.** Feature reranker (`autocomplete-rerank.ts`, exact/prefix/relevance
+  tiers, relevance ranked by `max(cosine, sparse)` not RRF) + `searchEntitiesHybrid` wired into
+  `autocomplete.service` behind `AUTOCOMPLETE_ENABLE_HYBRID_RECALL` (default off). Dense gated to
+  FALLBACK (only when lexical under-recalls) → keystroke path stays embed-free. Live probe: semantic
+  candidates reach "bacon egg and cheese"; "pizza" stays lexical-only.
+- **4.C ✅ DONE — resolution head.** Tier 3 (Sørensen-Dice + restaurant-token heuristics) replaced by
+  recall → `llmService.matchEntity` (match/new, fail-closed to new) for restaurant/food, behind
+  `ENTITY_RESOLUTION_LLM_MATCHER` (master switch) + per-call `config.useLlmMatcher` (only offline
+  ingestion opts in; query-time callers never pay LLM latency). Exact/alias tiers + create-new path
+  untouched. Live probe 9/9 incl. "mugwort gelato" → "mugwort ice cream" (semantic, no trigram overlap).
+  **Legacy fuzzy path kept as the flag-off fallback — delete in 4.E after replay validation.**
+- **4.D ✅ DONE (redefined) — search-link head.** No free-text gazetteer exists or is needed (all
+  mentions are LLM-extracted). Instead the real read consumer — natural-search interpretation —
+  now links via the shared recall core (`linkViaHybridRecall`, conservative lexical rule, dense on
+  fallback) behind `SEARCH_ENABLE_HYBRID_LINKING` (default off), replacing its resolveBatch
+  Sørensen-Dice. Kills the per-service scorer divergence. Live A/B: identical links to legacy, indexed
+  (scales) vs legacy full-table in-memory scan. **Legacy resolveBatch linking kept as fallback.**
+- **4.E ⏳ GATED — cleanup.** Blocked on operator validation: enable the three flags in a real run,
+  confirm quality, THEN delete the legacy Sørensen-Dice fuzzy tier + `findBestFuzzyMatch` +
+  `shouldMergeRestaurantTokens`/token-heuristic machinery in `entity-resolution.service.ts`, the
+  legacy `resolveBatch` linking branch in search interpretation, and the `string-similarity` import.
+  (P1.2 brand helpers in `restaurant-location-enrichment.service.ts` are Google-Places reconciliation,
+  a separate domain — NOT folded into the matcher.)
+
+**Operator validation gate (do before 4.E deletions):**
+
+1. `AUTOCOMPLETE_ENABLE_HYBRID_RECALL=true` → exercise autocomplete; confirm no regressions.
+2. `ENTITY_RESOLUTION_LLM_MATCHER=true` → run a Reddit ingestion replay; confirm merge/create decisions
+   on a sample (watch for false merges — fail-closed-to-new makes spurious entities the safe error).
+3. `SEARCH_ENABLE_HYBRID_LINKING=true` → exercise natural search; confirm linked entities match legacy.
+   Probes: `scripts/entity-search-ab.ts`, `scripts/autocomplete-probe.ts`, `scripts/matcher-probe.ts`,
+   `scripts/search-link-probe.ts`.
 
 - **Files:** new recall-core method + reranker; `entity-text-search.service.ts`,
   `entity-resolution.service.ts` (gutted), `autocomplete.service.ts`, gazetteer; backfill (rich docs).
