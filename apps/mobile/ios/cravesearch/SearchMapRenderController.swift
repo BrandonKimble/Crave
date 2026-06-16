@@ -1471,10 +1471,24 @@ final class SearchMapRenderController: RCTEventEmitter {
           case "enter":
             try markFrameSourceAdmission(sourceReady: false)
             try applyPresentation()
-            if sourceFrameIsReady {
-              let result = try applySnapshot(allowResidentSourceCacheRestore: !shouldApplySourcePayload)
+            if sourceFrameIsReady && shouldApplySourcePayload {
+              // Real new/changed source data → apply the delta. Source readiness then arrives via
+              // the normal render-observation handshake (paint → notifyFrameRendered).
+              let result = try applySnapshot(allowResidentSourceCacheRestore: false)
               didSyncResidentFrame = result.didSyncResidentFrame
               sourceAdmissionOutcome = result.sourceAdmissionOutcome
+            } else if sourceFrameIsReady {
+              // RESIDENT + UNCHANGED re-reveal (resident-data end state): Mapbox already holds the
+              // painted resident frame, so skip the snapshot reconcile entirely — that avoids
+              // rebuilding ~3000 feature payloads on every re-reveal (the intermittent 56-75ms
+              // reveal cost). Synthesize source readiness immediately (markFrameSourceAdmission
+              // sourceReady:true sets sourceReadyFrameGenerationId == activeFrameGenerationId):
+              // no new paint will happen, so waiting on the render handshake would STALL the
+              // reveal. Label placement readiness still comes from the preparing-enter observation,
+              // and live transitions were cancelled at dismiss, so there is nothing to step here.
+              try markFrameSourceAdmission(sourceReady: true)
+              didSyncResidentFrame = true
+              sourceAdmissionOutcome = "sources_reused_resident"
             } else {
               didSyncResidentFrame = true
               sourceAdmissionOutcome = "source_pending"
