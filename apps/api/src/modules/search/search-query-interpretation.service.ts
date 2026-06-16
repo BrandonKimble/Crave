@@ -10,6 +10,7 @@ import {
   EntityResolutionInput,
   EntityResolutionResult,
 } from '../content-processing/entity-resolver/entity-resolution.types';
+import { EntityTextSearchService } from '../entity-text-search/entity-text-search.service';
 import { LoggerService } from '../../shared';
 import { stripGenericTokens } from '../../shared/utils/generic-token-handling';
 import {
@@ -52,14 +53,26 @@ type SearchInterpretationMarketContext = {
   collectableMarketKeys: string[];
 };
 
+// P1.4 4.D: confident-link thresholds for hybrid-recall linking. No LLM on this
+// query-time path, so linking is conservative — a strong LEXICAL signal is
+// required (dense recall improves ordering but never drives a link on its own,
+// avoiding semantic-neighbour mislinks like "ramen" → "pho"). A miss simply
+// stays unresolved and flows to on-demand collection, which is far cheaper than
+// a wrong link (wrong search results).
+const HYBRID_LINK_SIMILARITY_THRESHOLD = 0.82;
+const HYBRID_LINK_SHORTLIST_K = 5;
+const HYBRID_LINK_CONCURRENCY = 8;
+
 @Injectable()
 export class SearchQueryInterpretationService {
   private readonly logger: LoggerService;
   private readonly includePhaseTimings: boolean;
+  private readonly hybridLinkingEnabled: boolean;
 
   constructor(
     private readonly llmService: LLMService,
     private readonly entityResolutionService: EntityResolutionService,
+    private readonly entityTextSearch: EntityTextSearchService,
     private readonly onDemandRequestService: OnDemandRequestService,
     private readonly marketRegistry: MarketRegistryService,
     @Inject(LoggerService) loggerService: LoggerService,
@@ -67,6 +80,10 @@ export class SearchQueryInterpretationService {
     this.logger = loggerService.setContext('SearchQueryInterpretationService');
     this.includePhaseTimings =
       (process.env.SEARCH_INCLUDE_PHASE_TIMINGS || '').toLowerCase() === 'true';
+    // Link extracted query terms via the shared recall core instead of the
+    // legacy resolveBatch (Sørensen-Dice). Default off; flip after A/B.
+    this.hybridLinkingEnabled =
+      (process.env.SEARCH_ENABLE_HYBRID_LINKING || '').toLowerCase() === 'true';
   }
 
   async interpret(
@@ -124,44 +141,36 @@ export class SearchQueryInterpretationService {
     );
     let entityResolutionMs = 0;
     const resolutionStart = performance.now();
-    const resolutionResults = resolutionInputs.length
-      ? await this.entityResolutionService.resolveBatch(resolutionInputs, {
-          enableFuzzyMatching: true,
-          fuzzyMatchThreshold: 0.75,
-          maxEditDistance: 3,
-          batchSize: 100,
-          allowEntityCreation: false,
-          confidenceThresholds: {
-            high: 0.85,
-            medium: 0.7,
-            low: 0.7,
-          },
-        })
-      : {
-          resolutionResults: [],
-          tempIdToEntityIdMap: new Map<string, string>(),
-          newEntitiesCreated: 0,
-          performanceMetrics: {
-            totalProcessed: 0,
-            exactMatches: 0,
-            aliasMatches: 0,
-            fuzzyMatches: 0,
-            newEntitiesCreated: 0,
-            processingTimeMs: 0,
-            averageConfidence: 0,
-          },
-          entityDetails: new Map<string, any>(),
-        };
+    const resolutionResultList: EntityResolutionResult[] =
+      !resolutionInputs.length
+        ? []
+        : this.hybridLinkingEnabled
+          ? await this.linkViaHybridRecall(resolutionInputs)
+          : (
+              await this.entityResolutionService.resolveBatch(
+                resolutionInputs,
+                {
+                  enableFuzzyMatching: true,
+                  fuzzyMatchThreshold: 0.75,
+                  maxEditDistance: 3,
+                  batchSize: 100,
+                  allowEntityCreation: false,
+                  confidenceThresholds: {
+                    high: 0.85,
+                    medium: 0.7,
+                    low: 0.7,
+                  },
+                },
+              )
+            ).resolutionResults;
     entityResolutionMs = performance.now() - resolutionStart;
 
-    const groupedEntities = this.groupResolvedEntities(
-      resolutionResults.resolutionResults,
-    );
+    const groupedEntities = this.groupResolvedEntities(resolutionResultList);
 
     const structuredRequest = this.buildSearchRequest(request, groupedEntities);
 
     const unresolved = this.collectUnresolvedTerms(
-      resolutionResults.resolutionResults,
+      resolutionResultList,
       request,
     );
 
@@ -288,6 +297,102 @@ export class SearchQueryInterpretationService {
     addEntries(analysis.restaurantAttributes, 'restaurant_attribute');
 
     return inputs;
+  }
+
+  /**
+   * P1.4 4.D: link extracted query terms to existing entities via the shared
+   * recall core (the same lexical+dense retrieval autocomplete and ingestion
+   * use), replacing the legacy resolveBatch Sørensen-Dice path. This kills the
+   * per-service scorer divergence (search used pg_trgm while resolution used
+   * Sørensen-Dice on the same strings). No LLM here (query-time), so the link
+   * decision is a conservative lexical rule; unconfident terms stay unresolved
+   * and flow to on-demand collection.
+   */
+  private async linkViaHybridRecall(
+    inputs: EntityResolutionInput[],
+  ): Promise<EntityResolutionResult[]> {
+    return this.mapLimit(
+      inputs,
+      HYBRID_LINK_CONCURRENCY,
+      async (input): Promise<EntityResolutionResult> => {
+        const term = input.normalizedName?.trim() ?? '';
+        const unmatched: EntityResolutionResult = {
+          tempId: input.tempId,
+          entityId: null,
+          confidence: 0,
+          resolutionTier: 'unmatched',
+          originalInput: input,
+        };
+        if (!term) return unmatched;
+
+        const candidates = await this.entityTextSearch.retrieveCandidates(
+          term,
+          [input.entityType],
+          HYBRID_LINK_SHORTLIST_K,
+          {
+            marketKey: input.marketKey,
+            // Dense improves ordering; the lexical rule gates the link, so dense
+            // only needs to run when lexical under-recalls. Keeps query-time
+            // embedding cost off the common case (up to 100 terms per query).
+            denseMode: 'fallback',
+          },
+        );
+        if (candidates.length === 0) return unmatched;
+
+        const normalizedTerm = term.toLowerCase();
+        const exact = candidates.find(
+          (c) => c.name.trim().toLowerCase() === normalizedTerm,
+        );
+        if (exact) {
+          return {
+            tempId: input.tempId,
+            entityId: exact.entityId,
+            confidence: 1,
+            resolutionTier: 'exact',
+            matchedName: exact.name,
+            originalInput: input,
+          };
+        }
+
+        // Best LEXICAL candidate (dense-only neighbours have no sparse score and
+        // are intentionally ineligible to link).
+        const best = candidates.reduce((a, b) =>
+          (b.sparseSimilarity ?? 0) > (a.sparseSimilarity ?? 0) ? b : a,
+        );
+        const sim = best.sparseSimilarity ?? 0;
+        if (sim >= HYBRID_LINK_SIMILARITY_THRESHOLD) {
+          return {
+            tempId: input.tempId,
+            entityId: best.entityId,
+            confidence: sim,
+            resolutionTier: 'fuzzy',
+            matchedName: best.name,
+            originalInput: input,
+          };
+        }
+
+        return unmatched;
+      },
+    );
+  }
+
+  /** Run `fn` over `items` with at most `concurrency` in flight, preserving order. */
+  private async mapLimit<T, R>(
+    items: T[],
+    concurrency: number,
+    fn: (item: T) => Promise<R>,
+  ): Promise<R[]> {
+    const results = new Array<R>(items.length);
+    let cursor = 0;
+    const limit = Math.max(1, Math.min(concurrency, items.length || 1));
+    const workers = Array.from({ length: limit }, async () => {
+      while (cursor < items.length) {
+        const index = cursor++;
+        results[index] = await fn(items[index]);
+      }
+    });
+    await Promise.all(workers);
+    return results;
   }
 
   private stripGenericTokensFromAnalysis(

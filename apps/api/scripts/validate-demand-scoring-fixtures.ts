@@ -924,6 +924,7 @@ async function runUserLocationDemandFactFixture(params: {
         entityDetails: new Map(),
       }),
     } as never,
+    { retrieveCandidates: async () => [] } as never,
     onDemandRequestService,
     {
       resolveViewportCoverage: async () => ({
