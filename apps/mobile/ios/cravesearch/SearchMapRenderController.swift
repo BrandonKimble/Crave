@@ -6001,11 +6001,14 @@ final class SearchMapRenderController: RCTEventEmitter {
       reason: "reveal_preroll"
     )
     state.labelCollisionObstacleLayersVisible = true
+    // Wake the resident label render layers (dormant via visibility:none while hidden). This
+    // happens at reveal preroll while presentation opacity is still ~0, so it is flash-free.
+    setLabelRenderLayersVisible(true, for: state, instanceId: instanceId, reason: "reveal_preroll")
     recordNativeApply(
       section: "presentation.reveal_preroll_collision_restore",
       phase: state.lastPresentationBatchPhase,
       durationMs: CACurrentMediaTime() * 1000 - collisionRestoreStartedAt,
-      operationCount: state.labelCollisionLayerIds.count
+      operationCount: state.labelCollisionLayerIds.count + state.labelLayerIds.count
     )
     state.visualSourceLifecycleState = .preparingReveal
     state.keepSourcesHiddenUntilEnter = false
@@ -6051,12 +6054,17 @@ final class SearchMapRenderController: RCTEventEmitter {
   ) {
     labelObservationRefreshWorkItems[instanceId]?.cancel()
     labelObservationRefreshWorkItems[instanceId] = nil
-    let residentSourceCache = Self.currentDesiredSourceCache(state: state)
-    if !residentSourceCache.isEmpty {
-      state.residentDesiredSourceCacheBySourceId = residentSourceCache
-    }
+    // RESIDENT-DATA + DORMANT-LAYERS end state: do NOT clear the marker sources on dismiss.
+    // The pin/dot/label features stay resident in the Mapbox sources (instant re-reveal, no
+    // cache/clear/restore dance, crossfade-from-old-data, trivial interruption). The reveal cost
+    // that the restore used to pay disappears with it. Idle cost is removed by making the only
+    // expensive per-frame work — the collision-bearing label symbols — dormant via
+    // `visibility: none` (Mapbox drops a hidden layer from layout/placement entirely). Pins/dots
+    // are ignorePlacement, so they cost ~nothing resident at opacity 0. Camera projection,
+    // steppers, and label observation are all already gated off in `.hidden`. No source cache is
+    // populated, so the enter-time restore naturally no-ops.
+    let labelDormancyStartedAt = CACurrentMediaTime() * 1000
     if state.labelCollisionObstacleLayersVisible {
-      let collisionLayerStartedAt = CACurrentMediaTime() * 1000
       setLabelCollisionObstacleLayersVisible(
         false,
         for: state,
@@ -6064,40 +6072,18 @@ final class SearchMapRenderController: RCTEventEmitter {
         reason: reason
       )
       state.labelCollisionObstacleLayersVisible = false
-      recordNativeApply(
-        section: "presentation.hidden_collision_obstacle_layers",
-        phase: state.lastPresentationBatchPhase,
-        durationMs: CACurrentMediaTime() * 1000 - collisionLayerStartedAt,
-        operationCount: state.labelCollisionLayerIds.count
-      )
     }
-    let sourceClearStartedAt = CACurrentMediaTime() * 1000
-    do {
-      try clearResidentSourcesAndTransientFeatureStates(for: state)
-      Self.clearDismissedHighlightState(&state)
-    } catch {
-      emit([
-        "type": "error",
-        "instanceId": instanceId,
-        "message": "dismiss_clear_sources_failed: \(error.localizedDescription)",
-      ])
-    }
+    setLabelRenderLayersVisible(false, for: state, instanceId: instanceId, reason: reason)
+    Self.clearDismissedHighlightState(&state)
     recordNativeApply(
-      section: "presentation.hidden_clear_sources",
+      section: "presentation.hidden_marker_layer_dormancy",
       phase: state.lastPresentationBatchPhase,
-      durationMs: CACurrentMediaTime() * 1000 - sourceClearStartedAt,
-      operationCount: 7
+      durationMs: CACurrentMediaTime() * 1000 - labelDormancyStartedAt,
+      operationCount: state.labelLayerIds.count + state.labelCollisionLayerIds.count
     )
     state.pendingSourceCommitDataIdsBySourceId = [:]
     state.blockedEnterStartCommitFenceBySourceId.removeAll(keepingCapacity: true)
     state.blockedPresentationCommitFenceBySourceId.removeAll(keepingCapacity: true)
-    state.derivedFamilyStates = Self.makeInitialDerivedFamilyStates(
-      pinSourceId: state.pinSourceId,
-      pinInteractionSourceId: state.pinInteractionSourceId,
-      dotSourceId: state.dotSourceId,
-      labelSourceId: state.labelSourceId,
-      labelCollisionSourceId: state.labelCollisionSourceId
-    )
     state.currentPresentationRenderPhase = "idle"
     state.visualSourceLifecycleState = .hidden
     state.keepSourcesHiddenUntilEnter = true
@@ -6170,6 +6156,47 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
   }
 
+  /// Dormant-layers idle switch for the visible label (text) render layers. In the resident
+  /// end state the marker SOURCES stay populated across dismiss; idle cost is removed by making
+  /// the collision-bearing label symbols dormant via `visibility: none` (Mapbox drops a hidden
+  /// layer from the layout/placement pipeline entirely — unlike opacity 0). Pins/dots are
+  /// `ignorePlacement` so they cost ~nothing resident at opacity 0 and need no toggle. Mirrors
+  /// `setLabelCollisionObstacleLayersVisible`.
+  private func setLabelRenderLayersVisible(
+    _ isVisible: Bool,
+    for state: InstanceState,
+    instanceId: String,
+    reason: String
+  ) {
+    do {
+      try withMapboxMap(for: state.mapTag) { mapboxMap in
+        for layerId in state.labelLayerIds {
+          do {
+            try mapboxMap.setLayerProperty(
+              for: layerId,
+              property: "visibility",
+              value: isVisible ? "visible" : "none"
+            )
+          } catch {
+            emit([
+              "type": "error",
+              "instanceId": instanceId,
+              "message":
+                "label_render_layer_visibility_failed reason=\(reason) layer=\(layerId) visible=\(isVisible) error=\(error.localizedDescription)",
+            ])
+          }
+        }
+      }
+    } catch {
+      emit([
+        "type": "error",
+        "instanceId": instanceId,
+        "message":
+          "label_render_layer_visibility_failed reason=\(reason) visible=\(isVisible) error=\(error.localizedDescription)",
+      ])
+    }
+  }
+
   private func scheduleDeferredDismissSourceCleanup(
     instanceId: String,
     requestKey: String,
@@ -6217,44 +6244,14 @@ final class SearchMapRenderController: RCTEventEmitter {
       )
       return
     }
-    let residentSourceCache = Self.currentDesiredSourceCache(state: state)
-    if !residentSourceCache.isEmpty {
-      state.residentDesiredSourceCacheBySourceId = residentSourceCache
-    }
-    let cleanupStartedAt = CACurrentMediaTime() * 1000
-    do {
-      try clearResidentSourcesAndTransientFeatureStates(for: state)
-      Self.clearDismissedHighlightState(&state)
-    } catch {
-      emit([
-        "type": "error",
-        "instanceId": instanceId,
-        "message": "deferred_dismiss_source_cleanup_failed: \(error.localizedDescription)",
-      ])
-      return
-    }
-    state.pendingSourceCommitDataIdsBySourceId = [:]
-    state.blockedEnterStartCommitFenceBySourceId.removeAll(keepingCapacity: true)
-    state.blockedPresentationCommitFenceBySourceId.removeAll(keepingCapacity: true)
-    state.derivedFamilyStates = Self.makeInitialDerivedFamilyStates(
-      pinSourceId: state.pinSourceId,
-      pinInteractionSourceId: state.pinInteractionSourceId,
-      dotSourceId: state.dotSourceId,
-      labelSourceId: state.labelSourceId,
-      labelCollisionSourceId: state.labelCollisionSourceId
-    )
-    cancelLivePinTransitionAnimation(instanceId: instanceId)
-    instances[instanceId] = state
-    recordNativeApply(
-      section: "presentation.deferred_dismiss_source_cleanup",
-      phase: state.lastPresentationBatchPhase,
-      durationMs: CACurrentMediaTime() * 1000 - cleanupStartedAt,
-      operationCount: 7
-    )
+    // RESIDENT-DATA end state: there is no deferred SOURCE clear anymore — the marker sources
+    // stay resident across dismiss and the label-layer dormancy already happened at settle in
+    // completeDismissVisualLifecycle. This deferred pass is now a no-op (kept only so any
+    // in-flight scheduled work item resolves cleanly).
     emitVisualDiag(
       instanceId: instanceId,
       message:
-        "deferred_dismiss_source_cleanup_completed reason=\(reason) request=\(requestKey) frame=\(state.activeFrameGenerationId ?? "nil") cacheSources=\(state.residentDesiredSourceCacheBySourceId.count)"
+        "deferred_dismiss_source_cleanup_noop_resident reason=\(reason) request=\(requestKey) frame=\(state.activeFrameGenerationId ?? "nil")"
     )
   }
 

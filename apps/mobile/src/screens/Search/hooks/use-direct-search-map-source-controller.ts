@@ -45,9 +45,7 @@ import {
   subscribeSearchMountedResultsDataSnapshot,
 } from '../runtime/shared/search-mounted-results-data-store';
 import type { ResolvedRestaurantMapLocation } from '../runtime/map/restaurant-location-selection';
-import { resolvePresentationLanePolicy } from '../runtime/shared/presentation-lane-policy';
 import {
-  EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT,
   type SearchMapCandidateCatalogEntry,
   type SearchMapSourceFramePort,
   type SearchMapSourceFrameSnapshot,
@@ -1275,19 +1273,15 @@ export const useDirectSearchMapSourceController = ({
         tokenIdentity: null,
         lastRunAtMs: 0,
       };
-      // Gate B (dismiss presentation-only): during the VISIBLE dismiss window keep the
-      // resident source frame instead of publishing the empty snapshot. The native stepper
-      // fades the existing pins and settles on opacity reaching ~0 (settleDismissAfterRenderedFrame),
-      // NOT on an empty frame — so publishing empty here was a structural source-clear leaking
-      // into the hot window (the measured Class-2 Gate-B leak). Native clears + caches its own
-      // sources at dismiss-settle (off the visible window) and restores them on re-enter, so
-      // the empty publish is unnecessary here and only fires once the phase settles to idle.
-      const dismissLanePolicy = resolvePresentationLanePolicy(
-        resultsPresentationTransport.executionStage
-      );
-      if (dismissLanePolicy.allowStructuralApply) {
-        commitResidentSourceFrameSnapshot(EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT);
-      }
+      // RESIDENT-DATA + DORMANT-LAYERS end state: keep the resident source frame across the
+      // whole dismiss/idle window — never publish the empty snapshot here. The pins stay
+      // resident in the JS frame AND the native Mapbox sources; native fades presentation
+      // opacity to 0 and makes the collision-bearing label layers dormant (visibility:none) at
+      // settle, then wakes them on re-reveal. This makes dismiss presentation-only (Gate B by
+      // construction), re-reveal a no-rebuild crossfade, interruption trivial, and idle
+      // frame-drop-free — while panning the empty map between searches the resident pins/dots
+      // are ignorePlacement (no collision cost) and every decision lane is already gated off.
+      // Genuine teardown (new market / unmount) clears via its own explicit path, not this gate.
       publishTelemetry(0, 0);
       return;
     }
