@@ -67,34 +67,16 @@ export interface ResolutionPerformanceMetrics {
  * Resolution configuration options
  */
 export interface EntityResolutionConfig {
-  fuzzyMatchThreshold: number; // 0.0 to 1.0, higher = more strict
-  maxEditDistance: number; // Maximum edit distance for fuzzy matching
   batchSize: number; // Number of entities to process in each batch
-  enableFuzzyMatching: boolean;
+  enableFuzzyMatching: boolean; // Gate for Tier 3 (recall → LLM matcher)
   allowEntityCreation: boolean; // Toggle creation of new entities for unmatched inputs
   /**
-   * Opt this consumer's Tier 3 into the recall → LLM-as-matcher path (P1.4 4.C).
-   * OFF by default — only the offline ingestion path sets it, so query-time
-   * callers (autocomplete fallback, search interpretation) never pay the
-   * per-entity LLM latency. Still gated by the ENTITY_RESOLUTION_LLM_MATCHER
-   * master switch, so default-off in both senses.
+   * Opt this consumer's Tier 3 into the recall → LLM-as-matcher path. OFF by
+   * default — only the offline ingestion path sets it, so query-time callers
+   * (autocomplete fallback, search interpretation) get exact+alias only and
+   * never pay the per-entity LLM latency.
    */
   useLlmMatcher?: boolean;
-  confidenceThresholds: {
-    high: number; // > 0.85 - merge with existing
-    medium: number; // 0.7-0.85 - apply heuristics
-    low: number; // < 0.7 - create new entity
-  };
-}
-
-/**
- * Fuzzy matching result for optimization
- */
-export interface FuzzyMatchResult {
-  entityId: string;
-  confidence: number;
-  matchedText: string;
-  editDistance: number;
 }
 
 /**

@@ -777,8 +777,9 @@ export class UnifiedProcessingService implements OnModuleInit {
     return this.entityResolutionService.resolveBatch(entityResolutionInput, {
       batchSize: this.entityResolutionBatchSize,
       enableFuzzyMatching: true,
-      // Offline ingestion opts into the recall → LLM matcher (gated by the
-      // ENTITY_RESOLUTION_LLM_MATCHER master switch). Query-time callers do not.
+      // Offline ingestion is the only consumer that opts into the recall → LLM
+      // matcher for Tier 3 (it can afford the per-entity LLM latency for graph
+      // correctness). Query-time callers leave this off → exact+alias only.
       useLlmMatcher: true,
     });
   }

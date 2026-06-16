@@ -1,8 +1,5 @@
 import 'dotenv/config';
 process.env.PROCESS_ROLE ||= 'api';
-process.env.SEARCH_ENABLE_HYBRID_LINKING = process.argv.includes('--off')
-  ? 'false'
-  : 'true';
 
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
@@ -33,7 +30,6 @@ async function main(): Promise<void> {
   const out = (m = '') => process.stdout.write(`${m}\n`);
   try {
     const svc = app.get(SearchQueryInterpretationService);
-    out(`hybrid linking: ${process.env.SEARCH_ENABLE_HYBRID_LINKING}`);
     for (const q of PROBES) {
       const res = await svc.interpret({
         query: q,

@@ -5,7 +5,6 @@ import { v4 as uuid } from 'uuid';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { LLMSearchQueryAnalysis } from '../external-integrations/llm/llm.types';
 import { LLMUnavailableError } from '../external-integrations/llm/llm.exceptions';
-import { EntityResolutionService } from '../content-processing/entity-resolver/entity-resolution.service';
 import {
   EntityResolutionInput,
   EntityResolutionResult,
@@ -53,7 +52,7 @@ type SearchInterpretationMarketContext = {
   collectableMarketKeys: string[];
 };
 
-// P1.4 4.D: confident-link thresholds for hybrid-recall linking. No LLM on this
+// Confident-link thresholds for the shared-recall linking. No LLM on this
 // query-time path, so linking is conservative — a strong LEXICAL signal is
 // required (dense recall improves ordering but never drives a link on its own,
 // avoiding semantic-neighbour mislinks like "ramen" → "pho"). A miss simply
@@ -67,11 +66,9 @@ const HYBRID_LINK_CONCURRENCY = 8;
 export class SearchQueryInterpretationService {
   private readonly logger: LoggerService;
   private readonly includePhaseTimings: boolean;
-  private readonly hybridLinkingEnabled: boolean;
 
   constructor(
     private readonly llmService: LLMService,
-    private readonly entityResolutionService: EntityResolutionService,
     private readonly entityTextSearch: EntityTextSearchService,
     private readonly onDemandRequestService: OnDemandRequestService,
     private readonly marketRegistry: MarketRegistryService,
@@ -80,10 +77,6 @@ export class SearchQueryInterpretationService {
     this.logger = loggerService.setContext('SearchQueryInterpretationService');
     this.includePhaseTimings =
       (process.env.SEARCH_INCLUDE_PHASE_TIMINGS || '').toLowerCase() === 'true';
-    // Link extracted query terms via the shared recall core instead of the
-    // legacy resolveBatch (Sørensen-Dice). Default off; flip after A/B.
-    this.hybridLinkingEnabled =
-      (process.env.SEARCH_ENABLE_HYBRID_LINKING || '').toLowerCase() === 'true';
   }
 
   async interpret(
@@ -142,27 +135,9 @@ export class SearchQueryInterpretationService {
     let entityResolutionMs = 0;
     const resolutionStart = performance.now();
     const resolutionResultList: EntityResolutionResult[] =
-      !resolutionInputs.length
-        ? []
-        : this.hybridLinkingEnabled
-          ? await this.linkViaHybridRecall(resolutionInputs)
-          : (
-              await this.entityResolutionService.resolveBatch(
-                resolutionInputs,
-                {
-                  enableFuzzyMatching: true,
-                  fuzzyMatchThreshold: 0.75,
-                  maxEditDistance: 3,
-                  batchSize: 100,
-                  allowEntityCreation: false,
-                  confidenceThresholds: {
-                    high: 0.85,
-                    medium: 0.7,
-                    low: 0.7,
-                  },
-                },
-              )
-            ).resolutionResults;
+      resolutionInputs.length
+        ? await this.linkViaHybridRecall(resolutionInputs)
+        : [];
     entityResolutionMs = performance.now() - resolutionStart;
 
     const groupedEntities = this.groupResolvedEntities(resolutionResultList);

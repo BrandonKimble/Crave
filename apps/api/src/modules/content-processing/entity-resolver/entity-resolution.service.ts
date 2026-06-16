@@ -19,7 +19,6 @@ import {
   BatchResolutionResult,
   EntityResolutionConfig,
   ResolutionPerformanceMetrics,
-  FuzzyMatchResult,
   ContextualAttributeInput,
 } from './entity-resolution.types';
 
@@ -79,10 +78,6 @@ export class EntityResolutionService implements OnModuleInit {
   >();
   private cacheLookupCounter?: Counter<string>;
 
-  // P1.4 4.C: when on, the fuzzy tier (Tier 3) is replaced by recall (shared
-  // lexical+dense core) → LLM-as-matcher for restaurant/food. Default off;
-  // flip after replay validation. Read once at init from the environment.
-  private llmMatcherEnabled = false;
   // Max existing entities recalled as the LLM shortlist per unmatched entity.
   private static readonly LLM_MATCHER_SHORTLIST_K = 8;
   // Bound on concurrent LLM match calls within a batch (rate-limit friendly).
@@ -147,20 +142,6 @@ export class EntityResolutionService implements OnModuleInit {
       help: 'Entity resolution cache lookups',
       labelNames: ['layer', 'result'],
     });
-
-    this.llmMatcherEnabled =
-      (
-        this.configService.get<string>('ENTITY_RESOLUTION_LLM_MATCHER') ??
-        process.env.ENTITY_RESOLUTION_LLM_MATCHER ??
-        ''
-      )
-        .toString()
-        .toLowerCase() === 'true';
-    if (this.llmMatcherEnabled) {
-      this.logger.info(
-        'Entity resolution LLM matcher ENABLED (Tier 3 = recall → LLM)',
-      );
-    }
   }
 
   private readonly restaurantNonDistinctTokens = new Set<string>([
@@ -254,14 +235,7 @@ export class EntityResolutionService implements OnModuleInit {
     const DEFAULT_CONFIG: EntityResolutionConfig = {
       batchSize: 100,
       enableFuzzyMatching: true,
-      fuzzyMatchThreshold: 0.75,
-      maxEditDistance: 3,
       allowEntityCreation: true,
-      confidenceThresholds: {
-        high: 0.85,
-        medium: 0.7,
-        low: 0.7,
-      },
     };
     const resolveConfig = { ...DEFAULT_CONFIG, ...config };
 
@@ -518,28 +492,17 @@ export class EntityResolutionService implements OnModuleInit {
       unmatched: unmatchedAfterAlias.length,
     });
 
-    // Tier 3: recall → LLM matcher (offline consumers that opt in, restaurant/
-    // food only) or the legacy Sørensen–Dice fuzzy path — only for entities
-    // unmatched by exact/alias. Per-call opt-in keeps the LLM latency off the
-    // query-time callers (autocomplete fallback, search interpretation).
+    // Tier 3: recall (shared lexical+dense core) → LLM matcher. Only offline
+    // consumers that opt in (config.useLlmMatcher) and only restaurant/food run
+    // it, so the per-entity LLM latency never lands on the query-time callers
+    // (autocomplete fallback, search interpretation) — they get exact+alias only.
     const useLlmMatcher =
-      this.llmMatcherEnabled &&
       config.useLlmMatcher === true &&
+      config.enableFuzzyMatching &&
       (entityType === 'restaurant' || entityType === 'food');
-    const fuzzyMatchResults = !config.enableFuzzyMatching
-      ? []
-      : useLlmMatcher
-        ? await this.performLlmMatches(
-            unmatchedAfterAlias,
-            entityType,
-            marketKey,
-          )
-        : await this.performFuzzyMatches(
-            unmatchedAfterAlias,
-            entityType,
-            config,
-            marketKey,
-          );
+    const fuzzyMatchResults = useLlmMatcher
+      ? await this.performLlmMatches(unmatchedAfterAlias, entityType, marketKey)
+      : [];
 
     const unmatchedAfterFuzzy = unmatchedAfterAlias.filter(
       (entity) =>
@@ -853,57 +816,6 @@ export class EntityResolutionService implements OnModuleInit {
     return results;
   }
 
-  private async performFuzzyMatches(
-    entities: EntityResolutionInput[],
-    entityType: EntityType,
-    config: EntityResolutionConfig,
-    marketKey: string | null,
-  ): Promise<EntityResolutionResult[]> {
-    if (entities.length === 0) return [];
-
-    const results: EntityResolutionResult[] = [];
-
-    // Get all entities of this type for fuzzy comparison
-    const whereClause: Prisma.EntityWhereInput = { type: entityType };
-
-    if (entityType === 'restaurant') {
-      whereClause.marketPresences = {
-        some: {
-          marketKey: this.normalizeMarketKey(marketKey),
-        },
-      };
-    }
-
-    const allEntitiesOfType = await this.prisma.entity.findMany({
-      where: whereClause,
-      select: {
-        entityId: true,
-        name: true,
-        aliases: true,
-      },
-    });
-
-    for (const entity of entities) {
-      const fuzzyResult = this.findBestFuzzyMatch(
-        entity,
-        allEntitiesOfType,
-        entityType,
-        config,
-      );
-
-      results.push({
-        tempId: entity.tempId,
-        entityId: fuzzyResult?.entityId || null,
-        confidence: fuzzyResult?.confidence || 0.0,
-        resolutionTier: fuzzyResult ? 'fuzzy' : 'unmatched',
-        matchedName: fuzzyResult?.matchedText,
-        originalInput: entity,
-      });
-    }
-
-    return results;
-  }
-
   private selectBestAliasMatch(
     inputEntity: EntityResolutionInput,
     candidateEntities: { entityId: string; name: string; aliases: string[] }[],
@@ -1043,115 +955,6 @@ export class EntityResolutionService implements OnModuleInit {
 
   private normalizeAliasValue(value: string): string {
     return value.toLowerCase().trim();
-  }
-
-  /**
-   * Find best fuzzy match using string similarity and edit distance
-   */
-  private findBestFuzzyMatch(
-    inputEntity: EntityResolutionInput,
-    candidateEntities: { entityId: string; name: string; aliases: string[] }[],
-    entityType: EntityType,
-    config: EntityResolutionConfig,
-  ): FuzzyMatchResult | null {
-    const searchTerms = [
-      inputEntity.normalizedName,
-      inputEntity.originalText,
-      ...(inputEntity.aliases || []),
-    ].filter((term) => term && term.trim().length > 0);
-
-    let bestMatch: FuzzyMatchResult | null = null;
-
-    for (const candidate of candidateEntities) {
-      const candidateTerms = [candidate.name, ...candidate.aliases];
-
-      for (const searchTerm of searchTerms) {
-        for (const candidateTerm of candidateTerms) {
-          if (entityType === 'restaurant') {
-            const inputTokens = this.tokenizeEntityName(
-              searchTerm.toLowerCase().trim(),
-            );
-            const candidateTokens = this.tokenizeEntityName(
-              candidateTerm.toLowerCase().trim(),
-            );
-
-            if (
-              inputTokens.length > 0 &&
-              candidateTokens.length > 0 &&
-              this.shouldMergeRestaurantTokens(inputTokens, candidateTokens)
-            ) {
-              const confidenceBoost = Math.max(
-                0.9,
-                config.fuzzyMatchThreshold + 0.15,
-              );
-              if (!bestMatch || confidenceBoost > bestMatch.confidence) {
-                bestMatch = {
-                  entityId: candidate.entityId,
-                  confidence: Math.min(confidenceBoost, 0.99),
-                  matchedText: candidateTerm,
-                  editDistance: this.calculateEditDistance(
-                    searchTerm.toLowerCase().trim(),
-                    candidateTerm.toLowerCase().trim(),
-                  ),
-                };
-              }
-              continue;
-            }
-          }
-
-          // Calculate string similarity
-          const normalizedSearch = searchTerm.toLowerCase().trim();
-          const normalizedCandidate = candidateTerm.toLowerCase().trim();
-
-          const similarity = stringSimilarity.compareTwoStrings(
-            normalizedSearch,
-            normalizedCandidate,
-          );
-
-          // Calculate edit distance (approximate)
-          const editDistance = this.calculateEditDistance(
-            normalizedSearch,
-            normalizedCandidate,
-          );
-
-          const firstCharMatches =
-            normalizedSearch.charAt(0) === normalizedCandidate.charAt(0);
-
-          const isSingleTokenMatch =
-            entityType === 'restaurant' &&
-            this.tokenizeEntityName(normalizedSearch).length === 1 &&
-            this.tokenizeEntityName(normalizedCandidate).length === 1;
-
-          // Check if within thresholds
-          const forceMerge = this.shouldForceRestaurantFuzzyMatch(
-            entityType,
-            searchTerm,
-            candidateTerm,
-          );
-
-          if (
-            forceMerge ||
-            (similarity >=
-              (isSingleTokenMatch
-                ? Math.max(0.8, config.fuzzyMatchThreshold)
-                : config.fuzzyMatchThreshold) &&
-              editDistance <= config.maxEditDistance &&
-              (isSingleTokenMatch ? firstCharMatches : true))
-          ) {
-            if (!bestMatch || similarity > bestMatch.confidence) {
-              bestMatch = {
-                entityId: candidate.entityId,
-                confidence: similarity,
-                matchedText: candidateTerm,
-                editDistance,
-              };
-            }
-          }
-        }
-      }
-    }
-
-    return bestMatch;
   }
 
   /**
@@ -1357,37 +1160,6 @@ export class EntityResolutionService implements OnModuleInit {
     return results;
   }
 
-  private shouldForceRestaurantFuzzyMatch(
-    entityType: EntityType,
-    searchTerm: string,
-    candidateTerm: string,
-  ): boolean {
-    if (entityType !== 'restaurant') {
-      return false;
-    }
-
-    const normalizedInput = searchTerm.toLowerCase().trim();
-    const normalizedCandidate = candidateTerm.toLowerCase().trim();
-
-    if (normalizedInput.length < 4 || normalizedCandidate.length < 4) {
-      return false;
-    }
-
-    const distance = this.calculateEditDistance(
-      normalizedInput,
-      normalizedCandidate,
-    );
-
-    if (
-      distance === 1 &&
-      normalizedInput.charAt(0) === normalizedCandidate.charAt(0)
-    ) {
-      return true;
-    }
-
-    return false;
-  }
-
   /**
    * Resolve context-dependent attributes with scope awareness
    * Implements PRD Section 4.2.2 - Context-Dependent Attributes
@@ -1578,10 +1350,8 @@ export class EntityResolutionService implements OnModuleInit {
       tokens: tokenSignature,
       config: {
         enableFuzzyMatching: config.enableFuzzyMatching,
-        fuzzyMatchThreshold: config.fuzzyMatchThreshold,
-        maxEditDistance: config.maxEditDistance,
         allowEntityCreation: config.allowEntityCreation,
-        confidenceThresholds: config.confidenceThresholds,
+        useLlmMatcher: config.useLlmMatcher ?? false,
       },
     });
     const hash = this.hashString(cacheSignature);

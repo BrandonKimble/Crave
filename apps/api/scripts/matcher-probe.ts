@@ -1,8 +1,5 @@
 import 'dotenv/config';
 process.env.PROCESS_ROLE ||= 'api';
-process.env.ENTITY_RESOLUTION_LLM_MATCHER = process.argv.includes('--off')
-  ? 'false'
-  : 'true';
 
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
@@ -76,7 +73,7 @@ async function main(): Promise<void> {
   const out = (m = '') => process.stdout.write(`${m}\n`);
   try {
     const svc = app.get(EntityResolutionService);
-    out(`llm matcher: ${process.env.ENTITY_RESOLUTION_LLM_MATCHER}`);
+    out('llm matcher (config.useLlmMatcher=true):');
     for (const c of CASES) {
       const res = await svc.resolveBatch(
         [

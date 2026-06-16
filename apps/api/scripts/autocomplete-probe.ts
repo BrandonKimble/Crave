@@ -1,8 +1,5 @@
 import 'dotenv/config';
 process.env.PROCESS_ROLE ||= 'api';
-process.env.AUTOCOMPLETE_ENABLE_HYBRID_RECALL = process.argv.includes('--off')
-  ? 'false'
-  : 'true';
 
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
@@ -23,7 +20,6 @@ async function main(): Promise<void> {
 
   try {
     const svc = app.get(AutocompleteService);
-    out(`hybrid recall: ${process.env.AUTOCOMPLETE_ENABLE_HYBRID_RECALL}`);
     for (const q of probes) {
       const res = await svc.autocompleteEntities({
         query: q,

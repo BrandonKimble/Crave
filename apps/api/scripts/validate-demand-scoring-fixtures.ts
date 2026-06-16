@@ -894,36 +894,8 @@ async function runUserLocationDemandFactFixture(params: {
         restaurantAttributes: [],
       }),
     } as never,
-    {
-      resolveBatch: async (
-        inputs: Array<{
-          tempId: string;
-          normalizedName: string;
-          originalText: string;
-          entityType: EntityType;
-        }>,
-      ) => ({
-        tempIdToEntityIdMap: new Map<string, string>(),
-        resolutionResults: inputs.map((input) => ({
-          tempId: input.tempId,
-          entityId: null,
-          confidence: 0,
-          resolutionTier: 'unmatched' as const,
-          originalInput: input,
-        })),
-        newEntitiesCreated: 0,
-        performanceMetrics: {
-          totalProcessed: inputs.length,
-          exactMatches: 0,
-          aliasMatches: 0,
-          fuzzyMatches: 0,
-          newEntitiesCreated: 0,
-          processingTimeMs: 0,
-          averageConfidence: 0,
-        },
-        entityDetails: new Map(),
-      }),
-    } as never,
+    // Hybrid linking recalls candidates from the shared core; empty ⇒ every term
+    // stays unresolved, exercising the on-demand path this fixture checks.
     { retrieveCandidates: async () => [] } as never,
     onDemandRequestService,
     {
