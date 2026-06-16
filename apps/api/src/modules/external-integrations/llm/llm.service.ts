@@ -28,6 +28,8 @@ import {
   LLMModerationResult,
   LLMAttributePlacementInput,
   LLMAttributePlacementResult,
+  LLMEntityMatchInput,
+  LLMEntityMatchResult,
   LLMAttributeNameInput,
   LLMRestaurantPlaceChooserCandidate,
   LLMRestaurantPlaceChooserDecision,
@@ -47,6 +49,7 @@ import { buildRestaurantPlaceChooserPrompt } from './prompts/restaurant-place-ch
 import {
   ATTRIBUTE_NAME_RESPONSE_JSON_SCHEMA,
   ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA,
+  ENTITY_MATCH_RESPONSE_JSON_SCHEMA,
   COLLECTION_RESPONSE_JSON_SCHEMA,
   CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA,
   MODERATION_RESPONSE_JSON_SCHEMA,
@@ -158,6 +161,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   private cuisinePrompt!: string;
   private moderationPrompt!: string;
   private attributePlacementPrompt!: string;
+  private entityMatchPrompt!: string;
   private queryInstructionCache: GeminiCacheEntry | null = null;
   private queryModel!: string;
   private thoughtDebugEntries: {
@@ -328,6 +332,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     this.cuisinePrompt = this.loadCuisinePrompt();
     this.moderationPrompt = this.loadModerationPrompt();
     this.attributePlacementPrompt = this.loadAttributePlacementPrompt();
+    this.entityMatchPrompt = this.loadEntityMatchPrompt();
     this.validateConfig();
 
     this.logger.info('Gemini LLM service initialized with @google/genai', {
@@ -794,6 +799,13 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     return this.loadRequiredPromptFile(
       'attribute-placement-prompt.md',
       'load_attribute_placement_prompt',
+    );
+  }
+
+  private loadEntityMatchPrompt(): string {
+    return this.loadRequiredPromptFile(
+      'entity-match-prompt.md',
+      'load_entity_match_prompt',
     );
   }
 
@@ -1302,6 +1314,109 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       this.logger.error('Failed to parse attribute placement response', {
         correlationId: CorrelationUtils.getCorrelationId(),
         operation: 'place_attribute',
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack, name: error.name }
+            : { message: String(error) },
+      });
+      // Fail closed: default to a non-destructive `new`.
+      return { decision: 'new', candidateId: null, reason: 'parse_error' };
+    }
+  }
+
+  /**
+   * Match ONE newly-extracted entity (restaurant or dish) against a shortlist of
+   * existing entities recalled as its closest neighbours. Returns match / new.
+   * This is the precision stage of resolution: recall (lexical + dense) gathers
+   * the shortlist, this judges whether `term` is the SAME real-world entity as a
+   * candidate. Fail-closed: an unparseable or invalid-id response is treated as
+   * `new` (a recoverable spurious entity, never a destructive merge of two reals).
+   */
+  async matchEntity(input: LLMEntityMatchInput): Promise<LLMEntityMatchResult> {
+    const term = input.term?.trim() ?? '';
+    if (!term) {
+      return { decision: 'new', candidateId: null, reason: 'empty term' };
+    }
+    if (!input.candidates.length) {
+      return { decision: 'new', candidateId: null, reason: 'no candidates' };
+    }
+
+    const model = 'gemini-3-flash-preview';
+    const generationConfig: GeminiGenerationConfig = {
+      temperature: 0,
+      topP: this.llmConfig.topP,
+      topK: this.llmConfig.topK,
+      candidateCount: 1,
+      // gemini-3 thinking tokens count against this ceiling, so a tiny JSON reply
+      // still needs headroom (truncated mid-thought → fail-closed to `new`).
+      maxOutputTokens: 2048,
+      responseMimeType: 'application/json',
+      responseJsonSchema: ENTITY_MATCH_RESPONSE_JSON_SCHEMA,
+    };
+    const thinkingConfig = this.getThinkingConfig(model, 'content');
+    if (thinkingConfig) {
+      generationConfig.thinkingConfig = thinkingConfig;
+    }
+
+    const payload = JSON.stringify({
+      term,
+      kind: input.kind,
+      candidates: input.candidates.map((c) => ({ id: c.id, name: c.name })),
+    });
+    const response = await this.callLLMApi(payload, {
+      generationConfig,
+      systemInstruction: this.entityMatchPrompt,
+      model,
+      maxRetries: 1,
+      thinkingContext: 'content',
+    });
+    const content = this.extractTextContent(response, 'match_entity');
+    return this.parseEntityMatchResponse(content, input);
+  }
+
+  private parseEntityMatchResponse(
+    content: string,
+    input: LLMEntityMatchInput,
+  ): LLMEntityMatchResult {
+    try {
+      const start = content.indexOf('{');
+      const json = start >= 0 ? content.slice(start) : content;
+      const parsed = JSON.parse(json) as {
+        decision?: unknown;
+        candidate_id?: unknown;
+        reason?: unknown;
+      };
+
+      const decision = parsed.decision === 'match' ? 'match' : 'new';
+      const reason =
+        typeof parsed.reason === 'string' && parsed.reason.trim()
+          ? parsed.reason.trim()
+          : decision;
+
+      // Only honour a match that names a real candidate id from the shortlist.
+      const candidateId =
+        typeof parsed.candidate_id === 'number' ? parsed.candidate_id : null;
+      const validIds = new Set(input.candidates.map((c) => c.id));
+      if (
+        decision === 'match' &&
+        (candidateId === null || !validIds.has(candidateId))
+      ) {
+        return {
+          decision: 'new',
+          candidateId: null,
+          reason: 'match_id_invalid',
+        };
+      }
+
+      return {
+        decision,
+        candidateId: decision === 'match' ? candidateId : null,
+        reason,
+      };
+    } catch (error) {
+      this.logger.error('Failed to parse entity match response', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'match_entity',
         error:
           error instanceof Error
             ? { message: error.message, stack: error.stack, name: error.name }

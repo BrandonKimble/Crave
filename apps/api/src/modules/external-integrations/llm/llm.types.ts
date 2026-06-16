@@ -315,6 +315,26 @@ export interface LLMAttributeNameInput {
   names: string[];
 }
 
+export interface LLMEntityMatchCandidate {
+  id: number;
+  name: string;
+}
+
+export interface LLMEntityMatchInput {
+  /** The newly-extracted entity name to resolve. */
+  term: string;
+  /** restaurant (a place) or food (a dish). */
+  kind: 'restaurant' | 'food';
+  /** Existing entities recalled as the closest matches to `term`. */
+  candidates: LLMEntityMatchCandidate[];
+}
+
+export interface LLMEntityMatchResult {
+  decision: 'match' | 'new';
+  candidateId: number | null;
+  reason: string;
+}
+
 export interface LLMRestaurantPlaceChooserCandidate {
   candidateId: string;
   name: string;

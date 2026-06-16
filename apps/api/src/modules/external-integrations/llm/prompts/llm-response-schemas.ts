@@ -117,6 +117,31 @@ export const ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+export const ENTITY_MATCH_RESPONSE_JSON_SCHEMA = {
+  type: 'object',
+  description:
+    'Decision for matching one candidate entity (restaurant or dish) against a shortlist of existing entities',
+  properties: {
+    decision: {
+      type: 'string',
+      enum: ['match', 'new'],
+      description:
+        'match = same real-world entity as a candidate; new = a distinct entity not in the shortlist',
+    },
+    candidate_id: {
+      anyOf: [{ type: 'integer' }, { type: 'null' }],
+      description:
+        'The matched candidate id when decision is match, otherwise null',
+    },
+    reason: {
+      type: 'string',
+      description: 'Short justification for the decision',
+    },
+  },
+  required: ['decision', 'candidate_id', 'reason'],
+  additionalProperties: false,
+} as const;
+
 const NULLABLE_STRING_SCHEMA = {
   anyOf: [{ type: 'string' }, { type: 'null' }],
 } as const;

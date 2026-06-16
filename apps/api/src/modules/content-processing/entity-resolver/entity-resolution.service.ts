@@ -10,6 +10,8 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { EntityRepository } from '../../../repositories/entity.repository';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { MetricsService } from '../../metrics/metrics.service';
+import { LLMService } from '../../external-integrations/llm/llm.service';
+import { EntityTextSearchService } from '../../entity-text-search/entity-text-search.service';
 import { AliasManagementService } from './alias-management.service';
 import {
   EntityResolutionInput,
@@ -77,6 +79,15 @@ export class EntityResolutionService implements OnModuleInit {
   >();
   private cacheLookupCounter?: Counter<string>;
 
+  // P1.4 4.C: when on, the fuzzy tier (Tier 3) is replaced by recall (shared
+  // lexical+dense core) → LLM-as-matcher for restaurant/food. Default off;
+  // flip after replay validation. Read once at init from the environment.
+  private llmMatcherEnabled = false;
+  // Max existing entities recalled as the LLM shortlist per unmatched entity.
+  private static readonly LLM_MATCHER_SHORTLIST_K = 8;
+  // Bound on concurrent LLM match calls within a batch (rate-limit friendly).
+  private static readonly LLM_MATCHER_CONCURRENCY = 8;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly entityRepository: EntityRepository,
@@ -84,6 +95,8 @@ export class EntityResolutionService implements OnModuleInit {
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
     private readonly metricsService: MetricsService,
+    private readonly llmService: LLMService,
+    private readonly entityTextSearch: EntityTextSearchService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
@@ -134,6 +147,20 @@ export class EntityResolutionService implements OnModuleInit {
       help: 'Entity resolution cache lookups',
       labelNames: ['layer', 'result'],
     });
+
+    this.llmMatcherEnabled =
+      (
+        this.configService.get<string>('ENTITY_RESOLUTION_LLM_MATCHER') ??
+        process.env.ENTITY_RESOLUTION_LLM_MATCHER ??
+        ''
+      )
+        .toString()
+        .toLowerCase() === 'true';
+    if (this.llmMatcherEnabled) {
+      this.logger.info(
+        'Entity resolution LLM matcher ENABLED (Tier 3 = recall → LLM)',
+      );
+    }
   }
 
   private readonly restaurantNonDistinctTokens = new Set<string>([
@@ -491,15 +518,25 @@ export class EntityResolutionService implements OnModuleInit {
       unmatched: unmatchedAfterAlias.length,
     });
 
-    // Tier 3: Fuzzy matching (optimized individual queries) - only for unmatched entities
-    const fuzzyMatchResults = config.enableFuzzyMatching
-      ? await this.performFuzzyMatches(
-          unmatchedAfterAlias,
-          entityType,
-          config,
-          marketKey,
-        )
-      : [];
+    // Tier 3: recall → LLM matcher (when enabled, restaurant/food only) or the
+    // legacy Sørensen–Dice fuzzy path — only for entities unmatched by exact/alias.
+    const useLlmMatcher =
+      this.llmMatcherEnabled &&
+      (entityType === 'restaurant' || entityType === 'food');
+    const fuzzyMatchResults = !config.enableFuzzyMatching
+      ? []
+      : useLlmMatcher
+        ? await this.performLlmMatches(
+            unmatchedAfterAlias,
+            entityType,
+            marketKey,
+          )
+        : await this.performFuzzyMatches(
+            unmatchedAfterAlias,
+            entityType,
+            config,
+            marketKey,
+          );
 
     const unmatchedAfterFuzzy = unmatchedAfterAlias.filter(
       (entity) =>
@@ -695,7 +732,10 @@ export class EntityResolutionService implements OnModuleInit {
       });
 
       return entities.map((entity) => {
-        const matchedEntity = this.selectBestAliasMatch(entity, matchedEntities);
+        const matchedEntity = this.selectBestAliasMatch(
+          entity,
+          matchedEntities,
+        );
 
         return {
           tempId: entity.tempId,
@@ -721,6 +761,95 @@ export class EntityResolutionService implements OnModuleInit {
    * Tier 3: Fuzzy matching with confidence scoring
    * Individual queries with edit distance ≤ 3-4 and confidence thresholds
    */
+  /**
+   * Tier 3 (P1.4 4.C): recall → LLM-as-matcher. For each entity unmatched by the
+   * exact/alias tiers, recall the closest existing entities via the shared
+   * lexical+dense core (market-scoped, dense always on — semantic gaps like
+   * "BEC" ↔ "bacon egg and cheese" must surface), then ask the LLM whether the
+   * term is the SAME real-world entity as any candidate. `match` resolves to that
+   * entity; `new`/no-candidates falls through to creation. Fail-closed by design:
+   * the LLM matcher and parser default to `new`, so uncertainty grows the graph
+   * (recoverable) rather than fusing two real entities (corrupting).
+   */
+  private async performLlmMatches(
+    entities: EntityResolutionInput[],
+    entityType: EntityType,
+    marketKey: string | null,
+  ): Promise<EntityResolutionResult[]> {
+    if (entities.length === 0) return [];
+
+    const kind: 'restaurant' | 'food' =
+      entityType === 'restaurant' ? 'restaurant' : 'food';
+
+    return this.mapLimit(
+      entities,
+      EntityResolutionService.LLM_MATCHER_CONCURRENCY,
+      async (entity): Promise<EntityResolutionResult> => {
+        const term = entity.normalizedName?.trim() ?? '';
+        const unmatched: EntityResolutionResult = {
+          tempId: entity.tempId,
+          entityId: null,
+          confidence: 0.0,
+          resolutionTier: 'unmatched',
+          originalInput: entity,
+        };
+        if (!term) return unmatched;
+
+        // Recall: shared lexical+dense core, scoped to this type + market.
+        const candidates = await this.entityTextSearch.retrieveCandidates(
+          term,
+          [entityType],
+          EntityResolutionService.LLM_MATCHER_SHORTLIST_K,
+          { marketKey, denseMode: 'always' },
+        );
+        if (candidates.length === 0) return unmatched;
+
+        // Precision: LLM judges sameness against the recalled shortlist.
+        const decision = await this.llmService.matchEntity({
+          term,
+          kind,
+          candidates: candidates.map((c, i) => ({ id: i, name: c.name })),
+        });
+        if (
+          decision.decision !== 'match' ||
+          decision.candidateId === null ||
+          !candidates[decision.candidateId]
+        ) {
+          return unmatched;
+        }
+
+        const matched = candidates[decision.candidateId];
+        return {
+          tempId: entity.tempId,
+          entityId: matched.entityId,
+          confidence: 1.0,
+          resolutionTier: 'fuzzy',
+          matchedName: matched.name,
+          originalInput: entity,
+        };
+      },
+    );
+  }
+
+  /** Run `fn` over `items` with at most `concurrency` in flight, preserving order. */
+  private async mapLimit<T, R>(
+    items: T[],
+    concurrency: number,
+    fn: (item: T) => Promise<R>,
+  ): Promise<R[]> {
+    const results = new Array<R>(items.length);
+    let cursor = 0;
+    const limit = Math.max(1, Math.min(concurrency, items.length || 1));
+    const workers = Array.from({ length: limit }, async () => {
+      while (cursor < items.length) {
+        const index = cursor++;
+        results[index] = await fn(items[index]);
+      }
+    });
+    await Promise.all(workers);
+    return results;
+  }
+
   private async performFuzzyMatches(
     entities: EntityResolutionInput[],
     entityType: EntityType,
@@ -793,16 +922,14 @@ export class EntityResolutionService implements OnModuleInit {
       new Set(searchTerms.map((term) => this.normalizeAliasValue(term))),
     );
 
-    let bestCandidate:
-      | {
-          entity: { entityId: string; name: string; aliases: string[] };
-          exactNameMatch: boolean;
-          candidateNameContainsSearch: boolean;
-          bestNameSimilarity: number;
-          bestAliasSimilarity: number;
-          bestNameEditDistance: number;
-        }
-      | null = null;
+    let bestCandidate: {
+      entity: { entityId: string; name: string; aliases: string[] };
+      exactNameMatch: boolean;
+      candidateNameContainsSearch: boolean;
+      bestNameSimilarity: number;
+      bestAliasSimilarity: number;
+      bestNameEditDistance: number;
+    } | null = null;
 
     for (const candidate of candidateEntities) {
       const normalizedCandidateAliases = (candidate.aliases || [])
@@ -819,11 +946,12 @@ export class EntityResolutionService implements OnModuleInit {
       }
 
       const normalizedCandidateName = this.normalizeAliasValue(candidate.name);
-      const exactNameMatch = normalizedSearchTerms.includes(normalizedCandidateName);
+      const exactNameMatch = normalizedSearchTerms.includes(
+        normalizedCandidateName,
+      );
       const candidateNameContainsSearch = normalizedSearchTerms.some(
         (searchTerm) =>
-          searchTerm.length > 0 &&
-          normalizedCandidateName.includes(searchTerm),
+          searchTerm.length > 0 && normalizedCandidateName.includes(searchTerm),
       );
 
       let bestNameSimilarity = 0;
@@ -863,9 +991,7 @@ export class EntityResolutionService implements OnModuleInit {
         continue;
       }
 
-      if (
-        this.compareAliasCandidates(candidateScore, bestCandidate) > 0
-      ) {
+      if (this.compareAliasCandidates(candidateScore, bestCandidate) > 0) {
         bestCandidate = candidateScore;
       }
     }
@@ -894,7 +1020,9 @@ export class EntityResolutionService implements OnModuleInit {
     if (left.exactNameMatch !== right.exactNameMatch) {
       return left.exactNameMatch ? 1 : -1;
     }
-    if (left.candidateNameContainsSearch !== right.candidateNameContainsSearch) {
+    if (
+      left.candidateNameContainsSearch !== right.candidateNameContainsSearch
+    ) {
       return left.candidateNameContainsSearch ? 1 : -1;
     }
     if (left.bestNameSimilarity !== right.bestNameSimilarity) {
