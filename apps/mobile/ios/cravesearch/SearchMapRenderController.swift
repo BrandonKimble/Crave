@@ -638,7 +638,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     var pendingSourceCommitDataIdsBySourceId: [String: Set<String>]
     var derivedFamilyStates: [String: DerivedFamilyState]
     var markerRoleTable: MarkerRoleTable
-    var residentDesiredSourceCacheBySourceId: [String: ParsedFeatureCollection]
     var isAwaitingSourceRecovery: Bool
     var isReplayingSourceRecovery: Bool
     var sourceRecoveryPausedAtMs: Double?
@@ -1180,7 +1179,6 @@ final class SearchMapRenderController: RCTEventEmitter {
           labelCollisionSourceId: labelCollisionSourceId
         ),
         markerRoleTable: MarkerRoleTable(),
-        residentDesiredSourceCacheBySourceId: [:],
         isAwaitingSourceRecovery: false,
         isReplayingSourceRecovery: false,
         sourceRecoveryPausedAtMs: nil,
@@ -1426,7 +1424,7 @@ final class SearchMapRenderController: RCTEventEmitter {
               durationMs: CACurrentMediaTime() * 1000 - presentationStartedAt
             )
           }
-          func applySnapshot(allowResidentSourceCacheRestore: Bool) throws -> VisualFrameSnapshotApplyResult {
+          func applySnapshot() throws -> VisualFrameSnapshotApplyResult {
             let snapshotStartedAt = CACurrentMediaTime() * 1000
             let result = try self.applyRenderFrameSnapshotPayload(
               instanceId: instanceId,
@@ -1434,8 +1432,7 @@ final class SearchMapRenderController: RCTEventEmitter {
               executionBatchId: executionBatchId,
               visualFrameTransaction: visualFrameTransaction,
               sourceDeltas: shouldApplySourcePayload ? sourceDeltas : nil,
-              markerRoleFrame: shouldApplySourcePayload ? markerRoleFrame : nil,
-              allowResidentSourceCacheRestore: allowResidentSourceCacheRestore
+              markerRoleFrame: shouldApplySourcePayload ? markerRoleFrame : nil
             )
             attributionPhase = self.instances[instanceId]?.lastPresentationBatchPhase ?? attributionPhase
             self.recordNativeApply(
@@ -1474,7 +1471,7 @@ final class SearchMapRenderController: RCTEventEmitter {
             if sourceFrameIsReady && shouldApplySourcePayload {
               // Real new/changed source data → apply the delta. Source readiness then arrives via
               // the normal render-observation handshake (paint → notifyFrameRendered).
-              let result = try applySnapshot(allowResidentSourceCacheRestore: false)
+              let result = try applySnapshot()
               didSyncResidentFrame = result.didSyncResidentFrame
               sourceAdmissionOutcome = result.sourceAdmissionOutcome
             } else if sourceFrameIsReady {
@@ -1496,7 +1493,7 @@ final class SearchMapRenderController: RCTEventEmitter {
           case "hidden_preload", "bootstrap", "live_update":
             if sourceFrameIsReady {
               try applyPresentation()
-              let result = try applySnapshot(allowResidentSourceCacheRestore: false)
+              let result = try applySnapshot()
               didSyncResidentFrame = result.didSyncResidentFrame
               sourceAdmissionOutcome = result.sourceAdmissionOutcome
             } else {
@@ -2176,8 +2173,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       executionBatchId: String,
       visualFrameTransaction: VisualFrameTransaction,
       sourceDeltas: [[String: Any]]?,
-      markerRoleFrame: [String: Any]?,
-      allowResidentSourceCacheRestore: Bool
+      markerRoleFrame: [String: Any]?
     ) throws -> VisualFrameSnapshotApplyResult {
     guard var state = self.instances[instanceId] else {
       throw NSError(
@@ -2262,24 +2258,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       )
     }
     let sourceAdmissionOutcome: String
-    if allowResidentSourceCacheRestore && (sourceDeltas?.isEmpty ?? true) {
-      let restoreStartedAt = CACurrentMediaTime() * 1000
-      let didRestoreResidentSources = Self.restoreResidentDesiredSourceCacheForEnter(state: &state)
-      if didRestoreResidentSources {
-        self.recordNativeApply(
-          section: "snapshot.restore_resident_source_cache",
-          phase: state.lastPresentationBatchPhase,
-          durationMs: CACurrentMediaTime() * 1000 - restoreStartedAt,
-          operationCount: state.residentDesiredSourceCacheBySourceId.count
-        )
-        self.emitVisualDiag(
-          instanceId: instanceId,
-          message:
-            "resident_source_cache_restored frame=\(generationId) cacheSources=\(state.residentDesiredSourceCacheBySourceId.count)"
-        )
-      }
-      sourceAdmissionOutcome = "sources_reused_resident"
-    } else if (sourceDeltas?.isEmpty == false) || markerRoleFrame != nil {
+    if (sourceDeltas?.isEmpty == false) || markerRoleFrame != nil {
       if visualFrameTransaction.kind == "hidden_preload" {
         sourceAdmissionOutcome = "sources_applied_hidden"
       } else {
@@ -6293,71 +6272,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       reason: reason
     )
     instances[instanceId] = state
-  }
-
-  private static func currentDesiredSourceCache(
-    state: InstanceState
-  ) -> [String: ParsedFeatureCollection] {
-    var cache: [String: ParsedFeatureCollection] = [:]
-    for sourceId in [
-      state.pinSourceId,
-      state.pinInteractionSourceId,
-      state.dotSourceId,
-      state.labelSourceId,
-      state.labelCollisionSourceId,
-    ] {
-      let desiredCollection = derivedFamilyState(sourceId: sourceId, state: state).desiredCollection
-      if !desiredCollection.idsInOrder.isEmpty {
-        cache[sourceId] = collectionByClearingTransientFeatureState(desiredCollection)
-      }
-    }
-    return cache
-  }
-
-  private static func collectionByClearingTransientFeatureState(
-    _ collection: ParsedFeatureCollection
-  ) -> ParsedFeatureCollection {
-    let emptyFeatureStateRevision = buildFeatureStateRevision(featureStateById: [:])
-    var nextCollection = collection
-    nextCollection.baseFeatureStateRevision = emptyFeatureStateRevision
-    nextCollection.featureStateRevision = emptyFeatureStateRevision
-    nextCollection.featureStateEntryRevisionById = [:]
-    nextCollection.featureStateChangedIds = []
-    nextCollection.featureStateById = [:]
-    return nextCollection
-  }
-
-  private static func restoreResidentDesiredSourceCacheForEnter(
-    state: inout InstanceState
-  ) -> Bool {
-    guard !state.residentDesiredSourceCacheBySourceId.isEmpty else {
-      return false
-    }
-    let activeDesiredCount =
-      derivedFamilyState(sourceId: state.pinSourceId, state: state).desiredCollection.idsInOrder.count +
-      derivedFamilyState(sourceId: state.dotSourceId, state: state).desiredCollection.idsInOrder.count +
-      derivedFamilyState(sourceId: state.labelSourceId, state: state).desiredCollection.idsInOrder.count
-    guard activeDesiredCount == 0 else {
-      return false
-    }
-    for sourceId in [
-      state.pinSourceId,
-      state.pinInteractionSourceId,
-      state.dotSourceId,
-      state.labelSourceId,
-      state.labelCollisionSourceId,
-    ] {
-      guard let cachedDesiredCollection = state.residentDesiredSourceCacheBySourceId[sourceId] else {
-        continue
-      }
-      var familyState = emptyDerivedFamilyState()
-      familyState.desiredCollection = cachedDesiredCollection
-      setDerivedFamilyState(familyState, sourceId: sourceId, state: &state)
-    }
-    state.pendingSourceCommitDataIdsBySourceId.removeAll(keepingCapacity: true)
-    state.blockedEnterStartCommitFenceBySourceId.removeAll(keepingCapacity: true)
-    state.blockedPresentationCommitFenceBySourceId.removeAll(keepingCapacity: true)
-    return true
   }
 
   private static func activeDesiredVisualSourceCount(state: InstanceState) -> Int {
@@ -10818,10 +10732,8 @@ final class SearchMapRenderController: RCTEventEmitter {
 
   private func currentMountedSourceRevisions(state: InstanceState) -> [String: String] {
     let sourceRevision: (String) -> String = { sourceId in
-      if state.visualSourceLifecycleState == .hidden,
-         let cachedCollection = state.residentDesiredSourceCacheBySourceId[sourceId] {
-        return cachedCollection.sourceRevision
-      }
+      // Resident-data end state: sources stay mounted while hidden, so the mounted revision is
+      // authoritative in every phase (no hidden-only source cache anymore).
       return Self.mountedSourceState(sourceId: sourceId, state: state)?.sourceRevision ?? ""
     }
     return [
