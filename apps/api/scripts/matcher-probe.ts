@@ -88,7 +88,11 @@ async function main(): Promise<void> {
             marketKey: c.market ?? null,
           },
         ],
-        { allowEntityCreation: false, enableFuzzyMatching: true },
+        {
+          allowEntityCreation: false,
+          enableFuzzyMatching: true,
+          useLlmMatcher: true,
+        },
       );
       // Unmatched + creation-off entities are absent from results (existing
       // behavior) — treat absence as "new/unmatched".

@@ -72,6 +72,14 @@ export interface EntityResolutionConfig {
   batchSize: number; // Number of entities to process in each batch
   enableFuzzyMatching: boolean;
   allowEntityCreation: boolean; // Toggle creation of new entities for unmatched inputs
+  /**
+   * Opt this consumer's Tier 3 into the recall → LLM-as-matcher path (P1.4 4.C).
+   * OFF by default — only the offline ingestion path sets it, so query-time
+   * callers (autocomplete fallback, search interpretation) never pay the
+   * per-entity LLM latency. Still gated by the ENTITY_RESOLUTION_LLM_MATCHER
+   * master switch, so default-off in both senses.
+   */
+  useLlmMatcher?: boolean;
   confidenceThresholds: {
     high: number; // > 0.85 - merge with existing
     medium: number; // 0.7-0.85 - apply heuristics

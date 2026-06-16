@@ -518,10 +518,13 @@ export class EntityResolutionService implements OnModuleInit {
       unmatched: unmatchedAfterAlias.length,
     });
 
-    // Tier 3: recall → LLM matcher (when enabled, restaurant/food only) or the
-    // legacy Sørensen–Dice fuzzy path — only for entities unmatched by exact/alias.
+    // Tier 3: recall → LLM matcher (offline consumers that opt in, restaurant/
+    // food only) or the legacy Sørensen–Dice fuzzy path — only for entities
+    // unmatched by exact/alias. Per-call opt-in keeps the LLM latency off the
+    // query-time callers (autocomplete fallback, search interpretation).
     const useLlmMatcher =
       this.llmMatcherEnabled &&
+      config.useLlmMatcher === true &&
       (entityType === 'restaurant' || entityType === 'food');
     const fuzzyMatchResults = !config.enableFuzzyMatching
       ? []
