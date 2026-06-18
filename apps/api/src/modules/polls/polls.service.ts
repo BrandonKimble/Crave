@@ -1264,6 +1264,11 @@ export class PollsService {
    * restaurants (restaurant spans). v1 uses `entity` subjects; the restaurant+dish
    * `Connection` refinement (§13) is formed at close-time (§6.3).
    */
+  /** Public entry for the periodic backstop + close-time finalize (§2.4). */
+  async refreshPollLeaderboard(pollId: string): Promise<void> {
+    await this.rebuildPollLeaderboard(pollId);
+  }
+
   private async rebuildPollLeaderboard(pollId: string): Promise<void> {
     const poll = await this.prisma.poll.findUnique({
       where: { pollId },
