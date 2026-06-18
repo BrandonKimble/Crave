@@ -763,6 +763,16 @@ final class SearchMapRenderController: RCTEventEmitter {
   private var dismissSettleWorkItems: [String: DispatchWorkItem] = [:]
   private var deferredDismissSourceCleanupWorkItems: [String: DispatchWorkItem] = [:]
   private var revealFrameFallbackWorkItems: [String: DispatchWorkItem] = [:]
+  // Non-camera safety watchdog that RE-ATTEMPTS label placement if the label-placement gate
+  // has not opened by its deadline (reveal-start deadlock guard). It re-wakes the dormant
+  // label render layers and re-schedules the observation refresh from the last-known config —
+  // it never bypasses the gate or starts the reveal with unplaced pins. Separate from
+  // revealFrameFallbackWorkItems, which only settles a reveal that has ALREADY started.
+  private var revealStartDeadlockFallbackWorkItems: [String: DispatchWorkItem] = [:]
+  // Per-instance count of placement re-attempts the watchdog has spent on the current reveal.
+  // Reset when a reveal is armed (`armRevealStartDeadlockFallback`) and when the reveal starts
+  // or is dismissed. Bounds the watchdog so it cannot spin forever.
+  private var revealStartDeadlockReattemptCountByInstance: [String: Int] = [:]
   private var dismissFrameFallbackWorkItems: [String: DispatchWorkItem] = [:]
   private var sourceRecoveryWorkItems: [String: DispatchWorkItem] = [:]
   private var nextOwnerEpoch: Int = 1
@@ -778,6 +788,19 @@ final class SearchMapRenderController: RCTEventEmitter {
   private var nativeApplyAttributionCurrentContext: NativeApplyAttributionFrameContext?
   private let slowActionThresholdMs = 12.0
   private let frameSettleFallbackDelayMs = 96
+  // Reveal-start deadlock watchdog cadence: if placement has not committed and the reveal has
+  // not started by this delay after the reveal is armed/preparing, RE-ATTEMPT placement
+  // (re-wake the label render layers + re-schedule the observation refresh from the last-known
+  // config). Long enough that the normal observe+commit path wins under normal conditions
+  // (the common case starts the reveal via the gate well before this fires), short enough that
+  // a dropped enable is recovered without a perceptible stuck frame. Re-armed each attempt.
+  private let revealStartDeadlockFallbackDelayMs = 96
+  // Upper bound on placement re-attempts before the watchdog gives up and emits a loud
+  // diagnostic. With `revealStartDeadlockFallbackDelayMs` cadence this bounds total watchdog
+  // time (~96ms * attempts). The reveal is NEVER force-started with unplaced pins; if the gate
+  // still cannot open after this many attempts the deeper bug is surfaced via the diagnostic
+  // and the reveal stays gated (the camera-move rescue path remains as a last resort).
+  private let revealStartDeadlockMaxReattempts = 12
   private let sourceRecoveryRetryDelayMs = 32
   private let deferredDismissSourceCleanupDelayMs = 760
   private let revealPrerollPlacementOpacity = 0.001
@@ -1233,6 +1256,9 @@ final class SearchMapRenderController: RCTEventEmitter {
       self?.deferredDismissSourceCleanupWorkItems[instanceId] = nil
       self?.revealFrameFallbackWorkItems[instanceId]?.cancel()
       self?.revealFrameFallbackWorkItems[instanceId] = nil
+      self?.revealStartDeadlockFallbackWorkItems[instanceId]?.cancel()
+      self?.revealStartDeadlockFallbackWorkItems[instanceId] = nil
+      self?.revealStartDeadlockReattemptCountByInstance[instanceId] = nil
       self?.dismissFrameFallbackWorkItems[instanceId]?.cancel()
       self?.dismissFrameFallbackWorkItems[instanceId] = nil
       self?.sourceRecoveryWorkItems[instanceId]?.cancel()
@@ -3274,6 +3300,9 @@ final class SearchMapRenderController: RCTEventEmitter {
       self.deferredDismissSourceCleanupWorkItems[instanceId] = nil
       self.enterSettleWorkItems[instanceId]?.cancel()
       self.enterSettleWorkItems[instanceId] = nil
+      self.revealStartDeadlockFallbackWorkItems[instanceId]?.cancel()
+      self.revealStartDeadlockFallbackWorkItems[instanceId] = nil
+      self.revealStartDeadlockReattemptCountByInstance[instanceId] = nil
       self.instances[instanceId] = state
       resolve(nil)
     }
@@ -5482,6 +5511,110 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
   }
 
+  // REVEAL-START DEADLOCK GUARD (safety net, NOT a bypass): a non-camera watchdog (armed in
+  // `armRevealStartDeadlockFallback`) RE-ATTEMPTS label placement if the label-placement gate
+  // has not opened by its deadline. The deadlock it guards against: the observation-enable
+  // bridge call (`configureLabelObservation`) can land while native is still `.hidden`, hit the
+  // `!canRefreshRenderedLabels` branch, cancel the refresh work item and schedule NOTHING — so
+  // no observation ever commits, the gate (`isActiveFrameLabelPlacementReady`) never opens, and
+  // the single presentation-opacity animation (shared by pins/dots/labels) stays at preroll
+  // (~0). The primary fix re-schedules the refresh in `beginRevealVisualLifecycle` the moment we
+  // wake the layers; this watchdog is the safety net for the case where that re-schedule itself
+  // failed to land a committed observation (e.g. the layers had not finished layout, leaving no
+  // armed work item). It re-wakes the dormant label render layers and re-schedules the refresh
+  // from the last-known config, then re-arms itself, up to `revealStartDeadlockMaxReattempts`.
+  // It NEVER bypasses the gate and NEVER starts the reveal with unplaced pins — labels are
+  // placed/locked first, exactly as designed. If the bound is exhausted it emits a loud
+  // diagnostic so the deeper bug surfaces and leaves the reveal gated (the camera-move rescue
+  // remains a last resort). The watchdog is cancelled the moment a normal reveal start lands
+  // (see `startEnterPresentation`) or a dismiss supersedes the reveal.
+  private func reattemptLabelPlacementIfRevealStalled(instanceId: String) {
+    guard var state = instances[instanceId] else {
+      return
+    }
+    // Stop entirely if the reveal is no longer pending: already started, superseded by a
+    // dismiss, or the source is inactive/dismissing. Nothing to re-attempt.
+    guard
+      let revealRequestKey = state.lastEnterRequestKey,
+      state.lastPresentationBatchPhase == "entering",
+      state.lastEnterStartedRequestKey != revealRequestKey,
+      state.lastDismissRequestKey == nil,
+      !Self.isVisualSourceInactiveOrDismissing(state)
+    else {
+      revealStartDeadlockFallbackWorkItems[instanceId]?.cancel()
+      revealStartDeadlockFallbackWorkItems[instanceId] = nil
+      revealStartDeadlockReattemptCountByInstance[instanceId] = nil
+      return
+    }
+    // If the label gate is already satisfied, the normal commit path will (or already did)
+    // start the reveal via `startEnterPresentationIfReady` — nothing to re-attempt.
+    guard !Self.isActiveFrameLabelPlacementReady(state: state) else {
+      revealStartDeadlockFallbackWorkItems[instanceId]?.cancel()
+      revealStartDeadlockFallbackWorkItems[instanceId] = nil
+      revealStartDeadlockReattemptCountByInstance[instanceId] = nil
+      return
+    }
+    let attempt = (revealStartDeadlockReattemptCountByInstance[instanceId] ?? 0) + 1
+    revealStartDeadlockReattemptCountByInstance[instanceId] = attempt
+    if attempt > revealStartDeadlockMaxReattempts {
+      // SAFETY-NET EXHAUSTED: placement still has not committed. Do NOT start the reveal with
+      // unplaced pins — surface the deeper bug loudly and leave the reveal gated. The
+      // camera-move rescue (`handleNativeCameraChanged`) remains the last resort.
+      revealStartDeadlockFallbackWorkItems[instanceId]?.cancel()
+      revealStartDeadlockFallbackWorkItems[instanceId] = nil
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "reveal_start_deadlock_placement_uncommitted request=\(revealRequestKey) attempts=\(attempt - 1) \(Self.labelPlacementReadinessSummary(state: state))"
+      )
+      emit([
+        "type": "presentation_reveal_start_deadlock_placement_uncommitted",
+        "instanceId": instanceId,
+        "requestKey": revealRequestKey,
+        "frameGenerationId": state.activeFrameGenerationId as Any,
+        "pinCount": state.lastPinCount,
+        "dotCount": state.lastDotCount,
+        "labelCount": state.lastLabelCount,
+        "attempts": attempt - 1,
+        "emittedAtMs": Self.nowMs(),
+      ])
+      return
+    }
+    // RE-ATTEMPT placement: re-wake the dormant label render layers (idempotent — they should
+    // already be visible from `beginRevealVisualLifecycle`, but a dropped/failed wake is exactly
+    // the failure mode here) and re-schedule the observation refresh from the last-known config.
+    // The refresh path's own 16ms self-retry (`retryLabelObservationRefreshIfPlacementPending`)
+    // absorbs the query-after-wake layout delay; this watchdog only re-primes it if it stalled.
+    if !state.labelCollisionObstacleLayersVisible {
+      setLabelCollisionObstacleLayersVisible(
+        true,
+        for: state,
+        instanceId: instanceId,
+        reason: "reveal_deadlock_reattempt"
+      )
+      state.labelCollisionObstacleLayersVisible = true
+    }
+    setLabelRenderLayersVisible(
+      true,
+      for: state,
+      instanceId: instanceId,
+      reason: "reveal_deadlock_reattempt"
+    )
+    instances[instanceId] = state
+    let labelObservation = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state).labelObservation
+    if labelObservation.observationEnabled {
+      scheduleLabelObservationRefresh(instanceId: instanceId, delayMs: 0)
+    }
+    emitVisualDiag(
+      instanceId: instanceId,
+      message:
+        "reveal_start_deadlock_placement_reattempt request=\(revealRequestKey) attempt=\(attempt) \(Self.labelPlacementReadinessSummary(state: state))"
+    )
+    // Re-arm the watchdog for the next cadence tick so we keep re-priming until the gate opens
+    // or the attempt bound is reached.
+    armRevealStartDeadlockFallback(instanceId: instanceId, requestKey: revealRequestKey)
+  }
+
   private func startEnterPresentation(
     instanceId: String,
     requestKey: String,
@@ -5511,12 +5644,21 @@ final class SearchMapRenderController: RCTEventEmitter {
     guard Self.isActiveFrameSourceReady(state: state) else {
       return
     }
+    // The label-placement gate is INTENTIONAL: on reveal the labels must be placed/locked
+    // BEFORE pins/dots fade in. It is never bypassed — the reveal only starts once a real
+    // observation has committed. The deadlock guard makes placement reliably COMMIT (it
+    // re-attempts placement), it does not relax this gate.
     guard Self.isActiveFrameLabelPlacementReady(state: state) else {
       return
     }
     state.blockedEnterStartRequestKey = nil
     state.blockedEnterStartCommitFenceStartedAtMs = nil
     state.blockedEnterStartCommitFenceBySourceId.removeAll()
+    // The reveal is starting via the gate — cancel the deadlock placement-reattempt watchdog
+    // and clear its attempt counter so it can never fire after a real start.
+    revealStartDeadlockFallbackWorkItems[instanceId]?.cancel()
+    revealStartDeadlockFallbackWorkItems[instanceId] = nil
+    revealStartDeadlockReattemptCountByInstance[instanceId] = nil
     state.lastEnterStartToken = revealStartToken
     state.enterLane.entering = mountedHiddenExecutionBatch
     state.currentPresentationRenderPhase = "entering"
@@ -6017,12 +6159,55 @@ final class SearchMapRenderController: RCTEventEmitter {
     state.currentPresentationRenderPhase = "reveal_preroll"
     state.currentPresentationOpacityTarget = revealPrerollPlacementOpacity
     state.currentPresentationOpacityValue = revealPrerollPlacementOpacity
+    // REVEAL-START DEADLOCK GUARD (primary): the observation-enable bridge call
+    // (`configureLabelObservation`) can arrive while we are still `.hidden` — before this
+    // transition flips us to `.preparingReveal` and wakes the dormant label render layers.
+    // In that case the enable hit the `!canRefreshRenderedLabels` branch, cancelled the
+    // refresh work item, and scheduled nothing, so the placement gate
+    // (`isActiveFrameLabelPlacementReady`) could never open and the SINGLE presentation
+    // opacity animation (shared by pins/dots/labels) stayed at preroll (~0). The label
+    // observation config (observationEnabled / commitVisibleLabelHits / refresh cadence /
+    // reset key) survives the dismiss/reset above, so now that the state can refresh and
+    // the render layers were woken (`setLabelRenderLayersVisible(true)` ran a few lines up,
+    // BEFORE this), re-arm the refresh from that last-known config. The self-retry
+    // (`retryLabelObservationRefreshIfPlacementPending`, delayMs:16) inside the refresh path
+    // then absorbs the query-after-wake layout delay (returns 0 until layout completes).
+    let labelObservation = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state).labelObservation
+    if labelObservation.observationEnabled {
+      // Persist the `.preparingReveal` state before scheduling so the refresh path's
+      // `isVisualSourceInactiveOrDismissing` guard reads the woken state, not `.hidden`.
+      instances[instanceId] = state
+      scheduleLabelObservationRefresh(instanceId: instanceId, delayMs: 0)
+      state = instances[instanceId] ?? state
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "reveal_preroll_label_observation_rearmed reason=\(reason) \(Self.labelPlacementReadinessSummary(state: state))"
+      )
+    }
+    // Arm the non-camera safety watchdog that RE-ATTEMPTS placement (re-wakes layers +
+    // re-schedules the observation refresh) if the label-placement gate never opens — it does
+    // NOT force-start the reveal. Cancelled the instant a normal reveal start lands. Only
+    // meaningful when there are labels to gate on; an empty/label-free frame is never blocked
+    // by the label gate (`isActiveFrameLabelPlacementReady` returns true for labelCount==0).
+    if let revealRequestKey = state.lastEnterRequestKey {
+      armRevealStartDeadlockFallback(
+        instanceId: instanceId,
+        requestKey: revealRequestKey,
+        resetAttemptCount: true
+      )
+    }
   }
 
   private func beginDismissVisualLifecycle(
     instanceId: String,
     state: inout InstanceState
   ) {
+    // A dismiss supersedes any in-flight reveal — cancel the reveal-start deadlock watchdog
+    // and clear its attempt counter so it can never re-attempt after we begin dismissing.
+    revealStartDeadlockFallbackWorkItems[instanceId]?.cancel()
+    revealStartDeadlockFallbackWorkItems[instanceId] = nil
+    revealStartDeadlockReattemptCountByInstance[instanceId] = nil
     let collisionLayerStartedAt = CACurrentMediaTime() * 1000
     setLabelCollisionObstacleLayersVisible(
       false,
@@ -10912,6 +11097,39 @@ final class SearchMapRenderController: RCTEventEmitter {
     revealFrameFallbackWorkItems[instanceId] = workItem
     DispatchQueue.main.asyncAfter(
       deadline: .now() + .milliseconds(frameSettleFallbackDelayMs),
+      execute: workItem
+    )
+  }
+
+  // Arms the reveal-start deadlock watchdog. `resetAttemptCount` is true when the reveal is
+  // first armed (from `beginRevealVisualLifecycle`) so a fresh reveal starts with a clean
+  // re-attempt budget; the watchdog re-arms itself with it false to preserve the running count.
+  private func armRevealStartDeadlockFallback(
+    instanceId: String,
+    requestKey: String,
+    resetAttemptCount: Bool = false
+  ) {
+    revealStartDeadlockFallbackWorkItems[instanceId]?.cancel()
+    if resetAttemptCount {
+      revealStartDeadlockReattemptCountByInstance[instanceId] = 0
+    }
+    let workItem = DispatchWorkItem { [weak self] in
+      guard let self else { return }
+      self.revealStartDeadlockFallbackWorkItems[instanceId] = nil
+      guard let state = self.instances[instanceId] else { return }
+      // Only fire for the reveal request this watchdog was armed for, and only if that reveal
+      // has not already started (normal gate won) and is not being dismissed.
+      guard state.lastEnterRequestKey == requestKey else { return }
+      guard state.lastEnterStartedRequestKey != requestKey else { return }
+      guard state.lastDismissRequestKey == nil else { return }
+      guard !Self.isVisualSourceInactiveOrDismissing(state) else { return }
+      // Re-attempt placement (re-wake layers + re-schedule the observation refresh). NEVER
+      // bypasses the gate — the reveal still only starts once placement actually commits.
+      self.reattemptLabelPlacementIfRevealStalled(instanceId: instanceId)
+    }
+    revealStartDeadlockFallbackWorkItems[instanceId] = workItem
+    DispatchQueue.main.asyncAfter(
+      deadline: .now() + .milliseconds(revealStartDeadlockFallbackDelayMs),
       execute: workItem
     )
   }
