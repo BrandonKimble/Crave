@@ -1901,6 +1901,17 @@ export const useDirectSearchMapSourceController = ({
           inOverlapRegion,
           nativeLodZ,
           // RESIDENT role: promoted pin visible (1), demoted pin resident-invisible (0).
+          // STALE-BAKED-ROLE SAFETY: this baked property is the layer expression's
+          // `['get', 'nativeLodOpacity']` fallback (search-map.tsx), used ONLY when no
+          // feature-state is present (i.e. first paint of a brand-new marker). It is NOT a
+          // loaded gun for role flips: nativeLodOpacity is a TRANSIENT_VISUAL_PROPERTY_KEY, so it
+          // is excluded from the diffKey (no source republish on flip — v4 invariant 2) but still
+          // flips the transport-feature revision (diffKey|featureStateRevision) and the native
+          // markerRoleRowSignature. A promote↔demote therefore always produces a non-null
+          // markerRoleFrame, and the native owner re-bakes this same source property to the
+          // settled role (SearchMapRenderController prepareScopedPinAndLabelOutput /
+          // reconcileLiveMarkerRoleOutputs) and/or writes the stepper feature-state — without any
+          // JS-originated source write. The coalesce default can never go stale relative to role.
           nativeLodOpacity: isPromoted ? 1 : 0,
           nativeLodRankOpacity: 1,
           nativePresentationOpacity: 1,
@@ -1933,6 +1944,12 @@ export const useDirectSearchMapSourceController = ({
         properties: {
           ...feature.properties,
           markerKey,
+          // STALE-BAKED-ROLE SAFETY: mirror of the nativeLodOpacity bake above. This is the
+          // `['get', 'nativeDotOpacity']` coalesce fallback (first-paint default only). On a role
+          // flip the native owner re-bakes the dot source property and/or writes the dot stepper
+          // feature-state via the markerRoleFrame (no source republish), so the demoted-dot role
+          // can never render from a stale baked value. See the source-store diffKey-exclusion
+          // comment (TRANSIENT_VISUAL_PROPERTY_KEYS) for the full invariant-2 trace.
           nativeDotOpacity: isPromoted ? 0 : 1,
           nativePresentationOpacity: 1,
         },

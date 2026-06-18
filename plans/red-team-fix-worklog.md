@@ -35,7 +35,7 @@ Mirror the iOS residency rewrite (commits cec34d26, af0c415e, eab742c3, d40d0d08
 - [ ] Build Android (./gradlew app:compileDebugJavaWithJavac or RN android build) — verify compiles.
       Acceptance: Android dismiss keeps sources resident, no source-clear, label dormancy; compiles; parity with iOS.
 
-### 2. [ ] Opacity sweep scaling — applyPresentationOpacity must not write the full catalog every frame
+### 2. [~] Opacity sweep scaling — applyPresentationOpacity must not write the full catalog every frame
 
 File: SearchMapRenderController.swift applyPresentationOpacity (~8568) + stepPresentationOpacityAnimation (~8454).
 Problem: per-display-link-frame setFeatureState over ALL features in ALL sources = full resident catalog now.
@@ -62,7 +62,7 @@ from source (membership churn on pan), violating v4 invariant 1. Only shortcut s
 
 ## P1 — bad shapes / unbuilt coverage
 
-### 4. [ ] Dead handshake comment + dead notifyFrameRendered
+### 4. [x] Dead handshake comment + dead notifyFrameRendered
 
 - [ ] Rewrite the af0c415e enter-skip comment (SearchMapRenderController.swift ~1473) to state the REAL
       invariant: source readiness is set synchronously at apply completion; there is no async paint handshake.
@@ -109,14 +109,14 @@ File: use-search-map-native-render-owner.ts flushLatestDesiredFrame (~2968) / su
 
 ## P2 — latent / cleanup
 
-### 9. [ ] Diagnostics map unbounded growth
+### 9. [x] Diagnostics map unbounded growth
 
 File: use-search-map-native-render-owner.ts searchMapNativeFrameVisualSourceCountsByKey (~457, ~3536).
 
 - [ ] Bound/evict (cap size or purge on frame-gen advance), not only on dismiss/unmount.
       Acceptance: no per-frame unbounded growth during a long no-dismiss pan session.
 
-### 10. [ ] Baked-role loaded gun
+### 10. [x] Baked-role loaded gun
 
 File: use-direct-search-map-source-controller.ts (~1904/1936 bake nativeLodOpacity/nativeDotOpacity into properties);
 search-map-source-store.ts (~705 excludes TRANSIENT_VISUAL_PROPERTY_KEYS from diffKey); search-map.tsx (~2093/2108 ['get'] fallback).
@@ -124,14 +124,14 @@ search-map-source-store.ts (~705 excludes TRANSIENT_VISUAL_PROPERTY_KEYS from di
 - [ ] Either drop the baked role from feature properties (rely solely on stepper feature-state) OR include it in the diffKey.
       Acceptance: no marker can render a permanently-stale baked role.
 
-### 11. [ ] Dead code: emitEnterFirstVisibleFrameIfNeeded
+### 11. [x] Dead code: emitEnterFirstVisibleFrameIfNeeded
 
 File: SearchMapRenderController.swift (~8511) — 4 guards then no-op, every reveal frame.
 
 - [ ] Remove it (and its call site) OR restore its intended emit. Android parity.
       Acceptance: no dead no-op in the reveal hot loop.
 
-### 12. [ ] Diagnostic set-construction outside the gate
+### 12. [x] Diagnostic set-construction outside the gate
 
 File: use-direct-search-map-source-controller.ts (~2072-2097: lodOverlap\*/pinVisualIdentityKeys/dotVisualIdentityKeys computed unconditionally).
 
@@ -145,7 +145,7 @@ File: SearchMapRenderController.swift resolve(...) (~1618 returns ~9 timing fiel
 - [ ] Gate the native timing payload behind attribution-active (or omit when off).
       Acceptance: no per-frame timing payload when attribution off.
 
-### 14. [ ] Pin/dot residency-field asymmetry
+### 14. [x] Pin/dot residency-field asymmetry
 
 File: use-search-map-native-render-owner.ts (~1519-1521: residentDotMarkerKeysInOrder exists, no resident pin equiv).
 

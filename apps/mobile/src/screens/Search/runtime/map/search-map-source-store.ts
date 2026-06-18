@@ -703,6 +703,25 @@ const appendStableDiffValue = (
         continue;
       }
       if (isPropertiesRoot && TRANSIENT_VISUAL_PROPERTY_KEYS.has(key)) {
+        // STALE-BAKED-ROLE SAFETY: excluding the transient opacity keys (nativeLodOpacity /
+        // nativeDotOpacity / ...) from the diffKey is what lets a promote↔demote flip with no
+        // other change keep an IDENTICAL semanticRevision, so the source store does NOT republish
+        // GeoJSON on an LOD role change (v4 invariant 2: "no source writes during LOD"). This is
+        // safe — it does NOT leave a marker rendering a stale baked role — because the transient
+        // keys still ride along TWO channels that the diffKey deliberately omits:
+        //   1. transportFeature.featureState (built from TRANSIENT_VISUAL_PROPERTY_KEYS below) and
+        //      getSearchMapSourceTransportFeatureRevision = `diffKey|featureStateRevision`, so a
+        //      pure role flip still flips the feature's *transport revision* → it is detected as a
+        //      changed feature and drives a non-null markerRoleFrame.
+        //   2. The native render owner derives role from live nativeLodOpacity/nativeDotOpacity
+        //      (markerRoleRowSignature starts with literal 'pin'/'dot'), so a flip with unchanged
+        //      diffKey still marks the marker dirty in the markerRoleFrame.
+        // On the native side that role frame is applied as a LIVE marker-role-only frame (no
+        // sourceDeltas): it re-bakes the GeoJSON source property nativeLodOpacity to the SETTLED
+        // role and/or writes a stepper feature-state for the affected marker. So whichever value
+        // the `coalesce` expression reads (feature-state first, baked `['get']` second) always
+        // reflects the CURRENT role. The JS-baked property here is only ever the first-paint
+        // default for a brand-new marker; native owns it thereafter.
         continue;
       }
       if (didWrite) {

@@ -2089,6 +2089,12 @@ const SearchMap: React.FC<SearchMapProps> = ({
     []
   );
   const nativeLodOpacityExpression = React.useMemo(
+    // STALE-BAKED-ROLE SAFETY: feature-state (native CADisplayLink stepper) wins; the baked
+    // `['get', 'nativeLodOpacity']` is the pre-stepper first-paint fallback. It can never go
+    // stale relative to role: any promote↔demote produces a markerRoleFrame and native re-bakes
+    // this `['get']` property to the settled role (no source republish — v4 invariant 2). See the
+    // bake site (use-direct-search-map-source-controller.ts) and the source-store diffKey
+    // exclusion (TRANSIENT_VISUAL_PROPERTY_KEYS) for the full trace.
     () =>
       ['coalesce', ['feature-state', 'nativeLodOpacity'], ['get', 'nativeLodOpacity'], 1] as const,
     []
