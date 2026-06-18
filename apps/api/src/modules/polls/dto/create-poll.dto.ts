@@ -30,8 +30,20 @@ class BoundsDto {
 }
 
 export class CreatePollDto {
+  /**
+   * Free-text poll question ("best breakfast sandwich in LES"). When present, the
+   * poll-subject prompt infers mode + axis (Phase 3B); `topicType`/target fields are
+   * ignored. Omit it to use the structured path (topicType + target).
+   */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(280)
+  question?: string;
+
+  @IsOptional()
   @IsEnum(PollTopicType)
-  topicType!: PollTopicType;
+  topicType?: PollTopicType;
 
   @IsOptional()
   @IsString()
@@ -42,10 +54,10 @@ export class CreatePollDto {
   @Type(() => BoundsDto)
   bounds?: BoundsDto;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(500)
-  description!: string;
+  description?: string;
 
   @IsOptional()
   @IsUUID()

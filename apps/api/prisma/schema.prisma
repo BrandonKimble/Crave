@@ -495,7 +495,7 @@ model PollTopic {
 
 model Poll {
   pollId             String       @id @default(dbgenerated("gen_random_uuid()")) @map("poll_id") @db.Uuid
-  topicId            String       @map("topic_id") @db.Uuid
+  topicId            String?      @map("topic_id") @db.Uuid
   question           String       @db.VarChar(500)
   state              PollState    @default(draft)
   origin             PollOrigin   @default(user)
@@ -517,7 +517,7 @@ model Poll {
   votes              PollVote[]
   comments           PollComment[]
   leaderboardEntries PollLeaderboardEntry[]
-  topic              PollTopic    @relation(fields: [topicId], references: [topicId], onDelete: Cascade)
+  topic              PollTopic?   @relation(fields: [topicId], references: [topicId], onDelete: Cascade)
 
   @@index([topicId], map: "idx_polls_topic_id")
   @@index([state], map: "idx_polls_state")

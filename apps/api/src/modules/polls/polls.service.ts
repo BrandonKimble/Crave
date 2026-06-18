@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import {
   PollState,
+  PollMode,
   EntityType,
   PollOptionSource,
   PollOptionResolutionStatus,
@@ -30,6 +31,8 @@ import { QueryPollsDto } from './dto/query-polls.dto';
 import { CreatePollDto } from './dto/create-poll.dto';
 import { UserEventService } from '../identity/user-event.service';
 import { UserStatsService } from '../identity/user-stats.service';
+import { LLMService } from '../external-integrations/llm/llm.service';
+import { LLMPollAxis } from '../external-integrations/llm/llm.types';
 
 const MAX_OPTIONS_PER_POLL = 8;
 
@@ -47,6 +50,7 @@ export class PollsService {
     private readonly marketRegistry: MarketRegistryService,
     private readonly userEventService: UserEventService,
     private readonly userStats: UserStatsService,
+    private readonly llmService: LLMService,
   ) {
     this.logger = loggerService.setContext('PollsService');
   }
@@ -173,20 +177,46 @@ export class PollsService {
   }
 
   async createPoll(dto: CreatePollDto, userId: string) {
-    const rawDescription = this.sanitizer.sanitizeOrThrow(dto.description, {
-      maxLength: 500,
-      allowEmpty: false,
-    });
+    if (dto.question?.trim()) {
+      return this.createPollFromQuestion(dto.question.trim(), dto, userId);
+    }
+    if (!dto.topicType) {
+      throw new BadRequestException(
+        'A poll question or a topicType is required',
+      );
+    }
+    return this.createStructuredPoll(dto, userId);
+  }
+
+  private async createStructuredPoll(
+    dto: CreatePollDto,
+    userId: string,
+    opts: {
+      axis?: Prisma.InputJsonValue;
+      sourceQuestion?: string;
+      questionPreModerated?: boolean;
+    } = {},
+  ) {
+    const rawDescription = this.sanitizer.sanitizeOrThrow(
+      dto.description ?? opts.sourceQuestion ?? '',
+      {
+        maxLength: 500,
+        allowEmpty: false,
+      },
+    );
     const description = rawDescription.trim();
     if (!description.length) {
       throw new BadRequestException('Poll description is required');
     }
 
-    const moderationDecision = await this.moderation.moderateText(description);
-    if (!moderationDecision.allowed) {
-      throw new BadRequestException(
-        `Description rejected by moderation: ${moderationDecision.reason}`,
-      );
+    if (!opts.questionPreModerated) {
+      const moderationDecision =
+        await this.moderation.moderateText(description);
+      if (!moderationDecision.allowed) {
+        throw new BadRequestException(
+          `Description rejected by moderation: ${moderationDecision.reason}`,
+        );
+      }
     }
 
     let marketKey = dto.marketKey?.trim() || null;
@@ -212,20 +242,25 @@ export class PollsService {
         countryCode: null,
       } satisfies MarketContext);
 
+    const topicType = dto.topicType;
+    if (!topicType) {
+      throw new BadRequestException('A poll topicType is required');
+    }
+
     let targetDishId: string | null = null;
     let targetRestaurantId: string | null = null;
     let targetFoodAttributeId: string | null = null;
     let targetRestaurantAttributeId: string | null = null;
     let question = '';
 
-    switch (dto.topicType) {
+    switch (topicType) {
       case PollTopicType.best_dish: {
         const dish = await this.pollEntitySeedService.resolveFood({
           entityId: dto.targetDishId ?? null,
           name: dto.targetDishName ?? null,
         });
         targetDishId = dish.entityId;
-        question = this.buildPollQuestion(dto.topicType, dish.name);
+        question = this.buildPollQuestion(topicType, dish.name);
         break;
       }
       case PollTopicType.what_to_order: {
@@ -236,7 +271,7 @@ export class PollsService {
           sessionToken: dto.sessionToken,
         });
         targetRestaurantId = restaurant.entityId;
-        question = this.buildPollQuestion(dto.topicType, restaurant.name);
+        question = this.buildPollQuestion(topicType, restaurant.name);
         break;
       }
       case PollTopicType.best_dish_attribute: {
@@ -246,7 +281,7 @@ export class PollsService {
           entityType: EntityType.food_attribute,
         });
         targetFoodAttributeId = attribute.entityId;
-        question = this.buildPollQuestion(dto.topicType, attribute.name);
+        question = this.buildPollQuestion(topicType, attribute.name);
         break;
       }
       case PollTopicType.best_restaurant_attribute: {
@@ -256,7 +291,7 @@ export class PollsService {
           entityType: EntityType.restaurant_attribute,
         });
         targetRestaurantAttributeId = attribute.entityId;
-        question = this.buildPollQuestion(dto.topicType, attribute.name);
+        question = this.buildPollQuestion(topicType, attribute.name);
         break;
       }
       default: {
@@ -264,11 +299,18 @@ export class PollsService {
       }
     }
 
-    const questionModeration = await this.moderation.moderateText(question);
-    if (!questionModeration.allowed) {
-      throw new BadRequestException(
-        `Poll title rejected by moderation: ${questionModeration.reason}`,
-      );
+    // Free-text path: the user's actual question is the poll title (not the
+    // templated "Best X"); it was already moderated upstream.
+    if (opts.sourceQuestion) {
+      question = opts.sourceQuestion;
+    }
+    if (!opts.questionPreModerated) {
+      const questionModeration = await this.moderation.moderateText(question);
+      if (!questionModeration.allowed) {
+        throw new BadRequestException(
+          `Poll title rejected by moderation: ${questionModeration.reason}`,
+        );
+      }
     }
 
     const now = new Date();
@@ -278,7 +320,7 @@ export class PollsService {
           title: question,
           description,
           marketKey,
-          topicType: dto.topicType,
+          topicType,
           createdByUserId: userId,
           targetDishId,
           targetRestaurantId,
@@ -306,6 +348,8 @@ export class PollsService {
           question,
           marketKey,
           state: PollState.active,
+          mode: PollMode.ranked,
+          axis: opts.axis ?? Prisma.JsonNull,
           scheduledFor: now,
           launchedAt: now,
           allowUserAdditions: true,
@@ -355,6 +399,169 @@ export class PollsService {
         topicId: poll.topicId,
         marketKey: poll.marketKey,
         topicType: dto.topicType,
+      },
+    });
+    await this.userStats.applyDelta(userId, { pollsCreatedCount: 1 });
+    const [enriched] = await this.attachMarketLabels([poll], marketKey);
+    return enriched;
+  }
+
+  /**
+   * Phase 3B: free-text poll creation. Moderate the question, infer its subject
+   * (ranked + axis, or discussion), then either reuse the structured creation flow
+   * with the derived target, or create a topic-less discussion poll.
+   */
+  private async createPollFromQuestion(
+    rawQuestion: string,
+    dto: CreatePollDto,
+    userId: string,
+  ) {
+    const question = this.sanitizer
+      .sanitizeOrThrow(rawQuestion, { maxLength: 280, allowEmpty: false })
+      .trim();
+    if (!question.length) {
+      throw new BadRequestException('Poll question is required');
+    }
+
+    const moderation = await this.moderation.moderateText(question);
+    if (!moderation.allowed) {
+      throw new BadRequestException(
+        `Poll question rejected by moderation: ${moderation.reason}`,
+      );
+    }
+
+    const subject = await this.llmService.inferPollSubject(question);
+    const mapped =
+      subject.mode === 'ranked' && subject.axis
+        ? this.mapAxisToStructured(subject.axis)
+        : null;
+
+    // Discussion, or a ranked axis we cannot map onto a structured topic type.
+    if (!mapped || !subject.axis) {
+      return this.createDiscussionPoll(question, dto, userId);
+    }
+
+    return this.createStructuredPoll(
+      {
+        ...dto,
+        topicType: mapped.topicType,
+        description: question,
+        targetDishName: mapped.targetDishName,
+        targetRestaurantName: mapped.targetRestaurantName,
+        targetFoodAttributeName: mapped.targetFoodAttributeName,
+        targetRestaurantAttributeName: mapped.targetRestaurantAttributeName,
+      },
+      userId,
+      {
+        axis: subject.axis as unknown as Prisma.InputJsonValue,
+        sourceQuestion: question,
+        questionPreModerated: true,
+      },
+    );
+  }
+
+  /** Map an inferred axis onto the 4 structured topic types (null if unmappable). */
+  private mapAxisToStructured(axis: LLMPollAxis): {
+    topicType: PollTopicType;
+    targetDishName?: string;
+    targetRestaurantName?: string;
+    targetFoodAttributeName?: string;
+    targetRestaurantAttributeName?: string;
+  } | null {
+    if (axis.targetType === 'dish') {
+      if (axis.anchor) {
+        return {
+          topicType: PollTopicType.what_to_order,
+          targetRestaurantName: axis.anchor,
+        };
+      }
+      if (axis.constraint?.kind === 'category') {
+        return {
+          topicType: PollTopicType.best_dish,
+          targetDishName: axis.constraint.value,
+        };
+      }
+      if (axis.constraint?.kind === 'dish_attribute') {
+        return {
+          topicType: PollTopicType.best_dish_attribute,
+          targetFoodAttributeName: axis.constraint.value,
+        };
+      }
+      return null;
+    }
+    // restaurant — cuisine + restaurant_attribute both rank places by an attribute.
+    if (
+      axis.constraint?.kind === 'restaurant_attribute' ||
+      axis.constraint?.kind === 'cuisine'
+    ) {
+      return {
+        topicType: PollTopicType.best_restaurant_attribute,
+        targetRestaurantAttributeName: axis.constraint.value,
+      };
+    }
+    return null;
+  }
+
+  /** Create a topic-less discussion poll (no axis, no options, no leaderboard). */
+  private async createDiscussionPoll(
+    question: string,
+    dto: CreatePollDto,
+    userId: string,
+  ) {
+    let marketKey = dto.marketKey?.trim() || null;
+    if (!marketKey) {
+      const resolved = await this.marketRegistry.resolveOrEnsureForPollCreation(
+        {
+          bounds: dto.bounds ?? null,
+        },
+      );
+      marketKey = resolved?.marketKey ?? null;
+    }
+    if (!marketKey) {
+      throw new BadRequestException('Unable to resolve poll market');
+    }
+
+    const now = new Date();
+    const poll = await this.prisma.poll.create({
+      data: {
+        question,
+        marketKey,
+        state: PollState.active,
+        mode: PollMode.discussion,
+        allowUserAdditions: false,
+        scheduledFor: now,
+        launchedAt: now,
+        createdByUserId: userId,
+      },
+      include: {
+        options: {
+          orderBy: [{ voteCount: 'desc' }, { createdAt: 'asc' }],
+        },
+        metrics: true,
+        topic: {
+          select: {
+            topicType: true,
+            targetDishId: true,
+            targetRestaurantId: true,
+            targetFoodAttributeId: true,
+            targetRestaurantAttributeId: true,
+            marketKey: true,
+            title: true,
+            description: true,
+            metadata: true,
+          },
+        },
+      },
+    });
+
+    this.gateway.emitPollUpdate(poll.pollId);
+    void this.userEventService.recordEvent({
+      userId,
+      eventType: 'poll_created',
+      eventData: {
+        pollId: poll.pollId,
+        marketKey: poll.marketKey,
+        mode: PollMode.discussion,
       },
     });
     await this.userStats.applyDelta(userId, { pollsCreatedCount: 1 });
@@ -600,7 +807,7 @@ export class PollsService {
         return true;
       }
       if (
-        poll.topic.topicType === PollTopicType.best_restaurant_attribute &&
+        poll.topic?.topicType === PollTopicType.best_restaurant_attribute &&
         restaurantId &&
         option.restaurantId === restaurantId
       ) {
