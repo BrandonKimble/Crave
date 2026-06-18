@@ -8,6 +8,7 @@ import {
   PollState,
   PollMode,
   PollCommentModerationStatus,
+  PollCommentExtractionStatus,
   EntityType,
   PollOptionSource,
   PollOptionResolutionStatus,
@@ -36,6 +37,7 @@ import { UserEventService } from '../identity/user-event.service';
 import { UserStatsService } from '../identity/user-stats.service';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { LLMPollAxis } from '../external-integrations/llm/llm.types';
+import { EntityTextSearchService } from '../entity-text-search/entity-text-search.service';
 
 const MAX_OPTIONS_PER_POLL = 8;
 
@@ -54,6 +56,7 @@ export class PollsService {
     private readonly userEventService: UserEventService,
     private readonly userStats: UserStatsService,
     private readonly llmService: LLMService,
+    private readonly entityTextSearch: EntityTextSearchService,
   ) {
     this.logger = loggerService.setContext('PollsService');
   }
@@ -1004,10 +1007,27 @@ export class PollsService {
     return randomBytes(12).toString('base64url'); // 16 url-safe chars
   }
 
+  /**
+   * Phase 5 gazetteer: scan a comment for KNOWN restaurant/food mentions (no LLM,
+   * market-scoped) and return display spans for highlight + deeplink. Brand-new
+   * entities aren't here yet — they graduate at close (§6.1).
+   */
+  private async highlightCommentSpans(
+    body: string,
+    marketKey: string | null,
+  ): Promise<Prisma.InputJsonValue> {
+    const spans = await this.entityTextSearch.scanForKnownEntities(
+      body,
+      [EntityType.restaurant, EntityType.food],
+      { marketKey },
+    );
+    return spans as unknown as Prisma.InputJsonValue;
+  }
+
   async postComment(pollId: string, dto: CreateCommentDto, userId: string) {
     const poll = await this.prisma.poll.findUnique({
       where: { pollId },
-      select: { pollId: true, state: true },
+      select: { pollId: true, state: true, marketKey: true },
     });
     if (!poll) {
       throw new NotFoundException('Poll not found');
@@ -1040,6 +1060,7 @@ export class PollsService {
       }
     }
 
+    const entitySpans = await this.highlightCommentSpans(body, poll.marketKey);
     const comment = await this.prisma.pollComment.create({
       data: {
         pollId,
@@ -1049,6 +1070,8 @@ export class PollsService {
         publicId: this.generateCommentPublicId(),
         // Sync-moderated above; `pending` is reserved for future async/soft-hold.
         moderationStatus: PollCommentModerationStatus.approved,
+        entitySpans,
+        extractionStatus: PollCommentExtractionStatus.highlighted,
       },
     });
 
@@ -1077,9 +1100,22 @@ export class PollsService {
       );
     }
 
+    const poll = await this.prisma.poll.findUnique({
+      where: { pollId: comment.pollId },
+      select: { marketKey: true },
+    });
+    const entitySpans = await this.highlightCommentSpans(
+      body,
+      poll?.marketKey ?? null,
+    );
     const updated = await this.prisma.pollComment.update({
       where: { commentId },
-      data: { body, editedAt: new Date() },
+      data: {
+        body,
+        editedAt: new Date(),
+        entitySpans,
+        extractionStatus: PollCommentExtractionStatus.highlighted,
+      },
     });
     this.gateway.emitPollUpdate(comment.pollId);
     return updated;
@@ -1175,6 +1211,7 @@ export class PollsService {
         body: true,
         score: true,
         publicId: true,
+        entitySpans: true,
         loggedAt: true,
         editedAt: true,
         user: {

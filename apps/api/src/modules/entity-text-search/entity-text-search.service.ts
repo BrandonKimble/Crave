@@ -55,6 +55,16 @@ export interface RecallCandidate {
   denseCosine: number | null;
 }
 
+/** A known-entity mention found by the gazetteer scan: a character span + its entity. */
+export interface EntitySpan {
+  start: number;
+  end: number;
+  text: string;
+  entityId: string;
+  name: string;
+  type: EntityType;
+}
+
 @Injectable()
 export class EntityTextSearchService {
   private readonly logger: LoggerService;
@@ -922,6 +932,120 @@ export class EntityTextSearchService {
       ) r
       ORDER BY v.term_index ASC;
     `);
+  }
+
+  /**
+   * Gazetteer scan (Phase 5, no LLM): find every KNOWN entity mention in free text
+   * and return its character span. This is a closed-set lookup — it finds only
+   * entities already in the graph, by exact normalized name/alias — NOT semantic
+   * understanding. Mechanism (the always-fresh "candidate-phrase probe"): tokenize,
+   * generate 1..N-word candidate phrases with offsets, then ONE indexed query for
+   * entities whose normalized name or alias equals a candidate. Overlapping matches
+   * resolve by longest-match (so "breakfast sandwich" wins over "breakfast").
+   * Restaurants are market-scoped; foods/attributes are global.
+   */
+  async scanForKnownEntities(
+    text: string,
+    entityTypes: EntityType[],
+    options: { marketKey?: string | null; maxPhraseWords?: number } = {},
+  ): Promise<EntitySpan[]> {
+    const raw = text ?? '';
+    if (!raw.trim() || entityTypes.length === 0) return [];
+
+    const tokens: { text: string; start: number; end: number }[] = [];
+    const tokenRe = /[\p{L}\p{N}][\p{L}\p{N}'&.-]*/gu;
+    let match: RegExpExecArray | null;
+    while ((match = tokenRe.exec(raw)) !== null) {
+      tokens.push({
+        text: match[0],
+        start: match.index,
+        end: match.index + match[0].length,
+      });
+    }
+    if (!tokens.length) return [];
+
+    const maxN = Math.max(1, Math.min(options.maxPhraseWords ?? 4, 5));
+    const candidateSpans = new Map<string, { start: number; end: number }[]>();
+    for (let i = 0; i < tokens.length; i++) {
+      for (let n = 1; n <= maxN && i + n <= tokens.length; n++) {
+        const slice = tokens.slice(i, i + n);
+        const norm = slice.map((t) => t.text.toLowerCase()).join(' ');
+        const span = { start: slice[0].start, end: slice[n - 1].end };
+        const arr = candidateSpans.get(norm);
+        if (arr) arr.push(span);
+        else candidateSpans.set(norm, [span]);
+      }
+    }
+    const candidates = Array.from(candidateSpans.keys());
+    if (!candidates.length) return [];
+
+    const typeArray = Prisma.sql`ARRAY[${Prisma.join(
+      entityTypes.map((t) => Prisma.sql`${t}::entity_type`),
+    )}]`;
+    const marketFilter = this.buildRestaurantMarketFilter(
+      'e',
+      options.marketKey ?? null,
+    );
+    const rows = await this.prisma.$queryRaw<
+      {
+        entityId: string;
+        name: string;
+        type: EntityType;
+        normName: string;
+        normAliases: string[];
+      }[]
+    >(Prisma.sql`
+      SELECT e.entity_id AS "entityId", e.name, e.type,
+             LOWER(e.name) AS "normName",
+             ARRAY(SELECT LOWER(a) FROM unnest(e.aliases) a) AS "normAliases"
+      FROM core_entities e
+      WHERE e.status = 'active'::entity_status
+        AND e.type = ANY(${typeArray})
+        AND (
+          LOWER(e.name) = ANY(${candidates}::text[])
+          OR EXISTS (
+            SELECT 1 FROM unnest(e.aliases) a
+            WHERE LOWER(a) = ANY(${candidates}::text[])
+          )
+        )
+        ${marketFilter}
+    `);
+
+    const candidateSet = new Set(candidates);
+    const rawSpans: EntitySpan[] = [];
+    for (const row of rows) {
+      const matchedPhrases = new Set<string>();
+      if (candidateSet.has(row.normName)) matchedPhrases.add(row.normName);
+      for (const alias of row.normAliases) {
+        if (candidateSet.has(alias)) matchedPhrases.add(alias);
+      }
+      for (const phrase of matchedPhrases) {
+        for (const span of candidateSpans.get(phrase) ?? []) {
+          rawSpans.push({
+            start: span.start,
+            end: span.end,
+            text: raw.slice(span.start, span.end),
+            entityId: row.entityId,
+            name: row.name,
+            type: row.type,
+          });
+        }
+      }
+    }
+
+    // Longest-match, non-overlapping greedy (drops sub-phrases + same-span dupes).
+    rawSpans.sort(
+      (a, b) => b.end - b.start - (a.end - a.start) || a.start - b.start,
+    );
+    const accepted: EntitySpan[] = [];
+    for (const span of rawSpans) {
+      const overlaps = accepted.some(
+        (a) => span.start < a.end && span.end > a.start,
+      );
+      if (!overlaps) accepted.push(span);
+    }
+    accepted.sort((a, b) => a.start - b.start);
+    return accepted;
   }
 
   private buildRestaurantMarketFilter(

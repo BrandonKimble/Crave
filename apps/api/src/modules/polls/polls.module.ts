@@ -12,6 +12,7 @@ import { QualityScoreModule } from '../content-processing/quality-score/quality-
 import { PublicCraveScoreModule } from '../content-processing/public-crave-score';
 import { MarketsModule } from '../markets/markets.module';
 import { LLMModule } from '../external-integrations/llm/llm.module';
+import { EntityTextSearchModule } from '../entity-text-search/entity-text-search.module';
 import { PollsService } from './polls.service';
 import { PollsController } from './polls.controller';
 import { PollsGateway } from './polls.gateway';
@@ -35,6 +36,7 @@ import { PollEntitySeedService } from './poll-entity-seed.service';
     PublicCraveScoreModule,
     MarketsModule,
     LLMModule,
+    EntityTextSearchModule,
   ],
   controllers: [PollsController],
   providers: [
