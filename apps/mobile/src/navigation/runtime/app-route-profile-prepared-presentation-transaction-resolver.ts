@@ -23,6 +23,12 @@ export const resolvePreparedProfilePresentationTransaction = (
               targetCamera: snapshot.targetCamera,
             }
           : {}),
+        ...(snapshot.preparedCameraPadding != null
+          ? {
+              profileCameraPadding: snapshot.preparedCameraPadding,
+            }
+          : {}),
+        highlightedRestaurantId: selectedRestaurantId,
       },
       shellStateExecution: {
         transitionStatus: profileOpenStatus ?? 'open',
@@ -39,6 +45,9 @@ export const resolvePreparedProfilePresentationTransaction = (
 
   return createPreparedProfilePresentationTransaction({
     transactionId: snapshot.transactionId,
+    shellCommands: {
+      clearHighlightedRestaurantId: true,
+    },
     shellStateExecution: {
       transitionStatus: 'closing',
       routeIntent: {

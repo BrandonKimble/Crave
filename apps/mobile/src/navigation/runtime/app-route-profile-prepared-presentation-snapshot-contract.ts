@@ -1,5 +1,6 @@
 import type {
   CameraSnapshot,
+  MapCameraPadding,
   ProfileTransitionState,
 } from './app-route-profile-transition-state-contract';
 
@@ -10,6 +11,7 @@ export type PreparedProfilePresentationSnapshot = {
   selectedRestaurantId: string | null;
   shellTarget: 'profile' | 'results' | 'default';
   targetCamera: CameraSnapshot | null;
+  preparedCameraPadding: MapCameraPadding | null;
   targetSheetSnap: 'middle' | 'collapsed' | null;
   preserveSheetMotionOnOpen: boolean;
   restoreCamera: CameraSnapshot | null;
@@ -30,6 +32,7 @@ export const createPreparedProfileOpenSnapshot = (
   options?: {
     selectedRestaurantId?: string | null;
     targetCamera?: CameraSnapshot | null;
+    preparedCameraPadding?: MapCameraPadding | null;
     preserveSheetMotionOnOpen?: boolean;
   }
 ): PreparedProfilePresentationSnapshot => ({
@@ -44,6 +47,9 @@ export const createPreparedProfileOpenSnapshot = (
         zoom: options.targetCamera.zoom,
         padding: options.targetCamera.padding ? { ...options.targetCamera.padding } : null,
       }
+    : null,
+  preparedCameraPadding: options?.preparedCameraPadding
+    ? { ...options.preparedCameraPadding }
     : null,
   targetSheetSnap: 'middle',
   preserveSheetMotionOnOpen: options?.preserveSheetMotionOnOpen === true,
@@ -74,6 +80,7 @@ export const createPreparedProfileCloseSnapshot = (
   selectedRestaurantId: options.selectedRestaurantId ?? null,
   shellTarget: options.shellTarget,
   targetCamera: null,
+  preparedCameraPadding: null,
   targetSheetSnap: options.targetSheetSnap,
   preserveSheetMotionOnOpen: false,
   restoreCamera: transitionState.savedCamera

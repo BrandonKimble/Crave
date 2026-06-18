@@ -13,6 +13,7 @@ export type PreparedProfileCommandExecutionRuntime = {
   >;
   appExecutionRuntime: ProfileAppExecutionRuntime;
   setProfileCameraPadding: (padding: CameraSnapshot['padding']) => void;
+  setMapHighlightedRestaurantId: (restaurantId: string | null) => void;
   handleCommandCompletionEvent: (event: PreparedProfilePresentationCompletionEvent) => void;
 };
 
@@ -26,6 +27,7 @@ export const executePreparedProfileCommandPayload = ({
   const {
     nativeCommandExecutionModel: { commitProfileCameraTargetCommand },
     setProfileCameraPadding,
+    setMapHighlightedRestaurantId,
     handleCommandCompletionEvent,
   } = commandExecutionRuntime;
   const commandSet = payload.commandSet;
@@ -52,5 +54,13 @@ export const executePreparedProfileCommandPayload = ({
   if (commandSet.clearProfileCameraPadding) {
     void executionContext;
     setProfileCameraPadding(null);
+  }
+  if (commandSet.highlightedRestaurantId !== undefined) {
+    void executionContext;
+    setMapHighlightedRestaurantId(commandSet.highlightedRestaurantId);
+  }
+  if (commandSet.clearHighlightedRestaurantId) {
+    void executionContext;
+    setMapHighlightedRestaurantId(null);
   }
 };

@@ -23,6 +23,7 @@ export const openPreparedProfilePresentationTransaction = ({
   status: 'opening' | 'open';
 }): PreparedProfilePresentationTransaction => {
   const shouldPreserveSheetMotion = !shouldForceSharedMiddleSnap;
+  const preparedCameraPadding = targetCamera?.padding ?? null;
   const snapshot = createPreparedProfileOpenSnapshot(
     createTransactionId(),
     restaurantId,
@@ -30,6 +31,7 @@ export const openPreparedProfilePresentationTransaction = ({
     {
       selectedRestaurantId: restaurantId,
       targetCamera,
+      preparedCameraPadding,
       preserveSheetMotionOnOpen: shouldPreserveSheetMotion,
     }
   );
