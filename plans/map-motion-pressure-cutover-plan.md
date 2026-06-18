@@ -1,7 +1,19 @@
 # Map Motion Pressure Cutover Plan
 
-Last updated: 2026-04-03
-Status: active follow-up slice; shared pressure state + planner/native publish admission are materially landed
+Last updated: 2026-06-18
+Status: CUTOVER DONE (commit d1607742). The viewport LOD path now routes through
+resolveMapPlannerAdmission (materiality + protected-transaction/sync capacity + fairness)
+instead of the fixed 90ms cadence; the cadence (SHORTCUT_VIEWPORT_LOD_MIN_INTERVAL_MS +
+shouldEvaluateShortcutViewportLod) is deleted; the native owner's duplicated protected-
+transaction + fairness literals (8/240) now use the exported map-motion-pressure helpers.
+MP1/MP2/MP4 satisfied. MP3 (4-tier critical/high/normal/low taxonomy) INTENTIONALLY NOT
+adopted — the existing 2-class (visible_candidates/lod_pins) + materiality + fairness model is
+the need/capacity admission; no demonstrated need for a 4-tier model. Validated in-sim
+(pan/zoom + real-swipe flows): admission live, LOD updates on material moves, flashReversal 0,
+no membership churn on motion. Real-device pan feel pending. NOTE: paths below reference the old
+/crave-search/ root and pre-refactor filenames — stale, re-baseline if revisited.
+
+--- original plan below (historical) ---
 Scope:
 
 - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/map/**`
