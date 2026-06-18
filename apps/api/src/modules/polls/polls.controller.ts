@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -13,6 +15,11 @@ import { ListPollsQueryDto } from './dto/list-polls.dto';
 import { ListUserPollsDto } from './dto/list-user-polls.dto';
 import { CreatePollOptionDto } from './dto/create-poll-option.dto';
 import { CastPollVoteDto } from './dto/cast-poll-vote.dto';
+import {
+  CreateCommentDto,
+  EditCommentDto,
+  ListCommentsQueryDto,
+} from './dto/create-comment.dto';
 import { QueryPollsDto } from './dto/query-polls.dto';
 import { CreatePollDto } from './dto/create-poll.dto';
 import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
@@ -74,5 +81,57 @@ export class PollsController {
     @CurrentUser() user: User,
   ) {
     return this.pollsService.castVote(pollId, dto, user.userId);
+  }
+
+  @Get(':pollId/comments')
+  @UseGuards(OptionalClerkAuthGuard)
+  listComments(
+    @Param('pollId') pollId: string,
+    @Query() query: ListCommentsQueryDto,
+    @CurrentUser() user?: User | null,
+  ) {
+    return this.pollsService.listComments(
+      pollId,
+      user?.userId ?? null,
+      query.sort,
+    );
+  }
+
+  @Post(':pollId/comments')
+  @UseGuards(ClerkAuthGuard)
+  postComment(
+    @Param('pollId') pollId: string,
+    @Body() dto: CreateCommentDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.pollsService.postComment(pollId, dto, user.userId);
+  }
+
+  @Patch('comments/:commentId')
+  @UseGuards(ClerkAuthGuard)
+  editComment(
+    @Param('commentId') commentId: string,
+    @Body() dto: EditCommentDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.pollsService.editComment(commentId, dto, user.userId);
+  }
+
+  @Delete('comments/:commentId')
+  @UseGuards(ClerkAuthGuard)
+  deleteComment(
+    @Param('commentId') commentId: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.pollsService.deleteComment(commentId, user.userId);
+  }
+
+  @Post('comments/:commentId/likes')
+  @UseGuards(ClerkAuthGuard)
+  toggleCommentLike(
+    @Param('commentId') commentId: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.pollsService.toggleCommentLike(commentId, user.userId);
   }
 }

@@ -3,9 +3,11 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import {
   PollState,
   PollMode,
+  PollCommentModerationStatus,
   EntityType,
   PollOptionSource,
   PollOptionResolutionStatus,
@@ -22,6 +24,7 @@ import { ListPollsQueryDto } from './dto/list-polls.dto';
 import { ListUserPollsDto, UserPollActivity } from './dto/list-user-polls.dto';
 import { CreatePollOptionDto } from './dto/create-poll-option.dto';
 import { CastPollVoteDto } from './dto/cast-poll-vote.dto';
+import { CreateCommentDto, EditCommentDto } from './dto/create-comment.dto';
 import {
   PollEntitySeedService,
   type MarketContext,
@@ -993,6 +996,215 @@ export class PollsService {
     }
 
     return result.option;
+  }
+
+  // ─── Comments (Phase 4) ──────────────────────────────────────────────────
+
+  private generateCommentPublicId(): string {
+    return randomBytes(12).toString('base64url'); // 16 url-safe chars
+  }
+
+  async postComment(pollId: string, dto: CreateCommentDto, userId: string) {
+    const poll = await this.prisma.poll.findUnique({
+      where: { pollId },
+      select: { pollId: true, state: true },
+    });
+    if (!poll) {
+      throw new NotFoundException('Poll not found');
+    }
+    if (poll.state !== PollState.active) {
+      throw new BadRequestException('Poll is not active');
+    }
+
+    const body = this.sanitizer
+      .sanitizeOrThrow(dto.body, { maxLength: 2000, allowEmpty: false })
+      .trim();
+    if (!body.length) {
+      throw new BadRequestException('Comment body is required');
+    }
+
+    const moderation = await this.moderation.moderateText(body);
+    if (!moderation.allowed) {
+      throw new BadRequestException(
+        `Comment rejected by moderation: ${moderation.reason}`,
+      );
+    }
+
+    if (dto.parentCommentId) {
+      const parent = await this.prisma.pollComment.findUnique({
+        where: { commentId: dto.parentCommentId },
+        select: { pollId: true, deletedAt: true },
+      });
+      if (!parent || parent.pollId !== pollId || parent.deletedAt) {
+        throw new NotFoundException('Parent comment not found for poll');
+      }
+    }
+
+    const comment = await this.prisma.pollComment.create({
+      data: {
+        pollId,
+        userId,
+        parentCommentId: dto.parentCommentId ?? null,
+        body,
+        publicId: this.generateCommentPublicId(),
+        // Sync-moderated above; `pending` is reserved for future async/soft-hold.
+        moderationStatus: PollCommentModerationStatus.approved,
+      },
+    });
+
+    this.gateway.emitPollUpdate(pollId);
+    void this.userEventService.recordEvent({
+      userId,
+      eventType: 'poll_comment_posted',
+      eventData: { pollId, commentId: comment.commentId },
+    });
+    return comment;
+  }
+
+  async editComment(commentId: string, dto: EditCommentDto, userId: string) {
+    const comment = await this.requireOwnComment(commentId, userId);
+
+    const body = this.sanitizer
+      .sanitizeOrThrow(dto.body, { maxLength: 2000, allowEmpty: false })
+      .trim();
+    if (!body.length) {
+      throw new BadRequestException('Comment body is required');
+    }
+    const moderation = await this.moderation.moderateText(body);
+    if (!moderation.allowed) {
+      throw new BadRequestException(
+        `Comment rejected by moderation: ${moderation.reason}`,
+      );
+    }
+
+    const updated = await this.prisma.pollComment.update({
+      where: { commentId },
+      data: { body, editedAt: new Date() },
+    });
+    this.gateway.emitPollUpdate(comment.pollId);
+    return updated;
+  }
+
+  async deleteComment(commentId: string, userId: string) {
+    const comment = await this.requireOwnComment(commentId, userId);
+    await this.prisma.pollComment.update({
+      where: { commentId },
+      data: { deletedAt: new Date() },
+    });
+    this.gateway.emitPollUpdate(comment.pollId);
+    return { commentId, deleted: true };
+  }
+
+  private async requireOwnComment(commentId: string, userId: string) {
+    const comment = await this.prisma.pollComment.findUnique({
+      where: { commentId },
+      select: { userId: true, pollId: true, deletedAt: true },
+    });
+    if (!comment || comment.deletedAt) {
+      throw new NotFoundException('Comment not found');
+    }
+    if (comment.userId !== userId) {
+      throw new BadRequestException('You can only modify your own comment');
+    }
+    return comment;
+  }
+
+  async toggleCommentLike(commentId: string, userId: string) {
+    const comment = await this.prisma.pollComment.findUnique({
+      where: { commentId },
+      select: { pollId: true, deletedAt: true },
+    });
+    if (!comment || comment.deletedAt) {
+      throw new NotFoundException('Comment not found');
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.pollCommentLike.findUnique({
+        where: { commentId_userId: { commentId, userId } },
+      });
+      if (existing) {
+        await tx.pollCommentLike.delete({
+          where: { commentId_userId: { commentId, userId } },
+        });
+        const updated = await tx.pollComment.update({
+          where: { commentId },
+          data: { score: { decrement: 1 } },
+        });
+        return { liked: false, score: updated.score };
+      }
+      await tx.pollCommentLike.create({ data: { commentId, userId } });
+      const updated = await tx.pollComment.update({
+        where: { commentId },
+        data: { score: { increment: 1 } },
+      });
+      return { liked: true, score: updated.score };
+    });
+
+    this.gateway.emitPollUpdate(comment.pollId);
+    void this.userEventService.recordEvent({
+      userId,
+      eventType: result.liked ? 'poll_comment_liked' : 'poll_comment_unliked',
+      eventData: { pollId: comment.pollId, commentId },
+    });
+    return result;
+  }
+
+  async listComments(
+    pollId: string,
+    userId: string | null,
+    sort: 'top' | 'new' = 'top',
+  ) {
+    const poll = await this.prisma.poll.findUnique({
+      where: { pollId },
+      select: { pollId: true },
+    });
+    if (!poll) {
+      throw new NotFoundException('Poll not found');
+    }
+
+    const comments = await this.prisma.pollComment.findMany({
+      where: { pollId, deletedAt: null },
+      orderBy:
+        sort === 'new'
+          ? [{ loggedAt: 'desc' }]
+          : [{ score: 'desc' }, { loggedAt: 'desc' }],
+      select: {
+        commentId: true,
+        pollId: true,
+        parentCommentId: true,
+        body: true,
+        score: true,
+        publicId: true,
+        loggedAt: true,
+        editedAt: true,
+        user: {
+          select: {
+            userId: true,
+            username: true,
+            displayName: true,
+            avatarUrl: true,
+          },
+        },
+      },
+    });
+
+    let likedSet = new Set<string>();
+    if (userId && comments.length) {
+      const likes = await this.prisma.pollCommentLike.findMany({
+        where: {
+          userId,
+          commentId: { in: comments.map((c) => c.commentId) },
+        },
+        select: { commentId: true },
+      });
+      likedSet = new Set(likes.map((l) => l.commentId));
+    }
+
+    // Flat list + parentCommentId — the client nests (presentational, shallow).
+    return comments.map((c) => ({
+      ...c,
+      currentUserLiked: likedSet.has(c.commentId),
+    }));
   }
 
   async listPollsForUser(userId: string, query: ListUserPollsDto) {
