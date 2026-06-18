@@ -79,7 +79,7 @@ from source (membership churn on pan), violating v4 invariant 1. Only shortcut s
 - [ ] Add Gate-E sheet-snap-overlap diagnostic.
       Acceptance: sheet snap and visible map reveal/dismiss do not overlap; diagnostic proves it.
 
-### 6. [ ] Cluster 2 — split structural vs presentation apply (presentation-only path)
+### 6. [x] Cluster 2 — split structural vs presentation apply (presentation-only path)
 
 File: use-search-map-native-render-owner.ts flushLatestDesiredFrame (~2968) / submitRenderFrameFireAndObserve.
 

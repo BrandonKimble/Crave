@@ -994,6 +994,29 @@ type NativeRenderOwnerSourceAck = {
   sourceRevisions: SearchMapRenderSourceRevisionState;
 };
 
+// Cluster 2 (reveal/dismiss plan) — single-slot queue + presentation-only frames.
+//
+// Every native frame (structural AND presentation/control-only) rides this one queue
+// through a single in-flight slot: `takeNextNativeRenderOwnerFrameForTransport` returns
+// null while `syncInFlight` is true, so a presentation-only frame queued behind a
+// structural frame becomes `pendingFrame` and waits for the structural frame's ack.
+//
+// This does NOT cause head-of-line contention in practice, because the slot is held for a
+// single SYNCHRONOUS native main-thread turn — there is no async paint handshake.
+// SearchMapRenderController.swift `setRenderFrame` does all its apply work inside one
+// `DispatchQueue.main.async` block and emits `render_frame_synced` synchronously inside
+// that same block (before the promise resolves). The ack handler then flushes the pending
+// presentation-only frame immediately. So a presentation frame waits at most one bridge
+// round-trip, and the queue coalesces to a single `pendingFrame` (no multi-frame stall).
+//
+// Combined with the two structural-cost removals — fix #2 (presentation-opacity sweep
+// restricted to the on-screen set) and af0c415e (native enter skips applySnapshot on a
+// resident+unchanged re-reveal) — the structural frame that briefly holds the slot is also
+// cheap. And a presentation-only frame (sourceDeltaCount === 0) skips applySnapshot
+// entirely natively. Cluster 2's intent (no structural COST on presentation-only frames) is
+// therefore satisfied even though these frames nominally route through setRenderFrame; a
+// dedicated fire-and-forget presentation lane would add sequencing risk for no measurable
+// gain. See also the `isStructuralApplyLaneLeak` note in flushLatestDesiredFrame.
 type MapRenderFrameTransportQueueState<TFrame extends MapRenderFrameTransportQueueFrame> = {
   inFlightFrame: TFrame | null;
   pendingFrame: TFrame | null;
@@ -3104,8 +3127,19 @@ const useSearchMapNativeRenderOwnerSync = ({
         batchPhase: bridgePresentationLaneState.batchPhase,
         liveExecutionStage: liveStructuralExecutionStage,
         lanePolicyAllowsStructuralApply: liveStructuralLanePolicy.allowStructuralApply,
+        // Cluster 2 (reveal/dismiss plan): presentation/control-only frames
+        // (sourceDeltaCount === 0 → effectiveChangedSourceIds.length === 0) nominally
+        // travel this same setRenderFrame queue, but they carry ZERO structural work:
+        // native skips applySnapshot entirely for them (shouldApplySourcePayload === false
+        // in SearchMapRenderController.swift setRenderFrame), so the per-frame cost is just
+        // applyPresentation + interaction/highlight — and the presentation-opacity sweep is
+        // itself bounded to the on-screen marker set (fix #2). There is no real structural
+        // leak when such a frame lands inside a visible reveal/dismiss window, so the leak
+        // gate is gated on the frame actually carrying source deltas. Without this guard the
+        // diagnostic mislabels a near-zero-cost presentation frame as a structural lane leak.
         isStructuralApplyLaneLeak:
           status === 'applied' &&
+          effectiveDesiredFrame.sourceTransport.effectiveChangedSourceIds.length > 0 &&
           !liveStructuralLanePolicy.allowStructuralApply &&
           (liveStructuralExecutionStage === 'enter_executing' ||
             liveStructuralExecutionStage === 'exit_requested' ||
