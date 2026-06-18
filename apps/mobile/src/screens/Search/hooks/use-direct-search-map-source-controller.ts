@@ -17,14 +17,12 @@ import {
   normalizeSearchMapVisualFeatureIdentity,
   type SearchMapVisualIdentityKey,
 } from '../utils/search-map-visual-identity';
-import { createMapQueryBudget, type MapQueryBudget } from '../runtime/map/map-query-budget';
 import {
   buildAnchoredShortcutCoverage,
   buildMarkerCatalogReadModel,
   buildRankedShortcutCoverageFeatures,
 } from '../runtime/map/map-read-model-builder';
 import { type MapMotionPressureController } from '../runtime/map/map-motion-pressure';
-import { createMapViewportQueryService } from '../runtime/map/map-viewport-query';
 import {
   createSearchMapSourceTransportFeature,
   createSearchMapSourceStoreBuilder,
@@ -822,7 +820,6 @@ type DirectMapSourceControllerBaseArgs = {
   logSearchCompute: (label: string, duration: number) => void;
   maxFullPins: number;
   isMapMoving: boolean;
-  externalMapQueryBudget?: MapQueryBudget;
 };
 
 type ShortcutCoverageSnapshot = {
@@ -996,7 +993,6 @@ export const useDirectSearchMapSourceController = ({
   logSearchCompute,
   maxFullPins,
   isMapMoving,
-  externalMapQueryBudget,
   profileCommandPort,
 }: DirectMapSourceControllerArgs): DirectMapSourceControllerResult => {
   // Live user location read by the per-frame pin builder (overlap-region radius
@@ -1059,15 +1055,6 @@ export const useDirectSearchMapSourceController = ({
     shouldLogSearchComputes,
   ]);
 
-  const mapViewportQueryServiceRef = React.useRef(createMapViewportQueryService());
-  const mapQueryBudgetRef = React.useRef<MapQueryBudget | null>(externalMapQueryBudget ?? null);
-  React.useEffect(() => {
-    mapQueryBudgetRef.current =
-      externalMapQueryBudget ?? mapQueryBudgetRef.current ?? createMapQueryBudget();
-  }, [externalMapQueryBudget]);
-  if (mapQueryBudgetRef.current == null) {
-    mapQueryBudgetRef.current = externalMapQueryBudget ?? createMapQueryBudget();
-  }
   const previousPinSourceStoreRef = React.useRef<SearchMapSourceStore>(
     EMPTY_SEARCH_MAP_SOURCE_STORE
   );
@@ -1520,21 +1507,20 @@ export const useDirectSearchMapSourceController = ({
       );
       return;
     }
-    const shouldTrackViewportCandidates =
-      searchMode !== 'shortcut' || selectedRestaurantId !== null;
-    if (shouldTrackViewportCandidates) {
-      mapViewportQueryServiceRef.current.setCatalogEntries(markerCatalogEntries);
-    }
-    const visibleCandidates = shouldTrackViewportCandidates
-      ? mapViewportQueryServiceRef.current.queryVisibleCandidates(
-          {
-            bounds: currentBounds,
-            selectedRestaurantId,
-          },
-          mapQueryBudgetRef.current
-        )
-      : [];
-    markerCandidatesRef.current = visibleCandidates.map((entry) => entry.feature);
+    // v4 invariant 1 (RESIDENT sources): the natural-search candidate set is the
+    // FULL result catalog, not a viewport query. Natural search returns a BOUNDED set
+    // — the backend result limit caps it (SEARCH_MAX_RESULTS, default 100, hard max 500
+    // in search.service.ts resolveResultLimit), paginated onto the map at the mobile
+    // page size; panning does NOT re-fetch (new results only arrive on an explicit
+    // "Search this area", which is a data event, not a camera event). So the set is
+    // comparable to (and usually smaller than) the shortcut coverage snapshot, and
+    // making it resident is safe — not a perf regression. Publishing the full catalog
+    // here means source membership changes only on data changes (new search / new page),
+    // never on camera, so markers crossfade in/out via LOD opacity instead of being
+    // ejected from the source on pan. Promotion is still viewport-gated downstream:
+    // buildMarkerRenderModel is called with requireVisibility:true and the native
+    // screen-space visible set, so only on-screen markers ever promote to full pins.
+    markerCandidatesRef.current = markerCatalogEntries.map((entry) => entry.feature);
     const shortcutResultFeatures =
       searchMode === 'shortcut' ? markerCatalogEntries.map((entry) => entry.feature) : [];
     const shortcutCoverageFeatures =

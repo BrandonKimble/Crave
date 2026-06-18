@@ -46,7 +46,7 @@ Problem: per-display-link-frame setFeatureState over ALL features in ALL sources
 - [ ] Validate reveal/dismiss still fade smoothly (flashReversal 0, chrome_ready) + measure cost drop.
       Acceptance: reveal/dismiss per-frame opacity work is O(visible) or O(1 layer), not O(full catalog).
 
-### 3. [ ] Natural-search residency — non-shortcut search resident like shortcut
+### 3. [x] Natural-search residency — non-shortcut search resident like shortcut
 
 File: use-direct-search-map-source-controller.ts (~1528 queryVisibleCandidates viewport-filter).
 Problem: natural search builds candidates from current viewport bounds -> markers leaving viewport vanish

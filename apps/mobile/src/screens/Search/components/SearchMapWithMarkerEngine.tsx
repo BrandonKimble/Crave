@@ -472,7 +472,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     logSearchCompute,
     maxFullPins,
     isMapMoving: nativeViewportState.isMoving,
-    externalMapQueryBudget: mapQueryBudget,
     profileCommandPort,
   });
 
