@@ -129,6 +129,12 @@ The leaderboard does NOT get its own table of votes. It is a **projection**:
 
 ### 2.4 Evidence integration (Seam 1 — the actual cutover)
 
+> **✅ DONE.** Pollution deleted (Phase 2A, commit 7cad3a9d). The "legit half" rewrite is done
+> (commit 32a9303f): `poll-aggregation`'s vote tally is retired and now refreshes the
+> comment-endorsement leaderboard (Phase 4D). Remaining: the close-time `poll_thread` collection
+> source (the authoritative scoring path) is Phase 5C/§6.3; the vote MODEL itself is deprecated but
+> not yet removed.
+
 - **Pollution is in THREE places (verified in code), not one — delete all:**
   1. `poll-aggregation.service` `applyConnectionSignals` directly increments
      `Connection.decayedMentionScore/decayedUpvoteScore` (immediate path).
