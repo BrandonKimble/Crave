@@ -39,6 +39,7 @@
     "perf:scenario:ios": "bash ./scripts/perf-scenario-ios.sh",
     "perf:scenario:report": "node ./scripts/perf-scenario-report.js",
     "perf:scenario:contracts": "node ./scripts/perf-scenario-parity-contracts.js",
+    "perf:scenario:contract-gate": "node ./scripts/perf-scenario-contract-gate.js",
     "perf:scenario:interrupt-contracts": "node ./scripts/perf-scenario-interrupt-contracts.js",
     "perf:scenario:market-demand-contracts": "node ./scripts/perf-scenario-market-demand-contracts.js",
     "perf:scenario:visual-contracts": "node ./scripts/perf-scenario-visual-contracts.js",

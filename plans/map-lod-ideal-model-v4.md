@@ -33,9 +33,18 @@ The invariants below are the target model. Where current reality diverges:
   re-verification is still **pending**. The plan presents jitter resolution as part
   of the definition of correct; treat it as unconfirmed on device until that
   verification lands.
-- **Acceptance contracts** are **telemetry-only** (`logPerfScenarioAttributionEvent`),
-  NOT enforced gates. No test or Maestro assertion fails on a contract violation —
-  they report, they don't block.
+- **Acceptance contracts** are emitted as **telemetry**
+  (`logPerfScenarioAttributionEvent`). The CORE subset is now **gate-enforceable**:
+  `scripts/perf-scenario-contract-gate.js` (yarn `perf:scenario:contract-gate`)
+  reads a perf-scenario report or raw run log, asserts the core contracts, and
+  EXITS NON-ZERO on a violation (a contract whose event never appears in the run is
+  SKIPped, not failed). Enforced today:
+  `native_live_lod_transition_contract.flashReversalCount == 0` and
+  `lod_membership_churn_contract` zero pin/dot add-or-remove during camera motion.
+  The remaining contracts (`raw_visible_set_shrink_contract`,
+  `lod_target_change_contract` stair-step bounds) are still telemetry-only — extend
+  the gate when they're ready to enforce. No Maestro assertion blocks yet, but the
+  gate gives CI/local a hard pass/fail instead of manual log reading.
 
 ## Product invariants (the definition of correct)
 
@@ -122,13 +131,18 @@ settled role for pre-stepper initial paint.
 
 ## Acceptance contracts
 
-- `native_live_lod_transition_contract.flashReversalCount == 0` (no mid-fade reversal)
+The CORE subset (marked **[GATED]** below) is enforced by
+`scripts/perf-scenario-contract-gate.js` (yarn `perf:scenario:contract-gate`),
+which exits non-zero on a violation. The rest are telemetry-only until the gate is
+extended.
+
+- **[GATED]** `native_live_lod_transition_contract.flashReversalCount == 0` (no mid-fade reversal)
 - `lod_target_change_contract`: during a monotone zoom-out, per-marker target flips
   ≤ 1 (a marker demotes at most once; no demote→re-promote), demotes are stair-step
   (no eval demoting a large batch), `demoteLostVisibility` ≈ 0 at settle (no dwell
   batch).
 - `raw_visible_set_shrink_contract`: rawVisibleRemoved == 0 during monotone zoom-out.
-- `lod_membership_churn_contract`: zero source add/remove during camera motion.
+- **[GATED]** `lod_membership_churn_contract`: zero source add/remove during camera motion.
 - On-device: no flash, no jitter, stair-step promote/demote during continuous pinch.
 
 ## Execution sequencing — the SINGLE-OWNER opacity cutover (the remaining work)

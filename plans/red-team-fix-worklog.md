@@ -152,7 +152,7 @@ File: use-search-map-native-render-owner.ts (~1519-1521: residentDotMarkerKeysIn
 - [ ] Make pin residency representation symmetric with dots (or document why asymmetric is correct).
       Acceptance: native infers resident pins/dots the same way; no accidental asymmetry.
 
-### 15. [ ] Acceptance-contracts-as-gates (lowest priority)
+### 15. [x] Acceptance-contracts-as-gates (lowest priority)
 
 - [ ] Add at least one automated assertion/threshold (Maestro or a parity-contract check) so a contract
       violation (flashReversalCount>0, membership churn on pan) actually FAILS, not just logs.
