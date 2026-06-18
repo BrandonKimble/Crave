@@ -1,8 +1,6 @@
 import React from 'react';
 
-import {
-  createSearchRootMapHostLayerRuntime,
-} from '../controller/search-root-map-host-layer-controller-runtime';
+import { createSearchRootMapHostLayerRuntime } from '../controller/search-root-map-host-layer-controller-runtime';
 import type { useSearchScreenAppEntryPlaneRuntime } from './use-search-screen-app-entry-plane-runtime';
 import type {
   SearchRootMapProfileControlLane,
@@ -54,14 +52,13 @@ export const useSearchRootMapSurfacePublicationRuntime = ({
     mapProfileControlLane,
     resultsPresentationControlLane,
   });
-  const { engineInputs, hostConfig, presentationProps } =
-    useSearchRootMapSurfaceModelRuntime({
-      appEntryPlaneRuntime,
-      stateFoundationLane,
-      mapViewportIntentRuntime,
-      mapPresentationRuntime,
-      mapInteractionBridgeRuntime,
-    });
+  const { engineInputs, hostConfig, presentationProps } = useSearchRootMapSurfaceModelRuntime({
+    appEntryPlaneRuntime,
+    stateFoundationLane,
+    mapViewportIntentRuntime,
+    mapPresentationRuntime,
+    mapInteractionBridgeRuntime,
+  });
 
   return React.useMemo(
     () =>

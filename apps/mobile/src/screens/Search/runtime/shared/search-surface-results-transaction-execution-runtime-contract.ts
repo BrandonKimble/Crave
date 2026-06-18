@@ -5,6 +5,7 @@ import type {
 } from './search-surface-results-transaction';
 import type { SearchSubmitEntrySurface } from './search-submit-entry-surface-contract';
 import type { ResultsSurfaceTransactionExecutionBoundary } from './results-presentation-execution-intent-runtime-contract';
+import type { ResultsPresentationAuthority } from './results-presentation-authority';
 import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
 
 export type UseResultsSurfaceTransactionExecutionRuntimeArgs =
@@ -20,7 +21,9 @@ export type UseResultsSurfaceTransactionShellApplicationRuntimeArgs = Pick<
 export type UseResultsSurfaceEnterTransactionExecutionRuntimeArgs = Pick<
   UseResultsSurfaceTransactionExecutionRuntimeArgs,
   'resultsRuntimeOwner' | 'prepareSharedSheetForSearchPresentation' | 'setDisplayQueryOverride'
->;
+> & {
+  resultsPresentationAuthority: ResultsPresentationAuthority;
+};
 
 export type UseResultsSurfaceExitTransactionExecutionRuntimeArgs = Pick<
   UseResultsSurfaceTransactionExecutionRuntimeArgs,

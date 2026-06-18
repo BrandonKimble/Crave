@@ -2,11 +2,7 @@ import type { LayoutRectangle } from 'react-native';
 
 const SEARCH_GEOMETRY_EPSILON = 1;
 
-const createGeometryMismatchError = (
-  label: string,
-  expected: number,
-  actual: number
-): Error =>
+const createGeometryMismatchError = (label: string, expected: number, actual: number): Error =>
   new Error(
     `[SEARCH-STARTUP-GEOMETRY] ${label} drifted from the startup geometry contract (expected ${expected}, got ${actual}).`
   );

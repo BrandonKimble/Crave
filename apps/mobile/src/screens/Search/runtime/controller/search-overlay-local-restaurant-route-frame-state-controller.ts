@@ -65,14 +65,10 @@ export class SearchOverlayLocalRestaurantRouteFrameStateController {
     };
     this.unsubscribers.push(
       routeHostOverlayGeometryAuthority.subscribe(() => {
-        this.setRouteHostOverlayGeometry(
-          routeHostOverlayGeometryAuthority.getSnapshot()
-        );
+        this.setRouteHostOverlayGeometry(routeHostOverlayGeometryAuthority.getSnapshot());
       }),
       routeHostVisualRuntimeAuthority.subscribe(() => {
-        this.setRouteHostVisualRuntime(
-          routeHostVisualRuntimeAuthority.getSnapshot()
-        );
+        this.setRouteHostVisualRuntime(routeHostVisualRuntimeAuthority.getSnapshot());
       })
     );
   }
@@ -102,9 +98,7 @@ export class SearchOverlayLocalRestaurantRouteFrameStateController {
     this.recompute();
   }
 
-  private setRouteHostVisualRuntime(
-    routeHostVisualRuntime: RouteHostVisualRuntime
-  ): void {
+  private setRouteHostVisualRuntime(routeHostVisualRuntime: RouteHostVisualRuntime): void {
     if (this.routeHostVisualRuntime === routeHostVisualRuntime) {
       return;
     }

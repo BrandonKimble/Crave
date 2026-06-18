@@ -71,7 +71,7 @@ from source (membership churn on pan), violating v4 invariant 1. Only shortcut s
 - [ ] Android parity (remove its notifyFrameRendered if present).
       Acceptance: no reference to a paint handshake for readiness; dead bridge method gone.
 
-### 5. [ ] Cluster 6 — stage sheet/chrome motion out of the reveal/dismiss window
+### 5. [x] Cluster 6 — stage sheet/chrome motion out of the reveal/dismiss window
 
 - [ ] Wire a consumer for lanePolicy.allowSheetSnap (presentation-lane-policy.ts) — currently ZERO consumers.
 - [ ] Stage sheet-snap/collapse so it does not overlap the visible reveal/dismiss opacity window
@@ -88,7 +88,7 @@ File: use-search-map-native-render-owner.ts flushLatestDesiredFrame (~2968) / su
 - [ ] Confirm isStructuralApplyLaneLeak drops to ~0 for presentation/control-only frames.
       Acceptance: presentation-only frames no longer ride the structural setRenderFrame path.
 
-### 7. [ ] Cluster 7 — sticky reapply queue
+### 7. [x] Cluster 7 — sticky reapply queue
 
 - [ ] Queue sticky/label changes discovered during forbidden phases; drain when phase allows.
       Acceptance: sticky correctness preserved without applying during reveal/dismiss windows.

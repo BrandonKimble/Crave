@@ -39,19 +39,15 @@ export class SearchOverlayLocalRestaurantSheetSessionHostStateController {
   }: {
     overlayLocalRestaurantSessionHostAuthority: SearchOverlayLocalRestaurantSessionHostAuthority;
   }) {
-    this.restaurantSessionSnapshot =
-      overlayLocalRestaurantSessionHostAuthority.getSnapshot();
+    this.restaurantSessionSnapshot = overlayLocalRestaurantSessionHostAuthority.getSnapshot();
     this.snapshot = createSessionHostSnapshot(this.restaurantSessionSnapshot);
     this.outputAuthority = {
       subscribe: (listener) => this.subscribe(listener),
       getSnapshot: () => this.snapshot,
     };
-    this.unsubscribeRestaurantSession =
-      overlayLocalRestaurantSessionHostAuthority.subscribe(() => {
-        this.setRestaurantSessionSnapshot(
-          overlayLocalRestaurantSessionHostAuthority.getSnapshot()
-        );
-      });
+    this.unsubscribeRestaurantSession = overlayLocalRestaurantSessionHostAuthority.subscribe(() => {
+      this.setRestaurantSessionSnapshot(overlayLocalRestaurantSessionHostAuthority.getSnapshot());
+    });
   }
 
   public dispose(): void {
@@ -79,14 +75,9 @@ export class SearchOverlayLocalRestaurantSheetSessionHostStateController {
   }
 
   private recompute(): void {
-    const nextSnapshot = createSessionHostSnapshot(
-      this.restaurantSessionSnapshot
-    );
+    const nextSnapshot = createSessionHostSnapshot(this.restaurantSessionSnapshot);
 
-    if (
-      this.snapshot.restaurantSessionSnapshot ===
-      nextSnapshot.restaurantSessionSnapshot
-    ) {
+    if (this.snapshot.restaurantSessionSnapshot === nextSnapshot.restaurantSessionSnapshot) {
       return;
     }
 
@@ -97,12 +88,11 @@ export class SearchOverlayLocalRestaurantSheetSessionHostStateController {
   }
 }
 
-export const createSearchOverlayLocalRestaurantSheetSessionHostStateController =
-  ({
+export const createSearchOverlayLocalRestaurantSheetSessionHostStateController = ({
+  overlayLocalRestaurantSessionHostAuthority,
+}: ConstructorParameters<
+  typeof SearchOverlayLocalRestaurantSheetSessionHostStateController
+>[0]): SearchOverlayLocalRestaurantSheetSessionHostStateController =>
+  new SearchOverlayLocalRestaurantSheetSessionHostStateController({
     overlayLocalRestaurantSessionHostAuthority,
-  }: ConstructorParameters<
-    typeof SearchOverlayLocalRestaurantSheetSessionHostStateController
-  >[0]): SearchOverlayLocalRestaurantSheetSessionHostStateController =>
-    new SearchOverlayLocalRestaurantSheetSessionHostStateController({
-      overlayLocalRestaurantSessionHostAuthority,
-    });
+  });

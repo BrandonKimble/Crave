@@ -14,8 +14,7 @@ export const useSearchRootOverlaySuggestionPanelInputsRuntime = ({
     () => ({
       isSuggestionScreenActive: suggestionRuntime.isSuggestionScreenActive,
       shouldRenderSuggestionPanel: suggestionRuntime.shouldRenderSuggestionPanel,
-      shouldRenderAutocompleteSection:
-        suggestionRuntime.shouldRenderAutocompleteSection,
+      shouldRenderAutocompleteSection: suggestionRuntime.shouldRenderAutocompleteSection,
       shouldRenderRecentSection: suggestionRuntime.shouldRenderRecentSection,
     }),
     [

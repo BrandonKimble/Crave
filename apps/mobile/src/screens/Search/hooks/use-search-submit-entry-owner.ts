@@ -552,13 +552,13 @@ export const useSearchSubmitEntryOwner = ({
       });
       const effectiveOpenNow = options?.openNow ?? openNow;
       const effectivePriceLevels =
-        options?.priceLevels !== undefined ? options.priceLevels ?? [] : priceLevels;
+        options?.priceLevels !== undefined ? (options.priceLevels ?? []) : priceLevels;
       const effectiveMinimumVotes =
         options?.minimumVotes !== undefined
           ? options.minimumVotes
           : votes100Plus
-          ? MINIMUM_VOTES_FILTER
-          : null;
+            ? MINIMUM_VOTES_FILTER
+            : null;
 
       return {
         submissionSource,

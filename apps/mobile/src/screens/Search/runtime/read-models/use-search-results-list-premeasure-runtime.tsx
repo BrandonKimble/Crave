@@ -28,10 +28,7 @@ export const useSearchResultsListPremeasureRuntime = ({
       return null;
     }
     return (
-      <TopFoodPreMeasure
-        items={preMeasureKeys.items}
-        moreCounts={preMeasureKeys.moreCounts}
-      />
+      <TopFoodPreMeasure items={preMeasureKeys.items} moreCounts={preMeasureKeys.moreCounts} />
     );
   }, [preMeasureKeys]);
 };

@@ -331,7 +331,8 @@ export const useSearchRouteSearchSceneModelOwner = ({
   const routeSearchSceneSheetPolicyInputs: AppRouteSceneSheetPolicyInputs = React.useMemo(
     () => ({
       sheetContentLaneKind: routeSearchSceneDataRuntime.routeSearchSceneSearchSheetContentLane.kind,
-      shouldRenderRouteSheetSurface: routeSearchSceneSurfacePanelStateRuntime.shouldShowResultsSurface,
+      shouldRenderRouteSheetSurface:
+        routeSearchSceneSurfacePanelStateRuntime.shouldShowResultsSurface,
     }),
     [
       routeSearchSceneDataRuntime.routeSearchSceneSearchSheetContentLane.kind,

@@ -15,15 +15,15 @@ export const useSearchRootOverlayLocalRestaurantSheetVisualSessionRuntime = ({
   'routeLocalRestaurantOverlaySessionAuthority' | 'localRestaurantRouteVisualAuthority'
 > &
   SearchRootOverlayLocalRestaurantSheetPresenceRuntime): SearchRootOverlayLocalRestaurantSheetVisualSessionRuntime => {
-  const localRestaurantSheetVisualRuntime =
-    useSearchRootOverlayLocalRestaurantSheetVisualRuntime({
-      localRestaurantRouteVisualAuthority,
-      localRestaurantSheetPresenceAuthority,
-    });
-  const localRestaurantSheetSessionRuntime =
-    useSearchRootOverlayLocalRestaurantSheetSessionRuntime({
+  const localRestaurantSheetVisualRuntime = useSearchRootOverlayLocalRestaurantSheetVisualRuntime({
+    localRestaurantRouteVisualAuthority,
+    localRestaurantSheetPresenceAuthority,
+  });
+  const localRestaurantSheetSessionRuntime = useSearchRootOverlayLocalRestaurantSheetSessionRuntime(
+    {
       routeLocalRestaurantOverlaySessionAuthority,
-    });
+    }
+  );
 
   return {
     localRestaurantSheetSessionHostAuthority:

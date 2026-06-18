@@ -180,6 +180,7 @@ export const useResultsPresentationOwnerCompositionRuntime = <Suggestion>({
     isClearingSearchRef,
     resultsSheetRuntime,
     routeSceneVisibilityPolicyRuntime,
+    resultsPresentationAuthority,
     ownerStateRuntime,
   });
 };

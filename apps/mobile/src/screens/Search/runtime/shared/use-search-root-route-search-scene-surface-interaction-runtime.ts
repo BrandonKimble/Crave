@@ -10,22 +10,18 @@ export const useSearchRootRouteSearchSceneSurfaceInteractionRuntime = ({
   controlAuthorityRuntime,
   routeSearchSceneDataRuntime,
   routeSearchSceneSurfaceStateRuntime,
-}: Pick<
-  SearchRootRouteSearchSceneResultsSurfaceRuntimeArgs,
-  'controlAuthorityRuntime'
-> & {
+}: Pick<SearchRootRouteSearchSceneResultsSurfaceRuntimeArgs, 'controlAuthorityRuntime'> & {
   routeSearchSceneDataRuntime: SearchRootRuntimeRouteSearchSceneDataRuntime;
   routeSearchSceneSurfaceStateRuntime: SearchRootRuntimeRouteSearchSceneSurfaceStateRuntime;
 }): SearchRootRuntimeRouteSearchSceneInteractionFrostRuntime =>
   useSearchRootSearchSceneInteractionFrostRuntime({
     notifyToggleInteractionFrostReady:
-      controlAuthorityRuntime.presentationAuthorityRuntime
-        .resultsPresentationControlLane.resultsPresentationOwner
-        .interactionModel.notifyToggleInteractionFrostReady,
+      controlAuthorityRuntime.presentationAuthorityRuntime.resultsPresentationControlLane
+        .resultsPresentationOwner.interactionModel.notifyToggleInteractionFrostReady,
     pendingPresentationIntentId:
       routeSearchSceneDataRuntime.routeSearchScenePresentationRuntimeState
         .pendingPresentationIntentId,
     shouldShowInteractionLoadingState:
-      routeSearchSceneSurfaceStateRuntime
-        .routeSearchSceneSurfacePanelStateRuntime.shouldShowInteractionLoadingState,
+      routeSearchSceneSurfaceStateRuntime.routeSearchSceneSurfacePanelStateRuntime
+        .shouldShowInteractionLoadingState,
   });

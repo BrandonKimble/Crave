@@ -26,5 +26,5 @@ export const resolveSearchSurfaceResultsEnterMutationKind = (
   intentKind === 'shortcut_submit'
     ? 'shortcut_rerun'
     : intentKind === 'search_this_area'
-    ? 'search_this_area'
-    : 'initial_search';
+      ? 'search_this_area'
+      : 'initial_search';

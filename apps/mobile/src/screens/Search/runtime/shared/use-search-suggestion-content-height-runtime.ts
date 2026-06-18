@@ -1,8 +1,6 @@
 import React from 'react';
 
-import type {
-  SearchInteractionRef,
-} from './use-search-suggestion-surface-runtime-contract';
+import type { SearchInteractionRef } from './use-search-suggestion-surface-runtime-contract';
 
 type UseSearchSuggestionContentHeightRuntimeArgs = {
   searchInteractionRef: SearchInteractionRef;

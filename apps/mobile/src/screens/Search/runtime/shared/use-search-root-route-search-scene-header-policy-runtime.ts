@@ -20,43 +20,32 @@ export const useSearchRootRouteSearchSceneHeaderPolicyRuntime = ({
 > & {
   routeSearchSceneDataStateRuntime: SearchRootRuntimeRouteSearchSceneDataStateRuntime;
 }): SearchRootRuntimeRouteSearchSceneHeaderPolicyRuntime => {
-  const routeSearchSceneFiltersRuntimeState =
-    useSearchResultsPanelFiltersRuntimeState(
-      sessionAssemblyRuntime.sessionRuntime.sessionCoreLane.searchRuntimeBus
-    );
-  const routeSearchSceneHeaderLayoutRuntime =
-    useSearchRootSearchSceneHeaderLayoutRuntime();
-  const routeSearchSceneFiltersHeaderRuntime =
-    useSearchRootSearchSceneFiltersHeaderRuntime({
-      stateFoundationLane: stateAssemblyRuntime.stateFoundationLane,
-      filterModalControlLane,
-      searchResultsRuntimeState:
-        routeSearchSceneDataStateRuntime.routeSearchSceneResultsRuntimeState,
-      searchFiltersRuntimeState: routeSearchSceneFiltersRuntimeState,
-      hydrationKeyRuntime:
-        routeSearchSceneDataStateRuntime.routeSearchSceneHydrationKeyRuntime,
-      scheduleTabToggleCommit:
-        routeSearchSceneDataStateRuntime.routeSearchSceneScheduleTabToggleCommit,
-    });
-  const routeSearchSceneChromeFreezeRuntime =
-    useSearchRootSearchSceneChromeFreezeRuntime({
-      searchResultsRuntimeState:
-        routeSearchSceneDataStateRuntime.routeSearchSceneResultsRuntimeState,
-      searchHydrationRuntimeState:
-        routeSearchSceneDataStateRuntime.routeSearchSceneHydrationRuntimeState,
-      resolvedResultsRuntime:
-        routeSearchSceneDataStateRuntime.routeSearchSceneResolvedResultsRuntime,
-      filtersHeaderRuntime: routeSearchSceneFiltersHeaderRuntime,
-      effectiveFiltersHeaderHeight:
-        routeSearchSceneHeaderLayoutRuntime.effectiveFiltersHeaderHeight,
-      effectiveResultsHeaderHeight:
-        routeSearchSceneHeaderLayoutRuntime.effectiveResultsHeaderHeight,
-    });
+  const routeSearchSceneFiltersRuntimeState = useSearchResultsPanelFiltersRuntimeState(
+    sessionAssemblyRuntime.sessionRuntime.sessionCoreLane.searchRuntimeBus
+  );
+  const routeSearchSceneHeaderLayoutRuntime = useSearchRootSearchSceneHeaderLayoutRuntime();
+  const routeSearchSceneFiltersHeaderRuntime = useSearchRootSearchSceneFiltersHeaderRuntime({
+    stateFoundationLane: stateAssemblyRuntime.stateFoundationLane,
+    filterModalControlLane,
+    searchResultsRuntimeState: routeSearchSceneDataStateRuntime.routeSearchSceneResultsRuntimeState,
+    searchFiltersRuntimeState: routeSearchSceneFiltersRuntimeState,
+    hydrationKeyRuntime: routeSearchSceneDataStateRuntime.routeSearchSceneHydrationKeyRuntime,
+    scheduleTabToggleCommit:
+      routeSearchSceneDataStateRuntime.routeSearchSceneScheduleTabToggleCommit,
+  });
+  const routeSearchSceneChromeFreezeRuntime = useSearchRootSearchSceneChromeFreezeRuntime({
+    searchResultsRuntimeState: routeSearchSceneDataStateRuntime.routeSearchSceneResultsRuntimeState,
+    searchHydrationRuntimeState:
+      routeSearchSceneDataStateRuntime.routeSearchSceneHydrationRuntimeState,
+    resolvedResultsRuntime: routeSearchSceneDataStateRuntime.routeSearchSceneResolvedResultsRuntime,
+    filtersHeaderRuntime: routeSearchSceneFiltersHeaderRuntime,
+    effectiveFiltersHeaderHeight: routeSearchSceneHeaderLayoutRuntime.effectiveFiltersHeaderHeight,
+    effectiveResultsHeaderHeight: routeSearchSceneHeaderLayoutRuntime.effectiveResultsHeaderHeight,
+  });
   const routeSearchSceneAllowsInteractionLoadingState =
     useSearchRootSearchSceneInteractionLoadingPolicyRuntime({
       searchSheetContentLaneKind:
-        routeSearchSceneDataStateRuntime.routeSearchSceneSearchSheetContentLane
-          .kind,
+        routeSearchSceneDataStateRuntime.routeSearchSceneSearchSheetContentLane.kind,
     });
 
   return {

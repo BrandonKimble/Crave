@@ -54,9 +54,6 @@ export const useSearchAutocompleteRequestStateRuntime = ({
       suppressAutocompleteResults,
       allowAutocompleteResults,
     }),
-    [
-      allowAutocompleteResults,
-      suppressAutocompleteResults,
-    ]
+    [allowAutocompleteResults, suppressAutocompleteResults]
   );
 };

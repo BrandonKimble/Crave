@@ -6,8 +6,4 @@ export const useSearchResultsListHeaderTitleRuntime = ({
   submittedQuery,
 }: {
   submittedQuery: string;
-}) =>
-  React.useMemo(
-    () => buildResultsHeaderTitle(submittedQuery),
-    [submittedQuery]
-  );
+}) => React.useMemo(() => buildResultsHeaderTitle(submittedQuery), [submittedQuery]);

@@ -1,6 +1,9 @@
 import React from 'react';
 
-import type { SearchRootForegroundInputRuntime, SearchRootClearRestoreAuthorityRuntime } from './search-root-control-ports-runtime-contract';
+import type {
+  SearchRootForegroundInputRuntime,
+  SearchRootClearRestoreAuthorityRuntime,
+} from './search-root-control-ports-runtime-contract';
 import type { SearchForegroundEditingRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
 
 type SearchRootForegroundEditingClearArgs = Pick<

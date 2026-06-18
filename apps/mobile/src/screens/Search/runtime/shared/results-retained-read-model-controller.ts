@@ -8,7 +8,7 @@ type SearchResultsRetainedPayload = {
 } | null;
 
 export type SearchResultsRetainedReadModel<
-  Results extends SearchResultsRetainedPayload = SearchResultsPayload
+  Results extends SearchResultsRetainedPayload = SearchResultsPayload,
 > = {
   resolvedResults: Results;
   dishes: FoodResult[];
@@ -16,7 +16,7 @@ export type SearchResultsRetainedReadModel<
 };
 
 export type SearchResultsRetainedResultsController<
-  Results extends SearchResultsRetainedPayload = SearchResultsPayload
+  Results extends SearchResultsRetainedPayload = SearchResultsPayload,
 > = {
   getRetainedResults: () => Results;
   commitRetainedResults: (args: {
@@ -62,7 +62,7 @@ export const resolveRetainedResultsForRender = <Results extends SearchResultsRet
 }): Results => (shouldRetainCommittedResults && results == null ? retainedResults : results);
 
 export const resolveSearchResultsRetainedReadModel = <
-  Results extends SearchResultsRetainedPayload
+  Results extends SearchResultsRetainedPayload,
 >({
   retainedResults,
   results,
@@ -85,7 +85,7 @@ export const resolveSearchResultsRetainedReadModel = <
 };
 
 export const createSearchResultsRetainedResultsController = <
-  Results extends SearchResultsRetainedPayload
+  Results extends SearchResultsRetainedPayload,
 >(
   initialResults: Results
 ): SearchResultsRetainedResultsController<Results> => {

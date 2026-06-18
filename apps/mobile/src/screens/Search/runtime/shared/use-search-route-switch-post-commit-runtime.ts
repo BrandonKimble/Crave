@@ -52,44 +52,41 @@ export const useSearchRouteSwitchPostCommitRuntime = ({
     };
   }, [transientCleanupActions]);
 
-  const flushSettledCleanup = React.useCallback(
-    (cleanup: SearchRouteSwitchSettledCleanup) => {
-      withSearchNavSwitchRuntimeAttribution('routeSwitchPostCommit', 'flushSettledCleanup', () => {
-        const runtime = cleanupRuntimeRef.current;
-        const { targetSceneKey } = cleanup;
+  const flushSettledCleanup = React.useCallback((cleanup: SearchRouteSwitchSettledCleanup) => {
+    withSearchNavSwitchRuntimeAttribution('routeSwitchPostCommit', 'flushSettledCleanup', () => {
+      const runtime = cleanupRuntimeRef.current;
+      const { targetSceneKey } = cleanup;
 
-        const isSearchRootTarget = targetSceneKey === 'search' || targetSceneKey === 'polls';
-        const isSearchProfileRouteTarget = targetSceneKey === 'restaurant';
-        const cleanupSnapshot = runtime.transientCleanupActions.getSnapshot();
+      const isSearchRootTarget = targetSceneKey === 'search' || targetSceneKey === 'polls';
+      const isSearchProfileRouteTarget = targetSceneKey === 'restaurant';
+      const cleanupSnapshot = runtime.transientCleanupActions.getSnapshot();
 
-        runtime.transientCleanupActions.dismissTransientOverlays();
-        const shouldDeferSuggestionClear = cleanupSnapshot.isSuggestionPanelActive
-          ? runtime.transientCleanupActions.beginSuggestionCloseHold()
-          : false;
-        if (cleanupSnapshot.isSuggestionPanelActive) {
-          runtime.transientCleanupActions.resetSuggestionPanelActive();
-        }
-        if (isSearchRootTarget) {
-          runtime.transientCleanupActions.setSearchFlagsForSearchRoot();
-        }
-        if (!shouldDeferSuggestionClear && isSearchRootTarget) {
-          runtime.transientCleanupActions.clearSuggestions();
-        }
-        if (isSearchRootTarget && cleanupSnapshot.profilePresentationActive) {
-          runtime.transientCleanupActions.closeRestaurantProfile();
-        }
-        if (
-          !isSearchRootTarget &&
-          !isSearchProfileRouteTarget &&
-          cleanupSnapshot.profilePresentationActive
-        ) {
-          runtime.transientCleanupActions.closeRestaurantProfile();
-        }
-        runtime.transientCleanupActions.blurInput();
-      });
-    },
-    []
-  );
+      runtime.transientCleanupActions.dismissTransientOverlays();
+      const shouldDeferSuggestionClear = cleanupSnapshot.isSuggestionPanelActive
+        ? runtime.transientCleanupActions.beginSuggestionCloseHold()
+        : false;
+      if (cleanupSnapshot.isSuggestionPanelActive) {
+        runtime.transientCleanupActions.resetSuggestionPanelActive();
+      }
+      if (isSearchRootTarget) {
+        runtime.transientCleanupActions.setSearchFlagsForSearchRoot();
+      }
+      if (!shouldDeferSuggestionClear && isSearchRootTarget) {
+        runtime.transientCleanupActions.clearSuggestions();
+      }
+      if (isSearchRootTarget && cleanupSnapshot.profilePresentationActive) {
+        runtime.transientCleanupActions.closeRestaurantProfile();
+      }
+      if (
+        !isSearchRootTarget &&
+        !isSearchProfileRouteTarget &&
+        cleanupSnapshot.profilePresentationActive
+      ) {
+        runtime.transientCleanupActions.closeRestaurantProfile();
+      }
+      runtime.transientCleanupActions.blurInput();
+    });
+  }, []);
 
   const scheduleQuietSettledCleanup = React.useCallback(
     (cleanup: SearchRouteSwitchSettledCleanup) => {

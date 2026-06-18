@@ -24,8 +24,7 @@ export const useSearchRootForegroundEditingSearchUiArgs = ({
   return React.useMemo(
     () => ({
       setIsSearchFocused: rootPrimitivesRuntime.searchState.setIsSearchFocused,
-      setIsSuggestionPanelActive:
-        rootPrimitivesRuntime.searchState.setIsSuggestionPanelActive,
+      setIsSuggestionPanelActive: rootPrimitivesRuntime.searchState.setIsSuggestionPanelActive,
       setShowSuggestions: rootPrimitivesRuntime.searchState.setShowSuggestions,
       setSuggestions: rootPrimitivesRuntime.searchState.setSuggestions,
       setQuery: rootPrimitivesRuntime.searchState.setQuery,

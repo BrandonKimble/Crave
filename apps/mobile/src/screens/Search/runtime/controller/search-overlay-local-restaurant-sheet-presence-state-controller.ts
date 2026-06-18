@@ -52,10 +52,8 @@ export class SearchOverlayLocalRestaurantSheetPresenceStateController {
     localRestaurantSheetRenderVisibilityAuthority: SearchOverlayLocalRestaurantSheetRenderVisibilityAuthority;
     localRestaurantSheetProfilerGateAuthority: SearchOverlayLocalRestaurantSheetProfilerGateAuthority;
   }) {
-    this.renderVisibilitySnapshot =
-      localRestaurantSheetRenderVisibilityAuthority.getSnapshot();
-    this.profilerGateSnapshot =
-      localRestaurantSheetProfilerGateAuthority.getSnapshot();
+    this.renderVisibilitySnapshot = localRestaurantSheetRenderVisibilityAuthority.getSnapshot();
+    this.profilerGateSnapshot = localRestaurantSheetProfilerGateAuthority.getSnapshot();
     this.snapshot = createPresenceSnapshot({
       renderVisibilitySnapshot: this.renderVisibilitySnapshot,
       profilerGateSnapshot: this.profilerGateSnapshot,
@@ -71,9 +69,7 @@ export class SearchOverlayLocalRestaurantSheetPresenceStateController {
         );
       }),
       localRestaurantSheetProfilerGateAuthority.subscribe(() => {
-        this.setProfilerGateSnapshot(
-          localRestaurantSheetProfilerGateAuthority.getSnapshot()
-        );
+        this.setProfilerGateSnapshot(localRestaurantSheetProfilerGateAuthority.getSnapshot());
       })
     );
   }
@@ -120,8 +116,7 @@ export class SearchOverlayLocalRestaurantSheetPresenceStateController {
     });
 
     if (
-      this.snapshot.shouldRenderSearchOverlay ===
-        nextSnapshot.shouldRenderSearchOverlay &&
+      this.snapshot.shouldRenderSearchOverlay === nextSnapshot.shouldRenderSearchOverlay &&
       this.snapshot.onProfilerRender === nextSnapshot.onProfilerRender
     ) {
       return;

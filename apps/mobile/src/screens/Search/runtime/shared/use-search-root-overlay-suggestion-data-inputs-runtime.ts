@@ -14,8 +14,7 @@ export const useSearchRootOverlaySuggestionDataInputsRuntime = ({
     () => ({
       suggestionDisplaySuggestions: suggestionRuntime.suggestionDisplaySuggestions,
       recentSearchesDisplay: suggestionRuntime.recentSearchesDisplay,
-      recentlyViewedRestaurantsDisplay:
-        suggestionRuntime.recentlyViewedRestaurantsDisplay,
+      recentlyViewedRestaurantsDisplay: suggestionRuntime.recentlyViewedRestaurantsDisplay,
       recentlyViewedFoodsDisplay: suggestionRuntime.recentlyViewedFoodsDisplay,
     }),
     [

@@ -6,9 +6,7 @@ import {
   areSearchLayoutRectanglesClose,
   hasUsableSearchHeaderHeight,
 } from './search-suggestion-search-layout-runtime';
-import type {
-  SearchInteractionRef,
-} from './use-search-suggestion-surface-runtime-contract';
+import type { SearchInteractionRef } from './use-search-suggestion-surface-runtime-contract';
 
 type UseSearchSuggestionSearchHeaderLayoutRuntimeArgs = {
   startupGeometrySeed: import('./search-startup-geometry').SearchStartupGeometrySeed;

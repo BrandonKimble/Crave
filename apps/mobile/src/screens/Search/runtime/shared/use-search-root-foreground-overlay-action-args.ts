@@ -2,9 +2,7 @@ import React from 'react';
 
 import type { ProfileOwner } from '../profile/profile-owner-runtime-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
-import type {
-  SearchRootStateFoundationLane,
-} from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
 import type { SearchForegroundOverlayRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
 
 type SearchRootForegroundOverlayActionArgs = Pick<
@@ -37,10 +35,7 @@ export const useSearchRootForegroundOverlayActionArgs = ({
 }: UseSearchRootForegroundOverlayActionArgsArgs): SearchRootForegroundOverlayActionArgs => {
   const { rootPrimitivesRuntime, rootDataPlaneRuntime, rootSuggestionRuntime } =
     stateFoundationLane;
-  const {
-    rootOverlayStoreRuntime,
-    routeOverlayTransitionActions,
-  } = rootOverlayFoundationRuntime;
+  const { rootOverlayStoreRuntime, routeOverlayTransitionActions } = rootOverlayFoundationRuntime;
 
   return React.useMemo(
     () => ({

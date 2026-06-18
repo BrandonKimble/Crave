@@ -9,8 +9,7 @@ export type SearchRuntimeSessionServicesRuntime = {
   searchSessionController: SearchSessionController;
 };
 
-export const useSearchRuntimeSessionServicesRuntime =
-(): SearchRuntimeSessionServicesRuntime => {
+export const useSearchRuntimeSessionServicesRuntime = (): SearchRuntimeSessionServicesRuntime => {
   const searchSessionControllerRef = React.useRef<SearchSessionController | null>(null);
   if (!searchSessionControllerRef.current) {
     searchSessionControllerRef.current = createSearchSessionController();

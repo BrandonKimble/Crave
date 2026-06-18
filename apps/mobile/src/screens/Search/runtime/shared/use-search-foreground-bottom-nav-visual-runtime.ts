@@ -373,8 +373,8 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
         navCutoutProofEdge: isSubmitHideMidpoint
           ? ('submit_hide_midpoint' as const)
           : isDismissPreBoundaryReturn
-          ? ('dismiss_pre_boundary_return' as const)
-          : ('persistent_poll_handoff' as const),
+            ? ('dismiss_pre_boundary_return' as const)
+            : ('persistent_poll_handoff' as const),
         navCutoutProofProgress,
         searchSurfaceCanReleasePersistentPollsSample: surfaceVisualPolicy.canReleasePersistentPolls,
         searchSurfacePhaseSample: surfaceVisualPolicy.phase,

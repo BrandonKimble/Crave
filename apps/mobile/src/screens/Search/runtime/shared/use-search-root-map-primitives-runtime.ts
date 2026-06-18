@@ -6,10 +6,7 @@ import type { MapboxMapRef } from '../../components/search-map';
 import type { SearchRootMapStateRuntime } from './search-root-primitives-runtime-contract';
 import type { SearchRootBootstrapEnvironment } from './search-root-environment-contract';
 
-type UseSearchRootMapPrimitivesRuntimeArgs = Pick<
-  SearchRootBootstrapEnvironment,
-  'startupCamera'
->;
+type UseSearchRootMapPrimitivesRuntimeArgs = Pick<SearchRootBootstrapEnvironment, 'startupCamera'>;
 
 export const useSearchRootMapPrimitivesRuntime = ({
   startupCamera,

@@ -1,6 +1,8 @@
 import React from 'react';
 
-export const useSearchRootProfilePendingMarkerRuntime = (): React.MutableRefObject<number | null> => {
+export const useSearchRootProfilePendingMarkerRuntime = (): React.MutableRefObject<
+  number | null
+> => {
   const pendingMarkerOpenAnimationFrameRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {

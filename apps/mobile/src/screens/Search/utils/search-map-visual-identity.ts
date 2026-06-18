@@ -8,9 +8,7 @@ type RestaurantVisualIdentityProperties = {
 
 export type SearchMapVisualIdentityKey = string;
 
-export const buildSearchMapVisualIdentityKey = <
-  TProps extends RestaurantVisualIdentityProperties,
->(
+export const buildSearchMapVisualIdentityKey = <TProps extends RestaurantVisualIdentityProperties>(
   feature: Feature<Point, TProps>
 ): SearchMapVisualIdentityKey => {
   const [lng, lat] = feature.geometry.coordinates;

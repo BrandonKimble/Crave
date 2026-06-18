@@ -129,7 +129,17 @@ type SearchMapLabelObservationConfig = {
   labelResetRequestKey: string | null;
 };
 
-type SearchMapNativeLabelObservationApplyStatus = 'skipped' | 'requested' | 'applied' | 'failed';
+type SearchMapNativeLabelObservationApplyStatus =
+  | 'skipped'
+  | 'requested'
+  | 'applied'
+  | 'failed'
+  // Cluster 7 (sticky-label reapply queue): a config push (typically the
+  // observation DISABLE / clear-visible-hits push as the phase flips into the
+  // visible reveal/dismiss hot window) was discovered while the presentation
+  // phase forbids structural apply. It is held — not sent — and the LATEST held
+  // value is flushed when the phase returns to an allowed state.
+  | 'deferred';
 
 type SearchMapNativeRenderOwnerStatusResult = {
   instanceId: string;
@@ -1894,6 +1904,13 @@ const useSearchMapNativeRenderOwnerStatus = ({
     ).isPresentationActive
   );
   const lastSubmittedLabelObservationConfigKeyRef = React.useRef<string | null>(null);
+  // Cluster 7 (sticky-label reapply queue): true while a label-observation config
+  // change is being HELD because the presentation phase forbids structural apply
+  // (the visible reveal/dismiss hot window). It is cleared the moment the phase
+  // returns to allowed and the held config is flushed. Only used for diagnostics /
+  // to force the flush eval to run (it deliberately does NOT store a backlog — the
+  // next allowed eval recomputes the LATEST config and coalesces to it).
+  const hasDeferredLabelObservationConfigRef = React.useRef(false);
   const activeLabelObservationTransactionKeyRef = React.useRef<string | null>(null);
   const sourceFramePortRef = React.useRef(sourceFramePort);
   const selectedRestaurantIdRef = React.useRef(selectedRestaurantId);
@@ -2722,9 +2739,44 @@ const useSearchMapNativeRenderOwnerStatus = ({
     if (!isNativeAvailable || !isAttached) {
       lastSubmittedLabelObservationConfigKeyRef.current = null;
       activeLabelObservationTransactionKeyRef.current = null;
+      hasDeferredLabelObservationConfigRef.current = false;
       logLabelObservationConfig('skipped');
       return;
     }
+    // Cluster 7 (sticky-label reapply QUEUE). INVARIANT: the sticky/label
+    // ENABLE-and-reapply push (the one that runs queryRenderedFeatures + re-resolves
+    // sticky label sides on native) can ONLY be emitted when the phase already
+    // ALLOWS it. `effectiveObservationEnabled` requires `lanePolicy.allowObservation`
+    // (settled/live) or the documented preparing-enter exception — both are allowed
+    // phases. So a sticky reapply is DEFERRED-BY-CONSTRUCTION: it is impossible to
+    // fire during the visible reveal/dismiss hot window (`enter_executing` /
+    // `exit_requested` / `exit_executing`), where `effectiveObservationEnabled` is
+    // forced false. The observation gate IS the queue: any sticky change discovered
+    // while the phase forbids it is not applied; the next allowed eval (driven by the
+    // presentation-authority subscription below) recomputes the LATEST sticky/lock
+    // state and applies it once — coalesce-to-latest, no backlog replay, so sticky
+    // labels keep their collision-driven side.
+    //
+    // The ONLY push that can reach native during a forbidden phase is the
+    // observation DISABLE (`observationEnabled: false`). That is intentional and must
+    // NOT be queued: it is what QUIETS the hot window (it stops native's refresh
+    // scheduler from re-resolving labels mid-animation). Native's own refresh guard
+    // only suppresses the dismissing/hidden lifecycle, so this JS disable is the
+    // authority that keeps the visible reveal clean. We therefore let the disable
+    // through and only assert/diagnose the enable-side invariant here.
+    if (!lanePolicy.allowStructuralApply && effectiveObservationEnabled) {
+      // Unreachable by construction (see invariant above). If it ever trips, a sticky
+      // reapply leaked into the hot window: hold it and let the next allowed eval
+      // flush the latest, rather than applying during the forbidden phase.
+      hasDeferredLabelObservationConfigRef.current = true;
+      logLabelObservationConfig('deferred');
+      return;
+    }
+    // Draining the queue: if a reapply was held during a forbidden phase, this is the
+    // first allowed eval. Flush the LATEST config unconditionally (bypass dedup) so a
+    // held sticky/lock update can never be coalesced away by a stale dedup key.
+    const isFlushingDeferredReapply = hasDeferredLabelObservationConfigRef.current;
+    hasDeferredLabelObservationConfigRef.current = false;
     const nextConfigKey = buildLabelObservationConfigKey({
       activeTransactionKey: activeObservationTransactionKey,
       commitVisibleLabelHits: effectiveCommitVisibleLabelHits,
@@ -2733,7 +2785,10 @@ const useSearchMapNativeRenderOwnerStatus = ({
       observationEnabled: effectiveObservationEnabled,
       ownerEpoch,
     });
-    if (lastSubmittedLabelObservationConfigKeyRef.current === nextConfigKey) {
+    if (
+      !isFlushingDeferredReapply &&
+      lastSubmittedLabelObservationConfigKeyRef.current === nextConfigKey
+    ) {
       return;
     }
     lastSubmittedLabelObservationConfigKeyRef.current = nextConfigKey;

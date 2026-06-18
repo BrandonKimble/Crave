@@ -9,10 +9,7 @@ import type { useSearchScreenAppEntryPlaneRuntime } from './use-search-screen-ap
 import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
 
 type UseSearchRootMapSurfaceStateRuntimeArgs = {
-  appEntryPlaneRuntime: Pick<
-    ReturnType<typeof useSearchScreenAppEntryPlaneRuntime>,
-    'accessToken'
-  >;
+  appEntryPlaneRuntime: Pick<ReturnType<typeof useSearchScreenAppEntryPlaneRuntime>, 'accessToken'>;
   stateFoundationLane: SearchRootStateFoundationLane;
   mapViewportIntentRuntime: SearchRootMapViewportIntentRuntime;
   mapPresentationRuntime: ReturnType<typeof useSearchRootMapPresentationRuntime>;
@@ -20,9 +17,7 @@ type UseSearchRootMapSurfaceStateRuntimeArgs = {
 
 export type SearchRootMapSurfaceStateRuntimeValue = {
   styleURL: string;
-  presentationLifecyclePort: ReturnType<
-    typeof useSearchRootMapPresentationLifecycleRuntime
-  >;
+  presentationLifecyclePort: ReturnType<typeof useSearchRootMapPresentationLifecycleRuntime>;
   mapSurfaceState: ReturnType<typeof createSearchRootMapSurfaceState>;
 };
 
@@ -38,8 +33,7 @@ export const useSearchRootMapSurfaceStateRuntime = ({
   );
 
   const presentationLifecyclePort = useSearchRootMapPresentationLifecycleRuntime({
-    presentationLifecycleHandlers:
-      mapPresentationRuntime.presentationLifecycleHandlers,
+    presentationLifecycleHandlers: mapPresentationRuntime.presentationLifecycleHandlers,
   });
 
   const mapSurfaceState = React.useMemo(

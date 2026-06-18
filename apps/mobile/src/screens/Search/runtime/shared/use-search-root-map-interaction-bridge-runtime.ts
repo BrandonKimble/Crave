@@ -1,8 +1,6 @@
 import React from 'react';
 
-import type {
-  SearchMapRenderHostConfig,
-} from '../../components/SearchMapWithMarkerEngine';
+import type { SearchMapRenderHostConfig } from '../../components/SearchMapWithMarkerEngine';
 import type { useMapInteractionController } from '../map/map-interaction-controller';
 
 type SearchRootMapInteractionRuntime = ReturnType<typeof useMapInteractionController>;
@@ -21,17 +19,12 @@ export const useSearchRootMapInteractionBridgeRuntime = ({
     mapInteractionRuntime.handleNativeViewportChanged
   );
   const handleMapIdleRef = React.useRef(mapInteractionRuntime.handleMapIdle);
-  const handleMapTouchStartRef = React.useRef(
-    mapInteractionRuntime.handleMapTouchStart
-  );
-  const handleMapTouchEndRef = React.useRef(
-    mapInteractionRuntime.handleMapTouchEnd
-  );
+  const handleMapTouchStartRef = React.useRef(mapInteractionRuntime.handleMapTouchStart);
+  const handleMapTouchEndRef = React.useRef(mapInteractionRuntime.handleMapTouchEnd);
   const handleMapLoadedRef = React.useRef(handleMapLoaded);
 
   handleMapPressRef.current = mapInteractionRuntime.handleMapPress;
-  handleNativeViewportChangedRef.current =
-    mapInteractionRuntime.handleNativeViewportChanged;
+  handleNativeViewportChangedRef.current = mapInteractionRuntime.handleNativeViewportChanged;
   handleMapIdleRef.current = mapInteractionRuntime.handleMapIdle;
   handleMapTouchStartRef.current = mapInteractionRuntime.handleMapTouchStart;
   handleMapTouchEndRef.current = mapInteractionRuntime.handleMapTouchEnd;

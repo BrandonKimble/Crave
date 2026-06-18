@@ -15,27 +15,23 @@ export const useSearchRootOverlayRankAndScoreModalLayerRuntime = ({
   React.useMemo(
     () => ({
       rankAndScoreSheetsProps: {
-        isScoreInfoVisible:
-          filterModalControlLane.filterModalRuntime.isScoreInfoVisible,
+        isScoreInfoVisible: filterModalControlLane.filterModalRuntime.isScoreInfoVisible,
         scoreInfo: filterModalControlLane.filterModalRuntime.scoreInfo,
         closeScoreInfo: filterModalControlLane.filterModalRuntime.closeScoreInfo,
         clearScoreInfo: filterModalControlLane.filterModalRuntime.clearScoreInfo,
         scoreInfoMaxHeight: SCORE_INFO_MAX_HEIGHT,
         formatCompactCount,
         onProfilerRender:
-          rootOverlayFoundationRuntime.rootInstrumentationRuntime
-            .handleProfilerRender,
+          rootOverlayFoundationRuntime.rootInstrumentationRuntime.handleProfilerRender,
       },
       onProfilerRender:
-        rootOverlayFoundationRuntime.rootInstrumentationRuntime
-          .handleProfilerRender,
+        rootOverlayFoundationRuntime.rootInstrumentationRuntime.handleProfilerRender,
     }),
     [
       filterModalControlLane.filterModalRuntime.clearScoreInfo,
       filterModalControlLane.filterModalRuntime.closeScoreInfo,
       filterModalControlLane.filterModalRuntime.isScoreInfoVisible,
       filterModalControlLane.filterModalRuntime.scoreInfo,
-      rootOverlayFoundationRuntime.rootInstrumentationRuntime
-        .handleProfilerRender,
+      rootOverlayFoundationRuntime.rootInstrumentationRuntime.handleProfilerRender,
     ]
   );

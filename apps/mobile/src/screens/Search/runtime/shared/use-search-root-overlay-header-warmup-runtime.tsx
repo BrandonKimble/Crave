@@ -1,10 +1,7 @@
 import React from 'react';
 
 import SearchFilters, { cloneSearchFiltersLayoutCache } from '../../components/SearchFilters';
-import {
-  ACTIVE_TAB_COLOR,
-  CONTENT_HORIZONTAL_PADDING,
-} from '../../constants/search';
+import { ACTIVE_TAB_COLOR, CONTENT_HORIZONTAL_PADDING } from '../../constants/search';
 import type { SearchOverlayChromeHiddenSearchFiltersWarmupProps } from './search-foreground-chrome-contract';
 import type { SearchRootFilterModalControlLane } from './use-search-root-control-plane-runtime-contract';
 import type { SearchRootSearchStateRuntime } from './search-root-primitives-runtime-contract';
@@ -28,12 +25,9 @@ export const useSearchRootOverlayHeaderWarmupRuntime = ({
         : {
             activeTab: searchState.activeTab,
             openNow: filterModalControlLane.filterModalRuntime.openNow,
-            votesFilterActive:
-              filterModalControlLane.filterModalRuntime.votesFilterActive,
-            priceButtonLabelText:
-              filterModalControlLane.filterModalRuntime.priceButtonLabelText,
-            priceButtonIsActive:
-              filterModalControlLane.filterModalRuntime.priceButtonIsActive,
+            votesFilterActive: filterModalControlLane.filterModalRuntime.votesFilterActive,
+            priceButtonLabelText: filterModalControlLane.filterModalRuntime.priceButtonLabelText,
+            priceButtonIsActive: filterModalControlLane.filterModalRuntime.priceButtonIsActive,
             initialLayoutCache: cloneSearchFiltersLayoutCache(
               searchState.searchFiltersLayoutCacheRef.current
             ),

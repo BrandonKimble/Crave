@@ -103,9 +103,8 @@ export const createSearchChromeScalarSurfaceMeasurementRuntime = (
     hostKey,
     getSnapshot: () => snapshot,
     measureNow: async () => {
-      const measuredSnapshot = await searchChromeScalarSurfaceRegistry.measureRegisteredControls(
-        hostKey
-      );
+      const measuredSnapshot =
+        await searchChromeScalarSurfaceRegistry.measureRegisteredControls(hostKey);
       return applyMeasuredSnapshot(measuredSnapshot);
     },
     clear: () => {

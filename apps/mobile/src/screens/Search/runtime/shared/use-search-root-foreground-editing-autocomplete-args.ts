@@ -29,8 +29,7 @@ export const useSearchRootForegroundEditingAutocompleteArgs = ({
       allowAutocompleteResults: autocompleteRuntime.allowAutocompleteResults,
       suppressAutocompleteResults: autocompleteRuntime.suppressAutocompleteResults,
       cancelAutocomplete: rootDataPlaneRuntime.requestStatusRuntime.cancelAutocomplete,
-      setIsAutocompleteSuppressed:
-        rootPrimitivesRuntime.searchState.setIsAutocompleteSuppressed,
+      setIsAutocompleteSuppressed: rootPrimitivesRuntime.searchState.setIsAutocompleteSuppressed,
     }),
     [
       autocompleteRuntime.allowAutocompleteResults,

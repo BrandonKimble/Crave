@@ -4,10 +4,7 @@ import type { ResultsCloseTransitionActions } from './results-presentation-shell
 
 type UseResultsPresentationCloseTransitionBridgeRuntimeArgs = {
   markSearchSheetCloseMapExitSettledRef: React.MutableRefObject<(requestKey: string) => void>;
-  closeTransitionActions: Pick<
-    ResultsCloseTransitionActions,
-    'markSearchSheetCloseMapExitSettled'
-  >;
+  closeTransitionActions: Pick<ResultsCloseTransitionActions, 'markSearchSheetCloseMapExitSettled'>;
 };
 
 export const useResultsPresentationCloseTransitionBridgeRuntime = ({

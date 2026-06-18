@@ -11,11 +11,7 @@ export const useSearchRootSearchSceneReconnectBusPatchRuntime = ({
   React.useMemo(
     () => ({
       shouldRetrySearchOnReconnect:
-        foregroundInteractionControlLane.foregroundInteractionRuntime
-          .shouldRetrySearchOnReconnect,
+        foregroundInteractionControlLane.foregroundInteractionRuntime.shouldRetrySearchOnReconnect,
     }),
-    [
-      foregroundInteractionControlLane.foregroundInteractionRuntime
-        .shouldRetrySearchOnReconnect,
-    ]
+    [foregroundInteractionControlLane.foregroundInteractionRuntime.shouldRetrySearchOnReconnect]
   );

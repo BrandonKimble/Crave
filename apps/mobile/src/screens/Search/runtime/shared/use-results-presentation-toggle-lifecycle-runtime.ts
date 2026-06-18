@@ -1,8 +1,6 @@
 import React from 'react';
 
-import type {
-  ResultsInteractionModel,
-} from './results-presentation-owner-contract';
+import type { ResultsInteractionModel } from './results-presentation-owner-contract';
 import type { ResultsPresentationRuntimeOwner } from './results-presentation-runtime-owner-contract';
 import {
   type ScheduleToggleCommit,

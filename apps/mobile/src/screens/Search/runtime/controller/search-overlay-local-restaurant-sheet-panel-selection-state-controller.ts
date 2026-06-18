@@ -49,9 +49,7 @@ export class SearchOverlayLocalRestaurantSheetPanelSelectionStateController {
   }) {
     this.restaurantPanelContentSnapshot =
       overlayLocalRestaurantPanelContentHostAuthority.getSnapshot();
-    this.snapshot = createPanelSelectionSnapshot(
-      this.restaurantPanelContentSnapshot
-    );
+    this.snapshot = createPanelSelectionSnapshot(this.restaurantPanelContentSnapshot);
     this.outputAuthority = {
       subscribe: (listener) => this.subscribe(listener),
       getSnapshot: () => this.snapshot,
@@ -89,9 +87,7 @@ export class SearchOverlayLocalRestaurantSheetPanelSelectionStateController {
   }
 
   private recompute(): void {
-    const nextSnapshot = createPanelSelectionSnapshot(
-      this.restaurantPanelContentSnapshot
-    );
+    const nextSnapshot = createPanelSelectionSnapshot(this.restaurantPanelContentSnapshot);
 
     if (arePanelSelectionSnapshotsEqual(this.snapshot, nextSnapshot)) {
       return;
@@ -104,12 +100,11 @@ export class SearchOverlayLocalRestaurantSheetPanelSelectionStateController {
   }
 }
 
-export const createSearchOverlayLocalRestaurantSheetPanelSelectionStateController =
-  ({
+export const createSearchOverlayLocalRestaurantSheetPanelSelectionStateController = ({
+  overlayLocalRestaurantPanelContentHostAuthority,
+}: ConstructorParameters<
+  typeof SearchOverlayLocalRestaurantSheetPanelSelectionStateController
+>[0]): SearchOverlayLocalRestaurantSheetPanelSelectionStateController =>
+  new SearchOverlayLocalRestaurantSheetPanelSelectionStateController({
     overlayLocalRestaurantPanelContentHostAuthority,
-  }: ConstructorParameters<
-    typeof SearchOverlayLocalRestaurantSheetPanelSelectionStateController
-  >[0]): SearchOverlayLocalRestaurantSheetPanelSelectionStateController =>
-    new SearchOverlayLocalRestaurantSheetPanelSelectionStateController({
-      overlayLocalRestaurantPanelContentHostAuthority,
-    });
+  });

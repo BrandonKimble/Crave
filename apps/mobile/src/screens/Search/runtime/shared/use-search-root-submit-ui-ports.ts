@@ -13,9 +13,7 @@ import { useSearchRootSubmitUiPresentationPorts } from './use-search-root-submit
 import { useSearchRootSubmitUiResultsPorts } from './use-search-root-submit-ui-results-ports';
 import { useSearchRootSubmitUiSearchPorts } from './use-search-root-submit-ui-search-ports';
 
-type SearchRootSubmitUiPorts = Parameters<
-  typeof useSearchSubmitOwnerValue
->[0]['uiPorts'];
+type SearchRootSubmitUiPorts = Parameters<typeof useSearchSubmitOwnerValue>[0]['uiPorts'];
 
 type UseSearchRootSubmitUiPortsArgs = {
   stateFoundationLane: SearchRootStateFoundationLane;

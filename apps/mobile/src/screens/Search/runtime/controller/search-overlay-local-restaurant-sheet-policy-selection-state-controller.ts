@@ -19,22 +19,17 @@ const arePolicySelectionSnapshotsEqual = (
   left: SearchOverlayLocalRestaurantSheetPolicySelectionSnapshot,
   right: SearchOverlayLocalRestaurantSheetPolicySelectionSnapshot
 ): boolean =>
-  left.shouldSuppressRestaurantOverlay ===
-    right.shouldSuppressRestaurantOverlay &&
-  left.shouldFreezeRestaurantPanelContent ===
-    right.shouldFreezeRestaurantPanelContent &&
-  left.shouldEnableRestaurantOverlayInteraction ===
-    right.shouldEnableRestaurantOverlayInteraction;
+  left.shouldSuppressRestaurantOverlay === right.shouldSuppressRestaurantOverlay &&
+  left.shouldFreezeRestaurantPanelContent === right.shouldFreezeRestaurantPanelContent &&
+  left.shouldEnableRestaurantOverlayInteraction === right.shouldEnableRestaurantOverlayInteraction;
 
 const createPolicySelectionSnapshot = (
   restaurantPolicySnapshot: ReturnType<
     SearchOverlayLocalRestaurantPolicyHostAuthority['getSnapshot']
   >
 ): SearchOverlayLocalRestaurantSheetPolicySelectionSnapshot => ({
-  shouldSuppressRestaurantOverlay:
-    restaurantPolicySnapshot.shouldSuppressRestaurantOverlay,
-  shouldFreezeRestaurantPanelContent:
-    restaurantPolicySnapshot.shouldFreezeRestaurantPanelContent,
+  shouldSuppressRestaurantOverlay: restaurantPolicySnapshot.shouldSuppressRestaurantOverlay,
+  shouldFreezeRestaurantPanelContent: restaurantPolicySnapshot.shouldFreezeRestaurantPanelContent,
   shouldEnableRestaurantOverlayInteraction:
     restaurantPolicySnapshot.shouldEnableRestaurantOverlayInteraction,
 });
@@ -57,19 +52,15 @@ export class SearchOverlayLocalRestaurantSheetPolicySelectionStateController {
   }: {
     overlayLocalRestaurantPolicyHostAuthority: SearchOverlayLocalRestaurantPolicyHostAuthority;
   }) {
-    this.restaurantPolicySnapshot =
-      overlayLocalRestaurantPolicyHostAuthority.getSnapshot();
+    this.restaurantPolicySnapshot = overlayLocalRestaurantPolicyHostAuthority.getSnapshot();
     this.snapshot = createPolicySelectionSnapshot(this.restaurantPolicySnapshot);
     this.outputAuthority = {
       subscribe: (listener) => this.subscribe(listener),
       getSnapshot: () => this.snapshot,
     };
-    this.unsubscribeRestaurantPolicy =
-      overlayLocalRestaurantPolicyHostAuthority.subscribe(() => {
-        this.setRestaurantPolicySnapshot(
-          overlayLocalRestaurantPolicyHostAuthority.getSnapshot()
-        );
-      });
+    this.unsubscribeRestaurantPolicy = overlayLocalRestaurantPolicyHostAuthority.subscribe(() => {
+      this.setRestaurantPolicySnapshot(overlayLocalRestaurantPolicyHostAuthority.getSnapshot());
+    });
   }
 
   public dispose(): void {
@@ -97,9 +88,7 @@ export class SearchOverlayLocalRestaurantSheetPolicySelectionStateController {
   }
 
   private recompute(): void {
-    const nextSnapshot = createPolicySelectionSnapshot(
-      this.restaurantPolicySnapshot
-    );
+    const nextSnapshot = createPolicySelectionSnapshot(this.restaurantPolicySnapshot);
 
     if (arePolicySelectionSnapshotsEqual(this.snapshot, nextSnapshot)) {
       return;
@@ -112,12 +101,11 @@ export class SearchOverlayLocalRestaurantSheetPolicySelectionStateController {
   }
 }
 
-export const createSearchOverlayLocalRestaurantSheetPolicySelectionStateController =
-  ({
+export const createSearchOverlayLocalRestaurantSheetPolicySelectionStateController = ({
+  overlayLocalRestaurantPolicyHostAuthority,
+}: ConstructorParameters<
+  typeof SearchOverlayLocalRestaurantSheetPolicySelectionStateController
+>[0]): SearchOverlayLocalRestaurantSheetPolicySelectionStateController =>
+  new SearchOverlayLocalRestaurantSheetPolicySelectionStateController({
     overlayLocalRestaurantPolicyHostAuthority,
-  }: ConstructorParameters<
-    typeof SearchOverlayLocalRestaurantSheetPolicySelectionStateController
-  >[0]): SearchOverlayLocalRestaurantSheetPolicySelectionStateController =>
-    new SearchOverlayLocalRestaurantSheetPolicySelectionStateController({
-      overlayLocalRestaurantPolicyHostAuthority,
-    });
+  });

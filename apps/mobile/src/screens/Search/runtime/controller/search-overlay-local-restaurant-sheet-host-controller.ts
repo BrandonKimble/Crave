@@ -38,8 +38,7 @@ export class SearchOverlayLocalRestaurantSheetHostController {
     localRestaurantSheetVisualHostAuthority: SearchOverlayLocalRestaurantSheetVisualHostAuthority;
   }) {
     this.sessionHostSnapshot = localRestaurantSheetSessionHostAuthority.getSnapshot();
-    this.controlSelectionSnapshot =
-      localRestaurantSheetControlSelectionAuthority.getSnapshot();
+    this.controlSelectionSnapshot = localRestaurantSheetControlSelectionAuthority.getSnapshot();
     this.visualHostSnapshot = localRestaurantSheetVisualHostAuthority.getSnapshot();
     this.snapshot = this.resolveSnapshot();
     this.outputAuthority = {
@@ -49,9 +48,7 @@ export class SearchOverlayLocalRestaurantSheetHostController {
 
     this.unsubscribers.push(
       localRestaurantSheetSessionHostAuthority.subscribe(() => {
-        this.setSessionHostSnapshot(
-          localRestaurantSheetSessionHostAuthority.getSnapshot()
-        );
+        this.setSessionHostSnapshot(localRestaurantSheetSessionHostAuthority.getSnapshot());
       }),
       localRestaurantSheetControlSelectionAuthority.subscribe(() => {
         this.setControlSelectionSnapshot(
@@ -59,9 +56,7 @@ export class SearchOverlayLocalRestaurantSheetHostController {
         );
       }),
       localRestaurantSheetVisualHostAuthority.subscribe(() => {
-        this.setVisualHostSnapshot(
-          localRestaurantSheetVisualHostAuthority.getSnapshot()
-        );
+        this.setVisualHostSnapshot(localRestaurantSheetVisualHostAuthority.getSnapshot());
       })
     );
   }
@@ -81,8 +76,7 @@ export class SearchOverlayLocalRestaurantSheetHostController {
     return {
       restaurantSessionSnapshot: this.sessionHostSnapshot.restaurantSessionSnapshot,
       restaurantControlSelectionSnapshot: this.controlSelectionSnapshot,
-      shouldRenderSearchOverlay:
-        this.visualHostSnapshot.shouldRenderSearchOverlay,
+      shouldRenderSearchOverlay: this.visualHostSnapshot.shouldRenderSearchOverlay,
       routeHostVisualSnapshot: this.visualHostSnapshot.routeHostVisualSnapshot,
       onProfilerRender: this.visualHostSnapshot.onProfilerRender,
     };
@@ -93,16 +87,13 @@ export class SearchOverlayLocalRestaurantSheetHostController {
     nextSnapshot: SearchOverlayLocalRestaurantSheetHostSnapshot
   ): boolean {
     return (
-      currentSnapshot.restaurantSessionSnapshot ===
-        nextSnapshot.restaurantSessionSnapshot &&
+      currentSnapshot.restaurantSessionSnapshot === nextSnapshot.restaurantSessionSnapshot &&
       areRouteLocalRestaurantOverlayControlSelectionSnapshotsEqual(
         currentSnapshot.restaurantControlSelectionSnapshot,
         nextSnapshot.restaurantControlSelectionSnapshot
       ) &&
-      currentSnapshot.shouldRenderSearchOverlay ===
-        nextSnapshot.shouldRenderSearchOverlay &&
-      currentSnapshot.routeHostVisualSnapshot ===
-        nextSnapshot.routeHostVisualSnapshot &&
+      currentSnapshot.shouldRenderSearchOverlay === nextSnapshot.shouldRenderSearchOverlay &&
+      currentSnapshot.routeHostVisualSnapshot === nextSnapshot.routeHostVisualSnapshot &&
       currentSnapshot.onProfilerRender === nextSnapshot.onProfilerRender
     );
   }
@@ -167,7 +158,9 @@ export const createSearchOverlayLocalRestaurantSheetHostController = ({
   localRestaurantSheetSessionHostAuthority,
   localRestaurantSheetControlSelectionAuthority,
   localRestaurantSheetVisualHostAuthority,
-}: ConstructorParameters<typeof SearchOverlayLocalRestaurantSheetHostController>[0]): SearchOverlayLocalRestaurantSheetHostController =>
+}: ConstructorParameters<
+  typeof SearchOverlayLocalRestaurantSheetHostController
+>[0]): SearchOverlayLocalRestaurantSheetHostController =>
   new SearchOverlayLocalRestaurantSheetHostController({
     localRestaurantSheetSessionHostAuthority,
     localRestaurantSheetControlSelectionAuthority,

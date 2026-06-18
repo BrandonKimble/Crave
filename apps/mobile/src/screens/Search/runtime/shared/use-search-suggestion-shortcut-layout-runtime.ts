@@ -25,8 +25,9 @@ const cloneSearchLayoutRectangle = (layout: LayoutRectangle): LayoutRectangle =>
 
 export const useSearchSuggestionShortcutLayoutRuntime =
   (): SearchSuggestionShortcutLayoutRuntime => {
-    const [searchShortcutsFrame, setSearchShortcutsFrame] =
-      React.useState<LayoutRectangle | null>(null);
+    const [searchShortcutsFrame, setSearchShortcutsFrame] = React.useState<LayoutRectangle | null>(
+      null
+    );
     const [searchShortcutChipFrames, setSearchShortcutChipFrames] = React.useState<
       Record<string, LayoutRectangle>
     >({});
@@ -110,8 +111,7 @@ export const useSearchSuggestionShortcutLayoutRuntime =
         searchShortcutsFrame,
         cachedSearchShortcutsFrame: searchShortcutsLayoutCacheRef.current.frame,
         searchShortcutChipFrames,
-        cachedSearchShortcutChipFrames:
-          searchShortcutsLayoutCacheRef.current.chipFrames,
+        cachedSearchShortcutChipFrames: searchShortcutsLayoutCacheRef.current.chipFrames,
         handleSearchShortcutsRowLayout,
         handleRestaurantsShortcutLayout,
         handleDishesShortcutLayout,

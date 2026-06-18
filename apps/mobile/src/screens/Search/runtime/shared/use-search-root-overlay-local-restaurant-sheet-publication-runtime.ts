@@ -10,19 +10,16 @@ export const useSearchRootOverlayLocalRestaurantSheetPublicationRuntime = ({
   localRestaurantSheetControlSelectionAuthority,
   localRestaurantSheetVisualHostAuthority,
 }: SearchRootOverlayLocalRestaurantSheetStateRuntime): SearchRootOverlayLocalRestaurantSheetPublicationRuntime => {
-  const localRestaurantSheetHostController =
-    useSearchRuntimeControllerRuntime(() =>
-      createSearchOverlayLocalRestaurantSheetHostController({
-        localRestaurantSheetSessionHostAuthority,
-        localRestaurantSheetControlSelectionAuthority,
-        localRestaurantSheetVisualHostAuthority,
-      })
-    );
+  const localRestaurantSheetHostController = useSearchRuntimeControllerRuntime(() =>
+    createSearchOverlayLocalRestaurantSheetHostController({
+      localRestaurantSheetSessionHostAuthority,
+      localRestaurantSheetControlSelectionAuthority,
+      localRestaurantSheetVisualHostAuthority,
+    })
+  );
 
   return {
-    localRestaurantSheetHostAuthority:
-      localRestaurantSheetHostController.outputAuthority,
-    overlayLocalRestaurantSheetHostAuthority:
-      localRestaurantSheetHostController.outputAuthority,
+    localRestaurantSheetHostAuthority: localRestaurantSheetHostController.outputAuthority,
+    overlayLocalRestaurantSheetHostAuthority: localRestaurantSheetHostController.outputAuthority,
   };
 };

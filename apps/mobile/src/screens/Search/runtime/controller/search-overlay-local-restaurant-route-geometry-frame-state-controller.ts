@@ -25,9 +25,7 @@ const areGeometryFrameSnapshotsEqual = (
   right: SearchOverlayLocalRestaurantRouteGeometryFrameSnapshot
 ): boolean =>
   left === right ||
-  (left != null &&
-    right != null &&
-    left.overlayGeometryRuntime === right.overlayGeometryRuntime);
+  (left != null && right != null && left.overlayGeometryRuntime === right.overlayGeometryRuntime);
 
 export class SearchOverlayLocalRestaurantRouteGeometryFrameStateController {
   private routeHostOverlayGeometry: RouteHostOverlayGeometryBinding;
@@ -54,12 +52,9 @@ export class SearchOverlayLocalRestaurantRouteGeometryFrameStateController {
       subscribe: (listener) => this.subscribe(listener),
       getSnapshot: () => this.snapshot,
     };
-    this.unsubscribeRouteHostOverlayGeometry =
-      routeHostOverlayGeometryAuthority.subscribe(() => {
-        this.setRouteHostOverlayGeometry(
-          routeHostOverlayGeometryAuthority.getSnapshot()
-        );
-      });
+    this.unsubscribeRouteHostOverlayGeometry = routeHostOverlayGeometryAuthority.subscribe(() => {
+      this.setRouteHostOverlayGeometry(routeHostOverlayGeometryAuthority.getSnapshot());
+    });
   }
 
   public dispose(): void {
@@ -85,9 +80,7 @@ export class SearchOverlayLocalRestaurantRouteGeometryFrameStateController {
   }
 
   private recompute(): void {
-    const nextSnapshot = resolveGeometryFrameSnapshot(
-      this.routeHostOverlayGeometry
-    );
+    const nextSnapshot = resolveGeometryFrameSnapshot(this.routeHostOverlayGeometry);
 
     if (areGeometryFrameSnapshotsEqual(this.snapshot, nextSnapshot)) {
       return;
@@ -100,12 +93,11 @@ export class SearchOverlayLocalRestaurantRouteGeometryFrameStateController {
   }
 }
 
-export const createSearchOverlayLocalRestaurantRouteGeometryFrameStateController =
-  ({
+export const createSearchOverlayLocalRestaurantRouteGeometryFrameStateController = ({
+  routeHostOverlayGeometryAuthority,
+}: ConstructorParameters<
+  typeof SearchOverlayLocalRestaurantRouteGeometryFrameStateController
+>[0]): SearchOverlayLocalRestaurantRouteGeometryFrameStateController =>
+  new SearchOverlayLocalRestaurantRouteGeometryFrameStateController({
     routeHostOverlayGeometryAuthority,
-  }: ConstructorParameters<
-    typeof SearchOverlayLocalRestaurantRouteGeometryFrameStateController
-  >[0]): SearchOverlayLocalRestaurantRouteGeometryFrameStateController =>
-    new SearchOverlayLocalRestaurantRouteGeometryFrameStateController({
-      routeHostOverlayGeometryAuthority,
-    });
+  });

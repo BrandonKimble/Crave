@@ -1,9 +1,7 @@
 import type { useSearchRootSearchSceneFiltersHeaderRuntime } from '../shared/use-search-root-search-scene-filters-header-runtime';
 
 type SearchRootSearchSceneChromeFreezeSnapshot = {
-  filtersHeaderRuntime: ReturnType<
-    typeof useSearchRootSearchSceneFiltersHeaderRuntime
-  >;
+  filtersHeaderRuntime: ReturnType<typeof useSearchRootSearchSceneFiltersHeaderRuntime>;
   submittedQuery: string;
   effectiveFiltersHeaderHeight: number;
   effectiveResultsHeaderHeight: number;
@@ -18,8 +16,7 @@ type SearchRootSearchSceneChromeFreezeInput = {
 };
 
 export const createSearchRootSearchSceneChromeFreezeRuntime = () => {
-  let frozenResultsChromeSnapshot: SearchRootSearchSceneChromeFreezeSnapshot | null =
-    null;
+  let frozenResultsChromeSnapshot: SearchRootSearchSceneChromeFreezeSnapshot | null = null;
 
   return {
     resolve: ({
@@ -40,19 +37,18 @@ export const createSearchRootSearchSceneChromeFreezeRuntime = () => {
 
       return {
         effectiveFiltersHeaderHeightBase: shouldFreezeResultsChrome
-          ? frozenResultsChromeSnapshot?.effectiveFiltersHeaderHeight ??
-            effectiveFiltersHeaderHeight
+          ? (frozenResultsChromeSnapshot?.effectiveFiltersHeaderHeight ??
+            effectiveFiltersHeaderHeight)
           : effectiveFiltersHeaderHeight,
         effectiveResultsHeaderHeightForRender: shouldFreezeResultsChrome
-          ? frozenResultsChromeSnapshot?.effectiveResultsHeaderHeight ??
-            effectiveResultsHeaderHeight
+          ? (frozenResultsChromeSnapshot?.effectiveResultsHeaderHeight ??
+            effectiveResultsHeaderHeight)
           : effectiveResultsHeaderHeight,
         filtersHeaderRuntimeForReadModel: shouldFreezeResultsChrome
-          ? frozenResultsChromeSnapshot?.filtersHeaderRuntime ??
-            filtersHeaderRuntime
+          ? (frozenResultsChromeSnapshot?.filtersHeaderRuntime ?? filtersHeaderRuntime)
           : filtersHeaderRuntime,
         submittedQueryForReadModel: shouldFreezeResultsChrome
-          ? frozenResultsChromeSnapshot?.submittedQuery ?? submittedQuery
+          ? (frozenResultsChromeSnapshot?.submittedQuery ?? submittedQuery)
           : submittedQuery,
       };
     },

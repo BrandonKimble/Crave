@@ -1,6 +1,4 @@
-import type {
-  SearchMapRenderPresentationProps,
-} from '../../components/SearchMapWithMarkerEngine';
+import type { SearchMapRenderPresentationProps } from '../../components/SearchMapWithMarkerEngine';
 import { USA_FALLBACK_ZOOM } from '../../constants/search';
 import type { SearchRootMapPresentationEnvironment } from '../shared/search-root-environment-contract';
 import type { createSearchRootMapPresentationRuntimeValue } from './search-root-map-presentation-controller-runtime';
@@ -31,9 +29,7 @@ export const createSearchRootMapPresentationProps = ({
   userLocation,
 }: {
   mapSurfaceState: SearchRootMapSurfaceState;
-  mapPresentationRuntime: ReturnType<
-    typeof createSearchRootMapPresentationRuntimeValue
-  >;
+  mapPresentationRuntime: ReturnType<typeof createSearchRootMapPresentationRuntimeValue>;
   startupLocationSnapshot: SearchRootMapPresentationEnvironment['startupLocationSnapshot'];
   userLocation: SearchRootMapPresentationEnvironment['userLocation'];
 }): SearchMapRenderPresentationProps => ({

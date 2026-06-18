@@ -52,8 +52,8 @@ export const useSearchRootForegroundInputFocusRuntime = ({
     const nextQueryValue = shouldSeedEditingFromSubmittedQuery
       ? submittedQueryTrimmed
       : resultsPresentationOwner.shellModel.backdropTarget === 'default'
-      ? ''
-      : rootPrimitivesRuntime.searchState.query;
+        ? ''
+        : rootPrimitivesRuntime.searchState.query;
     if (nextQueryValue !== rootPrimitivesRuntime.searchState.query) {
       rootPrimitivesRuntime.searchState.setQuery(nextQueryValue);
     }

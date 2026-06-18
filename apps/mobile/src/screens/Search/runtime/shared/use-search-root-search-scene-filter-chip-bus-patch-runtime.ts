@@ -13,13 +13,10 @@ export const useSearchRootSearchSceneFilterChipBusPatchRuntime = ({
 > =>
   React.useMemo(
     () => ({
-      priceButtonLabelText:
-        filterModalControlLane.filterModalRuntime.priceButtonLabelText,
-      priceButtonIsActive:
-        filterModalControlLane.filterModalRuntime.priceButtonIsActive,
+      priceButtonLabelText: filterModalControlLane.filterModalRuntime.priceButtonLabelText,
+      priceButtonIsActive: filterModalControlLane.filterModalRuntime.priceButtonIsActive,
       openNow: filterModalControlLane.filterModalRuntime.openNow,
-      votesFilterActive:
-        filterModalControlLane.filterModalRuntime.votesFilterActive,
+      votesFilterActive: filterModalControlLane.filterModalRuntime.votesFilterActive,
     }),
     [
       filterModalControlLane.filterModalRuntime.openNow,

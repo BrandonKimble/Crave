@@ -25,15 +25,9 @@ export const useSearchRootFilterModalRuntime = ({
   resultsPresentationOwner,
   submitRuntimeResult,
 }: UseSearchRootFilterModalRuntimeArgs): FilterModalRuntime => {
-  const {
-    rootPrimitivesRuntime,
-    rootDataPlaneRuntime,
-  } = stateFoundationLane;
-  const {
-    rootInstrumentationRuntime,
-    rootOverlayStoreRuntime,
-    appRouteSharedSheetRuntimeOwner,
-  } = rootOverlayFoundationRuntime;
+  const { rootPrimitivesRuntime, rootDataPlaneRuntime } = stateFoundationLane;
+  const { rootInstrumentationRuntime, rootOverlayStoreRuntime, appRouteSharedSheetRuntimeOwner } =
+    rootOverlayFoundationRuntime;
 
   const filterModalOwner = useSearchFilterModalOwner({
     searchRuntimeBus: sessionCoreLane.searchRuntimeBus,

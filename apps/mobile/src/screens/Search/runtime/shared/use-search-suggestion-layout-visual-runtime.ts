@@ -37,10 +37,8 @@ export const useSearchSuggestionLayoutVisualRuntime = ({
     isSuggestionPanelActive,
     isSuggestionPanelVisible,
     shouldDriveSuggestionLayout,
-    suggestionHeaderHeightTarget:
-      suggestionLayoutGeometryRuntime.suggestionHeaderHeightTarget,
-    suggestionScrollTopTarget:
-      suggestionLayoutGeometryRuntime.suggestionScrollTopTarget,
+    suggestionHeaderHeightTarget: suggestionLayoutGeometryRuntime.suggestionHeaderHeightTarget,
+    suggestionScrollTopTarget: suggestionLayoutGeometryRuntime.suggestionScrollTopTarget,
     suggestionScrollMaxHeightTarget:
       suggestionLayoutGeometryRuntime.suggestionScrollMaxHeightTarget,
   });
@@ -50,8 +48,7 @@ export const useSearchSuggestionLayoutVisualRuntime = ({
       createSearchSuggestionLayoutVisualRuntimeValue({
         resetSearchHeaderFocusProgress:
           suggestionLayoutAnimationRuntime.resetSearchHeaderFocusProgress,
-        searchHeaderFocusProgress:
-          suggestionLayoutAnimationRuntime.searchHeaderFocusProgress,
+        searchHeaderFocusProgress: suggestionLayoutAnimationRuntime.searchHeaderFocusProgress,
         suggestionHeaderHeightAnimatedStyle:
           suggestionLayoutAnimationRuntime.suggestionHeaderHeightAnimatedStyle,
         suggestionScrollTopAnimatedStyle:
@@ -60,10 +57,8 @@ export const useSearchSuggestionLayoutVisualRuntime = ({
           suggestionLayoutAnimationRuntime.suggestionScrollMaxHeightAnimatedStyle,
         suggestionHeaderDividerAnimatedStyle:
           suggestionLayoutAnimationRuntime.suggestionHeaderDividerAnimatedStyle,
-        suggestionScrollHandler:
-          suggestionLayoutAnimationRuntime.suggestionScrollHandler,
-        suggestionTopFillHeight:
-          suggestionLayoutGeometryRuntime.suggestionTopFillHeight,
+        suggestionScrollHandler: suggestionLayoutAnimationRuntime.suggestionScrollHandler,
+        suggestionTopFillHeight: suggestionLayoutGeometryRuntime.suggestionTopFillHeight,
         suggestionScrollMaxHeightTarget:
           suggestionLayoutGeometryRuntime.suggestionScrollMaxHeightTarget,
       }),

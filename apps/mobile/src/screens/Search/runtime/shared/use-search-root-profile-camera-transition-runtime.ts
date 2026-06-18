@@ -1,10 +1,6 @@
 import React from 'react';
 
-import {
-  SCREEN_HEIGHT,
-  USA_FALLBACK_CENTER,
-  USA_FALLBACK_ZOOM,
-} from '../../constants/search';
+import { SCREEN_HEIGHT, USA_FALLBACK_CENTER, USA_FALLBACK_ZOOM } from '../../constants/search';
 import type { SearchRootEnvironment } from './search-root-environment-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
@@ -22,14 +18,9 @@ export const useSearchRootProfileCameraTransitionRuntime = ({
   rootOverlayFoundationRuntime: SearchRootOverlayFoundationRuntime;
   insets: SearchRootEnvironment['insets'];
 }): ProfilePresentationCameraLayoutModel => {
-  const {
-    rootPrimitivesRuntime,
-    rootSuggestionRuntime,
-  } = stateFoundationLane;
-  const {
-    rootOverlaySessionSurfaceRuntime,
-    appRouteSharedSheetRuntimeOwner,
-  } = rootOverlayFoundationRuntime;
+  const { rootPrimitivesRuntime, rootSuggestionRuntime } = stateFoundationLane;
+  const { rootOverlaySessionSurfaceRuntime, appRouteSharedSheetRuntimeOwner } =
+    rootOverlayFoundationRuntime;
 
   return React.useMemo<ProfilePresentationCameraLayoutModel>(
     () => ({

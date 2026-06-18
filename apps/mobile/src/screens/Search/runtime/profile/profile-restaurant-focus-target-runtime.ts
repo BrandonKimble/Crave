@@ -35,7 +35,7 @@ export const resolveRestaurantProfileFocusTarget = ({
     null;
   const focusCoordinate = focusLocation
     ? ({ lng: focusLocation.longitude, lat: focusLocation.latitude } as Coordinate)
-    : nextPressedCoordinate ?? null;
+    : (nextPressedCoordinate ?? null);
 
   if (!focusCoordinate) {
     return null;
@@ -46,10 +46,10 @@ export const resolveRestaurantProfileFocusTarget = ({
     focusLocationKey: focusLocation
       ? `${restaurant.restaurantId}:${focusLocation.locationId}`
       : nextPressedCoordinate
-      ? `${restaurant.restaurantId}:${nextPressedCoordinate.lng.toFixed(
-          5
-        )}:${nextPressedCoordinate.lat.toFixed(5)}`
-      : `${restaurant.restaurantId}:anchor`,
+        ? `${restaurant.restaurantId}:${nextPressedCoordinate.lng.toFixed(
+            5
+          )}:${nextPressedCoordinate.lat.toFixed(5)}`
+        : `${restaurant.restaurantId}:anchor`,
     focusLocationId: focusLocation?.locationId ?? null,
   };
 };

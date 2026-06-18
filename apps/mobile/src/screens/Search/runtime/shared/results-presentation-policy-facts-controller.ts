@@ -26,7 +26,7 @@ export type ResultsPresentationPolicyFactsSnapshot = ResultsPresentationPolicyFa
     'hasRenderableRows',
     'hasResolvedResults',
     'isSearchLoading',
-    'shouldUsePlaceholderRows'
+    'shouldUsePlaceholderRows',
   ];
 };
 

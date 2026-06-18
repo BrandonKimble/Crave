@@ -33,7 +33,7 @@ export const resolveProfilePresentationModel = ({
   const isOverlayVisible = transitionStatus === 'opening' || transitionStatus === 'open';
   const isPresentationActive = transitionStatus !== 'idle' || restaurantPanelSnapshot != null;
   const activeOpenRestaurantId = isOverlayVisible
-    ? restaurantPanelSnapshot?.restaurant.restaurantId ?? null
+    ? (restaurantPanelSnapshot?.restaurant.restaurantId ?? null)
     : null;
 
   return {

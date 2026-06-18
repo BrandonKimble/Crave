@@ -15,19 +15,15 @@ export const useSearchRootRouteVisualHostPublicationRuntime = ({
   rootOverlayFoundationRuntime: SearchRootOverlayFoundationRuntime;
   routeHostVisualRuntime: AppRouteHostVisualRuntime;
 }): void => {
-  const routeHostOverlayGeometryRuntime =
-    useSearchRootRouteHostOverlayGeometryRuntime({
-      rootOverlayFoundationRuntime,
-    });
+  const routeHostOverlayGeometryRuntime = useSearchRootRouteHostOverlayGeometryRuntime({
+    rootOverlayFoundationRuntime,
+  });
   const routeHostPublication = React.useMemo<SearchRootRouteHostPublication>(
     () => ({
       routeHostOverlayGeometryRuntime,
       routeHostVisualRuntime,
     }),
-    [
-      routeHostOverlayGeometryRuntime,
-      routeHostVisualRuntime,
-    ]
+    [routeHostOverlayGeometryRuntime, routeHostVisualRuntime]
   );
 
   React.useEffect(() => {

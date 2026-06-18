@@ -1,9 +1,7 @@
 import React from 'react';
 
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
-import type {
-  SearchRootStateFoundationLane,
-} from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
 import type { ResultsPresentationOwner } from './use-results-presentation-runtime-owner';
 import type { SearchForegroundEditingRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
 
@@ -28,10 +26,7 @@ export const useSearchRootForegroundEditingPresentationArgs = ({
   resultsPresentationOwner,
 }: UseSearchRootForegroundEditingPresentationArgsArgs): SearchRootForegroundEditingPresentationArgs => {
   const { rootSuggestionRuntime } = stateFoundationLane;
-  const {
-    rootOverlayStoreRuntime,
-    routeOverlayCommandActions,
-  } = rootOverlayFoundationRuntime;
+  const { rootOverlayStoreRuntime, routeOverlayCommandActions } = rootOverlayFoundationRuntime;
 
   return React.useMemo(
     () => ({

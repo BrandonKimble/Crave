@@ -17,10 +17,7 @@ export const useSearchResultsHydrationKeyApplyRuntime = ({
       const commitStartedAtMs = getNowMs();
       setHydratedResultsKeySync(nextHydrationKey);
       const durationMs = getNowMs() - commitStartedAtMs;
-      mapQueryBudget.recordRuntimeAttributionDurationMs(
-        'hydration_commit_apply',
-        durationMs
-      );
+      mapQueryBudget.recordRuntimeAttributionDurationMs('hydration_commit_apply', durationMs);
       mapQueryBudget.recordRuntimeAttributionDurationMs(
         'hydration_finalize_key_commit',
         durationMs

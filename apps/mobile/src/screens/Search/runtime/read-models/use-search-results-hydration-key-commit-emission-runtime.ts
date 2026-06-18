@@ -22,10 +22,5 @@ export const useSearchResultsHydrationKeyCommitEmissionRuntime = ({
         durationMs,
       });
     },
-    [
-      activeOverlayKey,
-      emitRuntimeWriteSpan,
-      resolveOperationId,
-      searchRequestId,
-    ]
+    [activeOverlayKey, emitRuntimeWriteSpan, resolveOperationId, searchRequestId]
   );

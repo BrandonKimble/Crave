@@ -1,7 +1,10 @@
 import React from 'react';
 import type { LayoutRectangle } from 'react-native';
 
-import { cloneSuggestionMaskedHole, createSuggestionHeaderSearchHole } from './search-suggestion-header-hole-runtime';
+import {
+  cloneSuggestionMaskedHole,
+  createSuggestionHeaderSearchHole,
+} from './search-suggestion-header-hole-runtime';
 import type { SearchSuggestionMaskedHole } from './use-search-suggestion-surface-runtime-contract';
 
 export const useSearchSuggestionHeaderSearchHoleRuntime = ({
@@ -13,19 +16,13 @@ export const useSearchSuggestionHeaderSearchHoleRuntime = ({
   shouldFreezeSuggestionHeader: boolean;
   resolvedSearchContainerFrame: LayoutRectangle | null;
 }): SearchSuggestionMaskedHole | null => {
-  const suggestionHeaderSearchHoleRef = React.useRef<SearchSuggestionMaskedHole | null>(
-    null
-  );
+  const suggestionHeaderSearchHoleRef = React.useRef<SearchSuggestionMaskedHole | null>(null);
 
-  const suggestionHeaderSearchHoleCandidate =
-    React.useMemo<SearchSuggestionMaskedHole | null>(
-      () =>
-        createSuggestionHeaderSearchHole(
-          resolvedSearchContainerFrame,
-          shouldDriveSuggestionLayout
-        ),
-      [resolvedSearchContainerFrame, shouldDriveSuggestionLayout]
-    );
+  const suggestionHeaderSearchHoleCandidate = React.useMemo<SearchSuggestionMaskedHole | null>(
+    () =>
+      createSuggestionHeaderSearchHole(resolvedSearchContainerFrame, shouldDriveSuggestionLayout),
+    [resolvedSearchContainerFrame, shouldDriveSuggestionLayout]
+  );
 
   React.useEffect(() => {
     if (shouldFreezeSuggestionHeader || !suggestionHeaderSearchHoleCandidate) {

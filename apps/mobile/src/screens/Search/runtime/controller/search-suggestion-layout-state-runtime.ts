@@ -29,12 +29,8 @@ export const createSearchSuggestionLayoutStateRuntimeValue = ({
   handleSuggestionContentSizeChange: (_width: number, height: number) => void;
   searchLayout: SearchLayout;
   searchBarFrame: LayoutRectangle | null;
-  handleSearchHeaderLayout: (
-    event: import('react-native').LayoutChangeEvent
-  ) => void;
-  handleSearchContainerLayout: (
-    event: import('react-native').LayoutChangeEvent
-  ) => void;
+  handleSearchHeaderLayout: (event: import('react-native').LayoutChangeEvent) => void;
+  handleSearchContainerLayout: (event: import('react-native').LayoutChangeEvent) => void;
   handleSearchShortcutsRowLayout: (layout: LayoutRectangle) => void;
   handleRestaurantsShortcutLayout: (layout: LayoutRectangle) => void;
   handleDishesShortcutLayout: (layout: LayoutRectangle) => void;

@@ -19,12 +19,11 @@ export const useSearchRootOverlayLocalRestaurantSheetRouteHostVisualRuntime = ({
     SearchRootOverlayLocalRestaurantSheetVisualControllers,
     'localRestaurantSheetRouteHostVisualAuthority'
   > => {
-  const localRestaurantSheetRouteHostVisualController =
-    useSearchRuntimeControllerRuntime(() =>
-      createSearchOverlayLocalRestaurantSheetRouteHostVisualStateController({
-        localRestaurantRouteVisualAuthority,
-      })
-    );
+  const localRestaurantSheetRouteHostVisualController = useSearchRuntimeControllerRuntime(() =>
+    createSearchOverlayLocalRestaurantSheetRouteHostVisualStateController({
+      localRestaurantRouteVisualAuthority,
+    })
+  );
 
   return {
     localRestaurantSheetRouteHostVisualAuthority:

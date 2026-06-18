@@ -25,9 +25,7 @@ const areLocalRestaurantRouteSheetSnapshotsEqual = (
   right: SearchOverlayLocalRestaurantRouteSheetSnapshot
 ): boolean =>
   left === right ||
-  (left != null &&
-    right != null &&
-    left.sharedSheetRuntimeOwner === right.sharedSheetRuntimeOwner);
+  (left != null && right != null && left.sharedSheetRuntimeOwner === right.sharedSheetRuntimeOwner);
 
 export class SearchOverlayLocalRestaurantRouteSheetStateController {
   private routeSharedSheetVisual: RouteSharedSheetVisualBinding;
@@ -49,19 +47,14 @@ export class SearchOverlayLocalRestaurantRouteSheetStateController {
     };
   }) {
     this.routeSharedSheetVisual = routeSharedSheetVisualAuthority.getSnapshot();
-    this.snapshot = resolveLocalRestaurantRouteSheetSnapshot(
-      this.routeSharedSheetVisual
-    );
+    this.snapshot = resolveLocalRestaurantRouteSheetSnapshot(this.routeSharedSheetVisual);
     this.outputAuthority = {
       subscribe: (listener) => this.subscribe(listener),
       getSnapshot: () => this.snapshot,
     };
-    this.unsubscribeRouteSharedSheetVisual =
-      routeSharedSheetVisualAuthority.subscribe(() => {
-        this.setRouteSharedSheetVisual(
-          routeSharedSheetVisualAuthority.getSnapshot()
-        );
-      });
+    this.unsubscribeRouteSharedSheetVisual = routeSharedSheetVisualAuthority.subscribe(() => {
+      this.setRouteSharedSheetVisual(routeSharedSheetVisualAuthority.getSnapshot());
+    });
   }
 
   public dispose(): void {
@@ -76,9 +69,7 @@ export class SearchOverlayLocalRestaurantRouteSheetStateController {
     };
   }
 
-  private setRouteSharedSheetVisual(
-    routeSharedSheetVisual: RouteSharedSheetVisualBinding
-  ): void {
+  private setRouteSharedSheetVisual(routeSharedSheetVisual: RouteSharedSheetVisualBinding): void {
     if (this.routeSharedSheetVisual === routeSharedSheetVisual) {
       return;
     }
@@ -87,9 +78,7 @@ export class SearchOverlayLocalRestaurantRouteSheetStateController {
   }
 
   private recompute(): void {
-    const nextSnapshot = resolveLocalRestaurantRouteSheetSnapshot(
-      this.routeSharedSheetVisual
-    );
+    const nextSnapshot = resolveLocalRestaurantRouteSheetSnapshot(this.routeSharedSheetVisual);
 
     if (areLocalRestaurantRouteSheetSnapshotsEqual(this.snapshot, nextSnapshot)) {
       return;

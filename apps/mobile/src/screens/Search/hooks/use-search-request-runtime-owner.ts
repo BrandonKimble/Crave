@@ -247,22 +247,22 @@ export const useSearchRequestRuntimeOwner = ({
               payload,
             })
           : tuple.mode === 'entity'
-          ? createEntityShadowEvent({
-              sessionId: tuple.sessionId,
-              requestId: tuple.requestId,
-              seq: nextSeq,
-              atMs,
-              type: eventType,
-              payload,
-            })
-          : createShortcutShadowEvent({
-              sessionId: tuple.sessionId,
-              requestId: tuple.requestId,
-              seq: nextSeq,
-              atMs,
-              type: eventType,
-              payload,
-            });
+            ? createEntityShadowEvent({
+                sessionId: tuple.sessionId,
+                requestId: tuple.requestId,
+                seq: nextSeq,
+                atMs,
+                type: eventType,
+                payload,
+              })
+            : createShortcutShadowEvent({
+                sessionId: tuple.sessionId,
+                requestId: tuple.requestId,
+                seq: nextSeq,
+                atMs,
+                type: eventType,
+                payload,
+              });
       const result = runtimeSessionController.dispatch(event);
       onRuntimeMechanismEvent?.('runtime_write_span', {
         domain: 'search_session_shadow',

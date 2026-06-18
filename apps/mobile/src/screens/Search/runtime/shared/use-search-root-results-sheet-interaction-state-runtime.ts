@@ -13,10 +13,8 @@ export const useSearchRootResultsSheetInteractionStateRuntime = ({
   rootOverlayFoundationRuntime,
 }: UseSearchRootResultsSheetInteractionStateRuntimeArgs) => {
   const { sessionPrimitivesLane } = stateFoundationLane;
-  const {
-    rootSharedSheetRuntimeLane,
-    appRouteSharedSheetRuntimeOwner,
-  } = rootOverlayFoundationRuntime;
+  const { rootSharedSheetRuntimeLane, appRouteSharedSheetRuntimeOwner } =
+    rootOverlayFoundationRuntime;
 
   const resultsSheetDraggingRef = React.useRef(false);
   const resultsListScrollingRef = React.useRef(false);
@@ -40,8 +38,7 @@ export const useSearchRootResultsSheetInteractionStateRuntime = ({
       sessionPrimitivesLane.primitives.searchInteractionRef.current = merged;
       rootSharedSheetRuntimeLane.mapMotionPressureController.updateInteractionState({
         isSearchInteracting: merged.isInteracting,
-        isAnySheetDragging:
-          sessionPrimitivesLane.primitives.anySheetDraggingRef.current,
+        isAnySheetDragging: sessionPrimitivesLane.primitives.anySheetDraggingRef.current,
       });
     },
     [
@@ -108,11 +105,7 @@ export const useSearchRootResultsSheetInteractionStateRuntime = ({
       }
       rootSharedSheetRuntimeLane.flushDeferredMapMovementState();
     },
-    [
-      handleResultsSheetDragStateChange,
-      rootSharedSheetRuntimeLane,
-      updateSearchInteractionRef,
-    ]
+    [handleResultsSheetDragStateChange, rootSharedSheetRuntimeLane, updateSearchInteractionRef]
   );
 
   const handleResultsListScrollBegin = React.useCallback(() => {

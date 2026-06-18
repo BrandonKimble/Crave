@@ -7,9 +7,7 @@ export const useResultsPresentationMarkerExitRuntime = ({
   markSearchSheetCloseMapExitSettledRef,
 }: {
   runtimeMachineRef: React.MutableRefObject<ResultsPresentationRuntimeMachine | null>;
-  markSearchSheetCloseMapExitSettledRef: React.MutableRefObject<
-    (requestKey: string) => void
-  >;
+  markSearchSheetCloseMapExitSettledRef: React.MutableRefObject<(requestKey: string) => void>;
 }) => {
   const handleMarkerExitStarted = React.useCallback(
     (payload: { requestKey: string; startedAtMs: number }) => {

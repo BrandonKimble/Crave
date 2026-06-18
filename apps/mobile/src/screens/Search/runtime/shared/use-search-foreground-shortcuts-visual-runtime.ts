@@ -112,8 +112,8 @@ export const useSearchForegroundShortcutsVisualRuntime = ({
     const backgroundAlpha = isShortcutExitingToResults
       ? 0
       : isSuggestionOverlayVisible
-      ? 1 - suggestionProgress.value
-      : shortcutOpacityProgress.value;
+        ? 1 - suggestionProgress.value
+        : shortcutOpacityProgress.value;
     const clampedAlpha = Math.max(0, Math.min(backgroundAlpha, 1));
     return {
       backgroundColor: `rgba(255, 255, 255, ${backgroundAlpha})`,
@@ -137,8 +137,8 @@ export const useSearchForegroundShortcutsVisualRuntime = ({
     const opacity = isShortcutExitingToResults
       ? suggestionProgress.value
       : isSuggestionOverlayVisible
-      ? 1
-      : shortcutOpacityProgress.value;
+        ? 1
+        : shortcutOpacityProgress.value;
     const chromeScale = shouldLockSearchChromeTransform ? 1 : searchChromeScale.value;
     return {
       opacity,

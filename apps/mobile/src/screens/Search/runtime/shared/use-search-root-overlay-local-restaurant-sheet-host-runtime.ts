@@ -17,20 +17,17 @@ export const useSearchRootOverlayLocalRestaurantSheetHostRuntime = ({
   SearchRootOverlayLocalRestaurantSheetPublicationRuntime,
   'overlayLocalRestaurantSheetHostAuthority'
 > => {
-  const localRestaurantSheetStateRuntime =
-    useSearchRootOverlayLocalRestaurantSheetStateRuntime({
-      routeOverlayVisibilityAuthority,
-      routeLocalRestaurantOverlaySessionAuthority,
-      routeLocalRestaurantOverlayPanelContentAuthority,
-      routeLocalRestaurantOverlayPolicyAuthority,
-      routeLocalRestaurantOverlayInteractionAuthority,
-      overlayGateSnapshot,
-      localRestaurantRouteVisualAuthority,
-    });
+  const localRestaurantSheetStateRuntime = useSearchRootOverlayLocalRestaurantSheetStateRuntime({
+    routeOverlayVisibilityAuthority,
+    routeLocalRestaurantOverlaySessionAuthority,
+    routeLocalRestaurantOverlayPanelContentAuthority,
+    routeLocalRestaurantOverlayPolicyAuthority,
+    routeLocalRestaurantOverlayInteractionAuthority,
+    overlayGateSnapshot,
+    localRestaurantRouteVisualAuthority,
+  });
   const localRestaurantSheetPublicationRuntime =
-    useSearchRootOverlayLocalRestaurantSheetPublicationRuntime(
-      localRestaurantSheetStateRuntime
-    );
+    useSearchRootOverlayLocalRestaurantSheetPublicationRuntime(localRestaurantSheetStateRuntime);
 
   return {
     overlayLocalRestaurantSheetHostAuthority:

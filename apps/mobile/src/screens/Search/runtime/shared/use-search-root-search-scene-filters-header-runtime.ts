@@ -19,19 +19,14 @@ export const useSearchRootSearchSceneFiltersHeaderRuntime = ({
 }: {
   stateFoundationLane: SearchRootStateFoundationLane;
   filterModalControlLane: SearchRootFilterModalControlLane;
-  searchResultsRuntimeState: ReturnType<
-    typeof useSearchResultsPanelResultsRuntimeState
-  >;
-  searchFiltersRuntimeState: ReturnType<
-    typeof useSearchResultsPanelFiltersRuntimeState
-  >;
+  searchResultsRuntimeState: ReturnType<typeof useSearchResultsPanelResultsRuntimeState>;
+  searchFiltersRuntimeState: ReturnType<typeof useSearchResultsPanelFiltersRuntimeState>;
   hydrationKeyRuntime: ReturnType<typeof useSearchResultsPanelHydrationKeyRuntime>;
   scheduleTabToggleCommit: (next: 'dishes' | 'restaurants') => void;
 }) => {
   const { searchState } = stateFoundationLane.rootPrimitivesRuntime;
   const filtersActiveTab =
-    searchResultsRuntimeState.pendingTabSwitchTab ??
-    searchResultsRuntimeState.activeTab;
+    searchResultsRuntimeState.pendingTabSwitchTab ?? searchResultsRuntimeState.activeTab;
   const handleInteractionTabChange = React.useCallback(
     (next: 'dishes' | 'restaurants') => {
       scheduleTabToggleCommit(next);
@@ -55,12 +50,10 @@ export const useSearchRootSearchSceneFiltersHeaderRuntime = ({
       openNow: filterChipReadModel.openNow,
       onToggleOpenNow: filterModalControlLane.filterModalRuntime.toggleOpenNow,
       votesFilterActive: filterChipReadModel.votesFilterActive,
-      onToggleVotesFilter:
-        filterModalControlLane.filterModalRuntime.toggleVotesFilter,
+      onToggleVotesFilter: filterModalControlLane.filterModalRuntime.toggleVotesFilter,
       priceButtonLabel: filterChipReadModel.priceButtonLabel,
       priceButtonActive: filterChipReadModel.priceButtonActive,
-      onTogglePriceSelector:
-        filterModalControlLane.filterModalRuntime.togglePriceSelector,
+      onTogglePriceSelector: filterModalControlLane.filterModalRuntime.togglePriceSelector,
       isPriceSelectorVisible: filterChipReadModel.isPriceSelectorVisible,
       contentHorizontalPadding: CONTENT_HORIZONTAL_PADDING,
       accentColor: ACTIVE_TAB_COLOR,

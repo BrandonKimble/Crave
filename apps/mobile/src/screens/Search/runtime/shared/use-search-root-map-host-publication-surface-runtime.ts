@@ -27,9 +27,7 @@ export const useSearchRootMapHostPublicationSurfaceRuntime = ({
   rootOverlayFoundationRuntime: SearchRootOverlayFoundationRuntime;
   mapProfileControlLane: SearchRootMapProfileControlLane;
   resultsPresentationControlLane: SearchRootResultsPresentationControlLane;
-  mapInteractionBridgeRuntime: ReturnType<
-    typeof useSearchRootMapHostPublicationInteractionRuntime
-  >;
+  mapInteractionBridgeRuntime: ReturnType<typeof useSearchRootMapHostPublicationInteractionRuntime>;
 }) =>
   useSearchRootMapSurfacePublicationRuntime({
     appEntryPlaneRuntime,

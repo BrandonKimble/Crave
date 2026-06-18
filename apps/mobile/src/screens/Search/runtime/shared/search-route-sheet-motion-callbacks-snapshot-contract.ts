@@ -2,16 +2,10 @@ import type { BottomSheetSnap } from '../../../../overlays/bottomSheetMotionType
 
 export type SearchRouteSheetMotionCallbacksEntry = {
   onSnapStart:
-    | ((
-        snap: BottomSheetSnap,
-        meta?: { source: 'gesture' | 'programmatic' }
-      ) => void)
+    | ((snap: BottomSheetSnap, meta?: { source: 'gesture' | 'programmatic' }) => void)
     | undefined;
   onSnapChange:
-    | ((
-        snap: BottomSheetSnap,
-        meta?: { source: 'gesture' | 'programmatic' }
-      ) => void)
+    | ((snap: BottomSheetSnap, meta?: { source: 'gesture' | 'programmatic' }) => void)
     | undefined;
   onDragStateChange: ((isDragging: boolean) => void) | undefined;
   onSettleStateChange: ((isSettling: boolean) => void) | undefined;

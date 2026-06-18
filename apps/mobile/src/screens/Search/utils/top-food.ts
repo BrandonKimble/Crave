@@ -34,7 +34,7 @@ export const calculateTopFoodVisibleCount = (
     const totalWidth =
       widths.reduce((sum, width) => sum + (width ?? 0), 0) +
       gapWidth +
-      (needsMore ? moreWidth ?? 0 : 0);
+      (needsMore ? (moreWidth ?? 0) : 0);
     if (totalWidth <= availableWidth) {
       bestCount = count;
       break;

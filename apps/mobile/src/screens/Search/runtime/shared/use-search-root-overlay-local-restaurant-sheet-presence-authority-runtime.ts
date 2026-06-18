@@ -12,23 +12,20 @@ export const useSearchRootOverlayLocalRestaurantSheetPresenceAuthorityRuntime = 
 }: SearchRootOverlayLocalRestaurantSheetVisibilityProfilerRuntime &
   Pick<
     SearchRootOverlayLocalRestaurantSheetPresenceControllers,
-    | 'localRestaurantSheetRenderVisibilityAuthority'
-    | 'localRestaurantSheetProfilerGateAuthority'
+    'localRestaurantSheetRenderVisibilityAuthority' | 'localRestaurantSheetProfilerGateAuthority'
   >): SearchRootOverlayLocalRestaurantSheetPresenceRuntime &
   Pick<
     SearchRootOverlayLocalRestaurantSheetPresenceControllers,
     'localRestaurantSheetPresenceAuthority'
   > => {
-  const localRestaurantSheetPresenceController =
-    useSearchRuntimeControllerRuntime(() =>
-      createSearchOverlayLocalRestaurantSheetPresenceStateController({
-        localRestaurantSheetRenderVisibilityAuthority,
-        localRestaurantSheetProfilerGateAuthority,
-      })
-    );
+  const localRestaurantSheetPresenceController = useSearchRuntimeControllerRuntime(() =>
+    createSearchOverlayLocalRestaurantSheetPresenceStateController({
+      localRestaurantSheetRenderVisibilityAuthority,
+      localRestaurantSheetProfilerGateAuthority,
+    })
+  );
 
   return {
-    localRestaurantSheetPresenceAuthority:
-      localRestaurantSheetPresenceController.outputAuthority,
+    localRestaurantSheetPresenceAuthority: localRestaurantSheetPresenceController.outputAuthority,
   };
 };

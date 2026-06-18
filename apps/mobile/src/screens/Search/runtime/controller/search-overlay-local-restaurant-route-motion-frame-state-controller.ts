@@ -24,10 +24,7 @@ const areMotionFrameSnapshotsEqual = (
   left: SearchOverlayLocalRestaurantRouteMotionFrameSnapshot,
   right: SearchOverlayLocalRestaurantRouteMotionFrameSnapshot
 ): boolean =>
-  left === right ||
-  (left != null &&
-    right != null &&
-    left.visualRuntime === right.visualRuntime);
+  left === right || (left != null && right != null && left.visualRuntime === right.visualRuntime);
 
 export class SearchOverlayLocalRestaurantRouteMotionFrameStateController {
   private routeHostVisualRuntime: RouteHostVisualRuntime;
@@ -54,12 +51,9 @@ export class SearchOverlayLocalRestaurantRouteMotionFrameStateController {
       subscribe: (listener) => this.subscribe(listener),
       getSnapshot: () => this.snapshot,
     };
-    this.unsubscribeRouteHostVisualRuntime =
-      routeHostVisualRuntimeAuthority.subscribe(() => {
-        this.setRouteHostVisualRuntime(
-          routeHostVisualRuntimeAuthority.getSnapshot()
-        );
-      });
+    this.unsubscribeRouteHostVisualRuntime = routeHostVisualRuntimeAuthority.subscribe(() => {
+      this.setRouteHostVisualRuntime(routeHostVisualRuntimeAuthority.getSnapshot());
+    });
   }
 
   public dispose(): void {
@@ -74,9 +68,7 @@ export class SearchOverlayLocalRestaurantRouteMotionFrameStateController {
     };
   }
 
-  private setRouteHostVisualRuntime(
-    routeHostVisualRuntime: RouteHostVisualRuntime
-  ): void {
+  private setRouteHostVisualRuntime(routeHostVisualRuntime: RouteHostVisualRuntime): void {
     if (this.routeHostVisualRuntime === routeHostVisualRuntime) {
       return;
     }
@@ -98,12 +90,11 @@ export class SearchOverlayLocalRestaurantRouteMotionFrameStateController {
   }
 }
 
-export const createSearchOverlayLocalRestaurantRouteMotionFrameStateController =
-  ({
+export const createSearchOverlayLocalRestaurantRouteMotionFrameStateController = ({
+  routeHostVisualRuntimeAuthority,
+}: ConstructorParameters<
+  typeof SearchOverlayLocalRestaurantRouteMotionFrameStateController
+>[0]): SearchOverlayLocalRestaurantRouteMotionFrameStateController =>
+  new SearchOverlayLocalRestaurantRouteMotionFrameStateController({
     routeHostVisualRuntimeAuthority,
-  }: ConstructorParameters<
-    typeof SearchOverlayLocalRestaurantRouteMotionFrameStateController
-  >[0]): SearchOverlayLocalRestaurantRouteMotionFrameStateController =>
-    new SearchOverlayLocalRestaurantRouteMotionFrameStateController({
-      routeHostVisualRuntimeAuthority,
-    });
+  });

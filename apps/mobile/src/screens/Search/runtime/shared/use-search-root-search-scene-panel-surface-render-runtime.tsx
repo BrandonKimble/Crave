@@ -28,7 +28,10 @@ export const useSearchRootSearchScenePanelSurfaceRenderRuntime = ({
     () => (
       <Reanimated.View
         pointerEvents="none"
-        style={[styles.resultsShadow, searchSceneSheetPlaneRuntime.sharedSheetContainerAnimatedStyle]}
+        style={[
+          styles.resultsShadow,
+          searchSceneSheetPlaneRuntime.sharedSheetContainerAnimatedStyle,
+        ]}
       />
     ),
     [searchSceneSheetPlaneRuntime.sharedSheetContainerAnimatedStyle]

@@ -8,8 +8,7 @@ export const useSearchResultsHydrationRowsReleaseEventRuntime = ({
   settleStateRuntime: ReturnType<typeof useSearchResultsHydrationSettleStateRuntime>;
 }) =>
   React.useMemo(() => {
-    const releaseToken =
-      settleStateRuntime.hydrationFinalizeRowsReleaseCompletedToken;
+    const releaseToken = settleStateRuntime.hydrationFinalizeRowsReleaseCompletedToken;
     if (
       releaseToken == null ||
       releaseToken !== settleStateRuntime.hydrationRowsReleaseVersionToken

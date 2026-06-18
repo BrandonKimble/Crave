@@ -60,7 +60,7 @@ export const useProfileOwnerRuntimeStateRuntime = ({
       getActiveOpenRestaurantId: () =>
         profileShellState.transitionStatus === 'opening' ||
         profileShellState.transitionStatus === 'open'
-          ? profileShellState.restaurantPanelSnapshot?.restaurant.restaurantId ?? null
+          ? (profileShellState.restaurantPanelSnapshot?.restaurant.restaurantId ?? null)
           : null,
       getLastAutoOpenKey,
       resolveProfileCameraPadding: presentationModelRuntime.resolveProfileCameraPadding,

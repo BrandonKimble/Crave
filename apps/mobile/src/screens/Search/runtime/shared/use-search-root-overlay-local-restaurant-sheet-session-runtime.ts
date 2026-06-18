@@ -11,13 +11,11 @@ export const useSearchRootOverlayLocalRestaurantSheetSessionRuntime = ({
   SearchRootOverlayLocalRestaurantSheetHostRuntimeParams,
   'routeLocalRestaurantOverlaySessionAuthority'
 >): SearchRootOverlayLocalRestaurantSheetSessionRuntime => {
-  const localRestaurantSheetSessionHostController =
-    useSearchRuntimeControllerRuntime(() =>
-      createSearchOverlayLocalRestaurantSheetSessionHostStateController({
-        overlayLocalRestaurantSessionHostAuthority:
-          routeLocalRestaurantOverlaySessionAuthority,
-      })
-    );
+  const localRestaurantSheetSessionHostController = useSearchRuntimeControllerRuntime(() =>
+    createSearchOverlayLocalRestaurantSheetSessionHostStateController({
+      overlayLocalRestaurantSessionHostAuthority: routeLocalRestaurantOverlaySessionAuthority,
+    })
+  );
 
   return {
     localRestaurantSheetSessionHostAuthority:

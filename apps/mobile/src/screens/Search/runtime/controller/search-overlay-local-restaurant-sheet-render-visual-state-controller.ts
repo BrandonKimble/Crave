@@ -21,9 +21,7 @@ const areRenderVisualSnapshotsEqual = (
   left.onProfilerRender === right.onProfilerRender;
 
 const createRenderVisualSnapshot = (
-  presenceSnapshot: ReturnType<
-    SearchOverlayLocalRestaurantSheetPresenceAuthority['getSnapshot']
-  >
+  presenceSnapshot: ReturnType<SearchOverlayLocalRestaurantSheetPresenceAuthority['getSnapshot']>
 ): SearchOverlayLocalRestaurantSheetRenderVisualSnapshot => ({
   shouldRenderSearchOverlay: presenceSnapshot.shouldRenderSearchOverlay,
   onProfilerRender: presenceSnapshot.onProfilerRender,
@@ -53,12 +51,9 @@ export class SearchOverlayLocalRestaurantSheetRenderVisualStateController {
       subscribe: (listener) => this.subscribe(listener),
       getSnapshot: () => this.snapshot,
     };
-    this.unsubscribePresence =
-      localRestaurantSheetPresenceAuthority.subscribe(() => {
-        this.setPresenceSnapshot(
-          localRestaurantSheetPresenceAuthority.getSnapshot()
-        );
-      });
+    this.unsubscribePresence = localRestaurantSheetPresenceAuthority.subscribe(() => {
+      this.setPresenceSnapshot(localRestaurantSheetPresenceAuthority.getSnapshot());
+    });
   }
 
   public dispose(): void {
@@ -74,9 +69,7 @@ export class SearchOverlayLocalRestaurantSheetRenderVisualStateController {
   }
 
   private setPresenceSnapshot(
-    presenceSnapshot: ReturnType<
-      SearchOverlayLocalRestaurantSheetPresenceAuthority['getSnapshot']
-    >
+    presenceSnapshot: ReturnType<SearchOverlayLocalRestaurantSheetPresenceAuthority['getSnapshot']>
   ): void {
     if (this.presenceSnapshot === presenceSnapshot) {
       return;
@@ -99,12 +92,11 @@ export class SearchOverlayLocalRestaurantSheetRenderVisualStateController {
   }
 }
 
-export const createSearchOverlayLocalRestaurantSheetRenderVisualStateController =
-  ({
+export const createSearchOverlayLocalRestaurantSheetRenderVisualStateController = ({
+  localRestaurantSheetPresenceAuthority,
+}: ConstructorParameters<
+  typeof SearchOverlayLocalRestaurantSheetRenderVisualStateController
+>[0]): SearchOverlayLocalRestaurantSheetRenderVisualStateController =>
+  new SearchOverlayLocalRestaurantSheetRenderVisualStateController({
     localRestaurantSheetPresenceAuthority,
-  }: ConstructorParameters<
-    typeof SearchOverlayLocalRestaurantSheetRenderVisualStateController
-  >[0]): SearchOverlayLocalRestaurantSheetRenderVisualStateController =>
-    new SearchOverlayLocalRestaurantSheetRenderVisualStateController({
-      localRestaurantSheetPresenceAuthority,
-    });
+  });

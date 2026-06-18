@@ -56,8 +56,7 @@ export class SearchOverlayLocalRestaurantSheetVisualStateController {
     localRestaurantSheetRouteHostVisualAuthority: SearchOverlayLocalRestaurantSheetRouteHostVisualAuthority;
   }) {
     this.renderVisualSnapshot = localRestaurantSheetRenderVisualAuthority.getSnapshot();
-    this.routeHostVisualSnapshot =
-      localRestaurantSheetRouteHostVisualAuthority.getSnapshot();
+    this.routeHostVisualSnapshot = localRestaurantSheetRouteHostVisualAuthority.getSnapshot();
     this.snapshot = createSearchOverlayLocalRestaurantSheetVisualSnapshot({
       renderVisualSnapshot: this.renderVisualSnapshot,
       routeHostVisualSnapshot: this.routeHostVisualSnapshot,
@@ -68,14 +67,10 @@ export class SearchOverlayLocalRestaurantSheetVisualStateController {
     };
     this.unsubscribers.push(
       localRestaurantSheetRenderVisualAuthority.subscribe(() => {
-        this.setRenderVisualSnapshot(
-          localRestaurantSheetRenderVisualAuthority.getSnapshot()
-        );
+        this.setRenderVisualSnapshot(localRestaurantSheetRenderVisualAuthority.getSnapshot());
       }),
       localRestaurantSheetRouteHostVisualAuthority.subscribe(() => {
-        this.setRouteHostVisualSnapshot(
-          localRestaurantSheetRouteHostVisualAuthority.getSnapshot()
-        );
+        this.setRouteHostVisualSnapshot(localRestaurantSheetRouteHostVisualAuthority.getSnapshot());
       })
     );
   }
@@ -121,12 +116,7 @@ export class SearchOverlayLocalRestaurantSheetVisualStateController {
       routeHostVisualSnapshot: this.routeHostVisualSnapshot,
     });
 
-    if (
-      areSearchOverlayLocalRestaurantSheetVisualSnapshotsEqual(
-        this.snapshot,
-        nextSnapshot
-      )
-    ) {
+    if (areSearchOverlayLocalRestaurantSheetVisualSnapshotsEqual(this.snapshot, nextSnapshot)) {
       return;
     }
 
@@ -140,7 +130,9 @@ export class SearchOverlayLocalRestaurantSheetVisualStateController {
 export const createSearchOverlayLocalRestaurantSheetVisualStateController = ({
   localRestaurantSheetRenderVisualAuthority,
   localRestaurantSheetRouteHostVisualAuthority,
-}: ConstructorParameters<typeof SearchOverlayLocalRestaurantSheetVisualStateController>[0]): SearchOverlayLocalRestaurantSheetVisualStateController =>
+}: ConstructorParameters<
+  typeof SearchOverlayLocalRestaurantSheetVisualStateController
+>[0]): SearchOverlayLocalRestaurantSheetVisualStateController =>
   new SearchOverlayLocalRestaurantSheetVisualStateController({
     localRestaurantSheetRenderVisualAuthority,
     localRestaurantSheetRouteHostVisualAuthority,

@@ -197,9 +197,7 @@ export const useSearchMapMovementState = ({
         [0, height],
       ];
       void Promise.all(
-        cornerPoints.map((point) =>
-          map.getCoordinateFromView!(point).catch(() => null)
-        )
+        cornerPoints.map((point) => map.getCoordinateFromView!(point).catch(() => null))
       ).then((positions) => {
         if (lastSearchBoundsCaptureSeqRef.current !== captureSeq) {
           return;

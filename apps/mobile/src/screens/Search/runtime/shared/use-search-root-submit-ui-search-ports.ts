@@ -19,9 +19,9 @@ export const useSearchRootSubmitUiSearchPorts = ({
 
   return React.useMemo(
     () => ({
-      setActiveTab:
-        rootPrimitivesRuntime.searchState
-          .setActiveTab as React.Dispatch<React.SetStateAction<'restaurants' | 'dishes'>>,
+      setActiveTab: rootPrimitivesRuntime.searchState.setActiveTab as React.Dispatch<
+        React.SetStateAction<'restaurants' | 'dishes'>
+      >,
       setError: rootPrimitivesRuntime.searchState.setError,
       isSearchEditingRef: rootPrimitivesRuntime.searchState.isSearchEditingRef,
     }),

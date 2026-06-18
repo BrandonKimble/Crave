@@ -29,8 +29,7 @@ const RUNTIME_ATTRIBUTION_BUFFER_LIMIT = 5000;
 
 const runtimeAttributionSpans: SearchNavSwitchRuntimeAttributionSpan[] = [];
 
-const roundAttributionValue = (value: number): number =>
-  Number(value.toFixed(1));
+const roundAttributionValue = (value: number): number => Number(value.toFixed(1));
 
 export const recordSearchNavSwitchRuntimeAttributionSpan = ({
   owner,
@@ -124,10 +123,7 @@ export const finishSearchNavSwitchRuntimeAttributionSpan = ({
   });
 };
 
-export const markSearchNavSwitchRuntimeAttribution = (
-  owner: string,
-  operation: string
-): void => {
+export const markSearchNavSwitchRuntimeAttribution = (owner: string, operation: string): void => {
   const startedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
   finishSearchNavSwitchRuntimeAttributionSpan({
     owner,
@@ -155,23 +151,21 @@ export const resolveSearchNavSwitchRuntimeAttributionOwners = ({
     }
     const overlapMs = Math.max(
       0,
-      Math.min(windowEndMs, span.endedAtMs) -
-        Math.max(windowStartMs, span.startedAtMs)
+      Math.min(windowEndMs, span.endedAtMs) - Math.max(windowStartMs, span.startedAtMs)
     );
     if (overlapMs <= 0 && span.durationMs > 0) {
       return;
     }
     const ownerId = `${span.owner}:${span.operation}`;
-    const existing =
-      ownerMap.get(ownerId) ?? {
-        ownerId,
-        owner: span.owner,
-        operation: span.operation,
-        overlapMs: 0,
-        totalDurationMs: 0,
-        maxDurationMs: 0,
-        spanCount: 0,
-      };
+    const existing = ownerMap.get(ownerId) ?? {
+      ownerId,
+      owner: span.owner,
+      operation: span.operation,
+      overlapMs: 0,
+      totalDurationMs: 0,
+      maxDurationMs: 0,
+      spanCount: 0,
+    };
     existing.overlapMs += overlapMs;
     existing.totalDurationMs += span.durationMs;
     existing.maxDurationMs = Math.max(existing.maxDurationMs, span.durationMs);
@@ -201,9 +195,7 @@ export const resolveSearchNavSwitchRuntimeAttributionOwners = ({
     }));
 };
 
-export const pruneSearchNavSwitchRuntimeAttributionBefore = (
-  beforeMs: number
-): void => {
+export const pruneSearchNavSwitchRuntimeAttributionBefore = (beforeMs: number): void => {
   const firstRetainedIndex = runtimeAttributionSpans.findIndex(
     (span) => span.endedAtMs >= beforeMs
   );

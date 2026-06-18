@@ -19,13 +19,11 @@ export const useSearchRootOverlayLocalRestaurantSheetPolicySelectionRuntime = ({
     SearchRootOverlayLocalRestaurantSheetSelectionControllers,
     'localRestaurantSheetPolicySelectionAuthority'
   > => {
-  const localRestaurantSheetPolicySelectionController =
-    useSearchRuntimeControllerRuntime(() =>
-      createSearchOverlayLocalRestaurantSheetPolicySelectionStateController({
-        overlayLocalRestaurantPolicyHostAuthority:
-          routeLocalRestaurantOverlayPolicyAuthority,
-      })
-    );
+  const localRestaurantSheetPolicySelectionController = useSearchRuntimeControllerRuntime(() =>
+    createSearchOverlayLocalRestaurantSheetPolicySelectionStateController({
+      overlayLocalRestaurantPolicyHostAuthority: routeLocalRestaurantOverlayPolicyAuthority,
+    })
+  );
 
   return {
     localRestaurantSheetPolicySelectionAuthority:

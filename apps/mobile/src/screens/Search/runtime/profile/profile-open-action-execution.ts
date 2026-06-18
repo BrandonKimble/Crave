@@ -15,10 +15,7 @@ import {
 const APPROX_METERS_PER_LAT_DEGREE = 111_320;
 const SELECTED_PIN_CAMERA_TARGET_TOLERANCE_METERS = 8;
 
-const approximateCoordinateDistanceMeters = (
-  first: Coordinate,
-  second: Coordinate
-): number => {
+const approximateCoordinateDistanceMeters = (first: Coordinate, second: Coordinate): number => {
   const averageLatRadians = (((first.lat + second.lat) / 2) * Math.PI) / 180;
   const metersPerLngDegree = APPROX_METERS_PER_LAT_DEGREE * Math.cos(averageLatRadians);
   const dx = (first.lng - second.lng) * metersPerLngDegree;

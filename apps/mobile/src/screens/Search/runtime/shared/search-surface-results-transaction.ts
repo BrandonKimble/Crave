@@ -63,7 +63,9 @@ export type SearchSurfaceResultsTransactionCoordinatorOptions = {
   publishSearchSurfaceResultsTransactionKey: (key: string | null) => void;
   publishMapSearchSurfaceResultsSourcesReady: (value: boolean, key: string | null) => void;
   onRowsReadyForPresentation?: (snapshot: SearchSurfaceResultsEnterTransaction) => void;
-  commitSearchSurfaceResultsEnterPresentation: (snapshot: SearchSurfaceResultsEnterTransaction) => void;
+  commitSearchSurfaceResultsEnterPresentation: (
+    snapshot: SearchSurfaceResultsEnterTransaction
+  ) => void;
   clearCommittedSearchSurfaceResultsTransactionKey: () => void;
   onStagedTransactionChanged?: () => void;
 };
@@ -313,7 +315,9 @@ export const createSearchSurfaceResultsTransactionCoordinator = (
             presentationCommitted: true,
           };
           setStagedTransaction(presentationCommittedSnapshot);
-          options.commitSearchSurfaceResultsEnterPresentation(presentationCommittedSnapshot.snapshot);
+          options.commitSearchSurfaceResultsEnterPresentation(
+            presentationCommittedSnapshot.snapshot
+          );
         }
         return false;
       }

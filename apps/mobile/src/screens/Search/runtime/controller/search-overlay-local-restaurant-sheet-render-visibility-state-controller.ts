@@ -12,12 +12,9 @@ export type SearchOverlayLocalRestaurantSheetRenderVisibilityAuthority = {
 };
 
 const createRenderVisibilitySnapshot = (
-  routeOverlayVisibilitySnapshot: ReturnType<
-    RouteOverlayVisibilityAuthority['getSnapshot']
-  >
+  routeOverlayVisibilitySnapshot: ReturnType<RouteOverlayVisibilityAuthority['getSnapshot']>
 ): SearchOverlayLocalRestaurantSheetRenderVisibilitySnapshot => ({
-  shouldRenderSearchOverlay:
-    routeOverlayVisibilitySnapshot.shouldRenderSearchOverlay,
+  shouldRenderSearchOverlay: routeOverlayVisibilitySnapshot.shouldRenderSearchOverlay,
 });
 
 export class SearchOverlayLocalRestaurantSheetRenderVisibilityStateController {
@@ -38,21 +35,15 @@ export class SearchOverlayLocalRestaurantSheetRenderVisibilityStateController {
   }: {
     routeOverlayVisibilityAuthority: RouteOverlayVisibilityAuthority;
   }) {
-    this.routeOverlayVisibilitySnapshot =
-      routeOverlayVisibilityAuthority.getSnapshot();
-    this.snapshot = createRenderVisibilitySnapshot(
-      this.routeOverlayVisibilitySnapshot
-    );
+    this.routeOverlayVisibilitySnapshot = routeOverlayVisibilityAuthority.getSnapshot();
+    this.snapshot = createRenderVisibilitySnapshot(this.routeOverlayVisibilitySnapshot);
     this.outputAuthority = {
       subscribe: (listener) => this.subscribe(listener),
       getSnapshot: () => this.snapshot,
     };
-    this.unsubscribeRouteOverlayVisibility =
-      routeOverlayVisibilityAuthority.subscribe(() => {
-        this.setRouteOverlayVisibilitySnapshot(
-          routeOverlayVisibilityAuthority.getSnapshot()
-        );
-      });
+    this.unsubscribeRouteOverlayVisibility = routeOverlayVisibilityAuthority.subscribe(() => {
+      this.setRouteOverlayVisibilitySnapshot(routeOverlayVisibilityAuthority.getSnapshot());
+    });
   }
 
   public dispose(): void {
@@ -68,9 +59,7 @@ export class SearchOverlayLocalRestaurantSheetRenderVisibilityStateController {
   }
 
   private setRouteOverlayVisibilitySnapshot(
-    routeOverlayVisibilitySnapshot: ReturnType<
-      RouteOverlayVisibilityAuthority['getSnapshot']
-    >
+    routeOverlayVisibilitySnapshot: ReturnType<RouteOverlayVisibilityAuthority['getSnapshot']>
   ): void {
     if (this.routeOverlayVisibilitySnapshot === routeOverlayVisibilitySnapshot) {
       return;
@@ -80,14 +69,9 @@ export class SearchOverlayLocalRestaurantSheetRenderVisibilityStateController {
   }
 
   private recompute(): void {
-    const nextSnapshot = createRenderVisibilitySnapshot(
-      this.routeOverlayVisibilitySnapshot
-    );
+    const nextSnapshot = createRenderVisibilitySnapshot(this.routeOverlayVisibilitySnapshot);
 
-    if (
-      this.snapshot.shouldRenderSearchOverlay ===
-      nextSnapshot.shouldRenderSearchOverlay
-    ) {
+    if (this.snapshot.shouldRenderSearchOverlay === nextSnapshot.shouldRenderSearchOverlay) {
       return;
     }
 
@@ -98,12 +82,11 @@ export class SearchOverlayLocalRestaurantSheetRenderVisibilityStateController {
   }
 }
 
-export const createSearchOverlayLocalRestaurantSheetRenderVisibilityStateController =
-  ({
+export const createSearchOverlayLocalRestaurantSheetRenderVisibilityStateController = ({
+  routeOverlayVisibilityAuthority,
+}: ConstructorParameters<
+  typeof SearchOverlayLocalRestaurantSheetRenderVisibilityStateController
+>[0]): SearchOverlayLocalRestaurantSheetRenderVisibilityStateController =>
+  new SearchOverlayLocalRestaurantSheetRenderVisibilityStateController({
     routeOverlayVisibilityAuthority,
-  }: ConstructorParameters<
-    typeof SearchOverlayLocalRestaurantSheetRenderVisibilityStateController
-  >[0]): SearchOverlayLocalRestaurantSheetRenderVisibilityStateController =>
-    new SearchOverlayLocalRestaurantSheetRenderVisibilityStateController({
-      routeOverlayVisibilityAuthority,
-    });
+  });

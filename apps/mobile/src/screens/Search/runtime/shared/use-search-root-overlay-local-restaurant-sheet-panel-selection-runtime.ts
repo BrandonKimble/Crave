@@ -19,13 +19,12 @@ export const useSearchRootOverlayLocalRestaurantSheetPanelSelectionRuntime = ({
     SearchRootOverlayLocalRestaurantSheetSelectionControllers,
     'localRestaurantSheetPanelSelectionAuthority'
   > => {
-  const localRestaurantSheetPanelSelectionController =
-    useSearchRuntimeControllerRuntime(() =>
-      createSearchOverlayLocalRestaurantSheetPanelSelectionStateController({
-        overlayLocalRestaurantPanelContentHostAuthority:
-          routeLocalRestaurantOverlayPanelContentAuthority,
-      })
-    );
+  const localRestaurantSheetPanelSelectionController = useSearchRuntimeControllerRuntime(() =>
+    createSearchOverlayLocalRestaurantSheetPanelSelectionStateController({
+      overlayLocalRestaurantPanelContentHostAuthority:
+        routeLocalRestaurantOverlayPanelContentAuthority,
+    })
+  );
 
   return {
     localRestaurantSheetPanelSelectionAuthority:

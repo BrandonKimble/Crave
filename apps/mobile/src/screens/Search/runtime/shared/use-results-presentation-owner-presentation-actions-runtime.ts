@@ -5,6 +5,7 @@ import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
 import type { ResultsPresentationActions } from './results-presentation-shell-runtime-contract';
 import type { SearchPresentationIntent } from './results-presentation-shell-contract';
 import type { ResultsPresentationRuntimeOwner } from './results-presentation-runtime-owner-contract';
+import type { ResultsPresentationAuthority } from './results-presentation-authority';
 import type { ResultsPresentationShellLocalState } from './use-results-presentation-shell-local-state';
 import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
 import type { OverlayKey } from '../../../../overlays/types';
@@ -33,6 +34,7 @@ type UseResultsPresentationOwnerPresentationActionsRuntimeArgs = {
     Pick<AppRouteSharedSheetRuntimeOwner, 'snapPoints'>;
   shellLocalState: ResultsPresentationShellLocalState;
   resultsRuntimeOwner: ResultsPresentationRuntimeOwner;
+  resultsPresentationAuthority: ResultsPresentationAuthority;
   cancelCloseSearchCleanup: () => void;
   setPendingCloseIntentId: (intentId: string | null) => void;
   matchesPendingCloseIntentId: (intentId: string) => boolean;
@@ -59,6 +61,7 @@ export const useResultsPresentationOwnerPresentationActionsRuntime = ({
   resultsSheetRuntime,
   shellLocalState,
   resultsRuntimeOwner,
+  resultsPresentationAuthority,
   cancelCloseSearchCleanup,
   setPendingCloseIntentId,
   matchesPendingCloseIntentId,
@@ -93,6 +96,7 @@ export const useResultsPresentationOwnerPresentationActionsRuntime = ({
     resultsSheetRuntime,
     shellLocalState,
     resultsRuntimeOwner,
+    resultsPresentationAuthority,
     cancelSearchSheetCloseTransition,
     cancelCloseSearchCleanup,
     setPendingCloseIntentId,

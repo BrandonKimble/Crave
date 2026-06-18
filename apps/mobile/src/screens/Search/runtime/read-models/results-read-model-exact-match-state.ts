@@ -60,24 +60,24 @@ export const resolveSearchResultsExactMatchState = ({
   const nextState = !searchRequestId
     ? createInitialSearchResultsExactMatchState()
     : searchRequestId !== currentState.sectionedSearchRequestId
-    ? {
-        sectionedSearchRequestId: searchRequestId,
-        exactDishesOnPage: nextExactDishes,
-        exactRestaurantsOnPage: nextExactRestaurants,
-        showAllExactDishes: false,
-        showAllExactRestaurants: false,
-      }
-    : {
-        ...currentState,
-        exactDishesOnPage:
-          nextExactDishes !== null && currentState.exactDishesOnPage === null
-            ? nextExactDishes
-            : currentState.exactDishesOnPage,
-        exactRestaurantsOnPage:
-          nextExactRestaurants !== null && currentState.exactRestaurantsOnPage === null
-            ? nextExactRestaurants
-            : currentState.exactRestaurantsOnPage,
-      };
+      ? {
+          sectionedSearchRequestId: searchRequestId,
+          exactDishesOnPage: nextExactDishes,
+          exactRestaurantsOnPage: nextExactRestaurants,
+          showAllExactDishes: false,
+          showAllExactRestaurants: false,
+        }
+      : {
+          ...currentState,
+          exactDishesOnPage:
+            nextExactDishes !== null && currentState.exactDishesOnPage === null
+              ? nextExactDishes
+              : currentState.exactDishesOnPage,
+          exactRestaurantsOnPage:
+            nextExactRestaurants !== null && currentState.exactRestaurantsOnPage === null
+              ? nextExactRestaurants
+              : currentState.exactRestaurantsOnPage,
+        };
 
   return areSearchResultsExactMatchStatesEqual(currentState, nextState) ? currentState : nextState;
 };

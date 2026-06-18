@@ -64,8 +64,7 @@ const isPointInPolygon = (lng: number, lat: number, polygon: LngLat[]): boolean 
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
     const [xi, yi] = polygon[i];
     const [xj, yj] = polygon[j];
-    const intersects =
-      yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
+    const intersects = yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
     if (intersects) {
       inside = !inside;
     }
@@ -119,9 +118,7 @@ export const zoomToFitRadiusMiles = (
   if (!(viewportWidthPx > 0) || !(diameterMeters > 0)) {
     return 12;
   }
-  const zoom = Math.log2(
-    (EQUATOR_METERS_PER_PIXEL_Z0 * cosLat * viewportWidthPx) / diameterMeters
-  );
+  const zoom = Math.log2((EQUATOR_METERS_PER_PIXEL_Z0 * cosLat * viewportWidthPx) / diameterMeters);
   return Math.max(1, Math.min(20, zoom));
 };
 

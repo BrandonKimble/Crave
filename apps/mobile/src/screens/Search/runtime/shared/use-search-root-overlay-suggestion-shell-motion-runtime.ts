@@ -16,15 +16,12 @@ export const useSearchRootOverlaySuggestionShellMotionRuntime = ({
   return React.useMemo(
     () => ({
       searchSurfaceAnimatedStyle: visualRuntime.searchSurfaceAnimatedStyle,
-      suggestionHeaderHeightAnimatedStyle:
-        suggestionRuntime.suggestionHeaderHeightAnimatedStyle,
+      suggestionHeaderHeightAnimatedStyle: suggestionRuntime.suggestionHeaderHeightAnimatedStyle,
       suggestionPanelAnimatedStyle: visualRuntime.suggestionPanelAnimatedStyle,
-      suggestionScrollTopAnimatedStyle:
-        suggestionRuntime.suggestionScrollTopAnimatedStyle,
+      suggestionScrollTopAnimatedStyle: suggestionRuntime.suggestionScrollTopAnimatedStyle,
       suggestionScrollMaxHeightAnimatedStyle:
         suggestionRuntime.suggestionScrollMaxHeightAnimatedStyle,
-      suggestionHeaderDividerAnimatedStyle:
-        suggestionRuntime.suggestionHeaderDividerAnimatedStyle,
+      suggestionHeaderDividerAnimatedStyle: suggestionRuntime.suggestionHeaderDividerAnimatedStyle,
     }),
     [
       suggestionRuntime.suggestionHeaderDividerAnimatedStyle,

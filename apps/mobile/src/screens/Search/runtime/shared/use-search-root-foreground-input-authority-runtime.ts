@@ -32,8 +32,7 @@ export const useSearchRootForegroundInputAuthorityRuntime = ({
     rootPrimitivesRuntime,
     rootDataPlaneRuntime,
     rootOverlayStoreRuntime,
-    resultsPresentationOwner:
-      resultsPresentationAuthorityRuntime.resultsPresentationOwner,
+    resultsPresentationOwner: resultsPresentationAuthorityRuntime.resultsPresentationOwner,
     autocompleteRuntime: autocompleteAuthorityRuntime.autocompleteRuntime,
   });
 

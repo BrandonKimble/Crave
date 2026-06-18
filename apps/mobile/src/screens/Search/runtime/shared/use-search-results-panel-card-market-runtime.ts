@@ -9,16 +9,12 @@ export const useSearchResultsPanelCardMarketRuntime = ({
 }) => {
   const searchRequestId = React.useMemo(() => {
     const candidate = resolvedResults?.metadata?.searchRequestId;
-    return typeof candidate === 'string' && candidate.trim().length > 0
-      ? candidate
-      : null;
+    return typeof candidate === 'string' && candidate.trim().length > 0 ? candidate : null;
   }, [resolvedResults?.metadata?.searchRequestId]);
 
   const primaryMarketKey = React.useMemo(() => {
     const candidate = resolvedResults?.metadata?.marketKey;
-    return typeof candidate === 'string' && candidate.trim().length > 0
-      ? candidate
-      : null;
+    return typeof candidate === 'string' && candidate.trim().length > 0 ? candidate : null;
   }, [resolvedResults?.metadata?.marketKey]);
 
   const primaryFoodTerm = React.useMemo(() => {

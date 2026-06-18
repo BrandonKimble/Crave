@@ -136,11 +136,10 @@ export const useResultsPresentationCloseActionsRuntime = ({
     unstable_batchedUpdates(() => {
       clearTypedQuery();
       isClearingSearchRef.current = true;
-      const activeRouteKey = routeSceneRuntime.routeSceneSwitchRuntime.getRouteState()
-        .activeOverlayRoute.key;
+      const activeRouteKey =
+        routeSceneRuntime.routeSceneSwitchRuntime.getRouteState().activeOverlayRoute.key;
       const outgoingSheetSceneKey: OverlayKey =
-        profilePresentationActiveRef.current ||
-        activeRouteKey === 'restaurant'
+        profilePresentationActiveRef.current || activeRouteKey === 'restaurant'
           ? 'restaurant'
           : 'search';
       const terminalDismissSource = outgoingSheetSceneKey === 'restaurant' ? 'profile' : 'results';

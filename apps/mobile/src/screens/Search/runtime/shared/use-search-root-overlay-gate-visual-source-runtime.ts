@@ -21,13 +21,11 @@ export const useSearchRootOverlayGateVisualSourceRuntime = ({
         isFocused: appEntryPlaneRuntime.isFocused,
         statusBarFadeHeight: visualRuntime.statusBarFadeHeight,
         onProfilerRender:
-          rootOverlayFoundationRuntime.rootInstrumentationRuntime
-            .handleProfilerRender,
+          rootOverlayFoundationRuntime.rootInstrumentationRuntime.handleProfilerRender,
       }),
     [
       appEntryPlaneRuntime.isFocused,
-      rootOverlayFoundationRuntime.rootInstrumentationRuntime
-        .handleProfilerRender,
+      rootOverlayFoundationRuntime.rootInstrumentationRuntime.handleProfilerRender,
       visualRuntime.statusBarFadeHeight,
     ]
   );

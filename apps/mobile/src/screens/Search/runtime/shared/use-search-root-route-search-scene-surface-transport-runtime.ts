@@ -26,38 +26,29 @@ export const useSearchRootRouteSearchSceneSurfaceTransportRuntime = ({
   routeSearchSceneDataRuntime: SearchRootRuntimeRouteSearchSceneDataRuntime;
   routeSearchSceneReadModelRuntime: SearchRootRuntimeRouteSearchSceneReadModelRuntime;
 }): SearchRootRuntimeRouteSearchSceneSheetTransportRuntime => {
-  const routeSearchSceneListItemContentRuntime =
-    useSearchRootSearchSceneListItemContentRuntime({
-      activeTab:
-        routeSearchSceneDataRuntime.routeSearchSceneResultsRuntimeState
-          .activeTab,
-      renderListItem:
-        routeSearchSceneReadModelRuntime.routeSearchSceneResultsReadModelSelectors
-          .renderListItem,
-    });
+  const routeSearchSceneListItemContentRuntime = useSearchRootSearchSceneListItemContentRuntime({
+    activeTab: routeSearchSceneDataRuntime.routeSearchSceneResultsRuntimeState.activeTab,
+    renderListItem:
+      routeSearchSceneReadModelRuntime.routeSearchSceneResultsReadModelSelectors.renderListItem,
+  });
   const routeSearchSceneListItemTransportRuntime =
     useSearchRootSearchSceneListItemTransportRuntime();
-  const routeSearchSceneSheetPlaneRuntime =
-    useSearchRootSearchSceneSheetPlaneRuntime({
-      stateFoundationLane: stateAssemblyRuntime.stateFoundationLane,
-      rootOverlayFoundationRuntime:
-        overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime,
-      resultsSheetControlLane: resultsControlRuntime.resultsSheetControlLane,
-      resultsPresentationStateControlLane:
-        resultsControlRuntime.resultsPresentationStateControlLane,
-      searchSheetContentLaneKind:
-        routeSearchSceneDataRuntime.routeSearchSceneSearchSheetContentLane.kind,
-      sceneVisualRuntime: visualAssemblyRuntime.sceneVisualRuntime,
-    });
+  const routeSearchSceneSheetPlaneRuntime = useSearchRootSearchSceneSheetPlaneRuntime({
+    stateFoundationLane: stateAssemblyRuntime.stateFoundationLane,
+    rootOverlayFoundationRuntime: overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime,
+    resultsSheetControlLane: resultsControlRuntime.resultsSheetControlLane,
+    resultsPresentationStateControlLane: resultsControlRuntime.resultsPresentationStateControlLane,
+    searchSheetContentLaneKind:
+      routeSearchSceneDataRuntime.routeSearchSceneSearchSheetContentLane.kind,
+    sceneVisualRuntime: visualAssemblyRuntime.sceneVisualRuntime,
+  });
   const routeSearchScenePanelListTransportRuntime =
     useSearchRootSearchScenePanelListTransportRuntime({
       flashListRuntimeProps:
         routeSearchSceneReadModelRuntime.routeSearchSceneResultsReadModelSelectors
           .flashListRuntimeProps,
-      getResultItemType:
-        routeSearchSceneListItemTransportRuntime.getResultItemType,
-      overrideItemLayout:
-        routeSearchSceneListItemTransportRuntime.overrideItemLayout,
+      getResultItemType: routeSearchSceneListItemTransportRuntime.getResultItemType,
+      overrideItemLayout: routeSearchSceneListItemTransportRuntime.overrideItemLayout,
     });
 
   return {

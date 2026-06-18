@@ -19,11 +19,9 @@ export const useSearchRootRouteRestaurantOverlayPolicyPublicationRuntime = ({
     React.useMemo<SearchRootRouteRestaurantOverlayPolicyPublication>(
       () => ({
         shouldSuppressRestaurantOverlay:
-          resultsPresentationStateControlLane.presentationState
-            .shouldSuppressRestaurantOverlay,
+          resultsPresentationStateControlLane.presentationState.shouldSuppressRestaurantOverlay,
         shouldFreezeRestaurantPanelContent:
-          resultsPresentationStateControlLane.presentationState
-            .shouldFreezeRestaurantPanelContent,
+          resultsPresentationStateControlLane.presentationState.shouldFreezeRestaurantPanelContent,
         shouldEnableRestaurantOverlayInteraction:
           resultsPresentationStateControlLane.presentationState
             .shouldEnableRestaurantOverlayInteraction,
@@ -31,10 +29,8 @@ export const useSearchRootRouteRestaurantOverlayPolicyPublicationRuntime = ({
       [
         resultsPresentationStateControlLane.presentationState
           .shouldEnableRestaurantOverlayInteraction,
-        resultsPresentationStateControlLane.presentationState
-          .shouldFreezeRestaurantPanelContent,
-        resultsPresentationStateControlLane.presentationState
-          .shouldSuppressRestaurantOverlay,
+        resultsPresentationStateControlLane.presentationState.shouldFreezeRestaurantPanelContent,
+        resultsPresentationStateControlLane.presentationState.shouldSuppressRestaurantOverlay,
       ]
     );
 
@@ -42,8 +38,5 @@ export const useSearchRootRouteRestaurantOverlayPolicyPublicationRuntime = ({
     routeRestaurantOverlayPolicyPublicationLane.syncRouteRestaurantOverlayPolicyPublication(
       routeRestaurantOverlayPolicyPublication
     );
-  }, [
-    routeRestaurantOverlayPolicyPublication,
-    routeRestaurantOverlayPolicyPublicationLane,
-  ]);
+  }, [routeRestaurantOverlayPolicyPublication, routeRestaurantOverlayPolicyPublicationLane]);
 };

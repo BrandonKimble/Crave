@@ -33,8 +33,7 @@ export const useSearchAutocompleteRequestLifecycleRuntime = ({
   const lifecycle = React.useMemo(() => {
     const trimmed = query.trim();
     const isSuppressed =
-      isAutocompleteSuppressed ||
-      requestStateRuntime.manuallySuppressedAutocompleteRef.current;
+      isAutocompleteSuppressed || requestStateRuntime.manuallySuppressedAutocompleteRef.current;
     const shouldRun = isSuggestionScreenActive && !isSuppressed;
 
     if (!shouldRun) {
@@ -94,11 +93,7 @@ export const useSearchAutocompleteRequestLifecycleRuntime = ({
       return;
     }
     if (lifecycle.cachedMatches != null) {
-      writeAutocompleteSuggestions(
-        setSuggestions,
-        setShowSuggestions,
-        lifecycle.cachedMatches
-      );
+      writeAutocompleteSuggestions(setSuggestions, setShowSuggestions, lifecycle.cachedMatches);
     }
   }, [
     cancelAutocomplete,

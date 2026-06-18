@@ -83,10 +83,6 @@ export const useSearchRootResultsSheetLoadMoreRuntime = ({
       resetResultsListScrollProgress,
       handleResultsEndReached,
     }),
-    [
-      handleResultsEndReached,
-      markResultsListUserScrollStart,
-      resetResultsListScrollProgress,
-    ]
+    [handleResultsEndReached, markResultsListUserScrollStart, resetResultsListScrollProgress]
   );
 };

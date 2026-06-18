@@ -1,9 +1,7 @@
 import { useSearchRootResultsControlRuntime } from './use-search-root-results-control-runtime';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
-import type {
-  SearchRootResultsInteractionPorts,
-} from './search-root-control-ports-runtime-contract';
+import type { SearchRootResultsInteractionPorts } from './search-root-control-ports-runtime-contract';
 import type {
   SearchRootResultsPresentationControlLane,
   SubmitRuntimeResult,
@@ -30,8 +28,7 @@ export const useSearchRootControlResultsExperienceRuntime = ({
   useSearchRootResultsControlRuntime({
     stateFoundationLane,
     rootOverlayFoundationRuntime,
-    resultsPresentationOwner:
-      resultsPresentationControlLane.resultsPresentationOwner,
+    resultsPresentationOwner: resultsPresentationControlLane.resultsPresentationOwner,
     resultsInteractionPorts,
     profileOwner: profileControlRuntime.profileOwner,
     submitRuntimeResult,

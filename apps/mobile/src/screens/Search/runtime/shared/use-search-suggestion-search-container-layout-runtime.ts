@@ -64,10 +64,7 @@ export const useSearchSuggestionSearchContainerLayoutRuntime = ({
       const hasUsableIncomingLayout = hasUsableSearchContainerHeight(layout.height);
       if (layout.height > 0) {
         setSearchLayout((prev) => {
-          if (
-            hasUsableSearchContainerHeight(prev.height) &&
-            !hasUsableIncomingLayout
-          ) {
+          if (hasUsableSearchContainerHeight(prev.height) && !hasUsableIncomingLayout) {
             return prev;
           }
           if (prev.top === layout.y && prev.height === layout.height) {

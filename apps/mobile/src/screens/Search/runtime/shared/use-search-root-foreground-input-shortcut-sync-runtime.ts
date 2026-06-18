@@ -7,10 +7,7 @@ import type { SearchRootPrimitivesRuntime } from './search-root-primitives-runti
 type UseSearchRootForegroundInputShortcutSyncRuntimeArgs = {
   resolvedSubmittedQuery: string;
   rootPrimitivesRuntime: SearchRootPrimitivesRuntime;
-  rootDataPlaneRuntime: Pick<
-    SearchRootDataPlaneRuntime,
-    'runtimeFlags'
-  >;
+  rootDataPlaneRuntime: Pick<SearchRootDataPlaneRuntime, 'runtimeFlags'>;
   resultsPresentationOwner: SearchRootResultsPresentationControlPort;
 };
 

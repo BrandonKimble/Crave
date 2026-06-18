@@ -35,11 +35,8 @@ export const useSearchRootForegroundCommandRuntime = ({
 }: UseSearchRootForegroundCommandRuntimeArgs) => {
   const { rootPrimitivesRuntime, rootDataPlaneRuntime, rootSuggestionRuntime } =
     stateFoundationLane;
-  const {
-    routeOverlaySessionActions,
-    routeOverlaySessionSnapshotRef,
-    rootSharedSheetRuntimeLane,
-  } = rootOverlayFoundationRuntime;
+  const { routeOverlaySessionActions, routeOverlaySessionSnapshotRef, rootSharedSheetRuntimeLane } =
+    rootOverlayFoundationRuntime;
   const { autocompleteRuntime } = autocompleteAuthorityRuntime;
   const { recentActivityRuntime } = recentActivityAuthorityRuntime;
   const requestStatusRuntime = rootDataPlaneRuntime.requestStatusRuntime;
@@ -85,7 +82,7 @@ export const useSearchRootForegroundCommandRuntime = ({
           recentActivityRuntime.deferRecentSearchUpsert as SearchForegroundCommandRuntimeArgs['deferRecentSearchUpsert'],
         openRestaurantProfilePreview: profileOwner.profileActions.openRestaurantProfilePreview,
         isOffline: requestStatusRuntime.isOffline,
-      } satisfies SearchForegroundCommandRuntimeArgs),
+      }) satisfies SearchForegroundCommandRuntimeArgs,
     [
       autocompleteRuntime.suppressAutocompleteResults,
       profileOwner.profileActions.openRestaurantProfilePreview,

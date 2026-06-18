@@ -23,16 +23,14 @@ export const useSearchRootOverlayLocalRestaurantSheetVisualHostRuntime = ({
     SearchRootOverlayLocalRestaurantSheetVisualControllers,
     'localRestaurantSheetVisualHostAuthority'
   > => {
-  const localRestaurantSheetVisualController =
-    useSearchRuntimeControllerRuntime(() =>
-      createSearchOverlayLocalRestaurantSheetVisualStateController({
-        localRestaurantSheetRenderVisualAuthority,
-        localRestaurantSheetRouteHostVisualAuthority,
-      })
-    );
+  const localRestaurantSheetVisualController = useSearchRuntimeControllerRuntime(() =>
+    createSearchOverlayLocalRestaurantSheetVisualStateController({
+      localRestaurantSheetRenderVisualAuthority,
+      localRestaurantSheetRouteHostVisualAuthority,
+    })
+  );
 
   return {
-    localRestaurantSheetVisualHostAuthority:
-      localRestaurantSheetVisualController.outputAuthority,
+    localRestaurantSheetVisualHostAuthority: localRestaurantSheetVisualController.outputAuthority,
   };
 };

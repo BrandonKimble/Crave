@@ -5,10 +5,7 @@ import type { SearchRootPrimitivesRuntime } from './search-root-primitives-runti
 
 type UseSearchRootForegroundInputSessionRuntimeArgs = {
   rootPrimitivesRuntime: SearchRootPrimitivesRuntime;
-  rootDataPlaneRuntime: Pick<
-    SearchRootDataPlaneRuntime,
-    'resultsArrivalState' | 'runtimeFlags'
-  >;
+  rootDataPlaneRuntime: Pick<SearchRootDataPlaneRuntime, 'resultsArrivalState' | 'runtimeFlags'>;
 };
 
 type SearchRootForegroundInputSessionRuntime = {

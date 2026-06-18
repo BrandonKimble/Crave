@@ -11,11 +11,7 @@ export const useSearchRootOverlayHeaderSearchThisAreaInteractionRuntime = ({
   React.useMemo(
     () => ({
       handleSearchThisArea:
-        foregroundInteractionControlLane.foregroundInteractionRuntime
-          .handleSearchThisArea,
+        foregroundInteractionControlLane.foregroundInteractionRuntime.handleSearchThisArea,
     }),
-    [
-      foregroundInteractionControlLane.foregroundInteractionRuntime
-        .handleSearchThisArea,
-    ]
+    [foregroundInteractionControlLane.foregroundInteractionRuntime.handleSearchThisArea]
   );

@@ -2,6 +2,7 @@ import type React from 'react';
 
 import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
 import type { ResultsPresentationOwner } from './results-presentation-owner-contract';
+import type { ResultsPresentationAuthority } from './results-presentation-authority';
 import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
 import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
 import { useResultsPresentationOwnerPresentationActionsRuntime } from './use-results-presentation-owner-presentation-actions-runtime';
@@ -27,6 +28,7 @@ type UseResultsPresentationOwnerPublicationRuntimeArgs = {
     | 'snapPoints'
   >;
   routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
+  resultsPresentationAuthority: ResultsPresentationAuthority;
   ownerStateRuntime: ResultsPresentationOwnerStateRuntime;
 };
 
@@ -41,6 +43,7 @@ export const useResultsPresentationOwnerPublicationRuntime = ({
   isClearingSearchRef,
   resultsSheetRuntime,
   routeSceneVisibilityPolicyRuntime,
+  resultsPresentationAuthority,
   ownerStateRuntime,
 }: UseResultsPresentationOwnerPublicationRuntimeArgs): ResultsPresentationOwner => {
   const { bridgeStateRuntime, shellStateRuntime, closeTransitionRuntime } = ownerStateRuntime;
@@ -59,6 +62,7 @@ export const useResultsPresentationOwnerPublicationRuntime = ({
     resultsSheetRuntime,
     shellLocalState,
     resultsRuntimeOwner,
+    resultsPresentationAuthority,
     cancelCloseSearchCleanup: closeTransitionRuntime.cancelCloseSearchCleanup,
     setPendingCloseIntentId: closeTransitionRuntime.setPendingCloseIntentId,
     matchesPendingCloseIntentId: closeTransitionRuntime.matchesPendingCloseIntentId,

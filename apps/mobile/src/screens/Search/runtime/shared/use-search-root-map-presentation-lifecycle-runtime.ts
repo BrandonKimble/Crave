@@ -18,58 +18,41 @@ export const useSearchRootMapPresentationLifecycleRuntime = ({
   const presentationLifecycleHandlersRef = React.useRef({
     handleExecutionBatchMountedHidden:
       presentationLifecycleHandlers.handleExecutionBatchMountedHidden,
-    handleMarkerEnterStarted:
-      presentationLifecycleHandlers.handleMarkerEnterStarted,
-    handleMarkerEnterSettled:
-      presentationLifecycleHandlers.handleMarkerEnterSettled,
-    handleMarkerExitStarted:
-      presentationLifecycleHandlers.handleMarkerExitStarted,
-    handleMarkerExitSettled:
-      presentationLifecycleHandlers.handleMarkerExitSettled,
+    handleMarkerEnterStarted: presentationLifecycleHandlers.handleMarkerEnterStarted,
+    handleMarkerEnterSettled: presentationLifecycleHandlers.handleMarkerEnterSettled,
+    handleMarkerExitStarted: presentationLifecycleHandlers.handleMarkerExitStarted,
+    handleMarkerExitSettled: presentationLifecycleHandlers.handleMarkerExitSettled,
   });
 
   presentationLifecycleHandlersRef.current = {
     handleExecutionBatchMountedHidden:
       presentationLifecycleHandlers.handleExecutionBatchMountedHidden,
-    handleMarkerEnterStarted:
-      presentationLifecycleHandlers.handleMarkerEnterStarted,
-    handleMarkerEnterSettled:
-      presentationLifecycleHandlers.handleMarkerEnterSettled,
-    handleMarkerExitStarted:
-      presentationLifecycleHandlers.handleMarkerExitStarted,
-    handleMarkerExitSettled:
-      presentationLifecycleHandlers.handleMarkerExitSettled,
+    handleMarkerEnterStarted: presentationLifecycleHandlers.handleMarkerEnterStarted,
+    handleMarkerEnterSettled: presentationLifecycleHandlers.handleMarkerEnterSettled,
+    handleMarkerExitStarted: presentationLifecycleHandlers.handleMarkerExitStarted,
+    handleMarkerExitSettled: presentationLifecycleHandlers.handleMarkerExitSettled,
   };
 
-  const presentationLifecyclePortRef =
-    React.useRef<SearchMapPresentationLifecyclePort | null>(null);
+  const presentationLifecyclePortRef = React.useRef<SearchMapPresentationLifecyclePort | null>(
+    null
+  );
 
   if (!presentationLifecyclePortRef.current) {
     presentationLifecyclePortRef.current = {
       handleExecutionBatchMountedHidden: (payload) => {
-        presentationLifecycleHandlersRef.current.handleExecutionBatchMountedHidden(
-          payload
-        );
+        presentationLifecycleHandlersRef.current.handleExecutionBatchMountedHidden(payload);
       },
       handleMarkerEnterStarted: (payload) => {
-        presentationLifecycleHandlersRef.current.handleMarkerEnterStarted(
-          payload
-        );
+        presentationLifecycleHandlersRef.current.handleMarkerEnterStarted(payload);
       },
       handleMarkerEnterSettled: (payload) => {
-        presentationLifecycleHandlersRef.current.handleMarkerEnterSettled(
-          payload
-        );
+        presentationLifecycleHandlersRef.current.handleMarkerEnterSettled(payload);
       },
       handleMarkerExitStarted: (payload) => {
-        presentationLifecycleHandlersRef.current.handleMarkerExitStarted(
-          payload
-        );
+        presentationLifecycleHandlersRef.current.handleMarkerExitStarted(payload);
       },
       handleMarkerExitSettled: (payload) => {
-        presentationLifecycleHandlersRef.current.handleMarkerExitSettled(
-          payload
-        );
+        presentationLifecycleHandlersRef.current.handleMarkerExitSettled(payload);
       },
     };
   }

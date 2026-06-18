@@ -1,4 +1,8 @@
-import type { SearchMapRenderEngineInputs, SearchMapRenderHostConfig, SearchMapRenderPresentationProps } from '../../components/SearchMapWithMarkerEngine';
+import type {
+  SearchMapRenderEngineInputs,
+  SearchMapRenderHostConfig,
+  SearchMapRenderPresentationProps,
+} from '../../components/SearchMapWithMarkerEngine';
 import type { SearchMapRenderHostLayerRuntime } from '../shared/search-map-render-host-layer-runtime-contract';
 import type { SearchRootStateFoundationLane } from '../shared/use-search-root-foundation-runtime';
 import type { SearchRootSessionCoreLane } from '../shared/use-search-root-session-runtime-contract';
@@ -14,9 +18,7 @@ export const createSearchRootMapHostLayerRuntime = ({
 }: {
   sessionCoreLane: SearchRootSessionCoreLane;
   stateFoundationLane: SearchRootStateFoundationLane;
-  mapPresentationRuntime: ReturnType<
-    typeof createSearchRootMapPresentationRuntimeValue
-  >;
+  mapPresentationRuntime: ReturnType<typeof createSearchRootMapPresentationRuntimeValue>;
   engineInputs: SearchMapRenderEngineInputs;
   hostConfig: SearchMapRenderHostConfig;
   presentationProps: SearchMapRenderPresentationProps;

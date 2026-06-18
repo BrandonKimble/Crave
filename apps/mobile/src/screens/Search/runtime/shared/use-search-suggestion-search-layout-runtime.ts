@@ -29,23 +29,19 @@ export const useSearchSuggestionSearchLayoutRuntime = ({
     startupGeometrySeed,
     searchInteractionRef,
   });
-  const searchContainerLayoutRuntime =
-    useSearchSuggestionSearchContainerLayoutRuntime({
-      startupGeometrySeed,
-      searchInteractionRef,
-    });
+  const searchContainerLayoutRuntime = useSearchSuggestionSearchContainerLayoutRuntime({
+    startupGeometrySeed,
+    searchInteractionRef,
+  });
 
   return React.useMemo(
     () => ({
       searchLayout: searchContainerLayoutRuntime.searchLayout,
       searchBarFrame: searchHeaderLayoutRuntime.searchBarFrame,
       searchContainerFrame: searchContainerLayoutRuntime.searchContainerFrame,
-      cachedSearchContainerFrame:
-        searchContainerLayoutRuntime.cachedSearchContainerFrame,
-      handleSearchHeaderLayout:
-        searchHeaderLayoutRuntime.handleSearchHeaderLayout,
-      handleSearchContainerLayout:
-        searchContainerLayoutRuntime.handleSearchContainerLayout,
+      cachedSearchContainerFrame: searchContainerLayoutRuntime.cachedSearchContainerFrame,
+      handleSearchHeaderLayout: searchHeaderLayoutRuntime.handleSearchHeaderLayout,
+      handleSearchContainerLayout: searchContainerLayoutRuntime.handleSearchContainerLayout,
     }),
     [
       searchContainerLayoutRuntime.cachedSearchContainerFrame,

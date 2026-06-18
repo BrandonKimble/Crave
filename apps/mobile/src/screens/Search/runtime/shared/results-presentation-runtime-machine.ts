@@ -26,7 +26,9 @@ export type ResultsPresentationRuntimeMachine = {
   commitSearchSurfaceResultsEnterPresentation: (
     snapshot: SearchSurfaceResultsEnterTransaction
   ) => void;
-  commitSearchSurfaceResultsExitTransaction: (snapshot: SearchSurfaceResultsExitTransaction) => void;
+  commitSearchSurfaceResultsExitTransaction: (
+    snapshot: SearchSurfaceResultsExitTransaction
+  ) => void;
   cancelPresentationIntent: (intentId?: string) => void;
   markEnterBatchMountedHidden: (
     intentId: string,

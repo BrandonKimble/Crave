@@ -6,14 +6,11 @@ import type { SearchRootSearchSceneListHydrationPatch } from './use-search-root-
 export const useSearchRootSearchSceneListHydrationSettlePatchRuntime = ({
   resultsReadModelSelectors,
 }: {
-  resultsReadModelSelectors: ReturnType<
-    typeof useSearchResultsReadModelSelectors
-  >;
+  resultsReadModelSelectors: ReturnType<typeof useSearchResultsReadModelSelectors>;
 }): Pick<SearchRootSearchSceneListHydrationPatch, 'isResultsHydrationSettled'> =>
   React.useMemo(
     () => ({
-      isResultsHydrationSettled:
-        resultsReadModelSelectors.isResultsHydrationSettled,
+      isResultsHydrationSettled: resultsReadModelSelectors.isResultsHydrationSettled,
     }),
     [resultsReadModelSelectors.isResultsHydrationSettled]
   );

@@ -5,13 +5,8 @@ import { useSearchRootSearchSceneListHydrationSettlePatchRuntime } from './use-s
 export const useSearchRootSearchSceneListHydrationStatusPatchRuntime = ({
   resultsReadModelSelectors,
 }: {
-  resultsReadModelSelectors: ReturnType<
-    typeof useSearchResultsReadModelSelectors
-  >;
-}): Pick<
-  SearchRootSearchSceneListHydrationPatch,
-  'isResultsHydrationSettled'
-> =>
+  resultsReadModelSelectors: ReturnType<typeof useSearchResultsReadModelSelectors>;
+}): Pick<SearchRootSearchSceneListHydrationPatch, 'isResultsHydrationSettled'> =>
   useSearchRootSearchSceneListHydrationSettlePatchRuntime({
     resultsReadModelSelectors,
   });

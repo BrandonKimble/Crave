@@ -16,12 +16,11 @@ export const useSearchRootOverlayLocalRestaurantSheetRenderVisualRuntime = ({
     SearchRootOverlayLocalRestaurantSheetVisualControllers,
     'localRestaurantSheetRenderVisualAuthority'
   > => {
-  const localRestaurantSheetRenderVisualController =
-    useSearchRuntimeControllerRuntime(() =>
-      createSearchOverlayLocalRestaurantSheetRenderVisualStateController({
-        localRestaurantSheetPresenceAuthority,
-      })
-    );
+  const localRestaurantSheetRenderVisualController = useSearchRuntimeControllerRuntime(() =>
+    createSearchOverlayLocalRestaurantSheetRenderVisualStateController({
+      localRestaurantSheetPresenceAuthority,
+    })
+  );
 
   return {
     localRestaurantSheetRenderVisualAuthority:

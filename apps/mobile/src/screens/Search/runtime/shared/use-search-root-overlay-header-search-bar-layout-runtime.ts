@@ -15,9 +15,6 @@ export const useSearchRootOverlayHeaderSearchBarLayoutRuntime = ({
       handleSearchContainerLayout: suggestionRuntime.handleSearchContainerLayout,
       handleSearchHeaderLayout: suggestionRuntime.handleSearchHeaderLayout,
     }),
-    [
-      suggestionRuntime.handleSearchContainerLayout,
-      suggestionRuntime.handleSearchHeaderLayout,
-    ]
+    [suggestionRuntime.handleSearchContainerLayout, suggestionRuntime.handleSearchHeaderLayout]
   );
 };

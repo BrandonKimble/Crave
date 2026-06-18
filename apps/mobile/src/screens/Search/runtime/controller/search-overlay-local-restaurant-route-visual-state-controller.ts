@@ -7,9 +7,7 @@ import type {
   SearchOverlayLocalRestaurantRouteMotionFrameAuthority,
   SearchOverlayLocalRestaurantRouteMotionFrameSnapshot,
 } from './search-overlay-local-restaurant-route-motion-frame-state-controller';
-import type {
-  SearchOverlayLocalRestaurantRouteFrameSnapshot,
-} from './search-overlay-local-restaurant-route-frame-state-controller';
+import type { SearchOverlayLocalRestaurantRouteFrameSnapshot } from './search-overlay-local-restaurant-route-frame-state-controller';
 import type {
   SearchOverlayLocalRestaurantRouteSheetAuthority,
   SearchOverlayLocalRestaurantRouteSheetSnapshot,
@@ -72,18 +70,14 @@ export class SearchOverlayLocalRestaurantRouteVisualStateController {
     localRestaurantRouteMotionFrameAuthority: SearchOverlayLocalRestaurantRouteMotionFrameAuthority;
     localRestaurantRouteSheetAuthority: SearchOverlayLocalRestaurantRouteSheetAuthority;
   }) {
-    this.routeGeometryFrameSnapshot =
-      localRestaurantRouteGeometryFrameAuthority.getSnapshot();
-    this.routeMotionFrameSnapshot =
-      localRestaurantRouteMotionFrameAuthority.getSnapshot();
+    this.routeGeometryFrameSnapshot = localRestaurantRouteGeometryFrameAuthority.getSnapshot();
+    this.routeMotionFrameSnapshot = localRestaurantRouteMotionFrameAuthority.getSnapshot();
     this.routeSheetSnapshot = localRestaurantRouteSheetAuthority.getSnapshot();
     const routeFrameSnapshot =
-      this.routeGeometryFrameSnapshot == null ||
-      this.routeMotionFrameSnapshot == null
+      this.routeGeometryFrameSnapshot == null || this.routeMotionFrameSnapshot == null
         ? null
         : {
-            overlayGeometryRuntime:
-              this.routeGeometryFrameSnapshot.overlayGeometryRuntime,
+            overlayGeometryRuntime: this.routeGeometryFrameSnapshot.overlayGeometryRuntime,
             visualRuntime: this.routeMotionFrameSnapshot.visualRuntime,
           };
     this.snapshot = resolveLocalRestaurantRouteVisualSnapshot({
@@ -101,9 +95,7 @@ export class SearchOverlayLocalRestaurantRouteVisualStateController {
         );
       }),
       localRestaurantRouteMotionFrameAuthority.subscribe(() => {
-        this.setRouteMotionFrameSnapshot(
-          localRestaurantRouteMotionFrameAuthority.getSnapshot()
-        );
+        this.setRouteMotionFrameSnapshot(localRestaurantRouteMotionFrameAuthority.getSnapshot());
       }),
       localRestaurantRouteSheetAuthority.subscribe(() => {
         this.setRouteSheetSnapshot(localRestaurantRouteSheetAuthority.getSnapshot());
@@ -158,12 +150,10 @@ export class SearchOverlayLocalRestaurantRouteVisualStateController {
 
   private recompute(): void {
     const routeFrameSnapshot =
-      this.routeGeometryFrameSnapshot == null ||
-      this.routeMotionFrameSnapshot == null
+      this.routeGeometryFrameSnapshot == null || this.routeMotionFrameSnapshot == null
         ? null
         : {
-            overlayGeometryRuntime:
-              this.routeGeometryFrameSnapshot.overlayGeometryRuntime,
+            overlayGeometryRuntime: this.routeGeometryFrameSnapshot.overlayGeometryRuntime,
             visualRuntime: this.routeMotionFrameSnapshot.visualRuntime,
           };
     const nextSnapshot = resolveLocalRestaurantRouteVisualSnapshot({

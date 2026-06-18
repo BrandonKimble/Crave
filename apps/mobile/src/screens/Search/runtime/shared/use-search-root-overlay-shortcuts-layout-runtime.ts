@@ -11,12 +11,9 @@ export const useSearchRootOverlayShortcutsLayoutRuntime = ({
 
   return React.useMemo(
     () => ({
-      handleSearchShortcutsRowLayout:
-        suggestionRuntime.handleSearchShortcutsRowLayout,
-      handleRestaurantsShortcutLayout:
-        suggestionRuntime.handleRestaurantsShortcutLayout,
-      handleDishesShortcutLayout:
-        suggestionRuntime.handleDishesShortcutLayout,
+      handleSearchShortcutsRowLayout: suggestionRuntime.handleSearchShortcutsRowLayout,
+      handleRestaurantsShortcutLayout: suggestionRuntime.handleRestaurantsShortcutLayout,
+      handleDishesShortcutLayout: suggestionRuntime.handleDishesShortcutLayout,
     }),
     [
       suggestionRuntime.handleDishesShortcutLayout,

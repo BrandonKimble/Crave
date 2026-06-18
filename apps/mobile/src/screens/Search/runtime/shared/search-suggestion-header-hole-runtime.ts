@@ -15,12 +15,10 @@ const SEARCH_SUGGESTION_HOLE_PIXEL_SCALE = PixelRatio.get();
 const SEARCH_SUGGESTION_HOLE_CUTOUT_EDGE_SLOP = 1 / SEARCH_SUGGESTION_HOLE_PIXEL_SCALE;
 
 const floorSuggestionHoleToPixel = (value: number) =>
-  Math.floor(value * SEARCH_SUGGESTION_HOLE_PIXEL_SCALE) /
-  SEARCH_SUGGESTION_HOLE_PIXEL_SCALE;
+  Math.floor(value * SEARCH_SUGGESTION_HOLE_PIXEL_SCALE) / SEARCH_SUGGESTION_HOLE_PIXEL_SCALE;
 
 const ceilSuggestionHoleToPixel = (value: number) =>
-  Math.ceil(value * SEARCH_SUGGESTION_HOLE_PIXEL_SCALE) /
-  SEARCH_SUGGESTION_HOLE_PIXEL_SCALE;
+  Math.ceil(value * SEARCH_SUGGESTION_HOLE_PIXEL_SCALE) / SEARCH_SUGGESTION_HOLE_PIXEL_SCALE;
 
 export const cloneSuggestionMaskedHole = (
   hole: SearchSuggestionMaskedHole
@@ -44,10 +42,8 @@ export const createSuggestionHeaderSearchHole = (
     return null;
   }
 
-  const x =
-    resolvedSearchContainerFrame.x + SEARCH_HORIZONTAL_PADDING - SEARCH_BAR_HOLE_PADDING;
-  const y =
-    resolvedSearchContainerFrame.y + SEARCH_CONTAINER_PADDING_TOP - SEARCH_BAR_HOLE_PADDING;
+  const x = resolvedSearchContainerFrame.x + SEARCH_HORIZONTAL_PADDING - SEARCH_BAR_HOLE_PADDING;
+  const y = resolvedSearchContainerFrame.y + SEARCH_CONTAINER_PADDING_TOP - SEARCH_BAR_HOLE_PADDING;
   const width =
     resolvedSearchContainerFrame.width -
     SEARCH_HORIZONTAL_PADDING * 2 +

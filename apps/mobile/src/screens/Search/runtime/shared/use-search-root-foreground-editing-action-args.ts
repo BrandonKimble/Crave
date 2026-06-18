@@ -6,9 +6,7 @@ import type {
   SearchRootClearRestoreAuthorityRuntime,
   SearchRootForegroundInputRuntime,
 } from './search-root-control-ports-runtime-contract';
-import type {
-  SearchRootStateFoundationLane,
-} from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
 import type { ResultsPresentationOwner } from './use-results-presentation-runtime-owner';
 import { useSearchRootForegroundEditingAutocompleteArgs } from './use-search-root-foreground-editing-autocomplete-args';
 import { useSearchRootForegroundEditingClearArgs } from './use-search-root-foreground-editing-clear-args';
@@ -77,11 +75,6 @@ export const useSearchRootForegroundEditingActionArgs = ({
       ...editingPresentationArgs,
       ...editingSearchUiArgs,
     }),
-    [
-      editingAutocompleteArgs,
-      editingClearArgs,
-      editingPresentationArgs,
-      editingSearchUiArgs,
-    ]
+    [editingAutocompleteArgs, editingClearArgs, editingPresentationArgs, editingSearchUiArgs]
   );
 };

@@ -25,9 +25,7 @@ export const useSearchRootSearchSceneInteractionFrostRuntime = ({
   const lastArmedFrostIntentIdRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
-    const intentId = shouldShowInteractionLoadingState
-      ? pendingPresentationIntentId
-      : null;
+    const intentId = shouldShowInteractionLoadingState ? pendingPresentationIntentId : null;
     if (!intentId) {
       lastArmedFrostIntentIdRef.current = null;
       interactionFrostOpacity.value = withTiming(0, {

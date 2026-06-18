@@ -14,14 +14,24 @@ import type {
   ResultsSurfaceEnterTransactionExecutor,
   UseResultsSurfaceEnterTransactionExecutionRuntimeArgs,
 } from './search-surface-results-transaction-execution-runtime-contract';
+import { runResultsSheetSnapWhenLaneAllows } from './results-sheet-snap-stage-gate';
 import { useAppRouteSceneRuntime } from '../../../../navigation/runtime/AppRouteSceneRuntimeProvider';
 
 export const useResultsSurfaceEnterTransactionExecutionRuntime = ({
   resultsRuntimeOwner,
+  resultsPresentationAuthority,
   prepareSharedSheetForSearchPresentation,
   setDisplayQueryOverride,
 }: UseResultsSurfaceEnterTransactionExecutionRuntimeArgs): ResultsSurfaceEnterTransactionExecutor => {
   const routeSceneRuntime = useAppRouteSceneRuntime();
+  const pendingSnapDisposeRef = React.useRef<(() => void) | null>(null);
+  React.useEffect(
+    () => () => {
+      pendingSnapDisposeRef.current?.();
+      pendingSnapDisposeRef.current = null;
+    },
+    []
+  );
   return React.useCallback(
     ({
       snapshot,
@@ -75,11 +85,25 @@ export const useResultsSurfaceEnterTransactionExecutionRuntime = ({
         prepareSharedSheetForSearchPresentation?.();
       }
       resultsRuntimeOwner.cancelPresentationIntent();
+      // A newer enter supersedes any reveal snap still deferred behind a prior visible
+      // window — cancel the stale pending snap so we never replay an outdated target.
+      pendingSnapDisposeRef.current?.();
+      pendingSnapDisposeRef.current = null;
       if (targetSnap != null) {
-        routeSceneRuntime.routeSearchCommandActions.openAppSearchRouteResults({
-          snap: targetSnap,
-          mode: entryMotion === 'instant_behind_search_mode' ? 'instant' : undefined,
-        });
+        // Cluster 6 chrome lane: stage the reveal-coupled sheet snap out of the visible
+        // reveal/dismiss opacity window (allowSheetSnap === false). In the common case the
+        // stage is idle/settled and this fires immediately; if a prior presentation is still
+        // mid-window it is deferred until the phase allows it instead of co-firing.
+        pendingSnapDisposeRef.current = runResultsSheetSnapWhenLaneAllows(
+          resultsPresentationAuthority,
+          () => {
+            routeSceneRuntime.routeSearchCommandActions.openAppSearchRouteResults({
+              snap: targetSnap,
+              mode: entryMotion === 'instant_behind_search_mode' ? 'instant' : undefined,
+            });
+          },
+          `enter:${snapshot.mutationKind}`
+        );
       }
       resultsRuntimeOwner.stageSearchSurfaceResultsTransaction(snapshot);
       getSearchSurfaceRuntime().markRedrawSheetReady(snapshot.transactionId);
@@ -87,6 +111,7 @@ export const useResultsSurfaceEnterTransactionExecutionRuntime = ({
     },
     [
       prepareSharedSheetForSearchPresentation,
+      resultsPresentationAuthority,
       resultsRuntimeOwner,
       routeSceneRuntime.routeSearchCommandActions,
       setDisplayQueryOverride,

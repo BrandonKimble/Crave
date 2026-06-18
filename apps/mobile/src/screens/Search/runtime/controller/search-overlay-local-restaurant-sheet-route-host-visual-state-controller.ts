@@ -14,9 +14,7 @@ export type SearchOverlayLocalRestaurantSheetRouteHostVisualAuthority = {
 };
 
 const createRouteHostVisualSnapshot = (
-  routeVisualSnapshot: ReturnType<
-    SearchOverlayLocalRestaurantRouteVisualAuthority['getSnapshot']
-  >
+  routeVisualSnapshot: ReturnType<SearchOverlayLocalRestaurantRouteVisualAuthority['getSnapshot']>
 ): SearchOverlayLocalRestaurantSheetRouteHostVisualSnapshot => ({
   routeHostVisualSnapshot: routeVisualSnapshot,
 });
@@ -32,8 +30,7 @@ const areRouteHostVisualSnapshotsEqual = (
       right.routeHostVisualSnapshot.overlayGeometryRuntime &&
     left.routeHostVisualSnapshot.sharedSheetRuntimeOwner ===
       right.routeHostVisualSnapshot.sharedSheetRuntimeOwner &&
-    left.routeHostVisualSnapshot.visualRuntime ===
-      right.routeHostVisualSnapshot.visualRuntime);
+    left.routeHostVisualSnapshot.visualRuntime === right.routeHostVisualSnapshot.visualRuntime);
 
 export class SearchOverlayLocalRestaurantSheetRouteHostVisualStateController {
   private routeVisualSnapshot: ReturnType<
@@ -59,12 +56,9 @@ export class SearchOverlayLocalRestaurantSheetRouteHostVisualStateController {
       subscribe: (listener) => this.subscribe(listener),
       getSnapshot: () => this.snapshot,
     };
-    this.unsubscribeRouteVisual =
-      localRestaurantRouteVisualAuthority.subscribe(() => {
-        this.setRouteVisualSnapshot(
-          localRestaurantRouteVisualAuthority.getSnapshot()
-        );
-      });
+    this.unsubscribeRouteVisual = localRestaurantRouteVisualAuthority.subscribe(() => {
+      this.setRouteVisualSnapshot(localRestaurantRouteVisualAuthority.getSnapshot());
+    });
   }
 
   public dispose(): void {
@@ -80,9 +74,7 @@ export class SearchOverlayLocalRestaurantSheetRouteHostVisualStateController {
   }
 
   private setRouteVisualSnapshot(
-    routeVisualSnapshot: ReturnType<
-      SearchOverlayLocalRestaurantRouteVisualAuthority['getSnapshot']
-    >
+    routeVisualSnapshot: ReturnType<SearchOverlayLocalRestaurantRouteVisualAuthority['getSnapshot']>
   ): void {
     if (this.routeVisualSnapshot === routeVisualSnapshot) {
       return;
@@ -92,9 +84,7 @@ export class SearchOverlayLocalRestaurantSheetRouteHostVisualStateController {
   }
 
   private recompute(): void {
-    const nextSnapshot = createRouteHostVisualSnapshot(
-      this.routeVisualSnapshot
-    );
+    const nextSnapshot = createRouteHostVisualSnapshot(this.routeVisualSnapshot);
 
     if (areRouteHostVisualSnapshotsEqual(this.snapshot, nextSnapshot)) {
       return;
@@ -107,12 +97,11 @@ export class SearchOverlayLocalRestaurantSheetRouteHostVisualStateController {
   }
 }
 
-export const createSearchOverlayLocalRestaurantSheetRouteHostVisualStateController =
-  ({
+export const createSearchOverlayLocalRestaurantSheetRouteHostVisualStateController = ({
+  localRestaurantRouteVisualAuthority,
+}: ConstructorParameters<
+  typeof SearchOverlayLocalRestaurantSheetRouteHostVisualStateController
+>[0]): SearchOverlayLocalRestaurantSheetRouteHostVisualStateController =>
+  new SearchOverlayLocalRestaurantSheetRouteHostVisualStateController({
     localRestaurantRouteVisualAuthority,
-  }: ConstructorParameters<
-    typeof SearchOverlayLocalRestaurantSheetRouteHostVisualStateController
-  >[0]): SearchOverlayLocalRestaurantSheetRouteHostVisualStateController =>
-    new SearchOverlayLocalRestaurantSheetRouteHostVisualStateController({
-      localRestaurantRouteVisualAuthority,
-    });
+  });

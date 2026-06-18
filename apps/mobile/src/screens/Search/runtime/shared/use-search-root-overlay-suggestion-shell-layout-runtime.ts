@@ -20,19 +20,15 @@ export const useSearchRootOverlaySuggestionShellLayoutRuntime = ({
     () => ({
       shouldDisableSearchBlur: false,
       shouldShowSuggestionSurface: suggestionRuntime.shouldShowSuggestionSurface,
-      resolvedSuggestionHeaderHoles:
-        suggestionRuntime.resolvedSuggestionHeaderHoles,
+      resolvedSuggestionHeaderHoles: suggestionRuntime.resolvedSuggestionHeaderHoles,
       shouldDriveSuggestionLayout: suggestionRuntime.shouldDriveSuggestionLayout,
-      shouldShowSuggestionBackground:
-        suggestionRuntime.shouldShowSuggestionBackground,
+      shouldShowSuggestionBackground: suggestionRuntime.shouldShowSuggestionBackground,
       suggestionTopFillHeight: suggestionRuntime.suggestionTopFillHeight,
-      suggestionScrollMaxHeightTarget:
-        suggestionRuntime.suggestionScrollMaxHeightTarget,
+      suggestionScrollMaxHeightTarget: suggestionRuntime.suggestionScrollMaxHeightTarget,
       searchLayoutTop: suggestionRuntime.searchLayout.top,
       searchLayoutHeight: suggestionRuntime.searchLayout.height,
       navBarHeight: visualRuntime.navBarHeight,
-      bottomInset:
-        rootOverlayFoundationRuntime.rootOverlaySessionSurfaceRuntime.bottomInset,
+      bottomInset: rootOverlayFoundationRuntime.rootOverlaySessionSurfaceRuntime.bottomInset,
     }),
     [
       rootOverlayFoundationRuntime.rootOverlaySessionSurfaceRuntime.bottomInset,

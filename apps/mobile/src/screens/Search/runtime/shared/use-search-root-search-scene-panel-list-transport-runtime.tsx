@@ -32,17 +32,12 @@ export const useSearchRootSearchScenePanelListTransportRuntime = ({
       ...resolvedInputFlashListRuntimeProps,
       getItemType: getResultItemType,
       overrideItemLayout: overrideItemLayout,
-      removeClippedSubviews:
-        resolvedInputFlashListRuntimeProps?.removeClippedSubviews ?? false,
+      removeClippedSubviews: resolvedInputFlashListRuntimeProps?.removeClippedSubviews ?? false,
       overrideProps: {
         ...(resolvedInputFlashListRuntimeProps?.overrideProps ?? {}),
       },
     }),
-    [
-      getResultItemType,
-      overrideItemLayout,
-      resolvedInputFlashListRuntimeProps,
-    ]
+    [getResultItemType, overrideItemLayout, resolvedInputFlashListRuntimeProps]
   );
   const itemSeparatorComponent = React.useCallback(
     () => <View style={styles.resultItemSeparator} />,

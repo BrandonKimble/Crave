@@ -7,6 +7,7 @@ import {
 import type { SearchPresentationIntent } from './results-presentation-shell-contract';
 import { resolveSearchSurfaceResultsEnterMutationKind } from './results-presentation-shell-transaction-intent';
 import type { ResultsPresentationRuntimeOwner } from './results-presentation-runtime-owner-contract';
+import type { ResultsPresentationAuthority } from './results-presentation-authority';
 import type { ResultsPresentationShellLocalState } from './use-results-presentation-shell-local-state';
 import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
 import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
@@ -14,9 +15,13 @@ import { useResultsSurfaceEnterTransactionExecutionRuntime } from './use-search-
 import { useResultsSurfaceTransactionShellApplicationRuntime } from './use-search-surface-results-transaction-shell-application-runtime';
 
 type UseResultsPresentationEnterActionsRuntimeArgs = {
-  resultsSheetRuntime: Pick<AppRouteSharedSheetRuntimeOwner, 'prepareSharedSheetForSearchPresentation'>;
+  resultsSheetRuntime: Pick<
+    AppRouteSharedSheetRuntimeOwner,
+    'prepareSharedSheetForSearchPresentation'
+  >;
   shellLocalState: ResultsPresentationShellLocalState;
   resultsRuntimeOwner: ResultsPresentationRuntimeOwner;
+  resultsPresentationAuthority: ResultsPresentationAuthority;
   cancelSearchSheetCloseTransition: (closeIntentId?: string) => void;
   cancelCloseSearchCleanup: () => void;
   setPendingCloseIntentId: (intentId: string | null) => void;
@@ -33,6 +38,7 @@ export const useResultsPresentationEnterActionsRuntime = ({
   resultsSheetRuntime,
   shellLocalState,
   resultsRuntimeOwner,
+  resultsPresentationAuthority,
   cancelSearchSheetCloseTransition,
   cancelCloseSearchCleanup,
   setPendingCloseIntentId,
@@ -53,7 +59,9 @@ export const useResultsPresentationEnterActionsRuntime = ({
 
   const executeSurfaceEnterTransaction = useResultsSurfaceEnterTransactionExecutionRuntime({
     resultsRuntimeOwner,
-    prepareSharedSheetForSearchPresentation: resultsSheetRuntime.prepareSharedSheetForSearchPresentation,
+    resultsPresentationAuthority,
+    prepareSharedSheetForSearchPresentation:
+      resultsSheetRuntime.prepareSharedSheetForSearchPresentation,
     setDisplayQueryOverride: shellLocalState.setDisplayQueryOverride,
   });
 

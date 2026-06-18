@@ -10,8 +10,7 @@ export const useSearchRootSearchScenePriceSelectorBusPatchRuntime = ({
 }): Pick<SearchRootSearchSceneBusPatch, 'isPriceSelectorVisible'> =>
   React.useMemo(
     () => ({
-      isPriceSelectorVisible:
-        filterModalControlLane.filterModalRuntime.isPriceSelectorVisible,
+      isPriceSelectorVisible: filterModalControlLane.filterModalRuntime.isPriceSelectorVisible,
     }),
     [filterModalControlLane.filterModalRuntime.isPriceSelectorVisible]
   );

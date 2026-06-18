@@ -31,14 +31,9 @@ export const useResultsPresentationToggleCommitRuntime = ({
 
       const seq = toggleStateRuntime.interactionSeqRef.current;
       const runner = toggleStateRuntime.activeRunnerRef.current;
-      const interactionKind =
-        toggleStateRuntime.activeInteractionKindRef.current;
+      const interactionKind = toggleStateRuntime.activeInteractionKindRef.current;
 
-      if (
-        !runner ||
-        !interactionKind ||
-        toggleStateRuntime.awaitingVisualSyncRef.current
-      ) {
+      if (!runner || !interactionKind || toggleStateRuntime.awaitingVisualSyncRef.current) {
         return;
       }
 
@@ -98,10 +93,7 @@ export const useResultsPresentationToggleCommitRuntime = ({
         return;
       }
 
-      toggleStateRuntime.finalizeInteraction(
-        toggleStateRuntime.interactionSeqRef.current,
-        true
-      );
+      toggleStateRuntime.finalizeInteraction(toggleStateRuntime.interactionSeqRef.current, true);
     },
     [toggleStateRuntime]
   );

@@ -54,7 +54,9 @@ export const createResultsPresentationRuntimeMachineIntentRuntime = ({
       );
     },
     handlePresentationIntentAbort() {
-      ownerRuntime.applyAttempt((draft) => resolveAbortedResultsPresentationTransportAttempt(draft));
+      ownerRuntime.applyAttempt((draft) =>
+        resolveAbortedResultsPresentationTransportAttempt(draft)
+      );
     },
     commitSearchSurfaceResultsEnterPresentation(snapshot: SearchSurfaceResultsEnterTransaction) {
       commitSearchSurfaceResultsTransportSnapshot(

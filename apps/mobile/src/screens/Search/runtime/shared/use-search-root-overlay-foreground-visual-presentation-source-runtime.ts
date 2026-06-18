@@ -24,22 +24,15 @@ export const useSearchRootOverlayForegroundVisualPresentationSourceRuntime = ({
       shouldDimResultsSheet:
         resultsPresentationStateControlLane.presentationState.shouldDimResultsSheet,
       shouldSuspendResultsSheet:
-        resultsPresentationStateControlLane.presentationState
-          .shouldSuspendResultsSheet,
+        resultsPresentationStateControlLane.presentationState.shouldSuspendResultsSheet,
       inputMode:
-        resultsPresentationOwner.shellModel.inputMode === 'editing'
-          ? 'editing'
-          : 'resting',
-      searchSheetContentLaneKind:
-        resultsPresentationOwner.shellModel.searchSheetContentLane.kind,
-      searchHeaderDefaultChromeProgress:
-        resultsPresentationOwner.shellModel.defaultChromeProgress,
+        resultsPresentationOwner.shellModel.inputMode === 'editing' ? 'editing' : 'resting',
+      searchSheetContentLaneKind: resultsPresentationOwner.shellModel.searchSheetContentLane.kind,
+      searchHeaderDefaultChromeProgress: resultsPresentationOwner.shellModel.defaultChromeProgress,
       headerShortcutsVisibleTarget:
-        resultsPresentationOwner.shellModel.headerVisualModel
-          .shortcutsVisibleTarget,
+        resultsPresentationOwner.shellModel.headerVisualModel.shortcutsVisibleTarget,
       headerShortcutsInteractive:
-        resultsPresentationOwner.shellModel.headerVisualModel
-          .shortcutsInteractive,
+        resultsPresentationOwner.shellModel.headerVisualModel.shortcutsInteractive,
       backdropTarget:
         resultsPresentationOwner.shellModel.backdropTarget === 'default'
           ? 'none'
@@ -53,7 +46,6 @@ export const useSearchRootOverlayForegroundVisualPresentationSourceRuntime = ({
       resultsPresentationOwner.shellModel.inputMode,
       resultsPresentationOwner.shellModel.searchSheetContentLane.kind,
       resultsPresentationStateControlLane.presentationState.shouldDimResultsSheet,
-      resultsPresentationStateControlLane.presentationState
-        .shouldSuspendResultsSheet,
+      resultsPresentationStateControlLane.presentationState.shouldSuspendResultsSheet,
     ]
   );

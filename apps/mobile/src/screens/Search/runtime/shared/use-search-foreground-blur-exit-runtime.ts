@@ -44,8 +44,7 @@ export const useSearchForegroundBlurExitRuntime = ({
       ignoreNextSearchBlurRef.current = false;
       return;
     }
-    const shouldDeferSuggestionClear =
-      exitPresentationRuntime.requestExitEditingPresentation();
+    const shouldDeferSuggestionClear = exitPresentationRuntime.requestExitEditingPresentation();
     exitPresentationRuntime.clearSuggestionsIfReady(shouldDeferSuggestionClear);
   }, [
     allowSearchBlurExitRef,

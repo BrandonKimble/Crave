@@ -5,9 +5,7 @@ import type { SearchRootSearchStateRuntime } from './search-root-primitives-runt
 import type { SearchRootFilterModalControlLane } from './use-search-root-control-plane-runtime-contract';
 
 type SearchRootOverlayHeaderWarmupSourceRuntime = {
-  hiddenSearchFiltersWarmupProps: ReturnType<
-    typeof useSearchRootOverlayHeaderWarmupRuntime
-  >;
+  hiddenSearchFiltersWarmupProps: ReturnType<typeof useSearchRootOverlayHeaderWarmupRuntime>;
 };
 
 export const useSearchRootOverlayHeaderWarmupSourceRuntime = ({
@@ -17,11 +15,10 @@ export const useSearchRootOverlayHeaderWarmupSourceRuntime = ({
   filterModalControlLane: SearchRootFilterModalControlLane;
   searchState: SearchRootSearchStateRuntime;
 }): SearchRootOverlayHeaderWarmupSourceRuntime => {
-  const hiddenSearchFiltersWarmupProps =
-    useSearchRootOverlayHeaderWarmupRuntime({
-      filterModalControlLane,
-      searchState,
-    });
+  const hiddenSearchFiltersWarmupProps = useSearchRootOverlayHeaderWarmupRuntime({
+    filterModalControlLane,
+    searchState,
+  });
 
   return React.useMemo(
     () => ({

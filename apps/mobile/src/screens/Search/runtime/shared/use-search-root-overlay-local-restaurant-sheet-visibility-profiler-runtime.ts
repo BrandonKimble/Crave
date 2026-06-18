@@ -10,39 +10,33 @@ import type {
 import { useSearchRuntimeControllerRuntime } from './use-search-runtime-controller-runtime';
 import { useSnapshotAuthority } from './use-snapshot-authority';
 
-export const useSearchRootOverlayLocalRestaurantSheetVisibilityProfilerRuntime =
-  ({
-    routeOverlayVisibilityAuthority,
-    overlayGateSnapshot,
-  }: Pick<
-    SearchRootOverlayLocalRestaurantSheetHostRuntimeParams,
-    'routeOverlayVisibilityAuthority' | 'overlayGateSnapshot'
-  >): SearchRootOverlayLocalRestaurantSheetVisibilityProfilerRuntime &
-    Pick<
-      SearchRootOverlayLocalRestaurantSheetPresenceControllers,
-      | 'localRestaurantSheetRenderVisibilityAuthority'
-      | 'localRestaurantSheetProfilerGateAuthority'
-    > => {
-    const localRestaurantSheetRenderVisibilityController =
-      useSearchRuntimeControllerRuntime(() =>
-        createSearchOverlayLocalRestaurantSheetRenderVisibilityStateController({
-          routeOverlayVisibilityAuthority,
-        })
-      );
-    const profilerGateSnapshot =
-      React.useMemo<SearchOverlayLocalRestaurantSheetProfilerGateSnapshot>(
-        () => ({
-          onProfilerRender: overlayGateSnapshot.onProfilerRender,
-        }),
-        [overlayGateSnapshot.onProfilerRender]
-      );
-    const localRestaurantSheetProfilerGateAuthority = useSnapshotAuthority(
-      profilerGateSnapshot
-    );
+export const useSearchRootOverlayLocalRestaurantSheetVisibilityProfilerRuntime = ({
+  routeOverlayVisibilityAuthority,
+  overlayGateSnapshot,
+}: Pick<
+  SearchRootOverlayLocalRestaurantSheetHostRuntimeParams,
+  'routeOverlayVisibilityAuthority' | 'overlayGateSnapshot'
+>): SearchRootOverlayLocalRestaurantSheetVisibilityProfilerRuntime &
+  Pick<
+    SearchRootOverlayLocalRestaurantSheetPresenceControllers,
+    'localRestaurantSheetRenderVisibilityAuthority' | 'localRestaurantSheetProfilerGateAuthority'
+  > => {
+  const localRestaurantSheetRenderVisibilityController = useSearchRuntimeControllerRuntime(() =>
+    createSearchOverlayLocalRestaurantSheetRenderVisibilityStateController({
+      routeOverlayVisibilityAuthority,
+    })
+  );
+  const profilerGateSnapshot = React.useMemo<SearchOverlayLocalRestaurantSheetProfilerGateSnapshot>(
+    () => ({
+      onProfilerRender: overlayGateSnapshot.onProfilerRender,
+    }),
+    [overlayGateSnapshot.onProfilerRender]
+  );
+  const localRestaurantSheetProfilerGateAuthority = useSnapshotAuthority(profilerGateSnapshot);
 
-    return {
-      localRestaurantSheetRenderVisibilityAuthority:
-        localRestaurantSheetRenderVisibilityController.outputAuthority,
-      localRestaurantSheetProfilerGateAuthority,
-    };
+  return {
+    localRestaurantSheetRenderVisibilityAuthority:
+      localRestaurantSheetRenderVisibilityController.outputAuthority,
+    localRestaurantSheetProfilerGateAuthority,
   };
+};

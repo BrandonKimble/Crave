@@ -55,12 +55,12 @@ export const resolveResultsPresentationPanelState = ({
   const surfaceMode: ResultsPresentationPanelSurfaceMode = shouldShowInitialLoadingState
     ? 'initial_loading'
     : shouldShowInteractionLoadingState
-    ? 'interaction_loading'
-    : isSurfaceShowingEmptyState
-    ? 'empty'
-    : shouldShowSettledResultsSurface
-    ? 'results'
-    : 'none';
+      ? 'interaction_loading'
+      : isSurfaceShowingEmptyState
+        ? 'empty'
+        : shouldShowSettledResultsSurface
+          ? 'results'
+          : 'none';
 
   return {
     shouldShowInteractionLoadingState,

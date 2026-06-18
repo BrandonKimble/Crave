@@ -367,8 +367,8 @@ export const useSearchRequestPreparationOwner = ({
         filters.minimumVotes !== undefined
           ? filters.minimumVotes
           : votes100Plus
-          ? MINIMUM_VOTES_FILTER
-          : null;
+            ? MINIMUM_VOTES_FILTER
+            : null;
 
       if (effectiveOpenNow) {
         payload.openNow = true;
@@ -549,7 +549,7 @@ export const useSearchRequestPreparationOwner = ({
 
       return {
         payload,
-        requestBounds: append ? null : requestBounds.bounds ?? null,
+        requestBounds: append ? null : (requestBounds.bounds ?? null),
       };
     },
     [

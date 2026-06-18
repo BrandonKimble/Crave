@@ -53,12 +53,9 @@ export class SearchOverlayLocalRestaurantSheetVisualHostStateController {
       subscribe: (listener) => this.subscribe(listener),
       getSnapshot: () => this.snapshot,
     };
-    this.unsubscribeVisual =
-      overlayLocalRestaurantSheetVisualAuthority.subscribe(() => {
-        this.setVisualSnapshot(
-          overlayLocalRestaurantSheetVisualAuthority.getSnapshot()
-        );
-      });
+    this.unsubscribeVisual = overlayLocalRestaurantSheetVisualAuthority.subscribe(() => {
+      this.setVisualSnapshot(overlayLocalRestaurantSheetVisualAuthority.getSnapshot());
+    });
   }
 
   public dispose(): void {
@@ -74,9 +71,7 @@ export class SearchOverlayLocalRestaurantSheetVisualHostStateController {
   }
 
   private setVisualSnapshot(
-    visualSnapshot: ReturnType<
-      SearchOverlayLocalRestaurantSheetVisualAuthority['getSnapshot']
-    >
+    visualSnapshot: ReturnType<SearchOverlayLocalRestaurantSheetVisualAuthority['getSnapshot']>
   ): void {
     if (this.visualSnapshot === visualSnapshot) {
       return;
@@ -99,12 +94,11 @@ export class SearchOverlayLocalRestaurantSheetVisualHostStateController {
   }
 }
 
-export const createSearchOverlayLocalRestaurantSheetVisualHostStateController =
-  ({
+export const createSearchOverlayLocalRestaurantSheetVisualHostStateController = ({
+  overlayLocalRestaurantSheetVisualAuthority,
+}: ConstructorParameters<
+  typeof SearchOverlayLocalRestaurantSheetVisualHostStateController
+>[0]): SearchOverlayLocalRestaurantSheetVisualHostStateController =>
+  new SearchOverlayLocalRestaurantSheetVisualHostStateController({
     overlayLocalRestaurantSheetVisualAuthority,
-  }: ConstructorParameters<
-    typeof SearchOverlayLocalRestaurantSheetVisualHostStateController
-  >[0]): SearchOverlayLocalRestaurantSheetVisualHostStateController =>
-    new SearchOverlayLocalRestaurantSheetVisualHostStateController({
-      overlayLocalRestaurantSheetVisualAuthority,
-    });
+  });
