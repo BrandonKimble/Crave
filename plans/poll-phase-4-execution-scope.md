@@ -3,9 +3,10 @@
 > Companion to `community-polls-discussion-driven-collection-plan.md` §4–§5. Style matches the
 > completed `poll-phase-{0-1,2,3}-execution-scope.md`. Dep: Phase 2 ✅ (tables), Phase 3 ✅.
 >
-> **Status: 4A–4C ✅ DONE (b0209ba9) — poll discussions live (comment CRUD + likes + read/realtime).
-> 4D ⛔ GATED on Phase 5 (gazetteer).** Leaderboard stays vote-based until the endorsement projection
-> (4D) is built post-gazetteer. Recommended next: **Phase 5 (gazetteer)**, then 4D.
+> **Status: ✅ DONE.** 4A–4C (b0209ba9) comment thread + likes; 4D (8d679b8f) endorsement-projection
+> leaderboard, now that the Phase-5 gazetteer (f1363e20) is built. The thread → leaderboard model is
+> functional end-to-end. Remaining cleanup: **retire the vote tally** (§2.4 — the endorsement
+> projection now supersedes it) and the §6.2 **sentiment upgrade** (per-comment polarity), both later.
 
 **⚠️ Sequencing finding (important):** §5's **endorsement leaderboard** = `COUNT(DISTINCT user)`
 endorsing a subject, where a comment "endorses" the entities it positively names. Knowing which
