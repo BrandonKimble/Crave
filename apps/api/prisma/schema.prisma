@@ -498,6 +498,9 @@ model Poll {
   topicId            String       @map("topic_id") @db.Uuid
   question           String       @db.VarChar(500)
   state              PollState    @default(draft)
+  origin             PollOrigin   @default(user)
+  mode               PollMode     @default(ranked)
+  axis               Json?
   marketKey          String?      @map("market_key") @db.VarChar(255)
   region             String?      @db.VarChar(255)
   scheduledFor       DateTime?    @map("scheduled_for")
@@ -512,6 +515,8 @@ model Poll {
   metrics            PollMetric?
   options            PollOption[]
   votes              PollVote[]
+  comments           PollComment[]
+  leaderboardEntries PollLeaderboardEntry[]
   topic              PollTopic    @relation(fields: [topicId], references: [topicId], onDelete: Cascade)
 
   @@index([topicId], map: "idx_polls_topic_id")
@@ -586,6 +591,67 @@ model PollMetric {
   poll              Poll      @relation(fields: [pollId], references: [pollId], onDelete: Cascade)
 
   @@map("poll_metrics")
+}
+
+/// The discussion-thread spine (Phase 2 schema; CRUD + sort land in Phase 4).
+/// A poll comment is the primary unit — the leaderboard is projected over these.
+model PollComment {
+  commentId        String                      @id @default(dbgenerated("gen_random_uuid()")) @map("comment_id") @db.Uuid
+  pollId           String                      @map("poll_id") @db.Uuid
+  userId           String                      @map("user_id") @db.Uuid
+  parentCommentId  String?                     @map("parent_comment_id") @db.Uuid
+  body             String                      @db.Text
+  score            Int                         @default(0)
+  publicId         String                      @unique @map("public_id") @db.VarChar(32)
+  moderationStatus PollCommentModerationStatus @default(pending) @map("moderation_status")
+  extractionStatus PollCommentExtractionStatus @default(pending) @map("extraction_status")
+  entitySpans      Json?                       @map("entity_spans")
+  loggedAt         DateTime                    @default(now()) @map("logged_at")
+  editedAt         DateTime?                   @map("edited_at")
+  deletedAt        DateTime?                   @map("deleted_at")
+  poll             Poll                        @relation(fields: [pollId], references: [pollId], onDelete: Cascade)
+  user             User                        @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  parent           PollComment?                @relation("PollCommentThread", fields: [parentCommentId], references: [commentId], onDelete: NoAction, onUpdate: NoAction)
+  children         PollComment[]               @relation("PollCommentThread")
+  likes            PollCommentLike[]
+
+  @@index([pollId, score(sort: Desc)], map: "idx_poll_comments_poll_score")
+  @@index([pollId, loggedAt(sort: Desc)], map: "idx_poll_comments_poll_logged")
+  @@index([parentCommentId], map: "idx_poll_comments_parent")
+  @@index([userId], map: "idx_poll_comments_user")
+  @@map("poll_comments")
+}
+
+/// Reddit-style per-comment likes (drive thread sort + endorsement signal).
+model PollCommentLike {
+  commentId String      @map("comment_id") @db.Uuid
+  userId    String      @map("user_id") @db.Uuid
+  loggedAt  DateTime    @default(now()) @map("logged_at")
+  comment   PollComment @relation(fields: [commentId], references: [commentId], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@id([commentId, userId])
+  @@index([commentId], map: "idx_poll_comment_likes_comment")
+  @@index([userId], map: "idx_poll_comment_likes_user")
+  @@map("poll_comment_likes")
+}
+
+/// Leaderboard projection (Phase 2 schema; Phase 4 fills it). Subject = a
+/// restaurant entity OR a restaurant+dish Connection, mirroring Crave-Score subjects.
+/// Rebuilt on interaction + authoritatively at close; never a vote table of record.
+model PollLeaderboardEntry {
+  pollId            String                     @map("poll_id") @db.Uuid
+  subjectType       PollLeaderboardSubjectType @map("subject_type")
+  subjectId         String                     @map("subject_id") @db.Uuid
+  distinctEndorsers Int                        @default(0) @map("distinct_endorsers")
+  score             Decimal                    @default(0) @db.Decimal(18, 6)
+  rank              Int                        @default(0)
+  updatedAt         DateTime                   @updatedAt @map("updated_at")
+  poll              Poll                       @relation(fields: [pollId], references: [pollId], onDelete: Cascade)
+
+  @@id([pollId, subjectType, subjectId])
+  @@index([pollId, rank], map: "idx_poll_leaderboard_poll_rank")
+  @@map("poll_leaderboard_entries")
 }
 
 model NotificationDevice {
@@ -918,6 +984,8 @@ model User {
   follows                UserFollow[]            @relation("UserFollows")
   followers              UserFollow[]            @relation("UserFollowers")
   usernameHistory        UsernameHistory[]
+  pollComments           PollComment[]
+  pollCommentLikes       PollCommentLike[]
   referrer               User?                   @relation("UserReferrals", fields: [referredBy], references: [userId])
   referrals              User[]                  @relation("UserReferrals")
 
@@ -1509,6 +1577,44 @@ enum PollOptionResolutionStatus {
   rejected
 
   @@map("poll_option_resolution_status")
+}
+
+enum PollOrigin {
+  seeded
+  user
+  curator
+
+  @@map("poll_origin")
+}
+
+enum PollMode {
+  ranked
+  discussion
+
+  @@map("poll_mode")
+}
+
+enum PollCommentModerationStatus {
+  pending
+  approved
+  rejected
+
+  @@map("poll_comment_moderation_status")
+}
+
+enum PollCommentExtractionStatus {
+  pending
+  highlighted
+  collected
+
+  @@map("poll_comment_extraction_status")
+}
+
+enum PollLeaderboardSubjectType {
+  entity
+  connection
+
+  @@map("poll_leaderboard_subject_type")
 }
 
 enum NotificationStatus {
