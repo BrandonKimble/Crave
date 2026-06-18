@@ -3612,10 +3612,7 @@ final class SearchMapRenderController: RCTEventEmitter {
                 "nativePresentationOpacity": 1,
                 "nativeLabelOpacity": placementPrerollOpacity,
                 "nativeLodZ": Double(renderState.lodZ),
-              ],
-            stringProperties: [
-              "labelPreference": "bottom",
-            ]
+              ]
           )
           nextLabelFeatureById[labelFeature.id] = nextLabelFeature
           nextLabelDiffKeyById[labelFeature.id] = labelFeature.diffKey
@@ -4252,8 +4249,7 @@ final class SearchMapRenderController: RCTEventEmitter {
             "nativePresentationOpacity": 1,
             "nativeLabelOpacity": placementPrerollOpacity,
             "nativeLodZ": Double(renderState.lodZ),
-          ],
-          stringProperties: ["labelPreference": "bottom"]
+          ]
         )
         var featureState: [String: Any] = [:]
         if let transientFeatureState = directLabelFamilyState.transientFeatureStateById[labelFeature.id] {
