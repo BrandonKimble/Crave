@@ -1,19 +1,49 @@
 # Search Map Reveal/Dismiss Smoothness Cutover Plan
 
+## Current status (2026-06-16)
+
+This doc carried TWO contradictory models for a while — an older 8-cluster
+"One-Slice Plan" built around lane separation, and a newer **resident-data +
+dormant-layers End-state**. The resident-data + dormant-layers End-state is the
+**authoritative** model and is now **IMPLEMENTED on iOS** (commits b40aa545,
+d40d0d08, cec34d26, af0c415e, eab742c3). Where the older One-Slice/lane material
+below disagrees, the End-state wins.
+
+DONE (iOS):
+
+- Gates A / B / D / E.
+- The resident dismiss (marker sources stay resident across dismiss; dismiss
+  dorms label render + collision layers via Mapbox `visibility:none`; the
+  source-clear was deleted).
+- The interruptible dimmer (reveal/dismiss are opacity-only via the native
+  CADisplayLink stepper, retargeting-from-current).
+- The resident-unchanged reveal skip (the enter case skips snapshot reconcile
+  on a resident-unchanged re-reveal).
+
+NOT done:
+
+- **Cluster 2** — split structural/presentation apply. Presentation-only frames
+  still ride the structural `setRenderFrame` path (the remaining Class-1 leaks).
+- **Cluster 6** — sheet/chrome lane staging. `allowSheetSnap` currently has zero
+  consumers.
+- **Cluster 7** — sticky reapply queue.
+
+Android parity is pending (a separate task owns the Android port).
+
 Last updated: 2026-03-31
 Status: active implementation plan
 Scope:
 
-- `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/index.tsx`
-- `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/components/search-map.tsx`
-- `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/components/search-results-sheet.tsx`
-- `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/components/hooks/use-search-map-native-render-owner.ts`
-- `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/hooks/use-search-presentation-controller.ts`
-- `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/controller/presentation-transition-controller.ts`
-- `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/components/hooks/use-search-map-label-observation.ts`
-- `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/components/hooks/use-search-map-label-runtime.ts`
-- `/Users/brandonkimble/crave-search/apps/mobile/ios/cravesearch/SearchMapRenderController.swift`
-- `/Users/brandonkimble/crave-search/apps/mobile/android/app/src/main/java/com/crave/SearchMapRenderControllerModule.java`
+- `/Users/brandonkimble/Crave/apps/mobile/src/screens/Search/index.tsx`
+- `/Users/brandonkimble/Crave/apps/mobile/src/screens/Search/components/search-map.tsx`
+- `/Users/brandonkimble/Crave/apps/mobile/src/screens/Search/components/search-results-sheet.tsx`
+- `/Users/brandonkimble/Crave/apps/mobile/src/screens/Search/components/hooks/use-search-map-native-render-owner.ts`
+- `/Users/brandonkimble/Crave/apps/mobile/src/screens/Search/hooks/use-search-presentation-controller.ts`
+- `/Users/brandonkimble/Crave/apps/mobile/src/screens/Search/runtime/controller/presentation-transition-controller.ts`
+- `/Users/brandonkimble/Crave/apps/mobile/src/screens/Search/components/hooks/use-search-map-label-observation.ts`
+- `/Users/brandonkimble/Crave/apps/mobile/src/screens/Search/components/hooks/use-search-map-label-runtime.ts`
+- `/Users/brandonkimble/Crave/apps/mobile/ios/cravesearch/SearchMapRenderController.swift`
+- `/Users/brandonkimble/Crave/apps/mobile/android/app/src/main/java/com/crave/SearchMapRenderControllerModule.java`
 
 ## Objective
 
@@ -110,27 +140,31 @@ minor pre-gate state reads.
 
 Native paths (apps/mobile/ios/cravesearch/SearchMapRenderController.swift):
 
-- Dismiss-settle today: `completeDismissVisualLifecycle` (6046) caches source
-  (`residentDesiredSourceCacheBySourceId` 6056) → `clearResidentSourcesAndTransientFeatureStates`
-  (6076) clears Mapbox sources → resets `derivedFamilyStates` (6094) → sets `.hidden` (6102).
-- Enter today: `restoreResidentDesiredSourceCacheForEnter` (2253 / def 6319) restores the
-  cached data back into the Mapbox sources; `startEnterPresentation` (5483) /
-  `beginRevealVisualLifecycle` (5984) / `settleEnterAfterRenderedFrame` (5815).
-- The proven dormancy mechanism to mirror: `setLabelCollisionObstacleLayersVisible` (6138)
-  → `setLayerProperty(... "visibility", "none"/"visible")`. Marker layer ids are on state:
-  `pinLayerIds` / `dotLayerIds` / `labelLayerIds`.
+- Dismiss-settle (as IMPLEMENTED): `completeDismissVisualLifecycle` dorms the
+  label render + collision layers and sets `.hidden`. The previous design caching
+  step `residentDesiredSourceCacheBySourceId` and the
+  `restoreResidentDesiredSourceCacheForEnter` restore are both **DELETED**
+  (commit eab742c3) — there is no resident-source-cache machinery anymore; the
+  sources simply stay resident. The old `clearResidentSourcesAndTransientFeatureStates`
+  source-clear no longer runs on dismiss.
+- Enter: the cache restore is **deleted**; on a resident-unchanged re-reveal the
+  enter case skips the snapshot reconcile entirely (af0c415e).
+- The proven dormancy mechanism that was mirrored: `setLabelCollisionObstacleLayersVisible`
+  → `setLayerProperty(... "visibility", "none"/"visible")`.
 
-Cluster I (native) — marker-layer dormancy:
+Cluster I (native) — marker-layer dormancy (IMPLEMENTED):
 
-- Add `setMarkerLayersVisible(_:for:instanceId:reason:)` mirroring the collision helper,
-  over `pinLayerIds + dotLayerIds + labelLayerIds`.
-- In `completeDismissVisualLifecycle`: replace the source-clear (6074-6090) with
-  `setMarkerLayersVisible(false)`; KEEP sources populated; do NOT reset `derivedFamilyStates`
-  / `residentSourceFrameKey` / `residentSourceDataKey`. Keep the `.hidden` + opacity-0
-  transitions (so all existing hidden-gating stays active).
-- On the enter path, BEFORE the opacity dimmer (with opacity feature-state still 0 to avoid
-  a flash): `setMarkerLayersVisible(true)`. The cache restore (2253) becomes a no-op when
-  sources are already populated — gate/remove once verified.
+- The real helper is `setLabelRenderLayersVisible` (NOT `setMarkerLayersVisible`,
+  which does not exist). It dorms ONLY the **label + collision** layers via
+  `visibility:none`. The pins/dots are `ignorePlacement` symbols and are kept
+  **resident at opacity 0** rather than dormed — they cost no placement work, so
+  there is no need to drop them from the layout pipeline.
+- In `completeDismissVisualLifecycle`: the source-clear is removed; sources stay
+  populated; `.hidden` + opacity-0 transitions are kept (so all existing
+  hidden-gating stays active).
+- On the enter path the layers are re-shown before the opacity dimmer (with
+  opacity feature-state still 0 to avoid a flash). The old cache-restore is
+  **deleted**, and a resident-unchanged re-reveal skips snapshot reconcile.
 
 Cluster II (JS) — stop publishing the empty frame on dismiss:
 
@@ -310,6 +344,10 @@ Rules:
 
 ### Phase R1: covered structural publish
 
+> NOTE (2026-06-16): this describes the superseded publish/clear model. In the
+> resident end-state, marker sources stay resident across dismiss, so re-reveal
+> usually has nothing to publish (resident-unchanged re-reveal skips the reconcile).
+
 While cover is visible:
 
 - structural lane publishes one hidden semantic batch
@@ -368,6 +406,11 @@ This is the target dismiss shape.
 
 ### Phase D2: post-dismiss cleanup
 
+> NOTE (2026-06-16): this describes the superseded publish/clear model. In the
+> resident end-state, dismiss NEVER clears the marker sources — the source-clearing
+> described here is a no-op. Dismiss-settle only dorms the label + collision layers
+> via `visibility:none`; the data stays resident.
+
 After dismiss settles:
 
 - sheet collapse runs if needed
@@ -395,11 +438,13 @@ own enablement. Measured against the gates:
   `sourceDeltaCount:0` / `snapshotChanged:false` (presentation-only + control-state-only),
   but each still drives a full native resident-frame re-sync (`nativeDidSyncResidentFrame:true`,
   35ms and 114ms). Class 1.
-- **Gate B (dismiss presentation-only): FAIL — 4 leaks** during `exit_requested`/`exit_executing`:
-  - 2 of them Class 1 (presentation/control-only, `sourceDeltaCount:0`, 69ms + 12ms).
-  - 2 of them Class 2: real source clearing (`replaceSourceCount:5`, empty snapshot,
-    `pinCount:0`), 86ms + 30ms — exactly the "structural source clearing during visible
-    dismiss" Gate B forbids.
+- **Gate B (dismiss presentation-only): PASS (updated 2026-06-16).** The original
+  measurement showed 4 leaks — 2 Class 1 and 2 Class 2 (real source clearing,
+  `replaceSourceCount:5`, empty snapshot, `pinCount:0`). The **Class-2 source-clears
+  are now fixed** by the resident dismiss (d40d0d08 + cec34d26): dismiss no longer
+  clears sources, so the "structural source clearing during visible dismiss" Gate B
+  forbids no longer occurs. Only **Class-1 presentation-only-frame leaks** remain
+  (= Cluster 2), and those are the residual Class-1 work, not a Gate-B violation.
 
 ### The two fix-classes (the remaining real work)
 
@@ -641,15 +686,15 @@ Exit gate:
 Always run:
 
 - relevant lint/tests for touched files
-- `bash /Users/brandonkimble/crave-search/scripts/no-bypass-search-runtime.sh`
+- `bash /Users/brandonkimble/Crave/scripts/no-bypass-search-runtime.sh`
 
 Run when relevant:
 
-- `bash /Users/brandonkimble/crave-search/scripts/search-runtime-natural-cutover-contract.sh`
+- `bash /Users/brandonkimble/Crave/scripts/search-runtime-natural-cutover-contract.sh`
 
 Native compile checks:
 
-- `swiftc -parse /Users/brandonkimble/crave-search/apps/mobile/ios/cravesearch/SearchMapRenderController.swift`
+- `swiftc -parse /Users/brandonkimble/Crave/apps/mobile/ios/cravesearch/SearchMapRenderController.swift`
 - `./gradlew app:compileDebugJavaWithJavac`
 
 Perf validation:

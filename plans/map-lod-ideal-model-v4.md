@@ -14,6 +14,29 @@ of both eras, and the seams produced three user-visible defects: synchronized op
 flashing on demote, vertical pin jitter, and batched after-gesture demotions. v4 is the
 clean target model for the single-layer era.
 
+## Reconciliation notes (2026-06-16)
+
+The invariants below are the target model. Where current reality diverges:
+
+- **Invariant 1 (resident membership)** currently holds for **SHORTCUT** search but
+  **NOT** natural/typed search. Natural search still viewport-filters candidates
+  (use-direct-search-map-source-controller.ts ~1528) and churns source membership on
+  pan, violating "membership changes only on real data changes." A separate fix is
+  making natural search resident too. Flagging this asymmetry explicitly so the
+  invariant isn't read as already-universal.
+- **Invariant 4 (a fade never reverses mid-flight)** — correct the framing. The
+  commit-invariant reversal guard is NOT a "rarely-engaged safety net." It is
+  **load-bearing**, engaging on essentially every ~90ms eval; it is what took
+  `flashReversalCount` from 14 → 0. Read invariant 4's "safety net" language as
+  superseded by this note.
+- **Invariant 5 (no jitter)** — the single-writer fix shipped, but on-device
+  re-verification is still **pending**. The plan presents jitter resolution as part
+  of the definition of correct; treat it as unconfirmed on device until that
+  verification lands.
+- **Acceptance contracts** are **telemetry-only** (`logPerfScenarioAttributionEvent`),
+  NOT enforced gates. No test or Maestro assertion fails on a contract violation —
+  they report, they don't block.
+
 ## Product invariants (the definition of correct)
 
 1. **Resident membership.** Every result candidate is resident in BOTH the pin and dot

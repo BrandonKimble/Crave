@@ -1,5 +1,7 @@
 # Search Dismiss / Nav Silhouette Cutover Plan
 
+> MERGED: the dismiss mechanics here are superseded by the resident-data + dormant-layers model in search-map-reveal-dismiss-smooth-cutover-plan.md; the three-authority (SearchSurfaceRuntime / Sheet Motion / NavSilhouette) framing remains useful background.
+
 ## Current Diagnosis
 
 The current implementation is better than the first broken state, but it is still an intermediate architecture with too many visual owners.

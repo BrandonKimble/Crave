@@ -1,5 +1,7 @@
 # Search Map Per-Pin Group Cutover Plan
 
+> SUPERSEDED (LOD/slot sections): the per-slot physical-source model described below is dead — replaced by the single-layer pin + opacity-crossfade model in map-lod-ideal-model-v4.md. Only the Label, Collision, and Native-Press-Targeting sections remain authoritative.
+
 ## Objective
 
 Cut the search map marker runtime to a stable promoted-slot ownership model that preserves current UX while eliminating broad layer/source churn:
