@@ -134,4 +134,10 @@ export class PollsController {
   ) {
     return this.pollsService.toggleCommentLike(commentId, user.userId);
   }
+
+  @Get(':pollId/leaderboard')
+  @UseGuards(OptionalClerkAuthGuard)
+  getLeaderboard(@Param('pollId') pollId: string) {
+    return this.pollsService.getPollLeaderboard(pollId);
+  }
 }

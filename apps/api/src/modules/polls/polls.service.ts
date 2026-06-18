@@ -9,6 +9,7 @@ import {
   PollMode,
   PollCommentModerationStatus,
   PollCommentExtractionStatus,
+  PollLeaderboardSubjectType,
   EntityType,
   PollOptionSource,
   PollOptionResolutionStatus,
@@ -37,7 +38,10 @@ import { UserEventService } from '../identity/user-event.service';
 import { UserStatsService } from '../identity/user-stats.service';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { LLMPollAxis } from '../external-integrations/llm/llm.types';
-import { EntityTextSearchService } from '../entity-text-search/entity-text-search.service';
+import {
+  EntityTextSearchService,
+  type EntitySpan,
+} from '../entity-text-search/entity-text-search.service';
 
 const MAX_OPTIONS_PER_POLL = 8;
 
@@ -1075,6 +1079,7 @@ export class PollsService {
       },
     });
 
+    await this.rebuildPollLeaderboard(pollId);
     this.gateway.emitPollUpdate(pollId);
     void this.userEventService.recordEvent({
       userId,
@@ -1117,6 +1122,7 @@ export class PollsService {
         extractionStatus: PollCommentExtractionStatus.highlighted,
       },
     });
+    await this.rebuildPollLeaderboard(comment.pollId);
     this.gateway.emitPollUpdate(comment.pollId);
     return updated;
   }
@@ -1127,6 +1133,7 @@ export class PollsService {
       where: { commentId },
       data: { deletedAt: new Date() },
     });
+    await this.rebuildPollLeaderboard(comment.pollId);
     this.gateway.emitPollUpdate(comment.pollId);
     return { commentId, deleted: true };
   }
@@ -1176,6 +1183,7 @@ export class PollsService {
       return { liked: true, score: updated.score };
     });
 
+    await this.rebuildPollLeaderboard(comment.pollId);
     this.gateway.emitPollUpdate(comment.pollId);
     void this.userEventService.recordEvent({
       userId,
@@ -1241,6 +1249,124 @@ export class PollsService {
     return comments.map((c) => ({
       ...c,
       currentUserLiked: likedSet.has(c.commentId),
+    }));
+  }
+
+  // ─── Endorsement leaderboard projection (Phase 4D) ───────────────────────
+
+  /**
+   * Project the comment thread into the leaderboard (§5, "gazetteer-live" default,
+   * no sentiment in v1 — presence = endorsement, ~95%, corrected at close). A
+   * comment's gazetteer spans are the subjects it endorses; its author and everyone
+   * who liked it endorse those subjects; dedupe (user, subject) → COUNT(DISTINCT
+   * user). Rebuilt on each interaction. Subject span type follows the axis:
+   * `what_to_order` ranks dishes (food spans); every other ranked axis ranks
+   * restaurants (restaurant spans). v1 uses `entity` subjects; the restaurant+dish
+   * `Connection` refinement (§13) is formed at close-time (§6.3).
+   */
+  private async rebuildPollLeaderboard(pollId: string): Promise<void> {
+    const poll = await this.prisma.poll.findUnique({
+      where: { pollId },
+      select: { mode: true, topic: { select: { topicType: true } } },
+    });
+    if (!poll || poll.mode === PollMode.discussion) {
+      await this.prisma.pollLeaderboardEntry.deleteMany({ where: { pollId } });
+      return;
+    }
+
+    const subjectSpanType: EntityType =
+      poll.topic?.topicType === PollTopicType.what_to_order
+        ? EntityType.food
+        : EntityType.restaurant;
+
+    const comments = await this.prisma.pollComment.findMany({
+      where: {
+        pollId,
+        deletedAt: null,
+        moderationStatus: PollCommentModerationStatus.approved,
+      },
+      select: { commentId: true, userId: true, entitySpans: true },
+    });
+    const likes = await this.prisma.pollCommentLike.findMany({
+      where: { comment: { pollId } },
+      select: { commentId: true, userId: true },
+    });
+    const likersByComment = new Map<string, string[]>();
+    for (const like of likes) {
+      const arr = likersByComment.get(like.commentId);
+      if (arr) arr.push(like.userId);
+      else likersByComment.set(like.commentId, [like.userId]);
+    }
+
+    // subjectId → distinct endorsing users
+    const endorsers = new Map<string, Set<string>>();
+    for (const comment of comments) {
+      const spans = (Array.isArray(comment.entitySpans)
+        ? comment.entitySpans
+        : []) as unknown as EntitySpan[];
+      const subjectIds = new Set(
+        spans
+          .filter((s) => s?.type === subjectSpanType && s?.entityId)
+          .map((s) => s.entityId),
+      );
+      if (!subjectIds.size) continue;
+      const endorsingUsers = [
+        comment.userId,
+        ...(likersByComment.get(comment.commentId) ?? []),
+      ];
+      for (const subjectId of subjectIds) {
+        let set = endorsers.get(subjectId);
+        if (!set) {
+          set = new Set();
+          endorsers.set(subjectId, set);
+        }
+        for (const u of endorsingUsers) set.add(u);
+      }
+    }
+
+    const ranked = [...endorsers.entries()]
+      .map(([subjectId, users]) => ({
+        subjectId,
+        distinctEndorsers: users.size,
+      }))
+      .sort((a, b) => b.distinctEndorsers - a.distinctEndorsers);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.pollLeaderboardEntry.deleteMany({ where: { pollId } });
+      if (ranked.length) {
+        await tx.pollLeaderboardEntry.createMany({
+          data: ranked.map((r, i) => ({
+            pollId,
+            subjectType: PollLeaderboardSubjectType.entity,
+            subjectId: r.subjectId,
+            distinctEndorsers: r.distinctEndorsers,
+            score: r.distinctEndorsers,
+            rank: i + 1,
+          })),
+        });
+      }
+    });
+  }
+
+  async getPollLeaderboard(pollId: string) {
+    const entries = await this.prisma.pollLeaderboardEntry.findMany({
+      where: { pollId },
+      orderBy: { rank: 'asc' },
+    });
+    if (!entries.length) return [];
+    const ids = entries.map((e) => e.subjectId);
+    const entities = await this.prisma.entity.findMany({
+      where: { entityId: { in: ids } },
+      select: { entityId: true, name: true, type: true },
+    });
+    const byId = new Map(entities.map((e) => [e.entityId, e]));
+    return entries.map((e) => ({
+      rank: e.rank,
+      subjectType: e.subjectType,
+      subjectId: e.subjectId,
+      name: byId.get(e.subjectId)?.name ?? null,
+      type: byId.get(e.subjectId)?.type ?? null,
+      distinctEndorsers: e.distinctEndorsers,
     }));
   }
 
