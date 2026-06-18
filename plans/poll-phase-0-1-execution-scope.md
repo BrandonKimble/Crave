@@ -222,6 +222,13 @@ food 469→**220** (154 merged, 95 rejected), restaurant 738→**126** (281 merg
   **1,207 → 423 clean canonicals**, 0 dangling refs, antonyms separated (casual|cozy|lively|
   quiet|upscale coexist), meal-periods kept on food side, naming applied (large anchors the
   size cluster). Safety dump at `/tmp/crave-attrs-backup-121436.sql`.
+  > **⚠️ Stale count (red-team 2026-06):** live DB now shows ~195 active attribute canonicals,
+  > not 423. Cause: the later attribute-vocabulary **data incident** (deleted, then regenerated
+  > via 27-run replay) — so the current set is the post-recovery regen, not this bulk apply. The
+  > **infra is sound** (quarantine watertight, worker/trigger wired, apply path verified); only
+  > the one-time count is stale. If we want the full canonicalization on current data, just
+  > re-run `scripts/canonicalize-attributes.ts --apply`. The `/tmp` dump is also gone (never rely
+  > on /tmp).
 - **Steady-state loop verified END-TO-END in the running dev server** (not a CLI): replay →
   new extraction prompt coined pending → `unified-processing` trigger enqueued → the live
   server's Bull worker drained them (60s debounce) → adjudicated → 0 pending. Decisions correct:

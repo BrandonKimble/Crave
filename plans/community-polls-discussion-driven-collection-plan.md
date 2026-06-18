@@ -542,6 +542,24 @@ is ever processed → no incremental evidence reconciliation.
 relevance prediction (relevance can beat popularity; personalization, locality, and a
 freshness/trend layer all factor in) — **no per-type reserved slots.**
 
+> **Locked-in (2026-06) — semantic (embedding) recall + the instant strategy.** Beyond the
+> lexical blending below, autocomplete carries an **embedding/dense recall lane** (shipped in
+> P1.4) — the real differentiator: "BEC"→bacon egg and cheese, "bao"→pork bun, "al fresco"→
+> outdoor seating, which prefix/popularity matching cannot do. **Decision: run dense ALWAYS
+> (uniform + deterministic), not as a fallback** — the per-query embed latency is removed by a
+> **query-embedding cache** (Redis; a string's embedding is immutable → write-once-read-forever)
+> plus **pre-warming** from top historical queries + the entity name/alias vocabulary, refreshed
+> periodically. Embeddings are computed **once per new string ever** (a new entity, or a novel
+> query), so there is **no recurring re-embed cost** — the "expensive to refresh the cache" fear
+> doesn't apply; at production scale it's one corpus backfill + incremental per new entity/query,
+> and pgvector HNSW handles ANN at that size. **Industry context (verified):** mainstream
+> autocomplete (incl. Google's core suggestions) is **prefix + MostPopularCompletion** — a
+> deterministic popularity lookup, no semantics (which is why Google doesn't map "BEC" → bacon
+> egg and cheese). **Neural/embedding autocomplete** (offline-indexed candidate vectors + ANN —
+> exactly our pgvector shape) is the frontier used by large players; doing it well is a genuine
+> edge for a food app where meaning matters. Short fragments (1–2 chars) stay lexical/prefix
+> (a fragment has no meaningful embedding); dense engages at a deterministic min length.
+
 **Where we stand:** retrieval is strong (`EntityTextSearchService`: prefix + FTS + trigram
 
 - phonetic + alias + market scope + quality tiebreak). The gap is **blending/ranking**:
