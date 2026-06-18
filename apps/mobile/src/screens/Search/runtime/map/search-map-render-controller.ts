@@ -44,7 +44,6 @@ type SearchMapRenderControllerNativeModule = {
     reason?: string;
     reset?: boolean;
   }) => Promise<SearchMapNativeApplyAttributionSummary>;
-  notifyFrameRendered: (instanceId: string) => Promise<void>;
   configureLabelObservation: (
     payload: {
       instanceId: string;

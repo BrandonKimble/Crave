@@ -1141,11 +1141,6 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     }
   }
 
-  @ReactMethod
-  public void notifyFrameRendered(String instanceId, Promise promise) {
-    promise.resolve(null);
-  }
-
   private void markFrameSourceAdmission(
     String instanceId,
     String generationId,

@@ -459,6 +459,11 @@ const searchMapNativeFrameVisualSourceCountsByKey = new Map<
   SearchMapRenderVisualSourceCounts
 >();
 
+// Upper bound on retained frame:/batch: count entries (two keys per admitted frame).
+// Oldest entries are evicted past this cap so the cache stays bounded across long
+// live sessions that never dismiss/unmount.
+const SEARCH_MAP_NATIVE_FRAME_VISUAL_SOURCE_COUNTS_CAP = 256;
+
 const buildSearchMapNativeFrameVisualSourceCountKeys = ({
   instanceId,
   frameGenerationId,
@@ -496,6 +501,20 @@ const rememberSearchMapNativeFrameVisualSourceCounts = ({
   }).forEach((key) => {
     searchMapNativeFrameVisualSourceCountsByKey.set(key, counts);
   });
+  // Bound the cache so a long live session without a dismiss/unmount (which is the
+  // only other thing that purges via forget*) cannot grow it unbounded. Map preserves
+  // insertion order, so evicting from the front drops the oldest frame:/batch: keys;
+  // the consumer only ever looks up the most-recent keys, which stay within the cap.
+  while (
+    searchMapNativeFrameVisualSourceCountsByKey.size >
+    SEARCH_MAP_NATIVE_FRAME_VISUAL_SOURCE_COUNTS_CAP
+  ) {
+    const oldestKey = searchMapNativeFrameVisualSourceCountsByKey.keys().next().value;
+    if (oldestKey == null) {
+      break;
+    }
+    searchMapNativeFrameVisualSourceCountsByKey.delete(oldestKey);
+  }
 };
 
 const forgetSearchMapNativeFrameVisualSourceCounts = (instanceId: string): void => {
@@ -1518,6 +1537,14 @@ const buildSearchMapMarkerRoleFrame = ({
     mode,
     nextPinnedMarkerKeysInOrder,
     nextDotMarkerKeysInOrder: nextVisibleDotMarkerKeysInOrder,
+    // Asymmetry is intentional: dots carry BOTH a visible list (opacity-filtered above)
+    // and a full resident list, because native keeps hidden/zero-opacity dots (e.g.
+    // promoted pins' shadow dots) resident in the dot layer while showing only the
+    // visible subset — see makeDesiredDotCollection's residentDotMarkerKeysInOrder use
+    // in SearchMapRenderController.swift. Pins have no "hidden-but-resident" concept: a
+    // pin filtered out by the nativeLodOpacity check has been demoted to a dot and its
+    // residency lives on the dot side, so there is no residentPinMarkerKeysInOrder field
+    // (the native MarkerRoleTable does not define or read one).
     residentDotMarkerKeysInOrder: [...nextSnapshot.dots.idsInOrder],
     dirtyMarkerKeys: [...dirtyMarkerKeys],
     removedMarkerKeys: [...removedMarkerKeys],

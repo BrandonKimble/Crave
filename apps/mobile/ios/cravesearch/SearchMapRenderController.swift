@@ -1469,8 +1469,10 @@ final class SearchMapRenderController: RCTEventEmitter {
             try markFrameSourceAdmission(sourceReady: false)
             try applyPresentation()
             if sourceFrameIsReady && shouldApplySourcePayload {
-              // Real new/changed source data → apply the delta. Source readiness then arrives via
-              // the normal render-observation handshake (paint → notifyFrameRendered).
+              // Real new/changed source data → apply the delta. applySnapshot sets source
+              // readiness SYNCHRONOUSLY (applyRenderFrameSnapshotPayload assigns
+              // sourceReadyFrameGenerationId = generationId). Readiness is NOT gated on any async
+              // paint callback — the JS `notifyFrameRendered` bridge method is a dead no-op.
               let result = try applySnapshot()
               didSyncResidentFrame = result.didSyncResidentFrame
               sourceAdmissionOutcome = result.sourceAdmissionOutcome
@@ -1478,11 +1480,13 @@ final class SearchMapRenderController: RCTEventEmitter {
               // RESIDENT + UNCHANGED re-reveal (resident-data end state): Mapbox already holds the
               // painted resident frame, so skip the snapshot reconcile entirely — that avoids
               // rebuilding ~3000 feature payloads on every re-reveal (the intermittent 56-75ms
-              // reveal cost). Synthesize source readiness immediately (markFrameSourceAdmission
-              // sourceReady:true sets sourceReadyFrameGenerationId == activeFrameGenerationId):
-              // no new paint will happen, so waiting on the render handshake would STALL the
-              // reveal. Label placement readiness still comes from the preparing-enter observation,
-              // and live transitions were cancelled at dismiss, so there is nothing to step here.
+              // reveal cost). Because applySnapshot (which would set readiness synchronously) is
+              // skipped, set readiness directly here: markFrameSourceAdmission(sourceReady:true)
+              // assigns sourceReadyFrameGenerationId == activeFrameGenerationId so
+              // startEnterPresentationIfReady's isActiveFrameSourceReady gate passes. (Readiness is
+              // synchronous — there is no paint handshake to wait on.) Label placement readiness
+              // still comes from the preparing-enter observation, and live transitions were
+              // cancelled at dismiss, so there is nothing to step here.
               try markFrameSourceAdmission(sourceReady: true)
               didSyncResidentFrame = true
               sourceAdmissionOutcome = "sources_reused_resident"
@@ -1634,15 +1638,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         )
       }
     }
-  }
-
-  @objc
-  func notifyFrameRendered(
-    _ instanceId: String,
-    resolver resolve: @escaping RCTPromiseResolveBlock,
-    rejecter reject: @escaping RCTPromiseRejectBlock
-  ) {
-    resolve(nil)
   }
 
   private static func markerRoleFrameStringArray(
@@ -8481,7 +8476,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         emitDiagnostic: false
       )
       state = instances[instanceId] ?? state
-      emitEnterFirstVisibleFrameIfNeeded(instanceId: instanceId, state: &state, opacity: opacity)
       if progress >= 1 {
         cancelPresentationOpacityAnimation(instanceId: instanceId)
         state.currentPresentationOpacityTarget = animator.targetOpacity
@@ -8508,24 +8502,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
   }
 
-  private func emitEnterFirstVisibleFrameIfNeeded(
-    instanceId: String,
-    state: inout InstanceState,
-    opacity: Double
-  ) {
-    guard opacity > 0.001 else {
-      return
-    }
-    guard state.lastPresentationBatchPhase == "entering" else {
-      return
-    }
-    guard let requestKey = state.lastEnterRequestKey else {
-      return
-    }
-    guard state.lastEnterStartedRequestKey == requestKey else {
-      return
-    }
-  }
 
   private static func round3(_ value: Double) -> Double {
     (value * 1000).rounded() / 1000

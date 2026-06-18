@@ -2069,40 +2069,6 @@ export const useDirectSearchMapSourceController = ({
         rankedCandidateCount: rankedCandidates.length,
       });
     }
-    const pinVisualIdentityKeys = collectSourceStoreVisualIdentityKeys(pinSourceStore);
-    const dotVisualIdentityKeys = collectSourceStoreVisualIdentityKeys(dotSourceStore);
-    const visibleDemotedDotVisualIdentityKeys = new Set<SearchMapVisualIdentityKey>();
-    dotSourceStore.idsInOrder.forEach((markerKey) => {
-      const feature = dotSourceStore.featureById.get(markerKey);
-      if (!feature || feature.properties.nativeDotOpacity === 0) {
-        return;
-      }
-      visibleDemotedDotVisualIdentityKeys.add(buildSearchMapVisualIdentityKey(feature));
-    });
-    const selectedPinVisualIdentityCount = countRestaurantVisualIdentityKeysInSourceStore(
-      pinSourceStore,
-      selectedRestaurantId
-    );
-    const normalPinVisualIdentityCount = Math.max(
-      0,
-      pinVisualIdentityKeys.size - selectedPinVisualIdentityCount
-    );
-    const lodOverlapMarkerKeys = intersectStringSets(
-      new Set(pinSourceStore.idsInOrder),
-      new Set(dotSourceStore.idsInOrder)
-    );
-    const lodOverlapVisualIdentityKeys = intersectStringSets(
-      pinVisualIdentityKeys,
-      dotVisualIdentityKeys
-    );
-    const lodClassifiedVisualIdentityKeys = new Set([
-      ...pinVisualIdentityKeys,
-      ...dotVisualIdentityKeys,
-    ]);
-    const unclassifiedCandidateVisualIdentityCount = countMissingKeys(
-      projectedVisualFrame.candidateVisualIdentityKeys,
-      lodClassifiedVisualIdentityKeys
-    );
     const pinInteractionBuilder = createSearchMapSourceStoreBuilder(
       previousPinInteractionSourceStoreRef.current
     );
@@ -2242,6 +2208,43 @@ export const useDirectSearchMapSourceController = ({
       const quietMeasuredLoopActive = isPerfScenarioQuietMeasuredLoopActive(scenarioConfig);
       const shouldEmitSourceFrameDiagnostics = !quietMeasuredLoopActive || didPublishSourceFrame;
       if (shouldEmitSourceFrameDiagnostics) {
+        // Visual-identity set construction below is purely diagnostic: it is only
+        // consumed by the attribution log events in this gated block. Keep it inside
+        // the gate so no set-building runs when perf attribution is off (the default).
+        const pinVisualIdentityKeys = collectSourceStoreVisualIdentityKeys(pinSourceStore);
+        const dotVisualIdentityKeys = collectSourceStoreVisualIdentityKeys(dotSourceStore);
+        const visibleDemotedDotVisualIdentityKeys = new Set<SearchMapVisualIdentityKey>();
+        dotSourceStore.idsInOrder.forEach((markerKey) => {
+          const feature = dotSourceStore.featureById.get(markerKey);
+          if (!feature || feature.properties.nativeDotOpacity === 0) {
+            return;
+          }
+          visibleDemotedDotVisualIdentityKeys.add(buildSearchMapVisualIdentityKey(feature));
+        });
+        const selectedPinVisualIdentityCount = countRestaurantVisualIdentityKeysInSourceStore(
+          pinSourceStore,
+          selectedRestaurantId
+        );
+        const normalPinVisualIdentityCount = Math.max(
+          0,
+          pinVisualIdentityKeys.size - selectedPinVisualIdentityCount
+        );
+        const lodOverlapMarkerKeys = intersectStringSets(
+          new Set(pinSourceStore.idsInOrder),
+          new Set(dotSourceStore.idsInOrder)
+        );
+        const lodOverlapVisualIdentityKeys = intersectStringSets(
+          pinVisualIdentityKeys,
+          dotVisualIdentityKeys
+        );
+        const lodClassifiedVisualIdentityKeys = new Set([
+          ...pinVisualIdentityKeys,
+          ...dotVisualIdentityKeys,
+        ]);
+        const unclassifiedCandidateVisualIdentityCount = countMissingKeys(
+          projectedVisualFrame.candidateVisualIdentityKeys,
+          lodClassifiedVisualIdentityKeys
+        );
         const compactCoverageProof = quietMeasuredLoopActive
           ? {
               shortcutCoverageInFlightCount,
