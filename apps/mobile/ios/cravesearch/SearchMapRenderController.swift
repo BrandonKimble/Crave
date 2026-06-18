@@ -1617,19 +1617,33 @@ final class SearchMapRenderController: RCTEventEmitter {
             ])
           }
         }
-        let nativeResolveStartedAtMs = CACurrentMediaTime() * 1000
-        let nativeResolveStartedAtEpochMs = Date().timeIntervalSince1970 * 1000
-        resolve([
-          "nativeModuleQueueWaitDurationMs": Self.round1(nativeMainStartedAtMs - nativeModuleReceivedAtMs),
-          "nativeMainExecutionDurationMs": Self.round1(nativeResolveStartedAtMs - nativeMainStartedAtMs),
-          "nativeSetFrameActionDurationMs": Self.round1(actionDurationMs),
+        // Per-frame timing payload is only consumed by the perf-attribution-gated
+        // `native_set_render_frame_bridge_slice` diagnostic (JS side). When attribution is
+        // OFF (production default) the JS logger early-returns, so assembling/bridging the
+        // pure-timing fields every frame is wasted work. `nativeApplyAttributionEnabled` is
+        // the same native scenario signal (set true by resetNativeApplyAttribution, cleared
+        // by flushNativeApplyAttributionSummary) the bridge slice depends on — gate on it.
+        // `nativeSetFramePhase` / `nativeDidSyncResidentFrame` are semantic frame outcome
+        // fields (not pure timing) and are always returned. The TS layer already treats the
+        // gated timing fields as optional, so their absence is benign when attribution is off.
+        var resolveResult: [String: Any] = [
           "nativeSetFramePhase": syncedFramePhase,
           "nativeDidSyncResidentFrame": didSyncResidentFrame,
-          "nativeResolveStartedAtMs": Self.round1(nativeResolveStartedAtMs),
-          "nativeModuleReceivedAtEpochMs": Self.round1(nativeModuleReceivedAtEpochMs),
-          "nativeMainStartedAtEpochMs": Self.round1(nativeMainStartedAtEpochMs),
-          "nativeResolveStartedAtEpochMs": Self.round1(nativeResolveStartedAtEpochMs),
-        ])
+        ]
+        if self.nativeApplyAttributionEnabled {
+          let nativeResolveStartedAtMs = CACurrentMediaTime() * 1000
+          let nativeResolveStartedAtEpochMs = Date().timeIntervalSince1970 * 1000
+          resolveResult["nativeModuleQueueWaitDurationMs"] =
+            Self.round1(nativeMainStartedAtMs - nativeModuleReceivedAtMs)
+          resolveResult["nativeMainExecutionDurationMs"] =
+            Self.round1(nativeResolveStartedAtMs - nativeMainStartedAtMs)
+          resolveResult["nativeSetFrameActionDurationMs"] = Self.round1(actionDurationMs)
+          resolveResult["nativeResolveStartedAtMs"] = Self.round1(nativeResolveStartedAtMs)
+          resolveResult["nativeModuleReceivedAtEpochMs"] = Self.round1(nativeModuleReceivedAtEpochMs)
+          resolveResult["nativeMainStartedAtEpochMs"] = Self.round1(nativeMainStartedAtEpochMs)
+          resolveResult["nativeResolveStartedAtEpochMs"] = Self.round1(nativeResolveStartedAtEpochMs)
+        }
+        resolve(resolveResult)
       } catch {
         reject(
           "search_map_render_controller_frame_apply_failed",

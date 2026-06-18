@@ -138,7 +138,7 @@ File: use-direct-search-map-source-controller.ts (~2072-2097: lodOverlap\*/pinVi
 - [ ] Move set construction inside isPerfScenarioAttributionActive gate.
       Acceptance: zero per-publish set construction when attribution off.
 
-### 13. [ ] Native timing payload gating
+### 13. [x] Native timing payload gating
 
 File: SearchMapRenderController.swift resolve(...) (~1618 returns ~9 timing fields every frame).
 
