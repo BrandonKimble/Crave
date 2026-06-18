@@ -335,6 +335,25 @@ export interface LLMEntityMatchResult {
   reason: string;
 }
 
+export interface LLMPollAxisConstraint {
+  kind: 'category' | 'cuisine' | 'dish_attribute' | 'restaurant_attribute';
+  value: string;
+}
+
+export interface LLMPollAxis {
+  targetType: 'dish' | 'restaurant';
+  constraint: LLMPollAxisConstraint | null;
+  anchor: string | null;
+  marketHint: string | null;
+}
+
+export interface LLMPollSubjectResult {
+  mode: 'ranked' | 'discussion';
+  confidence: number;
+  axis: LLMPollAxis | null;
+  reason: string;
+}
+
 export interface LLMRestaurantPlaceChooserCandidate {
   candidateId: string;
   name: string;

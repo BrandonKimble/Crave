@@ -30,6 +30,9 @@ import {
   LLMAttributePlacementResult,
   LLMEntityMatchInput,
   LLMEntityMatchResult,
+  LLMPollSubjectResult,
+  LLMPollAxis,
+  LLMPollAxisConstraint,
   LLMAttributeNameInput,
   LLMRestaurantPlaceChooserCandidate,
   LLMRestaurantPlaceChooserDecision,
@@ -50,6 +53,7 @@ import {
   ATTRIBUTE_NAME_RESPONSE_JSON_SCHEMA,
   ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA,
   ENTITY_MATCH_RESPONSE_JSON_SCHEMA,
+  POLL_SUBJECT_RESPONSE_JSON_SCHEMA,
   COLLECTION_RESPONSE_JSON_SCHEMA,
   CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA,
   MODERATION_RESPONSE_JSON_SCHEMA,
@@ -162,6 +166,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   private moderationPrompt!: string;
   private attributePlacementPrompt!: string;
   private entityMatchPrompt!: string;
+  private pollSubjectPrompt!: string;
   private queryInstructionCache: GeminiCacheEntry | null = null;
   private queryModel!: string;
   private thoughtDebugEntries: {
@@ -333,6 +338,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     this.moderationPrompt = this.loadModerationPrompt();
     this.attributePlacementPrompt = this.loadAttributePlacementPrompt();
     this.entityMatchPrompt = this.loadEntityMatchPrompt();
+    this.pollSubjectPrompt = this.loadPollSubjectPrompt();
     this.validateConfig();
 
     this.logger.info('Gemini LLM service initialized with @google/genai', {
@@ -806,6 +812,13 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     return this.loadRequiredPromptFile(
       'entity-match-prompt.md',
       'load_entity_match_prompt',
+    );
+  }
+
+  private loadPollSubjectPrompt(): string {
+    return this.loadRequiredPromptFile(
+      'poll-subject-prompt.md',
+      'load_poll_subject_prompt',
     );
   }
 
@@ -1425,6 +1438,133 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       // Fail closed: default to a non-destructive `new`.
       return { decision: 'new', candidateId: null, reason: 'parse_error' };
     }
+  }
+
+  /**
+   * Classify a free-text poll question as `ranked` (a leaderboard over specific
+   * dishes/restaurants, with an extracted axis) or `discussion` (an open thread,
+   * no leaderboard). Lite model, cheap. Fail-closed: an empty/unparseable question
+   * is treated as `discussion` (the safe default — a pointless empty leaderboard
+   * is worse than a thread).
+   */
+  async inferPollSubject(question: string): Promise<LLMPollSubjectResult> {
+    const q = question?.trim() ?? '';
+    if (!q) {
+      return {
+        mode: 'discussion',
+        confidence: 0,
+        axis: null,
+        reason: 'empty question',
+      };
+    }
+
+    const model = 'gemini-3.1-flash-lite-preview';
+    const generationConfig: GeminiGenerationConfig = {
+      temperature: 0,
+      topP: this.llmConfig.topP,
+      topK: this.llmConfig.topK,
+      candidateCount: 1,
+      maxOutputTokens: 1024,
+      responseMimeType: 'application/json',
+      responseJsonSchema: POLL_SUBJECT_RESPONSE_JSON_SCHEMA,
+    };
+    const thinkingConfig = this.getThinkingConfig(model, 'query');
+    if (thinkingConfig) {
+      generationConfig.thinkingConfig = thinkingConfig;
+    }
+
+    const response = await this.callLLMApi(JSON.stringify({ question: q }), {
+      generationConfig,
+      systemInstruction: this.pollSubjectPrompt,
+      model,
+      maxRetries: 1,
+      thinkingContext: 'query',
+    });
+    const content = this.extractTextContent(response, 'infer_poll_subject');
+    return this.parsePollSubjectResponse(content);
+  }
+
+  private parsePollSubjectResponse(content: string): LLMPollSubjectResult {
+    const fallback: LLMPollSubjectResult = {
+      mode: 'discussion',
+      confidence: 0,
+      axis: null,
+      reason: 'parse_error',
+    };
+    try {
+      const start = content.indexOf('{');
+      const json = start >= 0 ? content.slice(start) : content;
+      const parsed = JSON.parse(json) as Record<string, unknown>;
+
+      const mode = parsed.mode === 'ranked' ? 'ranked' : 'discussion';
+      const confidence =
+        typeof parsed.confidence === 'number'
+          ? Math.max(0, Math.min(1, parsed.confidence))
+          : 0;
+      const reason =
+        typeof parsed.reason === 'string' && parsed.reason.trim()
+          ? parsed.reason.trim()
+          : mode;
+
+      let axis: LLMPollAxis | null = null;
+      if (mode === 'ranked') {
+        axis = this.parsePollAxis(parsed.axis);
+        // A ranked verdict with no usable axis is not actionable → discussion.
+        if (!axis) {
+          return { mode: 'discussion', confidence, axis: null, reason };
+        }
+      }
+
+      return { mode, confidence, axis, reason };
+    } catch (error) {
+      this.logger.error('Failed to parse poll subject response', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'infer_poll_subject',
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack, name: error.name }
+            : { message: String(error) },
+      });
+      return fallback;
+    }
+  }
+
+  private parsePollAxis(raw: unknown): LLMPollAxis | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const a = raw as Record<string, unknown>;
+    const targetType =
+      a.target_type === 'dish' || a.target_type === 'restaurant'
+        ? a.target_type
+        : null;
+    if (!targetType) return null;
+
+    const validKinds = new Set([
+      'category',
+      'cuisine',
+      'dish_attribute',
+      'restaurant_attribute',
+    ]);
+    let constraint: LLMPollAxis['constraint'] = null;
+    if (a.constraint && typeof a.constraint === 'object') {
+      const c = a.constraint as Record<string, unknown>;
+      const value = typeof c.value === 'string' ? c.value.trim() : '';
+      if (typeof c.kind === 'string' && validKinds.has(c.kind) && value) {
+        constraint = {
+          kind: c.kind as LLMPollAxisConstraint['kind'],
+          value,
+        };
+      }
+    }
+
+    const str = (v: unknown): string | null =>
+      typeof v === 'string' && v.trim() ? v.trim() : null;
+
+    return {
+      targetType,
+      constraint,
+      anchor: str(a.anchor),
+      marketHint: str(a.market_hint),
+    };
   }
 
   /**

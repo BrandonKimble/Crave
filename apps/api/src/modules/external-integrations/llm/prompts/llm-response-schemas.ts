@@ -146,6 +146,73 @@ const NULLABLE_STRING_SCHEMA = {
   anyOf: [{ type: 'string' }, { type: 'null' }],
 } as const;
 
+export const POLL_SUBJECT_RESPONSE_JSON_SCHEMA = {
+  type: 'object',
+  description:
+    'Classify a poll question as rankable (ranked + axis) or open (discussion), and extract the leaderboard axis',
+  properties: {
+    mode: {
+      type: 'string',
+      enum: ['ranked', 'discussion'],
+      description:
+        'ranked = a leaderboard over specific dishes/restaurants; discussion = an open thread, no leaderboard',
+    },
+    confidence: {
+      type: 'number',
+      description: '0..1 — how clearly this is a rankable food question',
+    },
+    axis: {
+      anyOf: [
+        {
+          type: 'object',
+          properties: {
+            target_type: {
+              type: 'string',
+              enum: ['dish', 'restaurant'],
+              description: 'what the leaderboard ranks',
+            },
+            constraint: {
+              anyOf: [
+                {
+                  type: 'object',
+                  properties: {
+                    kind: {
+                      type: 'string',
+                      enum: [
+                        'category',
+                        'cuisine',
+                        'dish_attribute',
+                        'restaurant_attribute',
+                      ],
+                    },
+                    value: { type: 'string' },
+                  },
+                  required: ['kind', 'value'],
+                  additionalProperties: false,
+                },
+                { type: 'null' },
+              ],
+              description: 'the single filter scoping the ranking, or null',
+            },
+            anchor: NULLABLE_STRING_SCHEMA,
+            market_hint: NULLABLE_STRING_SCHEMA,
+          },
+          required: ['target_type', 'constraint', 'anchor', 'market_hint'],
+          additionalProperties: false,
+        },
+        { type: 'null' },
+      ],
+      description: 'the leaderboard axis when ranked, otherwise null',
+    },
+    reason: {
+      type: 'string',
+      description: 'short justification',
+    },
+  },
+  required: ['mode', 'confidence', 'axis', 'reason'],
+  additionalProperties: false,
+} as const;
+
 const NULLABLE_BOOLEAN_SCHEMA = {
   anyOf: [{ type: 'boolean' }, { type: 'null' }],
 } as const;
