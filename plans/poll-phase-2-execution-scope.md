@@ -3,7 +3,10 @@
 > Companion to `community-polls-discussion-driven-collection-plan.md` (the architecture).
 > Breaks master-plan **Phase 2** (§2 data model + §2.4 Seam-1) into actionable tasks, in the
 > same style as the completed `poll-phase-0-1-execution-scope.md`.
-> Status: **SCOPED — not started.** Dep: Phases 0–1 ✅ done.
+> Status: **✅ COMPLETE (2026-06).** Dep: Phases 0–1 ✅ done.
+> 2A cutover (commit 7cad3a9d) · 2B–2D data model (commit 723bcbf1). Decisions: rebuild-to-flush
+> (no-op here — dev DB has 0 polls/votes, so no historical pollution) · schema-first (done; tables
+> land empty now, logic in Phases 3–4). Next: master-plan **Phase 3** (poll creation + axis inference).
 
 Legend: **Files** = primary touch points · **Dep** = depends on · **Accept** = done criteria.
 
