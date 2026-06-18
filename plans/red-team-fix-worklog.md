@@ -164,3 +164,18 @@ File: use-search-map-native-render-owner.ts (~1519-1521: residentDotMarkerKeysIn
 
 - (init 2026-06-16) worklog created; starting top-down. iOS residency core already landed
   (commits 0bc3aaca, b40aa545, d40d0d08, cec34d26, af0c415e, eab742c3) — these items are the red-team follow-through.
+
+## COMPLETE (2026-06-16) — all 15 items committed
+
+Commits: f73da78a (#8 docs + worklog), 57473bfb (#4/#9/#11/#12/#14), a5bd03f3 (#10),
+3e86cfe0 (#2), 6c02810f (#3), e4a9cc0f (#5/#7), 8890b048 (#6), 141ae213 (#15),
+dcb31f63 (#13), e2654b21 (#1 Android).
+Each iOS/JS change native-built + validated on search_map_lod_reveal_dismiss (flow passes,
+reveal/dismiss chrome_ready, flashReversalCount 0, contract gate PASSES).
+PENDING (environment limits, not unaddressed work):
+
+- Android #1: gradle compile + device runtime (NDK toolchain unavailable here; structurally verified).
+- On-device visual sign-off: natural-search crossfade-on-pan (#3), sheet-no-overlap (#5),
+  sticky correctness (#7), and the broader reveal/dismiss device pass.
+- Android #2 (on-screen opacity sweep): not portable without building the Android screen-space
+  projection pipeline — left as the full-sweep fallback (functionally correct).
