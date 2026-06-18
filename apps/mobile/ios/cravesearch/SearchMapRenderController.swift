@@ -1325,27 +1325,8 @@ final class SearchMapRenderController: RCTEventEmitter {
         ))
       }
       state.candidateCatalog = catalog
-      // A fresh catalog invalidates the prior on-screen set (different markers, no
-      // enter/exit hysteresis carries across a search). Clear the signature so the
-      // immediate projection below is not suppressed as "unchanged".
+      // Force the next camera tick to re-emit the on-screen set against the new catalog.
       state.lastVisibleMarkerSetSignature = nil
-      // PROJECT ON ARRIVAL: do NOT defer to the next camera tick (the old behavior left
-      // a fresh search with no real on-screen set, so the first JS decision fell back to
-      // the padded-AABB and promoted wrong-rank pins that persisted until a pan). The
-      // projection reads only the catalog coordinates + current camera (not the Mapbox
-      // source), so it is valid here even though the new source features land later via
-      // setRenderFrame; setRenderFrame projects again post-applySnapshot as the
-      // authoritative pass. Both are coalesced by signature, so the double call is benign.
-      // Honors the hidden/dismissing gate inside projectAndEmitOnScreenMarkers.
-      if let handle = self.currentResolvedMapHandle(for: state.mapTag) {
-        self.projectAndEmitOnScreenMarkers(
-          instanceId: instanceId,
-          state: &state,
-          handle: handle,
-          reason: "catalog_arrival",
-          isMoving: false
-        )
-      }
       self.instances[instanceId] = state
       resolve(["catalogCount": catalog.count])
     }
@@ -1627,26 +1608,6 @@ final class SearchMapRenderController: RCTEventEmitter {
           self.maybeEmitExecutionBatchArmed(instanceId: instanceId, state: &state)
           if var readyState = self.instances[instanceId] {
             self.startEnterPresentationIfReady(instanceId: instanceId, state: &readyState)
-          }
-          // PROJECT ON SOURCE ARRIVAL (authoritative). The new source features are now in
-          // the Mapbox source (post-applySnapshot). Re-project the resident catalog to
-          // screen space against the live camera and emit the real on-screen set NOW,
-          // instead of waiting for the next camera tick — so a fresh search / catalog swap
-          // has a true visible set at the first JS decision (no padded-AABB wrong-rank
-          // promotion). Coalesced by signature against the catalog_arrival pass, and the
-          // hidden/dismissing gate lives inside projectAndEmitOnScreenMarkers. Read the
-          // freshest state (the helpers above may have re-written it) and persist the
-          // updated signature back.
-          if var projectionState = self.instances[instanceId],
-             let projectionHandle = self.currentResolvedMapHandle(for: projectionState.mapTag) {
-            self.projectAndEmitOnScreenMarkers(
-              instanceId: instanceId,
-              state: &projectionState,
-              handle: projectionHandle,
-              reason: "source_frame_arrival",
-              isMoving: projectionState.currentViewportIsMoving
-            )
-            self.instances[instanceId] = projectionState
           }
           let totalDurationMs = CACurrentMediaTime() * 1000 - actionStartedAt
           actionDurationMs = totalDurationMs
@@ -10913,9 +10874,9 @@ final class SearchMapRenderController: RCTEventEmitter {
         ])
       }
       // Stage B (B2): emit the screen-space on-screen marker set whenever it
-      // changes, so JS can drive promotion/demotion off true projected visibility
-      // instead of a padded lat/lng AABB. Throttled to set-change to bound bridge
-      // traffic during gestures. Same projection that runs on data arrival.
+      // changes (on camera move/idle), so JS can drive promotion/demotion off true
+      // projected visibility instead of a padded lat/lng AABB. Throttled to
+      // set-change to bound bridge traffic during gestures.
       projectAndEmitOnScreenMarkers(
         instanceId: instanceId,
         state: &nextState,
