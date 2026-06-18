@@ -18,7 +18,7 @@ flow COMPLETED count, no Flow Failed/Timed out.
 
 ## P0 — real problems
 
-### 1. [ ] Android parity — bring SearchMapRenderControllerModule.java to the residency model
+### 1. [x] Android parity — bring SearchMapRenderControllerModule.java to the residency model
 
 File: apps/mobile/android/app/src/main/java/com/crave/SearchMapRenderControllerModule.java (9453 lines).
 Mirror the iOS residency rewrite (commits cec34d26, af0c415e, eab742c3, d40d0d08). Subitems:

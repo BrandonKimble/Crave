@@ -497,7 +497,6 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     final Map<String, Set<String>> blockedPresentationCommitFenceDataIdsBySourceId = new HashMap<>();
     final Map<String, Set<String>> pendingSourceCommitDataIdsBySourceId = new HashMap<>();
     final Map<String, DerivedFamilyState> derivedFamilyStates = new HashMap<>();
-    final Map<String, ParsedFeatureCollection> residentDesiredSourceCacheBySourceId = new HashMap<>();
     boolean currentViewportIsMoving = false;
     boolean isAwaitingSourceRecovery;
     boolean isReplayingSourceRecovery;
@@ -1008,18 +1007,40 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
             false
           );
           applyPresentationPayload(instanceId, presentationStateJson);
-          if (sourceFrameIsReady) {
+          if (sourceFrameIsReady && shouldApplySourcePayload) {
+            // Real new/changed source data -> apply the delta. applyRenderFrameSnapshotPayload sets
+            // source readiness SYNCHRONOUSLY (assigns sourceReadyFrameGenerationId = generationId).
+            // Readiness is NOT gated on any async paint callback.
             VisualFrameSnapshotApplyResult result = applyRenderFrameSnapshotPayload(
                 instanceId,
                 frameGenerationId,
                 executionBatchId,
                 visualFrameTransaction,
-                shouldApplySourcePayload ? sourceDeltas : null,
-                shouldApplySourcePayload ? markerRoleFrame : null,
-                !shouldApplySourcePayload
+                sourceDeltas,
+                markerRoleFrame
               );
             didSyncResidentFrame = result.didSyncResidentFrame;
             sourceAdmissionOutcome = result.sourceAdmissionOutcome;
+          } else if (sourceFrameIsReady) {
+            // RESIDENT + UNCHANGED re-reveal (resident-data end state): Mapbox already holds the
+            // painted resident frame, so skip the snapshot reconcile entirely — that avoids
+            // rebuilding ~3000 feature payloads on every re-reveal (the intermittent 56-75ms reveal
+            // cost). Because applyRenderFrameSnapshotPayload (which would set readiness
+            // synchronously) is skipped, set readiness directly here: markFrameSourceAdmission
+            // sourceReady=true assigns sourceReadyFrameGenerationId == activeFrameGenerationId so
+            // startEnterPresentationIfReady's isActiveFrameSourceReady gate passes. (Readiness is
+            // synchronous — there is no paint handshake to wait on.) Label placement readiness still
+            // comes from the preparing-enter observation, and live transitions were cancelled at
+            // dismiss, so there is nothing to step here.
+            markFrameSourceAdmission(
+              instanceId,
+              frameGenerationId,
+              executionBatchId,
+              visualFrameTransaction,
+              true
+            );
+            didSyncResidentFrame = true;
+            sourceAdmissionOutcome = "sources_reused_resident";
           } else {
             didSyncResidentFrame = true;
             sourceAdmissionOutcome = "source_pending";
@@ -1037,8 +1058,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
               executionBatchId,
               visualFrameTransaction,
               shouldApplySourcePayload ? sourceDeltas : null,
-              shouldApplySourcePayload ? markerRoleFrame : null,
-              false
+              shouldApplySourcePayload ? markerRoleFrame : null
             );
             didSyncResidentFrame = result.didSyncResidentFrame;
             sourceAdmissionOutcome = result.sourceAdmissionOutcome;
@@ -1427,8 +1447,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     String executionBatchId,
     VisualFrameTransaction visualFrameTransaction,
     ReadableArray sourceDeltas,
-    ReadableMap markerRoleFrame,
-    boolean allowResidentSourceCacheRestore
+    ReadableMap markerRoleFrame
   ) throws Exception {
     InstanceState state = instances.get(instanceId);
     if (state == null) {
@@ -1480,23 +1499,7 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       applyMarkerRoleFrame(markerRoleFrame, state);
     }
     String sourceAdmissionOutcome;
-    if (
-      allowResidentSourceCacheRestore &&
-      markerRoleFrame == null &&
-      (sourceDeltas == null || sourceDeltas.size() == 0)
-    ) {
-      boolean didRestoreResidentSources = restoreResidentDesiredSourceCacheForEnter(state);
-      if (didRestoreResidentSources) {
-        emitVisualDiag(
-          instanceId,
-          "resident_source_cache_restored frame=" +
-          generationId +
-          " cacheSources=" +
-          state.residentDesiredSourceCacheBySourceId.size()
-        );
-      }
-      sourceAdmissionOutcome = "sources_reused_resident";
-    } else if ((sourceDeltas != null && sourceDeltas.size() > 0) || markerRoleFrame != null) {
+    if ((sourceDeltas != null && sourceDeltas.size() > 0) || markerRoleFrame != null) {
       sourceAdmissionOutcome = "hidden_preload".equals(visualFrameTransaction.kind)
         ? "sources_applied_hidden"
         : "sources_applied_visible";
@@ -2366,7 +2369,6 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
       state.blockedEnterStartCommitFenceDataIdsBySourceId.clear();
       state.blockedPresentationCommitFenceDataIdsBySourceId.clear();
       state.pendingSourceCommitDataIdsBySourceId.clear();
-      state.residentDesiredSourceCacheBySourceId.clear();
       state.currentViewportIsMoving = false;
       state.isAwaitingSourceRecovery = false;
       state.isReplayingSourceRecovery = false;
@@ -5253,6 +5255,9 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     resetLiveMarkerEnterState(instanceId, state, reason);
     setLabelCollisionObstacleLayersVisible(true, state, instanceId, "reveal_preroll");
     state.labelCollisionObstacleLayersVisible = true;
+    // Wake the resident label render layers (dormant via visibility:none while hidden). This
+    // happens at reveal preroll while presentation opacity is still ~0, so it is flash-free.
+    setLabelRenderLayersVisible(true, state, instanceId, "reveal_preroll");
     state.visualSourceLifecycleState = VISUAL_SOURCE_PREPARING_REVEAL;
     state.keepSourcesHiddenUntilEnter = false;
     state.currentPresentationRenderPhase = "reveal_preroll";
@@ -5279,40 +5284,29 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     if (labelObservationRefreshRunnable != null) {
       mainHandler.removeCallbacks(labelObservationRefreshRunnable);
     }
-    Map<String, ParsedFeatureCollection> residentSourceCache = currentDesiredSourceCache(state);
-    if (!residentSourceCache.isEmpty()) {
-      state.residentDesiredSourceCacheBySourceId.clear();
-      state.residentDesiredSourceCacheBySourceId.putAll(residentSourceCache);
-    }
+    // RESIDENT-DATA + DORMANT-LAYERS end state: do NOT clear the marker sources on dismiss.
+    // The pin/dot/label features stay resident in the Mapbox sources (instant re-reveal, no
+    // cache/clear/restore dance, crossfade-from-old-data, trivial interruption). The reveal cost
+    // that the restore used to pay disappears with it. Idle cost is removed by making the only
+    // expensive per-frame work — the collision-bearing label symbols — dormant via
+    // visibility:none (Mapbox drops a hidden layer from layout/placement entirely). Pins/dots are
+    // ignorePlacement, so they cost ~nothing resident at opacity 0. Camera projection, steppers,
+    // and label observation are all already gated off in VISUAL_SOURCE_HIDDEN. No source cache is
+    // populated, so the enter-time restore naturally no-ops.
     if (state.labelCollisionObstacleLayersVisible) {
       setLabelCollisionObstacleLayersVisible(false, state, instanceId, reason);
       state.labelCollisionObstacleLayersVisible = false;
     }
-    try {
-      clearResidentSourcesAndTransientFeatureStates(state);
-      clearDismissedHighlightState(state);
-    } catch (Exception error) {
-      emitError(
-        instanceId,
-        "dismiss_clear_sources_failed: " +
-        (error.getMessage() != null ? error.getMessage() : "unknown")
-      );
-    }
+    setLabelRenderLayersVisible(false, state, instanceId, reason);
+    clearDismissedHighlightState(state);
     state.pendingSourceCommitDataIdsBySourceId.clear();
     state.blockedEnterStartCommitFenceDataIdsBySourceId.clear();
     state.blockedPresentationCommitFenceDataIdsBySourceId.clear();
-    state.residentSourceFrameKey = null;
-    state.residentSourceDataKey = null;
-    initializeDerivedFamilyStates(state);
     state.currentPresentationRenderPhase = "idle";
     state.visualSourceLifecycleState = VISUAL_SOURCE_HIDDEN;
     state.keepSourcesHiddenUntilEnter = true;
     state.currentPresentationOpacityTarget = 0;
     state.currentPresentationOpacityValue = 0;
-    state.sourceReadyFrameGenerationId = null;
-    state.sourceReadyExecutionBatchId = null;
-    state.residentSourceFrameKey = null;
-    state.residentSourceDataKey = null;
     cancelLivePinTransitionAnimation(instanceId);
     instances.put(instanceId, state);
     WritableMap releasedEvent = Arguments.createMap();
@@ -5380,73 +5374,6 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     initializeDerivedFamilyStates(state);
     instances.put(instanceId, state);
     emitVisualDiag(instanceId, "hidden_resident_source_state_cleared reason=" + reason);
-  }
-
-  private static Map<String, ParsedFeatureCollection> currentDesiredSourceCache(InstanceState state) {
-    Map<String, ParsedFeatureCollection> cache = new HashMap<>();
-    for (String sourceId : Arrays.asList(
-      state.pinSourceId,
-      state.pinInteractionSourceId,
-      state.dotSourceId,
-      state.labelSourceId,
-      state.labelCollisionSourceId
-    )) {
-      ParsedFeatureCollection desiredCollection = derivedFamilyState(state, sourceId).desiredCollection;
-      if (desiredCollection.idsInOrder.isEmpty()) {
-        continue;
-      }
-      cache.put(sourceId, collectionByClearingTransientFeatureState(desiredCollection));
-    }
-    return cache;
-  }
-
-  private static ParsedFeatureCollection collectionByClearingTransientFeatureState(
-    ParsedFeatureCollection collection
-  ) {
-    ParsedFeatureCollection nextCollection = new ParsedFeatureCollection();
-    copyParsedFeatureCollection(collection, nextCollection);
-    String emptyFeatureStateRevision = buildFeatureStateRevisionFromEntries(new HashMap<>());
-    nextCollection.baseFeatureStateRevision = emptyFeatureStateRevision;
-    nextCollection.featureStateRevision = emptyFeatureStateRevision;
-    nextCollection.featureStateEntryRevisionById.clear();
-    nextCollection.featureStateChangedIds.clear();
-    nextCollection.featureStateById.clear();
-    return nextCollection;
-  }
-
-  private static boolean restoreResidentDesiredSourceCacheForEnter(InstanceState state) {
-    if (state.residentDesiredSourceCacheBySourceId.isEmpty()) {
-      return false;
-    }
-    if (activeDesiredVisualSourceCount(state) > 0) {
-      return false;
-    }
-    for (String sourceId : Arrays.asList(
-      state.pinSourceId,
-      state.pinInteractionSourceId,
-      state.dotSourceId,
-      state.labelSourceId,
-      state.labelCollisionSourceId
-    )) {
-      ParsedFeatureCollection cachedDesiredCollection = state.residentDesiredSourceCacheBySourceId.get(sourceId);
-      if (cachedDesiredCollection == null) {
-        continue;
-      }
-      DerivedFamilyState familyState = new DerivedFamilyState();
-      copyParsedFeatureCollection(cachedDesiredCollection, familyState.desiredCollection);
-      state.derivedFamilyStates.put(sourceId, familyState);
-    }
-    state.pendingSourceCommitDataIdsBySourceId.clear();
-    state.blockedEnterStartCommitFenceDataIdsBySourceId.clear();
-    state.blockedPresentationCommitFenceDataIdsBySourceId.clear();
-    return true;
-  }
-
-  private static int activeDesiredVisualSourceCount(InstanceState state) {
-    return
-      derivedFamilyState(state, state.pinSourceId).desiredCollection.idsInOrder.size() +
-      derivedFamilyState(state, state.dotSourceId).desiredCollection.idsInOrder.size() +
-      derivedFamilyState(state, state.labelSourceId).desiredCollection.idsInOrder.size();
   }
 
   private static boolean isActiveFrameSourceReady(InstanceState state) {
@@ -5538,6 +5465,31 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     );
   }
 
+  /**
+   * Dormant-layers idle switch for the visible label (text) render layers. In the resident end
+   * state the marker SOURCES stay populated across dismiss; idle cost is removed by making the
+   * collision-bearing label symbols dormant via visibility:none (Mapbox drops a hidden layer from
+   * the layout/placement pipeline entirely — unlike opacity 0). Pins/dots are ignorePlacement so
+   * they cost ~nothing resident at opacity 0 and need no toggle. Mirrors
+   * setLabelCollisionObstacleLayersVisible.
+   */
+  private void setLabelRenderLayersVisible(
+    boolean isVisible,
+    InstanceState state,
+    String instanceId,
+    String reason
+  ) {
+    setLayerProperties(
+      state,
+      instanceId,
+      reason,
+      state.labelLayerIds,
+      Collections.singletonList("visibility"),
+      Value.valueOf(isVisible ? "visible" : "none"),
+      "label_render_layer_visibility"
+    );
+  }
+
   private void setLayerProperties(
     InstanceState state,
     String instanceId,
@@ -5611,35 +5563,19 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
     if (state.lastDismissRequestKey != null && !stringEquals(state.lastDismissRequestKey, requestKey)) {
       return;
     }
-    if (
-      !VISUAL_SOURCE_HIDDEN.equals(state.visualSourceLifecycleState) ||
-      !"idle".equals(state.currentPresentationRenderPhase) ||
-      !state.keepSourcesHiddenUntilEnter ||
-      state.currentPresentationOpacityTarget > 0.001d ||
-      state.currentPresentationOpacityValue > 0.001d
-    ) {
-      emitVisualDiag(
-        instanceId,
-        "deferred_dismiss_source_cleanup_skipped reason=" +
-        reason +
-        " request=" +
-        requestKey +
-        " phase=" +
-        state.currentPresentationRenderPhase +
-        " lifecycle=" +
-        state.visualSourceLifecycleState
-      );
-      return;
-    }
-    try {
-      clearHiddenResidentSourceState(instanceId, state, reason);
-    } catch (Exception error) {
-      emitError(
-        instanceId,
-        "deferred_dismiss_source_cleanup_failed: " +
-        (error.getMessage() != null ? error.getMessage() : "unknown")
-      );
-    }
+    // RESIDENT-DATA end state: there is no deferred SOURCE clear anymore — the marker sources stay
+    // resident across dismiss and the label-layer dormancy already happened at settle in
+    // completeDismissVisualLifecycle. This deferred pass is now a no-op (kept only so any in-flight
+    // scheduled work item resolves cleanly).
+    emitVisualDiag(
+      instanceId,
+      "deferred_dismiss_source_cleanup_noop_resident reason=" +
+      reason +
+      " request=" +
+      requestKey +
+      " frame=" +
+      (state.activeFrameGenerationId != null ? state.activeFrameGenerationId : "nil")
+    );
   }
 
   private boolean shouldSuppressInteractions(InstanceState state) {
@@ -6651,12 +6587,8 @@ public class SearchMapRenderControllerModule extends ReactContextBaseJavaModule 
   }
 
   private static String sourceRevisionForSyncedFrame(InstanceState state, String sourceId) {
-    if (
-      VISUAL_SOURCE_HIDDEN.equals(state.visualSourceLifecycleState) &&
-      state.residentDesiredSourceCacheBySourceId.containsKey(sourceId)
-    ) {
-      return state.residentDesiredSourceCacheBySourceId.get(sourceId).sourceRevision;
-    }
+    // Resident-data end state: sources stay mounted while hidden, so the mounted revision is
+    // authoritative in every phase (no hidden-only source cache anymore).
     SourceState sourceState = mountedSourceState(state, sourceId);
     return sourceState != null ? sourceState.sourceRevision : "";
   }
