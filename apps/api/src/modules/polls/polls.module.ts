@@ -16,10 +16,8 @@ import { PollsController } from './polls.controller';
 import { PollsGateway } from './polls.gateway';
 import { PollSchedulerService } from './poll-scheduler.service';
 import { PollAggregationService } from './poll-aggregation.service';
-import { PollCategoryReplayService } from './poll-category-replay.service';
 import { PollLifecycleService } from './poll-lifecycle.service';
 import { PollEntitySeedService } from './poll-entity-seed.service';
-import { PollScoreRefreshService } from './poll-score-refresh.service';
 
 @Module({
   imports: [
@@ -40,11 +38,9 @@ import { PollScoreRefreshService } from './poll-score-refresh.service';
   providers: [
     PollsService,
     PollEntitySeedService,
-    PollScoreRefreshService,
     PollsGateway,
     PollSchedulerService,
     PollAggregationService,
-    PollCategoryReplayService,
     PollLifecycleService,
   ],
   exports: [PollsService],
