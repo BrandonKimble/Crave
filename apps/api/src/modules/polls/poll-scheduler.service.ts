@@ -7,6 +7,7 @@ import {
   PollTopicStatus,
   PollState,
   PollOrigin,
+  PollMode,
   EntityType,
   PollTopicType,
   PollTopic,
@@ -649,6 +650,72 @@ export class PollSchedulerService {
     return count > 0;
   }
 
+  /**
+   * Phase 3C: seeded polls know their structure (topicType + target), so derive the
+   * axis directly — no LLM (unlike the user free-text path). Mirrors the axis shape
+   * `inferPollSubject` produces, so both creation paths store the same structure.
+   */
+  private async buildSeededAxis(topic: {
+    topicType: PollTopicType;
+    targetDishId: string | null;
+    targetRestaurantId: string | null;
+    targetFoodAttributeId: string | null;
+    targetRestaurantAttributeId: string | null;
+  }): Promise<Prisma.InputJsonValue | null> {
+    const nameOf = async (id: string | null): Promise<string | null> => {
+      if (!id) return null;
+      const e = await this.prisma.entity.findUnique({
+        where: { entityId: id },
+        select: { name: true },
+      });
+      return e?.name ?? null;
+    };
+
+    switch (topic.topicType) {
+      case PollTopicType.best_dish: {
+        const value = await nameOf(topic.targetDishId);
+        return value
+          ? {
+              targetType: 'dish',
+              constraint: { kind: 'category', value },
+              anchor: null,
+              marketHint: null,
+            }
+          : null;
+      }
+      case PollTopicType.what_to_order: {
+        const anchor = await nameOf(topic.targetRestaurantId);
+        return anchor
+          ? { targetType: 'dish', constraint: null, anchor, marketHint: null }
+          : null;
+      }
+      case PollTopicType.best_dish_attribute: {
+        const value = await nameOf(topic.targetFoodAttributeId);
+        return value
+          ? {
+              targetType: 'dish',
+              constraint: { kind: 'dish_attribute', value },
+              anchor: null,
+              marketHint: null,
+            }
+          : null;
+      }
+      case PollTopicType.best_restaurant_attribute: {
+        const value = await nameOf(topic.targetRestaurantAttributeId);
+        return value
+          ? {
+              targetType: 'restaurant',
+              constraint: { kind: 'restaurant_attribute', value },
+              anchor: null,
+              marketHint: null,
+            }
+          : null;
+      }
+      default:
+        return null;
+    }
+  }
+
   @Cron(CronExpression.EVERY_HOUR)
   async publishWeeklyPolls(): Promise<void> {
     const now = new Date();
@@ -701,6 +768,7 @@ export class PollSchedulerService {
         continue;
       }
 
+      const axis = await this.buildSeededAxis(topic);
       const poll = await this.prisma.poll.create({
         data: {
           topicId: topic.topicId,
@@ -709,6 +777,8 @@ export class PollSchedulerService {
           region: topic.region,
           state: PollState.active,
           origin: PollOrigin.seeded,
+          mode: PollMode.ranked,
+          axis: axis ?? Prisma.JsonNull,
           scheduledFor: now,
           launchedAt: now,
           allowUserAdditions: true,
