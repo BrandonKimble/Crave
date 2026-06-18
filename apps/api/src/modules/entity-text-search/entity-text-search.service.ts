@@ -94,10 +94,7 @@ export class EntityTextSearchService {
     const normalizedTerm = term?.trim();
     if (!normalizedTerm || entityTypes.length === 0) return [];
 
-    const [queryVec] = await this.embeddingService.embed(
-      [normalizedTerm],
-      'RETRIEVAL_QUERY',
-    );
+    const queryVec = await this.embeddingService.embedQuery(normalizedTerm);
     if (!queryVec?.length) return [];
 
     const safeLimit = Math.max(1, Math.min(limit, this.maxLimit));

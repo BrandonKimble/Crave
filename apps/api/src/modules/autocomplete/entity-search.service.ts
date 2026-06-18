@@ -11,6 +11,10 @@ export interface EntitySearchResult {
   evidence: TextMatchEvidence;
 }
 
+// Below this length a query is a fragment ("sh") with no meaningful embedding —
+// prefix/lexical matching owns that range, so the dense lane stays gated.
+const MIN_DENSE_QUERY_LENGTH = 3;
+
 @Injectable()
 export class EntitySearchService {
   constructor(private readonly textSearch: EntityTextSearchService) {}
@@ -28,6 +32,14 @@ export class EntitySearchService {
     limit: number,
     options: { marketKey?: string | null; allowPhonetic?: boolean } = {},
   ): Promise<EntitySearchResult[]> {
+    // Run the dense lane ALWAYS (uniform, deterministic — every query of real
+    // length gets the same semantic recall), made cheap by the query-embedding
+    // cache. Below MIN_DENSE_QUERY_LENGTH the term is a fragment with no
+    // meaningful embedding (you want prefix matching there), so dense stays gated.
+    const denseMode =
+      (term?.trim().length ?? 0) >= MIN_DENSE_QUERY_LENGTH
+        ? 'always'
+        : 'fallback';
     const candidates = await this.textSearch.retrieveCandidates(
       term,
       entityTypes,
@@ -35,7 +47,7 @@ export class EntitySearchService {
       {
         marketKey: options.marketKey,
         allowPhonetic: options.allowPhonetic,
-        denseMode: 'fallback',
+        denseMode,
       },
     );
     return candidates.map((c) => ({
