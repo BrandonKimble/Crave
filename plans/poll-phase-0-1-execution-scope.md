@@ -2,7 +2,12 @@
 
 > Companion to `community-polls-discussion-driven-collection-plan.md` (the architecture).
 > This breaks the **foundation** (Phases 0–1, mostly poll-independent) into actionable tasks.
-> Each fixes real existing bugs and de-risks the poll-specific work. Status: NOT STARTED.
+> Each fixes real existing bugs and de-risks the poll-specific work.
+>
+> **Status: ✅ COMPLETE (2026-06).** All P0.1–P0.3 + P1.1–P1.4 done. This plan was the
+> detailed execution of the master plan's **Phases 0–1**; those phases are now finished.
+> Forward work continues in the master plan, **Phases 2–9** (the actual polls feature).
+> Keep this file as the completed-foundation record; do not add new work here.
 
 Legend: **Files** = primary touch points · **Dep** = depends on · **Accept** = done criteria.
 

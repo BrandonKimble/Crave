@@ -247,6 +247,21 @@ No "you already voted" friction ever surfaces.
 
 ### 6.1 On submit — real-time gazetteer highlighter (display-only, no LLM)
 
+> **Status & refinement (2026-06).** NOT built (this is master-plan **Phase 5**), but its
+> whole substrate IS: the shared recall core, exact/alias tiers, and clean entity+alias
+> vocabulary (§6.5/§6.6 → P1.4/P1.2/P1.3, all done). The span-scan is the only new piece.
+> Two industry-standard options: **(a) Postgres-FTS / candidate-phrase probe** — normalize
+> the comment, generate 1–4-gram candidate phrases, do ONE indexed lookup against
+> `core_entities.name`+aliases; _always-fresh_ (live table, no rebuild), one query/comment —
+> simplest start; **(b) Aho-Corasick automaton** (the spaCy `PhraseMatcher` / FlashText
+> pattern) — compile names+aliases into an automaton once, single linear scan/comment;
+> fastest but needs periodic rebuild as entities change. Start with (a); move to (b) only if
+> render latency demands. **No-LLM is correct, not a compromise** — it's a closed-set lookup
+> of KNOWN entities; it does NOT (and cannot) replace the open-set semantic LLM extraction
+> (`processContent`/`analyzeSearchQuery`), which understands novel mentions, attributes, and
+> sentiment. Near-dup safety: any near-duplicate _restaurant_ entities created during the
+> live pass self-heal via `mergeDuplicateRestaurant` at Google-Places enrichment.
+
 - Reuse `EntityTextSearchService` (alias-trigram + phonetic) as a **gazetteer**; run
   **longest-match phrase containment** over the submitted comment to find known-entity
   spans (compounds like "breakfast sandwich" resolve because the phrase is in the index).
@@ -313,6 +328,16 @@ sliver, which we pay at close anyway. Chips add real typing friction (habitual r
 for marginal savings. **Cut.**
 
 ### 6.5 The two matchers — convergence
+
+> **✅ BUILT — P1.4 shared matcher (2026-06; see `poll-phase-0-1-execution-scope.md` §P1.4).**
+> Convergence happened, and the final shape differs from the design text below: a single
+> `retrieveCandidates` (RRF-fused **lexical + embedding** recall) is the shared core, and the
+> three consumers are thin per-consumer heads on top — autocomplete (feature reranker, no
+> LLM), resolution (recall → **LLM-as-matcher**, which replaced the old exact→alias→fuzzy@0.75
+> tier), and natural-search linking (conservative lexical rule). The embedding recall lane the
+> text below proposes "to test" is **shipped** (it's why "BEC"↔"bacon egg and cheese"
+> resolves). We deliberately shipped **without** a separate abstain/selectivity gate (decided:
+> ship bare, observe on data). The text below is retained as design history.
 
 - **`EntityTextSearchService` (autocomplete)** = _retrieval_: partial input → ranked
   candidate list. Prefix + Postgres FTS (`ts_rank_cd`/`websearch_to_tsquery` over
@@ -645,6 +670,12 @@ likes — the Google-reviews-search superpower). Different objects; don't share 
 ---
 
 ## 12. Phasing (proposed)
+
+> **Status (2026-06): Phases 0–1 ✅ COMPLETE** — delivered in full by
+> `poll-phase-0-1-execution-scope.md` (all P0.1–P0.3, P1.1–P1.4). The shared matcher +
+> clean vocabulary foundation is built. Phase 1's "calibrated confidence/abstain" was
+> intentionally **dropped** (ship bare, observe on data). **Phases 2–9 below are the
+> remaining feature work — not started.** This master plan is the forward plan from here.
 
 Per §1A, the **shared matcher + clean vocabulary are the foundation** under polls, the
 gazetteer, and autocomplete — and much of it is **independent of polls**, so it sequences first.
