@@ -133,7 +133,7 @@ export const createMapMotionPressureController = (): MapMotionPressureController
   };
 };
 
-const hasActiveProtectedPresentationTransaction = (state: MotionPressureState): boolean => {
+export const hasActiveProtectedPresentationTransaction = (state: MotionPressureState): boolean => {
   const activeTransaction = state.activePresentationTransaction;
   return (
     activeTransaction != null &&
@@ -146,12 +146,12 @@ type MapPlannerAdmissionResult = {
   normalWorkEffect: MapPlannerNormalWorkEffect;
 };
 
-const MAP_PLANNER_NORMAL_WORK_FAIRNESS_POLICY = {
+export const MAP_PLANNER_NORMAL_WORK_FAIRNESS_POLICY = {
   maxCoalescedCount: 8,
   maxWaitMs: 240,
 } as const;
 
-const shouldAdmitMapPlannerFairnessWork = ({
+export const shouldAdmitMapPlannerFairnessWork = ({
   state,
   nowMs,
 }: {

@@ -23,6 +23,8 @@ import {
   type SearchMapVisualFrameTransactionKind,
 } from '../../runtime/map/search-map-render-controller';
 import {
+  hasActiveProtectedPresentationTransaction,
+  shouldAdmitMapPlannerFairnessWork,
   type MapMotionPressureController,
   type MotionPressureState,
 } from '../../runtime/map/map-motion-pressure';
@@ -874,14 +876,14 @@ const resolveNativeRenderOwnerFrameAdmission = ({
 } => {
   const hasMaterialViewportStateChange =
     viewportBoundsChanged || gestureStateChanged || movingStateChanged;
+  // Single source of truth for protected-transaction + fairness (8 coalesced / 240ms wait)
+  // lives in map-motion-pressure.ts — reuse it here instead of re-implementing the literals.
   const hasProtectedPresentationTransaction =
-    pressureState.activePresentationTransaction != null &&
-    (pressureState.activePresentationTransaction.phase === 'committing' ||
-      pressureState.activePresentationTransaction.phase === 'executing');
-  const shouldAdmitFairnessWork =
-    pressureState.coalescedNormalWorkCount >= 8 ||
-    (pressureState.lastNormalWorkAdmittedAtMs > 0 &&
-      nowMs - pressureState.lastNormalWorkAdmittedAtMs >= 240);
+    hasActiveProtectedPresentationTransaction(pressureState);
+  const shouldAdmitFairnessWork = shouldAdmitMapPlannerFairnessWork({
+    state: pressureState,
+    nowMs,
+  });
 
   if (
     hasMaterialViewportStateChange &&

@@ -22,7 +22,10 @@ import {
   buildMarkerCatalogReadModel,
   buildRankedShortcutCoverageFeatures,
 } from '../runtime/map/map-read-model-builder';
-import { type MapMotionPressureController } from '../runtime/map/map-motion-pressure';
+import {
+  resolveMapPlannerAdmission,
+  type MapMotionPressureController,
+} from '../runtime/map/map-motion-pressure';
 import {
   createSearchMapSourceTransportFeature,
   createSearchMapSourceStoreBuilder,
@@ -92,15 +95,16 @@ const arePinInteractionSourcesComplete = ({
 
 const SHORTCUT_COVERAGE_BOUNDS_BUCKET_DEGREES = 0.01;
 const SEARCH_MAP_VISUAL_PROJECTOR_VERSION = 'single-writer-stable-label-source-v4';
-const SHORTCUT_VIEWPORT_LOD_MIN_INTERVAL_MS = 90;
 const VIEWPORT_PROJECTION_MIN_SPAN = 1e-6;
 const VIEWPORT_PROJECTION_MIN_CELL_SIZE = 0.0001;
 const VIEWPORT_PROJECTION_CELL_DIVISOR = 10;
 const VIEWPORT_PROJECTION_SCALE_BUCKET_GRANULARITY = 4;
 
+// Materiality memo for the viewport LOD path: carries only the last projection token
+// that was admitted (run_now). The fixed 90ms cadence is gone — admission (materiality
+// + motion-pressure + fairness) is the sole gate now. See resolveMapPlannerAdmission.
 type ShortcutViewportLodCadence = {
   tokenIdentity: string | null;
-  lastRunAtMs: number;
 };
 
 type SearchMapSourcePublishReason = 'full' | 'viewport_lod';
@@ -139,35 +143,6 @@ const buildShortcutViewportProjectionToken = (bounds: MapBounds | null): string 
   const lngCell = Math.round(centerLng / lngCellSize);
 
   return `${scaleBucket}:${latCell}:${lngCell}`;
-};
-
-const shouldEvaluateShortcutViewportLod = ({
-  bounds,
-  isMapMoving,
-  nowMs,
-  cadence,
-}: {
-  bounds: MapBounds | null;
-  isMapMoving: boolean;
-  nowMs: number;
-  cadence: ShortcutViewportLodCadence;
-}): boolean => {
-  const tokenIdentity = buildShortcutViewportProjectionToken(bounds);
-  if (!isMapMoving || !tokenIdentity) {
-    cadence.tokenIdentity = tokenIdentity;
-    cadence.lastRunAtMs = nowMs;
-    return true;
-  }
-  if (cadence.tokenIdentity !== tokenIdentity) {
-    cadence.tokenIdentity = tokenIdentity;
-    cadence.lastRunAtMs = nowMs;
-    return true;
-  }
-  if (nowMs - cadence.lastRunAtMs >= SHORTCUT_VIEWPORT_LOD_MIN_INTERVAL_MS) {
-    cadence.lastRunAtMs = nowMs;
-    return true;
-  }
-  return false;
 };
 
 const isMapMotionPressureMoving = (
@@ -1093,7 +1068,6 @@ export const useDirectSearchMapSourceController = ({
   const lastPublishedCandidateCatalogKeyRef = React.useRef<string | null>(null);
   const shortcutViewportLodCadenceRef = React.useRef<ShortcutViewportLodCadence>({
     tokenIdentity: null,
-    lastRunAtMs: 0,
   });
   const shortcutCoverageSnapshotByRequestIdRef = React.useRef<
     Map<string, { bounds: MapBounds; entities: StructuredSearchRequest['entities'] }>
@@ -1232,7 +1206,6 @@ export const useDirectSearchMapSourceController = ({
       lodPinnedMarkersRef.current = [];
       shortcutViewportLodCadenceRef.current = {
         tokenIdentity: null,
-        lastRunAtMs: 0,
       };
     }
     const currentBounds = viewportBoundsService.getBounds();
@@ -1258,7 +1231,6 @@ export const useDirectSearchMapSourceController = ({
       markerCandidatesRef.current = [];
       shortcutViewportLodCadenceRef.current = {
         tokenIdentity: null,
-        lastRunAtMs: 0,
       };
       // RESIDENT-DATA + DORMANT-LAYERS end state: keep the resident source frame across the
       // whole dismiss/idle window — never publish the empty snapshot here. The pins stay
@@ -1694,21 +1666,48 @@ export const useDirectSearchMapSourceController = ({
       isWithinOverlapRegion(overlapRegion, feature.geometry.coordinates as [number, number]);
     const currentPinned = lodPinnedMarkersRef.current;
     const emptyModel = { nextPinnedMarkers: [], nextPinnedMeta: [] };
-    const inRegionModel = currentBounds
-      ? buildMarkerRenderModel({
-          bounds: currentBounds,
-          rankedCandidates: rankedCandidates.filter(isInRegionFeature),
-          selectedRestaurantCandidates,
-          currentPinnedMarkers: currentPinned.filter(isInRegionFeature),
-          selectedRestaurantId,
-          selectedPriorityCoordinate,
-          buildMarkerKey,
-          buildVisualIdentityKey: buildSearchMapVisualIdentityKey,
-          maxPins: args.maxFullPins,
-          nativeVisibleMarkerKeys,
-          requireVisibility: true,
-        })
-      : emptyModel;
+    // BOOTSTRAP / ANTI-COLLAPSE GUARD. The native screen-space set is the authoritative
+    // visibility truth (correct under twist/pitch). It is null until native first
+    // projects, and momentarily empty mid-catalog-swap (the catalog reached native but
+    // the new features were not yet in the Mapbox source when the last camera tick ran).
+    // In EITHER case, when there ARE in-region candidates to show, visibility is "not
+    // ready" — NOT "nothing is visible". Committing here would (a) promote the wrong
+    // pins via the padded-AABB fallback on a fresh search (ranks 40s/50s instead of the
+    // visible top-30), or (b) mass-demote the whole promoted set on a swap. So we skip
+    // the IN-REGION recompute: native now projects-on-arrival (setRenderFrame) and emits
+    // the real set, which re-runs this publish via subscribeNativeVisibleMarkers and
+    // drives the first correct decision. We keep the current in-region pins untouched
+    // (empty on a truly fresh search → nothing wrongly promoted; the existing set on a
+    // swap → no collapse) until that real set lands. Out-of-region promotion is rank-
+    // based (not viewport-gated against this set), so it proceeds normally.
+    const hasInRegionCandidates = rankedCandidates.some(isInRegionFeature);
+    const inRegionVisibilityNotReady =
+      (nativeVisibleMarkerKeys == null || nativeVisibleMarkerKeys.size === 0) &&
+      hasInRegionCandidates;
+    const currentPinnedInRegion = currentPinned.filter(isInRegionFeature);
+    const inRegionModel = !currentBounds
+      ? emptyModel
+      : inRegionVisibilityNotReady
+        ? {
+            nextPinnedMarkers: currentPinnedInRegion,
+            nextPinnedMeta: currentPinnedInRegion.map((feature) => ({
+              markerKey: buildMarkerKey(feature),
+              lodZ: typeof feature.properties.lodZ === 'number' ? feature.properties.lodZ : 0,
+            })),
+          }
+        : buildMarkerRenderModel({
+            bounds: currentBounds,
+            rankedCandidates: rankedCandidates.filter(isInRegionFeature),
+            selectedRestaurantCandidates,
+            currentPinnedMarkers: currentPinnedInRegion,
+            selectedRestaurantId,
+            selectedPriorityCoordinate,
+            buildMarkerKey,
+            buildVisualIdentityKey: buildSearchMapVisualIdentityKey,
+            maxPins: args.maxFullPins,
+            nativeVisibleMarkerKeys,
+            requireVisibility: true,
+          });
     const outRegionModel = currentBounds
       ? buildMarkerRenderModel({
           bounds: currentBounds,
@@ -2969,30 +2968,50 @@ export const useDirectSearchMapSourceController = ({
       (snapshot) => snapshot.redrawTransaction?.id ?? null,
       publishAndFetch
     );
+    // Stage B (B2/B3): when the native projector reports a NEW on-screen marker set
+    // (coalesced to genuine set changes by the port), re-run the promotion decision
+    // immediately. This is what makes a fresh search / catalog swap converge to the
+    // correct visible top-N WITHOUT a camera move: native projects-on-arrival, emits
+    // the set, and this re-publish reads it via getNativeVisibleMarkerKeys. Routed as
+    // a viewport_lod publish so the moving-camera no-change short-circuit still applies
+    // (no thrash) while the set is in flux during a gesture.
+    const unsubscribeNativeVisibleMarkers = sourceFramePort.subscribeNativeVisibleMarkers(() => {
+      publishSourcesRef.current({ reason: 'viewport_lod' });
+    });
     const unsubscribeViewport = viewportBoundsService.subscribe((bounds) => {
-      const state = searchRuntimeBus.getState();
-      const args = latestArgsRef.current;
-      const isPlainShortcutViewportProjection =
-        state.searchMode === 'shortcut' &&
-        args.restaurantOnlyId == null &&
-        args.highlightedRestaurantId == null;
-      if (!isPlainShortcutViewportProjection) {
-        shortcutViewportLodCadenceRef.current = {
-          tokenIdentity: null,
-          lastRunAtMs: 0,
-        };
+      // Motion-pressure cutover: every viewport tick (plain shortcut OR
+      // natural/restaurant-only/highlighted) routes through the ONE admission decision
+      // (materiality + motion-pressure + fairness) instead of the old fixed 90ms cadence.
+      // Materiality is the projection-token identity; admission decides run_now/defer/skip.
+      // We intentionally do NOT adopt MP3's 4-tier (critical/high/normal/low) taxonomy —
+      // the existing 2-class (visible_candidates/lod_pins) + materiality + fairness model
+      // already expresses the need/capacity admission, and no need over it is demonstrated.
+      const token = buildShortcutViewportProjectionToken(bounds);
+      const hasMaterialChange =
+        token == null || token !== shortcutViewportLodCadenceRef.current.tokenIdentity;
+      const nowMs = Date.now();
+      const controller = latestArgsRef.current.mapMotionPressureController;
+      const admission = resolveMapPlannerAdmission({
+        hasMaterialChange,
+        pressureState: controller.getState(),
+        nowMs,
+        workClass: 'lod_pins',
+      });
+      if (admission.decision === 'run_now') {
+        shortcutViewportLodCadenceRef.current = { tokenIdentity: token };
+        controller.applyNormalWorkEffect(admission.normalWorkEffect, nowMs);
         publishSourcesRef.current({ reason: 'viewport_lod' });
-      } else if (
-        shouldEvaluateShortcutViewportLod({
-          bounds,
-          isMapMoving:
-            args.isMapMoving || isMapMotionPressureMoving(args.mapMotionPressureController),
-          nowMs: Date.now(),
-          cadence: shortcutViewportLodCadenceRef.current,
-        })
-      ) {
-        publishSourcesRef.current({ reason: 'viewport_lod' });
+      } else if (admission.decision === 'defer_for_pressure') {
+        // Coalesced under pressure: record fairness state and skip the publish. A later
+        // tick (or the settle-flush below) admits the deferred eval so markers never go
+        // stale. Settle-flush is guaranteed two ways: (1) handleMapIdle calls
+        // viewportBoundsService.setBounds(finalBounds) which re-fires THIS subscriber with
+        // pressureState.phase === 'settled' (lod_pins only defers under a protected
+        // presentation transaction, so it runs_now); and (2) the isMapMoving→false effect
+        // does an unconditional full publish on camera stop.
+        controller.applyNormalWorkEffect(admission.normalWorkEffect, nowMs);
       }
+      // admission.decision === 'skip_noop' (no material change): do nothing.
       maybeFetchShortcutCoverage();
     });
     return () => {
@@ -3000,12 +3019,14 @@ export const useDirectSearchMapSourceController = ({
       unsubscribeMountedResults();
       unsubscribeSurfaceTransaction();
       unsubscribeRedrawTransaction();
+      unsubscribeNativeVisibleMarkers();
       unsubscribeViewport();
     };
   }, [
     maybeFetchShortcutCoverage,
     resultsPresentationSurfaceAuthority,
     searchRuntimeBus,
+    sourceFramePort,
     viewportBoundsService,
   ]);
 
