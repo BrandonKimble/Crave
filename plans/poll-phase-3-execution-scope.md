@@ -40,26 +40,35 @@ New `poll-subject-prompt.md` + `POLL_SUBJECT_RESPONSE_JSON_SCHEMA`. Fail-closed:
 
 ---
 
-## 3B — Wire into creation + ranked/discussion split — ⚠️ DECISION NEEDED
+## 3B — Wire into creation + ranked/discussion split — ✅ DECIDED: B1 (free-text, additive)
 
-§3.2 flow: moderate question → `inferPollSubject` → high-confidence `ranked` (store axis, show a
-confirm chip — _frontend_) / low-confidence `discussion` (seamless, no prompt). The fork is the
-**user-facing creation contract**:
+**Decision (2026-06): B1.** `CreatePollDto` gains a free-text `question`; createPoll moderates it,
+runs `inferPollSubject` → sets `mode`/`axis`. The existing structured path stays (scheduler /
+back-compat). Frontend builds the free-text input + confirm chip when ready.
 
-- **B1 — Free-text path (plan-faithful):** `CreatePollDto` accepts a free-text `question`; createPoll
-  runs `inferPollSubject` → sets `mode`/`axis` (+ resolves the axis's target entity for ranked).
-  Keep the structured path too (back-compat / power use). New creation model, API contract change,
-  frontend builds the free-text input + confirm chip.
-- **B2 — Structured + populate axis (minimal):** keep today's structured `topicType`+target form;
-  just derive `axis` JSON structurally from it (no free-text inference for user polls). Smaller, but
-  NOT the thread-first model the plan wants.
+**Build shape (the clean factoring):** a free-text RANKED question derives the existing structured
+inputs from its axis and **reuses the current createPoll flow** (target resolution + topic/poll
+creation), then stamps `poll.axis` + `mode='ranked'`. Map axis → the 4 existing topicTypes:
 
-**Recommend B1** (it's the whole point of the redesign) — but it's a real contract decision with
-frontend impact, so it's yours to make.
+| axis                                         | topicType                 | target resolved as                   |
+| -------------------------------------------- | ------------------------- | ------------------------------------ |
+| dish + anchor                                | what_to_order             | restaurant (the anchor)              |
+| dish + constraint category                   | best_dish                 | food (category value)                |
+| dish + constraint dish_attribute             | best_dish_attribute       | food_attribute                       |
+| restaurant + constraint restaurant_attribute | best_restaurant_attribute | restaurant_attribute                 |
+| restaurant + constraint cuisine              | best_restaurant_attribute | restaurant_attribute (cuisine value) |
+| (vague / unmappable ranked)                  | —                         | fall back to `discussion` (safe)     |
 
-- **Files:** `polls.service.ts` (createPoll), `create-poll.dto.ts`, `polls.controller.ts`.
-- **Dep:** 3A. **Accept:** a free-text question creates a ranked poll with a correct axis, or a
-  discussion poll; existing structured creation still works.
+**⚠️ Prerequisite found (schema):** a `discussion` poll has **no topic** — but today `Poll.topicId`
+is REQUIRED (non-null FK) and `PollTopic.topicType` is required. So **`Poll.topicId` must become
+nullable** (small migration) before discussion polls can be created without a fake topic. Phase 2
+added `mode` but not this nullability. → 3B starts with that migration, then the createPoll branch.
+
+- **Files:** migration (`Poll.topicId` nullable), `polls.service.ts` (createPoll free-text branch +
+  axis→structured mapper + discussion path), `create-poll.dto.ts` (add `question?`), `polls.controller.ts`.
+- **Dep:** 3A ✅. **Accept:** a free-text "best …" question creates a ranked poll with the right
+  resolved target + stored axis; an open question creates a topic-less discussion poll; existing
+  structured creation still works.
 
 ---
 
