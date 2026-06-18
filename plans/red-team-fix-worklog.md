@@ -35,7 +35,7 @@ Mirror the iOS residency rewrite (commits cec34d26, af0c415e, eab742c3, d40d0d08
 - [ ] Build Android (./gradlew app:compileDebugJavaWithJavac or RN android build) — verify compiles.
       Acceptance: Android dismiss keeps sources resident, no source-clear, label dormancy; compiles; parity with iOS.
 
-### 2. [~] Opacity sweep scaling — applyPresentationOpacity must not write the full catalog every frame
+### 2. [x] Opacity sweep scaling — applyPresentationOpacity must not write the full catalog every frame
 
 File: SearchMapRenderController.swift applyPresentationOpacity (~8568) + stepPresentationOpacityAnimation (~8454).
 Problem: per-display-link-frame setFeatureState over ALL features in ALL sources = full resident catalog now.

@@ -8542,10 +8542,44 @@ final class SearchMapRenderController: RCTEventEmitter {
       return
     }
     let startedAt = CACurrentMediaTime() * 1000
-    let targets = visualSourceIds(for: state).flatMap { sourceId -> [(sourceId: String, featureId: String)] in
-      let familyState = Self.derivedFamilyState(sourceId: sourceId, state: mutableState)
-      return familyState.collection.idsInOrder.map { featureId in
-        (sourceId: sourceId, featureId: featureId)
+    // nativePresentationOpacity is a UNIFORM global fade value (identical for every
+    // feature), so it only needs to be written to features that are actually painted —
+    // i.e. the on-screen marker set. With the residency model `collection.idsInOrder`
+    // is the FULL resident catalog (thousands of off-screen, demoted markers), and this
+    // runs every CADisplayLink frame (~18x per reveal/dismiss), so sweeping the whole
+    // catalog is pure waste. The camera does NOT move during an opacity fade, so the
+    // on-screen set is stable for the whole transition — restrict the sweep to it.
+    //
+    // Authoritative on-screen set: `lastVisibleMarkerSetSignature`, maintained in
+    // handleNativeCameraChanged as the sorted on-screen markerKeys joined with "|".
+    // Decode it back into a Set the same way the camera handler does (marker keys
+    // never contain "|"). markerKey -> featureIds mapping is collection.groupedFeatureIdsByGroup
+    // (built by buildGroupedFeatureIdsByGroup, keyed by markerKey).
+    let onScreenMarkerKeys: Set<String> = {
+      guard let signature = mutableState.lastVisibleMarkerSetSignature, !signature.isEmpty else {
+        return []
+      }
+      return Set(signature.components(separatedBy: "|"))
+    }()
+    let targets: [(sourceId: String, featureId: String)]
+    if onScreenMarkerKeys.isEmpty {
+      // SAFETY FALLBACK: no projected on-screen set yet (e.g. not yet camera-projected,
+      // or an instant/non-gesture state) — fall back to the full catalog sweep so the
+      // reveal/dismiss never silently fails to fade.
+      targets = visualSourceIds(for: state).flatMap { sourceId -> [(sourceId: String, featureId: String)] in
+        let familyState = Self.derivedFamilyState(sourceId: sourceId, state: mutableState)
+        return familyState.collection.idsInOrder.map { featureId in
+          (sourceId: sourceId, featureId: featureId)
+        }
+      }
+    } else {
+      targets = visualSourceIds(for: state).flatMap { sourceId -> [(sourceId: String, featureId: String)] in
+        let familyState = Self.derivedFamilyState(sourceId: sourceId, state: mutableState)
+        return onScreenMarkerKeys.flatMap { markerKey -> [(sourceId: String, featureId: String)] in
+          (familyState.collection.groupedFeatureIdsByGroup[markerKey] ?? []).map { featureId in
+            (sourceId: sourceId, featureId: featureId)
+          }
+        }
       }
     }
     try withMapboxMap(for: state.mapTag) { mapboxMap in
