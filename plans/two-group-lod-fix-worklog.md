@@ -89,7 +89,7 @@ per-frame feature-state writes and found badge/coordinate swaps instrumented ~0.
 frame tooling (extract-frames/frame-mad/align-residual, recreate in /tmp) on a real recorded pan.
 Fix AFTER #1/#3/#4.
 
-## 5. [ ] Pixel-level validation + promote-vs-viewport cross-reference
+## 5. [~] Pixel-level validation + promote-vs-viewport cross-reference
 
 - [ ] Maestro/screenshot assertion that markers are actually painted (not just JS chrome_ready).
 - [ ] Auto cross-reference: pins leaving the viewport == pins demoted; pins entering == promoted,

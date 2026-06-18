@@ -1325,8 +1325,27 @@ final class SearchMapRenderController: RCTEventEmitter {
         ))
       }
       state.candidateCatalog = catalog
-      // Force the next camera tick to re-emit the on-screen set against the new catalog.
+      // A fresh catalog invalidates the prior on-screen set (different markers, no
+      // enter/exit hysteresis carries across a search). Clear the signature so the
+      // immediate projection below is not suppressed as "unchanged".
       state.lastVisibleMarkerSetSignature = nil
+      // PROJECT ON ARRIVAL: do NOT defer to the next camera tick (the old behavior left
+      // a fresh search with no real on-screen set, so the first JS decision fell back to
+      // the padded-AABB and promoted wrong-rank pins that persisted until a pan). The
+      // projection reads only the catalog coordinates + current camera (not the Mapbox
+      // source), so it is valid here even though the new source features land later via
+      // setRenderFrame; setRenderFrame projects again post-applySnapshot as the
+      // authoritative pass. Both are coalesced by signature, so the double call is benign.
+      // Honors the hidden/dismissing gate inside projectAndEmitOnScreenMarkers.
+      if let handle = self.currentResolvedMapHandle(for: state.mapTag) {
+        self.projectAndEmitOnScreenMarkers(
+          instanceId: instanceId,
+          state: &state,
+          handle: handle,
+          reason: "catalog_arrival",
+          isMoving: false
+        )
+      }
       self.instances[instanceId] = state
       resolve(["catalogCount": catalog.count])
     }
@@ -1608,6 +1627,26 @@ final class SearchMapRenderController: RCTEventEmitter {
           self.maybeEmitExecutionBatchArmed(instanceId: instanceId, state: &state)
           if var readyState = self.instances[instanceId] {
             self.startEnterPresentationIfReady(instanceId: instanceId, state: &readyState)
+          }
+          // PROJECT ON SOURCE ARRIVAL (authoritative). The new source features are now in
+          // the Mapbox source (post-applySnapshot). Re-project the resident catalog to
+          // screen space against the live camera and emit the real on-screen set NOW,
+          // instead of waiting for the next camera tick — so a fresh search / catalog swap
+          // has a true visible set at the first JS decision (no padded-AABB wrong-rank
+          // promotion). Coalesced by signature against the catalog_arrival pass, and the
+          // hidden/dismissing gate lives inside projectAndEmitOnScreenMarkers. Read the
+          // freshest state (the helpers above may have re-written it) and persist the
+          // updated signature back.
+          if var projectionState = self.instances[instanceId],
+             let projectionHandle = self.currentResolvedMapHandle(for: projectionState.mapTag) {
+            self.projectAndEmitOnScreenMarkers(
+              instanceId: instanceId,
+              state: &projectionState,
+              handle: projectionHandle,
+              reason: "source_frame_arrival",
+              isMoving: projectionState.currentViewportIsMoving
+            )
+            self.instances[instanceId] = projectionState
           }
           let totalDurationMs = CACurrentMediaTime() * 1000 - actionStartedAt
           actionDurationMs = totalDurationMs
@@ -6260,7 +6299,14 @@ final class SearchMapRenderController: RCTEventEmitter {
       )
       state.labelCollisionObstacleLayersVisible = false
     }
-    setLabelRenderLayersVisible(false, for: state, instanceId: instanceId, reason: reason)
+    // NOTE: the label RENDER layers are intentionally NOT dormed to visibility:none here.
+    // Doing so deadlocked the reveal: the reveal-start gate (isActiveFrameLabelPlacementReady)
+    // queries queryRenderedFeatures over labelLayerIds, which returns 0 on a hidden / just-woken
+    // layer — so the gate never opened and the whole reveal (pins+dots+labels share one opacity
+    // animation) hung at ~0 opacity until a camera move. The label layers stay laid-out/queryable
+    // (opacity-gated to 0 when hidden via nativeLabelOpacity), so placement always commits and the
+    // gate opens reliably. Idle label-collision cost is the tradeoff; reclaim it later by placing
+    // labels under cover (enter_mounted_hidden) BEFORE the visible reveal, not via layer dormancy.
     Self.clearDismissedHighlightState(&state)
     recordNativeApply(
       section: "presentation.hidden_marker_layer_dormancy",
@@ -10754,6 +10800,63 @@ final class SearchMapRenderController: RCTEventEmitter {
     )
   }
 
+  // Stage B (B2): project the resident candidate catalog to screen space against the
+  // CURRENT camera and emit `map_native_visible_markers` when the on-screen set changed
+  // (mutating the stored signature). The single source of truth for "what is on screen
+  // right now" — called both on every camera tick (handleNativeCameraChanged) AND
+  // immediately after a fresh catalog/source frame arrives (setCandidateCatalog /
+  // setRenderFrame post-applySnapshot), so a brand-new search has a real on-screen set
+  // at the FIRST decision instead of deferring to the next camera move. The previous
+  // visible set is recovered from the stored signature (sorted keys joined with "|";
+  // marker keys never contain "|") to feed the spatial enter/exit hysteresis.
+  // `reason` distinguishes camera ticks from data-arrival projections in diagnostics.
+  // Returns true when a (possibly empty) set was projected and the signature updated.
+  @discardableResult
+  private func projectAndEmitOnScreenMarkers(
+    instanceId: String,
+    state: inout InstanceState,
+    handle: ResolvedMapHandle,
+    reason: String,
+    isMoving: Bool
+  ) -> Bool {
+    // Respect the existing hidden/dismissing gating — never project a stale frame for a
+    // source that is not on screen (mirrors handleNativeCameraChanged's per-instance guard).
+    guard !Self.isVisualSourceInactiveOrDismissing(state) else {
+      return false
+    }
+    guard !state.candidateCatalog.isEmpty else {
+      return false
+    }
+    let previousSignature = state.lastVisibleMarkerSetSignature ?? ""
+    let previouslyVisible = previousSignature.isEmpty
+      ? Set<String>()
+      : Set(previousSignature.components(separatedBy: "|"))
+    let onScreenKeys = computeOnScreenMarkerKeys(
+      catalog: state.candidateCatalog,
+      handle: handle,
+      previouslyVisible: previouslyVisible
+    )
+    let visibleSignature = onScreenKeys.sorted().joined(separator: "|")
+    guard visibleSignature != state.lastVisibleMarkerSetSignature else {
+      return false
+    }
+    state.lastVisibleMarkerSetSignature = visibleSignature
+    let cameraState = handle.mapView.mapboxMap.cameraState
+    emit([
+      "type": "map_native_visible_markers",
+      "instanceId": instanceId,
+      "markerKeys": onScreenKeys,
+      "markerCount": onScreenKeys.count,
+      "catalogCount": state.candidateCatalog.count,
+      "zoom": cameraState.zoom,
+      "bearing": cameraState.bearing,
+      "pitch": cameraState.pitch,
+      "isMoving": isMoving,
+      "reason": reason,
+    ])
+    return true
+  }
+
   private func handleNativeCameraChanged(
     mapTag: NSNumber,
     handle: ResolvedMapHandle,
@@ -10816,36 +10919,14 @@ final class SearchMapRenderController: RCTEventEmitter {
       // Stage B (B2): emit the screen-space on-screen marker set whenever it
       // changes, so JS can drive promotion/demotion off true projected visibility
       // instead of a padded lat/lng AABB. Throttled to set-change to bound bridge
-      // traffic during gestures.
-      if !nextState.candidateCatalog.isEmpty {
-        // Previous visible set recovered from the stored signature (sorted keys
-        // joined with "|"; marker keys never contain "|") — feeds the spatial
-        // enter/exit hysteresis.
-        let previousSignature = nextState.lastVisibleMarkerSetSignature ?? ""
-        let previouslyVisible = previousSignature.isEmpty
-          ? Set<String>()
-          : Set(previousSignature.components(separatedBy: "|"))
-        let onScreenKeys = computeOnScreenMarkerKeys(
-          catalog: nextState.candidateCatalog,
-          handle: handle,
-          previouslyVisible: previouslyVisible
-        )
-        let visibleSignature = onScreenKeys.sorted().joined(separator: "|")
-        if visibleSignature != nextState.lastVisibleMarkerSetSignature {
-          nextState.lastVisibleMarkerSetSignature = visibleSignature
-          emit([
-            "type": "map_native_visible_markers",
-            "instanceId": instanceId,
-            "markerKeys": onScreenKeys,
-            "markerCount": onScreenKeys.count,
-            "catalogCount": nextState.candidateCatalog.count,
-            "zoom": cameraState.zoom,
-            "bearing": cameraState.bearing,
-            "pitch": cameraState.pitch,
-            "isMoving": isMoving,
-          ])
-        }
-      }
+      // traffic during gestures. Same projection that runs on data arrival.
+      projectAndEmitOnScreenMarkers(
+        instanceId: instanceId,
+        state: &nextState,
+        handle: handle,
+        reason: isMoving ? "camera_moving" : "camera_idle",
+        isMoving: isMoving
+      )
       instances[instanceId] = nextState
       let labelObservation = Self.derivedFamilyState(sourceId: nextState.labelSourceId, state: nextState).labelObservation
       if labelObservation.observationEnabled {

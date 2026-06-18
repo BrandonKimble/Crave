@@ -245,6 +245,60 @@ const recordSkip = (contract, detail) => results.push({ contract, status: 'SKIP'
 }
 
 // ---------------------------------------------------------------------------
+// Contract 3: reveal-no-hang — every reveal that STARTS must SETTLE, and the
+// reveal-start deadlock guard must never have exhausted. The reveal-start gate
+// (isActiveFrameLabelPlacementReady) can deadlock the whole reveal (pins+dots+labels
+// share one opacity animation) at ~0 opacity = the "search hangs" symptom. This is the
+// class of bug that JS-phase signals (chrome_ready) silently passed.
+// ---------------------------------------------------------------------------
+{
+  const contract = 'reveal_no_hang.every-started-reveal-settles';
+  const rawLog = fs.readFileSync(logPath, 'utf8');
+  // (a) the reveal-start deadlock watchdog exhausted -> a confirmed hang.
+  const deadlockHits = (rawLog.match(/reveal_start_deadlock_placement_uncommitted/g) || []).length;
+  // (b) reveals that STARTED but never SETTLED (started-but-hung). These surface as
+  // scenario_work_span lines with nativeEventType + frameGenerationId.
+  const framesFor = (nativeEventType) => {
+    const frames = new Set();
+    const re = new RegExp(
+      `"nativeEventType":"${nativeEventType}"[^\\n]*?"frameGenerationId":"([^"]+)"|"frameGenerationId":"([^"]+)"[^\\n]*?"nativeEventType":"${nativeEventType}"`,
+      'g'
+    );
+    let m;
+    while ((m = re.exec(rawLog)) !== null) {
+      frames.add(m[1] ?? m[2]);
+    }
+    return frames;
+  };
+  const startedFrames = framesFor('presentation_enter_started');
+  const settledFrames = framesFor('presentation_enter_settled');
+  const orphanStarts = [...startedFrames].filter((frame) => !settledFrames.has(frame));
+  if (startedFrames.size === 0 && deadlockHits === 0) {
+    recordSkip(
+      contract,
+      'no reveal (presentation_enter_started) events in run — nothing to assert'
+    );
+  } else if (deadlockHits > 0) {
+    recordFail(
+      contract,
+      `reveal-start deadlock watchdog exhausted ${deadlockHits} time(s) (reveal_start_deadlock_placement_uncommitted) — the reveal gate never opened = SEARCH HANG`
+    );
+  } else if (orphanStarts.length > 0) {
+    recordFail(
+      contract,
+      `${orphanStarts.length} reveal(s) started but never settled (frames ${orphanStarts
+        .slice(0, 5)
+        .join(', ')}) — reveal hung after start`
+    );
+  } else {
+    recordPass(
+      contract,
+      `all ${startedFrames.size} started reveals settled; 0 deadlock-watchdog exhaustions`
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Summary + exit
 // ---------------------------------------------------------------------------
 const failures = results.filter((result) => result.status === 'FAIL');
