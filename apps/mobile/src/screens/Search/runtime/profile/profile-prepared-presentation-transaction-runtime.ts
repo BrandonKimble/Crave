@@ -44,7 +44,7 @@ export const useProfilePreparedPresentationTransactionRuntime = ({
     commandExecutionModel: { commitProfileCameraTargetCommand },
   } = nativeExecutionModel;
   const {
-    shellRuntimeState: { setProfileCameraPadding, setMapHighlightedRestaurantId },
+    shellRuntimeState: { setProfileCameraPadding },
     transitionRuntimeState: { setProfileTransitionStatus, getProfileTransitionState },
     closeRuntimeState: {
       policyRuntimeState: { getProfileDismissBehavior, getProfileShouldClearSearchOnDismiss },
@@ -69,7 +69,6 @@ export const useProfilePreparedPresentationTransactionRuntime = ({
           },
           appExecutionRuntime,
           setProfileCameraPadding,
-          setMapHighlightedRestaurantId,
           handleCommandCompletionEvent: (event) => {
             preparedProfileCompletionHandlerRef.current?.(event);
           },
@@ -109,7 +108,6 @@ export const useProfilePreparedPresentationTransactionRuntime = ({
         hydrationRuntime,
         preparedProfileCompletionHandlerRef,
         runBatch,
-        setMapHighlightedRestaurantId,
         setProfileCameraPadding,
         setProfileTransitionStatus,
       ]

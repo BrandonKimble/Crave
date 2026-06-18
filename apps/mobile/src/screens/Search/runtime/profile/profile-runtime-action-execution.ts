@@ -16,6 +16,7 @@ export const executeProfileCloseAction = ({
   actionModel: ProfileCloseActionModel;
   ports: ProfileActionExecutionPorts;
 }): void => {
+  ports.setMapHighlightedRestaurantId(null);
   if (options?.dismissBehavior) {
     ports.setDismissBehavior(options.dismissBehavior);
   }

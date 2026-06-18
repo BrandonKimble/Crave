@@ -53,6 +53,7 @@ export const executeProfileOpenPresentationPlan = ({
   if (plan.updatedLastCameraState !== undefined) {
     ports.setLastCameraState(plan.updatedLastCameraState);
   }
+  ports.setMapHighlightedRestaurantId(restaurant.restaurantId);
   ports.seedRestaurantProfile(restaurant, queryLabel, {
     selectedLocationId: plan.selectedLocationId,
   });

@@ -28,8 +28,6 @@ export type PreparedProfilePresentationCommandSet = {
   targetCamera?: CameraSnapshot;
   profileCameraPadding?: CameraSnapshot['padding'];
   clearProfileCameraPadding?: boolean;
-  highlightedRestaurantId?: string | null;
-  clearHighlightedRestaurantId?: boolean;
 };
 
 export type ProfilePresentationCommandExecutionPhase = 'pre_shell' | 'shell' | 'post_shell';
@@ -67,7 +65,7 @@ export type PreparedProfilePresentationTransaction = {
   phasePayloads: readonly [
     ProfilePresentationPhaseExecutionPayload,
     ProfilePresentationPhaseExecutionPayload,
-    ProfilePresentationPhaseExecutionPayload,
+    ProfilePresentationPhaseExecutionPayload
   ];
 };
 
@@ -116,14 +114,12 @@ export const createProfilePresentationCommandExecutionContext = (
 export const createPreparedProfilePresentationTransaction = ({
   transactionId,
   preShellCommands,
-  shellCommands,
   shellStateExecution,
   postShellCommands,
   postShellStateExecution,
 }: {
   transactionId: string | null;
   preShellCommands?: PreparedProfilePresentationCommandSet;
-  shellCommands?: PreparedProfilePresentationCommandSet;
   shellStateExecution?: PreparedProfileStateExecution;
   postShellCommands?: PreparedProfilePresentationCommandSet;
   postShellStateExecution?: PreparedProfileStateExecution;
@@ -137,7 +133,6 @@ export const createPreparedProfilePresentationTransaction = ({
       ),
     },
     {
-      commandSet: shellCommands,
       stateExecution: shellStateExecution,
       executionContext: createProfilePresentationCommandExecutionContext(transactionId, 'shell'),
     },
