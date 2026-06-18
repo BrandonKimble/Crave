@@ -1,7 +1,13 @@
 # Poll Plan — Phase 3 Execution Scope (poll creation + axis inference)
 
 > Companion to `community-polls-discussion-driven-collection-plan.md` §3. Style matches the
-> completed `poll-phase-{0-1,2}-execution-scope.md`. Status: **IN PROGRESS.** Dep: Phase 2 ✅.
+> completed `poll-phase-{0-1,2}-execution-scope.md`. Dep: Phase 2 ✅.
+>
+> **Status: 3A ✅ (c9235851) · 3B+3D ✅ (f16f18df) · 3C remaining.** Free-text poll creation works:
+> a question infers mode/axis (ranked → structured flow + stored axis; discussion → topic-less poll).
+> 3C (seeded polls derive a structural axis in the scheduler) is the only piece left — lower-priority
+> since its consumer (leaderboard/collection) is Phase 4+. Next major phase: **Phase 4 (thread +
+> voting)** — comment CRUD + the endorsement-projection leaderboard over the Phase-2 tables.
 
 **The shift:** today poll creation is **structured-input** (caller supplies `topicType` + target
 entity → templated question). §3.2 wants **free-text question → poll-subject LLM → inferred axis +
