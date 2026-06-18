@@ -1,8 +1,11 @@
 # Poll Plan — Phase 4 Execution Scope (thread + voting/endorsement)
 
 > Companion to `community-polls-discussion-driven-collection-plan.md` §4–§5. Style matches the
-> completed `poll-phase-{0-1,2,3}-execution-scope.md`. Status: **SCOPED.** Dep: Phase 2 ✅ (tables),
-> Phase 3 ✅ (discussion polls exist).
+> completed `poll-phase-{0-1,2,3}-execution-scope.md`. Dep: Phase 2 ✅ (tables), Phase 3 ✅.
+>
+> **Status: 4A–4C ✅ DONE (b0209ba9) — poll discussions live (comment CRUD + likes + read/realtime).
+> 4D ⛔ GATED on Phase 5 (gazetteer).** Leaderboard stays vote-based until the endorsement projection
+> (4D) is built post-gazetteer. Recommended next: **Phase 5 (gazetteer)**, then 4D.
 
 **⚠️ Sequencing finding (important):** §5's **endorsement leaderboard** = `COUNT(DISTINCT user)`
 endorsing a subject, where a comment "endorses" the entities it positively names. Knowing which
