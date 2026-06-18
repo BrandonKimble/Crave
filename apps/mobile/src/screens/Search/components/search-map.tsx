@@ -220,24 +220,27 @@ const promotedPinInteractionFeatureFilter = [
   'pinInteraction',
 ] as LabelPlacementFilter;
 
-const buildLabelPlacementFilter = (
-  preferredCandidate: LabelCandidate,
-  candidate: LabelCandidate
-): LabelPlacementFilter =>
+const buildLabelPlacementFilter = (candidate: LabelCandidate): LabelPlacementFilter =>
   [
     'all',
     ['==', ['get', 'nativeSlotFeatureKind'], 'label'],
-    ['==', ['get', 'labelPreference'], preferredCandidate],
     ['==', ['get', 'labelCandidate'], candidate],
   ] as LabelPlacementFilter;
 
-// RESIDENT label layers (slot-elimination): ONE layer per (preferredCandidate ×
-// candidate) combo — 16 total — reading the single resident label source, instead
-// of 16 × 30 slot layers. Placement priority stays in SOURCE ORDER (the source is
-// emitted rank-ordered; symbolZOrder:'source' in the candidate style), which is
-// exactly what the slot model relied on — NOT symbolSortKey (that caused camera
-// wobble). The slot identity (nativeLodZ) is gone from the filter; each layer
-// matches by feature kind + labelPreference + labelCandidate only.
+// RESIDENT label layers (slot-elimination): ONE layer per candidate SIDE — 4 total —
+// reading the single resident label source, instead of 16 × 30 slot layers. Placement
+// priority stays in SOURCE ORDER (the source is emitted rank-ordered; symbolZOrder:
+// 'source' in the candidate style), which is exactly what the slot model relied on —
+// NOT symbolSortKey (that caused camera wobble). The slot identity (nativeLodZ) is gone
+// from the filter; each layer matches by feature kind + labelCandidate only.
+//
+// HISTORICAL: this matrix used to be (preferredCandidate × candidate) = 16 layers, with
+// a `labelPreference` filter selecting which preferred side won. Side-preference selection
+// was removed — `labelPreference` is now hardcoded to 'bottom' by every writer (JS source
+// builder + the two native per-frame rewrites), so only the preferred=bottom family ever
+// matched; the other 12 layers were permanently inert. Collapsed to the 4 live candidate
+// layers (provably identical render: the inert layers matched nothing). Mapbox symbol
+// collision (textAllowOverlap:false) still chooses among the 4 candidate sides per marker.
 const renderSearchMapLabelLayers = ({
   sourceId,
   labelLayerSpecs,
@@ -245,14 +248,13 @@ const renderSearchMapLabelLayers = ({
 }: {
   sourceId: string;
   labelLayerSpecs: ReadonlyArray<{
-    preferredCandidate: LabelCandidate;
     candidate: LabelCandidate;
     layerId: string;
   }>;
   labelCandidateStyles: Record<LabelCandidate, MapboxGL.SymbolLayerStyle>;
 }) => (
   <React.Fragment key="resident-label-family">
-    {labelLayerSpecs.map(({ preferredCandidate, candidate, layerId }) => (
+    {labelLayerSpecs.map(({ candidate, layerId }) => (
       <MapboxGL.SymbolLayer
         key={layerId}
         id={layerId}
@@ -260,7 +262,7 @@ const renderSearchMapLabelLayers = ({
         sourceID={sourceId}
         belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
         style={labelCandidateStyles[candidate]}
-        filter={buildLabelPlacementFilter(preferredCandidate, candidate)}
+        filter={buildLabelPlacementFilter(candidate)}
       />
     ))}
   </React.Fragment>
@@ -275,7 +277,6 @@ type SearchMapMarkerSceneProps = {
   pinInteractionLayer: React.ReactElement;
   profilerCallback: React.ProfilerOnRenderCallback;
   labelLayerSpecs: ReadonlyArray<{
-    preferredCandidate: LabelCandidate;
     candidate: LabelCandidate;
     layerId: string;
   }>;
@@ -861,34 +862,36 @@ export const RESTAURANT_LABEL_SOURCE_ID = 'restaurant-source';
 const RESTAURANT_LABEL_COLLISION_SOURCE_ID = 'restaurant-label-collision-source';
 export type LabelCandidate = 'bottom' | 'right' | 'top' | 'left';
 const LABEL_CANDIDATES_IN_ORDER: ReadonlyArray<LabelCandidate> = ['bottom', 'right', 'top', 'left'];
-const LABEL_CANDIDATE_PRIORITY_BY_PREFERENCE = {
-  bottom: ['bottom', 'right', 'top', 'left'],
-  right: ['right', 'top', 'left', 'bottom'],
-  top: ['top', 'left', 'bottom', 'right'],
-  left: ['left', 'bottom', 'right', 'top'],
-} as const satisfies Record<LabelCandidate, readonly LabelCandidate[]>;
+
+// Layer emission order = Mapbox collision priority (earlier-added layers place first).
+// This preserves the exact order the old preferred=bottom family rendered in: the priority
+// list ['bottom','right','top','left'] reversed → ['left','top','right','bottom'].
+const LABEL_CANDIDATE_LAYER_ORDER: ReadonlyArray<LabelCandidate> = [
+  'left',
+  'top',
+  'right',
+  'bottom',
+];
 
 type LabelLayerSpec = {
-  preferredCandidate: LabelCandidate;
   candidate: LabelCandidate;
   layerId: string;
 };
 
 const buildLabelLayerSpecs = ({
-  preferredCandidates,
+  candidatesInLayerOrder,
 }: {
-  preferredCandidates: ReadonlyArray<LabelCandidate>;
+  candidatesInLayerOrder: ReadonlyArray<LabelCandidate>;
 }): ReadonlyArray<LabelLayerSpec> =>
-  preferredCandidates.flatMap((preferredCandidate) =>
-    [...LABEL_CANDIDATE_PRIORITY_BY_PREFERENCE[preferredCandidate]].reverse().map((candidate) => ({
-      preferredCandidate,
-      candidate,
-      layerId: `restaurant-labels-preferred-${preferredCandidate}-candidate-${candidate}`,
-    }))
-  );
+  candidatesInLayerOrder.map((candidate) => ({
+    candidate,
+    // Layer id keeps the historical `preferred-bottom` prefix so native press-targeting /
+    // label-observation queries (which key off these ids) stay byte-identical.
+    layerId: `restaurant-labels-preferred-bottom-candidate-${candidate}`,
+  }));
 
 const LABEL_LAYER_SPECS: ReadonlyArray<LabelLayerSpec> = buildLabelLayerSpecs({
-  preferredCandidates: LABEL_CANDIDATES_IN_ORDER,
+  candidatesInLayerOrder: LABEL_CANDIDATE_LAYER_ORDER,
 });
 
 const RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID = 'restaurant-labels-pin-collision';
@@ -1834,8 +1837,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
   ]);
   const highlightedMarkerKey = highlightedMarkerKeys[0] ?? null;
   const labelLayerSpecs = React.useMemo(() => LABEL_LAYER_SPECS, []);
-  // Resident model: the 16 collapsed label layer ids (one per preferred×candidate),
-  // not the old per-slot ids. Native press-targeting / label-observation query these.
+  // Resident model: the 4 collapsed label layer ids (one per candidate side), not the old
+  // per-slot ids. Native press-targeting / label-observation query these.
   const labelVisualLayerIds = React.useMemo(
     () => labelLayerSpecs.map(({ layerId }) => layerId),
     [labelLayerSpecs]

@@ -906,7 +906,6 @@ const buildDirectLabelStores = ({
           ...stableBaseFeature.properties,
           markerKey,
           labelCandidate: candidate,
-          labelPreference: 'bottom',
           nativeLabelOpacity: 1,
           nativePresentationOpacity: 1,
         },
