@@ -2914,6 +2914,22 @@ export const useDirectSearchMapSourceController = ({
       (snapshot) => snapshot.redrawTransaction?.id ?? null,
       publishAndFetch
     );
+    // PER-PIN TRACKING DURING PAN. When the native projector reports a NEW on-screen set
+    // (coalesced to genuine set changes), re-run the promotion decision so a marker that
+    // just crossed the viewport edge promotes/demotes immediately — instead of waiting for
+    // the spatially-quantized viewport tick or a camera-stop settle (which sustained panning
+    // starves, leaving pins stuck demoted). Gated to ACTIVE USER MOTION only: the reveal's
+    // auto-zoom is programmatic and does NOT set isMapMoving, so the subscriber stays silent
+    // through the reveal preroll — no mid-reveal re-publish (which previously hung the reveal).
+    const unsubscribeNativeVisibleMarkers = sourceFramePort.subscribeNativeVisibleMarkers(() => {
+      const args = latestArgsRef.current;
+      const isUserMoving =
+        args.isMapMoving || isMapMotionPressureMoving(args.mapMotionPressureController);
+      if (!isUserMoving) {
+        return;
+      }
+      publishSourcesRef.current({ reason: 'viewport_lod' });
+    });
     const unsubscribeViewport = viewportBoundsService.subscribe((bounds) => {
       // Motion-pressure cutover: every viewport tick (plain shortcut OR
       // natural/restaurant-only/highlighted) routes through the ONE admission decision
@@ -2955,6 +2971,7 @@ export const useDirectSearchMapSourceController = ({
       unsubscribeMountedResults();
       unsubscribeSurfaceTransaction();
       unsubscribeRedrawTransaction();
+      unsubscribeNativeVisibleMarkers();
       unsubscribeViewport();
     };
   }, [

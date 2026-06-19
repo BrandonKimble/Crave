@@ -81,6 +81,10 @@ export type SearchMapSourceFramePort = {
   getCandidateCatalog: () => SearchMapCandidateCatalog | null;
   publishNativeVisibleMarkerKeys: (visible: SearchMapNativeVisibleMarkers) => void;
   getNativeVisibleMarkerKeys: () => SearchMapNativeVisibleMarkers | null;
+  // Subscribe to changes in the native on-screen marker set. Fires only when the
+  // projected key SET actually changes, so a visible-set update can re-run the JS
+  // promotion decision (used to track per-pin promote/demote during a pan).
+  subscribeNativeVisibleMarkers: (listener: () => void) => () => void;
   reset: () => void;
   subscribe: (
     listener: () => void,
@@ -157,7 +161,9 @@ export const createSearchMapSourceFramePort = (): SearchMapSourceFramePort => {
   let snapshot = EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT;
   let candidateCatalog: SearchMapCandidateCatalog | null = null;
   let nativeVisibleMarkers: SearchMapNativeVisibleMarkers | null = null;
+  let nativeVisibleMarkersSignature: string | null = null;
   const listeners = new Map<() => void, SearchMapSourceFrameListenerRecord>();
+  const nativeVisibleMarkerListeners = new Set<() => void>();
 
   const notify = (changedKeys: ReadonlySet<SearchMapSourceFrameSnapshotKey>) => {
     listeners.forEach((listenerRecord, listener) => {
@@ -260,12 +266,25 @@ export const createSearchMapSourceFramePort = (): SearchMapSourceFramePort => {
     getCandidateCatalog: () => candidateCatalog,
     publishNativeVisibleMarkerKeys: (visible) => {
       nativeVisibleMarkers = visible;
+      const nextSignature = [...visible.markerKeys].sort().join('|');
+      if (nextSignature === nativeVisibleMarkersSignature) {
+        return;
+      }
+      nativeVisibleMarkersSignature = nextSignature;
+      nativeVisibleMarkerListeners.forEach((listener) => listener());
     },
     getNativeVisibleMarkerKeys: () => nativeVisibleMarkers,
+    subscribeNativeVisibleMarkers: (listener) => {
+      nativeVisibleMarkerListeners.add(listener);
+      return () => {
+        nativeVisibleMarkerListeners.delete(listener);
+      };
+    },
     reset: () => {
       snapshot = EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT;
       candidateCatalog = null;
       nativeVisibleMarkers = null;
+      nativeVisibleMarkersSignature = null;
       notify(new Set(Object.keys(snapshot) as SearchMapSourceFrameSnapshotKey[]));
     },
     subscribe: (listener, observedKeys, debugLabel) => {
