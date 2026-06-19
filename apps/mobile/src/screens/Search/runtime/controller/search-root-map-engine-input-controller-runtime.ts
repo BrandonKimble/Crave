@@ -53,7 +53,9 @@ export const createSearchRootMapEngineInputs = ({
   shouldLogSearchComputes: mapPresentationRuntime.shouldLogSearchComputes,
   getPerfNow: mapPresentationRuntime.getPerfNow,
   logSearchCompute: mapPresentationRuntime.logSearchCompute,
-  maxFullPins: 30,
+  // Single LOD budget: the on-screen top-N promoted pins (rank- or score-badged by region).
+  // Replaces the old dual 30+30 in/out-region budgets with one unified group.
+  maxFullPins: 40,
   mapQueryBudget: mapPresentationRuntime.mapQueryBudget,
   profileCommandPort: mapPresentationRuntime.profileCommandPort,
 });

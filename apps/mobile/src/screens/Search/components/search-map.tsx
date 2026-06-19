@@ -2397,13 +2397,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
   // ignorePlacement:false) so the world-wide shortcut tail collapses to a sparse,
   // non-overlapping subset that fades in/out as you pan/zoom (the Google-style "wave").
   // Same opacity transition drives that fade.
-  // Out-of-region pins now render IDENTICALLY to in-region pins: always-draw, no
-  // collision culling. Previously they were collision victims (allowOverlap:false),
-  // which made them flash/jitter out during camera motion — an inconsistency with
-  // in-region pins and a source of the "disappearing" defect. Both regions are
-  // already capped (in: maxFullPins, out: OUT_REGION_MAX_FULL_PINS), so a fixed set
-  // of always-drawn pins is bounded by the budget, not by Mapbox collision. The
-  // separate layer is retained only for the inOverlapRegion filter / badge split.
+  // Out-of-region pins render IDENTICALLY to in-region pins: always-draw, no collision
+  // culling. Promotion is now ONE unified viewport-gated budget (maxFullPins); the
+  // promoted set is bounded by that single budget, not by Mapbox collision. The separate
+  // out-region layer is retained only for the inOverlapRegion filter / badge split
+  // (rank inside the submitted region, crave-score outside).
   const stylePinOutRegionStyle = stylePinSingleSymbolStyle;
 
   // RESIDENT interaction layer (slot-elimination): ONE circle layer for all pin

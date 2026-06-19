@@ -941,12 +941,6 @@ const buildDirectLabelStores = ({
   };
 };
 
-// Separate full-pin budget for OUT-OF-OVERLAP-REGION results (world-wide top-rated),
-// independent of the in-region (maxFullPins) budget. ~maxFullPins in + this out = the
-// total full-pin ceiling at any time (~60). Keeps the far tail digestible (only the
-// best show as pins) while collision-culling handles any local overlap.
-const OUT_REGION_MAX_FULL_PINS = 30;
-
 export const useDirectSearchMapSourceController = ({
   searchRuntimeBus,
   resultsPresentationAuthority,
@@ -1645,18 +1639,17 @@ export const useDirectSearchMapSourceController = ({
       }
     }
 
-    // DUAL LOD BUDGET — both groups play by the SAME live, viewport-driven rules; the
-    // ONLY difference is the budget number and the badge (rank in-region / crave-score
-    // out). In-region results get a top-`maxFullPins` budget; out-of-region results get
-    // a SEPARATE top-`OUT_REGION_MAX_FULL_PINS` budget. BOTH are viewport-gated against
-    // the native screen-space set (requireVisibility:true), so each group's pins are the
-    // top-N WITHIN the current screen (pitch/twist-accurate) and promote/demote live as
-    // markers enter/leave the viewport. Both reuse the stable-membership machinery.
-    // Natural search has no out-of-region candidates, so the out pass is empty.
-    // The selected (tapped) restaurant is always treated as IN-REGION so it is
-    // force-promoted, rendered in the in-region layer (ranked, overlap, crossfade), and
-    // excluded from the out-region pass (no double-promotion) — wherever it sits
-    // geographically. This makes tapping any pin/dot promote it like the in-view ones.
+    // SINGLE LOD BUDGET — ONE viewport-gated, ranked group. Promotion is the top-`maxFullPins`
+    // candidates BY RANK within the current screen (native screen-space set,
+    // requireVisibility:true), promoting/demoting live as markers enter/leave the viewport via
+    // the stable-membership machinery. As you pan, an outer higher-ranked marker naturally
+    // displaces an inner lower-ranked one under the single budget. The in/out-overlap-region
+    // split is now PRESENTATION ONLY (isInRegionFeature, used below for the badge): a promoted
+    // pin shows the RANK badge inside the submitted region and the crave-SCORE badge outside —
+    // it no longer splits promotion into two separate budgets. The selected (tapped) restaurant
+    // is force-promoted via selectedRestaurantCandidates regardless of geography. Natural search
+    // has no out-of-region candidates; shortcuts load the whole world and the viewport gate
+    // selects the on-screen top-N.
     const selectedMarkerKeys = new Set(
       selectedRestaurantCandidates.map((feature) => buildMarkerKey(feature))
     );
@@ -1665,12 +1658,12 @@ export const useDirectSearchMapSourceController = ({
       isWithinOverlapRegion(overlapRegion, feature.geometry.coordinates as [number, number]);
     const currentPinned = lodPinnedMarkersRef.current;
     const emptyModel = { nextPinnedMarkers: [], nextPinnedMeta: [] };
-    const inRegionModel = currentBounds
+    const nextModel = currentBounds
       ? buildMarkerRenderModel({
           bounds: currentBounds,
-          rankedCandidates: rankedCandidates.filter(isInRegionFeature),
+          rankedCandidates,
           selectedRestaurantCandidates,
-          currentPinnedMarkers: currentPinned.filter(isInRegionFeature),
+          currentPinnedMarkers: currentPinned,
           selectedRestaurantId,
           selectedPriorityCoordinate,
           buildMarkerKey,
@@ -1680,25 +1673,6 @@ export const useDirectSearchMapSourceController = ({
           requireVisibility: true,
         })
       : emptyModel;
-    const outRegionModel = currentBounds
-      ? buildMarkerRenderModel({
-          bounds: currentBounds,
-          rankedCandidates: rankedCandidates.filter((feature) => !isInRegionFeature(feature)),
-          selectedRestaurantCandidates: [],
-          currentPinnedMarkers: currentPinned.filter((feature) => !isInRegionFeature(feature)),
-          selectedRestaurantId: null,
-          selectedPriorityCoordinate: null,
-          buildMarkerKey,
-          buildVisualIdentityKey: buildSearchMapVisualIdentityKey,
-          maxPins: OUT_REGION_MAX_FULL_PINS,
-          nativeVisibleMarkerKeys,
-          requireVisibility: true,
-        })
-      : emptyModel;
-    const nextModel = {
-      nextPinnedMarkers: [...inRegionModel.nextPinnedMarkers, ...outRegionModel.nextPinnedMarkers],
-      nextPinnedMeta: [...inRegionModel.nextPinnedMeta, ...outRegionModel.nextPinnedMeta],
-    };
     const nextPinnedVisualKey = buildLodPinnedVisualKey(nextModel.nextPinnedMeta);
     if (
       isViewportLodPublish &&
