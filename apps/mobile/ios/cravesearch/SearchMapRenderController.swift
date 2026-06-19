@@ -3904,6 +3904,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     recordsByMarkerKey: [String: [ParsedTransportFeatureRecord]],
     affectedMarkerKeys: Set<String>,
     state: inout InstanceState,
+    retainResidentDemotes: Bool = false,
     recordAttribution: ((_ section: String, _ durationMs: Double, _ operationCount: Int) -> Void)? = nil
   ) throws -> [ParsedCollectionApplyPlan] {
     guard !affectedMarkerKeys.isEmpty else {
@@ -3917,18 +3918,49 @@ final class SearchMapRenderController: RCTEventEmitter {
     var familyState = derivedFamilyState(sourceId: sourceId, state: state)
     let previousSourceState = familyState.sourceState
 
+    // RESIDENCY (jank fix): during native_lod NO marker DATA changes — only roles/opacity flip. So
+    // any affected marker ALREADY resident in the bundle keeps its EXISTING features unchanged
+    // (identical diffKey → the patch produces ZERO source mutation); the CADisplayLink stepper
+    // drives its pin/label opacity feature-state for BOTH promote and demote. Rebuilding partial
+    // records (e.g. a demote dropping its label features) was the source churn — removing those
+    // features re-tiles the whole bundle (the choppiness) AND snaps the pin out. Only a marker NOT
+    // yet in the bundle (a first-ever promote) takes the normal add path below. Full rebuild happens
+    // on a real data change (retainResidentDemotes=false), which cleans up departed markers.
+    let retainedDemoteKeys: Set<String> = retainResidentDemotes
+      ? affectedMarkerKeys.filter {
+          familyState.collection.groupOrder.contains($0) &&
+          !(familyState.collection.groupedFeatureIdsByGroup[$0]?.isEmpty ?? true)
+        }
+      : []
     var desiredGroupOrder = familyState.collection.groupOrder.filter {
-      !affectedMarkerKeys.contains($0)
+      !affectedMarkerKeys.contains($0) || retainedDemoteKeys.contains($0)
     }
     var desiredFeatureIdsByGroup: [String: [String]] = [:]
     var featureById: [String: Feature] = [:]
     var diffKeyById: [String: String] = [:]
     var featureStateById: [String: [String: Any]] = [:]
     var markerKeyByFeatureId: [String: String] = [:]
+    for markerKey in retainedDemoteKeys {
+      guard let prevFeatureIds = familyState.collection.groupedFeatureIdsByGroup[markerKey] else {
+        continue
+      }
+      desiredFeatureIdsByGroup[markerKey] = prevFeatureIds
+      for featureId in prevFeatureIds {
+        featureById[featureId] = familyState.collection.featureById[featureId]
+        diffKeyById[featureId] = familyState.collection.diffKeyById[featureId] ?? featureId
+        if let fs = familyState.collection.featureStateById[featureId], !fs.isEmpty {
+          featureStateById[featureId] = fs
+        }
+        markerKeyByFeatureId[featureId] = familyState.collection.markerKeyByFeatureId[featureId] ?? markerKey
+      }
+    }
 
     let desiredStartedAt = recordAttribution == nil ? 0 : CACurrentMediaTime() * 1000
     for markerKey in orderedAffectedMarkerKeys {
-      guard affectedMarkerKeys.contains(markerKey),
+      // Retained (already-resident) markers keep their EXISTING bundle features (set above) — skip
+      // the partial-record rebuild so no features are added/removed (opacity is the stepper's job).
+      guard !retainedDemoteKeys.contains(markerKey),
+            affectedMarkerKeys.contains(markerKey),
             let records = recordsByMarkerKey[markerKey],
             !records.isEmpty
       else {
@@ -4107,7 +4139,8 @@ final class SearchMapRenderController: RCTEventEmitter {
   private func prepareScopedPinAndLabelOutput(
     instanceId: String,
     affectedMarkerKeys rawAffectedMarkerKeys: Set<String>,
-    state: inout InstanceState
+    state: inout InstanceState,
+    retainResidentDemotes: Bool = false
   ) throws -> PreparedDerivedPinAndLabelOutput {
     let affectedMarkerKeys = rawAffectedMarkerKeys.filter { !$0.isEmpty }
     guard !affectedMarkerKeys.isEmpty else {
@@ -4274,6 +4307,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       recordsByMarkerKey: promotedSlotRecordsByMarkerKey,
       affectedMarkerKeys: affectedMarkerKeys,
       state: &state,
+      retainResidentDemotes: retainResidentDemotes,
       recordAttribution: makeScopedAttributionRecorder("promotedSlots")
     )
     var plans: [ParsedCollectionApplyPlan] = []
@@ -5069,7 +5103,10 @@ final class SearchMapRenderController: RCTEventEmitter {
     let preparedPinAndLabelOutput = try prepareScopedPinAndLabelOutput(
       instanceId: instanceId,
       affectedMarkerKeys: scopedPinKeys,
-      state: &state
+      state: &state,
+      // native_lod = LOD role flips during movement: keep demoted markers resident (opacity-faded)
+      // instead of removing their bundle from the source (the source-churn jank + demote snap).
+      retainResidentDemotes: reason == "native_lod"
     )
     recordNativeApply(
       section: "live_role.prepare_pin_label_output",
