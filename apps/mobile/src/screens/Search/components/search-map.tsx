@@ -128,6 +128,10 @@ const STYLE_PINS_SOURCE_ID = 'restaurant-style-pins-source';
 // family (marker render state / transitions) and never renders. Derivation must
 // match native: `"\(pinSourceId)-bundle"`.
 const RESTAURANT_PIN_BUNDLE_SOURCE_ID = `${STYLE_PINS_SOURCE_ID}-bundle`;
+// UN-BUNDLED name-label render source. Derivation must match native
+// `"\(pinSourceId)-label-render"`. Holds the native-wrapped, promote-gated labels so label churn
+// re-layouts only labels, never the resident pins.
+const RESTAURANT_LABEL_RENDER_SOURCE_ID = `${STYLE_PINS_SOURCE_ID}-label-render`;
 const PIN_INTERACTION_SOURCE_ID = 'restaurant-pin-interaction-source';
 
 // Stabilize intra-layer ordering so placement priority doesn't vary with viewport y.
@@ -344,15 +348,20 @@ const SearchMapMarkerScene = React.memo(
               sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
               filter={promotedPinFeatureFilter}
             />
-            {/* Resident interaction (1 layer) + resident labels (16 layers) —
-                no per-slot fan-out, no nativeLodZ scoping. */}
+            {/* Resident interaction (1 layer). Name-labels are UN-BUNDLED into their own
+                source below — label add/remove on promote/demote re-layouts only labels, never
+                the resident pins (which is the zoom wiggle). */}
             {pinInteractionLayer}
-            {renderSearchMapLabelLayers({
-              sourceId: RESTAURANT_PIN_BUNDLE_SOURCE_ID,
-              labelLayerSpecs,
-              labelCandidateStyles,
-            })}
           </React.Fragment>
+        </MapboxGL.ShapeSource>
+        {/* UN-BUNDLED name-label render source: the label candidate layers read from here, not the
+            pin bundle, so their promote/demote churn never re-snaps the resident pins. */}
+        <MapboxGL.ShapeSource id={RESTAURANT_LABEL_RENDER_SOURCE_ID} shape={EMPTY_POINT_FEATURES}>
+          {renderSearchMapLabelLayers({
+            sourceId: RESTAURANT_LABEL_RENDER_SOURCE_ID,
+            labelLayerSpecs,
+            labelCandidateStyles,
+          })}
         </MapboxGL.ShapeSource>
         <MapboxGL.ShapeSource
           id={RESTAURANT_LABEL_COLLISION_SOURCE_ID}

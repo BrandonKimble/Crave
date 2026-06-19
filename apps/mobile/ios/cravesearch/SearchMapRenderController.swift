@@ -583,6 +583,13 @@ final class SearchMapRenderController: RCTEventEmitter {
     // (marker render state / transitions) and is never applied to Mapbox. Must
     // match the JS render tree: `"\(pinSourceId)-bundle"`.
     var pinBundleSourceId: String { "\(pinSourceId)-bundle" }
+    // UN-BUNDLED name-label render source. Derived (like pinBundleSourceId) so it needs no config
+    // plumbing — JS mirrors it as `${STYLE_PINS_SOURCE_ID}-label-render`. Holds the native-wrapped
+    // (nativeSlotFeatureKind=="label"), PROMOTE-GATED labels that used to be bundled into
+    // pinBundleSourceId. Kept separate so label add/remove on promote/demote re-layouts ONLY labels,
+    // never the resident pins (the zoom wiggle). Distinct from labelSourceId, which stays the
+    // JS-fed RAW label input the prepare path reads from.
+    var labelRenderSourceId: String { "\(pinSourceId)-label-render" }
     var mapTag: NSNumber
     var pinSourceId: String
     var pinInteractionSourceId: String
@@ -3161,7 +3168,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     tapCoordinate: (lng: Double, lat: Double)?,
     completion: @escaping (Result<[String: Any]?, Error>) -> Void
   ) {
-    let labelSourceIds: Set<String> = [state.pinBundleSourceId]
+    let labelSourceIds: Set<String> = [state.labelRenderSourceId]
     let pinInteractionSourceIds: Set<String> = [state.pinBundleSourceId]
     let queryDotTarget = {
       guard !dotLayerIds.isEmpty, dotQueryRect.width > 0, dotQueryRect.height > 0 else {
@@ -3773,11 +3780,12 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
     // SINGLE-OWNER (#7): label-prep does NOT write the JS-owned collision source — the JS
     // delta transport is its sole writer. The former collision patch block here is removed.
+    // UN-BUNDLED: pin bundle = pin + interaction only (no labels) → never re-layouts from label churn.
     let promotedSlotRecordsByMarkerKey = Self.makePromotedSlotRecordsByMarkerKey(
       orderedMarkerKeys: orderedMarkerKeys,
       pinRecordsByMarkerKey: Self.recordsByMarkerKey(from: nextPins),
       pinInteractionRecordsByMarkerKey: Self.recordsByMarkerKey(from: nextPinInteractions),
-      labelRecordsByMarkerKey: Self.recordsByMarkerKey(from: nextLabels)
+      labelRecordsByMarkerKey: [:]
     )
     let promotedSlotCollection = Self.makeParsedFeatureCollection(
       records: orderedMarkerKeys.flatMap { promotedSlotRecordsByMarkerKey[$0] ?? [] }
@@ -3790,13 +3798,39 @@ final class SearchMapRenderController: RCTEventEmitter {
     promotedSlotFamilyState.collection.dirtyGroupIds =
       dirtyPinMarkerKeys
       .union(dirtyPinInteractionMarkerKeys)
-      .union(dirtyLabelMarkerKeys)
-      .union(dirtyLabelCollisionMarkerKeys)
       .union(previousPromotedGroupIds.symmetricDifference(Set(orderedMarkerKeys)))
     promotedSlotFamilyState.collection.orderChangedGroupIds =
       promotedSlotFamilyState.collection.dirtyGroupIds
     promotedSlotFamilyState.collection.removedGroupIds =
       previousPromotedGroupIds.subtracting(Set(orderedMarkerKeys))
+
+    // UN-BUNDLED labels → their own render source, wrapped with nativeSlotFeatureKind=="label".
+    let nextLabelRecordsByMarkerKey = Self.recordsByMarkerKey(from: nextLabels)
+    var labelRenderRecordsByMarkerKey: [String: [ParsedTransportFeatureRecord]] = [:]
+    for markerKey in orderedMarkerKeys {
+      let labels = nextLabelRecordsByMarkerKey[markerKey] ?? []
+      guard !labels.isEmpty else { continue }
+      labelRenderRecordsByMarkerKey[markerKey] = labels.map {
+        Self.promotedSlotFeatureRecord($0, id: $0.id, kind: "label")
+      }
+    }
+    let labelRenderOrderedKeys = orderedMarkerKeys.filter { labelRenderRecordsByMarkerKey[$0] != nil }
+    let labelRenderCollection = Self.makeParsedFeatureCollection(
+      records: labelRenderOrderedKeys.flatMap { labelRenderRecordsByMarkerKey[$0] ?? [] }
+    )
+    var labelRenderFamilyState = Self.emptyDerivedFamilyState()
+    labelRenderFamilyState.collection = labelRenderCollection
+    let previousLabelRenderGroupIds = Set(
+      Self.derivedFamilyState(sourceId: state.labelRenderSourceId, state: state).collection.groupOrder
+    )
+    labelRenderFamilyState.collection.dirtyGroupIds =
+      dirtyLabelMarkerKeys
+      .union(previousLabelRenderGroupIds.symmetricDifference(Set(labelRenderOrderedKeys)))
+    labelRenderFamilyState.collection.orderChangedGroupIds =
+      labelRenderFamilyState.collection.dirtyGroupIds
+    labelRenderFamilyState.collection.removedGroupIds =
+      previousLabelRenderGroupIds.subtracting(Set(labelRenderOrderedKeys))
+
     var plans: [ParsedCollectionApplyPlan] = []
     if let labelCollisionPlan = Self.buildDirectFamilyApplyPlan(
       sourceId: state.labelCollisionSourceId,
@@ -3811,6 +3845,13 @@ final class SearchMapRenderController: RCTEventEmitter {
       recordAttribution: makeReplaceAttributionRecorder("promotedSlots")
     )
     plans.append(contentsOf: promotedSlotPlans)
+    let labelRenderPlans = try Self.buildSlotApplyPlans(
+      sourceId: state.labelRenderSourceId,
+      nextCollection: labelRenderFamilyState.collection,
+      state: &state,
+      recordAttribution: makeReplaceAttributionRecorder("labelRender")
+    )
+    plans.append(contentsOf: labelRenderPlans)
     return PreparedDerivedPinAndLabelOutput(
       plans: plans,
       pinSourceIds: [state.pinBundleSourceId],
@@ -4305,11 +4346,13 @@ final class SearchMapRenderController: RCTEventEmitter {
       }
     }
 
+    // UN-BUNDLED: the pin bundle gets pin + interaction ONLY (no labels) so it never re-layouts
+    // from label churn. Labels go to their own render source below.
     let promotedSlotRecordsByMarkerKey = Self.makePromotedSlotRecordsByMarkerKey(
       orderedMarkerKeys: directOrderedAffectedMarkerKeys,
       pinRecordsByMarkerKey: directPinRecordsByMarkerKey,
       pinInteractionRecordsByMarkerKey: directPinInteractionRecordsByMarkerKey,
-      labelRecordsByMarkerKey: directLabelRecordsByMarkerKey
+      labelRecordsByMarkerKey: [:]
     )
     let promotedSlotPlans = try Self.buildDirectSlotApplyPlans(
       sourceId: state.pinBundleSourceId,
@@ -4319,6 +4362,26 @@ final class SearchMapRenderController: RCTEventEmitter {
       state: &state,
       retainResidentDemotes: retainResidentDemotes,
       recordAttribution: makeScopedAttributionRecorder("promotedSlots")
+    )
+    // Labels → their OWN render source, wrapped with nativeSlotFeatureKind=="label" (the layer
+    // filter). NOT resident (retainResidentDemotes:false) — promote-gated add/remove, but isolated
+    // from the pin source so it never wiggles the pins.
+    var labelRenderRecordsByMarkerKey: [String: [ParsedTransportFeatureRecord]] = [:]
+    for markerKey in directOrderedAffectedMarkerKeys {
+      let labels = directLabelRecordsByMarkerKey[markerKey] ?? []
+      guard !labels.isEmpty else { continue }
+      labelRenderRecordsByMarkerKey[markerKey] = labels.map {
+        Self.promotedSlotFeatureRecord($0, id: $0.id, kind: "label")
+      }
+    }
+    let labelRenderPlans = try Self.buildDirectSlotApplyPlans(
+      sourceId: state.labelRenderSourceId,
+      orderedAffectedMarkerKeys: directOrderedAffectedMarkerKeys,
+      recordsByMarkerKey: labelRenderRecordsByMarkerKey,
+      affectedMarkerKeys: affectedMarkerKeys,
+      state: &state,
+      retainResidentDemotes: false,
+      recordAttribution: makeScopedAttributionRecorder("labelRender")
     )
     var plans: [ParsedCollectionApplyPlan] = []
     if let labelCollisionPlan = try Self.buildScopedSingleFeatureFamilyApplyPlan(
@@ -4331,6 +4394,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       plans.append(labelCollisionPlan)
     }
     plans.append(contentsOf: promotedSlotPlans)
+    plans.append(contentsOf: labelRenderPlans)
     emit([
       "type": "native_scoped_promoted_slot_contract",
       "instanceId": instanceId,
@@ -8142,7 +8206,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       // in state.pinSourceId; the slot only selects the LAYER (via nativeLodZ).
       _ = renderState
       let pinPhysicalSourceId = state.pinBundleSourceId
-      let labelPhysicalSourceId = state.pinBundleSourceId
+      let labelPhysicalSourceId = state.labelRenderSourceId
       var localPinFeatureStatesToApply: [(featureId: String, state: [String: Any])] = []
       Self.applyTransientFeatureState(
         sourceState: &pinSourceState,
@@ -8995,11 +9059,11 @@ final class SearchMapRenderController: RCTEventEmitter {
   }
 
   private func visualSourceIds(for state: InstanceState) -> [String] {
-    Self.uniqueSourceIds([state.pinBundleSourceId, state.dotSourceId, state.labelCollisionSourceId])
+    Self.uniqueSourceIds([state.pinBundleSourceId, state.labelRenderSourceId, state.dotSourceId, state.labelCollisionSourceId])
   }
 
   private func visualAndInteractionSourceIds(for state: InstanceState) -> [String] {
-    Self.uniqueSourceIds([state.pinBundleSourceId, state.dotSourceId, state.labelCollisionSourceId])
+    Self.uniqueSourceIds([state.pinBundleSourceId, state.labelRenderSourceId, state.dotSourceId, state.labelCollisionSourceId])
   }
 
   private static func uniqueSourceIds(_ sourceIds: [String]) -> [String] {
@@ -9486,7 +9550,7 @@ final class SearchMapRenderController: RCTEventEmitter {
         case .success(let features):
           let primaryObservation = Self.buildRenderedLabelObservation(
             from: features,
-            allowedSourceIds: [latestState.pinBundleSourceId]
+            allowedSourceIds: [latestState.labelRenderSourceId]
           )
           let snapshot = self.commitRenderedLabelObservation(
             instanceId: instanceId,
@@ -10069,7 +10133,7 @@ final class SearchMapRenderController: RCTEventEmitter {
   }
 
   private func managedSourceIds(for state: InstanceState) -> [String] {
-    Self.uniqueSourceIds([state.pinBundleSourceId, state.dotSourceId, state.labelCollisionSourceId])
+    Self.uniqueSourceIds([state.pinBundleSourceId, state.labelRenderSourceId, state.dotSourceId, state.labelCollisionSourceId])
   }
 
   private func requiredSourceIds(for state: InstanceState) -> [String] {
