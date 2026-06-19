@@ -365,44 +365,9 @@ async function runDbSmokeCheck(): Promise<void> {
   );
 }
 
-// Synthetic-age decay test: exercises the exact age-weight expression from
-// loadCandidates (power(0.5, age_days / halfLife) over event mentioned_at). The
-// half-life's real *effect* needs a multi-year corpus, but the math is verified now.
-async function runDecayCheck(): Promise<void> {
-  if (skipDb) {
-    return;
-  }
-  const halfLife = config.endorsementHalfLifeDays;
-  const [w] = await prisma.$queryRaw<
-    Array<{ fresh: unknown; one_hl: unknown; two_hl: unknown }>
-  >`
-    SELECT
-      power(0.5, EXTRACT(EPOCH FROM (now() - now())) / 86400.0 / ${halfLife}::numeric) AS fresh,
-      power(0.5, EXTRACT(EPOCH FROM (now() - (now() - make_interval(days => (${halfLife})::int)))) / 86400.0 / ${halfLife}::numeric) AS one_hl,
-      power(0.5, EXTRACT(EPOCH FROM (now() - (now() - make_interval(days => (${halfLife} * 2)::int)))) / 86400.0 / ${halfLife}::numeric) AS two_hl
-  `;
-  const fresh = Number(w.fresh);
-  const oneHl = Number(w.one_hl);
-  const twoHl = Number(w.two_hl);
-  expectCheck(
-    'decay: post-date age-weight halves every half-life',
-    Math.abs(fresh - 1) < 1e-9 &&
-      Math.abs(oneHl - 0.5) < 1e-3 &&
-      Math.abs(twoHl - 0.25) < 1e-3,
-    'fresh=1.0, +1 half-life=0.5, +2 half-lives=0.25',
-    {
-      halfLifeDays: halfLife,
-      fresh: round(fresh, 4),
-      oneHalfLife: round(oneHl, 4),
-      twoHalfLives: round(twoHl, 4),
-    },
-  );
-}
-
 async function main(): Promise<void> {
   runInMemoryChecks();
   await runDbSmokeCheck();
-  await runDecayCheck();
 
   const failedChecks = checks.filter((check) => check.status === 'fail');
   const report = [

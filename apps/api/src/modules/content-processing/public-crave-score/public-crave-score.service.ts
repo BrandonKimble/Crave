@@ -47,7 +47,6 @@ const DEFAULT_CONFIG: PublicCraveScoreConfig = {
   discountRho: 0.5,
   dishWeight: 1.0,
   praiseWeight: 2.0,
-  endorsementHalfLifeDays: 365,
 };
 
 // Reusable: each restaurant's single scoring market (most-regional wins).
@@ -98,7 +97,7 @@ export class PublicCraveScoreService {
     await this.createRun(scoreRunId, config, recencyReferenceDate, params);
 
     try {
-      const candidates = await this.loadCandidates(config, params);
+      const candidates = await this.loadCandidates(params);
       const priorScores = await this.loadPriorScores(
         config,
         recencyReferenceDate,
@@ -397,16 +396,9 @@ export class PublicCraveScoreService {
     `;
   }
 
-  // Reads endorsement straight from the event ledger, decayed on-read by each
-  // event's Reddit post date (`mentioned_at`). The dish-side counts the dish's
-  // primary mention events (menu_item_food + food_mention), deduped by
-  // mention_key; the praise side counts by-name restaurant mentions. Category/
-  // attribute events are structural and excluded. `core_restaurant_items` is used
-  // only as the dish catalog (which connections exist + their restaurant/market).
-  private async loadCandidates(
-    config: PublicCraveScoreConfig,
-    params?: { fixtureRunId?: string },
-  ): Promise<CraveScoreCandidates> {
+  private async loadCandidates(params?: {
+    fixtureRunId?: string;
+  }): Promise<CraveScoreCandidates> {
     const fixtureRunId = params?.fixtureRunId ?? null;
     const dishFixtureFilter = fixtureRunId
       ? Prisma.sql`r.restaurant_metadata->>'fixtureRunId' = ${fixtureRunId}`
@@ -414,8 +406,6 @@ export class PublicCraveScoreService {
     const restFixtureFilter = fixtureRunId
       ? Prisma.sql`e.restaurant_metadata->>'fixtureRunId' = ${fixtureRunId}`
       : Prisma.sql`TRUE`;
-    // power(0.5, age_days / halfLife): one decayed weight per event by its age.
-    const halfLife = Prisma.sql`(${config.endorsementHalfLifeDays})::numeric`;
 
     const dishRows = await this.prisma.$queryRaw<DishRow[]>`
       WITH ${RESTAURANT_MARKETS_CTE}
@@ -423,57 +413,32 @@ export class PublicCraveScoreService {
         c.connection_id,
         c.restaurant_id,
         rm.market_key AS scoring_market_key,
-        COALESCE(d.decayed_mentions, 0)::numeric AS mentions,
-        COALESCE(d.decayed_upvotes, 0)::numeric AS upvotes
+        (c.mention_count + c.support_mention_count)::numeric AS mentions,
+        (c.total_upvotes + c.support_total_upvotes)::numeric AS upvotes
       FROM core_restaurant_items c
       JOIN core_entities r ON r.entity_id = c.restaurant_id
       LEFT JOIN restaurant_markets rm ON rm.entity_id = c.restaurant_id
-      LEFT JOIN LATERAL (
-        SELECT
-          SUM(m.weight) AS decayed_mentions,
-          SUM(m.upv * m.weight) AS decayed_upvotes
-        FROM (
-          SELECT
-            MAX(e.source_upvotes) AS upv,
-            power(
-              0.5,
-              EXTRACT(EPOCH FROM (now() - MAX(e.mentioned_at))) / 86400.0 / ${halfLife}
-            ) AS weight
-          FROM core_restaurant_entity_events e
-          WHERE e.restaurant_id = c.restaurant_id
-            AND e.entity_id = c.food_id
-            AND e.evidence_type IN ('menu_item_food', 'food_mention')
-          GROUP BY e.mention_key
-        ) m
-      ) d ON TRUE
       WHERE ${dishFixtureFilter}
     `;
 
     const restRows = await this.prisma.$queryRaw<RestaurantRow[]>`
-      WITH ${RESTAURANT_MARKETS_CTE}
+      WITH ${RESTAURANT_MARKETS_CTE},
+      restaurant_praise AS (
+        SELECT
+          restaurant_id,
+          COUNT(DISTINCT mention_key)::numeric AS praise_mentions,
+          COALESCE(SUM(source_upvotes), 0)::numeric AS praise_upvotes
+        FROM core_restaurant_events
+        GROUP BY restaurant_id
+      )
       SELECT
         e.entity_id AS restaurant_id,
         rm.market_key AS scoring_market_key,
-        COALESCE(p.decayed_mentions, 0)::numeric AS praise_mentions,
-        COALESCE(p.decayed_upvotes, 0)::numeric AS praise_upvotes
+        COALESCE(rp.praise_mentions, 0)::numeric AS praise_mentions,
+        COALESCE(rp.praise_upvotes, 0)::numeric AS praise_upvotes
       FROM core_entities e
       LEFT JOIN restaurant_markets rm ON rm.entity_id = e.entity_id
-      LEFT JOIN LATERAL (
-        SELECT
-          SUM(m.weight) AS decayed_mentions,
-          SUM(m.upv * m.weight) AS decayed_upvotes
-        FROM (
-          SELECT
-            MAX(ev.source_upvotes) AS upv,
-            power(
-              0.5,
-              EXTRACT(EPOCH FROM (now() - MAX(ev.mentioned_at))) / 86400.0 / ${halfLife}
-            ) AS weight
-          FROM core_restaurant_events ev
-          WHERE ev.restaurant_id = e.entity_id
-          GROUP BY ev.mention_key
-        ) m
-      ) p ON TRUE
+      LEFT JOIN restaurant_praise rp ON rp.restaurant_id = e.entity_id
       WHERE e.type = 'restaurant'
         AND ${restFixtureFilter}
     `;
