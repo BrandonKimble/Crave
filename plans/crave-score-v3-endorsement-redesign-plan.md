@@ -289,17 +289,39 @@ rather than inflated into the main ranking.
 
 ## 11. Phasing
 
-1. **Phase 0** — model probe + dial tuning on real data (§10).
-2. **Phase 1** — unified-ledger candidate loader (restaurant-level + dish, source-tagged,
-   decayed; trust upstream dedup).
-3. **Phase 2** — v3 math: flat dish score; discounted-acclaim + praise restaurant score;
-   global percentile; delete the shrinkage pipeline; bump v3.
-4. **Phase 3** — inclusion floor + visibility (hide ~28 empties; restaurant vs dish surfaces;
-   map color = score).
-5. **Phase 4 — Rising filter (§7):** backend sort on `score_delta_7d` (restaurant + dish) +
-   mobile Rising toggle cloned from the votes filter (pins/pagination/state already handled by
-   the existing toggle→rerun machinery). Fast-follow once v3 deltas are solid.
-6. **Phase 5** — retire `quality-score.service`; move search ordering to the new dish score.
+1. **Phase 0 ✅** — model probe + dial tuning on real data (§10). Dials locked: ρ=0.5,
+   w_dish/w_praise=1.0/2.0, dish w_m/w_u=0.7/0.3.
+2. **Phase 1 ✅** — unified-ledger candidate loader (restaurant praise via
+   `core_restaurant_events` + dish rollup via `core_restaurant_items`).
+3. **Phase 2 ✅** — v3 math: flat dish score; discounted-acclaim + praise restaurant score;
+   global percentile; shrinkage pipeline + market-stats deleted; bump v3. Migration
+   `20260619120000_crave_score_v3`. Verified on real data + the rewritten fixture validator.
+4. **Phase 3 — split:**
+   - **✅ Inclusion floor (backend, done):** scoring excludes true empties (E_rest=0; the ~28
+     no-dish/no-praise shells get no score row → absent from search via the INNER score join).
+   - **⏸ Surfacing relaxation (deferred — ships WITH frontend):** the restaurant search still
+     requires `EXISTS core_restaurant_items` (`search-query.builder` ~L126). Relaxing it to
+     `items OR core_restaurant_events` would surface endorsed dishless restaurants — but that
+     pushes them into result cards/pins the (deferred) frontend isn't built to render
+     (empty dish view). So the gate relaxation ships together with the dishless-card/pin
+     frontend work, not before it. Dish surfaces already only show has-dishes (they rank
+     connections), so no change needed there.
+5. **Phase 4 — Rising filter (§7):** backend sort on `score_delta_7d` + mobile toggle. The
+   backend sort is only triggered by the (deferred) toggle via the query plan, so it ships
+   with the frontend too; build both together as the documented fast-follow.
+6. **Phase 5 — retire `quality-score.service` (not yet — needs a deliberate, testable pass):**
+   - The dish **search ordering already uses `pcs.display_score`** (the v3 connection score),
+     not `foodQualityScore` — so that half of the original Phase 5 goal is already satisfied.
+   - But quality-score is **not** dormant: it is woven through (a) the **live Reddit collector**
+     (`unified-processing` `enableQualityScores` + `triggerQualityScoreUpdates` →
+     `projection-rebuild.refreshQualityScores`, writing connection `foodQualityScore` + entity
+     `restaurant_quality_score`), and (b) **live autocomplete** — `entity-text-search.service`
+     ranks by `COALESCE(e.restaurant_quality_score, 0) DESC`. Retiring it requires migrating
+     autocomplete ranking onto the v3 restaurant score (`public_restaurant_scores.display_score`)
+     and unwinding the collector flow — both touch live search + ingestion and can't be
+     integration-tested in this environment. Left as a deliberate follow-up (or do it with the
+     collector/autocomplete owner) rather than an autonomous rip-out. The redundancy is benign
+     in the meantime: quality-score no longer feeds the map or the main search ranking.
 7. **(Unblocks)** community-polls Phase 5C — poll/contribution endorsement now flows into the
    score because the scorer reads the unified ledger.
 
