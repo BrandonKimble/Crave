@@ -390,7 +390,6 @@ const QUIET_VISUAL_CONTRACT_FIELD_ALLOWLIST = new Map<string, string[]>([
       'searchMode',
       'activeTab',
       'readinessKey',
-      'isViewportLodPublish',
       'isMapMoving',
       'candidateRestaurantCount',
       'classifiedRestaurantCount',

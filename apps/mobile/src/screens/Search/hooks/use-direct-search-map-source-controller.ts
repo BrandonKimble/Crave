@@ -93,12 +93,6 @@ const arePinInteractionSourcesComplete = ({
 const SHORTCUT_COVERAGE_BOUNDS_BUCKET_DEGREES = 0.01;
 const SEARCH_MAP_VISUAL_PROJECTOR_VERSION = 'single-writer-stable-label-source-v4';
 
-type SearchMapSourcePublishReason = 'full' | 'viewport_lod';
-
-type PublishSearchMapSourcesOptions = {
-  reason?: SearchMapSourcePublishReason;
-};
-
 const buildLodPinnedVisualKey = (
   meta: ReadonlyArray<{ markerKey: string; lodZ: number }>
 ): string => buildStableKeyFingerprint(meta.map(({ markerKey, lodZ }) => `${markerKey}:${lodZ}`));
@@ -1104,12 +1098,8 @@ export const useDirectSearchMapSourceController = ({
     [adoptResidentSourceFrameSnapshot, sourceFramePort]
   );
 
-  const publishSourcesRef = React.useRef<(options?: PublishSearchMapSourcesOptions) => void>(
-    () => {}
-  );
-  publishSourcesRef.current = (options = {}) => {
-    const publishReason = options.reason ?? 'full';
-    const isViewportLodPublish = publishReason === 'viewport_lod';
+  const publishSourcesRef = React.useRef<() => void>(() => {});
+  publishSourcesRef.current = () => {
     const state = searchRuntimeBus.getState();
     const args = latestArgsRef.current;
     const projectionIsMapMoving =
@@ -1633,13 +1623,6 @@ export const useDirectSearchMapSourceController = ({
         })
       : emptyModel;
     const nextPinnedVisualKey = buildLodPinnedVisualKey(nextModel.nextPinnedMeta);
-    if (
-      isViewportLodPublish &&
-      projectionIsMapMoving &&
-      nextPinnedVisualKey === lodPinnedVisualKeyRef.current
-    ) {
-      return;
-    }
     // LOD TARGET-CHANGE attribution contract. Past this point the promoted-set visual
     // key CHANGED vs the previous publish, so at least one marker flipped promote/demote
     // — i.e. its crossfade target reversed. The lodTransitionTrace proved these flips are
@@ -1691,7 +1674,6 @@ export const useDirectSearchMapSourceController = ({
       if (demoteTotal > 0 || promoteFresh > 0) {
         logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
           event: 'lod_target_change_contract',
-          publishReason,
           isMapMoving: projectionIsMapMoving,
           prevPromoted: prevPromotedKeys.size,
           nextPromoted: nextPromotedKeys.size,
@@ -1888,7 +1870,6 @@ export const useDirectSearchMapSourceController = ({
       ) {
         logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
           event: 'lod_membership_churn_contract',
-          churnReason: publishReason,
           isMapMoving: projectionIsMapMoving,
           pinCount: nextPinIds.length,
           dotCount: nextDotIds.length,
@@ -1965,7 +1946,6 @@ export const useDirectSearchMapSourceController = ({
       }
       logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
         event: 'pin_publish_stability_contract',
-        publishReason,
         isMapMoving: projectionIsMapMoving,
         badgeChangedCount,
         coordinateSwapCount,
@@ -2297,7 +2277,6 @@ export const useDirectSearchMapSourceController = ({
           searchMode,
           activeTab,
           readinessKey,
-          isViewportLodPublish,
           isMapMoving: projectionIsMapMoving,
           candidateVisualIdentityCount: projectedVisualFrame.candidateVisualIdentityKeys.size,
           classifiedVisualIdentityCount: lodClassifiedVisualIdentityKeys.size,

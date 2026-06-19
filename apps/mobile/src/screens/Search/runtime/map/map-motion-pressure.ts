@@ -1,7 +1,5 @@
 type MapMotionPhase = 'gesture' | 'inertia' | 'settled';
-type MapPlannerAdmissionDecision = 'run_now' | 'skip_noop' | 'defer_for_pressure';
 type MapPlannerNormalWorkEffect = 'none' | 'admit' | 'coalesce';
-type MapPlannerWorkClass = 'visible_candidates' | 'lod_pins';
 
 type MapMotionTransactionPhase = 'preparing' | 'committing' | 'executing';
 
@@ -141,11 +139,6 @@ export const hasActiveProtectedPresentationTransaction = (state: MotionPressureS
   );
 };
 
-type MapPlannerAdmissionResult = {
-  decision: MapPlannerAdmissionDecision;
-  normalWorkEffect: MapPlannerNormalWorkEffect;
-};
-
 export const MAP_PLANNER_NORMAL_WORK_FAIRNESS_POLICY = {
   maxCoalescedCount: 8,
   maxWaitMs: 240,
@@ -161,59 +154,6 @@ export const shouldAdmitMapPlannerFairnessWork = ({
   state.coalescedNormalWorkCount >= MAP_PLANNER_NORMAL_WORK_FAIRNESS_POLICY.maxCoalescedCount ||
   (state.lastNormalWorkAdmittedAtMs > 0 &&
     nowMs - state.lastNormalWorkAdmittedAtMs >= MAP_PLANNER_NORMAL_WORK_FAIRNESS_POLICY.maxWaitMs);
-
-export const resolveMapPlannerAdmission = ({
-  hasMaterialChange,
-  pressureState,
-  nowMs,
-  workClass,
-}: {
-  hasMaterialChange: boolean;
-  pressureState: MotionPressureState;
-  nowMs: number;
-  workClass: MapPlannerWorkClass;
-}): MapPlannerAdmissionResult => {
-  if (!hasMaterialChange) {
-    return {
-      decision: 'skip_noop',
-      normalWorkEffect: 'none',
-    };
-  }
-
-  if (
-    workClass === 'visible_candidates' &&
-    (hasActiveProtectedPresentationTransaction(pressureState) ||
-      (pressureState.nativeSyncInFlight && pressureState.phase !== 'settled'))
-  ) {
-    if (
-      shouldAdmitMapPlannerFairnessWork({
-        state: pressureState,
-        nowMs,
-      })
-    ) {
-      return {
-        decision: 'run_now',
-        normalWorkEffect: 'admit',
-      };
-    }
-    return {
-      decision: 'defer_for_pressure',
-      normalWorkEffect: 'coalesce',
-    };
-  }
-
-  if (workClass === 'lod_pins' && hasActiveProtectedPresentationTransaction(pressureState)) {
-    return {
-      decision: 'defer_for_pressure',
-      normalWorkEffect: 'coalesce',
-    };
-  }
-
-  return {
-    decision: 'run_now',
-    normalWorkEffect: 'none',
-  };
-};
 
 export const shouldDeferMapMovementWork = ({
   pressureState,
