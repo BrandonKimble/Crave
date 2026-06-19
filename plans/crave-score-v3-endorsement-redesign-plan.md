@@ -309,19 +309,22 @@ rather than inflated into the main ranking.
 5. **Phase 4 — Rising filter (§7):** backend sort on `score_delta_7d` + mobile toggle. The
    backend sort is only triggered by the (deferred) toggle via the query plan, so it ships
    with the frontend too; build both together as the documented fast-follow.
-6. **Phase 5 — retire `quality-score.service` (not yet — needs a deliberate, testable pass):**
-   - The dish **search ordering already uses `pcs.display_score`** (the v3 connection score),
-     not `foodQualityScore` — so that half of the original Phase 5 goal is already satisfied.
-   - But quality-score is **not** dormant: it is woven through (a) the **live Reddit collector**
-     (`unified-processing` `enableQualityScores` + `triggerQualityScoreUpdates` →
-     `projection-rebuild.refreshQualityScores`, writing connection `foodQualityScore` + entity
-     `restaurant_quality_score`), and (b) **live autocomplete** — `entity-text-search.service`
-     ranks by `COALESCE(e.restaurant_quality_score, 0) DESC`. Retiring it requires migrating
-     autocomplete ranking onto the v3 restaurant score (`public_restaurant_scores.display_score`)
-     and unwinding the collector flow — both touch live search + ingestion and can't be
-     integration-tested in this environment. Left as a deliberate follow-up (or do it with the
-     collector/autocomplete owner) rather than an autonomous rip-out. The redundancy is benign
-     in the meantime: quality-score no longer feeds the map or the main search ranking.
+6. **Phase 5 — retire `quality-score.service` (partial: public surfaces done; deletion blocked):**
+   - ✅ **No public surface depends on it anymore.** Dish search ordering already used
+     `pcs.display_score` (the v3 connection score). Autocomplete (`entity-text-search.service`)
+     was migrated off `restaurant_quality_score` onto the v3 restaurant score via scalar
+     subquery (commit `5151aab0`). So the map, main search, and autocomplete are all off
+     quality-score.
+   - ⛔ **Service deletion is blocked by shared infrastructure, not just scoring.** Beyond
+     writing `foodQualityScore` / `restaurant_quality_score` (via `refreshQualityScores`, called
+     from `unified-processing`, `replay`, and `restaurant-entity-merge`), quality-score **hosts
+     the decay-config** (`timeDecay.mentionCountDecayDays` / `upvoteDecayDays`, with
+     `QUALITY_SCORE_*` env overrides) that `projection-rebuild.buildRestaurantItemProjections`
+     uses to compute `decayedMentionScore` / `decayedUpvoteScore` on every connection. Deleting
+     the service would break decayed-score computation in the live projection layer. Retiring it
+     cleanly first requires **relocating the decay config** to a standalone home and tracing all
+     `decayed*` consumers (search/activity/etc.) — a deliberate, testable refactor, not a blind
+     autonomous deletion. Left as the next focused pass. The redundancy is benign meanwhile.
 7. **(Unblocks)** community-polls Phase 5C — poll/contribution endorsement now flows into the
    score because the scorer reads the unified ledger.
 
