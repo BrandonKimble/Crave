@@ -1464,7 +1464,16 @@ export const useDirectSearchMapSourceController = ({
       restaurantOnlyId: effectiveRestaurantOnlyId,
       buildMarkerKey,
     });
-    const rankedCandidates = projectedInitialCandidates.rankedCandidates;
+    // RANK DEDUP: a shortcut search merges TWO backends (shortcut_coverage + main_results) that each
+    // rank their results from 1, so the raw feature.properties.rank collides across sources (the
+    // "multiple rank 10s" bug). The merged list here is already deduped-by-restaurant and sorted
+    // (source priority → rank → order), so the sorted POSITION is the single unified, unique,
+    // stable-per-search rank. Re-assign it so the rank badge, buildMarkerRenderModel top-N, and the
+    // native candidate catalog all read one consistent rank instead of two colliding rank spaces.
+    const rankedCandidates = projectedInitialCandidates.rankedCandidates.map((feature, index) => ({
+      ...feature,
+      properties: { ...feature.properties, rank: index + 1 },
+    }));
     const selectedRestaurantCandidates = projectedInitialCandidates.selectedRestaurantCandidates;
     // Stage B (B1): publish the full ranked candidate catalog (every showable
     // marker, NOT viewport-filtered) to the source frame port so native can
