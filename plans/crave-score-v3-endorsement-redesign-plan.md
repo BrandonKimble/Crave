@@ -356,17 +356,21 @@ were display-only and the delta/momentum axis subsumes "active/hot/rising". Gone
   half-life** ("how long an endorsement stays ~half-trustworthy"). Restaurants drift over
   years → start ~**12–18 months**, tune by eyeballing whether once-hot-now-quiet places sink.
 - **Decay-on-read, from the event ledger, by the original post date.** Compute at rebuild in
-  SQL: `weight = power(0.5, age_days / halflife)`, `age_days` from
-  **`collection_source_documents.source_created_at`** (the Reddit `created_utc`) — NOT
-  `mentioned_at` (that's ingestion time). Join `core_restaurant_entity_events` (dishes) /
-  `core_restaurant_events` (praise) → source docs; sum decayed weights. No materialized
-  decayed columns (the old ones are dropped). Data in DB, dial in code, math in SQL at rebuild.
-  This also moves dish endorsement onto the event ledger (advances the 5C ledger foundation).
+  SQL: `weight = power(0.5, age_days / halflife)`, `age_days` from the event's **`mentioned_at`**
+  — which is the Reddit post date (`mentionCreatedAt = new Date(mention.source_created_at)`;
+  verified equal to `collection_source_documents.source_created_at` for 100% of events, so no
+  source-doc join is needed). Sum decayed weights over `core_restaurant_entity_events` (dishes) /
+  `core_restaurant_events` (praise). No materialized decayed columns (dropped). Data in DB, dial
+  in code, math in SQL at rebuild. This moves dish endorsement onto the event ledger too
+  (advances the 5C foundation).
 
-**⛔ Blocked on data — deferred.** The entire collected corpus is a **~2-week slice** of recent
-Reddit posts (`source_created_at` spans 2026-05-17 → 06-01; ages 20–32 days). At any sane
-half-life every event weighs ~0.95 → **decay is inert on current data, and the half-life is
-untunable** (no age spread to validate against). Implementing now would ship decay math whose
-actual decay path is never exercised until a multi-year corpus exists (historical backfill, or
-months of ongoing collection). Recommendation: **lock the design (above), implement + tune when
-the corpus has real age spread.** Until then v3 stays on raw counts — correct, just time-flat.
+**⏸ Deferred to the launch archive collection.** Today's corpus is a **~2-week slice** because
+_chronological_ collection only pulls recent posts (post dates 2026-05-17 → 06-01, ages 20–32d).
+At any sane half-life every event weighs ~0.95 → decay is inert and the half-life is untunable
+now. At launch, the **archive collection backfills ~5 years of historical posts**; the post-date
+plumbing is already correct (`mentioned_at` = post date), so the data will span years and decay
+becomes meaningful + tunable automatically — **no data-pipeline work needed for decay.** Remaining
+work then is just **implementing Step 2** (the loadCandidates decay-weighted sum above + the one
+`endorsementHalfLifeDays` dial) and **tuning the half-life** by eyeballing whether once-hot-now-
+quiet places sink. Until then v3 stays on raw counts — correct, just time-flat (which is fine,
+since the whole corpus is the same age anyway).
