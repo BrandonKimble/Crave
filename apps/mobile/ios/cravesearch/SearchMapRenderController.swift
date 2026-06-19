@@ -785,6 +785,8 @@ final class SearchMapRenderController: RCTEventEmitter {
   private var presentationOpacityAnimators: [String: PresentationOpacityAnimator] = [:]
   private var livePinTransitionAnimators: [String: CADisplayLink] = [:]
   private var lastVisualDiagByInstance: [String: String] = [:]
+  // Harness: last [lodev] step emit time, for the per-frame render-cadence (jank) delta.
+  private var lastHarnessStepMs: Double = 0
   private var slowActionWindowsByInstanceAndScope: [String: SlowActionWindowState] = [:]
   private var nativeApplyAttributionEnabled = false
   private var nativeApplyAttributionStartedAtMs: Double?
@@ -8213,15 +8215,21 @@ final class SearchMapRenderController: RCTEventEmitter {
       ])
     }
 
-    // HARNESS [lodev] step event: the per-frame opacity stepper. midFade>0 means pins are
-    // actively crossfading THIS frame. If this fires with moving=true and midFade>0, opacity
-    // animates during the gesture (no render snap); if the stepper goes quiet during motion
-    // and midFade only climbs after moving=false, that IS the snap-after-gesture.
+    // HARNESS [lodev] step event: the per-frame opacity stepper.
+    //  - pinMidFade / dotMidFade: pins / dots actively crossfading THIS frame.
+    //  - xfadeGap: a pin demoting-in-place whose dot is NOT fading in alongside it (the dot
+    //    snaps in LATE after the pin fully faded out) — the demotion-crossfade bug.
+    //  - dtMs: ms since the last stepper frame = render cadence (jank/choppiness detector).
     if Self.lodHarnessEnabled {
+      let nowStepMs = Self.nowMs()
+      let dtMs = lastHarnessStepMs > 0 ? Int(nowStepMs - lastHarnessStepMs) : 0
+      lastHarnessStepMs = nowStepMs
       Self.harnessLog(
-        "{\"ev\":\"step\",\"t\":\(Int(Self.nowMs())),\"moving\":\(state.currentViewportIsMoving),"
+        "{\"ev\":\"step\",\"t\":\(Int(nowStepMs)),\"moving\":\(state.currentViewportIsMoving),"
           + "\"activePin\":\(pinFamilyState.livePinTransitionsByMarkerKey.count),"
-          + "\"midFade\":\(pinIntermediateOpacityCount),\"applied\":\(featureStatesToApply.count)}"
+          + "\"activeDot\":\(dotFamilyState.liveDotTransitionsByMarkerKey.count),"
+          + "\"pinMidFade\":\(pinIntermediateOpacityCount),\"dotMidFade\":\(dotIntermediateOpacityCount),"
+          + "\"xfadeGap\":\(crossfadeGapCount),\"applied\":\(featureStatesToApply.count),\"dtMs\":\(dtMs)}"
       )
     }
     Self.syncMountedSourceState(
@@ -10914,7 +10922,8 @@ final class SearchMapRenderController: RCTEventEmitter {
       let leaveCount = previouslyVisible.subtracting(onScreenSet).count
       let cam = handle.mapView.mapboxMap.cameraState
       Self.harnessLog(
-        "{\"ev\":\"frame\",\"t\":\(Int(Self.nowMs())),\"reason\":\"\(reason)\",\"moving\":\(isMoving),"
+        "{\"ev\":\"frame\",\"t\":\(Int(Self.nowMs())),\"e\":\(Int(Date().timeIntervalSince1970 * 1000)),"
+          + "\"reason\":\"\(reason)\",\"moving\":\(isMoving),"
           + "\"visible\":\(onScreenKeys.count),\"promoted\":\(nativePromotedKeys.count),"
           + "\"enter\":\(enterCount),\"leave\":\(leaveCount),"
           + "\"pitch\":\(String(format: "%.1f", cam.pitch)),\"zoom\":\(String(format: "%.2f", cam.zoom))}"

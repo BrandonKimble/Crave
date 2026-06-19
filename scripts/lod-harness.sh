@@ -34,10 +34,17 @@ xcrun simctl spawn "$UDID" log stream --style compact \
 LOGPID=$!
 xcrun simctl io "$UDID" recordVideo --codec=h264 "$VIDEO" >/dev/null 2>&1 &
 VIDPID=$!
+# Wall-clock epoch (ms) when recording started, so the analyzer can map an event's epoch (e)
+# to a video offset = (event.e - VIDEO_START_MS)/1000 for EXACT-MOMENT frame extraction.
+VIDEO_START_MS=$(python3 -c 'import time; print(int(time.time()*1000))')
+echo "$VIDEO_START_MS" > "$OUT.videostart"
 sleep 1
 
 mkdir -p /tmp/lodflows
-# Deterministic flow: search -> settle -> collapse sheet -> several slow pans -> settle.
+# Deterministic flow: search -> settle -> collapse -> slow pans -> ZOOM IN (double-taps) ->
+# settle -> zoom out (pinch via swipe-pair n/a; double-tap zoom-in is the reported-bug case).
+# Double-tap on a map point zooms Mapbox in one level; we step in several times to shrink the
+# visible set and force dot->pin promotion (the "zoom in -> dots vanish, nothing promotes" bug).
 cat > /tmp/lodflows/run.yaml <<EOF
 appId: $APP
 ---
@@ -50,7 +57,11 @@ appId: $APP
 - waitForAnimationToEnd: { timeout: 2000 }
 - swipe: { start: '40%, 30%', end: '70%, 50%', duration: 700 }   # slow pan 2
 - waitForAnimationToEnd: { timeout: 2000 }
-- swipe: { start: '60%, 50%', end: '30%, 35%', duration: 500 }   # pan 3
+- doubleTapOn: { point: '50%, 35%' }   # ZOOM IN 1
+- waitForAnimationToEnd: { timeout: 1800 }
+- doubleTapOn: { point: '50%, 35%' }   # ZOOM IN 2
+- waitForAnimationToEnd: { timeout: 1800 }
+- doubleTapOn: { point: '50%, 35%' }   # ZOOM IN 3
 - waitForAnimationToEnd: { timeout: 2500 }
 EOF
 
@@ -68,4 +79,4 @@ kill "$LOGPID" 2>/dev/null
 grep -oE '\[lodev\] \{.*\}' "$OUT.rawlog" 2>/dev/null | sed 's/^\[lodev\] //' > "$JSONL"
 echo "[harness] captured $(wc -l < "$JSONL" | tr -d ' ') events -> $JSONL ; video -> $VIDEO"
 
-node "$ROOT/scripts/lod-harness-analyze.js" "$JSONL" "$VIDEO"
+node "$ROOT/scripts/lod-harness-analyze.js" "$JSONL" "$VIDEO" "$VIDEO_START_MS"

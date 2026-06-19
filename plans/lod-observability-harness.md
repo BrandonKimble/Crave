@@ -148,3 +148,25 @@ timestamps to get the frame at the EXACT moment. (Sync via the t0 event + known 
   analyzer can extract the EXACT-moment frame for strict event↔frame validation. (b) FIX the snap:
   make native-driven LOD transitions NOT await a source commit (opacity-only, markers resident) —
   then re-run harness to confirm render_snap gone (midFade rate even across moving/idle).
+
+## WORKLOG cont. (harness V2 — crossfade/perf/zoom + epoch sync)
+
+- Added to [lodev]: step event now carries activeDot/pinMidFade/dotMidFade/xfadeGap/dtMs (crossfade
+  sync + per-frame render cadence); frame event carries epoch `e` (for exact-moment video sync).
+  Runner: resets NYC loc, records video-start epoch, adds ZOOM-IN (doubleTapOn) to the flow.
+  Analyzer: top-N correctness (under_promotion), zoom_collapse/zoom_depromote, crossfade_desync,
+  jank (fps), and epoch-based exact-moment frame offsets (swift /tmp/vframe.swift).
+- HARNESS V2 FOUND (matches user report): crossfade_desync (demoting pin with NO synchronized dot
+  fade-in → dot appears late); jank (~22fps during animation, 74/137 frames >24ms = the choppiness);
+  group_flip during zoom (16/12 flips at once on a zoom step — zoom batches promotion).
+- VALIDATION FINDING (trust the sim): the harness `promoted` count is the ROLE/decision count, not
+  the PIXEL-rendered count. At a zoomed frame the event said prom=8 but the screen showed ~2 rank
+  pins + dots (others mid-crossfade or not opacity=1). => NEXT: add a rendered-pin count (markers
+  with pin feature-state opacity > ~0.9) so the harness verifies what is actually SHOWING, not just
+  the role. This is required to truly verify "the top-N are correctly showing at every moment."
+- Zoom-disappear bug NOT reproduced via doubleTap (prom tracked visible: 8/8, 6/6). Likely needs a
+  faster pinch; harness flags (under_promotion/zoom_collapse/zoom_depromote) are in place to catch it.
+- NEXT FIXES (harness-found): (1) rendered-pin count refinement; (2) fix crossfade_desync — dot
+  fade-in must start synchronized with the pin fade-out on demotion; (3) fix jank — driveNativeLod
+  - reconcile run heavy work every camera frame (whole desired-collection rebuild); make it cheaper /
+    scope to affected; (4) reproduce + fix zoom-disappear.
