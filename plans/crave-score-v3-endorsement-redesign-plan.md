@@ -340,3 +340,33 @@ rather than inflated into the main ranking.
 - Whether a single comment that praises both a place and a dish logs to both ledgers
   (potential mild double-count); dedup by `mention_key`/source if so.
 - Percentile curve shape (uniform vs gentle S-curve) — decided by eyeballing the map.
+
+---
+
+## 13. Decay & recency — ideal shape + status
+
+**Recency window — RETIRED (Phase 5 Step 1, done).** `recentMentionCount` / `activityLevel`
+were display-only and the delta/momentum axis subsumes "active/hot/rising". Gone.
+
+**Decay — ideal shape (designed, NOT yet implemented):**
+
+- **Exponential, ONE half-life, applied per event by the event's age.** Kill the old
+  mention-365d / upvote-240d asymmetry — a mention and its upvotes are the same event at the
+  same instant. One dial: `endorsementHalfLifeDays`, framed as the **community-memory
+  half-life** ("how long an endorsement stays ~half-trustworthy"). Restaurants drift over
+  years → start ~**12–18 months**, tune by eyeballing whether once-hot-now-quiet places sink.
+- **Decay-on-read, from the event ledger, by the original post date.** Compute at rebuild in
+  SQL: `weight = power(0.5, age_days / halflife)`, `age_days` from
+  **`collection_source_documents.source_created_at`** (the Reddit `created_utc`) — NOT
+  `mentioned_at` (that's ingestion time). Join `core_restaurant_entity_events` (dishes) /
+  `core_restaurant_events` (praise) → source docs; sum decayed weights. No materialized
+  decayed columns (the old ones are dropped). Data in DB, dial in code, math in SQL at rebuild.
+  This also moves dish endorsement onto the event ledger (advances the 5C ledger foundation).
+
+**⛔ Blocked on data — deferred.** The entire collected corpus is a **~2-week slice** of recent
+Reddit posts (`source_created_at` spans 2026-05-17 → 06-01; ages 20–32 days). At any sane
+half-life every event weighs ~0.95 → **decay is inert on current data, and the half-life is
+untunable** (no age spread to validate against). Implementing now would ship decay math whose
+actual decay path is never exercised until a multi-year corpus exists (historical backfill, or
+months of ongoing collection). Recommendation: **lock the design (above), implement + tune when
+the corpus has real age spread.** Until then v3 stays on raw counts — correct, just time-flat.
