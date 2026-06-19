@@ -348,34 +348,56 @@ rather than inflated into the main ranking.
 
 ---
 
-## 13. Decay & recency — ideal shape + status
+## 13. Decay & the event-ledger scoring model (Step 2 — ✅ DONE)
 
-**Recency window — RETIRED (Phase 5 Step 1, done).** `recentMentionCount` / `activityLevel`
-were display-only and the delta/momentum axis subsumes "active/hot/rising". Gone.
+> **Implemented + validated.** `loadCandidates` now reads endorsement from the event ledger
+> with on-read decay (`endorsementHalfLifeDays` = 365 default). Healthy distribution (both types
+> 8/8 buckets, iconic top), all fixture invariants pass, and a synthetic-age decay check
+> verifies the weight halves every half-life. Decay is inert on today's same-age corpus by
+> design — it activates + becomes tunable when the launch archive collection backfills history.
+> The model below is the as-built spec.
 
-**Decay — ideal shape (designed, NOT yet implemented):**
+**Recency window — RETIRED (Step 1, done).** `recentMentionCount` / `activityLevel` were
+display-only; the delta/momentum axis subsumes "active/hot/rising".
 
-- **Exponential, ONE half-life, applied per event by the event's age.** Kill the old
-  mention-365d / upvote-240d asymmetry — a mention and its upvotes are the same event at the
-  same instant. One dial: `endorsementHalfLifeDays`, framed as the **community-memory
-  half-life** ("how long an endorsement stays ~half-trustworthy"). Restaurants drift over
-  years → start ~**12–18 months**, tune by eyeballing whether once-hot-now-quiet places sink.
-- **Decay-on-read, from the event ledger, by the original post date.** Compute at rebuild in
-  SQL: `weight = power(0.5, age_days / halflife)`, `age_days` from the event's **`mentioned_at`**
-  — which is the Reddit post date (`mentionCreatedAt = new Date(mention.source_created_at)`;
-  verified equal to `collection_source_documents.source_created_at` for 100% of events, so no
-  source-doc join is needed). Sum decayed weights over `core_restaurant_entity_events` (dishes) /
-  `core_restaurant_events` (praise). No materialized decayed columns (dropped). Data in DB, dial
-  in code, math in SQL at rebuild. This moves dish endorsement onto the event ledger too
-  (advances the 5C foundation).
+**The model: the event ledger is the single scoring source of truth.** Rather than read the
+pre-aggregated `core_restaurant_items` counts (a complex ingestion-time projection that uses
+`isMenuItem` — not stored on the ledger — and a support-mention fan-out), the scorer reads
+endorsement **directly from the event ledger**, with decay. `core_restaurant_items` becomes
+**structural only** (which dishes exist + their categories/attributes, for display/filter).
+This unifies the architecture (Reddit + polls + future adds all flow through the ledger the
+scorer reads — the 5C foundation) and makes decay native. We are intentionally redefining dish
+endorsement (current data is throwaway), so it will NOT match the legacy projection counts.
 
-**⏸ Deferred to the launch archive collection.** Today's corpus is a **~2-week slice** because
-_chronological_ collection only pulls recent posts (post dates 2026-05-17 → 06-01, ages 20–32d).
-At any sane half-life every event weighs ~0.95 → decay is inert and the half-life is untunable
-now. At launch, the **archive collection backfills ~5 years of historical posts**; the post-date
-plumbing is already correct (`mentioned_at` = post date), so the data will span years and decay
-becomes meaningful + tunable automatically — **no data-pipeline work needed for decay.** Remaining
-work then is just **implementing Step 2** (the loadCandidates decay-weighted sum above + the one
-`endorsementHalfLifeDays` dial) and **tuning the half-life** by eyeballing whether once-hot-now-
-quiet places sink. Until then v3 stays on raw counts — correct, just time-flat (which is fine,
-since the whole corpus is the same age anyway).
+**Endorsement by evidence type — only PRIMARY mentions count; annotations are structural:**
+
+- **Dish endorsement** = the dish's primary mention events: `menu_item_food` + `food_mention`
+  on `core_restaurant_entity_events` for `(restaurant_id, food_id)`, **deduped by
+  `mention_key`**. (No `isMenuItem` filter — it's an ingestion heuristic the ledger doesn't keep,
+  and a food mentioned with a restaurant is endorsement.)
+- **Restaurant endorsement (praise)** = by-name mention events on `core_restaurant_events`,
+  deduped by `mention_key`.
+- **`food_category` / `food_attribute` / `restaurant_attribute` = structural, NOT endorsement.**
+  They annotate the same comment that already produced a primary mention (categorize/attribute
+  the dish/place); counting them would double-count that comment and is exactly the legacy
+  support fan-out (one "best tacos" comment crediting every taco). Dropped from scoring.
+  → A knob: if category-level praise should credit the _restaurant_ later, add those events to
+  the praise term (never fanned onto dishes). Start without.
+
+**Decay — exponential, ONE half-life, on-read by post date:**
+
+- `weight = power(0.5, age_days / endorsementHalfLifeDays)`, `age_days` from the event's
+  **`mentioned_at`** (= the Reddit post date; verified equal to
+  `collection_source_documents.source_created_at` for 100% of events — no source-doc join).
+- `decayed_mentions = Σ weight` over the subject's deduped mention events;
+  `decayed_upvotes = Σ source_upvotes·weight`. These feed `E_dish` / `praise` (§4) unchanged.
+- Kill the old mention-365 / upvote-240 asymmetry — a mention and its upvotes share one age.
+  **One dial `endorsementHalfLifeDays`**, framed as the community-memory half-life; default
+  **~365** (1 year ≈ half), tune to taste. No materialized decayed columns. Data in DB, dial in
+  code, math in SQL at rebuild → always fresh; the Reddit phase-out engine.
+
+**Validation (no age-spread today, so):** (1) the new model must still produce a healthy
+distribution + sensible named top/bottom (Phase-0 eyeball); (2) a **synthetic-age unit test** in
+the fixture validator asserts a fresh event out-weighs an identical old one by the expected
+factor. The half-life's _effect_ (do once-hot-now-quiet places sink?) is only observable once the
+launch archive collection backfills multi-year history — but the mechanism is correct and ready.

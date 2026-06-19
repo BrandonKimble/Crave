@@ -17,6 +17,9 @@ export interface PublicCraveScoreConfig {
   discountRho: number; // geometric discount on sorted dish scores (peak↔breadth dial)
   dishWeight: number; // weight on the discounted dish-acclaim term
   praiseWeight: number; // weight on the restaurant-level praise term
+  // Community-memory half-life (days): an endorsement's age-weight halves every
+  // this-many days, applied per event by its Reddit post date. The phase-out engine.
+  endorsementHalfLifeDays: number;
 }
 
 // A dish (connection): its own endorsement, plus the restaurant it rolls up into.
