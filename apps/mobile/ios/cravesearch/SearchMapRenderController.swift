@@ -647,6 +647,11 @@ final class SearchMapRenderController: RCTEventEmitter {
     // Throttle signature so the native-visible-marker emit only fires when the
     // on-screen set actually changes (avoids redundant per-tick bridge traffic).
     var lastVisibleMarkerSetSignature: String?
+    // GRANULAR LOD (native-owned, Phase 2): the promoted set the native projector decided
+    // this frame (top-maxFullPins by rank among the on-screen set). driveNativeLod applies it
+    // to the role table per camera frame so promote/demote happens per-pin natively, with no
+    // JS round-trip / whole-frame republish.
+    var nativePromotedKeysInOrder: [String] = []
   }
 
   private struct SlowActionWindowState {
@@ -10769,6 +10774,54 @@ final class SearchMapRenderController: RCTEventEmitter {
   // `reason` distinguishes camera ticks from data-arrival projections in diagnostics.
   // Returns true when a (possibly empty) set was projected and the signature updated.
   @discardableResult
+  // GRANULAR LOD (native-owned, Phase 2). Apply the native promotion decision
+  // (nativePromotedKeysInOrder, computed by projectAndEmitOnScreenMarkers from the on-screen
+  // set) to the role table and drive the per-pin pin↔dot crossfade for ONLY the markers whose
+  // role changed this frame. No JS round-trip, no whole-frame republish — reconcile scopes its
+  // work to affectedMarkerKeys.
+  private func driveNativeLod(instanceId: String) {
+    guard var state = instances[instanceId] else {
+      return
+    }
+    // Only when fully VISIBLE: during the reveal preroll the presentation lane owns the fade
+    // and JS seeds the initial roles; taking over there risks reveal interference. Native owns
+    // per-frame LOD once the surface is visible (normal pan/zoom).
+    guard state.visualSourceLifecycleState == .visible else {
+      return
+    }
+    let rows = state.markerRoleTable.rowByMarkerKey
+    // Only promote markers that have a resident row (a pin feature to show).
+    let basePinned = state.nativePromotedKeysInOrder.filter { rows[$0] != nil }
+    // FORCE-PROMOTE the selected/tapped marker(s) regardless of rank or visibility, so a
+    // tapped pin stays a pin when you pan (mirrors JS collectSelectedEntries).
+    let basePinnedSet = Set(basePinned)
+    let forcedPromote = state.highlightedMarkerKeys.filter { rows[$0] != nil && !basePinnedSet.contains($0) }
+    let nextPinned = basePinned + forcedPromote
+    let nextPinnedSet = Set(nextPinned)
+    let prevPinnedSet = Set(state.markerRoleTable.pinnedMarkerKeysInOrder)
+    let affected = prevPinnedSet.symmetricDifference(nextPinnedSet)
+    guard !affected.isEmpty else {
+      return
+    }
+    let residentDots = state.markerRoleTable.residentDotMarkerKeysInOrder.isEmpty
+      ? Array(rows.keys)
+      : state.markerRoleTable.residentDotMarkerKeysInOrder
+    state.markerRoleTable.pinnedMarkerKeysInOrder = nextPinned
+    // A marker is a visible DOT iff it is resident and NOT promoted (the crossfade partner).
+    state.markerRoleTable.dotMarkerKeysInOrder = residentDots.filter { !nextPinnedSet.contains($0) }
+    instances[instanceId] = state
+    do {
+      try reconcileAndApplyLiveMarkerRoleOutputs(
+        for: instanceId,
+        affectedMarkerKeys: affected,
+        allowNewTransitions: true,
+        reason: "native_lod"
+      )
+    } catch {
+      NSLog("[mapdiag] native_lod reconcile failed: %@", error.localizedDescription)
+    }
+  }
+
   private func projectAndEmitOnScreenMarkers(
     instanceId: String,
     state: inout InstanceState,
@@ -10815,6 +10868,7 @@ final class SearchMapRenderController: RCTEventEmitter {
         .sorted { (rankByKey[$0] ?? Int.max) < (rankByKey[$1] ?? Int.max) }
         .prefix(shadowLodMaxFullPins)
     )
+    state.nativePromotedKeysInOrder = nativePromotedKeys
     let promotedRanks = nativePromotedKeys.compactMap { rankByKey[$0] }.sorted()
     NSLog(
       "[mapdiag] native_lod reason=%@ visible=%d promoted=%d ranks(min12)=%@",
@@ -10910,6 +10964,10 @@ final class SearchMapRenderController: RCTEventEmitter {
         isMoving: isMoving
       )
       instances[instanceId] = nextState
+      // GRANULAR LOD (native-owned, Phase 2): apply the just-computed promotion decision to
+      // the role table and crossfade ONLY the markers whose role changed — per-pin, native,
+      // no JS round-trip / whole-frame republish.
+      driveNativeLod(instanceId: instanceId)
       let labelObservation = Self.derivedFamilyState(sourceId: nextState.labelSourceId, state: nextState).labelObservation
       if labelObservation.observationEnabled {
         let refreshDelayMs = isMoving ? labelObservation.refreshMsMoving : 0

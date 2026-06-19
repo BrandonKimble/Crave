@@ -22,10 +22,7 @@ import {
   buildMarkerCatalogReadModel,
   buildRankedShortcutCoverageFeatures,
 } from '../runtime/map/map-read-model-builder';
-import {
-  resolveMapPlannerAdmission,
-  type MapMotionPressureController,
-} from '../runtime/map/map-motion-pressure';
+import { type MapMotionPressureController } from '../runtime/map/map-motion-pressure';
 import {
   createSearchMapSourceTransportFeature,
   createSearchMapSourceStoreBuilder,
@@ -2914,56 +2911,16 @@ export const useDirectSearchMapSourceController = ({
       (snapshot) => snapshot.redrawTransaction?.id ?? null,
       publishAndFetch
     );
-    // PER-PIN TRACKING DURING PAN. When the native projector reports a NEW on-screen set
-    // (coalesced to genuine set changes), re-run the promotion decision so a marker that
-    // just crossed the viewport edge promotes/demotes immediately — instead of waiting for
-    // the spatially-quantized viewport tick or a camera-stop settle (which sustained panning
-    // starves, leaving pins stuck demoted). Gated to ACTIVE USER MOTION only: the reveal's
-    // auto-zoom is programmatic and does NOT set isMapMoving, so the subscriber stays silent
-    // through the reveal preroll — no mid-reveal re-publish (which previously hung the reveal).
-    const unsubscribeNativeVisibleMarkers = sourceFramePort.subscribeNativeVisibleMarkers(() => {
-      const args = latestArgsRef.current;
-      const isUserMoving =
-        args.isMapMoving || isMapMotionPressureMoving(args.mapMotionPressureController);
-      if (!isUserMoving) {
-        return;
-      }
-      publishSourcesRef.current({ reason: 'viewport_lod' });
-    });
-    const unsubscribeViewport = viewportBoundsService.subscribe((bounds) => {
-      // Motion-pressure cutover: every viewport tick (plain shortcut OR
-      // natural/restaurant-only/highlighted) routes through the ONE admission decision
-      // (materiality + motion-pressure + fairness) instead of the old fixed 90ms cadence.
-      // Materiality is the projection-token identity; admission decides run_now/defer/skip.
-      // We intentionally do NOT adopt MP3's 4-tier (critical/high/normal/low) taxonomy —
-      // the existing 2-class (visible_candidates/lod_pins) + materiality + fairness model
-      // already expresses the need/capacity admission, and no need over it is demonstrated.
-      const token = buildShortcutViewportProjectionToken(bounds);
-      const hasMaterialChange =
-        token == null || token !== shortcutViewportLodCadenceRef.current.tokenIdentity;
-      const nowMs = Date.now();
-      const controller = latestArgsRef.current.mapMotionPressureController;
-      const admission = resolveMapPlannerAdmission({
-        hasMaterialChange,
-        pressureState: controller.getState(),
-        nowMs,
-        workClass: 'lod_pins',
-      });
-      if (admission.decision === 'run_now') {
-        shortcutViewportLodCadenceRef.current = { tokenIdentity: token };
-        controller.applyNormalWorkEffect(admission.normalWorkEffect, nowMs);
-        publishSourcesRef.current({ reason: 'viewport_lod' });
-      } else if (admission.decision === 'defer_for_pressure') {
-        // Coalesced under pressure: record fairness state and skip the publish. A later
-        // tick (or the settle-flush below) admits the deferred eval so markers never go
-        // stale. Settle-flush is guaranteed two ways: (1) handleMapIdle calls
-        // viewportBoundsService.setBounds(finalBounds) which re-fires THIS subscriber with
-        // pressureState.phase === 'settled' (lod_pins only defers under a protected
-        // presentation transaction, so it runs_now); and (2) the isMapMoving→false effect
-        // does an unconditional full publish on camera stop.
-        controller.applyNormalWorkEffect(admission.normalWorkEffect, nowMs);
-      }
-      // admission.decision === 'skip_noop' (no material change): do nothing.
+    // GRANULAR LOD (native-owned, Phase 2): the native projector now applies the promotion
+    // decision per camera frame and crossfades the pins that changed role directly (no JS
+    // round-trip, no whole-frame republish). So JS no longer re-publishes on camera ticks for
+    // LOD — that path is gone. JS publishes the resident sources only on DATA changes; native
+    // owns promote/demote during pan/zoom.
+    const unsubscribeViewport = viewportBoundsService.subscribe(() => {
+      // LOD promote/demote is native-owned now (driveNativeLod) — JS does NOT publish sources
+      // on camera ticks. The viewport tick only drives shortcut-coverage fetching (a data
+      // concern, not LOD). (The motion-pressure admission / projection-token machinery that
+      // used to gate the LOD publish is now dead and removed in Phase 3.)
       maybeFetchShortcutCoverage();
     });
     return () => {
@@ -2971,7 +2928,6 @@ export const useDirectSearchMapSourceController = ({
       unsubscribeMountedResults();
       unsubscribeSurfaceTransaction();
       unsubscribeRedrawTransaction();
-      unsubscribeNativeVisibleMarkers();
       unsubscribeViewport();
     };
   }, [
