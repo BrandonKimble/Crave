@@ -86,10 +86,10 @@ The score rebuilds from the source-tagged evidence ledger, not from denormalized
 Rules:
 
 - **Source-agnostic with per-source weights.** Default weight `1.0` for every `source_kind`.
-- **Decay / recency** is computed **on-read from each event's `mentioned_at`** (the Reddit post
-  date) at rebuild — NOT from materialized columns (the old `decayed*` columns are dropped). One
-  half-life dial. Full spec + status in **§13** (deferred to the launch archive collection; the
-  dish side must replicate the direct+support aggregation above when implemented).
+- **Decay / recency** is deferred to the launch archive collection (today's corpus is one ~2-week
+  slice, so decay is inert). When built, the **projection emits decay-ready per-mention records**
+  (preserving the categorical fan-out it already computes) and the scorer decay-sums them by post
+  date — NOT a scorer that re-reads raw events (it can't carry the fan-out). Full spec in **§13**.
 - **Dedup is handled upstream at ledger-write** — polls dedup by distinct user per the
   community-polls plan §13A; Reddit by `mention_key`. The scorer counts already-deduped
   events and adds no dedup logic of its own.
@@ -353,29 +353,32 @@ rather than inflated into the main ranking.
 **Recency window — RETIRED (Phase 5 Step 1, done).** `recentMentionCount` / `activityLevel`
 were display-only and the delta/momentum axis subsumes "active/hot/rising". Gone.
 
-**Decay — ideal shape (designed, NOT yet implemented):**
+### Categorical fan-out lives in the projection — keep it (verified working)
 
-- **Exponential, ONE half-life, applied per event by the event's age.** Kill the old
-  mention-365d / upvote-240d asymmetry — a mention and its upvotes are the same event at the
-  same instant. One dial: `endorsementHalfLifeDays`, framed as the **community-memory
-  half-life** ("how long an endorsement stays ~half-trustworthy"). Restaurants drift over
-  years → start ~**12–18 months**, tune by eyeballing whether once-hot-now-quiet places sink.
-- **Decay-on-read, from the event ledger, by the original post date.** Compute at rebuild in
-  SQL: `weight = power(0.5, age_days / halflife)`, `age_days` from the event's **`mentioned_at`**
-  — which is the Reddit post date (`mentionCreatedAt = new Date(mention.source_created_at)`;
-  verified equal to `collection_source_documents.source_created_at` for 100% of events, so no
-  source-doc join is needed). Sum decayed weights over `core_restaurant_entity_events` (dishes) /
-  `core_restaurant_events` (praise). No materialized decayed columns (dropped). Data in DB, dial
-  in code, math in SQL at rebuild. This moves dish endorsement onto the event ledger too
-  (advances the 5C foundation).
+A dish's `mention_count`/`support_mention_count` in `core_restaurant_items` is a smart
+ingestion projection (`projection-rebuild`): a **specific** mention (`is_menu_item=true`, e.g.
+"the carnitas taco") increments that dish; a **categorical** mention (`is_menu_item=false`, e.g.
+"the tacos are great") fans to **every existing matching dish** at the restaurant — gated by
+category **and attribute** (line 238 + 363–394), and it does NOT fan when a specific dish was
+named. Verified on real data (e.g. a "desserts" mention at Caffè Panna fans `+12` support to its
+affogato / biscoff tiramisu / etc.). **The scorer reads this via the counts** — it cannot
+reconstruct the fan-out from raw events (the attachment needs the projection's knowledge of which
+dishes exist + their categories; a Step-2 attempt to read raw events dropped it and was reverted).
 
-**⏸ Deferred to the launch archive collection.** Today's corpus is a **~2-week slice** because
-_chronological_ collection only pulls recent posts (post dates 2026-05-17 → 06-01, ages 20–32d).
-At any sane half-life every event weighs ~0.95 → decay is inert and the half-life is untunable
-now. At launch, the **archive collection backfills ~5 years of historical posts**; the post-date
-plumbing is already correct (`mentioned_at` = post date), so the data will span years and decay
-becomes meaningful + tunable automatically — **no data-pipeline work needed for decay.** Remaining
-work then is just **implementing Step 2** (the loadCandidates decay-weighted sum above + the one
-`endorsementHalfLifeDays` dial) and **tuning the half-life** by eyeballing whether once-hot-now-
-quiet places sink. Until then v3 stays on raw counts — correct, just time-flat (which is fine,
-since the whole corpus is the same age anyway).
+### Decay — ideal shape, deferred to the launch archive collection
+
+- **Exponential, ONE half-life** (`endorsementHalfLifeDays`, ~12–18 mo community-memory horizon),
+  weight `power(0.5, age_days / halflife)`, `age_days` from the event `mentioned_at` (= the Reddit
+  post date; verified). Kills the old mention-365/upvote-240 asymmetry. The Reddit phase-out engine.
+- **Architecture (the right one): the projection emits decay-ready per-mention records** — one row
+  per counted contribution (connection, `mentioned_at`, `source_upvotes`, direct|support),
+  preserving the fan-out + attribute gating it already computes — and the **scorer decay-sums them**
+  at rebuild. NOT "scorer reads raw events" (that can't carry the fan-out) and NOT a materialized
+  decayed score (these rows are raw; decay is applied fresh each rebuild → always current).
+- **Why deferred:** today's corpus is a **~2-week slice** (chronological collection only pulls
+  recent posts; post dates span 2026-05-17→06-01), so decay is **inert and the half-life
+  untunable** now, and the rework touches **live ingestion** for capability that sits dark until
+  launch. At launch the archive collection backfills ~5 yr of history (post-date plumbing already
+  correct → no pipeline work), and decay becomes meaningful + tunable — so build + validate + tune
+  the projection-emits-records rework **then**, together. Until then v3 reads the projection counts
+  (fan-out intact), time-flat — correct, since the whole corpus is the same age anyway.
