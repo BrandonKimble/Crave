@@ -1413,6 +1413,23 @@ const buildMarkerRoleRow = (
     };
   }
   if (dotFeature) {
+    // RESIDENT LOD: a demoted (dot) marker carries its FULL pin bundle whenever the pin is
+    // resident in the snapshot, so native can promote it on zoom/pan WITHOUT a JS republish — the
+    // LOD decision is native, but the pin DATA must travel with every candidate or native has
+    // nothing to render when it promotes (the load-time-pins-only bug). role stays 'dot'
+    // (opacity-driven); native promotes via pinnedMarkerKeysInOrder + raises opacity feature-state.
+    if (pinFeature != null) {
+      return {
+        markerKey,
+        role: 'dot',
+        slotIndex: finiteSlotIndexFromFeature(pinFeature),
+        pinFeature,
+        pinInteractionFeature: nextSnapshot.pinInteractions.transportFeatureById.get(markerKey),
+        dotFeature,
+        labelFeatures: collectTransportFeaturesForMarker(nextSnapshot.labels, markerKey),
+        labelCollisionFeature: nextSnapshot.labelCollisions.transportFeatureById.get(markerKey),
+      };
+    }
     return {
       markerKey,
       role: 'dot',

@@ -1766,15 +1766,24 @@ final class SearchMapRenderController: RCTEventEmitter {
     guard dotFeatures.count == 1 else {
       throw Self.parsedCollectionContractError("Demoted marker \(markerKey) missing dot role payload")
     }
+    // RESIDENT LOD: a dot row may CARRY its full pin bundle (resident, demoted at opacity 0) so
+    // native can promote it on zoom/pan with no JS republish. role stays "dot" (opacity-driven);
+    // the pin data rides along and is used when pinnedMarkerKeysInOrder (native decision) includes
+    // it. The bundle is all-or-nothing: a row either carries the complete pin payload or none.
+    let dotCarriesPinBundle =
+      pinFeatures.count == 1 &&
+      pinInteractionFeatures.count == 1 &&
+      labelFeatures.count == 4 &&
+      labelCollisionFeatures.count == 1
     return ParsedMarkerRoleRow(
       markerKey: markerKey,
       role: role,
-      slotIndex: nil,
-      pinFeature: nil,
-      pinInteractionFeature: nil,
+      slotIndex: slotIndex,
+      pinFeature: dotCarriesPinBundle ? pinFeatures.first : nil,
+      pinInteractionFeature: dotCarriesPinBundle ? pinInteractionFeatures.first : nil,
       dotFeature: dotFeatures.first,
-      labelFeatures: [],
-      labelCollisionFeature: nil
+      labelFeatures: dotCarriesPinBundle ? labelFeatures : [],
+      labelCollisionFeature: dotCarriesPinBundle ? labelCollisionFeatures.first : nil
     )
   }
 
@@ -5309,7 +5318,11 @@ final class SearchMapRenderController: RCTEventEmitter {
     Self.fnv1a64Append(&inputHash, string: String(roleTable.pinnedMarkerKeysInOrder.count))
 
     for (index, markerKey) in roleTable.pinnedMarkerKeysInOrder.enumerated() {
-      guard let row = roleTable.rowByMarkerKey[markerKey], row.role == "pin" else {
+      // RESIDENT LOD: the native promoted set (pinnedMarkerKeysInOrder) is the source of truth,
+      // not row.role. A natively-promoted marker may still have row.role=="dot" (driveNativeLod
+      // doesn't rewrite rows during a gesture) — include it as long as its row carries pin data
+      // (resident bundle). This is what lets a dot promote-and-render on zoom/pan.
+      guard let row = roleTable.rowByMarkerKey[markerKey], row.pinFeature != nil else {
         continue
       }
       let pinRevision = row.pinFeature?.diffKey ?? ""
@@ -5468,7 +5481,10 @@ final class SearchMapRenderController: RCTEventEmitter {
   ) -> DesiredMarkerFamilyPayloads {
     var payloads = DesiredMarkerFamilyPayloads()
     for markerKey in roleTable.pinnedMarkerKeysInOrder {
-      guard let row = roleTable.rowByMarkerKey[markerKey], row.role == "pin" else {
+      // RESIDENT LOD: include any marker the native decision promoted (pinnedMarkerKeysInOrder)
+      // whose row carries pin data — NOT just rows JS tagged role=="pin". This is the fix that
+      // lets a dot promote-and-render during a gesture (driveNativeLod doesn't rewrite row.role).
+      guard let row = roleTable.rowByMarkerKey[markerKey], row.pinFeature != nil else {
         continue
       }
       if let pinFeature = row.pinFeature {
