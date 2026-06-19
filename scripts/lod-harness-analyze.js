@@ -107,11 +107,18 @@ if (steps.length > 0) {
   // burst at gesture-end = the snap the eye sees.
   const movingRate = movingSteps.length ? movingMidFade / movingSteps.length : 0;
   const idleRate = idleSteps.length ? idleMidFade / idleSteps.length : 0;
-  console.log(`midFade/frame: moving ${movingRate.toFixed(2)} | idle ${idleRate.toFixed(2)} (skew ${movingRate ? (idleRate / movingRate).toFixed(1) : '∞'}x)`);
-  if (movingLods.length > 3 && idleRate > movingRate * 5 && idleRate > 3) {
-    flags.push({ issue: 'render_snap', t: idleSteps[0]?.t, detail: `crossfades concentrated at settle: ${idleRate.toFixed(1)} mid-fade pins/frame idle vs ${movingRate.toFixed(2)}/frame moving (${(idleRate / (movingRate || 1)).toFixed(0)}x). Per-pin fades deferred to gesture-end = the snap.` });
-  } else if (movingStepsAnimating === 0 && movingSteps.length > 5) {
-    flags.push({ issue: 'stepper_quiet_in_motion', t: movingSteps[0]?.t, detail: `stepper ran ${movingSteps.length} moving frames but never had a mid-fade pin — no per-pin crossfade during the gesture.` });
+  const movingAnimFrac = movingSteps.length ? movingStepsAnimating / movingSteps.length : 0;
+  console.log(`midFade/frame: moving ${movingRate.toFixed(2)} | idle ${idleRate.toFixed(2)}`);
+  console.log(`moving frames animating: ${(movingAnimFrac * 100).toFixed(0)}% | idle role-flips: ${idleLods.length}`);
+  // The real snap test: are per-pin crossfades happening DURING the gesture? If <30% of moving
+  // frames have any mid-fade pin (fades not animating while moving) AND the idle burst is large,
+  // the fades are deferred to settle (the snap). In-flight fades *completing* during the brief
+  // idle tail (with idle role-flips == 0) is NORMAL, not a snap.
+  if (movingSteps.length > 10 && movingAnimFrac < 0.3 && idleRate > 3) {
+    flags.push({ issue: 'render_snap', t: idleSteps[0]?.t, detail: `only ${(movingAnimFrac * 100).toFixed(0)}% of moving frames had a crossfade, then ${idleRate.toFixed(0)} mid-fade pins/frame at settle — fades deferred to gesture-end (the snap).` });
+  }
+  if (idleLods.length > 2) {
+    flags.push({ issue: 'flips_at_settle', t: idleLods[0]?.t, detail: `${idleLods.length} role-flips fired only AFTER motion stopped — promotion decision is deferred to settle.` });
   }
 }
 

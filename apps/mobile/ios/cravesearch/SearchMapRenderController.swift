@@ -4968,7 +4968,8 @@ final class SearchMapRenderController: RCTEventEmitter {
       desiredPinSnapshot: desiredPinSnapshot,
       desiredPayloads: desiredMarkerFamilyPayloads,
       nowMs: nowMs,
-      allowNewTransitions: shouldAnimateIncrementalTransitions
+      allowNewTransitions: shouldAnimateIncrementalTransitions,
+      suppressSourceCommitAwait: reason == "native_lod"
     )
     recordNativeApply(
       section: "live_role.update_pin_transitions",
@@ -6534,7 +6535,12 @@ final class SearchMapRenderController: RCTEventEmitter {
     desiredPinSnapshot: DesiredPinSnapshotState,
     desiredPayloads: DesiredMarkerFamilyPayloads,
     nowMs: Double,
-    allowNewTransitions: Bool
+    allowNewTransitions: Bool,
+    // SNAP FIX: when the LOD change is native-driven on a RESIDENT source (driveNativeLod —
+    // opacity-only, the pin feature is already present), a promoting pin must NOT wait for a
+    // source commit (there is none during a pan). Awaiting deferred every fade-in to the next
+    // source commit at settle = "pins snap in after the gesture." Suppress the await here.
+    suppressSourceCommitAwait: Bool = false
   ) {
     var pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
     let previousSnapshot = previousPinSnapshot
@@ -6654,6 +6660,7 @@ final class SearchMapRenderController: RCTEventEmitter {
           }
           let shouldAwaitSourceCommit =
             targetOpacity == 1 && !previousPresent && currentOpacity <= 0.001
+            && !suppressSourceCommitAwait
           nextTransitions[markerKey] = LivePinTransition(
             startOpacity: currentOpacity,
             targetOpacity: targetOpacity,
@@ -6682,7 +6689,7 @@ final class SearchMapRenderController: RCTEventEmitter {
         targetOpacity: targetOpacity,
         startedAtMs: nowMs,
         durationMs: livePinTransitionDurationMs,
-        isAwaitingSourceCommit: targetOpacity == 1,
+        isAwaitingSourceCommit: targetOpacity == 1 && !suppressSourceCommitAwait,
         awaitingSourceDataId: nil,
         hasAppliedTargetState: false,
         lodZ: lodZ,
