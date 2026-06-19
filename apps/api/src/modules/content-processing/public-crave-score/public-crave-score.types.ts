@@ -16,13 +16,9 @@ export interface PublicCraveScoreConfig {
   entityConfidenceK: number;
   entityConfidencePower: number;
   robustSpreadFloor: number;
-  pollAlpha: number;
-  pollConfidenceK: number;
   directMentionWeight: number;
   upvoteMassWeight: number;
   sourceBreadthWeight: number;
-  pollSignalWeight: number;
-  pollBreadthWeight: number;
   supportMentionWeight: number;
 }
 
@@ -35,11 +31,6 @@ export interface CraveScoreCandidate {
   supportMentionCount: number;
   upvoteMass: number;
   sourceDocumentCount: number;
-  pollCount: number;
-  pollVoteCount: number;
-  distinctPollVoterCount: number;
-  marketDistinctPollVoterCount?: number;
-  pollSignal: number;
 }
 
 export interface ScoredCraveSubject extends CraveScoreCandidate {

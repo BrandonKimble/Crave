@@ -11,12 +11,9 @@ import {
   PollCommentExtractionStatus,
   PollLeaderboardSubjectType,
   EntityType,
-  PollOptionSource,
-  PollOptionResolutionStatus,
   PollTopicStatus,
   PollTopicType,
   Prisma,
-  type User,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService, TextSanitizerService } from '../../shared';
@@ -24,8 +21,6 @@ import { ModerationService } from '../moderation/moderation.service';
 import { PollsGateway } from './polls.gateway';
 import { ListPollsQueryDto } from './dto/list-polls.dto';
 import { ListUserPollsDto, UserPollActivity } from './dto/list-user-polls.dto';
-import { CreatePollOptionDto } from './dto/create-poll-option.dto';
-import { CastPollVoteDto } from './dto/cast-poll-vote.dto';
 import { CreateCommentDto, EditCommentDto } from './dto/create-comment.dto';
 import {
   PollEntitySeedService,
@@ -42,8 +37,6 @@ import {
   EntityTextSearchService,
   type EntitySpan,
 } from '../entity-text-search/entity-text-search.service';
-
-const MAX_OPTIONS_PER_POLL = 8;
 
 @Injectable()
 export class PollsService {
@@ -65,7 +58,7 @@ export class PollsService {
     this.logger = loggerService.setContext('PollsService');
   }
 
-  async listPolls(query: ListPollsQueryDto, user?: User | null) {
+  async listPolls(query: ListPollsQueryDto) {
     const targetState =
       (query.state as PollState | undefined) ?? PollState.active;
     const targetMarketKey = query.marketKey ?? null;
@@ -79,10 +72,6 @@ export class PollsService {
       },
       orderBy: [{ launchedAt: 'desc' }, { scheduledFor: 'desc' }],
       include: {
-        options: {
-          orderBy: [{ voteCount: 'desc' }, { createdAt: 'asc' }],
-        },
-        metrics: true,
         topic: {
           select: {
             topicType: true,
@@ -101,10 +90,10 @@ export class PollsService {
     });
 
     const enriched = await this.attachMarketLabels(polls, targetMarketKey);
-    return this.attachCurrentUserVotes(enriched, user?.userId);
+    return enriched;
   }
 
-  async queryPolls(query: QueryPollsDto, user?: User | null) {
+  async queryPolls(query: QueryPollsDto) {
     let resolvedMarket: Awaited<
       ReturnType<MarketRegistryService['resolveViewportCoverage']>
     > | null = null;
@@ -154,13 +143,10 @@ export class PollsService {
         polls: [],
       };
     }
-    const polls = await this.listPolls(
-      {
-        marketKey: marketKey ?? undefined,
-        state: query.state,
-      },
-      user ?? null,
-    );
+    const polls = await this.listPolls({
+      marketKey: marketKey ?? undefined,
+      state: query.state,
+    });
     const marketName =
       polls[0]?.marketName ??
       resolvedMarket?.market?.marketShortName ??
@@ -367,10 +353,6 @@ export class PollsService {
           createdByUserId: userId,
         },
         include: {
-          options: {
-            orderBy: [{ voteCount: 'desc' }, { createdAt: 'asc' }],
-          },
-          metrics: true,
           topic: {
             select: {
               topicType: true,
@@ -544,10 +526,6 @@ export class PollsService {
         createdByUserId: userId,
       },
       include: {
-        options: {
-          orderBy: [{ voteCount: 'desc' }, { createdAt: 'asc' }],
-        },
-        metrics: true,
         topic: {
           select: {
             topicType: true,
@@ -579,14 +557,10 @@ export class PollsService {
     return enriched;
   }
 
-  async getPoll(pollId: string, user?: User | null) {
+  async getPoll(pollId: string) {
     const poll = await this.prisma.poll.findUnique({
       where: { pollId },
       include: {
-        options: {
-          orderBy: [{ voteCount: 'desc' }, { createdAt: 'asc' }],
-        },
-        metrics: true,
         topic: {
           select: {
             topicType: true,
@@ -607,402 +581,8 @@ export class PollsService {
       throw new NotFoundException('Poll not found');
     }
 
-    const [hydrated] = await this.attachCurrentUserVotes([poll], user?.userId);
-    const [enriched] = await this.attachMarketLabels([hydrated]);
+    const [enriched] = await this.attachMarketLabels([poll]);
     return enriched;
-  }
-
-  private async attachCurrentUserVotes<
-    T extends { pollId: string; options: Array<{ optionId: string }> },
-  >(polls: T[], userId?: string | null) {
-    if (!userId || !polls.length) {
-      return polls;
-    }
-
-    const pollIds = polls.map((poll) => poll.pollId);
-    const votes = await this.prisma.pollVote.findMany({
-      where: {
-        pollId: { in: pollIds },
-        userId,
-      },
-      select: {
-        pollId: true,
-        optionId: true,
-      },
-    });
-
-    const voteMap = votes.reduce<Map<string, Set<string>>>((acc, vote) => {
-      if (!acc.has(vote.pollId)) {
-        acc.set(vote.pollId, new Set());
-      }
-      acc.get(vote.pollId)?.add(vote.optionId);
-      return acc;
-    }, new Map());
-
-    return polls.map((poll) => {
-      const optionVotes = voteMap.get(poll.pollId) ?? new Set<string>();
-      return {
-        ...poll,
-        options: poll.options.map((option) => ({
-          ...option,
-          currentUserVoted: optionVotes.has(option.optionId),
-        })),
-      };
-    });
-  }
-
-  async addOption(pollId: string, dto: CreatePollOptionDto, userId: string) {
-    const poll = await this.prisma.poll.findUnique({
-      where: { pollId },
-      include: {
-        options: true,
-        topic: true,
-      },
-    });
-    if (!poll) {
-      throw new NotFoundException('Poll not found');
-    }
-    if (poll.state !== PollState.active) {
-      throw new BadRequestException('Poll is not accepting new options');
-    }
-    if (poll.options.length >= MAX_OPTIONS_PER_POLL) {
-      throw new BadRequestException(
-        'Poll already has the maximum number of options',
-      );
-    }
-
-    const sanitizedLabel = this.sanitizer.sanitizeOrThrow(dto.label, {
-      maxLength: 140,
-    });
-    const sanitizedRestaurantName = dto.restaurantName
-      ? this.sanitizer
-          .sanitizeOrThrow(dto.restaurantName, {
-            maxLength: 140,
-            allowEmpty: true,
-          })
-          .trim()
-      : '';
-    const sanitizedDishName = dto.dishName
-      ? this.sanitizer
-          .sanitizeOrThrow(dto.dishName, {
-            maxLength: 140,
-            allowEmpty: true,
-          })
-          .trim()
-      : '';
-    const moderationDecision =
-      await this.moderation.moderateText(sanitizedLabel);
-    if (!moderationDecision.allowed) {
-      throw new BadRequestException(
-        `Option rejected by moderation: ${moderationDecision.reason}`,
-      );
-    }
-
-    if (!poll.topic) {
-      throw new BadRequestException('Poll topic metadata missing');
-    }
-
-    if (!poll.marketKey) {
-      throw new BadRequestException('Poll market metadata missing');
-    }
-    const marketContext =
-      (await this.resolveMarketContext(poll.marketKey)) ??
-      ({
-        marketKey: poll.marketKey,
-        center: undefined,
-        city: null,
-        region: null,
-        countryCode: null,
-      } satisfies MarketContext);
-
-    let foodId: string | null = null;
-    let restaurantId: string | null = null;
-    let categoryId: string | null = null;
-    let connectionId: string | null = null;
-    let storedEntityId: string | null = null;
-
-    switch (poll.topic.topicType) {
-      case PollTopicType.best_dish: {
-        if (!poll.topic.targetDishId) {
-          throw new BadRequestException('Poll topic is misconfigured');
-        }
-        const restaurantResult =
-          await this.pollEntitySeedService.resolveRestaurant({
-            entityId: dto.restaurantId ?? null,
-            name: sanitizedRestaurantName || sanitizedLabel,
-            market: marketContext,
-            sessionToken: dto.sessionToken,
-          });
-        restaurantId = restaurantResult.entityId;
-        categoryId = poll.topic.targetDishId;
-        storedEntityId = restaurantId;
-        break;
-      }
-      case PollTopicType.what_to_order: {
-        if (!poll.topic.targetRestaurantId) {
-          throw new BadRequestException('Poll topic is misconfigured');
-        }
-        restaurantId = poll.topic.targetRestaurantId;
-        const dishResult = await this.pollEntitySeedService.resolveFood({
-          entityId: dto.dishEntityId ?? null,
-          name: sanitizedDishName || sanitizedLabel,
-        });
-        foodId = dishResult.entityId;
-        storedEntityId = foodId;
-        connectionId = await this.pollEntitySeedService.ensureConnection({
-          restaurantId,
-          foodId,
-        });
-        break;
-      }
-      case PollTopicType.best_dish_attribute: {
-        if (!poll.topic.targetFoodAttributeId) {
-          throw new BadRequestException('Poll topic is misconfigured');
-        }
-        const dishResult = await this.pollEntitySeedService.resolveFood({
-          entityId: dto.dishEntityId ?? null,
-          name: sanitizedDishName || null,
-        });
-        const restaurantResult =
-          await this.pollEntitySeedService.resolveRestaurant({
-            entityId: dto.restaurantId ?? null,
-            name: sanitizedRestaurantName || null,
-            market: marketContext,
-            sessionToken: dto.sessionToken,
-          });
-        foodId = dishResult.entityId;
-        restaurantId = restaurantResult.entityId;
-        storedEntityId = foodId;
-        connectionId = await this.pollEntitySeedService.ensureConnection({
-          restaurantId,
-          foodId,
-          attributeId: poll.topic.targetFoodAttributeId,
-        });
-        break;
-      }
-      case PollTopicType.best_restaurant_attribute: {
-        if (!poll.topic.targetRestaurantAttributeId) {
-          throw new BadRequestException('Poll topic is misconfigured');
-        }
-        const restaurantResult =
-          await this.pollEntitySeedService.resolveRestaurant({
-            entityId: dto.restaurantId ?? null,
-            name: sanitizedRestaurantName || sanitizedLabel,
-            market: marketContext,
-            sessionToken: dto.sessionToken,
-          });
-        restaurantId = restaurantResult.entityId;
-        storedEntityId = restaurantId;
-        await this.pollEntitySeedService.ensureRestaurantAttribute({
-          restaurantId,
-          attributeId: poll.topic.targetRestaurantAttributeId,
-        });
-        break;
-      }
-      default: {
-        throw new BadRequestException('Unsupported poll type');
-      }
-    }
-
-    const duplicate = poll.options.find((option) => {
-      if (connectionId && option.connectionId === connectionId) {
-        return true;
-      }
-      if (
-        !connectionId &&
-        categoryId &&
-        option.categoryId === categoryId &&
-        option.restaurantId === restaurantId
-      ) {
-        return true;
-      }
-      if (
-        poll.topic?.topicType === PollTopicType.best_restaurant_attribute &&
-        restaurantId &&
-        option.restaurantId === restaurantId
-      ) {
-        return true;
-      }
-      return option.label.toLowerCase() === sanitizedLabel.toLowerCase();
-    });
-    if (duplicate) {
-      return duplicate;
-    }
-
-    const existingContribution = await this.prisma.pollOption.findFirst({
-      where: { pollId, addedByUserId: userId },
-      select: { optionId: true },
-    });
-    const existingVote = await this.prisma.pollVote.findFirst({
-      where: { pollId, userId },
-      select: { pollId: true },
-    });
-
-    const option = await this.prisma.pollOption.create({
-      data: {
-        pollId,
-        label: sanitizedLabel,
-        entityId: storedEntityId,
-        restaurantId,
-        foodId,
-        connectionId,
-        categoryId,
-        source: dto.entityId ? PollOptionSource.curator : PollOptionSource.user,
-        addedByUserId: userId,
-        resolutionStatus: PollOptionResolutionStatus.matched,
-        metadata: {
-          createdBy: userId,
-        },
-      },
-    });
-
-    this.gateway.emitPollUpdate(pollId);
-    if (!existingContribution && !existingVote) {
-      await this.userStats.applyDelta(userId, { pollsContributedCount: 1 });
-    }
-    void this.userEventService.recordEvent({
-      userId,
-      eventType: 'poll_option_added',
-      eventData: {
-        pollId,
-        optionId: option.optionId,
-      },
-    });
-    return option;
-  }
-
-  async castVote(pollId: string, dto: CastPollVoteDto, userId: string) {
-    const poll = await this.prisma.poll.findUnique({
-      where: { pollId },
-      select: { pollId: true, state: true },
-    });
-    if (!poll) {
-      throw new NotFoundException('Poll not found');
-    }
-    if (poll.state !== PollState.active) {
-      throw new BadRequestException('Poll is not active');
-    }
-
-    const result = await this.prisma.$transaction(async (tx) => {
-      const option = await tx.pollOption.findUnique({
-        where: { optionId: dto.optionId },
-      });
-      if (!option || option.pollId !== pollId) {
-        throw new NotFoundException('Option not found for poll');
-      }
-
-      const now = new Date();
-      const optionVote = await tx.pollVote.findFirst({
-        where: {
-          optionId: dto.optionId,
-          userId,
-        },
-      });
-
-      if (optionVote) {
-        await tx.pollVote.deleteMany({
-          where: {
-            optionId: dto.optionId,
-            userId,
-          },
-        });
-        const remainingVotes = await tx.pollVote.count({
-          where: {
-            pollId,
-            userId,
-          },
-        });
-        const updatedOption = await tx.pollOption.update({
-          where: { optionId: dto.optionId },
-          data: {
-            voteCount: { decrement: 1 },
-            lastVoteAt: now,
-          },
-        });
-        await this.updatePollMetrics(tx, pollId, {
-          totalVotes: { decrement: 1 },
-          ...(remainingVotes === 0
-            ? { totalParticipants: { decrement: 1 } }
-            : {}),
-          lastAggregatedAt: now,
-        });
-        this.gateway.emitPollUpdate(pollId);
-        return {
-          option: updatedOption,
-          eventType: 'poll_vote_removed',
-        };
-      }
-
-      const hadAnyVote = await tx.pollVote.findFirst({
-        where: {
-          pollId,
-          userId,
-        },
-        select: { pollId: true },
-      });
-
-      await tx.pollVote.create({
-        data: {
-          pollId,
-          optionId: dto.optionId,
-          userId,
-        },
-      });
-
-      const updatedOption = await tx.pollOption.update({
-        where: { optionId: dto.optionId },
-        data: {
-          voteCount: { increment: 1 },
-          lastVoteAt: now,
-        },
-      });
-
-      await this.updatePollMetrics(
-        tx,
-        pollId,
-        {
-          totalVotes: { increment: 1 },
-          ...(hadAnyVote ? {} : { totalParticipants: { increment: 1 } }),
-          lastAggregatedAt: now,
-        },
-        hadAnyVote
-          ? undefined
-          : {
-              pollId,
-              totalVotes: 1,
-              totalParticipants: 1,
-              lastAggregatedAt: now,
-            },
-      );
-
-      this.gateway.emitPollUpdate(pollId);
-      return {
-        option: updatedOption,
-        eventType: 'poll_vote_cast',
-        isFirstVote: !hadAnyVote,
-      };
-    });
-
-    void this.userEventService.recordEvent({
-      userId,
-      eventType: result.eventType,
-      eventData: {
-        pollId,
-        optionId: dto.optionId,
-      },
-    });
-
-    if (result.eventType === 'poll_vote_cast' && result.isFirstVote) {
-      const existingOption = await this.prisma.pollOption.findFirst({
-        where: { pollId, addedByUserId: userId },
-        select: { optionId: true },
-      });
-      if (!existingOption) {
-        await this.userStats.applyDelta(userId, { pollsContributedCount: 1 });
-      }
-    }
-
-    return result.option;
   }
 
   // ─── Comments (Phase 4) ──────────────────────────────────────────────────
@@ -1395,10 +975,6 @@ export class PollsService {
         skip: offset,
         take: limit,
         include: {
-          options: {
-            orderBy: [{ voteCount: 'desc' }, { createdAt: 'asc' }],
-          },
-          metrics: true,
           topic: {
             select: {
               topicType: true,
@@ -1418,35 +994,22 @@ export class PollsService {
       const enriched = await this.attachMarketLabels(polls, marketKey);
       return {
         activity,
-        polls: await this.attachCurrentUserVotes(enriched, userId),
+        polls: enriched,
       };
     }
 
     const pollIds = new Set<string>();
     if (
-      activity === UserPollActivity.voted ||
+      activity === UserPollActivity.commented ||
       activity === UserPollActivity.participated
     ) {
-      const votes = await this.prisma.pollVote.findMany({
-        where: { userId },
+      const comments = await this.prisma.pollComment.findMany({
+        where: { userId, deletedAt: null },
         select: { pollId: true },
         distinct: ['pollId'],
       });
-      for (const vote of votes) {
-        pollIds.add(vote.pollId);
-      }
-    }
-    if (
-      activity === UserPollActivity.optionAdded ||
-      activity === UserPollActivity.participated
-    ) {
-      const options = await this.prisma.pollOption.findMany({
-        where: { addedByUserId: userId },
-        select: { pollId: true },
-        distinct: ['pollId'],
-      });
-      for (const option of options) {
-        pollIds.add(option.pollId);
+      for (const comment of comments) {
+        pollIds.add(comment.pollId);
       }
     }
     if (activity === UserPollActivity.participated) {
@@ -1473,10 +1036,6 @@ export class PollsService {
             skip: offset,
             take: limit,
             include: {
-              options: {
-                orderBy: [{ voteCount: 'desc' }, { createdAt: 'asc' }],
-              },
-              metrics: true,
               topic: {
                 select: {
                   topicType: true,
@@ -1497,7 +1056,7 @@ export class PollsService {
     const enriched = await this.attachMarketLabels(polls, marketKey);
     return {
       activity,
-      polls: await this.attachCurrentUserVotes(enriched, userId),
+      polls: enriched,
     };
   }
 
@@ -1689,27 +1248,6 @@ export class PollsService {
       return Number.isFinite(numeric) ? numeric : null;
     }
     return null;
-  }
-
-  private async updatePollMetrics(
-    tx: Prisma.TransactionClient,
-    pollId: string,
-    data: Prisma.PollMetricUpdateInput,
-    createData?: Prisma.PollMetricUncheckedCreateInput,
-  ) {
-    await tx.pollMetric.upsert({
-      where: { pollId },
-      update: data,
-      create:
-        createData ??
-        ({
-          pollId,
-          totalVotes: 0,
-          totalParticipants: 0,
-          lastAggregatedAt:
-            (data.lastAggregatedAt as Date | null | undefined) ?? null,
-        } satisfies Prisma.PollMetricUncheckedCreateInput),
-    });
   }
 
   async closePoll(pollId: string): Promise<void> {

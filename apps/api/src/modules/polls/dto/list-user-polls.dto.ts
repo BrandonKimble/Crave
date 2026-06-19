@@ -4,8 +4,7 @@ import { PollState } from '@prisma/client';
 
 export enum UserPollActivity {
   created = 'created',
-  voted = 'voted',
-  optionAdded = 'option_added',
+  commented = 'commented',
   participated = 'participated',
 }
 

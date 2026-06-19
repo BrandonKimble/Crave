@@ -4,6 +4,19 @@
 
 Execution-ready target plan. This supersedes `plans/contextual-score-cutover-plan.md`.
 
+> **⚠️ Poll-evidence sections superseded (2026-06-18).** Every "poll performance / distinct
+> poll voters / poll_signal" idea below (notably the `poll_performance`/`poll_confidence`/
+> `poll_signal` formulas, the `poll_options`/`poll_votes`/`poll_metrics` derivations, and poll
+> evidence in `rawQualityScore`) has been **retired**. The poll vote MODEL is removed (see the
+> community-polls plan §2.4), and polls no longer feed the live public Crave Score at all — poll
+> evidence will re-enter only via the close-time `poll_thread` collection source (community-polls
+> Phase 5C/§6.3), as a named provenance source in the normal evidence ledger, never as a pseudo
+> mention or a distinct-voter confidence term. Removing the poll-voter term from the confidence
+> evidence (`entityEvidence`/`marketEvidence`) shrank the evidence scale, so the confidence
+> saturation was recalibrated to the poll-free scale: `entityConfidenceK` 18→4 (the display curve
+> is unchanged) and `scoreVersion` bumped `crave-score-v1` → `crave-score-v2`. Read the formulas
+> below as historical design context only.
+
 This is a cleanup-first cutover. Do not preserve `contextualScore` as a
 compatibility alias, do not keep rank-derived forced-100 display scores, and do
 not expose raw quality values as the public score.

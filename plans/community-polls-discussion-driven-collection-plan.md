@@ -131,9 +131,15 @@ The leaderboard does NOT get its own table of votes. It is a **projection**:
 
 > **✅ DONE.** Pollution deleted (Phase 2A, commit 7cad3a9d). The "legit half" rewrite is done
 > (commit 32a9303f): `poll-aggregation`'s vote tally is retired and now refreshes the
-> comment-endorsement leaderboard (Phase 4D). Remaining: the close-time `poll_thread` collection
-> source (the authoritative scoring path) is Phase 5C/§6.3; the vote MODEL itself is deprecated but
-> not yet removed.
+> comment-endorsement leaderboard (Phase 4D). The vote MODEL itself is now **fully removed** —
+> models `PollOption`/`PollVote`/`PollMetric` (+ enums `PollOptionSource`/`PollOptionResolutionStatus`)
+> dropped via migration `20260618233116_drop_poll_vote_model`; `addOption`/`castVote` endpoints +
+> service methods, their DTOs, the entity-merge rehome helpers, and the live poll signal in the
+> public Crave Score (distinct-poll-voter evidence + the 9 poll CTEs) are all deleted. Removing the
+> poll-voter term from the score's confidence evidence required a recalibration — see the
+> crave-score plan's poll-removal note (`scoreVersion` bumped to `crave-score-v2`,
+> `entityConfidenceK` 18→4). Remaining: the close-time `poll_thread` collection source (the
+> authoritative scoring path) is Phase 5C/§6.3.
 
 - **Pollution is in THREE places (verified in code), not one — delete all:**
   1. `poll-aggregation.service` `applyConnectionSignals` directly increments

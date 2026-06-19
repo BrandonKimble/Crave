@@ -6,12 +6,10 @@ import { LoggerService } from '../../shared';
 import { PollsService } from './polls.service';
 
 /**
- * Periodic backstop for the comment-endorsement leaderboard. The vote tally this
- * service used to run (PollOption voteCount/consensus + the pseudo-mention bridge)
- * is retired (§2.4): the leaderboard is now the endorsement projection, rebuilt on
- * each comment interaction. This cron just re-projects every active poll as a
- * safety net (catches any missed interaction-time rebuild) and is the hook a future
- * close-time finalize will reuse.
+ * Periodic backstop for the comment-endorsement leaderboard. The leaderboard is the
+ * endorsement projection, rebuilt on each comment interaction; this cron just
+ * re-projects every active poll as a safety net (catches any missed interaction-time
+ * rebuild) and is the hook a future close-time finalize will reuse.
  */
 @Injectable()
 export class PollAggregationService {

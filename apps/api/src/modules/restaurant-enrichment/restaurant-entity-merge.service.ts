@@ -176,11 +176,6 @@ export class RestaurantEntityMergeService {
     await this.rehomeUserFavorites(tx, canonicalId, duplicateId);
     await this.rehomeUserFavoriteEvents(tx, canonicalId, duplicateId);
     await this.rehomeFavoriteListRestaurantItems(tx, canonicalId, duplicateId);
-    await this.rehomePollOptionRestaurantReferences(
-      tx,
-      canonicalId,
-      duplicateId,
-    );
     await this.rehomePollTopicRestaurantTargets(tx, canonicalId, duplicateId);
     await this.rehomeOnDemandRequestEntities(tx, canonicalId, duplicateId);
     await this.rehomeOnDemandAskEventEntities(tx, canonicalId, duplicateId);
@@ -366,22 +361,6 @@ export class RestaurantEntityMergeService {
         data: { restaurantId: canonicalId },
       });
     }
-  }
-
-  private async rehomePollOptionRestaurantReferences(
-    tx: Prisma.TransactionClient,
-    canonicalId: string,
-    duplicateId: string,
-  ): Promise<void> {
-    await tx.pollOption.updateMany({
-      where: { restaurantId: duplicateId },
-      data: { restaurantId: canonicalId },
-    });
-
-    await tx.pollOption.updateMany({
-      where: { entityId: duplicateId },
-      data: { entityId: canonicalId },
-    });
   }
 
   private async rehomePollTopicRestaurantTargets(
@@ -840,11 +819,6 @@ export class RestaurantEntityMergeService {
     targetConnectionId: string,
     targetFoodId: string,
   ): Promise<void> {
-    await this.rehomePollOptionConnections(
-      tx,
-      sourceConnectionId,
-      targetConnectionId,
-    );
     await this.rehomeFavoriteListItemConnections(
       tx,
       sourceConnectionId,
@@ -862,17 +836,6 @@ export class RestaurantEntityMergeService {
       targetConnectionId,
       targetFoodId,
     );
-  }
-
-  private async rehomePollOptionConnections(
-    tx: Prisma.TransactionClient,
-    sourceConnectionId: string,
-    targetConnectionId: string,
-  ): Promise<void> {
-    await tx.pollOption.updateMany({
-      where: { connectionId: sourceConnectionId },
-      data: { connectionId: targetConnectionId },
-    });
   }
 
   private async rehomeFavoriteListItemConnections(

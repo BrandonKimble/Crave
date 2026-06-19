@@ -39,10 +39,6 @@ model Entity {
   restaurantConnections               Connection[]             @relation("RestaurantEntity")
   onDemandRequests                    OnDemandRequest[]
   favoriteEvents                      UserFavoriteEvent[]
-  pollOptionCategories                PollOption[]             @relation("PollOptionCategoryEntity")
-  pollOptions                         PollOption[]             @relation("PollOptionPrimaryEntity")
-  pollOptionFoods                     PollOption[]             @relation("PollOptionFoodEntity")
-  pollOptionRestaurants               PollOption[]             @relation("PollOptionRestaurantEntity")
   pollTopicDishTargets                PollTopic[]              @relation("PollTopicTargetDish")
   pollTopicRestaurantTargets          PollTopic[]              @relation("PollTopicTargetRestaurant")
   pollTopicFoodAttributeTargets       PollTopic[]              @relation("PollTopicTargetFoodAttribute")
@@ -156,7 +152,6 @@ model Connection {
   decayedScoresUpdatedAt     DateTime?             @map("decayed_scores_updated_at")
   food                       Entity                @relation("FoodEntity", fields: [foodId], references: [entityId])
   restaurant                 Entity                @relation("RestaurantEntity", fields: [restaurantId], references: [entityId])
-  pollOptions                PollOption[]          @relation("PollOptionConnection")
   favoriteListItems          FavoriteListItem[]
   FoodView                   FoodView[]
   viewEvents                 UserEntityViewEvent[]
@@ -512,9 +507,6 @@ model Poll {
   createdByUserId    String?      @map("created_by_user_id") @db.Uuid
   createdAt          DateTime     @default(now()) @map("created_at")
   updatedAt          DateTime     @updatedAt @map("updated_at")
-  metrics            PollMetric?
-  options            PollOption[]
-  votes              PollVote[]
   comments           PollComment[]
   leaderboardEntries PollLeaderboardEntry[]
   topic              PollTopic?   @relation(fields: [topicId], references: [topicId], onDelete: Cascade)
@@ -525,72 +517,6 @@ model Poll {
   @@index([createdByUserId], map: "idx_polls_created_by_user")
   @@index([scheduledFor], map: "idx_polls_scheduled_for")
   @@map("polls")
-}
-
-model PollOption {
-  optionId            String                     @id @default(dbgenerated("gen_random_uuid()")) @map("option_id") @db.Uuid
-  pollId              String                     @map("poll_id") @db.Uuid
-  entityId            String?                    @map("entity_id") @db.Uuid
-  label               String                     @db.VarChar(255)
-  source              PollOptionSource           @default(user)
-  resolutionStatus    PollOptionResolutionStatus @default(pending) @map("resolution_status")
-  addedByUserId       String?                    @map("added_by_user_id") @db.Uuid
-  voteCount           Int                        @default(0) @map("vote_count")
-  aggregatedVoteCount Int                        @default(0) @map("aggregated_vote_count")
-  consensus           Decimal?                   @default(0) @db.Decimal(7, 4)
-  lastVoteAt          DateTime?                  @map("last_vote_at")
-  metadata            Json?                      @default("{}")
-  createdAt           DateTime                   @default(now()) @map("created_at")
-  updatedAt           DateTime                   @updatedAt @map("updated_at")
-  categoryId          String?                    @map("category_id") @db.Uuid
-  connectionId        String?                    @map("connection_id") @db.Uuid
-  foodId              String?                    @map("food_id") @db.Uuid
-  restaurantId        String?                    @map("restaurant_id") @db.Uuid
-  category            Entity?                    @relation("PollOptionCategoryEntity", fields: [categoryId], references: [entityId])
-  connection          Connection?                @relation("PollOptionConnection", fields: [connectionId], references: [connectionId])
-  entity              Entity?                    @relation("PollOptionPrimaryEntity", fields: [entityId], references: [entityId])
-  food                Entity?                    @relation("PollOptionFoodEntity", fields: [foodId], references: [entityId])
-  poll                Poll                       @relation(fields: [pollId], references: [pollId], onDelete: Cascade)
-  restaurant          Entity?                    @relation("PollOptionRestaurantEntity", fields: [restaurantId], references: [entityId])
-  votes               PollVote[]
-
-  @@index([pollId], map: "idx_poll_options_poll_id")
-  @@index([entityId], map: "idx_poll_options_entity_id")
-  @@index([restaurantId], map: "idx_poll_options_restaurant_id")
-  @@index([foodId], map: "idx_poll_options_food_id")
-  @@index([connectionId], map: "idx_poll_options_connection_id")
-  @@index([categoryId], map: "idx_poll_options_category_id")
-  @@index([addedByUserId], map: "idx_poll_options_added_by_user")
-  @@map("poll_options")
-}
-
-model PollVote {
-  pollId    String     @map("poll_id") @db.Uuid
-  optionId  String     @map("option_id") @db.Uuid
-  userId    String     @map("user_id") @db.Uuid
-  weight    Int        @default(1)
-  createdAt DateTime   @default(now()) @map("created_at")
-  updatedAt DateTime   @updatedAt @map("updated_at")
-  option    PollOption @relation(fields: [optionId], references: [optionId], onDelete: Cascade)
-  poll      Poll       @relation(fields: [pollId], references: [pollId], onDelete: Cascade)
-
-  @@id([optionId, userId])
-  @@index([optionId], map: "idx_poll_votes_option_id")
-  @@index([pollId, userId], map: "idx_poll_votes_poll_user")
-  @@index([userId], map: "idx_poll_votes_user_id")
-  @@index([pollId], map: "idx_poll_votes_poll_id")
-  @@map("poll_votes")
-}
-
-model PollMetric {
-  pollId            String    @id @map("poll_id") @db.Uuid
-  totalVotes        Int       @default(0) @map("total_votes")
-  totalParticipants Int       @default(0) @map("total_participants")
-  lastAggregatedAt  DateTime? @map("last_aggregated_at")
-  metadata          Json?     @default("{}")
-  poll              Poll      @relation(fields: [pollId], references: [pollId], onDelete: Cascade)
-
-  @@map("poll_metrics")
 }
 
 /// The discussion-thread spine (Phase 2 schema; CRUD + sort land in Phase 4).
@@ -1561,22 +1487,6 @@ enum PollState {
   archived
 
   @@map("poll_state")
-}
-
-enum PollOptionSource {
-  user
-  seed
-  curator
-
-  @@map("poll_option_source")
-}
-
-enum PollOptionResolutionStatus {
-  pending
-  matched
-  rejected
-
-  @@map("poll_option_resolution_status")
 }
 
 enum PollOrigin {

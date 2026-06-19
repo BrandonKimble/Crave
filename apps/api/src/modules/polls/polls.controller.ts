@@ -13,8 +13,6 @@ import type { User } from '@prisma/client';
 import { PollsService } from './polls.service';
 import { ListPollsQueryDto } from './dto/list-polls.dto';
 import { ListUserPollsDto } from './dto/list-user-polls.dto';
-import { CreatePollOptionDto } from './dto/create-poll-option.dto';
-import { CastPollVoteDto } from './dto/cast-poll-vote.dto';
 import {
   CreateCommentDto,
   EditCommentDto,
@@ -32,17 +30,14 @@ export class PollsController {
 
   @Get()
   @UseGuards(OptionalClerkAuthGuard)
-  listPolls(
-    @Query() query: ListPollsQueryDto,
-    @CurrentUser() user?: User | null,
-  ) {
-    return this.pollsService.listPolls(query, user ?? null);
+  listPolls(@Query() query: ListPollsQueryDto) {
+    return this.pollsService.listPolls(query);
   }
 
   @Post('query')
   @UseGuards(OptionalClerkAuthGuard)
-  queryPolls(@Body() body: QueryPollsDto, @CurrentUser() user?: User | null) {
-    return this.pollsService.queryPolls(body, user ?? null);
+  queryPolls(@Body() body: QueryPollsDto) {
+    return this.pollsService.queryPolls(body);
   }
 
   @Post()
@@ -59,28 +54,8 @@ export class PollsController {
 
   @Get(':pollId')
   @UseGuards(OptionalClerkAuthGuard)
-  getPoll(@Param('pollId') pollId: string, @CurrentUser() user?: User | null) {
-    return this.pollsService.getPoll(pollId, user ?? null);
-  }
-
-  @Post(':pollId/options')
-  @UseGuards(ClerkAuthGuard)
-  addOption(
-    @Param('pollId') pollId: string,
-    @Body() dto: CreatePollOptionDto,
-    @CurrentUser() user: User,
-  ) {
-    return this.pollsService.addOption(pollId, dto, user.userId);
-  }
-
-  @Post(':pollId/votes')
-  @UseGuards(ClerkAuthGuard)
-  castVote(
-    @Param('pollId') pollId: string,
-    @Body() dto: CastPollVoteDto,
-    @CurrentUser() user: User,
-  ) {
-    return this.pollsService.castVote(pollId, dto, user.userId);
+  getPoll(@Param('pollId') pollId: string) {
+    return this.pollsService.getPoll(pollId);
   }
 
   @Get(':pollId/comments')

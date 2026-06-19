@@ -1359,9 +1359,7 @@ public_restaurant_scores AS (
           WHEN entity_confidence >= 0.45 THEN 'solid'
           ELSE 'early'
         END,
-      'evidenceCopy', 'Based on Crave polls and votes.',
-      'pollCount', COALESCE(ROUND((NULLIF(factor_trace #>> '{privateEvidence,pollCount}', ''))::numeric)::int, 0),
-      'voteCount', COALESCE(ROUND((NULLIF(factor_trace #>> '{privateEvidence,pollVoteCount}', ''))::numeric)::int, 0)
+      'evidenceCopy', 'Based on community evidence.'
     ) AS score_info
   FROM core_public_entity_scores
   WHERE subject_type = 'restaurant'
@@ -1370,7 +1368,7 @@ public_restaurant_scores AS (
     const preview = `
 public_restaurant_scores AS (
   SELECT subject_id, display_score, score_delta_7d,
-         jsonb_build_object('confidenceLabel', 'computed', 'evidenceCopy', 'Based on Crave polls and votes.', 'pollCount', 0, 'voteCount', 0) AS score_info
+         jsonb_build_object('confidenceLabel', 'computed', 'evidenceCopy', 'Based on community evidence.') AS score_info
   FROM core_public_entity_scores
   WHERE subject_type = 'restaurant'
 )`.trim();
@@ -1395,9 +1393,7 @@ public_connection_scores AS (
           WHEN entity_confidence >= 0.45 THEN 'solid'
           ELSE 'early'
         END,
-      'evidenceCopy', 'Based on Crave polls and votes.',
-      'pollCount', COALESCE(ROUND((NULLIF(factor_trace #>> '{privateEvidence,pollCount}', ''))::numeric)::int, 0),
-      'voteCount', COALESCE(ROUND((NULLIF(factor_trace #>> '{privateEvidence,pollVoteCount}', ''))::numeric)::int, 0)
+      'evidenceCopy', 'Based on community evidence.'
     ) AS score_info
   FROM core_public_entity_scores
   WHERE subject_type = 'connection'
@@ -1406,7 +1402,7 @@ public_connection_scores AS (
     const preview = `
 public_connection_scores AS (
   SELECT subject_id, display_score, score_delta_7d,
-         jsonb_build_object('confidenceLabel', 'computed', 'evidenceCopy', 'Based on Crave polls and votes.', 'pollCount', 0, 'voteCount', 0) AS score_info
+         jsonb_build_object('confidenceLabel', 'computed', 'evidenceCopy', 'Based on community evidence.') AS score_info
   FROM core_public_entity_scores
   WHERE subject_type = 'connection'
 )`.trim();

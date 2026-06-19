@@ -113,11 +113,6 @@ function candidate(params: {
   mentions: number;
   upvotes: number;
   docs: number;
-  polls?: number;
-  votes?: number;
-  voters?: number;
-  marketVoters?: number;
-  pollSignal?: number;
   supportMentions?: number;
 }): CraveScoreCandidate {
   return {
@@ -130,11 +125,6 @@ function candidate(params: {
       params.supportMentions ?? Math.round(params.mentions * 0.2),
     upvoteMass: params.upvotes,
     sourceDocumentCount: params.docs,
-    pollCount: params.polls ?? 0,
-    pollVoteCount: params.votes ?? 0,
-    distinctPollVoterCount: params.voters ?? 0,
-    marketDistinctPollVoterCount: params.marketVoters,
-    pollSignal: params.pollSignal ?? 0,
   };
 }
 
@@ -159,10 +149,6 @@ function createMarket(params: {
       mentions: Math.max(1, Math.round(evidence)),
       upvotes: Math.max(1, Math.round(evidence * 3.2)),
       docs: Math.max(1, Math.round(evidence / 5)),
-      polls: Math.max(0, Math.round(evidence / 22)),
-      votes: Math.max(0, Math.round(evidence * 1.35)),
-      voters: Math.max(0, Math.round(evidence * 0.7)),
-      pollSignal: round((normalizedIndex - 0.5) * 0.8, 3),
     });
   });
 }
@@ -252,10 +238,6 @@ const restaurantCandidates: CraveScoreCandidate[] = [
     mentions: 84,
     upvotes: 330,
     docs: 18,
-    polls: 7,
-    votes: 260,
-    voters: 180,
-    pollSignal: 1.15,
   }),
   candidate({
     subjectId: 'austin-thin-hype',
@@ -264,10 +246,6 @@ const restaurantCandidates: CraveScoreCandidate[] = [
     mentions: 6,
     upvotes: 26,
     docs: 2,
-    polls: 1,
-    votes: 14,
-    voters: 9,
-    pollSignal: 1.25,
   }),
   candidate({
     subjectId: 'rural-undefeated-small-sample',
@@ -276,10 +254,6 @@ const restaurantCandidates: CraveScoreCandidate[] = [
     mentions: 2,
     upvotes: 9,
     docs: 1,
-    polls: 1,
-    votes: 7,
-    voters: 5,
-    pollSignal: 1.6,
   }),
   candidate({
     subjectId: 'nyc-equal-participation-share',
@@ -288,10 +262,6 @@ const restaurantCandidates: CraveScoreCandidate[] = [
     mentions: 90,
     upvotes: 320,
     docs: 20,
-    polls: 5,
-    votes: 240,
-    voters: 160,
-    pollSignal: 0.7,
   }),
   candidate({
     subjectId: 'austin-equal-participation-share',
@@ -300,10 +270,6 @@ const restaurantCandidates: CraveScoreCandidate[] = [
     mentions: 45,
     upvotes: 160,
     docs: 10,
-    polls: 3,
-    votes: 120,
-    voters: 80,
-    pollSignal: 0.7,
   }),
 ];
 
@@ -334,10 +300,6 @@ const connectionCandidates: CraveScoreCandidate[] = [
     mentions: 92,
     upvotes: 410,
     docs: 22,
-    polls: 8,
-    votes: 330,
-    voters: 220,
-    pollSignal: 1.25,
   }),
   candidate({
     subjectType: 'connection',
@@ -347,10 +309,6 @@ const connectionCandidates: CraveScoreCandidate[] = [
     mentions: 3,
     upvotes: 12,
     docs: 1,
-    polls: 1,
-    votes: 9,
-    voters: 7,
-    pollSignal: 1.5,
   }),
 ];
 
@@ -415,14 +373,10 @@ const calibrationSummary = {
     entityConfidenceK: config.entityConfidenceK,
     entityConfidencePower: config.entityConfidencePower,
     robustSpreadFloor: config.robustSpreadFloor,
-    pollAlpha: config.pollAlpha,
-    pollConfidenceK: config.pollConfidenceK,
     directMentionWeight: config.directMentionWeight,
     supportMentionWeight: config.supportMentionWeight,
     upvoteMassWeight: config.upvoteMassWeight,
     sourceBreadthWeight: config.sourceBreadthWeight,
-    pollSignalWeight: config.pollSignalWeight,
-    pollBreadthWeight: config.pollBreadthWeight,
   },
   rejectedConstantsCount: 0,
   softTargetBandLoss: round(
@@ -639,158 +593,6 @@ expectCheck(
   ),
 );
 
-const voteVolumeOnlyCandidates = [
-  candidate({
-    subjectId: 'vote-volume-low-a',
-    market: 'fixture-low-vote-volume',
-    raw: 80,
-    mentions: 24,
-    upvotes: 70,
-    docs: 8,
-    polls: 3,
-    votes: 30,
-    voters: 30,
-    pollSignal: 0.3,
-  }),
-  candidate({
-    subjectId: 'vote-volume-low-b',
-    market: 'fixture-low-vote-volume',
-    raw: 72,
-    mentions: 18,
-    upvotes: 44,
-    docs: 6,
-    polls: 2,
-    votes: 20,
-    voters: 20,
-    pollSignal: 0.1,
-  }),
-  candidate({
-    subjectId: 'vote-volume-high-a',
-    market: 'fixture-high-vote-volume',
-    raw: 80,
-    mentions: 24,
-    upvotes: 70,
-    docs: 8,
-    polls: 3,
-    votes: 300,
-    voters: 30,
-    pollSignal: 0.3,
-  }),
-  candidate({
-    subjectId: 'vote-volume-high-b',
-    market: 'fixture-high-vote-volume',
-    raw: 72,
-    mentions: 18,
-    upvotes: 44,
-    docs: 6,
-    polls: 2,
-    votes: 200,
-    voters: 20,
-    pollSignal: 0.1,
-  }),
-];
-const voteVolumeMarketStats = scorer.scoreCandidates(
-  voteVolumeOnlyCandidates,
-  new Map(),
-  config,
-).marketStats;
-const lowVoteVolumeReliability =
-  voteVolumeMarketStats.find(
-    (row) => row.marketKey === 'fixture-low-vote-volume',
-  )?.marketReliability ?? 0;
-const highVoteVolumeReliability =
-  voteVolumeMarketStats.find(
-    (row) => row.marketKey === 'fixture-high-vote-volume',
-  )?.marketReliability ?? 0;
-
-expectCheck(
-  'market reliability ignores raw poll vote row volume when distinct voter breadth is unchanged',
-  Math.abs(lowVoteVolumeReliability - highVoteVolumeReliability) < 0.00001,
-  'same market reliability with same distinct voters, poll count, source breadth, and subjects',
-  {
-    lowVoteVolumeReliability: round(lowVoteVolumeReliability, 5),
-    highVoteVolumeReliability: round(highVoteVolumeReliability, 5),
-  },
-);
-
-const voterFanoutCandidates = [
-  candidate({
-    subjectId: 'voter-fanout-low-a',
-    market: 'fixture-low-voter-fanout',
-    raw: 80,
-    mentions: 24,
-    upvotes: 70,
-    docs: 8,
-    polls: 3,
-    votes: 60,
-    voters: 30,
-    marketVoters: 50,
-    pollSignal: 0.3,
-  }),
-  candidate({
-    subjectId: 'voter-fanout-low-b',
-    market: 'fixture-low-voter-fanout',
-    raw: 72,
-    mentions: 18,
-    upvotes: 44,
-    docs: 6,
-    polls: 2,
-    votes: 40,
-    voters: 20,
-    marketVoters: 50,
-    pollSignal: 0.1,
-  }),
-  candidate({
-    subjectId: 'voter-fanout-high-a',
-    market: 'fixture-high-voter-fanout',
-    raw: 80,
-    mentions: 24,
-    upvotes: 70,
-    docs: 8,
-    polls: 3,
-    votes: 60,
-    voters: 50,
-    marketVoters: 50,
-    pollSignal: 0.3,
-  }),
-  candidate({
-    subjectId: 'voter-fanout-high-b',
-    market: 'fixture-high-voter-fanout',
-    raw: 72,
-    mentions: 18,
-    upvotes: 44,
-    docs: 6,
-    polls: 2,
-    votes: 40,
-    voters: 50,
-    marketVoters: 50,
-    pollSignal: 0.1,
-  }),
-];
-const voterFanoutMarketStats = scorer.scoreCandidates(
-  voterFanoutCandidates,
-  new Map(),
-  config,
-).marketStats;
-const lowVoterFanoutReliability =
-  voterFanoutMarketStats.find(
-    (row) => row.marketKey === 'fixture-low-voter-fanout',
-  )?.marketReliability ?? 0;
-const highVoterFanoutReliability =
-  voterFanoutMarketStats.find(
-    (row) => row.marketKey === 'fixture-high-voter-fanout',
-  )?.marketReliability ?? 0;
-
-expectCheck(
-  'market reliability uses true market-level distinct poll voters instead of summing subject voter fanout',
-  Math.abs(lowVoterFanoutReliability - highVoterFanoutReliability) < 0.00001,
-  'same reliability when the same market voters fan out across more poll options',
-  {
-    lowVoterFanoutReliability: round(lowVoterFanoutReliability, 5),
-    highVoterFanoutReliability: round(highVoterFanoutReliability, 5),
-  },
-);
-
 type SeededDbFixtureRow = {
   key: string;
   restaurantId: string;
@@ -832,21 +634,6 @@ async function countSeededDbFixtureResidue(
         FROM core_entity_market_presence
         WHERE market_key = ${DB_FIXTURE_MARKET}
       ) AS market_presences,
-      (SELECT COUNT(*) FROM poll_topics WHERE metadata->>'fixtureFamily' = ${DB_FIXTURE_FAMILY}) AS poll_topics,
-      (SELECT COUNT(*) FROM polls WHERE metadata->>'fixtureFamily' = ${DB_FIXTURE_FAMILY}) AS polls,
-      (SELECT COUNT(*) FROM poll_options WHERE metadata->>'fixtureFamily' = ${DB_FIXTURE_FAMILY}) AS poll_options,
-      (
-        SELECT COUNT(*)
-        FROM poll_votes pv
-        JOIN polls p ON p.poll_id = pv.poll_id
-        WHERE p.metadata->>'fixtureFamily' = ${DB_FIXTURE_FAMILY}
-      ) AS poll_votes,
-      (
-        SELECT COUNT(*)
-        FROM poll_metrics pm
-        JOIN polls p ON p.poll_id = pm.poll_id
-        WHERE p.metadata->>'fixtureFamily' = ${DB_FIXTURE_FAMILY}
-      ) AS poll_metrics,
       (
         SELECT COUNT(*)
         FROM core_crave_score_runs
@@ -932,10 +719,6 @@ async function cleanupSeededDbFixtures(
     DELETE FROM core_crave_score_runs
     WHERE input_counts->>'fixtureRunId' LIKE ${`${DB_FIXTURE_FAMILY}-%`}
   `;
-  await prisma.$executeRaw`
-    DELETE FROM poll_topics
-    WHERE metadata->>'fixtureFamily' = ${DB_FIXTURE_FAMILY}
-  `;
   if (connectionIds.length > 0) {
     await prisma.$executeRaw`
       DELETE FROM core_restaurant_items
@@ -956,10 +739,12 @@ async function seedDbFixtures(
   prisma: PrismaClient,
   fixtureRunId: string,
 ): Promise<SeededDbFixtureSeed> {
-  const rows: SeededDbFixtureRow[] = Array.from({ length: 32 }, (_, index) => {
+  const rows: SeededDbFixtureRow[] = Array.from({ length: 31 }, (_, index) => {
     if (index === 0) {
+      // Isolated anchor (well away from the diagonal background cluster) so the
+      // one-result coverage bound below matches exactly this single entity.
       return {
-        key: 'poll-high',
+        key: 'coverage-anchor',
         restaurantId: randomUUID(),
         foodId: randomUUID(),
         connectionId: randomUUID(),
@@ -970,20 +755,7 @@ async function seedDbFixtures(
         upvotes: 5,
       };
     }
-    if (index === 1) {
-      return {
-        key: 'poll-low',
-        restaurantId: randomUUID(),
-        foodId: randomUUID(),
-        connectionId: randomUUID(),
-        lat: 12.355,
-        lng: -45.688,
-        mentions: 2,
-        supportMentions: 1,
-        upvotes: 5,
-      };
-    }
-    const backgroundIndex = index - 1;
+    const backgroundIndex = index;
     return {
       key: `background-${backgroundIndex}`,
       restaurantId: randomUUID(),
@@ -996,11 +768,6 @@ async function seedDbFixtures(
       upvotes: 9 + backgroundIndex * 11,
     };
   });
-  const topicId = randomUUID();
-  const pollId = randomUUID();
-  const optionHighA = randomUUID();
-  const optionHighB = randomUUID();
-  const optionLow = randomUUID();
   const userId = randomUUID();
   const restaurantListId = randomUUID();
   const dishListId = randomUUID();
@@ -1135,119 +902,6 @@ async function seedDbFixtures(
         (${randomUUID()}::uuid, ${restaurantListId}::uuid, ${userId}::uuid, ${rows[0].restaurantId}::uuid, NULL, 0, now()),
         (${randomUUID()}::uuid, ${dishListId}::uuid, ${userId}::uuid, NULL, ${rows[0].connectionId}::uuid, 0, now())
     `;
-
-    await tx.$executeRaw`
-      INSERT INTO poll_topics (
-        topic_id,
-        title,
-        market_key,
-        status,
-        metadata,
-        updated_at
-      )
-      VALUES (
-        ${topicId}::uuid,
-        'Crave Score Fixture Poll',
-        ${DB_FIXTURE_MARKET},
-        'ready',
-        ${JSON.stringify(metadata)}::jsonb,
-        now()
-      )
-    `;
-    await tx.$executeRaw`
-      INSERT INTO polls (
-        poll_id,
-        topic_id,
-        question,
-        state,
-        market_key,
-        metadata,
-        launched_at,
-        updated_at
-      )
-      VALUES (
-        ${pollId}::uuid,
-        ${topicId}::uuid,
-        'Which fixture place wins?',
-        'active',
-        ${DB_FIXTURE_MARKET},
-        ${JSON.stringify(metadata)}::jsonb,
-        now(),
-        now()
-      )
-    `;
-    const high = rows[0];
-    const low = rows[1];
-    await tx.$executeRaw`
-      INSERT INTO poll_options (
-        option_id,
-        poll_id,
-        entity_id,
-        label,
-        source,
-        resolution_status,
-        vote_count,
-        restaurant_id,
-        connection_id,
-        food_id,
-        metadata,
-        updated_at
-      )
-      VALUES
-        (${optionHighA}::uuid, ${pollId}::uuid, ${high.restaurantId}::uuid, 'High A', 'seed', 'matched', 30, ${high.restaurantId}::uuid, ${high.connectionId}::uuid, ${high.foodId}::uuid, ${JSON.stringify(metadata)}::jsonb, now()),
-        (${optionHighB}::uuid, ${pollId}::uuid, ${high.restaurantId}::uuid, 'High B', 'seed', 'matched', 10, ${high.restaurantId}::uuid, ${high.connectionId}::uuid, ${high.foodId}::uuid, ${JSON.stringify(metadata)}::jsonb, now()),
-        (${optionLow}::uuid, ${pollId}::uuid, ${low.restaurantId}::uuid, 'Low', 'seed', 'matched', 5, ${low.restaurantId}::uuid, ${low.connectionId}::uuid, ${low.foodId}::uuid, ${JSON.stringify(metadata)}::jsonb, now())
-    `;
-    await tx.$executeRaw`
-      INSERT INTO poll_metrics (
-        poll_id,
-        total_votes,
-        total_participants,
-        last_aggregated_at,
-        metadata
-      )
-      VALUES (
-        ${pollId}::uuid,
-        45,
-        44,
-        now(),
-        ${JSON.stringify(metadata)}::jsonb
-      )
-    `;
-
-    const sharedHighVoterId = randomUUID();
-    const voteRows = [
-      { optionId: optionHighA, userId: sharedHighVoterId },
-      ...Array.from({ length: 29 }, () => ({
-        optionId: optionHighA,
-        userId: randomUUID(),
-      })),
-      { optionId: optionHighB, userId: sharedHighVoterId },
-      ...Array.from({ length: 9 }, () => ({
-        optionId: optionHighB,
-        userId: randomUUID(),
-      })),
-      ...Array.from({ length: 5 }, () => ({
-        optionId: optionLow,
-        userId: randomUUID(),
-      })),
-    ];
-    for (const voteRow of voteRows) {
-      await tx.$executeRaw`
-        INSERT INTO poll_votes (
-          poll_id,
-          option_id,
-          user_id,
-          updated_at
-        )
-        VALUES (
-          ${pollId}::uuid,
-          ${voteRow.optionId}::uuid,
-          ${voteRow.userId}::uuid,
-          now()
-        )
-      `;
-    }
   });
 
   return { rows, userId };
@@ -1291,7 +945,6 @@ async function runSeededDbFixtureChecks(): Promise<void> {
     const fixtureRunId = `${DB_FIXTURE_FAMILY}-${Date.now()}`;
     const { rows, userId } = await seedDbFixtures(prisma, fixtureRunId);
     const high = rows[0];
-    const low = rows[1];
     const dbScorer = new PublicCraveScoreService(
       prisma as never,
       noopLogger as never,
@@ -1317,13 +970,6 @@ async function runSeededDbFixtureChecks(): Promise<void> {
         ...rows.map((row) => row.connectionId),
       ])}]::uuid[])
     `;
-    const bySubject = new Map(
-      scoreRows.map((row) => [`${row.subject_type}:${row.subject_id}`, row]),
-    );
-    const highScore = bySubject.get(`restaurant:${high.restaurantId}`);
-    const lowScore = bySubject.get(`restaurant:${low.restaurantId}`);
-    const highRaw = Number(highScore?.raw_quality_score ?? 0);
-    const lowRaw = Number(lowScore?.raw_quality_score ?? 0);
     const maxSeededRawRow = scoreRows.reduce<(typeof scoreRows)[number] | null>(
       (maxRow, row) => {
         if (!maxRow) {
@@ -1338,21 +984,7 @@ async function runSeededDbFixtureChecks(): Promise<void> {
     );
     const maxSeededRaw = Number(maxSeededRawRow?.raw_quality_score ?? 0);
     const maxSeededRawDisplay = Number(maxSeededRawRow?.display_score ?? 0);
-    const highTrace =
-      highScore?.factor_trace && typeof highScore.factor_trace === 'object'
-        ? (highScore.factor_trace as Record<string, unknown>)
-        : {};
-    const privateEvidence =
-      highTrace.privateEvidence && typeof highTrace.privateEvidence === 'object'
-        ? (highTrace.privateEvidence as Record<string, unknown>)
-        : {};
 
-    expectCheck(
-      'seeded DB poll performance affects raw quality without pseudo mentions',
-      highRaw > lowRaw + 4,
-      'high poll performer raw score > low poll performer by more than 4',
-      { highRaw: round(highRaw), lowRaw: round(lowRaw) },
-    );
     expectCheck(
       'seeded DB raw quality remains unconstrained before public display projection',
       maxSeededRaw > 100 && maxSeededRawDisplay < 100,
@@ -1363,18 +995,6 @@ async function runSeededDbFixtureChecks(): Promise<void> {
         subjectType: maxSeededRawRow?.subject_type,
         subjectId: maxSeededRawRow?.subject_id,
       },
-    );
-    expectCheck(
-      'seeded DB poll count is distinct poll count, not option count',
-      privateEvidence.pollCount === 1,
-      'one poll even when the fixture restaurant appears in two options',
-      { pollCount: privateEvidence.pollCount },
-    );
-    expectCheck(
-      'seeded DB poll voters are distinct across multi-option votes',
-      privateEvidence.distinctPollVoterCount === 39,
-      'one shared voter across two high options counts once for that subject',
-      { distinctPollVoterCount: privateEvidence.distinctPollVoterCount },
     );
 
     const coverageService = new SearchCoverageService(
@@ -1588,7 +1208,7 @@ async function runSeededDbFixtureChecks(): Promise<void> {
     keepDbFixtures || cleanupTotal === 0,
     keepDbFixtures
       ? '--keep leaves fixture rows for debugging'
-      : 'cleanup leaves zero fixture rows across seeded entities, polls, scores, users, favorites, and market presence',
+      : 'cleanup leaves zero fixture rows across seeded entities, scores, users, favorites, and market presence',
     { cleanupRemaining },
   );
 }

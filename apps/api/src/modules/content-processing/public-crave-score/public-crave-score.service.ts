@@ -22,11 +22,6 @@ type CandidateRow = {
   support_mention_count: NumericLike;
   upvote_mass: NumericLike;
   source_document_count: NumericLike;
-  poll_count: NumericLike;
-  poll_vote_count: NumericLike;
-  distinct_poll_voter_count: NumericLike;
-  market_distinct_poll_voter_count: NumericLike;
-  poll_signal: NumericLike;
 };
 
 type PriorScoreRow = {
@@ -37,23 +32,19 @@ type PriorScoreRow = {
 };
 
 const DEFAULT_CONFIG: PublicCraveScoreConfig = {
-  scoreVersion: 'crave-score-v1',
+  scoreVersion: 'crave-score-v2',
   displayCurveVersion: 'crave-score-display-v1',
   displayMin: 60,
   displayMax: 99.9,
   displayCenter: 0,
   displayScale: 0.31,
   marketReliabilityK: 80,
-  entityConfidenceK: 18,
+  entityConfidenceK: 4,
   entityConfidencePower: 3.8,
   robustSpreadFloor: 1,
-  pollAlpha: 4,
-  pollConfidenceK: 25,
   directMentionWeight: 0.75,
   upvoteMassWeight: 0.12,
   sourceBreadthWeight: 1.4,
-  pollSignalWeight: 4,
-  pollBreadthWeight: 1.6,
   supportMentionWeight: 0.35,
 };
 
@@ -89,7 +80,7 @@ export class PublicCraveScoreService {
     await this.createRun(scoreRunId, config, recencyReferenceDate, params);
 
     try {
-      const candidates = await this.loadCandidates(params, config);
+      const candidates = await this.loadCandidates(params);
       const priorScores = await this.loadPriorScores(
         config,
         recencyReferenceDate,
@@ -188,14 +179,6 @@ export class PublicCraveScoreService {
               marketCandidates,
               'sourceDocumentCount',
             ),
-            pollCount: this.sum(marketCandidates, 'pollCount'),
-            pollVoteCount: this.sum(marketCandidates, 'pollVoteCount'),
-            distinctPollVoterCount:
-              this.marketDistinctPollVoterCount(marketCandidates),
-            subjectDistinctPollVoterCount: this.sum(
-              marketCandidates,
-              'distinctPollVoterCount',
-            ),
           },
           factorTrace: {
             distribution: 'median_mad_iqr',
@@ -261,17 +244,12 @@ export class PublicCraveScoreService {
           scoreDelta28d: scoreDelta28d === 0 ? null : scoreDelta28d,
           movementState,
           factorTrace: {
-            rawQualitySource:
-              'source_facts_plus_poll_performance_without_pseudo',
+            rawQualitySource: 'source_facts_only',
             privateEvidence: {
               directMentionCount: candidate.directMentionCount,
               supportMentionCount: candidate.supportMentionCount,
               upvoteMass: candidate.upvoteMass,
               sourceDocumentCount: candidate.sourceDocumentCount,
-              pollCount: candidate.pollCount,
-              pollVoteCount: candidate.pollVoteCount,
-              distinctPollVoterCount: candidate.distinctPollVoterCount,
-              pollSignal: this.round(candidate.pollSignal),
             },
             globalDistribution,
             marketDistribution: marketStatsForCandidate
@@ -354,12 +332,9 @@ export class PublicCraveScoreService {
     `;
   }
 
-  private async loadCandidates(
-    params?: {
-      fixtureRunId?: string;
-    },
-    config: PublicCraveScoreConfig = DEFAULT_CONFIG,
-  ): Promise<CraveScoreCandidate[]> {
+  private async loadCandidates(params?: {
+    fixtureRunId?: string;
+  }): Promise<CraveScoreCandidate[]> {
     const fixtureRunId = params?.fixtureRunId ?? null;
     const fixtureFilter = fixtureRunId
       ? Prisma.sql`AND fixture_run_id = ${fixtureRunId}`
@@ -382,44 +357,6 @@ export class PublicCraveScoreService {
           END,
           emp.market_key ASC
       ),
-      poll_option_counts AS (
-        SELECT poll_id, COUNT(*)::numeric AS option_count
-        FROM poll_options
-        GROUP BY poll_id
-      ),
-      poll_distinct_participants AS (
-        SELECT poll_id, COUNT(DISTINCT user_id)::numeric AS total_participants
-        FROM poll_votes
-        GROUP BY poll_id
-      ),
-      poll_option_signals AS (
-        SELECT
-          po.option_id,
-          po.poll_id,
-          po.restaurant_id,
-          po.connection_id,
-          po.vote_count,
-          CASE
-            WHEN pm.total_votes > 0 THEN
-              (
-                LN(GREATEST(0.0001, LEAST(0.9999, (po.vote_count + ${config.pollAlpha} * (1.0 / GREATEST(poc.option_count, 1))) / (pm.total_votes + ${config.pollAlpha})))) -
-                LN(GREATEST(0.0001, 1 - LEAST(0.9999, (po.vote_count + ${config.pollAlpha} * (1.0 / GREATEST(poc.option_count, 1))) / (pm.total_votes + ${config.pollAlpha})))) -
-                (
-                  LN(GREATEST(0.0001, LEAST(0.9999, 1.0 / GREATEST(poc.option_count, 1)))) -
-                  LN(GREATEST(0.0001, 1 - LEAST(0.9999, 1.0 / GREATEST(poc.option_count, 1))))
-                )
-              ) * COALESCE(
-                COALESCE(pdp.total_participants, 0)::numeric /
-                  NULLIF(COALESCE(pdp.total_participants, 0) + ${config.pollConfidenceK}, 0),
-                0
-              )
-            ELSE 0
-          END AS poll_signal
-        FROM poll_options po
-        LEFT JOIN poll_metrics pm ON pm.poll_id = po.poll_id
-        LEFT JOIN poll_option_counts poc ON poc.poll_id = po.poll_id
-        LEFT JOIN poll_distinct_participants pdp ON pdp.poll_id = po.poll_id
-      ),
       restaurant_item_aggregates AS (
         SELECT
           restaurant_id,
@@ -436,25 +373,6 @@ export class PublicCraveScoreService {
         FROM core_restaurant_events
         GROUP BY restaurant_id
       ),
-      restaurant_poll_option_aggregates AS (
-        SELECT
-          restaurant_id,
-          COUNT(DISTINCT poll_id)::numeric AS poll_count,
-          SUM(vote_count)::numeric AS poll_vote_count,
-          SUM(poll_signal)::numeric AS poll_signal
-        FROM poll_option_signals
-        WHERE restaurant_id IS NOT NULL
-        GROUP BY restaurant_id
-      ),
-      restaurant_poll_voter_aggregates AS (
-        SELECT
-          po.restaurant_id,
-          COUNT(DISTINCT pv.user_id)::numeric AS distinct_poll_voter_count
-        FROM poll_options po
-        JOIN poll_votes pv ON pv.option_id = po.option_id
-        WHERE po.restaurant_id IS NOT NULL
-        GROUP BY po.restaurant_id
-      ),
       connection_source_aggregates AS (
         SELECT
           c.connection_id,
@@ -464,48 +382,6 @@ export class PublicCraveScoreService {
           ON ree.restaurant_id = c.restaurant_id
          AND ree.entity_id = c.food_id
         GROUP BY c.connection_id
-      ),
-      connection_poll_option_aggregates AS (
-        SELECT
-          connection_id,
-          COUNT(DISTINCT poll_id)::numeric AS poll_count,
-          SUM(vote_count)::numeric AS poll_vote_count,
-          SUM(poll_signal)::numeric AS poll_signal
-        FROM poll_option_signals
-        WHERE connection_id IS NOT NULL
-        GROUP BY connection_id
-      ),
-      connection_poll_voter_aggregates AS (
-        SELECT
-          po.connection_id,
-          COUNT(DISTINCT pv.user_id)::numeric AS distinct_poll_voter_count
-        FROM poll_options po
-        JOIN poll_votes pv ON pv.option_id = po.option_id
-        WHERE po.connection_id IS NOT NULL
-        GROUP BY po.connection_id
-      ),
-      restaurant_market_poll_voter_aggregates AS (
-        SELECT
-          rm.market_key,
-          COUNT(DISTINCT pv.user_id)::numeric AS market_distinct_poll_voter_count
-        FROM poll_options po
-        JOIN poll_votes pv ON pv.option_id = po.option_id
-        JOIN restaurant_markets rm ON rm.entity_id = po.restaurant_id
-        WHERE po.restaurant_id IS NOT NULL
-          AND rm.market_key IS NOT NULL
-        GROUP BY rm.market_key
-      ),
-      connection_market_poll_voter_aggregates AS (
-        SELECT
-          rm.market_key,
-          COUNT(DISTINCT pv.user_id)::numeric AS market_distinct_poll_voter_count
-        FROM poll_options po
-        JOIN poll_votes pv ON pv.option_id = po.option_id
-        JOIN core_restaurant_items c ON c.connection_id = po.connection_id
-        JOIN restaurant_markets rm ON rm.entity_id = c.restaurant_id
-        WHERE po.connection_id IS NOT NULL
-          AND rm.market_key IS NOT NULL
-        GROUP BY rm.market_key
       ),
       restaurant_raw AS (
         SELECT
@@ -518,25 +394,16 @@ export class PublicCraveScoreService {
             + LN(1 + COALESCE(ria.support_mention_count, 0)) * 4
             + LN(1 + COALESCE(ria.upvote_mass, 0)) * 4
             + LN(1 + COALESCE(rsa.source_document_count, 0)) * 11
-            + COALESCE(rpoa.poll_signal, 0) * ${config.pollSignalWeight}
           )::numeric AS raw_quality_score,
           COALESCE(ria.direct_mention_count, 0)::numeric AS direct_mention_count,
           COALESCE(ria.support_mention_count, 0)::numeric AS support_mention_count,
           COALESCE(ria.upvote_mass, 0)::numeric AS upvote_mass,
           COALESCE(rsa.source_document_count, 0)::numeric AS source_document_count,
-          COALESCE(rpoa.poll_count, 0)::numeric AS poll_count,
-          COALESCE(rpoa.poll_vote_count, 0)::numeric AS poll_vote_count,
-          COALESCE(rpva.distinct_poll_voter_count, 0)::numeric AS distinct_poll_voter_count,
-          COALESCE(rmpva.market_distinct_poll_voter_count, 0)::numeric AS market_distinct_poll_voter_count,
-          COALESCE(rpoa.poll_signal, 0)::numeric AS poll_signal,
           (e.restaurant_metadata->>'fixtureRunId') AS fixture_run_id
         FROM core_entities e
         LEFT JOIN restaurant_markets rm ON rm.entity_id = e.entity_id
         LEFT JOIN restaurant_item_aggregates ria ON ria.restaurant_id = e.entity_id
         LEFT JOIN restaurant_source_aggregates rsa ON rsa.restaurant_id = e.entity_id
-        LEFT JOIN restaurant_poll_option_aggregates rpoa ON rpoa.restaurant_id = e.entity_id
-        LEFT JOIN restaurant_poll_voter_aggregates rpva ON rpva.restaurant_id = e.entity_id
-        LEFT JOIN restaurant_market_poll_voter_aggregates rmpva ON rmpva.market_key = rm.market_key
         WHERE e.type = 'restaurant'
       ),
       connection_raw AS (
@@ -550,25 +417,16 @@ export class PublicCraveScoreService {
             + LN(1 + COALESCE(c.support_mention_count, 0)) * 4
             + LN(1 + COALESCE(c.total_upvotes, 0)) * 4
             + LN(1 + COALESCE(csa.source_document_count, 0)) * 11
-            + COALESCE(cpoa.poll_signal, 0) * ${config.pollSignalWeight}
           )::numeric AS raw_quality_score,
           COALESCE(c.mention_count, 0)::numeric AS direct_mention_count,
           COALESCE(c.support_mention_count, 0)::numeric AS support_mention_count,
           COALESCE(c.total_upvotes, 0)::numeric AS upvote_mass,
           COALESCE(csa.source_document_count, 0)::numeric AS source_document_count,
-          COALESCE(cpoa.poll_count, 0)::numeric AS poll_count,
-          COALESCE(cpoa.poll_vote_count, 0)::numeric AS poll_vote_count,
-          COALESCE(cpva.distinct_poll_voter_count, 0)::numeric AS distinct_poll_voter_count,
-          COALESCE(cmpva.market_distinct_poll_voter_count, 0)::numeric AS market_distinct_poll_voter_count,
-          COALESCE(cpoa.poll_signal, 0)::numeric AS poll_signal,
           (r.restaurant_metadata->>'fixtureRunId') AS fixture_run_id
         FROM core_restaurant_items c
         JOIN core_entities r ON r.entity_id = c.restaurant_id
         LEFT JOIN restaurant_markets rm ON rm.entity_id = c.restaurant_id
         LEFT JOIN connection_source_aggregates csa ON csa.connection_id = c.connection_id
-        LEFT JOIN connection_poll_option_aggregates cpoa ON cpoa.connection_id = c.connection_id
-        LEFT JOIN connection_poll_voter_aggregates cpva ON cpva.connection_id = c.connection_id
-        LEFT JOIN connection_market_poll_voter_aggregates cmpva ON cmpva.market_key = rm.market_key
       ),
       all_candidates AS (
         SELECT * FROM restaurant_raw
@@ -590,13 +448,6 @@ export class PublicCraveScoreService {
       supportMentionCount: this.toNumber(row.support_mention_count),
       upvoteMass: this.toNumber(row.upvote_mass),
       sourceDocumentCount: this.toNumber(row.source_document_count),
-      pollCount: this.toNumber(row.poll_count),
-      pollVoteCount: this.toNumber(row.poll_vote_count),
-      distinctPollVoterCount: this.toNumber(row.distinct_poll_voter_count),
-      marketDistinctPollVoterCount: this.toNumber(
-        row.market_distinct_poll_voter_count,
-      ),
-      pollSignal: this.toNumber(row.poll_signal),
     }));
   }
 
@@ -904,10 +755,7 @@ export class PublicCraveScoreService {
       Math.log1p(candidate.directMentionCount) * config.directMentionWeight +
       Math.log1p(candidate.supportMentionCount) * config.supportMentionWeight +
       Math.log1p(candidate.upvoteMass) * config.upvoteMassWeight +
-      Math.log1p(candidate.sourceDocumentCount) * config.sourceBreadthWeight +
-      Math.log1p(candidate.pollCount) +
-      Math.log1p(candidate.distinctPollVoterCount) * config.pollBreadthWeight +
-      Math.max(0, candidate.pollSignal) * config.pollSignalWeight
+      Math.log1p(candidate.sourceDocumentCount) * config.sourceBreadthWeight
     );
   }
 
@@ -915,32 +763,13 @@ export class PublicCraveScoreService {
     candidates: CraveScoreCandidate[],
     config: PublicCraveScoreConfig,
   ): number {
-    const distinctPollVoterCount =
-      this.marketDistinctPollVoterCount(candidates);
     return (
       candidates.length +
       Math.log1p(this.sum(candidates, 'directMentionCount')) *
         config.directMentionWeight +
       Math.log1p(this.sum(candidates, 'sourceDocumentCount')) *
-        config.sourceBreadthWeight +
-      Math.log1p(this.sum(candidates, 'pollCount')) +
-      Math.log1p(distinctPollVoterCount) * config.pollBreadthWeight
+        config.sourceBreadthWeight
     );
-  }
-
-  private marketDistinctPollVoterCount(
-    candidates: CraveScoreCandidate[],
-  ): number {
-    const marketCounts = candidates
-      .map((candidate) => candidate.marketDistinctPollVoterCount)
-      .filter(
-        (value): value is number =>
-          typeof value === 'number' && Number.isFinite(value),
-      );
-    if (marketCounts.length > 0) {
-      return Math.max(...marketCounts);
-    }
-    return this.sum(candidates, 'distinctPollVoterCount');
   }
 
   private saturating(evidence: number, k: number): number {
