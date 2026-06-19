@@ -652,6 +652,13 @@ final class SearchMapRenderController: RCTEventEmitter {
     // to the role table per camera frame so promote/demote happens per-pin natively, with no
     // JS round-trip / whole-frame republish.
     var nativePromotedKeysInOrder: [String] = []
+    // JANK FIX (perf): the desired DOT collection is built from residentDotMarkerKeysInOrder (the
+    // FULL resident set ~220), whose membership is unchanged by an LOD flip (promotion is opacity,
+    // not membership). Rebuilding it (makeParsedFeatureCollection over ~220 features) every
+    // per-camera-frame native_lod reconcile was ~7ms/frame and starved the crossfade stepper. Cache
+    // it and reuse on the native_lod path; any data-change reconcile (non-native_lod) refreshes it.
+    var cachedDesiredDotCollection: ParsedFeatureCollection?
+    var cachedDesiredDotResidentCount: Int = -1
   }
 
   private struct SlowActionWindowState {
@@ -4950,7 +4957,24 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
 
     let roleTable = state.markerRoleTable
-    let desiredDots = Self.makeDesiredDotCollection(roleTable: roleTable)
+    // JANK FIX: reuse the cached desired-dot collection on the per-camera-frame native_lod path
+    // (residents are unchanged by an LOD flip). A non-native_lod reconcile (data change) always
+    // rebuilds + refreshes the cache, so it can never go stale across a content change. The count
+    // guard catches any membership-size change on the native_lod path defensively.
+    let residentDotCount =
+      (roleTable.residentDotMarkerKeysInOrder.isEmpty
+        ? roleTable.dotMarkerKeysInOrder
+        : roleTable.residentDotMarkerKeysInOrder).count
+    let desiredDots: ParsedFeatureCollection
+    if reason == "native_lod",
+       let cached = state.cachedDesiredDotCollection,
+       state.cachedDesiredDotResidentCount == residentDotCount {
+      desiredDots = cached
+    } else {
+      desiredDots = Self.makeDesiredDotCollection(roleTable: roleTable)
+      state.cachedDesiredDotCollection = desiredDots
+      state.cachedDesiredDotResidentCount = residentDotCount
+    }
     let pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
     let previousDesiredPinSnapshot = pinFamilyState.lastDesiredPinSnapshot
     let desiredPinSnapshot = Self.makeDesiredPinSnapshotState(
@@ -11045,16 +11069,23 @@ final class SearchMapRenderController: RCTEventEmitter {
         reason: isMoving ? "camera_moving" : "camera_idle",
         isMoving: isMoving
       )
+      let afterProjectMs = Self.nowMs()
       instances[instanceId] = nextState
       // GRANULAR LOD (native-owned, Phase 2): apply the just-computed promotion decision to
       // the role table and crossfade ONLY the markers whose role changed — per-pin, native,
       // no JS round-trip / whole-frame republish.
       driveNativeLod(instanceId: instanceId)
       if Self.lodHarnessEnabled {
-        let cworkMs = Self.nowMs() - cworkStartMs
+        let afterDriveMs = Self.nowMs()
+        // Split cwork: projectMs = computeOnScreenMarkerKeys (project ~220 markers) + the bridge
+        // emit; driveMs = driveNativeLod reconcile (full-collection rebuild when roles flip). Tells
+        // us WHICH half to optimize before refactoring.
+        let projectMs = afterProjectMs - cworkStartMs
+        let driveMs = afterDriveMs - afterProjectMs
         Self.harnessLog(
-          "{\"ev\":\"cwork\",\"t\":\(Int(Self.nowMs())),\"moving\":\(isMoving),"
-            + "\"projected\":\(didProject),\"ms\":\(String(format: "%.1f", cworkMs))}"
+          "{\"ev\":\"cwork\",\"t\":\(Int(afterDriveMs)),\"moving\":\(isMoving),"
+            + "\"projected\":\(didProject),\"ms\":\(String(format: "%.1f", afterDriveMs - cworkStartMs)),"
+            + "\"projectMs\":\(String(format: "%.1f", projectMs)),\"driveMs\":\(String(format: "%.1f", driveMs))}"
         )
       }
       let labelObservation = Self.derivedFamilyState(sourceId: nextState.labelSourceId, state: nextState).labelObservation

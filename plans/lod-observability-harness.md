@@ -201,3 +201,28 @@ timestamps to get the frame at the EXACT moment. (Sync via the t0 event + known 
   projection. (c) consider whether ~220 on-screen dots is even desirable (mapbox render floor).
 - Also still open: group_enter/group_flip on the initial reveal + zoom steps (a big instant viewport
   change crosses many markers at once) — expected on zoom; revisit if it reads as a visual pop.
+
+## WORKLOG cont. (harness V4 — cwork split + dot-collection cache; jank is RENDER-bound, not LOD)
+
+- Split cwork into projectMs (project ~220 markers + bridge emit) vs driveMs (driveNativeLod
+  reconcile). Measured: projection 1.1ms, RECONCILE 6.9ms — the reconcile was the cost.
+- ROOT CAUSE of the reconcile cost: it rebuilt the WHOLE desired DOT collection
+  (makeParsedFeatureCollection over ~220 resident features) every per-camera-frame native_lod
+  reconcile, even though residents are unchanged by an LOD flip (promotion = opacity, not
+  membership). FIX: cache the desired-dot collection on the native_lod path (count-guarded);
+  data-change reconciles (non-native_lod) rebuild + refresh it. MEASURED: driveNativeLod reconcile
+  6.9ms -> 2.2ms (cwork 8.0 -> 3.3ms). Correctness intact (roleGap ~1, dots crossfade abundantly).
+- BUT dtMs did NOT improve (still ~22-25fps). => cwork was NOT the dtMs bottleneck. Our TOTAL LOD
+  overhead is only ~6ms/frame (cwork 3.3 + stepper compute+apply 2.5, and the mapbox setFeatureState
+  apply is already inside that 2.5). The remaining ~39ms/frame is MAPBOX'S OWN RENDER PASS of the
+  dense scene (220 on-screen markers: 40 pins + labels + ~180 dots) between display-link ticks —
+  NOT our code.
+- IMPORTANT CAVEAT: these fps numbers are from the iOS SIMULATOR, which renders Mapbox dramatically
+  slower than a real device (host-GPU/software Metal). The LOD _logic_ is sim-trustworthy (the user's
+  rule), but _fps/jank_ on the sim overstates device jank. The part WE own (~6ms LOD) is now smaller;
+  the render-bound remainder is partly sim-amplified. NEEDS on-device fps confirmation before
+  treating the choppiness as a real device problem.
+- NEXT LEVER (if device confirms jank): reduce RENDERED marker density — the dot source holds ALL
+  resident candidates (~220+ rendered/culled every frame). Bounding the resident dot set to roughly
+  the viewport (or cheaper dot symbols / clustering) attacks the actual render cost; the LOD code is
+  no longer the bottleneck. Keep the dot-collection cache regardless (less main-thread work/battery).

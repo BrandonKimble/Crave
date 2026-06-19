@@ -186,8 +186,14 @@ if (steps.length > 0) {
     const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
     const stepAvg = avg(stepWork), cworkAvg = avg(cworks), cworkMax = cworks.length ? Math.max(...cworks) : 0;
     const cworkHeavy = cworks.filter((m) => m > 16).length;
+    const cworkEvents = events.filter((e) => e.ev === 'cwork');
+    const projAvg = avg(cworkEvents.map((e) => e.projectMs).filter((m) => m != null));
+    const driveAvg = avg(cworkEvents.map((e) => e.driveMs).filter((m) => m != null));
     if (stepWork.length || cworks.length) {
       console.log(`perf split: stepper compute avg ${stepAvg.toFixed(1)}ms | camera-frame reconcile (cwork) avg ${cworkAvg.toFixed(1)}ms max ${cworkMax.toFixed(1)}ms, ${cworkHeavy}/${cworks.length} frames >16ms`);
+      if (projAvg || driveAvg) {
+        console.log(`  cwork breakdown: projection(+emit) avg ${projAvg.toFixed(1)}ms | driveNativeLod reconcile avg ${driveAvg.toFixed(1)}ms`);
+      }
     }
     if (janky / dtVals.length > 0.25 || avgDt > 24) {
       const cause = cworkAvg > stepAvg * 1.5 && cworkAvg > 8
