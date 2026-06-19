@@ -78,15 +78,18 @@ The score rebuilds from the source-tagged evidence ledger, not from denormalized
   `source_document_id`, and (per polls 5C) `source_kind ∈ {reddit, poll_thread, …}`.
 - `core_restaurant_entity_events` — **dish/entity-level** endorsement (a specific item at a
   restaurant). Same shape.
-- `core_restaurant_items` — the connection (dish) projection; its decayed fields
-  (`decayedMentionScore`, `decayedUpvoteScore`, support variants) are the recency-weighted
-  dish signal.
+- `core_restaurant_items` — the connection (dish) projection: per-dish `mention_count` /
+  `total_upvotes` (+ support variants), aggregated by `projection-rebuild` from the dish's
+  direct mention events **plus** relational support events (category/attribute events matched
+  onto the dish — ~33% of mentions). v3 currently reads these counts.
 
 Rules:
 
 - **Source-agnostic with per-source weights.** Default weight `1.0` for every `source_kind`.
-- **Decay / recency** via the existing `decayed*` fields (and `mentioned_at` for events).
-  Keep the existing half-lives as a starting point (mentions ~365d, upvotes ~240d), tunable.
+- **Decay / recency** is computed **on-read from each event's `mentioned_at`** (the Reddit post
+  date) at rebuild — NOT from materialized columns (the old `decayed*` columns are dropped). One
+  half-life dial. Full spec + status in **§13** (deferred to the launch archive collection; the
+  dish side must replicate the direct+support aggregation above when implemented).
 - **Dedup is handled upstream at ledger-write** — polls dedup by distinct user per the
   community-polls plan §13A; Reddit by `mention_key`. The scorer counts already-deduped
   events and adds no dedup logic of its own.
@@ -100,8 +103,10 @@ Rules:
 A dish has no internal structure, so its score is simply its own endorsement strength:
 
 ```
-E_dish(d) = w_m · log1p(decayedMentionScore_d  + supportDecayedMentionScore_d)
-          + w_u · log1p(decayedUpvoteScore_d   + supportDecayedUpvoteScore_d)
+E_dish(d) = w_m · log1p(mentions_d)  +  w_u · log1p(upvotes_d)
+// mentions_d / upvotes_d = the dish's direct + support endorsement.
+// Currently RAW counts from core_restaurant_items; decay-on-read (§13) swaps these
+// for age-weighted sums over the event ledger when the archive corpus lands.
 ```
 
 - `displayDish(d) = globalPercentile_over_dishes(E_dish) → [60, 99.9]`.
@@ -118,8 +123,8 @@ never an average (which lets one weak dish drag a great place down):
 ```
 dishes      = sort_desc( [ E_dish(d) for d in restaurant.dishes ] )      // raw endorsement, pre-percentile
 acclaim(r)  = Σ_i  discount(i) · dishes[i]          // discount(i) diminishing, i = 0,1,2,…
-praise(r)   = w_pm · log1p(decayedRestaurantMentions_r)
-            + w_pu · log1p(decayedRestaurantUpvotes_r)            // from core_restaurant_events
+praise(r)   = w_m · log1p(praiseMentions_r)  +  w_u · log1p(praiseUpvotes_r)
+            // from core_restaurant_events; RAW now, decay-on-read per §13 later
 E_rest(r)   = w_dish · acclaim(r)  +  w_praise · praise(r)
 displayRest = globalPercentile_over_restaurants(E_rest) → [60, 99.9]
 ```
