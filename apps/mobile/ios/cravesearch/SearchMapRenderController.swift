@@ -428,7 +428,13 @@ final class SearchMapRenderController: RCTEventEmitter {
 
   private struct DesiredPinSnapshotState {
     var inputRevision: String = ""
+    // RESIDENCY: pinIdsInOrder is the pin source MEMBERSHIP. On the native_lod path (residentMode)
+    // it is the full RESIDENT set (every marker with pin data) in a stable order that never reorders
+    // on promote/demote — so the pin source never mutates during a gesture (no re-layout, no wiggle,
+    // no jank). On the reveal/data-change path it stays the promoted set (reveal renders as before).
+    // promotedMarkerKeys is ALWAYS the promoted subset and drives OPACITY (1 vs 0).
     var pinIdsInOrder: [String] = []
+    var promotedMarkerKeys: Set<String> = []
     var pinFeatureRevisionByMarkerKey: [String: String] = [:]
     var pinInteractionFeatureRevisionByMarkerKey: [String: String] = [:]
     var pinLodZByMarkerKey: [String: Int] = [:]
@@ -5085,11 +5091,19 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
     let pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
     let previousDesiredPinSnapshot = pinFamilyState.lastDesiredPinSnapshot
+    // RESIDENCY only on the native_lod (gesture) path: the pin source goes fully resident so
+    // promote/demote is opacity-only (no mutation, no wiggle). The reveal/data-change path keeps the
+    // promoted-only membership so the reveal renders exactly as before (no regression).
+    let residentMode = reason == "native_lod"
     let desiredPinSnapshot = Self.makeDesiredPinSnapshotState(
       roleTable: roleTable,
+      residentMode: residentMode,
       previousSnapshot: previousDesiredPinSnapshot
     )
-    let desiredMarkerFamilyPayloads = Self.makeDesiredMarkerFamilyPayloads(roleTable: roleTable)
+    let desiredMarkerFamilyPayloads = Self.makeDesiredMarkerFamilyPayloads(
+      roleTable: roleTable,
+      residentMode: residentMode
+    )
     let nowMs = Self.nowMs()
     let shouldAnimateIncrementalTransitions = Self.allowsIncrementalMarkerTransitions(
       state,
@@ -5302,6 +5316,10 @@ final class SearchMapRenderController: RCTEventEmitter {
       return (opacity ?? 1) > 0.001
     }
     snapshot.pinIdsInOrder = promotedPinIdsInOrder
+    // On this (collections / reveal / data-change) path membership == promoted, so promotedMarkerKeys
+    // mirrors pinIdsInOrder — updateLivePinTransitions reads opacity from promotedMarkerKeys and gets
+    // the same result as the old nextPresent-driven opacity (no behavior change on the reveal path).
+    snapshot.promotedMarkerKeys = Set(promotedPinIdsInOrder)
     let nextPinMarkerKeys = Set(promotedPinIdsInOrder)
     for markerKey in nextPinMarkerKeys {
       let revision = desiredPins.diffKeyById[markerKey] ?? ""
@@ -5373,20 +5391,43 @@ final class SearchMapRenderController: RCTEventEmitter {
 
   private static func makeDesiredPinSnapshotState(
     roleTable: MarkerRoleTable,
+    residentMode: Bool = false,
     previousSnapshot: DesiredPinSnapshotState? = nil
   ) -> DesiredPinSnapshotState {
     var snapshot = previousSnapshot ?? DesiredPinSnapshotState()
-    snapshot.pinIdsInOrder = roleTable.pinnedMarkerKeysInOrder
-    let nextPinMarkerKeys = Set(roleTable.pinnedMarkerKeysInOrder)
+    // MEMBERSHIP: residentMode (native_lod) → the full RESIDENT set in a STABLE rank order that never
+    // reorders on promote/demote (so the pin source never churns mid-gesture). Otherwise (reveal/
+    // data-change) → the promoted set, exactly as before (reveal renders unchanged).
+    let memberKeys: [String]
+    if residentMode {
+      let residentOrder = roleTable.residentDotMarkerKeysInOrder.isEmpty
+        ? roleTable.dotMarkerKeysInOrder
+        : roleTable.residentDotMarkerKeysInOrder
+      var residentPinKeys = residentOrder.filter { roleTable.rowByMarkerKey[$0]?.pinFeature != nil }
+      let residentSet0 = Set(residentPinKeys)
+      for markerKey in roleTable.pinnedMarkerKeysInOrder
+      where roleTable.rowByMarkerKey[markerKey]?.pinFeature != nil && !residentSet0.contains(markerKey) {
+        residentPinKeys.append(markerKey)
+      }
+      memberKeys = residentPinKeys
+    } else {
+      memberKeys = roleTable.pinnedMarkerKeysInOrder
+    }
+    snapshot.pinIdsInOrder = memberKeys
+    snapshot.promotedMarkerKeys = Set(roleTable.pinnedMarkerKeysInOrder)
+    let nextPinMarkerKeys = Set(memberKeys)
     var inputHash = fnv1a64OffsetBasis
     Self.fnv1a64Append(&inputHash, string: "roleTablePins")
-    Self.fnv1a64Append(&inputHash, string: String(roleTable.pinnedMarkerKeysInOrder.count))
+    Self.fnv1a64Append(&inputHash, string: String(memberKeys.count))
+    // promotion drives opacity → the hash MUST include it (else a promote/demote that doesn't change
+    // membership produces the same inputRevision and the opacity update never fires).
+    Self.fnv1a64Append(&inputHash, string: "promoted")
+    for markerKey in roleTable.pinnedMarkerKeysInOrder {
+      Self.fnv1a64Append(&inputHash, string: markerKey)
+    }
 
-    for (index, markerKey) in roleTable.pinnedMarkerKeysInOrder.enumerated() {
-      // RESIDENT LOD: the native promoted set (pinnedMarkerKeysInOrder) is the source of truth,
-      // not row.role. A natively-promoted marker may still have row.role=="dot" (driveNativeLod
-      // doesn't rewrite rows during a gesture) — include it as long as its row carries pin data
-      // (resident bundle). This is what lets a dot promote-and-render on zoom/pan.
+    for (index, markerKey) in memberKeys.enumerated() {
+      // Iterate MEMBERSHIP (resident or promoted per mode); promotion is opacity-only downstream.
       guard let row = roleTable.rowByMarkerKey[markerKey], row.pinFeature != nil else {
         continue
       }
@@ -5397,7 +5438,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       } else {
         snapshot.pinInteractionFeatureRevisionByMarkerKey.removeValue(forKey: markerKey)
       }
-      let fallbackLodZ = max(0, roleTable.pinnedMarkerKeysInOrder.count - 1 - index)
+      let fallbackLodZ = max(0, memberKeys.count - 1 - index)
       snapshot.pinLodZByMarkerKey[markerKey] =
         row.slotIndex ??
         row.pinFeature.map { Self.slotIndex(from: $0.feature) } ??
@@ -5442,7 +5483,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
     snapshot.inputRevision = Self.finishHashedRevision(
       hash: inputHash,
-      count: roleTable.pinnedMarkerKeysInOrder.count
+      count: memberKeys.count
     )
     return snapshot
   }
@@ -5542,13 +5583,28 @@ final class SearchMapRenderController: RCTEventEmitter {
   }
 
   private static func makeDesiredMarkerFamilyPayloads(
-    roleTable: MarkerRoleTable
+    roleTable: MarkerRoleTable,
+    residentMode: Bool = false
   ) -> DesiredMarkerFamilyPayloads {
     var payloads = DesiredMarkerFamilyPayloads()
-    for markerKey in roleTable.pinnedMarkerKeysInOrder {
-      // RESIDENT LOD: include any marker the native decision promoted (pinnedMarkerKeysInOrder)
-      // whose row carries pin data — NOT just rows JS tagged role=="pin". This is the fix that
-      // lets a dot promote-and-render during a gesture (driveNativeLod doesn't rewrite row.role).
+    // Build payloads for the same MEMBERSHIP the snapshot uses: resident set on native_lod (so every
+    // resident marker has a render state + is in the pin source), promoted set otherwise.
+    let memberKeys: [String]
+    if residentMode {
+      let residentOrder = roleTable.residentDotMarkerKeysInOrder.isEmpty
+        ? roleTable.dotMarkerKeysInOrder
+        : roleTable.residentDotMarkerKeysInOrder
+      var residentPinKeys = residentOrder.filter { roleTable.rowByMarkerKey[$0]?.pinFeature != nil }
+      let residentSet0 = Set(residentPinKeys)
+      for markerKey in roleTable.pinnedMarkerKeysInOrder
+      where roleTable.rowByMarkerKey[markerKey]?.pinFeature != nil && !residentSet0.contains(markerKey) {
+        residentPinKeys.append(markerKey)
+      }
+      memberKeys = residentPinKeys
+    } else {
+      memberKeys = roleTable.pinnedMarkerKeysInOrder
+    }
+    for markerKey in memberKeys {
       guard let row = roleTable.rowByMarkerKey[markerKey], row.pinFeature != nil else {
         continue
       }
@@ -6727,10 +6783,18 @@ final class SearchMapRenderController: RCTEventEmitter {
       let existingRenderState = nextMarkerRenderStateByMarkerKey[markerKey]
       let previousPresent = previousPinIds.contains(markerKey)
       let nextPresent = nextPinIds.contains(markerKey)
+      // OPACITY = promoted, MEMBERSHIP = present. In residentMode present==resident (a promote is a
+      // pure opacity flip on a resident marker, no membership change); in non-resident mode
+      // present==promoted so isPromoted==nextPresent (identical to the old behavior). currentOpacity
+      // falls back to the settled feature-state (so a resident-demoted marker promotes from 0, not 1).
+      let isPromoted = desiredPinSnapshot.promotedMarkerKeys.contains(markerKey)
+      let settledOpacity =
+        Self.numberValue(from: pinFamilyState.sourceState.featureStateById[markerKey]?["nativeLodOpacity"]) ??
+        (isPromoted ? 1 : 0)
       let currentOpacity =
         existing.map { Self.livePinTransitionOpacity($0, atMs: nowMs) } ??
-        (previousPresent ? 1 : 0)
-      let targetOpacity = nextPresent ? 1.0 : 0.0
+        settledOpacity
+      let targetOpacity = isPromoted ? 1.0 : 0.0
 
       let pinFeature =
         desiredPayloads.pinFeatureByMarkerKey[markerKey] ??
@@ -6847,7 +6911,9 @@ final class SearchMapRenderController: RCTEventEmitter {
         continue
       }
 
-      guard previousPresent != nextPresent, abs(currentOpacity - targetOpacity) >= 0.001 else {
+      // Create a fade on any OPACITY change (promote/demote), not a membership change — a resident
+      // marker promoting goes opacity 0→1 with unchanged membership.
+      guard abs(currentOpacity - targetOpacity) >= 0.001 else {
         continue
       }
       nextTransitions[markerKey] = LivePinTransition(
