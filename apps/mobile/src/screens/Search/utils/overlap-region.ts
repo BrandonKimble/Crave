@@ -1,6 +1,5 @@
 import type { Coordinate, MapBounds } from '../../../types';
 import {
-  boundsFromPairs,
   getBoundsCenter,
   getBoundsDiagonalMiles,
   haversineDistanceMiles,
@@ -98,10 +97,6 @@ export const isWithinOverlapRegion = (
   return haversineDistanceMiles(region.center, { lat, lng }) <= region.radiusMiles;
 };
 
-// Whether resolving this region requires an auto-zoom (the far-out shortcut case).
-export const overlapRegionRequiresAutoZoom = (region: OverlapRegion | null): boolean =>
-  region?.kind === 'radius';
-
 // Web-Mercator zoom level at which a circle of `radiusMiles` (its diameter, plus
 // padding) fits across a viewport `viewportWidthPx` wide at `centerLat`. Used to
 // auto-zoom the camera onto the overlap radius for far-out shortcut runs.
@@ -122,13 +117,3 @@ export const zoomToFitRadiusMiles = (
   return Math.max(1, Math.min(20, zoom));
 };
 
-// Bounding box of a radius circle — used to fit the auto-zoom camera to the region.
-export const overlapRadiusBounds = (center: Coordinate, radiusMiles: number): MapBounds => {
-  const latDelta = radiusMiles / 69; // ~69 miles per degree latitude.
-  const cosLat = Math.max(0.01, Math.cos((center.lat * Math.PI) / 180));
-  const lngDelta = radiusMiles / (69 * cosLat);
-  return boundsFromPairs(
-    [center.lng - lngDelta, center.lat - latDelta],
-    [center.lng + lngDelta, center.lat + latDelta]
-  );
-};
