@@ -92,17 +92,6 @@ const arePinInteractionSourcesComplete = ({
 
 const SHORTCUT_COVERAGE_BOUNDS_BUCKET_DEGREES = 0.01;
 const SEARCH_MAP_VISUAL_PROJECTOR_VERSION = 'single-writer-stable-label-source-v4';
-const VIEWPORT_PROJECTION_MIN_SPAN = 1e-6;
-const VIEWPORT_PROJECTION_MIN_CELL_SIZE = 0.0001;
-const VIEWPORT_PROJECTION_CELL_DIVISOR = 10;
-const VIEWPORT_PROJECTION_SCALE_BUCKET_GRANULARITY = 4;
-
-// Materiality memo for the viewport LOD path: carries only the last projection token
-// that was admitted (run_now). The fixed 90ms cadence is gone — admission (materiality
-// + motion-pressure + fairness) is the sole gate now. See resolveMapPlannerAdmission.
-type ShortcutViewportLodCadence = {
-  tokenIdentity: string | null;
-};
 
 type SearchMapSourcePublishReason = 'full' | 'viewport_lod';
 
@@ -114,33 +103,6 @@ const buildLodPinnedVisualKey = (
   meta: ReadonlyArray<{ markerKey: string; lodZ: number }>
 ): string => buildStableKeyFingerprint(meta.map(({ markerKey, lodZ }) => `${markerKey}:${lodZ}`));
 
-const normalizeViewportProjectionSpan = (value: number): number =>
-  Math.max(Math.abs(value), VIEWPORT_PROJECTION_MIN_SPAN);
-
-const buildShortcutViewportProjectionToken = (bounds: MapBounds | null): string | null => {
-  if (!bounds) {
-    return null;
-  }
-  const latSpan = normalizeViewportProjectionSpan(bounds.northEast.lat - bounds.southWest.lat);
-  const lngSpan = normalizeViewportProjectionSpan(bounds.northEast.lng - bounds.southWest.lng);
-  const centerLat = (bounds.northEast.lat + bounds.southWest.lat) / 2;
-  const centerLng = (bounds.northEast.lng + bounds.southWest.lng) / 2;
-  const latCellSize = Math.max(
-    latSpan / VIEWPORT_PROJECTION_CELL_DIVISOR,
-    VIEWPORT_PROJECTION_MIN_CELL_SIZE
-  );
-  const lngCellSize = Math.max(
-    lngSpan / VIEWPORT_PROJECTION_CELL_DIVISOR,
-    VIEWPORT_PROJECTION_MIN_CELL_SIZE
-  );
-  const scaleBucket = Math.round(
-    -Math.log2(Math.max(latSpan, lngSpan)) * VIEWPORT_PROJECTION_SCALE_BUCKET_GRANULARITY
-  );
-  const latCell = Math.round(centerLat / latCellSize);
-  const lngCell = Math.round(centerLng / lngCellSize);
-
-  return `${scaleBucket}:${latCell}:${lngCell}`;
-};
 
 const isMapMotionPressureMoving = (
   mapMotionPressureController: MapMotionPressureController
@@ -1056,9 +1018,6 @@ export const useDirectSearchMapSourceController = ({
   // port. Rebuilt + republished only when the full ranked candidate set changes
   // (results change), NOT on every viewport tick.
   const lastPublishedCandidateCatalogKeyRef = React.useRef<string | null>(null);
-  const shortcutViewportLodCadenceRef = React.useRef<ShortcutViewportLodCadence>({
-    tokenIdentity: null,
-  });
   const shortcutCoverageSnapshotByRequestIdRef = React.useRef<
     Map<string, { bounds: MapBounds; entities: StructuredSearchRequest['entities'] }>
   >(new Map());
@@ -1194,9 +1153,6 @@ export const useDirectSearchMapSourceController = ({
       lodPinnedResetKeyRef.current = resetKey;
       lodPinnedVisualKeyRef.current = '';
       lodPinnedMarkersRef.current = [];
-      shortcutViewportLodCadenceRef.current = {
-        tokenIdentity: null,
-      };
     }
     const currentBounds = viewportBoundsService.getBounds();
     const preparedVisualCycleKey = resolvePreparedPresentationVisualCycleKey(
@@ -1219,9 +1175,6 @@ export const useDirectSearchMapSourceController = ({
         selectedRestaurantId != null);
     if (!isSearchVisualProjectionLive) {
       markerCandidatesRef.current = [];
-      shortcutViewportLodCadenceRef.current = {
-        tokenIdentity: null,
-      };
       // RESIDENT-DATA + DORMANT-LAYERS end state: keep the resident source frame across the
       // whole dismiss/idle window — never publish the empty snapshot here. The pins stay
       // resident in the JS frame AND the native Mapbox sources; native fades presentation
