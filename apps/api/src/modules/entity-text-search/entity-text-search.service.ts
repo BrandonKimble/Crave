@@ -680,7 +680,7 @@ export class EntityTextSearchService {
           0 AS "nameFtsHit",
           0 AS "aliasTrgmHit",
           0 AS "phoneticMatch",
-          e.restaurant_quality_score AS "restaurantQualityScore",
+          (SELECT pes.display_score FROM core_public_entity_scores pes WHERE pes.subject_id = e.entity_id AND pes.subject_type = 'restaurant'::crave_score_subject_type) AS "restaurantQualityScore",
           e.general_praise_upvotes AS "generalPraiseUpvotes"
         FROM core_entities e
         WHERE e.type = ANY(${entityTypeArray})
@@ -690,7 +690,7 @@ export class EntityTextSearchService {
         ORDER BY
           CASE WHEN lower(e.name) = v.term THEN 1 ELSE 0 END DESC,
           CASE WHEN lower(e.name) LIKE v.prefix_pattern THEN 1 ELSE 0 END DESC,
-          COALESCE(e.restaurant_quality_score, 0) DESC,
+          COALESCE("restaurantQualityScore", 0) DESC,
           COALESCE(e.general_praise_upvotes, 0) DESC,
           e.name ASC
         LIMIT ${options.perTermLimit}
@@ -812,7 +812,7 @@ export class EntityTextSearchService {
             END AS "nameFtsHit",
             CASE WHEN crave_aliases_haystack_lower(e.aliases) % v.term THEN 1 ELSE 0 END AS "aliasTrgmHit",
             0 AS "phoneticMatch",
-            e.restaurant_quality_score AS "restaurantQualityScore",
+            (SELECT pes.display_score FROM core_public_entity_scores pes WHERE pes.subject_id = e.entity_id AND pes.subject_type = 'restaurant'::crave_score_subject_type) AS "restaurantQualityScore",
             e.general_praise_upvotes AS "generalPraiseUpvotes"
           FROM core_entities e
           WHERE e.type = ANY(${entityTypeArray})
@@ -915,7 +915,7 @@ export class EntityTextSearchService {
           0 AS "nameFtsHit",
           0 AS "aliasTrgmHit",
           1 AS "phoneticMatch",
-          e.restaurant_quality_score AS "restaurantQualityScore",
+          (SELECT pes.display_score FROM core_public_entity_scores pes WHERE pes.subject_id = e.entity_id AND pes.subject_type = 'restaurant'::crave_score_subject_type) AS "restaurantQualityScore",
           e.general_praise_upvotes AS "generalPraiseUpvotes"
         FROM core_entities e
         WHERE e.type = ANY(${entityTypeArray})
@@ -925,7 +925,7 @@ export class EntityTextSearchService {
           AND dmetaphone(regexp_replace(lower(e.name), '[^a-z0-9 ]', '', 'g')) =
             dmetaphone(v.phonetic_term)
         ORDER BY
-          COALESCE(e.restaurant_quality_score, 0) DESC,
+          COALESCE("restaurantQualityScore", 0) DESC,
           COALESCE(e.general_praise_upvotes, 0) DESC,
           e.name ASC
         LIMIT v.remaining_limit
