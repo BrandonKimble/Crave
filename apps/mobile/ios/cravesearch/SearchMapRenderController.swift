@@ -10798,12 +10798,37 @@ final class SearchMapRenderController: RCTEventEmitter {
       return false
     }
     state.lastVisibleMarkerSetSignature = visibleSignature
+    // PHASE 1 (shadow) — NATIVE-OWNED PROMOTION DECISION. The promoted set is simply the
+    // top-`maxFullPins` by rank among the on-screen markers (native projection is the
+    // visibility truth, with spatial enter/exit hysteresis). This is the whole rule: a
+    // marker is a PIN iff it is in this set; everything else is a DOT. Computed here, per
+    // camera frame, from data native already has (catalog rank + the on-screen set) — no JS
+    // round-trip. SHADOW phase: we only LOG it (sanity-check the ranks) and stash it on the
+    // state; Phase 2 feeds it to the per-pin opacity stepper and stops the JS republish.
+    // maxFullPins MUST match JS (search-root-map-engine-input-controller-runtime.ts: 40).
+    let shadowLodMaxFullPins = 40
+    let rankByKey = Dictionary(
+      state.candidateCatalog.map { ($0.markerKey, $0.rank) }, uniquingKeysWith: { first, _ in first }
+    )
+    let nativePromotedKeys = Array(
+      onScreenKeys
+        .sorted { (rankByKey[$0] ?? Int.max) < (rankByKey[$1] ?? Int.max) }
+        .prefix(shadowLodMaxFullPins)
+    )
+    let promotedRanks = nativePromotedKeys.compactMap { rankByKey[$0] }.sorted()
+    NSLog(
+      "[mapdiag] native_lod reason=%@ visible=%d promoted=%d ranks(min12)=%@",
+      reason, onScreenKeys.count, nativePromotedKeys.count,
+      promotedRanks.prefix(12).map(String.init).joined(separator: ",")
+    )
     let cameraState = handle.mapView.mapboxMap.cameraState
     emit([
       "type": "map_native_visible_markers",
       "instanceId": instanceId,
       "markerKeys": onScreenKeys,
       "markerCount": onScreenKeys.count,
+      "nativePromotedKeys": nativePromotedKeys,
+      "nativePromotedCount": nativePromotedKeys.count,
       "catalogCount": state.candidateCatalog.count,
       "zoom": cameraState.zoom,
       "bearing": cameraState.bearing,
