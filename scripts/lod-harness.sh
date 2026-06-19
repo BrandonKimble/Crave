@@ -7,6 +7,14 @@
 # Assumes the app is already built+installed and metro is running on 8081.
 set -uo pipefail
 
+# Maestro needs a JRE; export JAVA_HOME if not already set (openjdk@17 via homebrew).
+if [ -z "${JAVA_HOME:-}" ]; then
+  for cand in "$(/usr/libexec/java_home 2>/dev/null)" /opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home; do
+    [ -x "$cand/bin/java" ] && export JAVA_HOME="$cand" && break
+  done
+fi
+export PATH="$JAVA_HOME/bin:$PATH"
+
 UDID="${1:-7B0DD874-3496-46F7-9480-3EDDABCE2F31}"
 APP="com.brandonkimble.cravesearch"
 TS="$(date +%Y%m%dT%H%M%S)"
@@ -57,11 +65,18 @@ appId: $APP
 - waitForAnimationToEnd: { timeout: 2000 }
 - swipe: { start: '40%, 30%', end: '70%, 50%', duration: 700 }   # slow pan 2
 - waitForAnimationToEnd: { timeout: 2000 }
-- doubleTapOn: { point: '50%, 35%' }   # ZOOM IN 1
-- waitForAnimationToEnd: { timeout: 1800 }
-- doubleTapOn: { point: '50%, 35%' }   # ZOOM IN 2
-- waitForAnimationToEnd: { timeout: 1800 }
-- doubleTapOn: { point: '50%, 35%' }   # ZOOM IN 3
+# ZOOM IN bug repro: zoom in RAPIDLY on a dense dot cluster (short waits ~= a continuous pinch).
+# Reported bug: dots vanish on zoom-in and never promote to pins. Step in 5x fast so the on-screen
+# set shrinks quickly and many markers cross the rank boundary at once.
+- doubleTapOn: { point: '50%, 40%' }   # ZOOM IN 1
+- waitForAnimationToEnd: { timeout: 700 }
+- doubleTapOn: { point: '50%, 40%' }   # ZOOM IN 2
+- waitForAnimationToEnd: { timeout: 700 }
+- doubleTapOn: { point: '50%, 40%' }   # ZOOM IN 3
+- waitForAnimationToEnd: { timeout: 700 }
+- doubleTapOn: { point: '50%, 40%' }   # ZOOM IN 4
+- waitForAnimationToEnd: { timeout: 700 }
+- doubleTapOn: { point: '50%, 40%' }   # ZOOM IN 5
 - waitForAnimationToEnd: { timeout: 2500 }
 EOF
 

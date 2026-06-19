@@ -26,6 +26,7 @@ events.sort((a, b) => (a.t || 0) - (b.t || 0));
 const frames = events.filter((e) => e.ev === 'frame');
 const lods = events.filter((e) => e.ev === 'lod');
 const steps = events.filter((e) => e.ev === 'step');
+const muts = events.filter((e) => e.ev === 'mut');
 const GROUP_THRESHOLD = 5; // >= this many in one event = a "group" (not per-pin)
 
 console.log(`\n=== LOD HARNESS REPORT ===`);
@@ -203,6 +204,30 @@ if (steps.length > 0) {
         : `cause: unclear — stepper ${stepAvg.toFixed(1)}ms, cwork ${cworkAvg.toFixed(1)}ms; likely external main-thread contention (bridge/mapbox).`;
       flags.push({ issue: 'jank', t: animSteps.find((s) => (s.dtMs || 0) > 24)?.t, detail: `render choppy during animation: avg ${avgDt.toFixed(1)}ms/frame (~${fps}fps), ${janky}/${dtVals.length} frames >24ms. ${cause}` });
     }
+  }
+}
+
+// --- SOURCE MUTATIONS DURING MOVEMENT (the design forbids this — LOD must be feature-state-only).
+// Any add/update/remove on a source while moving marks it dirty → Mapbox re-tiles/re-renders the
+// whole scene off our timing = the real jank + possibly the zoom-disappear (removes drop features). ---
+if (muts.length) {
+  const nativeMuts = muts.filter((m) => m.reason === 'native_lod');
+  const movingMuts = nativeMuts.filter((m) => m.moving);
+  const withWork = nativeMuts.filter((m) => (m.total || 0) > 0);
+  const sum = (sel) => nativeMuts.reduce((a, m) => a + sel(m), 0);
+  const triple = (k) => [sum((m) => (m[k] || [0, 0, 0])[0]), sum((m) => (m[k] || [0, 0, 0])[1]), sum((m) => (m[k] || [0, 0, 0])[2])];
+  const [bA, bU, bR] = triple('bundle'), [piA, piU, piR] = triple('pinInteraction');
+  const [dA2, , dR2] = triple('dot'), [lcA, , lcR] = triple('labelCollision');
+  console.log(`\nsource mutations (native_lod): ${nativeMuts.length} reconciles, ${withWork.length} did source work, ${movingMuts.length} WHILE MOVING`);
+  console.log(`  pinBundle add=${bA} upd=${bU} rm=${bR} | pinInteraction add=${piA} upd=${piU} rm=${piR} | labelCollision add=${lcA} rm=${lcR} | dot add=${dA2} rm=${dR2}`);
+  const movingWithWork = movingMuts.filter((m) => (m.total || 0) > 0);
+  if (movingWithWork.length > 0) {
+    const totalWork = movingWithWork.reduce((a, m) => a + m.total, 0);
+    flags.push({
+      issue: 'source_mutation_in_motion',
+      t: movingWithWork[0].t,
+      detail: `${movingWithWork.length} native_lod reconciles mutated sources WHILE MOVING (${totalWork} ops; pinBundle add ${bA}/rm ${bR}, pinInteraction add ${piA}/rm ${piR}, labelCollision add ${lcA}/rm ${lcR}). LOD must be feature-state-only — each source write re-tiles the whole scene = jank. The promoted-slot bundle add/remove on promote/demote is the source churn.`,
+    });
   }
 }
 

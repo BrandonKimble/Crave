@@ -5103,6 +5103,28 @@ final class SearchMapRenderController: RCTEventEmitter {
       durationMs: CACurrentMediaTime() * 1000 - batchStartedAt,
       operationCount: preparedPinAndLabelOutput.plans.count + preparedDotOutput.plans.count
     )
+    // HARNESS [lodev] mut event: SOURCE MUTATIONS produced by this reconcile. The design forbids
+    // ANY source add/update/remove during camera motion (LOD must be feature-state-only); only the
+    // CADisplayLink stepper writing opacity feature-state is allowed. If reason==native_lod shows
+    // add/update/remove > 0 while moving, THAT is the jank: each marks the source dirty → Mapbox
+    // re-tiles/re-renders the whole ~220-marker scene off our timing. Broken out per source family.
+    if Self.lodHarnessEnabled {
+      func mut(_ id: String) -> (Int, Int, Int) {
+        let s = mutationSummaryBySourceId[id]
+        return (s?.addCount ?? 0, s?.updateCount ?? 0, s?.removeCount ?? 0)
+      }
+      // pinBundle = where promoted pins+labels+interaction actually RENDER (the "promoted slot"
+      // source). It churns add/remove per promote/demote — the prime source-mutation suspect.
+      let bundle = mut(state.pinBundleSourceId), pinI = mut(state.pinInteractionSourceId)
+      let d = mut(state.dotSourceId), lc = mut(state.labelCollisionSourceId)
+      let total = mutationSummaryBySourceId.values.reduce(0) { $0 + $1.addCount + $1.updateCount + $1.removeCount }
+      Self.harnessLog(
+        "{\"ev\":\"mut\",\"t\":\(Int(Self.nowMs())),\"reason\":\"\(reason)\","
+          + "\"moving\":\(state.currentViewportIsMoving),\"affected\":\(affectedMarkerKeys.count),\"total\":\(total),"
+          + "\"bundle\":[\(bundle.0),\(bundle.1),\(bundle.2)],\"pinInteraction\":[\(pinI.0),\(pinI.1),\(pinI.2)],"
+          + "\"dot\":[\(d.0),\(d.1),\(d.2)],\"labelCollision\":[\(lc.0),\(lc.1),\(lc.2)]}"
+      )
+    }
     finalizePreparedPinAndLabelOutput(
       instanceId: instanceId,
       prepared: preparedPinAndLabelOutput,
