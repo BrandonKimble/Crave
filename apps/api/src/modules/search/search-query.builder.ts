@@ -1355,8 +1355,8 @@ public_restaurant_scores AS (
     jsonb_build_object(
       'confidenceLabel',
         CASE
-          WHEN entity_confidence >= 0.7 THEN 'strong'
-          WHEN entity_confidence >= 0.45 THEN 'solid'
+          WHEN display_score >= 90 THEN 'strong'
+          WHEN display_score >= 78 THEN 'solid'
           ELSE 'early'
         END,
       'evidenceCopy', 'Based on community evidence.'
@@ -1389,8 +1389,8 @@ public_connection_scores AS (
     jsonb_build_object(
       'confidenceLabel',
         CASE
-          WHEN entity_confidence >= 0.7 THEN 'strong'
-          WHEN entity_confidence >= 0.45 THEN 'solid'
+          WHEN display_score >= 90 THEN 'strong'
+          WHEN display_score >= 78 THEN 'solid'
           ELSE 'early'
         END,
       'evidenceCopy', 'Based on community evidence.'

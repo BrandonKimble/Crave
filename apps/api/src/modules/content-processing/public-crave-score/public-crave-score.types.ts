@@ -10,54 +10,46 @@ export interface PublicCraveScoreConfig {
   displayCurveVersion: string;
   displayMin: number;
   displayMax: number;
-  displayCenter: number;
-  displayScale: number;
-  marketReliabilityK: number;
-  entityConfidenceK: number;
-  entityConfidencePower: number;
-  robustSpreadFloor: number;
-  directMentionWeight: number;
-  upvoteMassWeight: number;
-  sourceBreadthWeight: number;
-  supportMentionWeight: number;
+  // dish (atomic) endorsement strength = mention/upvote log-weights
+  dishMentionWeight: number;
+  dishUpvoteWeight: number;
+  // restaurant composite: discounted dish-acclaim + by-name praise
+  discountRho: number; // geometric discount on sorted dish scores (peak↔breadth dial)
+  dishWeight: number; // weight on the discounted dish-acclaim term
+  praiseWeight: number; // weight on the restaurant-level praise term
 }
 
-export interface CraveScoreCandidate {
+// A dish (connection): its own endorsement, plus the restaurant it rolls up into.
+export interface DishCandidate {
+  connectionId: string;
+  restaurantId: string;
+  scoringMarketKey: string | null;
+  mentions: number; // direct + support mention count
+  upvotes: number; // direct + support upvote mass
+}
+
+// A restaurant: its by-name endorsement (general praise / name mentions).
+export interface RestaurantCandidate {
+  restaurantId: string;
+  scoringMarketKey: string | null;
+  praiseMentions: number;
+  praiseUpvotes: number;
+}
+
+export interface CraveScoreCandidates {
+  dishes: DishCandidate[];
+  restaurants: RestaurantCandidate[];
+}
+
+export interface ScoredCraveSubject {
   subjectType: CraveScoreSubjectType;
   subjectId: string;
   scoringMarketKey: string | null;
-  rawQualityScore: number;
-  directMentionCount: number;
-  supportMentionCount: number;
-  upvoteMass: number;
-  sourceDocumentCount: number;
-}
-
-export interface ScoredCraveSubject extends CraveScoreCandidate {
-  globalZ: number;
-  marketZ: number | null;
-  marketReliability: number;
-  entityConfidence: number;
-  normalizedSignal: number;
-  posteriorSignal: number;
+  endorsementRaw: number;
+  percentileRank: number;
   displayScore: number;
   scoreDelta7d: number | null;
   scoreDelta28d: number | null;
   movementState: CraveScoreMovementState;
-  factorTrace: Record<string, unknown>;
-}
-
-export interface CraveScoreMarketStat {
-  subjectType: CraveScoreSubjectType;
-  marketKey: string;
-  eligibleSubjectCount: number;
-  rawMedian: number;
-  rawMad: number;
-  rawIqr: number;
-  rawSpread: number;
-  globalMedian: number;
-  globalSpread: number;
-  marketReliability: number;
-  evidenceSummary: Record<string, unknown>;
   factorTrace: Record<string, unknown>;
 }

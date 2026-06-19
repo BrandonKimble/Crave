@@ -4,24 +4,30 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import {
-  CraveScoreCandidate,
-  CraveScoreMarketStat,
+  CraveScoreCandidates,
+  CraveScoreMovementState,
   CraveScoreSubjectType,
+  DishCandidate,
   PublicCraveScoreConfig,
+  RestaurantCandidate,
   ScoredCraveSubject,
 } from './public-crave-score.types';
 
 type NumericLike = number | string | Prisma.Decimal | null | undefined;
 
-type CandidateRow = {
-  subject_type: CraveScoreSubjectType;
-  subject_id: string;
+type DishRow = {
+  connection_id: string;
+  restaurant_id: string;
   scoring_market_key: string | null;
-  raw_quality_score: NumericLike;
-  direct_mention_count: NumericLike;
-  support_mention_count: NumericLike;
-  upvote_mass: NumericLike;
-  source_document_count: NumericLike;
+  mentions: NumericLike;
+  upvotes: NumericLike;
+};
+
+type RestaurantRow = {
+  restaurant_id: string;
+  scoring_market_key: string | null;
+  praise_mentions: NumericLike;
+  praise_upvotes: NumericLike;
 };
 
 type PriorScoreRow = {
@@ -32,21 +38,36 @@ type PriorScoreRow = {
 };
 
 const DEFAULT_CONFIG: PublicCraveScoreConfig = {
-  scoreVersion: 'crave-score-v2',
-  displayCurveVersion: 'crave-score-display-v1',
+  scoreVersion: 'crave-score-v3',
+  displayCurveVersion: 'crave-score-display-v3',
   displayMin: 60,
   displayMax: 99.9,
-  displayCenter: 0,
-  displayScale: 0.31,
-  marketReliabilityK: 80,
-  entityConfidenceK: 4,
-  entityConfidencePower: 3.8,
-  robustSpreadFloor: 1,
-  directMentionWeight: 0.75,
-  upvoteMassWeight: 0.12,
-  sourceBreadthWeight: 1.4,
-  supportMentionWeight: 0.35,
+  dishMentionWeight: 0.7,
+  dishUpvoteWeight: 0.3,
+  discountRho: 0.5,
+  dishWeight: 1.0,
+  praiseWeight: 2.0,
 };
+
+// Reusable: each restaurant's single scoring market (most-regional wins).
+const RESTAURANT_MARKETS_CTE = Prisma.sql`
+  restaurant_markets AS (
+    SELECT DISTINCT ON (emp.entity_id)
+      emp.entity_id,
+      emp.market_key
+    FROM core_entity_market_presence emp
+    LEFT JOIN core_markets m ON m.market_key = emp.market_key
+    ORDER BY
+      emp.entity_id,
+      CASE m.market_type
+        WHEN 'regional' THEN 0
+        WHEN 'manual' THEN 1
+        WHEN 'locality' THEN 2
+        ELSE 3
+      END,
+      emp.market_key ASC
+  )
+`;
 
 @Injectable()
 export class PublicCraveScoreService {
@@ -67,11 +88,7 @@ export class PublicCraveScoreService {
     fixtureRunId?: string;
     config?: Partial<PublicCraveScoreConfig>;
     recencyReferenceDate?: Date;
-  }): Promise<{
-    scoreRunId: string;
-    scoredCount: number;
-    marketStatsCount: number;
-  }> {
+  }): Promise<{ scoreRunId: string; scoredCount: number }> {
     const config = { ...DEFAULT_CONFIG, ...(params?.config ?? {}) };
     const recencyReferenceDate = params?.recencyReferenceDate ?? new Date();
     const scoreRunId = randomUUID();
@@ -85,191 +102,238 @@ export class PublicCraveScoreService {
         config,
         recencyReferenceDate,
       );
-      const { scored, marketStats } = this.scoreCandidates(
-        candidates,
-        priorScores,
-        config,
-      );
+      const scored = this.scoreCandidates(candidates, priorScores, config);
 
-      await this.writeMarketStats(scoreRunId, marketStats);
-      await this.writeScores(scoreRunId, scored, config, recencyReferenceDate);
+      // Only a full/global rebuild owns the entire scored set, so only it may
+      // prune subjects outside this run's output. A fixture-scoped rebuild
+      // writes a subset and must never touch unrelated subjects.
+      const pruneStaleSubjects = !params?.fixtureRunId;
+      await this.writeScores(
+        scoreRunId,
+        scored,
+        config,
+        recencyReferenceDate,
+        pruneStaleSubjects,
+      );
       await this.completeRun(scoreRunId, {
         restaurants: scored.filter((row) => row.subjectType === 'restaurant')
           .length,
         connections: scored.filter((row) => row.subjectType === 'connection')
           .length,
-        marketStats: marketStats.length,
       });
 
       this.logger.info('Rebuilt public Crave Scores', {
         scoreRunId,
         scoredCount: scored.length,
-        marketStatsCount: marketStats.length,
         durationMs: Date.now() - startedAt,
       });
 
-      return {
-        scoreRunId,
-        scoredCount: scored.length,
-        marketStatsCount: marketStats.length,
-      };
+      return { scoreRunId, scoredCount: scored.length };
     } catch (error) {
       await this.failRun(scoreRunId, error);
       throw error;
     }
   }
 
+  // ── Scoring (v3): endorsement strength → global percentile → display ──────
+  //
+  // Dishes are atomic: a dish's score is its own endorsement strength.
+  // Restaurants are composite: a discounted aggregate of their dishes'
+  // endorsement (best dish counts fully, each next one less) plus a by-name
+  // praise term (which alone carries dishless restaurants). Each subject type
+  // is normalized by GLOBAL percentile → one stable meaning everywhere.
   scoreCandidates(
-    candidates: CraveScoreCandidate[],
+    candidates: CraveScoreCandidates,
     priorScores: Map<
       string,
       { score7d: number | null; score28d: number | null }
     >,
     config: PublicCraveScoreConfig = DEFAULT_CONFIG,
-  ): { scored: ScoredCraveSubject[]; marketStats: CraveScoreMarketStat[] } {
-    const bySubjectType = this.groupBy(
-      candidates,
-      (candidate) => candidate.subjectType,
-    );
-    const marketStats: CraveScoreMarketStat[] = [];
-    const scored: ScoredCraveSubject[] = [];
+  ): ScoredCraveSubject[] {
+    const endorse = (mentions: number, upvotes: number): number =>
+      config.dishMentionWeight * Math.log1p(Math.max(0, mentions)) +
+      config.dishUpvoteWeight * Math.log1p(Math.max(0, upvotes));
 
-    for (const [subjectType, subjectCandidates] of bySubjectType.entries()) {
-      const globalDistribution = this.distributionStats(
-        subjectCandidates.map((candidate) => candidate.rawQualityScore),
-        config.robustSpreadFloor,
-      );
-      const byMarket = this.groupBy(
-        subjectCandidates.filter((candidate) => candidate.scoringMarketKey),
-        (candidate) => candidate.scoringMarketKey as string,
-      );
-      const marketDistribution = new Map<
-        string,
-        ReturnType<PublicCraveScoreService['distributionStats']> & {
-          reliability: number;
-          evidence: number;
-        }
-      >();
-
-      for (const [marketKey, marketCandidates] of byMarket.entries()) {
-        const stats = this.distributionStats(
-          marketCandidates.map((candidate) => candidate.rawQualityScore),
-          config.robustSpreadFloor,
-        );
-        const evidence = this.marketEvidence(marketCandidates, config);
-        const reliability = this.saturating(
-          evidence,
-          config.marketReliabilityK,
-        );
-        marketDistribution.set(marketKey, { ...stats, reliability, evidence });
-        marketStats.push({
-          subjectType,
-          marketKey,
-          eligibleSubjectCount: marketCandidates.length,
-          rawMedian: stats.median,
-          rawMad: stats.mad,
-          rawIqr: stats.iqr,
-          rawSpread: stats.spread,
-          globalMedian: globalDistribution.median,
-          globalSpread: globalDistribution.spread,
-          marketReliability: reliability,
-          evidenceSummary: {
-            effectiveMarketEvidence: this.round(evidence),
-            sourceDocumentCount: this.sum(
-              marketCandidates,
-              'sourceDocumentCount',
-            ),
-          },
-          factorTrace: {
-            distribution: 'median_mad_iqr',
-            marketReliabilityK: config.marketReliabilityK,
-          },
-        });
-      }
-
-      for (const candidate of subjectCandidates) {
-        const marketStatsForCandidate = candidate.scoringMarketKey
-          ? marketDistribution.get(candidate.scoringMarketKey)
-          : null;
-        const globalZ = this.robustZ(
-          candidate.rawQualityScore,
-          globalDistribution,
-        );
-        const marketZ = marketStatsForCandidate
-          ? this.robustZ(candidate.rawQualityScore, marketStatsForCandidate)
-          : null;
-        const marketReliability = marketStatsForCandidate?.reliability ?? 0;
-        const normalizedSignal =
-          marketReliability * (marketZ ?? globalZ) +
-          (1 - marketReliability) * globalZ;
-        const entityEvidence = this.entityEvidence(candidate, config);
-        const entityConfidence = this.saturating(
-          entityEvidence,
-          config.entityConfidenceK,
-        );
-        const confidenceShrink = Math.pow(
-          entityConfidence,
-          config.entityConfidencePower,
-        );
-        const posteriorSignal = confidenceShrink * normalizedSignal;
-        const displayScore = this.displayScore(posteriorSignal, config);
-        const prior = priorScores.get(this.subjectKey(candidate));
-        const scoreDelta7d =
-          prior?.score7d != null
-            ? this.round(displayScore - prior.score7d, 1)
-            : null;
-        const scoreDelta28d =
-          prior?.score28d != null
-            ? this.round(displayScore - prior.score28d, 1)
-            : null;
-        const movementState =
-          scoreDelta7d === null
-            ? 'insufficient_history'
-            : scoreDelta7d > 0
-              ? 'rising'
-              : scoreDelta7d < 0
-                ? 'cooling'
-                : 'stable';
-
-        scored.push({
-          ...candidate,
-          globalZ: this.round(globalZ),
-          marketZ: marketZ === null ? null : this.round(marketZ),
-          marketReliability: this.round(marketReliability, 5),
-          entityConfidence: this.round(entityConfidence, 5),
-          normalizedSignal: this.round(normalizedSignal),
-          posteriorSignal: this.round(posteriorSignal),
-          displayScore,
-          scoreDelta7d: scoreDelta7d === 0 ? null : scoreDelta7d,
-          scoreDelta28d: scoreDelta28d === 0 ? null : scoreDelta28d,
-          movementState,
-          factorTrace: {
-            rawQualitySource: 'source_facts_only',
-            privateEvidence: {
-              directMentionCount: candidate.directMentionCount,
-              supportMentionCount: candidate.supportMentionCount,
-              upvoteMass: candidate.upvoteMass,
-              sourceDocumentCount: candidate.sourceDocumentCount,
-            },
-            globalDistribution,
-            marketDistribution: marketStatsForCandidate
-              ? {
-                  median: marketStatsForCandidate.median,
-                  spread: marketStatsForCandidate.spread,
-                  reliability: this.round(marketReliability, 5),
-                }
-              : null,
-            config: {
-              scoreVersion: config.scoreVersion,
-              displayCurveVersion: config.displayCurveVersion,
-              entityConfidencePower: config.entityConfidencePower,
-            },
-          },
-        });
+    // 1. Dish endorsement + group by restaurant.
+    const dishEndorsement = new Map<string, number>();
+    const dishesByRestaurant = new Map<string, number[]>();
+    for (const dish of candidates.dishes) {
+      const value = endorse(dish.mentions, dish.upvotes);
+      dishEndorsement.set(dish.connectionId, value);
+      const bucket = dishesByRestaurant.get(dish.restaurantId);
+      if (bucket) {
+        bucket.push(value);
+      } else {
+        dishesByRestaurant.set(dish.restaurantId, [value]);
       }
     }
 
-    return { scored, marketStats };
+    // 2. Restaurant endorsement = discounted dish-acclaim + praise.
+    const restaurantAggregate = new Map<
+      string,
+      {
+        endorsement: number;
+        acclaim: number;
+        praise: number;
+        dishCount: number;
+        bestDish: number;
+      }
+    >();
+    for (const restaurant of candidates.restaurants) {
+      const dishes = (dishesByRestaurant.get(restaurant.restaurantId) ?? [])
+        .slice()
+        .sort((a, b) => b - a);
+      let acclaim = 0;
+      for (let i = 0; i < dishes.length; i += 1) {
+        acclaim += Math.pow(config.discountRho, i) * dishes[i];
+      }
+      const praise = endorse(
+        restaurant.praiseMentions,
+        restaurant.praiseUpvotes,
+      );
+      restaurantAggregate.set(restaurant.restaurantId, {
+        endorsement: config.dishWeight * acclaim + config.praiseWeight * praise,
+        acclaim,
+        praise,
+        dishCount: dishes.length,
+        bestDish: dishes[0] ?? 0,
+      });
+    }
+
+    const scored: ScoredCraveSubject[] = [];
+
+    // 3a. Dishes — include any with endorsement (all connections have ≥1 mention).
+    const dishEntries = candidates.dishes
+      .map((dish) => ({
+        dish,
+        endorsement: dishEndorsement.get(dish.connectionId) ?? 0,
+      }))
+      .filter((entry) => entry.endorsement > 0);
+    const dishRanks = this.percentileRanks(
+      dishEntries.map((e) => e.endorsement),
+    );
+    dishEntries.forEach((entry, i) => {
+      scored.push(
+        this.buildScored(
+          'connection',
+          entry.dish.connectionId,
+          entry.dish.scoringMarketKey,
+          entry.endorsement,
+          dishRanks[i],
+          config,
+          priorScores,
+          {
+            kind: 'dish',
+            mentions: entry.dish.mentions,
+            upvotes: entry.dish.upvotes,
+          },
+        ),
+      );
+    });
+
+    // 3b. Restaurants — inclusion floor: any endorsement (dish acclaim or praise).
+    const restEntries = candidates.restaurants
+      .map((restaurant) => ({
+        restaurant,
+        agg: restaurantAggregate.get(restaurant.restaurantId)!,
+      }))
+      .filter((entry) => entry.agg && entry.agg.endorsement > 0);
+    const restRanks = this.percentileRanks(
+      restEntries.map((e) => e.agg.endorsement),
+    );
+    restEntries.forEach((entry, i) => {
+      scored.push(
+        this.buildScored(
+          'restaurant',
+          entry.restaurant.restaurantId,
+          entry.restaurant.scoringMarketKey,
+          entry.agg.endorsement,
+          restRanks[i],
+          config,
+          priorScores,
+          {
+            kind: 'restaurant',
+            dishCount: entry.agg.dishCount,
+            bestDish: this.round(entry.agg.bestDish),
+            acclaim: this.round(entry.agg.acclaim),
+            praise: this.round(entry.agg.praise),
+          },
+        ),
+      );
+    });
+
+    return scored;
+  }
+
+  private buildScored(
+    subjectType: CraveScoreSubjectType,
+    subjectId: string,
+    scoringMarketKey: string | null,
+    endorsementRaw: number,
+    percentile: number,
+    config: PublicCraveScoreConfig,
+    priorScores: Map<
+      string,
+      { score7d: number | null; score28d: number | null }
+    >,
+    endorsementTrace: Record<string, unknown>,
+  ): ScoredCraveSubject {
+    const displayScore = this.round(
+      config.displayMin + (config.displayMax - config.displayMin) * percentile,
+      1,
+    );
+    const prior = priorScores.get(`${subjectType}:${subjectId}`);
+    const rawDelta7d =
+      prior?.score7d != null
+        ? this.round(displayScore - prior.score7d, 1)
+        : null;
+    const rawDelta28d =
+      prior?.score28d != null
+        ? this.round(displayScore - prior.score28d, 1)
+        : null;
+    const movementState: CraveScoreMovementState =
+      rawDelta7d === null
+        ? 'insufficient_history'
+        : rawDelta7d > 0
+          ? 'rising'
+          : rawDelta7d < 0
+            ? 'cooling'
+            : 'stable';
+
+    return {
+      subjectType,
+      subjectId,
+      scoringMarketKey,
+      endorsementRaw: this.round(endorsementRaw),
+      percentileRank: this.round(percentile, 5),
+      displayScore,
+      scoreDelta7d: rawDelta7d === 0 ? null : rawDelta7d,
+      scoreDelta28d: rawDelta28d === 0 ? null : rawDelta28d,
+      movementState,
+      factorTrace: {
+        endorsement: endorsementTrace,
+        percentileRank: this.round(percentile, 5),
+        config: {
+          scoreVersion: config.scoreVersion,
+          discountRho: config.discountRho,
+          dishWeight: config.dishWeight,
+          praiseWeight: config.praiseWeight,
+        },
+      },
+    };
+  }
+
+  // Percentile rank in [0,1] aligned to the input order (ties broken by index).
+  private percentileRanks(values: number[]): number[] {
+    const n = values.length;
+    const order = values
+      .map((value, index) => [value, index] as [number, number])
+      .sort((a, b) => a[0] - b[0]);
+    const ranks = new Array<number>(n).fill(0);
+    order.forEach(([, index], k) => {
+      ranks[index] = n > 1 ? k / (n - 1) : 0.5;
+    });
+    return ranks;
   }
 
   private async createRun(
@@ -334,121 +398,65 @@ export class PublicCraveScoreService {
 
   private async loadCandidates(params?: {
     fixtureRunId?: string;
-  }): Promise<CraveScoreCandidate[]> {
+  }): Promise<CraveScoreCandidates> {
     const fixtureRunId = params?.fixtureRunId ?? null;
-    const fixtureFilter = fixtureRunId
-      ? Prisma.sql`AND fixture_run_id = ${fixtureRunId}`
-      : Prisma.sql``;
+    const dishFixtureFilter = fixtureRunId
+      ? Prisma.sql`r.restaurant_metadata->>'fixtureRunId' = ${fixtureRunId}`
+      : Prisma.sql`TRUE`;
+    const restFixtureFilter = fixtureRunId
+      ? Prisma.sql`e.restaurant_metadata->>'fixtureRunId' = ${fixtureRunId}`
+      : Prisma.sql`TRUE`;
 
-    const rows = await this.prisma.$queryRaw<CandidateRow[]>`
-      WITH restaurant_markets AS (
-        SELECT DISTINCT ON (emp.entity_id)
-          emp.entity_id,
-          emp.market_key
-        FROM core_entity_market_presence emp
-        LEFT JOIN core_markets m ON m.market_key = emp.market_key
-        ORDER BY
-          emp.entity_id,
-          CASE m.market_type
-            WHEN 'regional' THEN 0
-            WHEN 'manual' THEN 1
-            WHEN 'locality' THEN 2
-            ELSE 3
-          END,
-          emp.market_key ASC
-      ),
-      restaurant_item_aggregates AS (
-        SELECT
-          restaurant_id,
-          SUM(mention_count)::numeric AS direct_mention_count,
-          SUM(support_mention_count)::numeric AS support_mention_count,
-          SUM(total_upvotes)::numeric AS upvote_mass
-        FROM core_restaurant_items
-        GROUP BY restaurant_id
-      ),
-      restaurant_source_aggregates AS (
-        SELECT
-          restaurant_id,
-          COUNT(DISTINCT source_document_id)::numeric AS source_document_count
-        FROM core_restaurant_events
-        GROUP BY restaurant_id
-      ),
-      connection_source_aggregates AS (
-        SELECT
-          c.connection_id,
-          COUNT(DISTINCT ree.source_document_id)::numeric AS source_document_count
-        FROM core_restaurant_items c
-        LEFT JOIN core_restaurant_entity_events ree
-          ON ree.restaurant_id = c.restaurant_id
-         AND ree.entity_id = c.food_id
-        GROUP BY c.connection_id
-      ),
-      restaurant_raw AS (
-        SELECT
-          'restaurant'::crave_score_subject_type AS subject_type,
-          e.entity_id AS subject_id,
-          rm.market_key AS scoring_market_key,
-          (
-            35
-            + LN(1 + COALESCE(ria.direct_mention_count, 0)) * 9
-            + LN(1 + COALESCE(ria.support_mention_count, 0)) * 4
-            + LN(1 + COALESCE(ria.upvote_mass, 0)) * 4
-            + LN(1 + COALESCE(rsa.source_document_count, 0)) * 11
-          )::numeric AS raw_quality_score,
-          COALESCE(ria.direct_mention_count, 0)::numeric AS direct_mention_count,
-          COALESCE(ria.support_mention_count, 0)::numeric AS support_mention_count,
-          COALESCE(ria.upvote_mass, 0)::numeric AS upvote_mass,
-          COALESCE(rsa.source_document_count, 0)::numeric AS source_document_count,
-          (e.restaurant_metadata->>'fixtureRunId') AS fixture_run_id
-        FROM core_entities e
-        LEFT JOIN restaurant_markets rm ON rm.entity_id = e.entity_id
-        LEFT JOIN restaurant_item_aggregates ria ON ria.restaurant_id = e.entity_id
-        LEFT JOIN restaurant_source_aggregates rsa ON rsa.restaurant_id = e.entity_id
-        WHERE e.type = 'restaurant'
-      ),
-      connection_raw AS (
-        SELECT
-          'connection'::crave_score_subject_type AS subject_type,
-          c.connection_id AS subject_id,
-          rm.market_key AS scoring_market_key,
-          (
-            35
-            + LN(1 + COALESCE(c.mention_count, 0)) * 9
-            + LN(1 + COALESCE(c.support_mention_count, 0)) * 4
-            + LN(1 + COALESCE(c.total_upvotes, 0)) * 4
-            + LN(1 + COALESCE(csa.source_document_count, 0)) * 11
-          )::numeric AS raw_quality_score,
-          COALESCE(c.mention_count, 0)::numeric AS direct_mention_count,
-          COALESCE(c.support_mention_count, 0)::numeric AS support_mention_count,
-          COALESCE(c.total_upvotes, 0)::numeric AS upvote_mass,
-          COALESCE(csa.source_document_count, 0)::numeric AS source_document_count,
-          (r.restaurant_metadata->>'fixtureRunId') AS fixture_run_id
-        FROM core_restaurant_items c
-        JOIN core_entities r ON r.entity_id = c.restaurant_id
-        LEFT JOIN restaurant_markets rm ON rm.entity_id = c.restaurant_id
-        LEFT JOIN connection_source_aggregates csa ON csa.connection_id = c.connection_id
-      ),
-      all_candidates AS (
-        SELECT * FROM restaurant_raw
-        UNION ALL
-        SELECT * FROM connection_raw
-      )
-      SELECT *
-      FROM all_candidates
-      WHERE TRUE
-        ${fixtureFilter}
+    const dishRows = await this.prisma.$queryRaw<DishRow[]>`
+      WITH ${RESTAURANT_MARKETS_CTE}
+      SELECT
+        c.connection_id,
+        c.restaurant_id,
+        rm.market_key AS scoring_market_key,
+        (c.mention_count + c.support_mention_count)::numeric AS mentions,
+        (c.total_upvotes + c.support_total_upvotes)::numeric AS upvotes
+      FROM core_restaurant_items c
+      JOIN core_entities r ON r.entity_id = c.restaurant_id
+      LEFT JOIN restaurant_markets rm ON rm.entity_id = c.restaurant_id
+      WHERE ${dishFixtureFilter}
     `;
 
-    return rows.map((row) => ({
-      subjectType: row.subject_type,
-      subjectId: row.subject_id,
+    const restRows = await this.prisma.$queryRaw<RestaurantRow[]>`
+      WITH ${RESTAURANT_MARKETS_CTE},
+      restaurant_praise AS (
+        SELECT
+          restaurant_id,
+          COUNT(DISTINCT mention_key)::numeric AS praise_mentions,
+          COALESCE(SUM(source_upvotes), 0)::numeric AS praise_upvotes
+        FROM core_restaurant_events
+        GROUP BY restaurant_id
+      )
+      SELECT
+        e.entity_id AS restaurant_id,
+        rm.market_key AS scoring_market_key,
+        COALESCE(rp.praise_mentions, 0)::numeric AS praise_mentions,
+        COALESCE(rp.praise_upvotes, 0)::numeric AS praise_upvotes
+      FROM core_entities e
+      LEFT JOIN restaurant_markets rm ON rm.entity_id = e.entity_id
+      LEFT JOIN restaurant_praise rp ON rp.restaurant_id = e.entity_id
+      WHERE e.type = 'restaurant'
+        AND ${restFixtureFilter}
+    `;
+
+    const dishes: DishCandidate[] = dishRows.map((row) => ({
+      connectionId: row.connection_id,
+      restaurantId: row.restaurant_id,
       scoringMarketKey: row.scoring_market_key,
-      rawQualityScore: this.toNumber(row.raw_quality_score),
-      directMentionCount: this.toNumber(row.direct_mention_count),
-      supportMentionCount: this.toNumber(row.support_mention_count),
-      upvoteMass: this.toNumber(row.upvote_mass),
-      sourceDocumentCount: this.toNumber(row.source_document_count),
+      mentions: this.toNumber(row.mentions),
+      upvotes: this.toNumber(row.upvotes),
     }));
+    const restaurants: RestaurantCandidate[] = restRows.map((row) => ({
+      restaurantId: row.restaurant_id,
+      scoringMarketKey: row.scoring_market_key,
+      praiseMentions: this.toNumber(row.praise_mentions),
+      praiseUpvotes: this.toNumber(row.praise_upvotes),
+    }));
+    return { dishes, restaurants };
   }
 
   private async loadPriorScores(
@@ -499,80 +507,27 @@ export class PublicCraveScoreService {
     return result;
   }
 
-  private async writeMarketStats(
-    scoreRunId: string,
-    marketStats: CraveScoreMarketStat[],
-  ): Promise<void> {
-    if (!marketStats.length) {
-      return;
-    }
-    await this.prisma.$transaction(
-      marketStats.map(
-        (stat) =>
-          this.prisma.$executeRaw`
-          INSERT INTO core_crave_score_market_stats (
-            score_run_id,
-            subject_type,
-            market_key,
-            eligible_subject_count,
-            raw_median,
-            raw_mad,
-            raw_iqr,
-            raw_spread,
-            global_median,
-            global_spread,
-            market_reliability,
-            evidence_summary,
-            factor_trace,
-            computed_at
-          )
-          VALUES (
-            ${scoreRunId}::uuid,
-            ${stat.subjectType}::crave_score_subject_type,
-            ${stat.marketKey},
-            ${stat.eligibleSubjectCount},
-            ${stat.rawMedian},
-            ${stat.rawMad},
-            ${stat.rawIqr},
-            ${stat.rawSpread},
-            ${stat.globalMedian},
-            ${stat.globalSpread},
-            ${stat.marketReliability},
-            ${JSON.stringify(stat.evidenceSummary)}::jsonb,
-            ${JSON.stringify(stat.factorTrace)}::jsonb,
-            now()
-          )
-        `,
-      ),
-    );
-  }
-
   private async writeScores(
     scoreRunId: string,
     scored: ScoredCraveSubject[],
     config: PublicCraveScoreConfig,
     referenceDate: Date,
+    pruneStaleSubjects: boolean,
   ): Promise<void> {
     if (!scored.length) {
       return;
     }
 
-    await this.prisma.$transaction(
-      scored.map(
-        (row) =>
-          this.prisma.$executeRaw`
+    const scoreWrites: Prisma.PrismaPromise<number>[] = scored.map(
+      (row) =>
+        this.prisma.$executeRaw`
           INSERT INTO core_public_entity_scores (
             subject_type,
             subject_id,
             score_run_id,
             scoring_market_key,
-            raw_quality_score,
-            global_z,
-            market_z,
-            market_reliability,
-            entity_confidence,
-            normalized_signal,
-            posterior_signal,
+            endorsement_raw,
+            percentile_rank,
             display_score,
             score_delta_7d,
             score_delta_28d,
@@ -587,13 +542,8 @@ export class PublicCraveScoreService {
             ${row.subjectId}::uuid,
             ${scoreRunId}::uuid,
             ${row.scoringMarketKey},
-            ${row.rawQualityScore},
-            ${row.globalZ},
-            ${row.marketZ},
-            ${row.marketReliability},
-            ${row.entityConfidence},
-            ${row.normalizedSignal},
-            ${row.posteriorSignal},
+            ${row.endorsementRaw},
+            ${row.percentileRank},
             ${row.displayScore},
             ${row.scoreDelta7d},
             ${row.scoreDelta28d},
@@ -606,13 +556,8 @@ export class PublicCraveScoreService {
           ON CONFLICT (subject_type, subject_id) DO UPDATE SET
             score_run_id = EXCLUDED.score_run_id,
             scoring_market_key = EXCLUDED.scoring_market_key,
-            raw_quality_score = EXCLUDED.raw_quality_score,
-            global_z = EXCLUDED.global_z,
-            market_z = EXCLUDED.market_z,
-            market_reliability = EXCLUDED.market_reliability,
-            entity_confidence = EXCLUDED.entity_confidence,
-            normalized_signal = EXCLUDED.normalized_signal,
-            posterior_signal = EXCLUDED.posterior_signal,
+            endorsement_raw = EXCLUDED.endorsement_raw,
+            percentile_rank = EXCLUDED.percentile_rank,
             display_score = EXCLUDED.display_score,
             score_delta_7d = EXCLUDED.score_delta_7d,
             score_delta_28d = EXCLUDED.score_delta_28d,
@@ -622,8 +567,23 @@ export class PublicCraveScoreService {
             factor_trace = EXCLUDED.factor_trace,
             computed_at = EXCLUDED.computed_at
         `,
-      ),
     );
+
+    if (pruneStaleSubjects) {
+      // core_public_entity_scores is "latest only": every currently-scored
+      // subject was just upserted to this run, so any row still pointing at a
+      // prior run is an orphan (its subject no longer exists or is no longer in
+      // the scored candidate set). Deleting them inside this transaction keeps
+      // the table an exact mirror of the run's scored subjects atomically.
+      scoreWrites.push(
+        this.prisma.$executeRaw`
+          DELETE FROM core_public_entity_scores
+          WHERE score_run_id <> ${scoreRunId}::uuid
+        `,
+      );
+    }
+
+    await this.prisma.$transaction(scoreWrites);
 
     await this.prisma.$transaction(
       scored.map(
@@ -638,10 +598,8 @@ export class PublicCraveScoreService {
             score_version,
             display_curve_version,
             display_score,
-            normalized_signal,
-            posterior_signal,
-            entity_confidence,
-            market_reliability,
+            endorsement_raw,
+            percentile_rank,
             movement_state,
             factor_trace,
             computed_at
@@ -655,10 +613,8 @@ export class PublicCraveScoreService {
             ${config.scoreVersion},
             ${config.displayCurveVersion},
             ${row.displayScore},
-            ${row.normalizedSignal},
-            ${row.posteriorSignal},
-            ${row.entityConfidence},
-            ${row.marketReliability},
+            ${row.endorsementRaw},
+            ${row.percentileRank},
             ${row.movementState}::crave_score_movement_state,
             ${JSON.stringify(row.factorTrace)}::jsonb,
             now()
@@ -669,156 +625,57 @@ export class PublicCraveScoreService {
             scoring_market_key = EXCLUDED.scoring_market_key,
             display_curve_version = EXCLUDED.display_curve_version,
             display_score = EXCLUDED.display_score,
-            normalized_signal = EXCLUDED.normalized_signal,
-            posterior_signal = EXCLUDED.posterior_signal,
-            entity_confidence = EXCLUDED.entity_confidence,
-            market_reliability = EXCLUDED.market_reliability,
+            endorsement_raw = EXCLUDED.endorsement_raw,
+            percentile_rank = EXCLUDED.percentile_rank,
             movement_state = EXCLUDED.movement_state,
             factor_trace = EXCLUDED.factor_trace,
             computed_at = EXCLUDED.computed_at
         `,
       ),
     );
-  }
 
-  private distributionStats(
-    values: number[],
-    spreadFloor: number,
-  ): {
-    median: number;
-    mad: number;
-    iqr: number;
-    spread: number;
-  } {
-    const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
-    if (!sorted.length) {
-      return {
-        median: 0,
-        mad: spreadFloor,
-        iqr: spreadFloor,
-        spread: spreadFloor,
-      };
+    if (pruneStaleSubjects) {
+      // History is an append-only time series (keyed by snapshot_date), so we
+      // must keep every snapshot for subjects that still exist. We only sweep
+      // rows whose subject is gone entirely — a deleted restaurant entity or a
+      // removed connection — which can never be reached again and would
+      // otherwise leak alongside the latest-score orphans pruned above.
+      await this.prisma.$executeRaw`
+        DELETE FROM core_public_entity_score_history h
+        WHERE (
+          h.subject_type = 'restaurant'::crave_score_subject_type
+          AND NOT EXISTS (
+            SELECT 1 FROM core_entities e
+            WHERE e.entity_id = h.subject_id AND e.type = 'restaurant'
+          )
+        )
+        OR (
+          h.subject_type = 'connection'::crave_score_subject_type
+          AND NOT EXISTS (
+            SELECT 1 FROM core_restaurant_items c
+            WHERE c.connection_id = h.subject_id
+          )
+        )
+      `;
     }
-    const median = this.percentile(sorted, 0.5);
-    const deviations = sorted
-      .map((value) => Math.abs(value - median))
-      .sort((a, b) => a - b);
-    const mad = this.percentile(deviations, 0.5);
-    const q1 = this.percentile(sorted, 0.25);
-    const q3 = this.percentile(sorted, 0.75);
-    const iqr = q3 - q1;
-    const spread = Math.max(spreadFloor, mad * 1.4826, iqr / 1.349);
-    return {
-      median: this.round(median),
-      mad: this.round(mad),
-      iqr: this.round(iqr),
-      spread: this.round(spread),
-    };
-  }
-
-  private percentile(sortedValues: number[], p: number): number {
-    if (!sortedValues.length) {
-      return 0;
-    }
-    if (sortedValues.length === 1) {
-      return sortedValues[0];
-    }
-    const index = (sortedValues.length - 1) * p;
-    const lower = Math.floor(index);
-    const upper = Math.ceil(index);
-    const weight = index - lower;
-    return sortedValues[lower] * (1 - weight) + sortedValues[upper] * weight;
-  }
-
-  private robustZ(
-    value: number,
-    stats: { median: number; spread: number },
-  ): number {
-    return (value - stats.median) / Math.max(stats.spread, 0.0001);
-  }
-
-  private displayScore(value: number, config: PublicCraveScoreConfig): number {
-    const sigmoid =
-      1 /
-      (1 + Math.exp(-((value - config.displayCenter) / config.displayScale)));
-    return this.round(
-      config.displayMin + (config.displayMax - config.displayMin) * sigmoid,
-      1,
-    );
-  }
-
-  private entityEvidence(
-    candidate: CraveScoreCandidate,
-    config: PublicCraveScoreConfig,
-  ): number {
-    return (
-      Math.log1p(candidate.directMentionCount) * config.directMentionWeight +
-      Math.log1p(candidate.supportMentionCount) * config.supportMentionWeight +
-      Math.log1p(candidate.upvoteMass) * config.upvoteMassWeight +
-      Math.log1p(candidate.sourceDocumentCount) * config.sourceBreadthWeight
-    );
-  }
-
-  private marketEvidence(
-    candidates: CraveScoreCandidate[],
-    config: PublicCraveScoreConfig,
-  ): number {
-    return (
-      candidates.length +
-      Math.log1p(this.sum(candidates, 'directMentionCount')) *
-        config.directMentionWeight +
-      Math.log1p(this.sum(candidates, 'sourceDocumentCount')) *
-        config.sourceBreadthWeight
-    );
-  }
-
-  private saturating(evidence: number, k: number): number {
-    return this.round(
-      1 - Math.exp(-Math.max(0, evidence) / Math.max(k, 0.0001)),
-      5,
-    );
-  }
-
-  private subjectKey(
-    candidate: Pick<CraveScoreCandidate, 'subjectType' | 'subjectId'>,
-  ): string {
-    return `${candidate.subjectType}:${candidate.subjectId}`;
-  }
-
-  private groupBy<T, K>(values: T[], keyFn: (value: T) => K): Map<K, T[]> {
-    const grouped = new Map<K, T[]>();
-    for (const value of values) {
-      const key = keyFn(value);
-      const bucket = grouped.get(key) ?? [];
-      bucket.push(value);
-      grouped.set(key, bucket);
-    }
-    return grouped;
-  }
-
-  private sum<T>(values: T[], key: keyof T): number {
-    return values.reduce(
-      (total, value) => total + this.toNumber(value[key] as NumericLike),
-      0,
-    );
   }
 
   private toNumber(value: NumericLike): number {
+    if (value === null || value === undefined) {
+      return 0;
+    }
     if (typeof value === 'number') {
-      return Number.isFinite(value) ? value : 0;
+      return value;
     }
-    if (typeof value === 'string') {
-      const parsed = Number(value);
-      return Number.isFinite(parsed) ? parsed : 0;
-    }
-    if (value && typeof value === 'object' && 'toNumber' in value) {
-      const parsed = value.toNumber();
-      return Number.isFinite(parsed) ? parsed : 0;
-    }
-    return 0;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
   }
 
   private round(value: number, digits = 6): number {
-    return Number(value.toFixed(digits));
+    if (!Number.isFinite(value)) {
+      return 0;
+    }
+    const factor = 10 ** digits;
+    return Math.round(value * factor) / factor;
   }
 }
