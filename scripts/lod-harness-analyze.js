@@ -172,6 +172,27 @@ if (steps.length > 0) {
     }
   }
 
+  // --- RENDER GROUND TRUTH (queryRenderedFeatures): of the markers that SHOULD be pins
+  // (top-N by rank among on-screen), how many are ACTUALLY rendered as pins on screen? This is
+  // the strict verifier — it reflects mapbox collision-culling + missing features, unlike the
+  // opacity-based roleGap above. missing = should-promote but not on screen as a pin. ---
+  const renders = events.filter((e) => e.ev === 'render');
+  if (renders.length) {
+    const avg = (sel) => renders.reduce((a, r) => a + (sel(r) || 0), 0) / renders.length;
+    const settleR = renders.filter((r) => !r.moving);
+    const pool = settleR.length >= 3 ? settleR : renders;
+    const aShould = avg((r) => r.shouldPromote), aRendered = avg((r) => r.renderedPins);
+    const aMissing = avg((r) => r.missing), aExtra = avg((r) => r.extra);
+    const settleMissing = pool.reduce((a, r) => a + (r.missing || 0), 0) / pool.length;
+    console.log(`render ground-truth: ${renders.length} queries (${settleR.length} on settle) | avg shouldPromote=${aShould.toFixed(1)} renderedPins=${aRendered.toFixed(1)} missing=${aMissing.toFixed(1)} extra=${aExtra.toFixed(1)} | settle missing avg=${settleMissing.toFixed(1)}`);
+    // On settle, every should-promote that fits should be rendered. Sustained missing on settle =
+    // collision-cull of wanted pins OR the feature isn't in the bundle (the LOD-not-rendering bug).
+    const badSettle = pool.filter((r) => (r.missing || 0) >= 3);
+    if (pool.length >= 3 && badSettle.length / pool.length > 0.4) {
+      flags.push({ issue: 'render_missing_pins', t: badSettle[0]?.t, detail: `${badSettle.length}/${pool.length} settled frames had >=3 should-be-promoted markers NOT rendered as pins (avg missing ${settleMissing.toFixed(1)}) — top-N decided but not on screen (collision-cull or missing bundle feature).` });
+    }
+  }
+
   // --- JANK / choppiness: stepper frame interval while ANIMATING. ~16.7ms = 60fps; sustained
   // >24ms (<~42fps) during active crossfades = choppy. ---
   const animSteps = steps.filter((s) => (s.activePin || 0) > 0 || (s.activeDot || 0) > 0);

@@ -794,6 +794,7 @@ final class SearchMapRenderController: RCTEventEmitter {
   private var lastVisualDiagByInstance: [String: String] = [:]
   // Harness: last [lodev] step emit time, for the per-frame render-cadence (jank) delta.
   private var lastHarnessStepMs: Double = 0
+  private var lastHarnessRenderQueryMs: Double = 0
   private var slowActionWindowsByInstanceAndScope: [String: SlowActionWindowState] = [:]
   private var nativeApplyAttributionEnabled = false
   private var nativeApplyAttributionStartedAtMs: Double?
@@ -11069,6 +11070,54 @@ final class SearchMapRenderController: RCTEventEmitter {
     return true
   }
 
+  // HARNESS GROUND TRUTH: queries the ACTUAL rendered pin layer (queryRenderedFeatures) and emits a
+  // `render` event comparing what is REALLY on screen as a pin vs what SHOULD be promoted (top-N by
+  // rank among the on-screen set). This is the only source of truth for "of what should be a pin,
+  // what is actually showing" — unlike the opacity-based renderP, it reflects mapbox COLLISION
+  // CULLING and missing-feature gaps. shouldPromote = nativePromotedKeysInOrder; missing = should
+  // but not rendered (collision-culled or no feature); extra = rendered but not in the should set.
+  private func emitHarnessRenderTruth(instanceId: String, state: InstanceState, handle: ResolvedMapHandle, isMoving: Bool) {
+    let pinLayerIds = state.nativePressTargetConfig.pinLayerIds
+    guard Self.lodHarnessEnabled, !pinLayerIds.isEmpty else {
+      return
+    }
+    // Throttle during motion (queryRenderedFeatures hits the render thread); always allow on settle.
+    let now = Self.nowMs()
+    if isMoving {
+      guard now - lastHarnessRenderQueryMs >= 200 else { return }
+    }
+    lastHarnessRenderQueryMs = now
+    let shouldPromote = Set(state.nativePromotedKeysInOrder)
+    let onScreenCount = state.lastVisibleMarkerSetSignature.map {
+      $0.isEmpty ? 0 : $0.components(separatedBy: "|").count
+    } ?? 0
+    let cam = handle.mapView.mapboxMap.cameraState
+    let rect = handle.mapView.bounds
+    handle.mapView.mapboxMap.queryRenderedFeatures(
+      with: rect,
+      options: RenderedQueryOptions(layerIds: pinLayerIds, filter: nil)
+    ) { result in
+      DispatchQueue.main.async {
+        guard case .success(let queried) = result else { return }
+        var renderedKeys = Set<String>()
+        for q in queried {
+          let props = q.queriedFeature.feature.properties
+          if case let .string(markerKey)? = props?["markerKey"] {
+            renderedKeys.insert(markerKey)
+          }
+        }
+        let missing = shouldPromote.subtracting(renderedKeys)   // should be a pin but isn't on screen
+        let extra = renderedKeys.subtracting(shouldPromote)     // rendered but not in the should-set
+        Self.harnessLog(
+          "{\"ev\":\"render\",\"t\":\(Int(Self.nowMs())),\"moving\":\(isMoving),"
+            + "\"onScreen\":\(onScreenCount),\"shouldPromote\":\(shouldPromote.count),"
+            + "\"renderedPins\":\(renderedKeys.count),\"missing\":\(missing.count),\"extra\":\(extra.count),"
+            + "\"zoom\":\(String(format: "%.2f", cam.zoom))}"
+        )
+      }
+    }
+  }
+
   private func handleNativeCameraChanged(
     mapTag: NSNumber,
     handle: ResolvedMapHandle,
@@ -11162,6 +11211,10 @@ final class SearchMapRenderController: RCTEventEmitter {
             + "\"projected\":\(didProject),\"ms\":\(String(format: "%.1f", afterDriveMs - cworkStartMs)),"
             + "\"projectMs\":\(String(format: "%.1f", projectMs)),\"driveMs\":\(String(format: "%.1f", driveMs))}"
         )
+        // GROUND TRUTH: query the actual rendered pin layer vs the should-promote set (post-drive).
+        if let driven = instances[instanceId] {
+          emitHarnessRenderTruth(instanceId: instanceId, state: driven, handle: handle, isMoving: isMoving)
+        }
       }
       let labelObservation = Self.derivedFamilyState(sourceId: nextState.labelSourceId, state: nextState).labelObservation
       if labelObservation.observationEnabled {
