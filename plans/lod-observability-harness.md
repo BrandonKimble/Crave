@@ -128,3 +128,23 @@ timestamps to get the frame at the EXACT moment. (Sync via the t0 event + known 
 
 - 2026-06-19: plan written. Phases 1+2 of the granular redesign already done+committed
   (e8f4c1c0, 93571263). Starting Phase 3 (delete dead), then the harness.
+
+## WORKLOG cont.
+
+- 2026-06-19: Harness BUILT + WORKING. Native [lodev] event stream (frame/lod/step) in
+  SearchMapRenderController.swift; scripts/lod-harness.sh (runner: NYC loc, launch, log-stream +
+  recordVideo, deterministic maestro flow, analyze) + scripts/lod-harness-analyze.js (parses
+  JSONL, flags group_enter/group_flip/render_snap/snap_after_gesture/count_sanity).
+- DIAGNOSIS (harness-found, matches user's on-device report): the promotion DECISION is per-pin
+  during motion (lod events: LOD +1/-1 allowNew=true). But the OPACITY CROSSFADES are deferred
+  to settle: step events show midFade/frame moving≈0.5-0.8 vs idle≈34 (skew ~40-70x) =
+  render_snap. Likely cause: reconcile creates transitions in isAwaitingSourceCommit state
+  (legacy from the JS-republish model) whose source commit is deferred during motion → the fades
+  burst at gesture-end (the "pins snap in after the gesture" the user sees).
+- VALIDATED vs sim (qualitative): recorded video shows the real session (search + rank pins). NOTE:
+  recordVideo MUST be stopped with SIGINT (not SIGTERM) or the mp4 is corrupt — fixed in runner.
+  No ffmpeg on box; use /tmp/vframe.swift (AVFoundation) to extract frames.
+- TODO: (a) add epoch (Date) to [lodev] events + record recordVideo-start epoch in runner so the
+  analyzer can extract the EXACT-moment frame for strict event↔frame validation. (b) FIX the snap:
+  make native-driven LOD transitions NOT await a source commit (opacity-only, markers resident) —
+  then re-run harness to confirm render_snap gone (midFade rate even across moving/idle).

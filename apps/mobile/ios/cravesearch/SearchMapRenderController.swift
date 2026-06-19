@@ -8206,6 +8206,17 @@ final class SearchMapRenderController: RCTEventEmitter {
       ])
     }
 
+    // HARNESS [lodev] step event: the per-frame opacity stepper. midFade>0 means pins are
+    // actively crossfading THIS frame. If this fires with moving=true and midFade>0, opacity
+    // animates during the gesture (no render snap); if the stepper goes quiet during motion
+    // and midFade only climbs after moving=false, that IS the snap-after-gesture.
+    if Self.lodHarnessEnabled {
+      Self.harnessLog(
+        "{\"ev\":\"step\",\"t\":\(Int(Self.nowMs())),\"moving\":\(state.currentViewportIsMoving),"
+          + "\"activePin\":\(pinFamilyState.livePinTransitionsByMarkerKey.count),"
+          + "\"midFade\":\(pinIntermediateOpacityCount),\"applied\":\(featureStatesToApply.count)}"
+      )
+    }
     Self.syncMountedSourceState(
       pinSourceState,
       sourceId: state.pinSourceId,
@@ -10773,7 +10784,15 @@ final class SearchMapRenderController: RCTEventEmitter {
   // marker keys never contain "|") to feed the spatial enter/exit hysteresis.
   // `reason` distinguishes camera ticks from data-arrival projections in diagnostics.
   // Returns true when a (possibly empty) set was projected and the signature updated.
-  @discardableResult
+  // LOD OBSERVABILITY HARNESS: emit a structured [lodev] JSON event stream (one object per
+  // line) covering everything about LOD + map objects, captured via `simctl log stream`. See
+  // plans/lod-observability-harness.md + scripts/lod-harness.sh. Enabled by default for now;
+  // make JS-controllable later so it is free in prod.
+  static let lodHarnessEnabled = true
+  static func harnessLog(_ json: String) {
+    NSLog("[lodev] %@", json)
+  }
+
   // GRANULAR LOD (native-owned, Phase 2). Apply the native promotion decision
   // (nativePromotedKeysInOrder, computed by projectAndEmitOnScreenMarkers from the on-screen
   // set) to the role table and drive the per-pin pin↔dot crossfade for ONLY the markers whose
@@ -10803,6 +10822,20 @@ final class SearchMapRenderController: RCTEventEmitter {
     guard !affected.isEmpty else {
       return
     }
+    // HARNESS [lodev] lod event: the role flips this frame. promote/demote counts + whether
+    // we're mid-gesture + whether the apply will actually animate (allowNew). If affected>0 &&
+    // moving && allowNew but the pins still snap on settle, the deferral is DOWNSTREAM of here.
+    if Self.lodHarnessEnabled {
+      let promoteKeys = nextPinnedSet.subtracting(prevPinnedSet)
+      let demoteKeys = prevPinnedSet.subtracting(nextPinnedSet)
+      let allowNew = Self.allowsIncrementalMarkerTransitions(state, allowNewTransitions: true)
+      let promoteRanks = promoteKeys.compactMap { k in state.candidateCatalog.first { $0.markerKey == k }?.rank }.sorted()
+      Self.harnessLog(
+        "{\"ev\":\"lod\",\"t\":\(Int(Self.nowMs())),\"moving\":\(state.currentViewportIsMoving),"
+          + "\"affected\":\(affected.count),\"promote\":\(promoteKeys.count),\"demote\":\(demoteKeys.count),"
+          + "\"allowNew\":\(allowNew),\"promoteRanks\":\"\(promoteRanks.prefix(8).map(String.init).joined(separator: ","))\"}"
+      )
+    }
     let residentDots = state.markerRoleTable.residentDotMarkerKeysInOrder.isEmpty
       ? Array(rows.keys)
       : state.markerRoleTable.residentDotMarkerKeysInOrder
@@ -10822,6 +10855,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
   }
 
+  @discardableResult
   private func projectAndEmitOnScreenMarkers(
     instanceId: String,
     state: inout InstanceState,
@@ -10851,14 +10885,10 @@ final class SearchMapRenderController: RCTEventEmitter {
       return false
     }
     state.lastVisibleMarkerSetSignature = visibleSignature
-    // PHASE 1 (shadow) — NATIVE-OWNED PROMOTION DECISION. The promoted set is simply the
-    // top-`maxFullPins` by rank among the on-screen markers (native projection is the
-    // visibility truth, with spatial enter/exit hysteresis). This is the whole rule: a
-    // marker is a PIN iff it is in this set; everything else is a DOT. Computed here, per
-    // camera frame, from data native already has (catalog rank + the on-screen set) — no JS
-    // round-trip. SHADOW phase: we only LOG it (sanity-check the ranks) and stash it on the
-    // state; Phase 2 feeds it to the per-pin opacity stepper and stops the JS republish.
-    // maxFullPins MUST match JS (search-root-map-engine-input-controller-runtime.ts: 40).
+    // NATIVE-OWNED PROMOTION DECISION. A marker is a PIN iff it is in the top-`maxFullPins`
+    // by rank among the on-screen markers (the native projection IS the visibility truth, with
+    // spatial enter/exit hysteresis). Computed here per camera frame from data native already
+    // has (catalog rank + the on-screen set) — no JS round-trip.
     let shadowLodMaxFullPins = 40
     let rankByKey = Dictionary(
       state.candidateCatalog.map { ($0.markerKey, $0.rank) }, uniquingKeysWith: { first, _ in first }
@@ -10869,12 +10899,20 @@ final class SearchMapRenderController: RCTEventEmitter {
         .prefix(shadowLodMaxFullPins)
     )
     state.nativePromotedKeysInOrder = nativePromotedKeys
-    let promotedRanks = nativePromotedKeys.compactMap { rankByKey[$0] }.sorted()
-    NSLog(
-      "[mapdiag] native_lod reason=%@ visible=%d promoted=%d ranks(min12)=%@",
-      reason, onScreenKeys.count, nativePromotedKeys.count,
-      promotedRanks.prefix(12).map(String.init).joined(separator: ",")
-    )
+    // HARNESS [lodev] frame event: on-screen membership, promoted count, and per-frame
+    // enter/leave deltas (group-enter detector), with camera + motion.
+    if Self.lodHarnessEnabled {
+      let onScreenSet = Set(onScreenKeys)
+      let enterCount = onScreenSet.subtracting(previouslyVisible).count
+      let leaveCount = previouslyVisible.subtracting(onScreenSet).count
+      let cam = handle.mapView.mapboxMap.cameraState
+      Self.harnessLog(
+        "{\"ev\":\"frame\",\"t\":\(Int(Self.nowMs())),\"reason\":\"\(reason)\",\"moving\":\(isMoving),"
+          + "\"visible\":\(onScreenKeys.count),\"promoted\":\(nativePromotedKeys.count),"
+          + "\"enter\":\(enterCount),\"leave\":\(leaveCount),"
+          + "\"pitch\":\(String(format: "%.1f", cam.pitch)),\"zoom\":\(String(format: "%.2f", cam.zoom))}"
+      )
+    }
     let cameraState = handle.mapView.mapboxMap.cameraState
     emit([
       "type": "map_native_visible_markers",
