@@ -19,7 +19,6 @@ model Entity {
   aliases                             String[]                 @default([])
   nameEmbedding                       Unsupported("vector(768)")? @map("name_embedding")
   restaurantAttributes                String[]                 @default([]) @map("restaurant_attributes") @db.Uuid
-  restaurantQualityScore              Decimal?                 @default(0) @map("restaurant_quality_score") @db.Decimal(10, 4)
   latitude                            Decimal?                 @db.Decimal(10, 8)
   longitude                           Decimal?                 @db.Decimal(11, 8)
   address                             String?                  @db.VarChar(500)
@@ -64,7 +63,6 @@ model Entity {
 
   @@index([type], map: "idx_entities_type")
   @@index([type, status], map: "idx_entities_type_status")
-  @@index([type, restaurantQualityScore(sort: Desc)], map: "idx_entities_type_score")
   @@index([name], map: "idx_entities_name")
   @@index([canonicalDomain], map: "idx_entities_canonical_domain")
   @@index([type, canonicalDomain], map: "idx_entities_type_canonical_domain")
@@ -136,20 +134,11 @@ model Connection {
   foodAttributes             String[]              @default([]) @map("food_attributes") @db.Uuid
   mentionCount               Int                   @default(0) @map("mention_count")
   totalUpvotes               Int                   @default(0) @map("total_upvotes")
-  recentMentionCount         Int                   @default(0) @map("recent_mention_count")
   supportMentionCount        Int                   @default(0) @map("support_mention_count")
   supportTotalUpvotes        Int                   @default(0) @map("support_total_upvotes")
-  supportRecentMentionCount  Int                   @default(0) @map("support_recent_mention_count")
   lastMentionedAt            DateTime?             @map("last_mentioned_at")
-  activityLevel              ActivityLevel         @default(normal) @map("activity_level")
-  foodQualityScore           Decimal               @default(0) @map("food_quality_score") @db.Decimal(10, 4)
   lastUpdated                DateTime              @default(now()) @map("last_updated")
   createdAt                  DateTime              @default(now()) @map("created_at")
-  decayedMentionScore        Decimal               @default(0) @map("decayed_mention_score") @db.Decimal(18, 6)
-  decayedUpvoteScore         Decimal               @default(0) @map("decayed_upvote_score") @db.Decimal(18, 6)
-  supportDecayedMentionScore Decimal               @default(0) @map("support_decayed_mention_score") @db.Decimal(18, 6)
-  supportDecayedUpvoteScore  Decimal               @default(0) @map("support_decayed_upvote_score") @db.Decimal(18, 6)
-  decayedScoresUpdatedAt     DateTime?             @map("decayed_scores_updated_at")
   food                       Entity                @relation("FoodEntity", fields: [foodId], references: [entityId])
   restaurant                 Entity                @relation("RestaurantEntity", fields: [restaurantId], references: [entityId])
   favoriteListItems          FavoriteListItem[]
@@ -163,16 +152,11 @@ model Connection {
   @@index([foodAttributes], map: "idx_connections_attributes_gin", type: Gin)
   @@index([mentionCount(sort: Desc)], map: "idx_connections_mention_count")
   @@index([totalUpvotes(sort: Desc)], map: "idx_connections_total_upvotes")
-  @@index([foodQualityScore(sort: Desc)], map: "idx_connections_quality_score")
   @@index([lastMentionedAt(sort: Desc)], map: "idx_connections_last_mentioned")
-  @@index([activityLevel], map: "idx_connections_activity")
-  @@index([restaurantId, foodQualityScore(sort: Desc)], map: "idx_connections_restaurant_quality")
-  @@index([foodId, foodQualityScore(sort: Desc)], map: "idx_connections_food_quality")
   @@index([restaurantId, mentionCount(sort: Desc)], map: "idx_connections_restaurant_mentions")
   @@index([foodId, mentionCount(sort: Desc)], map: "idx_connections_food_mentions")
   @@index([lastUpdated(sort: Desc)], map: "idx_connections_last_updated")
   @@index([createdAt(sort: Desc)], map: "idx_connections_created_at")
-  @@index([recentMentionCount(sort: Desc)], map: "idx_connections_recent_mentions")
   @@map("core_restaurant_items")
 }
 
@@ -1519,13 +1503,6 @@ enum NotificationProvider {
   @@map("notification_provider")
 }
 
-enum ActivityLevel {
-  trending
-  active
-  normal
-
-  @@map("activity_level")
-}
 
 enum SubscriptionStatus {
   trialing

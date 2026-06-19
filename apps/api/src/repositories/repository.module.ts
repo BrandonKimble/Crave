@@ -7,7 +7,6 @@ import { ConnectionRepository } from './connection.repository';
 /**
  * Repository module providing data access layer
  * EntityRepository: Used by EntityResolutionService
- * ConnectionRepository: Used by QualityScoreService
  */
 @Module({
   imports: [PrismaModule, SharedModule],

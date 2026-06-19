@@ -19,7 +19,6 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { EntityResolutionService } from '../entity-resolver/entity-resolution.service';
-import { QualityScoreService } from '../quality-score/quality-score.service';
 import {
   ProcessingResult,
   UnifiedProcessingConfig,
@@ -163,7 +162,6 @@ export class UnifiedProcessingService implements OnModuleInit {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly entityResolutionService: EntityResolutionService,
-    private readonly qualityScoreService: QualityScoreService,
     private readonly projectionRebuildService: ProjectionRebuildService,
     private readonly configService: ConfigService,
     private readonly restaurantLocationEnrichmentService: RestaurantLocationEnrichmentService,
@@ -654,9 +652,6 @@ export class UnifiedProcessingService implements OnModuleInit {
         createdEntitySummaries: uniqueCreatedEntitySummaries,
         reusedEntitySummaries: uniqueReusedEntitySummaries,
       },
-      qualityScoreUpdates: config.enableQualityScores
-        ? [...new Set(allAffectedConnectionIds)].length
-        : 0,
     };
   }
 
@@ -716,18 +711,6 @@ export class UnifiedProcessingService implements OnModuleInit {
       ];
     }
 
-    // Step 6: Quality Score Updates (PRD Section 5.3)
-    if (
-      processingConfig.enableQualityScores &&
-      (databaseResult.affectedConnectionIds.length > 0 ||
-        databaseResult.affectedRestaurantIds.length > 0)
-    ) {
-      await this.triggerQualityScoreUpdates(
-        databaseResult.affectedConnectionIds,
-        databaseResult.affectedRestaurantIds,
-      );
-    }
-
     // New entities may include pending (quarantined) attributes — schedule the
     // debounced adjudicator to canonicalize them. Fire-and-forget: quarantine
     // means a missed run only delays visibility, never correctness.
@@ -756,9 +739,6 @@ export class UnifiedProcessingService implements OnModuleInit {
           resolutionResult.performanceMetrics.fuzzyMatches,
       },
       databaseOperations: databaseResult,
-      qualityScoreUpdates: processingConfig.enableQualityScores
-        ? databaseResult.affectedConnectionIds?.length || 0
-        : 0,
     };
 
     this.logger.info(
@@ -1494,7 +1474,6 @@ export class UnifiedProcessingService implements OnModuleInit {
                   create: [{ marketKey: entityMarketKey }],
                 };
                 entityData.restaurantAttributes = { set: [] };
-                entityData.restaurantQualityScore = 0;
                 entityData.generalPraiseUpvotes = 0;
                 entityData.restaurantMetadata = Prisma.DbNull;
               } else {
@@ -2147,46 +2126,6 @@ export class UnifiedProcessingService implements OnModuleInit {
   // General praise handler removed by design; persistence handled at entity level
 
   /**
-   * Trigger quality score updates using QualityScoreService (PRD Section 5.3)
-   * Updates quality scores for all affected connections from component processing
-   */
-  private async triggerQualityScoreUpdates(
-    affectedConnectionIds: string[],
-    affectedRestaurantIds: string[] = [],
-  ): Promise<void> {
-    try {
-      if (
-        affectedConnectionIds.length === 0 &&
-        affectedRestaurantIds.length === 0
-      ) {
-        this.logger.debug('No projections to update quality scores for');
-        return;
-      }
-
-      this.logger.debug(
-        `Triggering quality score refresh for ${affectedConnectionIds.length} connections and ${affectedRestaurantIds.length} restaurants`,
-      );
-
-      await this.projectionRebuildService.refreshQualityScores({
-        connectionIds: affectedConnectionIds,
-        restaurantIds: affectedRestaurantIds,
-      });
-
-      this.logger.info('Quality score refresh completed', {
-        affectedConnectionIds: affectedConnectionIds.length,
-        affectedRestaurantIds: affectedRestaurantIds.length,
-      });
-    } catch (error) {
-      // Non-critical error - log and continue
-      this.logger.error('Quality score refresh batch failed', {
-        error: error instanceof Error ? error.message : String(error),
-        affectedConnectionIds: affectedConnectionIds.length,
-        affectedRestaurantIds: affectedRestaurantIds.length,
-      });
-    }
-  }
-
-  /**
    * Update performance metrics
    */
   private updatePerformanceMetrics(
@@ -2374,7 +2313,6 @@ export class UnifiedProcessingService implements OnModuleInit {
 
   private buildDefaultProcessingConfig(): UnifiedProcessingConfig {
     return {
-      enableQualityScores: true,
       enableSourceAttribution: true,
       maxRetries: 3,
       batchTimeout: 300000, // 5 minutes

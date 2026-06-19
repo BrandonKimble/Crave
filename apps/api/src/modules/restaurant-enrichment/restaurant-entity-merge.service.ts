@@ -71,14 +71,9 @@ export class RestaurantEntityMergeService {
       canonicalId: result.entityId,
     });
 
-    const rebuildResult =
-      await this.projectionRebuildService.rebuildForRestaurants([
-        result.entityId,
-      ]);
-    await this.projectionRebuildService.refreshQualityScores({
-      connectionIds: rebuildResult.connectionIds,
-      restaurantIds: [result.entityId],
-    });
+    await this.projectionRebuildService.rebuildForRestaurants([
+      result.entityId,
+    ]);
 
     return result;
   }

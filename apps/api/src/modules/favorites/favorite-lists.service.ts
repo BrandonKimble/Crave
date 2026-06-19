@@ -696,7 +696,6 @@ export class FavoriteListsService {
           scoreDelta7d: this.toPublicScoreDelta(
             topFoodScores.get(food.connectionId),
           ),
-          activityLevel: food.activityLevel,
           totalUpvotes: food.totalUpvotes ?? 0,
         }))
         .sort((left, right) => {
@@ -715,7 +714,6 @@ export class FavoriteListsService {
           scoreSubjectId: food.scoreSubjectId,
           craveScore: food.craveScore,
           scoreDelta7d: food.scoreDelta7d,
-          activityLevel: food.activityLevel,
         }));
 
       const primaryLocation = restaurant.primaryLocation;
@@ -807,10 +805,8 @@ export class FavoriteListsService {
         ),
         scoreDelta7d: this.toPublicScoreDelta(connectionScore),
         marketKey: undefined,
-        activityLevel: connection.activityLevel,
         mentionCount: connection.mentionCount ?? 0,
         totalUpvotes: connection.totalUpvotes ?? 0,
-        recentMentionCount: connection.recentMentionCount ?? 0,
         lastMentionedAt: connection.lastMentionedAt?.toISOString() ?? null,
         categories: connection.categories ?? [],
         foodAttributes: connection.foodAttributes ?? [],

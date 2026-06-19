@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { performance } from 'perf_hooks';
-import { ActivityLevel, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import type { OperatingStatus, ScoreInfoSummary } from '@crave-search/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
@@ -75,9 +75,7 @@ interface QueryResultRow {
   food_attributes: string[];
   mention_count: number;
   total_upvotes: number;
-  recent_mention_count: number;
   last_mentioned_at: Date | null;
-  activity_level: ActivityLevel;
   restaurant_total_upvotes: Prisma.Decimal | number | string;
   restaurant_total_mentions: Prisma.Decimal | number | string;
   restaurant_name: string;
@@ -173,9 +171,7 @@ interface DishQueryRow {
   food_attributes: string[];
   mention_count: number;
   total_upvotes: number;
-  recent_mention_count: number;
   last_mentioned_at: Date | null;
-  activity_level: ActivityLevel;
   connection_crave_score?: Prisma.Decimal | number | string | null;
   connection_score_delta_7d?: Prisma.Decimal | number | string | null;
   connection_score_info?: Prisma.JsonValue | null;
@@ -1054,10 +1050,8 @@ export class SearchQueryExecutor {
         ),
         scoreInfo: this.parseScoreInfo(connection.connection_score_info),
         marketKey: connection.restaurant_market_key ?? undefined,
-        activityLevel: connection.activity_level,
         mentionCount: connection.mention_count,
         totalUpvotes: connection.total_upvotes,
-        recentMentionCount: connection.recent_mention_count,
         lastMentionedAt: connection.last_mentioned_at
           ? connection.last_mentioned_at.toISOString()
           : null,
@@ -1142,7 +1136,6 @@ export class SearchQueryExecutor {
           connection.connection_score_delta_7d,
         ),
         scoreInfo: this.parseScoreInfo(connection.connection_score_info),
-        activityLevel: connection.activity_level,
       };
 
       const restaurantTotalUpvotes = this.toNumber(
@@ -2483,10 +2476,8 @@ export class SearchQueryExecutor {
         scoreInfo: this.parseScoreInfo(row.connection_score_info),
         marketKey: row.market_key ?? undefined,
         marketName: null,
-        activityLevel: row.activity_level,
         mentionCount: row.mention_count,
         totalUpvotes: row.total_upvotes,
-        recentMentionCount: row.recent_mention_count,
         lastMentionedAt: row.last_mentioned_at?.toISOString() ?? null,
         categories: row.categories || [],
         foodAttributes: row.food_attributes || [],
@@ -2539,7 +2530,6 @@ export class SearchQueryExecutor {
         scoreInfo: this.parseScoreInfo(
           record.scoreInfo as Prisma.JsonValue | null,
         ),
-        activityLevel: (record.activityLevel as ActivityLevel) || 'normal',
       });
     }
 

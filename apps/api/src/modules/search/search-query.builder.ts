@@ -355,8 +355,7 @@ LEFT JOIN LATERAL (
 	        'scoreSubjectType', 'connection',
 	        'scoreSubjectId', sub.connection_id,
 	        'scoreDelta7d', sub.score_delta_7d,
-	        'scoreInfo', sub.score_info,
-	        'activityLevel', sub.activity_level
+	        'scoreInfo', sub.score_info
 	      )
       ORDER BY ${restaurantTopDishOrder.sql}, sub.connection_id ASC
 	    ) FILTER (WHERE sub.rn <= ${topDishesLimit}) AS top_dishes,
@@ -371,7 +370,6 @@ LEFT JOIN LATERAL (
 		      pcs.display_score AS crave_score,
 		      pcs.score_delta_7d,
 		      pcs.score_info,
-		      c.activity_level,
 		      ROW_NUMBER() OVER (ORDER BY ${restaurantTopDishRankOrder.sql}) AS rn
 	    FROM core_restaurant_items c
 	    JOIN core_entities f ON f.entity_id = c.food_id
@@ -552,9 +550,7 @@ filtered_connections AS (
     c.food_attributes,
     c.mention_count,
     c.total_upvotes,
-    c.recent_mention_count,
     c.last_mentioned_at,
-    c.activity_level,
     pcs.display_score AS connection_crave_score,
     pcs.score_delta_7d AS connection_score_delta_7d,
     pcs.score_info AS connection_score_info,
@@ -596,7 +592,7 @@ filtered_connections AS (
 
     const filteredConnectionsCtePreview = `
 filtered_connections AS (
-  SELECT c.connection_id, c.restaurant_id, c.food_id, c.categories, c.food_attributes, c.mention_count, c.total_upvotes, c.recent_mention_count, c.last_mentioned_at, c.activity_level,
+  SELECT c.connection_id, c.restaurant_id, c.food_id, c.categories, c.food_attributes, c.mention_count, c.total_upvotes, c.last_mentioned_at,
          pcs.display_score AS connection_crave_score, pcs.score_delta_7d AS connection_score_delta_7d, pcs.score_info AS connection_score_info,
          'connection'::text AS score_subject_type, c.connection_id AS score_subject_id,
          f.name AS food_name, f.aliases AS food_aliases, ${

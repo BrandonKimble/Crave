@@ -19,7 +19,6 @@ export enum DataSourceType {
  * Configuration for unified processing operations
  */
 export interface UnifiedProcessingConfig {
-  enableQualityScores: boolean;
   enableSourceAttribution: boolean;
   maxRetries: number;
   batchTimeout: number;
@@ -80,7 +79,6 @@ export interface ProcessingResult {
       canonicalName?: string;
     }[];
   };
-  qualityScoreUpdates: number;
   error?: {
     stage: 'llm' | 'entity_resolution' | 'database' | 'quality_scores';
     message: string;

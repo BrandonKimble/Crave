@@ -4,7 +4,6 @@ import { BullModule } from '@nestjs/bull';
 import { SharedModule } from '../../../shared/shared.module';
 import { ExternalIntegrationsModule } from '../../external-integrations/external-integrations.module';
 import { EntityResolverModule } from '../entity-resolver/entity-resolver.module';
-import { QualityScoreModule } from '../quality-score/quality-score.module';
 import { PublicCraveScoreModule } from '../public-crave-score';
 import { RepositoryModule } from '../../../repositories/repository.module';
 import { PrismaModule } from '../../../prisma/prisma.module';
@@ -130,7 +129,6 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
     PrismaModule, // Provides PrismaService for database access
     ExternalIntegrationsModule, // Provides LLMService for integration
     EntityResolverModule, // Provides EntityResolutionService for unified processing
-    QualityScoreModule, // Provides QualityScoreService for PRD Section 5.3 compliance
     AttributeOntologyModule, // Adjudicates pending attributes after collection batches
     PublicCraveScoreModule,
     RepositoryModule, // Provides repository services for database access

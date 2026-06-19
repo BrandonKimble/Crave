@@ -51,10 +51,8 @@ export interface FoodResult {
   scoreInfo?: ScoreInfoSummary;
   marketKey?: string;
   marketName?: string | null;
-  activityLevel: ActivityLevel;
   mentionCount: number;
   totalUpvotes: number;
-  recentMentionCount: number;
   lastMentionedAt?: string | null;
   categories: string[];
   foodAttributes: string[];
@@ -76,7 +74,6 @@ export interface RestaurantFoodSnippet {
   craveScore: number;
   scoreDelta7d?: number | null;
   scoreInfo?: ScoreInfoSummary;
-  activityLevel: ActivityLevel;
 }
 
 export interface RestaurantLocationResult {
@@ -196,10 +193,8 @@ export interface DishResult {
   scoreInfo?: ScoreInfoSummary;
   marketKey?: string;
   marketName?: string | null;
-  activityLevel: ActivityLevel;
   mentionCount: number;
   totalUpvotes: number;
-  recentMentionCount: number;
   lastMentionedAt?: string | null;
   categories: string[];
   foodAttributes: string[];

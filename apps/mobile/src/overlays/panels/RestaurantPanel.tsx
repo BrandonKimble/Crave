@@ -8,7 +8,7 @@ import {
   View,
   type ViewStyle,
 } from 'react-native';
-import Reanimated, {
+import {
   useSharedValue,
   type AnimatedStyle as ReanimatedAnimatedStyle,
 } from 'react-native-reanimated';
@@ -108,10 +108,10 @@ export const useRestaurantPanelSpec = ({
 
   const emptyAreaMinHeight = Math.max(0, SCREEN_HEIGHT - snapPoints.middle - headerHeight);
   const priceLabel = restaurant
-    ? getPriceRangeLabel(restaurant.priceLevel) ??
+    ? (getPriceRangeLabel(restaurant.priceLevel) ??
       restaurant.priceText ??
       restaurant.priceSymbol ??
-      null
+      null)
     : null;
   const locationCandidates = React.useMemo<RestaurantPanelLocation[]>(() => {
     if (!restaurant) {
@@ -121,8 +121,8 @@ export const useRestaurantPanelSpec = ({
       Array.isArray(restaurant.locations) && restaurant.locations.length > 0
         ? restaurant.locations
         : restaurant.displayLocation
-        ? [restaurant.displayLocation]
-        : [];
+          ? [restaurant.displayLocation]
+          : [];
     const seen = new Set<string>();
     return source.filter((location, index) => {
       const locationId = location.locationId ?? `${restaurant.restaurantId}-${index}`;
@@ -320,10 +320,7 @@ export const useRestaurantPanelSpec = ({
         <View style={styles.metricsRow}>
           <View style={styles.metricCard}>
             <Text style={styles.metricLabel}>Crave rating</Text>
-            <CraveScoreText
-              score={restaurant.craveScore}
-              style={styles.metricValue}
-            />
+            <CraveScoreText score={restaurant.craveScore} style={styles.metricValue} />
           </View>
         </View>
         <View style={styles.detailRow}>
@@ -467,13 +464,9 @@ export const useRestaurantPanelSpec = ({
             <Text style={styles.dishName}>{item.foodName}</Text>
             <Text style={styles.dishMeta}>
               Dish rating:{' '}
-              <CraveScoreText
-                score={item.craveScore}
-                style={styles.dishMetaScoreValue}
-              />
+              <CraveScoreText score={item.craveScore} style={styles.dishMetaScoreValue} />
             </Text>
           </View>
-          <Text style={styles.dishActivity}>{item.activityLevel}</Text>
         </View>
         <View style={styles.dishStatsRow}>
           <View style={styles.dishStat}>
@@ -799,12 +792,6 @@ const styles = StyleSheet.create({
     lineHeight: LINE_HEIGHTS.body,
     fontWeight: '600',
     color: themeColors.textBody,
-  },
-  dishActivity: {
-    fontSize: FONT_SIZES.caption,
-    lineHeight: LINE_HEIGHTS.caption,
-    color: themeColors.textBody,
-    textTransform: 'capitalize',
   },
   dishStatsRow: {
     flexDirection: 'row',

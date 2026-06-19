@@ -476,11 +476,6 @@ export class ReplayService implements OnModuleInit {
     const rebuildResult =
       await this.projectionRebuildService.rebuildForRestaurants(restaurantIds);
 
-    await this.projectionRebuildService.refreshQualityScores({
-      connectionIds: rebuildResult.connectionIds,
-      restaurantIds: rebuildResult.restaurantIds,
-    });
-
     this.logger.info('Activated extraction run for document subset', {
       extractionRunId: params.extractionRunId,
       documentCount: documentIds.length,

@@ -49,10 +49,8 @@
       "scoreSubjectId": "uuid-conn",
       "craveScore": 87.5,
       "scoreDelta7d": 0.6,
-      "activityLevel": "trending",
       "mentionCount": 12,
       "totalUpvotes": 145,
-      "recentMentionCount": 5,
       "lastMentionedAt": "2025-10-24T18:02:00.000Z",
       "categories": [],
       "foodAttributes": []
@@ -87,8 +85,7 @@
           "scoreSubjectType": "connection",
           "scoreSubjectId": "uuid-conn",
           "craveScore": 87.5,
-          "scoreDelta7d": 0.6,
-          "activityLevel": "trending"
+          "scoreDelta7d": 0.6
         }
       ]
     }

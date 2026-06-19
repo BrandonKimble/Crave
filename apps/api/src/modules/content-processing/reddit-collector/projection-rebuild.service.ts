@@ -1,10 +1,8 @@
 import { Injectable, Inject, OnModuleInit } from '@nestjs/common';
-import { ActivityLevel, Connection, EntityType, Prisma } from '@prisma/client';
+import { Connection, EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
-import { QualityScoreService } from '../quality-score/quality-score.service';
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 type PrismaTransaction = Prisma.TransactionClient;
 
 type ActiveRestaurantEvent = {
@@ -57,18 +55,10 @@ type RestaurantItemProjection = {
   foodAttributes: string[];
   mentionCount: number;
   totalUpvotes: number;
-  recentMentionCount: number;
   supportMentionCount: number;
   supportTotalUpvotes: number;
-  supportRecentMentionCount: number;
   lastMentionedAt: Date | null;
   firstMentionedAt: Date | null;
-  activityLevel: ActivityLevel;
-  decayedMentionScore: number;
-  decayedUpvoteScore: number;
-  supportDecayedMentionScore: number;
-  supportDecayedUpvoteScore: number;
-  decayedScoresUpdatedAt: Date;
 };
 
 @Injectable()
@@ -77,7 +67,6 @@ export class ProjectionRebuildService implements OnModuleInit {
 
   constructor(
     private readonly prismaService: PrismaService,
-    private readonly qualityScoreService: QualityScoreService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
@@ -115,53 +104,6 @@ export class ProjectionRebuildService implements OnModuleInit {
     );
 
     return { connectionIds, restaurantIds: uniqueRestaurantIds };
-  }
-
-  async refreshQualityScores(params: {
-    connectionIds: string[];
-    restaurantIds?: string[];
-  }): Promise<void> {
-    const connectionIds = Array.from(
-      new Set(params.connectionIds.filter((value): value is string => !!value)),
-    );
-    const restaurantIds = Array.from(
-      new Set(
-        (params.restaurantIds ?? []).filter(
-          (value): value is string => !!value,
-        ),
-      ),
-    );
-
-    if (connectionIds.length > 0) {
-      await this.qualityScoreService.updateQualityScoresForConnections(
-        connectionIds,
-      );
-    }
-
-    if (!restaurantIds.length) {
-      return;
-    }
-
-    for (const restaurantId of restaurantIds) {
-      try {
-        const restaurantQualityScore =
-          await this.qualityScoreService.calculateRestaurantQualityScore(
-            restaurantId,
-          );
-        await this.prismaService.entity.update({
-          where: { entityId: restaurantId },
-          data: {
-            restaurantQualityScore,
-            lastUpdated: new Date(),
-          },
-        });
-      } catch (error) {
-        this.logger.warn('Failed to refresh restaurant quality score', {
-          restaurantId,
-          errorMessage: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
   }
 
   private async rebuildForRestaurantsTx(
@@ -342,20 +284,6 @@ export class ProjectionRebuildService implements OnModuleInit {
     mentionGroups: MentionEventGroup[],
     itemSupportMentions: ItemSupportMention[],
   ): RestaurantItemProjection[] {
-    const config = this.qualityScoreService.getConfig();
-    const now = new Date();
-    const mentionDecayMs = Math.max(
-      1,
-      config.timeDecay.mentionCountDecayDays * MS_PER_DAY,
-    );
-    const upvoteDecayMs = Math.max(
-      1,
-      config.timeDecay.upvoteDecayDays * MS_PER_DAY,
-    );
-    const recentThresholdMs =
-      config.timeDecay.recentMentionThresholdDays * MS_PER_DAY;
-    const activeThresholdMs = 7 * MS_PER_DAY;
-
     const items = new Map<string, RestaurantItemProjection>();
 
     mentionGroups.forEach((group) => {
@@ -394,18 +322,10 @@ export class ProjectionRebuildService implements OnModuleInit {
           foodAttributes: [],
           mentionCount: 0,
           totalUpvotes: 0,
-          recentMentionCount: 0,
           supportMentionCount: 0,
           supportTotalUpvotes: 0,
-          supportRecentMentionCount: 0,
           lastMentionedAt: null,
           firstMentionedAt: null,
-          activityLevel: 'normal',
-          decayedMentionScore: 0,
-          decayedUpvoteScore: 0,
-          supportDecayedMentionScore: 0,
-          supportDecayedUpvoteScore: 0,
-          decayedScoresUpdatedAt: now,
         } satisfies RestaurantItemProjection);
 
       aggregate.categories = Array.from(
@@ -422,11 +342,6 @@ export class ProjectionRebuildService implements OnModuleInit {
         aggregate,
         foodEvent.mentionedAt,
         foodEvent.sourceUpvotes ?? 0,
-        now,
-        mentionDecayMs,
-        upvoteDecayMs,
-        recentThresholdMs,
-        activeThresholdMs,
       );
 
       items.set(key, aggregate);
@@ -475,11 +390,6 @@ export class ProjectionRebuildService implements OnModuleInit {
           aggregate,
           support.mentionedAt,
           support.sourceUpvotes,
-          now,
-          mentionDecayMs,
-          upvoteDecayMs,
-          recentThresholdMs,
-          activeThresholdMs,
         );
       });
     });
@@ -491,11 +401,6 @@ export class ProjectionRebuildService implements OnModuleInit {
     aggregate: RestaurantItemProjection,
     mentionedAt: Date,
     upvotes: number,
-    now: Date,
-    mentionDecayMs: number,
-    upvoteDecayMs: number,
-    recentThresholdMs: number,
-    activeThresholdMs: number,
   ): void {
     aggregate.mentionCount += 1;
     aggregate.totalUpvotes += Math.max(0, upvotes);
@@ -512,29 +417,12 @@ export class ProjectionRebuildService implements OnModuleInit {
     ) {
       aggregate.lastMentionedAt = mentionedAt;
     }
-
-    const elapsedMs = Math.max(0, now.getTime() - mentionedAt.getTime());
-    aggregate.decayedMentionScore += Math.exp(-elapsedMs / mentionDecayMs);
-    aggregate.decayedUpvoteScore +=
-      Math.max(0, upvotes) * Math.exp(-elapsedMs / upvoteDecayMs);
-
-    if (elapsedMs <= recentThresholdMs) {
-      aggregate.recentMentionCount += 1;
-    }
-    if (elapsedMs <= activeThresholdMs) {
-      aggregate.activityLevel = 'active';
-    }
   }
 
   private applySupportContribution(
     aggregate: RestaurantItemProjection,
     mentionedAt: Date,
     upvotes: number,
-    now: Date,
-    mentionDecayMs: number,
-    upvoteDecayMs: number,
-    recentThresholdMs: number,
-    activeThresholdMs: number,
   ): void {
     aggregate.supportMentionCount += 1;
     aggregate.supportTotalUpvotes += Math.max(0, upvotes);
@@ -544,20 +432,6 @@ export class ProjectionRebuildService implements OnModuleInit {
       mentionedAt.getTime() > aggregate.lastMentionedAt.getTime()
     ) {
       aggregate.lastMentionedAt = mentionedAt;
-    }
-
-    const elapsedMs = Math.max(0, now.getTime() - mentionedAt.getTime());
-    aggregate.supportDecayedMentionScore += Math.exp(
-      -elapsedMs / mentionDecayMs,
-    );
-    aggregate.supportDecayedUpvoteScore +=
-      Math.max(0, upvotes) * Math.exp(-elapsedMs / upvoteDecayMs);
-
-    if (elapsedMs <= recentThresholdMs) {
-      aggregate.supportRecentMentionCount += 1;
-    }
-    if (elapsedMs <= activeThresholdMs) {
-      aggregate.activityLevel = 'active';
     }
   }
 
@@ -688,18 +562,10 @@ export class ProjectionRebuildService implements OnModuleInit {
             foodAttributes: item.foodAttributes,
             mentionCount: item.mentionCount,
             totalUpvotes: item.totalUpvotes,
-            recentMentionCount: item.recentMentionCount,
             supportMentionCount: item.supportMentionCount,
             supportTotalUpvotes: item.supportTotalUpvotes,
-            supportRecentMentionCount: item.supportRecentMentionCount,
             lastMentionedAt: item.lastMentionedAt,
-            activityLevel: item.activityLevel,
             lastUpdated: now,
-            decayedMentionScore: item.decayedMentionScore,
-            decayedUpvoteScore: item.decayedUpvoteScore,
-            supportDecayedMentionScore: item.supportDecayedMentionScore,
-            supportDecayedUpvoteScore: item.supportDecayedUpvoteScore,
-            decayedScoresUpdatedAt: item.decayedScoresUpdatedAt,
           },
         });
         affectedConnectionIds.push(existing.connectionId);
@@ -714,20 +580,11 @@ export class ProjectionRebuildService implements OnModuleInit {
           foodAttributes: item.foodAttributes,
           mentionCount: item.mentionCount,
           totalUpvotes: item.totalUpvotes,
-          recentMentionCount: item.recentMentionCount,
           supportMentionCount: item.supportMentionCount,
           supportTotalUpvotes: item.supportTotalUpvotes,
-          supportRecentMentionCount: item.supportRecentMentionCount,
           lastMentionedAt: item.lastMentionedAt,
-          activityLevel: item.activityLevel,
-          foodQualityScore: 0,
           lastUpdated: now,
           createdAt: item.firstMentionedAt ?? now,
-          decayedMentionScore: item.decayedMentionScore,
-          decayedUpvoteScore: item.decayedUpvoteScore,
-          supportDecayedMentionScore: item.supportDecayedMentionScore,
-          supportDecayedUpvoteScore: item.supportDecayedUpvoteScore,
-          decayedScoresUpdatedAt: item.decayedScoresUpdatedAt,
         },
         select: { connectionId: true },
       });

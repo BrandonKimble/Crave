@@ -778,7 +778,6 @@ export class RestaurantLocationEnrichmentService {
         ],
       },
       restaurantAttributes: mergedRestaurantAttributes,
-      restaurantQualityScore: 0,
       generalPraiseUpvotes: 0,
     };
   }

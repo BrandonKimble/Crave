@@ -70,11 +70,8 @@ export interface Connection {
   supportMentionCount?: number;
   supportTotalUpvotes?: number;
   sourceDiversity: number;
-  recentMentionCount: number;
   supportRecentMentionCount?: number;
   lastMentionedAt?: Date;
-  activityLevel: 'normal' | 'active' | 'trending';
-  foodQualityScore: number;
   lastUpdated: Date;
   createdAt: Date;
 }

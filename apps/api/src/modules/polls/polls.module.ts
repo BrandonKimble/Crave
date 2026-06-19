@@ -8,7 +8,6 @@ import { AnalyticsModule } from '../analytics/analytics.module';
 import { IdentityModule } from '../identity/identity.module';
 import { RestaurantEnrichmentModule } from '../restaurant-enrichment/restaurant-enrichment.module';
 import { EntityResolverModule } from '../content-processing/entity-resolver/entity-resolver.module';
-import { QualityScoreModule } from '../content-processing/quality-score/quality-score.module';
 import { PublicCraveScoreModule } from '../content-processing/public-crave-score';
 import { MarketsModule } from '../markets/markets.module';
 import { LLMModule } from '../external-integrations/llm/llm.module';
@@ -32,7 +31,6 @@ import { PollEntitySeedService } from './poll-entity-seed.service';
     IdentityModule,
     RestaurantEnrichmentModule,
     EntityResolverModule,
-    QualityScoreModule,
     PublicCraveScoreModule,
     MarketsModule,
     LLMModule,

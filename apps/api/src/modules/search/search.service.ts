@@ -59,9 +59,7 @@ type RestaurantDishRow = {
   food_attributes: string[];
   mention_count: number;
   total_upvotes: number;
-  recent_mention_count: number;
   last_mentioned_at: Date | null;
-  activity_level: string;
   crave_score: unknown;
   score_delta_7d: unknown;
   restaurant_crave_score: unknown;
@@ -1184,9 +1182,7 @@ export class SearchService {
         c.food_attributes AS food_attributes,
         c.mention_count AS mention_count,
         c.total_upvotes AS total_upvotes,
-        c.recent_mention_count AS recent_mention_count,
         c.last_mentioned_at AS last_mentioned_at,
-        c.activity_level AS activity_level,
 	        pcs.display_score AS crave_score,
 	        pcs.score_delta_7d AS score_delta_7d,
 	        prs.display_score AS restaurant_crave_score,
@@ -1241,15 +1237,8 @@ export class SearchService {
         scoreDelta7d: toNumber(row.score_delta_7d),
         marketKey: row.market_key ?? undefined,
         marketName: null,
-        activityLevel:
-          row.activity_level === 'trending' ||
-          row.activity_level === 'active' ||
-          row.activity_level === 'normal'
-            ? row.activity_level
-            : 'normal',
         mentionCount: row.mention_count ?? 0,
         totalUpvotes: row.total_upvotes ?? 0,
-        recentMentionCount: row.recent_mention_count ?? 0,
         lastMentionedAt: row.last_mentioned_at
           ? row.last_mentioned_at.toISOString()
           : null,
@@ -1513,7 +1502,6 @@ export class SearchService {
       scoreSubjectId: dish.connectionId,
       craveScore: dish.craveScore,
       scoreDelta7d: dish.scoreDelta7d ?? null,
-      activityLevel: dish.activityLevel,
     }));
     const totalDishCount =
       typeof aggregate._count?._all === 'number'
