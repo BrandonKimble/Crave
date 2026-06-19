@@ -8224,12 +8224,35 @@ final class SearchMapRenderController: RCTEventEmitter {
       let nowStepMs = Self.nowMs()
       let dtMs = lastHarnessStepMs > 0 ? Int(nowStepMs - lastHarnessStepMs) : 0
       lastHarnessStepMs = nowStepMs
+      // RENDERED vs ROLE truth (the "are the top-N actually SHOWING?" check). The role table
+      // says how many markers SHOULD be pins (promoted); renderedPin counts how many are actually
+      // painted as a pin RIGHT NOW (effective opacity > 0.5) — a settled promotion has no
+      // transition (opacity from the feature state), a mid-crossfade uses the live opacity. A gap
+      // (roleVsRendered) = promoted markers not yet visibly pins (the crossfade lag the user sees).
+      let pinnedRoleKeys = state.markerRoleTable.pinnedMarkerKeysInOrder
+      var renderedPinCount = 0
+      for key in pinnedRoleKeys {
+        let op: Double
+        if let tx = pinFamilyState.livePinTransitionsByMarkerKey[key], !tx.isAwaitingSourceCommit {
+          op = Self.livePinTransitionOpacity(tx, atMs: nowStepMs)
+        } else {
+          op = Self.numberValue(from: pinSourceState.featureStateById[key]?["nativePinOpacity"]) ?? 1
+        }
+        if op > 0.5 { renderedPinCount += 1 }
+      }
+      let roleVsRendered = pinnedRoleKeys.count - renderedPinCount
+      // workMs: compute time of THIS stepper frame (the two transition loops). If dtMs is high
+      // (jank) but workMs is low, the stepper is being STARVED by other main-thread work (the
+      // per-camera-frame reconcile in cwork); if workMs is itself high, the stepper apply is heavy.
+      let workMs = Int(nowStepMs - nowMs)
       Self.harnessLog(
         "{\"ev\":\"step\",\"t\":\(Int(nowStepMs)),\"moving\":\(state.currentViewportIsMoving),"
           + "\"activePin\":\(pinFamilyState.livePinTransitionsByMarkerKey.count),"
           + "\"activeDot\":\(dotFamilyState.liveDotTransitionsByMarkerKey.count),"
           + "\"pinMidFade\":\(pinIntermediateOpacityCount),\"dotMidFade\":\(dotIntermediateOpacityCount),"
-          + "\"xfadeGap\":\(crossfadeGapCount),\"applied\":\(featureStatesToApply.count),\"dtMs\":\(dtMs)}"
+          + "\"xfadeGap\":\(crossfadeGapCount),\"applied\":\(featureStatesToApply.count),"
+          + "\"roleP\":\(pinnedRoleKeys.count),\"renderP\":\(renderedPinCount),\"roleGap\":\(roleVsRendered),"
+          + "\"workMs\":\(workMs),\"dtMs\":\(dtMs)}"
       )
     }
     Self.syncMountedSourceState(
@@ -11010,7 +11033,12 @@ final class SearchMapRenderController: RCTEventEmitter {
       // changes (on camera move/idle), so JS can drive promotion/demotion off true
       // projected visibility instead of a padded lat/lng AABB. Throttled to
       // set-change to bound bridge traffic during gestures.
-      projectAndEmitOnScreenMarkers(
+      // cwork: total main-thread cost of the per-camera-frame LOD work (projection + bridge
+      // emits + driveNativeLod's reconcile). This runs SYNCHRONOUSLY on the main thread on every
+      // camera change during a gesture, competing with the CADisplayLink stepper. If cwork is
+      // regularly >16ms, THIS is the jank source (the stepper gets starved -> high step dtMs).
+      let cworkStartMs = Self.nowMs()
+      let didProject = projectAndEmitOnScreenMarkers(
         instanceId: instanceId,
         state: &nextState,
         handle: handle,
@@ -11022,6 +11050,13 @@ final class SearchMapRenderController: RCTEventEmitter {
       // the role table and crossfade ONLY the markers whose role changed — per-pin, native,
       // no JS round-trip / whole-frame republish.
       driveNativeLod(instanceId: instanceId)
+      if Self.lodHarnessEnabled {
+        let cworkMs = Self.nowMs() - cworkStartMs
+        Self.harnessLog(
+          "{\"ev\":\"cwork\",\"t\":\(Int(Self.nowMs())),\"moving\":\(isMoving),"
+            + "\"projected\":\(didProject),\"ms\":\(String(format: "%.1f", cworkMs))}"
+        )
+      }
       let labelObservation = Self.derivedFamilyState(sourceId: nextState.labelSourceId, state: nextState).labelObservation
       if labelObservation.observationEnabled {
         let refreshDelayMs = isMoving ? labelObservation.refreshMsMoving : 0

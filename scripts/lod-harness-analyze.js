@@ -155,6 +155,22 @@ if (steps.length > 0) {
     flags.push({ issue: 'crossfade_desync', t: steps[0]?.t, detail: `pins crossfade (${pinMidSum}) but dots barely do (${dotMidSum}) — demotion dot fade-in not synchronized with the pin fade-out.` });
   }
 
+  // --- RENDERED vs ROLE truth: of the markers the role table PROMOTED (roleP), how many are
+  // actually painted as pins right now (renderP)? A sustained gap (roleGap) = top-N decided but
+  // NOT showing — the "promoted but you still see a dot" the user reports. Transient gaps during
+  // a crossfade are expected; a gap that persists across many frames is the bug. ---
+  const roleSteps = steps.filter((s) => s.roleP != null && s.roleP > 0);
+  if (roleSteps.length > 5) {
+    const gapFrames = roleSteps.filter((s) => (s.roleGap || 0) >= 3);
+    const maxGap = roleSteps.reduce((m, s) => Math.max(m, s.roleGap || 0), 0);
+    const avgRender = (roleSteps.reduce((a, s) => a + s.renderP, 0) / roleSteps.length).toFixed(1);
+    const avgRole = (roleSteps.reduce((a, s) => a + s.roleP, 0) / roleSteps.length).toFixed(1);
+    console.log(`rendered-vs-role: avg role(promoted)=${avgRole} rendered(actually pins)=${avgRender} | maxGap=${maxGap} | ${gapFrames.length}/${roleSteps.length} frames with gap>=3`);
+    if (gapFrames.length / roleSteps.length > 0.3) {
+      flags.push({ issue: 'role_render_gap', t: gapFrames[0]?.t, detail: `${gapFrames.length}/${roleSteps.length} frames had >=3 promoted markers NOT actually shown as pins (maxGap ${maxGap}) — the top-N are decided but not SHOWING (crossfade lag / stuck dots).` });
+    }
+  }
+
   // --- JANK / choppiness: stepper frame interval while ANIMATING. ~16.7ms = 60fps; sustained
   // >24ms (<~42fps) during active crossfades = choppy. ---
   const animSteps = steps.filter((s) => (s.activePin || 0) > 0 || (s.activeDot || 0) > 0);
@@ -164,8 +180,22 @@ if (steps.length > 0) {
     const janky = dtVals.filter((d) => d > 24).length;
     const fps = avgDt > 0 ? (1000 / avgDt).toFixed(0) : 'n/a';
     console.log(`perf: ${dtVals.length} animating frames, avg ${avgDt.toFixed(1)}ms (~${fps}fps), ${janky} frames >24ms`);
+    // Localize the jank: stepper compute (workMs) vs per-camera-frame reconcile (cwork.ms).
+    const stepWork = animSteps.map((s) => s.workMs).filter((w) => w != null);
+    const cworks = events.filter((e) => e.ev === 'cwork').map((e) => e.ms).filter((m) => m != null);
+    const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+    const stepAvg = avg(stepWork), cworkAvg = avg(cworks), cworkMax = cworks.length ? Math.max(...cworks) : 0;
+    const cworkHeavy = cworks.filter((m) => m > 16).length;
+    if (stepWork.length || cworks.length) {
+      console.log(`perf split: stepper compute avg ${stepAvg.toFixed(1)}ms | camera-frame reconcile (cwork) avg ${cworkAvg.toFixed(1)}ms max ${cworkMax.toFixed(1)}ms, ${cworkHeavy}/${cworks.length} frames >16ms`);
+    }
     if (janky / dtVals.length > 0.25 || avgDt > 24) {
-      flags.push({ issue: 'jank', t: animSteps.find((s) => (s.dtMs || 0) > 24)?.t, detail: `render choppy during animation: avg ${avgDt.toFixed(1)}ms/frame (~${fps}fps), ${janky}/${dtVals.length} frames >24ms.` });
+      const cause = cworkAvg > stepAvg * 1.5 && cworkAvg > 8
+        ? `cause: per-camera-frame reconcile (cwork avg ${cworkAvg.toFixed(1)}ms vs stepper compute ${stepAvg.toFixed(1)}ms) is STARVING the stepper on the main thread.`
+        : stepAvg > 12
+        ? `cause: the stepper apply itself is heavy (workMs avg ${stepAvg.toFixed(1)}ms).`
+        : `cause: unclear — stepper ${stepAvg.toFixed(1)}ms, cwork ${cworkAvg.toFixed(1)}ms; likely external main-thread contention (bridge/mapbox).`;
+      flags.push({ issue: 'jank', t: animSteps.find((s) => (s.dtMs || 0) > 24)?.t, detail: `render choppy during animation: avg ${avgDt.toFixed(1)}ms/frame (~${fps}fps), ${janky}/${dtVals.length} frames >24ms. ${cause}` });
     }
   }
 }

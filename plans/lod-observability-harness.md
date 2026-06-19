@@ -170,3 +170,34 @@ timestamps to get the frame at the EXACT moment. (Sync via the t0 event + known 
   fade-in must start synchronized with the pin fade-out on demotion; (3) fix jank — driveNativeLod
   - reconcile run heavy work every camera frame (whole desired-collection rebuild); make it cheaper /
     scope to affected; (4) reproduce + fix zoom-disappear.
+
+## WORKLOG cont. (harness V3 — rendered-vs-role truth + jank LOCALIZED; measured a fix & refuted it)
+
+- Added to [lodev] step: roleP (promoted role count) / renderP (markers ACTUALLY painted as pins,
+  effective pin opacity > 0.5) / roleGap. Added workMs (stepper compute) to step + a new `cwork`
+  event (total main-thread cost of the per-camera-frame projection + reconcile). Analyzer now reports
+  rendered-vs-role, the perf split (stepper vs cwork), and LOCALIZES jank to a cause.
+- VERIFIED (answers the user's questions, with data):
+  - TOP-N CORRECTLY SHOWING: YES. avg role(promoted)=34.5 vs rendered(actual pins)=33.5 — rendered
+    tracks the decision within ~1; only 4/146 frames had a gap>=3 (the reveal moment, maxGap=40 once).
+    The new roleGap metric is the durable check for "are the top-N actually on screen as pins."
+  - DEMOTION CROSSFADE DESYNC: does NOT reproduce now. xfadeGap=0; dots crossfade abundantly
+    (dotMidFade 5066 vs pinMidFade 831). The snap-fix (suppressSourceCommitAwait for native_lod)
+    synchronized it. The user's report predates that fix — needs on-device re-confirm. (The user's
+    specific zoom-OUT demotion burst can't be driven by Maestro — no pinch — so that exact case is
+    still unexercised by the automated flow.)
+- JANK: REAL and now LOCALIZED. step dtMs p50=27ms / p90=53ms (19-37fps) but stepper compute is only
+  2.5ms — the stepper is STARVED. Cause = cwork (per-camera-frame projection of ~220 markers + the
+  full-collection reconcile) avg ~9-11ms EVERY camera frame, on the main thread, plus mapbox's own
+  render of 220 markers + the unmeasured feature-state apply.
+- MEASURED A FIX, HARNESS REFUTED IT: hypothesized the bridge emit (220-key array/frame) was the
+  cwork cost; gated it to settle; re-ran -> cwork UNCHANGED (8.3->8.7ms, noise). So the bridge emit
+  is negligible (async enqueue); the cost is the projection + reconcile COMPUTE. Reverted the gate
+  (zero measured benefit, nonzero JS-staleness risk). This is the harness doing its job.
+- REAL JANK FIX (next, well-characterized): make the cwork cheaper, not less frequent —
+  (a) reconcileAndApplyLiveMarkerRoleOutputs rebuilds the WHOLE desired pin+dot collections every
+  role-change frame even when only 1-2 markers flipped; make it incremental/scoped to affected.
+  (b) computeOnScreenMarkerKeys projects all ~220 candidates each frame; coarse-cull before precise
+  projection. (c) consider whether ~220 on-screen dots is even desirable (mapbox render floor).
+- Also still open: group_enter/group_flip on the initial reveal + zoom steps (a big instant viewport
+  change crosses many markers at once) — expected on zoom; revisit if it reads as a visual pop.
