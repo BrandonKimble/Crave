@@ -200,20 +200,6 @@ const promotedPinFeatureFilter = [
   ['get', 'nativeSlotFeatureKind'],
   'pin',
 ] as LabelPlacementFilter;
-// Overlap-region split: in-region pins overlap freely (allowOverlap:true, ranked);
-// out-of-region pins collision-cull (allowOverlap:false, scored). allowOverlap is a
-// layout prop (not data-driven), so the two regimes need two layers, filtered on the
-// `inOverlapRegion` feature flag set by the source builder.
-const promotedInRegionPinFilter = [
-  'all',
-  promotedPinFeatureFilter,
-  ['==', ['get', 'inOverlapRegion'], true],
-] as LabelPlacementFilter;
-const promotedOutRegionPinFilter = [
-  'all',
-  promotedPinFeatureFilter,
-  ['!=', ['get', 'inOverlapRegion'], true],
-] as LabelPlacementFilter;
 const promotedPinInteractionFeatureFilter = [
   '==',
   ['get', 'nativeSlotFeatureKind'],
@@ -272,7 +258,6 @@ type SearchMapMarkerSceneProps = {
   dotLayerStyle: MapboxGL.SymbolLayerStyle;
   handlePressTarget?: (event: SearchMapPressEvent) => void;
   stylePinSingleSymbolStyle: MapboxGL.SymbolLayerStyle;
-  stylePinOutRegionStyle: MapboxGL.SymbolLayerStyle;
   stylePinSharedShadowStyle: MapboxGL.SymbolLayerStyle;
   pinInteractionLayer: React.ReactElement;
   profilerCallback: React.ProfilerOnRenderCallback;
@@ -297,7 +282,6 @@ const SearchMapMarkerScene = React.memo(
     dotLayerStyle,
     handlePressTarget,
     stylePinSingleSymbolStyle,
-    stylePinOutRegionStyle,
     stylePinSharedShadowStyle,
     pinInteractionLayer,
     profilerCallback,
@@ -332,9 +316,9 @@ const SearchMapMarkerScene = React.memo(
         >
           <React.Fragment>
             {/*
-              Shared shadow layer: ONE layer beneath the pins. Only in-overlap-region
-              pins get a shadow — out-of-region pins collision-cull, so an always-drawn
-              shadow would orphan beneath a culled pin. (Same in/out filter as the pin.)
+              Shared shadow layer: ONE layer beneath ALL promoted pins (rank- AND
+              score-badged alike). Shadow opacity tracks each pin's per-feature LOD
+              opacity, so it crossfades per-pin with its pin.
             */}
             <MapboxGL.SymbolLayer
               key="restaurant-pin-shadow-shared"
@@ -343,11 +327,13 @@ const SearchMapMarkerScene = React.memo(
               belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
               style={stylePinSharedShadowStyle}
               sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
-              filter={promotedInRegionPinFilter}
+              filter={promotedPinFeatureFilter}
             />
             {/*
-              In-overlap-region pins: ONE layer, allowOverlap:true (all shown, RANKED),
-              stacked by symbol-z-order:'viewport-y'.
+              ALL promoted pins: ONE layer, allowOverlap:true (every promoted pin shown),
+              stacked by symbol-z-order:'viewport-y'. The rank-vs-score badge is a
+              per-feature sprite (badgeImageId) — NOT a layer split. One layer keeps
+              viewport-y z-ordering authoritative across all pins (no cross-group seam).
             */}
             <MapboxGL.SymbolLayer
               key="restaurant-pin-single-symbol"
@@ -356,21 +342,7 @@ const SearchMapMarkerScene = React.memo(
               belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
               style={stylePinSingleSymbolStyle}
               sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
-              filter={promotedInRegionPinFilter}
-            />
-            {/*
-              Out-of-overlap-region pins: ONE layer, allowOverlap:false (collision-
-              culled, SCORED) so the world-wide shortcut tail collapses to a sparse
-              non-overlapping subset that fades in/out as you pan/zoom (the wave).
-            */}
-            <MapboxGL.SymbolLayer
-              key="restaurant-pin-single-symbol-out"
-              id={PIN_SINGLE_SYMBOL_OUT_LAYER_ID}
-              slot="top"
-              belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
-              style={stylePinOutRegionStyle}
-              sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
-              filter={promotedOutRegionPinFilter}
+              filter={promotedPinFeatureFilter}
             />
             {/* Resident interaction (1 layer) + resident labels (16 layers) —
                 no per-slot fan-out, no nativeLodZ scoping. */}
@@ -418,7 +390,6 @@ const SearchMapMarkerScene = React.memo(
     previousProps.dotLayerStyle === nextProps.dotLayerStyle &&
     previousProps.handlePressTarget === nextProps.handlePressTarget &&
     previousProps.stylePinSingleSymbolStyle === nextProps.stylePinSingleSymbolStyle &&
-    previousProps.stylePinOutRegionStyle === nextProps.stylePinOutRegionStyle &&
     previousProps.stylePinSharedShadowStyle === nextProps.stylePinSharedShadowStyle &&
     previousProps.pinInteractionLayer === nextProps.pinInteractionLayer &&
     previousProps.profilerCallback === nextProps.profilerCallback &&
@@ -788,7 +759,6 @@ const ZERO_CAMERA_PADDING = { paddingTop: 0, paddingBottom: 0, paddingLeft: 0, p
 const DOT_SOURCE_ID = 'restaurant-dot-source';
 const DOT_LAYER_ID = 'restaurant-dot-layer';
 const PIN_SINGLE_SYMBOL_LAYER_ID = 'restaurant-pin-single-symbol-layer';
-const PIN_SINGLE_SYMBOL_OUT_LAYER_ID = 'restaurant-pin-single-symbol-out-layer';
 const PIN_SHARED_SHADOW_LAYER_ID = 'restaurant-pin-shared-shadow-layer';
 const USER_LOCATION_UNCERTAINTY_SCALE = 0.7;
 
@@ -2396,13 +2366,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
   // Out-of-overlap-region pin style: same icon, but collision ON (allowOverlap:false +
   // ignorePlacement:false) so the world-wide shortcut tail collapses to a sparse,
   // non-overlapping subset that fades in/out as you pan/zoom (the Google-style "wave").
-  // Same opacity transition drives that fade.
-  // Out-of-region pins render IDENTICALLY to in-region pins: always-draw, no collision
-  // culling. Promotion is now ONE unified viewport-gated budget (maxFullPins); the
-  // promoted set is bounded by that single budget, not by Mapbox collision. The separate
-  // out-region layer is retained only for the inOverlapRegion filter / badge split
-  // (rank inside the submitted region, crave-score outside).
-  const stylePinOutRegionStyle = stylePinSingleSymbolStyle;
+  // Same opacity transition drives that fade. ALL promoted pins (rank- and score-badged)
+  // render through this ONE layer, always-draw (allowOverlap:true), bounded by the single
+  // viewport-gated budget (maxFullPins) — the rank-vs-score distinction is purely the
+  // per-feature badge sprite (badgeImageId), never a layer/style split.
 
   // RESIDENT interaction layer (slot-elimination): ONE circle layer for all pin
   // tap targets, reading the resident bundle source filtered by feature kind —
@@ -2630,7 +2597,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
             dotLayerStyle,
             handlePressTarget: handleMarkerScenePressTarget,
             stylePinSingleSymbolStyle,
-            stylePinOutRegionStyle,
             stylePinSharedShadowStyle,
             pinInteractionLayer,
             profilerCallback,
@@ -2657,7 +2623,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
       restaurantLabelPinCollisionStyles,
       shouldMountSearchMarkerLayers,
       stylePinSingleSymbolStyle,
-      stylePinOutRegionStyle,
       stylePinSharedShadowStyle,
     ]
   );
