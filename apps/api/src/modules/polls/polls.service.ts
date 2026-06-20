@@ -7,6 +7,7 @@ import { randomBytes } from 'crypto';
 import {
   PollState,
   PollMode,
+  PollOrigin,
   PollCommentModerationStatus,
   PollCommentExtractionStatus,
   PollLeaderboardSubjectType,
@@ -90,7 +91,7 @@ export class PollsService {
     });
 
     const enriched = await this.attachMarketLabels(polls, targetMarketKey);
-    return enriched;
+    return this.attachPollStats(enriched);
   }
 
   async queryPolls(query: QueryPollsDto) {
@@ -1111,6 +1112,103 @@ export class PollsService {
       return {
         ...poll,
         marketName,
+      };
+    });
+  }
+
+  /**
+   * Enrich a poll list with the card's Reddit-style stats: comment count, distinct
+   * endorser (participant) count, and the creator (avatar for user-created polls;
+   * origin flag so app/curated polls render a placeholder icon instead).
+   */
+  private async attachPollStats<
+    T extends {
+      pollId: string;
+      createdByUserId?: string | null;
+      origin?: PollOrigin;
+    },
+  >(
+    polls: T[],
+  ): Promise<
+    Array<
+      T & {
+        commentCount: number;
+        endorserCount: number;
+        creator: {
+          origin: PollOrigin;
+          username: string | null;
+          displayName: string | null;
+          avatarUrl: string | null;
+        };
+      }
+    >
+  > {
+    if (!polls.length) {
+      return polls as never;
+    }
+    const pollIds = polls.map((poll) => poll.pollId);
+    const countRows = await this.prisma.$queryRaw<
+      Array<{ poll_id: string; comment_count: bigint; endorser_count: bigint }>
+    >(Prisma.sql`
+      SELECT poll_id,
+             COUNT(*) AS comment_count,
+             COUNT(DISTINCT user_id) AS endorser_count
+      FROM poll_comments
+      WHERE poll_id IN (${Prisma.join(pollIds)})
+        AND deleted_at IS NULL
+        AND moderation_status::text = 'approved'
+      GROUP BY poll_id
+    `);
+    const statsByPoll = new Map(
+      countRows.map((row) => [
+        row.poll_id,
+        {
+          commentCount: Number(row.comment_count),
+          endorserCount: Number(row.endorser_count),
+        },
+      ]),
+    );
+
+    const creatorIds = Array.from(
+      new Set(
+        polls
+          .map((poll) => poll.createdByUserId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    const creatorRows = creatorIds.length
+      ? await this.prisma.user.findMany({
+          where: { userId: { in: creatorIds } },
+          select: {
+            userId: true,
+            username: true,
+            displayName: true,
+            avatarUrl: true,
+          },
+        })
+      : [];
+    const creatorById = new Map(creatorRows.map((row) => [row.userId, row]));
+
+    return polls.map((poll) => {
+      const stats = statsByPoll.get(poll.pollId) ?? {
+        commentCount: 0,
+        endorserCount: 0,
+      };
+      const origin = poll.origin ?? PollOrigin.seeded;
+      const user =
+        origin === PollOrigin.user && poll.createdByUserId
+          ? creatorById.get(poll.createdByUserId)
+          : null;
+      return {
+        ...poll,
+        commentCount: stats.commentCount,
+        endorserCount: stats.endorserCount,
+        creator: {
+          origin,
+          username: user?.username ?? null,
+          displayName: user?.displayName ?? null,
+          avatarUrl: user?.avatarUrl ?? null,
+        },
       };
     });
   }
