@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { PollState } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import { PollGraduationService } from './poll-graduation.service';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -13,6 +14,7 @@ export class PollLifecycleService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly graduation: PollGraduationService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('PollLifecycleService');
@@ -28,6 +30,13 @@ export class PollLifecycleService {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   }
 
+  /**
+   * Close expired polls and graduate their threads through the authoritative
+   * collection pipeline (Phase 5C, §6.3). Also retries any poll that was closed
+   * but never graduated (e.g. a prior run crashed mid-pass) — graduation is
+   * idempotent (`poll.graduatedAt` + source-ledger dedupe), so re-processing is
+   * safe. One poll's failure is logged and never blocks the rest.
+   */
   @Cron(CronExpression.EVERY_DAY_AT_2AM)
   async closeExpiredPolls(): Promise<void> {
     if (this.autoCloseDays <= 0) {
@@ -35,24 +44,37 @@ export class PollLifecycleService {
     }
 
     const threshold = new Date(Date.now() - this.autoCloseDays * MS_PER_DAY);
-    const result = await this.prisma.poll.updateMany({
+    const pending = await this.prisma.poll.findMany({
       where: {
-        state: PollState.active,
-        launchedAt: {
-          lte: threshold,
-        },
+        graduatedAt: null,
+        OR: [
+          { state: PollState.active, launchedAt: { lte: threshold } },
+          { state: PollState.closed },
+        ],
       },
-      data: {
-        state: PollState.closed,
-        closedAt: new Date(),
-      },
+      select: { pollId: true },
     });
-
-    if (result.count > 0) {
-      this.logger.info('Closed expired polls', {
-        count: result.count,
-        autoCloseDays: this.autoCloseDays,
-      });
+    if (!pending.length) {
+      return;
     }
+
+    let graduated = 0;
+    for (const { pollId } of pending) {
+      try {
+        await this.graduation.closeAndGraduate(pollId);
+        graduated += 1;
+      } catch (error) {
+        this.logger.error('Poll graduation failed', {
+          pollId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    this.logger.info('Closed + graduated expired polls', {
+      attempted: pending.length,
+      graduated,
+      autoCloseDays: this.autoCloseDays,
+    });
   }
 }

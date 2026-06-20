@@ -12,12 +12,14 @@ import { PublicCraveScoreModule } from '../content-processing/public-crave-score
 import { MarketsModule } from '../markets/markets.module';
 import { LLMModule } from '../external-integrations/llm/llm.module';
 import { EntityTextSearchModule } from '../entity-text-search/entity-text-search.module';
+import { RedditCollectorModule } from '../content-processing/reddit-collector/reddit-collector.module';
 import { PollsService } from './polls.service';
 import { PollsController } from './polls.controller';
 import { PollsGateway } from './polls.gateway';
 import { PollSchedulerService } from './poll-scheduler.service';
 import { PollAggregationService } from './poll-aggregation.service';
 import { PollLifecycleService } from './poll-lifecycle.service';
+import { PollGraduationService } from './poll-graduation.service';
 import { PollEntitySeedService } from './poll-entity-seed.service';
 
 @Module({
@@ -35,6 +37,7 @@ import { PollEntitySeedService } from './poll-entity-seed.service';
     MarketsModule,
     LLMModule,
     EntityTextSearchModule,
+    RedditCollectorModule,
   ],
   controllers: [PollsController],
   providers: [
@@ -44,6 +47,7 @@ import { PollEntitySeedService } from './poll-entity-seed.service';
     PollSchedulerService,
     PollAggregationService,
     PollLifecycleService,
+    PollGraduationService,
   ],
   exports: [PollsService],
 })

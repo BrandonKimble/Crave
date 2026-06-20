@@ -6,7 +6,6 @@ import {
   LLMChunkingService,
 } from '../../external-integrations/llm/llm-chunking.service';
 import {
-  ChunkProcessingResult,
   LLMConcurrentProcessingService,
   ProcessingResult as ConcurrentProcessingResult,
 } from '../../external-integrations/llm/llm-concurrent-processing.service';
@@ -14,7 +13,6 @@ import { LLMService } from '../../external-integrations/llm/llm.service';
 import {
   EnrichedLLMMention,
   EnrichedLLMOutputStructure,
-  LLMComment,
   LLMModelInput,
   LLMMention,
   LLMPost,
@@ -86,7 +84,8 @@ export interface StoredExtractionInputChunk {
 type ProcessingChunkResult = ChunkResult<LLMProcessingInput>;
 
 interface ExtractionPipelineBaseParams {
-  pipeline: BatchJob['collectionType'];
+  // Reddit collection types plus `poll-thread` (close-time poll graduation, §6.3).
+  pipeline: BatchJob['collectionType'] | 'poll-thread';
   community: string;
   batchId: string;
   parentJobId?: string | null;
@@ -527,11 +526,7 @@ export class ExtractionPipelineService implements OnModuleInit {
 
       const comments = (post.comments ?? []).map((comment) => {
         const canonicalCommentId = comment.id.trim();
-        const commentRef = assignRef(
-          canonicalCommentId,
-          'comment',
-          comment.id,
-        );
+        const commentRef = assignRef(canonicalCommentId, 'comment', comment.id);
 
         return {
           ...comment,
@@ -622,10 +617,9 @@ export class ExtractionPipelineService implements OnModuleInit {
       trimmedParentId,
       sourceMap,
     );
-    const parentCandidates = [
-      canonicalParentId,
-      trimmedParentId,
-    ].filter((candidate): candidate is string => Boolean(candidate));
+    const parentCandidates = [canonicalParentId, trimmedParentId].filter(
+      (candidate): candidate is string => Boolean(candidate),
+    );
 
     for (const candidate of parentCandidates) {
       const commentRef = commentRefsByCanonicalId.get(candidate);
@@ -674,10 +668,7 @@ export class ExtractionPipelineService implements OnModuleInit {
 
     const mappedSource = sourceMap[trimmedSourceId];
     if (!mappedSource) {
-      const allowedRefs = Object.keys(sourceMap)
-        .sort()
-        .slice(0, 10)
-        .join(', ');
+      const allowedRefs = Object.keys(sourceMap).sort().slice(0, 10).join(', ');
       throw new Error(
         `Invalid source_id=${trimmedSourceId} for chunk=${chunkId}; expected one of ${allowedRefs}`,
       );
@@ -765,7 +756,9 @@ export class ExtractionPipelineService implements OnModuleInit {
           );
         }
         if (commentEntry.source_type !== 'comment') {
-          throw new Error(`Comment ref ${commentRef} does not map to a comment`);
+          throw new Error(
+            `Comment ref ${commentRef} does not map to a comment`,
+          );
         }
 
         return {
@@ -798,11 +791,15 @@ export class ExtractionPipelineService implements OnModuleInit {
     }
 
     if (!this.isSourceRef(trimmedParentId)) {
-      throw new Error(`Parent source ref must use SRC format: ${trimmedParentId}`);
+      throw new Error(
+        `Parent source ref must use SRC format: ${trimmedParentId}`,
+      );
     }
 
     if (!sourceMap[trimmedParentId]) {
-      throw new Error(`Parent source ref is missing from source_map: ${trimmedParentId}`);
+      throw new Error(
+        `Parent source ref is missing from source_map: ${trimmedParentId}`,
+      );
     }
 
     return trimmedParentId;

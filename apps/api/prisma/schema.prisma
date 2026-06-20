@@ -468,6 +468,7 @@ model Poll {
   scheduledFor       DateTime?    @map("scheduled_for")
   launchedAt         DateTime?    @map("launched_at")
   closedAt           DateTime?    @map("closed_at")
+  graduatedAt        DateTime?    @map("graduated_at")
   allowUserAdditions Boolean      @default(true) @map("allow_user_additions")
   audienceFilters    Json?        @map("audience_filters")
   metadata           Json?        @default("{}")

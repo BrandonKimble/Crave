@@ -596,7 +596,7 @@ export class PollsService {
    * market-scoped) and return display spans for highlight + deeplink. Brand-new
    * entities aren't here yet — they graduate at close (§6.1).
    */
-  private async highlightCommentSpans(
+  async highlightCommentSpans(
     body: string,
     marketKey: string | null,
   ): Promise<Prisma.InputJsonValue> {
@@ -1248,15 +1248,5 @@ export class PollsService {
       return Number.isFinite(numeric) ? numeric : null;
     }
     return null;
-  }
-
-  async closePoll(pollId: string): Promise<void> {
-    await this.prisma.poll.update({
-      where: { pollId },
-      data: {
-        state: PollState.closed,
-        closedAt: new Date(),
-      },
-    });
   }
 }
