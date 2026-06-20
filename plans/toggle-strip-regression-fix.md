@@ -1,82 +1,66 @@
-# Toggle Strip Regression + Rising→Sort Modal (EXECUTION SPEC)
+# Toggle Strip Regressions — Archaeology + Restore (EXECUTION SPEC)
 
-> Two coupled pieces of work on the search filter toggle strip. Investigated 2026-06-19; this is the
-> grounded fix spec so it can be implemented cleanly without regressing a perf-critical surface.
+> Deep git archaeology (2026-06-20). The toggle strip has THREE entangled regressions, all from
+> the `9fa642d7` "Finalize runtime and demand cutovers" mega-cutover (May 19, 600+ files) + the
+> April chrome-freeze (`ff35c71d`) + the ongoing pin-residency map work. This is the grounded
+> restore plan. Original toggle strip born in `b211db8f`.
 
-## Part 1 — The loading-cover regression (the bug)
+## The three regressions (root-caused)
 
-**Symptoms (user):** when toggling, the loading cover covers the toggle strip so you can't toggle
-more than once; sometimes the toggle strip disappears completely. It used to let you rapid-tap any
-toggle and the loading state waited until the taps settled.
+**#1 — Toggles don't change color on press-up (look stuck).** ✅ **FIXED (`70b8ac7b`).**
+Originally press-up did a synchronous state flip → instant color. The chrome-freeze (`ff35c71d` +
+`9fa642d7`) froze the whole `filtersHeaderRuntime` snapshot during `interaction_loading`, including
+the toggle active states, so colors were stuck until results landed. Fix: the freeze still holds the
+header heights + chip structure + handlers (layout stability), but the toggle ACTIVE STATES
+(`activeTab`, `openNow`, `votesFilterActive`, `risingActive`, price active/label, `isPriceSelectorVisible`)
+now flow LIVE from the runtime bus (confirmed immediate — handlers publish on press-up). File:
+`search-root-search-scene-chrome-freeze-runtime.ts`. **Needs on-device confirm.**
 
-**Root cause (verified):**
+**#2 — Pins/dots no longer fade out on press / fade in on load.** ⏸ **DEFERRED (touches in-flight work).**
+Originally a toggle set `presentationTransitionLoadingMode = 'interaction_frost'` → drove the map's
+`batchOpacity` (pins/dots fade 1→0, then 0→1 on settle). `9fa642d7` deleted that wiring.
+**The mechanism STILL EXISTS in the resident model**: `SearchMapRenderController.swift` runs a
+`PresentationOpacityAnimator` driving `nativePresentationOpacity`, which the Mapbox layers compose as
+a global multiplier on top of LOD opacity — `iconOpacity = nativePresentationOpacity × nativeLodOpacity`,
+`textOpacity = nativePresentationOpacity × nativeDotOpacity`. It's currently animated only for overlay
+reveal/dismiss. **Restore = re-wire the toggle/search lifecycle to drive that same presentation-opacity**
+(→0 on toggle start, swap promoted pins while invisible, →1 on settle — cleaner than old, no source
+churn, composes WITH residency). **BLOCKED FOR NOW**: `SearchMapRenderController.swift` + the map render
+controllers have UNCOMMITTED other-session residency edits — do NOT touch until that lands. Do #2 once
+the residency work is committed/settled.
 
-- The rapid-tap **settle** logic is INTACT — `scheduleToggleCommit` → seq-tracked
-  `interactionSeqRef` → `finalizeInteraction(awaitVisualSync)`
-  ([use-results-presentation-toggle-state-runtime.ts](apps/mobile/src/screens/Search/runtime/shared/use-results-presentation-toggle-state-runtime.ts),
-  [use-results-presentation-toggle-commit-runtime.ts](apps/mobile/src/screens/Search/runtime/shared/use-results-presentation-toggle-commit-runtime.ts)).
-  This is NOT the bug.
-- The bug is the **loading-surface state machine** (introduced in `9fa642d7` "Finalize runtime and
-  demand cutovers", May 19; surfaced — not caused — by `acc01f3d` Rising, Jun 19):
-  - The loading cover (`resultsLoadingCoverSurface`, rendered in
-    [use-search-root-search-scene-panel-surface-overlay-runtime.tsx](apps/mobile/src/screens/Search/runtime/shared/use-search-root-search-scene-panel-surface-overlay-runtime.tsx))
-    is `pointerEvents="none"` (so it never _blocks_ touches) but renders at
-    `top: headerTopValue (= resolvedResultsHeaderHeightForRender)`, full height. When the header
-    height is unmeasured/stale it rides to `top: 0` and visually buries the strip.
-  - The toggle strip is the **list header**, render-gated:
-    `resultsToggleStripForRenderBase = (shouldShowInteractionLoadingState || shouldShowResultsSurface) ? listHeader : null`
-    ([use-search-root-search-scene-surface-render-header-source-runtime.tsx:30-37](apps/mobile/src/screens/Search/runtime/shared/use-search-root-search-scene-surface-render-header-source-runtime.tsx)).
-    In modes where neither is true, the strip is **null → "disappears completely."**
-  - The codebase already KNOWS: telemetry `stableHeaderChromeCoveredByLoadingCover` fires when
-    `surfaceMode === 'initial_loading' && resultsToggleStripForRenderLive != null`.
+**#3 — Segment (dish/restaurant) toggle nukes the strip + collapses the sheet.** ⬜ **TODO (architectural).**
+Originally the strip was FIXED independent chrome (`SearchResultsHeaderChromeAuthority`, 312 lines,
+rendered above the sheet) + a simple data-driven tab swap. `9fa642d7` DELETED that authority and folded
+the strip into a render-gated LIST HEADER:
+`resultsToggleStripForRenderBase = (shouldShowInteractionLoadingState || shouldShowResultsSurface) ? listHeader : null`.
+A segment toggle goes through `scheduleTabToggleCommit` → the dual-list dishes↔restaurants swap tears
+down/rebuilds the list, and the strip (being the list header) dies with it + the surface transiently
+collapses to a strip-nulling mode → strip vanishes, gap, sheet "goes haywire."
+**Fix (architectural): render the strip as FIXED chrome OUTSIDE the list** (restore the
+`SearchResultsHeaderChromeAuthority` pattern — recover via `git show 9fa642d7~1:apps/mobile/src/overlays/SearchResultsHeaderChromeAuthority.tsx`),
+so it survives list teardown + tab swaps. Alternative (smaller, less robust): keep the list mounted
+across the tab swap (swap data only, never the list) so the header isn't torn down. **Do as a focused
+effort — not a point-patch.** A prior render-retention patch (reverted) did NOT fix it because the list
+itself is rebuilt.
 
-**The fix (clean, non-regressing):** make the toggle strip a **persistent chrome layer** — always
-mounted, above the loading cover — instead of a render-gated list header. Concretely:
+## Status
 
-1. Render the toggle strip in a stable chrome lane that is **never** nulled by surface mode and sits
-   at a z-order **above** `resultsLoadingCoverSurface`.
-2. Keep a **cached/stable** filters-header height so the cover's `top` never collapses to 0 (v2 plan
-   Phase 4 intent — "use cached header heights when live measurements are unavailable; delay the
-   background until valid header heights exist").
-3. Verify against `surface-panel-state-runtime` mode transitions during a toggle (interaction_loading)
-   so the strip stays live + tappable while results reload.
+- ✅ #1 fixed (`70b8ac7b`).
+- ✅ Baseline cleaned (`9e7f613b` reverted the cover-offset symptom patch `8ef25350`).
+- ⏸ #2 deferred (caveat: touches uncommitted residency work; mechanism + re-wire documented above).
+- ⬜ #3 TODO (fixed-chrome restore; architectural).
 
-- Validate with a maestro flow: results up → rapid-tap a toggle 3× → assert the strip stays
-  visible/tappable and only one settled search fires.
+## Also still pending (separate from the regressions)
 
-## Part 2 — Rising → Sort modal (the restructure)
+- **Rising → Sort modal** (Best · Rising, far-left, old global/local "Rank" modal pattern). ~7-file
+  thread: `useSearchFilterModalOwner` (add sort visibility state), new `SearchSortSheet.tsx`, a sort
+  modal-layer runtime (mirror `use-search-root-overlay-rank-and-score-modal-layer-runtime.ts`),
+  contracts, `SearchFilters.tsx` (Sort button far-left + remove Rising pill), the list-header runtime,
+  shell host. Selection → existing `toggleRising`/`scheduleToggleCommit`. Modal title "Sort"; button
+  reads "Sort" (default Best) / "Rising" (active), accent only when Rising.
 
-**Decisions (confirmed 2026-06-19):**
+## Sequencing
 
-- Replace the standalone "Rising" pill with a **Sort** control, moved to the **far left** of the
-  dish/restaurant segment toggle.
-- It opens a **modal** (the old global/local "Rank" pattern — recovered below — via `OverlayModalSheet`,
-  same family as the live Price + Score sheets).
-- Two options: **Best** (default, ranked by Crave Score) · **Rising** (7-day momentum).
-- Button label: reads **"Sort"** when default (Best); reads **"Rising"** when Rising is selected.
-  Accent ON only when non-default (Rising) — same convention as the other toggles. Chevron like Price.
-
-**Recovered template (old global/local rank modal, pre-`3f9035de`):**
-`SearchRankAndScoreSheets.tsx` had `RankMode = 'coverage_display' | 'global_quality'`
-(Local/Global) in an `OverlayModalSheet`: a "Rank" header + `RANK_MODE_OPTIONS.map` selectable rows
-with a selected checkmark; props `isRankSelectorVisible`/`closeRankSelector`/`pendingScoreMode`/
-`setPendingScoreMode`/`handleRankDone`. Mirror this shape for Sort (it's simpler — 2 mutually-exclusive
-options → sets `risingActive`). Use the **score-sheet's lighter visibility wiring**
-([SearchRankAndScoreSheets.tsx](apps/mobile/src/screens/Search/components/SearchRankAndScoreSheets.tsx)),
-NOT the heavy price-modal bus chain (price needs multi-value state; sort doesn't).
-
-**Files:**
-
-- New `SearchSortSheet.tsx` (OverlayModalSheet, "Sort" title, Best/Rising rows + checkmark).
-- `SearchFilters.tsx`: add the Sort button far-left (before the `GestureDetector` segment); remove the
-  Rising pill (current lines ~672-690); thread `sortLabel`/`sortActive`/`onToggleSortSelector`/
-  `isSortSelectorVisible`.
-- Parent that renders `SearchFilters` + the score sheet: add `isSortSelectorVisible` state + render
-  `SearchSortSheet`; on select → commit via the existing `toggleRising`/`scheduleToggleCommit`
-  (sets `risingActive`), so it inherits the settle-safe behavior.
-
-## Sequence
-
-1. Part 1 (loading-cover fix) — restore best-in-class rapid-toggle. (The active bug.)
-2. Part 2 (Sort modal restructure).
-   Both behind a maestro toggle-rapid-tap flow as the regression guard.
+1. Validate #1 on device. 2. #3 fixed-chrome restore (focused). 3. Rising→Sort modal. 4. #2 once the
+   residency map work is committed. Each behind a maestro rapid-toggle flow.
