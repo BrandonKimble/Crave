@@ -1657,8 +1657,7 @@ export const useDirectSearchMapSourceController = ({
       const isVisibleForChurn = (key: string): boolean =>
         nativeVisibleMarkerKeys == null ? true : nativeVisibleMarkerKeys.has(key);
       let demoteLostVisibility = 0;
-      let demoteVisibleInRegion = 0;
-      let demoteVisibleOutRegion = 0;
+      let demoteVisibleDisplaced = 0;
       for (const feature of currentPinned) {
         const key = buildMarkerKey(feature);
         if (nextPromotedKeys.has(key)) {
@@ -1666,10 +1665,8 @@ export const useDirectSearchMapSourceController = ({
         }
         if (!isVisibleForChurn(key)) {
           demoteLostVisibility += 1;
-        } else if (isInRegionFeature(feature)) {
-          demoteVisibleInRegion += 1;
         } else {
-          demoteVisibleOutRegion += 1;
+          demoteVisibleDisplaced += 1;
         }
       }
       let promoteFresh = 0;
@@ -1684,7 +1681,7 @@ export const useDirectSearchMapSourceController = ({
           promoteVisible += 1;
         }
       }
-      const demoteTotal = demoteLostVisibility + demoteVisibleInRegion + demoteVisibleOutRegion;
+      const demoteTotal = demoteLostVisibility + demoteVisibleDisplaced;
       if (demoteTotal > 0 || promoteFresh > 0) {
         logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
           event: 'lod_target_change_contract',
@@ -1693,8 +1690,7 @@ export const useDirectSearchMapSourceController = ({
           nextPromoted: nextPromotedKeys.size,
           demoteTotal,
           demoteLostVisibility,
-          demoteVisibleInRegion,
-          demoteVisibleOutRegion,
+          demoteVisibleDisplaced,
           promoteFresh,
           promoteVisible,
           nativeVisibleCount: nativeVisibleMarkerKeys == null ? -1 : nativeVisibleMarkerKeys.size,
@@ -1921,8 +1917,6 @@ export const useDirectSearchMapSourceController = ({
       const previousPinStore = previousPinSourceStoreRef.current;
       let badgeChangedCount = 0;
       let coordinateSwapCount = 0;
-      let promotedInRegionCount = 0;
-      let promotedOutRegionCount = 0;
       const prevKeyByRestaurantId = new Map<string, string>();
       if (previousPinStore) {
         for (const prevKey of previousPinStore.idsInOrder) {
@@ -1936,13 +1930,6 @@ export const useDirectSearchMapSourceController = ({
         const feature = pinSourceStore.featureById.get(markerKey);
         if (!feature) {
           continue;
-        }
-        if (feature.properties.nativeLodOpacity === 1) {
-          if (feature.properties.inOverlapRegion === true) {
-            promotedInRegionCount += 1;
-          } else {
-            promotedOutRegionCount += 1;
-          }
         }
         const prevFeature = previousPinStore?.featureById.get(markerKey);
         if (prevFeature) {
@@ -1958,29 +1945,11 @@ export const useDirectSearchMapSourceController = ({
           }
         }
       }
-      let outRegionCandidateCount = 0;
-      let outRegionVisibleCount = 0;
-      for (const candidate of rankedCandidates) {
-        if (isInRegionFeature(candidate)) {
-          continue;
-        }
-        outRegionCandidateCount += 1;
-        if (
-          nativeVisibleMarkerKeys == null ||
-          nativeVisibleMarkerKeys.has(buildMarkerKey(candidate))
-        ) {
-          outRegionVisibleCount += 1;
-        }
-      }
       logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
         event: 'pin_publish_stability_contract',
         isMapMoving: projectionIsMapMoving,
         badgeChangedCount,
         coordinateSwapCount,
-        promotedInRegionCount,
-        promotedOutRegionCount,
-        outRegionCandidateCount,
-        outRegionVisibleCount,
         rankedCandidateCount: rankedCandidates.length,
       });
     }
