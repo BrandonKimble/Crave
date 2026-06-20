@@ -411,9 +411,11 @@ export class PublicCraveScoreService {
       ? Prisma.sql`e.restaurant_metadata->>'fixtureRunId' = ${fixtureRunId}`
       : Prisma.sql`TRUE`;
     // Half-life is a trusted numeric config value (never user input); inline it
-    // as a SQL numeric literal so the decay weight is a plain expression.
+    // as a SQL numeric literal so the decay weight is a plain expression. Clamp to
+    // a tiny positive so a bad/zero/negative config can't divide-by-zero or invert
+    // decay; ages are clamped to >=0 below so a future-dated mention can't weigh >1.
     const halfLife = Prisma.raw(
-      `(${Number(config.endorsementHalfLifeDays)})::numeric`,
+      `(${Math.max(0.0001, Number(config.endorsementHalfLifeDays) || 0)})::numeric`,
     );
 
     const dishRows = await this.prisma.$queryRaw<DishRow[]>`
@@ -429,8 +431,8 @@ export class PublicCraveScoreService {
       LEFT JOIN restaurant_markets rm ON rm.entity_id = c.restaurant_id
       LEFT JOIN LATERAL (
         SELECT
-          COALESCE(SUM(power(0.5, EXTRACT(EPOCH FROM (now() - m.mentioned_at))/86400.0/${halfLife})), 0) AS mentions,
-          COALESCE(SUM(m.source_upvotes * power(0.5, EXTRACT(EPOCH FROM (now() - m.mentioned_at))/86400.0/${halfLife})), 0) AS upvotes
+          COALESCE(SUM(power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - m.mentioned_at)))/86400.0/${halfLife})), 0) AS mentions,
+          COALESCE(SUM(m.source_upvotes * power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - m.mentioned_at)))/86400.0/${halfLife})), 0) AS upvotes
         FROM core_restaurant_item_mentions m
         WHERE m.connection_id = c.connection_id
       ) d ON TRUE
@@ -442,8 +444,8 @@ export class PublicCraveScoreService {
       restaurant_praise AS (
         SELECT
           restaurant_id,
-          SUM(power(0.5, EXTRACT(EPOCH FROM (now() - mentioned_at))/86400.0/${halfLife}))::numeric AS praise_mentions,
-          SUM(upv * power(0.5, EXTRACT(EPOCH FROM (now() - mentioned_at))/86400.0/${halfLife}))::numeric AS praise_upvotes
+          SUM(power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - mentioned_at)))/86400.0/${halfLife}))::numeric AS praise_mentions,
+          SUM(upv * power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - mentioned_at)))/86400.0/${halfLife}))::numeric AS praise_upvotes
         FROM (
           SELECT
             restaurant_id,

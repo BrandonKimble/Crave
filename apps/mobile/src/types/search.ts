@@ -1,5 +1,4 @@
 export type {
-  ActivityLevel,
   Coordinate,
   DishRestaurantData,
   DishRestaurantLocation,

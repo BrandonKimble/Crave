@@ -29,11 +29,16 @@ SELECT name, center_latitude, center_longitude
 FROM collection_subreddits
 ORDER BY name;
 
--- 5. Top restaurants (by quality score)
-SELECT entity_id, name, restaurant_quality_score
-FROM core_entities
-WHERE type = 'restaurant'
-ORDER BY restaurant_quality_score DESC NULLS LAST
+-- 5. Top restaurants (by v3 public Crave Score)
+SELECT r.entity_id,
+       r.name,
+       pes.display_score AS crave_score
+FROM core_entities r
+LEFT JOIN core_public_entity_scores pes
+  ON pes.subject_id = r.entity_id
+  AND pes.subject_type = 'restaurant'::crave_score_subject_type
+WHERE r.type = 'restaurant'
+ORDER BY pes.display_score DESC NULLS LAST
 LIMIT 5;
 
 -- 6. Rooms for on-demand tests (rest attr + few results)

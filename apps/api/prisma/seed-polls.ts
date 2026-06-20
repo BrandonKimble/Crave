@@ -455,7 +455,12 @@ const fetchRestaurantsForRestaurantAttribute = async (
     SELECT
       r.entity_id AS restaurant_id,
       r.name AS restaurant_name,
-      COALESCE(r.restaurant_quality_score, 0)::float AS score,
+      COALESCE(
+        (SELECT pes.display_score FROM core_public_entity_scores pes
+         WHERE pes.subject_id = r.entity_id
+           AND pes.subject_type = 'restaurant'::crave_score_subject_type),
+        0
+      )::float AS score,
       COALESCE(r.general_praise_upvotes, 0)::int AS praise
     FROM core_entities r
     WHERE r.type = 'restaurant'
@@ -466,7 +471,12 @@ const fetchRestaurantsForRestaurantAttribute = async (
           AND emp.market_key = ${MARKET_KEY}
       )
       AND ${attributeId}::uuid = ANY(r.restaurant_attributes)
-    ORDER BY COALESCE(r.restaurant_quality_score, 0) DESC,
+    ORDER BY COALESCE(
+               (SELECT pes.display_score FROM core_public_entity_scores pes
+                WHERE pes.subject_id = r.entity_id
+                  AND pes.subject_type = 'restaurant'::crave_score_subject_type),
+               0
+             ) DESC,
              COALESCE(r.general_praise_upvotes, 0) DESC
     LIMIT ${limit};
   `);

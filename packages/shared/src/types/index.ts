@@ -37,7 +37,6 @@ export interface Entity {
   type: EntityType;
   aliases: string[];
   restaurantAttributes: string[];
-  restaurantQualityScore?: number;
   latitude?: number;
   longitude?: number;
   address?: string;
@@ -70,7 +69,6 @@ export interface Connection {
   supportMentionCount?: number;
   supportTotalUpvotes?: number;
   sourceDiversity: number;
-  supportRecentMentionCount?: number;
   lastMentionedAt?: Date;
   lastUpdated: Date;
   createdAt: Date;

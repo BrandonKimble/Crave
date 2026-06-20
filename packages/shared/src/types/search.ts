@@ -1,5 +1,3 @@
-export type ActivityLevel = 'trending' | 'active' | 'normal';
-
 export type EntityScope = 'restaurant' | 'food' | 'food_attribute' | 'restaurant_attribute';
 
 export type QueryFormat = 'dual_list' | 'single_list';

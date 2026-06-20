@@ -49,6 +49,7 @@
     "tomtom:regional-health": "ts-node scripts/check-tomtom-regional-health.ts",
     "crave-score:rebuild": "ts-node scripts/rebuild-crave-scores.ts",
     "crave-score:fixtures": "ts-node scripts/validate-crave-score-fixtures.ts",
+    "crave-score:backfill-mentions": "ts-node scripts/backfill-item-mention-records.ts",
     "search-demand:rebuild": "ts-node scripts/rebuild-search-demand-daily.ts",
     "search-demand:fixtures": "ts-node scripts/validate-demand-scoring-fixtures.ts",
     "replay:extraction": "ts-node scripts/replay-extraction-run.ts"
