@@ -24,9 +24,6 @@ export const useSearchRootRouteSearchSceneSurfacePanelPartsRuntime = ({
       resolvedResultsHeaderHeightForRender:
         routeSearchSceneDataRuntime.routeSearchSceneChromeFreezeRuntime
           .effectiveResultsHeaderHeightForRender || 64,
-      filtersHeaderHeight:
-        routeSearchSceneDataRuntime.routeSearchSceneChromeFreezeRuntime
-          .effectiveFiltersHeaderHeightBase || 0,
       shouldShowResultsSurface:
         routeSearchSceneSurfaceStateRuntime.routeSearchSceneSurfacePanelStateRuntime
           .shouldShowResultsSurface,

@@ -14,7 +14,6 @@ import type { useSearchResultsPanelRetainedResultsRuntime } from './use-search-r
 type SearchRootSearchScenePanelSurfaceCompositeRuntimeArgs = {
   sceneVisualRuntime: SearchRootSearchSceneVisualRuntime;
   resolvedResultsHeaderHeightForRender: number;
-  filtersHeaderHeight: number;
   shouldDisableSearchBlur?: boolean;
   shouldShowResultsSurface: boolean;
   shouldRenderWhiteWash: boolean;
@@ -34,7 +33,6 @@ type SearchRootSearchScenePanelSurfaceCompositeRuntimeArgs = {
 export const useSearchRootSearchScenePanelSurfaceCompositeRuntime = ({
   sceneVisualRuntime,
   resolvedResultsHeaderHeightForRender,
-  filtersHeaderHeight,
   shouldDisableSearchBlur,
   shouldShowResultsSurface,
   shouldRenderWhiteWash,
@@ -69,7 +67,6 @@ export const useSearchRootSearchScenePanelSurfaceCompositeRuntime = ({
   });
   const surfaceOverlay = useSearchRootSearchScenePanelSurfaceOverlayRuntime({
     resolvedResultsHeaderHeightForRender,
-    filtersHeaderHeight,
     shouldUseInteractionSurface,
     surfaceActive: effectiveSurfaceActive,
     surfaceMode: effectiveSurfaceMode,
