@@ -477,6 +477,7 @@ model Poll {
   updatedAt          DateTime     @updatedAt @map("updated_at")
   comments           PollComment[]
   leaderboardEntries PollLeaderboardEntry[]
+  endorsements       PollEndorsement[]
   topic              PollTopic?   @relation(fields: [topicId], references: [topicId], onDelete: Cascade)
 
   @@index([topicId], map: "idx_polls_topic_id")
@@ -546,6 +547,25 @@ model PollLeaderboardEntry {
   @@id([pollId, subjectType, subjectId])
   @@index([pollId, rank], map: "idx_poll_leaderboard_poll_rank")
   @@map("poll_leaderboard_entries")
+}
+
+/// A user's direct endorsement of a leaderboard subject within a poll — the §13A
+/// public "endorse" (like) signal applied per-candidate, powering tap-to-endorse on
+/// the poll bars. One row per (poll, subject, user); toggled on/off; folded into
+/// PollLeaderboardEntry.distinctEndorsers alongside comment-derived endorsers.
+model PollEndorsement {
+  pollId      String                     @map("poll_id") @db.Uuid
+  subjectType PollLeaderboardSubjectType @map("subject_type")
+  subjectId   String                     @map("subject_id") @db.Uuid
+  userId      String                     @map("user_id") @db.Uuid
+  createdAt   DateTime                   @default(now()) @map("created_at")
+  poll        Poll                       @relation(fields: [pollId], references: [pollId], onDelete: Cascade)
+  user        User                       @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@id([pollId, subjectType, subjectId, userId])
+  @@index([pollId, subjectType, subjectId], map: "idx_poll_endorsement_subject")
+  @@index([userId], map: "idx_poll_endorsement_user")
+  @@map("poll_endorsements")
 }
 
 model NotificationDevice {
@@ -880,6 +900,7 @@ model User {
   usernameHistory        UsernameHistory[]
   pollComments           PollComment[]
   pollCommentLikes       PollCommentLike[]
+  pollEndorsements       PollEndorsement[]
   referrer               User?                   @relation("UserReferrals", fields: [referredBy], references: [userId])
   referrals              User[]                  @relation("UserReferrals")
 

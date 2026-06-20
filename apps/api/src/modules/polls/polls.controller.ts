@@ -20,6 +20,7 @@ import {
 } from './dto/create-comment.dto';
 import { QueryPollsDto } from './dto/query-polls.dto';
 import { CreatePollDto } from './dto/create-poll.dto';
+import { EndorsePollSubjectDto } from './dto/endorse-poll-subject.dto';
 import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { OptionalClerkAuthGuard } from '../identity/auth/optional-clerk-auth.guard';
 import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
@@ -31,14 +32,17 @@ export class PollsController {
 
   @Get()
   @UseGuards(OptionalClerkAuthGuard)
-  listPolls(@Query() query: ListPollsQueryDto) {
-    return this.pollsService.listPolls(query);
+  listPolls(
+    @Query() query: ListPollsQueryDto,
+    @CurrentUser() user?: User | null,
+  ) {
+    return this.pollsService.listPolls(query, user?.userId ?? null);
   }
 
   @Post('query')
   @UseGuards(OptionalClerkAuthGuard)
-  queryPolls(@Body() body: QueryPollsDto) {
-    return this.pollsService.queryPolls(body);
+  queryPolls(@Body() body: QueryPollsDto, @CurrentUser() user?: User | null) {
+    return this.pollsService.queryPolls(body, user?.userId ?? null);
   }
 
   @Post()
@@ -116,7 +120,26 @@ export class PollsController {
 
   @Get(':pollId/leaderboard')
   @UseGuards(OptionalClerkAuthGuard)
-  getLeaderboard(@Param('pollId') pollId: string) {
-    return this.pollsService.getPollLeaderboard(pollId);
+  getLeaderboard(
+    @Param('pollId') pollId: string,
+    @CurrentUser() user?: User | null,
+  ) {
+    return this.pollsService.getPollLeaderboard(pollId, user?.userId ?? null);
+  }
+
+  @Post(':pollId/endorsements')
+  @RateLimitTier('sensitive')
+  @UseGuards(ClerkAuthGuard)
+  togglePollEndorsement(
+    @Param('pollId') pollId: string,
+    @Body() dto: EndorsePollSubjectDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.pollsService.togglePollEndorsement(
+      pollId,
+      dto.subjectId,
+      user.userId,
+      dto.subjectType,
+    );
   }
 }

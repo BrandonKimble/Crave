@@ -59,7 +59,7 @@ export class PollsService {
     this.logger = loggerService.setContext('PollsService');
   }
 
-  async listPolls(query: ListPollsQueryDto) {
+  async listPolls(query: ListPollsQueryDto, viewerUserId?: string | null) {
     const targetState =
       (query.state as PollState | undefined) ?? PollState.active;
     const targetMarketKey = query.marketKey ?? null;
@@ -91,10 +91,10 @@ export class PollsService {
     });
 
     const enriched = await this.attachMarketLabels(polls, targetMarketKey);
-    return this.attachPollStats(enriched);
+    return this.attachPollStats(enriched, viewerUserId);
   }
 
-  async queryPolls(query: QueryPollsDto) {
+  async queryPolls(query: QueryPollsDto, viewerUserId?: string | null) {
     let resolvedMarket: Awaited<
       ReturnType<MarketRegistryService['resolveViewportCoverage']>
     > | null = null;
@@ -144,10 +144,13 @@ export class PollsService {
         polls: [],
       };
     }
-    const polls = await this.listPolls({
-      marketKey: marketKey ?? undefined,
-      state: query.state,
-    });
+    const polls = await this.listPolls(
+      {
+        marketKey: marketKey ?? undefined,
+        state: query.state,
+      },
+      viewerUserId,
+    );
     const marketName =
       polls[0]?.marketName ??
       resolvedMarket?.market?.marketShortName ??
@@ -910,6 +913,21 @@ export class PollsService {
       }
     }
 
+    // Fold in direct per-candidate endorsements (tap-to-endorse on the bars) —
+    // the §13A public endorse signal counted alongside comment-derived endorsers.
+    const directEndorsements = await this.prisma.pollEndorsement.findMany({
+      where: { pollId, subjectType: PollLeaderboardSubjectType.entity },
+      select: { subjectId: true, userId: true },
+    });
+    for (const endorsement of directEndorsements) {
+      let set = endorsers.get(endorsement.subjectId);
+      if (!set) {
+        set = new Set();
+        endorsers.set(endorsement.subjectId, set);
+      }
+      set.add(endorsement.userId);
+    }
+
     const ranked = [...endorsers.entries()]
       .map(([subjectId, users]) => ({
         subjectId,
@@ -934,7 +952,7 @@ export class PollsService {
     });
   }
 
-  async getPollLeaderboard(pollId: string) {
+  async getPollLeaderboard(pollId: string, viewerUserId?: string | null) {
     const entries = await this.prisma.pollLeaderboardEntry.findMany({
       where: { pollId },
       orderBy: { rank: 'asc' },
@@ -946,6 +964,16 @@ export class PollsService {
       select: { entityId: true, name: true, type: true },
     });
     const byId = new Map(entities.map((e) => [e.entityId, e]));
+    const endorsedByViewer = viewerUserId
+      ? new Set(
+          (
+            await this.prisma.pollEndorsement.findMany({
+              where: { pollId, userId: viewerUserId },
+              select: { subjectId: true },
+            })
+          ).map((row) => row.subjectId),
+        )
+      : new Set<string>();
     return entries.map((e) => ({
       rank: e.rank,
       subjectType: e.subjectType,
@@ -953,7 +981,72 @@ export class PollsService {
       name: byId.get(e.subjectId)?.name ?? null,
       type: byId.get(e.subjectId)?.type ?? null,
       distinctEndorsers: e.distinctEndorsers,
+      currentUserEndorsed: endorsedByViewer.has(e.subjectId),
     }));
+  }
+
+  /**
+   * Toggle a viewer's direct endorsement of an existing leaderboard candidate
+   * (tap-to-endorse on the bars). New candidates only ever enter via discussion,
+   * so the subject must already be on the leaderboard — you can endorse what's
+   * there, not conjure a candidate. Rebuilds the leaderboard and returns the fresh
+   * standings (with the viewer's endorsement flags) so the UI can settle in place.
+   */
+  async togglePollEndorsement(
+    pollId: string,
+    subjectId: string,
+    userId: string,
+    subjectType: PollLeaderboardSubjectType = PollLeaderboardSubjectType.entity,
+  ) {
+    const poll = await this.prisma.poll.findUnique({
+      where: { pollId },
+      select: { state: true },
+    });
+    if (!poll) {
+      throw new NotFoundException('poll not found');
+    }
+    if (poll.state !== PollState.active) {
+      throw new BadRequestException('poll is no longer open for endorsements');
+    }
+
+    const candidate = await this.prisma.pollLeaderboardEntry.findUnique({
+      where: {
+        pollId_subjectType_subjectId: { pollId, subjectType, subjectId },
+      },
+      select: { subjectId: true },
+    });
+    if (!candidate) {
+      throw new BadRequestException(
+        'not a poll candidate — add it through the discussion first',
+      );
+    }
+
+    const key = {
+      pollId_subjectType_subjectId_userId: {
+        pollId,
+        subjectType,
+        subjectId,
+        userId,
+      },
+    };
+    const existing = await this.prisma.pollEndorsement.findUnique({
+      where: key,
+      select: { userId: true },
+    });
+    let endorsed: boolean;
+    if (existing) {
+      await this.prisma.pollEndorsement.delete({ where: key });
+      endorsed = false;
+    } else {
+      await this.prisma.pollEndorsement.create({
+        data: { pollId, subjectType, subjectId, userId },
+      });
+      endorsed = true;
+    }
+
+    await this.rebuildPollLeaderboard(pollId);
+    const leaderboard = await this.getPollLeaderboard(pollId, userId);
+    return { endorsed, leaderboard };
   }
 
   async listPollsForUser(userId: string, query: ListUserPollsDto) {
@@ -1129,11 +1222,20 @@ export class PollsService {
     },
   >(
     polls: T[],
+    viewerUserId?: string | null,
   ): Promise<
     Array<
       T & {
         commentCount: number;
         endorserCount: number;
+        topCandidates: Array<{
+          rank: number;
+          subjectType: PollLeaderboardSubjectType;
+          subjectId: string;
+          name: string | null;
+          distinctEndorsers: number;
+          currentUserEndorsed: boolean;
+        }>;
         creator: {
           origin: PollOrigin;
           username: string | null;
@@ -1154,7 +1256,7 @@ export class PollsService {
              COUNT(*) AS comment_count,
              COUNT(DISTINCT user_id) AS endorser_count
       FROM poll_comments
-      WHERE poll_id IN (${Prisma.join(pollIds)})
+      WHERE poll_id IN (${Prisma.join(pollIds.map((id) => Prisma.sql`${id}::uuid`))})
         AND deleted_at IS NULL
         AND moderation_status::text = 'approved'
       GROUP BY poll_id
@@ -1168,6 +1270,70 @@ export class PollsService {
         },
       ]),
     );
+
+    // Top-N leaderboard candidates per poll ("see the poll" on the card) + the
+    // viewer's endorsement flags so each bar renders its tap-to-endorse state.
+    const POLL_CARD_TOP_CANDIDATES = 4;
+    const candidateRows = await this.prisma.pollLeaderboardEntry.findMany({
+      where: {
+        pollId: { in: pollIds },
+        rank: { lte: POLL_CARD_TOP_CANDIDATES },
+      },
+      orderBy: { rank: 'asc' },
+      select: {
+        pollId: true,
+        rank: true,
+        subjectType: true,
+        subjectId: true,
+        distinctEndorsers: true,
+      },
+    });
+    const candidateEntityIds = Array.from(
+      new Set(candidateRows.map((row) => row.subjectId)),
+    );
+    const candidateEntities = candidateEntityIds.length
+      ? await this.prisma.entity.findMany({
+          where: { entityId: { in: candidateEntityIds } },
+          select: { entityId: true, name: true },
+        })
+      : [];
+    const candidateNameById = new Map(
+      candidateEntities.map((row) => [row.entityId, row.name]),
+    );
+    const viewerEndorsements = viewerUserId
+      ? await this.prisma.pollEndorsement.findMany({
+          where: { pollId: { in: pollIds }, userId: viewerUserId },
+          select: { pollId: true, subjectId: true },
+        })
+      : [];
+    const viewerEndorsedKeys = new Set(
+      viewerEndorsements.map((row) => `${row.pollId}:${row.subjectId}`),
+    );
+    const candidatesByPoll = new Map<
+      string,
+      Array<{
+        rank: number;
+        subjectType: PollLeaderboardSubjectType;
+        subjectId: string;
+        name: string | null;
+        distinctEndorsers: number;
+        currentUserEndorsed: boolean;
+      }>
+    >();
+    for (const row of candidateRows) {
+      const list = candidatesByPoll.get(row.pollId) ?? [];
+      list.push({
+        rank: row.rank,
+        subjectType: row.subjectType,
+        subjectId: row.subjectId,
+        name: candidateNameById.get(row.subjectId) ?? null,
+        distinctEndorsers: row.distinctEndorsers,
+        currentUserEndorsed: viewerEndorsedKeys.has(
+          `${row.pollId}:${row.subjectId}`,
+        ),
+      });
+      candidatesByPoll.set(row.pollId, list);
+    }
 
     const creatorIds = Array.from(
       new Set(
@@ -1203,6 +1369,7 @@ export class PollsService {
         ...poll,
         commentCount: stats.commentCount,
         endorserCount: stats.endorserCount,
+        topCandidates: candidatesByPoll.get(poll.pollId) ?? [],
         creator: {
           origin,
           username: user?.username ?? null,
