@@ -1,9 +1,9 @@
 import React from 'react';
-import { Alert, View, TouchableOpacity, StyleSheet } from 'react-native';
-import { Plus } from 'lucide-react-native';
+import { Alert, View, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { Plus, Sparkles, MessageCircle, Users } from 'lucide-react-native';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
-import type { Poll } from '../../services/polls';
+import type { Poll, PollCreator } from '../../services/polls';
 import { colors as themeColors } from '../../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
 import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneRuntimeProvider';
@@ -29,7 +29,7 @@ import { CONTROL_HEIGHT, CONTROL_RADIUS } from '../../screens/Search/constants/u
 import { useSearchNavSwitchCommitAttribution } from '../../screens/Search/runtime/shared/use-search-nav-switch-commit-attribution';
 import { logPerfScenarioSearchRequestLifecycle } from '../../perf/perf-scenario-attribution';
 
-const CARD_GAP = 4;
+const CARD_GAP = 10;
 const LIVE_BADGE_HEIGHT = OVERLAY_HEADER_CLOSE_BUTTON_SIZE;
 
 const ACCENT = themeColors.primary;
@@ -56,6 +56,30 @@ const formatClosedDate = (iso: string | null | undefined): string | null => {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
+const resolveCreatorName = (creator: PollCreator | undefined): string =>
+  creator?.origin === 'user' ? (creator.displayName ?? creator.username ?? 'Member') : 'Crave';
+
+const PollCreatorBadge = ({ creator }: { creator?: PollCreator }) => {
+  if (creator?.origin === 'user' && creator.avatarUrl) {
+    return <Image source={{ uri: creator.avatarUrl }} style={styles.avatar} />;
+  }
+  if (creator?.origin === 'user') {
+    const initial = resolveCreatorName(creator).trim().charAt(0).toUpperCase();
+    return (
+      <View style={styles.avatarFallback}>
+        <Text variant="caption" weight="semibold" style={styles.avatarInitial}>
+          {initial || 'M'}
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.avatarApp}>
+      <Sparkles size={13} color={ACCENT} strokeWidth={2.2} />
+    </View>
+  );
+};
+
 const PollCard = React.memo(({ poll, onPress }: PollCardProps) => {
   const isActive = poll.state === 'active';
   const axisLabel = poll.topic?.topicType ? POLL_TOPIC_LABEL[poll.topic.topicType] : null;
@@ -67,20 +91,48 @@ const PollCard = React.memo(({ poll, onPress }: PollCardProps) => {
       style={[styles.pollCard, isActive && styles.pollCardActive]}
       onPress={() => onPress(poll.pollId)}
       accessibilityRole="button"
+      activeOpacity={0.85}
     >
-      {isActive ? <View style={styles.pollCardRail} /> : null}
-      <View style={styles.pollCardContent}>
-        <Text variant="subtitle" weight="semibold" style={styles.pollQuestion}>
-          {poll.question}
+      <View style={styles.pollCardHeader}>
+        <PollCreatorBadge creator={poll.creator} />
+        <Text variant="caption" weight="semibold" style={styles.pollCreator} numberOfLines={1}>
+          {resolveCreatorName(poll.creator)}
         </Text>
-        {subtitle ? (
-          <Text variant="body" style={styles.pollDescription}>
-            {subtitle}
+        <View style={styles.pollCardHeaderSpacer} />
+        {isActive ? (
+          <View style={styles.liveTag}>
+            <View style={styles.liveDot} />
+            <Text variant="caption" weight="semibold" style={styles.liveText}>
+              live
+            </Text>
+          </View>
+        ) : (
+          <Text variant="caption" style={styles.pollMeta}>
+            {closedOn ? `closed · ${closedOn}` : 'closed'}
           </Text>
-        ) : null}
-        <Text variant="caption" style={styles.pollMeta}>
-          {isActive ? 'live' : closedOn ? `closed · ${closedOn}` : 'closed'}
+        )}
+      </View>
+      <Text variant="subtitle" weight="semibold" style={styles.pollQuestion}>
+        {poll.question}
+      </Text>
+      {subtitle ? (
+        <Text variant="caption" style={styles.pollDescription}>
+          {subtitle}
         </Text>
+      ) : null}
+      <View style={styles.metricsRow}>
+        <View style={styles.metric}>
+          <MessageCircle size={13} color={themeColors.textMuted} strokeWidth={2} />
+          <Text variant="caption" style={styles.metricText}>
+            {poll.commentCount ?? 0}
+          </Text>
+        </View>
+        <View style={styles.metric}>
+          <Users size={13} color={themeColors.textMuted} strokeWidth={2} />
+          <Text variant="caption" style={styles.metricText}>
+            {poll.endorserCount ?? 0}
+          </Text>
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -514,37 +566,94 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   pollCard: {
-    position: 'relative',
-    paddingVertical: 16,
-    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     backgroundColor: '#ffffff',
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: BORDER,
     width: '100%',
     alignSelf: 'stretch',
   },
   pollCardActive: {
-    backgroundColor: '#fffafc',
+    borderColor: '#f7c9d9',
   },
-  pollCardRail: {
-    position: 'absolute',
-    left: 0,
-    top: 12,
-    bottom: 12,
-    width: 3,
-    borderRadius: 2,
+  pollCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginBottom: 9,
+  },
+  pollCardHeaderSpacer: {
+    flex: 1,
+  },
+  pollCreator: {
+    color: themeColors.textBody,
+    maxWidth: '55%',
+  },
+  avatar: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#f1f5f9',
+  },
+  avatarFallback: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#e9eef5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitial: {
+    color: themeColors.textBody,
+    fontSize: 11,
+  },
+  avatarApp: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#fdeaf1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  liveTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: ACCENT,
   },
-  pollCardContent: {
-    flex: 1,
+  liveText: {
+    color: ACCENT,
   },
   pollQuestion: {
     color: themeColors.textPrimary,
+    lineHeight: 23,
   },
   pollDescription: {
-    marginTop: 5,
-    color: themeColors.textBody,
+    marginTop: 4,
+    color: themeColors.textMuted,
   },
   pollMeta: {
-    marginTop: 6,
+    color: themeColors.textMuted,
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    marginTop: 11,
+  },
+  metric: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  metricText: {
     color: themeColors.textMuted,
   },
   detailCard: {

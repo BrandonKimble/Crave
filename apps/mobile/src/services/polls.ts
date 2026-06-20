@@ -51,6 +51,13 @@ export interface PollComment {
 
 export type PollCommentSort = 'top' | 'new';
 
+export interface PollCreator {
+  origin: 'seeded' | 'user' | 'curator';
+  username: string | null;
+  displayName: string | null;
+  avatarUrl: string | null;
+}
+
 export type PollLeaderboardSubjectType = 'entity' | 'connection';
 
 /** One ranked row of the endorsement leaderboard (§5 / §6.2). */
@@ -93,6 +100,10 @@ export interface Poll {
   launchedAt?: string | null;
   closedAt?: string | null;
   graduatedAt?: string | null;
+  /** Card stats (from attachPollStats on the list endpoint). */
+  commentCount?: number;
+  endorserCount?: number;
+  creator?: PollCreator;
   /** @deprecated DEAD vote model — absent from the live API; swept with the vote UI. */
   options: PollOption[];
   topic?: PollTopic | null;

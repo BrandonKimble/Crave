@@ -5,6 +5,7 @@ import {
   Prisma,
   PollState,
   PollMode,
+  PollOrigin,
   PollTopicType,
   PollTopicStatus,
   PollCommentModerationStatus,
@@ -32,6 +33,7 @@ const MARKET_KEY = process.env.TEST_POLL_MARKET_KEY ?? 'region-us-ny-new-york';
 
 type SeedPoll = {
   topicType: PollTopicType;
+  origin: PollOrigin;
   question: string;
   comments: string[]; // one per author, round-robined across seed users
 };
@@ -40,6 +42,7 @@ type SeedPoll = {
 const SEED_POLLS: SeedPoll[] = [
   {
     topicType: PollTopicType.what_to_order, // → food-subject leaderboard
+    origin: PollOrigin.seeded, // app-created → sparkles badge
     question: "What's a must-order dish in NYC right now?",
     comments: [
       'The fried chicken at The Eighty Six is unreal, get it.',
@@ -49,6 +52,7 @@ const SEED_POLLS: SeedPoll[] = [
   },
   {
     topicType: PollTopicType.best_restaurant_attribute, // → restaurant-subject leaderboard
+    origin: PollOrigin.user, // user-created → avatar badge
     question: 'Best spot for a date night in NYC?',
     comments: [
       'Cathédrale Restaurant is perfect for date night.',
@@ -113,9 +117,10 @@ async function main(): Promise<void> {
           question: seed.question,
           state: PollState.active,
           mode: PollMode.ranked,
+          origin: seed.origin,
           marketKey: MARKET_KEY,
           launchedAt: new Date(),
-          createdByUserId: userIds[0],
+          createdByUserId: seed.origin === PollOrigin.user ? userIds[0] : null,
           metadata: { seedFixture: true },
         },
         select: { pollId: true },
