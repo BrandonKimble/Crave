@@ -2,20 +2,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from './api';
 import type { Coordinate, MapBounds } from '../types';
 
-/**
- * @deprecated DEAD — the vote model was removed backend-side (migration
- * 20260618233116). `PollOption`, `addPollOption`, `voteOnPoll`, and `Poll.options`
- * are swept together with the vote-model UI (`PollsPanel` + vote runtimes) when the
- * live comment/leaderboard UI lands. See `plans/polls-frontend-plan.md`.
- */
-export interface PollOption {
-  optionId: string;
-  label: string;
-  voteCount: number;
-  consensus: string | number | null;
-  currentUserVoted?: boolean;
-}
-
 // ─── Live model (comment + endorsement + leaderboard) ────────────────────────
 
 /** Gazetteer-resolved span in a comment body → tappable entity deeplink (§6.1). */
@@ -68,6 +54,18 @@ export interface PollLeaderboardEntry {
   name: string | null;
   type: string | null;
   distinctEndorsers: number;
+  /** Whether the viewer has directly endorsed this candidate (tap-to-endorse). */
+  currentUserEndorsed: boolean;
+}
+
+/** Top-N leaderboard candidate shown inline on the feed card ("see the poll"). */
+export interface PollCandidate {
+  rank: number;
+  subjectType: PollLeaderboardSubjectType;
+  subjectId: string;
+  name: string | null;
+  distinctEndorsers: number;
+  currentUserEndorsed: boolean;
 }
 
 export type PollTopicType =
@@ -104,8 +102,8 @@ export interface Poll {
   commentCount?: number;
   endorserCount?: number;
   creator?: PollCreator;
-  /** @deprecated DEAD vote model — absent from the live API; swept with the vote UI. */
-  options: PollOption[];
+  /** Top leaderboard candidates ("see the poll" on the feed card). */
+  topCandidates?: PollCandidate[];
   topic?: PollTopic | null;
 }
 
@@ -499,30 +497,20 @@ export const fetchPollLeaderboard = async (pollId: string): Promise<PollLeaderbo
 };
 
 /**
- * @deprecated DEAD — `POST /polls/:id/options` was removed; this 404s. Swept with
- * the vote-model UI.
+ * Toggle the viewer's direct endorsement of a leaderboard candidate
+ * (tap-to-endorse on the poll bars). Returns the fresh standings so the UI can
+ * settle in place. New candidates only enter via discussion — the subject must
+ * already be on the leaderboard.
  */
-export const addPollOption = async (
+export const togglePollEndorsement = async (
   pollId: string,
-  body: {
-    label: string;
-    restaurantId?: string;
-    dishEntityId?: string;
-    restaurantName?: string;
-    dishName?: string;
-    sessionToken?: string;
-  }
-) => {
-  const response = await api.post(`/polls/${pollId}/options`, body);
-  return response.data;
-};
-
-/**
- * @deprecated DEAD — `POST /polls/:id/votes` was removed; this 404s. Swept with
- * the vote-model UI.
- */
-export const voteOnPoll = async (pollId: string, body: { optionId: string }) => {
-  const response = await api.post(`/polls/${pollId}/votes`, body);
+  subjectId: string,
+  subjectType: PollLeaderboardSubjectType = 'entity'
+): Promise<{ endorsed: boolean; leaderboard: PollLeaderboardEntry[] }> => {
+  const response = await api.post(`/polls/${pollId}/endorsements`, {
+    subjectId,
+    subjectType,
+  });
   return response.data;
 };
 

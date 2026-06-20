@@ -79,7 +79,8 @@ type ProfilePollCardProps = {
 };
 
 const ProfilePollCard = React.memo(({ poll, onPress }: ProfilePollCardProps) => {
-  const totalVotes = poll.options.reduce((sum, option) => sum + option.voteCount, 0);
+  const commentCount = poll.commentCount ?? 0;
+  const endorserCount = poll.endorserCount ?? 0;
 
   return (
     <Pressable style={styles.pollCard} onPress={() => onPress(poll)}>
@@ -92,9 +93,13 @@ const ProfilePollCard = React.memo(({ poll, onPress }: ProfilePollCardProps) => 
         </Text>
       ) : null}
       <Text variant="caption" style={styles.pollMeta}>
-        {[poll.marketName, `${poll.options.length} options`, `${totalVotes} votes`]
+        {[
+          poll.marketName,
+          `${commentCount} ${commentCount === 1 ? 'comment' : 'comments'}`,
+          `${endorserCount} ${endorserCount === 1 ? 'endorser' : 'endorsers'}`,
+        ]
           .filter((value): value is string => typeof value === 'string' && value.length > 0)
-          .join(' - ')}
+          .join(' · ')}
       </Text>
     </Pressable>
   );

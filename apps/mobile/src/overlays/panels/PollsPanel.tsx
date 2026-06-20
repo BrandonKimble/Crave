@@ -21,6 +21,7 @@ import SquircleSpinner from '../../components/SquircleSpinner';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
+import { PollCandidateBars } from './PollCandidateBars';
 import { usePollsPanelFeedRuntime } from './runtime/polls-panel-feed-runtime';
 import { usePollsPanelHeaderModelPublication } from './runtime/polls-panel-header-model-runtime';
 import { PollsHeaderBadge, PollsHeaderTitleText } from './pollsHeaderVisuals';
@@ -103,6 +104,15 @@ const PollCard = React.memo(({ poll, onPress }: PollCardProps) => {
       <Text variant="subtitle" weight="semibold" style={styles.pollQuestion}>
         {poll.question}
       </Text>
+      {poll.topCandidates && poll.topCandidates.length > 0 ? (
+        <View style={styles.pollBars}>
+          <PollCandidateBars
+            pollId={poll.pollId}
+            candidates={poll.topCandidates}
+            interactive={isActive}
+          />
+        </View>
+      ) : null}
       <View style={styles.metricsRow}>
         <View style={styles.metric}>
           <MessageCircle size={13} color={themeColors.textMuted} strokeWidth={2} />
@@ -553,6 +563,9 @@ const styles = StyleSheet.create({
   pollQuestion: {
     color: themeColors.textPrimary,
     lineHeight: 23,
+  },
+  pollBars: {
+    marginTop: 12,
   },
   pollMeta: {
     color: themeColors.textMuted,

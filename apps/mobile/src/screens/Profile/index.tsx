@@ -238,7 +238,8 @@ const ProfileScreen: React.FC = () => {
         : false;
 
   const renderPollCard = (poll: Poll) => {
-    const totalVotes = poll.options.reduce((sum, option) => sum + option.voteCount, 0);
+    const commentCount = poll.commentCount ?? 0;
+    const endorserCount = poll.endorserCount ?? 0;
     return (
       <Pressable key={poll.pollId} style={styles.pollCard} onPress={() => handlePollPress(poll)}>
         <Text variant="subtitle" weight="semibold" style={styles.pollQuestion}>
@@ -250,9 +251,13 @@ const ProfileScreen: React.FC = () => {
           </Text>
         ) : null}
         <Text variant="caption" style={styles.pollMeta}>
-          {[poll.marketName, `${poll.options.length} options`, `${totalVotes} votes`]
+          {[
+            poll.marketName,
+            `${commentCount} ${commentCount === 1 ? 'comment' : 'comments'}`,
+            `${endorserCount} ${endorserCount === 1 ? 'endorser' : 'endorsers'}`,
+          ]
             .filter((value): value is string => typeof value === 'string' && value.length > 0)
-            .join(' - ')}
+            .join(' · ')}
         </Text>
       </Pressable>
     );

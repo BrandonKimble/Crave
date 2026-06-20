@@ -1147,7 +1147,10 @@ export class PollsService {
           })
         : [];
 
-    const enriched = await this.attachMarketLabels(polls, marketKey);
+    const enriched = await this.attachPollStats(
+      await this.attachMarketLabels(polls, marketKey),
+      userId,
+    );
     return {
       activity,
       polls: enriched,
