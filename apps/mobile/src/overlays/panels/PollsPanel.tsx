@@ -40,13 +40,6 @@ type PollCardProps = {
   onPress: (pollId: string) => void;
 };
 
-const POLL_TOPIC_LABEL: Record<string, string> = {
-  best_dish: 'Best dish',
-  what_to_order: 'What to order',
-  best_dish_attribute: 'Best dish',
-  best_restaurant_attribute: 'Best spot',
-};
-
 const formatClosedDate = (iso: string | null | undefined): string | null => {
   if (!iso) return null;
   const date = new Date(iso);
@@ -80,9 +73,6 @@ const PollCreatorBadge = ({ creator }: { creator?: PollCreator }) => {
 
 const PollCard = React.memo(({ poll, onPress }: PollCardProps) => {
   const isActive = poll.state === 'active';
-  const axisLabel = poll.topic?.topicType ? POLL_TOPIC_LABEL[poll.topic.topicType] : null;
-  const market = poll.marketName ?? poll.topic?.title ?? null;
-  const subtitle = [axisLabel, market].filter(Boolean).join(' · ');
   const closedOn = formatClosedDate(poll.closedAt);
   return (
     <TouchableOpacity
@@ -113,11 +103,6 @@ const PollCard = React.memo(({ poll, onPress }: PollCardProps) => {
       <Text variant="subtitle" weight="semibold" style={styles.pollQuestion}>
         {poll.question}
       </Text>
-      {subtitle ? (
-        <Text variant="caption" style={styles.pollDescription}>
-          {subtitle}
-        </Text>
-      ) : null}
       <View style={styles.metricsRow}>
         <View style={styles.metric}>
           <MessageCircle size={13} color={themeColors.textMuted} strokeWidth={2} />
@@ -568,10 +553,6 @@ const styles = StyleSheet.create({
   pollQuestion: {
     color: themeColors.textPrimary,
     lineHeight: 23,
-  },
-  pollDescription: {
-    marginTop: 4,
-    color: themeColors.textMuted,
   },
   pollMeta: {
     color: themeColors.textMuted,
