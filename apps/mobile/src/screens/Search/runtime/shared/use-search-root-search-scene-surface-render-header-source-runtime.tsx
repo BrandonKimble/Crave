@@ -22,40 +22,19 @@ export const useSearchRootSearchSceneSurfaceRenderHeaderSourceRuntime = ({
 }: UseSearchRootSearchSceneSurfaceRenderHeaderSourceRuntimeArgs) => {
   const activeScenarioConfig = usePerfScenarioRuntimeStore((state) => state.activeConfig);
   const lastQuietContractKeyRef = React.useRef<string | null>(null);
-  // Last good filters-header height while results have been on screen. Used to
-  // keep the toggle strip mounted + the loading cover BELOW it through a transient
-  // collapse during an interaction (toggle) reload — so the cover can't ride up to
-  // top:0 over the strip and the strip can't vanish mid-toggle. Fresh INITIAL loads
-  // (never had results) are intentionally left to cover the strip and so do not
-  // retain; a genuine idle/dismiss clears the cache.
-  const retainedFiltersHeaderHeightRef = React.useRef<number | null>(null);
   const runtime = React.useMemo(() => {
     const shouldForceListHeaderForInteraction =
       searchSceneSurfacePanelStateRuntime.shouldShowInteractionLoadingState;
     const shouldShowListHeaderForResultsSurface =
       searchSceneSurfacePanelStateRuntime.shouldShowResultsSurface;
-    const isLiveHeaderSource =
-      shouldForceListHeaderForInteraction || shouldShowListHeaderForResultsSurface;
-    // Interaction-class load (a reload with results already up) — explicitly NOT a
-    // fresh initial load, which must keep covering the strip.
-    const isInteractionLoad =
-      searchSceneSurfacePanelStateRuntime.shouldShowLoadingState &&
-      !searchSceneSurfacePanelStateRuntime.shouldShowInitialLoadingState;
-
-    let resultsToggleStripForRenderBase = isLiveHeaderSource ? listHeader : null;
-    let effectiveFiltersHeaderHeightForRenderLive = isLiveHeaderSource
-      ? effectiveFiltersHeaderHeightBase
-      : 0;
-
-    if (isLiveHeaderSource) {
-      retainedFiltersHeaderHeightRef.current = effectiveFiltersHeaderHeightBase;
-    } else if (isInteractionLoad && retainedFiltersHeaderHeightRef.current != null) {
-      // Transient collapse during a toggle reload: hold the strip + cached height.
-      resultsToggleStripForRenderBase = listHeader;
-      effectiveFiltersHeaderHeightForRenderLive = retainedFiltersHeaderHeightRef.current;
-    } else if (!searchSceneSurfacePanelStateRuntime.shouldShowLoadingState) {
-      retainedFiltersHeaderHeightRef.current = null;
-    }
+    const resultsToggleStripForRenderBase =
+      shouldForceListHeaderForInteraction || shouldShowListHeaderForResultsSurface
+        ? listHeader
+        : null;
+    const effectiveFiltersHeaderHeightForRenderLive =
+      shouldForceListHeaderForInteraction || shouldShowListHeaderForResultsSurface
+        ? effectiveFiltersHeaderHeightBase
+        : 0;
 
     return {
       effectiveFiltersHeaderHeightForRenderLive,
@@ -66,8 +45,6 @@ export const useSearchRootSearchSceneSurfaceRenderHeaderSourceRuntime = ({
     listHeader,
     searchSceneSurfacePanelStateRuntime.shouldShowInteractionLoadingState,
     searchSceneSurfacePanelStateRuntime.shouldShowResultsSurface,
-    searchSceneSurfacePanelStateRuntime.shouldShowLoadingState,
-    searchSceneSurfacePanelStateRuntime.shouldShowInitialLoadingState,
   ]);
   React.useEffect(() => {
     if (!isPerfScenarioAttributionActive(activeScenarioConfig)) {
