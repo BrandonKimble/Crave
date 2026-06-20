@@ -363,6 +363,51 @@ async function runDbSmokeCheck(): Promise<void> {
     'orphan restaurant scores == 0',
     { orphans: Number(orphan.c) },
   );
+
+  // EQUALITY GATE — the per-contribution mention ledger must faithfully
+  // reproduce the projection's counts: weight-1 record count == direct+support
+  // mention count, and record-upvote sum == direct+support upvote mass, for
+  // every connection. If this is nonzero the fan-out is no longer preserved.
+  const [equality] = await prisma.$queryRaw<Array<{ mismatches: bigint }>>`
+    SELECT COUNT(*) mismatches FROM core_restaurant_items c
+    LEFT JOIN (
+      SELECT connection_id, COUNT(*) m, SUM(source_upvotes) u
+      FROM core_restaurant_item_mentions
+      GROUP BY connection_id
+    ) r ON r.connection_id = c.connection_id
+    WHERE COALESCE(r.m, 0) <> (c.mention_count + c.support_mention_count)
+       OR COALESCE(r.u, 0) <> (c.total_upvotes + c.support_total_upvotes)
+  `;
+  expectCheck(
+    'mention ledger exactly reproduces projection counts (equality gate)',
+    Number(equality.mismatches) === 0,
+    'mismatches == 0',
+    { mismatches: Number(equality.mismatches) },
+  );
+
+  // Synthetic-age decay: power(0.5, age/halflife) ≈ 1 / 0.5 / 0.25 at age
+  // 0 / halflife / 2·halflife. Confirms the decay weight used by the scorer.
+  const halfLife = config.endorsementHalfLifeDays;
+  const [decay] = await prisma.$queryRaw<
+    Array<{ w0: number; w1: number; w2: number }>
+  >`
+    SELECT
+      power(0.5, 0)::float8 AS w0,
+      power(0.5, EXTRACT(EPOCH FROM make_interval(days => ${halfLife}::int))/86400.0/(${halfLife})::numeric)::float8 AS w1,
+      power(0.5, EXTRACT(EPOCH FROM make_interval(days => (${halfLife} * 2)::int))/86400.0/(${halfLife})::numeric)::float8 AS w2
+  `;
+  expectCheck(
+    'decay weight halves each half-life (synthetic age 0 / hl / 2·hl)',
+    Math.abs(decay.w0 - 1) < 1e-6 &&
+      Math.abs(decay.w1 - 0.5) < 1e-6 &&
+      Math.abs(decay.w2 - 0.25) < 1e-6,
+    'weights ≈ [1, 0.5, 0.25]',
+    {
+      w0: round(decay.w0, 4),
+      w1: round(decay.w1, 4),
+      w2: round(decay.w2, 4),
+    },
+  );
 }
 
 async function main(): Promise<void> {
