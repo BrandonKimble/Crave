@@ -1,5 +1,6 @@
 import {
   createPollCreationChildRouteParams,
+  createPollDetailChildRouteParams,
   isAppOverlayRouteSceneSwitchKey,
   type OverlayKey,
   type OverlayRouteParamsMap,
@@ -143,6 +144,19 @@ export const createAppOverlayRouteCommandRuntime = ({
           routeAction: 'push',
           routeParams: createPollCreationChildRouteParams(
             params as OverlayRouteParamsMap['pollCreation']
+          ),
+          sheetTransitionKind: 'openChild',
+          sheetOpenerSource: 'pollAction',
+          sheetMotion: { kind: 'snapTo', snap: 'expanded' },
+        });
+        return;
+      }
+      if (overlay === 'pollDetail') {
+        requestRouteSceneSwitch({
+          targetSceneKey: overlay,
+          routeAction: 'push',
+          routeParams: createPollDetailChildRouteParams(
+            params as OverlayRouteParamsMap['pollDetail']
           ),
           sheetTransitionKind: 'openChild',
           sheetOpenerSource: 'pollAction',

@@ -14,6 +14,7 @@ import {
   type AppRouteSceneSheetSessionInputState,
 } from './app-route-dynamic-scene-inputs-contract';
 import { useAppRoutePollCreationSceneInputWriterRuntime } from './use-app-route-poll-creation-scene-input-writer-runtime';
+import { useAppRoutePollDetailSceneInputWriterRuntime } from './use-app-route-poll-detail-scene-input-writer-runtime';
 import { useAppRouteFavoriteListDetailSceneInputWriterRuntime } from './use-app-route-favorite-list-detail-scene-input-writer-runtime';
 import { useRouteAuthoritySelector } from './use-route-authority-selector';
 import { useSearchNavSwitchCommitAttribution } from '../../screens/Search/runtime/shared/use-search-nav-switch-commit-attribution';
@@ -34,7 +35,7 @@ const useAppRouteDynamicChildRouteStateRuntime = ({
 }): DynamicChildRouteStateRuntime => {
   const selectDynamicChildRoute = React.useCallback(
     (snapshot: RouteOverlayNavigationSnapshot): DynamicChildRouteStateRuntime => ({
-      activeOverlayRoute: ['favoriteListDetail', 'pollCreation'].includes(
+      activeOverlayRoute: ['favoriteListDetail', 'pollCreation', 'pollDetail'].includes(
         snapshot.activeOverlayRoute.key
       )
         ? snapshot.activeOverlayRoute
@@ -106,6 +107,11 @@ export const useAppRouteDynamicSceneInputWritersRuntime = ({
   });
 
   useAppRoutePollCreationSceneInputWriterRuntime({
+    routeSceneRuntime,
+    activeOverlayRoute: dynamicChildRouteStateRuntime.activeOverlayRoute,
+    sceneLayout,
+  });
+  useAppRoutePollDetailSceneInputWriterRuntime({
     routeSceneRuntime,
     activeOverlayRoute: dynamicChildRouteStateRuntime.activeOverlayRoute,
     sceneLayout,

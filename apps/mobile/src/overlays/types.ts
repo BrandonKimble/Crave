@@ -17,7 +17,8 @@ export type OverlayKey =
   | 'saveList'
   | 'price'
   | 'scoreInfo'
-  | 'pollCreation';
+  | 'pollCreation'
+  | 'pollDetail';
 
 export type OverlaySheetSnap = BottomSheetSnap;
 export type OverlaySheetSnapRequest = {

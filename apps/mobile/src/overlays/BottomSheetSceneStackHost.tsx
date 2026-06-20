@@ -73,7 +73,12 @@ const shouldCompareSceneBodyDataActivity = (
   snapshot: AppRouteSceneStackBodySurfaceSnapshot
 ): boolean => {
   const sceneKey = snapshot.contentEntry?.sceneKey;
-  return sceneKey === 'polls' || sceneKey === 'pollCreation' || sceneKey === 'saveList';
+  return (
+    sceneKey === 'polls' ||
+    sceneKey === 'pollCreation' ||
+    sceneKey === 'pollDetail' ||
+    sceneKey === 'saveList'
+  );
 };
 
 const markSceneBodySurfaceSelectionDiff = (

@@ -38,7 +38,7 @@ const SURFACE = themeColors.surface;
 
 type PollCardProps = {
   poll: Poll;
-  onPress: (pollId: string) => void;
+  onPress: (poll: Poll) => void;
 };
 
 const formatClosedDate = (iso: string | null | undefined): string | null => {
@@ -90,7 +90,7 @@ const PollCard = React.memo(({ poll, onPress }: PollCardProps) => {
   return (
     <TouchableOpacity
       style={[styles.pollCard, isActive && styles.pollCardActive]}
-      onPress={() => onPress(poll.pollId)}
+      onPress={() => onPress(poll)}
       accessibilityRole="button"
       activeOpacity={0.85}
     >
@@ -358,7 +358,14 @@ PollsSceneHeader.displayName = 'PollsSceneHeader';
 export const PollsMountedSceneBody = React.memo(() => {
   useSearchNavSwitchCommitAttribution('PollsMountedSceneBody');
   const routeSceneRuntime = useAppRouteSceneRuntime();
+  const { pushRoute } = useAppOverlayRouteController();
   const pollsSceneActions = routeSceneRuntime.routePollsSceneRuntime.sceneActions;
+  const handleOpenPoll = React.useCallback(
+    (poll: Poll) => {
+      pushRoute('pollDetail', { pollId: poll.pollId, poll });
+    },
+    [pushRoute]
+  );
   const {
     bounds,
     bootstrapSnapshot,
@@ -445,7 +452,7 @@ export const PollsMountedSceneBody = React.memo(() => {
     <View style={styles.collapsedCards}>
       {pollsPanelFeedRuntime.visiblePolls.map((poll) => (
         <View key={poll.pollId} style={styles.collapsedCardRow}>
-          <PollCard poll={poll} onPress={pollsPanelFeedRuntime.setSelectedPollId} />
+          <PollCard poll={poll} onPress={handleOpenPoll} />
         </View>
       ))}
     </View>

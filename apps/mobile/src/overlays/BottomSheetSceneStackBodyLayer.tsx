@@ -22,7 +22,10 @@ const shouldSkipSceneStackBodyFrameUpdate = (
   previousProps.children === nextProps.children;
 
 const shouldPublishSceneBodyDataActivity = (sceneKey: string): boolean =>
-  sceneKey === 'polls' || sceneKey === 'pollCreation' || sceneKey === 'saveList';
+  sceneKey === 'polls' ||
+  sceneKey === 'pollCreation' ||
+  sceneKey === 'pollDetail' ||
+  sceneKey === 'saveList';
 
 const shouldSkipSceneStackBodyContentLayerUpdate = (
   previousProps: SceneStackBodyContentLayerProps,

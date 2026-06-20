@@ -170,6 +170,18 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     chromePolicy: 'preserve',
     headerActionPolicy: 'fixed-close',
   },
+  pollDetail: {
+    role: 'child',
+    productSceneKey: null,
+    parentSceneKeys: ['polls'],
+    requiresOwnerSceneKey: true,
+    sceneSwitch: true,
+    sceneInput: true,
+    staticSceneInput: false,
+    sheetPolicy: 'sharedPhysicalSheet',
+    chromePolicy: 'preserve',
+    headerActionPolicy: 'fixed-close',
+  },
 } as const satisfies Record<OverlayKey, AppOverlayRouteMetadata>;
 
 export const APP_OVERLAY_ROUTE_SCENE_SWITCH_KEYS = [
@@ -180,6 +192,7 @@ export const APP_OVERLAY_ROUTE_SCENE_SWITCH_KEYS = [
   'favoriteListDetail',
   'saveList',
   'pollCreation',
+  'pollDetail',
   'restaurant',
 ] as const satisfies readonly OverlayKey[];
 
@@ -194,6 +207,7 @@ export const APP_OVERLAY_ROUTE_SCENE_INPUT_KEYS = [
   'restaurant',
   'polls',
   'pollCreation',
+  'pollDetail',
   'favoriteListDetail',
   ...APP_OVERLAY_STATIC_ROUTE_SCENE_INPUT_KEYS,
 ] as const satisfies readonly OverlayKey[];
@@ -217,6 +231,15 @@ export const createPollCreationChildRouteParams = (
   params?: OverlayRouteParamsMap['pollCreation']
 ): NonNullable<OverlayRouteParamsMap['pollCreation']> => ({
   ...params,
+  parentSceneKey: 'polls',
+  ownerSceneKey: 'polls',
+});
+
+export const createPollDetailChildRouteParams = (
+  params: OverlayRouteParamsMap['pollDetail']
+): NonNullable<OverlayRouteParamsMap['pollDetail']> => ({
+  ...params,
+  pollId: params?.pollId ?? '',
   parentSceneKey: 'polls',
   ownerSceneKey: 'polls',
 });
@@ -262,6 +285,14 @@ export type OverlayRouteParamsMap = {
     marketKey?: string | null;
     marketName?: string | null;
     bounds?: MapBounds | null;
+    parentSceneKey?: 'polls' | null;
+    ownerSceneKey?: 'polls' | null;
+    routeInstanceId?: string | null;
+  };
+  pollDetail?: {
+    pollId: string;
+    /** Optional snapshot for an instant header render (the feed card already has it). */
+    poll?: import('../../services/polls').Poll | null;
     parentSceneKey?: 'polls' | null;
     ownerSceneKey?: 'polls' | null;
     routeInstanceId?: string | null;

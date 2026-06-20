@@ -576,13 +576,23 @@ const areOverlayRouteParamsEqual = (
     );
   }
   if ('pollId' in left || 'pollId' in right) {
+    if (!('pollId' in left) || !('pollId' in right)) {
+      return false;
+    }
+    // Both the `polls` home route and the `pollDetail` child carry `pollId`; the
+    // market fields exist only on the former (undefined === undefined otherwise).
+    const leftPoll = left as {
+      pollId?: string | null;
+      marketKey?: string | null;
+      marketName?: string | null;
+      pinnedMarket?: boolean | null;
+    };
+    const rightPoll = right as typeof leftPoll;
     return (
-      'pollId' in left &&
-      'pollId' in right &&
-      left.marketKey === right.marketKey &&
-      left.marketName === right.marketName &&
-      left.pollId === right.pollId &&
-      left.pinnedMarket === right.pinnedMarket
+      leftPoll.pollId === rightPoll.pollId &&
+      leftPoll.marketKey === rightPoll.marketKey &&
+      leftPoll.marketName === rightPoll.marketName &&
+      leftPoll.pinnedMarket === rightPoll.pinnedMarket
     );
   }
   if ('bounds' in left || 'bounds' in right) {

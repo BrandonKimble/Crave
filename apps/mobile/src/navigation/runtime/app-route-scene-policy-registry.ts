@@ -80,6 +80,15 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     snapPersistence: 'none',
     chromePolicy: { kind: 'preserve' },
   },
+  pollDetail: {
+    sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
+    defaultFirstEntrySnap: 'expanded',
+    allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
+    requiresExpandedPresentation: true,
+    canSwipeDismiss: false,
+    snapPersistence: 'none',
+    chromePolicy: { kind: 'preserve' },
+  },
   restaurant: {
     sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
     defaultFirstEntrySnap: 'middle',
