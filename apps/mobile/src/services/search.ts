@@ -31,6 +31,7 @@ export interface StructuredSearchRequest {
   userLocation?: Coordinate;
   priceLevels?: number[];
   minimumVotes?: number;
+  risingActive?: boolean;
   submissionSource?: NaturalSearchRequest['submissionSource'];
   submissionContext?: NaturalSearchRequest['submissionContext'];
   sourceQuery?: string;

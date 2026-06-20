@@ -37,6 +37,7 @@ export interface SearchFilters {
   boundsPresetId?: string | null;
   priceLevels: number[];
   votes100Plus: boolean;
+  risingActive: boolean;
 }
 
 interface SearchState extends SearchFilters {
@@ -61,6 +62,7 @@ interface SearchState extends SearchFilters {
   removeHistoryEntry: (query: string) => void;
   clearHistory: () => void;
   setVotes100Plus: (enabled: boolean) => void;
+  setRisingActive: (enabled: boolean) => void;
   setActiveTab: (tab: SetStateAction<SearchActiveTab>) => void;
   setActiveTabPreference: (tab: SearchActiveTab) => void;
   setPreferredActiveTab: (tab: SearchActiveTab) => void;
@@ -78,6 +80,7 @@ const defaultState = {
   boundsPresetId: null,
   priceLevels: [],
   votes100Plus: false,
+  risingActive: false,
   history: [] as SearchHistoryEntry[],
 } as const satisfies Pick<
   SearchState,
@@ -92,6 +95,7 @@ const defaultState = {
   | 'boundsPresetId'
   | 'priceLevels'
   | 'votes100Plus'
+  | 'risingActive'
   | 'history'
 >;
 
@@ -130,6 +134,7 @@ export const useSearchStore = create<SearchState>()(
           boundsPresetId: defaultState.boundsPresetId,
           priceLevels: defaultState.priceLevels,
           votes100Plus: defaultState.votes100Plus,
+          risingActive: defaultState.risingActive,
         })),
       setOpenNow: (openNow) =>
         set(() => ({
@@ -148,6 +153,10 @@ export const useSearchStore = create<SearchState>()(
       setVotes100Plus: (enabled) =>
         set(() => ({
           votes100Plus: Boolean(enabled),
+        })),
+      setRisingActive: (enabled) =>
+        set(() => ({
+          risingActive: Boolean(enabled),
         })),
       setActiveTab: (tab) =>
         set((state) => {
@@ -279,6 +288,7 @@ export const useSearchStore = create<SearchState>()(
         boundsPresetId: state.boundsPresetId,
         priceLevels: state.priceLevels,
         votes100Plus: state.votes100Plus,
+        risingActive: state.risingActive,
         history: state.history,
       }),
     }

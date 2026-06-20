@@ -23,6 +23,7 @@ export type SubmitSearchOptions = {
   openNow?: boolean;
   priceLevels?: number[] | null;
   minimumVotes?: number | null;
+  rising?: boolean;
   page?: number;
   append?: boolean;
   preserveSheetState?: boolean;
@@ -48,6 +49,7 @@ export type ResolveNaturalSearchAttemptConfigResult = {
   effectiveOpenNow: boolean;
   effectivePriceLevels: number[];
   effectiveMinimumVotes: number | null;
+  effectiveRising: boolean;
   shouldForceFreshBounds: boolean;
   entrySurface: SearchSubmitEntrySurface;
 };
@@ -113,6 +115,7 @@ type UseSearchSubmitEntryOwnerArgs = {
   openNow: boolean;
   priceLevels: number[];
   votes100Plus: boolean;
+  risingActive: boolean;
   setActiveTab: React.Dispatch<React.SetStateAction<SegmentValue>>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   searchRuntimeBus: SearchRuntimeBus;
@@ -184,6 +187,7 @@ export const useSearchSubmitEntryOwner = ({
   openNow,
   priceLevels,
   votes100Plus,
+  risingActive,
   setActiveTab,
   setError,
   searchRuntimeBus,
@@ -559,6 +563,7 @@ export const useSearchSubmitEntryOwner = ({
           : votes100Plus
             ? MINIMUM_VOTES_FILTER
             : null;
+      const effectiveRising = options?.rising ?? risingActive;
 
       return {
         submissionSource,
@@ -572,10 +577,11 @@ export const useSearchSubmitEntryOwner = ({
         effectiveOpenNow,
         effectivePriceLevels,
         effectiveMinimumVotes,
+        effectiveRising,
         shouldForceFreshBounds: Boolean(options?.forceFreshBounds),
       };
     },
-    [hasActiveTabPreference, openNow, preferredActiveTab, priceLevels, votes100Plus]
+    [hasActiveTabPreference, openNow, preferredActiveTab, priceLevels, risingActive, votes100Plus]
   );
 
   return React.useMemo(

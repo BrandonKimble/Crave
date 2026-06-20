@@ -27,10 +27,13 @@
     "southWest": { "lat": 30.2, "lng": -97.8 }
   },
   "openNow": true,
+  "risingActive": false,
   "pagination": { "page": 1, "pageSize": 25 },
   "includeSqlPreview": false
 }
 ```
+
+> When `risingActive` is `true`, the ranking switches from score to recent momentum: restaurants and dishes are ordered by the Crave Score 7-day delta (`score_delta_7d DESC NULLS LAST`) with the score-based ordering kept as the tiebreak. The plan's `ranking` then reports `{"foodOrder": "rising DESC", "restaurantOrder": "rising DESC"}`.
 
 ### Response Shape
 

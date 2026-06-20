@@ -137,6 +137,8 @@ export type SearchFiltersProps = {
   onToggleOpenNow: () => void;
   votesFilterActive: boolean;
   onToggleVotesFilter: () => void;
+  risingActive: boolean;
+  onToggleRising: () => void;
   priceButtonLabel: string;
   priceButtonActive: boolean;
   onTogglePriceSelector: () => void;
@@ -157,6 +159,8 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   onToggleOpenNow,
   votesFilterActive,
   onToggleVotesFilter,
+  risingActive,
+  onToggleRising,
   priceButtonLabel,
   priceButtonActive,
   onTogglePriceSelector,
@@ -416,7 +420,13 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     if (!isPerfScenarioAttributionActive(activeScenarioConfig)) {
       return;
     }
-    const requiredHoleKeys = ['segment-group', 'toggle-open-now', 'toggle-price', 'toggle-votes'];
+    const requiredHoleKeys = [
+      'segment-group',
+      'toggle-open-now',
+      'toggle-price',
+      'toggle-votes',
+      'toggle-rising',
+    ];
     const hasRequiredCutouts = requiredHoleKeys.every((key) => {
       const hole = holeMap[key];
       return hole != null && hole.width > 0 && hole.height > 0;
@@ -659,6 +669,25 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                     100+ votes
                   </Text>
                 </Pressable>
+                <Pressable
+                  onLayout={registerHole('toggle-rising')}
+                  onPress={onToggleRising}
+                  accessibilityRole="button"
+                  accessibilityLabel="Toggle rising momentum filter"
+                  accessibilityState={{ selected: risingActive }}
+                  style={[
+                    styles.risingButton,
+                    risingActive && [styles.risingButtonActive, { backgroundColor: accentColor }],
+                  ]}
+                >
+                  <Text
+                    variant="caption"
+                    weight="semibold"
+                    style={[styles.risingText, risingActive && styles.risingTextActive]}
+                  >
+                    Rising
+                  </Text>
+                </Pressable>
               </View>
             </View>
           </View>
@@ -823,6 +852,20 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   votesTextActive: {
+    color: '#ffffff',
+  },
+  risingButton: {
+    ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
+    flexDirection: 'row',
+  },
+  risingButtonActive: {},
+  risingButtonDisabled: {
+    opacity: 0.6,
+  },
+  risingText: {
+    color: '#111827',
+  },
+  risingTextActive: {
     color: '#ffffff',
   },
   maskOverlay: {

@@ -12,6 +12,7 @@ export const useSearchResultsPanelFiltersRuntimeState = (
       priceButtonIsActive: state.priceButtonIsActive,
       openNow: state.openNow,
       votesFilterActive: state.votesFilterActive,
+      risingActive: state.risingActive,
       isPriceSelectorVisible: state.isPriceSelectorVisible,
     }),
     (left, right) =>
@@ -19,12 +20,14 @@ export const useSearchResultsPanelFiltersRuntimeState = (
       left.priceButtonIsActive === right.priceButtonIsActive &&
       left.openNow === right.openNow &&
       left.votesFilterActive === right.votesFilterActive &&
+      left.risingActive === right.risingActive &&
       left.isPriceSelectorVisible === right.isPriceSelectorVisible,
     [
       'priceButtonLabelText',
       'priceButtonIsActive',
       'openNow',
       'votesFilterActive',
+      'risingActive',
       'isPriceSelectorVisible',
     ] as const
   );

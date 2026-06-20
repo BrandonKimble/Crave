@@ -21,6 +21,7 @@ export type StructuredSearchFilters = {
   openNow?: boolean;
   priceLevels?: number[] | null;
   minimumVotes?: number | null;
+  rising?: boolean;
 };
 
 export type SearchRequestPreparationTuple = SearchSubmitActiveOperationTuple;
@@ -48,6 +49,7 @@ export type PrepareNaturalSearchAttemptPayloadOptions = {
   openNow?: boolean;
   priceLevels?: number[] | null;
   minimumVotes?: number | null;
+  rising?: boolean;
   forceFreshBounds?: boolean;
 };
 
@@ -61,6 +63,7 @@ type UseSearchRequestPreparationOwnerArgs = {
   openNow: boolean;
   priceLevels: number[];
   votes100Plus: boolean;
+  risingActive: boolean;
   searchRuntimeBus: SearchRuntimeBus;
   latestBoundsRef: React.MutableRefObject<MapBounds | null>;
   viewportBoundsService: ViewportBoundsService;
@@ -129,6 +132,7 @@ export const useSearchRequestPreparationOwner = ({
   openNow,
   priceLevels,
   votes100Plus,
+  risingActive,
   searchRuntimeBus,
   latestBoundsRef,
   viewportBoundsService,
@@ -369,6 +373,7 @@ export const useSearchRequestPreparationOwner = ({
           : votes100Plus
             ? MINIMUM_VOTES_FILTER
             : null;
+      const effectiveRising = filters.rising ?? risingActive;
 
       if (effectiveOpenNow) {
         payload.openNow = true;
@@ -380,6 +385,10 @@ export const useSearchRequestPreparationOwner = ({
 
       if (typeof effectiveMinimumVotes === 'number' && effectiveMinimumVotes > 0) {
         payload.minimumVotes = effectiveMinimumVotes;
+      }
+
+      if (effectiveRising) {
+        payload.risingActive = true;
       }
 
       const requestBounds = await resolveRequestBounds({
@@ -408,6 +417,7 @@ export const useSearchRequestPreparationOwner = ({
       openNow,
       priceLevels,
       resolveRequestBounds,
+      risingActive,
       shouldLogSearchResponseTimings,
       userLocationRef,
       votes100Plus,
@@ -481,6 +491,7 @@ export const useSearchRequestPreparationOwner = ({
       openNow: nextOpenNow,
       priceLevels: nextPriceLevels,
       minimumVotes,
+      rising,
       forceFreshBounds,
     }: PrepareNaturalSearchAttemptPayloadOptions): Promise<PrepareNaturalSearchAttemptPayloadResult | null> => {
       if (append) {
@@ -517,6 +528,10 @@ export const useSearchRequestPreparationOwner = ({
 
       if (typeof minimumVotes === 'number' && minimumVotes > 0) {
         payload.minimumVotes = minimumVotes;
+      }
+
+      if (rising) {
+        payload.risingActive = true;
       }
       logSearchPhase('submitSearch:payload-ready');
 

@@ -106,10 +106,15 @@ export function compileQueryPlanFromConstraints(
     format: constraints.format,
     restaurantFilters,
     connectionFilters,
-    ranking: {
-      foodOrder: 'crave_score DESC',
-      restaurantOrder: 'crave_score DESC',
-    },
+    ranking: constraints.filters.rising
+      ? {
+          foodOrder: 'rising DESC',
+          restaurantOrder: 'rising DESC',
+        }
+      : {
+          foodOrder: 'crave_score DESC',
+          restaurantOrder: 'crave_score DESC',
+        },
     diagnostics: {
       missingEntities: getMissingScopes(constraints.stagePresence),
       notes: buildDiagnosticNotes(constraints),

@@ -186,6 +186,10 @@ export class SearchQueryRequestDto {
   minimumVotes?: number;
 
   @IsOptional()
+  @IsBoolean()
+  risingActive?: boolean;
+
+  @IsOptional()
   @IsUUID()
   userId?: string;
 
@@ -322,6 +326,10 @@ export class NaturalSearchRequestDto {
   @IsInt()
   @Min(0)
   minimumVotes?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  risingActive?: boolean;
 
   @IsOptional()
   @IsUUID()

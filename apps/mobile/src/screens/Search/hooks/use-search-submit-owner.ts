@@ -44,6 +44,7 @@ type SearchSubmitOwnerReadModel = {
   openNow: boolean;
   priceLevels: number[];
   votes100Plus: boolean;
+  risingActive: boolean;
 };
 
 type SearchSubmitOwnerUiPorts = {
@@ -170,6 +171,7 @@ const useSearchSubmitOwner = ({
     openNow,
     priceLevels,
     votes100Plus,
+    risingActive,
   } = readModel;
   const {
     setActiveTab,
@@ -225,6 +227,7 @@ const useSearchSubmitOwner = ({
     openNow,
     priceLevels,
     votes100Plus,
+    risingActive,
     searchRuntimeBus,
     latestBoundsRef,
     viewportBoundsService,
@@ -251,6 +254,7 @@ const useSearchSubmitOwner = ({
     openNow,
     priceLevels,
     votes100Plus,
+    risingActive,
     setActiveTab,
     setError,
     searchRuntimeBus,

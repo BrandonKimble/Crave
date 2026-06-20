@@ -38,9 +38,11 @@ export const useSearchRootFilterModalRuntime = ({
     isSearchSessionActive: rootDataPlaneRuntime.runtimeFlags.isSearchSessionActive,
     openNow: rootDataPlaneRuntime.filterStateRuntime.openNow,
     votesFilterActive: rootDataPlaneRuntime.filterStateRuntime.votes100Plus,
+    risingActive: rootDataPlaneRuntime.filterStateRuntime.risingActive,
     priceLevels: rootDataPlaneRuntime.filterStateRuntime.priceLevels,
     panelVisible: appRouteSharedSheetRuntimeOwner.panelVisible,
     setVotes100Plus: rootDataPlaneRuntime.filterStateRuntime.setVotes100Plus,
+    setRisingActive: rootDataPlaneRuntime.filterStateRuntime.setRisingActive,
     setOpenNow: rootDataPlaneRuntime.filterStateRuntime.setOpenNow,
     setPriceLevels: rootDataPlaneRuntime.filterStateRuntime.setPriceLevels,
     scheduleToggleCommit: resultsPresentationOwner.scheduleToggleCommit,
@@ -55,12 +57,14 @@ export const useSearchRootFilterModalRuntime = ({
       openNow: rootDataPlaneRuntime.filterStateRuntime.openNow,
       priceButtonIsActive: rootDataPlaneRuntime.filterStateRuntime.priceLevels.length > 0,
       votesFilterActive: rootDataPlaneRuntime.filterStateRuntime.votes100Plus,
+      risingActive: rootDataPlaneRuntime.filterStateRuntime.risingActive,
     }),
     [
       filterModalOwner,
       rootDataPlaneRuntime.filterStateRuntime.openNow,
       rootDataPlaneRuntime.filterStateRuntime.priceLevels.length,
       rootDataPlaneRuntime.filterStateRuntime.votes100Plus,
+      rootDataPlaneRuntime.filterStateRuntime.risingActive,
     ]
   );
 };

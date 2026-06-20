@@ -19,6 +19,7 @@ type StructuredSearchFilters = {
   minimumVotes?: number | null;
   openNow?: boolean;
   priceLevels?: number[];
+  rising?: boolean;
 };
 
 type RerunActiveSearchOptions = {
@@ -45,12 +46,14 @@ type UseQueryMutationOrchestratorArgs = {
   isSearchSessionActive: boolean;
   openNow: boolean;
   votesFilterActive: boolean;
+  risingActive: boolean;
   pendingPriceRange: PriceRangeTuple;
   setPendingPriceRange: (next: PriceRangeTuple) => void;
   isPriceSelectorVisible: boolean;
   setIsPriceSelectorVisible: (next: boolean) => void;
   priceLevels: number[];
   setVotes100Plus: (next: boolean) => void;
+  setRisingActive: (next: boolean) => void;
   setOpenNow: (next: boolean) => void;
   setPriceLevels: (next: number[]) => void;
   scheduleToggleCommit: ScheduleToggleCommit;
@@ -63,6 +66,7 @@ type UseQueryMutationOrchestratorArgs = {
 type QueryMutationOrchestrator = {
   togglePriceSelector: () => void;
   toggleVotesFilter: () => void;
+  toggleRising: () => void;
   toggleOpenNow: () => void;
   commitPriceSelection: () => void;
   closePriceSelector: () => void;
@@ -82,12 +86,14 @@ export const useQueryMutationOrchestrator = (
     isSearchSessionActive,
     openNow,
     votesFilterActive,
+    risingActive,
     pendingPriceRange,
     setPendingPriceRange,
     isPriceSelectorVisible,
     setIsPriceSelectorVisible,
     priceLevels,
     setVotes100Plus,
+    setRisingActive,
     setOpenNow,
     setPriceLevels,
     scheduleToggleCommit,
@@ -187,6 +193,51 @@ export const useQueryMutationOrchestrator = (
     setVotes100Plus,
     submittedQuery,
     votesFilterActive,
+  ]);
+
+  const toggleRising = React.useCallback(() => {
+    setIsPriceSelectorVisible(false);
+    clearPendingTabSwitchDraft();
+    const nextValue = !risingActive;
+    searchRuntimeBus.publish({
+      risingActive: nextValue,
+    });
+    if (!canRerunForCurrentQuery()) {
+      setRisingActive(nextValue);
+      return;
+    }
+    scheduleToggleCommit(
+      () => {
+        setRisingActive(nextValue);
+        fireRerunActiveSearch({
+          searchMode,
+          activeTab,
+          submittedQuery,
+          query,
+          isSearchSessionActive,
+          preserveSheetState: true,
+          filters: { rising: nextValue },
+        });
+        return {
+          awaitVisualSync: true,
+        };
+      },
+      { kind: 'filter_rising' }
+    );
+  }, [
+    activeTab,
+    canRerunForCurrentQuery,
+    clearPendingTabSwitchDraft,
+    fireRerunActiveSearch,
+    isSearchSessionActive,
+    query,
+    risingActive,
+    scheduleToggleCommit,
+    searchRuntimeBus,
+    searchMode,
+    setIsPriceSelectorVisible,
+    setRisingActive,
+    submittedQuery,
   ]);
 
   const toggleOpenNow = React.useCallback(() => {
@@ -324,6 +375,7 @@ export const useQueryMutationOrchestrator = (
   return {
     togglePriceSelector,
     toggleVotesFilter,
+    toggleRising,
     toggleOpenNow,
     commitPriceSelection,
     closePriceSelector,

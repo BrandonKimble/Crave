@@ -37,6 +37,7 @@ export interface SearchConstraints {
     openNow?: boolean;
     priceLevels: number[];
     minimumVotes: number | null;
+    rising: boolean;
   };
   unresolved: {
     groups: Array<{

@@ -20,6 +20,7 @@ type StructuredSearchFilters = {
   minimumVotes?: number | null;
   openNow?: boolean;
   priceLevels?: number[];
+  rising?: boolean;
 };
 
 type UseSearchFilterModalOwnerArgs = {
@@ -31,9 +32,11 @@ type UseSearchFilterModalOwnerArgs = {
   isSearchSessionActive: boolean;
   openNow: boolean;
   votesFilterActive: boolean;
+  risingActive: boolean;
   priceLevels: number[];
   panelVisible: boolean;
   setVotes100Plus: (next: boolean) => void;
+  setRisingActive: (next: boolean) => void;
   setOpenNow: (next: boolean) => void;
   setPriceLevels: (next: number[]) => void;
   scheduleToggleCommit: Parameters<typeof useQueryMutationOrchestrator>[0]['scheduleToggleCommit'];
@@ -155,6 +158,7 @@ type SearchFilterModalOwner = {
   priceSheetSummaryNeighborVisibility: ReturnType<typeof useDerivedValue<number>>;
   togglePriceSelector: () => void;
   toggleVotesFilter: () => void;
+  toggleRising: () => void;
   toggleOpenNow: () => void;
   closePriceSelector: () => void;
   dismissPriceSelector: () => void;
@@ -170,9 +174,11 @@ export const useSearchFilterModalOwner = ({
   isSearchSessionActive,
   openNow,
   votesFilterActive,
+  risingActive,
   priceLevels,
   panelVisible,
   setVotes100Plus,
+  setRisingActive,
   setOpenNow,
   setPriceLevels,
   scheduleToggleCommit,
@@ -268,6 +274,7 @@ export const useSearchFilterModalOwner = ({
   const {
     togglePriceSelector,
     toggleVotesFilter,
+    toggleRising,
     toggleOpenNow,
     closePriceSelector,
     dismissPriceSelector,
@@ -281,12 +288,14 @@ export const useSearchFilterModalOwner = ({
     isSearchSessionActive,
     openNow,
     votesFilterActive,
+    risingActive,
     pendingPriceRange,
     setPendingPriceRange,
     isPriceSelectorVisible,
     setIsPriceSelectorVisible,
     priceLevels,
     setVotes100Plus,
+    setRisingActive,
     setOpenNow,
     setPriceLevels,
     scheduleToggleCommit,
@@ -349,6 +358,7 @@ export const useSearchFilterModalOwner = ({
       priceSheetSummaryNeighborVisibility,
       togglePriceSelector,
       toggleVotesFilter,
+      toggleRising,
       toggleOpenNow,
       closePriceSelector,
       dismissPriceSelector,
@@ -380,6 +390,7 @@ export const useSearchFilterModalOwner = ({
       summaryReelItems,
       toggleOpenNow,
       togglePriceSelector,
+      toggleRising,
       toggleVotesFilter,
     ]
   );

@@ -305,6 +305,7 @@ export interface NaturalSearchRequest {
   openNow?: boolean;
   priceLevels?: number[];
   minimumVotes?: number;
+  risingActive?: boolean;
   pagination?: Pagination;
   includeSqlPreview?: boolean;
   userLocation?: Coordinate;

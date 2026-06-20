@@ -55,6 +55,7 @@ export type SearchRuntimeBusState = {
   priceButtonIsActive: boolean;
   openNow: boolean;
   votesFilterActive: boolean;
+  risingActive: boolean;
   isPriceSelectorVisible: boolean;
   toggleInteraction: ToggleInteractionState;
   shouldRetrySearchOnReconnect: boolean;
@@ -158,6 +159,7 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   priceButtonIsActive: false,
   openNow: false,
   votesFilterActive: false,
+  risingActive: false,
   isPriceSelectorVisible: false,
   toggleInteraction: IDLE_TOGGLE_INTERACTION_STATE,
   shouldRetrySearchOnReconnect: false,

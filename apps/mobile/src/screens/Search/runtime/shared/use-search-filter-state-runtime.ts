@@ -11,6 +11,8 @@ export const useSearchFilterStateRuntime = () =>
       setPriceLevels: state.setPriceLevels,
       votes100Plus: state.votes100Plus,
       setVotes100Plus: state.setVotes100Plus,
+      risingActive: state.risingActive,
+      setRisingActive: state.setRisingActive,
       resetFilters: state.resetFilters,
     }))
   );

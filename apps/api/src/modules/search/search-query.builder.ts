@@ -1502,6 +1502,16 @@ location_aggregates AS (
   } {
     const normalized = (order || '').toLowerCase();
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
+    if (normalized.includes('rising')) {
+      return {
+        sql: Prisma.sql`fc.connection_score_delta_7d DESC NULLS LAST, fc.connection_crave_score ${Prisma.raw(
+          direction,
+        )}, fc.total_upvotes ${Prisma.raw(
+          direction,
+        )}, fc.mention_count ${Prisma.raw(direction)}, fc.connection_id ASC`,
+        preview: `fc.connection_score_delta_7d DESC NULLS LAST, fc.connection_crave_score ${direction}, fc.total_upvotes ${direction}, fc.mention_count ${direction}, fc.connection_id ASC`,
+      };
+    }
     return {
       sql: Prisma.sql`fc.connection_crave_score ${Prisma.raw(direction)}, fc.total_upvotes ${Prisma.raw(
         direction,
@@ -1516,6 +1526,15 @@ location_aggregates AS (
   } {
     const normalized = (order || '').toLowerCase();
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
+    if (normalized.includes('rising')) {
+      return {
+        sql: Prisma.sql`prs.score_delta_7d DESC NULLS LAST,
+      prs.display_score ${Prisma.raw(direction)},
+      COALESCE(rvt.total_upvotes, 0) ${Prisma.raw(direction)},
+      fr.entity_id ASC`,
+        preview: `prs.score_delta_7d DESC NULLS LAST, prs.display_score ${direction}, COALESCE(rvt.total_upvotes, 0) ${direction}, fr.entity_id ASC`,
+      };
+    }
     return {
       sql: Prisma.sql`prs.display_score ${Prisma.raw(direction)},
       COALESCE(rvt.total_upvotes, 0) ${Prisma.raw(direction)},
@@ -1530,6 +1549,14 @@ location_aggregates AS (
   } {
     const normalized = (order || '').toLowerCase();
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
+    if (normalized.includes('rising')) {
+      return {
+        sql: Prisma.sql`sub.score_delta_7d DESC NULLS LAST, sub.crave_score ${Prisma.raw(
+          direction,
+        )}`,
+        preview: `sub.score_delta_7d DESC NULLS LAST, sub.crave_score ${direction}`,
+      };
+    }
     return {
       sql: Prisma.sql`sub.crave_score ${Prisma.raw(direction)}`,
       preview: `sub.crave_score ${direction}`,
@@ -1542,6 +1569,14 @@ location_aggregates AS (
   } {
     const normalized = (order || '').toLowerCase();
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
+    if (normalized.includes('rising')) {
+      return {
+        sql: Prisma.sql`pcs.score_delta_7d DESC NULLS LAST, pcs.display_score ${Prisma.raw(
+          direction,
+        )}, c.total_upvotes ${Prisma.raw(direction)}, c.connection_id ASC`,
+        preview: `pcs.score_delta_7d DESC NULLS LAST, pcs.display_score ${direction}, c.total_upvotes ${direction}, c.connection_id ASC`,
+      };
+    }
     return {
       sql: Prisma.sql`pcs.display_score ${Prisma.raw(
         direction,

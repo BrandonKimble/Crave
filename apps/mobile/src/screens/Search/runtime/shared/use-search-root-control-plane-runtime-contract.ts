@@ -25,6 +25,7 @@ export type FilterModalRuntime = ReturnType<typeof useSearchFilterModalOwner> & 
   openNow: boolean;
   priceButtonIsActive: boolean;
   votesFilterActive: boolean;
+  risingActive: boolean;
 };
 export type ForegroundInteractionRuntime = SearchForegroundInteractionRuntime;
 

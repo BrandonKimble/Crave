@@ -11,7 +11,6 @@ import {
   type RestaurantFeatureProperties,
 } from '../components/search-map';
 import { ACTIVE_TAB_COLOR_DARK, LABEL_TEXT_SIZE } from '../constants/search';
-import { buildMarkerRenderModel } from '../utils/map-render-model';
 import {
   buildSearchMapVisualIdentityKey,
   normalizeSearchMapVisualFeatureIdentity,
@@ -96,7 +95,6 @@ const SEARCH_MAP_VISUAL_PROJECTOR_VERSION = 'single-writer-stable-label-source-v
 const buildLodPinnedVisualKey = (
   meta: ReadonlyArray<{ markerKey: string; lodZ: number }>
 ): string => buildStableKeyFingerprint(meta.map(({ markerKey, lodZ }) => `${markerKey}:${lodZ}`));
-
 
 const isMapMotionPressureMoving = (
   mapMotionPressureController: MapMotionPressureController
@@ -1121,11 +1119,6 @@ export const useDirectSearchMapSourceController = ({
     const mountedResultsSnapshot = getSearchMountedResultsDataSnapshot();
     const committedMapSourceFrameKey = resolveCommittedMapSourceFrameKey(state);
     const selectedRestaurantId = args.highlightedRestaurantId;
-    const selectedPriorityCoordinate =
-      selectedRestaurantId != null &&
-      lastMarkerPressTargetRef.current?.restaurantId === selectedRestaurantId
-        ? lastMarkerPressTargetRef.current.coordinate
-        : null;
     const hasCommittedResultState =
       state.searchMode != null && mountedResultsSnapshot.resultsRequestKey != null;
     const shouldProjectResultSources =
@@ -1436,9 +1429,9 @@ export const useDirectSearchMapSourceController = ({
     // making it resident is safe — not a perf regression. Publishing the full catalog
     // here means source membership changes only on data changes (new search / new page),
     // never on camera, so markers crossfade in/out via LOD opacity instead of being
-    // ejected from the source on pan. Promotion is still viewport-gated downstream:
-    // buildMarkerRenderModel is called with requireVisibility:true and the native
-    // screen-space visible set, so only on-screen markers ever promote to full pins.
+    // ejected from the source on pan. Promotion is viewport-gated downstream by NATIVE
+    // (projectAndEmitOnScreenMarkers computes the on-screen top-N; driveNativeLod / the reveal
+    // collections snapshot flip those to full pins), so only on-screen markers ever promote.
     markerCandidatesRef.current = markerCatalogEntries.map((entry) => entry.feature);
     const shortcutResultFeatures =
       searchMode === 'shortcut' ? markerCatalogEntries.map((entry) => entry.feature) : [];
@@ -1472,7 +1465,7 @@ export const useDirectSearchMapSourceController = ({
     // rank their results from 1, so the raw feature.properties.rank collides across sources (the
     // "multiple rank 10s" bug). The merged list here is already deduped-by-restaurant and sorted
     // (source priority → rank → order), so the sorted POSITION is the single unified, unique,
-    // stable-per-search rank. Re-assign it so the rank badge, buildMarkerRenderModel top-N, and the
+    // stable-per-search rank. Re-assign it so the rank badge, the native promotion top-N, and the
     // native candidate catalog all read one consistent rank instead of two colliding rank spaces.
     const rankedCandidates = projectedInitialCandidates.rankedCandidates.map((feature, index) => ({
       ...feature,
@@ -1512,13 +1505,10 @@ export const useDirectSearchMapSourceController = ({
         lastPublishedCandidateCatalogKeyRef.current = candidateCatalogKey;
       }
     }
-    // Stage B (B3): consume the native screen-space on-screen marker set as the
-    // visibility test (accurate under twist/pitch). Null until the projector first
-    // reports (initial frame), where buildMarkerRenderModel falls back to the
-    // padded AABB. A momentarily stale set cannot collapse the promoted set —
-    // stable-membership retains currently-pinned markers regardless.
+    // Stage B (B3): consume the native screen-space on-screen marker set purely for the
+    // attribution probe below. JS no longer uses it to gate promotion (native is the sole LOD
+    // decider now); this raw-set monotonicity probe stays as a gesture-stability diagnostic.
     const nativeVisible = sourceFramePort.getNativeVisibleMarkerKeys();
-    let nativeVisibleMarkerKeys: Set<string> | null = null;
     // RAW visible-set monotonicity probe (attribution): selection inputs other than
     // visibility are frozen during a gesture, so promoted-set flip-flops can only come
     // from the visible set oscillating. rawRemoved > 0 during a monotone zoom-out means
@@ -1560,7 +1550,6 @@ export const useDirectSearchMapSourceController = ({
       // the old 700ms dwell expired gesture-stamped markers in batches, producing
       // the synchronized after-gesture demote waves (measured: 20-21 markers per
       // batch with zero raw-set removals).
-      nativeVisibleMarkerKeys = rawKeys;
     }
     // Resolve the frozen OVERLAP REGION (submitted viewport when small; metro radius
     // around the user for a far-out shortcut) — drives the dual LOD budget + the in/out
@@ -1619,95 +1608,15 @@ export const useDirectSearchMapSourceController = ({
     const isInRegionFeature = (feature: Feature<Point, RestaurantFeatureProperties>): boolean =>
       selectedMarkerKeys.has(buildMarkerKey(feature)) ||
       isWithinOverlapRegion(overlapRegion, feature.geometry.coordinates as [number, number]);
-    const currentPinned = lodPinnedMarkersRef.current;
-    const emptyModel = { nextPinnedMarkers: [], nextPinnedMeta: [] };
-    const nextModel = currentBounds
-      ? buildMarkerRenderModel({
-          bounds: currentBounds,
-          rankedCandidates,
-          selectedRestaurantCandidates,
-          currentPinnedMarkers: currentPinned,
-          selectedRestaurantId,
-          selectedPriorityCoordinate,
-          buildMarkerKey,
-          buildVisualIdentityKey: buildSearchMapVisualIdentityKey,
-          maxPins: args.maxFullPins,
-          nativeVisibleMarkerKeys,
-          requireVisibility: true,
-        })
-      : emptyModel;
-    const nextPinnedVisualKey = buildLodPinnedVisualKey(nextModel.nextPinnedMeta);
-    // LOD TARGET-CHANGE attribution contract. Past this point the promoted-set visual
-    // key CHANGED vs the previous publish, so at least one marker flipped promote/demote
-    // — i.e. its crossfade target reversed. The lodTransitionTrace proved these flips are
-    // what restart the crossfade mid-fade (s≈c, alternating targets) = the flash. This
-    // contract attributes WHY each flip happened, so we know which lever to pull:
-    //   - lostVisibility: the marker left the native on-screen projection (visibility
-    //     hysteresis insufficient) — would be visibility-edge churn.
-    //   - visibleDisplaced(In/Out)Region: marker is STILL on-screen but dropped from the
-    //     promoted set — pure rank/budget/region reshuffle (selection instability), split
-    //     by region to test the in/out-region-boundary hypothesis.
-    // In the ideal resident model a stably-visible marker should not flip target every
-    // eval, so visibleDisplaced* counts > 0 during a smooth zoom localize the bug.
-    if (isPerfScenarioAttributionActive(scenarioConfig)) {
-      const prevPromotedKeys = new Set(currentPinned.map((feature) => buildMarkerKey(feature)));
-      const nextPromotedKeys = new Set(
-        nextModel.nextPinnedMarkers.map((feature) => buildMarkerKey(feature))
-      );
-      const isVisibleForChurn = (key: string): boolean =>
-        nativeVisibleMarkerKeys == null ? true : nativeVisibleMarkerKeys.has(key);
-      let demoteLostVisibility = 0;
-      let demoteVisibleDisplaced = 0;
-      for (const feature of currentPinned) {
-        const key = buildMarkerKey(feature);
-        if (nextPromotedKeys.has(key)) {
-          continue;
-        }
-        if (!isVisibleForChurn(key)) {
-          demoteLostVisibility += 1;
-        } else {
-          demoteVisibleDisplaced += 1;
-        }
-      }
-      let promoteFresh = 0;
-      let promoteVisible = 0;
-      for (const feature of nextModel.nextPinnedMarkers) {
-        const key = buildMarkerKey(feature);
-        if (prevPromotedKeys.has(key)) {
-          continue;
-        }
-        promoteFresh += 1;
-        if (isVisibleForChurn(key)) {
-          promoteVisible += 1;
-        }
-      }
-      const demoteTotal = demoteLostVisibility + demoteVisibleDisplaced;
-      if (demoteTotal > 0 || promoteFresh > 0) {
-        logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
-          event: 'lod_target_change_contract',
-          isMapMoving: projectionIsMapMoving,
-          prevPromoted: prevPromotedKeys.size,
-          nextPromoted: nextPromotedKeys.size,
-          demoteTotal,
-          demoteLostVisibility,
-          demoteVisibleDisplaced,
-          promoteFresh,
-          promoteVisible,
-          nativeVisibleCount: nativeVisibleMarkerKeys == null ? -1 : nativeVisibleMarkerKeys.size,
-          rawVisibleCount,
-          rawVisibleAdded,
-          rawVisibleRemoved,
-        });
-      }
-    }
-    const visibleSortedRestaurantMarkers = nextModel.nextPinnedMarkers.map((feature, index) => ({
-      ...feature,
-      properties: {
-        ...feature.properties,
-        nativeLodZ: nextModel.nextPinnedMeta[index]?.lodZ ?? feature.properties.nativeLodZ,
-        lodZ: nextModel.nextPinnedMeta[index]?.lodZ ?? feature.properties.lodZ,
-      },
-    }));
+    // ONE DECIDER (native-owned LOD). JS no longer decides pin promotion: it publishes the FULL
+    // resident catalog with every pin baked DEMOTED (nativeLodOpacity 0), and native
+    // (projectAndEmitOnScreenMarkers → driveNativeLod / the reveal collections snapshot) is the
+    // SOLE LOD decider — it flips the promoted top-N to opacity 1 via feature-state / the reveal
+    // snapshot's nativePromotedKeysInOrder. The old JS buildMarkerRenderModel (viewport-gated top-N
+    // + stable-membership retention) and its lod_target_change attribution are deleted. The selected
+    // (tapped) restaurant is force-promoted natively (driveNativeLod's forcedPromote off
+    // highlightedMarkerKeys). The full-residency pass below emits every candidate (demoted), so
+    // there is no separately-promoted JS pin set.
     const projectedVisualFrame = projectSearchMapVisualFrame({
       rankedSources: rankedCandidateSources,
       dotSources: dotCandidateSources,
@@ -1733,14 +1642,9 @@ export const useDirectSearchMapSourceController = ({
       isPromoted: boolean;
     }> = [];
     const seenRenderedLodKeys = new Set<string>();
-    visibleSortedRestaurantMarkers.forEach((feature) => {
-      const key = buildMarkerKey(feature);
-      if (seenRenderedLodKeys.has(key)) {
-        return;
-      }
-      seenRenderedLodKeys.add(key);
-      renderedLodCandidates.push({ feature, isPromoted: true });
-    });
+    // ONE DECIDER: JS bakes NO promotion. Every published pin is demoted (isPromoted:false →
+    // nativeLodOpacity 0); native flips the promoted top-N to 1. The dot + full-residency passes
+    // below already emit every candidate demoted, so there is no separate JS-promoted pin pass.
     visibleDotRestaurantMarkerFeatures.forEach((feature) => {
       const key = buildMarkerKey(feature);
       if (seenRenderedLodKeys.has(key)) {
@@ -2284,8 +2188,10 @@ export const useDirectSearchMapSourceController = ({
           normalPinVisualIdentityCount,
           selectedPinVisualIdentityCount,
           selectedRestaurantId,
-          promotedRestaurantsRenderAsPins:
-            visibleSortedRestaurantMarkers.length === pinSourceStore.idsInOrder.length,
+          // ONE DECIDER: JS publishes every candidate as a resident (demoted) pin; native owns
+          // which ones render as pins. So the pin source == the full classified candidate set.
+          residentRestaurantsRenderAsPins:
+            pinSourceStore.idsInOrder.length === renderedLodCandidates.length,
           nonPromotedRestaurantsRenderAsDots:
             visibleDotRestaurantMarkerFeatures.length === dotSourceStore.idsInOrder.length,
           allEligibleVisualIdentitiesClassified:

@@ -25,6 +25,7 @@ export type SearchResultsPanelFiltersRuntimeState = {
   priceButtonIsActive: boolean;
   openNow: boolean;
   votesFilterActive: boolean;
+  risingActive: boolean;
   isPriceSelectorVisible: boolean;
 };
 

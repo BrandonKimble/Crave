@@ -40,6 +40,7 @@ export const useSearchRootSearchSceneFiltersHeaderRuntime = ({
     priceButtonActive: searchFiltersRuntimeState.priceButtonIsActive,
     openNow: searchFiltersRuntimeState.openNow,
     votesFilterActive: searchFiltersRuntimeState.votesFilterActive,
+    risingActive: searchFiltersRuntimeState.risingActive,
     isPriceSelectorVisible: searchFiltersRuntimeState.isPriceSelectorVisible,
   });
 
@@ -51,6 +52,8 @@ export const useSearchRootSearchSceneFiltersHeaderRuntime = ({
       onToggleOpenNow: filterModalControlLane.filterModalRuntime.toggleOpenNow,
       votesFilterActive: filterChipReadModel.votesFilterActive,
       onToggleVotesFilter: filterModalControlLane.filterModalRuntime.toggleVotesFilter,
+      risingActive: filterChipReadModel.risingActive,
+      onToggleRising: filterModalControlLane.filterModalRuntime.toggleRising,
       priceButtonLabel: filterChipReadModel.priceButtonLabel,
       priceButtonActive: filterChipReadModel.priceButtonActive,
       onTogglePriceSelector: filterModalControlLane.filterModalRuntime.togglePriceSelector,
@@ -68,9 +71,11 @@ export const useSearchRootSearchSceneFiltersHeaderRuntime = ({
       filterChipReadModel.priceButtonActive,
       filterChipReadModel.priceButtonLabel,
       filterChipReadModel.votesFilterActive,
+      filterChipReadModel.risingActive,
       filterModalControlLane.filterModalRuntime.toggleOpenNow,
       filterModalControlLane.filterModalRuntime.togglePriceSelector,
       filterModalControlLane.filterModalRuntime.toggleVotesFilter,
+      filterModalControlLane.filterModalRuntime.toggleRising,
       filtersActiveTab,
       handleInteractionTabChange,
       searchState.handleSearchFiltersLayoutCache,

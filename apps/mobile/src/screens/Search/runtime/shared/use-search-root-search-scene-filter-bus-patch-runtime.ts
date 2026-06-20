@@ -15,6 +15,7 @@ export const useSearchRootSearchSceneFilterBusPatchRuntime = ({
   | 'priceButtonIsActive'
   | 'openNow'
   | 'votesFilterActive'
+  | 'risingActive'
   | 'isPriceSelectorVisible'
 > => ({
   ...useSearchRootSearchSceneFilterChipBusPatchRuntime({

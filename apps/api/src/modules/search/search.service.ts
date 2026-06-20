@@ -1812,6 +1812,7 @@ export class SearchService {
         openNow: Boolean(request.openNow),
         priceLevels: inputs.priceLevels,
         minimumVotes: inputs.minimumVotes,
+        rising: Boolean(request.risingActive),
       },
       unresolved: {
         groups: request.submissionContext?.unresolvedEntities ?? [],
