@@ -122,14 +122,22 @@ export class SearchQueryBuilder {
         includeRestaurantAttributes: false,
       });
 
-    // Always require at least one item row; restaurant/entity filters can widen match eligibility.
-    const inventoryExistsSql = Prisma.sql`EXISTS (
+    // Require at least one item row OR by-name praise event (mirrors the Crave
+    // Score v3 inclusion floor: a restaurant is eligible if it has catalogued
+    // dishes OR is praised by name). The INNER join to v3 scores still excludes
+    // truly-empty restaurants (no items, no events). Restaurant/entity filters
+    // can widen match eligibility.
+    const inventoryExistsSql = Prisma.sql`(EXISTS (
       SELECT 1
       FROM core_restaurant_items c
       WHERE c.restaurant_id = r.entity_id
-    )`;
+    ) OR EXISTS (
+      SELECT 1
+      FROM core_restaurant_events ev
+      WHERE ev.restaurant_id = r.entity_id
+    ))`;
     const inventoryExistsPreview =
-      'EXISTS (SELECT 1 FROM core_restaurant_items c WHERE c.restaurant_id = r.entity_id)';
+      '(EXISTS (SELECT 1 FROM core_restaurant_items c WHERE c.restaurant_id = r.entity_id) OR EXISTS (SELECT 1 FROM core_restaurant_events ev WHERE ev.restaurant_id = r.entity_id))';
 
     const connectionMatch = this.buildConnectionMatchConditions(filters);
     const { sql: connectionMatchSql } = connectionMatch;
