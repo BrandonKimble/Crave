@@ -106,9 +106,14 @@ nav shows automatically. So the ~10 files are spread out but not a per-scene tax
   Confirmed: all scenes are pre-mounted and swapped by visibility; the sheet never unmounts; a hidden
   scene keeps its scroll position. So "poll list → poll detail → back" is a `pollDetail` _scene swap_,
   exactly like restaurant-profile swaps in over search results — no new push/pop primitive needed.
-  The one thing to formalize: **content picks the snap target on switch** (the sheet owns snap rules;
-  a scene can request its initial snap when it becomes displayed). This matches "content can dictate a
-  few things like what it snaps to when the sheet switches."
+  **Snap-on-swap is ALREADY supported (verified 2026-06-20) — no new code.** The scene stack carries
+  a per-scene `initialSnapPoint` (`motionStateEntry.initialSnapPoint` → `useSearchRouteSceneStackBottomSheetRuntimeAssembly`
+  → `BottomSheetWithFlashList`), applied when a scene becomes the displayed scene — exactly how
+  restaurant-profile sets its snap. So "content picks the snap target on switch" is a per-scene config,
+  not a framework change: the `pollDetail` scene just declares its `initialSnapPoint` when registered.
+  → **D is a no-op; V4 is essentially complete** (proof foundation ✓, nav mapped ✓, snap-on-swap
+  already-supported ✓). Only the 2 minor v2 verifications (measurement idle-gating, frosted cutout)
+  remain, and those are device-gated + likely already fine.
 - **Confirm modal-drag need**: if poll flows want a draggable modal (e.g. a confirm/compose
   sheet), decide now whether to fold `OverlayModalSheet` into the core or keep it as the explicit
   "non-draggable utility modal" (price/score). Likely keep the split — it's a clean separation, not

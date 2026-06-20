@@ -114,22 +114,64 @@ nav-visibility authority (kind = `nav`), not bespoke logic.
 - **Graduation transparency** (optional/nice): once closed + graduated, the leaderboard is final +
   fed real evidence; a subtle "results finalized" state.
 
-## 6. Open questions (to settle before building)
+## 6. Decisions (RESOLVED as lead — build to these)
 
-- **Sort**: RESOLVED — none for now; recency / active-first (see §2.A).
-- **Active "alive" treatment**: keep it clean/elegant, NOT loud or tacky (per 2026-06-19) — best-in-class,
-  award-winning. Lean toward a subtle accent rail / quiet live indicator over a pulsing dot or pill.
-- **Leaderboard depth**: top-N inline + "see all", or full list? How many on the card preview?
-- **Comment sort**: top (by likes) vs new (default `listComments` supports both).
-- **Detail page presentation**: RESOLVED — flat content-swap to a `pollDetail` scene (the one-sheet
-  ethos, like restaurant profile), NOT a nested push and NOT a separate overlay.
+- **Sort**: none; recency / active-first (active polls in launch order, then closed by recency).
+- **Active "alive" treatment**: a **thin pink accent rail** on the card's leading edge + a quiet
+  `live · closes in Nd` caption. No pulsing dot, no pill, no animation. Closed cards: no rail,
+  muted `closed · {date}` caption. Clean/elegant, not loud.
+- **Leaderboard depth**: **card** shows the single top row — `Leading: {entity} · {n} endorsers`
+  (the hook). **Detail** shows the full ranked list; if > 8 rows, show top-8 + a "see all N" expander.
+- **Comment sort**: default **top** (by `score`), with a quiet top/new segmented toggle in the
+  thread header. (`listPollComments(sort)` supports both.)
+- **Detail page**: flat content-swap to a `pollDetail` scene (one-sheet ethos, like restaurant
+  profile) — NOT a nested push, NOT a separate overlay. Declares `initialSnapPoint: 'expanded'`
+  (snap-on-swap is already supported per Sheet V4 — no framework change).
 
-## Sequencing (after Sheet V4 lands)
+## 7. Build-ready breakdown (component tree · scenes · hooks · styling)
 
-1. Data rebind (`services/polls.ts`) + types.
-2. Poll sheet (list + active/historical + filter).
-3. Poll detail (leaderboard + thread + highlights + compose/like) — the core.
-4. Create-flow rebind.
-5. Autocomplete poll lane (backend + icon + route).
-6. Real-time + profile rebind + polish (empty states, share, moderation).
-   Each step: contracts + a maestro flow where it touches sheet motion/perf.
+**Scene registration** (`navigation/runtime/app-overlay-route-types.ts`): add `pollDetail` to
+`APP_OVERLAY_ROUTE_METADATA_BY_KEY` — `role: 'child'`, `parentSceneKeys: ['polls']`,
+`chromePolicy: 'searchChrome'` (nav stays visible, per NAV_SHEET_VISIBILITY_MAP). Open via the
+scene-switch to `pollDetail` carrying the `pollId`; back = switch to `polls` (list scene stays
+mounted → scroll preserved). An `openPoll(pollId)` action mirrors `openRestaurantProfilePreview`.
+
+**Data hooks** (bind to the live data layer, already built):
+
+- `usePollFeed()` — wraps `fetchPolls` + the bootstrap cache (exists); splits active/closed.
+- `usePollDetail(pollId)` — `fetchPoll` + `fetchPollLeaderboard` + `listPollComments(sort)`; subscribes
+  to `PollsGateway` `pollUpdate` to live-refresh thread + leaderboard.
+- `usePollCommentMutations(pollId)` — `postPollComment`/`editPollComment`/`deletePollComment`/
+  `togglePollCommentLike` with optimistic update + rollback.
+
+**Component tree:**
+
+- `PollsSceneBody` (list): `PollListHeader` (market + live badge), section list → `PollCard`
+  (question, axis·market, `live · closes in Nd` rail, participation caption, leading-entity hook),
+  active section then closed-by-week. FlashList-virtualized.
+- `PollDetailSceneBody`: `PollDetailHeader` (question, axis, state) → `PollLeaderboard` (ranked
+  rows, pink rank badge, name + `n endorsers`, tappable → restaurant/dish profile) → `PollThread`
+  (top/new toggle; `PollComment` rows: nested indent, `EntitySpanText` tappable highlights, like
+  heart + count, author/time, edit/delete own) → `PollComposer` (compose/reply, rate-limited).
+- Empty/early states: "Be the first to weigh in" + "live tally · finalizes when the poll closes".
+
+**Styling (reuse exactly):** `<Text variant>` 4 sizes; `FrostedGlassBackground` + `OverlaySheetHeaderChrome`
+cutouts for both scene headers; pink `#e91e63` (rank badge, accent rail); `theme.ts` spacing/radius;
+match `restaurant-result-card.tsx` card rhythm + `RestaurantPanel.tsx` header.
+
+**EntitySpanText:** render `comment.body` with `entitySpans` as inline tappable segments → `openPoll`'s
+sibling deeplinks (`openRestaurantProfilePreview` for restaurant spans; entity-scoped search for food).
+
+## 8. Build order (after the device renders + Sheet V4 minor-verify)
+
+0. **Seed realistic live-model poll data** (polls + threaded comments w/ entitySpans + leaderboard)
+   so the UI is verifiable — the polls table is currently empty.
+1. ✅ Data rebind (`services/polls.ts`) + types — DONE (28e180dd).
+2. Poll list scene (active/historical + filter + cards).
+3. Poll detail scene (leaderboard + thread + highlights + composer) — the core.
+4. Autocomplete poll-lane UI (poll icon in `SearchSuggestions` + `openPoll` route) — backend DONE.
+5. Create-flow rebind (question + axis + market; no votes).
+6. **Sweep the dead vote model** (`PollsPanel` + vote runtimes + `services/polls.ts` vote exports +
+   `ProfilePanel`/profile vote display) once the new UI replaces it.
+7. Real-time + profile rebind + polish (empty states, share, report).
+   Each UI step: verify on device + a maestro flow where it touches sheet motion/perf.
