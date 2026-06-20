@@ -45,7 +45,21 @@ export const createSearchRootSearchSceneChromeFreezeRuntime = () => {
             effectiveResultsHeaderHeight)
           : effectiveResultsHeaderHeight,
         filtersHeaderRuntimeForReadModel: shouldFreezeResultsChrome
-          ? (frozenResultsChromeSnapshot?.filtersHeaderRuntime ?? filtersHeaderRuntime)
+          ? {
+              ...(frozenResultsChromeSnapshot?.filtersHeaderRuntime ?? filtersHeaderRuntime),
+              // Toggle ACTIVE STATES flow LIVE (straight from the runtime bus) so a
+              // toggle's color flips on press-up even while the rest of the chrome
+              // (header heights, chip structure, handlers) stays frozen for layout
+              // stability during interaction loading. Freezing these was the regression
+              // that made toggles look stuck — same color, never switching on tap.
+              activeTab: filtersHeaderRuntime.activeTab,
+              openNow: filtersHeaderRuntime.openNow,
+              votesFilterActive: filtersHeaderRuntime.votesFilterActive,
+              risingActive: filtersHeaderRuntime.risingActive,
+              priceButtonActive: filtersHeaderRuntime.priceButtonActive,
+              priceButtonLabel: filtersHeaderRuntime.priceButtonLabel,
+              isPriceSelectorVisible: filtersHeaderRuntime.isPriceSelectorVisible,
+            }
           : filtersHeaderRuntime,
         submittedQueryForReadModel: shouldFreezeResultsChrome
           ? (frozenResultsChromeSnapshot?.submittedQuery ?? submittedQuery)
