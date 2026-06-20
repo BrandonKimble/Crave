@@ -1,6 +1,6 @@
 import React from 'react';
 import { Alert, View, TouchableOpacity, StyleSheet, Image } from 'react-native';
-import { Plus, Sparkles, MessageCircle, Users } from 'lucide-react-native';
+import { Sparkles, MessageCircle, Users } from 'lucide-react-native';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
 import type { Poll, PollCreator } from '../../services/polls';
@@ -11,7 +11,6 @@ import {
   arePollsSceneHeaderModelsEqual,
   type AppRoutePollsSceneBodySnapshot,
   type AppRoutePollsSceneHeaderModel,
-  type AppRoutePollsSceneState,
 } from '../../navigation/runtime/app-route-polls-scene-runtime';
 import { useRouteAuthoritySelector } from '../../navigation/runtime/use-route-authority-selector';
 import {
@@ -25,11 +24,10 @@ import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { usePollsPanelFeedRuntime } from './runtime/polls-panel-feed-runtime';
 import { usePollsPanelHeaderModelPublication } from './runtime/polls-panel-header-model-runtime';
 import { PollsHeaderBadge, PollsHeaderTitleText } from './pollsHeaderVisuals';
-import { CONTROL_HEIGHT, CONTROL_RADIUS } from '../../screens/Search/constants/ui';
 import { useSearchNavSwitchCommitAttribution } from '../../screens/Search/runtime/shared/use-search-nav-switch-commit-attribution';
 import { logPerfScenarioSearchRequestLifecycle } from '../../perf/perf-scenario-attribution';
 
-const CARD_GAP = 10;
+const CARD_GAP = 0;
 const LIVE_BADGE_HEIGHT = OVERLAY_HEADER_CLOSE_BUTTON_SIZE;
 
 const ACCENT = themeColors.primary;
@@ -206,25 +204,12 @@ type PollsMountedSceneHeaderActionRuntime = {
   handleHeaderActionPress: () => void;
 };
 
-const resolvePollsHeaderAction = ({
-  headerModel,
-  sceneState,
-}: {
-  headerModel: AppRoutePollsSceneHeaderModel;
-  sceneState: AppRoutePollsSceneState;
-}): 'create' | 'close' =>
-  headerModel?.headerAction ??
-  (sceneState.currentSnap === 'collapsed' || sceneState.currentSnap === 'hidden'
-    ? 'create'
-    : 'close');
-
 const usePollsMountedSceneHeaderActionRuntime = (): PollsMountedSceneHeaderActionRuntime => {
   const routeSceneRuntime = useAppRouteSceneRuntime();
   const { collapseActiveSheet, pushRoute } = useAppOverlayRouteController();
-  const fallbackHeaderActionProgress = useSharedValue(0);
-  const headerActionProgress =
-    routeSceneRuntime.routeSheetVisualAuthority.getSnapshot().chromeVisualState
-      ?.overlayHeaderActionProgress ?? fallbackHeaderActionProgress;
+  // The poll header action is ALWAYS the "+" create button (progress pinned to 1),
+  // regardless of sheet height — no dynamic close↔plus morph.
+  const headerActionProgress = useSharedValue(1);
 
   const handleClose = React.useCallback(() => {
     const sceneState = routeSceneRuntime.routePollsSceneRuntime.sceneAuthority.getSnapshot();
@@ -238,13 +223,6 @@ const usePollsMountedSceneHeaderActionRuntime = (): PollsMountedSceneHeaderActio
   const handleHeaderActionPress = React.useCallback(() => {
     const sceneState = routeSceneRuntime.routePollsSceneRuntime.sceneAuthority.getSnapshot();
     const headerModel = routeSceneRuntime.routePollsSceneRuntime.headerModelAuthority.getSnapshot();
-    const headerAction = resolvePollsHeaderAction({ headerModel, sceneState });
-
-    if (headerAction !== 'create') {
-      handleClose();
-      return;
-    }
-
     const params = sceneState.params;
     const pinnedMarketOverride =
       params?.pinnedMarket === true || Boolean(params?.pollId)
@@ -361,7 +339,6 @@ PollsSceneHeader.displayName = 'PollsSceneHeader';
 
 export const PollsMountedSceneBody = React.memo(() => {
   useSearchNavSwitchCommitAttribution('PollsMountedSceneBody');
-  const { pushRoute } = useAppOverlayRouteController();
   const routeSceneRuntime = useAppRouteSceneRuntime();
   const pollsSceneActions = routeSceneRuntime.routePollsSceneRuntime.sceneActions;
   const {
@@ -400,58 +377,31 @@ export const PollsMountedSceneBody = React.memo(() => {
     pollsPanelFeedRuntime,
   });
 
-  const handleOpenCreate = React.useCallback(() => {
-    const marketKey = pollsPanelFeedRuntime.marketOverride ?? pollsPanelFeedRuntime.marketKey;
-    if (!bounds && !marketKey) {
-      Alert.alert('Pick a market', 'Move the map to a local market before creating a poll.');
-      return;
-    }
-    pushRoute('pollCreation', {
-      marketKey: marketKey ?? null,
-      marketName: pollsPanelFeedRuntime.marketName ?? pollsPanelFeedRuntime.candidateLocalityName,
-      bounds: bounds ?? null,
-    });
-  }, [
-    bounds,
-    pollsPanelFeedRuntime.candidateLocalityName,
-    pollsPanelFeedRuntime.marketKey,
-    pollsPanelFeedRuntime.marketName,
-    pollsPanelFeedRuntime.marketOverride,
-    pushRoute,
-  ]);
-
   const bodyContentStyle = React.useMemo(
     () => [styles.collapsedContent, { paddingBottom: pollsPanelFeedRuntime.contentBottomPadding }],
     [pollsPanelFeedRuntime.contentBottomPadding]
   );
 
+  // Poll creation is launched from the header "+" button; the body header is just a
+  // quiet refresh indicator when the live feed updates over an existing list.
   const listHeaderComponent = React.useMemo(() => {
+    if (
+      !(pollsPanelFeedRuntime.loading || pollsPanelFeedRuntime.isPollFeedRefreshing) ||
+      pollsPanelFeedRuntime.polls.length === 0
+    ) {
+      return null;
+    }
     return (
       <View style={styles.listHeader}>
-        <TouchableOpacity
-          onPress={handleOpenCreate}
-          style={styles.createButton}
-          accessibilityRole="button"
-          accessibilityLabel="Create a new poll"
-        >
-          <Plus size={16} color="#ffffff" strokeWidth={2.5} />
-          <Text variant="body" weight="semibold" style={styles.createButtonText}>
-            new poll
-          </Text>
-        </TouchableOpacity>
-        {(pollsPanelFeedRuntime.loading || pollsPanelFeedRuntime.isPollFeedRefreshing) &&
-        pollsPanelFeedRuntime.polls.length > 0 ? (
-          <View style={styles.loader}>
-            <SquircleSpinner size={18} color={ACCENT} />
-          </View>
-        ) : null}
+        <View style={styles.loader}>
+          <SquircleSpinner size={18} color={ACCENT} />
+        </View>
       </View>
     );
   }, [
     pollsPanelFeedRuntime.isPollFeedRefreshing,
     pollsPanelFeedRuntime.loading,
     pollsPanelFeedRuntime.polls.length,
-    handleOpenCreate,
   ]);
 
   const shouldShowCollapsedSpinner =
@@ -545,19 +495,6 @@ const styles = StyleSheet.create({
   collapsedCardRow: {
     minHeight: 0,
   },
-  createButton: {
-    height: CONTROL_HEIGHT,
-    borderRadius: CONTROL_RADIUS,
-    backgroundColor: ACCENT,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  createButtonText: {
-    color: '#ffffff',
-  },
   loader: {
     marginTop: 12,
   },
@@ -566,18 +503,15 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   pollCard: {
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    backgroundColor: '#ffffff',
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: BORDER,
-    width: '100%',
+    paddingVertical: 15,
+    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
+    marginHorizontal: -OVERLAY_HORIZONTAL_PADDING,
+    backgroundColor: SURFACE,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: BORDER,
     alignSelf: 'stretch',
   },
-  pollCardActive: {
-    borderColor: '#f7c9d9',
-  },
+  pollCardActive: {},
   pollCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
