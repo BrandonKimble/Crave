@@ -40,7 +40,6 @@ type UsePollsPanelFeedRuntimeArgs = Pick<
 >;
 
 export type PollsPanelFeedRuntime = {
-  activePoll: Poll | undefined;
   candidateLocalityName: string | null;
   contentBottomPadding: number;
   createPollPrompt: string | null;
@@ -58,8 +57,6 @@ export type PollsPanelFeedRuntime = {
   pollFeedFreshnessError: boolean;
   polls: Poll[];
   resolvedSnap: UsePollsPanelSpecOptions['currentSnap'] | PollsPanelInitialSnapPoint;
-  selectedPollId: string | null;
-  setSelectedPollId: React.Dispatch<React.SetStateAction<string | null>>;
   shouldHoldFreshLiveContent: boolean;
   snapPoints: SnapPoints;
   visiblePolls: Poll[];
@@ -121,9 +118,6 @@ export const usePollsPanelFeedRuntime = ({
     () => (bootstrapSnapshot ? bootstrapSnapshot.source !== 'network' : false)
   );
   const [pollFeedFreshnessError, setPollFeedFreshnessError] = React.useState(false);
-  const [selectedPollId, setSelectedPollId] = React.useState<string | null>(
-    () => params?.pollId ?? bootstrapSnapshot?.polls[0]?.pollId ?? null
-  );
   const [loading, setLoading] = React.useState(false);
 
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
@@ -143,7 +137,6 @@ export const usePollsPanelFeedRuntime = ({
   const isExpandedPollsView = resolvedSnap === 'middle' || resolvedSnap === 'expanded';
   const shouldHoldFreshLiveContent = isExpandedPollsView && pollFeedRequiresFreshNetwork;
   const visiblePolls = shouldHoldFreshLiveContent ? EMPTY_VISIBLE_POLLS : polls;
-  const activePoll = visiblePolls.find((poll) => poll.pollId === selectedPollId);
   const isPinnedMarket = params?.pinnedMarket === true || Boolean(params?.pollId);
   const marketOverride = isPinnedMarket ? params?.marketKey?.trim() || null : null;
   const hasMarketKey = Boolean(marketOverride ?? marketKey);
@@ -178,7 +171,6 @@ export const usePollsPanelFeedRuntime = ({
     userLocation,
     marketOverride,
     pollFeedRequiresFreshNetwork,
-    setSelectedPollId,
     setPolls,
     setMarketKey,
     setMarketName,
@@ -222,20 +214,10 @@ export const usePollsPanelFeedRuntime = ({
     setPollFeedRequiresFreshNetwork(bootstrapSnapshot.source !== 'network');
     setPollFeedFreshnessError(false);
     setLoading(false);
-    setSelectedPollId((current) => {
-      if (params?.pollId && bootstrapSnapshot.polls.some((poll) => poll.pollId === params.pollId)) {
-        return params.pollId;
-      }
-      if (current && bootstrapSnapshot.polls.some((poll) => poll.pollId === current)) {
-        return current;
-      }
-      return bootstrapSnapshot.polls[0]?.pollId ?? null;
-    });
-  }, [bootstrapSnapshot, params?.pollId]);
+  }, [bootstrapSnapshot]);
 
   return React.useMemo(
     () => ({
-      activePoll,
       candidateLocalityName,
       contentBottomPadding,
       createPollPrompt,
@@ -253,14 +235,11 @@ export const usePollsPanelFeedRuntime = ({
       pollFeedFreshnessError,
       polls,
       resolvedSnap,
-      selectedPollId,
-      setSelectedPollId,
       shouldHoldFreshLiveContent,
       snapPoints,
       visiblePolls,
     }),
     [
-      activePoll,
       candidateLocalityName,
       contentBottomPadding,
       createPollPrompt,
@@ -278,7 +257,6 @@ export const usePollsPanelFeedRuntime = ({
       pollFeedFreshnessError,
       polls,
       resolvedSnap,
-      selectedPollId,
       shouldHoldFreshLiveContent,
       snapPoints,
       visiblePolls,

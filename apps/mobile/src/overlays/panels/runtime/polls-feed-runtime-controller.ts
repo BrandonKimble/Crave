@@ -18,7 +18,6 @@ import { logger } from '../../../utils';
 type InteractionRef = React.MutableRefObject<{ isInteracting: boolean }>;
 
 type RefreshPollFeedOptions = {
-  focusPollId?: string | null;
   skipSpinner?: boolean;
   marketKeyOverride?: string | null;
   marketNameFallback?: string | null;
@@ -31,7 +30,6 @@ type UsePollsFeedRuntimeControllerArgs = {
   userLocation?: Coordinate | null;
   marketOverride?: string | null;
   pollFeedRequiresFreshNetwork: boolean;
-  setSelectedPollId: React.Dispatch<React.SetStateAction<string | null>>;
   setPolls: React.Dispatch<React.SetStateAction<Poll[]>>;
   setMarketKey: React.Dispatch<React.SetStateAction<string | null>>;
   setMarketName: React.Dispatch<React.SetStateAction<string | null>>;
@@ -61,7 +59,6 @@ export const usePollsFeedRuntimeController = ({
   userLocation,
   marketOverride,
   pollFeedRequiresFreshNetwork,
-  setSelectedPollId,
   setPolls,
   setMarketKey,
   setMarketName,
@@ -78,7 +75,6 @@ export const usePollsFeedRuntimeController = ({
   interactionRef,
 }: UsePollsFeedRuntimeControllerArgs): PollsFeedRuntimeController => {
   const socketRef = React.useRef<Socket | null>(null);
-  const pendingPollIdRef = React.useRef<string | null>(null);
   const lastResolvedMarketKeyRef = React.useRef<string | null>(null);
   const refreshSeqRef = React.useRef(0);
   const bootstrapMarketKey =
@@ -91,11 +87,7 @@ export const usePollsFeedRuntimeController = ({
   );
 
   const applyPollSnapshot = React.useCallback(
-    (
-      snapshot: PollBootstrapSnapshot,
-      focusPollId?: string | null,
-      marketNameFallback?: string | null
-    ) => {
+    (snapshot: PollBootstrapSnapshot, marketNameFallback?: string | null) => {
       const nextMarketKey = snapshot.marketKey;
       const normalizedKey =
         typeof nextMarketKey === 'string' ? nextMarketKey.trim().toLowerCase() : null;
@@ -103,8 +95,8 @@ export const usePollsFeedRuntimeController = ({
         typeof snapshot.marketName === 'string' && snapshot.marketName.trim()
           ? snapshot.marketName.trim()
           : typeof marketNameFallback === 'string' && marketNameFallback.trim()
-          ? marketNameFallback.trim()
-          : null;
+            ? marketNameFallback.trim()
+            : null;
       if (normalizedKey) {
         lastResolvedMarketKeyRef.current = normalizedKey;
       }
@@ -118,8 +110,8 @@ export const usePollsFeedRuntimeController = ({
           snapshot.marketStatus === 'error'
           ? snapshot.marketStatus
           : nextMarketKey
-          ? 'resolved'
-          : null
+            ? 'resolved'
+            : null
       );
       setCandidateLocalityName(snapshot.candidateLocalityName ?? null);
       setCreatePollPrompt(snapshot.cta?.prompt ?? snapshot.cta?.label ?? null);
@@ -128,28 +120,6 @@ export const usePollsFeedRuntimeController = ({
       if (nextMarketKey && !marketOverride) {
         setPersistedCity(nextMarketKey);
       }
-
-      setSelectedPollId((current) => {
-        const normalizedPolls = snapshot.polls;
-        if (!normalizedPolls.length) {
-          return null;
-        }
-        if (focusPollId && normalizedPolls.some((poll) => poll.pollId === focusPollId)) {
-          return focusPollId;
-        }
-        if (
-          pendingPollIdRef.current &&
-          normalizedPolls.some((poll) => poll.pollId === pendingPollIdRef.current)
-        ) {
-          const nextSelection = pendingPollIdRef.current;
-          pendingPollIdRef.current = null;
-          return nextSelection;
-        }
-        if (current && normalizedPolls.some((poll) => poll.pollId === current)) {
-          return current;
-        }
-        return normalizedPolls[0].pollId;
-      });
     },
     [
       marketOverride,
@@ -162,7 +132,6 @@ export const usePollsFeedRuntimeController = ({
       setPollFeedFreshnessError,
       setPollFeedRequiresFreshNetwork,
       setPolls,
-      setSelectedPollId,
     ]
   );
 
@@ -170,7 +139,6 @@ export const usePollsFeedRuntimeController = ({
     async (options?: RefreshPollFeedOptions) => {
       const refreshSeq = ++refreshSeqRef.current;
       const skipSpinner = options?.skipSpinner ?? false;
-      const focusPollId = options?.focusPollId ?? null;
       const marketKeyOverride = options?.marketKeyOverride ?? null;
       const marketNameFallback = options?.marketNameFallback ?? null;
 
@@ -184,11 +152,11 @@ export const usePollsFeedRuntimeController = ({
       const payload = resolvedMarketKey
         ? { marketKey: resolvedMarketKey }
         : bounds
-        ? {
-            bounds,
-            ...(userLocation ? { userLocation } : {}),
-          }
-        : null;
+          ? {
+              bounds,
+              ...(userLocation ? { userLocation } : {}),
+            }
+          : null;
 
       if (!payload) {
         if (refreshSeq === refreshSeqRef.current) {
@@ -206,7 +174,7 @@ export const usePollsFeedRuntimeController = ({
           return;
         }
         const snapshot = createNetworkPollBootstrapSnapshot(response);
-        applyPollSnapshot(snapshot, focusPollId, marketNameFallback);
+        applyPollSnapshot(snapshot, marketNameFallback);
         if (snapshot.marketKey) {
           void writePollBootstrapSnapshot(snapshot);
         }
@@ -258,7 +226,7 @@ export const usePollsFeedRuntimeController = ({
           return;
         }
         if (cachedSnapshot) {
-          applyPollSnapshot(cachedSnapshot, pollIdParam);
+          applyPollSnapshot(cachedSnapshot);
           setPollFeedRefreshing(true);
         }
       }
@@ -280,7 +248,6 @@ export const usePollsFeedRuntimeController = ({
     hasBootstrapSnapshot,
     isSystemUnavailable,
     marketOverride,
-    pollIdParam,
     refreshPollFeed,
     setPollFeedRefreshing,
     visible,
@@ -312,8 +279,8 @@ export const usePollsFeedRuntimeController = ({
           response.market.marketShortName.trim()
             ? response.market.marketShortName.trim()
             : typeof response.market?.marketName === 'string' && response.market.marketName.trim()
-            ? response.market.marketName.trim()
-            : null;
+              ? response.market.marketName.trim()
+              : null;
         const nextStatus =
           response.status === 'resolved' ||
           response.status === 'multi_market' ||
@@ -330,8 +297,8 @@ export const usePollsFeedRuntimeController = ({
           typeof response.cta?.prompt === 'string' && response.cta.prompt.trim()
             ? response.cta.prompt.trim()
             : typeof response.cta?.label === 'string' && response.cta.label.trim()
-            ? response.cta.label.trim()
-            : null;
+              ? response.cta.label.trim()
+              : null;
 
         if (nextKey && nextKey === activeMarketKey) {
           if (nextName) {
@@ -362,7 +329,7 @@ export const usePollsFeedRuntimeController = ({
             return;
           }
           if (cachedSnapshot) {
-            applyPollSnapshot(cachedSnapshot, null, nextName);
+            applyPollSnapshot(cachedSnapshot, nextName);
             setPollFeedRefreshing(true);
           }
         }
@@ -406,11 +373,11 @@ export const usePollsFeedRuntimeController = ({
     if (!pollIdParam) {
       return;
     }
-    pendingPollIdRef.current = pollIdParam;
     if (!visible || isSystemUnavailable) {
       return;
     }
-    void refreshPollFeed({ focusPollId: pollIdParam });
+    // Deep-linking to a poll refreshes the feed so the target is present.
+    void refreshPollFeed();
   }, [isSystemUnavailable, pollIdParam, refreshPollFeed, visible]);
 
   React.useEffect(() => {
