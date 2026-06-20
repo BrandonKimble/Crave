@@ -4,8 +4,7 @@ import { PollState } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { PollGraduationService } from './poll-graduation.service';
-
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
+import { MS_PER_DAY, resolvePollAutoCloseDays } from './poll-timing';
 
 @Injectable()
 export class PollLifecycleService {
@@ -18,16 +17,7 @@ export class PollLifecycleService {
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('PollLifecycleService');
-    this.autoCloseDays = this.resolveNumberEnv('POLL_AUTO_CLOSE_DAYS', 4);
-  }
-
-  private resolveNumberEnv(key: string, fallback: number): number {
-    const raw = process.env[key];
-    if (!raw) {
-      return fallback;
-    }
-    const parsed = Number(raw);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+    this.autoCloseDays = resolvePollAutoCloseDays();
   }
 
   /**

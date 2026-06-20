@@ -38,6 +38,7 @@ import {
   EntityTextSearchService,
   type EntitySpan,
 } from '../entity-text-search/entity-text-search.service';
+import { resolvePollClosesAt } from './poll-timing';
 
 @Injectable()
 export class PollsService {
@@ -1222,6 +1223,8 @@ export class PollsService {
       pollId: string;
       createdByUserId?: string | null;
       origin?: PollOrigin;
+      state?: PollState;
+      launchedAt?: Date | string | null;
     },
   >(
     polls: T[],
@@ -1231,6 +1234,7 @@ export class PollsService {
       T & {
         commentCount: number;
         endorserCount: number;
+        closesAt: Date | null;
         topCandidates: Array<{
           rank: number;
           subjectType: PollLeaderboardSubjectType;
@@ -1372,6 +1376,10 @@ export class PollsService {
         ...poll,
         commentCount: stats.commentCount,
         endorserCount: stats.endorserCount,
+        closesAt:
+          poll.state === PollState.active
+            ? resolvePollClosesAt(poll.launchedAt)
+            : null,
         topCandidates: candidatesByPoll.get(poll.pollId) ?? [],
         creator: {
           origin,

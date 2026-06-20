@@ -1,6 +1,6 @@
 import React from 'react';
 import { Alert, View, TouchableOpacity, StyleSheet, Image } from 'react-native';
-import { Sparkles, MessageCircle, Users } from 'lucide-react-native';
+import { Sparkles, MessageCircle, Users, Clock } from 'lucide-react-native';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
 import type { Poll, PollCreator } from '../../services/polls';
@@ -48,6 +48,17 @@ const formatClosedDate = (iso: string | null | undefined): string | null => {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
+/** "today", "1d left", "3d left" — null when there's no valid future close. */
+const formatDaysLeft = (iso: string | null | undefined): string | null => {
+  if (!iso) return null;
+  const closesAt = new Date(iso);
+  if (Number.isNaN(closesAt.getTime())) return null;
+  const msLeft = closesAt.getTime() - Date.now();
+  if (msLeft <= 0) return null;
+  const daysLeft = Math.ceil(msLeft / 86_400_000);
+  return daysLeft <= 1 ? 'last day' : `${daysLeft}d left`;
+};
+
 const resolveCreatorName = (creator: PollCreator | undefined): string =>
   creator?.origin === 'user' ? (creator.displayName ?? creator.username ?? 'Member') : 'Crave';
 
@@ -75,6 +86,7 @@ const PollCreatorBadge = ({ creator }: { creator?: PollCreator }) => {
 const PollCard = React.memo(({ poll, onPress }: PollCardProps) => {
   const isActive = poll.state === 'active';
   const closedOn = formatClosedDate(poll.closedAt);
+  const daysLeft = isActive ? formatDaysLeft(poll.closesAt) : null;
   return (
     <TouchableOpacity
       style={[styles.pollCard, isActive && styles.pollCardActive]}
@@ -126,6 +138,17 @@ const PollCard = React.memo(({ poll, onPress }: PollCardProps) => {
             {poll.endorserCount ?? 0}
           </Text>
         </View>
+        {daysLeft ? (
+          <>
+            <View style={styles.pollCardHeaderSpacer} />
+            <View style={styles.metric}>
+              <Clock size={13} color={themeColors.textMuted} strokeWidth={2} />
+              <Text variant="caption" style={styles.metricText}>
+                {daysLeft}
+              </Text>
+            </View>
+          </>
+        ) : null}
       </View>
     </TouchableOpacity>
   );

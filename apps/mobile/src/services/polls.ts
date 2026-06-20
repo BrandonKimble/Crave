@@ -97,6 +97,8 @@ export interface Poll {
   createdAt?: string | null;
   launchedAt?: string | null;
   closedAt?: string | null;
+  /** When an active poll will auto-close (launchedAt + auto-close window). */
+  closesAt?: string | null;
   graduatedAt?: string | null;
   /** Card stats (from attachPollStats on the list endpoint). */
   commentCount?: number;
