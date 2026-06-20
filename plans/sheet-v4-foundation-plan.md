@@ -70,15 +70,23 @@ contract, and keep "switch to the library" as the fallback only if we ever can't
 Audit + finish Phases 1–4 above. Each is a targeted confirmation; only fix what's actually still
 open. No behavior change beyond closing the named gaps.
 
-### B. Consolidate the nav↔sheet rule into ONE authority (the "rules are very important" piece)
+### B. Nav↔sheet rule — DOCUMENT + PIN, do NOT consolidate (decision 2026-06-20)
 
-- Single source of truth: a `nav-visibility authority` that maps **active sheet kind → nav
-  visibility**, driven by shared values (UI-thread), JS only after settle.
-  - `result` sheet → nav hidden (+ hidden during its motion).
-  - `nav` sheet (polls / profile / bookmarks) → nav visible.
-  - New sheets declare their kind; the rule is automatic, not re-implemented.
-- Collapse the ~10 nav/chrome runtime files into that one authority + a thin contract. This is the
-  highest-leverage simplification and the thing most likely to bite us as we add poll screens.
+**Reversed from the original "consolidate into one authority" idea.** Red-teamed against Brandon's
+context (this code was _really hard_ to get right, and it works): the consolidation's **risk is
+HIGH** (delicate drag/settle/interrupt/scene-swap timing; device-verification-heavy) and its
+**justification is WEAK** — the poll work doesn't need it. Tracing showed nav-sheets need **no nav
+flag**: nav visibility keys off `backdropTarget` (`'results'` → hidden; `'default'` → visible),
+which is set purely from `hasActiveSearchContent`. A new nav-visible scene (e.g. `pollDetail`) just
+registers in `APP_OVERLAY_ROUTE_METADATA_BY_KEY` with `chromePolicy: 'searchChrome'|'preserve'` and
+nav shows automatically. So the ~10 files are spread out but not a per-scene tax.
+
+- **Done:** wrote the map →
+  `apps/mobile/src/screens/Search/runtime/shared/NAV_SHEET_VISIBILITY_MAP.md` (the decision flow,
+  file roles, the add-a-nav-visible-scene hook, and the invariants not to break).
+- **Optional later (low-risk):** a nav↔sheet _behavior contract_ (maestro + assertion) that pins
+  the current correct behavior across drag/settle/interrupt — regression-guard without touching the
+  code. Only do the actual rewrite if a real forcing function appears, with that contract guarding it.
 
 ### C. The proof foundation (the heart of V4 — your "contracts + maestro + harness + logs")
 
