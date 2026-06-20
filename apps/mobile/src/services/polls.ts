@@ -2,12 +2,65 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from './api';
 import type { Coordinate, MapBounds } from '../types';
 
+/**
+ * @deprecated DEAD — the vote model was removed backend-side (migration
+ * 20260618233116). `PollOption`, `addPollOption`, `voteOnPoll`, and `Poll.options`
+ * are swept together with the vote-model UI (`PollsPanel` + vote runtimes) when the
+ * live comment/leaderboard UI lands. See `plans/polls-frontend-plan.md`.
+ */
 export interface PollOption {
   optionId: string;
   label: string;
   voteCount: number;
   consensus: string | number | null;
   currentUserVoted?: boolean;
+}
+
+// ─── Live model (comment + endorsement + leaderboard) ────────────────────────
+
+/** Gazetteer-resolved span in a comment body → tappable entity deeplink (§6.1). */
+export interface EntitySpan {
+  start: number;
+  end: number;
+  text: string;
+  entityId: string;
+  name: string;
+  type: string; // 'restaurant' | 'food' | 'food_attribute' | 'restaurant_attribute'
+}
+
+export interface PollCommentUser {
+  userId: string;
+  username: string | null;
+  displayName: string | null;
+  avatarUrl: string | null;
+}
+
+export interface PollComment {
+  commentId: string;
+  pollId: string;
+  parentCommentId: string | null;
+  body: string;
+  score: number;
+  publicId: string;
+  entitySpans: EntitySpan[] | null;
+  loggedAt: string;
+  editedAt: string | null;
+  user: PollCommentUser;
+  currentUserLiked: boolean;
+}
+
+export type PollCommentSort = 'top' | 'new';
+
+export type PollLeaderboardSubjectType = 'entity' | 'connection';
+
+/** One ranked row of the endorsement leaderboard (§5 / §6.2). */
+export interface PollLeaderboardEntry {
+  rank: number;
+  subjectType: PollLeaderboardSubjectType;
+  subjectId: string;
+  name: string | null;
+  type: string | null;
+  distinctEndorsers: number;
 }
 
 export type PollTopicType =
@@ -31,11 +84,16 @@ export interface Poll {
   pollId: string;
   question: string;
   state: string;
+  mode?: string | null;
+  axis?: unknown;
   marketKey?: string | null;
   marketName?: string | null;
   createdByUserId?: string | null;
   createdAt?: string | null;
   launchedAt?: string | null;
+  closedAt?: string | null;
+  graduatedAt?: string | null;
+  /** @deprecated DEAD vote model — absent from the live API; swept with the vote UI. */
   options: PollOption[];
   topic?: PollTopic | null;
 }
@@ -382,6 +440,57 @@ export const createPoll = async (body: CreatePollPayload): Promise<Poll> => {
   return normalized ?? response.data;
 };
 
+// ─── Live model: comments, likes, leaderboard ────────────────────────────────
+
+export const listPollComments = async (
+  pollId: string,
+  sort: PollCommentSort = 'top'
+): Promise<PollComment[]> => {
+  const response = await api.get<PollComment[]>(`/polls/${pollId}/comments`, {
+    params: { sort },
+  });
+  return Array.isArray(response.data) ? response.data : [];
+};
+
+export const postPollComment = async (
+  pollId: string,
+  body: { body: string; parentCommentId?: string }
+): Promise<PollComment> => {
+  const response = await api.post<PollComment>(`/polls/${pollId}/comments`, body);
+  return response.data;
+};
+
+export const editPollComment = async (
+  commentId: string,
+  body: { body: string }
+): Promise<PollComment> => {
+  const response = await api.patch<PollComment>(`/polls/comments/${commentId}`, body);
+  return response.data;
+};
+
+export const deletePollComment = async (
+  commentId: string
+): Promise<{ commentId: string; deleted: boolean }> => {
+  const response = await api.delete(`/polls/comments/${commentId}`);
+  return response.data;
+};
+
+export const togglePollCommentLike = async (
+  commentId: string
+): Promise<{ commentId: string; liked: boolean; score: number }> => {
+  const response = await api.post(`/polls/comments/${commentId}/likes`, {});
+  return response.data;
+};
+
+export const fetchPollLeaderboard = async (pollId: string): Promise<PollLeaderboardEntry[]> => {
+  const response = await api.get<PollLeaderboardEntry[]>(`/polls/${pollId}/leaderboard`);
+  return Array.isArray(response.data) ? response.data : [];
+};
+
+/**
+ * @deprecated DEAD — `POST /polls/:id/options` was removed; this 404s. Swept with
+ * the vote-model UI.
+ */
 export const addPollOption = async (
   pollId: string,
   body: {
@@ -397,13 +506,17 @@ export const addPollOption = async (
   return response.data;
 };
 
+/**
+ * @deprecated DEAD — `POST /polls/:id/votes` was removed; this 404s. Swept with
+ * the vote-model UI.
+ */
 export const voteOnPoll = async (pollId: string, body: { optionId: string }) => {
   const response = await api.post(`/polls/${pollId}/votes`, body);
   return response.data;
 };
 
 export const fetchUserPolls = async (params: {
-  activity?: 'created' | 'voted' | 'option_added' | 'participated';
+  activity?: 'created' | 'commented' | 'participated';
   marketKey?: string;
   state?: string;
   limit?: number;
