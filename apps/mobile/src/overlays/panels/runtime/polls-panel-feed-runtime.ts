@@ -2,7 +2,7 @@ import React from 'react';
 import { Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import type { Poll, PollTopicType } from '../../../services/polls';
+import type { Poll } from '../../../services/polls';
 import { useCityStore } from '../../../store/cityStore';
 import { useSystemStatusStore } from '../../../store/systemStatusStore';
 import {
@@ -17,7 +17,6 @@ import type {
   UsePollsPanelSpecOptions,
 } from './polls-panel-runtime-contract';
 import { usePollsFeedRuntimeController } from './polls-feed-runtime-controller';
-import { usePollsVoteMutationRuntime } from './polls-vote-mutation-runtime';
 import { buildPollsHeaderVisualModel } from '../pollsHeaderVisuals';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -42,9 +41,7 @@ type UsePollsPanelFeedRuntimeArgs = Pick<
 
 export type PollsPanelFeedRuntime = {
   activePoll: Poll | undefined;
-  activePollType: PollTopicType;
   candidateLocalityName: string | null;
-  castVote: ReturnType<typeof usePollsVoteMutationRuntime>['castVote'];
   contentBottomPadding: number;
   createPollPrompt: string | null;
   dismissThreshold: number | undefined;
@@ -58,8 +55,6 @@ export type PollsPanelFeedRuntime = {
   marketName: string | null;
   marketOverride: string | null;
   marketStatus: 'resolved' | 'multi_market' | 'no_market' | 'error' | null;
-  needsDishInput: boolean;
-  needsRestaurantInput: boolean;
   pollFeedFreshnessError: boolean;
   polls: Poll[];
   resolvedSnap: UsePollsPanelSpecOptions['currentSnap'] | PollsPanelInitialSnapPoint;
@@ -67,8 +62,6 @@ export type PollsPanelFeedRuntime = {
   setSelectedPollId: React.Dispatch<React.SetStateAction<string | null>>;
   shouldHoldFreshLiveContent: boolean;
   snapPoints: SnapPoints;
-  submitPollOption: ReturnType<typeof usePollsVoteMutationRuntime>['submitPollOption'];
-  totalVotes: number;
   visiblePolls: Poll[];
 };
 
@@ -151,16 +144,8 @@ export const usePollsPanelFeedRuntime = ({
   const shouldHoldFreshLiveContent = isExpandedPollsView && pollFeedRequiresFreshNetwork;
   const visiblePolls = shouldHoldFreshLiveContent ? EMPTY_VISIBLE_POLLS : polls;
   const activePoll = visiblePolls.find((poll) => poll.pollId === selectedPollId);
-  const activePollType = (activePoll?.topic?.topicType ?? 'best_dish') as PollTopicType;
-  const totalVotes = activePoll?.options.reduce((sum, option) => sum + option.voteCount, 0) ?? 0;
   const isPinnedMarket = params?.pinnedMarket === true || Boolean(params?.pollId);
   const marketOverride = isPinnedMarket ? params?.marketKey?.trim() || null : null;
-  const needsRestaurantInput =
-    activePollType === 'best_dish' ||
-    activePollType === 'best_restaurant_attribute' ||
-    activePollType === 'best_dish_attribute';
-  const needsDishInput =
-    activePollType === 'what_to_order' || activePollType === 'best_dish_attribute';
   const hasMarketKey = Boolean(marketOverride ?? marketKey);
   const showResolvingLocation = loading && !marketName && !hasMarketKey;
   const headerVisualModel = React.useMemo(
@@ -186,7 +171,7 @@ export const usePollsPanelFeedRuntime = ({
     ]
   );
 
-  const { refreshPollFeed } = usePollsFeedRuntimeController({
+  usePollsFeedRuntimeController({
     visible,
     bounds,
     bootstrapSnapshot,
@@ -208,9 +193,6 @@ export const usePollsPanelFeedRuntime = ({
     isSystemUnavailable,
     pollIdParam: params?.pollId,
     interactionRef,
-  });
-  const { castVote, submitPollOption } = usePollsVoteMutationRuntime({
-    refreshPollFeed,
   });
 
   const appliedBootstrapSnapshotAtRef = React.useRef<number>(bootstrapSnapshot?.resolvedAtMs ?? 0);
@@ -254,9 +236,7 @@ export const usePollsPanelFeedRuntime = ({
   return React.useMemo(
     () => ({
       activePoll,
-      activePollType,
       candidateLocalityName,
-      castVote,
       contentBottomPadding,
       createPollPrompt,
       dismissThreshold,
@@ -270,8 +250,6 @@ export const usePollsPanelFeedRuntime = ({
       marketName,
       marketOverride,
       marketStatus,
-      needsDishInput,
-      needsRestaurantInput,
       pollFeedFreshnessError,
       polls,
       resolvedSnap,
@@ -279,15 +257,11 @@ export const usePollsPanelFeedRuntime = ({
       setSelectedPollId,
       shouldHoldFreshLiveContent,
       snapPoints,
-      submitPollOption,
-      totalVotes,
       visiblePolls,
     }),
     [
       activePoll,
-      activePollType,
       candidateLocalityName,
-      castVote,
       contentBottomPadding,
       createPollPrompt,
       dismissThreshold,
@@ -301,16 +275,12 @@ export const usePollsPanelFeedRuntime = ({
       marketName,
       marketOverride,
       marketStatus,
-      needsDishInput,
-      needsRestaurantInput,
       pollFeedFreshnessError,
       polls,
       resolvedSnap,
       selectedPollId,
       shouldHoldFreshLiveContent,
       snapPoints,
-      submitPollOption,
-      totalVotes,
       visiblePolls,
     ]
   );
