@@ -59,6 +59,11 @@ type RestaurantItemProjection = {
   supportTotalUpvotes: number;
   lastMentionedAt: Date | null;
   firstMentionedAt: Date | null;
+  mentions: {
+    kind: 'direct' | 'support';
+    mentionedAt: Date;
+    sourceUpvotes: number;
+  }[];
 };
 
 @Injectable()
@@ -326,6 +331,7 @@ export class ProjectionRebuildService implements OnModuleInit {
           supportTotalUpvotes: 0,
           lastMentionedAt: null,
           firstMentionedAt: null,
+          mentions: [],
         } satisfies RestaurantItemProjection);
 
       aggregate.categories = Array.from(
@@ -404,6 +410,11 @@ export class ProjectionRebuildService implements OnModuleInit {
   ): void {
     aggregate.mentionCount += 1;
     aggregate.totalUpvotes += Math.max(0, upvotes);
+    aggregate.mentions.push({
+      kind: 'direct',
+      mentionedAt,
+      sourceUpvotes: Math.max(0, upvotes),
+    });
 
     if (
       !aggregate.firstMentionedAt ||
@@ -426,6 +437,11 @@ export class ProjectionRebuildService implements OnModuleInit {
   ): void {
     aggregate.supportMentionCount += 1;
     aggregate.supportTotalUpvotes += Math.max(0, upvotes);
+    aggregate.mentions.push({
+      kind: 'support',
+      mentionedAt,
+      sourceUpvotes: Math.max(0, upvotes),
+    });
 
     if (
       !aggregate.lastMentionedAt ||
@@ -547,6 +563,12 @@ export class ProjectionRebuildService implements OnModuleInit {
 
     const retainedKeys = new Set<string>();
     const affectedConnectionIds: string[] = [];
+    const mentionRecords: {
+      connectionId: string;
+      kind: string;
+      mentionedAt: Date;
+      sourceUpvotes: number;
+    }[] = [];
     const now = new Date();
 
     for (const item of items) {
@@ -554,6 +576,7 @@ export class ProjectionRebuildService implements OnModuleInit {
       retainedKeys.add(key);
 
       const existing = existingByKey.get(key);
+      let connectionId: string;
       if (existing) {
         await tx.connection.update({
           where: { connectionId: existing.connectionId },
@@ -568,27 +591,48 @@ export class ProjectionRebuildService implements OnModuleInit {
             lastUpdated: now,
           },
         });
-        affectedConnectionIds.push(existing.connectionId);
-        continue;
+        connectionId = existing.connectionId;
+      } else {
+        const created = await tx.connection.create({
+          data: {
+            restaurantId: item.restaurantId,
+            foodId: item.foodId,
+            categories: item.categories,
+            foodAttributes: item.foodAttributes,
+            mentionCount: item.mentionCount,
+            totalUpvotes: item.totalUpvotes,
+            supportMentionCount: item.supportMentionCount,
+            supportTotalUpvotes: item.supportTotalUpvotes,
+            lastMentionedAt: item.lastMentionedAt,
+            lastUpdated: now,
+            createdAt: item.firstMentionedAt ?? now,
+          },
+          select: { connectionId: true },
+        });
+        connectionId = created.connectionId;
       }
 
-      const created = await tx.connection.create({
-        data: {
-          restaurantId: item.restaurantId,
-          foodId: item.foodId,
-          categories: item.categories,
-          foodAttributes: item.foodAttributes,
-          mentionCount: item.mentionCount,
-          totalUpvotes: item.totalUpvotes,
-          supportMentionCount: item.supportMentionCount,
-          supportTotalUpvotes: item.supportTotalUpvotes,
-          lastMentionedAt: item.lastMentionedAt,
-          lastUpdated: now,
-          createdAt: item.firstMentionedAt ?? now,
-        },
-        select: { connectionId: true },
+      affectedConnectionIds.push(connectionId);
+      for (const mention of item.mentions) {
+        mentionRecords.push({
+          connectionId,
+          kind: mention.kind,
+          mentionedAt: mention.mentionedAt,
+          sourceUpvotes: mention.sourceUpvotes,
+        });
+      }
+    }
+
+    // Rebuild the per-contribution decay ledger for the connections we touched.
+    // (Cascade on connection delete handles stale-connection rows.)
+    const touchedConnectionIds = Array.from(new Set(affectedConnectionIds));
+    if (touchedConnectionIds.length > 0) {
+      await tx.restaurantItemMention.deleteMany({
+        where: { connectionId: { in: touchedConnectionIds } },
       });
-      affectedConnectionIds.push(created.connectionId);
+    }
+    if (mentionRecords.length > 0) {
+      await tx.restaurantItemMention.createMany({ data: mentionRecords });
     }
 
     const staleConnectionIds = existingConnections

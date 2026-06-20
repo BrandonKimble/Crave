@@ -47,6 +47,7 @@ const DEFAULT_CONFIG: PublicCraveScoreConfig = {
   discountRho: 0.5,
   dishWeight: 1.0,
   praiseWeight: 2.0,
+  endorsementHalfLifeDays: 365,
 };
 
 // Reusable: each restaurant's single scoring market (most-regional wins).
@@ -97,7 +98,7 @@ export class PublicCraveScoreService {
     await this.createRun(scoreRunId, config, recencyReferenceDate, params);
 
     try {
-      const candidates = await this.loadCandidates(params);
+      const candidates = await this.loadCandidates(config, params);
       const priorScores = await this.loadPriorScores(
         config,
         recencyReferenceDate,
@@ -396,9 +397,12 @@ export class PublicCraveScoreService {
     `;
   }
 
-  private async loadCandidates(params?: {
-    fixtureRunId?: string;
-  }): Promise<CraveScoreCandidates> {
+  private async loadCandidates(
+    config: PublicCraveScoreConfig,
+    params?: {
+      fixtureRunId?: string;
+    },
+  ): Promise<CraveScoreCandidates> {
     const fixtureRunId = params?.fixtureRunId ?? null;
     const dishFixtureFilter = fixtureRunId
       ? Prisma.sql`r.restaurant_metadata->>'fixtureRunId' = ${fixtureRunId}`
@@ -406,6 +410,11 @@ export class PublicCraveScoreService {
     const restFixtureFilter = fixtureRunId
       ? Prisma.sql`e.restaurant_metadata->>'fixtureRunId' = ${fixtureRunId}`
       : Prisma.sql`TRUE`;
+    // Half-life is a trusted numeric config value (never user input); inline it
+    // as a SQL numeric literal so the decay weight is a plain expression.
+    const halfLife = Prisma.raw(
+      `(${Number(config.endorsementHalfLifeDays)})::numeric`,
+    );
 
     const dishRows = await this.prisma.$queryRaw<DishRow[]>`
       WITH ${RESTAURANT_MARKETS_CTE}
@@ -413,11 +422,18 @@ export class PublicCraveScoreService {
         c.connection_id,
         c.restaurant_id,
         rm.market_key AS scoring_market_key,
-        (c.mention_count + c.support_mention_count)::numeric AS mentions,
-        (c.total_upvotes + c.support_total_upvotes)::numeric AS upvotes
+        COALESCE(d.mentions, 0)::numeric AS mentions,
+        COALESCE(d.upvotes, 0)::numeric AS upvotes
       FROM core_restaurant_items c
       JOIN core_entities r ON r.entity_id = c.restaurant_id
       LEFT JOIN restaurant_markets rm ON rm.entity_id = c.restaurant_id
+      LEFT JOIN LATERAL (
+        SELECT
+          COALESCE(SUM(power(0.5, EXTRACT(EPOCH FROM (now() - m.mentioned_at))/86400.0/${halfLife})), 0) AS mentions,
+          COALESCE(SUM(m.source_upvotes * power(0.5, EXTRACT(EPOCH FROM (now() - m.mentioned_at))/86400.0/${halfLife})), 0) AS upvotes
+        FROM core_restaurant_item_mentions m
+        WHERE m.connection_id = c.connection_id
+      ) d ON TRUE
       WHERE ${dishFixtureFilter}
     `;
 
@@ -426,9 +442,17 @@ export class PublicCraveScoreService {
       restaurant_praise AS (
         SELECT
           restaurant_id,
-          COUNT(DISTINCT mention_key)::numeric AS praise_mentions,
-          COALESCE(SUM(source_upvotes), 0)::numeric AS praise_upvotes
-        FROM core_restaurant_events
+          SUM(power(0.5, EXTRACT(EPOCH FROM (now() - mentioned_at))/86400.0/${halfLife}))::numeric AS praise_mentions,
+          SUM(upv * power(0.5, EXTRACT(EPOCH FROM (now() - mentioned_at))/86400.0/${halfLife}))::numeric AS praise_upvotes
+        FROM (
+          SELECT
+            restaurant_id,
+            mention_key,
+            MAX(mentioned_at) AS mentioned_at,
+            MAX(source_upvotes) AS upv
+          FROM core_restaurant_events
+          GROUP BY restaurant_id, mention_key
+        ) dedup
         GROUP BY restaurant_id
       )
       SELECT

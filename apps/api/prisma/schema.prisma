@@ -143,6 +143,7 @@ model Connection {
   restaurant                 Entity                @relation("RestaurantEntity", fields: [restaurantId], references: [entityId])
   favoriteListItems          FavoriteListItem[]
   FoodView                   FoodView[]
+  itemMentions               RestaurantItemMention[]
   viewEvents                 UserEntityViewEvent[]
 
   @@unique([restaurantId, foodId])
@@ -158,6 +159,18 @@ model Connection {
   @@index([lastUpdated(sort: Desc)], map: "idx_connections_last_updated")
   @@index([createdAt(sort: Desc)], map: "idx_connections_created_at")
   @@map("core_restaurant_items")
+}
+
+model RestaurantItemMention {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connectionId  String     @map("connection_id") @db.Uuid
+  kind          String     @db.VarChar(16)
+  mentionedAt   DateTime   @map("mentioned_at")
+  sourceUpvotes Int        @default(0) @map("source_upvotes")
+  connection    Connection @relation(fields: [connectionId], references: [connectionId], onDelete: Cascade)
+
+  @@index([connectionId])
+  @@map("core_restaurant_item_mentions")
 }
 
 model PublicEntityScore {
