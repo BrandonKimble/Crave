@@ -54,28 +54,52 @@ const SURFACE = themeColors.surface;
 
 type PollCardProps = {
   poll: Poll;
-  selected: boolean;
   onPress: (pollId: string) => void;
 };
 
-const PollCard = React.memo(({ poll, selected, onPress }: PollCardProps) => (
-  <TouchableOpacity
-    style={[styles.pollCard, selected && styles.pollCardActive]}
-    onPress={() => onPress(poll.pollId)}
-  >
-    <Text variant="subtitle" weight="semibold" style={styles.pollQuestion}>
-      {poll.question}
-    </Text>
-    {poll.topic?.description ? (
-      <Text variant="body" style={styles.pollDescription}>
-        {poll.topic.description}
-      </Text>
-    ) : null}
-    <Text variant="body" style={styles.pollMeta}>
-      {poll.options.length} options
-    </Text>
-  </TouchableOpacity>
-));
+const POLL_TOPIC_LABEL: Record<string, string> = {
+  best_dish: 'Best dish',
+  what_to_order: 'What to order',
+  best_dish_attribute: 'Best dish',
+  best_restaurant_attribute: 'Best spot',
+};
+
+const formatClosedDate = (iso: string | null | undefined): string | null => {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+
+const PollCard = React.memo(({ poll, onPress }: PollCardProps) => {
+  const isActive = poll.state === 'active';
+  const axisLabel = poll.topic?.topicType ? POLL_TOPIC_LABEL[poll.topic.topicType] : null;
+  const market = poll.marketName ?? poll.topic?.title ?? null;
+  const subtitle = [axisLabel, market].filter(Boolean).join(' · ');
+  const closedOn = formatClosedDate(poll.closedAt);
+  return (
+    <TouchableOpacity
+      style={[styles.pollCard, isActive && styles.pollCardActive]}
+      onPress={() => onPress(poll.pollId)}
+      accessibilityRole="button"
+    >
+      {isActive ? <View style={styles.pollCardRail} /> : null}
+      <View style={styles.pollCardContent}>
+        <Text variant="subtitle" weight="semibold" style={styles.pollQuestion}>
+          {poll.question}
+        </Text>
+        {subtitle ? (
+          <Text variant="body" style={styles.pollDescription}>
+            {subtitle}
+          </Text>
+        ) : null}
+        <Text variant="caption" style={styles.pollMeta}>
+          {isActive ? 'live' : closedOn ? `closed · ${closedOn}` : 'closed'}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+});
 
 PollCard.displayName = 'PollCard';
 
@@ -399,7 +423,7 @@ const PollsExpandedDetail = React.memo(
             {activePoll.topic.description}
           </Text>
         ) : null}
-        {activePoll.options.map((option, index) => {
+        {(activePoll.options ?? []).map((option, index) => {
           const color = OPTION_COLORS[index % OPTION_COLORS.length];
           const rawFill = totalVotes > 0 ? (option.voteCount / totalVotes) * 100 : 0;
           const minFill = option.voteCount > 0 ? 10 : 2;
@@ -627,11 +651,7 @@ export const PollsMountedSceneBody = React.memo(() => {
     <View style={styles.collapsedCards}>
       {pollsPanelFeedRuntime.visiblePolls.map((poll) => (
         <View key={poll.pollId} style={styles.collapsedCardRow}>
-          <PollCard
-            poll={poll}
-            selected={poll.pollId === pollsPanelFeedRuntime.selectedPollId}
-            onPress={pollsPanelFeedRuntime.setSelectedPollId}
-          />
+          <PollCard poll={poll} onPress={pollsPanelFeedRuntime.setSelectedPollId} />
         </View>
       ))}
     </View>
@@ -669,11 +689,11 @@ export const PollsMountedSceneBody = React.memo(() => {
           <SquircleSpinner size={22} color={ACCENT} />
         </View>
       ) : (
-        pollCards ?? (
+        (pollCards ?? (
           <Text variant="body" style={styles.emptyState}>
             {isExpandedSurface ? emptyMessage : 'No polls available yet.'}
           </Text>
-        )
+        ))
       )}
       {activePollForDetail ? (
         <PollsExpandedDetail
@@ -739,27 +759,38 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   pollCard: {
+    position: 'relative',
     paddingVertical: 16,
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-    borderRadius: 0,
     backgroundColor: '#ffffff',
     width: '100%',
     alignSelf: 'stretch',
   },
   pollCardActive: {
-    borderWidth: 2,
-    borderColor: ACCENT,
+    backgroundColor: '#fffafc',
+  },
+  pollCardRail: {
+    position: 'absolute',
+    left: 0,
+    top: 12,
+    bottom: 12,
+    width: 3,
+    borderRadius: 2,
+    backgroundColor: ACCENT,
+  },
+  pollCardContent: {
+    flex: 1,
   },
   pollQuestion: {
-    color: ACCENT_DARK,
+    color: themeColors.textPrimary,
   },
   pollDescription: {
-    marginTop: 6,
+    marginTop: 5,
     color: themeColors.textBody,
   },
   pollMeta: {
     marginTop: 6,
-    color: ACCENT,
+    color: themeColors.textMuted,
   },
   detailCard: {
     flex: 1,
