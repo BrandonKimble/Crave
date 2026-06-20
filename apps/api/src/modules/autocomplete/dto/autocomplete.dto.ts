@@ -55,12 +55,13 @@ export class AutocompleteRequestDto {
 }
 
 export class AutocompleteMatchDto {
+  // For polls, `entityId` is the pollId and `name` is the poll question.
   entityId!: string;
-  entityType!: EntityType | 'query';
+  entityType!: EntityType | 'query' | 'poll';
   name!: string;
   confidence!: number;
   aliases!: string[];
-  matchType?: 'entity' | 'query';
+  matchType?: 'entity' | 'query' | 'poll';
   badges?: {
     favorite?: boolean;
     viewed?: boolean;

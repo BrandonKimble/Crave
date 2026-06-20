@@ -46,6 +46,12 @@ const ATTRIBUTE_SUPPORTED_MATCH_FLOOR = 0.22;
 const ATTRIBUTE_LOOSE_MATCH_FLOOR = 0.42;
 const ATTRIBUTE_SINGLE_CHARACTER_SUPPORT_FLOOR = 0.65;
 const ATTRIBUTE_LANE_RUNTIME_READY = true;
+// Poll lane (§8.1): polls compete in the OVERFLOW pool — zero reserved slots, so
+// they surface only when they out-score leftover entity/query candidates. Gated to
+// longer queries + a min question match so they don't flood food searches.
+const POLL_LANE_MIN_QUERY_LENGTH = 3;
+const POLL_LANE_MIN_SIMILARITY = 0.4;
+const POLL_LANE_MAX_CANDIDATES = 3;
 const REQUEST_DURATION_BUCKETS = [0.01, 0.025, 0.05, 0.1, 0.2, 0.4, 0.8, 1.5];
 const REQUEST_DB_DURATION_BUCKETS = [
   0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.4, 0.8,
@@ -89,6 +95,8 @@ export class AutocompleteService {
   private readonly querySuggestionMinGlobalCount: number;
   private readonly querySuggestionMinUserCount: number;
   private readonly attributeLaneEnabled: boolean;
+  private readonly pollLaneEnabled: boolean;
+  private readonly pollLaneWeight: number;
   private readonly requestDurationHistogram: Histogram<string>;
   private readonly requestDbDurationHistogram: Histogram<string>;
   private readonly cacheLookupsCounter: Counter<string>;
@@ -164,6 +172,14 @@ export class AutocompleteService {
     this.attributeLaneEnabled =
       ATTRIBUTE_LANE_RUNTIME_READY &&
       this.resolveEnvBoolean('AUTOCOMPLETE_ENABLE_ATTRIBUTE_LANE', true);
+    this.pollLaneEnabled = this.resolveEnvBoolean(
+      'AUTOCOMPLETE_ENABLE_POLL_LANE',
+      true,
+    );
+    this.pollLaneWeight = this.resolveEnvNumber(
+      'AUTOCOMPLETE_WEIGHT_POLL_LANE',
+      0.9,
+    );
     this.requestDurationHistogram = metricsService.getHistogram({
       name: 'autocomplete_request_duration_seconds',
       help: 'Autocomplete endpoint total duration in seconds',
@@ -591,6 +607,14 @@ export class AutocompleteService {
     const { entityMatches, querySuggestions, user, limit, normalizedQuery } =
       params;
 
+    // Poll lane runs in parallel with the entity/popularity DB work; it joins the
+    // overflow pool below (zero reserved slots, §8.1).
+    const pollCandidatesPromise = this.fetchPollMatches(
+      normalizedQuery,
+      params.marketKey ?? null,
+      limit,
+    );
+
     const entityIds = Array.from(
       new Set(entityMatches.map((match) => match.entityId)),
     );
@@ -773,6 +797,8 @@ export class AutocompleteService {
       ...globalQueryCandidates.slice(Math.max(1, GLOBAL_QUERY_RESERVED_SLOTS)),
     ].slice(0, Math.max(1, this.querySuggestionMax));
 
+    const pollCandidates = await pollCandidatesPromise;
+
     const finalMatches = this.mergeAutocompleteLanes({
       entityCandidates: scoredEntities
         .filter(({ match }) => !this.isAttributeType(match.entityType))
@@ -786,6 +812,7 @@ export class AutocompleteService {
       globalQueryCandidates: queryCandidates.filter(
         ({ match }) => match.querySuggestionSource === 'global',
       ),
+      pollCandidates,
       limit,
     });
 
@@ -807,6 +834,7 @@ export class AutocompleteService {
       match: AutocompleteMatchDto;
       score: number;
     }>;
+    pollCandidates: Array<{ match: AutocompleteMatchDto; score: number }>;
     limit: number;
   }): AutocompleteMatchDto[] {
     const finalMatches: AutocompleteMatchDto[] = [];
@@ -870,10 +898,61 @@ export class AutocompleteService {
       ...params.entityCandidates.slice(entityOverflowStart),
       ...params.personalQueryCandidates.slice(personalOverflowStart),
       ...params.globalQueryCandidates.slice(globalOverflowStart),
+      ...params.pollCandidates, // zero reserved — polls earn a slot purely by score
     ].sort((a, b) => b.score - a.score);
 
     overflow.forEach(push);
     return finalMatches;
+  }
+
+  /**
+   * Poll lane (§8.1): active polls in the current market whose question matches
+   * the query. Zero reserved slots — these join the overflow pool and surface only
+   * when they out-score leftover entity/query candidates. v1 ranks on question
+   * text match (word-similarity + substring); entity-in-poll match and recency
+   * weighting are future refinements.
+   */
+  private async fetchPollMatches(
+    normalizedQuery: string,
+    marketKey: string | null,
+    limit: number,
+  ): Promise<Array<{ match: AutocompleteMatchDto; score: number }>> {
+    if (
+      !this.pollLaneEnabled ||
+      !marketKey ||
+      normalizedQuery.trim().length < POLL_LANE_MIN_QUERY_LENGTH
+    ) {
+      return [];
+    }
+    const take = Math.max(1, Math.min(limit, POLL_LANE_MAX_CANDIDATES));
+    const likePattern = `%${normalizedQuery}%`;
+    const rows = await this.prisma.$queryRaw<
+      Array<{ poll_id: string; question: string; sim: number }>
+    >(Prisma.sql`
+      SELECT poll_id, question,
+             word_similarity(${normalizedQuery}, question) AS sim
+      FROM polls
+      WHERE state::text = 'active'
+        AND market_key = ${marketKey}
+        AND (
+          question ILIKE ${likePattern}
+          OR word_similarity(${normalizedQuery}, question) >= ${POLL_LANE_MIN_SIMILARITY}
+        )
+      ORDER BY sim DESC, launched_at DESC NULLS LAST
+      LIMIT ${take}
+    `);
+    return rows.map((row) => {
+      const sim = clamp01(Number(row.sim) || 0);
+      const match: AutocompleteMatchDto = {
+        entityId: row.poll_id,
+        entityType: 'poll',
+        name: row.question,
+        aliases: [],
+        confidence: Number(sim.toFixed(2)),
+        matchType: 'poll',
+      };
+      return { match, score: sim * this.pollLaneWeight };
+    });
   }
 
   private calculateLexicalFirstEntityScore(params: {
@@ -1142,7 +1221,7 @@ export class AutocompleteService {
   }
 
   private isAttributeType(
-    entityType: EntityType | 'query',
+    entityType: EntityType | 'query' | 'poll',
   ): entityType is EntityType {
     return (
       entityType === EntityType.food_attribute ||
