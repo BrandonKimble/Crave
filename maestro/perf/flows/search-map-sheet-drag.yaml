@@ -1,0 +1,43 @@
+appId: com.brandonkimble.cravesearch
+# perf-scenario-sim-location: 40.7550,-73.9800
+---
+# Sheet V4 proof flow: drag the RESULTS SHEET mid<->expanded while the map has
+# live pins, and measure JS/UI frame health + attribution. This is the regression
+# guard for "sheet motion must not jank the map or the JS thread" — the exact class
+# of bug that silently regressed the toggle strip.
+#
+# Run with the search_map_lod_ prefix so it gets attribution + the quiet measured
+# loop automatically:
+#   yarn perf:scenario:ios maestro/perf/flows/search-map-sheet-drag.yaml search_map_lod_sheet_drag
+#
+# Snap geometry (apps/mobile/src/overlays/sheetUtils.ts): middle sheet-top ≈ 40% of
+# screen height, expanded ≈ top. So the grab gesture starts on the sheet header
+# (~43% y) and drags up to expand (~13% y), then back down.
+- tapOn: { text: 'Close restaurant', optional: true }
+- tapOn: { text: 'Close results', optional: true }
+- tapOn: { text: 'Close polls', optional: true }
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 45000 }
+- extendedWaitUntil: { visible: 'Show best restaurants here', timeout: 45000 }
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=40.7550&lng=-73.9800&zoom=13.2&label=seed'
+- waitForAnimationToEnd: { timeout: 1600 }
+- openLink: 'crave://perf-scenario-command?action=submit_shortcut_restaurants'
+- extendedWaitUntil: { visible: 'Close results', timeout: 20000 }
+- waitForAnimationToEnd: { timeout: 3500 }
+- openLink: 'crave://perf-scenario-mark?phase=measured_repeat_loop_start&label=search_map_lod_sheet_drag'
+- repeat:
+    times: 5
+    commands:
+      # Drag the sheet up: middle -> expanded (grab the header, deliberate drag).
+      - swipe:
+          start: 50%, 43%
+          end: 50%, 13%
+          duration: 700
+      - waitForAnimationToEnd: { timeout: 600 }
+      # Drag the sheet back down: expanded -> middle.
+      - swipe:
+          start: 50%, 13%
+          end: 50%, 43%
+          duration: 700
+      - waitForAnimationToEnd: { timeout: 600 }
+- openLink: 'crave://perf-scenario-mark?phase=measured_repeat_loop_end&label=search_map_lod_sheet_drag'
+- waitForAnimationToEnd: { timeout: 1200 }
