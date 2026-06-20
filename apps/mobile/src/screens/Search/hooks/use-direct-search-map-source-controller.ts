@@ -601,8 +601,15 @@ const assertProjectedVisualFrameInvariants = ({
     pinVisualIdentityKeys,
     dotVisualIdentityKeys
   );
-  const expectedLabelCount = pinSourceStore.idsInOrder.length * LABEL_CANDIDATES_IN_ORDER.length;
-  const expectedCollisionCount = pinSourceStore.idsInOrder.length;
+  // Labels + collision are PROMOTE-GATED (full pin residency means the pin source holds every
+  // candidate, but labels are built only for PROMOTED pins, nativeLodOpacity > 0). So the expected
+  // counts are keyed off the promoted pin count, not the full pin-source size.
+  const promotedPinCount = pinSourceStore.idsInOrder.reduce((count, markerKey) => {
+    const opacity = pinSourceStore.featureById.get(markerKey)?.properties?.nativeLodOpacity;
+    return typeof opacity === 'number' && opacity <= 0.001 ? count : count + 1;
+  }, 0);
+  const expectedLabelCount = promotedPinCount * LABEL_CANDIDATES_IN_ORDER.length;
+  const expectedCollisionCount = promotedPinCount;
 
   if (
     duplicatePinVisualIdentityKeys.length === 0 &&
@@ -844,6 +851,13 @@ const buildDirectLabelStores = ({
   pinSourceStore.idsInOrder.forEach((markerKey) => {
     const feature = pinSourceStore.featureById.get(markerKey);
     if (!feature) {
+      return;
+    }
+    // Labels are PROMOTE-GATED: with full pin residency the pin source holds every candidate
+    // (demoted at nativeLodOpacity 0), but name-labels are built only for PROMOTED pins so the
+    // label source doesn't balloon to 4×all-candidates. A demoted pin (opacity 0) gets no label.
+    const pinOpacity = feature.properties?.nativeLodOpacity;
+    if (typeof pinOpacity === 'number' && pinOpacity <= 0.001) {
       return;
     }
     const stableBaseFeature = buildStableLabelBaseFeature(feature, markerKey);
@@ -1732,6 +1746,20 @@ export const useDirectSearchMapSourceController = ({
       renderedLodCandidates.push({ feature, isPromoted: true });
     });
     visibleDotRestaurantMarkerFeatures.forEach((feature) => {
+      const key = buildMarkerKey(feature);
+      if (seenRenderedLodKeys.has(key)) {
+        return;
+      }
+      seenRenderedLodKeys.add(key);
+      renderedLodCandidates.push({ feature, isPromoted: false });
+    });
+    // FULL RESIDENCY (#2 pan-to-new-areas + finish the wiggle kill): emit EVERY catalog candidate
+    // into the pin+dot sources, resident at opacity 0 when demoted. The full-replace then pre-seeds
+    // the bundle with ALL candidates, so a promote during a gesture is opacity-only even for markers
+    // panned-to outside the initial viewport slice (no source add → no wiggle), and native has pin
+    // data to promote-render any candidate. Off-screen resident pins are tile-culled (~free) +
+    // ignorePlacement (no collision cost). Name-labels stay promote-gated (built below).
+    projectedVisualFrame.rankedCandidates.forEach((feature) => {
       const key = buildMarkerKey(feature);
       if (seenRenderedLodKeys.has(key)) {
         return;
