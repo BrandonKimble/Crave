@@ -22,6 +22,7 @@ import { QueryPollsDto } from './dto/query-polls.dto';
 import { CreatePollDto } from './dto/create-poll.dto';
 import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { OptionalClerkAuthGuard } from '../identity/auth/optional-clerk-auth.guard';
+import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
 import { CurrentUser } from '../../shared';
 
 @Controller('polls')
@@ -41,6 +42,7 @@ export class PollsController {
   }
 
   @Post()
+  @RateLimitTier('sensitive')
   @UseGuards(ClerkAuthGuard)
   createPoll(@Body() dto: CreatePollDto, @CurrentUser() user: User) {
     return this.pollsService.createPoll(dto, user.userId);
@@ -73,6 +75,7 @@ export class PollsController {
   }
 
   @Post(':pollId/comments')
+  @RateLimitTier('sensitive')
   @UseGuards(ClerkAuthGuard)
   postComment(
     @Param('pollId') pollId: string,
@@ -83,6 +86,7 @@ export class PollsController {
   }
 
   @Patch('comments/:commentId')
+  @RateLimitTier('sensitive')
   @UseGuards(ClerkAuthGuard)
   editComment(
     @Param('commentId') commentId: string,
