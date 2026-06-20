@@ -5315,12 +5315,15 @@ final class SearchMapRenderController: RCTEventEmitter {
         )
       return (opacity ?? 1) > 0.001
     }
-    snapshot.pinIdsInOrder = promotedPinIdsInOrder
-    // On this (collections / reveal / data-change) path membership == promoted, so promotedMarkerKeys
-    // mirrors pinIdsInOrder — updateLivePinTransitions reads opacity from promotedMarkerKeys and gets
-    // the same result as the old nextPresent-driven opacity (no behavior change on the reveal path).
+    // RESIDENCY PRE-SEED: membership = the FULL pin-source set (every member), so the full-replace
+    // builds bundle records for EVERY marker — promoted at opacity 1, demoted at opacity 0 —
+    // PRE-SEEDING the bundle at data-change/reveal. A later promote during a gesture is then a pure
+    // opacity flip (already resident) → no source add → no re-layout → no wiggle. promotedMarkerKeys
+    // (the OPACITY driver) stays the promoted subset. (Demoted pins are placed-but-transparent;
+    // queryRenderedFeatures counts them as "rendered" — that's a metric artifact, not visible pins.)
+    snapshot.pinIdsInOrder = desiredPins.idsInOrder
     snapshot.promotedMarkerKeys = Set(promotedPinIdsInOrder)
-    let nextPinMarkerKeys = Set(promotedPinIdsInOrder)
+    let nextPinMarkerKeys = Set(desiredPins.idsInOrder)
     for markerKey in nextPinMarkerKeys {
       let revision = desiredPins.diffKeyById[markerKey] ?? ""
       snapshot.pinFeatureRevisionByMarkerKey[markerKey] = revision
