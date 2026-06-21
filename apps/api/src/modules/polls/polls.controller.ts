@@ -101,6 +101,7 @@ export class PollsController {
   }
 
   @Delete('comments/:commentId')
+  @RateLimitTier('sensitive')
   @UseGuards(ClerkAuthGuard)
   deleteComment(
     @Param('commentId') commentId: string,
@@ -109,7 +110,10 @@ export class PollsController {
     return this.pollsService.deleteComment(commentId, user.userId);
   }
 
+  // A like toggle triggers a full leaderboard rebuild, so it's both a spam and a
+  // DB-load vector — throttle it like the other poll writes.
   @Post('comments/:commentId/likes')
+  @RateLimitTier('sensitive')
   @UseGuards(ClerkAuthGuard)
   toggleCommentLike(
     @Param('commentId') commentId: string,

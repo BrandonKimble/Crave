@@ -5,7 +5,6 @@ import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
 import type { Poll, PollCreator } from '../../services/polls';
 import { colors as themeColors } from '../../constants/theme';
-import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
 import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneRuntimeProvider';
 import {
   arePollsSceneHeaderModelsEqual,
@@ -33,11 +32,9 @@ import { PollsHeaderBadge, PollsHeaderTitleText } from './pollsHeaderVisuals';
 import { useSearchNavSwitchCommitAttribution } from '../../screens/Search/runtime/shared/use-search-nav-switch-commit-attribution';
 import { logPerfScenarioSearchRequestLifecycle } from '../../perf/perf-scenario-attribution';
 
-const CARD_GAP = 0;
 const LIVE_BADGE_HEIGHT = OVERLAY_HEADER_CLOSE_BUTTON_SIZE;
 
 const ACCENT = themeColors.primary;
-const ACCENT_DARK = themeColors.primaryDark;
 const BORDER = themeColors.border;
 const SURFACE = themeColors.surface;
 
@@ -656,132 +653,6 @@ const styles = StyleSheet.create({
     color: themeColors.textMuted,
   },
   finalResults: {
-    color: ACCENT,
-  },
-  detailCard: {
-    flex: 1,
-    marginTop: CARD_GAP,
-    paddingVertical: 16,
-    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-    borderRadius: 0,
-    backgroundColor: '#ffffff',
-    alignSelf: 'stretch',
-    width: '100%',
-  },
-  detailQuestion: {
-    color: ACCENT_DARK,
-    marginBottom: 8,
-  },
-  detailDescription: {
-    color: themeColors.textBody,
-    marginBottom: 12,
-  },
-  optionBarWrapper: {
-    marginTop: 12,
-  },
-  optionBarTrack: {
-    position: 'relative',
-    height: 32,
-    borderRadius: 16,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(249, 115, 131, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(249, 115, 131, 0.2)',
-    justifyContent: 'center',
-  },
-  optionBarFill: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    borderRadius: 16,
-  },
-  optionLabelBubble: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-  },
-  optionLabelText: {
-    color: '#1f2937',
-  },
-  optionVoteCount: {
-    color: ACCENT_DARK,
-  },
-  addOptionBlock: {
-    marginTop: 16,
-  },
-  inputGroup: {
-    marginTop: 8,
-  },
-  optionInput: {
-    width: '100%',
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: FONT_SIZES.subtitle,
-    lineHeight: LINE_HEIGHTS.subtitle,
-    backgroundColor: SURFACE,
-  },
-  fieldLabel: {
-    marginTop: 12,
-    marginBottom: 6,
-    color: ACCENT,
-  },
-  submitButton: {
-    marginTop: 16,
-    backgroundColor: ACCENT,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  submitButtonText: {
-    color: '#fff',
-  },
-  autocompleteBox: {
-    marginTop: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: SURFACE,
-    maxHeight: 200,
-    overflow: 'hidden',
-  },
-  autocompleteLoadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: BORDER,
-    gap: 8,
-  },
-  autocompleteLoadingText: {
-    color: themeColors.textBody,
-  },
-  autocompleteEmptyText: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: themeColors.textBody,
-  },
-  autocompleteItem: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: BORDER,
-  },
-  autocompletePrimary: {
-    color: '#111827',
-  },
-  autocompleteSecondary: {
-    color: themeColors.textBody,
-    marginTop: 2,
-    textTransform: 'capitalize',
-  },
-  topicNote: {
-    marginTop: 12,
     color: ACCENT,
   },
   emptyState: {

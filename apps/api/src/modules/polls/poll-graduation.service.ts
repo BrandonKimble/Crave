@@ -25,9 +25,15 @@ import { PollsService } from './polls.service';
  * global graph. After the pipeline runs we re-highlight every comment (so the
  * newly-created entities become tappable) and finalize the leaderboard.
  *
- * Idempotent via `poll.graduatedAt`: set only after a successful pass, and the
- * pipeline's own source-ledger dedupe (`collection_processed_sources`,
- * pipeline=`poll-thread`) means a retried run never double-writes evidence.
+ * Idempotent via `poll.graduatedAt`: set only after a successful pass, so the
+ * normal path never graduates a poll twice. Even a forced re-graduation can't
+ * double-count into Crave Score: the projection rebuild only counts evidence
+ * whose `extractionRunId` matches the source document's *active* run, and each
+ * comment document is stable (deduped by commentId), so re-pointing it to the
+ * new run orphans the prior run's events rather than summing them. (Note: the
+ * `collection_processed_sources` ledger does NOT filter already-seen mentions —
+ * it only short-circuits when a thread has zero mentions — so don't rely on it
+ * for dedupe; the active-run projection is what guarantees no double-count.)
  */
 @Injectable()
 export class PollGraduationService {

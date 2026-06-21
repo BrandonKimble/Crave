@@ -308,6 +308,26 @@ export const usePollDetailPanelSpec = ({
     [leaderboard]
   );
 
+  // Keep the panel's authoritative leaderboard in sync with the standings the
+  // endorse toggle settles against (it can reorder), so the board doesn't snap
+  // back to the pre-endorse order on the next render.
+  const handleCandidatesSettled = React.useCallback((settled: typeof candidates) => {
+    setLeaderboard((prev) => {
+      const byId = new Map(prev.map((entry) => [entry.subjectId, entry]));
+      return settled.map((candidate, index) => {
+        const base = byId.get(candidate.subjectId);
+        return base
+          ? {
+              ...base,
+              rank: candidate.rank,
+              distinctEndorsers: candidate.distinctEndorsers,
+              currentUserEndorsed: candidate.currentUserEndorsed,
+            }
+          : ({ ...candidate, rank: index + 1 } as PollLeaderboardEntry);
+      });
+    });
+  }, []);
+
   const renderItem = React.useCallback(
     ({ item }: { item: PollComment }) => <PollCommentRow comment={item} onLike={handleLike} />,
     [handleLike]
@@ -379,6 +399,7 @@ export const usePollDetailPanelSpec = ({
             pollId={pollId ?? ''}
             candidates={candidates}
             interactive={Boolean(isActive)}
+            onCandidatesChange={handleCandidatesSettled}
           />
         </View>
       ) : (
