@@ -1,5 +1,3 @@
-import { StyleSheet } from 'react-native';
-
 import {
   isPerfScenarioAttributionActive,
   logPerfScenarioAttributionEvent,
@@ -18,9 +16,6 @@ import {
 import type { OverlaySheetSnap } from '../../overlays/types';
 import type { RouteOverlayPollsVisibilitySnapshot } from './route-overlay-display-snapshot-contract';
 import type {
-  AppRouteSceneBodyAdmissionPolicy,
-  AppRouteSceneBodyContentSpec,
-  AppRouteSceneBodyTransportSpec,
   AppRouteSceneChromePublication,
   AppRouteSceneStackShellSpec,
 } from './app-route-scene-descriptor-contract';
@@ -40,36 +35,9 @@ import type { AppRoutePollsSceneState } from './app-route-polls-scene-runtime';
 
 type ListenerDisposer = () => void;
 
-const pollsSceneInputControllerStyles = StyleSheet.create({
-  scrollContent: {
-    paddingBottom: 32,
-    paddingTop: 16,
-  },
-});
-
 const POLLS_MOUNTED_SCENE_CHROME: AppRouteSceneChromePublication = {
   surfaceKind: 'mounted',
   mountedChromeKey: 'polls',
-};
-
-const POLLS_MOUNTED_SCENE_BODY_CONTENT: AppRouteSceneBodyContentSpec = {
-  surfaceKind: 'mounted',
-  mountedBodyKey: 'polls',
-  contentScrollMode: 'scroll',
-};
-
-const POLLS_MOUNTED_SCENE_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
-  contentContainerStyle: [pollsSceneInputControllerStyles.scrollContent],
-  keyboardShouldPersistTaps: 'handled',
-  bounces: false,
-  alwaysBounceVertical: false,
-  overScrollMode: 'never',
-  contentSurfaceStyle: overlaySheetStyles.contentSurfaceWhite,
-};
-
-const POLLS_MOUNTED_SCENE_BODY_ADMISSION_POLICY: AppRouteSceneBodyAdmissionPolicy = {
-  retainMountedBodyDuringTransition: true,
-  keepDataSubscribedAfterActivation: true,
 };
 
 const selectPollsRouteNavigationState = (
@@ -358,16 +326,19 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
       style: overlaySheetStyles.container,
     });
 
-    this.routeSceneRuntime.sceneInputLane.publishRouteSceneDescriptor({
+    // Shell + chrome only — the polls feed body is published as a `'list'`
+    // surface by useAppRoutePollsSceneInputWriterRuntime (the gesture-aware
+    // results-sheet surface). Keeping them on separate lane fields avoids any
+    // last-writer-wins race between this controller and the React body writer.
+    this.routeSceneRuntime.sceneInputLane.publishRouteSceneShell({
       sceneKey: 'polls',
       shellSpec: pollsShellSpec,
+    });
+    this.routeSceneRuntime.sceneInputLane.publishRouteSceneChrome({
+      sceneKey: 'polls',
       sceneChrome: POLLS_MOUNTED_SCENE_CHROME,
-      sceneBodyContent: POLLS_MOUNTED_SCENE_BODY_CONTENT,
-      sceneBodyTransport: POLLS_MOUNTED_SCENE_BODY_TRANSPORT,
-      sceneBodyAdmissionPolicy: POLLS_MOUNTED_SCENE_BODY_ADMISSION_POLICY,
     });
   }
-
 }
 
 export const createAppRoutePollsSceneInputController = ({

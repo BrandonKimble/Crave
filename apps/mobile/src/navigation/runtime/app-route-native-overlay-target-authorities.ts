@@ -16,6 +16,7 @@ import {
   type RouteOverlaySheetPolicySnapshot,
 } from './route-overlay-sheet-policy-snapshot-contract';
 import type { RouteSceneSwitchSnapshot } from './route-scene-switch-snapshot-contract';
+import { getAppOverlayRouteMetadata } from './app-overlay-route-types';
 import { withSearchNavSwitchRuntimeAttribution } from '../../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
 import type { OverlayHeaderActionMode } from '../../overlays/useOverlayHeaderActionController';
 import type { AppRouteOverlayCommandAuthority } from './app-route-overlay-command-controller';
@@ -516,16 +517,23 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     const { routeSceneSwitchSnapshot } = sourceSnapshot;
     const routeState = routeSceneSwitchSnapshot.routeState;
     const isPersistentPollLane = resolveIsPersistentPollLane(sourceSnapshot);
+    const resolvedTargetSceneKey =
+      routeSceneSwitchSnapshot.transitionContract?.targetSceneKey ??
+      routeSceneSwitchSnapshot.pendingSceneKey ??
+      routeSceneSwitchSnapshot.routeActiveSceneKey;
+    // A child scene explicitly opened over the docked poll lane (pollDetail,
+    // pollCreation, restaurant, …) must take the sheet — the persistent-poll-lane
+    // 'polls' forcing only applies while a top-level scene is displayed.
+    const isChildSceneDisplayed =
+      resolvedTargetSceneKey != null &&
+      getAppOverlayRouteMetadata(resolvedTargetSceneKey).role === 'child';
     return {
       rootOverlayKey: routeState.rootOverlayKey,
       displayedRootOverlayKey:
         routeSceneSwitchSnapshot.transitionContract?.committedRootRouteKey ??
         routeState.rootOverlayKey,
-      displayedSceneKey: isPersistentPollLane
-        ? 'polls'
-        : routeSceneSwitchSnapshot.transitionContract?.targetSceneKey ??
-          routeSceneSwitchSnapshot.pendingSceneKey ??
-          routeSceneSwitchSnapshot.routeActiveSceneKey,
+      displayedSceneKey:
+        isPersistentPollLane && !isChildSceneDisplayed ? 'polls' : resolvedTargetSceneKey,
       prewarmedSceneKey: null,
       isSearchOverlay: routeState.rootOverlayKey === 'search',
       isPersistentPollLane,
@@ -628,7 +636,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     const overlayHeaderActionMode =
       sceneHeaderActionMode !== 'fixed-close'
         ? sceneHeaderActionMode
-        : searchHeaderActionModeOverride ?? sceneHeaderActionMode;
+        : (searchHeaderActionModeOverride ?? sceneHeaderActionMode);
     const isCloseHandoffFreezeActive =
       routeScenePolicySnapshot.closeHandoffFreezeClassification === 'close-handoff';
 
@@ -642,7 +650,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     }
 
     return isCloseHandoffFreezeActive
-      ? closeHandoffOverlayHeaderActionMode ?? overlayHeaderActionMode
+      ? (closeHandoffOverlayHeaderActionMode ?? overlayHeaderActionMode)
       : overlayHeaderActionMode;
   };
 

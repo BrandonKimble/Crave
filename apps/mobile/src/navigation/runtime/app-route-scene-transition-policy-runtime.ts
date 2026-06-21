@@ -100,6 +100,7 @@ const CHILD_SHARED_SHEET_SCENES = new Set<OverlayKey>([
   'favoriteListDetail',
   'saveList',
   'pollCreation',
+  'pollDetail',
 ]);
 
 const MODAL_SCENES = new Set<OverlayKey>(['price', 'scoreInfo']);
@@ -184,7 +185,11 @@ const resolveDefaultSheetMotionPlan = ({
     case 'terminalDismiss':
       return { kind: 'hide' };
     case 'openChild':
-      if (targetSceneKey === 'saveList' || targetSceneKey === 'pollCreation') {
+      if (
+        targetSceneKey === 'saveList' ||
+        targetSceneKey === 'pollCreation' ||
+        targetSceneKey === 'pollDetail'
+      ) {
         return { kind: 'snapTo', snap: 'expanded' };
       }
       if (targetSceneKey === 'restaurant') {
@@ -375,12 +380,12 @@ export const resolveAppRouteSceneTransitionPlan = ({
     sheetIntent !== undefined
       ? sheetIntent
       : resolvedSheetSnapTarget == null
-      ? null
-      : {
-          sceneKey: resolveAppRouteSceneSheetHostSceneKey(targetSceneKey) ?? targetSceneKey,
-          snapTarget: resolvedSheetSnapTarget,
-          role: 'incoming' as const,
-        };
+        ? null
+        : {
+            sceneKey: resolveAppRouteSceneSheetHostSceneKey(targetSceneKey) ?? targetSceneKey,
+            snapTarget: resolvedSheetSnapTarget,
+            role: 'incoming' as const,
+          };
   const resolvedChromeVisibilityTarget =
     chromeVisibilityTarget ??
     resolveAppRouteSceneChromeVisibilityTarget({
@@ -435,7 +440,7 @@ export const resolveAppRouteSceneTransitionPlan = ({
       cameraIntent,
       chromeVisibilityTarget: resolvedChromeVisibilityTarget,
     }),
-    pollsParams: targetSceneKey === 'polls' ? pollsParams ?? null : null,
+    pollsParams: targetSceneKey === 'polls' ? (pollsParams ?? null) : null,
     dockedPollsRestoreSnap: resolveDockedPollsRestoreSnap({
       targetSceneKey,
       snapTarget: resolvedSheetSnapTarget,

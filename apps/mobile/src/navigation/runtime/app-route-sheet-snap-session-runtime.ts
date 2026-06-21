@@ -89,6 +89,7 @@ const isSharedOverlaySnapOwner = ({
 }): boolean =>
   activeOverlayKey === 'polls' ||
   activeOverlayKey === 'pollCreation' ||
+  activeOverlayKey === 'pollDetail' ||
   activeOverlayKey === 'bookmarks' ||
   activeOverlayKey === 'profile' ||
   (rootOverlay === 'search' && activeOverlayKey === 'restaurant');

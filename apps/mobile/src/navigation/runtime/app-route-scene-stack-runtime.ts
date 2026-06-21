@@ -187,11 +187,7 @@ const resolveAppRouteStaticSceneMount = ({
     };
   }
 
-  if (
-    !nextState.pollsPrewarmed &&
-    isPollsSceneReady &&
-    transitionPhase === 'idle'
-  ) {
+  if (!nextState.pollsPrewarmed && isPollsSceneReady && transitionPhase === 'idle') {
     nextState = {
       ...nextState,
       pollsPrewarmed: true,
@@ -590,7 +586,7 @@ const createStableLayerSceneEntry = ({
   sceneEntry: AppRouteSceneInputSnapshot | null;
 }): SceneStackControllerSceneEntry | null => {
   const nextEntry = createLayerSceneEntry(sceneEntry);
-  return areLayerSceneEntriesEqual(previousEntry, nextEntry) ? previousEntry ?? null : nextEntry;
+  return areLayerSceneEntriesEqual(previousEntry, nextEntry) ? (previousEntry ?? null) : nextEntry;
 };
 
 const createStableLayerSceneEntryWithChrome = ({
@@ -626,7 +622,7 @@ const createStableLayerSceneEntryWithChrome = ({
     bodyAdmissionPolicy: sceneEntry.sceneBodyAdmissionPolicy,
   };
 
-  return areLayerSceneEntriesEqual(previousEntry, nextEntry) ? previousEntry ?? null : nextEntry;
+  return areLayerSceneEntriesEqual(previousEntry, nextEntry) ? (previousEntry ?? null) : nextEntry;
 };
 
 const createStableLayerSceneEntryWithBody = ({
@@ -660,7 +656,7 @@ const createStableLayerSceneEntryWithBody = ({
     bodyAdmissionPolicy: sceneEntry.sceneBodyAdmissionPolicy,
   };
 
-  return areLayerSceneEntriesEqual(previousEntry, nextEntry) ? previousEntry ?? null : nextEntry;
+  return areLayerSceneEntriesEqual(previousEntry, nextEntry) ? (previousEntry ?? null) : nextEntry;
 };
 
 const shouldDeferSceneBodyInputPublication = ({
@@ -1237,9 +1233,11 @@ class AppRouteSceneStackLayerStateController {
     const bodySurfaceSnapshot = this.getSceneBodySurfaceSnapshot('polls');
     const headerEntry = presentationSnapshot.chromeSurfaces.header;
     const mountedBodyKey = this.getBodySurfaceMountedBodyKey(bodySurfaceSnapshot);
+    const bodySurfaceKind = bodySurfaceSnapshot.contentEntry?.bodyContentSpec?.surfaceKind ?? null;
     const expectedContract = PERSISTENT_POLL_IDLE_SHEET_HEADER_RESTORATION_CONTRACT;
     const contentActivity = {
       shouldAttachMountedContent: bodySurfaceSnapshot.contentActivity.shouldAttachMountedContent,
+      shouldRenderListBody: bodySurfaceSnapshot.contentActivity.shouldRenderListBody,
       shouldRunDataLane: bodySurfaceSnapshot.contentActivity.shouldRunDataLane,
       shouldSubscribeDataLane: bodySurfaceSnapshot.contentActivity.shouldSubscribeDataLane,
     };
@@ -1248,12 +1246,15 @@ class AppRouteSceneStackLayerStateController {
     const hasMountedPollHeader =
       headerEntry?.surfaceKind === 'mounted' &&
       headerEntry.mountedChromeKey === expectedContract.mountedChromeKey;
-    const hasMountedPollBody =
-      mountedBodyKey === 'polls' && contentActivity.shouldAttachMountedContent;
+    // The polls feed now renders as a `'list'` surface (the shared results-sheet
+    // surface), so the dismiss handoff must treat a rendered list body as "ready"
+    // just like the legacy mounted body — otherwise markPollPagePartReady never
+    // fires for the body/host and the search→docked-polls restore stalls.
+    const hasPollBody =
+      (mountedBodyKey === 'polls' && contentActivity.shouldAttachMountedContent) ||
+      (bodySurfaceKind === 'list' && contentActivity.shouldRenderListBody);
     const hasPollBodyContentLane =
-      hasMountedPollBody &&
-      contentActivity.shouldRunDataLane &&
-      contentActivity.shouldSubscribeDataLane;
+      hasPollBody && contentActivity.shouldRunDataLane && contentActivity.shouldSubscribeDataLane;
     if (dismissTransaction != null) {
       if (hasMountedPollHeader) {
         searchSurfaceRuntime.markPollPagePartReady(
@@ -1359,10 +1360,10 @@ class AppRouteSceneStackLayerStateController {
       surface === 'underlay'
         ? entry.underlayComponent
         : surface === 'background'
-        ? entry.backgroundComponent
-        : surface === 'header'
-        ? entry.headerComponent
-        : entry.overlayComponent;
+          ? entry.backgroundComponent
+          : surface === 'header'
+            ? entry.headerComponent
+            : entry.overlayComponent;
     if (surfaceComponent == null) {
       return null;
     }
@@ -1654,7 +1655,12 @@ class AppRouteSceneStackLayerStateController {
     snapshot: AppRouteSceneStackBodySurfaceSnapshot
   ): boolean {
     const sceneKey = snapshot.contentEntry?.sceneKey;
-    return sceneKey === 'polls' || sceneKey === 'pollCreation' || sceneKey === 'saveList';
+    return (
+      sceneKey === 'polls' ||
+      sceneKey === 'pollCreation' ||
+      sceneKey === 'pollDetail' ||
+      sceneKey === 'saveList'
+    );
   }
 
   private markSceneBodySurfaceSnapshotDiff(
@@ -1889,8 +1895,8 @@ class AppRouteSceneStackLayerStateController {
     const activationPhase = !isActive
       ? 'inactive'
       : isTransitionParticipant || !canInteract
-      ? 'transitioning'
-      : 'interactive';
+        ? 'transitioning'
+        : 'interactive';
     const bodyAdmissionPolicy = sceneEntry?.bodyAdmissionPolicy;
     const shouldRetainMountedBody = shouldRetainMountedSceneBody(bodyAdmissionPolicy);
     const hasActivatedExpandedContent =
@@ -2276,7 +2282,7 @@ class AppRouteSceneStackLayerStateController {
     });
     const activeSceneChromeEntry =
       this.snapshot.activeSceneKey === sceneKey
-        ? nextSceneEntry?.chromeEntry ?? null
+        ? (nextSceneEntry?.chromeEntry ?? null)
         : this.snapshot.activeSceneChromeEntry;
 
     if (
@@ -2492,7 +2498,7 @@ class AppRouteSceneStackLayerStateController {
       const mountedSceneKeys = this.snapshot.mountedSceneKeys;
       const sceneEntryByKey = this.snapshot.sceneEntryByKey;
       const activeSceneEntry =
-        activeSceneKey == null ? null : sceneEntryByKey[activeSceneKey] ?? null;
+        activeSceneKey == null ? null : (sceneEntryByKey[activeSceneKey] ?? null);
       const nextSnapshot: SceneStackControllerSnapshot = {
         activeSceneKey,
         interactiveSceneKey,
@@ -2502,7 +2508,7 @@ class AppRouteSceneStackLayerStateController {
         mountedSceneKeys,
         activeSceneFrameEntry: activeSceneEntry?.frameEntry ?? null,
         activeSceneChromeEntry:
-          activeSceneKey == null ? null : sceneEntryByKey[activeSceneKey]?.chromeEntry ?? null,
+          activeSceneKey == null ? null : (sceneEntryByKey[activeSceneKey]?.chromeEntry ?? null),
         sceneEntryByKey,
       };
 
@@ -2722,7 +2728,7 @@ class AppRouteSceneStackLayerStateController {
           }
         });
         const activeSceneEntry =
-          activeSceneKey == null ? null : sceneEntryByKey[activeSceneKey] ?? null;
+          activeSceneKey == null ? null : (sceneEntryByKey[activeSceneKey] ?? null);
 
         const nextSnapshot: SceneStackControllerSnapshot = {
           activeSceneKey,
@@ -2733,7 +2739,7 @@ class AppRouteSceneStackLayerStateController {
           mountedSceneKeys,
           activeSceneFrameEntry: activeSceneEntry?.frameEntry ?? null,
           activeSceneChromeEntry:
-            activeSceneKey == null ? null : sceneEntryByKey[activeSceneKey]?.chromeEntry ?? null,
+            activeSceneKey == null ? null : (sceneEntryByKey[activeSceneKey]?.chromeEntry ?? null),
           sceneEntryByKey,
         };
 

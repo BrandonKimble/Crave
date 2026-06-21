@@ -16,6 +16,7 @@ import { useAppRouteSceneRuntime } from './AppRouteSceneRuntimeProvider';
 import type { AppRouteSceneRuntime } from './app-route-scene-runtime';
 import { createAppRoutePollsSceneInputController } from './app-route-polls-scene-input-controller';
 import { useAppRouteDynamicSceneInputWritersRuntime } from './use-app-route-dynamic-scene-input-writers-runtime';
+import { useAppRoutePollsSceneInputWriterRuntime } from './use-app-route-polls-scene-input-writer-runtime';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
@@ -59,6 +60,10 @@ const AppRouteSceneInputWritersRuntimeHost = React.memo(
         pollsSceneInputController.dispose();
       };
     }, [routeSceneRuntime]);
+
+    useAppRoutePollsSceneInputWriterRuntime({
+      routeSceneRuntime,
+    });
 
     useAppRouteDynamicSceneInputWritersRuntime({
       routeSceneRuntime,

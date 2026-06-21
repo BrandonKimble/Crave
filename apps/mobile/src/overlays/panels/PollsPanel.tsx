@@ -16,7 +16,12 @@ import { useRouteAuthoritySelector } from '../../navigation/runtime/use-route-au
 import {
   OVERLAY_HEADER_CLOSE_BUTTON_SIZE,
   OVERLAY_HORIZONTAL_PADDING,
+  overlaySheetStyles,
 } from '../overlaySheetStyles';
+import type {
+  AppRouteSceneBodyContentSpec,
+  AppRouteSceneBodyTransportSpec,
+} from '../../navigation/runtime/app-route-scene-descriptor-contract';
 import SquircleSpinner from '../../components/SquircleSpinner';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
@@ -355,8 +360,27 @@ const PollsSceneHeader = React.memo(
 
 PollsSceneHeader.displayName = 'PollsSceneHeader';
 
-export const PollsMountedSceneBody = React.memo(() => {
-  useSearchNavSwitchCommitAttribution('PollsMountedSceneBody');
+const POLLS_LIST_ESTIMATED_ITEM_SIZE = 190;
+const EMPTY_POLL_LIST: readonly Poll[] = [];
+
+const POLLS_LIST_BODY_ADMISSION_POLICY = {
+  retainMountedBodyDuringTransition: true,
+  keepDataSubscribedAfterActivation: true,
+} as const;
+
+/**
+ * Builds the polls feed as a `'list'` scene body — the SAME gesture-aware
+ * FlashList surface the results sheet uses (sheet-drag → list-scroll handoff in
+ * one gesture, and card taps that actually fire). Published by the polls
+ * scene-input writer (see use-app-route-polls-scene-input-writer-runtime). The
+ * feed data + header-model publication live here, mounted independent of body
+ * surface kind so the chicken-and-egg of "mounted body owns the data" is gone.
+ */
+export const usePollsPanelListSceneParts = (): {
+  sceneBodyContent: AppRouteSceneBodyContentSpec;
+  sceneBodyTransport: AppRouteSceneBodyTransportSpec;
+} => {
+  useSearchNavSwitchCommitAttribution('PollsSceneInputWriter');
   const routeSceneRuntime = useAppRouteSceneRuntime();
   const { pushRoute } = useAppOverlayRouteController();
   const pollsSceneActions = routeSceneRuntime.routePollsSceneRuntime.sceneActions;
@@ -402,17 +426,43 @@ export const PollsMountedSceneBody = React.memo(() => {
     pollsPanelFeedRuntime,
   });
 
-  const bodyContentStyle = React.useMemo(
-    () => [styles.collapsedContent, { paddingBottom: pollsPanelFeedRuntime.contentBottomPadding }],
-    [pollsPanelFeedRuntime.contentBottomPadding]
-  );
+  const {
+    contentBottomPadding,
+    loading,
+    isPollFeedRefreshing,
+    isSystemUnavailable,
+    polls,
+    visiblePolls,
+    resolvedSnap,
+    shouldHoldFreshLiveContent,
+    pollFeedFreshnessError,
+    marketStatus,
+    candidateLocalityName,
+    marketName,
+  } = pollsPanelFeedRuntime;
 
-  // Poll creation is launched from the header "+" button; the body header is just a
-  // quiet refresh indicator when the live feed updates over an existing list.
-  const listHeaderComponent = React.useMemo(() => {
+  const shouldShowCollapsedSpinner = loading || (isSystemUnavailable && polls.length === 0);
+  const hasVisiblePolls = visiblePolls.length > 0;
+  const isExpandedSurface = resolvedSnap === 'middle' || resolvedSnap === 'expanded';
+
+  const renderItem = React.useCallback(
+    ({ item }: { item: unknown }) => <PollCard poll={item as Poll} onPress={handleOpenPoll} />,
+    [handleOpenPoll]
+  );
+  const keyExtractor = React.useCallback((item: unknown) => (item as Poll).pollId, []);
+
+  const listData: readonly Poll[] =
+    hasVisiblePolls && !shouldHoldFreshLiveContent && !shouldShowCollapsedSpinner
+      ? visiblePolls
+      : EMPTY_POLL_LIST;
+
+  // Quiet refresh indicator above an existing list while the live feed updates.
+  const ListHeaderComponent = React.useMemo(() => {
     if (
-      !(pollsPanelFeedRuntime.loading || pollsPanelFeedRuntime.isPollFeedRefreshing) ||
-      pollsPanelFeedRuntime.polls.length === 0
+      !isExpandedSurface ||
+      listData.length === 0 ||
+      !(loading || isPollFeedRefreshing) ||
+      polls.length === 0
     ) {
       return null;
     }
@@ -423,102 +473,88 @@ export const PollsMountedSceneBody = React.memo(() => {
         </View>
       </View>
     );
-  }, [
-    pollsPanelFeedRuntime.isPollFeedRefreshing,
-    pollsPanelFeedRuntime.loading,
-    pollsPanelFeedRuntime.polls.length,
-  ]);
+  }, [isExpandedSurface, isPollFeedRefreshing, listData.length, loading, polls.length]);
 
-  const shouldShowCollapsedSpinner =
-    pollsPanelFeedRuntime.loading ||
-    (pollsPanelFeedRuntime.isSystemUnavailable && pollsPanelFeedRuntime.polls.length === 0);
-  const hasVisiblePolls = pollsPanelFeedRuntime.visiblePolls.length > 0;
-  const isExpandedSurface =
-    pollsPanelFeedRuntime.resolvedSnap === 'middle' ||
-    pollsPanelFeedRuntime.resolvedSnap === 'expanded';
-  const maybeListHeaderComponent = isExpandedSurface ? listHeaderComponent : null;
-
-  let emptyMessage = 'No polls available yet.';
-  if (
-    pollsPanelFeedRuntime.marketStatus === 'no_market' &&
-    pollsPanelFeedRuntime.candidateLocalityName
-  ) {
-    emptyMessage = `Create the first poll in ${pollsPanelFeedRuntime.candidateLocalityName} and start surfacing local favorites.`;
-  } else if (pollsPanelFeedRuntime.marketName) {
-    emptyMessage = `Create the first poll in ${pollsPanelFeedRuntime.marketName} and start surfacing local favorites.`;
-  }
-
-  const pollCards = hasVisiblePolls ? (
-    <View style={styles.collapsedCards}>
-      {pollsPanelFeedRuntime.visiblePolls.map((poll) => (
-        <View key={poll.pollId} style={styles.collapsedCardRow}>
-          <PollCard poll={poll} onPress={handleOpenPoll} />
-        </View>
-      ))}
-    </View>
-  ) : null;
-
-  if (pollsPanelFeedRuntime.shouldHoldFreshLiveContent) {
-    return (
-      <View style={bodyContentStyle}>
-        {maybeListHeaderComponent}
+  const ListEmptyComponent = React.useMemo(() => {
+    if (shouldHoldFreshLiveContent) {
+      return (
         <View style={styles.loaderCentered}>
-          {pollsPanelFeedRuntime.pollFeedFreshnessError ? null : (
-            <SquircleSpinner size={22} color={ACCENT} />
-          )}
+          {pollFeedFreshnessError ? null : <SquircleSpinner size={22} color={ACCENT} />}
           <Text variant="body" style={styles.emptyState}>
-            {pollsPanelFeedRuntime.pollFeedFreshnessError
-              ? 'Unable to refresh live polls.'
-              : 'Updating live polls...'}
+            {pollFeedFreshnessError ? 'Unable to refresh live polls.' : 'Updating live polls...'}
           </Text>
         </View>
-      </View>
-    );
-  }
-
-  return (
-    <View style={bodyContentStyle}>
-      {maybeListHeaderComponent}
-      {shouldShowCollapsedSpinner ? (
+      );
+    }
+    if (shouldShowCollapsedSpinner) {
+      return (
         <View style={styles.loaderCentered}>
           <SquircleSpinner size={22} color={ACCENT} />
         </View>
-      ) : (
-        (pollCards ?? (
-          <Text variant="body" style={styles.emptyState}>
-            {isExpandedSurface ? emptyMessage : 'No polls available yet.'}
-          </Text>
-        ))
-      )}
-    </View>
-  );
-});
+      );
+    }
+    let emptyMessage = 'No polls available yet.';
+    if (marketStatus === 'no_market' && candidateLocalityName) {
+      emptyMessage = `Create the first poll in ${candidateLocalityName} and start surfacing local favorites.`;
+    } else if (marketName) {
+      emptyMessage = `Create the first poll in ${marketName} and start surfacing local favorites.`;
+    }
+    return (
+      <Text variant="body" style={styles.emptyState}>
+        {isExpandedSurface ? emptyMessage : 'No polls available yet.'}
+      </Text>
+    );
+  }, [
+    candidateLocalityName,
+    isExpandedSurface,
+    marketName,
+    marketStatus,
+    pollFeedFreshnessError,
+    shouldHoldFreshLiveContent,
+    shouldShowCollapsedSpinner,
+  ]);
 
-PollsMountedSceneBody.displayName = 'PollsMountedSceneBody';
+  const sceneBodyContent = React.useMemo<AppRouteSceneBodyContentSpec>(
+    () => ({
+      surfaceKind: 'list',
+      data: listData,
+      renderItem,
+      keyExtractor,
+      estimatedItemSize: POLLS_LIST_ESTIMATED_ITEM_SIZE,
+      ListHeaderComponent,
+      ListEmptyComponent,
+    }),
+    [ListEmptyComponent, ListHeaderComponent, keyExtractor, listData, renderItem]
+  );
+
+  const sceneBodyTransport = React.useMemo<AppRouteSceneBodyTransportSpec>(
+    () => ({
+      contentContainerStyle: {
+        paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
+        paddingTop: 16,
+        paddingBottom: contentBottomPadding,
+      },
+      keyboardShouldPersistTaps: 'handled',
+      bounces: false,
+      alwaysBounceVertical: false,
+      overScrollMode: 'never',
+      contentSurfaceStyle: overlaySheetStyles.contentSurfaceWhite,
+    }),
+    [contentBottomPadding]
+  );
+
+  return { sceneBodyContent, sceneBodyTransport };
+};
+
+export const POLLS_SCENE_LIST_BODY_ADMISSION_POLICY = POLLS_LIST_BODY_ADMISSION_POLICY;
 
 const styles = StyleSheet.create({
   headerRow: {
     justifyContent: 'flex-start',
     gap: 10,
   },
-  scrollContent: {
-    paddingBottom: 32,
-    paddingTop: 16,
-  },
   listHeader: {
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-  },
-  collapsedContent: {
-    flex: 1,
-    alignSelf: 'stretch',
-    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-    backgroundColor: 'transparent',
-  },
-  collapsedCards: {
-    gap: CARD_GAP,
-  },
-  collapsedCardRow: {
-    minHeight: 0,
   },
   loader: {
     marginTop: 12,
