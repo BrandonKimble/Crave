@@ -854,20 +854,83 @@ export class PollsService {
     await this.rebuildPollLeaderboard(pollId);
   }
 
+  /**
+   * Dish-axis polls (best_dish / what_to_order / best_dish_attribute) rank
+   * restaurant+dish Connections — every option is restaurant-anchored (plan §2.3).
+   * Only best_restaurant_attribute ranks bare restaurant entities. A dish with no
+   * resolvable restaurant is NOT a leaderboard row (it stays discussion-only).
+   */
+  private usesConnectionSubjects(
+    topicType: PollTopicType | undefined,
+  ): boolean {
+    return (
+      topicType === PollTopicType.best_dish ||
+      topicType === PollTopicType.what_to_order ||
+      topicType === PollTopicType.best_dish_attribute
+    );
+  }
+
+  /**
+   * Resolve the (restaurant, dish) pairs a comment's gazetteer spans endorse, per
+   * the poll's axis. The fixed side comes from the topic; the variable side from
+   * the comment. Pairs that can't be completed (e.g. a dish with no restaurant)
+   * are dropped — never bare-entity rows.
+   */
+  private resolveConnectionPairs(
+    topicType: PollTopicType | undefined,
+    targets: { targetRestaurantId: string | null; targetDishId: string | null },
+    spanRestaurantIds: string[],
+    spanFoodIds: string[],
+  ): Array<{ restaurantId: string; foodId: string }> {
+    const pairs: Array<{ restaurantId: string; foodId: string }> = [];
+    if (topicType === PollTopicType.what_to_order) {
+      // Fixed restaurant (the poll's spot), variable dish from the comment.
+      if (!targets.targetRestaurantId) return pairs;
+      for (const foodId of spanFoodIds) {
+        pairs.push({ restaurantId: targets.targetRestaurantId, foodId });
+      }
+    } else if (topicType === PollTopicType.best_dish) {
+      // Fixed dish (the poll's axis), variable restaurant from the comment;
+      // specific dishes named in the comment roll up to the axis dish.
+      if (!targets.targetDishId) return pairs;
+      for (const restaurantId of spanRestaurantIds) {
+        pairs.push({ restaurantId, foodId: targets.targetDishId });
+      }
+    } else if (topicType === PollTopicType.best_dish_attribute) {
+      // Both sides come from the comment — pair each restaurant with each dish.
+      for (const restaurantId of spanRestaurantIds) {
+        for (const foodId of spanFoodIds) {
+          pairs.push({ restaurantId, foodId });
+        }
+      }
+    }
+    return pairs;
+  }
+
   private async rebuildPollLeaderboard(pollId: string): Promise<void> {
     const poll = await this.prisma.poll.findUnique({
       where: { pollId },
-      select: { mode: true, topic: { select: { topicType: true } } },
+      select: {
+        mode: true,
+        topic: {
+          select: {
+            topicType: true,
+            targetRestaurantId: true,
+            targetDishId: true,
+          },
+        },
+      },
     });
     if (!poll || poll.mode === PollMode.discussion) {
       await this.prisma.pollLeaderboardEntry.deleteMany({ where: { pollId } });
       return;
     }
 
-    const subjectSpanType: EntityType =
-      poll.topic?.topicType === PollTopicType.what_to_order
-        ? EntityType.food
-        : EntityType.restaurant;
+    const topicType = poll.topic?.topicType;
+    const useConnections = this.usesConnectionSubjects(topicType);
+    const subjectType = useConnections
+      ? PollLeaderboardSubjectType.connection
+      : PollLeaderboardSubjectType.entity;
 
     const comments = await this.prisma.pollComment.findMany({
       where: {
@@ -888,36 +951,116 @@ export class PollsService {
       else likersByComment.set(like.commentId, [like.userId]);
     }
 
-    // subjectId → distinct endorsing users
-    const endorsers = new Map<string, Set<string>>();
-    for (const comment of comments) {
-      const spans = (Array.isArray(comment.entitySpans)
+    const spansOf = (comment: { entitySpans: unknown }): EntitySpan[] =>
+      (Array.isArray(comment.entitySpans)
         ? comment.entitySpans
-        : []) as unknown as EntitySpan[];
-      const subjectIds = new Set(
+        : []) as EntitySpan[];
+    const entityIdsOfType = (
+      spans: EntitySpan[],
+      type: EntityType,
+    ): string[] => [
+      ...new Set(
         spans
-          .filter((s) => s?.type === subjectSpanType && s?.entityId)
+          .filter((s) => s?.type === type && s?.entityId)
           .map((s) => s.entityId),
-      );
-      if (!subjectIds.size) continue;
-      const endorsingUsers = [
-        comment.userId,
-        ...(likersByComment.get(comment.commentId) ?? []),
-      ];
-      for (const subjectId of subjectIds) {
-        let set = endorsers.get(subjectId);
-        if (!set) {
-          set = new Set();
-          endorsers.set(subjectId, set);
+      ),
+    ];
+
+    // subjectId (entityId for restaurant-axis, connectionId for dish-axis) → distinct endorsers.
+    const endorsers = new Map<string, Set<string>>();
+
+    if (useConnections) {
+      // First pass: collect every (restaurant, dish) pair, then find-or-create their
+      // Connections in one go so the leaderboard subjectId references a real row.
+      const targets = {
+        targetRestaurantId: poll.topic?.targetRestaurantId ?? null,
+        targetDishId: poll.topic?.targetDishId ?? null,
+      };
+      const pairKey = (restaurantId: string, foodId: string): string =>
+        `${restaurantId}:${foodId}`;
+      const commentPairs: Array<{
+        endorsingUsers: string[];
+        pairs: Array<{ restaurantId: string; foodId: string }>;
+      }> = [];
+      const uniquePairs = new Map<
+        string,
+        { restaurantId: string; foodId: string }
+      >();
+      for (const comment of comments) {
+        const spans = spansOf(comment);
+        const pairs = this.resolveConnectionPairs(
+          topicType,
+          targets,
+          entityIdsOfType(spans, EntityType.restaurant),
+          entityIdsOfType(spans, EntityType.food),
+        );
+        if (!pairs.length) continue;
+        commentPairs.push({
+          endorsingUsers: [
+            comment.userId,
+            ...(likersByComment.get(comment.commentId) ?? []),
+          ],
+          pairs,
+        });
+        for (const pair of pairs)
+          uniquePairs.set(pairKey(pair.restaurantId, pair.foodId), pair);
+      }
+      const connectionIdByPair = new Map<string, string>();
+      for (const [key, pair] of uniquePairs) {
+        const connection = await this.prisma.connection.upsert({
+          where: {
+            restaurantId_foodId: {
+              restaurantId: pair.restaurantId,
+              foodId: pair.foodId,
+            },
+          },
+          create: { restaurantId: pair.restaurantId, foodId: pair.foodId },
+          update: {},
+          select: { connectionId: true },
+        });
+        connectionIdByPair.set(key, connection.connectionId);
+      }
+      for (const { pairs, endorsingUsers } of commentPairs) {
+        for (const pair of pairs) {
+          const connectionId = connectionIdByPair.get(
+            pairKey(pair.restaurantId, pair.foodId),
+          );
+          if (!connectionId) continue;
+          let set = endorsers.get(connectionId);
+          if (!set) {
+            set = new Set();
+            endorsers.set(connectionId, set);
+          }
+          for (const u of endorsingUsers) set.add(u);
         }
-        for (const u of endorsingUsers) set.add(u);
+      }
+    } else {
+      // Restaurant-axis (best_restaurant_attribute): bare restaurant entity subjects.
+      for (const comment of comments) {
+        const subjectIds = entityIdsOfType(
+          spansOf(comment),
+          EntityType.restaurant,
+        );
+        if (!subjectIds.length) continue;
+        const endorsingUsers = [
+          comment.userId,
+          ...(likersByComment.get(comment.commentId) ?? []),
+        ];
+        for (const subjectId of subjectIds) {
+          let set = endorsers.get(subjectId);
+          if (!set) {
+            set = new Set();
+            endorsers.set(subjectId, set);
+          }
+          for (const u of endorsingUsers) set.add(u);
+        }
       }
     }
 
     // Fold in direct per-candidate endorsements (tap-to-endorse on the bars) —
-    // the §13A public endorse signal counted alongside comment-derived endorsers.
+    // matched to this poll's subject kind — alongside comment-derived endorsers.
     const directEndorsements = await this.prisma.pollEndorsement.findMany({
-      where: { pollId, subjectType: PollLeaderboardSubjectType.entity },
+      where: { pollId, subjectType },
       select: { subjectId: true, userId: true },
     });
     for (const endorsement of directEndorsements) {
@@ -942,7 +1085,7 @@ export class PollsService {
         await tx.pollLeaderboardEntry.createMany({
           data: ranked.map((r, i) => ({
             pollId,
-            subjectType: PollLeaderboardSubjectType.entity,
+            subjectType,
             subjectId: r.subjectId,
             distinctEndorsers: r.distinctEndorsers,
             score: r.distinctEndorsers,
@@ -953,18 +1096,92 @@ export class PollsService {
     });
   }
 
+  /**
+   * Display label for a restaurant+dish Connection subject — the side the poll is
+   * choosing among (a dish for fixed-restaurant polls, a restaurant for fixed-dish
+   * polls, "Dish at Restaurant" for the free-form attribute axis).
+   */
+  private formatConnectionDisplayName(
+    topicType: PollTopicType | undefined,
+    restaurantName: string | null,
+    foodName: string | null,
+  ): string | null {
+    if (topicType === PollTopicType.what_to_order) {
+      return foodName ?? restaurantName;
+    }
+    if (topicType === PollTopicType.best_dish) {
+      return restaurantName ?? foodName;
+    }
+    if (foodName && restaurantName) {
+      return `${foodName} at ${restaurantName}`;
+    }
+    return foodName ?? restaurantName;
+  }
+
+  /** Resolve display name/type for leaderboard subjects (entity OR connection). */
+  private async resolveLeaderboardSubjectDisplay(
+    subjects: Array<{
+      subjectType: PollLeaderboardSubjectType;
+      subjectId: string;
+    }>,
+    topicType: PollTopicType | undefined,
+  ): Promise<Map<string, { name: string | null; type: string | null }>> {
+    const display = new Map<
+      string,
+      { name: string | null; type: string | null }
+    >();
+    const entityIds = subjects
+      .filter((s) => s.subjectType === PollLeaderboardSubjectType.entity)
+      .map((s) => s.subjectId);
+    const connectionIds = subjects
+      .filter((s) => s.subjectType === PollLeaderboardSubjectType.connection)
+      .map((s) => s.subjectId);
+    if (entityIds.length) {
+      const entities = await this.prisma.entity.findMany({
+        where: { entityId: { in: entityIds } },
+        select: { entityId: true, name: true, type: true },
+      });
+      for (const e of entities) {
+        display.set(e.entityId, { name: e.name, type: e.type });
+      }
+    }
+    if (connectionIds.length) {
+      const connections = await this.prisma.connection.findMany({
+        where: { connectionId: { in: connectionIds } },
+        select: {
+          connectionId: true,
+          restaurant: { select: { name: true } },
+          food: { select: { name: true } },
+        },
+      });
+      for (const c of connections) {
+        display.set(c.connectionId, {
+          name: this.formatConnectionDisplayName(
+            topicType,
+            c.restaurant?.name ?? null,
+            c.food?.name ?? null,
+          ),
+          type: 'connection',
+        });
+      }
+    }
+    return display;
+  }
+
   async getPollLeaderboard(pollId: string, viewerUserId?: string | null) {
     const entries = await this.prisma.pollLeaderboardEntry.findMany({
       where: { pollId },
       orderBy: { rank: 'asc' },
     });
     if (!entries.length) return [];
-    const ids = entries.map((e) => e.subjectId);
-    const entities = await this.prisma.entity.findMany({
-      where: { entityId: { in: ids } },
-      select: { entityId: true, name: true, type: true },
+    const poll = await this.prisma.poll.findUnique({
+      where: { pollId },
+      select: { topic: { select: { topicType: true } } },
     });
-    const byId = new Map(entities.map((e) => [e.entityId, e]));
+    const display = await this.resolveLeaderboardSubjectDisplay(
+      entries,
+      poll?.topic?.topicType,
+    );
     const endorsedByViewer = viewerUserId
       ? new Set(
           (
@@ -979,8 +1196,8 @@ export class PollsService {
       rank: e.rank,
       subjectType: e.subjectType,
       subjectId: e.subjectId,
-      name: byId.get(e.subjectId)?.name ?? null,
-      type: byId.get(e.subjectId)?.type ?? null,
+      name: display.get(e.subjectId)?.name ?? null,
+      type: display.get(e.subjectId)?.type ?? null,
       distinctEndorsers: e.distinctEndorsers,
       currentUserEndorsed: endorsedByViewer.has(e.subjectId),
     }));
@@ -1295,18 +1512,73 @@ export class PollsService {
         distinctEndorsers: true,
       },
     });
-    const candidateEntityIds = Array.from(
-      new Set(candidateRows.map((row) => row.subjectId)),
+    // Resolve candidate display names — entity subjects via Entity, connection
+    // (restaurant+dish) subjects via Connection, formatted per the poll's axis.
+    const entitySubjectIds = Array.from(
+      new Set(
+        candidateRows
+          .filter(
+            (row) => row.subjectType === PollLeaderboardSubjectType.entity,
+          )
+          .map((row) => row.subjectId),
+      ),
     );
-    const candidateEntities = candidateEntityIds.length
-      ? await this.prisma.entity.findMany({
-          where: { entityId: { in: candidateEntityIds } },
-          select: { entityId: true, name: true },
-        })
-      : [];
+    const connectionSubjectIds = Array.from(
+      new Set(
+        candidateRows
+          .filter(
+            (row) => row.subjectType === PollLeaderboardSubjectType.connection,
+          )
+          .map((row) => row.subjectId),
+      ),
+    );
     const candidateNameById = new Map(
-      candidateEntities.map((row) => [row.entityId, row.name]),
+      (entitySubjectIds.length
+        ? await this.prisma.entity.findMany({
+            where: { entityId: { in: entitySubjectIds } },
+            select: { entityId: true, name: true },
+          })
+        : []
+      ).map((row) => [row.entityId, row.name]),
     );
+    const connectionById = new Map(
+      (connectionSubjectIds.length
+        ? await this.prisma.connection.findMany({
+            where: { connectionId: { in: connectionSubjectIds } },
+            select: {
+              connectionId: true,
+              restaurant: { select: { name: true } },
+              food: { select: { name: true } },
+            },
+          })
+        : []
+      ).map((row) => [row.connectionId, row]),
+    );
+    const topicTypeByPoll = new Map(
+      connectionSubjectIds.length
+        ? (
+            await this.prisma.poll.findMany({
+              where: { pollId: { in: pollIds } },
+              select: { pollId: true, topic: { select: { topicType: true } } },
+            })
+          ).map((p) => [p.pollId, p.topic?.topicType])
+        : [],
+    );
+    const resolveCandidateName = (row: {
+      pollId: string;
+      subjectType: PollLeaderboardSubjectType;
+      subjectId: string;
+    }): string | null => {
+      if (row.subjectType === PollLeaderboardSubjectType.connection) {
+        const connection = connectionById.get(row.subjectId);
+        return this.formatConnectionDisplayName(
+          topicTypeByPoll.get(row.pollId),
+          connection?.restaurant?.name ?? null,
+          connection?.food?.name ?? null,
+        );
+      }
+      return candidateNameById.get(row.subjectId) ?? null;
+    };
     const viewerEndorsements = viewerUserId
       ? await this.prisma.pollEndorsement.findMany({
           where: { pollId: { in: pollIds }, userId: viewerUserId },
@@ -1333,7 +1605,7 @@ export class PollsService {
         rank: row.rank,
         subjectType: row.subjectType,
         subjectId: row.subjectId,
-        name: candidateNameById.get(row.subjectId) ?? null,
+        name: resolveCandidateName(row),
         distinctEndorsers: row.distinctEndorsers,
         currentUserEndorsed: viewerEndorsedKeys.has(
           `${row.pollId}:${row.subjectId}`,

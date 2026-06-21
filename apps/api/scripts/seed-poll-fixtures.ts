@@ -35,19 +35,26 @@ type SeedPoll = {
   topicType: PollTopicType;
   origin: PollOrigin;
   question: string;
+  // The poll's axis target, resolved live via the gazetteer (dish for dish-axis
+  // polls, so the leaderboard ranks restaurant+dish Connections; omit for the
+  // restaurant-attribute axis which ranks bare restaurant entities).
+  target?: { name: string; type: EntityType };
   comments: string[]; // one per author, round-robined across seed users
 };
 
 // Comment bodies mention REAL NYC entities verbatim so the live gazetteer matches.
 const SEED_POLLS: SeedPoll[] = [
   {
-    topicType: PollTopicType.what_to_order, // → food-subject leaderboard
+    // dish-axis: fixed dish (fried chicken), variable restaurant → the leaderboard
+    // ranks (restaurant, fried chicken) Connections (every option restaurant-anchored).
+    topicType: PollTopicType.best_dish,
     origin: PollOrigin.seeded, // app-created → sparkles badge
-    question: "What's a must-order dish in NYC right now?",
+    question: 'Best fried chicken in NYC right now?',
+    target: { name: 'fried chicken', type: EntityType.food },
     comments: [
-      'The fried chicken at The Eighty Six is unreal, get it.',
-      "Honestly the rainbow cookie at Mia's Brooklyn Bakery is the best. Fried chicken is great too.",
-      'Fried chicken all day. The philly cheesesteak is solid.',
+      'The Eighty Six has the best fried chicken, hands down.',
+      'Honestly the fried chicken at Cathédrale Restaurant is unreal too.',
+      'The Eighty Six all day. Il Fornaio does a solid version as well.',
     ],
   },
   {
@@ -111,12 +118,36 @@ async function main(): Promise<void> {
     }
 
     for (const seed of SEED_POLLS) {
+      // Resolve the axis target so dish-axis polls have the fixed side they need
+      // to form (restaurant, dish) Connections in the leaderboard.
+      let targetDishId: string | null = null;
+      let targetRestaurantId: string | null = null;
+      if (seed.target) {
+        const spans = await gazetteer.scanForKnownEntities(
+          seed.target.name,
+          [seed.target.type],
+          { marketKey: MARKET_KEY },
+        );
+        const entityId =
+          spans.find((s) => s.type === seed.target!.type && s.entityId)
+            ?.entityId ?? null;
+        if (!entityId) {
+          throw new Error(
+            `could not resolve poll target "${seed.target.name}"`,
+          );
+        }
+        if (seed.target.type === EntityType.food) targetDishId = entityId;
+        else targetRestaurantId = entityId;
+      }
+
       const topic = await prisma.pollTopic.create({
         data: {
           topicType: seed.topicType,
           title: seed.question,
           status: PollTopicStatus.ready,
           marketKey: MARKET_KEY,
+          targetDishId,
+          targetRestaurantId,
           metadata: { seedFixture: true },
         },
         select: { topicId: true },
