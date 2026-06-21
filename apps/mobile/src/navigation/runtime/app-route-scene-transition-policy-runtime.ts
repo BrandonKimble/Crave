@@ -25,6 +25,7 @@ import {
   resolveAppRouteSceneSheetHostSceneKey,
   resolveAppRouteSceneSheetVisibilityTarget,
 } from './app-route-scene-policy-registry';
+import { selectOverlayRouteKeysWhere } from './app-overlay-route-types';
 import type { SearchFreezeClassification } from '../../screens/Search/runtime/shared/search-freeze-classification-runtime';
 
 export type AppRouteSceneTransitionPolicyInput = {
@@ -95,13 +96,14 @@ const TOP_LEVEL_SHARED_SHEET_SCENES = new Set<OverlayKey>([
   'profile',
 ]);
 
-const CHILD_SHARED_SHEET_SCENES = new Set<OverlayKey>([
-  'restaurant',
-  'favoriteListDetail',
-  'saveList',
-  'pollCreation',
-  'pollDetail',
-]);
+// Derived from the central metadata (role 'child' on the shared physical sheet)
+// — adding such a scene needs only its metadata entry, with no hand-edit here.
+// Today: { restaurant, favoriteListDetail, saveList, pollCreation, pollDetail }.
+const CHILD_SHARED_SHEET_SCENES = new Set<OverlayKey>(
+  selectOverlayRouteKeysWhere(
+    (metadata) => metadata.role === 'child' && metadata.sheetPolicy === 'sharedPhysicalSheet'
+  )
+);
 
 const MODAL_SCENES = new Set<OverlayKey>(['price', 'scoreInfo']);
 
@@ -185,6 +187,11 @@ const resolveDefaultSheetMotionPlan = ({
     case 'terminalDismiss':
       return { kind: 'hide' };
     case 'openChild':
+      // Per-scene open snap (curated, not metadata-derived: the values are
+      // distinct motion plans — snapTo vs promoteAtLeast vs the preserveLiveY
+      // fall-through — so they don't reduce to one field). Forgetting a new child
+      // here degrades gracefully to preserveLiveY rather than breaking. Full-page
+      // children (saveList / pollCreation / pollDetail) open expanded:
       if (
         targetSceneKey === 'saveList' ||
         targetSceneKey === 'pollCreation' ||

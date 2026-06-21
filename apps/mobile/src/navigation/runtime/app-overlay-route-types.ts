@@ -212,12 +212,95 @@ export const APP_OVERLAY_ROUTE_SCENE_INPUT_KEYS = [
   ...APP_OVERLAY_STATIC_ROUTE_SCENE_INPUT_KEYS,
 ] as const satisfies readonly OverlayKey[];
 
+// ─── Completeness guards ─────────────────────────────────────────────────────
+// The three arrays above stay EXPLICIT (their declaration order is the scene
+// mount/render order, and their `as const` tuple is the source of the
+// AppRouteSceneInputKey union type — deriving them with .filter() would silently
+// reorder mounts and widen the type). Instead, these compile-time assertions
+// prove each array contains EXACTLY the scenes whose metadata flag says it
+// should. Add a scene with `sceneSwitch: true` (etc.) but forget the array — or
+// vice-versa — and the build fails, naming the offending key. This is the
+// exhaustiveness the scattered Set/string-OR predicates lacked.
+type AppOverlayRouteMetadataMap = typeof APP_OVERLAY_ROUTE_METADATA_BY_KEY;
+type OverlayKeysWithMetadataFlag<Field extends 'sceneSwitch' | 'sceneInput' | 'staticSceneInput'> =
+  {
+    [K in OverlayKey]: AppOverlayRouteMetadataMap[K][Field] extends true ? K : never;
+  }[OverlayKey];
+type AssertNoOverlayKeys<T extends never> = T;
+
+/* eslint-disable @typescript-eslint/no-unused-vars -- these aliases exist only to
+   be type-checked; a non-empty Exclude makes one error and names the offending key. */
+// sceneSwitch flag ⇔ APP_OVERLAY_ROUTE_SCENE_SWITCH_KEYS
+type _SwitchFlaggedNotInArray = AssertNoOverlayKeys<
+  Exclude<
+    OverlayKeysWithMetadataFlag<'sceneSwitch'>,
+    (typeof APP_OVERLAY_ROUTE_SCENE_SWITCH_KEYS)[number]
+  >
+>;
+type _SwitchArrayNotFlagged = AssertNoOverlayKeys<
+  Exclude<
+    (typeof APP_OVERLAY_ROUTE_SCENE_SWITCH_KEYS)[number],
+    OverlayKeysWithMetadataFlag<'sceneSwitch'>
+  >
+>;
+
+// sceneInput flag ⇔ APP_OVERLAY_ROUTE_SCENE_INPUT_KEYS
+type _InputFlaggedNotInArray = AssertNoOverlayKeys<
+  Exclude<
+    OverlayKeysWithMetadataFlag<'sceneInput'>,
+    (typeof APP_OVERLAY_ROUTE_SCENE_INPUT_KEYS)[number]
+  >
+>;
+type _InputArrayNotFlagged = AssertNoOverlayKeys<
+  Exclude<
+    (typeof APP_OVERLAY_ROUTE_SCENE_INPUT_KEYS)[number],
+    OverlayKeysWithMetadataFlag<'sceneInput'>
+  >
+>;
+
+// staticSceneInput flag ⇔ APP_OVERLAY_STATIC_ROUTE_SCENE_INPUT_KEYS
+type _StaticFlaggedNotInArray = AssertNoOverlayKeys<
+  Exclude<
+    OverlayKeysWithMetadataFlag<'staticSceneInput'>,
+    (typeof APP_OVERLAY_STATIC_ROUTE_SCENE_INPUT_KEYS)[number]
+  >
+>;
+type _StaticArrayNotFlagged = AssertNoOverlayKeys<
+  Exclude<
+    (typeof APP_OVERLAY_STATIC_ROUTE_SCENE_INPUT_KEYS)[number],
+    OverlayKeysWithMetadataFlag<'staticSceneInput'>
+  >
+>;
+/* eslint-enable @typescript-eslint/no-unused-vars */
+
 const APP_OVERLAY_ROUTE_SCENE_SWITCH_KEY_SET = new Set<OverlayKey>(
   APP_OVERLAY_ROUTE_SCENE_SWITCH_KEYS
 );
 
 export const getAppOverlayRouteMetadata = (routeKey: OverlayKey): AppOverlayRouteMetadata =>
   APP_OVERLAY_ROUTE_METADATA_BY_KEY[routeKey];
+
+const ALL_OVERLAY_ROUTE_KEYS = Object.keys(
+  APP_OVERLAY_ROUTE_METADATA_BY_KEY
+) as readonly OverlayKey[];
+
+/**
+ * Derive a scene-key set from the central metadata. Use this instead of
+ * hand-maintaining a scattered list of scene keys whenever the membership is a
+ * function of metadata the registry already encodes (role, sheetPolicy, …) — so
+ * adding a scene is one metadata entry, not "edit N places and hope". Returns
+ * keys in metadata-declaration order; only safe to consume where order is
+ * irrelevant (membership / Set construction), which is the case for every
+ * current caller. Arrays whose ORDER or literal-tuple TYPE is load-bearing
+ * (e.g. APP_OVERLAY_ROUTE_SCENE_INPUT_KEYS) stay explicit + are guarded by a
+ * compile-time completeness assertion instead.
+ */
+export const selectOverlayRouteKeysWhere = (
+  predicate: (metadata: AppOverlayRouteMetadata, routeKey: OverlayKey) => boolean
+): readonly OverlayKey[] =>
+  ALL_OVERLAY_ROUTE_KEYS.filter((routeKey) =>
+    predicate(APP_OVERLAY_ROUTE_METADATA_BY_KEY[routeKey], routeKey)
+  );
 
 export const isAppOverlayRouteSceneSwitchKey = (routeKey: OverlayKey): boolean =>
   APP_OVERLAY_ROUTE_SCENE_SWITCH_KEY_SET.has(routeKey);

@@ -9,6 +9,7 @@ import {
   BottomSheetSceneStackBodyDataActivityContext,
   BottomSheetSceneStackBodyRenderActivityContext,
 } from './BottomSheetSceneStackBodyActivityContext';
+import { isSceneBodyDataActivityKey } from '../navigation/runtime/app-route-scene-input-registry';
 import { bottomSheetSceneStackHostStyles as styles } from './bottomSheetSceneStackHostStyles';
 import { useSearchOverlayProfilerRender } from './SearchOverlayProfilerContext';
 import { useBottomSheetSceneStackBodyContentRuntime } from './useBottomSheetSceneStackBodyContentRuntime';
@@ -22,10 +23,7 @@ const shouldSkipSceneStackBodyFrameUpdate = (
   previousProps.children === nextProps.children;
 
 const shouldPublishSceneBodyDataActivity = (sceneKey: string): boolean =>
-  sceneKey === 'polls' ||
-  sceneKey === 'pollCreation' ||
-  sceneKey === 'pollDetail' ||
-  sceneKey === 'saveList';
+  isSceneBodyDataActivityKey(sceneKey);
 
 const shouldSkipSceneStackBodyContentLayerUpdate = (
   previousProps: SceneStackBodyContentLayerProps,

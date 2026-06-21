@@ -26,6 +26,26 @@ export type AppRouteStaticSceneInputKey = (typeof APP_ROUTE_STATIC_SCENE_INPUT_K
 
 export type AppRouteSceneInputKey = (typeof APP_ROUTE_SCENE_INPUT_KEYS)[number];
 
+/**
+ * Scenes whose body runs a live data lane the scene-stack tracks for activity
+ * (mount / subscribe / surface-diff). SINGLE source of truth — three call sites
+ * gate on this, and three hand-kept copies could silently drift apart. NOT
+ * derived from metadata: `search` also has live data but is intentionally
+ * excluded because it renders through the bespoke search-surface body path, not
+ * the normal scene-body data lane.
+ */
+const SCENE_BODY_DATA_ACTIVITY_KEYS = new Set<AppRouteSceneInputKey>([
+  'polls',
+  'pollCreation',
+  'pollDetail',
+  'saveList',
+]);
+
+export const isSceneBodyDataActivityKey = (
+  sceneKey: OverlayKey | string | null | undefined
+): boolean =>
+  sceneKey != null && SCENE_BODY_DATA_ACTIVITY_KEYS.has(sceneKey as AppRouteSceneInputKey);
+
 export type AppRouteSceneInputSnapshot = {
   sceneKey: OverlayKey;
   shellSpec: AppRouteSceneStackShellSpec | null;
@@ -118,7 +138,7 @@ export class AppRouteSceneInputController {
     subscribeSceneBody: (sceneKey, listener) => this.subscribeSceneLane(sceneKey, 'body', listener),
     getSnapshot: () => this.currentSnapshot,
     getSceneInputSnapshot: (sceneKey) =>
-      isAppRouteSceneInputKey(sceneKey) ? this.currentSnapshot[sceneKey] ?? null : null,
+      isAppRouteSceneInputKey(sceneKey) ? (this.currentSnapshot[sceneKey] ?? null) : null,
   };
 
   public readonly actions: AppRouteSceneInputActions = {

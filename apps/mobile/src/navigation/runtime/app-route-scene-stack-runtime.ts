@@ -18,6 +18,7 @@ import { areAppRouteSceneBodyAdmissionPoliciesEqual } from './app-route-scene-de
 import {
   APP_ROUTE_SCENE_INPUT_KEYS,
   APP_ROUTE_STATIC_SCENE_INPUT_KEYS,
+  isSceneBodyDataActivityKey,
   type AppRouteSceneInputAuthority,
   type AppRouteSceneInputKey,
   type AppRouteSceneInputSnapshot,
@@ -1654,13 +1655,7 @@ class AppRouteSceneStackLayerStateController {
   private shouldCompareSceneBodyDataActivity(
     snapshot: AppRouteSceneStackBodySurfaceSnapshot
   ): boolean {
-    const sceneKey = snapshot.contentEntry?.sceneKey;
-    return (
-      sceneKey === 'polls' ||
-      sceneKey === 'pollCreation' ||
-      sceneKey === 'pollDetail' ||
-      sceneKey === 'saveList'
-    );
+    return isSceneBodyDataActivityKey(snapshot.contentEntry?.sceneKey);
   }
 
   private markSceneBodySurfaceSnapshotDiff(

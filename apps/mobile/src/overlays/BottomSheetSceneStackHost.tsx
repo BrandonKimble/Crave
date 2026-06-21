@@ -21,7 +21,10 @@ import type {
   AppRouteSceneStackBodySurfaceSnapshot,
   AppRouteSceneStackScenePresentationSnapshot,
 } from '../navigation/runtime/app-route-scene-stack-surface-contract';
-import { APP_ROUTE_SCENE_INPUT_KEYS } from '../navigation/runtime/app-route-scene-input-registry';
+import {
+  APP_ROUTE_SCENE_INPUT_KEYS,
+  isSceneBodyDataActivityKey,
+} from '../navigation/runtime/app-route-scene-input-registry';
 import { useRouteAuthoritySelector } from '../navigation/runtime/use-route-authority-selector';
 import { useSearchOverlayProfilerRender } from './SearchOverlayProfilerContext';
 import { SearchResultsPageBundleHost } from './SearchMountedScenePageBundleAuthority';
@@ -71,15 +74,7 @@ const areSceneContentActivitySelectionsEqual = (
 
 const shouldCompareSceneBodyDataActivity = (
   snapshot: AppRouteSceneStackBodySurfaceSnapshot
-): boolean => {
-  const sceneKey = snapshot.contentEntry?.sceneKey;
-  return (
-    sceneKey === 'polls' ||
-    sceneKey === 'pollCreation' ||
-    sceneKey === 'pollDetail' ||
-    sceneKey === 'saveList'
-  );
-};
+): boolean => isSceneBodyDataActivityKey(snapshot.contentEntry?.sceneKey);
 
 const markSceneBodySurfaceSelectionDiff = (
   sceneKey: string | null | undefined,
