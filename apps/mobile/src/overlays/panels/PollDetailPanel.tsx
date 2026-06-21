@@ -13,8 +13,11 @@ import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
 import type { SnapPoints } from '../bottomSheetMotionTypes';
 import type { SearchRoutePublishedSceneParts } from '../searchOverlayRouteHostContract';
 import { normalizeSearchRouteSceneStackShellSpec } from '../searchOverlayRouteHostContract';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthController } from '../../hooks/use-auth-controller';
 import {
+  deletePollComment,
+  editPollComment,
   fetchPoll,
   fetchPollLeaderboard,
   listPollComments,
@@ -29,6 +32,7 @@ import {
   type PollLeaderboardEntry,
 } from '../../services/polls';
 import { PollCandidateBars } from './PollCandidateBars';
+import { createProfileQueryOptions } from './profileSceneQueryOptions';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const ACCENT = themeColors.primary;
@@ -124,51 +128,240 @@ const CommentAvatar = ({ user }: { user: PollCommentUser }) => {
   );
 };
 
-type PollCommentRowProps = {
-  comment: PollComment;
-  onLike: (comment: PollComment) => void;
+// ─── Thread tree ─────────────────────────────────────────────────────────────
+
+const MAX_THREAD_INDENT = 4; // cap visual nesting so deep chains don't run off-screen
+const THREAD_INDENT_STEP = 18;
+
+type ThreadItem = { comment: PollComment; depth: number };
+
+// Flatten the backend's flat comment list into render order: top-level comments
+// keep the server's sort, replies nest under their parent (oldest-first for
+// readability). Replies whose parent was deleted (and so isn't present) are
+// promoted to top-level rather than dropped.
+const buildThreadItems = (comments: PollComment[]): ThreadItem[] => {
+  const present = new Set(comments.map((c) => c.commentId));
+  const childrenByParent = new Map<string | null, PollComment[]>();
+  for (const comment of comments) {
+    const parent =
+      comment.parentCommentId && present.has(comment.parentCommentId)
+        ? comment.parentCommentId
+        : null;
+    const bucket = childrenByParent.get(parent);
+    if (bucket) bucket.push(comment);
+    else childrenByParent.set(parent, [comment]);
+  }
+  const items: ThreadItem[] = [];
+  const walk = (parentId: string | null, depth: number): void => {
+    const children = childrenByParent.get(parentId);
+    if (!children) return;
+    const ordered =
+      depth === 0
+        ? children
+        : [...children].sort(
+            (a, b) => new Date(a.loggedAt).getTime() - new Date(b.loggedAt).getTime()
+          );
+    for (const child of ordered) {
+      items.push({ comment: child, depth });
+      walk(child.commentId, depth + 1);
+    }
+  };
+  walk(null, 0);
+  return items;
 };
 
-const PollCommentRow = React.memo(({ comment, onLike }: PollCommentRowProps) => {
-  const liked = comment.currentUserLiked;
+// ─── Inline composer (reply / edit) ──────────────────────────────────────────
+// Holds its own draft so keystrokes don't re-render the whole thread.
+
+type InlineComposerProps = {
+  placeholder: string;
+  initialValue?: string;
+  submitLabel: string;
+  submitting: boolean;
+  autoFocus?: boolean;
+  onSubmit: (text: string) => void;
+  onCancel: () => void;
+};
+
+const InlineComposer = ({
+  placeholder,
+  initialValue = '',
+  submitLabel,
+  submitting,
+  autoFocus = true,
+  onSubmit,
+  onCancel,
+}: InlineComposerProps) => {
+  const [text, setText] = React.useState(initialValue);
+  const trimmed = text.trim();
+  const canSubmit = trimmed.length > 0 && !submitting;
   return (
-    <View style={styles.commentRow}>
-      <CommentAvatar user={comment.user} />
-      <View style={styles.commentContent}>
-        <View style={styles.commentMetaRow}>
-          <Text variant="caption" weight="semibold" style={styles.commentAuthor} numberOfLines={1}>
-            {resolveUserName(comment.user)}
+    <View style={styles.inlineComposer}>
+      <TextInput
+        value={text}
+        onChangeText={setText}
+        placeholder={placeholder}
+        placeholderTextColor={themeColors.textMuted}
+        style={styles.inlineComposerInput}
+        autoFocus={autoFocus}
+        multiline
+      />
+      <View style={styles.inlineComposerActions}>
+        <Pressable onPress={onCancel} hitSlop={6} accessibilityRole="button">
+          <Text variant="caption" weight="semibold" style={styles.inlineComposerCancel}>
+            Cancel
           </Text>
-          <Text variant="caption" style={styles.commentTime}>
-            {formatRelativeTime(comment.loggedAt)}
-          </Text>
-        </View>
-        <CommentBody comment={comment} />
+        </Pressable>
         <Pressable
-          onPress={() => onLike(comment)}
-          style={styles.likeButton}
-          hitSlop={8}
+          onPress={() => canSubmit && onSubmit(trimmed)}
+          disabled={!canSubmit}
+          style={[styles.inlineComposerSubmit, !canSubmit && styles.composeButtonDisabled]}
           accessibilityRole="button"
-          accessibilityLabel={liked ? 'Remove endorsement' : 'Endorse comment'}
         >
-          <Heart
-            size={14}
-            color={liked ? ACCENT : themeColors.textMuted}
-            fill={liked ? ACCENT : 'transparent'}
-            strokeWidth={2}
-          />
-          <Text
-            variant="caption"
-            weight={liked ? 'semibold' : 'regular'}
-            style={[styles.likeCount, liked && styles.likeCountActive]}
-          >
-            {comment.score}
+          <Text variant="caption" weight="semibold" style={styles.composeButtonText}>
+            {submitting ? '…' : submitLabel}
           </Text>
         </Pressable>
       </View>
     </View>
   );
-});
+};
+
+type PollCommentRowProps = {
+  item: ThreadItem;
+  isOwn: boolean;
+  canReply: boolean;
+  isReplying: boolean;
+  isEditing: boolean;
+  submitting: boolean;
+  onLike: (comment: PollComment) => void;
+  onStartReply: (comment: PollComment) => void;
+  onStartEdit: (comment: PollComment) => void;
+  onDelete: (comment: PollComment) => void;
+  onSubmitReply: (text: string) => void;
+  onSubmitEdit: (text: string) => void;
+  onCancelCompose: () => void;
+};
+
+const PollCommentRow = React.memo(
+  ({
+    item,
+    isOwn,
+    canReply,
+    isReplying,
+    isEditing,
+    submitting,
+    onLike,
+    onStartReply,
+    onStartEdit,
+    onDelete,
+    onSubmitReply,
+    onSubmitEdit,
+    onCancelCompose,
+  }: PollCommentRowProps) => {
+    const { comment, depth } = item;
+    const liked = comment.currentUserLiked;
+    const indent = Math.min(depth, MAX_THREAD_INDENT) * THREAD_INDENT_STEP;
+    return (
+      <View
+        style={[styles.commentRow, depth > 0 && styles.commentRowNested, { marginLeft: indent }]}
+      >
+        <CommentAvatar user={comment.user} />
+        <View style={styles.commentContent}>
+          <View style={styles.commentMetaRow}>
+            <Text
+              variant="caption"
+              weight="semibold"
+              style={styles.commentAuthor}
+              numberOfLines={1}
+            >
+              {resolveUserName(comment.user)}
+            </Text>
+            <Text variant="caption" style={styles.commentTime}>
+              {formatRelativeTime(comment.loggedAt)}
+              {comment.editedAt ? ' · edited' : ''}
+            </Text>
+          </View>
+          {isEditing ? (
+            <InlineComposer
+              placeholder="Edit your comment…"
+              initialValue={comment.body}
+              submitLabel="Save"
+              submitting={submitting}
+              onSubmit={onSubmitEdit}
+              onCancel={onCancelCompose}
+            />
+          ) : (
+            <CommentBody comment={comment} />
+          )}
+          {!isEditing ? (
+            <View style={styles.commentActions}>
+              <Pressable
+                onPress={() => onLike(comment)}
+                style={styles.likeButton}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={liked ? 'Remove endorsement' : 'Endorse comment'}
+              >
+                <Heart
+                  size={14}
+                  color={liked ? ACCENT : themeColors.textMuted}
+                  fill={liked ? ACCENT : 'transparent'}
+                  strokeWidth={2}
+                />
+                <Text
+                  variant="caption"
+                  weight={liked ? 'semibold' : 'regular'}
+                  style={[styles.likeCount, liked && styles.likeCountActive]}
+                >
+                  {comment.score}
+                </Text>
+              </Pressable>
+              {canReply ? (
+                <Pressable
+                  onPress={() => onStartReply(comment)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                >
+                  <Text variant="caption" weight="semibold" style={styles.commentAction}>
+                    Reply
+                  </Text>
+                </Pressable>
+              ) : null}
+              {isOwn ? (
+                <Pressable
+                  onPress={() => onStartEdit(comment)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                >
+                  <Text variant="caption" weight="semibold" style={styles.commentAction}>
+                    Edit
+                  </Text>
+                </Pressable>
+              ) : null}
+              {isOwn ? (
+                <Pressable onPress={() => onDelete(comment)} hitSlop={8} accessibilityRole="button">
+                  <Text variant="caption" weight="semibold" style={styles.commentActionDestructive}>
+                    Delete
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
+          {isReplying ? (
+            <InlineComposer
+              placeholder={`Reply to ${resolveUserName(comment.user)}…`}
+              submitLabel="Reply"
+              submitting={submitting}
+              onSubmit={onSubmitReply}
+              onCancel={onCancelCompose}
+            />
+          ) : null}
+        </View>
+      </View>
+    );
+  }
+);
 PollCommentRow.displayName = 'PollCommentRow';
 
 // ─── Panel spec ──────────────────────────────────────────────────────────────
@@ -183,6 +376,11 @@ export const usePollDetailPanelSpec = ({
 }: UsePollDetailPanelSpecOptions): SearchRoutePublishedSceneParts => {
   const insets = useSafeAreaInsets();
   const { isSignedIn } = useAuthController();
+  const { data: viewerProfile } = useQuery({
+    ...createProfileQueryOptions(),
+    enabled: isSignedIn,
+  });
+  const viewerUserId = viewerProfile?.userId ?? null;
 
   const [poll, setPoll] = React.useState<Poll | null>(pollSeed ?? null);
   const [comments, setComments] = React.useState<PollComment[]>([]);
@@ -191,6 +389,10 @@ export const usePollDetailPanelSpec = ({
   const [loading, setLoading] = React.useState(false);
   const [draft, setDraft] = React.useState('');
   const [posting, setPosting] = React.useState(false);
+  // Only one comment can be in reply/edit mode at a time (tracked by commentId).
+  const [replyTarget, setReplyTarget] = React.useState<string | null>(null);
+  const [editTarget, setEditTarget] = React.useState<string | null>(null);
+  const [mutatingComment, setMutatingComment] = React.useState(false);
 
   // Seed the header instantly from the feed card's snapshot.
   React.useEffect(() => {
@@ -204,6 +406,8 @@ export const usePollDetailPanelSpec = ({
       setLeaderboard([]);
       setDraft('');
       setSort('top');
+      setReplyTarget(null);
+      setEditTarget(null);
     }
   }, [visible]);
 
@@ -328,11 +532,129 @@ export const usePollDetailPanelSpec = ({
     });
   }, []);
 
-  const renderItem = React.useCallback(
-    ({ item }: { item: PollComment }) => <PollCommentRow comment={item} onLike={handleLike} />,
-    [handleLike]
+  const threadItems = React.useMemo(() => buildThreadItems(comments), [comments]);
+  const canReply = isActive && isSignedIn;
+
+  const handleStartReply = React.useCallback(
+    (comment: PollComment) => {
+      if (!isSignedIn) {
+        Alert.alert('Sign in to reply', 'Join the discussion to weigh in on this poll.');
+        return;
+      }
+      setEditTarget(null);
+      setReplyTarget(comment.commentId);
+    },
+    [isSignedIn]
   );
-  const keyExtractor = React.useCallback((item: PollComment) => item.commentId, []);
+
+  const handleStartEdit = React.useCallback((comment: PollComment) => {
+    setReplyTarget(null);
+    setEditTarget(comment.commentId);
+  }, []);
+
+  const handleCancelCompose = React.useCallback(() => {
+    setReplyTarget(null);
+    setEditTarget(null);
+  }, []);
+
+  const handleSubmitReply = React.useCallback(
+    async (text: string) => {
+      const parentCommentId = replyTarget;
+      if (!pollId || !parentCommentId || mutatingComment) return;
+      setMutatingComment(true);
+      try {
+        await postPollComment(pollId, { body: text, parentCommentId });
+        setReplyTarget(null);
+        await refresh();
+      } catch (error) {
+        Alert.alert(
+          'Unable to reply',
+          error instanceof Error ? error.message : 'Please try again.'
+        );
+      } finally {
+        setMutatingComment(false);
+      }
+    },
+    [mutatingComment, pollId, refresh, replyTarget]
+  );
+
+  const handleSubmitEdit = React.useCallback(
+    async (text: string) => {
+      const commentId = editTarget;
+      if (!commentId || mutatingComment) return;
+      setMutatingComment(true);
+      try {
+        await editPollComment(commentId, { body: text });
+        setEditTarget(null);
+        await refresh();
+      } catch (error) {
+        Alert.alert('Unable to save', error instanceof Error ? error.message : 'Please try again.');
+      } finally {
+        setMutatingComment(false);
+      }
+    },
+    [editTarget, mutatingComment, refresh]
+  );
+
+  const handleDelete = React.useCallback(
+    (comment: PollComment) => {
+      Alert.alert('Delete comment?', 'This removes your comment from the discussion.', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setMutatingComment(true);
+            deletePollComment(comment.commentId)
+              .then(() => refresh())
+              .catch((error) =>
+                Alert.alert(
+                  'Unable to delete',
+                  error instanceof Error ? error.message : 'Please try again.'
+                )
+              )
+              .finally(() => setMutatingComment(false));
+          },
+        },
+      ]);
+    },
+    [refresh]
+  );
+
+  const renderItem = React.useCallback(
+    ({ item }: { item: ThreadItem }) => (
+      <PollCommentRow
+        item={item}
+        isOwn={viewerUserId != null && item.comment.user.userId === viewerUserId}
+        canReply={canReply}
+        isReplying={replyTarget === item.comment.commentId}
+        isEditing={editTarget === item.comment.commentId}
+        submitting={mutatingComment}
+        onLike={handleLike}
+        onStartReply={handleStartReply}
+        onStartEdit={handleStartEdit}
+        onDelete={handleDelete}
+        onSubmitReply={handleSubmitReply}
+        onSubmitEdit={handleSubmitEdit}
+        onCancelCompose={handleCancelCompose}
+      />
+    ),
+    [
+      canReply,
+      editTarget,
+      handleCancelCompose,
+      handleDelete,
+      handleLike,
+      handleStartEdit,
+      handleStartReply,
+      handleSubmitEdit,
+      handleSubmitReply,
+      mutatingComment,
+      replyTarget,
+      viewerUserId,
+    ]
+  );
+  const keyExtractor = React.useCallback((item: ThreadItem) => item.comment.commentId, []);
 
   const headerTitle = poll?.question ?? 'Poll';
 
@@ -503,7 +825,7 @@ export const usePollDetailPanelSpec = ({
     },
     sceneBodyContent: {
       surfaceKind: 'list',
-      data: comments,
+      data: threadItems,
       renderItem,
       keyExtractor,
       estimatedItemSize: 96,
@@ -707,11 +1029,21 @@ const styles = StyleSheet.create({
     color: ACCENT,
     fontWeight: '600',
   },
+  commentRowNested: {
+    borderTopWidth: 0,
+    paddingTop: 8,
+    paddingVertical: 8,
+  },
+  commentActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    marginTop: 8,
+  },
   likeButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    marginTop: 8,
     alignSelf: 'flex-start',
   },
   likeCount: {
@@ -720,6 +1052,46 @@ const styles = StyleSheet.create({
   },
   likeCountActive: {
     color: ACCENT,
+  },
+  commentAction: {
+    color: themeColors.textMuted,
+  },
+  commentActionDestructive: {
+    color: themeColors.textMuted,
+  },
+  inlineComposer: {
+    marginTop: 8,
+  },
+  inlineComposerInput: {
+    minHeight: 40,
+    maxHeight: 120,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
+    backgroundColor: SURFACE,
+    color: themeColors.textPrimary,
+  },
+  inlineComposerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 12,
+    marginTop: 8,
+  },
+  inlineComposerCancel: {
+    color: themeColors.textMuted,
+  },
+  inlineComposerSubmit: {
+    height: 32,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: ACCENT,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyComments: {
     alignItems: 'center',
