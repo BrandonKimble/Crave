@@ -658,9 +658,9 @@ export const usePollDetailPanelSpec = ({
   );
 
   // Tapping a restaurant highlight opens that restaurant's profile. The restaurant
-  // route can't be a child of the polls lane, so open it via the global producer
-  // under the 'search' owner (it self-hydrates from restaurantId); closing it
-  // returns to search rather than this poll.
+  // route is now a valid child of the polls lane, so open it with the owner/opener
+  // resolved naturally from the active route (pollDetail) — closing it returns to
+  // this poll. It self-hydrates from restaurantId.
   const handleEntityPress = React.useCallback(
     (entity: EntitySpan) => {
       if (entity.type !== 'restaurant' || !entity.entityId) return;
@@ -670,8 +670,6 @@ export const usePollDetailPanelSpec = ({
           data: null,
           onToggleFavorite: () => undefined,
         }),
-        ownerSceneKey: 'search',
-        parentSceneKey: 'search',
       });
     },
     [openRestaurantRoute]

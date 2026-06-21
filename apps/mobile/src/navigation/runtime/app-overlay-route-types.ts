@@ -101,7 +101,7 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   restaurant: {
     role: 'child',
     productSceneKey: null,
-    parentSceneKeys: ['search', 'bookmarks', 'profile'],
+    parentSceneKeys: ['search', 'bookmarks', 'profile', 'polls'],
     requiresOwnerSceneKey: true,
     sceneSwitch: true,
     sceneInput: true,
