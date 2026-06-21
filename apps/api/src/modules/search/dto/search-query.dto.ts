@@ -149,6 +149,13 @@ export class SearchQueryRequestDto {
   @Type(() => MapBoundsDto)
   bounds?: MapBoundsDto;
 
+  // Screen-accurate viewport polygon as [lng, lat] pairs (pitch/twist-aware visible quad). When
+  // present, the search filters by the exact polygon (ST_Covers) instead of the AABB `bounds` box.
+  // Shape is validated rigorously in the query builder's extractPolygonPayload.
+  @IsOptional()
+  @IsArray()
+  viewportPolygon?: Array<[number, number]>;
+
   @IsOptional()
   @IsBoolean()
   openNow?: boolean;
@@ -290,6 +297,13 @@ export class NaturalSearchRequestDto {
   @ValidateNested()
   @Type(() => MapBoundsDto)
   bounds?: MapBoundsDto;
+
+  // Screen-accurate viewport polygon as [lng, lat] pairs (pitch/twist-aware visible quad). When
+  // present, the search filters by the exact polygon (ST_Covers) instead of the AABB `bounds` box.
+  // Shape is validated rigorously in the query builder's extractPolygonPayload.
+  @IsOptional()
+  @IsArray()
+  viewportPolygon?: Array<[number, number]>;
 
   @IsOptional()
   @IsBoolean()

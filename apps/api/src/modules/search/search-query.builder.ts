@@ -64,6 +64,12 @@ interface BoundsPayload {
   southWest: { lat: number; lng: number };
 }
 
+// Screen-accurate viewport polygon (the visible quad, pitch/twist-aware), as [lng, lat] pairs.
+// When present it REPLACES the AABB bounds for filtering: we derive the polygon's bbox as a cheap
+// btree-index pre-filter (a superset that drops nothing inside the polygon) and then ST_Covers the
+// exact polygon — so results are exactly what's on screen, not the larger north-up box.
+type PolygonPayload = Array<[number, number]>;
+
 interface PriceFilterPayload {
   priceLevels: number[];
 }
@@ -80,6 +86,7 @@ interface ParsedFilters {
   foodAttributeIds: string[];
   foodAttributePrimary: boolean;
   boundsPayload: BoundsPayload | null;
+  polygonPayload: PolygonPayload | null;
   priceLevels: number[];
   minimumVotes: number | null;
 }
@@ -716,6 +723,7 @@ LIMIT ${pagination.take};`.trim();
       ),
       foodAttributePrimary: Boolean(directives?.primaryFoodAttributeQuery),
       boundsPayload: this.extractBoundsPayload(plan.restaurantFilters),
+      polygonPayload: this.extractPolygonPayload(plan.restaurantFilters),
       priceLevels: this.extractPriceLevels(plan.restaurantFilters),
       minimumVotes: this.extractMinimumVotes(connectionFilters),
     };
@@ -812,7 +820,43 @@ LIMIT ${pagination.take};`.trim();
     const conditionPreview: string[] = [];
     let boundsApplied = false;
 
-    if (filters.boundsPayload) {
+    if (filters.polygonPayload && filters.polygonPayload.length >= 3) {
+      // SCREEN-ACCURATE viewport filter. The polygon (pitch/twist-aware visible quad) is the source
+      // of truth. We derive its bbox as a cheap btree-index pre-filter (a superset of the polygon, so
+      // it drops nothing inside it), then ST_Covers the EXACT polygon to remove the off-screen corners
+      // the old AABB-only filter let through. Mirrors the proven market ST_Covers/ST_MakePoint pattern.
+      const polygon = filters.polygonPayload;
+      const lngs = polygon.map(([lng]) => lng);
+      const lats = polygon.map(([, lat]) => lat);
+      const minLng = Math.min(...lngs);
+      const maxLng = Math.max(...lngs);
+      const minLat = Math.min(...lats);
+      const maxLat = Math.max(...lats);
+      // Closed ring (first point repeated) for ST_MakePolygon.
+      const ring = [...polygon, polygon[0]];
+      const ringPoints = Prisma.join(
+        ring.map(
+          ([lng, lat]) =>
+            Prisma.sql`ST_MakePoint(${lng}::double precision, ${lat}::double precision)`,
+        ),
+        ', ',
+      );
+      conditions.push(Prisma.sql`rl.latitude BETWEEN ${minLat} AND ${maxLat}`);
+      conditions.push(Prisma.sql`rl.longitude BETWEEN ${minLng} AND ${maxLng}`);
+      conditions.push(Prisma.sql`ST_Covers(
+        ST_SetSRID(ST_MakePolygon(ST_MakeLine(ARRAY[${ringPoints}])), 4326),
+        ST_SetSRID(
+          ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision),
+          4326
+        )
+      )`);
+      conditionPreview.push(
+        `viewport polygon ST_Covers (${polygon.length} pts) within bbox [${minLng.toFixed(
+          4,
+        )},${minLat.toFixed(4)}]–[${maxLng.toFixed(4)},${maxLat.toFixed(4)}]`,
+      );
+      boundsApplied = true;
+    } else if (filters.boundsPayload) {
       conditions.push(
         Prisma.sql`rl.latitude BETWEEN ${filters.boundsPayload.southWest.lat} AND ${filters.boundsPayload.northEast.lat}`,
       );
@@ -1609,6 +1653,31 @@ location_aggregates AS (
       const payload = filter.payload as { bounds?: BoundsPayload } | undefined;
       if (payload?.bounds && this.isBoundsPayload(payload.bounds)) {
         return payload.bounds;
+      }
+    }
+    return null;
+  }
+
+  private extractPolygonPayload(
+    filters: FilterClause[],
+  ): PolygonPayload | null {
+    for (const filter of filters) {
+      const payload = filter.payload as
+        | { viewportPolygon?: unknown }
+        | undefined;
+      const polygon = payload?.viewportPolygon;
+      if (
+        Array.isArray(polygon) &&
+        polygon.length >= 3 &&
+        polygon.every(
+          (point) =>
+            Array.isArray(point) &&
+            point.length === 2 &&
+            Number.isFinite(point[0]) &&
+            Number.isFinite(point[1]),
+        )
+      ) {
+        return polygon as PolygonPayload;
       }
     }
     return null;

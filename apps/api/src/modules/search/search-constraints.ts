@@ -34,6 +34,9 @@ export interface SearchConstraints {
   ids: ConstraintResolvedIds;
   filters: {
     bounds?: MapBoundsDto;
+    // Screen-accurate viewport polygon ([lng, lat] pairs) — when present, the exact-viewport
+    // filter (ST_Covers) the search uses instead of the AABB bounds box.
+    viewportPolygon?: Array<[number, number]>;
     openNow?: boolean;
     priceLevels: number[];
     minimumVotes: number | null;

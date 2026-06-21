@@ -113,6 +113,42 @@ export class SearchCoverageService {
     const centerLng = (minLng + maxLng) / 2;
     const centerLat = (minLat + maxLat) / 2;
 
+    // SCREEN-ACCURATE viewport polygon (same as /search/run): the bounds BETWEEN above is the cheap
+    // bbox pre-filter (mobile sends bounds = the polygon's bbox), and this ST_Covers trims the
+    // off-screen corners so the dots layer is exactly the visible viewport, not the north-up box.
+    const viewportPolygon = request.viewportPolygon;
+    const viewportPolygonFilterSql =
+      Array.isArray(viewportPolygon) &&
+      viewportPolygon.length >= 3 &&
+      viewportPolygon.every(
+        (point) =>
+          Array.isArray(point) &&
+          point.length === 2 &&
+          Number.isFinite(point[0]) &&
+          Number.isFinite(point[1]),
+      )
+        ? Prisma.sql`AND ST_Covers(
+            ST_SetSRID(
+              ST_MakePolygon(
+                ST_MakeLine(
+                  ARRAY[${Prisma.join(
+                    [...viewportPolygon, viewportPolygon[0]].map(
+                      ([lng, lat]) =>
+                        Prisma.sql`ST_MakePoint(${lng}::double precision, ${lat}::double precision)`,
+                    ),
+                    ', ',
+                  )}]
+                )
+              ),
+              4326
+            ),
+            ST_SetSRID(
+              ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision),
+              4326
+            )
+          )`
+        : Prisma.sql``;
+
     const maxRestaurants = 50000;
     const includeTopDish = request.includeTopDish === true;
     const activeMarketKey =
@@ -173,18 +209,14 @@ export class SearchCoverageService {
           AND rl.latitude IS NOT NULL
           AND rl.google_place_id IS NOT NULL
           AND rl.address IS NOT NULL
-          ${
-            activeMarketKey
-              ? // Coverage paints the WHOLE market: it exists to supply the scored
-                // out-of-region pins/dots beyond the submitted viewport. The
-                // submitted bounds only anchor the per-restaurant location pick
-                // (selected_locations orders by distance to the search center);
-                // filtering candidates to the bounds makes coverage a subset of
-                // the overlap region, structurally emptying the out-region group.
-                Prisma.sql``
-              : Prisma.sql`AND rl.longitude BETWEEN ${minLng} AND ${maxLng}
-          AND rl.latitude BETWEEN ${minLat} AND ${maxLat}`
-          }
+          -- VIEWPORT-BOUNDED COVERAGE (ideal-shape migration): coverage is now the in-view DOTS
+          -- layer (every restaurant inside the submitted viewport), NOT a whole-market paint. We
+          -- ALWAYS filter to the submitted bounds (previously dropped when a marketKey was present,
+          -- which made coverage city-wide and polluted the on-screen ranked set). The out-of-region
+          -- score-pin concept is gone; dots are strictly in-view.
+          AND rl.longitude BETWEEN ${minLng} AND ${maxLng}
+          AND rl.latitude BETWEEN ${minLat} AND ${maxLat}
+          ${viewportPolygonFilterSql}
           ${marketLocationFilterSql}
       ),
       selected_locations AS (

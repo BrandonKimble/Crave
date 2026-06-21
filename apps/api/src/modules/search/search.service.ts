@@ -1809,6 +1809,7 @@ export class SearchService {
       },
       filters: {
         bounds: request.bounds,
+        viewportPolygon: request.viewportPolygon,
         openNow: Boolean(request.openNow),
         priceLevels: inputs.priceLevels,
         minimumVotes: inputs.minimumVotes,

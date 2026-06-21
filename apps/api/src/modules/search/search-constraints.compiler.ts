@@ -45,6 +45,20 @@ export function compileQueryPlanFromConstraints(
     });
   }
 
+  if (
+    constraints.filters.viewportPolygon &&
+    constraints.filters.viewportPolygon.length >= 3
+  ) {
+    const viewportPolygon = constraints.filters.viewportPolygon;
+    restaurantFilters.push({
+      scope: 'restaurant',
+      description: `Restrict to screen-accurate viewport polygon (${viewportPolygon.length} pts)`,
+      entityType: EntityScope.RESTAURANT,
+      entityIds: [],
+      payload: { viewportPolygon },
+    });
+  }
+
   if (constraints.filters.openNow) {
     restaurantFilters.push({
       scope: 'restaurant',

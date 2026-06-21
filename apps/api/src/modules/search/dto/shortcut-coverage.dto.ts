@@ -1,7 +1,7 @@
 import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsBoolean,
-  IsIn,
   IsOptional,
   IsString,
   ValidateNested,
@@ -18,6 +18,12 @@ export class ShortcutCoverageRequestDto {
   @ValidateNested()
   @Type(() => MapBoundsDto)
   bounds!: MapBoundsDto;
+
+  // Screen-accurate viewport polygon ([lng, lat] pairs). When present the coverage/dots query filters
+  // by the exact polygon (ST_Covers) on top of the bounds bbox pre-filter. Shape validated in service.
+  @IsOptional()
+  @IsArray()
+  viewportPolygon?: Array<[number, number]>;
 
   @IsOptional()
   @IsBoolean()

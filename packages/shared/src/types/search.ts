@@ -300,6 +300,9 @@ export interface NaturalSearchRequest {
   submissionSource?: 'manual' | 'recent' | 'autocomplete' | 'shortcut';
   submissionContext?: Record<string, unknown>;
   bounds?: MapBounds;
+  // Screen-accurate viewport polygon ([lng, lat] pairs, pitch/twist-aware). When present the
+  // backend filters by the exact polygon (ST_Covers) instead of the AABB `bounds`.
+  viewportPolygon?: Array<[number, number]>;
   openNow?: boolean;
   priceLevels?: number[];
   minimumVotes?: number;
