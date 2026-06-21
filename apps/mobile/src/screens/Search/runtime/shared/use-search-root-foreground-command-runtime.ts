@@ -35,8 +35,20 @@ export const useSearchRootForegroundCommandRuntime = ({
 }: UseSearchRootForegroundCommandRuntimeArgs) => {
   const { rootPrimitivesRuntime, rootDataPlaneRuntime, rootSuggestionRuntime } =
     stateFoundationLane;
-  const { routeOverlaySessionActions, routeOverlaySessionSnapshotRef, rootSharedSheetRuntimeLane } =
-    rootOverlayFoundationRuntime;
+  const {
+    routeOverlaySessionActions,
+    routeOverlaySessionSnapshotRef,
+    rootSharedSheetRuntimeLane,
+    routeSearchCommandActions,
+  } = rootOverlayFoundationRuntime;
+  const openPollDetail = React.useCallback(
+    (pollId: string) => {
+      routeSearchCommandActions.openAppSearchRoutePollsHome({
+        params: { pollId },
+      });
+    },
+    [routeSearchCommandActions]
+  );
   const { autocompleteRuntime } = autocompleteAuthorityRuntime;
   const { recentActivityRuntime } = recentActivityAuthorityRuntime;
   const requestStatusRuntime = rootDataPlaneRuntime.requestStatusRuntime;
@@ -81,10 +93,12 @@ export const useSearchRootForegroundCommandRuntime = ({
         deferRecentSearchUpsert:
           recentActivityRuntime.deferRecentSearchUpsert as SearchForegroundCommandRuntimeArgs['deferRecentSearchUpsert'],
         openRestaurantProfilePreview: profileOwner.profileActions.openRestaurantProfilePreview,
+        openPollDetail,
         isOffline: requestStatusRuntime.isOffline,
       }) satisfies SearchForegroundCommandRuntimeArgs,
     [
       autocompleteRuntime.suppressAutocompleteResults,
+      openPollDetail,
       profileOwner.profileActions.openRestaurantProfilePreview,
       recentActivityRuntime.deferRecentSearchUpsert,
       requestStatusRuntime.cancelAutocomplete,

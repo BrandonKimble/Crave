@@ -40,6 +40,7 @@ export const useSearchForegroundSubmitRuntime = ({
   ignoreNextSearchBlurRef,
   deferRecentSearchUpsert,
   openRestaurantProfilePreview,
+  openPollDetail,
 }: SearchForegroundSubmitRuntimeArgs): SearchForegroundInteractionSubmitHandlers => {
   const submitPreparationRuntime = useSearchForegroundSubmitPreparationRuntime({
     isSuggestionPanelActive,
@@ -90,6 +91,7 @@ export const useSearchForegroundSubmitRuntime = ({
     allowSearchBlurExitRef,
     ignoreNextSearchBlurRef,
     openRestaurantProfilePreview,
+    openPollDetail,
     submitPreparationRuntime,
   });
 

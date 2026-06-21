@@ -41,6 +41,7 @@ type UseSearchForegroundDirectSubmitRuntimeArgs = Pick<
   | 'allowSearchBlurExitRef'
   | 'ignoreNextSearchBlurRef'
   | 'openRestaurantProfilePreview'
+  | 'openPollDetail'
 > & {
   submitPreparationRuntime: ReturnType<typeof useSearchForegroundSubmitPreparationRuntime>;
 };
@@ -84,6 +85,7 @@ export const useSearchForegroundDirectSubmitRuntime = ({
   allowSearchBlurExitRef,
   ignoreNextSearchBlurRef,
   openRestaurantProfilePreview,
+  openPollDetail,
   submitPreparationRuntime,
 }: UseSearchForegroundDirectSubmitRuntimeArgs): SearchForegroundDirectSubmitRuntime => {
   const querySubmitRuntime = useSearchForegroundQuerySubmitRuntime({
@@ -133,6 +135,7 @@ export const useSearchForegroundDirectSubmitRuntime = ({
     allowSearchBlurExitRef,
     ignoreNextSearchBlurRef,
     openRestaurantProfilePreview,
+    openPollDetail,
   });
 
   return React.useMemo(

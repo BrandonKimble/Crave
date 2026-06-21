@@ -8,7 +8,9 @@ export type AutocompleteMatch = {
   name: string;
   aliases: string[];
   confidence: number;
-  matchType?: 'entity' | 'query';
+  // 'poll' matches surface active community polls in the §8.1 autocomplete lane;
+  // their `entityId` is the pollId and `name` is the poll question.
+  matchType?: 'entity' | 'query' | 'poll';
   badges?: {
     favorite?: boolean;
     viewed?: boolean;

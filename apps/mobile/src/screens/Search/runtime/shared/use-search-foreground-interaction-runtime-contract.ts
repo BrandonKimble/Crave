@@ -34,6 +34,11 @@ export type SearchForegroundOpenRestaurantProfilePreview = (
   restaurantName: string
 ) => void;
 
+// Open a community poll's detail (the §8.1 autocomplete poll lane). Routes via
+// the polls home with a pollId param, the same cross-surface entry the profile
+// screen uses.
+export type SearchForegroundOpenPollDetail = (pollId: string) => void;
+
 export type SearchForegroundCloseRestaurantProfile = (options?: {
   dismissBehavior?: 'restore' | 'clear';
   clearSearchOnDismiss?: boolean;
@@ -97,6 +102,7 @@ export type SearchForegroundSubmitRuntimeArgs = {
   ignoreNextSearchBlurRef: React.MutableRefObject<boolean>;
   deferRecentSearchUpsert: SearchForegroundHistoryRuntime['updateLocalRecentSearches'];
   openRestaurantProfilePreview: SearchForegroundOpenRestaurantProfilePreview;
+  openPollDetail: SearchForegroundOpenPollDetail;
 };
 
 export type SearchForegroundCommandRuntimeArgs = SearchForegroundSubmitRuntimeArgs & {

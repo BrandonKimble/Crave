@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, TouchableOpacity, View, type StyleProp, type ViewStyle } from 'react-native';
 import {
+  BarChart3,
   Clock,
   HandPlatter,
   Heart,
@@ -205,6 +206,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                   match.querySuggestionSource ?? 'unknown'
                 }:${normalizedName}:${confidenceKey}:${locationCountKey}`;
             const isQuery = match.matchType === 'query' || match.entityType === 'query';
+            const isPoll = match.matchType === 'poll' || match.entityType === 'poll';
             const locationCount =
               typeof match.locationCount === 'number'
                 ? match.locationCount
@@ -225,6 +227,8 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
               <Clock size={20} color={ICON_COLOR} strokeWidth={2} />
             ) : isViewed ? (
               <ViewIcon size={20} color={ICON_COLOR} strokeWidth={2} />
+            ) : isPoll ? (
+              <BarChart3 size={20} color={themeColors.primary} strokeWidth={2} />
             ) : isQuery ? (
               <SearchIcon size={20} color={ICON_COLOR} strokeWidth={2} />
             ) : match.entityType === 'restaurant' ? (

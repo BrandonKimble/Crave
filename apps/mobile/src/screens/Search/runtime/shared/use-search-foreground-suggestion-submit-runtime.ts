@@ -5,7 +5,6 @@ import type {
   SearchForegroundInteractionSubmitHandlers,
   SearchForegroundSubmitRuntimeArgs,
 } from './use-search-foreground-interaction-runtime-contract';
-import type { useSearchForegroundSubmitPreparationRuntime } from './use-search-foreground-submit-preparation-runtime';
 
 type UseSearchForegroundSuggestionSubmitRuntimeArgs = Pick<
   SearchForegroundSubmitRuntimeArgs,
@@ -27,6 +26,7 @@ type UseSearchForegroundSuggestionSubmitRuntimeArgs = Pick<
   | 'allowSearchBlurExitRef'
   | 'ignoreNextSearchBlurRef'
   | 'openRestaurantProfilePreview'
+  | 'openPollDetail'
 >;
 
 type SearchForegroundSuggestionSubmitRuntime = Pick<
@@ -53,11 +53,29 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
   allowSearchBlurExitRef,
   ignoreNextSearchBlurRef,
   openRestaurantProfilePreview,
+  openPollDetail,
 }: UseSearchForegroundSuggestionSubmitRuntimeArgs): SearchForegroundSuggestionSubmitRuntime => {
   const { submitSearch } = submitRuntime;
 
   const handleSuggestionPress = React.useCallback(
     (match: AutocompleteMatch) => {
+      if (match.matchType === 'poll' || match.entityType === 'poll') {
+        // §8.1 poll lane: this isn't a search — tear down the suggestion surface
+        // and open the poll's detail (via the polls home, the same cross-surface
+        // entry the profile screen uses). match.entityId is the pollId.
+        isSearchEditingRef.current = false;
+        allowSearchBlurExitRef.current = true;
+        ignoreNextSearchBlurRef.current = true;
+        suppressAutocompleteResults();
+        cancelAutocomplete();
+        setIsSearchFocused(false);
+        setIsSuggestionPanelActive(false);
+        dismissSearchKeyboard();
+        setShowSuggestions(false);
+        setSuggestions([]);
+        openPollDetail(match.entityId);
+        return;
+      }
       prepareSearchSessionEntry({ captureOrigin: true });
       isSearchEditingRef.current = false;
       allowSearchBlurExitRef.current = true;
@@ -111,6 +129,7 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
       dismissSearchKeyboard,
       ignoreNextSearchBlurRef,
       isSearchEditingRef,
+      openPollDetail,
       openRestaurantProfilePreview,
       pendingRestaurantSelectionRef,
       prepareSearchSessionEntry,
