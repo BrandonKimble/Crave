@@ -1,6 +1,16 @@
 import React from 'react';
-import { Alert, Dimensions, Image, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import {
+  Alert,
+  Dimensions,
+  Image,
+  InteractionManager,
+  Pressable,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { io } from 'socket.io-client';
 import { Heart, MessageCircle, Sparkles, X as LucideX } from 'lucide-react-native';
 
 import { Text } from '../../components';
@@ -33,6 +43,7 @@ import {
 } from '../../services/polls';
 import { PollCandidateBars } from './PollCandidateBars';
 import { createProfileQueryOptions } from './profileSceneQueryOptions';
+import { API_BASE_URL } from '../../services/api';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const ACCENT = themeColors.primary;
@@ -420,6 +431,39 @@ export const usePollDetailPanelSpec = ({
     setComments(nextComments);
     setLeaderboard(nextLeaderboard);
   }, [pollId, sort]);
+
+  // Keep refresh reachable from the socket effect without re-subscribing on every
+  // sort/poll change.
+  const refreshRef = React.useRef(refresh);
+  React.useEffect(() => {
+    refreshRef.current = refresh;
+  }, [refresh]);
+
+  // Live updates: the API broadcasts `poll:update` on the /polls namespace for
+  // every comment/endorsement/like mutation (PollsGateway). Refresh this poll's
+  // thread + leaderboard when an update for THIS poll arrives — deferred past any
+  // in-flight gesture so the sheet handoff stays smooth.
+  React.useEffect(() => {
+    if (!visible || !pollId) return;
+    const baseUrl = typeof API_BASE_URL === 'string' ? API_BASE_URL : '';
+    if (!baseUrl) return;
+    const base = baseUrl.replace(/\/api(?:\/v\d+)?$/, '');
+    const socket = io(`${base}/polls`, { transports: ['websocket'] });
+    let task: ReturnType<typeof InteractionManager.runAfterInteractions> | null = null;
+    const handleUpdate = (payload: { pollId?: string }) => {
+      if (payload?.pollId !== pollId || task) return; // global broadcast — only ours; coalesce bursts
+      task = InteractionManager.runAfterInteractions(() => {
+        task = null;
+        void refreshRef.current();
+      });
+    };
+    socket.on('poll:update', handleUpdate);
+    return () => {
+      socket.off('poll:update', handleUpdate);
+      socket.disconnect();
+      task?.cancel();
+    };
+  }, [visible, pollId]);
 
   React.useEffect(() => {
     if (!visible || !pollId) return;
