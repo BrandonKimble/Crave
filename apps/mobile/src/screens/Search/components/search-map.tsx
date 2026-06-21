@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 
 import MapboxGL, { type MapState as MapboxMapState } from '@rnmapbox/maps';
-import type { Feature, FeatureCollection, Point } from 'geojson';
+import type { Feature, FeatureCollection, Point, Polygon } from 'geojson';
 
 import pinAsset from '../../../assets/pin.png';
 import pinFillAsset from '../../../assets/pin-fill.png';
@@ -458,6 +458,7 @@ type SearchMapViewSceneProps = {
   markerSceneProps: SearchMapMarkerSceneProps | null;
   userLocationLayerProps: {
     featureCollection: FeatureCollection<Point>;
+    accuracyRingFeatureCollection: FeatureCollection<Polygon> | null;
     visualSpec: UserLocationVisualSpec;
     shouldAnimatePulse: boolean;
   } | null;
@@ -691,6 +692,7 @@ const SearchMapViewScene = React.memo(
           {userLocationLayerProps ? (
             <UserLocationLayers
               userLocationFeatureCollection={userLocationLayerProps.featureCollection}
+              accuracyRingFeatureCollection={userLocationLayerProps.accuracyRingFeatureCollection}
               userLocationVisualSpec={userLocationLayerProps.visualSpec}
               shouldAnimatePulse={userLocationLayerProps.shouldAnimatePulse}
             />
@@ -796,8 +798,53 @@ const USER_LOCATION_SOURCE_ID = 'user-location-source';
 const USER_LOCATION_SHADOW_LAYER_ID = 'user-location-shadow-layer';
 const USER_LOCATION_RING_LAYER_ID = 'user-location-ring-layer';
 const USER_LOCATION_DOT_LAYER_ID = 'user-location-dot-layer';
+const USER_LOCATION_ACCURACY_SOURCE_ID = 'user-location-accuracy-source';
+const USER_LOCATION_ACCURACY_FILL_LAYER_ID = 'user-location-accuracy-fill-layer';
+const USER_LOCATION_ACCURACY_LINE_LAYER_ID = 'user-location-accuracy-line-layer';
 const USER_LOCATION_PULSE_MIN_SCALE = 1.4;
 const USER_LOCATION_PULSE_MAX_SCALE = 1.8;
+
+// GPS accuracy ring: a geodesic n-gon approximating a circle of `radiusMeters` around the user's
+// location. Rendered as a Fill+Line in GEO space (a real Polygon source), so unlike the pixel-radius
+// CircleLayers of the puck it scales with zoom and represents the true horizontal-accuracy radius.
+// 64 segments is visually smooth at any practical zoom while staying cheap (it rebuilds only when the
+// coordinate or accuracy changes). Great-circle offset per vertex (handles latitude distortion).
+const ACCURACY_RING_SEGMENTS = 64;
+const EARTH_RADIUS_METERS = 6371008.8;
+
+const buildAccuracyRingFeatureCollection = (
+  lng: number,
+  lat: number,
+  radiusMeters: number,
+  segments: number = ACCURACY_RING_SEGMENTS
+): FeatureCollection<Polygon> => {
+  const latRad = (lat * Math.PI) / 180;
+  const lngRad = (lng * Math.PI) / 180;
+  const angularDistance = radiusMeters / EARTH_RADIUS_METERS;
+  const cosLat = Math.cos(latRad);
+  const sinLat = Math.sin(latRad);
+  const cosAng = Math.cos(angularDistance);
+  const sinAng = Math.sin(angularDistance);
+  const ring: Array<[number, number]> = [];
+  for (let i = 0; i <= segments; i += 1) {
+    const bearing = (2 * Math.PI * i) / segments;
+    const pointSinLat = sinLat * cosAng + cosLat * sinAng * Math.cos(bearing);
+    const pointLatRad = Math.asin(pointSinLat);
+    const pointLngRad =
+      lngRad + Math.atan2(Math.sin(bearing) * sinAng * cosLat, cosAng - sinLat * pointSinLat);
+    ring.push([(pointLngRad * 180) / Math.PI, (pointLatRad * 180) / Math.PI]);
+  }
+  return {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'Polygon', coordinates: [ring] },
+      },
+    ],
+  };
+};
 
 type UserLocationVisualSpec = {
   dotRadius: number;
@@ -826,10 +873,12 @@ const areUserLocationVisualSpecsEqual = (
 const UserLocationLayers = React.memo(
   function UserLocationLayers({
     userLocationFeatureCollection,
+    accuracyRingFeatureCollection,
     userLocationVisualSpec,
     shouldAnimatePulse,
   }: {
     userLocationFeatureCollection: FeatureCollection<Point>;
+    accuracyRingFeatureCollection: FeatureCollection<Polygon> | null;
     userLocationVisualSpec: UserLocationVisualSpec;
     shouldAnimatePulse: boolean;
   }) {
@@ -877,51 +926,84 @@ const UserLocationLayers = React.memo(
     }, [shouldAnimatePulse]);
 
     return (
-      <MapboxGL.ShapeSource id={USER_LOCATION_SOURCE_ID} shape={userLocationFeatureCollection}>
-        <MapboxGL.CircleLayer
-          id={USER_LOCATION_SHADOW_LAYER_ID}
-          slot="top"
-          sourceID={USER_LOCATION_SOURCE_ID}
-          belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-          style={{
-            circleRadius: userLocationVisualSpec.shadowRadius,
-            circleColor: 'rgba(15, 23, 42, 1)',
-            circleOpacity: userLocationVisualSpec.shadowOpacity,
-            circleBlur: 0.9,
-            circleTranslate: [0, 1],
-            circleTranslateAnchor: 'viewport',
-            circlePitchAlignment: 'viewport',
-          }}
-        />
-        <MapboxGL.CircleLayer
-          id={USER_LOCATION_RING_LAYER_ID}
-          slot="top"
-          sourceID={USER_LOCATION_SOURCE_ID}
-          belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-          style={{
-            circleRadius: userLocationVisualSpec.ringRadius,
-            circleColor: userLocationVisualSpec.ringColor,
-            circleOpacity: userLocationVisualSpec.ringOpacity,
-            circlePitchAlignment: 'viewport',
-          }}
-        />
-        <MapboxGL.CircleLayer
-          id={USER_LOCATION_DOT_LAYER_ID}
-          slot="top"
-          sourceID={USER_LOCATION_SOURCE_ID}
-          belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-          style={{
-            circleRadius: userLocationVisualSpec.dotRadius * pulseScale,
-            circleColor: userLocationVisualSpec.dotColor,
-            circleOpacity: userLocationVisualSpec.dotOpacity,
-            circlePitchAlignment: 'viewport',
-          }}
-        />
-      </MapboxGL.ShapeSource>
+      <>
+        {accuracyRingFeatureCollection ? (
+          <MapboxGL.ShapeSource
+            id={USER_LOCATION_ACCURACY_SOURCE_ID}
+            shape={accuracyRingFeatureCollection}
+          >
+            {/* Geo-space accuracy area: translucent fill + faint outline, BELOW the puck so the
+                dot stays crisp on top. Scales with zoom (real Polygon), unlike the pixel puck. */}
+            <MapboxGL.FillLayer
+              id={USER_LOCATION_ACCURACY_FILL_LAYER_ID}
+              slot="top"
+              sourceID={USER_LOCATION_ACCURACY_SOURCE_ID}
+              belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+              style={{
+                fillColor: userLocationVisualSpec.dotColor,
+                fillOpacity: 0.12,
+              }}
+            />
+            <MapboxGL.LineLayer
+              id={USER_LOCATION_ACCURACY_LINE_LAYER_ID}
+              slot="top"
+              sourceID={USER_LOCATION_ACCURACY_SOURCE_ID}
+              belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+              style={{
+                lineColor: userLocationVisualSpec.dotColor,
+                lineWidth: 1.5,
+                lineOpacity: 0.4,
+              }}
+            />
+          </MapboxGL.ShapeSource>
+        ) : null}
+        <MapboxGL.ShapeSource id={USER_LOCATION_SOURCE_ID} shape={userLocationFeatureCollection}>
+          <MapboxGL.CircleLayer
+            id={USER_LOCATION_SHADOW_LAYER_ID}
+            slot="top"
+            sourceID={USER_LOCATION_SOURCE_ID}
+            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+            style={{
+              circleRadius: userLocationVisualSpec.shadowRadius,
+              circleColor: 'rgba(15, 23, 42, 1)',
+              circleOpacity: userLocationVisualSpec.shadowOpacity,
+              circleBlur: 0.9,
+              circleTranslate: [0, 1],
+              circleTranslateAnchor: 'viewport',
+              circlePitchAlignment: 'viewport',
+            }}
+          />
+          <MapboxGL.CircleLayer
+            id={USER_LOCATION_RING_LAYER_ID}
+            slot="top"
+            sourceID={USER_LOCATION_SOURCE_ID}
+            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+            style={{
+              circleRadius: userLocationVisualSpec.ringRadius,
+              circleColor: userLocationVisualSpec.ringColor,
+              circleOpacity: userLocationVisualSpec.ringOpacity,
+              circlePitchAlignment: 'viewport',
+            }}
+          />
+          <MapboxGL.CircleLayer
+            id={USER_LOCATION_DOT_LAYER_ID}
+            slot="top"
+            sourceID={USER_LOCATION_SOURCE_ID}
+            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+            style={{
+              circleRadius: userLocationVisualSpec.dotRadius * pulseScale,
+              circleColor: userLocationVisualSpec.dotColor,
+              circleOpacity: userLocationVisualSpec.dotOpacity,
+              circlePitchAlignment: 'viewport',
+            }}
+          />
+        </MapboxGL.ShapeSource>
+      </>
     );
   },
   (prev, next) =>
     prev.userLocationFeatureCollection === next.userLocationFeatureCollection &&
+    prev.accuracyRingFeatureCollection === next.accuracyRingFeatureCollection &&
     areUserLocationVisualSpecsEqual(prev.userLocationVisualSpec, next.userLocationVisualSpec) &&
     prev.shouldAnimatePulse === next.shouldAnimatePulse
 );
@@ -1781,6 +1863,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   ]);
   const userLocationPuckProps = React.useMemo<{
     featureCollection: FeatureCollection<Point>;
+    accuracyRingFeatureCollection: FeatureCollection<Polygon> | null;
     visualSpec: UserLocationVisualSpec;
     shouldAnimatePulse: boolean;
   } | null>(() => {
@@ -1789,6 +1872,15 @@ const SearchMap: React.FC<SearchMapProps> = ({
     }
     const snapshot = userLocationSnapshot;
     const isStale = snapshot?.isStale ?? true;
+    // Show the GPS accuracy ring only when we have a real, finite, positive horizontal accuracy.
+    // A tiny accuracy (good fix) renders sub-pixel and is effectively invisible; a large one
+    // (coarse/reduced-accuracy fix) renders a big ring, which is the correct representation of the
+    // uncertainty. No artificial cap — the ring should be truthful.
+    const accuracyMeters = snapshot?.accuracyMeters;
+    const accuracyRingFeatureCollection =
+      typeof accuracyMeters === 'number' && Number.isFinite(accuracyMeters) && accuracyMeters > 0
+        ? buildAccuracyRingFeatureCollection(userLocation.lng, userLocation.lat, accuracyMeters)
+        : null;
     return {
       featureCollection: {
         type: 'FeatureCollection',
@@ -1800,6 +1892,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
           },
         ],
       },
+      accuracyRingFeatureCollection,
       visualSpec: {
         dotRadius: 4.5,
         ringRadius: 11,
