@@ -35,6 +35,12 @@ type PerfScenarioCommandRegistrySnapshot = {
         label?: string | null;
       }) => boolean)
     | null;
+  // Verification harness: open an overlay scene in its committed state, so a
+  // Maestro flow / deep link can drive into any scene (e.g. pollDetail) without
+  // the manual gesture dance the docked-lane preview required.
+  openOverlayScene:
+    | ((input: { scene: string; routeParam?: string | null; label?: string | null }) => boolean)
+    | null;
 };
 
 const commandRegistry: PerfScenarioCommandRegistrySnapshot = {
@@ -44,6 +50,7 @@ const commandRegistry: PerfScenarioCommandRegistrySnapshot = {
   moveMapForSearchThisArea: null,
   submitShortcutRestaurants: null,
   setScaleProbeMarkers: null,
+  openOverlayScene: null,
 };
 
 export type PerfScenarioCommandRegistration = {
@@ -78,6 +85,11 @@ export type PerfScenarioCommandRegistration = {
     lng: number;
     label?: string | null;
   }) => boolean;
+  openOverlayScene?: (input: {
+    scene: string;
+    routeParam?: string | null;
+    label?: string | null;
+  }) => boolean;
 };
 
 export const registerPerfScenarioCommands = ({
@@ -87,6 +99,7 @@ export const registerPerfScenarioCommands = ({
   moveMapForSearchThisArea,
   submitShortcutRestaurants,
   setScaleProbeMarkers,
+  openOverlayScene,
 }: PerfScenarioCommandRegistration): (() => void) => {
   if (closeResults) {
     commandRegistry.closeResults = closeResults;
@@ -105,6 +118,9 @@ export const registerPerfScenarioCommands = ({
   }
   if (setScaleProbeMarkers) {
     commandRegistry.setScaleProbeMarkers = setScaleProbeMarkers;
+  }
+  if (openOverlayScene) {
+    commandRegistry.openOverlayScene = openOverlayScene;
   }
 
   return () => {
@@ -129,11 +145,11 @@ export const registerPerfScenarioCommands = ({
     ) {
       commandRegistry.submitShortcutRestaurants = null;
     }
-    if (
-      setScaleProbeMarkers &&
-      commandRegistry.setScaleProbeMarkers === setScaleProbeMarkers
-    ) {
+    if (setScaleProbeMarkers && commandRegistry.setScaleProbeMarkers === setScaleProbeMarkers) {
       commandRegistry.setScaleProbeMarkers = null;
+    }
+    if (openOverlayScene && commandRegistry.openOverlayScene === openOverlayScene) {
+      commandRegistry.openOverlayScene = null;
     }
   };
 };
@@ -145,4 +161,5 @@ export const readPerfScenarioCommandRegistry = (): PerfScenarioCommandRegistrySn
   moveMapForSearchThisArea: commandRegistry.moveMapForSearchThisArea,
   submitShortcutRestaurants: commandRegistry.submitShortcutRestaurants,
   setScaleProbeMarkers: commandRegistry.setScaleProbeMarkers,
+  openOverlayScene: commandRegistry.openOverlayScene,
 });

@@ -25,6 +25,8 @@ type PerfScenarioDeepLinkEvent =
       scenarioRunId: string | null;
       label: string | null;
       zoom: number | null;
+      scene: string | null;
+      routeParam: string | null;
     };
 
 const parseBoolean = (value: string | null, fallback: boolean): boolean => {
@@ -194,6 +196,8 @@ export const parsePerfScenarioDeepLinkEvent = (
         scenarioRunId: parsed.searchParams.get('scenarioRunId')?.trim() || null,
         label: parsed.searchParams.get('label')?.trim() || null,
         zoom: parseNumber(parsed.searchParams.get('zoom'), 0, 24),
+        scene: parsed.searchParams.get('scene')?.trim() || null,
+        routeParam: parsed.searchParams.get('routeParam')?.trim() || null,
       };
     }
     if (!isPerfScenarioStartTarget(parsed)) {

@@ -339,13 +339,13 @@ export const PerfScenarioCoordinator: React.FC = () => {
             ? 'missing_camera_parameters'
             : 'animated_camera_command_not_registered',
           hasAnimateMapCamera: registry.animateMapCamera != null,
-        cameraDurationMs,
-        lat: event.lat,
-        lng: event.lng,
-        bearing: event.bearing,
-        pitch: event.pitch,
-        zoom: event.zoom,
-      });
+          cameraDurationMs,
+          lat: event.lat,
+          lng: event.lng,
+          bearing: event.bearing,
+          pitch: event.pitch,
+          zoom: event.zoom,
+        });
         return;
       }
       const accepted = registry.animateMapCamera({
@@ -618,6 +618,30 @@ export const PerfScenarioCoordinator: React.FC = () => {
             message: error instanceof Error ? error.message : String(error),
           });
         });
+      return;
+    }
+
+    if (event.action === 'open_overlay_scene') {
+      if (!registry.openOverlayScene || !event.scene) {
+        logPayload({
+          event: 'perf_scenario_command_failed',
+          action: event.action,
+          reason: registry.openOverlayScene ? 'missing_scene' : 'open_scene_command_not_registered',
+          scene: event.scene,
+        });
+        return;
+      }
+      const accepted = registry.openOverlayScene({
+        scene: event.scene,
+        routeParam: event.routeParam,
+        label: event.label,
+      });
+      logPayload({
+        event: accepted ? 'perf_scenario_command_executed' : 'perf_scenario_command_failed',
+        action: event.action,
+        scene: event.scene,
+        routeParam: event.routeParam,
+      });
       return;
     }
 

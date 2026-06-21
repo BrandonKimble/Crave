@@ -80,6 +80,11 @@ export type SearchRouteSceneChromePublication =
   | SearchRouteInlineSceneChromePublication
   | SearchRouteMountedSceneChromePublication;
 
+// Surface-kind guidance: use `'list'` for ANY scrollable body — it's the only
+// kind with the sheet-drag → list-scroll handoff and working item taps. `'mounted'`
+// / `'content'` are static-only (the sheet pan swallows taps on scrollable
+// children). See AppRouteSceneBodyContentSpec in app-route-scene-descriptor-contract
+// for the full rationale.
 export type SearchRouteSceneBodyContentSpec =
   | {
       surfaceKind: 'content';
@@ -87,11 +92,13 @@ export type SearchRouteSceneBodyContentSpec =
       contentScrollMode: 'scroll' | 'static';
     }
   | {
+      /** Static body only — no scroll handoff; swallows taps on scrollable children. */
       surfaceKind: 'mounted';
       mountedBodyKey: SearchRouteMountedSceneBodyKey;
       contentScrollMode?: 'scroll' | 'static';
     }
   | {
+      /** Scrollable bodies — gesture-coordinated FlashList with drag→scroll handoff + taps. */
       surfaceKind: 'list';
       data: ReadonlyArray<any>;
       renderItem: FlashListProps<any>['renderItem'];

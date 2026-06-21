@@ -101,6 +101,21 @@ const areAppRouteMountedSceneChromeSurfacesEqual = (
   return left.every((surface, index) => surface === right[index]);
 };
 
+/**
+ * How a scene publishes its body. CHOOSING THE SURFACE KIND:
+ *
+ * - `'list'` — the gesture-coordinated FlashList surface (the results sheet
+ *   surface). Use this for ANY scrollable list. It is the ONLY kind that gives
+ *   the sheet-drag → list-scroll handoff in one continuous gesture AND lets item
+ *   taps fire. Reach for this by default for feed/list/thread bodies.
+ * - `'mounted'` — a registered static body component wrapped in a plain scroll
+ *   view. NO FlashList and NO gesture handoff: the sheet's pan gesture will
+ *   SWALLOW taps on scrollable children and the drag→scroll handoff won't work.
+ *   Use ONLY for genuinely static / non-scrolling content. (The polls feed was
+ *   mistakenly 'mounted' — that's why its cards didn't tap and it didn't scroll.)
+ * - `'content'` — an inline React node; `contentScrollMode` picks a plain scroll
+ *   vs static wrapper. Same handoff/tap caveat as 'mounted' when scrollable.
+ */
 export type AppRouteSceneBodyContentSpec =
   | {
       surfaceKind: 'content';
@@ -108,11 +123,13 @@ export type AppRouteSceneBodyContentSpec =
       contentScrollMode: 'scroll' | 'static';
     }
   | {
+      /** Static body only — see the union doc: no scroll handoff, swallows taps on scrollable children. */
       surfaceKind: 'mounted';
       mountedBodyKey: AppRouteMountedSceneBodyKey;
       contentScrollMode?: 'scroll' | 'static';
     }
   | {
+      /** Scrollable bodies — gesture-coordinated FlashList with drag→scroll handoff + working item taps. */
       surfaceKind: 'list';
       data: ReadonlyArray<AppRouteSceneListItem>;
       renderItem: FlashListProps<AppRouteSceneListItem>['renderItem'];
