@@ -1,4 +1,4 @@
-import type { Feature, FeatureCollection, Point } from 'geojson';
+import type { Feature, Point } from 'geojson';
 
 import type { Coordinate, FoodResult, RestaurantResult } from '../../../../types';
 import type { RestaurantFeatureProperties } from '../../components/search-map';
@@ -163,93 +163,4 @@ export const buildMarkerCatalogReadModel = (
 
   const catalog = [...entries].sort(orderByEntry);
   return { catalog, primaryCount };
-};
-
-type BuildAnchoredShortcutCoverageArgs = {
-  collection: FeatureCollection<Point, RestaurantFeatureProperties> | null;
-  restaurantsById: Map<string, RestaurantResult>;
-  anchor: Coordinate | null;
-  pickPreferredRestaurantMapLocation: (
-    restaurant: RestaurantResult,
-    anchor: Coordinate | null
-  ) => ResolvedRestaurantMapLocation | null;
-};
-
-const projectFeatureToPreferredRestaurantLocation = (
-  feature: Feature<Point, RestaurantFeatureProperties>,
-  restaurantsById: Map<string, RestaurantResult>,
-  anchor: Coordinate | null,
-  pickPreferredRestaurantMapLocation: (
-    restaurant: RestaurantResult,
-    anchor: Coordinate | null
-  ) => ResolvedRestaurantMapLocation | null
-): Feature<Point, RestaurantFeatureProperties> => {
-  const restaurant = restaurantsById.get(feature.properties.restaurantId);
-  if (!restaurant) {
-    return feature;
-  }
-  const preferredLocation = pickPreferredRestaurantMapLocation(restaurant, anchor);
-  if (!preferredLocation) {
-    return feature;
-  }
-  const [lng, lat] = feature.geometry.coordinates;
-  if (
-    Math.abs(lng - preferredLocation.longitude) < 1e-6 &&
-    Math.abs(lat - preferredLocation.latitude) < 1e-6
-  ) {
-    return feature;
-  }
-  return {
-    ...feature,
-    geometry: {
-      ...feature.geometry,
-      coordinates: [preferredLocation.longitude, preferredLocation.latitude],
-    },
-  };
-};
-
-export const buildAnchoredShortcutCoverage = (
-  args: BuildAnchoredShortcutCoverageArgs
-): FeatureCollection<Point, RestaurantFeatureProperties> | null => {
-  const { collection, restaurantsById, anchor, pickPreferredRestaurantMapLocation } = args;
-  const features = collection?.features ?? [];
-  if (!features.length) {
-    return null;
-  }
-  let hasCoordinateOverrides = false;
-  const projected = features.map((feature) => {
-    const projectedFeature = projectFeatureToPreferredRestaurantLocation(
-      feature,
-      restaurantsById,
-      anchor,
-      pickPreferredRestaurantMapLocation
-    );
-    if (projectedFeature !== feature) {
-      hasCoordinateOverrides = true;
-    }
-    return projectedFeature;
-  });
-
-  if (!hasCoordinateOverrides) {
-    return collection;
-  }
-  return {
-    type: 'FeatureCollection',
-    features: projected,
-  };
-};
-
-export const buildRankedShortcutCoverageFeatures = (
-  collection: FeatureCollection<Point, RestaurantFeatureProperties> | null
-): Array<Feature<Point, RestaurantFeatureProperties>> => {
-  const features = collection?.features ?? [];
-  return [...features].sort((left, right) => {
-    const leftRank = left.properties.rank ?? 9999;
-    const rightRank = right.properties.rank ?? 9999;
-    const rankDiff = leftRank - rightRank;
-    if (rankDiff !== 0) {
-      return rankDiff;
-    }
-    return left.properties.restaurantId.localeCompare(right.properties.restaurantId);
-  });
 };

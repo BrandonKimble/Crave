@@ -1,5 +1,12 @@
 import React from 'react';
-import { Platform, View, findNodeHandle, type LayoutChangeEvent } from 'react-native';
+import {
+  Animated,
+  Easing,
+  Platform,
+  View,
+  findNodeHandle,
+  type LayoutChangeEvent,
+} from 'react-native';
 
 import MapboxGL, { type MapState as MapboxMapState } from '@rnmapbox/maps';
 import type { Feature, FeatureCollection, Point } from 'geojson';
@@ -11,6 +18,7 @@ import pinShadowAsset from '../../../assets/pin-shadow.png';
 // pin body + tinted fill + the baked NUMBER (rank or score). The number is part of
 // the icon, so symbol-z-order:'viewport-y' stacks pin+number as one unit (no text
 // bleed). All 369 sprites are registered from the generated map below.
+import { DOT_IMAGES, DOT_SPRITE_SCALE } from '../../../generated/dot-images';
 import { PIN_BADGE_IMAGES, PIN_BADGE_SPRITE_SCALE } from '../../../generated/pin-badge-images';
 import { colors as themeColors } from '../../../constants/theme';
 import type { StartupLocationSnapshot } from '../../../navigation/runtime/MainLaunchCoordinator';
@@ -113,6 +121,11 @@ const PIN_BADGE_IMAGE_ENTRIES: Record<string, { image: unknown; scale: number }>
       { image, scale: PIN_BADGE_SPRITE_SCALE },
     ])
   );
+// Pre-baked circle DOT sprites (one per score bucket + highlighted), registered at scale 3 so
+// the 24px @3x art renders at 8pt with icon-size 1 — crisp, no upscale, tight square collision box.
+const DOT_IMAGE_ENTRIES: Record<string, { image: unknown; scale: number }> = Object.fromEntries(
+  Object.entries(DOT_IMAGES).map(([id, image]) => [id, { image, scale: DOT_SPRITE_SCALE }])
+);
 // Fallback image id when a feature has no badge (plain bucket pin, no number).
 const plainBucketImageId = (bucketIndex: number): string => `pin-b${bucketIndex}`;
 // Feature-count degradation harness (#21): a dedicated resident source+layer that
@@ -444,8 +457,8 @@ type SearchMapViewSceneProps = {
   isFollowingUser: boolean;
   markerSceneProps: SearchMapMarkerSceneProps | null;
   userLocationLayerProps: {
-    pulsingColor: string;
-    pulsingRadius: 'accuracy' | number;
+    featureCollection: FeatureCollection<Point>;
+    visualSpec: UserLocationVisualSpec;
     shouldAnimatePulse: boolean;
   } | null;
 };
@@ -607,6 +620,8 @@ const SearchMapViewScene = React.memo(
             // All 369 pre-baked pin badge sprites (bucket × rank|score), each a
             // single 84px (3x) file → scale:3 renders at ~28pt with icon-size:1.
             ...PIN_BADGE_IMAGE_ENTRIES,
+            // 9 pre-baked circle dot sprites (8 buckets + highlighted).
+            ...DOT_IMAGE_ENTRIES,
           }}
         />
         {/*
@@ -675,8 +690,8 @@ const SearchMapViewScene = React.memo(
           <ScaleProbeLayer />
           {userLocationLayerProps ? (
             <UserLocationLayers
-              pulsingColor={userLocationLayerProps.pulsingColor}
-              pulsingRadius={userLocationLayerProps.pulsingRadius}
+              userLocationFeatureCollection={userLocationLayerProps.featureCollection}
+              userLocationVisualSpec={userLocationLayerProps.visualSpec}
               shouldAnimatePulse={userLocationLayerProps.shouldAnimatePulse}
             />
           ) : null}
@@ -724,6 +739,9 @@ export type RestaurantFeatureProperties = {
   // Pre-baked pin badge sprite id (rank in-viewport / score out-of-viewport),
   // chosen in the source builder and consumed by the pin layer's icon-image.
   badgeImageId?: string;
+  // Pre-baked circle-dot sprite id for this marker's score bucket (dot-b0..dot-b7),
+  // chosen in the source builder and consumed by the dot layer's icon-image.
+  dotImageId?: string;
   // True when the pin is inside the frozen overlap-allowed region. Drives the pin
   // layer split: in-region pins overlap freely (allowOverlap:true, ranked); out-of-
   // region pins collision-cull (allowOverlap:false, scored). Set in the source builder.
@@ -763,59 +781,148 @@ type CameraPadding = {
   paddingRight: number;
 };
 
-const PRIMARY_COLOR = '#ff3368';
 const ZERO_CAMERA_PADDING = { paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 };
 const DOT_SOURCE_ID = 'restaurant-dot-source';
 const DOT_LAYER_ID = 'restaurant-dot-layer';
 const PIN_SINGLE_SYMBOL_LAYER_ID = 'restaurant-pin-single-symbol-layer';
 const PIN_SHARED_SHADOW_LAYER_ID = 'restaurant-pin-shared-shadow-layer';
-const USER_LOCATION_UNCERTAINTY_SCALE = 0.7;
 
-const resolveDisplayedUncertaintyRadiusMeters = ({
-  accuracyMeters,
-  reducedAccuracy,
-  isStale,
-}: {
-  accuracyMeters: number | null;
-  reducedAccuracy: boolean;
-  isStale: boolean;
-}): number => {
-  if (accuracyMeters != null) {
-    return Math.max(Math.round(accuracyMeters * USER_LOCATION_UNCERTAINTY_SCALE), 18);
-  }
-  if (reducedAccuracy) {
-    return 112;
-  }
-  if (isStale) {
-    return 56;
-  }
-  return 32;
+// Restored custom user-location marker (the "purple pulsing dot" from commit 07e8db25): a static
+// shadow + static white ring + an INNER purple dot that pulses (scales 1.4→1.8→1.4). NOT the native
+// LocationPuck (whose pulse is an OUTER expanding ring we explicitly don't want, and whose dot can't
+// be recolored to purple). Driven by the resolved userLocation coordinate (passed in), so it still
+// tracks location. No outer pulse ring.
+const USER_LOCATION_SOURCE_ID = 'user-location-source';
+const USER_LOCATION_SHADOW_LAYER_ID = 'user-location-shadow-layer';
+const USER_LOCATION_RING_LAYER_ID = 'user-location-ring-layer';
+const USER_LOCATION_DOT_LAYER_ID = 'user-location-dot-layer';
+const USER_LOCATION_PULSE_MIN_SCALE = 1.4;
+const USER_LOCATION_PULSE_MAX_SCALE = 1.8;
+
+type UserLocationVisualSpec = {
+  dotRadius: number;
+  ringRadius: number;
+  shadowRadius: number;
+  shadowOpacity: number;
+  dotColor: string;
+  ringColor: string;
+  ringOpacity: number;
+  dotOpacity: number;
 };
+
+const areUserLocationVisualSpecsEqual = (
+  left: UserLocationVisualSpec,
+  right: UserLocationVisualSpec
+): boolean =>
+  left.dotRadius === right.dotRadius &&
+  left.ringRadius === right.ringRadius &&
+  left.shadowRadius === right.shadowRadius &&
+  left.shadowOpacity === right.shadowOpacity &&
+  left.dotColor === right.dotColor &&
+  left.ringColor === right.ringColor &&
+  left.ringOpacity === right.ringOpacity &&
+  left.dotOpacity === right.dotOpacity;
 
 const UserLocationLayers = React.memo(
   function UserLocationLayers({
-    pulsingColor,
-    pulsingRadius,
+    userLocationFeatureCollection,
+    userLocationVisualSpec,
     shouldAnimatePulse,
   }: {
-    pulsingColor: string;
-    pulsingRadius: 'accuracy' | number;
+    userLocationFeatureCollection: FeatureCollection<Point>;
+    userLocationVisualSpec: UserLocationVisualSpec;
     shouldAnimatePulse: boolean;
   }) {
+    const [pulseScale, setPulseScale] = React.useState(USER_LOCATION_PULSE_MIN_SCALE);
+
+    React.useEffect(() => {
+      if (!shouldAnimatePulse) {
+        setPulseScale(USER_LOCATION_PULSE_MIN_SCALE);
+        return;
+      }
+      const pulse = new Animated.Value(0);
+      let lastQuantizedValue = USER_LOCATION_PULSE_MIN_SCALE;
+      const listenerId = pulse.addListener(({ value }) => {
+        const nextScale =
+          USER_LOCATION_PULSE_MIN_SCALE +
+          (USER_LOCATION_PULSE_MAX_SCALE - USER_LOCATION_PULSE_MIN_SCALE) * value;
+        const quantizedScale = Math.round(nextScale * 100) / 100;
+        if (quantizedScale !== lastQuantizedValue) {
+          lastQuantizedValue = quantizedScale;
+          setPulseScale(quantizedScale);
+        }
+      });
+      const animation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulse, {
+            toValue: 1,
+            duration: 1500,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: false,
+          }),
+          Animated.timing(pulse, {
+            toValue: 0,
+            duration: 1000,
+            easing: Easing.in(Easing.quad),
+            useNativeDriver: false,
+          }),
+        ])
+      );
+      animation.start();
+      return () => {
+        animation.stop();
+        pulse.removeListener(listenerId);
+        pulse.removeAllListeners();
+      };
+    }, [shouldAnimatePulse]);
+
     return (
-      <MapboxGL.LocationPuck
-        visible
-        pulsing={{
-          isEnabled: shouldAnimatePulse,
-          color: pulsingColor,
-          radius: pulsingRadius,
-        }}
-      />
+      <MapboxGL.ShapeSource id={USER_LOCATION_SOURCE_ID} shape={userLocationFeatureCollection}>
+        <MapboxGL.CircleLayer
+          id={USER_LOCATION_SHADOW_LAYER_ID}
+          slot="top"
+          sourceID={USER_LOCATION_SOURCE_ID}
+          belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+          style={{
+            circleRadius: userLocationVisualSpec.shadowRadius,
+            circleColor: 'rgba(15, 23, 42, 1)',
+            circleOpacity: userLocationVisualSpec.shadowOpacity,
+            circleBlur: 0.9,
+            circleTranslate: [0, 1],
+            circleTranslateAnchor: 'viewport',
+            circlePitchAlignment: 'viewport',
+          }}
+        />
+        <MapboxGL.CircleLayer
+          id={USER_LOCATION_RING_LAYER_ID}
+          slot="top"
+          sourceID={USER_LOCATION_SOURCE_ID}
+          belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+          style={{
+            circleRadius: userLocationVisualSpec.ringRadius,
+            circleColor: userLocationVisualSpec.ringColor,
+            circleOpacity: userLocationVisualSpec.ringOpacity,
+            circlePitchAlignment: 'viewport',
+          }}
+        />
+        <MapboxGL.CircleLayer
+          id={USER_LOCATION_DOT_LAYER_ID}
+          slot="top"
+          sourceID={USER_LOCATION_SOURCE_ID}
+          belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+          style={{
+            circleRadius: userLocationVisualSpec.dotRadius * pulseScale,
+            circleColor: userLocationVisualSpec.dotColor,
+            circleOpacity: userLocationVisualSpec.dotOpacity,
+            circlePitchAlignment: 'viewport',
+          }}
+        />
+      </MapboxGL.ShapeSource>
     );
   },
   (prev, next) =>
-    prev.pulsingColor === next.pulsingColor &&
-    prev.pulsingRadius === next.pulsingRadius &&
+    prev.userLocationFeatureCollection === next.userLocationFeatureCollection &&
+    areUserLocationVisualSpecsEqual(prev.userLocationVisualSpec, next.userLocationVisualSpec) &&
     prev.shouldAnimatePulse === next.shouldAnimatePulse
 );
 const DOT_TEXT_SIZE = 17;
@@ -1673,8 +1780,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
     shouldRenderLabels,
   ]);
   const userLocationPuckProps = React.useMemo<{
-    pulsingColor: string;
-    pulsingRadius: 'accuracy' | number;
+    featureCollection: FeatureCollection<Point>;
+    visualSpec: UserLocationVisualSpec;
     shouldAnimatePulse: boolean;
   } | null>(() => {
     if (!userLocation) {
@@ -1682,21 +1789,27 @@ const SearchMap: React.FC<SearchMapProps> = ({
     }
     const snapshot = userLocationSnapshot;
     const isStale = snapshot?.isStale ?? true;
-    const reducedAccuracy = snapshot?.reducedAccuracy ?? false;
-    const accuracyMeters =
-      typeof snapshot?.accuracyMeters === 'number' && Number.isFinite(snapshot.accuracyMeters)
-        ? snapshot.accuracyMeters
-        : null;
     return {
-      pulsingColor: themeColors.secondaryAccent,
-      pulsingRadius:
-        reducedAccuracy || accuracyMeters == null
-          ? 'accuracy'
-          : resolveDisplayedUncertaintyRadiusMeters({
-              accuracyMeters,
-              reducedAccuracy,
-              isStale,
-            }),
+      featureCollection: {
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'Point', coordinates: [userLocation.lng, userLocation.lat] },
+          },
+        ],
+      },
+      visualSpec: {
+        dotRadius: 4.5,
+        ringRadius: 11,
+        shadowRadius: 16,
+        shadowOpacity: isStale ? 0.22 : 0.4,
+        dotColor: themeColors.secondaryAccent,
+        ringColor: '#FFFFFF',
+        ringOpacity: 1,
+        dotOpacity: isStale ? 0.9 : 1,
+      },
       shouldAnimatePulse: !isStale,
     };
   }, [userLocation, userLocationSnapshot]);
@@ -2103,28 +2216,23 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const dotLayerStyle = React.useMemo(() => {
     return {
       symbolZOrder: 'source',
-      // Use a font/glyph combo that reliably renders as a true circle (avoid tofu/missing-glyph boxes).
-      textField: '●',
-      textAnchor: 'center',
-      textFont: ['Arial Unicode MS Regular', 'Open Sans Semibold'],
-      // Dots participate in collision: they YIELD to labels (our restaurant labels
-      // AND native basemap labels), to the pin collision obstacles, and to each other,
-      // so a dot never overprints a pin or label and dots thin out where they crowd.
-      // allowOverlap:false + ignorePlacement:false makes the dot a collision victim.
-      // Promoted markers carry an opacity-0 dot so they contribute nothing.
-      textAllowOverlap: false,
-      textIgnorePlacement: false,
-      // Reduce collision buffer so dots can pack tighter before culling.
-      textPadding: 0,
-      // Keep the collision box closer to the actual glyph bounds.
-      textLineHeight: 0.5,
-      textOpacity: ['*', nativePresentationOpacityExpression, nativeDotOpacityExpression],
-      // No *OpacityTransition — the native stepper is the SOLE opacity animator (see the
-      // pin layer note). A Mapbox style transition is the redundant second writer.
-      // Keep dots a constant screen size (like pins). The symbol can still cull/collide based on
-      // Mapbox placement, but it won't scale with zoom.
-      textSize: DOT_TEXT_SIZE,
-      textColor: ['case', nativeHighlightedExpression, PRIMARY_COLOR, ['get', 'pinColor']],
+      // Pre-baked circle ICON per score bucket (dot-b0..dot-b7), highlighted → dot-highlighted.
+      // Replaces the old `●` TEXT glyph, whose rectangular bounding box was ~2.4× the visible dot
+      // and taller-than-wide, so dots culled far apart and unevenly (diagonal worse than orthogonal).
+      // The icon's collision box is a tight SQUARE ≈ the dot → uniform, much closer packing; and the
+      // PNG renders 1:1 at @3x (icon-size 1) so the circle is pixel-perfect crisp (no glyph/SDF fuzz).
+      iconImage: ['case', nativeHighlightedExpression, 'dot-highlighted', ['get', 'dotImageId']],
+      // Pre-baked at @3x, registered at scale 3 → icon-size 1 renders at the native 8pt, no upscale.
+      iconSize: 1,
+      iconAnchor: 'center',
+      // Dots COLLIDE and never overlap: they yield to labels (ours + basemap) and the pin collision
+      // obstacles, and to each other. allowOverlap:false + ignorePlacement:false = collision victim,
+      // never overprints. iconPadding is the conservative gap (square box → equal in all directions).
+      iconAllowOverlap: false,
+      iconIgnorePlacement: false,
+      iconPadding: 2,
+      iconOpacity: ['*', nativePresentationOpacityExpression, nativeDotOpacityExpression],
+      // No *OpacityTransition — the native stepper is the SOLE opacity animator (see the pin layer).
     } as unknown as MapboxGL.SymbolLayerStyle;
   }, [
     nativeHighlightedExpression,

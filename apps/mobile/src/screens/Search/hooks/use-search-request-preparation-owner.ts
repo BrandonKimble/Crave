@@ -1,4 +1,5 @@
 import React from 'react';
+import { Dimensions } from 'react-native';
 
 import {
   getActivePerfScenarioSearchThisAreaSubmitId,
@@ -188,6 +189,46 @@ export const useSearchRequestPreparationOwner = ({
     [logSearchResponseTiming, mapRef, shouldLogSearchResponseTimings]
   );
 
+  // Project the 4 screen corners to lng/lat and capture the SCREEN-ACCURATE viewport polygon
+  // (pitch/twist-aware) BEFORE the search request is built — so the payload always carries the
+  // CURRENT polygon and the search never falls back to the AABB box. getCoordinateFromView is async
+  // (it otherwise lagged a tick behind the sync AABB = the first-frame race); awaiting it here at
+  // submit closes that race so the polygon is the source of truth, not a fallback.
+  const captureSubmittedPolygon = React.useCallback(async (): Promise<void> => {
+    const map = mapRef.current;
+    if (!map?.getCoordinateFromView) {
+      return;
+    }
+    const { width, height } = Dimensions.get('window');
+    if (!(width > 0) || !(height > 0)) {
+      return;
+    }
+    const cornerPoints: Array<[number, number]> = [
+      [0, 0],
+      [width, 0],
+      [width, height],
+      [0, height],
+    ];
+    try {
+      const positions = await Promise.all(
+        cornerPoints.map((point) => map.getCoordinateFromView!(point).catch(() => null))
+      );
+      const polygon = positions.filter((p): p is [number, number] => isLngLatTuple(p));
+      if (polygon.length < 3) {
+        return;
+      }
+      const lngs = polygon.map(([lng]) => lng);
+      const lats = polygon.map(([, lat]) => lat);
+      const polygonBounds = boundsFromPairs(
+        [Math.min(...lngs), Math.min(...lats)],
+        [Math.max(...lngs), Math.max(...lats)]
+      );
+      viewportBoundsService.captureSearchBaseline(polygonBounds, polygon);
+    } catch {
+      // Leave whatever AABB baseline is in place — the guarded fallback.
+    }
+  }, [mapRef, viewportBoundsService]);
+
   const resolveRequestBounds = React.useCallback(
     async (options: {
       shouldCaptureBounds: boolean;
@@ -218,6 +259,9 @@ export const useSearchRequestPreparationOwner = ({
         if (freshCapture.bounds) {
           latestBoundsRef.current = freshCapture.bounds;
           viewportBoundsService.setBounds(freshCapture.bounds);
+          // Capture the screen-accurate polygon in the SAME awaited step as the fresh bounds, so the
+          // payload's getSubmittedPolygon() is the current viewport (no first-frame AABB fallback).
+          await captureSubmittedPolygon();
           return {
             bounds: freshCapture.bounds,
             source: 'map_visible_bounds',
@@ -300,7 +344,7 @@ export const useSearchRequestPreparationOwner = ({
         previousViewportServiceBounds,
       };
     },
-    [captureVisibleMapBounds, latestBoundsRef, viewportBoundsService]
+    [captureVisibleMapBounds, captureSubmittedPolygon, latestBoundsRef, viewportBoundsService]
   );
 
   const logForceFreshBoundsTelemetry = React.useCallback(
@@ -399,6 +443,16 @@ export const useSearchRequestPreparationOwner = ({
       lastResolvedStructuredRequestBoundsRef.current = requestBounds;
       if (requestBounds.bounds) {
         payload.bounds = requestBounds.bounds;
+      }
+      // Screen-accurate viewport polygon (pitch/twist-aware). When present, the backend filters by
+      // the EXACT polygon (ST_Covers) instead of the AABB bounds box — so results match the visible
+      // viewport, not the larger north-up box. bounds stays as the guarded fallback (first-frame race
+      // before the async corner projection resolves).
+      const submittedPolygon = viewportBoundsService.getSubmittedPolygon();
+      if (submittedPolygon && submittedPolygon.length >= 3) {
+        payload.viewportPolygon = submittedPolygon.map(
+          ([lng, lat]) => [lng, lat] as [number, number]
+        );
       }
 
       const resolvedLocation = userLocationRef.current;
@@ -552,6 +606,16 @@ export const useSearchRequestPreparationOwner = ({
       });
       if (requestBounds.bounds) {
         payload.bounds = requestBounds.bounds;
+      }
+      // Screen-accurate viewport polygon (pitch/twist-aware). When present, the backend filters by
+      // the EXACT polygon (ST_Covers) instead of the AABB bounds box — so results match the visible
+      // viewport, not the larger north-up box. bounds stays as the guarded fallback (first-frame race
+      // before the async corner projection resolves).
+      const submittedPolygon = viewportBoundsService.getSubmittedPolygon();
+      if (submittedPolygon && submittedPolygon.length >= 3) {
+        payload.viewportPolygon = submittedPolygon.map(
+          ([lng, lat]) => [lng, lat] as [number, number]
+        );
       }
 
       const resolvedLocation = userLocationRef.current;

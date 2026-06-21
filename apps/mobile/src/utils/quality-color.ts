@@ -134,3 +134,9 @@ export const scoreBadgeImageId = (score: number | null | undefined): string => {
       : SCORE_BUCKET_DISPLAY_MIN;
   return `pin-score-${bucketName(bucket)}-${s}`;
 };
+
+// Pre-baked circle DOT sprite id for a score's bucket (matches scripts/generate-dot-sprites.js
+// filenames `dot-b<bucket>.png`). Same bucketing as the pins, so a marker's dot and its pin share
+// the exact bucket color.
+export const dotBucketImageId = (score: number | null | undefined): string =>
+  `dot-${bucketName(scoreToBucket(score))}`;

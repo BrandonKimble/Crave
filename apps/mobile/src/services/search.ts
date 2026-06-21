@@ -25,6 +25,9 @@ export interface StructuredSearchRequest {
     restaurantAttributes?: unknown[];
   };
   bounds?: MapBounds;
+  // Screen-accurate viewport polygon ([lng, lat] pairs, pitch/twist-aware). When present the
+  // backend filters by the exact polygon (ST_Covers) instead of the AABB `bounds`.
+  viewportPolygon?: Array<[number, number]>;
   openNow?: boolean;
   pagination?: Pagination;
   includeSqlPreview?: boolean;
@@ -721,6 +724,9 @@ export const searchService = {
     payload: {
       entities?: StructuredSearchRequest['entities'];
       bounds: MapBounds;
+      // Screen-accurate viewport polygon ([lng, lat] pairs) — the backend ST_Covers the dots query
+      // by it (on top of the bounds bbox pre-filter) so the dots layer is exactly the visible viewport.
+      viewportPolygon?: Array<[number, number]>;
       includeTopDish?: boolean;
       marketKey?: string | null;
     },

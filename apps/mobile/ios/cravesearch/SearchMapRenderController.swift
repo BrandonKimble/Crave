@@ -5194,7 +5194,11 @@ final class SearchMapRenderController: RCTEventEmitter {
       state: &state,
       // native_lod = LOD role flips during movement: keep demoted markers resident (opacity-faded)
       // instead of removing their bundle from the source (the source-churn jank + demote snap).
+      // transition-complete reasons must ALSO retain: removing a just-finished crossfade's bundle
+      // re-tiles the whole pin layer (Mapbox re-runs symbol placement) → every pin re-snaps = the wiggle.
       retainResidentDemotes: reason == "native_lod"
+        || reason == "dot_transition_complete"
+        || reason == "pin_transition_complete"
     )
     recordNativeApply(
       section: "live_role.prepare_pin_label_output",
@@ -6217,6 +6221,27 @@ final class SearchMapRenderController: RCTEventEmitter {
     state.visualSourceLifecycleState = .visible
     state.keepSourcesHiddenUntilEnter = false
     instances[instanceId] = state
+    // REVEAL PROMOTION (one-shot): projectAndEmitOnScreenMarkers + driveNativeLod normally run
+    // ONLY from handleNativeCameraChanged, which early-returns on an unchanged camera signature.
+    // At reveal the camera is static, so nothing promotes until the user's first touch — pins
+    // appeared late ("only after I touch the map"). Now that the surface is .visible, kick one
+    // projection+promotion pass here so rank pins promote AT reveal, matching the result cards.
+    if let revealHandle = currentResolvedMapHandle(for: state.mapTag) {
+      _ = projectAndEmitOnScreenMarkers(
+        instanceId: instanceId,
+        state: &state,
+        handle: revealHandle,
+        reason: "reveal_promote",
+        isMoving: false
+      )
+      instances[instanceId] = state
+      driveNativeLod(instanceId: instanceId)
+      // driveNativeLod mutates instances[instanceId]; refresh the local copy so the settled
+      // diag/emit below reports post-promotion role counts.
+      if let promoted = instances[instanceId] {
+        state = promoted
+      }
+    }
     emitVisualDiag(
       instanceId: instanceId,
       message:
@@ -6791,9 +6816,20 @@ final class SearchMapRenderController: RCTEventEmitter {
       // present==promoted so isPromoted==nextPresent (identical to the old behavior). currentOpacity
       // falls back to the settled feature-state (so a resident-demoted marker promotes from 0, not 1).
       let isPromoted = desiredPinSnapshot.promotedMarkerKeys.contains(markerKey)
+      // currentOpacity must be the pin's ACTUAL painted opacity, read the SAME way the style
+      // coalesces it: feature-state nativeLodOpacity → baked property nativeLodOpacity. Both read
+      // the real value the GPU will paint, so they're flash-safe. The TERMINAL fallback is 0 (NOT
+      // the old `isPromoted ? 1 : 0` guess): a marker we know nothing about is assumed invisible and
+      // always fades TOWARD its target. The old guess asserted a freshly-promoted pin was already at
+      // 1 == targetOpacity → no fade, no feature-state write → it stayed at the baked 0 = invisible
+      // (the dots-only bug). Terminal 0 can never hide a promoted pin; worst case is a harmless 0→1
+      // fade-up, which is exactly what an appearing pin should do.
       let settledOpacity =
         Self.numberValue(from: pinFamilyState.sourceState.featureStateById[markerKey]?["nativeLodOpacity"]) ??
-        (isPromoted ? 1 : 0)
+        Self.numberValue(
+          from: (pinFamilyState.collection.featureById[markerKey]?.properties?.turfRawValue as? [String: Any])?["nativeLodOpacity"]
+        ) ??
+        0
       let currentOpacity =
         existing.map { Self.livePinTransitionOpacity($0, atMs: nowMs) } ??
         settledOpacity
@@ -6935,6 +6971,19 @@ final class SearchMapRenderController: RCTEventEmitter {
     pinFamilyState.markerRenderStateByMarkerKey = nextMarkerRenderStateByMarkerKey
     pinFamilyState.livePinTransitionsByMarkerKey = nextTransitions
     Self.setDerivedFamilyState(pinFamilyState, sourceId: state.pinSourceId, state: &state)
+    // AUDIT (pin-invisible): localize where promote→opacity breaks. snapPromoted = promoted set
+    // the snapshot handed us; promotedSeen = how many of those were in this loop's key set;
+    // txAfter = transitions live after this pass. snapPromoted 0 ⇒ snapshot lost the promoted set;
+    // snapPromoted N but txAfter 0 ⇒ no fade created despite promote (the opacity is never written).
+    if Self.lodHarnessEnabled {
+      let promotedSeen = desiredPinSnapshot.promotedMarkerKeys.intersection(markerKeys).count
+      Self.harnessLog(
+        "{\"ev\":\"pinapply\",\"snapPromoted\":\(desiredPinSnapshot.promotedMarkerKeys.count),"
+          + "\"nextPins\":\(nextPinIds.count),\"processed\":\(markerKeys.count),"
+          + "\"promotedSeen\":\(promotedSeen),\"txAfter\":\(nextTransitions.count),"
+          + "\"allowNew\":\(allowNewTransitions)}"
+      )
+    }
   }
 
   private func updateLiveDotTransitions(
@@ -8463,17 +8512,68 @@ final class SearchMapRenderController: RCTEventEmitter {
       // transition (opacity from the feature state), a mid-crossfade uses the live opacity. A gap
       // (roleVsRendered) = promoted markers not yet visibly pins (the crossfade lag the user sees).
       let pinnedRoleKeys = state.markerRoleTable.pinnedMarkerKeysInOrder
+      // RANK CROSS-REFERENCE (step): the ranks of pins ACTUALLY painted (opacity > 0.5). Compare to
+      // the frame event's promotedRanks — paintedRanks should equal promotedRanks once settled, and
+      // both should be the contiguous top-N. A skipped low rank here = the promoted set itself skips.
+      let rankByKeyStep = Dictionary(
+        state.candidateCatalog.map { ($0.markerKey, $0.rank) }, uniquingKeysWith: { first, _ in first }
+      )
       var renderedPinCount = 0
+      var paintedRanks: [Int] = []
       for key in pinnedRoleKeys {
         let op: Double
         if let tx = pinFamilyState.livePinTransitionsByMarkerKey[key], !tx.isAwaitingSourceCommit {
           op = Self.livePinTransitionOpacity(tx, atMs: nowStepMs)
         } else {
-          op = Self.numberValue(from: pinSourceState.featureStateById[key]?["nativePinOpacity"]) ?? 1
+          // Settled pin opacity = the SAME coalesce the style uses to paint it:
+          // feature-state nativeLodOpacity (the stepper's promote/demote flip) → baked
+          // property nativeLodOpacity (JS bakes every pin DEMOTED=0) → 1. The previous read
+          // used "nativePinOpacity" — a key NOTHING writes, so it was always nil ?? 1, making
+          // renderP a fake echo of roleP (roleGap permanently 0). Read the real key.
+          op = Self.numberValue(from: pinSourceState.featureStateById[key]?["nativeLodOpacity"])
+            ?? Self.numberValue(
+              from: (pinFamilyState.collection.featureById[key]?.properties?.turfRawValue as? [String: Any])?["nativeLodOpacity"]
+            )
+            ?? 1
         }
-        if op > 0.5 { renderedPinCount += 1 }
+        if op > 0.5 {
+          renderedPinCount += 1
+          if let paintedRank = rankByKeyStep[key] { paintedRanks.append(paintedRank) }
+        }
       }
       let roleVsRendered = pinnedRoleKeys.count - renderedPinCount
+      let paintedRanksStr = paintedRanks.sorted().prefix(45).map(String.init).joined(separator: ",")
+      // PIN-INVISIBLE ATTRIBUTION (audit): for each PROMOTED pin, is its companion DOT actually
+      // clearing? A promoted marker must fade its dot to ~0 so the pin shows; if the dot stays
+      // opaque and z-orders above the (same-anchor) pin, the user sees a dot, not the pin. Read
+      // dot opacity the SAME way the style paints it (feature-state nativeDotOpacity → baked
+      // property → 1). promDotOpaque ≈ roleP ⇒ dots are covering the promoted pins.
+      var promotedDotOpaqueCount = 0
+      for key in pinnedRoleKeys {
+        let dotOp = Self.numberValue(from: dotSourceState.featureStateById[key]?["nativeDotOpacity"])
+          ?? Self.numberValue(
+            from: (dotFamilyState.collection.featureById[key]?.properties?.turfRawValue as? [String: Any])?["nativeDotOpacity"]
+          )
+          ?? 1
+        if dotOp > 0.5 { promotedDotOpaqueCount += 1 }
+      }
+      // LABEL ATTRIBUTION (audit): promoted pins should carry a name label. Separate the failure modes:
+      //  promLabelFeat = promoted markers that HAVE label features built (renderState.labelFeatures).
+      //  promLabelVis  = promoted markers with >=1 label whose transient nativeLabelOpacity > 0.5.
+      // promLabelFeat≈0 ⇒ labels never built (upstream payload). promLabelFeat high but promLabelVis≈0
+      // ⇒ labels built but never faded in (stuck at preroll 0). Both high but nothing on screen ⇒
+      // collision-culled or the label render layer is hidden.
+      var promotedLabelFeatCount = 0
+      var promotedLabelVisCount = 0
+      for key in pinnedRoleKeys {
+        let labels = pinFamilyState.markerRenderStateByMarkerKey[key]?.labelFeatures ?? []
+        if labels.isEmpty { continue }
+        promotedLabelFeatCount += 1
+        let anyVisible = labels.contains { labelFeature in
+          (Self.numberValue(from: labelSourceState.featureStateById[labelFeature.id]?["nativeLabelOpacity"]) ?? 0) > 0.5
+        }
+        if anyVisible { promotedLabelVisCount += 1 }
+      }
       // workMs: compute time of THIS stepper frame (the two transition loops). If dtMs is high
       // (jank) but workMs is low, the stepper is being STARVED by other main-thread work (the
       // per-camera-frame reconcile in cwork); if workMs is itself high, the stepper apply is heavy.
@@ -8485,6 +8585,9 @@ final class SearchMapRenderController: RCTEventEmitter {
           + "\"pinMidFade\":\(pinIntermediateOpacityCount),\"dotMidFade\":\(dotIntermediateOpacityCount),"
           + "\"xfadeGap\":\(crossfadeGapCount),\"applied\":\(featureStatesToApply.count),"
           + "\"roleP\":\(pinnedRoleKeys.count),\"renderP\":\(renderedPinCount),\"roleGap\":\(roleVsRendered),"
+          + "\"promDotOpaque\":\(promotedDotOpaqueCount),"
+          + "\"promLabelFeat\":\(promotedLabelFeatCount),\"promLabelVis\":\(promotedLabelVisCount),"
+          + "\"paintedRanks\":\"\(paintedRanksStr)\","
           + "\"workMs\":\(workMs),\"dtMs\":\(dtMs)}"
       )
     }
@@ -11104,7 +11207,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       Self.harnessLog(
         "{\"ev\":\"lod\",\"t\":\(Int(Self.nowMs())),\"moving\":\(state.currentViewportIsMoving),"
           + "\"affected\":\(affected.count),\"promote\":\(promoteKeys.count),\"demote\":\(demoteKeys.count),"
-          + "\"allowNew\":\(allowNew),\"promoteRanks\":\"\(promoteRanks.prefix(8).map(String.init).joined(separator: ","))\"}"
+          + "\"allowNew\":\(allowNew),\"promoteRanks\":\"\(promoteRanks.prefix(45).map(String.init).joined(separator: ","))\"}"
       )
     }
     let residentDots = state.markerRoleTable.residentDotMarkerKeysInOrder.isEmpty
@@ -11160,7 +11263,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     // by rank among the on-screen markers (the native projection IS the visibility truth, with
     // spatial enter/exit hysteresis). Computed here per camera frame from data native already
     // has (catalog rank + the on-screen set) — no JS round-trip.
-    let shadowLodMaxFullPins = 40
+    let shadowLodMaxFullPins = 30
     let rankByKey = Dictionary(
       state.candidateCatalog.map { ($0.markerKey, $0.rank) }, uniquingKeysWith: { first, _ in first }
     )
@@ -11177,11 +11280,24 @@ final class SearchMapRenderController: RCTEventEmitter {
       let enterCount = onScreenSet.subtracting(previouslyVisible).count
       let leaveCount = previouslyVisible.subtracting(onScreenSet).count
       let cam = handle.mapView.mapboxMap.cameraState
+      // RANK CROSS-REFERENCE: promotion is top-N by rank AMONG the on-screen set, so a skipped low
+      // rank (e.g. 3,5,6 missing while 44,52,65 promote) means the ON-SCREEN set itself is missing
+      // those low ranks (not a promotion bug). onScreenRanks = sorted ranks the projection put on
+      // screen; promotedRanks = the top-N it picked; catalogTopRanks = the lowest ranks that EXIST
+      // in the catalog (to tell "rank 3 is off-screen" from "rank 3 doesn't exist / dedup gap").
+      let onScreenRanksStr = onScreenKeys.compactMap { rankByKey[$0] }.sorted().prefix(60)
+        .map(String.init).joined(separator: ",")
+      let promotedRanksStr = nativePromotedKeys.compactMap { rankByKey[$0] }.sorted()
+        .map(String.init).joined(separator: ",")
+      let catalogTopRanksStr = state.candidateCatalog.map { $0.rank }.sorted().prefix(45)
+        .map(String.init).joined(separator: ",")
       Self.harnessLog(
         "{\"ev\":\"frame\",\"t\":\(Int(Self.nowMs())),\"e\":\(Int(Date().timeIntervalSince1970 * 1000)),"
           + "\"reason\":\"\(reason)\",\"moving\":\(isMoving),"
           + "\"visible\":\(onScreenKeys.count),\"promoted\":\(nativePromotedKeys.count),"
           + "\"enter\":\(enterCount),\"leave\":\(leaveCount),"
+          + "\"onScreenRanks\":\"\(onScreenRanksStr)\",\"promotedRanks\":\"\(promotedRanksStr)\","
+          + "\"catalogTopRanks\":\"\(catalogTopRanksStr)\","
           + "\"pitch\":\(String(format: "%.1f", cam.pitch)),\"zoom\":\(String(format: "%.2f", cam.zoom))}"
       )
     }
@@ -11226,27 +11342,43 @@ final class SearchMapRenderController: RCTEventEmitter {
     } ?? 0
     let cam = handle.mapView.mapboxMap.cameraState
     let rect = handle.mapView.bounds
-    handle.mapView.mapboxMap.queryRenderedFeatures(
-      with: rect,
-      options: RenderedQueryOptions(layerIds: pinLayerIds, filter: nil)
-    ) { result in
-      DispatchQueue.main.async {
-        guard case .success(let queried) = result else { return }
-        var renderedKeys = Set<String>()
-        for q in queried {
-          let props = q.queriedFeature.feature.properties
-          if case let .string(markerKey)? = props?["markerKey"] {
-            renderedKeys.insert(markerKey)
+    let dotLayerIds = state.nativePressTargetConfig.dotLayerIds
+    let labelLayerIds = state.nativePressTargetConfig.labelLayerIds
+    // Collision-aware ground truth: queryRenderedFeatures returns only features that PASSED mapbox
+    // placement/collision and are in-rect — the screen truth that opacity-based renderP/promDotOpaque/
+    // promLabelVis are blind to. renderedDots≈0 ⇒ dots collision-culled off the map (the "no dots"
+    // bug); renderedLabels ⇒ how many name-labels actually survive collision (vs promLabelVis intent).
+    func renderedKeys(_ result: Result<[QueriedRenderedFeature], Error>) -> Set<String> {
+      guard case .success(let queried) = result else { return [] }
+      var keys = Set<String>()
+      for q in queried {
+        if case let .string(markerKey)? = q.queriedFeature.feature.properties?["markerKey"] {
+          keys.insert(markerKey)
+        }
+      }
+      return keys
+    }
+    handle.mapView.mapboxMap.queryRenderedFeatures(with: rect, options: RenderedQueryOptions(layerIds: pinLayerIds, filter: nil)) { pinResult in
+      let pinKeys = renderedKeys(pinResult)
+      let dotQueryLayers = dotLayerIds.isEmpty ? pinLayerIds : dotLayerIds
+      handle.mapView.mapboxMap.queryRenderedFeatures(with: rect, options: RenderedQueryOptions(layerIds: dotQueryLayers, filter: nil)) { dotResult in
+        let dotKeys = dotLayerIds.isEmpty ? Set<String>() : renderedKeys(dotResult)
+        let labelQueryLayers = labelLayerIds.isEmpty ? pinLayerIds : labelLayerIds
+        handle.mapView.mapboxMap.queryRenderedFeatures(with: rect, options: RenderedQueryOptions(layerIds: labelQueryLayers, filter: nil)) { labelResult in
+          let labelKeys = labelLayerIds.isEmpty ? Set<String>() : renderedKeys(labelResult)
+          DispatchQueue.main.async {
+            let missing = shouldPromote.subtracting(pinKeys)   // should be a pin but isn't on screen
+            let extra = pinKeys.subtracting(shouldPromote)     // rendered but not in the should-set
+            Self.harnessLog(
+              "{\"ev\":\"render\",\"t\":\(Int(Self.nowMs())),\"moving\":\(isMoving),"
+                + "\"onScreen\":\(onScreenCount),\"shouldPromote\":\(shouldPromote.count),"
+                + "\"renderedPins\":\(pinKeys.count),\"renderedDots\":\(dotKeys.count),"
+                + "\"renderedLabels\":\(labelKeys.count),"
+                + "\"missing\":\(missing.count),\"extra\":\(extra.count),"
+                + "\"zoom\":\(String(format: "%.2f", cam.zoom))}"
+            )
           }
         }
-        let missing = shouldPromote.subtracting(renderedKeys)   // should be a pin but isn't on screen
-        let extra = renderedKeys.subtracting(shouldPromote)     // rendered but not in the should-set
-        Self.harnessLog(
-          "{\"ev\":\"render\",\"t\":\(Int(Self.nowMs())),\"moving\":\(isMoving),"
-            + "\"onScreen\":\(onScreenCount),\"shouldPromote\":\(shouldPromote.count),"
-            + "\"renderedPins\":\(renderedKeys.count),\"missing\":\(missing.count),\"extra\":\(extra.count),"
-            + "\"zoom\":\(String(format: "%.2f", cam.zoom))}"
-        )
       }
     }
   }

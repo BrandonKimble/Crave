@@ -16,11 +16,7 @@ import {
   normalizeSearchMapVisualFeatureIdentity,
   type SearchMapVisualIdentityKey,
 } from '../utils/search-map-visual-identity';
-import {
-  buildAnchoredShortcutCoverage,
-  buildMarkerCatalogReadModel,
-  buildRankedShortcutCoverageFeatures,
-} from '../runtime/map/map-read-model-builder';
+import { buildMarkerCatalogReadModel } from '../runtime/map/map-read-model-builder';
 import { type MapMotionPressureController } from '../runtime/map/map-motion-pressure';
 import {
   createSearchMapSourceTransportFeature,
@@ -30,9 +26,9 @@ import {
   type SearchMapSourceStore,
 } from '../runtime/map/search-map-source-store';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
-import { isWithinOverlapRegion, resolveOverlapRegion } from '../utils/overlap-region';
+import { resolveOverlapRegion } from '../utils/overlap-region';
 import { requestOverlapAutoZoom } from '../runtime/map/overlap-auto-zoom-bridge';
-import { rankBadgeImageId, scoreBadgeImageId } from '../../../utils/quality-color';
+import { dotBucketImageId, rankBadgeImageId } from '../../../utils/quality-color';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import type { ResultsPresentationAuthority } from '../runtime/shared/results-presentation-authority';
 import type { ResultsPresentationSurfaceAuthority } from '../runtime/shared/results-presentation-surface-authority';
@@ -599,20 +595,19 @@ const assertProjectedVisualFrameInvariants = ({
     pinVisualIdentityKeys,
     dotVisualIdentityKeys
   );
-  // Labels + collision are PROMOTE-GATED (full pin residency means the pin source holds every
-  // candidate, but labels are built only for PROMOTED pins, nativeLodOpacity > 0). So the expected
-  // counts are keyed off the promoted pin count, not the full pin-source size.
-  const promotedPinCount = pinSourceStore.idsInOrder.reduce((count, markerKey) => {
-    const opacity = pinSourceStore.featureById.get(markerKey)?.properties?.nativeLodOpacity;
-    return typeof opacity === 'number' && opacity <= 0.001 ? count : count + 1;
-  }, 0);
-  const expectedLabelCount = promotedPinCount * LABEL_CANDIDATES_IN_ORDER.length;
-  const expectedCollisionCount = promotedPinCount;
+  // Labels + collision are ON-SCREEN-GATED (native owns promotion; JS builds labels only for the
+  // markers native reports on-screen). The structural invariant is per-marker: every labeled marker
+  // emits exactly LABEL_CANDIDATES_IN_ORDER.length name-labels plus 1 collision obstacle. Assert
+  // that relationship directly — keyed off the actual labeled-marker (collision) count — instead of
+  // the JS promoted-pin count, which is always 0 under the one-decider (native owns promotion), so
+  // the old `nativeLodOpacity > 0` count expected zero labels and tripped on every on-screen frame.
+  const labeledMarkerCount = labelCollisionSourceStore.idsInOrder.length;
+  const expectedLabelCount = labeledMarkerCount * LABEL_CANDIDATES_IN_ORDER.length;
+  const expectedCollisionCount = labeledMarkerCount;
 
   if (
     duplicatePinVisualIdentityKeys.length === 0 &&
-    labelSourceStore.idsInOrder.length === expectedLabelCount &&
-    labelCollisionSourceStore.idsInOrder.length === expectedCollisionCount
+    labelSourceStore.idsInOrder.length === expectedLabelCount
   ) {
     return;
   }
@@ -834,10 +829,14 @@ const buildDirectLabelStores = ({
   pinSourceStore,
   previousLabelSourceStore,
   previousLabelCollisionSourceStore,
+  onScreenMarkerKeys,
 }: {
   pinSourceStore: SearchMapSourceStore;
   previousLabelSourceStore: SearchMapSourceStore;
   previousLabelCollisionSourceStore: SearchMapSourceStore;
+  // Native's on-screen marker set (getNativeVisibleMarkerKeys), or null when native has not
+  // reported yet. Labels are built only for these keys (the set native promotes its top-N from).
+  onScreenMarkerKeys: ReadonlySet<string> | null;
 }): {
   labelSourceStore: SearchMapSourceStore;
   labelCollisionSourceStore: SearchMapSourceStore;
@@ -851,11 +850,16 @@ const buildDirectLabelStores = ({
     if (!feature) {
       return;
     }
-    // Labels are PROMOTE-GATED: with full pin residency the pin source holds every candidate
-    // (demoted at nativeLodOpacity 0), but name-labels are built only for PROMOTED pins so the
-    // label source doesn't balloon to 4×all-candidates. A demoted pin (opacity 0) gets no label.
-    const pinOpacity = feature.properties?.nativeLodOpacity;
-    if (typeof pinOpacity === 'number' && pinOpacity <= 0.001) {
+    // Labels are ON-SCREEN-GATED. Under the one-decider model JS bakes EVERY pin demoted
+    // (nativeLodOpacity 0) and native owns promotion, so the old `pinOpacity <= 0.001` gate skipped
+    // EVERY marker → zero labels ever (the no-labels bug). Native owns the on-screen set, so JS
+    // builds name-labels only for the markers native reports on-screen — the exact set its promoted
+    // top-N is drawn from. Native's collision + the pin transition then show the promoted pins'
+    // labels (label opacity rides the pin's crossfade) and fade/cull the rest. Bounded by the
+    // viewport, NOT 4×all-candidates. When native has not reported a visible set yet (null,
+    // pre-projection at first reveal) we build all: non-promoted labels fade to 0 with their demoted
+    // pin so nothing extra shows, and the next publish (post auto-zoom projection) trims to on-screen.
+    if (onScreenMarkerKeys != null && !onScreenMarkerKeys.has(markerKey)) {
       return;
     }
     const stableBaseFeature = buildStableLabelBaseFeature(feature, markerKey);
@@ -1030,9 +1034,6 @@ export const useDirectSearchMapSourceController = ({
   const shortcutCoveragePendingSnapshotByRequestIdRef = React.useRef<
     Map<string, { entities: StructuredSearchRequest['entities'] }>
   >(new Map());
-  const shortcutCoverageRankedRef = React.useRef<
-    Array<Feature<Point, RestaurantFeatureProperties>>
-  >([]);
   const shortcutCoverageDotFeaturesRef = React.useRef<FeatureCollection<
     Point,
     RestaurantFeatureProperties
@@ -1228,6 +1229,11 @@ export const useDirectSearchMapSourceController = ({
         shortcutCoveragePendingSnapshotByRequestIdRef.current.has(searchRequestId) ||
         (currentShortcutCoverageRequestKey != null &&
           coverageResource?.requestKey === currentShortcutCoverageRequestKey));
+    // Coverage is the in-viewport DOTS source (restored), so the reveal waits for it again (normal
+    // gate). Earlier this was force-true while coverage was being dropped; forcing it true skipped the
+    // coverage-ready handshake and left the visual-source lifecycle from reaching .visible → native
+    // promotion never ran (all dots, no pins at reveal). With coverage back + viewport-bounded, the
+    // standard "coverage resolved" gate restores the normal reveal → promotion flow.
     const shortcutCoverageReadyForPreparedEnter =
       !hasShortcutCoverageInput ||
       (coverageResource != null &&
@@ -1433,17 +1439,22 @@ export const useDirectSearchMapSourceController = ({
     // (projectAndEmitOnScreenMarkers computes the on-screen top-N; driveNativeLod / the reveal
     // collections snapshot flip those to full pins), so only on-screen markers ever promote.
     markerCandidatesRef.current = markerCatalogEntries.map((entry) => entry.feature);
-    const shortcutResultFeatures =
-      searchMode === 'shortcut' ? markerCatalogEntries.map((entry) => entry.feature) : [];
-    const shortcutCoverageFeatures =
-      searchMode === 'shortcut' ? shortcutCoverageRankedRef.current : [];
-    const rankedCandidateSources: SearchMapVisualCandidateSource[] =
-      searchMode === 'shortcut'
-        ? [
-            { sourceKind: 'shortcut_coverage', features: shortcutCoverageFeatures },
-            { sourceKind: 'main_results', features: shortcutResultFeatures },
-          ]
-        : [{ sourceKind: 'viewport', features: markerCandidatesRef.current }];
+    // IDEAL SHAPE (viewport-bounded): TWO roles, cleanly separated.
+    //  - RANK pool (pins) = main_results ONLY: the viewport-bounded /search/run ranked list (= the
+    //    cards). Top-N by rank promote → pins MATCH the cards, ranks contiguous 1..N. Coverage is
+    //    deliberately KEPT OUT of the rank pool — feeding the (formerly market-wide) coverage set into
+    //    ranking is what promoted off-view ranks 44/52/65 over on-view 3/5/6.
+    //  - DOT pool = coverage (every restaurant in the viewport) + main_results: every in-view anchor
+    //    gets a dot (residency), so any of them can crossfade to a pin on zoom. Coverage is the
+    //    "show every restaurant" layer (its original Feb purpose); it must be VIEWPORT-BOUNDED
+    //    (SearchCoverageService) so the dots are in-view only, not the whole market.
+    const shortcutResultFeatures = searchMode === 'shortcut' ? markerCandidatesRef.current : [];
+    const rankedCandidateSources: SearchMapVisualCandidateSource[] = [
+      {
+        sourceKind: searchMode === 'shortcut' ? 'main_results' : 'viewport',
+        features: markerCandidatesRef.current,
+      },
+    ];
     const dotCandidateSources: SearchMapVisualCandidateSource[] =
       searchMode === 'shortcut'
         ? [
@@ -1471,7 +1482,6 @@ export const useDirectSearchMapSourceController = ({
       ...feature,
       properties: { ...feature.properties, rank: index + 1 },
     }));
-    const selectedRestaurantCandidates = projectedInitialCandidates.selectedRestaurantCandidates;
     // Stage B (B1): publish the full ranked candidate catalog (every showable
     // marker, NOT viewport-filtered) to the source frame port so native can
     // project it to screen space each camera tick and decide on-screen membership.
@@ -1592,22 +1602,13 @@ export const useDirectSearchMapSourceController = ({
     }
 
     // SINGLE LOD BUDGET — ONE viewport-gated, ranked group. Promotion is the top-`maxFullPins`
-    // candidates BY RANK within the current screen (native screen-space set,
-    // requireVisibility:true), promoting/demoting live as markers enter/leave the viewport via
-    // the stable-membership machinery. As you pan, an outer higher-ranked marker naturally
-    // displaces an inner lower-ranked one under the single budget. The in/out-overlap-region
-    // split is now PRESENTATION ONLY (isInRegionFeature, used below for the badge): a promoted
-    // pin shows the RANK badge inside the submitted region and the crave-SCORE badge outside —
-    // it no longer splits promotion into two separate budgets. The selected (tapped) restaurant
-    // is force-promoted via selectedRestaurantCandidates regardless of geography. Natural search
-    // has no out-of-region candidates; shortcuts load the whole world and the viewport gate
-    // selects the on-screen top-N.
-    const selectedMarkerKeys = new Set(
-      selectedRestaurantCandidates.map((feature) => buildMarkerKey(feature))
-    );
-    const isInRegionFeature = (feature: Feature<Point, RestaurantFeatureProperties>): boolean =>
-      selectedMarkerKeys.has(buildMarkerKey(feature)) ||
-      isWithinOverlapRegion(overlapRegion, feature.geometry.coordinates as [number, number]);
+    // candidates BY RANK within the current screen (native screen-space set, requireVisibility:true),
+    // promoting/demoting live as markers enter/leave the viewport. As you pan, an outer higher-ranked
+    // marker naturally displaces an inner lower-ranked one under the single budget. VIEWPORT-BOUNDED
+    // SHORTCUT (migration): the catalog is now ONLY the in-viewport /search/run results, so every pin
+    // is in-region → every badge is a RANK badge (the old in/out-region SCORE-badge split + the
+    // city-wide coverage source it served are gone). The selected (tapped) restaurant is force-
+    // promoted natively via highlightedMarkerKeys regardless of geography.
     // ONE DECIDER (native-owned LOD). JS no longer decides pin promotion: it publishes the FULL
     // resident catalog with every pin baked DEMOTED (nativeLodOpacity 0), and native
     // (projectAndEmitOnScreenMarkers → driveNativeLod / the reveal collections snapshot) is the
@@ -1681,10 +1682,11 @@ export const useDirectSearchMapSourceController = ({
         typeof feature.properties.craveScore === 'number' ? feature.properties.craveScore : null;
       const rank =
         typeof feature.properties.rank === 'number' ? feature.properties.rank : index + 1;
-      const inOverlapRegion = isInRegionFeature(feature);
-      const badgeImageId = inOverlapRegion
-        ? rankBadgeImageId(craveScore, rank)
-        : scoreBadgeImageId(craveScore);
+      // VIEWPORT-BOUNDED SHORTCUT (migration): the catalog is now ONLY in-viewport results (ranked
+      // 1..N), so every pin is in-region → every badge is a RANK badge. The out-of-region SCORE badge
+      // existed only for the city-wide coverage pins, which are gone. inOverlapRegion is pinned true.
+      const inOverlapRegion = true;
+      const badgeImageId = rankBadgeImageId(craveScore, rank);
       const semanticRevision = buildPinSemanticRevision({
         baseDiffKey: getSearchMapSourceTransportFeature(feature).diffKey,
         markerKey,
@@ -1744,6 +1746,8 @@ export const useDirectSearchMapSourceController = ({
         properties: {
           ...feature.properties,
           markerKey,
+          // Pre-baked circle-dot sprite id for this marker's score bucket (matches its pin's color).
+          dotImageId: dotBucketImageId(feature.properties.craveScore),
           // STALE-BAKED-ROLE SAFETY: mirror of the nativeLodOpacity bake above. This is the
           // `['get', 'nativeDotOpacity']` coalesce fallback (first-paint default only). On a role
           // flip the native owner re-bakes the dot source property and/or writes the dot stepper
@@ -1895,11 +1899,17 @@ export const useDirectSearchMapSourceController = ({
     });
     const pinInteractionSourceStore = pinInteractionBuilder.finish();
 
+    // On-screen set for label gating: native owns promotion, so it owns "which markers are
+    // on-screen." getNativeVisibleMarkerKeys returns that set (or null pre-projection).
+    const nativeVisibleForLabels = sourceFramePort.getNativeVisibleMarkerKeys();
+    const onScreenMarkerKeysForLabels =
+      nativeVisibleForLabels != null ? new Set(nativeVisibleForLabels.markerKeys) : null;
     const { labelSourceStore, labelCollisionSourceStore, labelDerivedSourceIdentityKey } =
       buildDirectLabelStores({
         pinSourceStore,
         previousLabelSourceStore: previousLabelSourceStoreRef.current,
         previousLabelCollisionSourceStore: previousLabelCollisionSourceStoreRef.current,
+        onScreenMarkerKeys: onScreenMarkerKeysForLabels,
       });
     assertProjectedVisualFrameInvariants({
       pinSourceStore,
@@ -2283,7 +2293,6 @@ export const useDirectSearchMapSourceController = ({
     }
     shortcutCoverageSnapshotByRequestIdRef.current.clear();
     shortcutCoveragePendingSnapshotByRequestIdRef.current.clear();
-    shortcutCoverageRankedRef.current = [];
     shortcutCoverageDotFeaturesRef.current = null;
     shortcutCoverageResourceRef.current = null;
     shortcutCoverageTerminalByRequestKeyRef.current.clear();
@@ -2375,7 +2384,6 @@ export const useDirectSearchMapSourceController = ({
         shortcutCoverageTerminalByRequestKeyRef.current.set(requestKey, terminalResource);
         shortcutCoverageLoadingRef.current = false;
         shortcutCoverageDotFeaturesRef.current = null;
-        shortcutCoverageRankedRef.current = [];
         shortcutCoverageCountersRef.current.completed += 1;
         publishSourcesRef.current();
 
@@ -2521,6 +2529,12 @@ export const useDirectSearchMapSourceController = ({
         {
           entities: snapshot.entities,
           bounds: snapshot.bounds,
+          // Screen-accurate viewport polygon (frozen at submit, same as snapshot.bounds) — the dots
+          // query ST_Covers by it so the dots layer is exactly the visible viewport, not the AABB box.
+          viewportPolygon:
+            viewportBoundsService
+              .getSubmittedPolygon()
+              ?.map(([lng, lat]) => [lng, lat] as [number, number]) ?? undefined,
           includeTopDish,
           marketKey: mountedResults.metadata.marketKey,
         },
@@ -2624,18 +2638,14 @@ export const useDirectSearchMapSourceController = ({
         shortcutCoverageResourceRef.current = terminalResource;
         shortcutCoverageTerminalByRequestKeyRef.current.set(requestKey, terminalResource);
         shortcutCoverageCountersRef.current.completed += 1;
+        // Coverage = the in-viewport DOTS source (one feature per restaurant, already DISTINCT ON
+        // restaurant_id in the coverage query). The old ranked-coverage build
+        // (buildAnchoredShortcutCoverage → buildRankedShortcutCoverageFeatures → shortcutCoverageRankedRef)
+        // fed coverage into the RANK pool; that's gone (coverage no longer ranks), so it's removed.
         shortcutCoverageDotFeaturesRef.current = {
           type: 'FeatureCollection',
           features,
         };
-        const anchored = buildAnchoredShortcutCoverage({
-          collection: shortcutCoverageDotFeaturesRef.current,
-          restaurantsById: restaurantsByIdRef.current,
-          anchor: latestArgsRef.current.resolveRestaurantLocationSelectionAnchor(),
-          pickPreferredRestaurantMapLocation:
-            latestArgsRef.current.pickPreferredRestaurantMapLocation,
-        });
-        shortcutCoverageRankedRef.current = buildRankedShortcutCoverageFeatures(anchored);
         publishSourcesRef.current();
         const latestSourceFrame = sourceFramePort.getSnapshot();
         const latestScenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
@@ -2678,7 +2688,6 @@ export const useDirectSearchMapSourceController = ({
         const aborted = isAbortLikeError(error) || abortController?.signal.aborted === true;
         shortcutCoverageLoadingRef.current = false;
         shortcutCoverageDotFeaturesRef.current = null;
-        shortcutCoverageRankedRef.current = [];
         const terminalResource: ShortcutCoverageRequestResource = {
           ...nextResource,
           status: aborted ? 'aborted' : 'failed',
