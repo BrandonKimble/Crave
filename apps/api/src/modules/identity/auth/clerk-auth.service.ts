@@ -1,6 +1,12 @@
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { verifyToken } from '@clerk/clerk-sdk-node';
+import { createClerkClient, verifyToken } from '@clerk/clerk-sdk-node';
+
+export interface ClerkUserIdentity {
+  email?: string;
+  displayName?: string;
+  avatarUrl?: string;
+}
 
 const DEV_PERF_SCENARIO_AUTH_TOKEN = 'crave-dev-perf-scenario';
 
@@ -11,6 +17,16 @@ export interface ClerkJwtClaims {
   email?: string;
   email_address?: string;
   email_addresses?: Array<{ email_address?: string }>;
+  // Profile claims (only present if the Clerk JWT template exposes them).
+  name?: string;
+  full_name?: string;
+  first_name?: string;
+  last_name?: string;
+  given_name?: string;
+  family_name?: string;
+  username?: string;
+  image_url?: string;
+  picture?: string;
   [key: string]: unknown;
 }
 
@@ -19,6 +35,7 @@ export class ClerkAuthService {
   private readonly logger = new Logger(ClerkAuthService.name);
   private readonly secretKey?: string;
   private readonly audience: string[] | undefined;
+  private clerkClient?: ReturnType<typeof createClerkClient>;
 
   constructor(private readonly configService: ConfigService) {
     this.secretKey =
@@ -164,6 +181,51 @@ export class ClerkAuthService {
       const reason = error instanceof Error ? error.message : 'unknown';
       throw new UnauthorizedException(`Invalid Clerk token: ${reason}`);
     }
+  }
+
+  /**
+   * Fetch a user's identity from Clerk's authoritative record. Used as a
+   * gap-filler when the session JWT doesn't carry usable profile claims (e.g. the
+   * dashboard template omits or misconfigures them), so identity sync doesn't
+   * silently depend on template configuration. Returns undefined when no secret
+   * key is configured or the lookup fails — callers degrade gracefully.
+   */
+  async fetchUserIdentity(
+    authId: string,
+  ): Promise<ClerkUserIdentity | undefined> {
+    const client = this.getClerkClient();
+    if (!client) {
+      return undefined;
+    }
+    try {
+      const user = await client.users.getUser(authId);
+      const email =
+        user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)
+          ?.emailAddress ??
+        user.emailAddresses[0]?.emailAddress ??
+        undefined;
+      const fullName = [user.firstName, user.lastName]
+        .filter((part): part is string => Boolean(part))
+        .join(' ')
+        .trim();
+      const displayName = fullName || user.username || undefined;
+      const avatarUrl = user.imageUrl || undefined;
+      return { email, displayName, avatarUrl };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'unknown';
+      this.logger.warn(`Failed to fetch Clerk user ${authId}: ${reason}`);
+      return undefined;
+    }
+  }
+
+  private getClerkClient(): ReturnType<typeof createClerkClient> | undefined {
+    if (!this.secretKey) {
+      return undefined;
+    }
+    if (!this.clerkClient) {
+      this.clerkClient = createClerkClient({ secretKey: this.secretKey });
+    }
+    return this.clerkClient;
   }
 
   private normalizeAudienceClaim(claim?: unknown): string[] {

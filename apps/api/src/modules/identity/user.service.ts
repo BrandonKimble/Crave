@@ -20,7 +20,11 @@ import {
 import type Stripe from 'stripe';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
-import type { ClerkJwtClaims } from './auth/clerk-auth.service';
+import {
+  ClerkAuthService,
+  type ClerkJwtClaims,
+  type ClerkUserIdentity,
+} from './auth/clerk-auth.service';
 import { UserProfileDto, UserEntitlementDto } from './dto/user-profile.dto';
 import { UserStatsService } from './user-stats.service';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
@@ -52,6 +56,7 @@ export class UserService {
     private readonly configService: ConfigService,
     private readonly logger: LoggerService,
     private readonly userStats: UserStatsService,
+    private readonly clerkAuth: ClerkAuthService,
   ) {
     this.defaultEntitlement =
       this.configService.get<string>('billing.defaultEntitlement') || 'premium';
@@ -66,8 +71,19 @@ export class UserService {
       );
     }
 
-    const email =
-      this.resolveEmail(claims) || `${authId}@placeholder.crave-search.local`;
+    const existing = await this.prisma.user.findUnique({
+      where: { authProviderUserId: authId },
+      select: { email: true, displayName: true, avatarUrl: true },
+    });
+
+    // Resolve identity from the JWT claims, falling back to Clerk's authoritative
+    // record only for fields still unknown (claims empty AND not already stored).
+    // Seeded name/avatar are applied on create / as a gap-backfill — never to
+    // clobber values the user later customizes via updateMe.
+    const identity = await this.resolveIdentity(authId, claims, existing);
+    const email = identity.email || `${authId}@placeholder.crave-search.local`;
+    const displayName = identity.displayName;
+    const avatarUrl = identity.avatarUrl;
     const now = new Date();
     const trialEndsAt =
       this.trialDays > 0 ? this.addDays(now, this.trialDays) : null;
@@ -83,6 +99,8 @@ export class UserService {
         },
         create: {
           email,
+          displayName: displayName ?? null,
+          avatarUrl: avatarUrl ?? null,
           authProvider: AuthProvider.clerk,
           authProviderUserId: authId,
           revenueCatAppUserId: authId,
@@ -97,18 +115,18 @@ export class UserService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        const existing = await this.prisma.user.findUnique({
+        const emailOwner = await this.prisma.user.findUnique({
           where: { email },
         });
-        if (!existing) {
+        if (!emailOwner) {
           throw error;
         }
         user = await this.prisma.user.update({
-          where: { userId: existing.userId },
+          where: { userId: emailOwner.userId },
           data: {
             authProvider: AuthProvider.clerk,
             authProviderUserId: authId,
-            revenueCatAppUserId: existing.revenueCatAppUserId ?? authId,
+            revenueCatAppUserId: emailOwner.revenueCatAppUserId ?? authId,
             email,
             lastSignInAt: now,
             deletedAt: null,
@@ -117,6 +135,19 @@ export class UserService {
       } else {
         throw error;
       }
+    }
+
+    // Backfill profile fields for accounts that predate a now-resolvable Clerk
+    // claim (e.g. created before the JWT template exposed name/avatar). Only fills
+    // gaps — never overwrites a value the user customized via updateMe.
+    const backfill: Prisma.UserUpdateInput = {};
+    if (displayName && !user.displayName) backfill.displayName = displayName;
+    if (avatarUrl && !user.avatarUrl) backfill.avatarUrl = avatarUrl;
+    if (Object.keys(backfill).length > 0) {
+      user = await this.prisma.user.update({
+        where: { userId: user.userId },
+        data: backfill,
+      });
     }
 
     this.logger.debug('Synced Clerk identity', {
@@ -402,17 +433,109 @@ export class UserService {
     );
   }
 
-  private resolveEmail(claims: ClerkJwtClaims): string | undefined {
-    if (typeof claims.email === 'string') {
-      return claims.email;
+  // Real authenticated Clerk accounts carry a `user_…` subject; dev/perf/test
+  // identities (e.g. the perf-scenario token) don't — never hit the admin API for
+  // those.
+  private isRealClerkUser(authId: string): boolean {
+    return authId.startsWith('user_');
+  }
+
+  /**
+   * Resolve email/displayName/avatarUrl from the session JWT, then gap-fill from
+   * Clerk's authoritative record for any field still unknown (claims empty AND not
+   * already stored). This keeps identity sync correct regardless of how the JWT
+   * template is configured, while bounding admin-API calls to "we genuinely lack
+   * the data" — once stored, no further calls are made. Never downgrades a usable
+   * stored email.
+   */
+  private async resolveIdentity(
+    authId: string,
+    claims: ClerkJwtClaims,
+    existing: {
+      email: string;
+      displayName: string | null;
+      avatarUrl: string | null;
+    } | null,
+  ): Promise<ClerkUserIdentity> {
+    let email = this.resolveEmail(claims);
+    let displayName = this.resolveDisplayName(claims);
+    let avatarUrl = this.resolveAvatarUrl(claims);
+
+    const storedEmailUsable =
+      existing != null &&
+      this.isResolvedClaim(existing.email) &&
+      existing.email.includes('@') &&
+      !existing.email.endsWith('@placeholder.crave-search.local');
+
+    const needEmail = !email && !storedEmailUsable;
+    const needName = !displayName && !existing?.displayName;
+    const needAvatar = !avatarUrl && !existing?.avatarUrl;
+
+    if (this.isRealClerkUser(authId) && (needEmail || needName || needAvatar)) {
+      const fetched = await this.clerkAuth.fetchUserIdentity(authId);
+      if (fetched) {
+        email = email ?? fetched.email;
+        displayName = displayName ?? fetched.displayName;
+        avatarUrl = avatarUrl ?? fetched.avatarUrl;
+      }
     }
-    if (typeof claims.email_address === 'string') {
-      return claims.email_address;
+
+    // Preserve a usable stored email when nothing better was resolved (the upsert
+    // update path writes email unconditionally).
+    if (!email && storedEmailUsable) {
+      email = existing.email;
     }
-    const first = claims.email_addresses?.find(
-      (record) => typeof record.email_address === 'string',
+
+    return { email, displayName, avatarUrl };
+  }
+
+  // An unresolved Clerk JWT template (e.g. "{{user.primary_email_address...}}")
+  // arrives literally when the dashboard template claim is misconfigured — never
+  // persist that. A claim is usable only if it's non-empty and not a template.
+  private isResolvedClaim(value: unknown): value is string {
+    if (typeof value !== 'string') return false;
+    const trimmed = value.trim();
+    return (
+      trimmed.length > 0 && !trimmed.includes('{{') && !trimmed.includes('}}')
     );
-    return first?.email_address;
+  }
+
+  private resolveEmail(claims: ClerkJwtClaims): string | undefined {
+    const candidates = [
+      claims.email,
+      claims.email_address,
+      claims.email_addresses?.find((record) =>
+        this.isResolvedClaim(record.email_address),
+      )?.email_address,
+    ];
+    return candidates.find(
+      (value) => this.isResolvedClaim(value) && value.includes('@'),
+    );
+  }
+
+  private resolveDisplayName(claims: ClerkJwtClaims): string | undefined {
+    const composed = [
+      claims.first_name ?? claims.given_name,
+      claims.last_name ?? claims.family_name,
+    ]
+      .filter((part): part is string => this.isResolvedClaim(part))
+      .join(' ')
+      .trim();
+    const candidates = [
+      claims.name,
+      claims.full_name,
+      composed.length > 0 ? composed : undefined,
+      claims.username,
+    ];
+    const resolved = candidates.find((value) => this.isResolvedClaim(value));
+    return resolved ? resolved.trim() : undefined;
+  }
+
+  private resolveAvatarUrl(claims: ClerkJwtClaims): string | undefined {
+    const candidates = [claims.image_url, claims.picture];
+    return candidates.find(
+      (value) => this.isResolvedClaim(value) && value.startsWith('http'),
+    );
   }
 
   private addDays(date: Date, days: number): Date {
@@ -459,8 +582,8 @@ export class UserService {
       user.onboardingCompletedAt instanceof Date
         ? user.onboardingCompletedAt.toISOString()
         : typeof user.onboardingCompletedAt === 'string'
-        ? user.onboardingCompletedAt
-        : null;
+          ? user.onboardingCompletedAt
+          : null;
     return {
       status: user.onboardingStatus ?? 'not_started',
       completedAt: completedAtValue,
