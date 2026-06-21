@@ -898,6 +898,10 @@ export class PollsService {
       }
     } else if (topicType === PollTopicType.best_dish_attribute) {
       // Both sides come from the comment — pair each restaurant with each dish.
+      // NOTE (intentional v1): we do NOT filter pairs by the poll's attribute /
+      // category target. The live Connection has no attribute data yet (those are
+      // populated only at close-time graduation), and off-axis pairs naturally
+      // rank low, so relevance self-corrects. Product-owner-approved deferral.
       for (const restaurantId of spanRestaurantIds) {
         for (const foodId of spanFoodIds) {
           pairs.push({ restaurantId, foodId });
@@ -966,26 +970,21 @@ export class PollsService {
       ),
     ];
 
-    // subjectId (entityId for restaurant-axis, connectionId for dish-axis) → distinct endorsers.
+    // subjectId → distinct endorsers. For restaurant-axis polls subjectId is the
+    // restaurant entityId; for dish-axis polls it's a poll-local (restaurant,dish)
+    // composite (see encodeConnectionSubjectId).
     const endorsers = new Map<string, Set<string>>();
 
     if (useConnections) {
-      // First pass: collect every (restaurant, dish) pair, then find-or-create their
-      // Connections in one go so the leaderboard subjectId references a real row.
+      // Dish-axis: the subject identity is a poll-local (restaurant, dish)
+      // composite — we deliberately do NOT write rows into the shared Connection
+      // table (core_restaurant_items) here. Those are unverified comment mentions;
+      // real Connections are minted only at close-time graduation by the verified
+      // collection pipeline.
       const targets = {
         targetRestaurantId: poll.topic?.targetRestaurantId ?? null,
         targetDishId: poll.topic?.targetDishId ?? null,
       };
-      const pairKey = (restaurantId: string, foodId: string): string =>
-        `${restaurantId}:${foodId}`;
-      const commentPairs: Array<{
-        endorsingUsers: string[];
-        pairs: Array<{ restaurantId: string; foodId: string }>;
-      }> = [];
-      const uniquePairs = new Map<
-        string,
-        { restaurantId: string; foodId: string }
-      >();
       for (const comment of comments) {
         const spans = spansOf(comment);
         const pairs = this.resolveConnectionPairs(
@@ -995,41 +994,19 @@ export class PollsService {
           entityIdsOfType(spans, EntityType.food),
         );
         if (!pairs.length) continue;
-        commentPairs.push({
-          endorsingUsers: [
-            comment.userId,
-            ...(likersByComment.get(comment.commentId) ?? []),
-          ],
-          pairs,
-        });
-        for (const pair of pairs)
-          uniquePairs.set(pairKey(pair.restaurantId, pair.foodId), pair);
-      }
-      const connectionIdByPair = new Map<string, string>();
-      for (const [key, pair] of uniquePairs) {
-        const connection = await this.prisma.connection.upsert({
-          where: {
-            restaurantId_foodId: {
-              restaurantId: pair.restaurantId,
-              foodId: pair.foodId,
-            },
-          },
-          create: { restaurantId: pair.restaurantId, foodId: pair.foodId },
-          update: {},
-          select: { connectionId: true },
-        });
-        connectionIdByPair.set(key, connection.connectionId);
-      }
-      for (const { pairs, endorsingUsers } of commentPairs) {
+        const endorsingUsers = [
+          comment.userId,
+          ...(likersByComment.get(comment.commentId) ?? []),
+        ];
         for (const pair of pairs) {
-          const connectionId = connectionIdByPair.get(
-            pairKey(pair.restaurantId, pair.foodId),
+          const subjectId = this.encodeConnectionSubjectId(
+            pair.restaurantId,
+            pair.foodId,
           );
-          if (!connectionId) continue;
-          let set = endorsers.get(connectionId);
+          let set = endorsers.get(subjectId);
           if (!set) {
             set = new Set();
-            endorsers.set(connectionId, set);
+            endorsers.set(subjectId, set);
           }
           for (const u of endorsingUsers) set.add(u);
         }
@@ -1096,6 +1073,72 @@ export class PollsService {
     });
   }
 
+  // Dish-axis leaderboard subjects are poll-local (restaurant, dish) composites,
+  // NOT shared Connection rows — so the live leaderboard never writes unverified
+  // pairs into core_restaurant_items. UUIDs contain no "::", so the split is safe.
+  private encodeConnectionSubjectId(
+    restaurantId: string,
+    foodId: string,
+  ): string {
+    return `${restaurantId}::${foodId}`;
+  }
+
+  private decodeConnectionSubjectId(
+    subjectId: string,
+  ): { restaurantId: string; foodId: string } | null {
+    const parts = subjectId.split('::');
+    if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+    return { restaurantId: parts[0], foodId: parts[1] };
+  }
+
+  /**
+   * Resolve restaurant/food names for poll-local connection subject ids in one
+   * Entity query (the subjects don't reference a Connection row, so names come
+   * straight from the encoded entity ids).
+   */
+  private async resolveConnectionSubjectNames(
+    subjectIds: string[],
+  ): Promise<
+    Map<string, { restaurantName: string | null; foodName: string | null }>
+  > {
+    const result = new Map<
+      string,
+      { restaurantName: string | null; foodName: string | null }
+    >();
+    const decoded = subjectIds
+      .map((subjectId) => ({
+        subjectId,
+        parts: this.decodeConnectionSubjectId(subjectId),
+      }))
+      .filter(
+        (
+          d,
+        ): d is {
+          subjectId: string;
+          parts: { restaurantId: string; foodId: string };
+        } => d.parts != null,
+      );
+    if (!decoded.length) return result;
+    const entityIds = new Set<string>();
+    for (const d of decoded) {
+      entityIds.add(d.parts.restaurantId);
+      entityIds.add(d.parts.foodId);
+    }
+    const names = new Map<string, string | null>();
+    const entities = await this.prisma.entity.findMany({
+      where: { entityId: { in: [...entityIds] } },
+      select: { entityId: true, name: true },
+    });
+    for (const e of entities) names.set(e.entityId, e.name);
+    for (const d of decoded) {
+      result.set(d.subjectId, {
+        restaurantName: names.get(d.parts.restaurantId) ?? null,
+        foodName: names.get(d.parts.foodId) ?? null,
+      });
+    }
+    return result;
+  }
+
   /**
    * Display label for a restaurant+dish Connection subject — the side the poll is
    * choosing among (a dish for fixed-restaurant polls, a restaurant for fixed-dish
@@ -1146,20 +1189,14 @@ export class PollsService {
       }
     }
     if (connectionIds.length) {
-      const connections = await this.prisma.connection.findMany({
-        where: { connectionId: { in: connectionIds } },
-        select: {
-          connectionId: true,
-          restaurant: { select: { name: true } },
-          food: { select: { name: true } },
-        },
-      });
-      for (const c of connections) {
-        display.set(c.connectionId, {
+      const connectionNames =
+        await this.resolveConnectionSubjectNames(connectionIds);
+      for (const [subjectId, names] of connectionNames) {
+        display.set(subjectId, {
           name: this.formatConnectionDisplayName(
             topicType,
-            c.restaurant?.name ?? null,
-            c.food?.name ?? null,
+            names.restaurantName,
+            names.foodName,
           ),
           type: 'connection',
         });
@@ -1513,7 +1550,8 @@ export class PollsService {
       },
     });
     // Resolve candidate display names — entity subjects via Entity, connection
-    // (restaurant+dish) subjects via Connection, formatted per the poll's axis.
+    // (restaurant+dish) subjects via their poll-local composite, formatted per the
+    // poll's axis.
     const entitySubjectIds = Array.from(
       new Set(
         candidateRows
@@ -1541,19 +1579,8 @@ export class PollsService {
         : []
       ).map((row) => [row.entityId, row.name]),
     );
-    const connectionById = new Map(
-      (connectionSubjectIds.length
-        ? await this.prisma.connection.findMany({
-            where: { connectionId: { in: connectionSubjectIds } },
-            select: {
-              connectionId: true,
-              restaurant: { select: { name: true } },
-              food: { select: { name: true } },
-            },
-          })
-        : []
-      ).map((row) => [row.connectionId, row]),
-    );
+    const connectionNameById =
+      await this.resolveConnectionSubjectNames(connectionSubjectIds);
     const topicTypeByPoll = new Map(
       connectionSubjectIds.length
         ? (
@@ -1570,11 +1597,11 @@ export class PollsService {
       subjectId: string;
     }): string | null => {
       if (row.subjectType === PollLeaderboardSubjectType.connection) {
-        const connection = connectionById.get(row.subjectId);
+        const names = connectionNameById.get(row.subjectId);
         return this.formatConnectionDisplayName(
           topicTypeByPoll.get(row.pollId),
-          connection?.restaurant?.name ?? null,
-          connection?.food?.name ?? null,
+          names?.restaurantName ?? null,
+          names?.foodName ?? null,
         );
       }
       return candidateNameById.get(row.subjectId) ?? null;

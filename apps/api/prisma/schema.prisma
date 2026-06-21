@@ -537,7 +537,9 @@ model PollCommentLike {
 model PollLeaderboardEntry {
   pollId            String                     @map("poll_id") @db.Uuid
   subjectType       PollLeaderboardSubjectType @map("subject_type")
-  subjectId         String                     @map("subject_id") @db.Uuid
+  // Either an entity UUID (restaurant-axis) or a poll-local "restaurantId::foodId"
+  // composite (dish-axis) — so it's a plain string, not a UUID column.
+  subjectId         String                     @map("subject_id")
   distinctEndorsers Int                        @default(0) @map("distinct_endorsers")
   score             Decimal                    @default(0) @db.Decimal(18, 6)
   rank              Int                        @default(0)
@@ -556,7 +558,9 @@ model PollLeaderboardEntry {
 model PollEndorsement {
   pollId      String                     @map("poll_id") @db.Uuid
   subjectType PollLeaderboardSubjectType @map("subject_type")
-  subjectId   String                     @map("subject_id") @db.Uuid
+  // Either an entity UUID (restaurant-axis) or a poll-local "restaurantId::foodId"
+  // composite (dish-axis) — a plain string, not a UUID column.
+  subjectId   String                     @map("subject_id")
   userId      String                     @map("user_id") @db.Uuid
   createdAt   DateTime                   @default(now()) @map("created_at")
   poll        Poll                       @relation(fields: [pollId], references: [pollId], onDelete: Cascade)
