@@ -199,7 +199,10 @@ async function bootstrap() {
   app.enableShutdownHooks();
 
   const port = configService.get<number>('PORT') || 3000;
-  await app.listen(port, '0.0.0.0'); // Fastify needs the host specified
+  // Bind dual-stack (IPv6 + IPv4-mapped) so both `127.0.0.1` and `::1` reach the
+  // server — the iOS simulator resolves `localhost` to IPv6 `::1`, which an
+  // IPv4-only `0.0.0.0` bind would miss (manifesting as "Network Error" in the app).
+  await app.listen(port, '::');
   console.log(`Application is running on: http://localhost:${port}/api/v1`);
   console.log('[GRACEFUL SHUTDOWN] Shutdown hooks enabled');
 }
