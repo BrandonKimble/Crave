@@ -127,6 +127,7 @@ const PollCard = React.memo(({ poll, onPress }: PollCardProps) => {
             pollId={poll.pollId}
             candidates={poll.topCandidates}
             interactive={isActive}
+            previewRows={3}
           />
         </View>
       ) : null}
@@ -143,17 +144,21 @@ const PollCard = React.memo(({ poll, onPress }: PollCardProps) => {
             {poll.endorserCount ?? 0}
           </Text>
         </View>
-        {daysLeft ? (
-          <>
-            <View style={styles.pollCardHeaderSpacer} />
+        <View style={styles.pollCardHeaderSpacer} />
+        {isActive ? (
+          daysLeft ? (
             <View style={styles.metric}>
               <Clock size={13} color={themeColors.textMuted} strokeWidth={2} />
               <Text variant="caption" style={styles.metricText}>
                 {daysLeft}
               </Text>
             </View>
-          </>
-        ) : null}
+          ) : null
+        ) : (
+          <Text variant="caption" weight="semibold" style={styles.finalResults}>
+            Final results
+          </Text>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -531,7 +536,7 @@ export const usePollsPanelListSceneParts = (): {
     () => ({
       contentContainerStyle: {
         paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-        paddingTop: 16,
+        paddingTop: 2,
         paddingBottom: contentBottomPadding,
       },
       keyboardShouldPersistTaps: 'handled',
@@ -649,6 +654,9 @@ const styles = StyleSheet.create({
   },
   metricText: {
     color: themeColors.textMuted,
+  },
+  finalResults: {
+    color: ACCENT,
   },
   detailCard: {
     flex: 1,

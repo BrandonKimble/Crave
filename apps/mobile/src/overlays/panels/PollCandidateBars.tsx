@@ -1,5 +1,6 @@
 import React from 'react';
-import { Alert, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { useQuery } from '@tanstack/react-query';
 import { Text } from '../../components';
 import { colors as themeColors } from '../../constants/theme';
 import {
@@ -8,26 +9,25 @@ import {
   type PollLeaderboardEntry,
 } from '../../services/polls';
 import { useAuthController } from '../../hooks/use-auth-controller';
+import { createProfileQueryOptions } from './profileSceneQueryOptions';
 
 /**
- * "See the poll" on the feed card / detail page: the top leaderboard candidates
- * as horizontal result bars you can tap to endorse (the §13A public endorse
- * signal). The endorser count is split-colored — where the bar covers it, the
- * digits flip to the on-bar color — so it stays legible on and off the fill,
- * the TikTok-style trick the design called for. Endorsement is optimistic and
- * settles against the fresh standings the API returns (which can reorder).
+ * "See the poll" on the feed card / detail page: the leaderboard candidates as
+ * horizontal result bars you can tap to endorse (the §13A public endorse signal).
+ * Each bar shows the candidate's share as a percentage (always solid black text);
+ * the option(s) the viewer picked carry their profile picture as a small dot just
+ * left of the percentage. Endorsement is optimistic and settles against the fresh
+ * standings the API returns (which can reorder).
  */
 
-// Pink "heat" scale — leader most vivid, softening by rank. On-brand, never black;
-// every shade stays dark enough for white on-bar text.
-const RANK_FILL_COLORS = ['#ff3368', '#ff4d7b', '#ff6f93', '#fb8fab'];
 const TRACK_COLOR = '#f1f3f5';
-const ON_BAR_COLOR = '#ffffff';
-const OFF_BAR_COLOR = themeColors.textPrimary;
-const BAR_HEIGHT = 34;
+const FILL_COLOR = '#ffd6e0'; // soft pink — solid black text stays legible on it
+const TEXT_COLOR = '#000000';
+const ACCENT = themeColors.primary;
+const BAR_HEIGHT = 36;
 const BAR_RADIUS = 11;
 const BAR_GAP = 7;
-const MIN_VISIBLE_FRACTION = 0.04; // a sliver of color for any non-zero candidate
+const MIN_VISIBLE_FRACTION = 0.03; // a sliver of fill for any non-zero candidate
 
 type Candidate = Pick<
   PollCandidate,
@@ -45,45 +45,18 @@ const toCandidate = (entry: PollLeaderboardEntry): Candidate => ({
 
 type PollCandidateBarRowProps = {
   candidate: Candidate;
-  maxEndorsers: number;
+  fraction: number; // share of total endorsements (0..1)
+  viewerAvatarUrl: string | null;
   disabled: boolean;
   onToggle: (candidate: Candidate) => void;
 };
 
 const PollCandidateBarRow = React.memo(
-  ({ candidate, maxEndorsers, disabled, onToggle }: PollCandidateBarRowProps) => {
-    const rawFraction =
-      maxEndorsers > 0 ? Math.min(1, candidate.distinctEndorsers / maxEndorsers) : 0;
-    const fraction = rawFraction > 0 ? Math.max(rawFraction, MIN_VISIBLE_FRACTION) : 0;
-    const fillPct = `${fraction * 100}%`;
-    // Re-establish full row width inside the clip so on-bar text lines up exactly
-    // with the base layer, then the clip hides everything past the fill edge.
-    const innerWidthPct = fraction > 0 ? `${100 / fraction}%` : '0%';
-    const fillColor =
-      RANK_FILL_COLORS[Math.min(candidate.rank - 1, RANK_FILL_COLORS.length - 1)] ??
-      RANK_FILL_COLORS[RANK_FILL_COLORS.length - 1];
+  ({ candidate, fraction, viewerAvatarUrl, disabled, onToggle }: PollCandidateBarRowProps) => {
     const endorsed = candidate.currentUserEndorsed;
     const label = candidate.name ?? 'Unknown';
-
-    const content = (color: string) => (
-      <View style={styles.barContent} pointerEvents="none">
-        <Text
-          variant="caption"
-          weight="semibold"
-          numberOfLines={1}
-          style={[styles.barName, { color }]}
-        >
-          {label}
-        </Text>
-        <Text
-          variant="caption"
-          weight={endorsed ? 'bold' : 'semibold'}
-          style={[styles.barCount, { color }]}
-        >
-          {candidate.distinctEndorsers}
-        </Text>
-      </View>
-    );
+    const pctLabel = `${Math.round(fraction * 100)}%`;
+    const fillFraction = fraction > 0 ? Math.max(fraction, MIN_VISIBLE_FRACTION) : 0;
 
     return (
       <TouchableOpacity
@@ -93,28 +66,27 @@ const PollCandidateBarRow = React.memo(
         style={styles.barRow}
         accessibilityRole="button"
         accessibilityState={{ selected: endorsed }}
-        accessibilityLabel={`${label}, ${candidate.distinctEndorsers} endorsers${
-          endorsed ? ', endorsed by you' : ''
-        }`}
+        accessibilityLabel={`${label}, ${pctLabel}${endorsed ? ', your pick' : ''}`}
       >
         <View style={styles.barTrack} />
-        <View
-          style={[
-            styles.barFill,
-            { width: fillPct as `${number}%`, backgroundColor: fillColor },
-            endorsed && styles.barFillEndorsed,
-          ]}
-        />
-        {/* Base layer: off-bar (dark) text — visible wherever the fill does not cover. */}
-        {content(OFF_BAR_COLOR)}
-        {/* On-bar layer: light text, clipped to the fill so it shows only over the bar. */}
-        {fraction > 0 ? (
-          <View style={[styles.barClip, { width: fillPct as `${number}%` }]}>
-            <View style={{ width: innerWidthPct as `${number}%`, height: '100%' }}>
-              {content(ON_BAR_COLOR)}
-            </View>
+        <View style={[styles.barFill, { width: `${fillFraction * 100}%` as `${number}%` }]} />
+        <View style={styles.barContent} pointerEvents="none">
+          <Text variant="caption" weight="semibold" numberOfLines={1} style={styles.barName}>
+            {label}
+          </Text>
+          <View style={styles.barRight}>
+            {endorsed ? (
+              viewerAvatarUrl ? (
+                <Image source={{ uri: viewerAvatarUrl }} style={styles.youDot} />
+              ) : (
+                <View style={styles.youDotFallback} />
+              )
+            ) : null}
+            <Text variant="caption" weight="bold" style={styles.barPct}>
+              {pctLabel}
+            </Text>
           </View>
-        ) : null}
+        </View>
       </TouchableOpacity>
     );
   }
@@ -129,11 +101,29 @@ type PollCandidateBarsProps = {
   interactive?: boolean;
   /** Lifts settled candidate state so a parent (e.g. detail page) can stay in sync. */
   onCandidatesChange?: (candidates: Candidate[]) => void;
+  /**
+   * Card preview: render this many full bars, then half-peek the next one so the
+   * user can tell there are more options to see (tap the card to view them all).
+   * Omit on the detail page to show every bar in full.
+   */
+  previewRows?: number;
 };
 
 export const PollCandidateBars = React.memo(
-  ({ pollId, candidates, interactive = true, onCandidatesChange }: PollCandidateBarsProps) => {
+  ({
+    pollId,
+    candidates,
+    interactive = true,
+    onCandidatesChange,
+    previewRows,
+  }: PollCandidateBarsProps) => {
     const { isSignedIn } = useAuthController();
+    const { data: viewerProfile } = useQuery({
+      ...createProfileQueryOptions(),
+      enabled: isSignedIn,
+    });
+    const viewerAvatarUrl = viewerProfile?.avatarUrl ?? null;
+
     // Optimistic overlay, cleared whenever fresh props arrive from the feed.
     const [optimistic, setOptimistic] = React.useState<Candidate[] | null>(null);
     const inFlight = React.useRef(false);
@@ -182,19 +172,38 @@ export const PollCandidateBars = React.memo(
     );
 
     if (!rows.length) return null;
-    const maxEndorsers = rows.reduce((max, row) => Math.max(max, row.distinctEndorsers), 0);
+    const totalEndorsements = rows.reduce((sum, row) => sum + row.distinctEndorsers, 0);
+    const fractionOf = (row: Candidate): number =>
+      totalEndorsements > 0 ? row.distinctEndorsers / totalEndorsements : 0;
+
+    const showPeek = previewRows != null && rows.length > previewRows;
+    const fullRows = showPeek ? rows.slice(0, previewRows) : rows;
+    const peekRow = showPeek ? rows[previewRows as number] : null;
 
     return (
       <View style={styles.container}>
-        {rows.map((candidate) => (
+        {fullRows.map((candidate) => (
           <PollCandidateBarRow
             key={candidate.subjectId}
             candidate={candidate}
-            maxEndorsers={maxEndorsers}
+            fraction={fractionOf(candidate)}
+            viewerAvatarUrl={viewerAvatarUrl}
             disabled={!interactive}
             onToggle={handleToggle}
           />
         ))}
+        {peekRow ? (
+          // Half-peek the next option (tap-through to the card opens the full list).
+          <View style={styles.peekClip} pointerEvents="none">
+            <PollCandidateBarRow
+              candidate={peekRow}
+              fraction={fractionOf(peekRow)}
+              viewerAvatarUrl={viewerAvatarUrl}
+              disabled
+              onToggle={handleToggle}
+            />
+          </View>
+        ) : null}
       </View>
     );
   }
@@ -205,6 +214,10 @@ PollCandidateBars.displayName = 'PollCandidateBars';
 const styles = StyleSheet.create({
   container: {
     gap: BAR_GAP,
+  },
+  peekClip: {
+    height: Math.round(BAR_HEIGHT * 0.46),
+    overflow: 'hidden',
   },
   barRow: {
     height: BAR_HEIGHT,
@@ -223,18 +236,8 @@ const styles = StyleSheet.create({
     left: 0,
     top: 0,
     bottom: 0,
+    backgroundColor: FILL_COLOR,
     borderRadius: BAR_RADIUS,
-  },
-  barFillEndorsed: {
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.6)',
-  },
-  barClip: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    overflow: 'hidden',
   },
   barContent: {
     ...StyleSheet.absoluteFillObject,
@@ -247,9 +250,28 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 10,
     fontSize: 13,
+    color: TEXT_COLOR,
   },
-  barCount: {
+  barRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  youDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#e9eef5',
+  },
+  youDotFallback: {
+    width: 11,
+    height: 11,
+    borderRadius: 6,
+    backgroundColor: ACCENT,
+  },
+  barPct: {
     fontSize: 13,
+    color: TEXT_COLOR,
     fontVariant: ['tabular-nums'],
   },
 });

@@ -80,6 +80,16 @@ async function main(): Promise<void> {
     }
     const userIds = users.map((u) => u.userId);
 
+    // The user-origin poll should be owned by the real authenticated account
+    // (Clerk users have an authProviderUserId like `user_...`), not an arbitrary
+    // dev/maestro fixture — so it actually shows up in the signed-in user's
+    // profile. Falls back to the first user if no real account exists yet.
+    const realUser = await prisma.user.findFirst({
+      where: { authProviderUserId: { startsWith: 'user_' } },
+      select: { userId: true },
+    });
+    const userPollOwnerId = realUser?.userId ?? userIds[0];
+
     // Idempotency: remove prior seed polls (comments + leaderboard cascade on FK).
     const prior = await prisma.poll.findMany({
       where: { metadata: { path: ['seedFixture'], equals: true } },
@@ -120,7 +130,8 @@ async function main(): Promise<void> {
           origin: seed.origin,
           marketKey: MARKET_KEY,
           launchedAt: new Date(),
-          createdByUserId: seed.origin === PollOrigin.user ? userIds[0] : null,
+          createdByUserId:
+            seed.origin === PollOrigin.user ? userPollOwnerId : null,
           metadata: { seedFixture: true },
         },
         select: { pollId: true },
