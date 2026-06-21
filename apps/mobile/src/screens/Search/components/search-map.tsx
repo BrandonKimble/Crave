@@ -2315,22 +2315,20 @@ const SearchMap: React.FC<SearchMapProps> = ({
       // The icon's collision box is a tight SQUARE ≈ the dot → uniform, much closer packing; and the
       // PNG renders 1:1 at @3x (icon-size 1) so the circle is pixel-perfect crisp (no glyph/SDF fuzz).
       iconImage: ['case', nativeHighlightedExpression, 'dot-highlighted', ['get', 'dotImageId']],
-      // Pre-baked at @3x, registered at scale 3 → icon-size 1 = 8pt. Rendered slightly smaller (0.7)
-      // so a populated dot field isn't visually heavy while staying crisp.
-      iconSize: 0.7,
+      // Pre-baked at @3x, registered at scale 3 → icon-size 1 renders at the native 8pt (ORIGINAL
+      // size — do not shrink; dot count is a collision-PRIORITY problem, not a size problem).
+      iconSize: 1,
       iconAnchor: 'center',
-      // DOT COLLISION — proven root cause of "too few dots". The in-viewport restaurants are SPREAD
-      // (DB cross-check: ~315 DISTINCT coords for ~317 rows — NOT co-located), yet collision culled
-      // ~179 residents → ~22-32 rendered regardless of dot size. The culprit isn't dot-vs-dot: it's
-      // that dots yielded to the dense BASEMAP labels (zoom-13 Manhattan is blanketed with street/
-      // avenue/neighborhood labels), so dots only survived in the label gaps. allowOverlap:true makes
-      // dots show regardless of label/pin collisions (they're spread, so dot-on-dot overlap is rare),
-      // and ignorePlacement:true keeps the dots from suppressing the native basemap street labels in
-      // return. Net: way more dots, basemap labels intact. (If we later want dot-vs-dot thinning,
-      // reintroduce a small same-layer cull without yielding to basemap labels.)
-      iconAllowOverlap: true,
-      iconIgnorePlacement: true,
-      iconPadding: 0,
+      // Dots COLLIDE (allowOverlap:false + ignorePlacement:false). The CORRECT behavior (matching the
+      // old glyph dots): dots must SUPPRESS the native basemap street labels (win over them) and be
+      // culled ONLY by our pins, our pin-labels, and each other — NOT by basemap labels. Basemap
+      // labels must never show mid-search. The earlier ignorePlacement:true attempt was wrong (it let
+      // basemap labels show during search). The real lever is collision PRIORITY/order vs the basemap
+      // (under investigation); iconPadding is the dot-vs-dot gap, tuned once the collision box is
+      // visualized.
+      iconAllowOverlap: false,
+      iconIgnorePlacement: false,
+      iconPadding: 2,
       iconOpacity: ['*', nativePresentationOpacityExpression, nativeDotOpacityExpression],
       // No *OpacityTransition — the native stepper is the SOLE opacity animator (see the pin layer).
     } as unknown as MapboxGL.SymbolLayerStyle;

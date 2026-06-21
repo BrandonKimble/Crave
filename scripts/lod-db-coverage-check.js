@@ -112,10 +112,20 @@ async function main() {
       )`;
   }
 
+  // Mirror the REAL coverage query's full filtering (search-coverage.service.ts), not just the
+  // location pre-filter: a restaurant only becomes a map dot if it is e.type='restaurant', has at
+  // least one menu item (EXISTS core_restaurant_items — the "has dishes" filter), AND has a public
+  // restaurant score (INNER JOIN core_public_entity_scores, subject_type='restaurant'). Without these
+  // the count is inflated (counts geocoded locations that never reach the map).
   const sql = `
     SELECT COUNT(DISTINCT rl.restaurant_id)::int AS dbcount
     FROM core_restaurant_locations rl
-    WHERE ${baseWhere}${polygonClause}`;
+    JOIN core_entities e
+      ON e.entity_id = rl.restaurant_id AND e.type = 'restaurant'
+    JOIN core_public_entity_scores prs
+      ON prs.subject_id = e.entity_id AND prs.subject_type = 'restaurant'
+    WHERE ${baseWhere}${polygonClause}
+      AND EXISTS (SELECT 1 FROM core_restaurant_items c WHERE c.restaurant_id = e.entity_id)`;
 
   try {
     const rows = await prisma.$queryRawUnsafe(sql, ...params);

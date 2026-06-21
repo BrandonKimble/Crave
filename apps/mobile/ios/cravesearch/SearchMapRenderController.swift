@@ -10737,6 +10737,13 @@ final class SearchMapRenderController: RCTEventEmitter {
   }
 
   private func installMapSubscriptions(for mapTag: NSNumber, handle: ResolvedMapHandle) {
+    // DEV: render Mapbox's REAL collision/placement boxes (faint green outlines) so we can SEE the
+    // actual collision box of every symbol — our dots/pins/labels AND the native basemap labels — and
+    // confirm which boxes reserve space and cull which. This is ground truth for the "what culls the
+    // dots" question. Toggle with collisionDebugEnabled.
+    if Self.collisionDebugEnabled {
+      handle.mapView.debugOptions = [.collision]
+    }
     if handle.sourceDataLoadedCancelable == nil {
       handle.sourceDataLoadedCancelable = handle.mapView.mapboxMap.onSourceDataLoaded.observe { [weak self] event in
         DispatchQueue.main.async {
@@ -11163,6 +11170,9 @@ final class SearchMapRenderController: RCTEventEmitter {
   // plans/lod-observability-harness.md + scripts/lod-harness.sh. Enabled by default for now;
   // make JS-controllable later so it is free in prod.
   static let lodHarnessEnabled = true
+  // DEV collision-box visualizer: green outlines of every symbol's REAL Mapbox collision box (set in
+  // installMapSubscriptions via mapView.debugOptions = [.collision]). Flip to false to clear.
+  static let collisionDebugEnabled = true
   static func harnessLog(_ json: String) {
     NSLog("[lodev] %@", json)
   }
