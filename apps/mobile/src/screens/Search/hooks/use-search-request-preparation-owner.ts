@@ -90,6 +90,12 @@ export type SearchRequestPreparationOwner = {
   ) => Promise<PrepareNaturalSearchAttemptPayloadResult | null>;
 };
 
+// Upper bound on how long submit will wait for the screen-accurate viewport-polygon projection
+// before falling back to the AABB baseline. getCoordinateFromView resolves in ~1 frame on a warm
+// map; this only bites when the native view isn't ready (cold-launch first submit), where the
+// projection can hang indefinitely and would otherwise block the search request from firing.
+const SUBMITTED_POLYGON_CAPTURE_TIMEOUT_MS = 500;
+
 const getPerfNow = () => {
   if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
     return performance.now();
@@ -210,9 +216,25 @@ export const useSearchRequestPreparationOwner = ({
       [0, height],
     ];
     try {
-      const positions = await Promise.all(
+      // getCoordinateFromView can HANG (never resolve AND never reject) when the native map view
+      // isn't ready yet — e.g. the first submit right after a cold launch. The per-corner .catch
+      // only handles a REJECTION, not a hung promise, so awaiting Promise.all unguarded here would
+      // block resolveRequestBounds forever and the search request would never fire (eternal
+      // spinner). Race the projection against a short timeout; on timeout we keep whatever AABB
+      // baseline is in place (the guarded fallback) so the polygon is strictly a best-effort
+      // enhancement that can NEVER block submit.
+      const projection = Promise.all(
         cornerPoints.map((point) => map.getCoordinateFromView!(point).catch(() => null))
       );
+      const positions = await Promise.race([
+        projection,
+        new Promise<null>((resolve) => {
+          setTimeout(() => resolve(null), SUBMITTED_POLYGON_CAPTURE_TIMEOUT_MS);
+        }),
+      ]);
+      if (!positions) {
+        return;
+      }
       const polygon = positions.filter((p): p is [number, number] => isLngLatTuple(p));
       if (polygon.length < 3) {
         return;
