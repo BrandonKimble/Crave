@@ -44,6 +44,8 @@ import {
 import { PollCandidateBars } from './PollCandidateBars';
 import { createProfileQueryOptions } from './profileSceneQueryOptions';
 import { API_BASE_URL } from '../../services/api';
+import { useRestaurantRouteProducer } from '../useRestaurantRouteProducer';
+import { createRestaurantRoutePanelDraft } from '../restaurantRoutePanelContract';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const ACCENT = themeColors.primary;
@@ -104,22 +106,34 @@ const buildBodySegments = (body: string, spans: EntitySpan[] | null): BodySegmen
   return segments;
 };
 
-const CommentBody = React.memo(({ comment }: { comment: PollComment }) => {
+type CommentBodyProps = {
+  comment: PollComment;
+  onEntityPress: (entity: EntitySpan) => void;
+};
+
+const CommentBody = React.memo(({ comment, onEntityPress }: CommentBodyProps) => {
   const segments = React.useMemo(
     () => buildBodySegments(comment.body, comment.entitySpans),
     [comment.body, comment.entitySpans]
   );
   return (
     <Text variant="body" style={styles.commentBody}>
-      {segments.map((segment, index) =>
-        segment.entity ? (
-          <Text key={index} style={styles.entitySpan}>
+      {segments.map((segment, index) => {
+        if (!segment.entity) return segment.text;
+        // Restaurant highlights are tappable → that restaurant's profile; food /
+        // attribute highlights are styled but not navigable (no single subject).
+        const tappable = segment.entity.type === 'restaurant' && Boolean(segment.entity.entityId);
+        return (
+          <Text
+            key={index}
+            style={[styles.entitySpan, tappable && styles.entitySpanLink]}
+            onPress={tappable ? () => onEntityPress(segment.entity!) : undefined}
+            suppressHighlighting={!tappable}
+          >
             {segment.text}
           </Text>
-        ) : (
-          segment.text
-        )
-      )}
+        );
+      })}
     </Text>
   );
 });
@@ -252,6 +266,7 @@ type PollCommentRowProps = {
   onSubmitReply: (text: string) => void;
   onSubmitEdit: (text: string) => void;
   onCancelCompose: () => void;
+  onEntityPress: (entity: EntitySpan) => void;
 };
 
 const PollCommentRow = React.memo(
@@ -269,6 +284,7 @@ const PollCommentRow = React.memo(
     onSubmitReply,
     onSubmitEdit,
     onCancelCompose,
+    onEntityPress,
   }: PollCommentRowProps) => {
     const { comment, depth } = item;
     const liked = comment.currentUserLiked;
@@ -303,7 +319,7 @@ const PollCommentRow = React.memo(
               onCancel={onCancelCompose}
             />
           ) : (
-            <CommentBody comment={comment} />
+            <CommentBody comment={comment} onEntityPress={onEntityPress} />
           )}
           {!isEditing ? (
             <View style={styles.commentActions}>
@@ -392,6 +408,7 @@ export const usePollDetailPanelSpec = ({
     enabled: isSignedIn,
   });
   const viewerUserId = viewerProfile?.userId ?? null;
+  const { openRestaurantRoute } = useRestaurantRouteProducer();
 
   const [poll, setPoll] = React.useState<Poll | null>(pollSeed ?? null);
   const [comments, setComments] = React.useState<PollComment[]>([]);
@@ -640,6 +657,26 @@ export const usePollDetailPanelSpec = ({
     [editTarget, mutatingComment, refresh]
   );
 
+  // Tapping a restaurant highlight opens that restaurant's profile. The restaurant
+  // route can't be a child of the polls lane, so open it via the global producer
+  // under the 'search' owner (it self-hydrates from restaurantId); closing it
+  // returns to search rather than this poll.
+  const handleEntityPress = React.useCallback(
+    (entity: EntitySpan) => {
+      if (entity.type !== 'restaurant' || !entity.entityId) return;
+      openRestaurantRoute({
+        restaurantId: entity.entityId,
+        panel: createRestaurantRoutePanelDraft({
+          data: null,
+          onToggleFavorite: () => undefined,
+        }),
+        ownerSceneKey: 'search',
+        parentSceneKey: 'search',
+      });
+    },
+    [openRestaurantRoute]
+  );
+
   const handleDelete = React.useCallback(
     (comment: PollComment) => {
       Alert.alert('Delete comment?', 'This removes your comment from the discussion.', [
@@ -681,6 +718,7 @@ export const usePollDetailPanelSpec = ({
         onSubmitReply={handleSubmitReply}
         onSubmitEdit={handleSubmitEdit}
         onCancelCompose={handleCancelCompose}
+        onEntityPress={handleEntityPress}
       />
     ),
     [
@@ -688,6 +726,7 @@ export const usePollDetailPanelSpec = ({
       editTarget,
       handleCancelCompose,
       handleDelete,
+      handleEntityPress,
       handleLike,
       handleStartEdit,
       handleStartReply,
@@ -1072,6 +1111,9 @@ const styles = StyleSheet.create({
   entitySpan: {
     color: ACCENT,
     fontWeight: '600',
+  },
+  entitySpanLink: {
+    textDecorationLine: 'underline',
   },
   commentRowNested: {
     borderTopWidth: 0,
