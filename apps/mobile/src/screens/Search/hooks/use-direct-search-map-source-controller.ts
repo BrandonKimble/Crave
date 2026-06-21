@@ -1609,15 +1609,16 @@ export const useDirectSearchMapSourceController = ({
     // is in-region → every badge is a RANK badge (the old in/out-region SCORE-badge split + the
     // city-wide coverage source it served are gone). The selected (tapped) restaurant is force-
     // promoted natively via highlightedMarkerKeys regardless of geography.
-    // ONE DECIDER (native-owned LOD). JS no longer decides pin promotion: it publishes the FULL
-    // resident catalog with every pin baked DEMOTED (nativeLodOpacity 0), and native
-    // (projectAndEmitOnScreenMarkers → driveNativeLod / the reveal collections snapshot) is the
-    // SOLE LOD decider — it flips the promoted top-N to opacity 1 via feature-state / the reveal
-    // snapshot's nativePromotedKeysInOrder. The old JS buildMarkerRenderModel (viewport-gated top-N
-    // + stable-membership retention) and its lod_target_change attribution are deleted. The selected
-    // (tapped) restaurant is force-promoted natively (driveNativeLod's forcedPromote off
-    // highlightedMarkerKeys). The full-residency pass below emits every candidate (demoted), so
-    // there is no separately-promoted JS pin set.
+    // NATIVE-OWNED LOD with a STATIC INITIAL SEED. JS publishes the FULL resident catalog and SEEDS
+    // the initial promotion — the top-N-by-rank ranked results baked as pins (see the IDEAL-REVEAL
+    // SEED below) — so the reveal is a single synchronized fade. Native
+    // (projectAndEmitOnScreenMarkers → driveNativeLod) remains the SOLE LOD decider for all pan/zoom:
+    // it recomputes the promoted top-N per camera frame and flips roles via feature-state. The seed
+    // and native's computation agree at reveal (viewport-bounded catalog → all ranked on-screen →
+    // same top-N), so native's first tick no-ops rather than re-deciding. The old JS
+    // buildMarkerRenderModel (viewport-gated top-N + stable-membership retention) and its
+    // lod_target_change attribution are deleted. The selected (tapped) restaurant is force-promoted
+    // natively (driveNativeLod's forcedPromote off highlightedMarkerKeys).
     const projectedVisualFrame = projectSearchMapVisualFrame({
       rankedSources: rankedCandidateSources,
       dotSources: dotCandidateSources,
@@ -1643,16 +1644,35 @@ export const useDirectSearchMapSourceController = ({
       isPromoted: boolean;
     }> = [];
     const seenRenderedLodKeys = new Set<string>();
-    // ONE DECIDER: JS bakes NO promotion. Every published pin is demoted (isPromoted:false →
-    // nativeLodOpacity 0); native flips the promoted top-N to 1. The dot + full-residency passes
-    // below already emit every candidate demoted, so there is no separate JS-promoted pin pass.
+    // IDEAL-REVEAL SEED (single synchronized fade). JS bakes the top-N-by-rank ranked results as
+    // PROMOTED pins in the published frame, instead of the all-demoted "one decider" bake. This
+    // restores the old one-group model's clean reveal: pins+dots+labels fade in TOGETHER with correct
+    // roles + placed labels from the FIRST painted frame, eliminating the 3-phase stagger (dots fade
+    // in alone → top-N crossfade into pins at camera-idle → labels pop in last) that all-demoted
+    // produced. It does NOT reintroduce two-decider oscillation: the catalog is viewport-bounded
+    // main_results, so every ranked entry is on-screen and top-N-by-rank == native's projected top-N
+    // (same maxFullPins). Native's first driveNativeLod tick (and the reveal-promote kick) therefore
+    // finds `affected` empty (prev-pinned == its computed set) and no-ops — native STILL solely owns
+    // LOD on pan/zoom; JS only seeds the initial static frame, exactly as the old model did. The seed
+    // must be applied in BOTH passes below: a ranked key is usually first seen (and deduped) in the
+    // dot pass, since dots carry every candidate resident at opacity 0.
+    const promotedSeedKeys = new Set<string>(
+      [...projectedVisualFrame.rankedCandidates]
+        .sort(
+          (a, b) =>
+            (typeof a.properties.rank === 'number' ? a.properties.rank : Number.POSITIVE_INFINITY) -
+            (typeof b.properties.rank === 'number' ? b.properties.rank : Number.POSITIVE_INFINITY)
+        )
+        .slice(0, maxFullPins)
+        .map((feature) => buildMarkerKey(feature))
+    );
     visibleDotRestaurantMarkerFeatures.forEach((feature) => {
       const key = buildMarkerKey(feature);
       if (seenRenderedLodKeys.has(key)) {
         return;
       }
       seenRenderedLodKeys.add(key);
-      renderedLodCandidates.push({ feature, isPromoted: false });
+      renderedLodCandidates.push({ feature, isPromoted: promotedSeedKeys.has(key) });
     });
     // FULL RESIDENCY (#2 pan-to-new-areas + finish the wiggle kill): emit EVERY catalog candidate
     // into the pin+dot sources, resident at opacity 0 when demoted. The full-replace then pre-seeds
@@ -1666,7 +1686,7 @@ export const useDirectSearchMapSourceController = ({
         return;
       }
       seenRenderedLodKeys.add(key);
-      renderedLodCandidates.push({ feature, isPromoted: false });
+      renderedLodCandidates.push({ feature, isPromoted: promotedSeedKeys.has(key) });
     });
 
     // Pin badge keyed off the frozen overlap region (resolved above): in-region → RANK,
