@@ -451,7 +451,7 @@ const SearchMountedResultsListTarget = React.memo(
           ref={activeListRef}
           {...flashListPropsForRender}
           ListHeaderComponent={
-            activeList === 'primary' && listDataSnapshot.primaryListHeaderComponent !== undefined
+            listDataSnapshot.primaryListHeaderComponent !== undefined
               ? (listDataSnapshot.primaryListHeaderComponent as typeof activeListHeaderComponent)
               : activeListHeaderComponent
           }

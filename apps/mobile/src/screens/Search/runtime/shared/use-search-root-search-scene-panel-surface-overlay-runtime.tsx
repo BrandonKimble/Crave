@@ -8,6 +8,7 @@ import type { useSearchRootSearchScenePanelSurfaceContentRuntime } from './use-s
 
 export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
   resolvedResultsHeaderHeightForRender,
+  filtersHeaderHeight,
   shouldUseInteractionSurface,
   surfaceActive,
   surfaceMode,
@@ -15,6 +16,7 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
   surfaceContentRuntime,
 }: {
   resolvedResultsHeaderHeightForRender: number;
+  filtersHeaderHeight: number;
   shouldUseInteractionSurface: boolean;
   surfaceActive: boolean;
   surfaceMode: 'none' | 'initial_loading' | 'empty' | 'interaction_loading' | 'results';
@@ -24,6 +26,12 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
   surfaceContentRuntime: ReturnType<typeof useSearchRootSearchScenePanelSurfaceContentRuntime>;
 }) => {
   const headerTopValue = useSharedValue(resolvedResultsHeaderHeightForRender);
+  // The toggle-strip (filters) height. The loading cover's `top` is the SEARCH
+  // header line; the strip sits just below it as the list header. On an INTERACTION
+  // (toggle) reload we push the loading surfaces DOWN past the strip so the strip
+  // stays visible + tappable and the loading state animates under it. INITIAL loads
+  // (no results yet) keep the cover at the search-header line.
+  const filtersHeaderHeightValue = useSharedValue(filtersHeaderHeight);
   const useInteractionSurfaceValue = useSharedValue(shouldUseInteractionSurface ? 1 : 0);
   const surfaceActiveValue = useSharedValue(surfaceActive ? 1 : 0);
   const initialLoadingModeValue = useSharedValue(surfaceMode === 'initial_loading' ? 1 : 0);
@@ -35,6 +43,9 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
   React.useEffect(() => {
     headerTopValue.value = resolvedResultsHeaderHeightForRender;
   }, [headerTopValue, resolvedResultsHeaderHeightForRender]);
+  React.useEffect(() => {
+    filtersHeaderHeightValue.value = filtersHeaderHeight;
+  }, [filtersHeaderHeight, filtersHeaderHeightValue]);
   React.useEffect(() => {
     useInteractionSurfaceValue.value = shouldUseInteractionSurface ? 1 : 0;
   }, [shouldUseInteractionSurface, useInteractionSurfaceValue]);
@@ -55,14 +66,16 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
     opacity:
       surfaceActiveValue.value *
       Math.max(initialLoadingModeValue.value, interactionLoadingModeValue.value),
-    top: headerTopValue.value,
+    // Interaction reload: start below the toggle strip so it stays uncovered.
+    // Initial load: no offset (cover sits at the search-header line).
+    top: headerTopValue.value + interactionLoadingModeValue.value * filtersHeaderHeightValue.value,
   }));
   const interactionSurfaceAnimatedStyle = useAnimatedStyle(() => ({
     opacity:
       surfaceActiveValue.value *
       useInteractionSurfaceValue.value *
       interactionLoadingModeValue.value,
-    top: headerTopValue.value,
+    top: headerTopValue.value + interactionLoadingModeValue.value * filtersHeaderHeightValue.value,
   }));
   const loadingContentAnimatedStyle = useAnimatedStyle(() => ({
     opacity: Math.max(initialLoadingModeValue.value, interactionLoadingModeValue.value),
