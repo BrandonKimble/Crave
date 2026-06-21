@@ -1649,15 +1649,28 @@ export const useDirectSearchMapSourceController = ({
     // restores the old one-group model's clean reveal: pins+dots+labels fade in TOGETHER with correct
     // roles + placed labels from the FIRST painted frame, eliminating the 3-phase stagger (dots fade
     // in alone → top-N crossfade into pins at camera-idle → labels pop in last) that all-demoted
-    // produced. It does NOT reintroduce two-decider oscillation: the catalog is viewport-bounded
-    // main_results, so every ranked entry is on-screen and top-N-by-rank == native's projected top-N
-    // (same maxFullPins). Native's first driveNativeLod tick (and the reveal-promote kick) therefore
-    // finds `affected` empty (prev-pinned == its computed set) and no-ops — native STILL solely owns
-    // LOD on pan/zoom; JS only seeds the initial static frame, exactly as the old model did. The seed
-    // must be applied in BOTH passes below: a ranked key is usually first seen (and deduped) in the
-    // dot pass, since dots carry every candidate resident at opacity 0.
+    // produced. It does NOT reintroduce two-decider oscillation: top-N-by-rank among the on-screen set
+    // == native's projected top-N (same maxFullPins), so native's first driveNativeLod tick finds
+    // `affected` empty and no-ops — native STILL solely owns LOD on pan/zoom; JS only seeds the static
+    // frame. The seed is applied in BOTH passes below: a ranked key is usually first seen (and deduped)
+    // in the dot pass, since dots carry every candidate resident at opacity 0.
+    //
+    // CONTRACT GATE: a promoted marker MUST carry a full pin+interaction+label+collision bundle, and
+    // labels are on-screen-gated (built for the native-visible set, or ALL when null pre-projection —
+    // see buildDirectLabelStores). So we may ONLY seed-promote markers that also get a label this
+    // frame; promoting an off-screen ranked marker post-projection would leave it label-less and the
+    // native frame-sync rejects it ("Promoted marker … missing … role payload"). Promote the top-N by
+    // rank AMONG that same label-built set (== native's on-screen top-N), so every seeded pin has a
+    // label. nativeVisibleSeed mirrors onScreenMarkerKeysForLabels (the getter is stable this frame).
+    const nativeVisibleSeed = sourceFramePort.getNativeVisibleMarkerKeys();
+    const nativeVisibleSeedSet =
+      nativeVisibleSeed != null ? new Set(nativeVisibleSeed.markerKeys) : null;
     const promotedSeedKeys = new Set<string>(
       [...projectedVisualFrame.rankedCandidates]
+        .filter(
+          (feature) =>
+            nativeVisibleSeedSet == null || nativeVisibleSeedSet.has(buildMarkerKey(feature))
+        )
         .sort(
           (a, b) =>
             (typeof a.properties.rank === 'number' ? a.properties.rank : Number.POSITIVE_INFINITY) -
