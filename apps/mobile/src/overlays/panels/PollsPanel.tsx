@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, View, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { Alert, View, Pressable, StyleSheet, Image } from 'react-native';
 import { Sparkles, MessageCircle, Users, Clock } from 'lucide-react-native';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
@@ -90,11 +90,14 @@ const PollCard = React.memo(({ poll, onPress }: PollCardProps) => {
   const closedOn = formatClosedDate(poll.closedAt);
   const daysLeft = isActive ? formatDaysLeft(poll.closesAt) : null;
   return (
-    <TouchableOpacity
-      style={[styles.pollCard, isActive && styles.pollCardActive]}
+    <Pressable
+      style={({ pressed }) => [
+        styles.pollCard,
+        isActive && styles.pollCardActive,
+        pressed && styles.pollCardPressed,
+      ]}
       onPress={() => onPress(poll)}
       accessibilityRole="button"
-      activeOpacity={0.85}
     >
       <View style={styles.pollCardHeader}>
         <PollCreatorBadge creator={poll.creator} />
@@ -157,7 +160,7 @@ const PollCard = React.memo(({ poll, onPress }: PollCardProps) => {
           </Text>
         )}
       </View>
-    </TouchableOpacity>
+    </Pressable>
   );
 });
 
@@ -575,6 +578,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   pollCardActive: {},
+  pollCardPressed: { opacity: 0.85 },
   pollCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
