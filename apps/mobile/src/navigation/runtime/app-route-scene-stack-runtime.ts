@@ -44,6 +44,7 @@ import {
   type AppRouteSceneStackSurfaceAuthority,
 } from './app-route-scene-stack-surface-contract';
 import type { OverlayKey } from '../../overlays/types';
+import { getAppOverlayRouteMetadata } from './app-overlay-route-types';
 import {
   markSearchNavSwitchRuntimeAttribution,
   withSearchNavSwitchRuntimeAttribution,
@@ -846,8 +847,19 @@ const resolveSheetPresentationSceneKey = ({
 }: {
   routeActiveSceneKey: OverlayKey | null;
   routeOverlayDisplaySnapshot: RouteOverlayDisplaySnapshot;
-}): OverlayKey | null =>
-  routeOverlayDisplaySnapshot.isPersistentPollLane ? 'polls' : routeActiveSceneKey;
+}): OverlayKey | null => {
+  // The persistent-poll-lane 'polls' forcing only applies while a TOP-LEVEL scene
+  // is presented — a child pushed over the lane (pollDetail / pollCreation /
+  // restaurant / saveList / favoriteListDetail) must take the sheet. This mirrors
+  // the same child-scene escape in resolveDisplaySnapshot
+  // (app-route-native-overlay-target-authorities.ts); without it the body re-forced
+  // to 'polls' even though the child was the active route.
+  const isChildSceneDisplayed =
+    routeActiveSceneKey != null && getAppOverlayRouteMetadata(routeActiveSceneKey).role === 'child';
+  return routeOverlayDisplaySnapshot.isPersistentPollLane && !isChildSceneDisplayed
+    ? 'polls'
+    : routeActiveSceneKey;
+};
 
 const resolveTransitionSheetPresentationSceneKey = ({
   routeActiveSceneKey,
