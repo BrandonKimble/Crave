@@ -75,10 +75,15 @@ export const areAppRouteSheetHostSurfaceBodySnapshotsEqual = (
   left: AppRouteSheetHostSurfaceBodySnapshot,
   right: AppRouteSheetHostSurfaceBodySnapshot
 ): boolean => {
-  // Runtime/display-only fields are intentionally excluded here. Scene switches
-  // update those through the runtime config/native display authorities without
-  // waking the persistent React sheet body surface.
+  // `displayedSceneKey` IS load-bearing for the React body surface: it drives the
+  // per-scene visibility in BottomSheetSceneStackHost (resolveSceneStackStaticVisibility),
+  // so a change here must wake the body to flip which scene's frame is visible. Without
+  // it, a poll-lane -> pollDetail switch (where every other field is identical) keeps the
+  // stale 'polls' frame visible and the child scene never paints. Other runtime-only
+  // fields stay excluded — those propagate through the native display authorities and
+  // need not wake the React surface.
   return (
+    left.displayedSceneKey === right.displayedSceneKey &&
     left.hasRenderableSheetSurface === right.hasRenderableSheetSurface &&
     left.chromeEntry?.headerComponent === right.chromeEntry?.headerComponent &&
     left.chromeEntry?.backgroundComponent === right.chromeEntry?.backgroundComponent &&

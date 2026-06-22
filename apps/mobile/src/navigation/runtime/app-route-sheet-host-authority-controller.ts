@@ -1029,8 +1029,7 @@ class AppRouteSheetHostAuthorityController {
       activeSemanticOverlayKey,
       canRenderSurface,
       chromeVisualState,
-      displayedSceneKey:
-        displayedSceneKey,
+      displayedSceneKey,
       initialSheetY,
       isPersistentPollLane: effectiveIsPersistentPollLane,
       isRenderable,
@@ -1338,8 +1337,7 @@ class AppRouteSheetHostAuthorityController {
   ): boolean {
     if (this.isRecomputingRuntimeConfig) {
       this.pendingRuntimeConfigRecompute = true;
-      this.pendingRuntimeConfigRecomputeNotify =
-        this.pendingRuntimeConfigRecomputeNotify || notify;
+      this.pendingRuntimeConfigRecomputeNotify = this.pendingRuntimeConfigRecomputeNotify || notify;
       this.schedulePendingRuntimeConfigRecompute();
       return false;
     }
@@ -1728,7 +1726,8 @@ class AppRouteSheetHostAuthorityController {
   }
 
   private readonly resolveCurrentSnapTarget = (): OverlaySheetSnap => {
-    const sharedSheetState = this.input.routeSharedSheetPresentationRuntime.getSnapshot().sheetState;
+    const sharedSheetState =
+      this.input.routeSharedSheetPresentationRuntime.getSnapshot().sheetState;
     if (sharedSheetState !== 'hidden') {
       return sharedSheetState;
     }
@@ -1831,11 +1830,7 @@ class AppRouteSheetHostAuthorityController {
       this.initialVisibleSnapDispatchKey = null;
     }
     const resolvedSurfaceInput = this.getResolvedSurfaceInput();
-    const {
-      activeSemanticOverlayKey,
-      resolvedRuntimeModel,
-      rootOverlayKey,
-    } = resolvedSurfaceInput;
+    const { activeSemanticOverlayKey, resolvedRuntimeModel, rootOverlayKey } = resolvedSurfaceInput;
     this.input.routeSharedSheetPresentationRuntime.recordSharedSheetSnap(snap);
     if (snap !== 'hidden') {
       this.markSearchSurfaceSheetReadyForVisibleSnap(resolvedSurfaceInput);

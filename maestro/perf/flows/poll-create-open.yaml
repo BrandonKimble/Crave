@@ -7,6 +7,6 @@ appId: com.brandonkimble.cravesearch
 - waitForAnimationToEnd: { timeout: 2500 }
 - tapOn: 'Polls in New York'
 - waitForAnimationToEnd: { timeout: 2500 }
-- tapOn: { id: 'poll-card-title-3a57786d-ee01-4585-b5f5-9ca668c7ab47' }
+- tapOn: { text: 'Create or close polls' }
 - waitForAnimationToEnd: { timeout: 8000 }
-- takeScreenshot: /tmp/titletap
+- takeScreenshot: /tmp/createtap
