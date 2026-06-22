@@ -11000,6 +11000,21 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
 
       private func handleStyleLoaded(mapTag: NSNumber) {
+      // ATTR [stylelayers]: dump the layer stack when the basemap style loads, so we can see the REAL
+      // order — total layer count (is the 171-layer basemap present?) and the TOP of the stack (are our
+      // restaurant-*/search-* overlay layers above or below the topmost basemap labels like
+      // continent-label/road-label?). Tells us whether/where to reposition our stack above the basemap.
+      if Self.lodHarnessEnabled, let handle = currentResolvedMapHandle(for: mapTag) {
+        let allIds = handle.mapView.mapboxMap.allLayerIdentifiers.map { $0.id }
+        let oursTop = allIds.suffix(30).map { id -> String in
+          (id.hasPrefix("restaurant-") || id.hasPrefix("search-") || id.hasPrefix("user-location"))
+            ? "*\(id)" : id
+        }.joined(separator: "|")
+        Self.harnessLog(
+          "{\"ev\":\"stylelayers\",\"t\":\(Int(Self.nowMs())),\"total\":\(allIds.count),"
+            + "\"top30\":\"\(oursTop)\"}"
+        )
+      }
       for instanceId in Array(instances.keys) {
       guard var state = instances[instanceId], state.mapTag == mapTag else {
         continue
@@ -11420,6 +11435,23 @@ final class SearchMapRenderController: RCTEventEmitter {
       guard now - lastHarnessRenderQueryMs >= 200 else { return }
     }
     lastHarnessRenderQueryMs = now
+    // ATTR [layerorder]: the SETTLED layer stack. total = is the 171-layer basemap loaded? topmostBasemap
+    // = the highest non-ours symbol/label layer; ourLowest/ourHighest = where our restaurant-*/search-*
+    // layers sit by index. If ourLowest < topmostBasemap, our markers are BELOW basemap labels → culled.
+    let allLayerIds = handle.mapView.mapboxMap.allLayerIdentifiers.map { $0.id }
+    func isOurs(_ id: String) -> Bool {
+      id.hasPrefix("restaurant-") || id.hasPrefix("search-") || id.hasPrefix("user-location")
+    }
+    let ourIdxs = allLayerIds.enumerated().filter { isOurs($0.element) }.map { $0.offset }
+    let basemapSymbolTop = allLayerIds.lastIndex { !isOurs($0) } ?? -1
+    // The basemap is a Standard IMPORT (its layers aren't in allLayerIdentifiers) — log the import IDs
+    // so we can target setStyleImportConfigProperty(for: importId, config: "showPlaceLabels", ...) etc.
+    let importIds = handle.mapView.mapboxMap.styleImports.map { $0.id }.joined(separator: ",")
+    Self.harnessLog(
+      "{\"ev\":\"layerorder\",\"t\":\(Int(Self.nowMs())),\"total\":\(allLayerIds.count),"
+        + "\"ourLowest\":\(ourIdxs.min() ?? -1),\"ourHighest\":\(ourIdxs.max() ?? -1),"
+        + "\"topmostNonOurs\":\(basemapSymbolTop),\"imports\":\"\(importIds)\"}"
+    )
     let shouldPromote = Set(state.nativePromotedKeysInOrder)
     let onScreenCount = state.lastVisibleMarkerSetSignature.map {
       $0.isEmpty ? 0 : $0.components(separatedBy: "|").count
