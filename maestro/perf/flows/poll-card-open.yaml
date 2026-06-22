@@ -1,14 +1,16 @@
 appId: com.brandonkimble.cravesearch
 ---
-# Repro: from the docked polls lane, tap the + (Create poll) button.
+# Verify: tap-docked-header -> middle; tap card body -> pollDetail opens.
 - launchApp
 - tapOn: { text: 'Close restaurant', optional: true }
 - tapOn: { text: 'Close results', optional: true }
 - extendedWaitUntil: { visible: 'What are you craving?', timeout: 45000 }
 - openLink: 'crave://perf-scenario-command?action=set_map_camera_and_resolve_market&lat=40.7550&lng=-73.9800&zoom=13.2'
 - waitForAnimationToEnd: { timeout: 2500 }
-- takeScreenshot: /tmp/p1_before_plus
-- tapOn:
-    point: 93%, 92%
+- tapOn: 'Polls in New York'
 - waitForAnimationToEnd: { timeout: 2500 }
-- takeScreenshot: /tmp/p2_after_plus
+# Tap the date-night card TITLE (card body, above the endorse bars).
+- tapOn:
+    point: 50%, 56%
+- waitForAnimationToEnd: { timeout: 2500 }
+- takeScreenshot: /tmp/v3_detail
