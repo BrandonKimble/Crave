@@ -356,7 +356,21 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
       (routeScenePolicySnapshot.isPersistentPollLaneEligible &&
         surfaceVisualPolicy.phase !== 'results_dismissing') ||
       isSurfacePersistentPollCommitted;
+    // A child scene pushed over the lane (pollDetail / pollCreation / restaurant /
+    // saveList / favoriteListDetail) must take the sheet — the persistent-poll-lane
+    // 'polls' forcing only applies while a TOP-LEVEL scene is presented. Gating the
+    // single shared definition here keeps every consumer consistent: the display +
+    // scene-stack snapshots, the navigation snapshot, AND the sheet-host snap/shell
+    // (which previously read this raw and forced 'polls'/collapsed over the child).
+    const resolvedTargetSceneKey =
+      routeSceneSwitchSnapshot.transitionContract?.targetSceneKey ??
+      routeSceneSwitchSnapshot.pendingSceneKey ??
+      routeSceneSwitchSnapshot.routeActiveSceneKey;
+    const isChildSceneDisplayed =
+      resolvedTargetSceneKey != null &&
+      getAppOverlayRouteMetadata(resolvedTargetSceneKey).role === 'child';
     return (
+      !isChildSceneDisplayed &&
       routeState.rootOverlayKey === 'search' &&
       isPersistentPollLaneEligible &&
       (!sheetSessionSnapshot.isDockedPollsDismissed ||
