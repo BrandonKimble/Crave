@@ -157,7 +157,14 @@ const PIN_COLLISION_OBSTACLE_GEOMETRY: 'outline' | 'fill' | 'off' = 'fill' as
   | 'outline'
   | 'fill'
   | 'off';
-const PIN_COLLISION_OBSTACLE_SCALE = 1.1;
+// 2026-06-22 REGRESSION FIX: commit 73719a62 bumped this 0.6 → 1.1. At 1.1 the invisible pin-collision
+// obstacle is ~10% BIGGER than the visible pin, so a promoted pin's OWN offset name-label (min-gapped
+// to just clear the pin body) lands inside the obstacle and gets collision-culled — ALL name-labels
+// vanished. Attributed via the LOD harness + a loud-label probe (labels render fine with collision off;
+// disabling this obstacle alone restored them; mutex-off did not). 0.6 was the value prior "missing
+// labels" debugging settled on: obstacle covers the pin core so own-labels clear it, while other pins'
+// labels still yield to the pin. Keep ≤ ~1.0; do not re-bump without re-checking labels actually paint.
+const PIN_COLLISION_OBSTACLE_SCALE = 0.6;
 const PIN_COLLISION_SIDE_PAD_PX = 3;
 // Move the shared per-restaurant collision point used to enforce "one candidate label" placement.
 // This avoids the mutex being blocked by another pin's collision obstacle when pins stack.
@@ -185,7 +192,12 @@ const STYLE_PINS_FILL_OFFSET_IMAGE_PX =
 //
 // NOTE: Must use `iconOffset` (layout) instead of `iconTranslate` (paint), otherwise collision won't
 // move even if the visualization does.
-const PIN_COLLISION_OFFSET_Y_PX = -Math.round(PIN_MARKER_RENDER_SIZE * -0.054);
+// 2026-06-22 REGRESSION FIX (part 2): commit 73719a62 also changed this factor 0.25 → -0.054,
+// which flips the obstacle's Y shift from -7px (UP, clear of the below-pin name-labels) to +2px
+// (DOWN, into the below-pin label region) — so even after restoring the 0.6 scale the obstacle still
+// culled the bottom label candidate. Restore the 0.25 factor: shift the pin obstacle UP so other
+// restaurants' labels still collide with the pin body, but a pin's OWN below-pin label clears it.
+const PIN_COLLISION_OFFSET_Y_PX = -Math.round(PIN_MARKER_RENDER_SIZE * 0.25);
 const PIN_COLLISION_OUTLINE_OFFSET_IMAGE_PX =
   PIN_COLLISION_OFFSET_Y_PX / (STYLE_PINS_OUTLINE_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE);
 const PIN_COLLISION_FILL_OFFSET_IMAGE_PX =
@@ -221,6 +233,16 @@ const promotedPinInteractionFeatureFilter = [
   '==',
   ['get', 'nativeSlotFeatureKind'],
   'pinInteraction',
+] as LabelPlacementFilter;
+// The invisible pin-collision obstacle (which makes name-labels yield to pins) must exist ONLY at
+// actual promoted pins — never at demoted-dot markers, or its full pin-silhouette boxes flood the
+// map and collision-cull every label. The collision source bakes `nativeLodOpacity` = 1 for the
+// promoted seed and 0 for demoted markers; gate the obstacle on it. (Baked seed, not feature-state —
+// good enough: it matches the promoted set at reveal and is refreshed on each republish.)
+const promotedPinCollisionObstacleFilter = [
+  '>',
+  ['coalesce', ['get', 'nativeLodOpacity'], 0],
+  0.5,
 ] as LabelPlacementFilter;
 
 const buildLabelPlacementFilter = (candidate: LabelCandidate): LabelPlacementFilter =>
@@ -387,6 +409,7 @@ const SearchMapMarkerScene = React.memo(
             sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
             belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
             style={restaurantLabelPinCollisionStyles.center}
+            filter={promotedPinCollisionObstacleFilter}
           />
           <MapboxGL.SymbolLayer
             key={`${restaurantLabelPinCollisionLayerKey}-left`}
@@ -395,6 +418,7 @@ const SearchMapMarkerScene = React.memo(
             sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
             belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
             style={restaurantLabelPinCollisionStyles.left}
+            filter={promotedPinCollisionObstacleFilter}
           />
           <MapboxGL.SymbolLayer
             key={`${restaurantLabelPinCollisionLayerKey}-right`}
@@ -403,6 +427,7 @@ const SearchMapMarkerScene = React.memo(
             sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
             belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
             style={restaurantLabelPinCollisionStyles.right}
+            filter={promotedPinCollisionObstacleFilter}
           />
         </MapboxGL.ShapeSource>
       </React.Fragment>
@@ -2327,16 +2352,12 @@ const SearchMap: React.FC<SearchMapProps> = ({
       // basemap labels show during search). The real lever is collision PRIORITY/order vs the basemap
       // (under investigation); iconPadding is the dot-vs-dot gap, tuned once the collision box is
       // visualized.
-      // TEMPORARY UNBLOCK (2026-06-21): allowOverlap:true so dots actually SHOW. At slot="top" + colliding
-      // they were culled to ~0 (attributed: with allowOverlap:false ~511 dense dots yield to the basemap
-      // transit/neighborhood labels above the slot + the pin-labels + each other → ~0 survive; flipping
-      // this to true → dots render). The PROPER fix (dots above all labels, suppress basemap, no overlap)
-      // requires lifting the whole stack above the labels, which needs the enter_mounted_hidden gate
-      // redesign first (moving the pin-labels deadlocks the reveal; moving only the dot layer makes dots
-      // cull the pin-labels and ALSO deadlocks). Until then, allowOverlap:true keeps dots visible.
-      // allowOverlap:true keeps dots VISIBLE until step (3) lands (reposition our stack above the
-      // fully-loaded basemap via onStyleLoaded); then flip to false so dots collide + suppress basemap.
-      iconAllowOverlap: true,
+      // COLLISION ON (2026-06-22): the whole overlay stack now sits above the basemap import (default-top
+      // anchor, no slot), so dots are culled ONLY by our pins, our pin-labels, and each other — never by
+      // basemap labels — and they suppress basemap labels in their own footprint. allowOverlap:false +
+      // ignorePlacement:false is the correct steady state. (The earlier allowOverlap:true was a temporary
+      // unblock from when we were still under the basemap labels at slot="top" and dots culled to ~0.)
+      iconAllowOverlap: false,
       iconIgnorePlacement: false,
       // iconPadding 0 = the collision box is just the icon's own bounds (no extra gap). The box was
       // ~2× the visible dot mostly because of this padding; 0 shrinks it toward the circle. The box

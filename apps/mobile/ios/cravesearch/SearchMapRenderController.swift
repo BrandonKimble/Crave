@@ -621,6 +621,13 @@ final class SearchMapRenderController: RCTEventEmitter {
     var lastEnterStartToken: Double?
     var lastEnterStartedRequestKey: String?
     var lastEnterSettledRequestKey: String?
+    // REVEAL ROBUSTNESS (2026-06-22): when the label-placement watchdog exhausts its re-attempts
+    // (placement observation never committed within ~1.15s even though the labels are laid out — a
+    // preroll QRF-timing race, NOT genuinely unplaced labels), it sets this to the reveal's request
+    // key to force the placement gate open for that one reveal so it can never hang. Cleared the
+    // moment a reveal starts or a dismiss/reset supersedes it. Keyed by request so it can never leak
+    // into the next reveal. See isActiveFrameLabelPlacementReady + reattemptLabelPlacementIfRevealStalled.
+    var revealPlacementGateForcedRequestKey: String?
     var lastDismissRequestKey: String?
     var currentPresentationRenderPhase: String
     var visualSourceLifecycleState: VisualSourceLifecycleState
@@ -800,6 +807,15 @@ final class SearchMapRenderController: RCTEventEmitter {
   // it never bypasses the gate or starts the reveal with unplaced pins. Separate from
   // revealFrameFallbackWorkItems, which only settles a reveal that has ALREADY started.
   private var revealStartDeadlockFallbackWorkItems: [String: DispatchWorkItem] = [:]
+  // TIME-BASED reveal-deadlock safety net (2026-06-22). The counter-based watchdog above is fragile:
+  // its per-frame guard (`lastPresentationBatchPhase == "entering"`) and counter reset on every JS
+  // reveal re-send mean it can poll the gate forever without ever hitting its attempt bound. This
+  // tracks the wall-clock millisecond the label-placement gate was FIRST seen open-pending on a
+  // settled render frame (handleRenderFrameFinishedForHiddenPlacement). If the gate is still not
+  // ready `revealPlacementGateForceAfterMs` later — by which point the label layers have long since
+  // laid out and placed (a preroll QRF-observation race, not unplaced labels) — the reveal is
+  // force-started so it can never hang. Cleared the instant the gate opens or we leave preparingReveal.
+  private var prerollGateFirstPendingAtMsByInstance: [String: Double] = [:]
   // Per-instance count of placement re-attempts the watchdog has spent on the current reveal.
   // Reset when a reveal is armed (`armRevealStartDeadlockFallback`) and when the reveal starts
   // or is dismissed. Bounds the watchdog so it cannot spin forever.
@@ -835,6 +851,13 @@ final class SearchMapRenderController: RCTEventEmitter {
   // still cannot open after this many attempts the deeper bug is surfaced via the diagnostic
   // and the reveal stays gated (the camera-move rescue path remains as a last resort).
   private let revealStartDeadlockMaxReattempts = 12
+  // Wall-clock budget for the label-placement gate during a reveal preroll before the time-based
+  // safety net force-starts the reveal (see prerollGateFirstPendingAtMsByInstance). Label layers lay
+  // out and place within a few frames (<~150ms), so by this point a still-pending gate is an
+  // observation race, not unplaced labels — force-starting reveals correctly-placed labels with no
+  // jump. Kept short so the worst-case reveal latency (when the gate observation never commits, e.g.
+  // the QRF-empty-during-preroll case) stays snappy rather than the old infinite hang.
+  private let revealPlacementGateForceAfterMs: Double = 450
   private let sourceRecoveryRetryDelayMs = 32
   private let deferredDismissSourceCleanupDelayMs = 760
   private let revealPrerollPlacementOpacity = 0.001
@@ -5794,18 +5817,26 @@ final class SearchMapRenderController: RCTEventEmitter {
     let attempt = (revealStartDeadlockReattemptCountByInstance[instanceId] ?? 0) + 1
     revealStartDeadlockReattemptCountByInstance[instanceId] = attempt
     if attempt > revealStartDeadlockMaxReattempts {
-      // SAFETY-NET EXHAUSTED: placement still has not committed. Do NOT start the reveal with
-      // unplaced pins — surface the deeper bug loudly and leave the reveal gated. The
-      // camera-move rescue (`handleNativeCameraChanged`) remains the last resort.
+      // SAFETY-NET EXHAUSTED: the placement OBSERVATION never committed across ~1.15s of re-attempts.
+      // This is an observation/QRF-timing failure, not genuinely-unplaced labels: by now the label
+      // layers have long since laid out (a fresh reveal at any small collision-obstacle size places
+      // them — verified via the LOD harness), the gate just never *observed* a non-empty frame. The
+      // old behavior left the reveal gated forever and relied on a stray camera move to rescue it —
+      // i.e. the whole map (pins+dots+labels share one opacity animation) hung at ~0 until the user
+      // happened to pan. That is a worse outcome than a (in practice imperceptible, since labels ARE
+      // placed) reveal. FORCE the gate open for THIS request and start the reveal so it can never hang.
       revealStartDeadlockFallbackWorkItems[instanceId]?.cancel()
       revealStartDeadlockFallbackWorkItems[instanceId] = nil
+      revealStartDeadlockReattemptCountByInstance[instanceId] = nil
+      state.revealPlacementGateForcedRequestKey = revealRequestKey
+      instances[instanceId] = state
       emitVisualDiag(
         instanceId: instanceId,
         message:
-          "reveal_start_deadlock_placement_uncommitted request=\(revealRequestKey) attempts=\(attempt - 1) \(Self.labelPlacementReadinessSummary(state: state))"
+          "reveal_start_deadlock_placement_forced request=\(revealRequestKey) attempts=\(attempt - 1) \(Self.labelPlacementReadinessSummary(state: state))"
       )
       emit([
-        "type": "presentation_reveal_start_deadlock_placement_uncommitted",
+        "type": "presentation_reveal_start_deadlock_placement_forced",
         "instanceId": instanceId,
         "requestKey": revealRequestKey,
         "frameGenerationId": state.activeFrameGenerationId as Any,
@@ -5815,6 +5846,16 @@ final class SearchMapRenderController: RCTEventEmitter {
         "attempts": attempt - 1,
         "emittedAtMs": Self.nowMs(),
       ])
+      if Self.lodHarnessEnabled {
+        Self.harnessLog(
+          "{\"ev\":\"revealforce\",\"t\":\(Int(Self.nowMs())),\"attempts\":\(attempt - 1),"
+            + "\"labelCount\":\(state.lastLabelCount),\"pinCount\":\(state.lastPinCount)}"
+        )
+      }
+      // Start the reveal now that the gate is forced open for this request. Pull a fresh inout copy
+      // (the start path mutates state and persists it itself).
+      var startState = state
+      startEnterPresentationIfReady(instanceId: instanceId, state: &startState)
       return
     }
     // RE-ATTEMPT placement: re-wake the dormant label render layers (idempotent — they should
@@ -5896,6 +5937,9 @@ final class SearchMapRenderController: RCTEventEmitter {
     revealStartDeadlockFallbackWorkItems[instanceId]?.cancel()
     revealStartDeadlockFallbackWorkItems[instanceId] = nil
     revealStartDeadlockReattemptCountByInstance[instanceId] = nil
+    // The forced-gate flag (if the watchdog set it) has done its job now that the reveal is starting;
+    // clear it so the gate reverts to the real placement check for any subsequent re-evaluation.
+    state.revealPlacementGateForcedRequestKey = nil
     state.lastEnterStartToken = revealStartToken
     state.enterLane.entering = mountedHiddenExecutionBatch
     state.currentPresentationRenderPhase = "entering"
@@ -6466,6 +6510,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     revealStartDeadlockFallbackWorkItems[instanceId]?.cancel()
     revealStartDeadlockFallbackWorkItems[instanceId] = nil
     revealStartDeadlockReattemptCountByInstance[instanceId] = nil
+    state.revealPlacementGateForcedRequestKey = nil
     let collisionLayerStartedAt = CACurrentMediaTime() * 1000
     setLabelCollisionObstacleLayersVisible(
       false,
@@ -6750,6 +6795,13 @@ final class SearchMapRenderController: RCTEventEmitter {
   }
 
   private static func isActiveFrameLabelPlacementReady(state: InstanceState) -> Bool {
+    // ROBUSTNESS OVERRIDE: the watchdog forces the gate open for this reveal after exhausting its
+    // placement re-attempts, so an unobservable-but-laid-out label set can never hang the reveal.
+    if let forced = state.revealPlacementGateForcedRequestKey,
+      let active = state.lastEnterRequestKey,
+      forced == active {
+      return true
+    }
     let labelFamilyState = derivedFamilyState(sourceId: state.labelSourceId, state: state)
     let labelCount = max(
       state.lastLabelCount,
@@ -8571,6 +8623,14 @@ final class SearchMapRenderController: RCTEventEmitter {
       // collision-culled or the label render layer is hidden.
       var promotedLabelFeatCount = 0
       var promotedLabelVisCount = 0
+      // PRESENTATION-FACTOR ATTRIBUTION (2026-06-22): rendered text-opacity = nativePresentationOpacity
+      //  × nativeLabelOpacity. promLabelVis only checks the nativeLabelOpacity factor; if labels are
+      //  PLACED (renderedLabels>0) but invisible, the OTHER factor (presentation) is the zero. Read both
+      //  via the SAME coalesce the style uses (feature-state ?? baked ?? 1) and also the effective product.
+      //  promLabelPres≈0 while promLabelVis high ⇒ the reveal fade never drove presentationOpacity→1 on the
+      //  label features (e.g. groupedFeatureIdsByGroup miss). promLabelEff is ground truth for "painted".
+      var promotedLabelPresCount = 0
+      var promotedLabelEffCount = 0
       for key in pinnedRoleKeys {
         let labels = pinFamilyState.markerRenderStateByMarkerKey[key]?.labelFeatures ?? []
         if labels.isEmpty { continue }
@@ -8579,6 +8639,23 @@ final class SearchMapRenderController: RCTEventEmitter {
           (Self.numberValue(from: labelSourceState.featureStateById[labelFeature.id]?["nativeLabelOpacity"]) ?? 0) > 0.5
         }
         if anyVisible { promotedLabelVisCount += 1 }
+        let anyPres = labels.contains { labelFeature in
+          let pres = Self.numberValue(from: labelSourceState.featureStateById[labelFeature.id]?["nativePresentationOpacity"])
+            ?? Self.numberValue(from: (labelFamilyState.collection.featureById[labelFeature.id]?.properties?.turfRawValue as? [String: Any])?["nativePresentationOpacity"])
+            ?? 1
+          return pres > 0.5
+        }
+        if anyPres { promotedLabelPresCount += 1 }
+        let anyEff = labels.contains { labelFeature in
+          let lbl = Self.numberValue(from: labelSourceState.featureStateById[labelFeature.id]?["nativeLabelOpacity"])
+            ?? Self.numberValue(from: (labelFamilyState.collection.featureById[labelFeature.id]?.properties?.turfRawValue as? [String: Any])?["nativeLabelOpacity"])
+            ?? 1
+          let pres = Self.numberValue(from: labelSourceState.featureStateById[labelFeature.id]?["nativePresentationOpacity"])
+            ?? Self.numberValue(from: (labelFamilyState.collection.featureById[labelFeature.id]?.properties?.turfRawValue as? [String: Any])?["nativePresentationOpacity"])
+            ?? 1
+          return (lbl * pres) > 0.5
+        }
+        if anyEff { promotedLabelEffCount += 1 }
       }
       // workMs: compute time of THIS stepper frame (the two transition loops). If dtMs is high
       // (jank) but workMs is low, the stepper is being STARVED by other main-thread work (the
@@ -8593,6 +8670,7 @@ final class SearchMapRenderController: RCTEventEmitter {
           + "\"roleP\":\(pinnedRoleKeys.count),\"renderP\":\(renderedPinCount),\"roleGap\":\(roleVsRendered),"
           + "\"promDotOpaque\":\(promotedDotOpaqueCount),"
           + "\"promLabelFeat\":\(promotedLabelFeatCount),\"promLabelVis\":\(promotedLabelVisCount),"
+          + "\"promLabelPres\":\(promotedLabelPresCount),\"promLabelEff\":\(promotedLabelEffCount),"
           + "\"paintedRanks\":\"\(paintedRanksStr)\","
           + "\"workMs\":\(workMs),\"dtMs\":\(dtMs)}"
       )
@@ -9765,7 +9843,14 @@ final class SearchMapRenderController: RCTEventEmitter {
               .merging(["type": "label_observation_updated", "instanceId": instanceId]) { _, new in new }
           )
           self.completeLabelObservationRefresh(instanceId: instanceId)
-          self.retryLabelObservationRefreshIfPlacementPending(instanceId: instanceId, delayMs: 16)
+          // TIME-BASED SAFETY NET: this 16ms self-retry loop is the path that reliably runs while the
+          // placement gate is stuck (the render-frame path is dormant during a static preroll). If the
+          // gate has been pending past its budget, force-start the reveal here so it can never hang. If
+          // it force-starts, the 16ms retry below is moot (state leaves preparingReveal); still schedule
+          // it for the non-force case so the normal observe→commit→gate-open path keeps running.
+          if !self.maybeForceRevealOnStalledPlacement(instanceId: instanceId) {
+            self.retryLabelObservationRefreshIfPlacementPending(instanceId: instanceId, delayMs: 16)
+          }
         }
       }
     }
@@ -10909,19 +10994,74 @@ final class SearchMapRenderController: RCTEventEmitter {
     // the existing isRefreshInFlight coalescing de-dupes overlapping requests.
     private func handleRenderFrameFinishedForHiddenPlacement(mapTag: NSNumber, handle: ResolvedMapHandle) {
       for instanceId in Array(instances.keys) {
-        guard let state = instances[instanceId], state.mapTag == mapTag else {
+        guard var state = instances[instanceId], state.mapTag == mapTag else {
           continue
         }
         guard state.visualSourceLifecycleState == .preparingReveal else {
+          prerollGateFirstPendingAtMsByInstance[instanceId] = nil
           continue
         }
         let observation = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
           .labelObservation
         guard observation.observationEnabled, !Self.isActiveFrameLabelPlacementReady(state: state) else {
+          // Gate ready (or observation off) — clear the pending timer; the normal path starts the reveal.
+          prerollGateFirstPendingAtMsByInstance[instanceId] = nil
+          continue
+        }
+        // Gate still pending on a settled render frame. Run the time-based safety net, then keep
+        // re-observing if it did not fire.
+        if maybeForceRevealOnStalledPlacement(instanceId: instanceId) {
           continue
         }
         scheduleLabelObservationRefresh(instanceId: instanceId, delayMs: 0)
       }
+    }
+
+    // TIME-BASED reveal-deadlock safety net. Returns true if it force-started the reveal this call.
+    // Called from BOTH the render-frame placement path (dormant during a static preroll) AND the
+    // 16ms observation self-retry loop (which runs reliably while the gate is pending — it is the
+    // one that actually drives this in the QRF-empty-during-preroll case). Idempotent and cheap when
+    // the gate is not stalled.
+    @discardableResult
+    private func maybeForceRevealOnStalledPlacement(instanceId: String) -> Bool {
+      guard var state = instances[instanceId] else { return false }
+      guard state.visualSourceLifecycleState == .preparingReveal else {
+        prerollGateFirstPendingAtMsByInstance[instanceId] = nil
+        return false
+      }
+      let observation = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
+        .labelObservation
+      guard observation.observationEnabled, !Self.isActiveFrameLabelPlacementReady(state: state) else {
+        prerollGateFirstPendingAtMsByInstance[instanceId] = nil
+        return false
+      }
+      let now = Self.nowMs()
+      let firstPendingAt = prerollGateFirstPendingAtMsByInstance[instanceId] ?? now
+      prerollGateFirstPendingAtMsByInstance[instanceId] = firstPendingAt
+      guard let revealRequestKey = state.lastEnterRequestKey,
+        now - firstPendingAt > revealPlacementGateForceAfterMs else {
+        return false
+      }
+      // Budget exhausted: the labels are laid out but the observation is racing (QRF never returned a
+      // non-empty frame). Force the gate open for THIS request and start so the reveal can never hang.
+      prerollGateFirstPendingAtMsByInstance[instanceId] = nil
+      state.revealPlacementGateForcedRequestKey = revealRequestKey
+      instances[instanceId] = state
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "reveal_placement_gate_forced_timeout request=\(revealRequestKey) waitedMs=\(Int(now - firstPendingAt)) \(Self.labelPlacementReadinessSummary(state: state))"
+      )
+      if Self.lodHarnessEnabled {
+        Self.harnessLog(
+          "{\"ev\":\"revealforce\",\"t\":\(Int(now)),\"reason\":\"timeout\","
+            + "\"waitedMs\":\(Int(now - firstPendingAt)),\"labelCount\":\(state.lastLabelCount),"
+            + "\"pinCount\":\(state.lastPinCount)}"
+        )
+      }
+      var startState = state
+      startEnterPresentationIfReady(instanceId: instanceId, state: &startState)
+      return true
     }
 
     private func handleSourceDataLoaded(mapTag: NSNumber, event: SourceDataLoaded) {

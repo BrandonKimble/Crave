@@ -822,6 +822,12 @@ const buildStableCollisionFeature = (
       restaurantId: feature.properties.restaurantId,
       nativeLodZ: feature.properties.nativeLodZ,
       lodZ: feature.properties.lodZ,
+      // Carry the baked promotion seed (1 = promoted pin, 0 = demoted dot) so the pin-collision
+      // obstacle layer can filter to ONLY promoted pins. Without this the obstacle is emitted for
+      // EVERY on-screen marker — a full pin-silhouette obstacle at every dot location too — which
+      // floods the map and collision-culls all name-labels. Only actual pins should reserve space;
+      // demoted dots are lower-priority and yield to labels.
+      nativeLodOpacity: feature.properties.nativeLodOpacity,
     } as RestaurantFeatureProperties,
   }) satisfies Feature<Point, RestaurantFeatureProperties>;
 
