@@ -317,13 +317,31 @@ const SearchMapMarkerScene = React.memo(
             id={DOT_SOURCE_ID}
             shape={EMPTY_POINT_FEATURES as FeatureCollection<Point, RestaurantFeatureProperties>}
           >
-            <MapboxGL.SymbolLayer
-              id={DOT_LAYER_ID}
-              slot="top"
-              belowLayerID={SEARCH_PINS_Z_ANCHOR_LAYER_ID}
-              style={dotLayerStyle}
-              sourceID={DOT_SOURCE_ID}
-            />
+            <React.Fragment>
+              <MapboxGL.SymbolLayer
+                id={DOT_LAYER_ID}
+                slot="top"
+                belowLayerID={SEARCH_PINS_Z_ANCHOR_LAYER_ID}
+                style={dotLayerStyle}
+                sourceID={DOT_SOURCE_ID}
+              />
+              {DOT_COLLISION_DEBUG ? (
+                <MapboxGL.CircleLayer
+                  id={DOT_COLLISION_DEBUG_LAYER_ID}
+                  slot="top"
+                  belowLayerID={SEARCH_PINS_Z_ANCHOR_LAYER_ID}
+                  sourceID={DOT_SOURCE_ID}
+                  style={{
+                    // Screen-space ring tracing each dot's collision-box extent (~12pt box → 6pt radius).
+                    circleRadius: DOT_COLLISION_BOX_RADIUS_PT,
+                    circleColor: 'rgba(0,0,0,0)',
+                    circleStrokeColor: 'rgba(255,0,0,0.85)',
+                    circleStrokeWidth: 1,
+                    circlePitchAlignment: 'viewport',
+                  }}
+                />
+              ) : null}
+            </React.Fragment>
           </MapboxGL.ShapeSource>
         </React.Profiler>
         <MapboxGL.ShapeSource
@@ -786,6 +804,14 @@ type CameraPadding = {
 const ZERO_CAMERA_PADDING = { paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 };
 const DOT_SOURCE_ID = 'restaurant-dot-source';
 const DOT_LAYER_ID = 'restaurant-dot-layer';
+// DEV: scoped collision-box visualizer for OUR dots only (the basemap-wide native [.collision] debug
+// can't be scoped per-layer, so it's off). A screen-space ring at the dot's collision-box extent: the
+// dot icon renders at 8pt (24px sprite @ scale 3, iconSize 1) and iconPadding is 2pt/side, so the box
+// is ~12pt across → a 6pt-radius ring traces it. If dots cull each other at spacings LARGER than this
+// ring, the real box is bigger than expected (the @3x-inflation suspicion). Flip to false to hide.
+const DOT_COLLISION_DEBUG = true;
+const DOT_COLLISION_DEBUG_LAYER_ID = 'restaurant-dot-collision-debug-layer';
+const DOT_COLLISION_BOX_RADIUS_PT = 6;
 const PIN_SINGLE_SYMBOL_LAYER_ID = 'restaurant-pin-single-symbol-layer';
 const PIN_SHARED_SHADOW_LAYER_ID = 'restaurant-pin-shared-shadow-layer';
 

@@ -11171,8 +11171,10 @@ final class SearchMapRenderController: RCTEventEmitter {
   // make JS-controllable later so it is free in prod.
   static let lodHarnessEnabled = true
   // DEV collision-box visualizer: green outlines of every symbol's REAL Mapbox collision box (set in
-  // installMapSubscriptions via mapView.debugOptions = [.collision]). Flip to false to clear.
-  static let collisionDebugEnabled = true
+  // installMapSubscriptions via mapView.debugOptions = [.collision]). NOTE: this is MAP-WIDE — Mapbox
+  // has no per-layer scoping, so it also draws boxes for every basemap label/POI (clutter). Turned OFF;
+  // for an OUR-MARKERS-ONLY view we render a scoped dot collision-box ring in JS instead.
+  static let collisionDebugEnabled = false
   static func harnessLog(_ json: String) {
     NSLog("[lodev] %@", json)
   }
